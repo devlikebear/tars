@@ -42,3 +42,4 @@
 - 2026-02-13: 브라우저 OAuth start/callback API와 `tars auth login` 명령을 제거했다. OAuth는 각 공식 CLI(`codex login` 등)로 선인증하고, 서버는 로컬 토큰 파일(예: `~/.codex/auth.json`)을 읽어 재사용한다.
 - 2026-02-13: `internal/llm`에 `codex-cli` subprocess provider를 추가했다. `codex exec`를 직접 호출해 응답을 받으며, 기존 `openai` provider(`api.openai.com` API key 기반)는 변경 없이 유지한다.
 - 2026-02-13: Go 모듈명을 `github.com/devlikebear/tarsncase`로 통일했다. 미사용 `internal/db` SQLite 패키지를 제거하고, 가짜 SSE 스트리밍 엔드포인트를 삭제했다. `exitError`/`isFlagError`를 `internal/cli`로 추출해 중복을 제거했다. `tarsd --serve-api`에 graceful shutdown을 추가했다. Anthropic `max_tokens`를 설정 가능하게 변경하고 기본값을 4096으로 올렸다.
+- 2026-02-13: `PLAN.md`를 v3로 재작성했다. Phase 0 완료 현황을 정리하고, Phase 1~6 상세 개발 계획(LLM 채팅, 빌트인 도구+Agent Loop, 허트비트+크론잡, 스킬, 플러그인+MCP, cased 감시 데몬)과 OpenClaw 참고 지도를 추가했다.
