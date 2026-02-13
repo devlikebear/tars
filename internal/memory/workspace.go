@@ -1,0 +1,71 @@
+package memory
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+const defaultHeartbeatTemplate = `# HEARTBEAT.md
+
+## Heartbeat Guidance
+- Check current work context from MEMORY.md and today's daily log.
+- Decide next smallest actionable step.
+- Write key decisions to today's daily log.
+`
+
+const defaultMemoryTemplate = `# MEMORY.md
+
+## Long-Term Memory
+- Keep only durable facts and preferences here.
+`
+
+// EnsureWorkspace creates the minimum workspace layout used by tarsd.
+func EnsureWorkspace(root string) error {
+	if err := os.MkdirAll(filepath.Join(root, "memory"), 0o755); err != nil {
+		return fmt.Errorf("create memory dir: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "_shared"), 0o755); err != nil {
+		return fmt.Errorf("create shared dir: %w", err)
+	}
+	if err := ensureFile(filepath.Join(root, "HEARTBEAT.md"), defaultHeartbeatTemplate); err != nil {
+		return err
+	}
+	if err := ensureFile(filepath.Join(root, "MEMORY.md"), defaultMemoryTemplate); err != nil {
+		return err
+	}
+	return nil
+}
+
+// AppendDailyLog appends one line into workspace/memory/YYYY-MM-DD.md.
+func AppendDailyLog(root string, now time.Time, entry string) error {
+	if err := EnsureWorkspace(root); err != nil {
+		return err
+	}
+	path := filepath.Join(root, "memory", now.Format("2006-01-02")+".md")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open daily log: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(entry + "\n"); err != nil {
+		return fmt.Errorf("append daily log: %w", err)
+	}
+	return nil
+}
+
+func ensureFile(path, defaultContent string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("create file %s: %w", path, err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(defaultContent); err != nil {
+		return fmt.Errorf("write default content %s: %w", path, err)
+	}
+	return nil
+}

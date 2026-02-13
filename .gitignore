@@ -1,0 +1,33 @@
+# OS
+.DS_Store
+
+# Build
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test
+coverage.out
+
+# Runtime
+*.db
+*.log
+workspace/
+
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Archives
+*.tgz
+*.zip
+*.tar.gz
