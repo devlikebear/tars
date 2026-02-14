@@ -75,3 +75,4 @@
 - 2026-02-14: 채팅 메모리 반영을 자동화했다. `tarsd /v1/chat` 완료 시 모든 턴을 `memory/YYYY-MM-DD.md`에 요약 로그로 기록하고, 사용자 발화가 `remember`/`기억해`/`메모해` 의도이면 `MEMORY.md`에 장기 메모 노트를 승격 저장한다.
 - 2026-02-14: compaction 요약 생성을 LLM 기반으로 전환했다. `session.CompactOptions`에 `SummaryBuilder`를 추가했고, `tarsd`는 요약 시 LLM 호출을 우선 사용하며 실패 시 규칙 기반 요약으로 폴백한다.
 - 2026-02-14: compaction 유지 경계를 메시지 개수에서 토큰 keep-budget 기반으로 확장했다. `keep_recent_tokens`를 `POST /v1/compact`에 지원하고, 자동 compaction은 토큰 예산 기반 tail 유지 로직을 사용한다.
+- 2026-02-14: 토큰 예산 기반 compaction 안정화를 적용했다. `keep_recent_tokens` 하한 보정을 완화하고, compaction 시 최근 tail은 최소 2개 메시지를 유지하도록 보정해 과도한 축약을 방지했다.
