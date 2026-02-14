@@ -343,7 +343,9 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 				HistoryMessages: len(history) + 1,
 			}, nil
 		}))
-		loop := agent.NewLoop(client, registry, agent.HookFunc(func(_ context.Context, evt agent.Event) {
+		counterHook := agent.NewCounterHook()
+		auditHook := agent.NewAuditHook(64)
+		logHook := agent.HookFunc(func(_ context.Context, evt agent.Event) {
 			logger.Debug().
 				Str("event", string(evt.Type)).
 				Int("iteration", evt.Iteration).
@@ -351,7 +353,8 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 				Str("tool_name", evt.ToolName).
 				Str("tool_call_id", evt.ToolCallID).
 				Msg("agent loop event")
-		}))
+		})
+		loop := agent.NewLoop(client, registry, counterHook, auditHook, logHook)
 
 		// Set SSE headers
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -399,6 +402,11 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 			Int("output_tokens", chatResp.Usage.OutputTokens).
 			Str("stop_reason", chatResp.StopReason).
 			Msg("llm chat call complete")
+		logger.Debug().
+			Str("session_id", sessionID).
+			Any("event_counts", counterHook.Snapshot()).
+			Int("audit_entries", len(auditHook.Entries())).
+			Msg("agent loop summary")
 		if !deltaSent && chatResp.Message.Content != "" {
 			logger.Debug().Str("session_id", sessionID).Int("assistant_len", len(chatResp.Message.Content)).Msg("emit fallback delta from non-streaming llm response")
 			sendSSE(map[string]string{"type": "delta", "text": chatResp.Message.Content})
