@@ -71,3 +71,4 @@
 - 2026-02-14: `tars chat` REPL 입력을 Bubble Tea v2(`charm.land/bubbletea/v2`, `charm.land/bubbles/v2`) 기반으로 전환했다. 입력 모델에 `textinput.SetVirtualCursor(false)`를 적용해 한글 IME 조합 입력 시 커서/조합 표시 충돌을 줄였다.
 - 2026-02-14: `tars chat` REPL 슬래시 명령을 확장했다. `/export`(현재 세션 마크다운 내보내기), `/search {keyword}`(세션 검색) 명령을 추가해 세션 API 라우팅을 완성했다.
 - 2026-02-14: 컨텍스트 압축 기본 플로우를 구현했다. `internal/session`에 `CompactTranscript`/`RewriteMessages`를 추가해 오래된 메시지를 요약 `system` 메시지(`[COMPACTION SUMMARY]`)로 치환하고 최신 N개 메시지만 유지한다. `POST /v1/compact`는 `session_id`를 받아 실제 압축을 수행하며, `tars`의 `/compact`는 활성 세션 기준으로 해당 API를 호출한다.
+- 2026-02-14: 컨텍스트 압축을 고도화했다. `CompactTranscriptWithOptions` 훅을 추가해 transcript rewrite 직전에 pre-compaction memory flush를 수행하도록 확장했다. `tarsd`는 compaction 시 `MEMORY.md`와 daily log에 flush 기록을 남기며, `POST /v1/chat` 진입 시 transcript 토큰 추정치가 임계값을 넘으면 자동 compaction을 선행한다.

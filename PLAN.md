@@ -40,7 +40,7 @@
 - [x] non-streaming provider fallback — `OnDelta` 미호출 시 최종 응답을 `delta`로 1회 전송
 
 ### 미구현 (Phase 1~6에서 개발)
-- [ ] 고급 컨텍스트 압축 (pre-compaction memory flush + 자동 트리거 경계 로직)
+- [ ] 컨텍스트 압축 고도화 (LLM 요약 품질 향상 + 로딩 경계 정교화)
 - [ ] 채팅 결과의 메모리 계층 자동 반영 (`MEMORY.md`, `memory/YYYY-MM-DD.md`)
 - [ ] 빌트인 도구 + Agent Loop (LLM → tool_calls → 실행 → 반복)
 - [ ] 허트비트 Agent Loop 통합 (도구 자율 실행)
