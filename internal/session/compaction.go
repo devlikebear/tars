@@ -11,7 +11,7 @@ const (
 	MinKeepRecentMessages     = 5
 	MaxKeepRecentMessages     = 200
 	DefaultKeepRecentTokens   = 12000
-	MinKeepRecentTokens       = 512
+	MinKeepRecentTokens       = 1
 	MaxKeepRecentTokens       = 64000
 )
 
@@ -179,6 +179,9 @@ func cutoffIndexByTokenBudget(messages []Message, budget int) int {
 	}
 	if kept == 0 {
 		kept = 1
+	}
+	if kept < 2 && len(messages) >= 2 {
+		kept = 2
 	}
 	cutoff := len(messages) - kept
 	if cutoff < 0 {
