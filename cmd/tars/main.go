@@ -472,7 +472,7 @@ func handleREPLCommand(serverURL, currentSessionID, line string, reader replRead
 
 	switch fields[0] {
 	case "/help":
-		_, _ = fmt.Fprintln(stdout, "Commands: /sessions, /new [title], /resume {id}, /history, /export, /status, /compact, /quit")
+		_, _ = fmt.Fprintln(stdout, "Commands: /sessions, /new [title], /resume {id}, /history, /export, /search {keyword}, /status, /compact, /quit")
 		return true, "", nil
 	case "/sessions":
 		return true, "", printSessions(serverURL, stdout, logger)
@@ -535,6 +535,12 @@ func handleREPLCommand(serverURL, currentSessionID, line string, reader replRead
 			return true, "", fmt.Errorf("no active session. use /new or /resume {session_id}")
 		}
 		return true, "", exportSession(serverURL, currentSessionID, stdout, logger)
+	case "/search":
+		keyword := strings.TrimSpace(strings.TrimPrefix(line, "/search"))
+		if keyword == "" {
+			return true, "", fmt.Errorf("usage: /search {keyword}")
+		}
+		return true, "", searchSessions(serverURL, keyword, stdout, logger)
 	case "/status":
 		return true, "", printStatus(serverURL, stdout, logger)
 	case "/compact":
@@ -725,6 +731,43 @@ func exportSession(serverURL, sessionID string, stdout io.Writer, logger zerolog
 	}
 
 	_, _ = fmt.Fprintln(stdout, strings.TrimSpace(string(body)))
+	return nil
+}
+
+func searchSessions(serverURL, keyword string, stdout io.Writer, logger zerolog.Logger) error {
+	base := strings.TrimRight(serverURL, "/")
+	url := fmt.Sprintf("%s/v1/sessions/search?q=%s", base, keyword)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	logger.Debug().Str("method", req.Method).Str("url", url).Str("query", keyword).Msg("request tarsd search sessions api")
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("request search sessions endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read search sessions response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("search sessions endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var sessions []sessionSummary
+	if err := json.Unmarshal(body, &sessions); err != nil {
+		return fmt.Errorf("decode search sessions response: %w", err)
+	}
+	if len(sessions) == 0 {
+		_, _ = fmt.Fprintln(stdout, "(no sessions)")
+		return nil
+	}
+	for _, s := range sessions {
+		_, _ = fmt.Fprintf(stdout, "%s\t%s\n", s.ID, s.Title)
+	}
 	return nil
 }
 
