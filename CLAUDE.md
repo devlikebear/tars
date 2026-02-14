@@ -52,4 +52,5 @@
 - 2026-02-13: Go 모듈명을 `github.com/devlikebear/tarsncase`로 통일했다. 미사용 `internal/db` SQLite 패키지를 제거하고, 가짜 SSE 스트리밍 엔드포인트를 삭제했다. `exitError`/`isFlagError`를 `internal/cli`로 추출해 중복을 제거했다. `tarsd --serve-api`에 graceful shutdown을 추가했다. Anthropic `max_tokens`를 설정 가능하게 변경하고 기본값을 4096으로 올렸다.
 - 2026-02-13: `PLAN.md`를 v3로 재작성했다. Phase 0 완료 현황을 정리하고, Phase 1~6 상세 개발 계획(LLM 채팅, 빌트인 도구+Agent Loop, 허트비트+크론잡, 스킬, 플러그인+MCP, cased 감시 데몬)과 OpenClaw 참고 지도를 추가했다.
 - 2026-02-14: `EnsureWorkspace()`를 확장해 5개 부트스트랩 파일(AGENTS.md, SOUL.md, USER.md, IDENTITY.md, TOOLS.md)을 기본 템플릿으로 생성하도록 추가했다. 기존 파일이 있으면 덮어쓰지 않는다.
+- 2026-02-14: `internal/prompt` 패키지를 추가했다. `Build(BuildOptions)` 함수가 워크스페이스 부트스트랩 파일 7종(IDENTITY, SOUL, USER, AGENTS, TOOLS, HEARTBEAT, MEMORY)을 읽어 시스템 프롬프트를 조립한다. 파일당 20000자 제한, sub-agent 모드에서는 AGENTS.md + TOOLS.md만 주입한다.
 - 2026-02-14: `internal/session` 패키지를 추가했다. `Message` 타입(role/content/timestamp), JSONL transcript(append/read), `Session` 구조체, `Store`(sessions.json 기반 CRUD), 토큰 기반 동적 히스토리 로딩(`LoadHistory`)을 구현했다. 세션 저장 구조: `sessions/sessions.json`(인덱스) + `sessions/{id}.jsonl`(transcript).
