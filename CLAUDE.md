@@ -13,12 +13,12 @@
 10. `~/workspace/opensources/openclaw` 디렉터리에 접근할 수 없으면 `https://github.com/openclaw/openclaw`를 분석 대상으로 사용하고, 소스 분석은 Repomix MCP를 사용해 진행한다.
 
 ## 워크플로우
-1. 나(사용자)가 요구사항을 Claude Code에 전달
-2. Claude Code가 설계/계획 수립 (Plan 모드)
-3. 코드 구현 작업은 `codex-implementer` 서브에이전트에 위임 — 해당 에이전트가 `codex exec`로 코드를 생성/수정
-4. Claude Code가 Codex 결과를 리뷰하고 통합 (코드 품질, 아키텍처 정합성 검증)
-5. 테스트 작성 및 실행(`make test`)은 Claude Code가 직접 수행
-6. 커밋 및 문서 갱신은 Claude Code가 수행
+1. 사용자가 요구사항을 Claude Code에 전달
+2. `/plan` — 요구사항을 작업지시서(Work Order)로 분해
+3. `/implement` — Work Order를 `codex-implementer` 서브에이전트에 위임하여 코드 구현, Claude Code가 결과 검수
+4. `/review` — 변경사항의 품질/보안/회귀 위험 점검, 문제 발견 시 수정 Work Order를 생성해 `/implement`로 재위임
+5. 테스트 실행(`make test`)은 Claude Code가 직접 수행
+6. 커밋 및 `CLAUDE.md` 갱신은 Claude Code가 수행
 
 ## 바이너리 역할 정의
 - `tarsd` (메인 데몬/서버): LLM 호출, 허트비트/크론 실행, 3-Layer 메모리 처리, 작업 판단과 실행 오케스트레이션을 담당한다.
