@@ -472,7 +472,7 @@ func handleREPLCommand(serverURL, currentSessionID, line string, reader replRead
 
 	switch fields[0] {
 	case "/help":
-		_, _ = fmt.Fprintln(stdout, "Commands: /sessions, /new [title], /resume {id}, /history, /status, /compact, /quit")
+		_, _ = fmt.Fprintln(stdout, "Commands: /sessions, /new [title], /resume {id}, /history, /export, /status, /compact, /quit")
 		return true, "", nil
 	case "/sessions":
 		return true, "", printSessions(serverURL, stdout, logger)
@@ -530,6 +530,11 @@ func handleREPLCommand(serverURL, currentSessionID, line string, reader replRead
 			return true, "", fmt.Errorf("no active session. use /new or /resume {session_id}")
 		}
 		return true, "", printHistory(serverURL, currentSessionID, stdout, logger)
+	case "/export":
+		if strings.TrimSpace(currentSessionID) == "" {
+			return true, "", fmt.Errorf("no active session. use /new or /resume {session_id}")
+		}
+		return true, "", exportSession(serverURL, currentSessionID, stdout, logger)
 	case "/status":
 		return true, "", printStatus(serverURL, stdout, logger)
 	case "/compact":
@@ -693,6 +698,33 @@ func printHistory(serverURL, sessionID string, stdout io.Writer, logger zerolog.
 	for _, m := range messages {
 		_, _ = fmt.Fprintf(stdout, "%s [%s] %s\n", m.Timestamp.Format(time.RFC3339), m.Role, m.Content)
 	}
+	return nil
+}
+
+func exportSession(serverURL, sessionID string, stdout io.Writer, logger zerolog.Logger) error {
+	base := strings.TrimRight(serverURL, "/")
+	url := fmt.Sprintf("%s/v1/sessions/%s/export", base, strings.TrimSpace(sessionID))
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return err
+	}
+	logger.Debug().Str("method", req.Method).Str("url", url).Msg("request tarsd export api")
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("request export endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read export response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("export endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	_, _ = fmt.Fprintln(stdout, strings.TrimSpace(string(body)))
 	return nil
 }
 

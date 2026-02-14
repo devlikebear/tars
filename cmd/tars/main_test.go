@@ -185,9 +185,10 @@ func TestRun_ChatREPL_ReusesSessionID(t *testing.T) {
 func TestRun_ChatREPL_SlashCommands(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	stdin := strings.NewReader("/sessions\n/new project session\n/history\n/status\n/compact\n/quit\n")
+	stdin := strings.NewReader("/sessions\n/new project session\n/history\n/export\n/status\n/compact\n/quit\n")
 
 	var historyPathRequested bool
+	var exportPathRequested bool
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -201,6 +202,10 @@ func TestRun_ChatREPL_SlashCommands(t *testing.T) {
 			historyPathRequested = true
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[{"role":"user","content":"hello","timestamp":"2026-02-14T12:00:00Z"}]`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/sessions/sess-new/export":
+			exportPathRequested = true
+			w.Header().Set("Content-Type", "text/markdown")
+			_, _ = w.Write([]byte("# Session: project session\n\n**user**: hello"))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"workspace_dir":"./workspace","session_count":3}`))
@@ -220,6 +225,9 @@ func TestRun_ChatREPL_SlashCommands(t *testing.T) {
 	if !historyPathRequested {
 		t.Fatalf("expected history endpoint call for created session")
 	}
+	if !exportPathRequested {
+		t.Fatalf("expected export endpoint call for created session")
+	}
 	out := stdout.String()
 	if !strings.Contains(out, "sess-a\talpha") {
 		t.Fatalf("expected sessions output, got %q", out)
@@ -229,6 +237,9 @@ func TestRun_ChatREPL_SlashCommands(t *testing.T) {
 	}
 	if !strings.Contains(out, "[user] hello") {
 		t.Fatalf("expected history output, got %q", out)
+	}
+	if !strings.Contains(out, "# Session: project session") {
+		t.Fatalf("expected export output, got %q", out)
 	}
 	if !strings.Contains(out, "workspace=./workspace sessions=3") {
 		t.Fatalf("expected status output, got %q", out)
