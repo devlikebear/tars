@@ -21,6 +21,45 @@ const defaultMemoryTemplate = `# MEMORY.md
 - Keep only durable facts and preferences here.
 `
 
+const defaultAgentsTemplate = `# AGENTS.md
+
+## Operating Guidelines
+- Define how the agent should use workspace files (HEARTBEAT.md, MEMORY.md, daily logs).
+- Specify memory read/write conventions (when to update MEMORY.md, when to append daily logs).
+- Set boundaries for autonomous actions (what the agent may do without asking).
+`
+
+const defaultSoulTemplate = `# SOUL.md
+
+## Persona
+- Define the agent's communication style and tone.
+- Set behavioral boundaries (topics to avoid, response length preferences).
+- Describe the personality traits that should come through in interactions.
+`
+
+const defaultUserTemplate = `# USER.md
+
+## User Profile
+- Name:
+- Preferred language:
+- Key preferences and working style notes.
+`
+
+const defaultIdentityTemplate = `# IDENTITY.md
+
+## Agent Identity
+- Name: TARS
+- Role: Personal AI assistant
+- Personality traits and distinguishing characteristics.
+`
+
+const defaultToolsTemplate = `# TOOLS.md
+
+## Environment Tools
+- Document environment-specific tools, CLI utilities, and integrations available to the agent.
+- Note any tool restrictions or preferred usage patterns.
+`
+
 // EnsureWorkspace creates the minimum workspace layout used by tarsd.
 func EnsureWorkspace(root string) error {
 	if err := os.MkdirAll(filepath.Join(root, "memory"), 0o755); err != nil {
@@ -33,6 +72,21 @@ func EnsureWorkspace(root string) error {
 		return err
 	}
 	if err := ensureFile(filepath.Join(root, "MEMORY.md"), defaultMemoryTemplate); err != nil {
+		return err
+	}
+	if err := ensureFile(filepath.Join(root, "AGENTS.md"), defaultAgentsTemplate); err != nil {
+		return err
+	}
+	if err := ensureFile(filepath.Join(root, "SOUL.md"), defaultSoulTemplate); err != nil {
+		return err
+	}
+	if err := ensureFile(filepath.Join(root, "USER.md"), defaultUserTemplate); err != nil {
+		return err
+	}
+	if err := ensureFile(filepath.Join(root, "IDENTITY.md"), defaultIdentityTemplate); err != nil {
+		return err
+	}
+	if err := ensureFile(filepath.Join(root, "TOOLS.md"), defaultToolsTemplate); err != nil {
 		return err
 	}
 	return nil

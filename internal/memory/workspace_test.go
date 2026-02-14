@@ -21,6 +21,11 @@ func TestEnsureWorkspace(t *testing.T) {
 		filepath.Join(root, "_shared"),
 		filepath.Join(root, "HEARTBEAT.md"),
 		filepath.Join(root, "MEMORY.md"),
+		filepath.Join(root, "AGENTS.md"),
+		filepath.Join(root, "SOUL.md"),
+		filepath.Join(root, "USER.md"),
+		filepath.Join(root, "IDENTITY.md"),
+		filepath.Join(root, "TOOLS.md"),
 	}
 	for _, path := range paths {
 		if _, err := os.Stat(path); err != nil {
@@ -43,6 +48,46 @@ func TestEnsureWorkspace(t *testing.T) {
 	if !strings.Contains(string(memoryFile), "Long-Term Memory") {
 		t.Fatalf("expected default MEMORY template, got %q", string(memoryFile))
 	}
+
+	agentsFile, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(agentsFile), "Operating Guidelines") {
+		t.Fatalf("expected default AGENTS template, got %q", string(agentsFile))
+	}
+
+	soulFile, err := os.ReadFile(filepath.Join(root, "SOUL.md"))
+	if err != nil {
+		t.Fatalf("read SOUL.md: %v", err)
+	}
+	if !strings.Contains(string(soulFile), "Persona") {
+		t.Fatalf("expected default SOUL template, got %q", string(soulFile))
+	}
+
+	userFile, err := os.ReadFile(filepath.Join(root, "USER.md"))
+	if err != nil {
+		t.Fatalf("read USER.md: %v", err)
+	}
+	if !strings.Contains(string(userFile), "User Profile") {
+		t.Fatalf("expected default USER template, got %q", string(userFile))
+	}
+
+	identityFile, err := os.ReadFile(filepath.Join(root, "IDENTITY.md"))
+	if err != nil {
+		t.Fatalf("read IDENTITY.md: %v", err)
+	}
+	if !strings.Contains(string(identityFile), "Agent Identity") {
+		t.Fatalf("expected default IDENTITY template, got %q", string(identityFile))
+	}
+
+	toolsFile, err := os.ReadFile(filepath.Join(root, "TOOLS.md"))
+	if err != nil {
+		t.Fatalf("read TOOLS.md: %v", err)
+	}
+	if !strings.Contains(string(toolsFile), "Environment Tools") {
+		t.Fatalf("expected default TOOLS template, got %q", string(toolsFile))
+	}
 }
 
 func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
@@ -52,11 +97,31 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	customHeartbeat := "custom heartbeat"
 	customMemory := "custom memory"
+	customAgents := "custom agents"
+	customSoul := "custom soul"
+	customUser := "custom user"
+	customIdentity := "custom identity"
+	customTools := "custom tools"
 	if err := os.WriteFile(filepath.Join(root, "HEARTBEAT.md"), []byte(customHeartbeat), 0o644); err != nil {
 		t.Fatalf("write HEARTBEAT.md: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte(customMemory), 0o644); err != nil {
 		t.Fatalf("write MEMORY.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(customAgents), 0o644); err != nil {
+		t.Fatalf("write AGENTS.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "SOUL.md"), []byte(customSoul), 0o644); err != nil {
+		t.Fatalf("write SOUL.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "USER.md"), []byte(customUser), 0o644); err != nil {
+		t.Fatalf("write USER.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "IDENTITY.md"), []byte(customIdentity), 0o644); err != nil {
+		t.Fatalf("write IDENTITY.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "TOOLS.md"), []byte(customTools), 0o644); err != nil {
+		t.Fatalf("write TOOLS.md: %v", err)
 	}
 
 	if err := EnsureWorkspace(root); err != nil {
@@ -77,6 +142,46 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	if string(memoryFile) != customMemory {
 		t.Fatalf("expected existing MEMORY.md to remain unchanged, got %q", string(memoryFile))
+	}
+
+	agentsFile, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if string(agentsFile) != customAgents {
+		t.Fatalf("expected existing AGENTS.md to remain unchanged, got %q", string(agentsFile))
+	}
+
+	soulFile, err := os.ReadFile(filepath.Join(root, "SOUL.md"))
+	if err != nil {
+		t.Fatalf("read SOUL.md: %v", err)
+	}
+	if string(soulFile) != customSoul {
+		t.Fatalf("expected existing SOUL.md to remain unchanged, got %q", string(soulFile))
+	}
+
+	userFile, err := os.ReadFile(filepath.Join(root, "USER.md"))
+	if err != nil {
+		t.Fatalf("read USER.md: %v", err)
+	}
+	if string(userFile) != customUser {
+		t.Fatalf("expected existing USER.md to remain unchanged, got %q", string(userFile))
+	}
+
+	identityFile, err := os.ReadFile(filepath.Join(root, "IDENTITY.md"))
+	if err != nil {
+		t.Fatalf("read IDENTITY.md: %v", err)
+	}
+	if string(identityFile) != customIdentity {
+		t.Fatalf("expected existing IDENTITY.md to remain unchanged, got %q", string(identityFile))
+	}
+
+	toolsFile, err := os.ReadFile(filepath.Join(root, "TOOLS.md"))
+	if err != nil {
+		t.Fatalf("read TOOLS.md: %v", err)
+	}
+	if string(toolsFile) != customTools {
+		t.Fatalf("expected existing TOOLS.md to remain unchanged, got %q", string(toolsFile))
 	}
 }
 
