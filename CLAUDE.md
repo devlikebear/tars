@@ -67,3 +67,4 @@
 - 2026-02-14: Agent Loop 훅 핸들러를 확장했다. `internal/agent`에 `CounterHook`, `AuditHook`를 추가하고 `tarsd /v1/chat` 실행 시 이벤트 카운트와 audit trail 길이를 요약 로그로 출력한다.
 - 2026-02-14: `tarsd /v1/chat` SSE에 `status` 이벤트 스트림을 추가했다(`stream_open`, `before_llm`, `after_llm`, `before_tool_call`, `after_tool_call`, `loop_end`, `error`, `llm_stream`). `tars`는 이를 실시간으로 받아 `[status] ...` 형태로 stderr에 출력해 추론 진행 상태를 모니터링할 수 있게 했다.
 - 2026-02-14: REPL 입력 정규화를 추가했다. 한글 키보드 환경에서 나오는 `₩`/`￦`/`＼`/`\\`/`／` 시작 입력을 `/` 명령 접두사로 변환해 `/resume` 같은 슬래시 명령이 정상 동작하도록 개선했다.
+- 2026-02-14: REPL 입력 안정성을 위해 `tars chat`의 status 스트림 기본 정책을 분리했다. 단건 모드(`-m`)는 status 스트림 기본 활성화, REPL 모드는 기본 비활성화이며 `--status-stream` 플래그로 명시적으로 켤 수 있다.
