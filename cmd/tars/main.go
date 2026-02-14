@@ -12,11 +12,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"github.com/devlikebear/tarsncase/internal/cli"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 func main() {
@@ -276,19 +280,22 @@ func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.W
 
 func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer, statusOut io.Writer, showStatus bool, logger zerolog.Logger) error {
 	currentSessionID := strings.TrimSpace(sessionID)
-	scanner := bufio.NewScanner(stdin)
+	reader, err := newREPLReader(stdin, stdout)
+	if err != nil {
+		return err
+	}
 
 	_, _ = fmt.Fprintln(stdout, "Entering chat REPL. Type /help for commands.")
 	for {
-		_, _ = fmt.Fprint(stdout, "> ")
-		if !scanner.Scan() {
-			if err := scanner.Err(); err != nil {
-				return fmt.Errorf("read repl input: %w", err)
-			}
+		lineRaw, err := reader.ReadLine("> ")
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
+		if err != nil {
+			return fmt.Errorf("read repl input: %w", err)
+		}
 
-		line := normalizeREPLInput(scanner.Text())
+		line := normalizeREPLInput(lineRaw)
 		if line == "" {
 			continue
 		}
@@ -296,7 +303,7 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 			return nil
 		}
 		if strings.HasPrefix(line, "/") {
-			handled, nextSessionID, err := handleREPLCommand(serverURL, currentSessionID, line, scanner, stdout, logger)
+			handled, nextSessionID, err := handleREPLCommand(serverURL, currentSessionID, line, reader, stdout, logger)
 			if err != nil {
 				_, _ = fmt.Fprintf(stdout, "error: %v\n", err)
 				continue
@@ -319,8 +326,98 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 	}
 }
 
+type replReader interface {
+	ReadLine(prompt string) (string, error)
+}
+
+type bubbleREPLReader struct {
+	stdin  io.Reader
+	stdout io.Writer
+}
+
+func (r *bubbleREPLReader) ReadLine(prompt string) (string, error) {
+	model := newBubbleInputModel(prompt)
+	program := tea.NewProgram(
+		model,
+		tea.WithInput(r.stdin),
+		tea.WithOutput(r.stdout),
+		tea.WithoutSignalHandler(),
+	)
+	finalModel, err := program.Run()
+	if err != nil {
+		return "", err
+	}
+	m, ok := finalModel.(bubbleInputModel)
+	if !ok {
+		return "", fmt.Errorf("unexpected repl model type")
+	}
+	if m.aborted {
+		return "", io.EOF
+	}
+	_, _ = fmt.Fprintln(r.stdout)
+	return m.value, nil
+}
+
+func newREPLReader(stdin io.Reader, stdout io.Writer) (replReader, error) {
+	inFile, ok := stdin.(*os.File)
+	if !ok || !term.IsTerminal(int(inFile.Fd())) {
+		return nil, fmt.Errorf("chat repl requires terminal stdin")
+	}
+	outFile, ok := stdout.(*os.File)
+	if !ok || !term.IsTerminal(int(outFile.Fd())) {
+		return nil, fmt.Errorf("chat repl requires terminal stdout")
+	}
+	return &bubbleREPLReader{
+		stdin:  inFile,
+		stdout: outFile,
+	}, nil
+}
+
+type bubbleInputModel struct {
+	input   textinput.Model
+	value   string
+	aborted bool
+}
+
+func newBubbleInputModel(prompt string) bubbleInputModel {
+	ti := textinput.New()
+	ti.Prompt = prompt
+	// Use the terminal's real cursor instead of Bubble's virtual cursor.
+	// This tends to behave better with CJK IME preedit/composition.
+	ti.SetVirtualCursor(false)
+	ti.Focus()
+	ti.CharLimit = 0
+	return bubbleInputModel{input: ti}
+}
+
+func (m bubbleInputModel) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+func (m bubbleInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch key := msg.(type) {
+	case tea.KeyPressMsg:
+		switch key.String() {
+		case "ctrl+c", "esc":
+			m.aborted = true
+			return m, tea.Quit
+		case "enter":
+			m.value = m.input.Value()
+			return m, tea.Quit
+		}
+	}
+
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return m, cmd
+}
+
+func (m bubbleInputModel) View() tea.View {
+	return tea.NewView(m.input.View())
+}
+
 func normalizeREPLInput(raw string) string {
-	line := strings.TrimSpace(raw)
+	line := strings.TrimSpace(stripANSIControlSequences(raw))
 	if line == "" {
 		return ""
 	}
@@ -335,7 +432,39 @@ func normalizeREPLInput(raw string) string {
 	}
 }
 
-func handleREPLCommand(serverURL, currentSessionID, line string, scanner *bufio.Scanner, stdout io.Writer, logger zerolog.Logger) (bool, string, error) {
+func stripANSIControlSequences(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b {
+			j := i + 1
+			if j < len(s) && s[j] == '[' {
+				j++
+				for j < len(s) {
+					c := s[j]
+					if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+						j++
+						break
+					}
+					j++
+				}
+				i = j
+				continue
+			}
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && size == 1 {
+			i++
+			continue
+		}
+		b.WriteRune(r)
+		i += size
+	}
+	return b.String()
+}
+
+func handleREPLCommand(serverURL, currentSessionID, line string, reader replReader, stdout io.Writer, logger zerolog.Logger) (bool, string, error) {
 	fields := strings.Fields(line)
 	if len(fields) == 0 {
 		return true, "", nil
@@ -380,14 +509,14 @@ func handleREPLCommand(serverURL, currentSessionID, line string, scanner *bufio.
 		for i, s := range sessions {
 			_, _ = fmt.Fprintf(stdout, "%d) %s\t%s\n", i+1, s.ID, s.Title)
 		}
-		_, _ = fmt.Fprint(stdout, "number> ")
-		if !scanner.Scan() {
-			if err := scanner.Err(); err != nil {
-				return true, "", fmt.Errorf("read resume selection: %w", err)
-			}
+		choiceRaw, err := reader.ReadLine("number> ")
+		if errors.Is(err, io.EOF) {
 			return true, "", fmt.Errorf("input closed while selecting session")
 		}
-		choice := strings.TrimSpace(scanner.Text())
+		if err != nil {
+			return true, "", fmt.Errorf("read resume selection: %w", err)
+		}
+		choice := strings.TrimSpace(choiceRaw)
 		idx, err := strconv.Atoi(choice)
 		if err != nil || idx < 1 || idx > len(sessions) {
 			_, _ = fmt.Fprintln(stdout, "invalid selection")

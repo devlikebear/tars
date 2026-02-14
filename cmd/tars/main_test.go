@@ -396,3 +396,12 @@ func TestRun_ChatREPL_ResumeWithWonPrefix(t *testing.T) {
 		t.Fatalf("expected chat output, got %q", out)
 	}
 }
+
+func TestNormalizeREPLInput_StripsControlSequences(t *testing.T) {
+	if got := normalizeREPLInput("\x1b[A"); got != "" {
+		t.Fatalf("expected empty input for arrow sequence, got %q", got)
+	}
+	if got := normalizeREPLInput("\x1b[A/resume sess-1"); got != "/resume sess-1" {
+		t.Fatalf("expected normalized command, got %q", got)
+	}
+}
