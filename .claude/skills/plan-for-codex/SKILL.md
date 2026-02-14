@@ -1,5 +1,5 @@
 ---
-name: plan
+name: plan-for-codex
 description: "요구사항을 codex-implementer용 작업지시서(Work Order)로 변환하는 설계/계획 수립 스킬. 다음 상황에서 트리거: (1) 사용자가 새 기능 개발을 요청하고 구현 전 계획이 필요할 때, (2) '/plan'을 호출할 때, (3) 요구사항을 작업 단위로 분해해야 할 때."
 ---
 
