@@ -205,3 +205,24 @@ func TestAppendDailyLog(t *testing.T) {
 		t.Fatalf("unexpected daily log content: %q", content)
 	}
 }
+
+func TestAppendMemoryNote(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	now := time.Date(2026, 2, 14, 12, 0, 0, 0, time.UTC)
+
+	if err := AppendMemoryNote(root, now, "user prefers compact replies"); err != nil {
+		t.Fatalf("append memory note: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "MEMORY.md"))
+	if err != nil {
+		t.Fatalf("read memory file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "user prefers compact replies") {
+		t.Fatalf("expected appended memory note, got %q", content)
+	}
+	if !strings.Contains(content, "2026-02-14T12:00:00Z") {
+		t.Fatalf("expected timestamp in memory note, got %q", content)
+	}
+}

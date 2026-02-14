@@ -17,9 +17,18 @@ type CompactResult struct {
 	OriginalCount  int
 	FinalCount     int
 	CompactedCount int
+	Summary        string
 }
 
 func CompactTranscript(path string, keepRecent int, now time.Time) (CompactResult, error) {
+	return CompactTranscriptWithOptions(path, keepRecent, now, CompactOptions{})
+}
+
+type CompactOptions struct {
+	BeforeRewrite func(summary string, compactedCount int, originalCount int) error
+}
+
+func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, opts CompactOptions) (CompactResult, error) {
 	if keepRecent <= 0 {
 		keepRecent = DefaultKeepRecentMessages
 	}
@@ -43,6 +52,7 @@ func CompactTranscript(path string, keepRecent int, now time.Time) (CompactResul
 			OriginalCount:  len(messages),
 			FinalCount:     len(messages),
 			CompactedCount: 0,
+			Summary:        "",
 		}, nil
 	}
 
@@ -55,6 +65,11 @@ func CompactTranscript(path string, keepRecent int, now time.Time) (CompactResul
 		Role:      "system",
 		Content:   summary,
 		Timestamp: now.UTC(),
+	}
+	if opts.BeforeRewrite != nil {
+		if err := opts.BeforeRewrite(summary, len(head), len(messages)); err != nil {
+			return CompactResult{}, err
+		}
 	}
 
 	replaced := make([]Message, 0, 1+len(tail))
@@ -69,6 +84,7 @@ func CompactTranscript(path string, keepRecent int, now time.Time) (CompactResul
 		OriginalCount:  len(messages),
 		FinalCount:     len(replaced),
 		CompactedCount: len(head),
+		Summary:        summary,
 	}, nil
 }
 

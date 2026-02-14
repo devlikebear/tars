@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -105,6 +106,29 @@ func AppendDailyLog(root string, now time.Time, entry string) error {
 	defer f.Close()
 	if _, err := f.WriteString(entry + "\n"); err != nil {
 		return fmt.Errorf("append daily log: %w", err)
+	}
+	return nil
+}
+
+// AppendMemoryNote appends one bullet entry into workspace/MEMORY.md.
+func AppendMemoryNote(root string, now time.Time, entry string) error {
+	if strings.TrimSpace(entry) == "" {
+		return nil
+	}
+	if err := EnsureWorkspace(root); err != nil {
+		return err
+	}
+
+	path := filepath.Join(root, "MEMORY.md")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open memory file: %w", err)
+	}
+	defer f.Close()
+
+	line := fmt.Sprintf("- %s %s\n", now.UTC().Format(time.RFC3339), strings.TrimSpace(entry))
+	if _, err := f.WriteString(line); err != nil {
+		return fmt.Errorf("append memory note: %w", err)
 	}
 	return nil
 }

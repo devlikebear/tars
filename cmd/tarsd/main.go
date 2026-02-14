@@ -69,6 +69,12 @@ type options struct {
 	MaxHeartbeats     int
 }
 
+const (
+	chatHistoryMaxTokens     = 120000
+	autoCompactTriggerTokens = 100000
+	autoCompactKeepRecent    = session.DefaultKeepRecentMessages
+)
+
 func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() time.Time) *cobra.Command {
 	opts := options{}
 
@@ -149,7 +155,7 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 				mux.Handle("/v1/sessions/", sessionHandler)
 				statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, store, logger)
 				mux.Handle("/v1/status", statusHandler)
-				compactHandler := newCompactAPIHandler(store, logger)
+				compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, store, logger)
 				mux.Handle("/v1/compact", compactHandler)
 
 				server := &http.Server{
@@ -302,12 +308,17 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 
 		transcriptPath := store.TranscriptPath(sessionID)
 		logger.Debug().Str("session_id", sessionID).Str("transcript_path", transcriptPath).Msg("chat session resolved")
+		if err := maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID, logger); err != nil {
+			logger.Error().Err(err).Str("session_id", sessionID).Msg("auto compaction failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "auto compaction failed"})
+			return
+		}
 
 		// Build system prompt
 		systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
 
 		// Load history
-		history, err := session.LoadHistory(transcriptPath, 120000)
+		history, err := session.LoadHistory(transcriptPath, chatHistoryMaxTokens)
 		if err != nil {
 			logger.Error().Err(err).Msg("load history failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load history failed"})
@@ -654,7 +665,7 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerol
 }
 
 // Placeholder - actual implementation in Phase 1-G
-func newCompactAPIHandler(store *session.Store, logger zerolog.Logger) http.Handler {
+func newCompactAPIHandler(workspaceDir string, store *session.Store, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -685,7 +696,8 @@ func newCompactAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 			return
 		}
 
-		result, err := session.CompactTranscript(store.TranscriptPath(sessionID), req.KeepRecent, time.Now().UTC())
+		now := time.Now().UTC()
+		result, err := compactWithMemoryFlush(workspaceDir, store.TranscriptPath(sessionID), sessionID, req.KeepRecent, now)
 		if err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("compact transcript failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compact failed"})
@@ -709,6 +721,60 @@ func newCompactAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 			"final_count":    result.FinalCount,
 		})
 	})
+}
+
+func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, logger zerolog.Logger) error {
+	messages, err := session.ReadMessages(transcriptPath)
+	if err != nil {
+		return err
+	}
+	estimated := estimateTranscriptTokens(messages)
+	if estimated < autoCompactTriggerTokens {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	result, err := compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID, autoCompactKeepRecent, now)
+	if err != nil {
+		return err
+	}
+	logger.Debug().
+		Str("session_id", sessionID).
+		Int("estimated_tokens", estimated).
+		Bool("compacted", result.Compacted).
+		Int("original_count", result.OriginalCount).
+		Int("final_count", result.FinalCount).
+		Msg("auto compaction evaluated")
+	return nil
+}
+
+func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, now time.Time) (session.CompactResult, error) {
+	return session.CompactTranscriptWithOptions(transcriptPath, keepRecent, now, session.CompactOptions{
+		BeforeRewrite: func(summary string, compactedCount int, originalCount int) error {
+			note := fmt.Sprintf("session %s compacted %d/%d messages", sessionID, compactedCount, originalCount)
+			if err := memory.AppendMemoryNote(workspaceDir, now, note); err != nil {
+				return err
+			}
+
+			preview := strings.ReplaceAll(strings.TrimSpace(summary), "\n", " ")
+			if len(preview) > 240 {
+				preview = preview[:240] + "..."
+			}
+			return memory.AppendDailyLog(workspaceDir, now, fmt.Sprintf("compaction flush: %s | %s", note, preview))
+		},
+	})
+}
+
+func estimateTranscriptTokens(messages []session.Message) int {
+	total := 0
+	for _, msg := range messages {
+		cost := len(msg.Content) / 4
+		if cost < 1 {
+			cost = 1
+		}
+		total += cost
+	}
+	return total
 }
 
 func writeJSON(w http.ResponseWriter, code int, body any) {

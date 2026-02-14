@@ -329,6 +329,70 @@ func TestChatAPI_WithSessionID(t *testing.T) {
 	}
 }
 
+func TestChatAPI_AutoCompactsLargeTranscript(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	sess, err := store.Create("large transcript")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	transcriptPath := store.TranscriptPath(sess.ID)
+	largeContent := strings.Repeat("x", 2000)
+	for i := 0; i < 260; i++ {
+		if err := session.AppendMessage(transcriptPath, session.Message{
+			Role:      "user",
+			Content:   largeContent,
+			Timestamp: time.Date(2026, 2, 14, 10, 0, i%60, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append transcript message %d: %v", i, err)
+		}
+	}
+
+	mockClient := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{
+				Role:    "assistant",
+				Content: "post-compaction reply",
+			},
+		},
+	}
+
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+	reqBody := fmt.Sprintf(`{"session_id":"%s","message":"hello after auto compact"}`, sess.ID)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	msgs, err := session.ReadMessages(transcriptPath)
+	if err != nil {
+		t.Fatalf("read transcript: %v", err)
+	}
+	if len(msgs) == 0 {
+		t.Fatalf("expected compacted transcript to have messages")
+	}
+	if msgs[0].Role != "system" || !strings.Contains(msgs[0].Content, "[COMPACTION SUMMARY]") {
+		t.Fatalf("expected compaction summary at transcript head, got %+v", msgs[0])
+	}
+
+	memoryData, err := os.ReadFile(filepath.Join(root, "MEMORY.md"))
+	if err != nil {
+		t.Fatalf("read memory file: %v", err)
+	}
+	if !strings.Contains(string(memoryData), "session "+sess.ID+" compacted") {
+		t.Fatalf("expected compaction flush note in MEMORY.md, got %q", string(memoryData))
+	}
+}
+
 func TestChatAPI_NonStreamingProviderStillEmitsDelta(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -682,7 +746,7 @@ func TestCompactAPI(t *testing.T) {
 		}
 	}
 
-	handler := newCompactAPIHandler(store, logger)
+	handler := newCompactAPIHandler(root, store, logger)
 
 	reqBody, err := json.Marshal(map[string]any{
 		"session_id":  sess.ID,
@@ -719,5 +783,13 @@ func TestCompactAPI(t *testing.T) {
 	}
 	if messages[0].Role != "system" || !strings.Contains(messages[0].Content, "[COMPACTION SUMMARY]") {
 		t.Fatalf("expected summary message at first entry, got %+v", messages[0])
+	}
+
+	memoryData, err := os.ReadFile(filepath.Join(root, "MEMORY.md"))
+	if err != nil {
+		t.Fatalf("read memory file: %v", err)
+	}
+	if !strings.Contains(string(memoryData), "session "+sess.ID+" compacted") {
+		t.Fatalf("expected compaction note in MEMORY.md, got %q", string(memoryData))
 	}
 }
