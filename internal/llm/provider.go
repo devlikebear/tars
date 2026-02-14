@@ -8,8 +8,29 @@ import (
 	"github.com/devlikebear/tarsncase/internal/auth"
 )
 
+type ChatMessage struct {
+	Role    string `json:"role"`    // system, user, assistant
+	Content string `json:"content"`
+}
+
+type Usage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
+type ChatOptions struct {
+	OnDelta func(text string) // SSE streaming callback (nil = no streaming)
+}
+
+type ChatResponse struct {
+	Message    ChatMessage
+	Usage      Usage
+	StopReason string
+}
+
 type Client interface {
 	Ask(ctx context.Context, prompt string) (string, error)
+	Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error)
 }
 
 type ProviderOptions struct {

@@ -82,3 +82,27 @@ func (c *CodexCLIClient) Ask(ctx context.Context, prompt string) (string, error)
 	}
 	return text, nil
 }
+
+func (c *CodexCLIClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
+	_ = opts
+
+	lines := make([]string, 0, len(messages))
+	for _, msg := range messages {
+		lines = append(lines, fmt.Sprintf("%s: %s", msg.Role, msg.Content))
+	}
+	prompt := strings.Join(lines, "\n")
+
+	resp, err := c.Ask(ctx, prompt)
+	if err != nil {
+		return ChatResponse{}, err
+	}
+
+	return ChatResponse{
+		Message: ChatMessage{
+			Role:    "assistant",
+			Content: resp,
+		},
+		Usage:      Usage{},
+		StopReason: "",
+	}, nil
+}
