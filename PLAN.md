@@ -2,12 +2,12 @@
 
 > 최종 갱신: 2026-02-14
 > 모듈: `github.com/devlikebear/tarsncase`
-> 바이너리: `tarsd` (메인 데몬), `tars` (경량/자동화 CLI), `tars-ui` (React/TS Ink TUI 클라이언트), `cased` (감시 데몬)
+> 바이너리: `tarsd` (메인 데몬), `tars-ui` (React/TS Ink TUI 클라이언트), `cased` (감시 데몬)
 
 ## 1. 현재 구현 현황
 
 ### 완료된 기능 (Phase 0)
-- [x] Go 프로젝트 스켈레톤 (`cmd/tarsd`, `cmd/tars`, `cmd/cased`)
+- [x] Go 프로젝트 스켈레톤 (`cmd/tarsd`, `cmd/cased`)
 - [x] Makefile + GitHub Actions CI (`make test`)
 - [x] 런타임 설정 로더 (`internal/config`) — YAML + 환경변수 + `${ENV_VAR}` 확장
 - [x] zerolog 구조화 로깅
@@ -25,7 +25,7 @@
   - `RunLoop` / `RunLoopWithLLM`: ticker 기반 반복 실행
 - [x] tarsd HTTP API: `POST /v1/heartbeat/run-once` (LLM 응답 반환)
 - [x] tarsd graceful shutdown (signal.NotifyContext)
-- [x] tars CLI: `tars heartbeat run-once --server-url ...`
+- [x] heartbeat API: `POST /v1/heartbeat/run-once`
 - [x] `--run-once` / `--run-loop` 상호 배타 검증
 - [x] `internal/cli` 공통 에러 처리 (ExitError, IsFlagError)
 
@@ -35,11 +35,11 @@
 - [x] 세션 관리 (`internal/session`) — sessions.json + JSONL transcript, CRUD, history/search/export, 토큰 기반 동적 로딩
 - [x] LLM Chat API (`internal/llm`) — `Client.Chat`, `OnDelta` 스트리밍 콜백
 - [x] tarsd 채팅 API (`POST /v1/chat`) — SSE(delta/done), 세션 자동 생성/지정, transcript 저장
-- [x] tars CLI 채팅 (`tars chat`) — 단일 메시지(`-m`) + REPL 모드(`/exit`, `/quit`, session_id 재사용)
+- [x] `tars-ui` 채팅 (`tars-ui`) — 입력창 + SSE 스트리밍 + 세션 유지
 - [x] 디버그 로깅 (`--verbose`) — `tars↔tarsd` 및 `tarsd↔LLM` 상세 로그
 - [x] non-streaming provider fallback — `OnDelta` 미호출 시 최종 응답을 `delta`로 1회 전송
 - [x] `tars-ui` 초기 골격 추가 (`tars-ui/`) — React/TypeScript + Ink 기반 TUI, `/v1/chat` SSE 직결, Chat/Status 패널 분리
-- [x] `tars` 역할 재정의 시작 — 주력 인터랙티브 UX는 `tars-ui`, `tars`는 경량/스크립트/운영 보조 용도 중심
+- [x] `cmd/tars` 제거 완료 — 클라이언트는 `tars-ui` 단일화, 자동화는 `Make + curl`로 통일
 
 ### 미구현 (Phase 1~6에서 개발)
 - [x] 컨텍스트 압축 고도화 (LLM 요약 품질 향상 + 로딩 경계 정교화, 토큰 예산 기반 최소 최근 2메시지 유지 안정화)
@@ -63,7 +63,7 @@
 | SSE 스트리밍 | 채팅 응답은 Phase 1부터 SSE 스트리밍으로 제공 |
 | 토큰 기반 동적 히스토리 | 세션 로드 시 context_window - reserve_tokens 범위 내에서 역순 로딩 |
 | 마크다운이 진실의 원천 | 3-Layer 메모리는 마크다운 파일 기반, SQLite는 나중에 검색 인덱스로 추가 |
-| UI/로직 분리 | `tarsd`는 실행 로직, `tars-ui`는 고급 대화형 UX, `tars`는 경량 CLI/자동화 진입점 담당 |
+| UI/로직 분리 | `tarsd`는 실행 로직, `tars-ui`는 고급 대화형 UX, 자동화는 `Make + curl` 경로 담당 |
 
 ---
 
@@ -73,7 +73,7 @@
 
 **목표**: tarsd가 SSE 스트리밍으로 멀티턴 채팅을 제공하고, tars CLI에서 대화형 REPL로 사용
 
-**마일스톤**: `tarsd --serve-api` 실행 후 `tars chat`으로 단건/REPL 대화가 가능한 상태 (달성)
+**마일스톤**: `tarsd --serve-api` 실행 후 `tars-ui`로 멀티턴 대화가 가능한 상태 (달성)
 
 #### 1-A. 워크스페이스 부트스트랩 파일 확장
 
@@ -234,17 +234,16 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 - 자동: 토큰 추정치가 `contextWindow - reserveTokensFloor` 초과 시
 - 수동: `/compact` 명령
 
-#### 1-H. tars chat CLI
+#### 1-H. tars-ui 단일 클라이언트
 
-상태: 부분 완료 (단건 `-m`, REPL 루프, session_id 재사용 완료 / REPL 슬래시 명령 미완료)
+상태: 완료 (`cmd/tars` 제거, 기능 이전 완료)
 
-**수정 파일**: `cmd/tars/main.go`
+**구현 파일**: `tars-ui/src/*`
 
-- `tars chat` → 대화형 REPL (SSE 스트리밍 수신 → 실시간 출력)
-- `tars chat -m "메시지"` → 단일 메시지 모드
-- `tars chat --session {id}` → 특정 세션 연결
-- REPL 내에서 `/` 접두사 명령어 파싱 → 해당 API 호출
-- Ctrl+C 종료
+- `/v1/chat` SSE 수신 (delta/status/error/done)
+- 멀티턴 대화, `session_id` 자동 유지
+- 슬래시 명령(`/sessions`, `/new`, `/resume`, `/history`, `/export`, `/search`, `/status`, `/compact`, `/heartbeat`, `/quit`)
+- Chat/Status/Debug 패널 분리 렌더링
 
 #### 1-I. `tars-ui` (React/TS Ink) 도입
 
@@ -270,7 +269,7 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 - `internal/prompt/builder_test.go` — 프롬프트 조립 (워크스페이스 파일 주입)
 - `internal/llm/*_test.go` — Chat API 추가분 테스트
 - `cmd/tarsd/main_test.go` — chat API 핸들러, 세션 API 핸들러
-- `cmd/tars/main_test.go` — chat 명령 테스트
+- `tars-ui/src/**/*.test.ts` — parseArgs/chat parser/router/state 테스트
 
 ---
 
@@ -278,7 +277,7 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 
 **목표**: LLM이 도구를 호출하여 자율적으로 작업을 수행하는 agent loop 완성
 
-**마일스톤**: `tars chat`에서 "이 파일 읽어줘", "날씨 검색해" 같은 도구 사용 대화가 가능한 상태
+**마일스톤**: `tars-ui`에서 "이 파일 읽어줘", "날씨 검색해" 같은 도구 사용 대화가 가능한 상태
 
 #### 2-A. 도구 인터페이스 + 레지스트리
 
@@ -663,7 +662,7 @@ Phase 1: LLM 채팅 (세션 + 프롬프트 + SSE + 슬래시 명령 + 컴팩션)
   ├── 1-E: tarsd 채팅 API
   ├── 1-F: tarsd 세션 관리 API + 슬래시 명령
   ├── 1-G: 컨텍스트 압축
-  └── 1-H: tars chat CLI
+  └── 1-H: tars-ui 단일 클라이언트
       ↓
 Phase 2: 빌트인 도구 + Agent Loop
   ├── 2-A: 도구 인터페이스 + 레지스트리

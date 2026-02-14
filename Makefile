@@ -18,10 +18,10 @@ TARS_UI_SERVER_URL ?= $(SERVER_URL)
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover \
 	build build-bins clean tidy fmt vet \
-	dev-tarsd dev-tarsd-once dev-tarsd-loop dev-cased dev-tars dev-chat dev-heartbeat \
-	api-status api-sessions api-compact api-chat \
-	run-tarsd run-cased run-tars \
-	ui-install dev-tars-ui
+	dev-tarsd dev-tarsd-once dev-tarsd-loop dev-cased dev-chat dev-heartbeat \
+	api-status api-sessions api-compact api-chat api-heartbeat \
+	run-tarsd run-cased \
+	ui-install ui-test dev-tars-ui
 
 help:
 	@echo "Usage:"
@@ -52,10 +52,10 @@ help:
 	@echo "  make dev-tarsd-once - run one heartbeat on tarsd"
 	@echo "  make dev-tarsd-loop - run heartbeat loop on tarsd"
 	@echo "  make dev-cased     - run cased in verbose mode"
-	@echo "  make dev-tars      - run tars chat once (CHAT_MSG)"
-	@echo "  make dev-chat      - run tars chat with optional SESSION"
-	@echo "  make dev-heartbeat - call heartbeat run-once via tars client"
+	@echo "  make dev-chat      - run tars-ui client"
+	@echo "  make dev-heartbeat - call heartbeat run-once via API"
 	@echo "  make ui-install    - install tars-ui npm dependencies"
+	@echo "  make ui-test       - run tars-ui tests"
 	@echo "  make dev-tars-ui   - run React/TS Ink UI client"
 	@echo ""
 	@echo "API helpers:"
@@ -63,6 +63,7 @@ help:
 	@echo "  make api-sessions  - GET /v1/sessions"
 	@echo "  make api-compact   - POST /v1/compact"
 	@echo "  make api-chat      - POST /v1/chat with CHAT_MSG"
+	@echo "  make api-heartbeat - POST /v1/heartbeat/run-once"
 
 test:
 	$(GO) test $(PKG)
@@ -89,7 +90,6 @@ build-bins:
 	mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN_DIR)/tarsd ./cmd/tarsd
 	$(GO) build -o $(BIN_DIR)/cased ./cmd/cased
-	$(GO) build -o $(BIN_DIR)/tars ./cmd/tars
 
 dev-tarsd:
 	$(GO) run ./cmd/tarsd --verbose --serve-api --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
@@ -103,17 +103,17 @@ dev-tarsd-loop:
 dev-cased:
 	$(GO) run ./cmd/cased --verbose $(ARGS)
 
-dev-tars:
-	$(GO) run ./cmd/tars --verbose chat -m "$(CHAT_MSG)" --server-url $(SERVER_URL) $(ARGS)
-
 dev-chat:
-	$(GO) run ./cmd/tars --verbose chat --server-url $(SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
+	cd $(TARS_UI_DIR) && npm run dev -- --server-url $(TARS_UI_SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
 
 dev-heartbeat:
-	$(GO) run ./cmd/tars --verbose heartbeat run-once --server-url $(SERVER_URL) $(ARGS)
+	curl -sS -X POST $(SERVER_URL)/v1/heartbeat/run-once
 
 ui-install:
 	cd $(TARS_UI_DIR) && npm install
+
+ui-test:
+	cd $(TARS_UI_DIR) && npm test
 
 dev-tars-ui:
 	cd $(TARS_UI_DIR) && npm run dev -- --server-url $(TARS_UI_SERVER_URL) $(ARGS)
@@ -132,6 +132,9 @@ api-chat:
 		-H "Content-Type: application/json" \
 		-d "{\"message\":\"$(CHAT_MSG)\"}"
 
+api-heartbeat:
+	curl -sS -X POST $(SERVER_URL)/v1/heartbeat/run-once
+
 fmt:
 	$(GO) fmt ./...
 
@@ -147,5 +150,3 @@ clean:
 run-tarsd: dev-tarsd
 
 run-cased: dev-cased
-
-run-tars: dev-tars
