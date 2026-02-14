@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx src/index.tsx",
     "start": "tsx src/index.tsx",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "ink": "^5.2.1",
@@ -20,4 +21,3 @@
     "typescript": "^5.7.2"
   }
 }
-
