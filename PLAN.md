@@ -29,16 +29,23 @@
 - [x] `--run-once` / `--run-loop` 상호 배타 검증
 - [x] `internal/cli` 공통 에러 처리 (ExitError, IsFlagError)
 
+### 완료된 기능 (Phase 1 진행분)
+- [x] 워크스페이스 부트스트랩 파일 확장 (`AGENTS.md`, `SOUL.md`, `USER.md`, `IDENTITY.md`, `TOOLS.md`)
+- [x] 시스템 프롬프트 조립 (`internal/prompt`) — 부트스트랩 파일 주입, 파일당 20000자 제한, sub-agent 모드 지원
+- [x] 세션 관리 (`internal/session`) — sessions.json + JSONL transcript, CRUD, history/search/export, 토큰 기반 동적 로딩
+- [x] LLM Chat API (`internal/llm`) — `Client.Chat`, `OnDelta` 스트리밍 콜백
+- [x] tarsd 채팅 API (`POST /v1/chat`) — SSE(delta/done), 세션 자동 생성/지정, transcript 저장
+- [x] tars CLI 채팅 (`tars chat`) — 단일 메시지(`-m`) + REPL 모드(`/exit`, `/quit`, session_id 재사용)
+- [x] 디버그 로깅 (`--verbose`) — `tars↔tarsd` 및 `tarsd↔LLM` 상세 로그
+- [x] non-streaming provider fallback — `OnDelta` 미호출 시 최종 응답을 `delta`로 1회 전송
+
 ### 미구현 (Phase 1~6에서 개발)
-- [ ] 대화형 LLM 채팅 (세션, 히스토리, SSE 스트리밍)
-- [ ] 워크스페이스 부트스트랩 파일 (SOUL.md, USER.md, IDENTITY.md, AGENTS.md, TOOLS.md)
-- [ ] 시스템 프롬프트 조립 (부트스트랩 파일 + 메모리 주입)
-- [ ] 세션 관리 (생성, 전환, 리줌, 검색, 내보내기)
 - [ ] 컨텍스트 압축 (compaction)
+- [ ] `tars chat` REPL 내 슬래시 명령 연결 (`/new`, `/sessions`, `/resume`, `/history`, `/export`, `/status`, `/compact`)
+- [ ] 채팅 결과의 메모리 계층 자동 반영 (`MEMORY.md`, `memory/YYYY-MM-DD.md`)
 - [ ] 빌트인 도구 + Agent Loop (LLM → tool_calls → 실행 → 반복)
 - [ ] 허트비트 Agent Loop 통합 (도구 자율 실행)
 - [ ] 크론잡 매니저 (AI 판단 기반 자율 실행)
-- [ ] 슬래시 명령어 (`/new`, `/status`, `/compact`, `/sessions` 등)
 - [ ] 스킬 시스템 (SKILL.md, 레지스트리, 시스템 프롬프트 주입)
 - [ ] 플러그인 시스템 (매니페스트, 로더, 도구 등록)
 - [ ] MCP 클라이언트 (stdio/SSE, 도구 어댑터)
@@ -64,9 +71,11 @@
 
 **목표**: tarsd가 SSE 스트리밍으로 멀티턴 채팅을 제공하고, tars CLI에서 대화형 REPL로 사용
 
-**마일스톤**: `tarsd --serve-api` 실행 후 `tars chat`으로 대화가 가능한 상태
+**마일스톤**: `tarsd --serve-api` 실행 후 `tars chat`으로 단건/REPL 대화가 가능한 상태 (달성)
 
 #### 1-A. 워크스페이스 부트스트랩 파일 확장
+
+상태: 완료
 
 기존 `internal/memory/workspace.go`의 `EnsureWorkspace()` 확장:
 
@@ -83,6 +92,8 @@
 **구현 파일**: `internal/memory/workspace.go` 수정
 
 #### 1-B. 세션 관리
+
+상태: 완료
 
 **새 패키지**: `internal/session/`
 
@@ -110,6 +121,8 @@
 
 #### 1-C. 시스템 프롬프트 조립
 
+상태: 완료
+
 **새 패키지**: `internal/prompt/`
 
 | 파일 | 역할 |
@@ -128,6 +141,8 @@
 **파일 크기 제한**: 파일당 최대 20000자 (OpenClaw의 `bootstrapMaxChars` 기본값)
 
 #### 1-D. LLM Chat API (messages 배열)
+
+상태: 완료
 
 **수정 패키지**: `internal/llm/`
 
@@ -162,6 +177,8 @@ Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatRespons
 
 #### 1-E. tarsd 채팅 API
 
+상태: 완료
+
 **수정 파일**: `cmd/tarsd/main.go`
 
 ```
@@ -174,6 +191,8 @@ Response: Content-Type: text/event-stream
 ```
 
 #### 1-F. tarsd 세션 관리 API + 슬래시 명령
+
+상태: 부분 완료 (세션 관리 API 완료, CLI 슬래시 명령 라우팅 미완료)
 
 ```
 GET    /v1/sessions                    # 세션 목록
@@ -199,6 +218,8 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 
 #### 1-G. 컨텍스트 압축 (Compaction)
 
+상태: 미완료 (`POST /v1/compact` placeholder만 존재)
+
 **새 파일**: `internal/session/compaction.go`
 
 **동작** (OpenClaw `docs/concepts/compaction.md` 참고):
@@ -212,6 +233,8 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 - 수동: `/compact` 명령
 
 #### 1-H. tars chat CLI
+
+상태: 부분 완료 (단건 `-m`, REPL 루프, session_id 재사용 완료 / REPL 슬래시 명령 미완료)
 
 **수정 파일**: `cmd/tars/main.go`
 

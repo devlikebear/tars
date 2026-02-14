@@ -102,7 +102,7 @@ dev-tars:
 	$(GO) run ./cmd/tars --verbose chat -m "$(CHAT_MSG)" --server-url $(SERVER_URL) $(ARGS)
 
 dev-chat:
-	$(GO) run ./cmd/tars --verbose chat -m "$(CHAT_MSG)" --server-url $(SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
+	$(GO) run ./cmd/tars --verbose chat --server-url $(SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
 
 dev-heartbeat:
 	$(GO) run ./cmd/tars --verbose heartbeat run-once --server-url $(SERVER_URL) $(ARGS)
