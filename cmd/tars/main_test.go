@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -103,6 +105,50 @@ func TestRun_ChatMessage(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "[status] calling llm") {
 		t.Fatalf("expected status stream in stderr, got %q", stderr.String())
+	}
+}
+
+func TestRun_VerboseLogFile(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "logs", "tars-debug.log")
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	code := runWithIO([]string{"--verbose", "--log-file", logPath, "--help"}, strings.NewReader(""), stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	if !strings.Contains(string(raw), "verbose logging enabled") {
+		t.Fatalf("expected verbose log record in log file, got %q", string(raw))
+	}
+	if !strings.Contains(stderr.String(), "[debug] verbose logs ->") {
+		t.Fatalf("expected log-file notice in stderr, got %q", stderr.String())
+	}
+}
+
+func TestRun_ChatMessage_Pretty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"delta\",\"text\":\"Hello from TARS\"}\n\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"done\",\"session_id\":\"sess-p\"}\n\n"))
+	}))
+	defer server.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := run([]string{"chat", "-m", "hello", "--pretty", "--server-url", server.URL}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "You > hello") {
+		t.Fatalf("expected pretty user line, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "TARS > Hello from TARS") {
+		t.Fatalf("expected pretty assistant line, got %q", stdout.String())
 	}
 }
 

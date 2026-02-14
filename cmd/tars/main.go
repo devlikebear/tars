@@ -10,6 +10,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -34,10 +35,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	_ = godotenv.Load(".env")
-	logger := zerolog.New(stderr).With().Timestamp().Str("component", "tars").Logger()
+	logWriter := stderr
+	logFilePath := firstNonEmpty(flagValue(args, "--log-file"), os.Getenv("TARS_LOG_FILE"))
+	if logFilePath != "" {
+		if err := os.MkdirAll(filepath.Dir(logFilePath), 0o755); err == nil {
+			if f, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+				logWriter = f
+				defer f.Close()
+			}
+		}
+	}
+	logger := zerolog.New(logWriter).With().Timestamp().Str("component", "tars").Logger()
 	if hasVerboseFlag(args) {
 		logger = logger.Level(zerolog.DebugLevel)
 		logger.Debug().Msg("verbose logging enabled")
+		if logFilePath != "" {
+			_, _ = fmt.Fprintf(stderr, "[debug] verbose logs -> %s\n", logFilePath)
+		}
 	}
 
 	cmd := newRootCmd(stdin, stdout, stderr, logger)
@@ -65,8 +79,35 @@ func hasVerboseFlag(args []string) bool {
 	return false
 }
 
+func flagValue(args []string, flagName string) string {
+	for i := 0; i < len(args); i++ {
+		arg := strings.TrimSpace(args[i])
+		if arg == "" {
+			continue
+		}
+		if arg == flagName && i+1 < len(args) {
+			return strings.TrimSpace(args[i+1])
+		}
+		prefix := flagName + "="
+		if strings.HasPrefix(arg, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(arg, prefix))
+		}
+	}
+	return ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
 func newRootCmd(stdin io.Reader, stdout, stderr io.Writer, logger zerolog.Logger) *cobra.Command {
 	var verbose bool
+	var logFile string
 	root := &cobra.Command{
 		Use:           "tars",
 		Short:         "CLI client for TARS",
@@ -79,6 +120,7 @@ func newRootCmd(stdin io.Reader, stdout, stderr io.Writer, logger zerolog.Logger
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.PersistentFlags().BoolVar(&verbose, "verbose", false, "enable verbose debug logging")
+	root.PersistentFlags().StringVar(&logFile, "log-file", "", "write debug logs to file (or use TARS_LOG_FILE)")
 	root.AddCommand(newHeartbeatCmd(stdout, logger))
 	root.AddCommand(newChatCmd(stdin, stdout, stderr, logger))
 
@@ -145,6 +187,7 @@ func newChatCmd(stdin io.Reader, stdout io.Writer, stderr io.Writer, logger zero
 	var sessionID string
 	var message string
 	var statusStream bool
+	var pretty bool
 
 	cmd := &cobra.Command{
 		Use:   "chat",
@@ -155,25 +198,31 @@ func newChatCmd(stdin io.Reader, stdout io.Writer, stderr io.Writer, logger zero
 				// Default: on for one-shot mode, off for REPL mode to avoid input redraw issues.
 				enabledStatusStream = strings.TrimSpace(message) != ""
 			}
+			render := chatRenderOptions{Pretty: pretty}
 			if strings.TrimSpace(message) != "" {
-				return runChatMessage(serverURL, sessionID, message, stdout, stderr, enabledStatusStream, logger)
+				return runChatMessage(serverURL, sessionID, message, stdout, stderr, enabledStatusStream, render, logger)
 			}
-			return runChatREPL(serverURL, sessionID, stdin, stdout, stderr, enabledStatusStream, logger)
+			return runChatREPL(serverURL, sessionID, stdin, stdout, stderr, enabledStatusStream, render, logger)
 		},
 	}
 	cmd.Flags().StringVar(&serverURL, "server-url", "http://127.0.0.1:8080", "tarsd API server URL")
 	cmd.Flags().StringVar(&sessionID, "session", "", "session id")
 	cmd.Flags().StringVarP(&message, "message", "m", "", "chat message")
 	cmd.Flags().BoolVar(&statusStream, "status-stream", false, "stream status events to stderr")
+	cmd.Flags().BoolVar(&pretty, "pretty", false, "pretty chat rendering (separate You/TARS lines)")
 	return cmd
 }
 
-func runChatMessage(serverURL, sessionID, message string, stdout io.Writer, statusOut io.Writer, showStatus bool, logger zerolog.Logger) error {
-	_, err := runChatMessageWithSession(serverURL, sessionID, message, stdout, statusOut, showStatus, logger)
+type chatRenderOptions struct {
+	Pretty bool
+}
+
+func runChatMessage(serverURL, sessionID, message string, stdout io.Writer, statusOut io.Writer, showStatus bool, render chatRenderOptions, logger zerolog.Logger) error {
+	_, err := runChatMessageWithSession(serverURL, sessionID, message, stdout, statusOut, showStatus, render, logger)
 	return err
 }
 
-func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.Writer, statusOut io.Writer, showStatus bool, logger zerolog.Logger) (string, error) {
+func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.Writer, statusOut io.Writer, showStatus bool, render chatRenderOptions, logger zerolog.Logger) (string, error) {
 	base := strings.TrimRight(serverURL, "/")
 	client := &http.Client{Timeout: 5 * time.Minute}
 	url := base + "/v1/chat"
@@ -215,6 +264,11 @@ func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.W
 	}
 	logger.Debug().Int("status", resp.StatusCode).Msg("chat stream connected")
 
+	if render.Pretty {
+		_, _ = fmt.Fprintf(stdout, "You > %s\n", strings.TrimSpace(message))
+	}
+
+	assistantPrefixShown := false
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -243,6 +297,10 @@ func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.W
 		switch evt.Type {
 		case "delta":
 			logger.Debug().Int("delta_len", len(evt.Text)).Msg("chat delta")
+			if render.Pretty && !assistantPrefixShown {
+				assistantPrefixShown = true
+				_, _ = fmt.Fprint(stdout, "TARS > ")
+			}
 			_, _ = fmt.Fprint(stdout, evt.Text)
 		case "status":
 			if !showStatus {
@@ -279,7 +337,7 @@ func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.W
 	return currentSessionID, nil
 }
 
-func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer, statusOut io.Writer, showStatus bool, logger zerolog.Logger) error {
+func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer, statusOut io.Writer, showStatus bool, render chatRenderOptions, logger zerolog.Logger) error {
 	currentSessionID := strings.TrimSpace(sessionID)
 	reader, err := newREPLReader(stdin, stdout)
 	if err != nil {
@@ -317,7 +375,7 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 			}
 		}
 
-		nextSessionID, err := runChatMessageWithSession(serverURL, currentSessionID, line, stdout, statusOut, showStatus, logger)
+		nextSessionID, err := runChatMessageWithSession(serverURL, currentSessionID, line, stdout, statusOut, showStatus, render, logger)
 		if err != nil {
 			return err
 		}
