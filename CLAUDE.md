@@ -62,3 +62,4 @@
 - 2026-02-14: `tarsd`와 `tars`에 `--verbose` 디버그 모드를 추가했다. `tars↔tarsd` HTTP 통신(요청/응답, 상태코드, 지연시간, SSE 이벤트)과 `tarsd↔LLM` 호출(provider/model/url, 메시지 수, 스트리밍 델타, usage/stop_reason)을 상세 로그로 출력한다.
 - 2026-02-14: `tarsd` chat SSE 핸들러에 non-streaming LLM fallback을 추가했다. provider가 `OnDelta`를 호출하지 않아도 최종 assistant 응답을 `delta` 이벤트로 1회 전송해 `tars chat`에서 본문이 비지 않도록 수정했다.
 - 2026-02-14: `tars chat`에 REPL 모드를 추가했다. `-m` 없이 실행하면 입력 루프를 시작하고 `/exit`/`/quit`로 종료한다. 첫 응답의 `session_id`를 저장해 다음 턴 요청에 재사용한다.
+- 2026-02-14: `internal/agent` 패키지에 Hook 기반 Agent Loop를 추가했다. `loop_start/before_llm/after_llm/before_tool_call/after_tool_call/loop_end/error` 이벤트를 발행하며, `tool_calls`가 있으면 도구 실행 결과를 `tool` 메시지로 붙여 LLM을 재호출한다. `tarsd /v1/chat`은 이 Loop를 통해 실행되며, 간단한 빌트인 도구 `session_status`(`internal/tool`)를 등록해 통합 경로를 검증한다.

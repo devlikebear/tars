@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/agent"
 	"github.com/devlikebear/tarsncase/internal/cli"
 	"github.com/devlikebear/tarsncase/internal/config"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
@@ -21,6 +22,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/prompt"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
@@ -334,6 +336,23 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 		}
 		llmMessages = append(llmMessages, llm.ChatMessage{Role: "user", Content: req.Message})
 
+		registry := tool.NewRegistry()
+		registry.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+			return tool.SessionStatus{
+				SessionID:       sessionID,
+				HistoryMessages: len(history) + 1,
+			}, nil
+		}))
+		loop := agent.NewLoop(client, registry, agent.HookFunc(func(_ context.Context, evt agent.Event) {
+			logger.Debug().
+				Str("event", string(evt.Type)).
+				Int("iteration", evt.Iteration).
+				Int("message_count", evt.MessageCount).
+				Str("tool_name", evt.ToolName).
+				Str("tool_call_id", evt.ToolCallID).
+				Msg("agent loop event")
+		}))
+
 		// Set SSE headers
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -355,13 +374,15 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 		}
 		deltaSent := false
 
-		// Call LLM with streaming
+		// Call agent loop (LLM + optional tools)
 		logger.Debug().Str("session_id", sessionID).Int("messages", len(llmMessages)).Msg("llm chat call start")
-		chatResp, err := client.Chat(r.Context(), llmMessages, llm.ChatOptions{
+		chatResp, err := loop.Run(r.Context(), llmMessages, agent.RunOptions{
+			MaxIterations: 8,
 			OnDelta: func(text string) {
-				if text != "" {
-					deltaSent = true
+				if text == "" {
+					return
 				}
+				deltaSent = true
 				logger.Debug().Str("session_id", sessionID).Int("delta_len", len(text)).Msg("llm delta")
 				sendSSE(map[string]string{"type": "delta", "text": text})
 			},
