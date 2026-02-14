@@ -155,7 +155,7 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 				mux.Handle("/v1/sessions/", sessionHandler)
 				statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, store, logger)
 				mux.Handle("/v1/status", statusHandler)
-				compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, store, logger)
+				compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, store, llmClient, logger)
 				mux.Handle("/v1/compact", compactHandler)
 
 				server := &http.Server{
@@ -308,7 +308,7 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 
 		transcriptPath := store.TranscriptPath(sessionID)
 		logger.Debug().Str("session_id", sessionID).Str("transcript_path", transcriptPath).Msg("chat session resolved")
-		if err := maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID, logger); err != nil {
+		if err := maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID, client, logger); err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("auto compaction failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "auto compaction failed"})
 			return
@@ -668,7 +668,7 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerol
 }
 
 // Placeholder - actual implementation in Phase 1-G
-func newCompactAPIHandler(workspaceDir string, store *session.Store, logger zerolog.Logger) http.Handler {
+func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.Client, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -700,7 +700,7 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, logger zero
 		}
 
 		now := time.Now().UTC()
-		result, err := compactWithMemoryFlush(workspaceDir, store.TranscriptPath(sessionID), sessionID, req.KeepRecent, now)
+		result, err := compactWithMemoryFlush(workspaceDir, store.TranscriptPath(sessionID), sessionID, req.KeepRecent, client, now)
 		if err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("compact transcript failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compact failed"})
@@ -726,7 +726,7 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, logger zero
 	})
 }
 
-func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, logger zerolog.Logger) error {
+func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, client llm.Client, logger zerolog.Logger) error {
 	messages, err := session.ReadMessages(transcriptPath)
 	if err != nil {
 		return err
@@ -737,7 +737,7 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, log
 	}
 
 	now := time.Now().UTC()
-	result, err := compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID, autoCompactKeepRecent, now)
+	result, err := compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID, autoCompactKeepRecent, client, now)
 	if err != nil {
 		return err
 	}
@@ -751,8 +751,14 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, log
 	return nil
 }
 
-func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, now time.Time) (session.CompactResult, error) {
+func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, client llm.Client, now time.Time) (session.CompactResult, error) {
 	return session.CompactTranscriptWithOptions(transcriptPath, keepRecent, now, session.CompactOptions{
+		SummaryBuilder: func(messages []session.Message) (string, error) {
+			if client == nil {
+				return session.BuildCompactionSummary(messages), nil
+			}
+			return buildLLMCompactionSummary(messages, client, now)
+		},
 		BeforeRewrite: func(summary string, compactedCount int, originalCount int) error {
 			note := fmt.Sprintf("session %s compacted %d/%d messages", sessionID, compactedCount, originalCount)
 			if err := memory.AppendMemoryNote(workspaceDir, now, note); err != nil {
@@ -766,6 +772,52 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 			return memory.AppendDailyLog(workspaceDir, now, fmt.Sprintf("compaction flush: %s | %s", note, preview))
 		},
 	})
+}
+
+func buildLLMCompactionSummary(messages []session.Message, client llm.Client, now time.Time) (string, error) {
+	const maxMessages = 80
+	msgs := messages
+	if len(msgs) > maxMessages {
+		msgs = msgs[len(msgs)-maxMessages:]
+	}
+
+	var b strings.Builder
+	for _, m := range msgs {
+		content := strings.TrimSpace(strings.ReplaceAll(m.Content, "\n", " "))
+		if len(content) > 240 {
+			content = content[:240] + "..."
+		}
+		_, _ = fmt.Fprintf(&b, "- [%s] %s\n", m.Role, content)
+	}
+
+	userPrompt := fmt.Sprintf(
+		"Create a compact context summary for old chat messages.\n"+
+			"Keep concrete facts, goals, decisions, user preferences, unresolved tasks.\n"+
+			"Return plain markdown under 900 characters.\n"+
+			"Current UTC: %s\n\nMessages:\n%s",
+		now.UTC().Format(time.RFC3339),
+		b.String(),
+	)
+
+	resp, err := client.Chat(context.Background(), []llm.ChatMessage{
+		{
+			Role:    "system",
+			Content: "You are a precise summarizer for context compaction. Output only the summary text.",
+		},
+		{
+			Role:    "user",
+			Content: userPrompt,
+		},
+	}, llm.ChatOptions{})
+	if err != nil {
+		return session.BuildCompactionSummary(messages), nil
+	}
+
+	summary := strings.TrimSpace(resp.Message.Content)
+	if summary == "" {
+		return session.BuildCompactionSummary(messages), nil
+	}
+	return "[COMPACTION SUMMARY]\n" + summary, nil
 }
 
 func estimateTranscriptTokens(messages []session.Message) int {

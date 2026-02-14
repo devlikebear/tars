@@ -793,7 +793,7 @@ func TestCompactAPI(t *testing.T) {
 		}
 	}
 
-	handler := newCompactAPIHandler(root, store, logger)
+	handler := newCompactAPIHandler(root, store, nil, logger)
 
 	reqBody, err := json.Marshal(map[string]any{
 		"session_id":  sess.ID,
@@ -838,5 +838,66 @@ func TestCompactAPI(t *testing.T) {
 	}
 	if !strings.Contains(string(memoryData), "session "+sess.ID+" compacted") {
 		t.Fatalf("expected compaction note in MEMORY.md, got %q", string(memoryData))
+	}
+}
+
+func TestCompactAPI_UsesLLMSummaryWhenAvailable(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	sess, err := store.Create("compact llm")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	transcriptPath := store.TranscriptPath(sess.ID)
+	for i := 0; i < 12; i++ {
+		if err := session.AppendMessage(transcriptPath, session.Message{
+			Role:      "user",
+			Content:   fmt.Sprintf("llm compact message %d", i),
+			Timestamp: time.Date(2026, 2, 14, 12, 0, i, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append message %d: %v", i, err)
+		}
+	}
+
+	mockClient := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{
+				Role:    "assistant",
+				Content: "LLM compact summary: key user intent and decisions.",
+			},
+		},
+	}
+
+	handler := newCompactAPIHandler(root, store, mockClient, logger)
+	reqBody, err := json.Marshal(map[string]any{
+		"session_id":  sess.ID,
+		"keep_recent": 5,
+	})
+	if err != nil {
+		t.Fatalf("marshal compact request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/compact", bytes.NewReader(reqBody))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	messages, err := session.ReadMessages(transcriptPath)
+	if err != nil {
+		t.Fatalf("read compacted transcript: %v", err)
+	}
+	if len(messages) == 0 {
+		t.Fatalf("expected compacted transcript entries")
+	}
+	if !strings.Contains(messages[0].Content, "LLM compact summary") {
+		t.Fatalf("expected llm summary in compacted transcript, got %q", messages[0].Content)
 	}
 }

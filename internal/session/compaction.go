@@ -25,7 +25,8 @@ func CompactTranscript(path string, keepRecent int, now time.Time) (CompactResul
 }
 
 type CompactOptions struct {
-	BeforeRewrite func(summary string, compactedCount int, originalCount int) error
+	BeforeRewrite  func(summary string, compactedCount int, originalCount int) error
+	SummaryBuilder func(messages []Message) (string, error)
 }
 
 func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, opts CompactOptions) (CompactResult, error) {
@@ -60,7 +61,17 @@ func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, op
 	head := messages[:cutoff]
 	tail := messages[cutoff:]
 
-	summary := buildCompactionSummary(head)
+	var summary string
+	if opts.SummaryBuilder != nil {
+		built, err := opts.SummaryBuilder(head)
+		if err != nil {
+			return CompactResult{}, err
+		}
+		summary = strings.TrimSpace(built)
+	}
+	if summary == "" {
+		summary = BuildCompactionSummary(head)
+	}
 	compactionMessage := Message{
 		Role:      "system",
 		Content:   summary,
@@ -88,7 +99,7 @@ func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, op
 	}, nil
 }
 
-func buildCompactionSummary(messages []Message) string {
+func BuildCompactionSummary(messages []Message) string {
 	var b strings.Builder
 	_, _ = fmt.Fprintf(&b, "[COMPACTION SUMMARY]\nCompacted %d messages.\n", len(messages))
 
