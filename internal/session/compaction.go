@@ -10,6 +10,9 @@ const (
 	DefaultKeepRecentMessages = 20
 	MinKeepRecentMessages     = 5
 	MaxKeepRecentMessages     = 200
+	DefaultKeepRecentTokens   = 12000
+	MinKeepRecentTokens       = 512
+	MaxKeepRecentTokens       = 64000
 )
 
 type CompactResult struct {
@@ -25,8 +28,9 @@ func CompactTranscript(path string, keepRecent int, now time.Time) (CompactResul
 }
 
 type CompactOptions struct {
-	BeforeRewrite  func(summary string, compactedCount int, originalCount int) error
-	SummaryBuilder func(messages []Message) (string, error)
+	BeforeRewrite    func(summary string, compactedCount int, originalCount int) error
+	SummaryBuilder   func(messages []Message) (string, error)
+	KeepRecentTokens int
 }
 
 func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, opts CompactOptions) (CompactResult, error) {
@@ -47,19 +51,37 @@ func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, op
 	if len(messages) == 0 {
 		return CompactResult{Compacted: false}, nil
 	}
-	if len(messages) <= keepRecent+1 {
-		return CompactResult{
-			Compacted:      false,
-			OriginalCount:  len(messages),
-			FinalCount:     len(messages),
-			CompactedCount: 0,
-			Summary:        "",
-		}, nil
-	}
+	keepRecentTokens := normalizeKeepRecentTokens(opts.KeepRecentTokens)
+	var head []Message
+	var tail []Message
 
-	cutoff := len(messages) - keepRecent
-	head := messages[:cutoff]
-	tail := messages[cutoff:]
+	if keepRecentTokens > 0 {
+		cutoff := cutoffIndexByTokenBudget(messages, keepRecentTokens)
+		if cutoff <= 0 {
+			return CompactResult{
+				Compacted:      false,
+				OriginalCount:  len(messages),
+				FinalCount:     len(messages),
+				CompactedCount: 0,
+				Summary:        "",
+			}, nil
+		}
+		head = messages[:cutoff]
+		tail = messages[cutoff:]
+	} else {
+		if len(messages) <= keepRecent+1 {
+			return CompactResult{
+				Compacted:      false,
+				OriginalCount:  len(messages),
+				FinalCount:     len(messages),
+				CompactedCount: 0,
+				Summary:        "",
+			}, nil
+		}
+		cutoff := len(messages) - keepRecent
+		head = messages[:cutoff]
+		tail = messages[cutoff:]
+	}
 
 	var summary string
 	if opts.SummaryBuilder != nil {
@@ -125,4 +147,58 @@ func BuildCompactionSummary(messages []Message) string {
 		_, _ = fmt.Fprintf(&b, "- ... and %d more messages\n", len(messages)-previewCount)
 	}
 	return b.String()
+}
+
+func normalizeKeepRecentTokens(v int) int {
+	if v <= 0 {
+		return 0
+	}
+	if v < MinKeepRecentTokens {
+		return MinKeepRecentTokens
+	}
+	if v > MaxKeepRecentTokens {
+		return MaxKeepRecentTokens
+	}
+	return v
+}
+
+func cutoffIndexByTokenBudget(messages []Message, budget int) int {
+	if len(messages) <= 1 {
+		return 0
+	}
+
+	kept := 0
+	tokens := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		cost := estimateMessageTokenCost(messages[i])
+		if tokens+cost > budget {
+			break
+		}
+		tokens += cost
+		kept++
+	}
+	if kept == 0 {
+		kept = 1
+	}
+	cutoff := len(messages) - kept
+	if cutoff < 0 {
+		cutoff = 0
+	}
+	return cutoff
+}
+
+func estimateMessageTokenCost(msg Message) int {
+	cost := len(msg.Content) / 4
+	if cost < 1 {
+		cost = 1
+	}
+	return cost
+}
+
+func EstimateTokens(messages []Message) int {
+	total := 0
+	for _, msg := range messages {
+		total += estimateMessageTokenCost(msg)
+	}
+	return total
 }

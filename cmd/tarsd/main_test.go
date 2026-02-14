@@ -901,3 +901,52 @@ func TestCompactAPI_UsesLLMSummaryWhenAvailable(t *testing.T) {
 		t.Fatalf("expected llm summary in compacted transcript, got %q", messages[0].Content)
 	}
 }
+
+func TestCompactAPI_WithTokenBudget(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	sess, err := store.Create("compact token budget")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	transcriptPath := store.TranscriptPath(sess.ID)
+	for i := 0; i < 10; i++ {
+		if err := session.AppendMessage(transcriptPath, session.Message{
+			Role:      "user",
+			Content:   fmt.Sprintf("token budget message %d %s", i, strings.Repeat("x", 80)),
+			Timestamp: time.Date(2026, 2, 14, 12, 0, i, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append message %d: %v", i, err)
+		}
+	}
+
+	handler := newCompactAPIHandler(root, store, nil, logger)
+	reqBody, err := json.Marshal(map[string]any{
+		"session_id":         sess.ID,
+		"keep_recent_tokens": 45,
+	})
+	if err != nil {
+		t.Fatalf("marshal compact request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/compact", bytes.NewReader(reqBody))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	msgs, err := session.ReadMessages(transcriptPath)
+	if err != nil {
+		t.Fatalf("read compacted transcript: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("expected summary + 2 recent messages, got %d", len(msgs))
+	}
+}

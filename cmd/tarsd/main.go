@@ -72,7 +72,8 @@ type options struct {
 const (
 	chatHistoryMaxTokens     = 120000
 	autoCompactTriggerTokens = 100000
-	autoCompactKeepRecent    = session.DefaultKeepRecentMessages
+	autoCompactKeepRecent    = 0
+	autoCompactKeepTokens    = session.DefaultKeepRecentTokens
 )
 
 func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() time.Time) *cobra.Command {
@@ -675,8 +676,9 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.
 			return
 		}
 		var req struct {
-			SessionID  string `json:"session_id"`
-			KeepRecent int    `json:"keep_recent"`
+			SessionID        string `json:"session_id"`
+			KeepRecent       int    `json:"keep_recent"`
+			KeepRecentTokens int    `json:"keep_recent_tokens"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -700,7 +702,7 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.
 		}
 
 		now := time.Now().UTC()
-		result, err := compactWithMemoryFlush(workspaceDir, store.TranscriptPath(sessionID), sessionID, req.KeepRecent, client, now)
+		result, err := compactWithMemoryFlush(workspaceDir, store.TranscriptPath(sessionID), sessionID, req.KeepRecent, req.KeepRecentTokens, client, now)
 		if err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("compact transcript failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compact failed"})
@@ -731,13 +733,13 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, cli
 	if err != nil {
 		return err
 	}
-	estimated := estimateTranscriptTokens(messages)
+	estimated := session.EstimateTokens(messages)
 	if estimated < autoCompactTriggerTokens {
 		return nil
 	}
 
 	now := time.Now().UTC()
-	result, err := compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID, autoCompactKeepRecent, client, now)
+	result, err := compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID, autoCompactKeepRecent, autoCompactKeepTokens, client, now)
 	if err != nil {
 		return err
 	}
@@ -751,8 +753,9 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, cli
 	return nil
 }
 
-func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, client llm.Client, now time.Time) (session.CompactResult, error) {
+func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, keepRecentTokens int, client llm.Client, now time.Time) (session.CompactResult, error) {
 	return session.CompactTranscriptWithOptions(transcriptPath, keepRecent, now, session.CompactOptions{
+		KeepRecentTokens: keepRecentTokens,
 		SummaryBuilder: func(messages []session.Message) (string, error) {
 			if client == nil {
 				return session.BuildCompactionSummary(messages), nil
@@ -818,18 +821,6 @@ func buildLLMCompactionSummary(messages []session.Message, client llm.Client, no
 		return session.BuildCompactionSummary(messages), nil
 	}
 	return "[COMPACTION SUMMARY]\n" + summary, nil
-}
-
-func estimateTranscriptTokens(messages []session.Message) int {
-	total := 0
-	for _, msg := range messages {
-		cost := len(msg.Content) / 4
-		if cost < 1 {
-			cost = 1
-		}
-		total += cost
-	}
-	return total
 }
 
 func writeChatMemory(workspaceDir, sessionID, userMessage, assistantMessage string, now time.Time) error {

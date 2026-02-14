@@ -85,3 +85,39 @@ func TestCompactTranscript_NoOpWhenSmall(t *testing.T) {
 		t.Fatalf("expected no compaction on small transcript")
 	}
 }
+
+func TestCompactTranscript_WithTokenBudget(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "budget.jsonl")
+
+	for i := 0; i < 10; i++ {
+		if err := AppendMessage(path, Message{
+			Role:      "user",
+			Content:   fmt.Sprintf("token budget message %d %s", i, strings.Repeat("x", 80)),
+			Timestamp: time.Date(2026, 2, 14, 12, 0, i, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append message %d: %v", i, err)
+		}
+	}
+
+	result, err := CompactTranscriptWithOptions(path, 50, time.Now().UTC(), CompactOptions{
+		KeepRecentTokens: 45,
+	})
+	if err != nil {
+		t.Fatalf("compact with token budget: %v", err)
+	}
+	if !result.Compacted {
+		t.Fatalf("expected compaction with token budget")
+	}
+
+	msgs, err := ReadMessages(path)
+	if err != nil {
+		t.Fatalf("read transcript: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("expected summary + 2 recent messages, got %d", len(msgs))
+	}
+	if msgs[1].Content != "token budget message 8 "+strings.Repeat("x", 80) {
+		t.Fatalf("unexpected first kept message: %q", msgs[1].Content)
+	}
+}
