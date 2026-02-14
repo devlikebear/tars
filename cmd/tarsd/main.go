@@ -149,7 +149,7 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 				mux.Handle("/v1/sessions/", sessionHandler)
 				statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, store, logger)
 				mux.Handle("/v1/status", statusHandler)
-				compactHandler := newCompactAPIHandler(logger)
+				compactHandler := newCompactAPIHandler(store, logger)
 				mux.Handle("/v1/compact", compactHandler)
 
 				server := &http.Server{
@@ -654,15 +654,60 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerol
 }
 
 // Placeholder - actual implementation in Phase 1-G
-func newCompactAPIHandler(logger zerolog.Logger) http.Handler {
-	_ = logger
+func newCompactAPIHandler(store *session.Store, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		var req struct {
+			SessionID  string `json:"session_id"`
+			KeepRecent int    `json:"keep_recent"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
 
-		writeJSON(w, http.StatusOK, map[string]string{"message": "compaction not implemented yet"})
+		sessionID := strings.TrimSpace(req.SessionID)
+		if sessionID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "session_id is required"})
+			return
+		}
+
+		if _, err := store.Get(sessionID); err != nil {
+			if strings.Contains(err.Error(), "session not found") {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+				return
+			}
+			logger.Error().Err(err).Str("session_id", sessionID).Msg("get session failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get session failed"})
+			return
+		}
+
+		result, err := session.CompactTranscript(store.TranscriptPath(sessionID), req.KeepRecent, time.Now().UTC())
+		if err != nil {
+			logger.Error().Err(err).Str("session_id", sessionID).Msg("compact transcript failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compact failed"})
+			return
+		}
+
+		message := fmt.Sprintf(
+			"compaction complete (session=%s compacted=%d final=%d)",
+			sessionID,
+			result.CompactedCount,
+			result.FinalCount,
+		)
+		if !result.Compacted {
+			message = fmt.Sprintf("compaction skipped (session=%s message_count=%d)", sessionID, result.OriginalCount)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"message":        message,
+			"session_id":     sessionID,
+			"compacted":      result.Compacted,
+			"original_count": result.OriginalCount,
+			"final_count":    result.FinalCount,
+		})
 	})
 }
 

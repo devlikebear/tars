@@ -666,9 +666,33 @@ func TestCompactAPI(t *testing.T) {
 	}
 
 	logger := zerolog.New(io.Discard)
-	handler := newCompactAPIHandler(logger)
+	store := session.NewStore(root)
+	sess, err := store.Create("compact target")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	transcriptPath := store.TranscriptPath(sess.ID)
+	for i := 0; i < 12; i++ {
+		if err := session.AppendMessage(transcriptPath, session.Message{
+			Role:      "user",
+			Content:   fmt.Sprintf("compact message %d", i),
+			Timestamp: time.Date(2026, 2, 14, 12, 0, i, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append message %d: %v", i, err)
+		}
+	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/compact", nil)
+	handler := newCompactAPIHandler(store, logger)
+
+	reqBody, err := json.Marshal(map[string]any{
+		"session_id":  sess.ID,
+		"keep_recent": 5,
+	})
+	if err != nil {
+		t.Fatalf("marshal compact request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/compact", bytes.NewReader(reqBody))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -682,7 +706,18 @@ func TestCompactAPI(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode compact response: %v", err)
 	}
-	if strings.TrimSpace(body.Message) == "" {
-		t.Fatalf("expected non-empty message, got %q", body.Message)
+	if !strings.Contains(body.Message, "compaction complete") {
+		t.Fatalf("expected compaction completion message, got %q", body.Message)
+	}
+
+	messages, err := session.ReadMessages(transcriptPath)
+	if err != nil {
+		t.Fatalf("read compacted transcript: %v", err)
+	}
+	if len(messages) != 6 {
+		t.Fatalf("expected 6 messages after compaction, got %d", len(messages))
+	}
+	if messages[0].Role != "system" || !strings.Contains(messages[0].Content, "[COMPACTION SUMMARY]") {
+		t.Fatalf("expected summary message at first entry, got %+v", messages[0])
 	}
 }

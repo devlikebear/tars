@@ -216,8 +216,17 @@ func TestRun_ChatREPL_SlashCommands(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"workspace_dir":"./workspace","session_count":3}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/compact":
+			var req struct {
+				SessionID string `json:"session_id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode compact request: %v", err)
+			}
+			if req.SessionID != "sess-new" {
+				t.Fatalf("expected compact session_id sess-new, got %q", req.SessionID)
+			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"message":"compaction not implemented yet"}`))
+			_, _ = w.Write([]byte(`{"message":"compaction complete (session=sess-new compacted=3 final=4)"}`))
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -253,7 +262,7 @@ func TestRun_ChatREPL_SlashCommands(t *testing.T) {
 	if !strings.Contains(out, "workspace=./workspace sessions=3") {
 		t.Fatalf("expected status output, got %q", out)
 	}
-	if !strings.Contains(out, "compaction not implemented yet") {
+	if !strings.Contains(out, "compaction complete (session=sess-new compacted=3 final=4)") {
 		t.Fatalf("expected compact output, got %q", out)
 	}
 }

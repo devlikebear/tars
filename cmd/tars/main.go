@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -544,7 +545,10 @@ func handleREPLCommand(serverURL, currentSessionID, line string, reader replRead
 	case "/status":
 		return true, "", printStatus(serverURL, stdout, logger)
 	case "/compact":
-		return true, "", runCompact(serverURL, stdout, logger)
+		if strings.TrimSpace(currentSessionID) == "" {
+			return true, "", fmt.Errorf("no active session. use /new or /resume {session_id}")
+		}
+		return true, "", runCompact(serverURL, currentSessionID, stdout, logger)
 	default:
 		_, _ = fmt.Fprintf(stdout, "unknown command: %s\n", fields[0])
 		return true, "", nil
@@ -736,7 +740,7 @@ func exportSession(serverURL, sessionID string, stdout io.Writer, logger zerolog
 
 func searchSessions(serverURL, keyword string, stdout io.Writer, logger zerolog.Logger) error {
 	base := strings.TrimRight(serverURL, "/")
-	url := fmt.Sprintf("%s/v1/sessions/search?q=%s", base, keyword)
+	url := fmt.Sprintf("%s/v1/sessions/search?q=%s", base, neturl.QueryEscape(keyword))
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -805,13 +809,18 @@ func printStatus(serverURL string, stdout io.Writer, logger zerolog.Logger) erro
 	return nil
 }
 
-func runCompact(serverURL string, stdout io.Writer, logger zerolog.Logger) error {
+func runCompact(serverURL, sessionID string, stdout io.Writer, logger zerolog.Logger) error {
 	base := strings.TrimRight(serverURL, "/")
 	url := base + "/v1/compact"
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+	body, err := json.Marshal(map[string]string{"session_id": strings.TrimSpace(sessionID)})
+	if err != nil {
+		return fmt.Errorf("encode compact request: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Content-Type", "application/json")
 	logger.Debug().Str("method", req.Method).Str("url", url).Msg("request tarsd compact api")
 
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)

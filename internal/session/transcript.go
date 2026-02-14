@@ -25,6 +25,26 @@ func AppendMessage(path string, msg Message) error {
 	return nil
 }
 
+// RewriteMessages replaces the transcript contents with the provided messages.
+func RewriteMessages(path string, messages []Message) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("open transcript %s: %w", path, err)
+	}
+	defer f.Close()
+
+	for _, msg := range messages {
+		data, err := json.Marshal(msg)
+		if err != nil {
+			return fmt.Errorf("marshal message: %w", err)
+		}
+		if _, err := f.Write(append(data, '\n')); err != nil {
+			return fmt.Errorf("write message: %w", err)
+		}
+	}
+	return nil
+}
+
 // ReadMessages reads all messages from a JSONL file.
 // Returns an empty slice if the file does not exist or is empty.
 func ReadMessages(path string) ([]Message, error) {
