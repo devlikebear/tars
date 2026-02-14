@@ -54,4 +54,5 @@
 - 2026-02-14: `EnsureWorkspace()`를 확장해 5개 부트스트랩 파일(AGENTS.md, SOUL.md, USER.md, IDENTITY.md, TOOLS.md)을 기본 템플릿으로 생성하도록 추가했다. 기존 파일이 있으면 덮어쓰지 않는다.
 - 2026-02-14: `internal/prompt` 패키지를 추가했다. `Build(BuildOptions)` 함수가 워크스페이스 부트스트랩 파일 7종(IDENTITY, SOUL, USER, AGENTS, TOOLS, HEARTBEAT, MEMORY)을 읽어 시스템 프롬프트를 조립한다. 파일당 20000자 제한, sub-agent 모드에서는 AGENTS.md + TOOLS.md만 주입한다.
 - 2026-02-14: `internal/llm`에 Chat API를 추가했다. `ChatMessage`, `ChatOptions`, `ChatResponse`, `Usage` 타입 정의, `Client.Chat()` 인터페이스 확장, `OpenAICompatibleClient`(bifrost/openai), `AnthropicClient`, `CodexCLIClient` 모두 구현. SSE 스트리밍 지원(`OnDelta` 콜백), 기존 `Ask()`는 `Chat()` 래퍼로 변경.
+- 2026-02-14: `tarsd`에 `POST /v1/chat` SSE 스트리밍 채팅 API를 추가했다. 세션 자동 생성, 시스템 프롬프트 주입(`prompt.Build`), 토큰 기반 히스토리 로딩(`session.LoadHistory`), LLM Chat 호출(SSE `OnDelta`), transcript 저장을 통합했다. `llm.Client`를 직접 들고 다니도록 변경하고, heartbeat/chat 핸들러를 하나의 mux에 통합했다.
 - 2026-02-14: `internal/session` 패키지를 추가했다. `Message` 타입(role/content/timestamp), JSONL transcript(append/read), `Session` 구조체, `Store`(sessions.json 기반 CRUD), 토큰 기반 동적 히스토리 로딩(`LoadHistory`)을 구현했다. 세션 저장 구조: `sessions/sessions.json`(인덱스) + `sessions/{id}.jsonl`(transcript).
