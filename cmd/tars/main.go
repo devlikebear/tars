@@ -252,7 +252,7 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 	currentSessionID := strings.TrimSpace(sessionID)
 	scanner := bufio.NewScanner(stdin)
 
-	_, _ = fmt.Fprintln(stdout, "Entering chat REPL. Type /exit or /quit to stop.")
+	_, _ = fmt.Fprintln(stdout, "Entering chat REPL. Type /help for commands.")
 	for {
 		_, _ = fmt.Fprint(stdout, "> ")
 		if !scanner.Scan() {
@@ -269,6 +269,18 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 		if line == "/exit" || line == "/quit" {
 			return nil
 		}
+		if strings.HasPrefix(line, "/") {
+			handled, nextSessionID, err := handleREPLCommand(serverURL, currentSessionID, line, stdout, logger)
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(nextSessionID) != "" {
+				currentSessionID = strings.TrimSpace(nextSessionID)
+			}
+			if handled {
+				continue
+			}
+		}
 
 		nextSessionID, err := runChatMessageWithSession(serverURL, currentSessionID, line, stdout, logger)
 		if err != nil {
@@ -278,4 +290,267 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 			currentSessionID = strings.TrimSpace(nextSessionID)
 		}
 	}
+}
+
+func handleREPLCommand(serverURL, currentSessionID, line string, stdout io.Writer, logger zerolog.Logger) (bool, string, error) {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return true, "", nil
+	}
+
+	switch fields[0] {
+	case "/help":
+		_, _ = fmt.Fprintln(stdout, "Commands: /sessions, /new [title], /resume {id}, /history, /status, /compact, /quit")
+		return true, "", nil
+	case "/sessions":
+		return true, "", printSessions(serverURL, stdout, logger)
+	case "/new":
+		title := strings.TrimSpace(strings.TrimPrefix(line, "/new"))
+		if title == "" {
+			title = "chat"
+		}
+		id, err := createSession(serverURL, title, logger)
+		if err != nil {
+			return true, "", err
+		}
+		_, _ = fmt.Fprintf(stdout, "active session: %s\n", id)
+		return true, id, nil
+	case "/resume":
+		if len(fields) < 2 {
+			return true, "", fmt.Errorf("usage: /resume {session_id}")
+		}
+		id := strings.TrimSpace(fields[1])
+		if err := ensureSessionExists(serverURL, id, logger); err != nil {
+			return true, "", err
+		}
+		_, _ = fmt.Fprintf(stdout, "resumed session: %s\n", id)
+		return true, id, nil
+	case "/history":
+		if strings.TrimSpace(currentSessionID) == "" {
+			return true, "", fmt.Errorf("no active session. use /new or /resume {session_id}")
+		}
+		return true, "", printHistory(serverURL, currentSessionID, stdout, logger)
+	case "/status":
+		return true, "", printStatus(serverURL, stdout, logger)
+	case "/compact":
+		return true, "", runCompact(serverURL, stdout, logger)
+	default:
+		_, _ = fmt.Fprintf(stdout, "unknown command: %s\n", fields[0])
+		return true, "", nil
+	}
+}
+
+type sessionSummary struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+type sessionHistoryItem struct {
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+func printSessions(serverURL string, stdout io.Writer, logger zerolog.Logger) error {
+	base := strings.TrimRight(serverURL, "/")
+	url := base + "/v1/sessions"
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	logger.Debug().Str("method", req.Method).Str("url", url).Msg("request tarsd sessions api")
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("request sessions endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read sessions response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("sessions endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var sessions []sessionSummary
+	if err := json.Unmarshal(body, &sessions); err != nil {
+		return fmt.Errorf("decode sessions response: %w", err)
+	}
+	if len(sessions) == 0 {
+		_, _ = fmt.Fprintln(stdout, "(no sessions)")
+		return nil
+	}
+	for _, s := range sessions {
+		_, _ = fmt.Fprintf(stdout, "%s\t%s\n", s.ID, s.Title)
+	}
+	return nil
+}
+
+func createSession(serverURL, title string, logger zerolog.Logger) (string, error) {
+	base := strings.TrimRight(serverURL, "/")
+	url := base + "/v1/sessions"
+	body, err := json.Marshal(map[string]string{"title": title})
+	if err != nil {
+		return "", fmt.Errorf("encode create session request: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	logger.Debug().Str("method", req.Method).Str("url", url).Str("title", title).Msg("request tarsd create session api")
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request create session endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read create session response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("create session endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+
+	var created sessionSummary
+	if err := json.Unmarshal(raw, &created); err != nil {
+		return "", fmt.Errorf("decode create session response: %w", err)
+	}
+	if strings.TrimSpace(created.ID) == "" {
+		return "", fmt.Errorf("create session response missing id")
+	}
+	return strings.TrimSpace(created.ID), nil
+}
+
+func ensureSessionExists(serverURL, sessionID string, logger zerolog.Logger) error {
+	base := strings.TrimRight(serverURL, "/")
+	url := fmt.Sprintf("%s/v1/sessions/%s", base, strings.TrimSpace(sessionID))
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	logger.Debug().Str("method", req.Method).Str("url", url).Msg("request tarsd get session api")
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("request session endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read session response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("session endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func printHistory(serverURL, sessionID string, stdout io.Writer, logger zerolog.Logger) error {
+	base := strings.TrimRight(serverURL, "/")
+	url := fmt.Sprintf("%s/v1/sessions/%s/history", base, strings.TrimSpace(sessionID))
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	logger.Debug().Str("method", req.Method).Str("url", url).Msg("request tarsd history api")
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("request history endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read history response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("history endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var messages []sessionHistoryItem
+	if err := json.Unmarshal(body, &messages); err != nil {
+		return fmt.Errorf("decode history response: %w", err)
+	}
+	if len(messages) == 0 {
+		_, _ = fmt.Fprintln(stdout, "(no history)")
+		return nil
+	}
+	for _, m := range messages {
+		_, _ = fmt.Fprintf(stdout, "%s [%s] %s\n", m.Timestamp.Format(time.RFC3339), m.Role, m.Content)
+	}
+	return nil
+}
+
+func printStatus(serverURL string, stdout io.Writer, logger zerolog.Logger) error {
+	base := strings.TrimRight(serverURL, "/")
+	url := base + "/v1/status"
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	logger.Debug().Str("method", req.Method).Str("url", url).Msg("request tarsd status api")
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("request status endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read status response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("status endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var parsed struct {
+		WorkspaceDir string `json:"workspace_dir"`
+		SessionCount int    `json:"session_count"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return fmt.Errorf("decode status response: %w", err)
+	}
+	_, _ = fmt.Fprintf(stdout, "workspace=%s sessions=%d\n", parsed.WorkspaceDir, parsed.SessionCount)
+	return nil
+}
+
+func runCompact(serverURL string, stdout io.Writer, logger zerolog.Logger) error {
+	base := strings.TrimRight(serverURL, "/")
+	url := base + "/v1/compact"
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return err
+	}
+	logger.Debug().Str("method", req.Method).Str("url", url).Msg("request tarsd compact api")
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("request compact endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read compact response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("compact endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var parsed struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return fmt.Errorf("decode compact response: %w", err)
+	}
+	_, _ = fmt.Fprintln(stdout, strings.TrimSpace(parsed.Message))
+	return nil
 }

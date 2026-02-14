@@ -177,3 +177,110 @@ func TestRun_ChatREPL_ReusesSessionID(t *testing.T) {
 		t.Fatalf("expected both replies in stdout, got %q", stdout.String())
 	}
 }
+
+func TestRun_ChatREPL_SlashCommands(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	stdin := strings.NewReader("/sessions\n/new project session\n/history\n/status\n/compact\n/quit\n")
+
+	var historyPathRequested bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"id":"sess-a","title":"alpha"}]`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"sess-new","title":"project session"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions/sess-new/history":
+			historyPathRequested = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"role":"user","content":"hello","timestamp":"2026-02-14T12:00:00Z"}]`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"workspace_dir":"./workspace","session_count":3}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/compact":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"message":"compaction not implemented yet"}`))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	code := runWithIO([]string{"chat", "--server-url", server.URL}, stdin, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
+	}
+	if !historyPathRequested {
+		t.Fatalf("expected history endpoint call for created session")
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "sess-a\talpha") {
+		t.Fatalf("expected sessions output, got %q", out)
+	}
+	if !strings.Contains(out, "active session: sess-new") {
+		t.Fatalf("expected active session output, got %q", out)
+	}
+	if !strings.Contains(out, "[user] hello") {
+		t.Fatalf("expected history output, got %q", out)
+	}
+	if !strings.Contains(out, "workspace=./workspace sessions=3") {
+		t.Fatalf("expected status output, got %q", out)
+	}
+	if !strings.Contains(out, "compaction not implemented yet") {
+		t.Fatalf("expected compact output, got %q", out)
+	}
+}
+
+func TestRun_ChatREPL_ResumeThenChat(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	stdin := strings.NewReader("/resume sess-r\nhello\n/quit\n")
+
+	chatCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions/sess-r":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"sess-r","title":"resume target"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat":
+			chatCalls++
+			var req struct {
+				SessionID string `json:"session_id"`
+				Message   string `json:"message"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode chat request: %v", err)
+			}
+			if req.SessionID != "sess-r" {
+				t.Fatalf("expected resumed session_id sess-r, got %q", req.SessionID)
+			}
+			if req.Message != "hello" {
+				t.Fatalf("expected chat message hello, got %q", req.Message)
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"type\":\"delta\",\"text\":\"ok\"}\n\n"))
+			_, _ = w.Write([]byte("data: {\"type\":\"done\",\"session_id\":\"sess-r\"}\n\n"))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	code := runWithIO([]string{"chat", "--server-url", server.URL}, stdin, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
+	}
+	if chatCalls != 1 {
+		t.Fatalf("expected exactly one chat request, got %d", chatCalls)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "resumed session: sess-r") {
+		t.Fatalf("expected resume output, got %q", out)
+	}
+	if !strings.Contains(out, "ok") {
+		t.Fatalf("expected chat output, got %q", out)
+	}
+}
