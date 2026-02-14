@@ -118,10 +118,12 @@
 
 **프롬프트 구조** (OpenClaw `docs/concepts/system-prompt.md` 참고):
 1. 기본 역할 정의 + 안전 가이드라인
-2. **워크스페이스 파일 주입**: AGENTS.md, SOUL.md, USER.md, IDENTITY.md, TOOLS.md, HEARTBEAT.md, MEMORY.md
-3. 오늘/어제 daily log (`memory/YYYY-MM-DD.md`) — 최근 기록만 포함
-4. 현재 시간, 런타임 정보 (OS, 모델명 등)
-5. (Phase 2 이후) 도구 목록 + 스킬 목록
+2. **워크스페이스 파일 주입**: AGENTS.md, SOUL.md, USER.md, IDENTITY.md, TOOLS.md, HEARTBEAT.md, BOOTSTRAP.md(신규 워크스페이스만), MEMORY.md(존재 시)
+3. 현재 시간 (UTC + 사용자 시간대), 런타임 정보 (OS, 모델명 등)
+4. (Phase 2 이후) 도구 목록 + 스킬 목록
+
+> **Note**: `memory/*.md` daily log 파일은 시스템 프롬프트에 자동 주입되지 않음. `memory_search`, `memory_get` 도구로 on-demand 접근.
+> Sub-agent 세션은 `AGENTS.md` + `TOOLS.md`만 주입 (다른 부트스트랩 파일 제외).
 
 **파일 크기 제한**: 파일당 최대 20000자 (OpenClaw의 `bootstrapMaxChars` 기본값)
 
