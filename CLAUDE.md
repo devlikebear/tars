@@ -61,3 +61,4 @@
 - 2026-02-14: `cmd/tars`에 `chat` 명령을 추가했다. `tars chat -m "..." [--session ...] [--server-url ...]`로 `POST /v1/chat`을 호출하고 SSE `delta` 이벤트를 스트리밍 출력하며 `done` 이벤트에서 종료한다.
 - 2026-02-14: `tarsd`와 `tars`에 `--verbose` 디버그 모드를 추가했다. `tars↔tarsd` HTTP 통신(요청/응답, 상태코드, 지연시간, SSE 이벤트)과 `tarsd↔LLM` 호출(provider/model/url, 메시지 수, 스트리밍 델타, usage/stop_reason)을 상세 로그로 출력한다.
 - 2026-02-14: `tarsd` chat SSE 핸들러에 non-streaming LLM fallback을 추가했다. provider가 `OnDelta`를 호출하지 않아도 최종 assistant 응답을 `delta` 이벤트로 1회 전송해 `tars chat`에서 본문이 비지 않도록 수정했다.
+- 2026-02-14: `tars chat`에 REPL 모드를 추가했다. `-m` 없이 실행하면 입력 루프를 시작하고 `/exit`/`/quit`로 종료한다. 첫 응답의 `session_id`를 저장해 다음 턴 요청에 재사용한다.

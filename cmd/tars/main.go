@@ -23,6 +23,10 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	return runWithIO(args, os.Stdin, stdout, stderr)
+}
+
+func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	_ = godotenv.Load(".env")
 	logger := zerolog.New(stderr).With().Timestamp().Str("component", "tars").Logger()
 	if hasVerboseFlag(args) {
@@ -30,7 +34,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		logger.Debug().Msg("verbose logging enabled")
 	}
 
-	cmd := newRootCmd(stdout, stderr, logger)
+	cmd := newRootCmd(stdin, stdout, stderr, logger)
 	cmd.SetArgs(args)
 	if err := cmd.Execute(); err != nil {
 		var ex *cli.ExitError
@@ -55,7 +59,7 @@ func hasVerboseFlag(args []string) bool {
 	return false
 }
 
-func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger) *cobra.Command {
+func newRootCmd(stdin io.Reader, stdout, stderr io.Writer, logger zerolog.Logger) *cobra.Command {
 	var verbose bool
 	root := &cobra.Command{
 		Use:           "tars",
@@ -70,7 +74,7 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger) *cobra.Command 
 	root.SetErr(stderr)
 	root.PersistentFlags().BoolVar(&verbose, "verbose", false, "enable verbose debug logging")
 	root.AddCommand(newHeartbeatCmd(stdout, logger))
-	root.AddCommand(newChatCmd(stdout, logger))
+	root.AddCommand(newChatCmd(stdin, stdout, logger))
 
 	return root
 }
@@ -130,19 +134,19 @@ func runHeartbeatOnce(serverURL string, stdout io.Writer, logger zerolog.Logger)
 	return nil
 }
 
-func newChatCmd(stdout io.Writer, logger zerolog.Logger) *cobra.Command {
+func newChatCmd(stdin io.Reader, stdout io.Writer, logger zerolog.Logger) *cobra.Command {
 	var serverURL string
 	var sessionID string
 	var message string
 
 	cmd := &cobra.Command{
 		Use:   "chat",
-		Short: "Send a chat message to tarsd",
+		Short: "Send chat message or start interactive REPL",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if strings.TrimSpace(message) == "" {
-				return fmt.Errorf("--message (-m) is required")
+			if strings.TrimSpace(message) != "" {
+				return runChatMessage(serverURL, sessionID, message, stdout, logger)
 			}
-			return runChatMessage(serverURL, sessionID, message, stdout, logger)
+			return runChatREPL(serverURL, sessionID, stdin, stdout, logger)
 		},
 	}
 	cmd.Flags().StringVar(&serverURL, "server-url", "http://127.0.0.1:8080", "tarsd API server URL")
@@ -152,43 +156,49 @@ func newChatCmd(stdout io.Writer, logger zerolog.Logger) *cobra.Command {
 }
 
 func runChatMessage(serverURL, sessionID, message string, stdout io.Writer, logger zerolog.Logger) error {
+	_, err := runChatMessageWithSession(serverURL, sessionID, message, stdout, logger)
+	return err
+}
+
+func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.Writer, logger zerolog.Logger) (string, error) {
 	base := strings.TrimRight(serverURL, "/")
 	client := &http.Client{Timeout: 5 * time.Minute}
 	url := base + "/v1/chat"
+	currentSessionID := strings.TrimSpace(sessionID)
 
 	reqBody := map[string]string{
 		"message": strings.TrimSpace(message),
 	}
-	if strings.TrimSpace(sessionID) != "" {
-		reqBody["session_id"] = strings.TrimSpace(sessionID)
+	if currentSessionID != "" {
+		reqBody["session_id"] = currentSessionID
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return fmt.Errorf("encode chat request: %w", err)
+		return "", fmt.Errorf("encode chat request: %w", err)
 	}
 
 	req, err := http.NewRequest(http.MethodPost, base+"/v1/chat", bytes.NewReader(bodyBytes))
 	if err != nil {
-		return err
+		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	logger.Debug().
 		Str("method", req.Method).
 		Str("url", url).
-		Str("session_id", strings.TrimSpace(sessionID)).
+		Str("session_id", currentSessionID).
 		Int("message_len", len(strings.TrimSpace(message))).
 		Msg("request tarsd chat api")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("request chat endpoint: %w", err)
+		return "", fmt.Errorf("request chat endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		logger.Debug().Int("status", resp.StatusCode).Int("bytes", len(body)).Msg("chat api error response")
-		return fmt.Errorf("chat endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf("chat endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	logger.Debug().Int("status", resp.StatusCode).Msg("chat stream connected")
 
@@ -205,12 +215,13 @@ func runChatMessage(serverURL, sessionID, message string, stdout io.Writer, logg
 		}
 
 		var evt struct {
-			Type  string `json:"type"`
-			Text  string `json:"text"`
-			Error string `json:"error"`
+			Type      string `json:"type"`
+			Text      string `json:"text"`
+			Error     string `json:"error"`
+			SessionID string `json:"session_id"`
 		}
 		if err := json.Unmarshal([]byte(payload), &evt); err != nil {
-			return fmt.Errorf("decode sse event: %w", err)
+			return "", fmt.Errorf("decode sse event: %w", err)
 		}
 
 		switch evt.Type {
@@ -219,17 +230,52 @@ func runChatMessage(serverURL, sessionID, message string, stdout io.Writer, logg
 			_, _ = fmt.Fprint(stdout, evt.Text)
 		case "error":
 			logger.Debug().Str("error", strings.TrimSpace(evt.Error)).Msg("chat stream error")
-			return fmt.Errorf("chat api error: %s", strings.TrimSpace(evt.Error))
+			return "", fmt.Errorf("chat api error: %s", strings.TrimSpace(evt.Error))
 		case "done":
 			logger.Debug().Msg("chat stream done")
 			_, _ = fmt.Fprintln(stdout)
-			return nil
+			if strings.TrimSpace(evt.SessionID) != "" {
+				currentSessionID = strings.TrimSpace(evt.SessionID)
+			}
+			return currentSessionID, nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read chat stream: %w", err)
+		return "", fmt.Errorf("read chat stream: %w", err)
 	}
 
 	_, _ = fmt.Fprintln(stdout)
-	return nil
+	return currentSessionID, nil
+}
+
+func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer, logger zerolog.Logger) error {
+	currentSessionID := strings.TrimSpace(sessionID)
+	scanner := bufio.NewScanner(stdin)
+
+	_, _ = fmt.Fprintln(stdout, "Entering chat REPL. Type /exit or /quit to stop.")
+	for {
+		_, _ = fmt.Fprint(stdout, "> ")
+		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("read repl input: %w", err)
+			}
+			return nil
+		}
+
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if line == "/exit" || line == "/quit" {
+			return nil
+		}
+
+		nextSessionID, err := runChatMessageWithSession(serverURL, currentSessionID, line, stdout, logger)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(nextSessionID) != "" {
+			currentSessionID = strings.TrimSpace(nextSessionID)
+		}
+	}
 }
