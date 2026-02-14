@@ -336,6 +336,8 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 		}
 		llmMessages = append(llmMessages, llm.ChatMessage{Role: "user", Content: req.Message})
 
+		sendStatus := func(_, _, _ string) {}
+
 		registry := tool.NewRegistry()
 		registry.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
 			return tool.SessionStatus{
@@ -353,6 +355,26 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 				Str("tool_name", evt.ToolName).
 				Str("tool_call_id", evt.ToolCallID).
 				Msg("agent loop event")
+			switch evt.Type {
+			case agent.EventLoopStart:
+				sendStatus("loop_start", "agent loop started", "")
+			case agent.EventBeforeLLM:
+				sendStatus("before_llm", "calling llm", "")
+			case agent.EventAfterLLM:
+				sendStatus("after_llm", "llm response received", "")
+			case agent.EventBeforeTool:
+				sendStatus("before_tool_call", "executing tool", evt.ToolName)
+			case agent.EventAfterTool:
+				sendStatus("after_tool_call", "tool completed", evt.ToolName)
+			case agent.EventLoopEnd:
+				sendStatus("loop_end", "agent loop completed", "")
+			case agent.EventLoopError:
+				msg := "agent loop error"
+				if evt.Err != nil {
+					msg = evt.Err.Error()
+				}
+				sendStatus("error", msg, evt.ToolName)
+			}
 		})
 		loop := agent.NewLoop(client, registry, counterHook, auditHook, logHook)
 
@@ -375,7 +397,21 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 				flusher.Flush()
 			}
 		}
+		sendStatus = func(phase, message, toolName string) {
+			payload := map[string]string{
+				"type":       "status",
+				"phase":      phase,
+				"message":    message,
+				"session_id": sessionID,
+			}
+			if strings.TrimSpace(toolName) != "" {
+				payload["tool_name"] = strings.TrimSpace(toolName)
+			}
+			sendSSE(payload)
+		}
+		sendStatus("stream_open", "stream connected", "")
 		deltaSent := false
+		streamingAnnounced := false
 
 		// Call agent loop (LLM + optional tools)
 		logger.Debug().Str("session_id", sessionID).Int("messages", len(llmMessages)).Msg("llm chat call start")
@@ -384,6 +420,10 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 			OnDelta: func(text string) {
 				if text == "" {
 					return
+				}
+				if !streamingAnnounced {
+					streamingAnnounced = true
+					sendStatus("llm_stream", "streaming response", "")
 				}
 				deltaSent = true
 				logger.Debug().Str("session_id", sessionID).Int("delta_len", len(text)).Msg("llm delta")

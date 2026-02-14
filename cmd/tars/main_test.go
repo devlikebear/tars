@@ -85,6 +85,7 @@ func TestRun_ChatMessage(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"status\",\"phase\":\"before_llm\",\"message\":\"calling llm\"}\n\n"))
 		_, _ = w.Write([]byte("data: {\"type\":\"delta\",\"text\":\"Hello \"}\n\n"))
 		_, _ = w.Write([]byte("data: {\"type\":\"delta\",\"text\":\"from TARS\"}\n\n"))
 		_, _ = w.Write([]byte("data: {\"type\":\"done\",\"session_id\":\"sess-1\"}\n\n"))
@@ -99,6 +100,9 @@ func TestRun_ChatMessage(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Hello from TARS") {
 		t.Fatalf("unexpected stdout: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "[status] calling llm") {
+		t.Fatalf("expected status stream in stderr, got %q", stderr.String())
 	}
 }
 
@@ -279,6 +283,63 @@ func TestRun_ChatREPL_ResumeThenChat(t *testing.T) {
 	out := stdout.String()
 	if !strings.Contains(out, "resumed session: sess-r") {
 		t.Fatalf("expected resume output, got %q", out)
+	}
+	if !strings.Contains(out, "ok") {
+		t.Fatalf("expected chat output, got %q", out)
+	}
+}
+
+func TestRun_ChatREPL_ResumeSelectByNumber(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	stdin := strings.NewReader("/resume\n2\nhello\n/quit\n")
+
+	chatCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"id":"sess-a","title":"alpha"},{"id":"sess-b","title":"beta"}]`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat":
+			chatCalls++
+			var req struct {
+				SessionID string `json:"session_id"`
+				Message   string `json:"message"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode chat request: %v", err)
+			}
+			if req.SessionID != "sess-b" {
+				t.Fatalf("expected selected session_id sess-b, got %q", req.SessionID)
+			}
+			if req.Message != "hello" {
+				t.Fatalf("expected chat message hello, got %q", req.Message)
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"type\":\"delta\",\"text\":\"ok\"}\n\n"))
+			_, _ = w.Write([]byte("data: {\"type\":\"done\",\"session_id\":\"sess-b\"}\n\n"))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	code := runWithIO([]string{"chat", "--server-url", server.URL}, stdin, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
+	}
+	if chatCalls != 1 {
+		t.Fatalf("expected exactly one chat request, got %d", chatCalls)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Select session:") {
+		t.Fatalf("expected session selection prompt, got %q", out)
+	}
+	if !strings.Contains(out, "2) sess-b\tbeta") {
+		t.Fatalf("expected numbered sessions list, got %q", out)
+	}
+	if !strings.Contains(out, "resumed session: sess-b") {
+		t.Fatalf("expected resumed output, got %q", out)
 	}
 	if !strings.Contains(out, "ok") {
 		t.Fatalf("expected chat output, got %q", out)

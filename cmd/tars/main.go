@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,7 +75,7 @@ func newRootCmd(stdin io.Reader, stdout, stderr io.Writer, logger zerolog.Logger
 	root.SetErr(stderr)
 	root.PersistentFlags().BoolVar(&verbose, "verbose", false, "enable verbose debug logging")
 	root.AddCommand(newHeartbeatCmd(stdout, logger))
-	root.AddCommand(newChatCmd(stdin, stdout, logger))
+	root.AddCommand(newChatCmd(stdin, stdout, stderr, logger))
 
 	return root
 }
@@ -134,7 +135,7 @@ func runHeartbeatOnce(serverURL string, stdout io.Writer, logger zerolog.Logger)
 	return nil
 }
 
-func newChatCmd(stdin io.Reader, stdout io.Writer, logger zerolog.Logger) *cobra.Command {
+func newChatCmd(stdin io.Reader, stdout io.Writer, stderr io.Writer, logger zerolog.Logger) *cobra.Command {
 	var serverURL string
 	var sessionID string
 	var message string
@@ -144,9 +145,9 @@ func newChatCmd(stdin io.Reader, stdout io.Writer, logger zerolog.Logger) *cobra
 		Short: "Send chat message or start interactive REPL",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if strings.TrimSpace(message) != "" {
-				return runChatMessage(serverURL, sessionID, message, stdout, logger)
+				return runChatMessage(serverURL, sessionID, message, stdout, stderr, logger)
 			}
-			return runChatREPL(serverURL, sessionID, stdin, stdout, logger)
+			return runChatREPL(serverURL, sessionID, stdin, stdout, stderr, logger)
 		},
 	}
 	cmd.Flags().StringVar(&serverURL, "server-url", "http://127.0.0.1:8080", "tarsd API server URL")
@@ -155,12 +156,12 @@ func newChatCmd(stdin io.Reader, stdout io.Writer, logger zerolog.Logger) *cobra
 	return cmd
 }
 
-func runChatMessage(serverURL, sessionID, message string, stdout io.Writer, logger zerolog.Logger) error {
-	_, err := runChatMessageWithSession(serverURL, sessionID, message, stdout, logger)
+func runChatMessage(serverURL, sessionID, message string, stdout io.Writer, statusOut io.Writer, logger zerolog.Logger) error {
+	_, err := runChatMessageWithSession(serverURL, sessionID, message, stdout, statusOut, logger)
 	return err
 }
 
-func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.Writer, logger zerolog.Logger) (string, error) {
+func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.Writer, statusOut io.Writer, logger zerolog.Logger) (string, error) {
 	base := strings.TrimRight(serverURL, "/")
 	client := &http.Client{Timeout: 5 * time.Minute}
 	url := base + "/v1/chat"
@@ -219,6 +220,9 @@ func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.W
 			Text      string `json:"text"`
 			Error     string `json:"error"`
 			SessionID string `json:"session_id"`
+			Phase     string `json:"phase"`
+			Message   string `json:"message"`
+			ToolName  string `json:"tool_name"`
 		}
 		if err := json.Unmarshal([]byte(payload), &evt); err != nil {
 			return "", fmt.Errorf("decode sse event: %w", err)
@@ -228,6 +232,18 @@ func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.W
 		case "delta":
 			logger.Debug().Int("delta_len", len(evt.Text)).Msg("chat delta")
 			_, _ = fmt.Fprint(stdout, evt.Text)
+		case "status":
+			statusMessage := strings.TrimSpace(evt.Message)
+			if statusMessage == "" {
+				statusMessage = strings.TrimSpace(evt.Phase)
+			}
+			if strings.TrimSpace(evt.ToolName) != "" {
+				statusMessage = fmt.Sprintf("%s (%s)", statusMessage, strings.TrimSpace(evt.ToolName))
+			}
+			if statusMessage != "" {
+				logger.Debug().Str("phase", strings.TrimSpace(evt.Phase)).Str("message", statusMessage).Msg("chat status")
+				_, _ = fmt.Fprintf(statusOut, "[status] %s\n", statusMessage)
+			}
 		case "error":
 			logger.Debug().Str("error", strings.TrimSpace(evt.Error)).Msg("chat stream error")
 			return "", fmt.Errorf("chat api error: %s", strings.TrimSpace(evt.Error))
@@ -248,7 +264,7 @@ func runChatMessageWithSession(serverURL, sessionID, message string, stdout io.W
 	return currentSessionID, nil
 }
 
-func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer, logger zerolog.Logger) error {
+func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer, statusOut io.Writer, logger zerolog.Logger) error {
 	currentSessionID := strings.TrimSpace(sessionID)
 	scanner := bufio.NewScanner(stdin)
 
@@ -270,9 +286,10 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 			return nil
 		}
 		if strings.HasPrefix(line, "/") {
-			handled, nextSessionID, err := handleREPLCommand(serverURL, currentSessionID, line, stdout, logger)
+			handled, nextSessionID, err := handleREPLCommand(serverURL, currentSessionID, line, scanner, stdout, logger)
 			if err != nil {
-				return err
+				_, _ = fmt.Fprintf(stdout, "error: %v\n", err)
+				continue
 			}
 			if strings.TrimSpace(nextSessionID) != "" {
 				currentSessionID = strings.TrimSpace(nextSessionID)
@@ -282,7 +299,7 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 			}
 		}
 
-		nextSessionID, err := runChatMessageWithSession(serverURL, currentSessionID, line, stdout, logger)
+		nextSessionID, err := runChatMessageWithSession(serverURL, currentSessionID, line, stdout, statusOut, logger)
 		if err != nil {
 			return err
 		}
@@ -292,7 +309,7 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 	}
 }
 
-func handleREPLCommand(serverURL, currentSessionID, line string, stdout io.Writer, logger zerolog.Logger) (bool, string, error) {
+func handleREPLCommand(serverURL, currentSessionID, line string, scanner *bufio.Scanner, stdout io.Writer, logger zerolog.Logger) (bool, string, error) {
 	fields := strings.Fields(line)
 	if len(fields) == 0 {
 		return true, "", nil
@@ -316,13 +333,41 @@ func handleREPLCommand(serverURL, currentSessionID, line string, stdout io.Write
 		_, _ = fmt.Fprintf(stdout, "active session: %s\n", id)
 		return true, id, nil
 	case "/resume":
-		if len(fields) < 2 {
-			return true, "", fmt.Errorf("usage: /resume {session_id}")
+		if len(fields) >= 2 {
+			id := strings.TrimSpace(fields[1])
+			if err := ensureSessionExists(serverURL, id, logger); err != nil {
+				return true, "", err
+			}
+			_, _ = fmt.Fprintf(stdout, "resumed session: %s\n", id)
+			return true, id, nil
 		}
-		id := strings.TrimSpace(fields[1])
-		if err := ensureSessionExists(serverURL, id, logger); err != nil {
+
+		sessions, err := fetchSessions(serverURL, logger)
+		if err != nil {
 			return true, "", err
 		}
+		if len(sessions) == 0 {
+			_, _ = fmt.Fprintln(stdout, "(no sessions)")
+			return true, "", nil
+		}
+		_, _ = fmt.Fprintln(stdout, "Select session:")
+		for i, s := range sessions {
+			_, _ = fmt.Fprintf(stdout, "%d) %s\t%s\n", i+1, s.ID, s.Title)
+		}
+		_, _ = fmt.Fprint(stdout, "number> ")
+		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				return true, "", fmt.Errorf("read resume selection: %w", err)
+			}
+			return true, "", fmt.Errorf("input closed while selecting session")
+		}
+		choice := strings.TrimSpace(scanner.Text())
+		idx, err := strconv.Atoi(choice)
+		if err != nil || idx < 1 || idx > len(sessions) {
+			_, _ = fmt.Fprintln(stdout, "invalid selection")
+			return true, "", nil
+		}
+		id := sessions[idx-1].ID
 		_, _ = fmt.Fprintf(stdout, "resumed session: %s\n", id)
 		return true, id, nil
 	case "/history":
@@ -351,32 +396,40 @@ type sessionHistoryItem struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-func printSessions(serverURL string, stdout io.Writer, logger zerolog.Logger) error {
+func fetchSessions(serverURL string, logger zerolog.Logger) ([]sessionSummary, error) {
 	base := strings.TrimRight(serverURL, "/")
 	url := base + "/v1/sessions"
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	logger.Debug().Str("method", req.Method).Str("url", url).Msg("request tarsd sessions api")
 
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
-		return fmt.Errorf("request sessions endpoint: %w", err)
+		return nil, fmt.Errorf("request sessions endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read sessions response: %w", err)
+		return nil, fmt.Errorf("read sessions response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("sessions endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("sessions endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var sessions []sessionSummary
 	if err := json.Unmarshal(body, &sessions); err != nil {
-		return fmt.Errorf("decode sessions response: %w", err)
+		return nil, fmt.Errorf("decode sessions response: %w", err)
+	}
+	return sessions, nil
+}
+
+func printSessions(serverURL string, stdout io.Writer, logger zerolog.Logger) error {
+	sessions, err := fetchSessions(serverURL, logger)
+	if err != nil {
+		return err
 	}
 	if len(sessions) == 0 {
 		_, _ = fmt.Fprintln(stdout, "(no sessions)")
