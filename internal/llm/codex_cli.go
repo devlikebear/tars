@@ -7,6 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
+
+	zlog "github.com/rs/zerolog/log"
 )
 
 const defaultCodexCLIModel = "gpt-5.3-codex"
@@ -34,6 +37,7 @@ func NewCodexCLIClient(model string) (*CodexCLIClient, error) {
 }
 
 func (c *CodexCLIClient) Ask(ctx context.Context, prompt string) (string, error) {
+	start := time.Now()
 	outFile, err := os.CreateTemp("", "tars-codex-output-*.txt")
 	if err != nil {
 		return "", fmt.Errorf("create codex output file: %w", err)
@@ -53,6 +57,13 @@ func (c *CodexCLIClient) Ask(ctx context.Context, prompt string) (string, error)
 		"--model", c.model,
 		"-",
 	}
+	zlog.Debug().
+		Str("provider", "codex-cli").
+		Str("command", c.command).
+		Str("model", c.model).
+		Int("prompt_len", len(prompt)).
+		Str("prompt_preview", truncateForLog(strings.TrimSpace(prompt), 240)).
+		Msg("llm request start")
 	cmd := exec.CommandContext(ctx, c.command, args...)
 	cmd.Stdin = strings.NewReader(prompt)
 
@@ -80,11 +91,18 @@ func (c *CodexCLIClient) Ask(ctx context.Context, prompt string) (string, error)
 	if text == "" {
 		return "", fmt.Errorf("codex exec returned empty response")
 	}
+	zlog.Debug().
+		Str("provider", "codex-cli").
+		Int("assistant_len", len(text)).
+		Str("assistant_preview", truncateForLog(text, 240)).
+		Dur("latency", time.Since(start)).
+		Msg("llm response complete")
 	return text, nil
 }
 
 func (c *CodexCLIClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
 	_ = opts
+	zlog.Debug().Str("provider", "codex-cli").Int("message_count", len(messages)).Msg("llm chat prepare prompt")
 
 	lines := make([]string, 0, len(messages))
 	for _, msg := range messages {

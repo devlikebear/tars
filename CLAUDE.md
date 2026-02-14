@@ -58,3 +58,6 @@
 - 2026-02-14: `tarsd`에 세션 관리 REST API 7종을 추가했다. `GET/POST/DELETE /v1/sessions`, `GET /v1/sessions/{id}`, `GET /v1/sessions/{id}/history`, `POST /v1/sessions/{id}/export`(마크다운), `GET /v1/sessions/search?q=keyword`(대소문자 무시 title 검색).
 - 2026-02-14: `tarsd`에 `POST /v1/chat` SSE 스트리밍 채팅 API를 추가했다. 세션 자동 생성, 시스템 프롬프트 주입(`prompt.Build`), 토큰 기반 히스토리 로딩(`session.LoadHistory`), LLM Chat 호출(SSE `OnDelta`), transcript 저장을 통합했다. `llm.Client`를 직접 들고 다니도록 변경하고, heartbeat/chat 핸들러를 하나의 mux에 통합했다.
 - 2026-02-14: `internal/session` 패키지를 추가했다. `Message` 타입(role/content/timestamp), JSONL transcript(append/read), `Session` 구조체, `Store`(sessions.json 기반 CRUD), 토큰 기반 동적 히스토리 로딩(`LoadHistory`)을 구현했다. 세션 저장 구조: `sessions/sessions.json`(인덱스) + `sessions/{id}.jsonl`(transcript).
+- 2026-02-14: `cmd/tars`에 `chat` 명령을 추가했다. `tars chat -m "..." [--session ...] [--server-url ...]`로 `POST /v1/chat`을 호출하고 SSE `delta` 이벤트를 스트리밍 출력하며 `done` 이벤트에서 종료한다.
+- 2026-02-14: `tarsd`와 `tars`에 `--verbose` 디버그 모드를 추가했다. `tars↔tarsd` HTTP 통신(요청/응답, 상태코드, 지연시간, SSE 이벤트)과 `tarsd↔LLM` 호출(provider/model/url, 메시지 수, 스트리밍 델타, usage/stop_reason)을 상세 로그로 출력한다.
+- 2026-02-14: `tarsd` chat SSE 핸들러에 non-streaming LLM fallback을 추가했다. provider가 `OnDelta`를 호출하지 않아도 최종 assistant 응답을 `delta` 이벤트로 1회 전송해 `tars chat`에서 본문이 비지 않도록 수정했다.

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tarsncase/internal/auth"
+	zlog "github.com/rs/zerolog/log"
 )
 
 type ChatMessage struct {
@@ -48,12 +49,19 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	if provider == "" {
 		provider = "bifrost"
 	}
+	zlog.Debug().
+		Str("provider", provider).
+		Str("auth_mode", strings.TrimSpace(strings.ToLower(opts.AuthMode))).
+		Str("model", strings.TrimSpace(opts.Model)).
+		Str("base_url", strings.TrimSpace(opts.BaseURL)).
+		Msg("llm new provider request")
 
 	if provider == "codex-cli" {
 		model := strings.TrimSpace(opts.Model)
 		if model == "" {
 			model = defaultCodexCLIModel
 		}
+		zlog.Debug().Str("provider", provider).Str("model", model).Msg("llm provider ready")
 		return NewCodexCLIClient(model)
 	}
 
@@ -69,12 +77,25 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 
 	switch provider {
 	case "bifrost":
+		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return NewBifrostClient(opts.BaseURL, token, opts.Model)
 	case "openai":
+		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return NewOpenAIClient(opts.BaseURL, token, opts.Model)
 	case "anthropic":
+		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return NewAnthropicClient(opts.BaseURL, token, opts.Model, opts.MaxTokens)
 	default:
 		return nil, fmt.Errorf("unsupported llm provider: %s", provider)
 	}
+}
+
+func truncateForLog(value string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if len(value) <= max {
+		return value
+	}
+	return value[:max] + "...(truncated)"
 }

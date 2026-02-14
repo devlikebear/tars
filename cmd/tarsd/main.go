@@ -23,6 +23,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
+	zlog "github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,7 @@ func main() {
 func run(args []string, stdout, stderr io.Writer) int {
 	_ = godotenv.Load(".env")
 	logger := zerolog.New(stderr).With().Timestamp().Str("component", "tarsd").Logger()
+	zlog.Logger = logger
 	cmd := newRootCmd(stdout, stderr, logger, time.Now)
 	cmd.SetArgs(args)
 
@@ -56,6 +58,7 @@ type options struct {
 	ConfigPath        string
 	Mode              string
 	WorkspaceDir      string
+	Verbose           bool
 	RunOnce           bool
 	RunLoop           bool
 	ServeAPI          bool
@@ -73,6 +76,12 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			if opts.Verbose {
+				logger = logger.Level(zerolog.DebugLevel)
+				zlog.Logger = logger
+				logger.Debug().Msg("verbose logging enabled")
+			}
+
 			if opts.RunOnce && opts.RunLoop {
 				return &cli.ExitError{Code: 2, Err: fmt.Errorf("--run-once and --run-loop are mutually exclusive")}
 			}
@@ -117,6 +126,12 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 				}
 				llmClient = client
 				ask = client.Ask
+				logger.Debug().
+					Str("provider", cfg.LLMProvider).
+					Str("auth_mode", cfg.LLMAuthMode).
+					Str("model", cfg.LLMModel).
+					Str("base_url", cfg.LLMBaseURL).
+					Msg("llm provider initialized")
 			}
 
 			if opts.ServeAPI {
@@ -137,7 +152,7 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 
 				server := &http.Server{
 					Addr:    opts.APIAddr,
-					Handler: mux,
+					Handler: requestDebugMiddleware(logger, mux),
 				}
 
 				ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -201,6 +216,7 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 	cmd.Flags().StringVar(&opts.ConfigPath, "config", "", "path to config file")
 	cmd.Flags().StringVar(&opts.Mode, "mode", "", "runtime mode override")
 	cmd.Flags().StringVar(&opts.WorkspaceDir, "workspace-dir", "", "workspace directory override")
+	cmd.Flags().BoolVar(&opts.Verbose, "verbose", false, "enable verbose debug logging")
 	cmd.Flags().BoolVar(&opts.RunOnce, "run-once", false, "run heartbeat once and exit")
 	cmd.Flags().BoolVar(&opts.RunLoop, "run-loop", false, "run heartbeat loop")
 	cmd.Flags().BoolVar(&opts.ServeAPI, "serve-api", false, "serve tarsd http api")
@@ -259,6 +275,11 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "message is required"})
 			return
 		}
+		logger.Debug().
+			Str("path", r.URL.Path).
+			Str("session_id", strings.TrimSpace(req.SessionID)).
+			Int("message_len", len(strings.TrimSpace(req.Message))).
+			Msg("chat request accepted")
 
 		// Resolve or create session
 		sessionID := req.SessionID
@@ -278,6 +299,7 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 		}
 
 		transcriptPath := store.TranscriptPath(sessionID)
+		logger.Debug().Str("session_id", sessionID).Str("transcript_path", transcriptPath).Msg("chat session resolved")
 
 		// Build system prompt
 		systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
@@ -289,6 +311,11 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load history failed"})
 			return
 		}
+		logger.Debug().
+			Str("session_id", sessionID).
+			Int("history_messages", len(history)).
+			Int("system_prompt_len", len(systemPrompt)).
+			Msg("chat context assembled")
 
 		// Append user message to transcript
 		now := time.Now().UTC()
@@ -319,20 +346,41 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 		sendSSE := func(data any) {
 			jsonData, _ := json.Marshal(data)
 			fmt.Fprintf(w, "data: %s\n\n", jsonData)
+			if evt, ok := data.(map[string]string); ok {
+				logger.Debug().Str("event_type", evt["type"]).Msg("chat sse event")
+			}
 			if flusher != nil {
 				flusher.Flush()
 			}
 		}
+		deltaSent := false
 
 		// Call LLM with streaming
+		logger.Debug().Str("session_id", sessionID).Int("messages", len(llmMessages)).Msg("llm chat call start")
 		chatResp, err := client.Chat(r.Context(), llmMessages, llm.ChatOptions{
 			OnDelta: func(text string) {
+				if text != "" {
+					deltaSent = true
+				}
+				logger.Debug().Str("session_id", sessionID).Int("delta_len", len(text)).Msg("llm delta")
 				sendSSE(map[string]string{"type": "delta", "text": text})
 			},
 		})
 		if err != nil {
+			logger.Debug().Str("session_id", sessionID).Err(err).Msg("llm chat call failed")
 			sendSSE(map[string]string{"type": "error", "error": err.Error()})
 			return
+		}
+		logger.Debug().
+			Str("session_id", sessionID).
+			Int("assistant_len", len(chatResp.Message.Content)).
+			Int("input_tokens", chatResp.Usage.InputTokens).
+			Int("output_tokens", chatResp.Usage.OutputTokens).
+			Str("stop_reason", chatResp.StopReason).
+			Msg("llm chat call complete")
+		if !deltaSent && chatResp.Message.Content != "" {
+			logger.Debug().Str("session_id", sessionID).Int("assistant_len", len(chatResp.Message.Content)).Msg("emit fallback delta from non-streaming llm response")
+			sendSSE(map[string]string{"type": "delta", "text": chatResp.Message.Content})
 		}
 
 		// Append assistant message to transcript
@@ -350,6 +398,7 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 				"output_tokens": chatResp.Usage.OutputTokens,
 			},
 		})
+		logger.Debug().Str("session_id", sessionID).Msg("chat request complete")
 	})
 	return mux
 }
@@ -552,4 +601,42 @@ func writeJSON(w http.ResponseWriter, code int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Write(p []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	n, err := r.ResponseWriter.Write(p)
+	r.bytes += n
+	return n, err
+}
+
+func requestDebugMiddleware(logger zerolog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w}
+		next.ServeHTTP(rec, r)
+		if rec.status == 0 {
+			rec.status = http.StatusOK
+		}
+		logger.Debug().
+			Str("method", r.Method).
+			Str("path", r.URL.Path).
+			Int("status", rec.status).
+			Int("bytes", rec.bytes).
+			Dur("latency", time.Since(start)).
+			Msg("http request")
+	})
 }

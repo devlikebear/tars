@@ -329,8 +329,52 @@ func TestChatAPI_WithSessionID(t *testing.T) {
 	}
 }
 
+func TestChatAPI_NonStreamingProviderStillEmitsDelta(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	mockClient := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{
+				Role:    "assistant",
+				Content: "non-streaming response",
+			},
+		},
+		disableDelta: true,
+	}
+
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+
+	reqBody := `{"message": "hi"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"type":"delta"`) {
+		t.Fatalf("expected fallback delta event in SSE, got %q", body)
+	}
+	if !strings.Contains(body, "non-streaming response") {
+		t.Fatalf("expected assistant content in SSE, got %q", body)
+	}
+	if !strings.Contains(body, `"type":"done"`) {
+		t.Fatalf("expected done event in SSE, got %q", body)
+	}
+}
+
 type mockLLMClient struct {
-	response llm.ChatResponse
+	response     llm.ChatResponse
+	disableDelta bool
 }
 
 func (m *mockLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
@@ -338,7 +382,7 @@ func (m *mockLLMClient) Ask(ctx context.Context, prompt string) (string, error) 
 }
 
 func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
-	if opts.OnDelta != nil {
+	if opts.OnDelta != nil && !m.disableDelta {
 		opts.OnDelta(m.response.Message.Content)
 	}
 	return m.response, nil

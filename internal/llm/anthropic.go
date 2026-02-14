@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	zlog "github.com/rs/zerolog/log"
 )
 
 type AnthropicClient struct {
@@ -47,6 +49,15 @@ func NewAnthropicClient(baseURL, apiKey, model string, maxTokens int) (*Anthropi
 }
 
 func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
+	streaming := opts.OnDelta != nil
+	zlog.Debug().
+		Str("provider", "anthropic").
+		Str("model", c.model).
+		Str("url", c.baseURL+"/v1/messages").
+		Int("message_count", len(messages)).
+		Bool("stream", streaming).
+		Msg("llm request start")
+
 	nonSystemMessages := make([]ChatMessage, 0, len(messages))
 	systemMessages := make([]string, 0)
 	for _, msg := range messages {
@@ -112,6 +123,7 @@ func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[stri
 		return ChatResponse{}, fmt.Errorf("request anthropic: %w", err)
 	}
 	defer resp.Body.Close()
+	zlog.Debug().Str("provider", "anthropic").Int("status", resp.StatusCode).Msg("llm response received")
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, err := io.ReadAll(resp.Body)
@@ -146,6 +158,13 @@ func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[stri
 			b.WriteString(c.Text)
 		}
 	}
+	zlog.Debug().
+		Str("provider", "anthropic").
+		Int("assistant_len", len(b.String())).
+		Int("input_tokens", parsed.Usage.InputTokens).
+		Int("output_tokens", parsed.Usage.OutputTokens).
+		Str("stop_reason", parsed.StopReason).
+		Msg("llm response parsed")
 
 	return ChatResponse{
 		Message: ChatMessage{
@@ -184,6 +203,7 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 		return ChatResponse{}, fmt.Errorf("request anthropic: %w", err)
 	}
 	defer resp.Body.Close()
+	zlog.Debug().Str("provider", "anthropic").Int("status", resp.StatusCode).Msg("llm response received")
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, err := io.ReadAll(resp.Body)
@@ -236,6 +256,7 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 				continue
 			}
 			builder.WriteString(parsed.Delta.Text)
+			zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.Delta.Text)).Msg("llm stream delta")
 			onDelta(parsed.Delta.Text)
 		case "message_start":
 			var parsed struct {
@@ -276,5 +297,12 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 		Content: builder.String(),
 	}
 	response.StopReason = stopReason
+	zlog.Debug().
+		Str("provider", "anthropic").
+		Int("assistant_len", len(response.Message.Content)).
+		Int("input_tokens", response.Usage.InputTokens).
+		Int("output_tokens", response.Usage.OutputTokens).
+		Str("stop_reason", response.StopReason).
+		Msg("llm stream complete")
 	return response, nil
 }

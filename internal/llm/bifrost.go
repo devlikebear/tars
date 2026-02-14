@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	zlog "github.com/rs/zerolog/log"
 )
 
 // OpenAICompatibleClient works with any OpenAI-compatible /chat/completions API
@@ -51,6 +53,15 @@ func NewOpenAIClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, er
 }
 
 func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
+	streaming := opts.OnDelta != nil
+	zlog.Debug().
+		Str("provider", c.label).
+		Str("model", c.model).
+		Str("url", c.baseURL+"/chat/completions").
+		Int("message_count", len(messages)).
+		Bool("stream", streaming).
+		Msg("llm request start")
+
 	reqBody := map[string]any{
 		"model":    c.model,
 		"messages": messages,
@@ -81,6 +92,7 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 		return ChatResponse{}, fmt.Errorf("request %s: %w", c.label, err)
 	}
 	defer resp.Body.Close()
+	zlog.Debug().Str("provider", c.label).Int("status", resp.StatusCode).Msg("llm response received")
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, err := io.ReadAll(resp.Body)
@@ -131,11 +143,19 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 			if parsed.Choices[0].FinishReason != "" {
 				stopReason = parsed.Choices[0].FinishReason
 			}
+			if content != "" {
+				zlog.Debug().Str("provider", c.label).Int("delta_len", len(content)).Msg("llm stream delta")
+			}
 			opts.OnDelta(content)
 		}
 		if err := scanner.Err(); err != nil {
 			return ChatResponse{}, fmt.Errorf("read stream response: %w", err)
 		}
+		zlog.Debug().
+			Str("provider", c.label).
+			Int("assistant_len", len(builder.String())).
+			Str("stop_reason", stopReason).
+			Msg("llm stream complete")
 
 		return ChatResponse{
 			Message: ChatMessage{
@@ -169,6 +189,13 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 	if len(parsed.Choices) == 0 {
 		return ChatResponse{}, fmt.Errorf("%s response has no choices", c.label)
 	}
+	zlog.Debug().
+		Str("provider", c.label).
+		Int("assistant_len", len(parsed.Choices[0].Message.Content)).
+		Int("input_tokens", parsed.Usage.PromptTokens).
+		Int("output_tokens", parsed.Usage.CompletionTokens).
+		Str("stop_reason", parsed.Choices[0].FinishReason).
+		Msg("llm response parsed")
 
 	return ChatResponse{
 		Message: ChatMessage{
