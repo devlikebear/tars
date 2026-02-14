@@ -23,12 +23,14 @@
 ## 바이너리 역할 정의
 - `tarsd` (메인 데몬/서버): LLM 호출, 허트비트/크론 실행, 3-Layer 메모리 처리, 작업 판단과 실행 오케스트레이션을 담당한다.
 - `cased` (감시 데몬): `tarsd` 프로세스 감시, 자동 재시작/복구, 감사/보안 모니터링, 업데이트/롤백 같은 안정성 제어를 담당한다.
-- `tars` (CLI 클라이언트): 사용자 입력과 명령 전달을 담당하며, 핵심 실행 로직(LLM 실행, 허트비트 루프, 데몬 오케스트레이션)은 직접 수행하지 않는다.
+- `tars` (경량 CLI 클라이언트): 운영/자동화/스크립트 중심 진입점. 핵심 실행 로직(LLM 실행, 허트비트 루프, 데몬 오케스트레이션)은 직접 수행하지 않는다.
+- `tars-ui` (React/TS Ink TUI 클라이언트): 고급 대화형 UX(패널 레이아웃, 스트리밍 렌더링, 상태/디버그 시각화)를 담당한다.
 
 ## tars-tarsd 통신 프로토콜 규칙
 - `tarsd`가 HTTP API 서버를 서빙하고, `tars`는 해당 API를 호출하는 HTTP 클라이언트로 구현한다.
+- `tars-ui`도 동일하게 `tarsd` HTTP API(`POST /v1/chat` SSE 포함)를 호출하는 클라이언트로 구현한다.
 - LLM 실행, OAuth 토큰 교환/저장, heartbeat/cron 실행 같은 서버 책임 로직은 반드시 `tarsd`에서 수행한다.
-- `tars`는 사용자 입력 수집, API 요청/응답 렌더링, 브라우저 열기 같은 클라이언트 UX만 담당한다.
+- `tars`/`tars-ui`는 사용자 입력 수집, API 요청/응답 렌더링 같은 클라이언트 UX만 담당한다.
 - LLM 응답은 `tarsd`의 REST API로 제공하고, `tars`는 해당 API의 클라이언트로 구현한다.
 - 인증 토큰(특히 OAuth access/refresh token)은 서버(`tarsd`)에서만 저장/관리하고, `tars`는 직접 저장하지 않는다.
 
@@ -76,3 +78,6 @@
 - 2026-02-14: compaction 요약 생성을 LLM 기반으로 전환했다. `session.CompactOptions`에 `SummaryBuilder`를 추가했고, `tarsd`는 요약 시 LLM 호출을 우선 사용하며 실패 시 규칙 기반 요약으로 폴백한다.
 - 2026-02-14: compaction 유지 경계를 메시지 개수에서 토큰 keep-budget 기반으로 확장했다. `keep_recent_tokens`를 `POST /v1/compact`에 지원하고, 자동 compaction은 토큰 예산 기반 tail 유지 로직을 사용한다.
 - 2026-02-14: 토큰 예산 기반 compaction 안정화를 적용했다. `keep_recent_tokens` 하한 보정을 완화하고, compaction 시 최근 tail은 최소 2개 메시지를 유지하도록 보정해 과도한 축약을 방지했다.
+- 2026-02-14: `tars` 출력 UX를 보강했다. `--log-file`(또는 `TARS_LOG_FILE`)로 디버그 로그를 파일로 분리하고, `chat --pretty`로 사용자/어시스턴트 라벨 기반 렌더링을 추가했다.
+- 2026-02-14: `tars-ui` 디렉터리를 추가했다. React/TypeScript + Ink 기반 신규 TUI 클라이언트 초기 골격(`tars-ui/src/index.tsx`)을 만들고, `/v1/chat` SSE를 직접 수신해 Chat/Status/Debug 패널을 분리해 표시하도록 시작했다.
+- 2026-02-14: 역할 분리를 명시했다. `tarsd`는 서버 오케스트레이션 유지, `tars-ui`는 주력 인터랙티브 UX, `tars`는 경량 운영/자동화 CLI로 운용한다.

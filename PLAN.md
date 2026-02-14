@@ -2,7 +2,7 @@
 
 > 최종 갱신: 2026-02-14
 > 모듈: `github.com/devlikebear/tarsncase`
-> 바이너리: `tarsd` (메인 데몬), `tars` (CLI 클라이언트), `cased` (감시 데몬)
+> 바이너리: `tarsd` (메인 데몬), `tars` (경량/자동화 CLI), `tars-ui` (React/TS Ink TUI 클라이언트), `cased` (감시 데몬)
 
 ## 1. 현재 구현 현황
 
@@ -38,6 +38,8 @@
 - [x] tars CLI 채팅 (`tars chat`) — 단일 메시지(`-m`) + REPL 모드(`/exit`, `/quit`, session_id 재사용)
 - [x] 디버그 로깅 (`--verbose`) — `tars↔tarsd` 및 `tarsd↔LLM` 상세 로그
 - [x] non-streaming provider fallback — `OnDelta` 미호출 시 최종 응답을 `delta`로 1회 전송
+- [x] `tars-ui` 초기 골격 추가 (`tars-ui/`) — React/TypeScript + Ink 기반 TUI, `/v1/chat` SSE 직결, Chat/Status 패널 분리
+- [x] `tars` 역할 재정의 시작 — 주력 인터랙티브 UX는 `tars-ui`, `tars`는 경량/스크립트/운영 보조 용도 중심
 
 ### 미구현 (Phase 1~6에서 개발)
 - [x] 컨텍스트 압축 고도화 (LLM 요약 품질 향상 + 로딩 경계 정교화, 토큰 예산 기반 최소 최근 2메시지 유지 안정화)
@@ -61,6 +63,7 @@
 | SSE 스트리밍 | 채팅 응답은 Phase 1부터 SSE 스트리밍으로 제공 |
 | 토큰 기반 동적 히스토리 | 세션 로드 시 context_window - reserve_tokens 범위 내에서 역순 로딩 |
 | 마크다운이 진실의 원천 | 3-Layer 메모리는 마크다운 파일 기반, SQLite는 나중에 검색 인덱스로 추가 |
+| UI/로직 분리 | `tarsd`는 실행 로직, `tars-ui`는 고급 대화형 UX, `tars`는 경량 CLI/자동화 진입점 담당 |
 
 ---
 
@@ -242,6 +245,23 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 - `tars chat --session {id}` → 특정 세션 연결
 - REPL 내에서 `/` 접두사 명령어 파싱 → 해당 API 호출
 - Ctrl+C 종료
+
+#### 1-I. `tars-ui` (React/TS Ink) 도입
+
+상태: 진행 중 (초기 골격 완료)
+
+**새 디렉터리**: `tars-ui/`
+
+| 파일 | 역할 |
+|------|------|
+| `src/index.tsx` | `/v1/chat` SSE 연결, Chat/Status(및 Debug) 패널 분리, 입력창 처리 |
+| `package.json` | Ink/React/TS 실행 스크립트 및 의존성 |
+| `tsconfig.json` | TypeScript 빌드 설정 |
+
+**역할 분리 원칙:**
+- `tarsd`: LLM/도구/세션/메모리 오케스트레이션
+- `tars-ui`: 고급 대화형 UX(레이아웃/스트리밍 렌더링/시각화)
+- `tars`: 경량 CLI(운영, 자동화, 파이프라인, fallback 인터페이스)
 
 #### 1-테스트
 

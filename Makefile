@@ -10,6 +10,8 @@ TEST_NAME ?=
 HEARTBEAT_INTERVAL ?= 30s
 MAX_HEARTBEATS ?= 0
 COVER_OUT ?= coverage.out
+TARS_UI_DIR ?= ./tars-ui
+TARS_UI_SERVER_URL ?= $(SERVER_URL)
 
 .DEFAULT_GOAL := help
 
@@ -18,7 +20,8 @@ COVER_OUT ?= coverage.out
 	build build-bins clean tidy fmt vet \
 	dev-tarsd dev-tarsd-once dev-tarsd-loop dev-cased dev-tars dev-chat dev-heartbeat \
 	api-status api-sessions api-compact api-chat \
-	run-tarsd run-cased run-tars
+	run-tarsd run-cased run-tars \
+	ui-install dev-tars-ui
 
 help:
 	@echo "Usage:"
@@ -52,6 +55,8 @@ help:
 	@echo "  make dev-tars      - run tars chat once (CHAT_MSG)"
 	@echo "  make dev-chat      - run tars chat with optional SESSION"
 	@echo "  make dev-heartbeat - call heartbeat run-once via tars client"
+	@echo "  make ui-install    - install tars-ui npm dependencies"
+	@echo "  make dev-tars-ui   - run React/TS Ink UI client"
 	@echo ""
 	@echo "API helpers:"
 	@echo "  make api-status    - GET /v1/status"
@@ -106,6 +111,12 @@ dev-chat:
 
 dev-heartbeat:
 	$(GO) run ./cmd/tars --verbose heartbeat run-once --server-url $(SERVER_URL) $(ARGS)
+
+ui-install:
+	cd $(TARS_UI_DIR) && npm install
+
+dev-tars-ui:
+	cd $(TARS_UI_DIR) && npm run dev -- --server-url $(TARS_UI_SERVER_URL) $(ARGS)
 
 api-status:
 	curl -sS $(SERVER_URL)/v1/status
