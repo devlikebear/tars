@@ -1,6 +1,6 @@
 # TARS 개발 계획서 (v3)
 
-> 최종 갱신: 2026-02-13
+> 최종 갱신: 2026-02-14
 > 모듈: `github.com/devlikebear/tarsncase`
 > 바이너리: `tarsd` (메인 데몬), `tars` (CLI 클라이언트), `cased` (감시 데몬)
 
@@ -40,8 +40,7 @@
 - [x] non-streaming provider fallback — `OnDelta` 미호출 시 최종 응답을 `delta`로 1회 전송
 
 ### 미구현 (Phase 1~6에서 개발)
-- [ ] 컨텍스트 압축 (compaction)
-- [ ] `tars chat` REPL 내 슬래시 명령 연결 (`/new`, `/sessions`, `/resume`, `/history`, `/export`, `/status`, `/compact`)
+- [ ] 고급 컨텍스트 압축 (pre-compaction memory flush + 자동 트리거 경계 로직)
 - [ ] 채팅 결과의 메모리 계층 자동 반영 (`MEMORY.md`, `memory/YYYY-MM-DD.md`)
 - [ ] 빌트인 도구 + Agent Loop (LLM → tool_calls → 실행 → 반복)
 - [ ] 허트비트 Agent Loop 통합 (도구 자율 실행)

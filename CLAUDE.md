@@ -68,3 +68,6 @@
 - 2026-02-14: `tarsd /v1/chat` SSE에 `status` 이벤트 스트림을 추가했다(`stream_open`, `before_llm`, `after_llm`, `before_tool_call`, `after_tool_call`, `loop_end`, `error`, `llm_stream`). `tars`는 이를 실시간으로 받아 `[status] ...` 형태로 stderr에 출력해 추론 진행 상태를 모니터링할 수 있게 했다.
 - 2026-02-14: REPL 입력 정규화를 추가했다. 한글 키보드 환경에서 나오는 `₩`/`￦`/`＼`/`\\`/`／` 시작 입력을 `/` 명령 접두사로 변환해 `/resume` 같은 슬래시 명령이 정상 동작하도록 개선했다.
 - 2026-02-14: REPL 입력 안정성을 위해 `tars chat`의 status 스트림 기본 정책을 분리했다. 단건 모드(`-m`)는 status 스트림 기본 활성화, REPL 모드는 기본 비활성화이며 `--status-stream` 플래그로 명시적으로 켤 수 있다.
+- 2026-02-14: `tars chat` REPL 입력을 Bubble Tea v2(`charm.land/bubbletea/v2`, `charm.land/bubbles/v2`) 기반으로 전환했다. 입력 모델에 `textinput.SetVirtualCursor(false)`를 적용해 한글 IME 조합 입력 시 커서/조합 표시 충돌을 줄였다.
+- 2026-02-14: `tars chat` REPL 슬래시 명령을 확장했다. `/export`(현재 세션 마크다운 내보내기), `/search {keyword}`(세션 검색) 명령을 추가해 세션 API 라우팅을 완성했다.
+- 2026-02-14: 컨텍스트 압축 기본 플로우를 구현했다. `internal/session`에 `CompactTranscript`/`RewriteMessages`를 추가해 오래된 메시지를 요약 `system` 메시지(`[COMPACTION SUMMARY]`)로 치환하고 최신 N개 메시지만 유지한다. `POST /v1/compact`는 `session_id`를 받아 실제 압축을 수행하며, `tars`의 `/compact`는 활성 세션 기준으로 해당 API를 호출한다.
