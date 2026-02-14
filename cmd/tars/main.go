@@ -336,6 +336,11 @@ type bubbleREPLReader struct {
 	stdout io.Writer
 }
 
+type lineREPLReader struct {
+	reader *bufio.Reader
+	stdout io.Writer
+}
+
 func (r *bubbleREPLReader) ReadLine(prompt string) (string, error) {
 	model := newBubbleInputModel(prompt)
 	program := tea.NewProgram(
@@ -359,18 +364,34 @@ func (r *bubbleREPLReader) ReadLine(prompt string) (string, error) {
 	return m.value, nil
 }
 
+func (r *lineREPLReader) ReadLine(prompt string) (string, error) {
+	_, _ = fmt.Fprint(r.stdout, prompt)
+	line, err := r.reader.ReadString('\n')
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			if strings.TrimSpace(line) == "" {
+				return "", io.EOF
+			}
+			return strings.TrimRight(line, "\r\n"), nil
+		}
+		return "", err
+	}
+	return strings.TrimRight(line, "\r\n"), nil
+}
+
 func newREPLReader(stdin io.Reader, stdout io.Writer) (replReader, error) {
 	inFile, ok := stdin.(*os.File)
-	if !ok || !term.IsTerminal(int(inFile.Fd())) {
-		return nil, fmt.Errorf("chat repl requires terminal stdin")
-	}
 	outFile, ok := stdout.(*os.File)
-	if !ok || !term.IsTerminal(int(outFile.Fd())) {
-		return nil, fmt.Errorf("chat repl requires terminal stdout")
+	if ok && term.IsTerminal(int(inFile.Fd())) && term.IsTerminal(int(outFile.Fd())) {
+		return &bubbleREPLReader{
+			stdin:  inFile,
+			stdout: outFile,
+		}, nil
 	}
-	return &bubbleREPLReader{
-		stdin:  inFile,
-		stdout: outFile,
+
+	return &lineREPLReader{
+		reader: bufio.NewReader(stdin),
+		stdout: stdout,
 	}, nil
 }
 
@@ -829,7 +850,7 @@ func runCompact(serverURL, sessionID string, stdout io.Writer, logger zerolog.Lo
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read compact response: %w", err)
 	}
