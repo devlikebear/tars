@@ -73,3 +73,5 @@
 - 2026-02-14: 컨텍스트 압축 기본 플로우를 구현했다. `internal/session`에 `CompactTranscript`/`RewriteMessages`를 추가해 오래된 메시지를 요약 `system` 메시지(`[COMPACTION SUMMARY]`)로 치환하고 최신 N개 메시지만 유지한다. `POST /v1/compact`는 `session_id`를 받아 실제 압축을 수행하며, `tars`의 `/compact`는 활성 세션 기준으로 해당 API를 호출한다.
 - 2026-02-14: 컨텍스트 압축을 고도화했다. `CompactTranscriptWithOptions` 훅을 추가해 transcript rewrite 직전에 pre-compaction memory flush를 수행하도록 확장했다. `tarsd`는 compaction 시 `MEMORY.md`와 daily log에 flush 기록을 남기며, `POST /v1/chat` 진입 시 transcript 토큰 추정치가 임계값을 넘으면 자동 compaction을 선행한다.
 - 2026-02-14: 채팅 메모리 반영을 자동화했다. `tarsd /v1/chat` 완료 시 모든 턴을 `memory/YYYY-MM-DD.md`에 요약 로그로 기록하고, 사용자 발화가 `remember`/`기억해`/`메모해` 의도이면 `MEMORY.md`에 장기 메모 노트를 승격 저장한다.
+- 2026-02-14: compaction 요약 생성을 LLM 기반으로 전환했다. `session.CompactOptions`에 `SummaryBuilder`를 추가했고, `tarsd`는 요약 시 LLM 호출을 우선 사용하며 실패 시 규칙 기반 요약으로 폴백한다.
+- 2026-02-14: compaction 유지 경계를 메시지 개수에서 토큰 keep-budget 기반으로 확장했다. `keep_recent_tokens`를 `POST /v1/compact`에 지원하고, 자동 compaction은 토큰 예산 기반 tail 유지 로직을 사용한다.
