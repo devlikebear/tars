@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +15,9 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tarsncase/internal/session"
 )
 
 func TestRun_DefaultConfig(t *testing.T) {
@@ -226,5 +229,118 @@ func TestHeartbeatAPI_RunOnce(t *testing.T) {
 	if body.Response != "next action from api" {
 		t.Fatalf("unexpected response: %q", body.Response)
 	}
+}
+
+func TestChatAPI(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	mockClient := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{
+				Role:    "assistant",
+				Content: "Hello from TARS!",
+			},
+			Usage: llm.Usage{
+				InputTokens:  10,
+				OutputTokens: 5,
+			},
+			StopReason: "end_turn",
+		},
+	}
+
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+
+	reqBody := `{"message": "hi"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("expected text/event-stream, got %q", ct)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"type":"delta"`) {
+		t.Fatalf("expected delta event in SSE, got %q", body)
+	}
+	if !strings.Contains(body, `"type":"done"`) {
+		t.Fatalf("expected done event in SSE, got %q", body)
+	}
+	if !strings.Contains(body, "Hello from TARS!") {
+		t.Fatalf("expected response text in SSE, got %q", body)
+	}
+}
+
+func TestChatAPI_WithSessionID(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	sess, err := store.Create("test session")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	mockClient := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{Role: "assistant", Content: "reply"},
+		},
+	}
+
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+
+	reqBody := fmt.Sprintf(`{"session_id": "%s", "message": "hello"}`, sess.ID)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	msgs, err := session.ReadMessages(store.TranscriptPath(sess.ID))
+	if err != nil {
+		t.Fatalf("read transcript: %v", err)
+	}
+	if len(msgs) < 2 {
+		t.Fatalf("expected at least 2 messages in transcript, got %d", len(msgs))
+	}
+	if msgs[0].Role != "user" || msgs[0].Content != "hello" {
+		t.Fatalf("unexpected first message: %+v", msgs[0])
+	}
+	if msgs[1].Role != "assistant" || msgs[1].Content != "reply" {
+		t.Fatalf("unexpected second message: %+v", msgs[1])
+	}
+}
+
+type mockLLMClient struct {
+	response llm.ChatResponse
+}
+
+func (m *mockLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
+	return m.response.Message.Content, nil
+}
+
+func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
+	if opts.OnDelta != nil {
+		opts.OnDelta(m.response.Message.Content)
+	}
+	return m.response, nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -21,6 +22,8 @@ import (
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tarsncase/internal/prompt"
+	"github.com/devlikebear/tarsncase/internal/session"
 )
 
 func main() {
@@ -97,6 +100,7 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 			}
 
 			var ask heartbeat.AskFunc
+			var llmClient llm.Client
 			needLLM := opts.RunOnce || opts.RunLoop || opts.ServeAPI
 			if needLLM {
 				client, err := llm.NewProvider(llm.ProviderOptions{
@@ -111,14 +115,22 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 					logger.Error().Err(err).Msg("failed to initialize llm provider")
 					return &cli.ExitError{Code: 1, Err: err}
 				}
+				llmClient = client
 				ask = client.Ask
 			}
 
 			if opts.ServeAPI {
-				handler := newHeartbeatAPIHandler(cfg.WorkspaceDir, nowFn, ask, logger)
+				store := session.NewStore(cfg.WorkspaceDir)
+
+				mux := http.NewServeMux()
+				heartbeatHandler := newHeartbeatAPIHandler(cfg.WorkspaceDir, nowFn, ask, logger)
+				mux.Handle("/v1/heartbeat/", heartbeatHandler)
+				chatHandler := newChatAPIHandler(cfg.WorkspaceDir, store, llmClient, logger)
+				mux.Handle("/v1/chat", chatHandler)
+
 				server := &http.Server{
 					Addr:    opts.APIAddr,
-					Handler: handler,
+					Handler: mux,
 				}
 
 				ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -217,6 +229,121 @@ func newHeartbeatAPIHandler(workspaceDir string, nowFn func() time.Time, ask hea
 		writeJSON(w, http.StatusOK, map[string]string{"response": response})
 	})
 
+	return mux
+}
+
+func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Client, logger zerolog.Logger) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			SessionID string `json:"session_id"`
+			Message   string `json:"message"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if strings.TrimSpace(req.Message) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "message is required"})
+			return
+		}
+
+		// Resolve or create session
+		sessionID := req.SessionID
+		if sessionID == "" {
+			sess, err := store.Create("chat")
+			if err != nil {
+				logger.Error().Err(err).Msg("create session failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create session failed"})
+				return
+			}
+			sessionID = sess.ID
+		} else {
+			if _, err := store.Get(sessionID); err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+				return
+			}
+		}
+
+		transcriptPath := store.TranscriptPath(sessionID)
+
+		// Build system prompt
+		systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
+
+		// Load history
+		history, err := session.LoadHistory(transcriptPath, 120000)
+		if err != nil {
+			logger.Error().Err(err).Msg("load history failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load history failed"})
+			return
+		}
+
+		// Append user message to transcript
+		now := time.Now().UTC()
+		userMsg := session.Message{Role: "user", Content: req.Message, Timestamp: now}
+		if err := session.AppendMessage(transcriptPath, userMsg); err != nil {
+			logger.Error().Err(err).Msg("append user message failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "save message failed"})
+			return
+		}
+
+		// Build messages array for LLM
+		var llmMessages []llm.ChatMessage
+		llmMessages = append(llmMessages, llm.ChatMessage{Role: "system", Content: systemPrompt})
+		for _, m := range history {
+			llmMessages = append(llmMessages, llm.ChatMessage{Role: m.Role, Content: m.Content})
+		}
+		llmMessages = append(llmMessages, llm.ChatMessage{Role: "user", Content: req.Message})
+
+		// Set SSE headers
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, _ := w.(http.Flusher)
+
+		// Helper to send SSE event
+		sendSSE := func(data any) {
+			jsonData, _ := json.Marshal(data)
+			fmt.Fprintf(w, "data: %s\n\n", jsonData)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+
+		// Call LLM with streaming
+		chatResp, err := client.Chat(r.Context(), llmMessages, llm.ChatOptions{
+			OnDelta: func(text string) {
+				sendSSE(map[string]string{"type": "delta", "text": text})
+			},
+		})
+		if err != nil {
+			sendSSE(map[string]string{"type": "error", "error": err.Error()})
+			return
+		}
+
+		// Append assistant message to transcript
+		assistantMsg := session.Message{Role: "assistant", Content: chatResp.Message.Content, Timestamp: time.Now().UTC()}
+		if err := session.AppendMessage(transcriptPath, assistantMsg); err != nil {
+			logger.Error().Err(err).Msg("append assistant message failed")
+		}
+
+		// Send done event
+		sendSSE(map[string]any{
+			"type":       "done",
+			"session_id": sessionID,
+			"usage": map[string]int{
+				"input_tokens":  chatResp.Usage.InputTokens,
+				"output_tokens": chatResp.Usage.OutputTokens,
+			},
+		})
+	})
 	return mux
 }
 
