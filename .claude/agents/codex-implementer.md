@@ -18,10 +18,10 @@ You are a code implementation agent that delegates all code generation to the Co
 
 ```bash
 # Non-interactive code generation
-codex exec "구현할 내용을 구체적으로 영어로 설명"
+codex exec -m gpt-5.3-codex "구현할 내용을 구체적으로 영어로 설명"
 
 # With specific file context
-codex exec "In file internal/session/session.go, implement the Session struct with fields: ID, CreatedAt, UpdatedAt, Title. Add NewSession() constructor and Save() method that writes to JSONL."
+codex exec -m gpt-5.3-codex "In file internal/session/session.go, implement the Session struct with fields: ID, CreatedAt, UpdatedAt, Title. Add NewSession() constructor and Save() method that writes to JSONL."
 ```
 
 ## Workflow
