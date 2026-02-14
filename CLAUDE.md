@@ -66,3 +66,4 @@
 - 2026-02-14: `tars chat` REPL에 슬래시 명령을 추가했다. `/sessions`, `/new [title]`, `/resume {id}`, `/history`, `/status`, `/compact`, `/help`를 지원한다.
 - 2026-02-14: Agent Loop 훅 핸들러를 확장했다. `internal/agent`에 `CounterHook`, `AuditHook`를 추가하고 `tarsd /v1/chat` 실행 시 이벤트 카운트와 audit trail 길이를 요약 로그로 출력한다.
 - 2026-02-14: `tarsd /v1/chat` SSE에 `status` 이벤트 스트림을 추가했다(`stream_open`, `before_llm`, `after_llm`, `before_tool_call`, `after_tool_call`, `loop_end`, `error`, `llm_stream`). `tars`는 이를 실시간으로 받아 `[status] ...` 형태로 stderr에 출력해 추론 진행 상태를 모니터링할 수 있게 했다.
+- 2026-02-14: REPL 입력 정규화를 추가했다. 한글 키보드 환경에서 나오는 `₩`/`￦`/`＼`/`\\`/`／` 시작 입력을 `/` 명령 접두사로 변환해 `/resume` 같은 슬래시 명령이 정상 동작하도록 개선했다.

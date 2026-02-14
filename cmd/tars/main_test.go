@@ -345,3 +345,54 @@ func TestRun_ChatREPL_ResumeSelectByNumber(t *testing.T) {
 		t.Fatalf("expected chat output, got %q", out)
 	}
 }
+
+func TestRun_ChatREPL_ResumeWithWonPrefix(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	stdin := strings.NewReader("₩resume sess-kor\nhello\n/quit\n")
+
+	chatCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions/sess-kor":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"sess-kor","title":"korean session"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat":
+			chatCalls++
+			var req struct {
+				SessionID string `json:"session_id"`
+				Message   string `json:"message"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode chat request: %v", err)
+			}
+			if req.SessionID != "sess-kor" {
+				t.Fatalf("expected resumed session_id sess-kor, got %q", req.SessionID)
+			}
+			if req.Message != "hello" {
+				t.Fatalf("expected chat message hello, got %q", req.Message)
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"type\":\"delta\",\"text\":\"ok\"}\n\n"))
+			_, _ = w.Write([]byte("data: {\"type\":\"done\",\"session_id\":\"sess-kor\"}\n\n"))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	code := runWithIO([]string{"chat", "--server-url", server.URL}, stdin, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
+	}
+	if chatCalls != 1 {
+		t.Fatalf("expected exactly one chat request, got %d", chatCalls)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "resumed session: sess-kor") {
+		t.Fatalf("expected resume output, got %q", out)
+	}
+	if !strings.Contains(out, "ok") {
+		t.Fatalf("expected chat output, got %q", out)
+	}
+}

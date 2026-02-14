@@ -278,7 +278,7 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 			return nil
 		}
 
-		line := strings.TrimSpace(scanner.Text())
+		line := normalizeREPLInput(scanner.Text())
 		if line == "" {
 			continue
 		}
@@ -306,6 +306,22 @@ func runChatREPL(serverURL, sessionID string, stdin io.Reader, stdout io.Writer,
 		if strings.TrimSpace(nextSessionID) != "" {
 			currentSessionID = strings.TrimSpace(nextSessionID)
 		}
+	}
+}
+
+func normalizeREPLInput(raw string) string {
+	line := strings.TrimSpace(raw)
+	if line == "" {
+		return ""
+	}
+
+	switch []rune(line)[0] {
+	case '\\', '＼', '₩', '￦', '／':
+		runes := []rune(line)
+		runes[0] = '/'
+		return string(runes)
+	default:
+		return line
 	}
 }
 
