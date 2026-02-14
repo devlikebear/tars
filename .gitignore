@@ -31,3 +31,4 @@ workspace/
 *.tgz
 *.zip
 *.tar.gz
+*.skill
