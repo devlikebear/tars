@@ -130,6 +130,10 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 				sessionHandler := newSessionAPIHandler(store, logger)
 				mux.Handle("/v1/sessions", sessionHandler)
 				mux.Handle("/v1/sessions/", sessionHandler)
+				statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, store, logger)
+				mux.Handle("/v1/status", statusHandler)
+				compactHandler := newCompactAPIHandler(logger)
+				mux.Handle("/v1/compact", compactHandler)
 
 				server := &http.Server{
 					Addr:    opts.APIAddr,
@@ -508,6 +512,40 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 	})
 
 	return mux
+}
+
+func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerolog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		sessions, err := store.List()
+		if err != nil {
+			logger.Error().Err(err).Msg("list sessions failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"workspace_dir": workspaceDir,
+			"session_count": len(sessions),
+		})
+	})
+}
+
+// Placeholder - actual implementation in Phase 1-G
+func newCompactAPIHandler(logger zerolog.Logger) http.Handler {
+	_ = logger
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"message": "compaction not implemented yet"})
+	})
 }
 
 func writeJSON(w http.ResponseWriter, code int, body any) {

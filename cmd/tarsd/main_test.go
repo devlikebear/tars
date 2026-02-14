@@ -574,3 +574,71 @@ func TestSessionAPI_Search(t *testing.T) {
 		t.Fatalf("unexpected search results titles: %+v", foundTitles)
 	}
 }
+
+func TestStatusAPI(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	for _, title := range []string{"status one", "status two"} {
+		if _, err := store.Create(title); err != nil {
+			t.Fatalf("create session %q: %v", title, err)
+		}
+	}
+
+	handler := newStatusAPIHandler(root, store, logger)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		WorkspaceDir string `json:"workspace_dir"`
+		SessionCount int    `json:"session_count"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode status response: %v", err)
+	}
+	if body.WorkspaceDir != root {
+		t.Fatalf("expected workspace_dir %q, got %q", root, body.WorkspaceDir)
+	}
+	if body.SessionCount != 2 {
+		t.Fatalf("expected session_count 2, got %d", body.SessionCount)
+	}
+}
+
+func TestCompactAPI(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	handler := newCompactAPIHandler(logger)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/compact", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode compact response: %v", err)
+	}
+	if strings.TrimSpace(body.Message) == "" {
+		t.Fatalf("expected non-empty message, got %q", body.Message)
+	}
+}
