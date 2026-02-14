@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/rs/zerolog"
 )
 
 func TestRun_DefaultConfig(t *testing.T) {
@@ -344,3 +344,233 @@ func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 	return m.response, nil
 }
 
+func TestSessionAPIs(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	handler := newSessionAPIHandler(store, logger)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", listRec.Code, listRec.Body.String())
+	}
+
+	var sessions []session.Session
+	if err := json.Unmarshal(listRec.Body.Bytes(), &sessions); err != nil {
+		t.Fatalf("decode sessions list: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected empty sessions list, got %d", len(sessions))
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"title":"test session"}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated && createRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 or 201, got %d body=%q", createRec.Code, createRec.Body.String())
+	}
+
+	var created session.Session
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created session: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatalf("expected non-empty session id")
+	}
+	if created.Title != "test session" {
+		t.Fatalf("expected title %q, got %q", "test session", created.Title)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+created.ID, nil)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", getRec.Code, getRec.Body.String())
+	}
+
+	var fetched session.Session
+	if err := json.Unmarshal(getRec.Body.Bytes(), &fetched); err != nil {
+		t.Fatalf("decode fetched session: %v", err)
+	}
+	if fetched.ID != created.ID {
+		t.Fatalf("expected id %q, got %q", created.ID, fetched.ID)
+	}
+	if fetched.Title != "test session" {
+		t.Fatalf("expected title %q, got %q", "test session", fetched.Title)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/sessions/"+created.ID, nil)
+	deleteRec := httptest.NewRecorder()
+	handler.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusNoContent && deleteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 or 204, got %d body=%q", deleteRec.Code, deleteRec.Body.String())
+	}
+
+	listAfterDeleteReq := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
+	listAfterDeleteRec := httptest.NewRecorder()
+	handler.ServeHTTP(listAfterDeleteRec, listAfterDeleteReq)
+	if listAfterDeleteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", listAfterDeleteRec.Code, listAfterDeleteRec.Body.String())
+	}
+
+	sessions = nil
+	if err := json.Unmarshal(listAfterDeleteRec.Body.Bytes(), &sessions); err != nil {
+		t.Fatalf("decode sessions list after delete: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected empty sessions list after delete, got %d", len(sessions))
+	}
+}
+
+func TestSessionAPI_History(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	handler := newSessionAPIHandler(store, logger)
+
+	sess, err := store.Create("history session")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	transcriptPath := store.TranscriptPath(sess.ID)
+	msg1 := session.Message{Role: "user", Content: "hello", Timestamp: time.Now().UTC()}
+	msg2 := session.Message{Role: "assistant", Content: "hi there", Timestamp: time.Now().UTC().Add(time.Second)}
+	if err := session.AppendMessage(transcriptPath, msg1); err != nil {
+		t.Fatalf("append first message: %v", err)
+	}
+	if err := session.AppendMessage(transcriptPath, msg2); err != nil {
+		t.Fatalf("append second message: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+sess.ID+"/history", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var history []session.Message
+	if err := json.Unmarshal(rec.Body.Bytes(), &history); err != nil {
+		t.Fatalf("decode history: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("expected 2 history messages, got %d", len(history))
+	}
+	if history[0].Role != "user" || history[0].Content != "hello" {
+		t.Fatalf("unexpected first history message: %+v", history[0])
+	}
+	if history[1].Role != "assistant" || history[1].Content != "hi there" {
+		t.Fatalf("unexpected second history message: %+v", history[1])
+	}
+}
+
+func TestSessionAPI_Export(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	handler := newSessionAPIHandler(store, logger)
+
+	sess, err := store.Create("export session")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	start := time.Date(2026, 2, 14, 9, 0, 0, 0, time.UTC)
+	transcriptPath := store.TranscriptPath(sess.ID)
+	if err := session.AppendMessage(transcriptPath, session.Message{
+		Role:      "user",
+		Content:   "What is 2+2?",
+		Timestamp: start,
+	}); err != nil {
+		t.Fatalf("append user message: %v", err)
+	}
+	if err := session.AppendMessage(transcriptPath, session.Message{
+		Role:      "assistant",
+		Content:   "2+2 is 4.",
+		Timestamp: start.Add(2 * time.Minute),
+	}); err != nil {
+		t.Fatalf("append assistant message: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+sess.ID+"/export", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	bodyLower := strings.ToLower(body)
+	if !strings.Contains(bodyLower, "user") {
+		t.Fatalf("expected exported markdown to contain user label, got %q", body)
+	}
+	if !strings.Contains(bodyLower, "assistant") {
+		t.Fatalf("expected exported markdown to contain assistant label, got %q", body)
+	}
+	if !strings.Contains(body, "What is 2+2?") {
+		t.Fatalf("expected exported markdown to contain user content, got %q", body)
+	}
+	if !strings.Contains(body, "2+2 is 4.") {
+		t.Fatalf("expected exported markdown to contain assistant content, got %q", body)
+	}
+}
+
+func TestSessionAPI_Search(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	handler := newSessionAPIHandler(store, logger)
+
+	titles := []string{"apple pie", "banana split", "apple tart"}
+	for _, title := range titles {
+		if _, err := store.Create(title); err != nil {
+			t.Fatalf("create session %q: %v", title, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/search?q=apple", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var results []session.Session
+	if err := json.Unmarshal(rec.Body.Bytes(), &results); err != nil {
+		t.Fatalf("decode search results: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(results))
+	}
+
+	foundTitles := map[string]bool{}
+	for _, s := range results {
+		foundTitles[s.Title] = true
+	}
+	if !foundTitles["apple pie"] || !foundTitles["apple tart"] {
+		t.Fatalf("unexpected search results titles: %+v", foundTitles)
+	}
+}
