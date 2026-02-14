@@ -468,6 +468,9 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 		if err := session.AppendMessage(transcriptPath, assistantMsg); err != nil {
 			logger.Error().Err(err).Msg("append assistant message failed")
 		}
+		if err := writeChatMemory(workspaceDir, sessionID, req.Message, chatResp.Message.Content, assistantMsg.Timestamp); err != nil {
+			logger.Error().Err(err).Str("session_id", sessionID).Msg("write chat memory failed")
+		}
 
 		// Send done event
 		sendSSE(map[string]any{
@@ -775,6 +778,42 @@ func estimateTranscriptTokens(messages []session.Message) int {
 		total += cost
 	}
 	return total
+}
+
+func writeChatMemory(workspaceDir, sessionID, userMessage, assistantMessage string, now time.Time) error {
+	dailyEntry := fmt.Sprintf(
+		"chat session=%s user=%q assistant=%q",
+		sessionID,
+		trimForMemory(userMessage, 120),
+		trimForMemory(assistantMessage, 160),
+	)
+	if err := memory.AppendDailyLog(workspaceDir, now, dailyEntry); err != nil {
+		return err
+	}
+
+	if shouldPromoteToMemory(userMessage) {
+		note := fmt.Sprintf("session %s user preference/fact: %s", sessionID, strings.TrimSpace(userMessage))
+		if err := memory.AppendMemoryNote(workspaceDir, now, note); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func shouldPromoteToMemory(userMessage string) bool {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	return strings.HasPrefix(lower, "remember ") ||
+		strings.HasPrefix(lower, "remember:") ||
+		strings.HasPrefix(lower, "기억해") ||
+		strings.HasPrefix(lower, "메모해")
+}
+
+func trimForMemory(s string, max int) string {
+	v := strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
+	if max <= 0 || len(v) <= max {
+		return v
+	}
+	return v[:max] + "..."
 }
 
 func writeJSON(w http.ResponseWriter, code int, body any) {

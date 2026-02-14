@@ -436,6 +436,53 @@ func TestChatAPI_NonStreamingProviderStillEmitsDelta(t *testing.T) {
 	}
 }
 
+func TestChatAPI_WritesDailyAndLongTermMemory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	mockClient := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{
+				Role:    "assistant",
+				Content: "알겠습니다. 기억하겠습니다.",
+			},
+		},
+	}
+
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+	reqBody := `{"message":"기억해: 나는 블랙커피를 좋아해"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	memoryData, err := os.ReadFile(filepath.Join(root, "MEMORY.md"))
+	if err != nil {
+		t.Fatalf("read memory file: %v", err)
+	}
+	if !strings.Contains(string(memoryData), "기억해: 나는 블랙커피를 좋아해") {
+		t.Fatalf("expected promoted memory note, got %q", string(memoryData))
+	}
+
+	dailyPath := filepath.Join(root, "memory", time.Now().Format("2006-01-02")+".md")
+	dailyData, err := os.ReadFile(dailyPath)
+	if err != nil {
+		t.Fatalf("read daily log: %v", err)
+	}
+	if !strings.Contains(string(dailyData), "chat session=") {
+		t.Fatalf("expected chat daily log entry, got %q", string(dailyData))
+	}
+}
+
 type mockLLMClient struct {
 	response     llm.ChatResponse
 	disableDelta bool
