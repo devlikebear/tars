@@ -3,7 +3,10 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"sync"
+
+	"github.com/devlikebear/tarsncase/internal/llm"
 )
 
 type ContentBlock struct {
@@ -72,4 +75,33 @@ func (r *Registry) All() []Tool {
 		list = append(list, t)
 	}
 	return list
+}
+
+func (r *Registry) Schemas() []llm.ToolSchema {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if len(r.tools) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	schemas := make([]llm.ToolSchema, 0, len(names))
+	for _, name := range names {
+		t := r.tools[name]
+		schemas = append(schemas, llm.ToolSchema{
+			Type: "function",
+			Function: llm.ToolFunctionSchema{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
+			},
+		})
+	}
+	return schemas
 }

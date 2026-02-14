@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -60,11 +61,19 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 		Str("url", c.baseURL+"/chat/completions").
 		Int("message_count", len(messages)).
 		Bool("stream", streaming).
+		Int("tool_count", len(opts.Tools)).
+		Str("tool_choice", strings.TrimSpace(opts.ToolChoice)).
 		Msg("llm request start")
 
 	reqBody := map[string]any{
 		"model":    c.model,
-		"messages": messages,
+		"messages": toOpenAIWireMessages(messages),
+	}
+	if len(opts.Tools) > 0 {
+		reqBody["tools"] = opts.Tools
+		if choice := strings.TrimSpace(opts.ToolChoice); choice != "" {
+			reqBody["tool_choice"] = choice
+		}
 	}
 	if opts.OnDelta != nil {
 		reqBody["stream"] = true
@@ -87,7 +96,15 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	httpClient := c.httpClient
+	if streaming {
+		// Do not apply a hard client timeout to streaming responses.
+		httpClient = &http.Client{
+			Transport: c.httpClient.Transport,
+		}
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return ChatResponse{}, fmt.Errorf("request %s: %w", c.label, err)
 	}
@@ -104,8 +121,9 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 
 	if opts.OnDelta != nil {
 		var (
-			builder    strings.Builder
-			stopReason string
+			builder          strings.Builder
+			stopReason       string
+			toolCallsByIndex = map[int]ToolCall{}
 		)
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 1024), 1024*1024)
@@ -126,7 +144,15 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 			var parsed struct {
 				Choices []struct {
 					Delta struct {
-						Content string `json:"content"`
+						Content   string `json:"content"`
+						ToolCalls []struct {
+							Index    int    `json:"index"`
+							ID       string `json:"id"`
+							Function struct {
+								Name      string `json:"name"`
+								Arguments string `json:"arguments"`
+							} `json:"function"`
+						} `json:"tool_calls"`
 					} `json:"delta"`
 					FinishReason string `json:"finish_reason"`
 				} `json:"choices"`
@@ -138,29 +164,46 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 				continue
 			}
 
-			content := parsed.Choices[0].Delta.Content
+			choice := parsed.Choices[0]
+			content := choice.Delta.Content
 			builder.WriteString(content)
-			if parsed.Choices[0].FinishReason != "" {
-				stopReason = parsed.Choices[0].FinishReason
+			if choice.FinishReason != "" {
+				stopReason = choice.FinishReason
+			}
+			for _, tc := range choice.Delta.ToolCalls {
+				prev := toolCallsByIndex[tc.Index]
+				if tc.ID != "" {
+					prev.ID = tc.ID
+				}
+				if tc.Function.Name != "" {
+					prev.Name = tc.Function.Name
+				}
+				if tc.Function.Arguments != "" {
+					prev.Arguments += tc.Function.Arguments
+				}
+				toolCallsByIndex[tc.Index] = prev
 			}
 			if content != "" {
 				zlog.Debug().Str("provider", c.label).Int("delta_len", len(content)).Msg("llm stream delta")
+				opts.OnDelta(content)
 			}
-			opts.OnDelta(content)
 		}
 		if err := scanner.Err(); err != nil {
 			return ChatResponse{}, fmt.Errorf("read stream response: %w", err)
 		}
+		toolCalls := orderedToolCalls(toolCallsByIndex)
 		zlog.Debug().
 			Str("provider", c.label).
 			Int("assistant_len", len(builder.String())).
+			Int("tool_call_count", len(toolCalls)).
 			Str("stop_reason", stopReason).
 			Msg("llm stream complete")
 
 		return ChatResponse{
 			Message: ChatMessage{
-				Role:    "assistant",
-				Content: builder.String(),
+				Role:      "assistant",
+				Content:   builder.String(),
+				ToolCalls: toolCalls,
 			},
 			StopReason: stopReason,
 		}, nil
@@ -174,7 +217,14 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 	var parsed struct {
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
 			} `json:"message"`
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
@@ -192,6 +242,7 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 	zlog.Debug().
 		Str("provider", c.label).
 		Int("assistant_len", len(parsed.Choices[0].Message.Content)).
+		Int("tool_call_count", len(parsed.Choices[0].Message.ToolCalls)).
 		Int("input_tokens", parsed.Usage.PromptTokens).
 		Int("output_tokens", parsed.Usage.CompletionTokens).
 		Str("stop_reason", parsed.Choices[0].FinishReason).
@@ -199,8 +250,9 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 
 	return ChatResponse{
 		Message: ChatMessage{
-			Role:    "assistant",
-			Content: parsed.Choices[0].Message.Content,
+			Role:      "assistant",
+			Content:   parsed.Choices[0].Message.Content,
+			ToolCalls: nonStreamingToolCalls(parsed.Choices[0].Message.ToolCalls),
 		},
 		Usage: Usage{
 			InputTokens:  parsed.Usage.PromptTokens,
@@ -216,4 +268,104 @@ func (c *OpenAICompatibleClient) Ask(ctx context.Context, prompt string) (string
 		return "", err
 	}
 	return resp.Message.Content, nil
+}
+
+func orderedToolCalls(m map[int]ToolCall) []ToolCall {
+	if len(m) == 0 {
+		return nil
+	}
+	indices := make([]int, 0, len(m))
+	for idx := range m {
+		indices = append(indices, idx)
+	}
+	sort.Ints(indices)
+
+	out := make([]ToolCall, 0, len(indices))
+	for _, idx := range indices {
+		call := m[idx]
+		if strings.TrimSpace(call.Name) == "" {
+			continue
+		}
+		out = append(out, call)
+	}
+	return out
+}
+
+func nonStreamingToolCalls(src []struct {
+	ID       string `json:"id"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}) []ToolCall {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]ToolCall, 0, len(src))
+	for _, tc := range src {
+		if strings.TrimSpace(tc.Function.Name) == "" {
+			continue
+		}
+		out = append(out, ToolCall{
+			ID:        tc.ID,
+			Name:      tc.Function.Name,
+			Arguments: tc.Function.Arguments,
+		})
+	}
+	return out
+}
+
+type openAIWireToolCall struct {
+	ID       string `json:"id,omitempty"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+type openAIWireMessage struct {
+	Role       string               `json:"role"`
+	Content    string               `json:"content,omitempty"`
+	ToolCalls  []openAIWireToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string               `json:"tool_call_id,omitempty"`
+}
+
+func toOpenAIWireMessages(messages []ChatMessage) []openAIWireMessage {
+	if len(messages) == 0 {
+		return nil
+	}
+	out := make([]openAIWireMessage, 0, len(messages))
+	for _, m := range messages {
+		wire := openAIWireMessage{
+			Role:       m.Role,
+			Content:    m.Content,
+			ToolCallID: m.ToolCallID,
+		}
+		if len(m.ToolCalls) > 0 {
+			wire.ToolCalls = make([]openAIWireToolCall, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				wc := openAIWireToolCall{
+					ID:   tc.ID,
+					Type: "function",
+				}
+				wc.Function.Name = tc.Name
+				wc.Function.Arguments = sanitizeToolArgumentsJSON(tc.Arguments)
+				wire.ToolCalls = append(wire.ToolCalls, wc)
+			}
+		}
+		out = append(out, wire)
+	}
+	return out
+}
+
+func sanitizeToolArgumentsJSON(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return "{}"
+	}
+	if json.Valid([]byte(v)) {
+		return v
+	}
+	return "{}"
 }

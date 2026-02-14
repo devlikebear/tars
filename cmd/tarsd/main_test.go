@@ -282,6 +282,102 @@ func TestChatAPI(t *testing.T) {
 	}
 }
 
+func TestChatAPI_ToolCallMemorySearch(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("I prefer black coffee.\n"), 0o644); err != nil {
+		t.Fatalf("write memory file: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_1",
+							Name:      "memory_search",
+							Arguments: `{"query":"coffee","limit":3}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "Memory says: you prefer black coffee.",
+				},
+			},
+		},
+	}
+
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+
+	reqBody := `{"message":"what coffee do i prefer?"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"phase":"before_tool_call"`) || !strings.Contains(body, `"tool_name":"memory_search"`) {
+		t.Fatalf("expected before_tool_call event for memory_search, got %q", body)
+	}
+	if !strings.Contains(body, `"phase":"after_tool_call"`) {
+		t.Fatalf("expected after_tool_call event, got %q", body)
+	}
+	if !strings.Contains(body, "Memory says: you prefer black coffee.") {
+		t.Fatalf("expected final assistant text in SSE, got %q", body)
+	}
+	if mockClient.callCount != 2 {
+		t.Fatalf("expected 2 llm calls (tool + final), got %d", mockClient.callCount)
+	}
+	if len(mockClient.seenToolCounts) == 0 || mockClient.seenToolCounts[0] == 0 {
+		t.Fatalf("expected tool schemas to be forwarded, got %+v", mockClient.seenToolCounts)
+	}
+}
+
+func TestChatAPI_MemoryQueryForcesToolChoiceRequired(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	mockClient := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{
+				Role:    "assistant",
+				Content: "ok",
+			},
+		},
+	}
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"what do you remember about me?"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if len(mockClient.seenToolChoices) == 0 || mockClient.seenToolChoices[0] != "required" {
+		t.Fatalf("expected tool_choice required, got %+v", mockClient.seenToolChoices)
+	}
+}
+
 func TestChatAPI_WithSessionID(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -484,19 +580,39 @@ func TestChatAPI_WritesDailyAndLongTermMemory(t *testing.T) {
 }
 
 type mockLLMClient struct {
-	response     llm.ChatResponse
-	disableDelta bool
+	response        llm.ChatResponse
+	responses       []llm.ChatResponse
+	disableDelta    bool
+	callCount       int
+	seenToolCounts  []int
+	seenToolChoices []string
 }
 
 func (m *mockLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
+	if len(m.responses) > 0 {
+		return m.responses[0].Message.Content, nil
+	}
 	return m.response.Message.Content, nil
 }
 
 func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
-	if opts.OnDelta != nil && !m.disableDelta {
-		opts.OnDelta(m.response.Message.Content)
+	m.callCount++
+	m.seenToolCounts = append(m.seenToolCounts, len(opts.Tools))
+	m.seenToolChoices = append(m.seenToolChoices, strings.TrimSpace(opts.ToolChoice))
+
+	resp := m.response
+	if len(m.responses) > 0 {
+		idx := m.callCount - 1
+		if idx >= len(m.responses) {
+			idx = len(m.responses) - 1
+		}
+		resp = m.responses[idx]
 	}
-	return m.response, nil
+
+	if opts.OnDelta != nil && !m.disableDelta && resp.Message.Content != "" {
+		opts.OnDelta(resp.Message.Content)
+	}
+	return resp, nil
 }
 
 func TestSessionAPIs(t *testing.T) {
@@ -948,5 +1064,17 @@ func TestCompactAPI_WithTokenBudget(t *testing.T) {
 	}
 	if len(msgs) != 3 {
 		t.Fatalf("expected summary + 2 recent messages, got %d", len(msgs))
+	}
+}
+
+func TestShouldForceMemoryToolCall(t *testing.T) {
+	if !shouldForceMemoryToolCall("내 취향 기억나?") {
+		t.Fatalf("expected korean memory query to be true")
+	}
+	if !shouldForceMemoryToolCall("what do you remember about me?") {
+		t.Fatalf("expected english memory query to be true")
+	}
+	if shouldForceMemoryToolCall("hello there") {
+		t.Fatalf("expected non-memory query to be false")
 	}
 }

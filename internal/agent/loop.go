@@ -12,14 +12,14 @@ import (
 type EventType string
 
 const (
-	EventLoopStart     EventType = "loop_start"
-	EventBeforeLLM     EventType = "before_llm"
-	EventAfterLLM      EventType = "after_llm"
-	EventBeforeTool    EventType = "before_tool_call"
-	EventAfterTool     EventType = "after_tool_call"
-	EventLoopEnd       EventType = "loop_end"
-	EventLoopError     EventType = "error"
-	DefaultMaxLoopIters          = 8
+	EventLoopStart      EventType = "loop_start"
+	EventBeforeLLM      EventType = "before_llm"
+	EventAfterLLM       EventType = "after_llm"
+	EventBeforeTool     EventType = "before_tool_call"
+	EventAfterTool      EventType = "after_tool_call"
+	EventLoopEnd        EventType = "loop_end"
+	EventLoopError      EventType = "error"
+	DefaultMaxLoopIters           = 8
 )
 
 type Event struct {
@@ -58,6 +58,8 @@ func NewLoop(client llm.Client, registry *tool.Registry, hooks ...Hook) *Loop {
 type RunOptions struct {
 	MaxIterations int
 	OnDelta       func(text string)
+	Tools         []llm.ToolSchema
+	ToolChoice    string
 }
 
 func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptions) (llm.ChatResponse, error) {
@@ -72,7 +74,9 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	for i := 0; i < maxIters; i++ {
 		l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: i + 1, MessageCount: len(messages)})
 		resp, err := l.client.Chat(ctx, messages, llm.ChatOptions{
-			OnDelta: opts.OnDelta,
+			OnDelta:    opts.OnDelta,
+			Tools:      opts.Tools,
+			ToolChoice: opts.ToolChoice,
 		})
 		if err != nil {
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})

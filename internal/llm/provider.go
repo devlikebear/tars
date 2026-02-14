@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -22,6 +23,17 @@ type ToolCall struct {
 	Arguments string `json:"arguments"`
 }
 
+type ToolFunctionSchema struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
+}
+
+type ToolSchema struct {
+	Type     string             `json:"type"`
+	Function ToolFunctionSchema `json:"function"`
+}
+
 type Usage struct {
 	InputTokens  int `json:"input_tokens"`
 	OutputTokens int `json:"output_tokens"`
@@ -29,6 +41,9 @@ type Usage struct {
 
 type ChatOptions struct {
 	OnDelta func(text string) // SSE streaming callback (nil = no streaming)
+	Tools   []ToolSchema
+	// ToolChoice follows OpenAI-compatible values like "auto", "none", "required".
+	ToolChoice string
 }
 
 type ChatResponse struct {

@@ -76,6 +76,13 @@ const (
 	autoCompactKeepTokens    = session.DefaultKeepRecentTokens
 )
 
+const memoryToolSystemRule = `
+## Memory Tool Policy
+- If the user asks about past facts, preferences, prior chat context, or "what you remember", you must call memory_search and/or memory_get before answering.
+- Do not guess memory-backed facts without first checking tools.
+- Tool-call arguments must be valid JSON.
+`
+
 func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() time.Time) *cobra.Command {
 	opts := options{}
 
@@ -229,7 +236,7 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 	cmd.Flags().BoolVar(&opts.RunOnce, "run-once", false, "run heartbeat once and exit")
 	cmd.Flags().BoolVar(&opts.RunLoop, "run-loop", false, "run heartbeat loop")
 	cmd.Flags().BoolVar(&opts.ServeAPI, "serve-api", false, "serve tarsd http api")
-	cmd.Flags().StringVar(&opts.APIAddr, "api-addr", "127.0.0.1:8080", "http api listen address")
+	cmd.Flags().StringVar(&opts.APIAddr, "api-addr", "127.0.0.1:18080", "http api listen address")
 	cmd.Flags().DurationVar(&opts.HeartbeatInterval, "heartbeat-interval", 30*time.Minute, "heartbeat interval (e.g. 30m, 5s)")
 	cmd.Flags().IntVar(&opts.MaxHeartbeats, "max-heartbeats", 0, "maximum heartbeat count in loop (0 means unlimited)")
 
@@ -317,6 +324,11 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 
 		// Build system prompt
 		systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
+		systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
+		toolChoice := ""
+		if shouldForceMemoryToolCall(req.Message) {
+			toolChoice = "required"
+		}
 
 		// Load history
 		history, err := session.LoadHistory(transcriptPath, chatHistoryMaxTokens)
@@ -329,6 +341,7 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 			Str("session_id", sessionID).
 			Int("history_messages", len(history)).
 			Int("system_prompt_len", len(systemPrompt)).
+			Str("tool_choice", toolChoice).
 			Msg("chat context assembled")
 
 		// Append user message to transcript
@@ -357,6 +370,8 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 				HistoryMessages: len(history) + 1,
 			}, nil
 		}))
+		registry.Register(tool.NewMemorySearchTool(workspaceDir))
+		registry.Register(tool.NewMemoryGetTool(workspaceDir))
 		counterHook := agent.NewCounterHook()
 		auditHook := agent.NewAuditHook(64)
 		logHook := agent.HookFunc(func(_ context.Context, evt agent.Event) {
@@ -429,6 +444,8 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 		logger.Debug().Str("session_id", sessionID).Int("messages", len(llmMessages)).Msg("llm chat call start")
 		chatResp, err := loop.Run(r.Context(), llmMessages, agent.RunOptions{
 			MaxIterations: 8,
+			Tools:         registry.Schemas(),
+			ToolChoice:    toolChoice,
 			OnDelta: func(text string) {
 				if text == "" {
 					return
@@ -851,6 +868,38 @@ func shouldPromoteToMemory(userMessage string) bool {
 		strings.HasPrefix(lower, "메모해")
 }
 
+func shouldForceMemoryToolCall(userMessage string) bool {
+	v := strings.ToLower(strings.TrimSpace(userMessage))
+	if v == "" {
+		return false
+	}
+	keywords := []string{
+		"memory_search",
+		"memory_get",
+		"memory",
+		"remember",
+		"recall",
+		"history",
+		"previous",
+		"earlier",
+		"what did i",
+		"what do you remember",
+		"preference",
+		"기억",
+		"메모리",
+		"기록",
+		"이전",
+		"지난",
+		"취향",
+	}
+	for _, kw := range keywords {
+		if strings.Contains(v, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 func trimForMemory(s string, max int) string {
 	v := strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
 	if max <= 0 || len(v) <= max {
@@ -883,6 +932,12 @@ func (r *statusRecorder) Write(p []byte) (int, error) {
 	n, err := r.ResponseWriter.Write(p)
 	r.bytes += n
 	return n, err
+}
+
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func requestDebugMiddleware(logger zerolog.Logger, next http.Handler) http.Handler {

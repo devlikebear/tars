@@ -10,9 +10,11 @@ import (
 )
 
 type scriptedLLMClient struct {
-	responses  []llm.ChatResponse
-	callIndex  int
-	seenInputs [][]llm.ChatMessage
+	responses      []llm.ChatResponse
+	callIndex      int
+	seenInputs     [][]llm.ChatMessage
+	seenToolCounts []int
+	seenToolChoice []string
 }
 
 func (c *scriptedLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
@@ -23,9 +25,10 @@ func (c *scriptedLLMClient) Ask(ctx context.Context, prompt string) (string, err
 
 func (c *scriptedLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
 	_ = ctx
-	_ = opts
 	copyMsgs := append([]llm.ChatMessage(nil), messages...)
 	c.seenInputs = append(c.seenInputs, copyMsgs)
+	c.seenToolCounts = append(c.seenToolCounts, len(opts.Tools))
+	c.seenToolChoice = append(c.seenToolChoice, opts.ToolChoice)
 	resp := c.responses[c.callIndex]
 	c.callIndex++
 	return resp, nil
@@ -72,7 +75,19 @@ func TestLoop_Run_WithToolCallAndHooks(t *testing.T) {
 	resp, err := loop.Run(context.Background(), []llm.ChatMessage{
 		{Role: "system", Content: "sys"},
 		{Role: "user", Content: "status?"},
-	}, RunOptions{})
+	}, RunOptions{
+		ToolChoice: "required",
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:        "session_status",
+					Description: "status",
+					Parameters:  json.RawMessage(`{"type":"object"}`),
+				},
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("loop run: %v", err)
 	}
@@ -82,6 +97,12 @@ func TestLoop_Run_WithToolCallAndHooks(t *testing.T) {
 
 	if len(client.seenInputs) != 2 {
 		t.Fatalf("expected 2 llm calls, got %d", len(client.seenInputs))
+	}
+	if len(client.seenToolCounts) != 2 || client.seenToolCounts[0] != 1 || client.seenToolCounts[1] != 1 {
+		t.Fatalf("expected tools to be forwarded to each llm call, got %+v", client.seenToolCounts)
+	}
+	if len(client.seenToolChoice) != 2 || client.seenToolChoice[0] != "required" || client.seenToolChoice[1] != "required" {
+		t.Fatalf("expected tool choice to be forwarded to each llm call, got %+v", client.seenToolChoice)
 	}
 
 	secondCall := client.seenInputs[1]

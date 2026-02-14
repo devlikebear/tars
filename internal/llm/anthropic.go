@@ -50,6 +50,13 @@ func NewAnthropicClient(baseURL, apiKey, model string, maxTokens int) (*Anthropi
 
 func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
 	streaming := opts.OnDelta != nil
+	if len(opts.Tools) > 0 || strings.TrimSpace(opts.ToolChoice) != "" {
+		zlog.Debug().
+			Str("provider", "anthropic").
+			Int("tool_count", len(opts.Tools)).
+			Str("tool_choice", strings.TrimSpace(opts.ToolChoice)).
+			Msg("tool-calls unsupported path; ignoring tools")
+	}
 	zlog.Debug().
 		Str("provider", "anthropic").
 		Str("model", c.model).
