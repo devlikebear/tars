@@ -1,70 +1,18 @@
 import React, {useCallback, useMemo, useReducer, useState} from 'react';
-import {Box, Text, render, useApp, useInput} from 'ink';
-import TextInput from 'ink-text-input';
-import {ChatSSEEvent, streamChat} from './api/chat.js';
-import {createSession, exportSession, getHistory, getSession, listSessions, searchSessions} from './api/session.js';
-import {getStatus, runCompact, runHeartbeatOnce} from './api/system.js';
+import {Box, render, useApp, useInput} from 'ink';
+import {ChatSSEEvent} from './api/chat.js';
+import {executeInputCommand} from './chat/commandExecutor.js';
+import {sendChatMessage} from './chat/sendChat.js';
 import {chatUIReducer, initialChatUIState} from './chat/state.js';
+import {submitInput} from './chat/submit.js';
+import {computeChatWindow, nextChatScrollOffset, nextResumeIndex, resolveKeyAction, tailLines, toolLineFromStatusEvent} from './chat/view.js';
 import {parseArgs} from './cli/parseArgs.js';
-import {parseInputCommand} from './commands/router.js';
 import {SessionSummary} from './types.js';
+import {appendBounded, renderTable} from './ui/format.js';
+import {ChatInput, ChatPanel, HeaderBar, ResumePanel, StatusPanel} from './ui/panels.js';
 
 const maxPanelLines = 200;
 const chatPageSize = 20;
-
-function appendBounded(lines: string[], next: string, max: number): string[] {
-	const trimmed = next.trim();
-	if (trimmed === '') {
-		return lines;
-	}
-	const out = [...lines, trimmed];
-	if (out.length <= max) {
-		return out;
-	}
-	return out.slice(out.length - max);
-}
-
-function commandHelpText(): string {
-	return 'Commands: /help, /sessions, /new [title], /resume {id}, /history, /export, /search {keyword}, /status, /compact, /heartbeat, /quit';
-}
-
-function requireSessionOrError(currentSession: string): string | null {
-	if (currentSession.trim() === '') {
-		return 'no active session. use /new or /resume {session_id}';
-	}
-	return null;
-}
-
-function padRight(value: string, width: number): string {
-	const runes = Array.from(value);
-	if (runes.length >= width) {
-		return runes.slice(0, width).join('');
-	}
-	return value + ' '.repeat(width - runes.length);
-}
-
-function renderTable(headers: string[], rows: string[][]): string[] {
-	const safeRows = rows.filter((r) => r.length === headers.length);
-	const widths = headers.map((h, i) => {
-		const bodyMax = safeRows.reduce((acc, row) => Math.max(acc, Array.from(row[i] ?? '').length), 0);
-		return Math.max(Array.from(h).length, bodyMax, 4);
-	});
-	const header = headers.map((h, i) => padRight(h, widths[i] ?? 0)).join(' | ');
-	const sep = widths.map((w) => '-'.repeat(w)).join('-|-');
-	const body = safeRows.map((row) => row.map((c, i) => padRight(c, widths[i] ?? 0)).join(' | '));
-	return [header, sep, ...body];
-}
-
-function truncate(value: string, max: number): string {
-	const runes = Array.from(value);
-	if (runes.length <= max) {
-		return value;
-	}
-	if (max <= 3) {
-		return runes.slice(0, max).join('');
-	}
-	return runes.slice(0, max - 3).join('') + '...';
-}
 
 function App(): React.JSX.Element {
 	const initial = useMemo(() => parseArgs(process.argv.slice(2)), []);
@@ -112,353 +60,132 @@ function App(): React.JSX.Element {
 	);
 
 	const handleStatusEvent = useCallback((evt: ChatSSEEvent) => {
-		const phase = (evt.phase ?? '').trim();
-		if (phase === 'before_tool_call') {
-			pushTool(`start ${evt.tool_name ?? ''}`.trim());
-		}
-		if (phase === 'after_tool_call') {
-			pushTool(`done ${evt.tool_name ?? ''}`.trim());
-		}
-		if (phase === 'error') {
-			pushTool(`error ${evt.message ?? evt.error ?? ''}`.trim());
+		const toolLine = toolLineFromStatusEvent(evt);
+		if (toolLine !== null) {
+			pushTool(toolLine);
 		}
 	}, [pushTool]);
 
 	const executeCommand = useCallback(
 		async (raw: string): Promise<void> => {
-			const cmd = parseInputCommand(raw);
-			switch (cmd.kind) {
-			case 'noop':
-				return;
-			case 'chat':
-				throw new Error('internal command router mismatch');
-			case 'invalid':
-				dispatchChat({type: 'append_message', message: {role: 'error', text: cmd.message}});
-				return;
-			case 'quit':
-				exit();
-				return;
-			case 'help':
-				pushSystemMessage(commandHelpText());
-				return;
-			case 'sessions': {
-				const sessions = await listSessions(initial.serverUrl);
-				if (sessions.length === 0) {
-					pushSystemMessage('(no sessions)');
-					return;
-				}
-				pushSystemTable(
-					['ID', 'TITLE'],
-					sessions.map((s) => [s.id, truncate(s.title, 48)]),
-				);
-				return;
-			}
-			case 'new': {
-				const created = await createSession(initial.serverUrl, cmd.title);
-				setSessionID(created.id);
-				pushSystemMessage(`active session: ${created.id}`);
-				return;
-			}
-			case 'resume': {
-				await getSession(initial.serverUrl, cmd.sessionID);
-				setSessionID(cmd.sessionID);
-				pushSystemMessage(`resumed session: ${cmd.sessionID}`);
-				setResumeCandidates(null);
-				setResumeIndex(0);
-				return;
-			}
-			case 'resume_select': {
-				const sessions = await listSessions(initial.serverUrl);
-				if (sessions.length === 0) {
-					pushSystemMessage('(no sessions)');
-					return;
-				}
-				setResumeCandidates(sessions);
-				setResumeIndex(0);
-				pushSystemMessage('Use ↑/↓ and Enter to select a session.');
-				return;
-			}
-			case 'history': {
-				const missing = requireSessionOrError(sessionID);
-				if (missing) {
-					dispatchChat({type: 'append_message', message: {role: 'error', text: missing}});
-					return;
-				}
-				const history = await getHistory(initial.serverUrl, sessionID);
-				if (history.length === 0) {
-					pushSystemMessage('(no history)');
-					return;
-				}
-				pushSystemTable(
-					['TIME', 'ROLE', 'CONTENT'],
-					history.map((m) => [m.timestamp, m.role, truncate(m.content.replace(/\s+/g, ' '), 64)]),
-				);
-				return;
-			}
-			case 'export': {
-				const missing = requireSessionOrError(sessionID);
-				if (missing) {
-					dispatchChat({type: 'append_message', message: {role: 'error', text: missing}});
-					return;
-				}
-				const markdown = await exportSession(initial.serverUrl, sessionID);
-				pushSystemMessage(markdown);
-				return;
-			}
-			case 'search': {
-				const sessions = await searchSessions(initial.serverUrl, cmd.keyword);
-				if (sessions.length === 0) {
-					pushSystemMessage('(no sessions)');
-					return;
-				}
-				pushSystemTable(
-					['ID', 'TITLE'],
-					sessions.map((s) => [s.id, truncate(s.title, 48)]),
-				);
-				return;
-			}
-			case 'status': {
-				const status = await getStatus(initial.serverUrl);
-				pushSystemMessage(`workspace=${status.workspace_dir} sessions=${status.session_count}`);
-				return;
-			}
-			case 'compact': {
-				const missing = requireSessionOrError(sessionID);
-				if (missing) {
-					dispatchChat({type: 'append_message', message: {role: 'error', text: missing}});
-					return;
-				}
-				const message = await runCompact(initial.serverUrl, sessionID);
-				pushSystemMessage(message);
-				return;
-			}
-			case 'heartbeat': {
-				const response = await runHeartbeatOnce(initial.serverUrl);
-				pushSystemMessage(response);
-				return;
-			}
-			}
+			await executeInputCommand({
+				raw,
+				serverUrl: initial.serverUrl,
+				sessionID,
+				pushSystemMessage,
+				pushSystemTable,
+				pushErrorMessage: (text) => {
+					dispatchChat({type: 'append_message', message: {role: 'error', text}});
+				},
+				setSessionID,
+				setResumeCandidates,
+				setResumeIndex,
+				exit,
+			});
 		},
 		[exit, initial.serverUrl, pushSystemMessage, pushSystemTable, sessionID],
 	);
 
 	const sendChat = useCallback(
 		async (message: string): Promise<void> => {
-			dispatchChat({type: 'append_message', message: {role: 'user', text: message}});
-			dispatchChat({type: 'stream_start'});
-			setResumeCandidates(null);
-			setResumeIndex(0);
-			setChatScrollOffset(0);
-
-			try {
-				const result = await streamChat({
-					serverUrl: initial.serverUrl,
-					sessionId: sessionID,
-					message,
-					onStatus: (status) => {
-						pushStatus(status);
-						pushDebug(`status: ${status}`);
-					},
-					onStatusEvent: handleStatusEvent,
-					onDelta: (chunk) => {
-						dispatchChat({type: 'stream_delta', chunk});
-					},
-					onDebug: pushDebug,
-				});
-				dispatchChat({type: 'stream_done', assistantText: result.assistantText});
-				if (result.sessionId.trim() !== '') {
-					setSessionID(result.sessionId.trim());
-				}
-			} catch (err) {
-				const messageText = err instanceof Error ? err.message : String(err);
-				dispatchChat({type: 'stream_error', errorText: messageText});
-				pushStatus(`error: ${messageText}`);
-				pushDebug(`error: ${messageText}`);
-			}
+			await sendChatMessage({
+				serverUrl: initial.serverUrl,
+				sessionID,
+				message,
+				dispatchChat,
+				clearResumeSelection: () => {
+					setResumeCandidates(null);
+					setResumeIndex(0);
+				},
+				resetChatScroll: () => {
+					setChatScrollOffset(0);
+				},
+				pushStatus,
+				pushDebug,
+				handleStatusEvent,
+				setSessionID,
+			});
 		},
 		[handleStatusEvent, initial.serverUrl, pushDebug, pushStatus, sessionID],
 	);
 
-	const selectResumeCandidate = useCallback(() => {
-		if (resumeCandidates === null || resumeCandidates.length === 0) {
-			return;
-		}
-		const selected = resumeCandidates[resumeIndex] ?? resumeCandidates[0];
-		if (!selected) {
-			return;
-		}
-		setSessionID(selected.id);
-		pushSystemMessage(`resumed session: ${selected.id}`);
-		setResumeCandidates(null);
-		setResumeIndex(0);
-	}, [pushSystemMessage, resumeCandidates, resumeIndex]);
-
 	const submit = useCallback(async (): Promise<void> => {
-		const line = input.trim();
-		if (line === '' && resumeCandidates === null) {
-			return;
-		}
-		if (chatState.busy) {
-			return;
-		}
-		setInput('');
-
-		if (resumeCandidates !== null) {
-			if (line === '') {
-				selectResumeCandidate();
-				return;
-			}
-			const choice = Number.parseInt(line, 10);
-			if (Number.isNaN(choice) || choice < 1 || choice > resumeCandidates.length) {
-				dispatchChat({type: 'append_message', message: {role: 'error', text: 'invalid selection'}});
-				return;
-			}
-			const session = resumeCandidates[choice - 1]!;
-			setSessionID(session.id);
-			setResumeCandidates(null);
-			setResumeIndex(0);
-			pushSystemMessage(`resumed session: ${session.id}`);
-			return;
-		}
-
-		if (line.startsWith('/')) {
-			try {
-				await executeCommand(line);
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				dispatchChat({type: 'append_message', message: {role: 'error', text: message}});
-				pushDebug(`command error: ${message}`);
-			}
-			return;
-		}
-
-		await sendChat(line);
-	}, [chatState.busy, executeCommand, input, pushDebug, pushSystemMessage, resumeCandidates, selectResumeCandidate, sendChat]);
+		await submitInput({
+			input,
+			busy: chatState.busy,
+			resumeCandidates,
+			resumeIndex,
+			setInput,
+			setSessionID,
+			setResumeCandidates,
+			setResumeIndex,
+			pushSystemMessage,
+			pushErrorMessage: (text) => {
+				dispatchChat({type: 'append_message', message: {role: 'error', text}});
+			},
+			pushDebug,
+			executeCommand,
+			sendChat,
+		});
+	}, [chatState.busy, executeCommand, input, pushDebug, pushSystemMessage, resumeCandidates, resumeIndex, sendChat]);
 
 	useInput((key, inputState) => {
-		if (inputState.ctrl && key === 'c') {
+		const action = resolveKeyAction(key, inputState, resumeCandidates !== null && resumeCandidates.length > 0);
+		if (action === 'exit') {
 			exit();
 			return;
 		}
-
-		if (resumeCandidates !== null && resumeCandidates.length > 0) {
-			if (inputState.upArrow) {
-				setResumeIndex((prev) => (prev - 1 + resumeCandidates.length) % resumeCandidates.length);
-				return;
-			}
-			if (inputState.downArrow) {
-				setResumeIndex((prev) => (prev + 1) % resumeCandidates.length);
-				return;
-			}
-		}
-
-		if (inputState.pageUp || (inputState.ctrl && key === 'u')) {
-			setChatScrollOffset((prev) => prev + chatPageSize);
+		if (action === 'resume_up') {
+			setResumeIndex((prev) => nextResumeIndex(prev, resumeCandidates?.length ?? 0, 'up'));
 			return;
 		}
-		if (inputState.pageDown || (inputState.ctrl && key === 'd')) {
-			setChatScrollOffset((prev) => Math.max(0, prev - chatPageSize));
+		if (action === 'resume_down') {
+			setResumeIndex((prev) => nextResumeIndex(prev, resumeCandidates?.length ?? 0, 'down'));
+			return;
+		}
+		if (action === 'chat_page_up') {
+			setChatScrollOffset((prev) => nextChatScrollOffset(prev, chatPageSize, 'up'));
+			return;
+		}
+		if (action === 'chat_page_down') {
+			setChatScrollOffset((prev) => nextChatScrollOffset(prev, chatPageSize, 'down'));
 		}
 	});
 
-	const maxOffset = useMemo(() => Math.max(0, chatState.messages.length - chatPageSize), [chatState.messages.length]);
-	const effectiveOffset = Math.min(chatScrollOffset, maxOffset);
-	const chatEnd = chatState.messages.length - effectiveOffset;
-	const chatStart = Math.max(0, chatEnd - chatPageSize);
+	const window = useMemo(() => computeChatWindow(chatState.messages.length, chatPageSize, chatScrollOffset), [chatScrollOffset, chatState.messages.length]);
+	const effectiveOffset = window.effectiveOffset;
+	const chatEnd = window.chatEnd;
+	const chatStart = window.chatStart;
 	const visibleMessages = useMemo(() => chatState.messages.slice(chatStart, chatEnd), [chatEnd, chatStart, chatState.messages]);
-	const visibleStatus = useMemo(() => statusLines.slice(-20), [statusLines]);
-	const visibleTools = useMemo(() => toolLines.slice(-20), [toolLines]);
-	const visibleDebug = useMemo(() => debugLines.slice(-20), [debugLines]);
+	const visibleStatus = useMemo(() => tailLines(statusLines, 20), [statusLines]);
+	const visibleTools = useMemo(() => tailLines(toolLines, 20), [toolLines]);
+	const visibleDebug = useMemo(() => tailLines(debugLines, 20), [debugLines]);
 
 	return (
 		<Box flexDirection="column">
-			<Box marginBottom={1}>
-				<Text color="cyan">tars-ui</Text>
-				<Text>  server=</Text>
-				<Text color="green">{initial.serverUrl}</Text>
-				<Text>  session=</Text>
-				<Text color="yellow">{sessionID || '(new)'}</Text>
-				<Text>  state=</Text>
-				<Text color={chatState.busy ? 'yellow' : 'green'}>{chatState.busy ? 'streaming' : 'idle'}</Text>
-				<Text>  scroll=</Text>
-				<Text color="magenta">{effectiveOffset}</Text>
-			</Box>
+			<HeaderBar serverUrl={initial.serverUrl} sessionID={sessionID} busy={chatState.busy} scrollOffset={effectiveOffset} />
 
 			<Box>
-				<Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} flexGrow={3} minHeight={20}>
-					<Text color="cyan">Chat (PgUp/PgDn or Ctrl+U/Ctrl+D)</Text>
-					{visibleMessages.map((m, idx) => (
-						<Box key={`${chatStart + idx}-${m.role}`}>
-							<Text color={m.role === 'assistant' ? 'green' : m.role === 'error' ? 'red' : m.role === 'system' ? 'cyan' : 'white'}>
-								{m.role === 'assistant' ? 'TARS' : m.role === 'error' ? 'ERROR' : m.role === 'system' ? 'SYSTEM' : 'YOU'} {'> '}
-							</Text>
-							<Text>{m.text}</Text>
-						</Box>
-					))}
-					{chatState.assistantDraft !== '' && effectiveOffset === 0 && (
-						<Box>
-							<Text color="green">TARS &gt; </Text>
-							<Text>{chatState.assistantDraft}</Text>
-						</Box>
-					)}
-				</Box>
+				<ChatPanel visibleMessages={visibleMessages} chatStart={chatStart} assistantDraft={chatState.assistantDraft} showDraft={effectiveOffset === 0} />
 
 				<Box width={1} />
 
-				<Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1} flexGrow={2} minHeight={20}>
-					<Text color="magenta">Status</Text>
-					{visibleStatus.map((line, idx) => (
-						<Text key={`status-${idx}`}>• {line}</Text>
-					))}
-					<Text color="yellow">Tools</Text>
-					{visibleTools.map((line, idx) => (
-						<Text key={`tool-${idx}`}>• {line}</Text>
-					))}
-					{initial.verbose && (
-						<>
-							<Text color="magentaBright">Debug</Text>
-							{visibleDebug.map((line, idx) => (
-								<Text key={`debug-${idx}`} dimColor>
-									{line}
-								</Text>
-							))}
-						</>
-					)}
-				</Box>
+				<StatusPanel visibleStatus={visibleStatus} visibleTools={visibleTools} visibleDebug={visibleDebug} verbose={initial.verbose} />
 			</Box>
 
-			{resumeCandidates !== null && (
-				<Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-					<Text color="yellow">Resume session (↑/↓, Enter)</Text>
-					{resumeCandidates.map((s, idx) => (
-						<Text key={s.id} color={idx === resumeIndex ? 'green' : 'white'}>
-							{idx === resumeIndex ? '>' : ' '} {idx + 1}) {s.id} {s.title}
-						</Text>
-					))}
-				</Box>
-			)}
+			<ResumePanel resumeCandidates={resumeCandidates} resumeIndex={resumeIndex} />
 
-			<Box marginTop={1}>
-				<Text color="yellow">You &gt; </Text>
-				<TextInput
-					value={input}
-					onChange={setInput}
-					onSubmit={() => {
-						void submit();
-					}}
-					placeholder={
-						chatState.busy
-							? 'waiting for response...'
-							: resumeCandidates !== null
-								? 'Enter to select highlighted session (or type number)'
-								: 'Type message and press Enter'
-					}
-					focus={!chatState.busy}
-				/>
-			</Box>
+			<ChatInput
+				input={input}
+				onChange={setInput}
+				onSubmit={() => {
+					void submit();
+				}}
+				busy={chatState.busy}
+				hasResumeCandidates={resumeCandidates !== null}
+			/>
 		</Box>
 	);
 }
 
 render(<App />);
-
