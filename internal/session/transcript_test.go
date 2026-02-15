@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -123,5 +124,73 @@ func TestLoadHistory(t *testing.T) {
 	}
 	if len(empty) != 0 {
 		t.Fatalf("expected 0 messages for missing file, got %d", len(empty))
+	}
+}
+
+func TestLoadHistory_IncludeCompactionBoundarySummary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "compacted.jsonl")
+
+	summary := Message{
+		Role:      "system",
+		Content:   "[COMPACTION SUMMARY]\nCompacted 50 messages.",
+		Timestamp: time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC),
+	}
+	if err := AppendMessage(path, summary); err != nil {
+		t.Fatalf("append summary: %v", err)
+	}
+	for i := 0; i < 6; i++ {
+		if err := AppendMessage(path, Message{
+			Role:      "user",
+			Content:   fmt.Sprintf("recent message %d %s", i, strings.Repeat("x", 48)),
+			Timestamp: time.Date(2026, 2, 15, 12, 0, i+1, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append recent message %d: %v", i, err)
+		}
+	}
+
+	history, err := LoadHistory(path, 24)
+	if err != nil {
+		t.Fatalf("load compacted history: %v", err)
+	}
+	if len(history) < 2 {
+		t.Fatalf("expected summary + recent messages, got %d", len(history))
+	}
+	if history[0].Role != "system" || !strings.Contains(history[0].Content, "[COMPACTION SUMMARY]") {
+		t.Fatalf("expected first message to be compaction summary, got %+v", history[0])
+	}
+	if history[len(history)-1].Content != "recent message 5 "+strings.Repeat("x", 48) {
+		t.Fatalf("expected latest message kept, got %q", history[len(history)-1].Content)
+	}
+}
+
+func TestLoadHistory_DoesNotDuplicateCompactionBoundary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "compacted-full.jsonl")
+
+	if err := AppendMessage(path, Message{
+		Role:      "system",
+		Content:   "[COMPACTION SUMMARY]\nCompacted 20 messages.",
+		Timestamp: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("append summary: %v", err)
+	}
+	if err := AppendMessage(path, Message{
+		Role:      "assistant",
+		Content:   "latest",
+		Timestamp: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("append latest: %v", err)
+	}
+
+	history, err := LoadHistory(path, 1000)
+	if err != nil {
+		t.Fatalf("load history: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(history))
+	}
+	if strings.Count(history[0].Content, "[COMPACTION SUMMARY]") != 1 {
+		t.Fatalf("expected summary message once, got %q", history[0].Content)
 	}
 }

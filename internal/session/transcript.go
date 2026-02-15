@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // AppendMessage appends a single message as one JSON line to the JSONL file at path.
@@ -103,6 +104,31 @@ func LoadHistory(path string, maxTokens int) ([]Message, error) {
 		tokens += cost
 		startIdx = i
 	}
+	history := all[startIdx:]
+	if len(history) == 0 {
+		return nil, nil
+	}
+	if summaryIdx := latestCompactionSummaryIndex(all); summaryIdx >= 0 {
+		switch {
+		case startIdx > summaryIdx:
+			// Always include the latest compaction boundary summary so model context
+			// keeps the compacted past when only recent messages fit by token budget.
+			history = append([]Message{all[summaryIdx]}, history...)
+		case startIdx < summaryIdx:
+			history = all[summaryIdx:]
+		}
+	}
+	return history, nil
+}
 
-	return all[startIdx:], nil
+func latestCompactionSummaryIndex(messages []Message) int {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != "system" {
+			continue
+		}
+		if strings.Contains(messages[i].Content, "[COMPACTION SUMMARY]") {
+			return i
+		}
+	}
+	return -1
 }
