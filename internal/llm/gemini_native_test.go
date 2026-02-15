@@ -117,11 +117,34 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 		t.Fatalf("expected systemInstruction parts, got %+v", systemInstruction["parts"])
 	}
 	contents, ok := captured["contents"].([]any)
-	if !ok || len(contents) < 3 {
+	if !ok || len(contents) < 2 {
 		t.Fatalf("expected converted contents in request, got %+v", captured["contents"])
 	}
-	if containsKeyRecursive(captured, "additionalProperties") {
-		t.Fatalf("request should not include additionalProperties: %+v", captured)
+	if containsKeyRecursive(contents, "functionCall") {
+		t.Fatalf("request should not include assistant functionCall replay: %+v", contents)
+	}
+	toolsPayload, ok := captured["tools"].([]any)
+	if !ok || len(toolsPayload) == 0 {
+		t.Fatalf("expected tools in request, got %+v", captured["tools"])
+	}
+	firstTool, ok := toolsPayload[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected tool object, got %+v", toolsPayload[0])
+	}
+	functionDeclarations, ok := firstTool["functionDeclarations"].([]any)
+	if !ok || len(functionDeclarations) == 0 {
+		t.Fatalf("expected functionDeclarations, got %+v", firstTool["functionDeclarations"])
+	}
+	firstDecl, ok := functionDeclarations[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected function declaration object, got %+v", functionDeclarations[0])
+	}
+	paramsJSONSchema, ok := firstDecl["parametersJsonSchema"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected parametersJsonSchema in request, got %+v", firstDecl)
+	}
+	if _, exists := paramsJSONSchema["additionalProperties"]; !exists {
+		t.Fatalf("expected additionalProperties in parametersJsonSchema, got %+v", paramsJSONSchema)
 	}
 }
 
