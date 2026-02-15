@@ -41,8 +41,8 @@ func resolveOAuthToken(provider, oauthProvider string) (string, error) {
 	}
 
 	switch key {
-	case "openai-codex", "codex-cli":
-		return resolveCodexOAuthToken()
+	case "openai-codex":
+		return resolveOpenAICodexOAuthToken()
 	case "anthropic-claude-code", "claude-code":
 		return resolveClaudeCodeOAuthToken()
 	case "google-antigravity", "antigravity":
@@ -52,7 +52,7 @@ func resolveOAuthToken(provider, oauthProvider string) (string, error) {
 	}
 }
 
-func resolveCodexOAuthToken() (string, error) {
+func resolveOpenAICodexOAuthToken() (string, error) {
 	home, _ := os.UserHomeDir()
 	return resolveFromEnvOrFiles(
 		[]string{"CODEX_OAUTH_TOKEN", "OPENAI_CODEX_OAUTH_TOKEN"},
@@ -61,7 +61,7 @@ func resolveCodexOAuthToken() (string, error) {
 			filepath.Join(home, ".codex", "oauth.json"),
 			filepath.Join(home, ".openai", "codex", "oauth.json"),
 		},
-		"codex-cli",
+		"openai-codex",
 	)
 }
 

@@ -9,17 +9,18 @@ import (
 
 // Config holds top-level runtime settings.
 type Config struct {
-	Mode             string
-	WorkspaceDir     string
-	LLMProvider      string
-	LLMAuthMode      string
-	LLMOAuthProvider string
-	LLMBaseURL       string
-	LLMAPIKey        string
-	LLMModel         string
-	BifrostBase      string
-	BifrostAPIKey    string
-	BifrostModel     string
+	Mode                 string
+	WorkspaceDir         string
+	LLMProvider          string
+	LLMAuthMode          string
+	LLMOAuthProvider     string
+	LLMAllowExperimental bool
+	LLMBaseURL           string
+	LLMAPIKey            string
+	LLMModel             string
+	BifrostBase          string
+	BifrostAPIKey        string
+	BifrostModel         string
 }
 
 // Default returns safe baseline settings for local standalone execution.
@@ -76,6 +77,9 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("LLM_OAUTH_PROVIDER"), os.Getenv("TARSD_LLM_OAUTH_PROVIDER")); v != "" {
 		cfg.LLMOAuthProvider = v
 	}
+	if v := firstNonEmpty(os.Getenv("LLM_ALLOW_EXPERIMENTAL"), os.Getenv("TARSD_LLM_ALLOW_EXPERIMENTAL")); v != "" {
+		cfg.LLMAllowExperimental = parseBool(v)
+	}
 	if v := firstNonEmpty(os.Getenv("LLM_BASE_URL"), os.Getenv("TARSD_LLM_BASE_URL")); v != "" {
 		cfg.LLMBaseURL = v
 	}
@@ -128,6 +132,8 @@ func loadYAML(path string) (Config, error) {
 			cfg.LLMAuthMode = value
 		case "llm_oauth_provider":
 			cfg.LLMOAuthProvider = value
+		case "llm_allow_experimental":
+			cfg.LLMAllowExperimental = parseBool(value)
 		case "llm_base_url":
 			cfg.LLMBaseURL = value
 		case "llm_api_key":
@@ -168,6 +174,9 @@ func merge(dst *Config, src Config) {
 	if src.LLMOAuthProvider != "" {
 		dst.LLMOAuthProvider = src.LLMOAuthProvider
 	}
+	if src.LLMAllowExperimental {
+		dst.LLMAllowExperimental = true
+	}
 	if src.LLMBaseURL != "" {
 		dst.LLMBaseURL = src.LLMBaseURL
 	}
@@ -188,6 +197,7 @@ func applyLLMDefaults(cfg *Config) {
 	if cfg.LLMAuthMode == "" {
 		cfg.LLMAuthMode = "api-key"
 	}
+	cfg.LLMOAuthProvider = strings.TrimSpace(strings.ToLower(cfg.LLMOAuthProvider))
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {
 		case "bifrost":
@@ -220,7 +230,16 @@ func applyLLMDefaults(cfg *Config) {
 			if cfg.LLMAPIKey == "" {
 				cfg.LLMAPIKey = os.Getenv("ANTHROPIC_API_KEY")
 			}
-		case "codex-cli":
+		case "openai-codex":
+			if cfg.LLMAuthMode == "api-key" && cfg.LLMAPIKey == "" {
+				cfg.LLMAuthMode = "oauth"
+			}
+			if cfg.LLMOAuthProvider == "" {
+				cfg.LLMOAuthProvider = "openai-codex"
+			}
+			if cfg.LLMBaseURL == "" {
+				cfg.LLMBaseURL = "https://chatgpt.com/backend-api"
+			}
 			if cfg.LLMModel == "" {
 				cfg.LLMModel = "gpt-5.3-codex"
 			}
@@ -235,4 +254,13 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func parseBool(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }

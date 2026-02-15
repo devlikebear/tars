@@ -157,12 +157,13 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 			needLLM := opts.RunOnce || opts.RunLoop || opts.ServeAPI
 			if needLLM {
 				client, err := llm.NewProvider(llm.ProviderOptions{
-					Provider:      cfg.LLMProvider,
-					AuthMode:      cfg.LLMAuthMode,
-					OAuthProvider: cfg.LLMOAuthProvider,
-					BaseURL:       cfg.LLMBaseURL,
-					Model:         cfg.LLMModel,
-					APIKey:        cfg.LLMAPIKey,
+					Provider:          cfg.LLMProvider,
+					AuthMode:          cfg.LLMAuthMode,
+					OAuthProvider:     cfg.LLMOAuthProvider,
+					AllowExperimental: cfg.LLMAllowExperimental,
+					BaseURL:           cfg.LLMBaseURL,
+					Model:             cfg.LLMModel,
+					APIKey:            cfg.LLMAPIKey,
 				})
 				if err != nil {
 					logger.Error().Err(err).Msg("failed to initialize llm provider")

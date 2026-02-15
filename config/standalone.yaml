@@ -3,6 +3,7 @@ workspace_dir: ./workspace
 llm_provider: bifrost
 llm_auth_mode: api-key
 llm_oauth_provider: ""
+llm_allow_experimental: false
 llm_base_url: http://localhost:8080/v1
 llm_model: openai/gpt-4o-mini
 llm_api_key: ${BIFROST_API_KEY}

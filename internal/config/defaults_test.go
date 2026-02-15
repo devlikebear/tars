@@ -36,7 +36,7 @@ func TestLoad_DefaultOnly(t *testing.T) {
 func TestLoad_YAMLOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	content := "mode: service\nworkspace_dir: ./tenant-workspace\nllm_provider: openai\nllm_auth_mode: oauth\nllm_oauth_provider: codex-cli\nllm_base_url: http://localhost:8888/v1\nllm_api_key: llm-yaml-key\nllm_model: llm-yaml-model\nbifrost_base_url: http://localhost:8080/v1\nbifrost_api_key: yaml-key\nbifrost_model: yaml-model\n"
+	content := "mode: service\nworkspace_dir: ./tenant-workspace\nllm_provider: openai\nllm_auth_mode: oauth\nllm_oauth_provider: openai-codex\nllm_base_url: http://localhost:8888/v1\nllm_api_key: llm-yaml-key\nllm_model: llm-yaml-model\nbifrost_base_url: http://localhost:8080/v1\nbifrost_api_key: yaml-key\nbifrost_model: yaml-model\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestLoad_YAMLOverridesDefault(t *testing.T) {
 	if cfg.LLMAuthMode != "oauth" {
 		t.Fatalf("expected LLMAuthMode from yaml, got %q", cfg.LLMAuthMode)
 	}
-	if cfg.LLMOAuthProvider != "codex-cli" {
+	if cfg.LLMOAuthProvider != "openai-codex" {
 		t.Fatalf("expected LLMOAuthProvider from yaml, got %q", cfg.LLMOAuthProvider)
 	}
 	if cfg.LLMBaseURL != "http://localhost:8888/v1" {
@@ -96,7 +96,7 @@ func TestLoad_EnvOverridesYAML(t *testing.T) {
 	t.Setenv("BIFROST_MODEL", "env-model")
 	t.Setenv("LLM_PROVIDER", "openai")
 	t.Setenv("LLM_AUTH_MODE", "oauth")
-	t.Setenv("LLM_OAUTH_PROVIDER", "codex-cli")
+	t.Setenv("LLM_OAUTH_PROVIDER", "openai-codex")
 	t.Setenv("LLM_BASE_URL", "http://localhost:7000/v1")
 	t.Setenv("LLM_API_KEY", "llm-env-key")
 	t.Setenv("LLM_MODEL", "llm-env-model")
@@ -118,7 +118,7 @@ func TestLoad_EnvOverridesYAML(t *testing.T) {
 	if cfg.LLMAuthMode != "oauth" {
 		t.Fatalf("expected LLMAuthMode from env, got %q", cfg.LLMAuthMode)
 	}
-	if cfg.LLMOAuthProvider != "codex-cli" {
+	if cfg.LLMOAuthProvider != "openai-codex" {
 		t.Fatalf("expected LLMOAuthProvider from env, got %q", cfg.LLMOAuthProvider)
 	}
 	if cfg.LLMBaseURL != "http://localhost:7000/v1" {
@@ -198,17 +198,38 @@ func TestLoad_YAMLExpandsEnvVars(t *testing.T) {
 	}
 }
 
-func TestLoad_CodexCLIProviderDefaultsModel(t *testing.T) {
-	t.Setenv("LLM_PROVIDER", "codex-cli")
+func TestLoad_OpenAICodexProviderDefaults(t *testing.T) {
+	t.Setenv("LLM_PROVIDER", "openai-codex")
 
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if cfg.LLMProvider != "codex-cli" {
-		t.Fatalf("expected codex-cli provider, got %q", cfg.LLMProvider)
+	if cfg.LLMProvider != "openai-codex" {
+		t.Fatalf("expected openai-codex provider, got %q", cfg.LLMProvider)
 	}
 	if cfg.LLMModel != "gpt-5.3-codex" {
 		t.Fatalf("expected codex default model, got %q", cfg.LLMModel)
+	}
+	if cfg.LLMAuthMode != "oauth" {
+		t.Fatalf("expected oauth auth mode for openai-codex, got %q", cfg.LLMAuthMode)
+	}
+	if cfg.LLMOAuthProvider != "openai-codex" {
+		t.Fatalf("expected oauth provider openai-codex, got %q", cfg.LLMOAuthProvider)
+	}
+	if cfg.LLMBaseURL != "https://chatgpt.com/backend-api" {
+		t.Fatalf("expected openai-codex base url, got %q", cfg.LLMBaseURL)
+	}
+}
+
+func TestLoad_AllowExperimentalFromEnv(t *testing.T) {
+	t.Setenv("LLM_ALLOW_EXPERIMENTAL", "true")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.LLMAllowExperimental {
+		t.Fatal("expected LLMAllowExperimental=true from env")
 	}
 }

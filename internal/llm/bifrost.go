@@ -55,6 +55,14 @@ func NewOpenAIClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, er
 	return newOpenAICompatibleClientWithConfig("openai", baseURL, apiKey, model, DefaultClientConfig())
 }
 
+func NewOpenAICodexClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, error) {
+	return newOpenAICodexClientWithConfig(baseURL, apiKey, model, DefaultClientConfig())
+}
+
+func newOpenAICodexClientWithConfig(baseURL, apiKey, model string, config ClientConfig) (*OpenAICompatibleClient, error) {
+	return newOpenAICompatibleClientWithConfig("openai-codex", baseURL, apiKey, model, config)
+}
+
 func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
 	streaming := opts.OnDelta != nil
 	zlog.Debug().

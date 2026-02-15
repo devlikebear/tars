@@ -71,6 +71,29 @@ func TestOpenAIClientAsk(t *testing.T) {
 	}
 }
 
+func TestOpenAICodexClientAsk(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"codex response"}}]}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewOpenAICodexClient(srv.URL+"/v1", "codex-token", "gpt-5-codex")
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	resp, err := client.Ask(context.Background(), "hello")
+	if err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	if resp != "codex response" {
+		t.Fatalf("unexpected response: %q", resp)
+	}
+}
+
 func TestOpenAICompatibleChat_IncludesToolsAndParsesToolCalls(t *testing.T) {
 	var captured struct {
 		Tools      []ToolSchema `json:"tools"`

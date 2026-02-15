@@ -33,7 +33,7 @@ func TestResolveToken_OAuthCodexFromEnv(t *testing.T) {
 	}
 }
 
-func TestResolveToken_OAuthCodexFromAuthFile(t *testing.T) {
+func TestResolveToken_OAuthOpenAICodexFromAuthFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	path := filepath.Join(home, ".codex", "auth.json")
@@ -45,7 +45,7 @@ func TestResolveToken_OAuthCodexFromAuthFile(t *testing.T) {
 	}
 
 	token, err := ResolveToken(ResolveOptions{
-		Provider: "codex-cli",
+		Provider: "openai-codex",
 		AuthMode: "oauth",
 	})
 	if err != nil {

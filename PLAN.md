@@ -16,9 +16,9 @@
   - `EnsureWorkspace()`: HEARTBEAT.md, MEMORY.md, `_shared/`, `memory/` 생성
   - `AppendDailyLog()`: `memory/YYYY-MM-DD.md` append
 - [x] 멀티 LLM 프로바이더 (`internal/llm`)
-  - bifrost, openai (OpenAI-compatible 통합), anthropic, codex-cli
+  - bifrost, openai (OpenAI-compatible 통합), anthropic, openai-codex(실험)
   - 공통 인터페이스: `Client.Ask(ctx, prompt) (string, error)`
-- [x] OAuth 토큰 해석 (`internal/auth`) — codex-cli, claude-code, google-antigravity
+- [x] OAuth 토큰 해석 (`internal/auth`) — openai-codex, claude-code, google-antigravity
 - [x] 기본 허트비트 (`internal/heartbeat`)
   - `RunOnce`: HEARTBEAT.md 읽기 → daily log 기록
   - `RunOnceWithLLM`: HEARTBEAT.md + MEMORY.md + daily log → LLM 호출 → 응답 기록
