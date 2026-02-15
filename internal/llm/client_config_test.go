@@ -78,3 +78,18 @@ func TestNewAnthropicClient_DefaultsMaxTokensTo4096(t *testing.T) {
 		t.Fatalf("expected MaxTokens 4096, got %d", client.config.MaxTokens)
 	}
 }
+
+func TestNewGeminiNativeClientWithConfig_UsesConfig(t *testing.T) {
+	cfg := ClientConfig{HTTPTimeout: 7 * time.Second, MaxTokens: 2048}
+
+	client, err := newGeminiNativeClientWithConfig("http://localhost/v1beta", "k", "gemini-2.5-flash", cfg)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if client.config != cfg {
+		t.Fatalf("expected config %+v, got %+v", cfg, client.config)
+	}
+	if client.httpClient.Timeout != cfg.HTTPTimeout {
+		t.Fatalf("expected timeout %v, got %v", cfg.HTTPTimeout, client.httpClient.Timeout)
+	}
+}

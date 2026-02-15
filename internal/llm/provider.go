@@ -123,6 +123,13 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 			token,
 			firstNonEmptyTrimmed(opts.Model, "gemini-2.5-flash"),
 		)
+	case "gemini-native":
+		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
+		return NewGeminiNativeClient(
+			firstNonEmptyTrimmed(opts.BaseURL, "https://generativelanguage.googleapis.com/v1beta"),
+			token,
+			firstNonEmptyTrimmed(opts.Model, "gemini-2.5-flash"),
+		)
 	case "anthropic":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return NewAnthropicClient(opts.BaseURL, token, opts.Model, opts.MaxTokens)

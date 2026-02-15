@@ -204,7 +204,7 @@ func applyLLMDefaults(cfg *Config) {
 		switch cfg.LLMProvider {
 		case "anthropic":
 			cfg.LLMOAuthProvider = "claude-code"
-		case "gemini":
+		case "gemini", "gemini-native":
 			cfg.LLMOAuthProvider = "google-antigravity"
 		}
 	}
@@ -236,6 +236,16 @@ func applyLLMDefaults(cfg *Config) {
 		case "gemini":
 			if cfg.LLMBaseURL == "" {
 				cfg.LLMBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
+			}
+			if cfg.LLMModel == "" {
+				cfg.LLMModel = "gemini-2.5-flash"
+			}
+			if cfg.LLMAPIKey == "" {
+				cfg.LLMAPIKey = os.Getenv("GEMINI_API_KEY")
+			}
+		case "gemini-native":
+			if cfg.LLMBaseURL == "" {
+				cfg.LLMBaseURL = "https://generativelanguage.googleapis.com/v1beta"
 			}
 			if cfg.LLMModel == "" {
 				cfg.LLMModel = "gemini-2.5-flash"

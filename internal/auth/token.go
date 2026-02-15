@@ -43,7 +43,7 @@ func resolveOAuthToken(provider, oauthProvider string) (string, error) {
 	switch key {
 	case "anthropic", "anthropic-claude-code", "claude-code":
 		return resolveClaudeCodeOAuthToken()
-	case "gemini", "google-antigravity", "antigravity":
+	case "gemini", "gemini-native", "google-antigravity", "antigravity":
 		return resolveGoogleAntigravityOAuthToken()
 	default:
 		return "", fmt.Errorf("unsupported oauth provider: %s", key)

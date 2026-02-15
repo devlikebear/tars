@@ -156,3 +156,51 @@ func TestNewProvider_GeminiStreamingToolCall(t *testing.T) {
 		t.Fatalf("expected tool_calls stop reason, got %q", resp.StopReason)
 	}
 }
+
+func TestNewProvider_GeminiNativeToolCall(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1beta/models/gemini-2.5-pro:generateContent" {
+			t.Fatalf("unexpected path: %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"candidates":[{"content":{"parts":[{"functionCall":{"name":"memory_search","args":{"query":"coffee"}}}]},"finishReason":"STOP"}]
+		}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewProvider(ProviderOptions{
+		Provider: "gemini-native",
+		AuthMode: "api-key",
+		BaseURL:  srv.URL + "/v1beta",
+		APIKey:   "gemini-key",
+		Model:    "gemini-2.5-pro",
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+
+	resp, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "find memory"},
+	}, ChatOptions{
+		Tools: []ToolSchema{
+			{
+				Type: "function",
+				Function: ToolFunctionSchema{
+					Name:       "memory_search",
+					Parameters: json.RawMessage(`{"type":"object"}`),
+				},
+			},
+		},
+		ToolChoice: "required",
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if len(resp.Message.ToolCalls) != 1 {
+		t.Fatalf("expected one tool call, got %+v", resp.Message.ToolCalls)
+	}
+	if resp.Message.ToolCalls[0].Name != "memory_search" {
+		t.Fatalf("unexpected tool name: %q", resp.Message.ToolCalls[0].Name)
+	}
+}

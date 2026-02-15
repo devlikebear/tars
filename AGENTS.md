@@ -62,12 +62,13 @@
 
 - `codex-cli` provider는 제거되었다. `LLM_PROVIDER=codex-cli`는 더 이상 지원하지 않는다.
 - `openai-codex` provider는 제거되었다. `LLM_PROVIDER=openai-codex`는 더 이상 지원하지 않는다.
-- 현재 지원 provider: `bifrost`, `openai`, `anthropic`, `gemini`
+- 현재 지원 provider: `bifrost`, `openai`, `anthropic`, `gemini`, `gemini-native`
 
 권장 설정:
 - 안정 운영: `LLM_PROVIDER=openai`, `LLM_AUTH_MODE=api-key`, `OPENAI_API_KEY` 사용
 - 대체 운영: `LLM_PROVIDER=anthropic`, `LLM_AUTH_MODE=api-key`, `ANTHROPIC_API_KEY` 사용
 - gemini 운영: `LLM_PROVIDER=gemini`, `LLM_AUTH_MODE=api-key`, `GEMINI_API_KEY` 사용
+- gemini-native 운영: `LLM_PROVIDER=gemini-native`, `LLM_AUTH_MODE=api-key`, `GEMINI_API_KEY` 사용
 
 ## 다음 우선순위
 
