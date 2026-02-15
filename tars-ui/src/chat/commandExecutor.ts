@@ -1,5 +1,5 @@
 import {createSession, exportSession, getHistory, getSession, listSessions, searchSessions} from '../api/session.js';
-import {createCronJob, deleteCronJob, listCronJobs, runCronJob} from '../api/cron.js';
+import {createCronJob, deleteCronJob, listCronJobs, runCronJob, updateCronJob} from '../api/cron.js';
 import {getStatus, runCompact, runHeartbeatOnce} from '../api/system.js';
 import {parseInputCommand} from '../commands/router.js';
 import {CronJob, SessionHistoryItem, SessionSummary} from '../types.js';
@@ -17,6 +17,7 @@ export type CommandAPIs = {
 	runHeartbeatOnce: (serverUrl: string) => Promise<string>;
 	listCronJobs: (serverUrl: string) => Promise<CronJob[]>;
 	createCronJob: (serverUrl: string, input: {name?: string; prompt: string; schedule: string; enabled?: boolean; delete_after_run?: boolean}) => Promise<CronJob>;
+	updateCronJob: (serverUrl: string, jobID: string, input: {name?: string; prompt?: string; schedule?: string; enabled?: boolean; delete_after_run?: boolean}) => Promise<CronJob>;
 	runCronJob: (serverUrl: string, jobID: string) => Promise<string>;
 	deleteCronJob: (serverUrl: string, jobID: string) => Promise<void>;
 };
@@ -33,6 +34,7 @@ const defaultAPIs: CommandAPIs = {
 	runHeartbeatOnce,
 	listCronJobs,
 	createCronJob,
+	updateCronJob,
 	runCronJob,
 	deleteCronJob,
 };
@@ -199,6 +201,16 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 	case 'cron_delete': {
 		await apis.deleteCronJob(ctx.serverUrl, cmd.jobID);
 		ctx.pushSystemMessage(`cron job deleted: ${cmd.jobID}`);
+		return;
+	}
+	case 'cron_enable': {
+		await apis.updateCronJob(ctx.serverUrl, cmd.jobID, {enabled: true});
+		ctx.pushSystemMessage(`cron job enabled: ${cmd.jobID}`);
+		return;
+	}
+	case 'cron_disable': {
+		await apis.updateCronJob(ctx.serverUrl, cmd.jobID, {enabled: false});
+		ctx.pushSystemMessage(`cron job disabled: ${cmd.jobID}`);
 		return;
 	}
 	}

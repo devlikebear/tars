@@ -16,6 +16,8 @@ export type Command =
 	| {kind: 'cron_add'; schedule: string; prompt: string}
 	| {kind: 'cron_run'; jobID: string}
 	| {kind: 'cron_delete'; jobID: string}
+	| {kind: 'cron_enable'; jobID: string}
+	| {kind: 'cron_disable'; jobID: string}
 	| {kind: 'quit'}
 	| {kind: 'invalid'; message: string};
 
@@ -114,7 +116,19 @@ function parseSlashCommand(line: string): Command {
 			}
 			return {kind: 'cron_delete', jobID: (fields[2] ?? '').trim()};
 		}
-		return {kind: 'invalid', message: 'usage: /cron {list|add|run|delete}'};
+		if (sub === 'enable') {
+			if (fields.length < 3 || (fields[2] ?? '').trim() === '') {
+				return {kind: 'invalid', message: 'usage: /cron enable {job_id}'};
+			}
+			return {kind: 'cron_enable', jobID: (fields[2] ?? '').trim()};
+		}
+		if (sub === 'disable') {
+			if (fields.length < 3 || (fields[2] ?? '').trim() === '') {
+				return {kind: 'invalid', message: 'usage: /cron disable {job_id}'};
+			}
+			return {kind: 'cron_disable', jobID: (fields[2] ?? '').trim()};
+		}
+		return {kind: 'invalid', message: 'usage: /cron {list|add|run|delete|enable|disable}'};
 	}
 	default:
 		return {kind: 'invalid', message: `unknown command: ${head}`};

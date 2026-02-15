@@ -20,6 +20,8 @@ test('router parses slash command options', () => {
 	assert.deepEqual(parseInputCommand('/cron add every:1h check inbox'), {kind: 'cron_add', schedule: 'every:1h', prompt: 'check inbox'});
 	assert.deepEqual(parseInputCommand('/cron run job_123'), {kind: 'cron_run', jobID: 'job_123'});
 	assert.deepEqual(parseInputCommand('/cron delete job_123'), {kind: 'cron_delete', jobID: 'job_123'});
+	assert.deepEqual(parseInputCommand('/cron enable job_123'), {kind: 'cron_enable', jobID: 'job_123'});
+	assert.deepEqual(parseInputCommand('/cron disable job_123'), {kind: 'cron_disable', jobID: 'job_123'});
 	assert.deepEqual(parseInputCommand('／help'), {kind: 'help'});
 	assert.deepEqual(parseInputCommand('\\sessions'), {kind: 'sessions'});
 });
@@ -29,6 +31,8 @@ test('router returns invalid for malformed or unknown command', () => {
 	assert.deepEqual(parseInputCommand('/cron add'), {kind: 'invalid', message: 'usage: /cron add {schedule} {prompt}'});
 	assert.deepEqual(parseInputCommand('/cron run'), {kind: 'invalid', message: 'usage: /cron run {job_id}'});
 	assert.deepEqual(parseInputCommand('/cron delete'), {kind: 'invalid', message: 'usage: /cron delete {job_id}'});
+	assert.deepEqual(parseInputCommand('/cron enable'), {kind: 'invalid', message: 'usage: /cron enable {job_id}'});
+	assert.deepEqual(parseInputCommand('/cron disable'), {kind: 'invalid', message: 'usage: /cron disable {job_id}'});
 	assert.deepEqual(parseInputCommand('/what'), {kind: 'invalid', message: 'unknown command: /what'});
 	assert.deepEqual(parseInputCommand('   '), {kind: 'noop'});
 });

@@ -19,6 +19,7 @@ function createDefaultAPIs(): CommandAPIs {
 		runHeartbeatOnce: unexpected,
 		listCronJobs: unexpected,
 		createCronJob: unexpected,
+		updateCronJob: unexpected,
 		runCronJob: unexpected,
 		deleteCronJob: unexpected,
 	};
@@ -186,6 +187,7 @@ test('executeInputCommand handles /cron add and /cron run /cron delete', async (
 	const apis: CommandAPIs = {
 		...createDefaultAPIs(),
 		createCronJob: async () => ({id: 'job_2', name: 'nightly', schedule: 'every:30m', enabled: true, delete_after_run: false}),
+		updateCronJob: async () => ({id: 'job_2', name: 'nightly', schedule: 'every:30m', enabled: true, delete_after_run: false}),
 		runCronJob: async () => 'ran',
 		deleteCronJob: async () => undefined,
 	};
@@ -200,4 +202,12 @@ test('executeInputCommand handles /cron add and /cron run /cron delete', async (
 	const delState = createContext('/cron delete job_2');
 	await executeInputCommand(delState.ctx, apis);
 	assert.deepEqual(delState.messages, ['cron job deleted: job_2']);
+
+	const enableState = createContext('/cron enable job_2');
+	await executeInputCommand(enableState.ctx, apis);
+	assert.deepEqual(enableState.messages, ['cron job enabled: job_2']);
+
+	const disableState = createContext('/cron disable job_2');
+	await executeInputCommand(disableState.ctx, apis);
+	assert.deepEqual(disableState.messages, ['cron job disabled: job_2']);
 });

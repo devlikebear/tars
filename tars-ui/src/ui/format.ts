@@ -11,7 +11,7 @@ export function appendBounded(lines: string[], next: string, max: number): strin
 }
 
 export function commandHelpText(): string {
-	return 'Commands: /help, /sessions, /new [title], /resume {id}, /history, /export, /search {keyword}, /status, /compact, /heartbeat, /cron {list|add|run|delete}, /quit';
+	return 'Commands: /help, /sessions, /new [title], /resume {id}, /history, /export, /search {keyword}, /status, /compact, /heartbeat, /cron {list|add|run|delete|enable|disable}, /quit';
 }
 
 export function requireSessionOrError(currentSession: string): string | null {

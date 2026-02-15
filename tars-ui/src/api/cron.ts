@@ -32,6 +32,14 @@ export async function createCronJob(
 	return requestJSON<CronJob>('POST', apiURL(serverURL, '/v1/cron/jobs'), input);
 }
 
+export async function updateCronJob(
+	serverURL: string,
+	jobID: string,
+	input: {name?: string; prompt?: string; schedule?: string; enabled?: boolean; delete_after_run?: boolean},
+): Promise<CronJob> {
+	return requestJSON<CronJob>('PUT', apiURL(serverURL, `/v1/cron/jobs/${jobID}`), input);
+}
+
 export async function runCronJob(serverURL: string, jobID: string): Promise<string> {
 	const payload = await requestJSON<{response: string}>('POST', apiURL(serverURL, `/v1/cron/jobs/${jobID}/run`));
 	return payload.response.trim();
