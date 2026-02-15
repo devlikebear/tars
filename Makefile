@@ -10,6 +10,8 @@ TEST_NAME ?=
 HEARTBEAT_INTERVAL ?= 30s
 MAX_HEARTBEATS ?= 0
 COVER_OUT ?= coverage.out
+TARSD_CONFIG ?=
+TARS_UI_CONFIG ?=
 TARS_UI_DIR ?= ./tars-ui
 TARS_UI_SERVER_URL ?= $(SERVER_URL)
 
@@ -30,6 +32,7 @@ help:
 	@echo "Common vars:"
 	@echo "  PKG=./... TEST_NAME=TestRun_ChatMessage CHAT_MSG='hello'"
 	@echo "  WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:8080 SERVER_URL=http://127.0.0.1:8080"
+	@echo "  TARSD_CONFIG=./config/tarsd.config.example.yaml TARS_UI_CONFIG=./tars-ui/config.example.yaml"
 	@echo ""
 	@echo "Test targets:"
 	@echo "  make test          - go test $(PKG)"
@@ -92,19 +95,19 @@ build-bins:
 	$(GO) build -o $(BIN_DIR)/cased ./cmd/cased
 
 dev-tarsd:
-	$(GO) run ./cmd/tarsd --verbose --serve-api --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
+	$(GO) run ./cmd/tarsd --verbose --serve-api $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
 
 dev-tarsd-once:
-	$(GO) run ./cmd/tarsd --verbose --run-once --workspace-dir $(WORKSPACE_DIR) $(ARGS)
+	$(GO) run ./cmd/tarsd --verbose --run-once $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
 
 dev-tarsd-loop:
-	$(GO) run ./cmd/tarsd --verbose --run-loop --heartbeat-interval $(HEARTBEAT_INTERVAL) --max-heartbeats $(MAX_HEARTBEATS) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
+	$(GO) run ./cmd/tarsd --verbose --run-loop $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --heartbeat-interval $(HEARTBEAT_INTERVAL) --max-heartbeats $(MAX_HEARTBEATS) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
 
 dev-cased:
 	$(GO) run ./cmd/cased --verbose $(ARGS)
 
 dev-chat:
-	cd $(TARS_UI_DIR) && npm run dev -- --server-url $(TARS_UI_SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
+	cd $(TARS_UI_DIR) && npm run dev -- $(if $(TARS_UI_CONFIG),--config $(TARS_UI_CONFIG),) --server-url $(TARS_UI_SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
 
 dev-heartbeat:
 	curl -sS -X POST $(SERVER_URL)/v1/heartbeat/run-once
@@ -116,7 +119,7 @@ ui-test:
 	cd $(TARS_UI_DIR) && npm test
 
 dev-tars-ui:
-	cd $(TARS_UI_DIR) && npm run dev -- --server-url $(TARS_UI_SERVER_URL) $(ARGS)
+	cd $(TARS_UI_DIR) && npm run dev -- $(if $(TARS_UI_CONFIG),--config $(TARS_UI_CONFIG),) --server-url $(TARS_UI_SERVER_URL) $(ARGS)
 
 api-status:
 	curl -sS $(SERVER_URL)/v1/status
