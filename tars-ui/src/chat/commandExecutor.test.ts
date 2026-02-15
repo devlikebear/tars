@@ -33,6 +33,8 @@ function createContext(raw: string, sessionID = ''): {
 	resumeCandidates: SessionSummary[] | null;
 	resumeIndex: number;
 	activeSessionID: string;
+	notificationFilter: string;
+	notifications: Array<{id: number; category: string; severity: string; title: string; message: string; timestamp: string}>;
 	exited: boolean;
 } {
 	const errors: string[] = [];
@@ -42,6 +44,8 @@ function createContext(raw: string, sessionID = ''): {
 	let resumeCandidates: SessionSummary[] | null = null;
 	let resumeIndex = -1;
 	let activeSessionID = sessionID;
+	let notificationFilter = 'all';
+	let notifications: Array<{id: number; category: string; severity: string; title: string; message: string; timestamp: string}> = [];
 	let exited = false;
 
 	const ctx: CommandExecutorContext = {
@@ -59,6 +63,14 @@ function createContext(raw: string, sessionID = ''): {
 		},
 		setResumeIndex: (index) => {
 			resumeIndex = index;
+		},
+		setNotificationFilter: (next) => {
+			notificationFilter = next;
+		},
+		getNotificationFilter: () => notificationFilter as 'all' | 'cron' | 'heartbeat' | 'error',
+		getNotifications: () => notifications,
+		clearNotifications: () => {
+			notifications = [];
 		},
 		exit: () => {
 			exited = true;
@@ -78,6 +90,15 @@ function createContext(raw: string, sessionID = ''): {
 		},
 		get activeSessionID() {
 			return activeSessionID;
+		},
+		get notificationFilter() {
+			return notificationFilter;
+		},
+		set notifications(value) {
+			notifications = value;
+		},
+		get notifications() {
+			return notifications;
 		},
 		get exited() {
 			return exited;
@@ -173,7 +194,7 @@ test('executeInputCommand clears resume selection when creating a new session', 
 test('executeInputCommand handles /cron list', async () => {
 	const apis: CommandAPIs = {
 		...createDefaultAPIs(),
-		listCronJobs: async () => [{id: 'job_1', name: 'morning', schedule: 'every:1h', enabled: true, delete_after_run: false}],
+		listCronJobs: async () => [{id: 'job_1', name: 'morning', prompt: 'ping', schedule: 'every:1h', enabled: true, delete_after_run: false}],
 	};
 	const state = createContext('/cron list');
 	await executeInputCommand(state.ctx, apis);
@@ -186,8 +207,8 @@ test('executeInputCommand handles /cron list', async () => {
 test('executeInputCommand handles /cron add and /cron run /cron delete', async () => {
 	const apis: CommandAPIs = {
 		...createDefaultAPIs(),
-		createCronJob: async () => ({id: 'job_2', name: 'nightly', schedule: 'every:30m', enabled: true, delete_after_run: false}),
-		updateCronJob: async () => ({id: 'job_2', name: 'nightly', schedule: 'every:30m', enabled: true, delete_after_run: false}),
+		createCronJob: async () => ({id: 'job_2', name: 'nightly', prompt: 'check mail', schedule: 'every:30m', enabled: true, delete_after_run: false}),
+		updateCronJob: async () => ({id: 'job_2', name: 'nightly', prompt: 'check mail', schedule: 'every:30m', enabled: true, delete_after_run: false}),
 		runCronJob: async () => 'ran',
 		deleteCronJob: async () => undefined,
 	};
@@ -210,4 +231,33 @@ test('executeInputCommand handles /cron add and /cron run /cron delete', async (
 	const disableState = createContext('/cron disable job_2');
 	await executeInputCommand(disableState.ctx, apis);
 	assert.deepEqual(disableState.messages, ['cron job disabled: job_2']);
+});
+
+test('executeInputCommand handles /notify list/filter/open/clear', async () => {
+	const state = createContext('/notify list');
+	state.notifications = [
+		{id: 1, category: 'cron', severity: 'info', title: 'Cron done', message: 'job complete', timestamp: '2026-02-16T10:00:00Z'},
+		{id: 2, category: 'heartbeat', severity: 'error', title: 'Heartbeat failed', message: 'auth failed', timestamp: '2026-02-16T10:01:00Z'},
+	];
+
+	await executeInputCommand(state.ctx, createDefaultAPIs());
+	assert.equal(state.tables.length, 1);
+	assert.deepEqual(state.tables[0]?.headers, ['#', 'CATEGORY', 'SEVERITY', 'TITLE', 'TIME']);
+
+	const filterState = createContext('/notify filter cron');
+	await executeInputCommand(filterState.ctx, createDefaultAPIs());
+	assert.equal(filterState.notificationFilter, 'cron');
+	assert.deepEqual(filterState.messages, ['notification filter: cron']);
+
+	const openState = createContext('/notify open 2');
+	openState.notifications = state.notifications;
+	await executeInputCommand(openState.ctx, createDefaultAPIs());
+	assert.equal(openState.messages.length, 1);
+	assert.equal(openState.messages[0]?.includes('Heartbeat failed'), true);
+
+	const clearState = createContext('/notify clear');
+	clearState.notifications = state.notifications;
+	await executeInputCommand(clearState.ctx, createDefaultAPIs());
+	assert.equal(clearState.notifications.length, 0);
+	assert.deepEqual(clearState.messages, ['notifications cleared']);
 });

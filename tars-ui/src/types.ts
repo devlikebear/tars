@@ -26,3 +26,14 @@ export type CronJob = {
 	last_run_at?: string;
 	last_run_error?: string;
 };
+
+export type NotificationFilter = 'all' | 'cron' | 'heartbeat' | 'error';
+
+export type NotificationItem = {
+	id: number;
+	category: string;
+	severity: string;
+	title: string;
+	message: string;
+	timestamp: string;
+};

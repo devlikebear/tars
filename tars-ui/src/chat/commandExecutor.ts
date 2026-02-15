@@ -2,7 +2,7 @@ import {createSession, exportSession, getHistory, getSession, listSessions, sear
 import {createCronJob, deleteCronJob, listCronJobs, runCronJob, updateCronJob} from '../api/cron.js';
 import {getStatus, runCompact, runHeartbeatOnce} from '../api/system.js';
 import {parseInputCommand} from '../commands/router.js';
-import {CronJob, SessionHistoryItem, SessionSummary} from '../types.js';
+import {CronJob, NotificationItem, NotificationFilter, SessionHistoryItem, SessionSummary} from '../types.js';
 import {commandHelpText, requireSessionOrError, truncate} from '../ui/format.js';
 
 export type CommandAPIs = {
@@ -49,6 +49,10 @@ export type CommandExecutorContext = {
 	setSessionID: (sessionID: string) => void;
 	setResumeCandidates: (sessions: SessionSummary[] | null) => void;
 	setResumeIndex: (index: number) => void;
+	setNotificationFilter: (next: NotificationFilter) => void;
+	getNotificationFilter: () => NotificationFilter;
+	getNotifications: () => NotificationItem[];
+	clearNotifications: () => void;
 	exit: () => void;
 };
 
@@ -67,6 +71,26 @@ function missingSessionError(sessionID: string): string | null {
 
 function renderCronRows(jobs: CronJob[]): string[][] {
 	return jobs.map((job) => [job.id, truncate(job.name, 32), truncate(job.schedule, 18), job.enabled ? 'yes' : 'no']);
+}
+
+function filterNotifications(items: NotificationItem[], filter: NotificationFilter): NotificationItem[] {
+	if (filter === 'all') {
+		return items;
+	}
+	return items.filter((item) => item.category === filter);
+}
+
+function renderNotificationRows(items: NotificationItem[]): string[][] {
+	return items.map((item, idx) => {
+		const timestamp = item.timestamp.trim();
+		return [
+			String(idx + 1),
+			truncate(item.category, 10),
+			truncate(item.severity, 8),
+			truncate(item.title, 32),
+			timestamp === '' ? '-' : timestamp,
+		];
+	});
 }
 
 export async function executeInputCommand(ctx: CommandExecutorContext, apis: CommandAPIs = defaultAPIs): Promise<void> {
@@ -211,6 +235,42 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 	case 'cron_disable': {
 		await apis.updateCronJob(ctx.serverUrl, cmd.jobID, {enabled: false});
 		ctx.pushSystemMessage(`cron job disabled: ${cmd.jobID}`);
+		return;
+	}
+	case 'notify_list': {
+		const filter = ctx.getNotificationFilter();
+		const filtered = filterNotifications(ctx.getNotifications(), filter);
+		if (filtered.length === 0) {
+			ctx.pushSystemMessage('(no notifications)');
+			return;
+		}
+		ctx.pushSystemTable(['#', 'CATEGORY', 'SEVERITY', 'TITLE', 'TIME'], renderNotificationRows(filtered));
+		return;
+	}
+	case 'notify_filter': {
+		ctx.setNotificationFilter(cmd.filter);
+		ctx.pushSystemMessage(`notification filter: ${cmd.filter}`);
+		return;
+	}
+	case 'notify_open': {
+		const filter = ctx.getNotificationFilter();
+		const filtered = filterNotifications(ctx.getNotifications(), filter);
+		const item = filtered[cmd.index - 1];
+		if (item === undefined) {
+			ctx.pushErrorMessage(`notification not found: ${cmd.index}`);
+			return;
+		}
+		const lines = [
+			`[${item.category}/${item.severity}] ${item.title}`,
+			item.message,
+			item.timestamp !== '' ? `time: ${item.timestamp}` : '',
+		].filter((line) => line.trim() !== '');
+		ctx.pushSystemMessage(lines.join(' | '));
+		return;
+	}
+	case 'notify_clear': {
+		ctx.clearNotifications();
+		ctx.pushSystemMessage('notifications cleared');
 		return;
 	}
 	}

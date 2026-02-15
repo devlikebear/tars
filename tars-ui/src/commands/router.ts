@@ -18,6 +18,10 @@ export type Command =
 	| {kind: 'cron_delete'; jobID: string}
 	| {kind: 'cron_enable'; jobID: string}
 	| {kind: 'cron_disable'; jobID: string}
+	| {kind: 'notify_list'}
+	| {kind: 'notify_filter'; filter: 'all' | 'cron' | 'heartbeat' | 'error'}
+	| {kind: 'notify_open'; index: number}
+	| {kind: 'notify_clear'}
 	| {kind: 'quit'}
 	| {kind: 'invalid'; message: string};
 
@@ -129,6 +133,31 @@ function parseSlashCommand(line: string): Command {
 			return {kind: 'cron_disable', jobID: (fields[2] ?? '').trim()};
 		}
 		return {kind: 'invalid', message: 'usage: /cron {list|add|run|delete|enable|disable}'};
+	}
+	case '/notify': {
+		if (fields.length === 1 || fields[1] === 'list') {
+			return {kind: 'notify_list'};
+		}
+		const sub = fields[1] ?? '';
+		if (sub === 'filter') {
+			const filter = (fields[2] ?? '').trim();
+			if (filter !== 'all' && filter !== 'cron' && filter !== 'heartbeat' && filter !== 'error') {
+				return {kind: 'invalid', message: 'usage: /notify filter {all|cron|heartbeat|error}'};
+			}
+			return {kind: 'notify_filter', filter};
+		}
+		if (sub === 'open') {
+			const rawIndex = (fields[2] ?? '').trim();
+			const index = Number(rawIndex);
+			if (rawIndex === '' || !Number.isInteger(index) || index < 1) {
+				return {kind: 'invalid', message: 'usage: /notify open {index}'};
+			}
+			return {kind: 'notify_open', index};
+		}
+		if (sub === 'clear') {
+			return {kind: 'notify_clear'};
+		}
+		return {kind: 'invalid', message: 'usage: /notify {list|filter|open|clear}'};
 	}
 	default:
 		return {kind: 'invalid', message: `unknown command: ${head}`};

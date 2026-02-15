@@ -1,13 +1,14 @@
-import React, {useCallback, useMemo, useReducer, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useReducer, useRef, useState} from 'react';
 import {Box, render, useApp, useInput} from 'ink';
 import {ChatSSEEvent} from './api/chat.js';
+import {NotificationEvent, watchNotifications} from './api/events.js';
 import {executeInputCommand} from './chat/commandExecutor.js';
 import {sendChatMessage} from './chat/sendChat.js';
 import {chatUIReducer, initialChatUIState} from './chat/state.js';
 import {submitInput} from './chat/submit.js';
 import {computeChatWindow, nextChatScrollOffset, nextResumeIndex, resolveKeyAction, tailLines, toolLinesFromStatusEvent} from './chat/view.js';
 import {parseArgs} from './cli/parseArgs.js';
-import {SessionSummary} from './types.js';
+import {NotificationFilter, NotificationItem, SessionSummary} from './types.js';
 import {appendBounded, renderTable} from './ui/format.js';
 import {ChatInput, ChatPanel, HeaderBar, ResumePanel, StatusPanel} from './ui/panels.js';
 
@@ -25,8 +26,11 @@ function App(): React.JSX.Element {
 	const [debugLines, setDebugLines] = useState<string[]>([]);
 	const [resumeCandidates, setResumeCandidates] = useState<SessionSummary[] | null>(null);
 	const [resumeIndex, setResumeIndex] = useState<number>(0);
+	const [notificationFilter, setNotificationFilter] = useState<NotificationFilter>('all');
+	const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 	const [chatScrollOffset, setChatScrollOffset] = useState<number>(0);
 	const [chatState, dispatchChat] = useReducer(chatUIReducer, initialChatUIState);
+	const nextNotificationID = useRef<number>(1);
 
 	const pushStatus = useCallback((line: string) => {
 		setStatusLines((prev) => appendBounded(prev, line, maxPanelLines));
@@ -65,6 +69,34 @@ function App(): React.JSX.Element {
 		}
 	}, [pushTool]);
 
+	const handleNotificationEvent = useCallback((evt: NotificationEvent) => {
+		const category = (evt.category ?? '').trim();
+		const severity = (evt.severity ?? '').trim();
+		const title = (evt.title ?? '').trim();
+		const message = (evt.message ?? '').trim();
+		const timestamp = (evt.timestamp ?? '').trim();
+		setNotifications((prev) => {
+			const item: NotificationItem = {
+				id: nextNotificationID.current++,
+				category,
+				severity,
+				title,
+				message,
+				timestamp,
+			};
+			const next = [...prev, item];
+			if (next.length <= maxPanelLines) {
+				return next;
+			}
+			return next.slice(next.length - maxPanelLines);
+		});
+		const summary = [title, message].filter((v) => v !== '').join(' | ');
+		if (summary !== '') {
+			pushStatus(`notify ${category !== '' ? category : 'event'}: ${summary}`);
+			pushSystemMessage(`[notify] ${summary}`);
+		}
+	}, [pushStatus, pushSystemMessage]);
+
 	const executeCommand = useCallback(
 		async (raw: string): Promise<void> => {
 			await executeInputCommand({
@@ -79,10 +111,16 @@ function App(): React.JSX.Element {
 				setSessionID,
 				setResumeCandidates,
 				setResumeIndex,
+				setNotificationFilter,
+				getNotificationFilter: () => notificationFilter,
+				getNotifications: () => notifications,
+				clearNotifications: () => {
+					setNotifications([]);
+				},
 				exit,
 			});
 		},
-		[exit, initial.serverUrl, pushSystemMessage, pushSystemTable, sessionID],
+		[exit, initial.serverUrl, notificationFilter, notifications, pushSystemMessage, pushSystemTable, sessionID],
 	);
 
 	const sendChat = useCallback(
@@ -127,6 +165,38 @@ function App(): React.JSX.Element {
 			sendChat,
 		});
 	}, [chatState.busy, executeCommand, input, pushDebug, pushSystemMessage, resumeCandidates, resumeIndex, sendChat]);
+
+	useEffect(() => {
+		const controller = new AbortController();
+		let closed = false;
+		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+		const run = async () => {
+			while (!closed) {
+				try {
+					await watchNotifications({
+						serverUrl: initial.serverUrl,
+						onEvent: handleNotificationEvent,
+						onDebug: pushDebug,
+						signal: controller.signal,
+					});
+					if (!closed) {
+						pushStatus('notification stream closed; reconnecting...');
+					}
+				} catch (error) {
+					if (closed || controller.signal.aborted) {
+						return;
+					}
+					pushStatus(`notification stream error: ${String(error)}`);
+				}
+				await sleep(1500);
+			}
+		};
+		void run();
+		return () => {
+			closed = true;
+			controller.abort();
+		};
+	}, [handleNotificationEvent, initial.serverUrl, pushDebug, pushStatus]);
 
 	useInput((key, inputState) => {
 		const action = resolveKeyAction(key, inputState, resumeCandidates !== null && resumeCandidates.length > 0);
