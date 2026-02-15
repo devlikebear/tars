@@ -34,6 +34,9 @@ func TestLoad_DefaultOnly(t *testing.T) {
 	if cfg.AgentMaxIterations != 8 {
 		t.Fatalf("expected default AgentMaxIterations 8, got %d", cfg.AgentMaxIterations)
 	}
+	if cfg.CronRunHistoryLimit != 200 {
+		t.Fatalf("expected default CronRunHistoryLimit 200, got %d", cfg.CronRunHistoryLimit)
+	}
 }
 
 func TestLoad_YAMLOverridesDefault(t *testing.T) {
@@ -280,6 +283,26 @@ func TestLoad_AgentMaxIterationsFromEnv(t *testing.T) {
 	}
 	if cfg.AgentMaxIterations != 3 {
 		t.Fatalf("expected AgentMaxIterations=3, got %d", cfg.AgentMaxIterations)
+	}
+}
+
+func TestLoad_HeartbeatAndCronEnvOptions(t *testing.T) {
+	t.Setenv("HEARTBEAT_ACTIVE_HOURS", "09:00-18:00")
+	t.Setenv("HEARTBEAT_TIMEZONE", "Asia/Seoul")
+	t.Setenv("CRON_RUN_HISTORY_LIMIT", "77")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.HeartbeatActiveHours != "09:00-18:00" {
+		t.Fatalf("expected heartbeat active hours, got %q", cfg.HeartbeatActiveHours)
+	}
+	if cfg.HeartbeatTimezone != "Asia/Seoul" {
+		t.Fatalf("expected heartbeat timezone, got %q", cfg.HeartbeatTimezone)
+	}
+	if cfg.CronRunHistoryLimit != 77 {
+		t.Fatalf("expected cron run history limit 77, got %d", cfg.CronRunHistoryLimit)
 	}
 }
 

@@ -18,30 +18,34 @@ type MCPServer struct {
 
 // Config holds top-level runtime settings.
 type Config struct {
-	Mode               string
-	WorkspaceDir       string
-	LLMProvider        string
-	LLMAuthMode        string
-	LLMOAuthProvider   string
-	LLMBaseURL         string
-	LLMAPIKey          string
-	LLMModel           string
-	AgentMaxIterations int
-	BifrostBase        string
-	BifrostAPIKey      string
-	BifrostModel       string
-	MCPServers         []MCPServer
+	Mode                 string
+	WorkspaceDir         string
+	LLMProvider          string
+	LLMAuthMode          string
+	LLMOAuthProvider     string
+	LLMBaseURL           string
+	LLMAPIKey            string
+	LLMModel             string
+	AgentMaxIterations   int
+	HeartbeatActiveHours string
+	HeartbeatTimezone    string
+	CronRunHistoryLimit  int
+	BifrostBase          string
+	BifrostAPIKey        string
+	BifrostModel         string
+	MCPServers           []MCPServer
 }
 
 // Default returns safe baseline settings for local standalone execution.
 func Default() Config {
 	return Config{
-		Mode:               "standalone",
-		WorkspaceDir:       "./workspace",
-		LLMProvider:        "bifrost",
-		LLMAuthMode:        "api-key",
-		BifrostModel:       "openai/gpt-4o-mini",
-		AgentMaxIterations: 8,
+		Mode:                "standalone",
+		WorkspaceDir:        "./workspace",
+		LLMProvider:         "bifrost",
+		LLMAuthMode:         "api-key",
+		BifrostModel:        "openai/gpt-4o-mini",
+		AgentMaxIterations:  8,
+		CronRunHistoryLimit: 200,
 	}
 }
 
@@ -100,6 +104,15 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("AGENT_MAX_ITERATIONS"), os.Getenv("TARSD_AGENT_MAX_ITERATIONS")); v != "" {
 		cfg.AgentMaxIterations = parsePositiveInt(v, cfg.AgentMaxIterations)
 	}
+	if v := firstNonEmpty(os.Getenv("HEARTBEAT_ACTIVE_HOURS"), os.Getenv("TARSD_HEARTBEAT_ACTIVE_HOURS")); v != "" {
+		cfg.HeartbeatActiveHours = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("HEARTBEAT_TIMEZONE"), os.Getenv("TARSD_HEARTBEAT_TIMEZONE")); v != "" {
+		cfg.HeartbeatTimezone = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("CRON_RUN_HISTORY_LIMIT"), os.Getenv("TARSD_CRON_RUN_HISTORY_LIMIT")); v != "" {
+		cfg.CronRunHistoryLimit = parsePositiveInt(v, cfg.CronRunHistoryLimit)
+	}
 	if v := firstNonEmpty(os.Getenv("MCP_SERVERS_JSON"), os.Getenv("TARSD_MCP_SERVERS_JSON")); v != "" {
 		cfg.MCPServers = parseMCPServersJSON(v, cfg.MCPServers)
 	}
@@ -154,6 +167,12 @@ func loadYAML(path string) (Config, error) {
 			cfg.LLMModel = value
 		case "agent_max_iterations":
 			cfg.AgentMaxIterations = parsePositiveInt(value, cfg.AgentMaxIterations)
+		case "heartbeat_active_hours":
+			cfg.HeartbeatActiveHours = strings.TrimSpace(value)
+		case "heartbeat_timezone":
+			cfg.HeartbeatTimezone = strings.TrimSpace(value)
+		case "cron_run_history_limit":
+			cfg.CronRunHistoryLimit = parsePositiveInt(value, cfg.CronRunHistoryLimit)
 		case "mcp_servers_json":
 			cfg.MCPServers = parseMCPServersJSON(value, cfg.MCPServers)
 		}
@@ -202,6 +221,15 @@ func merge(dst *Config, src Config) {
 	if src.AgentMaxIterations > 0 {
 		dst.AgentMaxIterations = src.AgentMaxIterations
 	}
+	if src.HeartbeatActiveHours != "" {
+		dst.HeartbeatActiveHours = src.HeartbeatActiveHours
+	}
+	if src.HeartbeatTimezone != "" {
+		dst.HeartbeatTimezone = src.HeartbeatTimezone
+	}
+	if src.CronRunHistoryLimit > 0 {
+		dst.CronRunHistoryLimit = src.CronRunHistoryLimit
+	}
 	if len(src.MCPServers) > 0 {
 		dst.MCPServers = src.MCPServers
 	}
@@ -227,6 +255,9 @@ func applyLLMDefaults(cfg *Config) {
 	}
 	if cfg.AgentMaxIterations <= 0 {
 		cfg.AgentMaxIterations = 8
+	}
+	if cfg.CronRunHistoryLimit <= 0 {
+		cfg.CronRunHistoryLimit = 200
 	}
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {
