@@ -232,7 +232,7 @@ Response: Content-Type: text/event-stream
 
 #### 1-F. tarsd 세션 관리 API + 슬래시 명령
 
-상태: 부분 완료 (세션 관리 API 완료, CLI 슬래시 명령 라우팅 미완료)
+상태: 완료
 
 ```
 GET    /v1/sessions                    # 세션 목록
@@ -246,7 +246,7 @@ GET    /v1/status                      # tarsd 상태 (세션 수, 메모리 등
 POST   /v1/compact                     # 컨텍스트 압축 트리거
 ```
 
-**tars CLI에서 슬래시 명령으로 접근:**
+**tars-ui에서 슬래시 명령으로 접근:**
 - `/new` → 새 세션 (POST /v1/sessions)
 - `/sessions` → 세션 목록 (GET /v1/sessions)
 - `/resume {id}` → 세션 전환
@@ -258,7 +258,7 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 
 #### 1-G. 컨텍스트 압축 (Compaction)
 
-상태: 미완료 (`POST /v1/compact` placeholder만 존재)
+상태: 완료
 
 **새 파일**: `internal/session/compaction.go`
 
@@ -266,7 +266,11 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 1. 오래된 메시지들을 LLM에게 요약 요청
 2. 요약 결과를 `compaction` 엔트리로 JSONL에 추가
 3. 이후 세션 로드 시 compaction 요약 + 그 이후 메시지만 로드
-4. **Pre-compaction memory flush**: 압축 직전 silent turn으로 MEMORY.md/daily log에 중요 정보 저장
+4. **Pre-compaction memory flush**: 압축 직전 MEMORY.md/daily log에 중요 정보 저장
+
+추가 구현 사항:
+- token budget로 최근 히스토리만 로딩할 때도 compaction summary 경계를 항상 포함
+- auto compact 트리거(`estimated_tokens`) + `/compact` 수동 트리거 둘 다 지원
 
 **트리거 조건:**
 - 자동: 토큰 추정치가 `contextWindow - reserveTokensFloor` 초과 시
@@ -285,7 +289,7 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 
 #### 1-I. `tars-ui` (React/TS Ink) 도입
 
-상태: 진행 중 (초기 골격 완료)
+상태: 완료
 
 **새 디렉터리**: `tars-ui/`
 

@@ -51,12 +51,14 @@
   2. [단계] → 검증: [확인사항]
   3. [단계] → 검증: [확인사항]
 
-## 현재 구현 상태 (2026-02-14 기준)
+## 현재 구현 상태 (2026-02-15 기준)
 
 - 서버 측 채팅 API `POST /v1/chat`는 구현되어 있다.
 - 세션 관리 API(`GET/POST/DELETE /v1/sessions`, history/export/search)와 상태 API(`GET /v1/status`)가 구현되어 있다.
 - LLM Chat 인터페이스(`Client.Chat`)와 스트리밍 콜백(`OnDelta`)이 구현되어 있다.
 - 워크스페이스 부트스트랩 파일(AGENTS/SOUL/USER/IDENTITY/TOOLS/HEARTBEAT/MEMORY) 생성과 시스템 프롬프트 조립이 구현되어 있다.
+- `/compact` 요약 저장 + 로딩 경계(Compaction summary boundary 포함)가 구현되어 있다.
+- `tars-ui` 슬래시 명령(`/new`, `/sessions`, `/resume`, `/history`, `/export`, `/search`, `/status`, `/compact`)이 연결되어 있다.
 
 ## LLM Provider 운영 정책 (2026-02-15)
 
@@ -72,9 +74,9 @@
 
 ## 다음 우선순위
 
-1. `tars` CLI 채팅 UX를 완성한다.
-2. `/compact` 실제 동작(요약 저장 + 로딩 경계)을 구현한다.
-3. 세션 전환/조회 슬래시 명령(`/new`, `/sessions`, `/resume`, `/history`, `/export`)을 `tars chat`에 연결한다.
+1. Agent loop 도구셋 보강(특히 `exec` 인자 검증/재시도 가드, 파일 도구 UX 개선).
+2. 허트비트 경로를 agent loop와 일관되게 통합하고 회귀 테스트를 보강한다.
+3. 크론잡 매니저(저장/조회/실행 API) 최소 기능을 구현한다.
 
 ## 작업 체크리스트
 
