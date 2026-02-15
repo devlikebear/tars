@@ -59,13 +59,13 @@
 - 워크스페이스 부트스트랩 파일(AGENTS/SOUL/USER/IDENTITY/TOOLS/HEARTBEAT/MEMORY) 생성과 시스템 프롬프트 조립이 구현되어 있다.
 
 ## 다음 우선순위
+
 1. `tars` CLI 채팅 UX를 완성한다.
 2. `/compact` 실제 동작(요약 저장 + 로딩 경계)을 구현한다.
 3. 세션 전환/조회 슬래시 명령(`/new`, `/sessions`, `/resume`, `/history`, `/export`)을 `tars chat`에 연결한다.
 
 ## 작업 체크리스트
+
 - 변경 전 현재 구현 상태와 범위를 먼저 요약한다.
 - 코드 변경 시 테스트를 함께 추가한다.
 - 기능 단위 완료 후 `CLAUDE.md`의 코드 구조 변경 기록을 갱신한다.
-
-
