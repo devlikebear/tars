@@ -28,6 +28,11 @@ type DecodeResult = {
 	remainder: string;
 };
 
+type StreamState = {
+	assistantText: string;
+	sessionId: string;
+};
+
 function trimURL(url: string): string {
 	return url.replace(/\/+$/, '');
 }
@@ -64,10 +69,42 @@ function statusLineFromEvent(evt: ChatSSEEvent): string {
 	if (status === '') {
 		status = (evt.phase ?? '').trim();
 	}
-	if ((evt.tool_name ?? '').trim() !== '') {
-		status = `${status} (${evt.tool_name!.trim()})`;
+	const toolName = (evt.tool_name ?? '').trim();
+	if (toolName !== '') {
+		status = `${status} (${toolName})`;
 	}
 	return status;
+}
+
+function applyStreamEvent(evt: ChatSSEEvent, state: StreamState, params: StreamChatParams): StreamChatResult | null {
+	switch (evt.type) {
+	case 'status': {
+		params.onStatusEvent?.(evt);
+		const status = statusLineFromEvent(evt);
+		if (status !== '') {
+			params.onStatus(status);
+		}
+		return null;
+	}
+	case 'delta': {
+		const chunk = evt.text ?? '';
+		state.assistantText += chunk;
+		params.onDelta(chunk);
+		return null;
+	}
+	case 'error': {
+		throw new Error((evt.error ?? 'chat stream error').trim());
+	}
+	case 'done': {
+		const nextID = (evt.session_id ?? '').trim();
+		if (nextID !== '') {
+			state.sessionId = nextID;
+		}
+		return {sessionId: state.sessionId, assistantText: state.assistantText};
+	}
+	default:
+		return null;
+	}
 }
 
 export async function streamChat(params: StreamChatParams): Promise<StreamChatResult> {
@@ -94,8 +131,10 @@ export async function streamChat(params: StreamChatParams): Promise<StreamChatRe
 	const reader = resp.body.getReader();
 	const decoder = new TextDecoder('utf-8');
 	let buffer = '';
-	let assistantText = '';
-	let currentSessionID = params.sessionId.trim();
+	const streamState: StreamState = {
+		assistantText: '',
+		sessionId: params.sessionId.trim(),
+	};
 
 	while (true) {
 		const {value, done} = await reader.read();
@@ -108,34 +147,12 @@ export async function streamChat(params: StreamChatParams): Promise<StreamChatRe
 		buffer = decoded.remainder;
 
 		for (const evt of decoded.events) {
-			switch (evt.type) {
-			case 'status': {
-				params.onStatusEvent?.(evt);
-				const status = statusLineFromEvent(evt);
-				if (status !== '') {
-					params.onStatus(status);
-				}
-				break;
-			}
-			case 'delta': {
-				const chunk = evt.text ?? '';
-				assistantText += chunk;
-				params.onDelta(chunk);
-				break;
-			}
-			case 'error': {
-				throw new Error((evt.error ?? 'chat stream error').trim());
-			}
-			case 'done': {
-				const nextID = (evt.session_id ?? '').trim();
-				if (nextID !== '') {
-					currentSessionID = nextID;
-				}
-				return {sessionId: currentSessionID, assistantText};
-			}
+			const maybeDone = applyStreamEvent(evt, streamState, params);
+			if (maybeDone !== null) {
+				return maybeDone;
 			}
 		}
 	}
 
-	return {sessionId: currentSessionID, assistantText};
+	return {sessionId: streamState.sessionId, assistantText: streamState.assistantText};
 }

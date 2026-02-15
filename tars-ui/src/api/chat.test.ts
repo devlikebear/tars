@@ -52,3 +52,36 @@ test('streamChat restores split chunks and returns assistant/session', async () 
 	assert.equal(result.assistantText, 'hello world');
 	assert.equal(result.sessionId, 'sess-2');
 });
+
+test('streamChat formats status line with message/phase and tool name', async () => {
+	const chunk =
+		'data: {"type":"status","message":"calling tool","phase":"before_tool_call","tool_name":"session_status"}\n\n' +
+		'data: {"type":"status","phase":"after_tool_call","tool_name":"session_status"}\n\n' +
+		'data: {"type":"done","session_id":"sess-3"}\n\n';
+
+	const stream = new ReadableStream<Uint8Array>({
+		start(controller) {
+			controller.enqueue(new TextEncoder().encode(chunk));
+			controller.close();
+		},
+	});
+
+	globalThis.fetch = (async () =>
+		new Response(stream, {
+			status: 200,
+			headers: {'Content-Type': 'text/event-stream'},
+		})) as typeof fetch;
+
+	const statuses: string[] = [];
+	const result = await streamChat({
+		serverUrl: 'http://127.0.0.1:8080',
+		sessionId: '',
+		message: 'hi',
+		onStatus: (line) => statuses.push(line),
+		onDelta: () => {},
+	});
+
+	assert.deepEqual(statuses, ['calling tool (session_status)', 'after_tool_call (session_status)']);
+	assert.equal(result.sessionId, 'sess-3');
+	assert.equal(result.assistantText, '');
+});
