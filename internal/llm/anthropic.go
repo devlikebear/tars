@@ -1,7 +1,6 @@
 package llm
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -9,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	zlog "github.com/rs/zerolog/log"
 )
@@ -18,11 +16,12 @@ type AnthropicClient struct {
 	baseURL    string
 	apiKey     string
 	model      string
-	maxTokens  int
+	config     ClientConfig
 	httpClient *http.Client
 }
 
 func NewAnthropicClient(baseURL, apiKey, model string, maxTokens int) (*AnthropicClient, error) {
+	config := DefaultClientConfig()
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, fmt.Errorf("anthropic base url is required")
 	}
@@ -36,15 +35,18 @@ func NewAnthropicClient(baseURL, apiKey, model string, maxTokens int) (*Anthropi
 	if maxTokens <= 0 {
 		maxTokens = 4096
 	}
+	config.MaxTokens = maxTokens
 
+	return newAnthropicClientWithConfig(baseURL, apiKey, model, config)
+}
+
+func newAnthropicClientWithConfig(baseURL, apiKey, model string, config ClientConfig) (*AnthropicClient, error) {
 	return &AnthropicClient{
-		baseURL:   strings.TrimRight(baseURL, "/"),
-		apiKey:    apiKey,
-		model:     model,
-		maxTokens: maxTokens,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		apiKey:     apiKey,
+		model:      model,
+		config:     config,
+		httpClient: newHTTPClient(config.HTTPTimeout),
 	}, nil
 }
 
@@ -79,7 +81,7 @@ func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts
 
 	reqBody := map[string]any{
 		"model":      c.model,
-		"max_tokens": c.maxTokens,
+		"max_tokens": c.config.MaxTokens,
 		"messages":   nonSystemMessages,
 	}
 	if len(systemMessages) > 0 {
@@ -109,7 +111,7 @@ func (c *AnthropicClient) Ask(ctx context.Context, prompt string) (string, error
 func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[string]any) (ChatResponse, error) {
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return ChatResponse{}, fmt.Errorf("marshal request: %w", err)
+		return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("marshal request: %w", err))
 	}
 
 	req, err := http.NewRequestWithContext(
@@ -119,7 +121,7 @@ func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[stri
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return ChatResponse{}, fmt.Errorf("create request: %w", err)
+		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("create request: %w", err))
 	}
 	req.Header.Set("x-api-key", c.apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
@@ -127,22 +129,18 @@ func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[stri
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return ChatResponse{}, fmt.Errorf("request anthropic: %w", err)
+		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("request anthropic: %w", err))
 	}
 	defer resp.Body.Close()
 	zlog.Debug().Str("provider", "anthropic").Int("status", resp.StatusCode).Msg("llm response received")
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return ChatResponse{}, fmt.Errorf("read response: %w", err)
-		}
-		return ChatResponse{}, fmt.Errorf("anthropic status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	if err := checkHTTPStatus(resp, "anthropic"); err != nil {
+		return ChatResponse{}, err
 	}
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return ChatResponse{}, fmt.Errorf("read response: %w", err)
+		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("read response: %w", err))
 	}
 
 	var parsed struct {
@@ -157,7 +155,7 @@ func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[stri
 		StopReason string `json:"stop_reason"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return ChatResponse{}, fmt.Errorf("decode response: %w", err)
+		return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("decode response: %w", err))
 	}
 	var b strings.Builder
 	for _, c := range parsed.Content {
@@ -189,7 +187,7 @@ func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[stri
 func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]any, onDelta func(text string)) (ChatResponse, error) {
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return ChatResponse{}, fmt.Errorf("marshal request: %w", err)
+		return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("marshal request: %w", err))
 	}
 
 	req, err := http.NewRequestWithContext(
@@ -199,7 +197,7 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return ChatResponse{}, fmt.Errorf("create request: %w", err)
+		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("create request: %w", err))
 	}
 	req.Header.Set("x-api-key", c.apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
@@ -207,17 +205,13 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return ChatResponse{}, fmt.Errorf("request anthropic: %w", err)
+		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("request anthropic: %w", err))
 	}
 	defer resp.Body.Close()
 	zlog.Debug().Str("provider", "anthropic").Int("status", resp.StatusCode).Msg("llm response received")
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return ChatResponse{}, fmt.Errorf("read response: %w", err)
-		}
-		return ChatResponse{}, fmt.Errorf("anthropic status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	if err := checkHTTPStatus(resp, "anthropic"); err != nil {
+		return ChatResponse{}, err
 	}
 
 	var (
@@ -227,8 +221,7 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 		stopReason string
 	)
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 1024), 1024*1024)
+	scanner := createSSEScanner(resp.Body)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -257,7 +250,7 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 				} `json:"delta"`
 			}
 			if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
-				return ChatResponse{}, fmt.Errorf("decode stream content delta: %w", err)
+				return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("decode stream content delta: %w", err))
 			}
 			if parsed.Delta.Text == "" {
 				continue
@@ -274,7 +267,7 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 				} `json:"message"`
 			}
 			if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
-				return ChatResponse{}, fmt.Errorf("decode stream message start: %w", err)
+				return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("decode stream message start: %w", err))
 			}
 			response.Usage.InputTokens = parsed.Message.Usage.InputTokens
 		case "message_delta":
@@ -287,7 +280,7 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 				} `json:"usage"`
 			}
 			if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
-				return ChatResponse{}, fmt.Errorf("decode stream message delta: %w", err)
+				return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("decode stream message delta: %w", err))
 			}
 			response.Usage.OutputTokens = parsed.Usage.OutputTokens
 			if parsed.Delta.StopReason != "" {
@@ -296,7 +289,7 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return ChatResponse{}, fmt.Errorf("read stream response: %w", err)
+		return ChatResponse{}, newProviderError("anthropic", "stream", fmt.Errorf("read stream response: %w", err))
 	}
 
 	response.Message = ChatMessage{

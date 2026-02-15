@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/devlikebear/tarsncase/internal/auth"
 	zlog "github.com/rs/zerolog/log"
@@ -50,6 +51,18 @@ type ChatResponse struct {
 	Message    ChatMessage
 	Usage      Usage
 	StopReason string
+}
+
+type ClientConfig struct {
+	HTTPTimeout time.Duration
+	MaxTokens   int
+}
+
+func DefaultClientConfig() ClientConfig {
+	return ClientConfig{
+		HTTPTimeout: defaultHTTPTimeout,
+		MaxTokens:   0,
+	}
 }
 
 type Client interface {

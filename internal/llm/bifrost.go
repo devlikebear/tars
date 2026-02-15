@@ -1,7 +1,6 @@
 package llm
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,7 +9,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"time"
 
 	zlog "github.com/rs/zerolog/log"
 )
@@ -22,10 +20,13 @@ type OpenAICompatibleClient struct {
 	baseURL    string
 	apiKey     string
 	model      string
+	config     ClientConfig
 	httpClient *http.Client
 }
 
-func newOpenAICompatibleClient(label, baseURL, apiKey, model string) (*OpenAICompatibleClient, error) {
+type openAICompatibleResponseContextKey struct{}
+
+func newOpenAICompatibleClientWithConfig(label, baseURL, apiKey, model string, config ClientConfig) (*OpenAICompatibleClient, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, fmt.Errorf("%s base url is required", label)
 	}
@@ -41,16 +42,17 @@ func newOpenAICompatibleClient(label, baseURL, apiKey, model string) (*OpenAICom
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		model:      model,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		config:     config,
+		httpClient: newHTTPClient(config.HTTPTimeout),
 	}, nil
 }
 
 func NewBifrostClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, error) {
-	return newOpenAICompatibleClient("bifrost", baseURL, apiKey, model)
+	return newOpenAICompatibleClientWithConfig("bifrost", baseURL, apiKey, model, DefaultClientConfig())
 }
 
 func NewOpenAIClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, error) {
-	return newOpenAICompatibleClient("openai", baseURL, apiKey, model)
+	return newOpenAICompatibleClientWithConfig("openai", baseURL, apiKey, model, DefaultClientConfig())
 }
 
 func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
@@ -65,6 +67,44 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 		Str("tool_choice", strings.TrimSpace(opts.ToolChoice)).
 		Msg("llm request start")
 
+	reqBody, err := c.buildChatRequest(messages, opts)
+	if err != nil {
+		return ChatResponse{}, err
+	}
+
+	req, err := c.createChatHTTPRequest(ctx, reqBody)
+	if err != nil {
+		return ChatResponse{}, err
+	}
+
+	httpClient := c.httpClient
+	if streaming {
+		// Do not apply a hard client timeout to streaming responses.
+		httpClient = &http.Client{
+			Transport: c.httpClient.Transport,
+		}
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return ChatResponse{}, newProviderError(c.label, "request", fmt.Errorf("request %s: %w", c.label, err))
+	}
+	defer resp.Body.Close()
+	zlog.Debug().Str("provider", c.label).Int("status", resp.StatusCode).Msg("llm response received")
+
+	if err := checkHTTPStatus(resp, c.label); err != nil {
+		return ChatResponse{}, err
+	}
+
+	req = req.WithContext(context.WithValue(req.Context(), openAICompatibleResponseContextKey{}, resp))
+	if opts.OnDelta != nil {
+		return c.chatStreaming(ctx, req, opts)
+	}
+
+	return c.chatNonStreaming(ctx, req)
+}
+
+func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts ChatOptions) (map[string]any, error) {
 	reqBody := map[string]any{
 		"model":    c.model,
 		"messages": toOpenAIWireMessages(messages),
@@ -78,10 +118,13 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 	if opts.OnDelta != nil {
 		reqBody["stream"] = true
 	}
+	return reqBody, nil
+}
 
+func (c *OpenAICompatibleClient) createChatHTTPRequest(ctx context.Context, reqBody map[string]any) (*http.Request, error) {
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return ChatResponse{}, fmt.Errorf("marshal request: %w", err)
+		return nil, newProviderError(c.label, "parse", fmt.Errorf("marshal request: %w", err))
 	}
 
 	req, err := http.NewRequestWithContext(
@@ -91,127 +134,112 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return ChatResponse{}, fmt.Errorf("create request: %w", err)
+		return nil, newProviderError(c.label, "request", fmt.Errorf("create request: %w", err))
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
 
-	httpClient := c.httpClient
-	if streaming {
-		// Do not apply a hard client timeout to streaming responses.
-		httpClient = &http.Client{
-			Transport: c.httpClient.Transport,
+func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Request, opts ChatOptions) (ChatResponse, error) {
+	_ = ctx
+	resp := req.Context().Value(openAICompatibleResponseContextKey{}).(*http.Response)
+
+	var (
+		builder          strings.Builder
+		stopReason       string
+		toolCallsByIndex = map[int]ToolCall{}
+	)
+	scanner := createSSEScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "[DONE]" {
+			break
+		}
+		if payload == "" {
+			continue
+		}
+
+		var parsed struct {
+			Choices []struct {
+				Delta struct {
+					Content   string `json:"content"`
+					ToolCalls []struct {
+						Index    int    `json:"index"`
+						ID       string `json:"id"`
+						Function struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						} `json:"function"`
+					} `json:"tool_calls"`
+				} `json:"delta"`
+				FinishReason string `json:"finish_reason"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
+			return ChatResponse{}, newProviderError(c.label, "parse", fmt.Errorf("decode stream response: %w", err))
+		}
+		if len(parsed.Choices) == 0 {
+			continue
+		}
+
+		choice := parsed.Choices[0]
+		content := choice.Delta.Content
+		builder.WriteString(content)
+		if choice.FinishReason != "" {
+			stopReason = choice.FinishReason
+		}
+		for _, tc := range choice.Delta.ToolCalls {
+			prev := toolCallsByIndex[tc.Index]
+			if tc.ID != "" {
+				prev.ID = tc.ID
+			}
+			if tc.Function.Name != "" {
+				prev.Name = tc.Function.Name
+			}
+			if tc.Function.Arguments != "" {
+				prev.Arguments += tc.Function.Arguments
+			}
+			toolCallsByIndex[tc.Index] = prev
+		}
+		if content != "" {
+			zlog.Debug().Str("provider", c.label).Int("delta_len", len(content)).Msg("llm stream delta")
+			opts.OnDelta(content)
 		}
 	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return ChatResponse{}, fmt.Errorf("request %s: %w", c.label, err)
+	if err := scanner.Err(); err != nil {
+		return ChatResponse{}, newProviderError(c.label, "stream", fmt.Errorf("read stream response: %w", err))
 	}
-	defer resp.Body.Close()
-	zlog.Debug().Str("provider", c.label).Int("status", resp.StatusCode).Msg("llm response received")
+	toolCalls := orderedToolCalls(toolCallsByIndex)
+	zlog.Debug().
+		Str("provider", c.label).
+		Int("assistant_len", len(builder.String())).
+		Int("tool_call_count", len(toolCalls)).
+		Str("stop_reason", stopReason).
+		Msg("llm stream complete")
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return ChatResponse{}, fmt.Errorf("read response: %w", err)
-		}
-		return ChatResponse{}, fmt.Errorf("%s status %d: %s", c.label, resp.StatusCode, strings.TrimSpace(string(respBody)))
-	}
+	return ChatResponse{
+		Message: ChatMessage{
+			Role:      "assistant",
+			Content:   builder.String(),
+			ToolCalls: toolCalls,
+		},
+		StopReason: stopReason,
+	}, nil
+}
 
-	if opts.OnDelta != nil {
-		var (
-			builder          strings.Builder
-			stopReason       string
-			toolCallsByIndex = map[int]ToolCall{}
-		)
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 1024), 1024*1024)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if !strings.HasPrefix(line, "data:") {
-				continue
-			}
-
-			payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			if payload == "[DONE]" {
-				break
-			}
-			if payload == "" {
-				continue
-			}
-
-			var parsed struct {
-				Choices []struct {
-					Delta struct {
-						Content   string `json:"content"`
-						ToolCalls []struct {
-							Index    int    `json:"index"`
-							ID       string `json:"id"`
-							Function struct {
-								Name      string `json:"name"`
-								Arguments string `json:"arguments"`
-							} `json:"function"`
-						} `json:"tool_calls"`
-					} `json:"delta"`
-					FinishReason string `json:"finish_reason"`
-				} `json:"choices"`
-			}
-			if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
-				return ChatResponse{}, fmt.Errorf("decode stream response: %w", err)
-			}
-			if len(parsed.Choices) == 0 {
-				continue
-			}
-
-			choice := parsed.Choices[0]
-			content := choice.Delta.Content
-			builder.WriteString(content)
-			if choice.FinishReason != "" {
-				stopReason = choice.FinishReason
-			}
-			for _, tc := range choice.Delta.ToolCalls {
-				prev := toolCallsByIndex[tc.Index]
-				if tc.ID != "" {
-					prev.ID = tc.ID
-				}
-				if tc.Function.Name != "" {
-					prev.Name = tc.Function.Name
-				}
-				if tc.Function.Arguments != "" {
-					prev.Arguments += tc.Function.Arguments
-				}
-				toolCallsByIndex[tc.Index] = prev
-			}
-			if content != "" {
-				zlog.Debug().Str("provider", c.label).Int("delta_len", len(content)).Msg("llm stream delta")
-				opts.OnDelta(content)
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			return ChatResponse{}, fmt.Errorf("read stream response: %w", err)
-		}
-		toolCalls := orderedToolCalls(toolCallsByIndex)
-		zlog.Debug().
-			Str("provider", c.label).
-			Int("assistant_len", len(builder.String())).
-			Int("tool_call_count", len(toolCalls)).
-			Str("stop_reason", stopReason).
-			Msg("llm stream complete")
-
-		return ChatResponse{
-			Message: ChatMessage{
-				Role:      "assistant",
-				Content:   builder.String(),
-				ToolCalls: toolCalls,
-			},
-			StopReason: stopReason,
-		}, nil
-	}
+func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http.Request) (ChatResponse, error) {
+	_ = ctx
+	resp := req.Context().Value(openAICompatibleResponseContextKey{}).(*http.Response)
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return ChatResponse{}, fmt.Errorf("read response: %w", err)
+		return ChatResponse{}, newProviderError(c.label, "request", fmt.Errorf("read response: %w", err))
 	}
 
 	var parsed struct {
@@ -234,10 +262,10 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return ChatResponse{}, fmt.Errorf("decode response: %w", err)
+		return ChatResponse{}, newProviderError(c.label, "parse", fmt.Errorf("decode response: %w", err))
 	}
 	if len(parsed.Choices) == 0 {
-		return ChatResponse{}, fmt.Errorf("%s response has no choices", c.label)
+		return ChatResponse{}, newProviderError(c.label, "parse", fmt.Errorf("%s response has no choices", c.label))
 	}
 	zlog.Debug().
 		Str("provider", c.label).

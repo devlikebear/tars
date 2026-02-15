@@ -17,9 +17,14 @@ const defaultCodexCLIModel = "gpt-5.3-codex"
 type CodexCLIClient struct {
 	command string
 	model   string
+	config  ClientConfig
 }
 
 func NewCodexCLIClient(model string) (*CodexCLIClient, error) {
+	return newCodexCLIClientWithConfig(model, DefaultClientConfig())
+}
+
+func newCodexCLIClientWithConfig(model string, config ClientConfig) (*CodexCLIClient, error) {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return nil, fmt.Errorf("codex-cli model is required")
@@ -33,6 +38,7 @@ func NewCodexCLIClient(model string) (*CodexCLIClient, error) {
 	return &CodexCLIClient{
 		command: command,
 		model:   model,
+		config:  config,
 	}, nil
 }
 
@@ -40,11 +46,11 @@ func (c *CodexCLIClient) Ask(ctx context.Context, prompt string) (string, error)
 	start := time.Now()
 	outFile, err := os.CreateTemp("", "tars-codex-output-*.txt")
 	if err != nil {
-		return "", fmt.Errorf("create codex output file: %w", err)
+		return "", newProviderError("codex-cli", "exec", fmt.Errorf("create codex output file: %w", err))
 	}
 	outPath := outFile.Name()
 	if err := outFile.Close(); err != nil {
-		return "", fmt.Errorf("close codex output file: %w", err)
+		return "", newProviderError("codex-cli", "exec", fmt.Errorf("close codex output file: %w", err))
 	}
 	defer os.Remove(outPath)
 
@@ -80,16 +86,18 @@ func (c *CodexCLIClient) Ask(ctx context.Context, prompt string) (string, error)
 		if msg == "" {
 			msg = "no additional error output"
 		}
-		return "", fmt.Errorf("codex exec failed: %w: %s", err, msg)
+		perr := newProviderError("codex-cli", "exec", fmt.Errorf("codex exec failed: %w: %s", err, msg))
+		perr.Message = msg
+		return "", perr
 	}
 
 	raw, err := os.ReadFile(outPath)
 	if err != nil {
-		return "", fmt.Errorf("read codex output file: %w", err)
+		return "", newProviderError("codex-cli", "exec", fmt.Errorf("read codex output file: %w", err))
 	}
 	text := strings.TrimSpace(string(raw))
 	if text == "" {
-		return "", fmt.Errorf("codex exec returned empty response")
+		return "", newProviderError("codex-cli", "parse", fmt.Errorf("codex exec returned empty response"))
 	}
 	zlog.Debug().
 		Str("provider", "codex-cli").

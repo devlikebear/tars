@@ -154,3 +154,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - 2026-02-15: `cmd/tarsd`의 `newChatAPIHandler`를 Extract Function으로 리팩터링했다. 세션 해석/컨텍스트 준비/히스토리 로딩/LLM 메시지 구성/SSE 작성기/에이전트 루프 설정을 private helper로 분리해 핸들러 복잡도를 낮췄다.
 - 2026-02-15: `cmd/tarsd/main.go`를 역할별로 3개 파일로 분리했다. CLI 진입점은 `main.go`(238줄)에 유지하고, HTTP 핸들러는 `handlers.go`(561줄), 유틸리티 함수는 `helpers.go`(228줄)로 이동해 파일 크기를 76% 감소시켰다.
 - 2026-02-15: `tarsd` 로그 출력 포맷을 개선했다. 화면(stderr)은 `zerolog.ConsoleWriter`로 색상 포맷(HH:MM:SS + 레벨별 색상) 출력하고, `--log-file` 플래그로 JSONL 파일 로깅을 선택적으로 지원한다. MultiLevelWriter로 console과 file에 동시 출력한다.
+- 2026-02-15: `internal/llm/bifrost.go`의 거대한 `Chat()` 메서드(207줄)를 Extract Function 패턴으로 리팩토링했다. `buildChatRequest`, `createChatHTTPRequest`, `chatStreaming`, `chatNonStreaming` 4개 private 메서드로 분해하여 라우터 역할(51줄)만 수행하도록 개선했다.
+- 2026-02-15: `internal/llm/http_utils.go`를 신규 생성하고 HTTP/SSE 공통 유틸리티를 추출했다. `checkHTTPStatus`, `newHTTPClient`, `createSSEScanner` 함수와 timeout 상수를 통일하여 bifrost.go와 anthropic.go의 중복 코드를 제거했다.
+- 2026-02-15: `internal/llm`에 구조화 에러 타입 `ProviderError`를 추가했다. provider/operation/status/message/cause 필드를 표준화하고 `Error()`/`Unwrap()`/헬퍼 생성자(`newProviderError`, `newHTTPError`)를 도입했으며, HTTP 상태 에러 생성 경로(`checkHTTPStatus`)를 해당 타입으로 연결했다.
+- 2026-02-15: `internal/llm` 클라이언트 생성 경로를 `ClientConfig` 파라미터 객체 패턴으로 통일했다. `DefaultClientConfig()`(HTTP timeout 기본값 + provider 기본 max tokens)와 provider별 내부 helper(`new*WithConfig`)를 도입해 공개 생성자 시그니처는 유지한 채 설정 주입 경로를 분리했다.
