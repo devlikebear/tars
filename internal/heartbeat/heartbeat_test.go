@@ -109,3 +109,161 @@ func TestRunOnceWithLLM_AppendsResponse(t *testing.T) {
 		t.Fatalf("expected llm response log in daily log: %q", content)
 	}
 }
+
+func TestRunOnceWithLLMResultWithPolicy_SkipsOutsideActiveHours(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "HEARTBEAT.md"), []byte("active-hours"), 0o644); err != nil {
+		t.Fatalf("write heartbeat: %v", err)
+	}
+
+	called := false
+	result, err := RunOnceWithLLMResultWithPolicy(
+		context.Background(),
+		root,
+		time.Date(2026, 2, 16, 20, 0, 0, 0, time.UTC),
+		func(_ context.Context, _ string) (string, error) {
+			called = true
+			return "should not run", nil
+		},
+		Policy{
+			ActiveHours: "09:00-18:00",
+			Timezone:    "UTC",
+		},
+	)
+	if err != nil {
+		t.Fatalf("run once with policy: %v", err)
+	}
+	if !result.Skipped {
+		t.Fatalf("expected skipped result outside active hours")
+	}
+	if called {
+		t.Fatalf("expected ask not called when outside active hours")
+	}
+}
+
+func TestRunOnceWithLLMResultWithPolicy_QueueGateSkips(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "HEARTBEAT.md"), []byte("queue-gate"), 0o644); err != nil {
+		t.Fatalf("write heartbeat: %v", err)
+	}
+
+	called := false
+	result, err := RunOnceWithLLMResultWithPolicy(
+		context.Background(),
+		root,
+		time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC),
+		func(_ context.Context, _ string) (string, error) {
+			called = true
+			return "should not run", nil
+		},
+		Policy{
+			ShouldRun: func(context.Context, time.Time) (bool, string) {
+				return false, "busy"
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("run once with policy: %v", err)
+	}
+	if !result.Skipped {
+		t.Fatalf("expected skipped result when queue gate blocks run")
+	}
+	if result.SkipReason != "busy" {
+		t.Fatalf("expected skip reason busy, got %q", result.SkipReason)
+	}
+	if called {
+		t.Fatalf("expected ask not called when queue gate blocks run")
+	}
+}
+
+func TestRunOnceWithLLMResultWithPolicy_HeartbeatOKSuppressesDailyLog(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "HEARTBEAT.md"), []byte("ack-test"), 0o644); err != nil {
+		t.Fatalf("write heartbeat: %v", err)
+	}
+
+	now := time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC)
+	result, err := RunOnceWithLLMResultWithPolicy(
+		context.Background(),
+		root,
+		now,
+		func(_ context.Context, _ string) (string, error) {
+			return "HEARTBEAT_OK", nil
+		},
+		Policy{},
+	)
+	if err != nil {
+		t.Fatalf("run once with policy: %v", err)
+	}
+	if !result.Acknowledged {
+		t.Fatalf("expected heartbeat response to be treated as acknowledgement")
+	}
+	if result.Logged {
+		t.Fatalf("expected ack response to skip daily log append")
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "memory", "2026-02-16.md"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read daily log: %v", err)
+	}
+	if os.IsNotExist(err) {
+		return
+	}
+	content := string(data)
+	if strings.Contains(content, "heartbeat tick") || strings.Contains(content, "heartbeat llm response") {
+		t.Fatalf("expected heartbeat logs to be suppressed on ack, got %q", content)
+	}
+}
+
+func TestRunOnceWithLLMResultWithPolicy_IncludesSessionContextAndAppendsTurn(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "HEARTBEAT.md"), []byte("bridge"), 0o644); err != nil {
+		t.Fatalf("write heartbeat: %v", err)
+	}
+
+	var appended TurnRecord
+	result, err := RunOnceWithLLMResultWithPolicy(
+		context.Background(),
+		root,
+		time.Date(2026, 2, 16, 11, 0, 0, 0, time.UTC),
+		func(_ context.Context, prompt string) (string, error) {
+			if !strings.Contains(prompt, "MAIN_SESSION_CONTEXT:") {
+				t.Fatalf("expected main session context in prompt, got %q", prompt)
+			}
+			if !strings.Contains(prompt, "last task: ship cron reliability") {
+				t.Fatalf("expected session context payload in prompt, got %q", prompt)
+			}
+			return "next action", nil
+		},
+		Policy{
+			LoadSessionContext: func(context.Context, time.Time) (string, error) {
+				return "last task: ship cron reliability", nil
+			},
+			AppendSessionTurn: func(_ context.Context, turn TurnRecord) error {
+				appended = turn
+				return nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("run once with policy: %v", err)
+	}
+	if result.Skipped {
+		t.Fatalf("did not expect skipped result")
+	}
+	if appended.Response != "next action" {
+		t.Fatalf("expected session turn append with response, got %+v", appended)
+	}
+}

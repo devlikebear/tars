@@ -490,6 +490,143 @@ func TestCronAPI_UpdateDelete(t *testing.T) {
 	}
 }
 
+func TestCronAPI_CreateWithExecutionFields(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := cron.NewStore(root)
+	handler := newCronAPIHandlerWithRunner(
+		store,
+		func(_ context.Context, job cron.Job) (string, error) { return "ok:" + job.Prompt, nil },
+		zerolog.New(io.Discard),
+	)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs", strings.NewReader(`{"name":"typed","prompt":"check feed","schedule":"at:2026-02-16T10:00:00Z","session_target":"main","wake_mode":"agent_loop","delivery_mode":"session","payload":{"priority":"high"}}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("expected create status 200, got %d body=%q", createRec.Code, createRec.Body.String())
+	}
+	var created cron.Job
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	if created.SessionTarget != "main" || created.WakeMode != "agent_loop" || created.DeliveryMode != "session" {
+		t.Fatalf("unexpected execution fields: %+v", created)
+	}
+	if string(created.Payload) != `{"priority":"high"}` {
+		t.Fatalf("unexpected payload: %s", string(created.Payload))
+	}
+}
+
+func TestCronAPI_RunReturnsConflictWhenJobAlreadyRunning(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := cron.NewStore(root)
+	job, err := store.CreateWithOptions(cron.CreateInput{
+		Name:      "busy",
+		Prompt:    "check",
+		Schedule:  "every:1m",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if !store.TryStartRun(job.ID) {
+		t.Fatalf("failed to seed running lock")
+	}
+	defer store.FinishRun(job.ID)
+
+	handler := newCronAPIHandlerWithRunner(
+		store,
+		func(_ context.Context, _ cron.Job) (string, error) { return "ok", nil },
+		zerolog.New(io.Discard),
+	)
+	runReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs/"+job.ID+"/run", nil)
+	runRec := httptest.NewRecorder()
+	handler.ServeHTTP(runRec, runReq)
+	if runRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 conflict, got %d body=%q", runRec.Code, runRec.Body.String())
+	}
+}
+
+func TestCronRunner_DeliversToSessionAndDailyLog(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	sess, err := store.Create("main")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := session.AppendMessage(store.TranscriptPath(sess.ID), session.Message{
+		Role:      "user",
+		Content:   "최근 작업은 cron 안정화",
+		Timestamp: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("append transcript: %v", err)
+	}
+
+	var seenPrompt string
+	runner := newCronJobRunner(
+		root,
+		store,
+		func(_ context.Context, _ string, prompt string) (string, error) {
+			seenPrompt = prompt
+			return "cron delivered", nil
+		},
+		zerolog.New(io.Discard),
+	)
+	if runner == nil {
+		t.Fatalf("expected runner")
+	}
+	_, err = runner(context.Background(), cron.Job{
+		ID:            "job_delivery",
+		Name:          "deliver",
+		Prompt:        "status update",
+		Schedule:      "every:1m",
+		SessionTarget: "main",
+		DeliveryMode:  "both",
+		Payload:       json.RawMessage(`{"channel":"ops"}`),
+	})
+	if err != nil {
+		t.Fatalf("run cron runner: %v", err)
+	}
+	if !strings.Contains(seenPrompt, "CRON_PAYLOAD_JSON:") || !strings.Contains(seenPrompt, "TARGET_SESSION_CONTEXT:") {
+		t.Fatalf("expected payload + session context in prompt, got %q", seenPrompt)
+	}
+
+	logPath := filepath.Join(root, "memory", time.Now().Format("2006-01-02")+".md")
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read daily log: %v", err)
+	}
+	if !strings.Contains(string(data), "cron job=deliver") {
+		t.Fatalf("expected cron delivery entry in daily log, got %q", string(data))
+	}
+
+	messages, err := session.ReadMessages(store.TranscriptPath(sess.ID))
+	if err != nil {
+		t.Fatalf("read session transcript: %v", err)
+	}
+	found := false
+	for _, msg := range messages {
+		if msg.Role == "system" && strings.Contains(msg.Content, "[CRON]") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected cron delivery system message in session transcript")
+	}
+}
+
 func TestMCPAPI_ListServersAndTools(t *testing.T) {
 	provider := &mockMCPProvider{
 		servers: []mcp.ServerStatus{

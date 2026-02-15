@@ -1,6 +1,8 @@
 package cron
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -159,10 +161,10 @@ func TestStore_ListRunsReturnsLatestFirst(t *testing.T) {
 
 	t1 := time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC)
 	t2 := t1.Add(1 * time.Minute)
-	if _, err := store.MarkRunResult(job.ID, t1, nil); err != nil {
+	if _, err := store.MarkRunResult(job.ID, t1, "ok-1", nil); err != nil {
 		t.Fatalf("mark run t1: %v", err)
 	}
-	if _, err := store.MarkRunResult(job.ID, t2, assertErr("boom")); err != nil {
+	if _, err := store.MarkRunResult(job.ID, t2, "", assertErr("boom")); err != nil {
 		t.Fatalf("mark run t2: %v", err)
 	}
 
@@ -178,6 +180,103 @@ func TestStore_ListRunsReturnsLatestFirst(t *testing.T) {
 	}
 	if runs[0].Error != "boom" {
 		t.Fatalf("expected error message on latest run, got %q", runs[0].Error)
+	}
+	if runs[1].Response != "ok-1" {
+		t.Fatalf("expected response persisted in history, got %q", runs[1].Response)
+	}
+}
+
+func TestStore_CreateWithSessionWakeDeliveryPayload(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	job, err := store.CreateWithOptions(CreateInput{
+		Name:          "typed",
+		Prompt:        "collect updates",
+		Schedule:      "at:2026-02-17T09:00:00Z",
+		Enabled:       true,
+		HasEnable:     true,
+		SessionTarget: "main",
+		WakeMode:      "agent_loop",
+		DeliveryMode:  "session",
+		Payload:       json.RawMessage(`{"priority":"high"}`),
+	})
+	if err != nil {
+		t.Fatalf("create typed cron job: %v", err)
+	}
+	if job.SessionTarget != "main" {
+		t.Fatalf("expected session_target main, got %q", job.SessionTarget)
+	}
+	if job.WakeMode != "agent_loop" {
+		t.Fatalf("expected wake_mode agent_loop, got %q", job.WakeMode)
+	}
+	if job.DeliveryMode != "session" {
+		t.Fatalf("expected delivery_mode session, got %q", job.DeliveryMode)
+	}
+	if string(job.Payload) != `{"priority":"high"}` {
+		t.Fatalf("expected payload persisted, got %s", string(job.Payload))
+	}
+	if job.Schedule != "at:2026-02-17T09:00:00Z" {
+		t.Fatalf("expected at schedule normalization, got %q", job.Schedule)
+	}
+}
+
+func TestStore_RunHistoryPrunesPerJobLimit(t *testing.T) {
+	root := t.TempDir()
+	store := NewStoreWithOptions(root, StoreOptions{RunHistoryLimit: 2})
+
+	job, err := store.CreateWithOptions(CreateInput{
+		Prompt:    "prune history",
+		Schedule:  "every:1m",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	base := time.Date(2026, 2, 17, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		if _, err := store.MarkRunResult(job.ID, base.Add(time.Duration(i)*time.Minute), "ok", nil); err != nil {
+			t.Fatalf("mark run %d: %v", i, err)
+		}
+	}
+
+	runs, err := store.ListRuns(job.ID, 10)
+	if err != nil {
+		t.Fatalf("list runs: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("expected pruned run history length 2, got %d", len(runs))
+	}
+
+	runPath := filepath.Join(root, "cron", "runs", job.ID+".jsonl")
+	if _, err := os.Stat(runPath); err != nil {
+		t.Fatalf("expected per-job run history file, got %v", err)
+	}
+}
+
+func TestStore_TryStartRunGuardsConcurrentExecution(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	job, err := store.CreateWithOptions(CreateInput{
+		Prompt:    "lock",
+		Schedule:  "every:1m",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	if ok := store.TryStartRun(job.ID); !ok {
+		t.Fatalf("expected first run lock to succeed")
+	}
+	if ok := store.TryStartRun(job.ID); ok {
+		t.Fatalf("expected second run lock to fail while running")
+	}
+	store.FinishRun(job.ID)
+	if ok := store.TryStartRun(job.ID); !ok {
+		t.Fatalf("expected run lock to succeed after release")
 	}
 }
 

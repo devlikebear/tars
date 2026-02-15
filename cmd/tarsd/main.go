@@ -154,8 +154,10 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				logger.Error().Err(err).Msg("failed to write daily log")
 				return &cli.ExitError{Code: 1, Err: err}
 			}
+			sessionStore := session.NewStore(cfg.WorkspaceDir)
 
 			var ask heartbeat.AskFunc
+			var runPrompt func(ctx context.Context, runLabel string, prompt string) (string, error)
 			var llmClient llm.Client
 			needLLM := opts.RunOnce || opts.RunLoop || opts.ServeAPI
 			if needLLM {
@@ -172,6 +174,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					return &cli.ExitError{Code: 1, Err: err}
 				}
 				llmClient = client
+				runPrompt = newAgentPromptRunner(cfg.WorkspaceDir, llmClient, cfg.AgentMaxIterations, logger)
 				ask = newAgentAskFunc(cfg.WorkspaceDir, llmClient, cfg.AgentMaxIterations, logger)
 				logger.Debug().
 					Str("provider", cfg.LLMProvider).
@@ -182,8 +185,12 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 			}
 
 			if opts.ServeAPI {
-				store := session.NewStore(cfg.WorkspaceDir)
-				cronStore := cron.NewStore(cfg.WorkspaceDir)
+				cronStore := cron.NewStoreWithOptions(cfg.WorkspaceDir, cron.StoreOptions{
+					RunHistoryLimit: cfg.CronRunHistoryLimit,
+				})
+				activity := &runtimeActivity{}
+				heartbeatPolicy := buildHeartbeatPolicy(sessionStore, cfg.HeartbeatActiveHours, cfg.HeartbeatTimezone, activity)
+				cronRunner := newCronJobRunner(cfg.WorkspaceDir, sessionStore, runPrompt, logger)
 				var mcpClient *mcp.Client
 				var mcpTools []tool.Tool
 				if len(cfg.MCPServers) > 0 {
@@ -200,25 +207,26 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				}
 
 				mux := http.NewServeMux()
-				heartbeatHandler := newHeartbeatAPIHandler(cfg.WorkspaceDir, nowFn, ask, logger)
+				heartbeatHandler := newHeartbeatAPIHandlerWithPolicy(cfg.WorkspaceDir, nowFn, ask, heartbeatPolicy, logger)
 				mux.Handle("/v1/heartbeat/", heartbeatHandler)
-				chatHandler := newChatAPIHandlerWithOptions(
+				chatHandler := newChatAPIHandlerWithRuntime(
 					cfg.WorkspaceDir,
-					store,
+					sessionStore,
 					llmClient,
 					logger,
 					cfg.AgentMaxIterations,
+					activity,
 					mcpTools...,
 				)
 				mux.Handle("/v1/chat", chatHandler)
-				sessionHandler := newSessionAPIHandler(store, logger)
+				sessionHandler := newSessionAPIHandler(sessionStore, logger)
 				mux.Handle("/v1/sessions", sessionHandler)
 				mux.Handle("/v1/sessions/", sessionHandler)
-				statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, store, logger)
+				statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, logger)
 				mux.Handle("/v1/status", statusHandler)
-				compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, store, llmClient, logger)
+				compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, llmClient, logger)
 				mux.Handle("/v1/compact", compactHandler)
-				cronHandler := newCronAPIHandler(cronStore, ask, logger)
+				cronHandler := newCronAPIHandlerWithRunner(cronStore, cronRunner, logger)
 				mux.Handle("/v1/cron/jobs", cronHandler)
 				mux.Handle("/v1/cron/jobs/", cronHandler)
 				mcpHandler := newMCPAPIHandler(mcpClient, logger)
@@ -239,7 +247,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					defer cancel()
 					_ = server.Shutdown(shutdownCtx)
 				}()
-				cronManager := cron.NewManager(cronStore, ask, 30*time.Second, nowFn)
+				cronManager := cron.NewManager(cronStore, cronRunner, 30*time.Second, nowFn)
 				go func() {
 					if err := cronManager.Start(ctx); err != nil {
 						logger.Error().Err(err).Msg("cron manager stopped with error")
@@ -260,20 +268,23 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 			if opts.RunOnce {
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
-				if err := heartbeat.RunOnceWithLLM(ctx, cfg.WorkspaceDir, nowFn(), ask); err != nil {
+				runPolicy := buildHeartbeatPolicy(sessionStore, cfg.HeartbeatActiveHours, cfg.HeartbeatTimezone, nil)
+				if _, err := heartbeat.RunOnceWithLLMResultWithPolicy(ctx, cfg.WorkspaceDir, nowFn(), ask, runPolicy); err != nil {
 					logger.Error().Err(err).Msg("failed to run heartbeat once")
 					return &cli.ExitError{Code: 1, Err: err}
 				}
 				logger.Info().Msg("heartbeat run-once complete")
 			}
 			if opts.RunLoop {
-				count, err := heartbeat.RunLoopWithLLM(
+				runPolicy := buildHeartbeatPolicy(sessionStore, cfg.HeartbeatActiveHours, cfg.HeartbeatTimezone, nil)
+				count, err := heartbeat.RunLoopWithLLMWithPolicy(
 					context.Background(),
 					cfg.WorkspaceDir,
 					opts.HeartbeatInterval,
 					opts.MaxHeartbeats,
 					nowFn,
 					ask,
+					runPolicy,
 				)
 				if err != nil {
 					logger.Error().Err(err).Msg("failed to run heartbeat loop")

@@ -23,13 +23,23 @@ import (
 )
 
 func newHeartbeatAPIHandler(workspaceDir string, nowFn func() time.Time, ask heartbeat.AskFunc, logger zerolog.Logger) http.Handler {
+	return newHeartbeatAPIHandlerWithPolicy(workspaceDir, nowFn, ask, heartbeat.Policy{}, logger)
+}
+
+func newHeartbeatAPIHandlerWithPolicy(
+	workspaceDir string,
+	nowFn func() time.Time,
+	ask heartbeat.AskFunc,
+	policy heartbeat.Policy,
+	logger zerolog.Logger,
+) http.Handler {
 	var mu sync.Mutex
-	runHeartbeat := func(ctx context.Context) (string, error) {
+	runHeartbeat := func(ctx context.Context) (heartbeat.RunResult, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		return heartbeat.RunOnceWithLLMResult(callCtx, workspaceDir, nowFn(), ask)
+		return heartbeat.RunOnceWithLLMResultWithPolicy(callCtx, workspaceDir, nowFn(), ask, policy)
 	}
 
 	mux := http.NewServeMux()
@@ -38,13 +48,19 @@ func newHeartbeatAPIHandler(workspaceDir string, nowFn func() time.Time, ask hea
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		response, err := runHeartbeat(r.Context())
+		result, err := runHeartbeat(r.Context())
 		if err != nil {
 			logger.Error().Err(err).Msg("heartbeat run-once api failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"response": response})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"response":     result.Response,
+			"skipped":      result.Skipped,
+			"skip_reason":  result.SkipReason,
+			"acknowledged": result.Acknowledged,
+			"logged":       result.Logged,
+		})
 	})
 
 	return mux
@@ -224,7 +240,7 @@ func resolveAgentMaxIterations(value int) int {
 }
 
 func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Client, logger zerolog.Logger) http.Handler {
-	return newChatAPIHandlerWithOptions(workspaceDir, store, client, logger, agent.DefaultMaxLoopIters)
+	return newChatAPIHandlerWithRuntime(workspaceDir, store, client, logger, agent.DefaultMaxLoopIters, nil)
 }
 
 func newChatAPIHandlerWithOptions(
@@ -233,6 +249,18 @@ func newChatAPIHandlerWithOptions(
 	client llm.Client,
 	logger zerolog.Logger,
 	maxIterations int,
+	extraTools ...tool.Tool,
+) http.Handler {
+	return newChatAPIHandlerWithRuntime(workspaceDir, store, client, logger, maxIterations, nil, extraTools...)
+}
+
+func newChatAPIHandlerWithRuntime(
+	workspaceDir string,
+	store *session.Store,
+	client llm.Client,
+	logger zerolog.Logger,
+	maxIterations int,
+	activity *runtimeActivity,
 	extraTools ...tool.Tool,
 ) http.Handler {
 	maxIters := resolveAgentMaxIterations(maxIterations)
@@ -255,6 +283,8 @@ func newChatAPIHandlerWithOptions(
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "message is required"})
 			return
 		}
+		endBusy := activity.beginChat()
+		defer endBusy()
 		logger.Debug().
 			Str("path", r.URL.Path).
 			Str("session_id", strings.TrimSpace(req.SessionID)).
@@ -362,6 +392,8 @@ func newChatAPIHandlerWithOptions(
 		assistantMsg := session.Message{Role: "assistant", Content: chatResp.Message.Content, Timestamp: time.Now().UTC()}
 		if err := session.AppendMessage(transcriptPath, assistantMsg); err != nil {
 			logger.Error().Err(err).Msg("append assistant message failed")
+		} else if err := store.Touch(sessionID, assistantMsg.Timestamp); err != nil {
+			logger.Error().Err(err).Str("session_id", sessionID).Msg("touch session updated_at failed")
 		}
 		if err := writeChatMemory(workspaceDir, sessionID, req.Message, chatResp.Message.Content, assistantMsg.Timestamp); err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("write chat memory failed")
@@ -627,6 +659,20 @@ func newCronAPIHandler(
 	runPrompt func(ctx context.Context, prompt string) (string, error),
 	logger zerolog.Logger,
 ) http.Handler {
+	var runJob func(ctx context.Context, job cron.Job) (string, error)
+	if runPrompt != nil {
+		runJob = func(ctx context.Context, job cron.Job) (string, error) {
+			return runPrompt(ctx, job.Prompt)
+		}
+	}
+	return newCronAPIHandlerWithRunner(store, runJob, logger)
+}
+
+func newCronAPIHandlerWithRunner(
+	store *cron.Store,
+	runJob func(ctx context.Context, job cron.Job) (string, error),
+	logger zerolog.Logger,
+) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/v1/cron/jobs", func(w http.ResponseWriter, r *http.Request) {
@@ -641,11 +687,15 @@ func newCronAPIHandler(
 			writeJSON(w, http.StatusOK, jobs)
 		case http.MethodPost:
 			var req struct {
-				Name           string `json:"name"`
-				Prompt         string `json:"prompt"`
-				Schedule       string `json:"schedule"`
-				Enabled        *bool  `json:"enabled,omitempty"`
-				DeleteAfterRun bool   `json:"delete_after_run,omitempty"`
+				Name           string          `json:"name"`
+				Prompt         string          `json:"prompt"`
+				Schedule       string          `json:"schedule"`
+				Enabled        *bool           `json:"enabled,omitempty"`
+				SessionTarget  string          `json:"session_target,omitempty"`
+				WakeMode       string          `json:"wake_mode,omitempty"`
+				DeliveryMode   string          `json:"delivery_mode,omitempty"`
+				Payload        json.RawMessage `json:"payload,omitempty"`
+				DeleteAfterRun bool            `json:"delete_after_run,omitempty"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -663,10 +713,14 @@ func newCronAPIHandler(
 				Schedule:       req.Schedule,
 				Enabled:        enabled,
 				HasEnable:      hasEnable,
+				SessionTarget:  req.SessionTarget,
+				WakeMode:       req.WakeMode,
+				DeliveryMode:   req.DeliveryMode,
+				Payload:        req.Payload,
 				DeleteAfterRun: req.DeleteAfterRun,
 			})
 			if err != nil {
-				if strings.Contains(err.Error(), "prompt is required") || strings.Contains(err.Error(), "invalid schedule") {
+				if strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "payload") {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 					return
 				}
@@ -692,11 +746,15 @@ func newCronAPIHandler(
 			switch r.Method {
 			case http.MethodPut:
 				var req struct {
-					Name           *string `json:"name,omitempty"`
-					Prompt         *string `json:"prompt,omitempty"`
-					Schedule       *string `json:"schedule,omitempty"`
-					Enabled        *bool   `json:"enabled,omitempty"`
-					DeleteAfterRun *bool   `json:"delete_after_run,omitempty"`
+					Name           *string          `json:"name,omitempty"`
+					Prompt         *string          `json:"prompt,omitempty"`
+					Schedule       *string          `json:"schedule,omitempty"`
+					Enabled        *bool            `json:"enabled,omitempty"`
+					SessionTarget  *string          `json:"session_target,omitempty"`
+					WakeMode       *string          `json:"wake_mode,omitempty"`
+					DeliveryMode   *string          `json:"delivery_mode,omitempty"`
+					Payload        *json.RawMessage `json:"payload,omitempty"`
+					DeleteAfterRun *bool            `json:"delete_after_run,omitempty"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -707,13 +765,17 @@ func newCronAPIHandler(
 					Prompt:         req.Prompt,
 					Schedule:       req.Schedule,
 					Enabled:        req.Enabled,
+					SessionTarget:  req.SessionTarget,
+					WakeMode:       req.WakeMode,
+					DeliveryMode:   req.DeliveryMode,
+					Payload:        req.Payload,
 					DeleteAfterRun: req.DeleteAfterRun,
 				})
 				if err != nil {
 					switch {
 					case strings.Contains(err.Error(), "job not found"):
 						writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
-					case strings.Contains(err.Error(), "required"), strings.Contains(err.Error(), "invalid schedule"):
+					case strings.Contains(err.Error(), "required"), strings.Contains(err.Error(), "invalid"), strings.Contains(err.Error(), "payload"):
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 					default:
 						logger.Error().Err(err).Str("job_id", jobID).Msg("update cron job failed")
@@ -778,7 +840,7 @@ func newCronAPIHandler(
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if runPrompt == nil {
+		if runJob == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cron runner is not configured"})
 			return
 		}
@@ -792,19 +854,27 @@ func newCronAPIHandler(
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get cron job failed"})
 			return
 		}
+		if !store.TryStartRun(jobID) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "job is already running"})
+			return
+		}
+		defer store.FinishRun(jobID)
 
-		response, err := runPrompt(r.Context(), job.Prompt)
-		_, _ = store.MarkRunResult(jobID, time.Now().UTC(), err)
+		response, err := runJob(r.Context(), job)
+		_, _ = store.MarkRunResult(jobID, time.Now().UTC(), response, err)
 		if err != nil {
 			logger.Error().Err(err).Str("job_id", jobID).Msg("run cron job failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "run cron job failed"})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{
-			"job_id":     job.ID,
-			"response":   response,
-			"job_name":   job.Name,
-			"job_prompt": job.Prompt,
+			"job_id":         job.ID,
+			"response":       response,
+			"job_name":       job.Name,
+			"job_prompt":     job.Prompt,
+			"session_target": job.SessionTarget,
+			"wake_mode":      job.WakeMode,
+			"delivery_mode":  job.DeliveryMode,
 		})
 	})
 

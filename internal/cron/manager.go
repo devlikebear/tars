@@ -9,15 +9,15 @@ import (
 )
 
 type Manager struct {
-	store     *Store
-	runPrompt func(ctx context.Context, prompt string) (string, error)
-	interval  time.Duration
-	nowFn     func() time.Time
+	store    *Store
+	runJob   func(ctx context.Context, job Job) (string, error)
+	interval time.Duration
+	nowFn    func() time.Time
 }
 
 func NewManager(
 	store *Store,
-	runPrompt func(ctx context.Context, prompt string) (string, error),
+	runJob func(ctx context.Context, job Job) (string, error),
 	interval time.Duration,
 	nowFn func() time.Time,
 ) *Manager {
@@ -28,10 +28,10 @@ func NewManager(
 		nowFn = time.Now
 	}
 	return &Manager{
-		store:     store,
-		runPrompt: runPrompt,
-		interval:  interval,
-		nowFn:     nowFn,
+		store:    store,
+		runJob:   runJob,
+		interval: interval,
+		nowFn:    nowFn,
 	}
 }
 
@@ -49,7 +49,7 @@ func (m *Manager) Start(ctx context.Context) error {
 }
 
 func (m *Manager) Tick(ctx context.Context) error {
-	if m == nil || m.store == nil || m.runPrompt == nil {
+	if m == nil || m.store == nil || m.runJob == nil {
 		return nil
 	}
 	now := m.nowFn().UTC()
@@ -61,8 +61,12 @@ func (m *Manager) Tick(ctx context.Context) error {
 		if !shouldRunAt(job, now) {
 			continue
 		}
-		_, runErr := m.runPrompt(ctx, job.Prompt)
-		_, _ = m.store.MarkRunResult(job.ID, now, runErr)
+		if !m.store.TryStartRun(job.ID) {
+			continue
+		}
+		response, runErr := m.runJob(ctx, job)
+		m.store.FinishRun(job.ID)
+		_, _ = m.store.MarkRunResult(job.ID, now, response, runErr)
 	}
 	return nil
 }
@@ -71,6 +75,20 @@ func shouldRunAt(job Job, now time.Time) bool {
 	if !job.Enabled {
 		return false
 	}
+	if job.BackoffUntil != nil && now.Before(job.BackoffUntil.UTC()) {
+		return false
+	}
+	atTime, isAt, err := parseAtTime(job.Schedule)
+	if isAt {
+		if err != nil {
+			return false
+		}
+		if job.LastRunAt != nil {
+			return false
+		}
+		return !atTime.After(now)
+	}
+
 	interval, ok := parseEveryDuration(job.Schedule)
 	if ok {
 		if interval <= 0 {
