@@ -1,0 +1,37 @@
+# tarsd example configuration
+# Usage:
+#   go run ./cmd/tarsd --config ./config/tarsd.config.example.yaml --serve-api
+
+mode: standalone
+workspace_dir: ./workspace
+
+# LLM provider
+# provider: bifrost | openai | anthropic | gemini | gemini-native
+llm_provider: anthropic
+llm_auth_mode: api-key
+llm_oauth_provider: ""
+llm_base_url: https://api.anthropic.com
+llm_model: claude-3-5-haiku-latest
+llm_api_key: ${ANTHROPIC_API_KEY}
+
+# Agent loop
+agent_max_iterations: 20
+
+# Heartbeat policy
+heartbeat_active_hours: "09:00-22:00"
+heartbeat_timezone: Asia/Seoul
+
+# Cron
+cron_run_history_limit: 200
+
+# Notification fallback when no SSE clients are connected
+notify_command: ""
+# true/false is controlled via env: NOTIFY_WHEN_NO_CLIENTS
+
+# Optional Bifrost defaults (used when llm_provider=bifrost)
+bifrost_base_url: http://127.0.0.1:8080/v1
+bifrost_api_key: ${BIFROST_API_KEY}
+bifrost_model: openai/gpt-4o-mini
+
+# Optional MCP servers in JSON string form
+mcp_servers_json: '[{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}]'

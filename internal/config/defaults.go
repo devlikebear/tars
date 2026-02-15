@@ -38,6 +38,8 @@ type Config struct {
 	MCPServers           []MCPServer
 }
 
+const DefaultTarsdConfigFilename = "config/standalone.yaml"
+
 // Default returns safe baseline settings for local standalone execution.
 func Default() Config {
 	return Config{
@@ -68,6 +70,19 @@ func Load(path string) (Config, error) {
 	applyEnv(&cfg)
 	applyLLMDefaults(&cfg)
 	return cfg, nil
+}
+
+func ResolveTarsdConfigPath(raw string) string {
+	if v := strings.TrimSpace(raw); v != "" {
+		return os.ExpandEnv(v)
+	}
+	if v := strings.TrimSpace(firstNonEmpty(os.Getenv("TARSD_CONFIG"), os.Getenv("TARSD_CONFIG_PATH"))); v != "" {
+		return os.ExpandEnv(v)
+	}
+	if _, err := os.Stat(DefaultTarsdConfigFilename); err == nil {
+		return DefaultTarsdConfigFilename
+	}
+	return ""
 }
 
 func applyEnv(cfg *Config) {

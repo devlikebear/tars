@@ -137,10 +137,14 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				return &cli.ExitError{Code: 2, Err: fmt.Errorf("--run-once and --run-loop are mutually exclusive")}
 			}
 
-			cfg, err := config.Load(opts.ConfigPath)
+			resolvedConfigPath := config.ResolveTarsdConfigPath(opts.ConfigPath)
+			cfg, err := config.Load(resolvedConfigPath)
 			if err != nil {
 				logger.Error().Err(err).Msg("failed to load config")
 				return &cli.ExitError{Code: 1, Err: err}
+			}
+			if strings.TrimSpace(resolvedConfigPath) != "" {
+				logger.Debug().Str("config_path", resolvedConfigPath).Msg("resolved config file")
 			}
 
 			if opts.Mode != "" {

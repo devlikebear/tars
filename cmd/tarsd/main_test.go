@@ -128,6 +128,60 @@ func TestRun_InvalidConfigPathReturnsError(t *testing.T) {
 
 }
 
+func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "standalone.yaml")
+	if err := os.WriteFile(configPath, []byte("mode: service\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	workspaceDir := filepath.Join(root, "workspace")
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+
+	code := run([]string{"--workspace-dir", workspaceDir}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "tarsd starting in service mode") {
+		t.Fatalf("expected mode from default config file, got %q", stdout.String())
+	}
+}
+
+func TestRun_UsesEnvConfigPathWhenFlagIsEmpty(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "custom.yaml")
+	if err := os.WriteFile(configPath, []byte("mode: service\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("TARSD_CONFIG", configPath)
+
+	workspaceDir := filepath.Join(root, "workspace")
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	code := run([]string{"--workspace-dir", workspaceDir}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "tarsd starting in service mode") {
+		t.Fatalf("expected mode from TARSD_CONFIG file, got %q", stdout.String())
+	}
+}
+
 func TestRun_CreatesWorkspaceAndDailyLog(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	stdout := &bytes.Buffer{}

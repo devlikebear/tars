@@ -247,6 +247,43 @@ func TestLoad_InvalidPathReturnsError(t *testing.T) {
 	}
 }
 
+func TestResolveTarsdConfigPath_ExplicitAndEnv(t *testing.T) {
+	t.Setenv("TARSD_CONFIG", "/tmp/should-not-win.yaml")
+	if got := ResolveTarsdConfigPath("./custom.yaml"); got != "./custom.yaml" {
+		t.Fatalf("expected explicit path to win, got %q", got)
+	}
+
+	t.Setenv("TARSD_CONFIG", "/tmp/from-env.yaml")
+	if got := ResolveTarsdConfigPath(""); got != "/tmp/from-env.yaml" {
+		t.Fatalf("expected env path, got %q", got)
+	}
+}
+
+func TestResolveTarsdConfigPath_DefaultCandidate(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "standalone.yaml")
+	if err := os.WriteFile(configPath, []byte("mode: standalone\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir root: %v", err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+
+	if got := ResolveTarsdConfigPath(""); got != DefaultTarsdConfigFilename {
+		t.Fatalf("expected default candidate %q, got %q", DefaultTarsdConfigFilename, got)
+	}
+}
+
 func TestLoad_InvalidFormatReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
