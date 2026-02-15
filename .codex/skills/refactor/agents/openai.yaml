@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refactor"
+  short_description: "Safe, test-driven refactoring workflow"
+  default_prompt: "Use $refactor to improve internal code structure without behavior changes, in small verified steps."
