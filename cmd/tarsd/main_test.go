@@ -391,6 +391,74 @@ func TestChatAPI_ToolCallMemorySearch(t *testing.T) {
 	}
 }
 
+func TestChatAPI_ToolCallReadFile(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "README_LOCAL.txt"), []byte("workspace note"), 0o644); err != nil {
+		t.Fatalf("write local read file: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_read_1",
+							Name:      "read_file",
+							Arguments: `{"path":"README_LOCAL.txt"}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "read complete",
+				},
+			},
+		},
+	}
+
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"read local file"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if mockClient.callCount != 2 {
+		t.Fatalf("expected 2 llm calls (tool + final), got %d", mockClient.callCount)
+	}
+	if len(mockClient.seenMessages) < 2 || len(mockClient.seenMessages[1]) == 0 {
+		t.Fatalf("expected captured second llm call messages")
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"tool_call_id":"call_read_1"`) {
+		t.Fatalf("expected tool_call_id in status events, got %q", body)
+	}
+	if !strings.Contains(body, `"tool_args_preview":"{\"path\":\"README_LOCAL.txt\"}"`) {
+		t.Fatalf("expected tool_args_preview in status events, got %q", body)
+	}
+	if !strings.Contains(body, `"tool_result_preview":"`) || !strings.Contains(body, `README_LOCAL.txt`) {
+		t.Fatalf("expected tool_result_preview in status events, got %q", body)
+	}
+	last := mockClient.seenMessages[1][len(mockClient.seenMessages[1])-1]
+	if last.Role != "tool" {
+		t.Fatalf("expected tool role at second call tail, got %q", last.Role)
+	}
+	if !strings.Contains(last.Content, "workspace note") {
+		t.Fatalf("expected tool result content to include file text, got %q", last.Content)
+	}
+}
+
 func TestChatAPI_MemoryQueryForcesToolChoiceRequired(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -628,6 +696,7 @@ type mockLLMClient struct {
 	responses       []llm.ChatResponse
 	disableDelta    bool
 	callCount       int
+	seenMessages    [][]llm.ChatMessage
 	seenToolCounts  []int
 	seenToolChoices []string
 }
@@ -641,6 +710,8 @@ func (m *mockLLMClient) Ask(ctx context.Context, prompt string) (string, error) 
 
 func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
 	m.callCount++
+	msgCopy := append([]llm.ChatMessage(nil), messages...)
+	m.seenMessages = append(m.seenMessages, msgCopy)
 	m.seenToolCounts = append(m.seenToolCounts, len(opts.Tools))
 	m.seenToolChoices = append(m.seenToolChoices, strings.TrimSpace(opts.ToolChoice))
 

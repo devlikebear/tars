@@ -1,12 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {computeChatWindow, nextChatScrollOffset, nextResumeIndex, resolveKeyAction, tailLines, toolLineFromStatusEvent} from './view.js';
+import {computeChatWindow, nextChatScrollOffset, nextResumeIndex, resolveKeyAction, tailLines, toolLinesFromStatusEvent} from './view.js';
 
-test('toolLineFromStatusEvent returns tool lifecycle lines', () => {
-	assert.equal(toolLineFromStatusEvent({phase: 'before_tool_call', tool_name: 'session_status'}), 'start session_status');
-	assert.equal(toolLineFromStatusEvent({phase: 'after_tool_call', tool_name: 'session_status'}), 'done session_status');
-	assert.equal(toolLineFromStatusEvent({phase: 'error', message: 'failed'}), 'error failed');
-	assert.equal(toolLineFromStatusEvent({phase: 'before_llm'}), null);
+test('toolLinesFromStatusEvent returns lifecycle header and previews', () => {
+	assert.deepEqual(
+		toolLinesFromStatusEvent({phase: 'before_tool_call', tool_name: 'session_status', tool_call_id: 'call_1', tool_args_preview: '{"query":"coffee"}'}),
+		['start session_status #call_1', 'args {"query":"coffee"}'],
+	);
+	assert.deepEqual(
+		toolLinesFromStatusEvent({phase: 'after_tool_call', tool_name: 'session_status', tool_call_id: 'call_1', tool_result_preview: '{"ok":true}'}),
+		['done session_status #call_1', 'result {"ok":true}'],
+	);
+	assert.deepEqual(toolLinesFromStatusEvent({phase: 'error', message: 'failed'}), ['error failed']);
+	assert.deepEqual(toolLinesFromStatusEvent({phase: 'before_llm'}), []);
 });
 
 test('resolveKeyAction prioritizes exit and resume navigation', () => {

@@ -28,6 +28,8 @@ type Event struct {
 	MessageCount int
 	ToolName     string
 	ToolCallID   string
+	ToolArgs     string
+	ToolResult   string
 	Err          error
 }
 
@@ -102,6 +104,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				Iteration:  i + 1,
 				ToolName:   call.Name,
 				ToolCallID: call.ID,
+				ToolArgs:   call.Arguments,
 			})
 
 			tl, ok := l.registry.Get(call.Name)
@@ -138,6 +141,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				Iteration:  i + 1,
 				ToolName:   call.Name,
 				ToolCallID: call.ID,
+				ToolResult: result.Text(),
 			})
 
 			messages = append(messages, llm.ChatMessage{

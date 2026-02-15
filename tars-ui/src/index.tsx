@@ -5,7 +5,7 @@ import {executeInputCommand} from './chat/commandExecutor.js';
 import {sendChatMessage} from './chat/sendChat.js';
 import {chatUIReducer, initialChatUIState} from './chat/state.js';
 import {submitInput} from './chat/submit.js';
-import {computeChatWindow, nextChatScrollOffset, nextResumeIndex, resolveKeyAction, tailLines, toolLineFromStatusEvent} from './chat/view.js';
+import {computeChatWindow, nextChatScrollOffset, nextResumeIndex, resolveKeyAction, tailLines, toolLinesFromStatusEvent} from './chat/view.js';
 import {parseArgs} from './cli/parseArgs.js';
 import {SessionSummary} from './types.js';
 import {appendBounded, renderTable} from './ui/format.js';
@@ -60,9 +60,8 @@ function App(): React.JSX.Element {
 	);
 
 	const handleStatusEvent = useCallback((evt: ChatSSEEvent) => {
-		const toolLine = toolLineFromStatusEvent(evt);
-		if (toolLine !== null) {
-			pushTool(toolLine);
+		for (const line of toolLinesFromStatusEvent(evt)) {
+			pushTool(line);
 		}
 	}, [pushTool]);
 

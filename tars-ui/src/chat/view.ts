@@ -10,18 +10,41 @@ export type KeyInputState = {
 
 export type KeyAction = 'none' | 'exit' | 'resume_up' | 'resume_down' | 'chat_page_up' | 'chat_page_down';
 
-export function toolLineFromStatusEvent(evt: ChatSSEEvent): string | null {
-	const phase = (evt.phase ?? '').trim();
+function toolHeader(phase: string, toolName: string, toolCallID: string): string | null {
+	const name = toolName.trim();
+	const callID = toolCallID.trim();
+	const suffix = callID !== '' ? ` #${callID}` : '';
 	if (phase === 'before_tool_call') {
-		return `start ${evt.tool_name ?? ''}`.trim();
+		return `start ${name}${suffix}`.trim();
 	}
 	if (phase === 'after_tool_call') {
-		return `done ${evt.tool_name ?? ''}`.trim();
-	}
-	if (phase === 'error') {
-		return `error ${evt.message ?? evt.error ?? ''}`.trim();
+		return `done ${name}${suffix}`.trim();
 	}
 	return null;
+}
+
+export function toolLinesFromStatusEvent(evt: ChatSSEEvent): string[] {
+	const phase = (evt.phase ?? '').trim();
+	const toolName = (evt.tool_name ?? '').trim();
+	const toolCallID = (evt.tool_call_id ?? '').trim();
+	const argsPreview = (evt.tool_args_preview ?? '').trim();
+	const resultPreview = (evt.tool_result_preview ?? '').trim();
+
+	const lines: string[] = [];
+	const header = toolHeader(phase, toolName, toolCallID);
+	if (header !== null) {
+		lines.push(header);
+	}
+	if (phase === 'before_tool_call' && argsPreview !== '') {
+		lines.push(`args ${argsPreview}`);
+	}
+	if (phase === 'after_tool_call' && resultPreview !== '') {
+		lines.push(`result ${resultPreview}`);
+	}
+	if (phase === 'error') {
+		lines.push(`error ${evt.message ?? evt.error ?? ''}`.trim());
+	}
+	return lines;
 }
 
 export function resolveKeyAction(key: string, inputState: KeyInputState, hasResumeCandidates: boolean): KeyAction {

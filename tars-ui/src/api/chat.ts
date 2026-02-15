@@ -6,6 +6,9 @@ export type ChatSSEEvent = {
 	phase?: string;
 	message?: string;
 	tool_name?: string;
+	tool_call_id?: string;
+	tool_args_preview?: string;
+	tool_result_preview?: string;
 };
 
 export type StreamChatParams = {

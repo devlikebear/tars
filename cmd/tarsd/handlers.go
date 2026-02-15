@@ -86,7 +86,7 @@ func buildLLMMessages(systemPrompt string, history []session.Message, userMessag
 
 func setupSSEWriter(w http.ResponseWriter, sessionID string, logger zerolog.Logger) (
 	sendSSE func(any),
-	sendStatus func(string, string, string),
+	sendStatus func(string, string, string, string, string, string),
 	flusher http.Flusher,
 ) {
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -105,7 +105,7 @@ func setupSSEWriter(w http.ResponseWriter, sessionID string, logger zerolog.Logg
 			flusher.Flush()
 		}
 	}
-	sendStatus = func(phase, message, toolName string) {
+	sendStatus = func(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview string) {
 		payload := map[string]string{
 			"type":       "status",
 			"phase":      phase,
@@ -115,9 +115,34 @@ func setupSSEWriter(w http.ResponseWriter, sessionID string, logger zerolog.Logg
 		if strings.TrimSpace(toolName) != "" {
 			payload["tool_name"] = strings.TrimSpace(toolName)
 		}
+		if strings.TrimSpace(toolCallID) != "" {
+			payload["tool_call_id"] = strings.TrimSpace(toolCallID)
+		}
+		if strings.TrimSpace(toolArgsPreview) != "" {
+			payload["tool_args_preview"] = strings.TrimSpace(toolArgsPreview)
+		}
+		if strings.TrimSpace(toolResultPreview) != "" {
+			payload["tool_result_preview"] = strings.TrimSpace(toolResultPreview)
+		}
 		sendSSE(payload)
 	}
 	return sendSSE, sendStatus, flusher
+}
+
+func statusPreview(value string, maxLen int) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	normalized := strings.Join(strings.Fields(trimmed), " ")
+	runes := []rune(normalized)
+	if len(runes) <= maxLen {
+		return normalized
+	}
+	if maxLen <= 3 {
+		return string(runes[:maxLen])
+	}
+	return string(runes[:maxLen-3]) + "..."
 }
 
 func setupAgentLoop(
@@ -126,7 +151,7 @@ func setupAgentLoop(
 	sessionID string,
 	historyLen int,
 	logger zerolog.Logger,
-	sendStatus func(string, string, string),
+	sendStatus func(string, string, string, string, string, string),
 ) *agent.Loop {
 	registry.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
 		return tool.SessionStatus{
@@ -147,17 +172,31 @@ func setupAgentLoop(
 			Msg("agent loop event")
 		switch evt.Type {
 		case agent.EventLoopStart:
-			sendStatus("loop_start", "agent loop started", "")
+			sendStatus("loop_start", "agent loop started", "", "", "", "")
 		case agent.EventBeforeLLM:
-			sendStatus("before_llm", "calling llm", "")
+			sendStatus("before_llm", "calling llm", "", "", "", "")
 		case agent.EventAfterLLM:
-			sendStatus("after_llm", "llm response received", "")
+			sendStatus("after_llm", "llm response received", "", "", "", "")
 		case agent.EventBeforeTool:
-			sendStatus("before_tool_call", "executing tool", evt.ToolName)
+			sendStatus(
+				"before_tool_call",
+				"executing tool",
+				evt.ToolName,
+				evt.ToolCallID,
+				statusPreview(evt.ToolArgs, 180),
+				"",
+			)
 		case agent.EventAfterTool:
-			sendStatus("after_tool_call", "tool completed", evt.ToolName)
+			sendStatus(
+				"after_tool_call",
+				"tool completed",
+				evt.ToolName,
+				evt.ToolCallID,
+				"",
+				statusPreview(evt.ToolResult, 180),
+			)
 		case agent.EventLoopEnd:
-			sendStatus("loop_end", "agent loop completed", "")
+			sendStatus("loop_end", "agent loop completed", "", "", "", "")
 			logger.Debug().
 				Str("session_id", sessionID).
 				Any("event_counts", counterHook.Snapshot()).
@@ -168,7 +207,7 @@ func setupAgentLoop(
 			if evt.Err != nil {
 				msg = evt.Err.Error()
 			}
-			sendStatus("error", msg, evt.ToolName)
+			sendStatus("error", msg, evt.ToolName, evt.ToolCallID, "", "")
 		}
 	})
 	return agent.NewLoop(client, registry, counterHook, auditHook, logHook)
@@ -248,16 +287,19 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 		registry := tool.NewRegistry()
 		registry.Register(tool.NewMemorySearchTool(workspaceDir))
 		registry.Register(tool.NewMemoryGetTool(workspaceDir))
-		sendStatusSink := func(_, _, _ string) {}
-		sendStatusProxy := func(phase, message, toolName string) {
-			sendStatusSink(phase, message, toolName)
+		registry.Register(tool.NewReadFileTool(workspaceDir))
+		registry.Register(tool.NewListDirTool(workspaceDir))
+		registry.Register(tool.NewExecTool(workspaceDir))
+		sendStatusSink := func(_, _, _, _, _, _ string) {}
+		sendStatusProxy := func(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview string) {
+			sendStatusSink(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview)
 		}
 		loop := setupAgentLoop(client, registry, sessionID, len(history), logger, sendStatusProxy)
 
 		sendSSE, sendStatus, flusher := setupSSEWriter(w, sessionID, logger)
 		_ = flusher
 		sendStatusSink = sendStatus
-		sendStatus("stream_open", "stream connected", "")
+		sendStatus("stream_open", "stream connected", "", "", "", "")
 		deltaSent := false
 		streamingAnnounced := false
 
@@ -272,7 +314,7 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 				}
 				if !streamingAnnounced {
 					streamingAnnounced = true
-					sendStatus("llm_stream", "streaming response", "")
+					sendStatus("llm_stream", "streaming response", "", "", "", "")
 				}
 				deltaSent = true
 				logger.Debug().Str("session_id", sessionID).Int("delta_len", len(text)).Msg("llm delta")
