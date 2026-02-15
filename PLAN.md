@@ -1,6 +1,6 @@
 # TARS 개발 계획서 (v3)
 
-> 최종 갱신: 2026-02-14
+> 최종 갱신: 2026-02-15
 > 모듈: `github.com/devlikebear/tarsncase`
 > 바이너리: `tarsd` (메인 데몬), `tars-ui` (React/TS Ink TUI 클라이언트), `cased` (감시 데몬)
 
@@ -19,6 +19,7 @@
   - bifrost, openai (OpenAI-compatible 통합), anthropic, openai-codex(실험)
   - 공통 인터페이스: `Client.Ask(ctx, prompt) (string, error)`
 - [x] OAuth 토큰 해석 (`internal/auth`) — openai-codex, claude-code, google-antigravity
+- [x] provider 정책 정리 — `codex-cli` 제거, `openai-codex` guarded 경로 + `openai` 자동 fallback
 - [x] 기본 허트비트 (`internal/heartbeat`)
   - `RunOnce`: HEARTBEAT.md 읽기 → daily log 기록
   - `RunOnceWithLLM`: HEARTBEAT.md + MEMORY.md + daily log → LLM 호출 → 응답 기록
@@ -64,6 +65,31 @@
 | 토큰 기반 동적 히스토리 | 세션 로드 시 context_window - reserve_tokens 범위 내에서 역순 로딩 |
 | 마크다운이 진실의 원천 | 3-Layer 메모리는 마크다운 파일 기반, SQLite는 나중에 검색 인덱스로 추가 |
 | UI/로직 분리 | `tarsd`는 실행 로직, `tars-ui`는 고급 대화형 UX, 자동화는 `Make + curl` 경로 담당 |
+
+---
+
+## 2-A. LLM Provider 운영 가이드 (2026-02-15)
+
+- `codex-cli` provider는 제거되었다.
+- `openai-codex` provider는 실험 모드이며 `LLM_ALLOW_EXPERIMENTAL=true`일 때만 활성화된다.
+- `openai-codex` 실패 시 `openai` provider로 자동 재시도한다.
+- 자동 재시도는 `OPENAI_API_KEY`가 준비된 경우에만 동작한다.
+
+권장 환경변수 예시(안정 경로):
+```bash
+export LLM_PROVIDER=openai
+export LLM_AUTH_MODE=api-key
+export OPENAI_API_KEY=...
+```
+
+권장 환경변수 예시(실험 경로 + fallback):
+```bash
+export LLM_PROVIDER=openai-codex
+export LLM_AUTH_MODE=oauth
+export LLM_ALLOW_EXPERIMENTAL=true
+export CODEX_OAUTH_TOKEN=...
+export OPENAI_API_KEY=...
+```
 
 ---
 
