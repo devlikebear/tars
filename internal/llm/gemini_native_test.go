@@ -63,7 +63,18 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 				Function: ToolFunctionSchema{
 					Name:        "memory_search",
 					Description: "search memory",
-					Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`),
+					Parameters: json.RawMessage(`{
+						"type":"object",
+						"additionalProperties": false,
+						"properties":{
+							"query":{"type":"string"},
+							"options":{
+								"type":"object",
+								"additionalProperties": false,
+								"properties":{"limit":{"type":"integer"}}
+							}
+						}
+					}`),
 				},
 			},
 		},
@@ -108,6 +119,9 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 	contents, ok := captured["contents"].([]any)
 	if !ok || len(contents) < 3 {
 		t.Fatalf("expected converted contents in request, got %+v", captured["contents"])
+	}
+	if containsKeyRecursive(captured, "additionalProperties") {
+		t.Fatalf("request should not include additionalProperties: %+v", captured)
 	}
 }
 
@@ -166,4 +180,25 @@ func TestGeminiNativeClientChat_StreamingParsesDeltaAndToolCall(t *testing.T) {
 	if resp.StopReason != "tool_calls" {
 		t.Fatalf("expected tool_calls stop reason, got %q", resp.StopReason)
 	}
+}
+
+func containsKeyRecursive(v any, key string) bool {
+	switch typed := v.(type) {
+	case map[string]any:
+		for k, child := range typed {
+			if k == key {
+				return true
+			}
+			if containsKeyRecursive(child, key) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			if containsKeyRecursive(item, key) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -439,7 +439,9 @@ func toGeminiNativeTools(tools []ToolSchema) []map[string]any {
 		if len(tl.Function.Parameters) > 0 {
 			var params map[string]any
 			if err := json.Unmarshal(tl.Function.Parameters, &params); err == nil && len(params) > 0 {
-				decl["parameters"] = params
+				if sanitized, ok := sanitizeGeminiNativeSchema(params).(map[string]any); ok && len(sanitized) > 0 {
+					decl["parameters"] = sanitized
+				}
 			}
 		}
 		declarations = append(declarations, decl)
@@ -466,5 +468,35 @@ func toGeminiNativeToolConfig(choice string) map[string]any {
 	}
 	return map[string]any{
 		"functionCallingConfig": map[string]any{"mode": mode},
+	}
+}
+
+func sanitizeGeminiNativeSchema(v any) any {
+	switch typed := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, value := range typed {
+			if key == "additionalProperties" {
+				continue
+			}
+			sanitized := sanitizeGeminiNativeSchema(value)
+			if sanitized == nil {
+				continue
+			}
+			out[key] = sanitized
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			sanitized := sanitizeGeminiNativeSchema(item)
+			if sanitized == nil {
+				continue
+			}
+			out = append(out, sanitized)
+		}
+		return out
+	default:
+		return v
 	}
 }
