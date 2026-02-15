@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan for Codex"
+  short_description: "Break requirements into Work Orders"
+  default_prompt: "Use $plan-for-codex to split this request into verifiable Work Orders for direct implementation."
