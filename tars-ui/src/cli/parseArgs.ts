@@ -1,13 +1,41 @@
+import {loadCliConfig} from './config.js';
+
 export type CliOptions = {
 	serverUrl: string;
 	sessionId: string;
 	verbose: boolean;
 };
 
+function resolveConfigPath(argv: string[]): string {
+	for (let i = 0; i < argv.length; i += 1) {
+		const arg = argv[i] ?? '';
+		if (arg === '--config' && argv[i + 1]) {
+			return argv[i + 1]!.trim();
+		}
+		if (arg.startsWith('--config=')) {
+			return arg.slice('--config='.length).trim();
+		}
+	}
+	return '';
+}
+
 export function parseArgs(argv: string[]): CliOptions {
 	let serverUrl = 'http://127.0.0.1:8080';
 	let sessionId = '';
 	let verbose = false;
+	const configPath = resolveConfigPath(argv);
+	if (configPath !== '') {
+		const fromFile = loadCliConfig(configPath);
+		if ((fromFile.serverUrl ?? '').trim() !== '') {
+			serverUrl = fromFile.serverUrl!.trim();
+		}
+		if ((fromFile.sessionId ?? '').trim() !== '') {
+			sessionId = fromFile.sessionId!.trim();
+		}
+		if (typeof fromFile.verbose === 'boolean') {
+			verbose = fromFile.verbose;
+		}
+	}
 
 	for (let i = 0; i < argv.length; i += 1) {
 		const arg = argv[i] ?? '';
@@ -41,4 +69,3 @@ export function parseArgs(argv: string[]): CliOptions {
 		verbose,
 	};
 }
-
