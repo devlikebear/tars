@@ -41,8 +41,6 @@ func resolveOAuthToken(provider, oauthProvider string) (string, error) {
 	}
 
 	switch key {
-	case "openai-codex":
-		return resolveOpenAICodexOAuthToken()
 	case "anthropic-claude-code", "claude-code":
 		return resolveClaudeCodeOAuthToken()
 	case "google-antigravity", "antigravity":
@@ -50,19 +48,6 @@ func resolveOAuthToken(provider, oauthProvider string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported oauth provider: %s", key)
 	}
-}
-
-func resolveOpenAICodexOAuthToken() (string, error) {
-	home, _ := os.UserHomeDir()
-	return resolveFromEnvOrFiles(
-		[]string{"CODEX_OAUTH_TOKEN", "OPENAI_CODEX_OAUTH_TOKEN"},
-		[]string{
-			filepath.Join(home, ".codex", "auth.json"),
-			filepath.Join(home, ".codex", "oauth.json"),
-			filepath.Join(home, ".openai", "codex", "oauth.json"),
-		},
-		"openai-codex",
-	)
 }
 
 func resolveClaudeCodeOAuthToken() (string, error) {

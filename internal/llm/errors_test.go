@@ -26,13 +26,13 @@ func TestProviderError_Error_NonHTTPWithCause(t *testing.T) {
 
 func TestProviderError_Error_NonHTTPWithMessage(t *testing.T) {
 	err := &ProviderError{
-		Provider:  "openai-codex",
+		Provider:  "openai",
 		Operation: "parse",
 		Message:   "invalid output",
 	}
 
 	got := err.Error()
-	if got != "openai-codex parse: invalid output" {
+	if got != "openai parse: invalid output" {
 		t.Fatalf("unexpected error: %q", got)
 	}
 }

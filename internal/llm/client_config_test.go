@@ -78,15 +78,3 @@ func TestNewAnthropicClient_DefaultsMaxTokensTo4096(t *testing.T) {
 		t.Fatalf("expected MaxTokens 4096, got %d", client.config.MaxTokens)
 	}
 }
-
-func TestNewOpenAICodexClientWithConfig_StoresConfig(t *testing.T) {
-	cfg := ClientConfig{HTTPTimeout: 12 * time.Second, MaxTokens: 42}
-
-	client, err := newOpenAICodexClientWithConfig("http://localhost", "token", "gpt-5-codex", cfg)
-	if err != nil {
-		t.Fatalf("new client: %v", err)
-	}
-	if client.config != cfg {
-		t.Fatalf("expected config %+v, got %+v", cfg, client.config)
-	}
-}

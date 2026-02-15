@@ -29,7 +29,7 @@ func (c *stubClient) Chat(_ context.Context, _ []ChatMessage, _ ChatOptions) (Ch
 
 func TestFallbackClient_AskUsesFallbackOnPrimaryError(t *testing.T) {
 	primary := &stubClient{
-		askErr: newProviderError("openai-codex", "request", errors.New("blocked")),
+		askErr: newProviderError("primary", "request", errors.New("blocked")),
 	}
 	fallback := &stubClient{
 		askValue: "fallback ok",
@@ -50,7 +50,7 @@ func TestFallbackClient_AskUsesFallbackOnPrimaryError(t *testing.T) {
 
 func TestFallbackClient_ChatUsesFallbackOnPrimaryError(t *testing.T) {
 	primary := &stubClient{
-		chatErr: newProviderError("openai-codex", "request", errors.New("forbidden")),
+		chatErr: newProviderError("primary", "request", errors.New("forbidden")),
 	}
 	fallback := &stubClient{
 		chatValue: ChatResponse{

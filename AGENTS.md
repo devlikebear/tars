@@ -61,14 +61,11 @@
 ## LLM Provider 운영 정책 (2026-02-15)
 
 - `codex-cli` provider는 제거되었다. `LLM_PROVIDER=codex-cli`는 더 이상 지원하지 않는다.
-- `openai-codex`는 실험 경로로만 허용한다.
-- `openai-codex` 사용 시 `LLM_ALLOW_EXPERIMENTAL=true`가 필수다.
-- `openai-codex` 경로 실패 시 공식 OpenAI API 경로로 자동 fallback한다.
-- fallback은 `OPENAI_API_KEY`가 설정된 경우에만 활성화된다.
+- `openai-codex` provider는 제거되었다. `LLM_PROVIDER=openai-codex`는 더 이상 지원하지 않는다.
 
 권장 설정:
 - 안정 운영: `LLM_PROVIDER=openai`, `LLM_AUTH_MODE=api-key`, `OPENAI_API_KEY` 사용
-- 실험 운영: `LLM_PROVIDER=openai-codex`, `LLM_AUTH_MODE=oauth`, `LLM_ALLOW_EXPERIMENTAL=true` + `OPENAI_API_KEY`(fallback용) 병행
+- 대체 운영: `LLM_PROVIDER=anthropic`, `LLM_AUTH_MODE=api-key`, `ANTHROPIC_API_KEY` 사용
 
 ## 다음 우선순위
 

@@ -16,10 +16,10 @@
   - `EnsureWorkspace()`: HEARTBEAT.md, MEMORY.md, `_shared/`, `memory/` 생성
   - `AppendDailyLog()`: `memory/YYYY-MM-DD.md` append
 - [x] 멀티 LLM 프로바이더 (`internal/llm`)
-  - bifrost, openai (OpenAI-compatible 통합), anthropic, openai-codex(실험)
+  - bifrost, openai (OpenAI-compatible 통합), anthropic
   - 공통 인터페이스: `Client.Ask(ctx, prompt) (string, error)`
-- [x] OAuth 토큰 해석 (`internal/auth`) — openai-codex, claude-code, google-antigravity
-- [x] provider 정책 정리 — `codex-cli` 제거, `openai-codex` guarded 경로 + `openai` 자동 fallback
+- [x] OAuth 토큰 해석 (`internal/auth`) — claude-code, google-antigravity
+- [x] provider 정책 정리 — `codex-cli`, `openai-codex` 제거
 - [x] 기본 허트비트 (`internal/heartbeat`)
   - `RunOnce`: HEARTBEAT.md 읽기 → daily log 기록
   - `RunOnceWithLLM`: HEARTBEAT.md + MEMORY.md + daily log → LLM 호출 → 응답 기록
@@ -71,9 +71,7 @@
 ## 2-A. LLM Provider 운영 가이드 (2026-02-15)
 
 - `codex-cli` provider는 제거되었다.
-- `openai-codex` provider는 실험 모드이며 `LLM_ALLOW_EXPERIMENTAL=true`일 때만 활성화된다.
-- `openai-codex` 실패 시 `openai` provider로 자동 재시도한다.
-- 자동 재시도는 `OPENAI_API_KEY`가 준비된 경우에만 동작한다.
+- `openai-codex` provider는 제거되었다.
 
 권장 환경변수 예시(안정 경로):
 ```bash
@@ -82,13 +80,11 @@ export LLM_AUTH_MODE=api-key
 export OPENAI_API_KEY=...
 ```
 
-권장 환경변수 예시(실험 경로 + fallback):
+권장 환경변수 예시(대체 경로):
 ```bash
-export LLM_PROVIDER=openai-codex
-export LLM_AUTH_MODE=oauth
-export LLM_ALLOW_EXPERIMENTAL=true
-export CODEX_OAUTH_TOKEN=...
-export OPENAI_API_KEY=...
+export LLM_PROVIDER=anthropic
+export LLM_AUTH_MODE=api-key
+export ANTHROPIC_API_KEY=...
 ```
 
 ---

@@ -1,14 +1,13 @@
 mode: standalone
 workspace_dir: ./workspace
-# provider: bifrost | openai | anthropic | openai-codex(experimental)
+# provider: bifrost | openai | anthropic
 llm_provider: bifrost
 llm_auth_mode: api-key
 llm_oauth_provider: ""
-# openai-codex 사용 시 true 필요
-llm_allow_experimental: false
 llm_base_url: http://localhost:8080/v1
 llm_model: openai/gpt-4o-mini
 llm_api_key: ${BIFROST_API_KEY}
+agent_max_iterations: 8
 bifrost_base_url: http://localhost:8080/v1
 bifrost_api_key: ${BIFROST_API_KEY}
 bifrost_model: openai/gpt-4o-mini

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -72,14 +71,13 @@ type Client interface {
 }
 
 type ProviderOptions struct {
-	Provider          string
-	AuthMode          string
-	OAuthProvider     string
-	AllowExperimental bool
-	BaseURL           string
-	Model             string
-	APIKey            string
-	MaxTokens         int
+	Provider      string
+	AuthMode      string
+	OAuthProvider string
+	BaseURL       string
+	Model         string
+	APIKey        string
+	MaxTokens     int
 }
 
 func NewProvider(opts ProviderOptions) (Client, error) {
@@ -95,10 +93,10 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 		Msg("llm new provider request")
 
 	if provider == "codex-cli" {
-		return nil, fmt.Errorf("unsupported llm provider: codex-cli (removed, use openai-codex)")
+		return nil, fmt.Errorf("unsupported llm provider: codex-cli (removed)")
 	}
-	if provider == "openai-codex" && !opts.AllowExperimental {
-		return nil, fmt.Errorf("openai-codex provider is experimental; set LLM_ALLOW_EXPERIMENTAL=true to enable")
+	if provider == "openai-codex" {
+		return nil, fmt.Errorf("unsupported llm provider: openai-codex (removed)")
 	}
 
 	token, err := auth.ResolveToken(auth.ResolveOptions{
@@ -118,29 +116,6 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	case "openai":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return NewOpenAIClient(opts.BaseURL, token, opts.Model)
-	case "openai-codex":
-		primary, err := NewOpenAICodexClient(
-			firstNonEmptyTrimmed(opts.BaseURL, "https://chatgpt.com/backend-api"),
-			token,
-			firstNonEmptyTrimmed(opts.Model, "gpt-5.3-codex"),
-		)
-		if err != nil {
-			return nil, err
-		}
-		fallback, err := NewOpenAIClient(
-			fallbackOpenAIBaseURL(),
-			fallbackOpenAIAPIKey(opts),
-			firstNonEmptyTrimmed(os.Getenv("OPENAI_FALLBACK_MODEL"), "gpt-4o-mini"),
-		)
-		if err != nil {
-			zlog.Warn().
-				Str("provider", provider).
-				Err(err).
-				Msg("openai fallback disabled; using openai-codex only")
-			return primary, nil
-		}
-		zlog.Debug().Str("provider", provider).Msg("llm provider ready with openai fallback")
-		return newFallbackClient(primary, fallback), nil
 	case "anthropic":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return NewAnthropicClient(opts.BaseURL, token, opts.Model, opts.MaxTokens)
@@ -166,19 +141,4 @@ func firstNonEmptyTrimmed(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func fallbackOpenAIAPIKey(opts ProviderOptions) string {
-	if strings.EqualFold(strings.TrimSpace(opts.AuthMode), "api-key") && strings.TrimSpace(opts.APIKey) != "" {
-		return strings.TrimSpace(opts.APIKey)
-	}
-	return strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
-}
-
-func fallbackOpenAIBaseURL() string {
-	return firstNonEmptyTrimmed(
-		os.Getenv("OPENAI_BASE_URL"),
-		os.Getenv("OPENAI_API_BASE_URL"),
-		"https://api.openai.com/v1",
-	)
 }

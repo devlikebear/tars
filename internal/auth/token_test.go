@@ -3,6 +3,7 @@ package auth
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -19,40 +20,16 @@ func TestResolveToken_APIKeyMode(t *testing.T) {
 	}
 }
 
-func TestResolveToken_OAuthCodexFromEnv(t *testing.T) {
-	t.Setenv("CODEX_OAUTH_TOKEN", "codex-token")
-	token, err := ResolveToken(ResolveOptions{
+func TestResolveToken_OAuthOpenAICodexRemoved(t *testing.T) {
+	_, err := ResolveToken(ResolveOptions{
 		Provider: "openai-codex",
 		AuthMode: "oauth",
 	})
-	if err != nil {
-		t.Fatalf("resolve token: %v", err)
+	if err == nil {
+		t.Fatal("expected unsupported oauth provider error")
 	}
-	if token != "codex-token" {
-		t.Fatalf("expected codex token, got %q", token)
-	}
-}
-
-func TestResolveToken_OAuthOpenAICodexFromAuthFile(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	path := filepath.Join(home, ".codex", "auth.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(path, []byte(`{"access_token":"codex-file-token"}`), 0o644); err != nil {
-		t.Fatalf("write oauth file: %v", err)
-	}
-
-	token, err := ResolveToken(ResolveOptions{
-		Provider: "openai-codex",
-		AuthMode: "oauth",
-	})
-	if err != nil {
-		t.Fatalf("resolve token: %v", err)
-	}
-	if token != "codex-file-token" {
-		t.Fatalf("expected codex token from auth.json, got %q", token)
+	if !strings.Contains(err.Error(), "unsupported oauth provider") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

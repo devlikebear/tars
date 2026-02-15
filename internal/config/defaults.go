@@ -4,33 +4,35 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
 // Config holds top-level runtime settings.
 type Config struct {
-	Mode                 string
-	WorkspaceDir         string
-	LLMProvider          string
-	LLMAuthMode          string
-	LLMOAuthProvider     string
-	LLMAllowExperimental bool
-	LLMBaseURL           string
-	LLMAPIKey            string
-	LLMModel             string
-	BifrostBase          string
-	BifrostAPIKey        string
-	BifrostModel         string
+	Mode               string
+	WorkspaceDir       string
+	LLMProvider        string
+	LLMAuthMode        string
+	LLMOAuthProvider   string
+	LLMBaseURL         string
+	LLMAPIKey          string
+	LLMModel           string
+	AgentMaxIterations int
+	BifrostBase        string
+	BifrostAPIKey      string
+	BifrostModel       string
 }
 
 // Default returns safe baseline settings for local standalone execution.
 func Default() Config {
 	return Config{
-		Mode:         "standalone",
-		WorkspaceDir: "./workspace",
-		LLMProvider:  "bifrost",
-		LLMAuthMode:  "api-key",
-		BifrostModel: "openai/gpt-4o-mini",
+		Mode:               "standalone",
+		WorkspaceDir:       "./workspace",
+		LLMProvider:        "bifrost",
+		LLMAuthMode:        "api-key",
+		BifrostModel:       "openai/gpt-4o-mini",
+		AgentMaxIterations: 8,
 	}
 }
 
@@ -77,9 +79,6 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("LLM_OAUTH_PROVIDER"), os.Getenv("TARSD_LLM_OAUTH_PROVIDER")); v != "" {
 		cfg.LLMOAuthProvider = v
 	}
-	if v := firstNonEmpty(os.Getenv("LLM_ALLOW_EXPERIMENTAL"), os.Getenv("TARSD_LLM_ALLOW_EXPERIMENTAL")); v != "" {
-		cfg.LLMAllowExperimental = parseBool(v)
-	}
 	if v := firstNonEmpty(os.Getenv("LLM_BASE_URL"), os.Getenv("TARSD_LLM_BASE_URL")); v != "" {
 		cfg.LLMBaseURL = v
 	}
@@ -88,6 +87,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := firstNonEmpty(os.Getenv("LLM_MODEL"), os.Getenv("TARSD_LLM_MODEL")); v != "" {
 		cfg.LLMModel = v
+	}
+	if v := firstNonEmpty(os.Getenv("AGENT_MAX_ITERATIONS"), os.Getenv("TARSD_AGENT_MAX_ITERATIONS")); v != "" {
+		cfg.AgentMaxIterations = parsePositiveInt(v, cfg.AgentMaxIterations)
 	}
 }
 
@@ -132,14 +134,14 @@ func loadYAML(path string) (Config, error) {
 			cfg.LLMAuthMode = value
 		case "llm_oauth_provider":
 			cfg.LLMOAuthProvider = value
-		case "llm_allow_experimental":
-			cfg.LLMAllowExperimental = parseBool(value)
 		case "llm_base_url":
 			cfg.LLMBaseURL = value
 		case "llm_api_key":
 			cfg.LLMAPIKey = value
 		case "llm_model":
 			cfg.LLMModel = value
+		case "agent_max_iterations":
+			cfg.AgentMaxIterations = parsePositiveInt(value, cfg.AgentMaxIterations)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -174,9 +176,6 @@ func merge(dst *Config, src Config) {
 	if src.LLMOAuthProvider != "" {
 		dst.LLMOAuthProvider = src.LLMOAuthProvider
 	}
-	if src.LLMAllowExperimental {
-		dst.LLMAllowExperimental = true
-	}
 	if src.LLMBaseURL != "" {
 		dst.LLMBaseURL = src.LLMBaseURL
 	}
@@ -185,6 +184,9 @@ func merge(dst *Config, src Config) {
 	}
 	if src.LLMModel != "" {
 		dst.LLMModel = src.LLMModel
+	}
+	if src.AgentMaxIterations > 0 {
+		dst.AgentMaxIterations = src.AgentMaxIterations
 	}
 }
 
@@ -198,6 +200,9 @@ func applyLLMDefaults(cfg *Config) {
 		cfg.LLMAuthMode = "api-key"
 	}
 	cfg.LLMOAuthProvider = strings.TrimSpace(strings.ToLower(cfg.LLMOAuthProvider))
+	if cfg.AgentMaxIterations <= 0 {
+		cfg.AgentMaxIterations = 8
+	}
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {
 		case "bifrost":
@@ -230,19 +235,6 @@ func applyLLMDefaults(cfg *Config) {
 			if cfg.LLMAPIKey == "" {
 				cfg.LLMAPIKey = os.Getenv("ANTHROPIC_API_KEY")
 			}
-		case "openai-codex":
-			if cfg.LLMAuthMode == "api-key" && cfg.LLMAPIKey == "" {
-				cfg.LLMAuthMode = "oauth"
-			}
-			if cfg.LLMOAuthProvider == "" {
-				cfg.LLMOAuthProvider = "openai-codex"
-			}
-			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = "https://chatgpt.com/backend-api"
-			}
-			if cfg.LLMModel == "" {
-				cfg.LLMModel = "gpt-5.3-codex"
-			}
 		}
 	}
 }
@@ -256,11 +248,10 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func parseBool(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
+func parsePositiveInt(value string, fallback int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed <= 0 {
+		return fallback
 	}
+	return parsed
 }
