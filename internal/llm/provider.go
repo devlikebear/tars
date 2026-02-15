@@ -22,6 +22,9 @@ type ToolCall struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
+	// ThoughtSignature is provider-specific metadata used by Gemini Native
+	// to preserve tool-calling context across turns.
+	ThoughtSignature string `json:"thought_signature,omitempty"`
 }
 
 type ToolFunctionSchema struct {

@@ -11,7 +11,14 @@ import (
 
 func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 	var captured map[string]any
+	var preflightCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1beta/models/gemini-2.5-flash" {
+			preflightCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"name":"models/gemini-2.5-flash","supportedGenerationMethods":["generateContent"]}`))
+			return
+		}
 		if r.URL.Path != "/v1beta/models/gemini-2.5-flash:generateContent" {
 			t.Fatalf("unexpected path: %q", r.URL.Path)
 		}
@@ -28,7 +35,7 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 					"role":"model",
 					"parts":[
 						{"text":"let me check"},
-						{"functionCall":{"name":"memory_search","args":{"query":"coffee"}}}
+						{"functionCall":{"id":"call_2","name":"memory_search","args":{"query":"coffee"}},"thoughtSignature":"bW9kZWxfc2ln"}
 					]
 				},
 				"finishReason":"STOP"
@@ -48,7 +55,7 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 		{
 			Role: "assistant",
 			ToolCalls: []ToolCall{
-				{ID: "call_1", Name: "memory_search", Arguments: `{"query":"tea"}`},
+				{ID: "call_1", Name: "memory_search", Arguments: `{"query":"tea"}`, ThoughtSignature: "c2ln"},
 			},
 		},
 		{
@@ -93,6 +100,9 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 	if resp.Message.ToolCalls[0].Arguments != `{"query":"coffee"}` {
 		t.Fatalf("unexpected tool arguments: %q", resp.Message.ToolCalls[0].Arguments)
 	}
+	if resp.Message.ToolCalls[0].ThoughtSignature != "bW9kZWxfc2ln" {
+		t.Fatalf("unexpected thought signature: %q", resp.Message.ToolCalls[0].ThoughtSignature)
+	}
 	if resp.StopReason != "tool_calls" {
 		t.Fatalf("expected tool_calls stop reason, got %q", resp.StopReason)
 	}
@@ -117,11 +127,42 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 		t.Fatalf("expected systemInstruction parts, got %+v", systemInstruction["parts"])
 	}
 	contents, ok := captured["contents"].([]any)
-	if !ok || len(contents) < 2 {
+	if !ok || len(contents) < 3 {
 		t.Fatalf("expected converted contents in request, got %+v", captured["contents"])
 	}
-	if containsKeyRecursive(contents, "functionCall") {
-		t.Fatalf("request should not include assistant functionCall replay: %+v", contents)
+	foundReplay := false
+	for _, item := range contents {
+		msg, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		parts, ok := msg["parts"].([]any)
+		if !ok {
+			continue
+		}
+		for _, p := range parts {
+			part, ok := p.(map[string]any)
+			if !ok {
+				continue
+			}
+			functionCall, ok := part["functionCall"].(map[string]any)
+			if !ok {
+				continue
+			}
+			if functionCall["name"] != "memory_search" {
+				continue
+			}
+			foundReplay = true
+			if functionCall["id"] != "call_1" {
+				t.Fatalf("expected replay call id call_1, got %+v", functionCall["id"])
+			}
+			if part["thoughtSignature"] != "c2ln" {
+				t.Fatalf("expected replay thoughtSignature c2ln, got %+v", part["thoughtSignature"])
+			}
+		}
+	}
+	if !foundReplay {
+		t.Fatalf("expected assistant functionCall replay in request contents: %+v", contents)
 	}
 	toolsPayload, ok := captured["tools"].([]any)
 	if !ok || len(toolsPayload) == 0 {
@@ -146,10 +187,20 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 	if _, exists := paramsJSONSchema["additionalProperties"]; !exists {
 		t.Fatalf("expected additionalProperties in parametersJsonSchema, got %+v", paramsJSONSchema)
 	}
+	if preflightCalls != 1 {
+		t.Fatalf("expected exactly one preflight call, got %d", preflightCalls)
+	}
 }
 
 func TestGeminiNativeClientChat_StreamingParsesDeltaAndToolCall(t *testing.T) {
+	var preflightCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1beta/models/gemini-2.5-flash" {
+			preflightCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"name":"models/gemini-2.5-flash","supportedGenerationMethods":["generateContent"]}`))
+			return
+		}
 		if r.URL.Path != "/v1beta/models/gemini-2.5-flash:streamGenerateContent" {
 			t.Fatalf("unexpected path: %q", r.URL.Path)
 		}
@@ -202,6 +253,35 @@ func TestGeminiNativeClientChat_StreamingParsesDeltaAndToolCall(t *testing.T) {
 	}
 	if resp.StopReason != "tool_calls" {
 		t.Fatalf("expected tool_calls stop reason, got %q", resp.StopReason)
+	}
+	if preflightCalls != 1 {
+		t.Fatalf("expected exactly one preflight call, got %d", preflightCalls)
+	}
+}
+
+func TestGeminiNativeClientChat_PreflightRejectsUnsupportedModel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1beta/models/gemini-2.5-flash" {
+			t.Fatalf("unexpected request in preflight test: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"name":"models/gemini-2.5-flash","supportedGenerationMethods":["countTokens"]}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewGeminiNativeClient(srv.URL+"/v1beta", "gemini-key", "gemini-2.5-flash")
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hello"},
+	}, ChatOptions{})
+	if err == nil {
+		t.Fatal("expected preflight error for unsupported model")
+	}
+	if !strings.Contains(err.Error(), "does not support generateContent") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

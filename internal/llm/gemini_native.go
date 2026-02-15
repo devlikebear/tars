@@ -2,12 +2,15 @@ package llm
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+	"sync"
 
 	zlog "github.com/rs/zerolog/log"
 	"google.golang.org/genai"
@@ -22,6 +25,10 @@ type GeminiNativeClient struct {
 	config     ClientConfig
 	httpClient *http.Client
 	client     *genai.Client
+
+	preflightMu      sync.Mutex
+	preflightChecked bool
+	preflightErr     error
 }
 
 func NewGeminiNativeClient(baseURL, apiKey, model string) (*GeminiNativeClient, error) {
@@ -81,6 +88,10 @@ func (c *GeminiNativeClient) Ask(ctx context.Context, prompt string) (string, er
 }
 
 func (c *GeminiNativeClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
+	if err := c.ensureModelSupportsGenerateContent(ctx); err != nil {
+		return ChatResponse{}, err
+	}
+
 	streaming := opts.OnDelta != nil
 	zlog.Debug().
 		Str("provider", "gemini-native").
@@ -106,6 +117,47 @@ func (c *GeminiNativeClient) Chat(ctx context.Context, messages []ChatMessage, o
 	defer cancel()
 
 	return c.chatNonStreamingResponse(ctxWithTimeout, contents, config)
+}
+
+func (c *GeminiNativeClient) ensureModelSupportsGenerateContent(ctx context.Context) error {
+	c.preflightMu.Lock()
+	if c.preflightChecked {
+		err := c.preflightErr
+		c.preflightMu.Unlock()
+		return err
+	}
+	c.preflightMu.Unlock()
+
+	checkCtx := ctx
+	cancel := func() {}
+	if c.config.HTTPTimeout > 0 {
+		checkCtx, cancel = context.WithTimeout(ctx, c.config.HTTPTimeout)
+	}
+	defer cancel()
+
+	model, err := c.client.Models.Get(checkCtx, c.model, nil)
+	if err != nil {
+		err = wrapGeminiNativeSDKError("preflight", err)
+		c.preflightMu.Lock()
+		c.preflightErr = err
+		c.preflightChecked = true
+		c.preflightMu.Unlock()
+		return err
+	}
+	if err := validateGeminiSupportedActions(model); err != nil {
+		err = newProviderError("gemini-native", "preflight", err)
+		c.preflightMu.Lock()
+		c.preflightErr = err
+		c.preflightChecked = true
+		c.preflightMu.Unlock()
+		return err
+	}
+
+	c.preflightMu.Lock()
+	c.preflightErr = nil
+	c.preflightChecked = true
+	c.preflightMu.Unlock()
+	return nil
 }
 
 func (c *GeminiNativeClient) chatNonStreamingResponse(ctx context.Context, contents []*genai.Content, config *genai.GenerateContentConfig) (ChatResponse, error) {
@@ -192,7 +244,7 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 			if part.FunctionCall == nil || strings.TrimSpace(part.FunctionCall.Name) == "" {
 				continue
 			}
-			call := geminiNativeFunctionCallToToolCall(part.FunctionCall, idx)
+			call := geminiNativeFunctionCallToToolCall(part, idx)
 			key := strings.TrimSpace(call.ID)
 			if key == "" {
 				key = call.Name + "|" + call.Arguments
@@ -353,25 +405,32 @@ func parseGeminiNativeParts(content *genai.Content) (string, []ToolCall) {
 		if part.FunctionCall == nil || strings.TrimSpace(part.FunctionCall.Name) == "" {
 			continue
 		}
-		toolCalls = append(toolCalls, geminiNativeFunctionCallToToolCall(part.FunctionCall, idx))
+		toolCalls = append(toolCalls, geminiNativeFunctionCallToToolCall(part, idx))
 	}
 	return builder.String(), toolCalls
 }
 
-func geminiNativeFunctionCallToToolCall(call *genai.FunctionCall, idx int) ToolCall {
-	if call == nil {
+func geminiNativeFunctionCallToToolCall(part *genai.Part, idx int) ToolCall {
+	if part == nil || part.FunctionCall == nil {
 		return ToolCall{ID: fmt.Sprintf("tool_call_%d", idx), Name: "", Arguments: "{}"}
 	}
+	call := part.FunctionCall
 
 	id := strings.TrimSpace(call.ID)
 	if id == "" {
 		id = fmt.Sprintf("tool_call_%d", idx)
 	}
 
+	signature := ""
+	if len(part.ThoughtSignature) > 0 {
+		signature = base64.StdEncoding.EncodeToString(part.ThoughtSignature)
+	}
+
 	return ToolCall{
-		ID:        id,
-		Name:      strings.TrimSpace(call.Name),
-		Arguments: normalizeGeminiNativeArguments(call.Args),
+		ID:               id,
+		Name:             strings.TrimSpace(call.Name),
+		Arguments:        normalizeGeminiNativeArguments(call.Args),
+		ThoughtSignature: signature,
 	}
 }
 
@@ -438,7 +497,7 @@ func toGeminiNativeContents(messages []ChatMessage) []*genai.Content {
 				}},
 			})
 		case "assistant":
-			parts := make([]*genai.Part, 0, 1)
+			parts := make([]*genai.Part, 0, len(msg.ToolCalls)+1)
 			if strings.TrimSpace(msg.Content) != "" {
 				parts = append(parts, &genai.Part{Text: msg.Content})
 			}
@@ -452,6 +511,17 @@ func toGeminiNativeContents(messages []ChatMessage) []*genai.Content {
 					callID = fmt.Sprintf("tool_call_%d", idx)
 				}
 				toolNameByID[callID] = name
+				part := &genai.Part{
+					FunctionCall: &genai.FunctionCall{
+						ID:   callID,
+						Name: name,
+						Args: parseToolArgumentsObject(tc.Arguments),
+					},
+				}
+				if decoded, ok := decodeGeminiThoughtSignature(tc.ThoughtSignature); ok {
+					part.ThoughtSignature = decoded
+				}
+				parts = append(parts, part)
 			}
 			if len(parts) == 0 {
 				continue
@@ -546,4 +616,31 @@ func toGeminiNativeToolConfig(choice string) *genai.ToolConfig {
 	return &genai.ToolConfig{
 		FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: mode},
 	}
+}
+
+func validateGeminiSupportedActions(model *genai.Model) error {
+	if model == nil || len(model.SupportedActions) == 0 {
+		return nil
+	}
+	for _, action := range model.SupportedActions {
+		normalized := strings.ToLower(strings.TrimSpace(action))
+		if normalized == "generatecontent" || normalized == "generate_content" || strings.HasSuffix(normalized, ".generatecontent") {
+			return nil
+		}
+	}
+	actions := append([]string(nil), model.SupportedActions...)
+	slices.Sort(actions)
+	return fmt.Errorf("model %q does not support generateContent (supported actions: %s)", strings.TrimSpace(model.Name), strings.Join(actions, ", "))
+}
+
+func decodeGeminiThoughtSignature(encoded string) ([]byte, bool) {
+	trimmed := strings.TrimSpace(encoded)
+	if trimmed == "" {
+		return nil, false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(trimmed)
+	if err != nil || len(decoded) == 0 {
+		return nil, false
+	}
+	return decoded, true
 }

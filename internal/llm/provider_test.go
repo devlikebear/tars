@@ -158,7 +158,14 @@ func TestNewProvider_GeminiStreamingToolCall(t *testing.T) {
 }
 
 func TestNewProvider_GeminiNativeToolCall(t *testing.T) {
+	var preflightCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1beta/models/gemini-2.5-pro" {
+			preflightCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"name":"models/gemini-2.5-pro","supportedGenerationMethods":["generateContent"]}`))
+			return
+		}
 		if r.URL.Path != "/v1beta/models/gemini-2.5-pro:generateContent" {
 			t.Fatalf("unexpected path: %q", r.URL.Path)
 		}
@@ -202,5 +209,8 @@ func TestNewProvider_GeminiNativeToolCall(t *testing.T) {
 	}
 	if resp.Message.ToolCalls[0].Name != "memory_search" {
 		t.Fatalf("unexpected tool name: %q", resp.Message.ToolCalls[0].Name)
+	}
+	if preflightCalls != 1 {
+		t.Fatalf("expected one preflight call, got %d", preflightCalls)
 	}
 }
