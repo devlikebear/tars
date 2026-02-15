@@ -15,6 +15,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tarsncase/internal/mcp"
 	"github.com/devlikebear/tarsncase/internal/prompt"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
@@ -232,6 +233,7 @@ func newChatAPIHandlerWithOptions(
 	client llm.Client,
 	logger zerolog.Logger,
 	maxIterations int,
+	extraTools ...tool.Tool,
 ) http.Handler {
 	maxIters := resolveAgentMaxIterations(maxIterations)
 	mux := http.NewServeMux()
@@ -305,6 +307,9 @@ func newChatAPIHandlerWithOptions(
 		llmMessages := buildLLMMessages(systemPrompt, history, req.Message)
 
 		registry := newBaseToolRegistry(workspaceDir)
+		for _, extra := range extraTools {
+			registry.Register(extra)
+		}
 		sendStatusSink := func(_, _, _, _, _, _ string) {}
 		sendStatusProxy := func(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview string) {
 			sendStatusSink(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview)
@@ -803,5 +808,49 @@ func newCronAPIHandler(
 		})
 	})
 
+	return mux
+}
+
+type mcpProvider interface {
+	ListServers(ctx context.Context) ([]mcp.ServerStatus, error)
+	ListTools(ctx context.Context) ([]mcp.ToolInfo, error)
+}
+
+func newMCPAPIHandler(provider mcpProvider, logger zerolog.Logger) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/mcp/servers", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if provider == nil {
+			writeJSON(w, http.StatusOK, []mcp.ServerStatus{})
+			return
+		}
+		servers, err := provider.ListServers(r.Context())
+		if err != nil {
+			logger.Error().Err(err).Msg("list mcp servers failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list mcp servers failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, servers)
+	})
+	mux.HandleFunc("/v1/mcp/tools", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if provider == nil {
+			writeJSON(w, http.StatusOK, []mcp.ToolInfo{})
+			return
+		}
+		tools, err := provider.ListTools(r.Context())
+		if err != nil {
+			logger.Error().Err(err).Msg("list mcp tools failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list mcp tools failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, tools)
+	})
 	return mux
 }

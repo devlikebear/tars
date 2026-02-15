@@ -282,3 +282,25 @@ func TestLoad_AgentMaxIterationsFromEnv(t *testing.T) {
 		t.Fatalf("expected AgentMaxIterations=3, got %d", cfg.AgentMaxIterations)
 	}
 }
+
+func TestLoad_MCPServersFromEnv(t *testing.T) {
+	t.Setenv("MCP_SERVERS_JSON", `[{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"],"env":{"NODE_ENV":"production"}}]`)
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if len(cfg.MCPServers) != 1 {
+		t.Fatalf("expected 1 mcp server, got %d", len(cfg.MCPServers))
+	}
+	srv := cfg.MCPServers[0]
+	if srv.Name != "filesystem" || srv.Command != "npx" {
+		t.Fatalf("unexpected mcp server: %+v", srv)
+	}
+	if len(srv.Args) != 3 {
+		t.Fatalf("unexpected mcp args: %+v", srv.Args)
+	}
+	if srv.Env["NODE_ENV"] != "production" {
+		t.Fatalf("unexpected mcp env: %+v", srv.Env)
+	}
+}

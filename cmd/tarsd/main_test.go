@@ -16,8 +16,10 @@ import (
 
 	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tarsncase/internal/mcp"
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/rs/zerolog"
 )
 
@@ -485,6 +487,99 @@ func TestCronAPI_UpdateDelete(t *testing.T) {
 	handler.ServeHTTP(runMissingRec, runMissingReq)
 	if runMissingRec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 after delete, got %d body=%q", runMissingRec.Code, runMissingRec.Body.String())
+	}
+}
+
+func TestMCPAPI_ListServersAndTools(t *testing.T) {
+	provider := &mockMCPProvider{
+		servers: []mcp.ServerStatus{
+			{Name: "filesystem", Command: "npx", Connected: true, ToolCount: 2},
+		},
+		tools: []mcp.ToolInfo{
+			{Server: "filesystem", Name: "read_file", Description: "read"},
+		},
+	}
+	handler := newMCPAPIHandler(provider, zerolog.New(io.Discard))
+
+	serverReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/servers", nil)
+	serverRec := httptest.NewRecorder()
+	handler.ServeHTTP(serverRec, serverReq)
+	if serverRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for servers, got %d body=%q", serverRec.Code, serverRec.Body.String())
+	}
+	var servers []mcp.ServerStatus
+	if err := json.Unmarshal(serverRec.Body.Bytes(), &servers); err != nil {
+		t.Fatalf("decode servers: %v", err)
+	}
+	if len(servers) != 1 || servers[0].Name != "filesystem" {
+		t.Fatalf("unexpected servers payload: %+v", servers)
+	}
+
+	toolsReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/tools", nil)
+	toolsRec := httptest.NewRecorder()
+	handler.ServeHTTP(toolsRec, toolsReq)
+	if toolsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for tools, got %d body=%q", toolsRec.Code, toolsRec.Body.String())
+	}
+	var toolsPayload []mcp.ToolInfo
+	if err := json.Unmarshal(toolsRec.Body.Bytes(), &toolsPayload); err != nil {
+		t.Fatalf("decode mcp tools: %v", err)
+	}
+	if len(toolsPayload) != 1 || toolsPayload[0].Name != "read_file" {
+		t.Fatalf("unexpected mcp tools payload: %+v", toolsPayload)
+	}
+}
+
+func TestChatAPI_WithInjectedExtraTool(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_mcp_1",
+							Name:      "mcp.filesystem.read_file",
+							Arguments: `{"path":"README.md"}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "mcp tool used",
+				},
+			},
+		},
+	}
+	extra := tool.Tool{
+		Name:        "mcp.filesystem.read_file",
+		Description: "mcp read file",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`),
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			return tool.Result{Content: []tool.ContentBlock{{Type: "text", Text: `{"content":"hello"}`}}}, nil
+		},
+	}
+
+	handler := newChatAPIHandlerWithOptions(root, store, mockClient, logger, 8, extra)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"use mcp tool"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "mcp tool used") {
+		t.Fatalf("expected final text from second llm call, got %q", rec.Body.String())
 	}
 }
 
@@ -981,6 +1076,26 @@ func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 		opts.OnDelta(resp.Message.Content)
 	}
 	return resp, nil
+}
+
+type mockMCPProvider struct {
+	servers []mcp.ServerStatus
+	tools   []mcp.ToolInfo
+	err     error
+}
+
+func (m *mockMCPProvider) ListServers(context.Context) ([]mcp.ServerStatus, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return append([]mcp.ServerStatus(nil), m.servers...), nil
+}
+
+func (m *mockMCPProvider) ListTools(context.Context) ([]mcp.ToolInfo, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return append([]mcp.ToolInfo(nil), m.tools...), nil
 }
 
 func TestSessionAPIs(t *testing.T) {

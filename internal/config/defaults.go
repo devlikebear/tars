@@ -2,11 +2,19 @@ package config
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 )
+
+type MCPServer struct {
+	Name    string            `json:"name"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+}
 
 // Config holds top-level runtime settings.
 type Config struct {
@@ -22,6 +30,7 @@ type Config struct {
 	BifrostBase        string
 	BifrostAPIKey      string
 	BifrostModel       string
+	MCPServers         []MCPServer
 }
 
 // Default returns safe baseline settings for local standalone execution.
@@ -91,6 +100,9 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("AGENT_MAX_ITERATIONS"), os.Getenv("TARSD_AGENT_MAX_ITERATIONS")); v != "" {
 		cfg.AgentMaxIterations = parsePositiveInt(v, cfg.AgentMaxIterations)
 	}
+	if v := firstNonEmpty(os.Getenv("MCP_SERVERS_JSON"), os.Getenv("TARSD_MCP_SERVERS_JSON")); v != "" {
+		cfg.MCPServers = parseMCPServersJSON(v, cfg.MCPServers)
+	}
 }
 
 func loadYAML(path string) (Config, error) {
@@ -142,6 +154,8 @@ func loadYAML(path string) (Config, error) {
 			cfg.LLMModel = value
 		case "agent_max_iterations":
 			cfg.AgentMaxIterations = parsePositiveInt(value, cfg.AgentMaxIterations)
+		case "mcp_servers_json":
+			cfg.MCPServers = parseMCPServersJSON(value, cfg.MCPServers)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -187,6 +201,9 @@ func merge(dst *Config, src Config) {
 	}
 	if src.AgentMaxIterations > 0 {
 		dst.AgentMaxIterations = src.AgentMaxIterations
+	}
+	if len(src.MCPServers) > 0 {
+		dst.MCPServers = src.MCPServers
 	}
 }
 
@@ -282,4 +299,35 @@ func parsePositiveInt(value string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func parseMCPServersJSON(raw string, fallback []MCPServer) []MCPServer {
+	var parsed []MCPServer
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
+		return fallback
+	}
+	out := make([]MCPServer, 0, len(parsed))
+	for _, server := range parsed {
+		name := strings.TrimSpace(server.Name)
+		command := strings.TrimSpace(server.Command)
+		if name == "" || command == "" {
+			continue
+		}
+		s := MCPServer{
+			Name:    name,
+			Command: command,
+			Args:    append([]string(nil), server.Args...),
+		}
+		if len(server.Env) > 0 {
+			s.Env = make(map[string]string, len(server.Env))
+			for k, v := range server.Env {
+				s.Env[k] = v
+			}
+		}
+		out = append(out, s)
+	}
+	if len(out) == 0 {
+		return fallback
+	}
+	return out
 }

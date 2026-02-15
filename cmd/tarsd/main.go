@@ -17,8 +17,10 @@ import (
 	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tarsncase/internal/mcp"
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
@@ -182,6 +184,20 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 			if opts.ServeAPI {
 				store := session.NewStore(cfg.WorkspaceDir)
 				cronStore := cron.NewStore(cfg.WorkspaceDir)
+				var mcpClient *mcp.Client
+				var mcpTools []tool.Tool
+				if len(cfg.MCPServers) > 0 {
+					mcpClient = mcp.NewClient(cfg.MCPServers)
+					buildCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					tools, err := mcpClient.BuildTools(buildCtx)
+					cancel()
+					if err != nil {
+						logger.Warn().Err(err).Msg("mcp tool discovery failed")
+					} else {
+						mcpTools = tools
+						logger.Info().Int("mcp_tool_count", len(mcpTools)).Msg("mcp tools discovered")
+					}
+				}
 
 				mux := http.NewServeMux()
 				heartbeatHandler := newHeartbeatAPIHandler(cfg.WorkspaceDir, nowFn, ask, logger)
@@ -192,6 +208,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					llmClient,
 					logger,
 					cfg.AgentMaxIterations,
+					mcpTools...,
 				)
 				mux.Handle("/v1/chat", chatHandler)
 				sessionHandler := newSessionAPIHandler(store, logger)
@@ -204,6 +221,9 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				cronHandler := newCronAPIHandler(cronStore, ask, logger)
 				mux.Handle("/v1/cron/jobs", cronHandler)
 				mux.Handle("/v1/cron/jobs/", cronHandler)
+				mcpHandler := newMCPAPIHandler(mcpClient, logger)
+				mux.Handle("/v1/mcp/servers", mcpHandler)
+				mux.Handle("/v1/mcp/tools", mcpHandler)
 
 				server := &http.Server{
 					Addr:    opts.APIAddr,
