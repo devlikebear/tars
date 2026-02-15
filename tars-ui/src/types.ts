@@ -16,3 +16,13 @@ export type SessionHistoryItem = {
 	timestamp: string;
 };
 
+export type CronJob = {
+	id: string;
+	name: string;
+	prompt: string;
+	schedule: string;
+	enabled: boolean;
+	delete_after_run?: boolean;
+	last_run_at?: string;
+	last_run_error?: string;
+};

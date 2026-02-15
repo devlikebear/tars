@@ -12,6 +12,10 @@ export type Command =
 	| {kind: 'status'}
 	| {kind: 'compact'}
 	| {kind: 'heartbeat'}
+	| {kind: 'cron_list'}
+	| {kind: 'cron_add'; schedule: string; prompt: string}
+	| {kind: 'cron_run'; jobID: string}
+	| {kind: 'cron_delete'; jobID: string}
 	| {kind: 'quit'}
 	| {kind: 'invalid'; message: string};
 
@@ -81,6 +85,36 @@ function parseSlashCommand(line: string): Command {
 			return {kind: 'invalid', message: 'usage: /search {keyword}'};
 		}
 		return {kind: 'search', keyword};
+	}
+	case '/cron': {
+		if (fields.length === 1 || fields[1] === 'list') {
+			return {kind: 'cron_list'};
+		}
+		const sub = fields[1] ?? '';
+		if (sub === 'add') {
+			if (fields.length < 4) {
+				return {kind: 'invalid', message: 'usage: /cron add {schedule} {prompt}'};
+			}
+			const schedule = (fields[2] ?? '').trim();
+			const prompt = trimPrefix(line, `/cron add ${schedule}`);
+			if (schedule === '' || prompt === '') {
+				return {kind: 'invalid', message: 'usage: /cron add {schedule} {prompt}'};
+			}
+			return {kind: 'cron_add', schedule, prompt};
+		}
+		if (sub === 'run') {
+			if (fields.length < 3 || (fields[2] ?? '').trim() === '') {
+				return {kind: 'invalid', message: 'usage: /cron run {job_id}'};
+			}
+			return {kind: 'cron_run', jobID: (fields[2] ?? '').trim()};
+		}
+		if (sub === 'delete') {
+			if (fields.length < 3 || (fields[2] ?? '').trim() === '') {
+				return {kind: 'invalid', message: 'usage: /cron delete {job_id}'};
+			}
+			return {kind: 'cron_delete', jobID: (fields[2] ?? '').trim()};
+		}
+		return {kind: 'invalid', message: 'usage: /cron {list|add|run|delete}'};
 	}
 	default:
 		return {kind: 'invalid', message: `unknown command: ${head}`};

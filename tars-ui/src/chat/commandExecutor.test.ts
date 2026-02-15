@@ -17,6 +17,10 @@ function createDefaultAPIs(): CommandAPIs {
 		getStatus: unexpected,
 		runCompact: unexpected,
 		runHeartbeatOnce: unexpected,
+		listCronJobs: unexpected,
+		createCronJob: unexpected,
+		runCronJob: unexpected,
+		deleteCronJob: unexpected,
 	};
 }
 
@@ -163,4 +167,37 @@ test('executeInputCommand clears resume selection when creating a new session', 
 	assert.equal(state.resumeCandidates, null);
 	assert.equal(state.resumeIndex, 0);
 	assert.deepEqual(state.messages, ['active session: sess-11']);
+});
+
+test('executeInputCommand handles /cron list', async () => {
+	const apis: CommandAPIs = {
+		...createDefaultAPIs(),
+		listCronJobs: async () => [{id: 'job_1', name: 'morning', schedule: 'every:1h', enabled: true, delete_after_run: false}],
+	};
+	const state = createContext('/cron list');
+	await executeInputCommand(state.ctx, apis);
+
+	assert.equal(state.tables.length, 1);
+	assert.deepEqual(state.tables[0]?.headers, ['ID', 'NAME', 'SCHEDULE', 'ENABLED']);
+	assert.deepEqual(state.tables[0]?.rows[0], ['job_1', 'morning', 'every:1h', 'yes']);
+});
+
+test('executeInputCommand handles /cron add and /cron run /cron delete', async () => {
+	const apis: CommandAPIs = {
+		...createDefaultAPIs(),
+		createCronJob: async () => ({id: 'job_2', name: 'nightly', schedule: 'every:30m', enabled: true, delete_after_run: false}),
+		runCronJob: async () => 'ran',
+		deleteCronJob: async () => undefined,
+	};
+	const addState = createContext('/cron add every:30m check mail');
+	await executeInputCommand(addState.ctx, apis);
+	assert.deepEqual(addState.messages, ['cron job created: job_2']);
+
+	const runState = createContext('/cron run job_2');
+	await executeInputCommand(runState.ctx, apis);
+	assert.deepEqual(runState.messages, ['ran']);
+
+	const delState = createContext('/cron delete job_2');
+	await executeInputCommand(delState.ctx, apis);
+	assert.deepEqual(delState.messages, ['cron job deleted: job_2']);
 });

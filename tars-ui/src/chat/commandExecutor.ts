@@ -1,7 +1,8 @@
 import {createSession, exportSession, getHistory, getSession, listSessions, searchSessions} from '../api/session.js';
+import {createCronJob, deleteCronJob, listCronJobs, runCronJob} from '../api/cron.js';
 import {getStatus, runCompact, runHeartbeatOnce} from '../api/system.js';
 import {parseInputCommand} from '../commands/router.js';
-import {SessionHistoryItem, SessionSummary} from '../types.js';
+import {CronJob, SessionHistoryItem, SessionSummary} from '../types.js';
 import {commandHelpText, requireSessionOrError, truncate} from '../ui/format.js';
 
 export type CommandAPIs = {
@@ -14,6 +15,10 @@ export type CommandAPIs = {
 	getStatus: (serverUrl: string) => Promise<{workspace_dir: string; session_count: number}>;
 	runCompact: (serverUrl: string, sessionID: string) => Promise<string>;
 	runHeartbeatOnce: (serverUrl: string) => Promise<string>;
+	listCronJobs: (serverUrl: string) => Promise<CronJob[]>;
+	createCronJob: (serverUrl: string, input: {name?: string; prompt: string; schedule: string; enabled?: boolean; delete_after_run?: boolean}) => Promise<CronJob>;
+	runCronJob: (serverUrl: string, jobID: string) => Promise<string>;
+	deleteCronJob: (serverUrl: string, jobID: string) => Promise<void>;
 };
 
 const defaultAPIs: CommandAPIs = {
@@ -26,6 +31,10 @@ const defaultAPIs: CommandAPIs = {
 	getStatus,
 	runCompact,
 	runHeartbeatOnce,
+	listCronJobs,
+	createCronJob,
+	runCronJob,
+	deleteCronJob,
 };
 
 export type CommandExecutorContext = {
@@ -52,6 +61,10 @@ function renderSessionRows(sessions: SessionSummary[]): string[][] {
 
 function missingSessionError(sessionID: string): string | null {
 	return requireSessionOrError(sessionID);
+}
+
+function renderCronRows(jobs: CronJob[]): string[][] {
+	return jobs.map((job) => [job.id, truncate(job.name, 32), truncate(job.schedule, 18), job.enabled ? 'yes' : 'no']);
 }
 
 export async function executeInputCommand(ctx: CommandExecutorContext, apis: CommandAPIs = defaultAPIs): Promise<void> {
@@ -159,6 +172,33 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 	case 'heartbeat': {
 		const response = await apis.runHeartbeatOnce(ctx.serverUrl);
 		ctx.pushSystemMessage(response);
+		return;
+	}
+	case 'cron_list': {
+		const jobs = await apis.listCronJobs(ctx.serverUrl);
+		if (jobs.length === 0) {
+			ctx.pushSystemMessage('(no cron jobs)');
+			return;
+		}
+		ctx.pushSystemTable(['ID', 'NAME', 'SCHEDULE', 'ENABLED'], renderCronRows(jobs));
+		return;
+	}
+	case 'cron_add': {
+		const created = await apis.createCronJob(ctx.serverUrl, {
+			schedule: cmd.schedule,
+			prompt: cmd.prompt,
+		});
+		ctx.pushSystemMessage(`cron job created: ${created.id}`);
+		return;
+	}
+	case 'cron_run': {
+		const response = await apis.runCronJob(ctx.serverUrl, cmd.jobID);
+		ctx.pushSystemMessage(response);
+		return;
+	}
+	case 'cron_delete': {
+		await apis.deleteCronJob(ctx.serverUrl, cmd.jobID);
+		ctx.pushSystemMessage(`cron job deleted: ${cmd.jobID}`);
 		return;
 	}
 	}
