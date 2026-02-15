@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/devlikebear/tarsncase/internal/llm"
@@ -142,5 +143,71 @@ func TestLoop_Run_WithToolCallAndHooks(t *testing.T) {
 		if events[i] != want[i] {
 			t.Fatalf("unexpected event at %d: got %q want %q", i, events[i], want[i])
 		}
+	}
+}
+
+func TestLoop_Run_StopsOnRepeatedToolCallPattern(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.Tool{
+		Name:        "exec",
+		Description: "execute command",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			return tool.Result{
+				Content: []tool.ContentBlock{
+					{Type: "text", Text: `{"command":"","exit_code":-1,"duration_ms":0,"message":"command is required"}`},
+				},
+			}, nil
+		},
+	})
+
+	repeatedResp := llm.ChatResponse{
+		Message: llm.ChatMessage{
+			Role:    "assistant",
+			Content: "",
+			ToolCalls: []llm.ToolCall{
+				{
+					ID:        "call_1",
+					Name:      "exec",
+					Arguments: `{}`,
+				},
+			},
+		},
+	}
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			repeatedResp,
+			repeatedResp,
+			repeatedResp,
+			repeatedResp,
+			repeatedResp,
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	_, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "현재 디렉토리 경로 알려줘"},
+	}, RunOptions{
+		MaxIterations: 5,
+		ToolChoice:    "required",
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:       "exec",
+					Parameters: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected repeated tool call pattern error")
+	}
+	if !strings.Contains(err.Error(), "repeated tool call pattern") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client.callIndex != 3 {
+		t.Fatalf("expected early stop at 3 llm calls, got %d", client.callIndex)
 	}
 }

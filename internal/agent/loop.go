@@ -20,6 +20,7 @@ const (
 	EventLoopEnd        EventType = "loop_end"
 	EventLoopError      EventType = "error"
 	DefaultMaxLoopIters           = 8
+	repeatedToolCallLimit         = 3
 )
 
 type Event struct {
@@ -71,6 +72,8 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	}
 
 	messages := append([]llm.ChatMessage(nil), initial...)
+	lastToolOutcomeSig := ""
+	repeatedToolOutcomeCount := 0
 	l.emit(ctx, Event{Type: EventLoopStart, MessageCount: len(messages)})
 
 	for i := 0; i < maxIters; i++ {
@@ -143,6 +146,25 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				ToolCallID: call.ID,
 				ToolResult: result.Text(),
 			})
+
+			outcomeSig := call.Name + "\n" + call.Arguments + "\n" + result.Text()
+			if outcomeSig == lastToolOutcomeSig {
+				repeatedToolOutcomeCount++
+			} else {
+				lastToolOutcomeSig = outcomeSig
+				repeatedToolOutcomeCount = 1
+			}
+			if repeatedToolOutcomeCount >= repeatedToolCallLimit {
+				err := fmt.Errorf("agent loop detected repeated tool call pattern: tool=%s args=%s", call.Name, call.Arguments)
+				l.emit(ctx, Event{
+					Type:       EventLoopError,
+					Iteration:  i + 1,
+					ToolName:   call.Name,
+					ToolCallID: call.ID,
+					Err:        err,
+				})
+				return llm.ChatResponse{}, err
+			}
 
 			messages = append(messages, llm.ChatMessage{
 				Role:       "tool",
