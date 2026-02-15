@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,6 +60,35 @@ func TestNewCodexCLIClient_RequiresModel(t *testing.T) {
 	_, err := NewCodexCLIClient("")
 	if err == nil {
 		t.Fatal("expected error for empty model")
+	}
+}
+
+func TestCodexCLIClientChat_ReturnsErrorWhenToolsRequested(t *testing.T) {
+	client, err := NewCodexCLIClient("gpt-5.3-codex")
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "find memory"},
+	}, ChatOptions{
+		ToolChoice: "required",
+		Tools: []ToolSchema{
+			{
+				Type: "function",
+				Function: ToolFunctionSchema{
+					Name:        "memory_search",
+					Description: "search memory",
+					Parameters:  json.RawMessage(`{"type":"object"}`),
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when tools are requested")
+	}
+	if !strings.Contains(err.Error(), "tool calls are not supported by codex-cli provider") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

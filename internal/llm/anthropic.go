@@ -12,6 +12,8 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
+const anthropicAPIVersion = "2023-06-01"
+
 type AnthropicClient struct {
 	baseURL    string
 	apiKey     string
@@ -52,47 +54,31 @@ func newAnthropicClientWithConfig(baseURL, apiKey, model string, config ClientCo
 
 func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
 	streaming := opts.OnDelta != nil
-	if len(opts.Tools) > 0 || strings.TrimSpace(opts.ToolChoice) != "" {
-		zlog.Debug().
-			Str("provider", "anthropic").
-			Int("tool_count", len(opts.Tools)).
-			Str("tool_choice", strings.TrimSpace(opts.ToolChoice)).
-			Msg("tool-calls unsupported path; ignoring tools")
-	}
 	zlog.Debug().
 		Str("provider", "anthropic").
 		Str("model", c.model).
 		Str("url", c.baseURL+"/v1/messages").
 		Int("message_count", len(messages)).
 		Bool("stream", streaming).
+		Int("tool_count", len(opts.Tools)).
+		Str("tool_choice", strings.TrimSpace(opts.ToolChoice)).
 		Msg("llm request start")
 
-	nonSystemMessages := make([]ChatMessage, 0, len(messages))
-	systemMessages := make([]string, 0)
-	for _, msg := range messages {
-		if msg.Role == "system" {
-			if strings.TrimSpace(msg.Content) != "" {
-				systemMessages = append(systemMessages, strings.TrimSpace(msg.Content))
-			}
-			continue
-		}
-		nonSystemMessages = append(nonSystemMessages, msg)
+	reqBody := c.buildChatRequest(messages, opts, streaming)
+	req, err := c.createMessagesHTTPRequest(ctx, reqBody)
+	if err != nil {
+		return ChatResponse{}, err
 	}
+	resp, err := c.doMessagesRequest(req, streaming)
+	if err != nil {
+		return ChatResponse{}, err
+	}
+	defer resp.Body.Close()
 
-	reqBody := map[string]any{
-		"model":      c.model,
-		"max_tokens": c.config.MaxTokens,
-		"messages":   nonSystemMessages,
+	if streaming {
+		return c.chatStreamingResponse(resp.Body, opts.OnDelta)
 	}
-	if len(systemMessages) > 0 {
-		reqBody["system"] = strings.Join(systemMessages, "\n")
-	}
-
-	if opts.OnDelta != nil {
-		reqBody["stream"] = true
-		return c.chatStreaming(ctx, reqBody, opts.OnDelta)
-	}
-	return c.chatNonStreaming(ctx, reqBody)
+	return c.chatNonStreamingResponse(resp.Body)
 }
 
 func (c *AnthropicClient) Ask(ctx context.Context, prompt string) (string, error) {
@@ -108,10 +94,43 @@ func (c *AnthropicClient) Ask(ctx context.Context, prompt string) (string, error
 	return resp.Message.Content, nil
 }
 
-func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[string]any) (ChatResponse, error) {
+func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOptions, streaming bool) map[string]any {
+	nonSystemMessages := make([]ChatMessage, 0, len(messages))
+	systemMessages := make([]string, 0)
+	for _, msg := range messages {
+		if msg.Role == "system" {
+			if strings.TrimSpace(msg.Content) != "" {
+				systemMessages = append(systemMessages, strings.TrimSpace(msg.Content))
+			}
+			continue
+		}
+		nonSystemMessages = append(nonSystemMessages, msg)
+	}
+
+	reqBody := map[string]any{
+		"model":      c.model,
+		"max_tokens": c.config.MaxTokens,
+		"messages":   toAnthropicWireMessages(nonSystemMessages),
+	}
+	if len(systemMessages) > 0 {
+		reqBody["system"] = strings.Join(systemMessages, "\n")
+	}
+	if tools := toAnthropicTools(opts.Tools); len(tools) > 0 {
+		reqBody["tools"] = tools
+		if choice := toAnthropicToolChoice(opts.ToolChoice); len(choice) > 0 {
+			reqBody["tool_choice"] = choice
+		}
+	}
+	if streaming {
+		reqBody["stream"] = true
+	}
+	return reqBody
+}
+
+func (c *AnthropicClient) createMessagesHTTPRequest(ctx context.Context, reqBody map[string]any) (*http.Request, error) {
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("marshal request: %w", err))
+		return nil, newProviderError("anthropic", "parse", fmt.Errorf("marshal request: %w", err))
 	}
 
 	req, err := http.NewRequestWithContext(
@@ -121,34 +140,45 @@ func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[stri
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("create request: %w", err))
+		return nil, newProviderError("anthropic", "request", fmt.Errorf("create request: %w", err))
 	}
 	req.Header.Set("x-api-key", c.apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("anthropic-version", anthropicAPIVersion)
 	req.Header.Set("content-type", "application/json")
+	return req, nil
+}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("request anthropic: %w", err))
+func (c *AnthropicClient) doMessagesRequest(req *http.Request, streaming bool) (*http.Response, error) {
+	httpClient := c.httpClient
+	if streaming {
+		// Do not apply a hard client timeout to streaming responses.
+		httpClient = &http.Client{
+			Transport: c.httpClient.Transport,
+		}
 	}
-	defer resp.Body.Close()
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, newProviderError("anthropic", "request", fmt.Errorf("request anthropic: %w", err))
+	}
 	zlog.Debug().Str("provider", "anthropic").Int("status", resp.StatusCode).Msg("llm response received")
 
 	if err := checkHTTPStatus(resp, "anthropic"); err != nil {
-		return ChatResponse{}, err
+		_ = resp.Body.Close()
+		return nil, err
 	}
+	return resp, nil
+}
 
-	respBody, err := io.ReadAll(resp.Body)
+func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse, error) {
+	respBody, err := io.ReadAll(body)
 	if err != nil {
 		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("read response: %w", err))
 	}
 
 	var parsed struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-		Usage struct {
+		Content []anthropicContentBlock `json:"content"`
+		Usage   struct {
 			InputTokens  int `json:"input_tokens"`
 			OutputTokens int `json:"output_tokens"`
 		} `json:"usage"`
@@ -157,15 +187,11 @@ func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[stri
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("decode response: %w", err))
 	}
-	var b strings.Builder
-	for _, c := range parsed.Content {
-		if c.Type == "text" {
-			b.WriteString(c.Text)
-		}
-	}
+	content, toolCalls := parseAnthropicContentBlocks(parsed.Content)
 	zlog.Debug().
 		Str("provider", "anthropic").
-		Int("assistant_len", len(b.String())).
+		Int("assistant_len", len(content)).
+		Int("tool_call_count", len(toolCalls)).
 		Int("input_tokens", parsed.Usage.InputTokens).
 		Int("output_tokens", parsed.Usage.OutputTokens).
 		Str("stop_reason", parsed.StopReason).
@@ -173,8 +199,9 @@ func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[stri
 
 	return ChatResponse{
 		Message: ChatMessage{
-			Role:    "assistant",
-			Content: b.String(),
+			Role:      "assistant",
+			Content:   content,
+			ToolCalls: toolCalls,
 		},
 		Usage: Usage{
 			InputTokens:  parsed.Usage.InputTokens,
@@ -184,44 +211,16 @@ func (c *AnthropicClient) chatNonStreaming(ctx context.Context, reqBody map[stri
 	}, nil
 }
 
-func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]any, onDelta func(text string)) (ChatResponse, error) {
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("marshal request: %w", err))
-	}
-
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		c.baseURL+"/v1/messages",
-		bytes.NewReader(body),
-	)
-	if err != nil {
-		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("create request: %w", err))
-	}
-	req.Header.Set("x-api-key", c.apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("content-type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("request anthropic: %w", err))
-	}
-	defer resp.Body.Close()
-	zlog.Debug().Str("provider", "anthropic").Int("status", resp.StatusCode).Msg("llm response received")
-
-	if err := checkHTTPStatus(resp, "anthropic"); err != nil {
-		return ChatResponse{}, err
-	}
-
+func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(text string)) (ChatResponse, error) {
 	var (
-		response   ChatResponse
-		eventType  string
-		builder    strings.Builder
-		stopReason string
+		response         ChatResponse
+		eventType        string
+		builder          strings.Builder
+		stopReason       string
+		toolCallsByIndex = map[int]ToolCall{}
 	)
 
-	scanner := createSSEScanner(resp.Body)
+	scanner := createSSEScanner(body)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -243,21 +242,56 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 		}
 
 		switch eventType {
+		case "content_block_start":
+			var parsed struct {
+				Index        int                   `json:"index"`
+				ContentBlock anthropicContentBlock `json:"content_block"`
+			}
+			if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
+				return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("decode stream content block start: %w", err))
+			}
+			switch parsed.ContentBlock.Type {
+			case "text":
+				if parsed.ContentBlock.Text == "" {
+					continue
+				}
+				builder.WriteString(parsed.ContentBlock.Text)
+				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.ContentBlock.Text)).Msg("llm stream delta")
+				onDelta(parsed.ContentBlock.Text)
+			case "tool_use":
+				prev := toolCallsByIndex[parsed.Index]
+				if id := strings.TrimSpace(parsed.ContentBlock.ID); id != "" {
+					prev.ID = id
+				}
+				if name := strings.TrimSpace(parsed.ContentBlock.Name); name != "" {
+					prev.Name = name
+				}
+				if len(parsed.ContentBlock.Input) > 0 {
+					prev.Arguments = normalizeJSONRaw(parsed.ContentBlock.Input)
+				}
+				toolCallsByIndex[parsed.Index] = prev
+			}
 		case "content_block_delta":
 			var parsed struct {
+				Index int `json:"index"`
 				Delta struct {
-					Text string `json:"text"`
+					Text        string `json:"text"`
+					PartialJSON string `json:"partial_json"`
 				} `json:"delta"`
 			}
 			if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
 				return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("decode stream content delta: %w", err))
 			}
-			if parsed.Delta.Text == "" {
-				continue
+			if parsed.Delta.Text != "" {
+				builder.WriteString(parsed.Delta.Text)
+				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.Delta.Text)).Msg("llm stream delta")
+				onDelta(parsed.Delta.Text)
 			}
-			builder.WriteString(parsed.Delta.Text)
-			zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.Delta.Text)).Msg("llm stream delta")
-			onDelta(parsed.Delta.Text)
+			if parsed.Delta.PartialJSON != "" {
+				prev := toolCallsByIndex[parsed.Index]
+				prev.Arguments += parsed.Delta.PartialJSON
+				toolCallsByIndex[parsed.Index] = prev
+			}
 		case "message_start":
 			var parsed struct {
 				Message struct {
@@ -291,18 +325,201 @@ func (c *AnthropicClient) chatStreaming(ctx context.Context, reqBody map[string]
 	if err := scanner.Err(); err != nil {
 		return ChatResponse{}, newProviderError("anthropic", "stream", fmt.Errorf("read stream response: %w", err))
 	}
+	for idx, tc := range toolCallsByIndex {
+		if strings.TrimSpace(tc.Name) == "" {
+			continue
+		}
+		if strings.TrimSpace(tc.ID) == "" {
+			tc.ID = fmt.Sprintf("tool_call_%d", idx)
+		}
+		tc.Arguments = sanitizeToolArgumentsJSON(tc.Arguments)
+		toolCallsByIndex[idx] = tc
+	}
+	toolCalls := orderedToolCalls(toolCallsByIndex)
 
 	response.Message = ChatMessage{
-		Role:    "assistant",
-		Content: builder.String(),
+		Role:      "assistant",
+		Content:   builder.String(),
+		ToolCalls: toolCalls,
 	}
 	response.StopReason = stopReason
 	zlog.Debug().
 		Str("provider", "anthropic").
 		Int("assistant_len", len(response.Message.Content)).
+		Int("tool_call_count", len(toolCalls)).
 		Int("input_tokens", response.Usage.InputTokens).
 		Int("output_tokens", response.Usage.OutputTokens).
 		Str("stop_reason", response.StopReason).
 		Msg("llm stream complete")
 	return response, nil
+}
+
+type anthropicContentBlock struct {
+	Type  string          `json:"type"`
+	Text  string          `json:"text,omitempty"`
+	ID    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Input json.RawMessage `json:"input,omitempty"`
+}
+
+type anthropicWireMessage struct {
+	Role    string `json:"role"`
+	Content any    `json:"content"`
+}
+
+type anthropicWireTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema,omitempty"`
+}
+
+func toAnthropicWireMessages(messages []ChatMessage) []anthropicWireMessage {
+	if len(messages) == 0 {
+		return nil
+	}
+	out := make([]anthropicWireMessage, 0, len(messages))
+	for _, msg := range messages {
+		switch msg.Role {
+		case "assistant":
+			out = append(out, toAnthropicAssistantMessage(msg))
+		case "tool":
+			out = append(out, toAnthropicToolResultMessage(msg))
+		default:
+			out = append(out, anthropicWireMessage{
+				Role:    msg.Role,
+				Content: msg.Content,
+			})
+		}
+	}
+	return out
+}
+
+func toAnthropicAssistantMessage(msg ChatMessage) anthropicWireMessage {
+	if len(msg.ToolCalls) == 0 {
+		return anthropicWireMessage{
+			Role:    "assistant",
+			Content: msg.Content,
+		}
+	}
+
+	blocks := make([]map[string]any, 0, len(msg.ToolCalls)+1)
+	if strings.TrimSpace(msg.Content) != "" {
+		blocks = append(blocks, map[string]any{
+			"type": "text",
+			"text": msg.Content,
+		})
+	}
+	for idx, tc := range msg.ToolCalls {
+		if strings.TrimSpace(tc.Name) == "" {
+			continue
+		}
+		toolCallID := strings.TrimSpace(tc.ID)
+		if toolCallID == "" {
+			toolCallID = fmt.Sprintf("tool_call_%d", idx)
+		}
+		blocks = append(blocks, map[string]any{
+			"type":  "tool_use",
+			"id":    toolCallID,
+			"name":  tc.Name,
+			"input": parseToolArgumentsObject(tc.Arguments),
+		})
+	}
+	if len(blocks) == 0 {
+		return anthropicWireMessage{
+			Role:    "assistant",
+			Content: msg.Content,
+		}
+	}
+
+	return anthropicWireMessage{
+		Role:    "assistant",
+		Content: blocks,
+	}
+}
+
+func toAnthropicToolResultMessage(msg ChatMessage) anthropicWireMessage {
+	toolUseID := strings.TrimSpace(msg.ToolCallID)
+	if toolUseID == "" {
+		toolUseID = "tool_call_missing"
+	}
+	return anthropicWireMessage{
+		Role: "user",
+		Content: []map[string]any{
+			{
+				"type":        "tool_result",
+				"tool_use_id": toolUseID,
+				"content":     msg.Content,
+			},
+		},
+	}
+}
+
+func parseAnthropicContentBlocks(blocks []anthropicContentBlock) (string, []ToolCall) {
+	var builder strings.Builder
+	toolCalls := make([]ToolCall, 0)
+	for idx, block := range blocks {
+		switch block.Type {
+		case "text":
+			builder.WriteString(block.Text)
+		case "tool_use":
+			if strings.TrimSpace(block.Name) == "" {
+				continue
+			}
+			toolCallID := strings.TrimSpace(block.ID)
+			if toolCallID == "" {
+				toolCallID = fmt.Sprintf("tool_call_%d", idx)
+			}
+			toolCalls = append(toolCalls, ToolCall{
+				ID:        toolCallID,
+				Name:      block.Name,
+				Arguments: normalizeJSONRaw(block.Input),
+			})
+		}
+	}
+	if len(toolCalls) == 0 {
+		return builder.String(), nil
+	}
+	return builder.String(), toolCalls
+}
+
+func toAnthropicTools(tools []ToolSchema) []anthropicWireTool {
+	if len(tools) == 0 {
+		return nil
+	}
+	out := make([]anthropicWireTool, 0, len(tools))
+	for _, tl := range tools {
+		name := strings.TrimSpace(tl.Function.Name)
+		if name == "" {
+			continue
+		}
+		inputSchema := tl.Function.Parameters
+		if len(bytes.TrimSpace(inputSchema)) == 0 {
+			inputSchema = json.RawMessage(`{"type":"object"}`)
+		}
+		out = append(out, anthropicWireTool{
+			Name:        name,
+			Description: tl.Function.Description,
+			InputSchema: inputSchema,
+		})
+	}
+	return out
+}
+
+func toAnthropicToolChoice(choice string) map[string]any {
+	trimmed := strings.TrimSpace(choice)
+	switch trimmed {
+	case "":
+		return nil
+	case "required", "any":
+		return map[string]any{"type": "any"}
+	case "auto":
+		return map[string]any{"type": "auto"}
+	case "none":
+		return map[string]any{"type": "none"}
+	default:
+		return map[string]any{
+			"type": "tool",
+			"name": trimmed,
+		}
+	}
 }

@@ -386,14 +386,3 @@ func toOpenAIWireMessages(messages []ChatMessage) []openAIWireMessage {
 	}
 	return out
 }
-
-func sanitizeToolArgumentsJSON(raw string) string {
-	v := strings.TrimSpace(raw)
-	if v == "" {
-		return "{}"
-	}
-	if json.Valid([]byte(v)) {
-		return v
-	}
-	return "{}"
-}

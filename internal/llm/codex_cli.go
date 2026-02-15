@@ -110,11 +110,16 @@ func (c *CodexCLIClient) Ask(ctx context.Context, prompt string) (string, error)
 
 func (c *CodexCLIClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
 	if len(opts.Tools) > 0 || strings.TrimSpace(opts.ToolChoice) != "" {
-		zlog.Debug().
+		zlog.Warn().
 			Str("provider", "codex-cli").
 			Int("tool_count", len(opts.Tools)).
 			Str("tool_choice", strings.TrimSpace(opts.ToolChoice)).
-			Msg("tool-calls unsupported path; ignoring tools")
+			Msg("tool-calls unsupported by codex-cli provider")
+		return ChatResponse{}, newProviderError(
+			"codex-cli",
+			"request",
+			fmt.Errorf("tool calls are not supported by codex-cli provider"),
+		)
 	}
 	zlog.Debug().Str("provider", "codex-cli").Int("message_count", len(messages)).Msg("llm chat prepare prompt")
 
