@@ -55,15 +55,11 @@ func NewExecTool(workspaceDir string) Tool {
   "additionalProperties":false
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
-			var input struct {
-				Command   string `json:"command"`
-				TimeoutMS *int   `json:"timeout_ms,omitempty"`
-			}
-			if err := json.Unmarshal(params, &input); err != nil {
+			commandLine, timeoutMS, err := parseExecInput(params)
+			if err != nil {
 				return execErrorResult("", fmt.Sprintf("invalid arguments: %v", err), -1, "", "", 0, false), nil
 			}
-
-			commandLine := strings.TrimSpace(input.Command)
+			commandLine = strings.TrimSpace(commandLine)
 			if commandLine == "" {
 				return execErrorResult("", "command is required", -1, "", "", 0, false), nil
 			}
@@ -80,10 +76,6 @@ func NewExecTool(workspaceDir string) Tool {
 				return execErrorResult(commandLine, fmt.Sprintf("blocked command: %s", command), -1, "", "", 0, false), nil
 			}
 
-			timeoutMS := defaultExecTimeoutMS
-			if input.TimeoutMS != nil {
-				timeoutMS = *input.TimeoutMS
-			}
 			if timeoutMS < minExecTimeoutMS {
 				timeoutMS = minExecTimeoutMS
 			}
@@ -103,7 +95,7 @@ func NewExecTool(workspaceDir string) Tool {
 			cmd.Stderr = &stderr
 
 			start := time.Now()
-			err := cmd.Run()
+			err = cmd.Run()
 			durationMS := time.Since(start).Milliseconds()
 			timedOut := runCtx.Err() == context.DeadlineExceeded
 
@@ -154,4 +146,38 @@ func trimOutput(value string, maxBytes int) string {
 		return value[:maxBytes]
 	}
 	return value[:maxBytes-3] + "..."
+}
+
+func parseExecInput(params json.RawMessage) (string, int, error) {
+	raw := strings.TrimSpace(string(params))
+	if raw == "" || raw == "null" {
+		return "", defaultExecTimeoutMS, nil
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(params, &payload); err != nil {
+		return "", 0, err
+	}
+	if payload == nil {
+		payload = map[string]json.RawMessage{}
+	}
+
+	timeoutMS := defaultExecTimeoutMS
+	if v, ok := payload["timeout_ms"]; ok {
+		if err := json.Unmarshal(v, &timeoutMS); err != nil {
+			return "", 0, fmt.Errorf("timeout_ms must be integer")
+		}
+	}
+
+	var commandLine string
+	if v, ok := payload["command"]; ok {
+		if err := json.Unmarshal(v, &commandLine); err != nil {
+			return "", 0, fmt.Errorf("command must be string")
+		}
+	} else if v, ok := payload["cmd"]; ok {
+		if err := json.Unmarshal(v, &commandLine); err != nil {
+			return "", 0, fmt.Errorf("cmd must be string")
+		}
+	}
+	return commandLine, timeoutMS, nil
 }
