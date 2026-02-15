@@ -83,6 +83,7 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 	case 'new': {
 		const created = await apis.createSession(ctx.serverUrl, cmd.title);
 		ctx.setSessionID(created.id);
+		clearResumeSelection(ctx);
 		ctx.pushSystemMessage(`active session: ${created.id}`);
 		return;
 	}

@@ -144,3 +144,23 @@ test('executeInputCommand handles /new and updates active session', async () => 
 	assert.equal(state.activeSessionID, 'sess-10');
 	assert.deepEqual(state.messages, ['active session: sess-10']);
 });
+
+test('executeInputCommand clears resume selection when creating a new session', async () => {
+	const apis: CommandAPIs = {
+		...createDefaultAPIs(),
+		createSession: async () => ({id: 'sess-11', title: 'new chat'}),
+	};
+	const state = createContext('/new');
+	state.ctx.setResumeCandidates([
+		{id: 'sess-old-1', title: 'old one'},
+		{id: 'sess-old-2', title: 'old two'},
+	]);
+	state.ctx.setResumeIndex(1);
+
+	await executeInputCommand(state.ctx, apis);
+
+	assert.equal(state.activeSessionID, 'sess-11');
+	assert.equal(state.resumeCandidates, null);
+	assert.equal(state.resumeIndex, 0);
+	assert.deepEqual(state.messages, ['active session: sess-11']);
+});
