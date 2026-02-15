@@ -35,18 +35,20 @@ test('streamChat restores split chunks and returns assistant/session', async () 
 		})) as typeof fetch;
 
 	const statuses: string[] = [];
+	const phases: string[] = [];
 	const deltas: string[] = [];
 	const result = await streamChat({
 		serverUrl: 'http://127.0.0.1:8080',
 		sessionId: '',
 		message: 'hi',
 		onStatus: (line) => statuses.push(line),
+		onStatusEvent: (evt) => phases.push(evt.phase ?? ''),
 		onDelta: (chunk) => deltas.push(chunk),
 	});
 
 	assert.deepEqual(statuses, ['before_llm']);
+	assert.deepEqual(phases, ['before_llm']);
 	assert.deepEqual(deltas, ['hello', ' world']);
 	assert.equal(result.assistantText, 'hello world');
 	assert.equal(result.sessionId, 'sess-2');
 });
-

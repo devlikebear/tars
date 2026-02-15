@@ -6,6 +6,7 @@ test('router parses chat and quit commands', () => {
 	assert.deepEqual(parseInputCommand('hello'), {kind: 'chat', message: 'hello'});
 	assert.deepEqual(parseInputCommand('/quit'), {kind: 'quit'});
 	assert.deepEqual(parseInputCommand('/exit'), {kind: 'quit'});
+	assert.deepEqual(parseInputCommand('₩resume sess-kor'), {kind: 'resume', sessionID: 'sess-kor'});
 });
 
 test('router parses slash command options', () => {
@@ -20,4 +21,3 @@ test('router returns invalid for malformed or unknown command', () => {
 	assert.deepEqual(parseInputCommand('/search'), {kind: 'invalid', message: 'usage: /search {keyword}'});
 	assert.deepEqual(parseInputCommand('/what'), {kind: 'invalid', message: 'unknown command: /what'});
 });
-

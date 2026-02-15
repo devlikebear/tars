@@ -15,12 +15,23 @@ export type Command =
 	| {kind: 'quit'}
 	| {kind: 'invalid'; message: string};
 
+function normalizeCommandPrefix(line: string): string {
+	if (line === '') {
+		return line;
+	}
+	const first = Array.from(line)[0] ?? '';
+	if (first === '\\' || first === '＼' || first === '₩' || first === '￦' || first === '／') {
+		return `/${line.slice(first.length)}`;
+	}
+	return line;
+}
+
 function trimPrefix(raw: string, command: string): string {
 	return raw.slice(command.length).trim();
 }
 
 export function parseInputCommand(raw: string): Command {
-	const line = raw.trim();
+	const line = normalizeCommandPrefix(raw.trim());
 	if (line === '') {
 		return {kind: 'noop'};
 	}
@@ -70,4 +81,3 @@ export function parseInputCommand(raw: string): Command {
 		return {kind: 'invalid', message: `unknown command: ${head}`};
 	}
 }
-

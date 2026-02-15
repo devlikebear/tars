@@ -13,6 +13,7 @@ export type StreamChatParams = {
 	sessionId: string;
 	message: string;
 	onStatus: (line: string) => void;
+	onStatusEvent?: (evt: ChatSSEEvent) => void;
 	onDelta: (chunk: string) => void;
 	onDebug?: (line: string) => void;
 };
@@ -109,6 +110,7 @@ export async function streamChat(params: StreamChatParams): Promise<StreamChatRe
 		for (const evt of decoded.events) {
 			switch (evt.type) {
 			case 'status': {
+				params.onStatusEvent?.(evt);
 				const status = statusLineFromEvent(evt);
 				if (status !== '') {
 					params.onStatus(status);
@@ -137,4 +139,3 @@ export async function streamChat(params: StreamChatParams): Promise<StreamChatRe
 
 	return {sessionId: currentSessionID, assistantText};
 }
-

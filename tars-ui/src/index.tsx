@@ -1,13 +1,16 @@
 import React, {useCallback, useMemo, useReducer, useState} from 'react';
 import {Box, Text, render, useApp, useInput} from 'ink';
 import TextInput from 'ink-text-input';
-import {streamChat} from './api/chat.js';
+import {ChatSSEEvent, streamChat} from './api/chat.js';
 import {createSession, exportSession, getHistory, getSession, listSessions, searchSessions} from './api/session.js';
 import {getStatus, runCompact, runHeartbeatOnce} from './api/system.js';
 import {chatUIReducer, initialChatUIState} from './chat/state.js';
 import {parseArgs} from './cli/parseArgs.js';
 import {parseInputCommand} from './commands/router.js';
 import {SessionSummary} from './types.js';
+
+const maxPanelLines = 200;
+const chatPageSize = 20;
 
 function appendBounded(lines: string[], next: string, max: number): string[] {
 	const trimmed = next.trim();
@@ -32,6 +35,37 @@ function requireSessionOrError(currentSession: string): string | null {
 	return null;
 }
 
+function padRight(value: string, width: number): string {
+	const runes = Array.from(value);
+	if (runes.length >= width) {
+		return runes.slice(0, width).join('');
+	}
+	return value + ' '.repeat(width - runes.length);
+}
+
+function renderTable(headers: string[], rows: string[][]): string[] {
+	const safeRows = rows.filter((r) => r.length === headers.length);
+	const widths = headers.map((h, i) => {
+		const bodyMax = safeRows.reduce((acc, row) => Math.max(acc, Array.from(row[i] ?? '').length), 0);
+		return Math.max(Array.from(h).length, bodyMax, 4);
+	});
+	const header = headers.map((h, i) => padRight(h, widths[i] ?? 0)).join(' | ');
+	const sep = widths.map((w) => '-'.repeat(w)).join('-|-');
+	const body = safeRows.map((row) => row.map((c, i) => padRight(c, widths[i] ?? 0)).join(' | '));
+	return [header, sep, ...body];
+}
+
+function truncate(value: string, max: number): string {
+	const runes = Array.from(value);
+	if (runes.length <= max) {
+		return value;
+	}
+	if (max <= 3) {
+		return runes.slice(0, max).join('');
+	}
+	return runes.slice(0, max - 3).join('') + '...';
+}
+
 function App(): React.JSX.Element {
 	const initial = useMemo(() => parseArgs(process.argv.slice(2)), []);
 	const {exit} = useApp();
@@ -39,12 +73,19 @@ function App(): React.JSX.Element {
 	const [sessionID, setSessionID] = useState<string>(initial.sessionId);
 	const [input, setInput] = useState<string>('');
 	const [statusLines, setStatusLines] = useState<string[]>([]);
+	const [toolLines, setToolLines] = useState<string[]>([]);
 	const [debugLines, setDebugLines] = useState<string[]>([]);
 	const [resumeCandidates, setResumeCandidates] = useState<SessionSummary[] | null>(null);
+	const [resumeIndex, setResumeIndex] = useState<number>(0);
+	const [chatScrollOffset, setChatScrollOffset] = useState<number>(0);
 	const [chatState, dispatchChat] = useReducer(chatUIReducer, initialChatUIState);
 
 	const pushStatus = useCallback((line: string) => {
-		setStatusLines((prev) => appendBounded(prev, line, 200));
+		setStatusLines((prev) => appendBounded(prev, line, maxPanelLines));
+	}, []);
+
+	const pushTool = useCallback((line: string) => {
+		setToolLines((prev) => appendBounded(prev, line, maxPanelLines));
 	}, []);
 
 	const pushDebug = useCallback(
@@ -52,7 +93,7 @@ function App(): React.JSX.Element {
 			if (!initial.verbose) {
 				return;
 			}
-			setDebugLines((prev) => appendBounded(prev, line, 200));
+			setDebugLines((prev) => appendBounded(prev, line, maxPanelLines));
 		},
 		[initial.verbose],
 	);
@@ -60,6 +101,28 @@ function App(): React.JSX.Element {
 	const pushSystemMessage = useCallback((text: string) => {
 		dispatchChat({type: 'append_message', message: {role: 'system', text}});
 	}, []);
+
+	const pushSystemTable = useCallback(
+		(headers: string[], rows: string[][]) => {
+			for (const line of renderTable(headers, rows)) {
+				pushSystemMessage(line);
+			}
+		},
+		[pushSystemMessage],
+	);
+
+	const handleStatusEvent = useCallback((evt: ChatSSEEvent) => {
+		const phase = (evt.phase ?? '').trim();
+		if (phase === 'before_tool_call') {
+			pushTool(`start ${evt.tool_name ?? ''}`.trim());
+		}
+		if (phase === 'after_tool_call') {
+			pushTool(`done ${evt.tool_name ?? ''}`.trim());
+		}
+		if (phase === 'error') {
+			pushTool(`error ${evt.message ?? evt.error ?? ''}`.trim());
+		}
+	}, [pushTool]);
 
 	const executeCommand = useCallback(
 		async (raw: string): Promise<void> => {
@@ -84,9 +147,10 @@ function App(): React.JSX.Element {
 					pushSystemMessage('(no sessions)');
 					return;
 				}
-				for (const s of sessions) {
-					pushSystemMessage(`${s.id}\t${s.title}`);
-				}
+				pushSystemTable(
+					['ID', 'TITLE'],
+					sessions.map((s) => [s.id, truncate(s.title, 48)]),
+				);
 				return;
 			}
 			case 'new': {
@@ -100,6 +164,7 @@ function App(): React.JSX.Element {
 				setSessionID(cmd.sessionID);
 				pushSystemMessage(`resumed session: ${cmd.sessionID}`);
 				setResumeCandidates(null);
+				setResumeIndex(0);
 				return;
 			}
 			case 'resume_select': {
@@ -109,10 +174,8 @@ function App(): React.JSX.Element {
 					return;
 				}
 				setResumeCandidates(sessions);
-				pushSystemMessage('Select session:');
-				sessions.forEach((s, i) => {
-					pushSystemMessage(`${i + 1}) ${s.id}\t${s.title}`);
-				});
+				setResumeIndex(0);
+				pushSystemMessage('Use ↑/↓ and Enter to select a session.');
 				return;
 			}
 			case 'history': {
@@ -126,9 +189,10 @@ function App(): React.JSX.Element {
 					pushSystemMessage('(no history)');
 					return;
 				}
-				for (const m of history) {
-					pushSystemMessage(`${m.timestamp} [${m.role}] ${m.content}`);
-				}
+				pushSystemTable(
+					['TIME', 'ROLE', 'CONTENT'],
+					history.map((m) => [m.timestamp, m.role, truncate(m.content.replace(/\s+/g, ' '), 64)]),
+				);
 				return;
 			}
 			case 'export': {
@@ -147,9 +211,10 @@ function App(): React.JSX.Element {
 					pushSystemMessage('(no sessions)');
 					return;
 				}
-				for (const s of sessions) {
-					pushSystemMessage(`${s.id}\t${s.title}`);
-				}
+				pushSystemTable(
+					['ID', 'TITLE'],
+					sessions.map((s) => [s.id, truncate(s.title, 48)]),
+				);
 				return;
 			}
 			case 'status': {
@@ -174,7 +239,7 @@ function App(): React.JSX.Element {
 			}
 			}
 		},
-		[exit, initial.serverUrl, pushSystemMessage, sessionID],
+		[exit, initial.serverUrl, pushSystemMessage, pushSystemTable, sessionID],
 	);
 
 	const sendChat = useCallback(
@@ -182,6 +247,8 @@ function App(): React.JSX.Element {
 			dispatchChat({type: 'append_message', message: {role: 'user', text: message}});
 			dispatchChat({type: 'stream_start'});
 			setResumeCandidates(null);
+			setResumeIndex(0);
+			setChatScrollOffset(0);
 
 			try {
 				const result = await streamChat({
@@ -192,6 +259,7 @@ function App(): React.JSX.Element {
 						pushStatus(status);
 						pushDebug(`status: ${status}`);
 					},
+					onStatusEvent: handleStatusEvent,
 					onDelta: (chunk) => {
 						dispatchChat({type: 'stream_delta', chunk});
 					},
@@ -208,17 +276,38 @@ function App(): React.JSX.Element {
 				pushDebug(`error: ${messageText}`);
 			}
 		},
-		[initial.serverUrl, pushDebug, pushStatus, sessionID],
+		[handleStatusEvent, initial.serverUrl, pushDebug, pushStatus, sessionID],
 	);
+
+	const selectResumeCandidate = useCallback(() => {
+		if (resumeCandidates === null || resumeCandidates.length === 0) {
+			return;
+		}
+		const selected = resumeCandidates[resumeIndex] ?? resumeCandidates[0];
+		if (!selected) {
+			return;
+		}
+		setSessionID(selected.id);
+		pushSystemMessage(`resumed session: ${selected.id}`);
+		setResumeCandidates(null);
+		setResumeIndex(0);
+	}, [pushSystemMessage, resumeCandidates, resumeIndex]);
 
 	const submit = useCallback(async (): Promise<void> => {
 		const line = input.trim();
-		if (line === '' || chatState.busy) {
+		if (line === '' && resumeCandidates === null) {
+			return;
+		}
+		if (chatState.busy) {
 			return;
 		}
 		setInput('');
 
-		if (resumeCandidates !== null && !line.startsWith('/')) {
+		if (resumeCandidates !== null) {
+			if (line === '') {
+				selectResumeCandidate();
+				return;
+			}
 			const choice = Number.parseInt(line, 10);
 			if (Number.isNaN(choice) || choice < 1 || choice > resumeCandidates.length) {
 				dispatchChat({type: 'append_message', message: {role: 'error', text: 'invalid selection'}});
@@ -227,6 +316,7 @@ function App(): React.JSX.Element {
 			const session = resumeCandidates[choice - 1]!;
 			setSessionID(session.id);
 			setResumeCandidates(null);
+			setResumeIndex(0);
 			pushSystemMessage(`resumed session: ${session.id}`);
 			return;
 		}
@@ -243,16 +333,41 @@ function App(): React.JSX.Element {
 		}
 
 		await sendChat(line);
-	}, [chatState.busy, executeCommand, input, pushDebug, pushSystemMessage, resumeCandidates, sendChat]);
+	}, [chatState.busy, executeCommand, input, pushDebug, pushSystemMessage, resumeCandidates, selectResumeCandidate, sendChat]);
 
 	useInput((key, inputState) => {
 		if (inputState.ctrl && key === 'c') {
 			exit();
+			return;
+		}
+
+		if (resumeCandidates !== null && resumeCandidates.length > 0) {
+			if (inputState.upArrow) {
+				setResumeIndex((prev) => (prev - 1 + resumeCandidates.length) % resumeCandidates.length);
+				return;
+			}
+			if (inputState.downArrow) {
+				setResumeIndex((prev) => (prev + 1) % resumeCandidates.length);
+				return;
+			}
+		}
+
+		if (inputState.pageUp || (inputState.ctrl && key === 'u')) {
+			setChatScrollOffset((prev) => prev + chatPageSize);
+			return;
+		}
+		if (inputState.pageDown || (inputState.ctrl && key === 'd')) {
+			setChatScrollOffset((prev) => Math.max(0, prev - chatPageSize));
 		}
 	});
 
-	const visibleMessages = useMemo(() => chatState.messages.slice(-30), [chatState.messages]);
+	const maxOffset = useMemo(() => Math.max(0, chatState.messages.length - chatPageSize), [chatState.messages.length]);
+	const effectiveOffset = Math.min(chatScrollOffset, maxOffset);
+	const chatEnd = chatState.messages.length - effectiveOffset;
+	const chatStart = Math.max(0, chatEnd - chatPageSize);
+	const visibleMessages = useMemo(() => chatState.messages.slice(chatStart, chatEnd), [chatEnd, chatStart, chatState.messages]);
 	const visibleStatus = useMemo(() => statusLines.slice(-20), [statusLines]);
+	const visibleTools = useMemo(() => toolLines.slice(-20), [toolLines]);
 	const visibleDebug = useMemo(() => debugLines.slice(-20), [debugLines]);
 
 	return (
@@ -265,20 +380,22 @@ function App(): React.JSX.Element {
 				<Text color="yellow">{sessionID || '(new)'}</Text>
 				<Text>  state=</Text>
 				<Text color={chatState.busy ? 'yellow' : 'green'}>{chatState.busy ? 'streaming' : 'idle'}</Text>
+				<Text>  scroll=</Text>
+				<Text color="magenta">{effectiveOffset}</Text>
 			</Box>
 
 			<Box>
 				<Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} flexGrow={3} minHeight={20}>
-					<Text color="cyan">Chat</Text>
+					<Text color="cyan">Chat (PgUp/PgDn or Ctrl+U/Ctrl+D)</Text>
 					{visibleMessages.map((m, idx) => (
-						<Box key={`${idx}-${m.role}`}>
+						<Box key={`${chatStart + idx}-${m.role}`}>
 							<Text color={m.role === 'assistant' ? 'green' : m.role === 'error' ? 'red' : m.role === 'system' ? 'cyan' : 'white'}>
 								{m.role === 'assistant' ? 'TARS' : m.role === 'error' ? 'ERROR' : m.role === 'system' ? 'SYSTEM' : 'YOU'} {'> '}
 							</Text>
 							<Text>{m.text}</Text>
 						</Box>
 					))}
-					{chatState.assistantDraft !== '' && (
+					{chatState.assistantDraft !== '' && effectiveOffset === 0 && (
 						<Box>
 							<Text color="green">TARS &gt; </Text>
 							<Text>{chatState.assistantDraft}</Text>
@@ -293,6 +410,10 @@ function App(): React.JSX.Element {
 					{visibleStatus.map((line, idx) => (
 						<Text key={`status-${idx}`}>• {line}</Text>
 					))}
+					<Text color="yellow">Tools</Text>
+					{visibleTools.map((line, idx) => (
+						<Text key={`tool-${idx}`}>• {line}</Text>
+					))}
 					{initial.verbose && (
 						<>
 							<Text color="magentaBright">Debug</Text>
@@ -306,6 +427,17 @@ function App(): React.JSX.Element {
 				</Box>
 			</Box>
 
+			{resumeCandidates !== null && (
+				<Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+					<Text color="yellow">Resume session (↑/↓, Enter)</Text>
+					{resumeCandidates.map((s, idx) => (
+						<Text key={s.id} color={idx === resumeIndex ? 'green' : 'white'}>
+							{idx === resumeIndex ? '>' : ' '} {idx + 1}) {s.id} {s.title}
+						</Text>
+					))}
+				</Box>
+			)}
+
 			<Box marginTop={1}>
 				<Text color="yellow">You &gt; </Text>
 				<TextInput
@@ -318,7 +450,7 @@ function App(): React.JSX.Element {
 						chatState.busy
 							? 'waiting for response...'
 							: resumeCandidates !== null
-								? 'Select session number'
+								? 'Enter to select highlighted session (or type number)'
 								: 'Type message and press Enter'
 					}
 					focus={!chatState.busy}
