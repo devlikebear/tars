@@ -66,3 +66,55 @@ func TestStore_GetMissingReturnsError(t *testing.T) {
 		t.Fatalf("expected not found error for missing job")
 	}
 }
+
+func TestStore_UpdateAndDelete(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	created, err := store.CreateWithOptions(CreateInput{
+		Name:      "daily",
+		Prompt:    "check inbox",
+		Schedule:  "every:1h",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	updated, err := store.Update(created.ID, UpdateInput{
+		Name:           ptrString("daily-updated"),
+		Prompt:         ptrString("check inbox and calendar"),
+		Schedule:       ptrString("every:30m"),
+		Enabled:        ptrBool(false),
+		DeleteAfterRun: ptrBool(true),
+	})
+	if err != nil {
+		t.Fatalf("update job: %v", err)
+	}
+	if updated.Name != "daily-updated" {
+		t.Fatalf("expected updated name, got %q", updated.Name)
+	}
+	if updated.Prompt != "check inbox and calendar" {
+		t.Fatalf("expected updated prompt, got %q", updated.Prompt)
+	}
+	if updated.Schedule != "every:30m" {
+		t.Fatalf("expected updated schedule, got %q", updated.Schedule)
+	}
+	if updated.Enabled {
+		t.Fatalf("expected enabled=false after update")
+	}
+	if !updated.DeleteAfterRun {
+		t.Fatalf("expected delete_after_run=true after update")
+	}
+
+	if err := store.Delete(created.ID); err != nil {
+		t.Fatalf("delete job: %v", err)
+	}
+	if _, err := store.Get(created.ID); err == nil {
+		t.Fatalf("expected not found after delete")
+	}
+}
+
+func ptrString(v string) *string { return &v }
+func ptrBool(v bool) *bool       { return &v }

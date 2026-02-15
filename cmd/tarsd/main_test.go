@@ -407,6 +407,70 @@ func TestCronAPI_ListCreateRun(t *testing.T) {
 	}
 }
 
+func TestCronAPI_UpdateDelete(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := cron.NewStore(root)
+	handler := newCronAPIHandler(
+		store,
+		func(_ context.Context, prompt string) (string, error) { return "ok:" + prompt, nil },
+		zerolog.New(io.Discard),
+	)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs", strings.NewReader(`{"name":"morning","prompt":"check inbox","schedule":"every:1h","enabled":true}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK && createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create status 200/201, got %d body=%q", createRec.Code, createRec.Body.String())
+	}
+	var created cron.Job
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/v1/cron/jobs/"+created.ID, strings.NewReader(`{"name":"morning-updated","prompt":"check all","schedule":"every:30m","enabled":false,"delete_after_run":true}`))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRec := httptest.NewRecorder()
+	handler.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("expected update status 200, got %d body=%q", updateRec.Code, updateRec.Body.String())
+	}
+	var updated cron.Job
+	if err := json.Unmarshal(updateRec.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode updated job: %v", err)
+	}
+	if updated.Name != "morning-updated" || updated.Prompt != "check all" {
+		t.Fatalf("unexpected updated job payload: %+v", updated)
+	}
+	if updated.Schedule != "every:30m" {
+		t.Fatalf("expected updated schedule every:30m, got %q", updated.Schedule)
+	}
+	if updated.Enabled {
+		t.Fatalf("expected enabled=false after update")
+	}
+	if !updated.DeleteAfterRun {
+		t.Fatalf("expected delete_after_run=true after update")
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/cron/jobs/"+created.ID, nil)
+	deleteRec := httptest.NewRecorder()
+	handler.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusNoContent && deleteRec.Code != http.StatusOK {
+		t.Fatalf("expected delete status 204/200, got %d body=%q", deleteRec.Code, deleteRec.Body.String())
+	}
+
+	runMissingReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs/"+created.ID+"/run", nil)
+	runMissingRec := httptest.NewRecorder()
+	handler.ServeHTTP(runMissingRec, runMissingReq)
+	if runMissingRec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 after delete, got %d body=%q", runMissingRec.Code, runMissingRec.Body.String())
+	}
+}
+
 func TestChatAPI(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {

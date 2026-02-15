@@ -219,6 +219,12 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					defer cancel()
 					_ = server.Shutdown(shutdownCtx)
 				}()
+				cronManager := cron.NewManager(cronStore, ask, 30*time.Second, nowFn)
+				go func() {
+					if err := cronManager.Start(ctx); err != nil {
+						logger.Error().Err(err).Msg("cron manager stopped with error")
+					}
+				}()
 
 				logger.Info().Str("addr", opts.APIAddr).Msg("tarsd api server started")
 				if _, err := fmt.Fprintf(stdout, "tarsd api serving on %s\n", opts.APIAddr); err != nil {

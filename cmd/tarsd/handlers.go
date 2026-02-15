@@ -635,17 +635,33 @@ func newCronAPIHandler(
 			writeJSON(w, http.StatusOK, jobs)
 		case http.MethodPost:
 			var req struct {
-				Name   string `json:"name"`
-				Prompt string `json:"prompt"`
+				Name           string `json:"name"`
+				Prompt         string `json:"prompt"`
+				Schedule       string `json:"schedule"`
+				Enabled        *bool  `json:"enabled,omitempty"`
+				DeleteAfterRun bool   `json:"delete_after_run,omitempty"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 				return
 			}
-			job, err := store.Create(req.Name, req.Prompt)
+			enabled := true
+			hasEnable := false
+			if req.Enabled != nil {
+				enabled = *req.Enabled
+				hasEnable = true
+			}
+			job, err := store.CreateWithOptions(cron.CreateInput{
+				Name:           req.Name,
+				Prompt:         req.Prompt,
+				Schedule:       req.Schedule,
+				Enabled:        enabled,
+				HasEnable:      hasEnable,
+				DeleteAfterRun: req.DeleteAfterRun,
+			})
 			if err != nil {
-				if strings.Contains(err.Error(), "prompt is required") {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
+				if strings.Contains(err.Error(), "prompt is required") || strings.Contains(err.Error(), "invalid schedule") {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 					return
 				}
 				logger.Error().Err(err).Msg("create cron job failed")
@@ -661,7 +677,62 @@ func newCronAPIHandler(
 	mux.HandleFunc("/v1/cron/jobs/", func(w http.ResponseWriter, r *http.Request) {
 		pathRemainder := strings.TrimPrefix(r.URL.Path, "/v1/cron/jobs/")
 		pathParts := strings.Split(pathRemainder, "/")
-		if len(pathParts) != 2 || pathParts[0] == "" || pathParts[1] != "run" {
+		if len(pathParts) < 1 || pathParts[0] == "" {
+			http.NotFound(w, r)
+			return
+		}
+		jobID := pathParts[0]
+		if len(pathParts) == 1 {
+			switch r.Method {
+			case http.MethodPut:
+				var req struct {
+					Name           *string `json:"name,omitempty"`
+					Prompt         *string `json:"prompt,omitempty"`
+					Schedule       *string `json:"schedule,omitempty"`
+					Enabled        *bool   `json:"enabled,omitempty"`
+					DeleteAfterRun *bool   `json:"delete_after_run,omitempty"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+					return
+				}
+				job, err := store.Update(jobID, cron.UpdateInput{
+					Name:           req.Name,
+					Prompt:         req.Prompt,
+					Schedule:       req.Schedule,
+					Enabled:        req.Enabled,
+					DeleteAfterRun: req.DeleteAfterRun,
+				})
+				if err != nil {
+					switch {
+					case strings.Contains(err.Error(), "job not found"):
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+					case strings.Contains(err.Error(), "required"), strings.Contains(err.Error(), "invalid schedule"):
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+					default:
+						logger.Error().Err(err).Str("job_id", jobID).Msg("update cron job failed")
+						writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update cron job failed"})
+					}
+					return
+				}
+				writeJSON(w, http.StatusOK, job)
+			case http.MethodDelete:
+				if err := store.Delete(jobID); err != nil {
+					if strings.Contains(err.Error(), "job not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+						return
+					}
+					logger.Error().Err(err).Str("job_id", jobID).Msg("delete cron job failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete cron job failed"})
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+		if len(pathParts) != 2 || pathParts[1] != "run" {
 			http.NotFound(w, r)
 			return
 		}
@@ -673,7 +744,6 @@ func newCronAPIHandler(
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cron runner is not configured"})
 			return
 		}
-		jobID := pathParts[0]
 		job, err := store.Get(jobID)
 		if err != nil {
 			if strings.Contains(err.Error(), "job not found") {
@@ -686,6 +756,7 @@ func newCronAPIHandler(
 		}
 
 		response, err := runPrompt(r.Context(), job.Prompt)
+		_, _ = store.MarkRunResult(jobID, time.Now().UTC(), err)
 		if err != nil {
 			logger.Error().Err(err).Str("job_id", jobID).Msg("run cron job failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "run cron job failed"})
