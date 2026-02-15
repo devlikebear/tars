@@ -213,7 +213,25 @@ func setupAgentLoop(
 	return agent.NewLoop(client, registry, counterHook, auditHook, logHook)
 }
 
+func resolveAgentMaxIterations(value int) int {
+	if value <= 0 {
+		return agent.DefaultMaxLoopIters
+	}
+	return value
+}
+
 func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Client, logger zerolog.Logger) http.Handler {
+	return newChatAPIHandlerWithOptions(workspaceDir, store, client, logger, agent.DefaultMaxLoopIters)
+}
+
+func newChatAPIHandlerWithOptions(
+	workspaceDir string,
+	store *session.Store,
+	client llm.Client,
+	logger zerolog.Logger,
+	maxIterations int,
+) http.Handler {
+	maxIters := resolveAgentMaxIterations(maxIterations)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -305,7 +323,7 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 
 		logger.Debug().Str("session_id", sessionID).Int("messages", len(llmMessages)).Msg("llm chat call start")
 		chatResp, err := loop.Run(r.Context(), llmMessages, agent.RunOptions{
-			MaxIterations: 8,
+			MaxIterations: maxIters,
 			Tools:         registry.Schemas(),
 			ToolChoice:    toolChoice,
 			OnDelta: func(text string) {

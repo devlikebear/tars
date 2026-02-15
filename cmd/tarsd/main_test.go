@@ -691,6 +691,46 @@ func TestChatAPI_WritesDailyAndLongTermMemory(t *testing.T) {
 	}
 }
 
+func TestChatAPI_UsesConfiguredMaxIterations(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_1",
+							Name:      "session_status",
+							Arguments: `{}`,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	handler := newChatAPIHandlerWithOptions(root, store, mockClient, logger, 2)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"loop test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "agent loop exceeded max iterations: 2") {
+		t.Fatalf("expected max iteration error with configured value, got %q", rec.Body.String())
+	}
+}
+
 type mockLLMClient struct {
 	response        llm.ChatResponse
 	responses       []llm.ChatResponse
