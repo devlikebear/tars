@@ -3,6 +3,7 @@ package session
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestStoreCreateAndList(t *testing.T) {
@@ -84,5 +85,50 @@ func TestStoreGetNotFound(t *testing.T) {
 	_, err := store.Get("nonexistent")
 	if err == nil {
 		t.Fatal("expected error for nonexistent session")
+	}
+}
+
+func TestStoreTouchAndLatest(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	first, err := store.Create("first")
+	if err != nil {
+		t.Fatalf("create first: %v", err)
+	}
+	second, err := store.Create("second")
+	if err != nil {
+		t.Fatalf("create second: %v", err)
+	}
+
+	now := time.Now().UTC().Add(2 * time.Minute)
+	if err := store.Touch(first.ID, now); err != nil {
+		t.Fatalf("touch first: %v", err)
+	}
+
+	latest, err := store.Latest()
+	if err != nil {
+		t.Fatalf("latest: %v", err)
+	}
+	if latest.ID != first.ID {
+		t.Fatalf("expected touched session to be latest, got %s", latest.ID)
+	}
+
+	if err := store.Touch(second.ID, now.Add(1*time.Minute)); err != nil {
+		t.Fatalf("touch second: %v", err)
+	}
+	latest, err = store.Latest()
+	if err != nil {
+		t.Fatalf("latest second: %v", err)
+	}
+	if latest.ID != second.ID {
+		t.Fatalf("expected second session to be latest after touch, got %s", latest.ID)
+	}
+}
+
+func TestStoreLatestNoSessionsReturnsError(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if _, err := store.Latest(); err == nil {
+		t.Fatalf("expected error when no sessions exist")
 	}
 }

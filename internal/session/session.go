@@ -93,6 +93,46 @@ func (s *Store) List() ([]Session, error) {
 	return sessions, nil
 }
 
+func (s *Store) Touch(id string, updatedAt time.Time) error {
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	sess.UpdatedAt = updatedAt.UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+func (s *Store) Latest() (Session, error) {
+	index, err := s.loadIndex()
+	if err != nil {
+		return Session{}, err
+	}
+	if len(index) == 0 {
+		return Session{}, fmt.Errorf("session not found")
+	}
+	var latest Session
+	hasLatest := false
+	for _, sess := range index {
+		if !hasLatest {
+			latest = sess
+			hasLatest = true
+			continue
+		}
+		switch {
+		case sess.UpdatedAt.After(latest.UpdatedAt):
+			latest = sess
+		case sess.UpdatedAt.Equal(latest.UpdatedAt) && sess.CreatedAt.After(latest.CreatedAt):
+			latest = sess
+		}
+	}
+	return latest, nil
+}
+
 func (s *Store) Delete(id string) error {
 	index, err := s.loadIndex()
 	if err != nil {
