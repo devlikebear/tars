@@ -200,6 +200,14 @@ func applyLLMDefaults(cfg *Config) {
 		cfg.LLMAuthMode = "api-key"
 	}
 	cfg.LLMOAuthProvider = strings.TrimSpace(strings.ToLower(cfg.LLMOAuthProvider))
+	if cfg.LLMAuthMode == "oauth" && cfg.LLMOAuthProvider == "" {
+		switch cfg.LLMProvider {
+		case "anthropic":
+			cfg.LLMOAuthProvider = "claude-code"
+		case "gemini":
+			cfg.LLMOAuthProvider = "google-antigravity"
+		}
+	}
 	if cfg.AgentMaxIterations <= 0 {
 		cfg.AgentMaxIterations = 8
 	}
@@ -224,6 +232,16 @@ func applyLLMDefaults(cfg *Config) {
 			}
 			if cfg.LLMAPIKey == "" {
 				cfg.LLMAPIKey = os.Getenv("OPENAI_API_KEY")
+			}
+		case "gemini":
+			if cfg.LLMBaseURL == "" {
+				cfg.LLMBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
+			}
+			if cfg.LLMModel == "" {
+				cfg.LLMModel = "gemini-2.5-flash"
+			}
+			if cfg.LLMAPIKey == "" {
+				cfg.LLMAPIKey = os.Getenv("GEMINI_API_KEY")
 			}
 		case "anthropic":
 			if cfg.LLMBaseURL == "" {

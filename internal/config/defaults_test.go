@@ -164,6 +164,41 @@ func TestLoad_LLMProviderDefaults(t *testing.T) {
 	}
 }
 
+func TestLoad_GeminiProviderDefaults(t *testing.T) {
+	t.Setenv("LLM_PROVIDER", "gemini")
+	t.Setenv("GEMINI_API_KEY", "gemini-key")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if cfg.LLMProvider != "gemini" {
+		t.Fatalf("expected gemini provider, got %q", cfg.LLMProvider)
+	}
+	if cfg.LLMBaseURL != "https://generativelanguage.googleapis.com/v1beta/openai" {
+		t.Fatalf("expected gemini base url, got %q", cfg.LLMBaseURL)
+	}
+	if cfg.LLMModel != "gemini-2.5-flash" {
+		t.Fatalf("expected gemini default model, got %q", cfg.LLMModel)
+	}
+	if cfg.LLMAPIKey != "gemini-key" {
+		t.Fatalf("expected GEMINI_API_KEY fallback, got %q", cfg.LLMAPIKey)
+	}
+}
+
+func TestLoad_GeminiOAuthDefaultsOAuthProvider(t *testing.T) {
+	t.Setenv("LLM_PROVIDER", "gemini")
+	t.Setenv("LLM_AUTH_MODE", "oauth")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if cfg.LLMOAuthProvider != "google-antigravity" {
+		t.Fatalf("expected gemini oauth provider default google-antigravity, got %q", cfg.LLMOAuthProvider)
+	}
+}
+
 func TestLoad_InvalidPathReturnsError(t *testing.T) {
 	_, err := Load("./does-not-exist.yaml")
 	if err == nil {

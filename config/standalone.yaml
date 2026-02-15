@@ -1,6 +1,6 @@
 mode: standalone
 workspace_dir: ./workspace
-# provider: bifrost | openai | anthropic
+# provider: bifrost | openai | anthropic | gemini
 llm_provider: bifrost
 llm_auth_mode: api-key
 llm_oauth_provider: ""

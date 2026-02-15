@@ -70,3 +70,18 @@ func TestResolveToken_OAuthAntigravityFromEnv(t *testing.T) {
 		t.Fatalf("expected antigravity token, got %q", token)
 	}
 }
+
+func TestResolveToken_OAuthGeminiProviderUsesAntigravityToken(t *testing.T) {
+	t.Setenv("GOOGLE_ANTIGRAVITY_OAUTH_TOKEN", "ga-token")
+
+	token, err := ResolveToken(ResolveOptions{
+		Provider: "gemini",
+		AuthMode: "oauth",
+	})
+	if err != nil {
+		t.Fatalf("resolve token: %v", err)
+	}
+	if token != "ga-token" {
+		t.Fatalf("expected antigravity token for gemini oauth, got %q", token)
+	}
+}

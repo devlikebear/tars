@@ -116,6 +116,13 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	case "openai":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return NewOpenAIClient(opts.BaseURL, token, opts.Model)
+	case "gemini":
+		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
+		return NewGeminiClient(
+			firstNonEmptyTrimmed(opts.BaseURL, "https://generativelanguage.googleapis.com/v1beta/openai"),
+			token,
+			firstNonEmptyTrimmed(opts.Model, "gemini-2.5-flash"),
+		)
 	case "anthropic":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return NewAnthropicClient(opts.BaseURL, token, opts.Model, opts.MaxTokens)

@@ -16,9 +16,9 @@
   - `EnsureWorkspace()`: HEARTBEAT.md, MEMORY.md, `_shared/`, `memory/` 생성
   - `AppendDailyLog()`: `memory/YYYY-MM-DD.md` append
 - [x] 멀티 LLM 프로바이더 (`internal/llm`)
-  - bifrost, openai (OpenAI-compatible 통합), anthropic
+  - bifrost, openai (OpenAI-compatible 통합), anthropic, gemini(OpenAI-compatible)
   - 공통 인터페이스: `Client.Ask(ctx, prompt) (string, error)`
-- [x] OAuth 토큰 해석 (`internal/auth`) — claude-code, google-antigravity
+- [x] OAuth 토큰 해석 (`internal/auth`) — claude-code(anthropic), google-antigravity(gemini)
 - [x] provider 정책 정리 — `codex-cli`, `openai-codex` 제거
 - [x] 기본 허트비트 (`internal/heartbeat`)
   - `RunOnce`: HEARTBEAT.md 읽기 → daily log 기록
@@ -72,6 +72,7 @@
 
 - `codex-cli` provider는 제거되었다.
 - `openai-codex` provider는 제거되었다.
+- `gemini` provider는 OpenAI-compatible API 경로로 지원된다.
 
 권장 환경변수 예시(안정 경로):
 ```bash
@@ -85,6 +86,13 @@ export OPENAI_API_KEY=...
 export LLM_PROVIDER=anthropic
 export LLM_AUTH_MODE=api-key
 export ANTHROPIC_API_KEY=...
+```
+
+권장 환경변수 예시(gemini 경로):
+```bash
+export LLM_PROVIDER=gemini
+export LLM_AUTH_MODE=api-key
+export GEMINI_API_KEY=...
 ```
 
 ---
