@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -29,9 +30,38 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	_ = godotenv.Load(".env")
-	logger := zerolog.New(stderr).With().Timestamp().Str("component", "tarsd").Logger()
+	opts := &options{
+		LogFile: flagValue(args, "--log-file"),
+	}
+
+	consoleWriter := zerolog.ConsoleWriter{
+		Out:        stderr,
+		TimeFormat: "15:04:05",
+		NoColor:    false,
+	}
+	logWriter := io.Writer(consoleWriter)
+
+	var logFile *os.File
+	var logFileErr error
+	if opts.LogFile != "" {
+		logFile, logFileErr = os.OpenFile(opts.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if logFileErr == nil {
+			logWriter = zerolog.MultiLevelWriter(consoleWriter, logFile)
+			defer logFile.Close()
+		}
+	}
+
+	logger := zerolog.New(logWriter).With().Timestamp().Str("component", "tarsd").Logger()
 	zlog.Logger = logger
-	cmd := newRootCmd(stdout, stderr, logger, time.Now)
+	if logFileErr != nil {
+		logger.Error().
+			Err(logFileErr).
+			Str("path", opts.LogFile).
+			Msg("failed to open log file; using console logging only")
+	}
+
+	cmd, opts := newRootCmd(opts, stdout, stderr, time.Now)
+	_ = opts
 	cmd.SetArgs(args)
 
 	if err := cmd.Execute(); err != nil {
@@ -54,6 +84,7 @@ type options struct {
 	ConfigPath        string
 	Mode              string
 	WorkspaceDir      string
+	LogFile           string
 	Verbose           bool
 	RunOnce           bool
 	RunLoop           bool
@@ -77,8 +108,10 @@ const memoryToolSystemRule = `
 - Tool-call arguments must be valid JSON.
 `
 
-func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() time.Time) *cobra.Command {
-	opts := options{}
+func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time) (*cobra.Command, *options) {
+	if opts == nil {
+		opts = &options{}
+	}
 
 	cmd := &cobra.Command{
 		Use:           "tarsd",
@@ -86,6 +119,7 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			logger := zlog.Logger
 			if opts.Verbose {
 				logger = logger.Level(zerolog.DebugLevel)
 				zlog.Logger = logger
@@ -226,6 +260,7 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 	cmd.Flags().StringVar(&opts.ConfigPath, "config", "", "path to config file")
 	cmd.Flags().StringVar(&opts.Mode, "mode", "", "runtime mode override")
 	cmd.Flags().StringVar(&opts.WorkspaceDir, "workspace-dir", "", "workspace directory override")
+	cmd.Flags().StringVar(&opts.LogFile, "log-file", opts.LogFile, "append json logs to file")
 	cmd.Flags().BoolVar(&opts.Verbose, "verbose", false, "enable verbose debug logging")
 	cmd.Flags().BoolVar(&opts.RunOnce, "run-once", false, "run heartbeat once and exit")
 	cmd.Flags().BoolVar(&opts.RunLoop, "run-loop", false, "run heartbeat loop")
@@ -234,5 +269,22 @@ func newRootCmd(stdout, stderr io.Writer, logger zerolog.Logger, nowFn func() ti
 	cmd.Flags().DurationVar(&opts.HeartbeatInterval, "heartbeat-interval", 30*time.Minute, "heartbeat interval (e.g. 30m, 5s)")
 	cmd.Flags().IntVar(&opts.MaxHeartbeats, "max-heartbeats", 0, "maximum heartbeat count in loop (0 means unlimited)")
 
-	return cmd
+	return cmd, opts
+}
+
+func flagValue(args []string, name string) string {
+	value := ""
+	prefix := name + "="
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasPrefix(arg, prefix) {
+			value = strings.TrimPrefix(arg, prefix)
+			continue
+		}
+		if arg == name && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			value = args[i+1]
+			i++
+		}
+	}
+	return value
 }

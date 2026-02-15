@@ -153,3 +153,4 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - 2026-02-14: `cmd/tars`를 제거하고 클라이언트를 `tars-ui`로 단일화했다. 자동화 경로는 `Make + curl`(`api-*`, `api-heartbeat`)로 정리했다.
 - 2026-02-15: `cmd/tarsd`의 `newChatAPIHandler`를 Extract Function으로 리팩터링했다. 세션 해석/컨텍스트 준비/히스토리 로딩/LLM 메시지 구성/SSE 작성기/에이전트 루프 설정을 private helper로 분리해 핸들러 복잡도를 낮췄다.
 - 2026-02-15: `cmd/tarsd/main.go`를 역할별로 3개 파일로 분리했다. CLI 진입점은 `main.go`(238줄)에 유지하고, HTTP 핸들러는 `handlers.go`(561줄), 유틸리티 함수는 `helpers.go`(228줄)로 이동해 파일 크기를 76% 감소시켰다.
+- 2026-02-15: `tarsd` 로그 출력 포맷을 개선했다. 화면(stderr)은 `zerolog.ConsoleWriter`로 색상 포맷(HH:MM:SS + 레벨별 색상) 출력하고, `--log-file` 플래그로 JSONL 파일 로깅을 선택적으로 지원한다. MultiLevelWriter로 console과 file에 동시 출력한다.

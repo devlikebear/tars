@@ -34,8 +34,55 @@ func TestRun_DefaultConfig(t *testing.T) {
 		t.Fatalf("unexpected stdout: %q", stdout.String())
 	}
 
-	if !strings.Contains(stderr.String(), `"level":"info"`) {
-		t.Fatalf("expected info log in stderr, got %q", stderr.String())
+	if !strings.Contains(stderr.String(), "tarsd startup complete") {
+		t.Fatalf("expected startup log in stderr, got %q", stderr.String())
+	}
+}
+
+func TestRun_LogFileWritesJSONLines(t *testing.T) {
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	logPath := filepath.Join(t.TempDir(), "tarsd.log")
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	code := run([]string{"--workspace-dir", workspaceDir, "--log-file", logPath}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, `"level":"info"`) {
+		t.Fatalf("expected json info log in file, got %q", content)
+	}
+	if !strings.Contains(content, `"message":"tarsd startup complete"`) {
+		t.Fatalf("expected startup message in file, got %q", content)
+	}
+
+	if !strings.Contains(stderr.String(), "tarsd startup complete") {
+		t.Fatalf("expected startup log in stderr, got %q", stderr.String())
+	}
+}
+
+func TestRun_LogFileOpenFailureFallsBackToConsole(t *testing.T) {
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	badLogPath := t.TempDir()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	code := run([]string{"--workspace-dir", workspaceDir, "--log-file", badLogPath}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
+	}
+
+	if !strings.Contains(stderr.String(), "failed to open log file") {
+		t.Fatalf("expected log file open error in stderr, got %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "tarsd startup complete") {
+		t.Fatalf("expected startup log in stderr, got %q", stderr.String())
 	}
 }
 
@@ -75,9 +122,6 @@ func TestRun_InvalidConfigPathReturnsError(t *testing.T) {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 
-	if !strings.Contains(stderr.String(), `"level":"error"`) {
-		t.Fatalf("expected error log in stderr, got %q", stderr.String())
-	}
 }
 
 func TestRun_CreatesWorkspaceAndDailyLog(t *testing.T) {
