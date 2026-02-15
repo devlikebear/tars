@@ -1,6 +1,72 @@
 # CLAUDE.md
 
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+
+Tradeoff: These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+## 1. Think Before Coding
+
+Don't assume. Don't hide confusion. Surface tradeoffs.
+
+Before implementing:
+
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+Minimum code that solves the problem. Nothing speculative.
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+- Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+Touch only what you must. Clean up only your own mess.
+
+When editing existing code:
+
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+- The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+Define success criteria. Loop until verified.
+
+Transform tasks into verifiable goals:
+
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+These guidelines are working if: fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+---
+
 ## 개발 규칙
+
 1. MVP 중심으로 실행 가능한 단위로 개발한다.
 2. TDD를 따른다. 실패하는 테스트를 먼저 작성한 뒤 구현한다.
 3. 기능 단위마다 다음 사이클을 반복한다: 계획 수립 -> 개발 -> 버전업 -> 문서화 -> 기능 단위 커밋 -> 다음 개발.
@@ -13,6 +79,7 @@
 10. `~/workspace/opensources/openclaw` 디렉터리에 접근할 수 없으면 `https://github.com/openclaw/openclaw`를 분석 대상으로 사용하고, 소스 분석은 Repomix MCP를 사용해 진행한다.
 
 ## 워크플로우
+
 1. 사용자가 요구사항을 Claude Code에 전달
 2. `/plan` — 요구사항을 작업지시서(Work Order)로 분해
 3. `/implement` — Work Order를 `codex-implementer` 서브에이전트에 위임하여 코드 구현, Claude Code가 결과 검수
@@ -21,11 +88,13 @@
 6. 커밋 및 `CLAUDE.md` 갱신은 Claude Code가 수행
 
 ## 바이너리 역할 정의
+
 - `tarsd` (메인 데몬/서버): LLM 호출, 허트비트/크론 실행, 3-Layer 메모리 처리, 작업 판단과 실행 오케스트레이션을 담당한다.
 - `cased` (감시 데몬): `tarsd` 프로세스 감시, 자동 재시작/복구, 감사/보안 모니터링, 업데이트/롤백 같은 안정성 제어를 담당한다.
 - `tars-ui` (React/TS Ink TUI 클라이언트): 고급 대화형 UX(패널 레이아웃, 스트리밍 렌더링, 상태/디버그 시각화)를 담당한다.
 
 ## tars-tarsd 통신 프로토콜 규칙
+
 - `tarsd`가 HTTP API 서버를 서빙하고, `tars-ui`는 해당 API를 호출하는 HTTP 클라이언트로 구현한다.
 - LLM 실행, OAuth 토큰 교환/저장, heartbeat/cron 실행 같은 서버 책임 로직은 반드시 `tarsd`에서 수행한다.
 - `tars-ui`는 사용자 입력 수집, API 요청/응답 렌더링 같은 클라이언트 UX만 담당한다.
@@ -33,6 +102,7 @@
 - 인증 토큰(특히 OAuth access/refresh token)은 서버(`tarsd`)에서만 저장/관리하고, `tars-ui`는 직접 저장하지 않는다.
 
 ## 코드 구조 변경 기록
+
 - 2026-02-13: 런타임 설정 로더를 추가했다. `internal/config`는 기본값/파일/환경변수 우선순위를 처리하고, YAML 값에서 `${ENV_VAR}` 구문을 자동 확장한다. 샘플 설정 파일 `config/standalone.yaml`을 추가했다.
 - 2026-02-13: 실행 바이너리 이름을 역할별로 분리했다. 메인 데몬은 `cmd/tarsd`, 감시 데몬은 `cmd/cased`, CLI 클라이언트는 `cmd/tars`를 사용한다.
 - 2026-02-13: 개발 자동화를 위해 루트 `Makefile`을 추가하고 `.github/workflows/ci.yml`에서 `make test`를 실행하는 최소 CI를 도입했다.
@@ -81,3 +151,5 @@
 - 2026-02-14: 역할 분리를 명시했다. `tarsd`는 서버 오케스트레이션 유지, `tars-ui`는 주력 인터랙티브 UX, `tars`는 경량 운영/자동화 CLI로 운용한다.
 - 2026-02-14: `tars-ui` 기능을 확장해 기존 `tars` 기능(채팅/세션/슬래시/상태/컴팩트/heartbeat run-once)을 이전했다. `parseArgs`, API 모듈(`chat/session/system`), 명령 라우터, 상태 reducer로 구조를 분리했다.
 - 2026-02-14: `cmd/tars`를 제거하고 클라이언트를 `tars-ui`로 단일화했다. 자동화 경로는 `Make + curl`(`api-*`, `api-heartbeat`)로 정리했다.
+- 2026-02-15: `cmd/tarsd`의 `newChatAPIHandler`를 Extract Function으로 리팩터링했다. 세션 해석/컨텍스트 준비/히스토리 로딩/LLM 메시지 구성/SSE 작성기/에이전트 루프 설정을 private helper로 분리해 핸들러 복잡도를 낮췄다.
+- 2026-02-15: `cmd/tarsd/main.go`를 역할별로 3개 파일로 분리했다. CLI 진입점은 `main.go`(238줄)에 유지하고, HTTP 핸들러는 `handlers.go`(561줄), 유틸리티 함수는 `helpers.go`(228줄)로 이동해 파일 크기를 76% 감소시켰다.
