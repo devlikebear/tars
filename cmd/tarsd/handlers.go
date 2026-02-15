@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/agent"
+	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/prompt"
@@ -302,12 +303,7 @@ func newChatAPIHandlerWithOptions(
 
 		llmMessages := buildLLMMessages(systemPrompt, history, req.Message)
 
-		registry := tool.NewRegistry()
-		registry.Register(tool.NewMemorySearchTool(workspaceDir))
-		registry.Register(tool.NewMemoryGetTool(workspaceDir))
-		registry.Register(tool.NewReadFileTool(workspaceDir))
-		registry.Register(tool.NewListDirTool(workspaceDir))
-		registry.Register(tool.NewExecTool(workspaceDir))
+		registry := newBaseToolRegistry(workspaceDir)
 		sendStatusSink := func(_, _, _, _, _, _ string) {}
 		sendStatusProxy := func(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview string) {
 			sendStatusSink(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview)
@@ -618,4 +614,90 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.
 			"final_count":    result.FinalCount,
 		})
 	})
+}
+
+func newCronAPIHandler(
+	store *cron.Store,
+	runPrompt func(ctx context.Context, prompt string) (string, error),
+	logger zerolog.Logger,
+) http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/v1/cron/jobs", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			jobs, err := store.List()
+			if err != nil {
+				logger.Error().Err(err).Msg("list cron jobs failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list cron jobs failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, jobs)
+		case http.MethodPost:
+			var req struct {
+				Name   string `json:"name"`
+				Prompt string `json:"prompt"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+				return
+			}
+			job, err := store.Create(req.Name, req.Prompt)
+			if err != nil {
+				if strings.Contains(err.Error(), "prompt is required") {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
+					return
+				}
+				logger.Error().Err(err).Msg("create cron job failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create cron job failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, job)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/v1/cron/jobs/", func(w http.ResponseWriter, r *http.Request) {
+		pathRemainder := strings.TrimPrefix(r.URL.Path, "/v1/cron/jobs/")
+		pathParts := strings.Split(pathRemainder, "/")
+		if len(pathParts) != 2 || pathParts[0] == "" || pathParts[1] != "run" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if runPrompt == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cron runner is not configured"})
+			return
+		}
+		jobID := pathParts[0]
+		job, err := store.Get(jobID)
+		if err != nil {
+			if strings.Contains(err.Error(), "job not found") {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+				return
+			}
+			logger.Error().Err(err).Str("job_id", jobID).Msg("get cron job failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get cron job failed"})
+			return
+		}
+
+		response, err := runPrompt(r.Context(), job.Prompt)
+		if err != nil {
+			logger.Error().Err(err).Str("job_id", jobID).Msg("run cron job failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "run cron job failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{
+			"job_id":     job.ID,
+			"response":   response,
+			"job_name":   job.Name,
+			"job_prompt": job.Prompt,
+		})
+	})
+
+	return mux
 }

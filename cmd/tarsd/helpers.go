@@ -8,9 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/agent"
+	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tarsncase/internal/prompt"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/rs/zerolog"
 )
 
@@ -175,6 +179,40 @@ func trimForMemory(s string, max int) string {
 		return v
 	}
 	return v[:max] + "..."
+}
+
+func newBaseToolRegistry(workspaceDir string) *tool.Registry {
+	registry := tool.NewRegistry()
+	registry.Register(tool.NewMemorySearchTool(workspaceDir))
+	registry.Register(tool.NewMemoryGetTool(workspaceDir))
+	registry.Register(tool.NewReadFileTool(workspaceDir))
+	registry.Register(tool.NewListDirTool(workspaceDir))
+	registry.Register(tool.NewExecTool(workspaceDir))
+	return registry
+}
+
+func newAgentAskFunc(workspaceDir string, client llm.Client, maxIterations int, logger zerolog.Logger) heartbeat.AskFunc {
+	if client == nil {
+		return nil
+	}
+	maxIters := resolveAgentMaxIterations(maxIterations)
+	return func(ctx context.Context, promptText string) (string, error) {
+		systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
+		systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
+		registry := newBaseToolRegistry(workspaceDir)
+		loop := setupAgentLoop(client, registry, "heartbeat", 0, logger, func(string, string, string, string, string, string) {})
+		resp, err := loop.Run(ctx, []llm.ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: promptText},
+		}, agent.RunOptions{
+			MaxIterations: maxIters,
+			Tools:         registry.Schemas(),
+		})
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(resp.Message.Content), nil
+	}
 }
 
 func writeJSON(w http.ResponseWriter, code int, body any) {

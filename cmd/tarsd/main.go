@@ -14,6 +14,7 @@ import (
 
 	"github.com/devlikebear/tarsncase/internal/cli"
 	"github.com/devlikebear/tarsncase/internal/config"
+	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/memory"
@@ -169,7 +170,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					return &cli.ExitError{Code: 1, Err: err}
 				}
 				llmClient = client
-				ask = client.Ask
+				ask = newAgentAskFunc(cfg.WorkspaceDir, llmClient, cfg.AgentMaxIterations, logger)
 				logger.Debug().
 					Str("provider", cfg.LLMProvider).
 					Str("auth_mode", cfg.LLMAuthMode).
@@ -180,6 +181,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 
 			if opts.ServeAPI {
 				store := session.NewStore(cfg.WorkspaceDir)
+				cronStore := cron.NewStore(cfg.WorkspaceDir)
 
 				mux := http.NewServeMux()
 				heartbeatHandler := newHeartbeatAPIHandler(cfg.WorkspaceDir, nowFn, ask, logger)
@@ -199,6 +201,9 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				mux.Handle("/v1/status", statusHandler)
 				compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, store, llmClient, logger)
 				mux.Handle("/v1/compact", compactHandler)
+				cronHandler := newCronAPIHandler(cronStore, ask, logger)
+				mux.Handle("/v1/cron/jobs", cronHandler)
+				mux.Handle("/v1/cron/jobs/", cronHandler)
 
 				server := &http.Server{
 					Addr:    opts.APIAddr,

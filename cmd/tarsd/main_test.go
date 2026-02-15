@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/session"
@@ -272,6 +273,137 @@ func TestHeartbeatAPI_RunOnce(t *testing.T) {
 	}
 	if body.Response != "next action from api" {
 		t.Fatalf("unexpected response: %q", body.Response)
+	}
+}
+
+func TestHeartbeatAPI_RunOnce_UsesAgentLoopToolFlow(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "HEARTBEAT.md"), []byte("check memory"), 0o644); err != nil {
+		t.Fatalf("write heartbeat: %v", err)
+	}
+
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_hb_1",
+							Name:      "read_file",
+							Arguments: `{"path":"MEMORY.md"}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "heartbeat tool flow done",
+				},
+			},
+		},
+	}
+
+	now := time.Date(2026, 2, 13, 10, 0, 0, 0, time.UTC)
+	ask := newAgentAskFunc(root, mockClient, 6, zerolog.New(io.Discard))
+	handler := newHeartbeatAPIHandler(root, func() time.Time { return now }, ask, zerolog.New(io.Discard))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/heartbeat/run-once", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Response string `json:"response"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Response != "heartbeat tool flow done" {
+		t.Fatalf("unexpected heartbeat response: %q", body.Response)
+	}
+	if mockClient.callCount != 2 {
+		t.Fatalf("expected 2 llm calls for tool flow, got %d", mockClient.callCount)
+	}
+	if len(mockClient.seenToolCounts) == 0 || mockClient.seenToolCounts[0] == 0 {
+		t.Fatalf("expected tool schemas in heartbeat call, got %+v", mockClient.seenToolCounts)
+	}
+}
+
+func TestCronAPI_ListCreateRun(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := cron.NewStore(root)
+	ranPrompts := make([]string, 0, 1)
+	handler := newCronAPIHandler(
+		store,
+		func(_ context.Context, prompt string) (string, error) {
+			ranPrompts = append(ranPrompts, prompt)
+			return "cron job done", nil
+		},
+		zerolog.New(io.Discard),
+	)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/cron/jobs", nil)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%q", listRec.Code, listRec.Body.String())
+	}
+	var initial []cron.Job
+	if err := json.Unmarshal(listRec.Body.Bytes(), &initial); err != nil {
+		t.Fatalf("decode initial list: %v", err)
+	}
+	if len(initial) != 0 {
+		t.Fatalf("expected empty cron jobs initially, got %d", len(initial))
+	}
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs", strings.NewReader(`{"name":"morning","prompt":"check inbox"}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK && createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create status 200/201, got %d body=%q", createRec.Code, createRec.Body.String())
+	}
+	var created cron.Job
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatalf("expected created job id")
+	}
+
+	runReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs/"+created.ID+"/run", nil)
+	runRec := httptest.NewRecorder()
+	handler.ServeHTTP(runRec, runReq)
+	if runRec.Code != http.StatusOK {
+		t.Fatalf("expected run status 200, got %d body=%q", runRec.Code, runRec.Body.String())
+	}
+	var runBody struct {
+		JobID    string `json:"job_id"`
+		Response string `json:"response"`
+	}
+	if err := json.Unmarshal(runRec.Body.Bytes(), &runBody); err != nil {
+		t.Fatalf("decode run response: %v", err)
+	}
+	if runBody.JobID != created.ID {
+		t.Fatalf("expected run job id %q, got %q", created.ID, runBody.JobID)
+	}
+	if runBody.Response != "cron job done" {
+		t.Fatalf("unexpected cron run response: %q", runBody.Response)
+	}
+	if len(ranPrompts) != 1 || ranPrompts[0] != "check inbox" {
+		t.Fatalf("unexpected run prompt capture: %+v", ranPrompts)
 	}
 }
 
