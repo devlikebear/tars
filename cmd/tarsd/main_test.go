@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/mcp"
 	"github.com/devlikebear/tarsncase/internal/memory"
@@ -160,11 +161,7 @@ func TestRun_RunOnceAppendsHeartbeatLog(t *testing.T) {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
 
-	logPath := filepath.Join(root, "memory", time.Now().Format("2006-01-02")+".md")
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatalf("read daily log: %v", err)
-	}
+	logPath, data := readLatestDailyLog(t, root)
 	if !strings.Contains(string(data), "heartbeat tick") {
 		t.Fatalf("expected heartbeat tick entry in %s, got %q", logPath, string(data))
 	}
@@ -215,11 +212,7 @@ func TestRun_RunLoopAppendsHeartbeatLog(t *testing.T) {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
 
-	logPath := filepath.Join(root, "memory", time.Now().Format("2006-01-02")+".md")
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatalf("read daily log: %v", err)
-	}
+	logPath, data := readLatestDailyLog(t, root)
 	content := string(data)
 	if strings.Count(content, "heartbeat tick") < 2 {
 		t.Fatalf("expected at least 2 heartbeat ticks in %s, got %q", logPath, content)
@@ -602,11 +595,7 @@ func TestCronRunner_DeliversToSessionAndDailyLog(t *testing.T) {
 		t.Fatalf("expected payload + session context in prompt, got %q", seenPrompt)
 	}
 
-	logPath := filepath.Join(root, "memory", time.Now().Format("2006-01-02")+".md")
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatalf("read daily log: %v", err)
-	}
+	_, data := readLatestDailyLog(t, root)
 	if !strings.Contains(string(data), "cron job=deliver") {
 		t.Fatalf("expected cron delivery entry in daily log, got %q", string(data))
 	}
@@ -717,6 +706,75 @@ func TestChatAPI_WithInjectedExtraTool(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "mcp tool used") {
 		t.Fatalf("expected final text from second llm call, got %q", rec.Body.String())
+	}
+}
+
+func TestChatAPI_WithAutomationTools(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	sessionStore := session.NewStore(root)
+	cronStore := cron.NewStore(root)
+	if _, err := cronStore.CreateWithOptions(cron.CreateInput{
+		Name:      "daily",
+		Prompt:    "check inbox",
+		Schedule:  "every:1h",
+		Enabled:   true,
+		HasEnable: true,
+	}); err != nil {
+		t.Fatalf("create cron job: %v", err)
+	}
+
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_cron_1",
+							Name:      "cron_list",
+							Arguments: `{}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "automation tool flow done",
+				},
+			},
+		},
+	}
+	automationTools := buildAutomationTools(
+		cronStore,
+		func(_ context.Context, _ cron.Job) (string, error) { return "ok", nil },
+		func(_ context.Context) (heartbeat.RunResult, error) {
+			return heartbeat.RunResult{Response: "heartbeat ok", Logged: true}, nil
+		},
+		func(_ context.Context) (tool.HeartbeatStatus, error) {
+			return tool.HeartbeatStatus{Configured: true}, nil
+		},
+		time.Now,
+	)
+
+	handler := newChatAPIHandlerWithRuntime(root, sessionStore, mockClient, logger, 8, nil, automationTools...)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"등록된 크론잡은?"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "automation tool flow done") {
+		t.Fatalf("expected final response in SSE body, got %q", rec.Body.String())
+	}
+	if mockClient.callCount != 2 {
+		t.Fatalf("expected 2 llm calls for tool flow, got %d", mockClient.callCount)
 	}
 }
 
@@ -1126,11 +1184,7 @@ func TestChatAPI_WritesDailyAndLongTermMemory(t *testing.T) {
 		t.Fatalf("expected promoted memory note, got %q", string(memoryData))
 	}
 
-	dailyPath := filepath.Join(root, "memory", time.Now().Format("2006-01-02")+".md")
-	dailyData, err := os.ReadFile(dailyPath)
-	if err != nil {
-		t.Fatalf("read daily log: %v", err)
-	}
+	_, dailyData := readLatestDailyLog(t, root)
 	if !strings.Contains(string(dailyData), "chat session=") {
 		t.Fatalf("expected chat daily log entry, got %q", string(dailyData))
 	}
@@ -1697,4 +1751,35 @@ func TestShouldForceMemoryToolCall(t *testing.T) {
 	if shouldForceMemoryToolCall("hello there") {
 		t.Fatalf("expected non-memory query to be false")
 	}
+}
+
+func readLatestDailyLog(t *testing.T, root string) (string, []byte) {
+	t.Helper()
+	dir := filepath.Join(root, "memory")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read memory dir: %v", err)
+	}
+	latestName := ""
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".md") {
+			continue
+		}
+		if latestName == "" || name > latestName {
+			latestName = name
+		}
+	}
+	if latestName == "" {
+		t.Fatalf("no daily log file found in %s", dir)
+	}
+	path := filepath.Join(dir, latestName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read daily log %s: %v", path, err)
+	}
+	return path, data
 }

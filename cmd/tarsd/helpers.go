@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -39,6 +40,103 @@ func (a *runtimeActivity) isChatBusy() bool {
 		return false
 	}
 	return a.chatInFlight.Load() > 0
+}
+
+type heartbeatRuntimeState struct {
+	mu        sync.RWMutex
+	hasRun    bool
+	lastRunAt time.Time
+	lastErr   string
+	last      heartbeat.RunResult
+}
+
+func (s *heartbeatRuntimeState) record(ranAt time.Time, result heartbeat.RunResult, runErr error) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hasRun = true
+	s.lastRunAt = ranAt.UTC()
+	s.last = result
+	if runErr != nil {
+		s.lastErr = strings.TrimSpace(runErr.Error())
+	} else {
+		s.lastErr = ""
+	}
+}
+
+func (s *heartbeatRuntimeState) snapshot(configured bool, activeHours, timezone string, chatBusy bool) tool.HeartbeatStatus {
+	status := tool.HeartbeatStatus{
+		Configured:  configured,
+		ActiveHours: strings.TrimSpace(activeHours),
+		Timezone:    strings.TrimSpace(timezone),
+		ChatBusy:    chatBusy,
+	}
+	if s == nil {
+		return status
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.hasRun {
+		return status
+	}
+	status.LastRunAt = s.lastRunAt.Format(time.RFC3339)
+	status.LastSkipped = s.last.Skipped
+	status.LastSkipReason = s.last.SkipReason
+	status.LastLogged = s.last.Logged
+	status.LastAcknowledged = s.last.Acknowledged
+	status.LastResponse = s.last.Response
+	status.LastError = s.lastErr
+	return status
+}
+
+func newHeartbeatRunner(
+	workspaceDir string,
+	nowFn func() time.Time,
+	ask heartbeat.AskFunc,
+	policy heartbeat.Policy,
+	state *heartbeatRuntimeState,
+) func(ctx context.Context) (heartbeat.RunResult, error) {
+	return newHeartbeatRunnerWithNotify(workspaceDir, nowFn, ask, policy, state, nil)
+}
+
+func newHeartbeatRunnerWithNotify(
+	workspaceDir string,
+	nowFn func() time.Time,
+	ask heartbeat.AskFunc,
+	policy heartbeat.Policy,
+	state *heartbeatRuntimeState,
+	emit func(ctx context.Context, evt notificationEvent),
+) func(ctx context.Context) (heartbeat.RunResult, error) {
+	var mu sync.Mutex
+	return func(ctx context.Context) (heartbeat.RunResult, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		ranAt := nowFn().UTC()
+		result, err := heartbeat.RunOnceWithLLMResultWithPolicy(callCtx, workspaceDir, ranAt, ask, policy)
+		if state != nil {
+			state.record(ranAt, result, err)
+		}
+		if emit != nil {
+			if err != nil {
+				evt := newNotificationEvent("heartbeat", "error", "Heartbeat failed", trimForMemory(err.Error(), 240))
+				emit(ctx, evt)
+			} else if result.Skipped {
+				evt := newNotificationEvent("heartbeat", "info", "Heartbeat skipped", trimForMemory(result.SkipReason, 240))
+				emit(ctx, evt)
+			} else if result.Acknowledged {
+				evt := newNotificationEvent("heartbeat", "info", "Heartbeat acknowledged", "no follow-up action")
+				emit(ctx, evt)
+			} else {
+				evt := newNotificationEvent("heartbeat", "info", "Heartbeat action", trimForMemory(result.Response, 280))
+				emit(ctx, evt)
+			}
+		}
+		return result, err
+	}
 }
 
 func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, client llm.Client, logger zerolog.Logger) error {
@@ -350,6 +448,16 @@ func newCronJobRunner(
 	runPrompt func(ctx context.Context, runLabel string, promptText string) (string, error),
 	logger zerolog.Logger,
 ) func(ctx context.Context, job cron.Job) (string, error) {
+	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil)
+}
+
+func newCronJobRunnerWithNotify(
+	workspaceDir string,
+	store *session.Store,
+	runPrompt func(ctx context.Context, runLabel string, promptText string) (string, error),
+	logger zerolog.Logger,
+	emit func(ctx context.Context, evt notificationEvent),
+) func(ctx context.Context, job cron.Job) (string, error) {
 	if runPrompt == nil {
 		return nil
 	}
@@ -379,12 +487,64 @@ func newCronJobRunner(
 		}
 		response, err := runPrompt(ctx, runLabel, promptText)
 		if err != nil {
+			if emit != nil {
+				evt := newNotificationEvent("cron", "error", "Cron failed", trimForMemory(err.Error(), 240))
+				evt.JobID = strings.TrimSpace(job.ID)
+				emit(ctx, evt)
+			}
 			return "", err
 		}
 		if err := deliverCronResult(workspaceDir, store, job, targetSessionID, explicitTarget, response, time.Now().UTC(), logger); err != nil {
+			if emit != nil {
+				evt := newNotificationEvent("cron", "error", "Cron delivery failed", trimForMemory(err.Error(), 240))
+				evt.JobID = strings.TrimSpace(job.ID)
+				emit(ctx, evt)
+			}
 			return "", err
 		}
+		if emit != nil {
+			title := "Cron completed"
+			if strings.TrimSpace(job.Name) != "" {
+				title = "Cron completed: " + strings.TrimSpace(job.Name)
+			}
+			evt := newNotificationEvent("cron", "info", title, trimForMemory(response, 280))
+			evt.JobID = strings.TrimSpace(job.ID)
+			evt.SessionID = strings.TrimSpace(targetSessionID)
+			emit(ctx, evt)
+		}
 		return response, nil
+	}
+}
+
+func buildAutomationTools(
+	cronStore *cron.Store,
+	cronRunner func(ctx context.Context, job cron.Job) (string, error),
+	heartbeatRunner func(ctx context.Context) (heartbeat.RunResult, error),
+	heartbeatStatusProvider func(ctx context.Context) (tool.HeartbeatStatus, error),
+	nowFn func() time.Time,
+) []tool.Tool {
+	return []tool.Tool{
+		tool.NewCronListTool(cronStore),
+		tool.NewCronCreateTool(cronStore),
+		tool.NewCronUpdateTool(cronStore),
+		tool.NewCronDeleteTool(cronStore),
+		tool.NewCronRunTool(cronStore, cronRunner),
+		tool.NewHeartbeatStatusTool(heartbeatStatusProvider),
+		tool.NewHeartbeatRunOnceTool(func(ctx context.Context) (tool.HeartbeatRunResult, error) {
+			if heartbeatRunner == nil {
+				return tool.HeartbeatRunResult{}, fmt.Errorf("heartbeat runner is not configured")
+			}
+			ranAt := nowFn().UTC()
+			result, err := heartbeatRunner(ctx)
+			return tool.HeartbeatRunResult{
+				Response:     result.Response,
+				Skipped:      result.Skipped,
+				SkipReason:   result.SkipReason,
+				Logged:       result.Logged,
+				Acknowledged: result.Acknowledged,
+				RanAt:        ranAt,
+			}, err
+		}),
 	}
 }
 

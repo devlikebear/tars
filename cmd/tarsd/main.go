@@ -109,6 +109,10 @@ const memoryToolSystemRule = `
 - If the user asks about past facts, preferences, prior chat context, or "what you remember", you must call memory_search and/or memory_get before answering.
 - Do not guess memory-backed facts without first checking tools.
 - Tool-call arguments must be valid JSON.
+
+## Automation Tool Policy
+- If the user asks about cron jobs managed by this app, call cron_list / cron_create / cron_update / cron_delete / cron_run instead of OS commands like crontab.
+- If the user asks about heartbeat status or asks to trigger heartbeat, call heartbeat_status / heartbeat_run_once instead of inferring from process or file guesses.
 `
 
 func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time) (*cobra.Command, *options) {
@@ -189,8 +193,44 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					RunHistoryLimit: cfg.CronRunHistoryLimit,
 				})
 				activity := &runtimeActivity{}
+				heartbeatState := &heartbeatRuntimeState{}
 				heartbeatPolicy := buildHeartbeatPolicy(sessionStore, cfg.HeartbeatActiveHours, cfg.HeartbeatTimezone, activity)
-				cronRunner := newCronJobRunner(cfg.WorkspaceDir, sessionStore, runPrompt, logger)
+				broker := newEventBroker()
+				dispatcher := newNotificationDispatcher(
+					broker,
+					newCommandNotifier(cfg.NotifyCommand, logger),
+					cfg.NotifyWhenNoClients,
+					logger,
+				)
+				heartbeatRunner := newHeartbeatRunnerWithNotify(
+					cfg.WorkspaceDir,
+					nowFn,
+					ask,
+					heartbeatPolicy,
+					heartbeatState,
+					dispatcher.Emit,
+				)
+				cronRunner := newCronJobRunnerWithNotify(
+					cfg.WorkspaceDir,
+					sessionStore,
+					runPrompt,
+					logger,
+					dispatcher.Emit,
+				)
+				automationTools := buildAutomationTools(
+					cronStore,
+					cronRunner,
+					heartbeatRunner,
+					func(_ context.Context) (tool.HeartbeatStatus, error) {
+						return heartbeatState.snapshot(
+							ask != nil,
+							cfg.HeartbeatActiveHours,
+							cfg.HeartbeatTimezone,
+							activity.isChatBusy(),
+						), nil
+					},
+					nowFn,
+				)
 				var mcpClient *mcp.Client
 				var mcpTools []tool.Tool
 				if len(cfg.MCPServers) > 0 {
@@ -207,8 +247,10 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				}
 
 				mux := http.NewServeMux()
-				heartbeatHandler := newHeartbeatAPIHandlerWithPolicy(cfg.WorkspaceDir, nowFn, ask, heartbeatPolicy, logger)
+				heartbeatHandler := newHeartbeatAPIHandlerWithRunner(heartbeatRunner, logger)
 				mux.Handle("/v1/heartbeat/", heartbeatHandler)
+				chatTools := append([]tool.Tool{}, automationTools...)
+				chatTools = append(chatTools, mcpTools...)
 				chatHandler := newChatAPIHandlerWithRuntime(
 					cfg.WorkspaceDir,
 					sessionStore,
@@ -216,7 +258,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					logger,
 					cfg.AgentMaxIterations,
 					activity,
-					mcpTools...,
+					chatTools...,
 				)
 				mux.Handle("/v1/chat", chatHandler)
 				sessionHandler := newSessionAPIHandler(sessionStore, logger)
@@ -232,6 +274,8 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				mcpHandler := newMCPAPIHandler(mcpClient, logger)
 				mux.Handle("/v1/mcp/servers", mcpHandler)
 				mux.Handle("/v1/mcp/tools", mcpHandler)
+				eventsHandler := newEventStreamHandler(broker, logger)
+				mux.Handle("/v1/events/stream", eventsHandler)
 
 				server := &http.Server{
 					Addr:    opts.APIAddr,

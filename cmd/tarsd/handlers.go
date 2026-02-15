@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/agent"
@@ -33,15 +32,14 @@ func newHeartbeatAPIHandlerWithPolicy(
 	policy heartbeat.Policy,
 	logger zerolog.Logger,
 ) http.Handler {
-	var mu sync.Mutex
-	runHeartbeat := func(ctx context.Context) (heartbeat.RunResult, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		return heartbeat.RunOnceWithLLMResultWithPolicy(callCtx, workspaceDir, nowFn(), ask, policy)
-	}
+	runHeartbeat := newHeartbeatRunner(workspaceDir, nowFn, ask, policy, nil)
+	return newHeartbeatAPIHandlerWithRunner(runHeartbeat, logger)
+}
 
+func newHeartbeatAPIHandlerWithRunner(
+	runHeartbeat func(ctx context.Context) (heartbeat.RunResult, error),
+	logger zerolog.Logger,
+) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/heartbeat/run-once", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

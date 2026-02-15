@@ -37,6 +37,9 @@ func TestLoad_DefaultOnly(t *testing.T) {
 	if cfg.CronRunHistoryLimit != 200 {
 		t.Fatalf("expected default CronRunHistoryLimit 200, got %d", cfg.CronRunHistoryLimit)
 	}
+	if !cfg.NotifyWhenNoClients {
+		t.Fatalf("expected NotifyWhenNoClients=true by default")
+	}
 }
 
 func TestLoad_YAMLOverridesDefault(t *testing.T) {
@@ -290,6 +293,8 @@ func TestLoad_HeartbeatAndCronEnvOptions(t *testing.T) {
 	t.Setenv("HEARTBEAT_ACTIVE_HOURS", "09:00-18:00")
 	t.Setenv("HEARTBEAT_TIMEZONE", "Asia/Seoul")
 	t.Setenv("CRON_RUN_HISTORY_LIMIT", "77")
+	t.Setenv("NOTIFY_COMMAND", "echo notify")
+	t.Setenv("NOTIFY_WHEN_NO_CLIENTS", "false")
 
 	cfg, err := Load("")
 	if err != nil {
@@ -303,6 +308,12 @@ func TestLoad_HeartbeatAndCronEnvOptions(t *testing.T) {
 	}
 	if cfg.CronRunHistoryLimit != 77 {
 		t.Fatalf("expected cron run history limit 77, got %d", cfg.CronRunHistoryLimit)
+	}
+	if cfg.NotifyCommand != "echo notify" {
+		t.Fatalf("expected notify command from env, got %q", cfg.NotifyCommand)
+	}
+	if cfg.NotifyWhenNoClients {
+		t.Fatalf("expected NotifyWhenNoClients=false from env")
 	}
 }
 

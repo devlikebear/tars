@@ -30,6 +30,8 @@ type Config struct {
 	HeartbeatActiveHours string
 	HeartbeatTimezone    string
 	CronRunHistoryLimit  int
+	NotifyCommand        string
+	NotifyWhenNoClients  bool
 	BifrostBase          string
 	BifrostAPIKey        string
 	BifrostModel         string
@@ -46,6 +48,7 @@ func Default() Config {
 		BifrostModel:        "openai/gpt-4o-mini",
 		AgentMaxIterations:  8,
 		CronRunHistoryLimit: 200,
+		NotifyWhenNoClients: true,
 	}
 }
 
@@ -113,6 +116,12 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("CRON_RUN_HISTORY_LIMIT"), os.Getenv("TARSD_CRON_RUN_HISTORY_LIMIT")); v != "" {
 		cfg.CronRunHistoryLimit = parsePositiveInt(v, cfg.CronRunHistoryLimit)
 	}
+	if v := firstNonEmpty(os.Getenv("TARSD_NOTIFY_COMMAND"), os.Getenv("NOTIFY_COMMAND")); v != "" {
+		cfg.NotifyCommand = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("TARSD_NOTIFY_WHEN_NO_CLIENTS"), os.Getenv("NOTIFY_WHEN_NO_CLIENTS")); v != "" {
+		cfg.NotifyWhenNoClients = parseBool(v, cfg.NotifyWhenNoClients)
+	}
 	if v := firstNonEmpty(os.Getenv("MCP_SERVERS_JSON"), os.Getenv("TARSD_MCP_SERVERS_JSON")); v != "" {
 		cfg.MCPServers = parseMCPServersJSON(v, cfg.MCPServers)
 	}
@@ -173,6 +182,8 @@ func loadYAML(path string) (Config, error) {
 			cfg.HeartbeatTimezone = strings.TrimSpace(value)
 		case "cron_run_history_limit":
 			cfg.CronRunHistoryLimit = parsePositiveInt(value, cfg.CronRunHistoryLimit)
+		case "notify_command":
+			cfg.NotifyCommand = strings.TrimSpace(value)
 		case "mcp_servers_json":
 			cfg.MCPServers = parseMCPServersJSON(value, cfg.MCPServers)
 		}
@@ -229,6 +240,9 @@ func merge(dst *Config, src Config) {
 	}
 	if src.CronRunHistoryLimit > 0 {
 		dst.CronRunHistoryLimit = src.CronRunHistoryLimit
+	}
+	if src.NotifyCommand != "" {
+		dst.NotifyCommand = src.NotifyCommand
 	}
 	if len(src.MCPServers) > 0 {
 		dst.MCPServers = src.MCPServers
@@ -327,6 +341,14 @@ func firstNonEmpty(values ...string) string {
 func parsePositiveInt(value string, fallback int) int {
 	parsed, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func parseBool(value string, fallback bool) bool {
+	parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+	if err != nil {
 		return fallback
 	}
 	return parsed
