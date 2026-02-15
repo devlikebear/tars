@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	cronv3 "github.com/robfig/cron/v3"
 )
 
 type Job struct {
@@ -24,6 +27,13 @@ type Job struct {
 	LastRunError   string     `json:"last_run_error,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+type RunRecord struct {
+	JobID   string    `json:"job_id"`
+	RanAt   time.Time `json:"ran_at"`
+	Error   string    `json:"error,omitempty"`
+	Created time.Time `json:"created_at"`
 }
 
 type CreateInput struct {
@@ -44,16 +54,18 @@ type UpdateInput struct {
 }
 
 type Store struct {
-	mu   sync.Mutex
-	dir  string
-	path string
+	mu       sync.Mutex
+	dir      string
+	path     string
+	runsPath string
 }
 
 func NewStore(workspaceDir string) *Store {
 	dir := filepath.Join(workspaceDir, "cron")
 	return &Store{
-		dir:  dir,
-		path: filepath.Join(dir, "jobs.json"),
+		dir:      dir,
+		path:     filepath.Join(dir, "jobs.json"),
+		runsPath: filepath.Join(dir, "runs.jsonl"),
 	}
 }
 
@@ -200,7 +212,10 @@ func (s *Store) Delete(id string) error {
 	if !found {
 		return fmt.Errorf("job not found: %s", id)
 	}
-	return s.save(filtered)
+	if err := s.save(filtered); err != nil {
+		return err
+	}
+	return s.pruneRunsForJob(id)
 }
 
 func (s *Store) MarkRunResult(id string, ranAt time.Time, runErr error) (Job, error) {
@@ -223,6 +238,15 @@ func (s *Store) MarkRunResult(id string, ranAt time.Time, runErr error) (Job, er
 			jobs[i].LastRunError = ""
 		}
 		jobs[i].UpdatedAt = ran
+		record := RunRecord{
+			JobID:   id,
+			RanAt:   ran,
+			Error:   jobs[i].LastRunError,
+			Created: ran,
+		}
+		if err := s.appendRunRecord(record); err != nil {
+			return Job{}, err
+		}
 		if jobs[i].DeleteAfterRun {
 			filtered := make([]Job, 0, len(jobs)-1)
 			for _, job := range jobs {
@@ -241,6 +265,30 @@ func (s *Store) MarkRunResult(id string, ranAt time.Time, runErr error) (Job, er
 		return jobs[i], nil
 	}
 	return Job{}, fmt.Errorf("job not found: %s", id)
+}
+
+func (s *Store) ListRuns(id string, limit int) ([]RunRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	runs, err := s.loadRuns()
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	filtered := make([]RunRecord, 0, min(limit, len(runs)))
+	for i := len(runs) - 1; i >= 0; i-- {
+		if runs[i].JobID != id {
+			continue
+		}
+		filtered = append(filtered, runs[i])
+		if len(filtered) >= limit {
+			break
+		}
+	}
+	return filtered, nil
 }
 
 func (s *Store) load() ([]Job, error) {
@@ -281,6 +329,93 @@ func (s *Store) save(jobs []Job) error {
 	return nil
 }
 
+func (s *Store) loadRuns() ([]RunRecord, error) {
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		return nil, fmt.Errorf("create cron directory: %w", err)
+	}
+	f, err := os.Open(s.runsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []RunRecord{}, nil
+		}
+		return nil, fmt.Errorf("open cron runs: %w", err)
+	}
+	defer f.Close()
+
+	records := make([]RunRecord, 0, 64)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var rec RunRecord
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			return nil, fmt.Errorf("decode cron run: %w", err)
+		}
+		records = append(records, rec)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan cron runs: %w", err)
+	}
+	return records, nil
+}
+
+func (s *Store) appendRunRecord(record RunRecord) error {
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		return fmt.Errorf("create cron directory: %w", err)
+	}
+	f, err := os.OpenFile(s.runsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open cron runs: %w", err)
+	}
+	defer f.Close()
+
+	data, err := json.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("encode cron run: %w", err)
+	}
+	if _, err := f.Write(append(data, '\n')); err != nil {
+		return fmt.Errorf("write cron run: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) pruneRunsForJob(jobID string) error {
+	runs, err := s.loadRuns()
+	if err != nil {
+		return err
+	}
+	kept := make([]RunRecord, 0, len(runs))
+	for _, rec := range runs {
+		if rec.JobID != jobID {
+			kept = append(kept, rec)
+		}
+	}
+	f, err := os.OpenFile(s.runsPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("open cron runs: %w", err)
+	}
+	defer f.Close()
+	for _, rec := range kept {
+		data, err := json.Marshal(rec)
+		if err != nil {
+			return fmt.Errorf("encode cron run: %w", err)
+		}
+		if _, err := f.Write(append(data, '\n')); err != nil {
+			return fmt.Errorf("write cron run: %w", err)
+		}
+	}
+	return nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func defaultJobName(prompt string) string {
 	if prompt == "" {
 		return "cron job"
@@ -304,21 +439,23 @@ func normalizeSchedule(raw string) (string, error) {
 	if strings.HasPrefix(lower, "every:") {
 		dur := strings.TrimSpace(s[len("every:"):])
 		if dur == "" {
-			return "", fmt.Errorf("invalid schedule: %s", s)
+			return "", fmt.Errorf("invalid schedule: %s (expected every:<duration> or valid cron expression)", s)
 		}
 		if _, err := time.ParseDuration(dur); err != nil {
-			return "", fmt.Errorf("invalid schedule: %s", s)
+			return "", fmt.Errorf("invalid schedule: %s (expected every:<duration> or valid cron expression)", s)
 		}
 		return "every:" + dur, nil
 	}
 	if strings.HasPrefix(lower, "@every ") {
 		dur := strings.TrimSpace(s[len("@every "):])
 		if _, err := time.ParseDuration(dur); err != nil {
-			return "", fmt.Errorf("invalid schedule: %s", s)
+			return "", fmt.Errorf("invalid schedule: %s (expected every:<duration> or valid cron expression)", s)
 		}
 		return "@every " + dur, nil
 	}
-	// Keep cron expression as-is for future parser support.
+	if _, err := cronv3.ParseStandard(s); err != nil {
+		return "", fmt.Errorf("invalid schedule: %s (expected every:<duration> or valid cron expression)", s)
+	}
 	return s, nil
 }
 

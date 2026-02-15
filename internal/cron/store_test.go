@@ -3,6 +3,7 @@ package cron
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestStore_CreateAndList(t *testing.T) {
@@ -118,3 +119,68 @@ func TestStore_UpdateAndDelete(t *testing.T) {
 
 func ptrString(v string) *string { return &v }
 func ptrBool(v bool) *bool       { return &v }
+
+func TestStore_Create_ValidatesSchedule(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	if _, err := store.CreateWithOptions(CreateInput{
+		Prompt:    "invalid schedule job",
+		Schedule:  "every:",
+		Enabled:   true,
+		HasEnable: true,
+	}); err == nil {
+		t.Fatalf("expected schedule validation error")
+	}
+
+	if _, err := store.CreateWithOptions(CreateInput{
+		Prompt:    "cron expression job",
+		Schedule:  "*/5 * * * *",
+		Enabled:   true,
+		HasEnable: true,
+	}); err != nil {
+		t.Fatalf("expected valid cron expression, got %v", err)
+	}
+}
+
+func TestStore_ListRunsReturnsLatestFirst(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	job, err := store.CreateWithOptions(CreateInput{
+		Prompt:    "run and record",
+		Schedule:  "every:1m",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	t1 := time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC)
+	t2 := t1.Add(1 * time.Minute)
+	if _, err := store.MarkRunResult(job.ID, t1, nil); err != nil {
+		t.Fatalf("mark run t1: %v", err)
+	}
+	if _, err := store.MarkRunResult(job.ID, t2, assertErr("boom")); err != nil {
+		t.Fatalf("mark run t2: %v", err)
+	}
+
+	runs, err := store.ListRuns(job.ID, 10)
+	if err != nil {
+		t.Fatalf("list runs: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("expected 2 runs, got %d", len(runs))
+	}
+	if !runs[0].RanAt.Equal(t2) {
+		t.Fatalf("expected latest run first, got %s", runs[0].RanAt)
+	}
+	if runs[0].Error != "boom" {
+		t.Fatalf("expected error message on latest run, got %q", runs[0].Error)
+	}
+}
+
+type assertErr string
+
+func (e assertErr) Error() string { return string(e) }

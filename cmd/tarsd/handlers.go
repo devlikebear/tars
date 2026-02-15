@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -733,6 +734,38 @@ func newCronAPIHandler(
 			return
 		}
 		if len(pathParts) != 2 || pathParts[1] != "run" {
+			if len(pathParts) == 2 && pathParts[1] == "runs" {
+				if r.Method != http.MethodGet {
+					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					return
+				}
+				if _, err := store.Get(jobID); err != nil {
+					if strings.Contains(err.Error(), "job not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+						return
+					}
+					logger.Error().Err(err).Str("job_id", jobID).Msg("get cron job failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get cron job failed"})
+					return
+				}
+				limit := 50
+				if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+					v, err := strconv.Atoi(raw)
+					if err != nil || v <= 0 {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
+						return
+					}
+					limit = v
+				}
+				runs, err := store.ListRuns(jobID, limit)
+				if err != nil {
+					logger.Error().Err(err).Str("job_id", jobID).Msg("list cron runs failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list cron runs failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, runs)
+				return
+			}
 			http.NotFound(w, r)
 			return
 		}

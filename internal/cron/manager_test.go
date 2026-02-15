@@ -112,3 +112,74 @@ func TestManager_TickDeletesDeleteAfterRunJob(t *testing.T) {
 		t.Fatalf("expected delete_after_run job to be removed")
 	}
 }
+
+func TestManager_TickRunsCronExpressionAtBoundary(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	job, err := store.CreateWithOptions(CreateInput{
+		Name:      "boundary",
+		Prompt:    "run at minute boundary",
+		Schedule:  "0 0 * * *",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create cron expression job: %v", err)
+	}
+
+	base := time.Date(2026, 2, 16, 0, 0, 0, 0, time.UTC)
+	updated, err := store.MarkRunResult(job.ID, base.Add(-24*time.Hour), nil)
+	if err != nil {
+		t.Fatalf("update last run: %v", err)
+	}
+	if updated.LastRunAt == nil {
+		t.Fatalf("expected last_run_at set")
+	}
+
+	runCount := 0
+	mgr := NewManager(store, func(_ context.Context, _ string) (string, error) {
+		runCount++
+		return "ok", nil
+	}, 100*time.Millisecond, func() time.Time { return base })
+	if err := mgr.Tick(context.Background()); err != nil {
+		t.Fatalf("tick at boundary: %v", err)
+	}
+	if runCount != 1 {
+		t.Fatalf("expected 1 run at cron boundary, got %d", runCount)
+	}
+}
+
+func TestManager_TickRespectsCronTimezonePrefix(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	job, err := store.CreateWithOptions(CreateInput{
+		Name:      "tz-job",
+		Prompt:    "run at seoul 09:00",
+		Schedule:  "CRON_TZ=Asia/Seoul 0 9 * * *",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create timezone cron job: %v", err)
+	}
+
+	// 09:00 Asia/Seoul == 00:00 UTC
+	_, err = store.MarkRunResult(job.ID, time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC), nil)
+	if err != nil {
+		t.Fatalf("update last run: %v", err)
+	}
+
+	runCount := 0
+	mgr := NewManager(store, func(_ context.Context, _ string) (string, error) {
+		runCount++
+		return "ok", nil
+	}, 100*time.Millisecond, func() time.Time {
+		return time.Date(2026, 2, 16, 0, 0, 0, 0, time.UTC)
+	})
+	if err := mgr.Tick(context.Background()); err != nil {
+		t.Fatalf("tick timezone boundary: %v", err)
+	}
+	if runCount != 1 {
+		t.Fatalf("expected timezone cron job to run, got %d", runCount)
+	}
+}

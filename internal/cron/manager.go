@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	cronv3 "github.com/robfig/cron/v3"
 )
 
 type Manager struct {
@@ -70,13 +72,26 @@ func shouldRunAt(job Job, now time.Time) bool {
 		return false
 	}
 	interval, ok := parseEveryDuration(job.Schedule)
-	if !ok || interval <= 0 {
+	if ok {
+		if interval <= 0 {
+			return false
+		}
+		if job.LastRunAt == nil {
+			return true
+		}
+		return now.Sub(job.LastRunAt.UTC()) >= interval
+	}
+
+	sched, err := cronv3.ParseStandard(strings.TrimSpace(job.Schedule))
+	if err != nil {
 		return false
 	}
-	if job.LastRunAt == nil {
-		return true
+	base := job.CreatedAt.UTC()
+	if job.LastRunAt != nil {
+		base = job.LastRunAt.UTC()
 	}
-	return now.Sub(job.LastRunAt.UTC()) >= interval
+	next := sched.Next(base)
+	return !next.After(now)
 }
 
 func parseEveryDuration(schedule string) (time.Duration, bool) {

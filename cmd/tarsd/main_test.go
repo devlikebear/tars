@@ -405,6 +405,23 @@ func TestCronAPI_ListCreateRun(t *testing.T) {
 	if len(ranPrompts) != 1 || ranPrompts[0] != "check inbox" {
 		t.Fatalf("unexpected run prompt capture: %+v", ranPrompts)
 	}
+
+	runsReq := httptest.NewRequest(http.MethodGet, "/v1/cron/jobs/"+created.ID+"/runs", nil)
+	runsRec := httptest.NewRecorder()
+	handler.ServeHTTP(runsRec, runsReq)
+	if runsRec.Code != http.StatusOK {
+		t.Fatalf("expected runs status 200, got %d body=%q", runsRec.Code, runsRec.Body.String())
+	}
+	var runs []cron.RunRecord
+	if err := json.Unmarshal(runsRec.Body.Bytes(), &runs); err != nil {
+		t.Fatalf("decode runs list: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected 1 cron run record, got %d", len(runs))
+	}
+	if runs[0].JobID != created.ID {
+		t.Fatalf("expected run job id %q, got %q", created.ID, runs[0].JobID)
+	}
 }
 
 func TestCronAPI_UpdateDelete(t *testing.T) {
