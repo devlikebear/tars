@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -35,44 +36,67 @@ type ToolInfo struct {
 }
 
 type Client struct {
-	servers []ServerConfig
-	timeout time.Duration
-	reqID   int64
+	mu       sync.RWMutex
+	servers  []ServerConfig
+	sessions map[string]*pooledSession
+	timeout  time.Duration
+	reqID    int64
+}
+
+type pooledSession struct {
+	server      ServerConfig
+	cmd         *exec.Cmd
+	stdin       io.WriteCloser
+	reader      *bufio.Reader
+	mu          sync.Mutex
+	initialized bool
+	closed      bool
 }
 
 func NewClient(servers []ServerConfig) *Client {
-	copyServers := make([]ServerConfig, 0, len(servers))
-	for _, s := range servers {
-		name := strings.TrimSpace(s.Name)
-		command := strings.TrimSpace(s.Command)
-		if name == "" || command == "" {
+	client := &Client{
+		timeout:  15 * time.Second,
+		sessions: map[string]*pooledSession{},
+	}
+	client.SetServers(servers)
+	return client
+}
+
+func (c *Client) SetServers(servers []ServerConfig) {
+	normalized := normalizeServers(servers)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	nextNames := map[string]struct{}{}
+	for _, server := range normalized {
+		nextNames[server.Name] = struct{}{}
+	}
+	for name, sess := range c.sessions {
+		if _, ok := nextNames[name]; ok {
 			continue
 		}
-		copied := ServerConfig{
-			Name:    name,
-			Command: command,
-			Args:    append([]string(nil), s.Args...),
-		}
-		if len(s.Env) > 0 {
-			copied.Env = make(map[string]string, len(s.Env))
-			for k, v := range s.Env {
-				copied.Env[k] = v
-			}
-		}
-		copyServers = append(copyServers, copied)
+		sess.close()
+		delete(c.sessions, name)
 	}
-	return &Client{
-		servers: copyServers,
-		timeout: 15 * time.Second,
+	c.servers = normalized
+}
+
+func (c *Client) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for name, sess := range c.sessions {
+		sess.close()
+		delete(c.sessions, name)
 	}
 }
 
 func (c *Client) ListServers(ctx context.Context) ([]ServerStatus, error) {
-	if c == nil || len(c.servers) == 0 {
+	servers := c.serverSnapshot()
+	if len(servers) == 0 {
 		return []ServerStatus{}, nil
 	}
-	statuses := make([]ServerStatus, 0, len(c.servers))
-	for _, server := range c.servers {
+	statuses := make([]ServerStatus, 0, len(servers))
+	for _, server := range servers {
 		tools, err := c.listToolsForServer(ctx, server)
 		status := ServerStatus{
 			Name:    server.Name,
@@ -90,12 +114,13 @@ func (c *Client) ListServers(ctx context.Context) ([]ServerStatus, error) {
 }
 
 func (c *Client) ListTools(ctx context.Context) ([]ToolInfo, error) {
-	if c == nil || len(c.servers) == 0 {
+	servers := c.serverSnapshot()
+	if len(servers) == 0 {
 		return []ToolInfo{}, nil
 	}
 	var out []ToolInfo
 	var failed int
-	for _, server := range c.servers {
+	for _, server := range servers {
 		tools, err := c.listToolsForServer(ctx, server)
 		if err != nil {
 			failed++
@@ -110,7 +135,7 @@ func (c *Client) ListTools(ctx context.Context) ([]ToolInfo, error) {
 }
 
 func (c *Client) BuildTools(ctx context.Context) ([]tool.Tool, error) {
-	if c == nil || len(c.servers) == 0 {
+	if len(c.serverSnapshot()) == 0 {
 		return nil, nil
 	}
 	infos, err := c.ListTools(ctx)
@@ -172,12 +197,23 @@ type session struct {
 	reader *bufio.Reader
 }
 
+func (s *pooledSession) close() {
+	if s == nil || s.closed {
+		return
+	}
+	s.closed = true
+	if s.stdin != nil {
+		_ = s.stdin.Close()
+	}
+	if s.cmd != nil && s.cmd.Process != nil {
+		_ = s.cmd.Process.Kill()
+		_, _ = s.cmd.Process.Wait()
+	}
+}
+
 func (c *Client) listToolsForServer(ctx context.Context, server ServerConfig) ([]ToolInfo, error) {
 	var tools []ToolInfo
-	err := c.withSession(ctx, server, func(ctx context.Context, sess *session) error {
-		if err := c.initializeSession(ctx, sess); err != nil {
-			return err
-		}
+	err := c.withPersistentSession(ctx, server, func(ctx context.Context, sess *session) error {
 		result, err := c.request(ctx, sess, "tools/list", map[string]any{})
 		if err != nil {
 			return err
@@ -218,10 +254,7 @@ func (c *Client) callTool(ctx context.Context, serverName, toolName string, args
 	}
 
 	var output tool.Result
-	err := c.withSession(ctx, server, func(ctx context.Context, sess *session) error {
-		if err := c.initializeSession(ctx, sess); err != nil {
-			return err
-		}
+	err := c.withPersistentSession(ctx, server, func(ctx context.Context, sess *session) error {
 		result, err := c.request(ctx, sess, "tools/call", map[string]any{
 			"name":      toolName,
 			"arguments": args,
@@ -273,7 +306,15 @@ func (c *Client) callTool(ctx context.Context, serverName, toolName string, args
 	return output, nil
 }
 
-func (c *Client) withSession(ctx context.Context, server ServerConfig, fn func(context.Context, *session) error) error {
+func (c *Client) withPersistentSession(ctx context.Context, server ServerConfig, fn func(context.Context, *session) error) error {
+	if err := c.withPersistentSessionOnce(ctx, server, fn); err == nil {
+		return nil
+	}
+	c.dropSession(server.Name)
+	return c.withPersistentSessionOnce(ctx, server, fn)
+}
+
+func (c *Client) withPersistentSessionOnce(ctx context.Context, server ServerConfig, fn func(context.Context, *session) error) error {
 	timeout := c.timeout
 	if timeout <= 0 {
 		timeout = 15 * time.Second
@@ -281,30 +322,78 @@ func (c *Client) withSession(ctx context.Context, server ServerConfig, fn func(c
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(callCtx, server.Command, server.Args...)
+	ps, err := c.getOrStartSession(server)
+	if err != nil {
+		return err
+	}
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if ps.closed {
+		return fmt.Errorf("mcp session closed: %s", server.Name)
+	}
+
+	sess := &session{stdin: ps.stdin, reader: ps.reader}
+	if !ps.initialized {
+		if err := c.initializeSession(callCtx, sess); err != nil {
+			ps.close()
+			return err
+		}
+		ps.initialized = true
+	}
+	if err := fn(callCtx, sess); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "broken pipe") || strings.Contains(strings.ToLower(err.Error()), "eof") {
+			ps.close()
+		}
+		return err
+	}
+	return nil
+}
+
+func (c *Client) getOrStartSession(server ServerConfig) (*pooledSession, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.sessions == nil {
+		c.sessions = map[string]*pooledSession{}
+	}
+	if existing, ok := c.sessions[server.Name]; ok && !existing.closed {
+		return existing, nil
+	}
+
+	cmd := exec.Command(server.Command, server.Args...)
 	cmd.Stderr = io.Discard
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return fmt.Errorf("create stdin pipe: %w", err)
+		return nil, fmt.Errorf("create stdin pipe: %w", err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("create stdout pipe: %w", err)
+		return nil, fmt.Errorf("create stdout pipe: %w", err)
 	}
 	if len(server.Env) > 0 {
 		cmd.Env = append(os.Environ(), commandEnv(server.Env)...)
 	}
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start mcp server %s: %w", server.Name, err)
+		return nil, fmt.Errorf("start mcp server %s: %w", server.Name, err)
 	}
-
-	runErr := fn(callCtx, &session{
+	ps := &pooledSession{
+		server: server,
+		cmd:    cmd,
 		stdin:  stdin,
 		reader: bufio.NewReader(stdout),
-	})
-	_ = stdin.Close()
-	_ = cmd.Wait()
-	return runErr
+	}
+	c.sessions[server.Name] = ps
+	return ps, nil
+}
+
+func (c *Client) dropSession(name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	sess, ok := c.sessions[name]
+	if !ok {
+		return
+	}
+	sess.close()
+	delete(c.sessions, name)
 }
 
 func commandEnv(extra map[string]string) []string {
@@ -320,6 +409,38 @@ func commandEnv(extra map[string]string) []string {
 		pairs = append(pairs, key+"="+v)
 	}
 	return pairs
+}
+
+func (c *Client) serverSnapshot() []ServerConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	out := make([]ServerConfig, len(c.servers))
+	copy(out, c.servers)
+	return out
+}
+
+func normalizeServers(servers []ServerConfig) []ServerConfig {
+	copyServers := make([]ServerConfig, 0, len(servers))
+	for _, s := range servers {
+		name := strings.TrimSpace(s.Name)
+		command := strings.TrimSpace(s.Command)
+		if name == "" || command == "" {
+			continue
+		}
+		copied := ServerConfig{
+			Name:    name,
+			Command: command,
+			Args:    append([]string(nil), s.Args...),
+		}
+		if len(s.Env) > 0 {
+			copied.Env = make(map[string]string, len(s.Env))
+			for k, v := range s.Env {
+				copied.Env[k] = v
+			}
+		}
+		copyServers = append(copyServers, copied)
+	}
+	return copyServers
 }
 
 func (c *Client) initializeSession(ctx context.Context, sess *session) error {
@@ -426,7 +547,7 @@ func readRPCMessage(r *bufio.Reader) ([]byte, error) {
 }
 
 func (c *Client) findServer(name string) (ServerConfig, bool) {
-	for _, server := range c.servers {
+	for _, server := range c.serverSnapshot() {
 		if server.Name == name {
 			return server, true
 		}
