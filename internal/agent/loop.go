@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/tool"
@@ -108,35 +107,33 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 
 		for _, call := range resp.Message.ToolCalls {
 			callName := normalizeToolName(call.Name)
-			if len(allowedTools) > 0 {
-				if _, ok := allowedTools[callName]; !ok {
-					if !opts.AutoExpandOnce || autoExpanded {
-						err := fmt.Errorf("tool not injected for this request: %s", call.Name)
-						l.emit(ctx, Event{
-							Type:       EventLoopError,
-							Iteration:  i + 1,
-							ToolName:   call.Name,
-							ToolCallID: call.ID,
-							Err:        err,
-						})
-						return llm.ChatResponse{}, err
-					}
-					extra := l.registry.SchemasForNames([]string{call.Name})
-					if len(extra) == 0 {
-						err := fmt.Errorf("tool not injected for this request: %s", call.Name)
-						l.emit(ctx, Event{
-							Type:       EventLoopError,
-							Iteration:  i + 1,
-							ToolName:   call.Name,
-							ToolCallID: call.ID,
-							Err:        err,
-						})
-						return llm.ChatResponse{}, err
-					}
-					llmTools = appendToolSchemas(llmTools, extra...)
-					allowedTools[callName] = struct{}{}
-					autoExpanded = true
+			if _, ok := allowedTools[callName]; !ok {
+				if !opts.AutoExpandOnce || autoExpanded {
+					err := fmt.Errorf("tool not injected for this request: %s", call.Name)
+					l.emit(ctx, Event{
+						Type:       EventLoopError,
+						Iteration:  i + 1,
+						ToolName:   call.Name,
+						ToolCallID: call.ID,
+						Err:        err,
+					})
+					return llm.ChatResponse{}, err
 				}
+				extra := l.registry.SchemasForNames([]string{call.Name, callName})
+				if len(extra) == 0 {
+					err := fmt.Errorf("tool not injected for this request: %s", call.Name)
+					l.emit(ctx, Event{
+						Type:       EventLoopError,
+						Iteration:  i + 1,
+						ToolName:   call.Name,
+						ToolCallID: call.ID,
+						Err:        err,
+					})
+					return llm.ChatResponse{}, err
+				}
+				llmTools = appendToolSchemas(llmTools, extra...)
+				allowedTools[callName] = struct{}{}
+				autoExpanded = true
 			}
 
 			l.emit(ctx, Event{
@@ -148,6 +145,9 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			})
 
 			tl, ok := l.registry.Get(call.Name)
+			if !ok {
+				tl, ok = l.registry.Get(callName)
+			}
 			if !ok {
 				err := fmt.Errorf("tool not found: %s", call.Name)
 				l.emit(ctx, Event{
@@ -184,7 +184,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				ToolResult: result.Text(),
 			})
 
-			outcomeSig := call.Name + "\n" + call.Arguments + "\n" + result.Text()
+			outcomeSig := callName + "\n" + call.Arguments + "\n" + result.Text()
 			if outcomeSig == lastToolOutcomeSig {
 				repeatedToolOutcomeCount++
 			} else {
@@ -235,7 +235,7 @@ func allowedToolSetFromSchemas(schemas []llm.ToolSchema) map[string]struct{} {
 }
 
 func normalizeToolName(name string) string {
-	return strings.ToLower(strings.TrimSpace(name))
+	return tool.CanonicalToolName(name)
 }
 
 func appendToolSchemas(existing []llm.ToolSchema, extras ...llm.ToolSchema) []llm.ToolSchema {

@@ -402,3 +402,57 @@ func TestLoop_Run_AutoExpand_AllowsFirstMissingTool(t *testing.T) {
 		t.Fatalf("expected second call tool count=2 after auto-expand, got %d", client.seenToolCounts[1])
 	}
 }
+
+func TestLoop_Run_ExecAliasCallUsesCanonicalTool(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.Tool{
+		Name:        "exec",
+		Description: "execute command",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			return tool.Result{Content: []tool.ContentBlock{{Type: "text", Text: `{"ok":true}`}}}, nil
+		},
+	})
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_1", Name: "shell_execute", Arguments: `{"command":"pwd"}`},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "done",
+				},
+			},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	resp, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "run pwd"},
+	}, RunOptions{
+		MaxIterations: 3,
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:       "exec",
+					Parameters: json.RawMessage(`{"type":"object"}`),
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected alias call to succeed, got %v", err)
+	}
+	if resp.Message.Content != "done" {
+		t.Fatalf("unexpected response: %q", resp.Message.Content)
+	}
+}
