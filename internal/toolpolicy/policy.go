@@ -63,8 +63,8 @@ func (s Selector) Select(tools []tool.Tool, provider, model, userMessage string)
 	items := make([]scored, 0, len(filtered))
 	for _, t := range filtered {
 		score := heuristicScore(t, userMessage)
-		if strings.EqualFold(t.Name, "session_status") {
-			score += 4
+		if strings.EqualFold(t.Name, "session_status") && containsAny(normalize(userMessage), "session", "status", "세션", "상태") {
+			score += 3
 		}
 		items = append(items, scored{name: t.Name, score: score})
 	}
@@ -76,11 +76,15 @@ func (s Selector) Select(tools []tool.Tool, provider, model, userMessage string)
 	})
 	out := make([]string, 0, minInt(maxTools, len(items)))
 	seen := map[string]struct{}{}
+	bestScore := 0
+	if len(items) > 0 {
+		bestScore = items[0].score
+	}
 	for _, it := range items {
 		if len(out) >= maxTools {
 			break
 		}
-		if it.score <= 0 && len(out) > 0 {
+		if it.score <= 0 {
 			continue
 		}
 		if _, ok := seen[it.name]; ok {
@@ -89,12 +93,12 @@ func (s Selector) Select(tools []tool.Tool, provider, model, userMessage string)
 		seen[it.name] = struct{}{}
 		out = append(out, it.name)
 	}
-	if len(out) == 0 {
+	if len(out) == 0 && bestScore > 0 {
 		for i := 0; i < len(items) && len(out) < maxTools; i++ {
 			out = append(out, items[i].name)
 		}
 	}
-	if len(out) < maxTools {
+	if len(out) > 0 && len(out) < maxTools {
 		if _, ok := seen["session_status"]; !ok {
 			for _, t := range filtered {
 				if strings.EqualFold(t.Name, "session_status") {
@@ -117,9 +121,17 @@ func heuristicScore(t tool.Tool, userMessage string) int {
 	score := tokenOverlapScore(name+" "+desc, msg)
 
 	switch {
-	case containsAny(msg, "read", "file", "path", "directory", "dir", "write", "edit", "patch", "glob") && containsAny(name, "read", "write", "edit", "patch", "glob", "list_dir"):
-		score += 3
-	case containsAny(msg, "command", "shell", "execute", "run", "process") && containsAny(name, "exec", "process"):
+	case containsAny(msg, "path", "directory", "dir", "list", "show", "current", "pwd", "디렉토리", "경로", "폴더", "목록", "현재 위치", "현재 경로") &&
+		containsAny(name, "list_dir", "glob", "read", "read_file", "exec", "process"):
+		score += 4
+	case containsAny(msg, "read", "file", "open", "cat", "파일", "읽기") &&
+		containsAny(name, "read", "read_file", "list_dir", "glob"):
+		score += 4
+	case containsAny(msg, "write", "edit", "patch", "replace", "update", "쓰기", "수정", "패치") &&
+		containsAny(name, "write", "write_file", "edit", "edit_file", "apply_patch"):
+		score += 4
+	case containsAny(msg, "command", "shell", "execute", "run", "process", "cmd", "bash", "zsh", "명령", "실행", "쉘", "터미널") &&
+		containsAny(name, "exec", "process"):
 		score += 3
 	case containsAny(msg, "cron", "schedule", "job") && containsAny(name, "cron"):
 		score += 4

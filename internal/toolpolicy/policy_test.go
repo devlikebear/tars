@@ -157,3 +157,14 @@ func TestSelector_Heuristic_DoesNotFloodWithUnrelatedMCPTools(t *testing.T) {
 		t.Fatalf("expected unrelated mcp tools to be mostly excluded, got %v", selected)
 	}
 }
+
+func TestSelector_Heuristic_KoreanDirectoryQueryDoesNotPickSessionStatusOnly(t *testing.T) {
+	selector := NewSelector(Policy{Profile: "full"}, SelectorConfig{Mode: "heuristic", MaxTools: 1})
+	selected := selector.Select(testTools(), "gemini-native", "gemini-3-flash-preview", "지금 어느 디렉토리에 있지?")
+	if len(selected) != 1 {
+		t.Fatalf("expected exactly 1 selected tool, got %v", selected)
+	}
+	if selected[0] == "session_status" {
+		t.Fatalf("expected directory intent tool, got %v", selected)
+	}
+}
