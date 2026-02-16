@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -135,5 +136,29 @@ func TestExecTool_RejectsNonStringCommand(t *testing.T) {
 	}
 	if body.Message == "" || body.Message == "command is required" {
 		t.Fatalf("expected invalid arguments for non-string command, got %q", body.Message)
+	}
+}
+
+func TestExecTool_EmptyCommandIncludesHint(t *testing.T) {
+	root := t.TempDir()
+	tl := NewExecTool(root)
+
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("execute exec tool: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected missing command error, got %s", result.Text())
+	}
+
+	var body execResponse
+	if err := json.Unmarshal([]byte(result.Text()), &body); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if !strings.Contains(body.Message, "command is required") {
+		t.Fatalf("expected required command message, got %q", body.Message)
+	}
+	if !strings.Contains(body.Message, "\"command\":\"pwd\"") {
+		t.Fatalf("expected command hint in error message, got %q", body.Message)
 	}
 }

@@ -149,13 +149,13 @@ func TestLoop_Run_WithToolCallAndHooks(t *testing.T) {
 func TestLoop_Run_StopsOnRepeatedToolCallPattern(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Register(tool.Tool{
-		Name:        "exec",
-		Description: "execute command",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+		Name:        "list_dir",
+		Description: "list files",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`),
 		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
 			return tool.Result{
 				Content: []tool.ContentBlock{
-					{Type: "text", Text: `{"command":"","exit_code":-1,"duration_ms":0,"message":"command is required"}`},
+					{Type: "text", Text: `{"path":".","entries":[]}`},
 				},
 			}, nil
 		},
@@ -168,8 +168,8 @@ func TestLoop_Run_StopsOnRepeatedToolCallPattern(t *testing.T) {
 			ToolCalls: []llm.ToolCall{
 				{
 					ID:        "call_1",
-					Name:      "exec",
-					Arguments: `{}`,
+					Name:      "list_dir",
+					Arguments: `{"path":"."}`,
 				},
 			},
 		},
@@ -195,8 +195,8 @@ func TestLoop_Run_StopsOnRepeatedToolCallPattern(t *testing.T) {
 			{
 				Type: "function",
 				Function: llm.ToolFunctionSchema{
-					Name:       "exec",
-					Parameters: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+					Name:       "list_dir",
+					Parameters: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`),
 				},
 			},
 		},
@@ -454,5 +454,69 @@ func TestLoop_Run_ExecAliasCallUsesCanonicalTool(t *testing.T) {
 	}
 	if resp.Message.Content != "done" {
 		t.Fatalf("unexpected response: %q", resp.Message.Content)
+	}
+}
+
+func TestLoop_Run_StopsOnRepeatedInvalidExecWithoutCommand(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.Tool{
+		Name:        "exec",
+		Description: "execute command",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			return tool.Result{
+				Content: []tool.ContentBlock{
+					{Type: "text", Text: `{"command":"","exit_code":-1,"duration_ms":0,"message":"command is required; provide JSON like {\"command\":\"pwd\"}"}`},
+				},
+			}, nil
+		},
+	})
+
+	invalidExecResp := llm.ChatResponse{
+		Message: llm.ChatMessage{
+			Role:    "assistant",
+			Content: "",
+			ToolCalls: []llm.ToolCall{
+				{
+					ID:        "call_1",
+					Name:      "exec",
+					Arguments: `{}`,
+				},
+			},
+		},
+	}
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			invalidExecResp,
+			invalidExecResp,
+			invalidExecResp,
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	_, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "현재 경로 알려줘"},
+	}, RunOptions{
+		MaxIterations: 5,
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:       "exec",
+					Parameters: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected invalid exec retry guard error")
+	}
+	if !strings.Contains(err.Error(), "repeated invalid exec call") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client.callIndex != 2 {
+		t.Fatalf("expected stop at 2 llm calls for invalid exec loop, got %d", client.callIndex)
 	}
 }

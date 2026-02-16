@@ -15,6 +15,7 @@ const (
 	minExecTimeoutMS     = 100
 	maxExecTimeoutMS     = 30000
 	maxExecOutputBytes   = 8192
+	missingCommandHint   = `command is required; provide JSON like {"command":"pwd"}`
 )
 
 var blockedExecCommands = map[string]struct{}{
@@ -68,7 +69,7 @@ func NewExecToolWithManager(workspaceDir string, manager *ProcessManager) Tool {
 			}
 			commandLine = strings.TrimSpace(commandLine)
 			if commandLine == "" {
-				return execErrorResult("", "command is required", -1, "", "", 0, false), nil
+				return execErrorResult("", missingCommandHint, -1, "", "", 0, false), nil
 			}
 			if strings.ContainsAny(commandLine, "\n\r") {
 				return execErrorResult(commandLine, "multi-line command is not allowed", -1, "", "", 0, false), nil
@@ -76,7 +77,7 @@ func NewExecToolWithManager(workspaceDir string, manager *ProcessManager) Tool {
 
 			fields := strings.Fields(commandLine)
 			if len(fields) == 0 {
-				return execErrorResult(commandLine, "command is required", -1, "", "", 0, false), nil
+				return execErrorResult(commandLine, missingCommandHint, -1, "", "", 0, false), nil
 			}
 			command := fields[0]
 			if _, blocked := blockedExecCommands[strings.ToLower(command)]; blocked {

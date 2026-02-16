@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/tool"
@@ -78,6 +79,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	autoExpanded := false
 	lastToolOutcomeSig := ""
 	repeatedToolOutcomeCount := 0
+	repeatedInvalidExecCount := 0
 	l.emit(ctx, Event{Type: EventLoopStart, MessageCount: len(messages)})
 
 	for i := 0; i < maxIters; i++ {
@@ -184,6 +186,23 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				ToolResult: result.Text(),
 			})
 
+			if callName == "exec" && isMissingCommandExecResult(call.Arguments, result.Text()) {
+				repeatedInvalidExecCount++
+			} else {
+				repeatedInvalidExecCount = 0
+			}
+			if repeatedInvalidExecCount >= 2 {
+				err := fmt.Errorf(`agent loop blocked repeated invalid exec call: missing "command" argument`)
+				l.emit(ctx, Event{
+					Type:       EventLoopError,
+					Iteration:  i + 1,
+					ToolName:   call.Name,
+					ToolCallID: call.ID,
+					Err:        err,
+				})
+				return llm.ChatResponse{}, err
+			}
+
 			outcomeSig := callName + "\n" + call.Arguments + "\n" + result.Text()
 			if outcomeSig == lastToolOutcomeSig {
 				repeatedToolOutcomeCount++
@@ -255,4 +274,36 @@ func appendToolSchemas(existing []llm.ToolSchema, extras ...llm.ToolSchema) []ll
 		existing = append(existing, schema)
 	}
 	return existing
+}
+
+func isMissingCommandExecResult(args string, resultText string) bool {
+	if hasExecCommandArgument(args) {
+		return false
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(resultText)), "command is required")
+}
+
+func hasExecCommandArgument(rawArgs string) bool {
+	v := strings.TrimSpace(rawArgs)
+	if v == "" || v == "{}" || v == "null" {
+		return false
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(v), &payload); err != nil {
+		return false
+	}
+	for _, key := range []string{"command", "cmd"} {
+		raw, ok := payload[key]
+		if !ok {
+			continue
+		}
+		var cmd string
+		if err := json.Unmarshal(raw, &cmd); err != nil {
+			continue
+		}
+		if strings.TrimSpace(cmd) != "" {
+			return true
+		}
+	}
+	return false
 }
