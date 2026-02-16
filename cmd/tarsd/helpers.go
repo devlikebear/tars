@@ -610,6 +610,7 @@ func buildChatToolingOptions(cfg config.Config, processManager *tool.ProcessMana
 		Provider:       strings.TrimSpace(cfg.LLMProvider),
 		Model:          strings.TrimSpace(cfg.LLMModel),
 		Selector:       selector,
+		AutoExpand:     cfg.ToolSelectorAutoExpand,
 		ProcessManager: processManager,
 	}
 }

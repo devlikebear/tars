@@ -211,3 +211,194 @@ func TestLoop_Run_StopsOnRepeatedToolCallPattern(t *testing.T) {
 		t.Fatalf("expected early stop at 3 llm calls, got %d", client.callIndex)
 	}
 }
+
+func TestLoop_Run_BlocksToolOutsideInjectedSet(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+		return tool.SessionStatus{SessionID: "sess"}, nil
+	}))
+	reg.Register(tool.Tool{
+		Name:        "exec",
+		Description: "execute command",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			return tool.Result{Content: []tool.ContentBlock{{Type: "text", Text: `{"ok":true}`}}}, nil
+		},
+	})
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_1", Name: "exec", Arguments: `{"command":"pwd"}`},
+					},
+				},
+			},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	_, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "현재 디렉토리 경로"},
+	}, RunOptions{
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:       "session_status",
+					Parameters: json.RawMessage(`{"type":"object"}`),
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected injected-tool enforcement error")
+	}
+	if !strings.Contains(err.Error(), "tool not injected for this request") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoop_Run_AutoExpandOnce(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+		return tool.SessionStatus{SessionID: "sess"}, nil
+	}))
+	reg.Register(tool.Tool{
+		Name:        "exec",
+		Description: "execute command",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			return tool.Result{Content: []tool.ContentBlock{{Type: "text", Text: `{"ok":true}`}}}, nil
+		},
+	})
+	reg.Register(tool.Tool{
+		Name:        "glob",
+		Description: "glob files",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string"}}}`),
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			return tool.Result{Content: []tool.ContentBlock{{Type: "text", Text: `{"matches":[]}`}}}, nil
+		},
+	})
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_1", Name: "exec", Arguments: `{"command":"pwd"}`},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_2", Name: "glob", Arguments: `{"pattern":"*.md"}`},
+					},
+				},
+			},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	_, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "tool expand"},
+	}, RunOptions{
+		MaxIterations:  3,
+		AutoExpandOnce: true,
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:       "session_status",
+					Parameters: json.RawMessage(`{"type":"object"}`),
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected second outside tool to be blocked after one-shot expand")
+	}
+	if !strings.Contains(err.Error(), "tool not injected for this request") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(client.seenToolCounts) < 2 {
+		t.Fatalf("expected at least 2 llm calls, got %v", client.seenToolCounts)
+	}
+	if client.seenToolCounts[0] != 1 {
+		t.Fatalf("expected first call tool count=1, got %d", client.seenToolCounts[0])
+	}
+	if client.seenToolCounts[1] != 2 {
+		t.Fatalf("expected second call tool count=2 after auto-expand, got %d", client.seenToolCounts[1])
+	}
+}
+
+func TestLoop_Run_AutoExpand_AllowsFirstMissingTool(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+		return tool.SessionStatus{SessionID: "sess"}, nil
+	}))
+	reg.Register(tool.Tool{
+		Name:        "exec",
+		Description: "execute command",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			return tool.Result{Content: []tool.ContentBlock{{Type: "text", Text: `{"ok":true}`}}}, nil
+		},
+	})
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_1", Name: "exec", Arguments: `{"command":"pwd"}`},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "done",
+				},
+			},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	resp, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "tool expand"},
+	}, RunOptions{
+		MaxIterations:  3,
+		AutoExpandOnce: true,
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:       "session_status",
+					Parameters: json.RawMessage(`{"type":"object"}`),
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected success with first auto-expand, got %v", err)
+	}
+	if resp.Message.Content != "done" {
+		t.Fatalf("unexpected response: %q", resp.Message.Content)
+	}
+	if len(client.seenToolCounts) != 2 {
+		t.Fatalf("expected 2 llm calls, got %v", client.seenToolCounts)
+	}
+	if client.seenToolCounts[1] != 2 {
+		t.Fatalf("expected second call tool count=2 after auto-expand, got %d", client.seenToolCounts[1])
+	}
+}

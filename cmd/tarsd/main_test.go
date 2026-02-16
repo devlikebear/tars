@@ -21,6 +21,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tarsncase/internal/toolpolicy"
 	"github.com/rs/zerolog"
 )
 
@@ -832,6 +833,137 @@ func TestChatAPI_WithAutomationTools(t *testing.T) {
 	}
 }
 
+func TestChatAPI_BlocksToolOutsideInjectedSet(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_exec_1",
+							Name:      "exec",
+							Arguments: `{"command":"pwd"}`,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		mockClient,
+		logger,
+		8,
+		nil,
+		chatToolingOptions{
+			Provider: "anthropic",
+			Model:    "claude",
+			Selector: toolpolicy.NewSelector(
+				toolpolicy.Policy{Profile: "minimal"},
+				toolpolicy.SelectorConfig{Mode: "off"},
+			),
+			AutoExpand: false,
+		},
+		tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+			return tool.SessionStatus{SessionID: "sess-test"}, nil
+		}),
+	)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"현재 디렉토리 경로 알려줘"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "tool not injected for this request: exec") {
+		t.Fatalf("expected injected-tool error, got %q", rec.Body.String())
+	}
+}
+
+func TestChatAPI_AutoExpandToolOnce(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_exec_1",
+							Name:      "exec",
+							Arguments: `{"command":"pwd"}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "done",
+				},
+			},
+		},
+	}
+
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		mockClient,
+		logger,
+		8,
+		nil,
+		chatToolingOptions{
+			Provider: "anthropic",
+			Model:    "claude",
+			Selector: toolpolicy.NewSelector(
+				toolpolicy.Policy{Profile: "minimal"},
+				toolpolicy.SelectorConfig{Mode: "off"},
+			),
+			AutoExpand: true,
+		},
+		tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+			return tool.SessionStatus{SessionID: "sess-test"}, nil
+		}),
+	)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"현재 디렉토리 경로 알려줘"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "done") {
+		t.Fatalf("expected successful final response, got %q", rec.Body.String())
+	}
+	if len(mockClient.seenToolCounts) < 2 {
+		t.Fatalf("expected 2 llm calls, got %v", mockClient.seenToolCounts)
+	}
+	if mockClient.seenToolCounts[0] != 1 {
+		t.Fatalf("expected first llm call with 1 tool, got %d", mockClient.seenToolCounts[0])
+	}
+	if mockClient.seenToolCounts[1] != 2 {
+		t.Fatalf("expected second llm call with auto-expanded tool set, got %d", mockClient.seenToolCounts[1])
+	}
+}
+
 func TestChatAPI(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -1261,8 +1393,8 @@ func TestChatAPI_UsesConfiguredMaxIterations(t *testing.T) {
 					ToolCalls: []llm.ToolCall{
 						{
 							ID:        "call_1",
-							Name:      "session_status",
-							Arguments: `{}`,
+							Name:      "exec",
+							Arguments: `{"command":"pwd"}`,
 						},
 					},
 				},

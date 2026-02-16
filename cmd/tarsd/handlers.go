@@ -242,6 +242,7 @@ type chatToolingOptions struct {
 	Provider       string
 	Model          string
 	Selector       toolpolicy.Selector
+	AutoExpand     bool
 	ProcessManager *tool.ProcessManager
 }
 
@@ -433,9 +434,10 @@ func newChatAPIHandlerWithRuntimeConfig(
 
 		logger.Debug().Str("session_id", sessionID).Int("messages", len(llmMessages)).Msg("llm chat call start")
 		chatResp, err := loop.Run(r.Context(), llmMessages, agent.RunOptions{
-			MaxIterations: maxIters,
-			Tools:         selectedSchemas,
-			ToolChoice:    toolChoice,
+			MaxIterations:  maxIters,
+			Tools:          selectedSchemas,
+			ToolChoice:     toolChoice,
+			AutoExpandOnce: tooling.AutoExpand,
 			OnDelta: func(text string) {
 				if text == "" {
 					return
