@@ -130,6 +130,7 @@ func (c *OpenAICompatibleClient) createChatHTTPRequest(ctx context.Context, reqB
 	if err != nil {
 		return nil, newProviderError(c.label, "parse", fmt.Errorf("marshal request: %w", err))
 	}
+	logLLMRequestPayload(c.label, body)
 
 	req, err := http.NewRequestWithContext(
 		ctx,
@@ -168,6 +169,7 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 		if payload == "" {
 			continue
 		}
+		logLLMStreamPayload(c.label, payload)
 
 		var parsed struct {
 			Choices []struct {
@@ -212,7 +214,7 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 			toolCallsByIndex[tc.Index] = prev
 		}
 		if content != "" {
-			zlog.Debug().Str("provider", c.label).Int("delta_len", len(content)).Msg("llm stream delta")
+			zlog.Debug().Str("provider", c.label).Int("delta_len", len(content)).Str("delta", truncateForLog(content, 4000)).Msg("llm stream delta")
 			opts.OnDelta(content)
 		}
 	}
@@ -245,6 +247,7 @@ func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http
 	if err != nil {
 		return ChatResponse{}, newProviderError(c.label, "request", fmt.Errorf("read response: %w", err))
 	}
+	logLLMResponsePayload(c.label, resp.StatusCode, string(respBody))
 
 	var parsed struct {
 		Choices []struct {

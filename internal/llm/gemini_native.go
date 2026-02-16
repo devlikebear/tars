@@ -105,6 +105,13 @@ func (c *GeminiNativeClient) Chat(ctx context.Context, messages []ChatMessage, o
 
 	contents := toGeminiNativeContents(messages)
 	config := c.buildGenerateContentConfig(messages, opts)
+	if reqJSON, err := json.Marshal(map[string]any{
+		"model":    c.model,
+		"contents": contents,
+		"config":   config,
+	}); err == nil {
+		logLLMRequestPayload("gemini-native", reqJSON)
+	}
 	if streaming {
 		return c.chatStreamingResponse(ctx, contents, config, opts.OnDelta)
 	}
@@ -165,6 +172,9 @@ func (c *GeminiNativeClient) chatNonStreamingResponse(ctx context.Context, conte
 	if err != nil {
 		return ChatResponse{}, wrapGeminiNativeSDKError("request", err)
 	}
+	if respJSON, err := json.Marshal(parsed); err == nil {
+		logLLMResponsePayload("gemini-native", http.StatusOK, string(respJSON))
+	}
 
 	if len(parsed.Candidates) == 0 {
 		return ChatResponse{}, newProviderError("gemini-native", "parse", fmt.Errorf("gemini-native response has no candidates"))
@@ -211,6 +221,9 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 		if parsed == nil {
 			continue
 		}
+		if chunkJSON, err := json.Marshal(parsed); err == nil {
+			logLLMStreamPayload("gemini-native", string(chunkJSON))
+		}
 
 		if parsed.UsageMetadata != nil {
 			if parsed.UsageMetadata.PromptTokenCount > 0 {
@@ -238,7 +251,7 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 			}
 			if part.Text != "" && !part.Thought {
 				builder.WriteString(part.Text)
-				zlog.Debug().Str("provider", "gemini-native").Int("delta_len", len(part.Text)).Msg("llm stream delta")
+				zlog.Debug().Str("provider", "gemini-native").Int("delta_len", len(part.Text)).Str("delta", truncateForLog(part.Text, 4000)).Msg("llm stream delta")
 				onDelta(part.Text)
 			}
 			if part.FunctionCall == nil || strings.TrimSpace(part.FunctionCall.Name) == "" {

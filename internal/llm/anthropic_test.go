@@ -167,6 +167,57 @@ func TestAnthropicChat_StreamParsesToolUse(t *testing.T) {
 	}
 }
 
+func TestAnthropicChat_StreamToolUseStartInputAndPartialJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: message_start\n"))
+		_, _ = w.Write([]byte("data: {\"message\":{\"usage\":{\"input_tokens\":11}}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_start\n"))
+		_, _ = w.Write([]byte("data: {\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tool_1\",\"name\":\"exec\",\"input\":{}}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_delta\n"))
+		_, _ = w.Write([]byte("data: {\"index\":0,\"delta\":{\"partial_json\":\"{\\\"command\\\":\\\"p\"}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_delta\n"))
+		_, _ = w.Write([]byte("data: {\"index\":0,\"delta\":{\"partial_json\":\"wd\\\"}\"}}\n\n"))
+		_, _ = w.Write([]byte("event: message_delta\n"))
+		_, _ = w.Write([]byte("data: {\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":4}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := NewAnthropicClient(srv.URL, "k", "claude-3-5-haiku-latest", 0)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	resp, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "pwd"},
+	}, ChatOptions{
+		OnDelta: func(string) {},
+		Tools: []ToolSchema{
+			{
+				Type: "function",
+				Function: ToolFunctionSchema{
+					Name:        "exec",
+					Description: "run command",
+					Parameters:  json.RawMessage(`{"type":"object"}`),
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if len(resp.Message.ToolCalls) != 1 {
+		t.Fatalf("expected one tool call, got %+v", resp.Message.ToolCalls)
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(resp.Message.ToolCalls[0].Arguments), &args); err != nil {
+		t.Fatalf("tool args should be valid json: %v", err)
+	}
+	if args["command"] != "pwd" {
+		t.Fatalf("unexpected tool args: %+v", args)
+	}
+}
+
 func TestAnthropicChat_RequestUsesAnthropicToolWireFormat(t *testing.T) {
 	var captured map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

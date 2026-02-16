@@ -132,6 +132,7 @@ func (c *AnthropicClient) createMessagesHTTPRequest(ctx context.Context, reqBody
 	if err != nil {
 		return nil, newProviderError("anthropic", "parse", fmt.Errorf("marshal request: %w", err))
 	}
+	logLLMRequestPayload("anthropic", body)
 
 	req, err := http.NewRequestWithContext(
 		ctx,
@@ -175,6 +176,7 @@ func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse
 	if err != nil {
 		return ChatResponse{}, newProviderError("anthropic", "request", fmt.Errorf("read response: %w", err))
 	}
+	logLLMResponsePayload("anthropic", http.StatusOK, string(respBody))
 
 	var parsed struct {
 		Content []anthropicContentBlock `json:"content"`
@@ -218,6 +220,7 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 		builder          strings.Builder
 		stopReason       string
 		toolCallsByIndex = map[int]ToolCall{}
+		toolInputByIndex = map[int]string{}
 	)
 
 	scanner := createSSEScanner(body)
@@ -240,6 +243,7 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 		if payload == "[DONE]" {
 			break
 		}
+		logLLMStreamPayload("anthropic", payload)
 
 		switch eventType {
 		case "content_block_start":
@@ -256,7 +260,7 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 					continue
 				}
 				builder.WriteString(parsed.ContentBlock.Text)
-				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.ContentBlock.Text)).Msg("llm stream delta")
+				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.ContentBlock.Text)).Str("delta", truncateForLog(parsed.ContentBlock.Text, 4000)).Msg("llm stream delta")
 				onDelta(parsed.ContentBlock.Text)
 			case "tool_use":
 				prev := toolCallsByIndex[parsed.Index]
@@ -267,7 +271,7 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 					prev.Name = name
 				}
 				if len(parsed.ContentBlock.Input) > 0 {
-					prev.Arguments = normalizeJSONRaw(parsed.ContentBlock.Input)
+					toolInputByIndex[parsed.Index] = normalizeJSONRaw(parsed.ContentBlock.Input)
 				}
 				toolCallsByIndex[parsed.Index] = prev
 			}
@@ -284,7 +288,7 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 			}
 			if parsed.Delta.Text != "" {
 				builder.WriteString(parsed.Delta.Text)
-				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.Delta.Text)).Msg("llm stream delta")
+				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.Delta.Text)).Str("delta", truncateForLog(parsed.Delta.Text, 4000)).Msg("llm stream delta")
 				onDelta(parsed.Delta.Text)
 			}
 			if parsed.Delta.PartialJSON != "" {
@@ -331,6 +335,9 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 		}
 		if strings.TrimSpace(tc.ID) == "" {
 			tc.ID = fmt.Sprintf("tool_call_%d", idx)
+		}
+		if strings.TrimSpace(tc.Arguments) == "" {
+			tc.Arguments = toolInputByIndex[idx]
 		}
 		tc.Arguments = sanitizeToolArgumentsJSON(tc.Arguments)
 		toolCallsByIndex[idx] = tc
