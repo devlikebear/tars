@@ -9,11 +9,35 @@ import {submitInput} from './chat/submit.js';
 import {computeChatWindow, nextChatScrollOffset, nextResumeIndex, resolveKeyAction, tailLines, toolLinesFromStatusEvent} from './chat/view.js';
 import {parseArgs} from './cli/parseArgs.js';
 import {NotificationFilter, NotificationItem, SessionSummary} from './types.js';
-import {appendBounded, renderTable} from './ui/format.js';
+import {appendBounded, renderTable, truncate} from './ui/format.js';
 import {ChatInput, ChatPanel, HeaderBar, ResumePanel, StatusPanel} from './ui/panels.js';
 
 const maxPanelLines = 200;
 const chatPageSize = 20;
+const maxNotificationItems = 300;
+const notificationPreviewLines = 8;
+
+function matchesNotificationFilter(item: NotificationItem, filter: NotificationFilter): boolean {
+	if (filter === 'all') {
+		return true;
+	}
+	if (filter === 'error') {
+		return item.severity === 'error';
+	}
+	return item.category === filter;
+}
+
+function notificationLine(item: NotificationItem): string {
+	const category = item.category.trim() === '' ? 'event' : item.category.trim();
+	const severity = item.severity.trim() === '' ? 'info' : item.severity.trim();
+	const title = item.title.trim() === '' ? '(untitled)' : item.title.trim();
+	const message = item.message.trim();
+	const head = `[${category}/${severity}] ${truncate(title, 28)}`;
+	if (message === '') {
+		return head;
+	}
+	return `${head} | ${truncate(message, 48)}`;
+}
 
 function App(): React.JSX.Element {
 	const initial = useMemo(() => parseArgs(process.argv.slice(2)), []);
@@ -28,6 +52,7 @@ function App(): React.JSX.Element {
 	const [resumeIndex, setResumeIndex] = useState<number>(0);
 	const [notificationFilter, setNotificationFilter] = useState<NotificationFilter>('all');
 	const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+	const [lastSeenNotificationID, setLastSeenNotificationID] = useState<number>(0);
 	const [chatScrollOffset, setChatScrollOffset] = useState<number>(0);
 	const [chatState, dispatchChat] = useReducer(chatUIReducer, initialChatUIState);
 	const nextNotificationID = useRef<number>(1);
@@ -85,10 +110,10 @@ function App(): React.JSX.Element {
 				timestamp,
 			};
 			const next = [...prev, item];
-			if (next.length <= maxPanelLines) {
+			if (next.length <= maxNotificationItems) {
 				return next;
 			}
-			return next.slice(next.length - maxPanelLines);
+			return next.slice(next.length - maxNotificationItems);
 		});
 		const summary = [title, message].filter((v) => v !== '').join(' | ');
 		if (summary !== '') {
@@ -116,6 +141,10 @@ function App(): React.JSX.Element {
 				getNotifications: () => notifications,
 				clearNotifications: () => {
 					setNotifications([]);
+					setLastSeenNotificationID(nextNotificationID.current - 1);
+				},
+				markNotificationsSeen: () => {
+					setLastSeenNotificationID((prev) => Math.max(prev, nextNotificationID.current - 1));
 				},
 				exit,
 			});
@@ -228,6 +257,18 @@ function App(): React.JSX.Element {
 	const visibleMessages = useMemo(() => chatState.messages.slice(chatStart, chatEnd), [chatEnd, chatStart, chatState.messages]);
 	const visibleStatus = useMemo(() => tailLines(statusLines, 20), [statusLines]);
 	const visibleTools = useMemo(() => tailLines(toolLines, 20), [toolLines]);
+	const filteredNotifications = useMemo(
+		() => notifications.filter((item) => matchesNotificationFilter(item, notificationFilter)),
+		[notificationFilter, notifications],
+	);
+	const notificationUnreadCount = useMemo(
+		() => filteredNotifications.filter((item) => item.id > lastSeenNotificationID).length,
+		[filteredNotifications, lastSeenNotificationID],
+	);
+	const visibleNotifications = useMemo(
+		() => tailLines(filteredNotifications.map(notificationLine), notificationPreviewLines),
+		[filteredNotifications],
+	);
 	const visibleDebug = useMemo(() => tailLines(debugLines, 20), [debugLines]);
 
 	return (
@@ -239,7 +280,15 @@ function App(): React.JSX.Element {
 
 				<Box width={1} />
 
-				<StatusPanel visibleStatus={visibleStatus} visibleTools={visibleTools} visibleDebug={visibleDebug} verbose={initial.verbose} />
+				<StatusPanel
+					visibleStatus={visibleStatus}
+					visibleTools={visibleTools}
+					visibleNotifications={visibleNotifications}
+					notificationFilter={notificationFilter}
+					notificationUnreadCount={notificationUnreadCount}
+					visibleDebug={visibleDebug}
+					verbose={initial.verbose}
+				/>
 			</Box>
 
 			<ResumePanel resumeCandidates={resumeCandidates} resumeIndex={resumeIndex} />

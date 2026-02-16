@@ -53,6 +53,7 @@ export type CommandExecutorContext = {
 	getNotificationFilter: () => NotificationFilter;
 	getNotifications: () => NotificationItem[];
 	clearNotifications: () => void;
+	markNotificationsSeen: () => void;
 	exit: () => void;
 };
 
@@ -76,6 +77,9 @@ function renderCronRows(jobs: CronJob[]): string[][] {
 function filterNotifications(items: NotificationItem[], filter: NotificationFilter): NotificationItem[] {
 	if (filter === 'all') {
 		return items;
+	}
+	if (filter === 'error') {
+		return items.filter((item) => item.severity === 'error');
 	}
 	return items.filter((item) => item.category === filter);
 }
@@ -245,6 +249,7 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 			return;
 		}
 		ctx.pushSystemTable(['#', 'CATEGORY', 'SEVERITY', 'TITLE', 'TIME'], renderNotificationRows(filtered));
+		ctx.markNotificationsSeen();
 		return;
 	}
 	case 'notify_filter': {
@@ -266,10 +271,12 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 			item.timestamp !== '' ? `time: ${item.timestamp}` : '',
 		].filter((line) => line.trim() !== '');
 		ctx.pushSystemMessage(lines.join(' | '));
+		ctx.markNotificationsSeen();
 		return;
 	}
 	case 'notify_clear': {
 		ctx.clearNotifications();
+		ctx.markNotificationsSeen();
 		ctx.pushSystemMessage('notifications cleared');
 		return;
 	}

@@ -82,6 +82,9 @@ export function ChatPanel(props: ChatPanelProps): React.JSX.Element {
 type StatusPanelProps = {
 	visibleStatus: string[];
 	visibleTools: string[];
+	visibleNotifications: string[];
+	notificationFilter: string;
+	notificationUnreadCount: number;
 	visibleDebug: string[];
 	verbose: boolean;
 };
@@ -96,6 +99,12 @@ export function StatusPanel(props: StatusPanelProps): React.JSX.Element {
 			<Text color="yellow">Tools</Text>
 			{props.visibleTools.map((line, idx) => (
 				<Text key={`tool-${idx}`}>• {line}</Text>
+			))}
+			<Text color="cyan">
+				Notifications (filter={props.notificationFilter}, unread={props.notificationUnreadCount})
+			</Text>
+			{props.visibleNotifications.map((line, idx) => (
+				<Text key={`notify-${idx}`}>• {line}</Text>
 			))}
 			{props.verbose && (
 				<>

@@ -35,6 +35,7 @@ function createContext(raw: string, sessionID = ''): {
 	activeSessionID: string;
 	notificationFilter: string;
 	notifications: Array<{id: number; category: string; severity: string; title: string; message: string; timestamp: string}>;
+	markNotificationsSeenCalls: number;
 	exited: boolean;
 } {
 	const errors: string[] = [];
@@ -46,6 +47,7 @@ function createContext(raw: string, sessionID = ''): {
 	let activeSessionID = sessionID;
 	let notificationFilter = 'all';
 	let notifications: Array<{id: number; category: string; severity: string; title: string; message: string; timestamp: string}> = [];
+	let markNotificationsSeenCalls = 0;
 	let exited = false;
 
 	const ctx: CommandExecutorContext = {
@@ -71,6 +73,9 @@ function createContext(raw: string, sessionID = ''): {
 		getNotifications: () => notifications,
 		clearNotifications: () => {
 			notifications = [];
+		},
+		markNotificationsSeen: () => {
+			markNotificationsSeenCalls++;
 		},
 		exit: () => {
 			exited = true;
@@ -99,6 +104,9 @@ function createContext(raw: string, sessionID = ''): {
 		},
 		get notifications() {
 			return notifications;
+		},
+		get markNotificationsSeenCalls() {
+			return markNotificationsSeenCalls;
 		},
 		get exited() {
 			return exited;
@@ -243,6 +251,7 @@ test('executeInputCommand handles /notify list/filter/open/clear', async () => {
 	await executeInputCommand(state.ctx, createDefaultAPIs());
 	assert.equal(state.tables.length, 1);
 	assert.deepEqual(state.tables[0]?.headers, ['#', 'CATEGORY', 'SEVERITY', 'TITLE', 'TIME']);
+	assert.equal(state.markNotificationsSeenCalls, 1);
 
 	const filterState = createContext('/notify filter cron');
 	await executeInputCommand(filterState.ctx, createDefaultAPIs());
@@ -254,10 +263,28 @@ test('executeInputCommand handles /notify list/filter/open/clear', async () => {
 	await executeInputCommand(openState.ctx, createDefaultAPIs());
 	assert.equal(openState.messages.length, 1);
 	assert.equal(openState.messages[0]?.includes('Heartbeat failed'), true);
+	assert.equal(openState.markNotificationsSeenCalls, 1);
 
 	const clearState = createContext('/notify clear');
 	clearState.notifications = state.notifications;
 	await executeInputCommand(clearState.ctx, createDefaultAPIs());
 	assert.equal(clearState.notifications.length, 0);
 	assert.deepEqual(clearState.messages, ['notifications cleared']);
+	assert.equal(clearState.markNotificationsSeenCalls, 1);
+});
+
+test('executeInputCommand notify filter error uses severity', async () => {
+	const state = createContext('/notify filter error');
+	state.notifications = [
+		{id: 1, category: 'cron', severity: 'info', title: 'Cron done', message: 'ok', timestamp: '2026-02-16T10:00:00Z'},
+		{id: 2, category: 'heartbeat', severity: 'error', title: 'Heartbeat failed', message: 'down', timestamp: '2026-02-16T10:01:00Z'},
+	];
+	await executeInputCommand(state.ctx, createDefaultAPIs());
+	assert.equal(state.notificationFilter, 'error');
+
+	state.ctx.raw = '/notify list';
+	await executeInputCommand(state.ctx, createDefaultAPIs());
+	assert.equal(state.tables.length, 1);
+	assert.equal(state.tables[0]?.rows.length, 1);
+	assert.equal(state.tables[0]?.rows[0]?.[2], 'error');
 });
