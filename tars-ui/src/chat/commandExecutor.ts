@@ -58,6 +58,7 @@ export type CommandExecutorContext = {
 	getNotifications: () => NotificationItem[];
 	clearNotifications: () => void;
 	markNotificationsSeen: () => void;
+	setCronRunsPreview: (lines: string[]) => void;
 	exit: () => void;
 };
 
@@ -114,6 +115,19 @@ function renderCronRunRows(runs: CronRunRecord[]): string[][] {
 			error === '' ? 'ok' : 'error',
 			error === '' ? truncate(response, 72) : truncate(error, 72),
 		];
+	});
+}
+
+function renderCronRunPreviewLines(runs: CronRunRecord[]): string[] {
+	if (runs.length === 0) {
+		return ['(no runs)'];
+	}
+	return runs.map((run, idx) => {
+		const error = (run.error ?? '').trim();
+		const response = (run.response ?? '').trim();
+		const status = error === '' ? 'ok' : 'error';
+		const detail = error === '' ? truncate(response, 40) : truncate(error, 40);
+		return `${idx + 1}. ${run.ran_at} | ${status} | ${detail}`;
 	});
 }
 
@@ -277,9 +291,11 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 	case 'cron_runs': {
 		const runs = await apis.listCronRuns(ctx.serverUrl, cmd.jobID, cmd.limit);
 		if (runs.length === 0) {
+			ctx.setCronRunsPreview([`job=${cmd.jobID}`, '(no runs)']);
 			ctx.pushSystemMessage(`(no runs for cron job: ${cmd.jobID})`);
 			return;
 		}
+		ctx.setCronRunsPreview([`job=${cmd.jobID}`, ...renderCronRunPreviewLines(runs)]);
 		ctx.pushSystemTable(['TIME', 'STATUS', 'DETAIL'], renderCronRunRows(runs));
 		return;
 	}

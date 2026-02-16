@@ -52,6 +52,7 @@ function App(): React.JSX.Element {
 	const [resumeIndex, setResumeIndex] = useState<number>(0);
 	const [notificationFilter, setNotificationFilter] = useState<NotificationFilter>('all');
 	const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+	const [cronRunsPreview, setCronRunsPreview] = useState<string[]>([]);
 	const [lastSeenNotificationID, setLastSeenNotificationID] = useState<number>(0);
 	const [chatScrollOffset, setChatScrollOffset] = useState<number>(0);
 	const [chatState, dispatchChat] = useReducer(chatUIReducer, initialChatUIState);
@@ -146,6 +147,7 @@ function App(): React.JSX.Element {
 				markNotificationsSeen: () => {
 					setLastSeenNotificationID((prev) => Math.max(prev, nextNotificationID.current - 1));
 				},
+				setCronRunsPreview,
 				exit,
 			});
 		},
@@ -269,6 +271,7 @@ function App(): React.JSX.Element {
 		() => tailLines(filteredNotifications.map(notificationLine), notificationPreviewLines),
 		[filteredNotifications],
 	);
+	const visibleCronRuns = useMemo(() => tailLines(cronRunsPreview, notificationPreviewLines), [cronRunsPreview]);
 	const visibleDebug = useMemo(() => tailLines(debugLines, 20), [debugLines]);
 
 	return (
@@ -284,6 +287,7 @@ function App(): React.JSX.Element {
 					visibleStatus={visibleStatus}
 					visibleTools={visibleTools}
 					visibleNotifications={visibleNotifications}
+					visibleCronRuns={visibleCronRuns}
 					notificationFilter={notificationFilter}
 					notificationUnreadCount={notificationUnreadCount}
 					visibleDebug={visibleDebug}

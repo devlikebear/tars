@@ -37,6 +37,7 @@ function createContext(raw: string, sessionID = ''): {
 	activeSessionID: string;
 	notificationFilter: string;
 	notifications: Array<{id: number; category: string; severity: string; title: string; message: string; timestamp: string}>;
+	cronRunsPreview: string[];
 	markNotificationsSeenCalls: number;
 	exited: boolean;
 } {
@@ -49,6 +50,7 @@ function createContext(raw: string, sessionID = ''): {
 	let activeSessionID = sessionID;
 	let notificationFilter = 'all';
 	let notifications: Array<{id: number; category: string; severity: string; title: string; message: string; timestamp: string}> = [];
+	let cronRunsPreview: string[] = [];
 	let markNotificationsSeenCalls = 0;
 	let exited = false;
 
@@ -79,6 +81,9 @@ function createContext(raw: string, sessionID = ''): {
 		markNotificationsSeen: () => {
 			markNotificationsSeenCalls++;
 		},
+		setCronRunsPreview: (lines) => {
+			cronRunsPreview = [...lines];
+		},
 		exit: () => {
 			exited = true;
 		},
@@ -106,6 +111,9 @@ function createContext(raw: string, sessionID = ''): {
 		},
 		get notifications() {
 			return notifications;
+		},
+		get cronRunsPreview() {
+			return cronRunsPreview;
 		},
 		get markNotificationsSeenCalls() {
 			return markNotificationsSeenCalls;
@@ -278,6 +286,10 @@ test('executeInputCommand handles /cron get and /cron runs', async () => {
 	assert.equal(runsState.tables[0]?.rows.length, 2);
 	assert.equal(runsState.tables[0]?.rows[0]?.[1], 'ok');
 	assert.equal(runsState.tables[0]?.rows[1]?.[1], 'error');
+	assert.equal(runsState.cronRunsPreview[0], 'job=job_9');
+	assert.equal(runsState.cronRunsPreview.length, 3);
+	assert.equal(runsState.cronRunsPreview[1]?.includes('| ok |'), true);
+	assert.equal(runsState.cronRunsPreview[2]?.includes('| error |'), true);
 });
 
 test('executeInputCommand handles /notify list/filter/open/clear', async () => {

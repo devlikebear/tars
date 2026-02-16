@@ -83,6 +83,7 @@ type StatusPanelProps = {
 	visibleStatus: string[];
 	visibleTools: string[];
 	visibleNotifications: string[];
+	visibleCronRuns: string[];
 	notificationFilter: string;
 	notificationUnreadCount: number;
 	visibleDebug: string[];
@@ -105,6 +106,10 @@ export function StatusPanel(props: StatusPanelProps): React.JSX.Element {
 			</Text>
 			{props.visibleNotifications.map((line, idx) => (
 				<Text key={`notify-${idx}`}>• {line}</Text>
+			))}
+			<Text color="green">Cron Runs</Text>
+			{props.visibleCronRuns.map((line, idx) => (
+				<Text key={`cron-runs-${idx}`}>• {line}</Text>
 			))}
 			{props.verbose && (
 				<>
