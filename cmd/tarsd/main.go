@@ -111,8 +111,8 @@ const memoryToolSystemRule = `
 - Tool-call arguments must be valid JSON.
 
 ## Automation Tool Policy
-- If the user asks about cron jobs managed by this app, call cron_list / cron_create / cron_update / cron_delete / cron_run instead of OS commands like crontab.
-- If the user asks about heartbeat status or asks to trigger heartbeat, call heartbeat_status / heartbeat_run_once instead of inferring from process or file guesses.
+- If the user asks about cron jobs managed by this app, call cron (preferred) or cron_list / cron_create / cron_update / cron_delete / cron_run instead of OS commands like crontab.
+- If the user asks about heartbeat status or asks to trigger heartbeat, call heartbeat (preferred) or heartbeat_status / heartbeat_run_once instead of inferring from process or file guesses.
 `
 
 func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time) (*cobra.Command, *options) {

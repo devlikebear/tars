@@ -177,3 +177,74 @@ func TestHeartbeatTools_StatusAndRunOnce(t *testing.T) {
 		t.Fatalf("expected run callback called once, got %d", runCalled)
 	}
 }
+
+func TestCronTool_ActionRouting(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	job, err := store.CreateWithOptions(cron.CreateInput{
+		Name:      "daily",
+		Prompt:    "check status",
+		Schedule:  "every:1h",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	runCalled := 0
+	tl := NewCronTool(store, func(_ context.Context, j cron.Job) (string, error) {
+		runCalled++
+		return "ok:" + j.ID, nil
+	})
+
+	listRes, err := tl.Execute(context.Background(), json.RawMessage(`{"action":"list"}`))
+	if err != nil {
+		t.Fatalf("cron action list: %v", err)
+	}
+	if listRes.IsError {
+		t.Fatalf("expected list success, got %s", listRes.Text())
+	}
+
+	runRes, err := tl.Execute(context.Background(), json.RawMessage(`{"action":"run","id":"`+job.ID+`"}`))
+	if err != nil {
+		t.Fatalf("cron action run: %v", err)
+	}
+	if runRes.IsError {
+		t.Fatalf("expected run success, got %s", runRes.Text())
+	}
+	if runCalled != 1 {
+		t.Fatalf("expected run callback called once, got %d", runCalled)
+	}
+}
+
+func TestHeartbeatTool_ActionRouting(t *testing.T) {
+	runCalled := 0
+	tl := NewHeartbeatTool(
+		func(context.Context) (HeartbeatStatus, error) {
+			return HeartbeatStatus{Configured: true}, nil
+		},
+		func(context.Context) (HeartbeatRunResult, error) {
+			runCalled++
+			return HeartbeatRunResult{Response: "done"}, nil
+		},
+	)
+
+	statusRes, err := tl.Execute(context.Background(), json.RawMessage(`{"action":"status"}`))
+	if err != nil {
+		t.Fatalf("heartbeat action status: %v", err)
+	}
+	if statusRes.IsError {
+		t.Fatalf("expected status success, got %s", statusRes.Text())
+	}
+
+	runRes, err := tl.Execute(context.Background(), json.RawMessage(`{"action":"run_once"}`))
+	if err != nil {
+		t.Fatalf("heartbeat action run_once: %v", err)
+	}
+	if runRes.IsError {
+		t.Fatalf("expected run_once success, got %s", runRes.Text())
+	}
+	if runCalled != 1 {
+		t.Fatalf("expected run callback called once, got %d", runCalled)
+	}
+}
