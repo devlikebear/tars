@@ -308,8 +308,14 @@ func newBaseToolRegistry(workspaceDir string) *tool.Registry {
 	registry := tool.NewRegistry()
 	registry.Register(tool.NewMemorySearchTool(workspaceDir))
 	registry.Register(tool.NewMemoryGetTool(workspaceDir))
+	registry.Register(tool.NewReadTool(workspaceDir))
 	registry.Register(tool.NewReadFileTool(workspaceDir))
+	registry.Register(tool.NewWriteTool(workspaceDir))
+	registry.Register(tool.NewWriteFileTool(workspaceDir))
+	registry.Register(tool.NewEditTool(workspaceDir))
+	registry.Register(tool.NewEditFileTool(workspaceDir))
 	registry.Register(tool.NewListDirTool(workspaceDir))
+	registry.Register(tool.NewGlobTool(workspaceDir))
 	registry.Register(tool.NewExecTool(workspaceDir))
 	return registry
 }

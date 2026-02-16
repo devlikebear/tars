@@ -20,9 +20,17 @@ type readFileResponse struct {
 	Message   string `json:"message,omitempty"`
 }
 
+func NewReadTool(workspaceDir string) Tool {
+	return newReadToolWithName("read", workspaceDir)
+}
+
 func NewReadFileTool(workspaceDir string) Tool {
+	return newReadToolWithName("read_file", workspaceDir)
+}
+
+func newReadToolWithName(name, workspaceDir string) Tool {
 	return Tool{
-		Name:        "read_file",
+		Name:        name,
 		Description: "Read a UTF-8 text file from the workspace and return contents.",
 		Parameters: json.RawMessage(`{
   "type":"object",
