@@ -2,9 +2,6 @@ package cron
 
 import (
 	"bufio"
-	"bytes"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	cronv3 "github.com/robfig/cron/v3"
 )
 
 const defaultRunHistoryLimit = 200
@@ -463,7 +458,7 @@ func (s *Store) loadRuns(jobID string) ([]RunRecord, error) {
 	if err := os.MkdirAll(s.runsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create cron runs directory: %w", err)
 	}
-	f, err := os.Open(s.runPath(jobID))
+	f, err := os.Open(runPath(s.runsDir, jobID))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []RunRecord{}, nil
@@ -495,7 +490,7 @@ func (s *Store) appendRunRecord(record RunRecord) error {
 	if err := os.MkdirAll(s.runsDir, 0o755); err != nil {
 		return fmt.Errorf("create cron runs directory: %w", err)
 	}
-	path := s.runPath(record.JobID)
+	path := runPath(s.runsDir, record.JobID)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open cron runs: %w", err)
@@ -539,221 +534,9 @@ func (s *Store) pruneRunFile(path string, limit int) error {
 }
 
 func (s *Store) deleteRunFile(jobID string) error {
-	err := os.Remove(s.runPath(jobID))
+	err := os.Remove(runPath(s.runsDir, jobID))
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("delete cron run file: %w", err)
 	}
 	return nil
-}
-
-func (s *Store) runPath(jobID string) string {
-	return filepath.Join(s.runsDir, strings.TrimSpace(jobID)+".jsonl")
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func defaultJobName(prompt string) string {
-	if prompt == "" {
-		return "cron job"
-	}
-	line := strings.TrimSpace(strings.Split(prompt, "\n")[0])
-	if line == "" {
-		return "cron job"
-	}
-	if len(line) > 48 {
-		return line[:48] + "..."
-	}
-	return line
-}
-
-func normalizeSchedule(raw string) (string, error) {
-	s := strings.TrimSpace(raw)
-	if s == "" {
-		return "every:1h", nil
-	}
-	lower := strings.ToLower(s)
-	if strings.HasPrefix(lower, "at:") {
-		ts := strings.TrimSpace(s[len("at:"):])
-		at, err := time.Parse(time.RFC3339, ts)
-		if err != nil {
-			return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
-		}
-		return "at:" + at.UTC().Format(time.RFC3339), nil
-	}
-	if strings.HasPrefix(lower, "every:") {
-		dur := strings.TrimSpace(s[len("every:"):])
-		if dur == "" {
-			return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
-		}
-		if _, err := time.ParseDuration(dur); err != nil {
-			return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
-		}
-		return "every:" + dur, nil
-	}
-	if strings.HasPrefix(lower, "@every ") {
-		dur := strings.TrimSpace(s[len("@every "):])
-		if _, err := time.ParseDuration(dur); err != nil {
-			return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
-		}
-		return "@every " + dur, nil
-	}
-	if _, err := cronv3.ParseStandard(s); err != nil {
-		return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
-	}
-	return s, nil
-}
-
-func resolveDefaultDeleteAfterRun(schedule string, requested bool, explicitlySet bool) bool {
-	if explicitlySet || requested {
-		return requested
-	}
-	if _, isAt, err := parseAtTime(schedule); isAt && err == nil {
-		return true
-	}
-	return looksOneShotCronSchedule(schedule)
-}
-
-func looksOneShotCronSchedule(schedule string) bool {
-	parts := strings.Fields(strings.TrimSpace(schedule))
-	if len(parts) != 5 {
-		return false
-	}
-	// Heuristic: concrete minute/hour/day/month + wildcard weekday is usually
-	// intended as a one-time calendar trigger in this app's UX.
-	if !isSimpleCronNumber(parts[0]) || !isSimpleCronNumber(parts[1]) {
-		return false
-	}
-	if !isSimpleCronNumber(parts[2]) || !isSimpleCronNumber(parts[3]) {
-		return false
-	}
-	return parts[4] == "*" || parts[4] == "?"
-}
-
-func isSimpleCronNumber(v string) bool {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return false
-	}
-	for _, ch := range v {
-		if ch < '0' || ch > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func parseAtTime(schedule string) (time.Time, bool, error) {
-	s := strings.TrimSpace(schedule)
-	if !strings.HasPrefix(strings.ToLower(s), "at:") {
-		return time.Time{}, false, nil
-	}
-	v := strings.TrimSpace(s[len("at:"):])
-	at, err := time.Parse(time.RFC3339, v)
-	if err != nil {
-		return time.Time{}, true, err
-	}
-	return at.UTC(), true, nil
-}
-
-func normalizeSessionTarget(raw string) (string, error) {
-	v := strings.TrimSpace(raw)
-	if v == "" {
-		return "isolated", nil
-	}
-	switch strings.ToLower(v) {
-	case "isolated":
-		return "isolated", nil
-	case "main":
-		return "main", nil
-	default:
-		return v, nil
-	}
-}
-
-func normalizeWakeMode(raw string) (string, error) {
-	v := strings.TrimSpace(raw)
-	if v == "" {
-		return "agent_loop", nil
-	}
-	if strings.EqualFold(v, "agent_loop") {
-		return "agent_loop", nil
-	}
-	return "", fmt.Errorf("invalid wake_mode: %s (expected agent_loop)", v)
-}
-
-func normalizeDeliveryMode(raw, sessionTarget string) (string, error) {
-	v := strings.TrimSpace(raw)
-	if v == "" {
-		if strings.EqualFold(sessionTarget, "main") {
-			return "session", nil
-		}
-		return "daily_log", nil
-	}
-	switch strings.ToLower(v) {
-	case "none":
-		return "none", nil
-	case "daily_log":
-		return "daily_log", nil
-	case "session":
-		return "session", nil
-	case "both":
-		return "both", nil
-	default:
-		return "", fmt.Errorf("invalid delivery_mode: %s (expected none|daily_log|session|both)", v)
-	}
-}
-
-func normalizePayload(raw json.RawMessage) (json.RawMessage, error) {
-	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" || trimmed == "null" {
-		return nil, nil
-	}
-	if !json.Valid([]byte(trimmed)) {
-		return nil, fmt.Errorf("payload must be valid json")
-	}
-	var decoded any
-	if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
-		return nil, fmt.Errorf("payload decode failed: %w", err)
-	}
-	if _, ok := decoded.(map[string]any); !ok {
-		return nil, fmt.Errorf("payload must be a json object")
-	}
-	buf := &bytes.Buffer{}
-	if err := json.Compact(buf, []byte(trimmed)); err != nil {
-		return nil, fmt.Errorf("payload compact failed: %w", err)
-	}
-	return json.RawMessage(buf.Bytes()), nil
-}
-
-func computeBackoffDuration(schedule string, failures int) time.Duration {
-	if failures <= 0 {
-		return 0
-	}
-	base := 30 * time.Second
-	if interval, ok := parseEveryDuration(schedule); ok && interval > base {
-		base = interval
-	}
-	multiplier := failures - 1
-	if multiplier > 6 {
-		multiplier = 6
-	}
-	backoff := base * time.Duration(1<<multiplier)
-	capDur := 12 * time.Hour
-	if backoff > capDur {
-		return capDur
-	}
-	return backoff
-}
-
-func newJobID() string {
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return fmt.Sprintf("job_%d", time.Now().UTC().UnixNano())
-	}
-	return "job_" + hex.EncodeToString(b[:])
 }
