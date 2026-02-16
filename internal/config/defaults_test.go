@@ -472,3 +472,65 @@ func TestLoad_DeprecatedToolPolicyKeysAreIgnored(t *testing.T) {
 		t.Fatalf("expected non-deprecated key to still be loaded")
 	}
 }
+
+func TestLoad_ExtensionsDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.SkillsEnabled || !cfg.PluginsEnabled {
+		t.Fatalf("expected skills/plugins enabled by default")
+	}
+	if !cfg.SkillsWatch || !cfg.PluginsWatch {
+		t.Fatalf("expected skills/plugins watch enabled by default")
+	}
+	if cfg.SkillsWatchDebounceMS <= 0 || cfg.PluginsWatchDebounceMS <= 0 {
+		t.Fatalf("expected positive debounce defaults, got skills=%d plugins=%d", cfg.SkillsWatchDebounceMS, cfg.PluginsWatchDebounceMS)
+	}
+}
+
+func TestLoad_ExtensionsFromYAMLAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"skills_enabled: true",
+		"skills_watch: true",
+		"skills_watch_debounce_ms: 55",
+		`skills_extra_dirs_json: ["./team-skills"]`,
+		"skills_bundled_dir: ./bundled-skills",
+		"plugins_enabled: true",
+		"plugins_watch: true",
+		"plugins_watch_debounce_ms: 66",
+		`plugins_extra_dirs_json: ["./team-plugins"]`,
+		"plugins_bundled_dir: ./bundled-plugins",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("SKILLS_WATCH_DEBOUNCE_MS", "77")
+	t.Setenv("PLUGINS_WATCH_DEBOUNCE_MS", "88")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.SkillsWatchDebounceMS != 77 {
+		t.Fatalf("expected env override for skills debounce, got %d", cfg.SkillsWatchDebounceMS)
+	}
+	if cfg.PluginsWatchDebounceMS != 88 {
+		t.Fatalf("expected env override for plugins debounce, got %d", cfg.PluginsWatchDebounceMS)
+	}
+	if cfg.SkillsBundledDir != "./bundled-skills" {
+		t.Fatalf("unexpected skills bundled dir: %q", cfg.SkillsBundledDir)
+	}
+	if cfg.PluginsBundledDir != "./bundled-plugins" {
+		t.Fatalf("unexpected plugins bundled dir: %q", cfg.PluginsBundledDir)
+	}
+	if len(cfg.SkillsExtraDirs) != 1 || cfg.SkillsExtraDirs[0] != "./team-skills" {
+		t.Fatalf("unexpected skills extra dirs: %+v", cfg.SkillsExtraDirs)
+	}
+	if len(cfg.PluginsExtraDirs) != 1 || cfg.PluginsExtraDirs[0] != "./team-plugins" {
+		t.Fatalf("unexpected plugins extra dirs: %+v", cfg.PluginsExtraDirs)
+	}
+}

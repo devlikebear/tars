@@ -36,6 +36,19 @@ bifrost_model: openai/gpt-4o-mini
 # Optional MCP servers in JSON string form
 mcp_servers_json: '[{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}]'
 
+# Skills / Plugins / MCP hot-load extensions
+skills_enabled: true
+skills_watch: true
+skills_watch_debounce_ms: 200
+skills_bundled_dir: ./skills
+# skills_extra_dirs_json: '["/opt/team/skills"]'
+
+plugins_enabled: true
+plugins_watch: true
+plugins_watch_debounce_ms: 200
+plugins_bundled_dir: ./plugins
+# plugins_extra_dirs_json: '["/opt/team/plugins"]'
+
 # Optional tools (opt-in)
 tools_apply_patch_enabled: false
 tools_web_fetch_enabled: false

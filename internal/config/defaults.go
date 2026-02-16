@@ -39,6 +39,16 @@ type Config struct {
 	ToolsWebFetchEnabled   bool
 	ToolsWebSearchAPIKey   string
 	ToolsApplyPatchEnabled bool
+	SkillsEnabled          bool
+	SkillsWatch            bool
+	SkillsWatchDebounceMS  int
+	SkillsExtraDirs        []string
+	SkillsBundledDir       string
+	PluginsEnabled         bool
+	PluginsWatch           bool
+	PluginsWatchDebounceMS int
+	PluginsExtraDirs       []string
+	PluginsBundledDir      string
 	MCPServers             []MCPServer
 }
 
@@ -47,14 +57,22 @@ const DefaultTarsdConfigFilename = "config/standalone.yaml"
 // Default returns safe baseline settings for local standalone execution.
 func Default() Config {
 	return Config{
-		Mode:                "standalone",
-		WorkspaceDir:        "./workspace",
-		LLMProvider:         "bifrost",
-		LLMAuthMode:         "api-key",
-		BifrostModel:        "openai/gpt-4o-mini",
-		AgentMaxIterations:  8,
-		CronRunHistoryLimit: 200,
-		NotifyWhenNoClients: true,
+		Mode:                   "standalone",
+		WorkspaceDir:           "./workspace",
+		LLMProvider:            "bifrost",
+		LLMAuthMode:            "api-key",
+		BifrostModel:           "openai/gpt-4o-mini",
+		AgentMaxIterations:     8,
+		CronRunHistoryLimit:    200,
+		NotifyWhenNoClients:    true,
+		SkillsEnabled:          true,
+		SkillsWatch:            true,
+		SkillsWatchDebounceMS:  200,
+		SkillsBundledDir:       "./skills",
+		PluginsEnabled:         true,
+		PluginsWatch:           true,
+		PluginsWatchDebounceMS: 200,
+		PluginsBundledDir:      "./plugins",
 	}
 }
 
@@ -156,6 +174,36 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("TOOLS_APPLY_PATCH_ENABLED"), os.Getenv("TARSD_TOOLS_APPLY_PATCH_ENABLED")); v != "" {
 		cfg.ToolsApplyPatchEnabled = parseBool(v, cfg.ToolsApplyPatchEnabled)
 	}
+	if v := firstNonEmpty(os.Getenv("SKILLS_ENABLED"), os.Getenv("TARSD_SKILLS_ENABLED")); v != "" {
+		cfg.SkillsEnabled = parseBool(v, cfg.SkillsEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("SKILLS_WATCH"), os.Getenv("TARSD_SKILLS_WATCH")); v != "" {
+		cfg.SkillsWatch = parseBool(v, cfg.SkillsWatch)
+	}
+	if v := firstNonEmpty(os.Getenv("SKILLS_WATCH_DEBOUNCE_MS"), os.Getenv("TARSD_SKILLS_WATCH_DEBOUNCE_MS")); v != "" {
+		cfg.SkillsWatchDebounceMS = parsePositiveInt(v, cfg.SkillsWatchDebounceMS)
+	}
+	if v := firstNonEmpty(os.Getenv("SKILLS_EXTRA_DIRS_JSON"), os.Getenv("TARSD_SKILLS_EXTRA_DIRS_JSON")); v != "" {
+		cfg.SkillsExtraDirs = parseJSONStringList(v, cfg.SkillsExtraDirs)
+	}
+	if v := firstNonEmpty(os.Getenv("SKILLS_BUNDLED_DIR"), os.Getenv("TARSD_SKILLS_BUNDLED_DIR")); v != "" {
+		cfg.SkillsBundledDir = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("PLUGINS_ENABLED"), os.Getenv("TARSD_PLUGINS_ENABLED")); v != "" {
+		cfg.PluginsEnabled = parseBool(v, cfg.PluginsEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("PLUGINS_WATCH"), os.Getenv("TARSD_PLUGINS_WATCH")); v != "" {
+		cfg.PluginsWatch = parseBool(v, cfg.PluginsWatch)
+	}
+	if v := firstNonEmpty(os.Getenv("PLUGINS_WATCH_DEBOUNCE_MS"), os.Getenv("TARSD_PLUGINS_WATCH_DEBOUNCE_MS")); v != "" {
+		cfg.PluginsWatchDebounceMS = parsePositiveInt(v, cfg.PluginsWatchDebounceMS)
+	}
+	if v := firstNonEmpty(os.Getenv("PLUGINS_EXTRA_DIRS_JSON"), os.Getenv("TARSD_PLUGINS_EXTRA_DIRS_JSON")); v != "" {
+		cfg.PluginsExtraDirs = parseJSONStringList(v, cfg.PluginsExtraDirs)
+	}
+	if v := firstNonEmpty(os.Getenv("PLUGINS_BUNDLED_DIR"), os.Getenv("TARSD_PLUGINS_BUNDLED_DIR")); v != "" {
+		cfg.PluginsBundledDir = strings.TrimSpace(v)
+	}
 }
 
 func loadYAML(path string) (Config, error) {
@@ -225,6 +273,26 @@ func loadYAML(path string) (Config, error) {
 			cfg.ToolsWebSearchAPIKey = strings.TrimSpace(value)
 		case "tools_apply_patch_enabled":
 			cfg.ToolsApplyPatchEnabled = parseBool(value, cfg.ToolsApplyPatchEnabled)
+		case "skills_enabled":
+			cfg.SkillsEnabled = parseBool(value, cfg.SkillsEnabled)
+		case "skills_watch":
+			cfg.SkillsWatch = parseBool(value, cfg.SkillsWatch)
+		case "skills_watch_debounce_ms":
+			cfg.SkillsWatchDebounceMS = parsePositiveInt(value, cfg.SkillsWatchDebounceMS)
+		case "skills_extra_dirs_json":
+			cfg.SkillsExtraDirs = parseJSONStringList(value, cfg.SkillsExtraDirs)
+		case "skills_bundled_dir":
+			cfg.SkillsBundledDir = strings.TrimSpace(value)
+		case "plugins_enabled":
+			cfg.PluginsEnabled = parseBool(value, cfg.PluginsEnabled)
+		case "plugins_watch":
+			cfg.PluginsWatch = parseBool(value, cfg.PluginsWatch)
+		case "plugins_watch_debounce_ms":
+			cfg.PluginsWatchDebounceMS = parsePositiveInt(value, cfg.PluginsWatchDebounceMS)
+		case "plugins_extra_dirs_json":
+			cfg.PluginsExtraDirs = parseJSONStringList(value, cfg.PluginsExtraDirs)
+		case "plugins_bundled_dir":
+			cfg.PluginsBundledDir = strings.TrimSpace(value)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -297,6 +365,36 @@ func merge(dst *Config, src Config) {
 	}
 	if src.ToolsApplyPatchEnabled {
 		dst.ToolsApplyPatchEnabled = true
+	}
+	if src.SkillsEnabled {
+		dst.SkillsEnabled = true
+	}
+	if src.SkillsWatch {
+		dst.SkillsWatch = true
+	}
+	if src.SkillsWatchDebounceMS > 0 {
+		dst.SkillsWatchDebounceMS = src.SkillsWatchDebounceMS
+	}
+	if len(src.SkillsExtraDirs) > 0 {
+		dst.SkillsExtraDirs = append([]string(nil), src.SkillsExtraDirs...)
+	}
+	if src.SkillsBundledDir != "" {
+		dst.SkillsBundledDir = src.SkillsBundledDir
+	}
+	if src.PluginsEnabled {
+		dst.PluginsEnabled = true
+	}
+	if src.PluginsWatch {
+		dst.PluginsWatch = true
+	}
+	if src.PluginsWatchDebounceMS > 0 {
+		dst.PluginsWatchDebounceMS = src.PluginsWatchDebounceMS
+	}
+	if len(src.PluginsExtraDirs) > 0 {
+		dst.PluginsExtraDirs = append([]string(nil), src.PluginsExtraDirs...)
+	}
+	if src.PluginsBundledDir != "" {
+		dst.PluginsBundledDir = src.PluginsBundledDir
 	}
 }
 
@@ -445,6 +543,25 @@ func parseCSVList(raw string) []string {
 			continue
 		}
 		out = append(out, v)
+	}
+	return out
+}
+
+func parseJSONStringList(raw string, fallback []string) []string {
+	var parsed []string
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
+		return fallback
+	}
+	out := make([]string, 0, len(parsed))
+	for _, item := range parsed {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return fallback
 	}
 	return out
 }
