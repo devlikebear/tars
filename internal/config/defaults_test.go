@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -373,5 +374,117 @@ func TestLoad_MCPServersFromEnv(t *testing.T) {
 	}
 	if srv.Env["NODE_ENV"] != "production" {
 		t.Fatalf("unexpected mcp env: %+v", srv.Env)
+	}
+}
+
+func TestLoad_ToolSelectorDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.ToolsProfile != "full" {
+		t.Fatalf("expected tools profile full, got %q", cfg.ToolsProfile)
+	}
+	if cfg.ToolSelectorMode != "heuristic" {
+		t.Fatalf("expected selector mode heuristic, got %q", cfg.ToolSelectorMode)
+	}
+	if cfg.ToolSelectorMaxTools != 16 {
+		t.Fatalf("expected selector max tools 16, got %d", cfg.ToolSelectorMaxTools)
+	}
+	if cfg.ToolSelectorAutoExpand {
+		t.Fatalf("expected selector auto expand disabled by default")
+	}
+}
+
+func TestLoad_ToolPolicyAndOptionalToolsFromYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"tools_profile: coding",
+		"tools_allow: read,write,group:runtime",
+		"tools_deny: exec",
+		`tools_by_provider_json: {"anthropic":{"profile":"minimal","allow":["memory_search"]}}`,
+		"tool_selector_mode: heuristic",
+		"tool_selector_max_tools: 7",
+		"tool_selector_auto_expand: true",
+		"tools_web_search_enabled: true",
+		"tools_web_fetch_enabled: true",
+		"tools_web_search_api_key: yaml-search-key",
+		"tools_apply_patch_enabled: true",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.ToolsProfile != "coding" {
+		t.Fatalf("expected tools profile coding, got %q", cfg.ToolsProfile)
+	}
+	if len(cfg.ToolsAllow) != 3 || cfg.ToolsAllow[0] != "read" {
+		t.Fatalf("unexpected tools allow: %+v", cfg.ToolsAllow)
+	}
+	if len(cfg.ToolsDeny) != 1 || cfg.ToolsDeny[0] != "exec" {
+		t.Fatalf("unexpected tools deny: %+v", cfg.ToolsDeny)
+	}
+	if cfg.ToolSelectorMaxTools != 7 {
+		t.Fatalf("expected selector max tools 7, got %d", cfg.ToolSelectorMaxTools)
+	}
+	if !cfg.ToolSelectorAutoExpand {
+		t.Fatalf("expected selector auto expand=true from yaml")
+	}
+	if !cfg.ToolsWebSearchEnabled || !cfg.ToolsWebFetchEnabled {
+		t.Fatalf("expected web tools enabled from yaml, got search=%v fetch=%v", cfg.ToolsWebSearchEnabled, cfg.ToolsWebFetchEnabled)
+	}
+	if cfg.ToolsWebSearchAPIKey != "yaml-search-key" {
+		t.Fatalf("unexpected web search api key: %q", cfg.ToolsWebSearchAPIKey)
+	}
+	if !cfg.ToolsApplyPatchEnabled {
+		t.Fatalf("expected apply_patch enabled from yaml")
+	}
+	if cfg.ToolsByProvider["anthropic"].Profile != "minimal" {
+		t.Fatalf("unexpected tools by provider: %+v", cfg.ToolsByProvider)
+	}
+}
+
+func TestLoad_ToolPolicyAndOptionalToolsFromEnv(t *testing.T) {
+	t.Setenv("TOOLS_PROFILE", "minimal")
+	t.Setenv("TOOLS_ALLOW", "session_status,memory_search")
+	t.Setenv("TOOLS_DENY", "memory_get")
+	t.Setenv("TOOLS_BY_PROVIDER_JSON", `{"openai":{"allow":["group:fs"]}}`)
+	t.Setenv("TOOL_SELECTOR_MODE", "off")
+	t.Setenv("TOOL_SELECTOR_MAX_TOOLS", "5")
+	t.Setenv("TOOL_SELECTOR_AUTO_EXPAND", "true")
+	t.Setenv("TOOLS_WEB_SEARCH_ENABLED", "true")
+	t.Setenv("TOOLS_WEB_FETCH_ENABLED", "true")
+	t.Setenv("TOOLS_WEB_SEARCH_API_KEY", "env-search-key")
+	t.Setenv("TOOLS_APPLY_PATCH_ENABLED", "true")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.ToolsProfile != "minimal" {
+		t.Fatalf("expected tools profile minimal, got %q", cfg.ToolsProfile)
+	}
+	if cfg.ToolSelectorMode != "off" {
+		t.Fatalf("expected selector mode off, got %q", cfg.ToolSelectorMode)
+	}
+	if cfg.ToolSelectorMaxTools != 5 {
+		t.Fatalf("expected selector max tools 5, got %d", cfg.ToolSelectorMaxTools)
+	}
+	if !cfg.ToolSelectorAutoExpand {
+		t.Fatalf("expected auto expand true from env")
+	}
+	if !cfg.ToolsWebSearchEnabled || !cfg.ToolsWebFetchEnabled || !cfg.ToolsApplyPatchEnabled {
+		t.Fatalf("expected optional tools enabled from env")
+	}
+	if cfg.ToolsWebSearchAPIKey != "env-search-key" {
+		t.Fatalf("unexpected env web search api key: %q", cfg.ToolsWebSearchAPIKey)
+	}
+	if cfg.ToolsByProvider["openai"].Allow[0] != "group:fs" {
+		t.Fatalf("unexpected tools by provider from env: %+v", cfg.ToolsByProvider)
 	}
 }

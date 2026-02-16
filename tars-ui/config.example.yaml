@@ -5,3 +5,6 @@
 server_url: http://127.0.0.1:8080
 session_id: ""
 verbose: false
+
+# Tool policy/selector is configured on tarsd side
+# (see ../config/tarsd.config.example.yaml)

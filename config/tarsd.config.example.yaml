@@ -35,3 +35,25 @@ bifrost_model: openai/gpt-4o-mini
 
 # Optional MCP servers in JSON string form
 mcp_servers_json: '[{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}]'
+
+# Tool policy & selector
+# profiles: full | minimal | coding | messaging
+tools_profile: full
+# comma-separated names/patterns/groups (e.g. group:fs, group:runtime, mcp.*)
+tools_allow: ""
+tools_deny: ""
+# provider/model override JSON
+# tools_by_provider_json: '{"anthropic":{"profile":"coding","deny":["group:web"]},"gemini/gemini-2.5-flash":{"allow":["group:fs"]}}'
+tools_by_provider_json: ""
+
+# selector: off | heuristic
+tool_selector_mode: heuristic
+tool_selector_max_tools: 16
+# when true: allow one-shot recovery when model calls a non-injected tool
+tool_selector_auto_expand: false
+
+# Optional tools (opt-in)
+tools_apply_patch_enabled: false
+tools_web_fetch_enabled: false
+tools_web_search_enabled: false
+tools_web_search_api_key: ""

@@ -24,35 +24,35 @@ type ToolProviderPolicy struct {
 
 // Config holds top-level runtime settings.
 type Config struct {
-	Mode                 string
-	WorkspaceDir         string
-	LLMProvider          string
-	LLMAuthMode          string
-	LLMOAuthProvider     string
-	LLMBaseURL           string
-	LLMAPIKey            string
-	LLMModel             string
-	AgentMaxIterations   int
-	HeartbeatActiveHours string
-	HeartbeatTimezone    string
-	CronRunHistoryLimit  int
-	NotifyCommand        string
-	NotifyWhenNoClients  bool
-	BifrostBase          string
-	BifrostAPIKey        string
-	BifrostModel         string
-	ToolsProfile         string
-	ToolsAllow           []string
-	ToolsDeny            []string
-	ToolsByProvider      map[string]ToolProviderPolicy
-	ToolSelectorMode     string
-	ToolSelectorMaxTools int
+	Mode                   string
+	WorkspaceDir           string
+	LLMProvider            string
+	LLMAuthMode            string
+	LLMOAuthProvider       string
+	LLMBaseURL             string
+	LLMAPIKey              string
+	LLMModel               string
+	AgentMaxIterations     int
+	HeartbeatActiveHours   string
+	HeartbeatTimezone      string
+	CronRunHistoryLimit    int
+	NotifyCommand          string
+	NotifyWhenNoClients    bool
+	BifrostBase            string
+	BifrostAPIKey          string
+	BifrostModel           string
+	ToolsProfile           string
+	ToolsAllow             []string
+	ToolsDeny              []string
+	ToolsByProvider        map[string]ToolProviderPolicy
+	ToolSelectorMode       string
+	ToolSelectorMaxTools   int
 	ToolSelectorAutoExpand bool
-	ToolsWebSearchEnabled bool
-	ToolsWebFetchEnabled  bool
-	ToolsWebSearchAPIKey  string
+	ToolsWebSearchEnabled  bool
+	ToolsWebFetchEnabled   bool
+	ToolsWebSearchAPIKey   string
 	ToolsApplyPatchEnabled bool
-	MCPServers           []MCPServer
+	MCPServers             []MCPServer
 }
 
 const DefaultTarsdConfigFilename = "config/standalone.yaml"
@@ -60,18 +60,18 @@ const DefaultTarsdConfigFilename = "config/standalone.yaml"
 // Default returns safe baseline settings for local standalone execution.
 func Default() Config {
 	return Config{
-		Mode:                "standalone",
-		WorkspaceDir:        "./workspace",
-		LLMProvider:         "bifrost",
-		LLMAuthMode:         "api-key",
-		BifrostModel:        "openai/gpt-4o-mini",
-		AgentMaxIterations:  8,
-		CronRunHistoryLimit: 200,
-		NotifyWhenNoClients: true,
-		ToolsProfile:        "full",
-		ToolSelectorMode:    "heuristic",
-		ToolSelectorMaxTools: 16,
-		ToolSelectorAutoExpand: true,
+		Mode:                   "standalone",
+		WorkspaceDir:           "./workspace",
+		LLMProvider:            "bifrost",
+		LLMAuthMode:            "api-key",
+		BifrostModel:           "openai/gpt-4o-mini",
+		AgentMaxIterations:     8,
+		CronRunHistoryLimit:    200,
+		NotifyWhenNoClients:    true,
+		ToolsProfile:           "full",
+		ToolSelectorMode:       "heuristic",
+		ToolSelectorMaxTools:   16,
+		ToolSelectorAutoExpand: false,
 	}
 }
 
