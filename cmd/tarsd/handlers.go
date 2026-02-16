@@ -18,7 +18,6 @@ import (
 	"github.com/devlikebear/tarsncase/internal/prompt"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
-	"github.com/devlikebear/tarsncase/internal/toolpolicy"
 	"github.com/rs/zerolog"
 )
 
@@ -171,12 +170,14 @@ func setupAgentLoop(
 	logger zerolog.Logger,
 	sendStatus func(string, string, string, string, string, string),
 ) *agent.Loop {
-	registry.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
-		return tool.SessionStatus{
-			SessionID:       sessionID,
-			HistoryMessages: historyLen + 1,
-		}, nil
-	}))
+	if _, ok := registry.Get("session_status"); !ok {
+		registry.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+			return tool.SessionStatus{
+				SessionID:       sessionID,
+				HistoryMessages: historyLen + 1,
+			}, nil
+		}))
+	}
 
 	counterHook := agent.NewCounterHook()
 	auditHook := agent.NewAuditHook(64)
@@ -239,20 +240,11 @@ func resolveAgentMaxIterations(value int) int {
 }
 
 type chatToolingOptions struct {
-	Provider       string
-	Model          string
-	Selector       toolpolicy.Selector
-	AutoExpand     bool
 	ProcessManager *tool.ProcessManager
 }
 
 func defaultChatToolingOptions() chatToolingOptions {
-	return chatToolingOptions{
-		Selector: toolpolicy.NewSelector(
-			toolpolicy.Policy{Profile: "full"},
-			toolpolicy.SelectorConfig{Mode: "off"},
-		),
-	}
+	return chatToolingOptions{}
 }
 
 func toolNamesFromSchemas(schemas []llm.ToolSchema) []string {
@@ -331,7 +323,6 @@ func newChatAPIHandlerWithRuntimeConfig(
 	extraTools ...tool.Tool,
 ) http.Handler {
 	maxIters := resolveAgentMaxIterations(maxIterations)
-	selector := tooling.Selector
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -378,14 +369,23 @@ func newChatAPIHandlerWithRuntimeConfig(
 			return
 		}
 
-		systemPrompt, toolChoice, _ := prepareChatContext(workspaceDir, req.Message)
-
 		history, err := loadSessionHistory(transcriptPath, chatHistoryMaxTokens)
 		if err != nil {
 			logger.Error().Err(err).Msg("load history failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load history failed"})
 			return
 		}
+		registry := newBaseToolRegistryWithProcess(workspaceDir, tooling.ProcessManager)
+		for _, extra := range extraTools {
+			registry.Register(extra)
+		}
+		registry.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+			return tool.SessionStatus{
+				SessionID:       sessionID,
+				HistoryMessages: len(history) + 1,
+			}, nil
+		}))
+		systemPrompt, toolChoice, _ := prepareChatContext(workspaceDir, req.Message)
 		logger.Debug().
 			Str("session_id", sessionID).
 			Int("history_messages", len(history)).
@@ -404,21 +404,13 @@ func newChatAPIHandlerWithRuntimeConfig(
 
 		llmMessages := buildLLMMessages(systemPrompt, history, req.Message)
 
-		registry := newBaseToolRegistryWithProcess(workspaceDir, tooling.ProcessManager)
-		for _, extra := range extraTools {
-			registry.Register(extra)
-		}
-		selectedNames := selector.Select(registry.All(), tooling.Provider, tooling.Model, req.Message)
-		selectedSchemas := registry.SchemasForNames(selectedNames)
-		if len(selectedSchemas) == 0 {
-			selectedSchemas = registry.Schemas()
-			selectedNames = toolNamesFromSchemas(selectedSchemas)
-		}
+		injectedSchemas := registry.Schemas()
+		injectedNames := toolNamesFromSchemas(injectedSchemas)
 		logger.Debug().
 			Str("session_id", sessionID).
-			Int("tool_count_all", len(registry.Schemas())).
-			Int("tool_count_selected", len(selectedSchemas)).
-			Msg("tool selector result")
+			Int("tool_count_injected", len(injectedSchemas)).
+			Strs("injected_tools", injectedNames).
+			Msg("tool injection result")
 		sendStatusSink := func(_, _, _, _, _, _ string) {}
 		sendStatusProxy := func(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview string) {
 			sendStatusSink(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview)
@@ -434,10 +426,9 @@ func newChatAPIHandlerWithRuntimeConfig(
 
 		logger.Debug().Str("session_id", sessionID).Int("messages", len(llmMessages)).Msg("llm chat call start")
 		chatResp, err := loop.Run(r.Context(), llmMessages, agent.RunOptions{
-			MaxIterations:  maxIters,
-			Tools:          selectedSchemas,
-			ToolChoice:     toolChoice,
-			AutoExpandOnce: tooling.AutoExpand,
+			MaxIterations: maxIters,
+			Tools:         injectedSchemas,
+			ToolChoice:    toolChoice,
 			OnDelta: func(text string) {
 				if text == "" {
 					return
@@ -775,7 +766,7 @@ func newCronAPIHandlerWithRunner(
 				WakeMode       string          `json:"wake_mode,omitempty"`
 				DeliveryMode   string          `json:"delivery_mode,omitempty"`
 				Payload        json.RawMessage `json:"payload,omitempty"`
-				DeleteAfterRun bool            `json:"delete_after_run,omitempty"`
+				DeleteAfterRun *bool           `json:"delete_after_run,omitempty"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -788,16 +779,17 @@ func newCronAPIHandlerWithRunner(
 				hasEnable = true
 			}
 			job, err := store.CreateWithOptions(cron.CreateInput{
-				Name:           req.Name,
-				Prompt:         req.Prompt,
-				Schedule:       req.Schedule,
-				Enabled:        enabled,
-				HasEnable:      hasEnable,
-				SessionTarget:  req.SessionTarget,
-				WakeMode:       req.WakeMode,
-				DeliveryMode:   req.DeliveryMode,
-				Payload:        req.Payload,
-				DeleteAfterRun: req.DeleteAfterRun,
+				Name:              req.Name,
+				Prompt:            req.Prompt,
+				Schedule:          req.Schedule,
+				Enabled:           enabled,
+				HasEnable:         hasEnable,
+				SessionTarget:     req.SessionTarget,
+				WakeMode:          req.WakeMode,
+				DeliveryMode:      req.DeliveryMode,
+				Payload:           req.Payload,
+				DeleteAfterRun:    req.DeleteAfterRun != nil && *req.DeleteAfterRun,
+				HasDeleteAfterRun: req.DeleteAfterRun != nil,
 			})
 			if err != nil {
 				if strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "payload") {

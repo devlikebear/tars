@@ -21,7 +21,6 @@ import (
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
-	"github.com/devlikebear/tarsncase/internal/toolpolicy"
 	"github.com/rs/zerolog"
 )
 
@@ -474,6 +473,56 @@ func TestCronAPI_ListCreateRun(t *testing.T) {
 	}
 }
 
+func TestCronAPI_RunDeletesJobWhenDeleteAfterRunEnabled(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := cron.NewStore(root)
+	handler := newCronAPIHandler(
+		store,
+		func(_ context.Context, prompt string) (string, error) { return "ok:" + prompt, nil },
+		zerolog.New(io.Discard),
+	)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs", strings.NewReader(`{"name":"once","prompt":"run once","schedule":"at:2026-02-16T13:00:00Z","delete_after_run":true}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK && createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create status 200/201, got %d body=%q", createRec.Code, createRec.Body.String())
+	}
+	var created cron.Job
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+	if !created.DeleteAfterRun {
+		t.Fatalf("expected created delete_after_run=true")
+	}
+
+	runReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs/"+created.ID+"/run", nil)
+	runRec := httptest.NewRecorder()
+	handler.ServeHTTP(runRec, runReq)
+	if runRec.Code != http.StatusOK {
+		t.Fatalf("expected run status 200, got %d body=%q", runRec.Code, runRec.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/cron/jobs", nil)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%q", listRec.Code, listRec.Body.String())
+	}
+	var jobs []cron.Job
+	if err := json.Unmarshal(listRec.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("decode list jobs: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("expected delete_after_run job to be removed, got %+v", jobs)
+	}
+}
+
 func TestCronAPI_UpdateDelete(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -833,65 +882,7 @@ func TestChatAPI_WithAutomationTools(t *testing.T) {
 	}
 }
 
-func TestChatAPI_BlocksToolOutsideInjectedSet(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "workspace")
-	if err := memory.EnsureWorkspace(root); err != nil {
-		t.Fatalf("ensure workspace: %v", err)
-	}
-	logger := zerolog.New(io.Discard)
-	store := session.NewStore(root)
-
-	mockClient := &mockLLMClient{
-		responses: []llm.ChatResponse{
-			{
-				Message: llm.ChatMessage{
-					Role: "assistant",
-					ToolCalls: []llm.ToolCall{
-						{
-							ID:        "call_exec_1",
-							Name:      "exec",
-							Arguments: `{"command":"pwd"}`,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	handler := newChatAPIHandlerWithRuntimeConfig(
-		root,
-		store,
-		mockClient,
-		logger,
-		8,
-		nil,
-		chatToolingOptions{
-			Provider: "anthropic",
-			Model:    "claude",
-			Selector: toolpolicy.NewSelector(
-				toolpolicy.Policy{Profile: "minimal"},
-				toolpolicy.SelectorConfig{Mode: "off"},
-			),
-			AutoExpand: false,
-		},
-		tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
-			return tool.SessionStatus{SessionID: "sess-test"}, nil
-		}),
-	)
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"현재 디렉토리 경로 알려줘"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), "tool not injected for this request: exec") {
-		t.Fatalf("expected injected-tool error, got %q", rec.Body.String())
-	}
-}
-
-func TestChatAPI_AutoExpandToolOnce(t *testing.T) {
+func TestChatAPI_InjectsAllToolsByDefault(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
@@ -929,15 +920,7 @@ func TestChatAPI_AutoExpandToolOnce(t *testing.T) {
 		logger,
 		8,
 		nil,
-		chatToolingOptions{
-			Provider: "anthropic",
-			Model:    "claude",
-			Selector: toolpolicy.NewSelector(
-				toolpolicy.Policy{Profile: "minimal"},
-				toolpolicy.SelectorConfig{Mode: "off"},
-			),
-			AutoExpand: true,
-		},
+		chatToolingOptions{},
 		tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
 			return tool.SessionStatus{SessionID: "sess-test"}, nil
 		}),
@@ -956,11 +939,11 @@ func TestChatAPI_AutoExpandToolOnce(t *testing.T) {
 	if len(mockClient.seenToolCounts) < 2 {
 		t.Fatalf("expected 2 llm calls, got %v", mockClient.seenToolCounts)
 	}
-	if mockClient.seenToolCounts[0] != 1 {
-		t.Fatalf("expected first llm call with 1 tool, got %d", mockClient.seenToolCounts[0])
+	if mockClient.seenToolCounts[0] < 10 {
+		t.Fatalf("expected full tool set to be injected, got %d", mockClient.seenToolCounts[0])
 	}
-	if mockClient.seenToolCounts[1] != 2 {
-		t.Fatalf("expected second llm call with auto-expanded tool set, got %d", mockClient.seenToolCounts[1])
+	if mockClient.seenToolCounts[1] < 10 {
+		t.Fatalf("expected full tool set to remain injected, got %d", mockClient.seenToolCounts[1])
 	}
 }
 
@@ -1176,6 +1159,40 @@ func TestChatAPI_MemoryQueryForcesToolChoiceRequired(t *testing.T) {
 	}
 	if len(mockClient.seenToolChoices) == 0 || mockClient.seenToolChoices[0] != "required" {
 		t.Fatalf("expected tool_choice required, got %+v", mockClient.seenToolChoices)
+	}
+}
+
+func TestChatAPI_SystemPromptDoesNotInjectToolNameIndex(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	mockClient := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{
+				Role:    "assistant",
+				Content: "ok",
+			},
+		},
+	}
+
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"현재 디렉토리 경로 알려줘"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if len(mockClient.seenMessages) == 0 || len(mockClient.seenMessages[0]) == 0 {
+		t.Fatalf("expected first llm call messages")
+	}
+	sys := mockClient.seenMessages[0][0].Content
+	if strings.Contains(sys, "Available Tool Names") {
+		t.Fatalf("did not expect tool name index in system prompt, got %q", sys)
 	}
 }
 

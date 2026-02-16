@@ -391,8 +391,8 @@ func TestLoad_ToolSelectorDefaults(t *testing.T) {
 	if cfg.ToolSelectorMaxTools != 16 {
 		t.Fatalf("expected selector max tools 16, got %d", cfg.ToolSelectorMaxTools)
 	}
-	if cfg.ToolSelectorAutoExpand {
-		t.Fatalf("expected selector auto expand disabled by default")
+	if !cfg.ToolSelectorAutoExpand {
+		t.Fatalf("expected selector auto expand enabled by default")
 	}
 }
 

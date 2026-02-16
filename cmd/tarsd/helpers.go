@@ -19,7 +19,6 @@ import (
 	"github.com/devlikebear/tarsncase/internal/prompt"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
-	"github.com/devlikebear/tarsncase/internal/toolpolicy"
 	"github.com/rs/zerolog"
 )
 
@@ -585,32 +584,8 @@ func buildAutomationTools(
 }
 
 func buildChatToolingOptions(cfg config.Config, processManager *tool.ProcessManager) chatToolingOptions {
-	byProvider := make(map[string]toolpolicy.ProviderPolicy, len(cfg.ToolsByProvider))
-	for key, p := range cfg.ToolsByProvider {
-		byProvider[key] = toolpolicy.ProviderPolicy{
-			Profile: strings.TrimSpace(p.Profile),
-			Allow:   append([]string(nil), p.Allow...),
-			Deny:    append([]string(nil), p.Deny...),
-		}
-	}
-	selector := toolpolicy.NewSelector(
-		toolpolicy.Policy{
-			Profile:    strings.TrimSpace(cfg.ToolsProfile),
-			Allow:      append([]string(nil), cfg.ToolsAllow...),
-			Deny:       append([]string(nil), cfg.ToolsDeny...),
-			ByProvider: byProvider,
-		},
-		toolpolicy.SelectorConfig{
-			Mode:       strings.TrimSpace(cfg.ToolSelectorMode),
-			MaxTools:   cfg.ToolSelectorMaxTools,
-			AutoExpand: cfg.ToolSelectorAutoExpand,
-		},
-	)
+	_ = cfg
 	return chatToolingOptions{
-		Provider:       strings.TrimSpace(cfg.LLMProvider),
-		Model:          strings.TrimSpace(cfg.LLMModel),
-		Selector:       selector,
-		AutoExpand:     cfg.ToolSelectorAutoExpand,
 		ProcessManager: processManager,
 	}
 }

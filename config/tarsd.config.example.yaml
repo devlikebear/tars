@@ -47,10 +47,12 @@ tools_deny: ""
 tools_by_provider_json: ""
 
 # selector: off | heuristic
+# NOTE: selector settings are deprecated in runtime.
+# tarsd now injects all registered tools every turn (OpenClaw parity).
 tool_selector_mode: heuristic
 tool_selector_max_tools: 16
 # when true: allow one-shot recovery when model calls a non-injected tool
-tool_selector_auto_expand: false
+tool_selector_auto_expand: true
 
 # Optional tools (opt-in)
 tools_apply_patch_enabled: false

@@ -71,7 +71,7 @@ func Default() Config {
 		ToolsProfile:           "full",
 		ToolSelectorMode:       "heuristic",
 		ToolSelectorMaxTools:   16,
-		ToolSelectorAutoExpand: false,
+		ToolSelectorAutoExpand: true,
 	}
 }
 
