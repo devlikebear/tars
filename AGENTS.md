@@ -2,7 +2,7 @@
 
 ## 목적
 - 이 저장소에서 Codex/에이전트가 일관된 방식으로 개발을 진행하도록 운영 기준을 정의한다.
-- 현재 목표는 Phase 1의 대화형 LLM 채팅을 완성하는 것이다.
+- 현재 목표는 Phase 4~6의 스킬/플러그인/cased 핵심 기능을 순차 구현하는 것이다.
 
 ## 개발 원칙
 - MVP 중심으로 작은 단위로 구현한다.
@@ -51,7 +51,7 @@
   2. [단계] → 검증: [확인사항]
   3. [단계] → 검증: [확인사항]
 
-## 현재 구현 상태 (2026-02-15 기준)
+## 현재 구현 상태 (2026-02-16 기준)
 
 - 서버 측 채팅 API `POST /v1/chat`는 구현되어 있다.
 - 세션 관리 API(`GET/POST/DELETE /v1/sessions`, history/export/search)와 상태 API(`GET /v1/status`)가 구현되어 있다.
@@ -62,8 +62,12 @@
 - 채팅 루프는 요청마다 등록된 전체 도구 스키마를 주입한다(OpenClaw parity).
 - 미주입 도구/selector 기반 정책 주입 경로는 제거되어 설정 항목도 더 이상 사용하지 않는다.
 - 확장 빌트인 도구(`read/write/edit/glob`, `process`, `apply_patch`, `web_fetch`, `web_search`, `cron`, `heartbeat`)가 구현되어 있다.
+- 크론잡 상세/실행 이력 조회(`cron_get`, `cron_runs`)와 관련 API가 구현되어 있다.
+- `tars-ui`에 `/cron get`, `/cron runs`, `/notify` 명령 및 알림 프리뷰/필터/미읽음 카운트가 구현되어 있다.
+- 런타임 알림은 세션 연결 시 SSE로 전달되고, 비연결 시 OS 알림 커맨드 폴백이 동작한다.
+- Agent loop에서 `exec` 도구의 누락 인자 패턴은 1회 자동 보정하고, 반복 패턴은 가드로 차단한다.
 
-## LLM Provider 운영 정책 (2026-02-15)
+## LLM Provider 운영 정책 (2026-02-16)
 
 - `codex-cli` provider는 제거되었다. `LLM_PROVIDER=codex-cli`는 더 이상 지원하지 않는다.
 - `openai-codex` provider는 제거되었다. `LLM_PROVIDER=openai-codex`는 더 이상 지원하지 않는다.
@@ -77,9 +81,9 @@
 
 ## 다음 우선순위
 
-1. Agent loop 도구셋 보강(특히 `exec` 인자 검증/재시도 가드, 파일 도구 UX 개선).
-2. 허트비트 경로를 agent loop와 일관되게 통합하고 회귀 테스트를 보강한다.
-3. 크론잡 매니저(저장/조회/실행 API) 최소 기능을 구현한다.
+1. 스킬 시스템 MVP(`SKILL.md` 로더/레지스트리/프롬프트 주입/API) 구현.
+2. 플러그인 시스템 MVP(매니페스트 파서/로더/도구 등록) 구현.
+3. `cased` 감시 데몬의 실동작(프로세스 감시/재시작/상태 노출) 구현.
 
 ## 작업 체크리스트
 
