@@ -66,6 +66,11 @@
 - `tars-ui`에 `/cron get`, `/cron runs`, `/notify` 명령 및 알림 프리뷰/필터/미읽음 카운트가 구현되어 있다.
 - 런타임 알림은 세션 연결 시 SSE로 전달되고, 비연결 시 OS 알림 커맨드 폴백이 동작한다.
 - Agent loop에서 `exec` 도구의 누락 인자 패턴은 1회 자동 보정하고, 반복 패턴은 가드로 차단한다.
+- 스킬 로더(`internal/skill`)가 frontmatter 파싱/우선순위 병합/`available_skills` 프롬프트 포맷/워크스페이스 미러링을 지원한다.
+- 선언형 플러그인 로더(`internal/plugin`)가 `tarsncase.plugin.json`을 로드하고 skill dir + MCP server를 병합한다.
+- 확장 매니저(`internal/extensions`)가 스킬/플러그인/MCP를 통합 스냅샷으로 관리하고 fsnotify 기반 핫리로드를 지원한다.
+- API `GET /v1/skills`, `GET /v1/skills/{name}`, `GET /v1/plugins`, `POST /v1/runtime/extensions/reload`가 구현되어 있다.
+- `tars-ui` 명령 `/skills`, `/plugins`, `/mcp`가 추가되었고, 미지의 `/{skill}` 입력은 채팅 경로로 전달된다.
 
 ## LLM Provider 운영 정책 (2026-02-16)
 
@@ -81,8 +86,8 @@
 
 ## 다음 우선순위
 
-1. 스킬 시스템 MVP(`SKILL.md` 로더/레지스트리/프롬프트 주입/API) 구현.
-2. 플러그인 시스템 MVP(매니페스트 파서/로더/도구 등록) 구현.
+1. MCP 런타임 재연결/오류 진단(서버별 상태 메트릭, 백오프, 상세 에러 표준화) 강화.
+2. 스킬/플러그인 핫리로드 운영 가이드(배포 경로/권한/보안 정책) 문서화.
 3. `cased` 감시 데몬의 실동작(프로세스 감시/재시작/상태 노출) 구현.
 
 ## 작업 체크리스트
