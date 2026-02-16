@@ -816,6 +816,18 @@ func newCronAPIHandlerWithRunner(
 		jobID := pathParts[0]
 		if len(pathParts) == 1 {
 			switch r.Method {
+			case http.MethodGet:
+				job, err := store.Get(jobID)
+				if err != nil {
+					if strings.Contains(err.Error(), "job not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+						return
+					}
+					logger.Error().Err(err).Str("job_id", jobID).Msg("get cron job failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get cron job failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, job)
 			case http.MethodPut:
 				var req struct {
 					Name           *string          `json:"name,omitempty"`

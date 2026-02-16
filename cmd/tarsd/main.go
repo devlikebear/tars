@@ -111,7 +111,7 @@ const memoryToolSystemRule = `
 - Tool-call arguments must be valid JSON.
 
 ## Automation Tool Policy
-- If the user asks about cron jobs managed by this app, call cron (preferred) or cron_list / cron_create / cron_update / cron_delete / cron_run instead of OS commands like crontab.
+- If the user asks about cron jobs managed by this app, call cron (preferred) or cron_list / cron_get / cron_runs / cron_create / cron_update / cron_delete / cron_run instead of OS commands like crontab.
 - If the user asks about heartbeat status or asks to trigger heartbeat, call heartbeat (preferred) or heartbeat_status / heartbeat_run_once instead of inferring from process or file guesses.
 `
 
@@ -254,7 +254,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				heartbeatHandler := newHeartbeatAPIHandlerWithRunner(heartbeatRunner, logger)
 				mux.Handle("/v1/heartbeat/", heartbeatHandler)
 				processManager := tool.NewProcessManager()
-				chatTooling := buildChatToolingOptions(cfg, processManager)
+				chatTooling := buildChatToolingOptions(cfg, processManager, logger)
 				chatTools := append([]tool.Tool{}, automationTools...)
 				chatTools = append(chatTools, mcpTools...)
 				chatTools = append(chatTools, buildOptionalChatTools(cfg)...)

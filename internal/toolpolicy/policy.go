@@ -303,7 +303,7 @@ func expandGroup(group string, allNames []string) []string {
 		"group:memory":     {"memory_search", "memory_get"},
 		"group:web":        {"web_search", "web_fetch"},
 		"group:ui":         {"browser", "canvas"},
-		"group:automation": {"cron", "cron_list", "cron_create", "cron_update", "cron_delete", "cron_run", "heartbeat", "heartbeat_status", "heartbeat_run_once", "gateway"},
+		"group:automation": {"cron", "cron_list", "cron_get", "cron_runs", "cron_create", "cron_update", "cron_delete", "cron_run", "heartbeat", "heartbeat_status", "heartbeat_run_once", "gateway"},
 		"group:messaging":  {"message"},
 		"group:nodes":      {"nodes"},
 	}

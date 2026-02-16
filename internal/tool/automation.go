@@ -264,6 +264,83 @@ func NewCronRunTool(store *cron.Store, runJob func(ctx context.Context, job cron
 	}
 }
 
+func NewCronGetTool(store *cron.Store) Tool {
+	return Tool{
+		Name:        "cron_get",
+		Description: "Get a cron job by id.",
+		Parameters: json.RawMessage(`{
+  "type":"object",
+  "properties":{"job_id":{"type":"string"}},
+  "required":["job_id"],
+  "additionalProperties":false
+}`),
+		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
+			if store == nil {
+				return automationErrorResult("cron store is not configured"), nil
+			}
+			var input struct {
+				JobID string `json:"job_id"`
+			}
+			if err := json.Unmarshal(params, &input); err != nil {
+				return automationErrorResult(fmt.Sprintf("invalid arguments: %v", err)), nil
+			}
+			input.JobID = strings.TrimSpace(input.JobID)
+			if input.JobID == "" {
+				return automationErrorResult("job_id is required"), nil
+			}
+			job, err := store.Get(input.JobID)
+			if err != nil {
+				return automationErrorResult(fmt.Sprintf("get cron job failed: %v", err)), nil
+			}
+			return jsonTextResult(job, false), nil
+		},
+	}
+}
+
+func NewCronRunsTool(store *cron.Store) Tool {
+	return Tool{
+		Name:        "cron_runs",
+		Description: "List cron run history by job id.",
+		Parameters: json.RawMessage(`{
+  "type":"object",
+  "properties":{
+    "job_id":{"type":"string"},
+    "limit":{"type":"integer","minimum":1,"maximum":500,"default":50}
+  },
+  "required":["job_id"],
+  "additionalProperties":false
+}`),
+		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
+			if store == nil {
+				return automationErrorResult("cron store is not configured"), nil
+			}
+			var input struct {
+				JobID string `json:"job_id"`
+				Limit int    `json:"limit,omitempty"`
+			}
+			if err := json.Unmarshal(params, &input); err != nil {
+				return automationErrorResult(fmt.Sprintf("invalid arguments: %v", err)), nil
+			}
+			input.JobID = strings.TrimSpace(input.JobID)
+			if input.JobID == "" {
+				return automationErrorResult("job_id is required"), nil
+			}
+			if input.Limit <= 0 {
+				input.Limit = 50
+			}
+			runs, err := store.ListRuns(input.JobID, input.Limit)
+			if err != nil {
+				return automationErrorResult(fmt.Sprintf("list cron runs failed: %v", err)), nil
+			}
+			return jsonTextResult(map[string]any{
+				"job_id": input.JobID,
+				"count":  len(runs),
+				"runs":   runs,
+			}, false), nil
+		},
+	}
+}
+
 func NewHeartbeatStatusTool(getStatus func(ctx context.Context) (HeartbeatStatus, error)) Tool {
 	return Tool{
 		Name:        "heartbeat_status",
@@ -302,17 +379,19 @@ func NewHeartbeatRunOnceTool(runOnce func(ctx context.Context) (HeartbeatRunResu
 
 func NewCronTool(store *cron.Store, runJob func(ctx context.Context, job cron.Job) (string, error)) Tool {
 	listTool := NewCronListTool(store)
+	getTool := NewCronGetTool(store)
+	runsTool := NewCronRunsTool(store)
 	createTool := NewCronCreateTool(store)
 	updateTool := NewCronUpdateTool(store)
 	deleteTool := NewCronDeleteTool(store)
 	runTool := NewCronRunTool(store, runJob)
 	return Tool{
 		Name:        "cron",
-		Description: "Manage cron jobs with actions: list, create, update, delete, run.",
+		Description: "Manage cron jobs with actions: list, get, runs, create, update, delete, run.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
-    "action":{"type":"string","enum":["list","create","update","delete","run"]}
+    "action":{"type":"string","enum":["list","get","runs","create","update","delete","run"]}
   },
   "required":["action"],
   "additionalProperties":true
@@ -325,6 +404,10 @@ func NewCronTool(store *cron.Store, runJob func(ctx context.Context, job cron.Jo
 			switch action {
 			case "list":
 				return listTool.Execute(ctx, json.RawMessage(`{}`))
+			case "get":
+				return getTool.Execute(ctx, payload)
+			case "runs":
+				return runsTool.Execute(ctx, payload)
 			case "create":
 				return createTool.Execute(ctx, payload)
 			case "update":
@@ -334,7 +417,7 @@ func NewCronTool(store *cron.Store, runJob func(ctx context.Context, job cron.Jo
 			case "run":
 				return runTool.Execute(ctx, payload)
 			default:
-				return automationErrorResult("action must be one of: list,create,update,delete,run"), nil
+				return automationErrorResult("action must be one of: list,get,runs,create,update,delete,run"), nil
 			}
 		},
 	}

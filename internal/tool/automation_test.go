@@ -217,6 +217,63 @@ func TestCronTool_ActionRouting(t *testing.T) {
 	}
 }
 
+func TestCronTool_ActionGetAndRuns(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	job, err := store.CreateWithOptions(cron.CreateInput{
+		Name:      "detail-target",
+		Prompt:    "status check",
+		Schedule:  "every:1h",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	tl := NewCronTool(store, func(_ context.Context, j cron.Job) (string, error) {
+		return "ok:" + j.ID, nil
+	})
+
+	getRes, err := tl.Execute(context.Background(), json.RawMessage(`{"action":"get","job_id":"`+job.ID+`"}`))
+	if err != nil {
+		t.Fatalf("cron action get: %v", err)
+	}
+	if getRes.IsError {
+		t.Fatalf("expected get success, got %s", getRes.Text())
+	}
+	var gotJob cron.Job
+	if err := json.Unmarshal([]byte(getRes.Text()), &gotJob); err != nil {
+		t.Fatalf("decode cron get result: %v", err)
+	}
+	if gotJob.ID != job.ID {
+		t.Fatalf("expected job id %q, got %q", job.ID, gotJob.ID)
+	}
+
+	if _, err := tl.Execute(context.Background(), json.RawMessage(`{"action":"run","job_id":"`+job.ID+`"}`)); err != nil {
+		t.Fatalf("cron action run: %v", err)
+	}
+	runsRes, err := tl.Execute(context.Background(), json.RawMessage(`{"action":"runs","job_id":"`+job.ID+`","limit":5}`))
+	if err != nil {
+		t.Fatalf("cron action runs: %v", err)
+	}
+	if runsRes.IsError {
+		t.Fatalf("expected runs success, got %s", runsRes.Text())
+	}
+	var runsBody struct {
+		Count int              `json:"count"`
+		Runs  []cron.RunRecord `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(runsRes.Text()), &runsBody); err != nil {
+		t.Fatalf("decode runs result: %v", err)
+	}
+	if runsBody.Count < 1 || len(runsBody.Runs) < 1 {
+		t.Fatalf("expected at least one run record, got %+v", runsBody)
+	}
+	if runsBody.Runs[0].JobID != job.ID {
+		t.Fatalf("expected run job id %q, got %q", job.ID, runsBody.Runs[0].JobID)
+	}
+}
+
 func TestHeartbeatTool_ActionRouting(t *testing.T) {
 	runCalled := 0
 	tl := NewHeartbeatTool(

@@ -587,6 +587,46 @@ func TestCronAPI_UpdateDelete(t *testing.T) {
 	}
 }
 
+func TestCronAPI_GetJobByID(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := cron.NewStore(root)
+	handler := newCronAPIHandler(
+		store,
+		func(_ context.Context, prompt string) (string, error) { return "ok:" + prompt, nil },
+		zerolog.New(io.Discard),
+	)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs", strings.NewReader(`{"name":"nightly","prompt":"check logs","schedule":"every:1h","enabled":true}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK && createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create status 200/201, got %d body=%q", createRec.Code, createRec.Body.String())
+	}
+	var created cron.Job
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/cron/jobs/"+created.ID, nil)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected get status 200, got %d body=%q", getRec.Code, getRec.Body.String())
+	}
+	var got cron.Job
+	if err := json.Unmarshal(getRec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode get job: %v", err)
+	}
+	if got.ID != created.ID {
+		t.Fatalf("expected job id %q, got %q", created.ID, got.ID)
+	}
+}
+
 func TestCronAPI_CreateWithExecutionFields(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
