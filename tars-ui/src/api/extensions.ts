@@ -18,18 +18,28 @@ async function requestJSON<T>(method: string, url: string): Promise<T> {
 }
 
 export async function listSkills(serverURL: string): Promise<SkillDefinition[]> {
-	return requestJSON<SkillDefinition[]>('GET', apiURL(serverURL, '/v1/skills'));
+	const payload = await requestJSON<SkillDefinition[] | null>('GET', apiURL(serverURL, '/v1/skills'));
+	return normalizeArray(payload);
 }
 
 export async function listPlugins(serverURL: string): Promise<PluginDefinition[]> {
-	return requestJSON<PluginDefinition[]>('GET', apiURL(serverURL, '/v1/plugins'));
+	const payload = await requestJSON<PluginDefinition[] | null>('GET', apiURL(serverURL, '/v1/plugins'));
+	return normalizeArray(payload);
 }
 
 export async function listMCPServers(serverURL: string): Promise<MCPServerStatus[]> {
-	return requestJSON<MCPServerStatus[]>('GET', apiURL(serverURL, '/v1/mcp/servers'));
+	const payload = await requestJSON<MCPServerStatus[] | null>('GET', apiURL(serverURL, '/v1/mcp/servers'));
+	return normalizeArray(payload);
 }
 
 export async function listMCPTools(serverURL: string): Promise<MCPToolInfo[]> {
-	return requestJSON<MCPToolInfo[]>('GET', apiURL(serverURL, '/v1/mcp/tools'));
+	const payload = await requestJSON<MCPToolInfo[] | null>('GET', apiURL(serverURL, '/v1/mcp/tools'));
+	return normalizeArray(payload);
 }
 
+function normalizeArray<T>(value: T[] | null): T[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	return value;
+}

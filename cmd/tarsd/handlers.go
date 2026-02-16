@@ -1088,7 +1088,11 @@ func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger)
 			return
 		}
 		snapshot := provider.Snapshot()
-		writeJSON(w, http.StatusOK, snapshot.Skills)
+		skills := snapshot.Skills
+		if skills == nil {
+			skills = []skill.Definition{}
+		}
+		writeJSON(w, http.StatusOK, skills)
 	})
 	mux.HandleFunc("/v1/skills/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -1123,7 +1127,11 @@ func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger)
 			return
 		}
 		snapshot := provider.Snapshot()
-		writeJSON(w, http.StatusOK, snapshot.Plugins)
+		plugins := snapshot.Plugins
+		if plugins == nil {
+			plugins = []plugin.Definition{}
+		}
+		writeJSON(w, http.StatusOK, plugins)
 	})
 	mux.HandleFunc("/v1/runtime/extensions/reload", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

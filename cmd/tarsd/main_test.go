@@ -853,6 +853,26 @@ func TestExtensionsAPI_ListAndReload(t *testing.T) {
 	}
 }
 
+func TestExtensionsAPI_ListReturnsJSONArrayWhenEmpty(t *testing.T) {
+	provider := &mockExtensionsProvider{
+		snapshot: extensions.Snapshot{},
+	}
+	handler := newExtensionsAPIHandler(provider, zerolog.New(io.Discard))
+
+	for _, path := range []string{"/v1/skills", "/v1/plugins"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 for %s, got %d body=%q", path, rec.Code, rec.Body.String())
+		}
+		body := strings.TrimSpace(rec.Body.String())
+		if body != "[]" {
+			t.Fatalf("expected JSON array for %s, got %q", path, body)
+		}
+	}
+}
+
 func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
 	root := t.TempDir()
 	if err := memory.EnsureWorkspace(root); err != nil {

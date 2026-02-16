@@ -45,3 +45,18 @@ test('extensions api decodes list responses', async () => {
 	}
 });
 
+test('extensions api treats null list payload as empty array', async () => {
+	const restore = installFetchMock(async () => new Response('null', {status: 200}));
+	try {
+		const skills = await listSkills('http://127.0.0.1:8080/');
+		const plugins = await listPlugins('http://127.0.0.1:8080/');
+		const servers = await listMCPServers('http://127.0.0.1:8080/');
+		const tools = await listMCPTools('http://127.0.0.1:8080/');
+		assert.deepEqual(skills, []);
+		assert.deepEqual(plugins, []);
+		assert.deepEqual(servers, []);
+		assert.deepEqual(tools, []);
+	} finally {
+		restore();
+	}
+});
