@@ -41,3 +41,6 @@ workspace/
 
 # Development logs
 .logs/
+
+# for development, ignore the following files
+.docs/
