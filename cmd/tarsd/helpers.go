@@ -585,6 +585,14 @@ func buildChatToolingOptions(cfg config.Config) chatToolingOptions {
 	}
 }
 
+func buildOptionalChatTools(cfg config.Config) []tool.Tool {
+	out := []tool.Tool{}
+	if cfg.ToolsApplyPatchEnabled {
+		out = append(out, tool.NewApplyPatchTool(cfg.WorkspaceDir, true))
+	}
+	return out
+}
+
 func resolveCronTargetSessionID(store *session.Store, raw string) (sessionID string, explicitTarget bool, err error) {
 	if store == nil {
 		return "", false, nil

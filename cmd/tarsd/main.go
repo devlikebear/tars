@@ -256,6 +256,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				chatTooling := buildChatToolingOptions(cfg)
 				chatTools := append([]tool.Tool{}, automationTools...)
 				chatTools = append(chatTools, mcpTools...)
+				chatTools = append(chatTools, buildOptionalChatTools(cfg)...)
 				chatHandler := newChatAPIHandlerWithRuntimeConfig(
 					cfg.WorkspaceDir,
 					sessionStore,
