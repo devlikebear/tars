@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,11 +37,12 @@ type ToolInfo struct {
 }
 
 type Client struct {
-	mu       sync.RWMutex
-	servers  []ServerConfig
-	sessions map[string]*pooledSession
-	timeout  time.Duration
-	reqID    int64
+	mu          sync.RWMutex
+	servers     []ServerConfig
+	sessions    map[string]*pooledSession
+	serverModes map[string]rpcMode
+	timeout     time.Duration
+	reqID       int64
 }
 
 type pooledSession struct {
@@ -48,15 +50,33 @@ type pooledSession struct {
 	cmd         *exec.Cmd
 	stdin       io.WriteCloser
 	reader      *bufio.Reader
+	mode        rpcMode
 	mu          sync.Mutex
 	initialized bool
 	closed      bool
 }
 
+type rpcMode int
+
+const (
+	rpcModeContentLength rpcMode = iota
+	rpcModeJSONLine
+)
+
+func (m rpcMode) String() string {
+	switch m {
+	case rpcModeJSONLine:
+		return "jsonline"
+	default:
+		return "content-length"
+	}
+}
+
 func NewClient(servers []ServerConfig) *Client {
 	client := &Client{
-		timeout:  15 * time.Second,
-		sessions: map[string]*pooledSession{},
+		timeout:     15 * time.Second,
+		sessions:    map[string]*pooledSession{},
+		serverModes: map[string]rpcMode{},
 	}
 	client.SetServers(servers)
 	return client
@@ -70,6 +90,11 @@ func (c *Client) SetServers(servers []ServerConfig) {
 	nextNames := map[string]struct{}{}
 	for _, server := range normalized {
 		nextNames[server.Name] = struct{}{}
+		inferred := inferRPCMode(server)
+		if prev, ok := c.serverModes[server.Name]; ok && prev == rpcModeJSONLine && inferred == rpcModeContentLength {
+			continue
+		}
+		c.serverModes[server.Name] = inferred
 	}
 	for name, sess := range c.sessions {
 		if _, ok := nextNames[name]; ok {
@@ -77,6 +102,7 @@ func (c *Client) SetServers(servers []ServerConfig) {
 		}
 		sess.close()
 		delete(c.sessions, name)
+		delete(c.serverModes, name)
 	}
 	c.servers = normalized
 }
@@ -95,21 +121,27 @@ func (c *Client) ListServers(ctx context.Context) ([]ServerStatus, error) {
 	if len(servers) == 0 {
 		return []ServerStatus{}, nil
 	}
-	statuses := make([]ServerStatus, 0, len(servers))
-	for _, server := range servers {
-		tools, err := c.listToolsForServer(ctx, server)
-		status := ServerStatus{
-			Name:    server.Name,
-			Command: server.Command,
-		}
-		if err != nil {
-			status.Error = err.Error()
-		} else {
-			status.Connected = true
-			status.ToolCount = len(tools)
-		}
-		statuses = append(statuses, status)
+	statuses := make([]ServerStatus, len(servers))
+	var wg sync.WaitGroup
+	for i, server := range servers {
+		wg.Add(1)
+		go func(index int, server ServerConfig) {
+			defer wg.Done()
+			tools, err := c.listToolsForServer(ctx, server)
+			status := ServerStatus{
+				Name:    server.Name,
+				Command: server.Command,
+			}
+			if err != nil {
+				status.Error = err.Error()
+			} else {
+				status.Connected = true
+				status.ToolCount = len(tools)
+			}
+			statuses[index] = status
+		}(i, server)
 	}
+	wg.Wait()
 	return statuses, nil
 }
 
@@ -118,15 +150,30 @@ func (c *Client) ListTools(ctx context.Context) ([]ToolInfo, error) {
 	if len(servers) == 0 {
 		return []ToolInfo{}, nil
 	}
-	var out []ToolInfo
-	var failed int
-	for _, server := range servers {
-		tools, err := c.listToolsForServer(ctx, server)
-		if err != nil {
+	type toolResult struct {
+		tools []ToolInfo
+		err   error
+	}
+	results := make([]toolResult, len(servers))
+	var wg sync.WaitGroup
+	for i, server := range servers {
+		wg.Add(1)
+		go func(index int, server ServerConfig) {
+			defer wg.Done()
+			tools, err := c.listToolsForServer(ctx, server)
+			results[index] = toolResult{tools: tools, err: err}
+		}(i, server)
+	}
+	wg.Wait()
+
+	out := make([]ToolInfo, 0)
+	failed := 0
+	for _, result := range results {
+		if result.err != nil {
 			failed++
 			continue
 		}
-		out = append(out, tools...)
+		out = append(out, result.tools...)
 	}
 	if len(out) == 0 && failed > 0 {
 		return nil, fmt.Errorf("all configured mcp servers failed")
@@ -195,6 +242,8 @@ type rpcResponse struct {
 type session struct {
 	stdin  io.WriteCloser
 	reader *bufio.Reader
+	abort  func()
+	mode   rpcMode
 }
 
 func (s *pooledSession) close() {
@@ -307,10 +356,22 @@ func (c *Client) callTool(ctx context.Context, serverName, toolName string, args
 }
 
 func (c *Client) withPersistentSession(ctx context.Context, server ServerConfig, fn func(context.Context, *session) error) error {
-	if err := c.withPersistentSessionOnce(ctx, server, fn); err == nil {
+	err := c.withPersistentSessionOnce(ctx, server, fn)
+	if err == nil {
 		return nil
 	}
+	switchedMode := false
+	if c.currentMode(server.Name) == rpcModeContentLength && shouldFallbackToJSONLine(err) {
+		c.setServerMode(server.Name, rpcModeJSONLine)
+		switchedMode = true
+	}
 	c.dropSession(server.Name)
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		if switchedMode {
+			return c.withPersistentSessionOnce(ctx, server, fn)
+		}
+		return err
+	}
 	return c.withPersistentSessionOnce(ctx, server, fn)
 }
 
@@ -332,11 +393,16 @@ func (c *Client) withPersistentSessionOnce(ctx context.Context, server ServerCon
 		return fmt.Errorf("mcp session closed: %s", server.Name)
 	}
 
-	sess := &session{stdin: ps.stdin, reader: ps.reader}
+	sess := &session{
+		stdin:  ps.stdin,
+		reader: ps.reader,
+		abort:  ps.close,
+		mode:   ps.mode,
+	}
 	if !ps.initialized {
 		if err := c.initializeSession(callCtx, sess); err != nil {
 			ps.close()
-			return err
+			return fmt.Errorf("initialize mcp session (%s): %w", sess.mode.String(), err)
 		}
 		ps.initialized = true
 	}
@@ -344,7 +410,7 @@ func (c *Client) withPersistentSessionOnce(ctx context.Context, server ServerCon
 		if strings.Contains(strings.ToLower(err.Error()), "broken pipe") || strings.Contains(strings.ToLower(err.Error()), "eof") {
 			ps.close()
 		}
-		return err
+		return fmt.Errorf("mcp request failed (%s): %w", sess.mode.String(), err)
 	}
 	return nil
 }
@@ -380,6 +446,10 @@ func (c *Client) getOrStartSession(server ServerConfig) (*pooledSession, error) 
 		cmd:    cmd,
 		stdin:  stdin,
 		reader: bufio.NewReader(stdout),
+		mode:   rpcModeContentLength,
+	}
+	if mode, ok := c.serverModes[server.Name]; ok {
+		ps.mode = mode
 	}
 	c.sessions[server.Name] = ps
 	return ps, nil
@@ -409,6 +479,49 @@ func commandEnv(extra map[string]string) []string {
 		pairs = append(pairs, key+"="+v)
 	}
 	return pairs
+}
+
+func inferRPCMode(server ServerConfig) rpcMode {
+	if strings.TrimSpace(server.Command) == "mcp-server-sequential-thinking" {
+		return rpcModeJSONLine
+	}
+	joinedArgs := strings.Join(server.Args, " ")
+	if strings.Contains(joinedArgs, "@modelcontextprotocol/server-sequential-thinking") {
+		return rpcModeJSONLine
+	}
+	return rpcModeContentLength
+}
+
+func shouldFallbackToJSONLine(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "missing content-length header") ||
+		strings.Contains(msg, "invalid content-length header") ||
+		strings.Contains(msg, "read rpc header line")
+}
+
+func (c *Client) currentMode(serverName string) rpcMode {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	mode, ok := c.serverModes[serverName]
+	if !ok {
+		return rpcModeContentLength
+	}
+	return mode
+}
+
+func (c *Client) setServerMode(serverName string, mode rpcMode) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.serverModes == nil {
+		c.serverModes = map[string]rpcMode{}
+	}
+	c.serverModes[serverName] = mode
 }
 
 func (c *Client) serverSnapshot() []ServerConfig {
@@ -460,21 +573,56 @@ func (c *Client) initializeSession(ctx context.Context, sess *session) error {
 
 func (c *Client) request(ctx context.Context, sess *session, method string, params any) (json.RawMessage, error) {
 	id := atomic.AddInt64(&c.reqID, 1)
-	if err := writeRPCMessage(sess.stdin, rpcRequest{
+	req := rpcRequest{
 		JSONRPC: "2.0",
 		ID:      id,
 		Method:  method,
 		Params:  params,
-	}); err != nil {
+	}
+	var err error
+	switch sess.mode {
+	case rpcModeJSONLine:
+		err = writeRPCJSONLine(sess.stdin, req)
+	default:
+		err = writeRPCMessage(sess.stdin, req)
+	}
+	if err != nil {
 		return nil, err
 	}
 	for {
+		type readResult struct {
+			data []byte
+			err  error
+		}
+		readCh := make(chan readResult, 1)
+		go func() {
+			var (
+				data []byte
+				err  error
+			)
+			switch sess.mode {
+			case rpcModeJSONLine:
+				data, err = readRPCJSONLine(sess.reader)
+			default:
+				data, err = readRPCMessage(sess.reader)
+			}
+			readCh <- readResult{data: data, err: err}
+		}()
+
+		var (
+			data []byte
+			err  error
+		)
 		select {
 		case <-ctx.Done():
+			if sess.abort != nil {
+				sess.abort()
+			}
 			return nil, ctx.Err()
-		default:
+		case result := <-readCh:
+			data = result.data
+			err = result.err
 		}
-		data, err := readRPCMessage(sess.reader)
 		if err != nil {
 			return nil, err
 		}
@@ -494,11 +642,15 @@ func (c *Client) request(ctx context.Context, sess *session, method string, para
 
 func (c *Client) notify(ctx context.Context, sess *session, method string, params any) error {
 	_ = ctx
-	return writeRPCMessage(sess.stdin, rpcRequest{
+	req := rpcRequest{
 		JSONRPC: "2.0",
 		Method:  method,
 		Params:  params,
-	})
+	}
+	if sess.mode == rpcModeJSONLine {
+		return writeRPCJSONLine(sess.stdin, req)
+	}
+	return writeRPCMessage(sess.stdin, req)
 }
 
 func writeRPCMessage(w io.Writer, req rpcRequest) error {
@@ -512,6 +664,18 @@ func writeRPCMessage(w io.Writer, req rpcRequest) error {
 	}
 	if _, err := w.Write(data); err != nil {
 		return fmt.Errorf("write rpc body: %w", err)
+	}
+	return nil
+}
+
+func writeRPCJSONLine(w io.Writer, req rpcRequest) error {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("marshal rpc request: %w", err)
+	}
+	data = append(data, '\n')
+	if _, err := w.Write(data); err != nil {
+		return fmt.Errorf("write rpc json line: %w", err)
 	}
 	return nil
 }
@@ -544,6 +708,24 @@ func readRPCMessage(r *bufio.Reader) ([]byte, error) {
 		return nil, fmt.Errorf("read rpc body: %w", err)
 	}
 	return body, nil
+}
+
+func readRPCJSONLine(r *bufio.Reader) ([]byte, error) {
+	for {
+		line, err := r.ReadString('\n')
+		if err != nil {
+			return nil, fmt.Errorf("read rpc json line: %w", err)
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		data := []byte(line)
+		if !json.Valid(data) {
+			continue
+		}
+		return data, nil
+	}
 }
 
 func (c *Client) findServer(name string) (ServerConfig, bool) {
