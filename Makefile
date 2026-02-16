@@ -1,7 +1,7 @@
 GO ?= go
 BIN_DIR ?= bin
 WORKSPACE_DIR ?= ./workspace
-API_ADDR ?= 127.0.0.1:8080
+API_ADDR ?= 127.0.0.1:43180
 SERVER_URL ?= http://$(API_ADDR)
 CHAT_MSG ?= hello
 SESSION ?=
@@ -31,7 +31,7 @@ help:
 	@echo ""
 	@echo "Common vars:"
 	@echo "  PKG=./... TEST_NAME=TestRun_ChatMessage CHAT_MSG='hello'"
-	@echo "  WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:8080 SERVER_URL=http://127.0.0.1:8080"
+	@echo "  WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:43180 SERVER_URL=http://127.0.0.1:43180"
 	@echo "  TARSD_CONFIG=./config/tarsd.config.example.yaml TARS_UI_CONFIG=./tars-ui/config.example.yaml"
 	@echo ""
 	@echo "Test targets:"

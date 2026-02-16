@@ -365,7 +365,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 	cmd.Flags().BoolVar(&opts.RunOnce, "run-once", false, "run heartbeat once and exit")
 	cmd.Flags().BoolVar(&opts.RunLoop, "run-loop", false, "run heartbeat loop")
 	cmd.Flags().BoolVar(&opts.ServeAPI, "serve-api", false, "serve tarsd http api")
-	cmd.Flags().StringVar(&opts.APIAddr, "api-addr", "127.0.0.1:18080", "http api listen address")
+	cmd.Flags().StringVar(&opts.APIAddr, "api-addr", "127.0.0.1:43180", "http api listen address")
 	cmd.Flags().DurationVar(&opts.HeartbeatInterval, "heartbeat-interval", 30*time.Minute, "heartbeat interval (e.g. 30m, 5s)")
 	cmd.Flags().IntVar(&opts.MaxHeartbeats, "max-heartbeats", 0, "maximum heartbeat count in loop (0 means unlimited)")
 

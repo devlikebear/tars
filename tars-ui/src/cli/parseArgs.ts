@@ -20,7 +20,7 @@ function resolveConfigPath(argv: string[]): string {
 }
 
 export function parseArgs(argv: string[]): CliOptions {
-	let serverUrl = 'http://127.0.0.1:8080';
+	let serverUrl = 'http://127.0.0.1:43180';
 	let sessionId = '';
 	let verbose = false;
 	const configPath = resolveConfigPath(argv);
@@ -64,7 +64,7 @@ export function parseArgs(argv: string[]): CliOptions {
 	}
 
 	return {
-		serverUrl: serverUrl.trim() || 'http://127.0.0.1:8080',
+		serverUrl: serverUrl.trim() || 'http://127.0.0.1:43180',
 		sessionId: sessionId.trim(),
 		verbose,
 	};

@@ -7,14 +7,14 @@ import {parseArgs} from './parseArgs.js';
 
 test('parseArgs uses defaults', () => {
 	const parsed = parseArgs([]);
-	assert.equal(parsed.serverUrl, 'http://127.0.0.1:8080');
+	assert.equal(parsed.serverUrl, 'http://127.0.0.1:43180');
 	assert.equal(parsed.sessionId, '');
 	assert.equal(parsed.verbose, false);
 });
 
 test('parseArgs reads verbose/server/session flags', () => {
-	const parsed = parseArgs(['--verbose', '--server-url', 'http://localhost:18080', '--session', 'sess-1']);
-	assert.equal(parsed.serverUrl, 'http://localhost:18080');
+	const parsed = parseArgs(['--verbose', '--server-url', 'http://localhost:43180', '--session', 'sess-1']);
+	assert.equal(parsed.serverUrl, 'http://localhost:43180');
 	assert.equal(parsed.sessionId, 'sess-1');
 	assert.equal(parsed.verbose, true);
 });
