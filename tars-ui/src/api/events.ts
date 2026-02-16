@@ -48,14 +48,23 @@ function decodeSSEEvents(chunk: string): {events: NotificationEvent[]; remainder
 export async function watchNotifications(params: WatchNotificationsParams): Promise<void> {
 	const endpoint = `${trimURL(params.serverUrl)}/v1/events/stream`;
 	params.onDebug?.(`GET ${endpoint}`);
-	const resp = await fetch(endpoint, {
-		method: 'GET',
-		headers: {'Accept': 'text/event-stream'},
-		signal: params.signal,
-	});
+	const startTime = Date.now();
+	let resp: Response;
+	try {
+		resp = await fetch(endpoint, {
+			method: 'GET',
+			headers: {'Accept': 'text/event-stream'},
+			signal: params.signal,
+		});
+	} catch (error) {
+		throw new Error(`event stream ${endpoint} request failed: ${String(error)}`);
+	}
 	if (!resp.ok) {
 		const body = await resp.text();
-		throw new Error(`event stream status ${resp.status}: ${body.trim()}`);
+		if (resp.status === 503) {
+			throw new Error(`event broker not available at ${endpoint} (check tarsd configuration)`);
+		}
+		throw new Error(`event stream ${endpoint} status ${resp.status}: ${body.trim()}`);
 	}
 	if (!resp.body) {
 		throw new Error('event stream returned empty body');
@@ -63,15 +72,21 @@ export async function watchNotifications(params: WatchNotificationsParams): Prom
 	const reader = resp.body.getReader();
 	const decoder = new TextDecoder('utf-8');
 	let buffer = '';
+	let eventCount = 0;
 	while (true) {
 		const {value, done} = await reader.read();
 		if (done) {
+			const elapsed = Date.now() - startTime;
+			if (elapsed < 2000 && eventCount === 0) {
+				throw new Error(`event stream ${endpoint} closed immediately without sending data (check server_url and running tarsd)`);
+			}
 			return;
 		}
 		buffer += decoder.decode(value, {stream: true});
 		const decoded = decodeSSEEvents(buffer);
 		buffer = decoded.remainder;
 		for (const evt of decoded.events) {
+			eventCount++;
 			if ((evt.type ?? '').trim() === 'notification') {
 				params.onEvent(evt);
 			}

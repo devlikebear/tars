@@ -118,14 +118,19 @@ export async function streamChat(params: StreamChatParams): Promise<StreamChatRe
 	}
 
 	params.onDebug?.(`POST ${endpoint}`);
-	const resp = await fetch(endpoint, {
-		method: 'POST',
-		headers: {'Content-Type': 'application/json'},
-		body: JSON.stringify(payload),
-	});
+	let resp: Response;
+	try {
+		resp = await fetch(endpoint, {
+			method: 'POST',
+			headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify(payload),
+		});
+	} catch (error) {
+		throw new Error(`chat endpoint ${endpoint} request failed: ${String(error)}`);
+	}
 	if (!resp.ok) {
 		const body = await resp.text();
-		throw new Error(`chat endpoint status ${resp.status}: ${body.trim()}`);
+		throw new Error(`chat endpoint ${endpoint} status ${resp.status}: ${body.trim()}`);
 	}
 	if (!resp.body) {
 		throw new Error('chat endpoint returned empty body');

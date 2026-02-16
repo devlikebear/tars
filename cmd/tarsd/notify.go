@@ -16,6 +16,7 @@ import (
 )
 
 const notificationEventType = "notification"
+const keepaliveEventType = "keepalive"
 
 type notificationEvent struct {
 	Type      string `json:"type"`
@@ -216,12 +217,13 @@ func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Hand
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
 
 		_, ch, unsubscribe := broker.subscribe()
 		defer unsubscribe()
 
-		ping := time.NewTicker(20 * time.Second)
+		ping := time.NewTicker(10 * time.Second)
 		defer ping.Stop()
 
 		writeEvent := func(evt notificationEvent) error {
@@ -242,7 +244,7 @@ func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Hand
 			case <-r.Context().Done():
 				return
 			case <-ping.C:
-				if _, err := fmt.Fprintf(w, ": ping %d\n\n", time.Now().Unix()); err != nil {
+				if _, err := fmt.Fprintf(w, "data: {\"type\":\"%s\"}\n\n", keepaliveEventType); err != nil {
 					return
 				}
 				flusher.Flush()

@@ -200,9 +200,12 @@ function App(): React.JSX.Element {
 	useEffect(() => {
 		const controller = new AbortController();
 		let closed = false;
+		let consecutiveErrors = 0;
+		let lastErrorMessage = '';
 		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 		const run = async () => {
 			while (!closed) {
+				const startTime = Date.now();
 				try {
 					await watchNotifications({
 						serverUrl: initial.serverUrl,
@@ -210,16 +213,26 @@ function App(): React.JSX.Element {
 						onDebug: pushDebug,
 						signal: controller.signal,
 					});
+					consecutiveErrors = 0;
 					if (!closed) {
-						pushStatus('notification stream closed; reconnecting...');
+						const elapsed = Date.now() - startTime;
+						if (elapsed < 5000) {
+							pushStatus('notification stream closed unexpectedly; reconnecting...');
+						}
 					}
 				} catch (error) {
 					if (closed || controller.signal.aborted) {
 						return;
 					}
-					pushStatus(`notification stream error: ${String(error)}`);
+					const errorMsg = String(error);
+					if (errorMsg !== lastErrorMessage) {
+						pushStatus(`notification stream error: ${errorMsg}`);
+						lastErrorMessage = errorMsg;
+					}
+					consecutiveErrors++;
 				}
-				await sleep(1500);
+				const backoffDelay = Math.min(1500 * Math.pow(1.5, Math.min(consecutiveErrors, 5)), 30000);
+				await sleep(backoffDelay);
 			}
 		};
 		void run();

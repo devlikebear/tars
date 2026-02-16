@@ -85,3 +85,26 @@ test('streamChat formats status line with message/phase and tool name', async ()
 	assert.equal(result.sessionId, 'sess-3');
 	assert.equal(result.assistantText, '');
 });
+
+test('streamChat reports endpoint when fetch fails', async () => {
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = (async () => {
+		throw new TypeError('fetch failed');
+	}) as typeof fetch;
+
+	try {
+		await assert.rejects(
+			() =>
+				streamChat({
+					serverUrl: 'http://127.0.0.1:43180',
+					sessionId: '',
+					message: 'hi',
+					onStatus: () => {},
+					onDelta: () => {},
+				}),
+			/chat endpoint http:\/\/127\.0\.0\.1:43180\/v1\/chat request failed: TypeError: fetch failed/,
+		);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});

@@ -35,3 +35,23 @@ test('watchNotifications forwards notification events', async () => {
 	assert.equal(seen.length, 1);
 	assert.equal(seen[0]?.title, 'Cron done');
 });
+
+test('watchNotifications reports endpoint when fetch fails', async () => {
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = (async () => {
+		throw new TypeError('fetch failed');
+	}) as typeof fetch;
+
+	try {
+		await assert.rejects(
+			() =>
+				watchNotifications({
+					serverUrl: 'http://127.0.0.1:43180',
+					onEvent: () => {},
+				}),
+			/event stream http:\/\/127\.0\.0\.1:43180\/v1\/events\/stream request failed: TypeError: fetch failed/,
+		);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
