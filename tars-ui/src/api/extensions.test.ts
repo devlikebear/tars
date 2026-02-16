@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {listMCPServers, listMCPTools, listPlugins, listSkills} from './extensions.js';
+import {listMCPServers, listMCPTools, listPlugins, listSkills, reloadExtensions} from './extensions.js';
 
 function installFetchMock(
 	impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
@@ -27,6 +27,9 @@ test('extensions api decodes list responses', async () => {
 		if (url.endsWith('/v1/mcp/tools')) {
 			return new Response(JSON.stringify([{server: 'fs', name: 'read_file'}]), {status: 200});
 		}
+		if (url.endsWith('/v1/runtime/extensions/reload')) {
+			return new Response(JSON.stringify({reloaded: true, version: 7, skills: 2, plugins: 1, mcp_count: 3}), {status: 200});
+		}
 		return new Response('not found', {status: 404});
 	});
 
@@ -35,11 +38,14 @@ test('extensions api decodes list responses', async () => {
 		const plugins = await listPlugins('http://127.0.0.1:8080/');
 		const servers = await listMCPServers('http://127.0.0.1:8080/');
 		const tools = await listMCPTools('http://127.0.0.1:8080/');
+		const reload = await reloadExtensions('http://127.0.0.1:8080/');
 
 		assert.equal(skills[0]?.name, 'deploy');
 		assert.equal(plugins[0]?.id, 'ops');
 		assert.equal(servers[0]?.name, 'fs');
 		assert.equal(tools[0]?.name, 'read_file');
+		assert.equal(reload.reloaded, true);
+		assert.equal(reload.version, 7);
 	} finally {
 		restore();
 	}

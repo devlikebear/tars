@@ -15,6 +15,7 @@ export type Command =
 	| {kind: 'skills'}
 	| {kind: 'plugins'}
 	| {kind: 'mcp'}
+	| {kind: 'reload'}
 	| {kind: 'cron_list'}
 	| {kind: 'cron_add'; schedule: string; prompt: string}
 	| {kind: 'cron_get'; jobID: string}
@@ -70,6 +71,8 @@ function parseSimpleSlashCommand(head: string): Command | null {
 		return {kind: 'plugins'};
 	case '/mcp':
 		return {kind: 'mcp'};
+	case '/reload':
+		return {kind: 'reload'};
 	case '/exit':
 	case '/quit':
 		return {kind: 'quit'};

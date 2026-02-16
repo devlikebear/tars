@@ -28,6 +28,7 @@ function createDefaultAPIs(): CommandAPIs {
 		listPlugins: unexpected,
 		listMCPServers: unexpected,
 		listMCPTools: unexpected,
+		reloadExtensions: unexpected,
 	};
 }
 
@@ -250,6 +251,16 @@ test('executeInputCommand handles /skills /plugins /mcp', async () => {
 	assert.equal(mcpState.tables.length, 2);
 	assert.deepEqual(mcpState.tables[0]?.headers, ['NAME', 'CONNECTED', 'TOOLS', 'COMMAND', 'ERROR']);
 	assert.deepEqual(mcpState.tables[1]?.headers, ['SERVER', 'NAME', 'DESCRIPTION']);
+});
+
+test('executeInputCommand handles /reload', async () => {
+	const apis: CommandAPIs = {
+		...createDefaultAPIs(),
+		reloadExtensions: async () => ({reloaded: true, version: 9, skills: 3, plugins: 2, mcp_count: 4}),
+	};
+	const state = createContext('/reload');
+	await executeInputCommand(state.ctx, apis);
+	assert.deepEqual(state.messages, ['extensions reloaded: version=9 skills=3 plugins=2 mcp=4']);
 });
 
 test('executeInputCommand handles /cron add and /cron run /cron delete', async () => {

@@ -1,6 +1,6 @@
 import {createSession, exportSession, getHistory, getSession, listSessions, searchSessions} from '../api/session.js';
 import {createCronJob, deleteCronJob, getCronJob, listCronJobs, listCronRuns, runCronJob, updateCronJob} from '../api/cron.js';
-import {listMCPServers, listMCPTools, listPlugins, listSkills} from '../api/extensions.js';
+import {listMCPServers, listMCPTools, listPlugins, listSkills, reloadExtensions} from '../api/extensions.js';
 import {getStatus, runCompact, runHeartbeatOnce} from '../api/system.js';
 import {parseInputCommand} from '../commands/router.js';
 import {CronJob, CronRunRecord, MCPServerStatus, MCPToolInfo, NotificationItem, NotificationFilter, PluginDefinition, SessionHistoryItem, SessionSummary, SkillDefinition} from '../types.js';
@@ -27,6 +27,7 @@ export type CommandAPIs = {
 	listPlugins: (serverUrl: string) => Promise<PluginDefinition[]>;
 	listMCPServers: (serverUrl: string) => Promise<MCPServerStatus[]>;
 	listMCPTools: (serverUrl: string) => Promise<MCPToolInfo[]>;
+	reloadExtensions: (serverUrl: string) => Promise<{reloaded: boolean; version?: number; skills?: number; plugins?: number; mcp_count?: number}>;
 };
 
 const defaultAPIs: CommandAPIs = {
@@ -50,6 +51,7 @@ const defaultAPIs: CommandAPIs = {
 	listPlugins,
 	listMCPServers,
 	listMCPTools,
+	reloadExtensions,
 };
 
 export type CommandExecutorContext = {
@@ -339,6 +341,17 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 		} else {
 			ctx.pushSystemTable(['SERVER', 'NAME', 'DESCRIPTION'], renderMCPToolRows(tools));
 		}
+		return;
+	}
+	case 'reload': {
+		const result = await apis.reloadExtensions(ctx.serverUrl);
+		if (!result.reloaded) {
+			ctx.pushErrorMessage('extensions reload failed');
+			return;
+		}
+		ctx.pushSystemMessage(
+			`extensions reloaded: version=${result.version ?? '-'} skills=${result.skills ?? 0} plugins=${result.plugins ?? 0} mcp=${result.mcp_count ?? 0}`,
+		);
 		return;
 	}
 	case 'cron_list': {

@@ -33,6 +33,7 @@ test('router parses slash command options', () => {
 	assert.deepEqual(parseInputCommand('/skills'), {kind: 'skills'});
 	assert.deepEqual(parseInputCommand('/plugins'), {kind: 'plugins'});
 	assert.deepEqual(parseInputCommand('/mcp'), {kind: 'mcp'});
+	assert.deepEqual(parseInputCommand('/reload'), {kind: 'reload'});
 	assert.deepEqual(parseInputCommand('/deploy now'), {kind: 'skill_invoke', skillName: 'deploy', message: '/deploy now'});
 	assert.deepEqual(parseInputCommand('／help'), {kind: 'help'});
 	assert.deepEqual(parseInputCommand('\\sessions'), {kind: 'sessions'});
