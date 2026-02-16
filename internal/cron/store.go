@@ -47,16 +47,17 @@ type RunRecord struct {
 }
 
 type CreateInput struct {
-	Name           string
-	Prompt         string
-	Schedule       string
-	Enabled        bool
-	HasEnable      bool
-	SessionTarget  string
-	WakeMode       string
-	DeliveryMode   string
-	Payload        json.RawMessage
-	DeleteAfterRun bool
+	Name              string
+	Prompt            string
+	Schedule          string
+	Enabled           bool
+	HasEnable         bool
+	SessionTarget     string
+	WakeMode          string
+	DeliveryMode      string
+	Payload           json.RawMessage
+	DeleteAfterRun    bool
+	HasDeleteAfterRun bool
 }
 
 type UpdateInput struct {
@@ -171,7 +172,7 @@ func (s *Store) CreateWithOptions(input CreateInput) (Job, error) {
 		WakeMode:       wakeMode,
 		DeliveryMode:   deliveryMode,
 		Payload:        payload,
-		DeleteAfterRun: input.DeleteAfterRun,
+		DeleteAfterRun: resolveDefaultDeleteAfterRun(schedule, input.DeleteAfterRun, input.HasDeleteAfterRun),
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -605,6 +606,45 @@ func normalizeSchedule(raw string) (string, error) {
 		return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
 	}
 	return s, nil
+}
+
+func resolveDefaultDeleteAfterRun(schedule string, requested bool, explicitlySet bool) bool {
+	if explicitlySet || requested {
+		return requested
+	}
+	if _, isAt, err := parseAtTime(schedule); isAt && err == nil {
+		return true
+	}
+	return looksOneShotCronSchedule(schedule)
+}
+
+func looksOneShotCronSchedule(schedule string) bool {
+	parts := strings.Fields(strings.TrimSpace(schedule))
+	if len(parts) != 5 {
+		return false
+	}
+	// Heuristic: concrete minute/hour/day/month + wildcard weekday is usually
+	// intended as a one-time calendar trigger in this app's UX.
+	if !isSimpleCronNumber(parts[0]) || !isSimpleCronNumber(parts[1]) {
+		return false
+	}
+	if !isSimpleCronNumber(parts[2]) || !isSimpleCronNumber(parts[3]) {
+		return false
+	}
+	return parts[4] == "*" || parts[4] == "?"
+}
+
+func isSimpleCronNumber(v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return false
+	}
+	for _, ch := range v {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func parseAtTime(schedule string) (time.Time, bool, error) {

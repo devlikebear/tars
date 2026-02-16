@@ -219,6 +219,68 @@ func TestStore_CreateWithSessionWakeDeliveryPayload(t *testing.T) {
 	if job.Schedule != "at:2026-02-17T09:00:00Z" {
 		t.Fatalf("expected at schedule normalization, got %q", job.Schedule)
 	}
+	if !job.DeleteAfterRun {
+		t.Fatalf("expected at schedule to default delete_after_run=true")
+	}
+}
+
+func TestStore_Create_DefaultDeleteAfterRunForOneShotCron(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	job, err := store.CreateWithOptions(CreateInput{
+		Name:      "once",
+		Prompt:    "run once",
+		Schedule:  "25 22 15 2 *",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create one-shot cron style job: %v", err)
+	}
+	if !job.DeleteAfterRun {
+		t.Fatalf("expected one-shot cron style to default delete_after_run=true")
+	}
+}
+
+func TestStore_Create_ExplicitDeleteAfterRunFalseOverridesDefault(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	job, err := store.CreateWithOptions(CreateInput{
+		Name:              "yearly",
+		Prompt:            "annual run",
+		Schedule:          "25 22 15 2 *",
+		Enabled:           true,
+		HasEnable:         true,
+		DeleteAfterRun:    false,
+		HasDeleteAfterRun: true,
+	})
+	if err != nil {
+		t.Fatalf("create explicit false delete_after_run job: %v", err)
+	}
+	if job.DeleteAfterRun {
+		t.Fatalf("expected explicit delete_after_run=false to override default")
+	}
+}
+
+func TestStore_Create_EveryScheduleKeepsDeleteAfterRunFalseByDefault(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	job, err := store.CreateWithOptions(CreateInput{
+		Name:      "loop",
+		Prompt:    "repeat",
+		Schedule:  "every:1h",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create repeating job: %v", err)
+	}
+	if job.DeleteAfterRun {
+		t.Fatalf("expected repeating schedule to keep delete_after_run=false by default")
+	}
 }
 
 func TestStore_RunHistoryPrunesPerJobLimit(t *testing.T) {

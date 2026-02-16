@@ -87,7 +87,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				WakeMode       string          `json:"wake_mode,omitempty"`
 				DeliveryMode   string          `json:"delivery_mode,omitempty"`
 				Payload        json.RawMessage `json:"payload,omitempty"`
-				DeleteAfterRun bool            `json:"delete_after_run,omitempty"`
+				DeleteAfterRun *bool           `json:"delete_after_run,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return automationErrorResult(fmt.Sprintf("invalid arguments: %v", err)), nil
@@ -98,16 +98,17 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				enabled = *input.Enabled
 			}
 			job, err := store.CreateWithOptions(cron.CreateInput{
-				Name:           input.Name,
-				Prompt:         input.Prompt,
-				Schedule:       input.Schedule,
-				Enabled:        enabled,
-				HasEnable:      hasEnable,
-				SessionTarget:  input.SessionTarget,
-				WakeMode:       input.WakeMode,
-				DeliveryMode:   input.DeliveryMode,
-				Payload:        input.Payload,
-				DeleteAfterRun: input.DeleteAfterRun,
+				Name:              input.Name,
+				Prompt:            input.Prompt,
+				Schedule:          input.Schedule,
+				Enabled:           enabled,
+				HasEnable:         hasEnable,
+				SessionTarget:     input.SessionTarget,
+				WakeMode:          input.WakeMode,
+				DeliveryMode:      input.DeliveryMode,
+				Payload:           input.Payload,
+				DeleteAfterRun:    input.DeleteAfterRun != nil && *input.DeleteAfterRun,
+				HasDeleteAfterRun: input.DeleteAfterRun != nil,
 			})
 			if err != nil {
 				return automationErrorResult(fmt.Sprintf("create cron job failed: %v", err)), nil
