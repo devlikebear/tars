@@ -103,80 +103,68 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 
 ## 코드 구조 변경 기록
 
-- 2026-02-13: 런타임 설정 로더를 추가했다. `internal/config`는 기본값/파일/환경변수 우선순위를 처리하고, YAML 값에서 `${ENV_VAR}` 구문을 자동 확장한다. 샘플 설정 파일 `config/standalone.yaml`을 추가했다.
-- 2026-02-13: 실행 바이너리 이름을 역할별로 분리했다. 메인 데몬은 `cmd/tarsd`, 감시 데몬은 `cmd/cased`, CLI 클라이언트는 `cmd/tars`를 사용한다.
-- 2026-02-13: 개발 자동화를 위해 루트 `Makefile`을 추가하고 `.github/workflows/ci.yml`에서 `make test`를 실행하는 최소 CI를 도입했다.
-- 2026-02-13: `cmd/tarsd`에 `zerolog` 기반 구조화 로그를 도입했다. 시작 성공은 info 로그로 기록하고, 설정 초기화 실패는 error 로그로 기록한다.
-- 2026-02-13: `internal/memory`를 추가해 워크스페이스(`HEARTBEAT.md`, `MEMORY.md`, `_shared/`, `memory/`)를 초기화하고 `memory/YYYY-MM-DD.md`에 Daily Log를 append하도록 `tarsd` 시작 플로우를 확장했다.
-- 2026-02-13: `internal/heartbeat`를 추가하고 `tarsd --run-once` 플래그를 도입했다. run-once 실행 시 `HEARTBEAT.md`를 읽어 `memory/YYYY-MM-DD.md`에 heartbeat 이벤트를 append한다.
-- 2026-02-13: `cmd/tarsd`의 CLI 파서를 `cobra`로 구현했다. `--config`, `--mode`, `--workspace-dir`, `--run-once`, `--run-loop` 플래그를 지원하고 `--help` 정상 종료를 지원한다. `--run-once`와 `--run-loop`는 상호 배타적이다.
-- 2026-02-13: 주기 실행용 heartbeat 루프를 추가했다. `tarsd`에 `--run-loop`, `--heartbeat-interval`, `--max-heartbeats` 플래그를 도입했고, `internal/heartbeat.RunLoop`가 지정 주기로 `HEARTBEAT.md` 기반 로그를 append한다.
-- 2026-02-13: 워크스페이스 부트스트랩을 고도화했다. `EnsureWorkspace`가 `HEARTBEAT.md`/`MEMORY.md` 기본 템플릿을 생성하고, 기존 사용자 파일이 있으면 내용을 덮어쓰지 않는다.
-- 2026-02-13: heartbeat에 Bifrost LLM 최소 연동을 추가했다. `tarsd`는 시작 시 `.env`를 로드하고, `BIFROST_BASE_URL`/`BIFROST_API_KEY`/`BIFROST_MODEL` 설정으로 run-once/run-loop에서 LLM 응답을 받아 daily log에 기록한다.
-- 2026-02-13: LLM Provider 모듈을 추가해 `bifrost`, `openai`, `anthropic`을 공통 인터페이스로 지원한다. `bifrost`와 `openai`는 OpenAI-compatible API를 사용하는 단일 `OpenAICompatibleClient`로 통합했다. 인증 레이어를 분리해 `api-key`와 `oauth` 모드를 지원하고, OAuth 어댑터로 `codex-cli`, `claude-code`, `google-antigravity` 토큰 소스를 환경변수/로컬 파일에서 해석하도록 확장했다.
-- 2026-02-13: `cmd/tars`를 `cobra` 기반 CLI 클라이언트로 전환했다. `tars heartbeat run-once --server-url ...` 명령으로 `tarsd` API를 호출해 결과를 출력한다.
-- 2026-02-13: 역할 분리를 위해 heartbeat 실행 책임을 `tarsd`에 유지하고, `cmd/tars`에서는 실행 로직을 제거해 클라이언트 성격(도움말/명령 진입)으로 단순화했다.
-- 2026-02-13: `tarsd`에 HTTP API(`POST /v1/heartbeat/run-once`)를 추가해 서버 측 heartbeat+LLM 실행 결과를 제공하도록 확장했다. `tars`는 `heartbeat run-once` 클라이언트 명령으로 해당 API를 호출해 결과를 출력한다.
-- 2026-02-13: 브라우저 OAuth start/callback API와 `tars auth login` 명령을 제거했다. OAuth는 각 공식 CLI(`codex login` 등)로 선인증하고, 서버는 로컬 토큰 파일(예: `~/.codex/auth.json`)을 읽어 재사용한다.
-- 2026-02-13: `internal/llm`에 `codex-cli` subprocess provider를 추가했다. `codex exec`를 직접 호출해 응답을 받으며, 기존 `openai` provider(`api.openai.com` API key 기반)는 변경 없이 유지한다.
-- 2026-02-13: Go 모듈명을 `github.com/devlikebear/tarsncase`로 통일했다. 미사용 `internal/db` SQLite 패키지를 제거하고, 가짜 SSE 스트리밍 엔드포인트를 삭제했다. `exitError`/`isFlagError`를 `internal/cli`로 추출해 중복을 제거했다. `tarsd --serve-api`에 graceful shutdown을 추가했다. Anthropic `max_tokens`를 설정 가능하게 변경하고 기본값을 4096으로 올렸다.
-- 2026-02-13: `PLAN.md`를 v3로 재작성했다. Phase 0 완료 현황을 정리하고, Phase 1~6 상세 개발 계획(LLM 채팅, 빌트인 도구+Agent Loop, 허트비트+크론잡, 스킬, 플러그인+MCP, cased 감시 데몬)과 OpenClaw 참고 지도를 추가했다.
-- 2026-02-14: `EnsureWorkspace()`를 확장해 5개 부트스트랩 파일(AGENTS.md, SOUL.md, USER.md, IDENTITY.md, TOOLS.md)을 기본 템플릿으로 생성하도록 추가했다. 기존 파일이 있으면 덮어쓰지 않는다.
-- 2026-02-14: `internal/prompt` 패키지를 추가했다. `Build(BuildOptions)` 함수가 워크스페이스 부트스트랩 파일 7종(IDENTITY, SOUL, USER, AGENTS, TOOLS, HEARTBEAT, MEMORY)을 읽어 시스템 프롬프트를 조립한다. 파일당 20000자 제한, sub-agent 모드에서는 AGENTS.md + TOOLS.md만 주입한다.
-- 2026-02-14: `internal/llm`에 Chat API를 추가했다. `ChatMessage`, `ChatOptions`, `ChatResponse`, `Usage` 타입 정의, `Client.Chat()` 인터페이스 확장, `OpenAICompatibleClient`(bifrost/openai), `AnthropicClient`, `CodexCLIClient` 모두 구현. SSE 스트리밍 지원(`OnDelta` 콜백), 기존 `Ask()`는 `Chat()` 래퍼로 변경.
-- 2026-02-14: `tarsd`에 `GET /v1/status`(workspace_dir/session_count), `POST /v1/compact`(placeholder) API를 추가했다.
-- 2026-02-14: `tarsd`에 세션 관리 REST API 7종을 추가했다. `GET/POST/DELETE /v1/sessions`, `GET /v1/sessions/{id}`, `GET /v1/sessions/{id}/history`, `POST /v1/sessions/{id}/export`(마크다운), `GET /v1/sessions/search?q=keyword`(대소문자 무시 title 검색).
-- 2026-02-14: `tarsd`에 `POST /v1/chat` SSE 스트리밍 채팅 API를 추가했다. 세션 자동 생성, 시스템 프롬프트 주입(`prompt.Build`), 토큰 기반 히스토리 로딩(`session.LoadHistory`), LLM Chat 호출(SSE `OnDelta`), transcript 저장을 통합했다. `llm.Client`를 직접 들고 다니도록 변경하고, heartbeat/chat 핸들러를 하나의 mux에 통합했다.
-- 2026-02-14: `internal/session` 패키지를 추가했다. `Message` 타입(role/content/timestamp), JSONL transcript(append/read), `Session` 구조체, `Store`(sessions.json 기반 CRUD), 토큰 기반 동적 히스토리 로딩(`LoadHistory`)을 구현했다. 세션 저장 구조: `sessions/sessions.json`(인덱스) + `sessions/{id}.jsonl`(transcript).
-- 2026-02-14: `cmd/tars`에 `chat` 명령을 추가했다. `tars chat -m "..." [--session ...] [--server-url ...]`로 `POST /v1/chat`을 호출하고 SSE `delta` 이벤트를 스트리밍 출력하며 `done` 이벤트에서 종료한다.
-- 2026-02-14: `tarsd`와 `tars`에 `--verbose` 디버그 모드를 추가했다. `tars↔tarsd` HTTP 통신(요청/응답, 상태코드, 지연시간, SSE 이벤트)과 `tarsd↔LLM` 호출(provider/model/url, 메시지 수, 스트리밍 델타, usage/stop_reason)을 상세 로그로 출력한다.
-- 2026-02-14: `tarsd` chat SSE 핸들러에 non-streaming LLM fallback을 추가했다. provider가 `OnDelta`를 호출하지 않아도 최종 assistant 응답을 `delta` 이벤트로 1회 전송해 `tars chat`에서 본문이 비지 않도록 수정했다.
-- 2026-02-14: `tars chat`에 REPL 모드를 추가했다. `-m` 없이 실행하면 입력 루프를 시작하고 `/exit`/`/quit`로 종료한다. 첫 응답의 `session_id`를 저장해 다음 턴 요청에 재사용한다.
-- 2026-02-14: `internal/agent` 패키지에 Hook 기반 Agent Loop를 추가했다. `loop_start/before_llm/after_llm/before_tool_call/after_tool_call/loop_end/error` 이벤트를 발행하며, `tool_calls`가 있으면 도구 실행 결과를 `tool` 메시지로 붙여 LLM을 재호출한다. `tarsd /v1/chat`은 이 Loop를 통해 실행되며, 간단한 빌트인 도구 `session_status`(`internal/tool`)를 등록해 통합 경로를 검증한다.
-- 2026-02-14: `tars chat` REPL에 슬래시 명령을 추가했다. `/sessions`, `/new [title]`, `/resume {id}`, `/history`, `/status`, `/compact`, `/help`를 지원한다.
-- 2026-02-14: Agent Loop 훅 핸들러를 확장했다. `internal/agent`에 `CounterHook`, `AuditHook`를 추가하고 `tarsd /v1/chat` 실행 시 이벤트 카운트와 audit trail 길이를 요약 로그로 출력한다.
-- 2026-02-14: `tarsd /v1/chat` SSE에 `status` 이벤트 스트림을 추가했다(`stream_open`, `before_llm`, `after_llm`, `before_tool_call`, `after_tool_call`, `loop_end`, `error`, `llm_stream`). `tars`는 이를 실시간으로 받아 `[status] ...` 형태로 stderr에 출력해 추론 진행 상태를 모니터링할 수 있게 했다.
-- 2026-02-14: REPL 입력 정규화를 추가했다. 한글 키보드 환경에서 나오는 `₩`/`￦`/`＼`/`\\`/`／` 시작 입력을 `/` 명령 접두사로 변환해 `/resume` 같은 슬래시 명령이 정상 동작하도록 개선했다.
-- 2026-02-14: REPL 입력 안정성을 위해 `tars chat`의 status 스트림 기본 정책을 분리했다. 단건 모드(`-m`)는 status 스트림 기본 활성화, REPL 모드는 기본 비활성화이며 `--status-stream` 플래그로 명시적으로 켤 수 있다.
-- 2026-02-14: `tars chat` REPL 입력을 Bubble Tea v2(`charm.land/bubbletea/v2`, `charm.land/bubbles/v2`) 기반으로 전환했다. 입력 모델에 `textinput.SetVirtualCursor(false)`를 적용해 한글 IME 조합 입력 시 커서/조합 표시 충돌을 줄였다.
-- 2026-02-14: `tars chat` REPL 슬래시 명령을 확장했다. `/export`(현재 세션 마크다운 내보내기), `/search {keyword}`(세션 검색) 명령을 추가해 세션 API 라우팅을 완성했다.
-- 2026-02-14: 컨텍스트 압축 기본 플로우를 구현했다. `internal/session`에 `CompactTranscript`/`RewriteMessages`를 추가해 오래된 메시지를 요약 `system` 메시지(`[COMPACTION SUMMARY]`)로 치환하고 최신 N개 메시지만 유지한다. `POST /v1/compact`는 `session_id`를 받아 실제 압축을 수행하며, `tars`의 `/compact`는 활성 세션 기준으로 해당 API를 호출한다.
-- 2026-02-14: 컨텍스트 압축을 고도화했다. `CompactTranscriptWithOptions` 훅을 추가해 transcript rewrite 직전에 pre-compaction memory flush를 수행하도록 확장했다. `tarsd`는 compaction 시 `MEMORY.md`와 daily log에 flush 기록을 남기며, `POST /v1/chat` 진입 시 transcript 토큰 추정치가 임계값을 넘으면 자동 compaction을 선행한다.
-- 2026-02-14: 채팅 메모리 반영을 자동화했다. `tarsd /v1/chat` 완료 시 모든 턴을 `memory/YYYY-MM-DD.md`에 요약 로그로 기록하고, 사용자 발화가 `remember`/`기억해`/`메모해` 의도이면 `MEMORY.md`에 장기 메모 노트를 승격 저장한다.
-- 2026-02-14: compaction 요약 생성을 LLM 기반으로 전환했다. `session.CompactOptions`에 `SummaryBuilder`를 추가했고, `tarsd`는 요약 시 LLM 호출을 우선 사용하며 실패 시 규칙 기반 요약으로 폴백한다.
-- 2026-02-14: compaction 유지 경계를 메시지 개수에서 토큰 keep-budget 기반으로 확장했다. `keep_recent_tokens`를 `POST /v1/compact`에 지원하고, 자동 compaction은 토큰 예산 기반 tail 유지 로직을 사용한다.
-- 2026-02-14: 토큰 예산 기반 compaction 안정화를 적용했다. `keep_recent_tokens` 하한 보정을 완화하고, compaction 시 최근 tail은 최소 2개 메시지를 유지하도록 보정해 과도한 축약을 방지했다.
-- 2026-02-14: `tars` 출력 UX를 보강했다. `--log-file`(또는 `TARS_LOG_FILE`)로 디버그 로그를 파일로 분리하고, `chat --pretty`로 사용자/어시스턴트 라벨 기반 렌더링을 추가했다.
-- 2026-02-14: `tars-ui` 디렉터리를 추가했다. React/TypeScript + Ink 기반 신규 TUI 클라이언트 초기 골격(`tars-ui/src/index.tsx`)을 만들고, `/v1/chat` SSE를 직접 수신해 Chat/Status/Debug 패널을 분리해 표시하도록 시작했다.
-- 2026-02-14: 역할 분리를 명시했다. `tarsd`는 서버 오케스트레이션 유지, `tars-ui`는 주력 인터랙티브 UX, `tars`는 경량 운영/자동화 CLI로 운용한다.
-- 2026-02-14: `tars-ui` 기능을 확장해 기존 `tars` 기능(채팅/세션/슬래시/상태/컴팩트/heartbeat run-once)을 이전했다. `parseArgs`, API 모듈(`chat/session/system`), 명령 라우터, 상태 reducer로 구조를 분리했다.
-- 2026-02-14: `cmd/tars`를 제거하고 클라이언트를 `tars-ui`로 단일화했다. 자동화 경로는 `Make + curl`(`api-*`, `api-heartbeat`)로 정리했다.
-- 2026-02-15: `cmd/tarsd`의 `newChatAPIHandler`를 Extract Function으로 리팩터링했다. 세션 해석/컨텍스트 준비/히스토리 로딩/LLM 메시지 구성/SSE 작성기/에이전트 루프 설정을 private helper로 분리해 핸들러 복잡도를 낮췄다.
-- 2026-02-15: `cmd/tarsd/main.go`를 역할별로 3개 파일로 분리했다. CLI 진입점은 `main.go`(238줄)에 유지하고, HTTP 핸들러는 `handlers.go`(561줄), 유틸리티 함수는 `helpers.go`(228줄)로 이동해 파일 크기를 76% 감소시켰다.
-- 2026-02-15: `tarsd` 로그 출력 포맷을 개선했다. 화면(stderr)은 `zerolog.ConsoleWriter`로 색상 포맷(HH:MM:SS + 레벨별 색상) 출력하고, `--log-file` 플래그로 JSONL 파일 로깅을 선택적으로 지원한다. MultiLevelWriter로 console과 file에 동시 출력한다.
-- 2026-02-15: `internal/llm/bifrost.go`의 거대한 `Chat()` 메서드(207줄)를 Extract Function 패턴으로 리팩토링했다. `buildChatRequest`, `createChatHTTPRequest`, `chatStreaming`, `chatNonStreaming` 4개 private 메서드로 분해하여 라우터 역할(51줄)만 수행하도록 개선했다.
-- 2026-02-15: `internal/llm/http_utils.go`를 신규 생성하고 HTTP/SSE 공통 유틸리티를 추출했다. `checkHTTPStatus`, `newHTTPClient`, `createSSEScanner` 함수와 timeout 상수를 통일하여 bifrost.go와 anthropic.go의 중복 코드를 제거했다.
-- 2026-02-15: `internal/llm`에 구조화 에러 타입 `ProviderError`를 추가했다. provider/operation/status/message/cause 필드를 표준화하고 `Error()`/`Unwrap()`/헬퍼 생성자(`newProviderError`, `newHTTPError`)를 도입했으며, HTTP 상태 에러 생성 경로(`checkHTTPStatus`)를 해당 타입으로 연결했다.
-- 2026-02-15: `internal/llm` 클라이언트 생성 경로를 `ClientConfig` 파라미터 객체 패턴으로 통일했다. `DefaultClientConfig()`(HTTP timeout 기본값 + provider 기본 max tokens)와 provider별 내부 helper(`new*WithConfig`)를 도입해 공개 생성자 시그니처는 유지한 채 설정 주입 경로를 분리했다.
-- 2026-02-15: `tars-ui/src/commands/router.ts`를 Extract Function 패턴으로 리팩토링했다. 슬래시 명령 파싱을 `parseSimpleSlashCommand`/`parseSlashCommand`로 분리하고, 대체 명령 접두사(`\\`, `＼`, `₩`, `￦`, `／`) 집합을 상수화해 분기 복잡도를 낮췄다. 동작 고정을 위해 `router.test.ts`에 유니코드 접두사/빈 입력 케이스를 추가했다.
-- 2026-02-15: `tars-ui/src/api/chat.ts`의 `streamChat` 이벤트 루프를 Extract Function 패턴으로 리팩토링했다. `applyStreamEvent`와 `StreamState`를 도입해 status/delta/error/done 분기 처리를 분리했고, `statusLineFromEvent`에서 `tool_name` 정규화를 지역 변수로 추출해 가독성을 개선했다. 동작 고정을 위해 `chat.test.ts`에 status 라인 조합(`message|phase + tool_name`) 테스트를 추가했다.
-- 2026-02-15: `tars-ui/src/index.tsx` 파일 크기 축소를 위해 화면/포맷 책임을 분리했다. 문자열/테이블 유틸리티를 `ui/format.ts`로 이동(`appendBounded`, `renderTable`, `truncate`, 세션 검증/도움말 문구), 렌더링 블록을 `ui/panels.tsx`의 `HeaderBar`, `ChatPanel`, `StatusPanel`, `ResumePanel`, `ChatInput` 컴포넌트로 추출했다. 동작 고정을 위해 `ui/format.test.ts`를 추가했다.
-- 2026-02-15: `tars-ui` 채팅 오케스트레이션을 단계적으로 분리했다. `index.tsx`의 명령 실행 switch를 `chat/commandExecutor.ts`로 이동했고, submit 분기(`chat/submit.ts`), 스트리밍 전송/오류 처리(`chat/sendChat.ts`), 키 입력/스크롤/뷰 계산(`chat/view.ts`)을 각각 Extract Function/Move Function으로 분리했다. 회귀 방지를 위해 `commandExecutor.test.ts`, `submit.test.ts`, `sendChat.test.ts`, `view.test.ts`를 추가했으며 `index.tsx`는 464줄에서 191줄로 축소됐다.
-- 2026-02-15: Phase 2 도구 계층을 확장했다. `internal/tool`에 `read_file`, `list_dir`, `exec` 도구를 추가하고(`workspace_path` 경로 가드 포함), 워크스페이스 탈출 경로/위험 명령(`rm`, `sudo`, `shutdown` 등) 차단 정책을 적용했다. `tarsd /v1/chat` 도구 레지스트리에 해당 도구들을 등록해 Agent Loop에서 호출 가능하도록 연결했으며, `internal/tool/*_test.go`와 `cmd/tarsd/main_test.go`의 `read_file` tool-call 통합 테스트를 추가했다.
-- 2026-02-15: `tars-ui` 도구 패널 가시성을 보강했다. `agent.Event`에 `ToolArgs`/`ToolResult`를 추가하고 `tarsd` status SSE에 `tool_call_id`, `tool_args_preview`, `tool_result_preview` 필드를 확장했다. 클라이언트는 `ChatSSEEvent` 필드를 확장하고 `toolLinesFromStatusEvent`로 start/done + args/result 라인을 렌더링하도록 변경했다.
-- 2026-02-15: `internal/llm` provider 불균형을 해소했다. `AnthropicClient`에 tool schema/tool choice 전달, assistant `tool_use` 및 tool result 히스토리 wire 변환, non-stream/stream `tool_use` 파싱을 추가해 OpenAI-compatible 경로와 동일하게 `ChatResponse.Message.ToolCalls`를 반환하도록 확장했다. 중복 제거를 위해 tool 인자 정규화 유틸(`sanitizeToolArgumentsJSON`, `parseToolArgumentsObject`, `normalizeJSONRaw`)을 `tool_json.go`로 상향 분리했다.
-- 2026-02-15: LLM provider 전략을 재정렬했다. `codex-cli` subprocess provider를 제거하고 `openai-codex`를 실험(guarded) provider로 추가했으며, `LLM_ALLOW_EXPERIMENTAL` 설정이 없으면 초기화 단계에서 차단한다. `openai-codex` 실패 시 공식 `openai` API(`OPENAI_API_KEY`)로 자동 fallback하는 공통 `fallbackClient`를 도입했고, 설정 계층(`internal/config`)에 `llm_allow_experimental`/`LLM_ALLOW_EXPERIMENTAL`를 추가했다.
-- 2026-02-15: `openai-codex`를 OpenAI-compatible `/chat/completions` 경로에서 분리했다. `internal/llm/openai_codex.go` 전용 클라이언트를 추가해 `openAICodexResponsesURL` 기준(`/v1/responses`)으로 요청하도록 변경했고, Responses API output(`message`, `function_call`) 파싱 및 SSE 이벤트(`response.output_text.delta`, `response.output_item.*`, `response.completed`)를 통해 텍스트 스트림과 `ToolCalls`를 복원하도록 구현했다.
-- 2026-02-15: `openai-codex` provider를 운영 경로에서 제거했다. `internal/llm` provider 팩토리에서 `openai-codex`를 미지원으로 고정하고, 설정(`llm_allow_experimental`) 및 OAuth 토큰 해석(`openai-codex`) 경로를 정리해 현재 지원 provider(bifrost/openai/anthropic)와 문서를 일치시켰다.
-- 2026-02-15: `gemini` provider를 추가했다. `internal/llm`에서는 OpenAI-compatible 공통 클라이언트를 재사용하도록 `NewGeminiClient`를 도입했고, `internal/config`에 gemini 기본값(`https://generativelanguage.googleapis.com/v1beta/openai`, `gemini-2.5-flash`, `GEMINI_API_KEY`)을 추가했다. non-stream/stream tool-call 동작은 기존 OpenAI-compatible 파서를 공통 사용해 중복 구현 없이 지원한다.
-- 2026-02-15: `gemini-native` provider를 추가했다. `internal/llm/gemini_native.go` 전용 클라이언트에서 Gemini native API(`models/{model}:generateContent`, `models/{model}:streamGenerateContent?alt=sse`)를 직접 호출하고, `functionCall`/`functionResponse` 변환으로 tool-call loop를 지원한다. `internal/config`에는 `gemini-native` 기본 base URL(`https://generativelanguage.googleapis.com/v1beta`)과 `GEMINI_API_KEY` fallback, OAuth default(`google-antigravity`)를 연결했다.
-- 2026-02-15: Agent Loop 반복 상한을 설정화했다. 기존 `tarsd /v1/chat`의 `MaxIterations: 8` 하드코딩을 제거하고 `internal/config`에 `AgentMaxIterations` 필드를 추가해 `agent_max_iterations`(YAML), `AGENT_MAX_ITERATIONS`/`TARSD_AGENT_MAX_ITERATIONS`(ENV)로 제어 가능하게 변경했다. 서버 초기화 시 해당 값을 `newChatAPIHandlerWithOptions`로 주입하며, 미설정/비정상 값은 기본값 8로 보정한다.
-- 2026-02-15: heartbeat 정책 레이어를 확장했다. `internal/heartbeat`에 `Policy`/`RunResult`를 추가해 `HEARTBEAT_OK` 응답 시 daily log 기록을 생략하고, `heartbeat_active_hours` + `heartbeat_timezone` 기반 실행 시간 제한, 런타임 gate(큐 busy 시 skip), 메인 세션 컨텍스트 로딩/세션 턴 반영을 지원한다. `tarsd`는 해당 정책을 API/CLI run-once/run-loop 경로에 공통 적용한다.
-- 2026-02-15: `internal/session.Store`에 `Touch`/`Latest`를 추가했다. 채팅/자동화 이벤트가 transcript에 append될 때 `updated_at`을 갱신해 heartbeat/cron이 최신 세션 컨텍스트를 안정적으로 참조할 수 있게 했다.
-- 2026-02-15: `internal/cron` 실행 모델을 확장했다. Job 스키마에 `session_target`/`wake_mode`/`delivery_mode`/`payload`를 추가했고, 스케줄 타입 `at:<RFC3339>`를 지원한다. run 기록은 `cron/runs/{job_id}.jsonl` per-job 파일로 분리했으며, 보존 개수(`RunHistoryLimit`, 기본 200) 기반 prune을 적용했다. 또한 동시 실행 잠금(`TryStartRun`/`FinishRun`)과 연속 실패 백오프(`consecutive_failures`, `backoff_until`)를 도입했다.
-- 2026-02-15: `tarsd` cron 실행 경로를 일반화했다. `newCronJobRunner`가 payload/session-context를 프롬프트에 주입하고, `delivery_mode`에 따라 daily log와 세션 transcript로 결과를 라우팅한다. 수동 실행 API와 백그라운드 스케줄러가 동일 runner를 공유하며, 동시에 같은 job 실행 요청이 들어오면 409(`job is already running`)를 반환한다.
-- 2026-02-15: 설정 계층에 heartbeat/cron 운영 옵션을 추가했다. `internal/config`는 `heartbeat_active_hours`, `heartbeat_timezone`, `cron_run_history_limit`(및 대응 ENV `HEARTBEAT_ACTIVE_HOURS`, `HEARTBEAT_TIMEZONE`, `CRON_RUN_HISTORY_LIMIT`)을 파싱하고 기본값/보정을 적용한다.
-- 2026-02-15: `internal/tool`에 자동화 빌트인 툴을 추가했다. `cron_list/create/update/delete/run`과 `heartbeat_status/run_once`를 신규 도입했고, `tarsd`의 chat registry에 기본 주입되도록 연결했다. heartbeat API와 툴이 동일 실행기(`newHeartbeatRunner`)를 공유하고, 시스템 프롬프트 정책에 cron/heartbeat 질의 시 전용 툴 우선 사용 규칙을 추가했다.
-- 2026-02-15: 런타임 알림 경로를 추가했다. `tarsd`에 SSE 브로커(`/v1/events/stream`)를 도입해 cron/heartbeat 실행 결과를 `notification` 이벤트로 브로드캐스트하고, 구독 클라이언트가 없을 때는 OS 데스크톱 알림(auto: macOS `osascript`, Linux `notify-send`) 또는 `NOTIFY_COMMAND` 커스텀 명령으로 fallback 전달한다. `tars-ui`는 앱 시작 시 이벤트 스트림을 구독해 실시간 시스템 메시지로 표시한다.
-- 2026-02-16: 설정 파일 경로 해석을 정리했다. `tarsd`는 `--config` 미지정 시 `TARSD_CONFIG`/`TARSD_CONFIG_PATH`를 우선 사용하고, 둘 다 없으면 현재 작업 디렉터리의 `config/standalone.yaml` 존재 여부를 자동 탐지해 로드한다(`ResolveTarsdConfigPath`).
-- 2026-02-16: `tars-ui`에 `--config` YAML(단순 key:value) 로딩을 추가했다. `server_url`, `session_id`, `verbose`를 파일에서 읽고, CLI 플래그(`--server-url`, `--session`, `--verbose`)가 최종 override 하도록 우선순위를 정리했다. 예시 파일 `tars-ui/config.example.yaml`, `config/tarsd.config.example.yaml`을 추가했다.
+### 현재 아키텍처 구조
+
+**바이너리**
+- `tarsd`: 메인 데몬/서버 (HTTP API, LLM 호출, heartbeat/cron 실행, 메모리 관리)
+- `cased`: 감시 데몬 (프로세스 감시, 자동 재시작/복구, 모니터링)
+- `tars-ui`: React/TypeScript Ink 기반 TUI 클라이언트 (대화형 UX, 패널 렌더링)
+
+**주요 패키지**
+- `internal/config`: 설정 로딩 (YAML/ENV 우선순위, 환경변수 확장, 경로 자동 탐지)
+- `internal/llm`: LLM provider 추상화 (bifrost, openai, anthropic, gemini, gemini-native)
+- `internal/session`: 세션 관리 (JSONL transcript, 토큰 기반 히스토리 로딩, 컴팩션)
+- `internal/agent`: Agent Loop (훅 기반 이벤트, 도구 실행 반복, 상태 추적)
+- `internal/tool`: 빌트인 도구 (read_file, list_dir, exec, cron_*, heartbeat_*, session_status)
+- `internal/heartbeat`: 주기 실행 (정책 기반 스케줄, 세션 컨텍스트 연동)
+- `internal/cron`: 작업 스케줄러 (interval/at 스케줄, 실행 잠금, 백오프)
+- `internal/prompt`: 시스템 프롬프트 빌더 (워크스페이스 파일 조립)
+- `internal/memory`: 워크스페이스 부트스트랩 (HEARTBEAT.md, MEMORY.md, daily log)
+
+**LLM Provider**
+- `bifrost`, `openai`: OpenAI-compatible API (공통 클라이언트)
+- `anthropic`: Messages API (tool_use 지원)
+- `gemini`: OpenAI-compatible 경로
+- `gemini-native`: Gemini REST API (functionCall/Response 변환)
+
+### Phase별 완성 현황
+
+**Phase 0: 인프라** (완료)
+- 설정 로딩 (YAML/ENV 우선순위, 환경변수 확장)
+- 구조화 로깅 (zerolog, console/file 분리)
+- 워크스페이스 초기화 (부트스트랩 파일 7종)
+- CI/CD (Makefile, GitHub Actions)
+
+**Phase 1: 채팅/세션** (완료)
+- Chat API (SSE 스트리밍, 시스템 프롬프트 주입)
+- 세션 관리 (JSONL transcript, CRUD API, 검색/내보내기)
+- 컨텍스트 압축 (LLM 기반 요약, 토큰 예산 기반 유지)
+- 메모리 자동화 (daily log, 장기 메모 승격)
+
+**Phase 2: Agent Loop** (완료)
+- 도구 레지스트리 (스키마 정의, 동적 등록)
+- 빌트인 도구 (파일/디렉터리 읽기, 명령 실행, 경로 가드)
+- 훅 시스템 (before/after_llm, before/after_tool_call)
+- Status 스트림 (SSE 이벤트, 도구 호출 가시성)
+
+**Phase 3: 자동화** (완료)
+- Heartbeat (정책 기반 스케줄, 활성 시간 제한, 세션 연동)
+- Cron (interval/at 스케줄, 실행 잠금, 연속 실패 백오프)
+- 알림 (SSE 브로커, OS 데스크톱 알림 fallback)
+- 자동화 도구 (cron_*/heartbeat_* 빌트인)
+
+### 최근 주요 변경
+
+**2026-02-15**
+- `tarsd`/`tars-ui` 리팩토링: Extract Function 패턴으로 파일 크기 축소 (main.go 76%↓, index.tsx 59%↓)
+- `gemini`/`gemini-native` provider 추가: OpenAI-compatible 및 native API 지원
+- Cron 확장: session_target, delivery_mode, per-job 실행 기록, 동시 실행 잠금
+- Agent Loop 설정화: `agent_max_iterations` ENV/YAML 제어
+
+**2026-02-16**
+- 설정 파일 경로 자동 탐지: `config/standalone.yaml` 존재 시 자동 로드
+- `tars-ui` 설정 파일 지원: CLI 플래그 우선순위 정리
+
+**상세 이력**
+- 일일 개발 이력은 `git log` 참조
+- Phase 4-6 계획은 `PLAN.md` 참조
