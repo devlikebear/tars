@@ -305,6 +305,10 @@ func trimForMemory(s string, max int) string {
 }
 
 func newBaseToolRegistry(workspaceDir string) *tool.Registry {
+	return newBaseToolRegistryWithProcess(workspaceDir, nil)
+}
+
+func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.ProcessManager) *tool.Registry {
 	registry := tool.NewRegistry()
 	registry.Register(tool.NewMemorySearchTool(workspaceDir))
 	registry.Register(tool.NewMemoryGetTool(workspaceDir))
@@ -316,7 +320,12 @@ func newBaseToolRegistry(workspaceDir string) *tool.Registry {
 	registry.Register(tool.NewEditFileTool(workspaceDir))
 	registry.Register(tool.NewListDirTool(workspaceDir))
 	registry.Register(tool.NewGlobTool(workspaceDir))
-	registry.Register(tool.NewExecTool(workspaceDir))
+	if processManager != nil {
+		registry.Register(tool.NewProcessTool(processManager))
+		registry.Register(tool.NewExecToolWithManager(workspaceDir, processManager))
+	} else {
+		registry.Register(tool.NewExecTool(workspaceDir))
+	}
 	return registry
 }
 
@@ -556,7 +565,7 @@ func buildAutomationTools(
 	}
 }
 
-func buildChatToolingOptions(cfg config.Config) chatToolingOptions {
+func buildChatToolingOptions(cfg config.Config, processManager *tool.ProcessManager) chatToolingOptions {
 	byProvider := make(map[string]toolpolicy.ProviderPolicy, len(cfg.ToolsByProvider))
 	for key, p := range cfg.ToolsByProvider {
 		byProvider[key] = toolpolicy.ProviderPolicy{
@@ -579,9 +588,10 @@ func buildChatToolingOptions(cfg config.Config) chatToolingOptions {
 		},
 	)
 	return chatToolingOptions{
-		Provider: strings.TrimSpace(cfg.LLMProvider),
-		Model:    strings.TrimSpace(cfg.LLMModel),
-		Selector: selector,
+		Provider:       strings.TrimSpace(cfg.LLMProvider),
+		Model:          strings.TrimSpace(cfg.LLMModel),
+		Selector:       selector,
+		ProcessManager: processManager,
 	}
 }
 

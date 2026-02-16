@@ -239,9 +239,10 @@ func resolveAgentMaxIterations(value int) int {
 }
 
 type chatToolingOptions struct {
-	Provider string
-	Model    string
-	Selector toolpolicy.Selector
+	Provider       string
+	Model          string
+	Selector       toolpolicy.Selector
+	ProcessManager *tool.ProcessManager
 }
 
 func defaultChatToolingOptions() chatToolingOptions {
@@ -402,7 +403,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 
 		llmMessages := buildLLMMessages(systemPrompt, history, req.Message)
 
-		registry := newBaseToolRegistry(workspaceDir)
+		registry := newBaseToolRegistryWithProcess(workspaceDir, tooling.ProcessManager)
 		for _, extra := range extraTools {
 			registry.Register(extra)
 		}
