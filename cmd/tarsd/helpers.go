@@ -600,6 +600,12 @@ func buildOptionalChatTools(cfg config.Config) []tool.Tool {
 	if cfg.ToolsApplyPatchEnabled {
 		out = append(out, tool.NewApplyPatchTool(cfg.WorkspaceDir, true))
 	}
+	if cfg.ToolsWebFetchEnabled {
+		out = append(out, tool.NewWebFetchTool(true))
+	}
+	if cfg.ToolsWebSearchEnabled {
+		out = append(out, tool.NewWebSearchTool(true, cfg.ToolsWebSearchAPIKey))
+	}
 	return out
 }
 
