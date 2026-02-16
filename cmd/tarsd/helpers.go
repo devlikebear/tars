@@ -585,33 +585,9 @@ func buildAutomationTools(
 	}
 }
 
-func buildChatToolingOptions(cfg config.Config, processManager *tool.ProcessManager, logger zerolog.Logger) chatToolingOptions {
-	logIgnoredToolPolicySettings(cfg, logger)
+func buildChatToolingOptions(processManager *tool.ProcessManager) chatToolingOptions {
 	return chatToolingOptions{
 		ProcessManager: processManager,
-	}
-}
-
-func logIgnoredToolPolicySettings(cfg config.Config, logger zerolog.Logger) {
-	defaults := config.Default()
-	if strings.TrimSpace(cfg.ToolsProfile) != "" && !strings.EqualFold(strings.TrimSpace(cfg.ToolsProfile), "full") {
-		logger.Warn().Str("tools_profile", cfg.ToolsProfile).Msg("tools_profile is deprecated and ignored; all tools are injected")
-	}
-	if len(cfg.ToolsAllow) > 0 || len(cfg.ToolsDeny) > 0 || len(cfg.ToolsByProvider) > 0 {
-		logger.Warn().
-			Strs("tools_allow", append([]string(nil), cfg.ToolsAllow...)).
-			Strs("tools_deny", append([]string(nil), cfg.ToolsDeny...)).
-			Int("tools_by_provider_count", len(cfg.ToolsByProvider)).
-			Msg("tool policy filters are deprecated and ignored; all tools are injected")
-	}
-	if strings.TrimSpace(cfg.ToolSelectorMode) != "" && !strings.EqualFold(strings.TrimSpace(cfg.ToolSelectorMode), defaults.ToolSelectorMode) {
-		logger.Warn().Str("tool_selector_mode", cfg.ToolSelectorMode).Msg("tool_selector_mode is deprecated and ignored")
-	}
-	if cfg.ToolSelectorMaxTools > 0 && cfg.ToolSelectorMaxTools != defaults.ToolSelectorMaxTools {
-		logger.Warn().Int("tool_selector_max_tools", cfg.ToolSelectorMaxTools).Msg("tool_selector_max_tools is deprecated and ignored")
-	}
-	if cfg.ToolSelectorAutoExpand != defaults.ToolSelectorAutoExpand {
-		logger.Warn().Bool("tool_selector_auto_expand", cfg.ToolSelectorAutoExpand).Msg("tool_selector_auto_expand is deprecated and ignored")
 	}
 }
 

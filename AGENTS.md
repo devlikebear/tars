@@ -59,8 +59,8 @@
 - 워크스페이스 부트스트랩 파일(AGENTS/SOUL/USER/IDENTITY/TOOLS/HEARTBEAT/MEMORY) 생성과 시스템 프롬프트 조립이 구현되어 있다.
 - `/compact` 요약 저장 + 로딩 경계(Compaction summary boundary 포함)가 구현되어 있다.
 - `tars-ui` 슬래시 명령(`/new`, `/sessions`, `/resume`, `/history`, `/export`, `/search`, `/status`, `/compact`)이 연결되어 있다.
-- Tool policy/profile(`tools_profile`, `tools_allow`, `tools_deny`, `tools_by_provider_json`)와 heuristic selector가 구현되어 있다.
-- 동적 tool schema 주입 + 미주입 도구 차단 + `tool_selector_auto_expand` 기반 1회 자동확장이 구현되어 있다.
+- 채팅 루프는 요청마다 등록된 전체 도구 스키마를 주입한다(OpenClaw parity).
+- 미주입 도구/selector 기반 정책 주입 경로는 제거되어 설정 항목도 더 이상 사용하지 않는다.
 - 확장 빌트인 도구(`read/write/edit/glob`, `process`, `apply_patch`, `web_fetch`, `web_search`, `cron`, `heartbeat`)가 구현되어 있다.
 
 ## LLM Provider 운영 정책 (2026-02-15)
