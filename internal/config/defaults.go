@@ -16,6 +16,12 @@ type MCPServer struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
+type ToolProviderPolicy struct {
+	Profile string   `json:"profile"`
+	Allow   []string `json:"allow,omitempty"`
+	Deny    []string `json:"deny,omitempty"`
+}
+
 // Config holds top-level runtime settings.
 type Config struct {
 	Mode                 string
@@ -35,6 +41,17 @@ type Config struct {
 	BifrostBase          string
 	BifrostAPIKey        string
 	BifrostModel         string
+	ToolsProfile         string
+	ToolsAllow           []string
+	ToolsDeny            []string
+	ToolsByProvider      map[string]ToolProviderPolicy
+	ToolSelectorMode     string
+	ToolSelectorMaxTools int
+	ToolSelectorAutoExpand bool
+	ToolsWebSearchEnabled bool
+	ToolsWebFetchEnabled  bool
+	ToolsWebSearchAPIKey  string
+	ToolsApplyPatchEnabled bool
 	MCPServers           []MCPServer
 }
 
@@ -51,6 +68,10 @@ func Default() Config {
 		AgentMaxIterations:  8,
 		CronRunHistoryLimit: 200,
 		NotifyWhenNoClients: true,
+		ToolsProfile:        "full",
+		ToolSelectorMode:    "heuristic",
+		ToolSelectorMaxTools: 16,
+		ToolSelectorAutoExpand: true,
 	}
 }
 
@@ -140,6 +161,39 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("MCP_SERVERS_JSON"), os.Getenv("TARSD_MCP_SERVERS_JSON")); v != "" {
 		cfg.MCPServers = parseMCPServersJSON(v, cfg.MCPServers)
 	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_PROFILE"), os.Getenv("TARSD_TOOLS_PROFILE")); v != "" {
+		cfg.ToolsProfile = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_ALLOW"), os.Getenv("TARSD_TOOLS_ALLOW")); v != "" {
+		cfg.ToolsAllow = parseCSVList(v)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_DENY"), os.Getenv("TARSD_TOOLS_DENY")); v != "" {
+		cfg.ToolsDeny = parseCSVList(v)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_BY_PROVIDER_JSON"), os.Getenv("TARSD_TOOLS_BY_PROVIDER_JSON")); v != "" {
+		cfg.ToolsByProvider = parseToolsByProviderJSON(v, cfg.ToolsByProvider)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOL_SELECTOR_MODE"), os.Getenv("TARSD_TOOL_SELECTOR_MODE")); v != "" {
+		cfg.ToolSelectorMode = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOL_SELECTOR_MAX_TOOLS"), os.Getenv("TARSD_TOOL_SELECTOR_MAX_TOOLS")); v != "" {
+		cfg.ToolSelectorMaxTools = parsePositiveInt(v, cfg.ToolSelectorMaxTools)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOL_SELECTOR_AUTO_EXPAND"), os.Getenv("TARSD_TOOL_SELECTOR_AUTO_EXPAND")); v != "" {
+		cfg.ToolSelectorAutoExpand = parseBool(v, cfg.ToolSelectorAutoExpand)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_SEARCH_ENABLED"), os.Getenv("TARSD_TOOLS_WEB_SEARCH_ENABLED")); v != "" {
+		cfg.ToolsWebSearchEnabled = parseBool(v, cfg.ToolsWebSearchEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_FETCH_ENABLED"), os.Getenv("TARSD_TOOLS_WEB_FETCH_ENABLED")); v != "" {
+		cfg.ToolsWebFetchEnabled = parseBool(v, cfg.ToolsWebFetchEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_SEARCH_API_KEY"), os.Getenv("TARSD_TOOLS_WEB_SEARCH_API_KEY")); v != "" {
+		cfg.ToolsWebSearchAPIKey = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_APPLY_PATCH_ENABLED"), os.Getenv("TARSD_TOOLS_APPLY_PATCH_ENABLED")); v != "" {
+		cfg.ToolsApplyPatchEnabled = parseBool(v, cfg.ToolsApplyPatchEnabled)
+	}
 }
 
 func loadYAML(path string) (Config, error) {
@@ -201,6 +255,28 @@ func loadYAML(path string) (Config, error) {
 			cfg.NotifyCommand = strings.TrimSpace(value)
 		case "mcp_servers_json":
 			cfg.MCPServers = parseMCPServersJSON(value, cfg.MCPServers)
+		case "tools_profile":
+			cfg.ToolsProfile = strings.TrimSpace(value)
+		case "tools_allow":
+			cfg.ToolsAllow = parseCSVList(value)
+		case "tools_deny":
+			cfg.ToolsDeny = parseCSVList(value)
+		case "tools_by_provider_json":
+			cfg.ToolsByProvider = parseToolsByProviderJSON(value, cfg.ToolsByProvider)
+		case "tool_selector_mode":
+			cfg.ToolSelectorMode = strings.TrimSpace(value)
+		case "tool_selector_max_tools":
+			cfg.ToolSelectorMaxTools = parsePositiveInt(value, cfg.ToolSelectorMaxTools)
+		case "tool_selector_auto_expand":
+			cfg.ToolSelectorAutoExpand = parseBool(value, cfg.ToolSelectorAutoExpand)
+		case "tools_web_search_enabled":
+			cfg.ToolsWebSearchEnabled = parseBool(value, cfg.ToolsWebSearchEnabled)
+		case "tools_web_fetch_enabled":
+			cfg.ToolsWebFetchEnabled = parseBool(value, cfg.ToolsWebFetchEnabled)
+		case "tools_web_search_api_key":
+			cfg.ToolsWebSearchAPIKey = strings.TrimSpace(value)
+		case "tools_apply_patch_enabled":
+			cfg.ToolsApplyPatchEnabled = parseBool(value, cfg.ToolsApplyPatchEnabled)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -262,6 +338,39 @@ func merge(dst *Config, src Config) {
 	if len(src.MCPServers) > 0 {
 		dst.MCPServers = src.MCPServers
 	}
+	if src.ToolsProfile != "" {
+		dst.ToolsProfile = src.ToolsProfile
+	}
+	if len(src.ToolsAllow) > 0 {
+		dst.ToolsAllow = append([]string(nil), src.ToolsAllow...)
+	}
+	if len(src.ToolsDeny) > 0 {
+		dst.ToolsDeny = append([]string(nil), src.ToolsDeny...)
+	}
+	if len(src.ToolsByProvider) > 0 {
+		dst.ToolsByProvider = copyToolsByProvider(src.ToolsByProvider)
+	}
+	if src.ToolSelectorMode != "" {
+		dst.ToolSelectorMode = src.ToolSelectorMode
+	}
+	if src.ToolSelectorMaxTools > 0 {
+		dst.ToolSelectorMaxTools = src.ToolSelectorMaxTools
+	}
+	if src.ToolSelectorAutoExpand {
+		dst.ToolSelectorAutoExpand = true
+	}
+	if src.ToolsWebSearchEnabled {
+		dst.ToolsWebSearchEnabled = true
+	}
+	if src.ToolsWebFetchEnabled {
+		dst.ToolsWebFetchEnabled = true
+	}
+	if src.ToolsWebSearchAPIKey != "" {
+		dst.ToolsWebSearchAPIKey = src.ToolsWebSearchAPIKey
+	}
+	if src.ToolsApplyPatchEnabled {
+		dst.ToolsApplyPatchEnabled = true
+	}
 }
 
 func applyLLMDefaults(cfg *Config) {
@@ -287,6 +396,15 @@ func applyLLMDefaults(cfg *Config) {
 	}
 	if cfg.CronRunHistoryLimit <= 0 {
 		cfg.CronRunHistoryLimit = 200
+	}
+	if strings.TrimSpace(cfg.ToolsProfile) == "" {
+		cfg.ToolsProfile = "full"
+	}
+	if strings.TrimSpace(cfg.ToolSelectorMode) == "" {
+		cfg.ToolSelectorMode = "heuristic"
+	}
+	if cfg.ToolSelectorMaxTools <= 0 {
+		cfg.ToolSelectorMaxTools = 16
 	}
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {
@@ -398,4 +516,40 @@ func parseMCPServersJSON(raw string, fallback []MCPServer) []MCPServer {
 		return fallback
 	}
 	return out
+}
+
+func parseCSVList(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		v := strings.TrimSpace(p)
+		if v == "" {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+func copyToolsByProvider(src map[string]ToolProviderPolicy) map[string]ToolProviderPolicy {
+	out := make(map[string]ToolProviderPolicy, len(src))
+	for k, v := range src {
+		out[strings.TrimSpace(k)] = ToolProviderPolicy{
+			Profile: strings.TrimSpace(v.Profile),
+			Allow:   append([]string(nil), v.Allow...),
+			Deny:    append([]string(nil), v.Deny...),
+		}
+	}
+	return out
+}
+
+func parseToolsByProviderJSON(raw string, fallback map[string]ToolProviderPolicy) map[string]ToolProviderPolicy {
+	var parsed map[string]ToolProviderPolicy
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
+		return fallback
+	}
+	if len(parsed) == 0 {
+		return fallback
+	}
+	return copyToolsByProvider(parsed)
 }

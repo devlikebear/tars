@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/devlikebear/tarsncase/internal/llm"
@@ -94,6 +95,41 @@ func (r *Registry) Schemas() []llm.ToolSchema {
 	schemas := make([]llm.ToolSchema, 0, len(names))
 	for _, name := range names {
 		t := r.tools[name]
+		schemas = append(schemas, llm.ToolSchema{
+			Type: "function",
+			Function: llm.ToolFunctionSchema{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
+			},
+		})
+	}
+	return schemas
+}
+
+func (r *Registry) SchemasForNames(names []string) []llm.ToolSchema {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if len(r.tools) == 0 || len(names) == 0 {
+		return nil
+	}
+
+	schemas := make([]llm.ToolSchema, 0, len(names))
+	seen := map[string]struct{}{}
+	for _, name := range names {
+		key := strings.TrimSpace(name)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		t, ok := r.tools[key]
+		if !ok {
+			continue
+		}
 		schemas = append(schemas, llm.ToolSchema{
 			Type: "function",
 			Function: llm.ToolFunctionSchema{

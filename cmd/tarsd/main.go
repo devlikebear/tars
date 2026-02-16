@@ -253,15 +253,17 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				mux := http.NewServeMux()
 				heartbeatHandler := newHeartbeatAPIHandlerWithRunner(heartbeatRunner, logger)
 				mux.Handle("/v1/heartbeat/", heartbeatHandler)
+				chatTooling := buildChatToolingOptions(cfg)
 				chatTools := append([]tool.Tool{}, automationTools...)
 				chatTools = append(chatTools, mcpTools...)
-				chatHandler := newChatAPIHandlerWithRuntime(
+				chatHandler := newChatAPIHandlerWithRuntimeConfig(
 					cfg.WorkspaceDir,
 					sessionStore,
 					llmClient,
 					logger,
 					cfg.AgentMaxIterations,
 					activity,
+					chatTooling,
 					chatTools...,
 				)
 				mux.Handle("/v1/chat", chatHandler)

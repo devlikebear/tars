@@ -18,6 +18,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/prompt"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tarsncase/internal/toolpolicy"
 	"github.com/rs/zerolog"
 )
 
@@ -237,8 +238,43 @@ func resolveAgentMaxIterations(value int) int {
 	return value
 }
 
+type chatToolingOptions struct {
+	Provider string
+	Model    string
+	Selector toolpolicy.Selector
+}
+
+func defaultChatToolingOptions() chatToolingOptions {
+	return chatToolingOptions{
+		Selector: toolpolicy.NewSelector(
+			toolpolicy.Policy{Profile: "full"},
+			toolpolicy.SelectorConfig{Mode: "off"},
+		),
+	}
+}
+
+func toolNamesFromSchemas(schemas []llm.ToolSchema) []string {
+	out := make([]string, 0, len(schemas))
+	for _, schema := range schemas {
+		name := strings.TrimSpace(schema.Function.Name)
+		if name == "" {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
 func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Client, logger zerolog.Logger) http.Handler {
-	return newChatAPIHandlerWithRuntime(workspaceDir, store, client, logger, agent.DefaultMaxLoopIters, nil)
+	return newChatAPIHandlerWithRuntimeConfig(
+		workspaceDir,
+		store,
+		client,
+		logger,
+		agent.DefaultMaxLoopIters,
+		nil,
+		defaultChatToolingOptions(),
+	)
 }
 
 func newChatAPIHandlerWithOptions(
@@ -249,7 +285,16 @@ func newChatAPIHandlerWithOptions(
 	maxIterations int,
 	extraTools ...tool.Tool,
 ) http.Handler {
-	return newChatAPIHandlerWithRuntime(workspaceDir, store, client, logger, maxIterations, nil, extraTools...)
+	return newChatAPIHandlerWithRuntimeConfig(
+		workspaceDir,
+		store,
+		client,
+		logger,
+		maxIterations,
+		nil,
+		defaultChatToolingOptions(),
+		extraTools...,
+	)
 }
 
 func newChatAPIHandlerWithRuntime(
@@ -261,7 +306,30 @@ func newChatAPIHandlerWithRuntime(
 	activity *runtimeActivity,
 	extraTools ...tool.Tool,
 ) http.Handler {
+	return newChatAPIHandlerWithRuntimeConfig(
+		workspaceDir,
+		store,
+		client,
+		logger,
+		maxIterations,
+		activity,
+		defaultChatToolingOptions(),
+		extraTools...,
+	)
+}
+
+func newChatAPIHandlerWithRuntimeConfig(
+	workspaceDir string,
+	store *session.Store,
+	client llm.Client,
+	logger zerolog.Logger,
+	maxIterations int,
+	activity *runtimeActivity,
+	tooling chatToolingOptions,
+	extraTools ...tool.Tool,
+) http.Handler {
 	maxIters := resolveAgentMaxIterations(maxIterations)
+	selector := tooling.Selector
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -338,6 +406,17 @@ func newChatAPIHandlerWithRuntime(
 		for _, extra := range extraTools {
 			registry.Register(extra)
 		}
+		selectedNames := selector.Select(registry.All(), tooling.Provider, tooling.Model, req.Message)
+		selectedSchemas := registry.SchemasForNames(selectedNames)
+		if len(selectedSchemas) == 0 {
+			selectedSchemas = registry.Schemas()
+			selectedNames = toolNamesFromSchemas(selectedSchemas)
+		}
+		logger.Debug().
+			Str("session_id", sessionID).
+			Int("tool_count_all", len(registry.Schemas())).
+			Int("tool_count_selected", len(selectedSchemas)).
+			Msg("tool selector result")
 		sendStatusSink := func(_, _, _, _, _, _ string) {}
 		sendStatusProxy := func(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview string) {
 			sendStatusSink(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview)
@@ -354,7 +433,7 @@ func newChatAPIHandlerWithRuntime(
 		logger.Debug().Str("session_id", sessionID).Int("messages", len(llmMessages)).Msg("llm chat call start")
 		chatResp, err := loop.Run(r.Context(), llmMessages, agent.RunOptions{
 			MaxIterations: maxIters,
-			Tools:         registry.Schemas(),
+			Tools:         selectedSchemas,
 			ToolChoice:    toolChoice,
 			OnDelta: func(text string) {
 				if text == "" {
