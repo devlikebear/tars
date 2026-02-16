@@ -13,15 +13,16 @@ import (
 type EventType string
 
 const (
-	EventLoopStart        EventType = "loop_start"
-	EventBeforeLLM        EventType = "before_llm"
-	EventAfterLLM         EventType = "after_llm"
-	EventBeforeTool       EventType = "before_tool_call"
-	EventAfterTool        EventType = "after_tool_call"
-	EventLoopEnd          EventType = "loop_end"
-	EventLoopError        EventType = "error"
-	DefaultMaxLoopIters             = 8
-	repeatedToolCallLimit           = 3
+	EventLoopStart          EventType = "loop_start"
+	EventBeforeLLM          EventType = "before_llm"
+	EventAfterLLM           EventType = "after_llm"
+	EventBeforeTool         EventType = "before_tool_call"
+	EventAfterTool          EventType = "after_tool_call"
+	EventLoopEnd            EventType = "loop_end"
+	EventLoopError          EventType = "error"
+	DefaultMaxLoopIters               = 8
+	repeatedToolCallLimit             = 3
+	autoExecCommandFallback           = "pwd"
 )
 
 type Event struct {
@@ -80,6 +81,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	lastToolOutcomeSig := ""
 	repeatedToolOutcomeCount := 0
 	repeatedInvalidExecCount := 0
+	execAutoCorrectUsed := false
 	l.emit(ctx, Event{Type: EventLoopStart, MessageCount: len(messages)})
 
 	for i := 0; i < maxIters; i++ {
@@ -109,6 +111,14 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 
 		for _, call := range resp.Message.ToolCalls {
 			callName := normalizeToolName(call.Name)
+			effectiveArgs := call.Arguments
+			if callName == "exec" {
+				correctedArgs, corrected := autoCorrectExecArguments(effectiveArgs, !execAutoCorrectUsed)
+				if corrected {
+					effectiveArgs = correctedArgs
+					execAutoCorrectUsed = true
+				}
+			}
 			if _, ok := allowedTools[callName]; !ok {
 				if !opts.AutoExpandOnce || autoExpanded {
 					err := fmt.Errorf("tool not injected for this request: %s", call.Name)
@@ -143,7 +153,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				Iteration:  i + 1,
 				ToolName:   call.Name,
 				ToolCallID: call.ID,
-				ToolArgs:   call.Arguments,
+				ToolArgs:   effectiveArgs,
 			})
 
 			tl, ok := l.registry.Get(call.Name)
@@ -162,7 +172,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				return llm.ChatResponse{}, err
 			}
 
-			params := json.RawMessage(call.Arguments)
+			params := json.RawMessage(effectiveArgs)
 			if len(params) == 0 {
 				params = json.RawMessage(`{}`)
 			}
@@ -186,7 +196,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				ToolResult: result.Text(),
 			})
 
-			if callName == "exec" && isMissingCommandExecResult(call.Arguments, result.Text()) {
+			if callName == "exec" && isMissingCommandExecResult(effectiveArgs, result.Text()) {
 				repeatedInvalidExecCount++
 			} else {
 				repeatedInvalidExecCount = 0
@@ -203,7 +213,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				return llm.ChatResponse{}, err
 			}
 
-			outcomeSig := callName + "\n" + call.Arguments + "\n" + result.Text()
+			outcomeSig := callName + "\n" + effectiveArgs + "\n" + result.Text()
 			if outcomeSig == lastToolOutcomeSig {
 				repeatedToolOutcomeCount++
 			} else {
@@ -211,7 +221,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				repeatedToolOutcomeCount = 1
 			}
 			if repeatedToolOutcomeCount >= repeatedToolCallLimit {
-				err := fmt.Errorf("agent loop detected repeated tool call pattern: tool=%s args=%s", call.Name, call.Arguments)
+				err := fmt.Errorf("agent loop detected repeated tool call pattern: tool=%s args=%s", call.Name, effectiveArgs)
 				l.emit(ctx, Event{
 					Type:       EventLoopError,
 					Iteration:  i + 1,
@@ -281,6 +291,26 @@ func isMissingCommandExecResult(args string, resultText string) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(strings.TrimSpace(resultText)), "command is required")
+}
+
+func autoCorrectExecArguments(rawArgs string, allow bool) (string, bool) {
+	if !allow || hasExecCommandArgument(rawArgs) {
+		return rawArgs, false
+	}
+	payload := map[string]any{}
+	trimmed := strings.TrimSpace(rawArgs)
+	if trimmed != "" && trimmed != "null" {
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil && parsed != nil {
+			payload = parsed
+		}
+	}
+	payload["command"] = autoExecCommandFallback
+	normalized, err := json.Marshal(payload)
+	if err != nil {
+		return rawArgs, false
+	}
+	return string(normalized), true
 }
 
 func hasExecCommandArgument(rawArgs string) bool {

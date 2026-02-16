@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -516,7 +517,159 @@ func TestLoop_Run_StopsOnRepeatedInvalidExecWithoutCommand(t *testing.T) {
 	if !strings.Contains(err.Error(), "repeated invalid exec call") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if client.callIndex != 2 {
-		t.Fatalf("expected stop at 2 llm calls for invalid exec loop, got %d", client.callIndex)
+	if client.callIndex != 3 {
+		t.Fatalf("expected stop at 3 llm calls for invalid exec loop after one auto-correction, got %d", client.callIndex)
+	}
+}
+
+func TestLoop_Run_AutoCorrectsMissingExecCommand_EmptyObject(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.Tool{
+		Name:        "exec",
+		Description: "execute command",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+		Execute: func(_ context.Context, params json.RawMessage) (tool.Result, error) {
+			var input map[string]string
+			_ = json.Unmarshal(params, &input)
+			cmd := strings.TrimSpace(input["command"])
+			if cmd == "" {
+				return tool.Result{
+					Content: []tool.ContentBlock{
+						{Type: "text", Text: `{"command":"","exit_code":-1,"message":"command is required"}`},
+					},
+				}, nil
+			}
+			return tool.Result{
+				Content: []tool.ContentBlock{
+					{Type: "text", Text: fmt.Sprintf(`{"command":"%s","exit_code":0}`, cmd)},
+				},
+			}, nil
+		},
+	})
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_1", Name: "exec", Arguments: `{}`},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "ok",
+				},
+			},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	resp, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "현재 경로 알려줘"},
+	}, RunOptions{
+		MaxIterations: 3,
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:       "exec",
+					Parameters: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected auto-corrected exec call to succeed, got %v", err)
+	}
+	if resp.Message.Content != "ok" {
+		t.Fatalf("unexpected response: %q", resp.Message.Content)
+	}
+	secondCall := client.seenInputs[1]
+	if len(secondCall) == 0 {
+		t.Fatalf("expected second llm call with tool result")
+	}
+	last := secondCall[len(secondCall)-1]
+	if !strings.Contains(last.Content, `"command":"pwd"`) {
+		t.Fatalf("expected auto-corrected command pwd in tool result, got %q", last.Content)
+	}
+}
+
+func TestLoop_Run_AutoCorrectsMissingExecCommand_EmptyStringArguments(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.Tool{
+		Name:        "exec",
+		Description: "execute command",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+		Execute: func(_ context.Context, params json.RawMessage) (tool.Result, error) {
+			var input map[string]string
+			_ = json.Unmarshal(params, &input)
+			cmd := strings.TrimSpace(input["command"])
+			if cmd == "" {
+				return tool.Result{
+					Content: []tool.ContentBlock{
+						{Type: "text", Text: `{"command":"","exit_code":-1,"message":"command is required"}`},
+					},
+				}, nil
+			}
+			return tool.Result{
+				Content: []tool.ContentBlock{
+					{Type: "text", Text: fmt.Sprintf(`{"command":"%s","exit_code":0}`, cmd)},
+				},
+			}, nil
+		},
+	})
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "tool_call_0", Name: "exec", Arguments: ""},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "ok",
+				},
+			},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	resp, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "현재 경로 알려줘"},
+	}, RunOptions{
+		MaxIterations: 3,
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:       "exec",
+					Parameters: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}}}`),
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected auto-corrected exec call to succeed, got %v", err)
+	}
+	if resp.Message.Content != "ok" {
+		t.Fatalf("unexpected response: %q", resp.Message.Content)
+	}
+	secondCall := client.seenInputs[1]
+	if len(secondCall) == 0 {
+		t.Fatalf("expected second llm call with tool result")
+	}
+	last := secondCall[len(secondCall)-1]
+	if !strings.Contains(last.Content, `"command":"pwd"`) {
+		t.Fatalf("expected auto-corrected command pwd in tool result, got %q", last.Content)
 	}
 }
