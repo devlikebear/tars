@@ -20,6 +20,7 @@ test('resolveKeyAction prioritizes exit and resume navigation', () => {
 	assert.equal(resolveKeyAction('', {ctrl: false, upArrow: true, downArrow: false, pageUp: false, pageDown: false}, true), 'resume_up');
 	assert.equal(resolveKeyAction('', {ctrl: false, upArrow: false, downArrow: true, pageUp: false, pageDown: false}, true), 'resume_down');
 	assert.equal(resolveKeyAction('u', {ctrl: true, upArrow: false, downArrow: false, pageUp: false, pageDown: false}, false), 'chat_page_up');
+	assert.equal(resolveKeyAction('u', {ctrl: true, upArrow: false, downArrow: false, pageUp: false, pageDown: false}, false, 'hello'), 'none');
 	assert.equal(resolveKeyAction('d', {ctrl: true, upArrow: false, downArrow: false, pageUp: false, pageDown: false}, false), 'chat_page_down');
 });
 

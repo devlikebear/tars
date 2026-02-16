@@ -1,7 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import TextInput from 'ink-text-input';
 import {ChatLine, SessionSummary} from '../types.js';
+import {CustomTextInput} from './CustomTextInput.js';
 
 type HeaderBarProps = {
 	serverUrl: string;
@@ -151,6 +151,7 @@ type ChatInputProps = {
 	input: string;
 	onChange: (value: string) => void;
 	onSubmit: () => void;
+	onEscape?: () => void;
 	busy: boolean;
 	hasResumeCandidates: boolean;
 };
@@ -169,12 +170,14 @@ export function ChatInput(props: ChatInputProps): React.JSX.Element {
 	return (
 		<Box marginTop={1}>
 			<Text color="yellow">You &gt; </Text>
-			<TextInput
+			<CustomTextInput
 				value={props.input}
 				onChange={props.onChange}
 				onSubmit={props.onSubmit}
+				onEscape={props.onEscape}
 				placeholder={inputPlaceholder(props.busy, props.hasResumeCandidates)}
 				focus={!props.busy}
+				enableHistoryNavigation={!props.hasResumeCandidates}
 			/>
 		</Box>
 	);

@@ -47,7 +47,12 @@ export function toolLinesFromStatusEvent(evt: ChatSSEEvent): string[] {
 	return lines;
 }
 
-export function resolveKeyAction(key: string, inputState: KeyInputState, hasResumeCandidates: boolean): KeyAction {
+export function resolveKeyAction(
+	key: string,
+	inputState: KeyInputState,
+	hasResumeCandidates: boolean,
+	inputValue = '',
+): KeyAction {
 	if (inputState.ctrl && key === 'c') {
 		return 'exit';
 	}
@@ -57,7 +62,7 @@ export function resolveKeyAction(key: string, inputState: KeyInputState, hasResu
 	if (hasResumeCandidates && inputState.downArrow) {
 		return 'resume_down';
 	}
-	if (inputState.pageUp || (inputState.ctrl && key === 'u')) {
+	if (inputState.pageUp || (inputState.ctrl && key === 'u' && inputValue.trim() === '')) {
 		return 'chat_page_up';
 	}
 	if (inputState.pageDown || (inputState.ctrl && key === 'd')) {
