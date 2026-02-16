@@ -12,11 +12,14 @@ import (
 
 	"github.com/devlikebear/tarsncase/internal/agent"
 	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tarsncase/internal/extensions"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/mcp"
+	"github.com/devlikebear/tarsncase/internal/plugin"
 	"github.com/devlikebear/tarsncase/internal/prompt"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tarsncase/internal/skill"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/rs/zerolog"
 )
@@ -79,8 +82,32 @@ func resolveChatSession(store *session.Store, sessionID string) (string, error) 
 }
 
 func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, toolChoice string, err error) {
+	return prepareChatContextWithExtensions(workspaceDir, userMessage, extensions.Snapshot{}, nil)
+}
+
+func prepareChatContextWithExtensions(
+	workspaceDir string,
+	userMessage string,
+	extSnapshot extensions.Snapshot,
+	invokedSkill *skill.Definition,
+) (systemPrompt string, toolChoice string, err error) {
 	systemPrompt = prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
 	systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
+	if strings.TrimSpace(extSnapshot.SkillPrompt) != "" {
+		systemPrompt += "\n## Skills\n"
+		systemPrompt += strings.TrimSpace(extSnapshot.SkillPrompt) + "\n"
+		systemPrompt += "\n## Skill Usage Policy\n"
+		systemPrompt += "- Skill body content is not preloaded in the prompt.\n"
+		systemPrompt += "- If you need a skill, call read_file with the listed skill path first.\n"
+	}
+	if invokedSkill != nil {
+		systemPrompt += "\n## Invoked Skill\n"
+		systemPrompt += fmt.Sprintf(
+			"User invoked /%s.\nBefore responding, call read_file on path %q to load this skill.\n",
+			strings.TrimSpace(invokedSkill.Name),
+			strings.TrimSpace(invokedSkill.RuntimePath),
+		)
+	}
 	if shouldForceMemoryToolCall(userMessage) {
 		toolChoice = "required"
 	}
@@ -162,6 +189,30 @@ func statusPreview(value string, maxLen int) string {
 	return string(runes[:maxLen-3]) + "..."
 }
 
+func resolveInvokedSkill(message string, manager *extensions.Manager) *skill.Definition {
+	if manager == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" || !strings.HasPrefix(trimmed, "/") {
+		return nil
+	}
+	fields := strings.Fields(trimmed)
+	if len(fields) == 0 {
+		return nil
+	}
+	name := strings.TrimPrefix(fields[0], "/")
+	if strings.TrimSpace(name) == "" || strings.Contains(name, "/") {
+		return nil
+	}
+	s, ok := manager.FindSkill(name)
+	if !ok || !s.UserInvocable {
+		return nil
+	}
+	copySkill := s
+	return &copySkill
+}
+
 func setupAgentLoop(
 	client llm.Client,
 	registry *tool.Registry,
@@ -241,6 +292,7 @@ func resolveAgentMaxIterations(value int) int {
 
 type chatToolingOptions struct {
 	ProcessManager *tool.ProcessManager
+	Extensions     *extensions.Manager
 }
 
 func defaultChatToolingOptions() chatToolingOptions {
@@ -375,9 +427,18 @@ func newChatAPIHandlerWithRuntimeConfig(
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load history failed"})
 			return
 		}
+		extSnapshot := extensions.Snapshot{}
+		if tooling.Extensions != nil {
+			extSnapshot = tooling.Extensions.Snapshot()
+		}
 		registry := newBaseToolRegistryWithProcess(workspaceDir, tooling.ProcessManager)
 		for _, extra := range extraTools {
 			registry.Register(extra)
+		}
+		if tooling.Extensions != nil {
+			for _, extra := range tooling.Extensions.ChatTools() {
+				registry.Register(extra)
+			}
 		}
 		registry.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
 			return tool.SessionStatus{
@@ -385,7 +446,8 @@ func newChatAPIHandlerWithRuntimeConfig(
 				HistoryMessages: len(history) + 1,
 			}, nil
 		}))
-		systemPrompt, toolChoice, _ := prepareChatContext(workspaceDir, req.Message)
+		invokedSkill := resolveInvokedSkill(req.Message, tooling.Extensions)
+		systemPrompt, toolChoice, _ := prepareChatContextWithExtensions(workspaceDir, req.Message, extSnapshot, invokedSkill)
 		logger.Debug().
 			Str("session_id", sessionID).
 			Int("history_messages", len(history)).
@@ -1005,6 +1067,86 @@ func newMCPAPIHandler(provider mcpProvider, logger zerolog.Logger) http.Handler 
 			return
 		}
 		writeJSON(w, http.StatusOK, tools)
+	})
+	return mux
+}
+
+type extensionsProvider interface {
+	Snapshot() extensions.Snapshot
+	Reload(ctx context.Context) error
+}
+
+func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/skills", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if provider == nil {
+			writeJSON(w, http.StatusOK, []skill.Definition{})
+			return
+		}
+		snapshot := provider.Snapshot()
+		writeJSON(w, http.StatusOK, snapshot.Skills)
+	})
+	mux.HandleFunc("/v1/skills/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if provider == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
+			return
+		}
+		name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/skills/"))
+		if name == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "skill name is required"})
+			return
+		}
+		snapshot := provider.Snapshot()
+		for _, s := range snapshot.Skills {
+			if strings.EqualFold(strings.TrimSpace(s.Name), name) {
+				writeJSON(w, http.StatusOK, s)
+				return
+			}
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
+	})
+	mux.HandleFunc("/v1/plugins", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if provider == nil {
+			writeJSON(w, http.StatusOK, []plugin.Definition{})
+			return
+		}
+		snapshot := provider.Snapshot()
+		writeJSON(w, http.StatusOK, snapshot.Plugins)
+	})
+	mux.HandleFunc("/v1/runtime/extensions/reload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if provider == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"reloaded": false})
+			return
+		}
+		if err := provider.Reload(r.Context()); err != nil {
+			logger.Error().Err(err).Msg("reload extensions failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload extensions failed"})
+			return
+		}
+		snapshot := provider.Snapshot()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"reloaded":  true,
+			"version":   snapshot.Version,
+			"skills":    len(snapshot.Skills),
+			"plugins":   len(snapshot.Plugins),
+			"mcp_count": len(snapshot.MCPServers),
+		})
 	})
 	return mux
 }

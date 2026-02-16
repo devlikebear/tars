@@ -14,12 +14,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/config"
 	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tarsncase/internal/extensions"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/mcp"
 	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tarsncase/internal/plugin"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tarsncase/internal/skill"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/rs/zerolog"
 )
@@ -800,6 +804,81 @@ func TestMCPAPI_ListServersAndTools(t *testing.T) {
 	}
 }
 
+func TestExtensionsAPI_ListAndReload(t *testing.T) {
+	provider := &mockExtensionsProvider{
+		snapshot: extensions.Snapshot{
+			Version: 3,
+			Skills: []skill.Definition{
+				{Name: "deploy", RuntimePath: "_shared/skills_runtime/deploy/SKILL.md", UserInvocable: true},
+			},
+			Plugins: []plugin.Definition{
+				{ID: "ops", Name: "Ops Plugin"},
+			},
+			MCPServers: []config.MCPServer{
+				{Name: "filesystem", Command: "npx"},
+			},
+		},
+	}
+	handler := newExtensionsAPIHandler(provider, zerolog.New(io.Discard))
+
+	skillsReq := httptest.NewRequest(http.MethodGet, "/v1/skills", nil)
+	skillsRec := httptest.NewRecorder()
+	handler.ServeHTTP(skillsRec, skillsReq)
+	if skillsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for skills, got %d body=%q", skillsRec.Code, skillsRec.Body.String())
+	}
+	var skillsPayload []skill.Definition
+	if err := json.Unmarshal(skillsRec.Body.Bytes(), &skillsPayload); err != nil {
+		t.Fatalf("decode skills payload: %v", err)
+	}
+	if len(skillsPayload) != 1 || skillsPayload[0].Name != "deploy" {
+		t.Fatalf("unexpected skills payload: %+v", skillsPayload)
+	}
+
+	pluginsReq := httptest.NewRequest(http.MethodGet, "/v1/plugins", nil)
+	pluginsRec := httptest.NewRecorder()
+	handler.ServeHTTP(pluginsRec, pluginsReq)
+	if pluginsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for plugins, got %d body=%q", pluginsRec.Code, pluginsRec.Body.String())
+	}
+
+	reloadReq := httptest.NewRequest(http.MethodPost, "/v1/runtime/extensions/reload", nil)
+	reloadRec := httptest.NewRecorder()
+	handler.ServeHTTP(reloadRec, reloadReq)
+	if reloadRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for reload, got %d body=%q", reloadRec.Code, reloadRec.Body.String())
+	}
+	if provider.reloadCount != 1 {
+		t.Fatalf("expected reload count 1, got %d", provider.reloadCount)
+	}
+}
+
+func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	def := skill.Definition{
+		Name:          "deploy",
+		RuntimePath:   "_shared/skills_runtime/deploy/SKILL.md",
+		UserInvocable: true,
+	}
+	snapshot := extensions.Snapshot{
+		SkillPrompt: skill.FormatAvailableSkills([]skill.Definition{def}),
+	}
+
+	systemPrompt, _, err := prepareChatContextWithExtensions(root, "/deploy 지금 배포", snapshot, &def)
+	if err != nil {
+		t.Fatalf("prepare chat context: %v", err)
+	}
+	if !strings.Contains(systemPrompt, "<available_skills>") {
+		t.Fatalf("expected available skills block in prompt, got %q", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, `_shared/skills_runtime/deploy/SKILL.md`) {
+		t.Fatalf("expected invoked skill path in prompt, got %q", systemPrompt)
+	}
+}
+
 func TestChatAPI_WithInjectedExtraTool(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -1530,6 +1609,21 @@ func (m *mockMCPProvider) ListTools(context.Context) ([]mcp.ToolInfo, error) {
 		return nil, m.err
 	}
 	return append([]mcp.ToolInfo(nil), m.tools...), nil
+}
+
+type mockExtensionsProvider struct {
+	snapshot    extensions.Snapshot
+	reloadCount int
+	reloadErr   error
+}
+
+func (m *mockExtensionsProvider) Snapshot() extensions.Snapshot {
+	return m.snapshot
+}
+
+func (m *mockExtensionsProvider) Reload(context.Context) error {
+	m.reloadCount++
+	return m.reloadErr
 }
 
 func TestSessionAPIs(t *testing.T) {

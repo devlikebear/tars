@@ -235,28 +235,18 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					},
 					nowFn,
 				)
-				var mcpClient *mcp.Client
-				var mcpTools []tool.Tool
-				if len(cfg.MCPServers) > 0 {
-					mcpClient = mcp.NewClient(cfg.MCPServers)
-					buildCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-					tools, err := mcpClient.BuildTools(buildCtx)
-					cancel()
-					if err != nil {
-						logger.Warn().Err(err).Msg("mcp tool discovery failed")
-					} else {
-						mcpTools = tools
-						logger.Info().Int("mcp_tool_count", len(mcpTools)).Msg("mcp tools discovered")
-					}
-				}
-
 				mux := http.NewServeMux()
 				heartbeatHandler := newHeartbeatAPIHandlerWithRunner(heartbeatRunner, logger)
 				mux.Handle("/v1/heartbeat/", heartbeatHandler)
 				processManager := tool.NewProcessManager()
-				chatTooling := buildChatToolingOptions(processManager)
+				mcpClient := mcp.NewClient(cfg.MCPServers)
+				extensionsManager, err := buildExtensionsManager(cfg, mcpClient)
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to initialize extensions manager")
+					return &cli.ExitError{Code: 1, Err: err}
+				}
+				chatTooling := buildChatToolingOptions(processManager, extensionsManager)
 				chatTools := append([]tool.Tool{}, automationTools...)
-				chatTools = append(chatTools, mcpTools...)
 				chatTools = append(chatTools, buildOptionalChatTools(cfg)...)
 				chatHandler := newChatAPIHandlerWithRuntimeConfig(
 					cfg.WorkspaceDir,
@@ -282,6 +272,11 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				mcpHandler := newMCPAPIHandler(mcpClient, logger)
 				mux.Handle("/v1/mcp/servers", mcpHandler)
 				mux.Handle("/v1/mcp/tools", mcpHandler)
+				extensionsHandler := newExtensionsAPIHandler(extensionsManager, logger)
+				mux.Handle("/v1/skills", extensionsHandler)
+				mux.Handle("/v1/skills/", extensionsHandler)
+				mux.Handle("/v1/plugins", extensionsHandler)
+				mux.Handle("/v1/runtime/extensions/reload", extensionsHandler)
 				eventsHandler := newEventStreamHandler(broker, logger)
 				mux.Handle("/v1/events/stream", eventsHandler)
 
@@ -297,8 +292,13 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					<-ctx.Done()
 					shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					defer cancel()
+					extensionsManager.Close()
 					_ = server.Shutdown(shutdownCtx)
 				}()
+				if err := extensionsManager.Start(ctx); err != nil {
+					logger.Error().Err(err).Msg("failed to start extensions manager")
+					return &cli.ExitError{Code: 1, Err: err}
+				}
 				cronManager := cron.NewManager(cronStore, cronRunner, 30*time.Second, nowFn)
 				go func() {
 					if err := cronManager.Start(ctx); err != nil {
