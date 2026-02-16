@@ -57,6 +57,7 @@ function App(): React.JSX.Element {
 	const [chatScrollOffset, setChatScrollOffset] = useState<number>(0);
 	const [chatState, dispatchChat] = useReducer(chatUIReducer, initialChatUIState);
 	const nextNotificationID = useRef<number>(1);
+	const activeChatAbort = useRef<AbortController | null>(null);
 
 	const pushStatus = useCallback((line: string) => {
 		setStatusLines((prev) => appendBounded(prev, line, maxPanelLines));
@@ -156,23 +157,32 @@ function App(): React.JSX.Element {
 
 	const sendChat = useCallback(
 		async (message: string): Promise<void> => {
-			await sendChatMessage({
-				serverUrl: initial.serverUrl,
-				sessionID,
-				message,
-				dispatchChat,
-				clearResumeSelection: () => {
-					setResumeCandidates(null);
-					setResumeIndex(0);
-				},
-				resetChatScroll: () => {
-					setChatScrollOffset(0);
-				},
-				pushStatus,
-				pushDebug,
-				handleStatusEvent,
-				setSessionID,
-			});
+			const abortController = new AbortController();
+			activeChatAbort.current = abortController;
+			try {
+				await sendChatMessage({
+					serverUrl: initial.serverUrl,
+					sessionID,
+					message,
+					abortSignal: abortController.signal,
+					dispatchChat,
+					clearResumeSelection: () => {
+						setResumeCandidates(null);
+						setResumeIndex(0);
+					},
+					resetChatScroll: () => {
+						setChatScrollOffset(0);
+					},
+					pushStatus,
+					pushDebug,
+					handleStatusEvent,
+					setSessionID,
+				});
+			} finally {
+				if (activeChatAbort.current === abortController) {
+					activeChatAbort.current = null;
+				}
+			}
 		},
 		[handleStatusEvent, initial.serverUrl, pushDebug, pushStatus, sessionID],
 	);
@@ -243,7 +253,16 @@ function App(): React.JSX.Element {
 	}, [handleNotificationEvent, initial.serverUrl, pushDebug, pushStatus]);
 
 	useInput((key, inputState) => {
-		const action = resolveKeyAction(key, inputState, resumeCandidates !== null && resumeCandidates.length > 0);
+		if (inputState.escape) {
+			if (input.trim() !== '') {
+				setInput('');
+			}
+			if (chatState.busy && activeChatAbort.current !== null) {
+				activeChatAbort.current.abort();
+			}
+			return;
+		}
+		const action = resolveKeyAction(key, inputState, resumeCandidates !== null && resumeCandidates.length > 0, input);
 		if (action === 'exit') {
 			exit();
 			return;
@@ -315,6 +334,11 @@ function App(): React.JSX.Element {
 				onChange={setInput}
 				onSubmit={() => {
 					void submit();
+				}}
+				onEscape={() => {
+					if (chatState.busy && activeChatAbort.current !== null) {
+						activeChatAbort.current.abort();
+					}
 				}}
 				busy={chatState.busy}
 				hasResumeCandidates={resumeCandidates !== null}

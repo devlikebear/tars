@@ -15,6 +15,7 @@ export type StreamChatParams = {
 	serverUrl: string;
 	sessionId: string;
 	message: string;
+	signal?: AbortSignal;
 	onStatus: (line: string) => void;
 	onStatusEvent?: (evt: ChatSSEEvent) => void;
 	onDelta: (chunk: string) => void;
@@ -124,6 +125,7 @@ export async function streamChat(params: StreamChatParams): Promise<StreamChatRe
 			method: 'POST',
 			headers: {'Content-Type': 'application/json'},
 			body: JSON.stringify(payload),
+			signal: params.signal,
 		});
 	} catch (error) {
 		throw new Error(`chat endpoint ${endpoint} request failed: ${String(error)}`);

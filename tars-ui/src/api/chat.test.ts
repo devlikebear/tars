@@ -108,3 +108,36 @@ test('streamChat reports endpoint when fetch fails', async () => {
 		globalThis.fetch = originalFetch;
 	}
 });
+
+test('streamChat forwards abort signal to fetch', async () => {
+	const stream = new ReadableStream<Uint8Array>({
+		start(controller) {
+			controller.enqueue(new TextEncoder().encode('data: {"type":"done","session_id":"sess-4"}\n\n'));
+			controller.close();
+		},
+	});
+	const controller = new AbortController();
+	let capturedSignal: AbortSignal | undefined;
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = (async (_input, init) => {
+		capturedSignal = init?.signal as AbortSignal | undefined;
+		return new Response(stream, {
+			status: 200,
+			headers: {'Content-Type': 'text/event-stream'},
+		});
+	}) as typeof fetch;
+
+	try {
+		await streamChat({
+			serverUrl: 'http://127.0.0.1:43180',
+			sessionId: '',
+			message: 'hi',
+			signal: controller.signal,
+			onStatus: () => {},
+			onDelta: () => {},
+		});
+		assert.equal(capturedSignal, controller.signal);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});

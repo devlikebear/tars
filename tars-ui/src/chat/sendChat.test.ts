@@ -107,3 +107,26 @@ test('sendChatMessage handles stream error path', async () => {
 	assert.deepEqual(state.debugs, ['error: network failed']);
 	assert.equal(state.sessionID, '');
 });
+
+test('sendChatMessage handles abort as stream_cancel', async () => {
+	const state = createContext('hello');
+	const controller = new AbortController();
+	const apis: SendChatAPIs = {
+		streamChat: async () => {
+			controller.abort();
+			throw new DOMException('The operation was aborted.', 'AbortError');
+		},
+	};
+
+	await sendChatMessage(
+		{
+			...state.ctx,
+			abortSignal: controller.signal,
+		},
+		apis,
+	);
+
+	assert.deepEqual(state.actions.map((action) => action.type), ['append_message', 'stream_start', 'stream_cancel']);
+	assert.deepEqual(state.statuses, ['stopped by user']);
+	assert.deepEqual(state.debugs, ['stream canceled by user']);
+});
