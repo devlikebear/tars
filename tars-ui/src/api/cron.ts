@@ -1,4 +1,4 @@
-import {CronJob} from '../types.js';
+import {CronJob, CronRunRecord} from '../types.js';
 
 function apiURL(serverURL: string, path: string): string {
 	return `${serverURL.replace(/\/+$/, '')}${path}`;
@@ -43,6 +43,15 @@ export async function updateCronJob(
 export async function runCronJob(serverURL: string, jobID: string): Promise<string> {
 	const payload = await requestJSON<{response: string}>('POST', apiURL(serverURL, `/v1/cron/jobs/${jobID}/run`));
 	return payload.response.trim();
+}
+
+export async function getCronJob(serverURL: string, jobID: string): Promise<CronJob> {
+	return requestJSON<CronJob>('GET', apiURL(serverURL, `/v1/cron/jobs/${jobID}`));
+}
+
+export async function listCronRuns(serverURL: string, jobID: string, limit = 20): Promise<CronRunRecord[]> {
+	const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 20;
+	return requestJSON<CronRunRecord[]>('GET', apiURL(serverURL, `/v1/cron/jobs/${jobID}/runs?limit=${safeLimit}`));
 }
 
 export async function deleteCronJob(serverURL: string, jobID: string): Promise<void> {

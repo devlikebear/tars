@@ -14,6 +14,8 @@ export type Command =
 	| {kind: 'heartbeat'}
 	| {kind: 'cron_list'}
 	| {kind: 'cron_add'; schedule: string; prompt: string}
+	| {kind: 'cron_get'; jobID: string}
+	| {kind: 'cron_runs'; jobID: string; limit: number}
 	| {kind: 'cron_run'; jobID: string}
 	| {kind: 'cron_delete'; jobID: string}
 	| {kind: 'cron_enable'; jobID: string}
@@ -114,6 +116,28 @@ function parseSlashCommand(line: string): Command {
 			}
 			return {kind: 'cron_run', jobID: (fields[2] ?? '').trim()};
 		}
+		if (sub === 'get') {
+			if (fields.length < 3 || (fields[2] ?? '').trim() === '') {
+				return {kind: 'invalid', message: 'usage: /cron get {job_id}'};
+			}
+			return {kind: 'cron_get', jobID: (fields[2] ?? '').trim()};
+		}
+		if (sub === 'runs') {
+			if (fields.length < 3 || (fields[2] ?? '').trim() === '') {
+				return {kind: 'invalid', message: 'usage: /cron runs {job_id} [limit]'};
+			}
+			const jobID = (fields[2] ?? '').trim();
+			const rawLimit = (fields[3] ?? '').trim();
+			let limit = 20;
+			if (rawLimit !== '') {
+				const parsed = Number(rawLimit);
+				if (!Number.isInteger(parsed) || parsed <= 0) {
+					return {kind: 'invalid', message: 'usage: /cron runs {job_id} [limit]'};
+				}
+				limit = parsed;
+			}
+			return {kind: 'cron_runs', jobID, limit};
+		}
 		if (sub === 'delete') {
 			if (fields.length < 3 || (fields[2] ?? '').trim() === '') {
 				return {kind: 'invalid', message: 'usage: /cron delete {job_id}'};
@@ -132,7 +156,7 @@ function parseSlashCommand(line: string): Command {
 			}
 			return {kind: 'cron_disable', jobID: (fields[2] ?? '').trim()};
 		}
-		return {kind: 'invalid', message: 'usage: /cron {list|add|run|delete|enable|disable}'};
+		return {kind: 'invalid', message: 'usage: /cron {list|get|runs|add|run|delete|enable|disable}'};
 	}
 	case '/notify': {
 		if (fields.length === 1 || fields[1] === 'list') {

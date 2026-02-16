@@ -23,8 +23,18 @@ export type CronJob = {
 	schedule: string;
 	enabled: boolean;
 	delete_after_run?: boolean;
+	session_target?: string;
+	wake_mode?: string;
+	delivery_mode?: string;
 	last_run_at?: string;
 	last_run_error?: string;
+};
+
+export type CronRunRecord = {
+	job_id: string;
+	ran_at: string;
+	response?: string;
+	error?: string;
 };
 
 export type NotificationFilter = 'all' | 'cron' | 'heartbeat' | 'error';

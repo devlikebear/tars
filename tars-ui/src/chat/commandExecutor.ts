@@ -1,8 +1,8 @@
 import {createSession, exportSession, getHistory, getSession, listSessions, searchSessions} from '../api/session.js';
-import {createCronJob, deleteCronJob, listCronJobs, runCronJob, updateCronJob} from '../api/cron.js';
+import {createCronJob, deleteCronJob, getCronJob, listCronJobs, listCronRuns, runCronJob, updateCronJob} from '../api/cron.js';
 import {getStatus, runCompact, runHeartbeatOnce} from '../api/system.js';
 import {parseInputCommand} from '../commands/router.js';
-import {CronJob, NotificationItem, NotificationFilter, SessionHistoryItem, SessionSummary} from '../types.js';
+import {CronJob, CronRunRecord, NotificationItem, NotificationFilter, SessionHistoryItem, SessionSummary} from '../types.js';
 import {commandHelpText, requireSessionOrError, truncate} from '../ui/format.js';
 
 export type CommandAPIs = {
@@ -19,6 +19,8 @@ export type CommandAPIs = {
 	createCronJob: (serverUrl: string, input: {name?: string; prompt: string; schedule: string; enabled?: boolean; delete_after_run?: boolean}) => Promise<CronJob>;
 	updateCronJob: (serverUrl: string, jobID: string, input: {name?: string; prompt?: string; schedule?: string; enabled?: boolean; delete_after_run?: boolean}) => Promise<CronJob>;
 	runCronJob: (serverUrl: string, jobID: string) => Promise<string>;
+	getCronJob: (serverUrl: string, jobID: string) => Promise<CronJob>;
+	listCronRuns: (serverUrl: string, jobID: string, limit?: number) => Promise<CronRunRecord[]>;
 	deleteCronJob: (serverUrl: string, jobID: string) => Promise<void>;
 };
 
@@ -36,6 +38,8 @@ const defaultAPIs: CommandAPIs = {
 	createCronJob,
 	updateCronJob,
 	runCronJob,
+	getCronJob,
+	listCronRuns,
 	deleteCronJob,
 };
 
@@ -72,6 +76,45 @@ function missingSessionError(sessionID: string): string | null {
 
 function renderCronRows(jobs: CronJob[]): string[][] {
 	return jobs.map((job) => [job.id, truncate(job.name, 32), truncate(job.schedule, 18), job.enabled ? 'yes' : 'no']);
+}
+
+function renderCronDetailRows(job: CronJob): string[][] {
+	const detailRows: string[][] = [
+		['id', job.id],
+		['name', job.name],
+		['prompt', truncate(job.prompt, 80)],
+		['schedule', job.schedule],
+		['enabled', job.enabled ? 'yes' : 'no'],
+		['delete_after_run', job.delete_after_run ? 'yes' : 'no'],
+	];
+	if ((job.session_target ?? '').trim() !== '') {
+		detailRows.push(['session_target', job.session_target ?? '']);
+	}
+	if ((job.wake_mode ?? '').trim() !== '') {
+		detailRows.push(['wake_mode', job.wake_mode ?? '']);
+	}
+	if ((job.delivery_mode ?? '').trim() !== '') {
+		detailRows.push(['delivery_mode', job.delivery_mode ?? '']);
+	}
+	if ((job.last_run_at ?? '').trim() !== '') {
+		detailRows.push(['last_run_at', job.last_run_at ?? '']);
+	}
+	if ((job.last_run_error ?? '').trim() !== '') {
+		detailRows.push(['last_run_error', truncate(job.last_run_error ?? '', 80)]);
+	}
+	return detailRows;
+}
+
+function renderCronRunRows(runs: CronRunRecord[]): string[][] {
+	return runs.map((run) => {
+		const error = (run.error ?? '').trim();
+		const response = (run.response ?? '').trim();
+		return [
+			run.ran_at,
+			error === '' ? 'ok' : 'error',
+			error === '' ? truncate(response, 72) : truncate(error, 72),
+		];
+	});
 }
 
 function filterNotifications(items: NotificationItem[], filter: NotificationFilter): NotificationItem[] {
@@ -224,6 +267,20 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 	case 'cron_run': {
 		const response = await apis.runCronJob(ctx.serverUrl, cmd.jobID);
 		ctx.pushSystemMessage(response);
+		return;
+	}
+	case 'cron_get': {
+		const job = await apis.getCronJob(ctx.serverUrl, cmd.jobID);
+		ctx.pushSystemTable(['FIELD', 'VALUE'], renderCronDetailRows(job));
+		return;
+	}
+	case 'cron_runs': {
+		const runs = await apis.listCronRuns(ctx.serverUrl, cmd.jobID, cmd.limit);
+		if (runs.length === 0) {
+			ctx.pushSystemMessage(`(no runs for cron job: ${cmd.jobID})`);
+			return;
+		}
+		ctx.pushSystemTable(['TIME', 'STATUS', 'DETAIL'], renderCronRunRows(runs));
 		return;
 	}
 	case 'cron_delete': {

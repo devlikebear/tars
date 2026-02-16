@@ -21,6 +21,8 @@ function createDefaultAPIs(): CommandAPIs {
 		createCronJob: unexpected,
 		updateCronJob: unexpected,
 		runCronJob: unexpected,
+		getCronJob: unexpected,
+		listCronRuns: unexpected,
 		deleteCronJob: unexpected,
 	};
 }
@@ -218,6 +220,8 @@ test('executeInputCommand handles /cron add and /cron run /cron delete', async (
 		createCronJob: async () => ({id: 'job_2', name: 'nightly', prompt: 'check mail', schedule: 'every:30m', enabled: true, delete_after_run: false}),
 		updateCronJob: async () => ({id: 'job_2', name: 'nightly', prompt: 'check mail', schedule: 'every:30m', enabled: true, delete_after_run: false}),
 		runCronJob: async () => 'ran',
+		getCronJob: async () => ({id: 'job_2', name: 'nightly', prompt: 'check mail', schedule: 'every:30m', enabled: true, delete_after_run: false}),
+		listCronRuns: async () => [],
 		deleteCronJob: async () => undefined,
 	};
 	const addState = createContext('/cron add every:30m check mail');
@@ -239,6 +243,41 @@ test('executeInputCommand handles /cron add and /cron run /cron delete', async (
 	const disableState = createContext('/cron disable job_2');
 	await executeInputCommand(disableState.ctx, apis);
 	assert.deepEqual(disableState.messages, ['cron job disabled: job_2']);
+});
+
+test('executeInputCommand handles /cron get and /cron runs', async () => {
+	const apis: CommandAPIs = {
+		...createDefaultAPIs(),
+		getCronJob: async () => ({
+			id: 'job_9',
+			name: 'nightly',
+			prompt: 'check logs',
+			schedule: 'every:1h',
+			enabled: true,
+			delete_after_run: true,
+			last_run_at: '2026-02-16T11:00:00Z',
+			last_run_error: '',
+		}),
+		listCronRuns: async () => ([
+			{job_id: 'job_9', ran_at: '2026-02-16T11:00:00Z', response: 'done', error: ''},
+			{job_id: 'job_9', ran_at: '2026-02-16T10:00:00Z', response: '', error: 'timeout'},
+		]),
+	};
+
+	const getState = createContext('/cron get job_9');
+	await executeInputCommand(getState.ctx, apis);
+	assert.equal(getState.tables.length, 1);
+	assert.deepEqual(getState.tables[0]?.headers, ['FIELD', 'VALUE']);
+	assert.equal(getState.tables[0]?.rows[0]?.[0], 'id');
+	assert.equal(getState.tables[0]?.rows[0]?.[1], 'job_9');
+
+	const runsState = createContext('/cron runs job_9 2');
+	await executeInputCommand(runsState.ctx, apis);
+	assert.equal(runsState.tables.length, 1);
+	assert.deepEqual(runsState.tables[0]?.headers, ['TIME', 'STATUS', 'DETAIL']);
+	assert.equal(runsState.tables[0]?.rows.length, 2);
+	assert.equal(runsState.tables[0]?.rows[0]?.[1], 'ok');
+	assert.equal(runsState.tables[0]?.rows[1]?.[1], 'error');
 });
 
 test('executeInputCommand handles /notify list/filter/open/clear', async () => {
