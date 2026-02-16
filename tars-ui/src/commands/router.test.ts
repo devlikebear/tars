@@ -30,6 +30,10 @@ test('router parses slash command options', () => {
 	assert.deepEqual(parseInputCommand('/notify filter cron'), {kind: 'notify_filter', filter: 'cron'});
 	assert.deepEqual(parseInputCommand('/notify open 2'), {kind: 'notify_open', index: 2});
 	assert.deepEqual(parseInputCommand('/notify clear'), {kind: 'notify_clear'});
+	assert.deepEqual(parseInputCommand('/skills'), {kind: 'skills'});
+	assert.deepEqual(parseInputCommand('/plugins'), {kind: 'plugins'});
+	assert.deepEqual(parseInputCommand('/mcp'), {kind: 'mcp'});
+	assert.deepEqual(parseInputCommand('/deploy now'), {kind: 'skill_invoke', skillName: 'deploy', message: '/deploy now'});
 	assert.deepEqual(parseInputCommand('／help'), {kind: 'help'});
 	assert.deepEqual(parseInputCommand('\\sessions'), {kind: 'sessions'});
 });
@@ -49,6 +53,6 @@ test('router returns invalid for malformed or unknown command', () => {
 	assert.deepEqual(parseInputCommand('/notify filter foo'), {kind: 'invalid', message: 'usage: /notify filter {all|cron|heartbeat|error}'});
 	assert.deepEqual(parseInputCommand('/notify open'), {kind: 'invalid', message: 'usage: /notify open {index}'});
 	assert.deepEqual(parseInputCommand('/notify open xx'), {kind: 'invalid', message: 'usage: /notify open {index}'});
-	assert.deepEqual(parseInputCommand('/what'), {kind: 'invalid', message: 'unknown command: /what'});
+	assert.deepEqual(parseInputCommand('/what'), {kind: 'skill_invoke', skillName: 'what', message: '/what'});
 	assert.deepEqual(parseInputCommand('   '), {kind: 'noop'});
 });

@@ -12,6 +12,9 @@ export type Command =
 	| {kind: 'status'}
 	| {kind: 'compact'}
 	| {kind: 'heartbeat'}
+	| {kind: 'skills'}
+	| {kind: 'plugins'}
+	| {kind: 'mcp'}
 	| {kind: 'cron_list'}
 	| {kind: 'cron_add'; schedule: string; prompt: string}
 	| {kind: 'cron_get'; jobID: string}
@@ -24,6 +27,7 @@ export type Command =
 	| {kind: 'notify_filter'; filter: 'all' | 'cron' | 'heartbeat' | 'error'}
 	| {kind: 'notify_open'; index: number}
 	| {kind: 'notify_clear'}
+	| {kind: 'skill_invoke'; skillName: string; message: string}
 	| {kind: 'quit'}
 	| {kind: 'invalid'; message: string};
 
@@ -60,6 +64,12 @@ function parseSimpleSlashCommand(head: string): Command | null {
 		return {kind: 'compact'};
 	case '/heartbeat':
 		return {kind: 'heartbeat'};
+	case '/skills':
+		return {kind: 'skills'};
+	case '/plugins':
+		return {kind: 'plugins'};
+	case '/mcp':
+		return {kind: 'mcp'};
 	case '/exit':
 	case '/quit':
 		return {kind: 'quit'};
@@ -184,6 +194,12 @@ function parseSlashCommand(line: string): Command {
 		return {kind: 'invalid', message: 'usage: /notify {list|filter|open|clear}'};
 	}
 	default:
+		if (head.startsWith('/')) {
+			const skillName = head.slice(1).trim();
+			if (/^[a-zA-Z0-9_.-]+$/.test(skillName)) {
+				return {kind: 'skill_invoke', skillName, message: line};
+			}
+		}
 		return {kind: 'invalid', message: `unknown command: ${head}`};
 	}
 }

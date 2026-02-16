@@ -1,4 +1,5 @@
 import {SessionSummary} from '../types.js';
+import {parseInputCommand} from '../commands/router.js';
 
 export type SubmitInputContext = {
 	input: string;
@@ -65,6 +66,11 @@ export async function submitInput(ctx: SubmitInputContext): Promise<void> {
 	}
 
 	if (line.startsWith('/')) {
+		const cmd = parseInputCommand(line);
+		if (cmd.kind === 'skill_invoke') {
+			await ctx.sendChat(line);
+			return;
+		}
 		try {
 			await ctx.executeCommand(line);
 		} catch (err) {

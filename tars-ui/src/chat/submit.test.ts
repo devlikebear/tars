@@ -142,3 +142,11 @@ test('submitInput executes slash command and captures command error', async () =
 	assert.deepEqual(state.debugs, ['command error: boom']);
 	assert.deepEqual(state.executedCommands, []);
 });
+
+test('submitInput routes unknown slash to chat as skill invoke', async () => {
+	const state = createContext({input: '/deploy now'});
+	await submitInput(state.ctx);
+
+	assert.deepEqual(state.sentChats, ['/deploy now']);
+	assert.deepEqual(state.executedCommands, []);
+});

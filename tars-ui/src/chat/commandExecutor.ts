@@ -1,8 +1,9 @@
 import {createSession, exportSession, getHistory, getSession, listSessions, searchSessions} from '../api/session.js';
 import {createCronJob, deleteCronJob, getCronJob, listCronJobs, listCronRuns, runCronJob, updateCronJob} from '../api/cron.js';
+import {listMCPServers, listMCPTools, listPlugins, listSkills} from '../api/extensions.js';
 import {getStatus, runCompact, runHeartbeatOnce} from '../api/system.js';
 import {parseInputCommand} from '../commands/router.js';
-import {CronJob, CronRunRecord, NotificationItem, NotificationFilter, SessionHistoryItem, SessionSummary} from '../types.js';
+import {CronJob, CronRunRecord, MCPServerStatus, MCPToolInfo, NotificationItem, NotificationFilter, PluginDefinition, SessionHistoryItem, SessionSummary, SkillDefinition} from '../types.js';
 import {commandHelpText, requireSessionOrError, truncate} from '../ui/format.js';
 
 export type CommandAPIs = {
@@ -22,6 +23,10 @@ export type CommandAPIs = {
 	getCronJob: (serverUrl: string, jobID: string) => Promise<CronJob>;
 	listCronRuns: (serverUrl: string, jobID: string, limit?: number) => Promise<CronRunRecord[]>;
 	deleteCronJob: (serverUrl: string, jobID: string) => Promise<void>;
+	listSkills: (serverUrl: string) => Promise<SkillDefinition[]>;
+	listPlugins: (serverUrl: string) => Promise<PluginDefinition[]>;
+	listMCPServers: (serverUrl: string) => Promise<MCPServerStatus[]>;
+	listMCPTools: (serverUrl: string) => Promise<MCPToolInfo[]>;
 };
 
 const defaultAPIs: CommandAPIs = {
@@ -41,6 +46,10 @@ const defaultAPIs: CommandAPIs = {
 	getCronJob,
 	listCronRuns,
 	deleteCronJob,
+	listSkills,
+	listPlugins,
+	listMCPServers,
+	listMCPTools,
 };
 
 export type CommandExecutorContext = {
@@ -131,6 +140,40 @@ function renderCronRunPreviewLines(runs: CronRunRecord[]): string[] {
 	});
 }
 
+function renderSkillRows(skills: SkillDefinition[]): string[][] {
+	return skills.map((item) => [
+		item.name,
+		item.user_invocable ? 'yes' : 'no',
+		item.source,
+		truncate(item.description, 48),
+		truncate(item.runtime_path ?? '', 44),
+	]);
+}
+
+function renderPluginRows(plugins: PluginDefinition[]): string[][] {
+	return plugins.map((item) => [
+		item.id,
+		truncate(item.name ?? '-', 24),
+		item.source,
+		truncate(item.version ?? '-', 12),
+		truncate(item.root_dir, 36),
+	]);
+}
+
+function renderMCPServerRows(servers: MCPServerStatus[]): string[][] {
+	return servers.map((item) => [
+		item.name,
+		item.connected ? 'yes' : 'no',
+		String(item.tool_count),
+		truncate(item.command, 28),
+		truncate(item.error ?? '', 40),
+	]);
+}
+
+function renderMCPToolRows(tools: MCPToolInfo[]): string[][] {
+	return tools.map((item) => [item.server, item.name, truncate(item.description ?? '', 40)]);
+}
+
 function filterNotifications(items: NotificationItem[], filter: NotificationFilter): NotificationItem[] {
 	if (filter === 'all') {
 		return items;
@@ -161,6 +204,8 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 	case 'noop':
 		return;
 	case 'chat':
+		throw new Error('internal command router mismatch');
+	case 'skill_invoke':
 		throw new Error('internal command router mismatch');
 	case 'invalid':
 		ctx.pushErrorMessage(cmd.message);
@@ -259,6 +304,41 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 	case 'heartbeat': {
 		const response = await apis.runHeartbeatOnce(ctx.serverUrl);
 		ctx.pushSystemMessage(response);
+		return;
+	}
+	case 'skills': {
+		const skills = await apis.listSkills(ctx.serverUrl);
+		if (skills.length === 0) {
+			ctx.pushSystemMessage('(no skills)');
+			return;
+		}
+		ctx.pushSystemTable(['NAME', 'INVOKE', 'SOURCE', 'DESCRIPTION', 'RUNTIME_PATH'], renderSkillRows(skills));
+		return;
+	}
+	case 'plugins': {
+		const plugins = await apis.listPlugins(ctx.serverUrl);
+		if (plugins.length === 0) {
+			ctx.pushSystemMessage('(no plugins)');
+			return;
+		}
+		ctx.pushSystemTable(['ID', 'NAME', 'SOURCE', 'VERSION', 'ROOT_DIR'], renderPluginRows(plugins));
+		return;
+	}
+	case 'mcp': {
+		const [servers, tools] = await Promise.all([
+			apis.listMCPServers(ctx.serverUrl),
+			apis.listMCPTools(ctx.serverUrl),
+		]);
+		if (servers.length === 0) {
+			ctx.pushSystemMessage('(no mcp servers)');
+		} else {
+			ctx.pushSystemTable(['NAME', 'CONNECTED', 'TOOLS', 'COMMAND', 'ERROR'], renderMCPServerRows(servers));
+		}
+		if (tools.length === 0) {
+			ctx.pushSystemMessage('(no mcp tools)');
+		} else {
+			ctx.pushSystemTable(['SERVER', 'NAME', 'DESCRIPTION'], renderMCPToolRows(tools));
+		}
 		return;
 	}
 	case 'cron_list': {

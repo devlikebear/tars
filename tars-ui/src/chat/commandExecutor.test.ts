@@ -24,6 +24,10 @@ function createDefaultAPIs(): CommandAPIs {
 		getCronJob: unexpected,
 		listCronRuns: unexpected,
 		deleteCronJob: unexpected,
+		listSkills: unexpected,
+		listPlugins: unexpected,
+		listMCPServers: unexpected,
+		listMCPTools: unexpected,
 	};
 }
 
@@ -220,6 +224,32 @@ test('executeInputCommand handles /cron list', async () => {
 	assert.equal(state.tables.length, 1);
 	assert.deepEqual(state.tables[0]?.headers, ['ID', 'NAME', 'SCHEDULE', 'ENABLED']);
 	assert.deepEqual(state.tables[0]?.rows[0], ['job_1', 'morning', 'every:1h', 'yes']);
+});
+
+test('executeInputCommand handles /skills /plugins /mcp', async () => {
+	const apis: CommandAPIs = {
+		...createDefaultAPIs(),
+		listSkills: async () => [{name: 'deploy', description: 'deploy skill', user_invocable: true, source: 'workspace', file_path: 'skills/deploy/SKILL.md', runtime_path: '_shared/skills_runtime/deploy/SKILL.md'}],
+		listPlugins: async () => [{id: 'ops', name: 'Ops', source: 'workspace', root_dir: '/tmp/plugins/ops', manifest_path: '/tmp/plugins/ops/tarsncase.plugin.json'}],
+		listMCPServers: async () => [{name: 'filesystem', command: 'npx', connected: true, tool_count: 1}],
+		listMCPTools: async () => [{server: 'filesystem', name: 'read_file', description: 'read'}],
+	};
+
+	const skillsState = createContext('/skills');
+	await executeInputCommand(skillsState.ctx, apis);
+	assert.equal(skillsState.tables.length, 1);
+	assert.deepEqual(skillsState.tables[0]?.headers, ['NAME', 'INVOKE', 'SOURCE', 'DESCRIPTION', 'RUNTIME_PATH']);
+
+	const pluginsState = createContext('/plugins');
+	await executeInputCommand(pluginsState.ctx, apis);
+	assert.equal(pluginsState.tables.length, 1);
+	assert.deepEqual(pluginsState.tables[0]?.headers, ['ID', 'NAME', 'SOURCE', 'VERSION', 'ROOT_DIR']);
+
+	const mcpState = createContext('/mcp');
+	await executeInputCommand(mcpState.ctx, apis);
+	assert.equal(mcpState.tables.length, 2);
+	assert.deepEqual(mcpState.tables[0]?.headers, ['NAME', 'CONNECTED', 'TOOLS', 'COMMAND', 'ERROR']);
+	assert.deepEqual(mcpState.tables[1]?.headers, ['SERVER', 'NAME', 'DESCRIPTION']);
 });
 
 test('executeInputCommand handles /cron add and /cron run /cron delete', async () => {

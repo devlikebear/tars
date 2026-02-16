@@ -47,3 +47,36 @@ export type NotificationItem = {
 	message: string;
 	timestamp: string;
 };
+
+export type SkillDefinition = {
+	name: string;
+	description: string;
+	user_invocable: boolean;
+	source: 'workspace' | 'user' | 'bundled' | string;
+	file_path: string;
+	runtime_path?: string;
+};
+
+export type PluginDefinition = {
+	id: string;
+	name?: string;
+	description?: string;
+	version?: string;
+	source: 'workspace' | 'user' | 'bundled' | string;
+	root_dir: string;
+	manifest_path: string;
+};
+
+export type MCPServerStatus = {
+	name: string;
+	command: string;
+	connected: boolean;
+	tool_count: number;
+	error?: string;
+};
+
+export type MCPToolInfo = {
+	server: string;
+	name: string;
+	description?: string;
+};
