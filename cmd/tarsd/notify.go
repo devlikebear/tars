@@ -184,7 +184,16 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 	notifyCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	if err := d.notifier.Notify(notifyCtx, evt); err != nil {
-		d.logger.Debug().Err(err).Str("title", evt.Title).Msg("desktop notification skipped")
+		d.logger.Debug().Err(err).Str("title", evt.Title).Msg("desktop notification failed; retrying once")
+		select {
+		case <-notifyCtx.Done():
+			d.logger.Debug().Err(notifyCtx.Err()).Str("title", evt.Title).Msg("desktop notification retry skipped")
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+		if retryErr := d.notifier.Notify(notifyCtx, evt); retryErr != nil {
+			d.logger.Debug().Err(retryErr).Str("title", evt.Title).Msg("desktop notification skipped")
+		}
 	}
 }
 

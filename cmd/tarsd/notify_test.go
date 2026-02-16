@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,18 @@ type fakeDesktopNotifier struct {
 
 func (n *fakeDesktopNotifier) Notify(_ context.Context, evt notificationEvent) error {
 	n.calls = append(n.calls, evt)
+	return nil
+}
+
+type flakyDesktopNotifier struct {
+	calls int
+}
+
+func (n *flakyDesktopNotifier) Notify(_ context.Context, _ notificationEvent) error {
+	n.calls++
+	if n.calls == 1 {
+		return errors.New("temporary notify error")
+	}
 	return nil
 }
 
@@ -45,6 +58,18 @@ func TestNotificationDispatcher_SkipsDesktopNotifyWithSubscribers(t *testing.T) 
 
 	if len(fake.calls) != 0 {
 		t.Fatalf("expected desktop notify to be skipped when subscribers exist, got %d", len(fake.calls))
+	}
+}
+
+func TestNotificationDispatcher_RetriesDesktopNotifyOnFailure(t *testing.T) {
+	broker := newEventBroker()
+	flaky := &flakyDesktopNotifier{}
+	dispatcher := newNotificationDispatcher(broker, flaky, true, zerolog.New(io.Discard))
+
+	dispatcher.Emit(context.Background(), newNotificationEvent("cron", "info", "Cron done", "check inbox done"))
+
+	if flaky.calls != 2 {
+		t.Fatalf("expected one retry for failed desktop notify, got %d calls", flaky.calls)
 	}
 }
 
