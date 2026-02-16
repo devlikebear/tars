@@ -1,6 +1,6 @@
 # TARS 개발 계획서 (v3)
 
-> 최종 갱신: 2026-02-15
+> 최종 갱신: 2026-02-16
 > 모듈: `github.com/devlikebear/tarsncase`
 > 바이너리: `tarsd` (메인 데몬), `tars-ui` (React/TS Ink TUI 클라이언트), `cased` (감시 데몬)
 
@@ -48,10 +48,24 @@
 - [x] 빌트인 도구 + Agent Loop (LLM → tool_calls → 실행 → 반복)
 - [x] 허트비트 Agent Loop 통합 (도구 자율 실행)
 - [x] 크론잡 매니저 (AI 판단 기반 자율 실행)
-- [ ] 스킬 시스템 (SKILL.md, 레지스트리, 시스템 프롬프트 주입)
-- [ ] 플러그인 시스템 (매니페스트, 로더, 도구 등록)
+- [x] 스킬 시스템 (SKILL.md, 레지스트리, 시스템 프롬프트 주입)
+- [x] 플러그인 시스템 (매니페스트, 로더, 도구 등록)
 - [x] MCP 클라이언트 (stdio/SSE, 도구 어댑터)
 - [ ] cased 감시 데몬
+
+### 최근 반영 (2026-02-16)
+- [x] 기본 개발 포트를 `127.0.0.1:43180`으로 통일 (`tarsd`/`tars-ui`/예제 설정/README)
+- [x] 런타임 확장 명령 `/reload` 추가 (`POST /v1/runtime/extensions/reload` 호출)
+- [x] SSE/네트워크 진단 강화 (endpoint 포함 에러, keepalive 개선, 재연결 백오프)
+- [x] MCP 런타임 안정화
+  - `sequential-thinking` 대응 jsonline/content-length 이중 전송 지원
+  - 타임아웃 시 세션 abort + 안전한 재시도
+- [x] `tars-ui` 입력 UX 고도화
+  - bracketed paste
+  - undo/kill/yank/yank-pop
+  - 명령 히스토리(↑/↓)
+  - 명령 자동완성(Tab)
+  - `Esc` 입력 초기화 + in-flight LLM 스트림 중단
 
 ---
 

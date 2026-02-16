@@ -71,6 +71,16 @@
 - 확장 매니저(`internal/extensions`)가 스킬/플러그인/MCP를 통합 스냅샷으로 관리하고 fsnotify 기반 핫리로드를 지원한다.
 - API `GET /v1/skills`, `GET /v1/skills/{name}`, `GET /v1/plugins`, `POST /v1/runtime/extensions/reload`가 구현되어 있다.
 - `tars-ui` 명령 `/skills`, `/plugins`, `/mcp`가 추가되었고, 미지의 `/{skill}` 입력은 채팅 경로로 전달된다.
+- `tars-ui` 입력 엔진이 `CustomTextInput`으로 교체되어 bracketed paste(`\x1b[200~...\x1b[201~`)를 안정 처리한다.
+- `tars-ui` 입력창이 Undo/Kill-Ring/히스토리/자동완성을 지원한다.
+  - Undo: `Ctrl+Z`
+  - Kill: `Ctrl+U`, `Ctrl+K`
+  - Yank: `Ctrl+Y`, Yank-pop: `Alt+Y`
+  - History: `↑/↓`
+  - Command completion: `Tab` (`/`, `/cron`, `/notify`)
+- `Esc`로 입력을 즉시 초기화하고, 진행 중 LLM 스트리밍은 abort로 중단할 수 있다.
+- `tarsd`/`tars-ui` 기본 개발 포트가 `127.0.0.1:43180`으로 통일되었다.
+- MCP 런타임이 JSON line 전송 방식 서버(`sequential-thinking`)를 자동 감지/폴백하여 연결한다.
 
 ## LLM Provider 운영 정책 (2026-02-16)
 
@@ -86,8 +96,8 @@
 
 ## 다음 우선순위
 
-1. MCP 런타임 재연결/오류 진단(서버별 상태 메트릭, 백오프, 상세 에러 표준화) 강화.
-2. 스킬/플러그인 핫리로드 운영 가이드(배포 경로/권한/보안 정책) 문서화.
+1. `tars-ui` 입력 UX 마무리: 히스토리/자동완성/편집 상태를 상태 패널로 가시화하고 키맵 도움말을 개선.
+2. MCP 런타임 재연결/오류 진단(서버별 상태 메트릭, 백오프, 상세 에러 표준화) 강화.
 3. `cased` 감시 데몬의 실동작(프로세스 감시/재시작/상태 노출) 구현.
 
 ## 작업 체크리스트

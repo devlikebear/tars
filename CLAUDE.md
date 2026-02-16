@@ -116,6 +116,10 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - `internal/session`: 세션 관리 (JSONL transcript, 토큰 기반 히스토리 로딩, 컴팩션)
 - `internal/agent`: Agent Loop (훅 기반 이벤트, 도구 실행 반복, 상태 추적)
 - `internal/tool`: 빌트인 도구 (read_file, list_dir, exec, cron_*, heartbeat_*, session_status)
+- `internal/extensions`: 스킬/플러그인/MCP 통합 스냅샷 + 핫리로드 매니저
+- `internal/skill`: SKILL.md frontmatter 파싱/우선순위 머지/available_skills 포맷
+- `internal/plugin`: 선언형 매니페스트(`tarsncase.plugin.json`) 로더
+- `internal/mcp`: MCP 런타임(지속 세션, 도구 목록 동기화, jsonline/content-length 전송 모드 지원)
 - `internal/heartbeat`: 주기 실행 (정책 기반 스케줄, 세션 컨텍스트 연동)
 - `internal/cron`: 작업 스케줄러 (interval/at 스케줄, 실행 잠금, 백오프)
 - `internal/prompt`: 시스템 프롬프트 빌더 (워크스페이스 파일 조립)
@@ -164,6 +168,16 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 **2026-02-16**
 - 설정 파일 경로 자동 탐지: `config/standalone.yaml` 존재 시 자동 로드
 - `tars-ui` 설정 파일 지원: CLI 플래그 우선순위 정리
+- 기본 개발 포트 통일: `tarsd`/`tars-ui` 기본값을 `127.0.0.1:43180`으로 변경
+- `tars-ui` 입력 엔진 고도화:
+  - `ink-text-input` 의존 경로를 `CustomTextInput`으로 교체
+  - bracketed paste 파서(`src/ui/paste.ts`) 추가
+  - 편집 코어(`src/ui/inputEdit.ts`), undo stack(`src/ui/undoStack.ts`), kill ring(`src/ui/killRing.ts`) 추가
+  - 입력 히스토리(`src/ui/inputHistory.ts`) + 명령 자동완성(`src/commands/complete.ts`) 추가
+  - `Esc`로 입력 초기화 및 진행 중 LLM 스트림 취소(abort) 지원
+- MCP 안정화:
+  - `sequential-thinking` 호환을 위해 jsonline/content-length 이중 전송 모드 지원
+  - 타임아웃 시 세션 abort 및 안전한 재시도 경로 추가
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조
