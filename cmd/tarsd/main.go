@@ -171,6 +171,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 
 			var ask heartbeat.AskFunc
 			var runPrompt func(ctx context.Context, runLabel string, prompt string) (string, error)
+			var runPromptWithTools gatewayPromptRunner
 			var llmClient llm.Client
 			needLLM := opts.RunOnce || opts.RunLoop || opts.ServeAPI
 			if needLLM {
@@ -188,6 +189,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				}
 				llmClient = client
 				runPrompt = newAgentPromptRunner(cfg.WorkspaceDir, llmClient, cfg.AgentMaxIterations, logger)
+				runPromptWithTools = newAgentPromptRunnerWithTools(cfg.WorkspaceDir, llmClient, cfg.AgentMaxIterations, logger)
 				ask = newAgentAskFunc(cfg.WorkspaceDir, llmClient, cfg.AgentMaxIterations, logger)
 				logger.Debug().
 					Str("provider", cfg.LLMProvider).
@@ -264,7 +266,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					Now:                       nowFn,
 				})
 				refreshGatewayExecutors := func(reason string) int {
-					executors := buildGatewayExecutors(cfg, runPrompt, logger)
+					executors := buildGatewayExecutors(cfg, runPromptWithTools, logger)
 					gatewayRuntime.SetExecutors(executors, strings.TrimSpace(cfg.GatewayDefaultAgent))
 					agents := len(gatewayRuntime.Agents())
 					logger.Debug().Str("reason", reason).Int("gateway_agents", agents).Msg("gateway executors refreshed")

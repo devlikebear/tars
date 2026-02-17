@@ -250,7 +250,9 @@ func (r *Runtime) applyExecutorsLocked(executors []AgentExecutor, requestedDefau
 				Description: "Default in-process agent loop",
 				Source:      "in-process",
 				Entry:       "llm-loop",
-				RunPrompt:   r.opts.RunPrompt,
+				RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string) (string, error) {
+					return r.opts.RunPrompt(ctx, runLabel, prompt)
+				},
 			}); err == nil && ex != nil {
 				r.executors["default"] = ex
 				registered = true
@@ -343,14 +345,18 @@ func (r *Runtime) Agents() []map[string]any {
 			continue
 		}
 		info := executor.Info()
+		toolsAllow := append([]string{}, info.ToolsAllow...)
 		out = append(out, map[string]any{
-			"name":        info.Name,
-			"description": info.Description,
-			"enabled":     r.opts.Enabled && info.Enabled,
-			"kind":        info.Kind,
-			"source":      info.Source,
-			"entry":       info.Entry,
-			"default":     info.Name == r.defaultAgent,
+			"name":              info.Name,
+			"description":       info.Description,
+			"enabled":           r.opts.Enabled && info.Enabled,
+			"kind":              info.Kind,
+			"source":            info.Source,
+			"entry":             info.Entry,
+			"default":           info.Name == r.defaultAgent,
+			"policy_mode":       info.PolicyMode,
+			"tools_allow":       toolsAllow,
+			"tools_allow_count": info.ToolsAllowCount,
 		})
 	}
 	return out

@@ -126,6 +126,89 @@ func TestAgentRunsAPIHandler_AgentsListIncludesSourceEntryDefault(t *testing.T) 
 	if !isDefault {
 		t.Fatalf("expected default=true for in-process default executor, payload=%+v", payload)
 	}
+	policyMode, _ := first["policy_mode"].(string)
+	if strings.TrimSpace(policyMode) == "" {
+		t.Fatalf("expected policy_mode field, payload=%+v", payload)
+	}
+	if _, ok := first["tools_allow_count"]; !ok {
+		t.Fatalf("expected tools_allow_count field, payload=%+v", payload)
+	}
+	if _, ok := first["tools_allow"]; !ok {
+		t.Fatalf("expected tools_allow field, payload=%+v", payload)
+	}
+}
+
+func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.T) {
+	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
+	promptExecutor, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+		Name:        "researcher",
+		Description: "research worker",
+		Source:      "workspace",
+		Entry:       "workspace/agents/researcher/AGENT.md",
+		PolicyMode:  "allowlist",
+		ToolsAllow:  []string{"read_file", "list_dir"},
+		RunPrompt: func(_ context.Context, _ string, _ string, _ []string) (string, error) {
+			return "ok", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("new prompt executor: %v", err)
+	}
+	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors:    []gateway.AgentExecutor{promptExecutor},
+		DefaultAgent: "researcher",
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if closeErr := runtime.Close(ctx); closeErr != nil {
+			t.Fatalf("close gateway runtime: %v", closeErr)
+		}
+	})
+
+	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/agent/agents", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Count  int              `json:"count"`
+		Agents []map[string]any `json:"agents"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Count == 0 || len(payload.Agents) == 0 {
+		t.Fatalf("expected non-empty agents payload: %+v", payload)
+	}
+	var researcher map[string]any
+	for _, item := range payload.Agents {
+		name, _ := item["name"].(string)
+		if name == "researcher" {
+			researcher = item
+			break
+		}
+	}
+	if researcher == nil {
+		t.Fatalf("expected researcher agent in payload: %+v", payload)
+	}
+	policyMode, _ := researcher["policy_mode"].(string)
+	if policyMode != "allowlist" {
+		t.Fatalf("expected allowlist policy mode, got %+v", researcher)
+	}
+	count, _ := researcher["tools_allow_count"].(float64)
+	if int(count) != 2 {
+		t.Fatalf("expected tools_allow_count=2, got %+v", researcher)
+	}
+	tools, ok := researcher["tools_allow"].([]any)
+	if !ok || len(tools) != 2 {
+		t.Fatalf("expected tools_allow list, got %+v", researcher)
+	}
 }
 
 func TestAgentRunsAPIHandler_Spawn(t *testing.T) {
@@ -308,14 +391,16 @@ func TestGatewayAPIHandler_ReloadCallsRefreshHook(t *testing.T) {
 func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(filepath.Join(workspace, "workspace"))
-	runPrompt := func(_ context.Context, _ string, _ string) (string, error) {
+	runPrompt := func(_ context.Context, _ string, _ string, _ []string) (string, error) {
 		return "ok", nil
 	}
 	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
 		Enabled:      true,
 		WorkspaceDir: workspace,
 		SessionStore: store,
-		RunPrompt:    runPrompt,
+		RunPrompt: func(ctx context.Context, runLabel string, prompt string) (string, error) {
+			return runPrompt(ctx, runLabel, prompt, nil)
+		},
 	})
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

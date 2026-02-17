@@ -10,6 +10,7 @@ import (
 
 	"github.com/devlikebear/tarsncase/internal/config"
 	"github.com/devlikebear/tarsncase/internal/gateway"
+	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/rs/zerolog"
 )
 
@@ -142,7 +143,7 @@ Find evidence first and answer with concise bullets.
 
 	var capturedPrompt string
 	var capturedLabel string
-	runPrompt := func(_ context.Context, runLabel string, prompt string) (string, error) {
+	runPrompt := func(_ context.Context, runLabel string, prompt string, _ []string) (string, error) {
 		capturedLabel = runLabel
 		capturedPrompt = prompt
 		return "ok", nil
@@ -198,7 +199,7 @@ func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.
 	}
 
 	runPromptCalls := 0
-	runPrompt := func(_ context.Context, _ string, _ string) (string, error) {
+	runPrompt := func(_ context.Context, _ string, _ string, _ []string) (string, error) {
 		runPromptCalls++
 		return "prompt", nil
 	}
@@ -228,4 +229,97 @@ func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.
 	if runPromptCalls != 0 {
 		t.Fatalf("expected markdown prompt executor not to run when config executor exists")
 	}
+}
+
+func TestNewAgentPromptRunnerWithTools_InjectsAllowlistOnly(t *testing.T) {
+	client := &captureToolsLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "done",
+				},
+			},
+		},
+	}
+	runner := newAgentPromptRunnerWithTools(t.TempDir(), client, 4, zerolog.New(io.Discard))
+	if runner == nil {
+		t.Fatal("expected prompt runner")
+	}
+
+	resp, err := runner(context.Background(), "spawn:test", "hello", []string{"shell_exec", "read_file", "unknown_tool", "read_file"})
+	if err != nil {
+		t.Fatalf("run prompt: %v", err)
+	}
+	if strings.TrimSpace(resp) != "done" {
+		t.Fatalf("unexpected response: %q", resp)
+	}
+	if len(client.seenTools) == 0 {
+		t.Fatal("expected tool schemas to be captured")
+	}
+	got := strings.Join(client.seenTools[0], ",")
+	if got != "exec,read_file" {
+		t.Fatalf("unexpected injected tool schemas: %s", got)
+	}
+}
+
+func TestNewAgentPromptRunnerWithTools_HardBlocksDisallowedToolCall(t *testing.T) {
+	client := &captureToolsLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "tool_1", Name: "exec", Arguments: `{"command":"pwd"}`},
+					},
+				},
+			},
+		},
+	}
+	runner := newAgentPromptRunnerWithTools(t.TempDir(), client, 4, zerolog.New(io.Discard))
+	if runner == nil {
+		t.Fatal("expected prompt runner")
+	}
+
+	_, err := runner(context.Background(), "spawn:test", "hello", []string{"read_file"})
+	if err == nil {
+		t.Fatal("expected hard block error for disallowed tool call")
+	}
+	if !strings.Contains(err.Error(), "tool not injected for this request: exec") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(client.seenTools) == 0 || strings.Join(client.seenTools[0], ",") != "read_file" {
+		t.Fatalf("expected only read_file injected, got %+v", client.seenTools)
+	}
+}
+
+type captureToolsLLMClient struct {
+	responses []llm.ChatResponse
+	seenTools [][]string
+	callCount int
+}
+
+func (c *captureToolsLLMClient) Ask(context.Context, string) (string, error) {
+	if len(c.responses) == 0 {
+		return "", nil
+	}
+	return c.responses[0].Message.Content, nil
+}
+
+func (c *captureToolsLLMClient) Chat(_ context.Context, _ []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
+	names := make([]string, 0, len(opts.Tools))
+	for _, schema := range opts.Tools {
+		names = append(names, strings.TrimSpace(schema.Function.Name))
+	}
+	c.seenTools = append(c.seenTools, names)
+
+	if len(c.responses) == 0 {
+		return llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: ""}}, nil
+	}
+	idx := c.callCount
+	if idx >= len(c.responses) {
+		idx = len(c.responses) - 1
+	}
+	c.callCount++
+	return c.responses[idx], nil
 }

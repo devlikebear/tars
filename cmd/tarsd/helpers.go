@@ -32,6 +32,8 @@ type runtimeActivity struct {
 	chatInFlight atomic.Int64
 }
 
+type gatewayPromptRunner func(ctx context.Context, runLabel string, promptText string, allowedTools []string) (string, error)
+
 func (a *runtimeActivity) beginChat() func() {
 	if a == nil {
 		return func() {}
@@ -350,11 +352,26 @@ func newAgentPromptRunner(
 	maxIterations int,
 	logger zerolog.Logger,
 ) func(ctx context.Context, runLabel string, promptText string) (string, error) {
+	runnerWithTools := newAgentPromptRunnerWithTools(workspaceDir, client, maxIterations, logger)
+	if runnerWithTools == nil {
+		return nil
+	}
+	return func(ctx context.Context, runLabel string, promptText string) (string, error) {
+		return runnerWithTools(ctx, runLabel, promptText, nil)
+	}
+}
+
+func newAgentPromptRunnerWithTools(
+	workspaceDir string,
+	client llm.Client,
+	maxIterations int,
+	logger zerolog.Logger,
+) gatewayPromptRunner {
 	if client == nil {
 		return nil
 	}
 	maxIters := resolveAgentMaxIterations(maxIterations)
-	return func(ctx context.Context, runLabel string, promptText string) (string, error) {
+	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string) (string, error) {
 		label := strings.TrimSpace(runLabel)
 		if label == "" {
 			label = "agent"
@@ -362,19 +379,47 @@ func newAgentPromptRunner(
 		systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
 		systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
 		registry := newBaseToolRegistry(workspaceDir)
+		tools := registry.Schemas()
+		allowed := normalizeAllowedToolsForRegistry(allowedTools, registry)
+		if len(allowed) > 0 {
+			tools = registry.SchemasForNames(allowed)
+		}
 		loop := setupAgentLoop(client, registry, label, 0, logger, func(string, string, string, string, string, string) {})
 		resp, err := loop.Run(ctx, []llm.ChatMessage{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: promptText},
 		}, agent.RunOptions{
 			MaxIterations: maxIters,
-			Tools:         registry.Schemas(),
+			Tools:         tools,
 		})
 		if err != nil {
 			return "", err
 		}
 		return strings.TrimSpace(resp.Message.Content), nil
 	}
+}
+
+func normalizeAllowedToolsForRegistry(raw []string, registry *tool.Registry) []string {
+	if registry == nil || len(raw) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	seen := map[string]struct{}{}
+	for _, item := range raw {
+		name := tool.CanonicalToolName(item)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		if _, ok := registry.Get(name); !ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
 }
 
 func buildHeartbeatPolicy(
@@ -645,7 +690,7 @@ func buildOptionalChatTools(cfg config.Config, gatewayRuntime *gateway.Runtime) 
 
 func buildGatewayExecutors(
 	cfg config.Config,
-	runPrompt func(ctx context.Context, runLabel string, prompt string) (string, error),
+	runPrompt gatewayPromptRunner,
 	logger zerolog.Logger,
 ) []gateway.AgentExecutor {
 	out := make([]gateway.AgentExecutor, 0, len(cfg.GatewayAgents))
@@ -708,10 +753,13 @@ func buildGatewayExecutors(
 		return out
 	}
 
-	workspaceAgents, err := loadWorkspaceGatewayAgents(cfg.WorkspaceDir)
+	workspaceAgents, diagnostics, err := loadWorkspaceGatewayAgents(cfg.WorkspaceDir)
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to load workspace markdown agents")
 		return out
+	}
+	for _, diag := range diagnostics {
+		logger.Warn().Str("diagnostic", strings.TrimSpace(diag)).Msg("workspace gateway agent diagnostic")
 	}
 	for _, def := range workspaceAgents {
 		key := strings.ToLower(strings.TrimSpace(def.Name))

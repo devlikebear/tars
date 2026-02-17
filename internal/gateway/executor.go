@@ -11,18 +11,22 @@ import (
 )
 
 type ExecuteRequest struct {
-	RunID     string
-	SessionID string
-	Prompt    string
+	RunID        string
+	SessionID    string
+	Prompt       string
+	AllowedTools []string
 }
 
 type AgentInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Enabled     bool   `json:"enabled"`
-	Kind        string `json:"kind,omitempty"`
-	Source      string `json:"source,omitempty"`
-	Entry       string `json:"entry,omitempty"`
+	Name            string   `json:"name"`
+	Description     string   `json:"description,omitempty"`
+	Enabled         bool     `json:"enabled"`
+	Kind            string   `json:"kind,omitempty"`
+	Source          string   `json:"source,omitempty"`
+	Entry           string   `json:"entry,omitempty"`
+	PolicyMode      string   `json:"policy_mode"`
+	ToolsAllow      []string `json:"tools_allow,omitempty"`
+	ToolsAllowCount int      `json:"tools_allow_count"`
 }
 
 type AgentExecutor interface {
@@ -36,7 +40,9 @@ type PromptExecutor struct {
 	kind        string
 	source      string
 	entry       string
-	runPrompt   func(ctx context.Context, runLabel string, prompt string) (string, error)
+	policyMode  string
+	toolsAllow  []string
+	runPrompt   func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error)
 }
 
 type PromptExecutorOptions struct {
@@ -44,7 +50,9 @@ type PromptExecutorOptions struct {
 	Description string
 	Source      string
 	Entry       string
-	RunPrompt   func(ctx context.Context, runLabel string, prompt string) (string, error)
+	PolicyMode  string
+	ToolsAllow  []string
+	RunPrompt   func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error)
 }
 
 func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, error) {
@@ -63,12 +71,19 @@ func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, 
 	if source == "" {
 		source = "prompt"
 	}
+	policyMode := normalizePolicyMode(opts.PolicyMode)
+	toolsAllow := sanitizeToolsAllow(opts.ToolsAllow)
+	if policyMode == "allowlist" && len(toolsAllow) == 0 {
+		return nil, fmt.Errorf("allowlist policy requires at least one allowed tool")
+	}
 	return &PromptExecutor{
 		name:        trimmed,
 		description: description,
 		kind:        "prompt",
 		source:      source,
 		entry:       strings.TrimSpace(opts.Entry),
+		policyMode:  policyMode,
+		toolsAllow:  toolsAllow,
 		runPrompt:   opts.RunPrompt,
 	}, nil
 }
@@ -77,7 +92,9 @@ func NewPromptExecutor(name, description string, runPrompt func(ctx context.Cont
 	return NewPromptExecutorWithOptions(PromptExecutorOptions{
 		Name:        name,
 		Description: description,
-		RunPrompt:   runPrompt,
+		RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string) (string, error) {
+			return runPrompt(ctx, runLabel, prompt)
+		},
 	})
 }
 
@@ -86,12 +103,15 @@ func (e *PromptExecutor) Info() AgentInfo {
 		return AgentInfo{}
 	}
 	return AgentInfo{
-		Name:        e.name,
-		Description: e.description,
-		Enabled:     true,
-		Kind:        e.kind,
-		Source:      e.source,
-		Entry:       e.entry,
+		Name:            e.name,
+		Description:     e.description,
+		Enabled:         true,
+		Kind:            e.kind,
+		Source:          e.source,
+		Entry:           e.entry,
+		PolicyMode:      normalizePolicyMode(e.policyMode),
+		ToolsAllow:      append([]string(nil), e.toolsAllow...),
+		ToolsAllowCount: len(e.toolsAllow),
 	}
 }
 
@@ -103,7 +123,11 @@ func (e *PromptExecutor) Execute(ctx context.Context, req ExecuteRequest) (strin
 	if strings.TrimSpace(req.RunID) != "" {
 		runLabel = "spawn:" + strings.TrimSpace(req.RunID)
 	}
-	return e.runPrompt(ctx, runLabel, strings.TrimSpace(req.Prompt))
+	allowed := sanitizeToolsAllow(req.AllowedTools)
+	if len(allowed) == 0 {
+		allowed = append([]string(nil), e.toolsAllow...)
+	}
+	return e.runPrompt(ctx, runLabel, strings.TrimSpace(req.Prompt), allowed)
 }
 
 type CommandExecutorOptions struct {
@@ -182,12 +206,14 @@ func (e *CommandExecutor) Info() AgentInfo {
 		return AgentInfo{}
 	}
 	return AgentInfo{
-		Name:        e.name,
-		Description: e.description,
-		Enabled:     true,
-		Kind:        e.kind,
-		Source:      e.source,
-		Entry:       e.entry,
+		Name:            e.name,
+		Description:     e.description,
+		Enabled:         true,
+		Kind:            e.kind,
+		Source:          e.source,
+		Entry:           e.entry,
+		PolicyMode:      "full",
+		ToolsAllowCount: 0,
 	}
 }
 
@@ -231,4 +257,29 @@ func (e *CommandExecutor) Execute(ctx context.Context, req ExecuteRequest) (stri
 		return "", fmt.Errorf("command executor %q failed: %w", e.name, err)
 	}
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+func normalizePolicyMode(raw string) string {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	if mode == "allowlist" {
+		return mode
+	}
+	return "full"
+}
+
+func sanitizeToolsAllow(raw []string) []string {
+	out := make([]string, 0, len(raw))
+	seen := map[string]struct{}{}
+	for _, item := range raw {
+		name := strings.ToLower(strings.TrimSpace(item))
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
 }
