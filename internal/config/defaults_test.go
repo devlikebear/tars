@@ -578,6 +578,103 @@ func TestLoad_GatewayAgentsWatchFromYAMLAndEnv(t *testing.T) {
 	}
 }
 
+func TestLoad_GatewayPersistenceDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.GatewayPersistenceEnabled {
+		t.Fatalf("expected gateway persistence enabled by default")
+	}
+	if !cfg.GatewayRunsPersistenceEnabled {
+		t.Fatalf("expected gateway runs persistence enabled by default")
+	}
+	if !cfg.GatewayChannelsPersistenceEnabled {
+		t.Fatalf("expected gateway channels persistence enabled by default")
+	}
+	if !cfg.GatewayRestoreOnStartup {
+		t.Fatalf("expected gateway restore on startup enabled by default")
+	}
+	if cfg.GatewayRunsMaxRecords != 2000 {
+		t.Fatalf("expected gateway runs max records 2000, got %d", cfg.GatewayRunsMaxRecords)
+	}
+	if cfg.GatewayChannelsMaxMessagesPerChannel != 500 {
+		t.Fatalf("expected gateway channel max messages 500, got %d", cfg.GatewayChannelsMaxMessagesPerChannel)
+	}
+	expectedDir := filepath.Join(cfg.WorkspaceDir, "_shared", "gateway")
+	if cfg.GatewayPersistenceDir != expectedDir {
+		t.Fatalf("expected gateway persistence dir %q, got %q", expectedDir, cfg.GatewayPersistenceDir)
+	}
+}
+
+func TestLoad_GatewayPersistenceFromYAMLAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"workspace_dir: ./tenant-workspace",
+		"gateway_persistence_enabled: true",
+		"gateway_runs_persistence_enabled: true",
+		"gateway_channels_persistence_enabled: true",
+		"gateway_runs_max_records: 1234",
+		"gateway_channels_max_messages_per_channel: 234",
+		"gateway_persistence_dir: /tmp/yaml-gateway",
+		"gateway_restore_on_startup: true",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("GATEWAY_PERSISTENCE_ENABLED", "false")
+	t.Setenv("GATEWAY_RUNS_PERSISTENCE_ENABLED", "false")
+	t.Setenv("GATEWAY_CHANNELS_PERSISTENCE_ENABLED", "false")
+	t.Setenv("GATEWAY_RUNS_MAX_RECORDS", "345")
+	t.Setenv("GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "67")
+	t.Setenv("GATEWAY_PERSISTENCE_DIR", "/tmp/env-gateway")
+	t.Setenv("GATEWAY_RESTORE_ON_STARTUP", "false")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.GatewayPersistenceEnabled {
+		t.Fatalf("expected gateway persistence disabled from env")
+	}
+	if cfg.GatewayRunsPersistenceEnabled {
+		t.Fatalf("expected gateway runs persistence disabled from env")
+	}
+	if cfg.GatewayChannelsPersistenceEnabled {
+		t.Fatalf("expected gateway channels persistence disabled from env")
+	}
+	if cfg.GatewayRunsMaxRecords != 345 {
+		t.Fatalf("expected gateway runs max records 345, got %d", cfg.GatewayRunsMaxRecords)
+	}
+	if cfg.GatewayChannelsMaxMessagesPerChannel != 67 {
+		t.Fatalf("expected gateway channels max messages 67, got %d", cfg.GatewayChannelsMaxMessagesPerChannel)
+	}
+	if cfg.GatewayPersistenceDir != "/tmp/env-gateway" {
+		t.Fatalf("expected gateway persistence dir /tmp/env-gateway, got %q", cfg.GatewayPersistenceDir)
+	}
+	if cfg.GatewayRestoreOnStartup {
+		t.Fatalf("expected gateway restore on startup false from env")
+	}
+}
+
+func TestLoad_GatewayPersistenceInvalidIntFallback(t *testing.T) {
+	t.Setenv("GATEWAY_RUNS_MAX_RECORDS", "not-a-number")
+	t.Setenv("GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "-1")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.GatewayRunsMaxRecords != 2000 {
+		t.Fatalf("expected gateway runs max records fallback 2000, got %d", cfg.GatewayRunsMaxRecords)
+	}
+	if cfg.GatewayChannelsMaxMessagesPerChannel != 500 {
+		t.Fatalf("expected gateway channels max messages fallback 500, got %d", cfg.GatewayChannelsMaxMessagesPerChannel)
+	}
+}
+
 func TestLoad_DeprecatedToolPolicyKeysAreIgnored(t *testing.T) {
 	t.Setenv("TOOLS_PROFILE", "minimal")
 	t.Setenv("TOOLS_ALLOW", "session_status,memory_search")

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -29,57 +30,64 @@ type GatewayAgent struct {
 
 // Config holds top-level runtime settings.
 type Config struct {
-	Mode                              string
-	WorkspaceDir                      string
-	LLMProvider                       string
-	LLMAuthMode                       string
-	LLMOAuthProvider                  string
-	LLMBaseURL                        string
-	LLMAPIKey                         string
-	LLMModel                          string
-	AgentMaxIterations                int
-	HeartbeatActiveHours              string
-	HeartbeatTimezone                 string
-	CronRunHistoryLimit               int
-	NotifyCommand                     string
-	NotifyWhenNoClients               bool
-	BifrostBase                       string
-	BifrostAPIKey                     string
-	BifrostModel                      string
-	ToolsWebSearchEnabled             bool
-	ToolsWebFetchEnabled              bool
-	ToolsWebSearchAPIKey              string
-	ToolsWebSearchProvider            string
-	ToolsWebSearchPerplexityAPIKey    string
-	ToolsWebSearchPerplexityModel     string
-	ToolsWebSearchPerplexityBaseURL   string
-	ToolsWebSearchCacheTTLSeconds     int
-	ToolsWebFetchPrivateHostAllowlist []string
-	ToolsWebFetchAllowPrivateHosts    bool
-	ToolsApplyPatchEnabled            bool
-	GatewayEnabled                    bool
-	GatewayDefaultAgent               string
-	GatewayAgents                     []GatewayAgent
-	GatewayAgentsWatch                bool
-	GatewayAgentsWatchDebounceMS      int
-	ChannelsLocalEnabled              bool
-	ChannelsWebhookEnabled            bool
-	ChannelsTelegramEnabled           bool
-	ToolsMessageEnabled               bool
-	ToolsBrowserEnabled               bool
-	ToolsNodesEnabled                 bool
-	ToolsGatewayEnabled               bool
-	SkillsEnabled                     bool
-	SkillsWatch                       bool
-	SkillsWatchDebounceMS             int
-	SkillsExtraDirs                   []string
-	SkillsBundledDir                  string
-	PluginsEnabled                    bool
-	PluginsWatch                      bool
-	PluginsWatchDebounceMS            int
-	PluginsExtraDirs                  []string
-	PluginsBundledDir                 string
-	MCPServers                        []MCPServer
+	Mode                                 string
+	WorkspaceDir                         string
+	LLMProvider                          string
+	LLMAuthMode                          string
+	LLMOAuthProvider                     string
+	LLMBaseURL                           string
+	LLMAPIKey                            string
+	LLMModel                             string
+	AgentMaxIterations                   int
+	HeartbeatActiveHours                 string
+	HeartbeatTimezone                    string
+	CronRunHistoryLimit                  int
+	NotifyCommand                        string
+	NotifyWhenNoClients                  bool
+	BifrostBase                          string
+	BifrostAPIKey                        string
+	BifrostModel                         string
+	ToolsWebSearchEnabled                bool
+	ToolsWebFetchEnabled                 bool
+	ToolsWebSearchAPIKey                 string
+	ToolsWebSearchProvider               string
+	ToolsWebSearchPerplexityAPIKey       string
+	ToolsWebSearchPerplexityModel        string
+	ToolsWebSearchPerplexityBaseURL      string
+	ToolsWebSearchCacheTTLSeconds        int
+	ToolsWebFetchPrivateHostAllowlist    []string
+	ToolsWebFetchAllowPrivateHosts       bool
+	ToolsApplyPatchEnabled               bool
+	GatewayEnabled                       bool
+	GatewayDefaultAgent                  string
+	GatewayAgents                        []GatewayAgent
+	GatewayAgentsWatch                   bool
+	GatewayAgentsWatchDebounceMS         int
+	GatewayPersistenceEnabled            bool
+	GatewayRunsPersistenceEnabled        bool
+	GatewayChannelsPersistenceEnabled    bool
+	GatewayRunsMaxRecords                int
+	GatewayChannelsMaxMessagesPerChannel int
+	GatewayPersistenceDir                string
+	GatewayRestoreOnStartup              bool
+	ChannelsLocalEnabled                 bool
+	ChannelsWebhookEnabled               bool
+	ChannelsTelegramEnabled              bool
+	ToolsMessageEnabled                  bool
+	ToolsBrowserEnabled                  bool
+	ToolsNodesEnabled                    bool
+	ToolsGatewayEnabled                  bool
+	SkillsEnabled                        bool
+	SkillsWatch                          bool
+	SkillsWatchDebounceMS                int
+	SkillsExtraDirs                      []string
+	SkillsBundledDir                     string
+	PluginsEnabled                       bool
+	PluginsWatch                         bool
+	PluginsWatchDebounceMS               int
+	PluginsExtraDirs                     []string
+	PluginsBundledDir                    string
+	MCPServers                           []MCPServer
 }
 
 const DefaultTarsdConfigFilename = "config/standalone.yaml"
@@ -87,28 +95,34 @@ const DefaultTarsdConfigFilename = "config/standalone.yaml"
 // Default returns safe baseline settings for local standalone execution.
 func Default() Config {
 	return Config{
-		Mode:                            "standalone",
-		WorkspaceDir:                    "./workspace",
-		LLMProvider:                     "bifrost",
-		LLMAuthMode:                     "api-key",
-		BifrostModel:                    "openai/gpt-4o-mini",
-		AgentMaxIterations:              8,
-		CronRunHistoryLimit:             200,
-		NotifyWhenNoClients:             true,
-		ToolsWebSearchProvider:          "brave",
-		ToolsWebSearchPerplexityModel:   "sonar",
-		ToolsWebSearchPerplexityBaseURL: "https://api.perplexity.ai/chat/completions",
-		ToolsWebSearchCacheTTLSeconds:   60,
-		GatewayAgentsWatch:              true,
-		GatewayAgentsWatchDebounceMS:    200,
-		SkillsEnabled:                   true,
-		SkillsWatch:                     true,
-		SkillsWatchDebounceMS:           200,
-		SkillsBundledDir:                "./skills",
-		PluginsEnabled:                  true,
-		PluginsWatch:                    true,
-		PluginsWatchDebounceMS:          200,
-		PluginsBundledDir:               "./plugins",
+		Mode:                                 "standalone",
+		WorkspaceDir:                         "./workspace",
+		LLMProvider:                          "bifrost",
+		LLMAuthMode:                          "api-key",
+		BifrostModel:                         "openai/gpt-4o-mini",
+		AgentMaxIterations:                   8,
+		CronRunHistoryLimit:                  200,
+		NotifyWhenNoClients:                  true,
+		ToolsWebSearchProvider:               "brave",
+		ToolsWebSearchPerplexityModel:        "sonar",
+		ToolsWebSearchPerplexityBaseURL:      "https://api.perplexity.ai/chat/completions",
+		ToolsWebSearchCacheTTLSeconds:        60,
+		GatewayAgentsWatch:                   true,
+		GatewayAgentsWatchDebounceMS:         200,
+		GatewayPersistenceEnabled:            true,
+		GatewayRunsPersistenceEnabled:        true,
+		GatewayChannelsPersistenceEnabled:    true,
+		GatewayRunsMaxRecords:                2000,
+		GatewayChannelsMaxMessagesPerChannel: 500,
+		GatewayRestoreOnStartup:              true,
+		SkillsEnabled:                        true,
+		SkillsWatch:                          true,
+		SkillsWatchDebounceMS:                200,
+		SkillsBundledDir:                     "./skills",
+		PluginsEnabled:                       true,
+		PluginsWatch:                         true,
+		PluginsWatchDebounceMS:               200,
+		PluginsBundledDir:                    "./plugins",
 	}
 }
 
@@ -245,6 +259,27 @@ func applyEnv(cfg *Config) {
 	}
 	if v := firstNonEmpty(os.Getenv("GATEWAY_AGENTS_WATCH_DEBOUNCE_MS"), os.Getenv("TARSD_GATEWAY_AGENTS_WATCH_DEBOUNCE_MS")); v != "" {
 		cfg.GatewayAgentsWatchDebounceMS = parsePositiveInt(v, cfg.GatewayAgentsWatchDebounceMS)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_PERSISTENCE_ENABLED"), os.Getenv("TARSD_GATEWAY_PERSISTENCE_ENABLED")); v != "" {
+		cfg.GatewayPersistenceEnabled = parseBool(v, cfg.GatewayPersistenceEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_RUNS_PERSISTENCE_ENABLED"), os.Getenv("TARSD_GATEWAY_RUNS_PERSISTENCE_ENABLED")); v != "" {
+		cfg.GatewayRunsPersistenceEnabled = parseBool(v, cfg.GatewayRunsPersistenceEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_CHANNELS_PERSISTENCE_ENABLED"), os.Getenv("TARSD_GATEWAY_CHANNELS_PERSISTENCE_ENABLED")); v != "" {
+		cfg.GatewayChannelsPersistenceEnabled = parseBool(v, cfg.GatewayChannelsPersistenceEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_RUNS_MAX_RECORDS"), os.Getenv("TARSD_GATEWAY_RUNS_MAX_RECORDS")); v != "" {
+		cfg.GatewayRunsMaxRecords = parsePositiveInt(v, cfg.GatewayRunsMaxRecords)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL"), os.Getenv("TARSD_GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL")); v != "" {
+		cfg.GatewayChannelsMaxMessagesPerChannel = parsePositiveInt(v, cfg.GatewayChannelsMaxMessagesPerChannel)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_PERSISTENCE_DIR"), os.Getenv("TARSD_GATEWAY_PERSISTENCE_DIR")); v != "" {
+		cfg.GatewayPersistenceDir = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_RESTORE_ON_STARTUP"), os.Getenv("TARSD_GATEWAY_RESTORE_ON_STARTUP")); v != "" {
+		cfg.GatewayRestoreOnStartup = parseBool(v, cfg.GatewayRestoreOnStartup)
 	}
 	if v := firstNonEmpty(os.Getenv("CHANNELS_LOCAL_ENABLED"), os.Getenv("TARSD_CHANNELS_LOCAL_ENABLED")); v != "" {
 		cfg.ChannelsLocalEnabled = parseBool(v, cfg.ChannelsLocalEnabled)
@@ -390,6 +425,20 @@ func loadYAML(path string) (Config, error) {
 			cfg.GatewayAgentsWatch = parseBool(value, cfg.GatewayAgentsWatch)
 		case "gateway_agents_watch_debounce_ms":
 			cfg.GatewayAgentsWatchDebounceMS = parsePositiveInt(value, cfg.GatewayAgentsWatchDebounceMS)
+		case "gateway_persistence_enabled":
+			cfg.GatewayPersistenceEnabled = parseBool(value, cfg.GatewayPersistenceEnabled)
+		case "gateway_runs_persistence_enabled":
+			cfg.GatewayRunsPersistenceEnabled = parseBool(value, cfg.GatewayRunsPersistenceEnabled)
+		case "gateway_channels_persistence_enabled":
+			cfg.GatewayChannelsPersistenceEnabled = parseBool(value, cfg.GatewayChannelsPersistenceEnabled)
+		case "gateway_runs_max_records":
+			cfg.GatewayRunsMaxRecords = parsePositiveInt(value, cfg.GatewayRunsMaxRecords)
+		case "gateway_channels_max_messages_per_channel":
+			cfg.GatewayChannelsMaxMessagesPerChannel = parsePositiveInt(value, cfg.GatewayChannelsMaxMessagesPerChannel)
+		case "gateway_persistence_dir":
+			cfg.GatewayPersistenceDir = strings.TrimSpace(value)
+		case "gateway_restore_on_startup":
+			cfg.GatewayRestoreOnStartup = parseBool(value, cfg.GatewayRestoreOnStartup)
 		case "channels_local_enabled":
 			cfg.ChannelsLocalEnabled = parseBool(value, cfg.ChannelsLocalEnabled)
 		case "channels_webhook_enabled":
@@ -533,6 +582,27 @@ func merge(dst *Config, src Config) {
 	if src.GatewayAgentsWatchDebounceMS > 0 {
 		dst.GatewayAgentsWatchDebounceMS = src.GatewayAgentsWatchDebounceMS
 	}
+	if src.GatewayPersistenceEnabled {
+		dst.GatewayPersistenceEnabled = true
+	}
+	if src.GatewayRunsPersistenceEnabled {
+		dst.GatewayRunsPersistenceEnabled = true
+	}
+	if src.GatewayChannelsPersistenceEnabled {
+		dst.GatewayChannelsPersistenceEnabled = true
+	}
+	if src.GatewayRunsMaxRecords > 0 {
+		dst.GatewayRunsMaxRecords = src.GatewayRunsMaxRecords
+	}
+	if src.GatewayChannelsMaxMessagesPerChannel > 0 {
+		dst.GatewayChannelsMaxMessagesPerChannel = src.GatewayChannelsMaxMessagesPerChannel
+	}
+	if src.GatewayPersistenceDir != "" {
+		dst.GatewayPersistenceDir = src.GatewayPersistenceDir
+	}
+	if src.GatewayRestoreOnStartup {
+		dst.GatewayRestoreOnStartup = true
+	}
 	if src.ChannelsLocalEnabled {
 		dst.ChannelsLocalEnabled = true
 	}
@@ -625,6 +695,15 @@ func applyLLMDefaults(cfg *Config) {
 	}
 	if cfg.GatewayAgentsWatchDebounceMS <= 0 {
 		cfg.GatewayAgentsWatchDebounceMS = 200
+	}
+	if cfg.GatewayRunsMaxRecords <= 0 {
+		cfg.GatewayRunsMaxRecords = 2000
+	}
+	if cfg.GatewayChannelsMaxMessagesPerChannel <= 0 {
+		cfg.GatewayChannelsMaxMessagesPerChannel = 500
+	}
+	if strings.TrimSpace(cfg.GatewayPersistenceDir) == "" {
+		cfg.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway")
 	}
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {
