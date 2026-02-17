@@ -102,6 +102,9 @@ export type AgentDescriptor = {
 	source?: string;
 	entry?: string;
 	default?: boolean;
+	policy_mode?: 'full' | 'allowlist' | string;
+	tools_allow?: string[];
+	tools_allow_count?: number;
 };
 
 export type GatewayStatus = {

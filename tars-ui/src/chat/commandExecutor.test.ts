@@ -276,7 +276,18 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 	let getRunCalls = 0;
 	const apis: CommandAPIs = {
 		...createDefaultAPIs(),
-		listAgents: async () => [{name: 'default', description: 'Default in-process agent loop', enabled: true, kind: 'prompt', default: true, source: 'in-process', entry: 'agent-loop'}],
+		listAgents: async () => [{
+			name: 'default',
+			description: 'Default in-process agent loop',
+			enabled: true,
+			kind: 'prompt',
+			default: true,
+			source: 'in-process',
+			entry: 'agent-loop',
+			policy_mode: 'allowlist',
+			tools_allow_count: 2,
+			tools_allow: ['read_file', 'list_dir'],
+		}],
 		spawnAgentRun: async (_serverUrl, input) => {
 			spawnInputs.push(input);
 			return {run_id: 'run_0', session_id: input.session_id ?? 'sess_0', status: 'accepted', accepted: true, agent: input.agent};
@@ -339,7 +350,8 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 	const agentsDetailState = createContext('/agents --detail');
 	await executeInputCommand(agentsDetailState.ctx, apis);
 	assert.equal(agentsDetailState.tables.length, 1);
-	assert.deepEqual(agentsDetailState.tables[0]?.headers, ['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'SOURCE', 'ENTRY', 'DESCRIPTION']);
+	assert.deepEqual(agentsDetailState.tables[0]?.headers, ['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'POLICY', 'ALLOW', 'SOURCE', 'ENTRY', 'DESCRIPTION']);
+	assert.deepEqual(agentsDetailState.tables[0]?.rows[0]?.slice(4, 6), ['allowlist', '2']);
 
 	const spawnState = createContext('/spawn summarize today');
 	await executeInputCommand(spawnState.ctx, apis);

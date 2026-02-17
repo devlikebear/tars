@@ -28,7 +28,18 @@ test('runtime api decodes run and gateway responses', async () => {
 				return new Response(JSON.stringify({run_id: 'run_2', accepted: true, status: 'accepted', session_id: 'sess_2'}), {status: 202});
 			}
 			if (url.endsWith('/v1/agent/agents')) {
-				return new Response(JSON.stringify({count: 1, agents: [{name: 'default', description: 'Default in-process agent loop', enabled: true, kind: 'prompt', default: true}]}), {status: 200});
+				return new Response(JSON.stringify({
+					count: 1,
+					agents: [{
+						name: 'default',
+						description: 'Default in-process agent loop',
+						enabled: true,
+						kind: 'prompt',
+						default: true,
+						policy_mode: 'full',
+						tools_allow_count: 0,
+					}],
+				}), {status: 200});
 			}
 		if (url.endsWith('/v1/gateway/status')) {
 			return new Response(JSON.stringify({enabled: true, version: 2, runs_total: 1, runs_active: 0, agents_count: 2, agents_watch_enabled: true, agents_reload_version: 5, agents_last_reload_at: '2026-02-17T12:00:00Z', channels_local_enabled: true, channels_webhook_enabled: false, channels_telegram_enabled: false}), {status: 200});
@@ -57,6 +68,8 @@ test('runtime api decodes run and gateway responses', async () => {
 			const agents = await listAgents('http://127.0.0.1:8080');
 			assert.equal(agents.length, 1);
 			assert.equal(agents[0]?.name, 'default');
+			assert.equal(agents[0]?.policy_mode, 'full');
+			assert.equal(agents[0]?.tools_allow_count, 0);
 
 			const status = await getGatewayStatus('http://127.0.0.1:8080');
 		assert.equal(status.version, 2);

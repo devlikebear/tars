@@ -214,8 +214,12 @@ function renderAgentRows(agents: AgentDescriptor[], detail: boolean): string[][]
 		if (!detail) {
 			return [...base, truncate(item.description ?? '-', 48)];
 		}
+		const policyMode = truncate(item.policy_mode ?? 'full', 12);
+		const allowCount = String(item.tools_allow_count ?? (Array.isArray(item.tools_allow) ? item.tools_allow.length : 0));
 		return [
 			...base,
+			policyMode,
+			allowCount,
 			truncate(item.source ?? '-', 16),
 			truncate(item.entry ?? '-', 28),
 			truncate(item.description ?? '-', 48),
@@ -432,7 +436,7 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 		}
 		const detail = cmd.detail === true;
 		if (detail) {
-			ctx.pushSystemTable(['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'SOURCE', 'ENTRY', 'DESCRIPTION'], renderAgentRows(agents, true));
+			ctx.pushSystemTable(['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'POLICY', 'ALLOW', 'SOURCE', 'ENTRY', 'DESCRIPTION'], renderAgentRows(agents, true));
 			return;
 		}
 		ctx.pushSystemTable(['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'DESCRIPTION'], renderAgentRows(agents, false));
