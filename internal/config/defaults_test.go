@@ -439,6 +439,107 @@ func TestLoad_OptionalToolsFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoad_ExpandedToolAndGatewayOptionsFromEnv(t *testing.T) {
+	t.Setenv("GATEWAY_ENABLED", "true")
+	t.Setenv("CHANNELS_LOCAL_ENABLED", "true")
+	t.Setenv("CHANNELS_WEBHOOK_ENABLED", "true")
+	t.Setenv("CHANNELS_TELEGRAM_ENABLED", "true")
+	t.Setenv("TOOLS_MESSAGE_ENABLED", "true")
+	t.Setenv("TOOLS_BROWSER_ENABLED", "true")
+	t.Setenv("TOOLS_NODES_ENABLED", "true")
+	t.Setenv("TOOLS_GATEWAY_ENABLED", "true")
+	t.Setenv("TOOLS_WEB_SEARCH_PROVIDER", "perplexity")
+	t.Setenv("TOOLS_WEB_SEARCH_PERPLEXITY_API_KEY", "px-key")
+	t.Setenv("TOOLS_WEB_SEARCH_CACHE_TTL_SECONDS", "120")
+	t.Setenv("TOOLS_WEB_FETCH_ALLOW_PRIVATE_HOSTS", "true")
+	t.Setenv("TOOLS_WEB_FETCH_PRIVATE_HOST_ALLOWLIST_JSON", `["127.0.0.1","localhost"]`)
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.GatewayEnabled || !cfg.ChannelsLocalEnabled || !cfg.ChannelsWebhookEnabled || !cfg.ChannelsTelegramEnabled {
+		t.Fatalf("expected gateway/channel options enabled from env")
+	}
+	if !cfg.ToolsMessageEnabled || !cfg.ToolsBrowserEnabled || !cfg.ToolsNodesEnabled || !cfg.ToolsGatewayEnabled {
+		t.Fatalf("expected tool options enabled from env")
+	}
+	if cfg.ToolsWebSearchProvider != "perplexity" {
+		t.Fatalf("expected perplexity provider, got %q", cfg.ToolsWebSearchProvider)
+	}
+	if cfg.ToolsWebSearchPerplexityAPIKey != "px-key" {
+		t.Fatalf("expected perplexity api key, got %q", cfg.ToolsWebSearchPerplexityAPIKey)
+	}
+	if cfg.ToolsWebSearchCacheTTLSeconds != 120 {
+		t.Fatalf("expected cache ttl 120, got %d", cfg.ToolsWebSearchCacheTTLSeconds)
+	}
+	if !cfg.ToolsWebFetchAllowPrivateHosts {
+		t.Fatalf("expected allow private hosts true")
+	}
+	if len(cfg.ToolsWebFetchPrivateHostAllowlist) != 2 {
+		t.Fatalf("unexpected allowlist: %+v", cfg.ToolsWebFetchPrivateHostAllowlist)
+	}
+}
+
+func TestLoad_GatewayAgentsFromEnv(t *testing.T) {
+	t.Setenv("GATEWAY_DEFAULT_AGENT", "worker")
+	t.Setenv("GATEWAY_AGENTS_JSON", `[{"name":"worker","description":"external worker","command":"sh","args":["-c","cat"],"env":{"WORKER_MODE":"on"},"enabled":true}]`)
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.GatewayDefaultAgent != "worker" {
+		t.Fatalf("expected gateway default agent worker, got %q", cfg.GatewayDefaultAgent)
+	}
+	if len(cfg.GatewayAgents) != 1 {
+		t.Fatalf("expected 1 gateway agent, got %d", len(cfg.GatewayAgents))
+	}
+	agent := cfg.GatewayAgents[0]
+	if agent.Name != "worker" {
+		t.Fatalf("unexpected gateway agent name: %q", agent.Name)
+	}
+	if agent.Command != "sh" {
+		t.Fatalf("unexpected gateway agent command: %q", agent.Command)
+	}
+	if len(agent.Args) != 2 || agent.Args[1] != "cat" {
+		t.Fatalf("unexpected gateway agent args: %+v", agent.Args)
+	}
+	if agent.Env["WORKER_MODE"] != "on" {
+		t.Fatalf("unexpected gateway agent env: %+v", agent.Env)
+	}
+	if !agent.Enabled {
+		t.Fatalf("expected gateway agent enabled=true")
+	}
+}
+
+func TestLoad_GatewayAgentsFromYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"gateway_enabled: true",
+		"gateway_default_agent: worker",
+		`gateway_agents_json: [{"name":"worker","command":"sh","args":["-c","cat"],"enabled":true}]`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.GatewayEnabled {
+		t.Fatalf("expected gateway enabled from yaml")
+	}
+	if cfg.GatewayDefaultAgent != "worker" {
+		t.Fatalf("expected gateway default agent worker, got %q", cfg.GatewayDefaultAgent)
+	}
+	if len(cfg.GatewayAgents) != 1 || cfg.GatewayAgents[0].Name != "worker" {
+		t.Fatalf("unexpected gateway agents: %+v", cfg.GatewayAgents)
+	}
+}
+
 func TestLoad_DeprecatedToolPolicyKeysAreIgnored(t *testing.T) {
 	t.Setenv("TOOLS_PROFILE", "minimal")
 	t.Setenv("TOOLS_ALLOW", "session_status,memory_search")

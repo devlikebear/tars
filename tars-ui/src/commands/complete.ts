@@ -12,7 +12,14 @@ const rootCommands = [
 	'/skills',
 	'/plugins',
 	'/mcp',
+	'/agents',
 	'/reload',
+	'/runs',
+	'/spawn',
+	'/run',
+	'/cancel-run',
+	'/gateway',
+	'/channels',
 	'/cron',
 	'/notify',
 	'/quit',
@@ -20,6 +27,8 @@ const rootCommands = [
 
 const cronSubs = ['list', 'add', 'get', 'runs', 'run', 'delete', 'enable', 'disable'];
 const notifySubs = ['list', 'filter', 'open', 'clear'];
+const gatewaySubs = ['status', 'reload', 'restart'];
+const spawnOptions = ['--agent', '--title', '--session', '--wait'];
 
 function commonPrefix(values: string[]): string {
 	if (values.length === 0) {
@@ -92,6 +101,22 @@ export function completeCommandInput(line: string): string {
 		completedSub = completeToken(subPrefix, cronSubs);
 	} else if (head === '/notify') {
 		completedSub = completeToken(subPrefix, notifySubs);
+	} else if (head === '/gateway') {
+		completedSub = completeToken(subPrefix, gatewaySubs);
+	} else if (head === '/spawn') {
+		if (!line.endsWith(' ')) {
+			const tokens = rest.split(/\s+/).filter((token) => token.trim() !== '');
+			const lastIdx = tokens.length - 1;
+			const last = tokens[lastIdx] ?? '';
+			if (last.startsWith('--')) {
+				const completed = completeToken(last, spawnOptions);
+				if (completed !== null) {
+					tokens[lastIdx] = completed.value;
+					const suffix = completed.unique ? ' ' : '';
+					return `/spawn ${tokens.join(' ')}${suffix}`;
+				}
+			}
+		}
 	}
 	if (completedSub === null) {
 		return line;

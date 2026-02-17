@@ -53,4 +53,26 @@ plugins_bundled_dir: ./plugins
 tools_apply_patch_enabled: false
 tools_web_fetch_enabled: false
 tools_web_search_enabled: false
-tools_web_search_api_key: ""
+tools_web_search_api_key: "" # brave api key
+tools_web_search_provider: brave # brave | perplexity
+tools_web_search_perplexity_api_key: ""
+tools_web_search_perplexity_model: sonar
+tools_web_search_perplexity_base_url: https://api.perplexity.ai/chat/completions
+tools_web_search_cache_ttl_seconds: 60
+tools_web_fetch_allow_private_hosts: false
+# tools_web_fetch_private_host_allowlist_json: '["localhost","127.0.0.1"]'
+
+# In-process gateway / channels (safe-by-default)
+gateway_enabled: false
+gateway_default_agent: ""
+# gateway_agents_json: '[{"name":"worker","description":"external worker","command":"python3","args":["./worker_agent.py"],"working_dir":".","timeout_seconds":120,"enabled":true}]'
+# /v1/runtime/extensions/reload also refreshes gateway executors automatically.
+channels_local_enabled: false
+channels_webhook_enabled: false
+channels_telegram_enabled: false
+
+# Additional OpenClaw-style tools (opt-in)
+tools_message_enabled: false
+tools_browser_enabled: false
+tools_nodes_enabled: false
+tools_gateway_enabled: false

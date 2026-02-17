@@ -2,8 +2,9 @@ import {createSession, exportSession, getHistory, getSession, listSessions, sear
 import {createCronJob, deleteCronJob, getCronJob, listCronJobs, listCronRuns, runCronJob, updateCronJob} from '../api/cron.js';
 import {listMCPServers, listMCPTools, listPlugins, listSkills, reloadExtensions} from '../api/extensions.js';
 import {getStatus, runCompact, runHeartbeatOnce} from '../api/system.js';
+import {cancelAgentRun, getAgentRun, getGatewayStatus, listAgentRuns, listAgents, reloadGateway, restartGateway, spawnAgentRun} from '../api/runtime.js';
 import {parseInputCommand} from '../commands/router.js';
-import {CronJob, CronRunRecord, MCPServerStatus, MCPToolInfo, NotificationItem, NotificationFilter, PluginDefinition, SessionHistoryItem, SessionSummary, SkillDefinition} from '../types.js';
+import {AgentDescriptor, AgentRunSummary, CronJob, CronRunRecord, GatewayStatus, MCPServerStatus, MCPToolInfo, NotificationItem, NotificationFilter, PluginDefinition, SessionHistoryItem, SessionSummary, SkillDefinition} from '../types.js';
 import {commandHelpText, requireSessionOrError, truncate} from '../ui/format.js';
 
 export type CommandAPIs = {
@@ -27,7 +28,15 @@ export type CommandAPIs = {
 	listPlugins: (serverUrl: string) => Promise<PluginDefinition[]>;
 	listMCPServers: (serverUrl: string) => Promise<MCPServerStatus[]>;
 	listMCPTools: (serverUrl: string) => Promise<MCPToolInfo[]>;
-	reloadExtensions: (serverUrl: string) => Promise<{reloaded: boolean; version?: number; skills?: number; plugins?: number; mcp_count?: number}>;
+	reloadExtensions: (serverUrl: string) => Promise<{reloaded: boolean; version?: number; skills?: number; plugins?: number; mcp_count?: number; gateway_refreshed?: boolean; gateway_agents?: number}>;
+	listAgents: (serverUrl: string) => Promise<AgentDescriptor[]>;
+	listAgentRuns: (serverUrl: string, limit?: number) => Promise<AgentRunSummary[]>;
+	spawnAgentRun: (serverUrl: string, input: {session_id?: string; title?: string; message: string; agent?: string}) => Promise<AgentRunSummary>;
+	getAgentRun: (serverUrl: string, runID: string) => Promise<AgentRunSummary>;
+	cancelAgentRun: (serverUrl: string, runID: string) => Promise<AgentRunSummary>;
+	getGatewayStatus: (serverUrl: string) => Promise<GatewayStatus>;
+	reloadGateway: (serverUrl: string) => Promise<GatewayStatus>;
+	restartGateway: (serverUrl: string) => Promise<GatewayStatus>;
 };
 
 const defaultAPIs: CommandAPIs = {
@@ -52,6 +61,14 @@ const defaultAPIs: CommandAPIs = {
 	listMCPServers,
 	listMCPTools,
 	reloadExtensions,
+	listAgents,
+	listAgentRuns,
+	spawnAgentRun,
+	getAgentRun,
+	cancelAgentRun,
+	getGatewayStatus,
+	reloadGateway,
+	restartGateway,
 };
 
 export type CommandExecutorContext = {
@@ -174,6 +191,55 @@ function renderMCPServerRows(servers: MCPServerStatus[]): string[][] {
 
 function renderMCPToolRows(tools: MCPToolInfo[]): string[][] {
 	return tools.map((item) => [item.server, item.name, truncate(item.description ?? '', 40)]);
+}
+
+function renderRunRows(runs: AgentRunSummary[]): string[][] {
+	return runs.map((item) => [
+		item.run_id,
+		item.session_id ?? '-',
+		item.status,
+		item.agent ?? '-',
+		truncate(item.response ?? item.error ?? '', 40),
+	]);
+}
+
+function renderAgentRows(agents: AgentDescriptor[], detail: boolean): string[][] {
+	return agents.map((item) => {
+		const base = [
+			item.name,
+			item.default ? 'yes' : 'no',
+			item.enabled ? 'yes' : 'no',
+			truncate(item.kind ?? '-', 12),
+		];
+		if (!detail) {
+			return [...base, truncate(item.description ?? '-', 48)];
+		}
+		return [
+			...base,
+			truncate(item.source ?? '-', 16),
+			truncate(item.entry ?? '-', 28),
+			truncate(item.description ?? '-', 48),
+		];
+	});
+}
+
+function isRunPending(status: string): boolean {
+	const normalized = status.trim().toLowerCase();
+	return normalized === 'accepted' || normalized === 'running';
+}
+
+function renderGatewayRows(status: GatewayStatus): string[][] {
+	return [
+		['enabled', status.enabled ? 'yes' : 'no'],
+		['version', String(status.version ?? 0)],
+		['runs_total', String(status.runs_total ?? 0)],
+		['runs_active', String(status.runs_active ?? 0)],
+		['channels_local', status.channels_local_enabled ? 'yes' : 'no'],
+		['channels_webhook', status.channels_webhook_enabled ? 'yes' : 'no'],
+		['channels_telegram', status.channels_telegram_enabled ? 'yes' : 'no'],
+		['last_reload_at', status.last_reload_at ?? '-'],
+		['last_restart_at', status.last_restart_at ?? '-'],
+	];
 }
 
 function filterNotifications(items: NotificationItem[], filter: NotificationFilter): NotificationItem[] {
@@ -350,8 +416,119 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 			return;
 		}
 		ctx.pushSystemMessage(
-			`extensions reloaded: version=${result.version ?? '-'} skills=${result.skills ?? 0} plugins=${result.plugins ?? 0} mcp=${result.mcp_count ?? 0}`,
+			`extensions reloaded: version=${result.version ?? '-'} skills=${result.skills ?? 0} plugins=${result.plugins ?? 0} mcp=${result.mcp_count ?? 0} gateway_refresh=${result.gateway_refreshed ? 'yes' : 'no'} gateway_agents=${result.gateway_agents ?? 0}`,
 		);
+		return;
+	}
+	case 'agents': {
+		const agents = await apis.listAgents(ctx.serverUrl);
+		if (agents.length === 0) {
+			ctx.pushSystemMessage('(no agents)');
+			return;
+		}
+		const detail = cmd.detail === true;
+		if (detail) {
+			ctx.pushSystemTable(['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'SOURCE', 'ENTRY', 'DESCRIPTION'], renderAgentRows(agents, true));
+			return;
+		}
+		ctx.pushSystemTable(['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'DESCRIPTION'], renderAgentRows(agents, false));
+		return;
+	}
+	case 'runs': {
+		const runs = await apis.listAgentRuns(ctx.serverUrl, 30);
+		if (runs.length === 0) {
+			ctx.pushSystemMessage('(no runs)');
+			return;
+		}
+		ctx.pushSystemTable(['RUN_ID', 'SESSION', 'STATUS', 'AGENT', 'DETAIL'], renderRunRows(runs));
+		return;
+	}
+	case 'spawn': {
+		const payload: {session_id?: string; title?: string; message: string; agent?: string} = {
+			message: cmd.message,
+		};
+		if ((cmd.sessionID ?? '').trim() !== '') {
+			payload.session_id = (cmd.sessionID ?? '').trim();
+		} else if (ctx.sessionID.trim() !== '') {
+			payload.session_id = ctx.sessionID.trim();
+		}
+		if ((cmd.title ?? '').trim() !== '') {
+			payload.title = (cmd.title ?? '').trim();
+		}
+		if ((cmd.agent ?? '').trim() !== '') {
+			payload.agent = (cmd.agent ?? '').trim();
+		}
+		const run = await apis.spawnAgentRun(ctx.serverUrl, payload);
+		if (cmd.wait) {
+			const deadline = Date.now() + 30_000;
+			let current = run;
+			while (isRunPending(current.status)) {
+				if (Date.now() > deadline) {
+					ctx.pushErrorMessage(`run wait timeout: ${current.run_id} status=${current.status}`);
+					return;
+				}
+				current = await apis.getAgentRun(ctx.serverUrl, current.run_id);
+				if (isRunPending(current.status)) {
+					await new Promise<void>((resolve) => {
+						setTimeout(resolve, 250);
+					});
+				}
+			}
+			if (current.status.trim().toLowerCase() === 'completed') {
+				ctx.pushSystemMessage(`run completed: ${current.run_id} status=${current.status}`);
+			} else {
+				const detail = (current.error ?? '').trim();
+				if (detail === '') {
+					ctx.pushErrorMessage(`run finished: ${current.run_id} status=${current.status}`);
+				} else {
+					ctx.pushErrorMessage(`run finished: ${current.run_id} status=${current.status} error=${truncate(detail, 80)}`);
+				}
+			}
+			return;
+		}
+		ctx.pushSystemMessage(`run accepted: ${run.run_id} status=${run.status}`);
+		return;
+	}
+	case 'run': {
+		const run = await apis.getAgentRun(ctx.serverUrl, cmd.runID);
+		ctx.pushSystemTable(['FIELD', 'VALUE'], [
+			['run_id', run.run_id],
+			['session_id', run.session_id ?? '-'],
+			['status', run.status],
+			['agent', run.agent ?? '-'],
+			['created_at', run.created_at ?? '-'],
+			['started_at', run.started_at ?? '-'],
+			['completed_at', run.completed_at ?? '-'],
+			['response', truncate(run.response ?? '', 80)],
+			['error', truncate(run.error ?? '', 80)],
+		]);
+		return;
+	}
+	case 'cancel_run': {
+		const run = await apis.cancelAgentRun(ctx.serverUrl, cmd.runID);
+		ctx.pushSystemMessage(`run canceled: ${run.run_id} status=${run.status}`);
+		return;
+	}
+	case 'gateway': {
+		let status: GatewayStatus;
+		if (cmd.action === 'reload') {
+			status = await apis.reloadGateway(ctx.serverUrl);
+		} else if (cmd.action === 'restart') {
+			status = await apis.restartGateway(ctx.serverUrl);
+		} else {
+			status = await apis.getGatewayStatus(ctx.serverUrl);
+		}
+		ctx.pushSystemTable(['FIELD', 'VALUE'], renderGatewayRows(status));
+		return;
+	}
+	case 'channels': {
+		const status = await apis.getGatewayStatus(ctx.serverUrl);
+		ctx.pushSystemTable(['FIELD', 'VALUE'], [
+			['channels_local', status.channels_local_enabled ? 'yes' : 'no'],
+			['channels_webhook', status.channels_webhook_enabled ? 'yes' : 'no'],
+			['channels_telegram', status.channels_telegram_enabled ? 'yes' : 'no'],
+			['gateway_enabled', status.enabled ? 'yes' : 'no'],
+		]);
 		return;
 	}
 	case 'cron_list': {

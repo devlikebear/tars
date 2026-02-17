@@ -34,6 +34,33 @@ test('router parses slash command options', () => {
 	assert.deepEqual(parseInputCommand('/plugins'), {kind: 'plugins'});
 	assert.deepEqual(parseInputCommand('/mcp'), {kind: 'mcp'});
 	assert.deepEqual(parseInputCommand('/reload'), {kind: 'reload'});
+	assert.deepEqual(parseInputCommand('/agents'), {kind: 'agents'});
+	assert.deepEqual(parseInputCommand('/agents --detail'), {kind: 'agents', detail: true});
+	assert.deepEqual(parseInputCommand('/runs'), {kind: 'runs'});
+	assert.deepEqual(parseInputCommand('/spawn hello worker'), {kind: 'spawn', message: 'hello worker'});
+	assert.deepEqual(parseInputCommand('/spawn --agent worker hello worker'), {kind: 'spawn', message: 'hello worker', agent: 'worker'});
+	assert.deepEqual(parseInputCommand('/spawn --title nightly hello worker'), {kind: 'spawn', message: 'hello worker', title: 'nightly'});
+	assert.deepEqual(parseInputCommand('/spawn --session sess_123 hello worker'), {kind: 'spawn', message: 'hello worker', sessionID: 'sess_123'});
+	assert.deepEqual(parseInputCommand('/spawn --wait hello worker'), {kind: 'spawn', message: 'hello worker', wait: true});
+	assert.deepEqual(parseInputCommand('/spawn --agent worker --title nightly --session sess_123 hello worker'), {
+		kind: 'spawn',
+		message: 'hello worker',
+		agent: 'worker',
+		title: 'nightly',
+		sessionID: 'sess_123',
+	});
+	assert.deepEqual(parseInputCommand('/spawn --wait --agent worker hello worker'), {
+		kind: 'spawn',
+		message: 'hello worker',
+		agent: 'worker',
+		wait: true,
+	});
+	assert.deepEqual(parseInputCommand('/run run_1'), {kind: 'run', runID: 'run_1'});
+	assert.deepEqual(parseInputCommand('/cancel-run run_1'), {kind: 'cancel_run', runID: 'run_1'});
+	assert.deepEqual(parseInputCommand('/gateway'), {kind: 'gateway', action: 'status'});
+	assert.deepEqual(parseInputCommand('/gateway reload'), {kind: 'gateway', action: 'reload'});
+	assert.deepEqual(parseInputCommand('/gateway restart'), {kind: 'gateway', action: 'restart'});
+	assert.deepEqual(parseInputCommand('/channels'), {kind: 'channels'});
 	assert.deepEqual(parseInputCommand('/deploy now'), {kind: 'skill_invoke', skillName: 'deploy', message: '/deploy now'});
 	assert.deepEqual(parseInputCommand('／help'), {kind: 'help'});
 	assert.deepEqual(parseInputCommand('\\sessions'), {kind: 'sessions'});
@@ -54,6 +81,13 @@ test('router returns invalid for malformed or unknown command', () => {
 	assert.deepEqual(parseInputCommand('/notify filter foo'), {kind: 'invalid', message: 'usage: /notify filter {all|cron|heartbeat|error}'});
 	assert.deepEqual(parseInputCommand('/notify open'), {kind: 'invalid', message: 'usage: /notify open {index}'});
 	assert.deepEqual(parseInputCommand('/notify open xx'), {kind: 'invalid', message: 'usage: /notify open {index}'});
+	assert.deepEqual(parseInputCommand('/run'), {kind: 'invalid', message: 'usage: /run {run_id}'});
+	assert.deepEqual(parseInputCommand('/spawn'), {kind: 'invalid', message: 'usage: /spawn [--agent {name}] [--title {title}] [--session {id}] [--wait] {message}'});
+	assert.deepEqual(parseInputCommand('/spawn --agent'), {kind: 'invalid', message: 'usage: /spawn [--agent {name}] [--title {title}] [--session {id}] [--wait] {message}'});
+	assert.deepEqual(parseInputCommand('/spawn --unknown hello'), {kind: 'invalid', message: 'usage: /spawn [--agent {name}] [--title {title}] [--session {id}] [--wait] {message}'});
+	assert.deepEqual(parseInputCommand('/cancel-run'), {kind: 'invalid', message: 'usage: /cancel-run {run_id}'});
+	assert.deepEqual(parseInputCommand('/gateway xx'), {kind: 'invalid', message: 'usage: /gateway {status|reload|restart}'});
+	assert.deepEqual(parseInputCommand('/agents foo'), {kind: 'invalid', message: 'usage: /agents [--detail]'});
 	assert.deepEqual(parseInputCommand('/what'), {kind: 'skill_invoke', skillName: 'what', message: '/what'});
 	assert.deepEqual(parseInputCommand('   '), {kind: 'noop'});
 });

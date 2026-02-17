@@ -16,40 +16,68 @@ type MCPServer struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
+type GatewayAgent struct {
+	Name           string            `json:"name"`
+	Description    string            `json:"description,omitempty"`
+	Command        string            `json:"command"`
+	Args           []string          `json:"args,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	WorkingDir     string            `json:"working_dir,omitempty"`
+	TimeoutSeconds int               `json:"timeout_seconds,omitempty"`
+	Enabled        bool              `json:"enabled,omitempty"`
+}
+
 // Config holds top-level runtime settings.
 type Config struct {
-	Mode                   string
-	WorkspaceDir           string
-	LLMProvider            string
-	LLMAuthMode            string
-	LLMOAuthProvider       string
-	LLMBaseURL             string
-	LLMAPIKey              string
-	LLMModel               string
-	AgentMaxIterations     int
-	HeartbeatActiveHours   string
-	HeartbeatTimezone      string
-	CronRunHistoryLimit    int
-	NotifyCommand          string
-	NotifyWhenNoClients    bool
-	BifrostBase            string
-	BifrostAPIKey          string
-	BifrostModel           string
-	ToolsWebSearchEnabled  bool
-	ToolsWebFetchEnabled   bool
-	ToolsWebSearchAPIKey   string
-	ToolsApplyPatchEnabled bool
-	SkillsEnabled          bool
-	SkillsWatch            bool
-	SkillsWatchDebounceMS  int
-	SkillsExtraDirs        []string
-	SkillsBundledDir       string
-	PluginsEnabled         bool
-	PluginsWatch           bool
-	PluginsWatchDebounceMS int
-	PluginsExtraDirs       []string
-	PluginsBundledDir      string
-	MCPServers             []MCPServer
+	Mode                              string
+	WorkspaceDir                      string
+	LLMProvider                       string
+	LLMAuthMode                       string
+	LLMOAuthProvider                  string
+	LLMBaseURL                        string
+	LLMAPIKey                         string
+	LLMModel                          string
+	AgentMaxIterations                int
+	HeartbeatActiveHours              string
+	HeartbeatTimezone                 string
+	CronRunHistoryLimit               int
+	NotifyCommand                     string
+	NotifyWhenNoClients               bool
+	BifrostBase                       string
+	BifrostAPIKey                     string
+	BifrostModel                      string
+	ToolsWebSearchEnabled             bool
+	ToolsWebFetchEnabled              bool
+	ToolsWebSearchAPIKey              string
+	ToolsWebSearchProvider            string
+	ToolsWebSearchPerplexityAPIKey    string
+	ToolsWebSearchPerplexityModel     string
+	ToolsWebSearchPerplexityBaseURL   string
+	ToolsWebSearchCacheTTLSeconds     int
+	ToolsWebFetchPrivateHostAllowlist []string
+	ToolsWebFetchAllowPrivateHosts    bool
+	ToolsApplyPatchEnabled            bool
+	GatewayEnabled                    bool
+	GatewayDefaultAgent               string
+	GatewayAgents                     []GatewayAgent
+	ChannelsLocalEnabled              bool
+	ChannelsWebhookEnabled            bool
+	ChannelsTelegramEnabled           bool
+	ToolsMessageEnabled               bool
+	ToolsBrowserEnabled               bool
+	ToolsNodesEnabled                 bool
+	ToolsGatewayEnabled               bool
+	SkillsEnabled                     bool
+	SkillsWatch                       bool
+	SkillsWatchDebounceMS             int
+	SkillsExtraDirs                   []string
+	SkillsBundledDir                  string
+	PluginsEnabled                    bool
+	PluginsWatch                      bool
+	PluginsWatchDebounceMS            int
+	PluginsExtraDirs                  []string
+	PluginsBundledDir                 string
+	MCPServers                        []MCPServer
 }
 
 const DefaultTarsdConfigFilename = "config/standalone.yaml"
@@ -57,22 +85,26 @@ const DefaultTarsdConfigFilename = "config/standalone.yaml"
 // Default returns safe baseline settings for local standalone execution.
 func Default() Config {
 	return Config{
-		Mode:                   "standalone",
-		WorkspaceDir:           "./workspace",
-		LLMProvider:            "bifrost",
-		LLMAuthMode:            "api-key",
-		BifrostModel:           "openai/gpt-4o-mini",
-		AgentMaxIterations:     8,
-		CronRunHistoryLimit:    200,
-		NotifyWhenNoClients:    true,
-		SkillsEnabled:          true,
-		SkillsWatch:            true,
-		SkillsWatchDebounceMS:  200,
-		SkillsBundledDir:       "./skills",
-		PluginsEnabled:         true,
-		PluginsWatch:           true,
-		PluginsWatchDebounceMS: 200,
-		PluginsBundledDir:      "./plugins",
+		Mode:                            "standalone",
+		WorkspaceDir:                    "./workspace",
+		LLMProvider:                     "bifrost",
+		LLMAuthMode:                     "api-key",
+		BifrostModel:                    "openai/gpt-4o-mini",
+		AgentMaxIterations:              8,
+		CronRunHistoryLimit:             200,
+		NotifyWhenNoClients:             true,
+		ToolsWebSearchProvider:          "brave",
+		ToolsWebSearchPerplexityModel:   "sonar",
+		ToolsWebSearchPerplexityBaseURL: "https://api.perplexity.ai/chat/completions",
+		ToolsWebSearchCacheTTLSeconds:   60,
+		SkillsEnabled:                   true,
+		SkillsWatch:                     true,
+		SkillsWatchDebounceMS:           200,
+		SkillsBundledDir:                "./skills",
+		PluginsEnabled:                  true,
+		PluginsWatch:                    true,
+		PluginsWatchDebounceMS:          200,
+		PluginsBundledDir:               "./plugins",
 	}
 }
 
@@ -171,8 +203,59 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_SEARCH_API_KEY"), os.Getenv("TARSD_TOOLS_WEB_SEARCH_API_KEY")); v != "" {
 		cfg.ToolsWebSearchAPIKey = strings.TrimSpace(v)
 	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_SEARCH_PROVIDER"), os.Getenv("TARSD_TOOLS_WEB_SEARCH_PROVIDER")); v != "" {
+		cfg.ToolsWebSearchProvider = strings.TrimSpace(strings.ToLower(v))
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_SEARCH_PERPLEXITY_API_KEY"), os.Getenv("TARSD_TOOLS_WEB_SEARCH_PERPLEXITY_API_KEY")); v != "" {
+		cfg.ToolsWebSearchPerplexityAPIKey = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_SEARCH_PERPLEXITY_MODEL"), os.Getenv("TARSD_TOOLS_WEB_SEARCH_PERPLEXITY_MODEL")); v != "" {
+		cfg.ToolsWebSearchPerplexityModel = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_SEARCH_PERPLEXITY_BASE_URL"), os.Getenv("TARSD_TOOLS_WEB_SEARCH_PERPLEXITY_BASE_URL")); v != "" {
+		cfg.ToolsWebSearchPerplexityBaseURL = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_SEARCH_CACHE_TTL_SECONDS"), os.Getenv("TARSD_TOOLS_WEB_SEARCH_CACHE_TTL_SECONDS")); v != "" {
+		cfg.ToolsWebSearchCacheTTLSeconds = parsePositiveInt(v, cfg.ToolsWebSearchCacheTTLSeconds)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_FETCH_PRIVATE_HOST_ALLOWLIST_JSON"), os.Getenv("TARSD_TOOLS_WEB_FETCH_PRIVATE_HOST_ALLOWLIST_JSON")); v != "" {
+		cfg.ToolsWebFetchPrivateHostAllowlist = parseJSONStringList(v, cfg.ToolsWebFetchPrivateHostAllowlist)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_FETCH_ALLOW_PRIVATE_HOSTS"), os.Getenv("TARSD_TOOLS_WEB_FETCH_ALLOW_PRIVATE_HOSTS")); v != "" {
+		cfg.ToolsWebFetchAllowPrivateHosts = parseBool(v, cfg.ToolsWebFetchAllowPrivateHosts)
+	}
 	if v := firstNonEmpty(os.Getenv("TOOLS_APPLY_PATCH_ENABLED"), os.Getenv("TARSD_TOOLS_APPLY_PATCH_ENABLED")); v != "" {
 		cfg.ToolsApplyPatchEnabled = parseBool(v, cfg.ToolsApplyPatchEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_ENABLED"), os.Getenv("TARSD_GATEWAY_ENABLED")); v != "" {
+		cfg.GatewayEnabled = parseBool(v, cfg.GatewayEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_DEFAULT_AGENT"), os.Getenv("TARSD_GATEWAY_DEFAULT_AGENT")); v != "" {
+		cfg.GatewayDefaultAgent = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_AGENTS_JSON"), os.Getenv("TARSD_GATEWAY_AGENTS_JSON")); v != "" {
+		cfg.GatewayAgents = parseGatewayAgentsJSON(v, cfg.GatewayAgents)
+	}
+	if v := firstNonEmpty(os.Getenv("CHANNELS_LOCAL_ENABLED"), os.Getenv("TARSD_CHANNELS_LOCAL_ENABLED")); v != "" {
+		cfg.ChannelsLocalEnabled = parseBool(v, cfg.ChannelsLocalEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("CHANNELS_WEBHOOK_ENABLED"), os.Getenv("TARSD_CHANNELS_WEBHOOK_ENABLED")); v != "" {
+		cfg.ChannelsWebhookEnabled = parseBool(v, cfg.ChannelsWebhookEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("CHANNELS_TELEGRAM_ENABLED"), os.Getenv("TARSD_CHANNELS_TELEGRAM_ENABLED")); v != "" {
+		cfg.ChannelsTelegramEnabled = parseBool(v, cfg.ChannelsTelegramEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_MESSAGE_ENABLED"), os.Getenv("TARSD_TOOLS_MESSAGE_ENABLED")); v != "" {
+		cfg.ToolsMessageEnabled = parseBool(v, cfg.ToolsMessageEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_BROWSER_ENABLED"), os.Getenv("TARSD_TOOLS_BROWSER_ENABLED")); v != "" {
+		cfg.ToolsBrowserEnabled = parseBool(v, cfg.ToolsBrowserEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_NODES_ENABLED"), os.Getenv("TARSD_TOOLS_NODES_ENABLED")); v != "" {
+		cfg.ToolsNodesEnabled = parseBool(v, cfg.ToolsNodesEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_GATEWAY_ENABLED"), os.Getenv("TARSD_TOOLS_GATEWAY_ENABLED")); v != "" {
+		cfg.ToolsGatewayEnabled = parseBool(v, cfg.ToolsGatewayEnabled)
 	}
 	if v := firstNonEmpty(os.Getenv("SKILLS_ENABLED"), os.Getenv("TARSD_SKILLS_ENABLED")); v != "" {
 		cfg.SkillsEnabled = parseBool(v, cfg.SkillsEnabled)
@@ -271,8 +354,42 @@ func loadYAML(path string) (Config, error) {
 			cfg.ToolsWebFetchEnabled = parseBool(value, cfg.ToolsWebFetchEnabled)
 		case "tools_web_search_api_key":
 			cfg.ToolsWebSearchAPIKey = strings.TrimSpace(value)
+		case "tools_web_search_provider":
+			cfg.ToolsWebSearchProvider = strings.TrimSpace(strings.ToLower(value))
+		case "tools_web_search_perplexity_api_key":
+			cfg.ToolsWebSearchPerplexityAPIKey = strings.TrimSpace(value)
+		case "tools_web_search_perplexity_model":
+			cfg.ToolsWebSearchPerplexityModel = strings.TrimSpace(value)
+		case "tools_web_search_perplexity_base_url":
+			cfg.ToolsWebSearchPerplexityBaseURL = strings.TrimSpace(value)
+		case "tools_web_search_cache_ttl_seconds":
+			cfg.ToolsWebSearchCacheTTLSeconds = parsePositiveInt(value, cfg.ToolsWebSearchCacheTTLSeconds)
+		case "tools_web_fetch_private_host_allowlist_json":
+			cfg.ToolsWebFetchPrivateHostAllowlist = parseJSONStringList(value, cfg.ToolsWebFetchPrivateHostAllowlist)
+		case "tools_web_fetch_allow_private_hosts":
+			cfg.ToolsWebFetchAllowPrivateHosts = parseBool(value, cfg.ToolsWebFetchAllowPrivateHosts)
 		case "tools_apply_patch_enabled":
 			cfg.ToolsApplyPatchEnabled = parseBool(value, cfg.ToolsApplyPatchEnabled)
+		case "gateway_enabled":
+			cfg.GatewayEnabled = parseBool(value, cfg.GatewayEnabled)
+		case "gateway_default_agent":
+			cfg.GatewayDefaultAgent = strings.TrimSpace(value)
+		case "gateway_agents_json":
+			cfg.GatewayAgents = parseGatewayAgentsJSON(value, cfg.GatewayAgents)
+		case "channels_local_enabled":
+			cfg.ChannelsLocalEnabled = parseBool(value, cfg.ChannelsLocalEnabled)
+		case "channels_webhook_enabled":
+			cfg.ChannelsWebhookEnabled = parseBool(value, cfg.ChannelsWebhookEnabled)
+		case "channels_telegram_enabled":
+			cfg.ChannelsTelegramEnabled = parseBool(value, cfg.ChannelsTelegramEnabled)
+		case "tools_message_enabled":
+			cfg.ToolsMessageEnabled = parseBool(value, cfg.ToolsMessageEnabled)
+		case "tools_browser_enabled":
+			cfg.ToolsBrowserEnabled = parseBool(value, cfg.ToolsBrowserEnabled)
+		case "tools_nodes_enabled":
+			cfg.ToolsNodesEnabled = parseBool(value, cfg.ToolsNodesEnabled)
+		case "tools_gateway_enabled":
+			cfg.ToolsGatewayEnabled = parseBool(value, cfg.ToolsGatewayEnabled)
 		case "skills_enabled":
 			cfg.SkillsEnabled = parseBool(value, cfg.SkillsEnabled)
 		case "skills_watch":
@@ -363,8 +480,59 @@ func merge(dst *Config, src Config) {
 	if src.ToolsWebSearchAPIKey != "" {
 		dst.ToolsWebSearchAPIKey = src.ToolsWebSearchAPIKey
 	}
+	if src.ToolsWebSearchProvider != "" {
+		dst.ToolsWebSearchProvider = src.ToolsWebSearchProvider
+	}
+	if src.ToolsWebSearchPerplexityAPIKey != "" {
+		dst.ToolsWebSearchPerplexityAPIKey = src.ToolsWebSearchPerplexityAPIKey
+	}
+	if src.ToolsWebSearchPerplexityModel != "" {
+		dst.ToolsWebSearchPerplexityModel = src.ToolsWebSearchPerplexityModel
+	}
+	if src.ToolsWebSearchPerplexityBaseURL != "" {
+		dst.ToolsWebSearchPerplexityBaseURL = src.ToolsWebSearchPerplexityBaseURL
+	}
+	if src.ToolsWebSearchCacheTTLSeconds > 0 {
+		dst.ToolsWebSearchCacheTTLSeconds = src.ToolsWebSearchCacheTTLSeconds
+	}
+	if len(src.ToolsWebFetchPrivateHostAllowlist) > 0 {
+		dst.ToolsWebFetchPrivateHostAllowlist = append([]string(nil), src.ToolsWebFetchPrivateHostAllowlist...)
+	}
+	if src.ToolsWebFetchAllowPrivateHosts {
+		dst.ToolsWebFetchAllowPrivateHosts = true
+	}
 	if src.ToolsApplyPatchEnabled {
 		dst.ToolsApplyPatchEnabled = true
+	}
+	if src.GatewayEnabled {
+		dst.GatewayEnabled = true
+	}
+	if src.GatewayDefaultAgent != "" {
+		dst.GatewayDefaultAgent = src.GatewayDefaultAgent
+	}
+	if len(src.GatewayAgents) > 0 {
+		dst.GatewayAgents = append([]GatewayAgent(nil), src.GatewayAgents...)
+	}
+	if src.ChannelsLocalEnabled {
+		dst.ChannelsLocalEnabled = true
+	}
+	if src.ChannelsWebhookEnabled {
+		dst.ChannelsWebhookEnabled = true
+	}
+	if src.ChannelsTelegramEnabled {
+		dst.ChannelsTelegramEnabled = true
+	}
+	if src.ToolsMessageEnabled {
+		dst.ToolsMessageEnabled = true
+	}
+	if src.ToolsBrowserEnabled {
+		dst.ToolsBrowserEnabled = true
+	}
+	if src.ToolsNodesEnabled {
+		dst.ToolsNodesEnabled = true
+	}
+	if src.ToolsGatewayEnabled {
+		dst.ToolsGatewayEnabled = true
 	}
 	if src.SkillsEnabled {
 		dst.SkillsEnabled = true
@@ -421,6 +589,19 @@ func applyLLMDefaults(cfg *Config) {
 	}
 	if cfg.CronRunHistoryLimit <= 0 {
 		cfg.CronRunHistoryLimit = 200
+	}
+	cfg.ToolsWebSearchProvider = strings.TrimSpace(strings.ToLower(cfg.ToolsWebSearchProvider))
+	if cfg.ToolsWebSearchProvider == "" {
+		cfg.ToolsWebSearchProvider = "brave"
+	}
+	if cfg.ToolsWebSearchPerplexityModel == "" {
+		cfg.ToolsWebSearchPerplexityModel = "sonar"
+	}
+	if cfg.ToolsWebSearchPerplexityBaseURL == "" {
+		cfg.ToolsWebSearchPerplexityBaseURL = "https://api.perplexity.ai/chat/completions"
+	}
+	if cfg.ToolsWebSearchCacheTTLSeconds <= 0 {
+		cfg.ToolsWebSearchCacheTTLSeconds = 60
 	}
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {
@@ -559,6 +740,54 @@ func parseJSONStringList(raw string, fallback []string) []string {
 			continue
 		}
 		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return fallback
+	}
+	return out
+}
+
+func parseGatewayAgentsJSON(raw string, fallback []GatewayAgent) []GatewayAgent {
+	type rawGatewayAgent struct {
+		Name           string            `json:"name"`
+		Description    string            `json:"description,omitempty"`
+		Command        string            `json:"command"`
+		Args           []string          `json:"args,omitempty"`
+		Env            map[string]string `json:"env,omitempty"`
+		WorkingDir     string            `json:"working_dir,omitempty"`
+		TimeoutSeconds int               `json:"timeout_seconds,omitempty"`
+		Enabled        *bool             `json:"enabled,omitempty"`
+	}
+	var parsed []rawGatewayAgent
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
+		return fallback
+	}
+	out := make([]GatewayAgent, 0, len(parsed))
+	for _, agent := range parsed {
+		name := strings.TrimSpace(agent.Name)
+		command := strings.TrimSpace(agent.Command)
+		if name == "" || command == "" {
+			continue
+		}
+		item := GatewayAgent{
+			Name:           name,
+			Description:    strings.TrimSpace(agent.Description),
+			Command:        command,
+			Args:           append([]string(nil), agent.Args...),
+			WorkingDir:     strings.TrimSpace(agent.WorkingDir),
+			TimeoutSeconds: agent.TimeoutSeconds,
+			Enabled:        true,
+		}
+		if agent.Enabled != nil {
+			item.Enabled = *agent.Enabled
+		}
+		if len(agent.Env) > 0 {
+			item.Env = make(map[string]string, len(agent.Env))
+			for k, v := range agent.Env {
+				item.Env[k] = v
+			}
+		}
+		out = append(out, item)
 	}
 	if len(out) == 0 {
 		return fallback

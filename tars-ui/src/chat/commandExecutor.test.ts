@@ -29,6 +29,14 @@ function createDefaultAPIs(): CommandAPIs {
 		listMCPServers: unexpected,
 		listMCPTools: unexpected,
 		reloadExtensions: unexpected,
+			listAgentRuns: unexpected,
+			listAgents: unexpected,
+			spawnAgentRun: unexpected,
+			getAgentRun: unexpected,
+		cancelAgentRun: unexpected,
+		getGatewayStatus: unexpected,
+		reloadGateway: unexpected,
+		restartGateway: unexpected,
 	};
 }
 
@@ -256,11 +264,109 @@ test('executeInputCommand handles /skills /plugins /mcp', async () => {
 test('executeInputCommand handles /reload', async () => {
 	const apis: CommandAPIs = {
 		...createDefaultAPIs(),
-		reloadExtensions: async () => ({reloaded: true, version: 9, skills: 3, plugins: 2, mcp_count: 4}),
+		reloadExtensions: async () => ({reloaded: true, version: 9, skills: 3, plugins: 2, mcp_count: 4, gateway_refreshed: true, gateway_agents: 2}),
 	};
 	const state = createContext('/reload');
 	await executeInputCommand(state.ctx, apis);
-	assert.deepEqual(state.messages, ['extensions reloaded: version=9 skills=3 plugins=2 mcp=4']);
+	assert.deepEqual(state.messages, ['extensions reloaded: version=9 skills=3 plugins=2 mcp=4 gateway_refresh=yes gateway_agents=2']);
+});
+
+test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway /channels', async () => {
+	const spawnInputs: Array<{session_id?: string; title?: string; message: string; agent?: string}> = [];
+	let getRunCalls = 0;
+	const apis: CommandAPIs = {
+		...createDefaultAPIs(),
+		listAgents: async () => [{name: 'default', description: 'Default in-process agent loop', enabled: true, kind: 'prompt', default: true, source: 'in-process', entry: 'agent-loop'}],
+		spawnAgentRun: async (_serverUrl, input) => {
+			spawnInputs.push(input);
+			return {run_id: 'run_0', session_id: input.session_id ?? 'sess_0', status: 'accepted', accepted: true, agent: input.agent};
+		},
+		listAgentRuns: async () => [{run_id: 'run_1', session_id: 'sess_1', status: 'running', accepted: true}],
+		getAgentRun: async (_serverUrl, runID) => {
+			getRunCalls++;
+			if (runID === 'run_0') {
+				return {run_id: 'run_0', session_id: 'sess_0', status: 'completed', accepted: true, response: 'spawn done'};
+			}
+			return {run_id: 'run_1', session_id: 'sess_1', status: 'completed', accepted: true, response: 'ok'};
+		},
+		cancelAgentRun: async () => ({run_id: 'run_1', session_id: 'sess_1', status: 'canceled', accepted: true}),
+		getGatewayStatus: async () => ({
+			enabled: true,
+			version: 2,
+			runs_total: 3,
+			runs_active: 1,
+			channels_local_enabled: true,
+			channels_webhook_enabled: false,
+			channels_telegram_enabled: true,
+		}),
+		reloadGateway: async () => ({
+			enabled: true,
+			version: 3,
+			runs_total: 3,
+			runs_active: 1,
+			channels_local_enabled: true,
+			channels_webhook_enabled: false,
+			channels_telegram_enabled: true,
+		}),
+		restartGateway: async () => ({
+			enabled: true,
+			version: 4,
+			runs_total: 2,
+			runs_active: 0,
+			channels_local_enabled: true,
+			channels_webhook_enabled: false,
+			channels_telegram_enabled: true,
+		}),
+	};
+
+	const agentsState = createContext('/agents');
+	await executeInputCommand(agentsState.ctx, apis);
+	assert.equal(agentsState.tables.length, 1);
+	assert.deepEqual(agentsState.tables[0]?.headers, ['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'DESCRIPTION']);
+
+	const agentsDetailState = createContext('/agents --detail');
+	await executeInputCommand(agentsDetailState.ctx, apis);
+	assert.equal(agentsDetailState.tables.length, 1);
+	assert.deepEqual(agentsDetailState.tables[0]?.headers, ['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'SOURCE', 'ENTRY', 'DESCRIPTION']);
+
+	const spawnState = createContext('/spawn summarize today');
+	await executeInputCommand(spawnState.ctx, apis);
+	assert.deepEqual(spawnState.messages, ['run accepted: run_0 status=accepted']);
+	assert.deepEqual(spawnInputs[0], {message: 'summarize today'});
+
+	const spawnWithSessionState = createContext('/spawn --agent worker --title nightly --session sess_x summarize today', 'sess_current');
+	await executeInputCommand(spawnWithSessionState.ctx, apis);
+	assert.deepEqual(spawnWithSessionState.messages, ['run accepted: run_0 status=accepted']);
+	assert.deepEqual(spawnInputs[1], {message: 'summarize today', agent: 'worker', title: 'nightly', session_id: 'sess_x'});
+
+	const spawnWaitState = createContext('/spawn --wait summarize and finish');
+	await executeInputCommand(spawnWaitState.ctx, apis);
+	assert.deepEqual(spawnWaitState.messages, ['run completed: run_0 status=completed']);
+	assert.equal(getRunCalls > 0, true);
+
+	const runsState = createContext('/runs');
+	await executeInputCommand(runsState.ctx, apis);
+	assert.equal(runsState.tables.length, 1);
+	assert.deepEqual(runsState.tables[0]?.headers, ['RUN_ID', 'SESSION', 'STATUS', 'AGENT', 'DETAIL']);
+
+	const runState = createContext('/run run_1');
+	await executeInputCommand(runState.ctx, apis);
+	assert.equal(runState.tables.length, 1);
+	assert.deepEqual(runState.tables[0]?.headers, ['FIELD', 'VALUE']);
+
+	const cancelState = createContext('/cancel-run run_1');
+	await executeInputCommand(cancelState.ctx, apis);
+	assert.deepEqual(cancelState.messages, ['run canceled: run_1 status=canceled']);
+
+	const gatewayState = createContext('/gateway');
+	await executeInputCommand(gatewayState.ctx, apis);
+	assert.equal(gatewayState.tables.length, 1);
+	assert.deepEqual(gatewayState.tables[0]?.headers, ['FIELD', 'VALUE']);
+
+	const channelsState = createContext('/channels');
+	await executeInputCommand(channelsState.ctx, apis);
+	assert.equal(channelsState.tables.length, 1);
+	assert.deepEqual(channelsState.tables[0]?.headers, ['FIELD', 'VALUE']);
 });
 
 test('executeInputCommand handles /cron add and /cron run /cron delete', async () => {

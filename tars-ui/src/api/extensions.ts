@@ -60,6 +60,8 @@ export type ReloadExtensionsResponse = {
 	skills?: number;
 	plugins?: number;
 	mcp_count?: number;
+	gateway_refreshed?: boolean;
+	gateway_agents?: number;
 };
 
 export async function reloadExtensions(serverURL: string): Promise<ReloadExtensionsResponse> {

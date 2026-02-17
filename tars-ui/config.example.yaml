@@ -8,3 +8,8 @@ verbose: false
 
 # Tool policy/selector is configured on tarsd side
 # (see ../config/tarsd.config.example.yaml)
+# Gateway/channel/runs commands also depend on tarsd config:
+# - /runs, /run {id}, /cancel-run {id}
+# - /gateway status|reload|restart
+# - /channels
+# - /reload (extensions + gateway executor refresh)

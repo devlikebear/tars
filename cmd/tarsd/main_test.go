@@ -819,7 +819,7 @@ func TestExtensionsAPI_ListAndReload(t *testing.T) {
 			},
 		},
 	}
-	handler := newExtensionsAPIHandler(provider, zerolog.New(io.Discard))
+	handler := newExtensionsAPIHandler(provider, zerolog.New(io.Discard), nil)
 
 	skillsReq := httptest.NewRequest(http.MethodGet, "/v1/skills", nil)
 	skillsRec := httptest.NewRecorder()
@@ -848,8 +848,55 @@ func TestExtensionsAPI_ListAndReload(t *testing.T) {
 	if reloadRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for reload, got %d body=%q", reloadRec.Code, reloadRec.Body.String())
 	}
+	var reloadPayload map[string]any
+	if err := json.Unmarshal(reloadRec.Body.Bytes(), &reloadPayload); err != nil {
+		t.Fatalf("decode reload payload: %v", err)
+	}
+	if _, ok := reloadPayload["gateway_refreshed"]; !ok {
+		t.Fatalf("expected gateway_refreshed field, payload=%+v", reloadPayload)
+	}
+	if _, ok := reloadPayload["gateway_agents"]; !ok {
+		t.Fatalf("expected gateway_agents field, payload=%+v", reloadPayload)
+	}
 	if provider.reloadCount != 1 {
 		t.Fatalf("expected reload count 1, got %d", provider.reloadCount)
+	}
+}
+
+func TestExtensionsAPI_ReloadCallsGatewayRefreshHook(t *testing.T) {
+	provider := &mockExtensionsProvider{
+		snapshot: extensions.Snapshot{Version: 7},
+	}
+	hookCalled := 0
+	handler := newExtensionsAPIHandler(provider, zerolog.New(io.Discard), func() (bool, int) {
+		hookCalled++
+		return true, 3
+	})
+
+	reloadReq := httptest.NewRequest(http.MethodPost, "/v1/runtime/extensions/reload", nil)
+	reloadRec := httptest.NewRecorder()
+	handler.ServeHTTP(reloadRec, reloadReq)
+	if reloadRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for reload, got %d body=%q", reloadRec.Code, reloadRec.Body.String())
+	}
+	if provider.reloadCount != 1 {
+		t.Fatalf("expected reload count 1, got %d", provider.reloadCount)
+	}
+	if hookCalled != 1 {
+		t.Fatalf("expected refresh hook called once, got %d", hookCalled)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(reloadRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	refreshed, _ := payload["gateway_refreshed"].(bool)
+	if !refreshed {
+		t.Fatalf("expected gateway_refreshed=true, payload=%+v", payload)
+	}
+	agents, _ := payload["gateway_agents"].(float64)
+	if int(agents) != 3 {
+		t.Fatalf("expected gateway_agents=3, payload=%+v", payload)
 	}
 }
 
@@ -857,7 +904,7 @@ func TestExtensionsAPI_ListReturnsJSONArrayWhenEmpty(t *testing.T) {
 	provider := &mockExtensionsProvider{
 		snapshot: extensions.Snapshot{},
 	}
-	handler := newExtensionsAPIHandler(provider, zerolog.New(io.Discard))
+	handler := newExtensionsAPIHandler(provider, zerolog.New(io.Discard), nil)
 
 	for _, path := range []string{"/v1/skills", "/v1/plugins"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)

@@ -28,7 +28,7 @@ test('extensions api decodes list responses', async () => {
 			return new Response(JSON.stringify([{server: 'fs', name: 'read_file'}]), {status: 200});
 		}
 		if (url.endsWith('/v1/runtime/extensions/reload')) {
-			return new Response(JSON.stringify({reloaded: true, version: 7, skills: 2, plugins: 1, mcp_count: 3}), {status: 200});
+			return new Response(JSON.stringify({reloaded: true, version: 7, skills: 2, plugins: 1, mcp_count: 3, gateway_refreshed: true, gateway_agents: 2}), {status: 200});
 		}
 		return new Response('not found', {status: 404});
 	});
@@ -46,6 +46,8 @@ test('extensions api decodes list responses', async () => {
 		assert.equal(tools[0]?.name, 'read_file');
 		assert.equal(reload.reloaded, true);
 		assert.equal(reload.version, 7);
+		assert.equal(reload.gateway_refreshed, true);
+		assert.equal(reload.gateway_agents, 2);
 	} finally {
 		restore();
 	}

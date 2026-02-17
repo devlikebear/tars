@@ -3,11 +3,18 @@ package tool
 import "strings"
 
 var toolNameAliases = map[string]string{
-	"shell_execute": "exec",
-	"shell_exec":    "exec",
-	"run_command":   "exec",
-	"terminal_exec": "exec",
-	"execute_shell": "exec",
+	"shell_execute":   "exec",
+	"shell_exec":      "exec",
+	"run_command":     "exec",
+	"terminal_exec":   "exec",
+	"execute_shell":   "exec",
+	"session_list":    "sessions_list",
+	"session_history": "sessions_history",
+	"session_send":    "sessions_send",
+	"session_spawn":   "sessions_spawn",
+	"session_runs":    "sessions_runs",
+	"agent_runs":      "sessions_runs",
+	"gateway_status":  "gateway",
 }
 
 func CanonicalToolName(name string) string {

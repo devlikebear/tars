@@ -15,7 +15,14 @@ export type Command =
 	| {kind: 'skills'}
 	| {kind: 'plugins'}
 	| {kind: 'mcp'}
+	| {kind: 'agents'; detail?: boolean}
 	| {kind: 'reload'}
+	| {kind: 'runs'}
+	| {kind: 'spawn'; message: string; agent?: string; title?: string; sessionID?: string; wait?: boolean}
+	| {kind: 'run'; runID: string}
+	| {kind: 'cancel_run'; runID: string}
+	| {kind: 'gateway'; action: 'status' | 'reload' | 'restart'}
+	| {kind: 'channels'}
 	| {kind: 'cron_list'}
 	| {kind: 'cron_add'; schedule: string; prompt: string}
 	| {kind: 'cron_get'; jobID: string}
@@ -73,6 +80,10 @@ function parseSimpleSlashCommand(head: string): Command | null {
 		return {kind: 'mcp'};
 	case '/reload':
 		return {kind: 'reload'};
+	case '/runs':
+		return {kind: 'runs'};
+	case '/channels':
+		return {kind: 'channels'};
 	case '/exit':
 	case '/quit':
 		return {kind: 'quit'};
@@ -90,6 +101,15 @@ function parseSlashCommand(line: string): Command {
 	}
 
 	switch (head) {
+	case '/agents': {
+		if (fields.length === 1) {
+			return {kind: 'agents'};
+		}
+		if (fields.length === 2 && ((fields[1] ?? '').trim() === '--detail' || (fields[1] ?? '').trim() === '-d')) {
+			return {kind: 'agents', detail: true};
+		}
+		return {kind: 'invalid', message: 'usage: /agents [--detail]'};
+	}
 	case '/new': {
 		const title = trimPrefix(line, '/new') || 'chat';
 		return {kind: 'new', title};
@@ -170,6 +190,111 @@ function parseSlashCommand(line: string): Command {
 			return {kind: 'cron_disable', jobID: (fields[2] ?? '').trim()};
 		}
 		return {kind: 'invalid', message: 'usage: /cron {list|get|runs|add|run|delete|enable|disable}'};
+	}
+	case '/run': {
+		if (fields.length < 2 || (fields[1] ?? '').trim() === '') {
+			return {kind: 'invalid', message: 'usage: /run {run_id}'};
+		}
+		return {kind: 'run', runID: (fields[1] ?? '').trim()};
+	}
+	case '/spawn': {
+		const usage = 'usage: /spawn [--agent {name}] [--title {title}] [--session {id}] [--wait] {message}';
+		let agent = '';
+		let title = '';
+		let sessionID = '';
+		let wait = false;
+		let idx = 1;
+		for (; idx < fields.length; idx++) {
+			const token = (fields[idx] ?? '').trim();
+			if (token === '') {
+				continue;
+			}
+			if (token === '--') {
+				idx++;
+				break;
+			}
+			if (token === '--wait') {
+				wait = true;
+				continue;
+			}
+			if (token === '--agent' || token === '--title' || token === '--session') {
+				if (idx+1 >= fields.length) {
+					return {kind: 'invalid', message: usage};
+				}
+				const value = (fields[idx+1] ?? '').trim();
+				if (value === '') {
+					return {kind: 'invalid', message: usage};
+				}
+				if (token === '--agent') {
+					agent = value;
+				} else if (token === '--title') {
+					title = value;
+				} else {
+					sessionID = value;
+				}
+				idx++;
+				continue;
+			}
+			if (token.startsWith('--agent=')) {
+				agent = token.slice('--agent='.length).trim();
+				if (agent === '') {
+					return {kind: 'invalid', message: usage};
+				}
+				continue;
+			}
+			if (token.startsWith('--title=')) {
+				title = token.slice('--title='.length).trim();
+				if (title === '') {
+					return {kind: 'invalid', message: usage};
+				}
+				continue;
+			}
+			if (token.startsWith('--session=')) {
+				sessionID = token.slice('--session='.length).trim();
+				if (sessionID === '') {
+					return {kind: 'invalid', message: usage};
+				}
+				continue;
+			}
+			if (token.startsWith('--')) {
+				return {kind: 'invalid', message: usage};
+			}
+			break;
+		}
+		const message = fields.slice(idx).join(' ').trim();
+		if (message === '') {
+			return {kind: 'invalid', message: usage};
+		}
+		const out: {kind: 'spawn'; message: string; agent?: string; title?: string; sessionID?: string; wait?: boolean} = {
+			kind: 'spawn',
+			message,
+		};
+		if (agent !== '') {
+			out.agent = agent;
+		}
+		if (title !== '') {
+			out.title = title;
+		}
+		if (sessionID !== '') {
+			out.sessionID = sessionID;
+		}
+		if (wait) {
+			out.wait = true;
+		}
+		return out;
+	}
+	case '/cancel-run': {
+		if (fields.length < 2 || (fields[1] ?? '').trim() === '') {
+			return {kind: 'invalid', message: 'usage: /cancel-run {run_id}'};
+		}
+		return {kind: 'cancel_run', runID: (fields[1] ?? '').trim()};
+	}
+	case '/gateway': {
+		const sub = (fields[1] ?? 'status').trim();
+		if (sub !== 'status' && sub !== 'reload' && sub !== 'restart') {
+			return {kind: 'invalid', message: 'usage: /gateway {status|reload|restart}'};
+		}
+		return {kind: 'gateway', action: sub};
 	}
 	case '/notify': {
 		if (fields.length === 1 || fields[1] === 'list') {

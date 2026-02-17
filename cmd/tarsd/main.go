@@ -15,6 +15,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/cli"
 	"github.com/devlikebear/tarsncase/internal/config"
 	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/mcp"
@@ -113,6 +114,10 @@ const memoryToolSystemRule = `
 ## Automation Tool Policy
 - If the user asks about cron jobs managed by this app, call cron (preferred) or cron_list / cron_get / cron_runs / cron_create / cron_update / cron_delete / cron_run instead of OS commands like crontab.
 - If the user asks about heartbeat status or asks to trigger heartbeat, call heartbeat (preferred) or heartbeat_status / heartbeat_run_once instead of inferring from process or file guesses.
+
+## Runtime Tool Policy
+- For async background agent tasks across sessions, use sessions_spawn and sessions_runs.
+- For channel or gateway runtime operations, use message / gateway tools when available.
 `
 
 func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time) (*cobra.Command, *options) {
@@ -245,9 +250,22 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					logger.Error().Err(err).Msg("failed to initialize extensions manager")
 					return &cli.ExitError{Code: 1, Err: err}
 				}
-				chatTooling := buildChatToolingOptions(processManager, extensionsManager)
+				gatewayExecutors := buildGatewayExecutors(cfg, runPrompt, logger)
+				gatewayRuntime := gateway.NewRuntime(gateway.RuntimeOptions{
+					Enabled:                 cfg.GatewayEnabled,
+					WorkspaceDir:            cfg.WorkspaceDir,
+					SessionStore:            sessionStore,
+					RunPrompt:               runPrompt,
+					Executors:               gatewayExecutors,
+					DefaultAgent:            strings.TrimSpace(cfg.GatewayDefaultAgent),
+					ChannelsLocalEnabled:    cfg.ChannelsLocalEnabled,
+					ChannelsWebhookEnabled:  cfg.ChannelsWebhookEnabled,
+					ChannelsTelegramEnabled: cfg.ChannelsTelegramEnabled,
+					Now:                     nowFn,
+				})
+				chatTooling := buildChatToolingOptions(processManager, extensionsManager, gatewayRuntime)
 				chatTools := append([]tool.Tool{}, automationTools...)
-				chatTools = append(chatTools, buildOptionalChatTools(cfg)...)
+				chatTools = append(chatTools, buildOptionalChatTools(cfg, gatewayRuntime)...)
 				chatHandler := newChatAPIHandlerWithRuntimeConfig(
 					cfg.WorkspaceDir,
 					sessionStore,
@@ -272,11 +290,34 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				mcpHandler := newMCPAPIHandler(mcpClient, logger)
 				mux.Handle("/v1/mcp/servers", mcpHandler)
 				mux.Handle("/v1/mcp/tools", mcpHandler)
-				extensionsHandler := newExtensionsAPIHandler(extensionsManager, logger)
+				refreshGatewayExecutors := func() int {
+					executors := buildGatewayExecutors(cfg, runPrompt, logger)
+					gatewayRuntime.SetExecutors(executors, strings.TrimSpace(cfg.GatewayDefaultAgent))
+					return len(gatewayRuntime.Agents())
+				}
+				extensionsHandler := newExtensionsAPIHandler(extensionsManager, logger, func() (bool, int) {
+					if gatewayRuntime == nil {
+						return false, 0
+					}
+					return true, refreshGatewayExecutors()
+				})
 				mux.Handle("/v1/skills", extensionsHandler)
 				mux.Handle("/v1/skills/", extensionsHandler)
 				mux.Handle("/v1/plugins", extensionsHandler)
 				mux.Handle("/v1/runtime/extensions/reload", extensionsHandler)
+				agentRunsHandler := newAgentRunsAPIHandler(gatewayRuntime, logger)
+				mux.Handle("/v1/agent/agents", agentRunsHandler)
+				mux.Handle("/v1/agent/runs", agentRunsHandler)
+				mux.Handle("/v1/agent/runs/", agentRunsHandler)
+				gatewayHandler := newGatewayAPIHandler(gatewayRuntime, logger, func() {
+					_ = refreshGatewayExecutors()
+				})
+				mux.Handle("/v1/gateway/status", gatewayHandler)
+				mux.Handle("/v1/gateway/reload", gatewayHandler)
+				mux.Handle("/v1/gateway/restart", gatewayHandler)
+				channelsHandler := newChannelsAPIHandler(gatewayRuntime, logger)
+				mux.Handle("/v1/channels/webhook/inbound/", channelsHandler)
+				mux.Handle("/v1/channels/telegram/webhook/", channelsHandler)
 				eventsHandler := newEventStreamHandler(broker, logger)
 				mux.Handle("/v1/events/stream", eventsHandler)
 
@@ -293,6 +334,9 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					defer cancel()
 					extensionsManager.Close()
+					if gatewayRuntime != nil {
+						_ = gatewayRuntime.Close(shutdownCtx)
+					}
 					_ = server.Shutdown(shutdownCtx)
 				}()
 				if err := extensionsManager.Start(ctx); err != nil {

@@ -80,3 +80,38 @@ export type MCPToolInfo = {
 	name: string;
 	description?: string;
 };
+
+export type AgentRunSummary = {
+	run_id: string;
+	session_id?: string;
+	agent?: string;
+	status: string;
+	accepted: boolean;
+	response?: string;
+	error?: string;
+	created_at?: string;
+	started_at?: string;
+	completed_at?: string;
+};
+
+export type AgentDescriptor = {
+	name: string;
+	description?: string;
+	enabled?: boolean;
+	kind?: string;
+	source?: string;
+	entry?: string;
+	default?: boolean;
+};
+
+export type GatewayStatus = {
+	enabled: boolean;
+	version: number;
+	runs_total: number;
+	runs_active: number;
+	channels_local_enabled: boolean;
+	channels_webhook_enabled: boolean;
+	channels_telegram_enabled: boolean;
+	last_reload_at?: string;
+	last_restart_at?: string;
+};

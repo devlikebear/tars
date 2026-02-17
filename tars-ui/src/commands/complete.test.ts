@@ -4,7 +4,9 @@ import {completeCommandInput} from './complete.js';
 
 test('completeCommandInput completes root slash commands with tab', () => {
 	assert.equal(completeCommandInput('/he'), '/he');
+	assert.equal(completeCommandInput('/age'), '/agents ');
 	assert.equal(completeCommandInput('/sess'), '/sessions ');
+	assert.equal(completeCommandInput('/spaw'), '/spawn ');
 });
 
 test('completeCommandInput leaves unknown command untouched', () => {
@@ -22,4 +24,16 @@ test('completeCommandInput completes cron subcommands', () => {
 test('completeCommandInput completes notify subcommands', () => {
 	assert.equal(completeCommandInput('/notify cl'), '/notify clear ');
 	assert.equal(completeCommandInput('/notify fi'), '/notify filter ');
+});
+
+test('completeCommandInput completes gateway subcommands', () => {
+	assert.equal(completeCommandInput('/gateway re'), '/gateway re');
+	assert.equal(completeCommandInput('/gateway res'), '/gateway restart ');
+	assert.equal(completeCommandInput('/gateway status'), '/gateway status ');
+});
+
+test('completeCommandInput completes spawn option flags', () => {
+	assert.equal(completeCommandInput('/spawn --a'), '/spawn --agent ');
+	assert.equal(completeCommandInput('/spawn --w'), '/spawn --wait ');
+	assert.equal(completeCommandInput('/spawn --ti'), '/spawn --title ');
 });
