@@ -83,6 +83,12 @@
 - [x] web 도구 강화
   - `web_search`: Brave/Perplexity provider + cache TTL
   - `web_fetch`: SSRF 차단 + private host allowlist/옵션
+- [x] Gateway 영속화/복구(Phase 7-C)
+  - run/channel snapshot 저장: `${gateway_persistence_dir}/runs.json`, `${gateway_persistence_dir}/channels.json`
+  - 재시작 복구: `accepted|running` run -> `canceled by restart recovery`
+  - 보존 정책: `gateway_runs_max_records`, `gateway_channels_max_messages_per_channel`
+  - 상태 telemetry 확장: `/v1/gateway/status`에 persistence/restore 메타데이터 노출
+  - `tars-ui /gateway`에 persistence telemetry 표시
 
 #### 2026-02-16
 - [x] 기본 개발 포트를 `127.0.0.1:43180`으로 통일 (`tarsd`/`tars-ui`/예제 설정/README)

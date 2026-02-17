@@ -68,6 +68,15 @@ gateway_default_agent: ""
 # gateway_agents_json: '[{"name":"worker","description":"external worker","command":"python3","args":["./worker_agent.py"],"working_dir":".","timeout_seconds":120,"enabled":true}]'
 gateway_agents_watch: true
 gateway_agents_watch_debounce_ms: 200
+# Gateway persistence/recovery (additive, safe default)
+gateway_persistence_enabled: true
+gateway_runs_persistence_enabled: true
+gateway_channels_persistence_enabled: true
+gateway_runs_max_records: 2000
+gateway_channels_max_messages_per_channel: 500
+# default: ${workspace_dir}/_shared/gateway
+gateway_persistence_dir: ./workspace/_shared/gateway
+gateway_restore_on_startup: true
 # /v1/runtime/extensions/reload also refreshes gateway executors automatically.
 channels_local_enabled: false
 channels_webhook_enabled: false

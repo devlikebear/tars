@@ -116,7 +116,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - `internal/session`: 세션 관리 (JSONL transcript, 토큰 기반 히스토리 로딩, 컴팩션)
 - `internal/agent`: Agent Loop (훅 기반 이벤트, 도구 실행 반복, 상태 추적)
 - `internal/tool`: 빌트인 도구 (file/web/memory/automation + gateway/sessions/message/browser/nodes 계열)
-- `internal/gateway`: in-process gateway 런타임 (run registry, agent executor, channels, browser/nodes 상태)
+- `internal/gateway`: in-process gateway 런타임 (run registry, agent executor, channels, browser/nodes 상태, run/channel snapshot 영속화/복구)
 - `internal/extensions`: 스킬/플러그인/MCP 통합 스냅샷 + 핫리로드 매니저
 - `internal/skill`: SKILL.md frontmatter 파싱/우선순위 머지/available_skills 포맷
 - `internal/plugin`: 선언형 매니페스트(`tarsncase.plugin.json`) 로더
@@ -200,6 +200,11 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `GET /v1/gateway/status`에 agent watcher telemetry(`agents_count`, `agents_watch_enabled`, `agents_reload_version`, `agents_last_reload_at`) 추가
   - markdown sub-agent 정책 MVP: `tools_allow`(YAML list) allowlist 적용 + 허용 외 도구 하드 차단
   - `/v1/agent/agents` 정책 메타데이터(`policy_mode`, `tools_allow_count`, `tools_allow`) 노출
+- Gateway persistence/recovery:
+  - run/channel snapshot JSON 저장(`runs.json`, `channels.json`) + 원자적 write/rename
+  - tarsd 재시작 시 snapshot 자동 복구, 실행 중 run은 `canceled by restart recovery`로 정리
+  - 보존 정책(`gateway_runs_max_records`, `gateway_channels_max_messages_per_channel`) 적용
+  - `/v1/gateway/status` telemetry 확장(`persistence_*`, `runs_restored`, `channels_restored`, `last_persist_at`, `last_restore_at`, `last_restore_error`)
 - Web 도구 강화:
   - `web_search`: Brave/Perplexity provider 선택 + cache TTL
   - `web_fetch`: SSRF 가드 + private host allowlist
@@ -207,6 +212,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `/agents --detail` (source/entry 포함)
   - `/agents --detail` 정책 컬럼(`POLICY`, `ALLOW`) 추가
   - `/spawn` 옵션 자동완성(`--agent`, `--title`, `--session`, `--wait`)
+  - `/gateway`에 persistence/restore telemetry 출력
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조

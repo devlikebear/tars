@@ -104,6 +104,13 @@
 - `workspace/agents/*/AGENT.md` 변경은 gateway watcher가 자동 감지해 executor를 갱신한다.
   - 설정: `gateway_agents_watch`, `gateway_agents_watch_debounce_ms`
   - 상태: `GET /v1/gateway/status`의 `agents_count`, `agents_watch_enabled`, `agents_reload_version`, `agents_last_reload_at`
+- gateway run/channel 상태가 디스크 스냅샷으로 영속화되고 재시작 시 자동 복구된다.
+  - 설정: `gateway_persistence_enabled`, `gateway_runs_persistence_enabled`, `gateway_channels_persistence_enabled`
+  - 보존 정책: `gateway_runs_max_records`, `gateway_channels_max_messages_per_channel`
+  - 경로/복구: `gateway_persistence_dir`, `gateway_restore_on_startup`
+  - 복구 규칙: `accepted|running` run은 재시작 복구 시 `canceled by restart recovery`로 정리
+  - 상태 telemetry: `/v1/gateway/status`의 `persistence_*`, `runs_restored`, `channels_restored`, `last_persist_at`, `last_restore_at`, `last_restore_error`
+- `tars-ui /gateway`가 gateway persistence/restore telemetry를 함께 표시한다.
 - markdown 서브에이전트는 AGENT frontmatter `tools_allow`(YAML list) 정책을 지원한다.
   - 정책 미지정: `full` (기존 동작)
   - 정책 지정: allowlist만 주입
@@ -125,9 +132,9 @@
 
 ## 다음 우선순위
 
-1. gateway/channel 런타임의 지속성(메시지 저장, run 로그 보존, 재시작 복구)과 운영 진단 지표를 강화한다.
-2. `cased` 감시 데몬의 실동작(프로세스 감시/재시작/상태 노출) 구현을 마무리한다.
-3. 서브에이전트 정책을 allowlist MVP에서 그룹/정규식/세션 라우팅 정책으로 확장한다.
+1. `cased` 감시 데몬의 실동작(프로세스 감시/재시작/상태 노출) 구현을 마무리한다.
+2. 서브에이전트 정책을 allowlist MVP에서 그룹/정규식/세션 라우팅 정책으로 확장한다.
+3. gateway run/channel의 장기 아카이빙(압축/회전)과 운영 리포팅을 추가한다.
 
 ## 작업 체크리스트
 
