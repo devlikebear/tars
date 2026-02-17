@@ -101,6 +101,9 @@
   - `/spawn [--agent] [--title] [--session] [--wait] {message}`
   - `/gateway {status|reload|restart}`, `/channels`
 - `POST /v1/runtime/extensions/reload` 호출 시 gateway executor refresh가 자동 반영되며 응답에 `gateway_refreshed`, `gateway_agents`가 포함된다.
+- `workspace/agents/*/AGENT.md` 변경은 gateway watcher가 자동 감지해 executor를 갱신한다.
+  - 설정: `gateway_agents_watch`, `gateway_agents_watch_debounce_ms`
+  - 상태: `GET /v1/gateway/status`의 `agents_count`, `agents_watch_enabled`, `agents_reload_version`, `agents_last_reload_at`
 - `web_search`가 Brave/Perplexity provider 선택 + 캐시 TTL을 지원하고, `web_fetch`는 SSRF 차단 + private host allowlist를 지원한다.
 
 ## LLM Provider 운영 정책 (2026-02-16)
@@ -117,9 +120,9 @@
 
 ## 다음 우선순위
 
-1. markdown 기반 서브에이전트 정의(`workspace/agents/*/AGENT.md`)와 in-process LLM executor 연결을 완성한다.
-2. gateway/channel 런타임의 지속성(메시지 저장, run 로그 보존, 재시작 복구)과 운영 진단 지표를 강화한다.
-3. `cased` 감시 데몬의 실동작(프로세스 감시/재시작/상태 노출) 구현을 마무리한다.
+1. gateway/channel 런타임의 지속성(메시지 저장, run 로그 보존, 재시작 복구)과 운영 진단 지표를 강화한다.
+2. `cased` 감시 데몬의 실동작(프로세스 감시/재시작/상태 노출) 구현을 마무리한다.
+3. 서브에이전트 정책(권한/툴 제한/에이전트별 라우팅) 고도화를 진행한다.
 
 ## 작업 체크리스트
 

@@ -196,6 +196,8 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `SetExecutors(...)`로 런타임 executor 동적 교체 지원
   - gateway reload 시 extension refresh hook 선반영 후 재로드
   - `GET /v1/agent/agents` 추가, agent 메타데이터(`source`, `entry`) 노출
+  - `workspace/agents/*/AGENT.md` watch 기반 자동 반영(`gateway_agents_watch`, `gateway_agents_watch_debounce_ms`)
+  - `GET /v1/gateway/status`에 agent watcher telemetry(`agents_count`, `agents_watch_enabled`, `agents_reload_version`, `agents_last_reload_at`) 추가
 - Web 도구 강화:
   - `web_search`: Brave/Perplexity provider 선택 + cache TTL
   - `web_fetch`: SSRF 가드 + private host allowlist

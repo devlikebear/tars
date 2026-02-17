@@ -66,6 +66,9 @@
   - `GET /v1/gateway/status`, `POST /v1/gateway/reload`, `POST /v1/gateway/restart`
   - `POST /v1/channels/webhook/inbound/{channel_id}`, `POST /v1/channels/telegram/webhook/{bot_id}`
 - [x] Gateway executor metadata(`source`, `entry`) 노출 + `/agents --detail` 지원
+- [x] `workspace/agents/*/AGENT.md` watcher 자동 반영
+  - 설정: `gateway_agents_watch`, `gateway_agents_watch_debounce_ms`
+  - 상태: `/v1/gateway/status`에 `agents_count`, `agents_watch_enabled`, `agents_reload_version`, `agents_last_reload_at`
 - [x] `POST /v1/runtime/extensions/reload` 시 gateway executor 자동 refresh 연동
   - 응답 확장: `gateway_refreshed`, `gateway_agents` (additive)
 - [x] `tars-ui` runtime 명령 확장
@@ -709,9 +712,9 @@ GET /v1/mcp/tools          # MCP 도구 목록
 - UI 명령 구현: `/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`
 
 **다음 작업:**
-1. markdown 기반 agent 선언(`workspace/agents/*/AGENT.md`) 로딩
-2. in-process LLM executor를 default 외 다중 agent로 확장
-3. run/channel 영속화 및 재시작 복구 정책 정리
+1. in-process LLM executor를 default 외 다중 agent 정책(툴/권한/라우팅)으로 확장
+2. run/channel 영속화 및 재시작 복구 정책 정리
+3. 운영 관측성(메트릭/헬스/진단 로그) 강화
 
 ---
 
