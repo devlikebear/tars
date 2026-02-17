@@ -66,6 +66,8 @@ tools_web_fetch_allow_private_hosts: false
 gateway_enabled: false
 gateway_default_agent: ""
 # gateway_agents_json: '[{"name":"worker","description":"external worker","command":"python3","args":["./worker_agent.py"],"working_dir":".","timeout_seconds":120,"enabled":true}]'
+gateway_agents_watch: true
+gateway_agents_watch_debounce_ms: 200
 # /v1/runtime/extensions/reload also refreshes gateway executors automatically.
 channels_local_enabled: false
 channels_webhook_enabled: false

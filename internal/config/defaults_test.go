@@ -540,6 +540,44 @@ func TestLoad_GatewayAgentsFromYAML(t *testing.T) {
 	}
 }
 
+func TestLoad_GatewayAgentsWatchDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.GatewayAgentsWatch {
+		t.Fatalf("expected gateway agents watch enabled by default")
+	}
+	if cfg.GatewayAgentsWatchDebounceMS <= 0 {
+		t.Fatalf("expected positive gateway agents watch debounce, got %d", cfg.GatewayAgentsWatchDebounceMS)
+	}
+}
+
+func TestLoad_GatewayAgentsWatchFromYAMLAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"gateway_agents_watch: true",
+		"gateway_agents_watch_debounce_ms: 450",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("GATEWAY_AGENTS_WATCH_DEBOUNCE_MS", "120")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.GatewayAgentsWatch {
+		t.Fatalf("expected gateway agents watch enabled from yaml")
+	}
+	if cfg.GatewayAgentsWatchDebounceMS != 120 {
+		t.Fatalf("expected env debounce override 120, got %d", cfg.GatewayAgentsWatchDebounceMS)
+	}
+}
+
 func TestLoad_DeprecatedToolPolicyKeysAreIgnored(t *testing.T) {
 	t.Setenv("TOOLS_PROFILE", "minimal")
 	t.Setenv("TOOLS_ALLOW", "session_status,memory_search")

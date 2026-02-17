@@ -60,6 +60,8 @@ type Config struct {
 	GatewayEnabled                    bool
 	GatewayDefaultAgent               string
 	GatewayAgents                     []GatewayAgent
+	GatewayAgentsWatch                bool
+	GatewayAgentsWatchDebounceMS      int
 	ChannelsLocalEnabled              bool
 	ChannelsWebhookEnabled            bool
 	ChannelsTelegramEnabled           bool
@@ -97,6 +99,8 @@ func Default() Config {
 		ToolsWebSearchPerplexityModel:   "sonar",
 		ToolsWebSearchPerplexityBaseURL: "https://api.perplexity.ai/chat/completions",
 		ToolsWebSearchCacheTTLSeconds:   60,
+		GatewayAgentsWatch:              true,
+		GatewayAgentsWatchDebounceMS:    200,
 		SkillsEnabled:                   true,
 		SkillsWatch:                     true,
 		SkillsWatchDebounceMS:           200,
@@ -235,6 +239,12 @@ func applyEnv(cfg *Config) {
 	}
 	if v := firstNonEmpty(os.Getenv("GATEWAY_AGENTS_JSON"), os.Getenv("TARSD_GATEWAY_AGENTS_JSON")); v != "" {
 		cfg.GatewayAgents = parseGatewayAgentsJSON(v, cfg.GatewayAgents)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_AGENTS_WATCH"), os.Getenv("TARSD_GATEWAY_AGENTS_WATCH")); v != "" {
+		cfg.GatewayAgentsWatch = parseBool(v, cfg.GatewayAgentsWatch)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_AGENTS_WATCH_DEBOUNCE_MS"), os.Getenv("TARSD_GATEWAY_AGENTS_WATCH_DEBOUNCE_MS")); v != "" {
+		cfg.GatewayAgentsWatchDebounceMS = parsePositiveInt(v, cfg.GatewayAgentsWatchDebounceMS)
 	}
 	if v := firstNonEmpty(os.Getenv("CHANNELS_LOCAL_ENABLED"), os.Getenv("TARSD_CHANNELS_LOCAL_ENABLED")); v != "" {
 		cfg.ChannelsLocalEnabled = parseBool(v, cfg.ChannelsLocalEnabled)
@@ -376,6 +386,10 @@ func loadYAML(path string) (Config, error) {
 			cfg.GatewayDefaultAgent = strings.TrimSpace(value)
 		case "gateway_agents_json":
 			cfg.GatewayAgents = parseGatewayAgentsJSON(value, cfg.GatewayAgents)
+		case "gateway_agents_watch":
+			cfg.GatewayAgentsWatch = parseBool(value, cfg.GatewayAgentsWatch)
+		case "gateway_agents_watch_debounce_ms":
+			cfg.GatewayAgentsWatchDebounceMS = parsePositiveInt(value, cfg.GatewayAgentsWatchDebounceMS)
 		case "channels_local_enabled":
 			cfg.ChannelsLocalEnabled = parseBool(value, cfg.ChannelsLocalEnabled)
 		case "channels_webhook_enabled":
@@ -513,6 +527,12 @@ func merge(dst *Config, src Config) {
 	if len(src.GatewayAgents) > 0 {
 		dst.GatewayAgents = append([]GatewayAgent(nil), src.GatewayAgents...)
 	}
+	if src.GatewayAgentsWatch {
+		dst.GatewayAgentsWatch = true
+	}
+	if src.GatewayAgentsWatchDebounceMS > 0 {
+		dst.GatewayAgentsWatchDebounceMS = src.GatewayAgentsWatchDebounceMS
+	}
 	if src.ChannelsLocalEnabled {
 		dst.ChannelsLocalEnabled = true
 	}
@@ -602,6 +622,9 @@ func applyLLMDefaults(cfg *Config) {
 	}
 	if cfg.ToolsWebSearchCacheTTLSeconds <= 0 {
 		cfg.ToolsWebSearchCacheTTLSeconds = 60
+	}
+	if cfg.GatewayAgentsWatchDebounceMS <= 0 {
+		cfg.GatewayAgentsWatchDebounceMS = 200
 	}
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {
