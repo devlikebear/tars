@@ -42,13 +42,13 @@ test('runtime api decodes run and gateway responses', async () => {
 				}), {status: 200});
 			}
 		if (url.endsWith('/v1/gateway/status')) {
-			return new Response(JSON.stringify({enabled: true, version: 2, runs_total: 1, runs_active: 0, agents_count: 2, agents_watch_enabled: true, agents_reload_version: 5, agents_last_reload_at: '2026-02-17T12:00:00Z', channels_local_enabled: true, channels_webhook_enabled: false, channels_telegram_enabled: false}), {status: 200});
+			return new Response(JSON.stringify({enabled: true, version: 2, runs_total: 1, runs_active: 0, agents_count: 2, agents_watch_enabled: true, agents_reload_version: 5, agents_last_reload_at: '2026-02-17T12:00:00Z', channels_local_enabled: true, channels_webhook_enabled: false, channels_telegram_enabled: false, persistence_enabled: true, runs_persistence_enabled: true, channels_persistence_enabled: true, restore_on_startup: true, persistence_dir: '/tmp/gateway', runs_restored: 1, channels_restored: 1, last_persist_at: '2026-02-17T12:00:01Z', last_restore_at: '2026-02-17T12:00:00Z'}), {status: 200});
 		}
 		if (url.endsWith('/v1/gateway/reload')) {
-			return new Response(JSON.stringify({enabled: true, version: 3, runs_total: 1, runs_active: 0, agents_count: 2, agents_watch_enabled: true, agents_reload_version: 6, agents_last_reload_at: '2026-02-17T12:01:00Z', channels_local_enabled: true, channels_webhook_enabled: false, channels_telegram_enabled: false}), {status: 200});
+			return new Response(JSON.stringify({enabled: true, version: 3, runs_total: 1, runs_active: 0, agents_count: 2, agents_watch_enabled: true, agents_reload_version: 6, agents_last_reload_at: '2026-02-17T12:01:00Z', channels_local_enabled: true, channels_webhook_enabled: false, channels_telegram_enabled: false, persistence_enabled: true, runs_persistence_enabled: true, channels_persistence_enabled: true, restore_on_startup: true, persistence_dir: '/tmp/gateway', runs_restored: 1, channels_restored: 1, last_persist_at: '2026-02-17T12:01:01Z', last_restore_at: '2026-02-17T12:00:00Z'}), {status: 200});
 		}
 		if (url.endsWith('/v1/gateway/restart')) {
-			return new Response(JSON.stringify({enabled: true, version: 4, runs_total: 1, runs_active: 0, agents_count: 2, agents_watch_enabled: true, agents_reload_version: 6, agents_last_reload_at: '2026-02-17T12:01:00Z', channels_local_enabled: true, channels_webhook_enabled: false, channels_telegram_enabled: false}), {status: 200});
+			return new Response(JSON.stringify({enabled: true, version: 4, runs_total: 1, runs_active: 0, agents_count: 2, agents_watch_enabled: true, agents_reload_version: 6, agents_last_reload_at: '2026-02-17T12:01:00Z', channels_local_enabled: true, channels_webhook_enabled: false, channels_telegram_enabled: false, persistence_enabled: true, runs_persistence_enabled: true, channels_persistence_enabled: true, restore_on_startup: true, persistence_dir: '/tmp/gateway', runs_restored: 1, channels_restored: 1, last_persist_at: '2026-02-17T12:02:01Z', last_restore_at: '2026-02-17T12:00:00Z'}), {status: 200});
 		}
 		return new Response('not found', {status: 404});
 	});
@@ -71,9 +71,11 @@ test('runtime api decodes run and gateway responses', async () => {
 			assert.equal(agents[0]?.policy_mode, 'full');
 			assert.equal(agents[0]?.tools_allow_count, 0);
 
-			const status = await getGatewayStatus('http://127.0.0.1:8080');
+		const status = await getGatewayStatus('http://127.0.0.1:8080');
 		assert.equal(status.version, 2);
 		assert.equal(status.agents_count, 2);
+		assert.equal(status.persistence_enabled, true);
+		assert.equal(status.runs_restored, 1);
 		const reloaded = await reloadGateway('http://127.0.0.1:8080');
 		assert.equal(reloaded.version, 3);
 		const restarted = await restartGateway('http://127.0.0.1:8080');

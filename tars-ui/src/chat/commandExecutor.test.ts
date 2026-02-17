@@ -313,6 +313,15 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 			channels_local_enabled: true,
 			channels_webhook_enabled: false,
 			channels_telegram_enabled: true,
+			persistence_enabled: true,
+			runs_persistence_enabled: true,
+			channels_persistence_enabled: true,
+			restore_on_startup: true,
+			persistence_dir: '/tmp/gateway',
+			runs_restored: 3,
+			channels_restored: 2,
+			last_persist_at: '2026-02-17T12:00:01Z',
+			last_restore_at: '2026-02-17T12:00:00Z',
 		}),
 		reloadGateway: async () => ({
 			enabled: true,
@@ -326,6 +335,15 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 			channels_local_enabled: true,
 			channels_webhook_enabled: false,
 			channels_telegram_enabled: true,
+			persistence_enabled: true,
+			runs_persistence_enabled: true,
+			channels_persistence_enabled: true,
+			restore_on_startup: true,
+			persistence_dir: '/tmp/gateway',
+			runs_restored: 3,
+			channels_restored: 2,
+			last_persist_at: '2026-02-17T12:01:01Z',
+			last_restore_at: '2026-02-17T12:00:00Z',
 		}),
 		restartGateway: async () => ({
 			enabled: true,
@@ -339,6 +357,15 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 			channels_local_enabled: true,
 			channels_webhook_enabled: false,
 			channels_telegram_enabled: true,
+			persistence_enabled: true,
+			runs_persistence_enabled: true,
+			channels_persistence_enabled: true,
+			restore_on_startup: true,
+			persistence_dir: '/tmp/gateway',
+			runs_restored: 3,
+			channels_restored: 2,
+			last_persist_at: '2026-02-17T12:02:01Z',
+			last_restore_at: '2026-02-17T12:00:00Z',
 		}),
 	};
 
@@ -387,6 +414,8 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 	assert.equal(gatewayState.tables.length, 1);
 	assert.deepEqual(gatewayState.tables[0]?.headers, ['FIELD', 'VALUE']);
 	assert.equal(gatewayState.tables[0]?.rows.some((row) => row[0] === 'agents_count'), true);
+	assert.equal(gatewayState.tables[0]?.rows.some((row) => row[0] === 'persistence'), true);
+	assert.equal(gatewayState.tables[0]?.rows.some((row) => row[0] === 'runs_restored'), true);
 
 	const channelsState = createContext('/channels');
 	await executeInputCommand(channelsState.ctx, apis);

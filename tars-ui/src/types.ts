@@ -119,6 +119,16 @@ export type GatewayStatus = {
 	channels_local_enabled: boolean;
 	channels_webhook_enabled: boolean;
 	channels_telegram_enabled: boolean;
+	persistence_enabled: boolean;
+	runs_persistence_enabled: boolean;
+	channels_persistence_enabled: boolean;
+	restore_on_startup: boolean;
+	persistence_dir?: string;
+	runs_restored: number;
+	channels_restored: number;
+	last_persist_at?: string;
+	last_restore_at?: string;
+	last_restore_error?: string;
 	last_reload_at?: string;
 	last_restart_at?: string;
 };
