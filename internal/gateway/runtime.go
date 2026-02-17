@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -71,35 +72,52 @@ type NodeInfo struct {
 }
 
 type GatewayStatus struct {
-	Enabled             bool         `json:"enabled"`
-	Version             int64        `json:"version"`
-	RunsTotal           int          `json:"runs_total"`
-	RunsActive          int          `json:"runs_active"`
-	AgentsCount         int          `json:"agents_count"`
-	AgentsWatchEnabled  bool         `json:"agents_watch_enabled"`
-	AgentsReloadVersion int64        `json:"agents_reload_version"`
-	AgentsLastReloadAt  string       `json:"agents_last_reload_at,omitempty"`
-	ChannelsLocal       bool         `json:"channels_local_enabled"`
-	ChannelsWebhook     bool         `json:"channels_webhook_enabled"`
-	ChannelsTelegram    bool         `json:"channels_telegram_enabled"`
-	LastReloadAt        string       `json:"last_reload_at,omitempty"`
-	LastRestartAt       string       `json:"last_restart_at,omitempty"`
-	Browser             BrowserState `json:"browser"`
-	Nodes               []NodeInfo   `json:"nodes"`
+	Enabled                    bool         `json:"enabled"`
+	Version                    int64        `json:"version"`
+	RunsTotal                  int          `json:"runs_total"`
+	RunsActive                 int          `json:"runs_active"`
+	AgentsCount                int          `json:"agents_count"`
+	AgentsWatchEnabled         bool         `json:"agents_watch_enabled"`
+	AgentsReloadVersion        int64        `json:"agents_reload_version"`
+	AgentsLastReloadAt         string       `json:"agents_last_reload_at,omitempty"`
+	ChannelsLocal              bool         `json:"channels_local_enabled"`
+	ChannelsWebhook            bool         `json:"channels_webhook_enabled"`
+	ChannelsTelegram           bool         `json:"channels_telegram_enabled"`
+	PersistenceEnabled         bool         `json:"persistence_enabled"`
+	RunsPersistenceEnabled     bool         `json:"runs_persistence_enabled"`
+	ChannelsPersistenceEnabled bool         `json:"channels_persistence_enabled"`
+	RestoreOnStartup           bool         `json:"restore_on_startup"`
+	PersistenceDir             string       `json:"persistence_dir,omitempty"`
+	RunsRestored               int          `json:"runs_restored"`
+	ChannelsRestored           int          `json:"channels_restored"`
+	LastPersistAt              string       `json:"last_persist_at,omitempty"`
+	LastRestoreAt              string       `json:"last_restore_at,omitempty"`
+	LastRestoreError           string       `json:"last_restore_error,omitempty"`
+	LastReloadAt               string       `json:"last_reload_at,omitempty"`
+	LastRestartAt              string       `json:"last_restart_at,omitempty"`
+	Browser                    BrowserState `json:"browser"`
+	Nodes                      []NodeInfo   `json:"nodes"`
 }
 
 type RuntimeOptions struct {
-	Enabled                   bool
-	WorkspaceDir              string
-	SessionStore              *session.Store
-	RunPrompt                 func(ctx context.Context, runLabel string, prompt string) (string, error)
-	Executors                 []AgentExecutor
-	DefaultAgent              string
-	GatewayAgentsWatchEnabled bool
-	ChannelsLocalEnabled      bool
-	ChannelsWebhookEnabled    bool
-	ChannelsTelegramEnabled   bool
-	Now                       func() time.Time
+	Enabled                              bool
+	WorkspaceDir                         string
+	SessionStore                         *session.Store
+	RunPrompt                            func(ctx context.Context, runLabel string, prompt string) (string, error)
+	Executors                            []AgentExecutor
+	DefaultAgent                         string
+	GatewayAgentsWatchEnabled            bool
+	ChannelsLocalEnabled                 bool
+	ChannelsWebhookEnabled               bool
+	ChannelsTelegramEnabled              bool
+	GatewayPersistenceEnabled            bool
+	GatewayRunsPersistenceEnabled        bool
+	GatewayChannelsPersistenceEnabled    bool
+	GatewayRunsMaxRecords                int
+	GatewayChannelsMaxMessagesPerChannel int
+	GatewayPersistenceDir                string
+	GatewayRestoreOnStartup              bool
+	Now                                  func() time.Time
 }
 
 type runState struct {
@@ -132,12 +150,28 @@ type Runtime struct {
 	lastReload          time.Time
 	lastRestart         time.Time
 	runWG               sync.WaitGroup
+	stateVersion        uint64
+	persistStore        snapshotStore
+	lastPersistAt       time.Time
+	lastRestoreAt       time.Time
+	lastRestoreError    string
+	runsRestored        int
+	channelsRestored    int
 }
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
 	nowFn := opts.Now
 	if nowFn == nil {
 		nowFn = time.Now
+	}
+	if opts.GatewayRunsMaxRecords <= 0 {
+		opts.GatewayRunsMaxRecords = 2000
+	}
+	if opts.GatewayChannelsMaxMessagesPerChannel <= 0 {
+		opts.GatewayChannelsMaxMessagesPerChannel = 500
+	}
+	if strings.TrimSpace(opts.GatewayPersistenceDir) == "" {
+		opts.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(opts.WorkspaceDir), "_shared", "gateway")
 	}
 	rt := &Runtime{
 		opts:               opts,
@@ -147,13 +181,172 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 		executors:          map[string]AgentExecutor{},
 		agentsWatchEnabled: opts.GatewayAgentsWatchEnabled,
 		version:            1,
+		persistStore:       newSnapshotStore(opts.GatewayPersistenceDir),
+		stateVersion:       1,
 	}
 	rt.initExecutors()
+	rt.restoreSnapshotOnStartup()
 	return rt
 }
 
 func (r *Runtime) Enabled() bool {
 	return r != nil && r.opts.Enabled
+}
+
+func (r *Runtime) persistenceEnabled() bool {
+	return r != nil && r.opts.Enabled && r.opts.GatewayPersistenceEnabled
+}
+
+func (r *Runtime) restoreSnapshotOnStartup() {
+	if r == nil || !r.persistenceEnabled() || !r.opts.GatewayRestoreOnStartup {
+		return
+	}
+	var (
+		runs     []Run
+		channels map[string][]ChannelMessage
+		errText  []string
+	)
+	if r.opts.GatewayRunsPersistenceEnabled {
+		loadedRuns, err := r.persistStore.readRuns()
+		if err != nil {
+			errText = append(errText, err.Error())
+		} else {
+			runs = loadedRuns
+		}
+	}
+	if r.opts.GatewayChannelsPersistenceEnabled {
+		loadedChannels, err := r.persistStore.readChannels()
+		if err != nil {
+			errText = append(errText, err.Error())
+		} else {
+			channels = loadedChannels
+		}
+	}
+
+	recoveredAt := r.nowFn().UTC().Format(time.RFC3339)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(runs) > 0 {
+		sort.SliceStable(runs, func(i, j int) bool {
+			if runs[i].CreatedAt == runs[j].CreatedAt {
+				return runs[i].ID < runs[j].ID
+			}
+			return runs[i].CreatedAt < runs[j].CreatedAt
+		})
+		runs = trimRuns(runs, r.opts.GatewayRunsMaxRecords)
+		r.runs = make(map[string]*runState, len(runs))
+		r.runOrder = make([]string, 0, len(runs))
+		for _, item := range runs {
+			run := item
+			if strings.TrimSpace(run.ID) == "" {
+				continue
+			}
+			if run.Status == RunStatusAccepted || run.Status == RunStatusRunning {
+				run.Status = RunStatusCanceled
+				run.Error = "canceled by restart recovery"
+				if strings.TrimSpace(run.CompletedAt) == "" {
+					run.CompletedAt = recoveredAt
+				}
+				run.UpdatedAt = recoveredAt
+			}
+			state := &runState{
+				run:    run,
+				done:   make(chan struct{}),
+				closed: true,
+			}
+			close(state.done)
+			r.runs[run.ID] = state
+			r.runOrder = append(r.runOrder, run.ID)
+			if seq := parseIDSequence(run.ID, "run_"); seq > 0 {
+				current := r.runSeq.Load()
+				if seq > current {
+					r.runSeq.Store(seq)
+				}
+			}
+		}
+		r.runsRestored = len(r.runOrder)
+	}
+
+	if len(channels) > 0 {
+		r.channelMsgs = trimChannels(channels, r.opts.GatewayChannelsMaxMessagesPerChannel)
+		for _, messages := range r.channelMsgs {
+			for _, msg := range messages {
+				if seq := parseIDSequence(msg.ID, "msg_"); seq > 0 {
+					current := r.messageSeq.Load()
+					if seq > current {
+						r.messageSeq.Store(seq)
+					}
+				}
+			}
+		}
+		r.channelsRestored = len(r.channelMsgs)
+	}
+
+	r.lastRestoreAt = r.nowFn().UTC()
+	if len(errText) > 0 {
+		r.lastRestoreError = strings.Join(errText, "; ")
+	}
+	r.stateVersion++
+}
+
+func parseIDSequence(value, prefix string) uint64 {
+	if !strings.HasPrefix(value, prefix) {
+		return 0
+	}
+	seq, err := strconv.ParseUint(strings.TrimPrefix(value, prefix), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return seq
+}
+
+func (r *Runtime) snapshotForPersistence() ([]Run, map[string][]ChannelMessage, uint64) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	runs := make([]Run, 0, len(r.runOrder))
+	for _, id := range r.runOrder {
+		state := r.runs[id]
+		if state == nil {
+			continue
+		}
+		runs = append(runs, state.run)
+	}
+	channels := trimChannels(r.channelMsgs, r.opts.GatewayChannelsMaxMessagesPerChannel)
+	return runs, channels, r.stateVersion
+}
+
+func (r *Runtime) persistSnapshot() {
+	if r == nil || !r.persistenceEnabled() {
+		return
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		runs, channels, snapshotVersion := r.snapshotForPersistence()
+		runs = trimRuns(runs, r.opts.GatewayRunsMaxRecords)
+		writeErr := ""
+		if r.opts.GatewayRunsPersistenceEnabled {
+			if err := r.persistStore.writeRuns(runs); err != nil {
+				writeErr = err.Error()
+			}
+		}
+		if writeErr == "" && r.opts.GatewayChannelsPersistenceEnabled {
+			if err := r.persistStore.writeChannels(channels); err != nil {
+				writeErr = err.Error()
+			}
+		}
+		r.mu.Lock()
+		currentVersion := r.stateVersion
+		if strings.TrimSpace(writeErr) != "" {
+			r.mu.Unlock()
+			return
+		}
+		if currentVersion == snapshotVersion || attempt == 1 {
+			r.lastPersistAt = r.nowFn().UTC()
+			r.mu.Unlock()
+			return
+		}
+		r.mu.Unlock()
+	}
 }
 
 func (r *Runtime) Close(ctx context.Context) error {
@@ -168,6 +361,7 @@ func (r *Runtime) Close(ctx context.Context) error {
 	r.closed = true
 	states := make([]*runState, 0, len(r.runs))
 	canceledAt := r.nowFn().UTC().Format(time.RFC3339)
+	mutated := false
 	for _, state := range r.runs {
 		if state == nil {
 			continue
@@ -178,10 +372,16 @@ func (r *Runtime) Close(ctx context.Context) error {
 				state.run.CompletedAt = canceledAt
 			}
 			state.run.UpdatedAt = canceledAt
+			mutated = true
 		}
 		states = append(states, state)
 	}
+	r.trimRunHistoryLocked()
+	if mutated {
+		r.stateVersion++
+	}
 	r.mu.Unlock()
+	r.persistSnapshot()
 
 	for _, state := range states {
 		if state != nil && state.cancel != nil {
@@ -210,6 +410,7 @@ func (r *Runtime) initExecutors() {
 	defer r.mu.Unlock()
 	r.applyExecutorsLocked(r.opts.Executors, r.opts.DefaultAgent)
 	r.markAgentsReloadLocked()
+	r.stateVersion++
 }
 
 func (r *Runtime) SetExecutors(executors []AgentExecutor, defaultAgent string) {
@@ -217,11 +418,13 @@ func (r *Runtime) SetExecutors(executors []AgentExecutor, defaultAgent string) {
 		return
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.opts.Executors = append([]AgentExecutor(nil), executors...)
 	r.opts.DefaultAgent = strings.TrimSpace(defaultAgent)
 	r.applyExecutorsLocked(r.opts.Executors, r.opts.DefaultAgent)
 	r.markAgentsReloadLocked()
+	r.stateVersion++
+	r.mu.Unlock()
+	r.persistSnapshot()
 }
 
 func (r *Runtime) SetAgentsWatchEnabled(enabled bool) {
@@ -418,7 +621,10 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 	r.runs[runID] = state
 	r.runOrder = append(r.runOrder, runID)
 	r.runWG.Add(1)
+	r.trimRunHistoryLocked()
+	r.stateVersion++
 	r.mu.Unlock()
+	r.persistSnapshot()
 
 	go func() {
 		defer r.runWG.Done()
@@ -444,7 +650,9 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	state.run.Status = RunStatusRunning
 	state.run.StartedAt = now
 	state.run.UpdatedAt = now
+	r.stateVersion++
 	r.mu.Unlock()
+	r.persistSnapshot()
 
 	_ = r.appendSessionMessage(state.run.SessionID, "user", state.run.Prompt, r.nowFn().UTC())
 	var (
@@ -468,9 +676,12 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	}
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if state.run.Status == RunStatusCanceled {
 		r.closeRunDoneLocked(state)
+		r.trimRunHistoryLocked()
+		r.stateVersion++
+		r.mu.Unlock()
+		r.persistSnapshot()
 		return
 	}
 	finishedAt := r.nowFn().UTC().Format(time.RFC3339)
@@ -480,11 +691,19 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 		state.run.Status = RunStatusFailed
 		state.run.Error = strings.TrimSpace(err.Error())
 		r.closeRunDoneLocked(state)
+		r.trimRunHistoryLocked()
+		r.stateVersion++
+		r.mu.Unlock()
+		r.persistSnapshot()
 		return
 	}
 	state.run.Status = RunStatusCompleted
 	state.run.Response = strings.TrimSpace(resp)
 	r.closeRunDoneLocked(state)
+	r.trimRunHistoryLocked()
+	r.stateVersion++
+	r.mu.Unlock()
+	r.persistSnapshot()
 }
 
 func (r *Runtime) appendSessionMessage(sessionID, role, content string, ts time.Time) error {
@@ -517,6 +736,24 @@ func (r *Runtime) closeRunDoneLocked(state *runState) {
 	}
 	close(state.done)
 	state.closed = true
+}
+
+func (r *Runtime) trimRunHistoryLocked() {
+	max := r.opts.GatewayRunsMaxRecords
+	if max <= 0 {
+		return
+	}
+	for len(r.runOrder) > max {
+		id := r.runOrder[0]
+		state := r.runs[id]
+		if state != nil {
+			if state.run.Status == RunStatusAccepted || state.run.Status == RunStatusRunning {
+				return
+			}
+		}
+		delete(r.runs, id)
+		r.runOrder = r.runOrder[1:]
+	}
 }
 
 func (r *Runtime) Wait(ctx context.Context, runID string) (Run, error) {
@@ -579,13 +816,15 @@ func (r *Runtime) Cancel(runID string) (Run, error) {
 		return Run{}, fmt.Errorf("gateway runtime is disabled")
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	state, ok := r.runs[strings.TrimSpace(runID)]
 	if !ok {
+		r.mu.Unlock()
 		return Run{}, fmt.Errorf("run not found: %s", strings.TrimSpace(runID))
 	}
 	if state.run.Status == RunStatusCompleted || state.run.Status == RunStatusFailed || state.run.Status == RunStatusCanceled {
-		return state.run, nil
+		run := state.run
+		r.mu.Unlock()
+		return run, nil
 	}
 	if state.cancel != nil {
 		state.cancel()
@@ -596,7 +835,12 @@ func (r *Runtime) Cancel(runID string) (Run, error) {
 	state.run.CompletedAt = now
 	state.run.UpdatedAt = now
 	r.closeRunDoneLocked(state)
-	return state.run, nil
+	r.trimRunHistoryLocked()
+	r.stateVersion++
+	run := state.run
+	r.mu.Unlock()
+	r.persistSnapshot()
+	return run, nil
 }
 
 func (r *Runtime) Status() GatewayStatus {
@@ -612,18 +856,32 @@ func (r *Runtime) Status() GatewayStatus {
 		}
 	}
 	status := GatewayStatus{
-		Enabled:             r.opts.Enabled,
-		Version:             r.version,
-		RunsTotal:           len(r.runs),
-		RunsActive:          active,
-		AgentsCount:         len(r.executors),
-		AgentsWatchEnabled:  r.agentsWatchEnabled,
-		AgentsReloadVersion: r.agentsReloadVersion,
-		ChannelsLocal:       r.opts.ChannelsLocalEnabled,
-		ChannelsWebhook:     r.opts.ChannelsWebhookEnabled,
-		ChannelsTelegram:    r.opts.ChannelsTelegramEnabled,
-		Browser:             r.browser,
-		Nodes:               defaultNodes(),
+		Enabled:                    r.opts.Enabled,
+		Version:                    r.version,
+		RunsTotal:                  len(r.runs),
+		RunsActive:                 active,
+		AgentsCount:                len(r.executors),
+		AgentsWatchEnabled:         r.agentsWatchEnabled,
+		AgentsReloadVersion:        r.agentsReloadVersion,
+		ChannelsLocal:              r.opts.ChannelsLocalEnabled,
+		ChannelsWebhook:            r.opts.ChannelsWebhookEnabled,
+		ChannelsTelegram:           r.opts.ChannelsTelegramEnabled,
+		PersistenceEnabled:         r.opts.GatewayPersistenceEnabled,
+		RunsPersistenceEnabled:     r.opts.GatewayRunsPersistenceEnabled,
+		ChannelsPersistenceEnabled: r.opts.GatewayChannelsPersistenceEnabled,
+		RestoreOnStartup:           r.opts.GatewayRestoreOnStartup,
+		PersistenceDir:             strings.TrimSpace(r.opts.GatewayPersistenceDir),
+		RunsRestored:               r.runsRestored,
+		ChannelsRestored:           r.channelsRestored,
+		LastRestoreError:           strings.TrimSpace(r.lastRestoreError),
+		Browser:                    r.browser,
+		Nodes:                      defaultNodes(),
+	}
+	if !r.lastPersistAt.IsZero() {
+		status.LastPersistAt = r.lastPersistAt.UTC().Format(time.RFC3339)
+	}
+	if !r.lastRestoreAt.IsZero() {
+		status.LastRestoreAt = r.lastRestoreAt.UTC().Format(time.RFC3339)
 	}
 	if !r.agentsLastReload.IsZero() {
 		status.AgentsLastReloadAt = r.agentsLastReload.UTC().Format(time.RFC3339)
@@ -644,7 +902,9 @@ func (r *Runtime) Reload() GatewayStatus {
 	r.mu.Lock()
 	r.version++
 	r.lastReload = r.nowFn().UTC()
+	r.stateVersion++
 	r.mu.Unlock()
+	r.persistSnapshot()
 	return r.Status()
 }
 
@@ -667,9 +927,12 @@ func (r *Runtime) Restart() GatewayStatus {
 		}
 	}
 	r.browser = BrowserState{}
+	r.trimRunHistoryLocked()
 	r.version++
 	r.lastRestart = r.nowFn().UTC()
+	r.stateVersion++
 	r.mu.Unlock()
+	r.persistSnapshot()
 	return r.Status()
 }
 
@@ -758,7 +1021,12 @@ func (r *Runtime) appendChannelMessage(channelID, threadID, text, direction, sou
 	}
 	r.mu.Lock()
 	r.channelMsgs[key] = append(r.channelMsgs[key], msg)
+	if max := r.opts.GatewayChannelsMaxMessagesPerChannel; max > 0 && len(r.channelMsgs[key]) > max {
+		r.channelMsgs[key] = r.channelMsgs[key][len(r.channelMsgs[key])-max:]
+	}
+	r.stateVersion++
 	r.mu.Unlock()
+	r.persistSnapshot()
 	return msg, nil
 }
 

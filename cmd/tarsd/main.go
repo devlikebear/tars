@@ -253,17 +253,24 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					return &cli.ExitError{Code: 1, Err: err}
 				}
 				gatewayRuntime := gateway.NewRuntime(gateway.RuntimeOptions{
-					Enabled:                   cfg.GatewayEnabled,
-					WorkspaceDir:              cfg.WorkspaceDir,
-					SessionStore:              sessionStore,
-					RunPrompt:                 runPrompt,
-					Executors:                 nil,
-					DefaultAgent:              strings.TrimSpace(cfg.GatewayDefaultAgent),
-					GatewayAgentsWatchEnabled: false,
-					ChannelsLocalEnabled:      cfg.ChannelsLocalEnabled,
-					ChannelsWebhookEnabled:    cfg.ChannelsWebhookEnabled,
-					ChannelsTelegramEnabled:   cfg.ChannelsTelegramEnabled,
-					Now:                       nowFn,
+					Enabled:                              cfg.GatewayEnabled,
+					WorkspaceDir:                         cfg.WorkspaceDir,
+					SessionStore:                         sessionStore,
+					RunPrompt:                            runPrompt,
+					Executors:                            nil,
+					DefaultAgent:                         strings.TrimSpace(cfg.GatewayDefaultAgent),
+					GatewayAgentsWatchEnabled:            false,
+					ChannelsLocalEnabled:                 cfg.ChannelsLocalEnabled,
+					ChannelsWebhookEnabled:               cfg.ChannelsWebhookEnabled,
+					ChannelsTelegramEnabled:              cfg.ChannelsTelegramEnabled,
+					GatewayPersistenceEnabled:            cfg.GatewayPersistenceEnabled,
+					GatewayRunsPersistenceEnabled:        cfg.GatewayRunsPersistenceEnabled,
+					GatewayChannelsPersistenceEnabled:    cfg.GatewayChannelsPersistenceEnabled,
+					GatewayRunsMaxRecords:                cfg.GatewayRunsMaxRecords,
+					GatewayChannelsMaxMessagesPerChannel: cfg.GatewayChannelsMaxMessagesPerChannel,
+					GatewayPersistenceDir:                cfg.GatewayPersistenceDir,
+					GatewayRestoreOnStartup:              cfg.GatewayRestoreOnStartup,
+					Now:                                  nowFn,
 				})
 				refreshGatewayExecutors := func(reason string) int {
 					executors := buildGatewayExecutors(cfg, runPromptWithTools, logger)

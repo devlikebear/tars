@@ -341,6 +341,24 @@ func TestGatewayAPIHandler_StatusIncludesAgentsTelemetry(t *testing.T) {
 	if _, ok := payload["agents_last_reload_at"]; !ok {
 		t.Fatalf("expected agents_last_reload_at in status payload: %+v", payload)
 	}
+	if _, ok := payload["persistence_enabled"]; !ok {
+		t.Fatalf("expected persistence_enabled in status payload: %+v", payload)
+	}
+	if _, ok := payload["runs_persistence_enabled"]; !ok {
+		t.Fatalf("expected runs_persistence_enabled in status payload: %+v", payload)
+	}
+	if _, ok := payload["channels_persistence_enabled"]; !ok {
+		t.Fatalf("expected channels_persistence_enabled in status payload: %+v", payload)
+	}
+	if _, ok := payload["restore_on_startup"]; !ok {
+		t.Fatalf("expected restore_on_startup in status payload: %+v", payload)
+	}
+	if _, ok := payload["runs_restored"]; !ok {
+		t.Fatalf("expected runs_restored in status payload: %+v", payload)
+	}
+	if _, ok := payload["channels_restored"]; !ok {
+		t.Fatalf("expected channels_restored in status payload: %+v", payload)
+	}
 }
 
 func TestGatewayAPIHandler_StatusWhenRuntimeMissingHasConsistentDefaults(t *testing.T) {
@@ -367,6 +385,77 @@ func TestGatewayAPIHandler_StatusWhenRuntimeMissingHasConsistentDefaults(t *test
 	}
 	if _, ok := payload["agents_reload_version"]; !ok {
 		t.Fatalf("expected agents_reload_version in status payload: %+v", payload)
+	}
+	if _, ok := payload["persistence_enabled"]; !ok {
+		t.Fatalf("expected persistence_enabled in status payload: %+v", payload)
+	}
+	if _, ok := payload["runs_persistence_enabled"]; !ok {
+		t.Fatalf("expected runs_persistence_enabled in status payload: %+v", payload)
+	}
+	if _, ok := payload["channels_persistence_enabled"]; !ok {
+		t.Fatalf("expected channels_persistence_enabled in status payload: %+v", payload)
+	}
+	if _, ok := payload["restore_on_startup"]; !ok {
+		t.Fatalf("expected restore_on_startup in status payload: %+v", payload)
+	}
+	if _, ok := payload["runs_restored"]; !ok {
+		t.Fatalf("expected runs_restored in status payload: %+v", payload)
+	}
+	if _, ok := payload["channels_restored"]; !ok {
+		t.Fatalf("expected channels_restored in status payload: %+v", payload)
+	}
+}
+
+func TestGatewayAPIHandler_StatusIncludesPersistenceTelemetryValues(t *testing.T) {
+	workspaceDir := t.TempDir()
+	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+		Enabled:                              true,
+		WorkspaceDir:                         workspaceDir,
+		SessionStore:                         session.NewStore(filepath.Join(workspaceDir, "workspace")),
+		RunPrompt:                            func(_ context.Context, _ string, prompt string) (string, error) { return prompt, nil },
+		GatewayPersistenceEnabled:            true,
+		GatewayRunsPersistenceEnabled:        true,
+		GatewayChannelsPersistenceEnabled:    false,
+		GatewayRunsMaxRecords:                50,
+		GatewayChannelsMaxMessagesPerChannel: 10,
+		GatewayPersistenceDir:                filepath.Join(workspaceDir, "_shared", "gateway"),
+		GatewayRestoreOnStartup:              true,
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := runtime.Close(ctx); err != nil {
+			t.Fatalf("close gateway runtime: %v", err)
+		}
+	})
+
+	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/status", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode status payload: %v", err)
+	}
+	if enabled, _ := payload["persistence_enabled"].(bool); !enabled {
+		t.Fatalf("expected persistence_enabled=true, payload=%+v", payload)
+	}
+	if runsEnabled, _ := payload["runs_persistence_enabled"].(bool); !runsEnabled {
+		t.Fatalf("expected runs_persistence_enabled=true, payload=%+v", payload)
+	}
+	if channelsEnabled, _ := payload["channels_persistence_enabled"].(bool); channelsEnabled {
+		t.Fatalf("expected channels_persistence_enabled=false, payload=%+v", payload)
+	}
+	if restoreOnStartup, _ := payload["restore_on_startup"].(bool); !restoreOnStartup {
+		t.Fatalf("expected restore_on_startup=true, payload=%+v", payload)
+	}
+	persistenceDir, _ := payload["persistence_dir"].(string)
+	if strings.TrimSpace(persistenceDir) == "" {
+		t.Fatalf("expected persistence_dir to be set, payload=%+v", payload)
 	}
 }
 
