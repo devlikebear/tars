@@ -71,30 +71,35 @@ type NodeInfo struct {
 }
 
 type GatewayStatus struct {
-	Enabled          bool         `json:"enabled"`
-	Version          int64        `json:"version"`
-	RunsTotal        int          `json:"runs_total"`
-	RunsActive       int          `json:"runs_active"`
-	ChannelsLocal    bool         `json:"channels_local_enabled"`
-	ChannelsWebhook  bool         `json:"channels_webhook_enabled"`
-	ChannelsTelegram bool         `json:"channels_telegram_enabled"`
-	LastReloadAt     string       `json:"last_reload_at,omitempty"`
-	LastRestartAt    string       `json:"last_restart_at,omitempty"`
-	Browser          BrowserState `json:"browser"`
-	Nodes            []NodeInfo   `json:"nodes"`
+	Enabled             bool         `json:"enabled"`
+	Version             int64        `json:"version"`
+	RunsTotal           int          `json:"runs_total"`
+	RunsActive          int          `json:"runs_active"`
+	AgentsCount         int          `json:"agents_count"`
+	AgentsWatchEnabled  bool         `json:"agents_watch_enabled"`
+	AgentsReloadVersion int64        `json:"agents_reload_version"`
+	AgentsLastReloadAt  string       `json:"agents_last_reload_at,omitempty"`
+	ChannelsLocal       bool         `json:"channels_local_enabled"`
+	ChannelsWebhook     bool         `json:"channels_webhook_enabled"`
+	ChannelsTelegram    bool         `json:"channels_telegram_enabled"`
+	LastReloadAt        string       `json:"last_reload_at,omitempty"`
+	LastRestartAt       string       `json:"last_restart_at,omitempty"`
+	Browser             BrowserState `json:"browser"`
+	Nodes               []NodeInfo   `json:"nodes"`
 }
 
 type RuntimeOptions struct {
-	Enabled                 bool
-	WorkspaceDir            string
-	SessionStore            *session.Store
-	RunPrompt               func(ctx context.Context, runLabel string, prompt string) (string, error)
-	Executors               []AgentExecutor
-	DefaultAgent            string
-	ChannelsLocalEnabled    bool
-	ChannelsWebhookEnabled  bool
-	ChannelsTelegramEnabled bool
-	Now                     func() time.Time
+	Enabled                   bool
+	WorkspaceDir              string
+	SessionStore              *session.Store
+	RunPrompt                 func(ctx context.Context, runLabel string, prompt string) (string, error)
+	Executors                 []AgentExecutor
+	DefaultAgent              string
+	GatewayAgentsWatchEnabled bool
+	ChannelsLocalEnabled      bool
+	ChannelsWebhookEnabled    bool
+	ChannelsTelegramEnabled   bool
+	Now                       func() time.Time
 }
 
 type runState struct {
@@ -110,20 +115,23 @@ type Runtime struct {
 
 	nowFn func() time.Time
 
-	mu           sync.RWMutex
-	runs         map[string]*runState
-	runOrder     []string
-	closed       bool
-	runSeq       atomic.Uint64
-	messageSeq   atomic.Uint64
-	channelMsgs  map[string][]ChannelMessage
-	executors    map[string]AgentExecutor
-	defaultAgent string
-	browser      BrowserState
-	version      int64
-	lastReload   time.Time
-	lastRestart  time.Time
-	runWG        sync.WaitGroup
+	mu                  sync.RWMutex
+	runs                map[string]*runState
+	runOrder            []string
+	closed              bool
+	runSeq              atomic.Uint64
+	messageSeq          atomic.Uint64
+	channelMsgs         map[string][]ChannelMessage
+	executors           map[string]AgentExecutor
+	defaultAgent        string
+	agentsWatchEnabled  bool
+	agentsReloadVersion int64
+	agentsLastReload    time.Time
+	browser             BrowserState
+	version             int64
+	lastReload          time.Time
+	lastRestart         time.Time
+	runWG               sync.WaitGroup
 }
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
@@ -132,12 +140,13 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 		nowFn = time.Now
 	}
 	rt := &Runtime{
-		opts:        opts,
-		nowFn:       nowFn,
-		runs:        map[string]*runState{},
-		channelMsgs: map[string][]ChannelMessage{},
-		executors:   map[string]AgentExecutor{},
-		version:     1,
+		opts:               opts,
+		nowFn:              nowFn,
+		runs:               map[string]*runState{},
+		channelMsgs:        map[string][]ChannelMessage{},
+		executors:          map[string]AgentExecutor{},
+		agentsWatchEnabled: opts.GatewayAgentsWatchEnabled,
+		version:            1,
 	}
 	rt.initExecutors()
 	return rt
@@ -200,6 +209,7 @@ func (r *Runtime) initExecutors() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.applyExecutorsLocked(r.opts.Executors, r.opts.DefaultAgent)
+	r.markAgentsReloadLocked()
 }
 
 func (r *Runtime) SetExecutors(executors []AgentExecutor, defaultAgent string) {
@@ -211,6 +221,16 @@ func (r *Runtime) SetExecutors(executors []AgentExecutor, defaultAgent string) {
 	r.opts.Executors = append([]AgentExecutor(nil), executors...)
 	r.opts.DefaultAgent = strings.TrimSpace(defaultAgent)
 	r.applyExecutorsLocked(r.opts.Executors, r.opts.DefaultAgent)
+	r.markAgentsReloadLocked()
+}
+
+func (r *Runtime) SetAgentsWatchEnabled(enabled bool) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.agentsWatchEnabled = enabled
+	r.mu.Unlock()
 }
 
 func (r *Runtime) applyExecutorsLocked(executors []AgentExecutor, requestedDefault string) {
@@ -255,6 +275,11 @@ func (r *Runtime) applyExecutorsLocked(executors []AgentExecutor, requestedDefau
 			r.defaultAgent = names[0]
 		}
 	}
+}
+
+func (r *Runtime) markAgentsReloadLocked() {
+	r.agentsReloadVersion++
+	r.agentsLastReload = r.nowFn().UTC()
 }
 
 func (r *Runtime) registerExecutorLocked(executor AgentExecutor) bool {
@@ -581,15 +606,21 @@ func (r *Runtime) Status() GatewayStatus {
 		}
 	}
 	status := GatewayStatus{
-		Enabled:          r.opts.Enabled,
-		Version:          r.version,
-		RunsTotal:        len(r.runs),
-		RunsActive:       active,
-		ChannelsLocal:    r.opts.ChannelsLocalEnabled,
-		ChannelsWebhook:  r.opts.ChannelsWebhookEnabled,
-		ChannelsTelegram: r.opts.ChannelsTelegramEnabled,
-		Browser:          r.browser,
-		Nodes:            defaultNodes(),
+		Enabled:             r.opts.Enabled,
+		Version:             r.version,
+		RunsTotal:           len(r.runs),
+		RunsActive:          active,
+		AgentsCount:         len(r.executors),
+		AgentsWatchEnabled:  r.agentsWatchEnabled,
+		AgentsReloadVersion: r.agentsReloadVersion,
+		ChannelsLocal:       r.opts.ChannelsLocalEnabled,
+		ChannelsWebhook:     r.opts.ChannelsWebhookEnabled,
+		ChannelsTelegram:    r.opts.ChannelsTelegramEnabled,
+		Browser:             r.browser,
+		Nodes:               defaultNodes(),
+	}
+	if !r.agentsLastReload.IsZero() {
+		status.AgentsLastReloadAt = r.agentsLastReload.UTC().Format(time.RFC3339)
 	}
 	if !r.lastReload.IsZero() {
 		status.LastReloadAt = r.lastReload.UTC().Format(time.RFC3339)

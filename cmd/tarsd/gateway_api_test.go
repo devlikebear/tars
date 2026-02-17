@@ -231,6 +231,62 @@ func TestGatewayAPIHandler_StatusReloadRestart(t *testing.T) {
 	}
 }
 
+func TestGatewayAPIHandler_StatusIncludesAgentsTelemetry(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	runtime.SetAgentsWatchEnabled(true)
+	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/status", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode status payload: %v", err)
+	}
+	if _, ok := payload["agents_count"]; !ok {
+		t.Fatalf("expected agents_count in status payload: %+v", payload)
+	}
+	if _, ok := payload["agents_watch_enabled"]; !ok {
+		t.Fatalf("expected agents_watch_enabled in status payload: %+v", payload)
+	}
+	if _, ok := payload["agents_reload_version"]; !ok {
+		t.Fatalf("expected agents_reload_version in status payload: %+v", payload)
+	}
+	if _, ok := payload["agents_last_reload_at"]; !ok {
+		t.Fatalf("expected agents_last_reload_at in status payload: %+v", payload)
+	}
+}
+
+func TestGatewayAPIHandler_StatusWhenRuntimeMissingHasConsistentDefaults(t *testing.T) {
+	h := newGatewayAPIHandler(nil, zerolog.New(io.Discard), nil)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/status", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode status payload: %v", err)
+	}
+	enabled, _ := payload["enabled"].(bool)
+	if enabled {
+		t.Fatalf("expected enabled=false, payload=%+v", payload)
+	}
+	if _, ok := payload["agents_count"]; !ok {
+		t.Fatalf("expected agents_count in status payload: %+v", payload)
+	}
+	if _, ok := payload["agents_watch_enabled"]; !ok {
+		t.Fatalf("expected agents_watch_enabled in status payload: %+v", payload)
+	}
+	if _, ok := payload["agents_reload_version"]; !ok {
+		t.Fatalf("expected agents_reload_version in status payload: %+v", payload)
+	}
+}
+
 func TestGatewayAPIHandler_ReloadCallsRefreshHook(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
 	called := false
