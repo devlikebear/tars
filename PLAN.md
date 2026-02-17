@@ -71,6 +71,12 @@
   - 상태: `/v1/gateway/status`에 `agents_count`, `agents_watch_enabled`, `agents_reload_version`, `agents_last_reload_at`
 - [x] `POST /v1/runtime/extensions/reload` 시 gateway executor 자동 refresh 연동
   - 응답 확장: `gateway_refreshed`, `gateway_agents` (additive)
+- [x] markdown 서브에이전트 `tools_allow` 정책 MVP
+  - AGENT frontmatter `tools_allow`(YAML list) 파싱 + canonicalization
+  - 허용 도구만 runner schema 주입, 허용 외 호출 하드 차단
+  - invalid-only allowlist는 agent 로드 제외 + diagnostics
+  - `/v1/agent/agents` 정책 메타데이터(`policy_mode`, `tools_allow_count`, `tools_allow`) 노출
+  - `tars-ui /agents --detail` 정책 컬럼(`POLICY`, `ALLOW`) 표시
 - [x] `tars-ui` runtime 명령 확장
   - `/agents`, `/runs`, `/spawn`, `/run`, `/cancel-run`, `/gateway`, `/channels`
   - `/spawn` 옵션 자동완성(`--agent`, `--title`, `--session`, `--wait`)
@@ -710,9 +716,10 @@ GET /v1/mcp/tools          # MCP 도구 목록
 - API 구현: `/v1/agent/*`, `/v1/gateway/*`, `/v1/channels/*`
 - 도구 구현: `sessions_*`, `agents_list`, `message`, `browser`, `nodes`, `gateway`
 - UI 명령 구현: `/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`
+- markdown 서브에이전트 `tools_allow` allowlist 정책 적용 완료(하드 차단)
 
 **다음 작업:**
-1. in-process LLM executor를 default 외 다중 agent 정책(툴/권한/라우팅)으로 확장
+1. 서브에이전트 정책을 allowlist MVP에서 그룹/정규식/세션 라우팅 정책으로 확장
 2. run/channel 영속화 및 재시작 복구 정책 정리
 3. 운영 관측성(메트릭/헬스/진단 로그) 강화
 

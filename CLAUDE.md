@@ -198,11 +198,14 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `GET /v1/agent/agents` 추가, agent 메타데이터(`source`, `entry`) 노출
   - `workspace/agents/*/AGENT.md` watch 기반 자동 반영(`gateway_agents_watch`, `gateway_agents_watch_debounce_ms`)
   - `GET /v1/gateway/status`에 agent watcher telemetry(`agents_count`, `agents_watch_enabled`, `agents_reload_version`, `agents_last_reload_at`) 추가
+  - markdown sub-agent 정책 MVP: `tools_allow`(YAML list) allowlist 적용 + 허용 외 도구 하드 차단
+  - `/v1/agent/agents` 정책 메타데이터(`policy_mode`, `tools_allow_count`, `tools_allow`) 노출
 - Web 도구 강화:
   - `web_search`: Brave/Perplexity provider 선택 + cache TTL
   - `web_fetch`: SSRF 가드 + private host allowlist
 - `tars-ui` 명령 확장:
   - `/agents --detail` (source/entry 포함)
+  - `/agents --detail` 정책 컬럼(`POLICY`, `ALLOW`) 추가
   - `/spawn` 옵션 자동완성(`--agent`, `--title`, `--session`, `--wait`)
 
 **상세 이력**
