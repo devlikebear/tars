@@ -115,7 +115,8 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - `internal/llm`: LLM provider 추상화 (bifrost, openai, anthropic, gemini, gemini-native)
 - `internal/session`: 세션 관리 (JSONL transcript, 토큰 기반 히스토리 로딩, 컴팩션)
 - `internal/agent`: Agent Loop (훅 기반 이벤트, 도구 실행 반복, 상태 추적)
-- `internal/tool`: 빌트인 도구 (read_file, list_dir, exec, cron_*, heartbeat_*, session_status)
+- `internal/tool`: 빌트인 도구 (file/web/memory/automation + gateway/sessions/message/browser/nodes 계열)
+- `internal/gateway`: in-process gateway 런타임 (run registry, agent executor, channels, browser/nodes 상태)
 - `internal/extensions`: 스킬/플러그인/MCP 통합 스냅샷 + 핫리로드 매니저
 - `internal/skill`: SKILL.md frontmatter 파싱/우선순위 머지/available_skills 포맷
 - `internal/plugin`: 선언형 매니페스트(`tarsncase.plugin.json`) 로더
@@ -157,6 +158,17 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - 알림 (SSE 브로커, OS 데스크톱 알림 fallback)
 - 자동화 도구 (cron_*/heartbeat_* 빌트인)
 
+**Phase 4: 스킬/플러그인 확장성** (완료)
+- 스킬 frontmatter 로더 + `available_skills` 프롬프트 주입
+- 선언형 플러그인(`tarsncase.plugin.json`) 로더
+- 확장 핫리로드(`POST /v1/runtime/extensions/reload`) + `/skills`/`/plugins`/`/mcp` 명령
+
+**Phase 5: Gateway/Channel 런타임 + Core Action 도구** (진행 중)
+- in-process gateway run registry (`accepted|running|completed|failed|canceled`)
+- agent/gateway/channels API (`/v1/agent/*`, `/v1/gateway/*`, `/v1/channels/*`)
+- OpenClaw core action 대응 도구(`sessions_*`, `agents_list`, `message`, `browser`, `nodes`, `gateway`)
+- `tars-ui` runtime 명령(`/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`)
+
 ### 최근 주요 변경
 
 **2026-02-15**
@@ -179,6 +191,18 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `sequential-thinking` 호환을 위해 jsonline/content-length 이중 전송 모드 지원
   - 타임아웃 시 세션 abort 및 안전한 재시도 경로 추가
 
+**2026-02-17**
+- Gateway 런타임 확장:
+  - `SetExecutors(...)`로 런타임 executor 동적 교체 지원
+  - gateway reload 시 extension refresh hook 선반영 후 재로드
+  - `GET /v1/agent/agents` 추가, agent 메타데이터(`source`, `entry`) 노출
+- Web 도구 강화:
+  - `web_search`: Brave/Perplexity provider 선택 + cache TTL
+  - `web_fetch`: SSRF 가드 + private host allowlist
+- `tars-ui` 명령 확장:
+  - `/agents --detail` (source/entry 포함)
+  - `/spawn` 옵션 자동완성(`--agent`, `--title`, `--session`, `--wait`)
+
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조
-- Phase 4-6 계획은 `PLAN.md` 참조
+- Phase 4-7 계획은 `PLAN.md` 참조

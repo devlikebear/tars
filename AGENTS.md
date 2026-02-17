@@ -2,7 +2,7 @@
 
 ## 목적
 - 이 저장소에서 Codex/에이전트가 일관된 방식으로 개발을 진행하도록 운영 기준을 정의한다.
-- 현재 목표는 Phase 4~6의 스킬/플러그인/cased 핵심 기능을 순차 구현하는 것이다.
+- 현재 목표는 gateway 기반 서브에이전트 런타임을 고도화하고, 남은 `cased` 안정성 기능을 완성하는 것이다.
 
 ## 개발 원칙
 - MVP 중심으로 작은 단위로 구현한다.
@@ -51,7 +51,7 @@
   2. [단계] → 검증: [확인사항]
   3. [단계] → 검증: [확인사항]
 
-## 현재 구현 상태 (2026-02-16 기준)
+## 현재 구현 상태 (2026-02-17 기준)
 
 - 서버 측 채팅 API `POST /v1/chat`는 구현되어 있다.
 - 세션 관리 API(`GET/POST/DELETE /v1/sessions`, history/export/search)와 상태 API(`GET /v1/status`)가 구현되어 있다.
@@ -81,6 +81,26 @@
 - `Esc`로 입력을 즉시 초기화하고, 진행 중 LLM 스트리밍은 abort로 중단할 수 있다.
 - `tarsd`/`tars-ui` 기본 개발 포트가 `127.0.0.1:43180`으로 통일되었다.
 - MCP 런타임이 JSON line 전송 방식 서버(`sequential-thinking`)를 자동 감지/폴백하여 연결한다.
+- in-process gateway 런타임(`internal/gateway`)이 추가되어 run registry, 채널, browser/nodes 상태를 함께 관리한다.
+- agent/gateway/channels API가 구현되어 비동기 run 제어가 가능하다.
+  - `GET /v1/agent/agents`
+  - `GET/POST /v1/agent/runs`
+  - `GET /v1/agent/runs/{run_id}`
+  - `POST /v1/agent/runs/{run_id}/cancel`
+  - `GET /v1/gateway/status`
+  - `POST /v1/gateway/reload`
+  - `POST /v1/gateway/restart`
+  - `POST /v1/channels/webhook/inbound/{channel_id}`
+  - `POST /v1/channels/telegram/webhook/{bot_id}`
+- OpenClaw core action 기준 built-in 도구가 확장되었다.
+  - 세션/런: `sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`, `sessions_runs`, `agents_list`
+  - 게이트웨이 계열: `message`, `browser`, `nodes`, `gateway`
+- `tars-ui`에 runtime 제어 명령이 추가되었다.
+  - `/agents`, `/agents --detail`
+  - `/runs`, `/run {id}`, `/cancel-run {id}`
+  - `/spawn [--agent] [--title] [--session] [--wait] {message}`
+  - `/gateway {status|reload|restart}`, `/channels`
+- `web_search`가 Brave/Perplexity provider 선택 + 캐시 TTL을 지원하고, `web_fetch`는 SSRF 차단 + private host allowlist를 지원한다.
 
 ## LLM Provider 운영 정책 (2026-02-16)
 
@@ -96,9 +116,9 @@
 
 ## 다음 우선순위
 
-1. `tars-ui` 입력 UX 마무리: 히스토리/자동완성/편집 상태를 상태 패널로 가시화하고 키맵 도움말을 개선.
-2. MCP 런타임 재연결/오류 진단(서버별 상태 메트릭, 백오프, 상세 에러 표준화) 강화.
-3. `cased` 감시 데몬의 실동작(프로세스 감시/재시작/상태 노출) 구현.
+1. markdown 기반 서브에이전트 정의(`workspace/agents/*/AGENT.md`)와 in-process LLM executor 연결을 완성한다.
+2. gateway/channel 런타임의 지속성(메시지 저장, run 로그 보존, 재시작 복구)과 운영 진단 지표를 강화한다.
+3. `cased` 감시 데몬의 실동작(프로세스 감시/재시작/상태 노출) 구현을 마무리한다.
 
 ## 작업 체크리스트
 
