@@ -100,6 +100,7 @@
   - `/runs`, `/run {id}`, `/cancel-run {id}`
   - `/spawn [--agent] [--title] [--session] [--wait] {message}`
   - `/gateway {status|reload|restart}`, `/channels`
+- `POST /v1/runtime/extensions/reload` 호출 시 gateway executor refresh가 자동 반영되며 응답에 `gateway_refreshed`, `gateway_agents`가 포함된다.
 - `web_search`가 Brave/Perplexity provider 선택 + 캐시 TTL을 지원하고, `web_fetch`는 SSRF 차단 + private host allowlist를 지원한다.
 
 ## LLM Provider 운영 정책 (2026-02-16)

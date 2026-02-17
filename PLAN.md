@@ -66,6 +66,8 @@
   - `GET /v1/gateway/status`, `POST /v1/gateway/reload`, `POST /v1/gateway/restart`
   - `POST /v1/channels/webhook/inbound/{channel_id}`, `POST /v1/channels/telegram/webhook/{bot_id}`
 - [x] Gateway executor metadata(`source`, `entry`) 노출 + `/agents --detail` 지원
+- [x] `POST /v1/runtime/extensions/reload` 시 gateway executor 자동 refresh 연동
+  - 응답 확장: `gateway_refreshed`, `gateway_agents` (additive)
 - [x] `tars-ui` runtime 명령 확장
   - `/agents`, `/runs`, `/spawn`, `/run`, `/cancel-run`, `/gateway`, `/channels`
   - `/spawn` 옵션 자동완성(`--agent`, `--title`, `--session`, `--wait`)
