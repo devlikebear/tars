@@ -1,6 +1,6 @@
-# TARS 개발 계획서 (v3)
+# TARS 개발 계획서 (v4)
 
-> 최종 갱신: 2026-02-16
+> 최종 갱신: 2026-02-17
 > 모듈: `github.com/devlikebear/tarsncase`
 > 바이너리: `tarsd` (메인 데몬), `tars-ui` (React/TS Ink TUI 클라이언트), `cased` (감시 데몬)
 
@@ -51,9 +51,29 @@
 - [x] 스킬 시스템 (SKILL.md, 레지스트리, 시스템 프롬프트 주입)
 - [x] 플러그인 시스템 (매니페스트, 로더, 도구 등록)
 - [x] MCP 클라이언트 (stdio/SSE, 도구 어댑터)
+- [x] in-process gateway runtime + run registry (`internal/gateway`)
+- [x] OpenClaw core action 도구 확장 (`sessions_*`, `agents_list`, `message`, `browser`, `nodes`, `gateway`)
 - [ ] cased 감시 데몬
 
-### 최근 반영 (2026-02-16)
+### 최근 반영
+
+#### 2026-02-17
+- [x] gateway/agent/channels API 추가
+  - `GET /v1/agent/agents`
+  - `GET/POST /v1/agent/runs`
+  - `GET /v1/agent/runs/{run_id}`
+  - `POST /v1/agent/runs/{run_id}/cancel`
+  - `GET /v1/gateway/status`, `POST /v1/gateway/reload`, `POST /v1/gateway/restart`
+  - `POST /v1/channels/webhook/inbound/{channel_id}`, `POST /v1/channels/telegram/webhook/{bot_id}`
+- [x] Gateway executor metadata(`source`, `entry`) 노출 + `/agents --detail` 지원
+- [x] `tars-ui` runtime 명령 확장
+  - `/agents`, `/runs`, `/spawn`, `/run`, `/cancel-run`, `/gateway`, `/channels`
+  - `/spawn` 옵션 자동완성(`--agent`, `--title`, `--session`, `--wait`)
+- [x] web 도구 강화
+  - `web_search`: Brave/Perplexity provider + cache TTL
+  - `web_fetch`: SSRF 차단 + private host allowlist/옵션
+
+#### 2026-02-16
 - [x] 기본 개발 포트를 `127.0.0.1:43180`으로 통일 (`tarsd`/`tars-ui`/예제 설정/README)
 - [x] 런타임 확장 명령 `/reload` 추가 (`POST /v1/runtime/extensions/reload` 호출)
 - [x] SSE/네트워크 진단 강화 (endpoint 포함 에러, keepalive 개선, 재연결 백오프)
@@ -676,6 +696,23 @@ GET /v1/mcp/tools          # MCP 도구 목록
 
 ---
 
+### Phase 7: Gateway 기반 서브에이전트 런타임 (진행 중)
+
+**목표**: 기본 in-process agent loop 위에 agent executor를 추가해 비동기 run 기반 멀티에이전트 실행 경로를 완성
+
+**현재 상태 (2026-02-17):**
+- `internal/gateway` 런타임과 run registry 구현 (`accepted + run_id` 비동기 계약)
+- API 구현: `/v1/agent/*`, `/v1/gateway/*`, `/v1/channels/*`
+- 도구 구현: `sessions_*`, `agents_list`, `message`, `browser`, `nodes`, `gateway`
+- UI 명령 구현: `/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`
+
+**다음 작업:**
+1. markdown 기반 agent 선언(`workspace/agents/*/AGENT.md`) 로딩
+2. in-process LLM executor를 default 외 다중 agent로 확장
+3. run/channel 영속화 및 재시작 복구 정책 정리
+
+---
+
 ## 4. OpenClaw 참고 지도 (빠른 색인)
 
 | 기능 | OpenClaw 문서 경로 | 핵심 개념 |
@@ -741,6 +778,8 @@ Phase 5: 플러그인 + MCP
   └── 5-C: tarsd API + tars CLI
       ↓
 Phase 6: cased 감시 데몬
+      ↓
+Phase 7: Gateway 기반 서브에이전트 런타임
 ```
 
 각 Phase의 각 서브태스크마다 **TDD 사이클**: 실패 테스트 → 구현 → 통과 → 커밋
