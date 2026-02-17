@@ -11,5 +11,6 @@ verbose: false
 # Gateway/channel/runs commands also depend on tarsd config:
 # - /runs, /run {id}, /cancel-run {id}
 # - /gateway status|reload|restart
+#   (status now includes agents_count / agents_watch / agents_reload_version)
 # - /channels
 # - /reload (extensions + gateway executor refresh)

@@ -295,6 +295,10 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 			version: 2,
 			runs_total: 3,
 			runs_active: 1,
+			agents_count: 2,
+			agents_watch_enabled: true,
+			agents_reload_version: 5,
+			agents_last_reload_at: '2026-02-17T12:00:00Z',
 			channels_local_enabled: true,
 			channels_webhook_enabled: false,
 			channels_telegram_enabled: true,
@@ -304,6 +308,10 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 			version: 3,
 			runs_total: 3,
 			runs_active: 1,
+			agents_count: 2,
+			agents_watch_enabled: true,
+			agents_reload_version: 6,
+			agents_last_reload_at: '2026-02-17T12:01:00Z',
 			channels_local_enabled: true,
 			channels_webhook_enabled: false,
 			channels_telegram_enabled: true,
@@ -313,6 +321,10 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 			version: 4,
 			runs_total: 2,
 			runs_active: 0,
+			agents_count: 2,
+			agents_watch_enabled: true,
+			agents_reload_version: 6,
+			agents_last_reload_at: '2026-02-17T12:01:00Z',
 			channels_local_enabled: true,
 			channels_webhook_enabled: false,
 			channels_telegram_enabled: true,
@@ -362,6 +374,7 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 	await executeInputCommand(gatewayState.ctx, apis);
 	assert.equal(gatewayState.tables.length, 1);
 	assert.deepEqual(gatewayState.tables[0]?.headers, ['FIELD', 'VALUE']);
+	assert.equal(gatewayState.tables[0]?.rows.some((row) => row[0] === 'agents_count'), true);
 
 	const channelsState = createContext('/channels');
 	await executeInputCommand(channelsState.ctx, apis);

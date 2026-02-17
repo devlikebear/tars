@@ -109,6 +109,10 @@ export type GatewayStatus = {
 	version: number;
 	runs_total: number;
 	runs_active: number;
+	agents_count: number;
+	agents_watch_enabled: boolean;
+	agents_reload_version: number;
+	agents_last_reload_at?: string;
 	channels_local_enabled: boolean;
 	channels_webhook_enabled: boolean;
 	channels_telegram_enabled: boolean;
