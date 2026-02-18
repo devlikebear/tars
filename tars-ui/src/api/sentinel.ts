@@ -1,5 +1,5 @@
 import {SentinelEvent, SentinelStatus} from '../types.js';
-import {casedHeaders} from './clientContext.js';
+import {casedAdminHeaders, casedHeaders} from './clientContext.js';
 
 function apiURL(serverURL: string, path: string): string {
 	return `${serverURL.replace(/\/+$/, '')}${path}`;
@@ -31,13 +31,43 @@ export async function listSentinelEvents(serverURL: string, limit = 20): Promise
 }
 
 export async function restartSentinel(serverURL: string): Promise<SentinelStatus> {
-	return requestJSON<SentinelStatus>('POST', apiURL(serverURL, '/v1/sentinel/restart'));
+	const url = apiURL(serverURL, '/v1/sentinel/restart');
+	const resp = await fetch(url, {method: 'POST', headers: casedAdminHeaders()});
+	const text = await resp.text();
+	if (!resp.ok) {
+		throw new Error(`POST ${url} status ${resp.status}: ${text.trim()}`);
+	}
+	try {
+		return JSON.parse(text) as SentinelStatus;
+	} catch (err) {
+		throw new Error(`decode response: ${String(err)}`);
+	}
 }
 
 export async function pauseSentinel(serverURL: string): Promise<SentinelStatus> {
-	return requestJSON<SentinelStatus>('POST', apiURL(serverURL, '/v1/sentinel/pause'));
+	const url = apiURL(serverURL, '/v1/sentinel/pause');
+	const resp = await fetch(url, {method: 'POST', headers: casedAdminHeaders()});
+	const text = await resp.text();
+	if (!resp.ok) {
+		throw new Error(`POST ${url} status ${resp.status}: ${text.trim()}`);
+	}
+	try {
+		return JSON.parse(text) as SentinelStatus;
+	} catch (err) {
+		throw new Error(`decode response: ${String(err)}`);
+	}
 }
 
 export async function resumeSentinel(serverURL: string): Promise<SentinelStatus> {
-	return requestJSON<SentinelStatus>('POST', apiURL(serverURL, '/v1/sentinel/resume'));
+	const url = apiURL(serverURL, '/v1/sentinel/resume');
+	const resp = await fetch(url, {method: 'POST', headers: casedAdminHeaders()});
+	const text = await resp.text();
+	if (!resp.ok) {
+		throw new Error(`POST ${url} status ${resp.status}: ${text.trim()}`);
+	}
+	try {
+		return JSON.parse(text) as SentinelStatus;
+	} catch (err) {
+		throw new Error(`decode response: ${String(err)}`);
+	}
 }

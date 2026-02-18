@@ -5,7 +5,9 @@ type CliConfig = {
 	casedServerUrl?: string;
 	sessionId?: string;
 	apiToken?: string;
+	adminApiToken?: string;
 	casedApiToken?: string;
+	casedAdminApiToken?: string;
 	workspaceId?: string;
 	verbose?: boolean;
 };
@@ -57,8 +59,14 @@ export function loadCliConfig(path: string): CliConfig {
 		case 'api_token':
 			out.apiToken = value;
 			break;
+		case 'admin_api_token':
+			out.adminApiToken = value;
+			break;
 		case 'cased_api_token':
 			out.casedApiToken = value;
+			break;
+		case 'cased_admin_api_token':
+			out.casedAdminApiToken = value;
 			break;
 		case 'workspace_id':
 			out.workspaceId = value;

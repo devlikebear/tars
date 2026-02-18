@@ -47,10 +47,12 @@ function App(): React.JSX.Element {
 	useEffect(() => {
 		configureAPIClientContext({
 			apiToken: initial.apiToken,
+			adminApiToken: initial.adminApiToken,
 			casedApiToken: initial.casedApiToken,
+			casedAdminApiToken: initial.casedAdminApiToken,
 			workspaceId: initial.workspaceId,
 		});
-	}, [initial.apiToken, initial.casedApiToken, initial.workspaceId]);
+	}, [initial.adminApiToken, initial.apiToken, initial.casedAdminApiToken, initial.casedApiToken, initial.workspaceId]);
 
 	const [sessionID, setSessionID] = useState<string>(initial.sessionId);
 	const [input, setInput] = useState<string>('');

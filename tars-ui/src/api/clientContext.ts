@@ -1,18 +1,24 @@
 type ClientContext = {
 	apiToken: string;
+	adminApiToken: string;
 	casedApiToken: string;
+	casedAdminApiToken: string;
 	workspaceId: string;
 };
 
 const context: ClientContext = {
 	apiToken: '',
+	adminApiToken: '',
 	casedApiToken: '',
+	casedAdminApiToken: '',
 	workspaceId: '',
 };
 
 export function configureAPIClientContext(next: Partial<ClientContext>): void {
 	context.apiToken = (next.apiToken ?? '').trim();
+	context.adminApiToken = (next.adminApiToken ?? '').trim();
 	context.casedApiToken = (next.casedApiToken ?? '').trim();
+	context.casedAdminApiToken = (next.casedAdminApiToken ?? '').trim();
 	context.workspaceId = (next.workspaceId ?? '').trim();
 }
 
@@ -52,3 +58,12 @@ export function casedHeaders(extra?: Record<string, string>): Record<string, str
 	return mergeHeaders(context.casedApiToken, extra);
 }
 
+export function tarsAdminHeaders(extra?: Record<string, string>): Record<string, string> | undefined {
+	const token = context.adminApiToken !== '' ? context.adminApiToken : context.apiToken;
+	return mergeHeaders(token, extra);
+}
+
+export function casedAdminHeaders(extra?: Record<string, string>): Record<string, string> | undefined {
+	const token = context.casedAdminApiToken !== '' ? context.casedAdminApiToken : context.casedApiToken;
+	return mergeHeaders(token, extra);
+}

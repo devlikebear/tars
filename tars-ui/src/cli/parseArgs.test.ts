@@ -11,7 +11,9 @@ test('parseArgs uses defaults', () => {
 	assert.equal(parsed.casedServerUrl, 'http://127.0.0.1:43181');
 	assert.equal(parsed.sessionId, '');
 	assert.equal(parsed.apiToken, '');
+	assert.equal(parsed.adminApiToken, '');
 	assert.equal(parsed.casedApiToken, '');
+	assert.equal(parsed.casedAdminApiToken, '');
 	assert.equal(parsed.workspaceId, '');
 	assert.equal(parsed.verbose, false);
 });
@@ -27,8 +29,12 @@ test('parseArgs reads verbose/server/session flags', () => {
 		'sess-1',
 		'--api-token',
 		'tars-token',
+		'--admin-api-token',
+		'tars-admin-token',
 		'--cased-api-token',
 		'cased-token',
+		'--cased-admin-api-token',
+		'cased-admin-token',
 		'--workspace-id',
 		'ws-dev',
 	]);
@@ -36,7 +42,9 @@ test('parseArgs reads verbose/server/session flags', () => {
 	assert.equal(parsed.casedServerUrl, 'http://localhost:43181');
 	assert.equal(parsed.sessionId, 'sess-1');
 	assert.equal(parsed.apiToken, 'tars-token');
+	assert.equal(parsed.adminApiToken, 'tars-admin-token');
 	assert.equal(parsed.casedApiToken, 'cased-token');
+	assert.equal(parsed.casedAdminApiToken, 'cased-admin-token');
 	assert.equal(parsed.workspaceId, 'ws-dev');
 	assert.equal(parsed.verbose, true);
 });
@@ -47,14 +55,18 @@ test('parseArgs reads equals-form flags', () => {
 		'--cased-url=http://127.0.0.1:9001',
 		'--session=sess-42',
 		'--api-token=tars-token',
+		'--admin-api-token=tars-admin-token',
 		'--cased-api-token=cased-token',
+		'--cased-admin-api-token=cased-admin-token',
 		'--workspace-id=ws-dev',
 	]);
 	assert.equal(parsed.serverUrl, 'http://127.0.0.1:9000');
 	assert.equal(parsed.casedServerUrl, 'http://127.0.0.1:9001');
 	assert.equal(parsed.sessionId, 'sess-42');
 	assert.equal(parsed.apiToken, 'tars-token');
+	assert.equal(parsed.adminApiToken, 'tars-admin-token');
 	assert.equal(parsed.casedApiToken, 'cased-token');
+	assert.equal(parsed.casedAdminApiToken, 'cased-admin-token');
 	assert.equal(parsed.workspaceId, 'ws-dev');
 });
 
@@ -68,7 +80,9 @@ test('parseArgs reads config file', () => {
 			'cased_server_url: http://localhost:19091',
 			'session_id: sess-from-file',
 			'api_token: tars-file-token',
+			'admin_api_token: tars-file-admin-token',
 			'cased_api_token: cased-file-token',
+			'cased_admin_api_token: cased-file-admin-token',
 			'workspace_id: ws-file',
 			'verbose: true',
 			'',
@@ -80,7 +94,9 @@ test('parseArgs reads config file', () => {
 	assert.equal(parsed.casedServerUrl, 'http://localhost:19091');
 	assert.equal(parsed.sessionId, 'sess-from-file');
 	assert.equal(parsed.apiToken, 'tars-file-token');
+	assert.equal(parsed.adminApiToken, 'tars-file-admin-token');
 	assert.equal(parsed.casedApiToken, 'cased-file-token');
+	assert.equal(parsed.casedAdminApiToken, 'cased-file-admin-token');
 	assert.equal(parsed.workspaceId, 'ws-file');
 	assert.equal(parsed.verbose, true);
 });
@@ -95,7 +111,9 @@ test('parseArgs gives cli flags precedence over config file', () => {
 			'cased_server_url: http://localhost:19091',
 			'session_id: sess-from-file',
 			'api_token: tars-file-token',
+			'admin_api_token: tars-file-admin-token',
 			'cased_api_token: cased-file-token',
+			'cased_admin_api_token: cased-file-admin-token',
 			'workspace_id: ws-file',
 			'verbose: false',
 			'',
@@ -109,7 +127,9 @@ test('parseArgs gives cli flags precedence over config file', () => {
 		'--cased-url=http://127.0.0.1:9001',
 		'--session=sess-cli',
 		'--api-token=tars-cli-token',
+		'--admin-api-token=tars-cli-admin-token',
 		'--cased-api-token=cased-cli-token',
+		'--cased-admin-api-token=cased-cli-admin-token',
 		'--workspace-id=ws-cli',
 		'--verbose',
 	]);
@@ -117,7 +137,9 @@ test('parseArgs gives cli flags precedence over config file', () => {
 	assert.equal(parsed.casedServerUrl, 'http://127.0.0.1:9001');
 	assert.equal(parsed.sessionId, 'sess-cli');
 	assert.equal(parsed.apiToken, 'tars-cli-token');
+	assert.equal(parsed.adminApiToken, 'tars-cli-admin-token');
 	assert.equal(parsed.casedApiToken, 'cased-cli-token');
+	assert.equal(parsed.casedAdminApiToken, 'cased-cli-admin-token');
 	assert.equal(parsed.workspaceId, 'ws-cli');
 	assert.equal(parsed.verbose, true);
 });

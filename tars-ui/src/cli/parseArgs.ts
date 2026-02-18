@@ -5,7 +5,9 @@ export type CliOptions = {
 	casedServerUrl: string;
 	sessionId: string;
 	apiToken: string;
+	adminApiToken: string;
 	casedApiToken: string;
+	casedAdminApiToken: string;
 	workspaceId: string;
 	verbose: boolean;
 };
@@ -28,7 +30,9 @@ export function parseArgs(argv: string[]): CliOptions {
 	let casedServerUrl = 'http://127.0.0.1:43181';
 	let sessionId = '';
 	let apiToken = '';
+	let adminApiToken = '';
 	let casedApiToken = '';
+	let casedAdminApiToken = '';
 	let workspaceId = '';
 	let verbose = false;
 	const configPath = resolveConfigPath(argv);
@@ -46,8 +50,14 @@ export function parseArgs(argv: string[]): CliOptions {
 		if ((fromFile.apiToken ?? '').trim() !== '') {
 			apiToken = fromFile.apiToken!.trim();
 		}
+		if ((fromFile.adminApiToken ?? '').trim() !== '') {
+			adminApiToken = fromFile.adminApiToken!.trim();
+		}
 		if ((fromFile.casedApiToken ?? '').trim() !== '') {
 			casedApiToken = fromFile.casedApiToken!.trim();
+		}
+		if ((fromFile.casedAdminApiToken ?? '').trim() !== '') {
+			casedAdminApiToken = fromFile.casedAdminApiToken!.trim();
 		}
 		if ((fromFile.workspaceId ?? '').trim() !== '') {
 			workspaceId = fromFile.workspaceId!.trim();
@@ -100,6 +110,15 @@ export function parseArgs(argv: string[]): CliOptions {
 			apiToken = arg.slice('--api-token='.length);
 			continue;
 		}
+		if (arg === '--admin-api-token' && argv[i + 1]) {
+			adminApiToken = argv[i + 1]!;
+			i += 1;
+			continue;
+		}
+		if (arg.startsWith('--admin-api-token=')) {
+			adminApiToken = arg.slice('--admin-api-token='.length);
+			continue;
+		}
 		if (arg === '--cased-api-token' && argv[i + 1]) {
 			casedApiToken = argv[i + 1]!;
 			i += 1;
@@ -107,6 +126,15 @@ export function parseArgs(argv: string[]): CliOptions {
 		}
 		if (arg.startsWith('--cased-api-token=')) {
 			casedApiToken = arg.slice('--cased-api-token='.length);
+			continue;
+		}
+		if (arg === '--cased-admin-api-token' && argv[i + 1]) {
+			casedAdminApiToken = argv[i + 1]!;
+			i += 1;
+			continue;
+		}
+		if (arg.startsWith('--cased-admin-api-token=')) {
+			casedAdminApiToken = arg.slice('--cased-admin-api-token='.length);
 			continue;
 		}
 		if (arg === '--workspace-id' && argv[i + 1]) {
@@ -124,7 +152,9 @@ export function parseArgs(argv: string[]): CliOptions {
 		casedServerUrl: casedServerUrl.trim() || 'http://127.0.0.1:43181',
 		sessionId: sessionId.trim(),
 		apiToken: apiToken.trim(),
+		adminApiToken: adminApiToken.trim(),
 		casedApiToken: casedApiToken.trim(),
+		casedAdminApiToken: casedAdminApiToken.trim(),
 		workspaceId: workspaceId.trim(),
 		verbose,
 	};

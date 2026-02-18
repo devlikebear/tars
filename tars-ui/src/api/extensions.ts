@@ -1,5 +1,5 @@
 import {MCPServerStatus, MCPToolInfo, PluginDefinition, SkillDefinition} from '../types.js';
-import {tarsHeaders} from './clientContext.js';
+import {tarsAdminHeaders, tarsHeaders} from './clientContext.js';
 
 function apiURL(serverURL: string, path: string): string {
 	return `${serverURL.replace(/\/+$/, '')}${path}`;
@@ -7,23 +7,6 @@ function apiURL(serverURL: string, path: string): string {
 
 async function requestJSON<T>(method: string, url: string): Promise<T> {
 	const resp = await fetch(url, {method, headers: tarsHeaders()});
-	const text = await resp.text();
-	if (!resp.ok) {
-		throw new Error(`${method} ${url} status ${resp.status}: ${text.trim()}`);
-	}
-	try {
-		return JSON.parse(text) as T;
-	} catch (err) {
-		throw new Error(`decode response: ${String(err)}`);
-	}
-}
-
-async function requestJSONWithBody<T>(method: string, url: string, body: unknown): Promise<T> {
-	const resp = await fetch(url, {
-		method,
-		headers: tarsHeaders({'Content-Type': 'application/json'}),
-		body: JSON.stringify(body),
-	});
 	const text = await resp.text();
 	if (!resp.ok) {
 		throw new Error(`${method} ${url} status ${resp.status}: ${text.trim()}`);
@@ -66,7 +49,20 @@ export type ReloadExtensionsResponse = {
 };
 
 export async function reloadExtensions(serverURL: string): Promise<ReloadExtensionsResponse> {
-	return requestJSONWithBody<ReloadExtensionsResponse>('POST', apiURL(serverURL, '/v1/runtime/extensions/reload'), {});
+	const resp = await fetch(apiURL(serverURL, '/v1/runtime/extensions/reload'), {
+		method: 'POST',
+		headers: tarsAdminHeaders({'Content-Type': 'application/json'}),
+		body: JSON.stringify({}),
+	});
+	const text = await resp.text();
+	if (!resp.ok) {
+		throw new Error(`POST ${apiURL(serverURL, '/v1/runtime/extensions/reload')} status ${resp.status}: ${text.trim()}`);
+	}
+	try {
+		return JSON.parse(text) as ReloadExtensionsResponse;
+	} catch (err) {
+		throw new Error(`decode response: ${String(err)}`);
+	}
 }
 
 function normalizeArray<T>(value: T[] | null): T[] {

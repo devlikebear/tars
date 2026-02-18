@@ -1,5 +1,5 @@
 import {AgentDescriptor, AgentRunSummary, GatewayStatus} from '../types.js';
-import {tarsHeaders} from './clientContext.js';
+import {tarsAdminHeaders, tarsHeaders} from './clientContext.js';
 
 function apiURL(serverURL: string, path: string): string {
 	return `${serverURL.replace(/\/+$/, '')}${path}`;
@@ -73,9 +73,29 @@ export async function getGatewayStatus(serverURL: string): Promise<GatewayStatus
 }
 
 export async function reloadGateway(serverURL: string): Promise<GatewayStatus> {
-	return requestJSON<GatewayStatus>('POST', apiURL(serverURL, '/v1/gateway/reload'));
+	const url = apiURL(serverURL, '/v1/gateway/reload');
+	const resp = await fetch(url, {method: 'POST', headers: tarsAdminHeaders()});
+	const text = await resp.text();
+	if (!resp.ok) {
+		throw new Error(`POST ${url} status ${resp.status}: ${text.trim()}`);
+	}
+	try {
+		return JSON.parse(text) as GatewayStatus;
+	} catch (err) {
+		throw new Error(`decode response: ${String(err)}`);
+	}
 }
 
 export async function restartGateway(serverURL: string): Promise<GatewayStatus> {
-	return requestJSON<GatewayStatus>('POST', apiURL(serverURL, '/v1/gateway/restart'));
+	const url = apiURL(serverURL, '/v1/gateway/restart');
+	const resp = await fetch(url, {method: 'POST', headers: tarsAdminHeaders()});
+	const text = await resp.text();
+	if (!resp.ok) {
+		throw new Error(`POST ${url} status ${resp.status}: ${text.trim()}`);
+	}
+	try {
+		return JSON.parse(text) as GatewayStatus;
+	} catch (err) {
+		throw new Error(`decode response: ${String(err)}`);
+	}
 }

@@ -16,11 +16,13 @@ function installFetchMock(
 test('sentinel api decodes status/events and control responses', async () => {
 	configureAPIClientContext({
 		casedApiToken: 'cased-token',
+		casedAdminApiToken: 'cased-admin-token',
 		workspaceId: 'ws-dev',
 	});
-	let capturedHeaders: RequestInit['headers'] | undefined;
+	const authHeaders: string[] = [];
 	const restore = installFetchMock(async (input, init) => {
-		capturedHeaders = init?.headers;
+		const headers = (init?.headers as Record<string, string> | undefined) ?? {};
+		authHeaders.push(headers.Authorization ?? '');
 		const url = String(input);
 		if (url.endsWith('/v1/sentinel/status')) {
 			return new Response(JSON.stringify({
@@ -64,9 +66,11 @@ test('sentinel api decodes status/events and control responses', async () => {
 		assert.equal(paused.enabled, true);
 		const resumed = await resumeSentinel('http://127.0.0.1:43181');
 		assert.equal(resumed.enabled, true);
-		const headers = capturedHeaders as Record<string, string>;
-		assert.equal(headers.Authorization, 'Bearer cased-token');
-		assert.equal(headers['Tars-Workspace-Id'], 'ws-dev');
+		assert.equal(authHeaders[0], 'Bearer cased-token');
+		assert.equal(authHeaders[1], 'Bearer cased-token');
+		assert.equal(authHeaders[2], 'Bearer cased-admin-token');
+		assert.equal(authHeaders[3], 'Bearer cased-admin-token');
+		assert.equal(authHeaders[4], 'Bearer cased-admin-token');
 	} finally {
 		restore();
 		configureAPIClientContext({});

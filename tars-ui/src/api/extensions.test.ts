@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {configureAPIClientContext} from './clientContext.js';
 import {listMCPServers, listMCPTools, listPlugins, listSkills, reloadExtensions} from './extensions.js';
 
 function installFetchMock(
@@ -13,8 +14,12 @@ function installFetchMock(
 }
 
 test('extensions api decodes list responses', async () => {
-	const restore = installFetchMock(async (input) => {
+	configureAPIClientContext({apiToken: 'user-token', adminApiToken: 'admin-token', workspaceId: 'ws-dev'});
+	const authHeaders: string[] = [];
+	const restore = installFetchMock(async (input, init) => {
 		const url = String(input);
+		const headers = (init?.headers as Record<string, string> | undefined) ?? {};
+		authHeaders.push(headers.Authorization ?? '');
 		if (url.endsWith('/v1/skills')) {
 			return new Response(JSON.stringify([{name: 'deploy'}]), {status: 200});
 		}
@@ -48,8 +53,11 @@ test('extensions api decodes list responses', async () => {
 		assert.equal(reload.version, 7);
 		assert.equal(reload.gateway_refreshed, true);
 		assert.equal(reload.gateway_agents, 2);
+		assert.equal(authHeaders[0], 'Bearer user-token');
+		assert.equal(authHeaders[4], 'Bearer admin-token');
 	} finally {
 		restore();
+		configureAPIClientContext({});
 	}
 });
 

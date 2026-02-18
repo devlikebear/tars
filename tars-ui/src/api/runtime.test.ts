@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {configureAPIClientContext} from './clientContext.js';
 import {cancelAgentRun, getAgentRun, getGatewayStatus, listAgentRuns, listAgents, reloadGateway, restartGateway, spawnAgentRun} from './runtime.js';
 
 function installFetchMock(
@@ -13,8 +14,12 @@ function installFetchMock(
 }
 
 test('runtime api decodes run and gateway responses', async () => {
-	const restore = installFetchMock(async (input) => {
+	configureAPIClientContext({apiToken: 'user-token', adminApiToken: 'admin-token', workspaceId: 'ws-dev'});
+	const authHeaders: string[] = [];
+	const restore = installFetchMock(async (input, init) => {
 		const url = String(input);
+		const headers = (init?.headers as Record<string, string> | undefined) ?? {};
+		authHeaders.push(headers.Authorization ?? '');
 		if (url.includes('/v1/agent/runs?')) {
 			return new Response(JSON.stringify({count: 1, runs: [{run_id: 'run_1', accepted: true, status: 'running'}]}), {status: 200});
 		}
@@ -80,7 +85,11 @@ test('runtime api decodes run and gateway responses', async () => {
 		assert.equal(reloaded.version, 3);
 		const restarted = await restartGateway('http://127.0.0.1:8080');
 		assert.equal(restarted.version, 4);
+		assert.equal(authHeaders[0], 'Bearer user-token');
+		assert.equal(authHeaders[6], 'Bearer admin-token');
+		assert.equal(authHeaders[7], 'Bearer admin-token');
 	} finally {
 		restore();
+		configureAPIClientContext({});
 	}
 });
