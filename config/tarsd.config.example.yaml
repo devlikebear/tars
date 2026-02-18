@@ -7,6 +7,12 @@
 mode: standalone
 workspace_dir: ./workspace
 
+# API auth (no X- prefix headers)
+# off | external-required | required
+api_auth_mode: external-required
+api_auth_token: "" # set for non-loopback protection
+api_workspace_header: Tars-Workspace-Id
+
 # LLM provider
 # provider: bifrost | openai | anthropic | gemini | gemini-native
 llm_provider: anthropic

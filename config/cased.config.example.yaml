@@ -3,6 +3,10 @@
 #   go run ./cmd/cased --config ./config/cased.config.example.yaml --verbose
 
 api_addr: 127.0.0.1:43181
+# cased API auth token should be separate from tarsd token
+# off | external-required | required
+api_auth_mode: external-required
+api_auth_token: ""
 
 # Required target command (no auto-discovery)
 target_command: go

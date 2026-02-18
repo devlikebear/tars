@@ -4,6 +4,9 @@
 
 server_url: http://127.0.0.1:43180
 cased_server_url: http://127.0.0.1:43181
+api_token: ""
+cased_api_token: ""
+workspace_id: "" # sent via Tars-Workspace-Id header
 session_id: ""
 verbose: false
 
