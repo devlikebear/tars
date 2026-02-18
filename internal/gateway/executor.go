@@ -18,15 +18,19 @@ type ExecuteRequest struct {
 }
 
 type AgentInfo struct {
-	Name            string   `json:"name"`
-	Description     string   `json:"description,omitempty"`
-	Enabled         bool     `json:"enabled"`
-	Kind            string   `json:"kind,omitempty"`
-	Source          string   `json:"source,omitempty"`
-	Entry           string   `json:"entry,omitempty"`
-	PolicyMode      string   `json:"policy_mode"`
-	ToolsAllow      []string `json:"tools_allow,omitempty"`
-	ToolsAllowCount int      `json:"tools_allow_count"`
+	Name               string   `json:"name"`
+	Description        string   `json:"description,omitempty"`
+	Enabled            bool     `json:"enabled"`
+	Kind               string   `json:"kind,omitempty"`
+	Source             string   `json:"source,omitempty"`
+	Entry              string   `json:"entry,omitempty"`
+	PolicyMode         string   `json:"policy_mode"`
+	ToolsAllow         []string `json:"tools_allow,omitempty"`
+	ToolsAllowCount    int      `json:"tools_allow_count"`
+	ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty"`
+	ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
+	SessionRoutingMode string   `json:"session_routing_mode,omitempty"`
+	SessionFixedID     string   `json:"session_fixed_id,omitempty"`
 }
 
 type AgentExecutor interface {
@@ -35,24 +39,32 @@ type AgentExecutor interface {
 }
 
 type PromptExecutor struct {
-	name        string
-	description string
-	kind        string
-	source      string
-	entry       string
-	policyMode  string
-	toolsAllow  []string
-	runPrompt   func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error)
+	name               string
+	description        string
+	kind               string
+	source             string
+	entry              string
+	policyMode         string
+	toolsAllow         []string
+	toolsAllowGroups   []string
+	toolsAllowPatterns []string
+	sessionRoutingMode string
+	sessionFixedID     string
+	runPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error)
 }
 
 type PromptExecutorOptions struct {
-	Name        string
-	Description string
-	Source      string
-	Entry       string
-	PolicyMode  string
-	ToolsAllow  []string
-	RunPrompt   func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error)
+	Name               string
+	Description        string
+	Source             string
+	Entry              string
+	PolicyMode         string
+	ToolsAllow         []string
+	ToolsAllowGroups   []string
+	ToolsAllowPatterns []string
+	SessionRoutingMode string
+	SessionFixedID     string
+	RunPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error)
 }
 
 func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, error) {
@@ -73,18 +85,29 @@ func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, 
 	}
 	policyMode := normalizePolicyMode(opts.PolicyMode)
 	toolsAllow := sanitizeToolsAllow(opts.ToolsAllow)
+	toolsAllowGroups := sanitizeStringList(opts.ToolsAllowGroups)
+	toolsAllowPatterns := sanitizeStringList(opts.ToolsAllowPatterns)
+	sessionRoutingMode := normalizeSessionRoutingMode(opts.SessionRoutingMode)
+	sessionFixedID := strings.TrimSpace(opts.SessionFixedID)
 	if policyMode == "allowlist" && len(toolsAllow) == 0 {
 		return nil, fmt.Errorf("allowlist policy requires at least one allowed tool")
 	}
+	if sessionRoutingMode == "fixed" && sessionFixedID == "" {
+		return nil, fmt.Errorf("fixed session routing requires session_fixed_id")
+	}
 	return &PromptExecutor{
-		name:        trimmed,
-		description: description,
-		kind:        "prompt",
-		source:      source,
-		entry:       strings.TrimSpace(opts.Entry),
-		policyMode:  policyMode,
-		toolsAllow:  toolsAllow,
-		runPrompt:   opts.RunPrompt,
+		name:               trimmed,
+		description:        description,
+		kind:               "prompt",
+		source:             source,
+		entry:              strings.TrimSpace(opts.Entry),
+		policyMode:         policyMode,
+		toolsAllow:         toolsAllow,
+		toolsAllowGroups:   toolsAllowGroups,
+		toolsAllowPatterns: toolsAllowPatterns,
+		sessionRoutingMode: sessionRoutingMode,
+		sessionFixedID:     sessionFixedID,
+		runPrompt:          opts.RunPrompt,
 	}, nil
 }
 
@@ -103,15 +126,19 @@ func (e *PromptExecutor) Info() AgentInfo {
 		return AgentInfo{}
 	}
 	return AgentInfo{
-		Name:            e.name,
-		Description:     e.description,
-		Enabled:         true,
-		Kind:            e.kind,
-		Source:          e.source,
-		Entry:           e.entry,
-		PolicyMode:      normalizePolicyMode(e.policyMode),
-		ToolsAllow:      append([]string(nil), e.toolsAllow...),
-		ToolsAllowCount: len(e.toolsAllow),
+		Name:               e.name,
+		Description:        e.description,
+		Enabled:            true,
+		Kind:               e.kind,
+		Source:             e.source,
+		Entry:              e.entry,
+		PolicyMode:         normalizePolicyMode(e.policyMode),
+		ToolsAllow:         append([]string(nil), e.toolsAllow...),
+		ToolsAllowCount:    len(e.toolsAllow),
+		ToolsAllowGroups:   append([]string(nil), e.toolsAllowGroups...),
+		ToolsAllowPatterns: append([]string(nil), e.toolsAllowPatterns...),
+		SessionRoutingMode: normalizeSessionRoutingMode(e.sessionRoutingMode),
+		SessionFixedID:     strings.TrimSpace(e.sessionFixedID),
 	}
 }
 
@@ -268,6 +295,10 @@ func normalizePolicyMode(raw string) string {
 }
 
 func sanitizeToolsAllow(raw []string) []string {
+	return sanitizeStringList(raw)
+}
+
+func sanitizeStringList(raw []string) []string {
 	out := make([]string, 0, len(raw))
 	seen := map[string]struct{}{}
 	for _, item := range raw {
@@ -282,4 +313,16 @@ func sanitizeToolsAllow(raw []string) []string {
 		out = append(out, name)
 	}
 	return out
+}
+
+func normalizeSessionRoutingMode(raw string) string {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	switch mode {
+	case "", "caller":
+		return "caller"
+	case "new", "fixed":
+		return mode
+	default:
+		return "caller"
+	}
 }

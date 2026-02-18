@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -142,6 +143,100 @@ func TestRuntimeSpawn_WithCustomExecutor(t *testing.T) {
 	}
 	if agents[0]["name"] != "worker" {
 		t.Fatalf("unexpected agents payload: %+v", agents)
+	}
+}
+
+func TestRuntimeSpawn_PromptExecutorSessionRoutingModes(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	fixedSession, err := store.Create("fixed")
+	if err != nil {
+		t.Fatalf("create fixed session: %v", err)
+	}
+	callerSession, err := store.Create("caller")
+	if err != nil {
+		t.Fatalf("create caller session: %v", err)
+	}
+
+	newExecutor, err := NewPromptExecutorWithOptions(PromptExecutorOptions{
+		Name:               "new_agent",
+		PolicyMode:         "allowlist",
+		ToolsAllow:         []string{"read_file"},
+		SessionRoutingMode: "new",
+		RunPrompt: func(_ context.Context, _ string, prompt string, _ []string) (string, error) {
+			return "new:" + prompt, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("new prompt executor(new): %v", err)
+	}
+	callerExecutor, err := NewPromptExecutorWithOptions(PromptExecutorOptions{
+		Name:               "caller_agent",
+		PolicyMode:         "allowlist",
+		ToolsAllow:         []string{"read_file"},
+		SessionRoutingMode: "caller",
+		RunPrompt: func(_ context.Context, _ string, prompt string, _ []string) (string, error) {
+			return "caller:" + prompt, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("new prompt executor(caller): %v", err)
+	}
+	fixedExecutor, err := NewPromptExecutorWithOptions(PromptExecutorOptions{
+		Name:               "fixed_agent",
+		PolicyMode:         "allowlist",
+		ToolsAllow:         []string{"read_file"},
+		SessionRoutingMode: "fixed",
+		SessionFixedID:     fixedSession.ID,
+		RunPrompt: func(_ context.Context, _ string, prompt string, _ []string) (string, error) {
+			return "fixed:" + prompt, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("new prompt executor(fixed): %v", err)
+	}
+
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors:    []AgentExecutor{newExecutor, callerExecutor, fixedExecutor},
+		DefaultAgent: "new_agent",
+	})
+	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+
+	newRun, err := rt.Spawn(context.Background(), SpawnRequest{
+		Agent:     "new_agent",
+		Prompt:    "hello",
+		SessionID: callerSession.ID,
+	})
+	if err != nil {
+		t.Fatalf("spawn new_agent: %v", err)
+	}
+	if newRun.SessionID == callerSession.ID {
+		t.Fatalf("expected new routing to ignore caller session, got %+v", newRun)
+	}
+
+	callerRun, err := rt.Spawn(context.Background(), SpawnRequest{
+		Agent:     "caller_agent",
+		Prompt:    "hello",
+		SessionID: callerSession.ID,
+	})
+	if err != nil {
+		t.Fatalf("spawn caller_agent: %v", err)
+	}
+	if callerRun.SessionID != callerSession.ID {
+		t.Fatalf("expected caller routing to preserve session id, got %+v", callerRun)
+	}
+
+	fixedRun, err := rt.Spawn(context.Background(), SpawnRequest{
+		Agent:     "fixed_agent",
+		Prompt:    "hello",
+		SessionID: callerSession.ID,
+	})
+	if err != nil {
+		t.Fatalf("spawn fixed_agent: %v", err)
+	}
+	if fixedRun.SessionID != fixedSession.ID {
+		t.Fatalf("expected fixed routing to use fixed session id, got %+v", fixedRun)
 	}
 }
 
@@ -535,5 +630,70 @@ func TestRuntimePersistence_TrimsRunsAndChannelMessages(t *testing.T) {
 	}
 	if msgs[0].ID != "msg_2" || msgs[1].ID != "msg_3" {
 		t.Fatalf("unexpected persisted channel messages: %+v", msgs)
+	}
+}
+
+func TestRuntimeArchive_RotateAndRetention(t *testing.T) {
+	workspace := t.TempDir()
+	archiveDir := filepath.Join(workspace, "archive")
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		t.Fatalf("mkdir archive dir: %v", err)
+	}
+	oldFile := filepath.Join(archiveDir, "gateway-old.jsonl")
+	if err := os.WriteFile(oldFile, []byte("{\"old\":true}\n"), 0o644); err != nil {
+		t.Fatalf("write old archive file: %v", err)
+	}
+	oldTime := time.Now().Add(-72 * time.Hour)
+	if err := os.Chtimes(oldFile, oldTime, oldTime); err != nil {
+		t.Fatalf("chtime old archive file: %v", err)
+	}
+
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:                     true,
+		WorkspaceDir:                workspace,
+		SessionStore:                session.NewStore(t.TempDir()),
+		ChannelsLocalEnabled:        true,
+		GatewayReportSummaryEnabled: true,
+		GatewayPersistenceEnabled:   true,
+		GatewayArchiveEnabled:       true,
+		GatewayArchiveDir:           archiveDir,
+		GatewayArchiveRetentionDays: 1,
+		GatewayArchiveMaxFileBytes:  256,
+		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
+			return "ok: " + prompt, nil
+		},
+	})
+	for i := 0; i < 6; i++ {
+		run, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "run"})
+		if err != nil {
+			t.Fatalf("spawn run %d: %v", i, err)
+		}
+		if _, err := rt.Wait(context.Background(), run.ID); err != nil {
+			t.Fatalf("wait run %d: %v", i, err)
+		}
+	}
+	if _, err := rt.MessageSend("general", "", "archive-message"); err != nil {
+		t.Fatalf("message send: %v", err)
+	}
+	closeGatewayRuntime(t, rt)
+
+	if _, err := os.Stat(oldFile); !os.IsNotExist(err) {
+		t.Fatalf("expected old archive file removed by retention, err=%v", err)
+	}
+	files, err := os.ReadDir(archiveDir)
+	if err != nil {
+		t.Fatalf("read archive dir: %v", err)
+	}
+	archiveFiles := 0
+	for _, entry := range files {
+		if entry.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(entry.Name(), "gateway-") && strings.HasSuffix(entry.Name(), ".jsonl") {
+			archiveFiles++
+		}
+	}
+	if archiveFiles == 0 {
+		t.Fatalf("expected archive files to be created")
 	}
 }

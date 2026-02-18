@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -13,19 +14,29 @@ import (
 )
 
 type workspaceGatewayAgent struct {
-	Name        string
-	Description string
-	Prompt      string
-	FilePath    string
-	PolicyMode  string
-	ToolsAllow  []string
+	Name               string
+	Description        string
+	Prompt             string
+	FilePath           string
+	PolicyMode         string
+	ToolsAllow         []string
+	ToolsAllowGroups   []string
+	ToolsAllowPatterns []string
+	SessionRoutingMode string
+	SessionFixedID     string
 }
 
 type workspaceGatewayAgentFrontmatter struct {
-	Name             string
-	Description      string
-	ToolsAllow       []string
-	ToolsAllowExists bool
+	Name                     string
+	Description              string
+	ToolsAllow               []string
+	ToolsAllowExists         bool
+	ToolsAllowGroups         []string
+	ToolsAllowGroupsExists   bool
+	ToolsAllowPatterns       []string
+	ToolsAllowPatternsExists bool
+	SessionRoutingMode       string
+	SessionFixedID           string
 }
 
 func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, []string, error) {
@@ -46,6 +57,7 @@ func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, [
 	}
 
 	knownTools := knownGatewayPromptTools(base)
+	knownGroups := knownGatewayPromptToolGroups(knownTools)
 	loaded := make([]workspaceGatewayAgent, 0)
 	diagnostics := make([]string, 0)
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
@@ -89,28 +101,75 @@ func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, [
 		}
 		policyMode := "full"
 		toolsAllow := []string{}
-		if meta.ToolsAllowExists {
+		toolsAllowGroups := []string{}
+		toolsAllowPatterns := []string{}
+		if meta.ToolsAllowExists || meta.ToolsAllowGroupsExists || meta.ToolsAllowPatternsExists {
 			policyMode = "allowlist"
-			normalized, unknown := normalizeGatewayToolsAllow(meta.ToolsAllow, knownTools)
-			if len(unknown) > 0 {
+			union := make([]string, 0)
+			unionSeen := map[string]struct{}{}
+			appendUnion := func(items []string) {
+				for _, item := range items {
+					if _, exists := unionSeen[item]; exists {
+						continue
+					}
+					unionSeen[item] = struct{}{}
+					union = append(union, item)
+				}
+			}
+
+			normalizedNames, unknownTools := normalizeGatewayToolsAllow(meta.ToolsAllow, knownTools)
+			if len(unknownTools) > 0 {
 				diagnostics = append(
 					diagnostics,
-					fmt.Sprintf("agent %s tools_allow ignored unknown tools: %s", name, strings.Join(unknown, ", ")),
+					fmt.Sprintf("agent %s tools_allow ignored unknown tools: %s", name, strings.Join(unknownTools, ", ")),
 				)
 			}
-			if len(normalized) == 0 {
+			appendUnion(normalizedNames)
+
+			normalizedGroups, groupTools, unknownGroups := normalizeGatewayToolsAllowGroups(meta.ToolsAllowGroups, knownGroups)
+			if len(unknownGroups) > 0 {
+				diagnostics = append(
+					diagnostics,
+					fmt.Sprintf("agent %s tools_allow_groups ignored unknown groups: %s", name, strings.Join(unknownGroups, ", ")),
+				)
+			}
+			toolsAllowGroups = normalizedGroups
+			appendUnion(groupTools)
+
+			normalizedPatterns, patternTools, invalidPatterns := normalizeGatewayToolsAllowPatterns(meta.ToolsAllowPatterns, knownTools)
+			if len(invalidPatterns) > 0 {
+				diagnostics = append(
+					diagnostics,
+					fmt.Sprintf("agent %s tools_allow_patterns ignored invalid patterns: %s", name, strings.Join(invalidPatterns, ", ")),
+				)
+			}
+			toolsAllowPatterns = normalizedPatterns
+			appendUnion(patternTools)
+
+			if len(union) == 0 {
 				diagnostics = append(diagnostics, fmt.Sprintf("skip agent %s: tools_allow has no valid tools", name))
 				return nil
 			}
-			toolsAllow = normalized
+			sort.Strings(union)
+			toolsAllow = union
+		}
+		sessionRoutingMode := normalizeGatewaySessionRoutingMode(meta.SessionRoutingMode)
+		sessionFixedID := strings.TrimSpace(meta.SessionFixedID)
+		if sessionRoutingMode == "fixed" && sessionFixedID == "" {
+			diagnostics = append(diagnostics, fmt.Sprintf("skip agent %s: session_routing_mode fixed requires session_fixed_id", name))
+			return nil
 		}
 		loaded = append(loaded, workspaceGatewayAgent{
-			Name:        name,
-			Description: description,
-			Prompt:      prompt,
-			FilePath:    path,
-			PolicyMode:  policyMode,
-			ToolsAllow:  toolsAllow,
+			Name:               name,
+			Description:        description,
+			Prompt:             prompt,
+			FilePath:           path,
+			PolicyMode:         policyMode,
+			ToolsAllow:         toolsAllow,
+			ToolsAllowGroups:   toolsAllowGroups,
+			ToolsAllowPatterns: toolsAllowPatterns,
+			SessionRoutingMode: sessionRoutingMode,
+			SessionFixedID:     sessionFixedID,
 		})
 		return nil
 	})
@@ -191,12 +250,16 @@ func newWorkspacePromptExecutor(
 	}
 	instructions := strings.TrimSpace(def.Prompt)
 	return gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
-		Name:        name,
-		Description: description,
-		Source:      "workspace",
-		Entry:       strings.TrimSpace(def.FilePath),
-		PolicyMode:  normalizeGatewayPolicyMode(def.PolicyMode),
-		ToolsAllow:  append([]string(nil), def.ToolsAllow...),
+		Name:               name,
+		Description:        description,
+		Source:             "workspace",
+		Entry:              strings.TrimSpace(def.FilePath),
+		PolicyMode:         normalizeGatewayPolicyMode(def.PolicyMode),
+		ToolsAllow:         append([]string(nil), def.ToolsAllow...),
+		ToolsAllowGroups:   append([]string(nil), def.ToolsAllowGroups...),
+		ToolsAllowPatterns: append([]string(nil), def.ToolsAllowPatterns...),
+		SessionRoutingMode: normalizeGatewaySessionRoutingMode(def.SessionRoutingMode),
+		SessionFixedID:     strings.TrimSpace(def.SessionFixedID),
 		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error) {
 			label := strings.TrimSpace(runLabel)
 			if label == "" {
@@ -237,6 +300,18 @@ func normalizeGatewayPolicyMode(raw string) string {
 	return "full"
 }
 
+func normalizeGatewaySessionRoutingMode(raw string) string {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	switch mode {
+	case "", "caller":
+		return "caller"
+	case "new", "fixed":
+		return mode
+	default:
+		return "caller"
+	}
+}
+
 func knownGatewayPromptTools(workspaceDir string) map[string]struct{} {
 	out := map[string]struct{}{}
 	registry := newBaseToolRegistry(workspaceDir)
@@ -248,6 +323,36 @@ func knownGatewayPromptTools(workspaceDir string) map[string]struct{} {
 		out[name] = struct{}{}
 	}
 	return out
+}
+
+func knownGatewayPromptToolGroups(known map[string]struct{}) map[string][]string {
+	groups := map[string][]string{
+		"memory": {},
+		"files":  {},
+		"shell":  {},
+		"web":    {},
+	}
+	for name := range known {
+		switch {
+		case strings.HasPrefix(name, "memory_"):
+			groups["memory"] = append(groups["memory"], name)
+		case name == "exec" || name == "process":
+			groups["shell"] = append(groups["shell"], name)
+		case name == "web_search" || name == "web_fetch":
+			groups["web"] = append(groups["web"], name)
+		case strings.HasPrefix(name, "read") ||
+			strings.HasPrefix(name, "write") ||
+			strings.HasPrefix(name, "edit") ||
+			name == "list_dir" ||
+			name == "glob" ||
+			name == "apply_patch":
+			groups["files"] = append(groups["files"], name)
+		}
+	}
+	for key := range groups {
+		sort.Strings(groups[key])
+	}
+	return groups
 }
 
 func normalizeGatewayToolsAllow(raw []string, known map[string]struct{}) ([]string, []string) {
@@ -276,6 +381,83 @@ func normalizeGatewayToolsAllow(raw []string, known map[string]struct{}) ([]stri
 	sort.Strings(normalized)
 	sort.Strings(unknown)
 	return normalized, unknown
+}
+
+func normalizeGatewayToolsAllowGroups(raw []string, groups map[string][]string) ([]string, []string, []string) {
+	normalizedGroups := make([]string, 0, len(raw))
+	outTools := make([]string, 0)
+	unknownGroups := make([]string, 0)
+	groupSeen := map[string]struct{}{}
+	toolSeen := map[string]struct{}{}
+	for _, item := range raw {
+		group := strings.ToLower(strings.TrimSpace(item))
+		if group == "" {
+			continue
+		}
+		tools, ok := groups[group]
+		if !ok {
+			unknownGroups = append(unknownGroups, group)
+			continue
+		}
+		if _, exists := groupSeen[group]; !exists {
+			groupSeen[group] = struct{}{}
+			normalizedGroups = append(normalizedGroups, group)
+		}
+		for _, toolName := range tools {
+			if _, exists := toolSeen[toolName]; exists {
+				continue
+			}
+			toolSeen[toolName] = struct{}{}
+			outTools = append(outTools, toolName)
+		}
+	}
+	sort.Strings(normalizedGroups)
+	sort.Strings(outTools)
+	sort.Strings(unknownGroups)
+	return normalizedGroups, outTools, unknownGroups
+}
+
+func normalizeGatewayToolsAllowPatterns(raw []string, known map[string]struct{}) ([]string, []string, []string) {
+	knownNames := make([]string, 0, len(known))
+	for name := range known {
+		knownNames = append(knownNames, name)
+	}
+	sort.Strings(knownNames)
+
+	normalizedPatterns := make([]string, 0, len(raw))
+	outTools := make([]string, 0)
+	invalidPatterns := make([]string, 0)
+	patternSeen := map[string]struct{}{}
+	toolSeen := map[string]struct{}{}
+	for _, item := range raw {
+		pattern := strings.TrimSpace(item)
+		if pattern == "" {
+			continue
+		}
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			invalidPatterns = append(invalidPatterns, pattern)
+			continue
+		}
+		if _, exists := patternSeen[pattern]; !exists {
+			patternSeen[pattern] = struct{}{}
+			normalizedPatterns = append(normalizedPatterns, pattern)
+		}
+		for _, toolName := range knownNames {
+			if !re.MatchString(toolName) {
+				continue
+			}
+			if _, exists := toolSeen[toolName]; exists {
+				continue
+			}
+			toolSeen[toolName] = struct{}{}
+			outTools = append(outTools, toolName)
+		}
+	}
+	sort.Strings(normalizedPatterns)
+	sort.Strings(outTools)
+	sort.Strings(invalidPatterns)
+	return normalizedPatterns, outTools, invalidPatterns
 }
 
 func parseWorkspaceGatewayAgentDocument(raw string) (workspaceGatewayAgentFrontmatter, string, error) {
@@ -335,36 +517,59 @@ func parseWorkspaceGatewayAgentFrontmatter(raw string) (workspaceGatewayAgentFro
 			meta.Description = trimYAMLScalar(value)
 		case "tools_allow", "tools-allow":
 			meta.ToolsAllowExists = true
-			if value == "" {
-				for i+1 < len(lines) {
-					next := strings.TrimSpace(lines[i+1])
-					if next == "" || strings.HasPrefix(next, "#") {
-						i++
-						continue
-					}
-					if !strings.HasPrefix(next, "-") {
-						break
-					}
-					item := strings.TrimSpace(strings.TrimPrefix(next, "-"))
-					item = trimYAMLScalar(item)
-					if item != "" {
-						meta.ToolsAllow = append(meta.ToolsAllow, item)
-					}
-					i++
-				}
-				continue
-			}
-			if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
-				meta.ToolsAllow = append(meta.ToolsAllow, parseInlineYAMLList(value)...)
-				continue
-			}
-			item := trimYAMLScalar(value)
-			if item != "" {
-				meta.ToolsAllow = append(meta.ToolsAllow, item)
-			}
+			items, next := parseYAMLListValue(lines, i, value)
+			meta.ToolsAllow = append(meta.ToolsAllow, items...)
+			i = next
+		case "tools_allow_groups", "tools-allow-groups":
+			meta.ToolsAllowGroupsExists = true
+			items, next := parseYAMLListValue(lines, i, value)
+			meta.ToolsAllowGroups = append(meta.ToolsAllowGroups, items...)
+			i = next
+		case "tools_allow_patterns", "tools-allow-patterns":
+			meta.ToolsAllowPatternsExists = true
+			items, next := parseYAMLListValue(lines, i, value)
+			meta.ToolsAllowPatterns = append(meta.ToolsAllowPatterns, items...)
+			i = next
+		case "session_routing_mode", "session-routing-mode":
+			meta.SessionRoutingMode = trimYAMLScalar(value)
+		case "session_fixed_id", "session-fixed-id":
+			meta.SessionFixedID = trimYAMLScalar(value)
 		}
 	}
 	return meta, nil
+}
+
+func parseYAMLListValue(lines []string, index int, rawValue string) ([]string, int) {
+	value := strings.TrimSpace(rawValue)
+	if value == "" {
+		out := make([]string, 0)
+		i := index
+		for i+1 < len(lines) {
+			next := strings.TrimSpace(lines[i+1])
+			if next == "" || strings.HasPrefix(next, "#") {
+				i++
+				continue
+			}
+			if !strings.HasPrefix(next, "-") {
+				break
+			}
+			item := strings.TrimSpace(strings.TrimPrefix(next, "-"))
+			item = trimYAMLScalar(item)
+			if item != "" {
+				out = append(out, item)
+			}
+			i++
+		}
+		return out, i
+	}
+	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+		return parseInlineYAMLList(value), index
+	}
+	item := trimYAMLScalar(value)
+	if item == "" {
+		return []string{}, index
+	}
+	return []string{item}, index
 }
 
 func parseInlineYAMLList(raw string) []string {

@@ -76,6 +76,11 @@ type Config struct {
 	GatewayChannelsMaxMessagesPerChannel int
 	GatewayPersistenceDir                string
 	GatewayRestoreOnStartup              bool
+	GatewayReportSummaryEnabled          bool
+	GatewayArchiveEnabled                bool
+	GatewayArchiveDir                    string
+	GatewayArchiveRetentionDays          int
+	GatewayArchiveMaxFileBytes           int
 	ChannelsLocalEnabled                 bool
 	ChannelsWebhookEnabled               bool
 	ChannelsTelegramEnabled              bool
@@ -123,6 +128,10 @@ func Default() Config {
 		GatewayRunsMaxRecords:                2000,
 		GatewayChannelsMaxMessagesPerChannel: 500,
 		GatewayRestoreOnStartup:              true,
+		GatewayReportSummaryEnabled:          true,
+		GatewayArchiveEnabled:                false,
+		GatewayArchiveRetentionDays:          30,
+		GatewayArchiveMaxFileBytes:           10485760,
 		SkillsEnabled:                        true,
 		SkillsWatch:                          true,
 		SkillsWatchDebounceMS:                200,
@@ -304,6 +313,21 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("GATEWAY_RESTORE_ON_STARTUP"), os.Getenv("TARSD_GATEWAY_RESTORE_ON_STARTUP")); v != "" {
 		cfg.GatewayRestoreOnStartup = parseBool(v, cfg.GatewayRestoreOnStartup)
 	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_REPORT_SUMMARY_ENABLED"), os.Getenv("TARSD_GATEWAY_REPORT_SUMMARY_ENABLED")); v != "" {
+		cfg.GatewayReportSummaryEnabled = parseBool(v, cfg.GatewayReportSummaryEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_ARCHIVE_ENABLED"), os.Getenv("TARSD_GATEWAY_ARCHIVE_ENABLED")); v != "" {
+		cfg.GatewayArchiveEnabled = parseBool(v, cfg.GatewayArchiveEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_ARCHIVE_DIR"), os.Getenv("TARSD_GATEWAY_ARCHIVE_DIR")); v != "" {
+		cfg.GatewayArchiveDir = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_ARCHIVE_RETENTION_DAYS"), os.Getenv("TARSD_GATEWAY_ARCHIVE_RETENTION_DAYS")); v != "" {
+		cfg.GatewayArchiveRetentionDays = parsePositiveInt(v, cfg.GatewayArchiveRetentionDays)
+	}
+	if v := firstNonEmpty(os.Getenv("GATEWAY_ARCHIVE_MAX_FILE_BYTES"), os.Getenv("TARSD_GATEWAY_ARCHIVE_MAX_FILE_BYTES")); v != "" {
+		cfg.GatewayArchiveMaxFileBytes = parsePositiveInt(v, cfg.GatewayArchiveMaxFileBytes)
+	}
 	if v := firstNonEmpty(os.Getenv("CHANNELS_LOCAL_ENABLED"), os.Getenv("TARSD_CHANNELS_LOCAL_ENABLED")); v != "" {
 		cfg.ChannelsLocalEnabled = parseBool(v, cfg.ChannelsLocalEnabled)
 	}
@@ -472,6 +496,16 @@ func loadYAML(path string) (Config, error) {
 			cfg.GatewayPersistenceDir = strings.TrimSpace(value)
 		case "gateway_restore_on_startup":
 			cfg.GatewayRestoreOnStartup = parseBool(value, cfg.GatewayRestoreOnStartup)
+		case "gateway_report_summary_enabled":
+			cfg.GatewayReportSummaryEnabled = parseBool(value, cfg.GatewayReportSummaryEnabled)
+		case "gateway_archive_enabled":
+			cfg.GatewayArchiveEnabled = parseBool(value, cfg.GatewayArchiveEnabled)
+		case "gateway_archive_dir":
+			cfg.GatewayArchiveDir = strings.TrimSpace(value)
+		case "gateway_archive_retention_days":
+			cfg.GatewayArchiveRetentionDays = parsePositiveInt(value, cfg.GatewayArchiveRetentionDays)
+		case "gateway_archive_max_file_bytes":
+			cfg.GatewayArchiveMaxFileBytes = parsePositiveInt(value, cfg.GatewayArchiveMaxFileBytes)
 		case "channels_local_enabled":
 			cfg.ChannelsLocalEnabled = parseBool(value, cfg.ChannelsLocalEnabled)
 		case "channels_webhook_enabled":
@@ -651,6 +685,21 @@ func merge(dst *Config, src Config) {
 	if src.GatewayRestoreOnStartup {
 		dst.GatewayRestoreOnStartup = true
 	}
+	if src.GatewayReportSummaryEnabled {
+		dst.GatewayReportSummaryEnabled = true
+	}
+	if src.GatewayArchiveEnabled {
+		dst.GatewayArchiveEnabled = true
+	}
+	if src.GatewayArchiveDir != "" {
+		dst.GatewayArchiveDir = src.GatewayArchiveDir
+	}
+	if src.GatewayArchiveRetentionDays > 0 {
+		dst.GatewayArchiveRetentionDays = src.GatewayArchiveRetentionDays
+	}
+	if src.GatewayArchiveMaxFileBytes > 0 {
+		dst.GatewayArchiveMaxFileBytes = src.GatewayArchiveMaxFileBytes
+	}
 	if src.ChannelsLocalEnabled {
 		dst.ChannelsLocalEnabled = true
 	}
@@ -766,6 +815,15 @@ func applyLLMDefaults(cfg *Config) {
 	}
 	if strings.TrimSpace(cfg.GatewayPersistenceDir) == "" {
 		cfg.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway")
+	}
+	if cfg.GatewayArchiveRetentionDays <= 0 {
+		cfg.GatewayArchiveRetentionDays = 30
+	}
+	if cfg.GatewayArchiveMaxFileBytes <= 0 {
+		cfg.GatewayArchiveMaxFileBytes = 10485760
+	}
+	if strings.TrimSpace(cfg.GatewayArchiveDir) == "" {
+		cfg.GatewayArchiveDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway", "archive")
 	}
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {

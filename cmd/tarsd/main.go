@@ -270,6 +270,11 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					GatewayChannelsMaxMessagesPerChannel: cfg.GatewayChannelsMaxMessagesPerChannel,
 					GatewayPersistenceDir:                cfg.GatewayPersistenceDir,
 					GatewayRestoreOnStartup:              cfg.GatewayRestoreOnStartup,
+					GatewayReportSummaryEnabled:          cfg.GatewayReportSummaryEnabled,
+					GatewayArchiveEnabled:                cfg.GatewayArchiveEnabled,
+					GatewayArchiveDir:                    cfg.GatewayArchiveDir,
+					GatewayArchiveRetentionDays:          cfg.GatewayArchiveRetentionDays,
+					GatewayArchiveMaxFileBytes:           cfg.GatewayArchiveMaxFileBytes,
 					Now:                                  nowFn,
 				})
 				refreshGatewayExecutors := func(reason string) int {
@@ -328,6 +333,9 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				mux.Handle("/v1/gateway/status", gatewayHandler)
 				mux.Handle("/v1/gateway/reload", gatewayHandler)
 				mux.Handle("/v1/gateway/restart", gatewayHandler)
+				mux.Handle("/v1/gateway/reports/summary", gatewayHandler)
+				mux.Handle("/v1/gateway/reports/runs", gatewayHandler)
+				mux.Handle("/v1/gateway/reports/channels", gatewayHandler)
 				channelsHandler := newChannelsAPIHandler(gatewayRuntime, logger)
 				mux.Handle("/v1/channels/webhook/inbound/", channelsHandler)
 				mux.Handle("/v1/channels/telegram/webhook/", channelsHandler)

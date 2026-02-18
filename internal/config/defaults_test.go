@@ -675,6 +675,71 @@ func TestLoad_GatewayPersistenceInvalidIntFallback(t *testing.T) {
 	}
 }
 
+func TestLoad_GatewayReportDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.GatewayReportSummaryEnabled {
+		t.Fatalf("expected gateway summary report enabled by default")
+	}
+	if cfg.GatewayArchiveEnabled {
+		t.Fatalf("expected gateway archive disabled by default")
+	}
+	if cfg.GatewayArchiveRetentionDays != 30 {
+		t.Fatalf("expected gateway archive retention days 30, got %d", cfg.GatewayArchiveRetentionDays)
+	}
+	if cfg.GatewayArchiveMaxFileBytes != 10485760 {
+		t.Fatalf("expected gateway archive max file bytes 10485760, got %d", cfg.GatewayArchiveMaxFileBytes)
+	}
+	expectedDir := filepath.Join(cfg.WorkspaceDir, "_shared", "gateway", "archive")
+	if cfg.GatewayArchiveDir != expectedDir {
+		t.Fatalf("expected gateway archive dir %q, got %q", expectedDir, cfg.GatewayArchiveDir)
+	}
+}
+
+func TestLoad_GatewayReportFromYAMLAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"workspace_dir: ./tenant-workspace",
+		"gateway_report_summary_enabled: true",
+		"gateway_archive_enabled: true",
+		"gateway_archive_dir: /tmp/yaml-gateway-archive",
+		"gateway_archive_retention_days: 9",
+		"gateway_archive_max_file_bytes: 2048",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("GATEWAY_REPORT_SUMMARY_ENABLED", "false")
+	t.Setenv("GATEWAY_ARCHIVE_ENABLED", "true")
+	t.Setenv("GATEWAY_ARCHIVE_DIR", "/tmp/env-gateway-archive")
+	t.Setenv("GATEWAY_ARCHIVE_RETENTION_DAYS", "12")
+	t.Setenv("GATEWAY_ARCHIVE_MAX_FILE_BYTES", "4096")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.GatewayReportSummaryEnabled {
+		t.Fatalf("expected gateway summary report disabled from env")
+	}
+	if !cfg.GatewayArchiveEnabled {
+		t.Fatalf("expected gateway archive enabled from env")
+	}
+	if cfg.GatewayArchiveDir != "/tmp/env-gateway-archive" {
+		t.Fatalf("expected env archive dir, got %q", cfg.GatewayArchiveDir)
+	}
+	if cfg.GatewayArchiveRetentionDays != 12 {
+		t.Fatalf("expected env archive retention 12, got %d", cfg.GatewayArchiveRetentionDays)
+	}
+	if cfg.GatewayArchiveMaxFileBytes != 4096 {
+		t.Fatalf("expected env archive max file bytes 4096, got %d", cfg.GatewayArchiveMaxFileBytes)
+	}
+}
+
 func TestLoad_DeprecatedToolPolicyKeysAreIgnored(t *testing.T) {
 	t.Setenv("TOOLS_PROFILE", "minimal")
 	t.Setenv("TOOLS_ALLOW", "session_status,memory_search")

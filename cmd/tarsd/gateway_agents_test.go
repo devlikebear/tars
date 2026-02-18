@@ -149,3 +149,100 @@ Find evidence first and answer briefly.
 		t.Fatalf("expected tools_allow diagnostics, got %+v", diagnostics)
 	}
 }
+
+func TestLoadWorkspaceGatewayAgents_ToolsAllowGroupsPatternsAndSessionRouting(t *testing.T) {
+	workspace := t.TempDir()
+	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
+	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
+		t.Fatalf("mkdir agent dir: %v", err)
+	}
+	raw := `---
+name: researcher
+description: Research worker
+tools_allow:
+  - read_file
+tools_allow_groups:
+  - memory
+tools_allow_patterns:
+  - "^exec$"
+  - "^list_"
+session_routing_mode: fixed
+session_fixed_id: sess_fixed
+---
+Find evidence first and answer briefly.
+`
+	if err := os.WriteFile(agentPath, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write agent: %v", err)
+	}
+
+	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	if err != nil {
+		t.Fatalf("load workspace agents: %v", err)
+	}
+	if len(diagnostics) != 0 {
+		t.Fatalf("expected no diagnostics, got %+v", diagnostics)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("expected one agent, got %+v", loaded)
+	}
+	agent := loaded[0]
+	if agent.PolicyMode != "allowlist" {
+		t.Fatalf("expected allowlist mode, got %+v", agent)
+	}
+	if got, want := strings.Join(agent.ToolsAllow, ","), "exec,list_dir,memory_get,memory_search,read_file"; got != want {
+		t.Fatalf("unexpected tools allow list: got=%q want=%q", got, want)
+	}
+	if got, want := strings.Join(agent.ToolsAllowGroups, ","), "memory"; got != want {
+		t.Fatalf("unexpected tools allow groups: got=%q want=%q", got, want)
+	}
+	if got, want := strings.Join(agent.ToolsAllowPatterns, ","), "^exec$,^list_"; got != want {
+		t.Fatalf("unexpected tools allow patterns: got=%q want=%q", got, want)
+	}
+	if agent.SessionRoutingMode != "fixed" {
+		t.Fatalf("expected fixed session routing mode, got %+v", agent)
+	}
+	if agent.SessionFixedID != "sess_fixed" {
+		t.Fatalf("expected fixed session id, got %+v", agent)
+	}
+}
+
+func TestLoadWorkspaceGatewayAgents_InvalidGroupsPatternsAndFixedRoutingSkipAgent(t *testing.T) {
+	workspace := t.TempDir()
+	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
+	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
+		t.Fatalf("mkdir agent dir: %v", err)
+	}
+	raw := `---
+name: researcher
+tools_allow:
+  - read_file
+tools_allow_groups:
+  - unknown_group
+tools_allow_patterns:
+  - "("
+session_routing_mode: fixed
+---
+Find evidence first and answer briefly.
+`
+	if err := os.WriteFile(agentPath, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write agent: %v", err)
+	}
+
+	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	if err != nil {
+		t.Fatalf("load workspace agents: %v", err)
+	}
+	if len(loaded) != 0 {
+		t.Fatalf("expected agent skipped for invalid policy/routing, got %+v", loaded)
+	}
+	diagText := strings.ToLower(strings.Join(diagnostics, "\n"))
+	if !strings.Contains(diagText, "tools_allow_groups") {
+		t.Fatalf("expected tools_allow_groups diagnostics, got %+v", diagnostics)
+	}
+	if !strings.Contains(diagText, "tools_allow_patterns") {
+		t.Fatalf("expected tools_allow_patterns diagnostics, got %+v", diagnostics)
+	}
+	if !strings.Contains(diagText, "session_routing_mode") {
+		t.Fatalf("expected session_routing_mode diagnostics, got %+v", diagnostics)
+	}
+}

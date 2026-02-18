@@ -148,6 +148,9 @@ func (r *Runtime) persistSnapshot() {
 				writeErr = err.Error()
 			}
 		}
+		if writeErr == "" && r.opts.GatewayArchiveEnabled {
+			_ = r.persistArchiveSnapshot(runs, channels)
+		}
 		r.mu.Lock()
 		currentVersion := r.stateVersion
 		if strings.TrimSpace(writeErr) != "" {

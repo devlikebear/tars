@@ -23,12 +23,13 @@ func newTestGatewayRuntime(t *testing.T) *gateway.Runtime {
 	t.Helper()
 	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
 	rt := gateway.NewRuntime(gateway.RuntimeOptions{
-		Enabled:                 true,
-		WorkspaceDir:            t.TempDir(),
-		SessionStore:            store,
-		ChannelsLocalEnabled:    true,
-		ChannelsWebhookEnabled:  true,
-		ChannelsTelegramEnabled: true,
+		Enabled:                     true,
+		WorkspaceDir:                t.TempDir(),
+		SessionStore:                store,
+		ChannelsLocalEnabled:        true,
+		ChannelsWebhookEnabled:      true,
+		ChannelsTelegramEnabled:     true,
+		GatewayReportSummaryEnabled: true,
 		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
 			return "ok: " + prompt, nil
 		},
@@ -136,17 +137,33 @@ func TestAgentRunsAPIHandler_AgentsListIncludesSourceEntryDefault(t *testing.T) 
 	if _, ok := first["tools_allow"]; !ok {
 		t.Fatalf("expected tools_allow field, payload=%+v", payload)
 	}
+	if _, ok := first["tools_allow_groups"]; !ok {
+		t.Fatalf("expected tools_allow_groups field, payload=%+v", payload)
+	}
+	if _, ok := first["tools_allow_patterns"]; !ok {
+		t.Fatalf("expected tools_allow_patterns field, payload=%+v", payload)
+	}
+	if _, ok := first["session_routing_mode"]; !ok {
+		t.Fatalf("expected session_routing_mode field, payload=%+v", payload)
+	}
+	if _, ok := first["session_fixed_id"]; !ok {
+		t.Fatalf("expected session_fixed_id field, payload=%+v", payload)
+	}
 }
 
 func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.T) {
 	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
 	promptExecutor, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
-		Name:        "researcher",
-		Description: "research worker",
-		Source:      "workspace",
-		Entry:       "workspace/agents/researcher/AGENT.md",
-		PolicyMode:  "allowlist",
-		ToolsAllow:  []string{"read_file", "list_dir"},
+		Name:               "researcher",
+		Description:        "research worker",
+		Source:             "workspace",
+		Entry:              "workspace/agents/researcher/AGENT.md",
+		PolicyMode:         "allowlist",
+		ToolsAllow:         []string{"read_file", "list_dir"},
+		ToolsAllowGroups:   []string{"memory"},
+		ToolsAllowPatterns: []string{"^read"},
+		SessionRoutingMode: "fixed",
+		SessionFixedID:     "sess_fixed",
 		RunPrompt: func(_ context.Context, _ string, _ string, _ []string) (string, error) {
 			return "ok", nil
 		},
@@ -208,6 +225,22 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 	tools, ok := researcher["tools_allow"].([]any)
 	if !ok || len(tools) != 2 {
 		t.Fatalf("expected tools_allow list, got %+v", researcher)
+	}
+	groups, ok := researcher["tools_allow_groups"].([]any)
+	if !ok || len(groups) != 1 {
+		t.Fatalf("expected tools_allow_groups list, got %+v", researcher)
+	}
+	patterns, ok := researcher["tools_allow_patterns"].([]any)
+	if !ok || len(patterns) != 1 {
+		t.Fatalf("expected tools_allow_patterns list, got %+v", researcher)
+	}
+	routing, _ := researcher["session_routing_mode"].(string)
+	if routing != "fixed" {
+		t.Fatalf("expected session_routing_mode=fixed, got %+v", researcher)
+	}
+	fixedID, _ := researcher["session_fixed_id"].(string)
+	if fixedID != "sess_fixed" {
+		t.Fatalf("expected session_fixed_id=sess_fixed, got %+v", researcher)
 	}
 }
 
@@ -474,6 +507,113 @@ func TestGatewayAPIHandler_ReloadCallsRefreshHook(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("expected gateway reload hook to be called")
+	}
+}
+
+func TestGatewayAPIHandler_ReportsSummary(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	run, err := runtime.Spawn(context.Background(), gateway.SpawnRequest{Prompt: "hello"})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	waitForGatewayRun(t, runtime, run.ID)
+
+	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/summary", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode summary payload: %v", err)
+	}
+	if _, ok := payload["runs_total"]; !ok {
+		t.Fatalf("expected runs_total field, payload=%+v", payload)
+	}
+	if _, ok := payload["runs_by_status"]; !ok {
+		t.Fatalf("expected runs_by_status field, payload=%+v", payload)
+	}
+	if _, ok := payload["messages_by_source"]; !ok {
+		t.Fatalf("expected messages_by_source field, payload=%+v", payload)
+	}
+}
+
+func TestGatewayAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+
+	recRuns := httptest.NewRecorder()
+	reqRuns := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/runs", nil)
+	h.ServeHTTP(recRuns, reqRuns)
+	if recRuns.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for runs report when archive disabled, got %d body=%s", recRuns.Code, recRuns.Body.String())
+	}
+
+	recChannels := httptest.NewRecorder()
+	reqChannels := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/channels", nil)
+	h.ServeHTTP(recChannels, reqChannels)
+	if recChannels.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for channels report when archive disabled, got %d body=%s", recChannels.Code, recChannels.Body.String())
+	}
+
+	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
+	archiveRuntime := gateway.NewRuntime(gateway.RuntimeOptions{
+		Enabled:                     true,
+		WorkspaceDir:                t.TempDir(),
+		SessionStore:                store,
+		ChannelsLocalEnabled:        true,
+		GatewayReportSummaryEnabled: true,
+		GatewayArchiveEnabled:       true,
+		GatewayArchiveDir:           filepath.Join(t.TempDir(), "archive"),
+		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
+			return "ok: " + prompt, nil
+		},
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := archiveRuntime.Close(ctx); err != nil {
+			t.Fatalf("close archive runtime: %v", err)
+		}
+	})
+	run, err := archiveRuntime.Spawn(context.Background(), gateway.SpawnRequest{Prompt: "hello"})
+	if err != nil {
+		t.Fatalf("spawn archive runtime: %v", err)
+	}
+	waitForGatewayRun(t, archiveRuntime, run.ID)
+	if _, err := archiveRuntime.MessageSend("general", "", "ping"); err != nil {
+		t.Fatalf("message send: %v", err)
+	}
+
+	archiveHandler := newGatewayAPIHandler(archiveRuntime, zerolog.New(io.Discard), nil)
+	recRunsOn := httptest.NewRecorder()
+	reqRunsOn := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/runs?limit=5", nil)
+	archiveHandler.ServeHTTP(recRunsOn, reqRunsOn)
+	if recRunsOn.Code != http.StatusOK {
+		t.Fatalf("expected 200 for runs report when archive enabled, got %d body=%s", recRunsOn.Code, recRunsOn.Body.String())
+	}
+	var runsPayload map[string]any
+	if err := json.Unmarshal(recRunsOn.Body.Bytes(), &runsPayload); err != nil {
+		t.Fatalf("decode runs payload: %v", err)
+	}
+	if _, ok := runsPayload["runs"]; !ok {
+		t.Fatalf("expected runs field in payload: %+v", runsPayload)
+	}
+
+	recChannelsOn := httptest.NewRecorder()
+	reqChannelsOn := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/channels?limit=5", nil)
+	archiveHandler.ServeHTTP(recChannelsOn, reqChannelsOn)
+	if recChannelsOn.Code != http.StatusOK {
+		t.Fatalf("expected 200 for channels report when archive enabled, got %d body=%s", recChannelsOn.Code, recChannelsOn.Body.String())
+	}
+	var channelsPayload map[string]any
+	if err := json.Unmarshal(recChannelsOn.Body.Bytes(), &channelsPayload); err != nil {
+		t.Fatalf("decode channels payload: %v", err)
+	}
+	if _, ok := channelsPayload["messages"]; !ok {
+		t.Fatalf("expected messages field in payload: %+v", channelsPayload)
 	}
 }
 

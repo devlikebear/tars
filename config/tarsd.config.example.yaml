@@ -89,6 +89,12 @@ gateway_channels_max_messages_per_channel: 500
 # default: ${workspace_dir}/_shared/gateway
 gateway_persistence_dir: ./workspace/_shared/gateway
 gateway_restore_on_startup: true
+# Gateway reports (lightweight defaults)
+gateway_report_summary_enabled: true
+gateway_archive_enabled: false
+gateway_archive_dir: ./workspace/_shared/gateway/archive
+gateway_archive_retention_days: 30
+gateway_archive_max_file_bytes: 10485760
 # /v1/runtime/extensions/reload also refreshes gateway executors automatically.
 channels_local_enabled: false
 channels_webhook_enabled: false

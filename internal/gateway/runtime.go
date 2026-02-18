@@ -97,6 +97,32 @@ type GatewayStatus struct {
 	Nodes                      []NodeInfo   `json:"nodes"`
 }
 
+type ReportSummary struct {
+	GeneratedAt      string         `json:"generated_at"`
+	SummaryEnabled   bool           `json:"summary_enabled"`
+	ArchiveEnabled   bool           `json:"archive_enabled"`
+	RunsTotal        int            `json:"runs_total"`
+	RunsActive       int            `json:"runs_active"`
+	RunsByStatus     map[string]int `json:"runs_by_status"`
+	ChannelsTotal    int            `json:"channels_total"`
+	MessagesTotal    int            `json:"messages_total"`
+	MessagesBySource map[string]int `json:"messages_by_source"`
+}
+
+type ReportRuns struct {
+	GeneratedAt    string `json:"generated_at"`
+	ArchiveEnabled bool   `json:"archive_enabled"`
+	Count          int    `json:"count"`
+	Runs           []Run  `json:"runs"`
+}
+
+type ReportChannels struct {
+	GeneratedAt    string                      `json:"generated_at"`
+	ArchiveEnabled bool                        `json:"archive_enabled"`
+	Count          int                         `json:"count"`
+	Messages       map[string][]ChannelMessage `json:"messages"`
+}
+
 type RuntimeOptions struct {
 	Enabled                              bool
 	WorkspaceDir                         string
@@ -115,6 +141,11 @@ type RuntimeOptions struct {
 	GatewayChannelsMaxMessagesPerChannel int
 	GatewayPersistenceDir                string
 	GatewayRestoreOnStartup              bool
+	GatewayReportSummaryEnabled          bool
+	GatewayArchiveEnabled                bool
+	GatewayArchiveDir                    string
+	GatewayArchiveRetentionDays          int
+	GatewayArchiveMaxFileBytes           int
 	Now                                  func() time.Time
 }
 
@@ -170,6 +201,15 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 	}
 	if strings.TrimSpace(opts.GatewayPersistenceDir) == "" {
 		opts.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(opts.WorkspaceDir), "_shared", "gateway")
+	}
+	if strings.TrimSpace(opts.GatewayArchiveDir) == "" {
+		opts.GatewayArchiveDir = filepath.Join(strings.TrimSpace(opts.WorkspaceDir), "_shared", "gateway", "archive")
+	}
+	if opts.GatewayArchiveRetentionDays <= 0 {
+		opts.GatewayArchiveRetentionDays = 30
+	}
+	if opts.GatewayArchiveMaxFileBytes <= 0 {
+		opts.GatewayArchiveMaxFileBytes = 10485760
 	}
 	rt := &Runtime{
 		opts:               opts,
@@ -392,16 +432,20 @@ func (r *Runtime) Agents() []map[string]any {
 		info := executor.Info()
 		toolsAllow := append([]string{}, info.ToolsAllow...)
 		out = append(out, map[string]any{
-			"name":              info.Name,
-			"description":       info.Description,
-			"enabled":           r.opts.Enabled && info.Enabled,
-			"kind":              info.Kind,
-			"source":            info.Source,
-			"entry":             info.Entry,
-			"default":           info.Name == r.defaultAgent,
-			"policy_mode":       info.PolicyMode,
-			"tools_allow":       toolsAllow,
-			"tools_allow_count": info.ToolsAllowCount,
+			"name":                 info.Name,
+			"description":          info.Description,
+			"enabled":              r.opts.Enabled && info.Enabled,
+			"kind":                 info.Kind,
+			"source":               info.Source,
+			"entry":                info.Entry,
+			"default":              info.Name == r.defaultAgent,
+			"policy_mode":          info.PolicyMode,
+			"tools_allow":          toolsAllow,
+			"tools_allow_count":    info.ToolsAllowCount,
+			"tools_allow_groups":   append([]string{}, info.ToolsAllowGroups...),
+			"tools_allow_patterns": append([]string{}, info.ToolsAllowPatterns...),
+			"session_routing_mode": normalizeSessionRoutingMode(info.SessionRoutingMode),
+			"session_fixed_id":     strings.TrimSpace(info.SessionFixedID),
 		})
 	}
 	return out
@@ -422,7 +466,17 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 	if err != nil {
 		return Run{}, err
 	}
+	executorInfo := gatewayAgentInfo(executor)
 	sessionID := strings.TrimSpace(req.SessionID)
+	switch normalizeSessionRoutingMode(executorInfo.SessionRoutingMode) {
+	case "new":
+		sessionID = ""
+	case "fixed":
+		sessionID = strings.TrimSpace(executorInfo.SessionFixedID)
+		if sessionID == "" {
+			return Run{}, fmt.Errorf("agent %q is configured with fixed session routing but session_fixed_id is empty", selectedAgent)
+		}
+	}
 	if sessionID == "" {
 		title := strings.TrimSpace(req.Title)
 		if title == "" {
@@ -473,6 +527,13 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 		r.executeRun(runCtx, runID)
 	}()
 	return run, nil
+}
+
+func gatewayAgentInfo(executor AgentExecutor) AgentInfo {
+	if executor == nil {
+		return AgentInfo{}
+	}
+	return executor.Info()
 }
 
 func (r *Runtime) executeRun(ctx context.Context, runID string) {
@@ -735,6 +796,94 @@ func (r *Runtime) Status() GatewayStatus {
 		status.LastRestartAt = r.lastRestart.UTC().Format(time.RFC3339)
 	}
 	return status
+}
+
+func (r *Runtime) ReportsSummary() (ReportSummary, error) {
+	if r == nil || !r.opts.Enabled {
+		return ReportSummary{}, fmt.Errorf("gateway runtime is disabled")
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	report := ReportSummary{
+		GeneratedAt:      r.nowFn().UTC().Format(time.RFC3339),
+		SummaryEnabled:   r.opts.GatewayReportSummaryEnabled,
+		ArchiveEnabled:   r.opts.GatewayArchiveEnabled,
+		RunsByStatus:     map[string]int{},
+		MessagesBySource: map[string]int{},
+	}
+	for _, state := range r.runs {
+		if state == nil {
+			continue
+		}
+		report.RunsTotal++
+		key := strings.TrimSpace(string(state.run.Status))
+		if key == "" {
+			key = string(RunStatusFailed)
+		}
+		report.RunsByStatus[key]++
+		if state.run.Status == RunStatusAccepted || state.run.Status == RunStatusRunning {
+			report.RunsActive++
+		}
+	}
+	report.ChannelsTotal = len(r.channelMsgs)
+	for _, messages := range r.channelMsgs {
+		report.MessagesTotal += len(messages)
+		for _, msg := range messages {
+			source := strings.TrimSpace(msg.Source)
+			if source == "" {
+				source = "unknown"
+			}
+			report.MessagesBySource[source]++
+		}
+	}
+	return report, nil
+}
+
+func (r *Runtime) ReportsRuns(limit int) (ReportRuns, error) {
+	if r == nil || !r.opts.Enabled {
+		return ReportRuns{}, fmt.Errorf("gateway runtime is disabled")
+	}
+	if !r.opts.GatewayArchiveEnabled {
+		return ReportRuns{}, fmt.Errorf("gateway archive report is disabled")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	runs := r.List(limit)
+	return ReportRuns{
+		GeneratedAt:    r.nowFn().UTC().Format(time.RFC3339),
+		ArchiveEnabled: true,
+		Count:          len(runs),
+		Runs:           runs,
+	}, nil
+}
+
+func (r *Runtime) ReportsChannels(limit int) (ReportChannels, error) {
+	if r == nil || !r.opts.Enabled {
+		return ReportChannels{}, fmt.Errorf("gateway runtime is disabled")
+	}
+	if !r.opts.GatewayArchiveEnabled {
+		return ReportChannels{}, fmt.Errorf("gateway archive report is disabled")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(map[string][]ChannelMessage, len(r.channelMsgs))
+	for channelID, messages := range r.channelMsgs {
+		copied := append([]ChannelMessage(nil), messages...)
+		if len(copied) > limit {
+			copied = copied[len(copied)-limit:]
+		}
+		out[channelID] = copied
+	}
+	return ReportChannels{
+		GeneratedAt:    r.nowFn().UTC().Format(time.RFC3339),
+		ArchiveEnabled: true,
+		Count:          len(out),
+		Messages:       out,
+	}, nil
 }
 
 func (r *Runtime) Reload() GatewayStatus {

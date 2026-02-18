@@ -177,6 +177,84 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 		logger.Info().Msg("gateway runtime restarted")
 		writeJSON(w, http.StatusOK, status)
 	})
+	mux.HandleFunc("/v1/gateway/reports/summary", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if runtime == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+			return
+		}
+		report, err := runtime.ReportsSummary()
+		if err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+			return
+		}
+		if !report.SummaryEnabled {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "gateway summary report is disabled"})
+			return
+		}
+		writeJSON(w, http.StatusOK, report)
+	})
+	mux.HandleFunc("/v1/gateway/reports/runs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if runtime == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+			return
+		}
+		limit := 50
+		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+			v, err := strconv.Atoi(raw)
+			if err != nil || v <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
+				return
+			}
+			limit = v
+		}
+		report, err := runtime.ReportsRuns(limit)
+		if err != nil {
+			status := http.StatusServiceUnavailable
+			if strings.Contains(strings.ToLower(err.Error()), "disabled") {
+				status = http.StatusNotFound
+			}
+			writeJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, report)
+	})
+	mux.HandleFunc("/v1/gateway/reports/channels", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if runtime == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+			return
+		}
+		limit := 50
+		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+			v, err := strconv.Atoi(raw)
+			if err != nil || v <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
+				return
+			}
+			limit = v
+		}
+		report, err := runtime.ReportsChannels(limit)
+		if err != nil {
+			status := http.StatusServiceUnavailable
+			if strings.Contains(strings.ToLower(err.Error()), "disabled") {
+				status = http.StatusNotFound
+			}
+			writeJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, report)
+	})
 	return mux
 }
 
