@@ -1964,6 +1964,43 @@ func TestStatusAPI(t *testing.T) {
 	}
 }
 
+func TestHealthzAPI(t *testing.T) {
+	now := time.Date(2026, 2, 18, 8, 0, 0, 0, time.UTC)
+	handler := newHealthzAPIHandler(func() time.Time { return now })
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		OK        bool   `json:"ok"`
+		Component string `json:"component"`
+		Time      string `json:"time"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode healthz response: %v", err)
+	}
+	if !payload.OK {
+		t.Fatalf("expected ok=true, payload=%+v", payload)
+	}
+	if payload.Component != "tarsd" {
+		t.Fatalf("expected component=tarsd, got %q", payload.Component)
+	}
+	if payload.Time != now.Format(time.RFC3339) {
+		t.Fatalf("expected time=%q, got %q", now.Format(time.RFC3339), payload.Time)
+	}
+
+	methodRec := httptest.NewRecorder()
+	methodReq := httptest.NewRequest(http.MethodPost, "/v1/healthz", nil)
+	handler.ServeHTTP(methodRec, methodReq)
+	if methodRec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d body=%q", methodRec.Code, methodRec.Body.String())
+	}
+}
+
 func TestCompactAPI(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {

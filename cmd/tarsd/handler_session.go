@@ -194,6 +194,23 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerol
 	})
 }
 
+func newHealthzAPIHandler(nowFn func() time.Time) http.Handler {
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":        true,
+			"component": "tarsd",
+			"time":      nowFn().UTC().Format(time.RFC3339),
+		})
+	})
+}
+
 func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.Client, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
