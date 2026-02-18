@@ -116,14 +116,26 @@
   - 정책 지정: allowlist만 주입
   - 전부 무효한 allowlist: 해당 agent 로드 제외 + diagnostics 로그
   - 정책 메타데이터: `GET /v1/agent/agents`의 `policy_mode`, `tools_allow_count`, `tools_allow`
+- markdown 서브에이전트 정책 V2가 추가되었다.
+  - AGENT frontmatter 확장: `tools_allow_groups`, `tools_allow_patterns`
+  - 정책 합집합: `tools_allow + groups + patterns`
+  - 세션 라우팅: `session_routing_mode(caller|new|fixed)`, `session_fixed_id`
+  - 정책 메타데이터: `GET /v1/agent/agents`의 `tools_allow_groups`, `tools_allow_patterns`, `session_routing_mode`, `session_fixed_id`
 - `web_search`가 Brave/Perplexity provider 선택 + 캐시 TTL을 지원하고, `web_fetch`는 SSRF 차단 + private host allowlist를 지원한다.
 - `cased` 감시 데몬이 실구현되었다.
   - `internal/sentinel` supervisor 런타임(프로세스 실행/재시작/backoff/cooldown/헬스체크/pause-resume/events)
   - `cased` API: `GET /v1/sentinel/status`, `GET /v1/sentinel/events`, `POST /v1/sentinel/restart|pause|resume`
   - `cased` 설정 로더: `target_command` 필수, JSON args/env, probe/restart/event buffer 정책
+  - 안정성 telemetry: `start_grace_until`, `consecutive_failures`, `last_probe_duration_ms`
+  - 이벤트 ring 영속화/복구: `event_persistence_enabled`, `events_restored`, `last_event_persist_at`, `last_event_restore_at`, `last_event_restore_error`
+  - 운영 템플릿/런북: `config/ops/cased.systemd.service.example`, `config/ops/cased.launchd.plist.example`, `config/ops/cased-runbook.md`
   - `tarsd` 헬스 엔드포인트: `GET /v1/healthz`
   - `tars-ui` 명령: `/sentinel`, `/sentinel restart`, `/sentinel pause`, `/sentinel resume`, `/sentinel events [limit]`
   - `tars-ui` 설정/플래그: `cased_server_url`, `--cased-url`
+- gateway 리포트 API가 추가되었다.
+  - `GET /v1/gateway/reports/summary` (기본 활성)
+  - `GET /v1/gateway/reports/runs`, `GET /v1/gateway/reports/channels` (archive 활성 시)
+  - 설정: `gateway_report_summary_enabled`, `gateway_archive_enabled`, `gateway_archive_dir`, `gateway_archive_retention_days`, `gateway_archive_max_file_bytes`
 
 ## LLM Provider 운영 정책 (2026-02-16)
 
@@ -139,9 +151,9 @@
 
 ## 다음 우선순위
 
-1. `cased`를 다중 대상 감시/영속 이벤트/운영 자동화(systemd/launchd) 방향으로 확장한다.
-2. 서브에이전트 정책을 allowlist MVP에서 그룹/정규식/세션 라우팅 정책으로 확장한다.
-3. gateway run/channel의 장기 아카이빙(압축/회전)과 운영 리포팅을 추가한다.
+1. 인증/권한/테넌트/멀티 워크스페이스의 최소 운영 모델을 정의하고 API 경계에 적용한다.
+2. 서브에이전트 정책을 deny/risk 레벨까지 확장하고, 정책 위반 진단을 UI에서 추적 가능하게 만든다.
+3. gateway archive 리포트에 운영 친화 필터(기간/상태/에이전트)를 추가하되 기본 경량 모드를 유지한다.
 
 ## 작업 체크리스트
 

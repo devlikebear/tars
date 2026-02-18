@@ -65,6 +65,14 @@
   - `tarsd` 헬스체크 endpoint 추가: `GET /v1/healthz`
   - `tars-ui` 명령 추가: `/sentinel`, `/sentinel restart`, `/sentinel pause`, `/sentinel resume`, `/sentinel events [limit]`
   - `tars-ui` 설정 확장: `cased_server_url`, CLI 플래그 `--cased-url`
+- [x] Phase 9-Lite 경량 안정화
+  - sentinel startup grace 추가: `probe_start_grace_ms`(기본 15000ms)
+  - sentinel 안정성 telemetry 추가: `start_grace_until`, `consecutive_failures`, `last_probe_duration_ms`
+  - sentinel 이벤트 영속화 추가: `event_persistence_enabled`, `event_store_path`, `event_store_max_records`
+  - sub-agent 정책 V2 추가: `tools_allow_groups`, `tools_allow_patterns`, `session_routing_mode`, `session_fixed_id`
+  - gateway 리포트 API 추가: `/v1/gateway/reports/summary`, `/v1/gateway/reports/runs`, `/v1/gateway/reports/channels`
+  - gateway 경량 기본값 추가: `gateway_report_summary_enabled=true`, `gateway_archive_enabled=false`
+  - 단일 대상 운영 템플릿 추가: `config/ops/cased.systemd.service.example`, `config/ops/cased.launchd.plist.example`, `config/ops/cased-runbook.md`
 
 #### 2026-02-17
 - [x] gateway/agent/channels API 추가
@@ -741,9 +749,40 @@ GET /v1/mcp/tools          # MCP 도구 목록
 - markdown 서브에이전트 `tools_allow` allowlist 정책 적용 완료(하드 차단)
 
 **다음 작업:**
-1. 서브에이전트 정책을 allowlist MVP에서 그룹/정규식/세션 라우팅 정책으로 확장
-2. run/channel 영속화 및 재시작 복구 정책 정리
-3. 운영 관측성(메트릭/헬스/진단 로그) 강화
+1. ~~서브에이전트 정책을 allowlist MVP에서 그룹/정규식/세션 라우팅 정책으로 확장~~ (2026-02-18 완료)
+2. ~~run/channel 영속화 및 재시작 복구 정책 정리~~ (2026-02-17 완료)
+3. 인증/권한/테넌트/멀티 워크스페이스의 최소 운영 모델을 설계하고 점진 적용
+
+---
+
+## 아키텍처 결정 사항
+
+### Phase 9-Lite 경량 운영 원칙 (2026-02-18)
+
+**결정**:
+- `cased`는 단일 대상(tarsd) 감시만 유지한다.
+- gateway 리포트는 summary 기본 ON, archive/detail 기본 OFF를 유지한다.
+- API/UX는 additive only로 확장하고 기존 `/spawn /runs /gateway /sentinel` 계약을 유지한다.
+
+**성능 가드레일**:
+- summary 조회는 in-memory 상태 기반으로 처리한다.
+- archive가 꺼져 있으면 추가 디스크 write를 유발하지 않는다.
+- sub-agent 정규식 정책은 에이전트 로드 시 1회 컴파일하고 요청 경로에서 재컴파일하지 않는다.
+
+---
+
+### tars-ui — TypeScript 유지 vs Go TUI 전환 (2026-02-18)
+
+**현재 결정**: TypeScript/Ink 유지. 이미 동작하는 ~6,000줄이 있고 기능적으로 완성됨.
+
+**전환 조건**: 다음 중 하나라도 해당되면 Go TUI(`cmd/tars`, Bubble Tea)로 재작성:
+- 외부 배포/공유 목적으로 Node.js 의존이 실제 마찰이 될 때
+- 팀 또는 다수 사용자에게 배포할 때
+
+**전환 시 계획**:
+- 새 바이너리: `cmd/tars` (Go, `charmbracelet/bubbletea` + `charmbracelet/bubbles`)
+- 현재 tars-ui의 기능을 1:1로 대응하여 재작성 (슬래시 명령, SSE 렌더링, 패널 레이아웃)
+- 완료 후 `tars-ui/` 디렉터리 제거, 빌드/배포가 순수 Go로 단일화
 
 ---
 

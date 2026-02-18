@@ -92,6 +92,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - `tarsd` (메인 데몬/서버): LLM 호출, 허트비트/크론 실행, 3-Layer 메모리 처리, 작업 판단과 실행 오케스트레이션을 담당한다.
 - `cased` (감시 데몬): `tarsd` 프로세스 감시, 자동 재시작/복구, 감사/보안 모니터링, 업데이트/롤백 같은 안정성 제어를 담당한다.
 - `tars-ui` (React/TS Ink TUI 클라이언트): 고급 대화형 UX(패널 레이아웃, 스트리밍 렌더링, 상태/디버그 시각화)를 담당한다.
+  - **전환 계획**: 외부 배포/공유 목적이 생기면 `cmd/tars` (Go, `charmbracelet/bubbletea`)로 재작성하여 단일 Go 바이너리 배포를 실현한다. 상세 계획은 `PLAN.md` "아키텍처 결정 사항" 참조.
 
 ## tars-tarsd 통신 프로토콜 규칙
 
@@ -170,7 +171,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - OpenClaw core action 대응 도구(`sessions_*`, `agents_list`, `message`, `browser`, `nodes`, `gateway`)
 - `tars-ui` runtime 명령(`/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`)
 
-**Phase 6: cased 감시 데몬** (진행 중)
+**Phase 6: cased 감시 데몬** (완료 + 경량 안정화)
 - `cmd/cased` 실구현: target child 실행/감시/재시작
 - `internal/sentinel` 상태머신: `starting|running|paused|cooldown|stopped|error`
 - cased API: `/v1/sentinel/status`, `/v1/sentinel/events`, `/v1/sentinel/restart`, `/v1/sentinel/pause`, `/v1/sentinel/resume`
@@ -233,6 +234,13 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - in-memory ring buffer events
 - `cased` HTTP API 노출 + `tars-ui` `/sentinel` 명령 연동
 - `tarsd` `GET /v1/healthz` 추가 및 cased 기본 probe 경로로 사용
+- Phase 9-Lite 경량 안정화:
+  - sentinel startup grace/연속 실패 카운터/마지막 probe duration telemetry 추가
+  - sentinel event ring JSONL 영속화/복구 추가(`event_persistence_enabled`, `event_store_path`, `event_store_max_records`)
+  - sub-agent 정책 V2: `tools_allow_groups`, `tools_allow_patterns`, `session_routing_mode`, `session_fixed_id`
+  - gateway 리포트 API 추가: `/v1/gateway/reports/summary`(기본), `/runs`·`/channels`(archive opt-in)
+  - gateway archive 설정 추가: `gateway_archive_*` + `gateway_report_summary_enabled`
+  - 단일 대상 운영 템플릿/런북 추가: `config/ops/cased.systemd.service.example`, `config/ops/cased.launchd.plist.example`, `config/ops/cased-runbook.md`
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조

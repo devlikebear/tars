@@ -1,0 +1,16 @@
+[Unit]
+Description=TARS cased sentinel (single target)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tars
+Environment=CASED_CONFIG_PATH=/opt/tars/config/cased.config.yaml
+ExecStart=/opt/tars/bin/cased --config ${CASED_CONFIG_PATH}
+Restart=always
+RestartSec=2
+User=tars
+Group=tars
+
+[Install]
+WantedBy=multi-user.target
