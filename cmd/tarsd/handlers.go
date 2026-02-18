@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/rs/zerolog"
 )
 
@@ -93,12 +94,15 @@ func requestDebugMiddleware(logger zerolog.Logger, next http.Handler) http.Handl
 		if rec.status == 0 {
 			rec.status = http.StatusOK
 		}
-		logger.Debug().
+		evt := logger.Debug().
 			Str("method", r.Method).
 			Str("path", r.URL.Path).
 			Int("status", rec.status).
 			Int("bytes", rec.bytes).
-			Dur("latency", time.Since(start)).
-			Msg("http request")
+			Dur("latency", time.Since(start))
+		if workspaceID := serverauth.WorkspaceIDFromContext(r.Context()); workspaceID != "" {
+			evt = evt.Str("workspace_id", workspaceID)
+		}
+		evt.Msg("http request")
 	})
 }

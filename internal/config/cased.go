@@ -13,6 +13,8 @@ const DefaultCasedConfigFilename = "config/cased.yaml"
 
 type CasedConfig struct {
 	APIAddr             string
+	APIAuthMode         string
+	APIAuthToken        string
 	TargetCommand       string
 	TargetArgs          []string
 	TargetWorkingDir    string
@@ -32,6 +34,7 @@ type CasedConfig struct {
 func DefaultCased() CasedConfig {
 	return CasedConfig{
 		APIAddr:             "127.0.0.1:43181",
+		APIAuthMode:         "external-required",
 		ProbeURL:            "http://127.0.0.1:43180/v1/healthz",
 		ProbeIntervalMS:     5000,
 		ProbeTimeoutMS:      1000,
@@ -108,6 +111,12 @@ func applyCasedEnv(cfg *CasedConfig) {
 	if v := firstNonEmpty(os.Getenv("CASED_API_ADDR"), os.Getenv("TARSD_CASED_API_ADDR")); v != "" {
 		cfg.APIAddr = strings.TrimSpace(v)
 	}
+	if v := firstNonEmpty(os.Getenv("CASED_API_AUTH_MODE"), os.Getenv("TARSD_CASED_API_AUTH_MODE")); v != "" {
+		cfg.APIAuthMode = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("CASED_API_AUTH_TOKEN"), os.Getenv("TARSD_CASED_API_AUTH_TOKEN")); v != "" {
+		cfg.APIAuthToken = strings.TrimSpace(v)
+	}
 	if v := firstNonEmpty(os.Getenv("CASED_TARGET_COMMAND"), os.Getenv("TARSD_CASED_TARGET_COMMAND")); v != "" {
 		cfg.TargetCommand = strings.TrimSpace(v)
 	}
@@ -156,6 +165,10 @@ func applyCasedPair(cfg *CasedConfig, key, value string) {
 	switch key {
 	case "api_addr":
 		cfg.APIAddr = strings.TrimSpace(value)
+	case "api_auth_mode":
+		cfg.APIAuthMode = strings.TrimSpace(value)
+	case "api_auth_token":
+		cfg.APIAuthToken = strings.TrimSpace(value)
 	case "target_command":
 		cfg.TargetCommand = strings.TrimSpace(value)
 	case "target_args_json":
@@ -192,6 +205,13 @@ func applyCasedDefaults(cfg *CasedConfig) {
 	if cfg.APIAddr == "" {
 		cfg.APIAddr = "127.0.0.1:43181"
 	}
+	cfg.APIAuthMode = strings.TrimSpace(strings.ToLower(cfg.APIAuthMode))
+	switch cfg.APIAuthMode {
+	case "off", "external-required", "required":
+	default:
+		cfg.APIAuthMode = "external-required"
+	}
+	cfg.APIAuthToken = strings.TrimSpace(cfg.APIAuthToken)
 	cfg.TargetCommand = strings.TrimSpace(cfg.TargetCommand)
 	cfg.TargetWorkingDir = strings.TrimSpace(cfg.TargetWorkingDir)
 	cfg.ProbeURL = strings.TrimSpace(cfg.ProbeURL)

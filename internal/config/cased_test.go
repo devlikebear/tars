@@ -129,3 +129,40 @@ func TestResolveCasedConfigPath(t *testing.T) {
 		t.Fatalf("expected default cased config filename, got %q", got)
 	}
 }
+
+func TestLoadCased_APIAuthDefaults(t *testing.T) {
+	t.Setenv("CASED_TARGET_COMMAND", "go")
+	cfg, err := LoadCased("")
+	if err != nil {
+		t.Fatalf("load cased config: %v", err)
+	}
+	if cfg.APIAuthMode != "external-required" {
+		t.Fatalf("expected api auth mode external-required, got %q", cfg.APIAuthMode)
+	}
+}
+
+func TestLoadCased_APIAuthYAMLAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cased.yaml")
+	content := strings.Join([]string{
+		"target_command: ./bin/tarsd",
+		"api_auth_mode: required",
+		"api_auth_token: yaml-cased-token",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("CASED_API_AUTH_MODE", "off")
+	t.Setenv("CASED_API_AUTH_TOKEN", "env-cased-token")
+
+	cfg, err := LoadCased(path)
+	if err != nil {
+		t.Fatalf("load cased config: %v", err)
+	}
+	if cfg.APIAuthMode != "off" {
+		t.Fatalf("expected env override api auth mode off, got %q", cfg.APIAuthMode)
+	}
+	if cfg.APIAuthToken != "env-cased-token" {
+		t.Fatalf("expected env override api auth token, got %q", cfg.APIAuthToken)
+	}
+}

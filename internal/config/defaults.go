@@ -32,6 +32,9 @@ type GatewayAgent struct {
 type Config struct {
 	Mode                                 string
 	WorkspaceDir                         string
+	APIAuthMode                          string
+	APIAuthToken                         string
+	APIWorkspaceHeader                   string
 	LLMProvider                          string
 	LLMAuthMode                          string
 	LLMOAuthProvider                     string
@@ -97,6 +100,8 @@ func Default() Config {
 	return Config{
 		Mode:                                 "standalone",
 		WorkspaceDir:                         "./workspace",
+		APIAuthMode:                          "external-required",
+		APIWorkspaceHeader:                   "Tars-Workspace-Id",
 		LLMProvider:                          "bifrost",
 		LLMAuthMode:                          "api-key",
 		BifrostModel:                         "openai/gpt-4o-mini",
@@ -163,6 +168,15 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("TARSD_WORKSPACE_DIR"); v != "" {
 		cfg.WorkspaceDir = v
+	}
+	if v := firstNonEmpty(os.Getenv("API_AUTH_MODE"), os.Getenv("TARSD_API_AUTH_MODE")); v != "" {
+		cfg.APIAuthMode = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("API_AUTH_TOKEN"), os.Getenv("TARSD_API_AUTH_TOKEN")); v != "" {
+		cfg.APIAuthToken = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("API_WORKSPACE_HEADER"), os.Getenv("TARSD_API_WORKSPACE_HEADER")); v != "" {
+		cfg.APIWorkspaceHeader = strings.TrimSpace(v)
 	}
 	if v := firstNonEmpty(os.Getenv("BIFROST_BASE_URL"), os.Getenv("TARSD_BIFROST_BASE_URL")); v != "" {
 		cfg.BifrostBase = v
@@ -363,6 +377,12 @@ func loadYAML(path string) (Config, error) {
 			cfg.Mode = value
 		case "workspace_dir":
 			cfg.WorkspaceDir = value
+		case "api_auth_mode":
+			cfg.APIAuthMode = strings.TrimSpace(value)
+		case "api_auth_token":
+			cfg.APIAuthToken = strings.TrimSpace(value)
+		case "api_workspace_header":
+			cfg.APIWorkspaceHeader = strings.TrimSpace(value)
 		case "bifrost_base_url":
 			cfg.BifrostBase = value
 		case "bifrost_api_key":
@@ -488,6 +508,15 @@ func merge(dst *Config, src Config) {
 	}
 	if src.WorkspaceDir != "" {
 		dst.WorkspaceDir = src.WorkspaceDir
+	}
+	if src.APIAuthMode != "" {
+		dst.APIAuthMode = src.APIAuthMode
+	}
+	if src.APIAuthToken != "" {
+		dst.APIAuthToken = src.APIAuthToken
+	}
+	if src.APIWorkspaceHeader != "" {
+		dst.APIWorkspaceHeader = src.APIWorkspaceHeader
 	}
 	if src.BifrostBase != "" {
 		dst.BifrostBase = src.BifrostBase
@@ -657,6 +686,18 @@ func merge(dst *Config, src Config) {
 }
 
 func applyLLMDefaults(cfg *Config) {
+	cfg.APIAuthMode = strings.TrimSpace(strings.ToLower(cfg.APIAuthMode))
+	switch cfg.APIAuthMode {
+	case "off", "external-required", "required":
+	default:
+		cfg.APIAuthMode = "external-required"
+	}
+	cfg.APIAuthToken = strings.TrimSpace(cfg.APIAuthToken)
+	cfg.APIWorkspaceHeader = strings.TrimSpace(cfg.APIWorkspaceHeader)
+	if cfg.APIWorkspaceHeader == "" {
+		cfg.APIWorkspaceHeader = "Tars-Workspace-Id"
+	}
+
 	cfg.LLMProvider = strings.TrimSpace(strings.ToLower(cfg.LLMProvider))
 	if cfg.LLMProvider == "" {
 		cfg.LLMProvider = "bifrost"

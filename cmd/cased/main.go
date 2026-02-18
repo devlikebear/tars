@@ -14,6 +14,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/cli"
 	"github.com/devlikebear/tarsncase/internal/config"
 	"github.com/devlikebear/tarsncase/internal/sentinel"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
@@ -118,7 +119,11 @@ func newRootCmd(opts *options, stdout io.Writer, logger zerolog.Logger) (*cobra.
 			mux.Handle("/v1/sentinel/restart", handler)
 			mux.Handle("/v1/sentinel/pause", handler)
 			mux.Handle("/v1/sentinel/resume", handler)
-			server := &http.Server{Addr: cfg.APIAddr, Handler: mux}
+			auth := serverauth.NewMiddleware(serverauth.Options{
+				Mode:        cfg.APIAuthMode,
+				BearerToken: cfg.APIAuthToken,
+			}, io.Discard)
+			server := &http.Server{Addr: cfg.APIAddr, Handler: auth(mux)}
 
 			go func() {
 				<-ctx.Done()

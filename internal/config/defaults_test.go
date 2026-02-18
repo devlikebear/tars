@@ -770,3 +770,47 @@ func TestLoad_ExtensionsFromYAMLAndEnv(t *testing.T) {
 		t.Fatalf("unexpected plugins extra dirs: %+v", cfg.PluginsExtraDirs)
 	}
 }
+
+func TestLoad_APIAuthDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.APIAuthMode != "external-required" {
+		t.Fatalf("expected api auth mode external-required, got %q", cfg.APIAuthMode)
+	}
+	if cfg.APIWorkspaceHeader != "Tars-Workspace-Id" {
+		t.Fatalf("expected api workspace header Tars-Workspace-Id, got %q", cfg.APIWorkspaceHeader)
+	}
+}
+
+func TestLoad_APIAuthYAMLAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"api_auth_mode: required",
+		"api_auth_token: yaml-token",
+		"api_workspace_header: Tenant-Workspace-Id",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("API_AUTH_MODE", "off")
+	t.Setenv("API_AUTH_TOKEN", "env-token")
+	t.Setenv("API_WORKSPACE_HEADER", "Tars-Workspace-Id")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.APIAuthMode != "off" {
+		t.Fatalf("expected env override api auth mode off, got %q", cfg.APIAuthMode)
+	}
+	if cfg.APIAuthToken != "env-token" {
+		t.Fatalf("expected env override api auth token, got %q", cfg.APIAuthToken)
+	}
+	if cfg.APIWorkspaceHeader != "Tars-Workspace-Id" {
+		t.Fatalf("expected env override workspace header, got %q", cfg.APIWorkspaceHeader)
+	}
+}

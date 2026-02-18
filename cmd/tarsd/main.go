@@ -336,7 +336,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 
 				server := &http.Server{
 					Addr:    opts.APIAddr,
-					Handler: requestDebugMiddleware(logger, mux),
+					Handler: applyAPIMiddleware(cfg, logger, mux, stderr),
 				}
 
 				ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
