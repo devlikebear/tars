@@ -10,12 +10,12 @@ TEST_NAME ?=
 HEARTBEAT_INTERVAL ?= 30s
 MAX_HEARTBEATS ?= 0
 COVER_OUT ?= coverage.out
-TARSD_CONFIG ?=
+TARSD_CONFIG ?= ./workspace/config/tarsd.config.yaml
 TARS_UI_CONFIG ?=
 TARS_UI_DIR ?= ./tars-ui
 TARS_UI_SERVER_URL ?= $(SERVER_URL)
 TARS_UI_CASED_URL ?= http://127.0.0.1:43181
-CASED_CONFIG ?=
+CASED_CONFIG ?= ./workspace/config/cased.config.yaml
 CASED_API_ADDR ?=
 
 .DEFAULT_GOAL := help
