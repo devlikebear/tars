@@ -790,6 +790,8 @@ func TestLoad_APIAuthYAMLAndEnv(t *testing.T) {
 	content := strings.Join([]string{
 		"api_auth_mode: required",
 		"api_auth_token: yaml-token",
+		"api_user_token: yaml-user-token",
+		"api_admin_token: yaml-admin-token",
 		"api_workspace_header: Tenant-Workspace-Id",
 	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -798,6 +800,8 @@ func TestLoad_APIAuthYAMLAndEnv(t *testing.T) {
 
 	t.Setenv("API_AUTH_MODE", "off")
 	t.Setenv("API_AUTH_TOKEN", "env-token")
+	t.Setenv("API_USER_TOKEN", "env-user-token")
+	t.Setenv("API_ADMIN_TOKEN", "env-admin-token")
 	t.Setenv("API_WORKSPACE_HEADER", "Tars-Workspace-Id")
 
 	cfg, err := Load(path)
@@ -809,6 +813,12 @@ func TestLoad_APIAuthYAMLAndEnv(t *testing.T) {
 	}
 	if cfg.APIAuthToken != "env-token" {
 		t.Fatalf("expected env override api auth token, got %q", cfg.APIAuthToken)
+	}
+	if cfg.APIUserToken != "env-user-token" {
+		t.Fatalf("expected env override api user token, got %q", cfg.APIUserToken)
+	}
+	if cfg.APIAdminToken != "env-admin-token" {
+		t.Fatalf("expected env override api admin token, got %q", cfg.APIAdminToken)
 	}
 	if cfg.APIWorkspaceHeader != "Tars-Workspace-Id" {
 		t.Fatalf("expected env override workspace header, got %q", cfg.APIWorkspaceHeader)

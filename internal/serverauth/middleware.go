@@ -22,17 +22,34 @@ const (
 type Options struct {
 	Mode            string
 	BearerToken     string
+	UserToken       string
+	AdminToken      string
 	WorkspaceHeader string
 	SkipPaths       []string
+	AdminPaths      []string
 }
 
 type workspaceIDKey struct{}
+type roleKey struct{}
+
+const (
+	RoleUser  = "user"
+	RoleAdmin = "admin"
+)
 
 func WorkspaceIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
 	value, _ := ctx.Value(workspaceIDKey{}).(string)
+	return strings.TrimSpace(value)
+}
+
+func RoleFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	value, _ := ctx.Value(roleKey{}).(string)
 	return strings.TrimSpace(value)
 }
 
@@ -61,11 +78,28 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 		}
 		skipPaths[trimmed] = struct{}{}
 	}
+	adminPaths := make(map[string]struct{}, len(opts.AdminPaths))
+	for _, path := range opts.AdminPaths {
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" {
+			continue
+		}
+		adminPaths[trimmed] = struct{}{}
+	}
 	if logOut == nil {
 		logOut = io.Discard
 	}
 	logger := log.New(logOut, "", 0)
-	expectedHash := sha256.Sum256([]byte(token))
+
+	userToken := strings.TrimSpace(opts.UserToken)
+	adminToken := strings.TrimSpace(opts.AdminToken)
+	hasLegacyToken := token != ""
+	hasUserToken := userToken != ""
+	hasAdminToken := adminToken != ""
+	anyTokenConfigured := hasLegacyToken || hasUserToken || hasAdminToken
+	legacyHash := sha256.Sum256([]byte(token))
+	userHash := sha256.Sum256([]byte(userToken))
+	adminHash := sha256.Sum256([]byte(adminToken))
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -79,21 +113,42 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			if mode == ModeExternalRequired && !isLoopbackRemoteAddr(r.RemoteAddr) {
 				requireToken = true
 			}
-			if !requireToken {
-				next.ServeHTTP(w, req)
-				return
-			}
-			if token == "" {
+			_, isAdminPath := adminPaths[r.URL.Path]
+			tokenNeeded := requireToken || isAdminPath
+			if tokenNeeded && !anyTokenConfigured {
 				logger.Printf("api auth enabled but token is empty; rejecting path=%s", r.URL.Path)
 				http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 				return
 			}
-			if !isValidBearerToken(r.Header.Get("Authorization"), expectedHash) {
+
+			presentedToken, hasBearer := parseBearerToken(r.Header.Get("Authorization"))
+			role := ""
+			if hasBearer {
+				role = resolveTokenRole(
+					presentedToken,
+					hasLegacyToken,
+					hasUserToken,
+					hasAdminToken,
+					legacyHash,
+					userHash,
+					adminHash,
+				)
+			}
+			if tokenNeeded && role == "" {
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			next.ServeHTTP(w, req)
+			if isAdminPath && role != RoleAdmin {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			if requireToken && hasBearer && role == "" {
+				w.Header().Set("WWW-Authenticate", "Bearer")
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, withRole(req, role))
 		})
 	}
 }
@@ -110,20 +165,55 @@ func withWorkspaceID(r *http.Request, headerName string) *http.Request {
 	return r.WithContext(ctx)
 }
 
-func isValidBearerToken(authHeader string, expectedHash [32]byte) bool {
+func withRole(r *http.Request, role string) *http.Request {
+	if r == nil {
+		return nil
+	}
+	if strings.TrimSpace(role) == "" {
+		return r
+	}
+	ctx := context.WithValue(r.Context(), roleKey{}, strings.TrimSpace(role))
+	return r.WithContext(ctx)
+}
+
+func parseBearerToken(authHeader string) (string, bool) {
 	if strings.TrimSpace(authHeader) == "" {
-		return false
+		return "", false
 	}
 	const prefix = "Bearer "
 	if !strings.HasPrefix(strings.ToLower(authHeader), strings.ToLower(prefix)) {
-		return false
+		return "", false
 	}
 	presentedToken := strings.TrimSpace(authHeader[len(prefix):])
 	if presentedToken == "" {
-		return false
+		return "", false
+	}
+	return presentedToken, true
+}
+
+func resolveTokenRole(
+	presentedToken string,
+	hasLegacyToken bool,
+	hasUserToken bool,
+	hasAdminToken bool,
+	legacyHash [32]byte,
+	userHash [32]byte,
+	adminHash [32]byte,
+) string {
+	if strings.TrimSpace(presentedToken) == "" {
+		return ""
 	}
 	presentedHash := sha256.Sum256([]byte(presentedToken))
-	return subtle.ConstantTimeCompare(expectedHash[:], presentedHash[:]) == 1
+	if hasAdminToken && subtle.ConstantTimeCompare(adminHash[:], presentedHash[:]) == 1 {
+		return RoleAdmin
+	}
+	if hasUserToken && subtle.ConstantTimeCompare(userHash[:], presentedHash[:]) == 1 {
+		return RoleUser
+	}
+	if hasLegacyToken && subtle.ConstantTimeCompare(legacyHash[:], presentedHash[:]) == 1 {
+		return RoleAdmin
+	}
+	return ""
 }
 
 func isLoopbackRemoteAddr(remoteAddr string) bool {

@@ -15,6 +15,8 @@ type CasedConfig struct {
 	APIAddr             string
 	APIAuthMode         string
 	APIAuthToken        string
+	APIUserToken        string
+	APIAdminToken       string
 	TargetCommand       string
 	TargetArgs          []string
 	TargetWorkingDir    string
@@ -117,6 +119,12 @@ func applyCasedEnv(cfg *CasedConfig) {
 	if v := firstNonEmpty(os.Getenv("CASED_API_AUTH_TOKEN"), os.Getenv("TARSD_CASED_API_AUTH_TOKEN")); v != "" {
 		cfg.APIAuthToken = strings.TrimSpace(v)
 	}
+	if v := firstNonEmpty(os.Getenv("CASED_API_USER_TOKEN"), os.Getenv("TARSD_CASED_API_USER_TOKEN")); v != "" {
+		cfg.APIUserToken = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("CASED_API_ADMIN_TOKEN"), os.Getenv("TARSD_CASED_API_ADMIN_TOKEN")); v != "" {
+		cfg.APIAdminToken = strings.TrimSpace(v)
+	}
 	if v := firstNonEmpty(os.Getenv("CASED_TARGET_COMMAND"), os.Getenv("TARSD_CASED_TARGET_COMMAND")); v != "" {
 		cfg.TargetCommand = strings.TrimSpace(v)
 	}
@@ -169,6 +177,10 @@ func applyCasedPair(cfg *CasedConfig, key, value string) {
 		cfg.APIAuthMode = strings.TrimSpace(value)
 	case "api_auth_token":
 		cfg.APIAuthToken = strings.TrimSpace(value)
+	case "api_user_token":
+		cfg.APIUserToken = strings.TrimSpace(value)
+	case "api_admin_token":
+		cfg.APIAdminToken = strings.TrimSpace(value)
 	case "target_command":
 		cfg.TargetCommand = strings.TrimSpace(value)
 	case "target_args_json":
@@ -212,6 +224,8 @@ func applyCasedDefaults(cfg *CasedConfig) {
 		cfg.APIAuthMode = "external-required"
 	}
 	cfg.APIAuthToken = strings.TrimSpace(cfg.APIAuthToken)
+	cfg.APIUserToken = strings.TrimSpace(cfg.APIUserToken)
+	cfg.APIAdminToken = strings.TrimSpace(cfg.APIAdminToken)
 	cfg.TargetCommand = strings.TrimSpace(cfg.TargetCommand)
 	cfg.TargetWorkingDir = strings.TrimSpace(cfg.TargetWorkingDir)
 	cfg.ProbeURL = strings.TrimSpace(cfg.ProbeURL)

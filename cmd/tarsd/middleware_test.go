@@ -75,3 +75,33 @@ func TestApplyAPIMiddleware_HealthzBypassesAuth(t *testing.T) {
 		t.Fatalf("expected 204 for /v1/healthz bypass, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
+
+func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
+	cfg := config.Config{
+		APIAuthMode:        "required",
+		APIUserToken:       "user-token",
+		APIAdminToken:      "admin-token",
+		APIWorkspaceHeader: "Tars-Workspace-Id",
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	reqUser := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	reqUser.RemoteAddr = "192.0.2.10:5555"
+	reqUser.Header.Set("Authorization", "Bearer user-token")
+	recUser := httptest.NewRecorder()
+	h.ServeHTTP(recUser, reqUser)
+	if recUser.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for user token on admin path, got %d body=%q", recUser.Code, recUser.Body.String())
+	}
+
+	reqAdmin := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	reqAdmin.RemoteAddr = "192.0.2.10:5555"
+	reqAdmin.Header.Set("Authorization", "Bearer admin-token")
+	recAdmin := httptest.NewRecorder()
+	h.ServeHTTP(recAdmin, reqAdmin)
+	if recAdmin.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for admin token on admin path, got %d body=%q", recAdmin.Code, recAdmin.Body.String())
+	}
+}

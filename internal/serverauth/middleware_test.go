@@ -122,3 +122,76 @@ func TestMiddleware_SetsWorkspaceIDFromHeader(t *testing.T) {
 		t.Fatalf("expected workspace id ws-dev, got %q", got)
 	}
 }
+
+func TestMiddleware_AdminPathRejectsUserToken(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:        ModeRequired,
+		UserToken:   "user-token",
+		AdminToken:  "admin-token",
+		AdminPaths:  []string{"/v1/gateway/reload"},
+		BearerToken: "",
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Authorization", "Bearer user-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMiddleware_AdminPathAllowsAdminToken(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:        ModeRequired,
+		UserToken:   "user-token",
+		AdminToken:  "admin-token",
+		AdminPaths:  []string{"/v1/gateway/reload"},
+		BearerToken: "",
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(RoleFromContext(r.Context())))
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != RoleAdmin {
+		t.Fatalf("expected role admin, got %q", got)
+	}
+}
+
+func TestMiddleware_BackwardCompatibleSingleTokenAllowsAdminPath(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:        ModeRequired,
+		BearerToken: "legacy-token",
+		AdminPaths:  []string{"/v1/gateway/reload"},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(RoleFromContext(r.Context())))
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Authorization", "Bearer legacy-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != RoleAdmin {
+		t.Fatalf("expected role admin for legacy token, got %q", got)
+	}
+}

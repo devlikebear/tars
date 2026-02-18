@@ -148,12 +148,16 @@ func TestLoadCased_APIAuthYAMLAndEnv(t *testing.T) {
 		"target_command: ./bin/tarsd",
 		"api_auth_mode: required",
 		"api_auth_token: yaml-cased-token",
+		"api_user_token: yaml-user-token",
+		"api_admin_token: yaml-admin-token",
 	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	t.Setenv("CASED_API_AUTH_MODE", "off")
 	t.Setenv("CASED_API_AUTH_TOKEN", "env-cased-token")
+	t.Setenv("CASED_API_USER_TOKEN", "env-user-token")
+	t.Setenv("CASED_API_ADMIN_TOKEN", "env-admin-token")
 
 	cfg, err := LoadCased(path)
 	if err != nil {
@@ -164,5 +168,11 @@ func TestLoadCased_APIAuthYAMLAndEnv(t *testing.T) {
 	}
 	if cfg.APIAuthToken != "env-cased-token" {
 		t.Fatalf("expected env override api auth token, got %q", cfg.APIAuthToken)
+	}
+	if cfg.APIUserToken != "env-user-token" {
+		t.Fatalf("expected env override api user token, got %q", cfg.APIUserToken)
+	}
+	if cfg.APIAdminToken != "env-admin-token" {
+		t.Fatalf("expected env override api admin token, got %q", cfg.APIAdminToken)
 	}
 }

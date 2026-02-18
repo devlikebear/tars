@@ -34,6 +34,8 @@ type Config struct {
 	WorkspaceDir                         string
 	APIAuthMode                          string
 	APIAuthToken                         string
+	APIUserToken                         string
+	APIAdminToken                        string
 	APIWorkspaceHeader                   string
 	LLMProvider                          string
 	LLMAuthMode                          string
@@ -174,6 +176,12 @@ func applyEnv(cfg *Config) {
 	}
 	if v := firstNonEmpty(os.Getenv("API_AUTH_TOKEN"), os.Getenv("TARSD_API_AUTH_TOKEN")); v != "" {
 		cfg.APIAuthToken = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("API_USER_TOKEN"), os.Getenv("TARSD_API_USER_TOKEN")); v != "" {
+		cfg.APIUserToken = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("API_ADMIN_TOKEN"), os.Getenv("TARSD_API_ADMIN_TOKEN")); v != "" {
+		cfg.APIAdminToken = strings.TrimSpace(v)
 	}
 	if v := firstNonEmpty(os.Getenv("API_WORKSPACE_HEADER"), os.Getenv("TARSD_API_WORKSPACE_HEADER")); v != "" {
 		cfg.APIWorkspaceHeader = strings.TrimSpace(v)
@@ -381,6 +389,10 @@ func loadYAML(path string) (Config, error) {
 			cfg.APIAuthMode = strings.TrimSpace(value)
 		case "api_auth_token":
 			cfg.APIAuthToken = strings.TrimSpace(value)
+		case "api_user_token":
+			cfg.APIUserToken = strings.TrimSpace(value)
+		case "api_admin_token":
+			cfg.APIAdminToken = strings.TrimSpace(value)
 		case "api_workspace_header":
 			cfg.APIWorkspaceHeader = strings.TrimSpace(value)
 		case "bifrost_base_url":
@@ -514,6 +526,12 @@ func merge(dst *Config, src Config) {
 	}
 	if src.APIAuthToken != "" {
 		dst.APIAuthToken = src.APIAuthToken
+	}
+	if src.APIUserToken != "" {
+		dst.APIUserToken = src.APIUserToken
+	}
+	if src.APIAdminToken != "" {
+		dst.APIAdminToken = src.APIAdminToken
 	}
 	if src.APIWorkspaceHeader != "" {
 		dst.APIWorkspaceHeader = src.APIWorkspaceHeader
@@ -693,6 +711,8 @@ func applyLLMDefaults(cfg *Config) {
 		cfg.APIAuthMode = "external-required"
 	}
 	cfg.APIAuthToken = strings.TrimSpace(cfg.APIAuthToken)
+	cfg.APIUserToken = strings.TrimSpace(cfg.APIUserToken)
+	cfg.APIAdminToken = strings.TrimSpace(cfg.APIAdminToken)
 	cfg.APIWorkspaceHeader = strings.TrimSpace(cfg.APIWorkspaceHeader)
 	if cfg.APIWorkspaceHeader == "" {
 		cfg.APIWorkspaceHeader = "Tars-Workspace-Id"

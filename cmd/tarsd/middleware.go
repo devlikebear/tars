@@ -13,8 +13,15 @@ func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Hand
 	auth := serverauth.NewMiddleware(serverauth.Options{
 		Mode:            cfg.APIAuthMode,
 		BearerToken:     cfg.APIAuthToken,
+		UserToken:       cfg.APIUserToken,
+		AdminToken:      cfg.APIAdminToken,
 		WorkspaceHeader: cfg.APIWorkspaceHeader,
 		SkipPaths:       []string{"/v1/healthz"},
+		AdminPaths: []string{
+			"/v1/runtime/extensions/reload",
+			"/v1/gateway/reload",
+			"/v1/gateway/restart",
+		},
 	}, authLog)
 	return requestDebugMiddleware(logger, auth(next))
 }

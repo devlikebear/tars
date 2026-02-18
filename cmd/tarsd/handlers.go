@@ -103,6 +103,9 @@ func requestDebugMiddleware(logger zerolog.Logger, next http.Handler) http.Handl
 		if workspaceID := serverauth.WorkspaceIDFromContext(r.Context()); workspaceID != "" {
 			evt = evt.Str("workspace_id", workspaceID)
 		}
+		if role := serverauth.RoleFromContext(r.Context()); role != "" {
+			evt = evt.Str("auth_role", role)
+		}
 		evt.Msg("http request")
 	})
 }

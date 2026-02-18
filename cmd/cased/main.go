@@ -122,6 +122,13 @@ func newRootCmd(opts *options, stdout io.Writer, logger zerolog.Logger) (*cobra.
 			auth := serverauth.NewMiddleware(serverauth.Options{
 				Mode:        cfg.APIAuthMode,
 				BearerToken: cfg.APIAuthToken,
+				UserToken:   cfg.APIUserToken,
+				AdminToken:  cfg.APIAdminToken,
+				AdminPaths: []string{
+					"/v1/sentinel/restart",
+					"/v1/sentinel/pause",
+					"/v1/sentinel/resume",
+				},
 			}, io.Discard)
 			server := &http.Server{Addr: cfg.APIAddr, Handler: auth(mux)}
 
