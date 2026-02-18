@@ -2,7 +2,6 @@
 # Usage:
 #   go run ./cmd/tarsd --config ./config/tarsd.config.example.yaml --serve-api
 # Health check endpoint: GET /v1/healthz
-# (cased probe_url default targets http://127.0.0.1:43180/v1/healthz)
 
 mode: standalone
 workspace_dir: ./workspace
