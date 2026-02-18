@@ -1,0 +1,28 @@
+# cased example configuration
+# Usage:
+#   go run ./cmd/cased --config ./config/cased.config.example.yaml --verbose
+
+api_addr: 127.0.0.1:43181
+
+# Required target command (no auto-discovery)
+target_command: go
+target_args_json: '["run","./cmd/tarsd","--serve-api","--workspace-dir","./workspace","--api-addr","127.0.0.1:43180"]'
+target_working_dir: .
+# target_env_json: '{"LLM_PROVIDER":"anthropic"}'
+
+# Health probe against tarsd
+probe_url: http://127.0.0.1:43180/v1/healthz
+probe_interval_ms: 5000
+probe_timeout_ms: 1000
+probe_fail_threshold: 3
+
+# Restart policy: 3 attempts with exponential backoff, then cool-down
+restart_max_attempts: 3
+restart_backoff_ms: 1000
+restart_backoff_max_ms: 10000
+restart_cooldown_ms: 60000
+
+# In-memory event ring buffer
+event_buffer_size: 200
+
+autostart: true
