@@ -119,11 +119,19 @@ func executeCommand(ctx context.Context, runtime runtimeClient, line, session st
 	}
 	switch fields[0] {
 	case "/help":
-		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /new [title] /sessions /history /export /search {keyword} /status /compact /heartbeat /skills /plugins /mcp /reload /agents /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart} /channels /cron {list|get|runs|add|run|delete|enable|disable} /quit")
+		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /resume {id} /new [title] /sessions /history /export /search {keyword} /status /compact /heartbeat /skills /plugins /mcp /reload /agents [--detail] /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart} /channels /cron {list|get|runs|add|run|delete|enable|disable} /quit")
 		return true, session, nil
 	case "/session":
 		fmt.Fprintf(stdout, "SYSTEM > session=%s\n", session)
 		return true, session, nil
+	case "/resume":
+		if len(fields) < 2 || strings.TrimSpace(fields[1]) == "" {
+			return true, session, fmt.Errorf("usage: /resume {session_id}")
+		}
+		next := strings.TrimSpace(fields[1])
+		fmt.Fprintf(stdout, "SYSTEM > resumed session=%s\n", next)
+		fmt.Fprintf(stderr, "session=%s\n", next)
+		return true, next, nil
 	case "/new":
 		title := strings.TrimSpace(strings.TrimPrefix(line, "/new"))
 		if title == "" {
@@ -297,7 +305,13 @@ func executeCommand(ctx context.Context, runtime runtimeClient, line, session st
 			return true, session, nil
 		}
 		fmt.Fprintln(stdout, "SYSTEM > agents")
+		detail := len(fields) > 1 && strings.TrimSpace(fields[1]) == "--detail"
 		for _, a := range agents {
+			if detail {
+				fmt.Fprintf(stdout, "- %s kind=%s source=%s entry=%s policy=%s allow=%d routing=%s fixed_session=%s\n",
+					a.Name, a.Kind, a.Source, a.Entry, a.PolicyMode, a.ToolsAllowCount, a.SessionRoutingMode, a.SessionFixedID)
+				continue
+			}
 			fmt.Fprintf(stdout, "- %s kind=%s source=%s policy=%s\n", a.Name, a.Kind, a.Source, a.PolicyMode)
 		}
 		return true, session, nil

@@ -124,3 +124,47 @@ func TestExecuteCommand_CronAndChannels(t *testing.T) {
 		t.Fatalf("expected channels output, got %q", stdout.String())
 	}
 }
+
+func TestExecuteCommand_ResumeAndAgentsDetail(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agent/agents":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"agents": []map[string]any{
+					{
+						"name":              "researcher",
+						"kind":              "prompt",
+						"source":            "workspace",
+						"entry":             "workspace/agents/researcher/AGENT.md",
+						"policy_mode":       "allowlist",
+						"tools_allow_count": 3,
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runtime := runtimeClient{serverURL: server.URL}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	_, session, err := executeCommand(context.Background(), runtime, "/resume s-9", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/resume: %v", err)
+	}
+	if session != "s-9" {
+		t.Fatalf("expected resumed session, got %q", session)
+	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/agents --detail", session, stdout, stderr)
+	if err != nil {
+		t.Fatalf("/agents --detail: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "entry=workspace/agents/researcher/AGENT.md") {
+		t.Fatalf("expected detailed agent output, got %q", stdout.String())
+	}
+}
