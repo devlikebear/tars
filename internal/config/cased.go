@@ -100,7 +100,7 @@ func applyCasedYAML(cfg *CasedConfig, path string) error {
 			return fmt.Errorf("invalid config format at line %d", lineNum)
 		}
 		key = strings.TrimSpace(key)
-		value = os.ExpandEnv(strings.Trim(strings.TrimSpace(value), `"'`))
+		value = cleanYAMLValue(value)
 		applyCasedPair(cfg, key, value)
 	}
 	if err := scanner.Err(); err != nil {

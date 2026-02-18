@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 type MCPServer struct {
@@ -378,7 +379,7 @@ func loadYAML(path string) (Config, error) {
 			return Config{}, fmt.Errorf("invalid config format at line %d", lineNum)
 		}
 		key = strings.TrimSpace(key)
-		value = os.ExpandEnv(strings.Trim(strings.TrimSpace(value), `"'`))
+		value = cleanYAMLValue(value)
 
 		switch key {
 		case "mode":
@@ -829,6 +830,66 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func cleanYAMLValue(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	noComment := stripYAMLInlineComment(trimmed)
+	return os.ExpandEnv(strings.Trim(strings.TrimSpace(noComment), `"'`))
+}
+
+func stripYAMLInlineComment(raw string) string {
+	if raw == "" {
+		return raw
+	}
+	var b strings.Builder
+	b.Grow(len(raw))
+	inSingle := false
+	inDouble := false
+	escaped := false
+	prevSpace := true
+	for _, r := range raw {
+		if inDouble {
+			b.WriteRune(r)
+			if escaped {
+				escaped = false
+				prevSpace = unicode.IsSpace(r)
+				continue
+			}
+			if r == '\\' {
+				escaped = true
+				prevSpace = false
+				continue
+			}
+			if r == '"' {
+				inDouble = false
+			}
+			prevSpace = unicode.IsSpace(r)
+			continue
+		}
+		if inSingle {
+			b.WriteRune(r)
+			if r == '\'' {
+				inSingle = false
+			}
+			prevSpace = unicode.IsSpace(r)
+			continue
+		}
+		if r == '#' && prevSpace {
+			break
+		}
+		b.WriteRune(r)
+		if r == '"' {
+			inDouble = true
+		} else if r == '\'' {
+			inSingle = true
+		}
+		prevSpace = unicode.IsSpace(r)
+	}
+	return strings.TrimRightFunc(b.String(), unicode.IsSpace)
 }
 
 func parsePositiveInt(value string, fallback int) int {

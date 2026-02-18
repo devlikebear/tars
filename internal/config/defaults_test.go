@@ -824,3 +824,34 @@ func TestLoad_APIAuthYAMLAndEnv(t *testing.T) {
 		t.Fatalf("expected env override workspace header, got %q", cfg.APIWorkspaceHeader)
 	}
 }
+
+func TestLoad_APIAuthYAMLInlineComments(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		`api_auth_token: "legacy-token" # legacy`,
+		`api_user_token: "user-token" # user token`,
+		`api_admin_token: "admin-token" # admin token`,
+		`api_workspace_header: Tars-Workspace-Id # workspace header`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.APIAuthToken != "legacy-token" {
+		t.Fatalf("expected legacy token without inline comment, got %q", cfg.APIAuthToken)
+	}
+	if cfg.APIUserToken != "user-token" {
+		t.Fatalf("expected user token without inline comment, got %q", cfg.APIUserToken)
+	}
+	if cfg.APIAdminToken != "admin-token" {
+		t.Fatalf("expected admin token without inline comment, got %q", cfg.APIAdminToken)
+	}
+	if cfg.APIWorkspaceHeader != "Tars-Workspace-Id" {
+		t.Fatalf("expected workspace header without inline comment, got %q", cfg.APIWorkspaceHeader)
+	}
+}

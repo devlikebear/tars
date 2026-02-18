@@ -176,3 +176,31 @@ func TestLoadCased_APIAuthYAMLAndEnv(t *testing.T) {
 		t.Fatalf("expected env override api admin token, got %q", cfg.APIAdminToken)
 	}
 }
+
+func TestLoadCased_APIAuthYAMLInlineComments(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cased.yaml")
+	content := strings.Join([]string{
+		`target_command: ./bin/tarsd`,
+		`api_auth_token: "legacy-token" # legacy`,
+		`api_user_token: "user-token" # user token`,
+		`api_admin_token: "admin-token" # admin token`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadCased(path)
+	if err != nil {
+		t.Fatalf("load cased config: %v", err)
+	}
+	if cfg.APIAuthToken != "legacy-token" {
+		t.Fatalf("expected legacy token without inline comment, got %q", cfg.APIAuthToken)
+	}
+	if cfg.APIUserToken != "user-token" {
+		t.Fatalf("expected user token without inline comment, got %q", cfg.APIUserToken)
+	}
+	if cfg.APIAdminToken != "admin-token" {
+		t.Fatalf("expected admin token without inline comment, got %q", cfg.APIAdminToken)
+	}
+}
