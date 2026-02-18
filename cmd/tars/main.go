@@ -88,13 +88,6 @@ func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, cha
 		switch line {
 		case "/exit", "/quit":
 			return nil
-		case "/new":
-			session = ""
-			fmt.Fprintln(stderr, "session reset")
-			continue
-		case "/session":
-			fmt.Fprintf(stderr, "session=%s\n", session)
-			continue
 		}
 		if strings.HasPrefix(line, "/") {
 			handled, nextSession, err := executeCommand(ctx, runtime, line, session, stdout, stderr)
@@ -125,6 +118,175 @@ func executeCommand(ctx context.Context, runtime runtimeClient, line, session st
 		return true, session, nil
 	}
 	switch fields[0] {
+	case "/help":
+		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /new [title] /sessions /history /export /search {keyword} /status /compact /heartbeat /skills /plugins /mcp /reload /agents /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart} /quit")
+		return true, session, nil
+	case "/session":
+		fmt.Fprintf(stdout, "SYSTEM > session=%s\n", session)
+		return true, session, nil
+	case "/new":
+		title := strings.TrimSpace(strings.TrimPrefix(line, "/new"))
+		if title == "" {
+			title = "chat"
+		}
+		created, err := runtime.createSession(ctx, title)
+		if err != nil {
+			return true, session, err
+		}
+		fmt.Fprintf(stdout, "SYSTEM > created session %s (%s)\n", created.ID, created.Title)
+		fmt.Fprintf(stderr, "session=%s\n", created.ID)
+		return true, created.ID, nil
+	case "/sessions":
+		sessions, err := runtime.listSessions(ctx)
+		if err != nil {
+			return true, session, err
+		}
+		if len(sessions) == 0 {
+			fmt.Fprintln(stdout, "SYSTEM > (no sessions)")
+			return true, session, nil
+		}
+		fmt.Fprintln(stdout, "SYSTEM > sessions")
+		for _, s := range sessions {
+			fmt.Fprintf(stdout, "- %s %s\n", s.ID, s.Title)
+		}
+		return true, session, nil
+	case "/history":
+		if strings.TrimSpace(session) == "" {
+			return true, session, fmt.Errorf("history requires active session; use /new or --session")
+		}
+		messages, err := runtime.getHistory(ctx, session)
+		if err != nil {
+			return true, session, err
+		}
+		if len(messages) == 0 {
+			fmt.Fprintln(stdout, "SYSTEM > (no history)")
+			return true, session, nil
+		}
+		fmt.Fprintln(stdout, "SYSTEM > history")
+		for _, m := range messages {
+			content := strings.TrimSpace(m.Content)
+			if len(content) > 120 {
+				content = content[:117] + "..."
+			}
+			fmt.Fprintf(stdout, "- %s: %s\n", strings.TrimSpace(m.Role), content)
+		}
+		return true, session, nil
+	case "/export":
+		if strings.TrimSpace(session) == "" {
+			return true, session, fmt.Errorf("export requires active session; use /new or --session")
+		}
+		markdown, err := runtime.exportSession(ctx, session)
+		if err != nil {
+			return true, session, err
+		}
+		fmt.Fprint(stdout, markdown)
+		if !strings.HasSuffix(markdown, "\n") {
+			fmt.Fprintln(stdout)
+		}
+		return true, session, nil
+	case "/search":
+		keyword := strings.TrimSpace(strings.TrimPrefix(line, "/search"))
+		if keyword == "" {
+			return true, session, fmt.Errorf("usage: /search {keyword}")
+		}
+		results, err := runtime.searchSessions(ctx, keyword)
+		if err != nil {
+			return true, session, err
+		}
+		if len(results) == 0 {
+			fmt.Fprintln(stdout, "SYSTEM > (no matched sessions)")
+			return true, session, nil
+		}
+		fmt.Fprintln(stdout, "SYSTEM > matched sessions")
+		for _, s := range results {
+			fmt.Fprintf(stdout, "- %s %s\n", s.ID, s.Title)
+		}
+		return true, session, nil
+	case "/status":
+		status, err := runtime.status(ctx)
+		if err != nil {
+			return true, session, err
+		}
+		fmt.Fprintf(stdout, "SYSTEM > workspace=%s sessions=%d", status.WorkspaceDir, status.SessionCount)
+		if strings.TrimSpace(status.WorkspaceID) != "" {
+			fmt.Fprintf(stdout, " workspace_id=%s", status.WorkspaceID)
+		}
+		if strings.TrimSpace(status.AuthRole) != "" {
+			fmt.Fprintf(stdout, " auth_role=%s", status.AuthRole)
+		}
+		fmt.Fprintln(stdout)
+		return true, session, nil
+	case "/compact":
+		if strings.TrimSpace(session) == "" {
+			return true, session, fmt.Errorf("compact requires active session; use /new or --session")
+		}
+		result, err := runtime.compact(ctx, session)
+		if err != nil {
+			return true, session, err
+		}
+		fmt.Fprintf(stdout, "SYSTEM > %s\n", strings.TrimSpace(result.Message))
+		return true, session, nil
+	case "/heartbeat":
+		result, err := runtime.heartbeatRunOnce(ctx)
+		if err != nil {
+			return true, session, err
+		}
+		if result.Skipped {
+			fmt.Fprintf(stdout, "SYSTEM > skipped: %s\n", strings.TrimSpace(result.SkipReason))
+			return true, session, nil
+		}
+		fmt.Fprintf(stdout, "SYSTEM > %s\n", strings.TrimSpace(result.Response))
+		return true, session, nil
+	case "/skills":
+		skills, err := runtime.listSkills(ctx)
+		if err != nil {
+			return true, session, err
+		}
+		if len(skills) == 0 {
+			fmt.Fprintln(stdout, "SYSTEM > (no skills)")
+			return true, session, nil
+		}
+		fmt.Fprintln(stdout, "SYSTEM > skills")
+		for _, s := range skills {
+			fmt.Fprintf(stdout, "- %s invocable=%t source=%s\n", s.Name, s.UserInvocable, s.Source)
+		}
+		return true, session, nil
+	case "/plugins":
+		plugins, err := runtime.listPlugins(ctx)
+		if err != nil {
+			return true, session, err
+		}
+		if len(plugins) == 0 {
+			fmt.Fprintln(stdout, "SYSTEM > (no plugins)")
+			return true, session, nil
+		}
+		fmt.Fprintln(stdout, "SYSTEM > plugins")
+		for _, p := range plugins {
+			fmt.Fprintf(stdout, "- %s source=%s version=%s\n", p.ID, p.Source, p.Version)
+		}
+		return true, session, nil
+	case "/mcp":
+		servers, err := runtime.listMCPServers(ctx)
+		if err != nil {
+			return true, session, err
+		}
+		tools, err := runtime.listMCPTools(ctx)
+		if err != nil {
+			return true, session, err
+		}
+		fmt.Fprintf(stdout, "SYSTEM > mcp servers=%d tools=%d\n", len(servers), len(tools))
+		for _, s := range servers {
+			fmt.Fprintf(stdout, "- %s connected=%t tools=%d\n", s.Name, s.Connected, s.ToolCount)
+		}
+		return true, session, nil
+	case "/reload":
+		result, err := runtime.reloadExtensions(ctx)
+		if err != nil {
+			return true, session, err
+		}
+		fmt.Fprintf(stdout, "SYSTEM > reloaded=%t version=%d skills=%d plugins=%d mcp=%d gateway_refreshed=%t gateway_agents=%d\n",
+			result.Reloaded, result.Version, result.Skills, result.Plugins, result.MCPCount, result.GatewayRefreshed, result.GatewayAgents)
+		return true, session, nil
 	case "/agents":
 		agents, err := runtime.listAgents(ctx)
 		if err != nil {
