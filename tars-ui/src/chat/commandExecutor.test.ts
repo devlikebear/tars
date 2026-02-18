@@ -208,6 +208,22 @@ test('executeInputCommand handles /new and updates active session', async () => 
 	assert.deepEqual(state.messages, ['active session: sess-10']);
 });
 
+test('executeInputCommand handles /status with auth metadata', async () => {
+	const apis: CommandAPIs = {
+		...createDefaultAPIs(),
+		getStatus: async () => ({
+			workspace_dir: '/tmp/workspace',
+			session_count: 3,
+			workspace_id: 'ws-local',
+			auth_role: 'user',
+		}),
+	};
+	const state = createContext('/status');
+	await executeInputCommand(state.ctx, apis);
+
+	assert.deepEqual(state.messages, ['workspace=/tmp/workspace sessions=3 workspace_id=ws-local role=user']);
+});
+
 test('executeInputCommand clears resume selection when creating a new session', async () => {
 	const apis: CommandAPIs = {
 		...createDefaultAPIs(),

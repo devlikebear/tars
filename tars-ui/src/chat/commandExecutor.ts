@@ -15,7 +15,7 @@ export type CommandAPIs = {
 	getHistory: (serverUrl: string, sessionID: string) => Promise<SessionHistoryItem[]>;
 	exportSession: (serverUrl: string, sessionID: string) => Promise<string>;
 	searchSessions: (serverUrl: string, keyword: string) => Promise<SessionSummary[]>;
-	getStatus: (serverUrl: string) => Promise<{workspace_dir: string; session_count: number}>;
+	getStatus: (serverUrl: string) => Promise<{workspace_dir: string; session_count: number; workspace_id?: string; auth_role?: string}>;
 	runCompact: (serverUrl: string, sessionID: string) => Promise<string>;
 	runHeartbeatOnce: (serverUrl: string) => Promise<string>;
 	listCronJobs: (serverUrl: string) => Promise<CronJob[]>;
@@ -418,7 +418,14 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 	}
 	case 'status': {
 		const status = await apis.getStatus(ctx.serverUrl);
-		ctx.pushSystemMessage(`workspace=${status.workspace_dir} sessions=${status.session_count}`);
+		let message = `workspace=${status.workspace_dir} sessions=${status.session_count}`;
+		if ((status.workspace_id ?? '').trim() !== '') {
+			message += ` workspace_id=${status.workspace_id}`;
+		}
+		if ((status.auth_role ?? '').trim() !== '') {
+			message += ` role=${status.auth_role}`;
+		}
+		ctx.pushSystemMessage(message);
 		return;
 	}
 	case 'compact': {

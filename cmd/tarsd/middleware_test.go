@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tarsncase/internal/config"
+	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/serverauth"
+	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/rs/zerolog"
 )
 
@@ -164,5 +167,56 @@ func TestApplyAPIMiddleware_ForbiddenAdminPathIncludesUserRoleInDebugLog(t *test
 	}
 	if !strings.Contains(logs.String(), `"auth_role":"user"`) {
 		t.Fatalf("expected debug log to include auth_role=user, got %q", logs.String())
+	}
+}
+
+func TestApplyAPIMiddleware_StatusIncludesAuthMetadata(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	if _, err := store.Create("status test"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	statusHandler := newStatusAPIHandler(root, store, zerolog.New(io.Discard))
+	cfg := config.Config{
+		APIAuthMode:        "required",
+		APIUserToken:       "user-token",
+		APIAdminToken:      "admin-token",
+		APIWorkspaceHeader: "Tars-Workspace-Id",
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), statusHandler, io.Discard)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	req.RemoteAddr = "192.0.2.10:5555"
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Tars-Workspace-Id", "ws-local")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		WorkspaceDir string `json:"workspace_dir"`
+		SessionCount int    `json:"session_count"`
+		WorkspaceID  string `json:"workspace_id"`
+		AuthRole     string `json:"auth_role"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode status response: %v", err)
+	}
+	if body.WorkspaceDir != root {
+		t.Fatalf("expected workspace_dir %q, got %q", root, body.WorkspaceDir)
+	}
+	if body.SessionCount != 1 {
+		t.Fatalf("expected session_count 1, got %d", body.SessionCount)
+	}
+	if body.WorkspaceID != "ws-local" {
+		t.Fatalf("expected workspace_id ws-local, got %q", body.WorkspaceID)
+	}
+	if body.AuthRole != "user" {
+		t.Fatalf("expected auth_role user, got %q", body.AuthRole)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -187,10 +188,17 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerol
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{
+		body := map[string]any{
 			"workspace_dir": workspaceDir,
 			"session_count": len(sessions),
-		})
+		}
+		if workspaceID := serverauth.WorkspaceIDFromRequest(r); workspaceID != "" {
+			body["workspace_id"] = workspaceID
+		}
+		if role := serverauth.RoleFromRequest(r); role != "" {
+			body["auth_role"] = role
+		}
+		writeJSON(w, http.StatusOK, body)
 	})
 }
 

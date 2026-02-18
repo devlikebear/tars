@@ -24,6 +24,8 @@ async function requestJSON<T>(method: string, url: string, body?: unknown): Prom
 export type StatusResponse = {
 	workspace_dir: string;
 	session_count: number;
+	workspace_id?: string;
+	auth_role?: string;
 };
 
 export async function getStatus(serverURL: string): Promise<StatusResponse> {
