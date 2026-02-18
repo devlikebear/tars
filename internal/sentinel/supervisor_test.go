@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -215,4 +216,117 @@ func TestSupervisor_PauseAndResume(t *testing.T) {
 		st := s.Status()
 		return st.SupervisionState == StateRunning && st.TargetPID > 0
 	}, "target running after resume")
+}
+
+func TestSupervisor_StartupGraceDefersProbeFailureRestart(t *testing.T) {
+	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(15 * time.Millisecond)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer probe.Close()
+
+	cmd, args, env := helperProcess("sleep")
+	s := NewSupervisor(Options{
+		TargetCommand:      cmd,
+		TargetArgs:         args,
+		TargetEnv:          env,
+		Autostart:          true,
+		ProbeURL:           probe.URL,
+		ProbeInterval:      30 * time.Millisecond,
+		ProbeTimeout:       300 * time.Millisecond,
+		ProbeFailThreshold: 2,
+		ProbeStartGrace:    250 * time.Millisecond,
+		RestartMaxAttempts: 3,
+		RestartBackoff:     10 * time.Millisecond,
+		RestartBackoffMax:  20 * time.Millisecond,
+		RestartCooldown:    300 * time.Millisecond,
+		EventBufferSize:    128,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("start supervisor: %v", err)
+	}
+	defer closeSupervisor(t, s)
+
+	waitForCondition(t, 2*time.Second, func() bool {
+		return s.Status().TargetPID > 0
+	}, "target process started")
+	initialPID := s.Status().TargetPID
+
+	time.Sleep(120 * time.Millisecond)
+	duringGrace := s.Status()
+	if duringGrace.LastRestartAt != "" {
+		t.Fatalf("expected no restart during grace window, got %+v", duringGrace)
+	}
+	if strings.TrimSpace(duringGrace.StartGraceUntil) == "" {
+		t.Fatalf("expected start_grace_until in status, got %+v", duringGrace)
+	}
+
+	waitForCondition(t, 4*time.Second, func() bool {
+		st := s.Status()
+		return strings.TrimSpace(st.LastRestartAt) != "" && st.TargetPID != 0 && st.TargetPID != initialPID
+	}, "probe failure restart after grace window")
+	waitForCondition(t, 2*time.Second, func() bool {
+		return s.Status().LastProbeDurationMS > 0
+	}, "probe duration telemetry populated")
+
+	after := s.Status()
+	if after.LastProbeDurationMS <= 0 {
+		t.Fatalf("expected probe duration telemetry, got %+v", after)
+	}
+}
+
+func TestSupervisor_EventPersistenceRestore(t *testing.T) {
+	eventsPath := filepath.Join(t.TempDir(), "events.jsonl")
+	s1 := NewSupervisor(Options{
+		Autostart:               false,
+		EventBufferSize:         32,
+		EventPersistenceEnabled: true,
+		EventStorePath:          eventsPath,
+		EventStoreMaxRecords:    100,
+		ProbeInterval:           30 * time.Millisecond,
+		ProbeTimeout:            50 * time.Millisecond,
+		ProbeFailThreshold:      2,
+		RestartMaxAttempts:      2,
+		RestartBackoff:          10 * time.Millisecond,
+		RestartBackoffMax:       20 * time.Millisecond,
+		RestartCooldown:         100 * time.Millisecond,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s1.Start(ctx); err != nil {
+		t.Fatalf("start supervisor: %v", err)
+	}
+	_ = s1.Pause()
+	_ = s1.Resume()
+	closeSupervisor(t, s1)
+
+	s2 := NewSupervisor(Options{
+		Autostart:               false,
+		EventBufferSize:         32,
+		EventPersistenceEnabled: true,
+		EventStorePath:          eventsPath,
+		EventStoreMaxRecords:    100,
+		ProbeInterval:           30 * time.Millisecond,
+		ProbeTimeout:            50 * time.Millisecond,
+		ProbeFailThreshold:      2,
+		RestartMaxAttempts:      2,
+		RestartBackoff:          10 * time.Millisecond,
+		RestartBackoffMax:       20 * time.Millisecond,
+		RestartCooldown:         100 * time.Millisecond,
+	})
+	status := s2.Status()
+	if !status.EventPersistenceEnabled {
+		t.Fatalf("expected event persistence enabled in status")
+	}
+	if status.EventsRestored <= 0 {
+		t.Fatalf("expected events restored > 0, got %+v", status)
+	}
+	if strings.TrimSpace(status.LastEventRestoreAt) == "" {
+		t.Fatalf("expected last_event_restore_at, got %+v", status)
+	}
+	if len(s2.Events(10)) == 0 {
+		t.Fatalf("expected restored events in ring buffer")
+	}
 }

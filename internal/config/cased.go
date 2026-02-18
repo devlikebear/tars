@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -12,41 +13,49 @@ import (
 const DefaultCasedConfigFilename = "config/cased.yaml"
 
 type CasedConfig struct {
-	APIAddr             string
-	APIAuthMode         string
-	APIAuthToken        string
-	APIUserToken        string
-	APIAdminToken       string
-	TargetCommand       string
-	TargetArgs          []string
-	TargetWorkingDir    string
-	TargetEnv           map[string]string
-	ProbeURL            string
-	ProbeIntervalMS     int
-	ProbeTimeoutMS      int
-	ProbeFailThreshold  int
-	RestartMaxAttempts  int
-	RestartBackoffMS    int
-	RestartBackoffMaxMS int
-	RestartCooldownMS   int
-	EventBufferSize     int
-	Autostart           bool
+	APIAddr                 string
+	APIAuthMode             string
+	APIAuthToken            string
+	APIUserToken            string
+	APIAdminToken           string
+	TargetCommand           string
+	TargetArgs              []string
+	TargetWorkingDir        string
+	TargetEnv               map[string]string
+	ProbeURL                string
+	ProbeIntervalMS         int
+	ProbeTimeoutMS          int
+	ProbeFailThreshold      int
+	ProbeStartGraceMS       int
+	RestartMaxAttempts      int
+	RestartBackoffMS        int
+	RestartBackoffMaxMS     int
+	RestartCooldownMS       int
+	EventBufferSize         int
+	EventPersistenceEnabled bool
+	EventStorePath          string
+	EventStoreMaxRecords    int
+	Autostart               bool
 }
 
 func DefaultCased() CasedConfig {
 	return CasedConfig{
-		APIAddr:             "127.0.0.1:43181",
-		APIAuthMode:         "external-required",
-		ProbeURL:            "http://127.0.0.1:43180/v1/healthz",
-		ProbeIntervalMS:     5000,
-		ProbeTimeoutMS:      1000,
-		ProbeFailThreshold:  3,
-		RestartMaxAttempts:  3,
-		RestartBackoffMS:    1000,
-		RestartBackoffMaxMS: 10000,
-		RestartCooldownMS:   60000,
-		EventBufferSize:     200,
-		Autostart:           true,
+		APIAddr:                 "127.0.0.1:43181",
+		APIAuthMode:             "external-required",
+		ProbeURL:                "http://127.0.0.1:43180/v1/healthz",
+		ProbeIntervalMS:         5000,
+		ProbeTimeoutMS:          1000,
+		ProbeFailThreshold:      3,
+		ProbeStartGraceMS:       15000,
+		RestartMaxAttempts:      3,
+		RestartBackoffMS:        1000,
+		RestartBackoffMaxMS:     10000,
+		RestartCooldownMS:       60000,
+		EventBufferSize:         200,
+		EventPersistenceEnabled: true,
+		EventStorePath:          filepath.Join(".", "workspace", "_shared", "sentinel", "events.jsonl"),
+		EventStoreMaxRecords:    5000,
+		Autostart:               true,
 	}
 }
 
@@ -149,6 +158,9 @@ func applyCasedEnv(cfg *CasedConfig) {
 	if v := firstNonEmpty(os.Getenv("CASED_PROBE_FAIL_THRESHOLD"), os.Getenv("TARSD_CASED_PROBE_FAIL_THRESHOLD")); v != "" {
 		cfg.ProbeFailThreshold = parsePositiveInt(v, cfg.ProbeFailThreshold)
 	}
+	if v := firstNonEmpty(os.Getenv("CASED_PROBE_START_GRACE_MS"), os.Getenv("TARSD_CASED_PROBE_START_GRACE_MS")); v != "" {
+		cfg.ProbeStartGraceMS = parsePositiveInt(v, cfg.ProbeStartGraceMS)
+	}
 	if v := firstNonEmpty(os.Getenv("CASED_RESTART_MAX_ATTEMPTS"), os.Getenv("TARSD_CASED_RESTART_MAX_ATTEMPTS")); v != "" {
 		cfg.RestartMaxAttempts = parsePositiveInt(v, cfg.RestartMaxAttempts)
 	}
@@ -163,6 +175,15 @@ func applyCasedEnv(cfg *CasedConfig) {
 	}
 	if v := firstNonEmpty(os.Getenv("CASED_EVENT_BUFFER_SIZE"), os.Getenv("TARSD_CASED_EVENT_BUFFER_SIZE")); v != "" {
 		cfg.EventBufferSize = parsePositiveInt(v, cfg.EventBufferSize)
+	}
+	if v := firstNonEmpty(os.Getenv("CASED_EVENT_PERSISTENCE_ENABLED"), os.Getenv("TARSD_CASED_EVENT_PERSISTENCE_ENABLED")); v != "" {
+		cfg.EventPersistenceEnabled = parseBool(v, cfg.EventPersistenceEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("CASED_EVENT_STORE_PATH"), os.Getenv("TARSD_CASED_EVENT_STORE_PATH")); v != "" {
+		cfg.EventStorePath = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("CASED_EVENT_STORE_MAX_RECORDS"), os.Getenv("TARSD_CASED_EVENT_STORE_MAX_RECORDS")); v != "" {
+		cfg.EventStoreMaxRecords = parsePositiveInt(v, cfg.EventStoreMaxRecords)
 	}
 	if v := firstNonEmpty(os.Getenv("CASED_AUTOSTART"), os.Getenv("TARSD_CASED_AUTOSTART")); v != "" {
 		cfg.Autostart = parseBool(v, cfg.Autostart)
@@ -197,6 +218,8 @@ func applyCasedPair(cfg *CasedConfig, key, value string) {
 		cfg.ProbeTimeoutMS = parsePositiveInt(value, cfg.ProbeTimeoutMS)
 	case "probe_fail_threshold":
 		cfg.ProbeFailThreshold = parsePositiveInt(value, cfg.ProbeFailThreshold)
+	case "probe_start_grace_ms":
+		cfg.ProbeStartGraceMS = parsePositiveInt(value, cfg.ProbeStartGraceMS)
 	case "restart_max_attempts":
 		cfg.RestartMaxAttempts = parsePositiveInt(value, cfg.RestartMaxAttempts)
 	case "restart_backoff_ms":
@@ -207,6 +230,12 @@ func applyCasedPair(cfg *CasedConfig, key, value string) {
 		cfg.RestartCooldownMS = parsePositiveInt(value, cfg.RestartCooldownMS)
 	case "event_buffer_size":
 		cfg.EventBufferSize = parsePositiveInt(value, cfg.EventBufferSize)
+	case "event_persistence_enabled":
+		cfg.EventPersistenceEnabled = parseBool(value, cfg.EventPersistenceEnabled)
+	case "event_store_path":
+		cfg.EventStorePath = strings.TrimSpace(value)
+	case "event_store_max_records":
+		cfg.EventStoreMaxRecords = parsePositiveInt(value, cfg.EventStoreMaxRecords)
 	case "autostart":
 		cfg.Autostart = parseBool(value, cfg.Autostart)
 	}
@@ -241,6 +270,9 @@ func applyCasedDefaults(cfg *CasedConfig) {
 	if cfg.ProbeFailThreshold <= 0 {
 		cfg.ProbeFailThreshold = 3
 	}
+	if cfg.ProbeStartGraceMS <= 0 {
+		cfg.ProbeStartGraceMS = 15000
+	}
 	if cfg.RestartMaxAttempts <= 0 {
 		cfg.RestartMaxAttempts = 3
 	}
@@ -255,6 +287,13 @@ func applyCasedDefaults(cfg *CasedConfig) {
 	}
 	if cfg.EventBufferSize <= 0 {
 		cfg.EventBufferSize = 200
+	}
+	cfg.EventStorePath = strings.TrimSpace(cfg.EventStorePath)
+	if cfg.EventStorePath == "" {
+		cfg.EventStorePath = filepath.Join(".", "workspace", "_shared", "sentinel", "events.jsonl")
+	}
+	if cfg.EventStoreMaxRecords <= 0 {
+		cfg.EventStoreMaxRecords = 5000
 	}
 	if len(cfg.TargetEnv) > 0 {
 		normalized := make(map[string]string, len(cfg.TargetEnv))

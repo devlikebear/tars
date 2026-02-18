@@ -21,6 +21,7 @@ probe_url: http://127.0.0.1:43180/v1/healthz
 probe_interval_ms: 5000
 probe_timeout_ms: 1000
 probe_fail_threshold: 3
+probe_start_grace_ms: 15000
 
 # Restart policy: 3 attempts with exponential backoff, then cool-down
 restart_max_attempts: 3
@@ -30,5 +31,8 @@ restart_cooldown_ms: 60000
 
 # In-memory event ring buffer
 event_buffer_size: 200
+event_persistence_enabled: true
+event_store_path: ./workspace/_shared/sentinel/events.jsonl
+event_store_max_records: 5000
 
 autostart: true

@@ -15,6 +15,7 @@ type Supervisor struct {
 
 	nowFn      func() time.Time
 	httpClient *http.Client
+	eventStore eventStore
 
 	mu                  sync.RWMutex
 	started             bool
@@ -36,11 +37,17 @@ type Supervisor struct {
 	lastRestartAt       time.Time
 	nextStartAt         time.Time
 	lastProbeAt         time.Time
+	lastProbeDuration   time.Duration
+	startGraceUntil     time.Time
 	probeFailures       int
 	manualRestart       bool
 	restartOnExitReason string
 	events              []Event
 	eventSeq            int64
+	eventsRestored      int
+	lastEventPersistAt  time.Time
+	lastEventRestoreAt  time.Time
+	lastEventRestoreErr string
 
 	loopCancel context.CancelFunc
 	wg         sync.WaitGroup
@@ -74,6 +81,9 @@ func NewSupervisor(opts Options) *Supervisor {
 	if opts.EventBufferSize <= 0 {
 		opts.EventBufferSize = 200
 	}
+	if opts.EventStoreMaxRecords <= 0 {
+		opts.EventStoreMaxRecords = 5000
+	}
 	nowFn := opts.Now
 	if nowFn == nil {
 		nowFn = time.Now
@@ -86,13 +96,43 @@ func NewSupervisor(opts Options) *Supervisor {
 	if opts.Autostart {
 		state = StateStarting
 	}
-	return &Supervisor{
+	s := &Supervisor{
 		opts:       opts,
 		nowFn:      nowFn,
 		httpClient: client,
+		eventStore: newEventStore(opts.EventStorePath, opts.EventStoreMaxRecords),
 		state:      state,
 		events:     make([]Event, 0, opts.EventBufferSize),
 	}
+	s.restoreEvents()
+	return s
+}
+
+func (s *Supervisor) restoreEvents() {
+	if s == nil || !s.opts.EventPersistenceEnabled || !s.eventStore.enabled() {
+		return
+	}
+	events, err := s.eventStore.read()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastEventRestoreAt = s.nowFn().UTC()
+	if err != nil {
+		s.lastEventRestoreErr = strings.TrimSpace(err.Error())
+		return
+	}
+	s.lastEventRestoreErr = ""
+	if len(events) > s.opts.EventBufferSize {
+		events = events[len(events)-s.opts.EventBufferSize:]
+	}
+	s.events = append([]Event(nil), events...)
+	var maxID int64
+	for _, evt := range s.events {
+		if evt.ID > maxID {
+			maxID = evt.ID
+		}
+	}
+	s.eventSeq = maxID
+	s.eventsRestored = len(s.events)
 }
 
 func (s *Supervisor) Start(ctx context.Context) error {
@@ -214,8 +254,9 @@ func (s *Supervisor) tick() {
 	s.lastProbeAt = now
 	s.mu.Unlock()
 
+	startedAt := s.nowFn()
 	err := probeHealth(s.httpClient, s.opts.ProbeURL, s.opts.ProbeTimeout)
-	s.handleProbeResult(err)
+	s.handleProbeResult(err, s.nowFn().Sub(startedAt))
 }
 
 func (s *Supervisor) startProcess(reason string) {
@@ -251,16 +292,20 @@ func (s *Supervisor) startProcess(reason string) {
 	s.nextStartAt = time.Time{}
 	s.state = StateRunning
 	s.probeFailures = 0
+	s.lastProbeDuration = 0
+	s.lastProbeAt = time.Time{}
+	s.startGraceUntil = now.Add(s.opts.ProbeStartGrace)
 	s.appendEventLocked("info", EventStart, "target started", map[string]any{"pid": pid, "reason": reason})
 }
 
-func (s *Supervisor) handleProbeResult(err error) {
+func (s *Supervisor) handleProbeResult(err error, duration time.Duration) {
 	now := s.nowFn().UTC()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed || s.targetPID == 0 || s.paused {
 		return
 	}
+	s.lastProbeDuration = duration
 	if err == nil {
 		s.probeFailures = 0
 		s.healthLastError = ""
@@ -269,6 +314,12 @@ func (s *Supervisor) handleProbeResult(err error) {
 			s.appendEventLocked("info", EventHealthOK, "health probe recovered", nil)
 		}
 		s.healthOK = true
+		return
+	}
+	if !s.startGraceUntil.IsZero() && now.Before(s.startGraceUntil) {
+		s.healthOK = false
+		s.healthLastError = err.Error()
+		s.probeFailures = 0
 		return
 	}
 	s.healthOK = false
@@ -305,6 +356,7 @@ func (s *Supervisor) handleProcessExit(ex processExit) {
 	s.targetLastExitCode = ex.exitCode
 	s.hasLastExitCode = true
 	s.state = StateStopped
+	s.startGraceUntil = time.Time{}
 	meta := map[string]any{"exit_code": ex.exitCode}
 	if ex.err != nil {
 		meta["error"] = ex.err.Error()
@@ -435,15 +487,20 @@ func (s *Supervisor) Status() Status {
 
 func (s *Supervisor) statusLocked() Status {
 	status := Status{
-		Enabled:            s.opts.Enabled,
-		SupervisionState:   s.state,
-		Target:             TargetSummary{Command: s.opts.TargetCommand, Args: append([]string(nil), s.opts.TargetArgs...), Cwd: s.opts.TargetWorkingDir},
-		TargetPID:          s.targetPID,
-		HealthOK:           s.healthOK,
-		HealthLastError:    s.healthLastError,
-		RestartAttempt:     s.restartAttempt,
-		RestartMaxAttempts: s.opts.RestartMaxAttempts,
-		EventCount:         len(s.events),
+		Enabled:                 s.opts.Enabled,
+		SupervisionState:        s.state,
+		Target:                  TargetSummary{Command: s.opts.TargetCommand, Args: append([]string(nil), s.opts.TargetArgs...), Cwd: s.opts.TargetWorkingDir},
+		TargetPID:               s.targetPID,
+		HealthOK:                s.healthOK,
+		HealthLastError:         s.healthLastError,
+		RestartAttempt:          s.restartAttempt,
+		RestartMaxAttempts:      s.opts.RestartMaxAttempts,
+		ConsecutiveFailures:     s.probeFailures,
+		LastProbeDurationMS:     durationMillisCeil(s.lastProbeDuration),
+		EventPersistenceEnabled: s.opts.EventPersistenceEnabled,
+		EventsRestored:          s.eventsRestored,
+		LastEventRestoreError:   strings.TrimSpace(s.lastEventRestoreErr),
+		EventCount:              len(s.events),
 	}
 	if !s.targetStartedAt.IsZero() {
 		status.TargetStartedAt = s.targetStartedAt.Format(time.RFC3339)
@@ -463,6 +520,15 @@ func (s *Supervisor) statusLocked() Status {
 	}
 	if !s.lastRestartAt.IsZero() {
 		status.LastRestartAt = s.lastRestartAt.Format(time.RFC3339)
+	}
+	if !s.startGraceUntil.IsZero() {
+		status.StartGraceUntil = s.startGraceUntil.Format(time.RFC3339)
+	}
+	if !s.lastEventPersistAt.IsZero() {
+		status.LastEventPersistAt = s.lastEventPersistAt.UTC().Format(time.RFC3339)
+	}
+	if !s.lastEventRestoreAt.IsZero() {
+		status.LastEventRestoreAt = s.lastEventRestoreAt.UTC().Format(time.RFC3339)
 	}
 	return status
 }
@@ -557,4 +623,20 @@ func (s *Supervisor) appendEventLocked(level string, eventType EventType, messag
 	if len(s.events) > s.opts.EventBufferSize {
 		s.events = s.events[len(s.events)-s.opts.EventBufferSize:]
 	}
+	if s.opts.EventPersistenceEnabled && s.eventStore.enabled() {
+		if err := s.eventStore.write(s.events); err == nil {
+			s.lastEventPersistAt = s.nowFn().UTC()
+		}
+	}
+}
+
+func durationMillisCeil(d time.Duration) int64 {
+	if d <= 0 {
+		return 0
+	}
+	ms := d.Milliseconds()
+	if ms <= 0 {
+		return 1
+	}
+	return ms
 }

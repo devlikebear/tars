@@ -47,39 +47,51 @@ type TargetSummary struct {
 }
 
 type Status struct {
-	Enabled            bool             `json:"enabled"`
-	SupervisionState   SupervisionState `json:"supervision_state"`
-	Target             TargetSummary    `json:"target"`
-	TargetPID          int              `json:"target_pid,omitempty"`
-	TargetStartedAt    string           `json:"target_started_at,omitempty"`
-	TargetLastExitAt   string           `json:"target_last_exit_at,omitempty"`
-	TargetLastExitCode *int             `json:"target_last_exit_code,omitempty"`
-	HealthOK           bool             `json:"health_ok"`
-	HealthLastOKAt     string           `json:"health_last_ok_at,omitempty"`
-	HealthLastError    string           `json:"health_last_error,omitempty"`
-	RestartAttempt     int              `json:"restart_attempt"`
-	RestartMaxAttempts int              `json:"restart_max_attempts"`
-	CooldownUntil      string           `json:"cooldown_until,omitempty"`
-	LastRestartAt      string           `json:"last_restart_at,omitempty"`
-	EventCount         int              `json:"event_count"`
+	Enabled                 bool             `json:"enabled"`
+	SupervisionState        SupervisionState `json:"supervision_state"`
+	Target                  TargetSummary    `json:"target"`
+	TargetPID               int              `json:"target_pid,omitempty"`
+	TargetStartedAt         string           `json:"target_started_at,omitempty"`
+	TargetLastExitAt        string           `json:"target_last_exit_at,omitempty"`
+	TargetLastExitCode      *int             `json:"target_last_exit_code,omitempty"`
+	HealthOK                bool             `json:"health_ok"`
+	HealthLastOKAt          string           `json:"health_last_ok_at,omitempty"`
+	HealthLastError         string           `json:"health_last_error,omitempty"`
+	RestartAttempt          int              `json:"restart_attempt"`
+	RestartMaxAttempts      int              `json:"restart_max_attempts"`
+	CooldownUntil           string           `json:"cooldown_until,omitempty"`
+	LastRestartAt           string           `json:"last_restart_at,omitempty"`
+	StartGraceUntil         string           `json:"start_grace_until,omitempty"`
+	ConsecutiveFailures     int              `json:"consecutive_failures"`
+	LastProbeDurationMS     int64            `json:"last_probe_duration_ms"`
+	EventPersistenceEnabled bool             `json:"event_persistence_enabled"`
+	EventsRestored          int              `json:"events_restored"`
+	LastEventPersistAt      string           `json:"last_event_persist_at,omitempty"`
+	LastEventRestoreAt      string           `json:"last_event_restore_at,omitempty"`
+	LastEventRestoreError   string           `json:"last_event_restore_error,omitempty"`
+	EventCount              int              `json:"event_count"`
 }
 
 type Options struct {
-	Enabled            bool
-	TargetCommand      string
-	TargetArgs         []string
-	TargetWorkingDir   string
-	TargetEnv          map[string]string
-	ProbeURL           string
-	ProbeInterval      time.Duration
-	ProbeTimeout       time.Duration
-	ProbeFailThreshold int
-	RestartMaxAttempts int
-	RestartBackoff     time.Duration
-	RestartBackoffMax  time.Duration
-	RestartCooldown    time.Duration
-	EventBufferSize    int
-	Autostart          bool
-	Now                func() time.Time
-	HTTPClient         *http.Client
+	Enabled                 bool
+	TargetCommand           string
+	TargetArgs              []string
+	TargetWorkingDir        string
+	TargetEnv               map[string]string
+	ProbeURL                string
+	ProbeInterval           time.Duration
+	ProbeTimeout            time.Duration
+	ProbeFailThreshold      int
+	ProbeStartGrace         time.Duration
+	RestartMaxAttempts      int
+	RestartBackoff          time.Duration
+	RestartBackoffMax       time.Duration
+	RestartCooldown         time.Duration
+	EventBufferSize         int
+	EventPersistenceEnabled bool
+	EventStorePath          string
+	EventStoreMaxRecords    int
+	Autostart               bool
+	Now                     func() time.Time
+	HTTPClient              *http.Client
 }

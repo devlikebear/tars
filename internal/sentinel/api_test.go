@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -12,6 +13,7 @@ import (
 func newRunningSupervisor(t *testing.T) *Supervisor {
 	t.Helper()
 	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(5 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(probe.Close)
@@ -25,6 +27,7 @@ func newRunningSupervisor(t *testing.T) *Supervisor {
 		ProbeInterval:      25 * time.Millisecond,
 		ProbeTimeout:       200 * time.Millisecond,
 		ProbeFailThreshold: 3,
+		ProbeStartGrace:    750 * time.Millisecond,
 		RestartMaxAttempts: 3,
 		RestartBackoff:     10 * time.Millisecond,
 		RestartBackoffMax:  20 * time.Millisecond,
@@ -48,6 +51,9 @@ func newRunningSupervisor(t *testing.T) *Supervisor {
 
 func TestAPIHandler_StatusAndEvents(t *testing.T) {
 	s := newRunningSupervisor(t)
+	waitForCondition(t, 2*time.Second, func() bool {
+		return s.Status().LastProbeDurationMS > 0
+	}, "probe duration telemetry populated")
 	h := NewAPIHandler(s)
 
 	statusRec := httptest.NewRecorder()
@@ -65,6 +71,12 @@ func TestAPIHandler_StatusAndEvents(t *testing.T) {
 	}
 	if statusPayload.TargetPID == 0 {
 		t.Fatalf("expected target pid in status payload: %+v", statusPayload)
+	}
+	if strings.TrimSpace(statusPayload.StartGraceUntil) == "" {
+		t.Fatalf("expected start_grace_until telemetry, payload=%+v", statusPayload)
+	}
+	if statusPayload.LastProbeDurationMS <= 0 {
+		t.Fatalf("expected last_probe_duration_ms telemetry, payload=%+v", statusPayload)
 	}
 
 	eventsRec := httptest.NewRecorder()

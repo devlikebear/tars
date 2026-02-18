@@ -42,8 +42,20 @@ func TestLoadCased_DefaultsAndEnvOverride(t *testing.T) {
 	if cfg.ProbeIntervalMS != 1500 {
 		t.Fatalf("expected probe_interval_ms=1500, got %d", cfg.ProbeIntervalMS)
 	}
+	if cfg.ProbeStartGraceMS != 15000 {
+		t.Fatalf("expected default probe_start_grace_ms=15000, got %d", cfg.ProbeStartGraceMS)
+	}
 	if cfg.Autostart {
 		t.Fatalf("expected autostart=false from env")
+	}
+	if !cfg.EventPersistenceEnabled {
+		t.Fatalf("expected event_persistence_enabled=true by default")
+	}
+	if cfg.EventStoreMaxRecords != 5000 {
+		t.Fatalf("expected default event_store_max_records=5000, got %d", cfg.EventStoreMaxRecords)
+	}
+	if cfg.EventStorePath == "" {
+		t.Fatalf("expected default event_store_path")
 	}
 }
 
@@ -58,8 +70,12 @@ func TestLoadCased_YAMLAndEnvPrecedence(t *testing.T) {
 		"target_env_json: '{\"FOO\":\"BAR\"}'",
 		"probe_url: http://127.0.0.1:43180/v1/healthz",
 		"probe_fail_threshold: 5",
+		"probe_start_grace_ms: 25000",
 		"restart_max_attempts: 4",
 		"event_buffer_size: 512",
+		"event_persistence_enabled: false",
+		"event_store_path: ./workspace/_shared/sentinel/events.jsonl",
+		"event_store_max_records: 777",
 		"autostart: true",
 	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -93,6 +109,50 @@ func TestLoadCased_YAMLAndEnvPrecedence(t *testing.T) {
 	}
 	if cfg.EventBufferSize != 200 {
 		t.Fatalf("expected env override event_buffer_size=200, got %d", cfg.EventBufferSize)
+	}
+	if cfg.ProbeStartGraceMS != 25000 {
+		t.Fatalf("expected probe_start_grace_ms from yaml, got %d", cfg.ProbeStartGraceMS)
+	}
+	if cfg.EventPersistenceEnabled {
+		t.Fatalf("expected event_persistence_enabled=false from yaml")
+	}
+	if cfg.EventStorePath != "./workspace/_shared/sentinel/events.jsonl" {
+		t.Fatalf("unexpected event_store_path: %q", cfg.EventStorePath)
+	}
+	if cfg.EventStoreMaxRecords != 777 {
+		t.Fatalf("expected event_store_max_records=777, got %d", cfg.EventStoreMaxRecords)
+	}
+}
+
+func TestLoadCased_EventPersistenceEnvOverridesYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cased.yaml")
+	content := strings.Join([]string{
+		"target_command: ./bin/tarsd",
+		"event_persistence_enabled: false",
+		"event_store_path: ./yaml-events.jsonl",
+		"event_store_max_records: 200",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("CASED_EVENT_PERSISTENCE_ENABLED", "true")
+	t.Setenv("CASED_EVENT_STORE_PATH", "./env-events.jsonl")
+	t.Setenv("CASED_EVENT_STORE_MAX_RECORDS", "1000")
+
+	cfg, err := LoadCased(path)
+	if err != nil {
+		t.Fatalf("load cased config: %v", err)
+	}
+	if !cfg.EventPersistenceEnabled {
+		t.Fatalf("expected env override event_persistence_enabled=true")
+	}
+	if cfg.EventStorePath != "./env-events.jsonl" {
+		t.Fatalf("expected env override event_store_path, got %q", cfg.EventStorePath)
+	}
+	if cfg.EventStoreMaxRecords != 1000 {
+		t.Fatalf("expected env override event_store_max_records=1000, got %d", cfg.EventStoreMaxRecords)
 	}
 }
 
