@@ -1,3 +1,5 @@
+import {tarsHeaders} from './clientContext.js';
+
 function apiURL(serverURL: string, path: string): string {
 	return `${serverURL.replace(/\/+$/, '')}${path}`;
 }
@@ -5,7 +7,7 @@ function apiURL(serverURL: string, path: string): string {
 async function requestJSON<T>(method: string, url: string, body?: unknown): Promise<T> {
 	const resp = await fetch(url, {
 		method,
-		headers: body === undefined ? undefined : {'Content-Type': 'application/json'},
+		headers: body === undefined ? tarsHeaders() : tarsHeaders({'Content-Type': 'application/json'}),
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
 	const text = await resp.text();
@@ -39,4 +41,3 @@ export async function runHeartbeatOnce(serverURL: string): Promise<string> {
 	const payload = await requestJSON<{response: string}>('POST', apiURL(serverURL, '/v1/heartbeat/run-once'));
 	return payload.response.trim();
 }
-

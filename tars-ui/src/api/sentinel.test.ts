@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {configureAPIClientContext} from './clientContext.js';
 import {getSentinelStatus, listSentinelEvents, pauseSentinel, restartSentinel, resumeSentinel} from './sentinel.js';
 
 function installFetchMock(
@@ -13,7 +14,13 @@ function installFetchMock(
 }
 
 test('sentinel api decodes status/events and control responses', async () => {
-	const restore = installFetchMock(async (input) => {
+	configureAPIClientContext({
+		casedApiToken: 'cased-token',
+		workspaceId: 'ws-dev',
+	});
+	let capturedHeaders: RequestInit['headers'] | undefined;
+	const restore = installFetchMock(async (input, init) => {
+		capturedHeaders = init?.headers;
 		const url = String(input);
 		if (url.endsWith('/v1/sentinel/status')) {
 			return new Response(JSON.stringify({
@@ -57,7 +64,11 @@ test('sentinel api decodes status/events and control responses', async () => {
 		assert.equal(paused.enabled, true);
 		const resumed = await resumeSentinel('http://127.0.0.1:43181');
 		assert.equal(resumed.enabled, true);
+		const headers = capturedHeaders as Record<string, string>;
+		assert.equal(headers.Authorization, 'Bearer cased-token');
+		assert.equal(headers['Tars-Workspace-Id'], 'ws-dev');
 	} finally {
 		restore();
+		configureAPIClientContext({});
 	}
 });

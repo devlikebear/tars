@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useReducer, useRef, useState} from 'react';
 import {Box, render, useApp, useInput} from 'ink';
 import {ChatSSEEvent} from './api/chat.js';
+import {configureAPIClientContext} from './api/clientContext.js';
 import {NotificationEvent, watchNotifications} from './api/events.js';
 import {executeInputCommand} from './chat/commandExecutor.js';
 import {sendChatMessage} from './chat/sendChat.js';
@@ -42,6 +43,14 @@ function notificationLine(item: NotificationItem): string {
 function App(): React.JSX.Element {
 	const initial = useMemo(() => parseArgs(process.argv.slice(2)), []);
 	const {exit} = useApp();
+
+	useEffect(() => {
+		configureAPIClientContext({
+			apiToken: initial.apiToken,
+			casedApiToken: initial.casedApiToken,
+			workspaceId: initial.workspaceId,
+		});
+	}, [initial.apiToken, initial.casedApiToken, initial.workspaceId]);
 
 	const [sessionID, setSessionID] = useState<string>(initial.sessionId);
 	const [input, setInput] = useState<string>('');

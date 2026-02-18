@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {configureAPIClientContext} from './clientContext.js';
 import {decodeSSEBuffer, streamChat} from './chat.js';
 
 test('decodeSSEBuffer parses status/delta/done events', () => {
@@ -139,5 +140,44 @@ test('streamChat forwards abort signal to fetch', async () => {
 		assert.equal(capturedSignal, controller.signal);
 	} finally {
 		globalThis.fetch = originalFetch;
+	}
+});
+
+test('streamChat attaches auth and workspace headers when configured', async () => {
+	configureAPIClientContext({
+		apiToken: 'tars-token',
+		workspaceId: 'ws-dev',
+	});
+	const stream = new ReadableStream<Uint8Array>({
+		start(controller) {
+			controller.enqueue(new TextEncoder().encode('data: {"type":"done","session_id":"sess-5"}\n\n'));
+			controller.close();
+		},
+	});
+	let capturedHeaders: HeadersInit | undefined;
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = (async (_input, init) => {
+		capturedHeaders = init?.headers;
+		return new Response(stream, {
+			status: 200,
+			headers: {'Content-Type': 'text/event-stream'},
+		});
+	}) as typeof fetch;
+
+	try {
+		await streamChat({
+			serverUrl: 'http://127.0.0.1:43180',
+			sessionId: '',
+			message: 'hi',
+			onStatus: () => {},
+			onDelta: () => {},
+		});
+		const headers = capturedHeaders as Record<string, string>;
+		assert.equal(headers.Authorization, 'Bearer tars-token');
+		assert.equal(headers['Tars-Workspace-Id'], 'ws-dev');
+		assert.equal(headers['Content-Type'], 'application/json');
+	} finally {
+		globalThis.fetch = originalFetch;
+		configureAPIClientContext({});
 	}
 });

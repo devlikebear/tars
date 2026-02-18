@@ -1,3 +1,5 @@
+import {tarsHeaders} from './clientContext.js';
+
 export type ChatSSEEvent = {
 	type?: string;
 	text?: string;
@@ -123,7 +125,7 @@ export async function streamChat(params: StreamChatParams): Promise<StreamChatRe
 	try {
 		resp = await fetch(endpoint, {
 			method: 'POST',
-			headers: {'Content-Type': 'application/json'},
+			headers: tarsHeaders({'Content-Type': 'application/json'}),
 			body: JSON.stringify(payload),
 			signal: params.signal,
 		});

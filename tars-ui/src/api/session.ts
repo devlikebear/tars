@@ -1,4 +1,5 @@
 import {SessionHistoryItem, SessionSummary} from '../types.js';
+import {tarsHeaders} from './clientContext.js';
 
 function apiURL(serverURL: string, path: string): string {
 	return `${serverURL.replace(/\/+$/, '')}${path}`;
@@ -7,7 +8,7 @@ function apiURL(serverURL: string, path: string): string {
 async function requestJSON<T>(method: string, url: string, body?: unknown): Promise<T> {
 	const resp = await fetch(url, {
 		method,
-		headers: body === undefined ? undefined : {'Content-Type': 'application/json'},
+		headers: body === undefined ? tarsHeaders() : tarsHeaders({'Content-Type': 'application/json'}),
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
 	const text = await resp.text();
@@ -42,7 +43,7 @@ export async function getHistory(serverURL: string, sessionID: string): Promise<
 export async function exportSession(serverURL: string, sessionID: string): Promise<string> {
 	const id = encodeURIComponent(sessionID.trim());
 	const url = apiURL(serverURL, `/v1/sessions/${id}/export`);
-	const resp = await fetch(url, {method: 'POST'});
+	const resp = await fetch(url, {method: 'POST', headers: tarsHeaders()});
 	const text = await resp.text();
 	if (!resp.ok) {
 		throw new Error(`POST ${url} status ${resp.status}: ${text.trim()}`);
@@ -54,4 +55,3 @@ export async function searchSessions(serverURL: string, keyword: string): Promis
 	const q = encodeURIComponent(keyword);
 	return requestJSON<SessionSummary[]>('GET', apiURL(serverURL, `/v1/sessions/search?q=${q}`));
 }
-

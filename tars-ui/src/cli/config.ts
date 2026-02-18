@@ -4,6 +4,9 @@ type CliConfig = {
 	serverUrl?: string;
 	casedServerUrl?: string;
 	sessionId?: string;
+	apiToken?: string;
+	casedApiToken?: string;
+	workspaceId?: string;
 	verbose?: boolean;
 };
 
@@ -50,6 +53,15 @@ export function loadCliConfig(path: string): CliConfig {
 			break;
 		case 'session_id':
 			out.sessionId = value;
+			break;
+		case 'api_token':
+			out.apiToken = value;
+			break;
+		case 'cased_api_token':
+			out.casedApiToken = value;
+			break;
+		case 'workspace_id':
+			out.workspaceId = value;
 			break;
 		case 'verbose': {
 			const parsed = parseBool(value);

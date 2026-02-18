@@ -1,11 +1,12 @@
 import {AgentDescriptor, AgentRunSummary, GatewayStatus} from '../types.js';
+import {tarsHeaders} from './clientContext.js';
 
 function apiURL(serverURL: string, path: string): string {
 	return `${serverURL.replace(/\/+$/, '')}${path}`;
 }
 
 async function requestJSON<T>(method: string, url: string): Promise<T> {
-	const resp = await fetch(url, {method});
+	const resp = await fetch(url, {method, headers: tarsHeaders()});
 	const text = await resp.text();
 	if (!resp.ok) {
 		throw new Error(`${method} ${url} status ${resp.status}: ${text.trim()}`);
@@ -20,7 +21,7 @@ async function requestJSON<T>(method: string, url: string): Promise<T> {
 async function requestJSONWithBody<T>(method: string, url: string, payload: unknown): Promise<T> {
 	const resp = await fetch(url, {
 		method,
-		headers: {'Content-Type': 'application/json'},
+		headers: tarsHeaders({'Content-Type': 'application/json'}),
 		body: JSON.stringify(payload),
 	});
 	const text = await resp.text();

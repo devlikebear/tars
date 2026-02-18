@@ -1,11 +1,12 @@
 import {SentinelEvent, SentinelStatus} from '../types.js';
+import {casedHeaders} from './clientContext.js';
 
 function apiURL(serverURL: string, path: string): string {
 	return `${serverURL.replace(/\/+$/, '')}${path}`;
 }
 
 async function requestJSON<T>(method: string, url: string): Promise<T> {
-	const resp = await fetch(url, {method});
+	const resp = await fetch(url, {method, headers: casedHeaders()});
 	const text = await resp.text();
 	if (!resp.ok) {
 		throw new Error(`${method} ${url} status ${resp.status}: ${text.trim()}`);

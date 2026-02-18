@@ -4,6 +4,9 @@ export type CliOptions = {
 	serverUrl: string;
 	casedServerUrl: string;
 	sessionId: string;
+	apiToken: string;
+	casedApiToken: string;
+	workspaceId: string;
 	verbose: boolean;
 };
 
@@ -24,6 +27,9 @@ export function parseArgs(argv: string[]): CliOptions {
 	let serverUrl = 'http://127.0.0.1:43180';
 	let casedServerUrl = 'http://127.0.0.1:43181';
 	let sessionId = '';
+	let apiToken = '';
+	let casedApiToken = '';
+	let workspaceId = '';
 	let verbose = false;
 	const configPath = resolveConfigPath(argv);
 	if (configPath !== '') {
@@ -36,6 +42,15 @@ export function parseArgs(argv: string[]): CliOptions {
 		}
 		if ((fromFile.sessionId ?? '').trim() !== '') {
 			sessionId = fromFile.sessionId!.trim();
+		}
+		if ((fromFile.apiToken ?? '').trim() !== '') {
+			apiToken = fromFile.apiToken!.trim();
+		}
+		if ((fromFile.casedApiToken ?? '').trim() !== '') {
+			casedApiToken = fromFile.casedApiToken!.trim();
+		}
+		if ((fromFile.workspaceId ?? '').trim() !== '') {
+			workspaceId = fromFile.workspaceId!.trim();
 		}
 		if (typeof fromFile.verbose === 'boolean') {
 			verbose = fromFile.verbose;
@@ -74,6 +89,33 @@ export function parseArgs(argv: string[]): CliOptions {
 		}
 		if (arg.startsWith('--session=')) {
 			sessionId = arg.slice('--session='.length);
+			continue;
+		}
+		if (arg === '--api-token' && argv[i + 1]) {
+			apiToken = argv[i + 1]!;
+			i += 1;
+			continue;
+		}
+		if (arg.startsWith('--api-token=')) {
+			apiToken = arg.slice('--api-token='.length);
+			continue;
+		}
+		if (arg === '--cased-api-token' && argv[i + 1]) {
+			casedApiToken = argv[i + 1]!;
+			i += 1;
+			continue;
+		}
+		if (arg.startsWith('--cased-api-token=')) {
+			casedApiToken = arg.slice('--cased-api-token='.length);
+			continue;
+		}
+		if (arg === '--workspace-id' && argv[i + 1]) {
+			workspaceId = argv[i + 1]!;
+			i += 1;
+			continue;
+		}
+		if (arg.startsWith('--workspace-id=')) {
+			workspaceId = arg.slice('--workspace-id='.length);
 		}
 	}
 
@@ -81,6 +123,9 @@ export function parseArgs(argv: string[]): CliOptions {
 		serverUrl: serverUrl.trim() || 'http://127.0.0.1:43180',
 		casedServerUrl: casedServerUrl.trim() || 'http://127.0.0.1:43181',
 		sessionId: sessionId.trim(),
+		apiToken: apiToken.trim(),
+		casedApiToken: casedApiToken.trim(),
+		workspaceId: workspaceId.trim(),
 		verbose,
 	};
 }

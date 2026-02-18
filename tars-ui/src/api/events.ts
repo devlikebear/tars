@@ -1,3 +1,5 @@
+import {tarsHeaders} from './clientContext.js';
+
 export type NotificationEvent = {
 	type?: string;
 	category?: string;
@@ -53,7 +55,7 @@ export async function watchNotifications(params: WatchNotificationsParams): Prom
 	try {
 		resp = await fetch(endpoint, {
 			method: 'GET',
-			headers: {'Accept': 'text/event-stream'},
+			headers: tarsHeaders({'Accept': 'text/event-stream'}),
 			signal: params.signal,
 		});
 	} catch (error) {

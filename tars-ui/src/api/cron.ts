@@ -1,4 +1,5 @@
 import {CronJob, CronRunRecord} from '../types.js';
+import {tarsHeaders} from './clientContext.js';
 
 function apiURL(serverURL: string, path: string): string {
 	return `${serverURL.replace(/\/+$/, '')}${path}`;
@@ -7,7 +8,7 @@ function apiURL(serverURL: string, path: string): string {
 async function requestJSON<T>(method: string, url: string, body?: unknown): Promise<T> {
 	const resp = await fetch(url, {
 		method,
-		headers: body === undefined ? undefined : {'Content-Type': 'application/json'},
+		headers: body === undefined ? tarsHeaders() : tarsHeaders({'Content-Type': 'application/json'}),
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
 	const text = await resp.text();
@@ -55,7 +56,7 @@ export async function listCronRuns(serverURL: string, jobID: string, limit = 20)
 }
 
 export async function deleteCronJob(serverURL: string, jobID: string): Promise<void> {
-	const resp = await fetch(apiURL(serverURL, `/v1/cron/jobs/${jobID}`), {method: 'DELETE'});
+	const resp = await fetch(apiURL(serverURL, `/v1/cron/jobs/${jobID}`), {method: 'DELETE', headers: tarsHeaders()});
 	if (!resp.ok) {
 		const text = await resp.text();
 		throw new Error(`DELETE /v1/cron/jobs/${jobID} status ${resp.status}: ${text.trim()}`);
