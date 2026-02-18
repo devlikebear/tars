@@ -1,6 +1,6 @@
 # TARS 개발 계획서 (v4)
 
-> 최종 갱신: 2026-02-17
+> 최종 갱신: 2026-02-18
 > 모듈: `github.com/devlikebear/tarsncase`
 > 바이너리: `tarsd` (메인 데몬), `tars-ui` (React/TS Ink TUI 클라이언트), `cased` (감시 데몬)
 
@@ -53,9 +53,18 @@
 - [x] MCP 클라이언트 (stdio/SSE, 도구 어댑터)
 - [x] in-process gateway runtime + run registry (`internal/gateway`)
 - [x] OpenClaw core action 도구 확장 (`sessions_*`, `agents_list`, `message`, `browser`, `nodes`, `gateway`)
-- [ ] cased 감시 데몬
+- [x] cased 감시 데몬
 
 ### 최근 반영
+
+#### 2026-02-18
+- [x] `cased` 실구현(Phase 8-A)
+  - `internal/sentinel` supervisor 추가: child process 실행/감시, backoff/cooldown 재시작 정책, health probe 실패 임계치 재시작
+  - cased API 추가: `GET /v1/sentinel/status`, `GET /v1/sentinel/events?limit=N`, `POST /v1/sentinel/restart|pause|resume`
+  - cased 설정 로더 추가: `target_command` 필수, `target_args_json`, `target_env_json`, probe/restart/event buffer/autostart
+  - `tarsd` 헬스체크 endpoint 추가: `GET /v1/healthz`
+  - `tars-ui` 명령 추가: `/sentinel`, `/sentinel restart`, `/sentinel pause`, `/sentinel resume`, `/sentinel events [limit]`
+  - `tars-ui` 설정 확장: `cased_server_url`, CLI 플래그 `--cased-url`
 
 #### 2026-02-17
 - [x] gateway/agent/channels API 추가
@@ -690,7 +699,7 @@ GET /v1/mcp/tools          # MCP 도구 목록
 
 **목표**: tarsd 프로세스 안정성 보장
 
-**마일스톤**: `cased`가 tarsd를 감시하고 비정상 종료 시 자동 재시작
+**마일스톤**: `cased`가 tarsd를 감시하고 비정상 종료 시 자동 재시작 (달성)
 
 #### 6-A. 프로세스 감시
 
@@ -698,18 +707,25 @@ GET /v1/mcp/tools          # MCP 도구 목록
 
 | 파일 | 역할 |
 |------|------|
-| `monitor.go` | tarsd PID 감시, 허트비트 응답 확인 |
-| `restarter.go` | 자동 재시작 (3회 시도 → 안전 모드) |
-| `auditor.go` | 감사 로그 (LLM 통신, 명령 실행 기록) |
+| `types.go` | sentinel 상태/이벤트/옵션 타입 |
+| `supervisor.go` | 상태머신 + child process 라이프사이클 |
+| `process.go` | child start/stop/wait |
+| `health.go` | `/v1/healthz` probe |
+| `policy.go` | backoff/cooldown 계산 |
+| `api.go` | `/v1/sentinel/*` HTTP 핸들러 |
 
 #### 6-B. cased 바이너리
 
-**수정 파일**: `cmd/cased/main.go` (현재 스켈레톤 → 실제 구현)
+**수정 파일**: `cmd/cased/main.go` (스켈레톤 → 실제 daemon)
+- config load (`LoadCased`) + signal graceful shutdown
+- sentinel supervisor 시작/종료
+- cased API 서버 구동
 
 #### 6-테스트
 
-- `internal/sentinel/monitor_test.go`
-- `internal/sentinel/restarter_test.go`
+- `internal/sentinel/supervisor_test.go`
+- `internal/sentinel/api_test.go`
+- `cmd/cased/main_test.go`
 
 ---
 

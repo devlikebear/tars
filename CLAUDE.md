@@ -117,6 +117,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - `internal/agent`: Agent Loop (훅 기반 이벤트, 도구 실행 반복, 상태 추적)
 - `internal/tool`: 빌트인 도구 (file/web/memory/automation + gateway/sessions/message/browser/nodes 계열)
 - `internal/gateway`: in-process gateway 런타임 (run registry, agent executor, channels, browser/nodes 상태, run/channel snapshot 영속화/복구)
+- `internal/sentinel`: cased supervisor 런타임 (child process 관리, 헬스 probe, 재시작/backoff/cooldown, 상태/이벤트 API)
 - `internal/extensions`: 스킬/플러그인/MCP 통합 스냅샷 + 핫리로드 매니저
 - `internal/skill`: SKILL.md frontmatter 파싱/우선순위 머지/available_skills 포맷
 - `internal/plugin`: 선언형 매니페스트(`tarsncase.plugin.json`) 로더
@@ -169,6 +170,13 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - OpenClaw core action 대응 도구(`sessions_*`, `agents_list`, `message`, `browser`, `nodes`, `gateway`)
 - `tars-ui` runtime 명령(`/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`)
 
+**Phase 6: cased 감시 데몬** (진행 중)
+- `cmd/cased` 실구현: target child 실행/감시/재시작
+- `internal/sentinel` 상태머신: `starting|running|paused|cooldown|stopped|error`
+- cased API: `/v1/sentinel/status`, `/v1/sentinel/events`, `/v1/sentinel/restart`, `/v1/sentinel/pause`, `/v1/sentinel/resume`
+- tarsd 헬스체크 endpoint: `GET /v1/healthz`
+- tars-ui 제어 명령: `/sentinel ...` + `cased_server_url`/`--cased-url`
+
 ### 최근 주요 변경
 
 **2026-02-15**
@@ -213,6 +221,18 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `/agents --detail` 정책 컬럼(`POLICY`, `ALLOW`) 추가
   - `/spawn` 옵션 자동완성(`--agent`, `--title`, `--session`, `--wait`)
   - `/gateway`에 persistence/restore telemetry 출력
+
+**2026-02-18**
+- `cased` 설정/부트스트랩 구현:
+  - `internal/config`에 `LoadCased`/`ResolveCasedConfigPath` 추가
+  - `target_command` 필수 검증 + YAML/ENV(`target_args_json`, `target_env_json`) 파싱
+- `internal/sentinel` 신규 구현:
+  - supervisor lifecycle(autostart, pause/resume, manual restart)
+  - restart 정책(지수 backoff + max attempts 초과 cool-down)
+  - probe 기반 health 연속 실패 재시작
+  - in-memory ring buffer events
+- `cased` HTTP API 노출 + `tars-ui` `/sentinel` 명령 연동
+- `tarsd` `GET /v1/healthz` 추가 및 cased 기본 probe 경로로 사용
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조

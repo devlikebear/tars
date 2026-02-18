@@ -51,7 +51,7 @@
   2. [단계] → 검증: [확인사항]
   3. [단계] → 검증: [확인사항]
 
-## 현재 구현 상태 (2026-02-17 기준)
+## 현재 구현 상태 (2026-02-18 기준)
 
 - 서버 측 채팅 API `POST /v1/chat`는 구현되어 있다.
 - 세션 관리 API(`GET/POST/DELETE /v1/sessions`, history/export/search)와 상태 API(`GET /v1/status`)가 구현되어 있다.
@@ -117,6 +117,13 @@
   - 전부 무효한 allowlist: 해당 agent 로드 제외 + diagnostics 로그
   - 정책 메타데이터: `GET /v1/agent/agents`의 `policy_mode`, `tools_allow_count`, `tools_allow`
 - `web_search`가 Brave/Perplexity provider 선택 + 캐시 TTL을 지원하고, `web_fetch`는 SSRF 차단 + private host allowlist를 지원한다.
+- `cased` 감시 데몬이 실구현되었다.
+  - `internal/sentinel` supervisor 런타임(프로세스 실행/재시작/backoff/cooldown/헬스체크/pause-resume/events)
+  - `cased` API: `GET /v1/sentinel/status`, `GET /v1/sentinel/events`, `POST /v1/sentinel/restart|pause|resume`
+  - `cased` 설정 로더: `target_command` 필수, JSON args/env, probe/restart/event buffer 정책
+  - `tarsd` 헬스 엔드포인트: `GET /v1/healthz`
+  - `tars-ui` 명령: `/sentinel`, `/sentinel restart`, `/sentinel pause`, `/sentinel resume`, `/sentinel events [limit]`
+  - `tars-ui` 설정/플래그: `cased_server_url`, `--cased-url`
 
 ## LLM Provider 운영 정책 (2026-02-16)
 
@@ -132,7 +139,7 @@
 
 ## 다음 우선순위
 
-1. `cased` 감시 데몬의 실동작(프로세스 감시/재시작/상태 노출) 구현을 마무리한다.
+1. `cased`를 다중 대상 감시/영속 이벤트/운영 자동화(systemd/launchd) 방향으로 확장한다.
 2. 서브에이전트 정책을 allowlist MVP에서 그룹/정규식/세션 라우팅 정책으로 확장한다.
 3. gateway run/channel의 장기 아카이빙(압축/회전)과 운영 리포팅을 추가한다.
 
