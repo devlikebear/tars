@@ -64,10 +64,30 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/agent/runs"):
 			_ = json.NewEncoder(w).Encode(map[string]any{"count": 1, "runs": []map[string]any{{"run_id": "r1", "status": "running", "accepted": true}}})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/status":
-			_ = json.NewEncoder(w).Encode(map[string]any{"enabled": true, "version": 1})
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"enabled":                   true,
+				"version":                   1,
+				"channels_local_enabled":    true,
+				"channels_webhook_enabled":  false,
+				"channels_telegram_enabled": true,
+			})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/gateway/reload":
 			adminAuth = r.Header.Get("Authorization")
 			_ = json.NewEncoder(w).Encode(map[string]any{"enabled": true, "version": 2})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "job_1", "name": "daily", "prompt": "check", "schedule": "every:1h", "enabled": true}})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/cron/jobs":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "job_2", "name": "", "prompt": "check logs", "schedule": "every:1h", "enabled": true})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs/job_2":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "job_2", "name": "", "prompt": "check logs", "schedule": "every:1h", "enabled": true})
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/cron/jobs/job_2":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "job_2", "name": "", "prompt": "check logs", "schedule": "every:1h", "enabled": false})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/cron/jobs/job_2/run":
+			_ = json.NewEncoder(w).Encode(map[string]any{"response": "cron ok"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs/job_2/runs":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"job_id": "job_2", "ran_at": "2026-02-18T10:00:00Z", "response": "cron ok"}})
+		case r.Method == http.MethodDelete && r.URL.Path == "/v1/cron/jobs/job_2":
+			w.WriteHeader(http.StatusNoContent)
 		default:
 			http.NotFound(w, r)
 		}
@@ -144,6 +164,27 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	_, err = client.gatewayStatus(ctx)
 	if err != nil {
 		t.Fatalf("gatewayStatus: %v", err)
+	}
+	if jobs, err := client.listCronJobs(ctx); err != nil || len(jobs) != 1 {
+		t.Fatalf("listCronJobs: jobs=%+v err=%v", jobs, err)
+	}
+	if _, err := client.createCronJob(ctx, "every:1h", "check logs"); err != nil {
+		t.Fatalf("createCronJob: %v", err)
+	}
+	if _, err := client.getCronJob(ctx, "job_2"); err != nil {
+		t.Fatalf("getCronJob: %v", err)
+	}
+	if _, err := client.updateCronJobEnabled(ctx, "job_2", false); err != nil {
+		t.Fatalf("updateCronJobEnabled: %v", err)
+	}
+	if response, err := client.runCronJob(ctx, "job_2"); err != nil || response != "cron ok" {
+		t.Fatalf("runCronJob: response=%q err=%v", response, err)
+	}
+	if runs, err := client.listCronRuns(ctx, "job_2", 10); err != nil || len(runs) != 1 {
+		t.Fatalf("listCronRuns: runs=%+v err=%v", runs, err)
+	}
+	if err := client.deleteCronJob(ctx, "job_2"); err != nil {
+		t.Fatalf("deleteCronJob: %v", err)
 	}
 	_, err = client.gatewayReload(ctx)
 	if err != nil {

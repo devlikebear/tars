@@ -119,7 +119,7 @@ func executeCommand(ctx context.Context, runtime runtimeClient, line, session st
 	}
 	switch fields[0] {
 	case "/help":
-		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /new [title] /sessions /history /export /search {keyword} /status /compact /heartbeat /skills /plugins /mcp /reload /agents /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart} /quit")
+		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /new [title] /sessions /history /export /search {keyword} /status /compact /heartbeat /skills /plugins /mcp /reload /agents /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart} /channels /cron {list|get|runs|add|run|delete|enable|disable} /quit")
 		return true, session, nil
 	case "/session":
 		fmt.Fprintf(stdout, "SYSTEM > session=%s\n", session)
@@ -400,6 +400,122 @@ func executeCommand(ctx context.Context, runtime runtimeClient, line, session st
 		}
 		fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d\n", status.Enabled, status.Version)
 		return true, session, nil
+	case "/channels":
+		status, err := runtime.gatewayStatus(ctx)
+		if err != nil {
+			return true, session, err
+		}
+		fmt.Fprintf(stdout, "SYSTEM > channels_local=%t channels_webhook=%t channels_telegram=%t\n",
+			status.ChannelsLocalEnabled,
+			status.ChannelsWebhookEnabled,
+			status.ChannelsTelegramEnabled,
+		)
+		return true, session, nil
+	case "/cron":
+		if len(fields) == 1 || strings.TrimSpace(fields[1]) == "list" {
+			jobs, err := runtime.listCronJobs(ctx)
+			if err != nil {
+				return true, session, err
+			}
+			if len(jobs) == 0 {
+				fmt.Fprintln(stdout, "SYSTEM > (no cron jobs)")
+				return true, session, nil
+			}
+			fmt.Fprintln(stdout, "SYSTEM > cron jobs")
+			for _, job := range jobs {
+				fmt.Fprintf(stdout, "- %s name=%s schedule=%s enabled=%t\n", job.ID, job.Name, job.Schedule, job.Enabled)
+			}
+			return true, session, nil
+		}
+		sub := strings.TrimSpace(fields[1])
+		switch sub {
+		case "add":
+			if len(fields) < 4 {
+				return true, session, fmt.Errorf("usage: /cron add {schedule} {prompt}")
+			}
+			schedule := strings.TrimSpace(fields[2])
+			prompt := strings.TrimSpace(strings.TrimPrefix(line, "/cron add "+schedule))
+			if schedule == "" || prompt == "" {
+				return true, session, fmt.Errorf("usage: /cron add {schedule} {prompt}")
+			}
+			job, err := runtime.createCronJob(ctx, schedule, prompt)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > created cron job %s schedule=%s\n", job.ID, job.Schedule)
+			return true, session, nil
+		case "run":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /cron run {job_id}")
+			}
+			response, err := runtime.runCronJob(ctx, fields[2])
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > %s\n", response)
+			return true, session, nil
+		case "get":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /cron get {job_id}")
+			}
+			job, err := runtime.getCronJob(ctx, fields[2])
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > %s name=%s schedule=%s enabled=%t\n", job.ID, job.Name, job.Schedule, job.Enabled)
+			return true, session, nil
+		case "runs":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /cron runs {job_id} [limit]")
+			}
+			limit := 20
+			if len(fields) > 3 {
+				n, err := parseOptionalLimit(fields[3], 20)
+				if err != nil {
+					return true, session, fmt.Errorf("usage: /cron runs {job_id} [limit]")
+				}
+				limit = n
+			}
+			runs, err := runtime.listCronRuns(ctx, fields[2], limit)
+			if err != nil {
+				return true, session, err
+			}
+			if len(runs) == 0 {
+				fmt.Fprintln(stdout, "SYSTEM > (no cron runs)")
+				return true, session, nil
+			}
+			fmt.Fprintln(stdout, "SYSTEM > cron runs")
+			for _, run := range runs {
+				if strings.TrimSpace(run.Error) != "" {
+					fmt.Fprintf(stdout, "- %s error=%s\n", run.RanAt, run.Error)
+					continue
+				}
+				fmt.Fprintf(stdout, "- %s response=%s\n", run.RanAt, strings.TrimSpace(run.Response))
+			}
+			return true, session, nil
+		case "delete":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /cron delete {job_id}")
+			}
+			if err := runtime.deleteCronJob(ctx, fields[2]); err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > deleted cron job %s\n", strings.TrimSpace(fields[2]))
+			return true, session, nil
+		case "enable", "disable":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /cron %s {job_id}", sub)
+			}
+			enabled := sub == "enable"
+			job, err := runtime.updateCronJobEnabled(ctx, fields[2], enabled)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > %s enabled=%t\n", job.ID, job.Enabled)
+			return true, session, nil
+		default:
+			return true, session, fmt.Errorf("usage: /cron {list|get|runs|add|run|delete|enable|disable}")
+		}
 	default:
 		return false, session, nil
 	}

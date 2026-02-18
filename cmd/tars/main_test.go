@@ -57,3 +57,70 @@ func TestExecuteCommand_CompactRequiresSession(t *testing.T) {
 		t.Fatalf("expected active session error, got %v", err)
 	}
 }
+
+func TestExecuteCommand_CronAndChannels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "job_1", "name": "daily", "prompt": "check", "schedule": "every:1h", "enabled": true},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs/job_1":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "job_1", "name": "daily", "prompt": "check", "schedule": "every:1h", "enabled": true})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs/job_1/runs":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"job_id": "job_1", "ran_at": "2026-02-18T09:00:00Z", "response": "ok"},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"enabled":                   true,
+				"version":                   9,
+				"channels_local_enabled":    true,
+				"channels_webhook_enabled":  false,
+				"channels_telegram_enabled": true,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runtime := runtimeClient{serverURL: server.URL}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	_, _, err := executeCommand(context.Background(), runtime, "/cron list", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/cron list: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "job_1") {
+		t.Fatalf("expected cron list output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/cron get job_1", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/cron get: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "schedule=every:1h") {
+		t.Fatalf("expected cron get output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/cron runs job_1 1", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/cron runs: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "2026-02-18T09:00:00Z") {
+		t.Fatalf("expected cron runs output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/channels", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/channels: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "channels_local=true") {
+		t.Fatalf("expected channels output, got %q", stdout.String())
+	}
+}
