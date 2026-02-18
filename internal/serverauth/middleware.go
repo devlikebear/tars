@@ -17,6 +17,8 @@ const (
 	ModeRequired         = "required"
 
 	DefaultWorkspaceHeader = "Tars-Workspace-Id"
+	debugWorkspaceHeader   = "Tars-Debug-Workspace-Id"
+	debugRoleHeader        = "Tars-Debug-Auth-Role"
 )
 
 type Options struct {
@@ -45,12 +47,32 @@ func WorkspaceIDFromContext(ctx context.Context) string {
 	return strings.TrimSpace(value)
 }
 
+func WorkspaceIDFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if value := WorkspaceIDFromContext(r.Context()); value != "" {
+		return value
+	}
+	return strings.TrimSpace(r.Header.Get(debugWorkspaceHeader))
+}
+
 func RoleFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
 	value, _ := ctx.Value(roleKey{}).(string)
 	return strings.TrimSpace(value)
+}
+
+func RoleFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if value := RoleFromContext(r.Context()); value != "" {
+		return value
+	}
+	return strings.TrimSpace(r.Header.Get(debugRoleHeader))
 }
 
 func NormalizeMode(raw string) string {
@@ -104,6 +126,7 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			req := withWorkspaceID(r, workspaceHeader)
+			req = withDebugWorkspaceHeader(req)
 			if _, ok := skipPaths[r.URL.Path]; ok || mode == ModeOff {
 				next.ServeHTTP(w, req)
 				return
@@ -117,7 +140,8 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			tokenNeeded := requireToken || isAdminPath
 			if tokenNeeded && !anyTokenConfigured {
 				logger.Printf("api auth enabled but token is empty; rejecting path=%s", r.URL.Path)
-				http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+				w.Header().Set("WWW-Authenticate", "Bearer")
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 
@@ -139,6 +163,8 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
+			req = withRole(req, role)
+			req = withDebugRoleHeader(req, role)
 			if isAdminPath && role != RoleAdmin {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
@@ -148,7 +174,7 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			next.ServeHTTP(w, withRole(req, role))
+			next.ServeHTTP(w, req)
 		})
 	}
 }
@@ -174,6 +200,32 @@ func withRole(r *http.Request, role string) *http.Request {
 	}
 	ctx := context.WithValue(r.Context(), roleKey{}, strings.TrimSpace(role))
 	return r.WithContext(ctx)
+}
+
+func withDebugWorkspaceHeader(r *http.Request) *http.Request {
+	if r == nil {
+		return nil
+	}
+	workspaceID := WorkspaceIDFromContext(r.Context())
+	if workspaceID == "" {
+		r.Header.Del(debugWorkspaceHeader)
+		return r
+	}
+	r.Header.Set(debugWorkspaceHeader, workspaceID)
+	return r
+}
+
+func withDebugRoleHeader(r *http.Request, role string) *http.Request {
+	if r == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(role)
+	if trimmed == "" {
+		r.Header.Del(debugRoleHeader)
+		return r
+	}
+	r.Header.Set(debugRoleHeader, trimmed)
+	return r
 }
 
 func parseBearerToken(authHeader string) (string, bool) {

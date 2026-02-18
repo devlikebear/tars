@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/devlikebear/tarsncase/internal/config"
@@ -103,5 +105,64 @@ func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 	h.ServeHTTP(recAdmin, reqAdmin)
 	if recAdmin.Code != http.StatusNoContent {
 		t.Fatalf("expected 204 for admin token on admin path, got %d body=%q", recAdmin.Code, recAdmin.Body.String())
+	}
+}
+
+func TestApplyAPIMiddleware_DebugLogIncludesWorkspaceAndRole(t *testing.T) {
+	var logs bytes.Buffer
+	cfg := config.Config{
+		APIAuthMode:        "required",
+		APIUserToken:       "user-token",
+		APIAdminToken:      "admin-token",
+		APIWorkspaceHeader: "Tars-Workspace-Id",
+	}
+	logger := zerolog.New(&logs).Level(zerolog.DebugLevel)
+	h := applyAPIMiddleware(cfg, logger, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	req.RemoteAddr = "192.0.2.10:5555"
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Tars-Workspace-Id", "ws-local")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	line := logs.String()
+	if !strings.Contains(line, `"workspace_id":"ws-local"`) {
+		t.Fatalf("expected debug log to include workspace_id, got %q", line)
+	}
+	if !strings.Contains(line, `"auth_role":"user"`) {
+		t.Fatalf("expected debug log to include auth_role, got %q", line)
+	}
+}
+
+func TestApplyAPIMiddleware_ForbiddenAdminPathIncludesUserRoleInDebugLog(t *testing.T) {
+	var logs bytes.Buffer
+	cfg := config.Config{
+		APIAuthMode:        "required",
+		APIUserToken:       "user-token",
+		APIAdminToken:      "admin-token",
+		APIWorkspaceHeader: "Tars-Workspace-Id",
+	}
+	logger := zerolog.New(&logs).Level(zerolog.DebugLevel)
+	h := applyAPIMiddleware(cfg, logger, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	req.RemoteAddr = "192.0.2.10:5555"
+	req.Header.Set("Authorization", "Bearer user-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(logs.String(), `"auth_role":"user"`) {
+		t.Fatalf("expected debug log to include auth_role=user, got %q", logs.String())
 	}
 }

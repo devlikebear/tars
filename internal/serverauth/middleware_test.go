@@ -195,3 +195,25 @@ func TestMiddleware_BackwardCompatibleSingleTokenAllowsAdminPath(t *testing.T) {
 		t.Fatalf("expected role admin for legacy token, got %q", got)
 	}
 }
+
+func TestMiddleware_AdminPathWithoutConfiguredTokenReturnsUnauthorized(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:       ModeExternalRequired,
+		AdminPaths: []string{"/v1/sentinel/restart"},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sentinel/restart", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
+		t.Fatalf("expected WWW-Authenticate Bearer, got %q", got)
+	}
+}
