@@ -6,7 +6,9 @@ api_addr: 127.0.0.1:43181
 # cased API auth token should be separate from tarsd token
 # off | external-required | required
 api_auth_mode: external-required
-api_auth_token: ""
+api_auth_token: "" # legacy single token
+api_user_token: "" # read-only endpoints (/status, /events)
+api_admin_token: "" # control endpoints (/restart, /pause, /resume)
 
 # Required target command (no auto-discovery)
 target_command: go

@@ -10,7 +10,11 @@ workspace_dir: ./workspace
 # API auth (no X- prefix headers)
 # off | external-required | required
 api_auth_mode: external-required
-api_auth_token: "" # set for non-loopback protection
+# legacy single token (backward-compatible). If api_user_token/api_admin_token are set,
+# role-based checks use those tokens.
+api_auth_token: ""
+api_user_token: "" # read/chat/general operations
+api_admin_token: "" # control operations (gateway reload/restart, extensions reload)
 api_workspace_header: Tars-Workspace-Id
 
 # LLM provider
