@@ -207,3 +207,57 @@ func TestExecuteCommand_ResumeWithoutIDUsesLatestSession(t *testing.T) {
 		t.Fatalf("expected resume output, got %q", stdout.String())
 	}
 }
+
+func TestExecuteCommand_NotifyCommands(t *testing.T) {
+	center := newNotificationCenter(10)
+	center.add(notificationMessage{
+		Category:  "cron",
+		Severity:  "info",
+		Title:     "cron completed",
+		Message:   "nightly summary done",
+		Timestamp: "2026-02-18T12:00:00Z",
+	})
+	center.add(notificationMessage{
+		Category:  "error",
+		Severity:  "error",
+		Title:     "run failed",
+		Message:   "agent run failed",
+		Timestamp: "2026-02-18T12:01:00Z",
+	})
+	state := &localRuntimeState{notifications: center}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{}
+
+	if _, _, err := executeCommandWithState(context.Background(), runtime, "/notify list", "", stdout, stderr, state); err != nil {
+		t.Fatalf("/notify list: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "cron completed") {
+		t.Fatalf("expected notify list output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if _, _, err := executeCommandWithState(context.Background(), runtime, "/notify filter error", "", stdout, stderr, state); err != nil {
+		t.Fatalf("/notify filter: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "notification filter: error") {
+		t.Fatalf("expected notify filter output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if _, _, err := executeCommandWithState(context.Background(), runtime, "/notify open 1", "", stdout, stderr, state); err != nil {
+		t.Fatalf("/notify open: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "run failed") {
+		t.Fatalf("expected notify open output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if _, _, err := executeCommandWithState(context.Background(), runtime, "/notify clear", "", stdout, stderr, state); err != nil {
+		t.Fatalf("/notify clear: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "notifications cleared") {
+		t.Fatalf("expected notify clear output, got %q", stdout.String())
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,10 @@ type options struct {
 	workspaceID string
 	message     string
 	verbose     bool
+}
+
+type localRuntimeState struct {
+	notifications *notificationCenter
 }
 
 func main() {
@@ -71,6 +76,18 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 }
 
 func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, chat chatClient, runtime runtimeClient, session string, verbose bool) error {
+	state := &localRuntimeState{
+		notifications: newNotificationCenter(200),
+	}
+	if state.notifications != nil {
+		events := newEventStreamClient(runtime)
+		go events.consume(ctx, state.notifications.add, func(err error) {
+			if verbose {
+				fmt.Fprintf(stderr, "notify stream: %v\n", err)
+			}
+		})
+	}
+
 	scanner := bufio.NewScanner(stdin)
 	scanner.Buffer(make([]byte, 0, 8*1024), 2*1024*1024)
 	for {
@@ -90,7 +107,7 @@ func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, cha
 			return nil
 		}
 		if strings.HasPrefix(line, "/") {
-			handled, nextSession, err := executeCommand(ctx, runtime, line, session, stdout, stderr)
+			handled, nextSession, err := executeCommandWithState(ctx, runtime, line, session, stdout, stderr, state)
 			if err != nil {
 				fmt.Fprintf(stderr, "error: %v\n", err)
 				continue
@@ -113,13 +130,17 @@ func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, cha
 }
 
 func executeCommand(ctx context.Context, runtime runtimeClient, line, session string, stdout, stderr io.Writer) (bool, string, error) {
+	return executeCommandWithState(ctx, runtime, line, session, stdout, stderr, nil)
+}
+
+func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, session string, stdout, stderr io.Writer, state *localRuntimeState) (bool, string, error) {
 	fields := strings.Fields(strings.TrimSpace(line))
 	if len(fields) == 0 {
 		return true, session, nil
 	}
 	switch fields[0] {
 	case "/help":
-		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /resume {id} /new [title] /sessions /history /export /search {keyword} /status /compact /heartbeat /skills /plugins /mcp /reload /agents [--detail] /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart} /channels /cron {list|get|runs|add|run|delete|enable|disable} /quit")
+		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /resume [id] /new [title] /sessions /history /export /search {keyword} /status /compact /heartbeat /skills /plugins /mcp /reload /agents [--detail|-d] /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart} /channels /cron {list|get|runs|add|run|delete|enable|disable} /notify {list|filter|open|clear} /quit")
 		return true, session, nil
 	case "/session":
 		fmt.Fprintf(stdout, "SYSTEM > session=%s\n", session)
@@ -542,6 +563,55 @@ func executeCommand(ctx context.Context, runtime runtimeClient, line, session st
 			return true, session, nil
 		default:
 			return true, session, fmt.Errorf("usage: /cron {list|get|runs|add|run|delete|enable|disable}")
+		}
+	case "/notify":
+		if state == nil || state.notifications == nil {
+			return true, session, fmt.Errorf("notifications are not available in this context")
+		}
+		if len(fields) == 1 || strings.TrimSpace(fields[1]) == "list" {
+			items := state.notifications.filtered()
+			if len(items) == 0 {
+				fmt.Fprintln(stdout, "SYSTEM > (no notifications)")
+				return true, session, nil
+			}
+			fmt.Fprintf(stdout, "SYSTEM > notifications filter=%s\n", state.notifications.filterName())
+			for i, item := range items {
+				fmt.Fprintf(stdout, "%d. [%s/%s] %s (%s)\n", i+1, item.Category, item.Severity, item.Title, item.Timestamp)
+			}
+			return true, session, nil
+		}
+		sub := strings.TrimSpace(fields[1])
+		switch sub {
+		case "filter":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /notify filter {all|cron|heartbeat|error}")
+			}
+			if err := state.notifications.setFilter(fields[2]); err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > notification filter: %s\n", state.notifications.filterName())
+			return true, session, nil
+		case "open":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /notify open {index}")
+			}
+			index, err := strconv.Atoi(strings.TrimSpace(fields[2]))
+			if err != nil || index <= 0 {
+				return true, session, fmt.Errorf("usage: /notify open {index}")
+			}
+			items := state.notifications.filtered()
+			if index > len(items) {
+				return true, session, fmt.Errorf("notification not found: %d", index)
+			}
+			item := items[index-1]
+			fmt.Fprintf(stdout, "SYSTEM > [%s/%s] %s | %s | %s\n", item.Category, item.Severity, item.Title, item.Message, item.Timestamp)
+			return true, session, nil
+		case "clear":
+			state.notifications.clear()
+			fmt.Fprintln(stdout, "SYSTEM > notifications cleared")
+			return true, session, nil
+		default:
+			return true, session, fmt.Errorf("usage: /notify {list|filter|open|clear}")
 		}
 	default:
 		return false, session, nil
