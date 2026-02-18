@@ -76,6 +76,7 @@
 - [x] 프로젝트 간소화 전환 시작(공개 릴리즈 준비)
   - `cmd/cased`, `internal/sentinel`, `internal/config/cased*`, `config/cased.config.example.yaml` 제거
   - `cmd/tars` 재도입(MVP): `/v1/chat` SSE 클라이언트 + 기본 REPL(`/new`, `/session`, `/quit`)
+  - `cmd/tars` 2차: 세션/상태/확장 명령 + runtime 명령 이식
   - Make 타깃 단순화: `dev-cased`/`run-cased` 제거, `dev-tars` 추가
 
 #### 2026-02-17
