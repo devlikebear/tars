@@ -399,7 +399,7 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 	const agentsDetailState = createContext('/agents --detail');
 	await executeInputCommand(agentsDetailState.ctx, apis);
 	assert.equal(agentsDetailState.tables.length, 1);
-	assert.deepEqual(agentsDetailState.tables[0]?.headers, ['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'POLICY', 'ALLOW', 'SOURCE', 'ENTRY', 'DESCRIPTION']);
+	assert.deepEqual(agentsDetailState.tables[0]?.headers, ['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'POLICY', 'ALLOW', 'GROUPS', 'PATTERNS', 'SESSION', 'FIXED', 'SOURCE', 'ENTRY', 'DESCRIPTION']);
 	assert.deepEqual(agentsDetailState.tables[0]?.rows[0]?.slice(4, 6), ['allowlist', '2']);
 
 	const spawnState = createContext('/spawn summarize today');

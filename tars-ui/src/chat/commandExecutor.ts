@@ -223,19 +223,27 @@ function renderAgentRows(agents: AgentDescriptor[], detail: boolean): string[][]
 			item.enabled ? 'yes' : 'no',
 			truncate(item.kind ?? '-', 12),
 		];
-		if (!detail) {
-			return [...base, truncate(item.description ?? '-', 48)];
-		}
-		const policyMode = truncate(item.policy_mode ?? 'full', 12);
-		const allowCount = String(item.tools_allow_count ?? (Array.isArray(item.tools_allow) ? item.tools_allow.length : 0));
-		return [
-			...base,
-			policyMode,
-			allowCount,
-			truncate(item.source ?? '-', 16),
-			truncate(item.entry ?? '-', 28),
-			truncate(item.description ?? '-', 48),
-		];
+	if (!detail) {
+		return [...base, truncate(item.description ?? '-', 48)];
+	}
+	const policyMode = truncate(item.policy_mode ?? 'full', 12);
+	const allowCount = String(item.tools_allow_count ?? (Array.isArray(item.tools_allow) ? item.tools_allow.length : 0));
+	const allowGroups = truncate((item.tools_allow_groups ?? []).join(','), 16);
+	const allowPatterns = truncate((item.tools_allow_patterns ?? []).join(','), 18);
+	const sessionRouting = truncate(item.session_routing_mode ?? 'caller', 8);
+	const sessionFixedID = truncate(item.session_fixed_id ?? '-', 16);
+	return [
+		...base,
+		policyMode,
+		allowCount,
+		allowGroups,
+		allowPatterns,
+		sessionRouting,
+		sessionFixedID,
+		truncate(item.source ?? '-', 16),
+		truncate(item.entry ?? '-', 28),
+		truncate(item.description ?? '-', 48),
+	];
 	});
 }
 
@@ -288,8 +296,16 @@ function renderSentinelRows(status: SentinelStatus): string[][] {
 		['health_last_error', truncate(status.health_last_error ?? '', 72)],
 		['restart_attempt', String(status.restart_attempt ?? 0)],
 		['restart_max_attempts', String(status.restart_max_attempts ?? 0)],
+		['start_grace_until', status.start_grace_until ?? '-'],
+		['consecutive_failures', String(status.consecutive_failures ?? 0)],
+		['last_probe_duration_ms', String(status.last_probe_duration_ms ?? 0)],
 		['cooldown_until', status.cooldown_until ?? '-'],
 		['last_restart_at', status.last_restart_at ?? '-'],
+		['event_persistence', status.event_persistence_enabled ? 'yes' : 'no'],
+		['events_restored', String(status.events_restored ?? 0)],
+		['last_event_persist_at', status.last_event_persist_at ?? '-'],
+		['last_event_restore_at', status.last_event_restore_at ?? '-'],
+		['last_event_restore_error', truncate(status.last_event_restore_error ?? '', 72)],
 		['event_count', String(status.event_count ?? 0)],
 	];
 }
@@ -497,7 +513,7 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 		}
 		const detail = cmd.detail === true;
 		if (detail) {
-			ctx.pushSystemTable(['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'POLICY', 'ALLOW', 'SOURCE', 'ENTRY', 'DESCRIPTION'], renderAgentRows(agents, true));
+			ctx.pushSystemTable(['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'POLICY', 'ALLOW', 'GROUPS', 'PATTERNS', 'SESSION', 'FIXED', 'SOURCE', 'ENTRY', 'DESCRIPTION'], renderAgentRows(agents, true));
 			return;
 		}
 		ctx.pushSystemTable(['NAME', 'DEFAULT', 'ENABLED', 'KIND', 'DESCRIPTION'], renderAgentRows(agents, false));

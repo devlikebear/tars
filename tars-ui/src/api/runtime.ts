@@ -1,4 +1,4 @@
-import {AgentDescriptor, AgentRunSummary, GatewayStatus} from '../types.js';
+import {AgentDescriptor, AgentRunSummary, GatewayReportChannels, GatewayReportRuns, GatewayReportSummary, GatewayStatus} from '../types.js';
 import {tarsAdminHeaders, tarsHeaders} from './clientContext.js';
 
 function apiURL(serverURL: string, path: string): string {
@@ -98,4 +98,16 @@ export async function restartGateway(serverURL: string): Promise<GatewayStatus> 
 	} catch (err) {
 		throw new Error(`decode response: ${String(err)}`);
 	}
+}
+
+export async function getGatewayReportSummary(serverURL: string): Promise<GatewayReportSummary> {
+	return requestJSON<GatewayReportSummary>('GET', apiURL(serverURL, '/v1/gateway/reports/summary'));
+}
+
+export async function getGatewayReportRuns(serverURL: string, limit = 50): Promise<GatewayReportRuns> {
+	return requestJSON<GatewayReportRuns>('GET', apiURL(serverURL, `/v1/gateway/reports/runs?limit=${limit}`));
+}
+
+export async function getGatewayReportChannels(serverURL: string, limit = 50): Promise<GatewayReportChannels> {
+	return requestJSON<GatewayReportChannels>('GET', apiURL(serverURL, `/v1/gateway/reports/channels?limit=${limit}`));
 }

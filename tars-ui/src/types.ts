@@ -100,6 +100,14 @@ export type SentinelStatus = {
 	restart_max_attempts: number;
 	cooldown_until?: string;
 	last_restart_at?: string;
+	start_grace_until?: string;
+	consecutive_failures?: number;
+	last_probe_duration_ms?: number;
+	event_persistence_enabled?: boolean;
+	events_restored?: number;
+	last_event_persist_at?: string;
+	last_event_restore_at?: string;
+	last_event_restore_error?: string;
 	event_count: number;
 };
 
@@ -136,6 +144,10 @@ export type AgentDescriptor = {
 	policy_mode?: 'full' | 'allowlist' | string;
 	tools_allow?: string[];
 	tools_allow_count?: number;
+	tools_allow_groups?: string[];
+	tools_allow_patterns?: string[];
+	session_routing_mode?: 'caller' | 'new' | 'fixed' | string;
+	session_fixed_id?: string;
 };
 
 export type GatewayStatus = {
@@ -162,4 +174,30 @@ export type GatewayStatus = {
 	last_restore_error?: string;
 	last_reload_at?: string;
 	last_restart_at?: string;
+};
+
+export type GatewayReportSummary = {
+	generated_at: string;
+	summary_enabled: boolean;
+	archive_enabled: boolean;
+	runs_total: number;
+	runs_active: number;
+	runs_by_status: Record<string, number>;
+	channels_total: number;
+	messages_total: number;
+	messages_by_source: Record<string, number>;
+};
+
+export type GatewayReportRuns = {
+	generated_at: string;
+	archive_enabled: boolean;
+	count: number;
+	runs: AgentRunSummary[];
+};
+
+export type GatewayReportChannels = {
+	generated_at: string;
+	archive_enabled: boolean;
+	count: number;
+	messages: Record<string, Array<{id: string; channel_id: string; source: string; direction: string; text: string; timestamp: string}>>;
 };
