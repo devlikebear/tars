@@ -60,6 +60,13 @@ test('router parses slash command options', () => {
 	assert.deepEqual(parseInputCommand('/gateway'), {kind: 'gateway', action: 'status'});
 	assert.deepEqual(parseInputCommand('/gateway reload'), {kind: 'gateway', action: 'reload'});
 	assert.deepEqual(parseInputCommand('/gateway restart'), {kind: 'gateway', action: 'restart'});
+	assert.deepEqual(parseInputCommand('/sentinel'), {kind: 'sentinel', action: 'status'});
+	assert.deepEqual(parseInputCommand('/sentinel status'), {kind: 'sentinel', action: 'status'});
+	assert.deepEqual(parseInputCommand('/sentinel restart'), {kind: 'sentinel', action: 'restart'});
+	assert.deepEqual(parseInputCommand('/sentinel pause'), {kind: 'sentinel', action: 'pause'});
+	assert.deepEqual(parseInputCommand('/sentinel resume'), {kind: 'sentinel', action: 'resume'});
+	assert.deepEqual(parseInputCommand('/sentinel events'), {kind: 'sentinel', action: 'events', limit: 20});
+	assert.deepEqual(parseInputCommand('/sentinel events 10'), {kind: 'sentinel', action: 'events', limit: 10});
 	assert.deepEqual(parseInputCommand('/channels'), {kind: 'channels'});
 	assert.deepEqual(parseInputCommand('/deploy now'), {kind: 'skill_invoke', skillName: 'deploy', message: '/deploy now'});
 	assert.deepEqual(parseInputCommand('／help'), {kind: 'help'});
@@ -87,6 +94,8 @@ test('router returns invalid for malformed or unknown command', () => {
 	assert.deepEqual(parseInputCommand('/spawn --unknown hello'), {kind: 'invalid', message: 'usage: /spawn [--agent {name}] [--title {title}] [--session {id}] [--wait] {message}'});
 	assert.deepEqual(parseInputCommand('/cancel-run'), {kind: 'invalid', message: 'usage: /cancel-run {run_id}'});
 	assert.deepEqual(parseInputCommand('/gateway xx'), {kind: 'invalid', message: 'usage: /gateway {status|reload|restart}'});
+	assert.deepEqual(parseInputCommand('/sentinel xx'), {kind: 'invalid', message: 'usage: /sentinel {status|restart|pause|resume|events [limit]}'});
+	assert.deepEqual(parseInputCommand('/sentinel events xx'), {kind: 'invalid', message: 'usage: /sentinel {status|restart|pause|resume|events [limit]}'});
 	assert.deepEqual(parseInputCommand('/agents foo'), {kind: 'invalid', message: 'usage: /agents [--detail]'});
 	assert.deepEqual(parseInputCommand('/what'), {kind: 'skill_invoke', skillName: 'what', message: '/what'});
 	assert.deepEqual(parseInputCommand('   '), {kind: 'noop'});

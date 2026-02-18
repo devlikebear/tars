@@ -129,6 +129,7 @@ function App(): React.JSX.Element {
 			await executeInputCommand({
 				raw,
 				serverUrl: initial.serverUrl,
+				casedServerUrl: initial.casedServerUrl,
 				sessionID,
 				pushSystemMessage,
 				pushSystemTable,

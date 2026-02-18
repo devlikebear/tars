@@ -37,6 +37,11 @@ function createDefaultAPIs(): CommandAPIs {
 		getGatewayStatus: unexpected,
 		reloadGateway: unexpected,
 		restartGateway: unexpected,
+		getSentinelStatus: unexpected,
+		listSentinelEvents: unexpected,
+		restartSentinel: unexpected,
+		pauseSentinel: unexpected,
+		resumeSentinel: unexpected,
 	};
 }
 
@@ -70,6 +75,7 @@ function createContext(raw: string, sessionID = ''): {
 	const ctx: CommandExecutorContext = {
 		raw,
 		serverUrl: 'http://127.0.0.1:8080',
+		casedServerUrl: 'http://127.0.0.1:43181',
 		sessionID,
 		pushSystemMessage: (text) => messages.push(text),
 		pushSystemTable: (headers, rows) => tables.push({headers, rows}),
@@ -421,6 +427,74 @@ test('executeInputCommand handles /agents /spawn /runs /run /cancel-run /gateway
 	await executeInputCommand(channelsState.ctx, apis);
 	assert.equal(channelsState.tables.length, 1);
 	assert.deepEqual(channelsState.tables[0]?.headers, ['FIELD', 'VALUE']);
+});
+
+test('executeInputCommand handles /sentinel status/events/restart/pause/resume', async () => {
+	const apis: CommandAPIs = {
+		...createDefaultAPIs(),
+		getSentinelStatus: async () => ({
+			enabled: true,
+			supervision_state: 'running',
+			target: {command: 'go', args: ['run', './cmd/tarsd'], cwd: '.'},
+			target_pid: 100,
+			health_ok: true,
+			restart_attempt: 0,
+			restart_max_attempts: 3,
+			event_count: 4,
+		}),
+		listSentinelEvents: async () => [
+			{id: 1, time: '2026-02-18T10:00:00Z', level: 'info', type: 'start', message: 'started'},
+		],
+		restartSentinel: async () => ({
+			enabled: true,
+			supervision_state: 'running',
+			target: {command: 'go'},
+			health_ok: true,
+			restart_attempt: 0,
+			restart_max_attempts: 3,
+			event_count: 5,
+		}),
+		pauseSentinel: async () => ({
+			enabled: true,
+			supervision_state: 'paused',
+			target: {command: 'go'},
+			health_ok: true,
+			restart_attempt: 0,
+			restart_max_attempts: 3,
+			event_count: 6,
+		}),
+		resumeSentinel: async () => ({
+			enabled: true,
+			supervision_state: 'running',
+			target: {command: 'go'},
+			health_ok: true,
+			restart_attempt: 0,
+			restart_max_attempts: 3,
+			event_count: 7,
+		}),
+	};
+
+	const statusState = createContext('/sentinel');
+	await executeInputCommand(statusState.ctx, apis);
+	assert.equal(statusState.tables.length, 1);
+	assert.deepEqual(statusState.tables[0]?.headers, ['FIELD', 'VALUE']);
+
+	const eventsState = createContext('/sentinel events 5');
+	await executeInputCommand(eventsState.ctx, apis);
+	assert.equal(eventsState.tables.length, 1);
+	assert.deepEqual(eventsState.tables[0]?.headers, ['ID', 'TIME', 'LEVEL', 'TYPE', 'MESSAGE']);
+
+	const restartState = createContext('/sentinel restart');
+	await executeInputCommand(restartState.ctx, apis);
+	assert.equal(restartState.tables.length, 1);
+
+	const pauseState = createContext('/sentinel pause');
+	await executeInputCommand(pauseState.ctx, apis);
+	assert.equal(pauseState.tables.length, 1);
+
+	const resumeState = createContext('/sentinel resume');
+	await executeInputCommand(resumeState.ctx, apis);
+	assert.equal(resumeState.tables.length, 1);
 });
 
 test('executeInputCommand handles /cron add and /cron run /cron delete', async () => {

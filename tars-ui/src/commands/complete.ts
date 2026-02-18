@@ -19,6 +19,7 @@ const rootCommands = [
 	'/run',
 	'/cancel-run',
 	'/gateway',
+	'/sentinel',
 	'/channels',
 	'/cron',
 	'/notify',
@@ -28,6 +29,7 @@ const rootCommands = [
 const cronSubs = ['list', 'add', 'get', 'runs', 'run', 'delete', 'enable', 'disable'];
 const notifySubs = ['list', 'filter', 'open', 'clear'];
 const gatewaySubs = ['status', 'reload', 'restart'];
+const sentinelSubs = ['status', 'restart', 'pause', 'resume', 'events'];
 const spawnOptions = ['--agent', '--title', '--session', '--wait'];
 
 function commonPrefix(values: string[]): string {
@@ -103,6 +105,8 @@ export function completeCommandInput(line: string): string {
 		completedSub = completeToken(subPrefix, notifySubs);
 	} else if (head === '/gateway') {
 		completedSub = completeToken(subPrefix, gatewaySubs);
+	} else if (head === '/sentinel') {
+		completedSub = completeToken(subPrefix, sentinelSubs);
 	} else if (head === '/spawn') {
 		if (!line.endsWith(' ')) {
 			const tokens = rest.split(/\s+/).filter((token) => token.trim() !== '');

@@ -32,6 +32,13 @@ test('completeCommandInput completes gateway subcommands', () => {
 	assert.equal(completeCommandInput('/gateway status'), '/gateway status ');
 });
 
+test('completeCommandInput completes sentinel subcommands', () => {
+	assert.equal(completeCommandInput('/sentinel re'), '/sentinel res');
+	assert.equal(completeCommandInput('/sentinel res'), '/sentinel res');
+	assert.equal(completeCommandInput('/sentinel rest'), '/sentinel restart ');
+	assert.equal(completeCommandInput('/sentinel events'), '/sentinel events ');
+});
+
 test('completeCommandInput completes spawn option flags', () => {
 	assert.equal(completeCommandInput('/spawn --a'), '/spawn --agent ');
 	assert.equal(completeCommandInput('/spawn --w'), '/spawn --wait ');

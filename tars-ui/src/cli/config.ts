@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 type CliConfig = {
 	serverUrl?: string;
+	casedServerUrl?: string;
 	sessionId?: string;
 	verbose?: boolean;
 };
@@ -43,6 +44,9 @@ export function loadCliConfig(path: string): CliConfig {
 		switch (key) {
 		case 'server_url':
 			out.serverUrl = value;
+			break;
+		case 'cased_server_url':
+			out.casedServerUrl = value;
 			break;
 		case 'session_id':
 			out.sessionId = value;

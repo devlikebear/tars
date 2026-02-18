@@ -22,6 +22,7 @@ export type Command =
 	| {kind: 'run'; runID: string}
 	| {kind: 'cancel_run'; runID: string}
 	| {kind: 'gateway'; action: 'status' | 'reload' | 'restart'}
+	| {kind: 'sentinel'; action: 'status' | 'restart' | 'pause' | 'resume' | 'events'; limit?: number}
 	| {kind: 'channels'}
 	| {kind: 'cron_list'}
 	| {kind: 'cron_add'; schedule: string; prompt: string}
@@ -295,6 +296,31 @@ function parseSlashCommand(line: string): Command {
 			return {kind: 'invalid', message: 'usage: /gateway {status|reload|restart}'};
 		}
 		return {kind: 'gateway', action: sub};
+	}
+	case '/sentinel': {
+		const usage = 'usage: /sentinel {status|restart|pause|resume|events [limit]}';
+		const sub = (fields[1] ?? 'status').trim();
+		if (sub === 'status' || sub === 'restart' || sub === 'pause' || sub === 'resume') {
+			if (fields.length > 2) {
+				return {kind: 'invalid', message: usage};
+			}
+			return {kind: 'sentinel', action: sub};
+		}
+		if (sub === 'events') {
+			if (fields.length <= 2) {
+				return {kind: 'sentinel', action: 'events', limit: 20};
+			}
+			const rawLimit = (fields[2] ?? '').trim();
+			const limit = Number(rawLimit);
+			if (!Number.isInteger(limit) || limit <= 0) {
+				return {kind: 'invalid', message: usage};
+			}
+			if (fields.length > 3) {
+				return {kind: 'invalid', message: usage};
+			}
+			return {kind: 'sentinel', action: 'events', limit};
+		}
+		return {kind: 'invalid', message: usage};
 	}
 	case '/notify': {
 		if (fields.length === 1 || fields[1] === 'list') {

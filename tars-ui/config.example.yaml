@@ -3,6 +3,7 @@
 #   cd tars-ui && npm run dev -- --config ./config.example.yaml
 
 server_url: http://127.0.0.1:43180
+cased_server_url: http://127.0.0.1:43181
 session_id: ""
 verbose: false
 

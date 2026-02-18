@@ -3,8 +3,9 @@ import {createCronJob, deleteCronJob, getCronJob, listCronJobs, listCronRuns, ru
 import {listMCPServers, listMCPTools, listPlugins, listSkills, reloadExtensions} from '../api/extensions.js';
 import {getStatus, runCompact, runHeartbeatOnce} from '../api/system.js';
 import {cancelAgentRun, getAgentRun, getGatewayStatus, listAgentRuns, listAgents, reloadGateway, restartGateway, spawnAgentRun} from '../api/runtime.js';
+import {getSentinelStatus, listSentinelEvents, pauseSentinel, restartSentinel, resumeSentinel} from '../api/sentinel.js';
 import {parseInputCommand} from '../commands/router.js';
-import {AgentDescriptor, AgentRunSummary, CronJob, CronRunRecord, GatewayStatus, MCPServerStatus, MCPToolInfo, NotificationItem, NotificationFilter, PluginDefinition, SessionHistoryItem, SessionSummary, SkillDefinition} from '../types.js';
+import {AgentDescriptor, AgentRunSummary, CronJob, CronRunRecord, GatewayStatus, MCPServerStatus, MCPToolInfo, NotificationItem, NotificationFilter, PluginDefinition, SentinelEvent, SentinelStatus, SessionHistoryItem, SessionSummary, SkillDefinition} from '../types.js';
 import {commandHelpText, requireSessionOrError, truncate} from '../ui/format.js';
 
 export type CommandAPIs = {
@@ -37,6 +38,11 @@ export type CommandAPIs = {
 	getGatewayStatus: (serverUrl: string) => Promise<GatewayStatus>;
 	reloadGateway: (serverUrl: string) => Promise<GatewayStatus>;
 	restartGateway: (serverUrl: string) => Promise<GatewayStatus>;
+	getSentinelStatus: (casedServerUrl: string) => Promise<SentinelStatus>;
+	listSentinelEvents: (casedServerUrl: string, limit?: number) => Promise<SentinelEvent[]>;
+	restartSentinel: (casedServerUrl: string) => Promise<SentinelStatus>;
+	pauseSentinel: (casedServerUrl: string) => Promise<SentinelStatus>;
+	resumeSentinel: (casedServerUrl: string) => Promise<SentinelStatus>;
 };
 
 const defaultAPIs: CommandAPIs = {
@@ -69,11 +75,17 @@ const defaultAPIs: CommandAPIs = {
 	getGatewayStatus,
 	reloadGateway,
 	restartGateway,
+	getSentinelStatus,
+	listSentinelEvents,
+	restartSentinel,
+	pauseSentinel,
+	resumeSentinel,
 };
 
 export type CommandExecutorContext = {
 	raw: string;
 	serverUrl: string;
+	casedServerUrl: string;
 	sessionID: string;
 	pushSystemMessage: (text: string) => void;
 	pushSystemTable: (headers: string[], rows: string[][]) => void;
@@ -258,6 +270,38 @@ function renderGatewayRows(status: GatewayStatus): string[][] {
 		['last_reload_at', status.last_reload_at ?? '-'],
 		['last_restart_at', status.last_restart_at ?? '-'],
 	];
+}
+
+function renderSentinelRows(status: SentinelStatus): string[][] {
+	return [
+		['enabled', status.enabled ? 'yes' : 'no'],
+		['state', status.supervision_state ?? '-'],
+		['target_command', status.target?.command ?? '-'],
+		['target_args', truncate((status.target?.args ?? []).join(' '), 48)],
+		['target_cwd', status.target?.cwd ?? '-'],
+		['target_pid', status.target_pid != null ? String(status.target_pid) : '-'],
+		['target_started_at', status.target_started_at ?? '-'],
+		['target_last_exit_at', status.target_last_exit_at ?? '-'],
+		['target_last_exit_code', status.target_last_exit_code != null ? String(status.target_last_exit_code) : '-'],
+		['health_ok', status.health_ok ? 'yes' : 'no'],
+		['health_last_ok_at', status.health_last_ok_at ?? '-'],
+		['health_last_error', truncate(status.health_last_error ?? '', 72)],
+		['restart_attempt', String(status.restart_attempt ?? 0)],
+		['restart_max_attempts', String(status.restart_max_attempts ?? 0)],
+		['cooldown_until', status.cooldown_until ?? '-'],
+		['last_restart_at', status.last_restart_at ?? '-'],
+		['event_count', String(status.event_count ?? 0)],
+	];
+}
+
+function renderSentinelEventRows(events: SentinelEvent[]): string[][] {
+	return events.map((item) => [
+		String(item.id),
+		item.time,
+		item.level,
+		item.type,
+		truncate(item.message ?? '', 56),
+	]);
 }
 
 function filterNotifications(items: NotificationItem[], filter: NotificationFilter): NotificationItem[] {
@@ -537,6 +581,28 @@ export async function executeInputCommand(ctx: CommandExecutorContext, apis: Com
 			status = await apis.getGatewayStatus(ctx.serverUrl);
 		}
 		ctx.pushSystemTable(['FIELD', 'VALUE'], renderGatewayRows(status));
+		return;
+	}
+	case 'sentinel': {
+		let status: SentinelStatus;
+		if (cmd.action === 'restart') {
+			status = await apis.restartSentinel(ctx.casedServerUrl);
+		} else if (cmd.action === 'pause') {
+			status = await apis.pauseSentinel(ctx.casedServerUrl);
+		} else if (cmd.action === 'resume') {
+			status = await apis.resumeSentinel(ctx.casedServerUrl);
+		} else if (cmd.action === 'events') {
+			const events = await apis.listSentinelEvents(ctx.casedServerUrl, cmd.limit ?? 20);
+			if (events.length === 0) {
+				ctx.pushSystemMessage('(no sentinel events)');
+				return;
+			}
+			ctx.pushSystemTable(['ID', 'TIME', 'LEVEL', 'TYPE', 'MESSAGE'], renderSentinelEventRows(events));
+			return;
+		} else {
+			status = await apis.getSentinelStatus(ctx.casedServerUrl);
+		}
+		ctx.pushSystemTable(['FIELD', 'VALUE'], renderSentinelRows(status));
 		return;
 	}
 	case 'channels': {

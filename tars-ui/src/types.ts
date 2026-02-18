@@ -81,6 +81,37 @@ export type MCPToolInfo = {
 	description?: string;
 };
 
+export type SentinelStatus = {
+	enabled: boolean;
+	supervision_state: 'starting' | 'running' | 'paused' | 'cooldown' | 'stopped' | 'error' | string;
+	target: {
+		command: string;
+		args?: string[];
+		cwd?: string;
+	};
+	target_pid?: number;
+	target_started_at?: string;
+	target_last_exit_at?: string;
+	target_last_exit_code?: number;
+	health_ok: boolean;
+	health_last_ok_at?: string;
+	health_last_error?: string;
+	restart_attempt: number;
+	restart_max_attempts: number;
+	cooldown_until?: string;
+	last_restart_at?: string;
+	event_count: number;
+};
+
+export type SentinelEvent = {
+	id: number;
+	time: string;
+	level: string;
+	type: string;
+	message: string;
+	meta?: Record<string, unknown>;
+};
+
 export type AgentRunSummary = {
 	run_id: string;
 	session_id?: string;
