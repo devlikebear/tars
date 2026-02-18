@@ -1,0 +1,145 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+)
+
+type chatRequest struct {
+	Message   string `json:"message"`
+	SessionID string `json:"session_id,omitempty"`
+}
+
+type chatEvent struct {
+	Type      string `json:"type"`
+	Text      string `json:"text"`
+	Error     string `json:"error"`
+	SessionID string `json:"session_id"`
+	Message   string `json:"message"`
+	Phase     string `json:"phase"`
+}
+
+type chatResult struct {
+	SessionID string
+	Assistant string
+}
+
+type chatClient struct {
+	serverURL   string
+	apiToken    string
+	workspaceID string
+	httpClient  *http.Client
+}
+
+func (c chatClient) stream(ctx context.Context, req chatRequest, onStatus func(chatEvent), onDelta func(string)) (chatResult, error) {
+	if strings.TrimSpace(req.Message) == "" {
+		return chatResult{}, fmt.Errorf("message is required")
+	}
+	endpoint, err := resolveChatEndpoint(c.serverURL)
+	if err != nil {
+		return chatResult{}, err
+	}
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return chatResult{}, err
+	}
+	httpClient := c.httpClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return chatResult{}, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if token := strings.TrimSpace(c.apiToken); token != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+token)
+	}
+	if ws := strings.TrimSpace(c.workspaceID); ws != "" {
+		httpReq.Header.Set("Tars-Workspace-Id", ws)
+	}
+
+	resp, err := httpClient.Do(httpReq)
+	if err != nil {
+		return chatResult{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
+		return chatResult{}, fmt.Errorf("chat endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	events, err := decodeSSEBuffer(resp.Body)
+	if err != nil {
+		return chatResult{}, err
+	}
+	result := chatResult{SessionID: strings.TrimSpace(req.SessionID)}
+	for _, evt := range events {
+		switch evt.Type {
+		case "status":
+			if onStatus != nil {
+				onStatus(evt)
+			}
+		case "delta":
+			result.Assistant += evt.Text
+			if onDelta != nil && evt.Text != "" {
+				onDelta(evt.Text)
+			}
+		case "error":
+			if strings.TrimSpace(evt.Error) == "" {
+				return chatResult{}, fmt.Errorf("chat stream error")
+			}
+			return chatResult{}, errors.New(strings.TrimSpace(evt.Error))
+		case "done":
+			if strings.TrimSpace(evt.SessionID) != "" {
+				result.SessionID = strings.TrimSpace(evt.SessionID)
+			}
+		}
+	}
+	return result, nil
+}
+
+func resolveChatEndpoint(serverURL string) (string, error) {
+	base := strings.TrimSpace(serverURL)
+	if base == "" {
+		base = "http://127.0.0.1:43180"
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", fmt.Errorf("invalid server url: %w", err)
+	}
+	u.Path = strings.TrimRight(u.Path, "/") + "/v1/chat"
+	return u.String(), nil
+}
+
+func decodeSSEBuffer(r io.Reader) ([]chatEvent, error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
+	events := make([]chatEvent, 0, 16)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" {
+			continue
+		}
+		var evt chatEvent
+		if err := json.Unmarshal([]byte(payload), &evt); err != nil {
+			return nil, fmt.Errorf("decode sse event: %w", err)
+		}
+		events = append(events, evt)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
+}

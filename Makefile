@@ -14,18 +14,15 @@ TARSD_CONFIG ?= ./workspace/config/tarsd.config.yaml
 TARS_UI_CONFIG ?=
 TARS_UI_DIR ?= ./tars-ui
 TARS_UI_SERVER_URL ?= $(SERVER_URL)
-TARS_UI_CASED_URL ?= http://127.0.0.1:43181
-CASED_CONFIG ?= ./workspace/config/cased.config.yaml
-CASED_API_ADDR ?=
 
 .DEFAULT_GOAL := help
 
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover \
 	build build-bins clean tidy fmt vet \
-	dev-tarsd dev-tarsd-once dev-tarsd-loop dev-cased dev-chat dev-heartbeat \
+	dev-tarsd dev-tarsd-once dev-tarsd-loop dev-chat dev-heartbeat dev-tars \
 	api-status api-sessions api-compact api-chat api-heartbeat \
-	run-tarsd run-cased \
+	run-tarsd \
 	ui-install ui-test dev-tars-ui
 
 help:
@@ -35,7 +32,7 @@ help:
 	@echo "Common vars:"
 	@echo "  PKG=./... TEST_NAME=TestRun_ChatMessage CHAT_MSG='hello'"
 	@echo "  WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:43180 SERVER_URL=http://127.0.0.1:43180"
-	@echo "  TARSD_CONFIG=./config/tarsd.config.example.yaml CASED_CONFIG=./config/cased.config.example.yaml"
+	@echo "  TARSD_CONFIG=./config/tarsd.config.example.yaml"
 	@echo "  TARS_UI_CONFIG=./tars-ui/config.example.yaml TARS_UI_CASED_URL=http://127.0.0.1:43181"
 	@echo ""
 	@echo "Test targets:"
@@ -58,8 +55,8 @@ help:
 	@echo "  make dev-tarsd     - run tarsd API server in verbose mode"
 	@echo "  make dev-tarsd-once - run one heartbeat on tarsd"
 	@echo "  make dev-tarsd-loop - run heartbeat loop on tarsd"
-	@echo "  make dev-cased     - run cased in verbose mode"
 	@echo "  make dev-chat      - run tars-ui client"
+	@echo "  make dev-tars      - run Go client (cmd/tars)"
 	@echo "  make dev-heartbeat - call heartbeat run-once via API"
 	@echo "  make ui-install    - install tars-ui npm dependencies"
 	@echo "  make ui-test       - run tars-ui tests"
@@ -96,7 +93,7 @@ build:
 build-bins:
 	mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN_DIR)/tarsd ./cmd/tarsd
-	$(GO) build -o $(BIN_DIR)/cased ./cmd/cased
+	$(GO) build -o $(BIN_DIR)/tars ./cmd/tars
 
 dev-tarsd:
 	$(GO) run ./cmd/tarsd --verbose --serve-api $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
@@ -107,11 +104,11 @@ dev-tarsd-once:
 dev-tarsd-loop:
 	$(GO) run ./cmd/tarsd --verbose --run-loop $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --heartbeat-interval $(HEARTBEAT_INTERVAL) --max-heartbeats $(MAX_HEARTBEATS) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
 
-dev-cased:
-	$(GO) run ./cmd/cased --verbose $(if $(CASED_CONFIG),--config $(CASED_CONFIG),) $(if $(CASED_API_ADDR),--api-addr $(CASED_API_ADDR),) $(ARGS)
-
 dev-chat:
 	cd $(TARS_UI_DIR) && npm run dev -- $(if $(TARS_UI_CONFIG),--config $(TARS_UI_CONFIG),) --server-url $(TARS_UI_SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
+
+dev-tars:
+	$(GO) run ./cmd/tars --server-url $(SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
 
 dev-heartbeat:
 	curl -sS -X POST $(SERVER_URL)/v1/heartbeat/run-once
@@ -123,7 +120,7 @@ ui-test:
 	cd $(TARS_UI_DIR) && npm test
 
 dev-tars-ui:
-	cd $(TARS_UI_DIR) && npm run dev -- $(if $(TARS_UI_CONFIG),--config $(TARS_UI_CONFIG),) --server-url $(TARS_UI_SERVER_URL) --cased-url $(TARS_UI_CASED_URL) $(ARGS)
+	cd $(TARS_UI_DIR) && npm run dev -- $(if $(TARS_UI_CONFIG),--config $(TARS_UI_CONFIG),) --server-url $(TARS_UI_SERVER_URL) $(ARGS)
 
 api-status:
 	curl -sS $(SERVER_URL)/v1/status
@@ -155,5 +152,3 @@ clean:
 	rm -rf $(BIN_DIR) $(COVER_OUT)
 
 run-tarsd: dev-tarsd
-
-run-cased: dev-cased
