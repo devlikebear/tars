@@ -78,6 +78,7 @@
   - `cmd/tars` 재도입(MVP): `/v1/chat` SSE 클라이언트 + 기본 REPL(`/new`, `/session`, `/quit`)
   - `cmd/tars` 2차: 세션/상태/확장 명령 + runtime 명령 이식
   - `cmd/tars` 3차: `/cron {list|get|runs|add|run|delete|enable|disable}`, `/channels`, `/resume`, `/agents --detail` 추가
+  - `cmd/tars` 4차: `/notify {list|filter|open|clear}` 추가, `/v1/events/stream` 백그라운드 구독으로 알림 로컬 버퍼 유지
   - Make 타깃 단순화: `dev-cased`/`run-cased` 제거, `dev-tars` 추가
 
 #### 2026-02-17
