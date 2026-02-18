@@ -126,7 +126,20 @@ func executeCommand(ctx context.Context, runtime runtimeClient, line, session st
 		return true, session, nil
 	case "/resume":
 		if len(fields) < 2 || strings.TrimSpace(fields[1]) == "" {
-			return true, session, fmt.Errorf("usage: /resume {session_id}")
+			sessions, err := runtime.listSessions(ctx)
+			if err != nil {
+				return true, session, err
+			}
+			if len(sessions) == 0 {
+				return true, session, fmt.Errorf("no sessions available; use /new first")
+			}
+			next := strings.TrimSpace(sessions[0].ID)
+			if next == "" {
+				return true, session, fmt.Errorf("latest session id is empty")
+			}
+			fmt.Fprintf(stdout, "SYSTEM > resumed session=%s\n", next)
+			fmt.Fprintf(stderr, "session=%s\n", next)
+			return true, next, nil
 		}
 		next := strings.TrimSpace(fields[1])
 		fmt.Fprintf(stdout, "SYSTEM > resumed session=%s\n", next)
@@ -305,7 +318,7 @@ func executeCommand(ctx context.Context, runtime runtimeClient, line, session st
 			return true, session, nil
 		}
 		fmt.Fprintln(stdout, "SYSTEM > agents")
-		detail := len(fields) > 1 && strings.TrimSpace(fields[1]) == "--detail"
+		detail := len(fields) > 1 && (strings.TrimSpace(fields[1]) == "--detail" || strings.TrimSpace(fields[1]) == "-d")
 		for _, a := range agents {
 			if detail {
 				fmt.Fprintf(stdout, "- %s kind=%s source=%s entry=%s policy=%s allow=%d routing=%s fixed_session=%s\n",

@@ -167,4 +167,43 @@ func TestExecuteCommand_ResumeAndAgentsDetail(t *testing.T) {
 	if !strings.Contains(stdout.String(), "entry=workspace/agents/researcher/AGENT.md") {
 		t.Fatalf("expected detailed agent output, got %q", stdout.String())
 	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/agents -d", session, stdout, stderr)
+	if err != nil {
+		t.Fatalf("/agents -d: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "entry=workspace/agents/researcher/AGENT.md") {
+		t.Fatalf("expected detailed agent output for -d, got %q", stdout.String())
+	}
+}
+
+func TestExecuteCommand_ResumeWithoutIDUsesLatestSession(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "s-latest", "title": "latest"},
+				{"id": "s-old", "title": "old"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runtime := runtimeClient{serverURL: server.URL}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	_, session, err := executeCommand(context.Background(), runtime, "/resume", "s-prev", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/resume: %v", err)
+	}
+	if session != "s-latest" {
+		t.Fatalf("expected latest session, got %q", session)
+	}
+	if !strings.Contains(stdout.String(), "resumed session=s-latest") {
+		t.Fatalf("expected resume output, got %q", stdout.String())
+	}
 }
