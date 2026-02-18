@@ -90,17 +90,16 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 ## 바이너리 역할 정의
 
 - `tarsd` (메인 데몬/서버): LLM 호출, 허트비트/크론 실행, 3-Layer 메모리 처리, 작업 판단과 실행 오케스트레이션을 담당한다.
-- `cased` (감시 데몬): `tarsd` 프로세스 감시, 자동 재시작/복구, 감사/보안 모니터링, 업데이트/롤백 같은 안정성 제어를 담당한다.
-- `tars-ui` (React/TS Ink TUI 클라이언트): 고급 대화형 UX(패널 레이아웃, 스트리밍 렌더링, 상태/디버그 시각화)를 담당한다.
-  - **전환 계획**: 외부 배포/공유 목적이 생기면 `cmd/tars` (Go, `charmbracelet/bubbletea`)로 재작성하여 단일 Go 바이너리 배포를 실현한다. 상세 계획은 `PLAN.md` "아키텍처 결정 사항" 참조.
+- `tars` (Go CLI/TUI 클라이언트): `tarsd` API를 호출하는 단일 Go 클라이언트. 공개 배포 단순화를 위해 기본 클라이언트로 전환 중이다.
+- `tars-ui` (React/TS Ink TUI 클라이언트): 레거시 클라이언트. 기능 parity 달성 후 제거 대상이다.
 
 ## tars-tarsd 통신 프로토콜 규칙
 
-- `tarsd`가 HTTP API 서버를 서빙하고, `tars-ui`는 해당 API를 호출하는 HTTP 클라이언트로 구현한다.
+- `tarsd`가 HTTP API 서버를 서빙하고, `tars`/`tars-ui`는 해당 API를 호출하는 HTTP 클라이언트로 구현한다.
 - LLM 실행, OAuth 토큰 교환/저장, heartbeat/cron 실행 같은 서버 책임 로직은 반드시 `tarsd`에서 수행한다.
-- `tars-ui`는 사용자 입력 수집, API 요청/응답 렌더링 같은 클라이언트 UX만 담당한다.
-- LLM 응답은 `tarsd`의 REST API로 제공하고, `tars-ui`는 해당 API의 클라이언트로 구현한다.
-- 인증 토큰(특히 OAuth access/refresh token)은 서버(`tarsd`)에서만 저장/관리하고, `tars-ui`는 직접 저장하지 않는다.
+- `tars`/`tars-ui`는 사용자 입력 수집, API 요청/응답 렌더링 같은 클라이언트 UX만 담당한다.
+- LLM 응답은 `tarsd`의 REST API로 제공하고, `tars`/`tars-ui`는 해당 API의 클라이언트로 구현한다.
+- 인증 토큰(특히 OAuth access/refresh token)은 서버(`tarsd`)에서만 저장/관리하고, 클라이언트는 직접 저장하지 않는다.
 
 ## 코드 구조 변경 기록
 
@@ -108,8 +107,8 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 
 **바이너리**
 - `tarsd`: 메인 데몬/서버 (HTTP API, LLM 호출, heartbeat/cron 실행, 메모리 관리)
-- `cased`: 감시 데몬 (프로세스 감시, 자동 재시작/복구, 모니터링)
-- `tars-ui`: React/TypeScript Ink 기반 TUI 클라이언트 (대화형 UX, 패널 렌더링)
+- `tars`: Go 기반 CLI/TUI 클라이언트 (MVP 도입 완료, 단계적 확장 중)
+- `tars-ui`: React/TypeScript Ink 기반 레거시 TUI 클라이언트 (제거 예정)
 
 **주요 패키지**
 - `internal/config`: 설정 로딩 (YAML/ENV 우선순위, 환경변수 확장, 경로 자동 탐지)
@@ -118,7 +117,6 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - `internal/agent`: Agent Loop (훅 기반 이벤트, 도구 실행 반복, 상태 추적)
 - `internal/tool`: 빌트인 도구 (file/web/memory/automation + gateway/sessions/message/browser/nodes 계열)
 - `internal/gateway`: in-process gateway 런타임 (run registry, agent executor, channels, browser/nodes 상태, run/channel snapshot 영속화/복구)
-- `internal/sentinel`: cased supervisor 런타임 (child process 관리, 헬스 probe, 재시작/backoff/cooldown, 상태/이벤트 API)
 - `internal/extensions`: 스킬/플러그인/MCP 통합 스냅샷 + 핫리로드 매니저
 - `internal/skill`: SKILL.md frontmatter 파싱/우선순위 머지/available_skills 포맷
 - `internal/plugin`: 선언형 매니페스트(`tarsncase.plugin.json`) 로더
@@ -171,12 +169,10 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - OpenClaw core action 대응 도구(`sessions_*`, `agents_list`, `message`, `browser`, `nodes`, `gateway`)
 - `tars-ui` runtime 명령(`/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`)
 
-**Phase 6: cased 감시 데몬** (완료 + 경량 안정화)
-- `cmd/cased` 실구현: target child 실행/감시/재시작
-- `internal/sentinel` 상태머신: `starting|running|paused|cooldown|stopped|error`
-- cased API: `/v1/sentinel/status`, `/v1/sentinel/events`, `/v1/sentinel/restart`, `/v1/sentinel/pause`, `/v1/sentinel/resume`
-- tarsd 헬스체크 endpoint: `GET /v1/healthz`
-- tars-ui 제어 명령: `/sentinel ...` + `cased_server_url`/`--cased-url`
+**Phase 6: cased 감시 데몬** (종료)
+- 공개 배포 단순화를 위해 `cmd/cased`/`internal/sentinel` 제거
+- 프로세스 감시는 systemd/launchd/docker 정책으로 위임
+- `tarsd` 헬스체크 endpoint(`GET /v1/healthz`)는 유지
 
 ### 최근 주요 변경
 
@@ -224,23 +220,11 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `/gateway`에 persistence/restore telemetry 출력
 
 **2026-02-18**
-- `cased` 설정/부트스트랩 구현:
-  - `internal/config`에 `LoadCased`/`ResolveCasedConfigPath` 추가
-  - `target_command` 필수 검증 + YAML/ENV(`target_args_json`, `target_env_json`) 파싱
-- `internal/sentinel` 신규 구현:
-  - supervisor lifecycle(autostart, pause/resume, manual restart)
-  - restart 정책(지수 backoff + max attempts 초과 cool-down)
-  - probe 기반 health 연속 실패 재시작
-  - in-memory ring buffer events
-- `cased` HTTP API 노출 + `tars-ui` `/sentinel` 명령 연동
-- `tarsd` `GET /v1/healthz` 추가 및 cased 기본 probe 경로로 사용
-- Phase 9-Lite 경량 안정화:
-  - sentinel startup grace/연속 실패 카운터/마지막 probe duration telemetry 추가
-  - sentinel event ring JSONL 영속화/복구 추가(`event_persistence_enabled`, `event_store_path`, `event_store_max_records`)
-  - sub-agent 정책 V2: `tools_allow_groups`, `tools_allow_patterns`, `session_routing_mode`, `session_fixed_id`
-  - gateway 리포트 API 추가: `/v1/gateway/reports/summary`(기본), `/runs`·`/channels`(archive opt-in)
-  - gateway archive 설정 추가: `gateway_archive_*` + `gateway_report_summary_enabled`
-  - 단일 대상 운영 템플릿/런북 추가: `config/ops/cased.systemd.service.example`, `config/ops/cased.launchd.plist.example`, `config/ops/cased-runbook.md`
+- 프로젝트 간소화 시작:
+  - `cmd/cased`, `internal/sentinel`, `internal/config/cased*` 제거
+  - `config/cased.config.example.yaml` 및 cased 운영 템플릿 제거
+  - `cmd/tars` 재도입(MVP): `/v1/chat` SSE + 기본 REPL(`/new`, `/session`, `/quit`)
+  - Make 타깃 정리: `dev-cased`/`run-cased` 제거, `dev-tars` 추가
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조

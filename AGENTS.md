@@ -2,7 +2,7 @@
 
 ## 목적
 - 이 저장소에서 Codex/에이전트가 일관된 방식으로 개발을 진행하도록 운영 기준을 정의한다.
-- 현재 목표는 gateway 기반 서브에이전트 런타임을 고도화하고, 남은 `cased` 안정성 기능을 완성하는 것이다.
+- 현재 목표는 gateway 기반 서브에이전트 런타임을 고도화하고, 공개 배포를 위해 `tarsd + cmd/tars` 2-바이너리 구조로 단순화하는 것이다.
 
 ## 개발 원칙
 - MVP 중심으로 작은 단위로 구현한다.
@@ -122,16 +122,10 @@
   - 세션 라우팅: `session_routing_mode(caller|new|fixed)`, `session_fixed_id`
   - 정책 메타데이터: `GET /v1/agent/agents`의 `tools_allow_groups`, `tools_allow_patterns`, `session_routing_mode`, `session_fixed_id`
 - `web_search`가 Brave/Perplexity provider 선택 + 캐시 TTL을 지원하고, `web_fetch`는 SSRF 차단 + private host allowlist를 지원한다.
-- `cased` 감시 데몬이 실구현되었다.
-  - `internal/sentinel` supervisor 런타임(프로세스 실행/재시작/backoff/cooldown/헬스체크/pause-resume/events)
-  - `cased` API: `GET /v1/sentinel/status`, `GET /v1/sentinel/events`, `POST /v1/sentinel/restart|pause|resume`
-  - `cased` 설정 로더: `target_command` 필수, JSON args/env, probe/restart/event buffer 정책
-  - 안정성 telemetry: `start_grace_until`, `consecutive_failures`, `last_probe_duration_ms`
-  - 이벤트 ring 영속화/복구: `event_persistence_enabled`, `events_restored`, `last_event_persist_at`, `last_event_restore_at`, `last_event_restore_error`
-  - 운영 템플릿/런북: `config/ops/cased.systemd.service.example`, `config/ops/cased.launchd.plist.example`, `config/ops/cased-runbook.md`
-  - `tarsd` 헬스 엔드포인트: `GET /v1/healthz`
-  - `tars-ui` 명령: `/sentinel`, `/sentinel restart`, `/sentinel pause`, `/sentinel resume`, `/sentinel events [limit]`
-  - `tars-ui` 설정/플래그: `cased_server_url`, `--cased-url`
+- `cased` 감시 데몬(`cmd/cased`, `internal/sentinel`)은 간소화 단계에서 제거되었다.
+  - 프로세스 감시는 systemd/launchd/docker 정책으로 위임한다.
+  - `tarsd` 헬스 엔드포인트(`GET /v1/healthz`)는 유지한다.
+  - Go 클라이언트 `cmd/tars`(MVP)가 재도입되었다.
 - gateway 리포트 API가 추가되었다.
   - `GET /v1/gateway/reports/summary` (기본 활성)
   - `GET /v1/gateway/reports/runs`, `GET /v1/gateway/reports/channels` (archive 활성 시)
@@ -153,7 +147,7 @@
 
 1. 인증/권한/테넌트/멀티 워크스페이스의 최소 운영 모델을 정의하고 API 경계에 적용한다.
 2. 서브에이전트 정책을 deny/risk 레벨까지 확장하고, 정책 위반 진단을 UI에서 추적 가능하게 만든다.
-3. gateway archive 리포트에 운영 친화 필터(기간/상태/에이전트)를 추가하되 기본 경량 모드를 유지한다.
+3. `cmd/tars` 기능을 `tars-ui` parity 수준까지 확장하고 Node 의존을 제거한다.
 
 ## 작업 체크리스트
 

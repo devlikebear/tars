@@ -2,7 +2,7 @@
 
 > 최종 갱신: 2026-02-18
 > 모듈: `github.com/devlikebear/tarsncase`
-> 바이너리: `tarsd` (메인 데몬), `tars-ui` (React/TS Ink TUI 클라이언트), `cased` (감시 데몬)
+> 바이너리: `tarsd` (메인 데몬), `tars` (Go CLI/TUI 클라이언트, 도입 시작)
 
 ## 1. 현재 구현 현황
 
@@ -73,6 +73,10 @@
   - gateway 리포트 API 추가: `/v1/gateway/reports/summary`, `/v1/gateway/reports/runs`, `/v1/gateway/reports/channels`
   - gateway 경량 기본값 추가: `gateway_report_summary_enabled=true`, `gateway_archive_enabled=false`
   - 단일 대상 운영 템플릿 추가: `config/ops/cased.systemd.service.example`, `config/ops/cased.launchd.plist.example`, `config/ops/cased-runbook.md`
+- [x] 프로젝트 간소화 전환 시작(공개 릴리즈 준비)
+  - `cmd/cased`, `internal/sentinel`, `internal/config/cased*`, `config/cased.config.example.yaml` 제거
+  - `cmd/tars` 재도입(MVP): `/v1/chat` SSE 클라이언트 + 기본 REPL(`/new`, `/session`, `/quit`)
+  - Make 타깃 단순화: `dev-cased`/`run-cased` 제거, `dev-tars` 추가
 
 #### 2026-02-17
 - [x] gateway/agent/channels API 추가
@@ -132,7 +136,7 @@
 | SSE 스트리밍 | 채팅 응답은 Phase 1부터 SSE 스트리밍으로 제공 |
 | 토큰 기반 동적 히스토리 | 세션 로드 시 context_window - reserve_tokens 범위 내에서 역순 로딩 |
 | 마크다운이 진실의 원천 | 3-Layer 메모리는 마크다운 파일 기반, SQLite는 나중에 검색 인덱스로 추가 |
-| UI/로직 분리 | `tarsd`는 실행 로직, `tars-ui`는 고급 대화형 UX, 자동화는 `Make + curl` 경로 담당 |
+| UI/로직 분리 | `tarsd`는 실행 로직, `tars`는 API 클라이언트 UX 담당 |
 
 ---
 
@@ -760,9 +764,9 @@ GET /v1/mcp/tools          # MCP 도구 목록
 ### Phase 9-Lite 경량 운영 원칙 (2026-02-18)
 
 **결정**:
-- `cased`는 단일 대상(tarsd) 감시만 유지한다.
+- `cased`는 코드베이스에서 제거한다(운영 감시는 systemd/launchd/docker로 위임).
 - gateway 리포트는 summary 기본 ON, archive/detail 기본 OFF를 유지한다.
-- API/UX는 additive only로 확장하고 기존 `/spawn /runs /gateway /sentinel` 계약을 유지한다.
+- API/UX는 additive only로 확장하고 기존 `/spawn /runs /gateway` 계약을 유지한다.
 
 **성능 가드레일**:
 - summary 조회는 in-memory 상태 기반으로 처리한다.
@@ -771,18 +775,14 @@ GET /v1/mcp/tools          # MCP 도구 목록
 
 ---
 
-### tars-ui — TypeScript 유지 vs Go TUI 전환 (2026-02-18)
+### tars-ui → cmd/tars 전환 (2026-02-18)
 
-**현재 결정**: TypeScript/Ink 유지. 이미 동작하는 ~6,000줄이 있고 기능적으로 완성됨.
+**현재 결정**: 전환 시작. `cmd/tars` MVP를 추가했고, 향후 `tars-ui`를 단계적으로 제거한다.
 
-**전환 조건**: 다음 중 하나라도 해당되면 Go TUI(`cmd/tars`, Bubble Tea)로 재작성:
-- 외부 배포/공유 목적으로 Node.js 의존이 실제 마찰이 될 때
-- 팀 또는 다수 사용자에게 배포할 때
-
-**전환 시 계획**:
-- 새 바이너리: `cmd/tars` (Go, `charmbracelet/bubbletea` + `charmbracelet/bubbles`)
-- 현재 tars-ui의 기능을 1:1로 대응하여 재작성 (슬래시 명령, SSE 렌더링, 패널 레이아웃)
-- 완료 후 `tars-ui/` 디렉터리 제거, 빌드/배포가 순수 Go로 단일화
+**단계**:
+- 1단계: `cmd/tars` 채팅/세션 기본 경로 이식
+- 2단계: runtime 명령(`/agents`, `/spawn`, `/runs`, `/gateway`) 이식
+- 3단계: 기능 parity 달성 후 `tars-ui/` 제거 및 Node 툴체인 제거
 
 ---
 
