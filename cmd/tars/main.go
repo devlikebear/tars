@@ -442,7 +442,19 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			if err != nil {
 				return true, session, err
 			}
-			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d\n", status.Enabled, status.Version)
+			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d runs_total=%d runs_active=%d agents=%d watch=%t persistence=%t runs_store=%t channels_store=%t restored_runs=%d restored_channels=%d\n",
+				status.Enabled,
+				status.Version,
+				status.RunsTotal,
+				status.RunsActive,
+				status.AgentsCount,
+				status.AgentsWatchEnabled,
+				status.PersistenceEnabled,
+				status.RunsPersistenceEnabled,
+				status.ChannelsPersistenceEnabled,
+				status.RunsRestored,
+				status.ChannelsRestored,
+			)
 			return true, session, nil
 		case "reload":
 			status, err := runtime.gatewayReload(ctx)

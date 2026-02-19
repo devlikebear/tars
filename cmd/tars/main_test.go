@@ -331,6 +331,53 @@ func TestExecuteCommand_GatewayReports(t *testing.T) {
 	}
 }
 
+func TestExecuteCommand_GatewayStatusTelemetry(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"enabled":                      true,
+				"version":                      11,
+				"runs_total":                   7,
+				"runs_active":                  2,
+				"agents_count":                 4,
+				"agents_watch_enabled":         true,
+				"persistence_enabled":          true,
+				"runs_persistence_enabled":     true,
+				"channels_persistence_enabled": false,
+				"restore_on_startup":           true,
+				"runs_restored":                3,
+				"channels_restored":            9,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{serverURL: server.URL}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/gateway status", "", stdout, stderr); err != nil {
+		t.Fatalf("/gateway status: %v", err)
+	}
+
+	out := stdout.String()
+	containsAll := strings.Contains(out, "runs_total=7") &&
+		strings.Contains(out, "runs_active=2") &&
+		strings.Contains(out, "agents=4") &&
+		strings.Contains(out, "watch=true") &&
+		strings.Contains(out, "persistence=true") &&
+		strings.Contains(out, "runs_store=true") &&
+		strings.Contains(out, "channels_store=false") &&
+		strings.Contains(out, "restored_runs=3") &&
+		strings.Contains(out, "restored_channels=9")
+	if !containsAll {
+		t.Fatalf("expected gateway telemetry output, got %q", out)
+	}
+}
+
 func TestExecuteCommand_Health(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

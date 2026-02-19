@@ -151,11 +151,26 @@ type agentRun struct {
 }
 
 type gatewayStatus struct {
-	Enabled                 bool `json:"enabled"`
-	Version                 int  `json:"version"`
-	ChannelsLocalEnabled    bool `json:"channels_local_enabled"`
-	ChannelsWebhookEnabled  bool `json:"channels_webhook_enabled"`
-	ChannelsTelegramEnabled bool `json:"channels_telegram_enabled"`
+	Enabled                    bool   `json:"enabled"`
+	Version                    int64  `json:"version"`
+	RunsTotal                  int    `json:"runs_total"`
+	RunsActive                 int    `json:"runs_active"`
+	AgentsCount                int    `json:"agents_count"`
+	AgentsWatchEnabled         bool   `json:"agents_watch_enabled"`
+	ChannelsLocalEnabled       bool   `json:"channels_local_enabled"`
+	ChannelsWebhookEnabled     bool   `json:"channels_webhook_enabled"`
+	ChannelsTelegramEnabled    bool   `json:"channels_telegram_enabled"`
+	PersistenceEnabled         bool   `json:"persistence_enabled"`
+	RunsPersistenceEnabled     bool   `json:"runs_persistence_enabled"`
+	ChannelsPersistenceEnabled bool   `json:"channels_persistence_enabled"`
+	RestoreOnStartup           bool   `json:"restore_on_startup"`
+	PersistenceDir             string `json:"persistence_dir,omitempty"`
+	RunsRestored               int    `json:"runs_restored"`
+	ChannelsRestored           int    `json:"channels_restored"`
+	LastPersistAt              string `json:"last_persist_at,omitempty"`
+	LastRestoreAt              string `json:"last_restore_at,omitempty"`
+	LastRestoreError           string `json:"last_restore_error,omitempty"`
+	AgentsLastReloadAt         string `json:"agents_last_reload_at,omitempty"`
 }
 
 type gatewayReportSummary struct {
