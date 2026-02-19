@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -366,7 +367,6 @@ func TestExecuteCommand_GatewayStatusTelemetry(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	runtime := runtimeClient{serverURL: server.URL}
-	runtime.workspaceID = "ws-main"
 
 	if _, _, err := executeCommand(context.Background(), runtime, "/gateway status", "", stdout, stderr); err != nil {
 		t.Fatalf("/gateway status: %v", err)
@@ -380,7 +380,7 @@ func TestExecuteCommand_GatewayStatusTelemetry(t *testing.T) {
 		strings.Contains(out, "persistence=true") &&
 		strings.Contains(out, "runs_store=true") &&
 		strings.Contains(out, "channels_store=false") &&
-		strings.Contains(out, "scope=ws-main") &&
+		strings.Contains(out, "scope=default") &&
 		strings.Contains(out, "restored_runs=3") &&
 		strings.Contains(out, "restored_channels=9")
 	if !containsAll {
@@ -570,6 +570,18 @@ func TestExecuteCommand_Whoami(t *testing.T) {
 	}
 }
 
+func TestRootCommand_DoesNotAcceptWorkspaceIDFlag(t *testing.T) {
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"--workspace-id", "ws-main"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected unknown flag error for --workspace-id")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "unknown flag") {
+		t.Fatalf("expected unknown flag error, got %v", err)
+	}
+}
+
 func TestFormatRuntimeError_ProvidesAuthHintForUnauthorized(t *testing.T) {
 	err := &apiHTTPError{
 		Method:   http.MethodGet,
@@ -578,7 +590,7 @@ func TestFormatRuntimeError_ProvidesAuthHintForUnauthorized(t *testing.T) {
 		Code:     "unauthorized",
 		Message:  "unauthorized",
 	}
-	msg := formatRuntimeError(err, runtimeClient{})
+	msg := formatRuntimeError(err)
 	if !strings.Contains(msg, "hint:") {
 		t.Fatalf("expected hint in message, got %q", msg)
 	}
@@ -595,9 +607,12 @@ func TestFormatRuntimeError_ProvidesWorkspaceHint(t *testing.T) {
 		Code:     "workspace_id_required",
 		Message:  "workspace id is required",
 	}
-	msg := formatRuntimeError(err, runtimeClient{})
-	if !strings.Contains(msg, "--workspace-id") {
-		t.Fatalf("expected workspace hint, got %q", msg)
+	msg := formatRuntimeError(err)
+	if strings.Contains(msg, "--workspace-id") {
+		t.Fatalf("workspace flag hint must be removed, got %q", msg)
+	}
+	if !strings.Contains(strings.ToLower(msg), "workspace") {
+		t.Fatalf("expected generic workspace hint, got %q", msg)
 	}
 }
 
@@ -609,7 +624,7 @@ func TestFormatRuntimeError_ProvidesAdminHintOnAdminEndpoint(t *testing.T) {
 		Code:     "forbidden",
 		Message:  "forbidden",
 	}
-	msg := formatRuntimeError(err, runtimeClient{})
+	msg := formatRuntimeError(err)
 	if !strings.Contains(msg, "--admin-api-token") {
 		t.Fatalf("expected admin token hint, got %q", msg)
 	}

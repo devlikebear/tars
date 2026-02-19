@@ -17,7 +17,6 @@ type runtimeClient struct {
 	serverURL     string
 	apiToken      string
 	adminAPIToken string
-	workspaceID   string
 	httpClient    *http.Client
 }
 
@@ -701,9 +700,6 @@ func (c runtimeClient) requestText(ctx context.Context, method, path string, bod
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	if ws := strings.TrimSpace(c.workspaceID); ws != "" {
-		req.Header.Set("Tars-Workspace-Id", ws)
 	}
 
 	httpClient := c.httpClient

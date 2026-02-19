@@ -308,14 +308,14 @@ func TestApplyAPIMiddleware_StatusIncludesAuthMetadata(t *testing.T) {
 	}
 }
 
-func TestApplyAPIMiddleware_AuthenticatedRequestRequiresWorkspaceHeader(t *testing.T) {
+func TestApplyAPIMiddleware_AuthenticatedRequestUsesDefaultWorkspaceWithoutHeader(t *testing.T) {
 	cfg := config.Config{
 		APIAuthMode:        "required",
 		APIUserToken:       "user-token",
 		APIWorkspaceHeader: "Tars-Workspace-Id",
 	}
-	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(serverauth.WorkspaceIDFromContext(r.Context())))
 	}), io.Discard)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
@@ -324,12 +324,15 @@ func TestApplyAPIMiddleware_AuthenticatedRequestRequiresWorkspaceHeader(t *testi
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing workspace header, got %d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for default workspace fallback, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != defaultWorkspaceID {
+		t.Fatalf("expected default workspace %q, got %q", defaultWorkspaceID, got)
 	}
 }
 
-func TestApplyAPIMiddleware_RejectsWorkspaceOutsideRoleAllowlist(t *testing.T) {
+func TestApplyAPIMiddleware_FixedRoleWorkspaceIgnoresWorkspaceHeader(t *testing.T) {
 	cfg := config.Config{
 		APIAuthMode:          "required",
 		APIUserToken:         "user-token",
@@ -338,8 +341,8 @@ func TestApplyAPIMiddleware_RejectsWorkspaceOutsideRoleAllowlist(t *testing.T) {
 		APIUserWorkspaceIDs:  []string{"ws-user"},
 		APIAdminWorkspaceIDs: []string{"ws-admin"},
 	}
-	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(serverauth.WorkspaceIDFromContext(r.Context())))
 	}), io.Discard)
 
 	reqUser := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
@@ -348,7 +351,23 @@ func TestApplyAPIMiddleware_RejectsWorkspaceOutsideRoleAllowlist(t *testing.T) {
 	reqUser.Header.Set("Tars-Workspace-Id", "ws-other")
 	recUser := httptest.NewRecorder()
 	h.ServeHTTP(recUser, reqUser)
-	if recUser.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for user workspace mismatch, got %d body=%q", recUser.Code, recUser.Body.String())
+	if recUser.Code != http.StatusOK {
+		t.Fatalf("expected 200 for fixed user workspace, got %d body=%q", recUser.Code, recUser.Body.String())
+	}
+	if got := strings.TrimSpace(recUser.Body.String()); got != "ws-user" {
+		t.Fatalf("expected user workspace ws-user, got %q", got)
+	}
+
+	reqAdmin := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	reqAdmin.RemoteAddr = "192.0.2.10:5555"
+	reqAdmin.Header.Set("Authorization", "Bearer admin-token")
+	reqAdmin.Header.Set("Tars-Workspace-Id", "ws-other")
+	recAdmin := httptest.NewRecorder()
+	h.ServeHTTP(recAdmin, reqAdmin)
+	if recAdmin.Code != http.StatusOK {
+		t.Fatalf("expected 200 for fixed admin workspace, got %d body=%q", recAdmin.Code, recAdmin.Body.String())
+	}
+	if got := strings.TrimSpace(recAdmin.Body.String()); got != "ws-admin" {
+		t.Fatalf("expected admin workspace ws-admin, got %q", got)
 	}
 }

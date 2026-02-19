@@ -119,18 +119,16 @@ func (c *notificationCenter) filterName() string {
 }
 
 type eventStreamClient struct {
-	serverURL   string
-	apiToken    string
-	workspaceID string
-	httpClient  *http.Client
+	serverURL  string
+	apiToken   string
+	httpClient *http.Client
 }
 
 func newEventStreamClient(runtime runtimeClient) eventStreamClient {
 	return eventStreamClient{
-		serverURL:   runtime.serverURL,
-		apiToken:    runtime.apiToken,
-		workspaceID: runtime.workspaceID,
-		httpClient:  runtime.httpClient,
+		serverURL:  runtime.serverURL,
+		apiToken:   runtime.apiToken,
+		httpClient: runtime.httpClient,
 	}
 }
 
@@ -146,6 +144,9 @@ func (c eventStreamClient) consume(ctx context.Context, onEvent func(notificatio
 		}
 		if onError != nil {
 			onError(err)
+		}
+		if isEventStreamPermanentError(err) {
+			return
 		}
 		select {
 		case <-ctx.Done():
@@ -173,9 +174,6 @@ func (c eventStreamClient) consumeOnce(ctx context.Context, onEvent func(notific
 	if token := strings.TrimSpace(c.apiToken); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	if ws := strings.TrimSpace(c.workspaceID); ws != "" {
-		req.Header.Set("Tars-Workspace-Id", ws)
-	}
 	httpClient := c.httpClient
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -187,7 +185,23 @@ func (c eventStreamClient) consumeOnce(ctx context.Context, onEvent func(notific
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
-		return fmt.Errorf("events stream status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		code, message, ok := parseAPIErrorPayload(body)
+		if ok {
+			return &apiHTTPError{
+				Method:   http.MethodGet,
+				Endpoint: endpoint,
+				Status:   resp.StatusCode,
+				Code:     code,
+				Message:  message,
+				Body:     strings.TrimSpace(string(body)),
+			}
+		}
+		return &apiHTTPError{
+			Method:   http.MethodGet,
+			Endpoint: endpoint,
+			Status:   resp.StatusCode,
+			Body:     strings.TrimSpace(string(body)),
+		}
 	}
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
@@ -212,6 +226,14 @@ func (c eventStreamClient) consumeOnce(ctx context.Context, onEvent func(notific
 		return err
 	}
 	return io.EOF
+}
+
+func isEventStreamPermanentError(err error) bool {
+	var apiErr *apiHTTPError
+	if !errors.As(err, &apiErr) || apiErr == nil {
+		return false
+	}
+	return apiErr.Status >= 400 && apiErr.Status < 500 && apiErr.Status != http.StatusTooManyRequests
 }
 
 func resolveEventsEndpoint(serverURL string) (string, error) {

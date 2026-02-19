@@ -33,10 +33,9 @@ type chatResult struct {
 }
 
 type chatClient struct {
-	serverURL   string
-	apiToken    string
-	workspaceID string
-	httpClient  *http.Client
+	serverURL  string
+	apiToken   string
+	httpClient *http.Client
 }
 
 func (c chatClient) stream(ctx context.Context, req chatRequest, onStatus func(chatEvent), onDelta func(string)) (chatResult, error) {
@@ -63,9 +62,6 @@ func (c chatClient) stream(ctx context.Context, req chatRequest, onStatus func(c
 	if token := strings.TrimSpace(c.apiToken); token != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+token)
 	}
-	if ws := strings.TrimSpace(c.workspaceID); ws != "" {
-		httpReq.Header.Set("Tars-Workspace-Id", ws)
-	}
 
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
@@ -74,7 +70,23 @@ func (c chatClient) stream(ctx context.Context, req chatRequest, onStatus func(c
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
-		return chatResult{}, fmt.Errorf("chat endpoint status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		code, message, ok := parseAPIErrorPayload(body)
+		if ok {
+			return chatResult{}, &apiHTTPError{
+				Method:   http.MethodPost,
+				Endpoint: endpoint,
+				Status:   resp.StatusCode,
+				Code:     code,
+				Message:  message,
+				Body:     strings.TrimSpace(string(body)),
+			}
+		}
+		return chatResult{}, &apiHTTPError{
+			Method:   http.MethodPost,
+			Endpoint: endpoint,
+			Status:   resp.StatusCode,
+			Body:     strings.TrimSpace(string(body)),
+		}
 	}
 	events, err := decodeSSEBuffer(resp.Body)
 	if err != nil {

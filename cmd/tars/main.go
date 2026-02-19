@@ -17,13 +17,12 @@ import (
 )
 
 type options struct {
-	serverURL   string
-	sessionID   string
-	apiToken    string
-	adminToken  string
-	workspaceID string
-	message     string
-	verbose     bool
+	serverURL  string
+	sessionID  string
+	apiToken   string
+	adminToken string
+	message    string
+	verbose    bool
 }
 
 type localRuntimeState struct {
@@ -44,15 +43,13 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		Short: "Go TUI-lite client for tarsd",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			chat := chatClient{
-				serverURL:   opts.serverURL,
-				apiToken:    opts.apiToken,
-				workspaceID: opts.workspaceID,
+				serverURL: opts.serverURL,
+				apiToken:  opts.apiToken,
 			}
 			runtime := runtimeClient{
 				serverURL:     opts.serverURL,
 				apiToken:      opts.apiToken,
 				adminAPIToken: opts.adminToken,
-				workspaceID:   opts.workspaceID,
 			}
 			session := strings.TrimSpace(opts.sessionID)
 			if strings.TrimSpace(opts.message) != "" {
@@ -72,7 +69,6 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&opts.sessionID, "session", "", "session id")
 	cmd.Flags().StringVar(&opts.apiToken, "api-token", os.Getenv("TARS_API_TOKEN"), "api token")
 	cmd.Flags().StringVar(&opts.adminToken, "admin-api-token", os.Getenv("TARS_ADMIN_API_TOKEN"), "admin api token")
-	cmd.Flags().StringVar(&opts.workspaceID, "workspace-id", os.Getenv("TARS_WORKSPACE_ID"), "workspace id header")
 	cmd.Flags().StringVar(&opts.message, "message", "", "send one message and exit")
 	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "verbose status output")
 	return cmd
@@ -86,7 +82,7 @@ func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, cha
 		events := newEventStreamClient(runtime)
 		go events.consume(ctx, state.notifications.add, func(err error) {
 			if verbose {
-				fmt.Fprintf(stderr, "notify stream: %s\n", formatRuntimeError(err, runtime))
+				fmt.Fprintf(stderr, "notify stream: %s\n", formatRuntimeError(err))
 			}
 		})
 	}
@@ -112,7 +108,7 @@ func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, cha
 		if strings.HasPrefix(line, "/") {
 			handled, nextSession, err := executeCommandWithState(ctx, runtime, line, session, stdout, stderr, state)
 			if err != nil {
-				fmt.Fprintf(stderr, "error: %s\n", formatRuntimeError(err, runtime))
+				fmt.Fprintf(stderr, "error: %s\n", formatRuntimeError(err))
 				continue
 			}
 			if handled {
@@ -122,7 +118,7 @@ func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, cha
 		}
 		res, err := sendMessage(ctx, chat, session, line, verbose, stdout, stderr)
 		if err != nil {
-			fmt.Fprintf(stderr, "error: %s\n", formatRuntimeError(err, runtime))
+			fmt.Fprintf(stderr, "error: %s\n", formatRuntimeError(err))
 			continue
 		}
 		session = res.SessionID
@@ -254,9 +250,6 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		}
 		scope := strings.TrimSpace(status.WorkspaceID)
 		if scope == "" {
-			scope = strings.TrimSpace(runtime.workspaceID)
-		}
-		if scope == "" {
 			scope = "default"
 		}
 		fmt.Fprintf(stdout, "SYSTEM > workspace=%s sessions=%d scope=%s", status.WorkspaceDir, status.SessionCount, scope)
@@ -278,9 +271,6 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			role = "anonymous"
 		}
 		scope := strings.TrimSpace(identity.WorkspaceID)
-		if scope == "" {
-			scope = strings.TrimSpace(runtime.workspaceID)
-		}
 		if scope == "" {
 			scope = "default"
 		}
@@ -504,10 +494,7 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			if err != nil {
 				return true, session, err
 			}
-			scope := strings.TrimSpace(runtime.workspaceID)
-			if scope == "" {
-				scope = "default"
-			}
+			scope := "default"
 			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d scope=%s runs_total=%d runs_active=%d agents=%d watch=%t persistence=%t runs_store=%t channels_store=%t restored_runs=%d restored_channels=%d reload_version=%d",
 				status.Enabled,
 				status.Version,
@@ -805,7 +792,7 @@ func sendMessage(ctx context.Context, client chatClient, session, message string
 	return res, err
 }
 
-func formatRuntimeError(err error, runtime runtimeClient) string {
+func formatRuntimeError(err error) string {
 	if err == nil {
 		return ""
 	}
@@ -814,14 +801,14 @@ func formatRuntimeError(err error, runtime runtimeClient) string {
 	if !errors.As(err, &apiErr) || apiErr == nil {
 		return message
 	}
-	hint := runtimeErrorHint(apiErr, runtime)
+	hint := runtimeErrorHint(apiErr)
 	if strings.TrimSpace(hint) == "" {
 		return message
 	}
 	return message + "\nhint: " + hint
 }
 
-func runtimeErrorHint(apiErr *apiHTTPError, runtime runtimeClient) string {
+func runtimeErrorHint(apiErr *apiHTTPError) string {
 	if apiErr == nil {
 		return ""
 	}
@@ -832,13 +819,9 @@ func runtimeErrorHint(apiErr *apiHTTPError, runtime runtimeClient) string {
 	code := strings.ToLower(strings.TrimSpace(apiErr.Code))
 	switch code {
 	case "workspace_id_required":
-		return "set --workspace-id (or TARS_WORKSPACE_ID) and retry"
+		return "workspace binding is missing on server; check tarsd role-to-workspace config"
 	case "workspace_forbidden":
-		scope := strings.TrimSpace(runtime.workspaceID)
-		if scope == "" {
-			scope = "<workspace-id>"
-		}
-		return fmt.Sprintf("workspace %q is outside your allowlist; retry with an allowed --workspace-id or ask admin", scope)
+		return "your role is not allowed for the mapped workspace; ask admin to update workspace binding"
 	case "unauthorized":
 		if isAdminEndpointPath(endpointPath) {
 			return "admin endpoint requires admin token; retry with --admin-api-token (or TARS_ADMIN_API_TOKEN)"

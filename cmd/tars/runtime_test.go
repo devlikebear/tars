@@ -132,7 +132,6 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 		serverURL:     server.URL,
 		apiToken:      "user-token",
 		adminAPIToken: "admin-token",
-		workspaceID:   "ws-a",
 	}
 	ctx := context.Background()
 	sessions, err := client.listSessions(ctx)
