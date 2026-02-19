@@ -152,6 +152,41 @@ type gatewayStatus struct {
 	ChannelsTelegramEnabled bool `json:"channels_telegram_enabled"`
 }
 
+type gatewayReportSummary struct {
+	GeneratedAt      string         `json:"generated_at"`
+	SummaryEnabled   bool           `json:"summary_enabled"`
+	ArchiveEnabled   bool           `json:"archive_enabled"`
+	RunsTotal        int            `json:"runs_total"`
+	RunsActive       int            `json:"runs_active"`
+	RunsByStatus     map[string]int `json:"runs_by_status"`
+	ChannelsTotal    int            `json:"channels_total"`
+	MessagesTotal    int            `json:"messages_total"`
+	MessagesBySource map[string]int `json:"messages_by_source"`
+}
+
+type gatewayReportRuns struct {
+	GeneratedAt    string     `json:"generated_at"`
+	ArchiveEnabled bool       `json:"archive_enabled"`
+	Count          int        `json:"count"`
+	Runs           []agentRun `json:"runs"`
+}
+
+type channelReportMessage struct {
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
+	Source    string `json:"source"`
+	Direction string `json:"direction"`
+	Text      string `json:"text"`
+	Timestamp string `json:"timestamp"`
+}
+
+type gatewayReportChannels struct {
+	GeneratedAt    string                            `json:"generated_at"`
+	ArchiveEnabled bool                              `json:"archive_enabled"`
+	Count          int                               `json:"count"`
+	Messages       map[string][]channelReportMessage `json:"messages"`
+}
+
 type spawnRequest struct {
 	SessionID string `json:"session_id,omitempty"`
 	Title     string `json:"title,omitempty"`
@@ -251,6 +286,44 @@ func (c runtimeClient) gatewayRestart(ctx context.Context) (gatewayStatus, error
 		return gatewayStatus{}, err
 	}
 	return status, nil
+}
+
+func (c runtimeClient) gatewayReportSummary(ctx context.Context) (gatewayReportSummary, error) {
+	var out gatewayReportSummary
+	if err := c.requestJSON(ctx, http.MethodGet, "/v1/gateway/reports/summary", nil, false, &out); err != nil {
+		return gatewayReportSummary{}, err
+	}
+	return out, nil
+}
+
+func (c runtimeClient) gatewayReportRuns(ctx context.Context, limit int) (gatewayReportRuns, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var out gatewayReportRuns
+	path := fmt.Sprintf("/v1/gateway/reports/runs?limit=%d", limit)
+	if err := c.requestJSON(ctx, http.MethodGet, path, nil, false, &out); err != nil {
+		return gatewayReportRuns{}, err
+	}
+	if out.Runs == nil {
+		out.Runs = []agentRun{}
+	}
+	return out, nil
+}
+
+func (c runtimeClient) gatewayReportChannels(ctx context.Context, limit int) (gatewayReportChannels, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var out gatewayReportChannels
+	path := fmt.Sprintf("/v1/gateway/reports/channels?limit=%d", limit)
+	if err := c.requestJSON(ctx, http.MethodGet, path, nil, false, &out); err != nil {
+		return gatewayReportChannels{}, err
+	}
+	if out.Messages == nil {
+		out.Messages = map[string][]channelReportMessage{}
+	}
+	return out, nil
 }
 
 func (c runtimeClient) listSessions(ctx context.Context) ([]sessionSummary, error) {

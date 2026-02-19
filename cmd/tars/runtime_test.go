@@ -74,6 +74,38 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/gateway/reload":
 			adminAuth = r.Header.Get("Authorization")
 			_ = json.NewEncoder(w).Encode(map[string]any{"enabled": true, "version": 2})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/summary":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"generated_at":       "2026-02-19T00:00:00Z",
+				"summary_enabled":    true,
+				"archive_enabled":    false,
+				"runs_total":         4,
+				"runs_active":        1,
+				"runs_by_status":     map[string]any{"running": 1, "completed": 3},
+				"channels_total":     2,
+				"messages_total":     7,
+				"messages_by_source": map[string]any{"webhook": 5, "telegram": 2},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/runs":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"generated_at":    "2026-02-19T00:00:01Z",
+				"archive_enabled": false,
+				"count":           1,
+				"runs": []map[string]any{
+					{"run_id": "r1", "status": "completed"},
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/channels":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"generated_at":    "2026-02-19T00:00:02Z",
+				"archive_enabled": false,
+				"count":           1,
+				"messages": map[string]any{
+					"general": []map[string]any{
+						{"id": "m1", "channel_id": "general", "source": "webhook", "direction": "inbound", "text": "hello", "timestamp": "2026-02-19T00:00:02Z"},
+					},
+				},
+			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs":
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "job_1", "name": "daily", "prompt": "check", "schedule": "every:1h", "enabled": true}})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/cron/jobs":
@@ -164,6 +196,15 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	_, err = client.gatewayStatus(ctx)
 	if err != nil {
 		t.Fatalf("gatewayStatus: %v", err)
+	}
+	if summary, err := client.gatewayReportSummary(ctx); err != nil || summary.RunsTotal != 4 {
+		t.Fatalf("gatewayReportSummary: summary=%+v err=%v", summary, err)
+	}
+	if runs, err := client.gatewayReportRuns(ctx, 20); err != nil || runs.Count != 1 {
+		t.Fatalf("gatewayReportRuns: runs=%+v err=%v", runs, err)
+	}
+	if channels, err := client.gatewayReportChannels(ctx, 20); err != nil || channels.Count != 1 {
+		t.Fatalf("gatewayReportChannels: channels=%+v err=%v", channels, err)
 	}
 	if jobs, err := client.listCronJobs(ctx); err != nil || len(jobs) != 1 {
 		t.Fatalf("listCronJobs: jobs=%+v err=%v", jobs, err)

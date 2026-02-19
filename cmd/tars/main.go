@@ -140,7 +140,7 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 	}
 	switch fields[0] {
 	case "/help":
-		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /resume [id] /new [title] /sessions /history /export /search {keyword} /status /compact /heartbeat /skills /plugins /mcp /reload /agents [--detail|-d] /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart} /channels /cron {list|get|runs|add|run|delete|enable|disable} /notify {list|filter|open|clear} /quit")
+		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /resume [id] /new [title] /sessions /history /export /search {keyword} /status /compact /heartbeat /skills /plugins /mcp /reload /agents [--detail|-d] /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart|summary|runs [limit]|channels [limit]} /channels /cron {list|get|runs|add|run|delete|enable|disable} /notify {list|filter|open|clear} /quit")
 		return true, session, nil
 	case "/session":
 		fmt.Fprintf(stdout, "SYSTEM > session=%s\n", session)
@@ -429,25 +429,89 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		if len(fields) > 1 {
 			action = strings.TrimSpace(fields[1])
 		}
-		var (
-			status gatewayStatus
-			err    error
-		)
 		switch action {
 		case "status":
-			status, err = runtime.gatewayStatus(ctx)
+			status, err := runtime.gatewayStatus(ctx)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d\n", status.Enabled, status.Version)
+			return true, session, nil
 		case "reload":
-			status, err = runtime.gatewayReload(ctx)
+			status, err := runtime.gatewayReload(ctx)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d\n", status.Enabled, status.Version)
+			return true, session, nil
 		case "restart":
-			status, err = runtime.gatewayRestart(ctx)
+			status, err := runtime.gatewayRestart(ctx)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d\n", status.Enabled, status.Version)
+			return true, session, nil
+		case "summary":
+			report, err := runtime.gatewayReportSummary(ctx)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > gateway summary runs_total=%d runs_active=%d channels_total=%d messages_total=%d archive=%t\n",
+				report.RunsTotal, report.RunsActive, report.ChannelsTotal, report.MessagesTotal, report.ArchiveEnabled)
+			return true, session, nil
+		case "runs":
+			limit := 50
+			if len(fields) > 2 {
+				n, err := parseOptionalLimit(fields[2], 50)
+				if err != nil {
+					return true, session, fmt.Errorf("usage: /gateway runs [limit]")
+				}
+				limit = n
+			}
+			report, err := runtime.gatewayReportRuns(ctx, limit)
+			if err != nil {
+				return true, session, err
+			}
+			if len(report.Runs) == 0 {
+				fmt.Fprintln(stdout, "SYSTEM > (no gateway runs)")
+				return true, session, nil
+			}
+			fmt.Fprintln(stdout, "SYSTEM > gateway runs")
+			for _, run := range report.Runs {
+				fmt.Fprintf(stdout, "- %s status=%s agent=%s session=%s\n", run.RunID, run.Status, run.Agent, run.SessionID)
+			}
+			return true, session, nil
+		case "channels":
+			limit := 50
+			if len(fields) > 2 {
+				n, err := parseOptionalLimit(fields[2], 50)
+				if err != nil {
+					return true, session, fmt.Errorf("usage: /gateway channels [limit]")
+				}
+				limit = n
+			}
+			report, err := runtime.gatewayReportChannels(ctx, limit)
+			if err != nil {
+				return true, session, err
+			}
+			if len(report.Messages) == 0 {
+				fmt.Fprintln(stdout, "SYSTEM > (no channel messages)")
+				return true, session, nil
+			}
+			fmt.Fprintln(stdout, "SYSTEM > gateway channel messages")
+			for channelID, messages := range report.Messages {
+				fmt.Fprintf(stdout, "- %s messages=%d\n", channelID, len(messages))
+			}
+			return true, session, nil
+		case "report":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /gateway report {summary|runs [limit]|channels [limit]}")
+			}
+			rewritten := strings.TrimSpace(strings.Replace(line, "/gateway report", "/gateway", 1))
+			return executeCommandWithState(ctx, runtime, rewritten, session, stdout, stderr, state)
 		default:
-			return true, session, fmt.Errorf("usage: /gateway {status|reload|restart}")
+			return true, session, fmt.Errorf("usage: /gateway {status|reload|restart|summary|runs [limit]|channels [limit]}")
 		}
-		if err != nil {
-			return true, session, err
-		}
-		fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d\n", status.Enabled, status.Version)
-		return true, session, nil
 	case "/channels":
 		status, err := runtime.gatewayStatus(ctx)
 		if err != nil {

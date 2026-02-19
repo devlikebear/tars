@@ -261,3 +261,72 @@ func TestExecuteCommand_NotifyCommands(t *testing.T) {
 		t.Fatalf("expected notify clear output, got %q", stdout.String())
 	}
 }
+
+func TestExecuteCommand_GatewayReports(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/summary":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"generated_at":       "2026-02-19T00:00:00Z",
+				"summary_enabled":    true,
+				"archive_enabled":    false,
+				"runs_total":         3,
+				"runs_active":        1,
+				"runs_by_status":     map[string]any{"running": 1, "completed": 2},
+				"channels_total":     1,
+				"messages_total":     4,
+				"messages_by_source": map[string]any{"webhook": 4},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/runs":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"generated_at":    "2026-02-19T00:00:01Z",
+				"archive_enabled": false,
+				"count":           1,
+				"runs": []map[string]any{
+					{"run_id": "run-1", "status": "completed", "agent": "default"},
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/channels":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"generated_at":    "2026-02-19T00:00:02Z",
+				"archive_enabled": false,
+				"count":           1,
+				"messages": map[string]any{
+					"general": []map[string]any{
+						{"id": "m1", "channel_id": "general", "source": "webhook", "direction": "inbound", "text": "hello", "timestamp": "2026-02-19T00:00:02Z"},
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{serverURL: server.URL}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/gateway summary", "", stdout, stderr); err != nil {
+		t.Fatalf("/gateway summary: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "runs_total=3") {
+		t.Fatalf("expected summary output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if _, _, err := executeCommand(context.Background(), runtime, "/gateway runs 5", "", stdout, stderr); err != nil {
+		t.Fatalf("/gateway runs: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "run-1") {
+		t.Fatalf("expected runs output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if _, _, err := executeCommand(context.Background(), runtime, "/gateway channels 5", "", stdout, stderr); err != nil {
+		t.Fatalf("/gateway channels: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "general messages=1") {
+		t.Fatalf("expected channels output, got %q", stdout.String())
+	}
+}
