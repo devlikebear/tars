@@ -382,11 +382,17 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		}
 		fmt.Fprintln(stdout, "SYSTEM > runs")
 		for _, r := range runs {
+			line := fmt.Sprintf("- %s status=%s agent=%s session=%s", r.RunID, r.Status, r.Agent, r.SessionID)
 			if strings.TrimSpace(r.WorkspaceID) != "" {
-				fmt.Fprintf(stdout, "- %s status=%s agent=%s session=%s workspace=%s\n", r.RunID, r.Status, r.Agent, r.SessionID, r.WorkspaceID)
-				continue
+				line += " workspace=" + strings.TrimSpace(r.WorkspaceID)
 			}
-			fmt.Fprintf(stdout, "- %s status=%s agent=%s session=%s\n", r.RunID, r.Status, r.Agent, r.SessionID)
+			if strings.TrimSpace(r.DiagnosticCode) != "" {
+				line += " diag=" + strings.TrimSpace(r.DiagnosticCode)
+			}
+			if strings.TrimSpace(r.PolicyBlockedTool) != "" {
+				line += " blocked=" + strings.TrimSpace(r.PolicyBlockedTool)
+			}
+			fmt.Fprintln(stdout, line)
 		}
 		return true, session, nil
 	case "/run":
@@ -409,6 +415,12 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			fmt.Fprintf(stdout, "error: %s\n", run.Error)
 			if strings.TrimSpace(run.DiagnosticCode) != "" {
 				fmt.Fprintf(stdout, "diagnostic: %s | %s\n", strings.TrimSpace(run.DiagnosticCode), strings.TrimSpace(run.DiagnosticReason))
+			}
+			if strings.TrimSpace(run.PolicyBlockedTool) != "" {
+				fmt.Fprintf(stdout, "policy_blocked_tool=%s\n", strings.TrimSpace(run.PolicyBlockedTool))
+			}
+			if len(run.PolicyAllowedTools) > 0 {
+				fmt.Fprintf(stdout, "policy_allowed=%s\n", strings.Join(run.PolicyAllowedTools, ","))
 			}
 		}
 		return true, session, nil
@@ -464,7 +476,7 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			if scope == "" {
 				scope = "default"
 			}
-			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d scope=%s runs_total=%d runs_active=%d agents=%d watch=%t persistence=%t runs_store=%t channels_store=%t restored_runs=%d restored_channels=%d\n",
+			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d scope=%s runs_total=%d runs_active=%d agents=%d watch=%t persistence=%t runs_store=%t channels_store=%t restored_runs=%d restored_channels=%d reload_version=%d",
 				status.Enabled,
 				status.Version,
 				scope,
@@ -477,7 +489,12 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 				status.ChannelsPersistenceEnabled,
 				status.RunsRestored,
 				status.ChannelsRestored,
+				status.AgentsReloadVersion,
 			)
+			if strings.TrimSpace(status.LastRestoreError) != "" {
+				fmt.Fprintf(stdout, " restore_error=%s", strings.TrimSpace(status.LastRestoreError))
+			}
+			fmt.Fprintln(stdout)
 			return true, session, nil
 		case "reload":
 			status, err := runtime.gatewayReload(ctx)

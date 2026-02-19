@@ -141,19 +141,21 @@ type agentDescriptor struct {
 }
 
 type agentRun struct {
-	RunID            string `json:"run_id"`
-	WorkspaceID      string `json:"workspace_id,omitempty"`
-	SessionID        string `json:"session_id,omitempty"`
-	Agent            string `json:"agent,omitempty"`
-	Status           string `json:"status"`
-	Accepted         bool   `json:"accepted"`
-	Response         string `json:"response,omitempty"`
-	Error            string `json:"error,omitempty"`
-	DiagnosticCode   string `json:"diagnostic_code,omitempty"`
-	DiagnosticReason string `json:"diagnostic_reason,omitempty"`
-	CreatedAt        string `json:"created_at,omitempty"`
-	StartedAt        string `json:"started_at,omitempty"`
-	CompletedAt      string `json:"completed_at,omitempty"`
+	RunID              string   `json:"run_id"`
+	WorkspaceID        string   `json:"workspace_id,omitempty"`
+	SessionID          string   `json:"session_id,omitempty"`
+	Agent              string   `json:"agent,omitempty"`
+	Status             string   `json:"status"`
+	Accepted           bool     `json:"accepted"`
+	Response           string   `json:"response,omitempty"`
+	Error              string   `json:"error,omitempty"`
+	DiagnosticCode     string   `json:"diagnostic_code,omitempty"`
+	DiagnosticReason   string   `json:"diagnostic_reason,omitempty"`
+	PolicyBlockedTool  string   `json:"policy_blocked_tool,omitempty"`
+	PolicyAllowedTools []string `json:"policy_allowed_tools,omitempty"`
+	CreatedAt          string   `json:"created_at,omitempty"`
+	StartedAt          string   `json:"started_at,omitempty"`
+	CompletedAt        string   `json:"completed_at,omitempty"`
 }
 
 type gatewayStatus struct {
@@ -163,6 +165,7 @@ type gatewayStatus struct {
 	RunsActive                 int    `json:"runs_active"`
 	AgentsCount                int    `json:"agents_count"`
 	AgentsWatchEnabled         bool   `json:"agents_watch_enabled"`
+	AgentsReloadVersion        int64  `json:"agents_reload_version"`
 	ChannelsLocalEnabled       bool   `json:"channels_local_enabled"`
 	ChannelsWebhookEnabled     bool   `json:"channels_webhook_enabled"`
 	ChannelsTelegramEnabled    bool   `json:"channels_telegram_enabled"`

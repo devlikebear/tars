@@ -388,6 +388,127 @@ func TestExecuteCommand_GatewayStatusTelemetry(t *testing.T) {
 	}
 }
 
+func TestExecuteCommand_RunShowsPolicyDiagnosticDetails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agent/runs/run_1":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"run_id":               "run_1",
+				"status":               "failed",
+				"agent":                "researcher",
+				"session_id":           "s-1",
+				"workspace_id":         "team-a",
+				"error":                "tool not injected for this request: exec",
+				"diagnostic_code":      "policy_tool_blocked",
+				"diagnostic_reason":    "tool not injected for this request: exec",
+				"policy_blocked_tool":  "exec",
+				"policy_allowed_tools": []string{"read_file", "list_dir"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{serverURL: server.URL}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/run run_1", "", stdout, stderr); err != nil {
+		t.Fatalf("/run: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "diagnostic: policy_tool_blocked") {
+		t.Fatalf("expected diagnostic output, got %q", out)
+	}
+	if !strings.Contains(out, "policy_blocked_tool=exec") {
+		t.Fatalf("expected blocked tool output, got %q", out)
+	}
+	if !strings.Contains(out, "policy_allowed=read_file,list_dir") {
+		t.Fatalf("expected allowed tools output, got %q", out)
+	}
+}
+
+func TestExecuteCommand_RunsShowsPolicyDiagnosticSummary(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agent/runs":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"runs": []map[string]any{
+					{
+						"run_id":              "run_2",
+						"status":              "failed",
+						"agent":               "researcher",
+						"session_id":          "s-2",
+						"workspace_id":        "team-b",
+						"diagnostic_code":     "policy_tool_blocked",
+						"policy_blocked_tool": "exec",
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{serverURL: server.URL}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/runs", "", stdout, stderr); err != nil {
+		t.Fatalf("/runs: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "diag=policy_tool_blocked") {
+		t.Fatalf("expected run diagnostic summary, got %q", out)
+	}
+	if !strings.Contains(out, "blocked=exec") {
+		t.Fatalf("expected blocked tool summary, got %q", out)
+	}
+}
+
+func TestExecuteCommand_GatewayStatusShowsReloadAndRestoreDetails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"enabled":                      true,
+				"version":                      15,
+				"runs_total":                   10,
+				"runs_active":                  1,
+				"agents_count":                 5,
+				"agents_watch_enabled":         true,
+				"agents_reload_version":        8,
+				"persistence_enabled":          true,
+				"runs_persistence_enabled":     true,
+				"channels_persistence_enabled": true,
+				"runs_restored":                7,
+				"channels_restored":            19,
+				"last_restore_error":           "decode snapshot failed",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{serverURL: server.URL}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/gateway status", "", stdout, stderr); err != nil {
+		t.Fatalf("/gateway status: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "reload_version=8") {
+		t.Fatalf("expected reload version in status output, got %q", out)
+	}
+	if !strings.Contains(out, "restore_error=decode snapshot failed") {
+		t.Fatalf("expected restore error in status output, got %q", out)
+	}
+}
+
 func TestExecuteCommand_Health(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
