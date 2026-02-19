@@ -243,9 +243,10 @@ func resolveAgentMaxIterations(value int) int {
 }
 
 type chatToolingOptions struct {
-	ProcessManager *tool.ProcessManager
-	Extensions     *extensions.Manager
-	Gateway        *gateway.Runtime
+	ProcessManager              *tool.ProcessManager
+	Extensions                  *extensions.Manager
+	Gateway                     *gateway.Runtime
+	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
 }
 
 func defaultChatToolingOptions() chatToolingOptions {
@@ -355,7 +356,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 			Int("message_len", len(strings.TrimSpace(req.Message))).
 			Msg("chat request accepted")
 
-		reqStore, requestWorkspaceDir, _, err := resolveSessionStoreForRequest(workspaceDir, store, r)
+		reqStore, requestWorkspaceDir, workspaceID, err := resolveSessionStoreForRequest(workspaceDir, store, r)
 		if err != nil {
 			logger.Error().Err(err).Msg("resolve workspace session store failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
@@ -398,6 +399,11 @@ func newChatAPIHandlerWithRuntimeConfig(
 		registry.Register(tool.NewSessionsSpawnTool(tooling.Gateway))
 		registry.Register(tool.NewSessionsRunsTool(tooling.Gateway))
 		registry.Register(tool.NewAgentsListTool(tooling.Gateway))
+		if tooling.AutomationToolsForWorkspace != nil {
+			for _, autoTool := range tooling.AutomationToolsForWorkspace(workspaceID) {
+				registry.Register(autoTool)
+			}
+		}
 		for _, extra := range extraTools {
 			registry.Register(extra)
 		}

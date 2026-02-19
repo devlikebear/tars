@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 )
 
@@ -24,21 +25,23 @@ const (
 )
 
 type Run struct {
-	ID               string    `json:"run_id"`
-	WorkspaceID      string    `json:"workspace_id,omitempty"`
-	SessionID        string    `json:"session_id,omitempty"`
-	Agent            string    `json:"agent,omitempty"`
-	Prompt           string    `json:"prompt,omitempty"`
-	Status           RunStatus `json:"status"`
-	Accepted         bool      `json:"accepted"`
-	Response         string    `json:"response,omitempty"`
-	Error            string    `json:"error,omitempty"`
-	DiagnosticCode   string    `json:"diagnostic_code,omitempty"`
-	DiagnosticReason string    `json:"diagnostic_reason,omitempty"`
-	CreatedAt        string    `json:"created_at"`
-	StartedAt        string    `json:"started_at,omitempty"`
-	CompletedAt      string    `json:"completed_at,omitempty"`
-	UpdatedAt        string    `json:"updated_at"`
+	ID                 string    `json:"run_id"`
+	WorkspaceID        string    `json:"workspace_id,omitempty"`
+	SessionID          string    `json:"session_id,omitempty"`
+	Agent              string    `json:"agent,omitempty"`
+	Prompt             string    `json:"prompt,omitempty"`
+	Status             RunStatus `json:"status"`
+	Accepted           bool      `json:"accepted"`
+	Response           string    `json:"response,omitempty"`
+	Error              string    `json:"error,omitempty"`
+	DiagnosticCode     string    `json:"diagnostic_code,omitempty"`
+	DiagnosticReason   string    `json:"diagnostic_reason,omitempty"`
+	PolicyBlockedTool  string    `json:"policy_blocked_tool,omitempty"`
+	PolicyAllowedTools []string  `json:"policy_allowed_tools,omitempty"`
+	CreatedAt          string    `json:"created_at"`
+	StartedAt          string    `json:"started_at,omitempty"`
+	CompletedAt        string    `json:"completed_at,omitempty"`
+	UpdatedAt          string    `json:"updated_at"`
 }
 
 type SpawnRequest struct {
@@ -579,10 +582,12 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	if executor == nil {
 		err = fmt.Errorf("agent executor is not configured")
 	} else {
-		resp, err = executor.Execute(ctx, ExecuteRequest{
-			RunID:     state.run.ID,
-			SessionID: state.run.SessionID,
-			Prompt:    state.run.Prompt,
+		execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
+		resp, err = executor.Execute(execCtx, ExecuteRequest{
+			RunID:       state.run.ID,
+			WorkspaceID: state.run.WorkspaceID,
+			SessionID:   state.run.SessionID,
+			Prompt:      state.run.Prompt,
 		})
 	}
 	if err == nil && ctx.Err() == nil {
@@ -608,6 +613,13 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 		state.run.Status = RunStatusFailed
 		state.run.Error = strings.TrimSpace(err.Error())
 		state.run.DiagnosticCode, state.run.DiagnosticReason = classifyRunDiagnostic(err)
+		if state.run.DiagnosticCode == "policy_tool_blocked" {
+			state.run.PolicyBlockedTool = blockedToolNameFromReason(state.run.DiagnosticReason)
+			info := gatewayAgentInfo(executor)
+			if len(info.ToolsAllow) > 0 {
+				state.run.PolicyAllowedTools = append([]string(nil), info.ToolsAllow...)
+			}
+		}
 		r.closeRunDoneLocked(state)
 		r.trimRunHistoryLocked()
 		r.stateVersion++
@@ -622,6 +634,24 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	r.stateVersion++
 	r.mu.Unlock()
 	r.persistSnapshot()
+}
+
+func blockedToolNameFromReason(reason string) string {
+	trimmed := strings.TrimSpace(reason)
+	if trimmed == "" {
+		return ""
+	}
+	const prefix = "tool not injected for this request:"
+	lower := strings.ToLower(trimmed)
+	idx := strings.Index(lower, prefix)
+	if idx == -1 {
+		return ""
+	}
+	toolName := strings.TrimSpace(trimmed[idx+len(prefix):])
+	if toolName == "" {
+		return ""
+	}
+	return toolName
 }
 
 func (r *Runtime) appendSessionMessage(workspaceID, sessionID, role, content string, ts time.Time) error {

@@ -2,7 +2,9 @@ package main
 
 import (
 	"net/http"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"unicode"
@@ -94,4 +96,100 @@ func resolveCronStoreForRequest(baseWorkspaceDir string, runHistoryLimit int, r 
 	}
 	store := cron.NewStoreWithOptions(workspaceDir, cron.StoreOptions{RunHistoryLimit: runHistoryLimit})
 	return store, workspaceDir, workspaceID, nil
+}
+
+type workspaceCronStoreResolver struct {
+	baseWorkspaceDir string
+	runHistoryLimit  int
+	defaultStore     *cron.Store
+	cache            sync.Map
+}
+
+func newWorkspaceCronStoreResolver(baseWorkspaceDir string, runHistoryLimit int, defaultStore *cron.Store) *workspaceCronStoreResolver {
+	resolver := &workspaceCronStoreResolver{
+		baseWorkspaceDir: strings.TrimSpace(baseWorkspaceDir),
+		runHistoryLimit:  runHistoryLimit,
+		defaultStore:     defaultStore,
+	}
+	if defaultStore != nil {
+		resolver.cache.Store(defaultWorkspaceID, defaultStore)
+	}
+	return resolver
+}
+
+func (r *workspaceCronStoreResolver) Resolve(workspaceID string) (*cron.Store, error) {
+	if r == nil {
+		return nil, nil
+	}
+	normalizedWorkspaceID := normalizeWorkspaceID(workspaceID)
+	if value, ok := r.cache.Load(normalizedWorkspaceID); ok {
+		if resolved, ok := value.(*cron.Store); ok && resolved != nil {
+			return resolved, nil
+		}
+	}
+	baseWorkspaceDir := strings.TrimSpace(r.baseWorkspaceDir)
+	if baseWorkspaceDir == "" && r.defaultStore != nil {
+		return r.defaultStore, nil
+	}
+	workspaceDir := resolveWorkspaceDir(baseWorkspaceDir, normalizedWorkspaceID)
+	if err := memory.EnsureWorkspace(workspaceDir); err != nil {
+		return nil, err
+	}
+	store := cron.NewStoreWithOptions(workspaceDir, cron.StoreOptions{RunHistoryLimit: r.runHistoryLimit})
+	if normalizedWorkspaceID == defaultWorkspaceID && r.defaultStore != nil {
+		store = r.defaultStore
+	}
+	r.cache.Store(normalizedWorkspaceID, store)
+	return store, nil
+}
+
+func (r *workspaceCronStoreResolver) ResolveFromRequest(req *http.Request) (*cron.Store, string, error) {
+	workspaceID := workspaceIDFromRequest(req)
+	store, err := r.Resolve(workspaceID)
+	if err != nil {
+		return nil, "", err
+	}
+	return store, workspaceID, nil
+}
+
+func (r *workspaceCronStoreResolver) WorkspaceIDs() ([]string, error) {
+	if r == nil {
+		return []string{defaultWorkspaceID}, nil
+	}
+	ids := map[string]struct{}{defaultWorkspaceID: {}}
+	r.cache.Range(func(key, _ any) bool {
+		value, ok := key.(string)
+		if !ok {
+			return true
+		}
+		normalized := normalizeWorkspaceID(value)
+		if normalized != "" {
+			ids[normalized] = struct{}{}
+		}
+		return true
+	})
+	baseWorkspaceDir := strings.TrimSpace(r.baseWorkspaceDir)
+	if baseWorkspaceDir != "" {
+		workspaceRoots := filepath.Join(baseWorkspaceDir, "_workspaces")
+		entries, err := os.ReadDir(workspaceRoots)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			name := normalizeWorkspaceID(entry.Name())
+			if strings.TrimSpace(name) == "" {
+				continue
+			}
+			ids[name] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(ids))
+	for id := range ids {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out, nil
 }

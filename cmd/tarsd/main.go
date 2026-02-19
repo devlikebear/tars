@@ -20,6 +20,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/mcp"
 	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/joho/godotenv"
@@ -168,6 +169,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				return &cli.ExitError{Code: 1, Err: err}
 			}
 			sessionStore := session.NewStore(cfg.WorkspaceDir)
+			sessionStoreResolver := newWorkspaceSessionStoreResolver(cfg.WorkspaceDir, sessionStore)
 
 			var ask heartbeat.AskFunc
 			var runPrompt func(ctx context.Context, runLabel string, prompt string) (string, error)
@@ -203,9 +205,17 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				cronStore := cron.NewStoreWithOptions(cfg.WorkspaceDir, cron.StoreOptions{
 					RunHistoryLimit: cfg.CronRunHistoryLimit,
 				})
+				cronStoreResolver := newWorkspaceCronStoreResolver(cfg.WorkspaceDir, cfg.CronRunHistoryLimit, cronStore)
 				activity := &runtimeActivity{}
-				heartbeatState := &heartbeatRuntimeState{}
-				heartbeatPolicy := buildHeartbeatPolicy(sessionStore, cfg.HeartbeatActiveHours, cfg.HeartbeatTimezone, activity)
+				heartbeatState := newHeartbeatWorkspaceState()
+				heartbeatPolicyForWorkspace := func(workspaceID string) heartbeat.Policy {
+					return buildHeartbeatPolicy(
+						sessionStoreResolver(workspaceID),
+						cfg.HeartbeatActiveHours,
+						cfg.HeartbeatTimezone,
+						activity,
+					)
+				}
 				broker := newEventBroker()
 				dispatcher := newNotificationDispatcher(
 					broker,
@@ -213,11 +223,11 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					cfg.NotifyWhenNoClients,
 					logger,
 				)
-				heartbeatRunner := newHeartbeatRunnerWithNotify(
+				heartbeatRunner := newWorkspaceHeartbeatRunnerWithNotify(
 					cfg.WorkspaceDir,
 					nowFn,
 					ask,
-					heartbeatPolicy,
+					heartbeatPolicyForWorkspace,
 					heartbeatState,
 					dispatcher.Emit,
 				)
@@ -227,20 +237,6 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					runPrompt,
 					logger,
 					dispatcher.Emit,
-				)
-				automationTools := buildAutomationTools(
-					cronStore,
-					cronRunner,
-					heartbeatRunner,
-					func(_ context.Context) (tool.HeartbeatStatus, error) {
-						return heartbeatState.snapshot(
-							ask != nil,
-							cfg.HeartbeatActiveHours,
-							cfg.HeartbeatTimezone,
-							activity.isChatBusy(),
-						), nil
-					},
-					nowFn,
 				)
 				mux := http.NewServeMux()
 				heartbeatHandler := newHeartbeatAPIHandlerWithRunner(heartbeatRunner, logger)
@@ -256,7 +252,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					Enabled:                              cfg.GatewayEnabled,
 					WorkspaceDir:                         cfg.WorkspaceDir,
 					SessionStore:                         sessionStore,
-					SessionStoreForWorkspace:             newWorkspaceSessionStoreResolver(cfg.WorkspaceDir, sessionStore),
+					SessionStoreForWorkspace:             sessionStoreResolver,
 					RunPrompt:                            runPrompt,
 					Executors:                            nil,
 					DefaultAgent:                         strings.TrimSpace(cfg.GatewayDefaultAgent),
@@ -287,8 +283,33 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				}
 				_ = refreshGatewayExecutors("startup")
 				chatTooling := buildChatToolingOptions(processManager, extensionsManager, gatewayRuntime)
-				chatTools := append([]tool.Tool{}, automationTools...)
-				chatTools = append(chatTools, buildOptionalChatTools(cfg, gatewayRuntime)...)
+				chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
+					resolvedStore, err := cronStoreResolver.Resolve(workspaceID)
+					if err != nil {
+						logger.Warn().Err(err).Str("workspace_id", normalizeWorkspaceID(workspaceID)).Msg("resolve workspace cron store failed for chat tools")
+						resolvedStore = cronStore
+					}
+					return buildAutomationTools(
+						resolvedStore,
+						cronRunner,
+						heartbeatRunner,
+						func(ctx context.Context) (tool.HeartbeatStatus, error) {
+							targetWorkspaceID := normalizeWorkspaceID(serverauth.WorkspaceIDFromContext(ctx))
+							if targetWorkspaceID == defaultWorkspaceID {
+								targetWorkspaceID = normalizeWorkspaceID(workspaceID)
+							}
+							return heartbeatState.snapshot(
+								targetWorkspaceID,
+								ask != nil,
+								cfg.HeartbeatActiveHours,
+								cfg.HeartbeatTimezone,
+								activity.isChatBusy(),
+							), nil
+						},
+						nowFn,
+					)
+				}
+				chatTools := buildOptionalChatTools(cfg, gatewayRuntime)
 				chatHandler := newChatAPIHandlerWithRuntimeConfig(
 					cfg.WorkspaceDir,
 					sessionStore,
@@ -308,7 +329,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				mux.Handle("/v1/healthz", newHealthzAPIHandler(nowFn))
 				compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, llmClient, logger)
 				mux.Handle("/v1/compact", compactHandler)
-				cronHandler := newCronAPIHandlerWithRunner(cronStore, cronRunner, logger)
+				cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
 				mux.Handle("/v1/cron/jobs", cronHandler)
 				mux.Handle("/v1/cron/jobs/", cronHandler)
 				mcpHandler := newMCPAPIHandler(mcpClient, logger)
@@ -388,7 +409,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					logger.Error().Err(err).Msg("failed to start extensions manager")
 					return &cli.ExitError{Code: 1, Err: err}
 				}
-				cronManager := cron.NewManager(cronStore, cronRunner, 30*time.Second, nowFn)
+				cronManager := newWorkspaceCronManager(cronStoreResolver, cronRunner, 30*time.Second, nowFn, logger)
 				go func() {
 					if err := cronManager.Start(ctx); err != nil {
 						logger.Error().Err(err).Msg("cron manager stopped with error")

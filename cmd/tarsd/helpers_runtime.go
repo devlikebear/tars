@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
+	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
 )
@@ -42,6 +44,72 @@ type heartbeatRuntimeState struct {
 	lastRunAt time.Time
 	lastErr   string
 	last      heartbeat.RunResult
+}
+
+type heartbeatWorkspaceState struct {
+	mu    sync.RWMutex
+	items map[string]*heartbeatRuntimeState
+}
+
+func newHeartbeatWorkspaceState() *heartbeatWorkspaceState {
+	return &heartbeatWorkspaceState{
+		items: map[string]*heartbeatRuntimeState{},
+	}
+}
+
+func (s *heartbeatWorkspaceState) getOrCreate(workspaceID string) *heartbeatRuntimeState {
+	if s == nil {
+		return nil
+	}
+	normalizedWorkspaceID := normalizeWorkspaceID(workspaceID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.items == nil {
+		s.items = map[string]*heartbeatRuntimeState{}
+	}
+	existing, ok := s.items[normalizedWorkspaceID]
+	if ok && existing != nil {
+		return existing
+	}
+	created := &heartbeatRuntimeState{}
+	s.items[normalizedWorkspaceID] = created
+	return created
+}
+
+func (s *heartbeatWorkspaceState) get(workspaceID string) *heartbeatRuntimeState {
+	if s == nil {
+		return nil
+	}
+	normalizedWorkspaceID := normalizeWorkspaceID(workspaceID)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.items[normalizedWorkspaceID]
+}
+
+func (s *heartbeatWorkspaceState) record(workspaceID string, ranAt time.Time, result heartbeat.RunResult, runErr error) {
+	state := s.getOrCreate(workspaceID)
+	if state == nil {
+		return
+	}
+	state.record(ranAt, result, runErr)
+}
+
+func (s *heartbeatWorkspaceState) snapshot(
+	workspaceID string,
+	configured bool,
+	activeHours, timezone string,
+	chatBusy bool,
+) tool.HeartbeatStatus {
+	state := s.get(workspaceID)
+	if state == nil {
+		return tool.HeartbeatStatus{
+			Configured:  configured,
+			ActiveHours: strings.TrimSpace(activeHours),
+			Timezone:    strings.TrimSpace(timezone),
+			ChatBusy:    chatBusy,
+		}
+	}
+	return state.snapshot(configured, activeHours, timezone, chatBusy)
 }
 
 func (s *heartbeatRuntimeState) record(ranAt time.Time, result heartbeat.RunResult, runErr error) {
@@ -125,6 +193,56 @@ func newHeartbeatRunnerWithNotify(
 				evt := newNotificationEvent("heartbeat", "info", "Heartbeat acknowledged", "no follow-up action")
 				emit(ctx, evt)
 			} else {
+				evt := newNotificationEvent("heartbeat", "info", "Heartbeat action", trimForMemory(result.Response, 280))
+				emit(ctx, evt)
+			}
+		}
+		return result, err
+	}
+}
+
+func newWorkspaceHeartbeatRunnerWithNotify(
+	baseWorkspaceDir string,
+	nowFn func() time.Time,
+	ask heartbeat.AskFunc,
+	policyForWorkspace func(workspaceID string) heartbeat.Policy,
+	state *heartbeatWorkspaceState,
+	emit func(ctx context.Context, evt notificationEvent),
+) func(ctx context.Context) (heartbeat.RunResult, error) {
+	var mu sync.Mutex
+	return func(ctx context.Context) (heartbeat.RunResult, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+
+		workspaceID := normalizeWorkspaceID(serverauth.WorkspaceIDFromContext(ctx))
+		workspaceDir := resolveWorkspaceDir(baseWorkspaceDir, workspaceID)
+		if err := memory.EnsureWorkspace(workspaceDir); err != nil {
+			return heartbeat.RunResult{}, err
+		}
+
+		policy := heartbeat.Policy{}
+		if policyForWorkspace != nil {
+			policy = policyForWorkspace(workspaceID)
+		}
+		ranAt := nowFn().UTC()
+		result, err := heartbeat.RunOnceWithLLMResultWithPolicy(callCtx, workspaceDir, ranAt, ask, policy)
+		if state != nil {
+			state.record(workspaceID, ranAt, result, err)
+		}
+		if emit != nil {
+			switch {
+			case err != nil:
+				evt := newNotificationEvent("heartbeat", "error", "Heartbeat failed", trimForMemory(err.Error(), 240))
+				emit(ctx, evt)
+			case result.Skipped:
+				evt := newNotificationEvent("heartbeat", "info", "Heartbeat skipped", trimForMemory(result.SkipReason, 240))
+				emit(ctx, evt)
+			case result.Acknowledged:
+				evt := newNotificationEvent("heartbeat", "info", "Heartbeat acknowledged", "no follow-up action")
+				emit(ctx, evt)
+			default:
 				evt := newNotificationEvent("heartbeat", "info", "Heartbeat action", trimForMemory(result.Response, 280))
 				emit(ctx, evt)
 			}

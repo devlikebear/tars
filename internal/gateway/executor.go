@@ -12,6 +12,7 @@ import (
 
 type ExecuteRequest struct {
 	RunID        string
+	WorkspaceID  string
 	SessionID    string
 	Prompt       string
 	AllowedTools []string
@@ -283,6 +284,9 @@ func (e *CommandExecutor) Execute(ctx context.Context, req ExecuteRequest) (stri
 	}
 	if v := strings.TrimSpace(req.SessionID); v != "" {
 		env = append(env, "TARS_SESSION_ID="+v)
+	}
+	if v := strings.TrimSpace(req.WorkspaceID); v != "" {
+		env = append(env, "TARS_WORKSPACE_ID="+v)
 	}
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(req.Prompt)

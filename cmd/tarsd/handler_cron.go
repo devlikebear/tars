@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/cron"
@@ -33,30 +33,30 @@ func newCronAPIHandlerWithRunner(
 	runJob func(ctx context.Context, job cron.Job) (string, error),
 	logger zerolog.Logger,
 ) http.Handler {
-	mux := http.NewServeMux()
 	baseWorkspaceDir := ""
 	runHistoryLimit := 0
-	var storeCache sync.Map
 	if store != nil {
 		baseWorkspaceDir = store.WorkspaceDir()
 		runHistoryLimit = store.RunHistoryLimit()
-		storeCache.Store(defaultWorkspaceID, store)
 	}
+	resolver := newWorkspaceCronStoreResolver(baseWorkspaceDir, runHistoryLimit, store)
+	return newCronAPIHandlerWithRunnerAndResolver(resolver, runJob, logger)
+}
+
+func newCronAPIHandlerWithRunnerAndResolver(
+	resolver *workspaceCronStoreResolver,
+	runJob func(ctx context.Context, job cron.Job) (string, error),
+	logger zerolog.Logger,
+) http.Handler {
+	mux := http.NewServeMux()
 	resolveStore := func(r *http.Request) (*cron.Store, string, error) {
-		workspaceID := workspaceIDFromRequest(r)
-		if value, ok := storeCache.Load(workspaceID); ok {
-			if resolved, ok := value.(*cron.Store); ok && resolved != nil {
-				return resolved, workspaceID, nil
-			}
+		if resolver == nil {
+			return nil, "", fmt.Errorf("cron store resolver is not configured")
 		}
-		if strings.TrimSpace(baseWorkspaceDir) == "" {
-			return store, workspaceID, nil
-		}
-		reqStore, _, workspaceID, err := resolveCronStoreForRequest(baseWorkspaceDir, runHistoryLimit, r)
+		reqStore, workspaceID, err := resolver.ResolveFromRequest(r)
 		if err != nil {
 			return nil, "", err
 		}
-		storeCache.Store(workspaceID, reqStore)
 		return reqStore, workspaceID, nil
 	}
 

@@ -7,7 +7,9 @@ import (
 	"github.com/devlikebear/tarsncase/internal/agent"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/prompt"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/rs/zerolog"
 )
@@ -77,9 +79,15 @@ func newAgentPromptRunnerWithTools(
 		if label == "" {
 			label = "agent"
 		}
-		systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
+		workspaceID := normalizeWorkspaceID(serverauth.WorkspaceIDFromContext(ctx))
+		targetWorkspaceDir := resolveWorkspaceDir(workspaceDir, workspaceID)
+		if err := memory.EnsureWorkspace(targetWorkspaceDir); err != nil {
+			return "", err
+		}
+
+		systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: targetWorkspaceDir})
 		systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
-		registry := newBaseToolRegistry(workspaceDir)
+		registry := newBaseToolRegistry(targetWorkspaceDir)
 		tools := registry.Schemas()
 		allowed := normalizeAllowedToolsForRegistry(allowedTools, registry)
 		if len(allowed) > 0 {

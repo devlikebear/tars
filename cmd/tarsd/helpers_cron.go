@@ -232,3 +232,79 @@ func effectiveCronDeliveryMode(raw string, sessionTarget string) string {
 		return "daily_log"
 	}
 }
+
+type workspaceCronManager struct {
+	resolver *workspaceCronStoreResolver
+	runJob   func(ctx context.Context, job cron.Job) (string, error)
+	interval time.Duration
+	nowFn    func() time.Time
+	logger   zerolog.Logger
+}
+
+func newWorkspaceCronManager(
+	resolver *workspaceCronStoreResolver,
+	runJob func(ctx context.Context, job cron.Job) (string, error),
+	interval time.Duration,
+	nowFn func() time.Time,
+	logger zerolog.Logger,
+) *workspaceCronManager {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	return &workspaceCronManager{
+		resolver: resolver,
+		runJob:   runJob,
+		interval: interval,
+		nowFn:    nowFn,
+		logger:   logger,
+	}
+}
+
+func (m *workspaceCronManager) Start(ctx context.Context) error {
+	if m == nil || m.resolver == nil || m.runJob == nil {
+		return nil
+	}
+	ticker := time.NewTicker(m.interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			_ = m.Tick(ctx)
+		}
+	}
+}
+
+func (m *workspaceCronManager) Tick(ctx context.Context) error {
+	if m == nil || m.resolver == nil || m.runJob == nil {
+		return nil
+	}
+	workspaceIDs, err := m.resolver.WorkspaceIDs()
+	if err != nil {
+		return err
+	}
+	var firstErr error
+	for _, workspaceID := range workspaceIDs {
+		store, err := m.resolver.Resolve(workspaceID)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			m.logger.Warn().Err(err).Str("workspace_id", workspaceID).Msg("resolve cron store failed")
+			continue
+		}
+		manager := cron.NewManager(store, m.runJob, m.interval, m.nowFn)
+		runCtx := serverauth.WithWorkspaceID(ctx, workspaceID)
+		if err := manager.Tick(runCtx); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			m.logger.Warn().Err(err).Str("workspace_id", workspaceID).Msg("cron manager tick failed")
+		}
+	}
+	return firstErr
+}

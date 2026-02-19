@@ -370,7 +370,14 @@ func TestRuntimeRunFailure_SetsPolicyDiagnosticCode(t *testing.T) {
 		SessionStore: store,
 		Executors: []AgentExecutor{
 			stubExecutor{
-				info: AgentInfo{Name: "researcher", Enabled: true, Kind: "stub"},
+				info: AgentInfo{
+					Name:            "researcher",
+					Enabled:         true,
+					Kind:            "stub",
+					PolicyMode:      "allowlist",
+					ToolsAllow:      []string{"read_file", "list_dir"},
+					ToolsAllowCount: 2,
+				},
 				exec: func(_ context.Context, _ ExecuteRequest) (string, error) {
 					return "", fmt.Errorf("tool not injected for this request: exec")
 				},
@@ -396,6 +403,12 @@ func TestRuntimeRunFailure_SetsPolicyDiagnosticCode(t *testing.T) {
 	}
 	if !strings.Contains(final.DiagnosticReason, "tool not injected") {
 		t.Fatalf("expected diagnostic reason to include tool block message, got %+v", final)
+	}
+	if final.PolicyBlockedTool != "exec" {
+		t.Fatalf("expected blocked tool to be exec, got %+v", final)
+	}
+	if len(final.PolicyAllowedTools) != 2 || final.PolicyAllowedTools[0] != "read_file" || final.PolicyAllowedTools[1] != "list_dir" {
+		t.Fatalf("expected policy allowed tools to be propagated, got %+v", final.PolicyAllowedTools)
 	}
 }
 
