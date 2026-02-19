@@ -37,7 +37,7 @@
 - [x] 세션 관리 (`internal/session`) — sessions.json + JSONL transcript, CRUD, history/search/export, 토큰 기반 동적 로딩
 - [x] LLM Chat API (`internal/llm`) — `Client.Chat`, `OnDelta` 스트리밍 콜백
 - [x] tarsd 채팅 API (`POST /v1/chat`) — SSE(delta/done), 세션 자동 생성/지정, transcript 저장
-- [x] `cmd/tars` 채팅 — REPL + SSE 스트리밍 + 세션 유지
+- [x] `cmd/tars` 채팅 — Bubble Tea TUI + SSE 스트리밍 + 세션 유지
 - [x] 디버그 로깅 (`--verbose`) — `tars↔tarsd` 및 `tarsd↔LLM` 상세 로그
 - [x] non-streaming provider fallback — `OnDelta` 미호출 시 최종 응답을 `delta`로 1회 전송
 - [x] `cmd/tars` 슬래시 명령군 확장 — 세션/런타임/게이트웨이/크론/알림 제어
@@ -84,6 +84,11 @@
   - `cmd/tars /run`에서 `policy_denied`, `policy_risk_max` 추가 출력
 - `cmd/tars /gateway status` 확장
   - `agents_reload_version`, `last_restore_error`를 상태 문자열에 함께 노출
+- `cmd/tars` UX 전면 개편(Phase TARS-UX-1)
+  - Bubble Tea 3패널 TUI(`Chat`/`Status`/`Notifications`)로 interactive 경로 단일화
+  - 채팅 delta와 status 이벤트 분리 렌더링
+  - `/trace [on|off]`, `/trace filter {all|llm|tool|error|system}` 지원
+  - 입력 UX: 히스토리(Up/Down), 자동완성(Tab), ESC 클리어/스트림 취소
 - 운영 스모크 추가
   - `scripts/smoke_auth_workspace.sh` 추가
   - `make smoke-auth`로 사용자/관리자 권한 경계 + workspace 스코프 기본 점검 가능
@@ -95,7 +100,7 @@
   - gateway 리포트 API 추가: `/v1/gateway/reports/summary`, `/v1/gateway/reports/runs`, `/v1/gateway/reports/channels`
   - gateway 경량 기본값: `gateway_report_summary_enabled=true`, `gateway_archive_enabled=false`
   - `cmd/cased`, `internal/sentinel`, `internal/config/cased*`, `config/cased.config.example.yaml` 제거
-  - `cmd/tars` 재도입(MVP): `/v1/chat` SSE 클라이언트 + 기본 REPL(`/new`, `/session`, `/quit`)
+  - `cmd/tars` 재도입(MVP): `/v1/chat` SSE 클라이언트 + 기본 인터랙션(`/new`, `/session`, `/quit`)
   - `cmd/tars` 2차: 세션/상태/확장 명령 + runtime 명령 이식
   - `cmd/tars` 3차: `/cron {list|get|runs|add|run|delete|enable|disable}`, `/channels`, `/resume`, `/agents --detail` 추가
   - `cmd/tars` 4차: `/notify {list|filter|open|clear}` 추가, `/v1/events/stream` 백그라운드 구독으로 알림 로컬 버퍼 유지

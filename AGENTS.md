@@ -58,7 +58,7 @@
 - LLM Chat 인터페이스(`Client.Chat`)와 스트리밍 콜백(`OnDelta`)이 구현되어 있다.
 - 워크스페이스 부트스트랩 파일(AGENTS/SOUL/USER/IDENTITY/TOOLS/HEARTBEAT/MEMORY) 생성과 시스템 프롬프트 조립이 구현되어 있다.
 - `/compact` 요약 저장 + 로딩 경계(Compaction summary boundary 포함)가 구현되어 있다.
-- `cmd/tars` REPL 명령(`/new`, `/sessions`, `/resume`, `/history`, `/export`, `/search`, `/status`, `/compact`)이 연결되어 있다.
+- `cmd/tars` TUI 명령(`/new`, `/sessions`, `/resume`, `/history`, `/export`, `/search`, `/status`, `/compact`)이 연결되어 있다.
 - 채팅 루프는 요청마다 등록된 전체 도구 스키마를 주입한다(OpenClaw parity).
 - 미주입 도구/selector 기반 정책 주입 경로는 제거되어 설정 항목도 더 이상 사용하지 않는다.
 - 확장 빌트인 도구(`read/write/edit/glob`, `process`, `apply_patch`, `web_fetch`, `web_search`, `cron`, `heartbeat`)가 구현되어 있다.
@@ -71,7 +71,9 @@
 - 확장 매니저(`internal/extensions`)가 스킬/플러그인/MCP를 통합 스냅샷으로 관리하고 fsnotify 기반 핫리로드를 지원한다.
 - API `GET /v1/skills`, `GET /v1/skills/{name}`, `GET /v1/plugins`, `POST /v1/runtime/extensions/reload`가 구현되어 있다.
 - `cmd/tars` 명령 `/skills`, `/plugins`, `/mcp`가 추가되었고, 미지의 `/{skill}` 입력은 채팅 경로로 전달된다.
-- `cmd/tars`는 라인 기반 REPL 입력으로 채팅/슬래시 명령을 처리한다.
+- `cmd/tars`는 Bubble Tea 3패널 TUI(`Chat`/`Status`/`Notifications`)로 채팅/슬래시 명령을 처리한다.
+- `cmd/tars` 입력 UX는 히스토리(Up/Down), 자동완성(Tab), ESC 클리어/스트림 취소를 지원한다.
+- `cmd/tars` trace 제어는 `/trace [on|off]`와 `/trace filter {all|llm|tool|error|system}`를 지원한다.
 - `tarsd`/`tars` 기본 개발 포트가 `127.0.0.1:43180`으로 통일되었다.
 - MCP 런타임이 JSON line 전송 방식 서버(`sequential-thinking`)를 자동 감지/폴백하여 연결한다.
 - in-process gateway 런타임(`internal/gateway`)이 추가되어 run registry, 채널, browser/nodes 상태를 함께 관리한다.

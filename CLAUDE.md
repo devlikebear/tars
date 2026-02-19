@@ -213,7 +213,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - 프로젝트 간소화 시작:
   - `cmd/cased`, `internal/sentinel`, `internal/config/cased*` 제거
   - `config/cased.config.example.yaml` 및 cased 운영 템플릿 제거
-  - `cmd/tars` 재도입(MVP): `/v1/chat` SSE + 기본 REPL(`/new`, `/session`, `/quit`)
+  - `cmd/tars` 재도입(MVP): `/v1/chat` SSE + 기본 인터랙션(`/new`, `/session`, `/quit`)
   - `cmd/tars` 2차 확장: 세션/상태/확장 명령(`/sessions`, `/history`, `/export`, `/search`, `/status`, `/compact`, `/heartbeat`, `/skills`, `/plugins`, `/mcp`, `/reload`) + runtime 명령(`/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`)
   - `cmd/tars` 3차 확장: `/cron {list|get|runs|add|run|delete|enable|disable}`, `/channels`, `/resume`, `/agents --detail`
   - `cmd/tars` 4차 확장: `/notify {list|filter|open|clear}` + `/v1/events/stream` 구독 기반 알림 로컬 버퍼
@@ -249,6 +249,11 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `cmd/tars /run`에 `policy_denied`, `policy_risk_max` 표시 추가
 - `cmd/tars /gateway status` 가시성 개선:
   - `agents_reload_version`, `last_restore_error`를 출력
+- `cmd/tars` UX 전면 개편(Phase TARS-UX-1):
+  - Bubble Tea 3패널 TUI(`Chat`/`Status`/`Notifications`)로 단일화
+  - 채팅 delta와 status 이벤트 분리 렌더링
+  - `/trace [on|off]`, `/trace filter {all|llm|tool|error|system}` 지원
+  - 입력 UX: 히스토리(Up/Down), 자동완성(Tab), ESC 클리어/스트림 취소
 - 운영 스모크:
   - `scripts/smoke_auth_workspace.sh` 추가
   - `make smoke-auth`로 auth/workspace 경계 기본 점검 자동화
