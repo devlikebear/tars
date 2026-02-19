@@ -663,9 +663,39 @@ func (c runtimeClient) requestText(ctx context.Context, method, path string, bod
 	defer resp.Body.Close()
 	text, _ := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		code, message, ok := parseAPIErrorPayload(text)
+		if ok {
+			if code != "" {
+				return "", fmt.Errorf("%s %s status %d [%s]: %s", method, endpoint, resp.StatusCode, code, message)
+			}
+			return "", fmt.Errorf("%s %s status %d: %s", method, endpoint, resp.StatusCode, message)
+		}
 		return "", fmt.Errorf("%s %s status %d: %s", method, endpoint, resp.StatusCode, strings.TrimSpace(string(text)))
 	}
 	return string(text), nil
+}
+
+func parseAPIErrorPayload(payload []byte) (code, message string, ok bool) {
+	var body struct {
+		Code    string `json:"code"`
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil {
+		return "", "", false
+	}
+	code = strings.TrimSpace(body.Code)
+	message = strings.TrimSpace(body.Error)
+	if message == "" {
+		message = strings.TrimSpace(body.Message)
+	}
+	if message == "" {
+		message = code
+	}
+	if code == "" && message == "" {
+		return "", "", false
+	}
+	return code, message, true
 }
 
 func (c runtimeClient) resolve(path string) (string, error) {

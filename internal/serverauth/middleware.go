@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/json"
 	"io"
 	"log"
 	"net"
@@ -157,7 +158,7 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			if tokenNeeded && !anyTokenConfigured {
 				logger.Printf("api auth enabled but token is empty; rejecting path=%s", r.URL.Path)
 				w.Header().Set("WWW-Authenticate", "Bearer")
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 				return
 			}
 
@@ -176,37 +177,52 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			}
 			if tokenNeeded && role == "" {
 				w.Header().Set("WWW-Authenticate", "Bearer")
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 				return
 			}
 			req = withRole(req, role)
 			req = withDebugRoleHeader(req, role)
 			if opts.RequireWorkspaceForAuthorized && strings.TrimSpace(role) != "" {
 				if strings.TrimSpace(WorkspaceIDFromContext(req.Context())) == "" {
-					http.Error(w, "workspace id is required", http.StatusBadRequest)
+					writeJSONError(w, http.StatusBadRequest, "workspace_id_required", "workspace id is required")
 					return
 				}
 			}
 			if role == RoleUser && !isWorkspaceAllowed(userWorkspaceAllowlist, WorkspaceIDFromContext(req.Context())) {
-				http.Error(w, "forbidden", http.StatusForbidden)
+				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
 				return
 			}
 			if role == RoleAdmin && !isWorkspaceAllowed(adminWorkspaceAllowlist, WorkspaceIDFromContext(req.Context())) {
-				http.Error(w, "forbidden", http.StatusForbidden)
+				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
 				return
 			}
 			if isAdminPath && role != RoleAdmin {
-				http.Error(w, "forbidden", http.StatusForbidden)
+				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
 				return
 			}
 			if requireToken && hasBearer && role == "" {
 				w.Header().Set("WWW-Authenticate", "Bearer")
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 				return
 			}
 			next.ServeHTTP(w, req)
 		})
 	}
+}
+
+func writeJSONError(w http.ResponseWriter, status int, code, message string) {
+	if strings.TrimSpace(code) == "" {
+		code = strings.ToLower(strings.ReplaceAll(http.StatusText(status), " ", "_"))
+	}
+	if strings.TrimSpace(message) == "" {
+		message = code
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error": message,
+		"code":  code,
+	})
 }
 
 func withWorkspaceID(r *http.Request, headerName string) *http.Request {

@@ -243,3 +243,47 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 		t.Fatalf("expected admin auth header, got %q", adminAuth)
 	}
 }
+
+func TestRuntimeClientRequestText_UsesJSONErrorPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "forbidden",
+			"code":  "workspace_forbidden",
+		})
+	}))
+	defer server.Close()
+
+	client := runtimeClient{serverURL: server.URL}
+	_, err := client.status(context.Background())
+	if err == nil {
+		t.Fatalf("expected status request error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "workspace_forbidden") {
+		t.Fatalf("expected error to include code, got %q", msg)
+	}
+	if !strings.Contains(msg, "forbidden") {
+		t.Fatalf("expected error to include message, got %q", msg)
+	}
+	if strings.Contains(msg, "{") || strings.Contains(msg, "}") {
+		t.Fatalf("expected parsed error message, got raw json: %q", msg)
+	}
+}
+
+func TestRuntimeClientRequestText_FallbacksToPlainTextOnNonJSONError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "broken upstream", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := runtimeClient{serverURL: server.URL}
+	_, err := client.status(context.Background())
+	if err == nil {
+		t.Fatalf("expected status request error")
+	}
+	if !strings.Contains(err.Error(), "broken upstream") {
+		t.Fatalf("expected plain error body in message, got %q", err.Error())
+	}
+}

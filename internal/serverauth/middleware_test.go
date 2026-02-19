@@ -2,6 +2,7 @@ package serverauth
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,16 @@ func TestMiddleware_ExternalRequired_RejectsExternalWithoutToken(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body["code"] != "unauthorized" {
+		t.Fatalf("expected code unauthorized, got %q", body["code"])
+	}
+	if body["error"] != "unauthorized" {
+		t.Fatalf("expected error unauthorized, got %q", body["error"])
 	}
 }
 
@@ -152,6 +163,13 @@ func TestMiddleware_AdminPathRejectsUserToken(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d body=%q", rec.Code, rec.Body.String())
 	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body["code"] != "forbidden" {
+		t.Fatalf("expected code forbidden, got %q", body["code"])
+	}
 }
 
 func TestMiddleware_AdminPathAllowsAdminToken(t *testing.T) {
@@ -245,6 +263,13 @@ func TestMiddleware_RequireWorkspaceForAuthenticatedRequest(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body["code"] != "workspace_id_required" {
+		t.Fatalf("expected code workspace_id_required, got %q", body["code"])
 	}
 }
 
