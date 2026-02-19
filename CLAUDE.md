@@ -235,6 +235,14 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - 허용되지 않은 workspace 요청은 403으로 차단
 - `cmd/tars` 운영 출력:
   - `/runs`, `/run`, `/gateway runs`, `/gateway channels`에서 workspace 정보 표시
+- workspace background 분리:
+  - cron background manager가 `default + _workspaces/*`를 순회해 workspace별 store로 실행
+  - heartbeat runner가 workspace 컨텍스트(`Tars-Workspace-Id`) 기준으로 실행/상태를 분리
+- 정책 위반 진단 강화:
+  - gateway run 실패 시 `policy_blocked_tool`, `policy_allowed_tools`를 함께 기록
+  - `cmd/tars /run`과 `/runs`에서 `diag`/`blocked`/`policy_allowed`를 표시
+- `cmd/tars /gateway status` 가시성 개선:
+  - `agents_reload_version`, `last_restore_error`를 출력
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조

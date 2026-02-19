@@ -70,6 +70,14 @@
   - 미허용 workspace 접근 시 403 처리
 - `cmd/tars` 운영 가시성 개선
   - `/runs`, `/run`, `/gateway runs`, `/gateway channels` 출력에 workspace 표시
+- workspace background 실행 분리
+  - cron background manager가 `default + _workspaces/*`를 순회해 workspace 컨텍스트로 job을 실행
+  - heartbeat runner가 workspace 컨텍스트 기준으로 실행/상태를 분리
+- 정책 위반 진단 강화
+  - gateway run 실패 응답에 `policy_blocked_tool`, `policy_allowed_tools` 추가
+  - `cmd/tars /runs`, `/run`에서 `diag`, `blocked`, `policy_allowed` 정보를 출력
+- `cmd/tars /gateway status` 확장
+  - `agents_reload_version`, `last_restore_error`를 상태 문자열에 함께 노출
 
 #### 2026-02-18
 - [x] 프로젝트 간소화(공개 릴리즈 준비)

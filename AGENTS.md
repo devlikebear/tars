@@ -51,7 +51,7 @@
   2. [단계] → 검증: [확인사항]
   3. [단계] → 검증: [확인사항]
 
-## 현재 구현 상태 (2026-02-18 기준)
+## 현재 구현 상태 (2026-02-19 기준)
 
 - 서버 측 채팅 API `POST /v1/chat`는 구현되어 있다.
 - 세션 관리 API(`GET/POST/DELETE /v1/sessions`, history/export/search)와 상태 API(`GET /v1/status`)가 구현되어 있다.
@@ -132,6 +132,13 @@
 - role별 workspace allowlist가 추가되었다.
   - 설정: `api_user_workspace_ids_json`, `api_admin_workspace_ids_json`
   - allowlist가 비어 있으면 기존처럼 모든 workspace를 허용한다.
+- workspace background 실행 경계가 보강되었다.
+  - cron background manager가 `default + _workspaces/*`를 순회하며 workspace 컨텍스트로 실행한다.
+  - heartbeat runner가 요청 컨텍스트 workspace를 기준으로 실행/상태를 분리한다.
+- 정책 위반 진단이 강화되었다.
+  - gateway run 실패 시 `policy_blocked_tool`, `policy_allowed_tools`를 함께 기록한다.
+  - `cmd/tars /run`, `/runs`에서 정책 차단 요약(`diag`, `blocked`)을 표시한다.
+- `cmd/tars /gateway status`에 `reload_version`, `restore_error`가 노출된다.
 
 ## LLM Provider 운영 정책 (2026-02-16)
 
@@ -147,9 +154,9 @@
 
 ## 다음 우선순위
 
-1. heartbeat/cron background manager까지 workspace 분리를 확장한다.
-2. 서브에이전트 정책 위반 진단을 `cmd/tars`에서 구조적으로 추적할 수 있게 개선한다.
-3. `cmd/tars` UX를 개선해 운영/디버깅 시나리오를 단일 Go 클라이언트에서 완결한다.
+1. 인증/권한/테넌트 최소 운영 모델을 API 전 구간(채팅/런/크론/채널)에서 일관 검증한다.
+2. 서브에이전트 정책(allow/deny/risk) 위반 리포트를 API와 `cmd/tars`에서 검색 가능한 형태로 확장한다.
+3. `cmd/tars` 운영 UX를 보강해 workspace 전환/관찰 명령을 단일 클라이언트에서 완결한다.
 
 ## 작업 체크리스트
 
