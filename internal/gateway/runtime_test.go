@@ -376,6 +376,8 @@ func TestRuntimeRunFailure_SetsPolicyDiagnosticCode(t *testing.T) {
 					Kind:            "stub",
 					PolicyMode:      "allowlist",
 					ToolsAllow:      []string{"read_file", "list_dir"},
+					ToolsDeny:       []string{"exec"},
+					ToolsRiskMax:    "medium",
 					ToolsAllowCount: 2,
 				},
 				exec: func(_ context.Context, _ ExecuteRequest) (string, error) {
@@ -409,6 +411,12 @@ func TestRuntimeRunFailure_SetsPolicyDiagnosticCode(t *testing.T) {
 	}
 	if len(final.PolicyAllowedTools) != 2 || final.PolicyAllowedTools[0] != "read_file" || final.PolicyAllowedTools[1] != "list_dir" {
 		t.Fatalf("expected policy allowed tools to be propagated, got %+v", final.PolicyAllowedTools)
+	}
+	if len(final.PolicyDeniedTools) != 1 || final.PolicyDeniedTools[0] != "exec" {
+		t.Fatalf("expected policy denied tools to be propagated, got %+v", final.PolicyDeniedTools)
+	}
+	if final.PolicyRiskMax != "medium" {
+		t.Fatalf("expected policy risk max to be propagated, got %+v", final.PolicyRiskMax)
 	}
 }
 

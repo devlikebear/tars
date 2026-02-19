@@ -24,6 +24,8 @@ func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Hand
 			"/v1/runtime/extensions/reload",
 			"/v1/gateway/reload",
 			"/v1/gateway/restart",
+			"/v1/channels/webhook/inbound/*",
+			"/v1/channels/telegram/webhook/*",
 		},
 	}, authLog)
 	return requestDebugMiddleware(logger, auth(next))

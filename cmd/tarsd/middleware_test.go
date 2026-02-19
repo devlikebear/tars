@@ -114,6 +114,38 @@ func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 	}
 }
 
+func TestApplyAPIMiddleware_ChannelWebhookPathRequiresAdminRole(t *testing.T) {
+	cfg := config.Config{
+		APIAuthMode:        "required",
+		APIUserToken:       "user-token",
+		APIAdminToken:      "admin-token",
+		APIWorkspaceHeader: "Tars-Workspace-Id",
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	reqUser := httptest.NewRequest(http.MethodPost, "/v1/channels/webhook/inbound/general", nil)
+	reqUser.RemoteAddr = "192.0.2.10:5555"
+	reqUser.Header.Set("Authorization", "Bearer user-token")
+	reqUser.Header.Set("Tars-Workspace-Id", "ws-local")
+	recUser := httptest.NewRecorder()
+	h.ServeHTTP(recUser, reqUser)
+	if recUser.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for user token on channel webhook admin path, got %d body=%q", recUser.Code, recUser.Body.String())
+	}
+
+	reqAdmin := httptest.NewRequest(http.MethodPost, "/v1/channels/webhook/inbound/general", nil)
+	reqAdmin.RemoteAddr = "192.0.2.10:5555"
+	reqAdmin.Header.Set("Authorization", "Bearer admin-token")
+	reqAdmin.Header.Set("Tars-Workspace-Id", "ws-local")
+	recAdmin := httptest.NewRecorder()
+	h.ServeHTTP(recAdmin, reqAdmin)
+	if recAdmin.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for admin token on channel webhook admin path, got %d body=%q", recAdmin.Code, recAdmin.Body.String())
+	}
+}
+
 func TestApplyAPIMiddleware_DebugLogIncludesWorkspaceAndRole(t *testing.T) {
 	var logs bytes.Buffer
 	cfg := config.Config{

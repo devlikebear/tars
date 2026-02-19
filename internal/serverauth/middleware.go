@@ -116,9 +116,17 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 		skipPaths[trimmed] = struct{}{}
 	}
 	adminPaths := make(map[string]struct{}, len(opts.AdminPaths))
+	adminPathPrefixes := make([]string, 0, len(opts.AdminPaths))
 	for _, path := range opts.AdminPaths {
 		trimmed := strings.TrimSpace(path)
 		if trimmed == "" {
+			continue
+		}
+		if strings.HasSuffix(trimmed, "*") {
+			prefix := strings.TrimSpace(strings.TrimSuffix(trimmed, "*"))
+			if prefix != "" {
+				adminPathPrefixes = append(adminPathPrefixes, prefix)
+			}
 			continue
 		}
 		adminPaths[trimmed] = struct{}{}
@@ -154,6 +162,14 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 				requireToken = true
 			}
 			_, isAdminPath := adminPaths[r.URL.Path]
+			if !isAdminPath {
+				for _, prefix := range adminPathPrefixes {
+					if strings.HasPrefix(r.URL.Path, prefix) {
+						isAdminPath = true
+						break
+					}
+				}
+			}
 			tokenNeeded := requireToken || isAdminPath
 			if tokenNeeded && !anyTokenConfigured {
 				logger.Printf("api auth enabled but token is empty; rejecting path=%s", r.URL.Path)

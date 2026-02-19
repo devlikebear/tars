@@ -21,6 +21,42 @@ type runtimeClient struct {
 	httpClient    *http.Client
 }
 
+type apiHTTPError struct {
+	Method   string
+	Endpoint string
+	Status   int
+	Code     string
+	Message  string
+	Body     string
+}
+
+func (e *apiHTTPError) Error() string {
+	if e == nil {
+		return ""
+	}
+	method := strings.TrimSpace(e.Method)
+	if method == "" {
+		method = http.MethodGet
+	}
+	endpoint := strings.TrimSpace(e.Endpoint)
+	status := e.Status
+	if status <= 0 {
+		status = http.StatusInternalServerError
+	}
+	message := strings.TrimSpace(e.Message)
+	if message == "" {
+		message = strings.TrimSpace(e.Body)
+	}
+	if message == "" {
+		message = http.StatusText(status)
+	}
+	code := strings.TrimSpace(e.Code)
+	if code != "" {
+		return fmt.Sprintf("%s %s status %d [%s]: %s", method, endpoint, status, code, message)
+	}
+	return fmt.Sprintf("%s %s status %d: %s", method, endpoint, status, message)
+}
+
 type sessionSummary struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
@@ -153,6 +189,8 @@ type agentRun struct {
 	DiagnosticReason   string   `json:"diagnostic_reason,omitempty"`
 	PolicyBlockedTool  string   `json:"policy_blocked_tool,omitempty"`
 	PolicyAllowedTools []string `json:"policy_allowed_tools,omitempty"`
+	PolicyDeniedTools  []string `json:"policy_denied_tools,omitempty"`
+	PolicyRiskMax      string   `json:"policy_risk_max,omitempty"`
 	CreatedAt          string   `json:"created_at,omitempty"`
 	StartedAt          string   `json:"started_at,omitempty"`
 	CompletedAt        string   `json:"completed_at,omitempty"`
@@ -665,12 +703,21 @@ func (c runtimeClient) requestText(ctx context.Context, method, path string, bod
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		code, message, ok := parseAPIErrorPayload(text)
 		if ok {
-			if code != "" {
-				return "", fmt.Errorf("%s %s status %d [%s]: %s", method, endpoint, resp.StatusCode, code, message)
+			return "", &apiHTTPError{
+				Method:   method,
+				Endpoint: endpoint,
+				Status:   resp.StatusCode,
+				Code:     code,
+				Message:  message,
+				Body:     strings.TrimSpace(string(text)),
 			}
-			return "", fmt.Errorf("%s %s status %d: %s", method, endpoint, resp.StatusCode, message)
 		}
-		return "", fmt.Errorf("%s %s status %d: %s", method, endpoint, resp.StatusCode, strings.TrimSpace(string(text)))
+		return "", &apiHTTPError{
+			Method:   method,
+			Endpoint: endpoint,
+			Status:   resp.StatusCode,
+			Body:     strings.TrimSpace(string(text)),
+		}
 	}
 	return string(text), nil
 }

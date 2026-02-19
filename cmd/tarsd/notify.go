@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/rs/zerolog"
 )
 
@@ -19,14 +20,15 @@ const notificationEventType = "notification"
 const keepaliveEventType = "keepalive"
 
 type notificationEvent struct {
-	Type      string `json:"type"`
-	Category  string `json:"category"`
-	Severity  string `json:"severity"`
-	Title     string `json:"title"`
-	Message   string `json:"message"`
-	Timestamp string `json:"timestamp"`
-	JobID     string `json:"job_id,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
+	Type        string `json:"type"`
+	Category    string `json:"category"`
+	Severity    string `json:"severity"`
+	Title       string `json:"title"`
+	Message     string `json:"message"`
+	Timestamp   string `json:"timestamp"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	JobID       string `json:"job_id,omitempty"`
+	SessionID   string `json:"session_id,omitempty"`
 }
 
 func newNotificationEvent(category, severity, title, message string) notificationEvent {
@@ -43,49 +45,70 @@ func newNotificationEvent(category, severity, title, message string) notificatio
 type eventBroker struct {
 	mu     sync.RWMutex
 	nextID int
-	subs   map[int]chan notificationEvent
+	subs   map[int]eventSubscription
+}
+
+type eventSubscription struct {
+	workspaceID string
+	ch          chan notificationEvent
 }
 
 func newEventBroker() *eventBroker {
 	return &eventBroker{
-		subs: map[int]chan notificationEvent{},
+		subs: map[int]eventSubscription{},
 	}
 }
 
-func (b *eventBroker) subscribe() (int, <-chan notificationEvent, func()) {
+func (b *eventBroker) subscribe(workspaceID string) (int, <-chan notificationEvent, func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.nextID++
 	id := b.nextID
 	ch := make(chan notificationEvent, 32)
-	b.subs[id] = ch
+	b.subs[id] = eventSubscription{
+		workspaceID: normalizeWorkspaceID(workspaceID),
+		ch:          ch,
+	}
 	unsubscribe := func() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		if current, ok := b.subs[id]; ok {
 			delete(b.subs, id)
-			close(current)
+			close(current.ch)
 		}
 	}
 	return id, ch, unsubscribe
 }
 
 func (b *eventBroker) publish(evt notificationEvent) {
+	workspaceID := normalizeWorkspaceID(evt.WorkspaceID)
+	evt.WorkspaceID = workspaceID
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	for _, ch := range b.subs {
+	for _, sub := range b.subs {
+		if sub.workspaceID != workspaceID {
+			continue
+		}
 		select {
-		case ch <- evt:
+		case sub.ch <- evt:
 		default:
 			// Drop when consumer is too slow; this channel is best-effort realtime UI signal.
 		}
 	}
 }
 
-func (b *eventBroker) subscriberCount() int {
+func (b *eventBroker) subscriberCount(workspaceID string) int {
+	targetWorkspace := normalizeWorkspaceID(workspaceID)
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return len(b.subs)
+	count := 0
+	for _, sub := range b.subs {
+		if sub.workspaceID != targetWorkspace {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 type desktopNotifier interface {
@@ -173,13 +196,16 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 	if strings.TrimSpace(evt.Timestamp) == "" {
 		evt.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
+	if strings.TrimSpace(evt.WorkspaceID) == "" {
+		evt.WorkspaceID = normalizeWorkspaceID(serverauth.WorkspaceIDFromContext(ctx))
+	}
 	if d.broker != nil {
 		d.broker.publish(evt)
 	}
 	if !d.notifyWhenNoSubscribers || d.notifier == nil {
 		return
 	}
-	if d.broker != nil && d.broker.subscriberCount() > 0 {
+	if d.broker != nil && d.broker.subscriberCount(evt.WorkspaceID) > 0 {
 		return
 	}
 	notifyCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -220,7 +246,12 @@ func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Hand
 		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
 
-		_, ch, unsubscribe := broker.subscribe()
+		workspaceID := strings.TrimSpace(serverauth.WorkspaceIDFromRequest(r))
+		if workspaceID == "" {
+			workspaceID = strings.TrimSpace(r.Header.Get(serverauth.DefaultWorkspaceHeader))
+		}
+		workspaceID = normalizeWorkspaceID(workspaceID)
+		_, ch, unsubscribe := broker.subscribe(workspaceID)
 		defer unsubscribe()
 
 		ping := time.NewTicker(10 * time.Second)
@@ -237,7 +268,9 @@ func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Hand
 			flusher.Flush()
 			return nil
 		}
-		_ = writeEvent(newNotificationEvent("system", "info", "event stream connected", "subscribed to runtime notifications"))
+		connected := newNotificationEvent("system", "info", "event stream connected", "subscribed to runtime notifications")
+		connected.WorkspaceID = workspaceID
+		_ = writeEvent(connected)
 
 		for {
 			select {

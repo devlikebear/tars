@@ -403,6 +403,8 @@ func TestExecuteCommand_RunShowsPolicyDiagnosticDetails(t *testing.T) {
 				"diagnostic_reason":    "tool not injected for this request: exec",
 				"policy_blocked_tool":  "exec",
 				"policy_allowed_tools": []string{"read_file", "list_dir"},
+				"policy_denied_tools":  []string{"exec"},
+				"policy_risk_max":      "medium",
 			})
 		default:
 			http.NotFound(w, r)
@@ -426,6 +428,12 @@ func TestExecuteCommand_RunShowsPolicyDiagnosticDetails(t *testing.T) {
 	}
 	if !strings.Contains(out, "policy_allowed=read_file,list_dir") {
 		t.Fatalf("expected allowed tools output, got %q", out)
+	}
+	if !strings.Contains(out, "policy_denied=exec") {
+		t.Fatalf("expected denied tools output, got %q", out)
+	}
+	if !strings.Contains(out, "policy_risk_max=medium") {
+		t.Fatalf("expected risk max output, got %q", out)
 	}
 }
 
@@ -529,5 +537,50 @@ func TestExecuteCommand_Health(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "ok=true") {
 		t.Fatalf("expected health output, got %q", stdout.String())
+	}
+}
+
+func TestFormatRuntimeError_ProvidesAuthHintForUnauthorized(t *testing.T) {
+	err := &apiHTTPError{
+		Method:   http.MethodGet,
+		Endpoint: "http://127.0.0.1:43180/v1/status",
+		Status:   http.StatusUnauthorized,
+		Code:     "unauthorized",
+		Message:  "unauthorized",
+	}
+	msg := formatRuntimeError(err, runtimeClient{})
+	if !strings.Contains(msg, "hint:") {
+		t.Fatalf("expected hint in message, got %q", msg)
+	}
+	if !strings.Contains(msg, "--api-token") {
+		t.Fatalf("expected api token hint, got %q", msg)
+	}
+}
+
+func TestFormatRuntimeError_ProvidesWorkspaceHint(t *testing.T) {
+	err := &apiHTTPError{
+		Method:   http.MethodGet,
+		Endpoint: "http://127.0.0.1:43180/v1/status",
+		Status:   http.StatusBadRequest,
+		Code:     "workspace_id_required",
+		Message:  "workspace id is required",
+	}
+	msg := formatRuntimeError(err, runtimeClient{})
+	if !strings.Contains(msg, "--workspace-id") {
+		t.Fatalf("expected workspace hint, got %q", msg)
+	}
+}
+
+func TestFormatRuntimeError_ProvidesAdminHintOnAdminEndpoint(t *testing.T) {
+	err := &apiHTTPError{
+		Method:   http.MethodPost,
+		Endpoint: "http://127.0.0.1:43180/v1/gateway/reload",
+		Status:   http.StatusForbidden,
+		Code:     "forbidden",
+		Message:  "forbidden",
+	}
+	msg := formatRuntimeError(err, runtimeClient{})
+	if !strings.Contains(msg, "--admin-api-token") {
+		t.Fatalf("expected admin token hint, got %q", msg)
 	}
 }

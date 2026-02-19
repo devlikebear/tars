@@ -3,8 +3,11 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -83,7 +86,7 @@ func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, cha
 		events := newEventStreamClient(runtime)
 		go events.consume(ctx, state.notifications.add, func(err error) {
 			if verbose {
-				fmt.Fprintf(stderr, "notify stream: %v\n", err)
+				fmt.Fprintf(stderr, "notify stream: %s\n", formatRuntimeError(err, runtime))
 			}
 		})
 	}
@@ -109,7 +112,7 @@ func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, cha
 		if strings.HasPrefix(line, "/") {
 			handled, nextSession, err := executeCommandWithState(ctx, runtime, line, session, stdout, stderr, state)
 			if err != nil {
-				fmt.Fprintf(stderr, "error: %v\n", err)
+				fmt.Fprintf(stderr, "error: %s\n", formatRuntimeError(err, runtime))
 				continue
 			}
 			if handled {
@@ -119,7 +122,7 @@ func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, cha
 		}
 		res, err := sendMessage(ctx, chat, session, line, verbose, stdout, stderr)
 		if err != nil {
-			fmt.Fprintf(stderr, "error: %v\n", err)
+			fmt.Fprintf(stderr, "error: %s\n", formatRuntimeError(err, runtime))
 			continue
 		}
 		session = res.SessionID
@@ -421,6 +424,12 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			}
 			if len(run.PolicyAllowedTools) > 0 {
 				fmt.Fprintf(stdout, "policy_allowed=%s\n", strings.Join(run.PolicyAllowedTools, ","))
+			}
+			if len(run.PolicyDeniedTools) > 0 {
+				fmt.Fprintf(stdout, "policy_denied=%s\n", strings.Join(run.PolicyDeniedTools, ","))
+			}
+			if strings.TrimSpace(run.PolicyRiskMax) != "" {
+				fmt.Fprintf(stdout, "policy_risk_max=%s\n", strings.TrimSpace(run.PolicyRiskMax))
 			}
 		}
 		return true, session, nil
@@ -771,4 +780,77 @@ func sendMessage(ctx context.Context, client chatClient, session, message string
 	})
 	fmt.Fprintln(stdout)
 	return res, err
+}
+
+func formatRuntimeError(err error, runtime runtimeClient) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.TrimSpace(err.Error())
+	var apiErr *apiHTTPError
+	if !errors.As(err, &apiErr) || apiErr == nil {
+		return message
+	}
+	hint := runtimeErrorHint(apiErr, runtime)
+	if strings.TrimSpace(hint) == "" {
+		return message
+	}
+	return message + "\nhint: " + hint
+}
+
+func runtimeErrorHint(apiErr *apiHTTPError, runtime runtimeClient) string {
+	if apiErr == nil {
+		return ""
+	}
+	endpointPath := ""
+	if parsed, err := url.Parse(strings.TrimSpace(apiErr.Endpoint)); err == nil {
+		endpointPath = strings.TrimSpace(parsed.Path)
+	}
+	code := strings.ToLower(strings.TrimSpace(apiErr.Code))
+	switch code {
+	case "workspace_id_required":
+		return "set --workspace-id (or TARS_WORKSPACE_ID) and retry"
+	case "workspace_forbidden":
+		scope := strings.TrimSpace(runtime.workspaceID)
+		if scope == "" {
+			scope = "<workspace-id>"
+		}
+		return fmt.Sprintf("workspace %q is outside your allowlist; retry with an allowed --workspace-id or ask admin", scope)
+	case "unauthorized":
+		if isAdminEndpointPath(endpointPath) {
+			return "admin endpoint requires admin token; retry with --admin-api-token (or TARS_ADMIN_API_TOKEN)"
+		}
+		return "set --api-token (or TARS_API_TOKEN), then retry"
+	case "forbidden":
+		if isAdminEndpointPath(endpointPath) {
+			return "this endpoint requires admin role; retry with --admin-api-token or ask admin"
+		}
+		return "your role/workspace is not allowed for this endpoint"
+	}
+	switch apiErr.Status {
+	case http.StatusUnauthorized:
+		return "verify API token and retry"
+	case http.StatusForbidden:
+		return "verify role/workspace permissions and retry"
+	default:
+		return ""
+	}
+}
+
+func isAdminEndpointPath(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	switch {
+	case trimmed == "/v1/runtime/extensions/reload":
+		return true
+	case trimmed == "/v1/gateway/reload":
+		return true
+	case trimmed == "/v1/gateway/restart":
+		return true
+	case strings.HasPrefix(trimmed, "/v1/channels/webhook/inbound/"):
+		return true
+	case strings.HasPrefix(trimmed, "/v1/channels/telegram/webhook/"):
+		return true
+	default:
+		return false
+	}
 }

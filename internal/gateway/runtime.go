@@ -38,6 +38,8 @@ type Run struct {
 	DiagnosticReason   string    `json:"diagnostic_reason,omitempty"`
 	PolicyBlockedTool  string    `json:"policy_blocked_tool,omitempty"`
 	PolicyAllowedTools []string  `json:"policy_allowed_tools,omitempty"`
+	PolicyDeniedTools  []string  `json:"policy_denied_tools,omitempty"`
+	PolicyRiskMax      string    `json:"policy_risk_max,omitempty"`
 	CreatedAt          string    `json:"created_at"`
 	StartedAt          string    `json:"started_at,omitempty"`
 	CompletedAt        string    `json:"completed_at,omitempty"`
@@ -618,6 +620,12 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 			info := gatewayAgentInfo(executor)
 			if len(info.ToolsAllow) > 0 {
 				state.run.PolicyAllowedTools = append([]string(nil), info.ToolsAllow...)
+			}
+			if len(info.ToolsDeny) > 0 {
+				state.run.PolicyDeniedTools = append([]string(nil), info.ToolsDeny...)
+			}
+			if strings.TrimSpace(info.ToolsRiskMax) != "" {
+				state.run.PolicyRiskMax = strings.TrimSpace(info.ToolsRiskMax)
 			}
 		}
 		r.closeRunDoneLocked(state)

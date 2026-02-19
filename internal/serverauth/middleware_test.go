@@ -198,6 +198,36 @@ func TestMiddleware_AdminPathAllowsAdminToken(t *testing.T) {
 	}
 }
 
+func TestMiddleware_AdminPathWildcardRejectsUserToken(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:       ModeRequired,
+		UserToken:  "user-token",
+		AdminToken: "admin-token",
+		AdminPaths: []string{"/v1/channels/webhook/inbound/*"},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	reqUser := httptest.NewRequest(http.MethodPost, "/v1/channels/webhook/inbound/general", nil)
+	reqUser.RemoteAddr = "127.0.0.1:1234"
+	reqUser.Header.Set("Authorization", "Bearer user-token")
+	recUser := httptest.NewRecorder()
+	h.ServeHTTP(recUser, reqUser)
+	if recUser.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for wildcard admin path with user token, got %d body=%q", recUser.Code, recUser.Body.String())
+	}
+
+	reqAdmin := httptest.NewRequest(http.MethodPost, "/v1/channels/webhook/inbound/general", nil)
+	reqAdmin.RemoteAddr = "127.0.0.1:1234"
+	reqAdmin.Header.Set("Authorization", "Bearer admin-token")
+	recAdmin := httptest.NewRecorder()
+	h.ServeHTTP(recAdmin, reqAdmin)
+	if recAdmin.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for wildcard admin path with admin token, got %d body=%q", recAdmin.Code, recAdmin.Body.String())
+	}
+}
+
 func TestMiddleware_BackwardCompatibleSingleTokenAllowsAdminPath(t *testing.T) {
 	mw := NewMiddleware(Options{
 		Mode:        ModeRequired,
