@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tarsncase/internal/gateway"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/rs/zerolog"
 )
 
@@ -55,6 +56,7 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 				return
 			}
 			run, err := runtime.Spawn(r.Context(), gateway.SpawnRequest{
+				WorkspaceID: serverauth.WorkspaceIDFromRequest(r),
 				SessionID: req.SessionID,
 				Title:     req.Title,
 				Prompt:    message,
@@ -87,7 +89,8 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 			}
 			limit = v
 		}
-		runs := runtime.List(limit)
+		workspaceID := serverauth.WorkspaceIDFromRequest(r)
+		runs := runtime.ListByWorkspace(workspaceID, limit)
 		writeJSON(w, http.StatusOK, map[string]any{"count": len(runs), "runs": runs})
 	})
 	mux.HandleFunc("/v1/agent/runs/", func(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +115,8 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			run, ok := runtime.Get(runID)
+			workspaceID := serverauth.WorkspaceIDFromRequest(r)
+			run, ok := runtime.GetByWorkspace(workspaceID, runID)
 			if !ok {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
 				return
@@ -125,7 +129,8 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			run, err := runtime.Cancel(runID)
+			workspaceID := serverauth.WorkspaceIDFromRequest(r)
+			run, err := runtime.CancelByWorkspace(workspaceID, runID)
 			if err != nil {
 				logger.Error().Err(err).Str("run_id", runID).Msg("cancel run failed")
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})

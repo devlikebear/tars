@@ -364,6 +364,83 @@ func TestAgentRunsAPIHandler_Cancel(t *testing.T) {
 	waitForGatewayRun(t, runtime, run.ID)
 }
 
+func TestAgentRunsAPIHandler_WorkspaceScopedRuns(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	baseHandler := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
+	handler := applyAPIMiddleware(config.Config{
+		APIAuthMode:        "off",
+		APIWorkspaceHeader: "Tars-Workspace-Id",
+	}, zerolog.New(io.Discard), baseHandler, io.Discard)
+
+	spawn := func(workspaceID, message string) map[string]any {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{
+			"message": message,
+			"agent":   "default",
+		})
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/agent/runs", bytes.NewReader(body))
+		req.Header.Set("Tars-Workspace-Id", workspaceID)
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("spawn expected 202, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode spawn response: %v", err)
+		}
+		return payload
+	}
+
+	runA := spawn("ws-a", "from a")
+	runB := spawn("ws-b", "from b")
+	runIDA, _ := runA["run_id"].(string)
+	runIDB, _ := runB["run_id"].(string)
+	if strings.TrimSpace(runIDA) == "" || strings.TrimSpace(runIDB) == "" {
+		t.Fatalf("expected run ids, runA=%+v runB=%+v", runA, runB)
+	}
+
+	recListA := httptest.NewRecorder()
+	reqListA := httptest.NewRequest(http.MethodGet, "/v1/agent/runs", nil)
+	reqListA.Header.Set("Tars-Workspace-Id", "ws-a")
+	handler.ServeHTTP(recListA, reqListA)
+	if recListA.Code != http.StatusOK {
+		t.Fatalf("list expected 200, got %d body=%s", recListA.Code, recListA.Body.String())
+	}
+	var listPayload map[string]any
+	if err := json.Unmarshal(recListA.Body.Bytes(), &listPayload); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	count, _ := listPayload["count"].(float64)
+	if int(count) != 1 {
+		t.Fatalf("expected ws-a run count=1, payload=%+v", listPayload)
+	}
+	runs, _ := listPayload["runs"].([]any)
+	if len(runs) != 1 {
+		t.Fatalf("expected one run for ws-a, payload=%+v", listPayload)
+	}
+	firstRun, _ := runs[0].(map[string]any)
+	if gotID, _ := firstRun["run_id"].(string); gotID != runIDA {
+		t.Fatalf("expected ws-a run id %q, got %+v", runIDA, firstRun)
+	}
+
+	recGetBlocked := httptest.NewRecorder()
+	reqGetBlocked := httptest.NewRequest(http.MethodGet, "/v1/agent/runs/"+runIDA, nil)
+	reqGetBlocked.Header.Set("Tars-Workspace-Id", "ws-b")
+	handler.ServeHTTP(recGetBlocked, reqGetBlocked)
+	if recGetBlocked.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for cross-workspace get, got %d body=%s", recGetBlocked.Code, recGetBlocked.Body.String())
+	}
+
+	recCancelBlocked := httptest.NewRecorder()
+	reqCancelBlocked := httptest.NewRequest(http.MethodPost, "/v1/agent/runs/"+runIDA+"/cancel", nil)
+	reqCancelBlocked.Header.Set("Tars-Workspace-Id", "ws-b")
+	handler.ServeHTTP(recCancelBlocked, reqCancelBlocked)
+	if recCancelBlocked.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for cross-workspace cancel, got %d body=%s", recCancelBlocked.Code, recCancelBlocked.Body.String())
+	}
+}
+
 func TestGatewayAPIHandler_StatusReloadRestart(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
 	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)

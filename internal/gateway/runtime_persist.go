@@ -56,6 +56,7 @@ func (r *Runtime) restoreSnapshotOnStartup() {
 			if strings.TrimSpace(run.ID) == "" {
 				continue
 			}
+			run.WorkspaceID = normalizeWorkspaceID(run.WorkspaceID)
 			if run.Status == RunStatusAccepted || run.Status == RunStatusRunning {
 				run.Status = RunStatusCanceled
 				run.Error = "canceled by restart recovery"
@@ -124,7 +125,9 @@ func (r *Runtime) snapshotForPersistence() ([]Run, map[string][]ChannelMessage, 
 		if state == nil {
 			continue
 		}
-		runs = append(runs, state.run)
+		run := state.run
+		run.WorkspaceID = normalizeWorkspaceID(run.WorkspaceID)
+		runs = append(runs, run)
 	}
 	channels := trimChannels(r.channelMsgs, r.opts.GatewayChannelsMaxMessagesPerChannel)
 	return runs, channels, r.stateVersion

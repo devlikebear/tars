@@ -107,6 +107,43 @@ func TestRuntimeSpawn_UnknownAgent(t *testing.T) {
 	}
 }
 
+func TestRuntimeRunWorkspaceScope(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
+			return "echo: " + prompt, nil
+		},
+	})
+	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+
+	runA, err := rt.Spawn(context.Background(), SpawnRequest{WorkspaceID: "ws-a", Prompt: "a"})
+	if err != nil {
+		t.Fatalf("spawn ws-a: %v", err)
+	}
+	runB, err := rt.Spawn(context.Background(), SpawnRequest{WorkspaceID: "ws-b", Prompt: "b"})
+	if err != nil {
+		t.Fatalf("spawn ws-b: %v", err)
+	}
+
+	listA := rt.ListByWorkspace("ws-a", 10)
+	if len(listA) != 1 || listA[0].ID != runA.ID {
+		t.Fatalf("expected only ws-a run, got %+v", listA)
+	}
+	listB := rt.ListByWorkspace("ws-b", 10)
+	if len(listB) != 1 || listB[0].ID != runB.ID {
+		t.Fatalf("expected only ws-b run, got %+v", listB)
+	}
+
+	if _, ok := rt.GetByWorkspace("ws-a", runB.ID); ok {
+		t.Fatalf("expected ws-a get on ws-b run to be blocked")
+	}
+	if _, err := rt.CancelByWorkspace("ws-a", runB.ID); err == nil {
+		t.Fatalf("expected ws-a cancel on ws-b run to be blocked")
+	}
+}
+
 func TestRuntimeSpawn_WithCustomExecutor(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	rt := NewRuntime(RuntimeOptions{

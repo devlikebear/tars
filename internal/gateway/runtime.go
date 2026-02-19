@@ -24,23 +24,25 @@ const (
 )
 
 type Run struct {
-	ID          string    `json:"run_id"`
-	SessionID   string    `json:"session_id,omitempty"`
-	Agent       string    `json:"agent,omitempty"`
-	Prompt      string    `json:"prompt,omitempty"`
-	Status      RunStatus `json:"status"`
-	Accepted    bool      `json:"accepted"`
-	Response    string    `json:"response,omitempty"`
-	Error       string    `json:"error,omitempty"`
+	ID              string    `json:"run_id"`
+	WorkspaceID     string    `json:"workspace_id,omitempty"`
+	SessionID       string    `json:"session_id,omitempty"`
+	Agent           string    `json:"agent,omitempty"`
+	Prompt          string    `json:"prompt,omitempty"`
+	Status          RunStatus `json:"status"`
+	Accepted        bool      `json:"accepted"`
+	Response        string    `json:"response,omitempty"`
+	Error           string    `json:"error,omitempty"`
 	DiagnosticCode   string `json:"diagnostic_code,omitempty"`
 	DiagnosticReason string `json:"diagnostic_reason,omitempty"`
-	CreatedAt   string    `json:"created_at"`
-	StartedAt   string    `json:"started_at,omitempty"`
-	CompletedAt string    `json:"completed_at,omitempty"`
-	UpdatedAt   string    `json:"updated_at"`
+	CreatedAt       string    `json:"created_at"`
+	StartedAt       string    `json:"started_at,omitempty"`
+	CompletedAt     string    `json:"completed_at,omitempty"`
+	UpdatedAt       string    `json:"updated_at"`
 }
 
 type SpawnRequest struct {
+	WorkspaceID string
 	SessionID string
 	Title     string
 	Prompt    string
@@ -189,6 +191,8 @@ type Runtime struct {
 	runsRestored        int
 	channelsRestored    int
 }
+
+const defaultWorkspaceID = "default"
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
 	nowFn := opts.Now
@@ -501,15 +505,17 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 	now := r.nowFn().UTC()
 	runID := fmt.Sprintf("run_%d", r.runSeq.Add(1))
 	runCtx, cancel := context.WithCancel(context.Background())
+	workspaceID := normalizeWorkspaceID(req.WorkspaceID)
 	run := Run{
-		ID:        runID,
-		SessionID: sessionID,
-		Agent:     selectedAgent,
-		Prompt:    prompt,
-		Status:    RunStatusAccepted,
-		Accepted:  true,
-		CreatedAt: now.Format(time.RFC3339),
-		UpdatedAt: now.Format(time.RFC3339),
+		ID:          runID,
+		WorkspaceID: workspaceID,
+		SessionID:   sessionID,
+		Agent:       selectedAgent,
+		Prompt:      prompt,
+		Status:      RunStatusAccepted,
+		Accepted:    true,
+		CreatedAt:   now.Format(time.RFC3339),
+		UpdatedAt:   now.Format(time.RFC3339),
 	}
 	state := &runState{run: run, executor: executor, cancel: cancel, done: make(chan struct{})}
 
@@ -696,6 +702,22 @@ func (r *Runtime) Get(runID string) (Run, bool) {
 	return state.run, true
 }
 
+func (r *Runtime) GetByWorkspace(workspaceID, runID string) (Run, bool) {
+	if r == nil {
+		return Run{}, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	state, ok := r.runs[strings.TrimSpace(runID)]
+	if !ok {
+		return Run{}, false
+	}
+	if normalizeWorkspaceID(state.run.WorkspaceID) != normalizeWorkspaceID(workspaceID) {
+		return Run{}, false
+	}
+	return state.run, true
+}
+
 func (r *Runtime) List(limit int) []Run {
 	if r == nil {
 		return []Run{}
@@ -720,6 +742,34 @@ func (r *Runtime) List(limit int) []Run {
 	return out
 }
 
+func (r *Runtime) ListByWorkspace(workspaceID string, limit int) []Run {
+	if r == nil {
+		return []Run{}
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	targetWorkspaceID := normalizeWorkspaceID(workspaceID)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]Run, 0, len(r.runOrder))
+	for i := len(r.runOrder) - 1; i >= 0; i-- {
+		id := r.runOrder[i]
+		state := r.runs[id]
+		if state == nil {
+			continue
+		}
+		if normalizeWorkspaceID(state.run.WorkspaceID) != targetWorkspaceID {
+			continue
+		}
+		out = append(out, state.run)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
 func (r *Runtime) Cancel(runID string) (Run, error) {
 	if r == nil {
 		return Run{}, fmt.Errorf("gateway runtime is disabled")
@@ -727,6 +777,39 @@ func (r *Runtime) Cancel(runID string) (Run, error) {
 	r.mu.Lock()
 	state, ok := r.runs[strings.TrimSpace(runID)]
 	if !ok {
+		r.mu.Unlock()
+		return Run{}, fmt.Errorf("run not found: %s", strings.TrimSpace(runID))
+	}
+	if state.run.Status == RunStatusCompleted || state.run.Status == RunStatusFailed || state.run.Status == RunStatusCanceled {
+		run := state.run
+		r.mu.Unlock()
+		return run, nil
+	}
+	if state.cancel != nil {
+		state.cancel()
+	}
+	now := r.nowFn().UTC().Format(time.RFC3339)
+	state.run.Status = RunStatusCanceled
+	state.run.Error = "canceled by user"
+	state.run.CompletedAt = now
+	state.run.UpdatedAt = now
+	r.closeRunDoneLocked(state)
+	r.trimRunHistoryLocked()
+	r.stateVersion++
+	run := state.run
+	r.mu.Unlock()
+	r.persistSnapshot()
+	return run, nil
+}
+
+func (r *Runtime) CancelByWorkspace(workspaceID, runID string) (Run, error) {
+	if r == nil {
+		return Run{}, fmt.Errorf("gateway runtime is disabled")
+	}
+	targetWorkspaceID := normalizeWorkspaceID(workspaceID)
+	r.mu.Lock()
+	state, ok := r.runs[strings.TrimSpace(runID)]
+	if !ok || normalizeWorkspaceID(state.run.WorkspaceID) != targetWorkspaceID {
 		r.mu.Unlock()
 		return Run{}, fmt.Errorf("run not found: %s", strings.TrimSpace(runID))
 	}
@@ -823,6 +906,14 @@ func classifyRunDiagnostic(err error) (string, string) {
 	default:
 		return "run_failed", reason
 	}
+}
+
+func normalizeWorkspaceID(workspaceID string) string {
+	trimmed := strings.TrimSpace(workspaceID)
+	if trimmed == "" {
+		return defaultWorkspaceID
+	}
+	return trimmed
 }
 
 func (r *Runtime) ReportsSummary() (ReportSummary, error) {
