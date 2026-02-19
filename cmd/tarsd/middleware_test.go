@@ -95,6 +95,7 @@ func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 	reqUser := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
 	reqUser.RemoteAddr = "192.0.2.10:5555"
 	reqUser.Header.Set("Authorization", "Bearer user-token")
+	reqUser.Header.Set("Tars-Workspace-Id", "ws-local")
 	recUser := httptest.NewRecorder()
 	h.ServeHTTP(recUser, reqUser)
 	if recUser.Code != http.StatusForbidden {
@@ -104,6 +105,7 @@ func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 	reqAdmin := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
 	reqAdmin.RemoteAddr = "192.0.2.10:5555"
 	reqAdmin.Header.Set("Authorization", "Bearer admin-token")
+	reqAdmin.Header.Set("Tars-Workspace-Id", "ws-local")
 	recAdmin := httptest.NewRecorder()
 	h.ServeHTTP(recAdmin, reqAdmin)
 	if recAdmin.Code != http.StatusNoContent {
@@ -159,6 +161,7 @@ func TestApplyAPIMiddleware_ForbiddenAdminPathIncludesUserRoleInDebugLog(t *test
 	req := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
 	req.RemoteAddr = "192.0.2.10:5555"
 	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Tars-Workspace-Id", "ws-local")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -218,5 +221,26 @@ func TestApplyAPIMiddleware_StatusIncludesAuthMetadata(t *testing.T) {
 	}
 	if body.AuthRole != "user" {
 		t.Fatalf("expected auth_role user, got %q", body.AuthRole)
+	}
+}
+
+func TestApplyAPIMiddleware_AuthenticatedRequestRequiresWorkspaceHeader(t *testing.T) {
+	cfg := config.Config{
+		APIAuthMode:        "required",
+		APIUserToken:       "user-token",
+		APIWorkspaceHeader: "Tars-Workspace-Id",
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	req.RemoteAddr = "192.0.2.10:5555"
+	req.Header.Set("Authorization", "Bearer user-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing workspace header, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }

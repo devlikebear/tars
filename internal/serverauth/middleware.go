@@ -27,6 +27,7 @@ type Options struct {
 	UserToken       string
 	AdminToken      string
 	WorkspaceHeader string
+	RequireWorkspaceForAuthorized bool
 	SkipPaths       []string
 	AdminPaths      []string
 }
@@ -165,6 +166,12 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			}
 			req = withRole(req, role)
 			req = withDebugRoleHeader(req, role)
+			if opts.RequireWorkspaceForAuthorized && strings.TrimSpace(role) != "" {
+				if strings.TrimSpace(WorkspaceIDFromContext(req.Context())) == "" {
+					http.Error(w, "workspace id is required", http.StatusBadRequest)
+					return
+				}
+			}
 			if isAdminPath && role != RoleAdmin {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return

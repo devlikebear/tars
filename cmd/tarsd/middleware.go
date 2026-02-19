@@ -16,6 +16,7 @@ func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Hand
 		UserToken:       cfg.APIUserToken,
 		AdminToken:      cfg.APIAdminToken,
 		WorkspaceHeader: cfg.APIWorkspaceHeader,
+		RequireWorkspaceForAuthorized: true,
 		SkipPaths:       []string{"/v1/healthz"},
 		AdminPaths: []string{
 			"/v1/runtime/extensions/reload",

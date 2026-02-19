@@ -217,3 +217,48 @@ func TestMiddleware_AdminPathWithoutConfiguredTokenReturnsUnauthorized(t *testin
 		t.Fatalf("expected WWW-Authenticate Bearer, got %q", got)
 	}
 }
+
+func TestMiddleware_RequireWorkspaceForAuthenticatedRequest(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:                           ModeRequired,
+		UserToken:                      "user-token",
+		WorkspaceHeader:                "Tars-Workspace-Id",
+		RequireWorkspaceForAuthorized:  true,
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Authorization", "Bearer user-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMiddleware_RequireWorkspaceForAuthenticatedRequest_AllowsWithHeader(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:                           ModeRequired,
+		UserToken:                      "user-token",
+		WorkspaceHeader:                "Tars-Workspace-Id",
+		RequireWorkspaceForAuthorized:  true,
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Tars-Workspace-Id", "ws-main")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
