@@ -32,6 +32,8 @@ type Run struct {
 	Accepted    bool      `json:"accepted"`
 	Response    string    `json:"response,omitempty"`
 	Error       string    `json:"error,omitempty"`
+	DiagnosticCode   string `json:"diagnostic_code,omitempty"`
+	DiagnosticReason string `json:"diagnostic_reason,omitempty"`
 	CreatedAt   string    `json:"created_at"`
 	StartedAt   string    `json:"started_at,omitempty"`
 	CompletedAt string    `json:"completed_at,omitempty"`
@@ -442,6 +444,9 @@ func (r *Runtime) Agents() []map[string]any {
 			"policy_mode":          info.PolicyMode,
 			"tools_allow":          toolsAllow,
 			"tools_allow_count":    info.ToolsAllowCount,
+			"tools_deny":           append([]string{}, info.ToolsDeny...),
+			"tools_deny_count":     info.ToolsDenyCount,
+			"tools_risk_max":       info.ToolsRiskMax,
 			"tools_allow_groups":   append([]string{}, info.ToolsAllowGroups...),
 			"tools_allow_patterns": append([]string{}, info.ToolsAllowPatterns...),
 			"session_routing_mode": normalizeSessionRoutingMode(info.SessionRoutingMode),
@@ -593,6 +598,7 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	if err != nil {
 		state.run.Status = RunStatusFailed
 		state.run.Error = strings.TrimSpace(err.Error())
+		state.run.DiagnosticCode, state.run.DiagnosticReason = classifyRunDiagnostic(err)
 		r.closeRunDoneLocked(state)
 		r.trimRunHistoryLocked()
 		r.stateVersion++
@@ -796,6 +802,27 @@ func (r *Runtime) Status() GatewayStatus {
 		status.LastRestartAt = r.lastRestart.UTC().Format(time.RFC3339)
 	}
 	return status
+}
+
+func classifyRunDiagnostic(err error) (string, string) {
+	if err == nil {
+		return "", ""
+	}
+	reason := strings.TrimSpace(err.Error())
+	if reason == "" {
+		return "", ""
+	}
+	lower := strings.ToLower(reason)
+	switch {
+	case strings.Contains(lower, "tool not injected for this request"):
+		return "policy_tool_blocked", reason
+	case strings.Contains(lower, "repeated tool call pattern"):
+		return "agent_loop_guard", reason
+	case strings.Contains(lower, "context canceled"), strings.Contains(lower, "canceled"):
+		return "run_canceled", reason
+	default:
+		return "run_failed", reason
+	}
 }
 
 func (r *Runtime) ReportsSummary() (ReportSummary, error) {

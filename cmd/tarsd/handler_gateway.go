@@ -65,7 +65,10 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 				if strings.Contains(strings.ToLower(err.Error()), "not found") {
 					status = http.StatusNotFound
 				}
-				writeJSON(w, status, map[string]string{"error": err.Error()})
+				writeJSON(w, status, map[string]string{
+					"error": err.Error(),
+					"code":  classifySpawnErrorCode(err),
+				})
 				return
 			}
 			writeJSON(w, http.StatusAccepted, run)
@@ -342,5 +345,24 @@ func asString(v any) string {
 		return value
 	default:
 		return ""
+	}
+}
+
+func classifySpawnErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	lower := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case strings.Contains(lower, "unknown agent"):
+		return "agent_not_found"
+	case strings.Contains(lower, "prompt is required"), strings.Contains(lower, "message is required"):
+		return "validation_error"
+	case strings.Contains(lower, "session routing"), strings.Contains(lower, "session_fixed_id"):
+		return "agent_policy_invalid"
+	case strings.Contains(lower, "session store"):
+		return "runtime_not_configured"
+	default:
+		return "spawn_failed"
 	}
 }

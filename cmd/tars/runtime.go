@@ -131,6 +131,9 @@ type agentDescriptor struct {
 	PolicyMode         string   `json:"policy_mode,omitempty"`
 	ToolsAllow         []string `json:"tools_allow,omitempty"`
 	ToolsAllowCount    int      `json:"tools_allow_count,omitempty"`
+	ToolsDeny          []string `json:"tools_deny,omitempty"`
+	ToolsDenyCount     int      `json:"tools_deny_count,omitempty"`
+	ToolsRiskMax       string   `json:"tools_risk_max,omitempty"`
 	ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty"`
 	ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
 	SessionRoutingMode string   `json:"session_routing_mode,omitempty"`
@@ -145,6 +148,8 @@ type agentRun struct {
 	Accepted    bool   `json:"accepted"`
 	Response    string `json:"response,omitempty"`
 	Error       string `json:"error,omitempty"`
+	DiagnosticCode   string `json:"diagnostic_code,omitempty"`
+	DiagnosticReason string `json:"diagnostic_reason,omitempty"`
 	CreatedAt   string `json:"created_at,omitempty"`
 	StartedAt   string `json:"started_at,omitempty"`
 	CompletedAt string `json:"completed_at,omitempty"`

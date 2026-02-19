@@ -246,3 +246,50 @@ Find evidence first and answer briefly.
 		t.Fatalf("expected session_routing_mode diagnostics, got %+v", diagnostics)
 	}
 }
+
+func TestLoadWorkspaceGatewayAgents_ToolsDenyAndRiskMax(t *testing.T) {
+	workspace := t.TempDir()
+	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
+	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
+		t.Fatalf("mkdir agent dir: %v", err)
+	}
+	raw := `---
+name: researcher
+tools_allow:
+  - read_file
+  - exec
+  - glob
+tools_deny:
+  - exec
+tools_risk_max: low
+---
+Find evidence first and answer briefly.
+`
+	if err := os.WriteFile(agentPath, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write agent: %v", err)
+	}
+
+	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	if err != nil {
+		t.Fatalf("load workspace agents: %v", err)
+	}
+	if len(diagnostics) != 0 {
+		t.Fatalf("expected no diagnostics, got %+v", diagnostics)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("expected one agent, got %+v", loaded)
+	}
+	agent := loaded[0]
+	if agent.PolicyMode != "allowlist" {
+		t.Fatalf("expected allowlist mode, got %+v", agent)
+	}
+	if got, want := strings.Join(agent.ToolsAllow, ","), "read_file"; got != want {
+		t.Fatalf("unexpected tools allow list after deny/risk filter: got=%q want=%q", got, want)
+	}
+	if got, want := strings.Join(agent.ToolsDeny, ","), "exec"; got != want {
+		t.Fatalf("unexpected tools_deny: got=%q want=%q", got, want)
+	}
+	if agent.ToolsRiskMax != "low" {
+		t.Fatalf("unexpected tools_risk_max: %+v", agent)
+	}
+}

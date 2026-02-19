@@ -27,6 +27,9 @@ type AgentInfo struct {
 	PolicyMode         string   `json:"policy_mode"`
 	ToolsAllow         []string `json:"tools_allow,omitempty"`
 	ToolsAllowCount    int      `json:"tools_allow_count"`
+	ToolsDeny          []string `json:"tools_deny,omitempty"`
+	ToolsDenyCount     int      `json:"tools_deny_count"`
+	ToolsRiskMax       string   `json:"tools_risk_max,omitempty"`
 	ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty"`
 	ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
 	SessionRoutingMode string   `json:"session_routing_mode,omitempty"`
@@ -46,6 +49,8 @@ type PromptExecutor struct {
 	entry              string
 	policyMode         string
 	toolsAllow         []string
+	toolsDeny          []string
+	toolsRiskMax       string
 	toolsAllowGroups   []string
 	toolsAllowPatterns []string
 	sessionRoutingMode string
@@ -60,6 +65,8 @@ type PromptExecutorOptions struct {
 	Entry              string
 	PolicyMode         string
 	ToolsAllow         []string
+	ToolsDeny          []string
+	ToolsRiskMax       string
 	ToolsAllowGroups   []string
 	ToolsAllowPatterns []string
 	SessionRoutingMode string
@@ -85,6 +92,8 @@ func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, 
 	}
 	policyMode := normalizePolicyMode(opts.PolicyMode)
 	toolsAllow := sanitizeToolsAllow(opts.ToolsAllow)
+	toolsDeny := sanitizeToolsAllow(opts.ToolsDeny)
+	toolsRiskMax := normalizeToolRiskMax(opts.ToolsRiskMax)
 	toolsAllowGroups := sanitizeStringList(opts.ToolsAllowGroups)
 	toolsAllowPatterns := sanitizeStringList(opts.ToolsAllowPatterns)
 	sessionRoutingMode := normalizeSessionRoutingMode(opts.SessionRoutingMode)
@@ -103,6 +112,8 @@ func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, 
 		entry:              strings.TrimSpace(opts.Entry),
 		policyMode:         policyMode,
 		toolsAllow:         toolsAllow,
+		toolsDeny:          toolsDeny,
+		toolsRiskMax:       toolsRiskMax,
 		toolsAllowGroups:   toolsAllowGroups,
 		toolsAllowPatterns: toolsAllowPatterns,
 		sessionRoutingMode: sessionRoutingMode,
@@ -135,6 +146,9 @@ func (e *PromptExecutor) Info() AgentInfo {
 		PolicyMode:         normalizePolicyMode(e.policyMode),
 		ToolsAllow:         append([]string(nil), e.toolsAllow...),
 		ToolsAllowCount:    len(e.toolsAllow),
+		ToolsDeny:          append([]string(nil), e.toolsDeny...),
+		ToolsDenyCount:     len(e.toolsDeny),
+		ToolsRiskMax:       normalizeToolRiskMax(e.toolsRiskMax),
 		ToolsAllowGroups:   append([]string(nil), e.toolsAllowGroups...),
 		ToolsAllowPatterns: append([]string(nil), e.toolsAllowPatterns...),
 		SessionRoutingMode: normalizeSessionRoutingMode(e.sessionRoutingMode),
@@ -241,6 +255,7 @@ func (e *CommandExecutor) Info() AgentInfo {
 		Entry:           e.entry,
 		PolicyMode:      "full",
 		ToolsAllowCount: 0,
+		ToolsDenyCount:  0,
 	}
 }
 
@@ -324,5 +339,15 @@ func normalizeSessionRoutingMode(raw string) string {
 		return mode
 	default:
 		return "caller"
+	}
+}
+
+func normalizeToolRiskMax(raw string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	switch value {
+	case "low", "medium", "high":
+		return value
+	default:
+		return ""
 	}
 }

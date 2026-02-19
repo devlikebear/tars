@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -322,6 +323,42 @@ func TestRuntimeCancelRun(t *testing.T) {
 	}
 	if final.Status != RunStatusCanceled {
 		t.Fatalf("expected canceled status after wait, got %s", final.Status)
+	}
+}
+
+func TestRuntimeRunFailure_SetsPolicyDiagnosticCode(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors: []AgentExecutor{
+			stubExecutor{
+				info: AgentInfo{Name: "researcher", Enabled: true, Kind: "stub"},
+				exec: func(_ context.Context, _ ExecuteRequest) (string, error) {
+					return "", fmt.Errorf("tool not injected for this request: exec")
+				},
+			},
+		},
+		DefaultAgent: "researcher",
+	})
+	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+
+	run, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "hello"})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	final, err := rt.Wait(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	if final.Status != RunStatusFailed {
+		t.Fatalf("expected failed run status, got %+v", final)
+	}
+	if final.DiagnosticCode != "policy_tool_blocked" {
+		t.Fatalf("expected policy diagnostic code, got %+v", final)
+	}
+	if !strings.Contains(final.DiagnosticReason, "tool not injected") {
+		t.Fatalf("expected diagnostic reason to include tool block message, got %+v", final)
 	}
 }
 

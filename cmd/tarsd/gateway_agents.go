@@ -20,6 +20,8 @@ type workspaceGatewayAgent struct {
 	FilePath           string
 	PolicyMode         string
 	ToolsAllow         []string
+	ToolsDeny          []string
+	ToolsRiskMax       string
 	ToolsAllowGroups   []string
 	ToolsAllowPatterns []string
 	SessionRoutingMode string
@@ -31,6 +33,9 @@ type workspaceGatewayAgentFrontmatter struct {
 	Description              string
 	ToolsAllow               []string
 	ToolsAllowExists         bool
+	ToolsDeny                []string
+	ToolsDenyExists          bool
+	ToolsRiskMax             string
 	ToolsAllowGroups         []string
 	ToolsAllowGroupsExists   bool
 	ToolsAllowPatterns       []string
@@ -101,9 +106,16 @@ func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, [
 		}
 		policyMode := "full"
 		toolsAllow := []string{}
+		toolsDeny := []string{}
+		toolsRiskMax := ""
 		toolsAllowGroups := []string{}
 		toolsAllowPatterns := []string{}
-		if meta.ToolsAllowExists || meta.ToolsAllowGroupsExists || meta.ToolsAllowPatternsExists {
+		policyRequested := meta.ToolsAllowExists ||
+			meta.ToolsAllowGroupsExists ||
+			meta.ToolsAllowPatternsExists ||
+			meta.ToolsDenyExists ||
+			strings.TrimSpace(meta.ToolsRiskMax) != ""
+		if policyRequested {
 			policyMode = "allowlist"
 			union := make([]string, 0)
 			unionSeen := map[string]struct{}{}
@@ -115,6 +127,10 @@ func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, [
 					unionSeen[item] = struct{}{}
 					union = append(union, item)
 				}
+			}
+			hasAllowSource := meta.ToolsAllowExists || meta.ToolsAllowGroupsExists || meta.ToolsAllowPatternsExists
+			if !hasAllowSource {
+				appendUnion(listGatewayKnownToolNames(knownTools))
 			}
 
 			normalizedNames, unknownTools := normalizeGatewayToolsAllow(meta.ToolsAllow, knownTools)
@@ -146,6 +162,30 @@ func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, [
 			toolsAllowPatterns = normalizedPatterns
 			appendUnion(patternTools)
 
+			normalizedDeny, unknownDeny := normalizeGatewayToolsAllow(meta.ToolsDeny, knownTools)
+			if len(unknownDeny) > 0 {
+				diagnostics = append(
+					diagnostics,
+					fmt.Sprintf("agent %s tools_deny ignored unknown tools: %s", name, strings.Join(unknownDeny, ", ")),
+				)
+			}
+			toolsDeny = normalizedDeny
+			if len(toolsDeny) > 0 {
+				union = removeDeniedGatewayTools(union, toolsDeny)
+			}
+
+			normalizedRiskMax, riskOK := normalizeGatewayToolRiskMax(meta.ToolsRiskMax)
+			if strings.TrimSpace(meta.ToolsRiskMax) != "" && !riskOK {
+				diagnostics = append(
+					diagnostics,
+					fmt.Sprintf("agent %s tools_risk_max ignored invalid value: %q", name, strings.TrimSpace(meta.ToolsRiskMax)),
+				)
+			}
+			toolsRiskMax = normalizedRiskMax
+			if toolsRiskMax != "" {
+				union = filterGatewayToolsByRisk(union, toolsRiskMax)
+			}
+
 			if len(union) == 0 {
 				diagnostics = append(diagnostics, fmt.Sprintf("skip agent %s: tools_allow has no valid tools", name))
 				return nil
@@ -166,6 +206,8 @@ func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, [
 			FilePath:           path,
 			PolicyMode:         policyMode,
 			ToolsAllow:         toolsAllow,
+			ToolsDeny:          toolsDeny,
+			ToolsRiskMax:       toolsRiskMax,
 			ToolsAllowGroups:   toolsAllowGroups,
 			ToolsAllowPatterns: toolsAllowPatterns,
 			SessionRoutingMode: sessionRoutingMode,
@@ -256,6 +298,8 @@ func newWorkspacePromptExecutor(
 		Entry:              strings.TrimSpace(def.FilePath),
 		PolicyMode:         normalizeGatewayPolicyMode(def.PolicyMode),
 		ToolsAllow:         append([]string(nil), def.ToolsAllow...),
+		ToolsDeny:          append([]string(nil), def.ToolsDeny...),
+		ToolsRiskMax:       strings.TrimSpace(def.ToolsRiskMax),
 		ToolsAllowGroups:   append([]string(nil), def.ToolsAllowGroups...),
 		ToolsAllowPatterns: append([]string(nil), def.ToolsAllowPatterns...),
 		SessionRoutingMode: normalizeGatewaySessionRoutingMode(def.SessionRoutingMode),
@@ -460,6 +504,95 @@ func normalizeGatewayToolsAllowPatterns(raw []string, known map[string]struct{})
 	return normalizedPatterns, outTools, invalidPatterns
 }
 
+func listGatewayKnownToolNames(known map[string]struct{}) []string {
+	out := make([]string, 0, len(known))
+	for name := range known {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func removeDeniedGatewayTools(allowed []string, denied []string) []string {
+	if len(allowed) == 0 || len(denied) == 0 {
+		return append([]string(nil), allowed...)
+	}
+	deniedSet := map[string]struct{}{}
+	for _, item := range denied {
+		name := strings.TrimSpace(item)
+		if name == "" {
+			continue
+		}
+		deniedSet[name] = struct{}{}
+	}
+	if len(deniedSet) == 0 {
+		return append([]string(nil), allowed...)
+	}
+	out := make([]string, 0, len(allowed))
+	for _, item := range allowed {
+		if _, blocked := deniedSet[item]; blocked {
+			continue
+		}
+		out = append(out, item)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func normalizeGatewayToolRiskMax(raw string) (string, bool) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return "", true
+	}
+	switch value {
+	case "low", "medium", "high":
+		return value, true
+	default:
+		return "", false
+	}
+}
+
+func filterGatewayToolsByRisk(allowed []string, riskMax string) []string {
+	maxRank := gatewayToolRiskRank(riskMax)
+	if maxRank == 0 || len(allowed) == 0 {
+		return append([]string(nil), allowed...)
+	}
+	out := make([]string, 0, len(allowed))
+	for _, item := range allowed {
+		if gatewayToolRiskRank(gatewayToolRiskLevel(item)) <= maxRank {
+			out = append(out, item)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func gatewayToolRiskLevel(toolName string) string {
+	switch strings.TrimSpace(toolName) {
+	case "read", "read_file", "list_dir", "memory_search", "memory_get", "session_status":
+		return "low"
+	case "glob", "web_search", "web_fetch":
+		return "medium"
+	case "write", "write_file", "edit", "edit_file", "exec", "process", "apply_patch":
+		return "high"
+	default:
+		return "high"
+	}
+}
+
+func gatewayToolRiskRank(level string) int {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "low":
+		return 1
+	case "medium":
+		return 2
+	case "high":
+		return 3
+	default:
+		return 0
+	}
+}
+
 func parseWorkspaceGatewayAgentDocument(raw string) (workspaceGatewayAgentFrontmatter, string, error) {
 	metaBlock, body, hasFrontmatter, err := splitYAMLFrontmatter(raw)
 	if err != nil {
@@ -520,6 +653,13 @@ func parseWorkspaceGatewayAgentFrontmatter(raw string) (workspaceGatewayAgentFro
 			items, next := parseYAMLListValue(lines, i, value)
 			meta.ToolsAllow = append(meta.ToolsAllow, items...)
 			i = next
+		case "tools_deny", "tools-deny":
+			meta.ToolsDenyExists = true
+			items, next := parseYAMLListValue(lines, i, value)
+			meta.ToolsDeny = append(meta.ToolsDeny, items...)
+			i = next
+		case "tools_risk_max", "tools-risk-max":
+			meta.ToolsRiskMax = trimYAMLScalar(value)
 		case "tools_allow_groups", "tools-allow-groups":
 			meta.ToolsAllowGroupsExists = true
 			items, next := parseYAMLListValue(lines, i, value)

@@ -160,6 +160,8 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 		Entry:              "workspace/agents/researcher/AGENT.md",
 		PolicyMode:         "allowlist",
 		ToolsAllow:         []string{"read_file", "list_dir"},
+		ToolsDeny:          []string{"exec"},
+		ToolsRiskMax:       "medium",
 		ToolsAllowGroups:   []string{"memory"},
 		ToolsAllowPatterns: []string{"^read"},
 		SessionRoutingMode: "fixed",
@@ -234,6 +236,18 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 	if !ok || len(patterns) != 1 {
 		t.Fatalf("expected tools_allow_patterns list, got %+v", researcher)
 	}
+	deny, ok := researcher["tools_deny"].([]any)
+	if !ok || len(deny) != 1 {
+		t.Fatalf("expected tools_deny list, got %+v", researcher)
+	}
+	denyCount, _ := researcher["tools_deny_count"].(float64)
+	if int(denyCount) != 1 {
+		t.Fatalf("expected tools_deny_count=1, got %+v", researcher)
+	}
+	riskMax, _ := researcher["tools_risk_max"].(string)
+	if riskMax != "medium" {
+		t.Fatalf("expected tools_risk_max=medium, got %+v", researcher)
+	}
 	routing, _ := researcher["session_routing_mode"].(string)
 	if routing != "fixed" {
 		t.Fatalf("expected session_routing_mode=fixed, got %+v", researcher)
@@ -286,6 +300,30 @@ func TestAgentRunsAPIHandler_SpawnMissingMessage(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAgentRunsAPIHandler_SpawnUnknownAgentReturnsDiagnosticCode(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
+
+	body, _ := json.Marshal(map[string]any{
+		"message": "spawn hello",
+		"agent":   "unknown-agent",
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/agent/runs", bytes.NewReader(body))
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	code, _ := payload["code"].(string)
+	if code != "agent_not_found" {
+		t.Fatalf("expected code=agent_not_found, payload=%+v", payload)
 	}
 }
 
