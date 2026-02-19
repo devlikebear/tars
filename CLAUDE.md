@@ -227,6 +227,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `cmd/tars` 2차 확장: 세션/상태/확장 명령(`/sessions`, `/history`, `/export`, `/search`, `/status`, `/compact`, `/heartbeat`, `/skills`, `/plugins`, `/mcp`, `/reload`) + runtime 명령(`/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`)
   - `cmd/tars` 3차 확장: `/cron {list|get|runs|add|run|delete|enable|disable}`, `/channels`, `/resume`, `/agents --detail`
   - `cmd/tars` 4차 확장: `/notify {list|filter|open|clear}` + `/v1/events/stream` 구독 기반 알림 로컬 버퍼
+  - `cmd/tars` 5차 확장: `/gateway summary|runs|channels` + `/gateway report ...`로 gateway report API 조회 지원
   - `cmd/tars` HTTP 경로 해석 보강: query string이 path로 인코딩되지 않도록 `runtimeClient.resolve` 수정
   - Make 타깃 정리: `dev-cased`/`run-cased` 제거, `dev-tars` 추가
 
