@@ -287,3 +287,30 @@ func TestRuntimeClientRequestText_FallbacksToPlainTextOnNonJSONError(t *testing.
 		t.Fatalf("expected plain error body in message, got %q", err.Error())
 	}
 }
+
+func TestRuntimeClientWhoami(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/auth/whoami":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"authenticated": true,
+				"auth_role":     "user",
+				"is_admin":      false,
+				"workspace_id":  "team-a",
+				"auth_mode":     "required",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := runtimeClient{serverURL: server.URL}
+	out, err := client.whoami(context.Background())
+	if err != nil {
+		t.Fatalf("whoami: %v", err)
+	}
+	if !out.Authenticated || out.AuthRole != "user" || out.WorkspaceID != "team-a" || out.AuthMode != "required" {
+		t.Fatalf("unexpected whoami payload: %+v", out)
+	}
+}

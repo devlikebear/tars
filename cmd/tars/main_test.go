@@ -540,6 +540,36 @@ func TestExecuteCommand_Health(t *testing.T) {
 	}
 }
 
+func TestExecuteCommand_Whoami(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/auth/whoami":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"authenticated": true,
+				"auth_role":     "admin",
+				"is_admin":      true,
+				"workspace_id":  "team-admin",
+				"auth_mode":     "required",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{serverURL: server.URL}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/whoami", "", stdout, stderr); err != nil {
+		t.Fatalf("/whoami: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "authenticated=true") || !strings.Contains(out, "role=admin") || !strings.Contains(out, "workspace=team-admin") {
+		t.Fatalf("unexpected whoami output: %q", out)
+	}
+}
+
 func TestFormatRuntimeError_ProvidesAuthHintForUnauthorized(t *testing.T) {
 	err := &apiHTTPError{
 		Method:   http.MethodGet,

@@ -19,14 +19,24 @@ func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Hand
 		UserWorkspaceAllowlist:        cfg.APIUserWorkspaceIDs,
 		AdminWorkspaceAllowlist:       cfg.APIAdminWorkspaceIDs,
 		RequireWorkspaceForAuthorized: true,
-		SkipPaths:                     []string{"/v1/healthz"},
-		AdminPaths: []string{
-			"/v1/runtime/extensions/reload",
-			"/v1/gateway/reload",
-			"/v1/gateway/restart",
-			"/v1/channels/webhook/inbound/*",
-			"/v1/channels/telegram/webhook/*",
-		},
+		SkipPaths:                     apiAuthSkipPaths(),
+		AdminPaths:                    apiAdminPaths(),
 	}, authLog)
 	return requestDebugMiddleware(logger, auth(next))
+}
+
+func apiAuthSkipPaths() []string {
+	return []string{
+		"/v1/healthz",
+	}
+}
+
+func apiAdminPaths() []string {
+	return []string{
+		"/v1/runtime/extensions/reload",
+		"/v1/gateway/reload",
+		"/v1/gateway/restart",
+		"/v1/channels/webhook/inbound/*",
+		"/v1/channels/telegram/webhook/*",
+	}
 }

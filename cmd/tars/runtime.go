@@ -77,6 +77,14 @@ type statusInfo struct {
 	AuthRole     string `json:"auth_role,omitempty"`
 }
 
+type whoamiInfo struct {
+	Authenticated bool   `json:"authenticated"`
+	AuthRole      string `json:"auth_role,omitempty"`
+	IsAdmin       bool   `json:"is_admin,omitempty"`
+	WorkspaceID   string `json:"workspace_id,omitempty"`
+	AuthMode      string `json:"auth_mode,omitempty"`
+}
+
 type healthInfo struct {
 	OK        bool   `json:"ok"`
 	Component string `json:"component,omitempty"`
@@ -464,6 +472,14 @@ func (c runtimeClient) status(ctx context.Context) (statusInfo, error) {
 		return statusInfo{}, err
 	}
 	return status, nil
+}
+
+func (c runtimeClient) whoami(ctx context.Context) (whoamiInfo, error) {
+	var out whoamiInfo
+	if err := c.requestJSON(ctx, http.MethodGet, "/v1/auth/whoami", nil, false, &out); err != nil {
+		return whoamiInfo{}, err
+	}
+	return out, nil
 }
 
 func (c runtimeClient) healthz(ctx context.Context) (healthInfo, error) {
