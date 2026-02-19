@@ -249,9 +249,16 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		if err != nil {
 			return true, session, err
 		}
-		fmt.Fprintf(stdout, "SYSTEM > workspace=%s sessions=%d", status.WorkspaceDir, status.SessionCount)
+		scope := strings.TrimSpace(status.WorkspaceID)
+		if scope == "" {
+			scope = strings.TrimSpace(runtime.workspaceID)
+		}
+		if scope == "" {
+			scope = "default"
+		}
+		fmt.Fprintf(stdout, "SYSTEM > workspace=%s sessions=%d scope=%s", status.WorkspaceDir, status.SessionCount, scope)
 		if strings.TrimSpace(status.WorkspaceID) != "" {
-			fmt.Fprintf(stdout, " workspace_id=%s", status.WorkspaceID)
+			fmt.Fprintf(stdout, " workspace_id=%s", strings.TrimSpace(status.WorkspaceID))
 		}
 		if strings.TrimSpace(status.AuthRole) != "" {
 			fmt.Fprintf(stdout, " auth_role=%s", status.AuthRole)
@@ -349,8 +356,8 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		detail := len(fields) > 1 && (strings.TrimSpace(fields[1]) == "--detail" || strings.TrimSpace(fields[1]) == "-d")
 		for _, a := range agents {
 			if detail {
-				fmt.Fprintf(stdout, "- %s kind=%s source=%s entry=%s policy=%s allow=%d routing=%s fixed_session=%s\n",
-					a.Name, a.Kind, a.Source, a.Entry, a.PolicyMode, a.ToolsAllowCount, a.SessionRoutingMode, a.SessionFixedID)
+				fmt.Fprintf(stdout, "- %s kind=%s source=%s entry=%s policy=%s allow=%d deny=%d risk_max=%s routing=%s fixed_session=%s\n",
+					a.Name, a.Kind, a.Source, a.Entry, a.PolicyMode, a.ToolsAllowCount, a.ToolsDenyCount, strings.TrimSpace(a.ToolsRiskMax), a.SessionRoutingMode, a.SessionFixedID)
 				continue
 			}
 			fmt.Fprintf(stdout, "- %s kind=%s source=%s policy=%s\n", a.Name, a.Kind, a.Source, a.PolicyMode)
@@ -392,6 +399,9 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		}
 		if strings.TrimSpace(run.Error) != "" {
 			fmt.Fprintf(stdout, "error: %s\n", run.Error)
+			if strings.TrimSpace(run.DiagnosticCode) != "" {
+				fmt.Fprintf(stdout, "diagnostic: %s | %s\n", strings.TrimSpace(run.DiagnosticCode), strings.TrimSpace(run.DiagnosticReason))
+			}
 		}
 		return true, session, nil
 	case "/cancel-run":
@@ -442,9 +452,14 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			if err != nil {
 				return true, session, err
 			}
-			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d runs_total=%d runs_active=%d agents=%d watch=%t persistence=%t runs_store=%t channels_store=%t restored_runs=%d restored_channels=%d\n",
+			scope := strings.TrimSpace(runtime.workspaceID)
+			if scope == "" {
+				scope = "default"
+			}
+			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d scope=%s runs_total=%d runs_active=%d agents=%d watch=%t persistence=%t runs_store=%t channels_store=%t restored_runs=%d restored_channels=%d\n",
 				status.Enabled,
 				status.Version,
+				scope,
 				status.RunsTotal,
 				status.RunsActive,
 				status.AgentsCount,

@@ -46,6 +46,9 @@ func TestExecuteCommand_NewAndStatus(t *testing.T) {
 	if !strings.Contains(stdout.String(), "workspace=/tmp/ws") {
 		t.Fatalf("expected workspace status output, got %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "scope=default") {
+		t.Fatalf("expected default scope output, got %q", stdout.String())
+	}
 }
 
 func TestExecuteCommand_CompactRequiresSession(t *testing.T) {
@@ -138,6 +141,8 @@ func TestExecuteCommand_ResumeAndAgentsDetail(t *testing.T) {
 						"entry":             "workspace/agents/researcher/AGENT.md",
 						"policy_mode":       "allowlist",
 						"tools_allow_count": 3,
+						"tools_deny_count":  1,
+						"tools_risk_max":    "medium",
 					},
 				},
 			})
@@ -166,6 +171,9 @@ func TestExecuteCommand_ResumeAndAgentsDetail(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "entry=workspace/agents/researcher/AGENT.md") {
 		t.Fatalf("expected detailed agent output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "deny=1") || !strings.Contains(stdout.String(), "risk_max=medium") {
+		t.Fatalf("expected deny/risk detail output, got %q", stdout.String())
 	}
 
 	stdout.Reset()
@@ -358,6 +366,7 @@ func TestExecuteCommand_GatewayStatusTelemetry(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	runtime := runtimeClient{serverURL: server.URL}
+	runtime.workspaceID = "ws-main"
 
 	if _, _, err := executeCommand(context.Background(), runtime, "/gateway status", "", stdout, stderr); err != nil {
 		t.Fatalf("/gateway status: %v", err)
@@ -371,6 +380,7 @@ func TestExecuteCommand_GatewayStatusTelemetry(t *testing.T) {
 		strings.Contains(out, "persistence=true") &&
 		strings.Contains(out, "runs_store=true") &&
 		strings.Contains(out, "channels_store=false") &&
+		strings.Contains(out, "scope=ws-main") &&
 		strings.Contains(out, "restored_runs=3") &&
 		strings.Contains(out, "restored_channels=9")
 	if !containsAll {
