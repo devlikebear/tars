@@ -11,9 +11,6 @@ HEARTBEAT_INTERVAL ?= 30s
 MAX_HEARTBEATS ?= 0
 COVER_OUT ?= coverage.out
 TARSD_CONFIG ?= ./workspace/config/tarsd.config.yaml
-TARS_UI_CONFIG ?=
-TARS_UI_DIR ?= ./tars-ui
-TARS_UI_SERVER_URL ?= $(SERVER_URL)
 
 .DEFAULT_GOAL := help
 
@@ -22,8 +19,7 @@ TARS_UI_SERVER_URL ?= $(SERVER_URL)
 	build build-bins clean tidy fmt vet \
 	dev-tarsd dev-tarsd-once dev-tarsd-loop dev-chat dev-heartbeat dev-tars \
 	api-status api-sessions api-compact api-chat api-heartbeat \
-	run-tarsd \
-	ui-install ui-test dev-tars-ui
+	run-tarsd
 
 help:
 	@echo "Usage:"
@@ -33,7 +29,6 @@ help:
 	@echo "  PKG=./... TEST_NAME=TestRun_ChatMessage CHAT_MSG='hello'"
 	@echo "  WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:43180 SERVER_URL=http://127.0.0.1:43180"
 	@echo "  TARSD_CONFIG=./config/tarsd.config.example.yaml"
-	@echo "  TARS_UI_CONFIG=./tars-ui/config.example.yaml"
 	@echo ""
 	@echo "Test targets:"
 	@echo "  make test          - go test $(PKG)"
@@ -58,9 +53,6 @@ help:
 	@echo "  make dev-chat      - run Go client (cmd/tars)"
 	@echo "  make dev-tars      - run Go client (cmd/tars)"
 	@echo "  make dev-heartbeat - call heartbeat run-once via API"
-	@echo "  make ui-install    - install tars-ui npm dependencies"
-	@echo "  make ui-test       - run tars-ui tests"
-	@echo "  make dev-tars-ui   - run legacy React/TS Ink UI client"
 	@echo ""
 	@echo "API helpers:"
 	@echo "  make api-status    - GET /v1/status"
@@ -112,15 +104,6 @@ dev-tars:
 
 dev-heartbeat:
 	curl -sS -X POST $(SERVER_URL)/v1/heartbeat/run-once
-
-ui-install:
-	cd $(TARS_UI_DIR) && npm install
-
-ui-test:
-	cd $(TARS_UI_DIR) && npm test
-
-dev-tars-ui:
-	cd $(TARS_UI_DIR) && npm run dev -- $(if $(TARS_UI_CONFIG),--config $(TARS_UI_CONFIG),) --server-url $(TARS_UI_SERVER_URL) $(ARGS)
 
 api-status:
 	curl -sS $(SERVER_URL)/v1/status
