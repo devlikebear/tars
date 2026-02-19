@@ -19,12 +19,16 @@ type chatRequest struct {
 }
 
 type chatEvent struct {
-	Type      string `json:"type"`
-	Text      string `json:"text"`
-	Error     string `json:"error"`
-	SessionID string `json:"session_id"`
-	Message   string `json:"message"`
-	Phase     string `json:"phase"`
+	Type              string `json:"type"`
+	Text              string `json:"text"`
+	Error             string `json:"error"`
+	SessionID         string `json:"session_id"`
+	Message           string `json:"message"`
+	Phase             string `json:"phase"`
+	ToolName          string `json:"tool_name"`
+	ToolCallID        string `json:"tool_call_id"`
+	ToolArgsPreview   string `json:"tool_args_preview"`
+	ToolResultPreview string `json:"tool_result_preview"`
 }
 
 type chatResult struct {

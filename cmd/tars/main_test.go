@@ -271,6 +271,93 @@ func TestExecuteCommand_NotifyCommands(t *testing.T) {
 	}
 }
 
+func TestExecuteCommand_TraceToggle(t *testing.T) {
+	state := &localRuntimeState{
+		notifications: newNotificationCenter(10),
+		chatTrace:     true,
+	}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{}
+
+	if _, _, err := executeCommandWithState(context.Background(), runtime, "/trace", "", stdout, stderr, state); err != nil {
+		t.Fatalf("/trace: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "trace=on") {
+		t.Fatalf("expected trace on output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if _, _, err := executeCommandWithState(context.Background(), runtime, "/trace off", "", stdout, stderr, state); err != nil {
+		t.Fatalf("/trace off: %v", err)
+	}
+	if state.chatTrace {
+		t.Fatal("expected trace state off")
+	}
+
+	stdout.Reset()
+	if _, _, err := executeCommandWithState(context.Background(), runtime, "/trace on", "", stdout, stderr, state); err != nil {
+		t.Fatalf("/trace on: %v", err)
+	}
+	if !state.chatTrace {
+		t.Fatal("expected trace state on")
+	}
+}
+
+func TestExecuteCommand_HelpStructured(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{}
+
+	_, _, err := executeCommand(context.Background(), runtime, "/help", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/help: %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "SYSTEM > commands") {
+		t.Fatalf("expected help header, got %q", out)
+	}
+	if !strings.Contains(out, "Session:") {
+		t.Fatalf("expected Session section, got %q", out)
+	}
+	if !strings.Contains(out, "Runtime:") {
+		t.Fatalf("expected Runtime section, got %q", out)
+	}
+	if !strings.Contains(out, "Chat:") {
+		t.Fatalf("expected Chat section, got %q", out)
+	}
+}
+
+func TestSendMessage_PrintsToolStatusFeedback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"status\",\"phase\":\"before_tool_call\",\"message\":\"executing tool\",\"tool_name\":\"read_file\",\"tool_call_id\":\"call_1\",\"tool_args_preview\":\"{\\\"path\\\":\\\"README.md\\\"}\"}\n\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"delta\",\"text\":\"done\"}\n\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"done\",\"session_id\":\"s-1\"}\n\n"))
+	}))
+	defer server.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	client := chatClient{serverURL: server.URL}
+
+	res, err := sendMessage(context.Background(), client, "", "hello", true, false, stdout, stderr)
+	if err != nil {
+		t.Fatalf("sendMessage: %v", err)
+	}
+	if strings.TrimSpace(res.SessionID) != "s-1" {
+		t.Fatalf("expected session id s-1, got %q", res.SessionID)
+	}
+	if !strings.Contains(stderr.String(), "executing tool (read_file)") {
+		t.Fatalf("expected tool status feedback, got %q", stderr.String())
+	}
+}
+
 func TestExecuteCommand_GatewayReports(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +26,9 @@ type options struct {
 }
 
 type localRuntimeState struct {
-	notifications *notificationCenter
+	notifications   *notificationCenter
+	chatTrace       bool
+	chatTraceFilter string
 }
 
 func main() {
@@ -40,7 +42,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	opts := options{}
 	cmd := &cobra.Command{
 		Use:   "tars",
-		Short: "Go TUI-lite client for tarsd",
+		Short: "Go TUI client for tarsd",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			chat := chatClient{
 				serverURL: opts.serverURL,
@@ -53,7 +55,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 			}
 			session := strings.TrimSpace(opts.sessionID)
 			if strings.TrimSpace(opts.message) != "" {
-				res, err := sendMessage(cmd.Context(), chat, session, opts.message, opts.verbose, stdout, stderr)
+				res, err := sendMessage(cmd.Context(), chat, session, opts.message, opts.verbose, opts.verbose, stdout, stderr)
 				if err != nil {
 					return err
 				}
@@ -62,7 +64,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 				}
 				return nil
 			}
-			return runREPL(cmd.Context(), stdin, stdout, stderr, chat, runtime, session, opts.verbose)
+			return runTUI(cmd.Context(), stdin, stdout, chat, runtime, session, opts.verbose)
 		},
 	}
 	cmd.Flags().StringVar(&opts.serverURL, "server-url", os.Getenv("TARS_SERVER_URL"), "tarsd server url")
@@ -72,60 +74,6 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&opts.message, "message", "", "send one message and exit")
 	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "verbose status output")
 	return cmd
-}
-
-func runREPL(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, chat chatClient, runtime runtimeClient, session string, verbose bool) error {
-	state := &localRuntimeState{
-		notifications: newNotificationCenter(200),
-	}
-	if state.notifications != nil {
-		events := newEventStreamClient(runtime)
-		go events.consume(ctx, state.notifications.add, func(err error) {
-			if verbose {
-				fmt.Fprintf(stderr, "notify stream: %s\n", formatRuntimeError(err))
-			}
-		})
-	}
-
-	scanner := bufio.NewScanner(stdin)
-	scanner.Buffer(make([]byte, 0, 8*1024), 2*1024*1024)
-	for {
-		fmt.Fprint(stdout, "You > ")
-		if !scanner.Scan() {
-			if err := scanner.Err(); err != nil {
-				return err
-			}
-			return nil
-		}
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		switch line {
-		case "/exit", "/quit":
-			return nil
-		}
-		if strings.HasPrefix(line, "/") {
-			handled, nextSession, err := executeCommandWithState(ctx, runtime, line, session, stdout, stderr, state)
-			if err != nil {
-				fmt.Fprintf(stderr, "error: %s\n", formatRuntimeError(err))
-				continue
-			}
-			if handled {
-				session = nextSession
-				continue
-			}
-		}
-		res, err := sendMessage(ctx, chat, session, line, verbose, stdout, stderr)
-		if err != nil {
-			fmt.Fprintf(stderr, "error: %s\n", formatRuntimeError(err))
-			continue
-		}
-		session = res.SessionID
-		if session != "" {
-			fmt.Fprintf(stderr, "session=%s\n", session)
-		}
-	}
 }
 
 func executeCommand(ctx context.Context, runtime runtimeClient, line, session string, stdout, stderr io.Writer) (bool, string, error) {
@@ -139,7 +87,7 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 	}
 	switch fields[0] {
 	case "/help":
-		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /resume [id] /new [title] /sessions /history /export /search {keyword} /status /whoami /health /compact /heartbeat /skills /plugins /mcp /reload /agents [--detail|-d] /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart|summary|runs [limit]|channels [limit]} /channels /cron {list|get|runs|add|run|delete|enable|disable} /notify {list|filter|open|clear} /quit")
+		fmt.Fprintln(stdout, helpText())
 		return true, session, nil
 	case "/session":
 		fmt.Fprintf(stdout, "SYSTEM > session=%s\n", session)
@@ -364,16 +312,32 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		if err != nil {
 			return true, session, err
 		}
+		sort.SliceStable(agents, func(i, j int) bool {
+			return strings.TrimSpace(agents[i].Name) < strings.TrimSpace(agents[j].Name)
+		})
 		if len(agents) == 0 {
 			fmt.Fprintln(stdout, "SYSTEM > (no agents)")
 			return true, session, nil
 		}
 		fmt.Fprintln(stdout, "SYSTEM > agents")
 		detail := len(fields) > 1 && (strings.TrimSpace(fields[1]) == "--detail" || strings.TrimSpace(fields[1]) == "-d")
+		if detail {
+			fmt.Fprintln(stdout, "NAME         KIND     SOURCE      POLICY     ROUTING  ALLOW DENY RISK")
+		}
 		for _, a := range agents {
 			if detail {
-				fmt.Fprintf(stdout, "- %s kind=%s source=%s entry=%s policy=%s allow=%d deny=%d risk_max=%s routing=%s fixed_session=%s\n",
-					a.Name, a.Kind, a.Source, a.Entry, a.PolicyMode, a.ToolsAllowCount, a.ToolsDenyCount, strings.TrimSpace(a.ToolsRiskMax), a.SessionRoutingMode, a.SessionFixedID)
+				risk := strings.TrimSpace(a.ToolsRiskMax)
+				if risk == "" {
+					risk = "-"
+				}
+				fmt.Fprintf(stdout, "%-12s %-8s %-11s %-10s %-8s %-5d %-4d %s\n",
+					a.Name, a.Kind, a.Source, a.PolicyMode, a.SessionRoutingMode, a.ToolsAllowCount, a.ToolsDenyCount, risk)
+				fmt.Fprintf(stdout, "  entry=%s allow=%d deny=%d risk_max=%s routing=%s",
+					a.Entry, a.ToolsAllowCount, a.ToolsDenyCount, risk, a.SessionRoutingMode)
+				if strings.TrimSpace(a.SessionFixedID) != "" {
+					fmt.Fprintf(stdout, " fixed_session=%s", strings.TrimSpace(a.SessionFixedID))
+				}
+				fmt.Fprintln(stdout)
 				continue
 			}
 			fmt.Fprintf(stdout, "- %s kind=%s source=%s policy=%s\n", a.Name, a.Kind, a.Source, a.PolicyMode)
@@ -396,19 +360,37 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			fmt.Fprintln(stdout, "SYSTEM > (no runs)")
 			return true, session, nil
 		}
+		sort.SliceStable(runs, func(i, j int) bool {
+			left := strings.TrimSpace(runs[i].CreatedAt)
+			right := strings.TrimSpace(runs[j].CreatedAt)
+			if left == right {
+				return strings.TrimSpace(runs[i].RunID) > strings.TrimSpace(runs[j].RunID)
+			}
+			if left == "" {
+				return false
+			}
+			if right == "" {
+				return true
+			}
+			return left > right
+		})
 		fmt.Fprintln(stdout, "SYSTEM > runs")
+		fmt.Fprintln(stdout, "RUN_ID           STATUS      AGENT        SESSION          WORKSPACE       DIAG            BLOCKED")
 		for _, r := range runs {
-			line := fmt.Sprintf("- %s status=%s agent=%s session=%s", r.RunID, r.Status, r.Agent, r.SessionID)
-			if strings.TrimSpace(r.WorkspaceID) != "" {
-				line += " workspace=" + strings.TrimSpace(r.WorkspaceID)
+			workspace := strings.TrimSpace(r.WorkspaceID)
+			if workspace == "" {
+				workspace = "-"
 			}
-			if strings.TrimSpace(r.DiagnosticCode) != "" {
-				line += " diag=" + strings.TrimSpace(r.DiagnosticCode)
+			diag := strings.TrimSpace(r.DiagnosticCode)
+			if diag == "" {
+				diag = "-"
 			}
-			if strings.TrimSpace(r.PolicyBlockedTool) != "" {
-				line += " blocked=" + strings.TrimSpace(r.PolicyBlockedTool)
+			blocked := strings.TrimSpace(r.PolicyBlockedTool)
+			if blocked == "" {
+				blocked = "-"
 			}
-			fmt.Fprintln(stdout, line)
+			fmt.Fprintf(stdout, "%-16s %-11s %-12s %-16s %-15s %-15s %s diag=%s blocked=%s\n",
+				r.RunID, r.Status, r.Agent, r.SessionID, workspace, diag, blocked, diag, blocked)
 		}
 		return true, session, nil
 	case "/run":
@@ -767,29 +749,141 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		default:
 			return true, session, fmt.Errorf("usage: /notify {list|filter|open|clear}")
 		}
+	case "/trace":
+		if state == nil {
+			return true, session, fmt.Errorf("trace is only available in interactive mode")
+		}
+		if len(fields) == 1 {
+			traceName := "off"
+			if state.chatTrace {
+				traceName = "on"
+			}
+			filter := strings.TrimSpace(state.chatTraceFilter)
+			if filter == "" {
+				filter = "all"
+			}
+			fmt.Fprintf(stdout, "SYSTEM > trace=%s filter=%s\n", traceName, filter)
+			return true, session, nil
+		}
+		switch strings.ToLower(strings.TrimSpace(fields[1])) {
+		case "on":
+			state.chatTrace = true
+			if strings.TrimSpace(state.chatTraceFilter) == "" {
+				state.chatTraceFilter = "all"
+			}
+			fmt.Fprintf(stdout, "SYSTEM > trace=on filter=%s\n", state.chatTraceFilter)
+			return true, session, nil
+		case "off":
+			state.chatTrace = false
+			fmt.Fprintln(stdout, "SYSTEM > trace=off filter=all")
+			return true, session, nil
+		case "filter":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /trace filter {all|llm|tool|error|system}")
+			}
+			filter := strings.ToLower(strings.TrimSpace(fields[2]))
+			switch filter {
+			case "all", "llm", "tool", "error", "system":
+				state.chatTraceFilter = filter
+				fmt.Fprintf(stdout, "SYSTEM > trace_filter=%s\n", state.chatTraceFilter)
+				return true, session, nil
+			default:
+				return true, session, fmt.Errorf("usage: /trace filter {all|llm|tool|error|system}")
+			}
+		default:
+			return true, session, fmt.Errorf("usage: /trace [on|off|filter {all|llm|tool|error|system}]")
+		}
 	default:
 		return false, session, nil
 	}
 }
 
-func sendMessage(ctx context.Context, client chatClient, session, message string, verbose bool, stdout, stderr io.Writer) (chatResult, error) {
+func helpText() string {
+	return strings.TrimSpace(`SYSTEM > commands
+Session:
+  /new [title]
+  /session
+  /resume [id]
+  /sessions
+  /history
+  /export
+  /search {keyword}
+  /compact
+
+Runtime:
+  /status
+  /whoami
+  /health
+  /heartbeat
+  /skills
+  /plugins
+  /mcp
+  /reload
+  /agents [--detail|-d]
+  /runs [limit]
+  /run {id}
+  /cancel-run {id}
+  /spawn [--agent ...] [--title ...] [--session ...] [--wait] {message}
+  /gateway {status|reload|restart|summary|runs [limit]|channels [limit]}
+  /channels
+  /cron {list|get|runs|add|run|delete|enable|disable}
+  /notify {list|filter|open|clear}
+
+Chat:
+  /trace [on|off|filter {all|llm|tool|error|system}]
+  /quit`)
+}
+
+func sendMessage(ctx context.Context, client chatClient, session, message string, showStatus bool, verbose bool, stdout, stderr io.Writer) (chatResult, error) {
 	fmt.Fprint(stdout, "TARS > ")
 	res, err := client.stream(ctx, chatRequest{Message: message, SessionID: session}, func(evt chatEvent) {
-		if !verbose {
+		if !showStatus {
 			return
 		}
-		label := strings.TrimSpace(evt.Message)
-		if label == "" {
-			label = strings.TrimSpace(evt.Phase)
-		}
-		if label != "" {
-			fmt.Fprintf(stderr, "status: %s\n", label)
+		label := formatChatStatusEvent(evt, verbose)
+		if strings.TrimSpace(label) != "" {
+			fmt.Fprintf(stderr, "status: %s\n", strings.TrimSpace(label))
 		}
 	}, func(chunk string) {
 		fmt.Fprint(stdout, chunk)
 	})
 	fmt.Fprintln(stdout)
 	return res, err
+}
+
+func formatChatStatusEvent(evt chatEvent, verbose bool) string {
+	label := strings.TrimSpace(evt.Message)
+	if label == "" {
+		label = strings.TrimSpace(evt.Phase)
+	}
+	if label == "" {
+		return ""
+	}
+	toolName := strings.TrimSpace(evt.ToolName)
+	if toolName != "" {
+		switch strings.TrimSpace(evt.Phase) {
+		case "before_tool_call", "after_tool_call", "error":
+			label = fmt.Sprintf("%s (%s)", label, toolName)
+		default:
+			if verbose {
+				label = fmt.Sprintf("%s tool=%s", label, toolName)
+			}
+		}
+	}
+	if !verbose {
+		return label
+	}
+	parts := []string{label}
+	if toolCallID := strings.TrimSpace(evt.ToolCallID); toolCallID != "" {
+		parts = append(parts, "id="+toolCallID)
+	}
+	if toolArgs := strings.TrimSpace(evt.ToolArgsPreview); toolArgs != "" {
+		parts = append(parts, "args="+toolArgs)
+	}
+	if toolResult := strings.TrimSpace(evt.ToolResultPreview); toolResult != "" {
+		parts = append(parts, "result="+toolResult)
+	}
+	return strings.Join(parts, " | ")
 }
 
 func formatRuntimeError(err error) string {
