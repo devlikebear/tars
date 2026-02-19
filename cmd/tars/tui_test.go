@@ -99,6 +99,14 @@ func TestCompleteCommandInput(t *testing.T) {
 	if next != "/trace filter tool " {
 		t.Fatalf("expected /trace filter tool completion, got %q", next)
 	}
+
+	next, changed = completeCommandInput("/bro")
+	if !changed {
+		t.Fatal("expected completion for /bro")
+	}
+	if next != "/browser " {
+		t.Fatalf("expected /browser completion, got %q", next)
+	}
 }
 
 func TestModelEscClearsInputAndCancelsInflight(t *testing.T) {

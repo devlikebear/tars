@@ -263,6 +263,62 @@ type gatewayReportChannels struct {
 	Messages       map[string][]channelReportMessage `json:"messages"`
 }
 
+type browserState struct {
+	Running            bool   `json:"running"`
+	Profile            string `json:"profile,omitempty"`
+	Driver             string `json:"driver,omitempty"`
+	CurrentURL         string `json:"current_url,omitempty"`
+	LastSnapshot       string `json:"last_snapshot,omitempty"`
+	LastAction         string `json:"last_action,omitempty"`
+	LastScreenshot     string `json:"last_screenshot,omitempty"`
+	ExtensionConnected bool   `json:"extension_connected,omitempty"`
+	AttachedTabs       int    `json:"attached_tabs,omitempty"`
+	LastError          string `json:"last_error,omitempty"`
+}
+
+type browserProfile struct {
+	Name               string `json:"name"`
+	Driver             string `json:"driver,omitempty"`
+	Default            bool   `json:"default,omitempty"`
+	Running            bool   `json:"running,omitempty"`
+	ExtensionConnected bool   `json:"extension_connected,omitempty"`
+}
+
+type browserLoginResult struct {
+	SiteID  string `json:"site_id"`
+	Profile string `json:"profile,omitempty"`
+	Mode    string `json:"mode,omitempty"`
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
+type browserCheckResult struct {
+	SiteID     string `json:"site_id"`
+	Profile    string `json:"profile,omitempty"`
+	CheckCount int    `json:"check_count"`
+	Passed     bool   `json:"passed"`
+	Message    string `json:"message,omitempty"`
+}
+
+type browserRunResult struct {
+	SiteID    string `json:"site_id"`
+	Profile   string `json:"profile,omitempty"`
+	Action    string `json:"action,omitempty"`
+	StepCount int    `json:"step_count"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message,omitempty"`
+}
+
+type vaultStatusInfo struct {
+	Enabled        bool   `json:"enabled"`
+	Ready          bool   `json:"ready,omitempty"`
+	AuthMode       string `json:"auth_mode,omitempty"`
+	Addr           string `json:"addr,omitempty"`
+	Namespace      string `json:"namespace,omitempty"`
+	AllowlistCount int    `json:"allowlist_count,omitempty"`
+	LastError      string `json:"last_error,omitempty"`
+}
+
 type spawnRequest struct {
 	SessionID string `json:"session_id,omitempty"`
 	Title     string `json:"title,omitempty"`
@@ -398,6 +454,78 @@ func (c runtimeClient) gatewayReportChannels(ctx context.Context, limit int) (ga
 	}
 	if out.Messages == nil {
 		out.Messages = map[string][]channelReportMessage{}
+	}
+	return out, nil
+}
+
+func (c runtimeClient) browserStatus(ctx context.Context) (browserState, error) {
+	var out browserState
+	if err := c.requestJSON(ctx, http.MethodGet, "/v1/browser/status", nil, false, &out); err != nil {
+		return browserState{}, err
+	}
+	return out, nil
+}
+
+func (c runtimeClient) browserProfiles(ctx context.Context) ([]browserProfile, error) {
+	var payload struct {
+		Profiles []browserProfile `json:"profiles"`
+	}
+	if err := c.requestJSON(ctx, http.MethodGet, "/v1/browser/profiles", nil, false, &payload); err != nil {
+		return nil, err
+	}
+	if payload.Profiles == nil {
+		return []browserProfile{}, nil
+	}
+	return payload.Profiles, nil
+}
+
+func (c runtimeClient) browserLogin(ctx context.Context, siteID string, profile string) (browserLoginResult, error) {
+	payload := map[string]string{
+		"site_id": strings.TrimSpace(siteID),
+	}
+	if strings.TrimSpace(profile) != "" {
+		payload["profile"] = strings.TrimSpace(profile)
+	}
+	var out browserLoginResult
+	if err := c.requestJSON(ctx, http.MethodPost, "/v1/browser/login", payload, false, &out); err != nil {
+		return browserLoginResult{}, err
+	}
+	return out, nil
+}
+
+func (c runtimeClient) browserCheck(ctx context.Context, siteID string, profile string) (browserCheckResult, error) {
+	payload := map[string]string{
+		"site_id": strings.TrimSpace(siteID),
+	}
+	if strings.TrimSpace(profile) != "" {
+		payload["profile"] = strings.TrimSpace(profile)
+	}
+	var out browserCheckResult
+	if err := c.requestJSON(ctx, http.MethodPost, "/v1/browser/check", payload, false, &out); err != nil {
+		return browserCheckResult{}, err
+	}
+	return out, nil
+}
+
+func (c runtimeClient) browserRun(ctx context.Context, siteID string, flowAction string, profile string) (browserRunResult, error) {
+	payload := map[string]string{
+		"site_id":     strings.TrimSpace(siteID),
+		"flow_action": strings.TrimSpace(flowAction),
+	}
+	if strings.TrimSpace(profile) != "" {
+		payload["profile"] = strings.TrimSpace(profile)
+	}
+	var out browserRunResult
+	if err := c.requestJSON(ctx, http.MethodPost, "/v1/browser/run", payload, false, &out); err != nil {
+		return browserRunResult{}, err
+	}
+	return out, nil
+}
+
+func (c runtimeClient) vaultStatus(ctx context.Context) (vaultStatusInfo, error) {
+	var out vaultStatusInfo
+	if err := c.requestJSON(ctx, http.MethodGet, "/v1/vault/status", nil, false, &out); err != nil {
+		return vaultStatusInfo{}, err
 	}
 	return out, nil
 }
@@ -856,4 +984,26 @@ func parseOptionalLimit(v string, fallback int) (int, error) {
 		return 0, fmt.Errorf("limit must be a positive integer")
 	}
 	return n, nil
+}
+
+func parseProfileFlag(args []string) (string, error) {
+	profile := ""
+	for i := 0; i < len(args); i++ {
+		arg := strings.TrimSpace(args[i])
+		switch {
+		case arg == "":
+			continue
+		case arg == "--profile":
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("usage: --profile <name>")
+			}
+			profile = strings.TrimSpace(args[i+1])
+			i++
+		case strings.HasPrefix(arg, "--profile="):
+			profile = strings.TrimSpace(strings.TrimPrefix(arg, "--profile="))
+		default:
+			return "", fmt.Errorf("unknown option: %s", arg)
+		}
+	}
+	return profile, nil
 }

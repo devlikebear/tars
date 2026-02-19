@@ -129,6 +129,97 @@ func TestExecuteCommand_CronAndChannels(t *testing.T) {
 	}
 }
 
+func TestExecuteCommand_BrowserAndVault(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/browser/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"running":             true,
+				"profile":             "managed",
+				"driver":              "chromedp",
+				"extension_connected": false,
+				"attached_tabs":       0,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/browser/profiles":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"count": 2,
+				"profiles": []map[string]any{
+					{"name": "managed", "driver": "chromedp", "default": true, "running": true},
+					{"name": "chrome", "driver": "relay", "default": false, "running": false},
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/login":
+			_ = json.NewEncoder(w).Encode(map[string]any{"site_id": "portal", "profile": "managed", "mode": "manual", "success": true, "message": "manual login required"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/check":
+			_ = json.NewEncoder(w).Encode(map[string]any{"site_id": "portal", "profile": "managed", "check_count": 1, "passed": true, "message": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/run":
+			_ = json.NewEncoder(w).Encode(map[string]any{"site_id": "portal", "profile": "managed", "action": "ping", "step_count": 2, "success": true, "message": "ok"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/vault/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{"enabled": true, "ready": true, "auth_mode": "token", "addr": "http://127.0.0.1:8200", "allowlist_count": 2})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runtime := runtimeClient{serverURL: server.URL}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	_, _, err := executeCommand(context.Background(), runtime, "/browser status", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/browser status: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "browser running=true") {
+		t.Fatalf("expected browser status output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/browser profiles", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/browser profiles: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "managed") {
+		t.Fatalf("expected browser profiles output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/browser login portal --profile managed", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/browser login: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "success=true") {
+		t.Fatalf("expected browser login output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/browser check portal --profile managed", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/browser check: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "checks=1") {
+		t.Fatalf("expected browser check output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/browser run portal ping --profile managed", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/browser run: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "steps=2") {
+		t.Fatalf("expected browser run output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/vault status", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/vault status: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "vault enabled=true") {
+		t.Fatalf("expected vault status output, got %q", stdout.String())
+	}
+}
+
 func TestExecuteCommand_ResumeAndAgentsDetail(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

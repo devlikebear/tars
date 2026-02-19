@@ -89,6 +89,14 @@
   - 채팅 delta와 status 이벤트 분리 렌더링
   - `/trace [on|off]`, `/trace filter {all|llm|tool|error|system}` 지원
   - 입력 UX: 히스토리(Up/Down), 자동완성(Tab), ESC 클리어/스트림 취소
+- browser/vault 자동화 운영 경로 추가
+  - 브라우저 API: `/v1/browser/status`, `/v1/browser/profiles`, `/v1/browser/login`, `/v1/browser/check`, `/v1/browser/run`
+  - Vault 상태 API: `/v1/vault/status`
+  - site flow 정책 적용: `allowed_hosts` 검사, flow profile 고정 적용, manual login 기본
+  - `cmd/tars` 명령 추가: `/browser {status|profiles|login|check|run}`, `/vault status`
+  - relay 보안 적용: loopback + origin allowlist + `Tars-Relay-Token`
+- 채팅 status preview redaction 보강
+  - `password/token/secret/api_key/authorization` key-value 및 bearer token 마스킹
 - 운영 스모크 추가
   - `scripts/smoke_auth_workspace.sh` 추가
   - `make smoke-auth`로 사용자/관리자 권한 경계 + workspace 스코프 기본 점검 가능

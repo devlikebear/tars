@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/browser"
 	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 )
@@ -67,11 +68,24 @@ type ChannelMessage struct {
 }
 
 type BrowserState struct {
-	Running        bool   `json:"running"`
-	CurrentURL     string `json:"current_url,omitempty"`
-	LastSnapshot   string `json:"last_snapshot,omitempty"`
-	LastAction     string `json:"last_action,omitempty"`
-	LastScreenshot string `json:"last_screenshot,omitempty"`
+	Running            bool   `json:"running"`
+	Profile            string `json:"profile,omitempty"`
+	Driver             string `json:"driver,omitempty"`
+	CurrentURL         string `json:"current_url,omitempty"`
+	LastSnapshot       string `json:"last_snapshot,omitempty"`
+	LastAction         string `json:"last_action,omitempty"`
+	LastScreenshot     string `json:"last_screenshot,omitempty"`
+	ExtensionConnected bool   `json:"extension_connected,omitempty"`
+	AttachedTabs       int    `json:"attached_tabs,omitempty"`
+	LastError          string `json:"last_error,omitempty"`
+}
+
+type BrowserProfile struct {
+	Name               string `json:"name"`
+	Driver             string `json:"driver"`
+	Default            bool   `json:"default"`
+	Running            bool   `json:"running"`
+	ExtensionConnected bool   `json:"extension_connected,omitempty"`
 }
 
 type NodeInfo struct {
@@ -157,6 +171,12 @@ type RuntimeOptions struct {
 	GatewayArchiveDir                    string
 	GatewayArchiveRetentionDays          int
 	GatewayArchiveMaxFileBytes           int
+	BrowserDefaultProfile                string
+	BrowserManagedUserDataDir            string
+	BrowserSiteFlowsDir                  string
+	BrowserAutoLoginSiteAllowlist        []string
+	BrowserVaultReader                   browser.SecretReader
+	BrowserService                       *browser.Service
 	Now                                  func() time.Time
 }
 
@@ -197,6 +217,7 @@ type Runtime struct {
 	lastRestoreError    string
 	runsRestored        int
 	channelsRestored    int
+	browserService      *browser.Service
 }
 
 const defaultWorkspaceID = "default"
@@ -234,6 +255,20 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 		version:            1,
 		persistStore:       newSnapshotStore(opts.GatewayPersistenceDir),
 		stateVersion:       1,
+	}
+	rt.browserService = opts.BrowserService
+	if rt.browserService == nil {
+		rt.browserService = browser.NewService(browser.Config{
+			WorkspaceDir:           strings.TrimSpace(opts.WorkspaceDir),
+			DefaultProfile:         strings.TrimSpace(opts.BrowserDefaultProfile),
+			ManagedUserDataDir:     strings.TrimSpace(opts.BrowserManagedUserDataDir),
+			SiteFlowsDir:           strings.TrimSpace(opts.BrowserSiteFlowsDir),
+			AutoLoginSiteAllowlist: append([]string(nil), opts.BrowserAutoLoginSiteAllowlist...),
+			Vault:                  opts.BrowserVaultReader,
+		})
+	}
+	if rt.browserService != nil {
+		rt.browser = toGatewayBrowserState(rt.browserService.Status())
 	}
 	rt.initExecutors()
 	rt.restoreSnapshotOnStartup()
@@ -1127,7 +1162,11 @@ func (r *Runtime) Restart() GatewayStatus {
 			r.closeRunDoneLocked(state)
 		}
 	}
-	r.browser = BrowserState{}
+	if r.browserService != nil {
+		r.browser = toGatewayBrowserState(r.browserService.Stop())
+	} else {
+		r.browser = BrowserState{}
+	}
 	r.trimRunHistoryLocked()
 	r.version++
 	r.lastRestart = r.nowFn().UTC()

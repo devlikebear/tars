@@ -115,6 +115,9 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - `internal/agent`: Agent Loop (훅 기반 이벤트, 도구 실행 반복, 상태 추적)
 - `internal/tool`: 빌트인 도구 (file/web/memory/automation + gateway/sessions/message/browser/nodes 계열)
 - `internal/gateway`: in-process gateway 런타임 (run registry, agent executor, channels, browser/nodes 상태, run/channel snapshot 영속화/복구)
+- `internal/browser`: 브라우저 profile-aware 서비스 (managed/chrome, site flow login/check/run)
+- `internal/browserrelay`: OpenClaw 스타일 로컬 CDP relay (`/json/version`, `/json/list`, `/extension`, `/cdp`)
+- `internal/vaultclient`: Vault read-only client (token/approle, secret path allowlist)
 - `internal/extensions`: 스킬/플러그인/MCP 통합 스냅샷 + 핫리로드 매니저
 - `internal/skill`: SKILL.md frontmatter 파싱/우선순위 머지/available_skills 포맷
 - `internal/plugin`: 선언형 매니페스트(`tarsncase.plugin.json`) 로더
@@ -254,6 +257,14 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - 채팅 delta와 status 이벤트 분리 렌더링
   - `/trace [on|off]`, `/trace filter {all|llm|tool|error|system}` 지원
   - 입력 UX: 히스토리(Up/Down), 자동완성(Tab), ESC 클리어/스트림 취소
+- browser/vault 운영 경로 추가:
+  - 브라우저 API: `/v1/browser/status|profiles|login|check|run`
+  - Vault 상태 API: `/v1/vault/status`
+  - 브라우저 relay 보안: loopback + origin allowlist + `Tars-Relay-Token`
+  - `cmd/tars` 명령: `/browser`, `/vault`
+  - site flow 정책: `allowed_hosts` 차단/검증, flow profile 고정 적용
+- 채팅 상태 preview 민감정보 마스킹 강화:
+  - `password/token/secret/api_key/authorization` key-value 및 bearer 토큰 패턴 redaction
 - 운영 스모크:
   - `scripts/smoke_auth_workspace.sh` 추가
   - `make smoke-auth`로 auth/workspace 경계 기본 점검 자동화

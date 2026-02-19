@@ -611,6 +611,131 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		default:
 			return true, session, fmt.Errorf("usage: /gateway {status|reload|restart|summary|runs [limit]|channels [limit]}")
 		}
+	case "/browser":
+		action := "status"
+		if len(fields) > 1 {
+			action = strings.TrimSpace(fields[1])
+		}
+		switch action {
+		case "status":
+			status, err := runtime.browserStatus(ctx)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > browser running=%t profile=%s driver=%s extension_connected=%t attached_tabs=%d\n",
+				status.Running,
+				strings.TrimSpace(status.Profile),
+				strings.TrimSpace(status.Driver),
+				status.ExtensionConnected,
+				status.AttachedTabs,
+			)
+			return true, session, nil
+		case "profiles":
+			profiles, err := runtime.browserProfiles(ctx)
+			if err != nil {
+				return true, session, err
+			}
+			if len(profiles) == 0 {
+				fmt.Fprintln(stdout, "SYSTEM > (no browser profiles)")
+				return true, session, nil
+			}
+			fmt.Fprintln(stdout, "SYSTEM > browser profiles")
+			for _, profile := range profiles {
+				fmt.Fprintf(stdout, "- %s driver=%s default=%t running=%t extension_connected=%t\n",
+					strings.TrimSpace(profile.Name),
+					strings.TrimSpace(profile.Driver),
+					profile.Default,
+					profile.Running,
+					profile.ExtensionConnected,
+				)
+			}
+			return true, session, nil
+		case "login":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /browser login {site_id} [--profile <name>]")
+			}
+			profile, err := parseProfileFlag(fields[3:])
+			if err != nil {
+				return true, session, err
+			}
+			result, err := runtime.browserLogin(ctx, fields[2], profile)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > browser login site=%s profile=%s mode=%s success=%t %s\n",
+				strings.TrimSpace(result.SiteID),
+				strings.TrimSpace(result.Profile),
+				strings.TrimSpace(result.Mode),
+				result.Success,
+				strings.TrimSpace(result.Message),
+			)
+			return true, session, nil
+		case "check":
+			if len(fields) < 3 {
+				return true, session, fmt.Errorf("usage: /browser check {site_id} [--profile <name>]")
+			}
+			profile, err := parseProfileFlag(fields[3:])
+			if err != nil {
+				return true, session, err
+			}
+			result, err := runtime.browserCheck(ctx, fields[2], profile)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > browser check site=%s profile=%s checks=%d passed=%t %s\n",
+				strings.TrimSpace(result.SiteID),
+				strings.TrimSpace(result.Profile),
+				result.CheckCount,
+				result.Passed,
+				strings.TrimSpace(result.Message),
+			)
+			return true, session, nil
+		case "run":
+			if len(fields) < 4 {
+				return true, session, fmt.Errorf("usage: /browser run {site_id} {flow_action} [--profile <name>]")
+			}
+			profile, err := parseProfileFlag(fields[4:])
+			if err != nil {
+				return true, session, err
+			}
+			result, err := runtime.browserRun(ctx, fields[2], fields[3], profile)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > browser run site=%s action=%s profile=%s steps=%d success=%t %s\n",
+				strings.TrimSpace(result.SiteID),
+				strings.TrimSpace(result.Action),
+				strings.TrimSpace(result.Profile),
+				result.StepCount,
+				result.Success,
+				strings.TrimSpace(result.Message),
+			)
+			return true, session, nil
+		default:
+			return true, session, fmt.Errorf("usage: /browser {status|profiles|login|check|run}")
+		}
+	case "/vault":
+		action := "status"
+		if len(fields) > 1 {
+			action = strings.TrimSpace(fields[1])
+		}
+		switch action {
+		case "status":
+			status, err := runtime.vaultStatus(ctx)
+			if err != nil {
+				return true, session, err
+			}
+			fmt.Fprintf(stdout, "SYSTEM > vault enabled=%t ready=%t mode=%s addr=%s allowlist=%d",
+				status.Enabled, status.Ready, strings.TrimSpace(status.AuthMode), strings.TrimSpace(status.Addr), status.AllowlistCount,
+			)
+			if strings.TrimSpace(status.LastError) != "" {
+				fmt.Fprintf(stdout, " error=%s", strings.TrimSpace(status.LastError))
+			}
+			fmt.Fprintln(stdout)
+			return true, session, nil
+		default:
+			return true, session, fmt.Errorf("usage: /vault {status}")
+		}
 	case "/channels":
 		status, err := runtime.gatewayStatus(ctx)
 		if err != nil {
@@ -852,6 +977,8 @@ Runtime:
   /cancel-run {id}
   /spawn [--agent ...] [--title ...] [--session ...] [--wait] {message}
   /gateway {status|reload|restart|summary|runs [limit]|channels [limit]}
+  /browser {status|profiles|login|check|run}
+  /vault {status}
   /channels
   /cron {list|get|runs|add|run|delete|enable|disable}
   /notify {list|filter|open|clear}

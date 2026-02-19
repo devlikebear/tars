@@ -90,6 +90,14 @@
 - OpenClaw core action 기준 built-in 도구가 확장되었다.
   - 세션/런: `sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`, `sessions_runs`, `agents_list`
   - 게이트웨이 계열: `message`, `browser`, `nodes`, `gateway`
+- 브라우저 런타임/Vault 연동이 추가되었다.
+  - 브라우저 API: `GET /v1/browser/status`, `GET /v1/browser/profiles`, `POST /v1/browser/login`, `POST /v1/browser/check`, `POST /v1/browser/run`
+  - Vault 상태 API: `GET /v1/vault/status` (`enabled`, `ready`, `auth_mode`, `allowlist_count`, `last_error`)
+  - 브라우저 릴레이: loopback/origin/`Tars-Relay-Token` 검증 기반 로컬 relay 서버
+  - `cmd/tars` 명령: `/browser {status|profiles|login|check|run}`, `/vault status`
+  - site flow 정책: `allowed_hosts` 검사, flow 고정 profile 적용, manual login 기본 정책
+- 민감 정보 redaction이 강화되었다.
+  - 채팅 status preview에서 `password`, `token`, `secret`, `api_key`, `authorization`, bearer token 패턴을 마스킹한다.
 - `cmd/tars`에 runtime 제어 명령이 추가되었다.
   - `/agents`, `/agents --detail`
   - `/runs`, `/run {id}`, `/cancel-run {id}`

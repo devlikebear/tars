@@ -3,9 +3,13 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/browser"
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
@@ -142,6 +146,76 @@ func TestMessageBrowserNodesGatewayTools(t *testing.T) {
 	}
 	if statusRes.IsError {
 		t.Fatalf("gateway status expected success: %s", statusRes.Text())
+	}
+}
+
+func TestBrowserToolProfilesAndSiteFlows(t *testing.T) {
+	workspaceDir := t.TempDir()
+	flowDir := filepath.Join(workspaceDir, "automation", "sites")
+	if err := os.MkdirAll(flowDir, 0o755); err != nil {
+		t.Fatalf("mkdir flow dir: %v", err)
+	}
+	flow := strings.Join([]string{
+		"id: sample",
+		"enabled: true",
+		"profile: managed",
+		"checks:",
+		"  - selector: '#ok'",
+		"actions:",
+		"  ping:",
+		"    steps:",
+		"      - open: 'https://example.com'",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(flowDir, "sample.yaml"), []byte(flow), 0o644); err != nil {
+		t.Fatalf("write flow: %v", err)
+	}
+
+	rt := gateway.NewRuntime(gateway.RuntimeOptions{
+		Enabled:      true,
+		WorkspaceDir: workspaceDir,
+		BrowserService: browser.NewService(browser.Config{
+			WorkspaceDir:   workspaceDir,
+			SiteFlowsDir:   flowDir,
+			DefaultProfile: "managed",
+		}),
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := rt.Close(ctx); err != nil {
+			t.Fatalf("close gateway runtime: %v", err)
+		}
+	})
+
+	tool := NewBrowserTool(rt, true)
+	profilesRes, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"profiles"}`))
+	if err != nil {
+		t.Fatalf("browser profiles execute: %v", err)
+	}
+	if profilesRes.IsError {
+		t.Fatalf("browser profiles expected success: %s", profilesRes.Text())
+	}
+	_, _ = tool.Execute(context.Background(), json.RawMessage(`{"action":"start","profile":"managed"}`))
+	loginRes, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"login","site_id":"sample"}`))
+	if err != nil {
+		t.Fatalf("browser login execute: %v", err)
+	}
+	if loginRes.IsError {
+		t.Fatalf("browser login expected success: %s", loginRes.Text())
+	}
+	checkRes, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"check","site_id":"sample"}`))
+	if err != nil {
+		t.Fatalf("browser check execute: %v", err)
+	}
+	if checkRes.IsError {
+		t.Fatalf("browser check expected success: %s", checkRes.Text())
+	}
+	runRes, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"run","site_id":"sample","flow_action":"ping"}`))
+	if err != nil {
+		t.Fatalf("browser run execute: %v", err)
+	}
+	if runRes.IsError {
+		t.Fatalf("browser run expected success: %s", runRes.Text())
 	}
 }
 

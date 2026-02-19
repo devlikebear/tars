@@ -39,6 +39,8 @@ var slashCommands = []string{
 	"/cancel-run",
 	"/spawn",
 	"/gateway",
+	"/browser",
+	"/vault",
 	"/channels",
 	"/cron",
 	"/notify",
@@ -314,6 +316,10 @@ func completeCommandInput(current string) (string, bool) {
 	switch fields[0] {
 	case "/gateway":
 		return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"status", "reload", "restart", "summary", "runs", "channels"})
+	case "/browser":
+		return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"status", "profiles", "login", "check", "run"})
+	case "/vault":
+		return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"status"})
 	case "/trace":
 		if len(fields) == 1 && hasTrailingSpace {
 			return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"on", "off", "filter"})

@@ -73,11 +73,14 @@ func NewMessageTool(runtime *gateway.Runtime, enabled bool) Tool {
 func NewBrowserTool(runtime *gateway.Runtime, enabled bool) Tool {
 	return Tool{
 		Name:        "browser",
-		Description: "Browser actions: status, start, stop, open, snapshot, act, screenshot.",
+		Description: "Browser actions: status, profiles, start, stop, open, snapshot, act, screenshot, login, check, run.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
-    "action":{"type":"string","enum":["status","start","stop","open","snapshot","act","screenshot"]},
+    "action":{"type":"string","enum":["status","profiles","start","stop","open","snapshot","act","screenshot","login","check","run"]},
+    "profile":{"type":"string"},
+    "site_id":{"type":"string"},
+    "flow_action":{"type":"string"},
     "url":{"type":"string"},
     "name":{"type":"string"},
     "event":{"type":"string"},
@@ -87,7 +90,7 @@ func NewBrowserTool(runtime *gateway.Runtime, enabled bool) Tool {
   "required":["action"],
   "additionalProperties":false
 }`),
-		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
+		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if !enabled {
 				return jsonTextResult(map[string]any{"message": "browser tool is disabled"}, true), nil
 			}
@@ -95,12 +98,15 @@ func NewBrowserTool(runtime *gateway.Runtime, enabled bool) Tool {
 				return jsonTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
 			}
 			var input struct {
-				Action string `json:"action"`
-				URL    string `json:"url,omitempty"`
-				Name   string `json:"name,omitempty"`
-				Event  string `json:"event,omitempty"`
-				Target string `json:"target,omitempty"`
-				Value  string `json:"value,omitempty"`
+				Action     string `json:"action"`
+				Profile    string `json:"profile,omitempty"`
+				SiteID     string `json:"site_id,omitempty"`
+				FlowAction string `json:"flow_action,omitempty"`
+				URL        string `json:"url,omitempty"`
+				Name       string `json:"name,omitempty"`
+				Event      string `json:"event,omitempty"`
+				Target     string `json:"target,omitempty"`
+				Value      string `json:"value,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
@@ -109,8 +115,11 @@ func NewBrowserTool(runtime *gateway.Runtime, enabled bool) Tool {
 			switch action {
 			case "status":
 				return jsonTextResult(runtime.BrowserStatus(), false), nil
+			case "profiles":
+				profiles := runtime.BrowserProfiles()
+				return jsonTextResult(map[string]any{"count": len(profiles), "profiles": profiles}, false), nil
 			case "start":
-				return jsonTextResult(runtime.BrowserStart(), false), nil
+				return jsonTextResult(runtime.BrowserStartWithProfile(input.Profile), false), nil
 			case "stop":
 				return jsonTextResult(runtime.BrowserStop(), false), nil
 			case "open":
@@ -125,8 +134,17 @@ func NewBrowserTool(runtime *gateway.Runtime, enabled bool) Tool {
 			case "screenshot":
 				state, err := runtime.BrowserScreenshot(input.Name)
 				return jsonTextResult(state, err != nil), nil
+			case "login":
+				result, err := runtime.BrowserLogin(ctx, input.SiteID, input.Profile)
+				return jsonTextResult(result, err != nil), nil
+			case "check":
+				result, err := runtime.BrowserCheck(ctx, input.SiteID, input.Profile)
+				return jsonTextResult(result, err != nil), nil
+			case "run":
+				result, err := runtime.BrowserRun(ctx, input.SiteID, input.FlowAction, input.Profile)
+				return jsonTextResult(result, err != nil), nil
 			default:
-				return jsonTextResult(map[string]any{"message": "action must be one of: status|start|stop|open|snapshot|act|screenshot"}, true), nil
+				return jsonTextResult(map[string]any{"message": "action must be one of: status|profiles|start|stop|open|snapshot|act|screenshot|login|check|run"}, true), nil
 			}
 		},
 	}

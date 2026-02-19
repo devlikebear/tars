@@ -22,6 +22,26 @@ func TestParseSpawnCommand(t *testing.T) {
 	}
 }
 
+func TestParseProfileFlag(t *testing.T) {
+	profile, err := parseProfileFlag([]string{"--profile", "chrome"})
+	if err != nil {
+		t.Fatalf("parseProfileFlag: %v", err)
+	}
+	if profile != "chrome" {
+		t.Fatalf("expected chrome profile, got %q", profile)
+	}
+	profile, err = parseProfileFlag([]string{"--profile=managed"})
+	if err != nil {
+		t.Fatalf("parseProfileFlag with equals: %v", err)
+	}
+	if profile != "managed" {
+		t.Fatalf("expected managed profile, got %q", profile)
+	}
+	if _, err := parseProfileFlag([]string{"--unknown"}); err == nil {
+		t.Fatalf("expected unknown option error")
+	}
+}
+
 func TestRuntimeClientEndpoints(t *testing.T) {
 	adminAuth := ""
 	normalAuth := ""
@@ -73,6 +93,29 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 				"channels_webhook_enabled":  false,
 				"channels_telegram_enabled": true,
 			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/browser/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"running":     true,
+				"profile":     "managed",
+				"driver":      "chromedp",
+				"last_action": "snapshot",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/browser/profiles":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"count": 2,
+				"profiles": []map[string]any{
+					{"name": "managed", "driver": "chromedp", "default": true, "running": true},
+					{"name": "chrome", "driver": "relay", "default": false, "running": false},
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/login":
+			_ = json.NewEncoder(w).Encode(map[string]any{"site_id": "portal", "profile": "managed", "mode": "manual", "success": true, "message": "manual login required"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/check":
+			_ = json.NewEncoder(w).Encode(map[string]any{"site_id": "portal", "profile": "managed", "check_count": 1, "passed": true, "message": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/run":
+			_ = json.NewEncoder(w).Encode(map[string]any{"site_id": "portal", "profile": "managed", "action": "ping", "step_count": 2, "success": true, "message": "ok"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/vault/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{"enabled": true, "ready": true, "auth_mode": "token", "addr": "http://127.0.0.1:8200", "allowlist_count": 2})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/gateway/reload":
 			adminAuth = r.Header.Get("Authorization")
 			_ = json.NewEncoder(w).Encode(map[string]any{"enabled": true, "version": 2})
@@ -200,6 +243,24 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	_, err = client.gatewayStatus(ctx)
 	if err != nil {
 		t.Fatalf("gatewayStatus: %v", err)
+	}
+	if browserStatus, err := client.browserStatus(ctx); err != nil || !browserStatus.Running {
+		t.Fatalf("browserStatus: status=%+v err=%v", browserStatus, err)
+	}
+	if profiles, err := client.browserProfiles(ctx); err != nil || len(profiles) != 2 {
+		t.Fatalf("browserProfiles: profiles=%+v err=%v", profiles, err)
+	}
+	if _, err := client.browserLogin(ctx, "portal", "managed"); err != nil {
+		t.Fatalf("browserLogin: %v", err)
+	}
+	if _, err := client.browserCheck(ctx, "portal", "managed"); err != nil {
+		t.Fatalf("browserCheck: %v", err)
+	}
+	if _, err := client.browserRun(ctx, "portal", "ping", "managed"); err != nil {
+		t.Fatalf("browserRun: %v", err)
+	}
+	if vault, err := client.vaultStatus(ctx); err != nil || !vault.Enabled {
+		t.Fatalf("vaultStatus: vault=%+v err=%v", vault, err)
 	}
 	if summary, err := client.gatewayReportSummary(ctx); err != nil || summary.RunsTotal != 4 {
 		t.Fatalf("gatewayReportSummary: summary=%+v err=%v", summary, err)

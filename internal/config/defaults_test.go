@@ -759,6 +759,120 @@ func TestLoad_GatewayReportFromYAMLAndEnv(t *testing.T) {
 	}
 }
 
+func TestLoad_VaultAndBrowserRuntimeDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.VaultEnabled {
+		t.Fatalf("expected vault disabled by default")
+	}
+	if cfg.VaultAddr != "http://127.0.0.1:8200" {
+		t.Fatalf("expected vault addr default, got %q", cfg.VaultAddr)
+	}
+	if cfg.VaultAuthMode != "token" {
+		t.Fatalf("expected vault auth mode token, got %q", cfg.VaultAuthMode)
+	}
+	if cfg.VaultKVMount != "secret" {
+		t.Fatalf("expected vault kv mount secret, got %q", cfg.VaultKVMount)
+	}
+	if cfg.VaultKVVersion != 2 {
+		t.Fatalf("expected vault kv version 2, got %d", cfg.VaultKVVersion)
+	}
+	if cfg.VaultTimeoutMS != 1500 {
+		t.Fatalf("expected vault timeout 1500ms, got %d", cfg.VaultTimeoutMS)
+	}
+	if cfg.BrowserRuntimeEnabled != true {
+		t.Fatalf("expected browser runtime enabled by default")
+	}
+	if cfg.BrowserDefaultProfile != "managed" {
+		t.Fatalf("expected browser default profile managed, got %q", cfg.BrowserDefaultProfile)
+	}
+	if cfg.BrowserRelayEnabled != true {
+		t.Fatalf("expected browser relay enabled by default")
+	}
+	if cfg.BrowserRelayAddr != "127.0.0.1:43182" {
+		t.Fatalf("expected browser relay addr default, got %q", cfg.BrowserRelayAddr)
+	}
+	if len(cfg.BrowserRelayOriginAllowlist) != 1 || cfg.BrowserRelayOriginAllowlist[0] != "chrome-extension://*" {
+		t.Fatalf("unexpected relay origin allowlist: %+v", cfg.BrowserRelayOriginAllowlist)
+	}
+	if cfg.BrowserSiteFlowsDir != filepath.Join(cfg.WorkspaceDir, "automation", "sites") {
+		t.Fatalf("unexpected browser site flows dir: %q", cfg.BrowserSiteFlowsDir)
+	}
+	if cfg.BrowserManagedUserDataDir != filepath.Join(cfg.WorkspaceDir, "_shared", "browser", "managed") {
+		t.Fatalf("unexpected browser managed user data dir: %q", cfg.BrowserManagedUserDataDir)
+	}
+}
+
+func TestLoad_VaultAndBrowserRuntimeFromYAMLAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"workspace_dir: ./tenant-workspace",
+		"vault_enabled: true",
+		"vault_addr: https://vault.local:8200",
+		"vault_auth_mode: approle",
+		"vault_token: yaml-vault-token",
+		"vault_namespace: team-a",
+		"vault_timeout_ms: 2400",
+		"vault_kv_mount: kv",
+		"vault_kv_version: 1",
+		"vault_approle_mount: auth-approle",
+		"vault_approle_role_id: role-yaml",
+		"vault_approle_secret_id: secret-yaml",
+		`vault_secret_path_allowlist_json: ["ops/","sites/"]`,
+		"browser_runtime_enabled: true",
+		"browser_default_profile: chrome",
+		"browser_managed_headless: true",
+		"browser_managed_executable_path: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+		"browser_managed_user_data_dir: /tmp/yaml-browser-profile",
+		"browser_relay_enabled: true",
+		"browser_relay_addr: 127.0.0.1:53182",
+		`browser_relay_origin_allowlist_json: ["chrome-extension://abc*"]`,
+		"browser_site_flows_dir: /tmp/yaml-site-flows",
+		`browser_auto_login_site_allowlist_json: ["intranet","grafana"]`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("VAULT_ENABLED", "false")
+	t.Setenv("VAULT_TIMEOUT_MS", "3200")
+	t.Setenv("VAULT_TOKEN", "env-vault-token")
+	t.Setenv("BROWSER_DEFAULT_PROFILE", "managed")
+	t.Setenv("BROWSER_RELAY_ADDR", "127.0.0.1:63182")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.VaultEnabled {
+		t.Fatalf("expected env override vault disabled")
+	}
+	if cfg.VaultToken != "env-vault-token" {
+		t.Fatalf("expected env vault token, got %q", cfg.VaultToken)
+	}
+	if cfg.VaultTimeoutMS != 3200 {
+		t.Fatalf("expected env vault timeout 3200, got %d", cfg.VaultTimeoutMS)
+	}
+	if cfg.VaultAuthMode != "approle" {
+		t.Fatalf("expected yaml vault auth mode approle, got %q", cfg.VaultAuthMode)
+	}
+	if cfg.BrowserDefaultProfile != "managed" {
+		t.Fatalf("expected env browser default profile managed, got %q", cfg.BrowserDefaultProfile)
+	}
+	if cfg.BrowserRelayAddr != "127.0.0.1:63182" {
+		t.Fatalf("expected env browser relay addr, got %q", cfg.BrowserRelayAddr)
+	}
+	if len(cfg.BrowserAutoLoginSiteAllowlist) != 2 {
+		t.Fatalf("unexpected browser auto login allowlist: %+v", cfg.BrowserAutoLoginSiteAllowlist)
+	}
+	if len(cfg.VaultSecretPathAllowlist) != 2 {
+		t.Fatalf("unexpected vault secret path allowlist: %+v", cfg.VaultSecretPathAllowlist)
+	}
+}
+
 func TestLoad_DeprecatedToolPolicyKeysAreIgnored(t *testing.T) {
 	t.Setenv("TOOLS_PROFILE", "minimal")
 	t.Setenv("TOOLS_ALLOW", "session_status,memory_search")

@@ -66,6 +66,28 @@ type Config struct {
 	ToolsWebFetchPrivateHostAllowlist    []string
 	ToolsWebFetchAllowPrivateHosts       bool
 	ToolsApplyPatchEnabled               bool
+	VaultEnabled                         bool
+	VaultAddr                            string
+	VaultAuthMode                        string
+	VaultToken                           string
+	VaultNamespace                       string
+	VaultTimeoutMS                       int
+	VaultKVMount                         string
+	VaultKVVersion                       int
+	VaultAppRoleMount                    string
+	VaultAppRoleRoleID                   string
+	VaultAppRoleSecretID                 string
+	VaultSecretPathAllowlist             []string
+	BrowserRuntimeEnabled                bool
+	BrowserDefaultProfile                string
+	BrowserManagedHeadless               bool
+	BrowserManagedExecutablePath         string
+	BrowserManagedUserDataDir            string
+	BrowserRelayEnabled                  bool
+	BrowserRelayAddr                     string
+	BrowserRelayOriginAllowlist          []string
+	BrowserSiteFlowsDir                  string
+	BrowserAutoLoginSiteAllowlist        []string
 	GatewayEnabled                       bool
 	GatewayDefaultAgent                  string
 	GatewayAgents                        []GatewayAgent
@@ -122,6 +144,18 @@ func Default() Config {
 		ToolsWebSearchPerplexityModel:        "sonar",
 		ToolsWebSearchPerplexityBaseURL:      "https://api.perplexity.ai/chat/completions",
 		ToolsWebSearchCacheTTLSeconds:        60,
+		VaultEnabled:                         false,
+		VaultAddr:                            "http://127.0.0.1:8200",
+		VaultAuthMode:                        "token",
+		VaultTimeoutMS:                       1500,
+		VaultKVMount:                         "secret",
+		VaultKVVersion:                       2,
+		VaultAppRoleMount:                    "approle",
+		BrowserRuntimeEnabled:                true,
+		BrowserDefaultProfile:                "managed",
+		BrowserRelayEnabled:                  true,
+		BrowserRelayAddr:                     "127.0.0.1:43182",
+		BrowserRelayOriginAllowlist:          []string{"chrome-extension://*"},
 		GatewayAgentsWatch:                   true,
 		GatewayAgentsWatchDebounceMS:         200,
 		GatewayPersistenceEnabled:            true,
@@ -284,6 +318,72 @@ func applyEnv(cfg *Config) {
 	}
 	if v := firstNonEmpty(os.Getenv("TOOLS_APPLY_PATCH_ENABLED"), os.Getenv("TARSD_TOOLS_APPLY_PATCH_ENABLED")); v != "" {
 		cfg.ToolsApplyPatchEnabled = parseBool(v, cfg.ToolsApplyPatchEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_ENABLED"), os.Getenv("TARSD_VAULT_ENABLED")); v != "" {
+		cfg.VaultEnabled = parseBool(v, cfg.VaultEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_ADDR"), os.Getenv("TARSD_VAULT_ADDR")); v != "" {
+		cfg.VaultAddr = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_AUTH_MODE"), os.Getenv("TARSD_VAULT_AUTH_MODE")); v != "" {
+		cfg.VaultAuthMode = strings.TrimSpace(strings.ToLower(v))
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_TOKEN"), os.Getenv("TARSD_VAULT_TOKEN")); v != "" {
+		cfg.VaultToken = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_NAMESPACE"), os.Getenv("TARSD_VAULT_NAMESPACE")); v != "" {
+		cfg.VaultNamespace = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_TIMEOUT_MS"), os.Getenv("TARSD_VAULT_TIMEOUT_MS")); v != "" {
+		cfg.VaultTimeoutMS = parsePositiveInt(v, cfg.VaultTimeoutMS)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_KV_MOUNT"), os.Getenv("TARSD_VAULT_KV_MOUNT")); v != "" {
+		cfg.VaultKVMount = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_KV_VERSION"), os.Getenv("TARSD_VAULT_KV_VERSION")); v != "" {
+		cfg.VaultKVVersion = parsePositiveInt(v, cfg.VaultKVVersion)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_APPROLE_MOUNT"), os.Getenv("TARSD_VAULT_APPROLE_MOUNT")); v != "" {
+		cfg.VaultAppRoleMount = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_APPROLE_ROLE_ID"), os.Getenv("TARSD_VAULT_APPROLE_ROLE_ID")); v != "" {
+		cfg.VaultAppRoleRoleID = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_APPROLE_SECRET_ID"), os.Getenv("TARSD_VAULT_APPROLE_SECRET_ID")); v != "" {
+		cfg.VaultAppRoleSecretID = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("VAULT_SECRET_PATH_ALLOWLIST_JSON"), os.Getenv("TARSD_VAULT_SECRET_PATH_ALLOWLIST_JSON")); v != "" {
+		cfg.VaultSecretPathAllowlist = parseJSONStringList(v, cfg.VaultSecretPathAllowlist)
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_RUNTIME_ENABLED"), os.Getenv("TARSD_BROWSER_RUNTIME_ENABLED")); v != "" {
+		cfg.BrowserRuntimeEnabled = parseBool(v, cfg.BrowserRuntimeEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_DEFAULT_PROFILE"), os.Getenv("TARSD_BROWSER_DEFAULT_PROFILE")); v != "" {
+		cfg.BrowserDefaultProfile = strings.TrimSpace(strings.ToLower(v))
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_MANAGED_HEADLESS"), os.Getenv("TARSD_BROWSER_MANAGED_HEADLESS")); v != "" {
+		cfg.BrowserManagedHeadless = parseBool(v, cfg.BrowserManagedHeadless)
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_MANAGED_EXECUTABLE_PATH"), os.Getenv("TARSD_BROWSER_MANAGED_EXECUTABLE_PATH")); v != "" {
+		cfg.BrowserManagedExecutablePath = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_MANAGED_USER_DATA_DIR"), os.Getenv("TARSD_BROWSER_MANAGED_USER_DATA_DIR")); v != "" {
+		cfg.BrowserManagedUserDataDir = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_RELAY_ENABLED"), os.Getenv("TARSD_BROWSER_RELAY_ENABLED")); v != "" {
+		cfg.BrowserRelayEnabled = parseBool(v, cfg.BrowserRelayEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_RELAY_ADDR"), os.Getenv("TARSD_BROWSER_RELAY_ADDR")); v != "" {
+		cfg.BrowserRelayAddr = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_RELAY_ORIGIN_ALLOWLIST_JSON"), os.Getenv("TARSD_BROWSER_RELAY_ORIGIN_ALLOWLIST_JSON")); v != "" {
+		cfg.BrowserRelayOriginAllowlist = parseJSONStringList(v, cfg.BrowserRelayOriginAllowlist)
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_SITE_FLOWS_DIR"), os.Getenv("TARSD_BROWSER_SITE_FLOWS_DIR")); v != "" {
+		cfg.BrowserSiteFlowsDir = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_AUTO_LOGIN_SITE_ALLOWLIST_JSON"), os.Getenv("TARSD_BROWSER_AUTO_LOGIN_SITE_ALLOWLIST_JSON")); v != "" {
+		cfg.BrowserAutoLoginSiteAllowlist = parseJSONStringList(v, cfg.BrowserAutoLoginSiteAllowlist)
 	}
 	if v := firstNonEmpty(os.Getenv("GATEWAY_ENABLED"), os.Getenv("TARSD_GATEWAY_ENABLED")); v != "" {
 		cfg.GatewayEnabled = parseBool(v, cfg.GatewayEnabled)
@@ -484,6 +584,50 @@ func loadYAML(path string) (Config, error) {
 			cfg.ToolsWebFetchAllowPrivateHosts = parseBool(value, cfg.ToolsWebFetchAllowPrivateHosts)
 		case "tools_apply_patch_enabled":
 			cfg.ToolsApplyPatchEnabled = parseBool(value, cfg.ToolsApplyPatchEnabled)
+		case "vault_enabled":
+			cfg.VaultEnabled = parseBool(value, cfg.VaultEnabled)
+		case "vault_addr":
+			cfg.VaultAddr = strings.TrimSpace(value)
+		case "vault_auth_mode":
+			cfg.VaultAuthMode = strings.TrimSpace(strings.ToLower(value))
+		case "vault_token":
+			cfg.VaultToken = strings.TrimSpace(value)
+		case "vault_namespace":
+			cfg.VaultNamespace = strings.TrimSpace(value)
+		case "vault_timeout_ms":
+			cfg.VaultTimeoutMS = parsePositiveInt(value, cfg.VaultTimeoutMS)
+		case "vault_kv_mount":
+			cfg.VaultKVMount = strings.TrimSpace(value)
+		case "vault_kv_version":
+			cfg.VaultKVVersion = parsePositiveInt(value, cfg.VaultKVVersion)
+		case "vault_approle_mount":
+			cfg.VaultAppRoleMount = strings.TrimSpace(value)
+		case "vault_approle_role_id":
+			cfg.VaultAppRoleRoleID = strings.TrimSpace(value)
+		case "vault_approle_secret_id":
+			cfg.VaultAppRoleSecretID = strings.TrimSpace(value)
+		case "vault_secret_path_allowlist_json":
+			cfg.VaultSecretPathAllowlist = parseJSONStringList(value, cfg.VaultSecretPathAllowlist)
+		case "browser_runtime_enabled":
+			cfg.BrowserRuntimeEnabled = parseBool(value, cfg.BrowserRuntimeEnabled)
+		case "browser_default_profile":
+			cfg.BrowserDefaultProfile = strings.TrimSpace(strings.ToLower(value))
+		case "browser_managed_headless":
+			cfg.BrowserManagedHeadless = parseBool(value, cfg.BrowserManagedHeadless)
+		case "browser_managed_executable_path":
+			cfg.BrowserManagedExecutablePath = strings.TrimSpace(value)
+		case "browser_managed_user_data_dir":
+			cfg.BrowserManagedUserDataDir = strings.TrimSpace(value)
+		case "browser_relay_enabled":
+			cfg.BrowserRelayEnabled = parseBool(value, cfg.BrowserRelayEnabled)
+		case "browser_relay_addr":
+			cfg.BrowserRelayAddr = strings.TrimSpace(value)
+		case "browser_relay_origin_allowlist_json":
+			cfg.BrowserRelayOriginAllowlist = parseJSONStringList(value, cfg.BrowserRelayOriginAllowlist)
+		case "browser_site_flows_dir":
+			cfg.BrowserSiteFlowsDir = strings.TrimSpace(value)
+		case "browser_auto_login_site_allowlist_json":
+			cfg.BrowserAutoLoginSiteAllowlist = parseJSONStringList(value, cfg.BrowserAutoLoginSiteAllowlist)
 		case "gateway_enabled":
 			cfg.GatewayEnabled = parseBool(value, cfg.GatewayEnabled)
 		case "gateway_default_agent":
@@ -667,6 +811,72 @@ func merge(dst *Config, src Config) {
 	if src.ToolsApplyPatchEnabled {
 		dst.ToolsApplyPatchEnabled = true
 	}
+	if src.VaultEnabled {
+		dst.VaultEnabled = true
+	}
+	if src.VaultAddr != "" {
+		dst.VaultAddr = src.VaultAddr
+	}
+	if src.VaultAuthMode != "" {
+		dst.VaultAuthMode = src.VaultAuthMode
+	}
+	if src.VaultToken != "" {
+		dst.VaultToken = src.VaultToken
+	}
+	if src.VaultNamespace != "" {
+		dst.VaultNamespace = src.VaultNamespace
+	}
+	if src.VaultTimeoutMS > 0 {
+		dst.VaultTimeoutMS = src.VaultTimeoutMS
+	}
+	if src.VaultKVMount != "" {
+		dst.VaultKVMount = src.VaultKVMount
+	}
+	if src.VaultKVVersion > 0 {
+		dst.VaultKVVersion = src.VaultKVVersion
+	}
+	if src.VaultAppRoleMount != "" {
+		dst.VaultAppRoleMount = src.VaultAppRoleMount
+	}
+	if src.VaultAppRoleRoleID != "" {
+		dst.VaultAppRoleRoleID = src.VaultAppRoleRoleID
+	}
+	if src.VaultAppRoleSecretID != "" {
+		dst.VaultAppRoleSecretID = src.VaultAppRoleSecretID
+	}
+	if len(src.VaultSecretPathAllowlist) > 0 {
+		dst.VaultSecretPathAllowlist = append([]string(nil), src.VaultSecretPathAllowlist...)
+	}
+	if src.BrowserRuntimeEnabled {
+		dst.BrowserRuntimeEnabled = true
+	}
+	if src.BrowserDefaultProfile != "" {
+		dst.BrowserDefaultProfile = src.BrowserDefaultProfile
+	}
+	if src.BrowserManagedHeadless {
+		dst.BrowserManagedHeadless = true
+	}
+	if src.BrowserManagedExecutablePath != "" {
+		dst.BrowserManagedExecutablePath = src.BrowserManagedExecutablePath
+	}
+	if src.BrowserManagedUserDataDir != "" {
+		dst.BrowserManagedUserDataDir = src.BrowserManagedUserDataDir
+	}
+	if src.BrowserRelayEnabled {
+		dst.BrowserRelayEnabled = true
+	}
+	if src.BrowserRelayAddr != "" {
+		dst.BrowserRelayAddr = src.BrowserRelayAddr
+	}
+	if len(src.BrowserRelayOriginAllowlist) > 0 {
+		dst.BrowserRelayOriginAllowlist = append([]string(nil), src.BrowserRelayOriginAllowlist...)
+	}
+	if src.BrowserSiteFlowsDir != "" {
+		dst.BrowserSiteFlowsDir = src.BrowserSiteFlowsDir
+	}
+	if len(src.BrowserAutoLoginSiteAllowlist) > 0 {
+		dst.BrowserAutoLoginSiteAllowlist = append([]string(nil), src.BrowserAutoLoginSiteAllowlist...)
+	}
 	if src.GatewayEnabled {
 		dst.GatewayEnabled = true
 	}
@@ -821,6 +1031,41 @@ func applyLLMDefaults(cfg *Config) {
 	}
 	if cfg.ToolsWebSearchCacheTTLSeconds <= 0 {
 		cfg.ToolsWebSearchCacheTTLSeconds = 60
+	}
+	cfg.VaultAuthMode = strings.TrimSpace(strings.ToLower(cfg.VaultAuthMode))
+	if cfg.VaultAuthMode == "" {
+		cfg.VaultAuthMode = "token"
+	}
+	if cfg.VaultAddr == "" {
+		cfg.VaultAddr = "http://127.0.0.1:8200"
+	}
+	if cfg.VaultTimeoutMS <= 0 {
+		cfg.VaultTimeoutMS = 1500
+	}
+	if cfg.VaultKVMount == "" {
+		cfg.VaultKVMount = "secret"
+	}
+	if cfg.VaultKVVersion <= 0 {
+		cfg.VaultKVVersion = 2
+	}
+	if cfg.VaultAppRoleMount == "" {
+		cfg.VaultAppRoleMount = "approle"
+	}
+	cfg.BrowserDefaultProfile = strings.TrimSpace(strings.ToLower(cfg.BrowserDefaultProfile))
+	if cfg.BrowserDefaultProfile == "" {
+		cfg.BrowserDefaultProfile = "managed"
+	}
+	if cfg.BrowserRelayAddr == "" {
+		cfg.BrowserRelayAddr = "127.0.0.1:43182"
+	}
+	if len(cfg.BrowserRelayOriginAllowlist) == 0 {
+		cfg.BrowserRelayOriginAllowlist = []string{"chrome-extension://*"}
+	}
+	if strings.TrimSpace(cfg.BrowserSiteFlowsDir) == "" {
+		cfg.BrowserSiteFlowsDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "automation", "sites")
+	}
+	if strings.TrimSpace(cfg.BrowserManagedUserDataDir) == "" {
+		cfg.BrowserManagedUserDataDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "browser", "managed")
 	}
 	if cfg.GatewayAgentsWatchDebounceMS <= 0 {
 		cfg.GatewayAgentsWatchDebounceMS = 200

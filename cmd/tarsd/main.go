@@ -248,6 +248,16 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					logger.Error().Err(err).Msg("failed to initialize extensions manager")
 					return &cli.ExitError{Code: 1, Err: err}
 				}
+				vaultReader, vaultStatus, vaultErr := buildVaultReader(cfg)
+				if vaultErr != nil {
+					logger.Warn().Err(vaultErr).Msg("vault client initialization failed; browser auto-login will be unavailable")
+				}
+				relayServer, err := buildBrowserRelay(cfg)
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to initialize browser relay")
+					return &cli.ExitError{Code: 1, Err: err}
+				}
+				browserService := buildBrowserService(cfg, relayServer, vaultReader)
 				gatewayRuntime := gateway.NewRuntime(gateway.RuntimeOptions{
 					Enabled:                              cfg.GatewayEnabled,
 					WorkspaceDir:                         cfg.WorkspaceDir,
@@ -272,6 +282,12 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					GatewayArchiveDir:                    cfg.GatewayArchiveDir,
 					GatewayArchiveRetentionDays:          cfg.GatewayArchiveRetentionDays,
 					GatewayArchiveMaxFileBytes:           cfg.GatewayArchiveMaxFileBytes,
+					BrowserDefaultProfile:                cfg.BrowserDefaultProfile,
+					BrowserManagedUserDataDir:            cfg.BrowserManagedUserDataDir,
+					BrowserSiteFlowsDir:                  cfg.BrowserSiteFlowsDir,
+					BrowserAutoLoginSiteAllowlist:        cfg.BrowserAutoLoginSiteAllowlist,
+					BrowserVaultReader:                   vaultReader,
+					BrowserService:                       browserService,
 					Now:                                  nowFn,
 				})
 				refreshGatewayExecutors := func(reason string) int {
@@ -360,6 +376,13 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				mux.Handle("/v1/gateway/reports/summary", gatewayHandler)
 				mux.Handle("/v1/gateway/reports/runs", gatewayHandler)
 				mux.Handle("/v1/gateway/reports/channels", gatewayHandler)
+				browserHandler := newBrowserAPIHandler(gatewayRuntime, vaultStatus, logger)
+				mux.Handle("/v1/browser/status", browserHandler)
+				mux.Handle("/v1/browser/profiles", browserHandler)
+				mux.Handle("/v1/browser/login", browserHandler)
+				mux.Handle("/v1/browser/check", browserHandler)
+				mux.Handle("/v1/browser/run", browserHandler)
+				mux.Handle("/v1/vault/status", browserHandler)
 				channelsHandler := newChannelsAPIHandler(gatewayRuntime, logger)
 				mux.Handle("/v1/channels/webhook/inbound/", channelsHandler)
 				mux.Handle("/v1/channels/telegram/webhook/", channelsHandler)
@@ -395,6 +418,13 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 						logger.Debug().Msg("gateway agents watcher skipped (workspace agents dir not found)")
 					}
 				}
+				if relayServer != nil {
+					if err := relayServer.Start(ctx); err != nil {
+						logger.Warn().Err(err).Msg("browser relay start failed")
+					} else {
+						logger.Info().Str("addr", relayServer.Addr()).Msg("browser relay started")
+					}
+				}
 
 				go func() {
 					<-ctx.Done()
@@ -402,6 +432,9 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					defer cancel()
 					extensionsManager.Close()
 					gatewayAgentsWatch.Close()
+					if relayServer != nil {
+						_ = relayServer.Close(shutdownCtx)
+					}
 					if gatewayRuntime != nil {
 						_ = gatewayRuntime.Close(shutdownCtx)
 					}
