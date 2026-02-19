@@ -90,15 +90,14 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 ## 바이너리 역할 정의
 
 - `tarsd` (메인 데몬/서버): LLM 호출, 허트비트/크론 실행, 3-Layer 메모리 처리, 작업 판단과 실행 오케스트레이션을 담당한다.
-- `tars` (Go CLI/TUI 클라이언트): `tarsd` API를 호출하는 단일 Go 클라이언트. 공개 배포 단순화를 위해 기본 클라이언트로 전환 중이다.
-- `tars-ui` (React/TS Ink TUI 클라이언트): 레거시 클라이언트. 기능 parity 달성 후 제거 대상이다.
+- `tars` (Go CLI/TUI 클라이언트): `tarsd` API를 호출하는 단일 Go 클라이언트. 공개 배포 단순화를 위해 기본 클라이언트로 사용한다.
 
 ## tars-tarsd 통신 프로토콜 규칙
 
-- `tarsd`가 HTTP API 서버를 서빙하고, `tars`/`tars-ui`는 해당 API를 호출하는 HTTP 클라이언트로 구현한다.
+- `tarsd`가 HTTP API 서버를 서빙하고, `tars`는 해당 API를 호출하는 HTTP 클라이언트로 구현한다.
 - LLM 실행, OAuth 토큰 교환/저장, heartbeat/cron 실행 같은 서버 책임 로직은 반드시 `tarsd`에서 수행한다.
-- `tars`/`tars-ui`는 사용자 입력 수집, API 요청/응답 렌더링 같은 클라이언트 UX만 담당한다.
-- LLM 응답은 `tarsd`의 REST API로 제공하고, `tars`/`tars-ui`는 해당 API의 클라이언트로 구현한다.
+- `tars`는 사용자 입력 수집, API 요청/응답 렌더링 같은 클라이언트 UX만 담당한다.
+- LLM 응답은 `tarsd`의 REST API로 제공하고, `tars`는 해당 API의 클라이언트로 구현한다.
 - 인증 토큰(특히 OAuth access/refresh token)은 서버(`tarsd`)에서만 저장/관리하고, 클라이언트는 직접 저장하지 않는다.
 
 ## 코드 구조 변경 기록
@@ -108,7 +107,6 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 **바이너리**
 - `tarsd`: 메인 데몬/서버 (HTTP API, LLM 호출, heartbeat/cron 실행, 메모리 관리)
 - `tars`: Go 기반 CLI/TUI 클라이언트 (MVP 도입 완료, 단계적 확장 중)
-- `tars-ui`: React/TypeScript Ink 기반 레거시 TUI 클라이언트 (제거 예정)
 
 **주요 패키지**
 - `internal/config`: 설정 로딩 (YAML/ENV 우선순위, 환경변수 확장, 경로 자동 탐지)
@@ -167,7 +165,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - in-process gateway run registry (`accepted|running|completed|failed|canceled`)
 - agent/gateway/channels API (`/v1/agent/*`, `/v1/gateway/*`, `/v1/channels/*`)
 - OpenClaw core action 대응 도구(`sessions_*`, `agents_list`, `message`, `browser`, `nodes`, `gateway`)
-- `tars-ui` runtime 명령(`/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`)
+- `cmd/tars` runtime 명령(`/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`)
 
 **Phase 6: cased 감시 데몬** (종료)
 - 공개 배포 단순화를 위해 `cmd/cased`/`internal/sentinel` 제거
@@ -184,14 +182,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 
 **2026-02-16**
 - 설정 파일 경로 자동 탐지: `config/standalone.yaml` 존재 시 자동 로드
-- `tars-ui` 설정 파일 지원: CLI 플래그 우선순위 정리
-- 기본 개발 포트 통일: `tarsd`/`tars-ui` 기본값을 `127.0.0.1:43180`으로 변경
-- `tars-ui` 입력 엔진 고도화:
-  - `ink-text-input` 의존 경로를 `CustomTextInput`으로 교체
-  - bracketed paste 파서(`src/ui/paste.ts`) 추가
-  - 편집 코어(`src/ui/inputEdit.ts`), undo stack(`src/ui/undoStack.ts`), kill ring(`src/ui/killRing.ts`) 추가
-  - 입력 히스토리(`src/ui/inputHistory.ts`) + 명령 자동완성(`src/commands/complete.ts`) 추가
-  - `Esc`로 입력 초기화 및 진행 중 LLM 스트림 취소(abort) 지원
+- 기본 개발 포트 통일: `tarsd`/`tars` 기본값을 `127.0.0.1:43180`으로 변경
 - MCP 안정화:
   - `sequential-thinking` 호환을 위해 jsonline/content-length 이중 전송 모드 지원
   - 타임아웃 시 세션 abort 및 안전한 재시도 경로 추가
@@ -213,10 +204,9 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - Web 도구 강화:
   - `web_search`: Brave/Perplexity provider 선택 + cache TTL
   - `web_fetch`: SSRF 가드 + private host allowlist
-- `tars-ui` 명령 확장:
-  - `/agents --detail` (source/entry 포함)
-  - `/agents --detail` 정책 컬럼(`POLICY`, `ALLOW`) 추가
-  - `/spawn` 옵션 자동완성(`--agent`, `--title`, `--session`, `--wait`)
+- `cmd/tars` 명령 확장:
+  - `/agents --detail` (source/entry/policy 포함)
+  - `/spawn` 옵션 파싱(`--agent`, `--title`, `--session`, `--wait`)
   - `/gateway`에 persistence/restore telemetry 출력
 
 **2026-02-18**
@@ -230,7 +220,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `cmd/tars` 5차 확장: `/gateway summary|runs|channels` + `/gateway report ...`로 gateway report API 조회 지원
   - `cmd/tars` 6차 확장: `/health`로 `tarsd` `/v1/healthz` 직접 점검 지원
   - `cmd/tars` HTTP 경로 해석 보강: query string이 path로 인코딩되지 않도록 `runtimeClient.resolve` 수정
-  - Make 타깃 정리: `dev-cased`/`run-cased` 제거, `dev-tars` 추가
+  - Make 타깃 정리: `dev-cased`/`run-cased`/`dev-tars-ui` 제거, `dev-tars` 추가
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조

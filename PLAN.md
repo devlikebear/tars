@@ -2,12 +2,13 @@
 
 > 최종 갱신: 2026-02-18
 > 모듈: `github.com/devlikebear/tarsncase`
-> 바이너리: `tarsd` (메인 데몬), `tars` (Go CLI/TUI 클라이언트, 도입 시작)
+> 바이너리: `tarsd` (메인 데몬), `tars` (Go CLI/TUI 클라이언트, 단일 공식 클라이언트)
+> 참고: 문서 하단의 `tars-ui`/`cased` 관련 항목 일부는 이력 보존용이며, 현재 실행 경로는 `tarsd + cmd/tars` 기준이다.
 
 ## 1. 현재 구현 현황
 
 ### 완료된 기능 (Phase 0)
-- [x] Go 프로젝트 스켈레톤 (`cmd/tarsd`, `cmd/cased`)
+- [x] Go 프로젝트 스켈레톤 (`cmd/tarsd`, `cmd/tars`)
 - [x] Makefile + GitHub Actions CI (`make test`)
 - [x] 런타임 설정 로더 (`internal/config`) — YAML + 환경변수 + `${ENV_VAR}` 확장
 - [x] zerolog 구조화 로깅
@@ -36,11 +37,11 @@
 - [x] 세션 관리 (`internal/session`) — sessions.json + JSONL transcript, CRUD, history/search/export, 토큰 기반 동적 로딩
 - [x] LLM Chat API (`internal/llm`) — `Client.Chat`, `OnDelta` 스트리밍 콜백
 - [x] tarsd 채팅 API (`POST /v1/chat`) — SSE(delta/done), 세션 자동 생성/지정, transcript 저장
-- [x] `tars-ui` 채팅 (`tars-ui`) — 입력창 + SSE 스트리밍 + 세션 유지
+- [x] `cmd/tars` 채팅 — REPL + SSE 스트리밍 + 세션 유지
 - [x] 디버그 로깅 (`--verbose`) — `tars↔tarsd` 및 `tarsd↔LLM` 상세 로그
 - [x] non-streaming provider fallback — `OnDelta` 미호출 시 최종 응답을 `delta`로 1회 전송
-- [x] `tars-ui` 초기 골격 추가 (`tars-ui/`) — React/TypeScript + Ink 기반 TUI, `/v1/chat` SSE 직결, Chat/Status 패널 분리
-- [x] `cmd/tars` 제거 완료 — 클라이언트는 `tars-ui` 단일화, 자동화는 `Make + curl`로 통일
+- [x] `cmd/tars` 슬래시 명령군 확장 — 세션/런타임/게이트웨이/크론/알림 제어
+- [x] `tars-ui` 제거 + Node 기반 CI/워크플로우 정리
 
 ### 미구현 (Phase 1~6에서 개발)
 - [x] 컨텍스트 압축 고도화 (LLM 요약 품질 향상 + 로딩 경계 정교화, 토큰 예산 기반 최소 최근 2메시지 유지 안정화)
@@ -53,27 +54,16 @@
 - [x] MCP 클라이언트 (stdio/SSE, 도구 어댑터)
 - [x] in-process gateway runtime + run registry (`internal/gateway`)
 - [x] OpenClaw core action 도구 확장 (`sessions_*`, `agents_list`, `message`, `browser`, `nodes`, `gateway`)
-- [x] cased 감시 데몬
+- [x] cased 감시 데몬(실구현 후 제거, 운영 감시는 systemd/launchd/docker로 위임)
 
 ### 최근 반영
 
 #### 2026-02-18
-- [x] `cased` 실구현(Phase 8-A)
-  - `internal/sentinel` supervisor 추가: child process 실행/감시, backoff/cooldown 재시작 정책, health probe 실패 임계치 재시작
-  - cased API 추가: `GET /v1/sentinel/status`, `GET /v1/sentinel/events?limit=N`, `POST /v1/sentinel/restart|pause|resume`
-  - cased 설정 로더 추가: `target_command` 필수, `target_args_json`, `target_env_json`, probe/restart/event buffer/autostart
-  - `tarsd` 헬스체크 endpoint 추가: `GET /v1/healthz`
-  - `tars-ui` 명령 추가: `/sentinel`, `/sentinel restart`, `/sentinel pause`, `/sentinel resume`, `/sentinel events [limit]`
-  - `tars-ui` 설정 확장: `cased_server_url`, CLI 플래그 `--cased-url`
-- [x] Phase 9-Lite 경량 안정화
-  - sentinel startup grace 추가: `probe_start_grace_ms`(기본 15000ms)
-  - sentinel 안정성 telemetry 추가: `start_grace_until`, `consecutive_failures`, `last_probe_duration_ms`
-  - sentinel 이벤트 영속화 추가: `event_persistence_enabled`, `event_store_path`, `event_store_max_records`
+- [x] 프로젝트 간소화(공개 릴리즈 준비)
+  - `tarsd` 헬스체크 endpoint 유지: `GET /v1/healthz`
   - sub-agent 정책 V2 추가: `tools_allow_groups`, `tools_allow_patterns`, `session_routing_mode`, `session_fixed_id`
   - gateway 리포트 API 추가: `/v1/gateway/reports/summary`, `/v1/gateway/reports/runs`, `/v1/gateway/reports/channels`
-  - gateway 경량 기본값 추가: `gateway_report_summary_enabled=true`, `gateway_archive_enabled=false`
-  - 단일 대상 운영 템플릿 추가: `config/ops/cased.systemd.service.example`, `config/ops/cased.launchd.plist.example`, `config/ops/cased-runbook.md`
-- [x] 프로젝트 간소화 전환 시작(공개 릴리즈 준비)
+  - gateway 경량 기본값: `gateway_report_summary_enabled=true`, `gateway_archive_enabled=false`
   - `cmd/cased`, `internal/sentinel`, `internal/config/cased*`, `config/cased.config.example.yaml` 제거
   - `cmd/tars` 재도입(MVP): `/v1/chat` SSE 클라이언트 + 기본 REPL(`/new`, `/session`, `/quit`)
   - `cmd/tars` 2차: 세션/상태/확장 명령 + runtime 명령 이식
@@ -102,8 +92,8 @@
   - 허용 도구만 runner schema 주입, 허용 외 호출 하드 차단
   - invalid-only allowlist는 agent 로드 제외 + diagnostics
   - `/v1/agent/agents` 정책 메타데이터(`policy_mode`, `tools_allow_count`, `tools_allow`) 노출
-  - `tars-ui /agents --detail` 정책 컬럼(`POLICY`, `ALLOW`) 표시
-- [x] `tars-ui` runtime 명령 확장
+  - `cmd/tars /agents --detail` 정책 컬럼(`POLICY`, `ALLOW`) 표시
+- [x] `cmd/tars` runtime 명령 확장
   - `/agents`, `/runs`, `/spawn`, `/run`, `/cancel-run`, `/gateway`, `/channels`
   - `/spawn` 옵션 자동완성(`--agent`, `--title`, `--session`, `--wait`)
 - [x] web 도구 강화
@@ -114,16 +104,16 @@
   - 재시작 복구: `accepted|running` run -> `canceled by restart recovery`
   - 보존 정책: `gateway_runs_max_records`, `gateway_channels_max_messages_per_channel`
   - 상태 telemetry 확장: `/v1/gateway/status`에 persistence/restore 메타데이터 노출
-  - `tars-ui /gateway`에 persistence telemetry 표시
+  - `cmd/tars /gateway`에 persistence telemetry 표시
 
 #### 2026-02-16
-- [x] 기본 개발 포트를 `127.0.0.1:43180`으로 통일 (`tarsd`/`tars-ui`/예제 설정/README)
+- [x] 기본 개발 포트를 `127.0.0.1:43180`으로 통일 (`tarsd`/`tars`/예제 설정/README)
 - [x] 런타임 확장 명령 `/reload` 추가 (`POST /v1/runtime/extensions/reload` 호출)
 - [x] SSE/네트워크 진단 강화 (endpoint 포함 에러, keepalive 개선, 재연결 백오프)
 - [x] MCP 런타임 안정화
   - `sequential-thinking` 대응 jsonline/content-length 이중 전송 지원
   - 타임아웃 시 세션 abort + 안전한 재시도
-- [x] `tars-ui` 입력 UX 고도화
+- [x] `tars-ui` 입력 UX 고도화(레거시, 제거 완료 전 기록)
   - bracketed paste
   - undo/kill/yank/yank-pop
   - 명령 히스토리(↑/↓)
@@ -188,7 +178,7 @@ export GEMINI_API_KEY=...
 
 **목표**: tarsd가 SSE 스트리밍으로 멀티턴 채팅을 제공하고, tars CLI에서 대화형 REPL로 사용
 
-**마일스톤**: `tarsd --serve-api` 실행 후 `tars-ui`로 멀티턴 대화가 가능한 상태 (달성)
+**마일스톤**: `tarsd --serve-api` 실행 후 `cmd/tars`로 멀티턴 대화가 가능한 상태 (달성)
 
 #### 1-A. 워크스페이스 부트스트랩 파일 확장
 

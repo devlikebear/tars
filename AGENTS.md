@@ -58,28 +58,21 @@
 - LLM Chat 인터페이스(`Client.Chat`)와 스트리밍 콜백(`OnDelta`)이 구현되어 있다.
 - 워크스페이스 부트스트랩 파일(AGENTS/SOUL/USER/IDENTITY/TOOLS/HEARTBEAT/MEMORY) 생성과 시스템 프롬프트 조립이 구현되어 있다.
 - `/compact` 요약 저장 + 로딩 경계(Compaction summary boundary 포함)가 구현되어 있다.
-- `tars-ui` 슬래시 명령(`/new`, `/sessions`, `/resume`, `/history`, `/export`, `/search`, `/status`, `/compact`)이 연결되어 있다.
+- `cmd/tars` REPL 명령(`/new`, `/sessions`, `/resume`, `/history`, `/export`, `/search`, `/status`, `/compact`)이 연결되어 있다.
 - 채팅 루프는 요청마다 등록된 전체 도구 스키마를 주입한다(OpenClaw parity).
 - 미주입 도구/selector 기반 정책 주입 경로는 제거되어 설정 항목도 더 이상 사용하지 않는다.
 - 확장 빌트인 도구(`read/write/edit/glob`, `process`, `apply_patch`, `web_fetch`, `web_search`, `cron`, `heartbeat`)가 구현되어 있다.
 - 크론잡 상세/실행 이력 조회(`cron_get`, `cron_runs`)와 관련 API가 구현되어 있다.
-- `tars-ui`에 `/cron get`, `/cron runs`, `/notify` 명령 및 알림 프리뷰/필터/미읽음 카운트가 구현되어 있다.
+- `cmd/tars`에 `/cron get`, `/cron runs`, `/notify` 명령 및 알림 프리뷰/필터/미읽음 카운트가 구현되어 있다.
 - 런타임 알림은 세션 연결 시 SSE로 전달되고, 비연결 시 OS 알림 커맨드 폴백이 동작한다.
 - Agent loop에서 `exec` 도구의 누락 인자 패턴은 1회 자동 보정하고, 반복 패턴은 가드로 차단한다.
 - 스킬 로더(`internal/skill`)가 frontmatter 파싱/우선순위 병합/`available_skills` 프롬프트 포맷/워크스페이스 미러링을 지원한다.
 - 선언형 플러그인 로더(`internal/plugin`)가 `tarsncase.plugin.json`을 로드하고 skill dir + MCP server를 병합한다.
 - 확장 매니저(`internal/extensions`)가 스킬/플러그인/MCP를 통합 스냅샷으로 관리하고 fsnotify 기반 핫리로드를 지원한다.
 - API `GET /v1/skills`, `GET /v1/skills/{name}`, `GET /v1/plugins`, `POST /v1/runtime/extensions/reload`가 구현되어 있다.
-- `tars-ui` 명령 `/skills`, `/plugins`, `/mcp`가 추가되었고, 미지의 `/{skill}` 입력은 채팅 경로로 전달된다.
-- `tars-ui` 입력 엔진이 `CustomTextInput`으로 교체되어 bracketed paste(`\x1b[200~...\x1b[201~`)를 안정 처리한다.
-- `tars-ui` 입력창이 Undo/Kill-Ring/히스토리/자동완성을 지원한다.
-  - Undo: `Ctrl+Z`
-  - Kill: `Ctrl+U`, `Ctrl+K`
-  - Yank: `Ctrl+Y`, Yank-pop: `Alt+Y`
-  - History: `↑/↓`
-  - Command completion: `Tab` (`/`, `/cron`, `/notify`)
-- `Esc`로 입력을 즉시 초기화하고, 진행 중 LLM 스트리밍은 abort로 중단할 수 있다.
-- `tarsd`/`tars-ui` 기본 개발 포트가 `127.0.0.1:43180`으로 통일되었다.
+- `cmd/tars` 명령 `/skills`, `/plugins`, `/mcp`가 추가되었고, 미지의 `/{skill}` 입력은 채팅 경로로 전달된다.
+- `cmd/tars`는 라인 기반 REPL 입력으로 채팅/슬래시 명령을 처리한다.
+- `tarsd`/`tars` 기본 개발 포트가 `127.0.0.1:43180`으로 통일되었다.
 - MCP 런타임이 JSON line 전송 방식 서버(`sequential-thinking`)를 자동 감지/폴백하여 연결한다.
 - in-process gateway 런타임(`internal/gateway`)이 추가되어 run registry, 채널, browser/nodes 상태를 함께 관리한다.
 - agent/gateway/channels API가 구현되어 비동기 run 제어가 가능하다.
@@ -95,7 +88,7 @@
 - OpenClaw core action 기준 built-in 도구가 확장되었다.
   - 세션/런: `sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`, `sessions_runs`, `agents_list`
   - 게이트웨이 계열: `message`, `browser`, `nodes`, `gateway`
-- `tars-ui`에 runtime 제어 명령이 추가되었다.
+- `cmd/tars`에 runtime 제어 명령이 추가되었다.
   - `/agents`, `/agents --detail`
   - `/runs`, `/run {id}`, `/cancel-run {id}`
   - `/spawn [--agent] [--title] [--session] [--wait] {message}`
@@ -110,7 +103,7 @@
   - 경로/복구: `gateway_persistence_dir`, `gateway_restore_on_startup`
   - 복구 규칙: `accepted|running` run은 재시작 복구 시 `canceled by restart recovery`로 정리
   - 상태 telemetry: `/v1/gateway/status`의 `persistence_*`, `runs_restored`, `channels_restored`, `last_persist_at`, `last_restore_at`, `last_restore_error`
-- `tars-ui /gateway`가 gateway persistence/restore telemetry를 함께 표시한다.
+- `cmd/tars /gateway`가 gateway persistence/restore telemetry를 함께 표시한다.
 - markdown 서브에이전트는 AGENT frontmatter `tools_allow`(YAML list) 정책을 지원한다.
   - 정책 미지정: `full` (기존 동작)
   - 정책 지정: allowlist만 주입
@@ -147,7 +140,7 @@
 
 1. 인증/권한/테넌트/멀티 워크스페이스의 최소 운영 모델을 정의하고 API 경계에 적용한다.
 2. 서브에이전트 정책을 deny/risk 레벨까지 확장하고, 정책 위반 진단을 UI에서 추적 가능하게 만든다.
-3. `cmd/tars` 기능을 `tars-ui` parity 수준까지 확장하고 Node 의존을 제거한다.
+3. `cmd/tars` UX를 개선해 운영/디버깅 시나리오를 단일 Go 클라이언트에서 완결한다.
 
 ## 작업 체크리스트
 
