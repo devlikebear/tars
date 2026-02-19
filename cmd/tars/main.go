@@ -101,15 +101,42 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			if len(sessions) == 0 {
 				return true, session, fmt.Errorf("no sessions available; use /new first")
 			}
-			next := strings.TrimSpace(sessions[0].ID)
-			if next == "" {
-				return true, session, fmt.Errorf("latest session id is empty")
+			fmt.Fprintln(stdout, "SYSTEM > resume targets")
+			for i, s := range sessions {
+				fmt.Fprintf(stdout, "%d. %s %s\n", i+1, s.ID, s.Title)
 			}
-			fmt.Fprintf(stdout, "SYSTEM > resumed session=%s\n", next)
-			fmt.Fprintf(stderr, "session=%s\n", next)
-			return true, next, nil
+			fmt.Fprintln(stdout, "SYSTEM > use /resume {number|id|latest}")
+			return true, session, nil
 		}
-		next := strings.TrimSpace(fields[1])
+		arg := strings.TrimSpace(fields[1])
+		next := ""
+		if strings.EqualFold(arg, "latest") {
+			sessions, err := runtime.listSessions(ctx)
+			if err != nil {
+				return true, session, err
+			}
+			if len(sessions) == 0 {
+				return true, session, fmt.Errorf("no sessions available; use /new first")
+			}
+			next = strings.TrimSpace(sessions[0].ID)
+		} else if n, err := strconv.Atoi(arg); err == nil {
+			sessions, listErr := runtime.listSessions(ctx)
+			if listErr != nil {
+				return true, session, listErr
+			}
+			if len(sessions) == 0 {
+				return true, session, fmt.Errorf("no sessions available; use /new first")
+			}
+			if n <= 0 || n > len(sessions) {
+				return true, session, fmt.Errorf("resume target out of range: %d", n)
+			}
+			next = strings.TrimSpace(sessions[n-1].ID)
+		} else {
+			next = arg
+		}
+		if next == "" {
+			return true, session, fmt.Errorf("resume target is empty")
+		}
 		fmt.Fprintf(stdout, "SYSTEM > resumed session=%s\n", next)
 		fmt.Fprintf(stderr, "session=%s\n", next)
 		return true, next, nil
@@ -803,7 +830,7 @@ func helpText() string {
 Session:
   /new [title]
   /session
-  /resume [id]
+  /resume [id|number|latest]
   /sessions
   /history
   /export

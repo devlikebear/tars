@@ -209,10 +209,43 @@ func TestExecuteCommand_ResumeWithoutIDUsesLatestSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("/resume: %v", err)
 	}
-	if session != "s-latest" {
-		t.Fatalf("expected latest session, got %q", session)
+	if session != "s-prev" {
+		t.Fatalf("expected unchanged session without selection, got %q", session)
 	}
-	if !strings.Contains(stdout.String(), "resumed session=s-latest") {
+	if !strings.Contains(stdout.String(), "resume targets") {
+		t.Fatalf("expected resume target listing output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "1. s-latest latest") {
+		t.Fatalf("expected numbered session list, got %q", stdout.String())
+	}
+}
+
+func TestExecuteCommand_ResumeByNumber(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "s-latest", "title": "latest"},
+				{"id": "s-2", "title": "daily"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runtime := runtimeClient{serverURL: server.URL}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	_, session, err := executeCommand(context.Background(), runtime, "/resume 2", "s-prev", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/resume 2: %v", err)
+	}
+	if session != "s-2" {
+		t.Fatalf("expected selected session s-2, got %q", session)
+	}
+	if !strings.Contains(stdout.String(), "resumed session=s-2") {
 		t.Fatalf("expected resume output, got %q", stdout.String())
 	}
 }
