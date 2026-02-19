@@ -330,3 +330,26 @@ func TestExecuteCommand_GatewayReports(t *testing.T) {
 		t.Fatalf("expected channels output, got %q", stdout.String())
 	}
 }
+
+func TestExecuteCommand_Health(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "component": "tarsd", "time": "2026-02-19T00:00:00Z"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{serverURL: server.URL}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/health", "", stdout, stderr); err != nil {
+		t.Fatalf("/health: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "ok=true") {
+		t.Fatalf("expected health output, got %q", stdout.String())
+	}
+}

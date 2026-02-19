@@ -41,6 +41,8 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "s1", "title": "chat"}})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
 			_ = json.NewEncoder(w).Encode(map[string]any{"workspace_dir": "/tmp/ws", "session_count": 2})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "component": "tarsd", "time": "2026-02-19T00:00:00Z"})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/compact":
 			_ = json.NewEncoder(w).Encode(map[string]any{"message": "compaction complete"})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/heartbeat/run-once":
@@ -156,6 +158,9 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	status, err := client.status(ctx)
 	if err != nil || status.WorkspaceDir == "" {
 		t.Fatalf("status: status=%+v err=%v", status, err)
+	}
+	if health, err := client.healthz(ctx); err != nil || !health.OK {
+		t.Fatalf("healthz: health=%+v err=%v", health, err)
 	}
 	if _, err := client.compact(ctx, "s1"); err != nil {
 		t.Fatalf("compact: %v", err)

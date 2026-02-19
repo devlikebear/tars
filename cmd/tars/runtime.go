@@ -41,6 +41,12 @@ type statusInfo struct {
 	AuthRole     string `json:"auth_role,omitempty"`
 }
 
+type healthInfo struct {
+	OK        bool   `json:"ok"`
+	Component string `json:"component,omitempty"`
+	Time      string `json:"time,omitempty"`
+}
+
 type compactInfo struct {
 	Message string `json:"message"`
 }
@@ -393,6 +399,14 @@ func (c runtimeClient) status(ctx context.Context) (statusInfo, error) {
 	var status statusInfo
 	if err := c.requestJSON(ctx, http.MethodGet, "/v1/status", nil, false, &status); err != nil {
 		return statusInfo{}, err
+	}
+	return status, nil
+}
+
+func (c runtimeClient) healthz(ctx context.Context) (healthInfo, error) {
+	var status healthInfo
+	if err := c.requestJSON(ctx, http.MethodGet, "/v1/healthz", nil, false, &status); err != nil {
+		return healthInfo{}, err
 	}
 	return status, nil
 }

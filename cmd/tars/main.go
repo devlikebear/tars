@@ -140,7 +140,7 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 	}
 	switch fields[0] {
 	case "/help":
-		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /resume [id] /new [title] /sessions /history /export /search {keyword} /status /compact /heartbeat /skills /plugins /mcp /reload /agents [--detail|-d] /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart|summary|runs [limit]|channels [limit]} /channels /cron {list|get|runs|add|run|delete|enable|disable} /notify {list|filter|open|clear} /quit")
+		fmt.Fprintln(stdout, "SYSTEM > commands: /help /session /resume [id] /new [title] /sessions /history /export /search {keyword} /status /health /compact /heartbeat /skills /plugins /mcp /reload /agents [--detail|-d] /runs [limit] /run {id} /cancel-run {id} /spawn [...] /gateway {status|reload|restart|summary|runs [limit]|channels [limit]} /channels /cron {list|get|runs|add|run|delete|enable|disable} /notify {list|filter|open|clear} /quit")
 		return true, session, nil
 	case "/session":
 		fmt.Fprintf(stdout, "SYSTEM > session=%s\n", session)
@@ -257,6 +257,13 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			fmt.Fprintf(stdout, " auth_role=%s", status.AuthRole)
 		}
 		fmt.Fprintln(stdout)
+		return true, session, nil
+	case "/health":
+		status, err := runtime.healthz(ctx)
+		if err != nil {
+			return true, session, err
+		}
+		fmt.Fprintf(stdout, "SYSTEM > ok=%t component=%s time=%s\n", status.OK, status.Component, status.Time)
 		return true, session, nil
 	case "/compact":
 		if strings.TrimSpace(session) == "" {
