@@ -18,7 +18,7 @@ TARSD_CONFIG ?= ./workspace/config/tarsd.config.yaml
 	test test-v test-one test-nocache test-race test-cover \
 	build build-bins clean tidy fmt vet \
 	dev-tarsd dev-tarsd-once dev-tarsd-loop dev-chat dev-heartbeat dev-tars \
-	api-status api-sessions api-compact api-chat api-heartbeat \
+	api-status api-sessions api-compact api-chat api-heartbeat smoke-auth \
 	run-tarsd
 
 help:
@@ -60,6 +60,7 @@ help:
 	@echo "  make api-compact   - POST /v1/compact"
 	@echo "  make api-chat      - POST /v1/chat with CHAT_MSG"
 	@echo "  make api-heartbeat - POST /v1/heartbeat/run-once"
+	@echo "  make smoke-auth    - auth/workspace smoke test (requires USER_TOKEN, ADMIN_TOKEN)"
 
 test:
 	$(GO) test $(PKG)
@@ -121,6 +122,9 @@ api-chat:
 
 api-heartbeat:
 	curl -sS -X POST $(SERVER_URL)/v1/heartbeat/run-once
+
+smoke-auth:
+	./scripts/smoke_auth_workspace.sh
 
 fmt:
 	$(GO) fmt ./...

@@ -227,6 +227,11 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `GET/POST /v1/agent/runs`, `GET /v1/agent/runs/{id}`, `POST /v1/agent/runs/{id}/cancel`가 workspace 스코프를 강제
   - `gateway reports`/`channels inbound`/`sessions_*` 도구가 workspace 기준으로 분리 동작
   - run/channel payload에 `workspace_id` 메타데이터 추가
+- 인증/권한 가시성/경계 강화:
+  - `GET /v1/auth/whoami` 추가 (`authenticated`, `auth_role`, `is_admin`, `workspace_id`, `auth_mode`)
+  - `cmd/tars /whoami` 추가
+  - admin 경로 매트릭스 고정(`runtime/extensions reload`, `gateway reload/restart`, `channels webhook`) + wildcard 경로 처리
+  - notification SSE를 workspace 단위로 필터링해 교차 workspace 이벤트 누출 방지
 - 요청 workspace 저장소 분기:
   - `sessions`, `chat memory`, `compact`, `cron` API가 `${workspace_dir}/_workspaces/{workspace_id}` 경로를 사용
   - gateway runtime의 session append/create가 workspace별 session store resolver를 사용
@@ -241,8 +246,12 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - 정책 위반 진단 강화:
   - gateway run 실패 시 `policy_blocked_tool`, `policy_allowed_tools`를 함께 기록
   - `cmd/tars /run`과 `/runs`에서 `diag`/`blocked`/`policy_allowed`를 표시
+  - `cmd/tars /run`에 `policy_denied`, `policy_risk_max` 표시 추가
 - `cmd/tars /gateway status` 가시성 개선:
   - `agents_reload_version`, `last_restore_error`를 출력
+- 운영 스모크:
+  - `scripts/smoke_auth_workspace.sh` 추가
+  - `make smoke-auth`로 auth/workspace 경계 기본 점검 자동화
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조

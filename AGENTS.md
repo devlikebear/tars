@@ -132,13 +132,25 @@
 - role별 workspace allowlist가 추가되었다.
   - 설정: `api_user_workspace_ids_json`, `api_admin_workspace_ids_json`
   - allowlist가 비어 있으면 기존처럼 모든 workspace를 허용한다.
+- 인증 가시성 API가 추가되었다.
+  - `GET /v1/auth/whoami` (`authenticated`, `auth_role`, `is_admin`, `workspace_id`, `auth_mode`)
+  - `cmd/tars /whoami`로 현재 인증/권한 컨텍스트 즉시 확인 가능
+- admin 경로 정책이 명시적으로 고정되었다.
+  - 관리자 전용: `/v1/runtime/extensions/reload`, `/v1/gateway/reload`, `/v1/gateway/restart`, `/v1/channels/webhook/inbound/*`, `/v1/channels/telegram/webhook/*`
+  - middleware 매트릭스 테스트로 user/admin 동작을 회귀 방지
+- 알림 SSE가 workspace 단위로 분리되었다.
+  - `workspace_id`가 다른 이벤트는 해당 SSE 구독으로 전달되지 않는다.
 - workspace background 실행 경계가 보강되었다.
   - cron background manager가 `default + _workspaces/*`를 순회하며 workspace 컨텍스트로 실행한다.
   - heartbeat runner가 요청 컨텍스트 workspace를 기준으로 실행/상태를 분리한다.
 - 정책 위반 진단이 강화되었다.
   - gateway run 실패 시 `policy_blocked_tool`, `policy_allowed_tools`를 함께 기록한다.
   - `cmd/tars /run`, `/runs`에서 정책 차단 요약(`diag`, `blocked`)을 표시한다.
+  - `cmd/tars /run`에서 `policy_denied`, `policy_risk_max`를 함께 표시한다.
 - `cmd/tars /gateway status`에 `reload_version`, `restore_error`가 노출된다.
+- 운영 스모크 스크립트가 추가되었다.
+  - `scripts/smoke_auth_workspace.sh`
+  - `make smoke-auth`
 
 ## LLM Provider 운영 정책 (2026-02-16)
 
@@ -154,8 +166,8 @@
 
 ## 다음 우선순위
 
-1. 인증/권한/테넌트 최소 운영 모델을 API 전 구간(채팅/런/크론/채널)에서 일관 검증한다.
-2. 서브에이전트 정책(allow/deny/risk) 위반 리포트를 API와 `cmd/tars`에서 검색 가능한 형태로 확장한다.
+1. 인증/권한/테넌트 최소 운영 모델을 tenant 단위 데이터 분리까지 확장한다.
+2. 서브에이전트 정책(allow/deny/risk) 위반 리포트를 API 검색/집계 형태로 확장한다.
 3. `cmd/tars` 운영 UX를 보강해 workspace 전환/관찰 명령을 단일 클라이언트에서 완결한다.
 
 ## 작업 체크리스트

@@ -62,6 +62,11 @@
 - workspace 경계 강화
   - `agent runs`, `gateway reports`, `channels inbound`, `sessions_runs` 경로를 workspace 스코프로 통일
   - run/channel 응답 payload에 `workspace_id` 추가
+- 인증/권한 운영성 강화
+  - `GET /v1/auth/whoami` 추가 (`authenticated`, `auth_role`, `is_admin`, `workspace_id`, `auth_mode`)
+  - `cmd/tars /whoami` 추가
+  - admin 전용 API 경로 매트릭스 고정 테스트 추가 (`/v1/runtime/extensions/reload`, `/v1/gateway/reload`, `/v1/gateway/restart`, `/v1/channels/webhook/inbound/*`, `/v1/channels/telegram/webhook/*`)
+  - notification SSE를 workspace 단위로 필터링해 교차 workspace 알림 누출 차단
 - 요청 workspace 저장소 분기
   - `sessions`, `chat memory`, `compact`, `cron` API를 `${workspace_dir}/_workspaces/{workspace_id}` 기준으로 분기
   - gateway runtime이 workspace별 session store resolver를 사용
@@ -76,8 +81,12 @@
 - 정책 위반 진단 강화
   - gateway run 실패 응답에 `policy_blocked_tool`, `policy_allowed_tools` 추가
   - `cmd/tars /runs`, `/run`에서 `diag`, `blocked`, `policy_allowed` 정보를 출력
+  - `cmd/tars /run`에서 `policy_denied`, `policy_risk_max` 추가 출력
 - `cmd/tars /gateway status` 확장
   - `agents_reload_version`, `last_restore_error`를 상태 문자열에 함께 노출
+- 운영 스모크 추가
+  - `scripts/smoke_auth_workspace.sh` 추가
+  - `make smoke-auth`로 사용자/관리자 권한 경계 + workspace 스코프 기본 점검 가능
 
 #### 2026-02-18
 - [x] 프로젝트 간소화(공개 릴리즈 준비)
