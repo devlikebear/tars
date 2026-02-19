@@ -57,10 +57,10 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 			}
 			run, err := runtime.Spawn(r.Context(), gateway.SpawnRequest{
 				WorkspaceID: serverauth.WorkspaceIDFromRequest(r),
-				SessionID: req.SessionID,
-				Title:     req.Title,
-				Prompt:    message,
-				Agent:     req.Agent,
+				SessionID:   req.SessionID,
+				Title:       req.Title,
+				Prompt:      message,
+				Agent:       req.Agent,
 			})
 			if err != nil {
 				status := http.StatusBadRequest

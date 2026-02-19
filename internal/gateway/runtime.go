@@ -24,29 +24,29 @@ const (
 )
 
 type Run struct {
-	ID              string    `json:"run_id"`
-	WorkspaceID     string    `json:"workspace_id,omitempty"`
-	SessionID       string    `json:"session_id,omitempty"`
-	Agent           string    `json:"agent,omitempty"`
-	Prompt          string    `json:"prompt,omitempty"`
-	Status          RunStatus `json:"status"`
-	Accepted        bool      `json:"accepted"`
-	Response        string    `json:"response,omitempty"`
-	Error           string    `json:"error,omitempty"`
-	DiagnosticCode   string `json:"diagnostic_code,omitempty"`
-	DiagnosticReason string `json:"diagnostic_reason,omitempty"`
-	CreatedAt       string    `json:"created_at"`
-	StartedAt       string    `json:"started_at,omitempty"`
-	CompletedAt     string    `json:"completed_at,omitempty"`
-	UpdatedAt       string    `json:"updated_at"`
+	ID               string    `json:"run_id"`
+	WorkspaceID      string    `json:"workspace_id,omitempty"`
+	SessionID        string    `json:"session_id,omitempty"`
+	Agent            string    `json:"agent,omitempty"`
+	Prompt           string    `json:"prompt,omitempty"`
+	Status           RunStatus `json:"status"`
+	Accepted         bool      `json:"accepted"`
+	Response         string    `json:"response,omitempty"`
+	Error            string    `json:"error,omitempty"`
+	DiagnosticCode   string    `json:"diagnostic_code,omitempty"`
+	DiagnosticReason string    `json:"diagnostic_reason,omitempty"`
+	CreatedAt        string    `json:"created_at"`
+	StartedAt        string    `json:"started_at,omitempty"`
+	CompletedAt      string    `json:"completed_at,omitempty"`
+	UpdatedAt        string    `json:"updated_at"`
 }
 
 type SpawnRequest struct {
 	WorkspaceID string
-	SessionID string
-	Title     string
-	Prompt    string
-	Agent     string
+	SessionID   string
+	Title       string
+	Prompt      string
+	Agent       string
 }
 
 type ChannelMessage struct {
