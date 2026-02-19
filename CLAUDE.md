@@ -222,6 +222,20 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `cmd/tars` HTTP 경로 해석 보강: query string이 path로 인코딩되지 않도록 `runtimeClient.resolve` 수정
   - Make 타깃 정리: `dev-cased`/`run-cased`/`dev-tars-ui` 제거, `dev-tars` 추가
 
+**2026-02-19**
+- Workspace 경계 강화:
+  - `GET/POST /v1/agent/runs`, `GET /v1/agent/runs/{id}`, `POST /v1/agent/runs/{id}/cancel`가 workspace 스코프를 강제
+  - `gateway reports`/`channels inbound`/`sessions_*` 도구가 workspace 기준으로 분리 동작
+  - run/channel payload에 `workspace_id` 메타데이터 추가
+- 요청 workspace 저장소 분기:
+  - `sessions`, `chat memory`, `compact`, `cron` API가 `${workspace_dir}/_workspaces/{workspace_id}` 경로를 사용
+  - gateway runtime의 session append/create가 workspace별 session store resolver를 사용
+- 인증/권한:
+  - role별 workspace allowlist 도입 (`api_user_workspace_ids_json`, `api_admin_workspace_ids_json`)
+  - 허용되지 않은 workspace 요청은 403으로 차단
+- `cmd/tars` 운영 출력:
+  - `/runs`, `/run`, `/gateway runs`, `/gateway channels`에서 workspace 정보 표시
+
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조
 - Phase 4-7 계획은 `PLAN.md` 참조

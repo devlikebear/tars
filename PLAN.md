@@ -1,6 +1,6 @@
 # TARS 개발 계획서 (v4)
 
-> 최종 갱신: 2026-02-18
+> 최종 갱신: 2026-02-19
 > 모듈: `github.com/devlikebear/tarsncase`
 > 바이너리: `tarsd` (메인 데몬), `tars` (Go CLI/TUI 클라이언트, 단일 공식 클라이언트)
 > 참고: 문서 하단의 `tars-ui`/`cased` 관련 항목 일부는 이력 보존용이며, 현재 실행 경로는 `tarsd + cmd/tars` 기준이다.
@@ -57,6 +57,19 @@
 - [x] cased 감시 데몬(실구현 후 제거, 운영 감시는 systemd/launchd/docker로 위임)
 
 ### 최근 반영
+
+#### 2026-02-19
+- workspace 경계 강화
+  - `agent runs`, `gateway reports`, `channels inbound`, `sessions_runs` 경로를 workspace 스코프로 통일
+  - run/channel 응답 payload에 `workspace_id` 추가
+- 요청 workspace 저장소 분기
+  - `sessions`, `chat memory`, `compact`, `cron` API를 `${workspace_dir}/_workspaces/{workspace_id}` 기준으로 분기
+  - gateway runtime이 workspace별 session store resolver를 사용
+- auth/workspace 정책 확장
+  - role별 workspace allowlist 설정 추가: `api_user_workspace_ids_json`, `api_admin_workspace_ids_json`
+  - 미허용 workspace 접근 시 403 처리
+- `cmd/tars` 운영 가시성 개선
+  - `/runs`, `/run`, `/gateway runs`, `/gateway channels` 출력에 workspace 표시
 
 #### 2026-02-18
 - [x] 프로젝트 간소화(공개 릴리즈 준비)

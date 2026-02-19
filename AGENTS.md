@@ -123,6 +123,15 @@
   - `GET /v1/gateway/reports/summary` (기본 활성)
   - `GET /v1/gateway/reports/runs`, `GET /v1/gateway/reports/channels` (archive 활성 시)
   - 설정: `gateway_report_summary_enabled`, `gateway_archive_enabled`, `gateway_archive_dir`, `gateway_archive_retention_days`, `gateway_archive_max_file_bytes`
+- workspace 경계가 API/도구 레벨로 확장되었다.
+  - `agent runs`, `gateway reports`, `channels webhook/telegram`, `sessions_runs`가 workspace 기준으로 격리된다.
+  - run/channel payload에 `workspace_id`가 포함된다.
+- 요청 workspace 기반 저장소 분기가 적용되었다.
+  - `sessions`, `chat memory`, `compact`, `cron` API는 요청 workspace를 기준으로 저장 경로를 분기한다.
+  - non-default workspace 경로: `${workspace_dir}/_workspaces/{workspace_id}`
+- role별 workspace allowlist가 추가되었다.
+  - 설정: `api_user_workspace_ids_json`, `api_admin_workspace_ids_json`
+  - allowlist가 비어 있으면 기존처럼 모든 workspace를 허용한다.
 
 ## LLM Provider 운영 정책 (2026-02-16)
 
@@ -138,8 +147,8 @@
 
 ## 다음 우선순위
 
-1. 인증/권한/테넌트/멀티 워크스페이스의 최소 운영 모델을 정의하고 API 경계에 적용한다.
-2. 서브에이전트 정책을 deny/risk 레벨까지 확장하고, 정책 위반 진단을 UI에서 추적 가능하게 만든다.
+1. heartbeat/cron background manager까지 workspace 분리를 확장한다.
+2. 서브에이전트 정책 위반 진단을 `cmd/tars`에서 구조적으로 추적할 수 있게 개선한다.
 3. `cmd/tars` UX를 개선해 운영/디버깅 시나리오를 단일 Go 클라이언트에서 완결한다.
 
 ## 작업 체크리스트
