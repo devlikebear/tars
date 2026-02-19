@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/gateway"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 )
 
@@ -186,5 +187,47 @@ func TestSessionsRunsCancel(t *testing.T) {
 	}
 	if cancelRes.IsError {
 		t.Fatalf("runs cancel expected success: %s", cancelRes.Text())
+	}
+}
+
+func TestSessionsRunsTool_WorkspaceScoped(t *testing.T) {
+	rt := newGatewayRuntimeForToolTests(t)
+	spawn := NewSessionsSpawnTool(rt)
+	runs := NewSessionsRunsTool(rt)
+
+	ctxA := serverauth.WithWorkspaceID(context.Background(), "ws-a")
+	ctxB := serverauth.WithWorkspaceID(context.Background(), "ws-b")
+
+	resA, err := spawn.Execute(ctxA, json.RawMessage(`{"message":"from-a"}`))
+	if err != nil {
+		t.Fatalf("spawn ws-a execute: %v", err)
+	}
+	if resA.IsError {
+		t.Fatalf("spawn ws-a expected success: %s", resA.Text())
+	}
+
+	resB, err := spawn.Execute(ctxB, json.RawMessage(`{"message":"from-b"}`))
+	if err != nil {
+		t.Fatalf("spawn ws-b execute: %v", err)
+	}
+	if resB.IsError {
+		t.Fatalf("spawn ws-b expected success: %s", resB.Text())
+	}
+
+	listA, err := runs.Execute(ctxA, json.RawMessage(`{"action":"list"}`))
+	if err != nil {
+		t.Fatalf("runs list ws-a execute: %v", err)
+	}
+	if listA.IsError {
+		t.Fatalf("runs list ws-a expected success: %s", listA.Text())
+	}
+	var payloadA struct {
+		Count int `json:"count"`
+	}
+	if err := json.Unmarshal([]byte(listA.Text()), &payloadA); err != nil {
+		t.Fatalf("decode ws-a list payload: %v", err)
+	}
+	if payloadA.Count != 1 {
+		t.Fatalf("expected ws-a list count=1, got %d payload=%s", payloadA.Count, listA.Text())
 	}
 }

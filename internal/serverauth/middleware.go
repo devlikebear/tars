@@ -22,14 +22,16 @@ const (
 )
 
 type Options struct {
-	Mode            string
-	BearerToken     string
-	UserToken       string
-	AdminToken      string
-	WorkspaceHeader string
+	Mode                          string
+	BearerToken                   string
+	UserToken                     string
+	AdminToken                    string
+	WorkspaceHeader               string
 	RequireWorkspaceForAuthorized bool
-	SkipPaths       []string
-	AdminPaths      []string
+	UserWorkspaceAllowlist        []string
+	AdminWorkspaceAllowlist       []string
+	SkipPaths                     []string
+	AdminPaths                    []string
 }
 
 type workspaceIDKey struct{}
@@ -46,6 +48,17 @@ func WorkspaceIDFromContext(ctx context.Context) string {
 	}
 	value, _ := ctx.Value(workspaceIDKey{}).(string)
 	return strings.TrimSpace(value)
+}
+
+func WithWorkspaceID(ctx context.Context, workspaceID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	trimmed := strings.TrimSpace(workspaceID)
+	if trimmed == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, workspaceIDKey{}, trimmed)
 }
 
 func WorkspaceIDFromRequest(r *http.Request) string {
@@ -109,6 +122,8 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 		}
 		adminPaths[trimmed] = struct{}{}
 	}
+	userWorkspaceAllowlist := toWorkspaceAllowlist(opts.UserWorkspaceAllowlist)
+	adminWorkspaceAllowlist := toWorkspaceAllowlist(opts.AdminWorkspaceAllowlist)
 	if logOut == nil {
 		logOut = io.Discard
 	}
@@ -171,6 +186,14 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 					http.Error(w, "workspace id is required", http.StatusBadRequest)
 					return
 				}
+			}
+			if role == RoleUser && !isWorkspaceAllowed(userWorkspaceAllowlist, WorkspaceIDFromContext(req.Context())) {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			if role == RoleAdmin && !isWorkspaceAllowed(adminWorkspaceAllowlist, WorkspaceIDFromContext(req.Context())) {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
 			}
 			if isAdminPath && role != RoleAdmin {
 				http.Error(w, "forbidden", http.StatusForbidden)
@@ -273,6 +296,26 @@ func resolveTokenRole(
 		return RoleAdmin
 	}
 	return ""
+}
+
+func toWorkspaceAllowlist(values []string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		out[trimmed] = struct{}{}
+	}
+	return out
+}
+
+func isWorkspaceAllowed(allowlist map[string]struct{}, workspaceID string) bool {
+	if len(allowlist) == 0 {
+		return true
+	}
+	_, ok := allowlist[strings.TrimSpace(workspaceID)]
+	return ok
 }
 
 func isLoopbackRemoteAddr(remoteAddr string) bool {

@@ -11,13 +11,15 @@ import (
 
 func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Handler, authLog io.Writer) http.Handler {
 	auth := serverauth.NewMiddleware(serverauth.Options{
-		Mode:            cfg.APIAuthMode,
-		BearerToken:     cfg.APIAuthToken,
-		UserToken:       cfg.APIUserToken,
-		AdminToken:      cfg.APIAdminToken,
-		WorkspaceHeader: cfg.APIWorkspaceHeader,
+		Mode:                          cfg.APIAuthMode,
+		BearerToken:                   cfg.APIAuthToken,
+		UserToken:                     cfg.APIUserToken,
+		AdminToken:                    cfg.APIAdminToken,
+		WorkspaceHeader:               cfg.APIWorkspaceHeader,
+		UserWorkspaceAllowlist:        cfg.APIUserWorkspaceIDs,
+		AdminWorkspaceAllowlist:       cfg.APIAdminWorkspaceIDs,
 		RequireWorkspaceForAuthorized: true,
-		SkipPaths:       []string{"/v1/healthz"},
+		SkipPaths:                     []string{"/v1/healthz"},
 		AdminPaths: []string{
 			"/v1/runtime/extensions/reload",
 			"/v1/gateway/reload",

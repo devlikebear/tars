@@ -355,7 +355,14 @@ func newChatAPIHandlerWithRuntimeConfig(
 			Int("message_len", len(strings.TrimSpace(req.Message))).
 			Msg("chat request accepted")
 
-		sessionID, err := resolveChatSession(store, req.SessionID)
+		reqStore, requestWorkspaceDir, _, err := resolveSessionStoreForRequest(workspaceDir, store, r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace session store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
+
+		sessionID, err := resolveChatSession(reqStore, req.SessionID)
 		if err != nil {
 			if req.SessionID == "" {
 				logger.Error().Err(err).Msg("create session failed")
@@ -366,9 +373,9 @@ func newChatAPIHandlerWithRuntimeConfig(
 			return
 		}
 
-		transcriptPath := store.TranscriptPath(sessionID)
+		transcriptPath := reqStore.TranscriptPath(sessionID)
 		logger.Debug().Str("session_id", sessionID).Str("transcript_path", transcriptPath).Msg("chat session resolved")
-		if err := maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID, client, logger); err != nil {
+		if err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, client, logger); err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("auto compaction failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "auto compaction failed"})
 			return
@@ -384,9 +391,9 @@ func newChatAPIHandlerWithRuntimeConfig(
 		if tooling.Extensions != nil {
 			extSnapshot = tooling.Extensions.Snapshot()
 		}
-		registry := newBaseToolRegistryWithProcess(workspaceDir, tooling.ProcessManager)
-		registry.Register(tool.NewSessionsListTool(store))
-		registry.Register(tool.NewSessionsHistoryTool(store))
+		registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, tooling.ProcessManager)
+		registry.Register(tool.NewSessionsListTool(reqStore))
+		registry.Register(tool.NewSessionsHistoryTool(reqStore))
 		registry.Register(tool.NewSessionsSendTool(tooling.Gateway))
 		registry.Register(tool.NewSessionsSpawnTool(tooling.Gateway))
 		registry.Register(tool.NewSessionsRunsTool(tooling.Gateway))
@@ -406,7 +413,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 			}, nil
 		}))
 		invokedSkill := resolveInvokedSkill(req.Message, tooling.Extensions)
-		systemPrompt, toolChoice, _ := prepareChatContextWithExtensions(workspaceDir, req.Message, extSnapshot, invokedSkill)
+		systemPrompt, toolChoice, _ := prepareChatContextWithExtensions(requestWorkspaceDir, req.Message, extSnapshot, invokedSkill)
 		logger.Debug().
 			Str("session_id", sessionID).
 			Int("history_messages", len(history)).
@@ -484,10 +491,10 @@ func newChatAPIHandlerWithRuntimeConfig(
 		assistantMsg := session.Message{Role: "assistant", Content: chatResp.Message.Content, Timestamp: time.Now().UTC()}
 		if err := session.AppendMessage(transcriptPath, assistantMsg); err != nil {
 			logger.Error().Err(err).Msg("append assistant message failed")
-		} else if err := store.Touch(sessionID, assistantMsg.Timestamp); err != nil {
+		} else if err := reqStore.Touch(sessionID, assistantMsg.Timestamp); err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("touch session updated_at failed")
 		}
-		if err := writeChatMemory(workspaceDir, sessionID, req.Message, chatResp.Message.Content, assistantMsg.Timestamp); err != nil {
+		if err := writeChatMemory(requestWorkspaceDir, sessionID, req.Message, chatResp.Message.Content, assistantMsg.Timestamp); err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("write chat memory failed")
 		}
 

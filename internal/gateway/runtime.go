@@ -50,14 +50,15 @@ type SpawnRequest struct {
 }
 
 type ChannelMessage struct {
-	ID        string         `json:"id"`
-	ChannelID string         `json:"channel_id"`
-	ThreadID  string         `json:"thread_id,omitempty"`
-	Direction string         `json:"direction"`
-	Source    string         `json:"source"`
-	Text      string         `json:"text"`
-	Payload   map[string]any `json:"payload,omitempty"`
-	Timestamp string         `json:"timestamp"`
+	ID          string         `json:"id"`
+	WorkspaceID string         `json:"workspace_id,omitempty"`
+	ChannelID   string         `json:"channel_id"`
+	ThreadID    string         `json:"thread_id,omitempty"`
+	Direction   string         `json:"direction"`
+	Source      string         `json:"source"`
+	Text        string         `json:"text"`
+	Payload     map[string]any `json:"payload,omitempty"`
+	Timestamp   string         `json:"timestamp"`
 }
 
 type BrowserState struct {
@@ -131,6 +132,7 @@ type RuntimeOptions struct {
 	Enabled                              bool
 	WorkspaceDir                         string
 	SessionStore                         *session.Store
+	SessionStoreForWorkspace             func(workspaceID string) *session.Store
 	RunPrompt                            func(ctx context.Context, runLabel string, prompt string) (string, error)
 	Executors                            []AgentExecutor
 	DefaultAgent                         string
@@ -468,7 +470,8 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 	if prompt == "" {
 		return Run{}, fmt.Errorf("prompt is required")
 	}
-	if r.opts.SessionStore == nil {
+	sessionStore := r.sessionStoreForWorkspace(req.WorkspaceID)
+	if sessionStore == nil {
 		return Run{}, fmt.Errorf("session store is not configured")
 	}
 	selectedAgent, executor, err := r.resolveExecutor(req.Agent)
@@ -491,13 +494,13 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 		if title == "" {
 			title = "chat"
 		}
-		s, err := r.opts.SessionStore.Create(title)
+		s, err := sessionStore.Create(title)
 		if err != nil {
 			return Run{}, fmt.Errorf("create session: %w", err)
 		}
 		sessionID = s.ID
 	} else {
-		if _, err := r.opts.SessionStore.Get(sessionID); err != nil {
+		if _, err := sessionStore.Get(sessionID); err != nil {
 			return Run{}, fmt.Errorf("get session: %w", err)
 		}
 	}
@@ -568,7 +571,7 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	r.mu.Unlock()
 	r.persistSnapshot()
 
-	_ = r.appendSessionMessage(state.run.SessionID, "user", state.run.Prompt, r.nowFn().UTC())
+	_ = r.appendSessionMessage(state.run.WorkspaceID, state.run.SessionID, "user", state.run.Prompt, r.nowFn().UTC())
 	var (
 		resp string
 		err  error
@@ -585,7 +588,7 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	if err == nil && ctx.Err() == nil {
 		assistant := strings.TrimSpace(resp)
 		if assistant != "" {
-			_ = r.appendSessionMessage(state.run.SessionID, "assistant", assistant, r.nowFn().UTC())
+			_ = r.appendSessionMessage(state.run.WorkspaceID, state.run.SessionID, "assistant", assistant, r.nowFn().UTC())
 		}
 	}
 
@@ -621,18 +624,19 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	r.persistSnapshot()
 }
 
-func (r *Runtime) appendSessionMessage(sessionID, role, content string, ts time.Time) error {
-	if r == nil || r.opts.SessionStore == nil {
+func (r *Runtime) appendSessionMessage(workspaceID, sessionID, role, content string, ts time.Time) error {
+	sessionStore := r.sessionStoreForWorkspace(workspaceID)
+	if r == nil || sessionStore == nil {
 		return nil
 	}
 	if strings.TrimSpace(sessionID) == "" || strings.TrimSpace(content) == "" {
 		return nil
 	}
-	path := r.opts.SessionStore.TranscriptPath(sessionID)
+	path := sessionStore.TranscriptPath(sessionID)
 	if err := session.AppendMessage(path, session.Message{Role: role, Content: content, Timestamp: ts.UTC()}); err != nil {
 		return err
 	}
-	return r.opts.SessionStore.Touch(sessionID, ts.UTC())
+	return sessionStore.Touch(sessionID, ts.UTC())
 }
 
 func (r *Runtime) getRunState(runID string) (*runState, bool) {
@@ -643,6 +647,18 @@ func (r *Runtime) getRunState(runID string) (*runState, bool) {
 	defer r.mu.RUnlock()
 	state, ok := r.runs[strings.TrimSpace(runID)]
 	return state, ok
+}
+
+func (r *Runtime) sessionStoreForWorkspace(workspaceID string) *session.Store {
+	if r == nil {
+		return nil
+	}
+	if r.opts.SessionStoreForWorkspace != nil {
+		if resolved := r.opts.SessionStoreForWorkspace(normalizeWorkspaceID(workspaceID)); resolved != nil {
+			return resolved
+		}
+	}
+	return r.opts.SessionStore
 }
 
 func (r *Runtime) closeRunDoneLocked(state *runState) {
@@ -917,9 +933,14 @@ func normalizeWorkspaceID(workspaceID string) string {
 }
 
 func (r *Runtime) ReportsSummary() (ReportSummary, error) {
+	return r.ReportsSummaryByWorkspace(defaultWorkspaceID)
+}
+
+func (r *Runtime) ReportsSummaryByWorkspace(workspaceID string) (ReportSummary, error) {
 	if r == nil || !r.opts.Enabled {
 		return ReportSummary{}, fmt.Errorf("gateway runtime is disabled")
 	}
+	targetWorkspaceID := normalizeWorkspaceID(workspaceID)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	report := ReportSummary{
@@ -933,6 +954,9 @@ func (r *Runtime) ReportsSummary() (ReportSummary, error) {
 		if state == nil {
 			continue
 		}
+		if normalizeWorkspaceID(state.run.WorkspaceID) != targetWorkspaceID {
+			continue
+		}
 		report.RunsTotal++
 		key := strings.TrimSpace(string(state.run.Status))
 		if key == "" {
@@ -943,21 +967,32 @@ func (r *Runtime) ReportsSummary() (ReportSummary, error) {
 			report.RunsActive++
 		}
 	}
-	report.ChannelsTotal = len(r.channelMsgs)
 	for _, messages := range r.channelMsgs {
-		report.MessagesTotal += len(messages)
+		workspaceMessages := 0
 		for _, msg := range messages {
+			if normalizeWorkspaceID(msg.WorkspaceID) != targetWorkspaceID {
+				continue
+			}
+			workspaceMessages++
+			report.MessagesTotal++
 			source := strings.TrimSpace(msg.Source)
 			if source == "" {
 				source = "unknown"
 			}
 			report.MessagesBySource[source]++
 		}
+		if workspaceMessages > 0 {
+			report.ChannelsTotal++
+		}
 	}
 	return report, nil
 }
 
 func (r *Runtime) ReportsRuns(limit int) (ReportRuns, error) {
+	return r.ReportsRunsByWorkspace(defaultWorkspaceID, limit)
+}
+
+func (r *Runtime) ReportsRunsByWorkspace(workspaceID string, limit int) (ReportRuns, error) {
 	if r == nil || !r.opts.Enabled {
 		return ReportRuns{}, fmt.Errorf("gateway runtime is disabled")
 	}
@@ -967,7 +1002,7 @@ func (r *Runtime) ReportsRuns(limit int) (ReportRuns, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	runs := r.List(limit)
+	runs := r.ListByWorkspace(workspaceID, limit)
 	return ReportRuns{
 		GeneratedAt:    r.nowFn().UTC().Format(time.RFC3339),
 		ArchiveEnabled: true,
@@ -977,6 +1012,10 @@ func (r *Runtime) ReportsRuns(limit int) (ReportRuns, error) {
 }
 
 func (r *Runtime) ReportsChannels(limit int) (ReportChannels, error) {
+	return r.ReportsChannelsByWorkspace(defaultWorkspaceID, limit)
+}
+
+func (r *Runtime) ReportsChannelsByWorkspace(workspaceID string, limit int) (ReportChannels, error) {
 	if r == nil || !r.opts.Enabled {
 		return ReportChannels{}, fmt.Errorf("gateway runtime is disabled")
 	}
@@ -986,15 +1025,30 @@ func (r *Runtime) ReportsChannels(limit int) (ReportChannels, error) {
 	if limit <= 0 {
 		limit = 50
 	}
+	targetWorkspaceID := normalizeWorkspaceID(workspaceID)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make(map[string][]ChannelMessage, len(r.channelMsgs))
-	for channelID, messages := range r.channelMsgs {
-		copied := append([]ChannelMessage(nil), messages...)
-		if len(copied) > limit {
-			copied = copied[len(copied)-limit:]
+	for _, messages := range r.channelMsgs {
+		filtered := make([]ChannelMessage, 0, len(messages))
+		channelID := ""
+		for _, msg := range messages {
+			if normalizeWorkspaceID(msg.WorkspaceID) != targetWorkspaceID {
+				continue
+			}
+			channelID = strings.TrimSpace(msg.ChannelID)
+			filtered = append(filtered, msg)
 		}
-		out[channelID] = copied
+		if len(filtered) == 0 {
+			continue
+		}
+		if len(filtered) > limit {
+			filtered = filtered[len(filtered)-limit:]
+		}
+		if channelID == "" {
+			channelID = "unknown"
+		}
+		out[channelID] = filtered
 	}
 	return ReportChannels{
 		GeneratedAt:    r.nowFn().UTC().Format(time.RFC3339),

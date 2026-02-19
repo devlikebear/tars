@@ -161,6 +161,13 @@ func (s *Store) indexPath() string {
 	return filepath.Join(s.dir, "sessions.json")
 }
 
+func (s *Store) WorkspaceDir() string {
+	if s == nil {
+		return ""
+	}
+	return filepath.Dir(s.dir)
+}
+
 func (s *Store) loadIndex() (map[string]Session, error) {
 	raw, err := os.ReadFile(s.indexPath())
 	if err != nil {

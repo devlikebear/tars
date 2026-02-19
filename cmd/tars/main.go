@@ -382,6 +382,10 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		}
 		fmt.Fprintln(stdout, "SYSTEM > runs")
 		for _, r := range runs {
+			if strings.TrimSpace(r.WorkspaceID) != "" {
+				fmt.Fprintf(stdout, "- %s status=%s agent=%s session=%s workspace=%s\n", r.RunID, r.Status, r.Agent, r.SessionID, r.WorkspaceID)
+				continue
+			}
 			fmt.Fprintf(stdout, "- %s status=%s agent=%s session=%s\n", r.RunID, r.Status, r.Agent, r.SessionID)
 		}
 		return true, session, nil
@@ -393,7 +397,11 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		if err != nil {
 			return true, session, err
 		}
-		fmt.Fprintf(stdout, "SYSTEM > run %s status=%s agent=%s session=%s\n", run.RunID, run.Status, run.Agent, run.SessionID)
+		fmt.Fprintf(stdout, "SYSTEM > run %s status=%s agent=%s session=%s", run.RunID, run.Status, run.Agent, run.SessionID)
+		if strings.TrimSpace(run.WorkspaceID) != "" {
+			fmt.Fprintf(stdout, " workspace=%s", run.WorkspaceID)
+		}
+		fmt.Fprintln(stdout)
 		if strings.TrimSpace(run.Response) != "" {
 			fmt.Fprintf(stdout, "response: %s\n", run.Response)
 		}
@@ -512,6 +520,10 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			}
 			fmt.Fprintln(stdout, "SYSTEM > gateway runs")
 			for _, run := range report.Runs {
+				if strings.TrimSpace(run.WorkspaceID) != "" {
+					fmt.Fprintf(stdout, "- %s status=%s agent=%s session=%s workspace=%s\n", run.RunID, run.Status, run.Agent, run.SessionID, run.WorkspaceID)
+					continue
+				}
 				fmt.Fprintf(stdout, "- %s status=%s agent=%s session=%s\n", run.RunID, run.Status, run.Agent, run.SessionID)
 			}
 			return true, session, nil
@@ -534,6 +546,14 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			}
 			fmt.Fprintln(stdout, "SYSTEM > gateway channel messages")
 			for channelID, messages := range report.Messages {
+				workspace := ""
+				if len(messages) > 0 {
+					workspace = strings.TrimSpace(messages[0].WorkspaceID)
+				}
+				if workspace != "" {
+					fmt.Fprintf(stdout, "- %s messages=%d workspace=%s\n", channelID, len(messages), workspace)
+					continue
+				}
 				fmt.Fprintf(stdout, "- %s messages=%d\n", channelID, len(messages))
 			}
 			return true, session, nil

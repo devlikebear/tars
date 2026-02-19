@@ -1,6 +1,7 @@
 package serverauth
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -123,6 +124,13 @@ func TestMiddleware_SetsWorkspaceIDFromHeader(t *testing.T) {
 	}
 }
 
+func TestWithWorkspaceID(t *testing.T) {
+	ctx := WithWorkspaceID(context.Background(), "ws-test")
+	if got := WorkspaceIDFromContext(ctx); got != "ws-test" {
+		t.Fatalf("expected ws-test, got %q", got)
+	}
+}
+
 func TestMiddleware_AdminPathRejectsUserToken(t *testing.T) {
 	mw := NewMiddleware(Options{
 		Mode:        ModeRequired,
@@ -220,10 +228,10 @@ func TestMiddleware_AdminPathWithoutConfiguredTokenReturnsUnauthorized(t *testin
 
 func TestMiddleware_RequireWorkspaceForAuthenticatedRequest(t *testing.T) {
 	mw := NewMiddleware(Options{
-		Mode:                           ModeRequired,
-		UserToken:                      "user-token",
-		WorkspaceHeader:                "Tars-Workspace-Id",
-		RequireWorkspaceForAuthorized:  true,
+		Mode:                          ModeRequired,
+		UserToken:                     "user-token",
+		WorkspaceHeader:               "Tars-Workspace-Id",
+		RequireWorkspaceForAuthorized: true,
 	}, io.Discard)
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -242,10 +250,10 @@ func TestMiddleware_RequireWorkspaceForAuthenticatedRequest(t *testing.T) {
 
 func TestMiddleware_RequireWorkspaceForAuthenticatedRequest_AllowsWithHeader(t *testing.T) {
 	mw := NewMiddleware(Options{
-		Mode:                           ModeRequired,
-		UserToken:                      "user-token",
-		WorkspaceHeader:                "Tars-Workspace-Id",
-		RequireWorkspaceForAuthorized:  true,
+		Mode:                          ModeRequired,
+		UserToken:                     "user-token",
+		WorkspaceHeader:               "Tars-Workspace-Id",
+		RequireWorkspaceForAuthorized: true,
 	}, io.Discard)
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -260,5 +268,40 @@ func TestMiddleware_RequireWorkspaceForAuthenticatedRequest_AllowsWithHeader(t *
 
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMiddleware_WorkspaceAllowlistByRole(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:                          ModeRequired,
+		UserToken:                     "user-token",
+		AdminToken:                    "admin-token",
+		WorkspaceHeader:               "Tars-Workspace-Id",
+		RequireWorkspaceForAuthorized: true,
+		UserWorkspaceAllowlist:        []string{"ws-user"},
+		AdminWorkspaceAllowlist:       []string{"ws-admin"},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	reqUser := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	reqUser.RemoteAddr = "127.0.0.1:1234"
+	reqUser.Header.Set("Authorization", "Bearer user-token")
+	reqUser.Header.Set("Tars-Workspace-Id", "ws-other")
+	recUser := httptest.NewRecorder()
+	h.ServeHTTP(recUser, reqUser)
+	if recUser.Code != http.StatusForbidden {
+		t.Fatalf("expected user to be forbidden for workspace mismatch, got %d body=%q", recUser.Code, recUser.Body.String())
+	}
+
+	reqAdmin := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	reqAdmin.RemoteAddr = "127.0.0.1:1234"
+	reqAdmin.Header.Set("Authorization", "Bearer admin-token")
+	reqAdmin.Header.Set("Tars-Workspace-Id", "ws-admin")
+	recAdmin := httptest.NewRecorder()
+	h.ServeHTTP(recAdmin, reqAdmin)
+	if recAdmin.Code != http.StatusNoContent {
+		t.Fatalf("expected admin to pass for allowed workspace, got %d body=%q", recAdmin.Code, recAdmin.Body.String())
 	}
 }

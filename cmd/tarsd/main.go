@@ -256,6 +256,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					Enabled:                              cfg.GatewayEnabled,
 					WorkspaceDir:                         cfg.WorkspaceDir,
 					SessionStore:                         sessionStore,
+					SessionStoreForWorkspace:             newWorkspaceSessionStoreResolver(cfg.WorkspaceDir, sessionStore),
 					RunPrompt:                            runPrompt,
 					Executors:                            nil,
 					DefaultAgent:                         strings.TrimSpace(cfg.GatewayDefaultAgent),

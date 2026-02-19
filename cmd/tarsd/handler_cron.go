@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/rs/zerolog"
 )
 
@@ -32,11 +34,42 @@ func newCronAPIHandlerWithRunner(
 	logger zerolog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
+	baseWorkspaceDir := ""
+	runHistoryLimit := 0
+	var storeCache sync.Map
+	if store != nil {
+		baseWorkspaceDir = store.WorkspaceDir()
+		runHistoryLimit = store.RunHistoryLimit()
+		storeCache.Store(defaultWorkspaceID, store)
+	}
+	resolveStore := func(r *http.Request) (*cron.Store, string, error) {
+		workspaceID := workspaceIDFromRequest(r)
+		if value, ok := storeCache.Load(workspaceID); ok {
+			if resolved, ok := value.(*cron.Store); ok && resolved != nil {
+				return resolved, workspaceID, nil
+			}
+		}
+		if strings.TrimSpace(baseWorkspaceDir) == "" {
+			return store, workspaceID, nil
+		}
+		reqStore, _, workspaceID, err := resolveCronStoreForRequest(baseWorkspaceDir, runHistoryLimit, r)
+		if err != nil {
+			return nil, "", err
+		}
+		storeCache.Store(workspaceID, reqStore)
+		return reqStore, workspaceID, nil
+	}
 
 	mux.HandleFunc("/v1/cron/jobs", func(w http.ResponseWriter, r *http.Request) {
+		reqStore, _, err := resolveStore(r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace cron store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
 		switch r.Method {
 		case http.MethodGet:
-			jobs, err := store.List()
+			jobs, err := reqStore.List()
 			if err != nil {
 				logger.Error().Err(err).Msg("list cron jobs failed")
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list cron jobs failed"})
@@ -65,7 +98,7 @@ func newCronAPIHandlerWithRunner(
 				enabled = *req.Enabled
 				hasEnable = true
 			}
-			job, err := store.CreateWithOptions(cron.CreateInput{
+			job, err := reqStore.CreateWithOptions(cron.CreateInput{
 				Name:              req.Name,
 				Prompt:            req.Prompt,
 				Schedule:          req.Schedule,
@@ -94,6 +127,12 @@ func newCronAPIHandlerWithRunner(
 	})
 
 	mux.HandleFunc("/v1/cron/jobs/", func(w http.ResponseWriter, r *http.Request) {
+		reqStore, workspaceID, err := resolveStore(r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace cron store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
 		pathRemainder := strings.TrimPrefix(r.URL.Path, "/v1/cron/jobs/")
 		pathParts := strings.Split(pathRemainder, "/")
 		if len(pathParts) < 1 || pathParts[0] == "" {
@@ -104,7 +143,7 @@ func newCronAPIHandlerWithRunner(
 		if len(pathParts) == 1 {
 			switch r.Method {
 			case http.MethodGet:
-				job, err := store.Get(jobID)
+				job, err := reqStore.Get(jobID)
 				if err != nil {
 					if strings.Contains(err.Error(), "job not found") {
 						writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
@@ -131,7 +170,7 @@ func newCronAPIHandlerWithRunner(
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 					return
 				}
-				job, err := store.Update(jobID, cron.UpdateInput{
+				job, err := reqStore.Update(jobID, cron.UpdateInput{
 					Name:           req.Name,
 					Prompt:         req.Prompt,
 					Schedule:       req.Schedule,
@@ -156,7 +195,7 @@ func newCronAPIHandlerWithRunner(
 				}
 				writeJSON(w, http.StatusOK, job)
 			case http.MethodDelete:
-				if err := store.Delete(jobID); err != nil {
+				if err := reqStore.Delete(jobID); err != nil {
 					if strings.Contains(err.Error(), "job not found") {
 						writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
 						return
@@ -177,7 +216,7 @@ func newCronAPIHandlerWithRunner(
 					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 					return
 				}
-				if _, err := store.Get(jobID); err != nil {
+				if _, err := reqStore.Get(jobID); err != nil {
 					if strings.Contains(err.Error(), "job not found") {
 						writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
 						return
@@ -195,7 +234,7 @@ func newCronAPIHandlerWithRunner(
 					}
 					limit = v
 				}
-				runs, err := store.ListRuns(jobID, limit)
+				runs, err := reqStore.ListRuns(jobID, limit)
 				if err != nil {
 					logger.Error().Err(err).Str("job_id", jobID).Msg("list cron runs failed")
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list cron runs failed"})
@@ -215,7 +254,7 @@ func newCronAPIHandlerWithRunner(
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cron runner is not configured"})
 			return
 		}
-		job, err := store.Get(jobID)
+		job, err := reqStore.Get(jobID)
 		if err != nil {
 			if strings.Contains(err.Error(), "job not found") {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
@@ -225,14 +264,15 @@ func newCronAPIHandlerWithRunner(
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get cron job failed"})
 			return
 		}
-		if !store.TryStartRun(jobID) {
+		if !reqStore.TryStartRun(jobID) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "job is already running"})
 			return
 		}
-		defer store.FinishRun(jobID)
+		defer reqStore.FinishRun(jobID)
 
-		response, err := runJob(r.Context(), job)
-		_, _ = store.MarkRunResult(jobID, time.Now().UTC(), response, err)
+		runCtx := serverauth.WithWorkspaceID(r.Context(), workspaceID)
+		response, err := runJob(runCtx, job)
+		_, _ = reqStore.MarkRunResult(jobID, time.Now().UTC(), response, err)
 		if err != nil {
 			logger.Error().Err(err).Str("job_id", jobID).Msg("run cron job failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "run cron job failed"})

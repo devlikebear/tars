@@ -141,18 +141,19 @@ type agentDescriptor struct {
 }
 
 type agentRun struct {
-	RunID       string `json:"run_id"`
-	SessionID   string `json:"session_id,omitempty"`
-	Agent       string `json:"agent,omitempty"`
-	Status      string `json:"status"`
-	Accepted    bool   `json:"accepted"`
-	Response    string `json:"response,omitempty"`
-	Error       string `json:"error,omitempty"`
+	RunID            string `json:"run_id"`
+	WorkspaceID      string `json:"workspace_id,omitempty"`
+	SessionID        string `json:"session_id,omitempty"`
+	Agent            string `json:"agent,omitempty"`
+	Status           string `json:"status"`
+	Accepted         bool   `json:"accepted"`
+	Response         string `json:"response,omitempty"`
+	Error            string `json:"error,omitempty"`
 	DiagnosticCode   string `json:"diagnostic_code,omitempty"`
 	DiagnosticReason string `json:"diagnostic_reason,omitempty"`
-	CreatedAt   string `json:"created_at,omitempty"`
-	StartedAt   string `json:"started_at,omitempty"`
-	CompletedAt string `json:"completed_at,omitempty"`
+	CreatedAt        string `json:"created_at,omitempty"`
+	StartedAt        string `json:"started_at,omitempty"`
+	CompletedAt      string `json:"completed_at,omitempty"`
 }
 
 type gatewayStatus struct {
@@ -198,12 +199,13 @@ type gatewayReportRuns struct {
 }
 
 type channelReportMessage struct {
-	ID        string `json:"id"`
-	ChannelID string `json:"channel_id"`
-	Source    string `json:"source"`
-	Direction string `json:"direction"`
-	Text      string `json:"text"`
-	Timestamp string `json:"timestamp"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	ChannelID   string `json:"channel_id"`
+	Source      string `json:"source"`
+	Direction   string `json:"direction"`
+	Text        string `json:"text"`
+	Timestamp   string `json:"timestamp"`
 }
 
 type gatewayReportChannels struct {

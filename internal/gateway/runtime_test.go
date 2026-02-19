@@ -698,7 +698,7 @@ func TestRuntimePersistence_TrimsRunsAndChannelMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read channels snapshot: %v", err)
 	}
-	msgs := channels["general"]
+	msgs := channels[workspaceChannelKey(defaultWorkspaceID, "general")]
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 persisted channel messages, got %d", len(msgs))
 	}

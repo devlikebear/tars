@@ -655,6 +655,62 @@ func TestGatewayAPIHandler_ReportsSummary(t *testing.T) {
 	}
 }
 
+func TestGatewayAPIHandler_ReportsSummaryWorkspaceScoped(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	baseAgentHandler := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
+	agentHandler := applyAPIMiddleware(config.Config{
+		APIAuthMode:        "off",
+		APIWorkspaceHeader: "Tars-Workspace-Id",
+	}, zerolog.New(io.Discard), baseAgentHandler, io.Discard)
+	baseGatewayHandler := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+	gatewayHandler := applyAPIMiddleware(config.Config{
+		APIAuthMode:        "off",
+		APIWorkspaceHeader: "Tars-Workspace-Id",
+	}, zerolog.New(io.Discard), baseGatewayHandler, io.Discard)
+
+	spawn := func(workspaceID, message string) {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{
+			"message": message,
+			"agent":   "default",
+		})
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/agent/runs", bytes.NewReader(body))
+		req.Header.Set("Tars-Workspace-Id", workspaceID)
+		agentHandler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("spawn expected 202, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	spawn("ws-a", "hello-a")
+	spawn("ws-b", "hello-b")
+
+	summaryFor := func(workspaceID string) map[string]any {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/summary", nil)
+		req.Header.Set("Tars-Workspace-Id", workspaceID)
+		gatewayHandler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("summary expected 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode summary payload: %v", err)
+		}
+		return payload
+	}
+
+	summaryA := summaryFor("ws-a")
+	if runsTotal, _ := summaryA["runs_total"].(float64); int(runsTotal) != 1 {
+		t.Fatalf("expected ws-a runs_total=1, payload=%+v", summaryA)
+	}
+	summaryB := summaryFor("ws-b")
+	if runsTotal, _ := summaryB["runs_total"].(float64); int(runsTotal) != 1 {
+		t.Fatalf("expected ws-b runs_total=1, payload=%+v", summaryB)
+	}
+}
+
 func TestGatewayAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
 	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)

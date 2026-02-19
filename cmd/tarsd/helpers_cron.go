@@ -8,6 +8,7 @@ import (
 
 	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -32,17 +33,28 @@ func newCronJobRunnerWithNotify(
 		return nil
 	}
 	return func(ctx context.Context, job cron.Job) (string, error) {
+		targetWorkspaceDir := strings.TrimSpace(workspaceDir)
+		targetStore := store
+		workspaceID := normalizeWorkspaceID(serverauth.WorkspaceIDFromContext(ctx))
+		if workspaceID != defaultWorkspaceID && targetWorkspaceDir != "" {
+			targetWorkspaceDir = resolveWorkspaceDir(targetWorkspaceDir, workspaceID)
+			if err := memory.EnsureWorkspace(targetWorkspaceDir); err != nil {
+				return "", err
+			}
+			targetStore = session.NewStore(targetWorkspaceDir)
+		}
+
 		promptText := strings.TrimSpace(job.Prompt)
 		if payload := strings.TrimSpace(string(job.Payload)); payload != "" {
 			promptText += "\n\nCRON_PAYLOAD_JSON:\n" + payload
 		}
 
-		targetSessionID, explicitTarget, err := resolveCronTargetSessionID(store, job.SessionTarget)
+		targetSessionID, explicitTarget, err := resolveCronTargetSessionID(targetStore, job.SessionTarget)
 		if err != nil {
 			return "", err
 		}
 		if targetSessionID != "" {
-			contextText, err := sessionContextByID(store, targetSessionID, 6)
+			contextText, err := sessionContextByID(targetStore, targetSessionID, 6)
 			if err != nil {
 				return "", err
 			}
@@ -64,7 +76,7 @@ func newCronJobRunnerWithNotify(
 			}
 			return "", err
 		}
-		if err := deliverCronResult(workspaceDir, store, job, targetSessionID, explicitTarget, response, time.Now().UTC(), logger); err != nil {
+		if err := deliverCronResult(targetWorkspaceDir, targetStore, job, targetSessionID, explicitTarget, response, time.Now().UTC(), logger); err != nil {
 			if emit != nil {
 				evt := newNotificationEvent("cron", "error", "Cron delivery failed", trimForMemory(err.Error(), 240))
 				evt.JobID = strings.TrimSpace(job.ID)

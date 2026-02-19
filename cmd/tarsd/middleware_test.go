@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -210,11 +211,12 @@ func TestApplyAPIMiddleware_StatusIncludesAuthMetadata(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode status response: %v", err)
 	}
-	if body.WorkspaceDir != root {
-		t.Fatalf("expected workspace_dir %q, got %q", root, body.WorkspaceDir)
+	expectedWorkspaceDir := filepath.Join(root, "_workspaces", "ws-local")
+	if body.WorkspaceDir != expectedWorkspaceDir {
+		t.Fatalf("expected workspace_dir %q, got %q", expectedWorkspaceDir, body.WorkspaceDir)
 	}
-	if body.SessionCount != 1 {
-		t.Fatalf("expected session_count 1, got %d", body.SessionCount)
+	if body.SessionCount != 0 {
+		t.Fatalf("expected session_count 0 for workspace ws-local, got %d", body.SessionCount)
 	}
 	if body.WorkspaceID != "ws-local" {
 		t.Fatalf("expected workspace_id ws-local, got %q", body.WorkspaceID)
@@ -242,5 +244,29 @@ func TestApplyAPIMiddleware_AuthenticatedRequestRequiresWorkspaceHeader(t *testi
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for missing workspace header, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApplyAPIMiddleware_RejectsWorkspaceOutsideRoleAllowlist(t *testing.T) {
+	cfg := config.Config{
+		APIAuthMode:          "required",
+		APIUserToken:         "user-token",
+		APIAdminToken:        "admin-token",
+		APIWorkspaceHeader:   "Tars-Workspace-Id",
+		APIUserWorkspaceIDs:  []string{"ws-user"},
+		APIAdminWorkspaceIDs: []string{"ws-admin"},
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	reqUser := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	reqUser.RemoteAddr = "192.0.2.10:5555"
+	reqUser.Header.Set("Authorization", "Bearer user-token")
+	reqUser.Header.Set("Tars-Workspace-Id", "ws-other")
+	recUser := httptest.NewRecorder()
+	h.ServeHTTP(recUser, reqUser)
+	if recUser.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for user workspace mismatch, got %d body=%q", recUser.Code, recUser.Body.String())
 	}
 }

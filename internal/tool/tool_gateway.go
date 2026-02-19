@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tarsncase/internal/gateway"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 )
 
 func NewMessageTool(runtime *gateway.Runtime, enabled bool) Tool {
@@ -25,7 +26,7 @@ func NewMessageTool(runtime *gateway.Runtime, enabled bool) Tool {
   "required":["action","channel_id"],
   "additionalProperties":false
 }`),
-		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
+		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if !enabled {
 				return jsonTextResult(map[string]any{"message": "message tool is disabled"}, true), nil
 			}
@@ -42,21 +43,22 @@ func NewMessageTool(runtime *gateway.Runtime, enabled bool) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
+			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
 			switch strings.TrimSpace(input.Action) {
 			case "send":
-				msg, err := runtime.MessageSend(input.ChannelID, input.ThreadID, input.Text)
+				msg, err := runtime.MessageSendByWorkspace(workspaceID, input.ChannelID, input.ThreadID, input.Text)
 				if err != nil {
 					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
 				return jsonTextResult(msg, false), nil
 			case "read":
-				items, err := runtime.MessageRead(input.ChannelID, input.Limit)
+				items, err := runtime.MessageReadByWorkspace(workspaceID, input.ChannelID, input.Limit)
 				if err != nil {
 					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
 				return jsonTextResult(map[string]any{"count": len(items), "messages": items}, false), nil
 			case "thread_reply":
-				msg, err := runtime.ThreadReply(input.ChannelID, input.ThreadID, input.Text)
+				msg, err := runtime.ThreadReplyByWorkspace(workspaceID, input.ChannelID, input.ThreadID, input.Text)
 				if err != nil {
 					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
 				}

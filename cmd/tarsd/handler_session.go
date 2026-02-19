@@ -16,11 +16,31 @@ import (
 
 func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
+	baseWorkspaceDir := ""
+	if store != nil {
+		baseWorkspaceDir = store.WorkspaceDir()
+	}
+	resolveStore := func(r *http.Request) (*session.Store, error) {
+		if strings.TrimSpace(baseWorkspaceDir) == "" {
+			return store, nil
+		}
+		resolvedStore, _, _, err := resolveSessionStoreForRequest(baseWorkspaceDir, store, r)
+		if err != nil {
+			return nil, err
+		}
+		return resolvedStore, nil
+	}
 
 	mux.HandleFunc("/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
+		reqStore, err := resolveStore(r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace session store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
 		switch r.Method {
 		case http.MethodGet:
-			sessions, err := store.List()
+			sessions, err := reqStore.List()
 			if err != nil {
 				logger.Error().Err(err).Msg("list sessions failed")
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list sessions failed"})
@@ -40,7 +60,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
 				return
 			}
-			sess, err := store.Create(title)
+			sess, err := reqStore.Create(title)
 			if err != nil {
 				logger.Error().Err(err).Msg("create session failed")
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create session failed"})
@@ -58,7 +78,13 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 			return
 		}
 
-		sessions, err := store.List()
+		reqStore, err := resolveStore(r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace session store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
+		sessions, err := reqStore.List()
 		if err != nil {
 			logger.Error().Err(err).Msg("search sessions failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "search sessions failed"})
@@ -77,6 +103,12 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 	})
 
 	mux.HandleFunc("/v1/sessions/", func(w http.ResponseWriter, r *http.Request) {
+		reqStore, err := resolveStore(r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace session store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
 		pathRemainder := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 		pathParts := strings.Split(pathRemainder, "/")
 		sessionID := pathParts[0]
@@ -89,7 +121,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 		case len(pathParts) == 1:
 			switch r.Method {
 			case http.MethodGet:
-				sess, err := store.Get(sessionID)
+				sess, err := reqStore.Get(sessionID)
 				if err != nil {
 					if strings.Contains(err.Error(), "session not found") {
 						writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
@@ -101,7 +133,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				}
 				writeJSON(w, http.StatusOK, sess)
 			case http.MethodDelete:
-				if err := store.Delete(sessionID); err != nil {
+				if err := reqStore.Delete(sessionID); err != nil {
 					logger.Error().Err(err).Str("session_id", sessionID).Msg("delete session failed")
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete session failed"})
 					return
@@ -115,7 +147,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			if _, err := store.Get(sessionID); err != nil {
+			if _, err := reqStore.Get(sessionID); err != nil {
 				if strings.Contains(err.Error(), "session not found") {
 					writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 					return
@@ -124,7 +156,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get session failed"})
 				return
 			}
-			messages, err := session.ReadMessages(store.TranscriptPath(sessionID))
+			messages, err := session.ReadMessages(reqStore.TranscriptPath(sessionID))
 			if err != nil {
 				logger.Error().Err(err).Str("session_id", sessionID).Msg("read session history failed")
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read session history failed"})
@@ -137,7 +169,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				return
 			}
 
-			sess, err := store.Get(sessionID)
+			sess, err := reqStore.Get(sessionID)
 			if err != nil {
 				if strings.Contains(err.Error(), "session not found") {
 					writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
@@ -148,7 +180,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				return
 			}
 
-			messages, err := session.ReadMessages(store.TranscriptPath(sessionID))
+			messages, err := session.ReadMessages(reqStore.TranscriptPath(sessionID))
 			if err != nil {
 				logger.Error().Err(err).Str("session_id", sessionID).Msg("read session history failed")
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read session history failed"})
@@ -181,7 +213,13 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerol
 			return
 		}
 
-		sessions, err := store.List()
+		reqStore, resolvedWorkspaceDir, workspaceID, err := resolveSessionStoreForRequest(workspaceDir, store, r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace session store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
+		sessions, err := reqStore.List()
 		if err != nil {
 			logger.Error().Err(err).Msg("list sessions failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -189,11 +227,9 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerol
 		}
 
 		body := map[string]any{
-			"workspace_dir": workspaceDir,
+			"workspace_dir": resolvedWorkspaceDir,
 			"session_count": len(sessions),
-		}
-		if workspaceID := serverauth.WorkspaceIDFromRequest(r); workspaceID != "" {
-			body["workspace_id"] = workspaceID
+			"workspace_id":  workspaceID,
 		}
 		if role := serverauth.RoleFromRequest(r); role != "" {
 			body["auth_role"] = role
@@ -241,7 +277,13 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.
 			return
 		}
 
-		if _, err := store.Get(sessionID); err != nil {
+		reqStore, resolvedWorkspaceDir, _, err := resolveSessionStoreForRequest(workspaceDir, store, r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace session store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
+		if _, err := reqStore.Get(sessionID); err != nil {
 			if strings.Contains(err.Error(), "session not found") {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 				return
@@ -252,7 +294,7 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.
 		}
 
 		now := time.Now().UTC()
-		result, err := compactWithMemoryFlush(workspaceDir, store.TranscriptPath(sessionID), sessionID, req.KeepRecent, req.KeepRecentTokens, client, now)
+		result, err := compactWithMemoryFlush(resolvedWorkspaceDir, reqStore.TranscriptPath(sessionID), sessionID, req.KeepRecent, req.KeepRecentTokens, client, now)
 		if err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("compact transcript failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compact failed"})

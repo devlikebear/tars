@@ -327,6 +327,25 @@ func TestLoad_AgentMaxIterationsFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoad_APIWorkspaceAllowlistFromEnv(t *testing.T) {
+	t.Setenv("API_USER_WORKSPACE_IDS_JSON", `["ws-user-a","ws-user-b"]`)
+	t.Setenv("API_ADMIN_WORKSPACE_IDS_JSON", `["ws-admin"]`)
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(cfg.APIUserWorkspaceIDs) != 2 {
+		t.Fatalf("expected 2 user workspace ids, got %+v", cfg.APIUserWorkspaceIDs)
+	}
+	if cfg.APIUserWorkspaceIDs[0] != "ws-user-a" || cfg.APIUserWorkspaceIDs[1] != "ws-user-b" {
+		t.Fatalf("unexpected user workspace ids: %+v", cfg.APIUserWorkspaceIDs)
+	}
+	if len(cfg.APIAdminWorkspaceIDs) != 1 || cfg.APIAdminWorkspaceIDs[0] != "ws-admin" {
+		t.Fatalf("unexpected admin workspace ids: %+v", cfg.APIAdminWorkspaceIDs)
+	}
+}
+
 func TestLoad_HeartbeatAndCronEnvOptions(t *testing.T) {
 	t.Setenv("HEARTBEAT_ACTIVE_HOURS", "09:00-18:00")
 	t.Setenv("HEARTBEAT_TIMEZONE", "Asia/Seoul")

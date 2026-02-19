@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/gateway"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 )
 
@@ -114,11 +115,13 @@ func NewSessionsSendTool(runtime *gateway.Runtime) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
+			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
 			run, err := runtime.Spawn(ctx, gateway.SpawnRequest{
-				SessionID: input.SessionID,
-				Title:     input.Title,
-				Prompt:    input.Message,
-				Agent:     input.Agent,
+				WorkspaceID: workspaceID,
+				SessionID:   input.SessionID,
+				Title:       input.Title,
+				Prompt:      input.Message,
+				Agent:       input.Agent,
 			})
 			if err != nil {
 				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
@@ -181,11 +184,13 @@ func NewSessionsSpawnTool(runtime *gateway.Runtime) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
+			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
 			run, err := runtime.Spawn(ctx, gateway.SpawnRequest{
-				SessionID: input.SessionID,
-				Title:     input.Title,
-				Prompt:    input.Message,
-				Agent:     input.Agent,
+				WorkspaceID: workspaceID,
+				SessionID:   input.SessionID,
+				Title:       input.Title,
+				Prompt:      input.Message,
+				Agent:       input.Agent,
 			})
 			if err != nil {
 				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
@@ -214,7 +219,7 @@ func NewSessionsRunsTool(runtime *gateway.Runtime) Tool {
   "required":["action"],
   "additionalProperties":false
 }`),
-		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
+		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
 				return jsonTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
 			}
@@ -226,16 +231,17 @@ func NewSessionsRunsTool(runtime *gateway.Runtime) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
+			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
 			switch strings.TrimSpace(input.Action) {
 			case "list":
-				runs := runtime.List(input.Limit)
+				runs := runtime.ListByWorkspace(workspaceID, input.Limit)
 				return jsonTextResult(map[string]any{"count": len(runs), "runs": runs}, false), nil
 			case "get":
 				runID := strings.TrimSpace(input.RunID)
 				if runID == "" {
 					return jsonTextResult(map[string]any{"message": "run_id is required"}, true), nil
 				}
-				run, ok := runtime.Get(runID)
+				run, ok := runtime.GetByWorkspace(workspaceID, runID)
 				if !ok {
 					return jsonTextResult(map[string]any{"message": "run not found"}, true), nil
 				}
@@ -245,7 +251,7 @@ func NewSessionsRunsTool(runtime *gateway.Runtime) Tool {
 				if runID == "" {
 					return jsonTextResult(map[string]any{"message": "run_id is required"}, true), nil
 				}
-				run, err := runtime.Cancel(runID)
+				run, err := runtime.CancelByWorkspace(workspaceID, runID)
 				if err != nil {
 					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
 				}

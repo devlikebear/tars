@@ -99,6 +99,23 @@ func NewStoreWithOptions(workspaceDir string, opts StoreOptions) *Store {
 	}
 }
 
+func (s *Store) WorkspaceDir() string {
+	if s == nil {
+		return ""
+	}
+	return filepath.Dir(s.dir)
+}
+
+func (s *Store) RunHistoryLimit() int {
+	if s == nil {
+		return defaultRunHistoryLimit
+	}
+	if s.runHistoryLimit <= 0 {
+		return defaultRunHistoryLimit
+	}
+	return s.runHistoryLimit
+}
+
 func (s *Store) List() ([]Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

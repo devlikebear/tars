@@ -84,7 +84,21 @@ func (r *Runtime) restoreSnapshotOnStartup() {
 	}
 
 	if len(channels) > 0 {
-		r.channelMsgs = trimChannels(channels, r.opts.GatewayChannelsMaxMessagesPerChannel)
+		normalizedChannels := make(map[string][]ChannelMessage, len(channels))
+		for rawKey, messages := range channels {
+			workspaceIDFromKey, channelIDFromKey := splitWorkspaceChannelKey(rawKey)
+			for _, item := range messages {
+				msg := item
+				msg.WorkspaceID = normalizeWorkspaceID(firstNonEmpty(msg.WorkspaceID, workspaceIDFromKey))
+				msg.ChannelID = strings.TrimSpace(firstNonEmpty(msg.ChannelID, channelIDFromKey))
+				if msg.ChannelID == "" {
+					continue
+				}
+				internalKey := workspaceChannelKey(msg.WorkspaceID, msg.ChannelID)
+				normalizedChannels[internalKey] = append(normalizedChannels[internalKey], msg)
+			}
+		}
+		r.channelMsgs = trimChannels(normalizedChannels, r.opts.GatewayChannelsMaxMessagesPerChannel)
 		for _, messages := range r.channelMsgs {
 			for _, msg := range messages {
 				if seq := parseIDSequence(msg.ID, "msg_"); seq > 0 {
@@ -103,6 +117,28 @@ func (r *Runtime) restoreSnapshotOnStartup() {
 		r.lastRestoreError = strings.Join(errText, "; ")
 	}
 	r.stateVersion++
+}
+
+func splitWorkspaceChannelKey(value string) (workspaceID string, channelID string) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return defaultWorkspaceID, ""
+	}
+	ws, ch, ok := strings.Cut(trimmed, ":")
+	if !ok {
+		return defaultWorkspaceID, trimmed
+	}
+	return normalizeWorkspaceID(ws), strings.TrimSpace(ch)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func parseIDSequence(value, prefix string) uint64 {
