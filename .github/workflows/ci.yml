@@ -3,6 +3,7 @@ name: ci
 on:
   push:
     branches:
+      - main
       - master
   pull_request:
 
@@ -17,6 +18,12 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      - name: Install gitleaks
+        run: go install github.com/gitleaks/gitleaks/v8@latest
+
+      - name: Run security scan
+        run: PATH="$(go env GOPATH)/bin:$PATH" make security-scan
 
       - name: Run tests
         run: make test

@@ -141,6 +141,18 @@ make test
 go test ./... -count=1
 ```
 
+## Security Scan
+
+```bash
+make security-scan
+```
+
+This runs:
+
+- `gitleaks` history scan
+- absolute local path leak check (e.g. `/Users/...`)
+- private key marker check in tracked files
+
 ## Notes
 
 - `cased` sentinel daemon was removed during simplification.
