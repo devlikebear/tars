@@ -310,7 +310,7 @@ func TestRuntimeClientRequestText_UsesJSONErrorPayload(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": "forbidden",
-			"code":  "workspace_forbidden",
+			"code":  "forbidden",
 		})
 	}))
 	defer server.Close()
@@ -321,11 +321,8 @@ func TestRuntimeClientRequestText_UsesJSONErrorPayload(t *testing.T) {
 		t.Fatalf("expected status request error")
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "workspace_forbidden") {
-		t.Fatalf("expected error to include code, got %q", msg)
-	}
 	if !strings.Contains(msg, "forbidden") {
-		t.Fatalf("expected error to include message, got %q", msg)
+		t.Fatalf("expected error to include code/message, got %q", msg)
 	}
 	if strings.Contains(msg, "{") || strings.Contains(msg, "}") {
 		t.Fatalf("expected parsed error message, got raw json: %q", msg)
@@ -356,7 +353,6 @@ func TestRuntimeClientWhoami(t *testing.T) {
 				"authenticated": true,
 				"auth_role":     "user",
 				"is_admin":      false,
-				"workspace_id":  "team-a",
 				"auth_mode":     "required",
 			})
 		default:
@@ -370,7 +366,7 @@ func TestRuntimeClientWhoami(t *testing.T) {
 	if err != nil {
 		t.Fatalf("whoami: %v", err)
 	}
-	if !out.Authenticated || out.AuthRole != "user" || out.WorkspaceID != "team-a" || out.AuthMode != "required" {
+	if !out.Authenticated || out.AuthRole != "user" || out.AuthMode != "required" {
 		t.Fatalf("unexpected whoami payload: %+v", out)
 	}
 }

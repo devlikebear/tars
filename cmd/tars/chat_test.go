@@ -69,8 +69,8 @@ func TestChatClientStream_HTTPErrorReturnsAPIError(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"code":    "workspace_id_required",
-			"message": "workspace id is required",
+			"code":    "invalid_request",
+			"message": "invalid request",
 		})
 	}))
 	defer server.Close()
@@ -87,7 +87,7 @@ func TestChatClientStream_HTTPErrorReturnsAPIError(t *testing.T) {
 	if apiErr.Status != http.StatusBadRequest {
 		t.Fatalf("expected status=400, got %d", apiErr.Status)
 	}
-	if strings.TrimSpace(apiErr.Code) != "workspace_id_required" {
-		t.Fatalf("expected code workspace_id_required, got %q", apiErr.Code)
+	if strings.TrimSpace(apiErr.Code) != "invalid_request" {
+		t.Fatalf("expected code invalid_request, got %q", apiErr.Code)
 	}
 }

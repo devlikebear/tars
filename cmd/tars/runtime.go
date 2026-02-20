@@ -72,7 +72,6 @@ type sessionMessage struct {
 type statusInfo struct {
 	WorkspaceDir string `json:"workspace_dir"`
 	SessionCount int    `json:"session_count"`
-	WorkspaceID  string `json:"workspace_id,omitempty"`
 	AuthRole     string `json:"auth_role,omitempty"`
 }
 
@@ -80,7 +79,6 @@ type whoamiInfo struct {
 	Authenticated bool   `json:"authenticated"`
 	AuthRole      string `json:"auth_role,omitempty"`
 	IsAdmin       bool   `json:"is_admin,omitempty"`
-	WorkspaceID   string `json:"workspace_id,omitempty"`
 	AuthMode      string `json:"auth_mode,omitempty"`
 }
 
@@ -185,7 +183,6 @@ type agentDescriptor struct {
 
 type agentRun struct {
 	RunID              string   `json:"run_id"`
-	WorkspaceID        string   `json:"workspace_id,omitempty"`
 	SessionID          string   `json:"session_id,omitempty"`
 	Agent              string   `json:"agent,omitempty"`
 	Status             string   `json:"status"`
@@ -248,7 +245,6 @@ type gatewayReportRuns struct {
 
 type channelReportMessage struct {
 	ID          string `json:"id"`
-	WorkspaceID string `json:"workspace_id,omitempty"`
 	ChannelID   string `json:"channel_id"`
 	Source      string `json:"source"`
 	Direction   string `json:"direction"`

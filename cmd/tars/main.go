@@ -225,14 +225,7 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		if err != nil {
 			return true, session, err
 		}
-		scope := strings.TrimSpace(status.WorkspaceID)
-		if scope == "" {
-			scope = "default"
-		}
-		fmt.Fprintf(stdout, "SYSTEM > workspace=%s sessions=%d scope=%s", status.WorkspaceDir, status.SessionCount, scope)
-		if strings.TrimSpace(status.WorkspaceID) != "" {
-			fmt.Fprintf(stdout, " workspace_id=%s", strings.TrimSpace(status.WorkspaceID))
-		}
+		fmt.Fprintf(stdout, "SYSTEM > workspace=%s sessions=%d", status.WorkspaceDir, status.SessionCount)
 		if strings.TrimSpace(status.AuthRole) != "" {
 			fmt.Fprintf(stdout, " auth_role=%s", status.AuthRole)
 		}
@@ -247,16 +240,12 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		if role == "" {
 			role = "anonymous"
 		}
-		scope := strings.TrimSpace(identity.WorkspaceID)
-		if scope == "" {
-			scope = "default"
-		}
 		mode := strings.TrimSpace(identity.AuthMode)
 		if mode == "" {
 			mode = "external-required"
 		}
-		fmt.Fprintf(stdout, "SYSTEM > authenticated=%t role=%s admin=%t workspace=%s mode=%s\n",
-			identity.Authenticated, role, identity.IsAdmin, scope, mode)
+		fmt.Fprintf(stdout, "SYSTEM > authenticated=%t role=%s admin=%t mode=%s\n",
+			identity.Authenticated, role, identity.IsAdmin, mode)
 		return true, session, nil
 	case "/health":
 		status, err := runtime.healthz(ctx)
@@ -404,12 +393,8 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			return left > right
 		})
 		fmt.Fprintln(stdout, "SYSTEM > runs")
-		fmt.Fprintln(stdout, "RUN_ID           STATUS      AGENT        SESSION          WORKSPACE       DIAG            BLOCKED")
+		fmt.Fprintln(stdout, "RUN_ID           STATUS      AGENT        SESSION          DIAG            BLOCKED")
 		for _, r := range runs {
-			workspace := strings.TrimSpace(r.WorkspaceID)
-			if workspace == "" {
-				workspace = "-"
-			}
 			diag := strings.TrimSpace(r.DiagnosticCode)
 			if diag == "" {
 				diag = "-"
@@ -418,8 +403,8 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			if blocked == "" {
 				blocked = "-"
 			}
-			fmt.Fprintf(stdout, "%-16s %-11s %-12s %-16s %-15s %-15s %s diag=%s blocked=%s\n",
-				r.RunID, r.Status, r.Agent, r.SessionID, workspace, diag, blocked, diag, blocked)
+			fmt.Fprintf(stdout, "%-16s %-11s %-12s %-16s %-15s %s diag=%s blocked=%s\n",
+				r.RunID, r.Status, r.Agent, r.SessionID, diag, blocked, diag, blocked)
 		}
 		return true, session, nil
 	case "/run":
@@ -430,11 +415,7 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 		if err != nil {
 			return true, session, err
 		}
-		fmt.Fprintf(stdout, "SYSTEM > run %s status=%s agent=%s session=%s", run.RunID, run.Status, run.Agent, run.SessionID)
-		if strings.TrimSpace(run.WorkspaceID) != "" {
-			fmt.Fprintf(stdout, " workspace=%s", run.WorkspaceID)
-		}
-		fmt.Fprintln(stdout)
+		fmt.Fprintf(stdout, "SYSTEM > run %s status=%s agent=%s session=%s\n", run.RunID, run.Status, run.Agent, run.SessionID)
 		if strings.TrimSpace(run.Response) != "" {
 			fmt.Fprintf(stdout, "response: %s\n", run.Response)
 		}
@@ -505,11 +486,9 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			if err != nil {
 				return true, session, err
 			}
-			scope := "default"
-			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d scope=%s runs_total=%d runs_active=%d agents=%d watch=%t persistence=%t runs_store=%t channels_store=%t restored_runs=%d restored_channels=%d reload_version=%d",
+			fmt.Fprintf(stdout, "SYSTEM > gateway enabled=%t version=%d runs_total=%d runs_active=%d agents=%d watch=%t persistence=%t runs_store=%t channels_store=%t restored_runs=%d restored_channels=%d reload_version=%d",
 				status.Enabled,
 				status.Version,
-				scope,
 				status.RunsTotal,
 				status.RunsActive,
 				status.AgentsCount,
@@ -567,10 +546,6 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			}
 			fmt.Fprintln(stdout, "SYSTEM > gateway runs")
 			for _, run := range report.Runs {
-				if strings.TrimSpace(run.WorkspaceID) != "" {
-					fmt.Fprintf(stdout, "- %s status=%s agent=%s session=%s workspace=%s\n", run.RunID, run.Status, run.Agent, run.SessionID, run.WorkspaceID)
-					continue
-				}
 				fmt.Fprintf(stdout, "- %s status=%s agent=%s session=%s\n", run.RunID, run.Status, run.Agent, run.SessionID)
 			}
 			return true, session, nil
@@ -593,14 +568,6 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 			}
 			fmt.Fprintln(stdout, "SYSTEM > gateway channel messages")
 			for channelID, messages := range report.Messages {
-				workspace := ""
-				if len(messages) > 0 {
-					workspace = strings.TrimSpace(messages[0].WorkspaceID)
-				}
-				if workspace != "" {
-					fmt.Fprintf(stdout, "- %s messages=%d workspace=%s\n", channelID, len(messages), workspace)
-					continue
-				}
 				fmt.Fprintf(stdout, "- %s messages=%d\n", channelID, len(messages))
 			}
 			return true, session, nil
@@ -1068,10 +1035,6 @@ func runtimeErrorHint(apiErr *apiHTTPError) string {
 	}
 	code := strings.ToLower(strings.TrimSpace(apiErr.Code))
 	switch code {
-	case "workspace_id_required":
-		return "workspace binding is missing on server; check tarsd role-to-workspace config"
-	case "workspace_forbidden":
-		return "your role is not allowed for the mapped workspace; ask admin to update workspace binding"
 	case "unauthorized":
 		if isAdminEndpointPath(endpointPath) {
 			return "admin endpoint requires admin token; retry with --admin-api-token (or TARS_ADMIN_API_TOKEN)"
@@ -1081,13 +1044,13 @@ func runtimeErrorHint(apiErr *apiHTTPError) string {
 		if isAdminEndpointPath(endpointPath) {
 			return "this endpoint requires admin role; retry with --admin-api-token or ask admin"
 		}
-		return "your role/workspace is not allowed for this endpoint"
+		return "your role is not allowed for this endpoint"
 	}
 	switch apiErr.Status {
 	case http.StatusUnauthorized:
 		return "verify API token and retry"
 	case http.StatusForbidden:
-		return "verify role/workspace permissions and retry"
+		return "verify role permissions and retry"
 	default:
 		return ""
 	}

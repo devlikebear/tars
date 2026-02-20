@@ -50,9 +50,6 @@ func TestExecuteCommand_NewAndStatus(t *testing.T) {
 	if !strings.Contains(stdout.String(), "workspace=/tmp/ws") {
 		t.Fatalf("expected workspace status output, got %q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "scope=default") {
-		t.Fatalf("expected default scope output, got %q", stdout.String())
-	}
 }
 
 func TestExecuteCommand_CompactRequiresSession(t *testing.T) {
@@ -594,7 +591,6 @@ func TestExecuteCommand_GatewayStatusTelemetry(t *testing.T) {
 		strings.Contains(out, "persistence=true") &&
 		strings.Contains(out, "runs_store=true") &&
 		strings.Contains(out, "channels_store=false") &&
-		strings.Contains(out, "scope=default") &&
 		strings.Contains(out, "restored_runs=3") &&
 		strings.Contains(out, "restored_channels=9")
 	if !containsAll {
@@ -611,7 +607,6 @@ func TestExecuteCommand_RunShowsPolicyDiagnosticDetails(t *testing.T) {
 				"status":               "failed",
 				"agent":                "researcher",
 				"session_id":           "s-1",
-				"workspace_id":         "team-a",
 				"error":                "tool not injected for this request: exec",
 				"diagnostic_code":      "policy_tool_blocked",
 				"diagnostic_reason":    "tool not injected for this request: exec",
@@ -662,7 +657,6 @@ func TestExecuteCommand_RunsShowsPolicyDiagnosticSummary(t *testing.T) {
 						"status":              "failed",
 						"agent":               "researcher",
 						"session_id":          "s-2",
-						"workspace_id":        "team-b",
 						"diagnostic_code":     "policy_tool_blocked",
 						"policy_blocked_tool": "exec",
 					},
@@ -762,7 +756,6 @@ func TestExecuteCommand_Whoami(t *testing.T) {
 				"authenticated": true,
 				"auth_role":     "admin",
 				"is_admin":      true,
-				"workspace_id":  "team-admin",
 				"auth_mode":     "required",
 			})
 		default:
@@ -779,7 +772,7 @@ func TestExecuteCommand_Whoami(t *testing.T) {
 		t.Fatalf("/whoami: %v", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "authenticated=true") || !strings.Contains(out, "role=admin") || !strings.Contains(out, "workspace=team-admin") {
+	if !strings.Contains(out, "authenticated=true") || !strings.Contains(out, "role=admin") {
 		t.Fatalf("unexpected whoami output: %q", out)
 	}
 }
@@ -813,20 +806,17 @@ func TestFormatRuntimeError_ProvidesAuthHintForUnauthorized(t *testing.T) {
 	}
 }
 
-func TestFormatRuntimeError_ProvidesWorkspaceHint(t *testing.T) {
+func TestFormatRuntimeError_DoesNotIncludeRemovedWorkspaceHint(t *testing.T) {
 	err := &apiHTTPError{
 		Method:   http.MethodGet,
 		Endpoint: "http://127.0.0.1:43180/v1/status",
 		Status:   http.StatusBadRequest,
-		Code:     "workspace_id_required",
-		Message:  "workspace id is required",
+		Code:     "bad_request",
+		Message:  "bad request",
 	}
 	msg := formatRuntimeError(err)
-	if strings.Contains(msg, "--workspace-id") {
-		t.Fatalf("workspace flag hint must be removed, got %q", msg)
-	}
-	if !strings.Contains(strings.ToLower(msg), "workspace") {
-		t.Fatalf("expected generic workspace hint, got %q", msg)
+	if strings.Contains(strings.ToLower(msg), "workspace") {
+		t.Fatalf("workspace hint must be removed, got %q", msg)
 	}
 }
 
