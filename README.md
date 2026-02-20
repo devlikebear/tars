@@ -1,5 +1,17 @@
 # TARS
 
+Language docs:
+
+- Korean: [README.ko.md](README.ko.md)
+- Japanese: [README.ja.md](README.ja.md)
+- English: this file (`README.md`)
+
+Additional docs:
+
+- Contributing (versioning/PR policy): [CONTRIBUTING.md](CONTRIBUTING.md)
+- Change log: [CHANGE.log](CHANGE.log)
+- License: [LICENSE](LICENSE)
+
 TARS is a lightweight local AI automation stack with two Go binaries:
 
 - `tarsd`: daemon/server (LLM orchestration, sessions, tools, gateway, automation)
@@ -158,3 +170,7 @@ This runs:
 - `cased` sentinel daemon was removed during simplification.
 - Process supervision is delegated to systemd/launchd/docker in production.
 - `GET /v1/healthz` remains available for external health probing.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for versioning and PR policy.
