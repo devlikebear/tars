@@ -14,12 +14,7 @@ api_auth_mode: external-required
 api_auth_token: ""
 api_user_token: "" # read/chat/general operations
 api_admin_token: "" # control operations (gateway reload/restart, extensions reload)
-api_workspace_header: Tars-Workspace-Id
-# Optional workspace allowlists per role (JSON array). Empty means all workspaces allowed.
-api_user_workspace_ids_json: '[]'
-api_admin_workspace_ids_json: '[]'
-# Non-default workspace requests are stored under:
-#   ${workspace_dir}/_workspaces/{workspace_id}
+# Single workspace mode: workspace_id header/routing is removed.
 
 # LLM provider
 # provider: bifrost | openai | anthropic | gemini | gemini-native

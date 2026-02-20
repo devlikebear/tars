@@ -133,26 +133,18 @@
   - `GET /v1/gateway/reports/summary` (기본 활성)
   - `GET /v1/gateway/reports/runs`, `GET /v1/gateway/reports/channels` (archive 활성 시)
   - 설정: `gateway_report_summary_enabled`, `gateway_archive_enabled`, `gateway_archive_dir`, `gateway_archive_retention_days`, `gateway_archive_max_file_bytes`
-- workspace 경계가 API/도구 레벨로 확장되었다.
-  - `agent runs`, `gateway reports`, `channels webhook/telegram`, `sessions_runs`가 workspace 기준으로 격리된다.
-  - run/channel payload에 `workspace_id`가 포함된다.
-- 요청 workspace 기반 저장소 분기가 적용되었다.
-  - `sessions`, `chat memory`, `compact`, `cron` API는 요청 workspace를 기준으로 저장 경로를 분기한다.
-  - non-default workspace 경로: `${workspace_dir}/_workspaces/{workspace_id}`
-- role별 workspace allowlist가 추가되었다.
-  - 설정: `api_user_workspace_ids_json`, `api_admin_workspace_ids_json`
-  - allowlist가 비어 있으면 기존처럼 모든 workspace를 허용한다.
+- 단일 워크스페이스 운영 모델로 고정되었다.
+  - 서버는 항상 하나의 `workspace_dir`만 사용하며 `workspace_id` 라우팅은 제거되었다.
+  - run/channel API payload에서 `workspace_id`가 제거되었다.
+  - `sessions`, `chat memory`, `compact`, `cron`, `gateway` 런타임은 기본 workspace 경로만 사용한다.
 - 인증 가시성 API가 추가되었다.
-  - `GET /v1/auth/whoami` (`authenticated`, `auth_role`, `is_admin`, `workspace_id`, `auth_mode`)
+  - `GET /v1/auth/whoami` (`authenticated`, `auth_role`, `is_admin`, `auth_mode`)
   - `cmd/tars /whoami`로 현재 인증/권한 컨텍스트 즉시 확인 가능
 - admin 경로 정책이 명시적으로 고정되었다.
   - 관리자 전용: `/v1/runtime/extensions/reload`, `/v1/gateway/reload`, `/v1/gateway/restart`, `/v1/channels/webhook/inbound/*`, `/v1/channels/telegram/webhook/*`
   - middleware 매트릭스 테스트로 user/admin 동작을 회귀 방지
-- 알림 SSE가 workspace 단위로 분리되었다.
-  - `workspace_id`가 다른 이벤트는 해당 SSE 구독으로 전달되지 않는다.
-- workspace background 실행 경계가 보강되었다.
-  - cron background manager가 `default + _workspaces/*`를 순회하며 workspace 컨텍스트로 실행한다.
-  - heartbeat runner가 요청 컨텍스트 workspace를 기준으로 실행/상태를 분리한다.
+- 알림 SSE는 단일 workspace 기준으로 동작한다.
+- cron/heartbeat background 실행은 단일 workspace store 기준으로 동작한다.
 - 정책 위반 진단이 강화되었다.
   - gateway run 실패 시 `policy_blocked_tool`, `policy_allowed_tools`를 함께 기록한다.
   - `cmd/tars /run`, `/runs`에서 정책 차단 요약(`diag`, `blocked`)을 표시한다.
@@ -178,7 +170,7 @@
 
 1. 인증/권한/테넌트 최소 운영 모델을 tenant 단위 데이터 분리까지 확장한다.
 2. 서브에이전트 정책(allow/deny/risk) 위반 리포트를 API 검색/집계 형태로 확장한다.
-3. `cmd/tars` 운영 UX를 보강해 workspace 전환/관찰 명령을 단일 클라이언트에서 완결한다.
+3. `cmd/tars` 운영 UX를 보강해 런타임 관찰/제어 명령을 단일 클라이언트에서 완결한다.
 
 ## 작업 체크리스트
 

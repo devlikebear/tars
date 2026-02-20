@@ -59,25 +59,19 @@
 ### 최근 반영
 
 #### 2026-02-19
-- workspace 경계 강화
-  - `agent runs`, `gateway reports`, `channels inbound`, `sessions_runs` 경로를 workspace 스코프로 통일
-  - run/channel 응답 payload에 `workspace_id` 추가
+- 단일 워크스페이스 모델 복귀
+  - 서버는 하나의 `workspace_dir`만 사용하고 `workspace_id` 라우팅을 제거
+  - `agent runs`, `gateway reports`, `channels inbound`, `sessions_runs`에서 workspace 분기 제거
+  - run/channel 응답 payload에서 `workspace_id` 제거
 - 인증/권한 운영성 강화
-  - `GET /v1/auth/whoami` 추가 (`authenticated`, `auth_role`, `is_admin`, `workspace_id`, `auth_mode`)
+  - `GET /v1/auth/whoami` 추가 (`authenticated`, `auth_role`, `is_admin`, `auth_mode`)
   - `cmd/tars /whoami` 추가
   - admin 전용 API 경로 매트릭스 고정 테스트 추가 (`/v1/runtime/extensions/reload`, `/v1/gateway/reload`, `/v1/gateway/restart`, `/v1/channels/webhook/inbound/*`, `/v1/channels/telegram/webhook/*`)
-  - notification SSE를 workspace 단위로 필터링해 교차 workspace 알림 누출 차단
-- 요청 workspace 저장소 분기
-  - `sessions`, `chat memory`, `compact`, `cron` API를 `${workspace_dir}/_workspaces/{workspace_id}` 기준으로 분기
-  - gateway runtime이 workspace별 session store resolver를 사용
-- auth/workspace 정책 확장
-  - role별 workspace allowlist 설정 추가: `api_user_workspace_ids_json`, `api_admin_workspace_ids_json`
-  - 미허용 workspace 접근 시 403 처리
+- 저장소/런타임 단순화
+  - `sessions`, `chat memory`, `compact`, `cron`, `gateway`가 base workspace 경로만 사용
+  - cron/heartbeat background manager가 단일 workspace store로 실행
 - `cmd/tars` 운영 가시성 개선
-  - `/runs`, `/run`, `/gateway runs`, `/gateway channels` 출력에 workspace 표시
-- workspace background 실행 분리
-  - cron background manager가 `default + _workspaces/*`를 순회해 workspace 컨텍스트로 job을 실행
-  - heartbeat runner가 workspace 컨텍스트 기준으로 실행/상태를 분리
+  - `/runs`, `/run`, `/gateway runs`, `/gateway channels` 출력에서 workspace 표시 제거
 - 정책 위반 진단 강화
   - gateway run 실패 응답에 `policy_blocked_tool`, `policy_allowed_tools` 추가
   - `cmd/tars /runs`, `/run`에서 `diag`, `blocked`, `policy_allowed` 정보를 출력
@@ -99,7 +93,7 @@
   - `password/token/secret/api_key/authorization` key-value 및 bearer token 마스킹
 - 운영 스모크 추가
   - `scripts/smoke_auth_workspace.sh` 추가
-  - `make smoke-auth`로 사용자/관리자 권한 경계 + workspace 스코프 기본 점검 가능
+  - `make smoke-auth`로 사용자/관리자 권한 경계 기본 점검 가능
 
 #### 2026-02-18
 - [x] 프로젝트 간소화(공개 릴리즈 준비)

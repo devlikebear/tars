@@ -90,9 +90,7 @@ make smoke-auth
 - `api_user_token`: chat/general operations
 - `api_admin_token`: control operations (`/v1/runtime/extensions/reload`, `/v1/gateway/reload`, `/v1/gateway/restart`, channel inbound endpoints)
 
-Workspace scoping uses header:
-
-- `Tars-Workspace-Id`
+Workspace model is fixed to a single `workspace_dir` (no `workspace_id` routing).
 
 ## cmd/tars Highlights
 

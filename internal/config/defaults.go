@@ -37,9 +37,6 @@ type Config struct {
 	APIAuthToken                         string
 	APIUserToken                         string
 	APIAdminToken                        string
-	APIWorkspaceHeader                   string
-	APIUserWorkspaceIDs                  []string
-	APIAdminWorkspaceIDs                 []string
 	LLMProvider                          string
 	LLMAuthMode                          string
 	LLMOAuthProvider                     string
@@ -133,7 +130,6 @@ func Default() Config {
 		Mode:                                 "standalone",
 		WorkspaceDir:                         "./workspace",
 		APIAuthMode:                          "external-required",
-		APIWorkspaceHeader:                   "Tars-Workspace-Id",
 		LLMProvider:                          "bifrost",
 		LLMAuthMode:                          "api-key",
 		BifrostModel:                         "openai/gpt-4o-mini",
@@ -228,15 +224,6 @@ func applyEnv(cfg *Config) {
 	}
 	if v := firstNonEmpty(os.Getenv("API_ADMIN_TOKEN"), os.Getenv("TARSD_API_ADMIN_TOKEN")); v != "" {
 		cfg.APIAdminToken = strings.TrimSpace(v)
-	}
-	if v := firstNonEmpty(os.Getenv("API_WORKSPACE_HEADER"), os.Getenv("TARSD_API_WORKSPACE_HEADER")); v != "" {
-		cfg.APIWorkspaceHeader = strings.TrimSpace(v)
-	}
-	if v := firstNonEmpty(os.Getenv("API_USER_WORKSPACE_IDS_JSON"), os.Getenv("TARSD_API_USER_WORKSPACE_IDS_JSON")); v != "" {
-		cfg.APIUserWorkspaceIDs = parseJSONStringList(v, cfg.APIUserWorkspaceIDs)
-	}
-	if v := firstNonEmpty(os.Getenv("API_ADMIN_WORKSPACE_IDS_JSON"), os.Getenv("TARSD_API_ADMIN_WORKSPACE_IDS_JSON")); v != "" {
-		cfg.APIAdminWorkspaceIDs = parseJSONStringList(v, cfg.APIAdminWorkspaceIDs)
 	}
 	if v := firstNonEmpty(os.Getenv("BIFROST_BASE_URL"), os.Getenv("TARSD_BIFROST_BASE_URL")); v != "" {
 		cfg.BifrostBase = v
@@ -526,12 +513,6 @@ func loadYAML(path string) (Config, error) {
 			cfg.APIUserToken = strings.TrimSpace(value)
 		case "api_admin_token":
 			cfg.APIAdminToken = strings.TrimSpace(value)
-		case "api_workspace_header":
-			cfg.APIWorkspaceHeader = strings.TrimSpace(value)
-		case "api_user_workspace_ids_json":
-			cfg.APIUserWorkspaceIDs = parseJSONStringList(value, cfg.APIUserWorkspaceIDs)
-		case "api_admin_workspace_ids_json":
-			cfg.APIAdminWorkspaceIDs = parseJSONStringList(value, cfg.APIAdminWorkspaceIDs)
 		case "bifrost_base_url":
 			cfg.BifrostBase = value
 		case "bifrost_api_key":
@@ -723,15 +704,6 @@ func merge(dst *Config, src Config) {
 	}
 	if src.APIAdminToken != "" {
 		dst.APIAdminToken = src.APIAdminToken
-	}
-	if src.APIWorkspaceHeader != "" {
-		dst.APIWorkspaceHeader = src.APIWorkspaceHeader
-	}
-	if len(src.APIUserWorkspaceIDs) > 0 {
-		dst.APIUserWorkspaceIDs = append([]string(nil), src.APIUserWorkspaceIDs...)
-	}
-	if len(src.APIAdminWorkspaceIDs) > 0 {
-		dst.APIAdminWorkspaceIDs = append([]string(nil), src.APIAdminWorkspaceIDs...)
 	}
 	if src.BifrostBase != "" {
 		dst.BifrostBase = src.BifrostBase
@@ -991,11 +963,6 @@ func applyLLMDefaults(cfg *Config) {
 	cfg.APIAuthToken = strings.TrimSpace(cfg.APIAuthToken)
 	cfg.APIUserToken = strings.TrimSpace(cfg.APIUserToken)
 	cfg.APIAdminToken = strings.TrimSpace(cfg.APIAdminToken)
-	cfg.APIWorkspaceHeader = strings.TrimSpace(cfg.APIWorkspaceHeader)
-	if cfg.APIWorkspaceHeader == "" {
-		cfg.APIWorkspaceHeader = "Tars-Workspace-Id"
-	}
-
 	cfg.LLMProvider = strings.TrimSpace(strings.ToLower(cfg.LLMProvider))
 	if cfg.LLMProvider == "" {
 		cfg.LLMProvider = "bifrost"

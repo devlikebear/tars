@@ -61,7 +61,7 @@ help:
 	@echo "  make api-compact   - POST /v1/compact"
 	@echo "  make api-chat      - POST /v1/chat with CHAT_MSG"
 	@echo "  make api-heartbeat - POST /v1/heartbeat/run-once"
-	@echo "  make smoke-auth    - auth/workspace smoke test (requires USER_TOKEN, ADMIN_TOKEN)"
+	@echo "  make smoke-auth    - auth/role smoke test (requires USER_TOKEN, ADMIN_TOKEN)"
 	@echo "  make security-scan - scan tracked files/history for secrets and local-path leaks"
 	@echo ""
 	@echo "Vault (docker compose):"

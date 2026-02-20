@@ -226,26 +226,19 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - Make 타깃 정리: `dev-cased`/`run-cased`/`dev-tars-ui` 제거, `dev-tars` 추가
 
 **2026-02-19**
-- Workspace 경계 강화:
-  - `GET/POST /v1/agent/runs`, `GET /v1/agent/runs/{id}`, `POST /v1/agent/runs/{id}/cancel`가 workspace 스코프를 강제
-  - `gateway reports`/`channels inbound`/`sessions_*` 도구가 workspace 기준으로 분리 동작
-  - run/channel payload에 `workspace_id` 메타데이터 추가
+- 단일 워크스페이스 모델로 복귀:
+  - 서버는 하나의 `workspace_dir`만 사용하며 `workspace_id` 라우팅을 제거
+  - `agent runs`, `gateway reports`, `channels inbound`, `sessions_*` 경로에서 workspace 분기를 제거
+  - run/channel payload의 `workspace_id` 제거
 - 인증/권한 가시성/경계 강화:
-  - `GET /v1/auth/whoami` 추가 (`authenticated`, `auth_role`, `is_admin`, `workspace_id`, `auth_mode`)
+  - `GET /v1/auth/whoami` 추가 (`authenticated`, `auth_role`, `is_admin`, `auth_mode`)
   - `cmd/tars /whoami` 추가
   - admin 경로 매트릭스 고정(`runtime/extensions reload`, `gateway reload/restart`, `channels webhook`) + wildcard 경로 처리
-  - notification SSE를 workspace 단위로 필터링해 교차 workspace 이벤트 누출 방지
-- 요청 workspace 저장소 분기:
-  - `sessions`, `chat memory`, `compact`, `cron` API가 `${workspace_dir}/_workspaces/{workspace_id}` 경로를 사용
-  - gateway runtime의 session append/create가 workspace별 session store resolver를 사용
-- 인증/권한:
-  - role별 workspace allowlist 도입 (`api_user_workspace_ids_json`, `api_admin_workspace_ids_json`)
-  - 허용되지 않은 workspace 요청은 403으로 차단
+- 저장소/백그라운드 실행 단순화:
+  - `sessions`, `chat memory`, `compact`, `cron`, `gateway`가 base workspace 경로만 사용
+  - cron/heartbeat background manager가 단일 workspace store만 처리
 - `cmd/tars` 운영 출력:
-  - `/runs`, `/run`, `/gateway runs`, `/gateway channels`에서 workspace 정보 표시
-- workspace background 분리:
-  - cron background manager가 `default + _workspaces/*`를 순회해 workspace별 store로 실행
-  - heartbeat runner가 workspace 컨텍스트(`Tars-Workspace-Id`) 기준으로 실행/상태를 분리
+  - `/runs`, `/run`, `/gateway runs`, `/gateway channels`에서 workspace 표시 제거
 - 정책 위반 진단 강화:
   - gateway run 실패 시 `policy_blocked_tool`, `policy_allowed_tools`를 함께 기록
   - `cmd/tars /run`과 `/runs`에서 `diag`/`blocked`/`policy_allowed`를 표시
@@ -267,7 +260,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `password/token/secret/api_key/authorization` key-value 및 bearer 토큰 패턴 redaction
 - 운영 스모크:
   - `scripts/smoke_auth_workspace.sh` 추가
-  - `make smoke-auth`로 auth/workspace 경계 기본 점검 자동화
+  - `make smoke-auth`로 auth/role 경계 기본 점검 자동화
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조

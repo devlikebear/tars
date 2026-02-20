@@ -327,25 +327,6 @@ func TestLoad_AgentMaxIterationsFromEnv(t *testing.T) {
 	}
 }
 
-func TestLoad_APIWorkspaceAllowlistFromEnv(t *testing.T) {
-	t.Setenv("API_USER_WORKSPACE_IDS_JSON", `["ws-user-a","ws-user-b"]`)
-	t.Setenv("API_ADMIN_WORKSPACE_IDS_JSON", `["ws-admin"]`)
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(cfg.APIUserWorkspaceIDs) != 2 {
-		t.Fatalf("expected 2 user workspace ids, got %+v", cfg.APIUserWorkspaceIDs)
-	}
-	if cfg.APIUserWorkspaceIDs[0] != "ws-user-a" || cfg.APIUserWorkspaceIDs[1] != "ws-user-b" {
-		t.Fatalf("unexpected user workspace ids: %+v", cfg.APIUserWorkspaceIDs)
-	}
-	if len(cfg.APIAdminWorkspaceIDs) != 1 || cfg.APIAdminWorkspaceIDs[0] != "ws-admin" {
-		t.Fatalf("unexpected admin workspace ids: %+v", cfg.APIAdminWorkspaceIDs)
-	}
-}
-
 func TestLoad_HeartbeatAndCronEnvOptions(t *testing.T) {
 	t.Setenv("HEARTBEAT_ACTIVE_HOURS", "09:00-18:00")
 	t.Setenv("HEARTBEAT_TIMEZONE", "Asia/Seoul")
@@ -977,9 +958,6 @@ func TestLoad_APIAuthDefaults(t *testing.T) {
 	if cfg.APIAuthMode != "external-required" {
 		t.Fatalf("expected api auth mode external-required, got %q", cfg.APIAuthMode)
 	}
-	if cfg.APIWorkspaceHeader != "Tars-Workspace-Id" {
-		t.Fatalf("expected api workspace header Tars-Workspace-Id, got %q", cfg.APIWorkspaceHeader)
-	}
 }
 
 func TestLoad_APIAuthYAMLAndEnv(t *testing.T) {
@@ -990,7 +968,6 @@ func TestLoad_APIAuthYAMLAndEnv(t *testing.T) {
 		"api_auth_token: yaml-token",
 		"api_user_token: yaml-user-token",
 		"api_admin_token: yaml-admin-token",
-		"api_workspace_header: Tenant-Workspace-Id",
 	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -1000,7 +977,6 @@ func TestLoad_APIAuthYAMLAndEnv(t *testing.T) {
 	t.Setenv("API_AUTH_TOKEN", "env-token")
 	t.Setenv("API_USER_TOKEN", "env-user-token")
 	t.Setenv("API_ADMIN_TOKEN", "env-admin-token")
-	t.Setenv("API_WORKSPACE_HEADER", "Tars-Workspace-Id")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -1018,9 +994,6 @@ func TestLoad_APIAuthYAMLAndEnv(t *testing.T) {
 	if cfg.APIAdminToken != "env-admin-token" {
 		t.Fatalf("expected env override api admin token, got %q", cfg.APIAdminToken)
 	}
-	if cfg.APIWorkspaceHeader != "Tars-Workspace-Id" {
-		t.Fatalf("expected env override workspace header, got %q", cfg.APIWorkspaceHeader)
-	}
 }
 
 func TestLoad_APIAuthYAMLInlineComments(t *testing.T) {
@@ -1030,7 +1003,6 @@ func TestLoad_APIAuthYAMLInlineComments(t *testing.T) {
 		`api_auth_token: "legacy-token" # legacy`,
 		`api_user_token: "user-token" # user token`,
 		`api_admin_token: "admin-token" # admin token`,
-		`api_workspace_header: Tars-Workspace-Id # workspace header`,
 	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -1048,8 +1020,5 @@ func TestLoad_APIAuthYAMLInlineComments(t *testing.T) {
 	}
 	if cfg.APIAdminToken != "admin-token" {
 		t.Fatalf("expected admin token without inline comment, got %q", cfg.APIAdminToken)
-	}
-	if cfg.APIWorkspaceHeader != "Tars-Workspace-Id" {
-		t.Fatalf("expected workspace header without inline comment, got %q", cfg.APIWorkspaceHeader)
 	}
 }
