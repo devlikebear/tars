@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tarsncase/internal/secrets"
 	"github.com/devlikebear/tarsncase/internal/tool"
 )
 
@@ -188,15 +189,16 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				})
 				return llm.ChatResponse{}, err
 			}
+			redactedResult := secrets.RedactText(result.Text())
 			l.emit(ctx, Event{
 				Type:       EventAfterTool,
 				Iteration:  i + 1,
 				ToolName:   call.Name,
 				ToolCallID: call.ID,
-				ToolResult: result.Text(),
+				ToolResult: redactedResult,
 			})
 
-			if callName == "exec" && isMissingCommandExecResult(effectiveArgs, result.Text()) {
+			if callName == "exec" && isMissingCommandExecResult(effectiveArgs, redactedResult) {
 				repeatedInvalidExecCount++
 			} else {
 				repeatedInvalidExecCount = 0
@@ -213,7 +215,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				return llm.ChatResponse{}, err
 			}
 
-			outcomeSig := callName + "\n" + effectiveArgs + "\n" + result.Text()
+			outcomeSig := callName + "\n" + effectiveArgs + "\n" + redactedResult
 			if outcomeSig == lastToolOutcomeSig {
 				repeatedToolOutcomeCount++
 			} else {
@@ -234,7 +236,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 
 			messages = append(messages, llm.ChatMessage{
 				Role:       "tool",
-				Content:    result.Text(),
+				Content:    redactedResult,
 				ToolCallID: call.ID,
 			})
 		}

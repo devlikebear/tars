@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/secrets"
 	"github.com/spf13/cobra"
 )
 
@@ -32,6 +33,7 @@ type localRuntimeState struct {
 }
 
 func main() {
+	secrets.RegisterOSEnv()
 	if err := newRootCommand(os.Stdin, os.Stdout, os.Stderr).Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -1025,19 +1027,19 @@ func formatChatStatusEvent(evt chatEvent, verbose bool) string {
 		}
 	}
 	if !verbose {
-		return label
+		return secrets.RedactText(label)
 	}
-	parts := []string{label}
+	parts := []string{secrets.RedactText(label)}
 	if toolCallID := strings.TrimSpace(evt.ToolCallID); toolCallID != "" {
-		parts = append(parts, "id="+toolCallID)
+		parts = append(parts, "id="+secrets.RedactText(toolCallID))
 	}
 	if toolArgs := strings.TrimSpace(evt.ToolArgsPreview); toolArgs != "" {
-		parts = append(parts, "args="+toolArgs)
+		parts = append(parts, "args="+secrets.RedactText(toolArgs))
 	}
 	if toolResult := strings.TrimSpace(evt.ToolResultPreview); toolResult != "" {
-		parts = append(parts, "result="+toolResult)
+		parts = append(parts, "result="+secrets.RedactText(toolResult))
 	}
-	return strings.Join(parts, " | ")
+	return secrets.RedactText(strings.Join(parts, " | "))
 }
 
 func formatRuntimeError(err error) string {
@@ -1047,13 +1049,13 @@ func formatRuntimeError(err error) string {
 	message := strings.TrimSpace(err.Error())
 	var apiErr *apiHTTPError
 	if !errors.As(err, &apiErr) || apiErr == nil {
-		return message
+		return secrets.RedactText(message)
 	}
 	hint := runtimeErrorHint(apiErr)
 	if strings.TrimSpace(hint) == "" {
-		return message
+		return secrets.RedactText(message)
 	}
-	return message + "\nhint: " + hint
+	return secrets.RedactText(message + "\nhint: " + hint)
 }
 
 func runtimeErrorHint(apiErr *apiHTTPError) string {

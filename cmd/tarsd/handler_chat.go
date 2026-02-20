@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -14,16 +13,11 @@ import (
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/prompt"
+	"github.com/devlikebear/tarsncase/internal/secrets"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/skill"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/rs/zerolog"
-)
-
-var (
-	sensitiveJSONPattern   = regexp.MustCompile(`(?i)"(password|token|secret|api_key|apikey|authorization)"\s*:\s*"[^"]*"`)
-	sensitiveBarePattern   = regexp.MustCompile(`(?i)\b(password|token|secret|api_key|apikey|authorization)\b\s*([:=])\s*[^,\}\n]+`)
-	sensitiveBearerPattern = regexp.MustCompile(`(?i)\bbearer\s+[a-z0-9._\-]+`)
 )
 
 func resolveChatSession(store *session.Store, sessionID string) (string, error) {
@@ -133,32 +127,7 @@ func setupSSEWriter(w http.ResponseWriter, sessionID string, logger zerolog.Logg
 }
 
 func statusPreview(value string, maxLen int) string {
-	trimmed := strings.TrimSpace(redactSensitivePreview(value))
-	if trimmed == "" {
-		return ""
-	}
-	normalized := strings.Join(strings.Fields(trimmed), " ")
-	runes := []rune(normalized)
-	if len(runes) <= maxLen {
-		return normalized
-	}
-	if maxLen <= 3 {
-		return string(runes[:maxLen])
-	}
-	return string(runes[:maxLen-3]) + "..."
-}
-
-func redactSensitivePreview(value string) string {
-	redacted := sensitiveJSONPattern.ReplaceAllStringFunc(value, func(match string) string {
-		parts := sensitiveJSONPattern.FindStringSubmatch(match)
-		if len(parts) < 2 {
-			return match
-		}
-		return `"` + strings.ToLower(parts[1]) + `":"***"`
-	})
-	redacted = sensitiveBarePattern.ReplaceAllString(redacted, "${1}${2}***")
-	redacted = sensitiveBearerPattern.ReplaceAllString(redacted, "Bearer ***")
-	return redacted
+	return secrets.RedactPreview(value, maxLen)
 }
 
 func resolveInvokedSkill(message string, manager *extensions.Manager) *skill.Definition {

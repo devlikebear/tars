@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/devlikebear/tarsncase/internal/secrets"
 )
 
 const (
@@ -91,10 +93,10 @@ func newReadToolWithName(name, workspaceDir string) Tool {
 			}
 			if len(raw) > maxBytes {
 				payload.Truncated = true
-				payload.Content = string(raw[:maxBytes])
+				payload.Content = secrets.RedactText(string(raw[:maxBytes]))
 				payload.Message = fmt.Sprintf("content truncated to %d bytes", maxBytes)
 			} else {
-				payload.Content = string(raw)
+				payload.Content = secrets.RedactText(string(raw))
 			}
 			return jsonTextResult(payload, false), nil
 		},

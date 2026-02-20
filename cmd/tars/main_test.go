@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/devlikebear/tarsncase/internal/secrets"
 )
 
 func TestExecuteCommand_NewAndStatus(t *testing.T) {
@@ -838,5 +841,16 @@ func TestFormatRuntimeError_ProvidesAdminHintOnAdminEndpoint(t *testing.T) {
 	msg := formatRuntimeError(err)
 	if !strings.Contains(msg, "--admin-api-token") {
 		t.Fatalf("expected admin token hint, got %q", msg)
+	}
+}
+
+func TestFormatRuntimeError_RedactsSensitiveValues(t *testing.T) {
+	secrets.ResetForTests()
+	secret := "super_secret_token_value_1234567890"
+	secrets.RegisterNamed("API_TOKEN", secret)
+
+	msg := formatRuntimeError(fmt.Errorf("failed token=%s", secret))
+	if strings.Contains(msg, secret) {
+		t.Fatalf("expected redacted runtime error, got %q", msg)
 	}
 }

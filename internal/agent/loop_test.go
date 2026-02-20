@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tarsncase/internal/secrets"
 	"github.com/devlikebear/tarsncase/internal/tool"
 )
 
@@ -671,5 +672,71 @@ func TestLoop_Run_AutoCorrectsMissingExecCommand_EmptyStringArguments(t *testing
 	last := secondCall[len(secondCall)-1]
 	if !strings.Contains(last.Content, `"command":"pwd"`) {
 		t.Fatalf("expected auto-corrected command pwd in tool result, got %q", last.Content)
+	}
+}
+
+func TestLoop_Run_RedactsToolResultBeforeLLMAppend(t *testing.T) {
+	secrets.ResetForTests()
+	reg := tool.NewRegistry()
+	secretValue := "sk_live_very_secret_value_1234567890"
+	secrets.RegisterNamed("OPENAI_API_KEY", secretValue)
+
+	reg.Register(tool.Tool{
+		Name:        "read_file",
+		Description: "read file",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`),
+		Execute: func(_ context.Context, _ json.RawMessage) (tool.Result, error) {
+			return tool.Result{
+				Content: []tool.ContentBlock{
+					{Type: "text", Text: fmt.Sprintf(`{"token":"%s","ok":true}`, secretValue)},
+				},
+			}, nil
+		},
+	})
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_1", Name: "read_file", Arguments: `{"path":".env"}`},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "done",
+				},
+			},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	_, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "read"},
+	}, RunOptions{
+		MaxIterations: 3,
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:       "read_file",
+					Parameters: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`),
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("loop run: %v", err)
+	}
+	if len(client.seenInputs) < 2 || len(client.seenInputs[1]) == 0 {
+		t.Fatalf("expected second llm request with tool result")
+	}
+	last := client.seenInputs[1][len(client.seenInputs[1])-1]
+	if strings.Contains(last.Content, secretValue) {
+		t.Fatalf("expected redacted tool result, got %q", last.Content)
 	}
 }

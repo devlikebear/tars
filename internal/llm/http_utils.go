@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/secrets"
 	zlog "github.com/rs/zerolog/log"
 )
 
@@ -52,7 +53,7 @@ func logLLMRequestPayload(provider string, payload []byte) {
 func logLLMResponsePayload(provider string, status int, payload string) {
 	evt := zlog.Debug().Str("provider", strings.TrimSpace(provider)).Int("status", status).Int("payload_len", len(payload))
 	if strings.TrimSpace(payload) != "" {
-		evt = evt.Str("payload", truncateForLog(payload, maxDebugPayloadLen))
+		evt = evt.Str("payload", truncateForLog(secrets.RedactText(payload), maxDebugPayloadLen))
 	}
 	evt.Msg("llm response payload")
 }
@@ -67,7 +68,7 @@ func logLLMStreamPayload(provider, payload string) {
 func logLLMPayload(provider, message, payload string) {
 	evt := zlog.Debug().Str("provider", strings.TrimSpace(provider)).Int("payload_len", len(payload))
 	if strings.TrimSpace(payload) != "" {
-		evt = evt.Str("payload", truncateForLog(payload, maxDebugPayloadLen))
+		evt = evt.Str("payload", truncateForLog(secrets.RedactText(payload), maxDebugPayloadLen))
 	}
 	evt.Msg(strings.TrimSpace(message))
 }
