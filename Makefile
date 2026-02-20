@@ -19,6 +19,7 @@ TARSD_CONFIG ?= ./workspace/config/tarsd.config.yaml
 	build build-bins clean tidy fmt vet \
 	dev-tarsd dev-tarsd-once dev-tarsd-loop dev-chat dev-heartbeat dev-tars \
 	api-status api-sessions api-compact api-chat api-heartbeat smoke-auth \
+	vault-up vault-down vault-logs \
 	run-tarsd
 
 help:
@@ -61,6 +62,11 @@ help:
 	@echo "  make api-chat      - POST /v1/chat with CHAT_MSG"
 	@echo "  make api-heartbeat - POST /v1/heartbeat/run-once"
 	@echo "  make smoke-auth    - auth/workspace smoke test (requires USER_TOKEN, ADMIN_TOKEN)"
+	@echo ""
+	@echo "Vault (docker compose):"
+	@echo "  make vault-up      - start dev Vault + initializer"
+	@echo "  make vault-logs    - follow vault-init logs"
+	@echo "  make vault-down    - stop Vault stack"
 
 test:
 	$(GO) test $(PKG)
@@ -125,6 +131,15 @@ api-heartbeat:
 
 smoke-auth:
 	./scripts/smoke_auth_workspace.sh
+
+vault-up:
+	docker compose -f docker-compose.vault.yaml up -d
+
+vault-logs:
+	docker compose -f docker-compose.vault.yaml logs -f vault-init
+
+vault-down:
+	docker compose -f docker-compose.vault.yaml down
 
 fmt:
 	$(GO) fmt ./...

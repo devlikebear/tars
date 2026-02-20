@@ -1,0 +1,39 @@
+services:
+  vault:
+    image: hashicorp/vault:1.19
+    container_name: tars-vault
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: dev-only-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    command: >
+      server -dev
+      -dev-root-token-id=dev-only-token
+      -dev-listen-address=0.0.0.0:8200
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+
+  vault-init:
+    image: hashicorp/vault:1.19
+    container_name: tars-vault-init
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: dev-only-token
+      TARS_VAULT_MOUNT: tars
+      TARS_POLICY_NAME: tars-readonly
+      TARS_SECRET_PATH: sites/grafana
+      TARS_SECRET_USERNAME: demo-user
+      TARS_SECRET_PASSWORD: demo-pass
+    volumes:
+      - ./scripts/vault:/scripts:ro
+    entrypoint: ["/bin/sh", "/scripts/init-dev.sh"]
+    restart: "no"

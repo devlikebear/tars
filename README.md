@@ -110,6 +110,29 @@ For `vault_form` login mode, enforce allowlists:
 - `vault_secret_path_allowlist_json`
 - `browser_auto_login_site_allowlist_json`
 
+## Vault via Docker Compose (dev)
+
+Run local Vault + one-shot initializer:
+
+```bash
+docker compose -f docker-compose.vault.yaml up -d
+docker compose -f docker-compose.vault.yaml logs -f vault-init
+```
+
+What this sets up:
+
+- Vault dev server at `http://127.0.0.1:8200`
+- KV v2 mount: `tars`
+- sample secret: `tars/sites/grafana` (`username`, `password`)
+- readonly policy: `tars-readonly`
+- readonly token printed in `vault-init` logs
+
+Stop:
+
+```bash
+docker compose -f docker-compose.vault.yaml down
+```
+
 ## Testing
 
 ```bash
