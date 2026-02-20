@@ -19,6 +19,8 @@ workspace/
 
 # Secrets
 .env
+.env.secret
+.env.secret.*
 .env.local
 .env.*.local
 

@@ -23,7 +23,6 @@ import (
 	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
-	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -34,7 +33,7 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	_ = godotenv.Load(".env")
+	loadRuntimeEnvFiles(".env", ".env.secret")
 	opts := &options{
 		LogFile: flagValue(args, "--log-file"),
 	}
