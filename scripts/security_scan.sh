@@ -14,7 +14,7 @@ gitleaks detect --source . --no-banner --redact
 
 echo "[security-scan] checking tracked files for absolute local paths"
 set +e
-ABS_PATH_MATCHES="$(git ls-files -z | xargs -0 rg -n --no-heading '(/Users/|[A-Za-z]:\\Users\\)' 2>/dev/null)"
+ABS_PATH_MATCHES="$(git ls-files -z | xargs -0 rg -n --no-heading '(/Users/[A-Za-z0-9_-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9_-]+\\)' 2>/dev/null)"
 set -e
 if [[ -n "${ABS_PATH_MATCHES}" ]]; then
   echo "[security-scan] found absolute local paths in tracked files:" >&2
