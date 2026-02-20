@@ -213,7 +213,7 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerol
 			return
 		}
 
-		reqStore, resolvedWorkspaceDir, workspaceID, err := resolveSessionStoreForRequest(workspaceDir, store, r)
+		reqStore, resolvedWorkspaceDir, _, err := resolveSessionStoreForRequest(workspaceDir, store, r)
 		if err != nil {
 			logger.Error().Err(err).Msg("resolve workspace session store failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
@@ -229,7 +229,6 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerol
 		body := map[string]any{
 			"workspace_dir": resolvedWorkspaceDir,
 			"session_count": len(sessions),
-			"workspace_id":  workspaceID,
 		}
 		if role := serverauth.RoleFromRequest(r); role != "" {
 			body["auth_role"] = role

@@ -11,18 +11,16 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestAuthWhoamiAPI_ReturnsRoleAndWorkspace(t *testing.T) {
+func TestAuthWhoamiAPI_ReturnsRole(t *testing.T) {
 	cfg := config.Config{
-		APIAuthMode:        "required",
-		APIUserToken:       "user-token",
-		APIWorkspaceHeader: "Tars-Workspace-Id",
+		APIAuthMode:  "required",
+		APIUserToken: "user-token",
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), newAuthAPIHandler(cfg.APIAuthMode), io.Discard)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/auth/whoami", nil)
 	req.RemoteAddr = "192.0.2.10:5555"
 	req.Header.Set("Authorization", "Bearer user-token")
-	req.Header.Set("Tars-Workspace-Id", "team-a")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -32,7 +30,6 @@ func TestAuthWhoamiAPI_ReturnsRoleAndWorkspace(t *testing.T) {
 	var body struct {
 		Authenticated bool   `json:"authenticated"`
 		AuthRole      string `json:"auth_role"`
-		WorkspaceID   string `json:"workspace_id"`
 		AuthMode      string `json:"auth_mode"`
 		IsAdmin       bool   `json:"is_admin"`
 	}
@@ -45,9 +42,6 @@ func TestAuthWhoamiAPI_ReturnsRoleAndWorkspace(t *testing.T) {
 	if body.AuthRole != "user" {
 		t.Fatalf("expected auth_role user, got %+v", body)
 	}
-	if body.WorkspaceID != "team-a" {
-		t.Fatalf("expected workspace_id team-a, got %+v", body)
-	}
 	if body.AuthMode != "required" {
 		t.Fatalf("expected auth_mode required, got %+v", body)
 	}
@@ -58,8 +52,7 @@ func TestAuthWhoamiAPI_ReturnsRoleAndWorkspace(t *testing.T) {
 
 func TestAuthWhoamiAPI_OffModeReturnsAnonymous(t *testing.T) {
 	cfg := config.Config{
-		APIAuthMode:        "off",
-		APIWorkspaceHeader: "Tars-Workspace-Id",
+		APIAuthMode: "off",
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), newAuthAPIHandler(cfg.APIAuthMode), io.Discard)
 
@@ -74,7 +67,6 @@ func TestAuthWhoamiAPI_OffModeReturnsAnonymous(t *testing.T) {
 	var body struct {
 		Authenticated bool   `json:"authenticated"`
 		AuthRole      string `json:"auth_role"`
-		WorkspaceID   string `json:"workspace_id"`
 		AuthMode      string `json:"auth_mode"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -85,9 +77,6 @@ func TestAuthWhoamiAPI_OffModeReturnsAnonymous(t *testing.T) {
 	}
 	if body.AuthRole != "" {
 		t.Fatalf("expected empty auth_role, got %+v", body)
-	}
-	if body.WorkspaceID != "default" {
-		t.Fatalf("expected default workspace, got %+v", body)
 	}
 	if body.AuthMode != "off" {
 		t.Fatalf("expected auth_mode off, got %+v", body)

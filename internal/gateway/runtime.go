@@ -27,7 +27,7 @@ const (
 
 type Run struct {
 	ID                 string    `json:"run_id"`
-	WorkspaceID        string    `json:"workspace_id,omitempty"`
+	WorkspaceID        string    `json:"-"`
 	SessionID          string    `json:"session_id,omitempty"`
 	Agent              string    `json:"agent,omitempty"`
 	Prompt             string    `json:"prompt,omitempty"`
@@ -57,7 +57,7 @@ type SpawnRequest struct {
 
 type ChannelMessage struct {
 	ID          string         `json:"id"`
-	WorkspaceID string         `json:"workspace_id,omitempty"`
+	WorkspaceID string         `json:"-"`
 	ChannelID   string         `json:"channel_id"`
 	ThreadID    string         `json:"thread_id,omitempty"`
 	Direction   string         `json:"direction"`

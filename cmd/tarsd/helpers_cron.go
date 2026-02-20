@@ -8,7 +8,6 @@ import (
 
 	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/memory"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -35,9 +34,7 @@ func newCronJobRunnerWithNotify(
 	return func(ctx context.Context, job cron.Job) (string, error) {
 		targetWorkspaceDir := strings.TrimSpace(workspaceDir)
 		targetStore := store
-		workspaceID := normalizeWorkspaceID(serverauth.WorkspaceIDFromContext(ctx))
-		if workspaceID != defaultWorkspaceID && targetWorkspaceDir != "" {
-			targetWorkspaceDir = resolveWorkspaceDir(targetWorkspaceDir, workspaceID)
+		if targetStore == nil && targetWorkspaceDir != "" {
 			if err := memory.EnsureWorkspace(targetWorkspaceDir); err != nil {
 				return "", err
 			}
@@ -283,28 +280,14 @@ func (m *workspaceCronManager) Tick(ctx context.Context) error {
 	if m == nil || m.resolver == nil || m.runJob == nil {
 		return nil
 	}
-	workspaceIDs, err := m.resolver.WorkspaceIDs()
+	store, err := m.resolver.Resolve(defaultWorkspaceID)
 	if err != nil {
 		return err
 	}
-	var firstErr error
-	for _, workspaceID := range workspaceIDs {
-		store, err := m.resolver.Resolve(workspaceID)
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			m.logger.Warn().Err(err).Str("workspace_id", workspaceID).Msg("resolve cron store failed")
-			continue
-		}
-		manager := cron.NewManager(store, m.runJob, m.interval, m.nowFn)
-		runCtx := serverauth.WithWorkspaceID(ctx, workspaceID)
-		if err := manager.Tick(runCtx); err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			m.logger.Warn().Err(err).Str("workspace_id", workspaceID).Msg("cron manager tick failed")
-		}
+	manager := cron.NewManager(store, m.runJob, m.interval, m.nowFn)
+	if err := manager.Tick(ctx); err != nil {
+		m.logger.Warn().Err(err).Msg("cron manager tick failed")
+		return err
 	}
-	return firstErr
+	return nil
 }

@@ -49,7 +49,7 @@ func TestNotificationDispatcher_UsesDesktopNotifyWithoutSubscribers(t *testing.T
 
 func TestNotificationDispatcher_SkipsDesktopNotifyWithSubscribers(t *testing.T) {
 	broker := newEventBroker()
-	_, _, unsubscribe := broker.subscribe(defaultWorkspaceID)
+	_, _, unsubscribe := broker.subscribe()
 	defer unsubscribe()
 
 	fake := &fakeDesktopNotifier{}
@@ -109,12 +109,11 @@ func TestEventStreamHandler_StreamsPublishedNotification(t *testing.T) {
 	}
 }
 
-func TestEventStreamHandler_FiltersPublishedNotificationByWorkspace(t *testing.T) {
+func TestEventStreamHandler_BroadcastsPublishedNotifications(t *testing.T) {
 	broker := newEventBroker()
 	handler := newEventStreamHandler(broker, zerolog.New(io.Discard))
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/events/stream", nil)
-	req.Header.Set("Tars-Workspace-Id", "ws-a")
 	ctx, cancel := context.WithCancel(req.Context())
 	defer cancel()
 	req = req.WithContext(ctx)
@@ -127,24 +126,16 @@ func TestEventStreamHandler_FiltersPublishedNotificationByWorkspace(t *testing.T
 	}()
 	time.Sleep(30 * time.Millisecond)
 
-	evtB := newNotificationEvent("cron", "info", "WS-B event", "job complete")
-	evtB.WorkspaceID = "ws-b"
-	broker.publish(evtB)
-
-	evtA := newNotificationEvent("cron", "info", "WS-A event", "job complete")
-	evtA.WorkspaceID = "ws-a"
-	broker.publish(evtA)
+	broker.publish(newNotificationEvent("cron", "info", "event A", "job complete"))
+	broker.publish(newNotificationEvent("cron", "info", "event B", "job complete"))
 
 	time.Sleep(30 * time.Millisecond)
 	cancel()
 	<-done
 
 	body := rec.Body.String()
-	if strings.Contains(body, "WS-B event") {
-		t.Fatalf("did not expect ws-b event in ws-a stream body, got %q", body)
-	}
-	if !strings.Contains(body, "WS-A event") {
-		t.Fatalf("expected ws-a event in stream body, got %q", body)
+	if !strings.Contains(body, "event A") || !strings.Contains(body, "event B") {
+		t.Fatalf("expected both events in stream body, got %q", body)
 	}
 }
 

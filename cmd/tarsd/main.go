@@ -20,7 +20,6 @@ import (
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/mcp"
 	"github.com/devlikebear/tarsncase/internal/memory"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/rs/zerolog"
@@ -299,9 +298,9 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				_ = refreshGatewayExecutors("startup")
 				chatTooling := buildChatToolingOptions(processManager, extensionsManager, gatewayRuntime)
 				chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
-					resolvedStore, err := cronStoreResolver.Resolve(workspaceID)
+					resolvedStore, err := cronStoreResolver.Resolve(defaultWorkspaceID)
 					if err != nil {
-						logger.Warn().Err(err).Str("workspace_id", normalizeWorkspaceID(workspaceID)).Msg("resolve workspace cron store failed for chat tools")
+						logger.Warn().Err(err).Msg("resolve cron store failed for chat tools")
 						resolvedStore = cronStore
 					}
 					return buildAutomationTools(
@@ -309,12 +308,8 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 						cronRunner,
 						heartbeatRunner,
 						func(ctx context.Context) (tool.HeartbeatStatus, error) {
-							targetWorkspaceID := normalizeWorkspaceID(serverauth.WorkspaceIDFromContext(ctx))
-							if targetWorkspaceID == defaultWorkspaceID {
-								targetWorkspaceID = normalizeWorkspaceID(workspaceID)
-							}
 							return heartbeatState.snapshot(
-								targetWorkspaceID,
+								defaultWorkspaceID,
 								ask != nil,
 								cfg.HeartbeatActiveHours,
 								cfg.HeartbeatTimezone,

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tarsncase/internal/gateway"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/rs/zerolog"
 )
 
@@ -56,7 +55,7 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 				return
 			}
 			run, err := runtime.Spawn(r.Context(), gateway.SpawnRequest{
-				WorkspaceID: serverauth.WorkspaceIDFromRequest(r),
+				WorkspaceID: defaultWorkspaceID,
 				SessionID:   req.SessionID,
 				Title:       req.Title,
 				Prompt:      message,
@@ -89,8 +88,7 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 			}
 			limit = v
 		}
-		workspaceID := serverauth.WorkspaceIDFromRequest(r)
-		runs := runtime.ListByWorkspace(workspaceID, limit)
+		runs := runtime.List(limit)
 		writeJSON(w, http.StatusOK, map[string]any{"count": len(runs), "runs": runs})
 	})
 	mux.HandleFunc("/v1/agent/runs/", func(w http.ResponseWriter, r *http.Request) {
@@ -115,8 +113,7 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			workspaceID := serverauth.WorkspaceIDFromRequest(r)
-			run, ok := runtime.GetByWorkspace(workspaceID, runID)
+			run, ok := runtime.Get(runID)
 			if !ok {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
 				return
@@ -129,8 +126,7 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			workspaceID := serverauth.WorkspaceIDFromRequest(r)
-			run, err := runtime.CancelByWorkspace(workspaceID, runID)
+			run, err := runtime.Cancel(runID)
 			if err != nil {
 				logger.Error().Err(err).Str("run_id", runID).Msg("cancel run failed")
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
@@ -194,8 +190,7 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
 			return
 		}
-		workspaceID := serverauth.WorkspaceIDFromRequest(r)
-		report, err := runtime.ReportsSummaryByWorkspace(workspaceID)
+		report, err := runtime.ReportsSummary()
 		if err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 			return
@@ -224,8 +219,7 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 			}
 			limit = v
 		}
-		workspaceID := serverauth.WorkspaceIDFromRequest(r)
-		report, err := runtime.ReportsRunsByWorkspace(workspaceID, limit)
+		report, err := runtime.ReportsRuns(limit)
 		if err != nil {
 			status := http.StatusServiceUnavailable
 			if strings.Contains(strings.ToLower(err.Error()), "disabled") {
@@ -254,8 +248,7 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 			}
 			limit = v
 		}
-		workspaceID := serverauth.WorkspaceIDFromRequest(r)
-		report, err := runtime.ReportsChannelsByWorkspace(workspaceID, limit)
+		report, err := runtime.ReportsChannels(limit)
 		if err != nil {
 			status := http.StatusServiceUnavailable
 			if strings.Contains(strings.ToLower(err.Error()), "disabled") {
@@ -292,8 +285,7 @@ func newChannelsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) http
 		}
 		text := extractInboundText(payload)
 		threadID := strings.TrimSpace(asString(payload["thread_id"]))
-		workspaceID := serverauth.WorkspaceIDFromRequest(r)
-		msg, err := runtime.InboundWebhookByWorkspace(workspaceID, channelID, threadID, text, payload)
+		msg, err := runtime.InboundWebhook(channelID, threadID, text, payload)
 		if err != nil {
 			logger.Error().Err(err).Str("channel_id", channelID).Msg("webhook inbound failed")
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -322,8 +314,7 @@ func newChannelsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) http
 		}
 		text := extractInboundText(payload)
 		threadID := strings.TrimSpace(asString(payload["thread_id"]))
-		workspaceID := serverauth.WorkspaceIDFromRequest(r)
-		msg, err := runtime.InboundTelegramByWorkspace(workspaceID, botID, threadID, text, payload)
+		msg, err := runtime.InboundTelegram(botID, threadID, text, payload)
 		if err != nil {
 			logger.Error().Err(err).Str("bot_id", botID).Msg("telegram inbound failed")
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})

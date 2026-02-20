@@ -10,7 +10,6 @@ import (
 
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/memory"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
 )
@@ -216,7 +215,7 @@ func newWorkspaceHeartbeatRunnerWithNotify(
 		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
-		workspaceID := normalizeWorkspaceID(serverauth.WorkspaceIDFromContext(ctx))
+		workspaceID := defaultWorkspaceID
 		workspaceDir := resolveWorkspaceDir(baseWorkspaceDir, workspaceID)
 		if err := memory.EnsureWorkspace(workspaceDir); err != nil {
 			return heartbeat.RunResult{}, err

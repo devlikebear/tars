@@ -365,12 +365,11 @@ func TestAgentRunsAPIHandler_Cancel(t *testing.T) {
 	waitForGatewayRun(t, runtime, run.ID)
 }
 
-func TestAgentRunsAPIHandler_WorkspaceScopedRuns(t *testing.T) {
+func TestAgentRunsAPIHandler_IgnoresWorkspaceHeaderAndUsesSingleNamespace(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
 	baseHandler := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 	handler := applyAPIMiddleware(config.Config{
-		APIAuthMode:        "off",
-		APIWorkspaceHeader: "Tars-Workspace-Id",
+		APIAuthMode: "off",
 	}, zerolog.New(io.Discard), baseHandler, io.Discard)
 
 	spawn := func(workspaceID, message string) map[string]any {
@@ -413,32 +412,37 @@ func TestAgentRunsAPIHandler_WorkspaceScopedRuns(t *testing.T) {
 		t.Fatalf("decode list response: %v", err)
 	}
 	count, _ := listPayload["count"].(float64)
-	if int(count) != 1 {
-		t.Fatalf("expected ws-a run count=1, payload=%+v", listPayload)
+	if int(count) != 2 {
+		t.Fatalf("expected run count=2 in single workspace mode, payload=%+v", listPayload)
 	}
 	runs, _ := listPayload["runs"].([]any)
-	if len(runs) != 1 {
-		t.Fatalf("expected one run for ws-a, payload=%+v", listPayload)
+	if len(runs) != 2 {
+		t.Fatalf("expected two runs in single workspace mode, payload=%+v", listPayload)
 	}
-	firstRun, _ := runs[0].(map[string]any)
-	if gotID, _ := firstRun["run_id"].(string); gotID != runIDA {
-		t.Fatalf("expected ws-a run id %q, got %+v", runIDA, firstRun)
+	seen := map[string]bool{}
+	for _, item := range runs {
+		run, _ := item.(map[string]any)
+		runID, _ := run["run_id"].(string)
+		seen[runID] = true
 	}
-
-	recGetBlocked := httptest.NewRecorder()
-	reqGetBlocked := httptest.NewRequest(http.MethodGet, "/v1/agent/runs/"+runIDA, nil)
-	reqGetBlocked.Header.Set("Tars-Workspace-Id", "ws-b")
-	handler.ServeHTTP(recGetBlocked, reqGetBlocked)
-	if recGetBlocked.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 for cross-workspace get, got %d body=%s", recGetBlocked.Code, recGetBlocked.Body.String())
+	if !seen[runIDA] || !seen[runIDB] {
+		t.Fatalf("expected both runs visible in single workspace mode, payload=%+v", listPayload)
 	}
 
-	recCancelBlocked := httptest.NewRecorder()
-	reqCancelBlocked := httptest.NewRequest(http.MethodPost, "/v1/agent/runs/"+runIDA+"/cancel", nil)
-	reqCancelBlocked.Header.Set("Tars-Workspace-Id", "ws-b")
-	handler.ServeHTTP(recCancelBlocked, reqCancelBlocked)
-	if recCancelBlocked.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 for cross-workspace cancel, got %d body=%s", recCancelBlocked.Code, recCancelBlocked.Body.String())
+	recGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/v1/agent/runs/"+runIDA, nil)
+	reqGet.Header.Set("Tars-Workspace-Id", "ws-b")
+	handler.ServeHTTP(recGet, reqGet)
+	if recGet.Code != http.StatusOK {
+		t.Fatalf("expected 200 in single workspace mode, got %d body=%s", recGet.Code, recGet.Body.String())
+	}
+
+	recCancel := httptest.NewRecorder()
+	reqCancel := httptest.NewRequest(http.MethodPost, "/v1/agent/runs/"+runIDA+"/cancel", nil)
+	reqCancel.Header.Set("Tars-Workspace-Id", "ws-b")
+	handler.ServeHTTP(recCancel, reqCancel)
+	if recCancel.Code != http.StatusOK {
+		t.Fatalf("expected 200 in single workspace mode, got %d body=%s", recCancel.Code, recCancel.Body.String())
 	}
 }
 
@@ -656,17 +660,15 @@ func TestGatewayAPIHandler_ReportsSummary(t *testing.T) {
 	}
 }
 
-func TestGatewayAPIHandler_ReportsSummaryWorkspaceScoped(t *testing.T) {
+func TestGatewayAPIHandler_ReportsSummarySingleWorkspaceNamespace(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
 	baseAgentHandler := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 	agentHandler := applyAPIMiddleware(config.Config{
-		APIAuthMode:        "off",
-		APIWorkspaceHeader: "Tars-Workspace-Id",
+		APIAuthMode: "off",
 	}, zerolog.New(io.Discard), baseAgentHandler, io.Discard)
 	baseGatewayHandler := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
 	gatewayHandler := applyAPIMiddleware(config.Config{
-		APIAuthMode:        "off",
-		APIWorkspaceHeader: "Tars-Workspace-Id",
+		APIAuthMode: "off",
 	}, zerolog.New(io.Discard), baseGatewayHandler, io.Discard)
 
 	spawn := func(workspaceID, message string) {
@@ -703,12 +705,12 @@ func TestGatewayAPIHandler_ReportsSummaryWorkspaceScoped(t *testing.T) {
 	}
 
 	summaryA := summaryFor("ws-a")
-	if runsTotal, _ := summaryA["runs_total"].(float64); int(runsTotal) != 1 {
-		t.Fatalf("expected ws-a runs_total=1, payload=%+v", summaryA)
+	if runsTotal, _ := summaryA["runs_total"].(float64); int(runsTotal) != 2 {
+		t.Fatalf("expected ws-a runs_total=2 in single workspace mode, payload=%+v", summaryA)
 	}
 	summaryB := summaryFor("ws-b")
-	if runsTotal, _ := summaryB["runs_total"].(float64); int(runsTotal) != 1 {
-		t.Fatalf("expected ws-b runs_total=1, payload=%+v", summaryB)
+	if runsTotal, _ := summaryB["runs_total"].(float64); int(runsTotal) != 2 {
+		t.Fatalf("expected ws-b runs_total=2 in single workspace mode, payload=%+v", summaryB)
 	}
 }
 

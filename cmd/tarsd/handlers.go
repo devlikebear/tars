@@ -100,9 +100,6 @@ func requestDebugMiddleware(logger zerolog.Logger, next http.Handler) http.Handl
 			Int("status", rec.status).
 			Int("bytes", rec.bytes).
 			Dur("latency", time.Since(start))
-		if workspaceID := serverauth.WorkspaceIDFromRequest(r); workspaceID != "" {
-			evt = evt.Str("workspace_id", workspaceID)
-		}
 		if role := serverauth.RoleFromRequest(r); role != "" {
 			evt = evt.Str("auth_role", role)
 		}

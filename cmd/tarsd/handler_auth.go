@@ -19,7 +19,6 @@ func newAuthAPIHandler(authMode string) http.Handler {
 			"authenticated": role != "",
 			"auth_role":     role,
 			"is_admin":      role == serverauth.RoleAdmin,
-			"workspace_id":  workspaceIDFromRequest(r),
 			"auth_mode":     mode,
 		})
 	})
