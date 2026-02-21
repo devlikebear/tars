@@ -283,6 +283,9 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - 인바운드 실행 경로 추가: `agent.Loop.Run(MaxIterations:1, Tools:nil)` 후 Telegram 응답 송신
   - Admin API 추가: `GET /v1/channels/telegram/pairings`, `POST /v1/channels/telegram/pairings/approve`
   - `cmd/tars` 명령 추가: `/telegram pairings`, `/telegram pairing approve {code}`
+- Telegram 도구 확장:
+  - 서버 에이전트 도구 `telegram_send` 추가(`chat_id`, `text`, `thread_id`, `parse_mode`, `bot_id`)
+  - `runPrompt`/gateway executor/chat 경로에서 동일 도구를 주입해 cron/agent 작업의 Telegram 송신 성공률 개선
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조
