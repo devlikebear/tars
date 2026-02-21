@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +26,22 @@ type options struct {
 	message    string
 	verbose    bool
 }
+
+type serveOptions struct {
+	configPath        string
+	mode              string
+	workspaceDir      string
+	logFile           string
+	verbose           bool
+	runOnce           bool
+	runLoop           bool
+	serveAPI          bool
+	apiAddr           string
+	heartbeatInterval time.Duration
+	maxHeartbeats     int
+}
+
+var serveRunner = runServeCommand
 
 type localRuntimeState struct {
 	notifications   *notificationCenter
@@ -75,7 +92,111 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&opts.adminToken, "admin-api-token", os.Getenv("TARS_ADMIN_API_TOKEN"), "admin api token")
 	cmd.Flags().StringVar(&opts.message, "message", "", "send one message and exit")
 	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "verbose status output")
+	cmd.AddCommand(newServeCommand(stdout, stderr))
 	return cmd
+}
+
+func newServeCommand(stdout, stderr io.Writer) *cobra.Command {
+	opts := serveOptions{
+		serveAPI:          true,
+		apiAddr:           "127.0.0.1:43180",
+		heartbeatInterval: 30 * time.Minute,
+	}
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Run TARS daemon server mode",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if opts.runOnce && opts.runLoop {
+				return fmt.Errorf("--run-once and --run-loop are mutually exclusive")
+			}
+			args := buildServeDelegateArgs(opts)
+			return serveRunner(cmd.Context(), args, stdout, stderr)
+		},
+	}
+	cmd.Flags().StringVar(&opts.configPath, "config", "", "path to config file")
+	cmd.Flags().StringVar(&opts.mode, "mode", "", "runtime mode override")
+	cmd.Flags().StringVar(&opts.workspaceDir, "workspace-dir", "", "workspace directory override")
+	cmd.Flags().StringVar(&opts.logFile, "log-file", "", "append json logs to file")
+	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "enable verbose debug logging")
+	cmd.Flags().BoolVar(&opts.runOnce, "run-once", false, "run heartbeat once and exit")
+	cmd.Flags().BoolVar(&opts.runLoop, "run-loop", false, "run heartbeat loop")
+	cmd.Flags().BoolVar(&opts.serveAPI, "serve-api", true, "serve tarsd http api")
+	cmd.Flags().StringVar(&opts.apiAddr, "api-addr", "127.0.0.1:43180", "http api listen address")
+	cmd.Flags().DurationVar(&opts.heartbeatInterval, "heartbeat-interval", 30*time.Minute, "heartbeat interval (e.g. 30m, 5s)")
+	cmd.Flags().IntVar(&opts.maxHeartbeats, "max-heartbeats", 0, "maximum heartbeat count in loop (0 means unlimited)")
+	return cmd
+}
+
+func buildServeDelegateArgs(opts serveOptions) []string {
+	args := make([]string, 0, 24)
+	if v := strings.TrimSpace(opts.configPath); v != "" {
+		args = append(args, "--config", v)
+	}
+	if v := strings.TrimSpace(opts.mode); v != "" {
+		args = append(args, "--mode", v)
+	}
+	if v := strings.TrimSpace(opts.workspaceDir); v != "" {
+		args = append(args, "--workspace-dir", v)
+	}
+	if v := strings.TrimSpace(opts.logFile); v != "" {
+		args = append(args, "--log-file", v)
+	}
+	if opts.verbose {
+		args = append(args, "--verbose")
+	}
+	if opts.runOnce {
+		args = append(args, "--run-once")
+	}
+	if opts.runLoop {
+		args = append(args, "--run-loop")
+	}
+	if opts.serveAPI && !opts.runOnce && !opts.runLoop {
+		args = append(args, "--serve-api")
+	}
+	if v := strings.TrimSpace(opts.apiAddr); v != "" {
+		args = append(args, "--api-addr", v)
+	}
+	if opts.runLoop && opts.heartbeatInterval > 0 {
+		args = append(args, "--heartbeat-interval", opts.heartbeatInterval.String())
+	}
+	if opts.maxHeartbeats > 0 {
+		args = append(args, "--max-heartbeats", strconv.Itoa(opts.maxHeartbeats))
+	}
+	return args
+}
+
+func runServeCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	if err := runExternalCommand(ctx, "tarsd", args, stdout, stderr); err == nil {
+		return nil
+	} else if !isCommandNotFound(err) {
+		return err
+	}
+	if _, statErr := os.Stat("go.mod"); statErr == nil {
+		goArgs := append([]string{"run", "./cmd/tarsd"}, args...)
+		if err := runExternalCommand(ctx, "go", goArgs, stdout, stderr); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("tarsd command not found; install tarsd or run from repository root")
+}
+
+func runExternalCommand(ctx context.Context, name string, args []string, stdout, stderr io.Writer) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
+func isCommandNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	var execErr *exec.Error
+	if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+		return true
+	}
+	return false
 }
 
 func executeCommand(ctx context.Context, runtime runtimeClient, line, session string, stdout, stderr io.Writer) (bool, string, error) {

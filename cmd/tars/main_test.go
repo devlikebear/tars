@@ -789,6 +789,64 @@ func TestRootCommand_DoesNotAcceptWorkspaceIDFlag(t *testing.T) {
 	}
 }
 
+func TestRootCommand_ServeSubcommandInvokesRunner(t *testing.T) {
+	original := serveRunner
+	defer func() { serveRunner = original }()
+
+	var got []string
+	serveRunner = func(_ context.Context, args []string, _ io.Writer, _ io.Writer) error {
+		got = append([]string(nil), args...)
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{
+		"serve",
+		"--config", "config/standalone.yaml",
+		"--workspace-dir", "./workspace",
+		"--api-addr", "127.0.0.1:43180",
+		"--verbose",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("serve command: %v", err)
+	}
+
+	joined := strings.Join(got, " ")
+	if !strings.Contains(joined, "--serve-api") {
+		t.Fatalf("expected --serve-api in delegated args, got %v", got)
+	}
+	if !strings.Contains(joined, "--config config/standalone.yaml") {
+		t.Fatalf("expected config arg in delegated args, got %v", got)
+	}
+	if !strings.Contains(joined, "--workspace-dir ./workspace") {
+		t.Fatalf("expected workspace-dir arg in delegated args, got %v", got)
+	}
+}
+
+func TestRootCommand_ServeRunOnceDoesNotForceServeAPI(t *testing.T) {
+	original := serveRunner
+	defer func() { serveRunner = original }()
+
+	var got []string
+	serveRunner = func(_ context.Context, args []string, _ io.Writer, _ io.Writer) error {
+		got = append([]string(nil), args...)
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"serve", "--run-once"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("serve command: %v", err)
+	}
+	joined := strings.Join(got, " ")
+	if !strings.Contains(joined, "--run-once") {
+		t.Fatalf("expected --run-once in delegated args, got %v", got)
+	}
+	if strings.Contains(joined, "--serve-api") {
+		t.Fatalf("did not expect --serve-api when run-once is set, got %v", got)
+	}
+}
+
 func TestFormatRuntimeError_ProvidesAuthHintForUnauthorized(t *testing.T) {
 	err := &apiHTTPError{
 		Method:   http.MethodGet,

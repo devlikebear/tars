@@ -63,6 +63,8 @@ You can also start from:
 
 ```bash
 make dev-tarsd
+# or directly:
+# go run ./cmd/tars serve --verbose --serve-api --config ./workspace/config/tarsd.config.yaml
 ```
 
 Default API address:

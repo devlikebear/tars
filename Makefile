@@ -48,9 +48,9 @@ help:
 	@echo "  make clean         - remove build artifacts"
 	@echo ""
 	@echo "Run targets:"
-	@echo "  make dev-tarsd     - run tarsd API server in verbose mode"
-	@echo "  make dev-tarsd-once - run one heartbeat on tarsd"
-	@echo "  make dev-tarsd-loop - run heartbeat loop on tarsd"
+	@echo "  make dev-tarsd     - run daemon via tars serve (API mode)"
+	@echo "  make dev-tarsd-once - run one heartbeat via tars serve"
+	@echo "  make dev-tarsd-loop - run heartbeat loop via tars serve"
 	@echo "  make dev-chat      - run Go client (cmd/tars)"
 	@echo "  make dev-tars      - run Go client (cmd/tars)"
 	@echo "  make dev-heartbeat - call heartbeat run-once via API"
@@ -96,13 +96,13 @@ build-bins:
 	$(GO) build -o $(BIN_DIR)/tars ./cmd/tars
 
 dev-tarsd:
-	$(GO) run ./cmd/tarsd --verbose --serve-api $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
+	$(GO) run ./cmd/tars serve --verbose --serve-api $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
 
 dev-tarsd-once:
-	$(GO) run ./cmd/tarsd --verbose --run-once $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
+	$(GO) run ./cmd/tars serve --verbose --run-once $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
 
 dev-tarsd-loop:
-	$(GO) run ./cmd/tarsd --verbose --run-loop $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --heartbeat-interval $(HEARTBEAT_INTERVAL) --max-heartbeats $(MAX_HEARTBEATS) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
+	$(GO) run ./cmd/tars serve --verbose --run-loop $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --heartbeat-interval $(HEARTBEAT_INTERVAL) --max-heartbeats $(MAX_HEARTBEATS) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
 
 dev-chat:
 	$(GO) run ./cmd/tars --server-url $(SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
