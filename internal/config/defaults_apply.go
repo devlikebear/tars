@@ -1,0 +1,165 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+func applyLLMDefaults(cfg *Config) {
+	cfg.APIAuthMode = strings.TrimSpace(strings.ToLower(cfg.APIAuthMode))
+	switch cfg.APIAuthMode {
+	case "off", "external-required", "required":
+	default:
+		cfg.APIAuthMode = "external-required"
+	}
+	cfg.APIAuthToken = strings.TrimSpace(cfg.APIAuthToken)
+	cfg.APIUserToken = strings.TrimSpace(cfg.APIUserToken)
+	cfg.APIAdminToken = strings.TrimSpace(cfg.APIAdminToken)
+	cfg.LLMProvider = strings.TrimSpace(strings.ToLower(cfg.LLMProvider))
+	if cfg.LLMProvider == "" {
+		cfg.LLMProvider = "bifrost"
+	}
+	cfg.LLMAuthMode = strings.TrimSpace(strings.ToLower(cfg.LLMAuthMode))
+	if cfg.LLMAuthMode == "" {
+		cfg.LLMAuthMode = "api-key"
+	}
+	cfg.LLMOAuthProvider = strings.TrimSpace(strings.ToLower(cfg.LLMOAuthProvider))
+	if cfg.LLMAuthMode == "oauth" && cfg.LLMOAuthProvider == "" {
+		switch cfg.LLMProvider {
+		case "anthropic":
+			cfg.LLMOAuthProvider = "claude-code"
+		case "gemini", "gemini-native":
+			cfg.LLMOAuthProvider = "google-antigravity"
+		}
+	}
+	if cfg.AgentMaxIterations <= 0 {
+		cfg.AgentMaxIterations = 8
+	}
+	if cfg.CronRunHistoryLimit <= 0 {
+		cfg.CronRunHistoryLimit = 200
+	}
+	cfg.ToolsWebSearchProvider = strings.TrimSpace(strings.ToLower(cfg.ToolsWebSearchProvider))
+	if cfg.ToolsWebSearchProvider == "" {
+		cfg.ToolsWebSearchProvider = "brave"
+	}
+	if cfg.ToolsWebSearchPerplexityModel == "" {
+		cfg.ToolsWebSearchPerplexityModel = "sonar"
+	}
+	if cfg.ToolsWebSearchPerplexityBaseURL == "" {
+		cfg.ToolsWebSearchPerplexityBaseURL = "https://api.perplexity.ai/chat/completions"
+	}
+	if cfg.ToolsWebSearchCacheTTLSeconds <= 0 {
+		cfg.ToolsWebSearchCacheTTLSeconds = 60
+	}
+	cfg.VaultAuthMode = strings.TrimSpace(strings.ToLower(cfg.VaultAuthMode))
+	if cfg.VaultAuthMode == "" {
+		cfg.VaultAuthMode = "token"
+	}
+	if cfg.VaultAddr == "" {
+		cfg.VaultAddr = "http://127.0.0.1:8200"
+	}
+	if cfg.VaultTimeoutMS <= 0 {
+		cfg.VaultTimeoutMS = 1500
+	}
+	if cfg.VaultKVMount == "" {
+		cfg.VaultKVMount = "secret"
+	}
+	if cfg.VaultKVVersion <= 0 {
+		cfg.VaultKVVersion = 2
+	}
+	if cfg.VaultAppRoleMount == "" {
+		cfg.VaultAppRoleMount = "approle"
+	}
+	cfg.BrowserDefaultProfile = strings.TrimSpace(strings.ToLower(cfg.BrowserDefaultProfile))
+	if cfg.BrowserDefaultProfile == "" {
+		cfg.BrowserDefaultProfile = "managed"
+	}
+	if cfg.BrowserRelayAddr == "" {
+		cfg.BrowserRelayAddr = "127.0.0.1:43182"
+	}
+	if len(cfg.BrowserRelayOriginAllowlist) == 0 {
+		cfg.BrowserRelayOriginAllowlist = []string{"chrome-extension://*"}
+	}
+	if strings.TrimSpace(cfg.BrowserSiteFlowsDir) == "" {
+		cfg.BrowserSiteFlowsDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "automation", "sites")
+	}
+	if strings.TrimSpace(cfg.BrowserManagedUserDataDir) == "" {
+		cfg.BrowserManagedUserDataDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "browser", "managed")
+	}
+	if cfg.GatewayAgentsWatchDebounceMS <= 0 {
+		cfg.GatewayAgentsWatchDebounceMS = 200
+	}
+	if cfg.GatewayRunsMaxRecords <= 0 {
+		cfg.GatewayRunsMaxRecords = 2000
+	}
+	if cfg.GatewayChannelsMaxMessagesPerChannel <= 0 {
+		cfg.GatewayChannelsMaxMessagesPerChannel = 500
+	}
+	if strings.TrimSpace(cfg.GatewayPersistenceDir) == "" {
+		cfg.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway")
+	}
+	if cfg.GatewayArchiveRetentionDays <= 0 {
+		cfg.GatewayArchiveRetentionDays = 30
+	}
+	if cfg.GatewayArchiveMaxFileBytes <= 0 {
+		cfg.GatewayArchiveMaxFileBytes = 10485760
+	}
+	if strings.TrimSpace(cfg.GatewayArchiveDir) == "" {
+		cfg.GatewayArchiveDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway", "archive")
+	}
+	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
+		switch cfg.LLMProvider {
+		case "bifrost":
+			if cfg.LLMBaseURL == "" {
+				cfg.LLMBaseURL = cfg.BifrostBase
+			}
+			if cfg.LLMModel == "" {
+				cfg.LLMModel = cfg.BifrostModel
+			}
+			if cfg.LLMAPIKey == "" {
+				cfg.LLMAPIKey = cfg.BifrostAPIKey
+			}
+		case "openai":
+			if cfg.LLMBaseURL == "" {
+				cfg.LLMBaseURL = "https://api.openai.com/v1"
+			}
+			if cfg.LLMModel == "" {
+				cfg.LLMModel = "gpt-4o-mini"
+			}
+			if cfg.LLMAPIKey == "" {
+				cfg.LLMAPIKey = os.Getenv("OPENAI_API_KEY")
+			}
+		case "gemini":
+			if cfg.LLMBaseURL == "" {
+				cfg.LLMBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
+			}
+			if cfg.LLMModel == "" {
+				cfg.LLMModel = "gemini-2.5-flash"
+			}
+			if cfg.LLMAPIKey == "" {
+				cfg.LLMAPIKey = os.Getenv("GEMINI_API_KEY")
+			}
+		case "gemini-native":
+			if cfg.LLMBaseURL == "" {
+				cfg.LLMBaseURL = "https://generativelanguage.googleapis.com/v1beta"
+			}
+			if cfg.LLMModel == "" {
+				cfg.LLMModel = "gemini-2.5-flash"
+			}
+			if cfg.LLMAPIKey == "" {
+				cfg.LLMAPIKey = os.Getenv("GEMINI_API_KEY")
+			}
+		case "anthropic":
+			if cfg.LLMBaseURL == "" {
+				cfg.LLMBaseURL = "https://api.anthropic.com"
+			}
+			if cfg.LLMModel == "" {
+				cfg.LLMModel = "claude-3-5-haiku-latest"
+			}
+			if cfg.LLMAPIKey == "" {
+				cfg.LLMAPIKey = os.Getenv("ANTHROPIC_API_KEY")
+			}
+		}
+	}
+}
