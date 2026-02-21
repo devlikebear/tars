@@ -10,13 +10,13 @@ TEST_NAME ?=
 HEARTBEAT_INTERVAL ?= 30s
 MAX_HEARTBEATS ?= 0
 COVER_OUT ?= coverage.out
-TARS_CONFIG ?= ./config/standalone.yaml
+TARS_CONFIG ?= ./workspace/config/tars.config.yaml
 
 .DEFAULT_GOAL := help
 
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover \
-	build build-bins clean tidy fmt vet \
+	build build-bins clean tidy fmt vet lint \
 	dev-serve dev-serve-once dev-serve-loop dev-chat dev-heartbeat dev-tars \
 	api-status api-sessions api-compact api-chat api-heartbeat smoke-auth \
 	vault-up vault-down vault-logs security-scan \
@@ -44,6 +44,7 @@ help:
 	@echo "  make build-bins    - build cmd binaries to $(BIN_DIR)"
 	@echo "  make fmt           - go fmt ./..."
 	@echo "  make vet           - go vet ./..."
+	@echo "  make lint          - alias of vet for quality checks"
 	@echo "  make tidy          - go mod tidy"
 	@echo "  make clean         - remove build artifacts"
 	@echo ""
@@ -149,6 +150,8 @@ fmt:
 
 vet:
 	$(GO) vet ./...
+
+lint: vet
 
 tidy:
 	$(GO) mod tidy
