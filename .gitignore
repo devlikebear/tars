@@ -46,3 +46,4 @@ workspace/
 
 # for development, ignore the following files
 .docs/
+.analysis/
