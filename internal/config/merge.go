@@ -7,6 +7,12 @@ func merge(dst *Config, src Config) {
 	if src.WorkspaceDir != "" {
 		dst.WorkspaceDir = src.WorkspaceDir
 	}
+	if src.SessionDefaultID != "" {
+		dst.SessionDefaultID = src.SessionDefaultID
+	}
+	if src.SessionTelegramScope != "" {
+		dst.SessionTelegramScope = src.SessionTelegramScope
+	}
 	if src.APIAuthMode != "" {
 		dst.APIAuthMode = src.APIAuthMode
 	}

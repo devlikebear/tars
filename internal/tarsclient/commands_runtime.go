@@ -13,6 +13,9 @@ func cmdRuntime(c commandContext) (bool, string, error) {
 			return true, c.session, err
 		}
 		fmt.Fprintf(c.stdout, "SYSTEM > workspace=%s sessions=%d", status.WorkspaceDir, status.SessionCount)
+		if strings.TrimSpace(status.MainSessionID) != "" {
+			fmt.Fprintf(c.stdout, " main_session=%s", strings.TrimSpace(status.MainSessionID))
+		}
 		if strings.TrimSpace(status.AuthRole) != "" {
 			fmt.Fprintf(c.stdout, " auth_role=%s", status.AuthRole)
 		}

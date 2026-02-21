@@ -26,6 +26,7 @@ import (
 
 type serveAPIRuntime struct {
 	cfg                config.Config
+	mainSessionID      string
 	server             *http.Server
 	extensionsManager  *extensions.Manager
 	gatewayRuntime     *gateway.Runtime
@@ -84,6 +85,10 @@ func buildAPIMux(
 	cfg := deps.cfg
 	sessionStore := deps.sessionStore
 	sessionStoreResolver := deps.sessionStoreResolver
+	mainSessionID, err := resolveMainSessionID(sessionStore, cfg.SessionDefaultID)
+	if err != nil {
+		return nil, err
+	}
 
 	cronStore := cron.NewStoreWithOptions(cfg.WorkspaceDir, cron.StoreOptions{
 		RunHistoryLimit: cfg.CronRunHistoryLimit,
@@ -224,6 +229,7 @@ func buildAPIMux(
 		logger,
 		cfg.AgentMaxIterations,
 		activity,
+		mainSessionID,
 		chatTooling,
 		chatTools...,
 	)
@@ -231,7 +237,7 @@ func buildAPIMux(
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
 	mux.Handle("/v1/sessions", sessionHandler)
 	mux.Handle("/v1/sessions/", sessionHandler)
-	mux.Handle("/v1/status", newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, logger))
+	mux.Handle("/v1/status", newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger))
 	mux.Handle("/v1/auth/whoami", newAuthAPIHandler(cfg.APIAuthMode))
 	mux.Handle("/v1/healthz", newHealthzAPIHandler(nowFn))
 	mux.Handle("/v1/compact", newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmClient, logger))
@@ -282,6 +288,17 @@ func buildAPIMux(
 		cfg.ChannelsTelegramDMPolicy,
 		logger,
 	)
+	telegramInbound.mainSessionID = strings.TrimSpace(mainSessionID)
+	telegramInbound.sessionScope = normalizeTelegramSessionScope(cfg.SessionTelegramScope)
+	telegramInbound.commands = newTelegramCommandHandler(telegramCommandHandlerOptions{
+		Store:        sessionStore,
+		CronResolver: cronStoreResolver,
+		Runtime:      gatewayRuntime,
+		MainSession:  mainSessionID,
+		SessionScope: cfg.SessionTelegramScope,
+		Logger:       logger,
+	})
+	telegramInbound.media = newTelegramMediaDownloader(cfg.TelegramBotToken, cfg.WorkspaceDir)
 	telegramPoller := newTelegramUpdatePoller(cfg.TelegramBotToken, logger, telegramInbound.HandleUpdate)
 	if telegramPoller != nil {
 		telegramPoller = telegramPoller.withOffsetStore(
@@ -323,6 +340,7 @@ func buildAPIMux(
 
 	return &serveAPIRuntime{
 		cfg:                cfg,
+		mainSessionID:      mainSessionID,
 		server:             server,
 		extensionsManager:  extensionsManager,
 		gatewayRuntime:     gatewayRuntime,

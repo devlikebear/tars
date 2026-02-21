@@ -28,6 +28,10 @@ func loadYAML(path string) (Config, error) {
 			cfg.Mode = value
 		case "workspace_dir":
 			cfg.WorkspaceDir = value
+		case "session_default_id":
+			cfg.SessionDefaultID = strings.TrimSpace(value)
+		case "session_telegram_scope":
+			cfg.SessionTelegramScope = strings.TrimSpace(strings.ToLower(value))
 		case "api_auth_mode":
 			cfg.APIAuthMode = strings.TrimSpace(value)
 		case "api_auth_token":

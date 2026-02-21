@@ -22,6 +22,8 @@ type GatewayAgent struct {
 type Config struct {
 	Mode                                 string
 	WorkspaceDir                         string
+	SessionDefaultID                     string
+	SessionTelegramScope                 string
 	APIAuthMode                          string
 	APIAuthToken                         string
 	APIUserToken                         string
@@ -121,6 +123,7 @@ func Default() Config {
 	return Config{
 		Mode:                                 "standalone",
 		WorkspaceDir:                         "./workspace",
+		SessionTelegramScope:                 "main",
 		APIAuthMode:                          "external-required",
 		LLMProvider:                          "bifrost",
 		LLMAuthMode:                          "api-key",

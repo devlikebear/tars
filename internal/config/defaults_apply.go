@@ -16,6 +16,13 @@ func applyLLMDefaults(cfg *Config) {
 	cfg.APIAuthToken = strings.TrimSpace(cfg.APIAuthToken)
 	cfg.APIUserToken = strings.TrimSpace(cfg.APIUserToken)
 	cfg.APIAdminToken = strings.TrimSpace(cfg.APIAdminToken)
+	cfg.SessionDefaultID = strings.TrimSpace(cfg.SessionDefaultID)
+	cfg.SessionTelegramScope = strings.TrimSpace(strings.ToLower(cfg.SessionTelegramScope))
+	switch cfg.SessionTelegramScope {
+	case "main", "per-user":
+	default:
+		cfg.SessionTelegramScope = "main"
+	}
 	cfg.LLMProvider = strings.TrimSpace(strings.ToLower(cfg.LLMProvider))
 	if cfg.LLMProvider == "" {
 		cfg.LLMProvider = "bifrost"

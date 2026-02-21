@@ -75,6 +75,11 @@ type notificationHistoryMsg struct {
 	err     error
 }
 
+type statusBootstrapMsg struct {
+	status statusInfo
+	err    error
+}
+
 type tarsAppModel struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -155,6 +160,7 @@ func newTarsAppModel(
 
 func (m *tarsAppModel) Init() tea.Cmd {
 	m.historyPos = len(m.history)
+	m.startMainSessionBootstrap()
 	m.startEventStream()
 	return waitAsyncMsg(m.asyncCh)
 }

@@ -18,18 +18,25 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func resolveChatSession(store *session.Store, sessionID string) (string, error) {
-	if sessionID == "" {
-		sess, err := store.Create("chat")
-		if err != nil {
+func resolveChatSession(store *session.Store, sessionID string, mainSessionID string) (string, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		id := strings.TrimSpace(mainSessionID)
+		if id == "" {
+			sess, err := store.Create("chat")
+			if err != nil {
+				return "", err
+			}
+			return sess.ID, nil
+		}
+		if _, err := store.Get(id); err != nil {
 			return "", err
 		}
-		return sess.ID, nil
+		return id, nil
 	}
-	if _, err := store.Get(sessionID); err != nil {
+	if _, err := store.Get(strings.TrimSpace(sessionID)); err != nil {
 		return "", err
 	}
-	return sessionID, nil
+	return strings.TrimSpace(sessionID), nil
 }
 
 func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, toolChoice string, err error) {
@@ -215,6 +222,7 @@ func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Cli
 		logger,
 		agent.DefaultMaxLoopIters,
 		nil,
+		"",
 		defaultChatToolingOptions(),
 	)
 }
@@ -234,6 +242,7 @@ func newChatAPIHandlerWithOptions(
 		logger,
 		maxIterations,
 		nil,
+		"",
 		defaultChatToolingOptions(),
 		extraTools...,
 	)
@@ -255,6 +264,7 @@ func newChatAPIHandlerWithRuntime(
 		logger,
 		maxIterations,
 		activity,
+		"",
 		defaultChatToolingOptions(),
 		extraTools...,
 	)
@@ -267,6 +277,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 	logger zerolog.Logger,
 	maxIterations int,
 	activity *runtimeActivity,
+	mainSessionID string,
 	tooling chatToolingOptions,
 	extraTools ...tool.Tool,
 ) http.Handler {
@@ -274,14 +285,15 @@ func newChatAPIHandlerWithRuntimeConfig(
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		handleChatRequest(w, r, chatHandlerDeps{
-			workspaceDir: workspaceDir,
-			store:        store,
-			client:       client,
-			logger:       logger,
-			maxIters:     maxIters,
-			activity:     activity,
-			tooling:      tooling,
-			extraTools:   extraTools,
+			workspaceDir:  workspaceDir,
+			store:         store,
+			client:        client,
+			logger:        logger,
+			maxIters:      maxIters,
+			activity:      activity,
+			mainSessionID: strings.TrimSpace(mainSessionID),
+			tooling:       tooling,
+			extraTools:    extraTools,
 		})
 	})
 	return mux

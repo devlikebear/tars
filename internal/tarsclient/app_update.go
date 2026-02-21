@@ -138,6 +138,17 @@ func (m *tarsAppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			),
 		)
 		return m, waitAsyncMsg(m.asyncCh)
+
+	case statusBootstrapMsg:
+		if typed.err != nil {
+			m.appendStatusLine("main session bootstrap failed: " + formatRuntimeError(typed.err))
+			return m, waitAsyncMsg(m.asyncCh)
+		}
+		if strings.TrimSpace(m.sessionID) == "" && strings.TrimSpace(typed.status.MainSessionID) != "" {
+			m.sessionID = strings.TrimSpace(typed.status.MainSessionID)
+			m.appendStatusLine("session=" + m.sessionID)
+		}
+		return m, waitAsyncMsg(m.asyncCh)
 	}
 
 	return m, nil
@@ -263,6 +274,22 @@ func (m *tarsAppModel) startEventStream() {
 		history, err := runtime.eventHistory(ctx, 100)
 		select {
 		case asyncCh <- notificationHistoryMsg{history: history, err: err}:
+		case <-ctx.Done():
+		}
+	}()
+}
+
+func (m *tarsAppModel) startMainSessionBootstrap() {
+	if strings.TrimSpace(m.sessionID) != "" {
+		return
+	}
+	ctx := m.ctx
+	runtime := m.runtime
+	asyncCh := m.asyncCh
+	go func() {
+		status, err := runtime.status(ctx)
+		select {
+		case asyncCh <- statusBootstrapMsg{status: status, err: err}:
 		case <-ctx.Done():
 		}
 	}()

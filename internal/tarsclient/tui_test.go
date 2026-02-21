@@ -2,8 +2,12 @@ package tarsclient
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -196,5 +200,51 @@ func TestFormatChatLine_HelpStylingPreservesText(t *testing.T) {
 	header := formatChatLine("SYSTEM > commands")
 	if !strings.Contains(header, "SYSTEM > commands") {
 		t.Fatalf("expected header text preserved, got %q", header)
+	}
+}
+
+func TestTUI_MainSession_BootstrapOnInit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"workspace_dir":   "/tmp/ws",
+				"session_count":   1,
+				"main_session_id": "sess-main",
+			})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/events/history"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items":        []map[string]any{},
+				"unread_count": 0,
+				"read_cursor":  0,
+				"last_id":      0,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	model := newTarsAppModel(ctx, cancel, chatClient{serverURL: server.URL}, runtimeClient{serverURL: server.URL}, "", false)
+	_ = model.Init()
+
+	deadline := time.After(2 * time.Second)
+	for strings.TrimSpace(model.sessionID) == "" {
+		select {
+		case msg := <-model.asyncCh:
+			updated, _ := model.Update(msg)
+			next, ok := updated.(*tarsAppModel)
+			if !ok {
+				t.Fatalf("expected *tarsAppModel, got %T", updated)
+			}
+			model = next
+		case <-deadline:
+			t.Fatalf("timeout waiting for main session bootstrap")
+		}
+	}
+	if model.sessionID != "sess-main" {
+		t.Fatalf("expected bootstrapped session sess-main, got %q", model.sessionID)
 	}
 }

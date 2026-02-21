@@ -12,6 +12,12 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("TARS_WORKSPACE_DIR"); v != "" {
 		cfg.WorkspaceDir = v
 	}
+	if v := firstNonEmpty(os.Getenv("SESSION_DEFAULT_ID"), os.Getenv("TARS_SESSION_DEFAULT_ID")); v != "" {
+		cfg.SessionDefaultID = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("SESSION_TELEGRAM_SCOPE"), os.Getenv("TARS_SESSION_TELEGRAM_SCOPE")); v != "" {
+		cfg.SessionTelegramScope = strings.TrimSpace(strings.ToLower(v))
+	}
 	if v := firstNonEmpty(os.Getenv("API_AUTH_MODE"), os.Getenv("TARS_API_AUTH_MODE")); v != "" {
 		cfg.APIAuthMode = strings.TrimSpace(v)
 	}

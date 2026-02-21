@@ -146,7 +146,11 @@ func TestApplyAPIMiddleware_StatusIncludesAuthMetadataSingleWorkspace(t *testing
 	if _, err := store.Create("status test"); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	statusHandler := newStatusAPIHandler(root, store, zerolog.New(io.Discard))
+	mainSession, err := resolveMainSessionID(store, "")
+	if err != nil {
+		t.Fatalf("resolve main session: %v", err)
+	}
+	statusHandler := newStatusAPIHandler(root, store, mainSession, zerolog.New(io.Discard))
 	cfg := config.Config{
 		APIAuthMode:   "required",
 		APIUserToken:  "user-token",

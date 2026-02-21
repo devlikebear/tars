@@ -116,9 +116,10 @@ type SessionMessage struct {
 }
 
 type StatusInfo struct {
-	WorkspaceDir string `json:"workspace_dir"`
-	SessionCount int    `json:"session_count"`
-	AuthRole     string `json:"auth_role,omitempty"`
+	WorkspaceDir  string `json:"workspace_dir"`
+	SessionCount  int    `json:"session_count"`
+	MainSessionID string `json:"main_session_id,omitempty"`
+	AuthRole      string `json:"auth_role,omitempty"`
 }
 
 type WhoamiInfo struct {

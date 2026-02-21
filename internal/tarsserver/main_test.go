@@ -1156,6 +1156,7 @@ func TestChatAPI_InjectsAllToolsByDefault(t *testing.T) {
 		logger,
 		8,
 		nil,
+		"",
 		chatToolingOptions{},
 		tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
 			return tool.SessionStatus{SessionID: "sess-test"}, nil
@@ -1989,7 +1990,11 @@ func TestStatusAPI(t *testing.T) {
 		}
 	}
 
-	handler := newStatusAPIHandler(root, store, logger)
+	mainSession, err := resolveMainSessionID(store, "")
+	if err != nil {
+		t.Fatalf("resolve main session: %v", err)
+	}
+	handler := newStatusAPIHandler(root, store, mainSession, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
 	rec := httptest.NewRecorder()
@@ -2002,6 +2007,7 @@ func TestStatusAPI(t *testing.T) {
 	var body struct {
 		WorkspaceDir string `json:"workspace_dir"`
 		SessionCount int    `json:"session_count"`
+		MainSession  string `json:"main_session_id"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode status response: %v", err)
@@ -2011,6 +2017,9 @@ func TestStatusAPI(t *testing.T) {
 	}
 	if body.SessionCount != 2 {
 		t.Fatalf("expected session_count 2, got %d", body.SessionCount)
+	}
+	if strings.TrimSpace(body.MainSession) == "" {
+		t.Fatalf("expected main_session_id, got %+v", body)
 	}
 }
 

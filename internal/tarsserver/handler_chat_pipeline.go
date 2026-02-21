@@ -17,14 +17,15 @@ import (
 )
 
 type chatHandlerDeps struct {
-	workspaceDir string
-	store        *session.Store
-	client       llm.Client
-	logger       zerolog.Logger
-	maxIters     int
-	activity     *runtimeActivity
-	tooling      chatToolingOptions
-	extraTools   []tool.Tool
+	workspaceDir  string
+	store         *session.Store
+	client        llm.Client
+	logger        zerolog.Logger
+	maxIters      int
+	activity      *runtimeActivity
+	mainSessionID string
+	tooling       chatToolingOptions
+	extraTools    []tool.Tool
 }
 
 type chatRequestPayload struct {
@@ -117,7 +118,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusInternalServerError, "resolve workspace failed", err
 	}
 
-	sessionID, err := resolveChatSession(reqStore, req.SessionID)
+	sessionID, err := resolveChatSession(reqStore, req.SessionID, deps.mainSessionID)
 	if err != nil {
 		if strings.TrimSpace(req.SessionID) == "" {
 			deps.logger.Error().Err(err).Msg("create session failed")

@@ -21,12 +21,37 @@ type telegramUpdate struct {
 }
 
 type telegramMessage struct {
-	MessageID       int64        `json:"message_id"`
-	Text            string       `json:"text"`
-	MessageThreadID int64        `json:"message_thread_id,omitempty"`
-	Chat            telegramChat `json:"chat"`
-	From            telegramUser `json:"from"`
-	Date            int64        `json:"date,omitempty"`
+	MessageID       int64             `json:"message_id"`
+	Text            string            `json:"text"`
+	Caption         string            `json:"caption,omitempty"`
+	Photo           []telegramPhoto   `json:"photo,omitempty"`
+	Document        *telegramDocument `json:"document,omitempty"`
+	Voice           *telegramVoice    `json:"voice,omitempty"`
+	MessageThreadID int64             `json:"message_thread_id,omitempty"`
+	Chat            telegramChat      `json:"chat"`
+	From            telegramUser      `json:"from"`
+	Date            int64             `json:"date,omitempty"`
+}
+
+type telegramPhoto struct {
+	FileID   string `json:"file_id"`
+	FileSize int64  `json:"file_size,omitempty"`
+	Width    int    `json:"width,omitempty"`
+	Height   int    `json:"height,omitempty"`
+}
+
+type telegramDocument struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
+}
+
+type telegramVoice struct {
+	FileID   string `json:"file_id"`
+	MimeType string `json:"mime_type,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
+	Duration int    `json:"duration,omitempty"`
 }
 
 type telegramChat struct {

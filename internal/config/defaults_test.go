@@ -302,6 +302,53 @@ func TestConfig_TelegramPollingEnabled_FromEnv(t *testing.T) {
 	}
 }
 
+func TestConfig_SessionScope_DefaultMain(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.SessionTelegramScope != "main" {
+		t.Fatalf("expected session_telegram_scope=main by default, got %q", cfg.SessionTelegramScope)
+	}
+	if cfg.SessionDefaultID != "" {
+		t.Fatalf("expected empty session_default_id by default, got %q", cfg.SessionDefaultID)
+	}
+}
+
+func TestConfig_SessionScope_FromYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"session_default_id: sess-main",
+		"session_telegram_scope: per-user",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.SessionDefaultID != "sess-main" {
+		t.Fatalf("expected session_default_id from yaml, got %q", cfg.SessionDefaultID)
+	}
+	if cfg.SessionTelegramScope != "per-user" {
+		t.Fatalf("expected session_telegram_scope from yaml, got %q", cfg.SessionTelegramScope)
+	}
+}
+
+func TestConfig_SessionScope_InvalidFallsBackToMain(t *testing.T) {
+	t.Setenv("SESSION_TELEGRAM_SCOPE", "invalid")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.SessionTelegramScope != "main" {
+		t.Fatalf("expected invalid scope to fallback to main, got %q", cfg.SessionTelegramScope)
+	}
+}
+
 func TestResolveConfigPath_ExplicitAndEnv(t *testing.T) {
 	t.Setenv("TARS_CONFIG", "/tmp/should-not-win.yaml")
 	if got := ResolveConfigPath("./custom.yaml"); got != "./custom.yaml" {

@@ -206,7 +206,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 	return mux
 }
 
-func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerolog.Logger) http.Handler {
+func newStatusAPIHandler(workspaceDir string, store *session.Store, mainSessionID string, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -227,8 +227,9 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, logger zerol
 		}
 
 		body := map[string]any{
-			"workspace_dir": resolvedWorkspaceDir,
-			"session_count": len(sessions),
+			"workspace_dir":   resolvedWorkspaceDir,
+			"session_count":   len(sessions),
+			"main_session_id": strings.TrimSpace(mainSessionID),
 		}
 		if role := serverauth.RoleFromRequest(r); role != "" {
 			body["auth_role"] = role
