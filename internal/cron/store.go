@@ -3,6 +3,7 @@ package cron
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -223,71 +224,91 @@ func (s *Store) Update(id string, input UpdateInput) (Job, error) {
 		if jobs[i].ID != id {
 			continue
 		}
-		if input.Name != nil {
-			name := strings.TrimSpace(*input.Name)
-			if name == "" {
-				return Job{}, fmt.Errorf("name is required")
-			}
-			jobs[i].Name = name
+		updated := jobs[i]
+		if err := applyUpdateInput(&updated, input); err != nil {
+			return Job{}, err
 		}
-		if input.Prompt != nil {
-			prompt := strings.TrimSpace(*input.Prompt)
-			if prompt == "" {
-				return Job{}, fmt.Errorf("prompt is required")
-			}
-			jobs[i].Prompt = prompt
-		}
-		if input.Schedule != nil {
-			schedule, err := normalizeSchedule(*input.Schedule)
-			if err != nil {
-				return Job{}, err
-			}
-			jobs[i].Schedule = schedule
-		}
-		if input.Enabled != nil {
-			jobs[i].Enabled = *input.Enabled
-		}
-		if input.SessionTarget != nil {
-			sessionTarget, err := normalizeSessionTarget(*input.SessionTarget)
-			if err != nil {
-				return Job{}, err
-			}
-			jobs[i].SessionTarget = sessionTarget
-			if strings.TrimSpace(jobs[i].DeliveryMode) == "" {
-				jobs[i].DeliveryMode, _ = normalizeDeliveryMode("", sessionTarget)
-			}
-		}
-		if input.WakeMode != nil {
-			wakeMode, err := normalizeWakeMode(*input.WakeMode)
-			if err != nil {
-				return Job{}, err
-			}
-			jobs[i].WakeMode = wakeMode
-		}
-		if input.DeliveryMode != nil {
-			deliveryMode, err := normalizeDeliveryMode(*input.DeliveryMode, jobs[i].SessionTarget)
-			if err != nil {
-				return Job{}, err
-			}
-			jobs[i].DeliveryMode = deliveryMode
-		}
-		if input.Payload != nil {
-			payload, err := normalizePayload(*input.Payload)
-			if err != nil {
-				return Job{}, err
-			}
-			jobs[i].Payload = payload
-		}
-		if input.DeleteAfterRun != nil {
-			jobs[i].DeleteAfterRun = *input.DeleteAfterRun
-		}
-		jobs[i].UpdatedAt = time.Now().UTC()
+		updated.UpdatedAt = time.Now().UTC()
+		jobs[i] = updated
 		if err := s.save(jobs); err != nil {
 			return Job{}, err
 		}
 		return jobs[i], nil
 	}
 	return Job{}, fmt.Errorf("job not found: %s", id)
+}
+
+func applyUpdateInput(job *Job, input UpdateInput) error {
+	if job == nil {
+		return fmt.Errorf("job is required")
+	}
+	if input.Name != nil {
+		value, err := requiredTrimmedValue(*input.Name, "name is required")
+		if err != nil {
+			return err
+		}
+		job.Name = value
+	}
+	if input.Prompt != nil {
+		value, err := requiredTrimmedValue(*input.Prompt, "prompt is required")
+		if err != nil {
+			return err
+		}
+		job.Prompt = value
+	}
+	if input.Schedule != nil {
+		schedule, err := normalizeSchedule(*input.Schedule)
+		if err != nil {
+			return err
+		}
+		job.Schedule = schedule
+	}
+	if input.Enabled != nil {
+		job.Enabled = *input.Enabled
+	}
+	if input.SessionTarget != nil {
+		sessionTarget, err := normalizeSessionTarget(*input.SessionTarget)
+		if err != nil {
+			return err
+		}
+		job.SessionTarget = sessionTarget
+		if strings.TrimSpace(job.DeliveryMode) == "" {
+			job.DeliveryMode, _ = normalizeDeliveryMode("", sessionTarget)
+		}
+	}
+	if input.WakeMode != nil {
+		wakeMode, err := normalizeWakeMode(*input.WakeMode)
+		if err != nil {
+			return err
+		}
+		job.WakeMode = wakeMode
+	}
+	if input.DeliveryMode != nil {
+		deliveryMode, err := normalizeDeliveryMode(*input.DeliveryMode, job.SessionTarget)
+		if err != nil {
+			return err
+		}
+		job.DeliveryMode = deliveryMode
+	}
+	if input.Payload != nil {
+		payload, err := normalizePayload(*input.Payload)
+		if err != nil {
+			return err
+		}
+		job.Payload = payload
+	}
+	if input.DeleteAfterRun != nil {
+		job.DeleteAfterRun = *input.DeleteAfterRun
+	}
+	return nil
+}
+
+func requiredTrimmedValue(raw string, message string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", errors.New(message)
+	}
+	return trimmed, nil
 }
 
 func (s *Store) Delete(id string) error {
