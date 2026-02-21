@@ -231,6 +231,9 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("CHANNELS_TELEGRAM_ENABLED"), os.Getenv("TARS_CHANNELS_TELEGRAM_ENABLED")); v != "" {
 		cfg.ChannelsTelegramEnabled = parseBool(v, cfg.ChannelsTelegramEnabled)
 	}
+	if v := firstNonEmpty(os.Getenv("TELEGRAM_BOT_TOKEN"), os.Getenv("TARS_TELEGRAM_BOT_TOKEN")); v != "" {
+		cfg.TelegramBotToken = strings.TrimSpace(v)
+	}
 	if v := firstNonEmpty(os.Getenv("TOOLS_MESSAGE_ENABLED"), os.Getenv("TARS_TOOLS_MESSAGE_ENABLED")); v != "" {
 		cfg.ToolsMessageEnabled = parseBool(v, cfg.ToolsMessageEnabled)
 	}

@@ -20,6 +20,7 @@ func applyLLMDefaults(cfg *Config) {
 	if cfg.LLMProvider == "" {
 		cfg.LLMProvider = "bifrost"
 	}
+	cfg.TelegramBotToken = strings.TrimSpace(cfg.TelegramBotToken)
 	cfg.LLMAuthMode = strings.TrimSpace(strings.ToLower(cfg.LLMAuthMode))
 	if cfg.LLMAuthMode == "" {
 		cfg.LLMAuthMode = "api-key"

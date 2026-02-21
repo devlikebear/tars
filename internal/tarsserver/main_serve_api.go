@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -98,12 +99,20 @@ func buildAPIMux(
 		)
 	}
 	broker := newEventBroker()
+	notificationStore, err := newNotificationStore(
+		filepath.Join(strings.TrimSpace(cfg.GatewayPersistenceDir), "notifications.json"),
+		notificationHistoryMax,
+	)
+	if err != nil {
+		return nil, err
+	}
 	dispatcher := newNotificationDispatcher(
 		broker,
 		newCommandNotifier(cfg.NotifyCommand, logger),
 		cfg.NotifyWhenNoClients,
 		logger,
 	)
+	dispatcher.store = notificationStore
 	heartbeatRunner := newWorkspaceHeartbeatRunnerWithNotify(
 		cfg.WorkspaceDir,
 		nowFn,
@@ -257,10 +266,14 @@ func buildAPIMux(
 	mux.Handle("/v1/browser/check", browserHandler)
 	mux.Handle("/v1/browser/run", browserHandler)
 	mux.Handle("/v1/vault/status", browserHandler)
-	channelsHandler := newChannelsAPIHandler(gatewayRuntime, logger)
+	channelsHandler := newChannelsAPIHandlerWithTelegramSender(gatewayRuntime, newTelegramSender(cfg.TelegramBotToken), logger)
 	mux.Handle("/v1/channels/webhook/inbound/", channelsHandler)
 	mux.Handle("/v1/channels/telegram/webhook/", channelsHandler)
-	mux.Handle("/v1/events/stream", newEventStreamHandler(broker, logger))
+	mux.Handle("/v1/channels/telegram/send", channelsHandler)
+	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
+	mux.Handle("/v1/events/stream", eventsHandler)
+	mux.Handle("/v1/events/history", eventsHandler)
+	mux.Handle("/v1/events/read", eventsHandler)
 
 	server := &http.Server{
 		Addr:    opts.APIAddr,

@@ -223,6 +223,9 @@ func merge(dst *Config, src Config) {
 	if src.ChannelsTelegramEnabled {
 		dst.ChannelsTelegramEnabled = true
 	}
+	if src.TelegramBotToken != "" {
+		dst.TelegramBotToken = src.TelegramBotToken
+	}
 	if src.ToolsMessageEnabled {
 		dst.ToolsMessageEnabled = true
 	}

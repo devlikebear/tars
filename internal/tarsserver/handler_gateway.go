@@ -1,11 +1,15 @@
 package tarsserver
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/rs/zerolog"
@@ -263,6 +267,10 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 }
 
 func newChannelsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) http.Handler {
+	return newChannelsAPIHandlerWithTelegramSender(runtime, nil, logger)
+}
+
+func newChannelsAPIHandlerWithTelegramSender(runtime *gateway.Runtime, sender telegramSender, logger zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/channels/webhook/inbound/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -322,6 +330,79 @@ func newChannelsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) http
 		}
 		writeJSON(w, http.StatusOK, msg)
 	})
+	mux.HandleFunc("/v1/channels/telegram/send", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if runtime == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+			return
+		}
+		if sender == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "telegram sender is not configured"})
+			return
+		}
+		payload := map[string]any{}
+		decoder := json.NewDecoder(r.Body)
+		decoder.UseNumber()
+		if err := decoder.Decode(&payload); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		chatID := strings.TrimSpace(asTelegramString(payload["chat_id"]))
+		if chatID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "chat_id is required"})
+			return
+		}
+		text := strings.TrimSpace(asTelegramString(payload["text"]))
+		if text == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text is required"})
+			return
+		}
+		threadID := strings.TrimSpace(asTelegramString(payload["thread_id"]))
+		parseMode := strings.TrimSpace(asTelegramString(payload["parse_mode"]))
+		botID := strings.TrimSpace(asTelegramString(payload["bot_id"]))
+		sendCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		sendResult, err := sender.Send(sendCtx, telegramSendRequest{
+			BotID:     botID,
+			ChatID:    chatID,
+			Text:      text,
+			ThreadID:  threadID,
+			ParseMode: parseMode,
+		})
+		if err != nil {
+			logger.Error().Err(err).Str("chat_id", chatID).Msg("telegram send failed")
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "telegram send failed: " + strings.TrimSpace(err.Error())})
+			return
+		}
+		recordPayload := map[string]any{
+			"provider": "telegram",
+		}
+		if botID != "" {
+			recordPayload["bot_id"] = botID
+		}
+		if parseMode != "" {
+			recordPayload["parse_mode"] = parseMode
+		}
+		if sendResult.MessageID > 0 {
+			recordPayload["message_id"] = sendResult.MessageID
+		}
+		if sendResult.ChatID != "" {
+			recordPayload["provider_chat_id"] = sendResult.ChatID
+		}
+		if sendResult.Text != "" {
+			recordPayload["provider_text"] = sendResult.Text
+		}
+		msg, err := runtime.OutboundTelegram(botID, chatID, threadID, text, recordPayload)
+		if err != nil {
+			logger.Error().Err(err).Str("chat_id", chatID).Msg("telegram outbound record failed")
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, msg)
+	})
 	return mux
 }
 
@@ -346,6 +427,32 @@ func asString(v any) string {
 		return value
 	default:
 		return ""
+	}
+}
+
+func asTelegramString(v any) string {
+	// Telegram send payload accepts numeric chat/thread ids. Keep this parser
+	// local to telegram handlers to avoid changing generic inbound parsing rules.
+	switch value := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(value)
+	case json.Number:
+		return strings.TrimSpace(value.String())
+	case float64:
+		if value == math.Trunc(value) {
+			return strconv.FormatInt(int64(value), 10)
+		}
+		return strings.TrimSpace(fmt.Sprintf("%v", value))
+	case int:
+		return strconv.Itoa(value)
+	case int64:
+		return strconv.FormatInt(value, 10)
+	case uint64:
+		return strconv.FormatUint(value, 10)
+	default:
+		return strings.TrimSpace(fmt.Sprint(value))
 	}
 }
 

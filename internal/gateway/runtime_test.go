@@ -477,6 +477,26 @@ func TestRuntimeChannelBrowserNodes(t *testing.T) {
 	}
 }
 
+func TestRuntime_OutboundTelegramRecordedAsTelegramSource(t *testing.T) {
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:                 true,
+		WorkspaceDir:            t.TempDir(),
+		ChannelsTelegramEnabled: true,
+	})
+	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+
+	msg, err := rt.OutboundTelegram("bot-main", "chat-1", "", "hello telegram", map[string]any{"provider": "telegram"})
+	if err != nil {
+		t.Fatalf("OutboundTelegram: %v", err)
+	}
+	if msg.Source != "telegram" || msg.Direction != "outbound" {
+		t.Fatalf("unexpected outbound telegram message: %+v", msg)
+	}
+	if msg.ChannelID != "chat-1" {
+		t.Fatalf("expected channel_id chat-1, got %+v", msg)
+	}
+}
+
 func TestRuntimeClose_CancelsRunningAndBlocksNewSpawn(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	rt := NewRuntime(RuntimeOptions{

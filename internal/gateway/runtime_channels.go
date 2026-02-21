@@ -88,6 +88,27 @@ func (r *Runtime) InboundTelegramByWorkspace(workspaceID, botID, threadID, text 
 	return r.appendChannelMessage(workspaceID, channelID, threadID, text, "inbound", "telegram", payload)
 }
 
+func (r *Runtime) OutboundTelegram(botID, chatID, threadID, text string, payload map[string]any) (ChannelMessage, error) {
+	return r.OutboundTelegramByWorkspace(defaultWorkspaceID, botID, chatID, threadID, text, payload)
+}
+
+func (r *Runtime) OutboundTelegramByWorkspace(workspaceID, botID, chatID, threadID, text string, payload map[string]any) (ChannelMessage, error) {
+	if r == nil || !r.opts.Enabled {
+		return ChannelMessage{}, fmt.Errorf("gateway runtime is disabled")
+	}
+	if !r.opts.ChannelsTelegramEnabled {
+		return ChannelMessage{}, fmt.Errorf("telegram channels are disabled")
+	}
+	channelID := strings.TrimSpace(chatID)
+	if channelID == "" {
+		channelID = strings.TrimSpace(botID)
+	}
+	if channelID == "" {
+		channelID = "telegram"
+	}
+	return r.appendChannelMessage(workspaceID, channelID, threadID, text, "outbound", "telegram", payload)
+}
+
 func (r *Runtime) appendChannelMessage(workspaceID, channelID, threadID, text, direction, source string, payload map[string]any) (ChannelMessage, error) {
 	key := strings.TrimSpace(channelID)
 	if key == "" {

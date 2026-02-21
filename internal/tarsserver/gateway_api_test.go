@@ -876,6 +876,40 @@ func TestChannelsAPIHandler_WebhookAndTelegramInbound(t *testing.T) {
 	}
 }
 
+func TestChannelsAPI_TelegramSend_UserAllowed(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	sender := telegramSendFunc(func(ctx context.Context, req telegramSendRequest) (telegramSendResult, error) {
+		return telegramSendResult{
+			MessageID: 77,
+			ChatID:    req.ChatID,
+			Text:      req.Text,
+		}, nil
+	})
+	h := applyAPIMiddleware(config.Config{
+		APIAuthMode:  "required",
+		APIUserToken: "user-token",
+	}, zerolog.New(io.Discard), newChannelsAPIHandlerWithTelegramSender(runtime, sender, zerolog.New(io.Discard)), io.Discard)
+
+	body := bytes.NewBufferString(`{"chat_id":"chat-1","text":"hello"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/channels/telegram/send", body)
+	req.Header.Set("Authorization", "Bearer user-token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("telegram send expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if strings.TrimSpace(asString(payload["source"])) != "telegram" {
+		t.Fatalf("expected source=telegram, got %+v", payload)
+	}
+	if strings.TrimSpace(asString(payload["direction"])) != "outbound" {
+		t.Fatalf("expected direction=outbound, got %+v", payload)
+	}
+}
+
 func TestBrowserAPIHandler_StatusProfilesAndVaultStatus(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
 	handler := newBrowserAPIHandler(runtime, vaultStatusSnapshot{

@@ -88,6 +88,26 @@ func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 	}
 }
 
+func TestMiddleware_AdminPaths_TelegramSendIsNotAdminOnly(t *testing.T) {
+	cfg := config.Config{
+		APIAuthMode:   "required",
+		APIUserToken:  "user-token",
+		APIAdminToken: "admin-token",
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	reqUser := httptest.NewRequest(http.MethodPost, "/v1/channels/telegram/send", nil)
+	reqUser.RemoteAddr = "192.0.2.10:5555"
+	reqUser.Header.Set("Authorization", "Bearer user-token")
+	recUser := httptest.NewRecorder()
+	h.ServeHTTP(recUser, reqUser)
+	if recUser.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for user token on telegram send path, got %d body=%q", recUser.Code, recUser.Body.String())
+	}
+}
+
 func TestApplyAPIMiddleware_StatusIncludesAuthMetadataSingleWorkspace(t *testing.T) {
 	root := t.TempDir()
 	if err := memory.EnsureWorkspace(root); err != nil {

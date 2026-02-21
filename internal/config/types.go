@@ -94,6 +94,7 @@ type Config struct {
 	ChannelsLocalEnabled                 bool
 	ChannelsWebhookEnabled               bool
 	ChannelsTelegramEnabled              bool
+	TelegramBotToken                     string
 	ToolsMessageEnabled                  bool
 	ToolsBrowserEnabled                  bool
 	ToolsNodesEnabled                    bool

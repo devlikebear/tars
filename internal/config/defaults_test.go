@@ -248,6 +248,33 @@ func TestLoad_InvalidPathReturnsError(t *testing.T) {
 	}
 }
 
+func TestConfig_TelegramToken_FromYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("telegram_bot_token: yaml-bot-token\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.TelegramBotToken != "yaml-bot-token" {
+		t.Fatalf("expected telegram token from yaml, got %q", cfg.TelegramBotToken)
+	}
+}
+
+func TestConfig_TelegramToken_FromEnv(t *testing.T) {
+	t.Setenv("TELEGRAM_BOT_TOKEN", "env-telegram-token")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.TelegramBotToken != "env-telegram-token" {
+		t.Fatalf("expected telegram token from env, got %q", cfg.TelegramBotToken)
+	}
+}
+
 func TestResolveConfigPath_ExplicitAndEnv(t *testing.T) {
 	t.Setenv("TARS_CONFIG", "/tmp/should-not-win.yaml")
 	if got := ResolveConfigPath("./custom.yaml"); got != "./custom.yaml" {
