@@ -1,6 +1,6 @@
-# tarsd example configuration
+# tars example configuration
 # Usage:
-#   go run ./cmd/tarsd --config ./config/tarsd.config.example.yaml --serve-api
+#   go run ./cmd/tars serve --config ./config/tars.config.example.yaml --serve-api
 # Health check endpoint: GET /v1/healthz
 
 mode: standalone

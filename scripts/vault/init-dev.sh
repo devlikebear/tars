@@ -50,4 +50,4 @@ APP_TOKEN="$(vault token create -policy="${TARS_POLICY_NAME}" -ttl=24h -field=to
 
 echo "[vault-init] done"
 echo "[vault-init] readonly token: ${APP_TOKEN}"
-echo "[vault-init] set in tarsd config: vault_token: ${APP_TOKEN}"
+echo "[vault-init] set in tars config: vault_token: ${APP_TOKEN}"

@@ -99,8 +99,8 @@ func TestLoad_EnvOverridesYAML(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	t.Setenv("TARSD_MODE", "standalone")
-	t.Setenv("TARSD_WORKSPACE_DIR", "./env-workspace")
+	t.Setenv("TARS_MODE", "standalone")
+	t.Setenv("TARS_WORKSPACE_DIR", "./env-workspace")
 	t.Setenv("BIFROST_BASE_URL", "http://localhost:9090/v1")
 	t.Setenv("BIFROST_API_KEY", "env-key")
 	t.Setenv("BIFROST_MODEL", "env-model")
@@ -248,19 +248,19 @@ func TestLoad_InvalidPathReturnsError(t *testing.T) {
 	}
 }
 
-func TestResolveTarsdConfigPath_ExplicitAndEnv(t *testing.T) {
-	t.Setenv("TARSD_CONFIG", "/tmp/should-not-win.yaml")
-	if got := ResolveTarsdConfigPath("./custom.yaml"); got != "./custom.yaml" {
+func TestResolveConfigPath_ExplicitAndEnv(t *testing.T) {
+	t.Setenv("TARS_CONFIG", "/tmp/should-not-win.yaml")
+	if got := ResolveConfigPath("./custom.yaml"); got != "./custom.yaml" {
 		t.Fatalf("expected explicit path to win, got %q", got)
 	}
 
-	t.Setenv("TARSD_CONFIG", "/tmp/from-env.yaml")
-	if got := ResolveTarsdConfigPath(""); got != "/tmp/from-env.yaml" {
+	t.Setenv("TARS_CONFIG", "/tmp/from-env.yaml")
+	if got := ResolveConfigPath(""); got != "/tmp/from-env.yaml" {
 		t.Fatalf("expected env path, got %q", got)
 	}
 }
 
-func TestResolveTarsdConfigPath_DefaultCandidate(t *testing.T) {
+func TestResolveConfigPath_DefaultCandidate(t *testing.T) {
 	root := t.TempDir()
 	configDir := filepath.Join(root, "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
@@ -280,8 +280,8 @@ func TestResolveTarsdConfigPath_DefaultCandidate(t *testing.T) {
 	}
 	defer func() { _ = os.Chdir(wd) }()
 
-	if got := ResolveTarsdConfigPath(""); got != DefaultTarsdConfigFilename {
-		t.Fatalf("expected default candidate %q, got %q", DefaultTarsdConfigFilename, got)
+	if got := ResolveConfigPath(""); got != DefaultConfigFilename {
+		t.Fatalf("expected default candidate %q, got %q", DefaultConfigFilename, got)
 	}
 }
 
