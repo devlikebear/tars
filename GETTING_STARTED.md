@@ -144,3 +144,36 @@ curl -sS -X POST "http://127.0.0.1:43180/v1/channels/telegram/send" \
 
 - Telegram 채팅방에 메시지가 도착해야 합니다.
 - API 응답 JSON에 `source: "telegram"` 및 `direction: "outbound"`가 포함되어야 합니다.
+
+### 5-3) Telegram 슬래시 명령 / typing / 미디어 인바운드
+
+1. 지원 명령(텔레그램 DM에서 `/`로 실행)
+
+- `/help`
+- `/sessions`
+- `/status`
+- `/health`
+- `/cron list`
+- `/cron runs {job_id} [limit]`
+- `/gateway status`
+- `/channels`
+
+2. 세션 정책
+
+- `session_telegram_scope: main`(기본값): Telegram은 메인 세션을 공유합니다. `/new`, `/resume`은 차단됩니다.
+- `session_telegram_scope: per-user`: 사용자별 세션을 사용하며 `/new`, `/resume`이 허용됩니다.
+
+3. typing 이벤트
+
+- 일반 텍스트/LLM 경로에서만 Telegram `typing` 이벤트를 주기적으로 전송합니다.
+- 명령 경로(`/help` 등)는 typing 없이 즉시 응답합니다.
+
+4. 미디어 인바운드(photo/document/voice)
+
+- private chat에서 `photo`, `document`, `voice`를 수신/저장합니다.
+- 저장 경로: `workspace/telegram/media/<YYYYMMDD>/chat_<chat_id>/...`
+- 최대 크기: `20MB` (`telegramMediaMaxBytes`).
+- 캡션(또는 텍스트) 포함:
+  - 첨부 메타(`saved_path`, `mime`, `size`, `original_name`)를 user prompt에 주입해 LLM이 응답합니다.
+- 캡션 없음:
+  - 파일만 저장하고, "캡션/텍스트를 추가로 보내달라"는 안내를 반환합니다(LLM 미호출).
