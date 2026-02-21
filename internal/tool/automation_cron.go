@@ -13,7 +13,7 @@ import (
 func NewCronListTool(store *cron.Store) Tool {
 	return Tool{
 		Name:        "cron_list",
-		Description: "List registered cron jobs managed by tarsd.",
+		Description: "List registered cron jobs managed by tars.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
 		Execute: func(_ context.Context, _ json.RawMessage) (Result, error) {
 			if store == nil {

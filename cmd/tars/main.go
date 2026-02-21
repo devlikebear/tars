@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/secrets"
-	"github.com/devlikebear/tarsncase/internal/tarsdapp"
+	"github.com/devlikebear/tarsncase/internal/tarsapp"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +61,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	opts := options{}
 	cmd := &cobra.Command{
 		Use:   "tars",
-		Short: "Go TUI client for tarsd",
+		Short: "Go TUI client for tars",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			chat := chatClient{
 				serverURL: opts.serverURL,
@@ -86,7 +86,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 			return runTUI(cmd.Context(), stdin, stdout, chat, runtime, session, opts.verbose)
 		},
 	}
-	cmd.Flags().StringVar(&opts.serverURL, "server-url", os.Getenv("TARS_SERVER_URL"), "tarsd server url")
+	cmd.Flags().StringVar(&opts.serverURL, "server-url", os.Getenv("TARS_SERVER_URL"), "tars server url")
 	cmd.Flags().StringVar(&opts.sessionID, "session", "", "session id")
 	cmd.Flags().StringVar(&opts.apiToken, "api-token", os.Getenv("TARS_API_TOKEN"), "api token")
 	cmd.Flags().StringVar(&opts.adminToken, "admin-api-token", os.Getenv("TARS_ADMIN_API_TOKEN"), "admin api token")
@@ -120,7 +120,7 @@ func newServeCommand(stdout, stderr io.Writer) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "enable verbose debug logging")
 	cmd.Flags().BoolVar(&opts.runOnce, "run-once", false, "run heartbeat once and exit")
 	cmd.Flags().BoolVar(&opts.runLoop, "run-loop", false, "run heartbeat loop")
-	cmd.Flags().BoolVar(&opts.serveAPI, "serve-api", true, "serve tarsd http api")
+	cmd.Flags().BoolVar(&opts.serveAPI, "serve-api", true, "serve tars http api")
 	cmd.Flags().StringVar(&opts.apiAddr, "api-addr", "127.0.0.1:43180", "http api listen address")
 	cmd.Flags().DurationVar(&opts.heartbeatInterval, "heartbeat-interval", 30*time.Minute, "heartbeat interval (e.g. 30m, 5s)")
 	cmd.Flags().IntVar(&opts.maxHeartbeats, "max-heartbeats", 0, "maximum heartbeat count in loop (0 means unlimited)")
@@ -166,7 +166,7 @@ func buildServeDelegateArgs(opts serveOptions) []string {
 }
 
 func runServeCommand(_ context.Context, args []string, stdout, stderr io.Writer) error {
-	code := tarsdapp.Run(args, stdout, stderr)
+	code := tarsapp.Run(args, stdout, stderr)
 	if code == 0 {
 		return nil
 	}

@@ -561,7 +561,7 @@ func (c *Client) initializeSession(ctx context.Context, sess *session) error {
 		"protocolVersion": "2024-11-05",
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
-			"name":    "tarsd",
+			"name":    "tars",
 			"version": "0.1.0",
 		},
 	})

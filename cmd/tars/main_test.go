@@ -729,7 +729,7 @@ func TestExecuteCommand_Health(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/healthz":
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "component": "tarsd", "time": "2026-02-19T00:00:00Z"})
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "component": "tars", "time": "2026-02-19T00:00:00Z"})
 		default:
 			http.NotFound(w, r)
 		}

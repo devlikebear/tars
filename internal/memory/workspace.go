@@ -61,7 +61,7 @@ const defaultToolsTemplate = `# TOOLS.md
 - Note any tool restrictions or preferred usage patterns.
 `
 
-// EnsureWorkspace creates the minimum workspace layout used by tarsd.
+// EnsureWorkspace creates the minimum workspace layout used by tars.
 func EnsureWorkspace(root string) error {
 	if err := os.MkdirAll(filepath.Join(root, "memory"), 0o755); err != nil {
 		return fmt.Errorf("create memory dir: %w", err)

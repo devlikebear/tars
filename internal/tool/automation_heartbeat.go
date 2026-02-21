@@ -33,7 +33,7 @@ type HeartbeatRunResult struct {
 func NewHeartbeatStatusTool(getStatus func(ctx context.Context) (HeartbeatStatus, error)) Tool {
 	return Tool{
 		Name:        "heartbeat_status",
-		Description: "Return tarsd heartbeat runtime status and latest execution result.",
+		Description: "Return tars heartbeat runtime status and latest execution result.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
 		Execute: func(ctx context.Context, _ json.RawMessage) (Result, error) {
 			if getStatus == nil {
