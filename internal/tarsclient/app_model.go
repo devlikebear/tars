@@ -42,6 +42,7 @@ var slashCommands = []string{
 	"/browser",
 	"/vault",
 	"/channels",
+	"/telegram",
 	"/cron",
 	"/notify",
 	"/trace",
@@ -325,6 +326,11 @@ func completeCommandInput(current string) (string, bool) {
 		return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"status", "profiles", "login", "check", "run"})
 	case "/vault":
 		return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"status"})
+	case "/telegram":
+		if len(fields) >= 2 && strings.TrimSpace(fields[1]) == "pairing" {
+			return completeByPosition(value, fields, hasTrailingSpace, 2, []string{"approve"})
+		}
+		return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"pairings", "pairing"})
 	case "/trace":
 		if len(fields) == 1 && hasTrailingSpace {
 			return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"on", "off", "filter"})

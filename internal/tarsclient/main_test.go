@@ -135,6 +135,60 @@ func TestExecuteCommand_CronAndChannels(t *testing.T) {
 	}
 }
 
+func TestExecuteCommand_TelegramPairingsAndApprove(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/channels/telegram/pairings":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"dm_policy":       "pairing",
+				"polling_enabled": true,
+				"pending": []map[string]any{
+					{"code": "ABCD1234", "user_id": 11, "chat_id": "101", "username": "alice", "expires_at": "2026-02-21T01:00:00Z"},
+				},
+				"allowed": []map[string]any{
+					{"user_id": 22, "chat_id": "202", "username": "bob", "approved_at": "2026-02-21T00:20:00Z"},
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/channels/telegram/pairings/approve":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"approved": map[string]any{
+					"user_id":     11,
+					"chat_id":     "101",
+					"username":    "alice",
+					"approved_at": "2026-02-21T00:30:00Z",
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runtime := runtimeClient{
+		serverURL:     server.URL,
+		apiToken:      "user-token",
+		adminAPIToken: "admin-token",
+	}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/telegram pairings", "", stdout, stderr); err != nil {
+		t.Fatalf("/telegram pairings: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "dm_policy=pairing") || !strings.Contains(out, "pending code=ABCD1234") {
+		t.Fatalf("unexpected telegram pairings output: %q", out)
+	}
+
+	stdout.Reset()
+	if _, _, err := executeCommand(context.Background(), runtime, "/telegram pairing approve ABCD1234", "", stdout, stderr); err != nil {
+		t.Fatalf("/telegram pairing approve: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "approved telegram pairing user_id=11") {
+		t.Fatalf("unexpected approve output: %q", stdout.String())
+	}
+}
+
 func TestExecuteCommand_BrowserAndVault(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

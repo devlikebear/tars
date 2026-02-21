@@ -88,6 +88,58 @@ func TestClient_DoAndConvenienceMethods(t *testing.T) {
 	}
 }
 
+func TestClient_TelegramPairingsAdminMethods(t *testing.T) {
+	var listAuth string
+	var approveAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/channels/telegram/pairings":
+			listAuth = r.Header.Get("Authorization")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"dm_policy":       "pairing",
+				"polling_enabled": true,
+				"pending": []map[string]any{
+					{"code": "ABCD1234", "user_id": 1, "chat_id": "101", "created_at": "2026-02-21T00:00:00Z", "expires_at": "2026-02-21T01:00:00Z"},
+				},
+				"allowed": []map[string]any{
+					{"user_id": 2, "chat_id": "202", "approved_at": "2026-02-21T00:10:00Z"},
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/channels/telegram/pairings/approve":
+			approveAuth = r.Header.Get("Authorization")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"approved": map[string]any{
+					"user_id":     1,
+					"chat_id":     "101",
+					"approved_at": "2026-02-21T00:20:00Z",
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := New(Config{ServerURL: server.URL, APIToken: "user-token", AdminAPIToken: "admin-token"})
+	info, err := client.TelegramPairings(context.Background())
+	if err != nil {
+		t.Fatalf("TelegramPairings: %v", err)
+	}
+	if info.DMPolicy != "pairing" || !info.PollingEnabled || len(info.Pending) != 1 || len(info.Allowed) != 1 {
+		t.Fatalf("unexpected pairings payload: %+v", info)
+	}
+	approved, err := client.ApproveTelegramPairing(context.Background(), "ABCD1234")
+	if err != nil {
+		t.Fatalf("ApproveTelegramPairing: %v", err)
+	}
+	if approved.UserID != 1 || approved.ChatID != "101" {
+		t.Fatalf("unexpected approved payload: %+v", approved)
+	}
+	if strings.TrimSpace(listAuth) != "Bearer admin-token" || strings.TrimSpace(approveAuth) != "Bearer admin-token" {
+		t.Fatalf("expected admin auth header for pairings endpoints, got list=%q approve=%q", listAuth, approveAuth)
+	}
+}
+
 func TestClient_StreamEvents_StopsOnUnauthorized(t *testing.T) {
 	var requests int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -45,3 +45,11 @@ func (c runtimeClient) gatewayReportRuns(ctx context.Context, limit int) (gatewa
 func (c runtimeClient) gatewayReportChannels(ctx context.Context, limit int) (gatewayReportChannels, error) {
 	return c.client().GatewayReportChannels(ctx, limit)
 }
+
+func (c runtimeClient) telegramPairings(ctx context.Context) (telegramPairingsInfo, error) {
+	return c.client().TelegramPairings(ctx)
+}
+
+func (c runtimeClient) approveTelegramPairing(ctx context.Context, code string) (telegramPairingAllowed, error) {
+	return c.client().ApproveTelegramPairing(ctx, code)
+}

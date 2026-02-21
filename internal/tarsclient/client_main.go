@@ -99,6 +99,7 @@ Runtime:
   /browser {status|profiles|login|check|run}
   /vault {status}
   /channels
+  /telegram {pairings|pairing approve {code}}
   /cron {list|get|runs|add|run|delete|enable|disable}
   /notify {list|filter|open|clear}
 
@@ -218,6 +219,8 @@ func isAdminEndpointPath(path string) bool {
 	case strings.HasPrefix(trimmed, "/v1/channels/webhook/inbound/"):
 		return true
 	case strings.HasPrefix(trimmed, "/v1/channels/telegram/webhook/"):
+		return true
+	case strings.HasPrefix(trimmed, "/v1/channels/telegram/pairings"):
 		return true
 	default:
 		return false

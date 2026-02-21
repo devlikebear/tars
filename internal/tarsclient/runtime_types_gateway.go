@@ -28,6 +28,12 @@ type browserRunResult = tarsclient.BrowserRunResult
 
 type vaultStatusInfo = tarsclient.VaultStatusInfo
 
+type telegramPairingPending = tarsclient.TelegramPairingPending
+
+type telegramPairingAllowed = tarsclient.TelegramPairingAllowed
+
+type telegramPairingsInfo = tarsclient.TelegramPairingsInfo
+
 type agentSpawnRequest = tarsclient.SpawnRequest
 
 type spawnCommand struct {

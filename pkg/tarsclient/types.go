@@ -361,6 +361,29 @@ type VaultStatusInfo struct {
 	LastError      string `json:"last_error,omitempty"`
 }
 
+type TelegramPairingPending struct {
+	Code      string `json:"code"`
+	UserID    int64  `json:"user_id"`
+	ChatID    string `json:"chat_id"`
+	Username  string `json:"username,omitempty"`
+	CreatedAt string `json:"created_at"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+type TelegramPairingAllowed struct {
+	UserID     int64  `json:"user_id"`
+	ChatID     string `json:"chat_id"`
+	Username   string `json:"username,omitempty"`
+	ApprovedAt string `json:"approved_at"`
+}
+
+type TelegramPairingsInfo struct {
+	DMPolicy       string                   `json:"dm_policy"`
+	PollingEnabled bool                     `json:"polling_enabled"`
+	Pending        []TelegramPairingPending `json:"pending"`
+	Allowed        []TelegramPairingAllowed `json:"allowed"`
+}
+
 // SpawnRequest is the API payload for POST /v1/agent/runs.
 // CLI parsing types (for example, spawnCommand) stay in internal/tarsclient.
 type SpawnRequest struct {
