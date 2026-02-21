@@ -8,6 +8,7 @@ Language docs:
 
 Additional docs:
 
+- Getting started (practical examples): [GETTING_STARTED.md](GETTING_STARTED.md)
 - Contributing (versioning/PR policy): [CONTRIBUTING.md](CONTRIBUTING.md)
 - Change log: [CHANGE.log](CHANGE.log)
 - License: [LICENSE](LICENSE)
