@@ -6,10 +6,11 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -136,7 +137,7 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 	if logOut == nil {
 		logOut = io.Discard
 	}
-	logger := log.New(logOut, "", 0)
+	logger := zerolog.New(logOut).With().Str("component", "serverauth").Logger()
 
 	userToken := strings.TrimSpace(opts.UserToken)
 	adminToken := strings.TrimSpace(opts.AdminToken)
@@ -172,7 +173,7 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			}
 			tokenNeeded := requireToken || isAdminPath
 			if tokenNeeded && !anyTokenConfigured {
-				logger.Printf("api auth enabled but token is empty; rejecting path=%s", r.URL.Path)
+				logger.Warn().Str("path", r.URL.Path).Msg("api auth enabled but token is empty; rejecting request")
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 				return
