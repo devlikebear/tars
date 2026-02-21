@@ -35,3 +35,11 @@ func ToolNameAliases() map[string]string {
 	}
 	return out
 }
+
+func IsExecToolName(name string) bool {
+	canonical := CanonicalToolName(name)
+	if canonical == "" {
+		return false
+	}
+	return canonical == CanonicalToolName("shell_exec")
+}

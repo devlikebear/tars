@@ -112,8 +112,9 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 
 		for _, call := range resp.Message.ToolCalls {
 			callName := normalizeToolName(call.Name)
+			isExecCall := tool.IsExecToolName(callName)
 			effectiveArgs := call.Arguments
-			if callName == "exec" {
+			if isExecCall {
 				correctedArgs, corrected := autoCorrectExecArguments(effectiveArgs, !execAutoCorrectUsed)
 				if corrected {
 					effectiveArgs = correctedArgs
@@ -198,7 +199,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				ToolResult: redactedResult,
 			})
 
-			if callName == "exec" && isMissingCommandExecResult(effectiveArgs, redactedResult) {
+			if isExecCall && isMissingCommandExecResult(effectiveArgs, redactedResult) {
 				repeatedInvalidExecCount++
 			} else {
 				repeatedInvalidExecCount = 0
