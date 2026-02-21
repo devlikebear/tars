@@ -56,11 +56,40 @@ func cmdCron(c commandContext) (bool, string, error) {
 		if len(c.fields) < 3 {
 			return true, c.session, fmt.Errorf("usage: /cron get {job_id}")
 		}
-		job, err := c.runtime.getCronJob(c.ctx, c.fields[2])
+		jobID := strings.TrimSpace(c.fields[2])
+		job, err := c.runtime.getCronJob(c.ctx, jobID)
 		if err != nil {
 			return true, c.session, err
 		}
-		fmt.Fprintf(c.stdout, "SYSTEM > %s name=%s schedule=%s enabled=%t\n", job.ID, job.Name, job.Schedule, job.Enabled)
+		fmt.Fprintf(c.stdout, "SYSTEM > cron job %s\n", job.ID)
+		fmt.Fprintf(c.stdout, "name=%s schedule=%s enabled=%t delete_after_run=%t\n", cronValueOrDash(job.Name), cronValueOrDash(job.Schedule), job.Enabled, job.DeleteAfterRun)
+		fmt.Fprintf(c.stdout, "session_target=%s wake_mode=%s delivery_mode=%s\n", cronValueOrDash(job.SessionTarget), cronValueOrDash(job.WakeMode), cronValueOrDash(job.DeliveryMode))
+		if strings.TrimSpace(job.LastRunAt) != "" {
+			fmt.Fprintf(c.stdout, "last_run_at=%s\n", strings.TrimSpace(job.LastRunAt))
+		}
+		if strings.TrimSpace(job.LastRunError) != "" {
+			fmt.Fprintf(c.stdout, "last_run_error=%s\n", cronLogText(job.LastRunError))
+		}
+		fmt.Fprintln(c.stdout, "prompt:")
+		fmt.Fprintln(c.stdout, cronPromptText(job.Prompt))
+
+		runs, err := c.runtime.listCronRuns(c.ctx, jobID, 10)
+		if err != nil {
+			return true, c.session, err
+		}
+		if len(runs) == 0 {
+			fmt.Fprintln(c.stdout, "SYSTEM > (no cron run logs)")
+			return true, c.session, nil
+		}
+		fmt.Fprintf(c.stdout, "SYSTEM > cron run logs (latest %d)\n", len(runs))
+		for _, run := range runs {
+			ranAt := cronValueOrDash(run.RanAt)
+			if strings.TrimSpace(run.Error) != "" {
+				fmt.Fprintf(c.stdout, "- %s error=%s\n", ranAt, cronLogText(run.Error))
+				continue
+			}
+			fmt.Fprintf(c.stdout, "- %s response=%s\n", ranAt, cronLogText(run.Response))
+		}
 		return true, c.session, nil
 	case "runs":
 		if len(c.fields) < 3 {
@@ -85,10 +114,10 @@ func cmdCron(c commandContext) (bool, string, error) {
 		fmt.Fprintln(c.stdout, "SYSTEM > cron runs")
 		for _, run := range runs {
 			if strings.TrimSpace(run.Error) != "" {
-				fmt.Fprintf(c.stdout, "- %s error=%s\n", run.RanAt, run.Error)
+				fmt.Fprintf(c.stdout, "- %s error=%s\n", cronValueOrDash(run.RanAt), cronLogText(run.Error))
 				continue
 			}
-			fmt.Fprintf(c.stdout, "- %s response=%s\n", run.RanAt, strings.TrimSpace(run.Response))
+			fmt.Fprintf(c.stdout, "- %s response=%s\n", cronValueOrDash(run.RanAt), cronLogText(run.Response))
 		}
 		return true, c.session, nil
 	case "delete":
@@ -114,6 +143,32 @@ func cmdCron(c commandContext) (bool, string, error) {
 	default:
 		return true, c.session, fmt.Errorf("usage: /cron {list|get|runs|add|run|delete|enable|disable}")
 	}
+}
+
+func cronPromptText(v string) string {
+	text := strings.TrimSpace(v)
+	if text == "" {
+		return "-"
+	}
+	return text
+}
+
+func cronLogText(v string) string {
+	text := strings.TrimSpace(v)
+	if text == "" {
+		return "-"
+	}
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\n", "\\n")
+	return text
+}
+
+func cronValueOrDash(v string) string {
+	text := strings.TrimSpace(v)
+	if text == "" {
+		return "-"
+	}
+	return text
 }
 
 func cmdNotify(c commandContext) (bool, string, error) {

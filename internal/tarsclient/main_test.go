@@ -73,6 +73,7 @@ func TestExecuteCommand_CronAndChannels(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs/job_1/runs":
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"job_id": "job_1", "ran_at": "2026-02-18T09:00:00Z", "response": "ok"},
+				{"job_id": "job_1", "ran_at": "2026-02-18T08:00:00Z", "error": "timeout"},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/status":
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -107,6 +108,12 @@ func TestExecuteCommand_CronAndChannels(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "schedule=every:1h") {
 		t.Fatalf("expected cron get output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "prompt:") || !strings.Contains(stdout.String(), "check") {
+		t.Fatalf("expected cron prompt output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "cron run logs") || !strings.Contains(stdout.String(), "error=timeout") {
+		t.Fatalf("expected cron run logs output, got %q", stdout.String())
 	}
 
 	stdout.Reset()
