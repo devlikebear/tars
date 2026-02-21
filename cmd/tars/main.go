@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/secrets"
+	"github.com/devlikebear/tarsncase/internal/tarsdapp"
 	"github.com/spf13/cobra"
 )
 
@@ -165,38 +165,12 @@ func buildServeDelegateArgs(opts serveOptions) []string {
 	return args
 }
 
-func runServeCommand(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	if err := runExternalCommand(ctx, "tarsd", args, stdout, stderr); err == nil {
+func runServeCommand(_ context.Context, args []string, stdout, stderr io.Writer) error {
+	code := tarsdapp.Run(args, stdout, stderr)
+	if code == 0 {
 		return nil
-	} else if !isCommandNotFound(err) {
-		return err
 	}
-	if _, statErr := os.Stat("go.mod"); statErr == nil {
-		goArgs := append([]string{"run", "./cmd/tarsd"}, args...)
-		if err := runExternalCommand(ctx, "go", goArgs, stdout, stderr); err == nil {
-			return nil
-		}
-	}
-	return fmt.Errorf("tarsd command not found; install tarsd or run from repository root")
-}
-
-func runExternalCommand(ctx context.Context, name string, args []string, stdout, stderr io.Writer) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
-}
-
-func isCommandNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	var execErr *exec.Error
-	if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
-		return true
-	}
-	return false
+	return fmt.Errorf("serve exited with code %d", code)
 }
 
 func executeCommand(ctx context.Context, runtime runtimeClient, line, session string, stdout, stderr io.Writer) (bool, string, error) {
