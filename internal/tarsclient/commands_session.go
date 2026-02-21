@@ -29,12 +29,21 @@ func cmdSession(c commandContext) (bool, string, error) {
 			for i, s := range sessions {
 				fmt.Fprintf(c.stdout, "%d. %s %s\n", i+1, s.ID, s.Title)
 			}
-			fmt.Fprintln(c.stdout, "SYSTEM > use /resume {number|id|latest}")
+			fmt.Fprintln(c.stdout, "SYSTEM > use /resume {number|id|latest|main}")
 			return true, c.session, nil
 		}
 		arg := strings.TrimSpace(c.fields[1])
 		next := ""
-		if strings.EqualFold(arg, "latest") {
+		if strings.EqualFold(arg, "main") {
+			status, err := c.runtime.status(c.ctx)
+			if err != nil {
+				return true, c.session, err
+			}
+			next = strings.TrimSpace(status.MainSessionID)
+			if next == "" {
+				return true, c.session, fmt.Errorf("main session is not configured")
+			}
+		} else if strings.EqualFold(arg, "latest") {
 			sessions, err := c.runtime.listSessions(c.ctx)
 			if err != nil {
 				return true, c.session, err

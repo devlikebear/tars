@@ -93,6 +93,68 @@ func TestTelegramCommand_Blocked_MainScopeSessionSwitch(t *testing.T) {
 	}
 }
 
+func TestTelegramCommand_ResumeMain_AllowedInMainScope(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	mainSession, err := store.Create("main")
+	if err != nil {
+		t.Fatalf("create main session: %v", err)
+	}
+	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
+		Store:        store,
+		CronResolver: newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),
+		Runtime:      nil,
+		MainSession:  mainSession.ID,
+		SessionScope: "main",
+		Logger:       zerolog.Nop(),
+	})
+
+	handled, result, nextSession, err := handler.Execute(context.Background(), "/resume main", "")
+	if err != nil {
+		t.Fatalf("Execute /resume main: %v", err)
+	}
+	if !handled {
+		t.Fatalf("expected /resume main to be handled")
+	}
+	if strings.TrimSpace(nextSession) != "" {
+		t.Fatalf("expected no session switch token in main scope, got %q", nextSession)
+	}
+	if !strings.Contains(result, mainSession.ID) {
+		t.Fatalf("expected main session id in result, got %q", result)
+	}
+}
+
+func TestTelegramCommand_ResumeLatest_BlockedInMainScope(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	mainSession, err := store.Create("main")
+	if err != nil {
+		t.Fatalf("create main session: %v", err)
+	}
+	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
+		Store:        store,
+		CronResolver: newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),
+		Runtime:      nil,
+		MainSession:  mainSession.ID,
+		SessionScope: "main",
+		Logger:       zerolog.Nop(),
+	})
+
+	handled, result, nextSession, err := handler.Execute(context.Background(), "/resume latest", "")
+	if err != nil {
+		t.Fatalf("Execute /resume latest: %v", err)
+	}
+	if !handled {
+		t.Fatalf("expected /resume latest to be handled")
+	}
+	if strings.TrimSpace(nextSession) != "" {
+		t.Fatalf("expected no next session in main scope, got %q", nextSession)
+	}
+	if !strings.Contains(strings.ToLower(result), "main session mode") {
+		t.Fatalf("expected block message, got %q", result)
+	}
+}
+
 func TestTelegramCommand_FallbackToChat_Unknown(t *testing.T) {
 	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
 		Store:        session.NewStore(t.TempDir()),

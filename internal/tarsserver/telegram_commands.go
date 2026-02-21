@@ -96,9 +96,6 @@ func (h *telegramCommandHandler) Execute(ctx context.Context, line, currentSessi
 		nextSessionID, result, err := h.cmdNew(trimmed)
 		return true, result, nextSessionID, err
 	case "/resume":
-		if h.sessionScope == "main" {
-			return true, blockInMainSessionMessage(), "", nil
-		}
 		nextSessionID, result, err := h.cmdResume(fields)
 		return true, result, nextSessionID, err
 	case "/reload":
@@ -269,9 +266,25 @@ func (h *telegramCommandHandler) cmdResume(fields []string) (string, string, err
 		return "", "", fmt.Errorf("session store is not configured")
 	}
 	if len(fields) < 2 || strings.TrimSpace(fields[1]) == "" {
-		return "", "SYSTEM > usage: /resume {id|number|latest}", nil
+		return "", "SYSTEM > usage: /resume {id|number|latest|main}", nil
 	}
 	arg := strings.TrimSpace(fields[1])
+	if strings.EqualFold(arg, "main") {
+		mainSessionID := strings.TrimSpace(h.mainSession)
+		if mainSessionID == "" {
+			return "", "", fmt.Errorf("main session is not configured")
+		}
+		if _, err := h.store.Get(mainSessionID); err != nil {
+			return "", "", err
+		}
+		if h.sessionScope == "main" {
+			return "", fmt.Sprintf("SYSTEM > using main session=%s", mainSessionID), nil
+		}
+		return mainSessionID, fmt.Sprintf("SYSTEM > resumed session=%s", mainSessionID), nil
+	}
+	if h.sessionScope == "main" {
+		return "", blockInMainSessionMessage(), nil
+	}
 	if strings.EqualFold(arg, "latest") {
 		latest, err := h.store.Latest()
 		if err != nil {
@@ -321,6 +334,7 @@ func telegramHelpText() string {
 /gateway status
 /channels
 /new [title]        (per-user scope only)
+/resume main        (all scopes)
 /resume {id|latest} (per-user scope only)`)
 }
 

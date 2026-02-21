@@ -338,6 +338,37 @@ func TestExecuteCommand_ResumeAndAgentsDetail(t *testing.T) {
 	}
 }
 
+func TestExecuteCommand_ResumeMainAliasUsesStatusMainSession(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"workspace_dir":   "/tmp/ws",
+				"session_count":   2,
+				"main_session_id": "s-main",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runtime := runtimeClient{serverURL: server.URL}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	_, session, err := executeCommand(context.Background(), runtime, "/resume main", "s-prev", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/resume main: %v", err)
+	}
+	if session != "s-main" {
+		t.Fatalf("expected main session alias to resolve to s-main, got %q", session)
+	}
+	if !strings.Contains(stdout.String(), "resumed session=s-main") {
+		t.Fatalf("expected resume output, got %q", stdout.String())
+	}
+}
+
 func TestExecuteCommand_ResumeWithoutIDUsesLatestSession(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
