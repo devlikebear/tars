@@ -259,6 +259,17 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `scripts/smoke_auth_workspace.sh` 추가
   - `make smoke-auth`로 auth/role 경계 기본 점검 자동화
 
+**2026-02-21**
+- 리팩토링 마감(기능 변경 없음):
+  - `internal/tarsapp` 엔트리/부트스트랩/API 실행 경로 분리(`main_bootstrap.go`, `main_serve_api.go`, `main_cli.go`, `main_options.go`)
+  - chat handler 파이프라인 분리(`handler_chat_pipeline.go`) 및 공통 에러 응답 헬퍼 정리
+  - `internal/config/defaults.go`를 로딩/병합/ENV/YAML 파서 모듈로 분리, YAML 파서를 `yaml.v3` 기반으로 통일
+  - `internal/mcp/client`를 API 계층과 transport/protocol 계층으로 분리
+  - `internal/llm/gemini_native` 변환/채팅 계층 분리, `bifrost*` 파일명을 OpenAI-compatible 의미로 정정
+- 개발/검증 경로 정리:
+  - `Makefile`에 `lint` 타깃 추가(`lint: vet`)
+  - 최종 검증: `make test`, `make lint` 통과
+
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조
 - Phase 4-7 계획은 `PLAN.md` 참조
