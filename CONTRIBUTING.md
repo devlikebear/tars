@@ -8,7 +8,7 @@ This repository is maintained with a small-team workflow. Keep changes focused, 
 
 - Keep PRs small and goal-focused.
 - Follow existing architecture boundaries:
-  - server/runtime logic in `tarsd`
+  - server/runtime logic in `tars`
   - client UX in `cmd/tars`
 - Avoid speculative abstractions and unrelated refactors.
 

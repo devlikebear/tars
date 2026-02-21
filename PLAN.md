@@ -2,17 +2,17 @@
 
 > 최종 갱신: 2026-02-19
 > 모듈: `github.com/devlikebear/tarsncase`
-> 바이너리: `tarsd` (메인 데몬), `tars` (Go CLI/TUI 클라이언트, 단일 공식 클라이언트)
-> 참고: 문서 하단의 `tars-ui`/`cased` 관련 항목 일부는 이력 보존용이며, 현재 실행 경로는 `tarsd + cmd/tars` 기준이다.
+> 바이너리: `tars` (단일 바이너리: `tars serve` 서버 모드 + Go CLI/TUI 클라이언트)
+> 참고: 문서 하단의 `tars-ui`/`cased` 관련 항목 일부는 이력 보존용이며, 현재 실행 경로는 `tars + cmd/tars` 기준이다.
 
 ## 1. 현재 구현 현황
 
 ### 완료된 기능 (Phase 0)
-- [x] Go 프로젝트 스켈레톤 (`cmd/tarsd`, `cmd/tars`)
+- [x] Go 프로젝트 스켈레톤 (`cmd/tars`)
 - [x] Makefile + GitHub Actions CI (`make test`)
 - [x] 런타임 설정 로더 (`internal/config`) — YAML + 환경변수 + `${ENV_VAR}` 확장
 - [x] zerolog 구조화 로깅
-- [x] cobra CLI 프레임워크 (tarsd, tars 모두)
+- [x] cobra CLI 프레임워크 (`tars` 단일 바이너리)
 - [x] 3-Layer 메모리 기본 구조 (`internal/memory`)
   - `EnsureWorkspace()`: HEARTBEAT.md, MEMORY.md, `_shared/`, `memory/` 생성
   - `AppendDailyLog()`: `memory/YYYY-MM-DD.md` append
@@ -25,8 +25,8 @@
   - `RunOnce`: HEARTBEAT.md 읽기 → daily log 기록
   - `RunOnceWithLLM`: HEARTBEAT.md + MEMORY.md + daily log → LLM 호출 → 응답 기록
   - `RunLoop` / `RunLoopWithLLM`: ticker 기반 반복 실행
-- [x] tarsd HTTP API: `POST /v1/heartbeat/run-once` (LLM 응답 반환)
-- [x] tarsd graceful shutdown (signal.NotifyContext)
+- [x] tars HTTP API: `POST /v1/heartbeat/run-once` (LLM 응답 반환)
+- [x] tars graceful shutdown (signal.NotifyContext)
 - [x] heartbeat API: `POST /v1/heartbeat/run-once`
 - [x] `--run-once` / `--run-loop` 상호 배타 검증
 - [x] `internal/cli` 공통 에러 처리 (ExitError, IsFlagError)
@@ -36,9 +36,9 @@
 - [x] 시스템 프롬프트 조립 (`internal/prompt`) — 부트스트랩 파일 주입, 파일당 20000자 제한, sub-agent 모드 지원
 - [x] 세션 관리 (`internal/session`) — sessions.json + JSONL transcript, CRUD, history/search/export, 토큰 기반 동적 로딩
 - [x] LLM Chat API (`internal/llm`) — `Client.Chat`, `OnDelta` 스트리밍 콜백
-- [x] tarsd 채팅 API (`POST /v1/chat`) — SSE(delta/done), 세션 자동 생성/지정, transcript 저장
+- [x] tars 채팅 API (`POST /v1/chat`) — SSE(delta/done), 세션 자동 생성/지정, transcript 저장
 - [x] `cmd/tars` 채팅 — Bubble Tea TUI + SSE 스트리밍 + 세션 유지
-- [x] 디버그 로깅 (`--verbose`) — `tars↔tarsd` 및 `tarsd↔LLM` 상세 로그
+- [x] 디버그 로깅 (`--verbose`) — `tars↔tars` 및 `tars↔LLM` 상세 로그
 - [x] non-streaming provider fallback — `OnDelta` 미호출 시 최종 응답을 `delta`로 1회 전송
 - [x] `cmd/tars` 슬래시 명령군 확장 — 세션/런타임/게이트웨이/크론/알림 제어
 - [x] `tars-ui` 제거 + Node 기반 CI/워크플로우 정리
@@ -97,7 +97,7 @@
 
 #### 2026-02-18
 - [x] 프로젝트 간소화(공개 릴리즈 준비)
-  - `tarsd` 헬스체크 endpoint 유지: `GET /v1/healthz`
+  - `tars` 헬스체크 endpoint 유지: `GET /v1/healthz`
   - sub-agent 정책 V2 추가: `tools_allow_groups`, `tools_allow_patterns`, `session_routing_mode`, `session_fixed_id`
   - gateway 리포트 API 추가: `/v1/gateway/reports/summary`, `/v1/gateway/reports/runs`, `/v1/gateway/reports/channels`
   - gateway 경량 기본값: `gateway_report_summary_enabled=true`, `gateway_archive_enabled=false`
@@ -144,7 +144,7 @@
   - `cmd/tars /gateway`에 persistence telemetry 표시
 
 #### 2026-02-16
-- [x] 기본 개발 포트를 `127.0.0.1:43180`으로 통일 (`tarsd`/`tars`/예제 설정/README)
+- [x] 기본 개발 포트를 `127.0.0.1:43180`으로 통일 (`tars serve`/`tars`/예제 설정/README)
 - [x] 런타임 확장 명령 `/reload` 추가 (`POST /v1/runtime/extensions/reload` 호출)
 - [x] SSE/네트워크 진단 강화 (endpoint 포함 에러, keepalive 개선, 재연결 백오프)
 - [x] MCP 런타임 안정화
@@ -164,11 +164,11 @@
 | 원칙 | 설명 |
 |------|------|
 | AI First | 허트비트, 크론, 채팅 모두 HEARTBEAT.md 같은 자연어 지시서를 AI가 읽고 자율 판단/실행 |
-| tarsd API → tars CLI | 모든 기능은 tarsd HTTP API로 먼저 구현, tars는 해당 API의 클라이언트 |
+| tars API → tars CLI | 모든 기능은 tars HTTP API로 먼저 구현, tars는 해당 API의 클라이언트 |
 | SSE 스트리밍 | 채팅 응답은 Phase 1부터 SSE 스트리밍으로 제공 |
 | 토큰 기반 동적 히스토리 | 세션 로드 시 context_window - reserve_tokens 범위 내에서 역순 로딩 |
 | 마크다운이 진실의 원천 | 3-Layer 메모리는 마크다운 파일 기반, SQLite는 나중에 검색 인덱스로 추가 |
-| UI/로직 분리 | `tarsd`는 실행 로직, `tars`는 API 클라이언트 UX 담당 |
+| UI/로직 분리 | `tars`는 실행 로직, `tars`는 API 클라이언트 UX 담당 |
 
 ---
 
@@ -213,9 +213,9 @@ export GEMINI_API_KEY=...
 
 ### Phase 1: LLM 대화형 채팅
 
-**목표**: tarsd가 SSE 스트리밍으로 멀티턴 채팅을 제공하고, tars CLI에서 대화형 REPL로 사용
+**목표**: tars가 SSE 스트리밍으로 멀티턴 채팅을 제공하고, tars CLI에서 대화형 REPL로 사용
 
-**마일스톤**: `tarsd --serve-api` 실행 후 `cmd/tars`로 멀티턴 대화가 가능한 상태 (달성)
+**마일스톤**: `tars serve --serve-api` 실행 후 `cmd/tars`로 멀티턴 대화가 가능한 상태 (달성)
 
 #### 1-A. 워크스페이스 부트스트랩 파일 확장
 
@@ -319,11 +319,11 @@ Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatRespons
 - SSE 스트리밍: `OnDelta` 콜백으로 델타 텍스트 전달
 - 기존 `Ask()`는 `Chat()`의 단축 래퍼로 유지
 
-#### 1-E. tarsd 채팅 API
+#### 1-E. tars 채팅 API
 
 상태: 완료
 
-**수정 파일**: `cmd/tarsd/main.go`
+**수정 파일**: `cmd/tars/main.go`
 
 ```
 POST /v1/chat
@@ -334,7 +334,7 @@ Response: Content-Type: text/event-stream
   data: {"type":"done","session_id":"main","usage":{"input_tokens":100,"output_tokens":50}}
 ```
 
-#### 1-F. tarsd 세션 관리 API + 슬래시 명령
+#### 1-F. tars 세션 관리 API + 슬래시 명령
 
 상태: 완료
 
@@ -346,7 +346,7 @@ GET    /v1/sessions/{id}/history       # 세션 히스토리 (메시지 목록)
 DELETE /v1/sessions/{id}               # 세션 삭제
 POST   /v1/sessions/{id}/export       # 세션 내보내기 (마크다운)
 GET    /v1/sessions/search?q=keyword   # 세션 검색
-GET    /v1/status                      # tarsd 상태 (세션 수, 메모리 등)
+GET    /v1/status                      # tars 상태 (세션 수, 메모리 등)
 POST   /v1/compact                     # 컨텍스트 압축 트리거
 ```
 
@@ -357,7 +357,7 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 - `/history` → 현재 세션 히스토리
 - `/export` → 현재 세션 마크다운 내보내기
 - `/search {keyword}` → 세션 검색
-- `/status` → tarsd 상태
+- `/status` → tars 상태
 - `/compact` → 컨텍스트 압축
 
 #### 1-G. 컨텍스트 압축 (Compaction)
@@ -404,7 +404,7 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 | `tsconfig.json` | TypeScript 빌드 설정 |
 
 **역할 분리 원칙:**
-- `tarsd`: LLM/도구/세션/메모리 오케스트레이션
+- `tars`: LLM/도구/세션/메모리 오케스트레이션
 - `tars-ui`: 고급 대화형 UX(레이아웃/스트리밍 렌더링/시각화)
 - `tars`: 경량 CLI(운영, 자동화, 파이프라인, fallback 인터페이스)
 
@@ -414,7 +414,7 @@ POST   /v1/compact                     # 컨텍스트 압축 트리거
 - `internal/session/compaction_test.go` — 압축 로직
 - `internal/prompt/builder_test.go` — 프롬프트 조립 (워크스페이스 파일 주입)
 - `internal/llm/*_test.go` — Chat API 추가분 테스트
-- `cmd/tarsd/main_test.go` — chat API 핸들러, 세션 API 핸들러
+- `cmd/tars/main_test.go` — chat API 핸들러, 세션 API 핸들러
 - `tars-ui/src/**/*.test.ts` — parseArgs/chat parser/router/state 테스트
 
 ---
@@ -497,9 +497,9 @@ data: {"type":"delta","text":"실행 결과는..."}
 data: {"type":"done","usage":{...}}
 ```
 
-#### 2-D. tarsd chat API에 agent loop 통합
+#### 2-D. tars chat API에 agent loop 통합
 
-**수정 파일**: `cmd/tarsd/main.go`
+**수정 파일**: `cmd/tars/main.go`
 - chat 핸들러가 `agent.Loop`를 사용하도록 변경
 - 도구 레지스트리 초기화 시 빌트인 도구 등록
 
@@ -514,7 +514,7 @@ data: {"type":"done","usage":{...}}
 
 **목표**: 허트비트와 크론잡이 agent loop를 사용해 도구를 자율적으로 실행
 
-**마일스톤**: `tarsd --serve-api --run-loop`로 데몬이 주기적으로 HEARTBEAT.md를 읽고, AI가 판단하여 도구를 실행하고, 결과를 daily log에 기록하는 상태
+**마일스톤**: `tars serve --serve-api --run-loop`로 데몬이 주기적으로 HEARTBEAT.md를 읽고, AI가 판단하여 도구를 실행하고, 결과를 daily log에 기록하는 상태
 
 **핵심 개념 (AI First):**
 - HEARTBEAT.md는 자연어 지시서 — "이메일 확인", "캘린더 체크", "프로젝트 상태 확인" 같은 체크리스트
@@ -567,7 +567,7 @@ type Job struct {
 3. 결과를 daily log에 기록
 4. `session: "isolated"` → 별도 세션, `session: "main"` → 메인 세션의 허트비트에 시스템 이벤트로 주입
 
-**tarsd API:**
+**tars API:**
 ```
 GET    /v1/cron/jobs           # 크론잡 목록
 POST   /v1/cron/jobs           # 크론잡 추가
@@ -587,7 +587,7 @@ POST   /v1/cron/jobs/{id}/run  # 크론잡 즉시 실행
 
 #### 3-C. 데몬 모드 통합
 
-**수정 파일**: `cmd/tarsd/main.go`
+**수정 파일**: `cmd/tars/main.go`
 
 - `--serve-api` + `--run-loop` 동시 실행 지원 (현재는 상호 배타적)
 - HTTP API 서버 + 허트비트 루프 + 크론잡 스케줄러를 고루틴으로 병렬 실행
@@ -597,7 +597,7 @@ POST   /v1/cron/jobs/{id}/run  # 크론잡 즉시 실행
 
 - `internal/heartbeat/heartbeat_test.go` — agent loop 통합, HEARTBEAT_OK 테스트
 - `internal/cron/manager_test.go` — 스케줄 파싱, 실행 트리거
-- `cmd/tarsd/main_test.go` — 데몬 모드 통합 테스트
+- `cmd/tars/main_test.go` — 데몬 모드 통합 테스트
 
 ---
 
@@ -646,7 +646,7 @@ user-invocable: true
 - `docs/tools/skills-config.md` — 스킬 설정
 - `docs/tools/slash-commands.md` — 슬래시 명령 라우팅
 
-#### 4-B. tarsd API + tars CLI
+#### 4-B. tars API + tars CLI
 
 ```
 GET /v1/skills              # 스킬 목록
@@ -721,7 +721,7 @@ plugins/my-plugin/
 - `docs/plugins/agent-tools.md` — 플러그인 도구 등록 패턴
 - `docs/plugins/manifest.md` — 플러그인 매니페스트 스키마
 
-#### 5-C. tarsd API + tars CLI
+#### 5-C. tars API + tars CLI
 
 ```
 GET /v1/plugins            # 플러그인 목록
@@ -741,9 +741,9 @@ GET /v1/mcp/tools          # MCP 도구 목록
 
 ### Phase 6: cased 감시 데몬
 
-**목표**: tarsd 프로세스 안정성 보장
+**목표**: tars 프로세스 안정성 보장
 
-**마일스톤**: `cased`가 tarsd를 감시하고 비정상 종료 시 자동 재시작 (달성)
+**마일스톤**: `cased`가 tars를 감시하고 비정상 종료 시 자동 재시작 (달성)
 
 #### 6-A. 프로세스 감시
 
@@ -857,8 +857,8 @@ Phase 1: LLM 채팅 (세션 + 프롬프트 + SSE + 슬래시 명령 + 컴팩션)
   ├── 1-B: 세션 관리 (JSONL, 토큰 기반 로딩)
   ├── 1-C: 시스템 프롬프트 조립
   ├── 1-D: LLM Chat API (messages 배열 + SSE 스트리밍)
-  ├── 1-E: tarsd 채팅 API
-  ├── 1-F: tarsd 세션 관리 API + 슬래시 명령
+  ├── 1-E: tars 채팅 API
+  ├── 1-F: tars 세션 관리 API + 슬래시 명령
   ├── 1-G: 컨텍스트 압축
   └── 1-H: tars-ui 단일 클라이언트
       ↓
@@ -875,12 +875,12 @@ Phase 3: 허트비트 + 크론잡 자율 실행
       ↓
 Phase 4: 스킬 시스템
   ├── 4-A: 스킬 로더 + 레지스트리
-  └── 4-B: tarsd API + tars 슬래시 명령
+  └── 4-B: tars API + tars 슬래시 명령
       ↓
 Phase 5: 플러그인 + MCP
   ├── 5-A: MCP 클라이언트
   ├── 5-B: 플러그인 시스템
-  └── 5-C: tarsd API + tars CLI
+  └── 5-C: tars API + tars CLI
       ↓
 Phase 6: cased 감시 데몬
       ↓

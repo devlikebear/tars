@@ -65,7 +65,7 @@ mcp__repomix__grep_repomix_output
 2. 해당 Phase의 TARS 인터페이스(Go struct + methods) 설계
 3. 실패 테스트 작성 (TDD)
 4. 최소 구현
-5. tarsd API → tars CLI 순서로 통합
+5. tars API → tars CLI 순서로 통합
 6. 커밋
 ```
 

@@ -240,7 +240,7 @@ mcp:
 | `/history` | `GET /v1/sessions/{id}/history` | Current session history |
 | `/export` | `POST /v1/sessions/{id}/export` | Export session as markdown |
 | `/search {q}` | `GET /v1/sessions/search?q=` | Search sessions |
-| `/status` | `GET /v1/status` | tarsd status |
+| `/status` | `GET /v1/status` | tars status |
 | `/compact` | `POST /v1/compact` | Trigger compaction |
 | `/skills` | `GET /v1/skills` | List skills |
 | `/cron list` | `GET /v1/cron/jobs` | List cron jobs |

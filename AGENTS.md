@@ -2,13 +2,13 @@
 
 ## 목적
 - 이 저장소에서 Codex/에이전트가 일관된 방식으로 개발을 진행하도록 운영 기준을 정의한다.
-- 현재 목표는 gateway 기반 서브에이전트 런타임을 고도화하고, 공개 배포를 위해 `tarsd + cmd/tars` 2-바이너리 구조로 단순화하는 것이다.
+- 현재 목표는 gateway 기반 서브에이전트 런타임을 고도화하고, 공개 배포를 위해 `cmd/tars` 단일 바이너리 구조로 단순화하는 것이다.
 
 ## 개발 원칙
 - MVP 중심으로 작은 단위로 구현한다.
 - TDD를 따른다. 실패 테스트를 먼저 추가하고 구현으로 통과시킨다.
 - 오버엔지니어링을 피하고 지금 필요한 코드만 작성한다.
-- 서버 책임 로직은 `tarsd`, 클라이언트 UX는 `tars`에 둔다.
+- 서버 책임 로직은 `tars serve`, 클라이언트 UX는 `tars`에 둔다.
 - OpenClaw는 개념/패턴 참고용으로만 사용하고 Go 관용구로 독립 구현한다.
 
 ## 코딩 가이드라인 (상세)
@@ -74,7 +74,7 @@
 - `cmd/tars`는 Bubble Tea 3패널 TUI(`Chat`/`Status`/`Notifications`)로 채팅/슬래시 명령을 처리한다.
 - `cmd/tars` 입력 UX는 히스토리(Up/Down), 자동완성(Tab), ESC 클리어/스트림 취소를 지원한다.
 - `cmd/tars` trace 제어는 `/trace [on|off]`와 `/trace filter {all|llm|tool|error|system}`를 지원한다.
-- `tarsd`/`tars` 기본 개발 포트가 `127.0.0.1:43180`으로 통일되었다.
+- `tars serve`/`tars` 기본 개발 포트가 `127.0.0.1:43180`으로 통일되었다.
 - MCP 런타임이 JSON line 전송 방식 서버(`sequential-thinking`)를 자동 감지/폴백하여 연결한다.
 - in-process gateway 런타임(`internal/gateway`)이 추가되어 run registry, 채널, browser/nodes 상태를 함께 관리한다.
 - agent/gateway/channels API가 구현되어 비동기 run 제어가 가능하다.
@@ -127,7 +127,7 @@
 - `web_search`가 Brave/Perplexity provider 선택 + 캐시 TTL을 지원하고, `web_fetch`는 SSRF 차단 + private host allowlist를 지원한다.
 - `cased` 감시 데몬(`cmd/cased`, `internal/sentinel`)은 간소화 단계에서 제거되었다.
   - 프로세스 감시는 systemd/launchd/docker 정책으로 위임한다.
-  - `tarsd` 헬스 엔드포인트(`GET /v1/healthz`)는 유지한다.
+  - `tars` 헬스 엔드포인트(`GET /v1/healthz`)는 유지한다.
   - Go 클라이언트 `cmd/tars`(MVP)가 재도입되었다.
 - gateway 리포트 API가 추가되었다.
   - `GET /v1/gateway/reports/summary` (기본 활성)

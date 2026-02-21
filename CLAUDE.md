@@ -89,24 +89,21 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 
 ## 바이너리 역할 정의
 
-- `tarsd` (메인 데몬/서버): LLM 호출, 허트비트/크론 실행, 3-Layer 메모리 처리, 작업 판단과 실행 오케스트레이션을 담당한다.
-- `tars` (Go CLI/TUI 클라이언트): `tarsd` API를 호출하는 단일 Go 클라이언트. 공개 배포 단순화를 위해 기본 클라이언트로 사용한다.
+- `tars` (단일 바이너리): `tars serve` 모드에서 서버 런타임(LLM 호출, 허트비트/크론 실행, 메모리/게이트웨이 오케스트레이션)을 수행하고, 기본 모드에서 CLI/TUI 클라이언트 UX를 제공한다.
 
-## tars-tarsd 통신 프로토콜 규칙
+## tars 내부 프로토콜 규칙
 
-- `tarsd`가 HTTP API 서버를 서빙하고, `tars`는 해당 API를 호출하는 HTTP 클라이언트로 구현한다.
-- LLM 실행, OAuth 토큰 교환/저장, heartbeat/cron 실행 같은 서버 책임 로직은 반드시 `tarsd`에서 수행한다.
-- `tars`는 사용자 입력 수집, API 요청/응답 렌더링 같은 클라이언트 UX만 담당한다.
-- LLM 응답은 `tarsd`의 REST API로 제공하고, `tars`는 해당 API의 클라이언트로 구현한다.
-- 인증 토큰(특히 OAuth access/refresh token)은 서버(`tarsd`)에서만 저장/관리하고, 클라이언트는 직접 저장하지 않는다.
+- `tars serve`가 HTTP API 서버를 서빙하고, `tars`(클라이언트 모드)는 해당 API를 호출하는 HTTP 클라이언트로 동작한다.
+- LLM 실행, OAuth 토큰 교환/저장, heartbeat/cron 실행 같은 서버 책임 로직은 반드시 `tars serve`에서 수행한다.
+- 클라이언트 모드는 사용자 입력 수집, API 요청/응답 렌더링 같은 UX만 담당한다.
+- 인증 토큰(특히 OAuth access/refresh token)은 서버 런타임에서만 저장/관리하고, 클라이언트는 직접 저장하지 않는다.
 
 ## 코드 구조 변경 기록
 
 ### 현재 아키텍처 구조
 
 **바이너리**
-- `tarsd`: 메인 데몬/서버 (HTTP API, LLM 호출, heartbeat/cron 실행, 메모리 관리)
-- `tars`: Go 기반 CLI/TUI 클라이언트 (MVP 도입 완료, 단계적 확장 중)
+- `tars`: 단일 바이너리 (`tars serve` 서버 모드 + CLI/TUI 클라이언트 모드)
 
 **주요 패키지**
 - `internal/config`: 설정 로딩 (YAML/ENV 우선순위, 환경변수 확장, 경로 자동 탐지)
@@ -173,19 +170,19 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 **Phase 6: cased 감시 데몬** (종료)
 - 공개 배포 단순화를 위해 `cmd/cased`/`internal/sentinel` 제거
 - 프로세스 감시는 systemd/launchd/docker 정책으로 위임
-- `tarsd` 헬스체크 endpoint(`GET /v1/healthz`)는 유지
+- `tars` 헬스체크 endpoint(`GET /v1/healthz`)는 유지
 
 ### 최근 주요 변경
 
 **2026-02-15**
-- `tarsd`/`tars-ui` 리팩토링: Extract Function 패턴으로 파일 크기 축소 (main.go 76%↓, index.tsx 59%↓)
+- `tars`/`tars-ui` 리팩토링: Extract Function 패턴으로 파일 크기 축소 (main.go 76%↓, index.tsx 59%↓)
 - `gemini`/`gemini-native` provider 추가: OpenAI-compatible 및 native API 지원
 - Cron 확장: session_target, delivery_mode, per-job 실행 기록, 동시 실행 잠금
 - Agent Loop 설정화: `agent_max_iterations` ENV/YAML 제어
 
 **2026-02-16**
 - 설정 파일 경로 자동 탐지: `config/standalone.yaml` 존재 시 자동 로드
-- 기본 개발 포트 통일: `tarsd`/`tars` 기본값을 `127.0.0.1:43180`으로 변경
+- 기본 개발 포트 통일: `tars serve`/`tars` 기본값을 `127.0.0.1:43180`으로 변경
 - MCP 안정화:
   - `sequential-thinking` 호환을 위해 jsonline/content-length 이중 전송 모드 지원
   - 타임아웃 시 세션 abort 및 안전한 재시도 경로 추가
@@ -201,7 +198,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `/v1/agent/agents` 정책 메타데이터(`policy_mode`, `tools_allow_count`, `tools_allow`) 노출
 - Gateway persistence/recovery:
   - run/channel snapshot JSON 저장(`runs.json`, `channels.json`) + 원자적 write/rename
-  - tarsd 재시작 시 snapshot 자동 복구, 실행 중 run은 `canceled by restart recovery`로 정리
+  - tars 재시작 시 snapshot 자동 복구, 실행 중 run은 `canceled by restart recovery`로 정리
   - 보존 정책(`gateway_runs_max_records`, `gateway_channels_max_messages_per_channel`) 적용
   - `/v1/gateway/status` telemetry 확장(`persistence_*`, `runs_restored`, `channels_restored`, `last_persist_at`, `last_restore_at`, `last_restore_error`)
 - Web 도구 강화:
@@ -221,7 +218,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `cmd/tars` 3차 확장: `/cron {list|get|runs|add|run|delete|enable|disable}`, `/channels`, `/resume`, `/agents --detail`
   - `cmd/tars` 4차 확장: `/notify {list|filter|open|clear}` + `/v1/events/stream` 구독 기반 알림 로컬 버퍼
   - `cmd/tars` 5차 확장: `/gateway summary|runs|channels` + `/gateway report ...`로 gateway report API 조회 지원
-  - `cmd/tars` 6차 확장: `/health`로 `tarsd` `/v1/healthz` 직접 점검 지원
+  - `cmd/tars` 6차 확장: `/health`로 `tars` `/v1/healthz` 직접 점검 지원
   - `cmd/tars` HTTP 경로 해석 보강: query string이 path로 인코딩되지 않도록 `runtimeClient.resolve` 수정
   - Make 타깃 정리: `dev-cased`/`run-cased`/`dev-tars-ui` 제거, `dev-tars` 추가
 

@@ -12,10 +12,9 @@ Additional docs:
 - Change log: [CHANGE.log](CHANGE.log)
 - License: [LICENSE](LICENSE)
 
-TARS is a lightweight local AI automation stack with two Go binaries:
+TARS is a lightweight local AI automation stack with a single Go binary:
 
-- `tarsd`: daemon/server (LLM orchestration, sessions, tools, gateway, automation)
-- `tars`: terminal client (Bubble Tea 3-pane TUI)
+- `tars`: terminal client (Bubble Tea 3-pane TUI) + server mode (`tars serve`)
 
 The current architecture is intentionally simplified for public use and operations.
 
@@ -36,10 +35,9 @@ The current architecture is intentionally simplified for public use and operatio
 
 ## Repository Layout
 
-- `cmd/tarsd`: main server
-- `cmd/tars`: Go TUI client
+- `cmd/tars`: single binary (`tars` TUI client + `tars serve` server mode)
 - `internal/*`: runtime modules (gateway, tool, llm, session, extensions, browser, vaultclient, ...)
-- `config/tarsd.config.example.yaml`: example config
+- `config/tars.config.example.yaml`: example config
 - `workspace/`: local runtime workspace (sessions, memory, automation, etc.)
 
 ## Quick Start
@@ -53,18 +51,18 @@ The current architecture is intentionally simplified for public use and operatio
 
 Use your runtime config (default local path in this repo):
 
-- `workspace/config/tarsd.config.yaml`
+- `config/standalone.yaml`
 
 You can also start from:
 
-- `config/tarsd.config.example.yaml`
+- `config/tars.config.example.yaml`
 
 ## 3) Run server
 
 ```bash
-make dev-tarsd
+make dev-serve
 # or directly:
-# go run ./cmd/tars serve --verbose --serve-api --config ./workspace/config/tarsd.config.yaml
+# go run ./cmd/tars serve --verbose --serve-api --config ./config/standalone.yaml
 ```
 
 Default API address:
@@ -106,7 +104,7 @@ Workspace model is fixed to a single `workspace_dir` (no `workspace_id` routing)
 
 ## Browser + Vault (Opt-in)
 
-Enable in `tarsd` config:
+Enable in `tars` config:
 
 - `vault_enabled: true`
 - `browser_runtime_enabled: true`

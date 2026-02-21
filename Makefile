@@ -10,17 +10,17 @@ TEST_NAME ?=
 HEARTBEAT_INTERVAL ?= 30s
 MAX_HEARTBEATS ?= 0
 COVER_OUT ?= coverage.out
-TARSD_CONFIG ?= ./workspace/config/tarsd.config.yaml
+TARS_CONFIG ?= ./config/standalone.yaml
 
 .DEFAULT_GOAL := help
 
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover \
 	build build-bins clean tidy fmt vet \
-	dev-tarsd dev-tarsd-once dev-tarsd-loop dev-chat dev-heartbeat dev-tars \
+	dev-serve dev-serve-once dev-serve-loop dev-chat dev-heartbeat dev-tars \
 	api-status api-sessions api-compact api-chat api-heartbeat smoke-auth \
 	vault-up vault-down vault-logs security-scan \
-	run-tarsd
+	run-serve
 
 help:
 	@echo "Usage:"
@@ -29,7 +29,7 @@ help:
 	@echo "Common vars:"
 	@echo "  PKG=./... TEST_NAME=TestRun_ChatMessage CHAT_MSG='hello'"
 	@echo "  WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:43180 SERVER_URL=http://127.0.0.1:43180"
-	@echo "  TARSD_CONFIG=./config/tarsd.config.example.yaml"
+	@echo "  TARS_CONFIG=./config/standalone.yaml"
 	@echo ""
 	@echo "Test targets:"
 	@echo "  make test          - go test $(PKG)"
@@ -48,9 +48,9 @@ help:
 	@echo "  make clean         - remove build artifacts"
 	@echo ""
 	@echo "Run targets:"
-	@echo "  make dev-tarsd     - run daemon via tars serve (API mode)"
-	@echo "  make dev-tarsd-once - run one heartbeat via tars serve"
-	@echo "  make dev-tarsd-loop - run heartbeat loop via tars serve"
+	@echo "  make dev-serve     - run server via tars serve (API mode)"
+	@echo "  make dev-serve-once - run one heartbeat via tars serve"
+	@echo "  make dev-serve-loop - run heartbeat loop via tars serve"
 	@echo "  make dev-chat      - run Go client (cmd/tars)"
 	@echo "  make dev-tars      - run Go client (cmd/tars)"
 	@echo "  make dev-heartbeat - call heartbeat run-once via API"
@@ -92,17 +92,16 @@ build:
 
 build-bins:
 	mkdir -p $(BIN_DIR)
-	$(GO) build -o $(BIN_DIR)/tarsd ./cmd/tarsd
 	$(GO) build -o $(BIN_DIR)/tars ./cmd/tars
 
-dev-tarsd:
-	$(GO) run ./cmd/tars serve --verbose --serve-api $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
+dev-serve:
+	$(GO) run ./cmd/tars serve --verbose --serve-api $(if $(TARS_CONFIG),--config $(TARS_CONFIG),) --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
 
-dev-tarsd-once:
-	$(GO) run ./cmd/tars serve --verbose --run-once $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
+dev-serve-once:
+	$(GO) run ./cmd/tars serve --verbose --run-once $(if $(TARS_CONFIG),--config $(TARS_CONFIG),) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
 
-dev-tarsd-loop:
-	$(GO) run ./cmd/tars serve --verbose --run-loop $(if $(TARSD_CONFIG),--config $(TARSD_CONFIG),) --heartbeat-interval $(HEARTBEAT_INTERVAL) --max-heartbeats $(MAX_HEARTBEATS) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
+dev-serve-loop:
+	$(GO) run ./cmd/tars serve --verbose --run-loop $(if $(TARS_CONFIG),--config $(TARS_CONFIG),) --heartbeat-interval $(HEARTBEAT_INTERVAL) --max-heartbeats $(MAX_HEARTBEATS) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
 
 dev-chat:
 	$(GO) run ./cmd/tars --server-url $(SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
@@ -157,4 +156,4 @@ tidy:
 clean:
 	rm -rf $(BIN_DIR) $(COVER_OUT)
 
-run-tarsd: dev-tarsd
+run-serve: dev-serve
