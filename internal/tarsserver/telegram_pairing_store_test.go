@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,5 +89,61 @@ func TestTelegramPairingStore_LastUpdateIDRestore(t *testing.T) {
 	}
 	if got := restored.lastUpdateIDValue(); got != 19 {
 		t.Fatalf("expected restored last_update_id=19, got %d", got)
+	}
+}
+
+func TestTelegramPairingStore_ResolveDefaultChatID(t *testing.T) {
+	now := time.Date(2026, 2, 21, 12, 0, 0, 0, time.UTC)
+	nowFn := func() time.Time { return now }
+	path := filepath.Join(t.TempDir(), "telegram_pairings.json")
+	store, err := newTelegramPairingStore(path, nowFn)
+	if err != nil {
+		t.Fatalf("newTelegramPairingStore: %v", err)
+	}
+
+	chatID, err := store.resolveDefaultChatID()
+	if err != nil {
+		t.Fatalf("resolveDefaultChatID without allowed users: %v", err)
+	}
+	if chatID != "" {
+		t.Fatalf("expected empty default chat id, got %q", chatID)
+	}
+
+	issued, _, err := store.issue(telegramPairingIdentity{
+		UserID:   11,
+		ChatID:   "101",
+		Username: "alice",
+	}, telegramPairingTTL)
+	if err != nil {
+		t.Fatalf("issue first user: %v", err)
+	}
+	if _, err := store.approve(issued.Code); err != nil {
+		t.Fatalf("approve first user: %v", err)
+	}
+
+	chatID, err = store.resolveDefaultChatID()
+	if err != nil {
+		t.Fatalf("resolveDefaultChatID one allowed user: %v", err)
+	}
+	if chatID != "101" {
+		t.Fatalf("expected default chat id 101, got %q", chatID)
+	}
+
+	now = now.Add(1 * time.Minute)
+	issued2, _, err := store.issue(telegramPairingIdentity{
+		UserID:   22,
+		ChatID:   "202",
+		Username: "bob",
+	}, telegramPairingTTL)
+	if err != nil {
+		t.Fatalf("issue second user: %v", err)
+	}
+	if _, err := store.approve(issued2.Code); err != nil {
+		t.Fatalf("approve second user: %v", err)
+	}
+
+	chatID, err = store.resolveDefaultChatID()
+	if err == nil || !strings.Contains(err.Error(), "multiple paired telegram chats") {
+		t.Fatalf("expected multiple chat id error, got chat_id=%q err=%v", chatID, err)
 	}
 }

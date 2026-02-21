@@ -123,6 +123,78 @@ func buildAPIMux(
 	if err != nil {
 		return nil, err
 	}
+	telegramSender := newTelegramSender(cfg.TelegramBotToken)
+	// The telegram_send tool closure intentionally captures this pointer.
+	// It is assigned after gateway runtime construction and used at runtime
+	// to append outbound Telegram records to gateway channel history.
+	var gatewayRuntimeForTelegram *gateway.Runtime
+	telegramSendTool := tool.NewTelegramSendTool(tool.TelegramSendFunc(func(ctx context.Context, req tool.TelegramSendRequest) (tool.TelegramSendResult, error) {
+		if telegramSender == nil {
+			return tool.TelegramSendResult{}, fmt.Errorf("telegram sender is not configured")
+		}
+		sendResult, err := telegramSender.Send(ctx, telegramSendRequest{
+			BotID:     strings.TrimSpace(req.BotID),
+			ChatID:    strings.TrimSpace(req.ChatID),
+			Text:      strings.TrimSpace(req.Text),
+			ThreadID:  strings.TrimSpace(req.ThreadID),
+			ParseMode: strings.TrimSpace(req.ParseMode),
+		})
+		if err != nil {
+			return tool.TelegramSendResult{}, err
+		}
+		if gatewayRuntimeForTelegram != nil {
+			recordPayload := map[string]any{
+				"provider": "telegram",
+			}
+			if botID := strings.TrimSpace(req.BotID); botID != "" {
+				recordPayload["bot_id"] = botID
+			}
+			if parseMode := strings.TrimSpace(req.ParseMode); parseMode != "" {
+				recordPayload["parse_mode"] = parseMode
+			}
+			if sendResult.MessageID > 0 {
+				recordPayload["message_id"] = sendResult.MessageID
+			}
+			if sendResult.ChatID != "" {
+				recordPayload["provider_chat_id"] = sendResult.ChatID
+			}
+			if sendResult.Text != "" {
+				recordPayload["provider_text"] = sendResult.Text
+			}
+			if _, recordErr := gatewayRuntimeForTelegram.OutboundTelegram(req.BotID, req.ChatID, req.ThreadID, req.Text, recordPayload); recordErr != nil {
+				logger.Debug().Err(recordErr).Str("chat_id", strings.TrimSpace(req.ChatID)).Msg("telegram_send tool gateway record failed")
+			}
+		}
+		return tool.TelegramSendResult{
+			MessageID: sendResult.MessageID,
+			ChatID:    sendResult.ChatID,
+			Text:      sendResult.Text,
+		}, nil
+	}), cfg.ChannelsTelegramEnabled, tool.TelegramDefaultChatIDResolveFunc(func(ctx context.Context) (string, error) {
+		_ = ctx
+		if telegramPairings == nil {
+			return "", nil
+		}
+		return telegramPairings.resolveDefaultChatID()
+	}))
+	apiRunPromptWithTools := deps.runPromptWithTools
+	if cfg.ChannelsTelegramEnabled {
+		if runnerWithTelegram := newAgentPromptRunnerWithTools(
+			cfg.WorkspaceDir,
+			deps.llmClient,
+			cfg.AgentMaxIterations,
+			logger,
+			telegramSendTool,
+		); runnerWithTelegram != nil {
+			apiRunPromptWithTools = runnerWithTelegram
+		}
+	}
+	apiRunPrompt := deps.runPrompt
+	if apiRunPromptWithTools != nil {
+		apiRunPrompt = func(ctx context.Context, runLabel string, prompt string) (string, error) {
+			return apiRunPromptWithTools(ctx, runLabel, prompt, nil)
+		}
+	}
 	heartbeatRunner := newWorkspaceHeartbeatRunnerWithNotify(
 		cfg.WorkspaceDir,
 		nowFn,
@@ -134,9 +206,10 @@ func buildAPIMux(
 	cronRunner := newCronJobRunnerWithNotify(
 		cfg.WorkspaceDir,
 		sessionStore,
-		deps.runPrompt,
+		apiRunPrompt,
 		logger,
 		dispatcher.Emit,
+		mainSessionID,
 	)
 
 	mux := http.NewServeMux()
@@ -162,7 +235,7 @@ func buildAPIMux(
 		WorkspaceDir:                         cfg.WorkspaceDir,
 		SessionStore:                         sessionStore,
 		SessionStoreForWorkspace:             sessionStoreResolver,
-		RunPrompt:                            deps.runPrompt,
+		RunPrompt:                            apiRunPrompt,
 		Executors:                            nil,
 		DefaultAgent:                         strings.TrimSpace(cfg.GatewayDefaultAgent),
 		GatewayAgentsWatchEnabled:            false,
@@ -189,8 +262,9 @@ func buildAPIMux(
 		BrowserService:                       browserService,
 		Now:                                  nowFn,
 	})
+	gatewayRuntimeForTelegram = gatewayRuntime
 	refreshGatewayExecutors := func(reason string) int {
-		executors := buildGatewayExecutors(cfg, deps.runPromptWithTools, logger)
+		executors := buildGatewayExecutors(cfg, apiRunPromptWithTools, logger)
 		gatewayRuntime.SetExecutors(executors, strings.TrimSpace(cfg.GatewayDefaultAgent))
 		agents := len(gatewayRuntime.Agents())
 		logger.Debug().Str("reason", reason).Int("gateway_agents", agents).Msg("gateway executors refreshed")
@@ -222,6 +296,9 @@ func buildAPIMux(
 		)
 	}
 	chatTools := buildOptionalChatTools(cfg, gatewayRuntime)
+	if cfg.ChannelsTelegramEnabled {
+		chatTools = append(chatTools, telegramSendTool)
+	}
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,
 		sessionStore,
@@ -277,7 +354,6 @@ func buildAPIMux(
 	mux.Handle("/v1/browser/check", browserHandler)
 	mux.Handle("/v1/browser/run", browserHandler)
 	mux.Handle("/v1/vault/status", browserHandler)
-	telegramSender := newTelegramSender(cfg.TelegramBotToken)
 	telegramInbound := newTelegramInboundHandler(
 		cfg.WorkspaceDir,
 		sessionStore,

@@ -18,7 +18,7 @@ func newCronJobRunner(
 	runPrompt func(ctx context.Context, runLabel string, promptText string) (string, error),
 	logger zerolog.Logger,
 ) func(ctx context.Context, job cron.Job) (string, error) {
-	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil)
+	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil, "")
 }
 
 func newCronJobRunnerWithNotify(
@@ -27,6 +27,7 @@ func newCronJobRunnerWithNotify(
 	runPrompt func(ctx context.Context, runLabel string, promptText string) (string, error),
 	logger zerolog.Logger,
 	emit func(ctx context.Context, evt notificationEvent),
+	mainSessionID string,
 ) func(ctx context.Context, job cron.Job) (string, error) {
 	if runPrompt == nil {
 		return nil
@@ -46,7 +47,7 @@ func newCronJobRunnerWithNotify(
 			promptText += "\n\nCRON_PAYLOAD_JSON:\n" + payload
 		}
 
-		targetSessionID, explicitTarget, err := resolveCronTargetSessionID(targetStore, job.SessionTarget)
+		targetSessionID, explicitTarget, err := resolveCronTargetSessionID(targetStore, job.SessionTarget, mainSessionID)
 		if err != nil {
 			return "", err
 		}
@@ -95,7 +96,7 @@ func newCronJobRunnerWithNotify(
 	}
 }
 
-func resolveCronTargetSessionID(store *session.Store, raw string) (sessionID string, explicitTarget bool, err error) {
+func resolveCronTargetSessionID(store *session.Store, raw string, mainSessionID string) (sessionID string, explicitTarget bool, err error) {
 	if store == nil {
 		return "", false, nil
 	}
@@ -104,6 +105,16 @@ func resolveCronTargetSessionID(store *session.Store, raw string) (sessionID str
 		return "", false, nil
 	}
 	if strings.EqualFold(target, "main") {
+		configuredMain := strings.TrimSpace(mainSessionID)
+		if configuredMain != "" {
+			if _, err := store.Get(configuredMain); err != nil {
+				if strings.Contains(strings.ToLower(strings.TrimSpace(err.Error())), "session not found") {
+					return "", false, fmt.Errorf("main session not found: %s", configuredMain)
+				}
+				return "", false, err
+			}
+			return configuredMain, false, nil
+		}
 		latest, err := store.Latest()
 		if err != nil {
 			if strings.Contains(err.Error(), "session not found") {

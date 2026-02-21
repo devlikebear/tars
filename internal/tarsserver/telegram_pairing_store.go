@@ -247,6 +247,32 @@ func (s *telegramPairingStore) allowedIdentity(userID int64) (telegramAllowedUse
 	return item, ok
 }
 
+func (s *telegramPairingStore) resolveDefaultChatID() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.nowFn().UTC()
+	if s.pruneExpiredLocked(now) {
+		_ = s.persistLocked()
+	}
+	allowed := make([]telegramAllowedUser, 0, len(s.allowedByUser))
+	for _, item := range s.allowedByUser {
+		if strings.TrimSpace(item.ChatID) == "" {
+			continue
+		}
+		allowed = append(allowed, item)
+	}
+	if len(allowed) == 0 {
+		return "", nil
+	}
+	if len(allowed) == 1 {
+		return strings.TrimSpace(allowed[0].ChatID), nil
+	}
+	sort.Slice(allowed, func(i, j int) bool {
+		return strings.TrimSpace(allowed[i].ApprovedAt) > strings.TrimSpace(allowed[j].ApprovedAt)
+	})
+	return "", fmt.Errorf("chat_id is required: multiple paired telegram chats found")
+}
+
 func (s *telegramPairingStore) load() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return fmt.Errorf("create telegram pairing store directory: %w", err)

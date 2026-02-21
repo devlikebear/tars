@@ -69,6 +69,7 @@ func newAgentPromptRunnerWithTools(
 	client llm.Client,
 	maxIterations int,
 	logger zerolog.Logger,
+	extraTools ...tool.Tool,
 ) gatewayPromptRunner {
 	if client == nil {
 		return nil
@@ -88,6 +89,12 @@ func newAgentPromptRunnerWithTools(
 		systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: targetWorkspaceDir})
 		systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
 		registry := newBaseToolRegistry(targetWorkspaceDir)
+		for _, extra := range extraTools {
+			if strings.TrimSpace(extra.Name) == "" {
+				continue
+			}
+			registry.Register(extra)
+		}
 		tools := registry.Schemas()
 		allowed := normalizeAllowedToolsForRegistry(allowedTools, registry)
 		if len(allowed) > 0 {
