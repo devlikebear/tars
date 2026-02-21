@@ -682,6 +682,15 @@ func TestExecuteCommand_RunsShowsPolicyDiagnosticSummary(t *testing.T) {
 	if !strings.Contains(out, "blocked=exec") {
 		t.Fatalf("expected blocked tool summary, got %q", out)
 	}
+	if strings.Contains(out, "DIAG") || strings.Contains(out, "BLOCKED") {
+		t.Fatalf("expected no DIAG/BLOCKED positional columns, got %q", out)
+	}
+	if strings.Count(out, "policy_tool_blocked") != 1 {
+		t.Fatalf("expected diagnostic value once, got %q", out)
+	}
+	if strings.Count(out, "exec") != 1 {
+		t.Fatalf("expected blocked tool value once, got %q", out)
+	}
 }
 
 func TestExecuteCommand_GatewayStatusShowsReloadAndRestoreDetails(t *testing.T) {
@@ -793,9 +802,9 @@ func TestRootCommand_ServeSubcommandInvokesRunner(t *testing.T) {
 	original := serveRunner
 	defer func() { serveRunner = original }()
 
-	var got []string
-	serveRunner = func(_ context.Context, args []string, _ io.Writer, _ io.Writer) error {
-		got = append([]string(nil), args...)
+	var got serveOptions
+	serveRunner = func(_ context.Context, opts serveOptions, _ io.Writer, _ io.Writer) error {
+		got = opts
 		return nil
 	}
 
@@ -811,15 +820,17 @@ func TestRootCommand_ServeSubcommandInvokesRunner(t *testing.T) {
 		t.Fatalf("serve command: %v", err)
 	}
 
-	joined := strings.Join(got, " ")
-	if !strings.Contains(joined, "--serve-api") {
-		t.Fatalf("expected --serve-api in delegated args, got %v", got)
+	if !got.serveAPI {
+		t.Fatalf("expected serveAPI=true, got %#v", got)
 	}
-	if !strings.Contains(joined, "--config config/standalone.yaml") {
-		t.Fatalf("expected config arg in delegated args, got %v", got)
+	if got.configPath != "config/standalone.yaml" {
+		t.Fatalf("unexpected configPath: %#v", got)
 	}
-	if !strings.Contains(joined, "--workspace-dir ./workspace") {
-		t.Fatalf("expected workspace-dir arg in delegated args, got %v", got)
+	if got.workspaceDir != "./workspace" {
+		t.Fatalf("unexpected workspaceDir: %#v", got)
+	}
+	if got.apiAddr != "127.0.0.1:43180" {
+		t.Fatalf("unexpected apiAddr: %#v", got)
 	}
 }
 
@@ -827,9 +838,9 @@ func TestRootCommand_ServeRunOnceDoesNotForceServeAPI(t *testing.T) {
 	original := serveRunner
 	defer func() { serveRunner = original }()
 
-	var got []string
-	serveRunner = func(_ context.Context, args []string, _ io.Writer, _ io.Writer) error {
-		got = append([]string(nil), args...)
+	var got serveOptions
+	serveRunner = func(_ context.Context, opts serveOptions, _ io.Writer, _ io.Writer) error {
+		got = opts
 		return nil
 	}
 
@@ -838,12 +849,11 @@ func TestRootCommand_ServeRunOnceDoesNotForceServeAPI(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("serve command: %v", err)
 	}
-	joined := strings.Join(got, " ")
-	if !strings.Contains(joined, "--run-once") {
-		t.Fatalf("expected --run-once in delegated args, got %v", got)
+	if !got.runOnce {
+		t.Fatalf("expected runOnce=true, got %#v", got)
 	}
-	if strings.Contains(joined, "--serve-api") {
-		t.Fatalf("did not expect --serve-api when run-once is set, got %v", got)
+	if got.serveAPI {
+		t.Fatalf("did not expect serveAPI=true when run-once is set, got %#v", got)
 	}
 }
 

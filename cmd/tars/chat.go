@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -9,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 )
 
@@ -46,7 +44,7 @@ func (c chatClient) stream(ctx context.Context, req chatRequest, onStatus func(c
 	if strings.TrimSpace(req.Message) == "" {
 		return chatResult{}, fmt.Errorf("message is required")
 	}
-	endpoint, err := resolveChatEndpoint(c.serverURL)
+	endpoint, err := resolveURL(c.serverURL, "/v1/chat")
 	if err != nil {
 		return chatResult{}, err
 	}
@@ -92,12 +90,12 @@ func (c chatClient) stream(ctx context.Context, req chatRequest, onStatus func(c
 			Body:     strings.TrimSpace(string(body)),
 		}
 	}
-	events, err := decodeSSEBuffer(resp.Body)
-	if err != nil {
-		return chatResult{}, err
-	}
 	result := chatResult{SessionID: strings.TrimSpace(req.SessionID)}
-	for _, evt := range events {
+	if err := scanSSELines(resp.Body, func(payload []byte) error {
+		var evt chatEvent
+		if err := json.Unmarshal(payload, &evt); err != nil {
+			return fmt.Errorf("decode sse event: %w", err)
+		}
 		switch evt.Type {
 		case "status":
 			if onStatus != nil {
@@ -110,52 +108,17 @@ func (c chatClient) stream(ctx context.Context, req chatRequest, onStatus func(c
 			}
 		case "error":
 			if strings.TrimSpace(evt.Error) == "" {
-				return chatResult{}, fmt.Errorf("chat stream error")
+				return fmt.Errorf("chat stream error")
 			}
-			return chatResult{}, errors.New(strings.TrimSpace(evt.Error))
+			return errors.New(strings.TrimSpace(evt.Error))
 		case "done":
 			if strings.TrimSpace(evt.SessionID) != "" {
 				result.SessionID = strings.TrimSpace(evt.SessionID)
 			}
 		}
+		return nil
+	}); err != nil {
+		return chatResult{}, err
 	}
 	return result, nil
-}
-
-func resolveChatEndpoint(serverURL string) (string, error) {
-	base := strings.TrimSpace(serverURL)
-	if base == "" {
-		base = "http://127.0.0.1:43180"
-	}
-	u, err := url.Parse(base)
-	if err != nil {
-		return "", fmt.Errorf("invalid server url: %w", err)
-	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/v1/chat"
-	return u.String(), nil
-}
-
-func decodeSSEBuffer(r io.Reader) ([]chatEvent, error) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
-	events := make([]chatEvent, 0, 16)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if payload == "" {
-			continue
-		}
-		var evt chatEvent
-		if err := json.Unmarshal([]byte(payload), &evt); err != nil {
-			return nil, fmt.Errorf("decode sse event: %w", err)
-		}
-		events = append(events, evt)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	return events, nil
 }

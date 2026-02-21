@@ -9,23 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
-
-func TestDecodeSSEBuffer(t *testing.T) {
-	buf := "data: {\"type\":\"status\",\"message\":\"calling llm\"}\n" +
-		"data: {\"type\":\"delta\",\"text\":\"hello\"}\n" +
-		"data: {\"type\":\"done\",\"session_id\":\"s1\"}\n"
-	events, err := decodeSSEBuffer(strings.NewReader(buf))
-	if err != nil {
-		t.Fatalf("decodeSSEBuffer: %v", err)
-	}
-	if len(events) != 3 {
-		t.Fatalf("expected 3 events, got %d", len(events))
-	}
-	if events[1].Type != "delta" || events[1].Text != "hello" {
-		t.Fatalf("unexpected delta event: %+v", events[1])
-	}
-}
 
 func TestChatClientStream(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +44,67 @@ func TestChatClientStream(t *testing.T) {
 	}
 	if res.Assistant != "Hello" {
 		t.Fatalf("expected assistant Hello, got %q", res.Assistant)
+	}
+}
+
+func TestChatClientStream_StreamsDeltaInRealtime(t *testing.T) {
+	deltaCh := make(chan string, 4)
+	allowFinish := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatalf("response writer does not support flushing")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, "data: {\"type\":\"delta\",\"text\":\"Hel\"}\n")
+		flusher.Flush()
+		select {
+		case <-allowFinish:
+		case <-r.Context().Done():
+			return
+		}
+		_, _ = fmt.Fprint(w, "data: {\"type\":\"delta\",\"text\":\"lo\"}\n")
+		_, _ = fmt.Fprint(w, "data: {\"type\":\"done\",\"session_id\":\"sess-1\"}\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	client := chatClient{serverURL: server.URL}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	resCh := make(chan chatResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		res, err := client.stream(ctx, chatRequest{Message: "hi"}, nil, func(text string) {
+			deltaCh <- text
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resCh <- res
+	}()
+
+	select {
+	case got := <-deltaCh:
+		if got != "Hel" {
+			t.Fatalf("expected first realtime delta Hel, got %q", got)
+		}
+		allowFinish <- struct{}{}
+	case <-time.After(300 * time.Millisecond):
+		t.Fatalf("expected first delta before stream completion")
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("stream: %v", err)
+	case res := <-resCh:
+		if res.Assistant != "Hello" {
+			t.Fatalf("expected assistant Hello, got %q", res.Assistant)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("stream did not finish")
 	}
 }
 

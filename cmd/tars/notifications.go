@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -163,7 +161,7 @@ func (c eventStreamClient) consume(ctx context.Context, onEvent func(notificatio
 }
 
 func (c eventStreamClient) consumeOnce(ctx context.Context, onEvent func(notificationMessage)) error {
-	endpoint, err := resolveEventsEndpoint(c.serverURL)
+	endpoint, err := resolveURL(c.serverURL, "/v1/events/stream")
 	if err != nil {
 		return err
 	}
@@ -203,26 +201,16 @@ func (c eventStreamClient) consumeOnce(ctx context.Context, onEvent func(notific
 			Body:     strings.TrimSpace(string(body)),
 		}
 	}
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if payload == "" {
-			continue
-		}
+	if err := scanSSELines(resp.Body, func(payload []byte) error {
 		var evt notificationMessage
-		if err := json.Unmarshal([]byte(payload), &evt); err != nil {
+		if err := json.Unmarshal(payload, &evt); err != nil {
 			return fmt.Errorf("decode event: %w", err)
 		}
 		if onEvent != nil {
 			onEvent(evt)
 		}
-	}
-	if err := scanner.Err(); err != nil {
+		return nil
+	}); err != nil {
 		return err
 	}
 	return io.EOF
@@ -234,17 +222,4 @@ func isEventStreamPermanentError(err error) bool {
 		return false
 	}
 	return apiErr.Status >= 400 && apiErr.Status < 500 && apiErr.Status != http.StatusTooManyRequests
-}
-
-func resolveEventsEndpoint(serverURL string) (string, error) {
-	base := strings.TrimSpace(serverURL)
-	if base == "" {
-		base = "http://127.0.0.1:43180"
-	}
-	u, err := url.Parse(base)
-	if err != nil {
-		return "", fmt.Errorf("invalid server url: %w", err)
-	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/v1/events/stream"
-	return u.String(), nil
 }
