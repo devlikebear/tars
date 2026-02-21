@@ -36,7 +36,10 @@ The current architecture is intentionally simplified for public use and operatio
 
 ## Repository Layout
 
-- `cmd/tars`: single binary (`tars` TUI client + `tars serve` server mode)
+- `cmd/tars`: single binary entrypoint (`main.go`, `client_main.go`, `server_main.go`)
+- `internal/tarsclient`: internal TUI/command client runtime
+- `internal/tarsserver`: server runtime (`tars serve`)
+- `pkg/tarsclient`: public HTTP/SSE protocol client package
 - `internal/*`: runtime modules (gateway, tool, llm, session, extensions, browser, vaultclient, ...)
 - `config/tars.config.example.yaml`: example config
 - `workspace/`: local runtime workspace (sessions, memory, automation, etc.)

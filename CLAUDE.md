@@ -266,6 +266,12 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - `internal/config/defaults.go`를 로딩/병합/ENV/YAML 파서 모듈로 분리, YAML 파서를 `yaml.v3` 기반으로 통일
   - `internal/mcp/client`를 API 계층과 transport/protocol 계층으로 분리
   - `internal/llm/gemini_native` 변환/채팅 계층 분리, `bifrost*` 파일명을 OpenAI-compatible 의미로 정정
+- 구조 재편(후속):
+  - `internal/tarsapp`를 `internal/tarsserver`로 리네임
+  - `cmd/tars`를 엔트리 3파일(`main.go`, `client_main.go`, `server_main.go`)로 축소
+  - TUI/명령 로직을 `internal/tarsclient`로 이동
+  - 공용 프로토콜 레이어를 `pkg/tarsclient`로 분리(`Do`, `StreamSSE`, `StreamChat`, `StreamEvents`)
+  - 공용 env 로더를 `internal/envloader`로 분리해 client/server가 함께 사용
 - 개발/검증 경로 정리:
   - `Makefile`에 `lint` 타깃 추가(`lint: vet`)
   - 최종 검증: `make test`, `make lint` 통과
