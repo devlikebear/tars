@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/tool"
+	"gopkg.in/yaml.v3"
 )
 
 type workspaceGatewayAgent struct {
@@ -627,117 +629,121 @@ func splitYAMLFrontmatter(raw string) (meta string, body string, hasFrontmatter 
 
 func parseWorkspaceGatewayAgentFrontmatter(raw string) (workspaceGatewayAgentFrontmatter, error) {
 	meta := workspaceGatewayAgentFrontmatter{}
-	lines := strings.Split(raw, "\n")
-	for i := 0; i < len(lines); i++ {
-		line := strings.TrimSpace(lines[i])
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if strings.HasPrefix(line, "- ") {
-			return workspaceGatewayAgentFrontmatter{}, fmt.Errorf("unexpected list item: %q", line)
-		}
-		keyRaw, valueRaw, ok := strings.Cut(line, ":")
-		if !ok {
-			return workspaceGatewayAgentFrontmatter{}, fmt.Errorf("invalid frontmatter line: %q", lines[i])
-		}
-		key := strings.ToLower(strings.TrimSpace(keyRaw))
-		value := strings.TrimSpace(valueRaw)
+	parsed := map[string]any{}
+	if err := yaml.Unmarshal([]byte(raw), &parsed); err != nil {
+		return workspaceGatewayAgentFrontmatter{}, err
+	}
 
-		switch key {
-		case "name":
-			meta.Name = trimYAMLScalar(value)
-		case "description":
-			meta.Description = trimYAMLScalar(value)
-		case "tools_allow", "tools-allow":
-			meta.ToolsAllowExists = true
-			items, next := parseYAMLListValue(lines, i, value)
-			meta.ToolsAllow = append(meta.ToolsAllow, items...)
-			i = next
-		case "tools_deny", "tools-deny":
-			meta.ToolsDenyExists = true
-			items, next := parseYAMLListValue(lines, i, value)
-			meta.ToolsDeny = append(meta.ToolsDeny, items...)
-			i = next
-		case "tools_risk_max", "tools-risk-max":
-			meta.ToolsRiskMax = trimYAMLScalar(value)
-		case "tools_allow_groups", "tools-allow-groups":
-			meta.ToolsAllowGroupsExists = true
-			items, next := parseYAMLListValue(lines, i, value)
-			meta.ToolsAllowGroups = append(meta.ToolsAllowGroups, items...)
-			i = next
-		case "tools_allow_patterns", "tools-allow-patterns":
-			meta.ToolsAllowPatternsExists = true
-			items, next := parseYAMLListValue(lines, i, value)
-			meta.ToolsAllowPatterns = append(meta.ToolsAllowPatterns, items...)
-			i = next
-		case "session_routing_mode", "session-routing-mode":
-			meta.SessionRoutingMode = trimYAMLScalar(value)
-		case "session_fixed_id", "session-fixed-id":
-			meta.SessionFixedID = trimYAMLScalar(value)
-		}
+	if value, ok := frontmatterValue(parsed, "name"); ok {
+		meta.Name = frontmatterString(value)
+	}
+	if value, ok := frontmatterValue(parsed, "description"); ok {
+		meta.Description = frontmatterString(value)
+	}
+	if value, ok := frontmatterValue(parsed, "tools_allow", "tools-allow"); ok {
+		meta.ToolsAllowExists = true
+		meta.ToolsAllow = frontmatterStringList(value)
+	}
+	if value, ok := frontmatterValue(parsed, "tools_deny", "tools-deny"); ok {
+		meta.ToolsDenyExists = true
+		meta.ToolsDeny = frontmatterStringList(value)
+	}
+	if value, ok := frontmatterValue(parsed, "tools_risk_max", "tools-risk-max"); ok {
+		meta.ToolsRiskMax = frontmatterString(value)
+	}
+	if value, ok := frontmatterValue(parsed, "tools_allow_groups", "tools-allow-groups"); ok {
+		meta.ToolsAllowGroupsExists = true
+		meta.ToolsAllowGroups = frontmatterStringList(value)
+	}
+	if value, ok := frontmatterValue(parsed, "tools_allow_patterns", "tools-allow-patterns"); ok {
+		meta.ToolsAllowPatternsExists = true
+		meta.ToolsAllowPatterns = frontmatterStringList(value)
+	}
+	if value, ok := frontmatterValue(parsed, "session_routing_mode", "session-routing-mode"); ok {
+		meta.SessionRoutingMode = frontmatterString(value)
+	}
+	if value, ok := frontmatterValue(parsed, "session_fixed_id", "session-fixed-id"); ok {
+		meta.SessionFixedID = frontmatterString(value)
 	}
 	return meta, nil
 }
 
-func parseYAMLListValue(lines []string, index int, rawValue string) ([]string, int) {
-	value := strings.TrimSpace(rawValue)
-	if value == "" {
-		out := make([]string, 0)
-		i := index
-		for i+1 < len(lines) {
-			next := strings.TrimSpace(lines[i+1])
-			if next == "" || strings.HasPrefix(next, "#") {
-				i++
+func frontmatterValue(values map[string]any, keys ...string) (any, bool) {
+	if len(values) == 0 || len(keys) == 0 {
+		return nil, false
+	}
+	normalized := make(map[string]any, len(values))
+	for key, value := range values {
+		normalized[strings.ToLower(strings.TrimSpace(key))] = value
+	}
+	for _, key := range keys {
+		v, ok := normalized[strings.ToLower(strings.TrimSpace(key))]
+		if ok {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
+func frontmatterString(value any) string {
+	switch item := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(item)
+	case bool:
+		if item {
+			return "true"
+		}
+		return "false"
+	case int:
+		return strconv.Itoa(item)
+	case int8:
+		return strconv.FormatInt(int64(item), 10)
+	case int16:
+		return strconv.FormatInt(int64(item), 10)
+	case int32:
+		return strconv.FormatInt(int64(item), 10)
+	case int64:
+		return strconv.FormatInt(item, 10)
+	case uint:
+		return strconv.FormatUint(uint64(item), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(item), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(item), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(item), 10)
+	case uint64:
+		return strconv.FormatUint(item, 10)
+	case float32:
+		return strconv.FormatFloat(float64(item), 'f', -1, 32)
+	case float64:
+		return strconv.FormatFloat(item, 'f', -1, 64)
+	default:
+		return strings.TrimSpace(fmt.Sprint(item))
+	}
+}
+
+func frontmatterStringList(value any) []string {
+	switch item := value.(type) {
+	case nil:
+		return []string{}
+	case []any:
+		out := make([]string, 0, len(item))
+		for _, entry := range item {
+			trimmed := frontmatterString(entry)
+			if trimmed == "" {
 				continue
 			}
-			if !strings.HasPrefix(next, "-") {
-				break
-			}
-			item := strings.TrimSpace(strings.TrimPrefix(next, "-"))
-			item = trimYAMLScalar(item)
-			if item != "" {
-				out = append(out, item)
-			}
-			i++
+			out = append(out, trimmed)
 		}
-		return out, i
-	}
-	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
-		return parseInlineYAMLList(value), index
-	}
-	item := trimYAMLScalar(value)
-	if item == "" {
-		return []string{}, index
-	}
-	return []string{item}, index
-}
-
-func parseInlineYAMLList(raw string) []string {
-	inner := strings.TrimSpace(raw)
-	inner = strings.TrimPrefix(inner, "[")
-	inner = strings.TrimSuffix(inner, "]")
-	if strings.TrimSpace(inner) == "" {
-		return []string{}
-	}
-	parts := strings.Split(inner, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		item := trimYAMLScalar(part)
-		if item == "" {
-			continue
+		return out
+	default:
+		trimmed := frontmatterString(item)
+		if trimmed == "" {
+			return []string{}
 		}
-		out = append(out, item)
+		return []string{trimmed}
 	}
-	return out
-}
-
-func trimYAMLScalar(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if len(trimmed) >= 2 {
-		if (trimmed[0] == '"' && trimmed[len(trimmed)-1] == '"') ||
-			(trimmed[0] == '\'' && trimmed[len(trimmed)-1] == '\'') {
-			trimmed = trimmed[1 : len(trimmed)-1]
-		}
-	}
-	return strings.TrimSpace(trimmed)
 }

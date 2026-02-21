@@ -3,57 +3,48 @@ package tarsapp
 import (
 	"net/http"
 	"strings"
-	"unicode"
 
 	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/session"
 )
 
-const defaultWorkspaceID = "default"
+const defaultWorkspaceID = gateway.DefaultWorkspaceID
 
 func normalizeWorkspaceID(raw string) string {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return defaultWorkspaceID
-	}
-	var b strings.Builder
-	for _, r := range trimmed {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
-			b.WriteRune(r)
-			continue
-		}
-		b.WriteByte('_')
-	}
-	sanitized := strings.TrimSpace(b.String())
-	if sanitized == "" {
-		return defaultWorkspaceID
-	}
-	return sanitized
+	return gateway.NormalizeWorkspaceID(raw)
 }
 
-func workspaceIDFromRequest(r *http.Request) string {
+func workspaceIDFromRequest(_ *http.Request) string {
 	return defaultWorkspaceID
 }
 
-func resolveWorkspaceDir(baseWorkspaceDir, workspaceID string) string {
+func resolveWorkspaceDir(baseWorkspaceDir, _ string) string {
 	base := strings.TrimSpace(baseWorkspaceDir)
 	if base == "" {
-		base = "."
+		return "."
 	}
 	return base
 }
 
-func resolveSessionStoreForRequest(baseWorkspaceDir string, baseStore *session.Store, r *http.Request) (*session.Store, string, string, error) {
-	workspaceID := defaultWorkspaceID
-	workspaceDir := resolveWorkspaceDir(baseWorkspaceDir, workspaceID)
+func ensureWorkspaceDir(baseWorkspaceDir string) (string, error) {
+	workspaceDir := resolveWorkspaceDir(baseWorkspaceDir, defaultWorkspaceID)
 	if err := memory.EnsureWorkspace(workspaceDir); err != nil {
+		return "", err
+	}
+	return workspaceDir, nil
+}
+
+func resolveSessionStoreForRequest(baseWorkspaceDir string, baseStore *session.Store, _ *http.Request) (*session.Store, string, string, error) {
+	workspaceDir, err := ensureWorkspaceDir(baseWorkspaceDir)
+	if err != nil {
 		return nil, "", "", err
 	}
 	if baseStore != nil {
-		return baseStore, workspaceDir, workspaceID, nil
+		return baseStore, workspaceDir, defaultWorkspaceID, nil
 	}
-	return session.NewStore(workspaceDir), workspaceDir, workspaceID, nil
+	return session.NewStore(workspaceDir), workspaceDir, defaultWorkspaceID, nil
 }
 
 func newWorkspaceSessionStoreResolver(baseWorkspaceDir string, defaultStore *session.Store) func(workspaceID string) *session.Store {
@@ -61,22 +52,22 @@ func newWorkspaceSessionStoreResolver(baseWorkspaceDir string, defaultStore *ses
 		if defaultStore != nil {
 			return defaultStore
 		}
-		workspaceDir := resolveWorkspaceDir(baseWorkspaceDir, defaultWorkspaceID)
-		if err := memory.EnsureWorkspace(workspaceDir); err != nil {
+		workspaceDir, err := ensureWorkspaceDir(baseWorkspaceDir)
+		if err != nil {
 			return nil
 		}
+		_ = workspaceID
 		return session.NewStore(workspaceDir)
 	}
 }
 
-func resolveCronStoreForRequest(baseWorkspaceDir string, runHistoryLimit int, r *http.Request) (*cron.Store, string, string, error) {
-	workspaceID := defaultWorkspaceID
-	workspaceDir := resolveWorkspaceDir(baseWorkspaceDir, workspaceID)
-	if err := memory.EnsureWorkspace(workspaceDir); err != nil {
+func resolveCronStoreForRequest(baseWorkspaceDir string, runHistoryLimit int, _ *http.Request) (*cron.Store, string, string, error) {
+	workspaceDir, err := ensureWorkspaceDir(baseWorkspaceDir)
+	if err != nil {
 		return nil, "", "", err
 	}
 	store := cron.NewStoreWithOptions(workspaceDir, cron.StoreOptions{RunHistoryLimit: runHistoryLimit})
-	return store, workspaceDir, workspaceID, nil
+	return store, workspaceDir, defaultWorkspaceID, nil
 }
 
 type workspaceCronStoreResolver struct {
@@ -97,22 +88,18 @@ func (r *workspaceCronStoreResolver) Resolve(workspaceID string) (*cron.Store, e
 	if r == nil {
 		return nil, nil
 	}
-	baseWorkspaceDir := strings.TrimSpace(r.baseWorkspaceDir)
-	if baseWorkspaceDir == "" && r.defaultStore != nil {
+	if r.defaultStore != nil {
 		return r.defaultStore, nil
 	}
-	workspaceDir := resolveWorkspaceDir(baseWorkspaceDir, defaultWorkspaceID)
-	if err := memory.EnsureWorkspace(workspaceDir); err != nil {
+	workspaceDir, err := ensureWorkspaceDir(r.baseWorkspaceDir)
+	if err != nil {
 		return nil, err
 	}
-	store := cron.NewStoreWithOptions(workspaceDir, cron.StoreOptions{RunHistoryLimit: r.runHistoryLimit})
-	if r.defaultStore != nil {
-		store = r.defaultStore
-	}
-	return store, nil
+	_ = workspaceID
+	return cron.NewStoreWithOptions(workspaceDir, cron.StoreOptions{RunHistoryLimit: r.runHistoryLimit}), nil
 }
 
-func (r *workspaceCronStoreResolver) ResolveFromRequest(req *http.Request) (*cron.Store, string, error) {
+func (r *workspaceCronStoreResolver) ResolveFromRequest(_ *http.Request) (*cron.Store, string, error) {
 	store, err := r.Resolve(defaultWorkspaceID)
 	if err != nil {
 		return nil, "", err
@@ -121,5 +108,6 @@ func (r *workspaceCronStoreResolver) ResolveFromRequest(req *http.Request) (*cro
 }
 
 func (r *workspaceCronStoreResolver) WorkspaceIDs() ([]string, error) {
+	_ = r
 	return []string{defaultWorkspaceID}, nil
 }
