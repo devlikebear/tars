@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -786,6 +788,79 @@ func TestExecuteCommand_Whoami(t *testing.T) {
 	}
 }
 
+func TestBootstrapClientEnvFiles_LoadsEnvAndSecretDefaults(t *testing.T) {
+	tmp := t.TempDir()
+	envPath := filepath.Join(tmp, ".env")
+	secretPath := filepath.Join(tmp, ".env.secret")
+
+	const (
+		serverURLKey  = "TARS_SERVER_URL"
+		apiTokenKey   = "TARS_API_TOKEN"
+		adminTokenKey = "TARS_ADMIN_API_TOKEN"
+	)
+	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
+		serverURLKey + "=http://from-env:43180",
+		apiTokenKey + "=from-env-token",
+	}, "\n")), 0o644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+	if err := os.WriteFile(secretPath, []byte(strings.Join([]string{
+		apiTokenKey + "=from-secret-token",
+		adminTokenKey + "=from-secret-admin",
+	}, "\n")), 0o644); err != nil {
+		t.Fatalf("write .env.secret: %v", err)
+	}
+
+	prevServerURL, hadServerURL := os.LookupEnv(serverURLKey)
+	prevAPIToken, hadAPIToken := os.LookupEnv(apiTokenKey)
+	prevAdminToken, hadAdminToken := os.LookupEnv(adminTokenKey)
+	t.Cleanup(func() {
+		restoreEnvForTest(serverURLKey, prevServerURL, hadServerURL)
+		restoreEnvForTest(apiTokenKey, prevAPIToken, hadAPIToken)
+		restoreEnvForTest(adminTokenKey, prevAdminToken, hadAdminToken)
+	})
+
+	_ = os.Unsetenv(serverURLKey)
+	_ = os.Unsetenv(apiTokenKey)
+	_ = os.Unsetenv(adminTokenKey)
+	_ = os.Setenv(serverURLKey, "http://from-os:43180")
+
+	bootstrapClientEnvFiles(envPath, secretPath)
+
+	if got := os.Getenv(serverURLKey); got != "http://from-os:43180" {
+		t.Fatalf("expected OS env precedence for server url, got %q", got)
+	}
+	if got := os.Getenv(apiTokenKey); got != "from-secret-token" {
+		t.Fatalf("expected .env.secret precedence for api token, got %q", got)
+	}
+	if got := os.Getenv(adminTokenKey); got != "from-secret-admin" {
+		t.Fatalf("expected .env.secret value for admin token, got %q", got)
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	serverURL, err := cmd.Flags().GetString("server-url")
+	if err != nil {
+		t.Fatalf("server-url flag: %v", err)
+	}
+	apiToken, err := cmd.Flags().GetString("api-token")
+	if err != nil {
+		t.Fatalf("api-token flag: %v", err)
+	}
+	adminToken, err := cmd.Flags().GetString("admin-api-token")
+	if err != nil {
+		t.Fatalf("admin-api-token flag: %v", err)
+	}
+	if serverURL != "http://from-os:43180" {
+		t.Fatalf("expected server-url default from loaded env, got %q", serverURL)
+	}
+	if apiToken != "from-secret-token" {
+		t.Fatalf("expected api-token default from loaded env, got %q", apiToken)
+	}
+	if adminToken != "from-secret-admin" {
+		t.Fatalf("expected admin-api-token default from loaded env, got %q", adminToken)
+	}
+}
+
 func TestRootCommand_DoesNotAcceptWorkspaceIDFlag(t *testing.T) {
 	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
 	cmd.SetArgs([]string{"--workspace-id", "ws-main"})
@@ -911,4 +986,12 @@ func TestFormatRuntimeError_RedactsSensitiveValues(t *testing.T) {
 	if strings.Contains(msg, secret) {
 		t.Fatalf("expected redacted runtime error, got %q", msg)
 	}
+}
+
+func restoreEnvForTest(key, value string, had bool) {
+	if had {
+		_ = os.Setenv(key, value)
+		return
+	}
+	_ = os.Unsetenv(key)
 }

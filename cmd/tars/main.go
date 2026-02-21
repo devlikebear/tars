@@ -48,11 +48,19 @@ type localRuntimeState struct {
 }
 
 func main() {
-	secrets.RegisterOSEnv()
+	bootstrapClientEnv()
 	if err := newRootCommand(os.Stdin, os.Stdout, os.Stderr).Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func bootstrapClientEnv() {
+	bootstrapClientEnvFiles(".env", ".env.secret")
+}
+
+func bootstrapClientEnvFiles(envPath, secretPath string) {
+	tarsapp.LoadRuntimeEnvFiles(envPath, secretPath)
 }
 
 func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {

@@ -8,9 +8,9 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// loadRuntimeEnvFiles applies environment values with precedence:
+// LoadRuntimeEnvFiles applies environment values with precedence:
 // OS env > .env.secret > .env.
-func loadRuntimeEnvFiles(envPath, secretPath string) {
+func LoadRuntimeEnvFiles(envPath, secretPath string) {
 	load := func(path string, forcedSecret bool) {
 		cleanPath := strings.TrimSpace(path)
 		if cleanPath == "" {
@@ -35,4 +35,8 @@ func loadRuntimeEnvFiles(envPath, secretPath string) {
 	load(secretPath, true)
 	load(envPath, false)
 	secrets.RegisterOSEnv()
+}
+
+func loadRuntimeEnvFiles(envPath, secretPath string) {
+	LoadRuntimeEnvFiles(envPath, secretPath)
 }
