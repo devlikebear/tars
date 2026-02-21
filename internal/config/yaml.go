@@ -172,6 +172,10 @@ func loadYAML(path string) (Config, error) {
 			cfg.ChannelsWebhookEnabled = parseBool(value, cfg.ChannelsWebhookEnabled)
 		case "channels_telegram_enabled":
 			cfg.ChannelsTelegramEnabled = parseBool(value, cfg.ChannelsTelegramEnabled)
+		case "channels_telegram_dm_policy":
+			cfg.ChannelsTelegramDMPolicy = strings.TrimSpace(strings.ToLower(value))
+		case "channels_telegram_polling_enabled":
+			cfg.ChannelsTelegramPollingEnabled = parseBool(value, cfg.ChannelsTelegramPollingEnabled)
 		case "telegram_bot_token":
 			cfg.TelegramBotToken = strings.TrimSpace(value)
 		case "tools_message_enabled":

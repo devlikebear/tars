@@ -94,6 +94,8 @@ type Config struct {
 	ChannelsLocalEnabled                 bool
 	ChannelsWebhookEnabled               bool
 	ChannelsTelegramEnabled              bool
+	ChannelsTelegramDMPolicy             string
+	ChannelsTelegramPollingEnabled       bool
 	TelegramBotToken                     string
 	ToolsMessageEnabled                  bool
 	ToolsBrowserEnabled                  bool
@@ -154,6 +156,8 @@ func Default() Config {
 		GatewayArchiveEnabled:                false,
 		GatewayArchiveRetentionDays:          30,
 		GatewayArchiveMaxFileBytes:           10485760,
+		ChannelsTelegramDMPolicy:             "pairing",
+		ChannelsTelegramPollingEnabled:       true,
 		SkillsEnabled:                        true,
 		SkillsWatch:                          true,
 		SkillsWatchDebounceMS:                200,

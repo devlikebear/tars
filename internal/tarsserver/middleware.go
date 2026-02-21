@@ -35,6 +35,7 @@ func apiAdminPaths() []string {
 		"/v1/gateway/restart",
 		"/v1/channels/webhook/inbound/*",
 		"/v1/channels/telegram/webhook/*",
+		"/v1/channels/telegram/pairings*",
 	}
 }
 

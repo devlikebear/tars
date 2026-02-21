@@ -108,6 +108,35 @@ func TestMiddleware_AdminPaths_TelegramSendIsNotAdminOnly(t *testing.T) {
 	}
 }
 
+func TestMiddleware_AdminPaths_TelegramPairingsAreAdminOnly(t *testing.T) {
+	cfg := config.Config{
+		APIAuthMode:   "required",
+		APIUserToken:  "user-token",
+		APIAdminToken: "admin-token",
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	reqUser := httptest.NewRequest(http.MethodGet, "/v1/channels/telegram/pairings", nil)
+	reqUser.RemoteAddr = "192.0.2.10:5555"
+	reqUser.Header.Set("Authorization", "Bearer user-token")
+	recUser := httptest.NewRecorder()
+	h.ServeHTTP(recUser, reqUser)
+	if recUser.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for user token on telegram pairings path, got %d body=%q", recUser.Code, recUser.Body.String())
+	}
+
+	reqAdmin := httptest.NewRequest(http.MethodGet, "/v1/channels/telegram/pairings", nil)
+	reqAdmin.RemoteAddr = "192.0.2.10:5555"
+	reqAdmin.Header.Set("Authorization", "Bearer admin-token")
+	recAdmin := httptest.NewRecorder()
+	h.ServeHTTP(recAdmin, reqAdmin)
+	if recAdmin.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for admin token on telegram pairings path, got %d body=%q", recAdmin.Code, recAdmin.Body.String())
+	}
+}
+
 func TestApplyAPIMiddleware_StatusIncludesAuthMetadataSingleWorkspace(t *testing.T) {
 	root := t.TempDir()
 	if err := memory.EnsureWorkspace(root); err != nil {

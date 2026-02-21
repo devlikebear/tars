@@ -275,6 +275,33 @@ func TestConfig_TelegramToken_FromEnv(t *testing.T) {
 	}
 }
 
+func TestConfig_TelegramDMPolicy_FromYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("channels_telegram_dm_policy: open\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.ChannelsTelegramDMPolicy != "open" {
+		t.Fatalf("expected telegram dm policy from yaml, got %q", cfg.ChannelsTelegramDMPolicy)
+	}
+}
+
+func TestConfig_TelegramPollingEnabled_FromEnv(t *testing.T) {
+	t.Setenv("CHANNELS_TELEGRAM_POLLING_ENABLED", "false")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.ChannelsTelegramPollingEnabled {
+		t.Fatalf("expected telegram polling disabled from env")
+	}
+}
+
 func TestResolveConfigPath_ExplicitAndEnv(t *testing.T) {
 	t.Setenv("TARS_CONFIG", "/tmp/should-not-win.yaml")
 	if got := ResolveConfigPath("./custom.yaml"); got != "./custom.yaml" {

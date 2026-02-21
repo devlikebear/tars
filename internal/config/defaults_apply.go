@@ -20,6 +20,12 @@ func applyLLMDefaults(cfg *Config) {
 	if cfg.LLMProvider == "" {
 		cfg.LLMProvider = "bifrost"
 	}
+	cfg.ChannelsTelegramDMPolicy = strings.TrimSpace(strings.ToLower(cfg.ChannelsTelegramDMPolicy))
+	switch cfg.ChannelsTelegramDMPolicy {
+	case "pairing", "allowlist", "open", "disabled":
+	default:
+		cfg.ChannelsTelegramDMPolicy = "pairing"
+	}
 	cfg.TelegramBotToken = strings.TrimSpace(cfg.TelegramBotToken)
 	cfg.LLMAuthMode = strings.TrimSpace(strings.ToLower(cfg.LLMAuthMode))
 	if cfg.LLMAuthMode == "" {

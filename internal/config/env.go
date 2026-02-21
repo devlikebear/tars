@@ -231,6 +231,12 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("CHANNELS_TELEGRAM_ENABLED"), os.Getenv("TARS_CHANNELS_TELEGRAM_ENABLED")); v != "" {
 		cfg.ChannelsTelegramEnabled = parseBool(v, cfg.ChannelsTelegramEnabled)
 	}
+	if v := firstNonEmpty(os.Getenv("CHANNELS_TELEGRAM_DM_POLICY"), os.Getenv("TARS_CHANNELS_TELEGRAM_DM_POLICY")); v != "" {
+		cfg.ChannelsTelegramDMPolicy = strings.TrimSpace(strings.ToLower(v))
+	}
+	if v := firstNonEmpty(os.Getenv("CHANNELS_TELEGRAM_POLLING_ENABLED"), os.Getenv("TARS_CHANNELS_TELEGRAM_POLLING_ENABLED")); v != "" {
+		cfg.ChannelsTelegramPollingEnabled = parseBool(v, cfg.ChannelsTelegramPollingEnabled)
+	}
 	if v := firstNonEmpty(os.Getenv("TELEGRAM_BOT_TOKEN"), os.Getenv("TARS_TELEGRAM_BOT_TOKEN")); v != "" {
 		cfg.TelegramBotToken = strings.TrimSpace(v)
 	}

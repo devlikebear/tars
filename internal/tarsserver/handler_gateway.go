@@ -271,6 +271,17 @@ func newChannelsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) http
 }
 
 func newChannelsAPIHandlerWithTelegramSender(runtime *gateway.Runtime, sender telegramSender, logger zerolog.Logger) http.Handler {
+	return newChannelsAPIHandlerWithTelegramPairings(runtime, sender, nil, "pairing", false, logger)
+}
+
+func newChannelsAPIHandlerWithTelegramPairings(
+	runtime *gateway.Runtime,
+	sender telegramSender,
+	pairings *telegramPairingStore,
+	dmPolicy string,
+	pollingEnabled bool,
+	logger zerolog.Logger,
+) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/channels/webhook/inbound/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -402,6 +413,55 @@ func newChannelsAPIHandlerWithTelegramSender(runtime *gateway.Runtime, sender te
 			return
 		}
 		writeJSON(w, http.StatusOK, msg)
+	})
+	mux.HandleFunc("/v1/channels/telegram/pairings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if pairings == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "telegram pairing store is not configured"})
+			return
+		}
+		writeJSON(w, http.StatusOK, pairings.snapshot(dmPolicy, pollingEnabled))
+	})
+	mux.HandleFunc("/v1/channels/telegram/pairings/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/channels/telegram/pairings/"))
+		if path == "" {
+			http.NotFound(w, r)
+			return
+		}
+		if path != "approve" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if pairings == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "telegram pairing store is not configured"})
+			return
+		}
+		var req struct {
+			Code string `json:"code"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		allowed, err := pairings.approve(req.Code)
+		if err != nil {
+			status := http.StatusBadRequest
+			if strings.Contains(strings.ToLower(err.Error()), "not found") {
+				status = http.StatusNotFound
+			}
+			writeJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"approved": allowed,
+		})
 	})
 	return mux
 }

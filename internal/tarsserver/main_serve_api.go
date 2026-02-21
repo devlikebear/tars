@@ -32,6 +32,7 @@ type serveAPIRuntime struct {
 	gatewayAgentsWatch *gatewayAgentsWatcher
 	relayServer        *browserrelay.Server
 	cronManager        *workspaceCronManager
+	telegramPoller     *telegramUpdatePoller
 }
 
 func runServeAPICommand(
@@ -113,6 +114,10 @@ func buildAPIMux(
 		logger,
 	)
 	dispatcher.store = notificationStore
+	telegramPairings, err := newTelegramPairingStore(telegramPairingStorePath(cfg), nowFn)
+	if err != nil {
+		return nil, err
+	}
 	heartbeatRunner := newWorkspaceHeartbeatRunnerWithNotify(
 		cfg.WorkspaceDir,
 		nowFn,
@@ -266,10 +271,37 @@ func buildAPIMux(
 	mux.Handle("/v1/browser/check", browserHandler)
 	mux.Handle("/v1/browser/run", browserHandler)
 	mux.Handle("/v1/vault/status", browserHandler)
-	channelsHandler := newChannelsAPIHandlerWithTelegramSender(gatewayRuntime, newTelegramSender(cfg.TelegramBotToken), logger)
+	telegramSender := newTelegramSender(cfg.TelegramBotToken)
+	telegramInbound := newTelegramInboundHandler(
+		cfg.WorkspaceDir,
+		sessionStore,
+		deps.llmClient,
+		telegramSender,
+		gatewayRuntime,
+		telegramPairings,
+		cfg.ChannelsTelegramDMPolicy,
+		logger,
+	)
+	telegramPoller := newTelegramUpdatePoller(cfg.TelegramBotToken, logger, telegramInbound.HandleUpdate)
+	if telegramPoller != nil {
+		telegramPoller = telegramPoller.withOffsetStore(
+			telegramPairings.lastUpdateIDValue,
+			telegramPairings.setLastUpdateID,
+		)
+	}
+	channelsHandler := newChannelsAPIHandlerWithTelegramPairings(
+		gatewayRuntime,
+		telegramSender,
+		telegramPairings,
+		cfg.ChannelsTelegramDMPolicy,
+		cfg.ChannelsTelegramPollingEnabled,
+		logger,
+	)
 	mux.Handle("/v1/channels/webhook/inbound/", channelsHandler)
 	mux.Handle("/v1/channels/telegram/webhook/", channelsHandler)
 	mux.Handle("/v1/channels/telegram/send", channelsHandler)
+	mux.Handle("/v1/channels/telegram/pairings", channelsHandler)
+	mux.Handle("/v1/channels/telegram/pairings/", channelsHandler)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
 	mux.Handle("/v1/events/stream", eventsHandler)
 	mux.Handle("/v1/events/history", eventsHandler)
@@ -297,6 +329,7 @@ func buildAPIMux(
 		gatewayAgentsWatch: gatewayAgentsWatch,
 		relayServer:        relayServer,
 		cronManager:        cronManager,
+		telegramPoller:     telegramPoller,
 	}, nil
 }
 
@@ -340,6 +373,16 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 				logger.Error().Err(err).Msg("cron manager stopped with error")
 			}
 		}()
+	}
+	if cfg.ChannelsTelegramEnabled && cfg.ChannelsTelegramPollingEnabled {
+		if runtime.telegramPoller == nil {
+			logger.Debug().Msg("telegram polling skipped (token or handler is not configured)")
+		} else {
+			go runtime.telegramPoller.Run(ctx)
+			logger.Info().
+				Str("dm_policy", normalizeTelegramDMPolicy(cfg.ChannelsTelegramDMPolicy)).
+				Msg("telegram polling started")
+		}
 	}
 	return nil
 }

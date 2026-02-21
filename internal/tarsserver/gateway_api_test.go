@@ -910,6 +910,64 @@ func TestChannelsAPI_TelegramSend_UserAllowed(t *testing.T) {
 	}
 }
 
+func TestChannelsAPI_TelegramPairings_Approve(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	pairings, err := newTelegramPairingStore(filepath.Join(t.TempDir(), "telegram_pairings.json"), nil)
+	if err != nil {
+		t.Fatalf("newTelegramPairingStore: %v", err)
+	}
+	issued, _, err := pairings.issue(telegramPairingIdentity{
+		UserID:   41,
+		ChatID:   "4101",
+		Username: "alice",
+	}, telegramPairingTTL)
+	if err != nil {
+		t.Fatalf("issue pairing: %v", err)
+	}
+	h := newChannelsAPIHandlerWithTelegramPairings(
+		runtime,
+		nil,
+		pairings,
+		"pairing",
+		true,
+		zerolog.New(io.Discard),
+	)
+
+	recList := httptest.NewRecorder()
+	reqList := httptest.NewRequest(http.MethodGet, "/v1/channels/telegram/pairings", nil)
+	h.ServeHTTP(recList, reqList)
+	if recList.Code != http.StatusOK {
+		t.Fatalf("pairings list expected 200, got %d body=%s", recList.Code, recList.Body.String())
+	}
+	var listPayload struct {
+		Pending []telegramPairingEntry `json:"pending"`
+		Allowed []telegramAllowedUser  `json:"allowed"`
+	}
+	if err := json.Unmarshal(recList.Body.Bytes(), &listPayload); err != nil {
+		t.Fatalf("decode list payload: %v", err)
+	}
+	if len(listPayload.Pending) != 1 || listPayload.Pending[0].Code != issued.Code {
+		t.Fatalf("unexpected pending payload: %+v", listPayload)
+	}
+
+	approveBody := bytes.NewBufferString(`{"code":"` + issued.Code + `"}`)
+	recApprove := httptest.NewRecorder()
+	reqApprove := httptest.NewRequest(http.MethodPost, "/v1/channels/telegram/pairings/approve", approveBody)
+	h.ServeHTTP(recApprove, reqApprove)
+	if recApprove.Code != http.StatusOK {
+		t.Fatalf("pairings approve expected 200, got %d body=%s", recApprove.Code, recApprove.Body.String())
+	}
+	var approvePayload struct {
+		Approved telegramAllowedUser `json:"approved"`
+	}
+	if err := json.Unmarshal(recApprove.Body.Bytes(), &approvePayload); err != nil {
+		t.Fatalf("decode approve payload: %v", err)
+	}
+	if approvePayload.Approved.UserID != 41 || approvePayload.Approved.ChatID != "4101" {
+		t.Fatalf("unexpected approve payload: %+v", approvePayload)
+	}
+}
+
 func TestBrowserAPIHandler_StatusProfilesAndVaultStatus(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
 	handler := newBrowserAPIHandler(runtime, vaultStatusSnapshot{
