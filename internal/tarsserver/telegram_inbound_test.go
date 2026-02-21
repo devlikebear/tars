@@ -399,6 +399,24 @@ func TestTelegramInbound_TypingLoop_LLMOnly(t *testing.T) {
 	}
 }
 
+func TestTelegramInbound_ShouldLogTypingError(t *testing.T) {
+	if shouldLogTelegramTypingError(nil) {
+		t.Fatalf("nil error must not be logged")
+	}
+	if shouldLogTelegramTypingError(context.Canceled) {
+		t.Fatalf("context.Canceled must not be logged")
+	}
+	if shouldLogTelegramTypingError(context.DeadlineExceeded) {
+		t.Fatalf("context.DeadlineExceeded must not be logged")
+	}
+	if shouldLogTelegramTypingError(fmt.Errorf("wrapped: %w", context.Canceled)) {
+		t.Fatalf("wrapped context.Canceled must not be logged")
+	}
+	if !shouldLogTelegramTypingError(fmt.Errorf("network error")) {
+		t.Fatalf("non-cancel error must be logged")
+	}
+}
+
 func TestTelegramInbound_MediaPhotoWithCaption_UsesLLM(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(workspace)

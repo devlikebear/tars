@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -359,7 +360,7 @@ func (h *telegramInboundHandler) startTypingLoop(parent context.Context, chatID,
 				ThreadID: strings.TrimSpace(threadID),
 				Action:   "typing",
 			})
-			if err != nil {
+			if shouldLogTelegramTypingError(err) {
 				h.logger.Debug().Err(err).Str("chat_id", chatID).Msg("telegram typing action failed")
 			}
 		}
@@ -376,6 +377,19 @@ func (h *telegramInboundHandler) startTypingLoop(parent context.Context, chatID,
 		}
 	}()
 	return cancel
+}
+
+func shouldLogTelegramTypingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return true
 }
 
 func (h *telegramInboundHandler) currentSessionID(userID int64) string {
