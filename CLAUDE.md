@@ -275,6 +275,14 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - 개발/검증 경로 정리:
   - `Makefile`에 `lint` 타깃 추가(`lint: vet`)
   - 최종 검증: `make test`, `make lint` 통과
+- Telegram 자동 페어링/인바운드 확장:
+  - config 추가: `channels_telegram_dm_policy`, `channels_telegram_polling_enabled`
+  - Telegram polling(`getUpdates`) 기반 수신 루프 추가(기본 timeout 30s)
+  - Pairing store 추가: `filepath.Join(cfg.GatewayPersistenceDir, "telegram_pairings.json")`
+  - DM 정책 게이트(`pairing|allowlist|open|disabled`) + private chat only 처리
+  - 인바운드 실행 경로 추가: `agent.Loop.Run(MaxIterations:1, Tools:nil)` 후 Telegram 응답 송신
+  - Admin API 추가: `GET /v1/channels/telegram/pairings`, `POST /v1/channels/telegram/pairings/approve`
+  - `cmd/tars` 명령 추가: `/telegram pairings`, `/telegram pairing approve {code}`
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조

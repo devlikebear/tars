@@ -74,3 +74,73 @@ make dev-tars
 - 브라우저 로그인 자동화가 필요하면 site flow + Vault를 먼저 설정하세요.
 - 보고 채널이 여러 개라면 webhook/telegram 채널을 먼저 등록해두면 프롬프트만으로 조합 가능합니다.
 - 처음에는 `5~10분` 주기로 테스트하고, 검증 후 주기를 늘리는 것이 안전합니다.
+
+## 5) 텔레그램 연동 테스트
+
+### 5-1) 자동 페어링(Polling, 권장)
+
+`chat_id`를 미리 입력하지 않고, 봇 토큰만으로 페어링할 수 있습니다.
+
+1. 서버 설정
+
+- `workspace/config/tars.config.yaml` 확인
+  - `channels_telegram_enabled: true`
+  - `channels_telegram_dm_policy: pairing`
+  - `channels_telegram_polling_enabled: true`
+- `.env.secret`(또는 `.env`) 설정
+
+```bash
+TELEGRAM_BOT_TOKEN=<YOUR_BOT_TOKEN>
+TARS_API_TOKEN=1234
+TARS_ADMIN_API_TOKEN=admin
+```
+
+2. 서버 실행
+
+```bash
+make dev-serve
+```
+
+3. 사용자 페어링 요청
+
+- Telegram에서 봇에게 아무 메시지(예: `hello`)를 보냅니다.
+- 봇이 `Pairing code: XXXXXXXX` 메시지를 회신합니다.
+
+4. 관리자 승인
+
+- tars 클라이언트에서 승인:
+
+```bash
+tars /telegram pairing approve XXXXXXXX
+```
+
+- 또는 Admin API 직접 호출:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:43180/v1/channels/telegram/pairings/approve" \
+  -H "Authorization: Bearer admin" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"XXXXXXXX"}'
+```
+
+5. 검증
+
+- 승인 후 같은 사용자가 보낸 다음 메시지는 LLM 응답으로 회신됩니다.
+- `tars /telegram pairings`에서 pending/allowed 상태를 확인할 수 있습니다.
+
+### 5-2) Outbound API 단독 테스트(수동 chat_id)
+
+기존 방식대로 `chat_id`를 알고 있을 때는 아래 API로 즉시 전송할 수 있습니다.
+
+```bash
+curl -sS -X POST "http://127.0.0.1:43180/v1/channels/telegram/send" \
+  -H "Authorization: Bearer 1234" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chat_id": "<CHAT_ID>",
+    "text": "tars telegram integration test"
+  }'
+```
+
+- Telegram 채팅방에 메시지가 도착해야 합니다.
+- API 응답 JSON에 `source: "telegram"` 및 `direction: "outbound"`가 포함되어야 합니다.

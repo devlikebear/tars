@@ -92,7 +92,7 @@ make smoke-auth
 `api_auth_mode` supports role-aware tokens:
 
 - `api_user_token`: chat/general operations
-- `api_admin_token`: control operations (`/v1/runtime/extensions/reload`, `/v1/gateway/reload`, `/v1/gateway/restart`, channel inbound endpoints)
+- `api_admin_token`: control operations (`/v1/runtime/extensions/reload`, `/v1/gateway/reload`, `/v1/gateway/restart`, channel inbound + telegram pairing admin endpoints)
 
 Workspace model is fixed to a single `workspace_dir` (no `workspace_id` routing).
 
@@ -100,7 +100,7 @@ Workspace model is fixed to a single `workspace_dir` (no `workspace_id` routing)
 
 - Chat + streaming status trace panel
 - Session commands: `/new`, `/sessions`, `/resume`, `/history`, `/export`, `/search`
-- Runtime commands: `/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`
+- Runtime commands: `/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`, `/telegram`
 - Automation: `/cron`, `/notify`, `/heartbeat`
 - Browser/Vault:
   - `/browser status|profiles|login|check|run`
