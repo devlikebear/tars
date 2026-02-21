@@ -31,3 +31,7 @@ type extensionsReloadInfo = tarsclient.ExtensionsReloadInfo
 type cronJob = tarsclient.CronJob
 
 type cronRunRecord = tarsclient.CronRunRecord
+
+type eventsHistoryInfo = tarsclient.EventsHistoryInfo
+
+type eventsReadInfo = tarsclient.EventsReadInfo

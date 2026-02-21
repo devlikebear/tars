@@ -188,6 +188,19 @@ func cmdNotify(c commandContext) (bool, string, error) {
 		for i, item := range items {
 			fmt.Fprintf(c.stdout, "%d. [%s/%s] %s (%s)\n", i+1, item.Category, item.Severity, item.Title, item.Timestamp)
 		}
+		maxID := int64(0)
+		for _, item := range items {
+			if item.ID > maxID {
+				maxID = item.ID
+			}
+		}
+		if maxID > 0 {
+			readInfo, err := c.runtime.markEventsRead(c.ctx, maxID)
+			if err != nil {
+				return true, c.session, err
+			}
+			c.state.notifications.setReadCursor(readInfo.ReadCursor)
+		}
 		return true, c.session, nil
 	}
 	sub := strings.TrimSpace(c.fields[1])

@@ -401,6 +401,45 @@ func TestExecuteCommand_NotifyCommands(t *testing.T) {
 	}
 }
 
+func TestNotifySync_NotifyListMarksRead(t *testing.T) {
+	var readBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/events/read":
+			if err := json.NewDecoder(r.Body).Decode(&readBody); err != nil {
+				t.Fatalf("decode read body: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"acknowledged": true,
+				"read_cursor":  3,
+				"unread_count": 0,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	center := newNotificationCenter(10)
+	center.add(notificationMessage{ID: 2, Type: "notification", Category: "cron", Severity: "info", Title: "cron", Message: "done"})
+	center.add(notificationMessage{ID: 3, Type: "notification", Category: "error", Severity: "error", Title: "error", Message: "failed"})
+	state := &localRuntimeState{notifications: center}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{serverURL: server.URL}
+
+	if _, _, err := executeCommandWithState(context.Background(), runtime, "/notify list", "", stdout, stderr, state); err != nil {
+		t.Fatalf("/notify list: %v", err)
+	}
+	if readBody == nil {
+		t.Fatalf("expected read ack request")
+	}
+	if got := int(readBody["last_id"].(float64)); got != 3 {
+		t.Fatalf("expected last_id=3, got %+v", readBody)
+	}
+}
+
 func TestExecuteCommand_TraceToggle(t *testing.T) {
 	state := &localRuntimeState{
 		notifications: newNotificationCenter(10),

@@ -61,3 +61,24 @@ func TestEventStreamClientConsume_StopsRetryOnUnauthorized(t *testing.T) {
 		t.Fatalf("expected single request on unauthorized, got %d", requests)
 	}
 }
+
+func TestNotifySync_NotificationCenterDedupesByIDAndTracksUnread(t *testing.T) {
+	center := newNotificationCenter(4)
+	center.setReadCursor(0)
+	center.add(notificationMessage{ID: 1, Type: "notification", Category: "cron", Title: "a"})
+	center.add(notificationMessage{ID: 1, Type: "notification", Category: "cron", Title: "a-dup"})
+	center.add(notificationMessage{ID: 2, Type: "notification", Category: "cron", Title: "b"})
+
+	items := center.filtered()
+	if len(items) != 2 {
+		t.Fatalf("expected deduped length=2, got %d (%+v)", len(items), items)
+	}
+	if center.unreadCount() != 2 {
+		t.Fatalf("expected unread=2, got %d", center.unreadCount())
+	}
+
+	center.setReadCursor(2)
+	if center.unreadCount() != 0 {
+		t.Fatalf("expected unread=0 after read cursor advance, got %d", center.unreadCount())
+	}
+}

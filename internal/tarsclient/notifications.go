@@ -14,10 +14,12 @@ import (
 type notificationMessage = tarsclient.NotificationMessage
 
 type notificationCenter struct {
-	mu     sync.RWMutex
-	max    int
-	filter string
-	items  []notificationMessage
+	mu         sync.RWMutex
+	max        int
+	filter     string
+	items      []notificationMessage
+	seenIDs    map[int64]struct{}
+	readCursor int64
 }
 
 func newNotificationCenter(max int) *notificationCenter {
@@ -25,9 +27,10 @@ func newNotificationCenter(max int) *notificationCenter {
 		max = 200
 	}
 	return &notificationCenter{
-		max:    max,
-		filter: "all",
-		items:  make([]notificationMessage, 0, max),
+		max:     max,
+		filter:  "all",
+		items:   make([]notificationMessage, 0, max),
+		seenIDs: map[int64]struct{}{},
 	}
 }
 
@@ -44,8 +47,21 @@ func (c *notificationCenter) add(msg notificationMessage) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if msg.ID > 0 {
+		if _, exists := c.seenIDs[msg.ID]; exists {
+			return
+		}
+	}
 	c.items = append(c.items, msg)
+	if msg.ID > 0 {
+		c.seenIDs[msg.ID] = struct{}{}
+	}
 	if len(c.items) > c.max {
+		for _, removed := range c.items[:len(c.items)-c.max] {
+			if removed.ID > 0 {
+				delete(c.seenIDs, removed.ID)
+			}
+		}
 		c.items = c.items[len(c.items)-c.max:]
 	}
 }
@@ -57,6 +73,7 @@ func (c *notificationCenter) clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.items = c.items[:0]
+	c.seenIDs = map[int64]struct{}{}
 }
 
 func (c *notificationCenter) setFilter(filter string) error {
@@ -106,6 +123,35 @@ func (c *notificationCenter) filterName() string {
 		return "all"
 	}
 	return name
+}
+
+func (c *notificationCenter) setReadCursor(lastID int64) {
+	if c == nil {
+		return
+	}
+	if lastID < 0 {
+		lastID = 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if lastID > c.readCursor {
+		c.readCursor = lastID
+	}
+}
+
+func (c *notificationCenter) unreadCount() int {
+	if c == nil {
+		return 0
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	unread := 0
+	for _, item := range c.items {
+		if item.ID <= 0 || item.ID > c.readCursor {
+			unread++
+		}
+	}
+	return unread
 }
 
 type eventStreamClient struct {

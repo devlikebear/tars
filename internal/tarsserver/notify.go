@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/rs/zerolog"
 )
 
@@ -19,6 +21,7 @@ const notificationEventType = "notification"
 const keepaliveEventType = "keepalive"
 
 type notificationEvent struct {
+	ID        int64  `json:"id,omitempty"`
 	Type      string `json:"type"`
 	Category  string `json:"category"`
 	Severity  string `json:"severity"`
@@ -150,6 +153,7 @@ func (n *commandNotifier) notifyAuto(ctx context.Context, title, message string)
 
 type notificationDispatcher struct {
 	broker                  *eventBroker
+	store                   *notificationStore
 	notifier                desktopNotifier
 	notifyWhenNoSubscribers bool
 	logger                  zerolog.Logger
@@ -176,6 +180,14 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 	evt.Type = notificationEventType
 	if strings.TrimSpace(evt.Timestamp) == "" {
 		evt.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	}
+	if d.store != nil {
+		stored, err := d.store.append(evt)
+		if err != nil {
+			d.logger.Debug().Err(err).Msg("notification persistence failed; continuing without persistence")
+		} else {
+			evt = stored
+		}
 	}
 	if d.broker != nil {
 		d.broker.publish(evt)
@@ -264,4 +276,74 @@ func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Hand
 			}
 		}
 	})
+}
+
+func newEventsAPIHandler(broker *eventBroker, store *notificationStore, logger zerolog.Logger) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/v1/events/stream", newEventStreamHandler(broker, logger))
+
+	mux.HandleFunc("/v1/events/history", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if store == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "notification store is not configured"})
+			return
+		}
+		limit := defaultNotificationHistoryLimit
+		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+			v, err := strconv.Atoi(raw)
+			if err != nil || v <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
+				return
+			}
+			limit = v
+		}
+		role := normalizeNotificationRoleKey(serverauth.RoleFromRequest(r))
+		view, err := store.history(role, limit)
+		if err != nil {
+			logger.Error().Err(err).Msg("load notification history failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load notification history failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":        view.Items,
+			"unread_count": view.UnreadCount,
+			"read_cursor":  view.ReadCursor,
+			"last_id":      view.LastID,
+		})
+	})
+
+	mux.HandleFunc("/v1/events/read", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if store == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "notification store is not configured"})
+			return
+		}
+		var req struct {
+			LastID int64 `json:"last_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		role := normalizeNotificationRoleKey(serverauth.RoleFromRequest(r))
+		view, err := store.markRead(role, req.LastID)
+		if err != nil {
+			logger.Error().Err(err).Msg("mark notifications read failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "mark notifications read failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"acknowledged": true,
+			"read_cursor":  view.ReadCursor,
+			"unread_count": view.UnreadCount,
+		})
+	})
+
+	return mux
 }

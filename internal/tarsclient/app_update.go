@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -117,6 +118,26 @@ func (m *tarsAppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case notificationErrorMsg:
 		m.appendStatusLine("notification stream error: " + formatRuntimeError(typed.err))
 		return m, waitAsyncMsg(m.asyncCh)
+
+	case notificationHistoryMsg:
+		if typed.err != nil {
+			m.appendStatusLine("notification history load failed: " + formatRuntimeError(typed.err))
+			return m, waitAsyncMsg(m.asyncCh)
+		}
+		if typed.history.ReadCursor > 0 {
+			m.state.notifications.setReadCursor(typed.history.ReadCursor)
+		}
+		for _, item := range typed.history.Items {
+			m.state.notifications.add(item)
+		}
+		m.appendStatusLine(
+			fmt.Sprintf(
+				"notification history loaded count=%d unread=%d",
+				len(typed.history.Items),
+				typed.history.UnreadCount,
+			),
+		)
+		return m, waitAsyncMsg(m.asyncCh)
 	}
 
 	return m, nil
@@ -222,6 +243,7 @@ func (m *tarsAppModel) startEventStream() {
 	ctx := m.ctx
 	asyncCh := m.asyncCh
 	client := m.eventTrace
+	runtime := m.runtime
 	m.appendStatusLine("notification stream connecting")
 	go client.consume(ctx,
 		func(evt notificationMessage) {
@@ -237,6 +259,13 @@ func (m *tarsAppModel) startEventStream() {
 			}
 		},
 	)
+	go func() {
+		history, err := runtime.eventHistory(ctx, 100)
+		select {
+		case asyncCh <- notificationHistoryMsg{history: history, err: err}:
+		case <-ctx.Done():
+		}
+	}()
 }
 
 func (m *tarsAppModel) cancelInFlight(reason string) {

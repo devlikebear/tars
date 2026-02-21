@@ -69,6 +69,11 @@ type notificationErrorMsg struct {
 	err error
 }
 
+type notificationHistoryMsg struct {
+	history eventsHistoryInfo
+	err     error
+}
+
 type tarsAppModel struct {
 	ctx    context.Context
 	cancel context.CancelFunc

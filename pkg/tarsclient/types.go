@@ -76,12 +76,30 @@ type ChatResult struct {
 }
 
 type NotificationMessage struct {
+	ID        int64  `json:"id,omitempty"`
 	Type      string `json:"type"`
 	Category  string `json:"category"`
 	Severity  string `json:"severity"`
 	Title     string `json:"title"`
 	Message   string `json:"message"`
 	Timestamp string `json:"timestamp"`
+	JobID     string `json:"job_id,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+}
+
+type EventsHistoryInfo struct {
+	Items []NotificationMessage `json:"items"`
+	// UnreadCount is based on all retained notification history on server side,
+	// not only on this paged Items slice.
+	UnreadCount int   `json:"unread_count"`
+	ReadCursor  int64 `json:"read_cursor"`
+	LastID      int64 `json:"last_id"`
+}
+
+type EventsReadInfo struct {
+	Acknowledged bool  `json:"acknowledged"`
+	ReadCursor   int64 `json:"read_cursor"`
+	UnreadCount  int   `json:"unread_count"`
 }
 
 type SessionSummary struct {

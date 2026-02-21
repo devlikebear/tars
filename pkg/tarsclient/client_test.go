@@ -135,3 +135,55 @@ func TestClient_StreamEvents_StopsOnUnauthorized(t *testing.T) {
 		t.Fatalf("expected single request for unauthorized stream, got %d", requests)
 	}
 }
+
+func TestClient_EventsHistoryAndRead(t *testing.T) {
+	var readBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/events/history":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items": []map[string]any{
+					{"id": 11, "type": "notification", "category": "cron", "severity": "info", "title": "done", "message": "ok", "timestamp": "2026-02-21T00:00:00Z"},
+				},
+				"unread_count": 3,
+				"read_cursor":  8,
+				"last_id":      11,
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/events/read":
+			if err := json.NewDecoder(r.Body).Decode(&readBody); err != nil {
+				t.Fatalf("decode read request: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"acknowledged": true,
+				"read_cursor":  11,
+				"unread_count": 0,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := New(Config{ServerURL: server.URL})
+	history, err := client.GetEventHistory(context.Background(), 20)
+	if err != nil {
+		t.Fatalf("GetEventHistory: %v", err)
+	}
+	if history.UnreadCount != 3 || history.ReadCursor != 8 || history.LastID != 11 {
+		t.Fatalf("unexpected history payload: %+v", history)
+	}
+	if len(history.Items) != 1 || history.Items[0].ID != 11 {
+		t.Fatalf("unexpected history items: %+v", history.Items)
+	}
+
+	read, err := client.MarkEventsRead(context.Background(), 11)
+	if err != nil {
+		t.Fatalf("MarkEventsRead: %v", err)
+	}
+	if !read.Acknowledged || read.ReadCursor != 11 || read.UnreadCount != 0 {
+		t.Fatalf("unexpected read payload: %+v", read)
+	}
+	if got := int(readBody["last_id"].(float64)); got != 11 {
+		t.Fatalf("expected last_id=11 request, got %+v", readBody)
+	}
+}

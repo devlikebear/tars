@@ -165,6 +165,21 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"job_id": "job_2", "ran_at": "2026-02-18T10:00:00Z", "response": "cron ok"}})
 		case r.Method == http.MethodDelete && r.URL.Path == "/v1/cron/jobs/job_2":
 			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/events/history":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items": []map[string]any{
+					{"id": 1, "type": "notification", "category": "cron", "severity": "info", "title": "cron-1", "message": "done", "timestamp": "2026-02-19T01:00:00Z"},
+				},
+				"unread_count": 1,
+				"read_cursor":  0,
+				"last_id":      1,
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/events/read":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"acknowledged": true,
+				"read_cursor":  1,
+				"unread_count": 0,
+			})
 		default:
 			http.NotFound(w, r)
 		}
@@ -291,6 +306,12 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	}
 	if err := client.deleteCronJob(ctx, "job_2"); err != nil {
 		t.Fatalf("deleteCronJob: %v", err)
+	}
+	if history, err := client.eventHistory(ctx, 20); err != nil || history.LastID != 1 || len(history.Items) != 1 {
+		t.Fatalf("eventHistory: history=%+v err=%v", history, err)
+	}
+	if readInfo, err := client.markEventsRead(ctx, 1); err != nil || !readInfo.Acknowledged || readInfo.UnreadCount != 0 {
+		t.Fatalf("markEventsRead: readInfo=%+v err=%v", readInfo, err)
 	}
 	_, err = client.gatewayReload(ctx)
 	if err != nil {

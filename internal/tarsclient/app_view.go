@@ -113,7 +113,7 @@ func (m *tarsAppModel) renderStatusPanel(width, height int) string {
 func (m *tarsAppModel) renderNotifyPanel(width, height int) string {
 	items := m.state.notifications.filtered()
 	lines := make([]string, 0, len(items)+2)
-	lines = append(lines, fmt.Sprintf("unread=%d filter=%s", len(items), m.state.notifications.filterName()))
+	lines = append(lines, fmt.Sprintf("unread=%d total=%d filter=%s", m.state.notifications.unreadCount(), len(items), m.state.notifications.filterName()))
 	for _, item := range items {
 		title := strings.TrimSpace(item.Title)
 		if title == "" {
