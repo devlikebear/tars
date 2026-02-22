@@ -36,7 +36,15 @@ func applyLLMDefaults(cfg *Config) {
 	cfg.TelegramBotToken = strings.TrimSpace(cfg.TelegramBotToken)
 	cfg.LLMAuthMode = strings.TrimSpace(strings.ToLower(cfg.LLMAuthMode))
 	if cfg.LLMAuthMode == "" {
-		cfg.LLMAuthMode = "api-key"
+		switch cfg.LLMProvider {
+		case "openai-codex":
+			cfg.LLMAuthMode = "oauth"
+		default:
+			cfg.LLMAuthMode = "api-key"
+		}
+	}
+	if cfg.LLMProvider == "openai-codex" && cfg.LLMAuthMode == "api-key" && strings.TrimSpace(cfg.LLMAPIKey) == "" {
+		cfg.LLMAuthMode = "oauth"
 	}
 	cfg.LLMOAuthProvider = strings.TrimSpace(strings.ToLower(cfg.LLMOAuthProvider))
 	if cfg.LLMAuthMode == "oauth" && cfg.LLMOAuthProvider == "" {
@@ -45,6 +53,8 @@ func applyLLMDefaults(cfg *Config) {
 			cfg.LLMOAuthProvider = "claude-code"
 		case "gemini", "gemini-native":
 			cfg.LLMOAuthProvider = "google-antigravity"
+		case "openai-codex":
+			cfg.LLMOAuthProvider = "openai-codex"
 		}
 	}
 	if cfg.AgentMaxIterations <= 0 {
@@ -143,6 +153,16 @@ func applyLLMDefaults(cfg *Config) {
 			}
 			if cfg.LLMAPIKey == "" {
 				cfg.LLMAPIKey = os.Getenv("OPENAI_API_KEY")
+			}
+		case "openai-codex":
+			if cfg.LLMBaseURL == "" {
+				cfg.LLMBaseURL = "https://chatgpt.com/backend-api"
+			}
+			if cfg.LLMModel == "" {
+				cfg.LLMModel = "gpt-5.3-codex"
+			}
+			if cfg.LLMAPIKey == "" {
+				cfg.LLMAPIKey = firstNonEmpty(os.Getenv("OPENAI_CODEX_OAUTH_TOKEN"), os.Getenv("TARS_OPENAI_CODEX_OAUTH_TOKEN"))
 			}
 		case "gemini":
 			if cfg.LLMBaseURL == "" {

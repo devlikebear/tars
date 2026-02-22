@@ -241,6 +241,30 @@ func TestLoad_GeminiNativeOAuthDefaultsOAuthProvider(t *testing.T) {
 	}
 }
 
+func TestLoad_OpenAICodexProviderDefaults(t *testing.T) {
+	t.Setenv("LLM_PROVIDER", "openai-codex")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if cfg.LLMProvider != "openai-codex" {
+		t.Fatalf("expected openai-codex provider, got %q", cfg.LLMProvider)
+	}
+	if cfg.LLMBaseURL != "https://chatgpt.com/backend-api" {
+		t.Fatalf("expected openai-codex base url, got %q", cfg.LLMBaseURL)
+	}
+	if cfg.LLMModel != "gpt-5.3-codex" {
+		t.Fatalf("expected openai-codex default model gpt-5.3-codex, got %q", cfg.LLMModel)
+	}
+	if cfg.LLMAuthMode != "oauth" {
+		t.Fatalf("expected openai-codex default auth mode oauth, got %q", cfg.LLMAuthMode)
+	}
+	if cfg.LLMOAuthProvider != "openai-codex" {
+		t.Fatalf("expected openai-codex default oauth provider openai-codex, got %q", cfg.LLMOAuthProvider)
+	}
+}
+
 func TestLoad_InvalidPathReturnsError(t *testing.T) {
 	_, err := Load("./does-not-exist.yaml")
 	if err == nil {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -30,16 +29,19 @@ func TestNewProvider_CodexCLIIsRemoved(t *testing.T) {
 	}
 }
 
-func TestNewProvider_OpenAICodexIsRemoved(t *testing.T) {
-	_, err := NewProvider(ProviderOptions{
+func TestNewProvider_OpenAICodex_UsesCodexClient(t *testing.T) {
+	client, err := NewProvider(ProviderOptions{
 		Provider: "openai-codex",
+		AuthMode: "api-key",
+		APIKey:   "token",
+		BaseURL:  "https://chatgpt.com/backend-api",
 		Model:    "gpt-5.3-codex",
 	})
-	if err == nil {
-		t.Fatal("expected error for removed openai-codex provider")
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
 	}
-	if !strings.Contains(err.Error(), "removed") {
-		t.Fatalf("expected removed error, got %v", err)
+	if _, ok := client.(*OpenAICodexClient); !ok {
+		t.Fatalf("expected OpenAICodexClient, got %T", client)
 	}
 }
 

@@ -99,7 +99,14 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 		return nil, fmt.Errorf("unsupported llm provider: codex-cli (removed)")
 	}
 	if provider == "openai-codex" {
-		return nil, fmt.Errorf("unsupported llm provider: openai-codex (removed)")
+		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
+		return NewOpenAICodexClient(
+			firstNonEmptyTrimmed(opts.BaseURL, "https://chatgpt.com/backend-api"),
+			firstNonEmptyTrimmed(opts.Model, "gpt-5.3-codex"),
+			firstNonEmptyTrimmed(opts.AuthMode, "oauth"),
+			firstNonEmptyTrimmed(opts.OAuthProvider, "openai-codex"),
+			strings.TrimSpace(opts.APIKey),
+		)
 	}
 
 	token, err := auth.ResolveToken(auth.ResolveOptions{
