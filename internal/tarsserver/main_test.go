@@ -144,6 +144,23 @@ func TestRun_LogFileOpenFailureFallsBackToConsole(t *testing.T) {
 	}
 }
 
+func TestSetupRuntimeLogger_CreatesParentDirForLogFile(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "nested", "logs", "tars.log")
+
+	logger, cleanup := setupRuntimeLogger(logPath, io.Discard)
+	defer cleanup()
+	logger.Info().Msg("logger ready")
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, `"message":"logger ready"`) {
+		t.Fatalf("expected log message in file, got %q", content)
+	}
+}
+
 func TestRun_FlagOverridesEnvAndYAML(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")

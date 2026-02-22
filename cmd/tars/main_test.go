@@ -57,6 +57,9 @@ func TestRootCommand_ServeSubcommandInvokesRunner(t *testing.T) {
 	if got.apiAddr != tarsserver.DefaultAPIAddr {
 		t.Fatalf("unexpected apiAddr: %#v", got)
 	}
+	if got.logFile != ".logs/tars-debug.log" {
+		t.Fatalf("unexpected logFile default: %#v", got)
+	}
 }
 
 func TestRootCommand_ServeRunOnceDoesNotForceServeAPI(t *testing.T) {
@@ -96,5 +99,12 @@ func TestDefaultClientOptions_UsesPkgDefaultWhenEnvMissing(t *testing.T) {
 	opts := defaultClientOptions()
 	if strings.TrimSpace(opts.serverURL) != tarsclient.DefaultServerURL {
 		t.Fatalf("unexpected serverURL default: %q", opts.serverURL)
+	}
+}
+
+func TestDefaultServeOptions_UsesDefaultLogFile(t *testing.T) {
+	opts := defaultServeOptions()
+	if opts.logFile != ".logs/tars-debug.log" {
+		t.Fatalf("unexpected default log file: %q", opts.logFile)
 	}
 }

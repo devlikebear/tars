@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -77,10 +78,17 @@ func setupRuntimeLogger(logFilePath string, stderr io.Writer) (zerolog.Logger, f
 	}
 	logWriter := io.Writer(consoleWriter)
 
+	trimmedLogPath := strings.TrimSpace(logFilePath)
+
 	var logFile *os.File
 	var logFileErr error
-	if strings.TrimSpace(logFilePath) != "" {
-		logFile, logFileErr = os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if trimmedLogPath != "" {
+		parentDir := filepath.Dir(trimmedLogPath)
+		if mkErr := os.MkdirAll(parentDir, 0o755); mkErr != nil {
+			logFileErr = fmt.Errorf("create log directory %q: %w", parentDir, mkErr)
+		} else {
+			logFile, logFileErr = os.OpenFile(trimmedLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		}
 		if logFileErr == nil {
 			logWriter = zerolog.MultiLevelWriter(consoleWriter, logFile)
 		}
@@ -90,7 +98,7 @@ func setupRuntimeLogger(logFilePath string, stderr io.Writer) (zerolog.Logger, f
 	if logFileErr != nil {
 		logger.Error().
 			Err(logFileErr).
-			Str("path", strings.TrimSpace(logFilePath)).
+			Str("path", trimmedLogPath).
 			Msg("failed to open log file; using console logging only")
 	}
 

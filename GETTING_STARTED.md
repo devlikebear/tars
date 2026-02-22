@@ -10,6 +10,13 @@
 make dev-serve
 ```
 
+- 서버 로그는 기본적으로 `.logs/tars-debug.log`에 append 됩니다.
+- 실시간 확인:
+
+```bash
+tail -f .logs/tars-debug.log
+```
+
 2. 클라이언트 실행
 
 ```bash
@@ -217,3 +224,56 @@ make dev-serve
 참고:
 - 파일 기반 토큰 사용 시 401/403 발생 시 refresh를 1회 시도하고, 성공하면 `auth.json`을 원자적으로 갱신합니다.
 - 환경변수 토큰만 사용할 경우(예: `OPENAI_CODEX_OAUTH_TOKEN`) refresh 결과를 파일에 저장하지 않습니다.
+
+## 7) Browser Relay 확장 연동
+
+브라우저 릴레이(`chrome` 프로필)에서 확장 연동이 필요한 경우, 먼저 relay 상태/접속 주소를 확인하세요.
+
+1. 서버 실행 후 relay 정보 확인 (`tars` TUI)
+
+```text
+/browser relay
+```
+
+출력 예:
+
+```text
+SYSTEM > browser relay enabled=true running=true extension_connected=false attached_tabs=0 addr=127.0.0.1:43182
+SYSTEM > relay extension_ws=ws://127.0.0.1:43182/extension cdp_ws=ws://127.0.0.1:43182/cdp?token=...
+SYSTEM > relay auth_required=true json_auth_required=true
+SYSTEM > relay origin_allowlist=chrome-extension://*
+SYSTEM > relay token=...
+```
+
+2. TARS relay 확장 로드
+
+- `chrome://extensions` -> Developer mode -> Load unpacked
+- 경로: `web/relay-extension`
+- 상세: `web/relay-extension/README.md`
+
+3. 확장 Options에서 토큰 설정
+
+- `chrome://extensions` -> TARS Relay -> Extension options
+- `Relay Port`: `43182` (또는 relay addr 포트)
+- `Relay Token`: `/browser relay` 출력의 `relay token` 값
+- `Check Relay` -> `Save`
+
+팁:
+- 매번 토큰을 다시 넣기 싫다면 `workspace/config/tars.config.yaml`에 `browser_relay_token`을 고정값으로 설정하세요.
+
+4. 동작 확인
+
+```text
+/browser relay
+/browser status
+```
+
+- `extension_connected=true`이면 relay-확장 연결이 성립된 상태입니다.
+- `attached_tabs`가 1 이상이면 extension이 디버그 가능한 탭에 attach된 상태입니다.
+- 실제 브라우저 액션은 `profile=chrome`으로 시작 후 사용합니다.
+
+5. 인증/보안 참고
+
+- relay는 `/extension`, `/cdp`, `/json*` 전 구간에서 token이 필수입니다.
+- 전달 경로 우선순위: `Tars-Relay-Token` 헤더 -> `?token=` -> `?relay_token=`.
+- non-admin `/v1/browser/relay` 응답에서는 `relay_token`이 노출되지 않습니다.

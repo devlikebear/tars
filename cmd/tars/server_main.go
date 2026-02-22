@@ -27,8 +27,11 @@ type serveOptions struct {
 
 var serveRunner = runServeCommand
 
+const defaultServeLogFile = ".logs/tars-debug.log"
+
 func defaultServeOptions() serveOptions {
 	return serveOptions{
+		logFile:           defaultServeLogFile,
 		serveAPI:          true,
 		apiAddr:           tarsserver.DefaultAPIAddr,
 		heartbeatInterval: tarsserver.DefaultHeartbeatInterval,
@@ -50,7 +53,7 @@ func newServeCommand(stdout, stderr io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&opts.configPath, "config", "", "path to config file")
 	cmd.Flags().StringVar(&opts.mode, "mode", "", "runtime mode override")
 	cmd.Flags().StringVar(&opts.workspaceDir, "workspace-dir", "", "workspace directory override")
-	cmd.Flags().StringVar(&opts.logFile, "log-file", "", "append json logs to file")
+	cmd.Flags().StringVar(&opts.logFile, "log-file", opts.logFile, "append json logs to file")
 	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "enable verbose debug logging")
 	cmd.Flags().BoolVar(&opts.runOnce, "run-once", false, "run heartbeat once and exit")
 	cmd.Flags().BoolVar(&opts.runLoop, "run-loop", false, "run heartbeat loop")

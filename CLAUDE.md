@@ -294,6 +294,20 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - 기본값: `LLM_BASE_URL=https://chatgpt.com/backend-api`, `LLM_MODEL=gpt-5.3-codex`, `LLM_AUTH_MODE=oauth`, `LLM_OAUTH_PROVIDER=openai-codex`
   - 인증: `ENV + CODEX_HOME/auth.json(~/.codex/auth.json)` 로딩, 401/403 시 refresh 1회 후 재시도
   - Refresh 성공 시 file source는 원자적 write/rename으로 토큰 갱신
+- Browser relay 확장 연동 강화:
+  - `chrome` 프로필을 실동작 런타임으로 전환(릴레이 확장 연결 시 chromedp remote allocator 경유)
+  - relay `/json/version|/json/list`의 `webSocketDebuggerUrl`에 token query 포함
+  - relay `/cdp` 인증이 `Tars-Relay-Token` 헤더와 `?token=` query를 모두 허용
+  - API/CLI 추가: `GET /v1/browser/relay`, `cmd/tars /browser relay`
+  - 실험 확장 스캐폴드 추가: `web/relay-extension` (MV3, local relay bridge)
+- Browser relay core parity(v1) 확장:
+  - strict token auth를 `/extension`, `/cdp`, `/json*` 전 구간으로 확장
+  - relay 상태 API 추가: `/json`, `/json/activate/{id}`, `/json/close/{id}`, `/extension/status`
+  - relay 라우팅 고도화: `Target.setAutoAttach|setDiscoverTargets` synthetic event 재방출, `Target.attachToTarget` local attach event 생성
+  - 다중 CDP 클라이언트 브로드캐스트 + pending request timeout(30s) + extension disconnect 시 pending fail 처리
+  - keepalive stale pong 감지 도입(5s ping, stale timeout 20s)
+  - 확장 Options UI 추가(`relayPort`, `relayToken`, preflight), badge 상태(`ON/.../!`) 표시
+  - `/v1/browser/relay` 응답 확장: `auth_required`, `json_auth_required`, `attached_tabs`
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조
