@@ -107,7 +107,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 
 **주요 패키지**
 - `internal/config`: 설정 로딩 (YAML/ENV 우선순위, 환경변수 확장, 경로 자동 탐지)
-- `internal/llm`: LLM provider 추상화 (bifrost, openai, anthropic, gemini, gemini-native)
+- `internal/llm`: LLM provider 추상화 (bifrost, openai, openai-codex, anthropic, gemini, gemini-native)
 - `internal/session`: 세션 관리 (JSONL transcript, 토큰 기반 히스토리 로딩, 컴팩션)
 - `internal/agent`: Agent Loop (훅 기반 이벤트, 도구 실행 반복, 상태 추적)
 - `internal/tool`: 빌트인 도구 (file/web/memory/automation + gateway/sessions/message/browser/nodes 계열)
@@ -126,6 +126,7 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 
 **LLM Provider**
 - `bifrost`, `openai`: OpenAI-compatible API (공통 클라이언트)
+- `openai-codex`: ChatGPT OAuth 기반 Codex Responses API (`/codex/responses`, SSE)
 - `anthropic`: Messages API (tool_use 지원)
 - `gemini`: OpenAI-compatible 경로
 - `gemini-native`: Gemini REST API (functionCall/Response 변환)
@@ -286,6 +287,13 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
 - Telegram 도구 확장:
   - 서버 에이전트 도구 `telegram_send` 추가(`chat_id`, `text`, `thread_id`, `parse_mode`, `bot_id`)
   - `runPrompt`/gateway executor/chat 경로에서 동일 도구를 주입해 cron/agent 작업의 Telegram 송신 성공률 개선
+
+**2026-02-22**
+- `openai-codex` provider 재도입:
+  - `LLM_PROVIDER=openai-codex` 지원
+  - 기본값: `LLM_BASE_URL=https://chatgpt.com/backend-api`, `LLM_MODEL=gpt-5.3-codex`, `LLM_AUTH_MODE=oauth`, `LLM_OAUTH_PROVIDER=openai-codex`
+  - 인증: `ENV + CODEX_HOME/auth.json(~/.codex/auth.json)` 로딩, 401/403 시 refresh 1회 후 재시도
+  - Refresh 성공 시 file source는 원자적 write/rename으로 토큰 갱신
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조

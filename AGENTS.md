@@ -154,14 +154,15 @@
   - `scripts/smoke_auth_workspace.sh`
   - `make smoke-auth`
 
-## LLM Provider 운영 정책 (2026-02-16)
+## LLM Provider 운영 정책 (2026-02-22)
 
 - `codex-cli` provider는 제거되었다. `LLM_PROVIDER=codex-cli`는 더 이상 지원하지 않는다.
-- `openai-codex` provider는 제거되었다. `LLM_PROVIDER=openai-codex`는 더 이상 지원하지 않는다.
-- 현재 지원 provider: `bifrost`, `openai`, `anthropic`, `gemini`, `gemini-native`
+- `openai-codex` provider는 지원한다. `LLM_PROVIDER=openai-codex` + `LLM_AUTH_MODE=oauth` 조합을 사용한다.
+- 현재 지원 provider: `bifrost`, `openai`, `openai-codex`, `anthropic`, `gemini`, `gemini-native`
 
 권장 설정:
 - 안정 운영: `LLM_PROVIDER=openai`, `LLM_AUTH_MODE=api-key`, `OPENAI_API_KEY` 사용
+- Codex OAuth 운영: `LLM_PROVIDER=openai-codex`, `LLM_AUTH_MODE=oauth`, `LLM_OAUTH_PROVIDER=openai-codex` 사용
 - 대체 운영: `LLM_PROVIDER=anthropic`, `LLM_AUTH_MODE=api-key`, `ANTHROPIC_API_KEY` 사용
 - gemini 운영: `LLM_PROVIDER=gemini`, `LLM_AUTH_MODE=api-key`, `GEMINI_API_KEY` 사용
 - gemini-native 운영: `LLM_PROVIDER=gemini-native`, `LLM_AUTH_MODE=api-key`, `GEMINI_API_KEY` 사용

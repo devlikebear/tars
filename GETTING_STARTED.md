@@ -186,3 +186,34 @@ curl -sS -X POST "http://127.0.0.1:43180/v1/channels/telegram/send" \
 - `chat_id` 미지정 시:
   - 페어링된 허용 사용자가 1명인 경우 해당 chat으로 자동 전송
   - 허용 사용자가 0명 또는 2명 이상이면 `chat_id`를 명시해야 함
+
+## 6) OpenAI Codex(OAuth) 설정
+
+`openai-codex` provider는 ChatGPT OAuth 토큰(`~/.codex/auth.json` 또는 `CODEX_HOME/auth.json`)을 사용합니다.
+
+1. 기본 설정 (`workspace/config/tars.config.yaml`)
+
+```yaml
+llm_provider: openai-codex
+llm_auth_mode: oauth
+llm_oauth_provider: openai-codex
+llm_base_url: https://chatgpt.com/backend-api
+llm_model: gpt-5.3-codex
+```
+
+2. 서버 실행
+
+```bash
+make dev-serve
+```
+
+3. 동작 확인 (`tars` TUI 내부)
+
+```text
+/status
+/health
+```
+
+참고:
+- 파일 기반 토큰 사용 시 401/403 발생 시 refresh를 1회 시도하고, 성공하면 `auth.json`을 원자적으로 갱신합니다.
+- 환경변수 토큰만 사용할 경우(예: `OPENAI_CODEX_OAUTH_TOKEN`) refresh 결과를 파일에 저장하지 않습니다.
