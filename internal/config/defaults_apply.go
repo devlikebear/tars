@@ -102,6 +102,7 @@ func applyLLMDefaults(cfg *Config) {
 	if cfg.BrowserRelayAddr == "" {
 		cfg.BrowserRelayAddr = "127.0.0.1:43182"
 	}
+	cfg.BrowserRelayToken = strings.TrimSpace(cfg.BrowserRelayToken)
 	if len(cfg.BrowserRelayOriginAllowlist) == 0 {
 		cfg.BrowserRelayOriginAllowlist = []string{"chrome-extension://*"}
 	}

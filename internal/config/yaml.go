@@ -130,6 +130,8 @@ func loadYAML(path string) (Config, error) {
 			cfg.BrowserRelayEnabled = parseBool(value, cfg.BrowserRelayEnabled)
 		case "browser_relay_addr":
 			cfg.BrowserRelayAddr = strings.TrimSpace(value)
+		case "browser_relay_token":
+			cfg.BrowserRelayToken = strings.TrimSpace(value)
 		case "browser_relay_origin_allowlist_json":
 			cfg.BrowserRelayOriginAllowlist = parseJSONStringList(value, cfg.BrowserRelayOriginAllowlist)
 		case "browser_site_flows_dir":

@@ -73,7 +73,7 @@ func NewMessageTool(runtime *gateway.Runtime, enabled bool) Tool {
 func NewBrowserTool(runtime *gateway.Runtime, enabled bool) Tool {
 	return Tool{
 		Name:        "browser",
-		Description: "Browser actions: status, profiles, start, stop, open, snapshot, act, screenshot, login, check, run.",
+		Description: "Browser actions: status, profiles, start, stop, open, snapshot, act, screenshot, login, check, run. Prefer profile='chrome' when relay extension is connected.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
@@ -119,7 +119,9 @@ func NewBrowserTool(runtime *gateway.Runtime, enabled bool) Tool {
 				profiles := runtime.BrowserProfiles()
 				return jsonTextResult(map[string]any{"count": len(profiles), "profiles": profiles}, false), nil
 			case "start":
-				return jsonTextResult(runtime.BrowserStartWithProfile(input.Profile), false), nil
+				status := runtime.BrowserStatus()
+				profile := resolveBrowserStartProfile(input.Profile, status)
+				return jsonTextResult(runtime.BrowserStartWithProfile(profile), false), nil
 			case "stop":
 				return jsonTextResult(runtime.BrowserStop(), false), nil
 			case "open":
@@ -148,6 +150,17 @@ func NewBrowserTool(runtime *gateway.Runtime, enabled bool) Tool {
 			}
 		},
 	}
+}
+
+func resolveBrowserStartProfile(requested string, status gateway.BrowserState) string {
+	profile := strings.TrimSpace(strings.ToLower(requested))
+	if !status.ExtensionConnected {
+		return profile
+	}
+	if profile == "" || profile == "managed" {
+		return "chrome"
+	}
+	return profile
 }
 
 func NewNodesTool(runtime *gateway.Runtime, enabled bool) Tool {

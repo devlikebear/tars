@@ -168,6 +168,9 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("BROWSER_RELAY_ADDR"), os.Getenv("TARS_BROWSER_RELAY_ADDR")); v != "" {
 		cfg.BrowserRelayAddr = strings.TrimSpace(v)
 	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_RELAY_TOKEN"), os.Getenv("TARS_BROWSER_RELAY_TOKEN")); v != "" {
+		cfg.BrowserRelayToken = strings.TrimSpace(v)
+	}
 	if v := firstNonEmpty(os.Getenv("BROWSER_RELAY_ORIGIN_ALLOWLIST_JSON"), os.Getenv("TARS_BROWSER_RELAY_ORIGIN_ALLOWLIST_JSON")); v != "" {
 		cfg.BrowserRelayOriginAllowlist = parseJSONStringList(v, cfg.BrowserRelayOriginAllowlist)
 	}

@@ -108,6 +108,17 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 					{"name": "chrome", "driver": "relay", "default": false, "running": false},
 				},
 			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/browser/relay":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"enabled":             true,
+				"running":             true,
+				"addr":                "127.0.0.1:43182",
+				"relay_token":         "relay-token",
+				"extension_connected": true,
+				"extension_ws_url":    "ws://127.0.0.1:43182/extension",
+				"cdp_ws_url":          "ws://127.0.0.1:43182/cdp?token=relay-token",
+				"origin_allowlist":    []string{"chrome-extension://*"},
+			})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/login":
 			_ = json.NewEncoder(w).Encode(map[string]any{"site_id": "portal", "profile": "managed", "mode": "manual", "success": true, "message": "manual login required"})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/check":
@@ -264,6 +275,9 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	}
 	if profiles, err := client.browserProfiles(ctx); err != nil || len(profiles) != 2 {
 		t.Fatalf("browserProfiles: profiles=%+v err=%v", profiles, err)
+	}
+	if relay, err := client.browserRelay(ctx); err != nil || !relay.Enabled || strings.TrimSpace(relay.CDPWebSocketURL) == "" {
+		t.Fatalf("browserRelay: relay=%+v err=%v", relay, err)
 	}
 	if _, err := client.browserLogin(ctx, "portal", "managed"); err != nil {
 		t.Fatalf("browserLogin: %v", err)

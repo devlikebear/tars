@@ -73,6 +73,7 @@ type Config struct {
 	BrowserManagedUserDataDir            string
 	BrowserRelayEnabled                  bool
 	BrowserRelayAddr                     string
+	BrowserRelayToken                    string
 	BrowserRelayOriginAllowlist          []string
 	BrowserSiteFlowsDir                  string
 	BrowserAutoLoginSiteAllowlist        []string

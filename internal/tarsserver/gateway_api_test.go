@@ -20,6 +20,44 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type testBrowserRelayInfo struct {
+	addr               string
+	token              string
+	cdpWebSocketURL    string
+	extensionConnected bool
+	attachedTabs       int
+	authRequired       bool
+	jsonAuthRequired   bool
+}
+
+func (r testBrowserRelayInfo) Addr() string {
+	return strings.TrimSpace(r.addr)
+}
+
+func (r testBrowserRelayInfo) RelayToken() string {
+	return strings.TrimSpace(r.token)
+}
+
+func (r testBrowserRelayInfo) ExtensionConnected() bool {
+	return r.extensionConnected
+}
+
+func (r testBrowserRelayInfo) AttachedTabs() int {
+	return r.attachedTabs
+}
+
+func (r testBrowserRelayInfo) CDPWebSocketURL() string {
+	return strings.TrimSpace(r.cdpWebSocketURL)
+}
+
+func (r testBrowserRelayInfo) AuthRequired() bool {
+	return r.authRequired
+}
+
+func (r testBrowserRelayInfo) JSONAuthRequired() bool {
+	return r.jsonAuthRequired
+}
+
 func newTestGatewayRuntime(t *testing.T) *gateway.Runtime {
 	t.Helper()
 	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
@@ -970,6 +1008,15 @@ func TestChannelsAPI_TelegramPairings_Approve(t *testing.T) {
 
 func TestBrowserAPIHandler_StatusProfilesAndVaultStatus(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
+	relay := testBrowserRelayInfo{
+		addr:               "127.0.0.1:43182",
+		token:              "relay-token",
+		cdpWebSocketURL:    "ws://127.0.0.1:43182/cdp?token=relay-token",
+		extensionConnected: true,
+		attachedTabs:       1,
+		authRequired:       true,
+		jsonAuthRequired:   true,
+	}
 	handler := newBrowserAPIHandler(runtime, vaultStatusSnapshot{
 		Enabled:        true,
 		Ready:          false,
@@ -977,7 +1024,7 @@ func TestBrowserAPIHandler_StatusProfilesAndVaultStatus(t *testing.T) {
 		Addr:           "http://127.0.0.1:8200",
 		AllowlistCount: 2,
 		LastError:      "not configured",
-	}, zerolog.New(io.Discard))
+	}, relay, true, []string{"chrome-extension://*"}, zerolog.New(io.Discard))
 
 	recStatus := httptest.NewRecorder()
 	reqStatus := httptest.NewRequest(http.MethodGet, "/v1/browser/status", nil)
@@ -1014,6 +1061,93 @@ func TestBrowserAPIHandler_StatusProfilesAndVaultStatus(t *testing.T) {
 	}
 	if vaultPayload["enabled"] != true {
 		t.Fatalf("expected vault enabled in payload: %+v", vaultPayload)
+	}
+
+	recRelay := httptest.NewRecorder()
+	reqRelay := httptest.NewRequest(http.MethodGet, "/v1/browser/relay", nil)
+	reqRelay.Header.Set("Tars-Debug-Auth-Role", "admin")
+	handler.ServeHTTP(recRelay, reqRelay)
+	if recRelay.Code != http.StatusOK {
+		t.Fatalf("browser relay expected 200, got %d body=%s", recRelay.Code, recRelay.Body.String())
+	}
+	var relayPayload struct {
+		Enabled            bool     `json:"enabled"`
+		Running            bool     `json:"running"`
+		Addr               string   `json:"addr"`
+		RelayToken         string   `json:"relay_token"`
+		ExtensionConnected bool     `json:"extension_connected"`
+		AttachedTabs       int      `json:"attached_tabs"`
+		ExtensionWSURL     string   `json:"extension_ws_url"`
+		CDPWSURL           string   `json:"cdp_ws_url"`
+		OriginAllowlist    []string `json:"origin_allowlist"`
+		AuthRequired       bool     `json:"auth_required"`
+		JSONAuthRequired   bool     `json:"json_auth_required"`
+	}
+	if err := json.Unmarshal(recRelay.Body.Bytes(), &relayPayload); err != nil {
+		t.Fatalf("decode browser relay payload: %v", err)
+	}
+	if !relayPayload.Enabled || !relayPayload.Running {
+		t.Fatalf("expected relay enabled/running payload: %+v", relayPayload)
+	}
+	if relayPayload.RelayToken != "relay-token" {
+		t.Fatalf("unexpected relay token payload: %+v", relayPayload)
+	}
+	if relayPayload.CDPWSURL != "ws://127.0.0.1:43182/cdp?token=relay-token" {
+		t.Fatalf("unexpected relay cdp url payload: %+v", relayPayload)
+	}
+	if relayPayload.ExtensionWSURL != "ws://127.0.0.1:43182/extension" {
+		t.Fatalf("unexpected relay extension url payload: %+v", relayPayload)
+	}
+	if relayPayload.AttachedTabs != 1 {
+		t.Fatalf("unexpected attached_tabs payload: %+v", relayPayload)
+	}
+	if len(relayPayload.OriginAllowlist) != 1 || relayPayload.OriginAllowlist[0] != "chrome-extension://*" {
+		t.Fatalf("unexpected relay allowlist payload: %+v", relayPayload)
+	}
+	if !relayPayload.AuthRequired || !relayPayload.JSONAuthRequired {
+		t.Fatalf("expected relay auth required flags: %+v", relayPayload)
+	}
+}
+
+func TestBrowserAPIHandler_RelayRedactsSensitiveFieldsForNonAdmin(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	relay := testBrowserRelayInfo{
+		addr:               "127.0.0.1:43182",
+		token:              "relay-token",
+		cdpWebSocketURL:    "ws://127.0.0.1:43182/cdp?token=relay-token",
+		extensionConnected: true,
+		attachedTabs:       1,
+		authRequired:       true,
+		jsonAuthRequired:   true,
+	}
+	handler := newBrowserAPIHandler(
+		runtime,
+		vaultStatusSnapshot{},
+		relay,
+		true,
+		[]string{"chrome-extension://*"},
+		zerolog.New(io.Discard),
+	)
+
+	recRelay := httptest.NewRecorder()
+	reqRelay := httptest.NewRequest(http.MethodGet, "/v1/browser/relay", nil)
+	handler.ServeHTTP(recRelay, reqRelay)
+	if recRelay.Code != http.StatusOK {
+		t.Fatalf("browser relay expected 200, got %d body=%s", recRelay.Code, recRelay.Body.String())
+	}
+	var relayPayload map[string]any
+	if err := json.Unmarshal(recRelay.Body.Bytes(), &relayPayload); err != nil {
+		t.Fatalf("decode browser relay payload: %v", err)
+	}
+	cdpWSURL, _ := relayPayload["cdp_ws_url"].(string)
+	if strings.Contains(cdpWSURL, "token=") {
+		t.Fatalf("expected cdp_ws_url without token for non-admin, payload=%+v", relayPayload)
+	}
+	if _, exists := relayPayload["relay_token"]; exists {
+		t.Fatalf("expected relay_token field omitted for non-admin, payload=%+v", relayPayload)
+	}
+	if relayPayload["auth_required"] != true || relayPayload["json_auth_required"] != true {
+		t.Fatalf("expected auth_required/json_auth_required true, payload=%+v", relayPayload)
 	}
 }
 
@@ -1058,7 +1192,7 @@ func TestBrowserAPIHandler_LoginCheckRun(t *testing.T) {
 	})
 
 	runtime.BrowserStartWithProfile("managed")
-	handler := newBrowserAPIHandler(runtime, vaultStatusSnapshot{Enabled: false}, zerolog.New(io.Discard))
+	handler := newBrowserAPIHandler(runtime, vaultStatusSnapshot{Enabled: false}, nil, false, nil, zerolog.New(io.Discard))
 
 	loginBody := bytes.NewBufferString(`{"site_id":"sample"}`)
 	recLogin := httptest.NewRecorder()

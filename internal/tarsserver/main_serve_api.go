@@ -261,6 +261,8 @@ func buildAPIMux(
 		GatewayArchiveRetentionDays:          cfg.GatewayArchiveRetentionDays,
 		GatewayArchiveMaxFileBytes:           cfg.GatewayArchiveMaxFileBytes,
 		BrowserDefaultProfile:                cfg.BrowserDefaultProfile,
+		BrowserManagedHeadless:               cfg.BrowserManagedHeadless,
+		BrowserManagedExecutablePath:         cfg.BrowserManagedExecutablePath,
 		BrowserManagedUserDataDir:            cfg.BrowserManagedUserDataDir,
 		BrowserSiteFlowsDir:                  cfg.BrowserSiteFlowsDir,
 		BrowserAutoLoginSiteAllowlist:        cfg.BrowserAutoLoginSiteAllowlist,
@@ -356,13 +358,15 @@ func buildAPIMux(
 	mux.Handle("/v1/gateway/reports/summary", gatewayHandler)
 	mux.Handle("/v1/gateway/reports/runs", gatewayHandler)
 	mux.Handle("/v1/gateway/reports/channels", gatewayHandler)
-	browserHandler := newBrowserAPIHandler(gatewayRuntime, vaultStatus, logger)
-	mux.Handle("/v1/browser/status", browserHandler)
-	mux.Handle("/v1/browser/profiles", browserHandler)
-	mux.Handle("/v1/browser/login", browserHandler)
-	mux.Handle("/v1/browser/check", browserHandler)
-	mux.Handle("/v1/browser/run", browserHandler)
-	mux.Handle("/v1/vault/status", browserHandler)
+	browserHandler := newBrowserAPIHandler(
+		gatewayRuntime,
+		vaultStatus,
+		relayServer,
+		cfg.BrowserRelayEnabled,
+		cfg.BrowserRelayOriginAllowlist,
+		logger,
+	)
+	registerBrowserRoutes(mux, browserHandler)
 	telegramInbound := newTelegramInboundHandler(
 		cfg.WorkspaceDir,
 		sessionStore,
@@ -435,6 +439,19 @@ func buildAPIMux(
 		cronManager:        cronManager,
 		telegramPoller:     telegramPoller,
 	}, nil
+}
+
+func registerBrowserRoutes(mux *http.ServeMux, browserHandler http.Handler) {
+	if mux == nil || browserHandler == nil {
+		return
+	}
+	mux.Handle("/v1/browser/status", browserHandler)
+	mux.Handle("/v1/browser/profiles", browserHandler)
+	mux.Handle("/v1/browser/relay", browserHandler)
+	mux.Handle("/v1/browser/login", browserHandler)
+	mux.Handle("/v1/browser/check", browserHandler)
+	mux.Handle("/v1/browser/run", browserHandler)
+	mux.Handle("/v1/vault/status", browserHandler)
 }
 
 func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zerolog.Logger) error {

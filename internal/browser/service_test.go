@@ -2,10 +2,12 @@ package browser
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeSecretReader struct {
@@ -21,6 +23,7 @@ func (f fakeSecretReader) ReadKV(_ context.Context, secretPath string) (map[stri
 
 func TestServiceProfilesAndBasicActions(t *testing.T) {
 	svc := NewService(Config{WorkspaceDir: t.TempDir(), DefaultProfile: "managed"})
+	svc.managed = &fakeManagedRuntime{}
 	profiles := svc.Profiles()
 	if len(profiles) < 2 {
 		t.Fatalf("expected at least two profiles, got %d", len(profiles))
@@ -43,6 +46,10 @@ func TestServiceProfilesAndBasicActions(t *testing.T) {
 	}
 	if _, err := svc.Screenshot("shot.txt"); err != nil {
 		t.Fatalf("screenshot: %v", err)
+	}
+	status := svc.Status()
+	if !strings.HasSuffix(strings.ToLower(strings.TrimSpace(status.LastScreenshot)), ".png") {
+		t.Fatalf("expected png screenshot path, got %q", status.LastScreenshot)
 	}
 }
 
@@ -252,4 +259,282 @@ func TestServiceRunAllowsWildcardHostPolicy(t *testing.T) {
 	if !res.Success {
 		t.Fatalf("expected successful run result")
 	}
+}
+
+func TestServiceScreenshot_DefaultNameUsesPNG(t *testing.T) {
+	workspace := t.TempDir()
+	runtime := &fakeManagedRuntime{}
+	svc := NewService(Config{WorkspaceDir: workspace, DefaultProfile: "managed"})
+	svc.managed = runtime
+	svc.Start("managed")
+	if _, err := svc.Open("https://example.com"); err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	state, err := svc.Screenshot("")
+	if err != nil {
+		t.Fatalf("screenshot: %v", err)
+	}
+	if !strings.HasSuffix(strings.ToLower(strings.TrimSpace(state.LastScreenshot)), ".png") {
+		t.Fatalf("expected .png screenshot, got %q", state.LastScreenshot)
+	}
+}
+
+func TestServiceScreenshot_RewritesNonPNGExtension(t *testing.T) {
+	workspace := t.TempDir()
+	runtime := &fakeManagedRuntime{}
+	svc := NewService(Config{WorkspaceDir: workspace, DefaultProfile: "managed"})
+	svc.managed = runtime
+	svc.Start("managed")
+	if _, err := svc.Open("https://example.com"); err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	state, err := svc.Screenshot("capture.txt")
+	if err != nil {
+		t.Fatalf("screenshot: %v", err)
+	}
+	if !strings.HasSuffix(strings.ToLower(strings.TrimSpace(state.LastScreenshot)), ".png") {
+		t.Fatalf("expected .png screenshot, got %q", state.LastScreenshot)
+	}
+	if len(runtime.screenshots) == 0 || !strings.HasSuffix(strings.ToLower(runtime.screenshots[len(runtime.screenshots)-1]), ".png") {
+		t.Fatalf("expected runtime screenshot path to be png, got %+v", runtime.screenshots)
+	}
+}
+
+func TestServiceStartChromeProfileUsesChromeRuntime(t *testing.T) {
+	workspace := t.TempDir()
+	managed := &fakeManagedRuntime{}
+	chrome := &fakeManagedRuntime{}
+	svc := NewService(Config{WorkspaceDir: workspace, DefaultProfile: "managed"})
+	svc.managed = managed
+	svc.chrome = chrome
+
+	state := svc.Start("chrome")
+	if !state.Running {
+		t.Fatalf("expected chrome profile running, got error=%q", state.LastError)
+	}
+	if state.Profile != "chrome" {
+		t.Fatalf("expected profile chrome, got %q", state.Profile)
+	}
+	if state.Driver != "relay" {
+		t.Fatalf("expected relay driver, got %q", state.Driver)
+	}
+
+	if _, err := svc.Open("https://example.com"); err != nil {
+		t.Fatalf("open with chrome profile: %v", err)
+	}
+	if strings.TrimSpace(chrome.currentURL) == "" {
+		t.Fatalf("expected chrome runtime to receive open URL")
+	}
+	if strings.TrimSpace(managed.currentURL) != "" {
+		t.Fatalf("expected managed runtime not to receive open URL, got %q", managed.currentURL)
+	}
+}
+
+func TestServiceStart_SwitchProfileStopsOnlyActiveRuntime(t *testing.T) {
+	workspace := t.TempDir()
+	managed := &fakeManagedRuntime{}
+	chrome := &fakeManagedRuntime{}
+	svc := NewService(Config{WorkspaceDir: workspace, DefaultProfile: "managed"})
+	svc.managed = managed
+	svc.chrome = chrome
+
+	state := svc.Start("managed")
+	if !state.Running {
+		t.Fatalf("expected managed profile running")
+	}
+	if managed.stopCalls != 0 || chrome.stopCalls != 0 {
+		t.Fatalf("unexpected stop calls before switch managed=%d chrome=%d", managed.stopCalls, chrome.stopCalls)
+	}
+
+	state = svc.Start("chrome")
+	if !state.Running {
+		t.Fatalf("expected chrome profile running after switch")
+	}
+	if managed.stopCalls != 1 {
+		t.Fatalf("expected managed stop once, got %d", managed.stopCalls)
+	}
+	if chrome.stopCalls != 0 {
+		t.Fatalf("expected chrome stop not called during switch, got %d", chrome.stopCalls)
+	}
+}
+
+func TestServiceOpen_RetriesOnceOnChromeContextCanceled(t *testing.T) {
+	workspace := t.TempDir()
+	managed := &fakeManagedRuntime{}
+	chrome := &flakyManagedRuntime{failOpenOnce: true}
+	svc := NewService(Config{WorkspaceDir: workspace, DefaultProfile: "managed"})
+	svc.managed = managed
+	svc.chrome = chrome
+
+	state := svc.Start("chrome")
+	if !state.Running {
+		t.Fatalf("expected chrome profile running, got error=%q", state.LastError)
+	}
+
+	state, err := svc.Open("https://example.com")
+	if err != nil {
+		t.Fatalf("expected open recovery success, got %v", err)
+	}
+	if !state.Running {
+		t.Fatalf("expected running=true after recovery open")
+	}
+	if chrome.openCalls != 2 {
+		t.Fatalf("expected two open attempts (initial + retry), got %d", chrome.openCalls)
+	}
+	if chrome.stopCalls != 1 {
+		t.Fatalf("expected one runtime stop for recovery, got %d", chrome.stopCalls)
+	}
+	if chrome.startCalls != 2 {
+		t.Fatalf("expected second start for recovery, got %d", chrome.startCalls)
+	}
+}
+
+func TestServiceOpen_RetriesOnceOnManagedContextCanceled(t *testing.T) {
+	workspace := t.TempDir()
+	managed := &flakyManagedRuntime{failOpenOnce: true}
+	chrome := &fakeManagedRuntime{}
+	svc := NewService(Config{WorkspaceDir: workspace, DefaultProfile: "managed"})
+	svc.managed = managed
+	svc.chrome = chrome
+
+	state := svc.Start("managed")
+	if !state.Running {
+		t.Fatalf("expected managed profile running, got error=%q", state.LastError)
+	}
+
+	state, err := svc.Open("https://example.com")
+	if err != nil {
+		t.Fatalf("expected open recovery success, got %v", err)
+	}
+	if !state.Running {
+		t.Fatalf("expected running=true after recovery open")
+	}
+	if managed.openCalls != 2 {
+		t.Fatalf("expected two open attempts (initial + retry), got %d", managed.openCalls)
+	}
+	if managed.stopCalls != 1 {
+		t.Fatalf("expected one runtime stop for recovery, got %d", managed.stopCalls)
+	}
+	if managed.startCalls != 2 {
+		t.Fatalf("expected second start for recovery, got %d", managed.startCalls)
+	}
+}
+
+type fakeManagedRuntime struct {
+	started     bool
+	currentURL  string
+	screenshots []string
+	startCalls  int
+	stopCalls   int
+}
+
+func (f *fakeManagedRuntime) Start(context.Context) error {
+	f.startCalls++
+	f.started = true
+	return nil
+}
+
+func (f *fakeManagedRuntime) Stop(context.Context) error {
+	f.stopCalls++
+	f.started = false
+	return nil
+}
+
+func (f *fakeManagedRuntime) Open(_ context.Context, rawURL string) error {
+	if !f.started {
+		return fmt.Errorf("browser is not running")
+	}
+	f.currentURL = strings.TrimSpace(rawURL)
+	return nil
+}
+
+func (f *fakeManagedRuntime) Snapshot(context.Context) (string, error) {
+	if !f.started {
+		return "", fmt.Errorf("browser is not running")
+	}
+	if f.currentURL == "" {
+		return "no page opened", nil
+	}
+	return "snapshot captured", nil
+}
+
+func (f *fakeManagedRuntime) Act(_ context.Context, action string, target string, value string) (string, error) {
+	if !f.started {
+		return "", fmt.Errorf("browser is not running")
+	}
+	return fmt.Sprintf("%s target=%s value=%s", strings.TrimSpace(action), strings.TrimSpace(target), strings.TrimSpace(value)), nil
+}
+
+func (f *fakeManagedRuntime) Screenshot(_ context.Context, path string) error {
+	if !f.started {
+		return fmt.Errorf("browser is not running")
+	}
+	targetPath := strings.TrimSpace(path)
+	f.screenshots = append(f.screenshots, targetPath)
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(targetPath, []byte("PNG"), 0o644)
+}
+
+func (f *fakeManagedRuntime) Close() error {
+	f.started = false
+	return nil
+}
+
+func (f *fakeManagedRuntime) Timeout() time.Duration {
+	return 0
+}
+
+type flakyManagedRuntime struct {
+	started      bool
+	startCalls   int
+	stopCalls    int
+	openCalls    int
+	failOpenOnce bool
+}
+
+func (f *flakyManagedRuntime) Start(context.Context) error {
+	f.started = true
+	f.startCalls++
+	return nil
+}
+
+func (f *flakyManagedRuntime) Stop(context.Context) error {
+	f.started = false
+	f.stopCalls++
+	return nil
+}
+
+func (f *flakyManagedRuntime) Open(_ context.Context, _ string) error {
+	if !f.started {
+		return fmt.Errorf("browser is not running")
+	}
+	f.openCalls++
+	if f.failOpenOnce {
+		f.failOpenOnce = false
+		return fmt.Errorf("context canceled")
+	}
+	return nil
+}
+
+func (f *flakyManagedRuntime) Snapshot(context.Context) (string, error) {
+	if !f.started {
+		return "", fmt.Errorf("browser is not running")
+	}
+	return "snapshot captured", nil
+}
+
+func (f *flakyManagedRuntime) Act(context.Context, string, string, string) (string, error) {
+	if !f.started {
+		return "", fmt.Errorf("browser is not running")
+	}
+	return "ok", nil
+}
+
+func (f *flakyManagedRuntime) Screenshot(context.Context, string) error {
+	if !f.started {
+		return fmt.Errorf("browser is not running")
+	}
+	return nil
 }

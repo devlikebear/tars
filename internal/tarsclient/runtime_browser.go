@@ -10,6 +10,10 @@ func (c runtimeClient) browserProfiles(ctx context.Context) ([]browserProfile, e
 	return c.client().BrowserProfiles(ctx)
 }
 
+func (c runtimeClient) browserRelay(ctx context.Context) (browserRelayInfo, error) {
+	return c.client().BrowserRelay(ctx)
+}
+
 func (c runtimeClient) browserLogin(ctx context.Context, siteID string, profile string) (browserLoginResult, error) {
 	return c.client().BrowserLogin(ctx, siteID, profile)
 }

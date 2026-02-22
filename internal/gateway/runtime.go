@@ -48,6 +48,8 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 		rt.browserService = browser.NewService(browser.Config{
 			WorkspaceDir:           strings.TrimSpace(opts.WorkspaceDir),
 			DefaultProfile:         strings.TrimSpace(opts.BrowserDefaultProfile),
+			ManagedHeadless:        opts.BrowserManagedHeadless,
+			ManagedExecutablePath:  strings.TrimSpace(opts.BrowserManagedExecutablePath),
 			ManagedUserDataDir:     strings.TrimSpace(opts.BrowserManagedUserDataDir),
 			SiteFlowsDir:           strings.TrimSpace(opts.BrowserSiteFlowsDir),
 			AutoLoginSiteAllowlist: append([]string(nil), opts.BrowserAutoLoginSiteAllowlist...),

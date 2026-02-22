@@ -350,6 +350,20 @@ type BrowserProfile struct {
 	ExtensionConnected bool   `json:"extension_connected,omitempty"`
 }
 
+type BrowserRelayInfo struct {
+	Enabled            bool     `json:"enabled"`
+	Running            bool     `json:"running"`
+	Addr               string   `json:"addr,omitempty"`
+	RelayToken         string   `json:"relay_token,omitempty"`
+	ExtensionConnected bool     `json:"extension_connected,omitempty"`
+	AttachedTabs       int      `json:"attached_tabs,omitempty"`
+	ExtensionWSURL     string   `json:"extension_ws_url,omitempty"`
+	CDPWebSocketURL    string   `json:"cdp_ws_url,omitempty"`
+	OriginAllowlist    []string `json:"origin_allowlist,omitempty"`
+	AuthRequired       bool     `json:"auth_required"`
+	JSONAuthRequired   bool     `json:"json_auth_required"`
+}
+
 type BrowserLoginResult struct {
 	SiteID  string `json:"site_id"`
 	Profile string `json:"profile,omitempty"`

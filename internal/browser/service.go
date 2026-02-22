@@ -21,6 +21,8 @@ type SecretReader interface {
 type Config struct {
 	WorkspaceDir           string
 	DefaultProfile         string
+	ManagedHeadless        bool
+	ManagedExecutablePath  string
 	ManagedUserDataDir     string
 	SiteFlowsDir           string
 	AutoLoginSiteAllowlist []string
@@ -83,9 +85,20 @@ type RunResult struct {
 type Service struct {
 	cfg       Config
 	allowAuto map[string]struct{}
+	managed   managedRuntime
+	chrome    managedRuntime
 
 	mu    sync.RWMutex
 	state State
+}
+
+type managedRuntime interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+	Open(ctx context.Context, rawURL string) error
+	Snapshot(ctx context.Context) (string, error)
+	Act(ctx context.Context, action string, target string, value string) (string, error)
+	Screenshot(ctx context.Context, path string) error
 }
 
 func NewService(cfg Config) *Service {
@@ -110,6 +123,8 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		cfg:       cfg,
 		allowAuto: allow,
+		managed:   newChromedpManagedRuntime(cfg),
+		chrome:    newChromedpRelayRuntime(cfg),
 		state: State{
 			Profile: defaultProfile,
 			Driver:  driverForProfile(defaultProfile),

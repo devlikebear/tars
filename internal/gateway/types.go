@@ -168,6 +168,8 @@ type RuntimeOptions struct {
 	GatewayArchiveRetentionDays          int
 	GatewayArchiveMaxFileBytes           int
 	BrowserDefaultProfile                string
+	BrowserManagedHeadless               bool
+	BrowserManagedExecutablePath         string
 	BrowserManagedUserDataDir            string
 	BrowserSiteFlowsDir                  string
 	BrowserAutoLoginSiteAllowlist        []string

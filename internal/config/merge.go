@@ -160,6 +160,9 @@ func merge(dst *Config, src Config) {
 	if src.BrowserRelayAddr != "" {
 		dst.BrowserRelayAddr = src.BrowserRelayAddr
 	}
+	if src.BrowserRelayToken != "" {
+		dst.BrowserRelayToken = src.BrowserRelayToken
+	}
 	if len(src.BrowserRelayOriginAllowlist) > 0 {
 		dst.BrowserRelayOriginAllowlist = append([]string(nil), src.BrowserRelayOriginAllowlist...)
 	}

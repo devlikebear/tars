@@ -301,6 +301,17 @@ func TestExecuteCommand_BrowserAndVault(t *testing.T) {
 					{"name": "chrome", "driver": "relay", "default": false, "running": false},
 				},
 			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/browser/relay":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"enabled":             true,
+				"running":             true,
+				"addr":                "127.0.0.1:43182",
+				"relay_token":         "relay-token",
+				"extension_connected": true,
+				"extension_ws_url":    "ws://127.0.0.1:43182/extension",
+				"cdp_ws_url":          "ws://127.0.0.1:43182/cdp?token=relay-token",
+				"origin_allowlist":    []string{"chrome-extension://*"},
+			})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/login":
 			_ = json.NewEncoder(w).Encode(map[string]any{"site_id": "portal", "profile": "managed", "mode": "manual", "success": true, "message": "manual login required"})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/check":
@@ -334,6 +345,15 @@ func TestExecuteCommand_BrowserAndVault(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "managed") {
 		t.Fatalf("expected browser profiles output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	_, _, err = executeCommand(context.Background(), runtime, "/browser relay", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/browser relay: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "extension_ws=ws://127.0.0.1:43182/extension") || !strings.Contains(stdout.String(), "cdp_ws=ws://127.0.0.1:43182/cdp?token=relay-token") {
+		t.Fatalf("expected browser relay output, got %q", stdout.String())
 	}
 
 	stdout.Reset()

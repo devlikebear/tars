@@ -900,6 +900,9 @@ func TestLoad_VaultAndBrowserRuntimeDefaults(t *testing.T) {
 	if cfg.BrowserRelayAddr != "127.0.0.1:43182" {
 		t.Fatalf("expected browser relay addr default, got %q", cfg.BrowserRelayAddr)
 	}
+	if cfg.BrowserRelayToken != "" {
+		t.Fatalf("expected browser relay token default empty, got %q", cfg.BrowserRelayToken)
+	}
 	if len(cfg.BrowserRelayOriginAllowlist) != 1 || cfg.BrowserRelayOriginAllowlist[0] != "chrome-extension://*" {
 		t.Fatalf("unexpected relay origin allowlist: %+v", cfg.BrowserRelayOriginAllowlist)
 	}
@@ -935,6 +938,7 @@ func TestLoad_VaultAndBrowserRuntimeFromYAMLAndEnv(t *testing.T) {
 		"browser_managed_user_data_dir: /tmp/yaml-browser-profile",
 		"browser_relay_enabled: true",
 		"browser_relay_addr: 127.0.0.1:53182",
+		"browser_relay_token: yaml-relay-token",
 		`browser_relay_origin_allowlist_json: ["chrome-extension://abc*"]`,
 		"browser_site_flows_dir: /tmp/yaml-site-flows",
 		`browser_auto_login_site_allowlist_json: ["intranet","grafana"]`,
@@ -948,6 +952,7 @@ func TestLoad_VaultAndBrowserRuntimeFromYAMLAndEnv(t *testing.T) {
 	t.Setenv("VAULT_TOKEN", "env-vault-token")
 	t.Setenv("BROWSER_DEFAULT_PROFILE", "managed")
 	t.Setenv("BROWSER_RELAY_ADDR", "127.0.0.1:63182")
+	t.Setenv("BROWSER_RELAY_TOKEN", "env-relay-token")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -971,11 +976,25 @@ func TestLoad_VaultAndBrowserRuntimeFromYAMLAndEnv(t *testing.T) {
 	if cfg.BrowserRelayAddr != "127.0.0.1:63182" {
 		t.Fatalf("expected env browser relay addr, got %q", cfg.BrowserRelayAddr)
 	}
+	if cfg.BrowserRelayToken != "env-relay-token" {
+		t.Fatalf("expected env browser relay token, got %q", cfg.BrowserRelayToken)
+	}
 	if len(cfg.BrowserAutoLoginSiteAllowlist) != 2 {
 		t.Fatalf("unexpected browser auto login allowlist: %+v", cfg.BrowserAutoLoginSiteAllowlist)
 	}
 	if len(cfg.VaultSecretPathAllowlist) != 2 {
 		t.Fatalf("unexpected vault secret path allowlist: %+v", cfg.VaultSecretPathAllowlist)
+	}
+}
+
+func TestLoad_BrowserRelayTokenFromTarsEnvAlias(t *testing.T) {
+	t.Setenv("TARS_BROWSER_RELAY_TOKEN", "relay-from-alias")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.BrowserRelayToken != "relay-from-alias" {
+		t.Fatalf("expected relay token from TARS_BROWSER_RELAY_TOKEN, got %q", cfg.BrowserRelayToken)
 	}
 }
 

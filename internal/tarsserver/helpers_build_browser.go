@@ -59,6 +59,7 @@ func buildBrowserRelay(cfg config.Config) (*browserrelay.Server, error) {
 	}
 	return browserrelay.New(browserrelay.Options{
 		Addr:            cfg.BrowserRelayAddr,
+		RelayToken:      cfg.BrowserRelayToken,
 		OriginAllowlist: cfg.BrowserRelayOriginAllowlist,
 	})
 }
@@ -70,6 +71,8 @@ func buildBrowserService(cfg config.Config, relay *browserrelay.Server, vaultRea
 	return browser.NewService(browser.Config{
 		WorkspaceDir:           cfg.WorkspaceDir,
 		DefaultProfile:         cfg.BrowserDefaultProfile,
+		ManagedHeadless:        cfg.BrowserManagedHeadless,
+		ManagedExecutablePath:  cfg.BrowserManagedExecutablePath,
 		ManagedUserDataDir:     cfg.BrowserManagedUserDataDir,
 		SiteFlowsDir:           cfg.BrowserSiteFlowsDir,
 		AutoLoginSiteAllowlist: cfg.BrowserAutoLoginSiteAllowlist,

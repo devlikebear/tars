@@ -27,6 +27,17 @@ func (c *Client) BrowserProfiles(ctx context.Context) ([]BrowserProfile, error) 
 	return payload.Profiles, nil
 }
 
+func (c *Client) BrowserRelay(ctx context.Context) (BrowserRelayInfo, error) {
+	var out BrowserRelayInfo
+	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/browser/relay", nil, false, &out); err != nil {
+		return BrowserRelayInfo{}, err
+	}
+	if out.OriginAllowlist == nil {
+		out.OriginAllowlist = []string{}
+	}
+	return out, nil
+}
+
 func (c *Client) BrowserLogin(ctx context.Context, siteID string, profile string) (BrowserLoginResult, error) {
 	payload := map[string]string{
 		"site_id": strings.TrimSpace(siteID),
