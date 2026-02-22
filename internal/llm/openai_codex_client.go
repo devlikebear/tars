@@ -546,9 +546,29 @@ func parseOpenAICodexJSON(body io.Reader, nameMap openAICodexToolNameMap) (ChatR
 }
 
 func parseOpenAICodexUsage(raw map[string]any) Usage {
+	cached := getIntAny(raw["cached_tokens"])
+	if cached <= 0 {
+		cached = getIntAny(raw["input_cached_tokens"])
+	}
+	cacheRead := getIntAny(raw["cache_read_tokens"])
+	cacheWrite := getIntAny(raw["cache_write_tokens"])
+	if details := castMapAny(raw["input_tokens_details"]); len(details) > 0 {
+		if cached <= 0 {
+			cached = getIntAny(details["cached_tokens"])
+		}
+		if cacheRead <= 0 {
+			cacheRead = getIntAny(details["cache_read_tokens"])
+		}
+		if cacheWrite <= 0 {
+			cacheWrite = getIntAny(details["cache_write_tokens"])
+		}
+	}
 	return Usage{
-		InputTokens:  getIntAny(raw["input_tokens"]),
-		OutputTokens: getIntAny(raw["output_tokens"]),
+		InputTokens:      getIntAny(raw["input_tokens"]),
+		OutputTokens:     getIntAny(raw["output_tokens"]),
+		CachedTokens:     cached,
+		CacheReadTokens:  cacheRead,
+		CacheWriteTokens: cacheWrite,
 	}
 }
 

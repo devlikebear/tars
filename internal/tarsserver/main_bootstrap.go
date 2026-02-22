@@ -12,6 +12,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tarsncase/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -20,6 +21,7 @@ type runtimeDeps struct {
 	sessionStore         *session.Store
 	sessionStoreResolver func(workspaceID string) *session.Store
 	llmClient            llm.Client
+	usageTracker         *usage.Tracker
 	ask                  heartbeat.AskFunc
 	runPrompt            func(ctx context.Context, runLabel string, prompt string) (string, error)
 	runPromptWithTools   gatewayPromptRunner
@@ -78,6 +80,29 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 		sessionStoreResolver: newWorkspaceSessionStoreResolver(cfg.WorkspaceDir, nil),
 	}
 	deps.sessionStoreResolver = newWorkspaceSessionStoreResolver(cfg.WorkspaceDir, deps.sessionStore)
+	priceOverrides := map[string]usage.ModelPrice{}
+	for key, value := range cfg.UsagePriceOverrides {
+		priceOverrides[strings.TrimSpace(strings.ToLower(key))] = usage.ModelPrice{
+			InputPer1MUSD:      value.InputPer1MUSD,
+			OutputPer1MUSD:     value.OutputPer1MUSD,
+			CacheReadPer1MUSD:  value.CacheReadPer1MUSD,
+			CacheWritePer1MUSD: value.CacheWritePer1MUSD,
+		}
+	}
+	tracker, err := usage.NewTracker(cfg.WorkspaceDir, usage.TrackerOptions{
+		Now: nowFn,
+		InitialLimits: usage.Limits{
+			DailyUSD:   cfg.UsageLimitDailyUSD,
+			WeeklyUSD:  cfg.UsageLimitWeeklyUSD,
+			MonthlyUSD: cfg.UsageLimitMonthlyUSD,
+			Mode:       cfg.UsageLimitMode,
+		},
+		PriceOverrides: priceOverrides,
+	})
+	if err != nil {
+		return runtimeDeps{}, &runtimeDepsError{stage: "init_usage", err: err}
+	}
+	deps.usageTracker = tracker
 
 	needLLM := opts.RunOnce || opts.RunLoop || opts.ServeAPI
 	if !needLLM {
@@ -95,7 +120,7 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 	if err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "init_llm", err: err}
 	}
-	deps.llmClient = client
+	deps.llmClient = usage.NewTrackedClient(client, tracker, cfg.LLMProvider, cfg.LLMModel)
 	deps.runPrompt = newAgentPromptRunner(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger)
 	deps.runPromptWithTools = newAgentPromptRunnerWithTools(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger)
 	deps.ask = newAgentAskFunc(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger)

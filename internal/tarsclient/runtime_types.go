@@ -38,6 +38,18 @@ type cronJob = tarsclient.CronJob
 
 type cronRunRecord = tarsclient.CronRunRecord
 
+type projectInfo = tarsclient.Project
+
+type projectCreateRequest = tarsclient.ProjectCreateRequest
+
+type projectUpdateRequest = tarsclient.ProjectUpdateRequest
+
+type usageLimits = tarsclient.UsageLimits
+
+type usageSummary = tarsclient.UsageSummary
+
+type usageLimitStatus = tarsclient.UsageLimitStatus
+
 type eventsHistoryInfo = tarsclient.EventsHistoryInfo
 
 type eventsReadInfo = tarsclient.EventsReadInfo

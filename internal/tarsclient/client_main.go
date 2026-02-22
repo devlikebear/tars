@@ -104,6 +104,8 @@ Runtime:
   /channels
   /telegram {pairings|pairing approve {code}}
   /cron {list|get|runs|add|run|delete|enable|disable}
+  /project {list|get|create|activate|archive}
+  /usage {summary|limits|set-limits}
   /notify {list|filter|open|clear}
 
 Chat:
@@ -224,6 +226,8 @@ func isAdminEndpointPath(path string) bool {
 	case strings.HasPrefix(trimmed, "/v1/channels/telegram/webhook/"):
 		return true
 	case strings.HasPrefix(trimmed, "/v1/channels/telegram/pairings"):
+		return true
+	case trimmed == "/v1/usage/limits":
 		return true
 	default:
 		return false

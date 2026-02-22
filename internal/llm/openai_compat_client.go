@@ -264,8 +264,13 @@ func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Usage struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
+			PromptTokens        int `json:"prompt_tokens"`
+			CompletionTokens    int `json:"completion_tokens"`
+			PromptTokensDetails struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+			CacheReadTokens  int `json:"cache_read_tokens"`
+			CacheWriteTokens int `json:"cache_write_tokens"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
@@ -290,8 +295,11 @@ func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http
 			ToolCalls: nonStreamingToolCalls(parsed.Choices[0].Message.ToolCalls),
 		},
 		Usage: Usage{
-			InputTokens:  parsed.Usage.PromptTokens,
-			OutputTokens: parsed.Usage.CompletionTokens,
+			InputTokens:      parsed.Usage.PromptTokens,
+			OutputTokens:     parsed.Usage.CompletionTokens,
+			CachedTokens:     parsed.Usage.PromptTokensDetails.CachedTokens,
+			CacheReadTokens:  parsed.Usage.CacheReadTokens,
+			CacheWriteTokens: parsed.Usage.CacheWriteTokens,
 		},
 		StopReason: parsed.Choices[0].FinishReason,
 	}, nil

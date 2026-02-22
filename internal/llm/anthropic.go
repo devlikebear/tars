@@ -13,6 +13,7 @@ import (
 )
 
 const anthropicAPIVersion = "2023-06-01"
+const anthropicPromptCachingBeta = "prompt-caching-2024-07-31"
 
 type AnthropicClient struct {
 	baseURL    string
@@ -113,9 +114,18 @@ func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOpti
 		"messages":   toAnthropicWireMessages(nonSystemMessages),
 	}
 	if len(systemMessages) > 0 {
-		reqBody["system"] = strings.Join(systemMessages, "\n")
+		reqBody["system"] = []map[string]any{
+			{
+				"type": "text",
+				"text": strings.Join(systemMessages, "\n"),
+				"cache_control": map[string]any{
+					"type": "ephemeral",
+				},
+			},
+		}
 	}
 	if tools := toAnthropicTools(opts.Tools); len(tools) > 0 {
+		tools[len(tools)-1].CacheControl = map[string]any{"type": "ephemeral"}
 		reqBody["tools"] = tools
 		if choice := toAnthropicToolChoice(opts.ToolChoice); len(choice) > 0 {
 			reqBody["tool_choice"] = choice
@@ -145,6 +155,7 @@ func (c *AnthropicClient) createMessagesHTTPRequest(ctx context.Context, reqBody
 	}
 	req.Header.Set("x-api-key", c.apiKey)
 	req.Header.Set("anthropic-version", anthropicAPIVersion)
+	req.Header.Set("anthropic-beta", anthropicPromptCachingBeta)
 	req.Header.Set("content-type", "application/json")
 	return req, nil
 }
@@ -181,8 +192,10 @@ func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse
 	var parsed struct {
 		Content []anthropicContentBlock `json:"content"`
 		Usage   struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
+			InputTokens      int `json:"input_tokens"`
+			OutputTokens     int `json:"output_tokens"`
+			CacheReadTokens  int `json:"cache_read_input_tokens"`
+			CacheWriteTokens int `json:"cache_creation_input_tokens"`
 		} `json:"usage"`
 		StopReason string `json:"stop_reason"`
 	}
@@ -206,8 +219,10 @@ func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse
 			ToolCalls: toolCalls,
 		},
 		Usage: Usage{
-			InputTokens:  parsed.Usage.InputTokens,
-			OutputTokens: parsed.Usage.OutputTokens,
+			InputTokens:      parsed.Usage.InputTokens,
+			OutputTokens:     parsed.Usage.OutputTokens,
+			CacheReadTokens:  parsed.Usage.CacheReadTokens,
+			CacheWriteTokens: parsed.Usage.CacheWriteTokens,
 		},
 		StopReason: parsed.StopReason,
 	}, nil
@@ -300,7 +315,9 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 			var parsed struct {
 				Message struct {
 					Usage struct {
-						InputTokens int `json:"input_tokens"`
+						InputTokens      int `json:"input_tokens"`
+						CacheReadTokens  int `json:"cache_read_input_tokens"`
+						CacheWriteTokens int `json:"cache_creation_input_tokens"`
 					} `json:"usage"`
 				} `json:"message"`
 			}
@@ -308,19 +325,29 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 				return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("decode stream message start: %w", err))
 			}
 			response.Usage.InputTokens = parsed.Message.Usage.InputTokens
+			response.Usage.CacheReadTokens = parsed.Message.Usage.CacheReadTokens
+			response.Usage.CacheWriteTokens = parsed.Message.Usage.CacheWriteTokens
 		case "message_delta":
 			var parsed struct {
 				Delta struct {
 					StopReason string `json:"stop_reason"`
 				} `json:"delta"`
 				Usage struct {
-					OutputTokens int `json:"output_tokens"`
+					OutputTokens     int `json:"output_tokens"`
+					CacheReadTokens  int `json:"cache_read_input_tokens"`
+					CacheWriteTokens int `json:"cache_creation_input_tokens"`
 				} `json:"usage"`
 			}
 			if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
 				return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("decode stream message delta: %w", err))
 			}
 			response.Usage.OutputTokens = parsed.Usage.OutputTokens
+			if parsed.Usage.CacheReadTokens > 0 {
+				response.Usage.CacheReadTokens = parsed.Usage.CacheReadTokens
+			}
+			if parsed.Usage.CacheWriteTokens > 0 {
+				response.Usage.CacheWriteTokens = parsed.Usage.CacheWriteTokens
+			}
 			if parsed.Delta.StopReason != "" {
 				stopReason = parsed.Delta.StopReason
 			}
@@ -375,9 +402,10 @@ type anthropicWireMessage struct {
 }
 
 type anthropicWireTool struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"input_schema,omitempty"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description,omitempty"`
+	InputSchema  json.RawMessage `json:"input_schema,omitempty"`
+	CacheControl map[string]any  `json:"cache_control,omitempty"`
 }
 
 func toAnthropicWireMessages(messages []ChatMessage) []anthropicWireMessage {
