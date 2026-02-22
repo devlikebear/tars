@@ -308,6 +308,38 @@ These guidelines are working if: fewer unnecessary changes in diffs, fewer rewri
   - keepalive stale pong 감지 도입(5s ping, stale timeout 20s)
   - 확장 Options UI 추가(`relayPort`, `relayToken`, preflight), badge 상태(`ON/.../!`) 표시
   - `/v1/browser/relay` 응답 확장: `auth_required`, `json_auth_required`, `attached_tabs`
+- Phase 7 통합 1차 구현:
+  - 프로젝트 저장소/CRUD 추가:
+    - `internal/project` 신규 패키지로 `workspace/projects/{project_id}/PROJECT.md` frontmatter 기반 저장소 구현
+    - API 추가: `GET/POST /v1/projects`, `GET/PATCH/DELETE /v1/projects/{id}`, `POST /v1/projects/{id}/activate`
+    - 채팅 요청 확장: `POST /v1/chat`에 `project_id` optional 지원, 세션(`session.Session.project_id`) 연동
+  - 메모리 강화:
+    - `workspace/memory/experiences.jsonl` 구조화 로그(`timestamp/category/summary/tags/source_session/project_id/importance/auto`) 추가
+    - `memory_save` 도구 추가, `memory_get target=experiences` 확장
+    - 자동 메모리 승격(규칙 기반) + 중복 억제(dedupe) 적용
+    - 프롬프트 빌더에 `Recent Experiences` 주입
+  - 프로젝트 컨텍스트 실행:
+    - chat/telegram/cron/gateway 경로에 프로젝트 컨텍스트 주입 및 `project_id` 전파
+    - cron 산출물 `workspace/projects/{project_id}/cron_runs/*.md` 저장 추가
+    - `cron.Job.project_id` 도입 및 cron API/tool 반영
+  - 동적 도구 주입:
+    - `tools_default_set(standard|minimal)` 반영
+    - 프로젝트 활성 시 `minimal + project allow/deny` 정책으로 주입 축소
+    - gateway run은 `executor allowlist`와 `project allow/deny` 교집합 적용
+  - 브라우저 OTP 1차:
+    - browser site flow에 `otp_required`, `otp_timeout_sec` 확장
+    - Telegram 요청/회신 기반 OTP 매니저(`internal/approval`) 추가
+    - vault 우선 + env fallback(`env_form`) 로그인 경로 지원
+  - Usage/비용/리밋:
+    - `internal/usage` 신규 패키지(일별 JSONL 기록, 기간/그룹 집계, limits 저장/갱신)
+    - `llm.Usage` 확장(`cached_tokens`, `cache_read_tokens`, `cache_write_tokens`)
+    - OpenAI/OpenAI-codex/Anthropic usage 파서 확장 + Anthropic prompt caching header/request 반영
+    - API 추가: `GET /v1/usage/summary`, `GET /v1/usage/limits`, `PATCH /v1/usage/limits`
+    - `usage_report` built-in 도구 추가
+    - LLM 호출 source(`chat|cron|heartbeat|agent_run`)별 usage 기록 및 soft/hard limit enforcement 래퍼 적용
+  - CLI/Client 확장:
+    - `pkg/tarsclient`에 project/usage API 타입/메서드 추가
+    - `internal/tarsclient` 명령 추가: `/project {list|get|create|activate|archive}`, `/usage {summary|limits|set-limits}`
 
 **상세 이력**
 - 일일 개발 이력은 `git log` 참조
