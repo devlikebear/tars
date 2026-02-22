@@ -379,6 +379,9 @@ func buildAPIMux(
 	)
 	telegramInbound.mainSessionID = strings.TrimSpace(mainSessionID)
 	telegramInbound.sessionScope = normalizeTelegramSessionScope(cfg.SessionTelegramScope)
+	telegramInbound.maxIterations = cfg.AgentMaxIterations
+	telegramInbound.tooling = chatTooling
+	telegramInbound.extraTools = append([]tool.Tool(nil), chatTools...)
 	telegramInbound.commands = newTelegramCommandHandler(telegramCommandHandlerOptions{
 		Store:          sessionStore,
 		CronResolver:   cronStoreResolver,

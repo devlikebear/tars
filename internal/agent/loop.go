@@ -243,7 +243,26 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 		}
 	}
 
+	finalIter := maxIters + 1
+	l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: finalIter, MessageCount: len(messages)})
+	finalResp, finalErr := l.client.Chat(ctx, messages, llm.ChatOptions{
+		OnDelta:    opts.OnDelta,
+		Tools:      nil,
+		ToolChoice: "none",
+	})
+	if finalErr == nil {
+		l.emit(ctx, Event{Type: EventAfterLLM, Iteration: finalIter, MessageCount: len(messages)})
+		if strings.TrimSpace(finalResp.Message.Content) != "" || len(finalResp.Message.ToolCalls) == 0 {
+			messages = append(messages, finalResp.Message)
+			l.emit(ctx, Event{Type: EventLoopEnd, Iteration: finalIter, MessageCount: len(messages)})
+			return finalResp, nil
+		}
+	}
+
 	err := fmt.Errorf("agent loop exceeded max iterations: %d", maxIters)
+	if finalErr != nil {
+		err = fmt.Errorf("agent loop exceeded max iterations: %d (finalization failed: %v)", maxIters, finalErr)
+	}
 	l.emit(ctx, Event{Type: EventLoopError, Iteration: maxIters, Err: err})
 	return llm.ChatResponse{}, err
 }

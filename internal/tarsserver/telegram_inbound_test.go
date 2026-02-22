@@ -399,6 +399,70 @@ func TestTelegramInbound_TypingLoop_LLMOnly(t *testing.T) {
 	}
 }
 
+func TestTelegramInbound_LLMPath_InjectsToolsAndRunsToolCall(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	mainSession, err := store.Create("main")
+	if err != nil {
+		t.Fatalf("create main session: %v", err)
+	}
+	mockLLM := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_1",
+							Name:      "sessions_list",
+							Arguments: `{}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "tool path ok",
+				},
+			},
+		},
+	}
+	sender := &telegramTestSender{}
+	handler := newTelegramInboundHandler(
+		workspace,
+		store,
+		mockLLM,
+		sender,
+		nil,
+		nil,
+		"open",
+		zerolog.New(io.Discard),
+	)
+	handler.mainSessionID = mainSession.ID
+	handler.sessionScope = "main"
+	handler.maxIterations = 2
+
+	handler.HandleUpdate(context.Background(), telegramUpdate{
+		UpdateID: 1,
+		Message: &telegramMessage{
+			Text: "run a tool now",
+			Chat: telegramChat{ID: json.Number("101"), Type: "private"},
+			From: telegramUser{ID: json.Number("11"), Username: "alice"},
+		},
+	})
+
+	if got := strings.TrimSpace(sender.lastText()); got != "tool path ok" {
+		t.Fatalf("expected final assistant response, got %q", got)
+	}
+	if mockLLM.callCount != 2 {
+		t.Fatalf("expected 2 llm calls (tool + final), got %d", mockLLM.callCount)
+	}
+	if len(mockLLM.seenToolCounts) == 0 || mockLLM.seenToolCounts[0] == 0 {
+		t.Fatalf("expected tools to be injected on first llm call, got %+v", mockLLM.seenToolCounts)
+	}
+}
+
 func TestTelegramInbound_ShouldLogTypingError(t *testing.T) {
 	if shouldLogTelegramTypingError(nil) {
 		t.Fatalf("nil error must not be logged")

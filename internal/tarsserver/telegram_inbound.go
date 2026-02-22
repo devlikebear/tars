@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/agent"
+	"github.com/devlikebear/tarsncase/internal/extensions"
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/llm"
-	"github.com/devlikebear/tarsncase/internal/prompt"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/rs/zerolog"
@@ -29,6 +29,9 @@ type telegramInboundHandler struct {
 	dmPolicy      string
 	sessionScope  string
 	mainSessionID string
+	maxIterations int
+	tooling       chatToolingOptions
+	extraTools    []tool.Tool
 	logger        zerolog.Logger
 }
 
@@ -45,15 +48,16 @@ func newTelegramInboundHandler(
 	logger zerolog.Logger,
 ) *telegramInboundHandler {
 	return &telegramInboundHandler{
-		workspaceDir: strings.TrimSpace(workspaceDir),
-		store:        store,
-		llmClient:    llmClient,
-		sender:       sender,
-		runtime:      runtime,
-		pairings:     pairings,
-		dmPolicy:     normalizeTelegramDMPolicy(dmPolicy),
-		sessionScope: "per-user",
-		logger:       logger,
+		workspaceDir:  strings.TrimSpace(workspaceDir),
+		store:         store,
+		llmClient:     llmClient,
+		sender:        sender,
+		runtime:       runtime,
+		pairings:      pairings,
+		dmPolicy:      normalizeTelegramDMPolicy(dmPolicy),
+		sessionScope:  "per-user",
+		maxIterations: 1,
+		logger:        logger,
 	}
 }
 
@@ -242,9 +246,32 @@ func (h *telegramInboundHandler) processMessage(
 	if err != nil {
 		return "", sessionID, err
 	}
-	systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: h.workspaceDir})
-	systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
+	registry := buildChatToolRegistry(
+		h.store,
+		defaultWorkspaceID,
+		sessionID,
+		h.workspaceDir,
+		history,
+		chatHandlerDeps{
+			workspaceDir: h.workspaceDir,
+			store:        h.store,
+			client:       h.llmClient,
+			logger:       h.logger,
+			tooling:      h.tooling,
+			extraTools:   h.extraTools,
+		},
+	)
+	extSnapshot := extensions.Snapshot{}
+	if h.tooling.Extensions != nil {
+		extSnapshot = h.tooling.Extensions.Snapshot()
+	}
+	invokedSkill := resolveInvokedSkill(text, h.tooling.Extensions)
+	systemPrompt, toolChoice, err := prepareChatContextWithExtensions(h.workspaceDir, text, extSnapshot, invokedSkill)
+	if err != nil {
+		return "", sessionID, err
+	}
 	llmMessages := buildLLMMessages(systemPrompt, history, text)
+	injectedSchemas := registry.Schemas()
 
 	now := time.Now().UTC()
 	if err := session.AppendMessage(transcriptPath, session.Message{
@@ -255,11 +282,11 @@ func (h *telegramInboundHandler) processMessage(
 		return "", sessionID, err
 	}
 
-	// MVP constraint: inbound telegram uses one LLM turn without tools.
-	loop := agent.NewLoop(h.llmClient, tool.NewRegistry())
+	loop := agent.NewLoop(h.llmClient, registry)
 	resp, err := loop.Run(ctx, llmMessages, agent.RunOptions{
-		MaxIterations: 1,
-		Tools:         nil,
+		MaxIterations: resolveAgentMaxIterations(h.maxIterations),
+		Tools:         injectedSchemas,
+		ToolChoice:    toolChoice,
 	})
 	if err != nil {
 		return "", sessionID, err

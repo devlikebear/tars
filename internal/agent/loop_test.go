@@ -740,3 +740,70 @@ func TestLoop_Run_RedactsToolResultBeforeLLMAppend(t *testing.T) {
 		t.Fatalf("expected redacted tool result, got %q", last.Content)
 	}
 }
+
+func TestLoop_Run_FinalizesWithoutToolsWhenMaxIterationsReached(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+		return tool.SessionStatus{SessionID: "sess-1", HistoryMessages: 1}, nil
+	}))
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_1", Name: "session_status", Arguments: `{}`},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_2", Name: "session_status", Arguments: `{}`},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "최종 요약",
+				},
+			},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	resp, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "요약해줘"},
+	}, RunOptions{
+		MaxIterations: 2,
+		Tools: []llm.ToolSchema{
+			{
+				Type: "function",
+				Function: llm.ToolFunctionSchema{
+					Name:       "session_status",
+					Parameters: json.RawMessage(`{"type":"object"}`),
+				},
+			},
+		},
+		ToolChoice: "auto",
+	})
+	if err != nil {
+		t.Fatalf("expected fallback finalization success, got %v", err)
+	}
+	if resp.Message.Content != "최종 요약" {
+		t.Fatalf("unexpected final response: %q", resp.Message.Content)
+	}
+	if len(client.seenToolCounts) != 3 {
+		t.Fatalf("expected 3 llm calls, got %d", len(client.seenToolCounts))
+	}
+	if client.seenToolCounts[2] != 0 {
+		t.Fatalf("expected finalization call without tools, got %d", client.seenToolCounts[2])
+	}
+	if client.seenToolChoice[2] != "none" {
+		t.Fatalf("expected finalization tool_choice=none, got %q", client.seenToolChoice[2])
+	}
+}

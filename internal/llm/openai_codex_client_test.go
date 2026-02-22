@@ -517,6 +517,57 @@ func TestOpenAICodexClient_StreamRequiredFallback_RetriesWithStream(t *testing.T
 	}
 }
 
+func TestOpenAICodexClient_RetryOnceOnInternalErrorEvent(t *testing.T) {
+	var requestCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "text/event-stream")
+		if requestCount == 1 {
+			_, _ = w.Write([]byte("data: {\"type\":\"error\",\"message\":\"stream ID 9; INTERNAL_ERROR; received from peer\"}\n\n"))
+			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+			return
+		}
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICodexClientWithConfig(
+		srv.URL,
+		"gpt-5.3-codex",
+		"oauth",
+		"openai-codex",
+		"",
+		DefaultClientConfig(),
+		func() (auth.CodexCredential, error) {
+			return auth.CodexCredential{AccessToken: "token-1"}, nil
+		},
+		func(context.Context, auth.CodexCredential) (auth.CodexCredential, error) {
+			t.Fatal("refresh should not be called")
+			return auth.CodexCredential{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	resp, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hello"},
+	}, ChatOptions{
+		OnDelta: func(string) {},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if resp.Message.Content != "ok" {
+		t.Fatalf("expected retried streamed response ok, got %q", resp.Message.Content)
+	}
+	if requestCount != 2 {
+		t.Fatalf("expected two requests with internal error retry, got %d", requestCount)
+	}
+}
+
 func containsAnyString(values []any, needle string) bool {
 	for _, raw := range values {
 		if s, ok := raw.(string); ok && s == needle {

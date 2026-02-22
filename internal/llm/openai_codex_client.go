@@ -119,7 +119,7 @@ func (c *OpenAICodexClient) Chat(ctx context.Context, messages []ChatMessage, op
 		return ChatResponse{}, newProviderError(openAICodexProviderLabel, "auth", err)
 	}
 	streaming := opts.OnDelta != nil
-	return c.chatWithCredential(ctx, cred, messages, opts, streaming, true, true)
+	return c.chatWithCredential(ctx, cred, messages, opts, streaming, true, true, true)
 }
 
 func (c *OpenAICodexClient) chatWithCredential(
@@ -130,6 +130,7 @@ func (c *OpenAICodexClient) chatWithCredential(
 	streaming bool,
 	allowRefreshRetry bool,
 	allowStreamFallback bool,
+	allowTransientRetry bool,
 ) (ChatResponse, error) {
 	toolNameMap := newOpenAICodexToolNameMap(opts.Tools)
 	body, err := buildOpenAICodexRequestBody(messages, opts, c.model, streaming, toolNameMap)
@@ -184,21 +185,30 @@ func (c *OpenAICodexClient) chatWithCredential(
 			refreshed.AccountID = auth.ParseCodexAccountIDFromJWT(refreshed.AccessToken)
 		}
 		c.setOverrideCredential(refreshed)
-		return c.chatWithCredential(ctx, refreshed, messages, opts, streaming, false, allowStreamFallback)
+		return c.chatWithCredential(ctx, refreshed, messages, opts, streaming, false, allowStreamFallback, allowTransientRetry)
 	}
 
 	defer resp.Body.Close()
 	if err := checkHTTPStatus(resp, openAICodexProviderLabel); err != nil {
 		if allowStreamFallback && !streaming && isOpenAICodexStreamRequiredError(err) {
-			return c.chatWithCredential(ctx, cred, messages, opts, true, allowRefreshRetry, false)
+			return c.chatWithCredential(ctx, cred, messages, opts, true, allowRefreshRetry, false, allowTransientRetry)
 		}
 		return ChatResponse{}, err
 	}
 
+	var parsedResp ChatResponse
 	if streaming {
-		return parseOpenAICodexSSE(resp.Body, opts, toolNameMap)
+		parsedResp, err = parseOpenAICodexSSE(resp.Body, opts, toolNameMap)
+	} else {
+		parsedResp, err = parseOpenAICodexJSON(resp.Body, toolNameMap)
 	}
-	return parseOpenAICodexJSON(resp.Body, toolNameMap)
+	if err != nil {
+		if streaming && allowTransientRetry && isOpenAICodexRetryableStreamError(err) {
+			return c.chatWithCredential(ctx, cred, messages, opts, streaming, allowRefreshRetry, allowStreamFallback, false)
+		}
+		return ChatResponse{}, err
+	}
+	return parsedResp, nil
 }
 
 func isOpenAICodexStreamRequiredError(err error) bool {
@@ -211,6 +221,19 @@ func isOpenAICodexStreamRequiredError(err error) bool {
 	}
 	message := strings.TrimSpace(strings.ToLower(providerErr.Message))
 	return strings.Contains(message, "stream must be set to true")
+}
+
+func isOpenAICodexRetryableStreamError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.TrimSpace(strings.ToLower(err.Error()))
+	if message == "" {
+		return false
+	}
+	return strings.Contains(message, "internal_error") ||
+		strings.Contains(message, "stream error: stream id") ||
+		strings.Contains(message, "received from peer")
 }
 
 func (c *OpenAICodexClient) getCredential() (auth.CodexCredential, error) {
