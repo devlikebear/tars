@@ -88,6 +88,51 @@ func TestClient_DoAndConvenienceMethods(t *testing.T) {
 	}
 }
 
+func TestClient_ProvidersAndModels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/providers":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"current_provider": "openai-codex",
+				"current_model":    "gpt-5.3-codex",
+				"auth_mode":        "oauth",
+				"providers": []map[string]any{
+					{"id": "openai-codex", "supports_live_models": true},
+					{"id": "openai", "supports_live_models": true},
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"provider":      "openai-codex",
+				"current_model": "gpt-5.3-codex",
+				"source":        "live",
+				"stale":         false,
+				"models":        []string{"gpt-5.3-codex", "gpt-4.1-codex"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := New(Config{ServerURL: server.URL})
+	providers, err := client.Providers(context.Background())
+	if err != nil {
+		t.Fatalf("Providers: %v", err)
+	}
+	if providers.CurrentProvider != "openai-codex" || len(providers.Providers) != 2 {
+		t.Fatalf("unexpected providers payload: %+v", providers)
+	}
+
+	models, err := client.Models(context.Background())
+	if err != nil {
+		t.Fatalf("Models: %v", err)
+	}
+	if models.Provider != "openai-codex" || len(models.Models) != 2 {
+		t.Fatalf("unexpected models payload: %+v", models)
+	}
+}
+
 func TestClient_TelegramPairingsAdminMethods(t *testing.T) {
 	var listAuth string
 	var approveAuth string

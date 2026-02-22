@@ -51,6 +51,99 @@ func TestExecuteCommand_NewAndStatus(t *testing.T) {
 	}
 }
 
+func TestExecuteCommand_Providers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/providers":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"current_provider": "openai-codex",
+				"current_model":    "gpt-5.3-codex",
+				"auth_mode":        "oauth",
+				"providers": []map[string]any{
+					{"id": "openai-codex", "supports_live_models": true},
+					{"id": "openai", "supports_live_models": true},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runtime := runtimeClient{serverURL: server.URL}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/providers", "", stdout, stderr); err != nil {
+		t.Fatalf("/providers: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "provider=openai-codex") || !strings.Contains(out, "- openai-codex live_models=true") {
+		t.Fatalf("unexpected /providers output: %q", out)
+	}
+}
+
+func TestExecuteCommand_Models(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"provider":      "openai-codex",
+				"current_model": "gpt-5.3-codex",
+				"source":        "live",
+				"stale":         false,
+				"models":        []string{"gpt-5.3-codex", "gpt-4.1-codex"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runtime := runtimeClient{serverURL: server.URL}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/models", "", stdout, stderr); err != nil {
+		t.Fatalf("/models: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "models provider=openai-codex") || !strings.Contains(out, "- gpt-5.3-codex") {
+		t.Fatalf("unexpected /models output: %q", out)
+	}
+}
+
+func TestExecuteCommand_ModelListAlias(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"provider":      "openai",
+				"current_model": "gpt-4o-mini",
+				"source":        "cache",
+				"stale":         true,
+				"warning":       "live provider unavailable",
+				"models":        []string{"gpt-4o-mini"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runtime := runtimeClient{serverURL: server.URL}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	if _, _, err := executeCommand(context.Background(), runtime, "/model list", "", stdout, stderr); err != nil {
+		t.Fatalf("/model list: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "models provider=openai") || !strings.Contains(out, "warning=live provider unavailable") {
+		t.Fatalf("unexpected /model list output: %q", out)
+	}
+}
+
 func TestExecuteCommand_CompactRequiresSession(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}

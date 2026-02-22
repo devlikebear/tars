@@ -2,7 +2,10 @@ package tarsclient
 
 import (
 	"fmt"
+	"io"
 	"strings"
+
+	"github.com/devlikebear/tarsncase/internal/textutil"
 )
 
 func cmdRuntime(c commandContext) (bool, string, error) {
@@ -21,6 +24,45 @@ func cmdRuntime(c commandContext) (bool, string, error) {
 		}
 		fmt.Fprintln(c.stdout)
 		return true, c.session, nil
+	case "/providers":
+		info, err := c.runtime.providers(c.ctx)
+		if err != nil {
+			return true, c.session, err
+		}
+		fmt.Fprintf(c.stdout, "SYSTEM > provider=%s model=%s auth_mode=%s supported=%d\n",
+			textutil.ValueOrDash(strings.TrimSpace(info.CurrentProvider)),
+			textutil.ValueOrDash(strings.TrimSpace(info.CurrentModel)),
+			textutil.ValueOrDash(strings.TrimSpace(info.AuthMode)),
+			len(info.Providers),
+		)
+		for _, provider := range info.Providers {
+			fmt.Fprintf(c.stdout, "- %s live_models=%t\n", strings.TrimSpace(provider.ID), provider.SupportsLiveModels)
+		}
+		return true, c.session, nil
+	case "/models":
+		info, err := c.runtime.models(c.ctx)
+		if err != nil {
+			return true, c.session, err
+		}
+		printModelsOutput(c.stdout, info)
+		return true, c.session, nil
+	case "/model":
+		if len(c.fields) < 2 {
+			fmt.Fprintln(c.stdout, "SYSTEM > usage: /model list")
+			return true, c.session, nil
+		}
+		switch strings.ToLower(strings.TrimSpace(c.fields[1])) {
+		case "list":
+			info, err := c.runtime.models(c.ctx)
+			if err != nil {
+				return true, c.session, err
+			}
+			printModelsOutput(c.stdout, info)
+			return true, c.session, nil
+		default:
+			fmt.Fprintln(c.stdout, "SYSTEM > usage: /model list")
+			return true, c.session, nil
+		}
 	case "/whoami":
 		identity, err := c.runtime.whoami(c.ctx)
 		if err != nil {
@@ -107,5 +149,24 @@ func cmdRuntime(c commandContext) (bool, string, error) {
 		return true, c.session, nil
 	default:
 		return false, c.session, nil
+	}
+}
+
+func printModelsOutput(w io.Writer, info modelsInfo) {
+	fmt.Fprintf(w, "SYSTEM > models provider=%s current=%s source=%s stale=%t count=%d\n",
+		textutil.ValueOrDash(strings.TrimSpace(info.Provider)),
+		textutil.ValueOrDash(strings.TrimSpace(info.CurrentModel)),
+		textutil.ValueOrDash(strings.TrimSpace(info.Source)),
+		info.Stale,
+		len(info.Models),
+	)
+	if fetchedAt := strings.TrimSpace(info.FetchedAt); fetchedAt != "" {
+		fmt.Fprintf(w, "fetched_at=%s expires_at=%s\n", fetchedAt, textutil.ValueOrDash(strings.TrimSpace(info.ExpiresAt)))
+	}
+	if warning := strings.TrimSpace(info.Warning); warning != "" {
+		fmt.Fprintf(w, "warning=%s\n", warning)
+	}
+	for _, model := range info.Models {
+		fmt.Fprintf(w, "- %s\n", strings.TrimSpace(model))
 	}
 }

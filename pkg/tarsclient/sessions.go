@@ -75,6 +75,28 @@ func (c *Client) Status(ctx context.Context) (StatusInfo, error) {
 	return status, nil
 }
 
+func (c *Client) Providers(ctx context.Context) (ProvidersInfo, error) {
+	var out ProvidersInfo
+	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/providers", nil, false, &out); err != nil {
+		return ProvidersInfo{}, err
+	}
+	if out.Providers == nil {
+		out.Providers = []ProviderInfo{}
+	}
+	return out, nil
+}
+
+func (c *Client) Models(ctx context.Context) (ModelsInfo, error) {
+	var out ModelsInfo
+	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/models", nil, false, &out); err != nil {
+		return ModelsInfo{}, err
+	}
+	if out.Models == nil {
+		out.Models = []string{}
+	}
+	return out, nil
+}
+
 func (c *Client) Whoami(ctx context.Context) (WhoamiInfo, error) {
 	var out WhoamiInfo
 	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/auth/whoami", nil, false, &out); err != nil {

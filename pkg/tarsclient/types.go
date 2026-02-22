@@ -122,6 +122,29 @@ type StatusInfo struct {
 	AuthRole      string `json:"auth_role,omitempty"`
 }
 
+type ProviderInfo struct {
+	ID                 string `json:"id"`
+	SupportsLiveModels bool   `json:"supports_live_models"`
+}
+
+type ProvidersInfo struct {
+	CurrentProvider string         `json:"current_provider"`
+	CurrentModel    string         `json:"current_model"`
+	AuthMode        string         `json:"auth_mode"`
+	Providers       []ProviderInfo `json:"providers"`
+}
+
+type ModelsInfo struct {
+	Provider     string   `json:"provider"`
+	CurrentModel string   `json:"current_model"`
+	Source       string   `json:"source"`
+	Stale        bool     `json:"stale"`
+	FetchedAt    string   `json:"fetched_at,omitempty"`
+	ExpiresAt    string   `json:"expires_at,omitempty"`
+	Models       []string `json:"models"`
+	Warning      string   `json:"warning,omitempty"`
+}
+
 type WhoamiInfo struct {
 	Authenticated bool   `json:"authenticated"`
 	AuthRole      string `json:"auth_role,omitempty"`

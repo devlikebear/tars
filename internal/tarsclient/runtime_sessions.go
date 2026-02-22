@@ -26,6 +26,14 @@ func (c runtimeClient) status(ctx context.Context) (statusInfo, error) {
 	return c.client().Status(ctx)
 }
 
+func (c runtimeClient) providers(ctx context.Context) (providersInfo, error) {
+	return c.client().Providers(ctx)
+}
+
+func (c runtimeClient) models(ctx context.Context) (modelsInfo, error) {
+	return c.client().Models(ctx)
+}
+
 func (c runtimeClient) whoami(ctx context.Context) (whoamiInfo, error) {
 	return c.client().Whoami(ctx)
 }

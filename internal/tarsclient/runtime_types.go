@@ -10,6 +10,12 @@ type sessionMessage = tarsclient.SessionMessage
 
 type statusInfo = tarsclient.StatusInfo
 
+type providerInfo = tarsclient.ProviderInfo
+
+type providersInfo = tarsclient.ProvidersInfo
+
+type modelsInfo = tarsclient.ModelsInfo
+
 type whoamiInfo = tarsclient.WhoamiInfo
 
 type healthInfo = tarsclient.HealthInfo
