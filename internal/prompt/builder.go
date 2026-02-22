@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tarsncase/internal/memory"
 )
 
 const maxFileChars = 20000
@@ -27,6 +29,7 @@ var mainFiles = []bootstrapFile{
 	{name: "IDENTITY.md", section: "Identity", subAgent: false},
 	{name: "SOUL.md", section: "Persona", subAgent: false},
 	{name: "USER.md", section: "User", subAgent: false},
+	{name: "PROJECT.md", section: "Project", subAgent: false},
 	{name: "AGENTS.md", section: "Agent Guidelines", subAgent: true},
 	{name: "TOOLS.md", section: "Tools", subAgent: true},
 	{name: "HEARTBEAT.md", section: "Heartbeat", subAgent: false},
@@ -59,8 +62,34 @@ func Build(opts BuildOptions) string {
 		b.WriteString(content)
 		b.WriteString("\n\n")
 	}
+	if !opts.SubAgent {
+		appendRecentExperiences(&b, opts.WorkspaceDir)
+	}
 
 	return b.String()
+}
+
+func appendRecentExperiences(b *strings.Builder, workspaceDir string) {
+	if b == nil {
+		return
+	}
+	rows, err := memory.SearchExperiences(workspaceDir, memory.SearchOptions{Limit: 8})
+	if err != nil || len(rows) == 0 {
+		return
+	}
+	b.WriteString("## Recent Experiences\n\n")
+	for _, row := range rows {
+		category := strings.TrimSpace(row.Category)
+		summary := strings.TrimSpace(row.Summary)
+		if summary == "" {
+			continue
+		}
+		if category == "" {
+			category = "memory"
+		}
+		b.WriteString(fmt.Sprintf("- [%s] %s\n", category, summary))
+	}
+	b.WriteString("\n")
 }
 
 func readFileContent(path string) (string, error) {

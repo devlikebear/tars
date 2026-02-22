@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 type Session struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
+	ProjectID string    `json:"project_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -103,6 +105,21 @@ func (s *Store) Touch(id string, updatedAt time.Time) error {
 		return fmt.Errorf("session not found")
 	}
 	sess.UpdatedAt = updatedAt.UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+func (s *Store) SetProjectID(id string, projectID string) error {
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	sess.ProjectID = strings.TrimSpace(projectID)
+	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)
 }

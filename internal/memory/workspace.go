@@ -22,6 +22,13 @@ const defaultMemoryTemplate = `# MEMORY.md
 - Keep only durable facts and preferences here.
 `
 
+const defaultProjectTemplate = `# PROJECT.md
+
+## Project Guidance
+- Define global project execution policy and reporting format.
+- Keep per-project instructions inside workspace/projects/{project_id}/PROJECT.md.
+`
+
 const defaultAgentsTemplate = `# AGENTS.md
 
 ## Operating Guidelines
@@ -66,6 +73,9 @@ func EnsureWorkspace(root string) error {
 	if err := os.MkdirAll(filepath.Join(root, "memory"), 0o755); err != nil {
 		return fmt.Errorf("create memory dir: %w", err)
 	}
+	if err := os.MkdirAll(filepath.Join(root, "projects"), 0o755); err != nil {
+		return fmt.Errorf("create projects dir: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Join(root, "_shared"), 0o755); err != nil {
 		return fmt.Errorf("create shared dir: %w", err)
 	}
@@ -73,6 +83,9 @@ func EnsureWorkspace(root string) error {
 		return err
 	}
 	if err := ensureFile(filepath.Join(root, "MEMORY.md"), defaultMemoryTemplate); err != nil {
+		return err
+	}
+	if err := ensureFile(filepath.Join(root, "PROJECT.md"), defaultProjectTemplate); err != nil {
 		return err
 	}
 	if err := ensureFile(filepath.Join(root, "AGENTS.md"), defaultAgentsTemplate); err != nil {

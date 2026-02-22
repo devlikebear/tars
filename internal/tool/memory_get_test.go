@@ -86,3 +86,42 @@ func TestMemoryGetTool_InvalidDateFormat(t *testing.T) {
 		t.Fatalf("expected invalid date message, got %q", result.Text())
 	}
 }
+
+func TestMemoryGetTool_ExperiencesTarget(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := memory.AppendExperience(root, memory.Experience{
+		Timestamp:     time.Date(2026, 2, 22, 9, 0, 0, 0, time.UTC),
+		Category:      "preference",
+		Summary:       "User prefers concise responses",
+		Tags:          []string{"user", "style"},
+		SourceSession: "sess-1",
+		Importance:    7,
+	}); err != nil {
+		t.Fatalf("append experience: %v", err)
+	}
+	if err := memory.AppendExperience(root, memory.Experience{
+		Timestamp:     time.Date(2026, 2, 22, 9, 1, 0, 0, time.UTC),
+		Category:      "task_completed",
+		Summary:       "Completed gateway report review",
+		Tags:          []string{"gateway"},
+		SourceSession: "sess-1",
+		Importance:    8,
+	}); err != nil {
+		t.Fatalf("append experience: %v", err)
+	}
+
+	tl := NewMemoryGetTool(root)
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{"target":"experiences","query":"gateway","limit":5}`))
+	if err != nil {
+		t.Fatalf("execute experiences query: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error result: %+v", result)
+	}
+	if !strings.Contains(result.Text(), "Completed gateway report review") {
+		t.Fatalf("expected matched experience in output, got %q", result.Text())
+	}
+}

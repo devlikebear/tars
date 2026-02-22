@@ -41,6 +41,7 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 			}
 			var req struct {
 				SessionID string `json:"session_id"`
+				ProjectID string `json:"project_id,omitempty"`
 				Title     string `json:"title"`
 				Message   string `json:"message"`
 				Prompt    string `json:"prompt"`
@@ -61,6 +62,7 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 			run, err := runtime.Spawn(r.Context(), gateway.SpawnRequest{
 				WorkspaceID: defaultWorkspaceID,
 				SessionID:   req.SessionID,
+				ProjectID:   req.ProjectID,
 				Title:       req.Title,
 				Prompt:      message,
 				Agent:       req.Agent,

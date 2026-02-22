@@ -18,9 +18,11 @@ func TestEnsureWorkspace(t *testing.T) {
 	paths := []string{
 		root,
 		filepath.Join(root, "memory"),
+		filepath.Join(root, "projects"),
 		filepath.Join(root, "_shared"),
 		filepath.Join(root, "HEARTBEAT.md"),
 		filepath.Join(root, "MEMORY.md"),
+		filepath.Join(root, "PROJECT.md"),
 		filepath.Join(root, "AGENTS.md"),
 		filepath.Join(root, "SOUL.md"),
 		filepath.Join(root, "USER.md"),
@@ -47,6 +49,14 @@ func TestEnsureWorkspace(t *testing.T) {
 	}
 	if !strings.Contains(string(memoryFile), "Long-Term Memory") {
 		t.Fatalf("expected default MEMORY template, got %q", string(memoryFile))
+	}
+
+	projectFile, err := os.ReadFile(filepath.Join(root, "PROJECT.md"))
+	if err != nil {
+		t.Fatalf("read PROJECT.md: %v", err)
+	}
+	if !strings.Contains(string(projectFile), "Project Guidance") {
+		t.Fatalf("expected default PROJECT template, got %q", string(projectFile))
 	}
 
 	agentsFile, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
@@ -97,6 +107,7 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	customHeartbeat := "custom heartbeat"
 	customMemory := "custom memory"
+	customProject := "custom project"
 	customAgents := "custom agents"
 	customSoul := "custom soul"
 	customUser := "custom user"
@@ -107,6 +118,9 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte(customMemory), 0o644); err != nil {
 		t.Fatalf("write MEMORY.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "PROJECT.md"), []byte(customProject), 0o644); err != nil {
+		t.Fatalf("write PROJECT.md: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(customAgents), 0o644); err != nil {
 		t.Fatalf("write AGENTS.md: %v", err)
@@ -142,6 +156,14 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	if string(memoryFile) != customMemory {
 		t.Fatalf("expected existing MEMORY.md to remain unchanged, got %q", string(memoryFile))
+	}
+
+	projectFile, err := os.ReadFile(filepath.Join(root, "PROJECT.md"))
+	if err != nil {
+		t.Fatalf("read PROJECT.md: %v", err)
+	}
+	if string(projectFile) != customProject {
+		t.Fatalf("expected existing PROJECT.md to remain unchanged, got %q", string(projectFile))
 	}
 
 	agentsFile, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))

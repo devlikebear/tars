@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tarsncase/internal/memory"
 )
 
 func NewMemoryGetTool(workspaceDir string) Tool {
@@ -24,14 +26,22 @@ func newMemoryGetTool(workspaceDir string, nowFn func() time.Time) Tool {
   "type":"object",
   "properties":{
     "date":{"type":"string","description":"Date for daily memory in YYYY-MM-DD format."},
-    "target":{"type":"string","enum":["daily","memory"],"default":"daily"}
+    "target":{"type":"string","enum":["daily","memory","experiences"],"default":"daily"},
+    "query":{"type":"string","description":"optional text query for experiences target"},
+    "category":{"type":"string","description":"optional category filter for experiences target"},
+    "project_id":{"type":"string","description":"optional project id filter for experiences target"},
+    "limit":{"type":"integer","minimum":1,"maximum":100,"default":8}
   },
   "additionalProperties":false
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			var input struct {
-				Date   string `json:"date,omitempty"`
-				Target string `json:"target,omitempty"`
+				Date      string `json:"date,omitempty"`
+				Target    string `json:"target,omitempty"`
+				Query     string `json:"query,omitempty"`
+				Category  string `json:"category,omitempty"`
+				ProjectID string `json:"project_id,omitempty"`
+				Limit     int    `json:"limit,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return memoryGetErrorResult(fmt.Sprintf("invalid arguments: %v", err)), nil
@@ -56,8 +66,32 @@ func newMemoryGetTool(workspaceDir string, nowFn func() time.Time) Tool {
 			case "memory":
 				path := filepath.Join(workspaceDir, "MEMORY.md")
 				return readMemoryGetFile(path, "MEMORY.md not found"), nil
+			case "experiences":
+				rows, err := memory.SearchExperiences(workspaceDir, memory.SearchOptions{
+					Query:     strings.TrimSpace(input.Query),
+					Category:  strings.TrimSpace(input.Category),
+					ProjectID: strings.TrimSpace(input.ProjectID),
+					Limit:     input.Limit,
+				})
+				if err != nil {
+					return memoryGetErrorResult(fmt.Sprintf("search experiences failed: %v", err)), nil
+				}
+				payload := map[string]any{
+					"target":  "experiences",
+					"query":   strings.TrimSpace(input.Query),
+					"results": rows,
+				}
+				encoded, err := json.Marshal(payload)
+				if err != nil {
+					return memoryGetErrorResult(fmt.Sprintf("marshal experiences failed: %v", err)), nil
+				}
+				return Result{
+					Content: []ContentBlock{
+						{Type: "text", Text: string(encoded)},
+					},
+				}, nil
 			default:
-				return memoryGetErrorResult("target must be one of: daily, memory"), nil
+				return memoryGetErrorResult("target must be one of: daily, memory, experiences"), nil
 			}
 		},
 	}

@@ -11,8 +11,10 @@ import (
 	"github.com/devlikebear/tarsncase/internal/agent"
 	"github.com/devlikebear/tarsncase/internal/extensions"
 	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tarsncase/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -31,6 +33,7 @@ type chatHandlerDeps struct {
 type chatRequestPayload struct {
 	SessionID string `json:"session_id"`
 	Message   string `json:"message"`
+	ProjectID string `json:"project_id,omitempty"`
 }
 
 type chatRunState struct {
@@ -38,6 +41,7 @@ type chatRunState struct {
 	workspaceID         string
 	store               *session.Store
 	sessionID           string
+	projectID           string
 	transcriptPath      string
 	history             []session.Message
 	registry            *tool.Registry
@@ -82,7 +86,12 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	stream := newChatStreamWriter(w, state.sessionID, deps.logger)
 	stream.status("stream_open", "stream connected", "", "", "", "")
 
-	chatResp, deltaSent, err := executeChatLoop(r.Context(), deps, state, stream)
+	chatCtx := usage.WithCallMeta(r.Context(), usage.CallMeta{
+		Source:    "chat",
+		SessionID: state.sessionID,
+		ProjectID: state.projectID,
+	})
+	chatResp, deltaSent, err := executeChatLoop(chatCtx, deps, state, stream)
 	if err != nil {
 		stream.error(err)
 		return
@@ -96,7 +105,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	}
 
 	persistChatResult(state, req.Message, chatResp, deps.logger)
-	stream.done(chatResp.Usage.InputTokens, chatResp.Usage.OutputTokens)
+	stream.done(chatResp.Usage)
 	deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request complete")
 }
 
@@ -154,8 +163,16 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 	invokedSkill := resolveInvokedSkill(req.Message, deps.tooling.Extensions)
 	systemPrompt, toolChoice, _ := prepareChatContextWithExtensions(requestWorkspaceDir, req.Message, extSnapshot, invokedSkill)
+	resolvedProjectID, activeProject, projectPrompt, err := resolveChatProjectContext(requestWorkspaceDir, reqStore, sessionID, strings.TrimSpace(req.ProjectID))
+	if err != nil {
+		return chatRunState{}, http.StatusNotFound, err.Error(), err
+	}
+	if strings.TrimSpace(projectPrompt) != "" {
+		systemPrompt += "\n" + strings.TrimSpace(projectPrompt) + "\n"
+	}
 	deps.logger.Debug().
 		Str("session_id", sessionID).
+		Str("project_id", resolvedProjectID).
 		Int("history_messages", len(history)).
 		Int("system_prompt_len", len(systemPrompt)).
 		Str("tool_choice", toolChoice).
@@ -168,7 +185,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 
 	llmMessages := buildLLMMessages(systemPrompt, history, req.Message)
-	injectedSchemas := registry.Schemas()
+	injectedSchemas := resolveInjectedToolSchemas(registry, deps.tooling.ToolsDefaultSet, activeProject)
 	deps.logger.Debug().
 		Str("session_id", sessionID).
 		Int("tool_count_injected", len(injectedSchemas)).
@@ -180,6 +197,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		workspaceID:         workspaceID,
 		store:               reqStore,
 		sessionID:           sessionID,
+		projectID:           resolvedProjectID,
 		transcriptPath:      transcriptPath,
 		history:             history,
 		registry:            registry,
@@ -198,6 +216,16 @@ func buildChatToolRegistry(
 	deps chatHandlerDeps,
 ) *tool.Registry {
 	registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, deps.tooling.ProcessManager)
+	projectStore := project.NewStore(requestWorkspaceDir, nil)
+	registry.Register(tool.NewProjectCreateTool(projectStore))
+	registry.Register(tool.NewProjectListTool(projectStore))
+	registry.Register(tool.NewProjectGetTool(projectStore))
+	registry.Register(tool.NewProjectUpdateTool(projectStore))
+	registry.Register(tool.NewProjectDeleteTool(projectStore))
+	registry.Register(tool.NewProjectActivateTool(projectStore, reqStore, deps.mainSessionID))
+	if deps.tooling.UsageTracker != nil {
+		registry.Register(tool.NewUsageReportTool(deps.tooling.UsageTracker))
+	}
 	registry.Register(tool.NewSessionsListTool(reqStore))
 	registry.Register(tool.NewSessionsHistoryTool(reqStore))
 	registry.Register(tool.NewSessionsSendTool(deps.tooling.Gateway))
@@ -276,8 +304,172 @@ func persistChatResult(state chatRunState, userMessage string, chatResp llm.Chat
 	} else if err := state.store.Touch(state.sessionID, assistantMsg.Timestamp); err != nil {
 		logger.Error().Err(err).Str("session_id", state.sessionID).Msg("touch session updated_at failed")
 	}
-	if err := writeChatMemory(state.requestWorkspaceDir, state.sessionID, userMessage, chatResp.Message.Content, assistantMsg.Timestamp); err != nil {
+	if err := writeChatMemory(state.requestWorkspaceDir, state.sessionID, state.projectID, userMessage, chatResp.Message.Content, assistantMsg.Timestamp); err != nil {
 		logger.Error().Err(err).Str("session_id", state.sessionID).Msg("write chat memory failed")
+	}
+}
+
+func resolveChatProjectContext(
+	workspaceDir string,
+	store *session.Store,
+	sessionID string,
+	requestProjectID string,
+) (string, *project.Project, string, error) {
+	var sessionProjectID string
+	if store != nil && strings.TrimSpace(sessionID) != "" {
+		sess, err := store.Get(strings.TrimSpace(sessionID))
+		if err == nil {
+			sessionProjectID = strings.TrimSpace(sess.ProjectID)
+		}
+	}
+	resolvedID := strings.TrimSpace(requestProjectID)
+	if resolvedID == "" {
+		resolvedID = sessionProjectID
+	}
+	if resolvedID == "" {
+		return "", nil, "", nil
+	}
+
+	projectStore := project.NewStore(workspaceDir, nil)
+	item, err := projectStore.Get(resolvedID)
+	if err != nil {
+		return "", nil, "", fmt.Errorf("project not found: %s", resolvedID)
+	}
+	if store != nil && strings.TrimSpace(sessionID) != "" && strings.TrimSpace(requestProjectID) != "" {
+		_ = store.SetProjectID(strings.TrimSpace(sessionID), item.ID)
+	}
+	return item.ID, &item, formatProjectPromptSection(item), nil
+}
+
+func formatProjectPromptSection(item project.Project) string {
+	var b strings.Builder
+	b.WriteString("## Active Project\n")
+	if strings.TrimSpace(item.ID) != "" {
+		_, _ = fmt.Fprintf(&b, "- id: %s\n", strings.TrimSpace(item.ID))
+	}
+	if strings.TrimSpace(item.Name) != "" {
+		_, _ = fmt.Fprintf(&b, "- name: %s\n", strings.TrimSpace(item.Name))
+	}
+	if strings.TrimSpace(item.Type) != "" {
+		_, _ = fmt.Fprintf(&b, "- type: %s\n", strings.TrimSpace(item.Type))
+	}
+	if strings.TrimSpace(item.Status) != "" {
+		_, _ = fmt.Fprintf(&b, "- status: %s\n", strings.TrimSpace(item.Status))
+	}
+	if strings.TrimSpace(item.Objective) != "" {
+		_, _ = fmt.Fprintf(&b, "- objective: %s\n", strings.TrimSpace(item.Objective))
+	}
+	if len(item.ToolsAllow) > 0 {
+		_, _ = fmt.Fprintf(&b, "- tools_allow: %s\n", strings.Join(item.ToolsAllow, ", "))
+	}
+	if body := strings.TrimSpace(item.Body); body != "" {
+		b.WriteString("\n")
+		b.WriteString(body)
+		if !strings.HasSuffix(body, "\n") {
+			b.WriteString("\n")
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func resolveInjectedToolSchemas(registry *tool.Registry, toolsDefaultSet string, activeProject *project.Project) []llm.ToolSchema {
+	if registry == nil {
+		return nil
+	}
+	mode := strings.TrimSpace(strings.ToLower(toolsDefaultSet))
+	if activeProject == nil {
+		if mode == "minimal" {
+			return registry.SchemasForNames(defaultMinimalToolNames())
+		}
+		return registry.Schemas()
+	}
+
+	names := defaultMinimalToolNames()
+	projectAllow := append([]string{}, activeProject.ToolsAllow...)
+	if known := knownToolsFromRegistry(registry); len(known) > 0 {
+		if len(activeProject.ToolsAllowGroups) > 0 {
+			groups := knownGatewayPromptToolGroups(known)
+			_, groupTools, _ := normalizeGatewayToolsAllowGroups(activeProject.ToolsAllowGroups, groups)
+			projectAllow = append(projectAllow, groupTools...)
+		}
+		if len(activeProject.ToolsAllowPatterns) > 0 {
+			_, patternTools, _ := normalizeGatewayToolsAllowPatterns(activeProject.ToolsAllowPatterns, known)
+			projectAllow = append(projectAllow, patternTools...)
+		}
+	}
+	if len(projectAllow) > 0 {
+		names = append(names, projectAllow...)
+	}
+	names = normalizeToolNames(names)
+	if len(activeProject.ToolsDeny) > 0 {
+		denySet := map[string]struct{}{}
+		for _, item := range activeProject.ToolsDeny {
+			name := tool.CanonicalToolName(item)
+			if name == "" {
+				continue
+			}
+			denySet[name] = struct{}{}
+		}
+		filtered := make([]string, 0, len(names))
+		for _, name := range names {
+			if _, denied := denySet[name]; denied {
+				continue
+			}
+			filtered = append(filtered, name)
+		}
+		names = filtered
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return registry.SchemasForNames(names)
+}
+
+func knownToolsFromRegistry(registry *tool.Registry) map[string]struct{} {
+	out := map[string]struct{}{}
+	if registry == nil {
+		return out
+	}
+	for _, schema := range registry.Schemas() {
+		name := tool.CanonicalToolName(schema.Function.Name)
+		if name == "" {
+			continue
+		}
+		out[name] = struct{}{}
+	}
+	return out
+}
+
+func normalizeToolNames(names []string) []string {
+	out := make([]string, 0, len(names))
+	seen := map[string]struct{}{}
+	for _, item := range names {
+		name := tool.CanonicalToolName(item)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
+}
+
+func defaultMinimalToolNames() []string {
+	return []string{
+		"memory_get",
+		"memory_search",
+		"memory_save",
+		"project_get",
+		"project_list",
+		"project_update",
+		"project_activate",
+		"usage_report",
+		"session_status",
+		"sessions_list",
+		"sessions_history",
 	}
 }
 
@@ -343,13 +535,16 @@ func (s *chatStreamWriter) error(err error) {
 	s.send(map[string]string{"type": "error", "error": msg})
 }
 
-func (s *chatStreamWriter) done(inputTokens, outputTokens int) {
+func (s *chatStreamWriter) done(usage llm.Usage) {
 	s.send(map[string]any{
 		"type":       "done",
 		"session_id": s.sessionID,
 		"usage": map[string]int{
-			"input_tokens":  inputTokens,
-			"output_tokens": outputTokens,
+			"input_tokens":       usage.InputTokens,
+			"output_tokens":      usage.OutputTokens,
+			"cached_tokens":      usage.CachedTokens,
+			"cache_read_tokens":  usage.CacheReadTokens,
+			"cache_write_tokens": usage.CacheWriteTokens,
 		},
 	})
 }
