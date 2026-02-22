@@ -2,10 +2,13 @@ package tarsserver
 
 import (
 	"context"
+	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/config"
 	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/session"
@@ -36,6 +39,113 @@ func TestTelegramCommand_Help_ReturnsCommands(t *testing.T) {
 	}
 	if !strings.Contains(result, "/help") || !strings.Contains(result, "/status") {
 		t.Fatalf("expected help output, got %q", result)
+	}
+	if !strings.Contains(result, "/providers") || !strings.Contains(result, "/models") {
+		t.Fatalf("expected provider/model commands in help output, got %q", result)
+	}
+}
+
+func TestTelegramCommand_Allowed_Providers(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	cache, err := newProviderModelsCache(filepath.Join(workspace, "provider_models_cache.json"), providerModelsCacheTTL, time.Now)
+	if err != nil {
+		t.Fatalf("newProviderModelsCache: %v", err)
+	}
+	service := newProviderModelsService(config.Config{
+		LLMProvider: "openai-codex",
+		LLMModel:    "gpt-5.3-codex",
+		LLMAuthMode: "oauth",
+	}, cache, &fakeModelFetcher{}, time.Now)
+	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
+		Store:          store,
+		CronResolver:   newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),
+		Runtime:        nil,
+		MainSession:    "sess-main",
+		SessionScope:   "main",
+		ProviderModels: service,
+		Logger:         zerolog.New(io.Discard),
+	})
+
+	handled, result, nextSession, err := handler.Execute(context.Background(), "/providers", "")
+	if err != nil {
+		t.Fatalf("Execute /providers: %v", err)
+	}
+	if !handled || strings.TrimSpace(nextSession) != "" {
+		t.Fatalf("expected handled without session switch, handled=%t next=%q", handled, nextSession)
+	}
+	if !strings.Contains(result, "provider=openai-codex") || !strings.Contains(result, "openai-codex") {
+		t.Fatalf("unexpected /providers output: %q", result)
+	}
+}
+
+func TestTelegramCommand_Allowed_Models(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	cache, err := newProviderModelsCache(filepath.Join(workspace, "provider_models_cache.json"), providerModelsCacheTTL, time.Now)
+	if err != nil {
+		t.Fatalf("newProviderModelsCache: %v", err)
+	}
+	service := newProviderModelsService(config.Config{
+		LLMProvider: "openai-codex",
+		LLMModel:    "gpt-5.3-codex",
+		LLMAuthMode: "oauth",
+		LLMBaseURL:  "https://chatgpt.com/backend-api",
+	}, cache, &fakeModelFetcher{models: []string{"gpt-5.3-codex", "gpt-4.1-codex"}}, time.Now)
+	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
+		Store:          store,
+		CronResolver:   newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),
+		Runtime:        nil,
+		MainSession:    "sess-main",
+		SessionScope:   "main",
+		ProviderModels: service,
+		Logger:         zerolog.New(io.Discard),
+	})
+
+	handled, result, nextSession, err := handler.Execute(context.Background(), "/models", "")
+	if err != nil {
+		t.Fatalf("Execute /models: %v", err)
+	}
+	if !handled || strings.TrimSpace(nextSession) != "" {
+		t.Fatalf("expected handled without session switch, handled=%t next=%q", handled, nextSession)
+	}
+	if !strings.Contains(result, "models provider=openai-codex") || !strings.Contains(result, "gpt-5.3-codex") {
+		t.Fatalf("unexpected /models output: %q", result)
+	}
+}
+
+func TestTelegramCommand_Allowed_ModelListAlias(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	cache, err := newProviderModelsCache(filepath.Join(workspace, "provider_models_cache.json"), providerModelsCacheTTL, time.Now)
+	if err != nil {
+		t.Fatalf("newProviderModelsCache: %v", err)
+	}
+	service := newProviderModelsService(config.Config{
+		LLMProvider: "openai",
+		LLMModel:    "gpt-4o-mini",
+		LLMAuthMode: "api-key",
+		LLMBaseURL:  "https://api.openai.com/v1",
+	}, cache, &fakeModelFetcher{models: []string{"gpt-4o-mini"}}, time.Now)
+	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
+		Store:          store,
+		CronResolver:   newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),
+		Runtime:        nil,
+		MainSession:    "sess-main",
+		SessionScope:   "main",
+		ProviderModels: service,
+		Logger:         zerolog.New(io.Discard),
+	})
+
+	handled, result, _, err := handler.Execute(context.Background(), "/model list", "")
+	if err != nil {
+		t.Fatalf("Execute /model list: %v", err)
+	}
+	if !handled {
+		t.Fatalf("expected /model list to be handled")
+	}
+	if !strings.Contains(result, "models provider=openai") {
+		t.Fatalf("unexpected /model list output: %q", result)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tarsncase/internal/textutil"
 	"github.com/rs/zerolog"
 )
 
@@ -29,31 +30,34 @@ func (f telegramCommandExecFunc) Execute(ctx context.Context, line, currentSessi
 }
 
 type telegramCommandHandlerOptions struct {
-	Store        *session.Store
-	CronResolver *workspaceCronStoreResolver
-	Runtime      *gateway.Runtime
-	MainSession  string
-	SessionScope string
-	Logger       zerolog.Logger
+	Store          *session.Store
+	CronResolver   *workspaceCronStoreResolver
+	Runtime        *gateway.Runtime
+	MainSession    string
+	SessionScope   string
+	ProviderModels *providerModelsService
+	Logger         zerolog.Logger
 }
 
 type telegramCommandHandler struct {
-	store        *session.Store
-	cronResolver *workspaceCronStoreResolver
-	runtime      *gateway.Runtime
-	mainSession  string
-	sessionScope string
-	logger       zerolog.Logger
+	store          *session.Store
+	cronResolver   *workspaceCronStoreResolver
+	runtime        *gateway.Runtime
+	mainSession    string
+	sessionScope   string
+	providerModels *providerModelsService
+	logger         zerolog.Logger
 }
 
 func newTelegramCommandHandler(opts telegramCommandHandlerOptions) *telegramCommandHandler {
 	return &telegramCommandHandler{
-		store:        opts.Store,
-		cronResolver: opts.CronResolver,
-		runtime:      opts.Runtime,
-		mainSession:  strings.TrimSpace(opts.MainSession),
-		sessionScope: normalizeTelegramSessionScope(opts.SessionScope),
-		logger:       opts.Logger,
+		store:          opts.Store,
+		cronResolver:   opts.CronResolver,
+		runtime:        opts.Runtime,
+		mainSession:    strings.TrimSpace(opts.MainSession),
+		sessionScope:   normalizeTelegramSessionScope(opts.SessionScope),
+		providerModels: opts.ProviderModels,
+		logger:         opts.Logger,
 	}
 }
 
@@ -80,6 +84,14 @@ func (h *telegramCommandHandler) Execute(ctx context.Context, line, currentSessi
 		return true, h.cmdStatus(), "", nil
 	case "/health":
 		return true, "SYSTEM > ok=true component=tars", "", nil
+	case "/providers":
+		return true, h.cmdProviders(), "", nil
+	case "/models":
+		result, err := h.cmdModels(ctx)
+		return true, result, "", err
+	case "/model":
+		result, err := h.cmdModel(ctx, fields)
+		return true, result, "", err
 	case "/cron":
 		result, err := h.cmdCron(ctx, fields)
 		return true, result, "", err
@@ -109,6 +121,66 @@ func (h *telegramCommandHandler) Execute(ctx context.Context, line, currentSessi
 	}
 }
 
+func (h *telegramCommandHandler) cmdProviders() string {
+	if h.providerModels == nil {
+		return "SYSTEM > provider metadata unavailable: service is not configured"
+	}
+	info := h.providerModels.providers()
+	lines := []string{
+		fmt.Sprintf("SYSTEM > provider=%s model=%s auth_mode=%s supported=%d",
+			textutil.ValueOrDash(info.CurrentProvider),
+			textutil.ValueOrDash(info.CurrentModel),
+			textutil.ValueOrDash(info.AuthMode),
+			len(info.Providers),
+		),
+	}
+	for _, item := range info.Providers {
+		lines = append(lines, fmt.Sprintf("- %s live_models=%t", strings.TrimSpace(item.ID), item.SupportsLiveModels))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (h *telegramCommandHandler) cmdModel(ctx context.Context, fields []string) (string, error) {
+	if len(fields) < 2 {
+		return "SYSTEM > usage: /model list", nil
+	}
+	switch strings.TrimSpace(strings.ToLower(fields[1])) {
+	case "list":
+		return h.cmdModels(ctx)
+	default:
+		return "SYSTEM > usage: /model list", nil
+	}
+}
+
+func (h *telegramCommandHandler) cmdModels(ctx context.Context) (string, error) {
+	if h.providerModels == nil {
+		return "SYSTEM > models unavailable: service is not configured", nil
+	}
+	info, err := h.providerModels.models(ctx)
+	if err != nil {
+		return "", err
+	}
+	lines := []string{
+		fmt.Sprintf("SYSTEM > models provider=%s current=%s source=%s stale=%t count=%d",
+			textutil.ValueOrDash(info.Provider),
+			textutil.ValueOrDash(info.CurrentModel),
+			textutil.ValueOrDash(info.Source),
+			info.Stale,
+			len(info.Models),
+		),
+	}
+	if fetchedAt := strings.TrimSpace(info.FetchedAt); fetchedAt != "" {
+		lines = append(lines, fmt.Sprintf("fetched_at=%s expires_at=%s", fetchedAt, textutil.ValueOrDash(info.ExpiresAt)))
+	}
+	if warning := strings.TrimSpace(info.Warning); warning != "" {
+		lines = append(lines, "warning="+warning)
+	}
+	for _, model := range info.Models {
+		lines = append(lines, "- "+strings.TrimSpace(model))
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
 func (h *telegramCommandHandler) cmdStatus() string {
 	if h.store == nil {
 		return "SYSTEM > status unavailable: session store is not configured"
@@ -122,7 +194,7 @@ func (h *telegramCommandHandler) cmdStatus() string {
 	return fmt.Sprintf(
 		"SYSTEM > sessions=%d main_session=%s session_scope=%s",
 		len(sessions),
-		valueOrDash(mainSessionID),
+		textutil.ValueOrDash(mainSessionID),
 		scope,
 	)
 }
@@ -330,6 +402,9 @@ func telegramHelpText() string {
 /sessions
 /status
 /health
+/providers
+/models
+/model list
 /cron {list|runs {job_id} [limit]}
 /gateway status
 /channels
@@ -348,14 +423,6 @@ func blockedCommandMessage(reason string) string {
 
 func blockInMainSessionMessage() string {
 	return blockedCommandMessage("main session mode does not support session switching. use per-user mode.")
-}
-
-func valueOrDash(raw string) string {
-	v := strings.TrimSpace(raw)
-	if v == "" {
-		return "-"
-	}
-	return v
 }
 
 func splitTelegramMessage(text string, maxLen int) []string {

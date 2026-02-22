@@ -19,6 +19,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/extensions"
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
+	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/mcp"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/rs/zerolog"
@@ -112,6 +113,11 @@ func buildAPIMux(
 	if err != nil {
 		return nil, err
 	}
+	providerModelsCache, err := newProviderModelsCache(providerModelsCachePath(cfg), providerModelsCacheTTL, nowFn)
+	if err != nil {
+		return nil, err
+	}
+	providerModelsService := newProviderModelsService(cfg, providerModelsCache, llm.NewModelFetcher(), nowFn)
 	dispatcher := newNotificationDispatcher(
 		broker,
 		newCommandNotifier(cfg.NotifyCommand, logger),
@@ -317,6 +323,9 @@ func buildAPIMux(
 	mux.Handle("/v1/status", newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger))
 	mux.Handle("/v1/auth/whoami", newAuthAPIHandler(cfg.APIAuthMode))
 	mux.Handle("/v1/healthz", newHealthzAPIHandler(nowFn))
+	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
+	mux.Handle("/v1/providers", providersModelsHandler)
+	mux.Handle("/v1/models", providersModelsHandler)
 	mux.Handle("/v1/compact", newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmClient, logger))
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
 	mux.Handle("/v1/cron/jobs", cronHandler)
@@ -367,12 +376,13 @@ func buildAPIMux(
 	telegramInbound.mainSessionID = strings.TrimSpace(mainSessionID)
 	telegramInbound.sessionScope = normalizeTelegramSessionScope(cfg.SessionTelegramScope)
 	telegramInbound.commands = newTelegramCommandHandler(telegramCommandHandlerOptions{
-		Store:        sessionStore,
-		CronResolver: cronStoreResolver,
-		Runtime:      gatewayRuntime,
-		MainSession:  mainSessionID,
-		SessionScope: cfg.SessionTelegramScope,
-		Logger:       logger,
+		Store:          sessionStore,
+		CronResolver:   cronStoreResolver,
+		Runtime:        gatewayRuntime,
+		MainSession:    mainSessionID,
+		SessionScope:   cfg.SessionTelegramScope,
+		ProviderModels: providerModelsService,
+		Logger:         logger,
 	})
 	telegramInbound.media = newTelegramMediaDownloader(cfg.TelegramBotToken, cfg.WorkspaceDir)
 	telegramPoller := newTelegramUpdatePoller(cfg.TelegramBotToken, logger, telegramInbound.HandleUpdate)
