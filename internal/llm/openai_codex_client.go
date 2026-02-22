@@ -119,7 +119,7 @@ func (c *OpenAICodexClient) Chat(ctx context.Context, messages []ChatMessage, op
 		return ChatResponse{}, newProviderError(openAICodexProviderLabel, "auth", err)
 	}
 	streaming := opts.OnDelta != nil
-	return c.chatWithCredential(ctx, cred, messages, opts, streaming, true)
+	return c.chatWithCredential(ctx, cred, messages, opts, streaming, true, true)
 }
 
 func (c *OpenAICodexClient) chatWithCredential(
@@ -129,6 +129,7 @@ func (c *OpenAICodexClient) chatWithCredential(
 	opts ChatOptions,
 	streaming bool,
 	allowRefreshRetry bool,
+	allowStreamFallback bool,
 ) (ChatResponse, error) {
 	toolNameMap := newOpenAICodexToolNameMap(opts.Tools)
 	body, err := buildOpenAICodexRequestBody(messages, opts, c.model, streaming, toolNameMap)
@@ -183,11 +184,14 @@ func (c *OpenAICodexClient) chatWithCredential(
 			refreshed.AccountID = auth.ParseCodexAccountIDFromJWT(refreshed.AccessToken)
 		}
 		c.setOverrideCredential(refreshed)
-		return c.chatWithCredential(ctx, refreshed, messages, opts, streaming, false)
+		return c.chatWithCredential(ctx, refreshed, messages, opts, streaming, false, allowStreamFallback)
 	}
 
 	defer resp.Body.Close()
 	if err := checkHTTPStatus(resp, openAICodexProviderLabel); err != nil {
+		if allowStreamFallback && !streaming && isOpenAICodexStreamRequiredError(err) {
+			return c.chatWithCredential(ctx, cred, messages, opts, true, allowRefreshRetry, false)
+		}
 		return ChatResponse{}, err
 	}
 
@@ -195,6 +199,18 @@ func (c *OpenAICodexClient) chatWithCredential(
 		return parseOpenAICodexSSE(resp.Body, opts, toolNameMap)
 	}
 	return parseOpenAICodexJSON(resp.Body, toolNameMap)
+}
+
+func isOpenAICodexStreamRequiredError(err error) bool {
+	providerErr, ok := err.(*ProviderError)
+	if !ok || providerErr == nil {
+		return false
+	}
+	if providerErr.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	message := strings.TrimSpace(strings.ToLower(providerErr.Message))
+	return strings.Contains(message, "stream must be set to true")
 }
 
 func (c *OpenAICodexClient) getCredential() (auth.CodexCredential, error) {

@@ -458,6 +458,65 @@ func TestOpenAICodexClient_RefreshRetry401_RetriesOnce(t *testing.T) {
 	}
 }
 
+func TestOpenAICodexClient_StreamRequiredFallback_RetriesWithStream(t *testing.T) {
+	var requestCount int
+	var streamValues []bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		stream, _ := body["stream"].(bool)
+		streamValues = append(streamValues, stream)
+		if !stream {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"detail":"Stream must be set to true"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICodexClientWithConfig(
+		srv.URL,
+		"gpt-5.3-codex",
+		"oauth",
+		"openai-codex",
+		"",
+		DefaultClientConfig(),
+		func() (auth.CodexCredential, error) {
+			return auth.CodexCredential{AccessToken: "token-1"}, nil
+		},
+		func(context.Context, auth.CodexCredential) (auth.CodexCredential, error) {
+			t.Fatal("refresh should not be called")
+			return auth.CodexCredential{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	resp, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hello"},
+	}, ChatOptions{})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if resp.Message.Content != "ok" {
+		t.Fatalf("expected fallback streamed response ok, got %q", resp.Message.Content)
+	}
+	if requestCount != 2 {
+		t.Fatalf("expected two requests with stream fallback, got %d", requestCount)
+	}
+	if len(streamValues) != 2 || streamValues[0] || !streamValues[1] {
+		t.Fatalf("expected stream flags [false,true], got %#v", streamValues)
+	}
+}
+
 func containsAnyString(values []any, needle string) bool {
 	for _, raw := range values {
 		if s, ok := raw.(string); ok && s == needle {
