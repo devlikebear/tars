@@ -52,6 +52,24 @@ func merge(dst *Config, src Config) {
 	if src.LLMModel != "" {
 		dst.LLMModel = src.LLMModel
 	}
+	if src.UsageLimitDailyUSD > 0 {
+		dst.UsageLimitDailyUSD = src.UsageLimitDailyUSD
+	}
+	if src.UsageLimitWeeklyUSD > 0 {
+		dst.UsageLimitWeeklyUSD = src.UsageLimitWeeklyUSD
+	}
+	if src.UsageLimitMonthlyUSD > 0 {
+		dst.UsageLimitMonthlyUSD = src.UsageLimitMonthlyUSD
+	}
+	if src.UsageLimitMode != "" {
+		dst.UsageLimitMode = src.UsageLimitMode
+	}
+	if len(src.UsagePriceOverrides) > 0 {
+		dst.UsagePriceOverrides = map[string]UsagePrice{}
+		for key, value := range src.UsagePriceOverrides {
+			dst.UsagePriceOverrides[key] = value
+		}
+	}
 	if src.AgentMaxIterations > 0 {
 		dst.AgentMaxIterations = src.AgentMaxIterations
 	}
@@ -75,6 +93,9 @@ func merge(dst *Config, src Config) {
 	}
 	if src.ToolsWebFetchEnabled {
 		dst.ToolsWebFetchEnabled = true
+	}
+	if src.ToolsDefaultSet != "" {
+		dst.ToolsDefaultSet = src.ToolsDefaultSet
 	}
 	if src.ToolsWebSearchAPIKey != "" {
 		dst.ToolsWebSearchAPIKey = src.ToolsWebSearchAPIKey

@@ -3,12 +3,16 @@ package tarsserver
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tarsncase/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -46,10 +50,16 @@ func newCronJobRunnerWithNotify(
 		if payload := strings.TrimSpace(string(job.Payload)); payload != "" {
 			promptText += "\n\nCRON_PAYLOAD_JSON:\n" + payload
 		}
+		if projectPrompt := buildCronProjectPromptSection(targetWorkspaceDir, job.ProjectID); projectPrompt != "" {
+			promptText += "\n\n" + projectPrompt
+		}
 
 		targetSessionID, explicitTarget, err := resolveCronTargetSessionID(targetStore, job.SessionTarget, mainSessionID)
 		if err != nil {
 			return "", err
+		}
+		if strings.TrimSpace(job.ProjectID) != "" && targetStore != nil && targetSessionID != "" {
+			_ = targetStore.SetProjectID(targetSessionID, strings.TrimSpace(job.ProjectID))
 		}
 		if targetSessionID != "" {
 			contextText, err := sessionContextByID(targetStore, targetSessionID, 6)
@@ -65,7 +75,13 @@ func newCronJobRunnerWithNotify(
 		if strings.TrimSpace(job.ID) != "" {
 			runLabel = "cron:" + strings.TrimSpace(job.ID)
 		}
-		response, err := runPrompt(ctx, runLabel, promptText)
+		runCtx := usage.WithCallMeta(ctx, usage.CallMeta{
+			Source:    "cron",
+			SessionID: targetSessionID,
+			ProjectID: strings.TrimSpace(job.ProjectID),
+			RunID:     strings.TrimSpace(job.ID),
+		})
+		response, err := runPrompt(runCtx, runLabel, promptText)
 		if err != nil {
 			if emit != nil {
 				evt := newNotificationEvent("cron", "error", "Cron failed", trimForMemory(err.Error(), 240))
@@ -92,8 +108,78 @@ func newCronJobRunnerWithNotify(
 			evt.SessionID = strings.TrimSpace(targetSessionID)
 			emit(ctx, evt)
 		}
+		if err := persistCronProjectArtifact(targetWorkspaceDir, job, response, time.Now().UTC()); err != nil {
+			logger.Debug().Err(err).Str("job_id", strings.TrimSpace(job.ID)).Str("project_id", strings.TrimSpace(job.ProjectID)).Msg("persist cron project artifact failed")
+		}
 		return response, nil
 	}
+}
+
+func buildCronProjectPromptSection(workspaceDir string, projectID string) string {
+	root := strings.TrimSpace(workspaceDir)
+	id := strings.TrimSpace(projectID)
+	if root == "" || id == "" {
+		return ""
+	}
+	store := project.NewStore(root, nil)
+	item, err := store.Get(id)
+	if err != nil {
+		return fmt.Sprintf("CRON_PROJECT_CONTEXT:\n- project_id: %s\n- warning: project metadata not found", id)
+	}
+	artifactDir := filepath.Join(root, "projects", item.ID)
+	var b strings.Builder
+	b.WriteString("CRON_PROJECT_CONTEXT:\n")
+	_, _ = fmt.Fprintf(&b, "- project_id: %s\n", strings.TrimSpace(item.ID))
+	_, _ = fmt.Fprintf(&b, "- project_name: %s\n", strings.TrimSpace(item.Name))
+	_, _ = fmt.Fprintf(&b, "- project_type: %s\n", strings.TrimSpace(item.Type))
+	_, _ = fmt.Fprintf(&b, "- project_status: %s\n", strings.TrimSpace(item.Status))
+	_, _ = fmt.Fprintf(&b, "- artifacts_dir: %s\n", artifactDir)
+	if body := strings.TrimSpace(item.Body); body != "" {
+		b.WriteString("\nPROJECT_INSTRUCTIONS:\n")
+		b.WriteString(body)
+		b.WriteString("\n")
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func persistCronProjectArtifact(workspaceDir string, job cron.Job, response string, now time.Time) error {
+	root := strings.TrimSpace(workspaceDir)
+	projectID := strings.TrimSpace(job.ProjectID)
+	if root == "" || projectID == "" {
+		return nil
+	}
+	artifactDir := filepath.Join(root, "projects", projectID, "cron_runs")
+	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+		return err
+	}
+	fileName := fmt.Sprintf("%s_%s.md", now.UTC().Format("20060102T150405Z"), sanitizeArtifactID(job.ID))
+	path := filepath.Join(artifactDir, fileName)
+	content := fmt.Sprintf(
+		"# Cron Run\n\n- project_id: %s\n- job_id: %s\n- job_name: %s\n- ran_at: %s\n\n## Prompt\n\n%s\n\n## Response\n\n%s\n",
+		projectID,
+		strings.TrimSpace(job.ID),
+		strings.TrimSpace(job.Name),
+		now.UTC().Format(time.RFC3339),
+		strings.TrimSpace(job.Prompt),
+		strings.TrimSpace(response),
+	)
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func sanitizeArtifactID(raw string) string {
+	id := strings.TrimSpace(raw)
+	if id == "" {
+		return "job"
+	}
+	var b strings.Builder
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteRune('_')
+	}
+	return b.String()
 }
 
 func resolveCronTargetSessionID(store *session.Store, raw string, mainSessionID string) (sessionID string, explicitTarget bool, err error) {

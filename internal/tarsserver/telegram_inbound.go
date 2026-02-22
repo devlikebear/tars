@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/agent"
+	"github.com/devlikebear/tarsncase/internal/approval"
 	"github.com/devlikebear/tarsncase/internal/extensions"
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tarsncase/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -32,6 +34,7 @@ type telegramInboundHandler struct {
 	maxIterations int
 	tooling       chatToolingOptions
 	extraTools    []tool.Tool
+	otpManager    *approval.OTPManager
 	logger        zerolog.Logger
 }
 
@@ -88,6 +91,14 @@ func (h *telegramInboundHandler) HandleUpdate(ctx context.Context, update telegr
 	}
 	username := strings.TrimSpace(msg.From.DisplayName())
 	inboundPayload := map[string]any{}
+
+	if strings.TrimSpace(text) != "" && h.otpManager != nil && h.otpManager.Consume(chatID, text) {
+		ack := "otp code received."
+		_ = h.sendMessageChunks(ctx, chatID, threadID, ack)
+		h.recordInbound(update.UpdateID, userID, chatID, threadID, text, "", "otp", inboundPayload)
+		h.recordOutbound(chatID, threadID, ack, "", inboundPayload)
+		return
+	}
 
 	allowed, replyText, policyTag := h.applyPolicy(userID, chatID, username)
 	if !allowed {
@@ -270,8 +281,12 @@ func (h *telegramInboundHandler) processMessage(
 	if err != nil {
 		return "", sessionID, err
 	}
+	resolvedProjectID, activeProject, projectPrompt, _ := resolveChatProjectContext(h.workspaceDir, h.store, sessionID, "")
+	if strings.TrimSpace(projectPrompt) != "" {
+		systemPrompt += "\n" + strings.TrimSpace(projectPrompt) + "\n"
+	}
 	llmMessages := buildLLMMessages(systemPrompt, history, text)
-	injectedSchemas := registry.Schemas()
+	injectedSchemas := resolveInjectedToolSchemas(registry, h.tooling.ToolsDefaultSet, activeProject)
 
 	now := time.Now().UTC()
 	if err := session.AppendMessage(transcriptPath, session.Message{
@@ -281,9 +296,21 @@ func (h *telegramInboundHandler) processMessage(
 	}); err != nil {
 		return "", sessionID, err
 	}
+	sessionProjectID := ""
+	if sess, err := h.store.Get(sessionID); err == nil {
+		sessionProjectID = strings.TrimSpace(sess.ProjectID)
+	}
+	if strings.TrimSpace(resolvedProjectID) != "" {
+		sessionProjectID = strings.TrimSpace(resolvedProjectID)
+	}
+	runCtx := usage.WithCallMeta(ctx, usage.CallMeta{
+		Source:    "chat",
+		SessionID: sessionID,
+		ProjectID: sessionProjectID,
+	})
 
 	loop := agent.NewLoop(h.llmClient, registry)
-	resp, err := loop.Run(ctx, llmMessages, agent.RunOptions{
+	resp, err := loop.Run(runCtx, llmMessages, agent.RunOptions{
 		MaxIterations: resolveAgentMaxIterations(h.maxIterations),
 		Tools:         injectedSchemas,
 		ToolChoice:    toolChoice,
@@ -306,7 +333,13 @@ func (h *telegramInboundHandler) processMessage(
 	if err := h.store.Touch(sessionID, assistantAt); err != nil {
 		h.logger.Debug().Err(err).Str("session_id", sessionID).Msg("telegram touch session failed")
 	}
-	if err := writeChatMemory(h.workspaceDir, sessionID, text, answer, assistantAt); err != nil {
+	projectID := ""
+	if h.store != nil {
+		if sess, getErr := h.store.Get(sessionID); getErr == nil {
+			projectID = strings.TrimSpace(sess.ProjectID)
+		}
+	}
+	if err := writeChatMemory(h.workspaceDir, sessionID, projectID, text, answer, assistantAt); err != nil {
 		h.logger.Debug().Err(err).Str("session_id", sessionID).Msg("telegram write chat memory failed")
 	}
 	return answer, sessionID, nil

@@ -63,7 +63,12 @@ func cmdCron(c commandContext) (bool, string, error) {
 		}
 		fmt.Fprintf(c.stdout, "SYSTEM > cron job %s\n", job.ID)
 		fmt.Fprintf(c.stdout, "name=%s schedule=%s enabled=%t delete_after_run=%t\n", cronValueOrDash(job.Name), cronValueOrDash(job.Schedule), job.Enabled, job.DeleteAfterRun)
-		fmt.Fprintf(c.stdout, "session_target=%s wake_mode=%s delivery_mode=%s\n", cronValueOrDash(job.SessionTarget), cronValueOrDash(job.WakeMode), cronValueOrDash(job.DeliveryMode))
+		fmt.Fprintf(c.stdout, "session_target=%s project_id=%s wake_mode=%s delivery_mode=%s\n",
+			cronValueOrDash(job.SessionTarget),
+			cronValueOrDash(job.ProjectID),
+			cronValueOrDash(job.WakeMode),
+			cronValueOrDash(job.DeliveryMode),
+		)
 		if strings.TrimSpace(job.LastRunAt) != "" {
 			fmt.Fprintf(c.stdout, "last_run_at=%s\n", strings.TrimSpace(job.LastRunAt))
 		}

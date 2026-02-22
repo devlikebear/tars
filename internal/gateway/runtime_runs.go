@@ -6,8 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tarsncase/internal/usage"
 )
 
 func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
@@ -53,6 +55,17 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 		}
 	}
 
+	projectID := strings.TrimSpace(req.ProjectID)
+	if sessionID != "" {
+		if sess, err := sessionStore.Get(sessionID); err == nil {
+			if projectID == "" {
+				projectID = strings.TrimSpace(sess.ProjectID)
+			} else if strings.TrimSpace(sess.ProjectID) != projectID {
+				_ = sessionStore.SetProjectID(sessionID, projectID)
+			}
+		}
+	}
+
 	now := r.nowFn().UTC()
 	runID := fmt.Sprintf("run_%d", r.runSeq.Add(1))
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -61,6 +74,7 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 		ID:          runID,
 		WorkspaceID: workspaceID,
 		SessionID:   sessionID,
+		ProjectID:   strings.TrimSpace(projectID),
 		Agent:       selectedAgent,
 		Prompt:      prompt,
 		Status:      RunStatusAccepted,
@@ -120,12 +134,25 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	if executor == nil {
 		err = fmt.Errorf("agent executor is not configured")
 	} else {
+		allowedTools := resolveRunAllowedTools(
+			r.opts.WorkspaceDir,
+			strings.TrimSpace(state.run.ProjectID),
+			gatewayAgentInfo(executor).ToolsAllow,
+		)
 		execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
+		execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{
+			Source:    "agent_run",
+			SessionID: state.run.SessionID,
+			ProjectID: state.run.ProjectID,
+			RunID:     state.run.ID,
+		})
 		resp, err = executor.Execute(execCtx, ExecuteRequest{
-			RunID:       state.run.ID,
-			WorkspaceID: state.run.WorkspaceID,
-			SessionID:   state.run.SessionID,
-			Prompt:      state.run.Prompt,
+			RunID:        state.run.ID,
+			WorkspaceID:  state.run.WorkspaceID,
+			SessionID:    state.run.SessionID,
+			ProjectID:    state.run.ProjectID,
+			Prompt:       state.run.Prompt,
+			AllowedTools: allowedTools,
 		})
 	}
 	if err == nil && ctx.Err() == nil {
@@ -196,6 +223,61 @@ func blockedToolNameFromReason(reason string) string {
 		return ""
 	}
 	return toolName
+}
+
+func resolveRunAllowedTools(baseWorkspaceDir, projectID string, executorAllowed []string) []string {
+	base := sanitizeStringList(executorAllowed)
+	if strings.TrimSpace(projectID) == "" {
+		return base
+	}
+	workspaceDir := strings.TrimSpace(baseWorkspaceDir)
+	if workspaceDir == "" {
+		return base
+	}
+	store := project.NewStore(workspaceDir, nil)
+	item, err := store.Get(strings.TrimSpace(projectID))
+	if err != nil {
+		return base
+	}
+	projectAllow := sanitizeStringList(item.ToolsAllow)
+	projectDeny := sanitizeStringList(item.ToolsDeny)
+	if len(projectAllow) == 0 && len(projectDeny) == 0 {
+		return base
+	}
+
+	allowed := base
+	if len(projectAllow) > 0 {
+		if len(base) == 0 {
+			allowed = projectAllow
+		} else {
+			allowSet := map[string]struct{}{}
+			for _, name := range projectAllow {
+				allowSet[name] = struct{}{}
+			}
+			inter := make([]string, 0, len(base))
+			for _, name := range base {
+				if _, ok := allowSet[name]; ok {
+					inter = append(inter, name)
+				}
+			}
+			allowed = inter
+		}
+	}
+	if len(projectDeny) > 0 && len(allowed) > 0 {
+		denySet := map[string]struct{}{}
+		for _, name := range projectDeny {
+			denySet[name] = struct{}{}
+		}
+		filtered := make([]string, 0, len(allowed))
+		for _, name := range allowed {
+			if _, denied := denySet[name]; denied {
+				continue
+			}
+			filtered = append(filtered, name)
+		}
+		allowed = filtered
+	}
+	return allowed
 }
 
 func (r *Runtime) appendSessionMessage(workspaceID, sessionID, role, content string, ts time.Time) error {

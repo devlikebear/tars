@@ -58,6 +58,16 @@ func loadYAML(path string) (Config, error) {
 			cfg.LLMAPIKey = value
 		case "llm_model":
 			cfg.LLMModel = value
+		case "usage_limit_daily_usd":
+			cfg.UsageLimitDailyUSD = parsePositiveFloat(value, cfg.UsageLimitDailyUSD)
+		case "usage_limit_weekly_usd":
+			cfg.UsageLimitWeeklyUSD = parsePositiveFloat(value, cfg.UsageLimitWeeklyUSD)
+		case "usage_limit_monthly_usd":
+			cfg.UsageLimitMonthlyUSD = parsePositiveFloat(value, cfg.UsageLimitMonthlyUSD)
+		case "usage_limit_mode":
+			cfg.UsageLimitMode = strings.TrimSpace(strings.ToLower(value))
+		case "usage_price_overrides_json":
+			cfg.UsagePriceOverrides = parseUsagePriceOverridesJSON(value, cfg.UsagePriceOverrides)
 		case "agent_max_iterations":
 			cfg.AgentMaxIterations = parsePositiveInt(value, cfg.AgentMaxIterations)
 		case "heartbeat_active_hours":
@@ -74,6 +84,8 @@ func loadYAML(path string) (Config, error) {
 			cfg.ToolsWebSearchEnabled = parseBool(value, cfg.ToolsWebSearchEnabled)
 		case "tools_web_fetch_enabled":
 			cfg.ToolsWebFetchEnabled = parseBool(value, cfg.ToolsWebFetchEnabled)
+		case "tools_default_set":
+			cfg.ToolsDefaultSet = strings.TrimSpace(strings.ToLower(value))
 		case "tools_web_search_api_key":
 			cfg.ToolsWebSearchAPIKey = strings.TrimSpace(value)
 		case "tools_web_search_provider":

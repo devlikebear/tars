@@ -14,6 +14,7 @@ type ExecuteRequest struct {
 	RunID        string
 	WorkspaceID  string
 	SessionID    string
+	ProjectID    string
 	Prompt       string
 	AllowedTools []string
 }

@@ -189,7 +189,7 @@ Find evidence first and answer briefly.
 	if agent.PolicyMode != "allowlist" {
 		t.Fatalf("expected allowlist mode, got %+v", agent)
 	}
-	if got, want := strings.Join(agent.ToolsAllow, ","), "exec,list_dir,memory_get,memory_search,read_file"; got != want {
+	if got, want := strings.Join(agent.ToolsAllow, ","), "exec,list_dir,memory_get,memory_save,memory_search,read_file"; got != want {
 		t.Fatalf("unexpected tools allow list: got=%q want=%q", got, want)
 	}
 	if got, want := strings.Join(agent.ToolsAllowGroups, ","), "memory"; got != want {

@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/approval"
 	"github.com/devlikebear/tarsncase/internal/browserrelay"
 	"github.com/devlikebear/tarsncase/internal/cli"
 	"github.com/devlikebear/tarsncase/internal/config"
@@ -21,7 +22,9 @@ import (
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/mcp"
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tarsncase/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -125,6 +128,11 @@ func buildAPIMux(
 		logger,
 	)
 	dispatcher.store = notificationStore
+	if tracked, ok := deps.llmClient.(*usage.TrackedClient); ok {
+		tracked.SetNotifier(func(ctx context.Context, message string) {
+			dispatcher.Emit(ctx, newNotificationEvent("usage", "warn", "Usage limit warning", message))
+		})
+	}
 	telegramPairings, err := newTelegramPairingStore(telegramPairingStorePath(cfg), nowFn)
 	if err != nil {
 		return nil, err
@@ -235,7 +243,13 @@ func buildAPIMux(
 	if err != nil {
 		return nil, err
 	}
-	browserService := buildBrowserService(cfg, relayServer, vaultReader)
+	otpManager := approval.NewOTPManager(nowFn)
+	browserService := buildBrowserService(
+		cfg,
+		relayServer,
+		vaultReader,
+		newBrowserTelegramOTPRequester(telegramSender, telegramPairings, otpManager),
+	)
 	gatewayRuntime := gateway.NewRuntime(gateway.RuntimeOptions{
 		Enabled:                              cfg.GatewayEnabled,
 		WorkspaceDir:                         cfg.WorkspaceDir,
@@ -280,7 +294,7 @@ func buildAPIMux(
 	}
 	_ = refreshGatewayExecutors("startup")
 
-	chatTooling := buildChatToolingOptions(processManager, extensionsManager, gatewayRuntime)
+	chatTooling := buildChatToolingOptions(processManager, extensionsManager, gatewayRuntime, cfg.ToolsDefaultSet, deps.usageTracker)
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
 		resolvedStore, err := cronStoreResolver.Resolve(defaultWorkspaceID)
 		if err != nil {
@@ -322,6 +336,12 @@ func buildAPIMux(
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
 	mux.Handle("/v1/sessions", sessionHandler)
 	mux.Handle("/v1/sessions/", sessionHandler)
+	projectHandler := newProjectAPIHandler(project.NewStore(cfg.WorkspaceDir, nil), sessionStore, mainSessionID, logger)
+	mux.Handle("/v1/projects", projectHandler)
+	mux.Handle("/v1/projects/", projectHandler)
+	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
+	mux.Handle("/v1/usage/summary", usageHandler)
+	mux.Handle("/v1/usage/limits", usageHandler)
 	mux.Handle("/v1/status", newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger))
 	mux.Handle("/v1/auth/whoami", newAuthAPIHandler(cfg.APIAuthMode))
 	mux.Handle("/v1/healthz", newHealthzAPIHandler(nowFn))
@@ -382,6 +402,7 @@ func buildAPIMux(
 	telegramInbound.maxIterations = cfg.AgentMaxIterations
 	telegramInbound.tooling = chatTooling
 	telegramInbound.extraTools = append([]tool.Tool(nil), chatTools...)
+	telegramInbound.otpManager = otpManager
 	telegramInbound.commands = newTelegramCommandHandler(telegramCommandHandlerOptions{
 		Store:          sessionStore,
 		CronResolver:   cronStoreResolver,

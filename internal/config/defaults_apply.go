@@ -60,12 +60,38 @@ func applyLLMDefaults(cfg *Config) {
 	if cfg.AgentMaxIterations <= 0 {
 		cfg.AgentMaxIterations = 8
 	}
+	if cfg.UsageLimitDailyUSD <= 0 {
+		cfg.UsageLimitDailyUSD = 10.0
+	}
+	if cfg.UsageLimitWeeklyUSD <= 0 {
+		cfg.UsageLimitWeeklyUSD = 50.0
+	}
+	if cfg.UsageLimitMonthlyUSD <= 0 {
+		cfg.UsageLimitMonthlyUSD = 150.0
+	}
+	cfg.UsageLimitMode = strings.TrimSpace(strings.ToLower(cfg.UsageLimitMode))
+	switch cfg.UsageLimitMode {
+	case "soft", "hard":
+	default:
+		cfg.UsageLimitMode = "soft"
+	}
+	if cfg.UsagePriceOverrides == nil {
+		cfg.UsagePriceOverrides = map[string]UsagePrice{}
+	}
 	if cfg.CronRunHistoryLimit <= 0 {
 		cfg.CronRunHistoryLimit = 200
 	}
 	cfg.ToolsWebSearchProvider = strings.TrimSpace(strings.ToLower(cfg.ToolsWebSearchProvider))
 	if cfg.ToolsWebSearchProvider == "" {
 		cfg.ToolsWebSearchProvider = "brave"
+	}
+	cfg.ToolsDefaultSet = strings.TrimSpace(strings.ToLower(cfg.ToolsDefaultSet))
+	switch cfg.ToolsDefaultSet {
+	case "", "standard":
+		cfg.ToolsDefaultSet = "standard"
+	case "minimal":
+	default:
+		cfg.ToolsDefaultSet = "standard"
 	}
 	if cfg.ToolsWebSearchPerplexityModel == "" {
 		cfg.ToolsWebSearchPerplexityModel = "sonar"

@@ -57,6 +57,21 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("LLM_MODEL"), os.Getenv("TARS_LLM_MODEL")); v != "" {
 		cfg.LLMModel = v
 	}
+	if v := firstNonEmpty(os.Getenv("USAGE_LIMIT_DAILY_USD"), os.Getenv("TARS_USAGE_LIMIT_DAILY_USD")); v != "" {
+		cfg.UsageLimitDailyUSD = parsePositiveFloat(v, cfg.UsageLimitDailyUSD)
+	}
+	if v := firstNonEmpty(os.Getenv("USAGE_LIMIT_WEEKLY_USD"), os.Getenv("TARS_USAGE_LIMIT_WEEKLY_USD")); v != "" {
+		cfg.UsageLimitWeeklyUSD = parsePositiveFloat(v, cfg.UsageLimitWeeklyUSD)
+	}
+	if v := firstNonEmpty(os.Getenv("USAGE_LIMIT_MONTHLY_USD"), os.Getenv("TARS_USAGE_LIMIT_MONTHLY_USD")); v != "" {
+		cfg.UsageLimitMonthlyUSD = parsePositiveFloat(v, cfg.UsageLimitMonthlyUSD)
+	}
+	if v := firstNonEmpty(os.Getenv("USAGE_LIMIT_MODE"), os.Getenv("TARS_USAGE_LIMIT_MODE")); v != "" {
+		cfg.UsageLimitMode = strings.TrimSpace(strings.ToLower(v))
+	}
+	if v := firstNonEmpty(os.Getenv("USAGE_PRICE_OVERRIDES_JSON"), os.Getenv("TARS_USAGE_PRICE_OVERRIDES_JSON")); v != "" {
+		cfg.UsagePriceOverrides = parseUsagePriceOverridesJSON(v, cfg.UsagePriceOverrides)
+	}
 	if v := firstNonEmpty(os.Getenv("AGENT_MAX_ITERATIONS"), os.Getenv("TARS_AGENT_MAX_ITERATIONS")); v != "" {
 		cfg.AgentMaxIterations = parsePositiveInt(v, cfg.AgentMaxIterations)
 	}
@@ -83,6 +98,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_FETCH_ENABLED"), os.Getenv("TARS_TOOLS_WEB_FETCH_ENABLED")); v != "" {
 		cfg.ToolsWebFetchEnabled = parseBool(v, cfg.ToolsWebFetchEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_DEFAULT_SET"), os.Getenv("TARS_TOOLS_DEFAULT_SET")); v != "" {
+		cfg.ToolsDefaultSet = strings.TrimSpace(strings.ToLower(v))
 	}
 	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_SEARCH_API_KEY"), os.Getenv("TARS_TOOLS_WEB_SEARCH_API_KEY")); v != "" {
 		cfg.ToolsWebSearchAPIKey = strings.TrimSpace(v)

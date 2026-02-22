@@ -83,6 +83,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 				Schedule       string          `json:"schedule"`
 				Enabled        *bool           `json:"enabled,omitempty"`
 				SessionTarget  string          `json:"session_target,omitempty"`
+				ProjectID      string          `json:"project_id,omitempty"`
 				WakeMode       string          `json:"wake_mode,omitempty"`
 				DeliveryMode   string          `json:"delivery_mode,omitempty"`
 				Payload        json.RawMessage `json:"payload,omitempty"`
@@ -105,6 +106,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 				Enabled:           enabled,
 				HasEnable:         hasEnable,
 				SessionTarget:     req.SessionTarget,
+				ProjectID:         req.ProjectID,
 				WakeMode:          req.WakeMode,
 				DeliveryMode:      req.DeliveryMode,
 				Payload:           req.Payload,
@@ -161,6 +163,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 					Schedule       *string          `json:"schedule,omitempty"`
 					Enabled        *bool            `json:"enabled,omitempty"`
 					SessionTarget  *string          `json:"session_target,omitempty"`
+					ProjectID      *string          `json:"project_id,omitempty"`
 					WakeMode       *string          `json:"wake_mode,omitempty"`
 					DeliveryMode   *string          `json:"delivery_mode,omitempty"`
 					Payload        *json.RawMessage `json:"payload,omitempty"`
@@ -176,6 +179,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 					Schedule:       req.Schedule,
 					Enabled:        req.Enabled,
 					SessionTarget:  req.SessionTarget,
+					ProjectID:      req.ProjectID,
 					WakeMode:       req.WakeMode,
 					DeliveryMode:   req.DeliveryMode,
 					Payload:        req.Payload,

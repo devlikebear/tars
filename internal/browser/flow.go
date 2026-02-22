@@ -24,12 +24,15 @@ type SiteFlow struct {
 type SiteLogin struct {
 	Mode             string `yaml:"mode,omitempty" json:"mode,omitempty"`
 	VaultPath        string `yaml:"vault_path,omitempty" json:"vault_path,omitempty"`
+	EnvPrefix        string `yaml:"env_prefix,omitempty" json:"env_prefix,omitempty"`
 	UsernameField    string `yaml:"username_field,omitempty" json:"username_field,omitempty"`
 	PasswordField    string `yaml:"password_field,omitempty" json:"password_field,omitempty"`
 	UsernameSelector string `yaml:"username_selector,omitempty" json:"username_selector,omitempty"`
 	PasswordSelector string `yaml:"password_selector,omitempty" json:"password_selector,omitempty"`
 	SubmitSelector   string `yaml:"submit_selector,omitempty" json:"submit_selector,omitempty"`
 	SuccessSelector  string `yaml:"success_selector,omitempty" json:"success_selector,omitempty"`
+	OTPRequired      bool   `yaml:"otp_required,omitempty" json:"otp_required,omitempty"`
+	OTPTimeoutSec    int    `yaml:"otp_timeout_sec,omitempty" json:"otp_timeout_sec,omitempty"`
 }
 
 type SiteCheck struct {

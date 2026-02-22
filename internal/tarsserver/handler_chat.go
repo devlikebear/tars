@@ -15,6 +15,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/skill"
 	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tarsncase/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -196,6 +197,8 @@ type chatToolingOptions struct {
 	Extensions                  *extensions.Manager
 	Gateway                     *gateway.Runtime
 	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
+	ToolsDefaultSet             string
+	UsageTracker                *usage.Tracker
 }
 
 func defaultChatToolingOptions() chatToolingOptions {

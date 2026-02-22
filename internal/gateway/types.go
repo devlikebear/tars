@@ -25,6 +25,7 @@ type Run struct {
 	ID                 string    `json:"run_id"`
 	WorkspaceID        string    `json:"-"`
 	SessionID          string    `json:"session_id,omitempty"`
+	ProjectID          string    `json:"project_id,omitempty"`
 	Agent              string    `json:"agent,omitempty"`
 	Prompt             string    `json:"prompt,omitempty"`
 	Status             RunStatus `json:"status"`
@@ -46,6 +47,7 @@ type Run struct {
 type SpawnRequest struct {
 	WorkspaceID string
 	SessionID   string
+	ProjectID   string
 	Title       string
 	Prompt      string
 	Agent       string

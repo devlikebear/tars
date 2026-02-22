@@ -64,7 +64,7 @@ func buildBrowserRelay(cfg config.Config) (*browserrelay.Server, error) {
 	})
 }
 
-func buildBrowserService(cfg config.Config, relay *browserrelay.Server, vaultReader vaultclient.SecretReader) *browser.Service {
+func buildBrowserService(cfg config.Config, relay *browserrelay.Server, vaultReader vaultclient.SecretReader, otpRequester browser.OTPRequester) *browser.Service {
 	if !cfg.BrowserRuntimeEnabled {
 		return nil
 	}
@@ -77,6 +77,7 @@ func buildBrowserService(cfg config.Config, relay *browserrelay.Server, vaultRea
 		SiteFlowsDir:           cfg.BrowserSiteFlowsDir,
 		AutoLoginSiteAllowlist: cfg.BrowserAutoLoginSiteAllowlist,
 		Vault:                  vaultReader,
+		OTP:                    otpRequester,
 		Relay:                  relay,
 	})
 }

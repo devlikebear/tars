@@ -23,6 +23,14 @@ func parsePositiveInt(value string, fallback int) int {
 	return parsed
 }
 
+func parsePositiveFloat(value string, fallback float64) float64 {
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || parsed < 0 {
+		return fallback
+	}
+	return parsed
+}
+
 func parseBool(value string, fallback bool) bool {
 	parsed, err := strconv.ParseBool(strings.TrimSpace(value))
 	if err != nil {
@@ -135,6 +143,49 @@ func parseGatewayAgentsJSON(raw string, fallback []GatewayAgent) []GatewayAgent 
 			}
 		}
 		out = append(out, item)
+	}
+	if len(out) == 0 {
+		return fallback
+	}
+	return out
+}
+
+func parseUsagePriceOverridesJSON(raw string, fallback map[string]UsagePrice) map[string]UsagePrice {
+	type rawPrice struct {
+		InputPer1MUSD      float64 `json:"input_per_1m_usd"`
+		OutputPer1MUSD     float64 `json:"output_per_1m_usd"`
+		CacheReadPer1MUSD  float64 `json:"cache_read_per_1m_usd,omitempty"`
+		CacheWritePer1MUSD float64 `json:"cache_write_per_1m_usd,omitempty"`
+	}
+	var parsed map[string]rawPrice
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
+		return fallback
+	}
+	out := map[string]UsagePrice{}
+	for key, item := range parsed {
+		k := strings.TrimSpace(strings.ToLower(key))
+		if k == "" {
+			continue
+		}
+		price := UsagePrice{
+			InputPer1MUSD:      item.InputPer1MUSD,
+			OutputPer1MUSD:     item.OutputPer1MUSD,
+			CacheReadPer1MUSD:  item.CacheReadPer1MUSD,
+			CacheWritePer1MUSD: item.CacheWritePer1MUSD,
+		}
+		if price.InputPer1MUSD < 0 {
+			price.InputPer1MUSD = 0
+		}
+		if price.OutputPer1MUSD < 0 {
+			price.OutputPer1MUSD = 0
+		}
+		if price.CacheReadPer1MUSD < 0 {
+			price.CacheReadPer1MUSD = 0
+		}
+		if price.CacheWritePer1MUSD < 0 {
+			price.CacheWritePer1MUSD = 0
+		}
+		out[k] = price
 	}
 	if len(out) == 0 {
 		return fallback

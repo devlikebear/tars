@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/devlikebear/tarsncase/internal/browserrelay"
 )
@@ -15,6 +17,11 @@ import (
 // SecretReader resolves secret values for login automation.
 type SecretReader interface {
 	ReadKV(ctx context.Context, secretPath string) (map[string]string, error)
+}
+
+// OTPRequester requests a one-time passcode from an approved channel.
+type OTPRequester interface {
+	RequestOTP(ctx context.Context, siteID string, timeout time.Duration) (string, error)
 }
 
 // Config controls browser runtime behavior.
@@ -27,6 +34,7 @@ type Config struct {
 	SiteFlowsDir           string
 	AutoLoginSiteAllowlist []string
 	Vault                  SecretReader
+	OTP                    OTPRequester
 	Relay                  *browserrelay.Server
 }
 
@@ -152,30 +160,103 @@ func (s *Service) Login(ctx context.Context, siteID string, profile string) (Log
 		s.setLastAction(fmt.Sprintf("login site=%s mode=manual", flow.ID))
 		return result, nil
 	}
-	if mode != "vault_form" {
+	if mode != "vault_form" && mode != "env_form" {
 		return LoginResult{}, fmt.Errorf("unsupported login mode: %s", mode)
 	}
-	if _, ok := s.allowAuto[strings.ToLower(flow.ID)]; !ok {
-		return LoginResult{}, fmt.Errorf("auto login is not allowed for site: %s", flow.ID)
-	}
-	if s.cfg.Vault == nil {
-		return LoginResult{}, fmt.Errorf("vault reader is not configured")
-	}
-	vaultPath := strings.TrimSpace(flow.Login.VaultPath)
-	if vaultPath == "" {
-		return LoginResult{}, fmt.Errorf("vault_path is required for vault_form mode")
-	}
-	values, err := s.cfg.Vault.ReadKV(ctx, vaultPath)
+
+	values, source, err := s.resolveLoginCredentials(ctx, flow)
 	if err != nil {
-		return LoginResult{}, fmt.Errorf("vault read failed: %w", err)
+		return LoginResult{}, err
 	}
 	if strings.TrimSpace(values["username"]) == "" || strings.TrimSpace(values["password"]) == "" {
-		return LoginResult{}, fmt.Errorf("vault secret must include username/password")
+		return LoginResult{}, fmt.Errorf("login credentials must include username/password")
+	}
+	if flow.Login.OTPRequired {
+		if s.cfg.OTP == nil {
+			return LoginResult{}, fmt.Errorf("otp requester is not configured")
+		}
+		timeout := 300 * time.Second
+		if flow.Login.OTPTimeoutSec > 0 {
+			timeout = time.Duration(flow.Login.OTPTimeoutSec) * time.Second
+		}
+		code, err := s.cfg.OTP.RequestOTP(ctx, flow.ID, timeout)
+		if err != nil {
+			return LoginResult{}, fmt.Errorf("otp request failed: %w", err)
+		}
+		if strings.TrimSpace(code) == "" {
+			return LoginResult{}, fmt.Errorf("otp code is empty")
+		}
+		result.Message = "auto login form submitted and otp verified"
+	} else {
+		result.Message = "auto login form submitted using " + source + " credentials"
 	}
 	result.Success = true
-	result.Message = "auto login form submitted using vault credentials"
-	s.setLastAction(fmt.Sprintf("login site=%s mode=vault_form", flow.ID))
+	s.setLastAction(fmt.Sprintf("login site=%s mode=%s source=%s", flow.ID, mode, source))
 	return result, nil
+}
+
+func (s *Service) resolveLoginCredentials(ctx context.Context, flow SiteFlow) (map[string]string, string, error) {
+	mode := strings.TrimSpace(strings.ToLower(flow.Login.Mode))
+	if mode == "" {
+		mode = "manual"
+	}
+	if _, ok := s.allowAuto[strings.ToLower(flow.ID)]; !ok {
+		return nil, "", fmt.Errorf("auto login is not allowed for site: %s", flow.ID)
+	}
+
+	readEnv := func() (map[string]string, bool) {
+		prefix := strings.TrimSpace(flow.Login.EnvPrefix)
+		values := resolveEnvLoginValues(prefix)
+		username := strings.TrimSpace(values["username"])
+		password := strings.TrimSpace(values["password"])
+		if username == "" || password == "" {
+			return nil, false
+		}
+		return values, true
+	}
+
+	if mode == "env_form" {
+		values, ok := readEnv()
+		if !ok {
+			return nil, "", fmt.Errorf("env credentials are not configured for site: %s", flow.ID)
+		}
+		return values, "env", nil
+	}
+
+	vaultPath := strings.TrimSpace(flow.Login.VaultPath)
+	if s.cfg.Vault != nil && vaultPath != "" {
+		values, err := s.cfg.Vault.ReadKV(ctx, vaultPath)
+		if err == nil && strings.TrimSpace(values["username"]) != "" && strings.TrimSpace(values["password"]) != "" {
+			return values, "vault", nil
+		}
+	}
+	if values, ok := readEnv(); ok {
+		return values, "env", nil
+	}
+	return nil, "", fmt.Errorf("vault/env credentials are not configured for site: %s", flow.ID)
+}
+
+func resolveEnvLoginValues(prefix string) map[string]string {
+	base := strings.TrimSpace(strings.ToUpper(prefix))
+	lookup := func(keys ...string) string {
+		for _, key := range keys {
+			v := strings.TrimSpace(os.Getenv(key))
+			if v != "" {
+				return v
+			}
+		}
+		return ""
+	}
+	candidatesUser := []string{"LOGIN_USERNAME", "BROWSER_LOGIN_USERNAME", "USERNAME"}
+	candidatesPass := []string{"LOGIN_PASSWORD", "BROWSER_LOGIN_PASSWORD", "PASSWORD"}
+	if base != "" {
+		candidatesUser = append([]string{base + "_USERNAME"}, candidatesUser...)
+		candidatesPass = append([]string{base + "_PASSWORD"}, candidatesPass...)
+	}
+	return map[string]string{
+		"username": lookup(candidatesUser...),
+		"password": lookup(candidatesPass...),
+	}
 }
 
 func (s *Service) Check(_ context.Context, siteID string, profile string) (CheckResult, error) {

@@ -8,9 +8,11 @@ import (
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/prompt"
 	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tarsncase/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -22,6 +24,16 @@ func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.Pr
 	registry := tool.NewRegistry()
 	registry.Register(tool.NewMemorySearchTool(workspaceDir))
 	registry.Register(tool.NewMemoryGetTool(workspaceDir))
+	registry.Register(tool.NewMemorySaveTool(workspaceDir, nil))
+	projectStore := project.NewStore(workspaceDir, nil)
+	registry.Register(tool.NewProjectCreateTool(projectStore))
+	registry.Register(tool.NewProjectListTool(projectStore))
+	registry.Register(tool.NewProjectGetTool(projectStore))
+	registry.Register(tool.NewProjectUpdateTool(projectStore))
+	registry.Register(tool.NewProjectDeleteTool(projectStore))
+	if usageTracker, err := usage.NewTracker(workspaceDir, usage.TrackerOptions{}); err == nil {
+		registry.Register(tool.NewUsageReportTool(usageTracker))
+	}
 	registry.Register(tool.NewReadTool(workspaceDir))
 	registry.Register(tool.NewReadFileTool(workspaceDir))
 	registry.Register(tool.NewWriteTool(workspaceDir))
@@ -100,6 +112,18 @@ func newAgentPromptRunnerWithTools(
 		if len(allowed) > 0 {
 			tools = registry.SchemasForNames(allowed)
 		}
+		meta := usage.CallMeta{Source: "agent_run"}
+		lowerLabel := strings.ToLower(label)
+		switch {
+		case strings.HasPrefix(lowerLabel, "cron"):
+			meta.Source = "cron"
+		case strings.HasPrefix(lowerLabel, "heartbeat"):
+			meta.Source = "heartbeat"
+		}
+		if idx := strings.Index(label, ":"); idx >= 0 && idx+1 < len(label) {
+			meta.RunID = strings.TrimSpace(label[idx+1:])
+		}
+		ctx = usage.WithCallMeta(ctx, meta)
 		loop := setupAgentLoop(client, registry, label, 0, logger, func(string, string, string, string, string, string) {})
 		resp, err := loop.Run(ctx, []llm.ChatMessage{
 			{Role: "system", Content: systemPrompt},

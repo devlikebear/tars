@@ -7,6 +7,13 @@ type MCPServer struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
+type UsagePrice struct {
+	InputPer1MUSD      float64 `json:"input_per_1m_usd"`
+	OutputPer1MUSD     float64 `json:"output_per_1m_usd"`
+	CacheReadPer1MUSD  float64 `json:"cache_read_per_1m_usd,omitempty"`
+	CacheWritePer1MUSD float64 `json:"cache_write_per_1m_usd,omitempty"`
+}
+
 type GatewayAgent struct {
 	Name           string            `json:"name"`
 	Description    string            `json:"description,omitempty"`
@@ -34,6 +41,11 @@ type Config struct {
 	LLMBaseURL                           string
 	LLMAPIKey                            string
 	LLMModel                             string
+	UsageLimitDailyUSD                   float64
+	UsageLimitWeeklyUSD                  float64
+	UsageLimitMonthlyUSD                 float64
+	UsageLimitMode                       string
+	UsagePriceOverrides                  map[string]UsagePrice
 	AgentMaxIterations                   int
 	HeartbeatActiveHours                 string
 	HeartbeatTimezone                    string
@@ -45,6 +57,7 @@ type Config struct {
 	BifrostModel                         string
 	ToolsWebSearchEnabled                bool
 	ToolsWebFetchEnabled                 bool
+	ToolsDefaultSet                      string
 	ToolsWebSearchAPIKey                 string
 	ToolsWebSearchProvider               string
 	ToolsWebSearchPerplexityAPIKey       string
@@ -128,10 +141,15 @@ func Default() Config {
 		APIAuthMode:                          "external-required",
 		LLMProvider:                          "bifrost",
 		LLMAuthMode:                          "api-key",
+		UsageLimitDailyUSD:                   10.0,
+		UsageLimitWeeklyUSD:                  50.0,
+		UsageLimitMonthlyUSD:                 150.0,
+		UsageLimitMode:                       "soft",
 		BifrostModel:                         "openai/gpt-4o-mini",
 		AgentMaxIterations:                   8,
 		CronRunHistoryLimit:                  200,
 		NotifyWhenNoClients:                  true,
+		ToolsDefaultSet:                      "standard",
 		ToolsWebSearchProvider:               "brave",
 		ToolsWebSearchPerplexityModel:        "sonar",
 		ToolsWebSearchPerplexityBaseURL:      "https://api.perplexity.ai/chat/completions",

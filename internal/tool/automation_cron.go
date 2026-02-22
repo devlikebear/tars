@@ -43,6 +43,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
     "schedule":{"type":"string"},
     "enabled":{"type":"boolean"},
     "session_target":{"type":"string"},
+    "project_id":{"type":"string"},
     "wake_mode":{"type":"string"},
     "delivery_mode":{"type":"string"},
     "payload":{"type":"object"},
@@ -61,6 +62,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				Schedule       string          `json:"schedule"`
 				Enabled        *bool           `json:"enabled,omitempty"`
 				SessionTarget  string          `json:"session_target,omitempty"`
+				ProjectID      string          `json:"project_id,omitempty"`
 				WakeMode       string          `json:"wake_mode,omitempty"`
 				DeliveryMode   string          `json:"delivery_mode,omitempty"`
 				Payload        json.RawMessage `json:"payload,omitempty"`
@@ -81,6 +83,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				Enabled:           enabled,
 				HasEnable:         hasEnable,
 				SessionTarget:     input.SessionTarget,
+				ProjectID:         input.ProjectID,
 				WakeMode:          input.WakeMode,
 				DeliveryMode:      input.DeliveryMode,
 				Payload:           input.Payload,
@@ -108,6 +111,7 @@ func NewCronUpdateTool(store *cron.Store) Tool {
     "schedule":{"type":"string"},
     "enabled":{"type":"boolean"},
     "session_target":{"type":"string"},
+    "project_id":{"type":"string"},
     "wake_mode":{"type":"string"},
     "delivery_mode":{"type":"string"},
     "payload":{"type":"object"},
@@ -127,6 +131,7 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 				Schedule       *string          `json:"schedule,omitempty"`
 				Enabled        *bool            `json:"enabled,omitempty"`
 				SessionTarget  *string          `json:"session_target,omitempty"`
+				ProjectID      *string          `json:"project_id,omitempty"`
 				WakeMode       *string          `json:"wake_mode,omitempty"`
 				DeliveryMode   *string          `json:"delivery_mode,omitempty"`
 				Payload        *json.RawMessage `json:"payload,omitempty"`
@@ -145,6 +150,7 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 				Schedule:       input.Schedule,
 				Enabled:        input.Enabled,
 				SessionTarget:  input.SessionTarget,
+				ProjectID:      input.ProjectID,
 				WakeMode:       input.WakeMode,
 				DeliveryMode:   input.DeliveryMode,
 				Payload:        input.Payload,

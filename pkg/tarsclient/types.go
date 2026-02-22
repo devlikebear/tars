@@ -55,6 +55,7 @@ func (e *APIError) Error() string {
 type ChatRequest struct {
 	Message   string `json:"message"`
 	SessionID string `json:"session_id,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
 }
 
 type ChatEvent struct {
@@ -105,6 +106,7 @@ type EventsReadInfo struct {
 type SessionSummary struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
+	ProjectID string `json:"project_id,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
 }
@@ -218,6 +220,7 @@ type CronJob struct {
 	Enabled        bool   `json:"enabled"`
 	DeleteAfterRun bool   `json:"delete_after_run,omitempty"`
 	SessionTarget  string `json:"session_target,omitempty"`
+	ProjectID      string `json:"project_id,omitempty"`
 	WakeMode       string `json:"wake_mode,omitempty"`
 	DeliveryMode   string `json:"delivery_mode,omitempty"`
 	LastRunAt      string `json:"last_run_at,omitempty"`
@@ -229,6 +232,92 @@ type CronRunRecord struct {
 	RanAt    string `json:"ran_at"`
 	Response string `json:"response,omitempty"`
 	Error    string `json:"error,omitempty"`
+}
+
+type Project struct {
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	Type               string   `json:"type"`
+	Status             string   `json:"status"`
+	GitRepo            string   `json:"git_repo,omitempty"`
+	CreatedAt          string   `json:"created_at,omitempty"`
+	UpdatedAt          string   `json:"updated_at,omitempty"`
+	Objective          string   `json:"objective,omitempty"`
+	ToolsAllow         []string `json:"tools_allow,omitempty"`
+	ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty"`
+	ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
+	ToolsDeny          []string `json:"tools_deny,omitempty"`
+	ToolsRiskMax       string   `json:"tools_risk_max,omitempty"`
+	SkillsAllow        []string `json:"skills_allow,omitempty"`
+	MCPServers         []string `json:"mcp_servers,omitempty"`
+	SecretsRefs        []string `json:"secrets_refs,omitempty"`
+	Body               string   `json:"body,omitempty"`
+	Path               string   `json:"path,omitempty"`
+}
+
+type ProjectCreateRequest struct {
+	Name         string `json:"name"`
+	Type         string `json:"type,omitempty"`
+	GitRepo      string `json:"git_repo,omitempty"`
+	Objective    string `json:"objective,omitempty"`
+	Instructions string `json:"instructions,omitempty"`
+	CloneRepo    bool   `json:"clone_repo,omitempty"`
+}
+
+type ProjectUpdateRequest struct {
+	Name               *string  `json:"name,omitempty"`
+	Type               *string  `json:"type,omitempty"`
+	Status             *string  `json:"status,omitempty"`
+	GitRepo            *string  `json:"git_repo,omitempty"`
+	Objective          *string  `json:"objective,omitempty"`
+	Instructions       *string  `json:"instructions,omitempty"`
+	ToolsAllow         []string `json:"tools_allow,omitempty"`
+	ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty"`
+	ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
+	ToolsDeny          []string `json:"tools_deny,omitempty"`
+	ToolsRiskMax       *string  `json:"tools_risk_max,omitempty"`
+	SkillsAllow        []string `json:"skills_allow,omitempty"`
+	MCPServers         []string `json:"mcp_servers,omitempty"`
+	SecretsRefs        []string `json:"secrets_refs,omitempty"`
+}
+
+type UsageLimits struct {
+	DailyUSD   float64 `json:"daily_usd"`
+	WeeklyUSD  float64 `json:"weekly_usd"`
+	MonthlyUSD float64 `json:"monthly_usd"`
+	Mode       string  `json:"mode"`
+}
+
+type UsageSummary struct {
+	Period          string            `json:"period"`
+	GroupBy         string            `json:"group_by"`
+	TotalCalls      int               `json:"total_calls"`
+	TotalCostUSD    float64           `json:"total_cost_usd"`
+	TotalInput      int               `json:"total_input_tokens"`
+	TotalOutput     int               `json:"total_output_tokens"`
+	TotalCached     int               `json:"total_cached_tokens"`
+	TotalCacheRead  int               `json:"total_cache_read_tokens"`
+	TotalCacheWrite int               `json:"total_cache_write_tokens"`
+	Rows            []UsageSummaryRow `json:"rows"`
+}
+
+type UsageSummaryRow struct {
+	Key              string  `json:"key"`
+	Calls            int     `json:"calls"`
+	CostUSD          float64 `json:"cost_usd"`
+	InputTokens      int     `json:"input_tokens"`
+	OutputTokens     int     `json:"output_tokens"`
+	CachedTokens     int     `json:"cached_tokens"`
+	CacheReadTokens  int     `json:"cache_read_tokens"`
+	CacheWriteTokens int     `json:"cache_write_tokens"`
+}
+
+type UsageLimitStatus struct {
+	Exceeded bool    `json:"exceeded"`
+	Mode     string  `json:"mode"`
+	Period   string  `json:"period,omitempty"`
+	SpentUSD float64 `json:"spent_usd,omitempty"`
+	LimitUSD float64 `json:"limit_usd,omitempty"`
 }
 
 type AgentDescriptor struct {
@@ -254,6 +343,7 @@ type AgentDescriptor struct {
 type AgentRun struct {
 	RunID              string   `json:"run_id"`
 	SessionID          string   `json:"session_id,omitempty"`
+	ProjectID          string   `json:"project_id,omitempty"`
 	Agent              string   `json:"agent,omitempty"`
 	Status             string   `json:"status"`
 	Accepted           bool     `json:"accepted"`
@@ -426,6 +516,7 @@ type TelegramPairingsInfo struct {
 // CLI parsing types (for example, spawnCommand) stay in internal/tarsclient.
 type SpawnRequest struct {
 	SessionID string `json:"session_id,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
 	Title     string `json:"title,omitempty"`
 	Message   string `json:"message"`
 	Agent     string `json:"agent,omitempty"`

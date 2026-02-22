@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/config"
@@ -11,6 +12,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tarsncase/internal/usage"
 )
 
 func buildAutomationTools(
@@ -70,13 +72,17 @@ func buildChatToolingOptions(
 	processManager *tool.ProcessManager,
 	manager *extensions.Manager,
 	gatewayRuntime *gateway.Runtime,
+	toolsDefaultSet string,
+	usageTracker *usage.Tracker,
 ) chatToolingOptions {
 	var extensionManager *extensions.Manager
 	extensionManager = manager
 	return chatToolingOptions{
-		ProcessManager: processManager,
-		Extensions:     extensionManager,
-		Gateway:        gatewayRuntime,
+		ProcessManager:  processManager,
+		Extensions:      extensionManager,
+		Gateway:         gatewayRuntime,
+		ToolsDefaultSet: strings.TrimSpace(strings.ToLower(toolsDefaultSet)),
+		UsageTracker:    usageTracker,
 	}
 }
 
