@@ -90,6 +90,24 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("TARS_NOTIFY_WHEN_NO_CLIENTS"), os.Getenv("NOTIFY_WHEN_NO_CLIENTS")); v != "" {
 		cfg.NotifyWhenNoClients = parseBool(v, cfg.NotifyWhenNoClients)
 	}
+	if v := firstNonEmpty(os.Getenv("ASSISTANT_ENABLED"), os.Getenv("TARS_ASSISTANT_ENABLED")); v != "" {
+		cfg.AssistantEnabled = parseBool(v, cfg.AssistantEnabled)
+	}
+	if v := firstNonEmpty(os.Getenv("ASSISTANT_HOTKEY"), os.Getenv("TARS_ASSISTANT_HOTKEY")); v != "" {
+		cfg.AssistantHotkey = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("ASSISTANT_WHISPER_BIN"), os.Getenv("TARS_ASSISTANT_WHISPER_BIN")); v != "" {
+		cfg.AssistantWhisperBin = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("ASSISTANT_FFMPEG_BIN"), os.Getenv("TARS_ASSISTANT_FFMPEG_BIN")); v != "" {
+		cfg.AssistantFFmpegBin = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("ASSISTANT_TTS_BIN"), os.Getenv("TARS_ASSISTANT_TTS_BIN")); v != "" {
+		cfg.AssistantTTSBin = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("SCHEDULE_TIMEZONE"), os.Getenv("TARS_SCHEDULE_TIMEZONE")); v != "" {
+		cfg.ScheduleTimezone = strings.TrimSpace(v)
+	}
 	if v := firstNonEmpty(os.Getenv("MCP_SERVERS_JSON"), os.Getenv("TARS_MCP_SERVERS_JSON")); v != "" {
 		cfg.MCPServers = parseMCPServersJSON(v, cfg.MCPServers)
 	}

@@ -52,6 +52,12 @@ type Config struct {
 	CronRunHistoryLimit                  int
 	NotifyCommand                        string
 	NotifyWhenNoClients                  bool
+	AssistantEnabled                     bool
+	AssistantHotkey                      string
+	AssistantWhisperBin                  string
+	AssistantFFmpegBin                   string
+	AssistantTTSBin                      string
+	ScheduleTimezone                     string
 	BifrostBase                          string
 	BifrostAPIKey                        string
 	BifrostModel                         string
@@ -149,6 +155,12 @@ func Default() Config {
 		AgentMaxIterations:                   8,
 		CronRunHistoryLimit:                  200,
 		NotifyWhenNoClients:                  true,
+		AssistantEnabled:                     true,
+		AssistantHotkey:                      "Ctrl+Option+Space",
+		AssistantWhisperBin:                  "whisper-cli",
+		AssistantFFmpegBin:                   "ffmpeg",
+		AssistantTTSBin:                      "say",
+		ScheduleTimezone:                     "Asia/Seoul",
 		ToolsDefaultSet:                      "standard",
 		ToolsWebSearchProvider:               "brave",
 		ToolsWebSearchPerplexityModel:        "sonar",

@@ -32,5 +32,6 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	}
 	bindClientFlags(cmd, &clientOpts)
 	cmd.AddCommand(newServeCommand(stdout, stderr))
+	cmd.AddCommand(newAssistantCommand(stdout, stderr))
 	return cmd
 }

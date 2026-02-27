@@ -85,6 +85,24 @@ func merge(dst *Config, src Config) {
 	if src.NotifyCommand != "" {
 		dst.NotifyCommand = src.NotifyCommand
 	}
+	if src.AssistantEnabled {
+		dst.AssistantEnabled = true
+	}
+	if src.AssistantHotkey != "" {
+		dst.AssistantHotkey = src.AssistantHotkey
+	}
+	if src.AssistantWhisperBin != "" {
+		dst.AssistantWhisperBin = src.AssistantWhisperBin
+	}
+	if src.AssistantFFmpegBin != "" {
+		dst.AssistantFFmpegBin = src.AssistantFFmpegBin
+	}
+	if src.AssistantTTSBin != "" {
+		dst.AssistantTTSBin = src.AssistantTTSBin
+	}
+	if src.ScheduleTimezone != "" {
+		dst.ScheduleTimezone = src.ScheduleTimezone
+	}
 	if len(src.MCPServers) > 0 {
 		dst.MCPServers = src.MCPServers
 	}

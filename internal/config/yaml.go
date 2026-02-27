@@ -78,6 +78,18 @@ func loadYAML(path string) (Config, error) {
 			cfg.CronRunHistoryLimit = parsePositiveInt(value, cfg.CronRunHistoryLimit)
 		case "notify_command":
 			cfg.NotifyCommand = strings.TrimSpace(value)
+		case "assistant_enabled":
+			cfg.AssistantEnabled = parseBool(value, cfg.AssistantEnabled)
+		case "assistant_hotkey":
+			cfg.AssistantHotkey = strings.TrimSpace(value)
+		case "assistant_whisper_bin":
+			cfg.AssistantWhisperBin = strings.TrimSpace(value)
+		case "assistant_ffmpeg_bin":
+			cfg.AssistantFFmpegBin = strings.TrimSpace(value)
+		case "assistant_tts_bin":
+			cfg.AssistantTTSBin = strings.TrimSpace(value)
+		case "schedule_timezone":
+			cfg.ScheduleTimezone = strings.TrimSpace(value)
 		case "mcp_servers_json":
 			cfg.MCPServers = parseMCPServersJSON(value, cfg.MCPServers)
 		case "tools_web_search_enabled":

@@ -81,6 +81,26 @@ func applyLLMDefaults(cfg *Config) {
 	if cfg.CronRunHistoryLimit <= 0 {
 		cfg.CronRunHistoryLimit = 200
 	}
+	cfg.AssistantHotkey = strings.TrimSpace(cfg.AssistantHotkey)
+	if cfg.AssistantHotkey == "" {
+		cfg.AssistantHotkey = "Ctrl+Option+Space"
+	}
+	cfg.AssistantWhisperBin = strings.TrimSpace(cfg.AssistantWhisperBin)
+	if cfg.AssistantWhisperBin == "" {
+		cfg.AssistantWhisperBin = "whisper-cli"
+	}
+	cfg.AssistantFFmpegBin = strings.TrimSpace(cfg.AssistantFFmpegBin)
+	if cfg.AssistantFFmpegBin == "" {
+		cfg.AssistantFFmpegBin = "ffmpeg"
+	}
+	cfg.AssistantTTSBin = strings.TrimSpace(cfg.AssistantTTSBin)
+	if cfg.AssistantTTSBin == "" {
+		cfg.AssistantTTSBin = "say"
+	}
+	cfg.ScheduleTimezone = strings.TrimSpace(cfg.ScheduleTimezone)
+	if cfg.ScheduleTimezone == "" {
+		cfg.ScheduleTimezone = "Asia/Seoul"
+	}
 	cfg.ToolsWebSearchProvider = strings.TrimSpace(strings.ToLower(cfg.ToolsWebSearchProvider))
 	if cfg.ToolsWebSearchProvider == "" {
 		cfg.ToolsWebSearchProvider = "brave"

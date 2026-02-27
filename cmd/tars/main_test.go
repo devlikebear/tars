@@ -85,6 +85,44 @@ func TestRootCommand_ServeRunOnceDoesNotForceServeAPI(t *testing.T) {
 	}
 }
 
+func TestRootCommand_AssistantSubcommandInvokesRunner(t *testing.T) {
+	original := assistantRunner
+	defer func() { assistantRunner = original }()
+
+	var got assistantOptions
+	assistantRunner = func(_ context.Context, opts assistantOptions, _ io.Writer, _ io.Writer) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{
+		"assistant",
+		"start",
+		"--server-url", "http://127.0.0.1:43180",
+		"--session", "sess_main",
+		"--hotkey", "Ctrl+Option+Space",
+		"--whisper-bin", "whisper-cli",
+		"--ffmpeg-bin", "ffmpeg",
+		"--tts-bin", "say",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("assistant start: %v", err)
+	}
+	if got.serverURL != "http://127.0.0.1:43180" {
+		t.Fatalf("unexpected serverURL: %#v", got)
+	}
+	if got.sessionID != "sess_main" {
+		t.Fatalf("unexpected sessionID: %#v", got)
+	}
+	if got.hotkey != "Ctrl+Option+Space" {
+		t.Fatalf("unexpected hotkey: %#v", got)
+	}
+	if got.whisperBin != "whisper-cli" || got.ffmpegBin != "ffmpeg" || got.ttsBin != "say" {
+		t.Fatalf("unexpected binary options: %#v", got)
+	}
+}
+
 func TestDefaultClientOptions_UsesPkgDefaultWhenEnvMissing(t *testing.T) {
 	prevServerURL, hadServerURL := os.LookupEnv("TARS_SERVER_URL")
 	defer func() {
