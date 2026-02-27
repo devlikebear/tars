@@ -129,10 +129,46 @@ func Start(ctx context.Context, opts StartOptions) error {
 	if hotkey == "" {
 		hotkey = DefaultHotkey
 	}
-	fmt.Fprintf(stdout, "assistant started (hotkey=%s, fallback=enter)\n", hotkey)
-	fmt.Fprintln(stdout, "press ENTER to start recording, ENTER again to stop, type /quit to exit")
+	listener, listenerErr := tryCreateHotkeyListener(hotkey)
+	mode, warning := resolveRuntimeMode(listener, hotkey, listenerErr)
+	switch mode {
+	case runtimeModeHotkey:
+		fmt.Fprintf(stdout, "assistant started (global hotkey=%s)\n", hotkey)
+		fmt.Fprintln(stdout, "hold hotkey to record, release to send, Ctrl+C to exit")
+		if warning != "" {
+			fmt.Fprintf(stderr, "assistant warning: %s\n", warning)
+		}
+		defer listener.Close()
+		return runHotkeyMode(ctx, listener, deps, voiceDir, defaultIfEmpty(opts.FFmpegBin, "ffmpeg"), stdout, stderr)
+	default:
+		fmt.Fprintf(stdout, "assistant started (hotkey=%s, fallback=enter)\n", hotkey)
+		if warning != "" {
+			fmt.Fprintf(stderr, "assistant warning: %s\n", warning)
+		}
+		fmt.Fprintln(stdout, "press ENTER to start recording, ENTER again to stop, type /quit to exit")
+		return runFallbackInputMode(ctx, stdin, deps, voiceDir, defaultIfEmpty(opts.FFmpegBin, "ffmpeg"), stdout, stderr)
+	}
+}
 
+func tryCreateHotkeyListener(raw string) (hotkeyListener, string) {
+	listener, err := newGlobalHotkeyListener(raw)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return listener, ""
+}
+
+func runFallbackInputMode(
+	ctx context.Context,
+	stdin io.Reader,
+	deps VoiceTurnDeps,
+	voiceDir string,
+	ffmpegBin string,
+	stdout io.Writer,
+	stderr io.Writer,
+) error {
 	reader := bufio.NewReader(stdin)
+	state := PushToTalkState{}
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -148,31 +184,90 @@ func Start(ctx context.Context, opts StartOptions) error {
 		if strings.EqualFold(strings.TrimSpace(line), "/quit") {
 			return nil
 		}
-
+		if !state.HandlePressed() {
+			continue
+		}
 		wavPath := filepath.Join(voiceDir, time.Now().UTC().Format("20060102-150405")+".wav")
-		rec, err := startRecording(ctx, defaultIfEmpty(opts.FFmpegBin, "ffmpeg"), wavPath)
+		rec, err := startRecording(ctx, ffmpegBin, wavPath)
 		if err != nil {
+			state.HandleReleased()
 			fmt.Fprintf(stderr, "assistant warning: failed to start recorder: %v\n", err)
 			continue
 		}
 		fmt.Fprintln(stdout, "recording... press ENTER to stop")
 		_, _ = reader.ReadString('\n')
+		state.HandleReleased()
 		if stopErr := rec.stop(); stopErr != nil {
 			fmt.Fprintf(stderr, "assistant warning: failed to stop recorder: %v\n", stopErr)
 			continue
 		}
-		result, err := RunVoiceTurn(ctx, deps, wavPath)
-		if err != nil {
-			fmt.Fprintf(stderr, "assistant warning: %v\n", err)
-			continue
-		}
-		deps.SessionID = result.SessionID
-		fmt.Fprintf(stdout, "you> %s\n", result.Transcript)
-		fmt.Fprintf(stdout, "tars> %s\n", result.AssistantReply)
-		if strings.TrimSpace(result.TTSError) != "" {
-			fmt.Fprintf(stderr, "assistant warning: tts fallback to text (%s)\n", result.TTSError)
+		if runErr := handleVoiceTurn(ctx, &deps, wavPath, stdout, stderr); runErr != nil {
+			fmt.Fprintf(stderr, "assistant warning: %v\n", runErr)
 		}
 	}
+}
+
+func runHotkeyMode(
+	ctx context.Context,
+	listener hotkeyListener,
+	deps VoiceTurnDeps,
+	voiceDir string,
+	ffmpegBin string,
+	stdout io.Writer,
+	stderr io.Writer,
+) error {
+	state := PushToTalkState{}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := listener.WaitPress(ctx); err != nil {
+			return err
+		}
+		if !state.HandlePressed() {
+			continue
+		}
+		wavPath := filepath.Join(voiceDir, time.Now().UTC().Format("20060102-150405")+".wav")
+		rec, err := startRecording(ctx, ffmpegBin, wavPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "assistant warning: failed to start recorder: %v\n", err)
+			state.HandleReleased()
+			if waitErr := listener.WaitRelease(ctx); waitErr != nil {
+				return waitErr
+			}
+			continue
+		}
+		fmt.Fprintln(stdout, "recording... release hotkey to stop")
+		if err := listener.WaitRelease(ctx); err != nil {
+			_ = rec.stop()
+			return err
+		}
+		state.HandleReleased()
+		if stopErr := rec.stop(); stopErr != nil {
+			fmt.Fprintf(stderr, "assistant warning: failed to stop recorder: %v\n", stopErr)
+			continue
+		}
+		if runErr := handleVoiceTurn(ctx, &deps, wavPath, stdout, stderr); runErr != nil {
+			fmt.Fprintf(stderr, "assistant warning: %v\n", runErr)
+		}
+	}
+}
+
+func handleVoiceTurn(ctx context.Context, deps *VoiceTurnDeps, wavPath string, stdout io.Writer, stderr io.Writer) error {
+	if deps == nil {
+		return fmt.Errorf("voice dependencies are required")
+	}
+	result, err := RunVoiceTurn(ctx, *deps, wavPath)
+	if err != nil {
+		return err
+	}
+	deps.SessionID = result.SessionID
+	fmt.Fprintf(stdout, "you> %s\n", result.Transcript)
+	fmt.Fprintf(stdout, "tars> %s\n", result.AssistantReply)
+	if strings.TrimSpace(result.TTSError) != "" {
+		fmt.Fprintf(stderr, "assistant warning: tts fallback to text (%s)\n", result.TTSError)
+	}
+	return nil
 }
 
 type apiChatClient struct {

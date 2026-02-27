@@ -11,10 +11,14 @@ import (
 
 func main() {
 	bootstrapEnv()
-	if err := newRootCommand(os.Stdin, os.Stdout, os.Stderr).Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	exitCode := 0
+	runOnMainThread(func() {
+		if err := newRootCommand(os.Stdin, os.Stdout, os.Stderr).Execute(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			exitCode = 1
+		}
+	})
+	os.Exit(exitCode)
 }
 
 func bootstrapEnv() {
