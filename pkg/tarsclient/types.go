@@ -320,6 +320,77 @@ type UsageLimitStatus struct {
 	LimitUSD float64 `json:"limit_usd,omitempty"`
 }
 
+type OpsStatus struct {
+	Timestamp       string  `json:"timestamp"`
+	DiskTotalBytes  uint64  `json:"disk_total_bytes"`
+	DiskFreeBytes   uint64  `json:"disk_free_bytes"`
+	DiskUsedPercent float64 `json:"disk_used_percent"`
+	ProcessCount    int     `json:"process_count"`
+}
+
+type CleanupCandidate struct {
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+type CleanupPlan struct {
+	ApprovalID string             `json:"approval_id"`
+	CreatedAt  string             `json:"created_at,omitempty"`
+	TotalBytes int64              `json:"total_bytes"`
+	Candidates []CleanupCandidate `json:"candidates"`
+}
+
+type Approval struct {
+	ID          string      `json:"id"`
+	Type        string      `json:"type"`
+	Status      string      `json:"status"`
+	RequestedAt string      `json:"requested_at,omitempty"`
+	UpdatedAt   string      `json:"updated_at,omitempty"`
+	ReviewedAt  string      `json:"reviewed_at,omitempty"`
+	Plan        CleanupPlan `json:"plan"`
+	Note        string      `json:"note,omitempty"`
+}
+
+type CleanupApplyResult struct {
+	ApprovalID   string   `json:"approval_id"`
+	DeletedCount int      `json:"deleted_count"`
+	DeletedBytes int64    `json:"deleted_bytes"`
+	Errors       []string `json:"errors,omitempty"`
+}
+
+type ScheduleItem struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Prompt    string `json:"prompt,omitempty"`
+	Natural   string `json:"natural,omitempty"`
+	Schedule  string `json:"schedule"`
+	Status    string `json:"status"`
+	ProjectID string `json:"project_id,omitempty"`
+	CronJobID string `json:"cron_job_id,omitempty"`
+	Timezone  string `json:"timezone,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+type ScheduleCreateRequest struct {
+	Natural   string `json:"natural"`
+	Title     string `json:"title,omitempty"`
+	Prompt    string `json:"prompt,omitempty"`
+	Schedule  string `json:"schedule,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Timezone  string `json:"timezone,omitempty"`
+}
+
+type ScheduleUpdateRequest struct {
+	Title     *string `json:"title,omitempty"`
+	Prompt    *string `json:"prompt,omitempty"`
+	Schedule  *string `json:"schedule,omitempty"`
+	Status    *string `json:"status,omitempty"`
+	ProjectID *string `json:"project_id,omitempty"`
+	Timezone  *string `json:"timezone,omitempty"`
+}
+
 type AgentDescriptor struct {
 	Name               string   `json:"name"`
 	Description        string   `json:"description,omitempty"`

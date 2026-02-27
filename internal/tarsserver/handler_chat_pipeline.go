@@ -223,6 +223,15 @@ func buildChatToolRegistry(
 	registry.Register(tool.NewProjectUpdateTool(projectStore))
 	registry.Register(tool.NewProjectDeleteTool(projectStore))
 	registry.Register(tool.NewProjectActivateTool(projectStore, reqStore, deps.mainSessionID))
+	registry.Register(tool.NewOpsStatusTool(deps.tooling.OpsManager))
+	registry.Register(tool.NewOpsCleanupPlanTool(deps.tooling.OpsManager))
+	registry.Register(tool.NewOpsCleanupApplyTool(deps.tooling.OpsManager))
+	registry.Register(tool.NewScheduleCreateTool(deps.tooling.ScheduleStore))
+	registry.Register(tool.NewScheduleListTool(deps.tooling.ScheduleStore))
+	registry.Register(tool.NewScheduleUpdateTool(deps.tooling.ScheduleStore))
+	registry.Register(tool.NewScheduleDeleteTool(deps.tooling.ScheduleStore))
+	registry.Register(tool.NewScheduleCompleteTool(deps.tooling.ScheduleStore))
+	registry.Register(tool.NewResearchReportTool(deps.tooling.ResearchService))
 	if deps.tooling.UsageTracker != nil {
 		registry.Register(tool.NewUsageReportTool(deps.tooling.UsageTracker))
 	}
@@ -466,6 +475,11 @@ func defaultMinimalToolNames() []string {
 		"project_list",
 		"project_update",
 		"project_activate",
+		"ops_status",
+		"ops_cleanup_plan",
+		"schedule_list",
+		"schedule_create",
+		"research_report",
 		"usage_report",
 		"session_status",
 		"sessions_list",

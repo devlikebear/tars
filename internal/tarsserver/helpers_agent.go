@@ -5,11 +5,15 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tarsncase/internal/agent"
+	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tarsncase/internal/ops"
 	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/prompt"
+	"github.com/devlikebear/tarsncase/internal/research"
+	"github.com/devlikebear/tarsncase/internal/schedule"
 	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/devlikebear/tarsncase/internal/usage"
@@ -31,6 +35,17 @@ func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.Pr
 	registry.Register(tool.NewProjectGetTool(projectStore))
 	registry.Register(tool.NewProjectUpdateTool(projectStore))
 	registry.Register(tool.NewProjectDeleteTool(projectStore))
+	opsManager := ops.NewManager(workspaceDir, ops.Options{})
+	registry.Register(tool.NewOpsStatusTool(opsManager))
+	registry.Register(tool.NewOpsCleanupPlanTool(opsManager))
+	registry.Register(tool.NewOpsCleanupApplyTool(opsManager))
+	scheduleStore := schedule.NewStore(workspaceDir, cron.NewStore(workspaceDir), schedule.Options{})
+	registry.Register(tool.NewScheduleCreateTool(scheduleStore))
+	registry.Register(tool.NewScheduleListTool(scheduleStore))
+	registry.Register(tool.NewScheduleUpdateTool(scheduleStore))
+	registry.Register(tool.NewScheduleDeleteTool(scheduleStore))
+	registry.Register(tool.NewScheduleCompleteTool(scheduleStore))
+	registry.Register(tool.NewResearchReportTool(research.NewService(workspaceDir, research.Options{})))
 	if usageTracker, err := usage.NewTracker(workspaceDir, usage.TrackerOptions{}); err == nil {
 		registry.Register(tool.NewUsageReportTool(usageTracker))
 	}

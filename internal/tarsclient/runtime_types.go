@@ -50,6 +50,20 @@ type usageSummary = tarsclient.UsageSummary
 
 type usageLimitStatus = tarsclient.UsageLimitStatus
 
+type opsStatus = tarsclient.OpsStatus
+
+type cleanupPlan = tarsclient.CleanupPlan
+
+type approvalItem = tarsclient.Approval
+
+type cleanupApplyResult = tarsclient.CleanupApplyResult
+
+type scheduleItem = tarsclient.ScheduleItem
+
+type scheduleCreateRequest = tarsclient.ScheduleCreateRequest
+
+type scheduleUpdateRequest = tarsclient.ScheduleUpdateRequest
+
 type eventsHistoryInfo = tarsclient.EventsHistoryInfo
 
 type eventsReadInfo = tarsclient.EventsReadInfo

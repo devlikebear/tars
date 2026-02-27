@@ -53,6 +53,9 @@ var commandHandlers = map[string]commandHandler{
 	"/cron":       cmdCron,
 	"/project":    cmdProject,
 	"/usage":      cmdUsage,
+	"/ops":        cmdOps,
+	"/approve":    cmdApprove,
+	"/schedule":   cmdSchedule,
 	"/notify":     cmdNotify,
 	"/trace":      cmdTrace,
 }

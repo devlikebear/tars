@@ -10,7 +10,10 @@ import (
 	"github.com/devlikebear/tarsncase/internal/extensions"
 	"github.com/devlikebear/tarsncase/internal/gateway"
 	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tarsncase/internal/ops"
 	"github.com/devlikebear/tarsncase/internal/prompt"
+	"github.com/devlikebear/tarsncase/internal/research"
+	"github.com/devlikebear/tarsncase/internal/schedule"
 	"github.com/devlikebear/tarsncase/internal/secrets"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/skill"
@@ -199,6 +202,9 @@ type chatToolingOptions struct {
 	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
 	ToolsDefaultSet             string
 	UsageTracker                *usage.Tracker
+	OpsManager                  *ops.Manager
+	ScheduleStore               *schedule.Store
+	ResearchService             *research.Service
 }
 
 func defaultChatToolingOptions() chatToolingOptions {

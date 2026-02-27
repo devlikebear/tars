@@ -22,7 +22,10 @@ import (
 	"github.com/devlikebear/tarsncase/internal/heartbeat"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/mcp"
+	"github.com/devlikebear/tarsncase/internal/ops"
 	"github.com/devlikebear/tarsncase/internal/project"
+	"github.com/devlikebear/tarsncase/internal/research"
+	"github.com/devlikebear/tarsncase/internal/schedule"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/devlikebear/tarsncase/internal/usage"
 	"github.com/rs/zerolog"
@@ -97,6 +100,11 @@ func buildAPIMux(
 	cronStore := cron.NewStoreWithOptions(cfg.WorkspaceDir, cron.StoreOptions{
 		RunHistoryLimit: cfg.CronRunHistoryLimit,
 	})
+	opsManager := ops.NewManager(cfg.WorkspaceDir, ops.Options{})
+	scheduleStore := schedule.NewStore(cfg.WorkspaceDir, cronStore, schedule.Options{
+		Timezone: cfg.ScheduleTimezone,
+	})
+	researchService := research.NewService(cfg.WorkspaceDir, research.Options{})
 	cronStoreResolver := newWorkspaceCronStoreResolver(cfg.WorkspaceDir, cfg.CronRunHistoryLimit, cronStore)
 	activity := &runtimeActivity{}
 	heartbeatState := newHeartbeatWorkspaceState()
@@ -295,6 +303,9 @@ func buildAPIMux(
 	_ = refreshGatewayExecutors("startup")
 
 	chatTooling := buildChatToolingOptions(processManager, extensionsManager, gatewayRuntime, cfg.ToolsDefaultSet, deps.usageTracker)
+	chatTooling.OpsManager = opsManager
+	chatTooling.ScheduleStore = scheduleStore
+	chatTooling.ResearchService = researchService
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
 		resolvedStore, err := cronStoreResolver.Resolve(defaultWorkspaceID)
 		if err != nil {
@@ -342,6 +353,12 @@ func buildAPIMux(
 	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
 	mux.Handle("/v1/usage/summary", usageHandler)
 	mux.Handle("/v1/usage/limits", usageHandler)
+	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit)
+	mux.Handle("/v1/ops/status", opsHandler)
+	mux.Handle("/v1/ops/cleanup/plan", opsHandler)
+	mux.Handle("/v1/ops/cleanup/apply", opsHandler)
+	mux.Handle("/v1/ops/approvals", opsHandler)
+	mux.Handle("/v1/ops/approvals/", opsHandler)
 	mux.Handle("/v1/status", newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger))
 	mux.Handle("/v1/auth/whoami", newAuthAPIHandler(cfg.APIAuthMode))
 	mux.Handle("/v1/healthz", newHealthzAPIHandler(nowFn))
@@ -352,6 +369,9 @@ func buildAPIMux(
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
 	mux.Handle("/v1/cron/jobs", cronHandler)
 	mux.Handle("/v1/cron/jobs/", cronHandler)
+	scheduleHandler := newScheduleAPIHandler(scheduleStore, logger)
+	mux.Handle("/v1/schedules", scheduleHandler)
+	mux.Handle("/v1/schedules/", scheduleHandler)
 	mcpHandler := newMCPAPIHandler(mcpClient, logger)
 	mux.Handle("/v1/mcp/servers", mcpHandler)
 	mux.Handle("/v1/mcp/tools", mcpHandler)

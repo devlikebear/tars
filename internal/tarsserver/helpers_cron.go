@@ -11,6 +11,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/cron"
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/project"
+	"github.com/devlikebear/tarsncase/internal/research"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/usage"
 	"github.com/rs/zerolog"
@@ -147,6 +148,14 @@ func persistCronProjectArtifact(workspaceDir string, job cron.Job, response stri
 	projectID := strings.TrimSpace(job.ProjectID)
 	if root == "" || projectID == "" {
 		return nil
+	}
+	if item, err := project.NewStore(root, nil).Get(projectID); err == nil && strings.EqualFold(strings.TrimSpace(item.Type), "research") {
+		_, _ = research.NewService(root, research.Options{Now: func() time.Time { return now }}).Run(research.RunInput{
+			ProjectID: projectID,
+			Topic:     "cron:" + strings.TrimSpace(job.Name),
+			Summary:   trimForMemory(response, 220),
+			Body:      strings.TrimSpace(response),
+		})
 	}
 	artifactDir := filepath.Join(root, "projects", projectID, "cron_runs")
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {

@@ -106,6 +106,9 @@ Runtime:
   /cron {list|get|runs|add|run|delete|enable|disable}
   /project {list|get|create|activate|archive}
   /usage {summary|limits|set-limits}
+  /ops {status|cleanup plan}
+  /approve {list|run|reject}
+  /schedule {list|add|done|remove}
   /notify {list|filter|open|clear}
 
 Chat:

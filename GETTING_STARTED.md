@@ -70,19 +70,46 @@ make dev-tars
 ```text
 /cron list
 /cron runs <job_id>
+/ops status
+/ops cleanup plan
+/approve list
+/approve run <approval_id>
+/schedule list
+/schedule add 내일 오후 3시에 회의 준비 알려줘
 /notify list
 /runs
 /run <run_id>
 /gateway status
 ```
 
-## 4) 바로 적용 팁
+## 4) macOS 개인 비서 시작
+
+1. 의존성 점검
+
+```bash
+tars assistant doctor
+```
+
+2. 음성 비서 실행(푸시투톡 fallback: Enter 시작/종료)
+
+```bash
+tars assistant start --server-url http://127.0.0.1:43180
+```
+
+3. 로그인 시 자동 실행(LaunchAgent 설치)
+
+```bash
+tars assistant install-launchagent --server-url http://127.0.0.1:43180
+launchctl list | rg io.tars.assistant
+```
+
+## 5) 바로 적용 팁
 
 - 브라우저 로그인 자동화가 필요하면 site flow + Vault를 먼저 설정하세요.
 - 보고 채널이 여러 개라면 webhook/telegram 채널을 먼저 등록해두면 프롬프트만으로 조합 가능합니다.
 - 처음에는 `5~10분` 주기로 테스트하고, 검증 후 주기를 늘리는 것이 안전합니다.
 
-## 5) 텔레그램 연동 테스트
+## 6) 텔레그램 연동 테스트
 
 ### 5-1) 자동 페어링(Polling, 권장)
 
@@ -194,7 +221,7 @@ curl -sS -X POST "http://127.0.0.1:43180/v1/channels/telegram/send" \
   - 페어링된 허용 사용자가 1명인 경우 해당 chat으로 자동 전송
   - 허용 사용자가 0명 또는 2명 이상이면 `chat_id`를 명시해야 함
 
-## 6) OpenAI Codex(OAuth) 설정
+## 7) OpenAI Codex(OAuth) 설정
 
 `openai-codex` provider는 ChatGPT OAuth 토큰(`~/.codex/auth.json` 또는 `CODEX_HOME/auth.json`)을 사용합니다.
 
@@ -225,7 +252,7 @@ make dev-serve
 - 파일 기반 토큰 사용 시 401/403 발생 시 refresh를 1회 시도하고, 성공하면 `auth.json`을 원자적으로 갱신합니다.
 - 환경변수 토큰만 사용할 경우(예: `OPENAI_CODEX_OAUTH_TOKEN`) refresh 결과를 파일에 저장하지 않습니다.
 
-## 7) Browser Relay 확장 연동
+## 8) Browser Relay 확장 연동
 
 브라우저 릴레이(`chrome` 프로필)에서 확장 연동이 필요한 경우, 먼저 relay 상태/접속 주소를 확인하세요.
 
