@@ -1,85 +1,67 @@
-# TARS
+# TARS (한국어)
 
-Language docs:
+TARS는 단일 Go 바이너리 기반의 경량 로컬 AI 자동화 스택입니다.
 
-- Korean: [README.ko.md](README.ko.md)
-- Japanese: [README.ja.md](README.ja.md)
-- English: this file (`README.md`)
+- `tars`: 터미널 클라이언트 (Bubble Tea 3패널 TUI) + 서버 모드 (`tars serve`)
 
-Additional docs:
+현재 구조는 공개 사용/운영 단순화를 목표로 정리되어 있습니다.
 
-- Getting started (practical examples): [GETTING_STARTED.md](GETTING_STARTED.md)
-- Contributing (versioning/PR policy): [CONTRIBUTING.md](CONTRIBUTING.md)
-- Change log: [CHANGE.log](CHANGE.log)
-- License: [LICENSE](LICENSE)
+## 주요 기능
 
-TARS is a lightweight local AI automation stack with a single Go binary:
-
-- `tars`: terminal client (Bubble Tea 3-pane TUI) + server mode (`tars serve`)
-
-The current architecture is intentionally simplified for public use and operations.
-
-## Features
-
-- Chat API with SSE streaming (`/v1/chat`)
-- Session lifecycle (`/v1/sessions`, history/export/search, compact)
-- Agent loop + built-in tools (`read/write/edit/glob/exec/process/memory/cron/heartbeat/...`)
+- SSE 스트리밍 채팅 API (`/v1/chat`)
+- 세션 수명주기 (`/v1/sessions`, history/export/search, compact)
+- Agent loop + 빌트인 도구 (`read/write/edit/glob/exec/process/memory/cron/heartbeat/...`)
 - In-process gateway runtime
-  - async runs (`/v1/agent/runs`)
+  - 비동기 run (`/v1/agent/runs`)
   - channels/webhooks
-  - browser/nodes/message tools
-- Skills/plugins/MCP hot-reload (`/v1/runtime/extensions/reload`)
-- Browser automation runtime
+  - browser/nodes/message 도구
+- 스킬/플러그인/MCP 핫리로드 (`/v1/runtime/extensions/reload`)
+- 브라우저 자동화 런타임
   - status/profiles/login/check/run API
-  - local browser relay (`/extension`, `/cdp`) with token/origin/loopback checks
-- Vault read-only integration for browser auto-login workflows (opt-in)
+  - 로컬 브라우저 릴레이 (`/extension`, `/cdp`) + token/origin/loopback 검증
+- Vault read-only 연동(옵션): 브라우저 자동 로그인 워크플로우
 
-## Repository Layout
+## 저장소 구조
 
-- `cmd/tars`: single binary entrypoint (`main.go`, `client_main.go`, `server_main.go`)
-- `internal/tarsclient`: internal TUI/command client runtime
-- `internal/tarsserver`: server runtime (`tars serve`)
-- `pkg/tarsclient`: public HTTP/SSE protocol client package
-- `internal/*`: runtime modules (gateway, tool, llm, session, extensions, browser, vaultclient, ...)
-- `config/tars.config.example.yaml`: example config
-- `workspace/`: local runtime workspace (sessions, memory, automation, etc.)
+- `cmd/tars`: 단일 바이너리 (`tars` TUI 클라이언트 + `tars serve` 서버 모드)
+- `internal/*`: 런타임 모듈 (gateway, tool, llm, session, extensions, browser, vaultclient, ...)
+- `config/tars.config.example.yaml`: 예시 설정
+- `workspace/`: 런타임 워크스페이스 (sessions, memory, automation 등)
 
-## Quick Start
+## 빠른 시작
 
-## 1) Prerequisites
+### 1) 요구사항
 
 - Go 1.24+
-- LLM provider credential (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`)
+- LLM provider credential (예: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`)
 
-## 2) Configure
+### 2) 설정
 
-Use your runtime config (default local path in this repo):
+기본 로컬 설정 파일:
 
 - `config/standalone.yaml`
 
-You can also start from:
+또는 예시 파일에서 시작:
 
 - `config/tars.config.example.yaml`
 
-## 3) Run server
+### 3) 서버 실행
 
 ```bash
 make dev-serve
-# or directly:
-# go run ./cmd/tars serve --verbose --serve-api --config ./config/standalone.yaml
 ```
 
-Default API address:
+기본 API 주소:
 
 - `http://127.0.0.1:43180`
 
-## 4) Run client
+### 4) 클라이언트 실행
 
 ```bash
 make dev-tars
 ```
 
-## 5) Smoke checks
+### 5) 스모크 체크
 
 ```bash
 make api-status
@@ -87,92 +69,88 @@ make api-sessions
 make smoke-auth
 ```
 
-## Authentication / Authorization
+## 인증 / 권한
 
-`api_auth_mode` supports role-aware tokens:
+`api_auth_mode`는 role 기반 token을 지원합니다.
 
-- `api_user_token`: chat/general operations
-- `api_admin_token`: control operations (`/v1/runtime/extensions/reload`, `/v1/gateway/reload`, `/v1/gateway/restart`, channel inbound + telegram pairing admin endpoints)
+- `api_user_token`: 채팅/일반 작업
+- `api_admin_token`: 제어 작업 (`/v1/runtime/extensions/reload`, `/v1/gateway/reload`, `/v1/gateway/restart`, channel inbound)
 
-Workspace model is fixed to a single `workspace_dir` (no `workspace_id` routing).
+## cmd/tars 핵심 명령
 
-## cmd/tars Highlights
-
-- Chat + streaming status trace panel
-- Session commands: `/new`, `/sessions`, `/resume`, `/history`, `/export`, `/search`
-- Runtime commands: `/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`, `/telegram`
-- Automation: `/cron`, `/notify`, `/heartbeat`
-- Browser/Vault:
+- 채팅 + status trace 패널
+- 세션: `/new`, `/sessions`, `/resume`, `/history`, `/export`, `/search`
+- 런타임: `/agents`, `/spawn`, `/runs`, `/run`, `/cancel-run`, `/gateway`, `/channels`
+- 자동화: `/cron`, `/notify`, `/heartbeat`
+- 브라우저/Vault:
   - `/browser status|profiles|login|check|run`
   - `/vault status`
 
-## Browser + Vault (Opt-in)
+## Browser + Vault (옵션)
 
-Enable in `tars` config:
+`tars` 설정에서 활성화:
 
 - `vault_enabled: true`
 - `browser_runtime_enabled: true`
 - `browser_relay_enabled: true`
 - `tools_browser_enabled: true`
 
-Optional site flow directory:
+옵션 site flow 디렉터리:
 
 - `browser_site_flows_dir: ./workspace/automation/sites`
 
-For `vault_form` login mode, enforce allowlists:
+`vault_form` 로그인 모드에서는 allowlist를 반드시 설정하세요:
 
 - `vault_secret_path_allowlist_json`
 - `browser_auto_login_site_allowlist_json`
 
-## Vault via Docker Compose (dev)
-
-Run local Vault + one-shot initializer:
+## Docker Compose로 Vault(dev)
 
 ```bash
 docker compose -f docker-compose.vault.yaml up -d
 docker compose -f docker-compose.vault.yaml logs -f vault-init
 ```
 
-What this sets up:
+구성:
 
-- Vault dev server at `http://127.0.0.1:8200`
+- Vault dev server: `http://127.0.0.1:8200`
 - KV v2 mount: `tars`
 - sample secret: `tars/sites/grafana` (`username`, `password`)
 - readonly policy: `tars-readonly`
-- readonly token printed in `vault-init` logs
+- readonly token: `vault-init` 로그에 출력
 
-Stop:
+종료:
 
 ```bash
 docker compose -f docker-compose.vault.yaml down
 ```
 
-## Testing
+## 테스트
 
 ```bash
 make test
-# or
+# 또는
 go test ./... -count=1
 ```
 
-## Security Scan
+## 보안 스캔
 
 ```bash
 make security-scan
 ```
 
-This runs:
+실행 항목:
 
-- `gitleaks` history scan
-- absolute local path leak check (e.g. `/Users/...`)
-- private key marker check in tracked files
+- `gitleaks` 히스토리 스캔
+- 절대 로컬 경로 노출 검사 (`/Users/...`)
+- private key marker 검사
 
-## Notes
+## 참고
 
-- `cased` sentinel daemon was removed during simplification.
-- Process supervision is delegated to systemd/launchd/docker in production.
-- `GET /v1/healthz` remains available for external health probing.
+- `cased` sentinel 데몬은 간소화 과정에서 제거됨
+- 운영 환경 프로세스 감시는 systemd/launchd/docker로 위임
+- `GET /v1/healthz`는 외부 health probe 용도로 유지
 
-## Contributing
+## 기여
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for versioning and PR policy.
+기여 정책(버전관리/PR 기준)은 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.
