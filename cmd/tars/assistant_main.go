@@ -21,6 +21,7 @@ type assistantOptions struct {
 	apiToken    string
 	workspace   string
 	hotkey      string
+	audioInput  string
 	whisperBin  string
 	ffmpegBin   string
 	ttsBin      string
@@ -46,6 +47,10 @@ func defaultAssistantOptions() assistantOptions {
 		apiToken:  strings.TrimSpace(os.Getenv("TARS_API_TOKEN")),
 		workspace: strings.TrimSpace(firstNonEmpty(os.Getenv("TARS_WORKSPACE_DIR"), "./workspace")),
 		hotkey:    assistant.DefaultHotkey,
+		audioInput: strings.TrimSpace(firstNonEmpty(
+			os.Getenv("TARS_ASSISTANT_AUDIO_INPUT"),
+			assistant.DefaultAudioInput,
+		)),
 		whisperBin: strings.TrimSpace(firstNonEmpty(
 			os.Getenv("TARS_ASSISTANT_WHISPER_BIN"),
 			"whisper-cli",
@@ -86,6 +91,7 @@ func newAssistantCommand(stdout, stderr io.Writer) *cobra.Command {
 	startCmd.Flags().StringVar(&opts.apiToken, "api-token", opts.apiToken, "api token")
 	startCmd.Flags().StringVar(&opts.workspace, "workspace-dir", opts.workspace, "workspace directory")
 	startCmd.Flags().StringVar(&opts.hotkey, "hotkey", opts.hotkey, "global hotkey (display only in fallback mode)")
+	startCmd.Flags().StringVar(&opts.audioInput, "audio-input", opts.audioInput, "avfoundation audio input (default|index|name)")
 	startCmd.Flags().StringVar(&opts.whisperBin, "whisper-bin", opts.whisperBin, "speech-to-text command")
 	startCmd.Flags().StringVar(&opts.ffmpegBin, "ffmpeg-bin", opts.ffmpegBin, "ffmpeg command path")
 	startCmd.Flags().StringVar(&opts.ttsBin, "tts-bin", opts.ttsBin, "text-to-speech command")
@@ -117,6 +123,7 @@ func newAssistantCommand(stdout, stderr io.Writer) *cobra.Command {
 	installCmd.Flags().StringVar(&opts.apiToken, "api-token", opts.apiToken, "api token")
 	installCmd.Flags().StringVar(&opts.workspace, "workspace-dir", opts.workspace, "workspace directory")
 	installCmd.Flags().StringVar(&opts.hotkey, "hotkey", opts.hotkey, "global hotkey")
+	installCmd.Flags().StringVar(&opts.audioInput, "audio-input", opts.audioInput, "avfoundation audio input (default|index|name)")
 	installCmd.Flags().StringVar(&opts.whisperBin, "whisper-bin", opts.whisperBin, "speech-to-text command")
 	installCmd.Flags().StringVar(&opts.ffmpegBin, "ffmpeg-bin", opts.ffmpegBin, "ffmpeg command path")
 	installCmd.Flags().StringVar(&opts.ttsBin, "tts-bin", opts.ttsBin, "text-to-speech command")
@@ -141,6 +148,7 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 			APIToken:     strings.TrimSpace(opts.apiToken),
 			WorkspaceDir: strings.TrimSpace(opts.workspace),
 			Hotkey:       strings.TrimSpace(opts.hotkey),
+			AudioInput:   strings.TrimSpace(opts.audioInput),
 			WhisperBin:   strings.TrimSpace(opts.whisperBin),
 			FFmpegBin:    strings.TrimSpace(opts.ffmpegBin),
 			TTSBin:       strings.TrimSpace(opts.ttsBin),
@@ -186,7 +194,16 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 		if stderrLog == "" {
 			stderrLog = filepathJoinHome("Library/Logs/tars-assistant.err.log")
 		}
-		args := []string{exe, "assistant", "start", "--server-url", strings.TrimSpace(opts.serverURL), "--workspace-dir", strings.TrimSpace(opts.workspace), "--hotkey", strings.TrimSpace(opts.hotkey), "--whisper-bin", strings.TrimSpace(opts.whisperBin), "--ffmpeg-bin", strings.TrimSpace(opts.ffmpegBin), "--tts-bin", strings.TrimSpace(opts.ttsBin)}
+		args := []string{
+			exe, "assistant", "start",
+			"--server-url", strings.TrimSpace(opts.serverURL),
+			"--workspace-dir", strings.TrimSpace(opts.workspace),
+			"--hotkey", strings.TrimSpace(opts.hotkey),
+			"--audio-input", strings.TrimSpace(opts.audioInput),
+			"--whisper-bin", strings.TrimSpace(opts.whisperBin),
+			"--ffmpeg-bin", strings.TrimSpace(opts.ffmpegBin),
+			"--tts-bin", strings.TrimSpace(opts.ttsBin),
+		}
 		if strings.TrimSpace(opts.sessionID) != "" {
 			args = append(args, "--session", strings.TrimSpace(opts.sessionID))
 		}

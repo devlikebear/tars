@@ -102,6 +102,7 @@ func TestRootCommand_AssistantSubcommandInvokesRunner(t *testing.T) {
 		"--server-url", "http://127.0.0.1:43180",
 		"--session", "sess_main",
 		"--hotkey", "Ctrl+Option+Space",
+		"--audio-input", "default",
 		"--whisper-bin", "whisper-cli",
 		"--ffmpeg-bin", "ffmpeg",
 		"--tts-bin", "say",
@@ -117,6 +118,9 @@ func TestRootCommand_AssistantSubcommandInvokesRunner(t *testing.T) {
 	}
 	if got.hotkey != "Ctrl+Option+Space" {
 		t.Fatalf("unexpected hotkey: %#v", got)
+	}
+	if got.audioInput != "default" {
+		t.Fatalf("unexpected audioInput: %#v", got)
 	}
 	if got.whisperBin != "whisper-cli" || got.ffmpegBin != "ffmpeg" || got.ttsBin != "say" {
 		t.Fatalf("unexpected binary options: %#v", got)

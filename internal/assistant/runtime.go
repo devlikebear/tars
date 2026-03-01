@@ -14,7 +14,10 @@ import (
 	"github.com/devlikebear/tarsncase/pkg/tarsclient"
 )
 
-const DefaultHotkey = "Ctrl+Option+Space"
+const (
+	DefaultHotkey     = "Ctrl+Option+Space"
+	DefaultAudioInput = "default"
+)
 
 type Transcriber interface {
 	Transcribe(ctx context.Context, audioPath string) (string, error)
@@ -83,6 +86,7 @@ type StartOptions struct {
 	APIToken     string
 	WorkspaceDir string
 	Hotkey       string
+	AudioInput   string
 	WhisperBin   string
 	FFmpegBin    string
 	TTSBin       string
@@ -129,6 +133,7 @@ func Start(ctx context.Context, opts StartOptions) error {
 	if hotkey == "" {
 		hotkey = DefaultHotkey
 	}
+	audioInput := resolveAVFoundationAudioInput(opts.AudioInput)
 	listener, listenerErr := tryCreateHotkeyListener(hotkey)
 	mode, warning := resolveRuntimeMode(listener, hotkey, listenerErr)
 	switch mode {
@@ -139,14 +144,14 @@ func Start(ctx context.Context, opts StartOptions) error {
 			fmt.Fprintf(stderr, "assistant warning: %s\n", warning)
 		}
 		defer listener.Close()
-		return runHotkeyMode(ctx, listener, deps, voiceDir, defaultIfEmpty(opts.FFmpegBin, "ffmpeg"), stdout, stderr)
+		return runHotkeyMode(ctx, listener, deps, voiceDir, defaultIfEmpty(opts.FFmpegBin, "ffmpeg"), audioInput, stdout, stderr)
 	default:
 		fmt.Fprintf(stdout, "assistant started (hotkey=%s, fallback=enter)\n", hotkey)
 		if warning != "" {
 			fmt.Fprintf(stderr, "assistant warning: %s\n", warning)
 		}
 		fmt.Fprintln(stdout, "press ENTER to start recording, ENTER again to stop, type /quit to exit")
-		return runFallbackInputMode(ctx, stdin, deps, voiceDir, defaultIfEmpty(opts.FFmpegBin, "ffmpeg"), stdout, stderr)
+		return runFallbackInputMode(ctx, stdin, deps, voiceDir, defaultIfEmpty(opts.FFmpegBin, "ffmpeg"), audioInput, stdout, stderr)
 	}
 }
 
@@ -164,6 +169,7 @@ func runFallbackInputMode(
 	deps VoiceTurnDeps,
 	voiceDir string,
 	ffmpegBin string,
+	audioInput string,
 	stdout io.Writer,
 	stderr io.Writer,
 ) error {
@@ -188,7 +194,7 @@ func runFallbackInputMode(
 			continue
 		}
 		wavPath := filepath.Join(voiceDir, time.Now().UTC().Format("20060102-150405")+".wav")
-		rec, err := startRecording(ctx, ffmpegBin, wavPath)
+		rec, err := startRecording(ctx, ffmpegBin, audioInput, wavPath)
 		if err != nil {
 			state.HandleReleased()
 			fmt.Fprintf(stderr, "assistant warning: failed to start recorder: %v\n", err)
@@ -213,6 +219,7 @@ func runHotkeyMode(
 	deps VoiceTurnDeps,
 	voiceDir string,
 	ffmpegBin string,
+	audioInput string,
 	stdout io.Writer,
 	stderr io.Writer,
 ) error {
@@ -228,7 +235,7 @@ func runHotkeyMode(
 			continue
 		}
 		wavPath := filepath.Join(voiceDir, time.Now().UTC().Format("20060102-150405")+".wav")
-		rec, err := startRecording(ctx, ffmpegBin, wavPath)
+		rec, err := startRecording(ctx, ffmpegBin, audioInput, wavPath)
 		if err != nil {
 			fmt.Fprintf(stderr, "assistant warning: failed to start recorder: %v\n", err)
 			state.HandleReleased()
@@ -322,8 +329,8 @@ type ffmpegRecording struct {
 	cmd *exec.Cmd
 }
 
-func startRecording(ctx context.Context, ffmpegBin string, wavPath string) (*ffmpegRecording, error) {
-	args := []string{"-y", "-f", "avfoundation", "-i", ":0", "-ac", "1", "-ar", "16000", "-acodec", "pcm_s16le", strings.TrimSpace(wavPath)}
+func startRecording(ctx context.Context, ffmpegBin string, audioInput string, wavPath string) (*ffmpegRecording, error) {
+	args := []string{"-y", "-f", "avfoundation", "-i", resolveAVFoundationAudioInput(audioInput), "-ac", "1", "-ar", "16000", "-acodec", "pcm_s16le", strings.TrimSpace(wavPath)}
 	cmd := exec.CommandContext(ctx, strings.TrimSpace(ffmpegBin), args...)
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -359,4 +366,18 @@ func defaultIfEmpty(value, fallback string) string {
 		return v
 	}
 	return strings.TrimSpace(fallback)
+}
+
+func resolveAVFoundationAudioInput(raw string) string {
+	input := strings.TrimSpace(raw)
+	if input == "" {
+		return ":" + DefaultAudioInput
+	}
+	if strings.HasPrefix(input, ":") {
+		return input
+	}
+	if strings.Contains(input, ":") {
+		return input
+	}
+	return ":" + input
 }

@@ -6,6 +6,31 @@ import (
 	"testing"
 )
 
+func TestResolveAVFoundationAudioInput_Default(t *testing.T) {
+	if got := resolveAVFoundationAudioInput(""); got != ":default" {
+		t.Fatalf("expected :default for empty input, got %q", got)
+	}
+	if got := resolveAVFoundationAudioInput("default"); got != ":default" {
+		t.Fatalf("expected :default for default input, got %q", got)
+	}
+}
+
+func TestResolveAVFoundationAudioInput_Custom(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "1", want: ":1"},
+		{input: ":2", want: ":2"},
+		{input: "none:0", want: "none:0"},
+	}
+	for _, tc := range tests {
+		if got := resolveAVFoundationAudioInput(tc.input); got != tc.want {
+			t.Fatalf("input=%q expected %q, got %q", tc.input, tc.want, got)
+		}
+	}
+}
+
 type fakeTranscriber struct {
 	text string
 	err  error
