@@ -30,6 +30,20 @@ func TestScheduleAPI_CRUD(t *testing.T) {
 	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode created schedule: %v", err)
 	}
+	relativeReq := httptest.NewRequest(http.MethodPost, "/v1/schedules", strings.NewReader(`{"natural":"1분뒤 테스트 알림"}`))
+	relativeReq.Header.Set("Content-Type", "application/json")
+	relativeRec := httptest.NewRecorder()
+	handler.ServeHTTP(relativeRec, relativeReq)
+	if relativeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 relative create, got %d body=%q", relativeRec.Code, relativeRec.Body.String())
+	}
+	var relative schedule.Item
+	if err := json.Unmarshal(relativeRec.Body.Bytes(), &relative); err != nil {
+		t.Fatalf("decode relative created schedule: %v", err)
+	}
+	if !strings.HasPrefix(relative.Schedule, "at:") {
+		t.Fatalf("expected relative schedule as at:, got %q", relative.Schedule)
+	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/v1/schedules", nil)
 	listRec := httptest.NewRecorder()

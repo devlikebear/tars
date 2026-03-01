@@ -57,6 +57,8 @@ const memoryToolSystemRule = `
 
 ## Automation Tool Policy
 - If the user asks about cron jobs managed by this app, call cron (preferred) or cron_list / cron_get / cron_runs / cron_create / cron_update / cron_delete / cron_run instead of OS commands like crontab.
+- If the user asks to create reminders/todos from natural language, prefer schedule_create first.
+- If schedule_create fails with a natural parse error, convert the user intent to at:<rfc3339> or every:<duration> and call cron_create as fallback.
 - If the user asks about heartbeat status or asks to trigger heartbeat, call heartbeat (preferred) or heartbeat_status / heartbeat_run_once instead of inferring from process or file guesses.
 
 ## Runtime Tool Policy

@@ -59,6 +59,60 @@ func TestStore_CreateWeeklyNaturalSchedule(t *testing.T) {
 	}
 }
 
+func TestStore_CreateRelativeNaturalSchedule(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	cronStore := cron.NewStore(workspace)
+	now := time.Date(2026, 2, 27, 10, 0, 0, 0, time.FixedZone("KST", 9*3600))
+	store := NewStore(workspace, cronStore, Options{Now: func() time.Time { return now }, Timezone: "Asia/Seoul"})
+
+	item, err := store.Create(CreateInput{Natural: "1분뒤 테스트 알림"})
+	if err != nil {
+		t.Fatalf("create relative schedule: %v", err)
+	}
+	expected := "at:" + now.Add(1*time.Minute).UTC().Format(time.RFC3339)
+	if item.Schedule != expected {
+		t.Fatalf("expected %q, got %q", expected, item.Schedule)
+	}
+}
+
+func TestParseNaturalSchedule_RelativeExpressions(t *testing.T) {
+	now := time.Date(2026, 2, 27, 10, 0, 0, 0, time.FixedZone("KST", 9*3600))
+	tests := []struct {
+		name     string
+		input    string
+		want     string
+		timezone string
+	}{
+		{
+			name:     "minutes no space",
+			input:    "1분뒤 테스트",
+			want:     "at:" + now.Add(1*time.Minute).Format(time.RFC3339),
+			timezone: "Asia/Seoul",
+		},
+		{
+			name:     "hours with space",
+			input:    "2시간 후 점검",
+			want:     "at:" + now.Add(2*time.Hour).Format(time.RFC3339),
+			timezone: "Asia/Seoul",
+		},
+		{
+			name:     "days",
+			input:    "3일뒤 알림",
+			want:     "at:" + now.AddDate(0, 0, 3).Format(time.RFC3339),
+			timezone: "Asia/Seoul",
+		},
+	}
+	for _, tc := range tests {
+		got, err := parseNaturalSchedule(tc.input, tc.timezone, now)
+		if err != nil {
+			t.Fatalf("%s: parse failed: %v", tc.name, err)
+		}
+		if got != tc.want {
+			t.Fatalf("%s: expected %q, got %q", tc.name, tc.want, got)
+		}
+	}
+}
+
 func TestStore_UsesCronAsSingleStorage(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	cronStore := cron.NewStore(workspace)
