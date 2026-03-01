@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -271,6 +272,50 @@ func TestCronTool_ActionGetAndRuns(t *testing.T) {
 	}
 	if runsBody.Runs[0].JobID != job.ID {
 		t.Fatalf("expected run job id %q, got %q", job.ID, runsBody.Runs[0].JobID)
+	}
+}
+
+func TestCronCreateTool_RejectsNonNaturalPrompt(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	create := NewCronCreateTool(store)
+
+	result, err := create.Execute(context.Background(), json.RawMessage(`{"name":"ops","prompt":"rm -rf /tmp","schedule":"every:30m"}`))
+	if err != nil {
+		t.Fatalf("execute cron_create: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected error for non-natural prompt, got %s", result.Text())
+	}
+	if !strings.Contains(result.Text(), "prompt는 자연어 할일 문장이어야 합니다") {
+		t.Fatalf("unexpected error message: %s", result.Text())
+	}
+}
+
+func TestCronUpdateTool_RejectsNonNaturalPrompt(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	job, err := store.CreateWithOptions(cron.CreateInput{
+		Name:      "ops",
+		Prompt:    "디스크 상태 확인하기",
+		Schedule:  "every:30m",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create cron job: %v", err)
+	}
+	update := NewCronUpdateTool(store)
+
+	result, err := update.Execute(context.Background(), json.RawMessage(`{"job_id":"`+job.ID+`","prompt":"sudo rm -rf /"}`))
+	if err != nil {
+		t.Fatalf("execute cron_update: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected error for non-natural prompt, got %s", result.Text())
+	}
+	if !strings.Contains(result.Text(), "prompt는 자연어 할일 문장이어야 합니다") {
+		t.Fatalf("unexpected error message: %s", result.Text())
 	}
 }
 

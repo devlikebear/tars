@@ -40,6 +40,11 @@ func NewScheduleCreateTool(store *schedule.Store) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
+			if strings.TrimSpace(input.Prompt) != "" {
+				if err := validateNaturalTaskPrompt(input.Prompt); err != nil {
+					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				}
+			}
 			item, err := store.Create(schedule.CreateInput{
 				Natural:   input.Natural,
 				Title:     input.Title,
@@ -107,6 +112,11 @@ func NewScheduleUpdateTool(store *schedule.Store) Tool {
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+			}
+			if input.Prompt != nil {
+				if err := validateNaturalTaskPrompt(*input.Prompt); err != nil {
+					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				}
 			}
 			item, err := store.Update(strings.TrimSpace(input.ScheduleID), schedule.UpdateInput{
 				Title:     input.Title,

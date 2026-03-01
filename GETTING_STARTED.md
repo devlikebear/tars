@@ -82,6 +82,16 @@ make dev-tars
 /gateway status
 ```
 
+### 일정/크론 할 일(prompt) 입력 규칙
+
+- `schedule`/`cron` 등록 시 할 일 `prompt`는 자연어 문장이어야 합니다.
+- 명령식/쉘 패턴(`rm`, `sudo`, `&&`, `|`, `;`)은 거부됩니다.
+
+예시:
+
+- 허용: `10분마다 디스크 상태를 점검해서 알려줘`
+- 거부: `sudo rm -rf /tmp && echo done`
+
 ## 4) macOS 개인 비서 시작
 
 1. 의존성 점검

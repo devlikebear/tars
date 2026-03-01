@@ -71,6 +71,9 @@ func NewCronCreateTool(store *cron.Store) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return automationErrorResult(fmt.Sprintf("invalid arguments: %v", err)), nil
 			}
+			if err := validateNaturalTaskPrompt(input.Prompt); err != nil {
+				return automationErrorResult(err.Error()), nil
+			}
 			hasEnable := input.Enabled != nil
 			enabled := true
 			if input.Enabled != nil {
@@ -143,6 +146,11 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 			input.JobID = strings.TrimSpace(input.JobID)
 			if input.JobID == "" {
 				return automationErrorResult("job_id is required"), nil
+			}
+			if input.Prompt != nil {
+				if err := validateNaturalTaskPrompt(*input.Prompt); err != nil {
+					return automationErrorResult(err.Error()), nil
+				}
 			}
 			job, err := store.Update(input.JobID, cron.UpdateInput{
 				Name:           input.Name,
