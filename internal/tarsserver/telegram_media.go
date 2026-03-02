@@ -116,18 +116,18 @@ func (d *telegramHTTPMediaDownloader) getFilePath(ctx context.Context, fileID st
 	endpoint := strings.TrimRight(d.baseURL, "/") + "/bot" + d.botToken + "/getFile"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("build getFile request: %w", err)
+		return "", fmt.Errorf("build getFile request: %s", sanitizeTelegramError(err, d.botToken))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("telegram getFile request failed: %w", err)
+		return "", fmt.Errorf("telegram getFile request failed: %s", sanitizeTelegramError(err, d.botToken))
 	}
 	defer resp.Body.Close()
 	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("telegram getFile status %d: %s", resp.StatusCode, strings.TrimSpace(string(payload)))
+		return "", fmt.Errorf("telegram getFile status %d: %s", resp.StatusCode, sanitizeTelegramLogText(strings.TrimSpace(string(payload)), d.botToken))
 	}
 	var parsed struct {
 		OK          bool   `json:"ok"`
@@ -140,7 +140,7 @@ func (d *telegramHTTPMediaDownloader) getFilePath(ctx context.Context, fileID st
 		return "", fmt.Errorf("decode getFile response: %w", err)
 	}
 	if !parsed.OK {
-		return "", fmt.Errorf("telegram getFile failed: %s", strings.TrimSpace(parsed.Description))
+		return "", fmt.Errorf("telegram getFile failed: %s", sanitizeTelegramLogText(strings.TrimSpace(parsed.Description), d.botToken))
 	}
 	filePath := strings.TrimSpace(parsed.Result.FilePath)
 	if filePath == "" {
@@ -153,16 +153,16 @@ func (d *telegramHTTPMediaDownloader) downloadFile(ctx context.Context, filePath
 	endpoint := strings.TrimRight(d.baseURL, "/") + "/file/bot" + d.botToken + "/" + strings.TrimLeft(strings.TrimSpace(filePath), "/")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build telegram file download request: %w", err)
+		return nil, fmt.Errorf("build telegram file download request: %s", sanitizeTelegramError(err, d.botToken))
 	}
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("telegram file download failed: %w", err)
+		return nil, fmt.Errorf("telegram file download failed: %s", sanitizeTelegramError(err, d.botToken))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return nil, fmt.Errorf("telegram file download status %d: %s", resp.StatusCode, strings.TrimSpace(string(payload)))
+		return nil, fmt.Errorf("telegram file download status %d: %s", resp.StatusCode, sanitizeTelegramLogText(strings.TrimSpace(string(payload)), d.botToken))
 	}
 	limited := io.LimitReader(resp.Body, telegramMediaMaxBytes+1)
 	data, err := io.ReadAll(limited)

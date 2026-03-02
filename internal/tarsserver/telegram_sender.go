@@ -102,19 +102,19 @@ func (s *telegramHTTPSender) Send(ctx context.Context, req telegramSendRequest) 
 	endpoint := strings.TrimRight(s.baseURL, "/") + "/bot" + s.botToken + "/sendMessage"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(encoded))
 	if err != nil {
-		return telegramSendResult{}, fmt.Errorf("build telegram request: %w", err)
+		return telegramSendResult{}, fmt.Errorf("build telegram request: %s", sanitizeTelegramError(err, s.botToken))
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(httpReq)
 	if err != nil {
-		return telegramSendResult{}, fmt.Errorf("telegram request failed: %w", err)
+		return telegramSendResult{}, fmt.Errorf("telegram request failed: %s", sanitizeTelegramError(err, s.botToken))
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return telegramSendResult{}, fmt.Errorf("telegram api status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return telegramSendResult{}, fmt.Errorf("telegram api status %d: %s", resp.StatusCode, sanitizeTelegramLogText(strings.TrimSpace(string(body)), s.botToken))
 	}
 	var parsed struct {
 		OK          bool   `json:"ok"`
@@ -137,7 +137,7 @@ func (s *telegramHTTPSender) Send(ctx context.Context, req telegramSendRequest) 
 		if description == "" {
 			description = "telegram api returned ok=false"
 		}
-		return telegramSendResult{}, errors.New(description)
+		return telegramSendResult{}, errors.New(sanitizeTelegramLogText(description, s.botToken))
 	}
 	resultChatID := strings.TrimSpace(parsed.Result.Chat.ID.String())
 	if resultChatID == "" {
@@ -179,19 +179,19 @@ func (s *telegramHTTPSender) SendChatAction(ctx context.Context, req telegramCha
 	endpoint := strings.TrimRight(s.baseURL, "/") + "/bot" + s.botToken + "/sendChatAction"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(encoded))
 	if err != nil {
-		return fmt.Errorf("build telegram chat action request: %w", err)
+		return fmt.Errorf("build telegram chat action request: %s", sanitizeTelegramError(err, s.botToken))
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("telegram chat action request failed: %w", err)
+		return fmt.Errorf("telegram chat action request failed: %s", sanitizeTelegramError(err, s.botToken))
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("telegram api status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("telegram api status %d: %s", resp.StatusCode, sanitizeTelegramLogText(strings.TrimSpace(string(body)), s.botToken))
 	}
 	var parsed struct {
 		OK          bool   `json:"ok"`
@@ -205,7 +205,7 @@ func (s *telegramHTTPSender) SendChatAction(ctx context.Context, req telegramCha
 		if description == "" {
 			description = "telegram api returned ok=false"
 		}
-		return errors.New(description)
+		return errors.New(sanitizeTelegramLogText(description, s.botToken))
 	}
 	return nil
 }

@@ -193,19 +193,19 @@ func (p *telegramUpdatePoller) fetchUpdates(ctx context.Context, offset int64) (
 	endpoint := strings.TrimRight(p.baseURL, "/") + "/bot" + p.botToken + "/getUpdates"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(encoded))
 	if err != nil {
-		return nil, fmt.Errorf("build telegram getUpdates request: %w", err)
+		return nil, fmt.Errorf("build telegram getUpdates request: %s", sanitizeTelegramError(err, p.botToken))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("telegram getUpdates failed: %w", err)
+		return nil, fmt.Errorf("telegram getUpdates failed: %s", sanitizeTelegramError(err, p.botToken))
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("telegram getUpdates status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("telegram getUpdates status %d: %s", resp.StatusCode, sanitizeTelegramLogText(strings.TrimSpace(string(body)), p.botToken))
 	}
 	var payload struct {
 		OK          bool             `json:"ok"`
@@ -222,7 +222,7 @@ func (p *telegramUpdatePoller) fetchUpdates(ctx context.Context, offset int64) (
 		if description == "" {
 			description = "telegram getUpdates returned ok=false"
 		}
-		return nil, errors.New(description)
+		return nil, errors.New(sanitizeTelegramLogText(description, p.botToken))
 	}
 	if payload.Result == nil {
 		return []telegramUpdate{}, nil
