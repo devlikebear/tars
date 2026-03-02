@@ -40,6 +40,12 @@ func loadYAML(path string) (Config, error) {
 			cfg.APIUserToken = strings.TrimSpace(value)
 		case "api_admin_token":
 			cfg.APIAdminToken = strings.TrimSpace(value)
+		case "api_allow_insecure_local_auth":
+			cfg.APIAllowInsecureLocalAuth = parseBool(value, cfg.APIAllowInsecureLocalAuth)
+		case "api_max_inflight_chat":
+			cfg.APIMaxInflightChat = parsePositiveInt(value, cfg.APIMaxInflightChat)
+		case "api_max_inflight_agent_runs":
+			cfg.APIMaxInflightAgentRuns = parsePositiveInt(value, cfg.APIMaxInflightAgentRuns)
 		case "bifrost_base_url":
 			cfg.BifrostBase = value
 		case "bifrost_api_key":
@@ -98,6 +104,8 @@ func loadYAML(path string) (Config, error) {
 			cfg.ToolsWebFetchEnabled = parseBool(value, cfg.ToolsWebFetchEnabled)
 		case "tools_default_set":
 			cfg.ToolsDefaultSet = strings.TrimSpace(strings.ToLower(value))
+		case "tools_allow_high_risk_user":
+			cfg.ToolsAllowHighRiskUser = parseBool(value, cfg.ToolsAllowHighRiskUser)
 		case "tools_web_search_api_key":
 			cfg.ToolsWebSearchAPIKey = strings.TrimSpace(value)
 		case "tools_web_search_provider":
@@ -156,6 +164,8 @@ func loadYAML(path string) (Config, error) {
 			cfg.BrowserRelayAddr = strings.TrimSpace(value)
 		case "browser_relay_token":
 			cfg.BrowserRelayToken = strings.TrimSpace(value)
+		case "browser_relay_allow_query_token":
+			cfg.BrowserRelayAllowQueryToken = parseBool(value, cfg.BrowserRelayAllowQueryToken)
 		case "browser_relay_origin_allowlist_json":
 			cfg.BrowserRelayOriginAllowlist = parseJSONStringList(value, cfg.BrowserRelayOriginAllowlist)
 		case "browser_site_flows_dir":
@@ -236,6 +246,10 @@ func loadYAML(path string) (Config, error) {
 			cfg.PluginsExtraDirs = parseJSONStringList(value, cfg.PluginsExtraDirs)
 		case "plugins_bundled_dir":
 			cfg.PluginsBundledDir = strings.TrimSpace(value)
+		case "plugins_allow_mcp_servers":
+			cfg.PluginsAllowMCPServers = parseBool(value, cfg.PluginsAllowMCPServers)
+		case "mcp_command_allowlist_json":
+			cfg.MCPCommandAllowlist = parseJSONStringList(value, cfg.MCPCommandAllowlist)
 		}
 	}
 	return cfg, nil

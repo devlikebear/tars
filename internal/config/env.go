@@ -30,6 +30,15 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("API_ADMIN_TOKEN"), os.Getenv("TARS_API_ADMIN_TOKEN")); v != "" {
 		cfg.APIAdminToken = strings.TrimSpace(v)
 	}
+	if v := firstNonEmpty(os.Getenv("API_ALLOW_INSECURE_LOCAL_AUTH"), os.Getenv("TARS_API_ALLOW_INSECURE_LOCAL_AUTH")); v != "" {
+		cfg.APIAllowInsecureLocalAuth = parseBool(v, cfg.APIAllowInsecureLocalAuth)
+	}
+	if v := firstNonEmpty(os.Getenv("API_MAX_INFLIGHT_CHAT"), os.Getenv("TARS_API_MAX_INFLIGHT_CHAT")); v != "" {
+		cfg.APIMaxInflightChat = parsePositiveInt(v, cfg.APIMaxInflightChat)
+	}
+	if v := firstNonEmpty(os.Getenv("API_MAX_INFLIGHT_AGENT_RUNS"), os.Getenv("TARS_API_MAX_INFLIGHT_AGENT_RUNS")); v != "" {
+		cfg.APIMaxInflightAgentRuns = parsePositiveInt(v, cfg.APIMaxInflightAgentRuns)
+	}
 	if v := firstNonEmpty(os.Getenv("BIFROST_BASE_URL"), os.Getenv("TARS_BIFROST_BASE_URL")); v != "" {
 		cfg.BifrostBase = v
 	}
@@ -120,6 +129,9 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("TOOLS_DEFAULT_SET"), os.Getenv("TARS_TOOLS_DEFAULT_SET")); v != "" {
 		cfg.ToolsDefaultSet = strings.TrimSpace(strings.ToLower(v))
 	}
+	if v := firstNonEmpty(os.Getenv("TOOLS_ALLOW_HIGH_RISK_USER"), os.Getenv("TARS_TOOLS_ALLOW_HIGH_RISK_USER")); v != "" {
+		cfg.ToolsAllowHighRiskUser = parseBool(v, cfg.ToolsAllowHighRiskUser)
+	}
 	if v := firstNonEmpty(os.Getenv("TOOLS_WEB_SEARCH_API_KEY"), os.Getenv("TARS_TOOLS_WEB_SEARCH_API_KEY")); v != "" {
 		cfg.ToolsWebSearchAPIKey = strings.TrimSpace(v)
 	}
@@ -206,6 +218,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := firstNonEmpty(os.Getenv("BROWSER_RELAY_TOKEN"), os.Getenv("TARS_BROWSER_RELAY_TOKEN")); v != "" {
 		cfg.BrowserRelayToken = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("BROWSER_RELAY_ALLOW_QUERY_TOKEN"), os.Getenv("TARS_BROWSER_RELAY_ALLOW_QUERY_TOKEN")); v != "" {
+		cfg.BrowserRelayAllowQueryToken = parseBool(v, cfg.BrowserRelayAllowQueryToken)
 	}
 	if v := firstNonEmpty(os.Getenv("BROWSER_RELAY_ORIGIN_ALLOWLIST_JSON"), os.Getenv("TARS_BROWSER_RELAY_ORIGIN_ALLOWLIST_JSON")); v != "" {
 		cfg.BrowserRelayOriginAllowlist = parseJSONStringList(v, cfg.BrowserRelayOriginAllowlist)
@@ -326,5 +341,11 @@ func applyEnv(cfg *Config) {
 	}
 	if v := firstNonEmpty(os.Getenv("PLUGINS_BUNDLED_DIR"), os.Getenv("TARS_PLUGINS_BUNDLED_DIR")); v != "" {
 		cfg.PluginsBundledDir = strings.TrimSpace(v)
+	}
+	if v := firstNonEmpty(os.Getenv("PLUGINS_ALLOW_MCP_SERVERS"), os.Getenv("TARS_PLUGINS_ALLOW_MCP_SERVERS")); v != "" {
+		cfg.PluginsAllowMCPServers = parseBool(v, cfg.PluginsAllowMCPServers)
+	}
+	if v := firstNonEmpty(os.Getenv("MCP_COMMAND_ALLOWLIST_JSON"), os.Getenv("TARS_MCP_COMMAND_ALLOWLIST_JSON")); v != "" {
+		cfg.MCPCommandAllowlist = parseJSONStringList(v, cfg.MCPCommandAllowlist)
 	}
 }

@@ -25,6 +25,15 @@ func merge(dst *Config, src Config) {
 	if src.APIAdminToken != "" {
 		dst.APIAdminToken = src.APIAdminToken
 	}
+	if src.APIAllowInsecureLocalAuth {
+		dst.APIAllowInsecureLocalAuth = true
+	}
+	if src.APIMaxInflightChat > 0 {
+		dst.APIMaxInflightChat = src.APIMaxInflightChat
+	}
+	if src.APIMaxInflightAgentRuns > 0 {
+		dst.APIMaxInflightAgentRuns = src.APIMaxInflightAgentRuns
+	}
 	if src.BifrostBase != "" {
 		dst.BifrostBase = src.BifrostBase
 	}
@@ -115,6 +124,9 @@ func merge(dst *Config, src Config) {
 	if src.ToolsDefaultSet != "" {
 		dst.ToolsDefaultSet = src.ToolsDefaultSet
 	}
+	if src.ToolsAllowHighRiskUser {
+		dst.ToolsAllowHighRiskUser = true
+	}
 	if src.ToolsWebSearchAPIKey != "" {
 		dst.ToolsWebSearchAPIKey = src.ToolsWebSearchAPIKey
 	}
@@ -201,6 +213,9 @@ func merge(dst *Config, src Config) {
 	}
 	if src.BrowserRelayToken != "" {
 		dst.BrowserRelayToken = src.BrowserRelayToken
+	}
+	if src.BrowserRelayAllowQueryToken {
+		dst.BrowserRelayAllowQueryToken = true
 	}
 	if len(src.BrowserRelayOriginAllowlist) > 0 {
 		dst.BrowserRelayOriginAllowlist = append([]string(nil), src.BrowserRelayOriginAllowlist...)
@@ -321,5 +336,11 @@ func merge(dst *Config, src Config) {
 	}
 	if src.PluginsBundledDir != "" {
 		dst.PluginsBundledDir = src.PluginsBundledDir
+	}
+	if src.PluginsAllowMCPServers {
+		dst.PluginsAllowMCPServers = true
+	}
+	if len(src.MCPCommandAllowlist) > 0 {
+		dst.MCPCommandAllowlist = append([]string(nil), src.MCPCommandAllowlist...)
 	}
 }

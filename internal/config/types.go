@@ -35,6 +35,9 @@ type Config struct {
 	APIAuthToken                         string
 	APIUserToken                         string
 	APIAdminToken                        string
+	APIAllowInsecureLocalAuth            bool
+	APIMaxInflightChat                   int
+	APIMaxInflightAgentRuns              int
 	LLMProvider                          string
 	LLMAuthMode                          string
 	LLMOAuthProvider                     string
@@ -64,6 +67,7 @@ type Config struct {
 	ToolsWebSearchEnabled                bool
 	ToolsWebFetchEnabled                 bool
 	ToolsDefaultSet                      string
+	ToolsAllowHighRiskUser               bool
 	ToolsWebSearchAPIKey                 string
 	ToolsWebSearchProvider               string
 	ToolsWebSearchPerplexityAPIKey       string
@@ -93,6 +97,7 @@ type Config struct {
 	BrowserRelayEnabled                  bool
 	BrowserRelayAddr                     string
 	BrowserRelayToken                    string
+	BrowserRelayAllowQueryToken          bool
 	BrowserRelayOriginAllowlist          []string
 	BrowserSiteFlowsDir                  string
 	BrowserAutoLoginSiteAllowlist        []string
@@ -133,7 +138,9 @@ type Config struct {
 	PluginsWatchDebounceMS               int
 	PluginsExtraDirs                     []string
 	PluginsBundledDir                    string
+	PluginsAllowMCPServers               bool
 	MCPServers                           []MCPServer
+	MCPCommandAllowlist                  []string
 }
 
 const DefaultConfigFilename = "config/standalone.yaml"
@@ -144,7 +151,9 @@ func Default() Config {
 		Mode:                                 "standalone",
 		WorkspaceDir:                         "./workspace",
 		SessionTelegramScope:                 "main",
-		APIAuthMode:                          "external-required",
+		APIAuthMode:                          "required",
+		APIMaxInflightChat:                   2,
+		APIMaxInflightAgentRuns:              4,
 		LLMProvider:                          "bifrost",
 		LLMAuthMode:                          "api-key",
 		UsageLimitDailyUSD:                   10.0,
@@ -200,5 +209,6 @@ func Default() Config {
 		PluginsWatch:                         true,
 		PluginsWatchDebounceMS:               200,
 		PluginsBundledDir:                    "./plugins",
+		MCPCommandAllowlist:                  []string{},
 	}
 }

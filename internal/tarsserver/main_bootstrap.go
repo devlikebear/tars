@@ -66,6 +66,9 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 	if strings.TrimSpace(opts.WorkspaceDir) != "" {
 		cfg.WorkspaceDir = strings.TrimSpace(opts.WorkspaceDir)
 	}
+	if err := validateAPIAuthSecurity(cfg, opts.ServeAPI); err != nil {
+		return runtimeDeps{}, &runtimeDepsError{stage: "validate_config", err: err}
+	}
 
 	if err := memory.EnsureWorkspace(cfg.WorkspaceDir); err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "ensure_workspace", err: err}
@@ -132,6 +135,20 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 		Str("base_url", cfg.LLMBaseURL).
 		Msg("llm provider initialized")
 	return deps, nil
+}
+
+func validateAPIAuthSecurity(cfg config.Config, serveAPI bool) error {
+	if !serveAPI {
+		return nil
+	}
+	mode := strings.TrimSpace(strings.ToLower(cfg.APIAuthMode))
+	switch mode {
+	case "off", "external-required":
+		if !cfg.APIAllowInsecureLocalAuth {
+			return fmt.Errorf("api_auth_mode=%s requires api_allow_insecure_local_auth=true for explicit insecure local auth opt-in", mode)
+		}
+	}
+	return nil
 }
 
 func runHeartbeatModes(

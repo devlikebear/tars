@@ -72,9 +72,15 @@ make smoke-auth
 ## 인증 / 권한
 
 `api_auth_mode`는 role 기반 token을 지원합니다.
+- 기본값은 `required`입니다.
+- `off`, `external-required` 사용 시에는 `api_allow_insecure_local_auth=true`가 필요합니다.
 
 - `api_user_token`: 채팅/일반 작업
 - `api_admin_token`: 제어 작업 (`/v1/runtime/extensions/reload`, `/v1/gateway/reload`, `/v1/gateway/restart`, channel inbound)
+
+보안 기본값:
+- 일반 user/telegram 경로에서 고위험 도구(`exec`, `process`, `write*`, `edit*`, `apply_patch`)는 기본 비노출입니다.
+- `/v1/chat`, `/v1/agent/runs`는 동시 처리 상한 초과 시 `429 {"code":"overloaded"}`를 반환합니다.
 
 ## cmd/tars 핵심 명령
 
@@ -93,6 +99,7 @@ make smoke-auth
 - `vault_enabled: true`
 - `browser_runtime_enabled: true`
 - `browser_relay_enabled: true`
+- `browser_relay_allow_query_token: false`
 - `tools_browser_enabled: true`
 
 옵션 site flow 디렉터리:

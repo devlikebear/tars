@@ -97,7 +97,7 @@ func NormalizeMode(raw string) string {
 	case ModeOff, ModeExternalRequired, ModeRequired:
 		return mode
 	default:
-		return ModeExternalRequired
+		return ModeRequired
 	}
 }
 

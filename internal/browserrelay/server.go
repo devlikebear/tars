@@ -2,6 +2,8 @@ package browserrelay
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -19,6 +21,7 @@ import (
 type Options struct {
 	Addr            string
 	RelayToken      string
+	AllowQueryToken bool
 	OriginAllowlist []string
 }
 
@@ -119,18 +122,30 @@ func New(opts Options) (*Server, error) {
 	}
 	token := strings.TrimSpace(opts.RelayToken)
 	if token == "" {
-		token = fmt.Sprintf("relay-%d", time.Now().UnixNano())
+		generated, err := newRelayToken()
+		if err != nil {
+			return nil, err
+		}
+		token = generated
 	}
 	allow := normalizeAllowlist(opts.OriginAllowlist)
 	if len(allow) == 0 {
 		allow = []string{"chrome-extension://*"}
 	}
 	return &Server{
-		opts:             Options{Addr: addr, RelayToken: token, OriginAllowlist: allow},
+		opts:             Options{Addr: addr, RelayToken: token, AllowQueryToken: opts.AllowQueryToken, OriginAllowlist: allow},
 		cdpClients:       map[*websocket.Conn]struct{}{},
 		connectedTargets: map[string]relayTargetState{},
 		pending:          map[string]relayPendingRequest{},
 	}, nil
+}
+
+func newRelayToken() (string, error) {
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate relay token: %w", err)
+	}
+	return "relay-" + hex.EncodeToString(buf), nil
 }
 
 func (s *Server) Start(ctx context.Context) error {
@@ -247,7 +262,7 @@ func (s *Server) CDPWebSocketURL() string {
 		return ""
 	}
 	token := strings.TrimSpace(s.RelayToken())
-	if token == "" {
+	if token == "" || !s.opts.AllowQueryToken {
 		return "ws://" + addr + "/cdp"
 	}
 	values := neturl.Values{}
@@ -1438,13 +1453,16 @@ func isLoopbackRemoteAddr(remote string) bool {
 	return ip.IsLoopback()
 }
 
-func relayTokenFromRequest(r *http.Request) string {
+func relayTokenFromRequest(r *http.Request, allowQueryToken bool) string {
 	if r == nil {
 		return ""
 	}
 	headerToken := strings.TrimSpace(r.Header.Get("Tars-Relay-Token"))
 	if headerToken != "" {
 		return headerToken
+	}
+	if !allowQueryToken {
+		return ""
 	}
 	queryToken := strings.TrimSpace(r.URL.Query().Get("token"))
 	if queryToken != "" {
@@ -1462,7 +1480,7 @@ func (s *Server) authorizeRelayRequest(w http.ResponseWriter, r *http.Request) b
 		http.Error(w, "loopback required", http.StatusForbidden)
 		return false
 	}
-	if relayTokenFromRequest(r) != strings.TrimSpace(s.opts.RelayToken) {
+	if relayTokenFromRequest(r, s.opts.AllowQueryToken) != strings.TrimSpace(s.opts.RelayToken) {
 		http.Error(w, "missing or invalid relay token", http.StatusUnauthorized)
 		return false
 	}

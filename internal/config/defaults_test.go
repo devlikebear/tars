@@ -1099,8 +1099,111 @@ func TestLoad_APIAuthDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if cfg.APIAuthMode != "external-required" {
-		t.Fatalf("expected api auth mode external-required, got %q", cfg.APIAuthMode)
+	if cfg.APIAuthMode != "required" {
+		t.Fatalf("expected api auth mode required, got %q", cfg.APIAuthMode)
+	}
+}
+
+func TestLoad_APIAuthModeInvalidFallsBackToRequired(t *testing.T) {
+	t.Setenv("API_AUTH_MODE", "invalid-mode")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.APIAuthMode != "required" {
+		t.Fatalf("expected invalid api_auth_mode fallback to required, got %q", cfg.APIAuthMode)
+	}
+}
+
+func TestLoad_SecurityHardeningDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.APIAllowInsecureLocalAuth {
+		t.Fatalf("expected api_allow_insecure_local_auth=false by default")
+	}
+	if cfg.APIMaxInflightChat != 2 {
+		t.Fatalf("expected api_max_inflight_chat default 2, got %d", cfg.APIMaxInflightChat)
+	}
+	if cfg.APIMaxInflightAgentRuns != 4 {
+		t.Fatalf("expected api_max_inflight_agent_runs default 4, got %d", cfg.APIMaxInflightAgentRuns)
+	}
+	if cfg.ToolsAllowHighRiskUser {
+		t.Fatalf("expected tools_allow_high_risk_user=false by default")
+	}
+	if cfg.BrowserRelayAllowQueryToken {
+		t.Fatalf("expected browser_relay_allow_query_token=false by default")
+	}
+	if cfg.PluginsAllowMCPServers {
+		t.Fatalf("expected plugins_allow_mcp_servers=false by default")
+	}
+	if len(cfg.MCPCommandAllowlist) != 0 {
+		t.Fatalf("expected empty mcp command allowlist by default, got %+v", cfg.MCPCommandAllowlist)
+	}
+}
+
+func TestLoad_SecurityHardeningFromYAMLAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"api_allow_insecure_local_auth: true",
+		"api_max_inflight_chat: 7",
+		"api_max_inflight_agent_runs: 9",
+		"tools_allow_high_risk_user: true",
+		"browser_relay_allow_query_token: true",
+		"plugins_allow_mcp_servers: true",
+		`mcp_command_allowlist_json: ["npx","node"]`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("API_MAX_INFLIGHT_CHAT", "11")
+	t.Setenv("API_MAX_INFLIGHT_AGENT_RUNS", "13")
+	t.Setenv("MCP_COMMAND_ALLOWLIST_JSON", `["uvx"]`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.APIAllowInsecureLocalAuth {
+		t.Fatalf("expected yaml api_allow_insecure_local_auth=true")
+	}
+	if cfg.APIMaxInflightChat != 11 {
+		t.Fatalf("expected env override api_max_inflight_chat=11, got %d", cfg.APIMaxInflightChat)
+	}
+	if cfg.APIMaxInflightAgentRuns != 13 {
+		t.Fatalf("expected env override api_max_inflight_agent_runs=13, got %d", cfg.APIMaxInflightAgentRuns)
+	}
+	if !cfg.ToolsAllowHighRiskUser {
+		t.Fatalf("expected yaml tools_allow_high_risk_user=true")
+	}
+	if !cfg.BrowserRelayAllowQueryToken {
+		t.Fatalf("expected yaml browser_relay_allow_query_token=true")
+	}
+	if !cfg.PluginsAllowMCPServers {
+		t.Fatalf("expected yaml plugins_allow_mcp_servers=true")
+	}
+	if len(cfg.MCPCommandAllowlist) != 1 || cfg.MCPCommandAllowlist[0] != "uvx" {
+		t.Fatalf("expected env override mcp command allowlist, got %+v", cfg.MCPCommandAllowlist)
+	}
+}
+
+func TestLoad_SecurityHardeningInflightLimitFallback(t *testing.T) {
+	t.Setenv("API_MAX_INFLIGHT_CHAT", "0")
+	t.Setenv("API_MAX_INFLIGHT_AGENT_RUNS", "-3")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.APIMaxInflightChat != 2 {
+		t.Fatalf("expected fallback api_max_inflight_chat=2, got %d", cfg.APIMaxInflightChat)
+	}
+	if cfg.APIMaxInflightAgentRuns != 4 {
+		t.Fatalf("expected fallback api_max_inflight_agent_runs=4, got %d", cfg.APIMaxInflightAgentRuns)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,28 @@ func TestIsLoopbackRemoteAddr(t *testing.T) {
 	}
 	if isLoopbackRemoteAddr("10.0.0.2:8888") {
 		t.Fatalf("expected non-loopback")
+	}
+}
+
+func TestNew_GeneratesNonTimestampRelayToken(t *testing.T) {
+	srv, err := New(Options{
+		Addr:            "127.0.0.1:0",
+		OriginAllowlist: []string{"chrome-extension://*"},
+	})
+	if err != nil {
+		t.Fatalf("new relay: %v", err)
+	}
+	token := strings.TrimSpace(srv.RelayToken())
+	if token == "" {
+		t.Fatalf("expected generated relay token")
+	}
+	if strings.HasPrefix(token, "relay-") {
+		suffix := strings.TrimSpace(strings.TrimPrefix(token, "relay-"))
+		if suffix != "" {
+			if _, parseErr := strconv.ParseInt(suffix, 10, 64); parseErr == nil {
+				t.Fatalf("expected relay token not to be timestamp-derived, got %q", token)
+			}
+		}
 	}
 }
 
@@ -316,6 +339,7 @@ func TestRelayAttachAndCDPToken(t *testing.T) {
 	srv, err := New(Options{
 		Addr:            "127.0.0.1:0",
 		RelayToken:      "relay-token",
+		AllowQueryToken: true,
 		OriginAllowlist: []string{"chrome-extension://*"},
 	})
 	if err != nil {
@@ -345,8 +369,11 @@ func TestRelayAttachAndCDPToken(t *testing.T) {
 	}
 
 	extConn, _, err := websocket.DefaultDialer.Dial(
-		"ws://"+srv.Addr()+"/extension?token=relay-token",
-		http.Header{"Origin": []string{"chrome-extension://abc123"}},
+		"ws://"+srv.Addr()+"/extension",
+		http.Header{
+			"Origin":           []string{"chrome-extension://abc123"},
+			"Tars-Relay-Token": []string{"relay-token"},
+		},
 	)
 	if err != nil {
 		t.Fatalf("dial extension: %v", err)
@@ -408,6 +435,7 @@ func TestRelayRejectsOrigin(t *testing.T) {
 	srv, err := New(Options{
 		Addr:            "127.0.0.1:0",
 		RelayToken:      "relay-token",
+		AllowQueryToken: true,
 		OriginAllowlist: []string{"chrome-extension://approved"},
 	})
 	if err != nil {
@@ -471,7 +499,7 @@ func TestWildcardOriginMatch(t *testing.T) {
 }
 
 func TestVersionJSONContainsCDPWhenAttached(t *testing.T) {
-	srv, err := New(Options{Addr: "127.0.0.1:0", RelayToken: "t", OriginAllowlist: []string{"chrome-extension://*"}})
+	srv, err := New(Options{Addr: "127.0.0.1:0", RelayToken: "t", AllowQueryToken: true, OriginAllowlist: []string{"chrome-extension://*"}})
 	if err != nil {
 		t.Fatalf("new relay: %v", err)
 	}
@@ -507,7 +535,7 @@ func TestVersionJSONContainsCDPWhenAttached(t *testing.T) {
 	}
 }
 
-func TestRelayAcceptsCDPTokenFromQuery(t *testing.T) {
+func TestRelayRejectsCDPTokenFromQueryByDefault(t *testing.T) {
 	srv, err := New(Options{
 		Addr:            "127.0.0.1:0",
 		RelayToken:      "relay-token",
@@ -525,41 +553,12 @@ func TestRelayAcceptsCDPTokenFromQuery(t *testing.T) {
 		_ = srv.Close(context.Background())
 	})
 
-	extConn, _, err := websocket.DefaultDialer.Dial(
-		"ws://"+srv.Addr()+"/extension?token=relay-token",
-		http.Header{"Origin": []string{"chrome-extension://abc123"}},
-	)
-	if err != nil {
-		t.Fatalf("dial extension: %v", err)
+	_, resp, err := websocket.DefaultDialer.Dial("ws://"+srv.Addr()+"/cdp?token=relay-token", nil)
+	if err == nil {
+		t.Fatalf("expected query token to be rejected by default")
 	}
-	defer extConn.Close()
-
-	cdpConn, _, err := websocket.DefaultDialer.Dial("ws://"+srv.Addr()+"/cdp?token=relay-token", nil)
-	if err != nil {
-		t.Fatalf("dial cdp with query token: %v", err)
-	}
-	defer cdpConn.Close()
-
-	_ = cdpConn.SetWriteDeadline(time.Now().Add(2 * time.Second))
-	if err := cdpConn.WriteMessage(websocket.TextMessage, []byte(`{"id":1,"method":"Runtime.enable","params":{},"sessionId":"relay-session-2"}`)); err != nil {
-		t.Fatalf("write cdp message: %v", err)
-	}
-	_ = extConn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, msg, err := extConn.ReadMessage()
-	if err != nil {
-		t.Fatalf("read wrapped cdp message from extension side: %v", err)
-	}
-	if !strings.Contains(string(msg), "forwardCDPCommand") {
-		t.Fatalf("unexpected bridged message: %s", string(msg))
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(msg, &payload); err != nil {
-		t.Fatalf("decode bridged payload: %v", err)
-	}
-	params, _ := payload["params"].(map[string]any)
-	commandParams, _ := params["params"].(map[string]any)
-	if _, exists := commandParams["sessionId"]; exists {
-		t.Fatalf("did not expect sessionId in command params: %+v", commandParams)
+	if resp == nil || resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for query token, got %+v", resp)
 	}
 }
 
@@ -567,6 +566,7 @@ func TestRelayProtocol_ForwardEvent_BroadcastToMultipleCDPClients(t *testing.T) 
 	srv, err := New(Options{
 		Addr:            "127.0.0.1:0",
 		RelayToken:      "relay-token",
+		AllowQueryToken: true,
 		OriginAllowlist: []string{"chrome-extension://*"},
 	})
 	if err != nil {
@@ -627,6 +627,7 @@ func TestRelayRejectsExtensionWithoutToken(t *testing.T) {
 	srv, err := New(Options{
 		Addr:            "127.0.0.1:0",
 		RelayToken:      "relay-token",
+		AllowQueryToken: true,
 		OriginAllowlist: []string{"chrome-extension://*"},
 	})
 	if err != nil {
@@ -653,6 +654,7 @@ func TestRelayJSONVersionRequiresToken(t *testing.T) {
 	srv, err := New(Options{
 		Addr:            "127.0.0.1:0",
 		RelayToken:      "relay-token",
+		AllowQueryToken: true,
 		OriginAllowlist: []string{"chrome-extension://*"},
 	})
 	if err != nil {
@@ -677,6 +679,7 @@ func TestRelayExtensionStatusRequiresToken(t *testing.T) {
 	srv, err := New(Options{
 		Addr:            "127.0.0.1:0",
 		RelayToken:      "relay-token",
+		AllowQueryToken: true,
 		OriginAllowlist: []string{"chrome-extension://*"},
 	})
 	if err != nil {
@@ -701,6 +704,7 @@ func TestRelayJSONActivateAndCloseWithToken(t *testing.T) {
 	srv, err := New(Options{
 		Addr:            "127.0.0.1:0",
 		RelayToken:      "relay-token",
+		AllowQueryToken: true,
 		OriginAllowlist: []string{"chrome-extension://*"},
 	})
 	if err != nil {

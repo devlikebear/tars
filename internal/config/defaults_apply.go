@@ -11,11 +11,17 @@ func applyLLMDefaults(cfg *Config) {
 	switch cfg.APIAuthMode {
 	case "off", "external-required", "required":
 	default:
-		cfg.APIAuthMode = "external-required"
+		cfg.APIAuthMode = "required"
 	}
 	cfg.APIAuthToken = strings.TrimSpace(cfg.APIAuthToken)
 	cfg.APIUserToken = strings.TrimSpace(cfg.APIUserToken)
 	cfg.APIAdminToken = strings.TrimSpace(cfg.APIAdminToken)
+	if cfg.APIMaxInflightChat <= 0 {
+		cfg.APIMaxInflightChat = 2
+	}
+	if cfg.APIMaxInflightAgentRuns <= 0 {
+		cfg.APIMaxInflightAgentRuns = 4
+	}
 	cfg.SessionDefaultID = strings.TrimSpace(cfg.SessionDefaultID)
 	cfg.SessionTelegramScope = strings.TrimSpace(strings.ToLower(cfg.SessionTelegramScope))
 	switch cfg.SessionTelegramScope {
@@ -178,6 +184,9 @@ func applyLLMDefaults(cfg *Config) {
 	}
 	if strings.TrimSpace(cfg.GatewayArchiveDir) == "" {
 		cfg.GatewayArchiveDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway", "archive")
+	}
+	if cfg.MCPCommandAllowlist == nil {
+		cfg.MCPCommandAllowlist = []string{}
 	}
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {

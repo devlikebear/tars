@@ -276,7 +276,7 @@ make dev-serve
 
 ```text
 SYSTEM > browser relay enabled=true running=true extension_connected=false attached_tabs=0 addr=127.0.0.1:43182
-SYSTEM > relay extension_ws=ws://127.0.0.1:43182/extension cdp_ws=ws://127.0.0.1:43182/cdp?token=...
+SYSTEM > relay extension_ws=ws://127.0.0.1:43182/extension cdp_ws=ws://127.0.0.1:43182/cdp
 SYSTEM > relay auth_required=true json_auth_required=true
 SYSTEM > relay origin_allowlist=chrome-extension://*
 SYSTEM > relay token=...
@@ -312,5 +312,6 @@ SYSTEM > relay token=...
 5. 인증/보안 참고
 
 - relay는 `/extension`, `/cdp`, `/json*` 전 구간에서 token이 필수입니다.
-- 전달 경로 우선순위: `Tars-Relay-Token` 헤더 -> `?token=` -> `?relay_token=`.
+- 기본 전달 경로는 `Tars-Relay-Token` 헤더입니다.
+- `browser_relay_allow_query_token=true`일 때만 query token(`?token=`, `?relay_token=`)이 허용됩니다.
 - non-admin `/v1/browser/relay` 응답에서는 `relay_token`이 노출되지 않습니다.

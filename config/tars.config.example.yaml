@@ -8,12 +8,15 @@ workspace_dir: ./workspace
 
 # API auth (no X- prefix headers)
 # off | external-required | required
-api_auth_mode: external-required
+api_auth_mode: required
 # legacy single token (backward-compatible). If api_user_token/api_admin_token are set,
 # role-based checks use those tokens.
 api_auth_token: ""
 api_user_token: "" # read/chat/general operations
 api_admin_token: "" # control operations (gateway reload/restart, extensions reload)
+api_allow_insecure_local_auth: false # set true only when explicitly allowing off/external-required
+api_max_inflight_chat: 2
+api_max_inflight_agent_runs: 4
 # Single workspace mode: workspace_id header/routing is removed.
 
 # LLM provider
@@ -46,6 +49,8 @@ bifrost_model: openai/gpt-4o-mini
 
 # Optional MCP servers in JSON string form
 mcp_servers_json: '[{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}]'
+# Command allowlist for MCP servers. Default empty blocks command execution until explicitly allowed.
+mcp_command_allowlist_json: '["npx"]'
 
 # Skills / Plugins / MCP hot-load extensions
 skills_enabled: true
@@ -58,12 +63,14 @@ plugins_enabled: true
 plugins_watch: true
 plugins_watch_debounce_ms: 200
 plugins_bundled_dir: ./plugins
+plugins_allow_mcp_servers: false
 # plugins_extra_dirs_json: '["/opt/team/plugins"]'
 
 # Optional tools (opt-in)
 tools_apply_patch_enabled: false
 tools_web_fetch_enabled: false
 tools_web_search_enabled: false
+tools_allow_high_risk_user: false
 tools_web_search_api_key: "" # brave api key
 tools_web_search_provider: brave # brave | perplexity
 tools_web_search_perplexity_api_key: ""
@@ -95,6 +102,7 @@ browser_managed_executable_path: ""
 browser_managed_user_data_dir: ./workspace/_shared/browser/managed
 browser_relay_enabled: true
 browser_relay_addr: 127.0.0.1:43182
+browser_relay_allow_query_token: false
 browser_relay_origin_allowlist_json: '["chrome-extension://*"]'
 browser_site_flows_dir: ./workspace/automation/sites
 # browser_auto_login_site_allowlist_json: '["intranet","grafana"]'

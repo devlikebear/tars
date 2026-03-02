@@ -60,6 +60,7 @@ func buildBrowserRelay(cfg config.Config) (*browserrelay.Server, error) {
 	return browserrelay.New(browserrelay.Options{
 		Addr:            cfg.BrowserRelayAddr,
 		RelayToken:      cfg.BrowserRelayToken,
+		AllowQueryToken: cfg.BrowserRelayAllowQueryToken,
 		OriginAllowlist: cfg.BrowserRelayOriginAllowlist,
 	})
 }
