@@ -1,8 +1,10 @@
 package tool
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -98,6 +100,11 @@ func TestWebFetchTool_AllowsPrivateHostWhenOptionEnabled(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	var logBuf bytes.Buffer
+	originalLogOut := log.Writer()
+	log.SetOutput(&logBuf)
+	defer log.SetOutput(originalLogOut)
+
 	t1 := NewWebFetchToolWithOptions(WebFetchOptions{
 		Enabled:           true,
 		AllowPrivateHosts: true,
@@ -109,5 +116,8 @@ func TestWebFetchTool_AllowsPrivateHostWhenOptionEnabled(t *testing.T) {
 	}
 	if res.IsError {
 		t.Fatalf("expected success with allow private hosts, got %s", res.Text())
+	}
+	if !strings.Contains(logBuf.String(), "web_fetch_private_host_allowed") {
+		t.Fatalf("expected private host warning event log, got %q", logBuf.String())
 	}
 }

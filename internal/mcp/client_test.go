@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -106,6 +107,49 @@ func TestSetServers_InferSequentialThinkingMode(t *testing.T) {
 	})
 	if got := client.currentMode("sequential-thinking"); got != rpcModeJSONLine {
 		t.Fatalf("expected json line mode, got %v", got)
+	}
+}
+
+func TestValidateServerCommands_AllowlistMatch(t *testing.T) {
+	client := NewClient([]ServerConfig{
+		{
+			Name:    "filesystem",
+			Command: "/usr/local/bin/npx",
+		},
+	})
+	client.SetCommandAllowlist([]string{"npx"})
+	if err := client.validateServerCommands(); err != nil {
+		t.Fatalf("expected allowlisted command to pass, got %v", err)
+	}
+}
+
+func TestValidateServerCommands_AllowlistMismatch(t *testing.T) {
+	client := NewClient([]ServerConfig{
+		{
+			Name:    "filesystem",
+			Command: "npx",
+		},
+	})
+	client.SetCommandAllowlist([]string{"uvx"})
+	err := client.validateServerCommands()
+	if err == nil {
+		t.Fatalf("expected mismatch error")
+	}
+	if !strings.Contains(err.Error(), "mcp_command_allowlist_json") {
+		t.Fatalf("expected allowlist error, got %v", err)
+	}
+}
+
+func TestValidateServerCommands_EmptyAllowlistBlocksCommands(t *testing.T) {
+	client := NewClient([]ServerConfig{
+		{
+			Name:    "filesystem",
+			Command: "npx",
+		},
+	})
+	client.SetCommandAllowlist(nil)
+	if err := client.validateServerCommands(); err == nil {
+		t.Fatalf("expected empty allowlist to block command")
 	}
 }
 

@@ -37,16 +37,17 @@ type MPRuntime interface {
 }
 
 type Options struct {
-	WorkspaceDir   string
-	SkillsEnabled  bool
-	PluginsEnabled bool
-	SkillSources   []skill.SourceDir
-	PluginSources  []PluginSourceDir
-	MCPBaseServers []config.MCPServer
-	MCPRuntime     MPRuntime
-	WatchSkills    bool
-	WatchPlugins   bool
-	WatchDebounce  time.Duration
+	WorkspaceDir           string
+	SkillsEnabled          bool
+	PluginsEnabled         bool
+	PluginsAllowMCPServers bool
+	SkillSources           []skill.SourceDir
+	PluginSources          []PluginSourceDir
+	MCPBaseServers         []config.MCPServer
+	MCPRuntime             MPRuntime
+	WatchSkills            bool
+	WatchPlugins           bool
+	WatchDebounce          time.Duration
 }
 
 type Snapshot struct {
@@ -147,7 +148,11 @@ func (m *Manager) Reload(ctx context.Context) error {
 		}
 	}
 
-	mcpServers := mergeMCPServers(m.opts.MCPBaseServers, plugins.MCPServers)
+	pluginMCPServers := []config.MCPServer{}
+	if m.opts.PluginsAllowMCPServers {
+		pluginMCPServers = plugins.MCPServers
+	}
+	mcpServers := mergeMCPServers(m.opts.MCPBaseServers, pluginMCPServers)
 	mcpTools := make([]tool.Tool, 0)
 	if m.opts.MCPRuntime != nil {
 		m.opts.MCPRuntime.SetServers(mcpServers)

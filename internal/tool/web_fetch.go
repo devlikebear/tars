@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -184,6 +185,9 @@ func validateFetchURL(ctx context.Context, target *url.URL, allowPrivateHosts bo
 		return nil
 	}
 	if allowPrivateHosts {
+		if isPrivate, reason := classifyPrivateHost(ctx, host); isPrivate {
+			log.Printf("security warning: event=web_fetch_private_host_allowed host=%s reason=%s", host, reason)
+		}
 		return nil
 	}
 
@@ -203,6 +207,28 @@ func validateFetchURL(ctx context.Context, target *url.URL, allowPrivateHosts bo
 		}
 	}
 	return nil
+}
+
+func classifyPrivateHost(ctx context.Context, host string) (bool, string) {
+	if strings.EqualFold(strings.TrimSpace(host), "localhost") {
+		return true, "localhost"
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if isPrivateOrLocalIP(ip) {
+			return true, "ip"
+		}
+		return false, ""
+	}
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil {
+		return false, ""
+	}
+	for _, ip := range ips {
+		if isPrivateOrLocalIP(ip) {
+			return true, "dns"
+		}
+	}
+	return false, ""
 }
 
 func isPrivateOrLocalIP(ip net.IP) bool {

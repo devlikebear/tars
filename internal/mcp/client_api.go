@@ -11,6 +11,9 @@ import (
 )
 
 func (c *Client) ListServers(ctx context.Context) ([]ServerStatus, error) {
+	if err := c.validateServerCommands(); err != nil {
+		return nil, err
+	}
 	servers := c.serverSnapshot()
 	if len(servers) == 0 {
 		return []ServerStatus{}, nil
@@ -40,6 +43,9 @@ func (c *Client) ListServers(ctx context.Context) ([]ServerStatus, error) {
 }
 
 func (c *Client) ListTools(ctx context.Context) ([]ToolInfo, error) {
+	if err := c.validateServerCommands(); err != nil {
+		return nil, err
+	}
 	servers := c.serverSnapshot()
 	if len(servers) == 0 {
 		return []ToolInfo{}, nil
@@ -76,6 +82,9 @@ func (c *Client) ListTools(ctx context.Context) ([]ToolInfo, error) {
 }
 
 func (c *Client) BuildTools(ctx context.Context) ([]tool.Tool, error) {
+	if err := c.validateServerCommands(); err != nil {
+		return nil, err
+	}
 	if len(c.serverSnapshot()) == 0 {
 		return nil, nil
 	}

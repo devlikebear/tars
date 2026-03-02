@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,7 @@ type Client struct {
 	servers     []ServerConfig
 	sessions    map[string]*pooledSession
 	serverModes map[string]rpcMode
+	allowlist   map[string]struct{}
 	timeout     time.Duration
 	reqID       int64
 }
@@ -74,9 +76,17 @@ func NewClient(servers []ServerConfig) *Client {
 		timeout:     15 * time.Second,
 		sessions:    map[string]*pooledSession{},
 		serverModes: map[string]rpcMode{},
+		allowlist:   map[string]struct{}{},
 	}
 	client.SetServers(servers)
 	return client
+}
+
+func (c *Client) SetCommandAllowlist(commands []string) {
+	normalized := normalizeCommandAllowlist(commands)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.allowlist = normalized
 }
 
 func (c *Client) SetServers(servers []ServerConfig) {
@@ -326,4 +336,54 @@ func normalizeServers(servers []ServerConfig) []ServerConfig {
 		copyServers = append(copyServers, copied)
 	}
 	return copyServers
+}
+
+func normalizeCommandAllowlist(commands []string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, command := range commands {
+		trimmed := strings.ToLower(strings.TrimSpace(command))
+		if trimmed == "" {
+			continue
+		}
+		out[trimmed] = struct{}{}
+	}
+	return out
+}
+
+func isCommandAllowed(command string, allowlist map[string]struct{}) bool {
+	if len(allowlist) == 0 {
+		return false
+	}
+	trimmed := strings.ToLower(strings.TrimSpace(command))
+	if trimmed == "" {
+		return false
+	}
+	if _, ok := allowlist[trimmed]; ok {
+		return true
+	}
+	base := strings.ToLower(strings.TrimSpace(filepath.Base(trimmed)))
+	_, ok := allowlist[base]
+	return ok
+}
+
+func (c *Client) validateServerCommands() error {
+	c.mu.RLock()
+	servers := append([]ServerConfig(nil), c.servers...)
+	allowlist := map[string]struct{}{}
+	for command := range c.allowlist {
+		allowlist[command] = struct{}{}
+	}
+	c.mu.RUnlock()
+
+	for _, server := range servers {
+		if isCommandAllowed(server.Command, allowlist) {
+			continue
+		}
+		return fmt.Errorf(
+			"mcp server %q command %q is blocked by mcp_command_allowlist_json",
+			strings.TrimSpace(server.Name),
+			strings.TrimSpace(server.Command),
+		)
+	}
+	return nil
 }

@@ -38,9 +38,10 @@ func TestManagerReload_AggregatesSkillsPluginsAndMCP(t *testing.T) {
 		},
 	}
 	manager, err := NewManager(Options{
-		WorkspaceDir:   workspaceDir,
-		SkillsEnabled:  true,
-		PluginsEnabled: true,
+		WorkspaceDir:           workspaceDir,
+		SkillsEnabled:          true,
+		PluginsEnabled:         true,
+		PluginsAllowMCPServers: true,
 		SkillSources: []skill.SourceDir{
 			{Source: skill.SourceWorkspace, Dir: filepath.Join(workspaceDir, "skills")},
 		},
@@ -77,6 +78,43 @@ func TestManagerReload_AggregatesSkillsPluginsAndMCP(t *testing.T) {
 	}
 	if len(mcpRuntime.lastServers) != 2 {
 		t.Fatalf("expected runtime to receive merged server config, got %+v", mcpRuntime.lastServers)
+	}
+}
+
+func TestManagerReload_DoesNotMergePluginMCPServersByDefault(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	pluginDir := filepath.Join(root, "plugins", "ops")
+	writeFile(t, filepath.Join(pluginDir, "tarsncase.plugin.json"), `{
+  "id":"ops",
+  "mcp_servers":[{"name":"plugin-fs","command":"npx"}]
+}`)
+
+	mcpRuntime := &stubMCPRuntime{}
+	manager, err := NewManager(Options{
+		WorkspaceDir:   workspaceDir,
+		SkillsEnabled:  false,
+		PluginsEnabled: true,
+		PluginSources: []PluginSourceDir{
+			{Source: SourceWorkspace, Dir: filepath.Join(root, "plugins")},
+		},
+		MCPBaseServers: []config.MCPServer{
+			{Name: "base-fs", Command: "base-cmd"},
+		},
+		MCPRuntime: mcpRuntime,
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	if err := manager.Reload(context.Background()); err != nil {
+		t.Fatalf("reload manager: %v", err)
+	}
+	snapshot := manager.Snapshot()
+	if len(snapshot.MCPServers) != 1 || snapshot.MCPServers[0].Name != "base-fs" {
+		t.Fatalf("expected only base mcp server when plugin mcp is disabled, got %+v", snapshot.MCPServers)
+	}
+	if len(mcpRuntime.lastServers) != 1 || mcpRuntime.lastServers[0].Name != "base-fs" {
+		t.Fatalf("expected runtime to receive base servers only, got %+v", mcpRuntime.lastServers)
 	}
 }
 
