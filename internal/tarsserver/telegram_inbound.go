@@ -286,7 +286,13 @@ func (h *telegramInboundHandler) processMessage(
 		systemPrompt += "\n" + strings.TrimSpace(projectPrompt) + "\n"
 	}
 	llmMessages := buildLLMMessages(systemPrompt, history, text)
-	injectedSchemas := resolveInjectedToolSchemas(registry, h.tooling.ToolsDefaultSet, activeProject)
+	injectedSchemas := resolveInjectedToolSchemas(
+		registry,
+		h.tooling.ToolsDefaultSet,
+		activeProject,
+		"user",
+		h.tooling.ToolsAllowHighRiskUser,
+	)
 
 	now := time.Now().UTC()
 	if err := session.AppendMessage(transcriptPath, session.Message{

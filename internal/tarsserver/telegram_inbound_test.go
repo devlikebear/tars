@@ -461,6 +461,14 @@ func TestTelegramInbound_LLMPath_InjectsToolsAndRunsToolCall(t *testing.T) {
 	if len(mockLLM.seenToolCounts) == 0 || mockLLM.seenToolCounts[0] == 0 {
 		t.Fatalf("expected tools to be injected on first llm call, got %+v", mockLLM.seenToolCounts)
 	}
+	if len(mockLLM.seenTools) == 0 {
+		t.Fatalf("expected seen tools to be captured")
+	}
+	for _, denied := range []string{"exec", "write_file", "edit_file", "apply_patch", "process"} {
+		if hasToolName(mockLLM.seenTools[0], denied) {
+			t.Fatalf("expected telegram user path to hide %s, got %+v", denied, mockLLM.seenTools[0])
+		}
+	}
 }
 
 func TestTelegramInbound_ShouldLogTypingError(t *testing.T) {

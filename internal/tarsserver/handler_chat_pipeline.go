@@ -12,6 +12,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/extensions"
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/project"
+	"github.com/devlikebear/tarsncase/internal/serverauth"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/devlikebear/tarsncase/internal/usage"
@@ -24,6 +25,7 @@ type chatHandlerDeps struct {
 	client        llm.Client
 	logger        zerolog.Logger
 	maxIters      int
+	chatLimiter   *inflightLimiter
 	activity      *runtimeActivity
 	mainSessionID string
 	tooling       chatToolingOptions
@@ -61,6 +63,14 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
 		return
+	}
+	if deps.chatLimiter != nil {
+		release, ok := deps.chatLimiter.tryAcquire()
+		if !ok {
+			writeError(w, http.StatusTooManyRequests, "overloaded", "overloaded")
+			return
+		}
+		defer release()
 	}
 
 	req, status, message := decodeChatRequestPayload(r)
@@ -185,7 +195,14 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 
 	llmMessages := buildLLMMessages(systemPrompt, history, req.Message)
-	injectedSchemas := resolveInjectedToolSchemas(registry, deps.tooling.ToolsDefaultSet, activeProject)
+	authRole := strings.TrimSpace(serverauth.RoleFromRequest(r))
+	injectedSchemas := resolveInjectedToolSchemas(
+		registry,
+		deps.tooling.ToolsDefaultSet,
+		activeProject,
+		authRole,
+		deps.tooling.ToolsAllowHighRiskUser,
+	)
 	deps.logger.Debug().
 		Str("session_id", sessionID).
 		Int("tool_count_injected", len(injectedSchemas)).
@@ -381,14 +398,25 @@ func formatProjectPromptSection(item project.Project) string {
 	return strings.TrimSpace(b.String())
 }
 
-func resolveInjectedToolSchemas(registry *tool.Registry, toolsDefaultSet string, activeProject *project.Project) []llm.ToolSchema {
+func resolveInjectedToolSchemas(
+	registry *tool.Registry,
+	toolsDefaultSet string,
+	activeProject *project.Project,
+	authRole string,
+	allowHighRiskUser bool,
+) []llm.ToolSchema {
 	if registry == nil {
 		return nil
 	}
 	mode := strings.TrimSpace(strings.ToLower(toolsDefaultSet))
 	if activeProject == nil {
 		if mode == "minimal" {
-			return registry.SchemasForNames(defaultMinimalToolNames())
+			names := filterHighRiskToolNamesForRole(defaultMinimalToolNames(), authRole, allowHighRiskUser)
+			return registry.SchemasForNames(names)
+		}
+		if shouldFilterHighRiskTools(authRole, allowHighRiskUser) {
+			names := filterHighRiskToolNamesForRole(toolNamesFromSchemas(registry.Schemas()), authRole, allowHighRiskUser)
+			return registry.SchemasForNames(names)
 		}
 		return registry.Schemas()
 	}
@@ -428,10 +456,44 @@ func resolveInjectedToolSchemas(registry *tool.Registry, toolsDefaultSet string,
 		}
 		names = filtered
 	}
+	names = filterHighRiskToolNamesForRole(names, authRole, allowHighRiskUser)
 	if len(names) == 0 {
 		return nil
 	}
 	return registry.SchemasForNames(names)
+}
+
+func shouldFilterHighRiskTools(authRole string, allowHighRiskUser bool) bool {
+	if allowHighRiskUser {
+		return false
+	}
+	return strings.TrimSpace(strings.ToLower(authRole)) != serverauth.RoleAdmin
+}
+
+func filterHighRiskToolNamesForRole(names []string, authRole string, allowHighRiskUser bool) []string {
+	if !shouldFilterHighRiskTools(authRole, allowHighRiskUser) {
+		return names
+	}
+	filtered := make([]string, 0, len(names))
+	for _, name := range names {
+		if isHighRiskToolName(name) {
+			continue
+		}
+		filtered = append(filtered, name)
+	}
+	return filtered
+}
+
+func isHighRiskToolName(name string) bool {
+	canonical := tool.CanonicalToolName(name)
+	if canonical == "" {
+		return false
+	}
+	switch canonical {
+	case "exec", "process", "write", "write_file", "edit", "edit_file", "apply_patch":
+		return true
+	}
+	return strings.HasPrefix(canonical, "write_") || strings.HasPrefix(canonical, "edit_")
 }
 
 func knownToolsFromRegistry(registry *tool.Registry) map[string]struct{} {

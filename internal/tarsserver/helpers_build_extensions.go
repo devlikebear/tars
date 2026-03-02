@@ -17,6 +17,7 @@ func buildExtensionsManager(cfg config.Config, runtime extensions.MPRuntime) (*e
 		WorkspaceDir:   cfg.WorkspaceDir,
 		SkillsEnabled:  cfg.SkillsEnabled,
 		PluginsEnabled: cfg.PluginsEnabled,
+		PluginsAllowMCPServers: cfg.PluginsAllowMCPServers,
 		SkillSources:   buildSkillSources(cfg),
 		PluginSources:  buildPluginSources(cfg),
 		MCPBaseServers: append([]config.MCPServer(nil), cfg.MCPServers...),

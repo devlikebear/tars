@@ -201,6 +201,8 @@ type chatToolingOptions struct {
 	Gateway                     *gateway.Runtime
 	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
 	ToolsDefaultSet             string
+	ToolsAllowHighRiskUser      bool
+	APIMaxInflightChat          int
 	UsageTracker                *usage.Tracker
 	OpsManager                  *ops.Manager
 	ScheduleStore               *schedule.Store
@@ -291,6 +293,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 	extraTools ...tool.Tool,
 ) http.Handler {
 	maxIters := resolveAgentMaxIterations(maxIterations)
+	chatLimiter := newInflightLimiter(tooling.APIMaxInflightChat, 2)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		handleChatRequest(w, r, chatHandlerDeps{
@@ -299,6 +302,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 			client:        client,
 			logger:        logger,
 			maxIters:      maxIters,
+			chatLimiter:   chatLimiter,
 			activity:      activity,
 			mainSessionID: strings.TrimSpace(mainSessionID),
 			tooling:       tooling,

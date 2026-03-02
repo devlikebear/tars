@@ -1181,6 +1181,7 @@ func TestChatAPI_InjectsAllToolsByDefault(t *testing.T) {
 	)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"현재 디렉토리 경로 알려줘"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Tars-Debug-Auth-Role", "admin")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -1676,6 +1677,7 @@ func TestChatAPI_UsesConfiguredMaxIterations(t *testing.T) {
 	handler := newChatAPIHandlerWithOptions(root, store, mockClient, logger, 2)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"loop test"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Tars-Debug-Auth-Role", "admin")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -1694,6 +1696,7 @@ type mockLLMClient struct {
 	callCount       int
 	seenMessages    [][]llm.ChatMessage
 	seenToolCounts  []int
+	seenTools       [][]string
 	seenToolChoices []string
 }
 
@@ -1709,6 +1712,15 @@ func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 	msgCopy := append([]llm.ChatMessage(nil), messages...)
 	m.seenMessages = append(m.seenMessages, msgCopy)
 	m.seenToolCounts = append(m.seenToolCounts, len(opts.Tools))
+	toolNames := make([]string, 0, len(opts.Tools))
+	for _, schema := range opts.Tools {
+		name := strings.TrimSpace(schema.Function.Name)
+		if name == "" {
+			continue
+		}
+		toolNames = append(toolNames, name)
+	}
+	m.seenTools = append(m.seenTools, toolNames)
 	m.seenToolChoices = append(m.seenToolChoices, strings.TrimSpace(opts.ToolChoice))
 
 	resp := m.response

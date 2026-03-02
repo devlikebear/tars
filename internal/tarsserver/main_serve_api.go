@@ -239,6 +239,7 @@ func buildAPIMux(
 
 	processManager := tool.NewProcessManager()
 	mcpClient := mcp.NewClient(cfg.MCPServers)
+	mcpClient.SetCommandAllowlist(cfg.MCPCommandAllowlist)
 	extensionsManager, err := buildExtensionsManager(cfg, mcpClient)
 	if err != nil {
 		return nil, err
@@ -302,7 +303,15 @@ func buildAPIMux(
 	}
 	_ = refreshGatewayExecutors("startup")
 
-	chatTooling := buildChatToolingOptions(processManager, extensionsManager, gatewayRuntime, cfg.ToolsDefaultSet, deps.usageTracker)
+	chatTooling := buildChatToolingOptions(
+		processManager,
+		extensionsManager,
+		gatewayRuntime,
+		cfg.ToolsDefaultSet,
+		cfg.ToolsAllowHighRiskUser,
+		cfg.APIMaxInflightChat,
+		deps.usageTracker,
+	)
 	chatTooling.OpsManager = opsManager
 	chatTooling.ScheduleStore = scheduleStore
 	chatTooling.ResearchService = researchService
@@ -385,7 +394,7 @@ func buildAPIMux(
 	mux.Handle("/v1/skills/", extensionsHandler)
 	mux.Handle("/v1/plugins", extensionsHandler)
 	mux.Handle("/v1/runtime/extensions/reload", extensionsHandler)
-	agentRunsHandler := newAgentRunsAPIHandler(gatewayRuntime, logger)
+	agentRunsHandler := newAgentRunsAPIHandlerWithInflightLimit(gatewayRuntime, logger, cfg.APIMaxInflightAgentRuns)
 	mux.Handle("/v1/agent/agents", agentRunsHandler)
 	mux.Handle("/v1/agent/runs", agentRunsHandler)
 	mux.Handle("/v1/agent/runs/", agentRunsHandler)

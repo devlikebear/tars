@@ -73,16 +73,20 @@ func buildChatToolingOptions(
 	manager *extensions.Manager,
 	gatewayRuntime *gateway.Runtime,
 	toolsDefaultSet string,
+	toolsAllowHighRiskUser bool,
+	apiMaxInflightChat int,
 	usageTracker *usage.Tracker,
 ) chatToolingOptions {
 	var extensionManager *extensions.Manager
 	extensionManager = manager
 	return chatToolingOptions{
-		ProcessManager:  processManager,
-		Extensions:      extensionManager,
-		Gateway:         gatewayRuntime,
-		ToolsDefaultSet: strings.TrimSpace(strings.ToLower(toolsDefaultSet)),
-		UsageTracker:    usageTracker,
+		ProcessManager:         processManager,
+		Extensions:             extensionManager,
+		Gateway:                gatewayRuntime,
+		ToolsDefaultSet:        strings.TrimSpace(strings.ToLower(toolsDefaultSet)),
+		ToolsAllowHighRiskUser: toolsAllowHighRiskUser,
+		APIMaxInflightChat:     apiMaxInflightChat,
+		UsageTracker:           usageTracker,
 	}
 }
 

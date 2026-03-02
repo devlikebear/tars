@@ -16,6 +16,11 @@ import (
 )
 
 func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) http.Handler {
+	return newAgentRunsAPIHandlerWithInflightLimit(runtime, logger, 4)
+}
+
+func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger zerolog.Logger, maxInflightAgentRuns int) http.Handler {
+	inflight := newInflightLimiter(maxInflightAgentRuns, 4)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/agent/agents", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -39,6 +44,12 @@ func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) htt
 				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
 				return
 			}
+			release, ok := inflight.tryAcquire()
+			if !ok {
+				writeError(w, http.StatusTooManyRequests, "overloaded", "overloaded")
+				return
+			}
+			defer release()
 			var req struct {
 				SessionID string `json:"session_id"`
 				ProjectID string `json:"project_id,omitempty"`
