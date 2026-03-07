@@ -127,7 +127,14 @@ func (h *telegramInboundHandler) processMessage(
 			projectID = strings.TrimSpace(sess.ProjectID)
 		}
 	}
-	if err := writeChatMemory(h.workspaceDir, sessionID, projectID, text, answer, assistantAt); err != nil {
+	if err := applyPostChatMemoryHooks(chatMemoryHookInput{
+		WorkspaceDir:     h.workspaceDir,
+		SessionID:        sessionID,
+		ProjectID:        projectID,
+		UserMessage:      text,
+		AssistantMessage: answer,
+		AssistantTime:    assistantAt,
+	}); err != nil {
 		h.logger.Debug().Err(err).Str("session_id", sessionID).Msg("telegram write chat memory failed")
 	}
 	return answer, sessionID, nil

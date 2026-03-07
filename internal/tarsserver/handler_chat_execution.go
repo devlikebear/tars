@@ -60,7 +60,14 @@ func persistChatResult(state chatRunState, userMessage string, chatResp llm.Chat
 	} else if err := state.store.Touch(state.sessionID, assistantMsg.Timestamp); err != nil {
 		logger.Error().Err(err).Str("session_id", state.sessionID).Msg("touch session updated_at failed")
 	}
-	if err := writeChatMemory(state.requestWorkspaceDir, state.sessionID, state.projectID, userMessage, chatResp.Message.Content, assistantMsg.Timestamp); err != nil {
+	if err := applyPostChatMemoryHooks(chatMemoryHookInput{
+		WorkspaceDir:     state.requestWorkspaceDir,
+		SessionID:        state.sessionID,
+		ProjectID:        state.projectID,
+		UserMessage:      userMessage,
+		AssistantMessage: chatResp.Message.Content,
+		AssistantTime:    assistantMsg.Timestamp,
+	}); err != nil {
 		logger.Error().Err(err).Str("session_id", state.sessionID).Msg("write chat memory failed")
 	}
 }
