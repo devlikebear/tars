@@ -1,14 +1,10 @@
 package ops
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -176,42 +172,12 @@ func (m *Manager) ApplyCleanup(ctx context.Context, approvalID string) (CleanupA
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	approvals, err := m.loadApprovalsLocked()
+	approval, approvals, index, err := m.loadApprovedCleanupLocked(id)
 	if err != nil {
 		return CleanupApplyResult{}, err
 	}
-	index := -1
-	for i := range approvals {
-		if strings.TrimSpace(approvals[i].ID) == id {
-			index = i
-			break
-		}
-	}
-	if index < 0 {
-		return CleanupApplyResult{}, fmt.Errorf("approval not found: %s", id)
-	}
-	approval := approvals[index]
-	if approval.Status != "approved" {
-		return CleanupApplyResult{}, fmt.Errorf("approval is not approved: %s", approval.Status)
-	}
+	result := m.applyCleanupPlanLocked(id, approval)
 
-	result := CleanupApplyResult{ApprovalID: id}
-	for _, candidate := range approval.Plan.Candidates {
-		absPath := strings.TrimSpace(candidate.Path)
-		if !m.isSafeCleanupPath(absPath) {
-			result.Errors = append(result.Errors, "unsafe cleanup path rejected: "+absPath)
-			continue
-		}
-		if err := os.Remove(absPath); err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			result.Errors = append(result.Errors, err.Error())
-			continue
-		}
-		result.DeletedCount++
-		result.DeletedBytes += candidate.SizeBytes
-	}
 	now := m.nowFn().UTC()
 	reviewedAt := now
 	approval.Status = "applied"
@@ -240,9 +206,7 @@ func (m *Manager) ListApprovals() ([]Approval, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].RequestedAt.After(items[j].RequestedAt)
-	})
+	sortApprovalsNewestFirst(items)
 	if items == nil {
 		return []Approval{}, nil
 	}
@@ -255,221 +219,4 @@ func (m *Manager) Approve(approvalID string) error {
 
 func (m *Manager) Reject(approvalID string) error {
 	return m.updateApprovalStatus(approvalID, "rejected")
-}
-
-func (m *Manager) updateApprovalStatus(approvalID string, next string) error {
-	if m == nil {
-		return fmt.Errorf("ops manager is nil")
-	}
-	id := strings.TrimSpace(approvalID)
-	if id == "" {
-		return fmt.Errorf("approval_id is required")
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	items, err := m.loadApprovalsLocked()
-	if err != nil {
-		return err
-	}
-	for i := range items {
-		if strings.TrimSpace(items[i].ID) != id {
-			continue
-		}
-		now := m.nowFn().UTC()
-		items[i].Status = next
-		items[i].UpdatedAt = now
-		items[i].ReviewedAt = &now
-		if err := m.saveApprovalsLocked(items); err != nil {
-			return err
-		}
-		_ = m.appendEventLocked("approval_"+next, map[string]any{"approval_id": id})
-		return nil
-	}
-	return fmt.Errorf("approval not found: %s", id)
-}
-
-func (m *Manager) scanCandidates() ([]CleanupCandidate, error) {
-	roots := m.safeRoots()
-	now := m.nowFn().UTC()
-	out := make([]CleanupCandidate, 0)
-	for _, root := range roots {
-		info, err := os.Stat(root)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, err
-		}
-		if !info.IsDir() {
-			continue
-		}
-		reason := cleanupReason(root)
-		walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return nil
-			}
-			if d.IsDir() {
-				return nil
-			}
-			stat, err := d.Info()
-			if err != nil {
-				return nil
-			}
-			if !stat.Mode().IsRegular() {
-				return nil
-			}
-			if m.minFileAge > 0 && now.Sub(stat.ModTime().UTC()) < m.minFileAge {
-				return nil
-			}
-			out = append(out, CleanupCandidate{
-				Path:      path,
-				SizeBytes: stat.Size(),
-				Reason:    reason,
-			})
-			return nil
-		})
-		if walkErr != nil {
-			return nil, walkErr
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].SizeBytes == out[j].SizeBytes {
-			return out[i].Path < out[j].Path
-		}
-		return out[i].SizeBytes > out[j].SizeBytes
-	})
-	if len(out) > 200 {
-		out = out[:200]
-	}
-	return out, nil
-}
-
-func (m *Manager) isSafeCleanupPath(path string) bool {
-	cleanPath, err := filepath.Abs(strings.TrimSpace(path))
-	if err != nil {
-		return false
-	}
-	for _, root := range m.safeRoots() {
-		cleanRoot, err := filepath.Abs(strings.TrimSpace(root))
-		if err != nil {
-			continue
-		}
-		prefix := cleanRoot + string(os.PathSeparator)
-		if cleanPath == cleanRoot || strings.HasPrefix(cleanPath, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *Manager) safeRoots() []string {
-	home := strings.TrimSpace(m.homeDir)
-	if home == "" {
-		return nil
-	}
-	return []string{
-		filepath.Join(home, "Downloads"),
-		filepath.Join(home, "Desktop"),
-		filepath.Join(home, "Library", "Caches"),
-		filepath.Join(home, ".Trash"),
-	}
-}
-
-func (m *Manager) loadApprovalsLocked() ([]Approval, error) {
-	if err := os.MkdirAll(filepath.Dir(m.approvalsPath), 0o755); err != nil {
-		return nil, err
-	}
-	raw, err := os.ReadFile(m.approvalsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []Approval{}, nil
-		}
-		return nil, err
-	}
-	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" {
-		return []Approval{}, nil
-	}
-	items := []Approval{}
-	if err := json.Unmarshal(raw, &items); err != nil {
-		return nil, err
-	}
-	if items == nil {
-		return []Approval{}, nil
-	}
-	return items, nil
-}
-
-func (m *Manager) saveApprovalsLocked(items []Approval) error {
-	if err := os.MkdirAll(filepath.Dir(m.approvalsPath), 0o755); err != nil {
-		return err
-	}
-	payload, err := json.MarshalIndent(items, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(m.approvalsPath, payload, 0o644)
-}
-
-func (m *Manager) appendEventLocked(eventType string, payload map[string]any) error {
-	if err := os.MkdirAll(m.eventsDir, 0o755); err != nil {
-		return err
-	}
-	now := m.nowFn().UTC()
-	path := filepath.Join(m.eventsDir, now.Format("2006-01-02")+".jsonl")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	record := map[string]any{
-		"timestamp": now.Format(time.RFC3339),
-		"type":      strings.TrimSpace(eventType),
-		"payload":   payload,
-	}
-	line, err := json.Marshal(record)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(append(line, '\n'))
-	return err
-}
-
-func processCount() (int, error) {
-	out, err := exec.Command("ps", "-A", "-o", "pid=").Output()
-	if err != nil {
-		return 0, err
-	}
-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
-	count := 0
-	for scanner.Scan() {
-		if strings.TrimSpace(scanner.Text()) == "" {
-			continue
-		}
-		count++
-	}
-	if err := scanner.Err(); err != nil {
-		return 0, err
-	}
-	return count, nil
-}
-
-func cleanupReason(root string) string {
-	v := strings.TrimSpace(root)
-	switch {
-	case strings.HasSuffix(v, string(os.PathSeparator)+"Downloads"):
-		return "downloads cleanup"
-	case strings.HasSuffix(v, string(os.PathSeparator)+"Desktop"):
-		return "desktop cleanup"
-	case strings.HasSuffix(v, string(os.PathSeparator)+"Caches"):
-		return "cache cleanup"
-	case strings.HasSuffix(v, string(os.PathSeparator)+".Trash"):
-		return "trash cleanup"
-	default:
-		return "ops cleanup"
-	}
-}
-
-func newApprovalID(now time.Time) string {
-	return "apr_" + now.UTC().Format("20060102T150405.000000000")
 }
