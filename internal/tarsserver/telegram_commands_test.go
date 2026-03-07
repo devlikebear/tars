@@ -203,6 +203,40 @@ func TestTelegramCommand_Blocked_MainScopeSessionSwitch(t *testing.T) {
 	}
 }
 
+func TestTelegramCommand_New_PerUserCreatesAndReturnsNextSession(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
+		Store:        store,
+		CronResolver: newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),
+		Runtime:      nil,
+		MainSession:  "sess-main",
+		SessionScope: "per-user",
+		Logger:       zerolog.Nop(),
+	})
+
+	handled, result, nextSession, err := handler.Execute(context.Background(), "/new research thread", "")
+	if err != nil {
+		t.Fatalf("Execute /new: %v", err)
+	}
+	if !handled {
+		t.Fatalf("expected /new to be handled")
+	}
+	if strings.TrimSpace(nextSession) == "" {
+		t.Fatalf("expected next session id")
+	}
+	if !strings.Contains(result, "created session") || !strings.Contains(result, "research thread") {
+		t.Fatalf("unexpected /new output: %q", result)
+	}
+	sess, err := store.Get(nextSession)
+	if err != nil {
+		t.Fatalf("get created session: %v", err)
+	}
+	if sess.Title != "research thread" {
+		t.Fatalf("unexpected created title: %+v", sess)
+	}
+}
+
 func TestTelegramCommand_ResumeMain_AllowedInMainScope(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(workspace)
@@ -262,6 +296,48 @@ func TestTelegramCommand_ResumeLatest_BlockedInMainScope(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(result), "main session mode") {
 		t.Fatalf("expected block message, got %q", result)
+	}
+}
+
+func TestTelegramCommand_ResumeByIndex_UsesUpdatedAtOrder(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	first, err := store.Create("first")
+	if err != nil {
+		t.Fatalf("create first session: %v", err)
+	}
+	second, err := store.Create("second")
+	if err != nil {
+		t.Fatalf("create second session: %v", err)
+	}
+	if err := store.Touch(first.ID, time.Date(2026, 3, 7, 10, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("touch first: %v", err)
+	}
+	if err := store.Touch(second.ID, time.Date(2026, 3, 7, 11, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("touch second: %v", err)
+	}
+
+	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
+		Store:        store,
+		CronResolver: newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),
+		Runtime:      nil,
+		MainSession:  "sess-main",
+		SessionScope: "per-user",
+		Logger:       zerolog.Nop(),
+	})
+
+	handled, result, nextSession, err := handler.Execute(context.Background(), "/resume 2", "")
+	if err != nil {
+		t.Fatalf("Execute /resume 2: %v", err)
+	}
+	if !handled {
+		t.Fatalf("expected /resume 2 to be handled")
+	}
+	if nextSession != first.ID {
+		t.Fatalf("expected second ordered entry to be first session %q, got %q", first.ID, nextSession)
+	}
+	if !strings.Contains(result, first.ID) {
+		t.Fatalf("expected resume output to mention %q, got %q", first.ID, result)
 	}
 }
 
