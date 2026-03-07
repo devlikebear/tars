@@ -3,6 +3,8 @@ package assistant
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -91,5 +93,43 @@ func TestRunVoiceTurn_STTFailureReturnsError(t *testing.T) {
 	}, "sample.wav")
 	if err == nil {
 		t.Fatalf("expected error")
+	}
+}
+
+func TestTreatRecordingStopError_AllowsExit255WhenWAVExists(t *testing.T) {
+	dir := t.TempDir()
+	wavPath := filepath.Join(dir, "sample.wav")
+	if err := os.WriteFile(wavPath, make([]byte, 4096), 0o644); err != nil {
+		t.Fatalf("write wav: %v", err)
+	}
+
+	err := treatRecordingStopError(errors.New("exit status 255"), wavPath)
+	if err != nil {
+		t.Fatalf("expected exit status 255 to be ignored when wav exists, got %v", err)
+	}
+}
+
+func TestTreatRecordingStopError_RejectsTinyOrMissingWAV(t *testing.T) {
+	dir := t.TempDir()
+	tinyPath := filepath.Join(dir, "tiny.wav")
+	if err := os.WriteFile(tinyPath, []byte("tiny"), 0o644); err != nil {
+		t.Fatalf("write tiny wav: %v", err)
+	}
+
+	if err := treatRecordingStopError(errors.New("exit status 255"), tinyPath); err == nil {
+		t.Fatalf("expected tiny wav to still fail")
+	}
+	if err := treatRecordingStopError(errors.New("exit status 255"), filepath.Join(dir, "missing.wav")); err == nil {
+		t.Fatalf("expected missing wav to still fail")
+	}
+}
+
+func TestBuildWhisperArgs_IncludesModelWhenConfigured(t *testing.T) {
+	args := buildWhisperArgs("sample.wav", "/tmp/ggml-base.bin")
+	if len(args) != 3 {
+		t.Fatalf("expected 3 args, got %#v", args)
+	}
+	if args[0] != "-m" || args[1] != "/tmp/ggml-base.bin" || args[2] != "sample.wav" {
+		t.Fatalf("unexpected args: %#v", args)
 	}
 }

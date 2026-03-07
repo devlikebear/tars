@@ -25,6 +25,8 @@ type popupResult struct {
 type popupPresenter interface {
 	Prompt(ctx context.Context) (popupResult, error)
 	WaitRecordingStop(ctx context.Context) (bool, error)
+	ShowResult(ctx context.Context, result VoiceTurnResult) error
+	ShowError(ctx context.Context, message string) error
 }
 
 type appleScriptRunner func(ctx context.Context, script string) (string, error)
@@ -55,6 +57,31 @@ end tell`)
 		return false, err
 	}
 	return parseRecordingDialogOutput(raw)
+}
+
+func (p appleScriptPopup) ShowResult(ctx context.Context, result VoiceTurnResult) error {
+	title := quoteAppleScript("TARS replied")
+	reply := quoteAppleScript(popupPreviewText(result.AssistantReply, 500))
+	transcript := quoteAppleScript(popupPreviewText(result.Transcript, 180))
+	raw, err := p.run(ctx, fmt.Sprintf(`tell application "System Events"
+display dialog %s with title %s buttons {"OK"} default button "OK"
+end tell`, quoteAppleScript("You: "+transcript+"\n\nTARS: "+reply), title))
+	if err != nil {
+		return err
+	}
+	_ = raw
+	return nil
+}
+
+func (p appleScriptPopup) ShowError(ctx context.Context, message string) error {
+	raw, err := p.run(ctx, fmt.Sprintf(`tell application "System Events"
+display alert %s message %s as critical buttons {"OK"} default button "OK"
+end tell`, quoteAppleScript("TARS assistant error"), quoteAppleScript(popupPreviewText(message, 700))))
+	if err != nil {
+		return err
+	}
+	_ = raw
+	return nil
 }
 
 func runAppleScript(ctx context.Context, script string) (string, error) {
@@ -109,4 +136,23 @@ func parseDialogField(raw string, prefix string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("missing dialog field: %s", strings.TrimSpace(prefix))
+}
+
+func popupPreviewText(raw string, maxLen int) string {
+	text := strings.Join(strings.Fields(strings.TrimSpace(raw)), " ")
+	if text == "" {
+		return "(empty reply)"
+	}
+	if maxLen <= 0 || len([]rune(text)) <= maxLen {
+		return text
+	}
+	runes := []rune(text)
+	if maxLen <= 3 {
+		return string(runes[:maxLen])
+	}
+	return string(runes[:maxLen-3]) + "..."
+}
+
+func quoteAppleScript(raw string) string {
+	return `"` + strings.ReplaceAll(raw, `"`, `\"`) + `"`
 }

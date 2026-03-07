@@ -64,6 +64,7 @@ type StartOptions struct {
 	Hotkey       string
 	AudioInput   string
 	WhisperBin   string
+	WhisperModel string
 	FFmpegBin    string
 	TTSBin       string
 	Stdin        io.Reader
@@ -98,8 +99,12 @@ func Start(ctx context.Context, opts StartOptions) error {
 		ServerURL: strings.TrimSpace(opts.ServerURL),
 		APIToken:  strings.TrimSpace(opts.APIToken),
 	})}
+	whisperBin := defaultIfEmpty(opts.WhisperBin, "whisper-cli")
 	deps := VoiceTurnDeps{
-		Transcriber: commandTranscriber{binary: defaultIfEmpty(opts.WhisperBin, "whisper-cli")},
+		Transcriber: commandTranscriber{
+			binary:    whisperBin,
+			modelPath: defaultWhisperModelPath(opts.WhisperModel, whisperBin),
+		},
 		ChatClient:  chatClient,
 		Speaker:     commandSpeaker{binary: defaultIfEmpty(opts.TTSBin, "say")},
 		SessionID:   strings.TrimSpace(opts.SessionID),
@@ -179,7 +184,7 @@ func runFallbackInputMode(
 		fmt.Fprintln(stdout, "recording... press ENTER to stop")
 		_, _ = reader.ReadString('\n')
 		state.HandleReleased()
-		if stopErr := rec.stop(); stopErr != nil {
+		if stopErr := treatRecordingStopError(rec.stop(), wavPath); stopErr != nil {
 			fmt.Fprintf(stderr, "assistant warning: failed to stop recorder: %v\n", stopErr)
 			continue
 		}
@@ -223,12 +228,22 @@ func runHotkeyMode(
 		case popupActionCancel:
 			continue
 		case popupActionSend:
-			if runErr := handleTextTurn(ctx, &deps, result.Text, stdout, stderr); runErr != nil {
+			turnResult, runErr := RunTextTurn(ctx, deps, result.Text)
+			if runErr != nil {
 				fmt.Fprintf(stderr, "assistant warning: %v\n", runErr)
+				_ = popup.ShowError(ctx, runErr.Error())
+				continue
 			}
+			if writeErr := writeTurnResult(&deps, turnResult, stdout, stderr); writeErr != nil {
+				fmt.Fprintf(stderr, "assistant warning: %v\n", writeErr)
+				_ = popup.ShowError(ctx, writeErr.Error())
+				continue
+			}
+			_ = popup.ShowResult(ctx, turnResult)
 		case popupActionMic:
 			if runErr := handlePopupVoiceTurn(ctx, popup, &deps, voiceDir, ffmpegBin, audioInput, stdout, stderr); runErr != nil {
 				fmt.Fprintf(stderr, "assistant warning: %v\n", runErr)
+				_ = popup.ShowError(ctx, runErr.Error())
 			}
 		}
 	}
@@ -271,7 +286,7 @@ func runHotkeyVoiceMode(
 			return err
 		}
 		state.HandleReleased()
-		if stopErr := rec.stop(); stopErr != nil {
+		if stopErr := treatRecordingStopError(rec.stop(), wavPath); stopErr != nil {
 			fmt.Fprintf(stderr, "assistant warning: failed to stop recorder: %v\n", stopErr)
 			continue
 		}
@@ -335,7 +350,7 @@ func handlePopupVoiceTurn(
 		return fmt.Errorf("failed to start recorder: %w", err)
 	}
 	send, waitErr := popup.WaitRecordingStop(ctx)
-	stopErr := rec.stop()
+	stopErr := treatRecordingStopError(rec.stop(), wavPath)
 	if waitErr != nil {
 		if stopErr != nil {
 			return fmt.Errorf("failed to stop recorder after popup error: %v (popup error: %w)", stopErr, waitErr)
@@ -348,7 +363,17 @@ func handlePopupVoiceTurn(
 	if !send {
 		return nil
 	}
-	return handleVoiceTurn(ctx, deps, wavPath, stdout, stderr)
+	if deps == nil {
+		return fmt.Errorf("voice dependencies are required")
+	}
+	result, err := RunVoiceTurn(ctx, *deps, wavPath)
+	if err != nil {
+		return err
+	}
+	if err := writeTurnResult(deps, result, stdout, stderr); err != nil {
+		return err
+	}
+	return popup.ShowResult(ctx, result)
 }
 
 type apiChatClient struct {
@@ -370,14 +395,19 @@ func (a apiChatClient) Chat(ctx context.Context, message string, sessionID strin
 }
 
 type commandTranscriber struct {
-	binary string
+	binary    string
+	modelPath string
 }
 
 func (c commandTranscriber) Transcribe(ctx context.Context, audioPath string) (string, error) {
-	cmd := exec.CommandContext(ctx, strings.TrimSpace(c.binary), strings.TrimSpace(audioPath))
+	cmd := exec.CommandContext(ctx, strings.TrimSpace(c.binary), buildWhisperArgs(audioPath, c.modelPath)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("transcribe failed: %w: %s", err, strings.TrimSpace(string(out)))
+		text := strings.TrimSpace(string(out))
+		if strings.Contains(strings.ToLower(text), "failed to open") && strings.TrimSpace(c.modelPath) == "" {
+			return "", fmt.Errorf("transcribe failed: %w: %s (hint: set --whisper-model or TARS_ASSISTANT_WHISPER_MODEL to a real ggml model path)", err, text)
+		}
+		return "", fmt.Errorf("transcribe failed: %w: %s", err, text)
 	}
 	text := strings.TrimSpace(string(out))
 	if text == "" {
@@ -432,6 +462,68 @@ func (r *ffmpegRecording) stop() error {
 		_ = r.cmd.Process.Kill()
 		return <-done
 	}
+}
+
+func buildWhisperArgs(audioPath string, modelPath string) []string {
+	args := make([]string, 0, 3)
+	if strings.TrimSpace(modelPath) != "" {
+		args = append(args, "-m", strings.TrimSpace(modelPath))
+	}
+	return append(args, strings.TrimSpace(audioPath))
+}
+
+func defaultWhisperModelPath(raw string, binary string) string {
+	if strings.TrimSpace(raw) != "" {
+		return strings.TrimSpace(raw)
+	}
+	dirs := []string{
+		filepath.Join(filepath.Dir(strings.TrimSpace(binary)), "..", "share", "whisper-cpp"),
+		"/opt/homebrew/opt/whisper-cpp/share/whisper-cpp",
+		"/opt/homebrew/share/whisper-cpp",
+		"./models",
+		"../models",
+	}
+	models := []string{
+		"ggml-base.bin",
+		"ggml-base.en.bin",
+		"ggml-small.bin",
+		"ggml-small.en.bin",
+		"ggml-medium.bin",
+		"ggml-medium.en.bin",
+		"ggml-large-v3.bin",
+	}
+	for _, dir := range dirs {
+		for _, model := range models {
+			candidate := filepath.Clean(filepath.Join(dir, model))
+			info, err := os.Stat(candidate)
+			if err == nil && !info.IsDir() {
+				return candidate
+			}
+		}
+	}
+	return ""
+}
+
+func treatRecordingStopError(stopErr error, wavPath string) error {
+	if stopErr == nil {
+		return nil
+	}
+	lower := strings.ToLower(stopErr.Error())
+	if strings.Contains(lower, "signal") {
+		return nil
+	}
+	if strings.Contains(lower, "exit status 255") && wavLooksUsable(wavPath) {
+		return nil
+	}
+	return stopErr
+}
+
+func wavLooksUsable(wavPath string) bool {
+	info, err := os.Stat(strings.TrimSpace(wavPath))
+	if err != nil || info.IsDir() {
+		return false
+	}
+	return info.Size() >= 1024
 }
 
 func defaultIfEmpty(value, fallback string) string {

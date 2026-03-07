@@ -58,3 +58,10 @@ func TestParseRecordingDialogOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestPopupPreviewText_TrimsAndLimitsLength(t *testing.T) {
+	got := popupPreviewText("line1\n\nline2\nline3", 12)
+	if got != "line1 lin..." {
+		t.Fatalf("unexpected preview text: %q", got)
+	}
+}
