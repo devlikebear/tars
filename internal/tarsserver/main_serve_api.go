@@ -43,6 +43,29 @@ type serveAPIRuntime struct {
 	telegramPoller     *telegramUpdatePoller
 }
 
+type apiRouteHandlers struct {
+	heartbeat       http.Handler
+	chat            http.Handler
+	sessions        http.Handler
+	projects        http.Handler
+	usage           http.Handler
+	ops             http.Handler
+	status          http.Handler
+	auth            http.Handler
+	healthz         http.Handler
+	providersModels http.Handler
+	compact         http.Handler
+	cron            http.Handler
+	schedules       http.Handler
+	mcp             http.Handler
+	extensions      http.Handler
+	agentRuns       http.Handler
+	gateway         http.Handler
+	browser         http.Handler
+	channels        http.Handler
+	events          http.Handler
+}
+
 func runServeAPICommand(
 	parentCtx context.Context,
 	opts *options,
@@ -235,7 +258,7 @@ func buildAPIMux(
 	)
 
 	mux := http.NewServeMux()
-	mux.Handle("/v1/heartbeat/", newHeartbeatAPIHandlerWithRunner(heartbeatRunner, logger))
+	heartbeatHandler := newHeartbeatAPIHandlerWithRunner(heartbeatRunner, logger)
 
 	processManager := tool.NewProcessManager()
 	mcpClient := mcp.NewClient(cfg.MCPServers)
@@ -352,61 +375,28 @@ func buildAPIMux(
 		chatTooling,
 		chatTools...,
 	)
-	mux.Handle("/v1/chat", chatHandler)
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
-	mux.Handle("/v1/sessions", sessionHandler)
-	mux.Handle("/v1/sessions/", sessionHandler)
 	projectHandler := newProjectAPIHandler(project.NewStore(cfg.WorkspaceDir, nil), sessionStore, mainSessionID, logger)
-	mux.Handle("/v1/projects", projectHandler)
-	mux.Handle("/v1/projects/", projectHandler)
 	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
-	mux.Handle("/v1/usage/summary", usageHandler)
-	mux.Handle("/v1/usage/limits", usageHandler)
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit)
-	mux.Handle("/v1/ops/status", opsHandler)
-	mux.Handle("/v1/ops/cleanup/plan", opsHandler)
-	mux.Handle("/v1/ops/cleanup/apply", opsHandler)
-	mux.Handle("/v1/ops/approvals", opsHandler)
-	mux.Handle("/v1/ops/approvals/", opsHandler)
-	mux.Handle("/v1/status", newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger))
-	mux.Handle("/v1/auth/whoami", newAuthAPIHandler(cfg.APIAuthMode))
-	mux.Handle("/v1/healthz", newHealthzAPIHandler(nowFn))
+	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
+	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
+	healthzHandler := newHealthzAPIHandler(nowFn)
 	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
-	mux.Handle("/v1/providers", providersModelsHandler)
-	mux.Handle("/v1/models", providersModelsHandler)
-	mux.Handle("/v1/compact", newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmClient, logger))
+	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmClient, logger)
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
-	mux.Handle("/v1/cron/jobs", cronHandler)
-	mux.Handle("/v1/cron/jobs/", cronHandler)
 	scheduleHandler := newScheduleAPIHandler(scheduleStore, logger)
-	mux.Handle("/v1/schedules", scheduleHandler)
-	mux.Handle("/v1/schedules/", scheduleHandler)
 	mcpHandler := newMCPAPIHandler(mcpClient, logger)
-	mux.Handle("/v1/mcp/servers", mcpHandler)
-	mux.Handle("/v1/mcp/tools", mcpHandler)
 	extensionsHandler := newExtensionsAPIHandler(extensionsManager, logger, func() (bool, int) {
 		if gatewayRuntime == nil {
 			return false, 0
 		}
 		return true, refreshGatewayExecutors("extensions_reload")
 	})
-	mux.Handle("/v1/skills", extensionsHandler)
-	mux.Handle("/v1/skills/", extensionsHandler)
-	mux.Handle("/v1/plugins", extensionsHandler)
-	mux.Handle("/v1/runtime/extensions/reload", extensionsHandler)
 	agentRunsHandler := newAgentRunsAPIHandlerWithInflightLimit(gatewayRuntime, logger, cfg.APIMaxInflightAgentRuns)
-	mux.Handle("/v1/agent/agents", agentRunsHandler)
-	mux.Handle("/v1/agent/runs", agentRunsHandler)
-	mux.Handle("/v1/agent/runs/", agentRunsHandler)
 	gatewayHandler := newGatewayAPIHandler(gatewayRuntime, logger, func() {
 		_ = refreshGatewayExecutors("gateway_reload")
 	})
-	mux.Handle("/v1/gateway/status", gatewayHandler)
-	mux.Handle("/v1/gateway/reload", gatewayHandler)
-	mux.Handle("/v1/gateway/restart", gatewayHandler)
-	mux.Handle("/v1/gateway/reports/summary", gatewayHandler)
-	mux.Handle("/v1/gateway/reports/runs", gatewayHandler)
-	mux.Handle("/v1/gateway/reports/channels", gatewayHandler)
 	browserHandler := newBrowserAPIHandler(
 		gatewayRuntime,
 		vaultStatus,
@@ -415,7 +405,6 @@ func buildAPIMux(
 		cfg.BrowserRelayOriginAllowlist,
 		logger,
 	)
-	registerBrowserRoutes(mux, browserHandler)
 	telegramInbound := newTelegramInboundHandler(
 		cfg.WorkspaceDir,
 		sessionStore,
@@ -457,15 +446,29 @@ func buildAPIMux(
 		cfg.ChannelsTelegramPollingEnabled,
 		logger,
 	)
-	mux.Handle("/v1/channels/webhook/inbound/", channelsHandler)
-	mux.Handle("/v1/channels/telegram/webhook/", channelsHandler)
-	mux.Handle("/v1/channels/telegram/send", channelsHandler)
-	mux.Handle("/v1/channels/telegram/pairings", channelsHandler)
-	mux.Handle("/v1/channels/telegram/pairings/", channelsHandler)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
-	mux.Handle("/v1/events/stream", eventsHandler)
-	mux.Handle("/v1/events/history", eventsHandler)
-	mux.Handle("/v1/events/read", eventsHandler)
+	registerAPIRoutes(mux, apiRouteHandlers{
+		heartbeat:       heartbeatHandler,
+		chat:            chatHandler,
+		sessions:        sessionHandler,
+		projects:        projectHandler,
+		usage:           usageHandler,
+		ops:             opsHandler,
+		status:          statusHandler,
+		auth:            authHandler,
+		healthz:         healthzHandler,
+		providersModels: providersModelsHandler,
+		compact:         compactHandler,
+		cron:            cronHandler,
+		schedules:       scheduleHandler,
+		mcp:             mcpHandler,
+		extensions:      extensionsHandler,
+		agentRuns:       agentRunsHandler,
+		gateway:         gatewayHandler,
+		browser:         browserHandler,
+		channels:        channelsHandler,
+		events:          eventsHandler,
+	})
 
 	server := &http.Server{
 		Addr:    opts.APIAddr,
@@ -492,6 +495,59 @@ func buildAPIMux(
 		cronManager:        cronManager,
 		telegramPoller:     telegramPoller,
 	}, nil
+}
+
+func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
+	if mux == nil {
+		return
+	}
+	mux.Handle("/v1/heartbeat/", handlers.heartbeat)
+	mux.Handle("/v1/chat", handlers.chat)
+	mux.Handle("/v1/sessions", handlers.sessions)
+	mux.Handle("/v1/sessions/", handlers.sessions)
+	mux.Handle("/v1/projects", handlers.projects)
+	mux.Handle("/v1/projects/", handlers.projects)
+	mux.Handle("/v1/usage/summary", handlers.usage)
+	mux.Handle("/v1/usage/limits", handlers.usage)
+	mux.Handle("/v1/ops/status", handlers.ops)
+	mux.Handle("/v1/ops/cleanup/plan", handlers.ops)
+	mux.Handle("/v1/ops/cleanup/apply", handlers.ops)
+	mux.Handle("/v1/ops/approvals", handlers.ops)
+	mux.Handle("/v1/ops/approvals/", handlers.ops)
+	mux.Handle("/v1/status", handlers.status)
+	mux.Handle("/v1/auth/whoami", handlers.auth)
+	mux.Handle("/v1/healthz", handlers.healthz)
+	mux.Handle("/v1/providers", handlers.providersModels)
+	mux.Handle("/v1/models", handlers.providersModels)
+	mux.Handle("/v1/compact", handlers.compact)
+	mux.Handle("/v1/cron/jobs", handlers.cron)
+	mux.Handle("/v1/cron/jobs/", handlers.cron)
+	mux.Handle("/v1/schedules", handlers.schedules)
+	mux.Handle("/v1/schedules/", handlers.schedules)
+	mux.Handle("/v1/mcp/servers", handlers.mcp)
+	mux.Handle("/v1/mcp/tools", handlers.mcp)
+	mux.Handle("/v1/skills", handlers.extensions)
+	mux.Handle("/v1/skills/", handlers.extensions)
+	mux.Handle("/v1/plugins", handlers.extensions)
+	mux.Handle("/v1/runtime/extensions/reload", handlers.extensions)
+	mux.Handle("/v1/agent/agents", handlers.agentRuns)
+	mux.Handle("/v1/agent/runs", handlers.agentRuns)
+	mux.Handle("/v1/agent/runs/", handlers.agentRuns)
+	mux.Handle("/v1/gateway/status", handlers.gateway)
+	mux.Handle("/v1/gateway/reload", handlers.gateway)
+	mux.Handle("/v1/gateway/restart", handlers.gateway)
+	mux.Handle("/v1/gateway/reports/summary", handlers.gateway)
+	mux.Handle("/v1/gateway/reports/runs", handlers.gateway)
+	mux.Handle("/v1/gateway/reports/channels", handlers.gateway)
+	registerBrowserRoutes(mux, handlers.browser)
+	mux.Handle("/v1/channels/webhook/inbound/", handlers.channels)
+	mux.Handle("/v1/channels/telegram/webhook/", handlers.channels)
+	mux.Handle("/v1/channels/telegram/send", handlers.channels)
+	mux.Handle("/v1/channels/telegram/pairings", handlers.channels)
+	mux.Handle("/v1/channels/telegram/pairings/", handlers.channels)
+	mux.Handle("/v1/events/stream", handlers.events)
+	mux.Handle("/v1/events/history", handlers.events)
+	mux.Handle("/v1/events/read", handlers.events)
 }
 
 func registerBrowserRoutes(mux *http.ServeMux, browserHandler http.Handler) {
