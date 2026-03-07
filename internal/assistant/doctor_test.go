@@ -26,4 +26,10 @@ func TestRunDoctorReportsMissingBinaries(t *testing.T) {
 	if report.OK {
 		t.Fatalf("expected doctor report OK=false when dependencies are missing")
 	}
+	if len(report.Notes) == 0 {
+		t.Fatalf("expected doctor notes")
+	}
+	if report.Notes[0] == "" {
+		t.Fatalf("expected non-empty doctor note")
+	}
 }

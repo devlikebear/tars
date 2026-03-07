@@ -49,35 +49,11 @@ func RunVoiceTurn(ctx context.Context, deps VoiceTurnDeps, audioPath string) (Vo
 	if deps.Transcriber == nil {
 		return VoiceTurnResult{}, fmt.Errorf("transcriber is required")
 	}
-	if deps.ChatClient == nil {
-		return VoiceTurnResult{}, fmt.Errorf("chat client is required")
-	}
 	transcript, err := deps.Transcriber.Transcribe(ctx, strings.TrimSpace(audioPath))
 	if err != nil {
 		return VoiceTurnResult{}, err
 	}
-	transcript = strings.TrimSpace(transcript)
-	if transcript == "" {
-		return VoiceTurnResult{}, fmt.Errorf("empty transcript")
-	}
-	reply, nextSession, err := deps.ChatClient.Chat(ctx, transcript, strings.TrimSpace(deps.SessionID))
-	if err != nil {
-		return VoiceTurnResult{}, err
-	}
-	result := VoiceTurnResult{
-		Transcript:     transcript,
-		AssistantReply: strings.TrimSpace(reply),
-		SessionID:      strings.TrimSpace(nextSession),
-	}
-	if result.SessionID == "" {
-		result.SessionID = strings.TrimSpace(deps.SessionID)
-	}
-	if deps.Speaker != nil && strings.TrimSpace(result.AssistantReply) != "" {
-		if err := deps.Speaker.Speak(ctx, result.AssistantReply); err != nil {
-			result.TTSError = err.Error()
-		}
-	}
-	return result, nil
+	return executeChatTurn(ctx, deps, transcript)
 }
 
 type StartOptions struct {
@@ -139,7 +115,7 @@ func Start(ctx context.Context, opts StartOptions) error {
 	switch mode {
 	case runtimeModeHotkey:
 		fmt.Fprintf(stdout, "assistant started (global hotkey=%s)\n", hotkey)
-		fmt.Fprintln(stdout, "hold hotkey to record, release to send, Ctrl+C to exit")
+		fmt.Fprintln(stdout, "press hotkey to open assistant popup, Ctrl+C to exit")
 		if warning != "" {
 			fmt.Fprintf(stderr, "assistant warning: %s\n", warning)
 		}
@@ -223,6 +199,51 @@ func runHotkeyMode(
 	stdout io.Writer,
 	stderr io.Writer,
 ) error {
+	popup, err := newPopupPresenter()
+	if err != nil {
+		fmt.Fprintf(stderr, "assistant warning: popup unavailable, fallback to hold-to-talk: %v\n", err)
+		return runHotkeyVoiceMode(ctx, listener, deps, voiceDir, ffmpegBin, audioInput, stdout, stderr)
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := listener.WaitPress(ctx); err != nil {
+			return err
+		}
+		if err := listener.WaitRelease(ctx); err != nil {
+			return err
+		}
+		result, err := popup.Prompt(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "assistant warning: failed to open popup: %v\n", err)
+			continue
+		}
+		switch result.Action {
+		case popupActionCancel:
+			continue
+		case popupActionSend:
+			if runErr := handleTextTurn(ctx, &deps, result.Text, stdout, stderr); runErr != nil {
+				fmt.Fprintf(stderr, "assistant warning: %v\n", runErr)
+			}
+		case popupActionMic:
+			if runErr := handlePopupVoiceTurn(ctx, popup, &deps, voiceDir, ffmpegBin, audioInput, stdout, stderr); runErr != nil {
+				fmt.Fprintf(stderr, "assistant warning: %v\n", runErr)
+			}
+		}
+	}
+}
+
+func runHotkeyVoiceMode(
+	ctx context.Context,
+	listener hotkeyListener,
+	deps VoiceTurnDeps,
+	voiceDir string,
+	ffmpegBin string,
+	audioInput string,
+	stdout io.Writer,
+	stderr io.Writer,
+) error {
 	state := PushToTalkState{}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -260,6 +281,17 @@ func runHotkeyMode(
 	}
 }
 
+func handleTextTurn(ctx context.Context, deps *VoiceTurnDeps, text string, stdout io.Writer, stderr io.Writer) error {
+	if deps == nil {
+		return fmt.Errorf("voice dependencies are required")
+	}
+	result, err := RunTextTurn(ctx, *deps, text)
+	if err != nil {
+		return err
+	}
+	return writeTurnResult(deps, result, stdout, stderr)
+}
+
 func handleVoiceTurn(ctx context.Context, deps *VoiceTurnDeps, wavPath string, stdout io.Writer, stderr io.Writer) error {
 	if deps == nil {
 		return fmt.Errorf("voice dependencies are required")
@@ -268,6 +300,13 @@ func handleVoiceTurn(ctx context.Context, deps *VoiceTurnDeps, wavPath string, s
 	if err != nil {
 		return err
 	}
+	return writeTurnResult(deps, result, stdout, stderr)
+}
+
+func writeTurnResult(deps *VoiceTurnDeps, result VoiceTurnResult, stdout io.Writer, stderr io.Writer) error {
+	if deps == nil {
+		return fmt.Errorf("voice dependencies are required")
+	}
 	deps.SessionID = result.SessionID
 	fmt.Fprintf(stdout, "you> %s\n", result.Transcript)
 	fmt.Fprintf(stdout, "tars> %s\n", result.AssistantReply)
@@ -275,6 +314,41 @@ func handleVoiceTurn(ctx context.Context, deps *VoiceTurnDeps, wavPath string, s
 		fmt.Fprintf(stderr, "assistant warning: tts fallback to text (%s)\n", result.TTSError)
 	}
 	return nil
+}
+
+func handlePopupVoiceTurn(
+	ctx context.Context,
+	popup popupPresenter,
+	deps *VoiceTurnDeps,
+	voiceDir string,
+	ffmpegBin string,
+	audioInput string,
+	stdout io.Writer,
+	stderr io.Writer,
+) error {
+	if popup == nil {
+		return fmt.Errorf("popup presenter is required")
+	}
+	wavPath := filepath.Join(voiceDir, time.Now().UTC().Format("20060102-150405")+".wav")
+	rec, err := startRecording(ctx, ffmpegBin, audioInput, wavPath)
+	if err != nil {
+		return fmt.Errorf("failed to start recorder: %w", err)
+	}
+	send, waitErr := popup.WaitRecordingStop(ctx)
+	stopErr := rec.stop()
+	if waitErr != nil {
+		if stopErr != nil {
+			return fmt.Errorf("failed to stop recorder after popup error: %v (popup error: %w)", stopErr, waitErr)
+		}
+		return waitErr
+	}
+	if stopErr != nil {
+		return fmt.Errorf("failed to stop recorder: %w", stopErr)
+	}
+	if !send {
+		return nil
+	}
+	return handleVoiceTurn(ctx, deps, wavPath, stdout, stderr)
 }
 
 type apiChatClient struct {

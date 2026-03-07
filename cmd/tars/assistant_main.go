@@ -170,6 +170,12 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 			}
 			fmt.Fprintf(stdout, "- %s found=%t error=%s\n", check.Name, check.Found, check.Error)
 		}
+		for _, note := range report.Notes {
+			if strings.TrimSpace(note) == "" {
+				continue
+			}
+			fmt.Fprintf(stdout, "note: %s\n", strings.TrimSpace(note))
+		}
 		return nil
 	case "install-launchagent":
 		if runtime.GOOS != "darwin" {

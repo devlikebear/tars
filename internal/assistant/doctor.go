@@ -23,6 +23,7 @@ type DoctorReport struct {
 	OK      bool          `json:"ok"`
 	Checks  []DoctorCheck `json:"checks"`
 	Missing []string      `json:"missing,omitempty"`
+	Notes   []string      `json:"notes,omitempty"`
 }
 
 func RunDoctor(opts DoctorOptions) DoctorReport {
@@ -62,5 +63,11 @@ func RunDoctor(opts DoctorOptions) DoctorReport {
 		OK:      len(missing) == 0,
 		Checks:  checks,
 		Missing: missing,
+		Notes: []string{
+			"io.tars.server is the backend runtime; io.tars.assistant is the local popup and voice helper.",
+			"assistant popup and global hotkey currently require macOS.",
+			"hotkey path needs Accessibility/Input Monitoring permission if registration or key capture fails.",
+			"popup send uses text input; popup mic uses ffmpeg + whisper-cli + say for voice turn flow.",
+		},
 	}
 }
