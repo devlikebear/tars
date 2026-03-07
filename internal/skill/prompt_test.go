@@ -12,6 +12,9 @@ func TestFormatAvailableSkills(t *testing.T) {
 			Description:   "Validate deployment checklist",
 			RuntimePath:   "_shared/skills_runtime/deploy_check/SKILL.md",
 			UserInvocable: true,
+			RecommendedTools: []string{"read_file", "write_file"},
+			RecommendedProjectFiles: []string{"BRIEF.md", "STATE.md"},
+			WakePhases: []string{"plan", "draft"},
 		},
 		{
 			Name:          "silent_audit",
@@ -32,5 +35,14 @@ func TestFormatAvailableSkills(t *testing.T) {
 	}
 	if strings.Contains(text, "SKILL.md\n#") {
 		t.Fatalf("skill body should not be embedded in available_skills")
+	}
+	if !strings.Contains(text, "<recommended_tools>") || !strings.Contains(text, "<item>read_file</item>") {
+		t.Fatalf("expected recommended_tools metadata in xml, got %q", text)
+	}
+	if !strings.Contains(text, "<recommended_project_files>") || !strings.Contains(text, "<item>BRIEF.md</item>") {
+		t.Fatalf("expected recommended_project_files metadata in xml, got %q", text)
+	}
+	if !strings.Contains(text, "<wake_phases>") || !strings.Contains(text, "<item>plan</item>") {
+		t.Fatalf("expected wake_phases metadata in xml, got %q", text)
 	}
 }

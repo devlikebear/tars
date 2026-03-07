@@ -25,6 +25,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/mcp"
 	"github.com/devlikebear/tarsncase/internal/memory"
 	"github.com/devlikebear/tarsncase/internal/plugin"
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/skill"
 	"github.com/devlikebear/tarsncase/internal/tool"
@@ -1010,6 +1011,44 @@ func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
 	}
 	if !strings.Contains(systemPrompt, `_shared/skills_runtime/deploy/SKILL.md`) {
 		t.Fatalf("expected invoked skill path in prompt, got %q", systemPrompt)
+	}
+}
+
+func TestPrepareChatContextWithExtensions_FiltersSkillsByActiveProject(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	projectStore := project.NewStore(root, nil)
+	item, err := projectStore.Create(project.CreateInput{Name: "Writer", Objective: "Ship the novel"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	updated, err := projectStore.Update(item.ID, project.UpdateInput{SkillsAllow: []string{"novelist"}})
+	if err != nil {
+		t.Fatalf("update project skills_allow: %v", err)
+	}
+
+	snapshot := extensions.Snapshot{
+		Skills: []skill.Definition{
+			{Name: "novelist", RuntimePath: "_shared/skills_runtime/novelist/SKILL.md", UserInvocable: true},
+			{Name: "deploy", RuntimePath: "_shared/skills_runtime/deploy/SKILL.md", UserInvocable: true},
+		},
+		SkillPrompt: skill.FormatAvailableSkills([]skill.Definition{
+			{Name: "novelist", RuntimePath: "_shared/skills_runtime/novelist/SKILL.md", UserInvocable: true},
+			{Name: "deploy", RuntimePath: "_shared/skills_runtime/deploy/SKILL.md", UserInvocable: true},
+		}),
+	}
+
+	systemPrompt, _, err := prepareChatContextWithExtensions(root, updated.ID, "sess-1", "/novelist start planning", snapshot, nil)
+	if err != nil {
+		t.Fatalf("prepare chat context: %v", err)
+	}
+	if !strings.Contains(systemPrompt, "<name>novelist</name>") {
+		t.Fatalf("expected allowed skill to remain in prompt, got %q", systemPrompt)
+	}
+	if strings.Contains(systemPrompt, "<name>deploy</name>") {
+		t.Fatalf("expected disallowed skill to be filtered from prompt, got %q", systemPrompt)
 	}
 }
 

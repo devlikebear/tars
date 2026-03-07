@@ -136,3 +136,72 @@ func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
 		t.Fatalf("unexpected skills_allow: %q", got)
 	}
 }
+
+func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	mainSess, err := store.Create("main")
+	if err != nil {
+		t.Fatalf("create main session: %v", err)
+	}
+
+	projectStore := project.NewStore(root, nil)
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, zerolog.New(io.Discard))
+
+	briefReq := httptest.NewRequest(http.MethodPatch, "/v1/project-briefs/"+mainSess.ID, strings.NewReader(`{
+		"title":"Orbit Hearts",
+		"goal":"Write a serialized space opera",
+		"kind":"serial",
+		"premise":"Two rival navigators chase a dead-star map.",
+		"open_questions":["Who betrays the crew in arc one?"],
+		"status":"ready"
+	}`))
+	briefReq.Header.Set("Content-Type", "application/json")
+	briefRec := httptest.NewRecorder()
+	handler.ServeHTTP(briefRec, briefReq)
+	if briefRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for brief patch, got %d body=%q", briefRec.Code, briefRec.Body.String())
+	}
+
+	finalizeReq := httptest.NewRequest(http.MethodPost, "/v1/project-briefs/"+mainSess.ID+"/finalize", nil)
+	finalizeRec := httptest.NewRecorder()
+	handler.ServeHTTP(finalizeRec, finalizeReq)
+	if finalizeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for brief finalize, got %d body=%q", finalizeRec.Code, finalizeRec.Body.String())
+	}
+	var payload struct {
+		Project project.Project `json:"project"`
+	}
+	if err := json.Unmarshal(finalizeRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode finalize payload: %v", err)
+	}
+	if strings.TrimSpace(payload.Project.ID) == "" {
+		t.Fatalf("expected finalized project id")
+	}
+
+	stateGetReq := httptest.NewRequest(http.MethodGet, "/v1/projects/"+payload.Project.ID+"/state", nil)
+	stateGetRec := httptest.NewRecorder()
+	handler.ServeHTTP(stateGetRec, stateGetReq)
+	if stateGetRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for state get, got %d body=%q", stateGetRec.Code, stateGetRec.Body.String())
+	}
+
+	statePatchReq := httptest.NewRequest(http.MethodPatch, "/v1/projects/"+payload.Project.ID+"/state", strings.NewReader(`{
+		"phase":"executing",
+		"status":"active",
+		"next_action":"Draft chapter one",
+		"remaining_tasks":["outline act one","draft chapter one"]
+	}`))
+	statePatchReq.Header.Set("Content-Type", "application/json")
+	statePatchRec := httptest.NewRecorder()
+	handler.ServeHTTP(statePatchRec, statePatchReq)
+	if statePatchRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for state patch, got %d body=%q", statePatchRec.Code, statePatchRec.Body.String())
+	}
+	if !strings.Contains(statePatchRec.Body.String(), "Draft chapter one") {
+		t.Fatalf("expected next_action in state patch response, got %q", statePatchRec.Body.String())
+	}
+}

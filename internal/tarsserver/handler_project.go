@@ -13,6 +13,121 @@ import (
 func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mainSessionID string, logger zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("/v1/project-briefs/", func(w http.ResponseWriter, r *http.Request) {
+		if store == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "project store is not configured"})
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/v1/project-briefs/")
+		parts := strings.Split(path, "/")
+		if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+			http.NotFound(w, r)
+			return
+		}
+		briefID := strings.TrimSpace(parts[0])
+		if len(parts) == 1 {
+			switch r.Method {
+			case http.MethodGet:
+				item, err := store.GetBrief(briefID)
+				if err != nil {
+					if strings.Contains(strings.ToLower(err.Error()), "not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "brief not found"})
+						return
+					}
+					logger.Error().Err(err).Str("brief_id", briefID).Msg("get brief failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get brief failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, item)
+			case http.MethodPatch:
+				var req struct {
+					Title              *string  `json:"title,omitempty"`
+					Goal               *string  `json:"goal,omitempty"`
+					Kind               *string  `json:"kind,omitempty"`
+					Genre              *string  `json:"genre,omitempty"`
+					TargetLength       *string  `json:"target_length,omitempty"`
+					Cadence            *string  `json:"cadence,omitempty"`
+					TargetInstallments *string  `json:"target_installments,omitempty"`
+					Premise            *string  `json:"premise,omitempty"`
+					PlotSeed           *string  `json:"plot_seed,omitempty"`
+					StylePreferences   *string  `json:"style_preferences,omitempty"`
+					Constraints        []string `json:"constraints,omitempty"`
+					MustHave           []string `json:"must_have,omitempty"`
+					MustAvoid          []string `json:"must_avoid,omitempty"`
+					OpenQuestions      []string `json:"open_questions,omitempty"`
+					Decisions          []string `json:"decisions,omitempty"`
+					Status             *string  `json:"status,omitempty"`
+					Summary            *string  `json:"summary,omitempty"`
+					Body               *string  `json:"body,omitempty"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+					return
+				}
+				updated, err := store.UpdateBrief(briefID, project.BriefUpdateInput{
+					Title:              req.Title,
+					Goal:               req.Goal,
+					Kind:               req.Kind,
+					Genre:              req.Genre,
+					TargetLength:       req.TargetLength,
+					Cadence:            req.Cadence,
+					TargetInstallments: req.TargetInstallments,
+					Premise:            req.Premise,
+					PlotSeed:           req.PlotSeed,
+					StylePreferences:   req.StylePreferences,
+					Constraints:        req.Constraints,
+					MustHave:           req.MustHave,
+					MustAvoid:          req.MustAvoid,
+					OpenQuestions:      req.OpenQuestions,
+					Decisions:          req.Decisions,
+					Status:             req.Status,
+					Summary:            req.Summary,
+					Body:               req.Body,
+				})
+				if err != nil {
+					if strings.Contains(strings.ToLower(err.Error()), "required") || strings.Contains(strings.ToLower(err.Error()), "invalid") {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
+					logger.Error().Err(err).Str("brief_id", briefID).Msg("update brief failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update brief failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, updated)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+		if len(parts) == 2 && parts[1] == "finalize" {
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			created, brief, err := store.FinalizeBrief(briefID, sessionStore)
+			if err != nil {
+				if strings.Contains(strings.ToLower(err.Error()), "not found") {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "brief not found"})
+					return
+				}
+				if strings.Contains(strings.ToLower(err.Error()), "already finalized") {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+					return
+				}
+				logger.Error().Err(err).Str("brief_id", briefID).Msg("finalize brief failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "finalize brief failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"project": created,
+				"brief":   brief,
+				"seeded":  true,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	})
+
 	mux.HandleFunc("/v1/projects", func(w http.ResponseWriter, r *http.Request) {
 		if store == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "project store is not configured"})
@@ -122,6 +237,69 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 					return
 				}
 				w.WriteHeader(http.StatusNoContent)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+
+		if len(parts) == 2 && parts[1] == "state" {
+			switch r.Method {
+			case http.MethodGet:
+				item, err := store.GetState(projectID)
+				if err != nil {
+					if strings.Contains(strings.ToLower(err.Error()), "not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "project state not found"})
+						return
+					}
+					logger.Error().Err(err).Str("project_id", projectID).Msg("get project state failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get project state failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, item)
+			case http.MethodPatch:
+				var req struct {
+					Goal              *string  `json:"goal,omitempty"`
+					Phase             *string  `json:"phase,omitempty"`
+					Status            *string  `json:"status,omitempty"`
+					NextAction        *string  `json:"next_action,omitempty"`
+					RemainingTasks    []string `json:"remaining_tasks,omitempty"`
+					CompletionSummary *string  `json:"completion_summary,omitempty"`
+					LastRunSummary    *string  `json:"last_run_summary,omitempty"`
+					LastRunAt         *string  `json:"last_run_at,omitempty"`
+					StopReason        *string  `json:"stop_reason,omitempty"`
+					Body              *string  `json:"body,omitempty"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+					return
+				}
+				updated, err := store.UpdateState(projectID, project.ProjectStateUpdateInput{
+					Goal:              req.Goal,
+					Phase:             req.Phase,
+					Status:            req.Status,
+					NextAction:        req.NextAction,
+					RemainingTasks:    req.RemainingTasks,
+					CompletionSummary: req.CompletionSummary,
+					LastRunSummary:    req.LastRunSummary,
+					LastRunAt:         req.LastRunAt,
+					StopReason:        req.StopReason,
+					Body:              req.Body,
+				})
+				if err != nil {
+					if strings.Contains(strings.ToLower(err.Error()), "required") || strings.Contains(strings.ToLower(err.Error()), "invalid") || strings.Contains(strings.ToLower(err.Error()), "not found") {
+						status := http.StatusBadRequest
+						if strings.Contains(strings.ToLower(err.Error()), "not found") {
+							status = http.StatusNotFound
+						}
+						writeJSON(w, status, map[string]string{"error": err.Error()})
+						return
+					}
+					logger.Error().Err(err).Str("project_id", projectID).Msg("update project state failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update project state failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, updated)
 			default:
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}

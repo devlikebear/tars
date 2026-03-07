@@ -3,6 +3,7 @@ package skill
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -64,7 +65,15 @@ description: workspace description
 func TestLoad_DefaultUserInvocableTrue(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace", "skills")
-	writeSkillFile(t, filepath.Join(workspaceDir, "simple", "SKILL.md"), "# Simple\nUse it")
+	writeSkillFile(t, filepath.Join(workspaceDir, "simple", "SKILL.md"), `---
+recommended_tools: [read_file, write_file]
+recommended_project_files:
+  - BRIEF.md
+  - STATE.md
+wake_phases: plan, draft
+---
+# Simple
+Use it`)
 
 	snapshot, err := Load(LoadOptions{
 		Sources: []SourceDir{{Source: SourceWorkspace, Dir: workspaceDir}},
@@ -77,6 +86,15 @@ func TestLoad_DefaultUserInvocableTrue(t *testing.T) {
 	}
 	if !snapshot.Skills[0].UserInvocable {
 		t.Fatalf("expected default user_invocable=true")
+	}
+	if got := strings.Join(snapshot.Skills[0].RecommendedTools, ","); got != "read_file,write_file" {
+		t.Fatalf("unexpected recommended_tools: %q", got)
+	}
+	if got := strings.Join(snapshot.Skills[0].RecommendedProjectFiles, ","); got != "BRIEF.md,STATE.md" {
+		t.Fatalf("unexpected recommended_project_files: %q", got)
+	}
+	if got := strings.Join(snapshot.Skills[0].WakePhases, ","); got != "plan,draft" {
+		t.Fatalf("unexpected wake_phases: %q", got)
 	}
 }
 

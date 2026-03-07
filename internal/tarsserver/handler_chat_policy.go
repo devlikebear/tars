@@ -27,6 +27,11 @@ func buildChatToolRegistry(
 	registry.Register(tool.NewProjectUpdateTool(projectStore))
 	registry.Register(tool.NewProjectDeleteTool(projectStore))
 	registry.Register(tool.NewProjectActivateTool(projectStore, reqStore, deps.mainSessionID))
+	registry.Register(tool.NewProjectBriefGetTool(projectStore))
+	registry.Register(tool.NewProjectBriefUpdateTool(projectStore))
+	registry.Register(tool.NewProjectBriefFinalizeTool(projectStore, reqStore))
+	registry.Register(tool.NewProjectStateGetTool(projectStore))
+	registry.Register(tool.NewProjectStateUpdateTool(projectStore))
 	registry.Register(tool.NewOpsStatusTool(deps.tooling.OpsManager))
 	registry.Register(tool.NewOpsCleanupPlanTool(deps.tooling.OpsManager))
 	registry.Register(tool.NewOpsCleanupApplyTool(deps.tooling.OpsManager))
@@ -189,6 +194,11 @@ func defaultMinimalToolNames() []string {
 		"project_list",
 		"project_update",
 		"project_activate",
+		"project_brief_get",
+		"project_brief_update",
+		"project_brief_finalize",
+		"project_state_get",
+		"project_state_update",
 		"ops_status",
 		"ops_cleanup_plan",
 		"schedule_list",

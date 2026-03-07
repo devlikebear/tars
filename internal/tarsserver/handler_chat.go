@@ -12,6 +12,7 @@ import (
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/ops"
 	"github.com/devlikebear/tarsncase/internal/prompt"
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/research"
 	"github.com/devlikebear/tarsncase/internal/schedule"
 	"github.com/devlikebear/tarsncase/internal/secrets"
@@ -79,6 +80,7 @@ func prepareChatContextDetailsWithExtensions(
 	invokedSkill *skill.Definition,
 ) (preparedChatContext, error) {
 	forceRelevantMemory := shouldForceMemoryToolCall(userMessage)
+	extSnapshot = filterSkillSnapshotForProject(extSnapshot, workspaceDir, projectID)
 	buildResult := prompt.BuildResultFor(prompt.BuildOptions{
 		WorkspaceDir:        workspaceDir,
 		Query:               userMessage,
@@ -114,6 +116,41 @@ func prepareChatContextDetailsWithExtensions(
 		RelevantMemoryCount:  buildResult.RelevantMemoryCount,
 		RelevantMemoryTokens: buildResult.RelevantTokens,
 	}, nil
+}
+
+func filterSkillSnapshotForProject(snapshot extensions.Snapshot, workspaceDir, projectID string) extensions.Snapshot {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" || strings.TrimSpace(workspaceDir) == "" {
+		return snapshot
+	}
+	store := project.NewStore(workspaceDir, nil)
+	item, err := store.Get(projectID)
+	if err != nil || len(item.SkillsAllow) == 0 {
+		return snapshot
+	}
+	allowed := map[string]struct{}{}
+	for _, name := range item.SkillsAllow {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if key == "" {
+			continue
+		}
+		allowed[key] = struct{}{}
+	}
+	filtered := make([]skill.Definition, 0, len(snapshot.Skills))
+	for _, def := range snapshot.Skills {
+		if _, ok := allowed[strings.ToLower(strings.TrimSpace(def.Name))]; !ok {
+			continue
+		}
+		filtered = append(filtered, def)
+	}
+	if len(filtered) == 0 {
+		snapshot.SkillPrompt = ""
+		snapshot.Skills = nil
+		return snapshot
+	}
+	snapshot.Skills = filtered
+	snapshot.SkillPrompt = skill.FormatAvailableSkills(filtered)
+	return snapshot
 }
 
 func loadSessionHistory(transcriptPath string, maxTokens int) ([]session.Message, error) {

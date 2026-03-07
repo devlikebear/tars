@@ -31,6 +31,9 @@ func FormatAvailableSkills(skills []Definition) string {
 			b.WriteString("false")
 		}
 		b.WriteString("</user_invocable>\n")
+		writeSkillPromptList(&b, "recommended_tools", skill.RecommendedTools)
+		writeSkillPromptList(&b, "recommended_project_files", skill.RecommendedProjectFiles)
+		writeSkillPromptList(&b, "wake_phases", skill.WakePhases)
 		b.WriteString("  </skill>\n")
 	}
 	b.WriteString("</available_skills>")
@@ -56,4 +59,25 @@ func escapeXML(s string) string {
 		"'", "&apos;",
 	)
 	return replacer.Replace(s)
+}
+
+func writeSkillPromptList(b *strings.Builder, key string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	b.WriteString("    <")
+	b.WriteString(key)
+	b.WriteString(">\n")
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		b.WriteString("      <item>")
+		b.WriteString(escapeXML(trimmed))
+		b.WriteString("</item>\n")
+	}
+	b.WriteString("    </")
+	b.WriteString(key)
+	b.WriteString(">\n")
 }
