@@ -9,11 +9,133 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tarsncase/internal/llm"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/rs/zerolog"
 )
+
+func TestTelegramInbound_ApplyPolicyAllowlistRequiresApprovedUser(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	pairings, err := newTelegramPairingStore(filepath.Join(t.TempDir(), "telegram_pairings.json"), nil)
+	if err != nil {
+		t.Fatalf("newTelegramPairingStore: %v", err)
+	}
+	handler := newTelegramInboundHandler(
+		workspace,
+		store,
+		nil,
+		nil,
+		nil,
+		pairings,
+		"allowlist",
+		zerolog.New(io.Discard),
+	)
+
+	allowed, reply, policy := handler.applyPolicy(11, "101", "alice")
+	if allowed {
+		t.Fatalf("expected allowlist to deny unapproved user")
+	}
+	if policy != "allowlist" {
+		t.Fatalf("expected allowlist policy tag, got %q", policy)
+	}
+	if !strings.Contains(strings.ToLower(reply), "restricted") {
+		t.Fatalf("expected restricted message, got %q", reply)
+	}
+
+	issued, _, err := pairings.issue(telegramPairingIdentity{UserID: 11, ChatID: "101", Username: "alice"}, time.Minute)
+	if err != nil {
+		t.Fatalf("issue pairing: %v", err)
+	}
+	if _, err := pairings.approve(issued.Code); err != nil {
+		t.Fatalf("approve pairing: %v", err)
+	}
+
+	allowed, reply, policy = handler.applyPolicy(11, "101", "alice")
+	if !allowed {
+		t.Fatalf("expected approved allowlist user to pass, got reply=%q policy=%q", reply, policy)
+	}
+	if reply != "" {
+		t.Fatalf("expected empty allow reply, got %q", reply)
+	}
+}
+
+func TestTelegramInbound_ResolveSessionBindsPerUserSession(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	pairings, err := newTelegramPairingStore(filepath.Join(t.TempDir(), "telegram_pairings.json"), nil)
+	if err != nil {
+		t.Fatalf("newTelegramPairingStore: %v", err)
+	}
+	handler := newTelegramInboundHandler(
+		workspace,
+		store,
+		nil,
+		nil,
+		nil,
+		pairings,
+		"open",
+		zerolog.New(io.Discard),
+	)
+	handler.sessionScope = "per-user"
+
+	sessionID, err := handler.resolveSession(11, "alice")
+	if err != nil {
+		t.Fatalf("resolveSession: %v", err)
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		t.Fatalf("expected created session id")
+	}
+	if got := pairings.sessionID(11); got != sessionID {
+		t.Fatalf("expected pairing session binding %q, got %q", sessionID, got)
+	}
+
+	sessions, err := store.List()
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected one created session, got %d", len(sessions))
+	}
+	if sessions[0].Title != "telegram:alice" {
+		t.Fatalf("expected telegram session title, got %+v", sessions[0])
+	}
+}
+
+func TestTelegramInbound_SendMessageChunks_SplitsAndPreservesThread(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	var sent []telegramSendRequest
+	handler := newTelegramInboundHandler(
+		workspace,
+		store,
+		nil,
+		telegramSendFunc(func(_ context.Context, req telegramSendRequest) (telegramSendResult, error) {
+			sent = append(sent, req)
+			return telegramSendResult{ChatID: req.ChatID, Text: req.Text}, nil
+		}),
+		nil,
+		nil,
+		"open",
+		zerolog.New(io.Discard),
+	)
+
+	text := strings.Repeat("a", telegramMaxMessageLength+10)
+	if err := handler.sendMessageChunks(context.Background(), "101", "55", text); err != nil {
+		t.Fatalf("sendMessageChunks: %v", err)
+	}
+	if len(sent) != 2 {
+		t.Fatalf("expected 2 telegram sends, got %d", len(sent))
+	}
+	if sent[0].ThreadID != "55" || sent[1].ThreadID != "55" {
+		t.Fatalf("expected thread id to be preserved, got %+v", sent)
+	}
+	if len(sent[0].Text) > telegramMaxMessageLength || len(sent[1].Text) > telegramMaxMessageLength {
+		t.Fatalf("expected chunked message lengths <= %d, got %+v", telegramMaxMessageLength, sent)
+	}
+}
 
 func TestTelegramInbound_PairingThenApproveAndReply(t *testing.T) {
 	workspace := t.TempDir()
