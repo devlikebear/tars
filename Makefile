@@ -11,12 +11,33 @@ HEARTBEAT_INTERVAL ?= 30s
 MAX_HEARTBEATS ?= 0
 COVER_OUT ?= coverage.out
 TARS_CONFIG ?= ./workspace/config/tars.config.yaml
+ROOT_DIR := $(abspath .)
+TARS_BIN := $(abspath $(BIN_DIR)/tars)
+LAUNCH_AGENTS_DIR ?= $(HOME)/Library/LaunchAgents
+LAUNCHCTL_DOMAIN ?= gui/$(shell id -u)
+SERVER_LABEL ?= io.tars.server
+ASSISTANT_LABEL ?= io.tars.assistant
+SERVER_PLIST ?= $(LAUNCH_AGENTS_DIR)/$(SERVER_LABEL).plist
+ASSISTANT_PLIST ?= $(LAUNCH_AGENTS_DIR)/$(ASSISTANT_LABEL).plist
+SERVER_STDOUT_LOG ?= $(HOME)/Library/Logs/tars-server.out.log
+SERVER_STDERR_LOG ?= $(HOME)/Library/Logs/tars-server.err.log
+ASSISTANT_STDOUT_LOG ?= $(HOME)/Library/Logs/tars-assistant.out.log
+ASSISTANT_STDERR_LOG ?= $(HOME)/Library/Logs/tars-assistant.err.log
+LAUNCH_PATH ?= /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+ASSISTANT_SERVER_URL ?= $(SERVER_URL)
+ASSISTANT_HOTKEY ?= Ctrl+Option+Space
+ASSISTANT_AUDIO_INPUT ?= default
+ASSISTANT_WHISPER_BIN ?= /opt/homebrew/bin/whisper-cli
+ASSISTANT_FFMPEG_BIN ?= /opt/homebrew/bin/ffmpeg
+ASSISTANT_TTS_BIN ?= /usr/bin/say
+ASSISTANT_API_TOKEN ?= $(TARS_API_TOKEN)
 
 .DEFAULT_GOAL := help
 
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover \
 	build build-bins clean tidy fmt vet lint \
+	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	dev-serve dev-serve-once dev-serve-loop dev-chat dev-heartbeat dev-tars \
 	api-status api-sessions api-compact api-chat api-heartbeat smoke-auth \
 	vault-up vault-down vault-logs security-scan \
@@ -29,7 +50,7 @@ help:
 	@echo "Common vars:"
 	@echo "  PKG=./... TEST_NAME=TestRun_ChatMessage CHAT_MSG='hello'"
 	@echo "  WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:43180 SERVER_URL=http://127.0.0.1:43180"
-	@echo "  TARS_CONFIG=./config/standalone.yaml"
+	@echo "  TARS_CONFIG=./config/standalone.yaml ASSISTANT_API_TOKEN=... LAUNCH_PATH=$(LAUNCH_PATH)"
 	@echo ""
 	@echo "Test targets:"
 	@echo "  make test          - go test $(PKG)"
@@ -42,6 +63,9 @@ help:
 	@echo "Build/quality targets:"
 	@echo "  make build         - go build ./..."
 	@echo "  make build-bins    - build cmd binaries to $(BIN_DIR)"
+	@echo "  make install       - build $(TARS_BIN) and (re)install io.tars.server + io.tars.assistant launch agents"
+	@echo "  make uninstall     - stop and remove io.tars.server + io.tars.assistant launch agents"
+	@echo "  make reinstall     - uninstall then install launch agents"
 	@echo "  make fmt           - go fmt ./..."
 	@echo "  make vet           - go vet ./..."
 	@echo "  make lint          - alias of vet for quality checks"
@@ -94,6 +118,69 @@ build:
 build-bins:
 	mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN_DIR)/tars ./cmd/tars
+
+install: install-server install-assistant
+
+install-server: build-bins
+	@mkdir -p "$(LAUNCH_AGENTS_DIR)" "$(HOME)/Library/Logs"
+	@{ \
+		printf '%s\n' \
+			'<?xml version="1.0" encoding="UTF-8"?>' \
+			'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+			'<plist version="1.0">' \
+			'<dict>' \
+			'  <key>Label</key><string>$(SERVER_LABEL)</string>' \
+			'  <key>ProgramArguments</key>' \
+			'  <array>' \
+			'    <string>$(TARS_BIN)</string>' \
+			'    <string>serve</string>' \
+			'    <string>--config</string>' \
+			'    <string>$(abspath $(TARS_CONFIG))</string>' \
+			'  </array>' \
+			'  <key>WorkingDirectory</key><string>$(ROOT_DIR)</string>' \
+			'  <key>RunAtLoad</key><true/>' \
+			'  <key>KeepAlive</key><true/>' \
+			'  <key>StandardOutPath</key><string>$(SERVER_STDOUT_LOG)</string>' \
+			'  <key>StandardErrorPath</key><string>$(SERVER_STDERR_LOG)</string>' \
+			'  <key>EnvironmentVariables</key>' \
+			'  <dict>' \
+			'    <key>PATH</key><string>$(LAUNCH_PATH)</string>' \
+			'  </dict>' \
+			'</dict>' \
+			'</plist>'; \
+	} > "$(SERVER_PLIST)"
+	@launchctl bootout "$(LAUNCHCTL_DOMAIN)" "$(SERVER_PLIST)" >/dev/null 2>&1 || true
+	@launchctl bootstrap "$(LAUNCHCTL_DOMAIN)" "$(SERVER_PLIST)"
+	@launchctl kickstart -k "$(LAUNCHCTL_DOMAIN)/$(SERVER_LABEL)"
+
+install-assistant: build-bins
+	@mkdir -p "$(LAUNCH_AGENTS_DIR)" "$(HOME)/Library/Logs"
+	@"$(TARS_BIN)" assistant install-launchagent \
+		--server-url "$(ASSISTANT_SERVER_URL)" \
+		--workspace-dir "$(abspath $(WORKSPACE_DIR))" \
+		--hotkey "$(ASSISTANT_HOTKEY)" \
+		--audio-input "$(ASSISTANT_AUDIO_INPUT)" \
+		--whisper-bin "$(ASSISTANT_WHISPER_BIN)" \
+		--ffmpeg-bin "$(ASSISTANT_FFMPEG_BIN)" \
+		--tts-bin "$(ASSISTANT_TTS_BIN)" \
+		--label "$(ASSISTANT_LABEL)" \
+		--plist-path "$(ASSISTANT_PLIST)" \
+		--stdout-log "$(ASSISTANT_STDOUT_LOG)" \
+		--stderr-log "$(ASSISTANT_STDERR_LOG)" \
+		$(if $(ASSISTANT_API_TOKEN),--api-token "$(ASSISTANT_API_TOKEN)",) \
+		--load
+
+uninstall: uninstall-assistant uninstall-server
+
+uninstall-server:
+	@launchctl bootout "$(LAUNCHCTL_DOMAIN)" "$(SERVER_PLIST)" >/dev/null 2>&1 || true
+	@rm -f "$(SERVER_PLIST)"
+
+uninstall-assistant:
+	@launchctl bootout "$(LAUNCHCTL_DOMAIN)" "$(ASSISTANT_PLIST)" >/dev/null 2>&1 || true
+	@rm -f "$(ASSISTANT_PLIST)"
+
+reinstall: uninstall install
 
 dev-serve:
 	$(GO) run ./cmd/tars serve --verbose --serve-api $(if $(TARS_CONFIG),--config $(TARS_CONFIG),) --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)

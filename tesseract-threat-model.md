@@ -26,7 +26,7 @@
 - 로컬 사용자/프로세스 -> API 서버(``/v1/*``); 데이터: 프롬프트, 세션 ID, 관리자 작업; 채널: HTTP 루프백; 보안: ``api_auth_mode``(``off``/``external-required``/``required``), admin-path 검사; 검증: JSON 디코딩 + HTTP method 검사. 근거: ``internal/tarsserver/main_options.go``, ``internal/serverauth/middleware.go``, ``internal/tarsserver/main_serve_api.go``.
 - API 서버 -> 인증 미들웨어 -> 핸들러; 데이터: bearer token, role, workspace 바인딩; 채널: 프로세스 내부 미들웨어 체인; 보안: 상수 시간 토큰 비교, admin-path role 강제; 검증: path 매칭 + role 체크. 근거: ``internal/serverauth/middleware.go``, ``internal/tarsserver/middleware.go``.
 - ``/v1/chat`` -> 에이전트 루프 -> 도구 레지스트리 -> 워크스페이스/OS; 데이터: 비신뢰 프롬프트 텍스트, 도구 인자, 명령 문자열; 채널: 프로세스 내부 호출 + 파일시스템 + 서브프로세스; 보안: 파일 도구의 workspace 경로 제한, ``exec`` 부분 차단 목록; 검증: JSON schema + 도구별 파싱. 근거: ``internal/tarsserver/handler_chat_pipeline.go``, ``internal/tool/workspace_path.go``, ``internal/tool/exec.go``.
-- 선택 채널 인바운드(Telegram/Webhook) -> 런타임 -> 에이전트 도구; 데이터: 외부 메시지 텍스트/미디어 payload; 채널: Telegram API polling 또는 webhook HTTP 경로; 보안: DM 정책/페어링/admin-path 인증; 검증: payload 파싱 + 정책 검사. 근거: ``internal/tarsserver/telegram_inbound.go``, ``internal/tarsserver/handler_gateway.go``, ``internal/tarsserver/middleware.go``.
+- 선택 채널 인바운드(Telegram/Webhook) -> 런타임 -> 에이전트 도구; 데이터: 외부 메시지 텍스트/미디어 payload; 채널: Telegram API polling 또는 webhook HTTP 경로; 보안: DM 정책/페어링/admin-path 인증; 검증: payload 파싱 + 정책 검사. 근거: ``internal/tarsserver/telegram_inbound.go``, ``internal/tarsserver/handler_gateway_channels.go``, ``internal/tarsserver/middleware.go``.
 - API 관리자 -> Extensions/MCP -> 외부 프로세스; 데이터: plugin manifest, MCP command/env/args; 채널: 파일시스템 + 서브프로세스 stdio RPC; 보안: plugin root 경계 내 경로 검사; 검증: manifest 파싱 및 source 필터링. 근거: ``internal/extensions/manager.go``, ``internal/plugin/loader.go``, ``internal/mcp/client.go``.
 - 로컬 브라우저 확장/클라이언트 -> Browser Relay(``/extension``, ``/cdp``); 데이터: CDP 프레임, relay token; 채널: WS/HTTP 루프백; 보안: loopback 필수 + relay token + origin allowlist; 검증: token 추출 + origin 와일드카드 매칭. 근거: ``internal/browserrelay/server.go``.
 - Browser Service -> Vault(선택); 데이터: secret path 및 자격증명; 채널: Vault API HTTP; 보안: Vault 인증 모드 + secret path prefix allowlist; 검증: mount/version 처리 및 allowlist 강제. 근거: ``internal/browser/service.go``, ``internal/vaultclient/client.go``.
@@ -81,8 +81,8 @@ flowchart LR
 | ``/v1/chat`` | 로컬 HTTP POST | 로컬 호출자 -> agent/tool 평면 | 영향도가 가장 큰 경로, ``exec`` 및 파일 변경 도구까지 도달 가능 | ``internal/tarsserver/main_serve_api.go`` ``mux.Handle("/v1/chat")``; ``internal/tarsserver/helpers_agent.go`` |
 | ``/v1/sessions*`` | 로컬 HTTP | 로컬 호출자 -> session store | transcript 및 메타데이터 파일 읽기/쓰기 | ``internal/tarsserver/handler_session.go`` |
 | ``/v1/runtime/extensions/reload`` | 로컬 HTTP admin | 관리자 호출자 -> extension loader | 동적 reload로 skill/plugin/MCP 표면 변화 유발 | ``internal/tarsserver/handler_extensions.go``; ``internal/tarsserver/middleware.go`` |
-| ``/v1/gateway/reload`` ``/restart`` | 로컬 HTTP admin | 관리자 호출자 -> gateway runtime | 제어 평면 변이/재시작 | ``internal/tarsserver/handler_gateway.go``; ``internal/tarsserver/middleware.go`` |
-| ``/v1/channels/webhook/inbound/*`` | HTTP POST | 외부 발신자/관리자 호출자 -> channel runtime | 인바운드 텍스트가 런타임 메시지로 유입됨 | ``internal/tarsserver/handler_gateway.go``; ``internal/tarsserver/middleware.go`` |
+| ``/v1/gateway/reload`` ``/restart`` | 로컬 HTTP admin | 관리자 호출자 -> gateway runtime | 제어 평면 변이/재시작 | ``internal/tarsserver/handler_gateway_status.go``; ``internal/tarsserver/middleware.go`` |
+| ``/v1/channels/webhook/inbound/*`` | HTTP POST | 외부 발신자/관리자 호출자 -> channel runtime | 인바운드 텍스트가 런타임 메시지로 유입됨 | ``internal/tarsserver/handler_gateway_channels.go``; ``internal/tarsserver/middleware.go`` |
 | Telegram polling/webhook 경로 | Telegram 플랫폼 + HTTP/admin | 외부 채팅 -> agent runtime | 정책에 따라 동일한 chat 도구 평면으로 라우팅 가능 | ``internal/tarsserver/telegram_inbound.go``; ``internal/tarsserver/main_serve_api.go`` |
 | Browser relay ``/extension`` ``/cdp`` | 루프백 WS/HTTP | 로컬 클라이언트/확장 -> 브라우저 제어 | token + loopback + origin 검사 필요 | ``internal/browserrelay/server.go`` |
 | Browser API ``/v1/browser/*`` | 로컬 HTTP | 로컬 호출자 -> browser runtime | login/check/run 흐름 트리거 가능 | ``internal/tarsserver/handler_browser.go`` |
@@ -131,7 +131,8 @@ flowchart LR
 | ``internal/tool/workspace_path.go`` | 파일 경로 제한 및 symlink escape 방지 로직 | TM-001, TM-002 |
 | ``internal/tool/web_fetch.go`` | SSRF 가드와 private-host 우회 스위치 | TM-003 |
 | ``internal/tarsserver/telegram_inbound.go`` | 외부 메시지가 동일한 agent 도구 평면으로 유입되는 지점 | TM-002 |
-| ``internal/tarsserver/handler_gateway.go`` | webhook/channel 인바운드와 메시지 라우팅 | TM-002, TM-005 |
+| ``internal/tarsserver/handler_gateway_channels.go`` | webhook/channel 인바운드와 Telegram 채널 라우팅 | TM-002, TM-005 |
+| ``internal/tarsserver/handler_gateway_status.go`` | gateway 상태/리로드/리포트 제어 평면 | TM-002, TM-005 |
 | ``internal/browserrelay/server.go`` | relay 인증/origin 로직 및 token 처리 | TM-006 |
 | ``internal/mcp/client.go`` | MCP 서버 실행 시 외부 명령 실행 경로 | TM-004 |
 | ``internal/plugin/loader.go`` | plugin 경로 신뢰 경계 및 traversal 통제 | TM-004 |

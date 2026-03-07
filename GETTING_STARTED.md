@@ -4,7 +4,7 @@
 
 ## 1) 3분 시작
 
-1. 서버 실행
+1. 개발용 포그라운드 서버 실행
 
 ```bash
 make dev-serve
@@ -29,6 +29,24 @@ make dev-tars
 /health
 /whoami
 /status
+```
+
+## 1-1) macOS launchctl 설치/교체
+
+foreground 개발 대신 로그인 시 자동 실행되는 LaunchAgent를 쓰려면:
+
+```bash
+make install
+```
+
+- `make install`: `bin/tars` 재빌드 후 `io.tars.server` + `io.tars.assistant`를 설치/교체
+- `make uninstall`: 두 LaunchAgent 제거
+- `make reinstall`: uninstall 후 install
+
+assistant에 API 토큰이 필요하면:
+
+```bash
+ASSISTANT_API_TOKEN=1234 make install
 ```
 
 ## 2) 실무형 사용 예시 (자연어 프롬프트)
@@ -100,18 +118,38 @@ make dev-tars
 tars assistant doctor
 ```
 
-2. 음성 비서 실행(푸시투톡 fallback: Enter 시작/종료)
+2. 역할 구분
+
+- `io.tars.server`: 백엔드 런타임/HTTP API/cron/session 실행
+- `io.tars.assistant`: macOS 전역 핫키 기반 보조 입력기
+
+3. assistant 의존성 점검
+
+```bash
+tars assistant doctor
+```
+
+4. assistant 실행
+
+- 전역 핫키가 되면: 핫키를 눌러 popup을 띄우고 `Send` 또는 `Mic`를 사용
+- 전역 핫키가 안 되면: fallback으로 터미널 안내가 출력됨
 
 ```bash
 tars assistant start --server-url http://127.0.0.1:43180
 ```
 
-3. 로그인 시 자동 실행(LaunchAgent 설치)
+5. 로그인 시 자동 실행(LaunchAgent 설치)
 
 ```bash
-tars assistant install-launchagent --server-url http://127.0.0.1:43180
-launchctl list | rg io.tars.assistant
+make install
+launchctl list | rg 'io.tars.server|io.tars.assistant'
 ```
+
+문제 해결:
+
+- hotkey 등록/입력이 안 잡히면 macOS `Accessibility`와 `Input Monitoring` 권한을 확인
+- 음성 입력은 `ffmpeg`, `whisper-cli`, `say`에 의존
+- assistant는 메인 TUI 대체가 아니라 빠른 한 턴 보조 입력기이며, 본격 텍스트 작업은 `tars` CLI/TUI를 사용
 
 ## 5) 바로 적용 팁
 

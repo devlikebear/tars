@@ -45,7 +45,7 @@ TARS는 단일 Go 바이너리 기반의 경량 로컬 AI 자동화 스택입니
 
 - `config/tars.config.example.yaml`
 
-### 3) 서버 실행
+### 3) 개발용 포그라운드 서버 실행
 
 ```bash
 make dev-serve
@@ -55,13 +55,24 @@ make dev-serve
 
 - `http://127.0.0.1:43180`
 
-### 4) 클라이언트 실행
+### 4) macOS launchctl 설치/교체
+
+```bash
+make install
+```
+
+- `make install`: `bin/tars`를 새로 빌드하고 `io.tars.server`, `io.tars.assistant` LaunchAgent를 교체합니다.
+- `make uninstall`: 두 LaunchAgent를 중지하고 plist를 제거합니다.
+- `make reinstall`: `uninstall` 후 `install`을 다시 수행합니다.
+- assistant에 API 토큰이 필요하면 실행 전에 `ASSISTANT_API_TOKEN=... make install` 또는 `TARS_API_TOKEN=... make install`을 사용하세요.
+
+### 5) 클라이언트 실행
 
 ```bash
 make dev-tars
 ```
 
-### 5) 스모크 체크
+### 6) 스모크 체크
 
 ```bash
 make api-status
@@ -91,6 +102,23 @@ make smoke-auth
 - 브라우저/Vault:
   - `/browser status|profiles|login|check|run`
   - `/vault status`
+
+## macOS assistant
+
+- `io.tars.server`: 백엔드 런타임/API/cron/session 실행
+- `io.tars.assistant`: 전역 핫키 기반 보조 입력기
+- assistant는 메인 TUI를 대체하지 않고, 빠른 한 턴 입력에 집중합니다.
+- 최신 assistant 설치/교체:
+
+```bash
+make reinstall
+```
+
+- 의존성 점검:
+
+```bash
+tars assistant doctor
+```
 
 ## Browser + Vault (옵션)
 
