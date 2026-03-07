@@ -135,42 +135,11 @@ func NewProjectUpdateTool(store *project.Store) Tool {
 			if store == nil {
 				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
-			var input struct {
-				ProjectID          string   `json:"project_id"`
-				Name               *string  `json:"name,omitempty"`
-				Type               *string  `json:"type,omitempty"`
-				Status             *string  `json:"status,omitempty"`
-				GitRepo            *string  `json:"git_repo,omitempty"`
-				Objective          *string  `json:"objective,omitempty"`
-				Instructions       *string  `json:"instructions,omitempty"`
-				ToolsAllow         []string `json:"tools_allow,omitempty"`
-				ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty"`
-				ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
-				ToolsDeny          []string `json:"tools_deny,omitempty"`
-				ToolsRiskMax       *string  `json:"tools_risk_max,omitempty"`
-				SkillsAllow        []string `json:"skills_allow,omitempty"`
-				MCPServers         []string `json:"mcp_servers,omitempty"`
-				SecretsRefs        []string `json:"secrets_refs,omitempty"`
-			}
+			var input project.UpdatePayload
 			if err := json.Unmarshal(params, &input); err != nil {
 				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
-			updated, err := store.Update(strings.TrimSpace(input.ProjectID), project.UpdateInput{
-				Name:               input.Name,
-				Type:               input.Type,
-				Status:             input.Status,
-				GitRepo:            input.GitRepo,
-				Objective:          input.Objective,
-				Instructions:       input.Instructions,
-				ToolsAllow:         input.ToolsAllow,
-				ToolsAllowGroups:   input.ToolsAllowGroups,
-				ToolsAllowPatterns: input.ToolsAllowPatterns,
-				ToolsDeny:          input.ToolsDeny,
-				ToolsRiskMax:       input.ToolsRiskMax,
-				SkillsAllow:        input.SkillsAllow,
-				MCPServers:         input.MCPServers,
-				SecretsRefs:        input.SecretsRefs,
-			})
+			updated, err := store.Update(strings.TrimSpace(input.ProjectID), input.ToUpdateInput())
 			if err != nil {
 				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
 			}

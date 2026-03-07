@@ -91,42 +91,12 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 				}
 				writeJSON(w, http.StatusOK, item)
 			case http.MethodPatch:
-				var req struct {
-					Name               *string  `json:"name,omitempty"`
-					Type               *string  `json:"type,omitempty"`
-					Status             *string  `json:"status,omitempty"`
-					GitRepo            *string  `json:"git_repo,omitempty"`
-					Objective          *string  `json:"objective,omitempty"`
-					Instructions       *string  `json:"instructions,omitempty"`
-					ToolsAllow         []string `json:"tools_allow,omitempty"`
-					ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty"`
-					ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
-					ToolsDeny          []string `json:"tools_deny,omitempty"`
-					ToolsRiskMax       *string  `json:"tools_risk_max,omitempty"`
-					SkillsAllow        []string `json:"skills_allow,omitempty"`
-					MCPServers         []string `json:"mcp_servers,omitempty"`
-					SecretsRefs        []string `json:"secrets_refs,omitempty"`
-				}
+				var req project.UpdatePayload
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 					return
 				}
-				updated, err := store.Update(projectID, project.UpdateInput{
-					Name:               req.Name,
-					Type:               req.Type,
-					Status:             req.Status,
-					GitRepo:            req.GitRepo,
-					Objective:          req.Objective,
-					Instructions:       req.Instructions,
-					ToolsAllow:         req.ToolsAllow,
-					ToolsAllowGroups:   req.ToolsAllowGroups,
-					ToolsAllowPatterns: req.ToolsAllowPatterns,
-					ToolsDeny:          req.ToolsDeny,
-					ToolsRiskMax:       req.ToolsRiskMax,
-					SkillsAllow:        req.SkillsAllow,
-					MCPServers:         req.MCPServers,
-					SecretsRefs:        req.SecretsRefs,
-				})
+				updated, err := store.Update(projectID, req.ToUpdateInput())
 				if err != nil {
 					if strings.Contains(strings.ToLower(err.Error()), "not found") {
 						writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})

@@ -87,3 +87,52 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 		t.Fatalf("expected archived status, got %q", archived.Status)
 	}
 }
+
+func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	projectStore := project.NewStore(root, nil)
+	handler := newProjectAPIHandler(projectStore, store, "", zerolog.New(io.Discard))
+
+	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPatch, "/v1/projects/"+created.ID, strings.NewReader(`{
+		"objective":"Keep service green",
+		"instructions":"Check alerts first",
+		"tools_allow":["read_file","exec"],
+		"tools_risk_max":"medium",
+		"skills_allow":["deploy"]
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for patch, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var updated project.Project
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode updated project: %v", err)
+	}
+	if updated.Objective != "Keep service green" {
+		t.Fatalf("expected updated objective, got %q", updated.Objective)
+	}
+	if !strings.Contains(updated.Body, "Check alerts first") {
+		t.Fatalf("expected updated instructions, got %q", updated.Body)
+	}
+	if got := strings.Join(updated.ToolsAllow, ","); got != "read_file,exec" {
+		t.Fatalf("unexpected tools_allow: %q", got)
+	}
+	if updated.ToolsRiskMax != "medium" {
+		t.Fatalf("expected tools_risk_max=medium, got %q", updated.ToolsRiskMax)
+	}
+	if got := strings.Join(updated.SkillsAllow, ","); got != "deploy" {
+		t.Fatalf("unexpected skills_allow: %q", got)
+	}
+}
