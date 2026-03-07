@@ -44,16 +44,25 @@ func resolveChatSession(store *session.Store, sessionID string, mainSessionID st
 }
 
 func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, toolChoice string, err error) {
-	return prepareChatContextWithExtensions(workspaceDir, userMessage, extensions.Snapshot{}, nil)
+	return prepareChatContextWithExtensions(workspaceDir, "", "", userMessage, extensions.Snapshot{}, nil)
 }
 
 func prepareChatContextWithExtensions(
 	workspaceDir string,
+	projectID string,
+	sessionID string,
 	userMessage string,
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
 ) (systemPrompt string, toolChoice string, err error) {
-	systemPrompt = prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
+	forceRelevantMemory := shouldForceMemoryToolCall(userMessage)
+	systemPrompt = prompt.Build(prompt.BuildOptions{
+		WorkspaceDir:        workspaceDir,
+		Query:               userMessage,
+		ProjectID:           projectID,
+		SessionID:           sessionID,
+		ForceRelevantMemory: forceRelevantMemory,
+	})
 	systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
 	if strings.TrimSpace(extSnapshot.SkillPrompt) != "" {
 		systemPrompt += "\n## Skills\n"
@@ -70,7 +79,7 @@ func prepareChatContextWithExtensions(
 			strings.TrimSpace(invokedSkill.RuntimePath),
 		)
 	}
-	if shouldForceMemoryToolCall(userMessage) {
+	if forceRelevantMemory {
 		toolChoice = "required"
 	}
 	return systemPrompt, toolChoice, nil

@@ -6,14 +6,18 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/devlikebear/tarsncase/internal/memory"
 )
 
 // BuildOptions configures system prompt generation.
 type BuildOptions struct {
-	WorkspaceDir string // path to workspace root
-	SubAgent     bool   // if true, only inject AGENTS.md and TOOLS.md
+	WorkspaceDir          string // path to workspace root
+	SubAgent              bool   // if true, only inject AGENTS.md and TOOLS.md
+	Query                 string
+	ProjectID             string
+	SessionID             string
+	ForceRelevantMemory   bool
+	StaticBudgetTokens    int
+	RelevantBudgetTokens  int
 }
 
 // Build assembles a system prompt by reading workspace bootstrap files.
@@ -24,6 +28,10 @@ func Build(opts BuildOptions) string {
 	b.WriteString(fmt.Sprintf("Current time: %s\n", time.Now().UTC().Format(time.RFC3339)))
 	b.WriteString("\n")
 
+	remainingStaticTokens := opts.StaticBudgetTokens
+	if remainingStaticTokens <= 0 {
+		remainingStaticTokens = defaultStaticBudgetTokens
+	}
 	for _, section := range bootstrapSections {
 		if opts.SubAgent && !section.subAgent {
 			continue
@@ -35,12 +43,20 @@ func Build(opts BuildOptions) string {
 		if content == "" {
 			continue
 		}
+		content = trimToBudget(content, section.maxChars, max(0, remainingStaticTokens-sectionHeaderTokenCost))
+		if content == "" {
+			continue
+		}
 		b.WriteString(fmt.Sprintf("## %s\n\n", section.name))
 		b.WriteString(content)
 		b.WriteString("\n\n")
+		remainingStaticTokens -= estimateTokens(content) + sectionHeaderTokenCost
+		if remainingStaticTokens <= 0 {
+			break
+		}
 	}
 	if !opts.SubAgent {
-		appendRecentExperiences(&b, opts.WorkspaceDir)
+		appendRelevantMemory(&b, opts)
 	}
 
 	return b.String()
@@ -65,29 +81,6 @@ func readBootstrapSection(workspaceDir string, section bootstrapSection) string 
 	return joined
 }
 
-func appendRecentExperiences(b *strings.Builder, workspaceDir string) {
-	if b == nil {
-		return
-	}
-	rows, err := memory.SearchExperiences(workspaceDir, memory.SearchOptions{Limit: 8})
-	if err != nil || len(rows) == 0 {
-		return
-	}
-	b.WriteString("## Recent Experiences\n\n")
-	for _, row := range rows {
-		category := strings.TrimSpace(row.Category)
-		summary := strings.TrimSpace(row.Summary)
-		if summary == "" {
-			continue
-		}
-		if category == "" {
-			category = "memory"
-		}
-		b.WriteString(fmt.Sprintf("- [%s] %s\n", category, summary))
-	}
-	b.WriteString("\n")
-}
-
 func readFileContent(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -97,4 +90,42 @@ func readFileContent(path string) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+func trimToBudget(content string, maxChars int, maxTokens int) string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return ""
+	}
+	if maxChars > 0 && len(trimmed) > maxChars {
+		trimmed = trimmed[:maxChars]
+	}
+	if maxTokens > 0 {
+		maxCharsByTokens := maxTokens * 4
+		if maxCharsByTokens <= 0 {
+			return ""
+		}
+		if len(trimmed) > maxCharsByTokens {
+			trimmed = trimmed[:maxCharsByTokens]
+		}
+	}
+	return strings.TrimSpace(trimmed)
+}
+
+func estimateTokens(content string) int {
+	if strings.TrimSpace(content) == "" {
+		return 0
+	}
+	tokens := len(content) / 4
+	if tokens < 1 {
+		return 1
+	}
+	return tokens
+}
+
+func max(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }

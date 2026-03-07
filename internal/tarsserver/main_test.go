@@ -1001,7 +1001,7 @@ func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
 		SkillPrompt: skill.FormatAvailableSkills([]skill.Definition{def}),
 	}
 
-	systemPrompt, _, err := prepareChatContextWithExtensions(root, "/deploy 지금 배포", snapshot, &def)
+	systemPrompt, _, err := prepareChatContextWithExtensions(root, "", "", "/deploy 지금 배포", snapshot, &def)
 	if err != nil {
 		t.Fatalf("prepare chat context: %v", err)
 	}

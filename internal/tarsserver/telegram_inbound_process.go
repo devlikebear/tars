@@ -59,11 +59,11 @@ func (h *telegramInboundHandler) processMessage(
 		extSnapshot = h.tooling.Extensions.Snapshot()
 	}
 	invokedSkill := resolveInvokedSkill(text, h.tooling.Extensions)
-	systemPrompt, toolChoice, err := prepareChatContextWithExtensions(h.workspaceDir, text, extSnapshot, invokedSkill)
+	resolvedProjectID, activeProject, projectPrompt, _ := resolveChatProjectContext(h.workspaceDir, h.store, sessionID, "")
+	systemPrompt, toolChoice, err := prepareChatContextWithExtensions(h.workspaceDir, resolvedProjectID, sessionID, text, extSnapshot, invokedSkill)
 	if err != nil {
 		return "", sessionID, err
 	}
-	resolvedProjectID, activeProject, projectPrompt, _ := resolveChatProjectContext(h.workspaceDir, h.store, sessionID, "")
 	if strings.TrimSpace(projectPrompt) != "" {
 		systemPrompt += "\n" + strings.TrimSpace(projectPrompt) + "\n"
 	}
