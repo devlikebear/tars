@@ -7,6 +7,60 @@ import (
 	"testing"
 )
 
+func TestFindWorkspaceGatewayAgentFiles_SortsNestedAgentDocuments(t *testing.T) {
+	workspace := t.TempDir()
+	first := filepath.Join(workspace, "agents", "b", "AGENT.md")
+	second := filepath.Join(workspace, "agents", "a", "AGENT.md")
+	ignored := filepath.Join(workspace, "agents", "a", "README.md")
+
+	for _, path := range []string{first, second, ignored} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", path, err)
+		}
+		if err := os.WriteFile(path, []byte("content"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	got, err := findWorkspaceGatewayAgentFiles(workspace)
+	if err != nil {
+		t.Fatalf("find workspace gateway agent files: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 AGENT.md files, got %+v", got)
+	}
+	if got[0] != second || got[1] != first {
+		t.Fatalf("expected sorted agent files [%s %s], got %+v", second, first, got)
+	}
+}
+
+func TestBuildWorkspaceGatewayAgent_InvalidFixedRoutingReturnsDiagnostics(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
+	raw := `---
+name: researcher
+tools_allow:
+  - read_file
+session_routing_mode: fixed
+---
+Find evidence first and answer briefly.
+`
+
+	agent, diagnostics, ok, err := buildWorkspaceGatewayAgent(path, raw, knownGatewayPromptTools(workspace))
+	if err != nil {
+		t.Fatalf("build workspace gateway agent: %v", err)
+	}
+	if ok {
+		t.Fatalf("expected invalid fixed routing to skip agent, got %+v", agent)
+	}
+	if len(diagnostics) == 0 {
+		t.Fatalf("expected diagnostics, got none")
+	}
+	if !strings.Contains(strings.ToLower(strings.Join(diagnostics, "\n")), "session_routing_mode") {
+		t.Fatalf("expected session_routing_mode diagnostics, got %+v", diagnostics)
+	}
+}
+
 func TestLoadWorkspaceGatewayAgents_FiltersInvalidDuplicateAndEmptyPrompt(t *testing.T) {
 	workspace := t.TempDir()
 	first := filepath.Join(workspace, "agents", "a", "AGENT.md")
