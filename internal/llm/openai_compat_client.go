@@ -1,7 +1,6 @@
 package llm
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -76,29 +75,24 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 		return ChatResponse{}, err
 	}
 
-	req, err := c.createChatHTTPRequest(ctx, reqBody)
+	req, err := jsonRequestSpec{
+		Provider: c.label,
+		URL:      c.baseURL + "/chat/completions",
+		Headers: map[string]string{
+			"Authorization": "Bearer " + c.apiKey,
+			"Content-Type":  "application/json",
+		},
+		Body: reqBody,
+	}.buildRequest(ctx)
 	if err != nil {
 		return ChatResponse{}, err
 	}
-
-	httpClient := c.httpClient
-	if streaming {
-		// Do not apply a hard client timeout to streaming responses.
-		httpClient = &http.Client{
-			Transport: c.httpClient.Transport,
-		}
-	}
-
-	resp, err := httpClient.Do(req)
+	resp, err := doPreparedRequest(req, c.label, transportHTTPClient(c.httpClient, streaming))
 	if err != nil {
-		return ChatResponse{}, newProviderError(c.label, "request", fmt.Errorf("request %s: %w", c.label, err))
+		return ChatResponse{}, err
 	}
 	defer resp.Body.Close()
 	zlog.Debug().Str("provider", c.label).Int("status", resp.StatusCode).Msg("llm response received")
-
-	if err := checkHTTPStatus(resp, c.label); err != nil {
-		return ChatResponse{}, err
-	}
 
 	req = req.WithContext(context.WithValue(req.Context(), openAICompatibleResponseContextKey{}, resp))
 	if opts.OnDelta != nil {
@@ -123,27 +117,6 @@ func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts C
 		reqBody["stream"] = true
 	}
 	return reqBody, nil
-}
-
-func (c *OpenAICompatibleClient) createChatHTTPRequest(ctx context.Context, reqBody map[string]any) (*http.Request, error) {
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, newProviderError(c.label, "parse", fmt.Errorf("marshal request: %w", err))
-	}
-	logLLMRequestPayload(c.label, body)
-
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		c.baseURL+"/chat/completions",
-		bytes.NewReader(body),
-	)
-	if err != nil {
-		return nil, newProviderError(c.label, "request", fmt.Errorf("create request: %w", err))
-	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	return req, nil
 }
 
 func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Request, opts ChatOptions) (ChatResponse, error) {

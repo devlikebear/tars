@@ -163,13 +163,9 @@ func (c *OpenAICodexClient) chatWithCredential(
 		req.Header.Set("Accept", "text/event-stream")
 	}
 
-	httpClient := c.httpClient
-	if streaming {
-		httpClient = &http.Client{Transport: c.httpClient.Transport}
-	}
-	resp, err := httpClient.Do(req)
+	resp, err := doRawPreparedRequest(req, openAICodexProviderLabel, transportHTTPClient(c.httpClient, streaming))
 	if err != nil {
-		return ChatResponse{}, newProviderError(openAICodexProviderLabel, "request", fmt.Errorf("request %s: %w", openAICodexProviderLabel, err))
+		return ChatResponse{}, err
 	}
 
 	if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) &&

@@ -66,15 +66,26 @@ func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts
 		Msg("llm request start")
 
 	reqBody := c.buildChatRequest(messages, opts, streaming)
-	req, err := c.createMessagesHTTPRequest(ctx, reqBody)
+	req, err := jsonRequestSpec{
+		Provider: "anthropic",
+		URL:      c.baseURL + "/v1/messages",
+		Headers: map[string]string{
+			"x-api-key":          c.apiKey,
+			"anthropic-version":  anthropicAPIVersion,
+			"anthropic-beta":     anthropicPromptCachingBeta,
+			"content-type":       "application/json",
+		},
+		Body: reqBody,
+	}.buildRequest(ctx)
 	if err != nil {
 		return ChatResponse{}, err
 	}
-	resp, err := c.doMessagesRequest(req, streaming)
+	resp, err := doPreparedRequest(req, "anthropic", transportHTTPClient(c.httpClient, streaming))
 	if err != nil {
 		return ChatResponse{}, err
 	}
 	defer resp.Body.Close()
+	zlog.Debug().Str("provider", "anthropic").Int("status", resp.StatusCode).Msg("llm response received")
 
 	if streaming {
 		return c.chatStreamingResponse(resp.Body, opts.OnDelta)
@@ -135,51 +146,6 @@ func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOpti
 		reqBody["stream"] = true
 	}
 	return reqBody
-}
-
-func (c *AnthropicClient) createMessagesHTTPRequest(ctx context.Context, reqBody map[string]any) (*http.Request, error) {
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, newProviderError("anthropic", "parse", fmt.Errorf("marshal request: %w", err))
-	}
-	logLLMRequestPayload("anthropic", body)
-
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		c.baseURL+"/v1/messages",
-		bytes.NewReader(body),
-	)
-	if err != nil {
-		return nil, newProviderError("anthropic", "request", fmt.Errorf("create request: %w", err))
-	}
-	req.Header.Set("x-api-key", c.apiKey)
-	req.Header.Set("anthropic-version", anthropicAPIVersion)
-	req.Header.Set("anthropic-beta", anthropicPromptCachingBeta)
-	req.Header.Set("content-type", "application/json")
-	return req, nil
-}
-
-func (c *AnthropicClient) doMessagesRequest(req *http.Request, streaming bool) (*http.Response, error) {
-	httpClient := c.httpClient
-	if streaming {
-		// Do not apply a hard client timeout to streaming responses.
-		httpClient = &http.Client{
-			Transport: c.httpClient.Transport,
-		}
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, newProviderError("anthropic", "request", fmt.Errorf("request anthropic: %w", err))
-	}
-	zlog.Debug().Str("provider", "anthropic").Int("status", resp.StatusCode).Msg("llm response received")
-
-	if err := checkHTTPStatus(resp, "anthropic"); err != nil {
-		_ = resp.Body.Close()
-		return nil, err
-	}
-	return resp, nil
 }
 
 func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse, error) {
