@@ -125,11 +125,42 @@ func TestTreatRecordingStopError_RejectsTinyOrMissingWAV(t *testing.T) {
 }
 
 func TestBuildWhisperArgs_IncludesModelWhenConfigured(t *testing.T) {
-	args := buildWhisperArgs("sample.wav", "/tmp/ggml-base.bin")
+	args := buildWhisperArgs("sample.wav", "/tmp/ggml-base.bin", "")
+	if len(args) != 5 {
+		t.Fatalf("expected 5 args, got %#v", args)
+	}
+	if args[0] != "-m" || args[1] != "/tmp/ggml-base.bin" || args[2] != "-np" || args[3] != "-nt" || args[4] != "sample.wav" {
+		t.Fatalf("unexpected args: %#v", args)
+	}
+}
+
+func TestBuildWhisperArgs_UsesQuietTranscriptFlagsWithoutModel(t *testing.T) {
+	args := buildWhisperArgs("sample.wav", "", "")
 	if len(args) != 3 {
 		t.Fatalf("expected 3 args, got %#v", args)
 	}
-	if args[0] != "-m" || args[1] != "/tmp/ggml-base.bin" || args[2] != "sample.wav" {
+	if args[0] != "-np" || args[1] != "-nt" || args[2] != "sample.wav" {
 		t.Fatalf("unexpected args: %#v", args)
+	}
+}
+
+func TestBuildWhisperArgs_IncludesLanguageWhenConfigured(t *testing.T) {
+	args := buildWhisperArgs("sample.wav", "/tmp/ggml-base.bin", "ko")
+	if len(args) != 7 {
+		t.Fatalf("expected 7 args, got %#v", args)
+	}
+	if args[0] != "-m" || args[1] != "/tmp/ggml-base.bin" || args[2] != "-np" || args[3] != "-nt" || args[4] != "-l" || args[5] != "ko" || args[6] != "sample.wav" {
+		t.Fatalf("unexpected args: %#v", args)
+	}
+}
+
+func TestExtractTranscriptOutput_StripsWhisperLogs(t *testing.T) {
+	raw := "whisper_init_from_file_with_params_no_state: loading model from 'models/ggml-base.bin'\n" +
+		"whisper_backend_init: using BLAS backend\n" +
+		"\n" +
+		" 안녕하세요 반갑습니다.  \n"
+	got := extractTranscriptOutput(raw)
+	if got != "안녕하세요 반갑습니다." {
+		t.Fatalf("unexpected transcript: %q", got)
 	}
 }

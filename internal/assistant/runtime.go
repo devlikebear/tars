@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"bytes"
 	"bufio"
 	"context"
 	"fmt"
@@ -65,6 +66,7 @@ type StartOptions struct {
 	AudioInput   string
 	WhisperBin   string
 	WhisperModel string
+	WhisperLanguage string
 	FFmpegBin    string
 	TTSBin       string
 	Stdin        io.Reader
@@ -102,8 +104,9 @@ func Start(ctx context.Context, opts StartOptions) error {
 	whisperBin := defaultIfEmpty(opts.WhisperBin, "whisper-cli")
 	deps := VoiceTurnDeps{
 		Transcriber: commandTranscriber{
-			binary:    whisperBin,
+			binary:   whisperBin,
 			modelPath: defaultWhisperModelPath(opts.WhisperModel, whisperBin),
+			language: defaultIfEmpty(opts.WhisperLanguage, "ko"),
 		},
 		ChatClient:  chatClient,
 		Speaker:     commandSpeaker{binary: defaultIfEmpty(opts.TTSBin, "say")},
@@ -397,19 +400,27 @@ func (a apiChatClient) Chat(ctx context.Context, message string, sessionID strin
 type commandTranscriber struct {
 	binary    string
 	modelPath string
+	language  string
 }
 
 func (c commandTranscriber) Transcribe(ctx context.Context, audioPath string) (string, error) {
-	cmd := exec.CommandContext(ctx, strings.TrimSpace(c.binary), buildWhisperArgs(audioPath, c.modelPath)...)
-	out, err := cmd.CombinedOutput()
+	cmd := exec.CommandContext(ctx, strings.TrimSpace(c.binary), buildWhisperArgs(audioPath, c.modelPath, c.language)...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
 	if err != nil {
-		text := strings.TrimSpace(string(out))
+		text := strings.TrimSpace(stderr.String())
 		if strings.Contains(strings.ToLower(text), "failed to open") && strings.TrimSpace(c.modelPath) == "" {
 			return "", fmt.Errorf("transcribe failed: %w: %s (hint: set --whisper-model or TARS_ASSISTANT_WHISPER_MODEL to a real ggml model path)", err, text)
 		}
+		if text == "" {
+			text = strings.TrimSpace(stdout.String())
+		}
 		return "", fmt.Errorf("transcribe failed: %w: %s", err, text)
 	}
-	text := strings.TrimSpace(string(out))
+	text := extractTranscriptOutput(stdout.String())
 	if text == "" {
 		return "", fmt.Errorf("transcribe failed: empty output")
 	}
@@ -464,12 +475,33 @@ func (r *ffmpegRecording) stop() error {
 	}
 }
 
-func buildWhisperArgs(audioPath string, modelPath string) []string {
-	args := make([]string, 0, 3)
+func buildWhisperArgs(audioPath string, modelPath string, language string) []string {
+	args := make([]string, 0, 7)
 	if strings.TrimSpace(modelPath) != "" {
 		args = append(args, "-m", strings.TrimSpace(modelPath))
 	}
+	args = append(args, "-np", "-nt")
+	if strings.TrimSpace(language) != "" {
+		args = append(args, "-l", strings.TrimSpace(language))
+	}
 	return append(args, strings.TrimSpace(audioPath))
+}
+
+func extractTranscriptOutput(raw string) string {
+	lines := strings.Split(raw, "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(lower, "whisper_") || strings.HasPrefix(lower, "ggml_") || strings.HasPrefix(lower, "system_info:") || strings.HasPrefix(lower, "main: processing") {
+			continue
+		}
+		filtered = append(filtered, trimmed)
+	}
+	return strings.TrimSpace(strings.Join(filtered, " "))
 }
 
 func defaultWhisperModelPath(raw string, binary string) string {

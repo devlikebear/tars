@@ -24,6 +24,7 @@ type assistantOptions struct {
 	audioInput  string
 	whisperBin  string
 	whisperModel string
+	whisperLanguage string
 	ffmpegBin   string
 	ttsBin      string
 	label       string
@@ -57,6 +58,10 @@ func defaultAssistantOptions() assistantOptions {
 			"whisper-cli",
 		)),
 		whisperModel: strings.TrimSpace(os.Getenv("TARS_ASSISTANT_WHISPER_MODEL")),
+		whisperLanguage: strings.TrimSpace(firstNonEmpty(
+			os.Getenv("TARS_ASSISTANT_WHISPER_LANGUAGE"),
+			"ko",
+		)),
 		ffmpegBin: strings.TrimSpace(firstNonEmpty(
 			os.Getenv("TARS_ASSISTANT_FFMPEG_BIN"),
 			"ffmpeg",
@@ -96,6 +101,7 @@ func newAssistantCommand(stdout, stderr io.Writer) *cobra.Command {
 	startCmd.Flags().StringVar(&opts.audioInput, "audio-input", opts.audioInput, "avfoundation audio input (default|index|name)")
 	startCmd.Flags().StringVar(&opts.whisperBin, "whisper-bin", opts.whisperBin, "speech-to-text command")
 	startCmd.Flags().StringVar(&opts.whisperModel, "whisper-model", opts.whisperModel, "whisper model path")
+	startCmd.Flags().StringVar(&opts.whisperLanguage, "whisper-language", opts.whisperLanguage, "whisper language (ko|en|auto)")
 	startCmd.Flags().StringVar(&opts.ffmpegBin, "ffmpeg-bin", opts.ffmpegBin, "ffmpeg command path")
 	startCmd.Flags().StringVar(&opts.ttsBin, "tts-bin", opts.ttsBin, "text-to-speech command")
 
@@ -110,6 +116,7 @@ func newAssistantCommand(stdout, stderr io.Writer) *cobra.Command {
 	}
 	doctorCmd.Flags().StringVar(&opts.whisperBin, "whisper-bin", opts.whisperBin, "speech-to-text command")
 	doctorCmd.Flags().StringVar(&opts.whisperModel, "whisper-model", opts.whisperModel, "whisper model path")
+	doctorCmd.Flags().StringVar(&opts.whisperLanguage, "whisper-language", opts.whisperLanguage, "whisper language (ko|en|auto)")
 	doctorCmd.Flags().StringVar(&opts.ffmpegBin, "ffmpeg-bin", opts.ffmpegBin, "ffmpeg command path")
 	doctorCmd.Flags().StringVar(&opts.ttsBin, "tts-bin", opts.ttsBin, "text-to-speech command")
 
@@ -130,6 +137,7 @@ func newAssistantCommand(stdout, stderr io.Writer) *cobra.Command {
 	installCmd.Flags().StringVar(&opts.audioInput, "audio-input", opts.audioInput, "avfoundation audio input (default|index|name)")
 	installCmd.Flags().StringVar(&opts.whisperBin, "whisper-bin", opts.whisperBin, "speech-to-text command")
 	installCmd.Flags().StringVar(&opts.whisperModel, "whisper-model", opts.whisperModel, "whisper model path")
+	installCmd.Flags().StringVar(&opts.whisperLanguage, "whisper-language", opts.whisperLanguage, "whisper language (ko|en|auto)")
 	installCmd.Flags().StringVar(&opts.ffmpegBin, "ffmpeg-bin", opts.ffmpegBin, "ffmpeg command path")
 	installCmd.Flags().StringVar(&opts.ttsBin, "tts-bin", opts.ttsBin, "text-to-speech command")
 	installCmd.Flags().StringVar(&opts.label, "label", opts.label, "launchagent label")
@@ -156,6 +164,7 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 			AudioInput:   strings.TrimSpace(opts.audioInput),
 			WhisperBin:   strings.TrimSpace(opts.whisperBin),
 			WhisperModel: strings.TrimSpace(opts.whisperModel),
+			WhisperLanguage: strings.TrimSpace(opts.whisperLanguage),
 			FFmpegBin:    strings.TrimSpace(opts.ffmpegBin),
 			TTSBin:       strings.TrimSpace(opts.ttsBin),
 			Stdin:        os.Stdin,
@@ -215,6 +224,9 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 			"--whisper-bin", strings.TrimSpace(opts.whisperBin),
 			"--ffmpeg-bin", strings.TrimSpace(opts.ffmpegBin),
 			"--tts-bin", strings.TrimSpace(opts.ttsBin),
+		}
+		if strings.TrimSpace(opts.whisperLanguage) != "" {
+			args = append(args, "--whisper-language", strings.TrimSpace(opts.whisperLanguage))
 		}
 		if strings.TrimSpace(opts.whisperModel) != "" {
 			args = append(args, "--whisper-model", strings.TrimSpace(opts.whisperModel))

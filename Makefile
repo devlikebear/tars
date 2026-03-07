@@ -28,6 +28,8 @@ ASSISTANT_SERVER_URL ?= $(SERVER_URL)
 ASSISTANT_HOTKEY ?= Ctrl+Option+Space
 ASSISTANT_AUDIO_INPUT ?= default
 ASSISTANT_WHISPER_BIN ?= /opt/homebrew/bin/whisper-cli
+ASSISTANT_OS_LOCALE ?= $(strip $(or $(LC_ALL),$(LANG),$(shell /usr/bin/defaults read -g AppleLocale 2>/dev/null)))
+ASSISTANT_WHISPER_LANGUAGE ?= $(strip $(shell python3 -c 'import sys; locale=(sys.argv[1] if len(sys.argv) > 1 else "").strip().lower(); print("ko" if locale.startswith("ko") else "en" if locale.startswith("en") else "ja" if locale.startswith("ja") else "zh" if locale.startswith(("zh_cn","zh-hans","zh-chs","zh_tw","zh-hant","zh-cht")) else "auto")' '$(ASSISTANT_OS_LOCALE)'))
 ASSISTANT_FFMPEG_BIN ?= /opt/homebrew/bin/ffmpeg
 ASSISTANT_TTS_BIN ?= /usr/bin/say
 ASSISTANT_API_TOKEN ?= $(TARS_API_TOKEN)
@@ -51,6 +53,7 @@ help:
 	@echo "  PKG=./... TEST_NAME=TestRun_ChatMessage CHAT_MSG='hello'"
 	@echo "  WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:43180 SERVER_URL=http://127.0.0.1:43180"
 	@echo "  TARS_CONFIG=./config/standalone.yaml ASSISTANT_API_TOKEN=... LAUNCH_PATH=$(LAUNCH_PATH)"
+	@echo "  ASSISTANT_WHISPER_LANGUAGE=$(ASSISTANT_WHISPER_LANGUAGE) (derived from locale; override with VAR=value)"
 	@echo ""
 	@echo "Test targets:"
 	@echo "  make test          - go test $(PKG)"
@@ -161,6 +164,7 @@ install-assistant: build-bins
 		--hotkey "$(ASSISTANT_HOTKEY)" \
 		--audio-input "$(ASSISTANT_AUDIO_INPUT)" \
 		--whisper-bin "$(ASSISTANT_WHISPER_BIN)" \
+		--whisper-language "$(ASSISTANT_WHISPER_LANGUAGE)" \
 		--ffmpeg-bin "$(ASSISTANT_FFMPEG_BIN)" \
 		--tts-bin "$(ASSISTANT_TTS_BIN)" \
 		--label "$(ASSISTANT_LABEL)" \
