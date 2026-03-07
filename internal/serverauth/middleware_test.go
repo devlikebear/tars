@@ -360,3 +360,123 @@ func TestMiddleware_WorkspaceAllowlistByRole(t *testing.T) {
 		t.Fatalf("expected admin to pass for allowed workspace, got %d body=%q", recAdmin.Code, recAdmin.Body.String())
 	}
 }
+
+func TestCompileOptions_NormalizesPathsTokensAndWorkspaceSettings(t *testing.T) {
+	compiled := compileOptions(Options{
+		Mode:                          " ExTerNal-ReQuired ",
+		UserToken:                     "user-token",
+		AdminToken:                    "admin-token",
+		RequireWorkspaceForAuthorized: true,
+		SkipPaths:                     []string{" /healthz ", "", "/ready"},
+		AdminPaths:                    []string{" /v1/admin/reload ", " /v1/channels/webhook/inbound/* ", ""},
+		UserWorkspaceAllowlist:        []string{" ws-user ", ""},
+		AdminWorkspaceAllowlist:       []string{" ws-admin "},
+	}, io.Discard)
+
+	if compiled.mode != ModeExternalRequired {
+		t.Fatalf("expected normalized mode %q, got %q", ModeExternalRequired, compiled.mode)
+	}
+	if compiled.workspaceHeader != DefaultWorkspaceHeader {
+		t.Fatalf("expected default workspace header %q, got %q", DefaultWorkspaceHeader, compiled.workspaceHeader)
+	}
+	if !compiled.skipPaths.match("/healthz") || !compiled.skipPaths.match("/ready") {
+		t.Fatalf("expected skip paths to include trimmed entries")
+	}
+	if !compiled.adminPaths.match("/v1/admin/reload") {
+		t.Fatalf("expected exact admin path to match")
+	}
+	if !compiled.adminPaths.match("/v1/channels/webhook/inbound/general") {
+		t.Fatalf("expected wildcard admin path to match by prefix")
+	}
+	if compiled.resolveRole("Bearer user-token") != RoleUser {
+		t.Fatalf("expected user token to resolve to role user")
+	}
+	if compiled.resolveRole("Bearer admin-token") != RoleAdmin {
+		t.Fatalf("expected admin token to resolve to role admin")
+	}
+	if compiled.resolveRole("Bearer unknown-token") != "" {
+		t.Fatalf("expected unknown token to resolve to empty role")
+	}
+	if !compiled.requireWorkspaceForAuthorized {
+		t.Fatalf("expected requireWorkspaceForAuthorized to be preserved")
+	}
+	if !isWorkspaceAllowed(compiled.userWorkspaceAllowlist, "ws-user") {
+		t.Fatalf("expected user workspace allowlist to contain trimmed workspace")
+	}
+	if !isWorkspaceAllowed(compiled.adminWorkspaceAllowlist, "ws-admin") {
+		t.Fatalf("expected admin workspace allowlist to contain trimmed workspace")
+	}
+}
+
+func TestCompiledOptions_RequirementForRequest(t *testing.T) {
+	compiled := compileOptions(Options{
+		Mode:       ModeExternalRequired,
+		UserToken:  "user-token",
+		AdminToken: "admin-token",
+		SkipPaths:  []string{"/v1/status"},
+		AdminPaths: []string{"/v1/admin/*"},
+	}, io.Discard)
+
+	cases := []struct {
+		name            string
+		path            string
+		remoteAddr      string
+		wantSkip        bool
+		wantRequireAuth bool
+		wantAdminPath   bool
+		wantTokenNeeded bool
+	}{
+		{
+			name:       "skip path bypasses auth",
+			path:       "/v1/status",
+			remoteAddr: "192.0.2.10:443",
+			wantSkip:   true,
+		},
+		{
+			name:            "loopback request in external required mode is optional",
+			path:            "/v1/chat",
+			remoteAddr:      "127.0.0.1:8080",
+			wantRequireAuth: false,
+			wantAdminPath:   false,
+			wantTokenNeeded: false,
+		},
+		{
+			name:            "external request in external required mode needs token",
+			path:            "/v1/chat",
+			remoteAddr:      "192.0.2.10:443",
+			wantRequireAuth: true,
+			wantAdminPath:   false,
+			wantTokenNeeded: true,
+		},
+		{
+			name:            "admin path on loopback still needs token",
+			path:            "/v1/admin/reload",
+			remoteAddr:      "127.0.0.1:8080",
+			wantRequireAuth: false,
+			wantAdminPath:   true,
+			wantTokenNeeded: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req.RemoteAddr = tc.remoteAddr
+
+			got := compiled.requirementForRequest(req)
+
+			if got.skip != tc.wantSkip {
+				t.Fatalf("expected skip=%v, got %v", tc.wantSkip, got.skip)
+			}
+			if got.requireToken != tc.wantRequireAuth {
+				t.Fatalf("expected requireToken=%v, got %v", tc.wantRequireAuth, got.requireToken)
+			}
+			if got.isAdminPath != tc.wantAdminPath {
+				t.Fatalf("expected isAdminPath=%v, got %v", tc.wantAdminPath, got.isAdminPath)
+			}
+			if got.tokenNeeded != tc.wantTokenNeeded {
+				t.Fatalf("expected tokenNeeded=%v, got %v", tc.wantTokenNeeded, got.tokenNeeded)
+			}
+		})
+	}
+}

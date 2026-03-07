@@ -36,6 +36,36 @@ type Options struct {
 	AdminPaths                    []string
 }
 
+type pathMatcher struct {
+	exact    map[string]struct{}
+	prefixes []string
+}
+
+type compiledOptions struct {
+	mode                          string
+	workspaceHeader               string
+	skipPaths                     pathMatcher
+	adminPaths                    pathMatcher
+	requireWorkspaceForAuthorized bool
+	userWorkspaceAllowlist        map[string]struct{}
+	adminWorkspaceAllowlist       map[string]struct{}
+	logger                        zerolog.Logger
+	hasLegacyToken                bool
+	hasUserToken                  bool
+	hasAdminToken                 bool
+	anyTokenConfigured            bool
+	legacyHash                    [32]byte
+	userHash                      [32]byte
+	adminHash                     [32]byte
+}
+
+type requestRequirement struct {
+	skip         bool
+	requireToken bool
+	isAdminPath  bool
+	tokenNeeded  bool
+}
+
 type workspaceIDKey struct{}
 type roleKey struct{}
 
@@ -101,123 +131,89 @@ func NormalizeMode(raw string) string {
 	}
 }
 
-func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handler {
-	mode := NormalizeMode(opts.Mode)
-	token := strings.TrimSpace(opts.BearerToken)
+func compileOptions(opts Options, logOut io.Writer) compiledOptions {
 	workspaceHeader := strings.TrimSpace(opts.WorkspaceHeader)
 	if workspaceHeader == "" {
 		workspaceHeader = DefaultWorkspaceHeader
 	}
-	skipPaths := make(map[string]struct{}, len(opts.SkipPaths))
-	for _, path := range opts.SkipPaths {
-		trimmed := strings.TrimSpace(path)
-		if trimmed == "" {
-			continue
-		}
-		skipPaths[trimmed] = struct{}{}
-	}
-	adminPaths := make(map[string]struct{}, len(opts.AdminPaths))
-	adminPathPrefixes := make([]string, 0, len(opts.AdminPaths))
-	for _, path := range opts.AdminPaths {
-		trimmed := strings.TrimSpace(path)
-		if trimmed == "" {
-			continue
-		}
-		if strings.HasSuffix(trimmed, "*") {
-			prefix := strings.TrimSpace(strings.TrimSuffix(trimmed, "*"))
-			if prefix != "" {
-				adminPathPrefixes = append(adminPathPrefixes, prefix)
-			}
-			continue
-		}
-		adminPaths[trimmed] = struct{}{}
-	}
-	userWorkspaceAllowlist := toWorkspaceAllowlist(opts.UserWorkspaceAllowlist)
-	adminWorkspaceAllowlist := toWorkspaceAllowlist(opts.AdminWorkspaceAllowlist)
 	if logOut == nil {
 		logOut = io.Discard
 	}
-	logger := zerolog.New(logOut).With().Str("component", "serverauth").Logger()
 
+	token := strings.TrimSpace(opts.BearerToken)
 	userToken := strings.TrimSpace(opts.UserToken)
 	adminToken := strings.TrimSpace(opts.AdminToken)
 	hasLegacyToken := token != ""
 	hasUserToken := userToken != ""
 	hasAdminToken := adminToken != ""
-	anyTokenConfigured := hasLegacyToken || hasUserToken || hasAdminToken
-	legacyHash := sha256.Sum256([]byte(token))
-	userHash := sha256.Sum256([]byte(userToken))
-	adminHash := sha256.Sum256([]byte(adminToken))
+
+	return compiledOptions{
+		mode:                          NormalizeMode(opts.Mode),
+		workspaceHeader:               workspaceHeader,
+		skipPaths:                     newPathMatcher(opts.SkipPaths),
+		adminPaths:                    newPathMatcher(opts.AdminPaths),
+		requireWorkspaceForAuthorized: opts.RequireWorkspaceForAuthorized,
+		userWorkspaceAllowlist:        toWorkspaceAllowlist(opts.UserWorkspaceAllowlist),
+		adminWorkspaceAllowlist:       toWorkspaceAllowlist(opts.AdminWorkspaceAllowlist),
+		logger:                        zerolog.New(logOut).With().Str("component", "serverauth").Logger(),
+		hasLegacyToken:                hasLegacyToken,
+		hasUserToken:                  hasUserToken,
+		hasAdminToken:                 hasAdminToken,
+		anyTokenConfigured:            hasLegacyToken || hasUserToken || hasAdminToken,
+		legacyHash:                    sha256.Sum256([]byte(token)),
+		userHash:                      sha256.Sum256([]byte(userToken)),
+		adminHash:                     sha256.Sum256([]byte(adminToken)),
+	}
+}
+
+func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handler {
+	compiled := compileOptions(opts, logOut)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			req := withWorkspaceID(r, workspaceHeader)
+			req := withWorkspaceID(r, compiled.workspaceHeader)
 			req = withDebugWorkspaceHeader(req)
-			if _, ok := skipPaths[r.URL.Path]; ok || mode == ModeOff {
+			requirement := compiled.requirementForRequest(r)
+			if compiled.mode == ModeOff || requirement.skip {
 				next.ServeHTTP(w, req)
 				return
 			}
 
-			requireToken := mode == ModeRequired
-			if mode == ModeExternalRequired && !isLoopbackRemoteAddr(r.RemoteAddr) {
-				requireToken = true
-			}
-			_, isAdminPath := adminPaths[r.URL.Path]
-			if !isAdminPath {
-				for _, prefix := range adminPathPrefixes {
-					if strings.HasPrefix(r.URL.Path, prefix) {
-						isAdminPath = true
-						break
-					}
-				}
-			}
-			tokenNeeded := requireToken || isAdminPath
-			if tokenNeeded && !anyTokenConfigured {
-				logger.Warn().Str("path", r.URL.Path).Msg("api auth enabled but token is empty; rejecting request")
+			if requirement.tokenNeeded && !compiled.anyTokenConfigured {
+				compiled.logger.Warn().Str("path", r.URL.Path).Msg("api auth enabled but token is empty; rejecting request")
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 				return
 			}
 
-			presentedToken, hasBearer := parseBearerToken(r.Header.Get("Authorization"))
-			role := ""
-			if hasBearer {
-				role = resolveTokenRole(
-					presentedToken,
-					hasLegacyToken,
-					hasUserToken,
-					hasAdminToken,
-					legacyHash,
-					userHash,
-					adminHash,
-				)
-			}
-			if tokenNeeded && role == "" {
+			_, hasBearer := parseBearerToken(r.Header.Get("Authorization"))
+			role := compiled.resolveRole(r.Header.Get("Authorization"))
+			if requirement.tokenNeeded && role == "" {
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 				return
 			}
 			req = withRole(req, role)
 			req = withDebugRoleHeader(req, role)
-			if opts.RequireWorkspaceForAuthorized && strings.TrimSpace(role) != "" {
+			if compiled.requireWorkspaceForAuthorized && strings.TrimSpace(role) != "" {
 				if strings.TrimSpace(WorkspaceIDFromContext(req.Context())) == "" {
 					writeJSONError(w, http.StatusBadRequest, "workspace_id_required", "workspace id is required")
 					return
 				}
 			}
-			if role == RoleUser && !isWorkspaceAllowed(userWorkspaceAllowlist, WorkspaceIDFromContext(req.Context())) {
+			if role == RoleUser && !isWorkspaceAllowed(compiled.userWorkspaceAllowlist, WorkspaceIDFromContext(req.Context())) {
 				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
 				return
 			}
-			if role == RoleAdmin && !isWorkspaceAllowed(adminWorkspaceAllowlist, WorkspaceIDFromContext(req.Context())) {
+			if role == RoleAdmin && !isWorkspaceAllowed(compiled.adminWorkspaceAllowlist, WorkspaceIDFromContext(req.Context())) {
 				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
 				return
 			}
-			if isAdminPath && role != RoleAdmin {
+			if requirement.isAdminPath && role != RoleAdmin {
 				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
 				return
 			}
-			if requireToken && hasBearer && role == "" {
+			if requirement.requireToken && hasBearer && role == "" {
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 				return
@@ -225,6 +221,75 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			next.ServeHTTP(w, req)
 		})
 	}
+}
+
+func newPathMatcher(paths []string) pathMatcher {
+	matcher := pathMatcher{
+		exact:    make(map[string]struct{}, len(paths)),
+		prefixes: make([]string, 0, len(paths)),
+	}
+	for _, path := range paths {
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasSuffix(trimmed, "*") {
+			prefix := strings.TrimSpace(strings.TrimSuffix(trimmed, "*"))
+			if prefix != "" {
+				matcher.prefixes = append(matcher.prefixes, prefix)
+			}
+			continue
+		}
+		matcher.exact[trimmed] = struct{}{}
+	}
+	return matcher
+}
+
+func (m pathMatcher) match(path string) bool {
+	if _, ok := m.exact[path]; ok {
+		return true
+	}
+	for _, prefix := range m.prefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c compiledOptions) requirementForRequest(r *http.Request) requestRequirement {
+	if r == nil {
+		return requestRequirement{}
+	}
+	if c.skipPaths.match(r.URL.Path) {
+		return requestRequirement{skip: true}
+	}
+	requireToken := c.mode == ModeRequired
+	if c.mode == ModeExternalRequired && !isLoopbackRemoteAddr(r.RemoteAddr) {
+		requireToken = true
+	}
+	isAdminPath := c.adminPaths.match(r.URL.Path)
+	return requestRequirement{
+		requireToken: requireToken,
+		isAdminPath:  isAdminPath,
+		tokenNeeded:  requireToken || isAdminPath,
+	}
+}
+
+func (c compiledOptions) resolveRole(authHeader string) string {
+	presentedToken, hasBearer := parseBearerToken(authHeader)
+	if !hasBearer {
+		return ""
+	}
+	return resolveTokenRole(
+		presentedToken,
+		c.hasLegacyToken,
+		c.hasUserToken,
+		c.hasAdminToken,
+		c.legacyHash,
+		c.userHash,
+		c.adminHash,
+	)
 }
 
 func writeJSONError(w http.ResponseWriter, status int, code, message string) {
