@@ -182,6 +182,19 @@ func TestStore_Create_ValidatesSchedule(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("expected valid cron expression, got %v", err)
 	}
+
+	created, err := store.CreateWithOptions(CreateInput{
+		Prompt:    "at schedule job",
+		Schedule:  " at:2026-03-01T15:00:00+09:00 ",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("expected valid at schedule, got %v", err)
+	}
+	if want := "at:2026-03-01T06:00:00Z"; created.Schedule != want {
+		t.Fatalf("expected normalized at schedule %q, got %q", want, created.Schedule)
+	}
 }
 
 func TestStore_ListRunsReturnsLatestFirst(t *testing.T) {

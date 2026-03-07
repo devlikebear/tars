@@ -113,6 +113,24 @@ func TestParseNaturalSchedule_RelativeExpressions(t *testing.T) {
 	}
 }
 
+func TestStore_Create_NormalizesExplicitScheduleLikeCron(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	cronStore := cron.NewStore(workspace)
+	store := NewStore(workspace, cronStore, Options{Timezone: "Asia/Seoul"})
+
+	item, err := store.Create(CreateInput{
+		Title:    "explicit",
+		Prompt:   "run explicit",
+		Schedule: " at:2026-03-01T15:00:00+09:00 ",
+	})
+	if err != nil {
+		t.Fatalf("create explicit schedule: %v", err)
+	}
+	if want := "at:2026-03-01T06:00:00Z"; item.Schedule != want {
+		t.Fatalf("expected normalized schedule %q, got %q", want, item.Schedule)
+	}
+}
+
 func TestStore_UsesCronAsSingleStorage(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	cronStore := cron.NewStore(workspace)

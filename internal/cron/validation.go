@@ -7,44 +7,11 @@ import (
 	"strings"
 	"time"
 
-	cronv3 "github.com/robfig/cron/v3"
+	"github.com/devlikebear/tarsncase/internal/scheduleexpr"
 )
 
 func normalizeSchedule(raw string) (string, error) {
-	s := strings.TrimSpace(raw)
-	if s == "" {
-		return "every:1h", nil
-	}
-	lower := strings.ToLower(s)
-	if strings.HasPrefix(lower, "at:") {
-		ts := strings.TrimSpace(s[len("at:"):])
-		at, err := time.Parse(time.RFC3339, ts)
-		if err != nil {
-			return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
-		}
-		return "at:" + at.UTC().Format(time.RFC3339), nil
-	}
-	if strings.HasPrefix(lower, "every:") {
-		dur := strings.TrimSpace(s[len("every:"):])
-		if dur == "" {
-			return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
-		}
-		if _, err := time.ParseDuration(dur); err != nil {
-			return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
-		}
-		return "every:" + dur, nil
-	}
-	if strings.HasPrefix(lower, "@every ") {
-		dur := strings.TrimSpace(s[len("@every "):])
-		if _, err := time.ParseDuration(dur); err != nil {
-			return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
-		}
-		return "@every " + dur, nil
-	}
-	if _, err := cronv3.ParseStandard(s); err != nil {
-		return "", fmt.Errorf("invalid schedule: %s (expected at:<rfc3339>, every:<duration>, or valid cron expression)", s)
-	}
-	return s, nil
+	return scheduleexpr.NormalizeExpression(raw)
 }
 
 func normalizeSessionTarget(raw string) (string, error) {
