@@ -77,27 +77,41 @@ func ReadMessages(path string) ([]Message, error) {
 	return messages, nil
 }
 
+// HistorySnapshot captures the portion of transcript loaded into model context.
+type HistorySnapshot struct {
+	Messages        []Message
+	Tokens          int
+	CompactionUsed  bool
+}
+
 // LoadHistory reads messages from a JSONL file, returning only the most recent
 // messages that fit within the given token budget. Tokens are estimated as
 // len(content)/4. Messages are returned in chronological order (oldest first).
 // Returns an empty slice if the file does not exist.
 func LoadHistory(path string, maxTokens int) ([]Message, error) {
-	all, err := ReadMessages(path)
+	snapshot, err := LoadHistorySnapshot(path, maxTokens)
 	if err != nil {
 		return nil, err
 	}
+	return snapshot.Messages, nil
+}
+
+// LoadHistorySnapshot reads transcript history and returns the loaded messages
+// together with token and compaction-boundary metadata.
+func LoadHistorySnapshot(path string, maxTokens int) (HistorySnapshot, error) {
+	all, err := ReadMessages(path)
+	if err != nil {
+		return HistorySnapshot{}, err
+	}
 	if len(all) == 0 {
-		return nil, nil
+		return HistorySnapshot{}, nil
 	}
 
 	// Walk backwards from the most recent message, accumulating token cost
 	tokens := 0
 	startIdx := len(all)
 	for i := len(all) - 1; i >= 0; i-- {
-		cost := len(all[i].Content) / 4
-		if cost < 1 {
-			cost = 1
-		}
+		cost := messageTokenCost(all[i])
 		if tokens+cost > maxTokens {
 			break
 		}
@@ -106,19 +120,28 @@ func LoadHistory(path string, maxTokens int) ([]Message, error) {
 	}
 	history := all[startIdx:]
 	if len(history) == 0 {
-		return nil, nil
+		return HistorySnapshot{}, nil
 	}
+	compactionUsed := false
 	if summaryIdx := latestCompactionSummaryIndex(all); summaryIdx >= 0 {
 		switch {
 		case startIdx > summaryIdx:
 			// Always include the latest compaction boundary summary so model context
 			// keeps the compacted past when only recent messages fit by token budget.
 			history = append([]Message{all[summaryIdx]}, history...)
+			compactionUsed = true
 		case startIdx < summaryIdx:
 			history = all[summaryIdx:]
+			compactionUsed = true
+		case startIdx == summaryIdx:
+			compactionUsed = true
 		}
 	}
-	return history, nil
+	return HistorySnapshot{
+		Messages:       history,
+		Tokens:         historyTokenCost(history),
+		CompactionUsed: compactionUsed,
+	}, nil
 }
 
 func latestCompactionSummaryIndex(messages []Message) int {
@@ -131,4 +154,20 @@ func latestCompactionSummaryIndex(messages []Message) int {
 		}
 	}
 	return -1
+}
+
+func historyTokenCost(messages []Message) int {
+	total := 0
+	for _, msg := range messages {
+		total += messageTokenCost(msg)
+	}
+	return total
+}
+
+func messageTokenCost(msg Message) int {
+	cost := len(msg.Content) / 4
+	if cost < 1 {
+		return 1
+	}
+	return cost
 }

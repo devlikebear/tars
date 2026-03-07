@@ -194,3 +194,42 @@ func TestLoadHistory_DoesNotDuplicateCompactionBoundary(t *testing.T) {
 		t.Fatalf("expected summary message once, got %q", history[0].Content)
 	}
 }
+
+func TestLoadHistorySnapshot_ReportsTokensAndCompactionUsage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "compacted-stats.jsonl")
+
+	if err := AppendMessage(path, Message{
+		Role:      "system",
+		Content:   "[COMPACTION SUMMARY]\nCompacted 40 messages.",
+		Timestamp: time.Date(2026, 3, 7, 8, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("append summary: %v", err)
+	}
+	for i := 0; i < 4; i++ {
+		if err := AppendMessage(path, Message{
+			Role:      "assistant",
+			Content:   fmt.Sprintf("recent reply %d %s", i, strings.Repeat("z", 36)),
+			Timestamp: time.Date(2026, 3, 7, 8, 0, i+1, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append message %d: %v", i, err)
+		}
+	}
+
+	snapshot, err := LoadHistorySnapshot(path, 30)
+	if err != nil {
+		t.Fatalf("load history snapshot: %v", err)
+	}
+	if !snapshot.CompactionUsed {
+		t.Fatalf("expected compaction_used=true, got %+v", snapshot)
+	}
+	if snapshot.Tokens <= 0 {
+		t.Fatalf("expected positive token estimate, got %+v", snapshot)
+	}
+	if len(snapshot.Messages) < 2 {
+		t.Fatalf("expected summary + recent messages, got %d", len(snapshot.Messages))
+	}
+	if !strings.Contains(snapshot.Messages[0].Content, "[COMPACTION SUMMARY]") {
+		t.Fatalf("expected compaction summary at head, got %+v", snapshot.Messages[0])
+	}
+}

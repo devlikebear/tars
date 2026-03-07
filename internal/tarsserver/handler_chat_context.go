@@ -63,11 +63,12 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusInternalServerError, "auto compaction failed", err
 	}
 
-	history, err := loadSessionHistory(transcriptPath, chatHistoryMaxTokens)
+	historySnapshot, err := loadSessionHistorySnapshot(transcriptPath, chatHistoryMaxTokens)
 	if err != nil {
 		deps.logger.Error().Err(err).Msg("load history failed")
 		return chatRunState{}, http.StatusInternalServerError, "load history failed", err
 	}
+	history := historySnapshot.Messages
 
 	registry := buildChatToolRegistry(
 		reqStore,
@@ -86,7 +87,12 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	if err != nil {
 		return chatRunState{}, http.StatusNotFound, err.Error(), err
 	}
-	systemPrompt, toolChoice, _ := prepareChatContextWithExtensions(requestWorkspaceDir, resolvedProjectID, sessionID, req.Message, extSnapshot, invokedSkill)
+	contextDetails, err := prepareChatContextDetailsWithExtensions(requestWorkspaceDir, resolvedProjectID, sessionID, req.Message, extSnapshot, invokedSkill)
+	if err != nil {
+		return chatRunState{}, http.StatusInternalServerError, "prepare chat context failed", err
+	}
+	systemPrompt := contextDetails.SystemPrompt
+	toolChoice := contextDetails.ToolChoice
 	if strings.TrimSpace(projectPrompt) != "" {
 		systemPrompt += "\n" + strings.TrimSpace(projectPrompt) + "\n"
 	}
@@ -94,7 +100,12 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		Str("session_id", sessionID).
 		Str("project_id", resolvedProjectID).
 		Int("history_messages", len(history)).
+		Int("history_tokens", historySnapshot.Tokens).
+		Bool("compaction_used", historySnapshot.CompactionUsed).
+		Int("relevant_memory_count", contextDetails.RelevantMemoryCount).
+		Int("relevant_memory_tokens", contextDetails.RelevantMemoryTokens).
 		Int("system_prompt_len", len(systemPrompt)).
+		Int("system_prompt_tokens", promptTokenEstimate(systemPrompt)).
 		Str("tool_choice", toolChoice).
 		Msg("chat context assembled")
 

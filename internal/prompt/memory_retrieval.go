@@ -15,6 +15,7 @@ import (
 const (
 	defaultStaticBudgetTokens   = 7000
 	defaultRelevantBudgetTokens = 700
+	defaultTotalBudgetTokens    = defaultStaticBudgetTokens + defaultRelevantBudgetTokens
 	defaultRelevantResultLimit  = 6
 	sessionFallbackMessageCount = 4
 	sectionHeaderTokenCost      = 8
@@ -27,26 +28,27 @@ type relevantMemoryMatch struct {
 	Timestamp time.Time
 }
 
-func appendRelevantMemory(b *strings.Builder, opts BuildOptions) {
-	if b == nil {
-		return
-	}
+func buildRelevantMemorySection(opts BuildOptions, budgetTokens int) (string, int, int) {
 	query := strings.TrimSpace(opts.Query)
 	if query == "" {
-		return
+		return "", 0, 0
 	}
 	matches := collectRelevantMemory(opts)
 	if len(matches) == 0 {
-		return
+		return "", 0, 0
 	}
 
-	remainingTokens := opts.RelevantBudgetTokens
+	remainingTokens := budgetTokens
 	if remainingTokens <= 0 {
 		remainingTokens = defaultRelevantBudgetTokens
+	}
+	if remainingTokens <= sectionHeaderTokenCost {
+		return "", 0, 0
 	}
 
 	var section strings.Builder
 	section.WriteString("## Relevant Memory\n\n")
+	usedTokens := sectionHeaderTokenCost
 	remainingTokens -= sectionHeaderTokenCost
 	added := 0
 	for _, match := range matches {
@@ -76,13 +78,14 @@ func appendRelevantMemory(b *strings.Builder, opts BuildOptions) {
 		}
 		section.WriteString(line)
 		remainingTokens -= lineTokens
+		usedTokens += lineTokens
 		added++
 	}
 	if added == 0 {
-		return
+		return "", 0, 0
 	}
 	section.WriteString("\n")
-	b.WriteString(section.String())
+	return section.String(), added, usedTokens
 }
 
 func collectRelevantMemory(opts BuildOptions) []relevantMemoryMatch {

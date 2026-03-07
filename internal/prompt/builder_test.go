@@ -155,3 +155,62 @@ func TestBuild_SoulIsAppendedToIdentitySection(t *testing.T) {
 		t.Fatalf("expected SOUL.md to be absorbed into identity, got %q", result)
 	}
 }
+
+func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"PROJECT.md":   strings.Repeat("project-", 120),
+		"USER.md":      strings.Repeat("user-", 120),
+		"IDENTITY.md":  strings.Repeat("identity-", 120),
+		"HEARTBEAT.md": strings.Repeat("heartbeat-", 120),
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	result := BuildResultFor(BuildOptions{
+		WorkspaceDir:       root,
+		StaticBudgetTokens: 360,
+		TotalBudgetTokens:  360,
+	})
+
+	if !strings.Contains(result.Prompt, files["PROJECT.md"][:120]) {
+		t.Fatalf("expected project section to survive tight budget, got %q", result.Prompt)
+	}
+	if !strings.Contains(result.Prompt, files["USER.md"][:120]) {
+		t.Fatalf("expected user section to survive tight budget, got %q", result.Prompt)
+	}
+	if strings.Contains(result.Prompt, files["HEARTBEAT.md"][:80]) {
+		t.Fatalf("expected lower-priority heartbeat section to be trimmed first, got %q", result.Prompt)
+	}
+	if result.TotalTokens > 360 {
+		t.Fatalf("expected total tokens <= 360, got %d", result.TotalTokens)
+	}
+}
+
+func TestBuildResult_ClampsRelevantMemoryToRemainingTotalBudget(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "PROJECT.md"), []byte(strings.Repeat("project ", 160)), 0o644); err != nil {
+		t.Fatalf("write PROJECT.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("User prefers black coffee with oat milk.\n"), 0o644); err != nil {
+		t.Fatalf("write MEMORY.md: %v", err)
+	}
+
+	result := BuildResultFor(BuildOptions{
+		WorkspaceDir:         root,
+		Query:                "what coffee do i prefer?",
+		StaticBudgetTokens:   160,
+		RelevantBudgetTokens: 80,
+		TotalBudgetTokens:    170,
+	})
+
+	if result.TotalTokens > 170 {
+		t.Fatalf("expected total tokens <= 170, got %d", result.TotalTokens)
+	}
+	if result.RelevantTokens > 0 && result.StaticTokens+result.RelevantTokens > 170 {
+		t.Fatalf("expected relevant memory to fit remaining budget, got static=%d relevant=%d", result.StaticTokens, result.RelevantTokens)
+	}
+}

@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -109,5 +110,54 @@ func TestChatAPI_RelevantMemoryIsInjectedIntoSystemPrompt(t *testing.T) {
 	}
 	if !strings.Contains(systemPrompt, "black coffee") {
 		t.Fatalf("expected relevant memory content in system prompt, got %q", systemPrompt)
+	}
+}
+
+func TestChatAPI_DebugLogIncludesContextBudgetStats(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := memory.AppendExperience(root, memory.Experience{
+		Timestamp:     time.Date(2026, 3, 7, 2, 0, 0, 0, time.UTC),
+		Category:      "preference",
+		Summary:       "User prefers black coffee.",
+		SourceSession: "seed",
+		Importance:    8,
+	}); err != nil {
+		t.Fatalf("append experience: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := session.AppendMessage(store.TranscriptPath(sess.ID), session.Message{
+		Role:      "user",
+		Content:   "hello there",
+		Timestamp: time.Date(2026, 3, 7, 2, 1, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("append seed history: %v", err)
+	}
+
+	var logs bytes.Buffer
+	logger := zerolog.New(&logs).Level(zerolog.DebugLevel)
+	mockClient := &mockLLMClient{response: llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "ok"}}}
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"session_id":"`+sess.ID+`","message":"what coffee do i prefer?"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	line := logs.String()
+	for _, field := range []string{`"history_tokens":`, `"relevant_memory_count":`, `"compaction_used":`, `"system_prompt_tokens":`} {
+		if !strings.Contains(line, field) {
+			t.Fatalf("expected debug log to include %s, got %q", field, line)
+		}
 	}
 }

@@ -18,20 +18,43 @@ type BuildOptions struct {
 	ForceRelevantMemory   bool
 	StaticBudgetTokens    int
 	RelevantBudgetTokens  int
+	TotalBudgetTokens     int
+}
+
+// BuildResult captures prompt assembly output and budget usage.
+type BuildResult struct {
+	Prompt              string
+	StaticTokens        int
+	RelevantTokens      int
+	RelevantMemoryCount int
+	TotalTokens         int
 }
 
 // Build assembles a system prompt by reading workspace bootstrap files.
 func Build(opts BuildOptions) string {
+	return BuildResultFor(opts).Prompt
+}
+
+// BuildResultFor assembles a system prompt and returns budget usage details.
+func BuildResultFor(opts BuildOptions) BuildResult {
 	var b strings.Builder
 
 	b.WriteString("You are TARS, a personal AI assistant.\n")
 	b.WriteString(fmt.Sprintf("Current time: %s\n", time.Now().UTC().Format(time.RFC3339)))
 	b.WriteString("\n")
 
+	totalBudgetTokens := opts.TotalBudgetTokens
+	if totalBudgetTokens <= 0 {
+		totalBudgetTokens = defaultTotalBudgetTokens
+	}
+	totalTokens := estimateTokens(b.String())
+	remainingTotalTokens := max(0, totalBudgetTokens-totalTokens)
+
 	remainingStaticTokens := opts.StaticBudgetTokens
 	if remainingStaticTokens <= 0 {
 		remainingStaticTokens = defaultStaticBudgetTokens
 	}
+	staticTokens := 0
 	for _, section := range bootstrapSections {
 		if opts.SubAgent && !section.subAgent {
 			continue
@@ -39,27 +62,50 @@ func Build(opts BuildOptions) string {
 		if !opts.SubAgent && section.subAgent {
 			continue
 		}
+		if remainingStaticTokens <= 0 || remainingTotalTokens <= 0 {
+			break
+		}
 		content := readBootstrapSection(opts.WorkspaceDir, section)
 		if content == "" {
 			continue
 		}
-		content = trimToBudget(content, section.maxChars, max(0, remainingStaticTokens-sectionHeaderTokenCost))
+		content = trimToBudget(content, section.maxChars, max(0, min(remainingStaticTokens, remainingTotalTokens)-sectionHeaderTokenCost))
 		if content == "" {
 			continue
 		}
 		b.WriteString(fmt.Sprintf("## %s\n\n", section.name))
 		b.WriteString(content)
 		b.WriteString("\n\n")
-		remainingStaticTokens -= estimateTokens(content) + sectionHeaderTokenCost
-		if remainingStaticTokens <= 0 {
-			break
+		sectionTokens := estimateTokens(content) + sectionHeaderTokenCost
+		staticTokens += sectionTokens
+		totalTokens += sectionTokens
+		remainingStaticTokens -= sectionTokens
+		remainingTotalTokens -= sectionTokens
+	}
+	relevantTokens := 0
+	relevantCount := 0
+	if !opts.SubAgent {
+		relevantBudgetTokens := opts.RelevantBudgetTokens
+		if relevantBudgetTokens <= 0 {
+			relevantBudgetTokens = defaultRelevantBudgetTokens
+		}
+		relevantBudgetTokens = min(relevantBudgetTokens, remainingTotalTokens)
+		section, count, usedTokens := buildRelevantMemorySection(opts, relevantBudgetTokens)
+		if section != "" {
+			b.WriteString(section)
+			relevantTokens = usedTokens
+			relevantCount = count
+			totalTokens += usedTokens
 		}
 	}
-	if !opts.SubAgent {
-		appendRelevantMemory(&b, opts)
-	}
 
-	return b.String()
+	return BuildResult{
+		Prompt:              b.String(),
+		StaticTokens:        staticTokens,
+		RelevantTokens:      relevantTokens,
+		RelevantMemoryCount: relevantCount,
+		TotalTokens:         totalTokens,
+	}
 }
 
 func readBootstrapSection(workspaceDir string, section bootstrapSection) string {
@@ -125,6 +171,13 @@ func estimateTokens(content string) int {
 
 func max(left, right int) int {
 	if left > right {
+		return left
+	}
+	return right
+}
+
+func min(left, right int) int {
+	if left < right {
 		return left
 	}
 	return right

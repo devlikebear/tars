@@ -47,6 +47,14 @@ func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, 
 	return prepareChatContextWithExtensions(workspaceDir, "", "", userMessage, extensions.Snapshot{}, nil)
 }
 
+type preparedChatContext struct {
+	SystemPrompt         string
+	ToolChoice           string
+	SystemPromptTokens   int
+	RelevantMemoryCount  int
+	RelevantMemoryTokens int
+}
+
 func prepareChatContextWithExtensions(
 	workspaceDir string,
 	projectID string,
@@ -55,14 +63,30 @@ func prepareChatContextWithExtensions(
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
 ) (systemPrompt string, toolChoice string, err error) {
+	details, err := prepareChatContextDetailsWithExtensions(workspaceDir, projectID, sessionID, userMessage, extSnapshot, invokedSkill)
+	if err != nil {
+		return "", "", err
+	}
+	return details.SystemPrompt, details.ToolChoice, nil
+}
+
+func prepareChatContextDetailsWithExtensions(
+	workspaceDir string,
+	projectID string,
+	sessionID string,
+	userMessage string,
+	extSnapshot extensions.Snapshot,
+	invokedSkill *skill.Definition,
+) (preparedChatContext, error) {
 	forceRelevantMemory := shouldForceMemoryToolCall(userMessage)
-	systemPrompt = prompt.Build(prompt.BuildOptions{
+	buildResult := prompt.BuildResultFor(prompt.BuildOptions{
 		WorkspaceDir:        workspaceDir,
 		Query:               userMessage,
 		ProjectID:           projectID,
 		SessionID:           sessionID,
 		ForceRelevantMemory: forceRelevantMemory,
 	})
+	systemPrompt := buildResult.Prompt
 	systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
 	if strings.TrimSpace(extSnapshot.SkillPrompt) != "" {
 		systemPrompt += "\n## Skills\n"
@@ -79,14 +103,29 @@ func prepareChatContextWithExtensions(
 			strings.TrimSpace(invokedSkill.RuntimePath),
 		)
 	}
+	toolChoice := ""
 	if forceRelevantMemory {
 		toolChoice = "required"
 	}
-	return systemPrompt, toolChoice, nil
+	return preparedChatContext{
+		SystemPrompt:         systemPrompt,
+		ToolChoice:           toolChoice,
+		SystemPromptTokens:   promptTokenEstimate(systemPrompt),
+		RelevantMemoryCount:  buildResult.RelevantMemoryCount,
+		RelevantMemoryTokens: buildResult.RelevantTokens,
+	}, nil
 }
 
 func loadSessionHistory(transcriptPath string, maxTokens int) ([]session.Message, error) {
-	return session.LoadHistory(transcriptPath, maxTokens)
+	snapshot, err := loadSessionHistorySnapshot(transcriptPath, maxTokens)
+	if err != nil {
+		return nil, err
+	}
+	return snapshot.Messages, nil
+}
+
+func loadSessionHistorySnapshot(transcriptPath string, maxTokens int) (session.HistorySnapshot, error) {
+	return session.LoadHistorySnapshot(transcriptPath, maxTokens)
 }
 
 func buildLLMMessages(systemPrompt string, history []session.Message, userMessage string) []llm.ChatMessage {
@@ -202,6 +241,18 @@ func resolveAgentMaxIterations(value int) int {
 		return agent.DefaultMaxLoopIters
 	}
 	return value
+}
+
+func promptTokenEstimate(content string) int {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return 0
+	}
+	tokens := len(trimmed) / 4
+	if tokens < 1 {
+		return 1
+	}
+	return tokens
 }
 
 type chatToolingOptions struct {
