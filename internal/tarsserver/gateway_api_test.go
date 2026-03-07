@@ -988,6 +988,28 @@ func TestChannelsAPI_TelegramSend_UserAllowed(t *testing.T) {
 	}
 }
 
+func TestChannelsAPI_TelegramSendRejectsInvalidBody(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	sender := telegramSendFunc(func(ctx context.Context, req telegramSendRequest) (telegramSendResult, error) {
+		return telegramSendResult{}, nil
+	})
+	h := newChannelsAPIHandlerWithTelegramSender(runtime, sender, zerolog.New(io.Discard))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/channels/telegram/send", strings.NewReader("{"))
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("telegram send expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload["error"] != "invalid request body" {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
+
 func TestChannelsAPI_TelegramPairings_Approve(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
 	pairings, err := newTelegramPairingStore(filepath.Join(t.TempDir(), "telegram_pairings.json"), nil)
@@ -1043,6 +1065,36 @@ func TestChannelsAPI_TelegramPairings_Approve(t *testing.T) {
 	}
 	if approvePayload.Approved.UserID != 41 || approvePayload.Approved.ChatID != "4101" {
 		t.Fatalf("unexpected approve payload: %+v", approvePayload)
+	}
+}
+
+func TestChannelsAPI_TelegramPairingsApproveUnknownCodeReturnsNotFound(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	pairings, err := newTelegramPairingStore(filepath.Join(t.TempDir(), "telegram_pairings.json"), nil)
+	if err != nil {
+		t.Fatalf("newTelegramPairingStore: %v", err)
+	}
+	h := newChannelsAPIHandlerWithTelegramPairings(
+		runtime,
+		nil,
+		pairings,
+		"pairing",
+		true,
+		zerolog.New(io.Discard),
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/channels/telegram/pairings/approve", bytes.NewBufferString(`{"code":"missing"}`))
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("pairings approve expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if strings.TrimSpace(asString(payload["error"])) == "" {
+		t.Fatalf("expected error payload, got %+v", payload)
 	}
 }
 
