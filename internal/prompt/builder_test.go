@@ -15,6 +15,7 @@ func TestBuild(t *testing.T) {
 		"IDENTITY.md":  "# IDENTITY.md\n\nName: TARS",
 		"SOUL.md":      "# SOUL.md\n\nFriendly assistant",
 		"USER.md":      "# USER.md\n\nName: Alice",
+		"PROJECT.md":   "# PROJECT.md\n\nProject policy",
 		"AGENTS.md":    "# AGENTS.md\n\nOperating guidelines",
 		"TOOLS.md":     "# TOOLS.md\n\nAvailable tools",
 		"HEARTBEAT.md": "# HEARTBEAT.md\n\nCheck daily tasks",
@@ -28,19 +29,29 @@ func TestBuild(t *testing.T) {
 
 	result := Build(BuildOptions{WorkspaceDir: root})
 
-	// All files should be included
-	for name, content := range files {
+	// Static bootstrap should include identity/user/project/heartbeat and absorb soul.
+	wantIncluded := []string{
+		files["IDENTITY.md"],
+		files["SOUL.md"],
+		files["USER.md"],
+		files["PROJECT.md"],
+		files["HEARTBEAT.md"],
+	}
+	for _, content := range wantIncluded {
 		if !strings.Contains(result, content) {
-			t.Errorf("expected prompt to contain %s content", name)
+			t.Errorf("expected prompt to contain %q", content)
 		}
+	}
+	if strings.Contains(result, files["MEMORY.md"]) {
+		t.Errorf("expected static prompt to exclude MEMORY.md content")
 	}
 
 	// Should have section headers
 	if !strings.Contains(result, "IDENTITY") {
 		t.Error("expected IDENTITY section")
 	}
-	if !strings.Contains(result, "MEMORY") {
-		t.Error("expected MEMORY section")
+	if !strings.Contains(result, "PROJECT") {
+		t.Error("expected PROJECT section")
 	}
 }
 
@@ -51,6 +62,7 @@ func TestBuild_SubAgent(t *testing.T) {
 		"IDENTITY.md":  "# IDENTITY.md\n\nName: TARS",
 		"SOUL.md":      "# SOUL.md\n\nFriendly assistant",
 		"USER.md":      "# USER.md\n\nName: Alice",
+		"PROJECT.md":   "# PROJECT.md\n\nProject policy",
 		"AGENTS.md":    "# AGENTS.md\n\nOperating guidelines",
 		"TOOLS.md":     "# TOOLS.md\n\nAvailable tools",
 		"HEARTBEAT.md": "# HEARTBEAT.md\n\nCheck daily tasks",
@@ -88,6 +100,9 @@ func TestBuild_SubAgent(t *testing.T) {
 	if strings.Contains(result, "Key facts") {
 		t.Error("sub-agent prompt should not contain MEMORY.md content")
 	}
+	if strings.Contains(result, "Project policy") {
+		t.Error("sub-agent prompt should not contain PROJECT.md content")
+	}
 }
 
 func TestBuild_TruncateLargeFile(t *testing.T) {
@@ -117,5 +132,26 @@ func TestBuild_MissingFiles(t *testing.T) {
 	result := Build(BuildOptions{WorkspaceDir: root})
 	if result == "" {
 		t.Error("expected non-empty prompt even with no workspace files")
+	}
+}
+
+func TestBuild_SoulIsAppendedToIdentitySection(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "IDENTITY.md"), []byte("identity core"), 0o644); err != nil {
+		t.Fatalf("write IDENTITY.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "SOUL.md"), []byte("persona extension"), 0o644); err != nil {
+		t.Fatalf("write SOUL.md: %v", err)
+	}
+
+	result := Build(BuildOptions{WorkspaceDir: root})
+	if !strings.Contains(result, "identity core") {
+		t.Fatalf("expected identity content in prompt, got %q", result)
+	}
+	if !strings.Contains(result, "persona extension") {
+		t.Fatalf("expected deprecated SOUL.md content in prompt, got %q", result)
+	}
+	if strings.Contains(result, "## Persona") {
+		t.Fatalf("expected SOUL.md to be absorbed into identity, got %q", result)
 	}
 }

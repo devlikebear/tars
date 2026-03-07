@@ -37,14 +37,6 @@ const defaultAgentsTemplate = `# AGENTS.md
 - Set boundaries for autonomous actions (what the agent may do without asking).
 `
 
-const defaultSoulTemplate = `# SOUL.md
-
-## Persona
-- Define the agent's communication style and tone.
-- Set behavioral boundaries (topics to avoid, response length preferences).
-- Describe the personality traits that should come through in interactions.
-`
-
 const defaultUserTemplate = `# USER.md
 
 ## User Profile
@@ -59,6 +51,11 @@ const defaultIdentityTemplate = `# IDENTITY.md
 - Name: TARS
 - Role: Personal AI assistant
 - Personality traits and distinguishing characteristics.
+
+## Communication Style
+- Preferred tone, verbosity, and interaction style.
+- Behavioral boundaries and topics to avoid.
+- Traits that should consistently come through in responses.
 `
 
 const defaultToolsTemplate = `# TOOLS.md
@@ -89,9 +86,6 @@ func EnsureWorkspace(root string) error {
 		return err
 	}
 	if err := ensureFile(filepath.Join(root, "AGENTS.md"), defaultAgentsTemplate); err != nil {
-		return err
-	}
-	if err := ensureFile(filepath.Join(root, "SOUL.md"), defaultSoulTemplate); err != nil {
 		return err
 	}
 	if err := ensureFile(filepath.Join(root, "USER.md"), defaultUserTemplate); err != nil {

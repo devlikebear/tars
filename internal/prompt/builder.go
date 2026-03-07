@@ -10,30 +10,10 @@ import (
 	"github.com/devlikebear/tarsncase/internal/memory"
 )
 
-const maxFileChars = 20000
-
 // BuildOptions configures system prompt generation.
 type BuildOptions struct {
 	WorkspaceDir string // path to workspace root
 	SubAgent     bool   // if true, only inject AGENTS.md and TOOLS.md
-}
-
-// bootstrapFile defines a workspace file to inject into the system prompt.
-type bootstrapFile struct {
-	name     string // filename (e.g., "IDENTITY.md")
-	section  string // section header in prompt
-	subAgent bool   // if true, included in sub-agent mode
-}
-
-var mainFiles = []bootstrapFile{
-	{name: "IDENTITY.md", section: "Identity", subAgent: false},
-	{name: "SOUL.md", section: "Persona", subAgent: false},
-	{name: "USER.md", section: "User", subAgent: false},
-	{name: "PROJECT.md", section: "Project", subAgent: false},
-	{name: "AGENTS.md", section: "Agent Guidelines", subAgent: true},
-	{name: "TOOLS.md", section: "Tools", subAgent: true},
-	{name: "HEARTBEAT.md", section: "Heartbeat", subAgent: false},
-	{name: "MEMORY.md", section: "Memory", subAgent: false},
 }
 
 // Build assembles a system prompt by reading workspace bootstrap files.
@@ -44,21 +24,18 @@ func Build(opts BuildOptions) string {
 	b.WriteString(fmt.Sprintf("Current time: %s\n", time.Now().UTC().Format(time.RFC3339)))
 	b.WriteString("\n")
 
-	for _, f := range mainFiles {
-		if opts.SubAgent && !f.subAgent {
+	for _, section := range bootstrapSections {
+		if opts.SubAgent && !section.subAgent {
 			continue
 		}
-
-		content, err := readFileContent(filepath.Join(opts.WorkspaceDir, f.name))
-		if err != nil || content == "" {
+		if !opts.SubAgent && section.subAgent {
 			continue
 		}
-
-		if len(content) > maxFileChars {
-			content = content[:maxFileChars]
+		content := readBootstrapSection(opts.WorkspaceDir, section)
+		if content == "" {
+			continue
 		}
-
-		b.WriteString(fmt.Sprintf("## %s\n\n", f.section))
+		b.WriteString(fmt.Sprintf("## %s\n\n", section.name))
 		b.WriteString(content)
 		b.WriteString("\n\n")
 	}
@@ -67,6 +44,25 @@ func Build(opts BuildOptions) string {
 	}
 
 	return b.String()
+}
+
+func readBootstrapSection(workspaceDir string, section bootstrapSection) string {
+	parts := make([]string, 0, len(section.files))
+	for _, name := range section.files {
+		content, err := readFileContent(filepath.Join(workspaceDir, name))
+		if err != nil || strings.TrimSpace(content) == "" {
+			continue
+		}
+		parts = append(parts, strings.TrimSpace(content))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	joined := strings.Join(parts, "\n\n")
+	if section.maxChars > 0 && len(joined) > section.maxChars {
+		joined = joined[:section.maxChars]
+	}
+	return joined
 }
 
 func appendRecentExperiences(b *strings.Builder, workspaceDir string) {

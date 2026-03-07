@@ -24,7 +24,6 @@ func TestEnsureWorkspace(t *testing.T) {
 		filepath.Join(root, "MEMORY.md"),
 		filepath.Join(root, "PROJECT.md"),
 		filepath.Join(root, "AGENTS.md"),
-		filepath.Join(root, "SOUL.md"),
 		filepath.Join(root, "USER.md"),
 		filepath.Join(root, "IDENTITY.md"),
 		filepath.Join(root, "TOOLS.md"),
@@ -67,14 +66,6 @@ func TestEnsureWorkspace(t *testing.T) {
 		t.Fatalf("expected default AGENTS template, got %q", string(agentsFile))
 	}
 
-	soulFile, err := os.ReadFile(filepath.Join(root, "SOUL.md"))
-	if err != nil {
-		t.Fatalf("read SOUL.md: %v", err)
-	}
-	if !strings.Contains(string(soulFile), "Persona") {
-		t.Fatalf("expected default SOUL template, got %q", string(soulFile))
-	}
-
 	userFile, err := os.ReadFile(filepath.Join(root, "USER.md"))
 	if err != nil {
 		t.Fatalf("read USER.md: %v", err)
@@ -89,6 +80,9 @@ func TestEnsureWorkspace(t *testing.T) {
 	}
 	if !strings.Contains(string(identityFile), "Agent Identity") {
 		t.Fatalf("expected default IDENTITY template, got %q", string(identityFile))
+	}
+	if !strings.Contains(string(identityFile), "Communication Style") {
+		t.Fatalf("expected IDENTITY template to absorb persona guidance, got %q", string(identityFile))
 	}
 
 	toolsFile, err := os.ReadFile(filepath.Join(root, "TOOLS.md"))
@@ -109,7 +103,6 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 	customMemory := "custom memory"
 	customProject := "custom project"
 	customAgents := "custom agents"
-	customSoul := "custom soul"
 	customUser := "custom user"
 	customIdentity := "custom identity"
 	customTools := "custom tools"
@@ -124,9 +117,6 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(customAgents), 0o644); err != nil {
 		t.Fatalf("write AGENTS.md: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "SOUL.md"), []byte(customSoul), 0o644); err != nil {
-		t.Fatalf("write SOUL.md: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "USER.md"), []byte(customUser), 0o644); err != nil {
 		t.Fatalf("write USER.md: %v", err)
@@ -172,14 +162,6 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	if string(agentsFile) != customAgents {
 		t.Fatalf("expected existing AGENTS.md to remain unchanged, got %q", string(agentsFile))
-	}
-
-	soulFile, err := os.ReadFile(filepath.Join(root, "SOUL.md"))
-	if err != nil {
-		t.Fatalf("read SOUL.md: %v", err)
-	}
-	if string(soulFile) != customSoul {
-		t.Fatalf("expected existing SOUL.md to remain unchanged, got %q", string(soulFile))
 	}
 
 	userFile, err := os.ReadFile(filepath.Join(root, "USER.md"))
