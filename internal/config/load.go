@@ -19,7 +19,7 @@ func Load(path string) (Config, error) {
 	}
 
 	applyEnv(&cfg)
-	applyLLMDefaults(&cfg)
+	applyDefaults(&cfg)
 	return cfg, nil
 }
 

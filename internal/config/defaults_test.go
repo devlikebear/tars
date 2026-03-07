@@ -1269,3 +1269,66 @@ func TestLoad_APIAuthYAMLInlineComments(t *testing.T) {
 		t.Fatalf("expected admin token without inline comment, got %q", cfg.APIAdminToken)
 	}
 }
+
+func TestDefaultConfigValues_SharedBaseline(t *testing.T) {
+	defaults := defaultConfigValues()
+
+	if defaults.Mode != "standalone" {
+		t.Fatalf("expected mode standalone, got %q", defaults.Mode)
+	}
+	if defaults.WorkspaceDir != "./workspace" {
+		t.Fatalf("expected workspace default ./workspace, got %q", defaults.WorkspaceDir)
+	}
+	if defaults.APIAuthMode != "required" {
+		t.Fatalf("expected api auth mode required, got %q", defaults.APIAuthMode)
+	}
+	if defaults.APIMaxInflightChat != 2 {
+		t.Fatalf("expected inflight chat default 2, got %d", defaults.APIMaxInflightChat)
+	}
+	if defaults.BrowserRelayAddr != "127.0.0.1:43182" {
+		t.Fatalf("expected browser relay addr default, got %q", defaults.BrowserRelayAddr)
+	}
+}
+
+func TestApplyDefaults_UsesSharedDefaults(t *testing.T) {
+	cfg := Config{
+		WorkspaceDir: "./workspace",
+	}
+
+	applyDefaults(&cfg)
+
+	if cfg.ScheduleTimezone != "Asia/Seoul" {
+		t.Fatalf("expected schedule timezone default Asia/Seoul, got %q", cfg.ScheduleTimezone)
+	}
+	if cfg.AssistantHotkey != "Ctrl+Option+Space" {
+		t.Fatalf("expected assistant hotkey default, got %q", cfg.AssistantHotkey)
+	}
+	if cfg.ToolsWebSearchPerplexityBaseURL != "https://api.perplexity.ai/chat/completions" {
+		t.Fatalf("expected perplexity base url default, got %q", cfg.ToolsWebSearchPerplexityBaseURL)
+	}
+	if cfg.GatewayRunsMaxRecords != 2000 {
+		t.Fatalf("expected gateway runs max records default 2000, got %d", cfg.GatewayRunsMaxRecords)
+	}
+}
+
+func TestDefaultAndApplyDefaults_StayAlignedForCoreValues(t *testing.T) {
+	cfg := Config{
+		WorkspaceDir: "./workspace",
+	}
+
+	applyDefaults(&cfg)
+	defaults := defaultConfigValues()
+
+	if cfg.APIAuthMode != defaults.APIAuthMode {
+		t.Fatalf("expected api auth mode alignment, got cfg=%q defaults=%q", cfg.APIAuthMode, defaults.APIAuthMode)
+	}
+	if cfg.APIMaxInflightAgentRuns != defaults.APIMaxInflightAgentRuns {
+		t.Fatalf("expected inflight agent runs alignment, got cfg=%d defaults=%d", cfg.APIMaxInflightAgentRuns, defaults.APIMaxInflightAgentRuns)
+	}
+	if cfg.CronRunHistoryLimit != defaults.CronRunHistoryLimit {
+		t.Fatalf("expected cron history alignment, got cfg=%d defaults=%d", cfg.CronRunHistoryLimit, defaults.CronRunHistoryLimit)
+	}
+	if cfg.BrowserRelayOriginAllowlist[0] != defaults.BrowserRelayOriginAllowlist[0] {
+		t.Fatalf("expected relay origin allowlist alignment, got cfg=%q defaults=%q", cfg.BrowserRelayOriginAllowlist[0], defaults.BrowserRelayOriginAllowlist[0])
+	}
+}

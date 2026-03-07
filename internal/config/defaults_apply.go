@@ -7,37 +7,60 @@ import (
 )
 
 func applyLLMDefaults(cfg *Config) {
+	applyDefaults(cfg)
+}
+
+func applyDefaults(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	defaults := defaultConfigValues()
+	applyCoreDefaults(cfg, defaults)
+	applyToolDefaults(cfg, defaults)
+	applyVaultDefaults(cfg, defaults)
+	applyBrowserDefaults(cfg, defaults)
+	applyGatewayDefaults(cfg, defaults)
+	applyProviderDefaults(cfg, defaults)
+}
+
+func applyCoreDefaults(cfg *Config, defaults Config) {
+	if strings.TrimSpace(cfg.Mode) == "" {
+		cfg.Mode = defaults.Mode
+	}
+	if strings.TrimSpace(cfg.WorkspaceDir) == "" {
+		cfg.WorkspaceDir = defaults.WorkspaceDir
+	}
 	cfg.APIAuthMode = strings.TrimSpace(strings.ToLower(cfg.APIAuthMode))
 	switch cfg.APIAuthMode {
 	case "off", "external-required", "required":
 	default:
-		cfg.APIAuthMode = "required"
+		cfg.APIAuthMode = defaults.APIAuthMode
 	}
 	cfg.APIAuthToken = strings.TrimSpace(cfg.APIAuthToken)
 	cfg.APIUserToken = strings.TrimSpace(cfg.APIUserToken)
 	cfg.APIAdminToken = strings.TrimSpace(cfg.APIAdminToken)
 	if cfg.APIMaxInflightChat <= 0 {
-		cfg.APIMaxInflightChat = 2
+		cfg.APIMaxInflightChat = defaults.APIMaxInflightChat
 	}
 	if cfg.APIMaxInflightAgentRuns <= 0 {
-		cfg.APIMaxInflightAgentRuns = 4
+		cfg.APIMaxInflightAgentRuns = defaults.APIMaxInflightAgentRuns
 	}
 	cfg.SessionDefaultID = strings.TrimSpace(cfg.SessionDefaultID)
 	cfg.SessionTelegramScope = strings.TrimSpace(strings.ToLower(cfg.SessionTelegramScope))
 	switch cfg.SessionTelegramScope {
 	case "main", "per-user":
 	default:
-		cfg.SessionTelegramScope = "main"
+		cfg.SessionTelegramScope = defaults.SessionTelegramScope
 	}
 	cfg.LLMProvider = strings.TrimSpace(strings.ToLower(cfg.LLMProvider))
 	if cfg.LLMProvider == "" {
-		cfg.LLMProvider = "bifrost"
+		cfg.LLMProvider = defaults.LLMProvider
 	}
 	cfg.ChannelsTelegramDMPolicy = strings.TrimSpace(strings.ToLower(cfg.ChannelsTelegramDMPolicy))
 	switch cfg.ChannelsTelegramDMPolicy {
 	case "pairing", "allowlist", "open", "disabled":
 	default:
-		cfg.ChannelsTelegramDMPolicy = "pairing"
+		cfg.ChannelsTelegramDMPolicy = defaults.ChannelsTelegramDMPolicy
 	}
 	cfg.TelegramBotToken = strings.TrimSpace(cfg.TelegramBotToken)
 	cfg.LLMAuthMode = strings.TrimSpace(strings.ToLower(cfg.LLMAuthMode))
@@ -46,7 +69,7 @@ func applyLLMDefaults(cfg *Config) {
 		case "openai-codex":
 			cfg.LLMAuthMode = "oauth"
 		default:
-			cfg.LLMAuthMode = "api-key"
+			cfg.LLMAuthMode = defaults.LLMAuthMode
 		}
 	}
 	if cfg.LLMProvider == "openai-codex" && cfg.LLMAuthMode == "api-key" && strings.TrimSpace(cfg.LLMAPIKey) == "" {
@@ -54,109 +77,113 @@ func applyLLMDefaults(cfg *Config) {
 	}
 	cfg.LLMOAuthProvider = strings.TrimSpace(strings.ToLower(cfg.LLMOAuthProvider))
 	if cfg.LLMAuthMode == "oauth" && cfg.LLMOAuthProvider == "" {
-		switch cfg.LLMProvider {
-		case "anthropic":
-			cfg.LLMOAuthProvider = "claude-code"
-		case "gemini", "gemini-native":
-			cfg.LLMOAuthProvider = "google-antigravity"
-		case "openai-codex":
-			cfg.LLMOAuthProvider = "openai-codex"
+		if provider := defaultOAuthProvider(cfg.LLMProvider); provider != "" {
+			cfg.LLMOAuthProvider = provider
 		}
 	}
 	if cfg.AgentMaxIterations <= 0 {
-		cfg.AgentMaxIterations = 8
+		cfg.AgentMaxIterations = defaults.AgentMaxIterations
 	}
 	if cfg.UsageLimitDailyUSD <= 0 {
-		cfg.UsageLimitDailyUSD = 10.0
+		cfg.UsageLimitDailyUSD = defaults.UsageLimitDailyUSD
 	}
 	if cfg.UsageLimitWeeklyUSD <= 0 {
-		cfg.UsageLimitWeeklyUSD = 50.0
+		cfg.UsageLimitWeeklyUSD = defaults.UsageLimitWeeklyUSD
 	}
 	if cfg.UsageLimitMonthlyUSD <= 0 {
-		cfg.UsageLimitMonthlyUSD = 150.0
+		cfg.UsageLimitMonthlyUSD = defaults.UsageLimitMonthlyUSD
 	}
 	cfg.UsageLimitMode = strings.TrimSpace(strings.ToLower(cfg.UsageLimitMode))
 	switch cfg.UsageLimitMode {
 	case "soft", "hard":
 	default:
-		cfg.UsageLimitMode = "soft"
+		cfg.UsageLimitMode = defaults.UsageLimitMode
 	}
 	if cfg.UsagePriceOverrides == nil {
 		cfg.UsagePriceOverrides = map[string]UsagePrice{}
 	}
 	if cfg.CronRunHistoryLimit <= 0 {
-		cfg.CronRunHistoryLimit = 200
+		cfg.CronRunHistoryLimit = defaults.CronRunHistoryLimit
 	}
 	cfg.AssistantHotkey = strings.TrimSpace(cfg.AssistantHotkey)
 	if cfg.AssistantHotkey == "" {
-		cfg.AssistantHotkey = "Ctrl+Option+Space"
+		cfg.AssistantHotkey = defaults.AssistantHotkey
 	}
 	cfg.AssistantWhisperBin = strings.TrimSpace(cfg.AssistantWhisperBin)
 	if cfg.AssistantWhisperBin == "" {
-		cfg.AssistantWhisperBin = "whisper-cli"
+		cfg.AssistantWhisperBin = defaults.AssistantWhisperBin
 	}
 	cfg.AssistantFFmpegBin = strings.TrimSpace(cfg.AssistantFFmpegBin)
 	if cfg.AssistantFFmpegBin == "" {
-		cfg.AssistantFFmpegBin = "ffmpeg"
+		cfg.AssistantFFmpegBin = defaults.AssistantFFmpegBin
 	}
 	cfg.AssistantTTSBin = strings.TrimSpace(cfg.AssistantTTSBin)
 	if cfg.AssistantTTSBin == "" {
-		cfg.AssistantTTSBin = "say"
+		cfg.AssistantTTSBin = defaults.AssistantTTSBin
 	}
 	cfg.ScheduleTimezone = strings.TrimSpace(cfg.ScheduleTimezone)
 	if cfg.ScheduleTimezone == "" {
-		cfg.ScheduleTimezone = "Asia/Seoul"
+		cfg.ScheduleTimezone = defaults.ScheduleTimezone
 	}
+}
+
+func applyToolDefaults(cfg *Config, defaults Config) {
 	cfg.ToolsWebSearchProvider = strings.TrimSpace(strings.ToLower(cfg.ToolsWebSearchProvider))
 	if cfg.ToolsWebSearchProvider == "" {
-		cfg.ToolsWebSearchProvider = "brave"
+		cfg.ToolsWebSearchProvider = defaults.ToolsWebSearchProvider
 	}
 	cfg.ToolsDefaultSet = strings.TrimSpace(strings.ToLower(cfg.ToolsDefaultSet))
 	switch cfg.ToolsDefaultSet {
 	case "", "standard":
-		cfg.ToolsDefaultSet = "standard"
+		cfg.ToolsDefaultSet = defaults.ToolsDefaultSet
 	case "minimal":
 	default:
-		cfg.ToolsDefaultSet = "standard"
+		cfg.ToolsDefaultSet = defaults.ToolsDefaultSet
 	}
 	if cfg.ToolsWebSearchPerplexityModel == "" {
-		cfg.ToolsWebSearchPerplexityModel = "sonar"
+		cfg.ToolsWebSearchPerplexityModel = defaults.ToolsWebSearchPerplexityModel
 	}
 	if cfg.ToolsWebSearchPerplexityBaseURL == "" {
-		cfg.ToolsWebSearchPerplexityBaseURL = "https://api.perplexity.ai/chat/completions"
+		cfg.ToolsWebSearchPerplexityBaseURL = defaults.ToolsWebSearchPerplexityBaseURL
 	}
 	if cfg.ToolsWebSearchCacheTTLSeconds <= 0 {
-		cfg.ToolsWebSearchCacheTTLSeconds = 60
+		cfg.ToolsWebSearchCacheTTLSeconds = defaults.ToolsWebSearchCacheTTLSeconds
 	}
+}
+
+func applyVaultDefaults(cfg *Config, defaults Config) {
 	cfg.VaultAuthMode = strings.TrimSpace(strings.ToLower(cfg.VaultAuthMode))
 	if cfg.VaultAuthMode == "" {
-		cfg.VaultAuthMode = "token"
+		cfg.VaultAuthMode = defaults.VaultAuthMode
 	}
 	if cfg.VaultAddr == "" {
-		cfg.VaultAddr = "http://127.0.0.1:8200"
+		cfg.VaultAddr = defaults.VaultAddr
 	}
 	if cfg.VaultTimeoutMS <= 0 {
-		cfg.VaultTimeoutMS = 1500
+		cfg.VaultTimeoutMS = defaults.VaultTimeoutMS
 	}
 	if cfg.VaultKVMount == "" {
-		cfg.VaultKVMount = "secret"
+		cfg.VaultKVMount = defaults.VaultKVMount
 	}
 	if cfg.VaultKVVersion <= 0 {
-		cfg.VaultKVVersion = 2
+		cfg.VaultKVVersion = defaults.VaultKVVersion
 	}
 	if cfg.VaultAppRoleMount == "" {
-		cfg.VaultAppRoleMount = "approle"
+		cfg.VaultAppRoleMount = defaults.VaultAppRoleMount
 	}
+}
+
+func applyBrowserDefaults(cfg *Config, defaults Config) {
 	cfg.BrowserDefaultProfile = strings.TrimSpace(strings.ToLower(cfg.BrowserDefaultProfile))
 	if cfg.BrowserDefaultProfile == "" {
-		cfg.BrowserDefaultProfile = "managed"
+		cfg.BrowserDefaultProfile = defaults.BrowserDefaultProfile
 	}
 	if cfg.BrowserRelayAddr == "" {
-		cfg.BrowserRelayAddr = "127.0.0.1:43182"
+		cfg.BrowserRelayAddr = defaults.BrowserRelayAddr
 	}
 	cfg.BrowserRelayToken = strings.TrimSpace(cfg.BrowserRelayToken)
 	if len(cfg.BrowserRelayOriginAllowlist) == 0 {
-		cfg.BrowserRelayOriginAllowlist = []string{"chrome-extension://*"}
+		cfg.BrowserRelayOriginAllowlist = append([]string{}, defaults.BrowserRelayOriginAllowlist...)
 	}
 	if strings.TrimSpace(cfg.BrowserSiteFlowsDir) == "" {
 		cfg.BrowserSiteFlowsDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "automation", "sites")
@@ -164,30 +191,36 @@ func applyLLMDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.BrowserManagedUserDataDir) == "" {
 		cfg.BrowserManagedUserDataDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "browser", "managed")
 	}
+}
+
+func applyGatewayDefaults(cfg *Config, defaults Config) {
 	if cfg.GatewayAgentsWatchDebounceMS <= 0 {
-		cfg.GatewayAgentsWatchDebounceMS = 200
+		cfg.GatewayAgentsWatchDebounceMS = defaults.GatewayAgentsWatchDebounceMS
 	}
 	if cfg.GatewayRunsMaxRecords <= 0 {
-		cfg.GatewayRunsMaxRecords = 2000
+		cfg.GatewayRunsMaxRecords = defaults.GatewayRunsMaxRecords
 	}
 	if cfg.GatewayChannelsMaxMessagesPerChannel <= 0 {
-		cfg.GatewayChannelsMaxMessagesPerChannel = 500
+		cfg.GatewayChannelsMaxMessagesPerChannel = defaults.GatewayChannelsMaxMessagesPerChannel
 	}
 	if strings.TrimSpace(cfg.GatewayPersistenceDir) == "" {
 		cfg.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway")
 	}
 	if cfg.GatewayArchiveRetentionDays <= 0 {
-		cfg.GatewayArchiveRetentionDays = 30
+		cfg.GatewayArchiveRetentionDays = defaults.GatewayArchiveRetentionDays
 	}
 	if cfg.GatewayArchiveMaxFileBytes <= 0 {
-		cfg.GatewayArchiveMaxFileBytes = 10485760
+		cfg.GatewayArchiveMaxFileBytes = defaults.GatewayArchiveMaxFileBytes
 	}
 	if strings.TrimSpace(cfg.GatewayArchiveDir) == "" {
 		cfg.GatewayArchiveDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway", "archive")
 	}
 	if cfg.MCPCommandAllowlist == nil {
-		cfg.MCPCommandAllowlist = []string{}
+		cfg.MCPCommandAllowlist = append([]string{}, defaults.MCPCommandAllowlist...)
 	}
+}
+
+func applyProviderDefaults(cfg *Config, defaults Config) {
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {
 		case "bifrost":
@@ -202,54 +235,70 @@ func applyLLMDefaults(cfg *Config) {
 			}
 		case "openai":
 			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = "https://api.openai.com/v1"
+				cfg.LLMBaseURL = defaultOpenAIBaseURL
 			}
 			if cfg.LLMModel == "" {
-				cfg.LLMModel = "gpt-4o-mini"
+				cfg.LLMModel = defaultOpenAIModel
 			}
 			if cfg.LLMAPIKey == "" {
 				cfg.LLMAPIKey = os.Getenv("OPENAI_API_KEY")
 			}
 		case "openai-codex":
 			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = "https://chatgpt.com/backend-api"
+				cfg.LLMBaseURL = defaultOpenAICodexBaseURL
 			}
 			if cfg.LLMModel == "" {
-				cfg.LLMModel = "gpt-5.3-codex"
+				cfg.LLMModel = defaultOpenAICodexModel
 			}
 			if cfg.LLMAPIKey == "" {
 				cfg.LLMAPIKey = firstNonEmpty(os.Getenv("OPENAI_CODEX_OAUTH_TOKEN"), os.Getenv("TARS_OPENAI_CODEX_OAUTH_TOKEN"))
 			}
 		case "gemini":
 			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
+				cfg.LLMBaseURL = defaultGeminiBaseURL
 			}
 			if cfg.LLMModel == "" {
-				cfg.LLMModel = "gemini-2.5-flash"
+				cfg.LLMModel = defaultGeminiModel
 			}
 			if cfg.LLMAPIKey == "" {
 				cfg.LLMAPIKey = os.Getenv("GEMINI_API_KEY")
 			}
 		case "gemini-native":
 			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = "https://generativelanguage.googleapis.com/v1beta"
+				cfg.LLMBaseURL = defaultGeminiNativeBaseURL
 			}
 			if cfg.LLMModel == "" {
-				cfg.LLMModel = "gemini-2.5-flash"
+				cfg.LLMModel = defaultGeminiModel
 			}
 			if cfg.LLMAPIKey == "" {
 				cfg.LLMAPIKey = os.Getenv("GEMINI_API_KEY")
 			}
 		case "anthropic":
 			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = "https://api.anthropic.com"
+				cfg.LLMBaseURL = defaultAnthropicBaseURL
 			}
 			if cfg.LLMModel == "" {
-				cfg.LLMModel = "claude-3-5-haiku-latest"
+				cfg.LLMModel = defaultAnthropicModel
 			}
 			if cfg.LLMAPIKey == "" {
 				cfg.LLMAPIKey = os.Getenv("ANTHROPIC_API_KEY")
 			}
 		}
+	}
+	if cfg.BifrostModel == "" {
+		cfg.BifrostModel = defaults.BifrostModel
+	}
+}
+
+func defaultOAuthProvider(provider string) string {
+	switch strings.TrimSpace(strings.ToLower(provider)) {
+	case "anthropic":
+		return defaultClaudeOAuthProvider
+	case "gemini", "gemini-native":
+		return defaultGeminiOAuthProvider
+	case "openai-codex":
+		return defaultOpenAICodexOAuthProvider
+	default:
+		return ""
 	}
 }
