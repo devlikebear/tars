@@ -368,34 +368,7 @@ func resolveChatProjectContext(
 }
 
 func formatProjectPromptSection(item project.Project) string {
-	var b strings.Builder
-	b.WriteString("## Active Project\n")
-	if strings.TrimSpace(item.ID) != "" {
-		_, _ = fmt.Fprintf(&b, "- id: %s\n", strings.TrimSpace(item.ID))
-	}
-	if strings.TrimSpace(item.Name) != "" {
-		_, _ = fmt.Fprintf(&b, "- name: %s\n", strings.TrimSpace(item.Name))
-	}
-	if strings.TrimSpace(item.Type) != "" {
-		_, _ = fmt.Fprintf(&b, "- type: %s\n", strings.TrimSpace(item.Type))
-	}
-	if strings.TrimSpace(item.Status) != "" {
-		_, _ = fmt.Fprintf(&b, "- status: %s\n", strings.TrimSpace(item.Status))
-	}
-	if strings.TrimSpace(item.Objective) != "" {
-		_, _ = fmt.Fprintf(&b, "- objective: %s\n", strings.TrimSpace(item.Objective))
-	}
-	if len(item.ToolsAllow) > 0 {
-		_, _ = fmt.Fprintf(&b, "- tools_allow: %s\n", strings.Join(item.ToolsAllow, ", "))
-	}
-	if body := strings.TrimSpace(item.Body); body != "" {
-		b.WriteString("\n")
-		b.WriteString(body)
-		if !strings.HasSuffix(body, "\n") {
-			b.WriteString("\n")
-		}
-	}
-	return strings.TrimSpace(b.String())
+	return project.ProjectPromptContext(item)
 }
 
 func resolveInjectedToolSchemas(
@@ -422,40 +395,23 @@ func resolveInjectedToolSchemas(
 	}
 
 	names := defaultMinimalToolNames()
-	projectAllow := append([]string{}, activeProject.ToolsAllow...)
-	if known := knownToolsFromRegistry(registry); len(known) > 0 {
-		if len(activeProject.ToolsAllowGroups) > 0 {
-			groups := knownGatewayPromptToolGroups(known)
-			_, groupTools, _ := normalizeGatewayToolsAllowGroups(activeProject.ToolsAllowGroups, groups)
-			projectAllow = append(projectAllow, groupTools...)
-		}
-		if len(activeProject.ToolsAllowPatterns) > 0 {
-			_, patternTools, _ := normalizeGatewayToolsAllowPatterns(activeProject.ToolsAllowPatterns, known)
-			projectAllow = append(projectAllow, patternTools...)
-		}
-	}
-	if len(projectAllow) > 0 {
-		names = append(names, projectAllow...)
+	policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
+		ToolsAllow:               activeProject.ToolsAllow,
+		ToolsAllowExists:         len(activeProject.ToolsAllow) > 0,
+		ToolsAllowGroups:         activeProject.ToolsAllowGroups,
+		ToolsAllowGroupsExists:   len(activeProject.ToolsAllowGroups) > 0,
+		ToolsAllowPatterns:       activeProject.ToolsAllowPatterns,
+		ToolsAllowPatternsExists: len(activeProject.ToolsAllowPatterns) > 0,
+		ToolsDeny:                activeProject.ToolsDeny,
+		ToolsDenyExists:          len(activeProject.ToolsDeny) > 0,
+		ToolsRiskMax:             activeProject.ToolsRiskMax,
+		ToolsRiskMaxExists:       strings.TrimSpace(activeProject.ToolsRiskMax) != "",
+	}, knownToolsFromRegistry(registry), project.ToolPolicyOptions{})
+	if len(policy.AllowedTools) > 0 {
+		names = append(names, policy.AllowedTools...)
 	}
 	names = normalizeToolNames(names)
-	if len(activeProject.ToolsDeny) > 0 {
-		denySet := map[string]struct{}{}
-		for _, item := range activeProject.ToolsDeny {
-			name := tool.CanonicalToolName(item)
-			if name == "" {
-				continue
-			}
-			denySet[name] = struct{}{}
-		}
-		filtered := make([]string, 0, len(names))
-		for _, name := range names {
-			if _, denied := denySet[name]; denied {
-				continue
-			}
-			filtered = append(filtered, name)
-		}
-		names = filtered
-	}
+	names = project.ApplyToolConstraints(names, policy)
 	names = filterHighRiskToolNamesForRole(names, authRole, allowHighRiskUser)
 	if len(names) == 0 {
 		return nil

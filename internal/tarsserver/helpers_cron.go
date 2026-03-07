@@ -127,20 +127,7 @@ func buildCronProjectPromptSection(workspaceDir string, projectID string) string
 	if err != nil {
 		return fmt.Sprintf("CRON_PROJECT_CONTEXT:\n- project_id: %s\n- warning: project metadata not found", id)
 	}
-	artifactDir := filepath.Join(root, "projects", item.ID)
-	var b strings.Builder
-	b.WriteString("CRON_PROJECT_CONTEXT:\n")
-	_, _ = fmt.Fprintf(&b, "- project_id: %s\n", strings.TrimSpace(item.ID))
-	_, _ = fmt.Fprintf(&b, "- project_name: %s\n", strings.TrimSpace(item.Name))
-	_, _ = fmt.Fprintf(&b, "- project_type: %s\n", strings.TrimSpace(item.Type))
-	_, _ = fmt.Fprintf(&b, "- project_status: %s\n", strings.TrimSpace(item.Status))
-	_, _ = fmt.Fprintf(&b, "- artifacts_dir: %s\n", artifactDir)
-	if body := strings.TrimSpace(item.Body); body != "" {
-		b.WriteString("\nPROJECT_INSTRUCTIONS:\n")
-		b.WriteString(body)
-		b.WriteString("\n")
-	}
-	return strings.TrimSpace(b.String())
+	return project.CronPromptContext(root, item)
 }
 
 func persistCronProjectArtifact(workspaceDir string, job cron.Job, response string, now time.Time) error {

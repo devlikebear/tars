@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tarsncase/internal/gateway"
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"gopkg.in/yaml.v3"
 )
@@ -38,6 +39,7 @@ type workspaceGatewayAgentFrontmatter struct {
 	ToolsDeny                []string
 	ToolsDenyExists          bool
 	ToolsRiskMax             string
+	ToolsRiskMaxExists       bool
 	ToolsAllowGroups         []string
 	ToolsAllowGroupsExists   bool
 	ToolsAllowPatterns       []string
@@ -64,7 +66,6 @@ func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, [
 	}
 
 	knownTools := knownGatewayPromptTools(base)
-	knownGroups := knownGatewayPromptToolGroups(knownTools)
 	loaded := make([]workspaceGatewayAgent, 0)
 	diagnostics := make([]string, 0)
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
@@ -119,81 +120,59 @@ func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, [
 			strings.TrimSpace(meta.ToolsRiskMax) != ""
 		if policyRequested {
 			policyMode = "allowlist"
-			union := make([]string, 0)
-			unionSeen := map[string]struct{}{}
-			appendUnion := func(items []string) {
-				for _, item := range items {
-					if _, exists := unionSeen[item]; exists {
-						continue
-					}
-					unionSeen[item] = struct{}{}
-					union = append(union, item)
-				}
-			}
-			hasAllowSource := meta.ToolsAllowExists || meta.ToolsAllowGroupsExists || meta.ToolsAllowPatternsExists
-			if !hasAllowSource {
-				appendUnion(listGatewayKnownToolNames(knownTools))
-			}
-
-			normalizedNames, unknownTools := normalizeGatewayToolsAllow(meta.ToolsAllow, knownTools)
-			if len(unknownTools) > 0 {
+			policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
+				ToolsAllow:               meta.ToolsAllow,
+				ToolsAllowExists:         meta.ToolsAllowExists,
+				ToolsAllowGroups:         meta.ToolsAllowGroups,
+				ToolsAllowGroupsExists:   meta.ToolsAllowGroupsExists,
+				ToolsAllowPatterns:       meta.ToolsAllowPatterns,
+				ToolsAllowPatternsExists: meta.ToolsAllowPatternsExists,
+				ToolsDeny:                meta.ToolsDeny,
+				ToolsDenyExists:          meta.ToolsDenyExists,
+				ToolsRiskMax:             meta.ToolsRiskMax,
+				ToolsRiskMaxExists:       meta.ToolsRiskMaxExists,
+			}, knownTools, project.ToolPolicyOptions{
+				ExpandAllKnownWhenPolicyWithoutAllowSource: true,
+			})
+			if len(policy.UnknownTools) > 0 {
 				diagnostics = append(
 					diagnostics,
-					fmt.Sprintf("agent %s tools_allow ignored unknown tools: %s", name, strings.Join(unknownTools, ", ")),
+					fmt.Sprintf("agent %s tools_allow ignored unknown tools: %s", name, strings.Join(policy.UnknownTools, ", ")),
 				)
 			}
-			appendUnion(normalizedNames)
-
-			normalizedGroups, groupTools, unknownGroups := normalizeGatewayToolsAllowGroups(meta.ToolsAllowGroups, knownGroups)
-			if len(unknownGroups) > 0 {
+			if len(policy.UnknownGroups) > 0 {
 				diagnostics = append(
 					diagnostics,
-					fmt.Sprintf("agent %s tools_allow_groups ignored unknown groups: %s", name, strings.Join(unknownGroups, ", ")),
+					fmt.Sprintf("agent %s tools_allow_groups ignored unknown groups: %s", name, strings.Join(policy.UnknownGroups, ", ")),
 				)
 			}
-			toolsAllowGroups = normalizedGroups
-			appendUnion(groupTools)
-
-			normalizedPatterns, patternTools, invalidPatterns := normalizeGatewayToolsAllowPatterns(meta.ToolsAllowPatterns, knownTools)
-			if len(invalidPatterns) > 0 {
+			if len(policy.InvalidPatterns) > 0 {
 				diagnostics = append(
 					diagnostics,
-					fmt.Sprintf("agent %s tools_allow_patterns ignored invalid patterns: %s", name, strings.Join(invalidPatterns, ", ")),
+					fmt.Sprintf("agent %s tools_allow_patterns ignored invalid patterns: %s", name, strings.Join(policy.InvalidPatterns, ", ")),
 				)
 			}
-			toolsAllowPatterns = normalizedPatterns
-			appendUnion(patternTools)
-
-			normalizedDeny, unknownDeny := normalizeGatewayToolsAllow(meta.ToolsDeny, knownTools)
-			if len(unknownDeny) > 0 {
+			if len(policy.UnknownDeny) > 0 {
 				diagnostics = append(
 					diagnostics,
-					fmt.Sprintf("agent %s tools_deny ignored unknown tools: %s", name, strings.Join(unknownDeny, ", ")),
+					fmt.Sprintf("agent %s tools_deny ignored unknown tools: %s", name, strings.Join(policy.UnknownDeny, ", ")),
 				)
 			}
-			toolsDeny = normalizedDeny
-			if len(toolsDeny) > 0 {
-				union = removeDeniedGatewayTools(union, toolsDeny)
-			}
-
-			normalizedRiskMax, riskOK := normalizeGatewayToolRiskMax(meta.ToolsRiskMax)
-			if strings.TrimSpace(meta.ToolsRiskMax) != "" && !riskOK {
+			if policy.InvalidRiskMax {
 				diagnostics = append(
 					diagnostics,
 					fmt.Sprintf("agent %s tools_risk_max ignored invalid value: %q", name, strings.TrimSpace(meta.ToolsRiskMax)),
 				)
 			}
-			toolsRiskMax = normalizedRiskMax
-			if toolsRiskMax != "" {
-				union = filterGatewayToolsByRisk(union, toolsRiskMax)
-			}
-
-			if len(union) == 0 {
+			toolsAllowGroups = policy.ToolsAllowGroups
+			toolsAllowPatterns = policy.ToolsAllowPatterns
+			toolsDeny = policy.ToolsDeny
+			toolsRiskMax = policy.ToolsRiskMax
+			toolsAllow = policy.AllowedTools
+			if len(toolsAllow) == 0 {
 				diagnostics = append(diagnostics, fmt.Sprintf("skip agent %s: tools_allow has no valid tools", name))
 				return nil
 			}
-			sort.Strings(union)
-			toolsAllow = union
 		}
 		sessionRoutingMode := normalizeGatewaySessionRoutingMode(meta.SessionRoutingMode)
 		sessionFixedID := strings.TrimSpace(meta.SessionFixedID)
@@ -649,6 +628,7 @@ func parseWorkspaceGatewayAgentFrontmatter(raw string) (workspaceGatewayAgentFro
 		meta.ToolsDeny = frontmatterStringList(value)
 	}
 	if value, ok := frontmatterValue(parsed, "tools_risk_max", "tools-risk-max"); ok {
+		meta.ToolsRiskMaxExists = true
 		meta.ToolsRiskMax = frontmatterString(value)
 	}
 	if value, ok := frontmatterValue(parsed, "tools_allow_groups", "tools-allow-groups"); ok {

@@ -239,45 +239,30 @@ func resolveRunAllowedTools(baseWorkspaceDir, projectID string, executorAllowed 
 	if err != nil {
 		return base
 	}
-	projectAllow := sanitizeStringList(item.ToolsAllow)
-	projectDeny := sanitizeStringList(item.ToolsDeny)
-	if len(projectAllow) == 0 && len(projectDeny) == 0 {
+	policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
+		ToolsAllow:               item.ToolsAllow,
+		ToolsAllowExists:         len(item.ToolsAllow) > 0,
+		ToolsAllowGroups:         item.ToolsAllowGroups,
+		ToolsAllowGroupsExists:   len(item.ToolsAllowGroups) > 0,
+		ToolsAllowPatterns:       item.ToolsAllowPatterns,
+		ToolsAllowPatternsExists: len(item.ToolsAllowPatterns) > 0,
+		ToolsDeny:                item.ToolsDeny,
+		ToolsDenyExists:          len(item.ToolsDeny) > 0,
+		ToolsRiskMax:             item.ToolsRiskMax,
+		ToolsRiskMaxExists:       strings.TrimSpace(item.ToolsRiskMax) != "",
+	}, sanitizeStringListAsSet(base), project.ToolPolicyOptions{})
+	if !policy.HasPolicy {
 		return base
 	}
+	return project.ApplyToolPolicy(base, policy)
+}
 
-	allowed := base
-	if len(projectAllow) > 0 {
-		if len(base) == 0 {
-			allowed = projectAllow
-		} else {
-			allowSet := map[string]struct{}{}
-			for _, name := range projectAllow {
-				allowSet[name] = struct{}{}
-			}
-			inter := make([]string, 0, len(base))
-			for _, name := range base {
-				if _, ok := allowSet[name]; ok {
-					inter = append(inter, name)
-				}
-			}
-			allowed = inter
-		}
+func sanitizeStringListAsSet(values []string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, value := range sanitizeStringList(values) {
+		out[value] = struct{}{}
 	}
-	if len(projectDeny) > 0 && len(allowed) > 0 {
-		denySet := map[string]struct{}{}
-		for _, name := range projectDeny {
-			denySet[name] = struct{}{}
-		}
-		filtered := make([]string, 0, len(allowed))
-		for _, name := range allowed {
-			if _, denied := denySet[name]; denied {
-				continue
-			}
-			filtered = append(filtered, name)
-		}
-		allowed = filtered
-	}
-	return allowed
+	return out
 }
 
 func (r *Runtime) appendSessionMessage(workspaceID, sessionID, role, content string, ts time.Time) error {

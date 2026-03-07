@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/session"
 )
 
@@ -181,6 +182,29 @@ func TestRuntimeSpawn_WithCustomExecutor(t *testing.T) {
 	}
 	if agents[0]["name"] != "worker" {
 		t.Fatalf("unexpected agents payload: %+v", agents)
+	}
+}
+
+func TestResolveRunAllowedTools_UsesProjectGroupsPatternsAndRisk(t *testing.T) {
+	workspace := t.TempDir()
+	store := project.NewStore(workspace, nil)
+	created, err := store.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	medium := "medium"
+	if _, err := store.Update(created.ID, project.UpdateInput{
+		ToolsAllowGroups:   []string{"memory"},
+		ToolsAllowPatterns: []string{"^web_"},
+		ToolsRiskMax:       &medium,
+	}); err != nil {
+		t.Fatalf("update project: %v", err)
+	}
+
+	got := resolveRunAllowedTools(workspace, created.ID, []string{"memory_get", "memory_save", "web_search", "exec"})
+
+	if want := []string{"memory_get", "memory_save", "web_search"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected allowed tools: got=%v want=%v", got, want)
 	}
 }
 

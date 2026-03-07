@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"testing"
 
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/tool"
 )
 
@@ -44,6 +45,23 @@ func TestResolveInjectedToolSchemas_AllowHighRiskUserOverride(t *testing.T) {
 		if !hasToolName(names, expected) {
 			t.Fatalf("expected %s when tools_allow_high_risk_user=true, got %+v", expected, names)
 		}
+	}
+}
+
+func TestResolveInjectedToolSchemas_ProjectRiskMaxConstrainsAllowedTools(t *testing.T) {
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.NewProcessManager())
+
+	schemas := resolveInjectedToolSchemas(registry, "standard", &project.Project{
+		ToolsAllow:   []string{"read_file", "glob"},
+		ToolsRiskMax: "low",
+	}, "admin", true)
+	names := toolNamesFromSchemas(schemas)
+
+	if hasToolName(names, "glob") {
+		t.Fatalf("expected glob to be filtered by project tools_risk_max, got %+v", names)
+	}
+	if !hasToolName(names, "read_file") {
+		t.Fatalf("expected read_file to remain allowed, got %+v", names)
 	}
 }
 
