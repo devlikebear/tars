@@ -10,6 +10,8 @@ import (
 
 // AppendMessage appends a single message as one JSON line to the JSONL file at path.
 func AppendMessage(path string, msg Message) error {
+	unlock := lockPath(path)
+	defer unlock()
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open transcript %s: %w", path, err)
@@ -28,6 +30,8 @@ func AppendMessage(path string, msg Message) error {
 
 // RewriteMessages replaces the transcript contents with the provided messages.
 func RewriteMessages(path string, messages []Message) error {
+	unlock := lockPath(path)
+	defer unlock()
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return fmt.Errorf("open transcript %s: %w", path, err)
@@ -49,6 +53,8 @@ func RewriteMessages(path string, messages []Message) error {
 // ReadMessages reads all messages from a JSONL file.
 // Returns an empty slice if the file does not exist or is empty.
 func ReadMessages(path string) ([]Message, error) {
+	unlock := lockPath(path)
+	defer unlock()
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -79,9 +85,9 @@ func ReadMessages(path string) ([]Message, error) {
 
 // HistorySnapshot captures the portion of transcript loaded into model context.
 type HistorySnapshot struct {
-	Messages        []Message
-	Tokens          int
-	CompactionUsed  bool
+	Messages       []Message
+	Tokens         int
+	CompactionUsed bool
 }
 
 // LoadHistory reads messages from a JSONL file, returning only the most recent

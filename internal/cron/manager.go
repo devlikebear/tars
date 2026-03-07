@@ -3,6 +3,7 @@ package cron
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	cronv3 "github.com/robfig/cron/v3"
@@ -57,6 +58,7 @@ func (m *Manager) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	dueJobs := make([]Job, 0, len(jobs))
 	for _, job := range jobs {
 		if !shouldRunAt(job, now) {
 			continue
@@ -64,10 +66,19 @@ func (m *Manager) Tick(ctx context.Context) error {
 		if !m.store.TryStartRun(job.ID) {
 			continue
 		}
-		response, runErr := m.runJob(ctx, job)
-		m.store.FinishRun(job.ID)
-		_, _ = m.store.MarkRunResult(job.ID, now, response, runErr)
+		dueJobs = append(dueJobs, job)
 	}
+	var wg sync.WaitGroup
+	for _, job := range dueJobs {
+		wg.Add(1)
+		go func(job Job) {
+			defer wg.Done()
+			response, runErr := m.runJob(ctx, job)
+			m.store.FinishRun(job.ID)
+			_, _ = m.store.MarkRunResult(job.ID, now, response, runErr)
+		}(job)
+	}
+	wg.Wait()
 	return nil
 }
 

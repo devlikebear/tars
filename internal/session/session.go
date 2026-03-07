@@ -14,6 +14,8 @@ import (
 type Session struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
+	Kind      string    `json:"kind,omitempty"`
+	Hidden    bool      `json:"hidden,omitempty"`
 	ProjectID string    `json:"project_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -30,9 +32,15 @@ func NewStore(dir string) *Store {
 }
 
 func (s *Store) Create(title string) (Session, error) {
+	return s.CreateWithOptions(title, "", false)
+}
+
+func (s *Store) CreateWithOptions(title string, kind string, hidden bool) (Session, error) {
 	now := time.Now().UTC()
 	session := Session{
 		Title:     title,
+		Kind:      strings.TrimSpace(kind),
+		Hidden:    hidden,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -41,6 +49,8 @@ func (s *Store) Create(title string) (Session, error) {
 		return Session{}, fmt.Errorf("create sessions directory: %w", err)
 	}
 
+	unlock := lockPath(s.indexPath())
+	defer unlock()
 	index, err := s.loadIndex()
 	if err != nil {
 		return Session{}, err
@@ -67,7 +77,75 @@ func (s *Store) Create(title string) (Session, error) {
 	return session, nil
 }
 
+func (s *Store) EnsureMain() (Session, error) {
+	return s.ensureNamedSession("main", "main", false)
+}
+
+func (s *Store) EnsureWorker(projectID string) (Session, error) {
+	id := strings.TrimSpace(projectID)
+	if id == "" {
+		return Session{}, fmt.Errorf("project id is required")
+	}
+	return s.ensureNamedSession("worker:"+id, "worker", true)
+}
+
+func (s *Store) ensureNamedSession(title string, kind string, hidden bool) (Session, error) {
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		return Session{}, fmt.Errorf("create sessions directory: %w", err)
+	}
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return Session{}, err
+	}
+	trimmedTitle := strings.TrimSpace(title)
+	trimmedKind := strings.TrimSpace(kind)
+	for id, sess := range index {
+		if strings.TrimSpace(sess.Kind) == trimmedKind && strings.TrimSpace(sess.Title) == trimmedTitle {
+			sess.Hidden = hidden
+			if sess.CreatedAt.IsZero() {
+				sess.CreatedAt = time.Now().UTC()
+			}
+			if sess.UpdatedAt.IsZero() {
+				sess.UpdatedAt = sess.CreatedAt
+			}
+			index[id] = sess
+			if err := s.saveIndex(index); err != nil {
+				return Session{}, err
+			}
+			return sess, nil
+		}
+	}
+	now := time.Now().UTC()
+	created := Session{
+		Title:     trimmedTitle,
+		Kind:      trimmedKind,
+		Hidden:    hidden,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	for {
+		id, err := generateID()
+		if err != nil {
+			return Session{}, err
+		}
+		if _, exists := index[id]; exists {
+			continue
+		}
+		created.ID = id
+		break
+	}
+	index[created.ID] = created
+	if err := s.saveIndex(index); err != nil {
+		return Session{}, err
+	}
+	return created, nil
+}
+
 func (s *Store) Get(id string) (Session, error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
 	index, err := s.loadIndex()
 	if err != nil {
 		return Session{}, err
@@ -82,6 +160,16 @@ func (s *Store) Get(id string) (Session, error) {
 }
 
 func (s *Store) List() ([]Session, error) {
+	return s.list(false)
+}
+
+func (s *Store) ListAll() ([]Session, error) {
+	return s.list(true)
+}
+
+func (s *Store) list(includeHidden bool) ([]Session, error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
 	index, err := s.loadIndex()
 	if err != nil {
 		return nil, err
@@ -89,6 +177,9 @@ func (s *Store) List() ([]Session, error) {
 
 	sessions := make([]Session, 0, len(index))
 	for _, session := range index {
+		if session.Hidden && !includeHidden {
+			continue
+		}
 		sessions = append(sessions, session)
 	}
 
@@ -96,6 +187,8 @@ func (s *Store) List() ([]Session, error) {
 }
 
 func (s *Store) Touch(id string, updatedAt time.Time) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
 	index, err := s.loadIndex()
 	if err != nil {
 		return err
@@ -110,6 +203,8 @@ func (s *Store) Touch(id string, updatedAt time.Time) error {
 }
 
 func (s *Store) SetProjectID(id string, projectID string) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
 	index, err := s.loadIndex()
 	if err != nil {
 		return err
@@ -125,16 +220,26 @@ func (s *Store) SetProjectID(id string, projectID string) error {
 }
 
 func (s *Store) Latest() (Session, error) {
+	return s.latest(false)
+}
+
+func (s *Store) LatestAll() (Session, error) {
+	return s.latest(true)
+}
+
+func (s *Store) latest(includeHidden bool) (Session, error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
 	index, err := s.loadIndex()
 	if err != nil {
 		return Session{}, err
 	}
-	if len(index) == 0 {
-		return Session{}, fmt.Errorf("session not found")
-	}
 	var latest Session
 	hasLatest := false
 	for _, sess := range index {
+		if sess.Hidden && !includeHidden {
+			continue
+		}
 		if !hasLatest {
 			latest = sess
 			hasLatest = true
@@ -147,10 +252,15 @@ func (s *Store) Latest() (Session, error) {
 			latest = sess
 		}
 	}
+	if !hasLatest {
+		return Session{}, fmt.Errorf("session not found")
+	}
 	return latest, nil
 }
 
 func (s *Store) Delete(id string) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
 	index, err := s.loadIndex()
 	if err != nil {
 		return err

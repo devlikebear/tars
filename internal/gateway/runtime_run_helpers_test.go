@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +53,30 @@ func TestResolveSpawnProjectID_UsesSessionProjectAndPersistsOverride(t *testing.
 	}
 	if updated.ProjectID != override.ID {
 		t.Fatalf("expected session project override %q, got %q", override.ID, updated.ProjectID)
+	}
+}
+
+func TestResolveSpawnSessionID_UsesProjectWorkerSessionByDefault(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+
+	sessionID, err := resolveSpawnSessionID(store, SpawnRequest{ProjectID: "proj_demo"}, AgentInfo{}, "worker")
+	if err != nil {
+		t.Fatalf("resolve worker session: %v", err)
+	}
+	if sessionID == "" || sessionID == mainSession.ID {
+		t.Fatalf("expected project worker session distinct from main, got %q", sessionID)
+	}
+
+	sess, err := store.Get(sessionID)
+	if err != nil {
+		t.Fatalf("get worker session: %v", err)
+	}
+	if sess.Kind != "worker" || !sess.Hidden {
+		t.Fatalf("unexpected worker session metadata: %+v", sess)
 	}
 }
 
@@ -125,5 +150,59 @@ func TestFinalizeRunLocked_PopulatesPolicyFailureMetadata(t *testing.T) {
 	}
 	if !state.closed {
 		t.Fatalf("expected run to be closed")
+	}
+}
+
+func TestFinalizeRunLocked_HiddenWorkerSessionAppendsSummaryToMain(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+	worker, err := store.EnsureWorker("proj_demo")
+	if err != nil {
+		t.Fatalf("ensure worker: %v", err)
+	}
+	fixedNow := time.Date(2026, 3, 7, 3, 4, 5, 0, time.UTC)
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Now: func() time.Time {
+			return fixedNow
+		},
+	})
+	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+
+	state := &runState{
+		run: Run{
+			ID:          "run_summary",
+			Status:      RunStatusRunning,
+			CreatedAt:   fixedNow.Add(-time.Minute).Format(time.RFC3339),
+			UpdatedAt:   fixedNow.Add(-time.Minute).Format(time.RFC3339),
+			SessionID:   worker.ID,
+			ProjectID:   "proj_demo",
+			Accepted:    true,
+			Prompt:      "draft episode 3",
+			Agent:       "novelist",
+			WorkspaceID: DefaultWorkspaceID,
+		},
+		done: make(chan struct{}),
+	}
+	rt.runs[state.run.ID] = state
+	rt.runOrder = append(rt.runOrder, state.run.ID)
+
+	rt.mu.Lock()
+	rt.finalizeRunLocked(state, "drafted episode 3 outline and updated state", nil)
+	rt.mu.Unlock()
+
+	mainMessages, err := session.ReadMessages(store.TranscriptPath(mainSession.ID))
+	if err != nil {
+		t.Fatalf("read main transcript: %v", err)
+	}
+	if len(mainMessages) != 1 {
+		t.Fatalf("expected 1 main summary message, got %+v", mainMessages)
+	}
+	if got := mainMessages[0].Content; !strings.Contains(got, "[RUN SUMMARY]") || !strings.Contains(got, "project_id: proj_demo") || !strings.Contains(got, "status: completed") {
+		t.Fatalf("unexpected run summary: %q", got)
 	}
 }

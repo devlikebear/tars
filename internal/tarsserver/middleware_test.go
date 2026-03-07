@@ -175,8 +175,8 @@ func TestApplyAPIMiddleware_StatusIncludesAuthMetadataSingleWorkspace(t *testing
 	if got := strings.TrimSpace(asString(body["workspace_dir"])); got != root {
 		t.Fatalf("expected workspace_dir %q, got %q", root, got)
 	}
-	if got := intFromAny(body["session_count"]); got != 1 {
-		t.Fatalf("expected session_count 1, got %d", got)
+	if got := intFromAny(body["session_count"]); got != 2 {
+		t.Fatalf("expected session_count 2, got %d", got)
 	}
 	if got := strings.TrimSpace(asString(body["auth_role"])); got != "user" {
 		t.Fatalf("expected auth_role user, got %q", got)

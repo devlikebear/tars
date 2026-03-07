@@ -2083,8 +2083,8 @@ func TestStatusAPI(t *testing.T) {
 	if body.WorkspaceDir != root {
 		t.Fatalf("expected workspace_dir %q, got %q", root, body.WorkspaceDir)
 	}
-	if body.SessionCount != 2 {
-		t.Fatalf("expected session_count 2, got %d", body.SessionCount)
+	if body.SessionCount != 3 {
+		t.Fatalf("expected session_count 3, got %d", body.SessionCount)
 	}
 	if strings.TrimSpace(body.MainSession) == "" {
 		t.Fatalf("expected main_session_id, got %+v", body)

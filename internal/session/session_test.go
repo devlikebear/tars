@@ -152,3 +152,63 @@ func TestStoreSetProjectID(t *testing.T) {
 		t.Fatalf("expected project_id proj_demo, got %q", loaded.ProjectID)
 	}
 }
+
+func TestStoreEnsureMain_ReusesStableMainSession(t *testing.T) {
+	store := NewStore(t.TempDir())
+	first, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main first: %v", err)
+	}
+	second, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main second: %v", err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("expected stable main session, got %q and %q", first.ID, second.ID)
+	}
+	if first.Kind != "main" || first.Hidden {
+		t.Fatalf("unexpected main session metadata: %+v", first)
+	}
+}
+
+func TestStoreEnsureWorker_HidesWorkerSessionFromDefaultList(t *testing.T) {
+	store := NewStore(t.TempDir())
+	worker, err := store.EnsureWorker("proj_demo")
+	if err != nil {
+		t.Fatalf("ensure worker: %v", err)
+	}
+	if worker.Kind != "worker" || !worker.Hidden {
+		t.Fatalf("unexpected worker session metadata: %+v", worker)
+	}
+
+	visible, err := store.List()
+	if err != nil {
+		t.Fatalf("list visible: %v", err)
+	}
+	if len(visible) != 0 {
+		t.Fatalf("expected hidden worker excluded from visible list, got %+v", visible)
+	}
+
+	all, err := store.ListAll()
+	if err != nil {
+		t.Fatalf("list all: %v", err)
+	}
+	if len(all) != 1 || all[0].ID != worker.ID {
+		t.Fatalf("expected hidden worker in full list, got %+v", all)
+	}
+}
+
+func TestStoreEnsureWorker_ReusesProjectWorkerSession(t *testing.T) {
+	store := NewStore(t.TempDir())
+	first, err := store.EnsureWorker("proj_demo")
+	if err != nil {
+		t.Fatalf("ensure worker first: %v", err)
+	}
+	second, err := store.EnsureWorker("proj_demo")
+	if err != nil {
+		t.Fatalf("ensure worker second: %v", err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("expected stable worker session, got %q and %q", first.ID, second.ID)
+	}
+}

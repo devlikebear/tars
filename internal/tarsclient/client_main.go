@@ -69,8 +69,10 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 	})
 }
 
-func helpText() string {
-	return strings.TrimSpace(`SYSTEM > commands
+func helpText(advanced bool) string {
+	sessionSection := ""
+	if advanced {
+		sessionSection = `
 Session:
   /new [title]
   /session
@@ -80,6 +82,9 @@ Session:
   /export
   /search {keyword}
   /compact
+`
+	}
+	return strings.TrimSpace(`SYSTEM > commands` + sessionSection + `
 
 Runtime:
   /status
@@ -113,7 +118,9 @@ Runtime:
 
 Chat:
   /trace [on|off|filter {all|llm|tool|error|system}]
-  /quit`)
+  /quit
+
+Use /help advanced for session/debug commands.`)
 }
 
 func sendMessage(ctx context.Context, client chatClient, session, message string, showStatus bool, verbose bool, stdout, stderr io.Writer) (chatResult, error) {

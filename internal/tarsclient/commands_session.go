@@ -7,7 +7,8 @@ import (
 )
 
 func cmdHelp(c commandContext) (bool, string, error) {
-	fmt.Fprintln(c.stdout, helpText())
+	advanced := len(c.fields) > 1 && strings.EqualFold(strings.TrimSpace(c.fields[1]), "advanced")
+	fmt.Fprintln(c.stdout, helpText(advanced))
 	return true, c.session, nil
 }
 

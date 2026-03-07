@@ -18,18 +18,7 @@ func resolveMainSessionID(store *session.Store, configuredID string) (string, er
 		}
 		return sessionID, nil
 	}
-
-	latest, err := store.Latest()
-	if err == nil {
-		if id := strings.TrimSpace(latest.ID); id != "" {
-			return id, nil
-		}
-	}
-	if err != nil && !strings.Contains(strings.ToLower(strings.TrimSpace(err.Error())), "session not found") {
-		return "", err
-	}
-
-	created, err := store.Create("main")
+	created, err := store.EnsureMain()
 	if err != nil {
 		return "", err
 	}

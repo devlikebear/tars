@@ -685,14 +685,30 @@ func TestExecuteCommand_HelpStructured(t *testing.T) {
 	if !strings.Contains(out, "SYSTEM > commands") {
 		t.Fatalf("expected help header, got %q", out)
 	}
-	if !strings.Contains(out, "Session:") {
-		t.Fatalf("expected Session section, got %q", out)
+	if strings.Contains(out, "Session:") {
+		t.Fatalf("did not expect default help to show Session section, got %q", out)
 	}
 	if !strings.Contains(out, "Runtime:") {
 		t.Fatalf("expected Runtime section, got %q", out)
 	}
 	if !strings.Contains(out, "Chat:") {
 		t.Fatalf("expected Chat section, got %q", out)
+	}
+}
+
+func TestExecuteCommand_HelpAdvancedShowsSessionCommands(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	runtime := runtimeClient{}
+
+	_, _, err := executeCommand(context.Background(), runtime, "/help advanced", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/help advanced: %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "Session:") || !strings.Contains(out, "/resume [id|number|latest]") {
+		t.Fatalf("expected advanced help to show session commands, got %q", out)
 	}
 }
 

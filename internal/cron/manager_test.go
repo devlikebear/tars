@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -227,6 +228,49 @@ func TestManager_TickAppliesFailureBackoff(t *testing.T) {
 	}
 	if runCount != 0 {
 		t.Fatalf("expected job skipped during backoff, got runCount=%d", runCount)
+	}
+}
+
+func TestManager_TickRunsDueJobsConcurrently(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	for _, name := range []string{"job-a", "job-b"} {
+		if _, err := store.CreateWithOptions(CreateInput{
+			Name:      name,
+			Prompt:    name,
+			Schedule:  "every:1s",
+			Enabled:   true,
+			HasEnable: true,
+		}); err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+	}
+
+	var mu sync.Mutex
+	started := make([]string, 0, 2)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	mgr := NewManager(store, func(_ context.Context, job Job) (string, error) {
+		mu.Lock()
+		started = append(started, job.Name)
+		count := len(started)
+		mu.Unlock()
+		if count < 2 {
+			select {
+			case <-release:
+			case <-time.After(2 * time.Second):
+				t.Fatalf("timed out waiting for concurrent jobs")
+			}
+		}
+		releaseOnce.Do(func() { close(release) })
+		return "ok", nil
+	}, 100*time.Millisecond, time.Now)
+
+	if err := mgr.Tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if len(started) != 2 {
+		t.Fatalf("expected both jobs to start, got %+v", started)
 	}
 }
 

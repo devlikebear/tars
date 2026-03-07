@@ -114,10 +114,12 @@ func (r *Runtime) finalizeRunLocked(state *runState, resp string, err error) {
 		r.closeRunDoneLocked(state)
 		r.trimRunHistoryLocked()
 		r.stateVersion++
+		r.appendRunSummaryToMain(state.run, "")
 		return
 	}
 	state.run.Status = RunStatusCompleted
 	state.run.Response = strings.TrimSpace(resp)
+	r.appendRunSummaryToMain(state.run, state.run.Response)
 	r.closeRunDoneLocked(state)
 	r.trimRunHistoryLocked()
 	r.stateVersion++
@@ -194,4 +196,47 @@ func (r *Runtime) appendSessionMessage(workspaceID, sessionID, role, content str
 		return err
 	}
 	return sessionStore.Touch(sessionID, ts.UTC())
+}
+
+func (r *Runtime) appendRunSummaryToMain(run Run, response string) {
+	sessionStore := r.sessionStoreForWorkspace(run.WorkspaceID)
+	if r == nil || sessionStore == nil || strings.TrimSpace(run.SessionID) == "" {
+		return
+	}
+	targetSession, err := sessionStore.Get(run.SessionID)
+	if err != nil || !targetSession.Hidden || !strings.EqualFold(strings.TrimSpace(targetSession.Kind), "worker") {
+		return
+	}
+	mainSession, err := sessionStore.EnsureMain()
+	if err != nil || strings.TrimSpace(mainSession.ID) == "" || strings.TrimSpace(mainSession.ID) == strings.TrimSpace(run.SessionID) {
+		return
+	}
+
+	summary := buildRunSummaryMessage(run, response)
+	_ = r.appendSessionMessage(run.WorkspaceID, mainSession.ID, "system", summary, r.nowFn().UTC())
+}
+
+func buildRunSummaryMessage(run Run, response string) string {
+	detail := trimGatewaySummary(response, 220)
+	if strings.TrimSpace(detail) == "" {
+		detail = trimGatewaySummary(run.Error, 220)
+	}
+	return fmt.Sprintf(
+		"[RUN SUMMARY]\nagent: %s\nproject_id: %s\nstatus: %s\nresult: %s",
+		strings.TrimSpace(run.Agent),
+		strings.TrimSpace(run.ProjectID),
+		strings.TrimSpace(string(run.Status)),
+		detail,
+	)
+}
+
+func trimGatewaySummary(text string, max int) string {
+	value := strings.TrimSpace(text)
+	if max <= 0 || len(value) <= max {
+		return value
+	}
+	if max <= 3 {
+		return value[:max]
+	}
+	return value[:max-3] + "..."
 }

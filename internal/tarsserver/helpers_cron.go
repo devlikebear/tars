@@ -55,7 +55,7 @@ func newCronJobRunnerWithNotify(
 			promptText += "\n\n" + projectPrompt
 		}
 
-		targetSessionID, explicitTarget, err := resolveCronTargetSessionID(targetStore, job.SessionTarget, mainSessionID)
+		targetSessionID, explicitTarget, err := resolveCronTargetSessionID(targetStore, job, mainSessionID)
 		if err != nil {
 			return "", err
 		}
@@ -178,12 +178,22 @@ func sanitizeArtifactID(raw string) string {
 	return b.String()
 }
 
-func resolveCronTargetSessionID(store *session.Store, raw string, mainSessionID string) (sessionID string, explicitTarget bool, err error) {
+func resolveCronTargetSessionID(store *session.Store, job cron.Job, mainSessionID string) (sessionID string, explicitTarget bool, err error) {
 	if store == nil {
 		return "", false, nil
 	}
-	target := strings.TrimSpace(raw)
+	target := strings.TrimSpace(job.SessionTarget)
 	if target == "" || strings.EqualFold(target, "isolated") {
+		if strings.TrimSpace(job.ProjectID) != "" {
+			worker, err := store.EnsureWorker(strings.TrimSpace(job.ProjectID))
+			if err != nil {
+				return "", false, err
+			}
+			if strings.TrimSpace(worker.ProjectID) != strings.TrimSpace(job.ProjectID) {
+				_ = store.SetProjectID(worker.ID, strings.TrimSpace(job.ProjectID))
+			}
+			return strings.TrimSpace(worker.ID), false, nil
+		}
 		return "", false, nil
 	}
 	if strings.EqualFold(target, "main") {
@@ -273,6 +283,11 @@ func deliverCronResult(
 			return err
 		}
 	}
+	targetSession, err := lookupCronDeliverySession(store, targetSessionID)
+	if err != nil {
+		return err
+	}
+	writeWorkerSession := targetSession != nil && targetSession.Hidden && strings.EqualFold(strings.TrimSpace(targetSession.Kind), "worker")
 	if writeSession {
 		if targetSessionID == "" {
 			if explicitTarget {
@@ -283,28 +298,80 @@ func deliverCronResult(
 			}
 			return nil
 		}
-		content := fmt.Sprintf(
-			"[CRON]\njob: %s\nprompt: %s\nresponse: %s",
-			strings.TrimSpace(job.Name),
-			trimForMemory(job.Prompt, 180),
-			trimForMemory(response, 320),
-		)
-		if err := session.AppendMessage(store.TranscriptPath(targetSessionID), session.Message{
-			Role:      "system",
-			Content:   content,
-			Timestamp: now.UTC(),
-		}); err != nil {
-			return err
-		}
-		if err := store.Touch(targetSessionID, now.UTC()); err != nil {
+	}
+	if writeSession || writeWorkerSession {
+		if err := appendCronSessionMessage(store, targetSessionID, buildCronSessionContent(job, response), now); err != nil {
 			return err
 		}
 		logger.Debug().
 			Str("job_id", job.ID).
 			Str("session_id", targetSessionID).
+			Bool("hidden", targetSession != nil && targetSession.Hidden).
 			Msg("cron response delivered to session")
 	}
+	if writeWorkerSession {
+		mainSession, err := store.EnsureMain()
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(mainSession.ID) != "" && strings.TrimSpace(mainSession.ID) != strings.TrimSpace(targetSessionID) {
+			if err := appendCronSessionMessage(store, mainSession.ID, buildCronSummaryContent(job, response), now); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func lookupCronDeliverySession(store *session.Store, sessionID string) (*session.Session, error) {
+	if store == nil || strings.TrimSpace(sessionID) == "" {
+		return nil, nil
+	}
+	sess, err := store.Get(sessionID)
+	if err != nil {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(err.Error())), "session not found") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &sess, nil
+}
+
+func appendCronSessionMessage(store *session.Store, sessionID string, content string, now time.Time) error {
+	if store == nil || strings.TrimSpace(sessionID) == "" {
+		return nil
+	}
+	if err := session.AppendMessage(store.TranscriptPath(sessionID), session.Message{
+		Role:      "system",
+		Content:   content,
+		Timestamp: now.UTC(),
+	}); err != nil {
+		return err
+	}
+	return store.Touch(sessionID, now.UTC())
+}
+
+func buildCronSessionContent(job cron.Job, response string) string {
+	return fmt.Sprintf(
+		"[CRON]\njob: %s\nprompt: %s\nresponse: %s",
+		strings.TrimSpace(job.Name),
+		trimForMemory(job.Prompt, 180),
+		trimForMemory(response, 320),
+	)
+}
+
+func buildCronSummaryContent(job cron.Job, response string) string {
+	status := "completed"
+	if strings.TrimSpace(response) == "" {
+		status = "completed"
+	}
+	return fmt.Sprintf(
+		"[CRON SUMMARY]\njob: %s\nproject_id: %s\nstatus: %s\nresult: %s",
+		strings.TrimSpace(job.Name),
+		strings.TrimSpace(job.ProjectID),
+		status,
+		trimForMemory(response, 220),
+	)
 }
 
 func effectiveCronDeliveryMode(raw string, sessionTarget string) string {
