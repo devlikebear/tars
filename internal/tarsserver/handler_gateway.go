@@ -23,8 +23,7 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger ze
 	inflight := newInflightLimiter(maxInflightAgentRuns, 4)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/agent/agents", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if runtime == nil {
@@ -35,13 +34,12 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger ze
 		writeJSON(w, http.StatusOK, map[string]any{"count": len(agents), "agents": agents})
 	})
 	mux.HandleFunc("/v1/agent/runs", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
 			return
 		}
 		if r.Method == http.MethodPost {
 			if runtime == nil {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+				writeUnavailable(w, "gateway runtime is not configured")
 				return
 			}
 			release, ok := inflight.tryAcquire()
@@ -58,8 +56,7 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger ze
 				Prompt    string `json:"prompt"`
 				Agent     string `json:"agent"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			message := strings.TrimSpace(req.Message)
@@ -96,14 +93,9 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger ze
 			writeJSON(w, http.StatusOK, map[string]any{"count": 0, "runs": []gateway.Run{}})
 			return
 		}
-		limit := 50
-		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-			v, err := strconv.Atoi(raw)
-			if err != nil || v <= 0 {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
-				return
-			}
-			limit = v
+		limit, ok := parsePositiveLimit(w, r, 50)
+		if !ok {
+			return
 		}
 		runs := runtime.List(limit)
 		writeJSON(w, http.StatusOK, map[string]any{"count": len(runs), "runs": runs})
@@ -126,8 +118,7 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger ze
 			return
 		}
 		if len(parts) == 1 {
-			if r.Method != http.MethodGet {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			if !requireMethod(w, r, http.MethodGet) {
 				return
 			}
 			run, ok := runtime.Get(runID)
@@ -139,8 +130,7 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger ze
 			return
 		}
 		if len(parts) == 2 && parts[1] == "cancel" {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			if !requireMethod(w, r, http.MethodPost) {
 				return
 			}
 			run, err := runtime.Cancel(runID)
@@ -160,8 +150,7 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger ze
 func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloadHook func()) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/gateway/status", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if runtime == nil {
@@ -171,12 +160,11 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 		writeJSON(w, http.StatusOK, runtime.Status())
 	})
 	mux.HandleFunc("/v1/gateway/reload", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if runtime == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+			writeUnavailable(w, "gateway runtime is not configured")
 			return
 		}
 		if reloadHook != nil {
@@ -186,12 +174,11 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 		writeJSON(w, http.StatusOK, status)
 	})
 	mux.HandleFunc("/v1/gateway/restart", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if runtime == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+			writeUnavailable(w, "gateway runtime is not configured")
 			return
 		}
 		status := runtime.Restart()
@@ -199,12 +186,11 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 		writeJSON(w, http.StatusOK, status)
 	})
 	mux.HandleFunc("/v1/gateway/reports/summary", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if runtime == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+			writeUnavailable(w, "gateway runtime is not configured")
 			return
 		}
 		report, err := runtime.ReportsSummary()
@@ -219,22 +205,16 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 		writeJSON(w, http.StatusOK, report)
 	})
 	mux.HandleFunc("/v1/gateway/reports/runs", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if runtime == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+			writeUnavailable(w, "gateway runtime is not configured")
 			return
 		}
-		limit := 50
-		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-			v, err := strconv.Atoi(raw)
-			if err != nil || v <= 0 {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
-				return
-			}
-			limit = v
+		limit, ok := parsePositiveLimit(w, r, 50)
+		if !ok {
+			return
 		}
 		report, err := runtime.ReportsRuns(limit)
 		if err != nil {
@@ -248,22 +228,16 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 		writeJSON(w, http.StatusOK, report)
 	})
 	mux.HandleFunc("/v1/gateway/reports/channels", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if runtime == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+			writeUnavailable(w, "gateway runtime is not configured")
 			return
 		}
-		limit := 50
-		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-			v, err := strconv.Atoi(raw)
-			if err != nil || v <= 0 {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
-				return
-			}
-			limit = v
+		limit, ok := parsePositiveLimit(w, r, 50)
+		if !ok {
+			return
 		}
 		report, err := runtime.ReportsChannels(limit)
 		if err != nil {

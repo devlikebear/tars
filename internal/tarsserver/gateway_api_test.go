@@ -829,6 +829,26 @@ func TestGatewayAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) 
 	}
 }
 
+func TestGatewayAPIHandler_ReportsRunsRejectsInvalidLimit(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/runs?limit=0", nil)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload["error"] != "limit must be a positive integer" {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
+
 func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(filepath.Join(workspace, "workspace"))
@@ -890,6 +910,26 @@ func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected researcher in agents after reload, got %+v", agents)
+	}
+}
+
+func TestBrowserAPIHandler_LoginRejectsInvalidBody(t *testing.T) {
+	runtime := newTestGatewayRuntime(t)
+	h := newBrowserAPIHandler(runtime, vaultStatusSnapshot{}, nil, false, nil, zerolog.New(io.Discard))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/browser/login", strings.NewReader("{"))
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload["error"] != "invalid request body" {
+		t.Fatalf("unexpected payload: %+v", payload)
 	}
 }
 

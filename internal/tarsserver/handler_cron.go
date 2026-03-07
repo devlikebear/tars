@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -89,8 +88,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 				Payload        json.RawMessage `json:"payload,omitempty"`
 				DeleteAfterRun *bool           `json:"delete_after_run,omitempty"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			enabled := true
@@ -124,7 +122,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 			}
 			writeJSON(w, http.StatusOK, job)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			requireMethod(w, r)
 		}
 	})
 
@@ -169,8 +167,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 					Payload        *json.RawMessage `json:"payload,omitempty"`
 					DeleteAfterRun *bool            `json:"delete_after_run,omitempty"`
 				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+				if !decodeJSONBody(w, r, &req) {
 					return
 				}
 				job, err := reqStore.Update(jobID, cron.UpdateInput{
@@ -210,14 +207,13 @@ func newCronAPIHandlerWithRunnerAndResolver(
 				}
 				w.WriteHeader(http.StatusNoContent)
 			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				requireMethod(w, r)
 			}
 			return
 		}
 		if len(pathParts) != 2 || pathParts[1] != "run" {
 			if len(pathParts) == 2 && pathParts[1] == "runs" {
-				if r.Method != http.MethodGet {
-					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				if !requireMethod(w, r, http.MethodGet) {
 					return
 				}
 				if _, err := reqStore.Get(jobID); err != nil {
@@ -229,14 +225,9 @@ func newCronAPIHandlerWithRunnerAndResolver(
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get cron job failed"})
 					return
 				}
-				limit := 50
-				if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-					v, err := strconv.Atoi(raw)
-					if err != nil || v <= 0 {
-						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
-						return
-					}
-					limit = v
+				limit, ok := parsePositiveLimit(w, r, 50)
+				if !ok {
+					return
 				}
 				runs, err := reqStore.ListRuns(jobID, limit)
 				if err != nil {
@@ -250,8 +241,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 			http.NotFound(w, r)
 			return
 		}
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if runJob == nil {

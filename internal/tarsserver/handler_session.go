@@ -51,8 +51,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 			var req struct {
 				Title string `json:"title"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			title := strings.TrimSpace(req.Title)
@@ -68,13 +67,12 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 			}
 			writeJSON(w, http.StatusOK, sess)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			requireMethod(w, r)
 		}
 	})
 
 	mux.HandleFunc("/v1/sessions/search", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 
@@ -140,11 +138,10 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				}
 				w.WriteHeader(http.StatusNoContent)
 			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				requireMethod(w, r)
 			}
 		case len(pathParts) == 2 && pathParts[1] == "history":
-			if r.Method != http.MethodGet {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			if !requireMethod(w, r, http.MethodGet) {
 				return
 			}
 			if _, err := reqStore.Get(sessionID); err != nil {
@@ -164,8 +161,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 			}
 			writeJSON(w, http.StatusOK, messages)
 		case len(pathParts) == 2 && pathParts[1] == "export":
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			if !requireMethod(w, r, http.MethodPost) {
 				return
 			}
 
@@ -208,8 +204,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 
 func newStatusAPIHandler(workspaceDir string, store *session.Store, mainSessionID string, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 
@@ -243,8 +238,7 @@ func newHealthzAPIHandler(nowFn func() time.Time) http.Handler {
 		nowFn = time.Now
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
