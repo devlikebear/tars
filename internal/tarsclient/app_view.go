@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 var (
@@ -29,6 +30,8 @@ var (
 	chatTitleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#22D3EE")).Bold(true)
 	statusTitleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F472B6")).Bold(true)
 	notifyTitleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#A3E635")).Bold(true)
+	userLineStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#F8FAFC")).Bold(true)
+	assistantStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#C4B5FD"))
 	inputStyle       = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#F8FAFC")).
 				Background(lipgloss.Color("#0F172A"))
@@ -93,7 +96,10 @@ func (m *tarsAppModel) View() string {
 }
 
 func (m *tarsAppModel) renderChatPanel(width, height int) string {
-	content := renderChatLines(m.chatLines, height-2)
+	contentWidth := innerPanelWidth(width)
+	content := renderPanelLines(m.chatLines, contentWidth, height-2, func(original, segment string) string {
+		return formatChatLine(original, segment)
+	})
 	if strings.TrimSpace(content) == "" {
 		content = "(no chat yet)"
 	}
@@ -102,7 +108,7 @@ func (m *tarsAppModel) renderChatPanel(width, height int) string {
 }
 
 func (m *tarsAppModel) renderStatusPanel(width, height int) string {
-	content := joinTailLines(m.statusLines, height-2)
+	content := renderPanelLines(m.statusLines, innerPanelWidth(width), height-2, nil)
 	if strings.TrimSpace(content) == "" {
 		content = "(trace off)"
 	}
@@ -127,7 +133,7 @@ func (m *tarsAppModel) renderNotifyPanel(width, height int) string {
 		}
 		lines = append(lines, prefix)
 	}
-	content := joinTailLines(lines, height-2)
+	content := renderPanelLines(lines, innerPanelWidth(width), height-2, nil)
 	if strings.TrimSpace(content) == "" {
 		content = "(no notifications)"
 	}
@@ -135,51 +141,84 @@ func (m *tarsAppModel) renderNotifyPanel(width, height int) string {
 	return panelStyle.Width(width).Height(height).Render(title + "\n" + content)
 }
 
-func joinTailLines(lines []string, limit int) string {
+func innerPanelWidth(width int) int {
+	if width <= 4 {
+		return 1
+	}
+	return width - 4
+}
+
+func renderPanelLines(lines []string, width, limit int, formatter func(original, segment string) string) string {
+	if width <= 0 {
+		width = 1
+	}
 	if limit <= 0 {
 		limit = 1
 	}
 	if len(lines) == 0 {
 		return ""
 	}
-	start := 0
-	if len(lines) > limit {
-		start = len(lines) - limit
-	}
-	return strings.Join(lines[start:], "\n")
-}
-
-func renderChatLines(lines []string, limit int) string {
-	if limit <= 0 {
-		limit = 1
-	}
-	if len(lines) == 0 {
-		return ""
+	visual := make([]string, 0, len(lines))
+	for _, line := range lines {
+		for _, segment := range wrapVisualLine(line, width) {
+			if formatter != nil {
+				visual = append(visual, formatter(line, segment))
+				continue
+			}
+			visual = append(visual, segment)
+		}
 	}
 	start := 0
-	if len(lines) > limit {
-		start = len(lines) - limit
+	if len(visual) > limit {
+		start = len(visual) - limit
 	}
-	styled := make([]string, 0, len(lines)-start)
-	for _, line := range lines[start:] {
-		styled = append(styled, formatChatLine(line))
-	}
-	return strings.Join(styled, "\n")
+	return strings.Join(visual[start:], "\n")
 }
 
-func formatChatLine(line string) string {
-	trimmed := strings.TrimSpace(line)
+func wrapVisualLine(line string, width int) []string {
+	if width <= 0 {
+		return []string{line}
+	}
+	if line == "" {
+		return []string{""}
+	}
+	runes := []rune(line)
+	parts := make([]string, 0, len(runes)/maxInt(1, width)+1)
+	start := 0
+	currentWidth := 0
+	for i, r := range runes {
+		rw := runewidth.RuneWidth(r)
+		if rw <= 0 {
+			rw = 1
+		}
+		if currentWidth > 0 && currentWidth+rw > width {
+			parts = append(parts, string(runes[start:i]))
+			start = i
+			currentWidth = 0
+		}
+		currentWidth += rw
+	}
+	parts = append(parts, string(runes[start:]))
+	return parts
+}
+
+func formatChatLine(original, segment string) string {
+	trimmed := strings.TrimSpace(original)
 	switch {
 	case strings.HasPrefix(trimmed, "SYSTEM > commands"):
-		return systemLineStyle.Render(line)
+		return systemLineStyle.Render(segment)
 	case strings.HasSuffix(trimmed, ":") && (trimmed == "Session:" || trimmed == "Runtime:" || trimmed == "Chat:"):
-		return helpSectionStyle.Render(line)
-	case strings.HasPrefix(line, "  /"):
-		return helpCommandStyle.Render(line)
+		return helpSectionStyle.Render(segment)
+	case strings.HasPrefix(original, "  /"):
+		return helpCommandStyle.Render(segment)
+	case strings.HasPrefix(trimmed, "You >"):
+		return userLineStyle.Render(segment)
+	case strings.HasPrefix(trimmed, "TARS >"):
+		return assistantStyle.Render(segment)
 	case strings.HasPrefix(trimmed, "ERROR >"):
-		return errorLineStyle.Render(line)
+		return errorLineStyle.Render(segment)
 	default:
-		return line
+		return segment
 	}
 }
 

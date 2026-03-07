@@ -187,17 +187,17 @@ func TestHandleSubmit_ExitAliases(t *testing.T) {
 }
 
 func TestFormatChatLine_HelpStylingPreservesText(t *testing.T) {
-	section := formatChatLine("Session:")
+	section := formatChatLine("Session:", "Session:")
 	if !strings.Contains(section, "Session:") {
 		t.Fatalf("expected section text preserved, got %q", section)
 	}
 
-	cmd := formatChatLine("  /status")
+	cmd := formatChatLine("  /status", "  /status")
 	if !strings.Contains(cmd, "/status") {
 		t.Fatalf("expected command text preserved, got %q", cmd)
 	}
 
-	header := formatChatLine("SYSTEM > commands")
+	header := formatChatLine("SYSTEM > commands", "SYSTEM > commands")
 	if !strings.Contains(header, "SYSTEM > commands") {
 		t.Fatalf("expected header text preserved, got %q", header)
 	}
