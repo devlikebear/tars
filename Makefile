@@ -40,6 +40,8 @@ ASSISTANT_API_TOKEN ?= $(TARS_API_TOKEN)
 	test test-v test-one test-nocache test-race test-cover \
 	build build-bins clean tidy fmt vet lint \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
+	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
+	logs logs-server logs-server-err logs-assistant logs-assistant-err \
 	dev-serve dev-serve-once dev-serve-loop dev-chat dev-heartbeat dev-tars \
 	api-status api-sessions api-compact api-chat api-heartbeat smoke-auth \
 	vault-up vault-down vault-logs security-scan \
@@ -69,6 +71,13 @@ help:
 	@echo "  make install       - build $(TARS_BIN) and (re)install io.tars.server + io.tars.assistant launch agents"
 	@echo "  make uninstall     - stop and remove io.tars.server + io.tars.assistant launch agents"
 	@echo "  make reinstall     - uninstall then install launch agents"
+	@echo "  make restart       - restart io.tars.server + io.tars.assistant without rebuilding"
+	@echo "  make reload-config - reload current config by restarting launch agents"
+	@echo "  make logs          - tail current server + assistant stdout logs"
+	@echo "  make logs-server   - tail server stdout log"
+	@echo "  make logs-server-err - tail server stderr log"
+	@echo "  make logs-assistant - tail assistant stdout log"
+	@echo "  make logs-assistant-err - tail assistant stderr log"
 	@echo "  make fmt           - go fmt ./..."
 	@echo "  make vet           - go vet ./..."
 	@echo "  make lint          - alias of vet for quality checks"
@@ -185,6 +194,45 @@ uninstall-assistant:
 	@rm -f "$(ASSISTANT_PLIST)"
 
 reinstall: uninstall install
+
+restart: restart-server restart-assistant
+
+restart-server:
+	@launchctl kickstart -k "$(LAUNCHCTL_DOMAIN)/$(SERVER_LABEL)"
+
+restart-assistant:
+	@launchctl kickstart -k "$(LAUNCHCTL_DOMAIN)/$(ASSISTANT_LABEL)"
+
+reload-config: reload-server-config reload-assistant-config
+
+reload-server-config: restart-server
+
+reload-assistant-config: restart-assistant
+
+logs:
+	@mkdir -p "$(HOME)/Library/Logs"
+	@touch "$(SERVER_STDOUT_LOG)" "$(ASSISTANT_STDOUT_LOG)"
+	@tail -f "$(SERVER_STDOUT_LOG)" "$(ASSISTANT_STDOUT_LOG)"
+
+logs-server:
+	@mkdir -p "$(HOME)/Library/Logs"
+	@touch "$(SERVER_STDOUT_LOG)"
+	@tail -f "$(SERVER_STDOUT_LOG)"
+
+logs-server-err:
+	@mkdir -p "$(HOME)/Library/Logs"
+	@touch "$(SERVER_STDERR_LOG)"
+	@tail -f "$(SERVER_STDERR_LOG)"
+
+logs-assistant:
+	@mkdir -p "$(HOME)/Library/Logs"
+	@touch "$(ASSISTANT_STDOUT_LOG)"
+	@tail -f "$(ASSISTANT_STDOUT_LOG)"
+
+logs-assistant-err:
+	@mkdir -p "$(HOME)/Library/Logs"
+	@touch "$(ASSISTANT_STDERR_LOG)"
+	@tail -f "$(ASSISTANT_STDERR_LOG)"
 
 dev-serve:
 	$(GO) run ./cmd/tars serve --verbose --serve-api $(if $(TARS_CONFIG),--config $(TARS_CONFIG),) --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
