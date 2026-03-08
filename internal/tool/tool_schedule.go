@@ -44,6 +44,9 @@ func NewScheduleCreateTool(store *schedule.Store) Tool {
 				if err := validateNaturalTaskPrompt(input.Prompt); err != nil {
 					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
+				if err := validateAutonomousProjectSchedule(input.Prompt, input.ProjectID); err != nil {
+					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				}
 			}
 			item, err := store.Create(schedule.CreateInput{
 				Natural:   input.Natural,
@@ -115,6 +118,23 @@ func NewScheduleUpdateTool(store *schedule.Store) Tool {
 			}
 			if input.Prompt != nil {
 				if err := validateNaturalTaskPrompt(*input.Prompt); err != nil {
+					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				}
+			}
+			current, err := store.Get(strings.TrimSpace(input.ScheduleID))
+			if err != nil {
+				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+			}
+			effectivePrompt := current.Prompt
+			if input.Prompt != nil {
+				effectivePrompt = *input.Prompt
+			}
+			effectiveProjectID := current.ProjectID
+			if input.ProjectID != nil {
+				effectiveProjectID = *input.ProjectID
+			}
+			if strings.TrimSpace(effectivePrompt) != "" {
+				if err := validateAutonomousProjectSchedule(effectivePrompt, effectiveProjectID); err != nil {
 					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
 			}

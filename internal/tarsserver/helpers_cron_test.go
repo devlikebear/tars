@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tarsncase/internal/project"
 	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -208,6 +209,50 @@ func TestCronJobRunner_IncludesDefaultTelegramChatContext(t *testing.T) {
 		"8432508298",
 	) {
 		t.Fatalf("expected telegram context in prompt, got %q", seenPrompt)
+	}
+}
+
+func TestCronJobRunner_RequiresFinalizedBriefForAutonomousProjectWork(t *testing.T) {
+	root := t.TempDir()
+	projectStore := project.NewStore(root, nil)
+	goal := "write thriller"
+	status := "collecting"
+	if _, err := projectStore.UpdateBrief("brief-1", project.BriefUpdateInput{
+		Goal:   &goal,
+		Status: &status,
+	}); err != nil {
+		t.Fatalf("update brief: %v", err)
+	}
+
+	called := false
+	runner := newCronJobRunnerWithNotify(
+		root,
+		session.NewStore(root),
+		func(ctx context.Context, runLabel string, promptText string) (string, error) {
+			called = true
+			return "ok", nil
+		},
+		zerolog.Nop(),
+		nil,
+		"",
+		0,
+		nil,
+	)
+
+	_, err := runner(context.Background(), cron.Job{
+		ID:       "job-1",
+		Name:     "writer",
+		Prompt:   "현재 활성 세션의 소설 프로젝트 brief_id=brief-1 를 이어서 진행하라.",
+		Schedule: "every:5m",
+	})
+	if err == nil {
+		t.Fatalf("expected brief validation error")
+	}
+	if !strings.Contains(err.Error(), "brief brief-1 is not finalized") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called {
+		t.Fatalf("expected runPrompt not to be called")
 	}
 }
 

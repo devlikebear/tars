@@ -30,6 +30,8 @@ type cronRunTelemetry struct {
 	ContaminationMarkers       []string
 }
 
+var briefIDPattern = regexp.MustCompile(`\bbrief_id=([A-Za-z0-9_-]+)\b`)
+
 func newCronJobRunner(
 	workspaceDir string,
 	store *session.Store,
@@ -69,6 +71,9 @@ func newCronJobRunnerWithNotify(
 		}
 		if projectPrompt := buildCronProjectPromptSection(targetWorkspaceDir, job.ProjectID); projectPrompt != "" {
 			promptText += "\n\n" + projectPrompt
+		}
+		if err := validateCronProjectPrerequisites(targetWorkspaceDir, job, promptText); err != nil {
+			return "", err
 		}
 		telegramPrompt, err := buildCronTelegramPromptSection(ctx, resolveDefaultTelegramChatID)
 		if err != nil {
@@ -172,6 +177,32 @@ func newCronJobRunnerWithNotify(
 		}
 		return response, nil
 	}
+}
+
+func validateCronProjectPrerequisites(workspaceDir string, job cron.Job, promptText string) error {
+	if strings.TrimSpace(workspaceDir) == "" {
+		return nil
+	}
+	if strings.TrimSpace(job.ProjectID) != "" {
+		return nil
+	}
+	matches := briefIDPattern.FindStringSubmatch(promptText)
+	if len(matches) != 2 {
+		return nil
+	}
+	briefID := strings.TrimSpace(matches[1])
+	if briefID == "" {
+		return nil
+	}
+	store := project.NewStore(workspaceDir, nil)
+	brief, err := store.GetBrief(briefID)
+	if err != nil {
+		return nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(brief.Status), "finalized") {
+		return fmt.Errorf("brief %s is not finalized; create a project before scheduling autonomous work", briefID)
+	}
+	return nil
 }
 
 func buildCronTelegramPromptSection(ctx context.Context, resolveDefaultTelegramChatID func(context.Context) (string, error)) (string, error) {

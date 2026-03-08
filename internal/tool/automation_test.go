@@ -372,6 +372,59 @@ func TestCronUpdateTool_RejectsNonNaturalPrompt(t *testing.T) {
 	}
 }
 
+func TestCronCreateTool_RejectsBriefOnlyAutonomousWork(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	create := NewCronCreateTool(store)
+
+	result, err := create.Execute(context.Background(), json.RawMessage(`{
+		"name":"novelist",
+		"prompt":"현재 활성 세션의 소설 프로젝트 brief_id=brief-1 를 이어서 진행하라.",
+		"schedule":"every:5m"
+	}`))
+	if err != nil {
+		t.Fatalf("execute cron_create: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected error for brief-only autonomous work, got %s", result.Text())
+	}
+	if !strings.Contains(result.Text(), "brief를 먼저 finalize") {
+		t.Fatalf("unexpected error message: %s", result.Text())
+	}
+}
+
+func TestCronUpdateTool_RejectsBriefOnlyAutonomousWork(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	job, err := store.CreateWithOptions(cron.CreateInput{
+		Name:      "novelist",
+		Prompt:    "현재 활성 세션의 프로젝트 project_id=project-1 를 이어서 진행하라.",
+		Schedule:  "every:5m",
+		Enabled:   true,
+		HasEnable: true,
+		ProjectID: "project-1",
+	})
+	if err != nil {
+		t.Fatalf("create cron job: %v", err)
+	}
+	update := NewCronUpdateTool(store)
+
+	result, err := update.Execute(context.Background(), json.RawMessage(`{
+		"job_id":"`+job.ID+`",
+		"prompt":"현재 활성 세션의 소설 프로젝트 brief_id=brief-1 를 이어서 진행하라.",
+		"project_id":""
+	}`))
+	if err != nil {
+		t.Fatalf("execute cron_update: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected error for brief-only autonomous work, got %s", result.Text())
+	}
+	if !strings.Contains(result.Text(), "brief를 먼저 finalize") {
+		t.Fatalf("unexpected error message: %s", result.Text())
+	}
+}
+
 func TestHeartbeatTool_ActionRouting(t *testing.T) {
 	runCalled := 0
 	tl := NewHeartbeatTool(

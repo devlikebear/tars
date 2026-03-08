@@ -10,6 +10,16 @@ import (
 	"github.com/devlikebear/tarsncase/internal/cron"
 )
 
+func validateAutonomousProjectSchedule(prompt, projectID string) error {
+	if !strings.Contains(prompt, "brief_id=") {
+		return nil
+	}
+	if strings.TrimSpace(projectID) != "" {
+		return nil
+	}
+	return fmt.Errorf("autonomous project work requires a finalized project: brief를 먼저 finalize하고 project_id로 예약하세요")
+}
+
 func NewCronListTool(store *cron.Store) Tool {
 	return Tool{
 		Name:        "cron_list",
@@ -72,6 +82,9 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				return automationErrorResult(fmt.Sprintf("invalid arguments: %v", err)), nil
 			}
 			if err := validateNaturalTaskPrompt(input.Prompt); err != nil {
+				return automationErrorResult(err.Error()), nil
+			}
+			if err := validateAutonomousProjectSchedule(input.Prompt, input.ProjectID); err != nil {
 				return automationErrorResult(err.Error()), nil
 			}
 			sessionTarget, err := resolveCronSessionTargetFromContext(ctx, input.SessionTarget)
@@ -151,6 +164,10 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 			if input.JobID == "" {
 				return automationErrorResult("job_id is required"), nil
 			}
+			current, err := store.Get(input.JobID)
+			if err != nil {
+				return automationErrorResult(fmt.Sprintf("get cron job failed: %v", err)), nil
+			}
 			if input.Prompt != nil {
 				if err := validateNaturalTaskPrompt(*input.Prompt); err != nil {
 					return automationErrorResult(err.Error()), nil
@@ -162,6 +179,17 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 					return automationErrorResult(err.Error()), nil
 				}
 				input.SessionTarget = &resolved
+			}
+			effectivePrompt := current.Prompt
+			if input.Prompt != nil {
+				effectivePrompt = *input.Prompt
+			}
+			effectiveProjectID := current.ProjectID
+			if input.ProjectID != nil {
+				effectiveProjectID = *input.ProjectID
+			}
+			if err := validateAutonomousProjectSchedule(effectivePrompt, effectiveProjectID); err != nil {
+				return automationErrorResult(err.Error()), nil
 			}
 			job, err := store.Update(input.JobID, cron.UpdateInput{
 				Name:           input.Name,
