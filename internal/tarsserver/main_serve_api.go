@@ -40,6 +40,7 @@ type serveAPIRuntime struct {
 	gatewayAgentsWatch *gatewayAgentsWatcher
 	relayServer        *browserrelay.Server
 	cronManager        *workspaceCronManager
+	watchdogManager    *workspaceWatchdogManager
 	telegramPoller     *telegramUpdatePoller
 }
 
@@ -246,6 +247,14 @@ func buildAPIMux(
 		deps.ask,
 		heartbeatPolicyForWorkspace,
 		heartbeatState,
+		dispatcher.Emit,
+	)
+	watchdogState := newWatchdogWorkspaceState()
+	watchdogRunner := newWorkspaceWatchdogRunnerWithNotify(
+		cfg.WorkspaceDir,
+		cronStoreResolver,
+		nowFn,
+		watchdogState,
 		dispatcher.Emit,
 	)
 	cronRunner := newCronJobRunnerWithNotify(
@@ -483,6 +492,7 @@ func buildAPIMux(
 		},
 	})
 	cronManager := newWorkspaceCronManager(cronStoreResolver, cronRunner, 30*time.Second, nowFn, logger)
+	watchdogManager := newWorkspaceWatchdogManager(watchdogRunner, defaultWatchdogInterval)
 
 	return &serveAPIRuntime{
 		cfg:                cfg,
@@ -493,6 +503,7 @@ func buildAPIMux(
 		gatewayAgentsWatch: gatewayAgentsWatch,
 		relayServer:        relayServer,
 		cronManager:        cronManager,
+		watchdogManager:    watchdogManager,
 		telegramPoller:     telegramPoller,
 	}, nil
 }
@@ -602,6 +613,13 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 		go func() {
 			if err := runtime.cronManager.Start(ctx); err != nil {
 				logger.Error().Err(err).Msg("cron manager stopped with error")
+			}
+		}()
+	}
+	if runtime.watchdogManager != nil {
+		go func() {
+			if err := runtime.watchdogManager.Start(ctx); err != nil {
+				logger.Error().Err(err).Msg("watchdog manager stopped with error")
 			}
 		}()
 	}

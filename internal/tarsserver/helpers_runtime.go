@@ -170,20 +170,23 @@ func newHeartbeatRunnerWithNotify(
 	state *heartbeatRuntimeState,
 	emit func(ctx context.Context, evt notificationEvent),
 ) func(ctx context.Context) (heartbeat.RunResult, error) {
-	var mu sync.Mutex
-	return func(ctx context.Context) (heartbeat.RunResult, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		ranAt := nowFn().UTC()
-		result, err := heartbeat.RunOnceWithLLMResultWithPolicy(callCtx, workspaceDir, ranAt, ask, policy)
-		if state != nil {
-			state.record(ranAt, result, err)
-		}
-		if emit != nil {
-			if err != nil {
-				evt := newNotificationEvent("heartbeat", "error", "Heartbeat failed", trimForMemory(err.Error(), 240))
+	return newSerializedSupervisorRunner(serializedSupervisorOptions[heartbeat.RunResult]{
+		nowFn:   nowFn,
+		timeout: 30 * time.Second,
+		run: func(ctx context.Context, ranAt time.Time) (heartbeat.RunResult, error) {
+			return heartbeat.RunOnceWithLLMResultWithPolicy(ctx, workspaceDir, ranAt, ask, policy)
+		},
+		record: func(ranAt time.Time, result heartbeat.RunResult, runErr error) {
+			if state != nil {
+				state.record(ranAt, result, runErr)
+			}
+		},
+		emit: func(ctx context.Context, result heartbeat.RunResult, runErr error) {
+			if emit == nil {
+				return
+			}
+			if runErr != nil {
+				evt := newNotificationEvent("heartbeat", "error", "Heartbeat failed", trimForMemory(runErr.Error(), 240))
 				emit(ctx, evt)
 			} else if result.Skipped {
 				evt := newNotificationEvent("heartbeat", "info", "Heartbeat skipped", trimForMemory(result.SkipReason, 240))
@@ -195,9 +198,8 @@ func newHeartbeatRunnerWithNotify(
 				evt := newNotificationEvent("heartbeat", "info", "Heartbeat action", trimForMemory(result.Response, 280))
 				emit(ctx, evt)
 			}
-		}
-		return result, err
-	}
+		},
+	})
 }
 
 func newWorkspaceHeartbeatRunnerWithNotify(
@@ -208,32 +210,34 @@ func newWorkspaceHeartbeatRunnerWithNotify(
 	state *heartbeatWorkspaceState,
 	emit func(ctx context.Context, evt notificationEvent),
 ) func(ctx context.Context) (heartbeat.RunResult, error) {
-	var mu sync.Mutex
-	return func(ctx context.Context) (heartbeat.RunResult, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
+	return newSerializedSupervisorRunner(serializedSupervisorOptions[heartbeat.RunResult]{
+		nowFn:   nowFn,
+		timeout: 30 * time.Second,
+		run: func(ctx context.Context, ranAt time.Time) (heartbeat.RunResult, error) {
+			workspaceID := defaultWorkspaceID
+			workspaceDir := resolveWorkspaceDir(baseWorkspaceDir, workspaceID)
+			if err := memory.EnsureWorkspace(workspaceDir); err != nil {
+				return heartbeat.RunResult{}, err
+			}
 
-		workspaceID := defaultWorkspaceID
-		workspaceDir := resolveWorkspaceDir(baseWorkspaceDir, workspaceID)
-		if err := memory.EnsureWorkspace(workspaceDir); err != nil {
-			return heartbeat.RunResult{}, err
-		}
-
-		policy := heartbeat.Policy{}
-		if policyForWorkspace != nil {
-			policy = policyForWorkspace(workspaceID)
-		}
-		ranAt := nowFn().UTC()
-		result, err := heartbeat.RunOnceWithLLMResultWithPolicy(callCtx, workspaceDir, ranAt, ask, policy)
-		if state != nil {
-			state.record(workspaceID, ranAt, result, err)
-		}
-		if emit != nil {
+			policy := heartbeat.Policy{}
+			if policyForWorkspace != nil {
+				policy = policyForWorkspace(workspaceID)
+			}
+			return heartbeat.RunOnceWithLLMResultWithPolicy(ctx, workspaceDir, ranAt, ask, policy)
+		},
+		record: func(ranAt time.Time, result heartbeat.RunResult, runErr error) {
+			if state != nil {
+				state.record(defaultWorkspaceID, ranAt, result, runErr)
+			}
+		},
+		emit: func(ctx context.Context, result heartbeat.RunResult, runErr error) {
+			if emit == nil {
+				return
+			}
 			switch {
-			case err != nil:
-				evt := newNotificationEvent("heartbeat", "error", "Heartbeat failed", trimForMemory(err.Error(), 240))
+			case runErr != nil:
+				evt := newNotificationEvent("heartbeat", "error", "Heartbeat failed", trimForMemory(runErr.Error(), 240))
 				emit(ctx, evt)
 			case result.Skipped:
 				evt := newNotificationEvent("heartbeat", "info", "Heartbeat skipped", trimForMemory(result.SkipReason, 240))
@@ -245,9 +249,8 @@ func newWorkspaceHeartbeatRunnerWithNotify(
 				evt := newNotificationEvent("heartbeat", "info", "Heartbeat action", trimForMemory(result.Response, 280))
 				emit(ctx, evt)
 			}
-		}
-		return result, err
-	}
+		},
+	})
 }
 
 func buildHeartbeatPolicy(
