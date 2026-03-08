@@ -63,12 +63,19 @@ func newCronJobRunnerWithNotify(
 			_ = targetStore.SetProjectID(targetSessionID, strings.TrimSpace(job.ProjectID))
 		}
 		if targetSessionID != "" {
-			contextText, err := sessionContextByID(targetStore, targetSessionID, 6)
+			targetSession, err := lookupCronDeliverySession(targetStore, targetSessionID)
 			if err != nil {
 				return "", err
 			}
-			if contextText != "" {
-				promptText += "\n\nTARGET_SESSION_CONTEXT:\n" + contextText
+			includeTargetContext := targetSession != nil && !(targetSession.Hidden && strings.EqualFold(strings.TrimSpace(targetSession.Kind), "worker"))
+			if includeTargetContext {
+				contextText, err := sessionContextByID(targetStore, targetSessionID, 6)
+				if err != nil {
+					return "", err
+				}
+				if contextText != "" {
+					promptText += "\n\nTARGET_SESSION_CONTEXT:\n" + contextText
+				}
 			}
 		}
 

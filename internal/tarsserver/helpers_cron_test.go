@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -97,6 +98,49 @@ func TestDeliverCronResult_WorkerSessionGetsRawAndMainGetsSummary(t *testing.T) 
 	}
 	if len(mainMessages) != 1 || mainMessages[0].Role != "system" || !containsAll(mainMessages[0].Content, "[CRON SUMMARY]", "project_id: proj_demo", "status: completed", "drafted episode 2") {
 		t.Fatalf("unexpected main transcript: %+v", mainMessages)
+	}
+}
+
+func TestCronJobRunner_HiddenWorkerDoesNotInjectTargetSessionContext(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	worker, err := store.EnsureWorker("proj_demo")
+	if err != nil {
+		t.Fatalf("ensure worker session: %v", err)
+	}
+	if err := session.AppendMessage(store.TranscriptPath(worker.ID), session.Message{
+		Role:      "system",
+		Content:   "[CRON]\nresponse: contaminated prior raw output",
+		Timestamp: time.Date(2026, 3, 8, 1, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("append worker message: %v", err)
+	}
+
+	var seenPrompt string
+	runner := newCronJobRunnerWithNotify(
+		root,
+		store,
+		func(_ context.Context, _ string, promptText string) (string, error) {
+			seenPrompt = promptText
+			return "ok", nil
+		},
+		zerolog.Nop(),
+		nil,
+		"",
+	)
+
+	_, err = runner(context.Background(), cron.Job{
+		ID:        "job_demo",
+		Name:      "nightly writer",
+		Prompt:    "write next chapter",
+		Schedule:  "every:1m",
+		ProjectID: "proj_demo",
+	})
+	if err != nil {
+		t.Fatalf("run cron job: %v", err)
+	}
+	if strings.Contains(seenPrompt, "TARGET_SESSION_CONTEXT:") {
+		t.Fatalf("did not expect hidden worker session context in prompt, got %q", seenPrompt)
 	}
 }
 
