@@ -24,6 +24,8 @@ func normalizeSessionTarget(raw string) (string, error) {
 		return "isolated", nil
 	case "main":
 		return "main", nil
+	case "current":
+		return "main", nil
 	default:
 		return v, nil
 	}

@@ -52,7 +52,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
   "required":["prompt"],
   "additionalProperties":false
 }`),
-		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
+		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
 				return automationErrorResult("cron store is not configured"), nil
 			}
@@ -74,6 +74,10 @@ func NewCronCreateTool(store *cron.Store) Tool {
 			if err := validateNaturalTaskPrompt(input.Prompt); err != nil {
 				return automationErrorResult(err.Error()), nil
 			}
+			sessionTarget, err := resolveCronSessionTargetFromContext(ctx, input.SessionTarget)
+			if err != nil {
+				return automationErrorResult(err.Error()), nil
+			}
 			hasEnable := input.Enabled != nil
 			enabled := true
 			if input.Enabled != nil {
@@ -85,7 +89,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				Schedule:          input.Schedule,
 				Enabled:           enabled,
 				HasEnable:         hasEnable,
-				SessionTarget:     input.SessionTarget,
+				SessionTarget:     sessionTarget,
 				ProjectID:         input.ProjectID,
 				WakeMode:          input.WakeMode,
 				DeliveryMode:      input.DeliveryMode,
@@ -123,7 +127,7 @@ func NewCronUpdateTool(store *cron.Store) Tool {
   "required":["job_id"],
   "additionalProperties":false
 }`),
-		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
+		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
 				return automationErrorResult("cron store is not configured"), nil
 			}
@@ -152,6 +156,13 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 					return automationErrorResult(err.Error()), nil
 				}
 			}
+			if input.SessionTarget != nil {
+				resolved, err := resolveCronSessionTargetFromContext(ctx, *input.SessionTarget)
+				if err != nil {
+					return automationErrorResult(err.Error()), nil
+				}
+				input.SessionTarget = &resolved
+			}
 			job, err := store.Update(input.JobID, cron.UpdateInput{
 				Name:           input.Name,
 				Prompt:         input.Prompt,
@@ -170,6 +181,15 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 			return jsonTextResult(job, false), nil
 		},
 	}
+}
+
+func resolveCronSessionTargetFromContext(ctx context.Context, provided string) (string, error) {
+	_ = ctx
+	sessionTarget := strings.TrimSpace(provided)
+	if !strings.EqualFold(sessionTarget, "current") {
+		return sessionTarget, nil
+	}
+	return "main", nil
 }
 
 func NewCronDeleteTool(store *cron.Store) Tool {

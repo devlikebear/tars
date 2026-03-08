@@ -90,6 +90,59 @@ func TestCronCreateUpdateDeleteTools_Workflow(t *testing.T) {
 	}
 }
 
+func TestCronCreateTool_ResolvesCurrentSessionTargetFromContext(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	create := NewCronCreateTool(store)
+
+	createResult, err := create.Execute(context.Background(), json.RawMessage(`{"name":"ops","prompt":"check status","schedule":"every:30m","session_target":"current"}`))
+	if err != nil {
+		t.Fatalf("execute cron_create: %v", err)
+	}
+	if createResult.IsError {
+		t.Fatalf("expected create success, got %s", createResult.Text())
+	}
+	var created cron.Job
+	if err := json.Unmarshal([]byte(createResult.Text()), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+	if created.SessionTarget != "main" {
+		t.Fatalf("expected current session target to resolve, got %+v", created)
+	}
+}
+
+func TestCronUpdateTool_ResolvesCurrentSessionTargetFromContext(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	job, err := store.CreateWithOptions(cron.CreateInput{
+		Name:          "typed",
+		Prompt:        "collect updates",
+		Schedule:      "every:30m",
+		Enabled:       true,
+		HasEnable:     true,
+		SessionTarget: "main",
+	})
+	if err != nil {
+		t.Fatalf("create typed cron job: %v", err)
+	}
+	update := NewCronUpdateTool(store)
+
+	updateResult, err := update.Execute(context.Background(), json.RawMessage(`{"job_id":"`+job.ID+`","session_target":"current"}`))
+	if err != nil {
+		t.Fatalf("execute cron_update: %v", err)
+	}
+	if updateResult.IsError {
+		t.Fatalf("expected update success, got %s", updateResult.Text())
+	}
+	var updated cron.Job
+	if err := json.Unmarshal([]byte(updateResult.Text()), &updated); err != nil {
+		t.Fatalf("decode updated job: %v", err)
+	}
+	if updated.SessionTarget != "main" {
+		t.Fatalf("expected current session target to resolve, got %+v", updated)
+	}
+}
+
 func TestCronRunTool_ExecutesAndRecordsRun(t *testing.T) {
 	root := t.TempDir()
 	store := cron.NewStore(root)

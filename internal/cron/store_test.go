@@ -276,6 +276,26 @@ func TestStore_CreateWithSessionWakeDeliveryPayload(t *testing.T) {
 	}
 }
 
+func TestStore_Create_NormalizesCurrentSessionTargetToMain(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	job, err := store.CreateWithOptions(CreateInput{
+		Name:          "typed",
+		Prompt:        "collect updates",
+		Schedule:      "every:30m",
+		Enabled:       true,
+		HasEnable:     true,
+		SessionTarget: "current",
+	})
+	if err != nil {
+		t.Fatalf("create typed cron job: %v", err)
+	}
+	if job.SessionTarget != "main" {
+		t.Fatalf("expected session_target main, got %q", job.SessionTarget)
+	}
+}
+
 func TestStore_Create_DefaultDeleteAfterRunForOneShotCron(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

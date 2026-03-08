@@ -36,7 +36,7 @@ func newCronJobRunner(
 	runPrompt func(ctx context.Context, runLabel string, promptText string) (string, error),
 	logger zerolog.Logger,
 ) func(ctx context.Context, job cron.Job) (string, error) {
-	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil, "", 0)
+	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil, "", 0, nil)
 }
 
 func newCronJobRunnerWithNotify(
@@ -47,6 +47,7 @@ func newCronJobRunnerWithNotify(
 	emit func(ctx context.Context, evt notificationEvent),
 	mainSessionID string,
 	artifactHistoryLimit int,
+	resolveDefaultTelegramChatID func(ctx context.Context) (string, error),
 ) func(ctx context.Context, job cron.Job) (string, error) {
 	if runPrompt == nil {
 		return nil
@@ -68,6 +69,13 @@ func newCronJobRunnerWithNotify(
 		}
 		if projectPrompt := buildCronProjectPromptSection(targetWorkspaceDir, job.ProjectID); projectPrompt != "" {
 			promptText += "\n\n" + projectPrompt
+		}
+		telegramPrompt, err := buildCronTelegramPromptSection(ctx, resolveDefaultTelegramChatID)
+		if err != nil {
+			return "", err
+		}
+		if telegramPrompt != "" {
+			promptText += "\n\n" + telegramPrompt
 		}
 		projectFileSnapshot, err := snapshotCronProjectFiles(targetWorkspaceDir, job.ProjectID)
 		if err != nil {
@@ -164,6 +172,27 @@ func newCronJobRunnerWithNotify(
 		}
 		return response, nil
 	}
+}
+
+func buildCronTelegramPromptSection(ctx context.Context, resolveDefaultTelegramChatID func(context.Context) (string, error)) (string, error) {
+	if resolveDefaultTelegramChatID == nil {
+		return "", nil
+	}
+	chatID, err := resolveDefaultTelegramChatID(ctx)
+	if err != nil {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(err.Error())), "multiple paired telegram chats") {
+			return "CRON_TELEGRAM_CONTEXT:\n- default_paired_chat_available: false\n- warning: multiple paired telegram chats exist; telegram_send requires an explicit chat_id.", nil
+		}
+		return "", err
+	}
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" {
+		return "", nil
+	}
+	return fmt.Sprintf(
+		"CRON_TELEGRAM_CONTEXT:\n- default_paired_chat_available: true\n- default_paired_chat_id: %s\n- If you need to send a Telegram notification to the same paired chat, call telegram_send.\n- When the tool is configured with a default paired chat, you may omit chat_id and provide only text unless you intentionally target a different chat.",
+		chatID,
+	), nil
 }
 
 func buildCronProjectPromptSection(workspaceDir string, projectID string) string {
@@ -444,7 +473,7 @@ func resolveCronTargetSessionID(store *session.Store, job cron.Job, mainSessionI
 		}
 		return "", false, nil
 	}
-	if strings.EqualFold(target, "main") {
+	if strings.EqualFold(target, "main") || strings.EqualFold(target, "current") {
 		configuredMain := strings.TrimSpace(mainSessionID)
 		if configuredMain != "" {
 			if _, err := store.Get(configuredMain); err != nil {

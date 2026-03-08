@@ -35,6 +35,25 @@ func TestResolveCronTargetSessionID_MainUsesConfiguredMainSession(t *testing.T) 
 	}
 }
 
+func TestResolveCronTargetSessionID_CurrentUsesConfiguredMainSession(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+
+	sessionID, explicit, err := resolveCronTargetSessionID(store, cron.Job{SessionTarget: "current"}, mainSession.ID)
+	if err != nil {
+		t.Fatalf("resolve current target: %v", err)
+	}
+	if explicit {
+		t.Fatalf("current target should not be treated as explicit session id")
+	}
+	if sessionID != mainSession.ID {
+		t.Fatalf("expected main session id %q, got %q", mainSession.ID, sessionID)
+	}
+}
+
 func TestResolveCronTargetSessionID_ProjectUsesWorkerSessionWhenImplicit(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	mainSession, err := store.EnsureMain()
@@ -130,6 +149,7 @@ func TestCronJobRunner_HiddenWorkerDoesNotInjectTargetSessionContext(t *testing.
 		nil,
 		"",
 		0,
+		nil,
 	)
 
 	_, err = runner(context.Background(), cron.Job{
@@ -144,6 +164,50 @@ func TestCronJobRunner_HiddenWorkerDoesNotInjectTargetSessionContext(t *testing.
 	}
 	if strings.Contains(seenPrompt, "TARGET_SESSION_CONTEXT:") {
 		t.Fatalf("did not expect hidden worker session context in prompt, got %q", seenPrompt)
+	}
+}
+
+func TestCronJobRunner_IncludesDefaultTelegramChatContext(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+
+	var seenPrompt string
+	runner := newCronJobRunnerWithNotify(
+		root,
+		store,
+		func(_ context.Context, _ string, promptText string) (string, error) {
+			seenPrompt = promptText
+			return "ok", nil
+		},
+		zerolog.Nop(),
+		nil,
+		mainSession.ID,
+		0,
+		func(_ context.Context) (string, error) {
+			return "8432508298", nil
+		},
+	)
+
+	_, err = runner(context.Background(), cron.Job{
+		ID:       "job_demo",
+		Name:     "telegram notify",
+		Prompt:   "1분 뒤에 이 채널로 테스트 알림 보내줘",
+		Schedule: "at:2026-03-08T06:17:09Z",
+	})
+	if err != nil {
+		t.Fatalf("run cron job: %v", err)
+	}
+	if !containsAll(seenPrompt,
+		"CRON_TELEGRAM_CONTEXT:",
+		"default_paired_chat_available: true",
+		"telegram_send",
+		"8432508298",
+	) {
+		t.Fatalf("expected telegram context in prompt, got %q", seenPrompt)
 	}
 }
 
@@ -169,6 +233,7 @@ func TestCronJobRunner_RejectsPseudoToolContamination(t *testing.T) {
 		nil,
 		mainSession.ID,
 		0,
+		nil,
 	)
 
 	_, err = runner(context.Background(), cron.Job{
@@ -323,6 +388,7 @@ func TestCronJobRunner_FailsWhenClaimedFileUpdateIsNotObserved(t *testing.T) {
 		nil,
 		mainSession.ID,
 		0,
+		nil,
 	)
 
 	_, err = runner(context.Background(), cron.Job{
