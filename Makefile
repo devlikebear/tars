@@ -39,6 +39,7 @@ ASSISTANT_API_TOKEN ?= $(TARS_API_TOKEN)
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover \
 	build build-bins clean tidy fmt vet lint \
+	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
 	logs logs-server logs-server-err logs-assistant logs-assistant-err \
@@ -68,6 +69,7 @@ help:
 	@echo "Build/quality targets:"
 	@echo "  make build         - go build ./..."
 	@echo "  make build-bins    - build cmd binaries to $(BIN_DIR)"
+	@echo "  make browser-install - npm install + playwright chromium install"
 	@echo "  make install       - build $(TARS_BIN) and (re)install io.tars.server + io.tars.assistant launch agents"
 	@echo "  make uninstall     - stop and remove io.tars.server + io.tars.assistant launch agents"
 	@echo "  make reinstall     - uninstall then install launch agents"
@@ -130,6 +132,10 @@ build:
 build-bins:
 	mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN_DIR)/tars ./cmd/tars
+
+browser-install:
+	npm install
+	npx playwright install chromium
 
 install: install-server install-assistant
 

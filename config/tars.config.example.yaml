@@ -102,16 +102,12 @@ vault_approle_role_id: ""
 vault_approle_secret_id: ""
 # vault_secret_path_allowlist_json: '["sites/"]'
 
-# Browser runtime / relay / site flows
+# Browser runtime / site flows (Playwright)
 browser_runtime_enabled: true
-browser_default_profile: managed # managed | chrome
+browser_default_profile: managed
 browser_managed_headless: false
 browser_managed_executable_path: ""
 browser_managed_user_data_dir: ./workspace/_shared/browser/managed
-browser_relay_enabled: true
-browser_relay_addr: 127.0.0.1:43182
-browser_relay_allow_query_token: false
-browser_relay_origin_allowlist_json: '["chrome-extension://*"]'
 browser_site_flows_dir: ./workspace/automation/sites
 # browser_auto_login_site_allowlist_json: '["intranet","grafana"]'
 

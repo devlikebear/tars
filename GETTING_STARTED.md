@@ -300,56 +300,75 @@ make dev-serve
 - 파일 기반 토큰 사용 시 401/403 발생 시 refresh를 1회 시도하고, 성공하면 `auth.json`을 원자적으로 갱신합니다.
 - 환경변수 토큰만 사용할 경우(예: `OPENAI_CODEX_OAUTH_TOKEN`) refresh 결과를 파일에 저장하지 않습니다.
 
-## 8) Browser Relay 확장 연동
+## 8) Playwright 기반 브라우저 자동화
 
-브라우저 릴레이(`chrome` 프로필)에서 확장 연동이 필요한 경우, 먼저 relay 상태/접속 주소를 확인하세요.
+브라우저 기능은 이제 CDP relay가 아니라 **Playwright headless/runtime** 기반입니다. 주요 용도는 다음입니다.
 
-1. 서버 실행 후 relay 정보 확인 (`tars` TUI)
+- 내 웹사이트 E2E 확인
+- 로그인 후 특정 화면 네비게이션
+- 상태 점검/모니터링
+- screenshot/snapshot 기반 후속 분석
 
-```text
-/browser relay
+1. Playwright runtime 설치
+
+```bash
+make browser-install
 ```
 
-출력 예:
+2. 서버 실행
 
-```text
-SYSTEM > browser relay enabled=true running=true extension_connected=false attached_tabs=0 addr=127.0.0.1:43182
-SYSTEM > relay extension_ws=ws://127.0.0.1:43182/extension cdp_ws=ws://127.0.0.1:43182/cdp
-SYSTEM > relay auth_required=true json_auth_required=true
-SYSTEM > relay origin_allowlist=chrome-extension://*
-SYSTEM > relay token=...
+```bash
+make dev-serve
 ```
 
-2. TARS relay 확장 로드
-
-- `chrome://extensions` -> Developer mode -> Load unpacked
-- 경로: `web/relay-extension`
-- 상세: `web/relay-extension/README.md`
-
-3. 확장 Options에서 토큰 설정
-
-- `chrome://extensions` -> TARS Relay -> Extension options
-- `Relay Port`: `43182` (또는 relay addr 포트)
-- `Relay Token`: `/browser relay` 출력의 `relay token` 값
-- `Check Relay` -> `Save`
-
-팁:
-- 매번 토큰을 다시 넣기 싫다면 `workspace/config/tars.config.yaml`에 `browser_relay_token`을 고정값으로 설정하세요.
-
-4. 동작 확인
+3. 상태 확인 (`tars` TUI)
 
 ```text
-/browser relay
 /browser status
+/browser profiles
 ```
 
-- `extension_connected=true`이면 relay-확장 연결이 성립된 상태입니다.
-- `attached_tabs`가 1 이상이면 extension이 디버그 가능한 탭에 attach된 상태입니다.
-- 실제 브라우저 액션은 `profile=chrome`으로 시작 후 사용합니다.
+예상 출력:
 
-5. 인증/보안 참고
+```text
+SYSTEM > browser running=true profile=managed driver=playwright
+SYSTEM > browser profiles=1
+- managed driver=playwright default=true running=true
+```
 
-- relay는 `/extension`, `/cdp`, `/json*` 전 구간에서 token이 필수입니다.
-- 기본 전달 경로는 `Tars-Relay-Token` 헤더입니다.
-- `browser_relay_allow_query_token=true`일 때만 query token(`?token=`, `?relay_token=`)이 허용됩니다.
-- non-admin `/v1/browser/relay` 응답에서는 `relay_token`이 노출되지 않습니다.
+4. 사이트 flow 작성
+
+기본 위치:
+
+- `workspace/automation/sites/*.yaml`
+
+예시:
+
+```yaml
+id: portal
+enabled: true
+profile: managed
+url: https://example.com
+allowed_hosts: ["example.com"]
+checks:
+  - selector: "#ready"
+    contains: "hello"
+actions:
+  export:
+    steps:
+      - open: "https://example.com/export"
+      - click: "#export"
+```
+
+5. 실행
+
+```text
+/browser login portal
+/browser check portal
+/browser run portal export
+```
+
+참고:
+- `vault_form` / `env_form` 로그인 모드는 그대로 지원합니다.
+- 로그인 세션은 Playwright persistent profile(`browser_managed_user_data_dir`)에 저장됩니다.
+- `/browser relay`는 제거되었고, 호출하면 제거 안내만 출력합니다.
