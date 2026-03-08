@@ -3,7 +3,7 @@ package tarsserver
 import (
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/config"
+	"github.com/devlikebear/tars/internal/config"
 )
 
 func TestBuildBrowserService_UsesRuntimeConfig(t *testing.T) {

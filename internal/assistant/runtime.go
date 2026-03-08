@@ -1,8 +1,8 @@
 package assistant
 
 import (
-	"bytes"
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/pkg/tarsclient"
+	"github.com/devlikebear/tars/pkg/tarsclient"
 )
 
 const (
@@ -58,20 +58,20 @@ func RunVoiceTurn(ctx context.Context, deps VoiceTurnDeps, audioPath string) (Vo
 }
 
 type StartOptions struct {
-	ServerURL    string
-	SessionID    string
-	APIToken     string
-	WorkspaceDir string
-	Hotkey       string
-	AudioInput   string
-	WhisperBin   string
-	WhisperModel string
+	ServerURL       string
+	SessionID       string
+	APIToken        string
+	WorkspaceDir    string
+	Hotkey          string
+	AudioInput      string
+	WhisperBin      string
+	WhisperModel    string
 	WhisperLanguage string
-	FFmpegBin    string
-	TTSBin       string
-	Stdin        io.Reader
-	Stdout       io.Writer
-	Stderr       io.Writer
+	FFmpegBin       string
+	TTSBin          string
+	Stdin           io.Reader
+	Stdout          io.Writer
+	Stderr          io.Writer
 }
 
 func Start(ctx context.Context, opts StartOptions) error {
@@ -104,13 +104,13 @@ func Start(ctx context.Context, opts StartOptions) error {
 	whisperBin := defaultIfEmpty(opts.WhisperBin, "whisper-cli")
 	deps := VoiceTurnDeps{
 		Transcriber: commandTranscriber{
-			binary:   whisperBin,
+			binary:    whisperBin,
 			modelPath: defaultWhisperModelPath(opts.WhisperModel, whisperBin),
-			language: defaultIfEmpty(opts.WhisperLanguage, "ko"),
+			language:  defaultIfEmpty(opts.WhisperLanguage, "ko"),
 		},
-		ChatClient:  chatClient,
-		Speaker:     commandSpeaker{binary: defaultIfEmpty(opts.TTSBin, "say")},
-		SessionID:   strings.TrimSpace(opts.SessionID),
+		ChatClient: chatClient,
+		Speaker:    commandSpeaker{binary: defaultIfEmpty(opts.TTSBin, "say")},
+		SessionID:  strings.TrimSpace(opts.SessionID),
 	}
 
 	hotkey := strings.TrimSpace(opts.Hotkey)

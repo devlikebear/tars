@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/heartbeat"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
+	"github.com/devlikebear/tars/internal/heartbeat"
+	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/rs/zerolog"
 )
 

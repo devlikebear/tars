@@ -1,55 +1,37 @@
-# TARS Relay Extension (Experimental)
+# TARS Relay Extension
 
-This extension is an experimental bridge between Chrome and the local TARS relay server.
+This Chrome extension is an experimental bridge for the local relay server.
+
+It is not the primary browser automation path. Prefer the Playwright runtime unless you specifically need relay-based Chrome debugging.
 
 ## Scope
 
-- Connects to `ws://127.0.0.1:43182/extension?token=...`.
-- Forwards relay websocket commands to `chrome.debugger.sendCommand`.
-- Forwards `chrome.debugger.onEvent` events back to relay.
-- Uses strict relay token auth (`/extension`, `/cdp`, `/json*`).
+- Connects to the local relay service on loopback only
+- Forwards relay commands to `chrome.debugger`
+- Forwards debugger events back to the relay runtime
 
 ## Install
 
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Click **Load unpacked**.
-4. Select the `web/relay-extension` directory.
+1. Open `chrome://extensions`
+2. Enable developer mode
+3. Click **Load unpacked**
+4. Select `web/relay-extension`
 
-## Runtime setup
+## Runtime Setup
 
-1. Run TARS server:
+1. Start the TARS server:
 
 ```bash
 make dev-serve
 ```
 
-2. In TARS client, check relay info:
+2. Open the extension options page and configure the relay port and token.
 
-```text
-/browser relay
-```
-
-3. Open extension options and configure token:
-
-- `chrome://extensions` -> TARS Relay -> **Extension options**
-- Set:
-  - `Relay Port` (default `43182`)
-  - `Relay Token` (use `/browser relay` output in admin context)
-- Click `Check Relay` then `Save`.
-
-If you want a stable token across server restarts, set `browser_relay_token` in `workspace/config/tars.config.yaml`.
-
-4. Keep one normal web tab focused (not `chrome://`).
-5. Click the extension icon once to connect relay if auto-connect did not happen.
+3. Keep a normal `http(s)` tab focused and connect the extension.
 
 ## Notes
 
-- This extension is local-only and intended for loopback relay use.
-- Chrome debugger attach may fail for protected URLs or if another debugger is attached.
-- If relay disconnects, the extension retries automatically.
-- If start fails with `no debuggable tab found`, open/focus a normal `http(s)` tab and retry.
-- Badge meaning:
-  - `ON`: relay connected
-  - `...`: reconnecting/connecting
-  - `!`: configuration/auth/connection error
+- Local-only workflow
+- Experimental and legacy compared with the Playwright runtime
+- Protected Chrome URLs may reject debugger attachment
+- Connection failures usually mean relay auth, tab focus, or debugger ownership issues

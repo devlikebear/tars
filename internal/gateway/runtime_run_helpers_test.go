@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/project"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/project"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func TestResolveSpawnProjectID_UsesSessionProjectAndPersistsOverride(t *testing.T) {

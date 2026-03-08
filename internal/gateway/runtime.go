@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/browser"
+	"github.com/devlikebear/tars/internal/browser"
 )
 
 func NewRuntime(opts RuntimeOptions) *Runtime {

@@ -3,7 +3,7 @@ package tool
 import (
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/gateway"
+	"github.com/devlikebear/tars/internal/gateway"
 )
 
 func TestResolveBrowserStartProfile(t *testing.T) {
@@ -64,4 +64,3 @@ func TestResolveBrowserStartProfile(t *testing.T) {
 		})
 	}
 }
-

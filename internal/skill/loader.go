@@ -115,15 +115,15 @@ func loadSourceSkills(source Source, dir string) ([]Definition, []Diagnostic, er
 		}
 
 		defs = append(defs, Definition{
-			Name:          name,
-			Description:   description,
-			UserInvocable: userInvocable,
-			Source:        source,
-			FilePath:      path,
+			Name:                    name,
+			Description:             description,
+			UserInvocable:           userInvocable,
+			Source:                  source,
+			FilePath:                path,
 			RecommendedTools:        append([]string(nil), meta.RecommendedTools...),
 			RecommendedProjectFiles: append([]string(nil), meta.RecommendedProjectFiles...),
 			WakePhases:              append([]string(nil), meta.WakePhases...),
-			Content:       content,
+			Content:                 content,
 		})
 		return nil
 	})

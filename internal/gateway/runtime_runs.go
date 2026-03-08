@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func (r *Runtime) getRunState(runID string) (*runState, bool) {

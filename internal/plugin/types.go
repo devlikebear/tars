@@ -1,6 +1,6 @@
 package plugin
 
-import "github.com/devlikebear/tarsncase/internal/config"
+import "github.com/devlikebear/tars/internal/config"
 
 type ServerConfig = config.MCPServer
 

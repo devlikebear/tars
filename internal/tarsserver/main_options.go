@@ -3,7 +3,7 @@ package tarsserver
 import (
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 // ServeOptions configures Serve API execution without CLI argument parsing.

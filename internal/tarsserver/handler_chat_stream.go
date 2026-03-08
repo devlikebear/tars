@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/rs/zerolog"
 )
 

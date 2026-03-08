@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/browser"
-	"github.com/devlikebear/tarsncase/internal/config"
-	"github.com/devlikebear/tarsncase/internal/vaultclient"
+	"github.com/devlikebear/tars/internal/browser"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/vaultclient"
 )
 
 type vaultStatusSnapshot struct {

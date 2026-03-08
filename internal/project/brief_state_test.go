@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func TestStoreUpdateBriefAndFinalize(t *testing.T) {

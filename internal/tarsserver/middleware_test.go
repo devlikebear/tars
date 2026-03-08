@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/config"
-	"github.com/devlikebear/tarsncase/internal/memory"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 

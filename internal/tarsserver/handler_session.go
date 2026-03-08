@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/llm"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 

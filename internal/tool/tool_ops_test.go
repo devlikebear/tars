@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/ops"
+	"github.com/devlikebear/tars/internal/ops"
 )
 
 func TestOpsTools_StatusPlanApply(t *testing.T) {

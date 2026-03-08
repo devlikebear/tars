@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
+	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/rs/zerolog"
 )
 

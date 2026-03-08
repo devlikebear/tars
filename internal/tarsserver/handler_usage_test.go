@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/usage"
+	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
 

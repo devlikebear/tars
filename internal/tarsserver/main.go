@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cli"
-	"github.com/devlikebear/tarsncase/internal/envloader"
+	"github.com/devlikebear/tars/internal/cli"
+	"github.com/devlikebear/tars/internal/envloader"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
 )

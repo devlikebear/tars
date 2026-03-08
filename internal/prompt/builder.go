@@ -10,15 +10,15 @@ import (
 
 // BuildOptions configures system prompt generation.
 type BuildOptions struct {
-	WorkspaceDir          string // path to workspace root
-	SubAgent              bool   // if true, only inject AGENTS.md and TOOLS.md
-	Query                 string
-	ProjectID             string
-	SessionID             string
-	ForceRelevantMemory   bool
-	StaticBudgetTokens    int
-	RelevantBudgetTokens  int
-	TotalBudgetTokens     int
+	WorkspaceDir         string // path to workspace root
+	SubAgent             bool   // if true, only inject AGENTS.md and TOOLS.md
+	Query                string
+	ProjectID            string
+	SessionID            string
+	ForceRelevantMemory  bool
+	StaticBudgetTokens   int
+	RelevantBudgetTokens int
+	TotalBudgetTokens    int
 }
 
 // BuildResult captures prompt assembly output and budget usage.

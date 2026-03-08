@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/config"
-	"github.com/devlikebear/tarsncase/internal/gateway"
-	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/rs/zerolog"
 )
 

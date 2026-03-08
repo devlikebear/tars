@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/browser"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/browser"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 type RunStatus string

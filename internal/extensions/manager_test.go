@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/config"
-	"github.com/devlikebear/tarsncase/internal/skill"
-	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/skill"
+	"github.com/devlikebear/tars/internal/tool"
 )
 
 func TestManagerReload_AggregatesSkillsPluginsAndMCP(t *testing.T) {
@@ -22,7 +22,7 @@ func TestManagerReload_AggregatesSkillsPluginsAndMCP(t *testing.T) {
 
 	writeFile(t, filepath.Join(workspaceSkillsDir, "SKILL.md"), "# Workspace Skill\nFrom workspace")
 	writeFile(t, filepath.Join(pluginSkillsDir, "SKILL.md"), "# Plugin Skill\nFrom plugin")
-	writeFile(t, filepath.Join(pluginDir, "tarsncase.plugin.json"), `{
+	writeFile(t, filepath.Join(pluginDir, "tars.plugin.json"), `{
   "id":"ops",
   "skills":["skills"],
   "mcp_servers":[{"name":"plugin-fs","command":"npx"}]
@@ -85,7 +85,7 @@ func TestManagerReload_DoesNotMergePluginMCPServersByDefault(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace")
 	pluginDir := filepath.Join(root, "plugins", "ops")
-	writeFile(t, filepath.Join(pluginDir, "tarsncase.plugin.json"), `{
+	writeFile(t, filepath.Join(pluginDir, "tars.plugin.json"), `{
   "id":"ops",
   "mcp_servers":[{"name":"plugin-fs","command":"npx"}]
 }`)

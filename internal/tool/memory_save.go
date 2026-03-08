@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tars/internal/memory"
 )
 
 func NewMemorySaveTool(workspaceDir string, nowFn func() time.Time) Tool {

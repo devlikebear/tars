@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/browser"
+	"github.com/devlikebear/tars/internal/browser"
 )
 
 func (r *Runtime) BrowserStatus() BrowserState {

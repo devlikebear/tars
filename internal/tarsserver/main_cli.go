@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cli"
+	"github.com/devlikebear/tars/internal/cli"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/gateway"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func NewSessionsListTool(store *session.Store) Tool {

@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/extensions"
-	"github.com/devlikebear/tarsncase/internal/mcp"
-	"github.com/devlikebear/tarsncase/internal/plugin"
-	"github.com/devlikebear/tarsncase/internal/skill"
+	"github.com/devlikebear/tars/internal/extensions"
+	"github.com/devlikebear/tars/internal/mcp"
+	"github.com/devlikebear/tars/internal/plugin"
+	"github.com/devlikebear/tars/internal/skill"
 	"github.com/rs/zerolog"
 )
 

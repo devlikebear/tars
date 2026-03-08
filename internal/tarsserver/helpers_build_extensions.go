@@ -6,25 +6,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/config"
-	"github.com/devlikebear/tarsncase/internal/extensions"
-	"github.com/devlikebear/tarsncase/internal/plugin"
-	"github.com/devlikebear/tarsncase/internal/skill"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/extensions"
+	"github.com/devlikebear/tars/internal/plugin"
+	"github.com/devlikebear/tars/internal/skill"
 )
 
 func buildExtensionsManager(cfg config.Config, runtime extensions.MPRuntime) (*extensions.Manager, error) {
 	manager, err := extensions.NewManager(extensions.Options{
-		WorkspaceDir:   cfg.WorkspaceDir,
-		SkillsEnabled:  cfg.SkillsEnabled,
-		PluginsEnabled: cfg.PluginsEnabled,
+		WorkspaceDir:           cfg.WorkspaceDir,
+		SkillsEnabled:          cfg.SkillsEnabled,
+		PluginsEnabled:         cfg.PluginsEnabled,
 		PluginsAllowMCPServers: cfg.PluginsAllowMCPServers,
-		SkillSources:   buildSkillSources(cfg),
-		PluginSources:  buildPluginSources(cfg),
-		MCPBaseServers: append([]config.MCPServer(nil), cfg.MCPServers...),
-		MCPRuntime:     runtime,
-		WatchSkills:    cfg.SkillsWatch,
-		WatchPlugins:   cfg.PluginsWatch,
-		WatchDebounce:  resolveExtensionsWatchDebounce(cfg),
+		SkillSources:           buildSkillSources(cfg),
+		PluginSources:          buildPluginSources(cfg),
+		MCPBaseServers:         append([]config.MCPServer(nil), cfg.MCPServers...),
+		MCPRuntime:             runtime,
+		WatchSkills:            cfg.SkillsWatch,
+		WatchPlugins:           cfg.PluginsWatch,
+		WatchDebounce:          resolveExtensionsWatchDebounce(cfg),
 	})
 	if err != nil {
 		return nil, err
@@ -45,6 +45,7 @@ func buildSkillSources(cfg config.Config) []skill.SourceDir {
 	appendSource(skill.SourceBundled, cfg.SkillsBundledDir)
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
 		appendSource(skill.SourceUser, filepath.Join(home, ".tarsncase", "skills"))
+		appendSource(skill.SourceUser, filepath.Join(home, ".tars", "skills"))
 	}
 	for _, extra := range cfg.SkillsExtraDirs {
 		appendSource(skill.SourceUser, extra)
@@ -66,6 +67,7 @@ func buildPluginSources(cfg config.Config) []extensions.PluginSourceDir {
 	appendSource(plugin.SourceBundled, cfg.PluginsBundledDir)
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
 		appendSource(plugin.SourceUser, filepath.Join(home, ".tarsncase", "plugins"))
+		appendSource(plugin.SourceUser, filepath.Join(home, ".tars", "plugins"))
 	}
 	for _, extra := range cfg.PluginsExtraDirs {
 		appendSource(plugin.SourceUser, extra)

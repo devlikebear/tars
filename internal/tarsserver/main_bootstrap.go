@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cli"
-	"github.com/devlikebear/tarsncase/internal/config"
-	"github.com/devlikebear/tarsncase/internal/heartbeat"
-	"github.com/devlikebear/tarsncase/internal/llm"
-	"github.com/devlikebear/tarsncase/internal/memory"
-	"github.com/devlikebear/tarsncase/internal/session"
-	"github.com/devlikebear/tarsncase/internal/usage"
+	"github.com/devlikebear/tars/internal/cli"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/heartbeat"
+	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -113,15 +113,15 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 	}
 
 	client, err := llm.NewProvider(llm.ProviderOptions{
-		Provider:         cfg.LLMProvider,
-		AuthMode:         cfg.LLMAuthMode,
-		OAuthProvider:    cfg.LLMOAuthProvider,
-		BaseURL:          cfg.LLMBaseURL,
-		Model:            cfg.LLMModel,
-		APIKey:           cfg.LLMAPIKey,
-		ReasoningEffort:  cfg.LLMReasoningEffort,
-		ThinkingBudget:   cfg.LLMThinkingBudget,
-		ServiceTier:      cfg.LLMServiceTier,
+		Provider:        cfg.LLMProvider,
+		AuthMode:        cfg.LLMAuthMode,
+		OAuthProvider:   cfg.LLMOAuthProvider,
+		BaseURL:         cfg.LLMBaseURL,
+		Model:           cfg.LLMModel,
+		APIKey:          cfg.LLMAPIKey,
+		ReasoningEffort: cfg.LLMReasoningEffort,
+		ThinkingBudget:  cfg.LLMThinkingBudget,
+		ServiceTier:     cfg.LLMServiceTier,
 	})
 	if err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "init_llm", err: err}

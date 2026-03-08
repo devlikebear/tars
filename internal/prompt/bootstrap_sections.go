@@ -1,10 +1,10 @@
 package prompt
 
 type bootstrapSection struct {
-	name      string
-	files     []string
-	subAgent  bool
-	maxChars  int
+	name     string
+	files    []string
+	subAgent bool
+	maxChars int
 }
 
 const (

@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/config"
-	"github.com/devlikebear/tarsncase/internal/plugin"
-	"github.com/devlikebear/tarsncase/internal/skill"
-	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/plugin"
+	"github.com/devlikebear/tars/internal/skill"
+	"github.com/devlikebear/tars/internal/tool"
 	"github.com/fsnotify/fsnotify"
 )
 

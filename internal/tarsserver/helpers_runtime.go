@@ -8,10 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/heartbeat"
-	"github.com/devlikebear/tarsncase/internal/memory"
-	"github.com/devlikebear/tarsncase/internal/session"
-	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tars/internal/heartbeat"
+	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/tool"
 )
 
 type runtimeActivity struct {

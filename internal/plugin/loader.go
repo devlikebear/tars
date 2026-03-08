@@ -8,7 +8,10 @@ import (
 	"strings"
 )
 
-const manifestFilename = "tarsncase.plugin.json"
+const (
+	manifestFilename       = "tars.plugin.json"
+	legacyManifestFilename = "tarsncase.plugin.json"
+)
 
 func Load(opts LoadOptions) (Snapshot, error) {
 	snapshot := Snapshot{
@@ -54,7 +57,8 @@ func loadSourcePlugins(source Source, dir string) ([]Definition, []Diagnostic, e
 		return nil, nil, fmt.Errorf("stat plugins dir %q: %w", root, err)
 	}
 
-	defs := make([]Definition, 0)
+	defsByID := map[string]Definition{}
+	priorities := map[string]int{}
 	diagnostics := make([]Diagnostic, 0)
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -64,7 +68,7 @@ func loadSourcePlugins(source Source, dir string) ([]Definition, []Diagnostic, e
 			})
 			return nil
 		}
-		if d.IsDir() || !strings.EqualFold(filepath.Base(path), manifestFilename) {
+		if d.IsDir() || !isManifestFilename(path) {
 			return nil
 		}
 		manifest, err := parseManifestFile(path)
@@ -76,7 +80,8 @@ func loadSourcePlugins(source Source, dir string) ([]Definition, []Diagnostic, e
 			return nil
 		}
 		rootDir := filepath.Dir(path)
-		defs = append(defs, Definition{
+		key := strings.ToLower(strings.TrimSpace(manifest.ID))
+		definition := Definition{
 			ID:           manifest.ID,
 			Name:         manifest.Name,
 			Description:  manifest.Description,
@@ -86,12 +91,25 @@ func loadSourcePlugins(source Source, dir string) ([]Definition, []Diagnostic, e
 			ManifestPath: path,
 			Skills:       append([]string(nil), manifest.Skills...),
 			MCPServers:   append([]ServerConfig(nil), manifest.MCPServers...),
-		})
+		}
+		priority := manifestPriority(path)
+		if currentPriority, ok := priorities[key]; !ok || priority >= currentPriority {
+			defsByID[key] = definition
+			priorities[key] = priority
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, diagnostics, fmt.Errorf("walk plugins dir %q: %w", root, err)
 	}
+
+	defs := make([]Definition, 0, len(defsByID))
+	for _, definition := range defsByID {
+		defs = append(defs, definition)
+	}
+	sort.Slice(defs, func(i, j int) bool {
+		return strings.ToLower(defs[i].ID) < strings.ToLower(defs[j].ID)
+	})
 	return defs, diagnostics, nil
 }
 
@@ -177,4 +195,16 @@ func pathWithin(path string, root string) bool {
 	}
 	prefix := root + string(os.PathSeparator)
 	return strings.HasPrefix(path, prefix)
+}
+
+func isManifestFilename(path string) bool {
+	base := filepath.Base(path)
+	return strings.EqualFold(base, manifestFilename) || strings.EqualFold(base, legacyManifestFilename)
+}
+
+func manifestPriority(path string) int {
+	if strings.EqualFold(filepath.Base(path), manifestFilename) {
+		return 1
+	}
+	return 0
 }

@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/gateway"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 

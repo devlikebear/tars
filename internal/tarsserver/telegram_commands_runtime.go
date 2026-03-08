@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/textutil"
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 func (h *telegramCommandHandler) cmdProviders() string {

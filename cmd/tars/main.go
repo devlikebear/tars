@@ -5,7 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/devlikebear/tarsncase/internal/envloader"
+	"github.com/devlikebear/tars/internal/buildinfo"
+	"github.com/devlikebear/tars/internal/envloader"
 	"github.com/spf13/cobra"
 )
 
@@ -27,15 +28,33 @@ func bootstrapEnv() {
 
 func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	clientOpts := defaultClientOptions()
+	showVersion := false
 	cmd := &cobra.Command{
 		Use:   "tars",
 		Short: "Go TUI client for tars",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if showVersion {
+				_, err := fmt.Fprintln(stdout, buildinfo.Summary())
+				return err
+			}
 			return runClientCommand(cmd.Context(), stdin, stdout, stderr, clientOpts)
 		},
 	}
 	bindClientFlags(cmd, &clientOpts)
+	cmd.Flags().BoolVar(&showVersion, "version", false, "print version and exit")
 	cmd.AddCommand(newServeCommand(stdout, stderr))
 	cmd.AddCommand(newAssistantCommand(stdout, stderr))
+	cmd.AddCommand(newVersionCommand(stdout))
 	return cmd
+}
+
+func newVersionCommand(stdout io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print build version",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			_, err := fmt.Fprintln(stdout, buildinfo.Summary())
+			return err
+		},
+	}
 }

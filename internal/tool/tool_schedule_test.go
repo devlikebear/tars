@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
-	"github.com/devlikebear/tarsncase/internal/schedule"
+	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/schedule"
 )
 
 func TestScheduleCreateTool_RejectsNonNaturalPrompt(t *testing.T) {

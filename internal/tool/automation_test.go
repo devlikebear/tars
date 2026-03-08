@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tars/internal/cron"
 )
 
 func TestCronListTool_ReturnsJobs(t *testing.T) {

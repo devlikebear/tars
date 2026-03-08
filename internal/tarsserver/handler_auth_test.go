@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/config"
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/rs/zerolog"
 )
 

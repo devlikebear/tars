@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/config"
+	"github.com/devlikebear/tars/internal/config"
 )
 
 func TestTelegramPairingStore_PathFollowsGatewayPersistenceDir(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/secrets"
+	"github.com/devlikebear/tars/internal/secrets"
 	zlog "github.com/rs/zerolog/log"
 )
 

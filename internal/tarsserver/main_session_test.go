@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func TestResolveSession_MainSession_UsesMainWhenEmpty(t *testing.T) {

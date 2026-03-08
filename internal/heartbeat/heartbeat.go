@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tars/internal/memory"
 )
 
 type AskFunc func(ctx context.Context, prompt string) (string, error)

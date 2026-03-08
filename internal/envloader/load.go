@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/secrets"
+	"github.com/devlikebear/tars/internal/secrets"
 	"github.com/joho/godotenv"
 )
 

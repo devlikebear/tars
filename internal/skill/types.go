@@ -9,16 +9,16 @@ const (
 )
 
 type Definition struct {
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	UserInvocable bool   `json:"user_invocable"`
-	Source        Source `json:"source"`
-	FilePath      string `json:"file_path"`
-	RuntimePath   string `json:"runtime_path,omitempty"`
+	Name                    string   `json:"name"`
+	Description             string   `json:"description"`
+	UserInvocable           bool     `json:"user_invocable"`
+	Source                  Source   `json:"source"`
+	FilePath                string   `json:"file_path"`
+	RuntimePath             string   `json:"runtime_path,omitempty"`
 	RecommendedTools        []string `json:"recommended_tools,omitempty"`
 	RecommendedProjectFiles []string `json:"recommended_project_files,omitempty"`
 	WakePhases              []string `json:"wake_phases,omitempty"`
-	Content       string `json:"content,omitempty"`
+	Content                 string   `json:"content,omitempty"`
 }
 
 type Diagnostic struct {

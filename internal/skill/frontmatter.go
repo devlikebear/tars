@@ -7,9 +7,9 @@ import (
 )
 
 type Frontmatter struct {
-	Name          string
-	Description   string
-	UserInvocable *bool
+	Name                    string
+	Description             string
+	UserInvocable           *bool
 	RecommendedTools        []string
 	RecommendedProjectFiles []string
 	WakePhases              []string

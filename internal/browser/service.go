@@ -37,16 +37,16 @@ type Config struct {
 
 // State is the current browser runtime state.
 type State struct {
-	Running        bool   `json:"running"`
-	Profile        string `json:"profile,omitempty"`
-	Driver         string `json:"driver,omitempty"`
-	CurrentURL     string `json:"current_url,omitempty"`
-	LastSnapshot   string `json:"last_snapshot,omitempty"`
-	LastAction     string `json:"last_action,omitempty"`
-	LastScreenshot string `json:"last_screenshot,omitempty"`
-	ExtensionConnected bool `json:"extension_connected,omitempty"`
-	AttachedTabs       int  `json:"attached_tabs,omitempty"`
-	LastError      string `json:"last_error,omitempty"`
+	Running            bool   `json:"running"`
+	Profile            string `json:"profile,omitempty"`
+	Driver             string `json:"driver,omitempty"`
+	CurrentURL         string `json:"current_url,omitempty"`
+	LastSnapshot       string `json:"last_snapshot,omitempty"`
+	LastAction         string `json:"last_action,omitempty"`
+	LastScreenshot     string `json:"last_screenshot,omitempty"`
+	ExtensionConnected bool   `json:"extension_connected,omitempty"`
+	AttachedTabs       int    `json:"attached_tabs,omitempty"`
+	LastError          string `json:"last_error,omitempty"`
 }
 
 // Profile reports available browser profiles.

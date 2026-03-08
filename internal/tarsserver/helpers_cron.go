@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
-	"github.com/devlikebear/tarsncase/internal/memory"
-	"github.com/devlikebear/tarsncase/internal/project"
-	"github.com/devlikebear/tarsncase/internal/research"
-	"github.com/devlikebear/tarsncase/internal/session"
-	"github.com/devlikebear/tarsncase/internal/usage"
+	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/project"
+	"github.com/devlikebear/tars/internal/research"
+	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
 

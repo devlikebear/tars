@@ -78,10 +78,10 @@ func TestRenderPromptContext_ChatAndCron(t *testing.T) {
 	}
 
 	chat := RenderPromptContext(item, PromptContextOptions{
-		Header:           "## Active Project",
-		IncludeObjective: true,
+		Header:            "## Active Project",
+		IncludeObjective:  true,
 		IncludeToolsAllow: true,
-		IncludeBody:      true,
+		IncludeBody:       true,
 	})
 	if !strings.Contains(chat, "- objective: Keep service green") {
 		t.Fatalf("expected objective in chat context, got %q", chat)
@@ -94,11 +94,11 @@ func TestRenderPromptContext_ChatAndCron(t *testing.T) {
 	}
 
 	cron := RenderPromptContext(item, PromptContextOptions{
-		Header:           "CRON_PROJECT_CONTEXT:",
-		FieldPrefix:      "project_",
-		ArtifactsDir:     filepath.Join("/workspace", "projects", item.ID),
-		IncludeBody:      true,
-		BodyHeader:       "PROJECT_INSTRUCTIONS:",
+		Header:       "CRON_PROJECT_CONTEXT:",
+		FieldPrefix:  "project_",
+		ArtifactsDir: filepath.Join("/workspace", "projects", item.ID),
+		IncludeBody:  true,
+		BodyHeader:   "PROJECT_INSTRUCTIONS:",
 	})
 	if !strings.Contains(cron, "- project_id: proj_demo") {
 		t.Fatalf("expected project_id in cron context, got %q", cron)

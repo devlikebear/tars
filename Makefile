@@ -1,5 +1,6 @@
 GO ?= go
 BIN_DIR ?= bin
+VERSION_FILE ?= VERSION.txt
 WORKSPACE_DIR ?= ./workspace
 API_ADDR ?= 127.0.0.1:43180
 SERVER_URL ?= http://$(API_ADDR)
@@ -33,6 +34,11 @@ ASSISTANT_WHISPER_LANGUAGE ?= $(strip $(shell python3 -c 'import sys; locale=(sy
 ASSISTANT_FFMPEG_BIN ?= /opt/homebrew/bin/ffmpeg
 ASSISTANT_TTS_BIN ?= /usr/bin/say
 ASSISTANT_API_TOKEN ?= $(TARS_API_TOKEN)
+VERSION ?= $(strip $(shell test -f "$(VERSION_FILE)" && tr -d '[:space:]' < "$(VERSION_FILE)" || printf 'dev'))
+GIT_COMMIT ?= $(strip $(shell git rev-parse --short HEAD 2>/dev/null || printf 'unknown'))
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BUILDINFO_PKG ?= github.com/devlikebear/tars/internal/buildinfo
+GO_LDFLAGS ?= -X $(BUILDINFO_PKG).Version=$(VERSION) -X $(BUILDINFO_PKG).Commit=$(GIT_COMMIT) -X $(BUILDINFO_PKG).Date=$(BUILD_DATE)
 
 .DEFAULT_GOAL := help
 
@@ -127,11 +133,11 @@ test-cover:
 	$(GO) test -coverprofile=$(COVER_OUT) $(PKG)
 
 build:
-	$(GO) build ./...
+	$(GO) build -ldflags "$(GO_LDFLAGS)" ./...
 
 build-bins:
 	mkdir -p $(BIN_DIR)
-	$(GO) build -o $(BIN_DIR)/tars ./cmd/tars
+	$(GO) build -ldflags "$(GO_LDFLAGS)" -o $(BIN_DIR)/tars ./cmd/tars
 
 browser-install:
 	npm install

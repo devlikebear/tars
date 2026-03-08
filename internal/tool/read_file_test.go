@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/secrets"
+	"github.com/devlikebear/tars/internal/secrets"
 )
 
 func TestReadFileTool_ReadsWorkspaceFile(t *testing.T) {

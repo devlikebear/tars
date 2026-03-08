@@ -5,16 +5,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tars/internal/memory"
 )
 
 type chatMemoryHookInput struct {
-	WorkspaceDir      string
-	SessionID         string
-	ProjectID         string
-	UserMessage       string
-	AssistantMessage  string
-	AssistantTime     time.Time
+	WorkspaceDir     string
+	SessionID        string
+	ProjectID        string
+	UserMessage      string
+	AssistantMessage string
+	AssistantTime    time.Time
 }
 
 func applyPostChatMemoryHooks(input chatMemoryHookInput) error {

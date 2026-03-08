@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
-	"github.com/devlikebear/tarsncase/internal/heartbeat"
-	"github.com/devlikebear/tarsncase/internal/memory"
-	"github.com/devlikebear/tarsncase/internal/session"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
+	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/heartbeat"
+	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 
@@ -125,7 +125,7 @@ func TestSerializedSupervisorRunner_SerializesConcurrentRuns(t *testing.T) {
 	var maxActive atomic.Int64
 
 	runner := newSerializedSupervisorRunner(serializedSupervisorOptions[int]{
-		nowFn: func() time.Time { return time.Date(2026, 3, 8, 1, 0, 0, 0, time.UTC) },
+		nowFn:   func() time.Time { return time.Date(2026, 3, 8, 1, 0, 0, 0, time.UTC) },
 		timeout: 200 * time.Millisecond,
 		run: func(ctx context.Context, _ time.Time) (int, error) {
 			current := active.Add(1)

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/memory"
+	"github.com/devlikebear/tars/internal/memory"
 )
 
 func TestMemorySearchTool_QueryAndMetadata(t *testing.T) {

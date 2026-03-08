@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
-	"github.com/devlikebear/tarsncase/internal/gateway"
-	"github.com/devlikebear/tarsncase/internal/memory"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 const defaultWorkspaceID = gateway.DefaultWorkspaceID

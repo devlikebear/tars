@@ -46,5 +46,9 @@ node_modules/
 .logs/
 
 # for development, ignore the following files
+.claude/
+.codex/
 .docs/
-.analysis*/
+.analysis/
+AGENTS.md
+tesseract-threat-model.md

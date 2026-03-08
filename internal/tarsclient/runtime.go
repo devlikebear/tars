@@ -3,7 +3,7 @@ package tarsclient
 import (
 	"net/http"
 
-	"github.com/devlikebear/tarsncase/pkg/tarsclient"
+	"github.com/devlikebear/tars/pkg/tarsclient"
 )
 
 type runtimeClient struct {

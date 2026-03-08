@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/secrets"
+	"github.com/devlikebear/tars/internal/secrets"
 )
 
 func TestExecuteCommand_SessionAndStatus(t *testing.T) {

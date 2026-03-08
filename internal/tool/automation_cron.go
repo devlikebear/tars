@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tars/internal/cron"
 )
 
 func validateAutonomousProjectSchedule(prompt, projectID string) error {

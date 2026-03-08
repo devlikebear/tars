@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/project"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/project"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func NewProjectCreateTool(store *project.Store) Tool {

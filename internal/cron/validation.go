@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/scheduleexpr"
+	"github.com/devlikebear/tars/internal/scheduleexpr"
 )
 
 func normalizeSchedule(raw string) (string, error) {

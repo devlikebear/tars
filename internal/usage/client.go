@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tars/internal/llm"
 )
 
 type WarningNotifier func(ctx context.Context, message string)

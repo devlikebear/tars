@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
-	"github.com/devlikebear/tarsncase/internal/memory"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 const (
@@ -38,10 +38,10 @@ type watchdogFinding struct {
 }
 
 type watchdogRunResult struct {
-	Healthy      bool              `json:"healthy"`
-	InspectedJobs int              `json:"inspected_jobs"`
-	Summary      string            `json:"summary,omitempty"`
-	Findings     []watchdogFinding `json:"findings,omitempty"`
+	Healthy       bool              `json:"healthy"`
+	InspectedJobs int               `json:"inspected_jobs"`
+	Summary       string            `json:"summary,omitempty"`
+	Findings      []watchdogFinding `json:"findings,omitempty"`
 }
 
 type watchdogStatus struct {
@@ -216,9 +216,9 @@ func runWorkspaceWatchdog(_ context.Context, workspaceDir string, cronStore *cro
 		findings = append(findings, analyzeWatchdogJob(workspaceDir, store, job)...)
 	}
 	result := watchdogRunResult{
-		Healthy:      len(findings) == 0,
+		Healthy:       len(findings) == 0,
 		InspectedJobs: len(jobs),
-		Findings:     findings,
+		Findings:      findings,
 	}
 	if result.Healthy {
 		result.Summary = fmt.Sprintf("inspected %d background jobs; no unhealthy signals detected", len(jobs))

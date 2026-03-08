@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/serverauth"
-	"github.com/devlikebear/tarsncase/internal/usage"
+	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
 

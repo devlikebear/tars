@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/devlikebear/tarsncase/internal/secrets"
+	"github.com/devlikebear/tars/internal/secrets"
 )
 
 const (

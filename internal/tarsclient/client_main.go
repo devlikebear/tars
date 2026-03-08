@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/secrets"
+	"github.com/devlikebear/tars/internal/secrets"
 )
 
 type Options struct {

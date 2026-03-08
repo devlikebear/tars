@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/schedule"
+	"github.com/devlikebear/tars/internal/schedule"
 )
 
 func NewScheduleCreateTool(store *schedule.Store) Tool {

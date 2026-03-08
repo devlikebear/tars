@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/agent"
-	"github.com/devlikebear/tarsncase/internal/extensions"
-	"github.com/devlikebear/tarsncase/internal/session"
-	"github.com/devlikebear/tarsncase/internal/usage"
+	"github.com/devlikebear/tars/internal/agent"
+	"github.com/devlikebear/tars/internal/extensions"
+	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/usage"
 )
 
 func (h *telegramInboundHandler) processMessage(

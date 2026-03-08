@@ -54,8 +54,8 @@ func TestRegisterNamed_OnlySensitiveKeysAreRegistered(t *testing.T) {
 
 func TestRedactText_RedactsBearerAndJSONFields(t *testing.T) {
 	ResetForTests()
-	out := RedactText(`{"token":"abc123456789xyz"} authorization=Bearer abc123456789xyz`)
-	if strings.Contains(out, "abc123456789xyz") {
+	out := RedactText(`{"token":"sample-token"} authorization=Bearer sample-token`)
+	if strings.Contains(out, "sample-token") {
 		t.Fatalf("expected token string redacted, got %q", out)
 	}
 	if !strings.Contains(strings.ToLower(out), `"token":"***"`) {

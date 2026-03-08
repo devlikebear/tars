@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/devlikebear/tarsncase/internal/research"
+	"github.com/devlikebear/tars/internal/research"
 )
 
 func NewResearchReportTool(service *research.Service) Tool {

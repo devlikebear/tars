@@ -14,16 +14,16 @@ import (
 )
 
 type ProcessSnapshot struct {
-	SessionID  string `json:"session_id"`
-	Command    string `json:"command"`
-	Running    bool   `json:"running"`
-	Done       bool   `json:"done"`
-	ExitCode   int    `json:"exit_code,omitempty"`
-	StartedAt  string `json:"started_at,omitempty"`
+	SessionID   string `json:"session_id"`
+	Command     string `json:"command"`
+	Running     bool   `json:"running"`
+	Done        bool   `json:"done"`
+	ExitCode    int    `json:"exit_code,omitempty"`
+	StartedAt   string `json:"started_at,omitempty"`
 	CompletedAt string `json:"completed_at,omitempty"`
-	Stdout     string `json:"stdout,omitempty"`
-	Stderr     string `json:"stderr,omitempty"`
-	Message    string `json:"message,omitempty"`
+	Stdout      string `json:"stdout,omitempty"`
+	Stderr      string `json:"stderr,omitempty"`
+	Message     string `json:"message,omitempty"`
 }
 
 type managedProcess struct {

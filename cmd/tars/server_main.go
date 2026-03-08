@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/tarsserver"
+	"github.com/devlikebear/tars/internal/tarsserver"
 	"github.com/spf13/cobra"
 )
 

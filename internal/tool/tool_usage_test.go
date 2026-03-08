@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/usage"
+	"github.com/devlikebear/tars/internal/usage"
 )
 
 func TestUsageReportTool_ReturnsSummaryAndLimits(t *testing.T) {

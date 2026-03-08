@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/extensions"
-	"github.com/devlikebear/tarsncase/internal/llm"
-	"github.com/devlikebear/tarsncase/internal/project"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
-	"github.com/devlikebear/tarsncase/internal/session"
-	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tars/internal/extensions"
+	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/project"
+	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/tool"
 )
 
 type chatRunState struct {

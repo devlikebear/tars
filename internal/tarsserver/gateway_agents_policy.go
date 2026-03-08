@@ -3,7 +3,7 @@ package tarsserver
 import (
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tars/internal/tool"
 )
 
 func normalizeGatewayPolicyMode(raw string) string {

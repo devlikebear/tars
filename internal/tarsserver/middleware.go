@@ -4,8 +4,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/devlikebear/tarsncase/internal/config"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/rs/zerolog"
 )
 

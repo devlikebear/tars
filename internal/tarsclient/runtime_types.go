@@ -1,6 +1,6 @@
 package tarsclient
 
-import "github.com/devlikebear/tarsncase/pkg/tarsclient"
+import "github.com/devlikebear/tars/pkg/tarsclient"
 
 type apiHTTPError = tarsclient.APIError
 

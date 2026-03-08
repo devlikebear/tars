@@ -8,13 +8,13 @@ import (
 func TestFormatAvailableSkills(t *testing.T) {
 	text := FormatAvailableSkills([]Definition{
 		{
-			Name:          "deploy_check",
-			Description:   "Validate deployment checklist",
-			RuntimePath:   "_shared/skills_runtime/deploy_check/SKILL.md",
-			UserInvocable: true,
-			RecommendedTools: []string{"read_file", "write_file"},
+			Name:                    "deploy_check",
+			Description:             "Validate deployment checklist",
+			RuntimePath:             "_shared/skills_runtime/deploy_check/SKILL.md",
+			UserInvocable:           true,
+			RecommendedTools:        []string{"read_file", "write_file"},
 			RecommendedProjectFiles: []string{"BRIEF.md", "STATE.md"},
-			WakePhases: []string{"plan", "draft"},
+			WakePhases:              []string{"plan", "draft"},
 		},
 		{
 			Name:          "silent_audit",

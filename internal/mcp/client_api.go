@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tars/internal/tool"
 )
 
 func (c *Client) ListServers(ctx context.Context) ([]ServerStatus, error) {

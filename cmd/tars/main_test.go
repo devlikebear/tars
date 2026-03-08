@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/tarsserver"
-	"github.com/devlikebear/tarsncase/pkg/tarsclient"
+	"github.com/devlikebear/tars/internal/buildinfo"
+	"github.com/devlikebear/tars/internal/tarsserver"
+	"github.com/devlikebear/tars/pkg/tarsclient"
 )
 
 func TestRootCommand_DoesNotAcceptWorkspaceIDFlag(t *testing.T) {
@@ -156,5 +157,53 @@ func TestDefaultServeOptions_UsesDefaultLogFile(t *testing.T) {
 	opts := defaultServeOptions()
 	if opts.logFile != ".logs/tars-debug.log" {
 		t.Fatalf("unexpected default log file: %q", opts.logFile)
+	}
+}
+
+func TestRootCommand_VersionSubcommandPrintsBuildInfo(t *testing.T) {
+	prevVersion, prevCommit, prevDate := buildinfo.Version, buildinfo.Commit, buildinfo.Date
+	buildinfo.Version = "0.1.0"
+	buildinfo.Commit = "abc1234"
+	buildinfo.Date = "2026-03-08T00:00:00Z"
+	defer func() {
+		buildinfo.Version = prevVersion
+		buildinfo.Commit = prevCommit
+		buildinfo.Date = prevDate
+	}()
+
+	var stdout strings.Builder
+	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+	cmd.SetArgs([]string{"version"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("version command: %v", err)
+	}
+
+	got := strings.TrimSpace(stdout.String())
+	if got != "tars 0.1.0 (abc1234, 2026-03-08T00:00:00Z)" {
+		t.Fatalf("unexpected version output: %q", got)
+	}
+}
+
+func TestRootCommand_VersionFlagPrintsBuildInfo(t *testing.T) {
+	prevVersion, prevCommit, prevDate := buildinfo.Version, buildinfo.Commit, buildinfo.Date
+	buildinfo.Version = "0.1.0"
+	buildinfo.Commit = "abc1234"
+	buildinfo.Date = "2026-03-08T00:00:00Z"
+	defer func() {
+		buildinfo.Version = prevVersion
+		buildinfo.Commit = prevCommit
+		buildinfo.Date = prevDate
+	}()
+
+	var stdout strings.Builder
+	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+	cmd.SetArgs([]string{"--version"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("version flag: %v", err)
+	}
+
+	got := strings.TrimSpace(stdout.String())
+	if got != "tars 0.1.0 (abc1234, 2026-03-08T00:00:00Z)" {
+		t.Fatalf("unexpected version output: %q", got)
 	}
 }

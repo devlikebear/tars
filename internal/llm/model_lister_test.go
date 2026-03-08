@@ -9,7 +9,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/auth"
+	"github.com/devlikebear/tars/internal/auth"
 )
 
 func TestModelFetcher_OpenAICompatible_Parses(t *testing.T) {

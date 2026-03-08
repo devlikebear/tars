@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/usage"
+	"github.com/devlikebear/tars/internal/usage"
 )
 
 func NewUsageReportTool(tracker *usage.Tracker) Tool {

@@ -1,4 +1,4 @@
-module github.com/devlikebear/tarsncase
+module github.com/devlikebear/tars
 
 go 1.25.6
 

@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	clientapp "github.com/devlikebear/tarsncase/internal/tarsclient"
-	protocol "github.com/devlikebear/tarsncase/pkg/tarsclient"
+	clientapp "github.com/devlikebear/tars/internal/tarsclient"
+	protocol "github.com/devlikebear/tars/pkg/tarsclient"
 	"github.com/spf13/cobra"
 )
 

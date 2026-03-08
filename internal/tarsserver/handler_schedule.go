@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/schedule"
+	"github.com/devlikebear/tars/internal/schedule"
 	"github.com/rs/zerolog"
 )
 

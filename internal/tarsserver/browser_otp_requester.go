@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/approval"
-	"github.com/devlikebear/tarsncase/internal/browser"
+	"github.com/devlikebear/tars/internal/approval"
+	"github.com/devlikebear/tars/internal/browser"
 )
 
 type browserTelegramOTPRequester struct {

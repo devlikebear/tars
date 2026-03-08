@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/config"
-	"github.com/devlikebear/tarsncase/internal/cron"
-	"github.com/devlikebear/tarsncase/internal/gateway"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 

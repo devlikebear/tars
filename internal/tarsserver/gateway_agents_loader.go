@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/project"
+	"github.com/devlikebear/tars/internal/project"
 )
 
 func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, []string, error) {

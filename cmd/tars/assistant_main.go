@@ -9,31 +9,31 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/assistant"
-	protocol "github.com/devlikebear/tarsncase/pkg/tarsclient"
+	"github.com/devlikebear/tars/internal/assistant"
+	protocol "github.com/devlikebear/tars/pkg/tarsclient"
 	"github.com/spf13/cobra"
 )
 
 type assistantOptions struct {
-	action      string
-	serverURL   string
-	sessionID   string
-	apiToken    string
-	workspace   string
-	hotkey      string
-	audioInput  string
-	whisperBin  string
-	whisperModel string
+	action          string
+	serverURL       string
+	sessionID       string
+	apiToken        string
+	workspace       string
+	hotkey          string
+	audioInput      string
+	whisperBin      string
+	whisperModel    string
 	whisperLanguage string
-	ffmpegBin   string
-	ttsBin      string
-	label       string
-	plistPath   string
-	stdoutLog   string
-	stderrLog   string
-	keepAlive   bool
-	runAtLoad   bool
-	installLoad bool
+	ffmpegBin       string
+	ttsBin          string
+	label           string
+	plistPath       string
+	stdoutLog       string
+	stderrLog       string
+	keepAlive       bool
+	runAtLoad       bool
+	installLoad     bool
 }
 
 var assistantRunner = runAssistantCommand
@@ -156,20 +156,20 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 	switch strings.TrimSpace(opts.action) {
 	case "start":
 		return assistant.Start(ctx, assistant.StartOptions{
-			ServerURL:    strings.TrimSpace(opts.serverURL),
-			SessionID:    strings.TrimSpace(opts.sessionID),
-			APIToken:     strings.TrimSpace(opts.apiToken),
-			WorkspaceDir: strings.TrimSpace(opts.workspace),
-			Hotkey:       strings.TrimSpace(opts.hotkey),
-			AudioInput:   strings.TrimSpace(opts.audioInput),
-			WhisperBin:   strings.TrimSpace(opts.whisperBin),
-			WhisperModel: strings.TrimSpace(opts.whisperModel),
+			ServerURL:       strings.TrimSpace(opts.serverURL),
+			SessionID:       strings.TrimSpace(opts.sessionID),
+			APIToken:        strings.TrimSpace(opts.apiToken),
+			WorkspaceDir:    strings.TrimSpace(opts.workspace),
+			Hotkey:          strings.TrimSpace(opts.hotkey),
+			AudioInput:      strings.TrimSpace(opts.audioInput),
+			WhisperBin:      strings.TrimSpace(opts.whisperBin),
+			WhisperModel:    strings.TrimSpace(opts.whisperModel),
 			WhisperLanguage: strings.TrimSpace(opts.whisperLanguage),
-			FFmpegBin:    strings.TrimSpace(opts.ffmpegBin),
-			TTSBin:       strings.TrimSpace(opts.ttsBin),
-			Stdin:        os.Stdin,
-			Stdout:       stdout,
-			Stderr:       stderr,
+			FFmpegBin:       strings.TrimSpace(opts.ffmpegBin),
+			TTSBin:          strings.TrimSpace(opts.ttsBin),
+			Stdin:           os.Stdin,
+			Stdout:          stdout,
+			Stderr:          stderr,
 		})
 	case "doctor":
 		report := assistant.RunDoctor(assistant.DoctorOptions{

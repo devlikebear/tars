@@ -2,91 +2,64 @@
 
 Thanks for contributing.
 
-This repository is maintained with a small-team workflow. Keep changes focused, tested, and reviewable.
+Keep changes focused, test-proven, and easy to review.
 
-## Scope and Principles
+## Development Rules
 
-- Keep PRs small and goal-focused.
-- Follow existing architecture boundaries:
-  - server/runtime logic in `tars`
-  - client UX in `cmd/tars`
-- Avoid speculative abstractions and unrelated refactors.
+- Follow TDD when practical: add or update a failing test first, then implement
+- Keep PRs small and goal-focused
+- Preserve existing architecture boundaries
+- Avoid speculative abstractions and unrelated cleanup
 
-## Versioning Policy
+## Commit Messages
 
-TARS uses Semantic Versioning (`MAJOR.MINOR.PATCH`) for releases.
-
-- `MAJOR`: breaking API/behavior changes
-- `MINOR`: backward-compatible feature additions
-- `PATCH`: backward-compatible fixes/docs/chore
-
-Current stage is pre-`1.0.0`.
-
-- Breaking changes may still happen in minor releases.
-- Any behavior/config/API break must include migration notes in `CHANGE.log`.
-
-## Commit Message Policy
-
-Use Conventional-style prefixes:
+Use these prefixes:
 
 - `feat:` new functionality
-- `fix:` bug fix
-- `chore:` maintenance/docs/CI/non-functional updates
+- `fix:` behavior or bug fix
+- `chore:` maintenance, docs, tooling, or non-functional changes
 
 Examples:
 
-- `feat(gateway): add browser profile status API`
-- `fix(tool): prevent empty exec command retry loop`
-- `chore(ci): run security scan on PR synchronize`
+- `feat(runtime): add version command`
+- `fix(plugin): prefer primary manifest filename`
+- `chore(docs): publish english public docs`
 
-## Branch and PR Policy
+## Versioning and Releases
 
-- Branch naming (recommended):
-  - `feat/<short-topic>`
-  - `fix/<short-topic>`
-  - `chore/<short-topic>`
-- One PR should solve one primary problem.
-- Update docs/config examples when behavior changes.
+TARS uses Semantic Versioning: `MAJOR.MINOR.PATCH`.
 
-## Required Checks Before Merge
+- `MAJOR`: breaking API or behavior changes
+- `MINOR`: backward-compatible features
+- `PATCH`: backward-compatible fixes, docs, and maintenance
 
-Run locally:
+Release metadata rules:
+
+- Update [`VERSION.txt`](VERSION.txt) when preparing a release
+- Record user-visible changes in [`CHANGELOG.md`](CHANGELOG.md)
+- Add migration notes for any breaking change
+- Tag releases as `vX.Y.Z`
+
+## Required Checks
+
+Run these locally before merging:
 
 ```bash
-make security-scan
 make test
+make security-scan
 ```
-
-CI must pass on:
-
-- push to `main`
-- pull request updates (`opened`, `synchronize`, `reopened`, `ready_for_review`)
 
 ## Pull Request Checklist
 
-- [ ] Problem and scope are clearly described.
-- [ ] Tests added/updated for behavior changes.
-- [ ] `make test` passes.
-- [ ] `make security-scan` passes.
-- [ ] Docs updated (`README*`, `CHANGE.log`, config examples) when needed.
-- [ ] No secrets, tokens, private keys, or local absolute paths committed.
+- [ ] Problem and scope are clearly described
+- [ ] Tests added or updated for behavior changes
+- [ ] `make test` passes
+- [ ] `make security-scan` passes
+- [ ] `CHANGELOG.md` and docs are updated when needed
+- [ ] No secrets, private keys, or local absolute paths are committed
 
-## Security and Sensitive Data
+## Compatibility Notes
 
-Never commit:
-
-- API keys / tokens / passwords
-- private keys / certificates
-- personal local paths (e.g. `/Users/<name>/...`)
-
-If found in history, rewrite history before publishing.
-
-## Release Notes
-
-Record user-visible changes in `CHANGE.log`.
-
-For breaking changes, include:
-
-- what changed
-- impact scope
-- migration steps
+- The primary plugin manifest filename is `tars.plugin.json`
+- The primary user extension directories are `~/.tars/skills` and `~/.tars/plugins`
+- One release of fallback compatibility is kept for legacy pre-publication extension paths and manifest names

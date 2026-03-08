@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/secrets"
+	"github.com/devlikebear/tars/internal/secrets"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
 )

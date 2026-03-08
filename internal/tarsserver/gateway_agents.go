@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/gateway"
+	"github.com/devlikebear/tars/internal/gateway"
 )
 
 type workspaceGatewayAgent struct {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/project"
+	"github.com/devlikebear/tars/internal/project"
 )
 
 func TestProjectUpdateTool_UsesSharedUpdatePayload(t *testing.T) {

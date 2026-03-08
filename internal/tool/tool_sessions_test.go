@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/browser"
-	"github.com/devlikebear/tarsncase/internal/gateway"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/browser"
+	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func newGatewayRuntimeForToolTests(t *testing.T) *gateway.Runtime {

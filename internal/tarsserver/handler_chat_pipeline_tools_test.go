@@ -3,8 +3,8 @@ package tarsserver
 import (
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/project"
-	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tars/internal/project"
+	"github.com/devlikebear/tars/internal/tool"
 )
 
 func TestResolveInjectedToolSchemas_FiltersHighRiskToolsForUserRole(t *testing.T) {

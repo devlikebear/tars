@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/auth"
+	"github.com/devlikebear/tars/internal/auth"
 )
 
 const defaultOpenAICodexModelsURL = "https://api.openai.com/v1/models"

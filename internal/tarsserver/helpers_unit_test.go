@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/config"
-	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/tool"
 )
 
 func TestResolveExtensionsWatchDebounce(t *testing.T) {

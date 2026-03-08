@@ -1,4 +1,0 @@
-interface:
-  display_name: "OpenClaw Guide"
-  short_description: "OpenClaw-to-TARS porting playbook"
-  default_prompt: "Use $openclaw-guide to map this TARS task to the right OpenClaw docs and implementation pattern."

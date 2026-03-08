@@ -12,19 +12,19 @@ func TestLoad_PriorityWorkspaceOverUserAndBundled(t *testing.T) {
 	userDir := filepath.Join(root, "user")
 	workspaceDir := filepath.Join(root, "workspace")
 
-	writeManifest(t, filepath.Join(bundledDir, "same", "tarsncase.plugin.json"), `{
+	writeManifest(t, filepath.Join(bundledDir, "same", "tars.plugin.json"), `{
   "id":"same",
   "name":"bundled",
   "skills":["skills"],
   "mcp_servers":[{"name":"bundled-fs","command":"b"}]
 }`)
-	writeManifest(t, filepath.Join(userDir, "same", "tarsncase.plugin.json"), `{
+	writeManifest(t, filepath.Join(userDir, "same", "tars.plugin.json"), `{
   "id":"same",
   "name":"user",
   "skills":["skills"],
   "mcp_servers":[{"name":"user-fs","command":"u"}]
 }`)
-	writeManifest(t, filepath.Join(workspaceDir, "plugins", "same", "tarsncase.plugin.json"), `{
+	writeManifest(t, filepath.Join(workspaceDir, "plugins", "same", "tars.plugin.json"), `{
   "id":"same",
   "name":"workspace",
   "skills":["skills"],
@@ -55,7 +55,7 @@ func TestLoad_PriorityWorkspaceOverUserAndBundled(t *testing.T) {
 func TestLoad_RejectsSkillPathTraversal(t *testing.T) {
 	root := t.TempDir()
 	pluginsDir := filepath.Join(root, "plugins")
-	writeManifest(t, filepath.Join(pluginsDir, "danger", "tarsncase.plugin.json"), `{
+	writeManifest(t, filepath.Join(pluginsDir, "danger", "tars.plugin.json"), `{
   "id":"danger",
   "skills":["../outside"]
 }`)
@@ -71,6 +71,32 @@ func TestLoad_RejectsSkillPathTraversal(t *testing.T) {
 	}
 	if len(snapshot.Diagnostics) == 0 {
 		t.Fatalf("expected diagnostics for path traversal")
+	}
+}
+
+func TestLoad_PrefersPrimaryManifestFilenameOverLegacy(t *testing.T) {
+	root := t.TempDir()
+	pluginsDir := filepath.Join(root, "plugins")
+	writeManifest(t, filepath.Join(pluginsDir, "ops", "tars.plugin.json"), `{
+  "id":"ops",
+  "name":"primary"
+}`)
+	writeManifest(t, filepath.Join(pluginsDir, "ops", "tarsncase.plugin.json"), `{
+  "id":"ops",
+  "name":"legacy"
+}`)
+
+	snapshot, err := Load(LoadOptions{
+		Sources: []SourceDir{{Source: SourceWorkspace, Dir: pluginsDir}},
+	})
+	if err != nil {
+		t.Fatalf("load plugins: %v", err)
+	}
+	if len(snapshot.Plugins) != 1 {
+		t.Fatalf("expected one merged plugin, got %d", len(snapshot.Plugins))
+	}
+	if snapshot.Plugins[0].Name != "primary" {
+		t.Fatalf("expected primary manifest to win, got %q", snapshot.Plugins[0].Name)
 	}
 }
 

@@ -1,26 +1,26 @@
 ## Summary
 
 - What problem does this PR solve?
-- Why is this approach chosen?
+- Why is this approach correct?
 
 ## Changes
 
-- Key files/modules changed:
-- API/config/behavior changes:
+- Main user-visible or developer-visible changes:
+- API, config, or compatibility changes:
 
 ## Validation
 
-- [ ] `make security-scan`
 - [ ] `make test`
-- [ ] Additional manual verification (if applicable)
+- [ ] `make security-scan`
+- [ ] Additional manual verification, if needed
 
 ## Checklist
 
 - [ ] Commit messages follow `feat/fix/chore`
-- [ ] Tests updated for behavior changes
-- [ ] Docs/config examples updated
-- [ ] No secrets/private keys/local absolute paths included
-- [ ] Breaking changes documented in `CHANGE.log` with migration notes
+- [ ] Tests added or updated for behavior changes
+- [ ] Docs and `CHANGELOG.md` updated when needed
+- [ ] Breaking changes include migration notes
+- [ ] No secrets, private keys, or local absolute paths included
 
 ## Risks / Rollback
 

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/gateway"
-	"github.com/devlikebear/tarsncase/internal/serverauth"
+	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/serverauth"
 )
 
 func NewMessageTool(runtime *gateway.Runtime, enabled bool) Tool {

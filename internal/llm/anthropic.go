@@ -70,10 +70,10 @@ func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts
 		Provider: "anthropic",
 		URL:      c.baseURL + "/v1/messages",
 		Headers: map[string]string{
-			"x-api-key":          c.apiKey,
-			"anthropic-version":  anthropicAPIVersion,
-			"anthropic-beta":     anthropicPromptCachingBeta,
-			"content-type":       "application/json",
+			"x-api-key":         c.apiKey,
+			"anthropic-version": anthropicAPIVersion,
+			"anthropic-beta":    anthropicPromptCachingBeta,
+			"content-type":      "application/json",
 		},
 		Body: reqBody,
 	}.buildRequest(ctx)

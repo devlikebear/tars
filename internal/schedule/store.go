@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
-	"github.com/devlikebear/tarsncase/internal/scheduleexpr"
+	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/scheduleexpr"
 )
 
 type Options struct {

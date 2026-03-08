@@ -3,7 +3,7 @@ package usage
 import (
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tars/internal/llm"
 )
 
 func sanitizePrice(in ModelPrice) ModelPrice {

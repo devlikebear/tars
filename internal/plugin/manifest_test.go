@@ -8,7 +8,7 @@ import (
 
 func TestParseManifest(t *testing.T) {
 	root := t.TempDir()
-	manifestPath := filepath.Join(root, "sample", "tarsncase.plugin.json")
+	manifestPath := filepath.Join(root, "sample", "tars.plugin.json")
 	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestParseManifest(t *testing.T) {
 
 func TestParseManifest_RequiresID(t *testing.T) {
 	root := t.TempDir()
-	manifestPath := filepath.Join(root, "bad", "tarsncase.plugin.json")
+	manifestPath := filepath.Join(root, "bad", "tars.plugin.json")
 	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

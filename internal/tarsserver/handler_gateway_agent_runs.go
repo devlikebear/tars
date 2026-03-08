@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/gateway"
+	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/rs/zerolog"
 )
 

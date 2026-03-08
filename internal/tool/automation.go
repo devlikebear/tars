@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tars/internal/cron"
 )
 
 func NewCronTool(store *cron.Store, runJob func(ctx context.Context, job cron.Job) (string, error)) Tool {

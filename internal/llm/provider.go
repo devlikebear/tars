@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/auth"
+	"github.com/devlikebear/tars/internal/auth"
 	zlog "github.com/rs/zerolog/log"
 )
 
@@ -67,11 +67,11 @@ type ChatResponse struct {
 }
 
 type ClientConfig struct {
-	HTTPTimeout      time.Duration
-	MaxTokens        int
-	ReasoningEffort  string
-	ThinkingBudget   int
-	ServiceTier      string
+	HTTPTimeout     time.Duration
+	MaxTokens       int
+	ReasoningEffort string
+	ThinkingBudget  int
+	ServiceTier     string
 }
 
 func DefaultClientConfig() ClientConfig {
@@ -87,13 +87,13 @@ type Client interface {
 }
 
 type ProviderOptions struct {
-	Provider      string
-	AuthMode      string
-	OAuthProvider string
-	BaseURL       string
-	Model         string
-	APIKey        string
-	MaxTokens     int
+	Provider        string
+	AuthMode        string
+	OAuthProvider   string
+	BaseURL         string
+	Model           string
+	APIKey          string
+	MaxTokens       int
 	ReasoningEffort string
 	ThinkingBudget  int
 	ServiceTier     string

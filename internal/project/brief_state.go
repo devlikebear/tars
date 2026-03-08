@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/session"
 	"gopkg.in/yaml.v3"
 )
 
@@ -16,26 +16,26 @@ const (
 )
 
 type Brief struct {
-	ID                string   `json:"id"`
-	Title             string   `json:"title,omitempty"`
-	Goal              string   `json:"goal,omitempty"`
-	Kind              string   `json:"kind,omitempty"`
-	Genre             string   `json:"genre,omitempty"`
-	TargetLength      string   `json:"target_length,omitempty"`
-	Cadence           string   `json:"cadence,omitempty"`
+	ID                 string   `json:"id"`
+	Title              string   `json:"title,omitempty"`
+	Goal               string   `json:"goal,omitempty"`
+	Kind               string   `json:"kind,omitempty"`
+	Genre              string   `json:"genre,omitempty"`
+	TargetLength       string   `json:"target_length,omitempty"`
+	Cadence            string   `json:"cadence,omitempty"`
 	TargetInstallments string   `json:"target_installments,omitempty"`
-	Premise           string   `json:"premise,omitempty"`
-	PlotSeed          string   `json:"plot_seed,omitempty"`
-	StylePreferences  string   `json:"style_preferences,omitempty"`
-	Constraints       []string `json:"constraints,omitempty"`
-	MustHave          []string `json:"must_have,omitempty"`
-	MustAvoid         []string `json:"must_avoid,omitempty"`
-	OpenQuestions     []string `json:"open_questions,omitempty"`
-	Decisions         []string `json:"decisions,omitempty"`
-	Status            string   `json:"status,omitempty"`
-	Summary           string   `json:"summary,omitempty"`
-	Body              string   `json:"body,omitempty"`
-	Path              string   `json:"path,omitempty"`
+	Premise            string   `json:"premise,omitempty"`
+	PlotSeed           string   `json:"plot_seed,omitempty"`
+	StylePreferences   string   `json:"style_preferences,omitempty"`
+	Constraints        []string `json:"constraints,omitempty"`
+	MustHave           []string `json:"must_have,omitempty"`
+	MustAvoid          []string `json:"must_avoid,omitempty"`
+	OpenQuestions      []string `json:"open_questions,omitempty"`
+	Decisions          []string `json:"decisions,omitempty"`
+	Status             string   `json:"status,omitempty"`
+	Summary            string   `json:"summary,omitempty"`
+	Body               string   `json:"body,omitempty"`
+	Path               string   `json:"path,omitempty"`
 }
 
 type BriefUpdateInput struct {
@@ -60,18 +60,18 @@ type BriefUpdateInput struct {
 }
 
 type ProjectState struct {
-	ProjectID          string   `json:"project_id"`
-	Goal               string   `json:"goal,omitempty"`
-	Phase              string   `json:"phase,omitempty"`
-	Status             string   `json:"status,omitempty"`
-	NextAction         string   `json:"next_action,omitempty"`
-	RemainingTasks     []string `json:"remaining_tasks,omitempty"`
-	CompletionSummary  string   `json:"completion_summary,omitempty"`
-	LastRunSummary     string   `json:"last_run_summary,omitempty"`
-	LastRunAt          string   `json:"last_run_at,omitempty"`
-	StopReason         string   `json:"stop_reason,omitempty"`
-	Body               string   `json:"body,omitempty"`
-	Path               string   `json:"path,omitempty"`
+	ProjectID         string   `json:"project_id"`
+	Goal              string   `json:"goal,omitempty"`
+	Phase             string   `json:"phase,omitempty"`
+	Status            string   `json:"status,omitempty"`
+	NextAction        string   `json:"next_action,omitempty"`
+	RemainingTasks    []string `json:"remaining_tasks,omitempty"`
+	CompletionSummary string   `json:"completion_summary,omitempty"`
+	LastRunSummary    string   `json:"last_run_summary,omitempty"`
+	LastRunAt         string   `json:"last_run_at,omitempty"`
+	StopReason        string   `json:"stop_reason,omitempty"`
+	Body              string   `json:"body,omitempty"`
+	Path              string   `json:"path,omitempty"`
 }
 
 type ProjectStateUpdateInput struct {

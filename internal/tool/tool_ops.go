@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/ops"
+	"github.com/devlikebear/tars/internal/ops"
 )
 
 func NewOpsStatusTool(manager *ops.Manager) Tool {

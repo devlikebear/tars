@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/devlikebear/tarsncase/internal/llm"
+	"github.com/devlikebear/tars/internal/llm"
 )
 
 type ContentBlock struct {

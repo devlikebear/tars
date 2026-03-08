@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/serverauth"
+	"github.com/devlikebear/tars/internal/serverauth"
 )
 
 func newAuthAPIHandler(authMode string) http.Handler {

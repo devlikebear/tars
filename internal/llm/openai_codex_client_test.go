@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devlikebear/tarsncase/internal/auth"
+	"github.com/devlikebear/tars/internal/auth"
 )
 
 func TestOpenAICodexClient_Headers_SetsRequired(t *testing.T) {

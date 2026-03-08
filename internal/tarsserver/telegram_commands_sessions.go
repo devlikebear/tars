@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/session"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func (h *telegramCommandHandler) cmdNew(line string) (string, string, error) {

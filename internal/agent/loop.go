@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/llm"
-	"github.com/devlikebear/tarsncase/internal/secrets"
-	"github.com/devlikebear/tarsncase/internal/tool"
+	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/secrets"
+	"github.com/devlikebear/tars/internal/tool"
 )
 
 type EventType string

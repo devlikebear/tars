@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tarsncase/internal/cron"
+	"github.com/devlikebear/tars/internal/cron"
 )
 
 func TestStore_CreateNaturalScheduleAndComplete(t *testing.T) {

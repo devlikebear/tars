@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/devlikebear/tarsncase/internal/textutil"
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 func cmdRuntime(c commandContext) (bool, string, error) {
