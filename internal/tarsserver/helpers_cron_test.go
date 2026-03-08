@@ -212,7 +212,7 @@ func TestPersistCronProjectArtifact_IncludesTelemetry(t *testing.T) {
 		ProjectID: "proj_demo",
 	}
 
-	err := persistCronProjectArtifact(root, job, "drafted episode 2", now, cronRunTelemetry{
+	path, err := persistCronProjectArtifact(root, job, "drafted episode 2", now, cronRunTelemetry{
 		PromptTokens:               120,
 		SystemPromptTokens:         80,
 		UserPromptTokens:           40,
@@ -226,7 +226,10 @@ func TestPersistCronProjectArtifact_IncludesTelemetry(t *testing.T) {
 		t.Fatalf("persist artifact: %v", err)
 	}
 
-	path := filepath.Join(root, "projects", "proj_demo", "cron_runs", now.UTC().Format("20060102T150405Z")+"_job_demo.md")
+	expectedPath := filepath.Join(root, "projects", "proj_demo", "cron_runs", now.UTC().Format("20060102T150405Z")+"_job_demo.md")
+	if path != expectedPath {
+		t.Fatalf("expected artifact path %q, got %q", expectedPath, path)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read artifact: %v", err)
@@ -242,6 +245,23 @@ func TestPersistCronProjectArtifact_IncludesTelemetry(t *testing.T) {
 		"contamination_markers: {\"command\":",
 	) {
 		t.Fatalf("artifact missing telemetry section:\n%s", text)
+	}
+}
+
+func TestBuildCronNotificationEvent_UsesFriendlySummaryAndOpenPath(t *testing.T) {
+	job := cron.Job{ID: "job_demo", Name: "novelist-1m", ProjectID: "project-134127"}
+	evt := buildCronNotificationEvent(job, "info", "Cron completed", "# Result\n\n상태 문서를 갱신하고 1화 초안을 다듬었습니다.\n\n변경 파일:\n- `projects/project-134127/STATE.md`", "/tmp/cron.md", "sess-main")
+	if evt.JobID != "job_demo" || evt.SessionID != "sess-main" {
+		t.Fatalf("unexpected ids in notification: %+v", evt)
+	}
+	if evt.OpenPath != "/tmp/cron.md" {
+		t.Fatalf("expected open path in notification, got %+v", evt)
+	}
+	if !containsAll(evt.Title, "Cron completed", "novelist-1m") {
+		t.Fatalf("expected job name in title, got %q", evt.Title)
+	}
+	if !containsAll(evt.Message, "project-134127", "상태 문서를 갱신하고 1화 초안을 다듬었습니다") {
+		t.Fatalf("expected friendly summary message, got %q", evt.Message)
 	}
 }
 

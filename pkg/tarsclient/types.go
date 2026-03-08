@@ -86,6 +86,7 @@ type NotificationMessage struct {
 	Timestamp string `json:"timestamp"`
 	JobID     string `json:"job_id,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
+	OpenPath  string `json:"open_path,omitempty"`
 }
 
 type EventsHistoryInfo struct {

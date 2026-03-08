@@ -114,10 +114,12 @@ func newCronJobRunnerWithNotify(
 		agentTelemetry := &agentPromptTelemetry{}
 		runCtx = withAgentPromptTelemetry(runCtx, agentTelemetry)
 		response, err := runPrompt(runCtx, runLabel, promptText)
+		artifactNow := time.Now().UTC()
+		artifactPath := ""
 		if err != nil {
+			artifactPath, _ = persistCronProjectArtifact(targetWorkspaceDir, job, "", artifactNow, telemetry, artifactHistoryLimit)
 			if emit != nil {
-				evt := newNotificationEvent("cron", "error", "Cron failed", trimForMemory(err.Error(), 240))
-				evt.JobID = strings.TrimSpace(job.ID)
+				evt := buildCronNotificationEvent(job, "error", "Cron failed", err.Error(), artifactPath, strings.TrimSpace(targetSessionID))
 				emit(ctx, evt)
 			}
 			return "", err
@@ -129,49 +131,36 @@ func newCronJobRunnerWithNotify(
 		telemetry.ContaminationMarkers = detectPseudoToolContamination(response)
 		if len(telemetry.ContaminationMarkers) > 0 {
 			err := fmt.Errorf("pseudo-tool contamination detected: %s", strings.Join(telemetry.ContaminationMarkers, ", "))
+			artifactPath, _ = persistCronProjectArtifact(targetWorkspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit)
 			if emit != nil {
-				evt := newNotificationEvent("cron", "error", "Cron failed", trimForMemory(err.Error(), 240))
-				evt.JobID = strings.TrimSpace(job.ID)
-				evt.SessionID = strings.TrimSpace(targetSessionID)
+				evt := buildCronNotificationEvent(job, "error", "Cron failed", err.Error(), artifactPath, strings.TrimSpace(targetSessionID))
 				emit(ctx, evt)
-			}
-			if persistErr := persistCronProjectArtifact(targetWorkspaceDir, job, response, time.Now().UTC(), telemetry, artifactHistoryLimit); persistErr != nil {
-				logger.Debug().Err(persistErr).Str("job_id", strings.TrimSpace(job.ID)).Str("project_id", strings.TrimSpace(job.ProjectID)).Msg("persist contaminated cron artifact failed")
 			}
 			return "", err
 		}
 		if err := verifyCronClaimedFileUpdates(targetWorkspaceDir, job, response, projectFileSnapshot); err != nil {
+			artifactPath, _ = persistCronProjectArtifact(targetWorkspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit)
 			if emit != nil {
-				evt := newNotificationEvent("cron", "error", "Cron failed", trimForMemory(err.Error(), 240))
-				evt.JobID = strings.TrimSpace(job.ID)
-				evt.SessionID = strings.TrimSpace(targetSessionID)
+				evt := buildCronNotificationEvent(job, "error", "Cron failed", err.Error(), artifactPath, strings.TrimSpace(targetSessionID))
 				emit(ctx, evt)
-			}
-			if persistErr := persistCronProjectArtifact(targetWorkspaceDir, job, response, time.Now().UTC(), telemetry, artifactHistoryLimit); persistErr != nil {
-				logger.Debug().Err(persistErr).Str("job_id", strings.TrimSpace(job.ID)).Str("project_id", strings.TrimSpace(job.ProjectID)).Msg("persist unverifiable cron artifact failed")
 			}
 			return "", err
 		}
 		if err := deliverCronResult(targetWorkspaceDir, targetStore, job, targetSessionID, explicitTarget, response, time.Now().UTC(), logger); err != nil {
+			artifactPath, _ = persistCronProjectArtifact(targetWorkspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit)
 			if emit != nil {
-				evt := newNotificationEvent("cron", "error", "Cron delivery failed", trimForMemory(err.Error(), 240))
-				evt.JobID = strings.TrimSpace(job.ID)
+				evt := buildCronNotificationEvent(job, "error", "Cron delivery failed", err.Error(), artifactPath, strings.TrimSpace(targetSessionID))
 				emit(ctx, evt)
 			}
 			return "", err
 		}
-		if emit != nil {
-			title := "Cron completed"
-			if strings.TrimSpace(job.Name) != "" {
-				title = "Cron completed: " + strings.TrimSpace(job.Name)
-			}
-			evt := newNotificationEvent("cron", "info", title, trimForMemory(response, 280))
-			evt.JobID = strings.TrimSpace(job.ID)
-			evt.SessionID = strings.TrimSpace(targetSessionID)
-			emit(ctx, evt)
-		}
-		if err := persistCronProjectArtifact(targetWorkspaceDir, job, response, time.Now().UTC(), telemetry, artifactHistoryLimit); err != nil {
+		artifactPath, err = persistCronProjectArtifact(targetWorkspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit)
+		if err != nil {
 			logger.Debug().Err(err).Str("job_id", strings.TrimSpace(job.ID)).Str("project_id", strings.TrimSpace(job.ProjectID)).Msg("persist cron project artifact failed")
+		}
+		if emit != nil {
+			evt := buildCronNotificationEvent(job, "info", "Cron completed", response, artifactPath, strings.TrimSpace(targetSessionID))
+			emit(ctx, evt)
 		}
 		return response, nil
 	}
@@ -191,11 +180,11 @@ func buildCronProjectPromptSection(workspaceDir string, projectID string) string
 	return project.CronPromptContext(root, item)
 }
 
-func persistCronProjectArtifact(workspaceDir string, job cron.Job, response string, now time.Time, telemetry cronRunTelemetry, historyLimit int) error {
+func persistCronProjectArtifact(workspaceDir string, job cron.Job, response string, now time.Time, telemetry cronRunTelemetry, historyLimit int) (string, error) {
 	root := strings.TrimSpace(workspaceDir)
 	projectID := strings.TrimSpace(job.ProjectID)
 	if root == "" || projectID == "" {
-		return nil
+		return "", nil
 	}
 	if item, err := project.NewStore(root, nil).Get(projectID); err == nil && strings.EqualFold(strings.TrimSpace(item.Type), "research") {
 		_, _ = research.NewService(root, research.Options{Now: func() time.Time { return now }}).Run(research.RunInput{
@@ -207,7 +196,7 @@ func persistCronProjectArtifact(workspaceDir string, job cron.Job, response stri
 	}
 	artifactDir := filepath.Join(root, "projects", projectID, "cron_runs")
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
-		return err
+		return "", err
 	}
 	fileName := fmt.Sprintf("%s_%s.md", now.UTC().Format("20060102T150405Z"), sanitizeArtifactID(job.ID))
 	path := filepath.Join(artifactDir, fileName)
@@ -233,9 +222,12 @@ func persistCronProjectArtifact(workspaceDir string, job cron.Job, response stri
 		strings.TrimSpace(response),
 	)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		return err
+		return "", err
 	}
-	return trimCronProjectArtifacts(artifactDir, historyLimit)
+	if err := trimCronProjectArtifacts(artifactDir, historyLimit); err != nil {
+		return path, err
+	}
+	return path, nil
 }
 
 func detectPseudoToolContamination(response string) []string {
@@ -628,6 +620,52 @@ func buildCronSummaryContent(job cron.Job, response string) string {
 		status,
 		trimForMemory(response, 220),
 	)
+}
+
+func buildCronNotificationEvent(job cron.Job, severity string, baseTitle string, details string, openPath string, sessionID string) notificationEvent {
+	title := strings.TrimSpace(baseTitle)
+	if jobName := strings.TrimSpace(job.Name); jobName != "" {
+		title = title + ": " + jobName
+	}
+	message := buildCronNotificationMessage(job, details)
+	evt := newNotificationEvent("cron", severity, title, message)
+	evt.JobID = strings.TrimSpace(job.ID)
+	evt.SessionID = strings.TrimSpace(sessionID)
+	evt.OpenPath = strings.TrimSpace(openPath)
+	return evt
+}
+
+func buildCronNotificationMessage(job cron.Job, details string) string {
+	summary := summarizeCronResponse(details)
+	switch {
+	case strings.TrimSpace(job.ProjectID) != "" && summary != "":
+		return fmt.Sprintf("%s · %s", strings.TrimSpace(job.ProjectID), summary)
+	case strings.TrimSpace(job.ProjectID) != "":
+		return strings.TrimSpace(job.ProjectID)
+	case summary != "":
+		return summary
+	default:
+		return "cron job finished"
+	}
+}
+
+func summarizeCronResponse(raw string) string {
+	lines := strings.Split(strings.ReplaceAll(strings.TrimSpace(raw), "\r\n", "\n"), "\n")
+	for _, line := range lines {
+		trimmed := strings.Trim(strings.TrimSpace(line), "-*`")
+		if trimmed == "" {
+			continue
+		}
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(trimmed, "#") ||
+			strings.HasPrefix(lower, "변경 파일") ||
+			strings.HasPrefix(lower, "상태 갱신") ||
+			strings.HasPrefix(lower, "open questions") {
+			continue
+		}
+		return trimForMemory(trimmed, 180)
+	}
+	return trimForMemory(strings.TrimSpace(raw), 180)
 }
 
 func effectiveCronDeliveryMode(raw string, sessionTarget string) string {

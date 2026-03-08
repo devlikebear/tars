@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -30,6 +31,7 @@ type notificationEvent struct {
 	Timestamp string `json:"timestamp"`
 	JobID     string `json:"job_id,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
+	OpenPath  string `json:"open_path,omitempty"`
 }
 
 func newNotificationEvent(category, severity, title, message string) notificationEvent {
@@ -124,18 +126,24 @@ func (n *commandNotifier) Notify(ctx context.Context, evt notificationEvent) err
 			"TARS_NOTIFY_MESSAGE="+message,
 			"TARS_NOTIFY_CATEGORY="+strings.TrimSpace(evt.Category),
 			"TARS_NOTIFY_SEVERITY="+strings.TrimSpace(evt.Severity),
+			"TARS_NOTIFY_OPEN_PATH="+strings.TrimSpace(evt.OpenPath),
 		)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("notify command failed: %w output=%q", err, strings.TrimSpace(string(output)))
 		}
 		return nil
 	}
-	return n.notifyAuto(ctx, title, message)
+	return n.notifyAuto(ctx, evt)
 }
 
-func (n *commandNotifier) notifyAuto(ctx context.Context, title, message string) error {
+func (n *commandNotifier) notifyAuto(ctx context.Context, evt notificationEvent) error {
+	title := strings.TrimSpace(evt.Title)
+	message := strings.TrimSpace(evt.Message)
 	switch runtime.GOOS {
 	case "darwin":
+		if _, err := exec.LookPath("terminal-notifier"); err == nil {
+			return exec.CommandContext(ctx, "terminal-notifier", buildTerminalNotifierArgs(evt)...).Run()
+		}
 		if _, err := exec.LookPath("osascript"); err != nil {
 			return err
 		}
@@ -149,6 +157,53 @@ func (n *commandNotifier) notifyAuto(ctx context.Context, title, message string)
 	default:
 		return fmt.Errorf("desktop notification is not supported on %s", runtime.GOOS)
 	}
+}
+
+func buildTerminalNotifierArgs(evt notificationEvent) []string {
+	args := []string{
+		"-title", strings.TrimSpace(evt.Title),
+		"-message", strings.TrimSpace(evt.Message),
+		"-group", notificationGroupID(evt),
+		"-sender", "com.apple.Terminal",
+	}
+	if openCommand := notificationOpenCommand(evt.OpenPath); openCommand != "" {
+		args = append(args, "-execute", openCommand)
+	}
+	return args
+}
+
+func notificationGroupID(evt notificationEvent) string {
+	category := sanitizeNotificationIDPart(evt.Category)
+	if category == "" {
+		category = "general"
+	}
+	jobID := sanitizeNotificationIDPart(evt.JobID)
+	if jobID != "" {
+		return "tars-" + category + "-" + jobID
+	}
+	return "tars-" + category
+}
+
+func sanitizeNotificationIDPart(raw string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(raw))
+	if trimmed == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer(" ", "-", "/", "-", "_", "-", ":", "-", ".", "-")
+	return replacer.Replace(trimmed)
+}
+
+func notificationOpenCommand(rawPath string) string {
+	trimmed := strings.TrimSpace(rawPath)
+	if trimmed == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(trimmed)
+	if err != nil {
+		return ""
+	}
+	escaped := strings.ReplaceAll(abs, "'", "'\\''")
+	return "open '" + escaped + "'"
 }
 
 type notificationDispatcher struct {

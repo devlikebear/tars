@@ -150,3 +150,18 @@ func TestNotificationEvent_JSONShape(t *testing.T) {
 		t.Fatalf("unexpected event payload: %s", text)
 	}
 }
+
+func TestBuildTerminalNotifierArgs_IncludesOpenPath(t *testing.T) {
+	evt := newNotificationEvent("cron", "info", "Cron completed", "episode updated")
+	evt.JobID = "job_demo"
+	evt.OpenPath = "/tmp/cron.md"
+
+	args := buildTerminalNotifierArgs(evt)
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-group tars-cron-job-demo") {
+		t.Fatalf("expected stable group in args, got %+v", args)
+	}
+	if !strings.Contains(joined, "-execute open '/tmp/cron.md'") {
+		t.Fatalf("expected file open command in args, got %+v", args)
+	}
+}
