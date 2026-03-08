@@ -47,22 +47,8 @@ func cmdRuntime(c commandContext) (bool, string, error) {
 		printModelsOutput(c.stdout, info)
 		return true, c.session, nil
 	case "/model":
-		if len(c.fields) < 2 {
-			fmt.Fprintln(c.stdout, "SYSTEM > usage: /model list")
-			return true, c.session, nil
-		}
-		switch strings.ToLower(strings.TrimSpace(c.fields[1])) {
-		case "list":
-			info, err := c.runtime.models(c.ctx)
-			if err != nil {
-				return true, c.session, err
-			}
-			printModelsOutput(c.stdout, info)
-			return true, c.session, nil
-		default:
-			fmt.Fprintln(c.stdout, "SYSTEM > usage: /model list")
-			return true, c.session, nil
-		}
+		fmt.Fprintln(c.stdout, "SYSTEM > unsupported command. use /models")
+		return true, c.session, nil
 	case "/whoami":
 		identity, err := c.runtime.whoami(c.ctx)
 		if err != nil {

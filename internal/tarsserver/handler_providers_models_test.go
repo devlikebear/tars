@@ -74,6 +74,44 @@ func TestProvidersAPI_ReturnsCurrentAndSupportedProviders(t *testing.T) {
 	if len(out.Providers) != len(supportedLiveModelProviders) {
 		t.Fatalf("expected %d providers, got %d", len(supportedLiveModelProviders), len(out.Providers))
 	}
+	for _, item := range out.Providers {
+		if item.ID == "openai-codex" && item.SupportsLiveModels {
+			t.Fatalf("expected openai-codex live_models=false, got %+v", item)
+		}
+	}
+}
+
+func TestModelsAPI_OpenAICodexUnsupported_(t *testing.T) {
+	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
+	cfg := config.Config{
+		LLMProvider: "openai-codex",
+		LLMModel:    "gpt-5.3-codex",
+		LLMAuthMode: "oauth",
+		LLMBaseURL:  "https://chatgpt.com/backend-api",
+	}
+	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("newProviderModelsCache: %v", err)
+	}
+	fetcher := &fakeModelFetcher{models: []string{"should-not-be-used"}}
+	service := newProviderModelsService(cfg, cache, fetcher, func() time.Time { return now })
+	handler := newProvidersModelsAPIHandler(service, zerolog.New(io.Discard))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if fetcher.calls != 0 {
+		t.Fatalf("expected no fetch attempt, got %d", fetcher.calls)
+	}
+	if !strings.Contains(rec.Body.String(), "models_unsupported") {
+		t.Fatalf("expected models_unsupported code, got %q", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "openai-codex") {
+		t.Fatalf("expected openai-codex message, got %q", rec.Body.String())
+	}
 }
 
 func TestModelsAPI_CacheHitFresh_(t *testing.T) {

@@ -20,7 +20,6 @@ var slashCommands = []string{
 	"/status",
 	"/providers",
 	"/models",
-	"/model",
 	"/whoami",
 	"/health",
 	"/heartbeat",

@@ -10,7 +10,6 @@ func telegramHelpText() string {
 /health
 /providers
 /models
-/model list
 /cron {list|runs {job_id} [limit]}
 /gateway status
 /channels

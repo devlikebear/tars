@@ -90,7 +90,6 @@ Runtime:
   /status
   /providers
   /models
-  /model list
   /whoami
   /health
   /heartbeat

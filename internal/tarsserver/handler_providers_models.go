@@ -77,7 +77,7 @@ func (s *providerModelsService) providers() providersAPIInfo {
 	for _, provider := range supportedLiveModelProviders {
 		items = append(items, providerAPIStatus{
 			ID:                 provider,
-			SupportsLiveModels: true,
+			SupportsLiveModels: providerSupportsLiveModels(provider),
 		})
 	}
 	return providersAPIInfo{
@@ -98,6 +98,9 @@ func (s *providerModelsService) models(ctx context.Context) (modelsAPIInfo, erro
 	provider := normalizeProviderValue(s.cfg.LLMProvider)
 	if !s.supportsProvider(provider) {
 		return modelsAPIInfo{}, fmt.Errorf("unsupported llm provider: %s", provider)
+	}
+	if !providerSupportsLiveModels(provider) {
+		return modelsAPIInfo{}, fmt.Errorf("live model listing is unsupported for llm provider: %s", provider)
 	}
 	baseURL := normalizeBaseURL(strings.TrimSpace(s.cfg.LLMBaseURL))
 	authMode := normalizeAuthMode(s.cfg.LLMAuthMode)
@@ -163,6 +166,10 @@ func (s *providerModelsService) supportsProvider(provider string) bool {
 	return slices.Contains(supportedLiveModelProviders, normalizeProviderValue(provider))
 }
 
+func providerSupportsLiveModels(provider string) bool {
+	return normalizeProviderValue(provider) != "openai-codex"
+}
+
 func appendCurrentModel(models []string, currentModel string) []string {
 	list := make([]string, 0, len(models)+1)
 	set := map[string]struct{}{}
@@ -212,6 +219,10 @@ func newProvidersModelsAPIHandler(service *providerModelsService, logger zerolog
 		}
 		models, err := service.models(r.Context())
 		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "unsupported for llm provider") {
+				writeError(w, http.StatusBadRequest, "models_unsupported", err.Error())
+				return
+			}
 			logger.Error().Err(err).Msg("fetch provider models failed")
 			writeError(w, http.StatusInternalServerError, "models_unavailable", fmt.Sprintf("fetch provider models failed: %v", err))
 			return

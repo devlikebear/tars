@@ -79,7 +79,7 @@ func TestTelegramCommand_Allowed_Providers(t *testing.T) {
 	}
 }
 
-func TestTelegramCommand_Allowed_Models(t *testing.T) {
+func TestTelegramCommand_Allowed_ModelsUnsupportedForOpenAICodex(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(workspace)
 	cache, err := newProviderModelsCache(filepath.Join(workspace, "provider_models_cache.json"), providerModelsCacheTTL, time.Now)
@@ -103,38 +103,30 @@ func TestTelegramCommand_Allowed_Models(t *testing.T) {
 	})
 
 	handled, result, nextSession, err := handler.Execute(context.Background(), "/models", "")
-	if err != nil {
-		t.Fatalf("Execute /models: %v", err)
+	if err == nil {
+		t.Fatal("expected /models error for openai-codex")
 	}
 	if !handled || strings.TrimSpace(nextSession) != "" {
 		t.Fatalf("expected handled without session switch, handled=%t next=%q", handled, nextSession)
 	}
-	if !strings.Contains(result, "models provider=openai-codex") || !strings.Contains(result, "gpt-5.3-codex") {
-		t.Fatalf("unexpected /models output: %q", result)
+	if strings.TrimSpace(result) != "" {
+		t.Fatalf("expected empty result on error, got %q", result)
+	}
+	if !strings.Contains(err.Error(), "unsupported for llm provider") {
+		t.Fatalf("unexpected /models error: %v", err)
 	}
 }
 
-func TestTelegramCommand_Allowed_ModelListAlias(t *testing.T) {
+func TestTelegramCommand_Allowed_ModelListIsUnsupported(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(workspace)
-	cache, err := newProviderModelsCache(filepath.Join(workspace, "provider_models_cache.json"), providerModelsCacheTTL, time.Now)
-	if err != nil {
-		t.Fatalf("newProviderModelsCache: %v", err)
-	}
-	service := newProviderModelsService(config.Config{
-		LLMProvider: "openai",
-		LLMModel:    "gpt-4o-mini",
-		LLMAuthMode: "api-key",
-		LLMBaseURL:  "https://api.openai.com/v1",
-	}, cache, &fakeModelFetcher{models: []string{"gpt-4o-mini"}}, time.Now)
 	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
-		Store:          store,
-		CronResolver:   newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),
-		Runtime:        nil,
-		MainSession:    "sess-main",
-		SessionScope:   "main",
-		ProviderModels: service,
-		Logger:         zerolog.New(io.Discard),
+		Store:        store,
+		CronResolver: newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),
+		Runtime:      nil,
+		MainSession:  "sess-main",
+		SessionScope: "main",
+		Logger:       zerolog.New(io.Discard),
 	})
 
 	handled, result, _, err := handler.Execute(context.Background(), "/model list", "")
@@ -144,7 +136,7 @@ func TestTelegramCommand_Allowed_ModelListAlias(t *testing.T) {
 	if !handled {
 		t.Fatalf("expected /model list to be handled")
 	}
-	if !strings.Contains(result, "models provider=openai") {
+	if !strings.Contains(result, "unsupported command") || !strings.Contains(result, "/models") {
 		t.Fatalf("unexpected /model list output: %q", result)
 	}
 }

@@ -29,18 +29,6 @@ func (h *telegramCommandHandler) cmdProviders() string {
 	return strings.Join(lines, "\n")
 }
 
-func (h *telegramCommandHandler) cmdModel(ctx context.Context, fields []string) (string, error) {
-	if len(fields) < 2 {
-		return "SYSTEM > usage: /model list", nil
-	}
-	switch strings.TrimSpace(strings.ToLower(fields[1])) {
-	case "list":
-		return h.cmdModels(ctx)
-	default:
-		return "SYSTEM > usage: /model list", nil
-	}
-}
-
 func (h *telegramCommandHandler) cmdModels(ctx context.Context) (string, error) {
 	if h.providerModels == nil {
 		return "SYSTEM > models unavailable: service is not configured", nil

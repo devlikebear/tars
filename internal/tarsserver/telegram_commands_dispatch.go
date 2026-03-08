@@ -28,8 +28,7 @@ func (h *telegramCommandHandler) dispatchTelegramCommand(
 		result, err := h.cmdModels(ctx)
 		return telegramCommandResult{handled: true, result: result, err: err}
 	case "/model":
-		result, err := h.cmdModel(ctx, fields)
-		return telegramCommandResult{handled: true, result: result, err: err}
+		return telegramCommandResult{handled: true, result: "SYSTEM > unsupported command. use /models"}
 	case "/cron":
 		result, err := h.cmdCron(ctx, fields)
 		return telegramCommandResult{handled: true, result: result, err: err}

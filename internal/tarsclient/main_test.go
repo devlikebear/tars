@@ -113,34 +113,20 @@ func TestExecuteCommand_Models(t *testing.T) {
 	}
 }
 
-func TestExecuteCommand_ModelListAlias(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"provider":      "openai",
-				"current_model": "gpt-4o-mini",
-				"source":        "cache",
-				"stale":         true,
-				"warning":       "live provider unavailable",
-				"models":        []string{"gpt-4o-mini"},
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	runtime := runtimeClient{serverURL: server.URL}
+func TestExecuteCommand_ModelListIsUnsupported(t *testing.T) {
+	runtime := runtimeClient{serverURL: "http://127.0.0.1:43180"}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	if _, _, err := executeCommand(context.Background(), runtime, "/model list", "", stdout, stderr); err != nil {
+	handled, _, err := executeCommand(context.Background(), runtime, "/model list", "", stdout, stderr)
+	if err != nil {
 		t.Fatalf("/model list: %v", err)
 	}
-	out := stdout.String()
-	if !strings.Contains(out, "models provider=openai") || !strings.Contains(out, "warning=live provider unavailable") {
-		t.Fatalf("unexpected /model list output: %q", out)
+	if !handled {
+		t.Fatal("expected /model list to be handled")
+	}
+	if got := stdout.String(); !strings.Contains(got, "unsupported command") || !strings.Contains(got, "/models") {
+		t.Fatalf("unexpected /model list output: %q", got)
 	}
 }
 
