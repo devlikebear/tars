@@ -13,18 +13,14 @@ func (s *Service) Status() State {
 	s.mu.RLock()
 	state := s.state
 	s.mu.RUnlock()
-	state.ExtensionConnected = s.relayConnected()
-	state.AttachedTabs = s.relayAttachedTabs()
 	return state
 }
 
 func (s *Service) Profiles() []Profile {
 	status := s.Status()
-	profiles := []Profile{
-		{Name: "managed", Driver: "chromedp", Default: status.Profile == "managed", Running: status.Running && status.Profile == "managed"},
-		{Name: "chrome", Driver: "relay", Default: status.Profile == "chrome", Running: status.Running && status.Profile == "chrome", ExtensionConnected: status.ExtensionConnected},
+	return []Profile{
+		{Name: "managed", Driver: "playwright", Default: true, Running: status.Running && status.Profile == "managed"},
 	}
-	return profiles
 }
 
 func (s *Service) Start(profile string) State {
@@ -35,12 +31,7 @@ func (s *Service) Start(profile string) State {
 	s.mu.RUnlock()
 	if wasRunning {
 		currentRuntime := s.runtimeForProfile(currentProfile)
-		targetRuntime := s.runtimeForProfile(resolved)
-		if currentRuntime == targetRuntime {
-			_ = targetRuntime.Stop(context.Background())
-		} else {
-			_ = currentRuntime.Stop(context.Background())
-		}
+		_ = currentRuntime.Stop(context.Background())
 	}
 	runtime := s.runtimeForProfile(resolved)
 	err := runtime.Start(context.Background())
@@ -48,16 +39,13 @@ func (s *Service) Start(profile string) State {
 	defer s.mu.Unlock()
 	s.state.Profile = resolved
 	s.state.Driver = driverForProfile(resolved)
-	s.state.ExtensionConnected = s.relayConnected()
 	if err != nil {
 		s.state.Running = false
-		s.state.AttachedTabs = 0
 		s.state.LastError = err.Error()
 		s.state.LastAction = "start"
 		return s.state
 	}
 	s.state.Running = true
-	s.state.AttachedTabs = s.relayAttachedTabs()
 	s.state.LastError = ""
 	s.state.LastAction = "start"
 	return s.state
@@ -65,14 +53,11 @@ func (s *Service) Start(profile string) State {
 
 func (s *Service) Stop() State {
 	_ = s.getManagedRuntime().Stop(context.Background())
-	_ = s.getChromeRuntime().Stop(context.Background())
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state.Running = false
 	s.state.LastError = ""
-	s.state.ExtensionConnected = s.relayConnected()
-	s.state.AttachedTabs = s.relayAttachedTabs()
 	s.state.LastAction = "stop"
 	return s.state
 }
@@ -255,24 +240,13 @@ func (s *Service) getManagedRuntime() managedRuntime {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.managed == nil {
-		s.managed = newChromedpManagedRuntime(s.cfg)
+		s.managed = newPlaywrightManagedRuntime(s.cfg)
 	}
 	return s.managed
 }
 
-func (s *Service) getChromeRuntime() managedRuntime {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.chrome == nil {
-		s.chrome = newChromedpRelayRuntime(s.cfg)
-	}
-	return s.chrome
-}
-
 func (s *Service) runtimeForProfile(profile string) managedRuntime {
-	if strings.TrimSpace(strings.ToLower(profile)) == "chrome" {
-		return s.getChromeRuntime()
-	}
+	_ = profile
 	return s.getManagedRuntime()
 }
 
@@ -285,7 +259,7 @@ func (s *Service) resolveProfile(profile string) string {
 		candidate = "managed"
 	}
 	switch candidate {
-	case "managed", "chrome":
+	case "managed":
 		return candidate
 	default:
 		return "managed"
@@ -296,27 +270,9 @@ func (s *Service) setLastAction(action string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state.LastAction = action
-	s.state.ExtensionConnected = s.relayConnected()
-	s.state.AttachedTabs = s.relayAttachedTabs()
 }
 
 func driverForProfile(profile string) string {
-	if strings.TrimSpace(strings.ToLower(profile)) == "chrome" {
-		return "relay"
-	}
-	return "chromedp"
-}
-
-func (s *Service) relayConnected() bool {
-	if s == nil || s.cfg.Relay == nil {
-		return false
-	}
-	return s.cfg.Relay.ExtensionConnected()
-}
-
-func (s *Service) relayAttachedTabs() int {
-	if s == nil || s.cfg.Relay == nil {
-		return 0
-	}
-	return s.cfg.Relay.AttachedTabs()
+	_ = profile
+	return "playwright"
 }

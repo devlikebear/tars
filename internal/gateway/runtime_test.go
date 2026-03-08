@@ -3,6 +3,9 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -445,6 +448,11 @@ func TestRuntimeRunFailure_SetsPolicyDiagnosticCode(t *testing.T) {
 }
 
 func TestRuntimeChannelBrowserNodes(t *testing.T) {
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `<html><body><div id="app">ok</div></body></html>`)
+	}))
+	defer site.Close()
+
 	rt := NewRuntime(RuntimeOptions{
 		Enabled:                 true,
 		WorkspaceDir:            t.TempDir(),
@@ -472,7 +480,7 @@ func TestRuntimeChannelBrowserNodes(t *testing.T) {
 	if !state.Running {
 		t.Skipf("browser runtime unavailable in test env: %s", strings.TrimSpace(state.LastError))
 	}
-	if _, err := rt.BrowserOpen("https://example.com"); err != nil {
+	if _, err := rt.BrowserOpen(site.URL); err != nil {
 		if strings.Contains(err.Error(), "context canceled") {
 			status := rt.BrowserStatus()
 			t.Skipf("browser runtime unavailable in test env: %s", strings.TrimSpace(status.LastError))
@@ -482,7 +490,7 @@ func TestRuntimeChannelBrowserNodes(t *testing.T) {
 	if _, err := rt.BrowserSnapshot(); err != nil {
 		t.Fatalf("browser snapshot: %v", err)
 	}
-	if _, err := rt.BrowserAct("click", "#app", ""); err != nil {
+	if _, err := rt.BrowserAct("click", "body", ""); err != nil {
 		t.Fatalf("browser act: %v", err)
 	}
 	shot, err := rt.BrowserScreenshot("")

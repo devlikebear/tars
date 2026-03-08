@@ -25,8 +25,8 @@ func TestServiceProfilesAndBasicActions(t *testing.T) {
 	svc := NewService(Config{WorkspaceDir: t.TempDir(), DefaultProfile: "managed"})
 	svc.managed = &fakeManagedRuntime{}
 	profiles := svc.Profiles()
-	if len(profiles) < 2 {
-		t.Fatalf("expected at least two profiles, got %d", len(profiles))
+	if len(profiles) != 1 {
+		t.Fatalf("expected one managed profile, got %d", len(profiles))
 	}
 	state := svc.Start("managed")
 	if !state.Running {
@@ -124,6 +124,7 @@ func TestServiceLoginVaultFormRequiresAllowlist(t *testing.T) {
 		AutoLoginSiteAllowlist: []string{"grafana"},
 	})
 	svc2.Start("managed")
+	svc2.runner = fakeFlowRunner{response: flowRunResponse{Message: "vault login ok"}}
 	res, err := svc2.Login(context.Background(), "grafana", "managed")
 	if err != nil {
 		t.Fatalf("login with allowlist: %v", err)
@@ -158,6 +159,7 @@ func TestServiceRunAndCheckFlow(t *testing.T) {
 
 	svc := NewService(Config{WorkspaceDir: t.TempDir(), SiteFlowsDir: dir, DefaultProfile: "managed"})
 	svc.Start("managed")
+	svc.runner = fakeFlowRunner{response: flowRunResponse{Passed: true, Message: "ok"}}
 	checkRes, err := svc.Check(context.Background(), "portal", "managed")
 	if err != nil {
 		t.Fatalf("check: %v", err)
@@ -165,6 +167,7 @@ func TestServiceRunAndCheckFlow(t *testing.T) {
 	if checkRes.CheckCount != 1 {
 		t.Fatalf("expected check count 1, got %d", checkRes.CheckCount)
 	}
+	svc.runner = fakeFlowRunner{response: flowRunResponse{Message: "run ok"}}
 	runRes, err := svc.Run(context.Background(), "portal", "export", "managed")
 	if err != nil {
 		t.Fatalf("run: %v", err)
@@ -208,7 +211,7 @@ func TestServiceRunAppliesFlowProfileByDefault(t *testing.T) {
 	content := strings.Join([]string{
 		"id: portal",
 		"enabled: true",
-		"profile: chrome",
+		"profile: managed",
 		"actions:",
 		"  export:",
 		"    steps:",
@@ -220,17 +223,18 @@ func TestServiceRunAppliesFlowProfileByDefault(t *testing.T) {
 
 	svc := NewService(Config{WorkspaceDir: t.TempDir(), SiteFlowsDir: dir, DefaultProfile: "managed"})
 	svc.Start("managed")
+	svc.runner = fakeFlowRunner{response: flowRunResponse{Message: "run ok"}}
 
 	result, err := svc.Run(context.Background(), "portal", "export", "")
 	if err != nil {
 		t.Fatalf("run without explicit profile: %v", err)
 	}
-	if result.Profile != "chrome" {
-		t.Fatalf("expected flow profile chrome, got %q", result.Profile)
+	if result.Profile != "managed" {
+		t.Fatalf("expected flow profile managed, got %q", result.Profile)
 	}
 
-	if _, err := svc.Run(context.Background(), "portal", "export", "managed"); err == nil {
-		t.Fatalf("expected profile mismatch error")
+	if _, err := svc.Run(context.Background(), "portal", "export", "chrome"); err != nil {
+		t.Fatalf("expected unsupported profile alias to resolve to managed, got %v", err)
 	}
 }
 
@@ -252,6 +256,7 @@ func TestServiceRunAllowsWildcardHostPolicy(t *testing.T) {
 
 	svc := NewService(Config{WorkspaceDir: t.TempDir(), SiteFlowsDir: dir, DefaultProfile: "managed"})
 	svc.Start("managed")
+	svc.runner = fakeFlowRunner{response: flowRunResponse{Message: "run ok"}}
 	res, err := svc.Run(context.Background(), "portal", "export", "")
 	if err != nil {
 		t.Fatalf("expected wildcard host policy to pass, got %v", err)
@@ -300,102 +305,49 @@ func TestServiceScreenshot_RewritesNonPNGExtension(t *testing.T) {
 	}
 }
 
-func TestServiceStartChromeProfileUsesChromeRuntime(t *testing.T) {
+func TestServiceProfilesUsePlaywrightDriver(t *testing.T) {
 	workspace := t.TempDir()
 	managed := &fakeManagedRuntime{}
-	chrome := &fakeManagedRuntime{}
 	svc := NewService(Config{WorkspaceDir: workspace, DefaultProfile: "managed"})
 	svc.managed = managed
-	svc.chrome = chrome
 
-	state := svc.Start("chrome")
-	if !state.Running {
-		t.Fatalf("expected chrome profile running, got error=%q", state.LastError)
+	profiles := svc.Profiles()
+	if len(profiles) != 1 {
+		t.Fatalf("expected one managed profile, got %+v", profiles)
 	}
-	if state.Profile != "chrome" {
-		t.Fatalf("expected profile chrome, got %q", state.Profile)
-	}
-	if state.Driver != "relay" {
-		t.Fatalf("expected relay driver, got %q", state.Driver)
-	}
-
-	if _, err := svc.Open("https://example.com"); err != nil {
-		t.Fatalf("open with chrome profile: %v", err)
-	}
-	if strings.TrimSpace(chrome.currentURL) == "" {
-		t.Fatalf("expected chrome runtime to receive open URL")
-	}
-	if strings.TrimSpace(managed.currentURL) != "" {
-		t.Fatalf("expected managed runtime not to receive open URL, got %q", managed.currentURL)
+	if profiles[0].Driver != "playwright" {
+		t.Fatalf("expected playwright driver, got %+v", profiles[0])
 	}
 }
 
-func TestServiceStart_SwitchProfileStopsOnlyActiveRuntime(t *testing.T) {
+func TestServiceStart_SameProfileRestartsManagedRuntime(t *testing.T) {
 	workspace := t.TempDir()
 	managed := &fakeManagedRuntime{}
-	chrome := &fakeManagedRuntime{}
 	svc := NewService(Config{WorkspaceDir: workspace, DefaultProfile: "managed"})
 	svc.managed = managed
-	svc.chrome = chrome
 
 	state := svc.Start("managed")
 	if !state.Running {
 		t.Fatalf("expected managed profile running")
 	}
-	if managed.stopCalls != 0 || chrome.stopCalls != 0 {
-		t.Fatalf("unexpected stop calls before switch managed=%d chrome=%d", managed.stopCalls, chrome.stopCalls)
+	if managed.stopCalls != 0 {
+		t.Fatalf("unexpected stop calls before restart managed=%d", managed.stopCalls)
 	}
 
-	state = svc.Start("chrome")
+	state = svc.Start("managed")
 	if !state.Running {
-		t.Fatalf("expected chrome profile running after switch")
+		t.Fatalf("expected managed profile running after restart")
 	}
 	if managed.stopCalls != 1 {
 		t.Fatalf("expected managed stop once, got %d", managed.stopCalls)
-	}
-	if chrome.stopCalls != 0 {
-		t.Fatalf("expected chrome stop not called during switch, got %d", chrome.stopCalls)
-	}
-}
-
-func TestServiceOpen_RetriesOnceOnChromeContextCanceled(t *testing.T) {
-	workspace := t.TempDir()
-	managed := &fakeManagedRuntime{}
-	chrome := &flakyManagedRuntime{failOpenOnce: true}
-	svc := NewService(Config{WorkspaceDir: workspace, DefaultProfile: "managed"})
-	svc.managed = managed
-	svc.chrome = chrome
-
-	state := svc.Start("chrome")
-	if !state.Running {
-		t.Fatalf("expected chrome profile running, got error=%q", state.LastError)
-	}
-
-	state, err := svc.Open("https://example.com")
-	if err != nil {
-		t.Fatalf("expected open recovery success, got %v", err)
-	}
-	if !state.Running {
-		t.Fatalf("expected running=true after recovery open")
-	}
-	if chrome.openCalls != 2 {
-		t.Fatalf("expected two open attempts (initial + retry), got %d", chrome.openCalls)
-	}
-	if chrome.stopCalls != 1 {
-		t.Fatalf("expected one runtime stop for recovery, got %d", chrome.stopCalls)
-	}
-	if chrome.startCalls != 2 {
-		t.Fatalf("expected second start for recovery, got %d", chrome.startCalls)
 	}
 }
 
 func TestServiceOpen_RetriesOnceOnManagedContextCanceled(t *testing.T) {
 	workspace := t.TempDir()
 	managed := &flakyManagedRuntime{failOpenOnce: true}
-	chrome := &fakeManagedRuntime{}
 	svc := NewService(Config{WorkspaceDir: workspace, DefaultProfile: "managed"})
 	svc.managed = managed
-	svc.chrome = chrome
 
 	state := svc.Start("managed")
 	if !state.Running {
@@ -426,6 +378,20 @@ type fakeManagedRuntime struct {
 	screenshots []string
 	startCalls  int
 	stopCalls   int
+}
+
+type fakeFlowRunner struct {
+	response flowRunResponse
+	err      error
+	lastReq  flowRunRequest
+}
+
+func (f fakeFlowRunner) Execute(_ context.Context, req flowRunRequest) (flowRunResponse, error) {
+	if f.err != nil {
+		return flowRunResponse{}, f.err
+	}
+	f.lastReq = req
+	return f.response, nil
 }
 
 func (f *fakeManagedRuntime) Start(context.Context) error {

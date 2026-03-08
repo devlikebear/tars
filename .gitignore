@@ -28,6 +28,7 @@ workspace/
 .vscode/
 .idea/
 *.iml
+node_modules/
 
 # Archives
 *.tgz

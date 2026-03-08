@@ -14,6 +14,7 @@ import (
 type SiteFlow struct {
 	ID           string                `yaml:"id" json:"id"`
 	Enabled      bool                  `yaml:"enabled" json:"enabled"`
+	URL          string                `yaml:"url,omitempty" json:"url,omitempty"`
 	Profile      string                `yaml:"profile,omitempty" json:"profile,omitempty"`
 	AllowedHosts []string              `yaml:"allowed_hosts,omitempty" json:"allowed_hosts,omitempty"`
 	Login        SiteLogin             `yaml:"login,omitempty" json:"login,omitempty"`
@@ -23,6 +24,7 @@ type SiteFlow struct {
 
 type SiteLogin struct {
 	Mode             string `yaml:"mode,omitempty" json:"mode,omitempty"`
+	URL              string `yaml:"url,omitempty" json:"url,omitempty"`
 	VaultPath        string `yaml:"vault_path,omitempty" json:"vault_path,omitempty"`
 	EnvPrefix        string `yaml:"env_prefix,omitempty" json:"env_prefix,omitempty"`
 	UsernameField    string `yaml:"username_field,omitempty" json:"username_field,omitempty"`
@@ -49,6 +51,7 @@ type SiteStep struct {
 	Open    string `yaml:"open,omitempty" json:"open,omitempty"`
 	Click   string `yaml:"click,omitempty" json:"click,omitempty"`
 	Type    string `yaml:"type,omitempty" json:"type,omitempty"`
+	Value   string `yaml:"value,omitempty" json:"value,omitempty"`
 	Wait    int    `yaml:"wait,omitempty" json:"wait,omitempty"`
 	Extract string `yaml:"extract,omitempty" json:"extract,omitempty"`
 }

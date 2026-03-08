@@ -3,6 +3,9 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -154,6 +157,10 @@ func TestMessageBrowserNodesGatewayTools(t *testing.T) {
 
 func TestBrowserToolProfilesAndSiteFlows(t *testing.T) {
 	workspaceDir := t.TempDir()
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `<html><body><div id="ok">hello</div><button id="export">export</button></body></html>`)
+	}))
+	defer site.Close()
 	flowDir := filepath.Join(workspaceDir, "automation", "sites")
 	if err := os.MkdirAll(flowDir, 0o755); err != nil {
 		t.Fatalf("mkdir flow dir: %v", err)
@@ -162,12 +169,15 @@ func TestBrowserToolProfilesAndSiteFlows(t *testing.T) {
 		"id: sample",
 		"enabled: true",
 		"profile: managed",
+		"url: '" + site.URL + "'",
 		"checks:",
 		"  - selector: '#ok'",
+		"    contains: 'hello'",
 		"actions:",
 		"  ping:",
 		"    steps:",
-		"      - open: 'https://example.com'",
+		"      - open: '" + site.URL + "'",
+		"      - click: '#export'",
 	}, "\n")
 	if err := os.WriteFile(filepath.Join(flowDir, "sample.yaml"), []byte(flow), 0o644); err != nil {
 		t.Fatalf("write flow: %v", err)

@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/devlikebear/tarsncase/internal/browserrelay"
 )
 
 // SecretReader resolves secret values for login automation.
@@ -35,21 +33,20 @@ type Config struct {
 	AutoLoginSiteAllowlist []string
 	Vault                  SecretReader
 	OTP                    OTPRequester
-	Relay                  *browserrelay.Server
 }
 
 // State is the current browser runtime state.
 type State struct {
-	Running            bool   `json:"running"`
-	Profile            string `json:"profile,omitempty"`
-	Driver             string `json:"driver,omitempty"`
-	CurrentURL         string `json:"current_url,omitempty"`
-	LastSnapshot       string `json:"last_snapshot,omitempty"`
-	LastAction         string `json:"last_action,omitempty"`
-	LastScreenshot     string `json:"last_screenshot,omitempty"`
-	ExtensionConnected bool   `json:"extension_connected,omitempty"`
-	AttachedTabs       int    `json:"attached_tabs,omitempty"`
-	LastError          string `json:"last_error,omitempty"`
+	Running        bool   `json:"running"`
+	Profile        string `json:"profile,omitempty"`
+	Driver         string `json:"driver,omitempty"`
+	CurrentURL     string `json:"current_url,omitempty"`
+	LastSnapshot   string `json:"last_snapshot,omitempty"`
+	LastAction     string `json:"last_action,omitempty"`
+	LastScreenshot string `json:"last_screenshot,omitempty"`
+	ExtensionConnected bool `json:"extension_connected,omitempty"`
+	AttachedTabs       int  `json:"attached_tabs,omitempty"`
+	LastError      string `json:"last_error,omitempty"`
 }
 
 // Profile reports available browser profiles.
@@ -94,7 +91,7 @@ type Service struct {
 	cfg       Config
 	allowAuto map[string]struct{}
 	managed   managedRuntime
-	chrome    managedRuntime
+	runner    flowRunner
 
 	mu    sync.RWMutex
 	state State
@@ -107,6 +104,10 @@ type managedRuntime interface {
 	Snapshot(ctx context.Context) (string, error)
 	Act(ctx context.Context, action string, target string, value string) (string, error)
 	Screenshot(ctx context.Context, path string) error
+}
+
+type flowRunner interface {
+	Execute(ctx context.Context, req flowRunRequest) (flowRunResponse, error)
 }
 
 func NewService(cfg Config) *Service {
@@ -131,8 +132,8 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		cfg:       cfg,
 		allowAuto: allow,
-		managed:   newChromedpManagedRuntime(cfg),
-		chrome:    newChromedpRelayRuntime(cfg),
+		managed:   newPlaywrightManagedRuntime(cfg),
+		runner:    newPlaywrightFlowRunner(cfg),
 		state: State{
 			Profile: defaultProfile,
 			Driver:  driverForProfile(defaultProfile),
@@ -149,6 +150,7 @@ func (s *Service) Login(ctx context.Context, siteID string, profile string) (Log
 	if err != nil {
 		return LoginResult{}, err
 	}
+	s.Start(resolvedProfile)
 	mode := strings.TrimSpace(strings.ToLower(flow.Login.Mode))
 	if mode == "" {
 		mode = "manual"
@@ -171,6 +173,7 @@ func (s *Service) Login(ctx context.Context, siteID string, profile string) (Log
 	if strings.TrimSpace(values["username"]) == "" || strings.TrimSpace(values["password"]) == "" {
 		return LoginResult{}, fmt.Errorf("login credentials must include username/password")
 	}
+	otpCode := ""
 	if flow.Login.OTPRequired {
 		if s.cfg.OTP == nil {
 			return LoginResult{}, fmt.Errorf("otp requester is not configured")
@@ -186,11 +189,30 @@ func (s *Service) Login(ctx context.Context, siteID string, profile string) (Log
 		if strings.TrimSpace(code) == "" {
 			return LoginResult{}, fmt.Errorf("otp code is empty")
 		}
-		result.Message = "auto login form submitted and otp verified"
-	} else {
-		result.Message = "auto login form submitted using " + source + " credentials"
+		otpCode = strings.TrimSpace(code)
+	}
+	if s.runner == nil {
+		return LoginResult{}, fmt.Errorf("browser flow runner is not configured")
+	}
+	runResult, err := s.runner.Execute(ctx, flowRunRequest{
+		Mode:           "login",
+		SiteID:         flow.ID,
+		Profile:        resolvedProfile,
+		Headless:       s.cfg.ManagedHeadless,
+		ExecutablePath: strings.TrimSpace(s.cfg.ManagedExecutablePath),
+		UserDataDir:    s.profileUserDataDir(resolvedProfile, flow.ID),
+		URL:            firstNonEmptyTrimmed(flow.Login.URL, flow.URL),
+		AllowedHosts:   normalizeAllowedHosts(flow.AllowedHosts),
+		Login:          flow.Login,
+		Credentials:    values,
+		OTPCode:        otpCode,
+		WorkspaceDir:   strings.TrimSpace(s.cfg.WorkspaceDir),
+	})
+	if err != nil {
+		return LoginResult{}, err
 	}
 	result.Success = true
+	result.Message = firstNonEmptyTrimmed(runResult.Message, "auto login completed using "+source+" credentials")
 	s.setLastAction(fmt.Sprintf("login site=%s mode=%s source=%s", flow.ID, mode, source))
 	return result, nil
 }
@@ -259,7 +281,7 @@ func resolveEnvLoginValues(prefix string) map[string]string {
 	}
 }
 
-func (s *Service) Check(_ context.Context, siteID string, profile string) (CheckResult, error) {
+func (s *Service) Check(ctx context.Context, siteID string, profile string) (CheckResult, error) {
 	flow, err := s.loadFlow(siteID)
 	if err != nil {
 		return CheckResult{}, err
@@ -268,18 +290,37 @@ func (s *Service) Check(_ context.Context, siteID string, profile string) (Check
 	if err != nil {
 		return CheckResult{}, err
 	}
+	s.Start(resolvedProfile)
+	if s.runner == nil {
+		return CheckResult{}, fmt.Errorf("browser flow runner is not configured")
+	}
+	runResult, err := s.runner.Execute(ctx, flowRunRequest{
+		Mode:           "check",
+		SiteID:         flow.ID,
+		Profile:        resolvedProfile,
+		Headless:       s.cfg.ManagedHeadless,
+		ExecutablePath: strings.TrimSpace(s.cfg.ManagedExecutablePath),
+		UserDataDir:    s.profileUserDataDir(resolvedProfile, flow.ID),
+		URL:            s.checkURL(flow),
+		AllowedHosts:   normalizeAllowedHosts(flow.AllowedHosts),
+		Checks:         flow.Checks,
+		WorkspaceDir:   strings.TrimSpace(s.cfg.WorkspaceDir),
+	})
+	if err != nil {
+		return CheckResult{}, err
+	}
 	res := CheckResult{
 		SiteID:     flow.ID,
 		Profile:    resolvedProfile,
 		CheckCount: len(flow.Checks),
-		Passed:     true,
-		Message:    fmt.Sprintf("check policy loaded (%d checks)", len(flow.Checks)),
+		Passed:     runResult.Passed,
+		Message:    firstNonEmptyTrimmed(runResult.Message, fmt.Sprintf("check completed (%d checks)", len(flow.Checks))),
 	}
 	s.setLastAction(fmt.Sprintf("check site=%s", flow.ID))
 	return res, nil
 }
 
-func (s *Service) Run(_ context.Context, siteID string, flowAction string, profile string) (RunResult, error) {
+func (s *Service) Run(ctx context.Context, siteID string, flowAction string, profile string) (RunResult, error) {
 	flow, err := s.loadFlow(siteID)
 	if err != nil {
 		return RunResult{}, err
@@ -299,13 +340,32 @@ func (s *Service) Run(_ context.Context, siteID string, flowAction string, profi
 	if err := validateActionAllowedHosts(flow, action, steps.Steps); err != nil {
 		return RunResult{}, err
 	}
+	s.Start(resolvedProfile)
+	if s.runner == nil {
+		return RunResult{}, fmt.Errorf("browser flow runner is not configured")
+	}
+	runResult, err := s.runner.Execute(ctx, flowRunRequest{
+		Mode:           "run",
+		SiteID:         flow.ID,
+		Profile:        resolvedProfile,
+		Headless:       s.cfg.ManagedHeadless,
+		ExecutablePath: strings.TrimSpace(s.cfg.ManagedExecutablePath),
+		UserDataDir:    s.profileUserDataDir(resolvedProfile, flow.ID),
+		URL:            flow.URL,
+		AllowedHosts:   normalizeAllowedHosts(flow.AllowedHosts),
+		Steps:          steps.Steps,
+		WorkspaceDir:   strings.TrimSpace(s.cfg.WorkspaceDir),
+	})
+	if err != nil {
+		return RunResult{}, err
+	}
 	result := RunResult{
 		SiteID:    flow.ID,
 		Profile:   resolvedProfile,
 		Action:    action,
 		StepCount: len(steps.Steps),
 		Success:   true,
-		Message:   fmt.Sprintf("flow action %s planned (%d steps)", action, len(steps.Steps)),
+		Message:   firstNonEmptyTrimmed(runResult.Message, fmt.Sprintf("flow action %s completed (%d steps)", action, len(steps.Steps))),
 	}
 	s.setLastAction(fmt.Sprintf("run site=%s action=%s", flow.ID, action))
 	return result, nil
@@ -348,6 +408,72 @@ func (s *Service) resolveProfileForFlow(requested string, flow SiteFlow) (string
 		return "", fmt.Errorf("profile %s is not allowed for site flow %s (required: %s)", resolvedRequested, flow.ID, resolvedFlowProfile)
 	}
 	return resolvedFlowProfile, nil
+}
+
+func (s *Service) profileUserDataDir(profile, siteID string) string {
+	base := strings.TrimSpace(s.cfg.ManagedUserDataDir)
+	if base == "" {
+		base = filepath.Join(strings.TrimSpace(s.cfg.WorkspaceDir), "_shared", "browser", "managed")
+	}
+	profilePart := sanitizeBrowserPathComponent(profile)
+	if profilePart == "" {
+		profilePart = "managed"
+	}
+	sitePart := sanitizeBrowserPathComponent(siteID)
+	if sitePart == "" {
+		sitePart = "default"
+	}
+	return filepath.Join(base, profilePart, sitePart)
+}
+
+func (s *Service) checkURL(flow SiteFlow) string {
+	if value := strings.TrimSpace(flow.URL); value != "" {
+		return value
+	}
+	for _, key := range []string{"check", "status", "health"} {
+		action, ok := flow.Actions[key]
+		if !ok {
+			continue
+		}
+		if value := firstOpenStep(action.Steps); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstOpenStep(steps []SiteStep) string {
+	for _, step := range steps {
+		if value := strings.TrimSpace(step.Open); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyTrimmed(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func sanitizeBrowserPathComponent(value string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer(
+		"/", "-",
+		"\\", "-",
+		":", "-",
+		" ", "-",
+	)
+	trimmed = replacer.Replace(trimmed)
+	trimmed = strings.Trim(trimmed, "-.")
+	return trimmed
 }
 
 func sortedKeys(m map[string]struct{}) []string {

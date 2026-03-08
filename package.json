@@ -1,0 +1,8 @@
+{
+  "name": "tars-browser-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright": "1.58.2"
+  }
+}
