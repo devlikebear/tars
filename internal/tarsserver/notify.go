@@ -164,11 +164,12 @@ func buildTerminalNotifierArgs(evt notificationEvent) []string {
 		"-title", strings.TrimSpace(evt.Title),
 		"-message", strings.TrimSpace(evt.Message),
 		"-group", notificationGroupID(evt),
-		"-sender", "com.apple.Terminal",
 	}
 	if openCommand := notificationOpenCommand(evt.OpenPath); openCommand != "" {
 		args = append(args, "-execute", openCommand)
+		return args
 	}
+	args = append(args, "-sender", "com.apple.Terminal")
 	return args
 }
 
@@ -250,7 +251,7 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 	if !d.notifyWhenNoSubscribers || d.notifier == nil {
 		return
 	}
-	if d.broker != nil && d.broker.subscriberCount() > 0 {
+	if d.broker != nil && d.broker.subscriberCount() > 0 && !strings.EqualFold(strings.TrimSpace(evt.Category), "cron") {
 		return
 	}
 	notifyCtx, cancel := context.WithTimeout(ctx, 3*time.Second)

@@ -47,7 +47,7 @@ func TestNotificationDispatcher_UsesDesktopNotifyWithoutSubscribers(t *testing.T
 	}
 }
 
-func TestNotificationDispatcher_SkipsDesktopNotifyWithSubscribers(t *testing.T) {
+func TestNotificationDispatcher_CronStillNotifiesWithSubscribers(t *testing.T) {
 	broker := newEventBroker()
 	_, _, unsubscribe := broker.subscribe()
 	defer unsubscribe()
@@ -56,8 +56,22 @@ func TestNotificationDispatcher_SkipsDesktopNotifyWithSubscribers(t *testing.T) 
 	dispatcher := newNotificationDispatcher(broker, fake, true, zerolog.New(io.Discard))
 	dispatcher.Emit(context.Background(), newNotificationEvent("cron", "info", "Cron done", "check inbox done"))
 
+	if len(fake.calls) != 1 {
+		t.Fatalf("expected cron desktop notify even with subscribers, got %d", len(fake.calls))
+	}
+}
+
+func TestNotificationDispatcher_NonCronSkipsDesktopNotifyWithSubscribers(t *testing.T) {
+	broker := newEventBroker()
+	_, _, unsubscribe := broker.subscribe()
+	defer unsubscribe()
+
+	fake := &fakeDesktopNotifier{}
+	dispatcher := newNotificationDispatcher(broker, fake, true, zerolog.New(io.Discard))
+	dispatcher.Emit(context.Background(), newNotificationEvent("heartbeat", "info", "Heartbeat", "ok"))
+
 	if len(fake.calls) != 0 {
-		t.Fatalf("expected desktop notify to be skipped when subscribers exist, got %d", len(fake.calls))
+		t.Fatalf("expected non-cron desktop notify to be skipped when subscribers exist, got %d", len(fake.calls))
 	}
 }
 
@@ -163,5 +177,17 @@ func TestBuildTerminalNotifierArgs_IncludesOpenPath(t *testing.T) {
 	}
 	if !strings.Contains(joined, "-execute open '/tmp/cron.md'") {
 		t.Fatalf("expected file open command in args, got %+v", args)
+	}
+	if strings.Contains(joined, "-sender com.apple.Terminal") {
+		t.Fatalf("did not expect sender when click action is configured, got %+v", args)
+	}
+}
+
+func TestBuildTerminalNotifierArgs_UsesSenderWithoutClickAction(t *testing.T) {
+	evt := newNotificationEvent("cron", "info", "Cron completed", "episode updated")
+	args := buildTerminalNotifierArgs(evt)
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-sender com.apple.Terminal") {
+		t.Fatalf("expected sender without click action, got %+v", args)
 	}
 }
