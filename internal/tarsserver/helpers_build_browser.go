@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/browser"
-	"github.com/devlikebear/tarsncase/internal/browserrelay"
 	"github.com/devlikebear/tarsncase/internal/config"
 	"github.com/devlikebear/tarsncase/internal/vaultclient"
 )
@@ -53,19 +52,7 @@ func buildVaultReader(cfg config.Config) (vaultclient.SecretReader, vaultStatusS
 	return client, status, nil
 }
 
-func buildBrowserRelay(cfg config.Config) (*browserrelay.Server, error) {
-	if !cfg.BrowserRelayEnabled {
-		return nil, nil
-	}
-	return browserrelay.New(browserrelay.Options{
-		Addr:            cfg.BrowserRelayAddr,
-		RelayToken:      cfg.BrowserRelayToken,
-		AllowQueryToken: cfg.BrowserRelayAllowQueryToken,
-		OriginAllowlist: cfg.BrowserRelayOriginAllowlist,
-	})
-}
-
-func buildBrowserService(cfg config.Config, relay *browserrelay.Server, vaultReader vaultclient.SecretReader, otpRequester browser.OTPRequester) *browser.Service {
+func buildBrowserService(cfg config.Config, vaultReader vaultclient.SecretReader, otpRequester browser.OTPRequester) *browser.Service {
 	if !cfg.BrowserRuntimeEnabled {
 		return nil
 	}
@@ -79,6 +66,5 @@ func buildBrowserService(cfg config.Config, relay *browserrelay.Server, vaultRea
 		AutoLoginSiteAllowlist: cfg.BrowserAutoLoginSiteAllowlist,
 		Vault:                  vaultReader,
 		OTP:                    otpRequester,
-		Relay:                  relay,
 	})
 }

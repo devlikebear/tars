@@ -20,8 +20,6 @@ type browserState = tarsclient.BrowserState
 
 type browserProfile = tarsclient.BrowserProfile
 
-type browserRelayInfo = tarsclient.BrowserRelayInfo
-
 type browserLoginResult = tarsclient.BrowserLoginResult
 
 type browserCheckResult = tarsclient.BrowserCheckResult

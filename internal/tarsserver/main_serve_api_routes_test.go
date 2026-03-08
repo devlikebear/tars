@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestRegisterBrowserRoutes_IncludesRelayRoute(t *testing.T) {
+func TestRegisterBrowserRoutes_RegistersBrowserRoutes(t *testing.T) {
 	mux := http.NewServeMux()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -16,7 +16,6 @@ func TestRegisterBrowserRoutes_IncludesRelayRoute(t *testing.T) {
 	paths := []string{
 		"/v1/browser/status",
 		"/v1/browser/profiles",
-		"/v1/browser/relay",
 		"/v1/browser/login",
 		"/v1/browser/check",
 		"/v1/browser/run",
@@ -105,7 +104,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/gateway/reports/channels",
 		"/v1/browser/status",
 		"/v1/browser/profiles",
-		"/v1/browser/relay",
 		"/v1/browser/login",
 		"/v1/browser/check",
 		"/v1/browser/run",

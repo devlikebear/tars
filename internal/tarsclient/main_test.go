@@ -275,28 +275,16 @@ func TestExecuteCommand_BrowserAndVault(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"running":             true,
 				"profile":             "managed",
-				"driver":              "chromedp",
+				"driver":              "playwright",
 				"extension_connected": false,
 				"attached_tabs":       0,
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/browser/profiles":
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"count": 2,
+				"count": 1,
 				"profiles": []map[string]any{
-					{"name": "managed", "driver": "chromedp", "default": true, "running": true},
-					{"name": "chrome", "driver": "relay", "default": false, "running": false},
+					{"name": "managed", "driver": "playwright", "default": true, "running": true},
 				},
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/browser/relay":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"enabled":             true,
-				"running":             true,
-				"addr":                "127.0.0.1:43182",
-				"relay_token":         "relay-token",
-				"extension_connected": true,
-				"extension_ws_url":    "ws://127.0.0.1:43182/extension",
-				"cdp_ws_url":          "ws://127.0.0.1:43182/cdp?token=relay-token",
-				"origin_allowlist":    []string{"chrome-extension://*"},
 			})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/browser/login":
 			_ = json.NewEncoder(w).Encode(map[string]any{"site_id": "portal", "profile": "managed", "mode": "manual", "success": true, "message": "manual login required"})
@@ -338,8 +326,8 @@ func TestExecuteCommand_BrowserAndVault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("/browser relay: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "extension_ws=ws://127.0.0.1:43182/extension") || !strings.Contains(stdout.String(), "cdp_ws=ws://127.0.0.1:43182/cdp?token=relay-token") {
-		t.Fatalf("expected browser relay output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "browser relay is removed") {
+		t.Fatalf("expected browser relay removal output, got %q", stdout.String())
 	}
 
 	stdout.Reset()

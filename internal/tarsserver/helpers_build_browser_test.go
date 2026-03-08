@@ -6,20 +6,13 @@ import (
 	"github.com/devlikebear/tarsncase/internal/config"
 )
 
-func TestBuildBrowserRelay_UsesConfiguredToken(t *testing.T) {
+func TestBuildBrowserService_UsesRuntimeConfig(t *testing.T) {
 	cfg := config.Default()
-	cfg.BrowserRelayEnabled = true
-	cfg.BrowserRelayAddr = "127.0.0.1:0"
-	cfg.BrowserRelayToken = "fixed-relay-token"
+	cfg.BrowserRuntimeEnabled = true
+	cfg.WorkspaceDir = t.TempDir()
 
-	relay, err := buildBrowserRelay(cfg)
-	if err != nil {
-		t.Fatalf("build relay: %v", err)
-	}
-	if relay == nil {
-		t.Fatalf("expected relay instance")
-	}
-	if relay.RelayToken() != "fixed-relay-token" {
-		t.Fatalf("expected configured relay token, got %q", relay.RelayToken())
+	service := buildBrowserService(cfg, nil, nil)
+	if service == nil {
+		t.Fatal("expected browser service")
 	}
 }

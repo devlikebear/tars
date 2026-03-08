@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/devlikebear/tarsncase/internal/approval"
-	"github.com/devlikebear/tarsncase/internal/browserrelay"
 	"github.com/devlikebear/tarsncase/internal/cli"
 	"github.com/devlikebear/tarsncase/internal/config"
 	"github.com/devlikebear/tarsncase/internal/cron"
@@ -38,7 +37,6 @@ type serveAPIRuntime struct {
 	extensionsManager  *extensions.Manager
 	gatewayRuntime     *gateway.Runtime
 	gatewayAgentsWatch *gatewayAgentsWatcher
-	relayServer        *browserrelay.Server
 	cronManager        *workspaceCronManager
 	watchdogManager    *workspaceWatchdogManager
 	telegramPoller     *telegramUpdatePoller
@@ -281,14 +279,9 @@ func buildAPIMux(
 	if vaultErr != nil {
 		logger.Warn().Err(vaultErr).Msg("vault client initialization failed; browser auto-login will be unavailable")
 	}
-	relayServer, err := buildBrowserRelay(cfg)
-	if err != nil {
-		return nil, err
-	}
 	otpManager := approval.NewOTPManager(nowFn)
 	browserService := buildBrowserService(
 		cfg,
-		relayServer,
 		vaultReader,
 		newBrowserTelegramOTPRequester(telegramSender, telegramPairings, otpManager),
 	)
@@ -410,9 +403,6 @@ func buildAPIMux(
 	browserHandler := newBrowserAPIHandler(
 		gatewayRuntime,
 		vaultStatus,
-		relayServer,
-		cfg.BrowserRelayEnabled,
-		cfg.BrowserRelayOriginAllowlist,
 		logger,
 	)
 	telegramInbound := newTelegramInboundHandler(
@@ -502,7 +492,6 @@ func buildAPIMux(
 		extensionsManager:  extensionsManager,
 		gatewayRuntime:     gatewayRuntime,
 		gatewayAgentsWatch: gatewayAgentsWatch,
-		relayServer:        relayServer,
 		cronManager:        cronManager,
 		watchdogManager:    watchdogManager,
 		telegramPoller:     telegramPoller,
@@ -569,7 +558,6 @@ func registerBrowserRoutes(mux *http.ServeMux, browserHandler http.Handler) {
 	}
 	mux.Handle("/v1/browser/status", browserHandler)
 	mux.Handle("/v1/browser/profiles", browserHandler)
-	mux.Handle("/v1/browser/relay", browserHandler)
 	mux.Handle("/v1/browser/login", browserHandler)
 	mux.Handle("/v1/browser/check", browserHandler)
 	mux.Handle("/v1/browser/run", browserHandler)
@@ -598,13 +586,6 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 		}
 	}
 
-	if runtime.relayServer != nil {
-		if err := runtime.relayServer.Start(ctx); err != nil {
-			logger.Warn().Err(err).Msg("browser relay start failed")
-		} else {
-			logger.Info().Str("addr", runtime.relayServer.Addr()).Msg("browser relay started")
-		}
-	}
 	if runtime.extensionsManager != nil {
 		if err := runtime.extensionsManager.Start(ctx); err != nil {
 			return err
@@ -646,9 +627,6 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	}
 	if runtime.gatewayAgentsWatch != nil {
 		runtime.gatewayAgentsWatch.Close()
-	}
-	if runtime.relayServer != nil {
-		_ = runtime.relayServer.Close(ctx)
 	}
 	if runtime.gatewayRuntime != nil {
 		_ = runtime.gatewayRuntime.Close(ctx)

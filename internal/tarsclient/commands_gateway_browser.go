@@ -159,31 +159,7 @@ func cmdBrowser(c commandContext) (bool, string, error) {
 		}
 		return true, c.session, nil
 	case "relay":
-		relay, err := c.runtime.browserRelay(c.ctx)
-		if err != nil {
-			return true, c.session, err
-		}
-		fmt.Fprintf(c.stdout, "SYSTEM > browser relay enabled=%t running=%t extension_connected=%t attached_tabs=%d addr=%s\n",
-			relay.Enabled,
-			relay.Running,
-			relay.ExtensionConnected,
-			relay.AttachedTabs,
-			strings.TrimSpace(relay.Addr),
-		)
-		fmt.Fprintf(c.stdout, "SYSTEM > relay extension_ws=%s cdp_ws=%s\n",
-			strings.TrimSpace(relay.ExtensionWSURL),
-			strings.TrimSpace(relay.CDPWebSocketURL),
-		)
-		fmt.Fprintf(c.stdout, "SYSTEM > relay auth_required=%t json_auth_required=%t\n",
-			relay.AuthRequired,
-			relay.JSONAuthRequired,
-		)
-		if len(relay.OriginAllowlist) > 0 {
-			fmt.Fprintf(c.stdout, "SYSTEM > relay origin_allowlist=%s\n", strings.Join(relay.OriginAllowlist, ","))
-		}
-		if strings.TrimSpace(relay.RelayToken) != "" {
-			fmt.Fprintf(c.stdout, "SYSTEM > relay token=%s\n", strings.TrimSpace(relay.RelayToken))
-		}
+		fmt.Fprintln(c.stdout, "SYSTEM > browser relay is removed. use /browser profiles, /browser login, /browser check, /browser run")
 		return true, c.session, nil
 	case "login":
 		if len(c.fields) < 3 {
@@ -247,7 +223,7 @@ func cmdBrowser(c commandContext) (bool, string, error) {
 		)
 		return true, c.session, nil
 	default:
-		return true, c.session, fmt.Errorf("usage: /browser {status|profiles|relay|login|check|run}")
+		return true, c.session, fmt.Errorf("usage: /browser {status|profiles|login|check|run}")
 	}
 }
 
