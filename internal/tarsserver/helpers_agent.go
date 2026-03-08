@@ -2,7 +2,9 @@ package tarsserver
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/devlikebear/tarsncase/internal/agent"
 	"github.com/devlikebear/tarsncase/internal/cron"
@@ -15,10 +17,34 @@ import (
 	"github.com/devlikebear/tarsncase/internal/research"
 	"github.com/devlikebear/tarsncase/internal/schedule"
 	"github.com/devlikebear/tarsncase/internal/serverauth"
+	"github.com/devlikebear/tarsncase/internal/session"
 	"github.com/devlikebear/tarsncase/internal/tool"
 	"github.com/devlikebear/tarsncase/internal/usage"
 	"github.com/rs/zerolog"
 )
+
+type agentPromptTelemetry struct {
+	SystemPromptTokens int
+	UserPromptTokens   int
+	ToolCount          int
+}
+
+type agentPromptTelemetryKey struct{}
+
+func withAgentPromptTelemetry(ctx context.Context, telemetry *agentPromptTelemetry) context.Context {
+	if telemetry == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, agentPromptTelemetryKey{}, telemetry)
+}
+
+func agentPromptTelemetryFromContext(ctx context.Context) *agentPromptTelemetry {
+	if ctx == nil {
+		return nil
+	}
+	telemetry, _ := ctx.Value(agentPromptTelemetryKey{}).(*agentPromptTelemetry)
+	return telemetry
+}
 
 func newBaseToolRegistry(workspaceDir string) *tool.Registry {
 	return newBaseToolRegistryWithProcess(workspaceDir, nil)
@@ -35,6 +61,11 @@ func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.Pr
 	registry.Register(tool.NewProjectGetTool(projectStore))
 	registry.Register(tool.NewProjectUpdateTool(projectStore))
 	registry.Register(tool.NewProjectDeleteTool(projectStore))
+	registry.Register(tool.NewProjectBriefGetTool(projectStore))
+	registry.Register(tool.NewProjectBriefUpdateTool(projectStore))
+	registry.Register(tool.NewProjectBriefFinalizeTool(projectStore, session.NewStore(workspaceDir)))
+	registry.Register(tool.NewProjectStateGetTool(projectStore))
+	registry.Register(tool.NewProjectStateUpdateTool(projectStore))
 	opsManager := ops.NewManager(workspaceDir, ops.Options{})
 	registry.Register(tool.NewOpsStatusTool(opsManager))
 	registry.Register(tool.NewOpsCleanupPlanTool(opsManager))
@@ -113,9 +144,9 @@ func newAgentPromptRunnerWithTools(
 			return "", err
 		}
 
-		systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: targetWorkspaceDir})
-		systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
-		registry := newBaseToolRegistry(targetWorkspaceDir)
+		profile := agentPromptProfileForLabel(label)
+		systemPrompt := buildAgentSystemPrompt(targetWorkspaceDir, profile)
+		registry := newToolRegistryForAgentProfile(targetWorkspaceDir, profile)
 		for _, extra := range extraTools {
 			if strings.TrimSpace(extra.Name) == "" {
 				continue
@@ -126,6 +157,11 @@ func newAgentPromptRunnerWithTools(
 		allowed := normalizeAllowedToolsForRegistry(allowedTools, registry)
 		if len(allowed) > 0 {
 			tools = registry.SchemasForNames(allowed)
+		}
+		if telemetry := agentPromptTelemetryFromContext(ctx); telemetry != nil {
+			telemetry.SystemPromptTokens = promptTokenEstimate(systemPrompt)
+			telemetry.UserPromptTokens = promptTokenEstimate(promptText)
+			telemetry.ToolCount = len(tools)
 		}
 		meta := usage.CallMeta{Source: "agent_run"}
 		lowerLabel := strings.ToLower(label)
@@ -144,7 +180,7 @@ func newAgentPromptRunnerWithTools(
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: promptText},
 		}, agent.RunOptions{
-			MaxIterations: maxIters,
+			MaxIterations: resolveAgentMaxIterations(profile.maxIterations(maxIters)),
 			Tools:         tools,
 		})
 		if err != nil {
@@ -152,6 +188,65 @@ func newAgentPromptRunnerWithTools(
 		}
 		return strings.TrimSpace(resp.Message.Content), nil
 	}
+}
+
+type agentPromptProfile struct {
+	minimalPrompt  bool
+	includeMemory  bool
+	allowedToolIDs []string
+	maxIters       int
+}
+
+func (p agentPromptProfile) maxIterations(fallback int) int {
+	if p.maxIters > 0 {
+		return p.maxIters
+	}
+	return fallback
+}
+
+func agentPromptProfileForLabel(label string) agentPromptProfile {
+	lower := strings.ToLower(strings.TrimSpace(label))
+	if strings.HasPrefix(lower, "cron") {
+		return agentPromptProfile{
+			minimalPrompt: true,
+			includeMemory: false,
+			allowedToolIDs: []string{
+				"read_file", "write_file", "edit_file", "list_dir", "glob",
+				"project_get", "project_update", "project_state_get", "project_state_update",
+				"research_report",
+			},
+			maxIters: 4,
+		}
+	}
+	return agentPromptProfile{includeMemory: true}
+}
+
+func buildAgentSystemPrompt(workspaceDir string, profile agentPromptProfile) string {
+	if profile.minimalPrompt {
+		return strings.TrimSpace(fmt.Sprintf(
+			"You are TARS running an automated background job.\nCurrent time: %s\nKeep output minimal and action-oriented.\nNever echo tool calls, JSON arguments, or pseudo-tool syntax in your final answer.\nIf no durable project change is needed, return a short plain-text summary only.",
+			time.Now().UTC().Format(time.RFC3339),
+		)) + "\n"
+	}
+	systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
+	if profile.includeMemory {
+		systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
+	}
+	return systemPrompt
+}
+
+func newToolRegistryForAgentProfile(workspaceDir string, profile agentPromptProfile) *tool.Registry {
+	registry := newBaseToolRegistry(workspaceDir)
+	if len(profile.allowedToolIDs) == 0 {
+		return registry
+	}
+	filtered := tool.NewRegistry()
+	for _, name := range profile.allowedToolIDs {
+		if tl, ok := registry.Get(name); ok {
+			filtered.Register(tl)
+		}
+	}
+	return filtered
 }
 
 func normalizeAllowedToolsForRegistry(raw []string, registry *tool.Registry) []string {

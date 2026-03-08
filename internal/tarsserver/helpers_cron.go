@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,13 +19,24 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type cronRunTelemetry struct {
+	PromptTokens               int
+	SystemPromptTokens         int
+	UserPromptTokens           int
+	TargetSessionContextTokens int
+	TargetSessionContextUsed   bool
+	ToolCount                  int
+	ResponseTokens             int
+	ContaminationMarkers       []string
+}
+
 func newCronJobRunner(
 	workspaceDir string,
 	store *session.Store,
 	runPrompt func(ctx context.Context, runLabel string, promptText string) (string, error),
 	logger zerolog.Logger,
 ) func(ctx context.Context, job cron.Job) (string, error) {
-	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil, "")
+	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil, "", 0)
 }
 
 func newCronJobRunnerWithNotify(
@@ -33,6 +46,7 @@ func newCronJobRunnerWithNotify(
 	logger zerolog.Logger,
 	emit func(ctx context.Context, evt notificationEvent),
 	mainSessionID string,
+	artifactHistoryLimit int,
 ) func(ctx context.Context, job cron.Job) (string, error) {
 	if runPrompt == nil {
 		return nil
@@ -48,11 +62,16 @@ func newCronJobRunnerWithNotify(
 		}
 
 		promptText := strings.TrimSpace(job.Prompt)
+		telemetry := cronRunTelemetry{}
 		if payload := strings.TrimSpace(string(job.Payload)); payload != "" {
 			promptText += "\n\nCRON_PAYLOAD_JSON:\n" + payload
 		}
 		if projectPrompt := buildCronProjectPromptSection(targetWorkspaceDir, job.ProjectID); projectPrompt != "" {
 			promptText += "\n\n" + projectPrompt
+		}
+		projectFileSnapshot, err := snapshotCronProjectFiles(targetWorkspaceDir, job.ProjectID)
+		if err != nil {
+			return "", err
 		}
 
 		targetSessionID, explicitTarget, err := resolveCronTargetSessionID(targetStore, job, mainSessionID)
@@ -75,9 +94,12 @@ func newCronJobRunnerWithNotify(
 				}
 				if contextText != "" {
 					promptText += "\n\nTARGET_SESSION_CONTEXT:\n" + contextText
+					telemetry.TargetSessionContextUsed = true
+					telemetry.TargetSessionContextTokens = promptTokenEstimate(contextText)
 				}
 			}
 		}
+		telemetry.PromptTokens = promptTokenEstimate(promptText)
 
 		runLabel := "cron"
 		if strings.TrimSpace(job.ID) != "" {
@@ -89,12 +111,44 @@ func newCronJobRunnerWithNotify(
 			ProjectID: strings.TrimSpace(job.ProjectID),
 			RunID:     strings.TrimSpace(job.ID),
 		})
+		agentTelemetry := &agentPromptTelemetry{}
+		runCtx = withAgentPromptTelemetry(runCtx, agentTelemetry)
 		response, err := runPrompt(runCtx, runLabel, promptText)
 		if err != nil {
 			if emit != nil {
 				evt := newNotificationEvent("cron", "error", "Cron failed", trimForMemory(err.Error(), 240))
 				evt.JobID = strings.TrimSpace(job.ID)
 				emit(ctx, evt)
+			}
+			return "", err
+		}
+		telemetry.SystemPromptTokens = agentTelemetry.SystemPromptTokens
+		telemetry.UserPromptTokens = agentTelemetry.UserPromptTokens
+		telemetry.ToolCount = agentTelemetry.ToolCount
+		telemetry.ResponseTokens = promptTokenEstimate(response)
+		telemetry.ContaminationMarkers = detectPseudoToolContamination(response)
+		if len(telemetry.ContaminationMarkers) > 0 {
+			err := fmt.Errorf("pseudo-tool contamination detected: %s", strings.Join(telemetry.ContaminationMarkers, ", "))
+			if emit != nil {
+				evt := newNotificationEvent("cron", "error", "Cron failed", trimForMemory(err.Error(), 240))
+				evt.JobID = strings.TrimSpace(job.ID)
+				evt.SessionID = strings.TrimSpace(targetSessionID)
+				emit(ctx, evt)
+			}
+			if persistErr := persistCronProjectArtifact(targetWorkspaceDir, job, response, time.Now().UTC(), telemetry, artifactHistoryLimit); persistErr != nil {
+				logger.Debug().Err(persistErr).Str("job_id", strings.TrimSpace(job.ID)).Str("project_id", strings.TrimSpace(job.ProjectID)).Msg("persist contaminated cron artifact failed")
+			}
+			return "", err
+		}
+		if err := verifyCronClaimedFileUpdates(targetWorkspaceDir, job, response, projectFileSnapshot); err != nil {
+			if emit != nil {
+				evt := newNotificationEvent("cron", "error", "Cron failed", trimForMemory(err.Error(), 240))
+				evt.JobID = strings.TrimSpace(job.ID)
+				evt.SessionID = strings.TrimSpace(targetSessionID)
+				emit(ctx, evt)
+			}
+			if persistErr := persistCronProjectArtifact(targetWorkspaceDir, job, response, time.Now().UTC(), telemetry, artifactHistoryLimit); persistErr != nil {
+				logger.Debug().Err(persistErr).Str("job_id", strings.TrimSpace(job.ID)).Str("project_id", strings.TrimSpace(job.ProjectID)).Msg("persist unverifiable cron artifact failed")
 			}
 			return "", err
 		}
@@ -116,7 +170,7 @@ func newCronJobRunnerWithNotify(
 			evt.SessionID = strings.TrimSpace(targetSessionID)
 			emit(ctx, evt)
 		}
-		if err := persistCronProjectArtifact(targetWorkspaceDir, job, response, time.Now().UTC()); err != nil {
+		if err := persistCronProjectArtifact(targetWorkspaceDir, job, response, time.Now().UTC(), telemetry, artifactHistoryLimit); err != nil {
 			logger.Debug().Err(err).Str("job_id", strings.TrimSpace(job.ID)).Str("project_id", strings.TrimSpace(job.ProjectID)).Msg("persist cron project artifact failed")
 		}
 		return response, nil
@@ -137,7 +191,7 @@ func buildCronProjectPromptSection(workspaceDir string, projectID string) string
 	return project.CronPromptContext(root, item)
 }
 
-func persistCronProjectArtifact(workspaceDir string, job cron.Job, response string, now time.Time) error {
+func persistCronProjectArtifact(workspaceDir string, job cron.Job, response string, now time.Time, telemetry cronRunTelemetry, historyLimit int) error {
 	root := strings.TrimSpace(workspaceDir)
 	projectID := strings.TrimSpace(job.ProjectID)
 	if root == "" || projectID == "" {
@@ -157,16 +211,56 @@ func persistCronProjectArtifact(workspaceDir string, job cron.Job, response stri
 	}
 	fileName := fmt.Sprintf("%s_%s.md", now.UTC().Format("20060102T150405Z"), sanitizeArtifactID(job.ID))
 	path := filepath.Join(artifactDir, fileName)
+	contaminationMarkers := "none"
+	if len(telemetry.ContaminationMarkers) > 0 {
+		contaminationMarkers = strings.Join(telemetry.ContaminationMarkers, ", ")
+	}
 	content := fmt.Sprintf(
-		"# Cron Run\n\n- project_id: %s\n- job_id: %s\n- job_name: %s\n- ran_at: %s\n\n## Prompt\n\n%s\n\n## Response\n\n%s\n",
+		"# Cron Run\n\n- project_id: %s\n- job_id: %s\n- job_name: %s\n- ran_at: %s\n\n## Telemetry\n\n- prompt_tokens: %d\n- system_prompt_tokens: %d\n- user_prompt_tokens: %d\n- target_session_context_used: %t\n- target_session_context_tokens: %d\n- tool_count: %d\n- response_tokens: %d\n- contamination_markers: %s\n\n## Prompt\n\n%s\n\n## Response\n\n%s\n",
 		projectID,
 		strings.TrimSpace(job.ID),
 		strings.TrimSpace(job.Name),
 		now.UTC().Format(time.RFC3339),
+		telemetry.PromptTokens,
+		telemetry.SystemPromptTokens,
+		telemetry.UserPromptTokens,
+		telemetry.TargetSessionContextUsed,
+		telemetry.TargetSessionContextTokens,
+		telemetry.ToolCount,
+		telemetry.ResponseTokens,
+		contaminationMarkers,
 		strings.TrimSpace(job.Prompt),
 		strings.TrimSpace(response),
 	)
-	return os.WriteFile(path, []byte(content), 0o644)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return err
+	}
+	return trimCronProjectArtifacts(artifactDir, historyLimit)
+}
+
+func detectPseudoToolContamination(response string) []string {
+	candidates := []string{
+		`{"command":`,
+		`"tool_uses":`,
+		`assistant to=functions.`,
+		`{"background":`,
+		`"recipient_name":"functions.`,
+	}
+	normalized := strings.ToLower(strings.TrimSpace(response))
+	if normalized == "" {
+		return nil
+	}
+	markers := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if strings.Contains(normalized, strings.ToLower(candidate)) {
+			markers = append(markers, candidate)
+		}
+	}
+	if len(markers) == 0 {
+		return nil
+	}
+	slices.Sort(markers)
+	return slices.Compact(markers)
 }
 
 func sanitizeArtifactID(raw string) string {
@@ -183,6 +277,161 @@ func sanitizeArtifactID(raw string) string {
 		b.WriteRune('_')
 	}
 	return b.String()
+}
+
+func trimCronProjectArtifacts(dir string, historyLimit int) error {
+	if strings.TrimSpace(dir) == "" || historyLimit <= 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	files := make([]os.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".md") {
+			continue
+		}
+		files = append(files, entry)
+	}
+	if len(files) <= historyLimit {
+		return nil
+	}
+	slices.SortFunc(files, func(left, right os.DirEntry) int {
+		return strings.Compare(left.Name(), right.Name())
+	})
+	for _, entry := range files[:len(files)-historyLimit] {
+		if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func snapshotCronProjectFiles(workspaceDir string, projectID string) (map[string]time.Time, error) {
+	root := strings.TrimSpace(workspaceDir)
+	id := strings.TrimSpace(projectID)
+	if root == "" || id == "" {
+		return nil, nil
+	}
+	projectDir := filepath.Join(root, "projects", id)
+	entries := map[string]time.Time{}
+	err := filepath.Walk(projectDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if info == nil || info.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(info.Name()), ".md") {
+			return nil
+		}
+		entries[path] = info.ModTime()
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func verifyCronClaimedFileUpdates(workspaceDir string, job cron.Job, response string, baseline map[string]time.Time) error {
+	claimed := extractClaimedCronFileUpdates(strings.TrimSpace(response))
+	if len(claimed) == 0 {
+		return nil
+	}
+	root := strings.TrimSpace(workspaceDir)
+	projectID := strings.TrimSpace(job.ProjectID)
+	for _, claimedPath := range claimed {
+		resolved := resolveClaimedCronPath(root, projectID, claimedPath)
+		if resolved == "" {
+			continue
+		}
+		info, err := os.Stat(resolved)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("claimed file update not observed: %s", claimedPath)
+			}
+			return err
+		}
+		if before, ok := baseline[resolved]; ok && !info.ModTime().After(before) {
+			return fmt.Errorf("claimed file update not observed: %s", claimedPath)
+		}
+	}
+	return nil
+}
+
+var cronClaimedPathPattern = regexp.MustCompile("`([^`]+\\.md)`|\"([^\"]+\\.md)\"|'([^']+\\.md)'")
+
+func extractClaimedCronFileUpdates(response string) []string {
+	if strings.TrimSpace(response) == "" {
+		return nil
+	}
+	updateVerbs := []string{
+		"추가", "작성", "갱신", "업데이트", "생성", "저장", "수정",
+		"added", "created", "updated", "saved", "wrote", "modified",
+	}
+	lines := strings.Split(response, "\n")
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 4)
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		if line == "" {
+			continue
+		}
+		lower := strings.ToLower(line)
+		hasVerb := false
+		for _, verb := range updateVerbs {
+			if strings.Contains(lower, strings.ToLower(verb)) {
+				hasVerb = true
+				break
+			}
+		}
+		if !hasVerb {
+			continue
+		}
+		matches := cronClaimedPathPattern.FindAllStringSubmatch(line, -1)
+		for _, match := range matches {
+			for _, candidate := range match[1:] {
+				candidate = strings.TrimSpace(candidate)
+				if candidate == "" {
+					continue
+				}
+				if _, ok := seen[candidate]; ok {
+					continue
+				}
+				seen[candidate] = struct{}{}
+				out = append(out, candidate)
+			}
+		}
+	}
+	return out
+}
+
+func resolveClaimedCronPath(workspaceDir string, projectID string, claimed string) string {
+	candidate := strings.TrimSpace(strings.Trim(claimed, "`\"'"))
+	if candidate == "" {
+		return ""
+	}
+	if filepath.IsAbs(candidate) {
+		return candidate
+	}
+	if strings.HasPrefix(candidate, "projects/") || strings.HasPrefix(candidate, "_shared/") {
+		return filepath.Join(workspaceDir, filepath.Clean(candidate))
+	}
+	if strings.Contains(candidate, "/") {
+		return filepath.Join(workspaceDir, filepath.Clean(candidate))
+	}
+	if strings.TrimSpace(projectID) == "" {
+		return filepath.Join(workspaceDir, filepath.Clean(candidate))
+	}
+	return filepath.Join(workspaceDir, "projects", projectID, filepath.Clean(candidate))
 }
 
 func resolveCronTargetSessionID(store *session.Store, job cron.Job, mainSessionID string) (sessionID string, explicitTarget bool, err error) {

@@ -264,6 +264,7 @@ func buildAPIMux(
 		logger,
 		dispatcher.Emit,
 		mainSessionID,
+		cfg.CronRunHistoryLimit,
 	)
 
 	mux := http.NewServeMux()

@@ -2,6 +2,8 @@ package tarsserver
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -127,6 +129,7 @@ func TestCronJobRunner_HiddenWorkerDoesNotInjectTargetSessionContext(t *testing.
 		zerolog.Nop(),
 		nil,
 		"",
+		0,
 	)
 
 	_, err = runner(context.Background(), cron.Job{
@@ -141,6 +144,179 @@ func TestCronJobRunner_HiddenWorkerDoesNotInjectTargetSessionContext(t *testing.
 	}
 	if strings.Contains(seenPrompt, "TARGET_SESSION_CONTEXT:") {
 		t.Fatalf("did not expect hidden worker session context in prompt, got %q", seenPrompt)
+	}
+}
+
+func TestCronJobRunner_RejectsPseudoToolContamination(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+	worker, err := store.EnsureWorker("proj_demo")
+	if err != nil {
+		t.Fatalf("ensure worker session: %v", err)
+	}
+
+	runner := newCronJobRunnerWithNotify(
+		root,
+		store,
+		func(_ context.Context, _ string, _ string) (string, error) {
+			return `{"command":"python3 -V","timeout_ms":1000}`, nil
+		},
+		zerolog.Nop(),
+		nil,
+		mainSession.ID,
+		0,
+	)
+
+	_, err = runner(context.Background(), cron.Job{
+		ID:        "job_demo",
+		Name:      "nightly writer",
+		Prompt:    "write next chapter",
+		Schedule:  "every:1m",
+		ProjectID: "proj_demo",
+	})
+	if err == nil {
+		t.Fatal("expected pseudo-tool contamination error")
+	}
+	if !strings.Contains(err.Error(), "pseudo-tool contamination") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	workerMessages, err := session.ReadMessages(store.TranscriptPath(worker.ID))
+	if err != nil {
+		t.Fatalf("read worker transcript: %v", err)
+	}
+	if len(workerMessages) != 0 {
+		t.Fatalf("expected no worker transcript writes on contamination, got %+v", workerMessages)
+	}
+
+	mainMessages, err := session.ReadMessages(store.TranscriptPath(mainSession.ID))
+	if err != nil {
+		t.Fatalf("read main transcript: %v", err)
+	}
+	if len(mainMessages) != 0 {
+		t.Fatalf("expected no main transcript writes on contamination, got %+v", mainMessages)
+	}
+}
+
+func TestPersistCronProjectArtifact_IncludesTelemetry(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 3, 8, 1, 30, 0, 0, time.UTC)
+	job := cron.Job{
+		ID:        "job_demo",
+		Name:      "nightly writer",
+		Prompt:    "write next chapter",
+		ProjectID: "proj_demo",
+	}
+
+	err := persistCronProjectArtifact(root, job, "drafted episode 2", now, cronRunTelemetry{
+		PromptTokens:               120,
+		SystemPromptTokens:         80,
+		UserPromptTokens:           40,
+		TargetSessionContextTokens: 0,
+		TargetSessionContextUsed:   false,
+		ToolCount:                  9,
+		ResponseTokens:             22,
+		ContaminationMarkers:       []string{"{\"command\":"},
+	}, 0)
+	if err != nil {
+		t.Fatalf("persist artifact: %v", err)
+	}
+
+	path := filepath.Join(root, "projects", "proj_demo", "cron_runs", now.UTC().Format("20060102T150405Z")+"_job_demo.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read artifact: %v", err)
+	}
+	text := string(data)
+	if !containsAll(text,
+		"## Telemetry",
+		"prompt_tokens: 120",
+		"system_prompt_tokens: 80",
+		"user_prompt_tokens: 40",
+		"tool_count: 9",
+		"response_tokens: 22",
+		"contamination_markers: {\"command\":",
+	) {
+		t.Fatalf("artifact missing telemetry section:\n%s", text)
+	}
+}
+
+func TestTrimCronProjectArtifacts_KeepsNewestFiles(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "projects", "proj_demo", "cron_runs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir cron_runs: %v", err)
+	}
+	names := []string{
+		"20260308T010000Z_job_a.md",
+		"20260308T010100Z_job_b.md",
+		"20260308T010200Z_job_c.md",
+	}
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	if err := trimCronProjectArtifacts(dir, 2); err != nil {
+		t.Fatalf("trim artifacts: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 artifacts left, got %d", len(entries))
+	}
+	got := entries[0].Name() + "," + entries[1].Name()
+	if got != "20260308T010100Z_job_b.md,20260308T010200Z_job_c.md" {
+		t.Fatalf("unexpected remaining artifacts: %s", got)
+	}
+}
+
+func TestCronJobRunner_FailsWhenClaimedFileUpdateIsNotObserved(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+	projectDir := filepath.Join(root, "projects", "proj_demo")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir project dir: %v", err)
+	}
+	statePath := filepath.Join(projectDir, "STATE.md")
+	if err := os.WriteFile(statePath, []byte("phase: drafting\n"), 0o644); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+
+	runner := newCronJobRunnerWithNotify(
+		root,
+		store,
+		func(_ context.Context, _ string, _ string) (string, error) {
+			return "- `projects/proj_demo/TIMELINE_MAP.md` 추가\n- `STATE.md` 갱신", nil
+		},
+		zerolog.Nop(),
+		nil,
+		mainSession.ID,
+		0,
+	)
+
+	_, err = runner(context.Background(), cron.Job{
+		ID:        "job_demo",
+		Name:      "nightly writer",
+		Prompt:    "write next chapter",
+		Schedule:  "every:1m",
+		ProjectID: "proj_demo",
+	})
+	if err == nil {
+		t.Fatal("expected claimed update verification error")
+	}
+	if !strings.Contains(err.Error(), "claimed file update not observed") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
