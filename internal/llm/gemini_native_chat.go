@@ -181,6 +181,9 @@ func (c *GeminiNativeClient) buildGenerateContentConfig(messages []ChatMessage, 
 	if c.config.MaxTokens > 0 {
 		config.MaxOutputTokens = int32(c.config.MaxTokens)
 	}
+	if thinkingConfig := buildGeminiThinkingConfig(c.config, opts); thinkingConfig != nil {
+		config.ThinkingConfig = thinkingConfig
+	}
 
 	systemParts := make([]string, 0)
 	for _, msg := range messages {
@@ -200,6 +203,31 @@ func (c *GeminiNativeClient) buildGenerateContentConfig(messages []ChatMessage, 
 	}
 
 	return config
+}
+
+func buildGeminiThinkingConfig(config ClientConfig, opts ChatOptions) *genai.ThinkingConfig {
+	effort := effectiveReasoningEffort(config, opts)
+	budget := effectiveThinkingBudget(config, opts)
+	if effort == "" && budget <= 0 {
+		return nil
+	}
+
+	thinkingConfig := &genai.ThinkingConfig{}
+	if budget > 0 {
+		value := int32(budget)
+		thinkingConfig.ThinkingBudget = &value
+	}
+	switch effort {
+	case "minimal":
+		thinkingConfig.ThinkingLevel = genai.ThinkingLevelMinimal
+	case "low":
+		thinkingConfig.ThinkingLevel = genai.ThinkingLevelLow
+	case "medium":
+		thinkingConfig.ThinkingLevel = genai.ThinkingLevelMedium
+	case "high":
+		thinkingConfig.ThinkingLevel = genai.ThinkingLevelHigh
+	}
+	return thinkingConfig
 }
 
 func (c *GeminiNativeClient) requestURL(streaming bool) string {

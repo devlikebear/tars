@@ -107,6 +107,14 @@ func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts C
 		"model":    c.model,
 		"messages": toOpenAIWireMessages(messages),
 	}
+	if c.label != "gemini" {
+		if effort := effectiveReasoningEffort(c.config, opts); effort != "" && effort != "none" {
+			reqBody["reasoning_effort"] = effort
+		}
+		if tier := effectiveServiceTier(c.config, opts); tier != "" {
+			reqBody["service_tier"] = tier
+		}
+	}
 	if len(opts.Tools) > 0 {
 		reqBody["tools"] = opts.Tools
 		if choice := strings.TrimSpace(opts.ToolChoice); choice != "" {

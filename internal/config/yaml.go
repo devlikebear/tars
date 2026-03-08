@@ -64,6 +64,12 @@ func loadYAML(path string) (Config, error) {
 			cfg.LLMAPIKey = value
 		case "llm_model":
 			cfg.LLMModel = value
+		case "llm_reasoning_effort":
+			cfg.LLMReasoningEffort = value
+		case "llm_thinking_budget":
+			cfg.LLMThinkingBudget = parsePositiveInt(value, cfg.LLMThinkingBudget)
+		case "llm_service_tier":
+			cfg.LLMServiceTier = value
 		case "usage_limit_daily_usd":
 			cfg.UsageLimitDailyUSD = parsePositiveFloat(value, cfg.UsageLimitDailyUSD)
 		case "usage_limit_weekly_usd":

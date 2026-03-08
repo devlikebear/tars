@@ -56,7 +56,8 @@ func TestAnthropicChat_IncludesToolsAndParsesToolUse(t *testing.T) {
 	resp, err := client.Chat(context.Background(), []ChatMessage{
 		{Role: "user", Content: "find memory"},
 	}, ChatOptions{
-		ToolChoice: "required",
+		ToolChoice:     "required",
+		ThinkingBudget: 4096,
 		Tools: []ToolSchema{
 			{
 				Type: "function",
@@ -83,6 +84,16 @@ func TestAnthropicChat_IncludesToolsAndParsesToolUse(t *testing.T) {
 	choiceRaw, ok := captured["tool_choice"].(map[string]any)
 	if !ok || choiceRaw["type"] != "any" {
 		t.Fatalf("expected tool_choice any, got %+v", captured["tool_choice"])
+	}
+	thinkingRaw, ok := captured["thinking"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected thinking config in request, got %+v", captured["thinking"])
+	}
+	if thinkingRaw["type"] != "enabled" {
+		t.Fatalf("expected thinking.type enabled, got %+v", thinkingRaw)
+	}
+	if thinkingRaw["budget_tokens"] != float64(4096) {
+		t.Fatalf("expected thinking.budget_tokens 4096, got %+v", thinkingRaw)
 	}
 
 	if len(resp.Message.ToolCalls) != 1 {

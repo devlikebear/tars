@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"google.golang.org/genai"
 )
 
 func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
@@ -49,7 +51,7 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
-	resp, err := client.Chat(context.Background(), []ChatMessage{
+	messages := []ChatMessage{
 		{Role: "system", Content: "system rule"},
 		{Role: "user", Content: "search memory"},
 		{
@@ -63,7 +65,10 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 			ToolCallID: "call_1",
 			Content:    `{"items":[]}`,
 		},
-	}, ChatOptions{
+	}
+	opts := ChatOptions{
+		ReasoningEffort: "minimal",
+		ThinkingBudget:  2048,
 		Tools: []ToolSchema{
 			{
 				Type: "function",
@@ -86,7 +91,8 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 			},
 		},
 		ToolChoice: "required",
-	})
+	}
+	resp, err := client.Chat(context.Background(), messages, opts)
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}
@@ -121,6 +127,16 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 	systemInstruction, ok := captured["systemInstruction"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected systemInstruction in request, got %+v", captured["systemInstruction"])
+	}
+	builtConfig := client.buildGenerateContentConfig(messages, opts)
+	if builtConfig.ThinkingConfig == nil {
+		t.Fatal("expected ThinkingConfig in generated config")
+	}
+	if builtConfig.ThinkingConfig.ThinkingLevel != genai.ThinkingLevelMinimal {
+		t.Fatalf("expected thinkingLevel MINIMAL, got %+v", builtConfig.ThinkingConfig.ThinkingLevel)
+	}
+	if builtConfig.ThinkingConfig.ThinkingBudget == nil || *builtConfig.ThinkingConfig.ThinkingBudget != 2048 {
+		t.Fatalf("expected thinkingBudget 2048, got %+v", builtConfig.ThinkingConfig.ThinkingBudget)
 	}
 	parts, ok := systemInstruction["parts"].([]any)
 	if !ok || len(parts) == 0 {

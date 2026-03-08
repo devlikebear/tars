@@ -110,6 +110,9 @@ func TestLoad_EnvOverridesYAML(t *testing.T) {
 	t.Setenv("LLM_BASE_URL", "http://localhost:7000/v1")
 	t.Setenv("LLM_API_KEY", "llm-env-key")
 	t.Setenv("LLM_MODEL", "llm-env-model")
+	t.Setenv("LLM_REASONING_EFFORT", "veryhigh")
+	t.Setenv("LLM_THINKING_BUDGET", "4096")
+	t.Setenv("LLM_SERVICE_TIER", "priority")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -140,6 +143,15 @@ func TestLoad_EnvOverridesYAML(t *testing.T) {
 	if cfg.LLMModel != "llm-env-model" {
 		t.Fatalf("expected LLMModel from env, got %q", cfg.LLMModel)
 	}
+	if cfg.LLMReasoningEffort != "high" {
+		t.Fatalf("expected LLMReasoningEffort normalized from env, got %q", cfg.LLMReasoningEffort)
+	}
+	if cfg.LLMThinkingBudget != 4096 {
+		t.Fatalf("expected LLMThinkingBudget from env, got %d", cfg.LLMThinkingBudget)
+	}
+	if cfg.LLMServiceTier != "priority" {
+		t.Fatalf("expected LLMServiceTier from env, got %q", cfg.LLMServiceTier)
+	}
 	if cfg.BifrostBase != "http://localhost:9090/v1" {
 		t.Fatalf("expected BifrostBase from env, got %q", cfg.BifrostBase)
 	}
@@ -148,6 +160,34 @@ func TestLoad_EnvOverridesYAML(t *testing.T) {
 	}
 	if cfg.BifrostModel != "env-model" {
 		t.Fatalf("expected BifrostModel from env, got %q", cfg.BifrostModel)
+	}
+}
+
+func TestLoad_LLMReasoningOptionsFromYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"llm_provider: gemini-native",
+		"llm_reasoning_effort: minimal",
+		"llm_thinking_budget: 2048",
+		"llm_service_tier: flex",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.LLMReasoningEffort != "minimal" {
+		t.Fatalf("expected reasoning effort minimal, got %q", cfg.LLMReasoningEffort)
+	}
+	if cfg.LLMThinkingBudget != 2048 {
+		t.Fatalf("expected thinking budget 2048, got %d", cfg.LLMThinkingBudget)
+	}
+	if cfg.LLMServiceTier != "flex" {
+		t.Fatalf("expected service tier flex, got %q", cfg.LLMServiceTier)
 	}
 }
 

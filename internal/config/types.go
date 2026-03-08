@@ -44,6 +44,9 @@ type Config struct {
 	LLMBaseURL                           string
 	LLMAPIKey                            string
 	LLMModel                             string
+	LLMReasoningEffort                   string
+	LLMThinkingBudget                    int
+	LLMServiceTier                       string
 	UsageLimitDailyUSD                   float64
 	UsageLimitWeeklyUSD                  float64
 	UsageLimitMonthlyUSD                 float64

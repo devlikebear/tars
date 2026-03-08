@@ -113,12 +113,15 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 	}
 
 	client, err := llm.NewProvider(llm.ProviderOptions{
-		Provider:      cfg.LLMProvider,
-		AuthMode:      cfg.LLMAuthMode,
-		OAuthProvider: cfg.LLMOAuthProvider,
-		BaseURL:       cfg.LLMBaseURL,
-		Model:         cfg.LLMModel,
-		APIKey:        cfg.LLMAPIKey,
+		Provider:         cfg.LLMProvider,
+		AuthMode:         cfg.LLMAuthMode,
+		OAuthProvider:    cfg.LLMOAuthProvider,
+		BaseURL:          cfg.LLMBaseURL,
+		Model:            cfg.LLMModel,
+		APIKey:           cfg.LLMAPIKey,
+		ReasoningEffort:  cfg.LLMReasoningEffort,
+		ThinkingBudget:   cfg.LLMThinkingBudget,
+		ServiceTier:      cfg.LLMServiceTier,
 	})
 	if err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "init_llm", err: err}

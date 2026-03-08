@@ -51,6 +51,13 @@ type ChatOptions struct {
 	Tools   []ToolSchema
 	// ToolChoice follows OpenAI-compatible values like "auto", "none", "required".
 	ToolChoice string
+	// ReasoningEffort is a provider-agnostic hint. Supported values are
+	// none, minimal, low, medium, high.
+	ReasoningEffort string
+	// ThinkingBudget enables provider-native thinking when budgeted tokens are supported.
+	ThinkingBudget int
+	// ServiceTier controls provider-side latency tier when supported.
+	ServiceTier string
 }
 
 type ChatResponse struct {
@@ -60,8 +67,11 @@ type ChatResponse struct {
 }
 
 type ClientConfig struct {
-	HTTPTimeout time.Duration
-	MaxTokens   int
+	HTTPTimeout      time.Duration
+	MaxTokens        int
+	ReasoningEffort  string
+	ThinkingBudget   int
+	ServiceTier      string
 }
 
 func DefaultClientConfig() ClientConfig {
@@ -84,6 +94,9 @@ type ProviderOptions struct {
 	Model         string
 	APIKey        string
 	MaxTokens     int
+	ReasoningEffort string
+	ThinkingBudget  int
+	ServiceTier     string
 }
 
 func NewProvider(opts ProviderOptions) (Client, error) {
@@ -125,30 +138,50 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	switch provider {
 	case "bifrost":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
-		return NewBifrostClient(opts.BaseURL, token, opts.Model)
+		return newOpenAICompatibleClientWithConfig("bifrost", opts.BaseURL, token, opts.Model, providerClientConfig(opts))
 	case "openai":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
-		return NewOpenAIClient(opts.BaseURL, token, opts.Model)
+		return newOpenAICompatibleClientWithConfig("openai", opts.BaseURL, token, opts.Model, providerClientConfig(opts))
 	case "gemini":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
-		return NewGeminiClient(
+		return newOpenAICompatibleClientWithConfig(
+			"gemini",
 			firstNonEmptyTrimmed(opts.BaseURL, "https://generativelanguage.googleapis.com/v1beta/openai"),
 			token,
 			firstNonEmptyTrimmed(opts.Model, "gemini-2.5-flash"),
+			providerClientConfig(opts),
 		)
 	case "gemini-native":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
-		return NewGeminiNativeClient(
+		return newGeminiNativeClientWithConfig(
 			firstNonEmptyTrimmed(opts.BaseURL, "https://generativelanguage.googleapis.com/v1beta"),
 			token,
 			firstNonEmptyTrimmed(opts.Model, "gemini-2.5-flash"),
+			providerClientConfig(opts),
 		)
 	case "anthropic":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
-		return NewAnthropicClient(opts.BaseURL, token, opts.Model, opts.MaxTokens)
+		config := providerClientConfig(opts)
+		if config.MaxTokens <= 0 {
+			config.MaxTokens = 4096
+		}
+		return newAnthropicClientWithConfig(opts.BaseURL, token, opts.Model, config)
 	default:
 		return nil, fmt.Errorf("unsupported llm provider: %s", provider)
 	}
+}
+
+func providerClientConfig(opts ProviderOptions) ClientConfig {
+	config := DefaultClientConfig()
+	if opts.MaxTokens > 0 {
+		config.MaxTokens = opts.MaxTokens
+	}
+	config.ReasoningEffort = normalizeReasoningEffort(opts.ReasoningEffort)
+	if opts.ThinkingBudget > 0 {
+		config.ThinkingBudget = opts.ThinkingBudget
+	}
+	config.ServiceTier = normalizeServiceTier(opts.ServiceTier)
+	return config
 }
 
 func truncateForLog(value string, max int) string {
@@ -168,4 +201,60 @@ func firstNonEmptyTrimmed(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func normalizeReasoningEffort(raw string) string {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case "":
+		return ""
+	case "none", "off", "disabled":
+		return "none"
+	case "minimal", "min":
+		return "minimal"
+	case "low":
+		return "low"
+	case "medium", "med":
+		return "medium"
+	case "high":
+		return "high"
+	case "veryhigh", "very-high", "very_high", "xhigh":
+		return "high"
+	default:
+		return ""
+	}
+}
+
+func normalizeServiceTier(raw string) string {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case "":
+		return ""
+	case "auto", "default", "flex", "priority":
+		return strings.TrimSpace(strings.ToLower(raw))
+	default:
+		return ""
+	}
+}
+
+func effectiveReasoningEffort(config ClientConfig, opts ChatOptions) string {
+	if value := normalizeReasoningEffort(opts.ReasoningEffort); value != "" {
+		return value
+	}
+	return normalizeReasoningEffort(config.ReasoningEffort)
+}
+
+func effectiveThinkingBudget(config ClientConfig, opts ChatOptions) int {
+	if opts.ThinkingBudget > 0 {
+		return opts.ThinkingBudget
+	}
+	if config.ThinkingBudget > 0 {
+		return config.ThinkingBudget
+	}
+	return 0
+}
+
+func effectiveServiceTier(config ClientConfig, opts ChatOptions) string {
+	if value := normalizeServiceTier(opts.ServiceTier); value != "" {
+		return value
+	}
+	return normalizeServiceTier(config.ServiceTier)
 }

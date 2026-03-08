@@ -124,6 +124,12 @@ func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOpti
 		"max_tokens": c.config.MaxTokens,
 		"messages":   toAnthropicWireMessages(nonSystemMessages),
 	}
+	if budget := effectiveThinkingBudget(c.config, opts); budget > 0 {
+		reqBody["thinking"] = map[string]any{
+			"type":          "enabled",
+			"budget_tokens": budget,
+		}
+	}
 	if len(systemMessages) > 0 {
 		reqBody["system"] = []map[string]any{
 			{

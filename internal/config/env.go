@@ -66,6 +66,15 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("LLM_MODEL"), os.Getenv("TARS_LLM_MODEL")); v != "" {
 		cfg.LLMModel = v
 	}
+	if v := firstNonEmpty(os.Getenv("LLM_REASONING_EFFORT"), os.Getenv("TARS_LLM_REASONING_EFFORT")); v != "" {
+		cfg.LLMReasoningEffort = v
+	}
+	if v := firstNonEmpty(os.Getenv("LLM_THINKING_BUDGET"), os.Getenv("TARS_LLM_THINKING_BUDGET")); v != "" {
+		cfg.LLMThinkingBudget = parsePositiveInt(v, cfg.LLMThinkingBudget)
+	}
+	if v := firstNonEmpty(os.Getenv("LLM_SERVICE_TIER"), os.Getenv("TARS_LLM_SERVICE_TIER")); v != "" {
+		cfg.LLMServiceTier = v
+	}
 	if v := firstNonEmpty(os.Getenv("USAGE_LIMIT_DAILY_USD"), os.Getenv("TARS_USAGE_LIMIT_DAILY_USD")); v != "" {
 		cfg.UsageLimitDailyUSD = parsePositiveFloat(v, cfg.UsageLimitDailyUSD)
 	}

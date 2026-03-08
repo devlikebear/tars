@@ -61,6 +61,15 @@ func merge(dst *Config, src Config) {
 	if src.LLMModel != "" {
 		dst.LLMModel = src.LLMModel
 	}
+	if src.LLMReasoningEffort != "" {
+		dst.LLMReasoningEffort = src.LLMReasoningEffort
+	}
+	if src.LLMThinkingBudget > 0 {
+		dst.LLMThinkingBudget = src.LLMThinkingBudget
+	}
+	if src.LLMServiceTier != "" {
+		dst.LLMServiceTier = src.LLMServiceTier
+	}
 	if src.UsageLimitDailyUSD > 0 {
 		dst.UsageLimitDailyUSD = src.UsageLimitDailyUSD
 	}

@@ -27,6 +27,14 @@ llm_oauth_provider: ""
 llm_base_url: https://api.anthropic.com
 llm_model: claude-3-5-haiku-latest
 llm_api_key: ${ANTHROPIC_API_KEY}
+# Optional reasoning controls
+# effort: none | minimal | low | medium | high
+llm_reasoning_effort: ""
+# Budgeted thinking for providers that support token-based thinking (Anthropic, Gemini native)
+llm_thinking_budget: 0
+# OpenAI latency tier control. Useful as the closest public API knob to "fast mode".
+# auto | default | flex | priority
+llm_service_tier: ""
 
 # Agent loop
 agent_max_iterations: 20

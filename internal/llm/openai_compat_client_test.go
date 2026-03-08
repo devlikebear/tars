@@ -73,8 +73,10 @@ func TestOpenAIClientAsk(t *testing.T) {
 
 func TestOpenAICompatibleChat_IncludesToolsAndParsesToolCalls(t *testing.T) {
 	var captured struct {
-		Tools      []ToolSchema `json:"tools"`
-		ToolChoice string       `json:"tool_choice"`
+		Tools           []ToolSchema `json:"tools"`
+		ToolChoice      string       `json:"tool_choice"`
+		ReasoningEffort string       `json:"reasoning_effort"`
+		ServiceTier     string       `json:"service_tier"`
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" {
@@ -113,7 +115,9 @@ func TestOpenAICompatibleChat_IncludesToolsAndParsesToolCalls(t *testing.T) {
 	resp, err := client.Chat(context.Background(), []ChatMessage{
 		{Role: "user", Content: "find memory"},
 	}, ChatOptions{
-		ToolChoice: "required",
+		ToolChoice:      "required",
+		ReasoningEffort: "high",
+		ServiceTier:     "priority",
 		Tools: []ToolSchema{
 			{
 				Type: "function",
@@ -134,6 +138,12 @@ func TestOpenAICompatibleChat_IncludesToolsAndParsesToolCalls(t *testing.T) {
 	}
 	if captured.ToolChoice != "required" {
 		t.Fatalf("expected tool_choice=required, got %q", captured.ToolChoice)
+	}
+	if captured.ReasoningEffort != "high" {
+		t.Fatalf("expected reasoning_effort=high, got %q", captured.ReasoningEffort)
+	}
+	if captured.ServiceTier != "priority" {
+		t.Fatalf("expected service_tier=priority, got %q", captured.ServiceTier)
 	}
 	if len(resp.Message.ToolCalls) != 1 {
 		t.Fatalf("expected one tool_call in response, got %+v", resp.Message.ToolCalls)

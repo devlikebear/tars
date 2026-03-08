@@ -56,6 +56,11 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	if cfg.LLMProvider == "" {
 		cfg.LLMProvider = defaults.LLMProvider
 	}
+	cfg.LLMReasoningEffort = normalizeLLMReasoningEffort(cfg.LLMReasoningEffort)
+	if cfg.LLMThinkingBudget < 0 {
+		cfg.LLMThinkingBudget = 0
+	}
+	cfg.LLMServiceTier = normalizeLLMServiceTier(cfg.LLMServiceTier)
 	cfg.ChannelsTelegramDMPolicy = strings.TrimSpace(strings.ToLower(cfg.ChannelsTelegramDMPolicy))
 	switch cfg.ChannelsTelegramDMPolicy {
 	case "pairing", "allowlist", "open", "disabled":
@@ -124,6 +129,38 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	cfg.ScheduleTimezone = strings.TrimSpace(cfg.ScheduleTimezone)
 	if cfg.ScheduleTimezone == "" {
 		cfg.ScheduleTimezone = defaults.ScheduleTimezone
+	}
+}
+
+func normalizeLLMReasoningEffort(raw string) string {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case "":
+		return ""
+	case "none", "off", "disabled":
+		return "none"
+	case "minimal", "min":
+		return "minimal"
+	case "low":
+		return "low"
+	case "medium", "med":
+		return "medium"
+	case "high":
+		return "high"
+	case "veryhigh", "very-high", "very_high", "xhigh":
+		return "high"
+	default:
+		return ""
+	}
+}
+
+func normalizeLLMServiceTier(raw string) string {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case "":
+		return ""
+	case "auto", "default", "flex", "priority":
+		return strings.TrimSpace(strings.ToLower(raw))
+	default:
+		return ""
 	}
 }
 
