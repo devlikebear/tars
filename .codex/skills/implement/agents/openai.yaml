@@ -1,4 +1,0 @@
-interface:
-  display_name: "Implement"
-  short_description: "Plan-based direct coding workflow"
-  default_prompt: "Use $implement to execute this Work Order directly with minimal, test-proven changes."
