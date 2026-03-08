@@ -70,18 +70,16 @@ func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, s
 }
 
 func helpText(advanced bool) string {
-	sessionSection := ""
-	if advanced {
-		sessionSection = `
+	sessionSection := `
 Session:
-  /new [title]
   /session
-  /resume [id|number|latest]
-  /sessions
-  /history
-  /export
-  /search {keyword}
-  /compact
+`
+	debugSection := ""
+	if advanced {
+		debugSection = `
+
+Debug:
+  single-main-session mode is enabled
 `
 	}
 	return strings.TrimSpace(`SYSTEM > commands` + sessionSection + `
@@ -118,8 +116,9 @@ Runtime:
 Chat:
   /trace [on|off|filter {all|llm|tool|error|system}]
   /quit
+` + debugSection + `
 
-Use /help advanced for session/debug commands.`)
+Use /help advanced for debug notes.`)
 }
 
 func sendMessage(ctx context.Context, client chatClient, session, message string, showStatus bool, verbose bool, stdout, stderr io.Writer) (chatResult, error) {

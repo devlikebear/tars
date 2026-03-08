@@ -65,6 +65,8 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/chat",
 		"/v1/sessions",
 		"/v1/sessions/main",
+		"/v1/admin/sessions",
+		"/v1/admin/sessions/main",
 		"/v1/projects",
 		"/v1/projects/demo",
 		"/v1/projects/demo/state",

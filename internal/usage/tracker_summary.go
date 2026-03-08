@@ -134,7 +134,7 @@ func periodRange(raw string, now time.Time) (time.Time, string, error) {
 func normalizeGroupBy(raw string) string {
 	v := strings.TrimSpace(strings.ToLower(raw))
 	switch v {
-	case "provider", "model", "source", "project":
+	case "provider", "model", "source", "project", "run":
 		return v
 	default:
 		return "provider"
@@ -151,6 +151,8 @@ func summaryKey(entry Entry, groupBy string) string {
 		return firstNonEmptyTrimmed(entry.Source, "(none)")
 	case "project":
 		return firstNonEmptyTrimmed(entry.ProjectID, "(none)")
+	case "run":
+		return firstNonEmptyTrimmed(entry.RunID, "(none)")
 	default:
 		return firstNonEmptyTrimmed(entry.Provider, "(none)")
 	}

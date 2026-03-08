@@ -30,6 +30,7 @@ func apiAuthSkipPaths() []string {
 
 func apiAdminPaths() []string {
 	return []string{
+		"/v1/admin/*",
 		"/v1/runtime/extensions/reload",
 		"/v1/gateway/reload",
 		"/v1/gateway/restart",

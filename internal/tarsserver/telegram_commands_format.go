@@ -5,17 +5,14 @@ import "strings"
 func telegramHelpText() string {
 	return strings.TrimSpace(`SYSTEM > telegram commands
 /help
-/sessions
+/session
 /status
 /health
 /providers
 /models
 /cron {list|runs {job_id} [limit]}
 /gateway status
-/channels
-/new [title]        (per-user scope only)
-/resume main        (all scopes)
-/resume {id|latest} (per-user scope only)`)
+/channels`)
 }
 
 func blockedCommandMessage(reason string) string {
@@ -27,7 +24,7 @@ func blockedCommandMessage(reason string) string {
 }
 
 func blockInMainSessionMessage() string {
-	return blockedCommandMessage("main session mode does not support session switching. use per-user mode.")
+	return blockedCommandMessage("single-main-session mode is enabled. tars uses the main session automatically.")
 }
 
 func splitTelegramMessage(text string, maxLen int) []string {

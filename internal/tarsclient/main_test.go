@@ -13,13 +13,11 @@ import (
 	"github.com/devlikebear/tarsncase/internal/secrets"
 )
 
-func TestExecuteCommand_NewAndStatus(t *testing.T) {
+func TestExecuteCommand_SessionAndStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/sessions":
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "s-new", "title": "nightly"})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
-			_ = json.NewEncoder(w).Encode(map[string]any{"workspace_dir": "/tmp/ws", "session_count": 3})
+			_ = json.NewEncoder(w).Encode(map[string]any{"workspace_dir": "/tmp/ws", "session_count": 1, "main_session_id": "main"})
 		default:
 			http.NotFound(w, r)
 		}
@@ -30,15 +28,15 @@ func TestExecuteCommand_NewAndStatus(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	handled, session, err := executeCommand(context.Background(), runtime, "/new nightly", "", stdout, stderr)
+	handled, session, err := executeCommand(context.Background(), runtime, "/session", "", stdout, stderr)
 	if err != nil {
-		t.Fatalf("/new: %v", err)
+		t.Fatalf("/session: %v", err)
 	}
-	if !handled || session != "s-new" {
-		t.Fatalf("expected handled with new session, handled=%t session=%q", handled, session)
+	if !handled || session != "" {
+		t.Fatalf("expected handled without session switch, handled=%t session=%q", handled, session)
 	}
-	if !strings.Contains(stderr.String(), "session=s-new") {
-		t.Fatalf("expected session output in stderr, got %q", stderr.String())
+	if !strings.Contains(stdout.String(), "session=main") {
+		t.Fatalf("expected main session output, got %q", stdout.String())
 	}
 
 	stdout.Reset()
@@ -134,9 +132,15 @@ func TestExecuteCommand_CompactRequiresSession(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	runtime := runtimeClient{serverURL: "http://127.0.0.1:43180"}
-	_, _, err := executeCommand(context.Background(), runtime, "/compact", "", stdout, stderr)
-	if err == nil || !strings.Contains(err.Error(), "active session") {
-		t.Fatalf("expected active session error, got %v", err)
+	handled, session, err := executeCommand(context.Background(), runtime, "/compact", "", stdout, stderr)
+	if err != nil {
+		t.Fatalf("/compact: %v", err)
+	}
+	if !handled || session != "" {
+		t.Fatalf("expected handled without session switch, handled=%t session=%q", handled, session)
+	}
+	if !strings.Contains(stdout.String(), "single-main-session mode") {
+		t.Fatalf("expected single-main-session output, got %q", stdout.String())
 	}
 }
 
@@ -367,7 +371,7 @@ func TestExecuteCommand_BrowserAndVault(t *testing.T) {
 	}
 }
 
-func TestExecuteCommand_ResumeAndAgentsDetail(t *testing.T) {
+func TestExecuteCommand_UnsupportedSessionCommandsAndAgentsDetail(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/agent/agents":
@@ -395,12 +399,15 @@ func TestExecuteCommand_ResumeAndAgentsDetail(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	_, session, err := executeCommand(context.Background(), runtime, "/resume s-9", "", stdout, stderr)
+	_, session, err := executeCommand(context.Background(), runtime, "/resume s-9", "main", stdout, stderr)
 	if err != nil {
 		t.Fatalf("/resume: %v", err)
 	}
-	if session != "s-9" {
-		t.Fatalf("expected resumed session, got %q", session)
+	if session != "main" {
+		t.Fatalf("expected unchanged session, got %q", session)
+	}
+	if !strings.Contains(stdout.String(), "single-main-session mode") {
+		t.Fatalf("expected single-main-session output, got %q", stdout.String())
 	}
 
 	stdout.Reset()
@@ -425,22 +432,8 @@ func TestExecuteCommand_ResumeAndAgentsDetail(t *testing.T) {
 	}
 }
 
-func TestExecuteCommand_ResumeMainAliasUsesStatusMainSession(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"workspace_dir":   "/tmp/ws",
-				"session_count":   2,
-				"main_session_id": "s-main",
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	runtime := runtimeClient{serverURL: server.URL}
+func TestExecuteCommand_ResumeMainAliasIsUnsupported(t *testing.T) {
+	runtime := runtimeClient{serverURL: "http://127.0.0.1:43180"}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
@@ -448,29 +441,16 @@ func TestExecuteCommand_ResumeMainAliasUsesStatusMainSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("/resume main: %v", err)
 	}
-	if session != "s-main" {
-		t.Fatalf("expected main session alias to resolve to s-main, got %q", session)
+	if session != "s-prev" {
+		t.Fatalf("expected unchanged session, got %q", session)
 	}
-	if !strings.Contains(stdout.String(), "resumed session=s-main") {
-		t.Fatalf("expected resume output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "single-main-session mode") {
+		t.Fatalf("expected single-main-session output, got %q", stdout.String())
 	}
 }
 
-func TestExecuteCommand_ResumeWithoutIDUsesLatestSession(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions":
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": "s-latest", "title": "latest"},
-				{"id": "s-old", "title": "old"},
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	runtime := runtimeClient{serverURL: server.URL}
+func TestExecuteCommand_ResumeWithoutIDIsUnsupported(t *testing.T) {
+	runtime := runtimeClient{serverURL: "http://127.0.0.1:43180"}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
@@ -481,29 +461,13 @@ func TestExecuteCommand_ResumeWithoutIDUsesLatestSession(t *testing.T) {
 	if session != "s-prev" {
 		t.Fatalf("expected unchanged session without selection, got %q", session)
 	}
-	if !strings.Contains(stdout.String(), "resume targets") {
-		t.Fatalf("expected resume target listing output, got %q", stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "1. s-latest latest") {
-		t.Fatalf("expected numbered session list, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "single-main-session mode") {
+		t.Fatalf("expected single-main-session output, got %q", stdout.String())
 	}
 }
 
-func TestExecuteCommand_ResumeByNumber(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions":
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": "s-latest", "title": "latest"},
-				{"id": "s-2", "title": "daily"},
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	runtime := runtimeClient{serverURL: server.URL}
+func TestExecuteCommand_ResumeByNumberIsUnsupported(t *testing.T) {
+	runtime := runtimeClient{serverURL: "http://127.0.0.1:43180"}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
@@ -511,11 +475,11 @@ func TestExecuteCommand_ResumeByNumber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("/resume 2: %v", err)
 	}
-	if session != "s-2" {
-		t.Fatalf("expected selected session s-2, got %q", session)
+	if session != "s-prev" {
+		t.Fatalf("expected unchanged session, got %q", session)
 	}
-	if !strings.Contains(stdout.String(), "resumed session=s-2") {
-		t.Fatalf("expected resume output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "single-main-session mode") {
+		t.Fatalf("expected single-main-session output, got %q", stdout.String())
 	}
 }
 
@@ -659,8 +623,13 @@ func TestExecuteCommand_HelpStructured(t *testing.T) {
 	if !strings.Contains(out, "SYSTEM > commands") {
 		t.Fatalf("expected help header, got %q", out)
 	}
-	if strings.Contains(out, "Session:") {
-		t.Fatalf("did not expect default help to show Session section, got %q", out)
+	if !strings.Contains(out, "Session:") || !strings.Contains(out, "/session") {
+		t.Fatalf("expected default help to show read-only session info, got %q", out)
+	}
+	for _, removed := range []string{"/new", "/resume", "/sessions", "/history", "/export", "/search", "/compact"} {
+		if strings.Contains(out, removed) {
+			t.Fatalf("did not expect %s in default help, got %q", removed, out)
+		}
 	}
 	if !strings.Contains(out, "Runtime:") {
 		t.Fatalf("expected Runtime section, got %q", out)
@@ -670,7 +639,7 @@ func TestExecuteCommand_HelpStructured(t *testing.T) {
 	}
 }
 
-func TestExecuteCommand_HelpAdvancedShowsSessionCommands(t *testing.T) {
+func TestExecuteCommand_HelpAdvancedShowsSingleMainNote(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	runtime := runtimeClient{}
@@ -681,8 +650,16 @@ func TestExecuteCommand_HelpAdvancedShowsSessionCommands(t *testing.T) {
 	}
 
 	out := stdout.String()
-	if !strings.Contains(out, "Session:") || !strings.Contains(out, "/resume [id|number|latest]") {
-		t.Fatalf("expected advanced help to show session commands, got %q", out)
+	if !strings.Contains(out, "Session:") || !strings.Contains(out, "/session") {
+		t.Fatalf("expected advanced help to show /session, got %q", out)
+	}
+	for _, removed := range []string{"/new", "/resume", "/sessions", "/history", "/export", "/search", "/compact"} {
+		if strings.Contains(out, removed) {
+			t.Fatalf("did not expect %s in advanced help, got %q", removed, out)
+		}
+	}
+	if !strings.Contains(out, "single-main-session mode is enabled") {
+		t.Fatalf("expected advanced help note, got %q", out)
 	}
 }
 

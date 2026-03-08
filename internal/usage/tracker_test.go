@@ -161,6 +161,14 @@ func TestTracker_RecordNormalizesFieldsAndSummaryUsesProjectFallback(t *testing.
 	if len(summary.Rows) != 1 || summary.Rows[0].Key != "(none)" {
 		t.Fatalf("expected project fallback row, got %+v", summary.Rows)
 	}
+
+	runSummary, err := tracker.Summary("today", "run")
+	if err != nil {
+		t.Fatalf("summary run: %v", err)
+	}
+	if len(runSummary.Rows) != 1 || runSummary.Rows[0].Key != "run-1" {
+		t.Fatalf("expected run summary row run-1, got %+v", runSummary.Rows)
+	}
 }
 
 func TestTracker_CheckLimitStatusPrefersWeekWhenDailyDisabled(t *testing.T) {

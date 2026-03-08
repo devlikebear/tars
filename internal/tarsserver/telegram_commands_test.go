@@ -43,6 +43,14 @@ func TestTelegramCommand_Help_ReturnsCommands(t *testing.T) {
 	if !strings.Contains(result, "/providers") || !strings.Contains(result, "/models") {
 		t.Fatalf("expected provider/model commands in help output, got %q", result)
 	}
+	if !strings.Contains(result, "/session") {
+		t.Fatalf("expected /session in help output, got %q", result)
+	}
+	for _, removed := range []string{"/sessions", "/new", "/resume"} {
+		if strings.Contains(result, removed) {
+			t.Fatalf("did not expect %s in help output, got %q", removed, result)
+		}
+	}
 }
 
 func TestTelegramCommand_Allowed_Providers(t *testing.T) {
@@ -190,12 +198,12 @@ func TestTelegramCommand_Blocked_MainScopeSessionSwitch(t *testing.T) {
 	if strings.TrimSpace(nextSession) != "" {
 		t.Fatalf("expected no session switch in main scope, got %q", nextSession)
 	}
-	if !strings.Contains(strings.ToLower(result), "main session mode") {
-		t.Fatalf("expected main scope block message, got %q", result)
+	if !strings.Contains(strings.ToLower(result), "single-main-session mode") {
+		t.Fatalf("expected single-main-session block message, got %q", result)
 	}
 }
 
-func TestTelegramCommand_New_PerUserCreatesAndReturnsNextSession(t *testing.T) {
+func TestTelegramCommand_New_PerUserStillBlocked(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(workspace)
 	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
@@ -214,18 +222,11 @@ func TestTelegramCommand_New_PerUserCreatesAndReturnsNextSession(t *testing.T) {
 	if !handled {
 		t.Fatalf("expected /new to be handled")
 	}
-	if strings.TrimSpace(nextSession) == "" {
-		t.Fatalf("expected next session id")
+	if strings.TrimSpace(nextSession) != "" {
+		t.Fatalf("expected no next session id, got %q", nextSession)
 	}
-	if !strings.Contains(result, "created session") || !strings.Contains(result, "research thread") {
+	if !strings.Contains(strings.ToLower(result), "single-main-session mode") {
 		t.Fatalf("unexpected /new output: %q", result)
-	}
-	sess, err := store.Get(nextSession)
-	if err != nil {
-		t.Fatalf("get created session: %v", err)
-	}
-	if sess.Title != "research thread" {
-		t.Fatalf("unexpected created title: %+v", sess)
 	}
 }
 
@@ -255,8 +256,8 @@ func TestTelegramCommand_ResumeMain_AllowedInMainScope(t *testing.T) {
 	if strings.TrimSpace(nextSession) != "" {
 		t.Fatalf("expected no session switch token in main scope, got %q", nextSession)
 	}
-	if !strings.Contains(result, mainSession.ID) {
-		t.Fatalf("expected main session id in result, got %q", result)
+	if !strings.Contains(result, "single-main-session mode") {
+		t.Fatalf("expected main-only guidance, got %q", result)
 	}
 }
 
@@ -286,12 +287,12 @@ func TestTelegramCommand_ResumeLatest_BlockedInMainScope(t *testing.T) {
 	if strings.TrimSpace(nextSession) != "" {
 		t.Fatalf("expected no next session in main scope, got %q", nextSession)
 	}
-	if !strings.Contains(strings.ToLower(result), "main session mode") {
+	if !strings.Contains(strings.ToLower(result), "single-main-session mode") {
 		t.Fatalf("expected block message, got %q", result)
 	}
 }
 
-func TestTelegramCommand_ResumeByIndex_UsesUpdatedAtOrder(t *testing.T) {
+func TestTelegramCommand_ResumeByIndex_IsBlocked(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(workspace)
 	first, err := store.Create("first")
@@ -325,11 +326,11 @@ func TestTelegramCommand_ResumeByIndex_UsesUpdatedAtOrder(t *testing.T) {
 	if !handled {
 		t.Fatalf("expected /resume 2 to be handled")
 	}
-	if nextSession != first.ID {
-		t.Fatalf("expected second ordered entry to be first session %q, got %q", first.ID, nextSession)
+	if strings.TrimSpace(nextSession) != "" {
+		t.Fatalf("expected no next session, got %q", nextSession)
 	}
-	if !strings.Contains(result, first.ID) {
-		t.Fatalf("expected resume output to mention %q, got %q", first.ID, result)
+	if !strings.Contains(strings.ToLower(result), "single-main-session mode") {
+		t.Fatalf("expected main-only guidance, got %q", result)
 	}
 }
 

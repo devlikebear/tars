@@ -71,27 +71,17 @@ func (h *telegramCommandHandler) cmdStatus() string {
 	return fmt.Sprintf(
 		"SYSTEM > sessions=%d main_session=%s session_scope=%s",
 		len(sessions),
-		textutil.ValueOrDash(mainSessionID),
+		textutil.ValueOrDash(publicMainSessionLabel(mainSessionID)),
 		scope,
 	)
 }
 
 func (h *telegramCommandHandler) cmdSessions() string {
-	if h.store == nil {
-		return "SYSTEM > sessions unavailable: session store is not configured"
-	}
-	sessions, err := listSessionsOrdered(h.store)
-	if err != nil {
-		return "SYSTEM > sessions unavailable: list sessions failed"
-	}
-	if len(sessions) == 0 {
-		return "SYSTEM > (no sessions)"
-	}
-	lines := []string{"SYSTEM > sessions"}
-	for _, item := range sessions {
-		lines = append(lines, fmt.Sprintf("- %s %s", strings.TrimSpace(item.ID), strings.TrimSpace(item.Title)))
-	}
-	return strings.Join(lines, "\n")
+	return blockInMainSessionMessage()
+}
+
+func (h *telegramCommandHandler) cmdSession() string {
+	return fmt.Sprintf("SYSTEM > session=%s", publicMainSessionLabel(h.mainSession))
 }
 
 func (h *telegramCommandHandler) cmdCron(ctx context.Context, fields []string) (string, error) {

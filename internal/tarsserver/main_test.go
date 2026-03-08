@@ -1820,6 +1820,10 @@ func TestSessionAPIs(t *testing.T) {
 
 	logger := zerolog.New(io.Discard)
 	store := session.NewStore(root)
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
 	handler := newSessionAPIHandler(store, logger)
 
 	listReq := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
@@ -1833,30 +1837,19 @@ func TestSessionAPIs(t *testing.T) {
 	if err := json.Unmarshal(listRec.Body.Bytes(), &sessions); err != nil {
 		t.Fatalf("decode sessions list: %v", err)
 	}
-	if len(sessions) != 0 {
-		t.Fatalf("expected empty sessions list, got %d", len(sessions))
+	if len(sessions) != 1 || sessions[0].ID != "main" {
+		t.Fatalf("expected main-only sessions list, got %+v", sessions)
 	}
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"title":"test session"}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createRec := httptest.NewRecorder()
 	handler.ServeHTTP(createRec, createReq)
-	if createRec.Code != http.StatusCreated && createRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 or 201, got %d body=%q", createRec.Code, createRec.Body.String())
+	if createRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%q", createRec.Code, createRec.Body.String())
 	}
 
-	var created session.Session
-	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
-		t.Fatalf("decode created session: %v", err)
-	}
-	if created.ID == "" {
-		t.Fatalf("expected non-empty session id")
-	}
-	if created.Title != "test session" {
-		t.Fatalf("expected title %q, got %q", "test session", created.Title)
-	}
-
-	getReq := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+created.ID, nil)
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/sessions/main", nil)
 	getRec := httptest.NewRecorder()
 	handler.ServeHTTP(getRec, getReq)
 	if getRec.Code != http.StatusOK {
@@ -1867,18 +1860,18 @@ func TestSessionAPIs(t *testing.T) {
 	if err := json.Unmarshal(getRec.Body.Bytes(), &fetched); err != nil {
 		t.Fatalf("decode fetched session: %v", err)
 	}
-	if fetched.ID != created.ID {
-		t.Fatalf("expected id %q, got %q", created.ID, fetched.ID)
+	if fetched.ID != "main" {
+		t.Fatalf("expected public id main, got %q", fetched.ID)
 	}
-	if fetched.Title != "test session" {
-		t.Fatalf("expected title %q, got %q", "test session", fetched.Title)
+	if fetched.Title != mainSession.Title {
+		t.Fatalf("expected title %q, got %q", mainSession.Title, fetched.Title)
 	}
 
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/sessions/"+created.ID, nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/sessions/main", nil)
 	deleteRec := httptest.NewRecorder()
 	handler.ServeHTTP(deleteRec, deleteReq)
-	if deleteRec.Code != http.StatusNoContent && deleteRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 or 204, got %d body=%q", deleteRec.Code, deleteRec.Body.String())
+	if deleteRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%q", deleteRec.Code, deleteRec.Body.String())
 	}
 
 	listAfterDeleteReq := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
@@ -1892,8 +1885,8 @@ func TestSessionAPIs(t *testing.T) {
 	if err := json.Unmarshal(listAfterDeleteRec.Body.Bytes(), &sessions); err != nil {
 		t.Fatalf("decode sessions list after delete: %v", err)
 	}
-	if len(sessions) != 0 {
-		t.Fatalf("expected empty sessions list after delete, got %d", len(sessions))
+	if len(sessions) != 1 || sessions[0].ID != "main" {
+		t.Fatalf("expected main-only sessions list after delete attempt, got %+v", sessions)
 	}
 }
 
@@ -1905,12 +1898,11 @@ func TestSessionAPI_History(t *testing.T) {
 
 	logger := zerolog.New(io.Discard)
 	store := session.NewStore(root)
-	handler := newSessionAPIHandler(store, logger)
-
-	sess, err := store.Create("history session")
+	sess, err := store.EnsureMain()
 	if err != nil {
-		t.Fatalf("create session: %v", err)
+		t.Fatalf("ensure main session: %v", err)
 	}
+	handler := newSessionAPIHandler(store, logger)
 
 	transcriptPath := store.TranscriptPath(sess.ID)
 	msg1 := session.Message{Role: "user", Content: "hello", Timestamp: time.Now().UTC()}
@@ -1922,7 +1914,7 @@ func TestSessionAPI_History(t *testing.T) {
 		t.Fatalf("append second message: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+sess.ID+"/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/main/history", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -1953,12 +1945,11 @@ func TestSessionAPI_Export(t *testing.T) {
 
 	logger := zerolog.New(io.Discard)
 	store := session.NewStore(root)
-	handler := newSessionAPIHandler(store, logger)
-
-	sess, err := store.Create("export session")
+	sess, err := store.EnsureMain()
 	if err != nil {
-		t.Fatalf("create session: %v", err)
+		t.Fatalf("ensure main session: %v", err)
 	}
+	handler := newSessionAPIHandler(store, logger)
 
 	start := time.Date(2026, 2, 14, 9, 0, 0, 0, time.UTC)
 	transcriptPath := store.TranscriptPath(sess.ID)
@@ -1977,7 +1968,7 @@ func TestSessionAPI_Export(t *testing.T) {
 		t.Fatalf("append assistant message: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+sess.ID+"/export", nil)
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/main/export", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -2001,7 +1992,7 @@ func TestSessionAPI_Export(t *testing.T) {
 	}
 }
 
-func TestSessionAPI_Search(t *testing.T) {
+func TestSessionAPI_SearchIsUnsupported(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
@@ -2011,35 +2002,91 @@ func TestSessionAPI_Search(t *testing.T) {
 	store := session.NewStore(root)
 	handler := newSessionAPIHandler(store, logger)
 
-	titles := []string{"apple pie", "banana split", "apple tart"}
-	for _, title := range titles {
-		if _, err := store.Create(title); err != nil {
-			t.Fatalf("create session %q: %v", title, err)
-		}
-	}
-
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/search?q=apple", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSessionAPI_AdminCanInspectHiddenWorkerSessions(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
 	}
 
-	var results []session.Session
-	if err := json.Unmarshal(rec.Body.Bytes(), &results); err != nil {
-		t.Fatalf("decode search results: %v", err)
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	worker, err := store.EnsureWorker("project-1")
+	if err != nil {
+		t.Fatalf("ensure worker: %v", err)
 	}
-	if len(results) != 2 {
-		t.Fatalf("expected 2 sessions, got %d", len(results))
+	if err := session.AppendMessage(store.TranscriptPath(worker.ID), session.Message{
+		Role:      "assistant",
+		Content:   "worker raw output",
+		Timestamp: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("append worker message: %v", err)
+	}
+	handler := newSessionAPIHandler(store, logger)
+
+	reqList := httptest.NewRequest(http.MethodGet, "/v1/admin/sessions?hidden=1", nil)
+	reqList.Header.Set("Tars-Debug-Auth-Role", "admin")
+	recList := httptest.NewRecorder()
+	handler.ServeHTTP(recList, reqList)
+	if recList.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", recList.Code, recList.Body.String())
+	}
+	var sessions []session.Session
+	if err := json.Unmarshal(recList.Body.Bytes(), &sessions); err != nil {
+		t.Fatalf("decode sessions list: %v", err)
+	}
+	foundWorker := false
+	for _, item := range sessions {
+		if item.ID == worker.ID && item.Hidden {
+			foundWorker = true
+		}
+	}
+	if !foundWorker {
+		t.Fatalf("expected hidden worker in admin list, got %+v", sessions)
 	}
 
-	foundTitles := map[string]bool{}
-	for _, s := range results {
-		foundTitles[s.Title] = true
+	reqHistory := httptest.NewRequest(http.MethodGet, "/v1/admin/sessions/"+worker.ID+"/history", nil)
+	reqHistory.Header.Set("Tars-Debug-Auth-Role", "admin")
+	recHistory := httptest.NewRecorder()
+	handler.ServeHTTP(recHistory, reqHistory)
+	if recHistory.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", recHistory.Code, recHistory.Body.String())
 	}
-	if !foundTitles["apple pie"] || !foundTitles["apple tart"] {
-		t.Fatalf("unexpected search results titles: %+v", foundTitles)
+	var history []session.Message
+	if err := json.Unmarshal(recHistory.Body.Bytes(), &history); err != nil {
+		t.Fatalf("decode history: %v", err)
+	}
+	if len(history) != 1 || history[0].Content != "worker raw output" {
+		t.Fatalf("unexpected admin worker history: %+v", history)
+	}
+}
+
+func TestSessionAPI_UserCannotInspectHiddenWorkerSessions(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	if _, err := store.EnsureWorker("project-1"); err != nil {
+		t.Fatalf("ensure worker: %v", err)
+	}
+	handler := newSessionAPIHandler(store, logger)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/sessions?hidden=1", nil)
+	req.Header.Set("Tars-Debug-Auth-Role", "user")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

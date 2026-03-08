@@ -24,3 +24,10 @@ func resolveMainSessionID(store *session.Store, configuredID string) (string, er
 	}
 	return strings.TrimSpace(created.ID), nil
 }
+
+func publicMainSessionLabel(resolvedID string) string {
+	if strings.TrimSpace(resolvedID) == "" {
+		return ""
+	}
+	return "main"
+}

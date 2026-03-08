@@ -16,8 +16,10 @@ func (h *telegramCommandHandler) dispatchTelegramCommand(
 	switch command {
 	case "/help":
 		return telegramCommandResult{handled: true, result: telegramHelpText()}
+	case "/session":
+		return telegramCommandResult{handled: true, result: h.cmdSession()}
 	case "/sessions":
-		return telegramCommandResult{handled: true, result: h.cmdSessions()}
+		return telegramCommandResult{handled: true, result: blockInMainSessionMessage()}
 	case "/status":
 		return telegramCommandResult{handled: true, result: h.cmdStatus()}
 	case "/health":
@@ -39,14 +41,9 @@ func (h *telegramCommandHandler) dispatchTelegramCommand(
 		result, err := h.cmdChannels()
 		return telegramCommandResult{handled: true, result: result, err: err}
 	case "/new":
-		if h.sessionScope == "main" {
-			return telegramCommandResult{handled: true, result: blockInMainSessionMessage()}
-		}
-		nextSessionID, result, err := h.cmdNew(trimmed)
-		return telegramCommandResult{handled: true, result: result, nextSessionID: nextSessionID, err: err}
+		return telegramCommandResult{handled: true, result: blockInMainSessionMessage()}
 	case "/resume":
-		nextSessionID, result, err := h.cmdResume(fields)
-		return telegramCommandResult{handled: true, result: result, nextSessionID: nextSessionID, err: err}
+		return telegramCommandResult{handled: true, result: blockInMainSessionMessage()}
 	case "/reload":
 		return telegramCommandResult{handled: true, result: blockedCommandMessage("admin-only command. use tars tui or admin api token.")}
 	case "/notify", "/trace", "/quit":
