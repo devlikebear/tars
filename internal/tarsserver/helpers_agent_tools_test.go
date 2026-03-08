@@ -98,6 +98,9 @@ func TestAgentPromptRunnerWithTools_CronUsesMinimalToolsetAndPrompt(t *testing.T
 	if strings.Contains(systemPrompt, "memory_search") {
 		t.Fatalf("did not expect memory tool rule in cron system prompt: %q", systemPrompt)
 	}
+	if !strings.Contains(systemPrompt, "telegram_send") {
+		t.Fatalf("expected cron system prompt to mention telegram_send fallback, got %q", systemPrompt)
+	}
 
 	got := strings.Join(client.toolNames, ",")
 	if strings.Contains(got, "exec") || strings.Contains(got, "memory_search") || strings.Contains(got, "schedule_create") {

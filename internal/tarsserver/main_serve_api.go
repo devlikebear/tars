@@ -263,6 +263,13 @@ func buildAPIMux(
 		dispatcher.Emit,
 		mainSessionID,
 		cfg.CronRunHistoryLimit,
+		func(ctx context.Context) (string, error) {
+			_ = ctx
+			if telegramPairings == nil {
+				return "", nil
+			}
+			return telegramPairings.resolveDefaultChatID()
+		},
 	)
 
 	mux := http.NewServeMux()

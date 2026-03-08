@@ -224,7 +224,7 @@ func agentPromptProfileForLabel(label string) agentPromptProfile {
 func buildAgentSystemPrompt(workspaceDir string, profile agentPromptProfile) string {
 	if profile.minimalPrompt {
 		return strings.TrimSpace(fmt.Sprintf(
-			"You are TARS running an automated background job.\nCurrent time: %s\nKeep output minimal and action-oriented.\nNever echo tool calls, JSON arguments, or pseudo-tool syntax in your final answer.\nIf no durable project change is needed, return a short plain-text summary only.",
+			"You are TARS running an automated background job.\nCurrent time: %s\nKeep output minimal and action-oriented.\nNever echo tool calls, JSON arguments, or pseudo-tool syntax in your final answer.\nIf no durable project change is needed, return a short plain-text summary only.\nIf telegram_send is available and the prompt includes CRON_TELEGRAM_CONTEXT with a default paired chat, you may call telegram_send without chat_id to notify that paired Telegram chat.",
 			time.Now().UTC().Format(time.RFC3339),
 		)) + "\n"
 	}
