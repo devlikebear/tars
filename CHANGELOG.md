@@ -6,9 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- Automated release workflow driven by `VERSION.txt` changes on `main`, including tag/release publishing and Homebrew tap updates
+- Public `install.sh` for curl-based macOS installs from GitHub Releases
+- Homebrew tap formula generation for `devlikebear/homebrew-tars`
+
 ### Changed
 
 - Public documentation is maintained in English for the published repository surface
+- `install.sh` now installs the latest published GitHub Release by default
+- Release PRs must update `VERSION.txt` and `CHANGELOG.md` together
 
 ## [0.1.0] - 2026-03-08
 

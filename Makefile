@@ -1,5 +1,6 @@
 GO ?= go
 BIN_DIR ?= bin
+DIST_DIR ?= dist
 VERSION_FILE ?= VERSION.txt
 WORKSPACE_DIR ?= ./workspace
 API_ADDR ?= 127.0.0.1:43180
@@ -39,12 +40,17 @@ GIT_COMMIT ?= $(strip $(shell git rev-parse --short HEAD 2>/dev/null || printf '
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILDINFO_PKG ?= github.com/devlikebear/tars/internal/buildinfo
 GO_LDFLAGS ?= -X $(BUILDINFO_PKG).Version=$(VERSION) -X $(BUILDINFO_PKG).Commit=$(GIT_COMMIT) -X $(BUILDINFO_PKG).Date=$(BUILD_DATE)
+RELEASE_GOOS ?= $(shell $(GO) env GOOS)
+RELEASE_GOARCH ?= $(shell $(GO) env GOARCH)
+RELEASE_CGO_ENABLED ?= 1
+RELEASE_ARCHIVE_NAME ?= tars_$(VERSION)_$(RELEASE_GOOS)_$(RELEASE_GOARCH).tar.gz
+RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 
 .DEFAULT_GOAL := help
 
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover \
-	build build-bins clean tidy fmt vet lint \
+	build build-bins release-asset clean tidy fmt vet lint \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
@@ -75,6 +81,7 @@ help:
 	@echo "Build/quality targets:"
 	@echo "  make build         - go build ./..."
 	@echo "  make build-bins    - build cmd binaries to $(BIN_DIR)"
+	@echo "  make release-asset - build a versioned release archive to $(DIST_DIR)"
 	@echo "  make browser-install - npm install + playwright chromium install"
 	@echo "  make install       - build $(TARS_BIN) and (re)install io.tars.server + io.tars.assistant launch agents"
 	@echo "  make uninstall     - stop and remove io.tars.server + io.tars.assistant launch agents"
@@ -138,6 +145,13 @@ build:
 build-bins:
 	mkdir -p $(BIN_DIR)
 	$(GO) build -ldflags "$(GO_LDFLAGS)" -o $(BIN_DIR)/tars ./cmd/tars
+
+release-asset:
+	mkdir -p "$(DIST_DIR)"
+	rm -rf "$(RELEASE_STAGE_DIR)"
+	mkdir -p "$(RELEASE_STAGE_DIR)"
+	CGO_ENABLED=$(RELEASE_CGO_ENABLED) GOOS=$(RELEASE_GOOS) GOARCH=$(RELEASE_GOARCH) $(GO) build -ldflags "$(GO_LDFLAGS)" -o "$(RELEASE_STAGE_DIR)/tars" ./cmd/tars
+	tar -C "$(RELEASE_STAGE_DIR)" -czf "$(DIST_DIR)/$(RELEASE_ARCHIVE_NAME)" tars
 
 browser-install:
 	npm install
