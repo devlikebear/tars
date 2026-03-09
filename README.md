@@ -27,6 +27,29 @@ It combines a terminal client, a local HTTP runtime, agent tools, sessions, sche
 - Provider credentials for the models you want to use
 - Optional: Node.js for Playwright browser installation
 
+## Install
+
+Homebrew tap:
+
+```bash
+brew tap devlikebear/tars
+brew install devlikebear/tars/tars
+```
+
+Curl installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | sh
+```
+
+The installer downloads the latest published GitHub Release by default.
+
+Install to a custom path or pin a version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | INSTALL_DIR="$HOME/.local/bin" VERSION=0.1.0 sh
+```
+
 ## Quick Start
 
 1. Review the example config:
@@ -62,6 +85,12 @@ Build the binary with version metadata from [`VERSION.txt`](VERSION.txt):
 ```bash
 make build-bins
 bin/tars version
+```
+
+Build a macOS release archive with the same version metadata used by GitHub Releases:
+
+```bash
+make release-asset RELEASE_GOOS=darwin RELEASE_GOARCH=arm64
 ```
 
 ## Browser Automation

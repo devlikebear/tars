@@ -19,6 +19,7 @@
 - [ ] Commit messages follow `feat/fix/chore`
 - [ ] Tests added or updated for behavior changes
 - [ ] Docs and `CHANGELOG.md` updated when needed
+- [ ] If this is a release PR, `VERSION.txt` and `CHANGELOG.md` changed together
 - [ ] Breaking changes include migration notes
 - [ ] No secrets, private keys, or local absolute paths included
 

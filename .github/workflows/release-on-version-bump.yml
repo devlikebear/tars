@@ -1,0 +1,222 @@
+name: release-on-version-bump
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - VERSION.txt
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Require CHANGELOG update in release push
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "${BEFORE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            changed_files="$(git show --pretty='' --name-only HEAD)"
+          else
+            changed_files="$(git diff --name-only "${BEFORE_SHA}" "${GITHUB_SHA}")"
+          fi
+          printf '%s\n' "${changed_files}"
+          if ! printf '%s\n' "${changed_files}" | grep -Fxq 'CHANGELOG.md'; then
+            echo "release pushes must update CHANGELOG.md together with VERSION.txt" >&2
+            exit 1
+          fi
+
+      - name: Validate release bundle
+        id: release
+        run: |
+          set -euo pipefail
+          version="$(go run ./cmd/releasectl validate-release --version-file VERSION.txt --changelog CHANGELOG.md)"
+          printf 'version=%s\n' "${version}" >> "${GITHUB_OUTPUT}"
+          printf 'tag_name=v%s\n' "${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Ensure existing tag, if any, points at this commit
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch --tags origin
+          if ! git rev-parse "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            exit 0
+          fi
+          remote_tag_commit="$(git rev-list -n 1 "refs/tags/v${VERSION}")"
+          if [ "${remote_tag_commit}" != "${GITHUB_SHA}" ]; then
+            echo "tag v${VERSION} already exists on ${remote_tag_commit}" >&2
+            exit 1
+          fi
+
+  build-assets:
+    needs: prepare-release
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            goarch: arm64
+          - runner: macos-13
+            goarch: amd64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build release archive
+        env:
+          RELEASE_GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          make release-asset RELEASE_GOOS=darwin RELEASE_GOARCH="${RELEASE_GOARCH}" DIST_DIR=dist
+
+      - name: Verify archive version output
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+          RELEASE_GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          archive="dist/tars_${VERSION}_darwin_${RELEASE_GOARCH}.tar.gz"
+          test -f "${archive}"
+          rm -rf dist/check
+          mkdir -p dist/check
+          tar -xzf "${archive}" -C dist/check
+          dist/check/tars --version | grep -F "tars ${VERSION} ("
+
+      - name: Upload archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goarch }}
+          path: dist/*.tar.gz
+
+  publish-release:
+    needs:
+      - prepare-release
+      - build-assets
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.checksums.outputs.version }}
+      arm64_sha: ${{ steps.checksums.outputs.arm64_sha }}
+      amd64_sha: ${{ steps.checksums.outputs.amd64_sha }}
+    steps:
+      - name: Download built archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Compute checksums
+        id: checksums
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          arm64_asset="dist/tars_${VERSION}_darwin_arm64.tar.gz"
+          amd64_asset="dist/tars_${VERSION}_darwin_amd64.tar.gz"
+          arm64_sha="$(shasum -a 256 "${arm64_asset}" | awk '{print $1}')"
+          amd64_sha="$(shasum -a 256 "${amd64_asset}" | awk '{print $1}')"
+          {
+            printf '%s  %s\n' "${arm64_sha}" "$(basename "${arm64_asset}")"
+            printf '%s  %s\n' "${amd64_sha}" "$(basename "${amd64_asset}")"
+          } > dist/checksums.txt
+          printf 'version=%s\n' "${VERSION}" >> "${GITHUB_OUTPUT}"
+          printf 'arm64_sha=%s\n' "${arm64_sha}" >> "${GITHUB_OUTPUT}"
+          printf 'amd64_sha=%s\n' "${amd64_sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          printf 'Release %s\n\nSee CHANGELOG.md for details.\n' "${TAG_NAME}" > release-notes.txt
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            gh release upload "${TAG_NAME}" dist/*.tar.gz dist/checksums.txt --clobber
+            gh release edit "${TAG_NAME}" --title "${TAG_NAME}" --notes-file release-notes.txt
+          else
+            gh release create "${TAG_NAME}" dist/*.tar.gz dist/checksums.txt --target "${GITHUB_SHA}" --title "${TAG_NAME}" --notes-file release-notes.txt
+          fi
+
+  update-homebrew:
+    needs: publish-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout TARS repository
+        uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: repo/go.mod
+
+      - name: Require tap token
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+            echo "HOMEBREW_TAP_TOKEN is required to update devlikebear/homebrew-tars" >&2
+            exit 1
+          fi
+
+      - name: Checkout Homebrew tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: devlikebear/homebrew-tars
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Render formula
+        env:
+          VERSION: ${{ needs.publish-release.outputs.version }}
+          ARM64_SHA: ${{ needs.publish-release.outputs.arm64_sha }}
+          AMD64_SHA: ${{ needs.publish-release.outputs.amd64_sha }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          mkdir -p ../homebrew-tap/Formula
+          go run ./cmd/releasectl homebrew-formula \
+            --repo devlikebear/tars \
+            --version "${VERSION}" \
+            --arm64-sha "${ARM64_SHA}" \
+            --amd64-sha "${AMD64_SHA}" \
+            > ../homebrew-tap/Formula/tars.rb
+
+      - name: Commit and push formula update
+        working-directory: homebrew-tap
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/tars.rb
+          if git diff --cached --quiet; then
+            echo "formula already up to date"
+            exit 0
+          fi
+          git commit -m "tars ${{ needs.publish-release.outputs.version }}"
+          git push origin HEAD:main
