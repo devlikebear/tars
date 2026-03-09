@@ -456,6 +456,7 @@ func TestRuntimeChannelBrowserNodes(t *testing.T) {
 	rt := NewRuntime(RuntimeOptions{
 		Enabled:                 true,
 		WorkspaceDir:            t.TempDir(),
+		BrowserManagedHeadless:  true,
 		ChannelsLocalEnabled:    true,
 		ChannelsWebhookEnabled:  true,
 		ChannelsTelegramEnabled: true,

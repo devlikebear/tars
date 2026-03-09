@@ -588,12 +588,15 @@ func TestRelayProtocol_ForwardEvent_BroadcastToMultipleCDPClients(t *testing.T) 
 	}
 	defer extConn.Close()
 
-	cdp1, _, err := websocket.DefaultDialer.Dial("ws://"+srv.Addr()+"/cdp?token=relay-token", nil)
+	waitForRelayCDPReady(t, srv)
+
+	cdpHeader := http.Header{"Tars-Relay-Token": []string{"relay-token"}}
+	cdp1, _, err := websocket.DefaultDialer.Dial("ws://"+srv.Addr()+"/cdp", cdpHeader)
 	if err != nil {
 		t.Fatalf("dial cdp1: %v", err)
 	}
 	defer cdp1.Close()
-	cdp2, _, err := websocket.DefaultDialer.Dial("ws://"+srv.Addr()+"/cdp?token=relay-token", nil)
+	cdp2, _, err := websocket.DefaultDialer.Dial("ws://"+srv.Addr()+"/cdp", cdpHeader)
 	if err != nil {
 		t.Fatalf("dial cdp2: %v", err)
 	}
@@ -621,6 +624,25 @@ func TestRelayProtocol_ForwardEvent_BroadcastToMultipleCDPClients(t *testing.T) 
 	}
 	readEvent(t, cdp1)
 	readEvent(t, cdp2)
+}
+
+func waitForRelayCDPReady(t *testing.T, srv *Server) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	versionURL := "http://" + srv.Addr() + "/json/version?token=relay-token"
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(versionURL)
+		if err == nil {
+			var payload map[string]any
+			decodeErr := json.NewDecoder(resp.Body).Decode(&payload)
+			_ = resp.Body.Close()
+			if decodeErr == nil && strings.TrimSpace(asString(payload["webSocketDebuggerUrl"])) != "" {
+				return
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("relay cdp did not become ready before timeout")
 }
 
 func TestRelayRejectsExtensionWithoutToken(t *testing.T) {

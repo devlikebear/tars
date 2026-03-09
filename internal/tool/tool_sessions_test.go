@@ -24,6 +24,7 @@ func newGatewayRuntimeForToolTests(t *testing.T) *gateway.Runtime {
 	rt := gateway.NewRuntime(gateway.RuntimeOptions{
 		Enabled:                 true,
 		WorkspaceDir:            t.TempDir(),
+		BrowserManagedHeadless:  true,
 		SessionStore:            store,
 		ChannelsLocalEnabled:    true,
 		ChannelsWebhookEnabled:  true,
@@ -187,9 +188,10 @@ func TestBrowserToolProfilesAndSiteFlows(t *testing.T) {
 		Enabled:      true,
 		WorkspaceDir: workspaceDir,
 		BrowserService: browser.NewService(browser.Config{
-			WorkspaceDir:   workspaceDir,
-			SiteFlowsDir:   flowDir,
-			DefaultProfile: "managed",
+			WorkspaceDir:    workspaceDir,
+			SiteFlowsDir:    flowDir,
+			DefaultProfile:  "managed",
+			ManagedHeadless: true,
 		}),
 	})
 	t.Cleanup(func() {
