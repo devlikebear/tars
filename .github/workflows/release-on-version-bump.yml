@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - VERSION.txt
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -28,6 +29,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Require CHANGELOG update in release push
+        if: github.event_name == 'push'
         env:
           BEFORE_SHA: ${{ github.event.before }}
         run: |
@@ -144,6 +146,7 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
         run: |
           set -euo pipefail
