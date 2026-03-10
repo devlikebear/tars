@@ -68,14 +68,7 @@ jobs:
 
   build-assets:
     needs: prepare-release
-    strategy:
-      matrix:
-        include:
-          - runner: macos-14
-            goarch: arm64
-          - runner: macos-13
-            goarch: amd64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -85,31 +78,33 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build release archive
-        env:
-          RELEASE_GOARCH: ${{ matrix.goarch }}
+      - name: Build release archives
         run: |
           set -euo pipefail
-          make release-asset RELEASE_GOOS=darwin RELEASE_GOARCH="${RELEASE_GOARCH}" DIST_DIR=dist
+          for release_goarch in arm64 amd64; do
+            make release-asset RELEASE_GOOS=darwin RELEASE_GOARCH="${release_goarch}" DIST_DIR=dist
+          done
 
-      - name: Verify archive version output
+      - name: Verify archive version outputs
         env:
           VERSION: ${{ needs.prepare-release.outputs.version }}
-          RELEASE_GOARCH: ${{ matrix.goarch }}
         run: |
           set -euo pipefail
-          archive="dist/tars_${VERSION}_darwin_${RELEASE_GOARCH}.tar.gz"
-          test -f "${archive}"
-          rm -rf dist/check
-          mkdir -p dist/check
-          tar -xzf "${archive}" -C dist/check
-          dist/check/tars --version | grep -F "tars ${VERSION} ("
+          for release_goarch in arm64 amd64; do
+            archive="dist/tars_${VERSION}_darwin_${release_goarch}.tar.gz"
+            test -f "${archive}"
+            rm -rf dist/check
+            mkdir -p dist/check
+            tar -xzf "${archive}" -C dist/check
+            dist/check/tars --version | grep -F "tars ${VERSION} ("
+          done
 
-      - name: Upload archive artifact
+      - name: Upload archive artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.goarch }}
+          name: release-archives
           path: dist/*.tar.gz
+          if-no-files-found: error
 
   publish-release:
     needs:
