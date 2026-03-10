@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-03-10
+
+### Changed
+
+- Release assets now build both macOS archives on a single `macos-14` runner so GitHub Release publishing is not blocked by a second runner matrix leg
+
 ## [0.1.1] - 2026-03-10
 
 ### Added
