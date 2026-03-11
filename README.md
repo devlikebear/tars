@@ -47,30 +47,53 @@ The installer downloads the latest published GitHub Release by default.
 Install to a custom path or pin a version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | INSTALL_DIR="$HOME/.local/bin" VERSION=0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | INSTALL_DIR="$HOME/.local/bin" VERSION=0.2.0 sh
 ```
 
 ## Quick Start
 
-1. Review the example config:
+1. Initialize a starter workspace and config:
 
 ```bash
-cp config/tars.config.example.yaml workspace/config/tars.config.yaml
+tars init
 ```
 
-2. Start the local server:
+2. Export a BYOK provider key for the starter config:
 
 ```bash
-make dev-serve
+export OPENAI_API_KEY="your-api-key"
 ```
 
-3. Start the client:
+3. Check or repair the local starter setup:
 
 ```bash
-make dev-tars
+tars doctor
+tars doctor --fix
 ```
 
-4. Run basic checks:
+`--fix` only creates missing local files and directories. Provider credentials still need to be configured separately.
+
+4. Install and start the macOS background service:
+
+```bash
+tars service install
+tars service start
+tars service status
+```
+
+5. Start the local server manually if you do not want a background service:
+
+```bash
+tars serve --config ./workspace/config/tars.config.yaml
+```
+
+6. Start the client:
+
+```bash
+tars
+```
+
+7. Run basic checks:
 
 ```bash
 make api-status

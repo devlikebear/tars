@@ -42,6 +42,9 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	}
 	bindClientFlags(cmd, &clientOpts)
 	cmd.Flags().BoolVar(&showVersion, "version", false, "print version and exit")
+	cmd.AddCommand(newInitCommand(stdout, stderr))
+	cmd.AddCommand(newDoctorCommand(stdout, stderr))
+	cmd.AddCommand(newServiceCommand(stdout, stderr))
 	cmd.AddCommand(newServeCommand(stdout, stderr))
 	cmd.AddCommand(newAssistantCommand(stdout, stderr))
 	cmd.AddCommand(newVersionCommand(stdout))

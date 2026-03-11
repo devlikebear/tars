@@ -1,6 +1,10 @@
 # tars example configuration
 # Usage:
+#   tars init                         # preferred starter path for packaged installs
+#   tars doctor --fix                 # create starter files and check BYOK readiness
+#   tars service install && tars service start
 #   go run ./cmd/tars serve --config ./config/tars.config.example.yaml --serve-api
+#   cp config/tars.config.example.yaml workspace/config/tars.config.yaml
 # Health check endpoint: GET /v1/healthz
 
 mode: standalone
