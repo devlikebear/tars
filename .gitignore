@@ -46,8 +46,7 @@ node_modules/
 .logs/
 
 # for development, ignore the following files
-.claude/
-.codex/
+.claude/*.local.json
 .docs/
 .analysis/
 AGENTS.md
