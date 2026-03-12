@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-11
+
+### Added
+
+- `tars init` to create a starter workspace plus minimal `workspace/config/tars.config.yaml`
+- `tars doctor` and `tars doctor --fix` to validate or repair local starter files before first run
+- `tars service install/start/stop/status` to manage `tars serve` as a macOS LaunchAgent
+
+### Changed
+
+- Quick start documentation now prefers `init -> doctor -> service` before manual `tars serve`
+- The public example config comments now point packaged installs to the starter onboarding flow
+
 ## [0.1.2] - 2026-03-10
 
 ### Changed
