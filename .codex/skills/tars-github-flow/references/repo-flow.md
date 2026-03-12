@@ -31,6 +31,7 @@ gh issue create \
 - Branch from `main`.
 - Use `feat/<name>`, `fix/<name>`, or `chore/<name>`.
 - Keep names lowercase kebab-case.
+- Do the work on that local feature branch, not on `main`.
 
 Example:
 
@@ -43,8 +44,9 @@ git switch -c feat/onboarding-service-flow
 
 Fallback when `.git` writes are blocked in the Codex environment:
 
+- This is an exception path only after you have clearly told the user that the normal path is local feature branch -> local commit -> clean `git status` -> push -> PR.
 - Create the remote branch with `gh api repos/<owner>/<repo>/git/refs`.
-- Commit through the GitHub Git Data API when needed.
+- Commit through the GitHub Git Data API only when local `.git` writes are truly blocked.
 - Tell the user that local branch creation and local main sync still need to happen in their own shell.
 
 ## Phase 4: Develop With TDD
@@ -77,12 +79,16 @@ Current repository release rules:
 
 - Keep the commit subject imperative and under 72 characters.
 - Prefer one commit per logical unit when possible.
+- Commit on the local feature branch before any remote push.
+- Run `git status --short --branch` after committing and confirm the feature branch is clean.
+- If the feature branch is not clean, do not push and do not open a PR yet.
 
 Example:
 
 ```bash
 git add cmd/tars/main.go cmd/tars/init_main.go cmd/tars/init_main_test.go
 git commit -m "feat: add onboarding and service lifecycle commands"
+git status --short --branch
 git push -u origin feat/onboarding-service-flow
 ```
 
@@ -91,6 +97,7 @@ git push -u origin feat/onboarding-service-flow
 - Use the repository PR template at `.github/pull_request_template.md`.
 - Fill all sections: `Summary`, `Changes`, `Validation`, `Checklist`, `Risks / Rollback`.
 - Explicitly document any local-only test failure that is unrelated to the change.
+- Open the PR only after the local feature branch commit exists and `git status --short --branch` is clean.
 
 Required checks and merge rules on `main`:
 
