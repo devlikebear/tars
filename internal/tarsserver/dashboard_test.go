@@ -59,10 +59,16 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 	if _, err := store.UpdateBoard(created.ID, project.BoardUpdateInput{
 		Tasks: []project.BoardTask{
 			{
-				ID:       "task-1",
-				Title:    "Build dashboard view",
-				Status:   "in_progress",
-				Assignee: "dev-1",
+				ID:               "task-1",
+				Title:            "Build dashboard view",
+				Status:           "in_progress",
+				Assignee:         "dev-1",
+				Issue:            "https://github.com/devlikebear/tars/issues/42",
+				Branch:           "feat/dashboard-view",
+				PR:               "https://github.com/devlikebear/tars/pull/42",
+				ReviewApprovedBy: "review-bot",
+				TestCommand:      "go test ./internal/tarsserver",
+				BuildCommand:     "go test ./internal/project",
 			},
 			{
 				ID:       "task-2",
@@ -73,6 +79,24 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		},
 	}); err != nil {
 		t.Fatalf("update board: %v", err)
+	}
+	if _, err := store.AppendActivity(created.ID, project.ActivityAppendInput{
+		Source:  "system",
+		TaskID:  "task-1",
+		Kind:    project.ActivityKindTestStatus,
+		Status:  "passed",
+		Message: "Task tests passed",
+	}); err != nil {
+		t.Fatalf("append test status: %v", err)
+	}
+	if _, err := store.AppendActivity(created.ID, project.ActivityAppendInput{
+		Source:  "system",
+		TaskID:  "task-1",
+		Kind:    project.ActivityKindBuildStatus,
+		Status:  "passed",
+		Message: "Task build passed",
+	}); err != nil {
+		t.Fatalf("append build status: %v", err)
 	}
 
 	handler := newProjectDashboardHandler(store, newProjectDashboardBroker(), zerolog.New(io.Discard))
@@ -97,6 +121,12 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		"Board",
 		"Build dashboard view",
 		"Prepare review notes",
+		"GitHub Flow",
+		"https://github.com/devlikebear/tars/issues/42",
+		"feat/dashboard-view",
+		"https://github.com/devlikebear/tars/pull/42",
+		"review-bot",
+		"passed",
 		"in_progress",
 		"review",
 		"todo",
@@ -105,6 +135,7 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		"/ui/projects/" + created.ID + "/stream",
 		"board-section",
 		"activity-section",
+		"github-flow-section",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected dashboard body to contain %q, got %q", want, body)

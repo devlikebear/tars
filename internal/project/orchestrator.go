@@ -48,15 +48,21 @@ type DispatchReport struct {
 }
 
 type Orchestrator struct {
-	store  *Store
-	runner TaskRunner
-	mu     sync.Mutex
+	store             *Store
+	runner            TaskRunner
+	githubAuthChecker GitHubAuthChecker
+	mu                sync.Mutex
 }
 
 func NewOrchestrator(store *Store, runner TaskRunner) *Orchestrator {
+	return NewOrchestratorWithGitHubAuthChecker(store, runner, defaultGitHubAuthChecker)
+}
+
+func NewOrchestratorWithGitHubAuthChecker(store *Store, runner TaskRunner, checker GitHubAuthChecker) *Orchestrator {
 	return &Orchestrator{
-		store:  store,
-		runner: runner,
+		store:             store,
+		runner:            runner,
+		githubAuthChecker: checker,
 	}
 }
 
@@ -130,6 +136,18 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 	if err != nil {
 		return TaskRun{}, err
 	}
+	if o.githubAuthChecker != nil {
+		if err := o.githubAuthChecker(ctx); err != nil {
+			wrapped := fmt.Errorf("github auth precondition failed: %w", err)
+			_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
+				TaskID:  task.ID,
+				Kind:    ActivityKindIssueStatus,
+				Status:  "blocked",
+				Message: strings.TrimSpace(wrapped.Error()),
+			})
+			return TaskRun{}, wrapped
+		}
+	}
 	if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
 		item.Status = "in_progress"
 		item.WorkerKind = profile.Kind
@@ -202,9 +220,88 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 	if finished.Status == TaskRunStatusFailed || finished.Status == TaskRunStatusCanceled {
 		finalStatus = "todo"
 	}
+	report := ParseTaskReport(finished.Response)
+	testStatus := verificationStatus(report.Tests)
+	buildStatus := verificationStatus(report.Build)
+	issueRef := firstNonEmpty(strings.TrimSpace(report.Issue), strings.TrimSpace(task.Issue))
+	branchRef := firstNonEmpty(strings.TrimSpace(report.Branch), strings.TrimSpace(task.Branch))
+	prRef := firstNonEmpty(strings.TrimSpace(report.PR), strings.TrimSpace(task.PR))
+
+	if strings.TrimSpace(task.TestCommand) != "" {
+		_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
+			TaskID:  task.ID,
+			Kind:    ActivityKindTestStatus,
+			Status:  testStatus,
+			Message: "Task test verification reported",
+			Meta: map[string]string{
+				"command": task.TestCommand,
+			},
+		})
+	}
+	if strings.TrimSpace(task.BuildCommand) != "" {
+		_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
+			TaskID:  task.ID,
+			Kind:    ActivityKindBuildStatus,
+			Status:  buildStatus,
+			Message: "Task build verification reported",
+			Meta: map[string]string{
+				"command": task.BuildCommand,
+			},
+		})
+	}
+	_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
+		TaskID:  task.ID,
+		Kind:    ActivityKindIssueStatus,
+		Status:  ternaryStatus(issueRef != "", "ready", "blocked"),
+		Message: "Task issue metadata recorded",
+		Meta: map[string]string{
+			"issue": issueRef,
+		},
+	})
+	_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
+		TaskID:  task.ID,
+		Kind:    ActivityKindBranchStatus,
+		Status:  ternaryStatus(branchRef != "", "ready", "blocked"),
+		Message: "Task branch metadata recorded",
+		Meta: map[string]string{
+			"branch": branchRef,
+		},
+	})
+	_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
+		TaskID:  task.ID,
+		Kind:    ActivityKindPRStatus,
+		Status:  ternaryStatus(prRef != "", "ready", "blocked"),
+		Message: "Task pull request metadata recorded",
+		Meta: map[string]string{
+			"pr": prRef,
+		},
+	})
+
+	gateErrs := []string{}
+	if strings.TrimSpace(task.TestCommand) != "" && testStatus != "passed" {
+		gateErrs = append(gateErrs, "tests not passed")
+	}
+	if strings.TrimSpace(task.BuildCommand) != "" && buildStatus != "passed" {
+		gateErrs = append(gateErrs, "build not passed")
+	}
+	if strings.TrimSpace(issueRef) == "" {
+		gateErrs = append(gateErrs, "issue missing")
+	}
+	if strings.TrimSpace(branchRef) == "" {
+		gateErrs = append(gateErrs, "branch missing")
+	}
+	if strings.TrimSpace(prRef) == "" {
+		gateErrs = append(gateErrs, "pr missing")
+	}
+	if len(gateErrs) > 0 && finished.Status != TaskRunStatusFailed && finished.Status != TaskRunStatusCanceled {
+		finalStatus = "in_progress"
+	}
 	if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
 		item.Status = finalStatus
 		item.WorkerKind = firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind)
+		item.Issue = issueRef
+		item.Branch = branchRef
+		item.PR = prRef
 	}); err != nil {
 		return finished, err
 	}
@@ -214,6 +311,9 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 	if finished.Status == TaskRunStatusFailed || finished.Status == TaskRunStatusCanceled {
 		activityStatus = "failed"
 		message = "Task run failed"
+	} else if len(gateErrs) > 0 {
+		activityStatus = "in_progress"
+		message = "Task run blocked by verification or GitHub Flow gate"
 	}
 	if err := o.store.appendSystemActivity(projectID, ActivityAppendInput{
 		TaskID:  task.ID,
@@ -228,6 +328,9 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 		},
 	}); err != nil {
 		return finished, err
+	}
+	if len(gateErrs) > 0 && finished.Status != TaskRunStatusFailed && finished.Status != TaskRunStatusCanceled {
+		return finished, fmt.Errorf("task gate failed: %s", strings.Join(gateErrs, ", "))
 	}
 	return finished, nil
 }
@@ -347,4 +450,11 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func ternaryStatus(ok bool, whenTrue, whenFalse string) string {
+	if ok {
+		return whenTrue
+	}
+	return whenFalse
 }

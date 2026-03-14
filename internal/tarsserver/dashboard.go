@@ -19,6 +19,7 @@ type projectDashboardPageData struct {
 	Activity   []project.Activity
 	Board      project.Board
 	BoardStats []projectDashboardBoardStat
+	GitHubFlow []projectDashboardGitHubFlowRow
 	PagePath   string
 	StreamPath string
 }
@@ -26,6 +27,19 @@ type projectDashboardPageData struct {
 type projectDashboardBoardStat struct {
 	Status string
 	Count  int
+}
+
+type projectDashboardGitHubFlowRow struct {
+	Task             string
+	Issue            string
+	Branch           string
+	PR               string
+	ReviewApprovedBy string
+	TestStatus       string
+	BuildStatus      string
+	IssueStatus      string
+	BranchStatus     string
+	PRStatus         string
 }
 
 type projectDashboardRoute struct {
@@ -204,6 +218,40 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       <p class="muted">No activity recorded yet.</p>
       {{end}}
     </section>
+
+    <section id="github-flow-section" class="card">
+      <h2>GitHub Flow</h2>
+      {{if .GitHubFlow}}
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Issue</th>
+            <th>Branch</th>
+            <th>PR</th>
+            <th>Review</th>
+            <th>Test</th>
+            <th>Build</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .GitHubFlow}}
+          <tr>
+            <td><strong>{{.Task}}</strong></td>
+            <td>{{if .Issue}}{{.Issue}}{{else}}-{{end}}{{if .IssueStatus}}<div class="muted">{{.IssueStatus}}</div>{{end}}</td>
+            <td>{{if .Branch}}{{.Branch}}{{else}}-{{end}}{{if .BranchStatus}}<div class="muted">{{.BranchStatus}}</div>{{end}}</td>
+            <td>{{if .PR}}{{.PR}}{{else}}-{{end}}{{if .PRStatus}}<div class="muted">{{.PRStatus}}</div>{{end}}</td>
+            <td>{{if .ReviewApprovedBy}}{{.ReviewApprovedBy}}{{else}}-{{end}}</td>
+            <td>{{if .TestStatus}}<code>{{.TestStatus}}</code>{{else}}-{{end}}</td>
+            <td>{{if .BuildStatus}}<code>{{.BuildStatus}}</code>{{else}}-{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted">No GitHub Flow metadata recorded yet.</p>
+      {{end}}
+    </section>
   </main>
   <script>
     (() => {
@@ -225,7 +273,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
           }
           const html = await response.text();
           const doc = new DOMParser().parseFromString(html, "text/html");
-          for (const id of ["board-section", "activity-section"]) {
+          for (const id of ["board-section", "activity-section", "github-flow-section"]) {
             const next = doc.getElementById(id);
             const current = document.getElementById(id);
             if (next && current) {
@@ -301,6 +349,7 @@ func newProjectDashboardHandler(store *project.Store, broker *projectDashboardBr
 			Activity:   activity,
 			Board:      board,
 			BoardStats: buildProjectDashboardBoardStats(board),
+			GitHubFlow: buildProjectDashboardGitHubFlow(board, activity),
 			PagePath:   fmt.Sprintf("/ui/projects/%s", route.ProjectID),
 			StreamPath: fmt.Sprintf("/ui/projects/%s/stream", route.ProjectID),
 		}); err != nil {
@@ -322,6 +371,41 @@ func buildProjectDashboardBoardStats(board project.Board) []projectDashboardBoar
 		})
 	}
 	return stats
+}
+
+func buildProjectDashboardGitHubFlow(board project.Board, activity []project.Activity) []projectDashboardGitHubFlowRow {
+	rows := make([]projectDashboardGitHubFlowRow, 0, len(board.Tasks))
+	statusByTaskAndKind := map[string]map[string]string{}
+	for _, item := range activity {
+		if strings.TrimSpace(item.TaskID) == "" || strings.TrimSpace(item.Kind) == "" {
+			continue
+		}
+		kindMap, ok := statusByTaskAndKind[item.TaskID]
+		if !ok {
+			kindMap = map[string]string{}
+			statusByTaskAndKind[item.TaskID] = kindMap
+		}
+		if _, exists := kindMap[item.Kind]; exists {
+			continue
+		}
+		kindMap[item.Kind] = strings.TrimSpace(item.Status)
+	}
+	for _, task := range board.Tasks {
+		kindMap := statusByTaskAndKind[task.ID]
+		rows = append(rows, projectDashboardGitHubFlowRow{
+			Task:             task.Title,
+			Issue:            task.Issue,
+			Branch:           task.Branch,
+			PR:               task.PR,
+			ReviewApprovedBy: task.ReviewApprovedBy,
+			TestStatus:       kindMap[project.ActivityKindTestStatus],
+			BuildStatus:      kindMap[project.ActivityKindBuildStatus],
+			IssueStatus:      kindMap[project.ActivityKindIssueStatus],
+			BranchStatus:     kindMap[project.ActivityKindBranchStatus],
+			PRStatus:         kindMap[project.ActivityKindPRStatus],
+		})
+	}
+	return rows
 }
 
 func serveProjectDashboardStream(w http.ResponseWriter, r *http.Request, projectID string, broker *projectDashboardBroker, logger zerolog.Logger) {

@@ -29,6 +29,7 @@ const (
 	ActivityKindStateChanged     = "state_changed"
 	ActivityKindBoardTaskCreated = "board_task_created"
 	ActivityKindBoardTaskUpdated = "board_task_updated"
+	ActivityKindBranchStatus     = "branch_status"
 	ActivityKindReviewStatus     = "review_status"
 	ActivityKindTestStatus       = "test_status"
 	ActivityKindBuildStatus      = "build_status"

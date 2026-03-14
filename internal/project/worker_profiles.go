@@ -98,6 +98,9 @@ func BuildTaskPrompt(task BoardTask, projectID string, profile WorkerProfile) st
 		builder.WriteString("summary: <short result summary>\n")
 		builder.WriteString("tests: <what ran and what passed/failed>\n")
 		builder.WriteString("build: <what ran and what passed/failed>\n")
+		builder.WriteString("issue: <linked issue url or id>\n")
+		builder.WriteString("branch: <branch name used for the task>\n")
+		builder.WriteString("pr: <pull request url or id>\n")
 		builder.WriteString("notes: <review findings or follow-up>\n")
 		builder.WriteString("</task-report>")
 	default:
@@ -108,6 +111,9 @@ func BuildTaskPrompt(task BoardTask, projectID string, profile WorkerProfile) st
 		builder.WriteString("summary: <short result summary>\n")
 		builder.WriteString("tests: <what ran and what passed/failed>\n")
 		builder.WriteString("build: <what ran and what passed/failed>\n")
+		builder.WriteString("issue: <linked issue url or id>\n")
+		builder.WriteString("branch: <branch name used for the task>\n")
+		builder.WriteString("pr: <pull request url or id>\n")
 		builder.WriteString("notes: <important details, blockers, or follow-up>\n")
 		builder.WriteString("</task-report>")
 	}
