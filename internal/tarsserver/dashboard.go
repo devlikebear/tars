@@ -10,9 +10,16 @@ import (
 )
 
 type projectDashboardPageData struct {
-	Project  project.Project
-	State    *project.ProjectState
-	Activity []project.Activity
+	Project    project.Project
+	State      *project.ProjectState
+	Activity   []project.Activity
+	Board      project.Board
+	BoardStats []projectDashboardBoardStat
+}
+
+type projectDashboardBoardStat struct {
+	Status string
+	Count  int
 }
 
 var projectDashboardTemplate = template.Must(template.New("project-dashboard").Parse(`<!DOCTYPE html>
@@ -34,6 +41,12 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
     .label { font-size: 0.78rem; text-transform: uppercase; color: #7a6545; margin-bottom: 6px; }
     .value { font-size: 1rem; font-weight: 600; }
     .muted { color: #6a5a43; }
+    .stack { display: grid; gap: 12px; }
+    .stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-bottom: 16px; }
+    .stat { background: #f8f1e3; border-radius: 12px; padding: 12px; border: 1px solid #eadfc9; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 8px; border-top: 1px solid #e6dac4; vertical-align: top; }
+    th { font-size: 0.78rem; text-transform: uppercase; color: #7a6545; }
     ul { margin: 0; padding-left: 18px; }
     li + li { margin-top: 10px; }
     code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.92em; }
@@ -65,6 +78,44 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
         <div class="label">Next Action</div>
         <div class="value">{{if and .State .State.NextAction}}{{.State.NextAction}}{{else}}-{{end}}</div>
       </article>
+    </section>
+
+    <section class="card">
+      <h2>Board</h2>
+      <div class="stats">
+        {{range .BoardStats}}
+        <article class="stat">
+          <div class="label">{{.Status}}</div>
+          <div class="value">{{.Count}}</div>
+          {{if gt .Count 0}}<div class="muted">{{.Count}} active</div>{{end}}
+        </article>
+        {{end}}
+      </div>
+      {{if .Board.Tasks}}
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Status</th>
+            <th>Assignee</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Board.Tasks}}
+          <tr>
+            <td>
+              <strong>{{.Title}}</strong>
+              {{if .Role}}<div class="muted">{{.Role}}</div>{{end}}
+            </td>
+            <td><code>{{.Status}}</code></td>
+            <td>{{if .Assignee}}{{.Assignee}}{{else}}-{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="muted">No board tasks recorded yet.</p>
+      {{end}}
     </section>
 
     <section class="card">
@@ -118,15 +169,38 @@ func newProjectDashboardHandler(store *project.Store, logger zerolog.Logger) htt
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load dashboard failed"})
 			return
 		}
+		board, err := store.GetBoard(projectID)
+		if err != nil {
+			logger.Error().Err(err).Str("project_id", projectID).Msg("load project board for dashboard failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load dashboard failed"})
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := projectDashboardTemplate.Execute(w, projectDashboardPageData{
-			Project:  item,
-			State:    state,
-			Activity: activity,
+			Project:    item,
+			State:      state,
+			Activity:   activity,
+			Board:      board,
+			BoardStats: buildProjectDashboardBoardStats(board),
 		}); err != nil {
 			logger.Error().Err(err).Str("project_id", projectID).Msg("render project dashboard failed")
 		}
 	})
+}
+
+func buildProjectDashboardBoardStats(board project.Board) []projectDashboardBoardStat {
+	stats := make([]projectDashboardBoardStat, 0, len(board.Columns))
+	counts := make(map[string]int, len(board.Columns))
+	for _, task := range board.Tasks {
+		counts[task.Status]++
+	}
+	for _, column := range board.Columns {
+		stats = append(stats, projectDashboardBoardStat{
+			Status: column,
+			Count:  counts[column],
+		})
+	}
+	return stats
 }
 
 func parseProjectDashboardPath(path string) (string, bool) {
