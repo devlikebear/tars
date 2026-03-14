@@ -54,6 +54,24 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 	}); err != nil {
 		t.Fatalf("append second activity: %v", err)
 	}
+	if _, err := store.UpdateBoard(created.ID, project.BoardUpdateInput{
+		Tasks: []project.BoardTask{
+			{
+				ID:       "task-1",
+				Title:    "Build dashboard view",
+				Status:   "in_progress",
+				Assignee: "dev-1",
+			},
+			{
+				ID:       "task-2",
+				Title:    "Prepare review notes",
+				Status:   "review",
+				Assignee: "reviewer-1",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("update board: %v", err)
+	}
 
 	handler := newProjectDashboardHandler(store, zerolog.New(io.Discard))
 	req := httptest.NewRequest(http.MethodGet, "/ui/projects/"+created.ID, nil)
@@ -74,6 +92,14 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		"active",
 		"Rendering dashboard page",
 		"Assign dashboard build to dev-1",
+		"Board",
+		"Build dashboard view",
+		"Prepare review notes",
+		"in_progress",
+		"review",
+		"todo",
+		"0",
+		"1 active",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected dashboard body to contain %q, got %q", want, body)
