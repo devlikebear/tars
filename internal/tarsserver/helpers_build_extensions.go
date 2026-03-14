@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/assetpath"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/plugin"
@@ -39,6 +40,9 @@ func buildSkillSources(cfg config.Config) []skill.SourceDir {
 		if trimmed == "" {
 			return
 		}
+		if source == skill.SourceBundled {
+			trimmed = assetpath.ResolveDir(trimmed)
+		}
 		out = append(out, skill.SourceDir{Source: source, Dir: trimmed})
 	}
 
@@ -60,6 +64,9 @@ func buildPluginSources(cfg config.Config) []extensions.PluginSourceDir {
 		trimmed := strings.TrimSpace(os.ExpandEnv(path))
 		if trimmed == "" {
 			return
+		}
+		if source == plugin.SourceBundled {
+			trimmed = assetpath.ResolveDir(trimmed)
 		}
 		out = append(out, extensions.PluginSourceDir{Source: source, Dir: trimmed})
 	}

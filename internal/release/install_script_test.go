@@ -37,7 +37,9 @@ func TestInstallScript_FetchesLatestReleaseAndInstallsBinary(t *testing.T) {
 			}
 
 			archivePath := filepath.Join(tempDir, "archive.tar.gz")
-			if err := writeTarballWithBinary(archivePath, "#!/bin/sh\necho 'tars 0.1.0 (test123, 2026-03-08T00:00:00Z)'\n"); err != nil {
+			if err := writeTarballWithFiles(archivePath, map[string]string{
+				"tars": "#!/bin/sh\necho 'tars 0.1.0 (test123, 2026-03-08T00:00:00Z)'\n",
+			}); err != nil {
 				t.Fatalf("write tarball: %v", err)
 			}
 			curlLog := filepath.Join(tempDir, "curl.log")
@@ -78,6 +80,55 @@ func TestInstallScript_FetchesLatestReleaseAndInstallsBinary(t *testing.T) {
 				t.Fatalf("install.sh should not fetch VERSION.txt anymore, log:\n%s", gotLog)
 			}
 		})
+	}
+}
+
+func TestInstallScript_InstallsBundledShareAssets(t *testing.T) {
+	t.Parallel()
+
+	rootDir := repoRoot(t)
+	installScript := filepath.Join(rootDir, "install.sh")
+	tempDir := t.TempDir()
+	binDir := filepath.Join(tempDir, "bin")
+	homeDir := filepath.Join(tempDir, "home")
+	installDir := filepath.Join(tempDir, "install")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.MkdirAll(homeDir, 0o755); err != nil {
+		t.Fatalf("mkdir home dir: %v", err)
+	}
+
+	archivePath := filepath.Join(tempDir, "archive.tar.gz")
+	if err := writeTarballWithFiles(archivePath, map[string]string{
+		"tars": "#!/bin/sh\necho 'tars 0.1.0 (test123, 2026-03-08T00:00:00Z)'\n",
+		"share/tars/plugins/project-swarm/tars.plugin.json": `{"id":"project-swarm"}`,
+	}); err != nil {
+		t.Fatalf("write tarball: %v", err)
+	}
+
+	writeExecutable(t, filepath.Join(binDir, "uname"), "#!/bin/sh\nif [ \"$1\" = \"-s\" ]; then\n  printf 'Darwin\\n'\n  exit 0\nfi\nif [ \"$1\" = \"-m\" ]; then\n  printf 'arm64\\n'\n  exit 0\nfi\nprintf 'unsupported uname args: %s\\n' \"$*\" >&2\nexit 1\n")
+	writeExecutable(t, filepath.Join(binDir, "curl"), "#!/bin/sh\nfor arg in \"$@\"; do url=\"$arg\"; done\ncase \"$url\" in\n  */releases/latest)\n    printf 'https://github.com/devlikebear/tars/releases/tag/v0.1.0'\n    ;;\n  *tars_0.1.0_darwin_arm64.tar.gz)\n    cat \"$TEST_ARCHIVE_SOURCE\"\n    ;;\n  *)\n    printf 'unexpected url: %s\\n' \"$url\" >&2\n    exit 22\n    ;;\nesac\n")
+
+	cmd := exec.Command("sh", installScript)
+	cmd.Env = append(os.Environ(),
+		"PATH="+binDir+":"+os.Getenv("PATH"),
+		"HOME="+homeDir,
+		"INSTALL_DIR="+installDir,
+		"TEST_ARCHIVE_SOURCE="+archivePath,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("install.sh failed: %v\n%s", err, output)
+	}
+
+	installedPlugin := filepath.Join(tempDir, "share", "tars", "plugins", "project-swarm", "tars.plugin.json")
+	data, err := os.ReadFile(installedPlugin)
+	if err != nil {
+		t.Fatalf("read installed plugin: %v", err)
+	}
+	if !strings.Contains(string(data), "project-swarm") {
+		t.Fatalf("installed plugin missing manifest content: %s", data)
 	}
 }
 
@@ -159,19 +210,25 @@ func writeExecutable(t *testing.T, path, contents string) {
 	}
 }
 
-func writeTarballWithBinary(path, contents string) error {
+func writeTarballWithFiles(path string, files map[string]string) error {
 	var archive bytes.Buffer
 	gzipWriter := gzip.NewWriter(&archive)
 	tarWriter := tar.NewWriter(gzipWriter)
-	if err := tarWriter.WriteHeader(&tar.Header{
-		Name: "tars",
-		Mode: 0o755,
-		Size: int64(len(contents)),
-	}); err != nil {
-		return err
-	}
-	if _, err := tarWriter.Write([]byte(contents)); err != nil {
-		return err
+	for name, contents := range files {
+		mode := int64(0o644)
+		if name == "tars" {
+			mode = 0o755
+		}
+		if err := tarWriter.WriteHeader(&tar.Header{
+			Name: name,
+			Mode: mode,
+			Size: int64(len(contents)),
+		}); err != nil {
+			return err
+		}
+		if _, err := tarWriter.Write([]byte(contents)); err != nil {
+			return err
+		}
 	}
 	if err := tarWriter.Close(); err != nil {
 		return err

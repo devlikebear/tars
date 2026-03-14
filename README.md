@@ -45,6 +45,8 @@ curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | 
 
 The installer downloads the latest published GitHub Release by default.
 
+Published installs also include bundled `share/tars/{skills,plugins}` assets so starter workspaces can copy built-in project plugins locally.
+
 Install to a custom path or pin a version:
 
 ```bash
@@ -58,6 +60,8 @@ curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | 
 ```bash
 tars init
 ```
+
+`tars init` creates the starter config and copies bundled workspace plugins, including `project-swarm`, into `workspace/plugins/`.
 
 2. Export a BYOK provider key for the starter config:
 
@@ -73,6 +77,7 @@ tars doctor --fix
 ```
 
 `--fix` only creates missing local files and directories. Provider credentials still need to be configured separately.
+It also restores missing bundled workspace plugins when the installed assets are available.
 
 4. Install and start the macOS background service:
 
@@ -124,7 +129,7 @@ make smoke-auth
 
 ## Project Manager API
 
-TARS now ships a bundled `project-swarm` plugin under [`plugins/project-swarm`](plugins/project-swarm). Its skills are mirrored into the workspace runtime and can be invoked explicitly with `/project-start` or selected automatically from natural-language kickoff messages in chat and Telegram.
+TARS now ships a bundled `project-swarm` plugin under [`plugins/project-swarm`](plugins/project-swarm). Installed builds carry it under `share/tars/plugins`, and `tars init` copies it into `workspace/plugins/project-swarm`. Its skills are mirrored into the workspace runtime and can be invoked explicitly with `/project-start` or selected automatically from natural-language kickoff messages in chat and Telegram.
 
 For direct API control, the project manager routes remain available:
 

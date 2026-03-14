@@ -149,9 +149,11 @@ build-bins:
 release-asset:
 	mkdir -p "$(DIST_DIR)"
 	rm -rf "$(RELEASE_STAGE_DIR)"
-	mkdir -p "$(RELEASE_STAGE_DIR)"
+	mkdir -p "$(RELEASE_STAGE_DIR)/share/tars"
 	CGO_ENABLED=$(RELEASE_CGO_ENABLED) GOOS=$(RELEASE_GOOS) GOARCH=$(RELEASE_GOARCH) $(GO) build -ldflags "$(GO_LDFLAGS)" -o "$(RELEASE_STAGE_DIR)/tars" ./cmd/tars
-	tar -C "$(RELEASE_STAGE_DIR)" -czf "$(DIST_DIR)/$(RELEASE_ARCHIVE_NAME)" tars
+	@if [ -d "./skills" ]; then cp -R "./skills" "$(RELEASE_STAGE_DIR)/share/tars/skills"; fi
+	@if [ -d "./plugins" ]; then cp -R "./plugins" "$(RELEASE_STAGE_DIR)/share/tars/plugins"; fi
+	tar -C "$(RELEASE_STAGE_DIR)" -czf "$(DIST_DIR)/$(RELEASE_ARCHIVE_NAME)" tars share
 
 browser-install:
 	npm install

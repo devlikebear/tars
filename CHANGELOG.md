@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-14
+
+### Added
+
+- Starter workspace setup now installs bundled plugins such as `project-swarm` into `workspace/plugins`
+- `tars doctor --fix` now restores missing bundled workspace plugins in addition to starter files
+
+### Changed
+
+- Bundled skill and plugin directories now resolve from installed package layouts such as `share/tars/{skills,plugins}` as well as repo-local paths
+- Release archives, the curl installer, and the Homebrew formula now install bundled `share/tars` assets alongside the `tars` binary
+
 ## [0.4.0] - 2026-03-14
 
 ### Added

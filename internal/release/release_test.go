@@ -62,6 +62,7 @@ func TestHomebrewFormulaIncludesBothMacArchitectures(t *testing.T) {
 		"https://github.com/devlikebear/tars/releases/download/v1.2.3/tars_1.2.3_darwin_amd64.tar.gz",
 		"sha256 \"arm64-sha\"",
 		"sha256 \"amd64-sha\"",
+		`prefix.install "share" if Dir.exist?("share")`,
 		"brew install ffmpeg whisper-cpp",
 	}
 	for _, snippet := range wantSnippets {
