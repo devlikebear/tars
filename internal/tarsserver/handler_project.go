@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -10,7 +11,15 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mainSessionID string, dashboardBroker *projectDashboardBroker, logger zerolog.Logger) http.Handler {
+func newProjectAPIHandler(
+	store *project.Store,
+	sessionStore *session.Store,
+	mainSessionID string,
+	taskRunner project.TaskRunner,
+	githubAuthChecker project.GitHubAuthChecker,
+	dashboardBroker *projectDashboardBroker,
+	logger zerolog.Logger,
+) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/v1/project-briefs/", func(w http.ResponseWriter, r *http.Request) {
@@ -421,6 +430,52 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 			default:
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
+			return
+		}
+
+		if len(parts) == 2 && parts[1] == "dispatch" {
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if taskRunner == nil {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project task runner is not configured"})
+				return
+			}
+			var req struct {
+				Stage string `json:"stage,omitempty"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+				return
+			}
+			orchestrator := project.NewOrchestratorWithGitHubAuthChecker(store, taskRunner, githubAuthChecker)
+			stage := strings.ToLower(strings.TrimSpace(req.Stage))
+			if stage == "" {
+				stage = "todo"
+			}
+
+			var (
+				report project.DispatchReport
+				err    error
+			)
+			switch stage {
+			case "todo":
+				report, err = orchestrator.DispatchTodo(r.Context(), projectID)
+			case "review":
+				report, err = orchestrator.DispatchReview(r.Context(), projectID)
+			default:
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage must be todo or review"})
+				return
+			}
+			if err != nil {
+				logger.Error().Err(err).Str("project_id", projectID).Str("stage", stage).Msg("dispatch project tasks failed")
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
+			dashboardBroker.publish(newProjectDashboardEvent(projectID, "board"))
+			dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
+			writeJSON(w, http.StatusOK, report)
 			return
 		}
 

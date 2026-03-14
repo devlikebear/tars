@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
@@ -28,7 +30,7 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{
 		"name":"Ops A",
@@ -96,7 +98,7 @@ func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -151,7 +153,7 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 
 	projectStore := project.NewStore(root, nil)
 	broker := newProjectDashboardBroker()
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, broker, zerolog.New(io.Discard))
 
 	briefReq := httptest.NewRequest(http.MethodPatch, "/v1/project-briefs/"+mainSess.ID, strings.NewReader(`{
 		"title":"Orbit Hearts",
@@ -240,7 +242,7 @@ func TestProjectAPI_ActivityRoutes(t *testing.T) {
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
 	broker := newProjectDashboardBroker()
-	handler := newProjectAPIHandler(projectStore, store, "", broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, broker, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -334,7 +336,7 @@ func TestProjectAPI_BoardRoutes(t *testing.T) {
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
 	broker := newProjectDashboardBroker()
-	handler := newProjectAPIHandler(projectStore, store, "", broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, broker, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -404,5 +406,134 @@ func TestProjectAPI_BoardRoutes(t *testing.T) {
 		}
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("expected dashboard board event")
+	}
+}
+
+func TestProjectAPI_DispatchRoute(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	projectStore := project.NewStore(root, nil)
+	broker := newProjectDashboardBroker()
+
+	codexExecutor, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+		Name: "codex-cli",
+		RunPrompt: func(_ context.Context, _ string, _ string, _ []string) (string, error) {
+			return `<task-report>
+status: completed
+summary: implemented
+tests: passed
+build: passed
+issue: https://github.com/devlikebear/tars/issues/301
+branch: feat/task-1
+pr: https://github.com/devlikebear/tars/pull/401
+notes: ready for review
+</task-report>`, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("new codex executor: %v", err)
+	}
+	claudeExecutor, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+		Name: "claude-code",
+		RunPrompt: func(_ context.Context, _ string, _ string, _ []string) (string, error) {
+			return `<task-report>
+status: approved
+summary: reviewed
+tests: passed
+build: passed
+issue: https://github.com/devlikebear/tars/issues/301
+branch: feat/task-1
+pr: https://github.com/devlikebear/tars/pull/401
+notes: approved
+</task-report>`, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("new claude executor: %v", err)
+	}
+
+	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors:    []gateway.AgentExecutor{codexExecutor, claudeExecutor},
+		DefaultAgent: "codex-cli",
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := runtime.Close(ctx); err != nil {
+			t.Fatalf("close runtime: %v", err)
+		}
+	})
+
+	taskRunner := gateway.NewProjectTaskRunner(runtime, "")
+	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, func(context.Context) error { return nil }, broker, zerolog.New(io.Discard))
+
+	created, err := projectStore.Create(project.CreateInput{Name: "Dispatch Project", Type: "operations"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := projectStore.UpdateBoard(created.ID, project.BoardUpdateInput{
+		Tasks: []project.BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Build dashboard",
+				Status:         "todo",
+				Assignee:       "dev-1",
+				Role:           "developer",
+				ReviewRequired: true,
+				TestCommand:    "go test ./internal/project",
+				BuildCommand:   "go test ./internal/tarsserver",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	events, unsubscribe := broker.subscribe()
+	defer unsubscribe()
+
+	todoReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/dispatch", strings.NewReader(`{"stage":"todo"}`))
+	todoReq.Header.Set("Content-Type", "application/json")
+	todoRec := httptest.NewRecorder()
+	handler.ServeHTTP(todoRec, todoReq)
+	if todoRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for todo dispatch, got %d body=%q", todoRec.Code, todoRec.Body.String())
+	}
+
+	boardAfterTodo, err := projectStore.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board after todo: %v", err)
+	}
+	if len(boardAfterTodo.Tasks) != 1 || boardAfterTodo.Tasks[0].Status != "review" {
+		t.Fatalf("expected task to move to review, got %+v", boardAfterTodo.Tasks)
+	}
+
+	reviewReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/dispatch", strings.NewReader(`{"stage":"review"}`))
+	reviewReq.Header.Set("Content-Type", "application/json")
+	reviewRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviewRec, reviewReq)
+	if reviewRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for review dispatch, got %d body=%q", reviewRec.Code, reviewRec.Body.String())
+	}
+
+	boardAfterReview, err := projectStore.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board after review: %v", err)
+	}
+	if len(boardAfterReview.Tasks) != 1 || boardAfterReview.Tasks[0].Status != "done" {
+		t.Fatalf("expected task to move to done, got %+v", boardAfterReview.Tasks)
+	}
+
+	select {
+	case evt := <-events:
+		if evt.ProjectID != created.ID {
+			t.Fatalf("unexpected dashboard event: %+v", evt)
+		}
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("expected dashboard refresh event after dispatch")
 	}
 }
