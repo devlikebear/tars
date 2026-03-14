@@ -305,6 +305,27 @@ func TestLoad_OpenAICodexProviderDefaults(t *testing.T) {
 	}
 }
 
+func TestLoad_ClaudeCodeCLIProviderDefaults(t *testing.T) {
+	t.Setenv("LLM_PROVIDER", "claude-code-cli")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if cfg.LLMProvider != "claude-code-cli" {
+		t.Fatalf("expected claude-code-cli provider, got %q", cfg.LLMProvider)
+	}
+	if cfg.LLMModel != "sonnet" {
+		t.Fatalf("expected claude-code-cli default model sonnet, got %q", cfg.LLMModel)
+	}
+	if cfg.LLMAuthMode != "cli" {
+		t.Fatalf("expected claude-code-cli default auth mode cli, got %q", cfg.LLMAuthMode)
+	}
+	if cfg.LLMOAuthProvider != "" {
+		t.Fatalf("expected claude-code-cli oauth provider to stay empty, got %q", cfg.LLMOAuthProvider)
+	}
+}
+
 func TestLoad_InvalidPathReturnsError(t *testing.T) {
 	_, err := Load("./does-not-exist.yaml")
 	if err == nil {

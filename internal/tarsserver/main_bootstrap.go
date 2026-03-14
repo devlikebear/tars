@@ -117,6 +117,7 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 		AuthMode:        cfg.LLMAuthMode,
 		OAuthProvider:   cfg.LLMOAuthProvider,
 		BaseURL:         cfg.LLMBaseURL,
+		WorkDir:         cfg.WorkspaceDir,
 		Model:           cfg.LLMModel,
 		APIKey:          cfg.LLMAPIKey,
 		ReasoningEffort: cfg.LLMReasoningEffort,

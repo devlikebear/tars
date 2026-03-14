@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-03-14
+
+### Added
+
+- `llm_provider: claude-code-cli` to run chat requests through a locally installed Claude Code CLI without API keys
+
+### Changed
+
+- `tars doctor`, starter config comments, and public docs now explain the local Claude Code CLI provider path alongside API-backed providers
+
 ## [0.5.4] - 2026-03-14
 
 ### Fixed

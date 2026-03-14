@@ -46,6 +46,7 @@ const (
 	defaultOpenAIModel                   = "gpt-4o-mini"
 	defaultOpenAICodexBaseURL            = "https://chatgpt.com/backend-api"
 	defaultOpenAICodexModel              = "gpt-5.3-codex"
+	defaultClaudeCodeCLIModel            = "sonnet"
 	defaultGeminiBaseURL                 = "https://generativelanguage.googleapis.com/v1beta/openai"
 	defaultGeminiNativeBaseURL           = "https://generativelanguage.googleapis.com/v1beta"
 	defaultGeminiModel                   = "gemini-2.5-flash"

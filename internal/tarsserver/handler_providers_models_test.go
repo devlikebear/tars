@@ -225,3 +225,74 @@ func TestModelsAPI_NoCacheLiveFail_(t *testing.T) {
 		t.Fatalf("expected models_unavailable code, got %q", rec.Body.String())
 	}
 }
+
+func TestProvidersAPI_ClaudeCodeCLIListedWithoutLiveModels(t *testing.T) {
+	cfg := config.Config{
+		LLMProvider: "claude-code-cli",
+		LLMModel:    "sonnet",
+		LLMAuthMode: "cli",
+	}
+	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, time.Now)
+	if err != nil {
+		t.Fatalf("newProviderModelsCache: %v", err)
+	}
+	service := newProviderModelsService(cfg, cache, &fakeModelFetcher{}, time.Now)
+	handler := newProvidersModelsAPIHandler(service, zerolog.New(io.Discard))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/providers", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var out providersAPIInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode providers response: %v", err)
+	}
+	if out.CurrentProvider != "claude-code-cli" || out.CurrentModel != "sonnet" || out.AuthMode != "cli" {
+		t.Fatalf("unexpected providers payload: %+v", out)
+	}
+	found := false
+	for _, item := range out.Providers {
+		if item.ID != "claude-code-cli" {
+			continue
+		}
+		found = true
+		if item.SupportsLiveModels {
+			t.Fatalf("expected claude-code-cli live_models=false, got %+v", item)
+		}
+	}
+	if !found {
+		t.Fatalf("expected claude-code-cli in providers list, got %+v", out.Providers)
+	}
+}
+
+func TestModelsAPI_ClaudeCodeCLIUnsupported_(t *testing.T) {
+	now := time.Date(2026, 3, 14, 12, 0, 0, 0, time.UTC)
+	cfg := config.Config{
+		LLMProvider: "claude-code-cli",
+		LLMModel:    "sonnet",
+		LLMAuthMode: "cli",
+	}
+	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("newProviderModelsCache: %v", err)
+	}
+	fetcher := &fakeModelFetcher{models: []string{"should-not-be-used"}}
+	service := newProviderModelsService(cfg, cache, fetcher, func() time.Time { return now })
+	handler := newProvidersModelsAPIHandler(service, zerolog.New(io.Discard))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if fetcher.calls != 0 {
+		t.Fatalf("expected no fetch attempt, got %d", fetcher.calls)
+	}
+	if !strings.Contains(rec.Body.String(), "claude-code-cli") {
+		t.Fatalf("expected claude-code-cli message, got %q", rec.Body.String())
+	}
+}

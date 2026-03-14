@@ -18,6 +18,7 @@ var supportedLiveModelProviders = []string{
 	"bifrost",
 	"openai",
 	"openai-codex",
+	"claude-code-cli",
 	"gemini",
 	"gemini-native",
 	"anthropic",
@@ -167,7 +168,12 @@ func (s *providerModelsService) supportsProvider(provider string) bool {
 }
 
 func providerSupportsLiveModels(provider string) bool {
-	return normalizeProviderValue(provider) != "openai-codex"
+	switch normalizeProviderValue(provider) {
+	case "openai-codex", "claude-code-cli":
+		return false
+	default:
+		return true
+	}
 }
 
 func appendCurrentModel(models []string, currentModel string) []string {
