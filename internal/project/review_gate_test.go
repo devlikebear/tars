@@ -64,7 +64,7 @@ build: go test ./internal/gateway
 notes: approved
 </task-report>`,
 	}
-	orchestrator := NewOrchestrator(store, runner)
+	orchestrator := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error { return nil })
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -142,7 +142,7 @@ build: go test ./internal/gateway
 notes: fix the failing case
 </task-report>`,
 	}
-	orchestrator := NewOrchestrator(store, runner)
+	orchestrator := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error { return nil })
 
 	errCh := make(chan error, 1)
 	go func() {

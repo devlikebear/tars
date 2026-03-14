@@ -62,6 +62,9 @@ func TestStoreBoardRoundtrip(t *testing.T) {
 				Assignee:         "dev-1",
 				Role:             "developer",
 				WorkerKind:       WorkerKindCodexCLI,
+				Issue:            "https://github.com/devlikebear/tars/issues/99",
+				Branch:           "feat/task-1",
+				PR:               "https://github.com/devlikebear/tars/pull/199",
 				ReviewApprovedBy: "review-bot",
 				ReviewRequired:   true,
 				TestCommand:      "go test ./internal/project",
@@ -88,6 +91,9 @@ func TestStoreBoardRoundtrip(t *testing.T) {
 	}
 	if loaded.Tasks[0].WorkerKind != WorkerKindCodexCLI {
 		t.Fatalf("expected worker kind %q, got %+v", WorkerKindCodexCLI, loaded.Tasks[0])
+	}
+	if loaded.Tasks[0].Issue == "" || loaded.Tasks[0].Branch == "" || loaded.Tasks[0].PR == "" {
+		t.Fatalf("expected github flow metadata to round-trip, got %+v", loaded.Tasks[0])
 	}
 	if loaded.Tasks[0].ReviewApprovedBy != "review-bot" {
 		t.Fatalf("expected review approver to round-trip, got %+v", loaded.Tasks[0])

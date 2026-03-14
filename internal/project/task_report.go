@@ -10,6 +10,9 @@ type TaskReport struct {
 	Summary string
 	Tests   string
 	Build   string
+	Issue   string
+	Branch  string
+	PR      string
 	Notes   string
 }
 
@@ -43,6 +46,12 @@ func ParseTaskReport(raw string) TaskReport {
 			report.Tests = trimmedValue
 		case "build":
 			report.Build = trimmedValue
+		case "issue":
+			report.Issue = trimmedValue
+		case "branch":
+			report.Branch = trimmedValue
+		case "pr":
+			report.PR = trimmedValue
 		case "notes":
 			report.Notes = trimmedValue
 		}

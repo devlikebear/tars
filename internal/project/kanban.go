@@ -21,6 +21,9 @@ type BoardTask struct {
 	Assignee         string `json:"assignee,omitempty" yaml:"assignee,omitempty"`
 	Role             string `json:"role,omitempty" yaml:"role,omitempty"`
 	WorkerKind       string `json:"worker_kind,omitempty" yaml:"worker_kind,omitempty"`
+	Issue            string `json:"issue,omitempty" yaml:"issue,omitempty"`
+	Branch           string `json:"branch,omitempty" yaml:"branch,omitempty"`
+	PR               string `json:"pr,omitempty" yaml:"pr,omitempty"`
 	ReviewApprovedBy string `json:"review_approved_by,omitempty" yaml:"review_approved_by,omitempty"`
 	ReviewRequired   bool   `json:"review_required,omitempty" yaml:"review_required,omitempty"`
 	TestCommand      string `json:"test_command,omitempty" yaml:"test_command,omitempty"`
@@ -256,6 +259,9 @@ func normalizeBoardTasks(raw []BoardTask, columns []string) []BoardTask {
 			Assignee:         strings.TrimSpace(task.Assignee),
 			Role:             strings.TrimSpace(task.Role),
 			WorkerKind:       strings.ToLower(strings.TrimSpace(task.WorkerKind)),
+			Issue:            strings.TrimSpace(task.Issue),
+			Branch:           strings.TrimSpace(task.Branch),
+			PR:               strings.TrimSpace(task.PR),
 			ReviewApprovedBy: strings.TrimSpace(task.ReviewApprovedBy),
 			ReviewRequired:   task.ReviewRequired,
 			TestCommand:      strings.TrimSpace(task.TestCommand),

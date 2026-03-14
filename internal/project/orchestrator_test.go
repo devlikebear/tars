@@ -31,11 +31,21 @@ func (s *stubTaskRunner) Start(_ context.Context, req TaskRunRequest) (TaskRun, 
 	runID := fmt.Sprintf("run-%s", req.TaskID)
 	if _, ok := s.results[runID]; !ok {
 		s.results[runID] = TaskRun{
-			ID:       runID,
-			TaskID:   req.TaskID,
-			Agent:    req.Agent,
-			Status:   TaskRunStatusCompleted,
-			Response: "ok",
+			ID:         runID,
+			TaskID:     req.TaskID,
+			Agent:      req.Agent,
+			WorkerKind: req.WorkerKind,
+			Status:     TaskRunStatusCompleted,
+			Response: `<task-report>
+status: completed
+summary: ok
+tests: passed
+build: passed
+issue: https://github.com/devlikebear/tars/issues/1
+branch: feat/` + req.TaskID + `
+pr: https://github.com/devlikebear/tars/pull/1
+notes: ok
+</task-report>`,
 		}
 	}
 	s.startedCh <- struct{}{}
@@ -72,7 +82,7 @@ func TestOrchestratorDispatchTodoRunsTasksInParallel(t *testing.T) {
 	}
 
 	runner := newStubTaskRunner()
-	orchestrator := NewOrchestrator(store, runner)
+	orchestrator := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error { return nil })
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -142,7 +152,7 @@ func TestOrchestratorDispatchTodoRestoresFailedTaskToTodo(t *testing.T) {
 		Status: TaskRunStatusFailed,
 		Error:  "boom",
 	}
-	orchestrator := NewOrchestrator(store, runner)
+	orchestrator := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error { return nil })
 
 	errCh := make(chan error, 1)
 	go func() {
