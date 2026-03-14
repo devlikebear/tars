@@ -115,6 +115,24 @@ func (m *AutopilotManager) run(projectID, runID string) {
 			return
 		}
 		switch {
+		case len(board.Tasks) == 0:
+			if err := m.seedBacklog(projectID); err != nil {
+				message := "Autopilot blocked: no tasks on the board"
+				if strings.TrimSpace(err.Error()) != "" {
+					message += ": " + strings.TrimSpace(err.Error())
+				}
+				m.block(projectID, runID, iteration, message)
+				m.updateState(projectID, "blocked", "blocked", "Seed backlog and continue", message, message)
+				return
+			}
+			m.setRun(projectID, func(item *AutopilotRun) {
+				item.Status = AutopilotStatusRunning
+				item.Message = "PM seeded backlog and resumed autopilot"
+				item.Iterations = iteration
+			})
+			m.updateState(projectID, "planning", "active", "Dispatch seeded backlog", "PM seeded MVP backlog", "")
+			m.publish(projectID)
+			continue
 		case boardHasStatus(board, "todo"):
 			m.setRun(projectID, func(item *AutopilotRun) {
 				item.Status = AutopilotStatusRunning
@@ -147,13 +165,14 @@ func (m *AutopilotManager) run(projectID, runID string) {
 				message = "Autopilot blocked on task: " + strings.TrimSpace(task.Title)
 				nextAction = "Resolve task blocker: " + strings.TrimSpace(task.Title)
 			}
+			_ = m.appendPMActivity(projectID, ActivityKindDecision, "needed", nextAction, map[string]string{
+				"task_id": task.ID,
+			})
+			_ = m.appendPMActivity(projectID, ActivityKindReplan, "proposed", "Split or restage the blocked work before resuming autopilot", map[string]string{
+				"task_id": task.ID,
+			})
 			m.block(projectID, runID, iteration, message)
 			m.updateState(projectID, "blocked", "blocked", nextAction, message, message)
-			return
-		case len(board.Tasks) == 0:
-			message := "Autopilot blocked: no tasks on the board"
-			m.block(projectID, runID, iteration, message)
-			m.updateState(projectID, "blocked", "blocked", "Seed backlog and continue", message, message)
 			return
 		case allBoardTasksDone(board):
 			message := "Autopilot completed all project tasks"
@@ -194,6 +213,7 @@ func (m *AutopilotManager) block(projectID, runID string, iteration int, message
 		item.Iterations = iteration
 		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
 	})
+	_ = m.appendPMActivity(projectID, ActivityKindBlocker, "blocked", strings.TrimSpace(message), nil)
 	m.updateState(projectID, "blocked", "blocked", "Review blocker and continue", strings.TrimSpace(message), strings.TrimSpace(message))
 	m.publish(projectID)
 }
@@ -281,4 +301,66 @@ func allBoardTasksDone(board Board) bool {
 		}
 	}
 	return true
+}
+
+func (m *AutopilotManager) seedBacklog(projectID string) error {
+	if m == nil || m.store == nil {
+		return fmt.Errorf("autopilot manager store is not configured")
+	}
+	item, err := m.store.Get(projectID)
+	if err != nil {
+		return err
+	}
+	board, err := m.store.GetBoard(projectID)
+	if err != nil {
+		return err
+	}
+	if len(board.Tasks) > 0 {
+		return nil
+	}
+
+	projectLabel := firstNonEmpty(strings.TrimSpace(item.Name), strings.TrimSpace(item.Objective), "project")
+	tasks := []BoardTask{
+		{
+			ID:             "pm-seed-bootstrap",
+			Title:          "Bootstrap MVP for " + projectLabel,
+			Status:         "todo",
+			Assignee:       "dev-1",
+			Role:           "developer",
+			WorkerKind:     WorkerKindCodexCLI,
+			ReviewRequired: true,
+		},
+		{
+			ID:             "pm-seed-vertical-slice",
+			Title:          "Implement first vertical slice for " + projectLabel,
+			Status:         "todo",
+			Assignee:       "dev-2",
+			Role:           "developer",
+			WorkerKind:     WorkerKindCodexCLI,
+			ReviewRequired: true,
+		},
+	}
+	if _, err := m.store.UpdateBoard(projectID, BoardUpdateInput{
+		Columns: board.Columns,
+		Tasks:   tasks,
+	}); err != nil {
+		return err
+	}
+	return m.appendPMActivity(projectID, ActivityKindReplan, "seeded", "PM seeded MVP backlog from the current project objective", map[string]string{
+		"seed_tasks": fmt.Sprintf("%d", len(tasks)),
+	})
+}
+
+func (m *AutopilotManager) appendPMActivity(projectID, kind, status, message string, meta map[string]string) error {
+	if m == nil || m.store == nil {
+		return nil
+	}
+	_, err := m.store.AppendActivity(projectID, ActivityAppendInput{
+		Source:  ActivitySourcePM,
+		Kind:    kind,
+		Status:  status,
+		Message: message,
+		Meta:    meta,
+	})
+	return err
 }

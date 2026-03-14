@@ -83,6 +83,30 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 	}); err != nil {
 		t.Fatalf("append agent report: %v", err)
 	}
+	if _, err := store.AppendActivity(created.ID, project.ActivityAppendInput{
+		Source:  "pm",
+		Kind:    "blocker",
+		Status:  "blocked",
+		Message: "Waiting for GitHub metadata",
+	}); err != nil {
+		t.Fatalf("append blocker activity: %v", err)
+	}
+	if _, err := store.AppendActivity(created.ID, project.ActivityAppendInput{
+		Source:  "pm",
+		Kind:    "decision",
+		Status:  "needed",
+		Message: "Choose whether to continue without GitHub issue linkage",
+	}); err != nil {
+		t.Fatalf("append decision activity: %v", err)
+	}
+	if _, err := store.AppendActivity(created.ID, project.ActivityAppendInput{
+		Source:  "pm",
+		Kind:    "replan",
+		Status:  "proposed",
+		Message: "Split dashboard work into implementation and review slices",
+	}); err != nil {
+		t.Fatalf("append replan activity: %v", err)
+	}
 	if _, err := store.UpdateBoard(created.ID, project.BoardUpdateInput{
 		Tasks: []project.BoardTask{
 			{
@@ -171,6 +195,12 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		"Worker Reports",
 		"Implemented board rendering",
 		"Waiting for review",
+		"Blockers",
+		"Waiting for GitHub metadata",
+		"Decisions",
+		"Choose whether to continue without GitHub issue linkage",
+		"Replans",
+		"Split dashboard work into implementation and review slices",
 		"https://github.com/devlikebear/tars/issues/42",
 		"feat/dashboard-view",
 		"https://github.com/devlikebear/tars/pull/42",
@@ -186,6 +216,9 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		"board-section",
 		"activity-section",
 		"reports-section",
+		"blockers-section",
+		"decisions-section",
+		"replans-section",
 		"github-flow-section",
 	} {
 		if !strings.Contains(body, want) {

@@ -22,6 +22,9 @@ type projectDashboardPageData struct {
 	BoardStats []projectDashboardBoardStat
 	GitHubFlow []projectDashboardGitHubFlowRow
 	Reports    []projectDashboardWorkerReport
+	Blockers   []projectDashboardPMItem
+	Decisions  []projectDashboardPMItem
+	Replans    []projectDashboardPMItem
 	PagePath   string
 	StreamPath string
 }
@@ -51,6 +54,13 @@ type projectDashboardWorkerReport struct {
 	Message   string
 	Notes     string
 	RunID     string
+	Timestamp string
+}
+
+type projectDashboardPMItem struct {
+	Task      string
+	Status    string
+	Message   string
 	Timestamp string
 }
 
@@ -313,6 +323,60 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       <p class="muted">No worker reports recorded yet.</p>
       {{end}}
     </section>
+
+    <section id="blockers-section" class="card">
+      <h2>Blockers</h2>
+      {{if .Blockers}}
+      <ul>
+        {{range .Blockers}}
+        <li>
+          {{if .Task}}<strong>{{.Task}}</strong>{{end}}
+          <span class="muted">{{.Timestamp}}</span>
+          {{if .Status}}<span class="muted">· {{.Status}}</span>{{end}}
+          <div>{{.Message}}</div>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="muted">No blockers recorded yet.</p>
+      {{end}}
+    </section>
+
+    <section id="decisions-section" class="card">
+      <h2>Decisions</h2>
+      {{if .Decisions}}
+      <ul>
+        {{range .Decisions}}
+        <li>
+          {{if .Task}}<strong>{{.Task}}</strong>{{end}}
+          <span class="muted">{{.Timestamp}}</span>
+          {{if .Status}}<span class="muted">· {{.Status}}</span>{{end}}
+          <div>{{.Message}}</div>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="muted">No decisions recorded yet.</p>
+      {{end}}
+    </section>
+
+    <section id="replans-section" class="card">
+      <h2>Replans</h2>
+      {{if .Replans}}
+      <ul>
+        {{range .Replans}}
+        <li>
+          {{if .Task}}<strong>{{.Task}}</strong>{{end}}
+          <span class="muted">{{.Timestamp}}</span>
+          {{if .Status}}<span class="muted">· {{.Status}}</span>{{end}}
+          <div>{{.Message}}</div>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="muted">No replans recorded yet.</p>
+      {{end}}
+    </section>
   </main>
   <script>
     (() => {
@@ -334,7 +398,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
           }
           const html = await response.text();
           const doc = new DOMParser().parseFromString(html, "text/html");
-          for (const id of ["autopilot-section", "board-section", "activity-section", "github-flow-section", "reports-section"]) {
+          for (const id of ["autopilot-section", "board-section", "activity-section", "github-flow-section", "reports-section", "blockers-section", "decisions-section", "replans-section"]) {
             const next = doc.getElementById(id);
             const current = document.getElementById(id);
             if (next && current) {
@@ -423,6 +487,9 @@ func newProjectDashboardHandler(store *project.Store, autopilot projectAutopilot
 			BoardStats: buildProjectDashboardBoardStats(board),
 			GitHubFlow: buildProjectDashboardGitHubFlow(board, activity),
 			Reports:    buildProjectDashboardWorkerReports(board, activity),
+			Blockers:   buildProjectDashboardPMItems(board, activity, project.ActivityKindBlocker),
+			Decisions:  buildProjectDashboardPMItems(board, activity, project.ActivityKindDecision),
+			Replans:    buildProjectDashboardPMItems(board, activity, project.ActivityKindReplan),
 			PagePath:   fmt.Sprintf("/ui/projects/%s", route.ProjectID),
 			StreamPath: fmt.Sprintf("/ui/projects/%s/stream", route.ProjectID),
 		}); err != nil {
@@ -498,6 +565,26 @@ func buildProjectDashboardWorkerReports(board project.Board, activity []project.
 			Message:   strings.TrimSpace(item.Message),
 			Notes:     strings.TrimSpace(item.Meta["notes"]),
 			RunID:     strings.TrimSpace(item.Meta["run_id"]),
+			Timestamp: strings.TrimSpace(item.Timestamp),
+		})
+	}
+	return rows
+}
+
+func buildProjectDashboardPMItems(board project.Board, activity []project.Activity, kind string) []projectDashboardPMItem {
+	taskTitles := map[string]string{}
+	for _, task := range board.Tasks {
+		taskTitles[strings.TrimSpace(task.ID)] = strings.TrimSpace(task.Title)
+	}
+	rows := make([]projectDashboardPMItem, 0)
+	for _, item := range activity {
+		if item.Kind != kind {
+			continue
+		}
+		rows = append(rows, projectDashboardPMItem{
+			Task:      dashboardFirstNonEmpty(taskTitles[strings.TrimSpace(item.TaskID)], strings.TrimSpace(item.TaskID)),
+			Status:    strings.TrimSpace(item.Status),
+			Message:   strings.TrimSpace(item.Message),
 			Timestamp: strings.TrimSpace(item.Timestamp),
 		})
 	}

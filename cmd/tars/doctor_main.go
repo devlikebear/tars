@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -132,6 +133,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 	if cfgLoaded {
 		checkDoctorAPIAuth(&report, cfg)
 		checkDoctorProjectWorkflowGateway(&report, cfg)
+		checkDoctorGatewayAgents(&report, cfg)
 		checkDoctorLLMCredentials(&report, cfg, configPath)
 		checkDoctorLLMRuntime(&report, cfg)
 	}
@@ -181,6 +183,41 @@ func checkDoctorProjectWorkflowGateway(report *doctorReport, cfg config.Config) 
 	report.addHint("set `gateway_enabled: true` in the starter config before using the bundled project workflow")
 }
 
+func checkDoctorGatewayAgents(report *doctorReport, cfg config.Config) {
+	if !cfg.GatewayEnabled {
+		return
+	}
+	defaultAgent := strings.TrimSpace(cfg.GatewayDefaultAgent)
+	if defaultAgent == "" || strings.EqualFold(defaultAgent, "default") {
+		report.add("ok", "gateway agents", "in-process default gateway agent available")
+		return
+	}
+
+	enabled := map[string]config.GatewayAgent{}
+	for _, agent := range cfg.GatewayAgents {
+		if !agent.Enabled {
+			continue
+		}
+		name := strings.ToLower(strings.TrimSpace(agent.Name))
+		if name == "" {
+			continue
+		}
+		enabled[name] = agent
+	}
+	spec, ok := enabled[strings.ToLower(defaultAgent)]
+	if !ok {
+		report.add("fail", "gateway agents", fmt.Sprintf("gateway_default_agent=%q is not registered as an enabled gateway agent", defaultAgent))
+		report.addHint("clear `gateway_default_agent` to use the in-process default agent, or register the named gateway agent")
+		return
+	}
+	if detail := validateDoctorGatewayAgent(cfg.WorkspaceDir, spec); detail != "" {
+		report.add("fail", "gateway agents", detail)
+		report.addHint("fix the missing gateway command/path, or clear `gateway_default_agent` to fall back to the in-process default agent")
+		return
+	}
+	report.add("ok", "gateway agents", fmt.Sprintf("gateway_default_agent=%s", defaultAgent))
+}
+
 func checkDoctorLLMRuntime(report *doctorReport, cfg config.Config) {
 	switch strings.TrimSpace(strings.ToLower(cfg.LLMProvider)) {
 	case "claude-code-cli":
@@ -211,6 +248,62 @@ func llmCredentialHint(provider, configPath string) string {
 	default:
 		return fmt.Sprintf("set TARS_LLM_API_KEY or llm_api_key in %s", configPath)
 	}
+}
+
+func validateDoctorGatewayAgent(workspaceDir string, spec config.GatewayAgent) string {
+	name := strings.TrimSpace(spec.Name)
+	command := strings.TrimSpace(os.ExpandEnv(spec.Command))
+	if name == "" || command == "" {
+		return fmt.Sprintf("gateway agent %q is missing a command", name)
+	}
+	workDir := strings.TrimSpace(os.ExpandEnv(spec.WorkingDir))
+	if workDir == "" {
+		workDir = strings.TrimSpace(workspaceDir)
+	} else if !filepath.IsAbs(workDir) && strings.TrimSpace(workspaceDir) != "" {
+		workDir = filepath.Join(strings.TrimSpace(workspaceDir), workDir)
+	}
+	if detail := validateDoctorCommandPath(command, workDir, name); detail != "" {
+		return detail
+	}
+	for _, rawArg := range spec.Args {
+		arg := strings.TrimSpace(os.ExpandEnv(rawArg))
+		if arg == "" {
+			continue
+		}
+		if !doctorLooksLikeLocalPath(arg) {
+			continue
+		}
+		path := arg
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(workDir, path)
+		}
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Sprintf("gateway agent %q references missing path %s", name, path)
+		}
+	}
+	return ""
+}
+
+func validateDoctorCommandPath(command, workDir, agentName string) string {
+	if doctorLooksLikeLocalPath(command) {
+		path := command
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(workDir, path)
+		}
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Sprintf("gateway agent %q command not found: %s", agentName, path)
+		}
+		return ""
+	}
+	if _, err := exec.LookPath(command); err != nil {
+		return fmt.Sprintf("gateway agent %q command %q is not available on PATH", agentName, command)
+	}
+	return ""
+}
+
+func doctorLooksLikeLocalPath(value string) bool {
+	value = strings.TrimSpace(value)
+	return filepath.IsAbs(value) || strings.HasPrefix(value, "./") || strings.HasPrefix(value, "../")
 }
 
 func missingWorkspacePaths(root string, bundledPluginsDir string) []string {
