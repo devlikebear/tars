@@ -61,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | 
 tars init
 ```
 
-`tars init` creates the starter config and copies bundled workspace plugins, including `project-swarm`, into `workspace/plugins/`.
+`tars init` creates the starter config, enables the local gateway path used by project workflows, and copies bundled workspace plugins, including `project-swarm`, into `workspace/plugins/`.
 
 2. Export a BYOK provider key for the starter config:
 
@@ -77,7 +77,7 @@ tars doctor --fix
 ```
 
 `--fix` only creates missing local files and directories. Provider credentials still need to be configured separately.
-It also restores missing bundled workspace plugins when the installed assets are available.
+It also restores missing bundled workspace plugins when the installed assets are available, and `tars doctor` warns if `gateway_enabled=false` would block the bundled project workflow.
 
 4. Install and start the macOS background service:
 
