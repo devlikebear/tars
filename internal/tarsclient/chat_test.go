@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -135,5 +136,130 @@ func TestChatClientStream_HTTPErrorReturnsAPIError(t *testing.T) {
 	}
 	if strings.TrimSpace(apiErr.Code) != "invalid_request" {
 		t.Fatalf("expected code invalid_request, got %q", apiErr.Code)
+	}
+}
+
+func TestChatClientStream_RetriesWithMainSessionOnStaleSession(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		attempts []chatRequest
+		statuses int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat":
+			var req chatRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			mu.Lock()
+			attempts = append(attempts, req)
+			attempt := len(attempts)
+			mu.Unlock()
+			if attempt == 1 {
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"code":    "not_found",
+					"message": "session not found",
+				})
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: {\"type\":\"delta\",\"text\":\"Hello\"}\n")
+			fmt.Fprint(w, "data: {\"type\":\"done\",\"session_id\":\"sess-main\"}\n")
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
+			statuses++
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"workspace_dir":   "/tmp/ws",
+				"session_count":   1,
+				"main_session_id": "sess-main",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := chatClient{serverURL: server.URL}
+	res, err := client.stream(context.Background(), chatRequest{Message: "hi", SessionID: "stale-1"}, nil, nil)
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	if res.SessionID != "sess-main" {
+		t.Fatalf("expected recovered session_id sess-main, got %q", res.SessionID)
+	}
+	if res.Assistant != "Hello" {
+		t.Fatalf("expected assistant Hello, got %q", res.Assistant)
+	}
+	if statuses != 1 {
+		t.Fatalf("expected one status lookup, got %d", statuses)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(attempts) != 2 {
+		t.Fatalf("expected two chat attempts, got %d", len(attempts))
+	}
+	if attempts[0].SessionID != "stale-1" {
+		t.Fatalf("expected first attempt to use stale session, got %+v", attempts[0])
+	}
+	if attempts[1].SessionID != "sess-main" {
+		t.Fatalf("expected second attempt to use main session, got %+v", attempts[1])
+	}
+}
+
+func TestChatClientStream_RetriesWithoutSessionWhenNoMainSessionExists(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		attempts []chatRequest
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat":
+			var req chatRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			mu.Lock()
+			attempts = append(attempts, req)
+			attempt := len(attempts)
+			mu.Unlock()
+			if attempt == 1 {
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"code":    "not_found",
+					"message": "session not found",
+				})
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: {\"type\":\"delta\",\"text\":\"Hello\"}\n")
+			fmt.Fprint(w, "data: {\"type\":\"done\",\"session_id\":\"sess-new\"}\n")
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"workspace_dir":   "/tmp/ws",
+				"session_count":   0,
+				"main_session_id": "",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := chatClient{serverURL: server.URL}
+	res, err := client.stream(context.Background(), chatRequest{Message: "hi", SessionID: "stale-1"}, nil, nil)
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	if res.SessionID != "sess-new" {
+		t.Fatalf("expected recovered session_id sess-new, got %q", res.SessionID)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(attempts) != 2 {
+		t.Fatalf("expected two chat attempts, got %d", len(attempts))
+	}
+	if attempts[1].SessionID != "" {
+		t.Fatalf("expected second attempt without session, got %+v", attempts[1])
 	}
 }

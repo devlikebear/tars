@@ -119,6 +119,8 @@ todo 앱 만드는 프로젝트 시작해줘
 
 The bundled `project-start` skill will collect a few brief answers, finalize the project, seed the board, and start background autopilot execution.
 
+If the client is holding an old local session ID that no longer exists on the server, chat retries once against the current main session before surfacing an error.
+
 Once a project exists, you can operate the workflow directly from the TUI without dropping to raw HTTP:
 
 ```text

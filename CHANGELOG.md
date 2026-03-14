@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-03-14
+
+### Fixed
+
+- Terminal chat now recovers automatically when a stale local `session_id` causes `/v1/chat` to return `404 not_found: session not found`
+- TUI and one-shot CLI chat retry once against the current main session, or fall back to creating a fresh session when no main session exists
+
 ## [0.5.3] - 2026-03-14
 
 ### Changed
