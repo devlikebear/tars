@@ -15,6 +15,7 @@ It combines a terminal client, a local HTTP runtime, agent tools, sessions, sche
 
 - Terminal client with a Bubble Tea TUI
 - Local HTTP API via `tars serve`
+- Project manager workflow with a project board, activity feed, dispatch API, and GitHub Flow status dashboard
 - Session lifecycle and transcript storage
 - Agent loop with built-in file, process, scheduling, memory, and ops tools
 - Runtime extension loading for skills, plugins, and MCP servers
@@ -93,6 +94,12 @@ Open a project dashboard in the browser:
 open http://127.0.0.1:43180/ui/projects/<project-id>
 ```
 
+The dashboard renders the current board, recent activity, and GitHub Flow task metadata. Live updates stream from:
+
+```bash
+curl -N http://127.0.0.1:43180/ui/projects/<project-id>/stream
+```
+
 6. Start the client:
 
 ```bash
@@ -106,6 +113,54 @@ make api-status
 make api-sessions
 make smoke-auth
 ```
+
+## Project Manager API
+
+Create a project:
+
+```bash
+curl -s http://127.0.0.1:43180/v1/projects \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Project PM Demo","type":"operations","objective":"Ship the MVP"}'
+```
+
+Seed or update the board:
+
+```bash
+curl -s http://127.0.0.1:43180/v1/projects/<project-id>/board \
+  -X PATCH \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "tasks":[
+      {
+        "id":"task-1",
+        "title":"Implement feature",
+        "status":"todo",
+        "assignee":"dev-1",
+        "role":"developer",
+        "review_required":true,
+        "test_command":"go test ./internal/project",
+        "build_command":"go test ./internal/tarsserver"
+      }
+    ]
+  }'
+```
+
+Dispatch developer work and then reviewer work:
+
+```bash
+curl -s http://127.0.0.1:43180/v1/projects/<project-id>/dispatch \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"stage":"todo"}'
+
+curl -s http://127.0.0.1:43180/v1/projects/<project-id>/dispatch \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"stage":"review"}'
+```
+
+Tasks that require review will only move to `done` after the reviewer stage approves them. Developer runs must also report passing test/build results plus issue/branch/PR metadata before the task can advance.
 
 ## Build
 

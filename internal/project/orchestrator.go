@@ -59,6 +59,9 @@ func NewOrchestrator(store *Store, runner TaskRunner) *Orchestrator {
 }
 
 func NewOrchestratorWithGitHubAuthChecker(store *Store, runner TaskRunner, checker GitHubAuthChecker) *Orchestrator {
+	if checker == nil {
+		checker = defaultGitHubAuthChecker
+	}
 	return &Orchestrator{
 		store:             store,
 		runner:            runner,

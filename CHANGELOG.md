@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-14
+
+### Added
+
+- Project manager workflow primitives: project activity log, Kanban board storage, and a server-rendered dashboard with live updates
+- Project task orchestration with built-in `codex-cli` and `claude-code` worker profiles plus a gateway-backed task runner
+- Review gate and GitHub Flow metadata tracking for project tasks, including issue/branch/PR and verification status
+- `POST /v1/projects/{id}/dispatch` to run `todo` or `review` project task dispatch stages through the orchestrator
+
+### Changed
+
+- The project dashboard now renders board state, recent activity, and a dedicated GitHub Flow status block in one page
+- Review-required tasks now stop at `review` until a reviewer run approves them
+- Test/build and GitHub Flow metadata now gate task promotion to `review` or `done`
+
 ## [0.2.0] - 2026-03-11
 
 ### Added
