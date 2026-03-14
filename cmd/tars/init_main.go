@@ -66,6 +66,7 @@ func runInitCommand(_ context.Context, opts initOptions, stdout, _ io.Writer) er
 	_, _ = fmt.Fprintf(stdout, "BYOK:\n")
 	_, _ = fmt.Fprintf(stdout, "  default starter provider: openai\n")
 	_, _ = fmt.Fprintf(stdout, "  export OPENAI_API_KEY='your-api-key'\n")
+	_, _ = fmt.Fprintf(stdout, "  or set llm_provider: claude-code-cli in %s to use the local Claude Code CLI\n", configPath)
 	_, _ = fmt.Fprintf(stdout, "  or edit llm_provider / llm_api_key in %s for anthropic or gemini\n\n", configPath)
 	_, _ = fmt.Fprintf(stdout, "Next:\n")
 	_, _ = fmt.Fprintf(stdout, "  tars serve --config %s\n", configPath)
@@ -234,6 +235,7 @@ api_allow_insecure_local_auth: true
 # Other common choices:
 # - anthropic -> ${ANTHROPIC_API_KEY}
 # - gemini -> ${GEMINI_API_KEY}
+# - claude-code-cli -> local Claude Code install, no API key required
 llm_provider: openai
 llm_auth_mode: api-key
 llm_base_url: https://api.openai.com/v1

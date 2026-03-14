@@ -24,13 +24,18 @@ api_max_inflight_agent_runs: 4
 # Single workspace mode: workspace_id header/routing is removed.
 
 # LLM provider
-# provider: bifrost | openai | anthropic | gemini | gemini-native
+# provider: bifrost | openai | openai-codex | anthropic | gemini | gemini-native | claude-code-cli
 llm_provider: anthropic
-llm_auth_mode: api-key
+llm_auth_mode: api-key # api-key | oauth | cli
 llm_oauth_provider: ""
 llm_base_url: https://api.anthropic.com
 llm_model: claude-3-5-haiku-latest
 llm_api_key: ${ANTHROPIC_API_KEY}
+# Local Claude Code CLI example:
+# llm_provider: claude-code-cli
+# llm_auth_mode: cli
+# llm_model: sonnet
+# llm_api_key: ""
 # Optional reasoning controls
 # effort: none | minimal | low | medium | high
 llm_reasoning_effort: ""

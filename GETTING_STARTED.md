@@ -4,7 +4,7 @@ This guide covers the minimum path to run TARS locally and verify the main workf
 
 ## 1. Prepare Local Config
 
-Start from the example config and adjust provider credentials as needed.
+Start from the example config and adjust provider credentials, or switch to the local Claude Code CLI provider, as needed.
 
 ```bash
 cp config/tars.config.example.yaml workspace/config/tars.config.yaml

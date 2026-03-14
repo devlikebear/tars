@@ -91,6 +91,7 @@ type ProviderOptions struct {
 	AuthMode        string
 	OAuthProvider   string
 	BaseURL         string
+	WorkDir         string
 	Model           string
 	APIKey          string
 	MaxTokens       int
@@ -123,6 +124,10 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 			firstNonEmptyTrimmed(opts.OAuthProvider, "openai-codex"),
 			strings.TrimSpace(opts.APIKey),
 		)
+	}
+	if provider == "claude-code-cli" {
+		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
+		return NewClaudeCodeCLIClient(opts.WorkDir, opts.Model)
 	}
 
 	token, err := auth.ResolveToken(auth.ResolveOptions{

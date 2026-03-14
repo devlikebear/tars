@@ -25,7 +25,7 @@ It combines a terminal client, a local HTTP runtime, agent tools, sessions, sche
 ## Requirements
 
 - Go `1.25.6` or newer
-- Provider credentials for the models you want to use
+- Provider credentials for API-backed models, or a local Claude Code CLI install for `llm_provider: claude-code-cli`
 - Optional: Node.js for Playwright browser installation
 
 ## Install
@@ -63,10 +63,18 @@ tars init
 
 `tars init` creates the starter config, enables the local gateway path used by project workflows, and copies bundled workspace plugins, including `project-swarm`, into `workspace/plugins/`.
 
-2. Export a BYOK provider key for the starter config:
+2. Choose a provider for the starter config:
 
 ```bash
 export OPENAI_API_KEY="your-api-key"
+```
+
+Or switch the starter config to Claude Code CLI:
+
+```yaml
+llm_provider: claude-code-cli
+llm_auth_mode: cli
+llm_model: sonnet
 ```
 
 3. Check or repair the local starter setup:
@@ -76,7 +84,7 @@ tars doctor
 tars doctor --fix
 ```
 
-`--fix` only creates missing local files and directories. Provider credentials still need to be configured separately.
+`--fix` only creates missing local files and directories. API-backed providers still need credentials, while `claude-code-cli` requires a local `claude` install instead.
 It also restores missing bundled workspace plugins when the installed assets are available, and `tars doctor` warns if `gateway_enabled=false` would block the bundled project workflow.
 
 4. Install and start the macOS background service:

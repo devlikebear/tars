@@ -73,12 +73,17 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 		switch cfg.LLMProvider {
 		case "openai-codex":
 			cfg.LLMAuthMode = "oauth"
+		case "claude-code-cli":
+			cfg.LLMAuthMode = "cli"
 		default:
 			cfg.LLMAuthMode = defaults.LLMAuthMode
 		}
 	}
 	if cfg.LLMProvider == "openai-codex" && cfg.LLMAuthMode == "api-key" && strings.TrimSpace(cfg.LLMAPIKey) == "" {
 		cfg.LLMAuthMode = "oauth"
+	}
+	if cfg.LLMProvider == "claude-code-cli" && cfg.LLMAuthMode == "api-key" && strings.TrimSpace(cfg.LLMAPIKey) == "" {
+		cfg.LLMAuthMode = "cli"
 	}
 	cfg.LLMOAuthProvider = strings.TrimSpace(strings.ToLower(cfg.LLMOAuthProvider))
 	if cfg.LLMAuthMode == "oauth" && cfg.LLMOAuthProvider == "" {
@@ -289,6 +294,10 @@ func applyProviderDefaults(cfg *Config, defaults Config) {
 			}
 			if cfg.LLMAPIKey == "" {
 				cfg.LLMAPIKey = firstNonEmpty(os.Getenv("OPENAI_CODEX_OAUTH_TOKEN"), os.Getenv("TARS_OPENAI_CODEX_OAUTH_TOKEN"))
+			}
+		case "claude-code-cli":
+			if cfg.LLMModel == "" {
+				cfg.LLMModel = defaultClaudeCodeCLIModel
 			}
 		case "gemini":
 			if cfg.LLMBaseURL == "" {

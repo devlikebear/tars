@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/spf13/cobra"
 )
 
@@ -132,6 +133,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 		checkDoctorAPIAuth(&report, cfg)
 		checkDoctorProjectWorkflowGateway(&report, cfg)
 		checkDoctorLLMCredentials(&report, cfg, configPath)
+		checkDoctorLLMRuntime(&report, cfg)
 	}
 
 	if report.failureCount() > 0 {
@@ -179,6 +181,19 @@ func checkDoctorProjectWorkflowGateway(report *doctorReport, cfg config.Config) 
 	report.addHint("set `gateway_enabled: true` in the starter config before using the bundled project workflow")
 }
 
+func checkDoctorLLMRuntime(report *doctorReport, cfg config.Config) {
+	switch strings.TrimSpace(strings.ToLower(cfg.LLMProvider)) {
+	case "claude-code-cli":
+		path, err := llm.FindClaudeCodeCLIPath()
+		if err != nil {
+			report.add("fail", "llm runtime", err.Error())
+			report.addHint("install Claude Code or set `CLAUDE_CODE_CLI_PATH` to the local `claude` binary")
+			return
+		}
+		report.add("ok", "llm runtime", fmt.Sprintf("provider=%s cli=%s", cfg.LLMProvider, path))
+	}
+}
+
 func llmCredentialHint(provider, configPath string) string {
 	switch provider {
 	case "openai":
@@ -189,6 +204,8 @@ func llmCredentialHint(provider, configPath string) string {
 		return fmt.Sprintf("export GEMINI_API_KEY='your-api-key' or set llm_api_key in %s", configPath)
 	case "openai-codex":
 		return fmt.Sprintf("set llm_auth_mode: oauth or configure OPENAI_CODEX_OAUTH_TOKEN in %s", configPath)
+	case "claude-code-cli":
+		return fmt.Sprintf("install Claude Code or set CLAUDE_CODE_CLI_PATH; no api key is required in %s", configPath)
 	case "bifrost":
 		return fmt.Sprintf("set BIFROST_API_KEY, TARS_LLM_API_KEY, or llm_api_key in %s", configPath)
 	default:
