@@ -88,19 +88,26 @@ func TestResolveSession_StaleMainSession_CreatesNewSession(t *testing.T) {
 	}
 }
 
-func TestResolveSession_StaleExplicitSession_FallsBackToMain(t *testing.T) {
+func TestResolveSession_StaleExplicitSession_CreatesNewSession(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	mainSession, err := store.Create("main")
 	if err != nil {
 		t.Fatalf("create main session: %v", err)
 	}
-	// Explicit session ID is stale, should fall back to main session.
+	// Explicit session ID is stale, should create a fresh session instead of
+	// silently attaching to the main session.
 	resolved, err := resolveChatSession(store, "stale-explicit-id", mainSession.ID)
 	if err != nil {
-		t.Fatalf("expected fallback, got error: %v", err)
+		t.Fatalf("expected fallback to new session, got error: %v", err)
 	}
-	if resolved != mainSession.ID {
-		t.Fatalf("expected main session %q, got %q", mainSession.ID, resolved)
+	if strings.TrimSpace(resolved) == "" {
+		t.Fatalf("expected non-empty session id")
+	}
+	if resolved == mainSession.ID {
+		t.Fatalf("should not reuse main session %q for stale explicit session", resolved)
+	}
+	if _, err := store.Get(resolved); err != nil {
+		t.Fatalf("new session should exist in store: %v", err)
 	}
 }
 

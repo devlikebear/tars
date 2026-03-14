@@ -127,7 +127,7 @@ todo 앱 만드는 프로젝트 시작해줘
 
 The bundled `project-start` skill will collect a few brief answers, finalize the project, seed the board, and start background autopilot execution.
 
-If the client is holding an old local session ID that no longer exists on the server, chat retries once against the current main session before surfacing an error.
+If a chat request carries an explicit stale `session_id`, the server now creates a fresh chat session instead of silently attaching that request to the current main session.
 
 Once a project exists, you can operate the workflow directly from the TUI without dropping to raw HTTP:
 
@@ -220,6 +220,7 @@ curl -s http://127.0.0.1:43180/v1/projects/<project-id>/autopilot
 Tasks that require review will only move to `done` after the reviewer stage approves them. Developer runs must also report passing test/build results plus issue/branch/PR metadata before the task can advance.
 Worker and reviewer runs report back through a structured `<task-report>` block, and the dashboard surfaces those reports in a dedicated worker report section alongside the autopilot status.
 When autopilot starts from an empty board, the PM supervisor now seeds a minimal MVP backlog and records blocker, decision, and replan notes for the dashboard instead of immediately treating the project as complete.
+Autopilot run status now persists across server restarts, and any run that was still `running` at shutdown is recovered as a blocked PM item with restart guidance on the next server startup.
 
 An end-to-end TUI and curl example is available in [`examples/project/README.md`](examples/project/README.md).
 

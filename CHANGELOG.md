@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-03-14
+
+### Fixed
+
+- Project worker runs now create a distinct hidden session per project run instead of reusing one shared hidden session across subagent work
+- PM seed backlog dispatch now stages `pm-seed-bootstrap` ahead of dependent seed tasks so autopilot does not start the first vertical slice before bootstrap is underway
+- Chat requests with an explicit stale `session_id` now create a fresh chat session instead of silently attaching to the current main session
+- Project autopilot run status now persists to `AUTOPILOT.json`, survives server restart, and no longer disappears from `/v1/projects/{id}/autopilot` after the process restarts
+- Persisted `running` autopilot runs now recover as `blocked` with restart guidance and an interrupted PM blocker entry instead of reporting a false in-progress state after restart
+
+### Changed
+
+- API startup now preloads persisted autopilot runs so project state, activity, and dashboard views are already synchronized before the first autopilot status request
+- Autopilot persistence now uses atomic file replacement for `AUTOPILOT.json` writes
+
 ## [0.5.6] - 2026-03-14
 
 ### Fixed

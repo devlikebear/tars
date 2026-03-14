@@ -382,6 +382,9 @@ func buildAPIMux(
 	projectAutopilot := project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), func(projectID string, kind string) {
 		projectDashboardBroker.publish(newProjectDashboardEvent(projectID, kind))
 	})
+	if err := projectAutopilot.RestorePersistedRuns(); err != nil {
+		logger.Error().Err(err).Msg("restore persisted project autopilot runs failed")
+	}
 	chatTooling.ProjectAutopilot = projectAutopilot
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,

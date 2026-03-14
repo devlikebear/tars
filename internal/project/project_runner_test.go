@@ -2,6 +2,8 @@ package project
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -225,6 +227,211 @@ func TestAutopilotManager_StartBlocksWhenBoardIsEmpty(t *testing.T) {
 	}
 	if !hasActivityKindStatus(activity, ActivityKindReplan, "seeded") {
 		t.Fatalf("expected seeded replan activity, got %+v", activity)
+	}
+}
+
+func TestAutopilotManager_StatusRestoresPersistedRunAfterRestart(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 19, 0, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Persisted"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Ship persisted task",
+				Status:         "todo",
+				Assignee:       "dev-1",
+				Role:           "developer",
+				ReviewRequired: true,
+				TestCommand:    "go test ./internal/project",
+				BuildCommand:   "go test ./internal/tool",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	if _, err := manager.Start(context.Background(), created.ID); err != nil {
+		t.Fatalf("start autopilot: %v", err)
+	}
+	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusDone)
+
+	restarted := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	restored, ok := restarted.Status(created.ID)
+	if !ok {
+		t.Fatalf("expected persisted autopilot status after restart")
+	}
+	if restored.Status != final.Status {
+		t.Fatalf("expected restored status %q, got %+v", final.Status, restored)
+	}
+	if restored.RunID != final.RunID {
+		t.Fatalf("expected restored run id %q, got %+v", final.RunID, restored)
+	}
+}
+
+func TestAutopilotManager_StatusConvertsPersistedRunningRunAfterRestart(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 19, 15, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Interrupted"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager.setRun(created.ID, func(item *AutopilotRun) {
+		item.ProjectID = created.ID
+		item.RunID = "autopilot-interrupted"
+		item.Status = AutopilotStatusRunning
+		item.Message = "Dispatching todo tasks"
+		item.Iterations = 3
+		item.StartedAt = "2026-03-14T10:20:56Z"
+	})
+
+	restarted := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	restored, ok := restarted.Status(created.ID)
+	if !ok {
+		t.Fatalf("expected persisted interrupted autopilot status")
+	}
+	if restored.Status != AutopilotStatusBlocked {
+		t.Fatalf("expected interrupted running run to restore as blocked, got %+v", restored)
+	}
+	if !strings.Contains(strings.ToLower(restored.Message), "restart") && !strings.Contains(strings.ToLower(restored.Message), "interrupted") {
+		t.Fatalf("expected interrupted restart guidance, got %+v", restored)
+	}
+}
+
+func TestAutopilotManager_RestorePersistedRunsPreloadsCompletedRuns(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 19, 30, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Preload"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager.setRun(created.ID, func(item *AutopilotRun) {
+		item.ProjectID = created.ID
+		item.RunID = "autopilot-finished"
+		item.Status = AutopilotStatusDone
+		item.Message = "Autopilot completed all project tasks"
+		item.Iterations = 4
+		item.StartedAt = "2026-03-14T10:20:56Z"
+		item.FinishedAt = "2026-03-14T10:30:56Z"
+	})
+
+	restarted := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	if err := restarted.RestorePersistedRuns(); err != nil {
+		t.Fatalf("restore persisted runs: %v", err)
+	}
+
+	restarted.mu.RLock()
+	restored, ok := restarted.runs[created.ID]
+	restarted.mu.RUnlock()
+	if !ok {
+		t.Fatalf("expected restored run to be preloaded into manager cache")
+	}
+	if restored.Status != AutopilotStatusDone {
+		t.Fatalf("expected restored done status, got %+v", restored)
+	}
+}
+
+func TestAutopilotManager_RestorePersistedRunsInterruptsRunningRunsAtStartup(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 19, 45, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Startup Recovery"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	initialPhase := "executing"
+	initialStatus := "active"
+	initialNextAction := "Dispatch todo tasks"
+	if _, err := store.UpdateState(created.ID, ProjectStateUpdateInput{
+		Phase:      &initialPhase,
+		Status:     &initialStatus,
+		NextAction: &initialNextAction,
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager.setRun(created.ID, func(item *AutopilotRun) {
+		item.ProjectID = created.ID
+		item.RunID = "autopilot-running"
+		item.Status = AutopilotStatusRunning
+		item.Message = "Dispatching todo tasks"
+		item.Iterations = 2
+		item.StartedAt = "2026-03-14T10:20:56Z"
+	})
+
+	restarted := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	if err := restarted.RestorePersistedRuns(); err != nil {
+		t.Fatalf("restore persisted runs: %v", err)
+	}
+
+	restarted.mu.RLock()
+	restored, ok := restarted.runs[created.ID]
+	restarted.mu.RUnlock()
+	if !ok {
+		t.Fatalf("expected restored run to be preloaded into manager cache")
+	}
+	if restored.Status != AutopilotStatusBlocked {
+		t.Fatalf("expected interrupted running run to restore as blocked, got %+v", restored)
+	}
+	if !strings.Contains(strings.ToLower(restored.Message), "restart") && !strings.Contains(strings.ToLower(restored.Message), "interrupted") {
+		t.Fatalf("expected interrupted restart guidance, got %+v", restored)
+	}
+
+	state, err := store.GetState(created.ID)
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if state.Status != "blocked" || state.Phase != "blocked" {
+		t.Fatalf("expected startup recovery to block project state, got %+v", state)
+	}
+
+	activity, err := store.ListActivity(created.ID, 20)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if !hasActivityKindStatus(activity, ActivityKindBlocker, "interrupted") {
+		t.Fatalf("expected interrupted blocker activity, got %+v", activity)
+	}
+}
+
+func TestAutopilotManager_SetRunPersistsAutopilotFileWithoutTempArtifacts(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 20, 0, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Atomic"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager.setRun(created.ID, func(item *AutopilotRun) {
+		item.ProjectID = created.ID
+		item.RunID = "autopilot-atomic"
+		item.Status = AutopilotStatusBlocked
+		item.Message = "Autopilot blocked"
+	})
+
+	if _, err := os.Stat(store.ProjectFilePath(created.ID, autopilotRunDocumentName)); err != nil {
+		t.Fatalf("expected persisted autopilot file: %v", err)
+	}
+	tmpFiles, err := filepath.Glob(store.ProjectFilePath(created.ID, "."+autopilotRunDocumentName+".tmp-*"))
+	if err != nil {
+		t.Fatalf("glob temp files: %v", err)
+	}
+	if len(tmpFiles) != 0 {
+		t.Fatalf("expected no temp artifacts after atomic persist, got %v", tmpFiles)
 	}
 }
 

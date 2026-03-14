@@ -63,9 +63,9 @@ func resolveSpawnSessionID(sessionStore *session.Store, req SpawnRequest, info A
 	}
 	if sessionID == "" {
 		if strings.TrimSpace(req.ProjectID) != "" {
-			worker, err := sessionStore.EnsureWorker(strings.TrimSpace(req.ProjectID))
+			worker, err := sessionStore.CreateWithOptions("worker:"+strings.TrimSpace(req.ProjectID), "worker", true)
 			if err != nil {
-				return "", fmt.Errorf("ensure worker session: %w", err)
+				return "", fmt.Errorf("create worker session: %w", err)
 			}
 			if strings.TrimSpace(worker.ProjectID) != strings.TrimSpace(req.ProjectID) {
 				_ = sessionStore.SetProjectID(worker.ID, strings.TrimSpace(req.ProjectID))

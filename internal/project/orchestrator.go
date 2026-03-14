@@ -99,6 +99,7 @@ func (o *Orchestrator) dispatchTasksByStatus(
 			tasks = append(tasks, task)
 		}
 	}
+	tasks = filterDispatchableTasksByStatus(strings.TrimSpace(status), tasks)
 	report := DispatchReport{
 		ProjectID: strings.TrimSpace(projectID),
 		Runs:      make([]TaskRun, len(tasks)),
@@ -481,6 +482,18 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func filterDispatchableTasksByStatus(status string, tasks []BoardTask) []BoardTask {
+	if strings.TrimSpace(status) != "todo" || len(tasks) <= 1 {
+		return tasks
+	}
+	for _, task := range tasks {
+		if strings.TrimSpace(task.ID) == "pm-seed-bootstrap" {
+			return []BoardTask{task}
+		}
+	}
+	return tasks
 }
 
 func ternaryStatus(ok bool, whenTrue, whenFalse string) string {
