@@ -127,6 +127,8 @@ todo 앱 만드는 프로젝트 시작해줘
 
 The bundled `project-start` skill will collect a few brief answers, finalize the project, seed the board, and start background autopilot execution.
 
+When a project kickoff starts without an explicit `session_id`, TARS now creates a fresh chat session so project brief collection and kickoff memory do not leak into the current main session. Project boards also normalize to the canonical runtime statuses `todo`, `in_progress`, `review`, and `done`.
+
 If a chat request carries an explicit stale `session_id`, the server now creates a fresh chat session instead of silently attaching that request to the current main session.
 
 Once a project exists, you can operate the workflow directly from the TUI without dropping to raw HTTP:

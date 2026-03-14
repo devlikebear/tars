@@ -225,7 +225,7 @@ func normalizeBoardColumns(raw []string) []string {
 	out := make([]string, 0, len(raw))
 	seen := map[string]struct{}{}
 	for _, item := range raw {
-		trimmed := strings.ToLower(strings.TrimSpace(item))
+		trimmed := canonicalBoardStatus(item)
 		if trimmed == "" {
 			continue
 		}
@@ -255,7 +255,7 @@ func normalizeBoardTasks(raw []BoardTask, columns []string) []BoardTask {
 		item := BoardTask{
 			ID:               strings.TrimSpace(task.ID),
 			Title:            strings.TrimSpace(task.Title),
-			Status:           strings.ToLower(strings.TrimSpace(task.Status)),
+			Status:           canonicalBoardStatus(task.Status),
 			Assignee:         strings.TrimSpace(task.Assignee),
 			Role:             strings.TrimSpace(task.Role),
 			WorkerKind:       strings.ToLower(strings.TrimSpace(task.WorkerKind)),
@@ -273,4 +273,16 @@ func normalizeBoardTasks(raw []BoardTask, columns []string) []BoardTask {
 		out = append(out, item)
 	}
 	return out
+}
+
+func canonicalBoardStatus(raw string) string {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	switch normalized {
+	case "backlog":
+		return "todo"
+	case "doing", "in progress", "in-progress":
+		return "in_progress"
+	default:
+		return normalized
+	}
 }
