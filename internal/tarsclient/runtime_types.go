@@ -44,6 +44,18 @@ type projectCreateRequest = tarsclient.ProjectCreateRequest
 
 type projectUpdateRequest = tarsclient.ProjectUpdateRequest
 
+type projectBoard = tarsclient.ProjectBoard
+
+type projectBoardTask = tarsclient.ProjectBoardTask
+
+type projectActivity = tarsclient.ProjectActivity
+
+type projectDispatchReport = tarsclient.ProjectDispatchReport
+
+type projectTaskRun = tarsclient.ProjectTaskRun
+
+type projectAutopilotRun = tarsclient.ProjectAutopilotRun
+
 type usageLimits = tarsclient.UsageLimits
 
 type usageSummary = tarsclient.UsageSummary

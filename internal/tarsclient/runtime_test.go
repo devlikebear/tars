@@ -324,6 +324,97 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	}
 }
 
+func TestRuntimeClientProjectWorkflowEndpoints(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/projects/proj_1/board":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"project_id": "proj_1",
+				"columns":    []string{"todo", "in_progress", "review", "done"},
+				"tasks": []map[string]any{
+					{"id": "task-1", "title": "Build dashboard", "status": "todo"},
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/projects/proj_1/activity":
+			if got := r.URL.Query().Get("limit"); got != "5" {
+				t.Fatalf("expected project activity limit=5, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"count": 1,
+				"items": []map[string]any{
+					{"id": "act_1", "project_id": "proj_1", "kind": "task_status", "status": "review", "source": "system", "timestamp": "2026-03-14T06:31:00Z"},
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/projects/proj_1/dispatch":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"project_id": "proj_1",
+				"runs": []map[string]any{
+					{"id": "run_1", "task_id": "task-1", "agent": "dev-1", "worker_kind": "codex-cli", "status": "completed"},
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/projects/proj_1/autopilot":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"project_id": "proj_1",
+				"run_id":     "auto_1",
+				"status":     "running",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/projects/proj_1/autopilot":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"project_id": "proj_1",
+				"run_id":     "auto_1",
+				"status":     "done",
+				"iterations": 2,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := runtimeClient{serverURL: server.URL}
+	ctx := context.Background()
+
+	board, err := client.getProjectBoard(ctx, "proj_1")
+	if err != nil {
+		t.Fatalf("getProjectBoard: %v", err)
+	}
+	if board.ProjectID != "proj_1" || len(board.Tasks) != 1 {
+		t.Fatalf("unexpected project board: %+v", board)
+	}
+
+	activity, err := client.listProjectActivity(ctx, "proj_1", 5)
+	if err != nil {
+		t.Fatalf("listProjectActivity: %v", err)
+	}
+	if len(activity) != 1 || activity[0].Kind != "task_status" {
+		t.Fatalf("unexpected project activity: %+v", activity)
+	}
+
+	report, err := client.dispatchProject(ctx, "proj_1", "todo")
+	if err != nil {
+		t.Fatalf("dispatchProject: %v", err)
+	}
+	if report.ProjectID != "proj_1" || len(report.Runs) != 1 {
+		t.Fatalf("unexpected dispatch report: %+v", report)
+	}
+
+	started, err := client.startProjectAutopilot(ctx, "proj_1")
+	if err != nil {
+		t.Fatalf("startProjectAutopilot: %v", err)
+	}
+	if started.RunID != "auto_1" || started.Status != "running" {
+		t.Fatalf("unexpected started autopilot: %+v", started)
+	}
+
+	status, err := client.getProjectAutopilot(ctx, "proj_1")
+	if err != nil {
+		t.Fatalf("getProjectAutopilot: %v", err)
+	}
+	if status.Status != "done" || status.Iterations != 2 {
+		t.Fatalf("unexpected autopilot status: %+v", status)
+	}
+}
+
 func TestRuntimeClientRequestText_UsesJSONErrorPayload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -282,6 +282,74 @@ type ProjectUpdateRequest struct {
 	SecretsRefs        []string `json:"secrets_refs,omitempty"`
 }
 
+type ProjectBoardTask struct {
+	ID               string `json:"id"`
+	Title            string `json:"title"`
+	Status           string `json:"status"`
+	Assignee         string `json:"assignee,omitempty"`
+	Role             string `json:"role,omitempty"`
+	WorkerKind       string `json:"worker_kind,omitempty"`
+	Issue            string `json:"issue,omitempty"`
+	Branch           string `json:"branch,omitempty"`
+	PR               string `json:"pr,omitempty"`
+	ReviewApprovedBy string `json:"review_approved_by,omitempty"`
+	ReviewRequired   bool   `json:"review_required,omitempty"`
+	TestCommand      string `json:"test_command,omitempty"`
+	BuildCommand     string `json:"build_command,omitempty"`
+}
+
+type ProjectBoard struct {
+	ProjectID string             `json:"project_id"`
+	UpdatedAt string             `json:"updated_at,omitempty"`
+	Columns   []string           `json:"columns"`
+	Tasks     []ProjectBoardTask `json:"tasks,omitempty"`
+	Path      string             `json:"path,omitempty"`
+}
+
+type ProjectActivity struct {
+	ID        string            `json:"id"`
+	ProjectID string            `json:"project_id"`
+	TaskID    string            `json:"task_id,omitempty"`
+	Source    string            `json:"source"`
+	Agent     string            `json:"agent,omitempty"`
+	Kind      string            `json:"kind"`
+	Status    string            `json:"status,omitempty"`
+	Message   string            `json:"message,omitempty"`
+	Timestamp string            `json:"timestamp"`
+	Meta      map[string]string `json:"meta,omitempty"`
+}
+
+type ProjectActivityList struct {
+	Count int               `json:"count"`
+	Items []ProjectActivity `json:"items"`
+}
+
+type ProjectTaskRun struct {
+	ID         string `json:"id"`
+	TaskID     string `json:"task_id"`
+	Agent      string `json:"agent,omitempty"`
+	WorkerKind string `json:"worker_kind,omitempty"`
+	Status     string `json:"status"`
+	Response   string `json:"response,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+type ProjectDispatchReport struct {
+	ProjectID string           `json:"project_id"`
+	Runs      []ProjectTaskRun `json:"runs"`
+}
+
+type ProjectAutopilotRun struct {
+	ProjectID  string `json:"project_id"`
+	RunID      string `json:"run_id"`
+	Status     string `json:"status"`
+	Message    string `json:"message,omitempty"`
+	Iterations int    `json:"iterations"`
+	StartedAt  string `json:"started_at,omitempty"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
+	FinishedAt string `json:"finished_at,omitempty"`
+}
+
 type UsageLimits struct {
 	DailyUSD   float64 `json:"daily_usd"`
 	WeeklyUSD  float64 `json:"weekly_usd"`

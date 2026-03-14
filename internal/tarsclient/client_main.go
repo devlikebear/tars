@@ -106,7 +106,7 @@ Runtime:
   /channels
   /telegram {pairings|pairing approve {code}}
   /cron {list|get|runs|add|run|delete|enable|disable}
-  /project {list|get|create|activate|archive}
+  /project {list|get|create|activate|archive|board|activity|dispatch|autopilot}
   /usage {summary|limits|set-limits}
   /ops {status|cleanup plan}
   /approve {list|run|reject}

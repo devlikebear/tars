@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,12 +12,18 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type projectAutopilotManager interface {
+	Start(context.Context, string) (project.AutopilotRun, error)
+	Status(string) (project.AutopilotRun, bool)
+}
+
 func newProjectAPIHandler(
 	store *project.Store,
 	sessionStore *session.Store,
 	mainSessionID string,
 	taskRunner project.TaskRunner,
 	githubAuthChecker project.GitHubAuthChecker,
+	autopilot projectAutopilotManager,
 	dashboardBroker *projectDashboardBroker,
 	logger zerolog.Logger,
 ) http.Handler {
@@ -476,6 +483,42 @@ func newProjectAPIHandler(
 			dashboardBroker.publish(newProjectDashboardEvent(projectID, "board"))
 			dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
 			writeJSON(w, http.StatusOK, report)
+			return
+		}
+
+		if len(parts) == 2 && parts[1] == "autopilot" {
+			if autopilot == nil {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project autopilot manager is not configured"})
+				return
+			}
+			switch r.Method {
+			case http.MethodGet:
+				item, ok := autopilot.Status(projectID)
+				if !ok {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "project autopilot run not found"})
+					return
+				}
+				writeJSON(w, http.StatusOK, item)
+			case http.MethodPost:
+				item, err := autopilot.Start(r.Context(), projectID)
+				if err != nil {
+					lower := strings.ToLower(err.Error())
+					if strings.Contains(lower, "not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+						return
+					}
+					if strings.Contains(lower, "required") || strings.Contains(lower, "invalid") {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
+					logger.Error().Err(err).Str("project_id", projectID).Msg("start project autopilot failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "start project autopilot failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, item)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
 			return
 		}
 
