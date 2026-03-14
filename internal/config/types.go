@@ -32,6 +32,7 @@ type Config struct {
 	SessionDefaultID                     string
 	SessionTelegramScope                 string
 	APIAuthMode                          string
+	DashboardAuthMode                    string
 	APIAuthToken                         string
 	APIUserToken                         string
 	APIAdminToken                        string

@@ -34,6 +34,8 @@ func loadYAML(path string) (Config, error) {
 			cfg.SessionTelegramScope = strings.TrimSpace(strings.ToLower(value))
 		case "api_auth_mode":
 			cfg.APIAuthMode = strings.TrimSpace(value)
+		case "dashboard_auth_mode":
+			cfg.DashboardAuthMode = strings.TrimSpace(value)
 		case "api_auth_token":
 			cfg.APIAuthToken = strings.TrimSpace(value)
 		case "api_user_token":

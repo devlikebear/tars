@@ -107,10 +107,22 @@ Open a project dashboard in the browser:
 open http://127.0.0.1:43180/ui/projects/<project-id>
 ```
 
-The dashboard renders the current board, recent activity, autopilot status, worker reports, blocker/decision/replan PM notes, and GitHub Flow task metadata. Live updates stream from:
+Open the workspace-wide dashboard index:
+
+```bash
+open http://127.0.0.1:43180/dashboards
+```
+
+The dashboard renders the current board, recent activity, autopilot status, worker reports, blocker/decision/replan PM notes, and GitHub Flow task metadata. The `/dashboards` index lists every project and links to each detail page. Live updates stream from:
 
 ```bash
 curl -N http://127.0.0.1:43180/ui/projects/<project-id>/stream
+```
+
+If you want browser dashboards to stay open without bearer tokens during trusted local development, set this in `workspace/config/tars.config.yaml` while leaving API auth enabled:
+
+```yaml
+dashboard_auth_mode: off
 ```
 
 6. Start the client:

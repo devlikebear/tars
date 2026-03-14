@@ -5,6 +5,7 @@ const (
 	defaultWorkspaceDir                  = "./workspace"
 	defaultSessionTelegramScope          = "main"
 	defaultAPIAuthMode                   = "required"
+	defaultDashboardAuthMode             = "inherit"
 	defaultAPIMaxInflightChat            = 2
 	defaultAPIMaxInflightAgentRuns       = 4
 	defaultLLMProvider                   = "bifrost"
@@ -64,6 +65,7 @@ func defaultConfigValues() Config {
 		WorkspaceDir:                         defaultWorkspaceDir,
 		SessionTelegramScope:                 defaultSessionTelegramScope,
 		APIAuthMode:                          defaultAPIAuthMode,
+		DashboardAuthMode:                    defaultDashboardAuthMode,
 		APIMaxInflightChat:                   defaultAPIMaxInflightChat,
 		APIMaxInflightAgentRuns:              defaultAPIMaxInflightAgentRuns,
 		LLMProvider:                          defaultLLMProvider,
