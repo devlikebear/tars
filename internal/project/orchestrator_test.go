@@ -194,6 +194,55 @@ func TestOrchestratorDispatchTodo_StagesBootstrapBeforeDependentSeedTasks(t *tes
 	}
 }
 
+func TestOrchestratorDispatchTodo_CanonicalizesLegacyKanbanColumnsDuringRun(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 13, 20, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Legacy Kanban Project"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Columns: []string{"backlog", "todo", "doing", "review", "done"},
+		Tasks: []BoardTask{
+			{ID: "task-1", Title: "Build kickoff slice", Status: "todo", Assignee: "dev-1", Role: "developer", ReviewRequired: true},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	runner := newStubTaskRunner()
+	orchestrator := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error { return nil })
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, runErr := orchestrator.DispatchTodo(context.Background(), created.ID)
+		errCh <- runErr
+	}()
+
+	select {
+	case <-runner.startedCh:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected task run to start")
+	}
+
+	boardDuringRun, err := store.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board during run: %v", err)
+	}
+	if len(boardDuringRun.Tasks) != 1 || boardDuringRun.Tasks[0].Status != "in_progress" {
+		t.Fatalf("expected canonical in_progress status during run, got %+v", boardDuringRun.Tasks)
+	}
+	if len(boardDuringRun.Columns) != 4 || boardDuringRun.Columns[0] != "todo" || boardDuringRun.Columns[1] != "in_progress" {
+		t.Fatalf("expected canonical columns during run, got %+v", boardDuringRun.Columns)
+	}
+
+	close(runner.waitGate)
+	if err := <-errCh; err != nil {
+		t.Fatalf("dispatch todo: %v", err)
+	}
+}
+
 func TestOrchestratorDispatchTodoRestoresFailedTaskToTodo(t *testing.T) {
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 14, 13, 0, 0, 0, time.UTC)

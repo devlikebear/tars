@@ -23,8 +23,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func resolveChatSession(store *session.Store, sessionID string, mainSessionID string) (string, error) {
+func resolveChatSession(store *session.Store, sessionID string, mainSessionID string, userMessage string) (string, error) {
 	if strings.TrimSpace(sessionID) == "" {
+		if isProjectKickoffMessage(userMessage) {
+			return createFallbackChatSession(store)
+		}
 		id := strings.TrimSpace(mainSessionID)
 		if id == "" {
 			return createFallbackChatSession(store)

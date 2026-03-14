@@ -48,6 +48,8 @@ Use this skill when the user wants to start a new software project from a chat U
 5. When the brief is sufficiently specified, set the brief status to `ready`.
 6. Call `project_brief_finalize`.
 7. Call `project_board_update` to seed the first MVP backlog.
+   - Use canonical board columns and statuses: `todo`, `in_progress`, `review`, `done`
+   - Do not invent alternate column names such as `backlog` or `doing`
 8. Call `project_state_update` with the next execution step.
 9. Call `project_autopilot_start`.
 

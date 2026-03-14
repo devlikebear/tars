@@ -219,13 +219,13 @@ func (m *AutopilotManager) run(projectID, runID string) {
 			return
 		case allBoardTasksDone(board):
 			message := "Autopilot completed all project tasks"
+			m.updateState(projectID, "done", "done", "Project complete", message, "")
 			m.setRun(projectID, func(item *AutopilotRun) {
 				item.Status = AutopilotStatusDone
 				item.Message = message
 				item.Iterations = iteration
 				item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
 			})
-			m.updateState(projectID, "done", "done", "Project complete", message, "")
 			m.publish(projectID)
 			return
 		default:
@@ -237,6 +237,7 @@ func (m *AutopilotManager) run(projectID, runID string) {
 }
 
 func (m *AutopilotManager) fail(projectID, runID string, iteration int, message string) {
+	m.updateState(projectID, "blocked", "blocked", "Inspect autopilot failure", strings.TrimSpace(message), strings.TrimSpace(message))
 	m.setRun(projectID, func(item *AutopilotRun) {
 		item.RunID = runID
 		item.Status = AutopilotStatusFailed
@@ -244,11 +245,12 @@ func (m *AutopilotManager) fail(projectID, runID string, iteration int, message 
 		item.Iterations = iteration
 		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
 	})
-	m.updateState(projectID, "blocked", "blocked", "Inspect autopilot failure", strings.TrimSpace(message), strings.TrimSpace(message))
 	m.publish(projectID)
 }
 
 func (m *AutopilotManager) block(projectID, runID string, iteration int, message string) {
+	_ = m.appendPMActivity(projectID, ActivityKindBlocker, "blocked", strings.TrimSpace(message), nil)
+	m.updateState(projectID, "blocked", "blocked", "Review blocker and continue", strings.TrimSpace(message), strings.TrimSpace(message))
 	m.setRun(projectID, func(item *AutopilotRun) {
 		item.RunID = runID
 		item.Status = AutopilotStatusBlocked
@@ -256,8 +258,6 @@ func (m *AutopilotManager) block(projectID, runID string, iteration int, message
 		item.Iterations = iteration
 		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
 	})
-	_ = m.appendPMActivity(projectID, ActivityKindBlocker, "blocked", strings.TrimSpace(message), nil)
-	m.updateState(projectID, "blocked", "blocked", "Review blocker and continue", strings.TrimSpace(message), strings.TrimSpace(message))
 	m.publish(projectID)
 }
 

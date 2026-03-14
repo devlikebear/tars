@@ -113,6 +113,72 @@ func TestChatAPI_RelevantMemoryIsInjectedIntoSystemPrompt(t *testing.T) {
 	}
 }
 
+func TestChatAPI_ProjectKickoffWithoutSessionID_CreatesFreshSession(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	mainSession, err := store.Create("main")
+	if err != nil {
+		t.Fatalf("create main session: %v", err)
+	}
+	mockClient := &mockLLMClient{response: llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "ok"}}}
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"todo 앱 만드는 프로젝트 시작해줘"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	mainMessages, err := session.ReadMessages(store.TranscriptPath(mainSession.ID))
+	if err != nil {
+		t.Fatalf("read main transcript: %v", err)
+	}
+	if len(mainMessages) != 0 {
+		t.Fatalf("expected main transcript to stay untouched, got %+v", mainMessages)
+	}
+
+	sessions, err := store.List()
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("expected main + fresh kickoff session, got %+v", sessions)
+	}
+
+	var kickoffSession session.Session
+	for _, item := range sessions {
+		if item.ID == mainSession.ID {
+			continue
+		}
+		kickoffSession = item
+	}
+	if strings.TrimSpace(kickoffSession.ID) == "" {
+		t.Fatalf("expected kickoff session to be created, got %+v", sessions)
+	}
+	if strings.Contains(rec.Body.String(), mainSession.ID) {
+		t.Fatalf("expected response stream to avoid main session id, got %q", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), kickoffSession.ID) {
+		t.Fatalf("expected response stream to include kickoff session id %q, got %q", kickoffSession.ID, rec.Body.String())
+	}
+
+	kickoffMessages, err := session.ReadMessages(store.TranscriptPath(kickoffSession.ID))
+	if err != nil {
+		t.Fatalf("read kickoff transcript: %v", err)
+	}
+	if len(kickoffMessages) == 0 || kickoffMessages[0].Content != "todo 앱 만드는 프로젝트 시작해줘" {
+		t.Fatalf("expected kickoff transcript to capture user message, got %+v", kickoffMessages)
+	}
+}
+
 func TestChatAPI_DebugLogIncludesContextBudgetStats(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
