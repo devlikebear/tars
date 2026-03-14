@@ -100,15 +100,18 @@ func TestProjectTaskRunner_StartFallsBackToDefaultAgentWhenWorkerAliasIsMissing(
 	if run.Agent != "default" {
 		t.Fatalf("expected default agent fallback, got %+v", run)
 	}
-	if run.WorkerKind != "default" {
-		t.Fatalf("expected fallback worker kind to reflect actual agent, got %+v", run)
+	if run.WorkerKind != project.WorkerKindCodexCLI {
+		t.Fatalf("expected logical worker kind to stay %q, got %+v", project.WorkerKindCodexCLI, run)
 	}
 
 	final, err := runner.Wait(context.Background(), run.ID)
 	if err != nil {
 		t.Fatalf("wait task run: %v", err)
 	}
-	if final.Agent != "default" || final.WorkerKind != "default" {
+	if final.Agent != "default" {
 		t.Fatalf("expected default agent on wait result, got %+v", final)
+	}
+	if final.WorkerKind != project.WorkerKindCodexCLI {
+		t.Fatalf("expected logical worker kind to stay %q after wait, got %+v", project.WorkerKindCodexCLI, final)
 	}
 }

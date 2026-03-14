@@ -91,6 +91,7 @@ func (m *AutopilotManager) Start(_ context.Context, projectID string) (Autopilot
 	m.runs[projectID] = run
 	m.mu.Unlock()
 
+	m.publish(projectID, "autopilot")
 	go m.run(projectID, run.RunID)
 	return run, nil
 }
@@ -149,7 +150,12 @@ func (m *AutopilotManager) run(projectID, runID string) {
 			m.block(projectID, runID, iteration, message)
 			m.updateState(projectID, "blocked", "blocked", nextAction, message, message)
 			return
-		case len(board.Tasks) == 0 || allBoardTasksDone(board):
+		case len(board.Tasks) == 0:
+			message := "Autopilot blocked: no tasks on the board"
+			m.block(projectID, runID, iteration, message)
+			m.updateState(projectID, "blocked", "blocked", "Seed backlog and continue", message, message)
+			return
+		case allBoardTasksDone(board):
 			message := "Autopilot completed all project tasks"
 			m.setRun(projectID, func(item *AutopilotRun) {
 				item.Status = AutopilotStatusDone
@@ -232,12 +238,19 @@ func (m *AutopilotManager) updateState(projectID, phase, status, nextAction, sum
 	_, _ = m.store.UpdateState(projectID, input)
 }
 
-func (m *AutopilotManager) publish(projectID string) {
+func (m *AutopilotManager) publish(projectID string, kinds ...string) {
 	if m == nil || m.notify == nil {
 		return
 	}
-	m.notify(projectID, "board")
-	m.notify(projectID, "activity")
+	if len(kinds) == 0 {
+		kinds = []string{"board", "activity", "autopilot"}
+	}
+	for _, kind := range kinds {
+		if strings.TrimSpace(kind) == "" {
+			continue
+		}
+		m.notify(projectID, kind)
+	}
 }
 
 func boardHasStatus(board Board, status string) bool {

@@ -396,7 +396,7 @@ func buildAPIMux(
 	)
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
 	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, projectAutopilot, projectDashboardBroker, logger)
-	dashboardHandler := newProjectDashboardHandler(projectStore, projectDashboardBroker, logger)
+	dashboardHandler := newProjectDashboardHandler(projectStore, projectAutopilot, projectDashboardBroker, logger)
 	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)

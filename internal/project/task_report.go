@@ -58,3 +58,27 @@ func ParseTaskReport(raw string) TaskReport {
 	}
 	return report
 }
+
+func taskReportStatus(report TaskReport, fallback TaskRunStatus) string {
+	if strings.TrimSpace(report.Status) != "" {
+		return strings.ToLower(strings.TrimSpace(report.Status))
+	}
+	switch fallback {
+	case TaskRunStatusFailed:
+		return "failed"
+	case TaskRunStatusCanceled:
+		return "canceled"
+	default:
+		return "completed"
+	}
+}
+
+func taskReportSummary(report TaskReport, run TaskRun) string {
+	if strings.TrimSpace(report.Summary) != "" {
+		return strings.TrimSpace(report.Summary)
+	}
+	if strings.TrimSpace(run.Error) != "" {
+		return strings.TrimSpace(run.Error)
+	}
+	return strings.TrimSpace(run.Response)
+}

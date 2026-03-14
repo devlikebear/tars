@@ -107,7 +107,7 @@ Open a project dashboard in the browser:
 open http://127.0.0.1:43180/ui/projects/<project-id>
 ```
 
-The dashboard renders the current board, recent activity, and GitHub Flow task metadata. Live updates stream from:
+The dashboard renders the current board, recent activity, autopilot status, worker reports, and GitHub Flow task metadata. Live updates stream from:
 
 ```bash
 curl -N http://127.0.0.1:43180/ui/projects/<project-id>/stream
@@ -161,6 +161,7 @@ For day-to-day operation from the terminal client, use:
 ```
 
 When dedicated `codex-cli` or `claude-code` gateway agents are not explicitly registered, project dispatch falls back to the runtime default gateway agent instead of failing immediately on an unknown worker alias.
+The logical `worker_kind` still remains attached to the task so autopilot can continue to reason about the intended worker profile instead of persisting the fallback executor alias.
 
 For direct API control, the project manager routes remain available:
 
@@ -216,6 +217,7 @@ curl -s http://127.0.0.1:43180/v1/projects/<project-id>/autopilot
 ```
 
 Tasks that require review will only move to `done` after the reviewer stage approves them. Developer runs must also report passing test/build results plus issue/branch/PR metadata before the task can advance.
+Worker and reviewer runs report back through a structured `<task-report>` block, and the dashboard surfaces those reports in a dedicated worker report section alongside the autopilot status.
 
 An end-to-end TUI and curl example is available in [`examples/project/README.md`](examples/project/README.md).
 

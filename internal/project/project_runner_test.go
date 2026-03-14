@@ -184,6 +184,34 @@ func TestAutopilotManager_StartBlocksWhenVerificationGateFails(t *testing.T) {
 	}
 }
 
+func TestAutopilotManager_StartBlocksWhenBoardIsEmpty(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 18, 45, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Empty"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	if _, err := manager.Start(context.Background(), created.ID); err != nil {
+		t.Fatalf("start autopilot: %v", err)
+	}
+
+	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusBlocked)
+	if !strings.Contains(strings.ToLower(final.Message), "no tasks") {
+		t.Fatalf("expected empty-board blocker, got %+v", final)
+	}
+
+	state, err := store.GetState(created.ID)
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if state.Status != "blocked" || state.Phase != "blocked" {
+		t.Fatalf("expected blocked state for empty board, got %+v", state)
+	}
+}
+
 func waitForAutopilotStatus(t *testing.T, manager *AutopilotManager, projectID string, want AutopilotRunStatus) AutopilotRun {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)

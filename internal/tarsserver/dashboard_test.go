@@ -15,6 +15,18 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type dashboardAutopilotStub struct {
+	run project.AutopilotRun
+	ok  bool
+}
+
+func (s dashboardAutopilotStub) Status(projectID string) (project.AutopilotRun, bool) {
+	if !s.ok || strings.TrimSpace(projectID) == "" {
+		return project.AutopilotRun{}, false
+	}
+	return s.run, true
+}
+
 func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -55,6 +67,21 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		Message: "Rendering dashboard page",
 	}); err != nil {
 		t.Fatalf("append second activity: %v", err)
+	}
+	if _, err := store.AppendActivity(created.ID, project.ActivityAppendInput{
+		Source:  "agent",
+		Agent:   "codex-cli",
+		TaskID:  "task-1",
+		Kind:    "agent_report",
+		Status:  "completed",
+		Message: "Implemented board rendering",
+		Meta: map[string]string{
+			"notes":   "Waiting for review",
+			"run_id":  "run-task-1",
+			"summary": "Implemented board rendering",
+		},
+	}); err != nil {
+		t.Fatalf("append agent report: %v", err)
 	}
 	if _, err := store.UpdateBoard(created.ID, project.BoardUpdateInput{
 		Tasks: []project.BoardTask{
@@ -99,7 +126,23 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		t.Fatalf("append build status: %v", err)
 	}
 
-	handler := newProjectDashboardHandler(store, newProjectDashboardBroker(), zerolog.New(io.Discard))
+	handler := newProjectDashboardHandler(
+		store,
+		dashboardAutopilotStub{
+			run: project.AutopilotRun{
+				ProjectID:  created.ID,
+				RunID:      "autopilot-1",
+				Status:     project.AutopilotStatusBlocked,
+				Message:    "Waiting for review decision",
+				Iterations: 3,
+				StartedAt:  "2026-03-14T00:00:00Z",
+				UpdatedAt:  "2026-03-14T00:01:00Z",
+			},
+			ok: true,
+		},
+		newProjectDashboardBroker(),
+		zerolog.New(io.Discard),
+	)
 	req := httptest.NewRequest(http.MethodGet, "/ui/projects/"+created.ID, nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -122,6 +165,12 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		"Build dashboard view",
 		"Prepare review notes",
 		"GitHub Flow",
+		"Autopilot",
+		"Waiting for review decision",
+		"autopilot-1",
+		"Worker Reports",
+		"Implemented board rendering",
+		"Waiting for review",
 		"https://github.com/devlikebear/tars/issues/42",
 		"feat/dashboard-view",
 		"https://github.com/devlikebear/tars/pull/42",
@@ -133,8 +182,10 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		"0",
 		"1 active",
 		"/ui/projects/" + created.ID + "/stream",
+		"autopilot-section",
 		"board-section",
 		"activity-section",
+		"reports-section",
 		"github-flow-section",
 	} {
 		if !strings.Contains(body, want) {
@@ -148,7 +199,7 @@ func TestProjectDashboardHandler_ProjectNotFound(t *testing.T) {
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
 	}
-	handler := newProjectDashboardHandler(project.NewStore(root, nil), newProjectDashboardBroker(), zerolog.New(io.Discard))
+	handler := newProjectDashboardHandler(project.NewStore(root, nil), nil, newProjectDashboardBroker(), zerolog.New(io.Discard))
 	req := httptest.NewRequest(http.MethodGet, "/ui/projects/missing", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -160,7 +211,7 @@ func TestProjectDashboardHandler_ProjectNotFound(t *testing.T) {
 
 func TestProjectDashboardHandler_ProjectStreamEmitsProjectEvents(t *testing.T) {
 	broker := newProjectDashboardBroker()
-	handler := newProjectDashboardHandler(nil, broker, zerolog.New(io.Discard))
+	handler := newProjectDashboardHandler(nil, nil, broker, zerolog.New(io.Discard))
 
 	req := httptest.NewRequest(http.MethodGet, "/ui/projects/demo/stream", nil)
 	ctx, cancel := context.WithCancel(req.Context())
