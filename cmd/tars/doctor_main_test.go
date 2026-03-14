@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,6 +35,7 @@ func TestRootCommand_DoctorFailsForMissingStarterState(t *testing.T) {
 
 func TestRootCommand_DoctorFixCreatesStarterWorkspaceButStillRequiresBYOK(t *testing.T) {
 	clearDoctorEnv(t)
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
 	workspaceAbs, err := filepath.Abs(workspaceDir)
@@ -57,6 +59,7 @@ func TestRootCommand_DoctorFixCreatesStarterWorkspaceButStillRequiresBYOK(t *tes
 	assertPathExists(t, configPath)
 	assertPathExists(t, filepath.Join(workspaceAbs, "memory"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "MEMORY.md"))
+	assertPathExists(t, filepath.Join(workspaceAbs, "plugins", "project-swarm", "tars.plugin.json"))
 
 	out := stdout.String()
 	if !strings.Contains(out, "[fixed] config file") {
@@ -70,6 +73,7 @@ func TestRootCommand_DoctorFixCreatesStarterWorkspaceButStillRequiresBYOK(t *tes
 func TestRootCommand_DoctorPassesWhenStarterWorkspaceAndBYOKPresent(t *testing.T) {
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
 	var initStdout strings.Builder
@@ -95,6 +99,38 @@ func TestRootCommand_DoctorPassesWhenStarterWorkspaceAndBYOKPresent(t *testing.T
 	}
 }
 
+func TestRootCommand_DoctorFixRestoresBundledWorkspacePlugin(t *testing.T) {
+	clearDoctorEnv(t)
+	t.Setenv("OPENAI_API_KEY", "test-openai-key")
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
+
+	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
+	var initStdout strings.Builder
+	initCmd := newRootCommand(strings.NewReader(""), &initStdout, io.Discard)
+	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	if err := initCmd.Execute(); err != nil {
+		t.Fatalf("init command: %v", err)
+	}
+
+	workspaceAbs, err := filepath.Abs(workspaceDir)
+	if err != nil {
+		t.Fatalf("workspace abs path: %v", err)
+	}
+	manifestPath := filepath.Join(workspaceAbs, "plugins", "project-swarm", "tars.plugin.json")
+	if err := os.Remove(manifestPath); err != nil {
+		t.Fatalf("remove plugin manifest: %v", err)
+	}
+
+	var doctorStdout strings.Builder
+	doctorCmd := newRootCommand(strings.NewReader(""), &doctorStdout, io.Discard)
+	doctorCmd.SetArgs([]string{"doctor", "--workspace-dir", workspaceDir, "--fix"})
+	if err := doctorCmd.Execute(); err != nil {
+		t.Fatalf("doctor --fix command: %v", err)
+	}
+
+	assertPathExists(t, manifestPath)
+}
+
 func clearDoctorEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
@@ -105,6 +141,7 @@ func clearDoctorEnv(t *testing.T) {
 		"TARS_OPENAI_CODEX_OAUTH_TOKEN",
 		"LLM_API_KEY",
 		"TARS_LLM_API_KEY",
+		"TARS_PLUGINS_BUNDLED_DIR",
 		"TARS_WORKSPACE_DIR",
 		"TARS_CONFIG",
 		"TARS_CONFIG_PATH",

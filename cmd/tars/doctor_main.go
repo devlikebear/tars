@@ -102,20 +102,22 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 	}
 
 	runtimeWorkspaceAbs := workspaceAbs
+	bundledPluginsDir := defaultStarterBundledPluginsDir()
 	if cfgLoaded {
 		runtimeWorkspaceAbs, err = resolveWorkspaceDir(cfg.WorkspaceDir)
 		if err != nil {
 			report.add("fail", "workspace", fmt.Sprintf("resolve workspace_dir from config: %v", err))
 		}
+		bundledPluginsDir = strings.TrimSpace(firstNonEmpty(cfg.PluginsBundledDir, bundledPluginsDir))
 	}
 
 	if report.lastStatusFor("workspace") != "fail" {
-		missing := missingWorkspacePaths(runtimeWorkspaceAbs)
+		missing := missingWorkspacePaths(runtimeWorkspaceAbs, bundledPluginsDir)
 		switch {
 		case len(missing) == 0:
 			report.add("ok", "workspace", runtimeWorkspaceAbs)
 		case opts.fix:
-			if err := ensureStarterWorkspaceLayout(runtimeWorkspaceAbs); err != nil {
+			if err := ensureStarterWorkspaceLayout(runtimeWorkspaceAbs, bundledPluginsDir); err != nil {
 				report.add("fail", "workspace", err.Error())
 			} else {
 				report.add("fixed", "workspace", fmt.Sprintf("created starter workspace files at %s", runtimeWorkspaceAbs))
@@ -184,7 +186,7 @@ func llmCredentialHint(provider, configPath string) string {
 	}
 }
 
-func missingWorkspacePaths(root string) []string {
+func missingWorkspacePaths(root string, bundledPluginsDir string) []string {
 	required := []string{
 		filepath.Join(root, "memory"),
 		filepath.Join(root, "projects"),
@@ -192,6 +194,7 @@ func missingWorkspacePaths(root string) []string {
 		filepath.Join(root, "MEMORY.md"),
 		filepath.Join(root, "AGENTS.md"),
 	}
+	required = append(required, bundledWorkspacePluginManifestPaths(root, bundledPluginsDir)...)
 	missing := make([]string, 0)
 	for _, path := range required {
 		exists, err := pathExists(path)

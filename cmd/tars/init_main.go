@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/assetpath"
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -50,7 +55,7 @@ func runInitCommand(_ context.Context, opts initOptions, stdout, _ io.Writer) er
 		return fmt.Errorf("stat config path %s: %w", configPath, err)
 	}
 
-	if err := ensureStarterWorkspaceLayout(workspaceAbs); err != nil {
+	if err := ensureStarterWorkspaceLayout(workspaceAbs, defaultStarterBundledPluginsDir()); err != nil {
 		return err
 	}
 	if err := writeStarterConfigFile(workspaceAbs, configPath); err != nil {
@@ -96,11 +101,111 @@ func resolveConfigPath(raw, workspaceAbs string) (string, error) {
 	return filepath.Abs(configPath)
 }
 
-func ensureStarterWorkspaceLayout(workspaceAbs string) error {
+func ensureStarterWorkspaceLayout(workspaceAbs string, bundledPluginsDir string) error {
 	if err := memory.EnsureWorkspace(workspaceAbs); err != nil {
 		return fmt.Errorf("ensure workspace: %w", err)
 	}
+	if _, err := installStarterWorkspacePlugins(workspaceAbs, bundledPluginsDir); err != nil {
+		return fmt.Errorf("install bundled workspace plugins: %w", err)
+	}
 	return nil
+}
+
+func defaultStarterBundledPluginsDir() string {
+	return strings.TrimSpace(firstNonEmpty(os.Getenv("TARS_PLUGINS_BUNDLED_DIR"), config.Default().PluginsBundledDir))
+}
+
+func installStarterWorkspacePlugins(workspaceAbs string, bundledPluginsDir string) ([]string, error) {
+	resolvedDir, ok := assetpath.ResolveExistingDir(bundledPluginsDir)
+	if !ok {
+		return nil, fmt.Errorf("bundled plugins dir not found: %s", strings.TrimSpace(bundledPluginsDir))
+	}
+
+	snapshot, err := plugin.Load(plugin.LoadOptions{
+		Sources: []plugin.SourceDir{{Source: plugin.SourceBundled, Dir: resolvedDir}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("load bundled plugins: %w", err)
+	}
+
+	workspacePluginsDir := filepath.Join(workspaceAbs, "plugins")
+	if err := os.MkdirAll(workspacePluginsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create workspace plugins dir: %w", err)
+	}
+
+	installed := make([]string, 0, len(snapshot.Plugins))
+	for _, def := range snapshot.Plugins {
+		dstRoot := filepath.Join(workspacePluginsDir, filepath.Base(def.RootDir))
+		manifestPath := filepath.Join(dstRoot, filepath.Base(def.ManifestPath))
+		manifestExists, err := pathExists(manifestPath)
+		if err != nil {
+			return installed, fmt.Errorf("stat workspace plugin manifest %s: %w", manifestPath, err)
+		}
+		if err := copyDirMissing(def.RootDir, dstRoot); err != nil {
+			return installed, fmt.Errorf("copy bundled plugin %s: %w", def.ID, err)
+		}
+		if !manifestExists {
+			installed = append(installed, strings.TrimSpace(def.ID))
+		}
+	}
+	sort.Strings(installed)
+	return installed, nil
+}
+
+func bundledWorkspacePluginManifestPaths(workspaceAbs string, bundledPluginsDir string) []string {
+	resolvedDir, ok := assetpath.ResolveExistingDir(bundledPluginsDir)
+	if !ok {
+		return nil
+	}
+	snapshot, err := plugin.Load(plugin.LoadOptions{
+		Sources: []plugin.SourceDir{{Source: plugin.SourceBundled, Dir: resolvedDir}},
+	})
+	if err != nil {
+		return nil
+	}
+
+	paths := make([]string, 0, len(snapshot.Plugins))
+	for _, def := range snapshot.Plugins {
+		paths = append(paths, filepath.Join(workspaceAbs, "plugins", filepath.Base(def.RootDir), filepath.Base(def.ManifestPath)))
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+func copyDirMissing(srcRoot, dstRoot string) error {
+	return filepath.WalkDir(srcRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(srcRoot, path)
+		if err != nil {
+			return err
+		}
+		target := dstRoot
+		if rel != "." {
+			target = filepath.Join(dstRoot, rel)
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return os.MkdirAll(target, info.Mode().Perm())
+		}
+		if exists, err := pathExists(target); err != nil {
+			return err
+		} else if exists {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode().Perm())
+	})
 }
 
 func writeStarterConfigFile(workspaceAbs, configPath string) error {

@@ -73,6 +73,7 @@ require_cmd uname
 require_cmd install
 require_cmd mktemp
 require_cmd find
+require_cmd cp
 
 GOOS="$(detect_goos)"
 GOARCH="$(detect_goarch)"
@@ -101,6 +102,16 @@ fi
 
 TARGET_PATH="$INSTALL_DIR/tars"
 install -m 0755 "$EXTRACTED_BINARY" "$TARGET_PATH"
+
+EXTRACTED_SHARE_DIR="$(find "$TMP_DIR" -type d -path '*/share/tars' -print -quit)"
+if [ -n "$EXTRACTED_SHARE_DIR" ]; then
+  PREFIX_DIR="$(CDPATH= cd -- "$INSTALL_DIR/.." && pwd)"
+  TARGET_SHARE_DIR="$PREFIX_DIR/share/tars"
+  rm -rf "$TARGET_SHARE_DIR"
+  mkdir -p "$(dirname "$TARGET_SHARE_DIR")"
+  cp -R "$EXTRACTED_SHARE_DIR" "$TARGET_SHARE_DIR"
+fi
+
 if ! "$TARGET_PATH" --version >/dev/null 2>&1; then
   fail "installed binary failed version check: $TARGET_PATH --version"
 fi

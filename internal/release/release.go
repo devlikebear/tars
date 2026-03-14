@@ -83,6 +83,7 @@ func HomebrewFormula(repoSlug, version, arm64SHA, amd64SHA string) (string, erro
 
   def install
     bin.install "tars"
+    prefix.install "share" if Dir.exist?("share")
   end
 
   def caveats

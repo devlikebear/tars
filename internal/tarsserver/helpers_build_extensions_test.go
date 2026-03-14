@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/assetpath"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/plugin"
@@ -59,6 +60,30 @@ func TestBuildPluginSources_UsesPrimaryAndLegacyUserDirs(t *testing.T) {
 		{Source: plugin.SourceWorkspace, Dir: filepath.Join(cfg.WorkspaceDir, "plugins")},
 	}
 	assertPluginSourcesContainInOrder(t, got, want)
+}
+
+func TestBuildPluginSources_ResolvesBundledDirRelativeToExecutable(t *testing.T) {
+	root := t.TempDir()
+	bundledDir := filepath.Join(root, "share", "tars", "plugins")
+	if err := os.MkdirAll(bundledDir, 0o755); err != nil {
+		t.Fatalf("mkdir bundled dir: %v", err)
+	}
+
+	previous := assetpath.ExecutablePathFunc
+	assetpath.ExecutablePathFunc = func() (string, error) {
+		return filepath.Join(root, "tars"), nil
+	}
+	defer func() { assetpath.ExecutablePathFunc = previous }()
+
+	cfg := config.Config{
+		WorkspaceDir:      filepath.Join(root, "workspace"),
+		PluginsBundledDir: "./plugins",
+		PluginsExtraDirs:  []string{},
+	}
+	got := buildPluginSources(cfg)
+	if len(got) == 0 || got[0].Dir != bundledDir {
+		t.Fatalf("expected bundled plugin source %q, got %+v", bundledDir, got)
+	}
 }
 
 func assertSkillSourcesContainInOrder(t *testing.T, got []skill.SourceDir, want []skill.SourceDir) {
