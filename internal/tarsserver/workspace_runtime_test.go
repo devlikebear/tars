@@ -94,6 +94,7 @@ func TestWorkspaceHeartbeatRunner_AlwaysWritesDefaultWorkspace(t *testing.T) {
 		func(_ string) heartbeat.Policy { return heartbeat.Policy{} },
 		state,
 		nil,
+		nil,
 	)
 
 	ctx := serverauth.WithWorkspaceID(context.Background(), "team-a")
@@ -117,6 +118,31 @@ func TestWorkspaceHeartbeatRunner_AlwaysWritesDefaultWorkspace(t *testing.T) {
 	tenantStatus := state.snapshot("team-a", true, "", "", false)
 	if strings.TrimSpace(tenantStatus.LastRunAt) != "" {
 		t.Fatalf("did not expect team-a heartbeat state, got %+v", tenantStatus)
+	}
+}
+
+func TestWorkspaceHeartbeatRunner_EnsuresMissingProjectAutopilotLoops(t *testing.T) {
+	var ensured atomic.Int64
+	runner := newWorkspaceHeartbeatRunnerWithNotify(
+		t.TempDir(),
+		func() time.Time { return time.Date(2026, 3, 14, 21, 0, 0, 0, time.UTC) },
+		func(_ context.Context, _ string) (string, error) { return "heartbeat-ok", nil },
+		func(_ string) heartbeat.Policy {
+			return heartbeat.Policy{ShouldRun: func(context.Context, time.Time) (bool, string) { return false, "skip llm" }}
+		},
+		newHeartbeatWorkspaceState(),
+		nil,
+		func(context.Context) error {
+			ensured.Add(1)
+			return nil
+		},
+	)
+
+	if _, err := runner(context.Background()); err != nil {
+		t.Fatalf("run heartbeat: %v", err)
+	}
+	if ensured.Load() != 1 {
+		t.Fatalf("expected heartbeat to ensure missing project autopilot loops once, got %d", ensured.Load())
 	}
 }
 

@@ -87,6 +87,79 @@ notes: blocked
 	}, nil
 }
 
+type recoveringTaskRunner struct {
+	attempts map[string]int
+}
+
+func (r *recoveringTaskRunner) Start(_ context.Context, req TaskRunRequest) (TaskRun, error) {
+	if r.attempts == nil {
+		r.attempts = map[string]int{}
+	}
+	return TaskRun{
+		ID:         "run-" + req.Role + "-" + req.TaskID,
+		TaskID:     req.TaskID,
+		Agent:      req.Agent,
+		WorkerKind: req.WorkerKind,
+		Status:     TaskRunStatusAccepted,
+	}, nil
+}
+
+func (r *recoveringTaskRunner) Wait(_ context.Context, runID string) (TaskRun, error) {
+	if strings.Contains(runID, "reviewer") {
+		return TaskRun{
+			ID:         runID,
+			TaskID:     "task-1",
+			Agent:      WorkerKindClaudeCode,
+			WorkerKind: WorkerKindClaudeCode,
+			Status:     TaskRunStatusCompleted,
+			Response: `<task-report>
+status: approved
+summary: approved after retry
+tests: passed
+build: passed
+notes: approved
+</task-report>`,
+		}, nil
+	}
+	if r.attempts == nil {
+		r.attempts = map[string]int{}
+	}
+	r.attempts[runID]++
+	if r.attempts[runID] == 1 {
+		return TaskRun{
+			ID:         runID,
+			TaskID:     "task-1",
+			Agent:      "dev-1",
+			WorkerKind: WorkerKindCodexCLI,
+			Status:     TaskRunStatusCompleted,
+			Response: `<task-report>
+status: completed
+summary: first attempt missed github flow metadata
+tests: passed
+build: passed
+notes: blocked on missing metadata
+</task-report>`,
+		}, nil
+	}
+	return TaskRun{
+		ID:         runID,
+		TaskID:     "task-1",
+		Agent:      "dev-1",
+		WorkerKind: WorkerKindCodexCLI,
+		Status:     TaskRunStatusCompleted,
+		Response: `<task-report>
+status: completed
+summary: retried with metadata
+tests: passed
+build: passed
+issue: https://github.com/devlikebear/tars/issues/57
+branch: fix/task-1
+pr: https://github.com/devlikebear/tars/pull/57
+notes: ok
+</task-report>`,
+	}, nil
+}
+
 func TestAutopilotManager_StartCompletesTodoAndReviewFlow(t *testing.T) {
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 14, 18, 0, 0, 0, time.UTC)
@@ -143,7 +216,7 @@ func TestAutopilotManager_StartCompletesTodoAndReviewFlow(t *testing.T) {
 	}
 }
 
-func TestAutopilotManager_StartBlocksWhenVerificationGateFails(t *testing.T) {
+func TestAutopilotManager_StartRecoversVerificationGateFailureAndCompletes(t *testing.T) {
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 14, 18, 30, 0, 0, time.UTC)
 	})
@@ -167,22 +240,33 @@ func TestAutopilotManager_StartBlocksWhenVerificationGateFails(t *testing.T) {
 		t.Fatalf("seed board: %v", err)
 	}
 
-	manager := NewAutopilotManager(store, blockingTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager := NewAutopilotManager(store, &recoveringTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager.loopInterval = 5 * time.Millisecond
 	if _, err := manager.Start(context.Background(), created.ID); err != nil {
 		t.Fatalf("start autopilot: %v", err)
 	}
 
-	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusBlocked)
-	if !strings.Contains(strings.ToLower(final.Message), "blocked") {
-		t.Fatalf("expected blocked message, got %+v", final)
+	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusDone)
+	if final.Iterations < 3 {
+		t.Fatalf("expected retry iterations before completion, got %+v", final)
 	}
-
 	state, err := store.GetState(created.ID)
 	if err != nil {
 		t.Fatalf("get state: %v", err)
 	}
-	if state.Status != "blocked" || state.Phase != "blocked" {
-		t.Fatalf("expected blocked state, got %+v", state)
+	if state.Status != "done" || state.Phase != "done" {
+		t.Fatalf("expected recovered autopilot to finish, got %+v", state)
+	}
+
+	activity, err := store.ListActivity(created.ID, 100)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if !hasActivityKindStatus(activity, ActivityKindDecision, "auto_retry") {
+		t.Fatalf("expected auto-retry decision activity, got %+v", activity)
+	}
+	if !hasActivityKindStatus(activity, ActivityKindReplan, "applied") {
+		t.Fatalf("expected applied replan activity, got %+v", activity)
 	}
 }
 
@@ -274,7 +358,7 @@ func TestAutopilotManager_StatusRestoresPersistedRunAfterRestart(t *testing.T) {
 	}
 }
 
-func TestAutopilotManager_StatusConvertsPersistedRunningRunAfterRestart(t *testing.T) {
+func TestAutopilotManager_StatusKeepsPersistedRunningRunAfterRestart(t *testing.T) {
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 14, 19, 15, 0, 0, time.UTC)
 	})
@@ -298,11 +382,8 @@ func TestAutopilotManager_StatusConvertsPersistedRunningRunAfterRestart(t *testi
 	if !ok {
 		t.Fatalf("expected persisted interrupted autopilot status")
 	}
-	if restored.Status != AutopilotStatusBlocked {
-		t.Fatalf("expected interrupted running run to restore as blocked, got %+v", restored)
-	}
-	if !strings.Contains(strings.ToLower(restored.Message), "restart") && !strings.Contains(strings.ToLower(restored.Message), "interrupted") {
-		t.Fatalf("expected interrupted restart guidance, got %+v", restored)
+	if restored.Status != AutopilotStatusRunning {
+		t.Fatalf("expected persisted running status to remain visible until recovery restarts it, got %+v", restored)
 	}
 }
 
@@ -342,7 +423,7 @@ func TestAutopilotManager_RestorePersistedRunsPreloadsCompletedRuns(t *testing.T
 	}
 }
 
-func TestAutopilotManager_RestorePersistedRunsInterruptsRunningRunsAtStartup(t *testing.T) {
+func TestAutopilotManager_RestorePersistedRunsRestartsRunningRunsAtStartup(t *testing.T) {
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 14, 19, 45, 0, 0, time.UTC)
 	})
@@ -372,37 +453,118 @@ func TestAutopilotManager_RestorePersistedRunsInterruptsRunningRunsAtStartup(t *
 	})
 
 	restarted := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	restarted.loopInterval = 5 * time.Millisecond
 	if err := restarted.RestorePersistedRuns(); err != nil {
 		t.Fatalf("restore persisted runs: %v", err)
 	}
 
-	restarted.mu.RLock()
-	restored, ok := restarted.runs[created.ID]
-	restarted.mu.RUnlock()
-	if !ok {
-		t.Fatalf("expected restored run to be preloaded into manager cache")
-	}
-	if restored.Status != AutopilotStatusBlocked {
-		t.Fatalf("expected interrupted running run to restore as blocked, got %+v", restored)
-	}
-	if !strings.Contains(strings.ToLower(restored.Message), "restart") && !strings.Contains(strings.ToLower(restored.Message), "interrupted") {
-		t.Fatalf("expected interrupted restart guidance, got %+v", restored)
+	restored := waitForAutopilotStatus(t, restarted, created.ID, AutopilotStatusDone)
+	if restored.Iterations < 1 {
+		t.Fatalf("expected restarted loop to advance the project, got %+v", restored)
 	}
 
 	state, err := store.GetState(created.ID)
 	if err != nil {
 		t.Fatalf("get state: %v", err)
 	}
-	if state.Status != "blocked" || state.Phase != "blocked" {
-		t.Fatalf("expected startup recovery to block project state, got %+v", state)
+	if state.Status != "done" || state.Phase != "done" {
+		t.Fatalf("expected startup recovery to resume and finish, got %+v", state)
 	}
 
 	activity, err := store.ListActivity(created.ID, 20)
 	if err != nil {
 		t.Fatalf("list activity: %v", err)
 	}
-	if !hasActivityKindStatus(activity, ActivityKindBlocker, "interrupted") {
-		t.Fatalf("expected interrupted blocker activity, got %+v", activity)
+	if !hasActivityKindStatus(activity, ActivityKindReviewStatus, "approved") {
+		t.Fatalf("expected restart recovery to finish the recovered workflow, got %+v", activity)
+	}
+}
+
+func TestAutopilotManager_RestorePersistedRunsRestartsIncompleteProjects(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 19, 45, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Resume Active"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Resume this project",
+				Status:         "todo",
+				Assignee:       "dev-1",
+				Role:           "developer",
+				ReviewRequired: true,
+				TestCommand:    "go test ./internal/project",
+				BuildCommand:   "go test ./internal/tool",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager.setRun(created.ID, func(item *AutopilotRun) {
+		item.ProjectID = created.ID
+		item.RunID = "autopilot-resume"
+		item.Status = AutopilotStatusBlocked
+		item.Message = "Autopilot stalled before restart"
+		item.Iterations = 1
+		item.StartedAt = "2026-03-14T10:20:56Z"
+	})
+
+	restarted := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	restarted.loopInterval = 5 * time.Millisecond
+	if err := restarted.RestorePersistedRuns(); err != nil {
+		t.Fatalf("restore persisted runs: %v", err)
+	}
+
+	final := waitForAutopilotStatus(t, restarted, created.ID, AutopilotStatusDone)
+	if final.Iterations < 2 {
+		t.Fatalf("expected restored loop to continue running, got %+v", final)
+	}
+}
+
+func TestAutopilotManager_EnsureActiveRunsStartsMissingLoop(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 20, 5, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Ensure Active"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Force start missing loop",
+				Status:         "todo",
+				Assignee:       "dev-1",
+				Role:           "developer",
+				ReviewRequired: true,
+				TestCommand:    "go test ./internal/project",
+				BuildCommand:   "go test ./internal/tool",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager.loopInterval = 5 * time.Millisecond
+	started, err := manager.EnsureActiveRuns(context.Background())
+	if err != nil {
+		t.Fatalf("ensure active runs: %v", err)
+	}
+	if started != 1 {
+		t.Fatalf("expected one started run, got %d", started)
+	}
+
+	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusDone)
+	if final.Status != AutopilotStatusDone {
+		t.Fatalf("expected done status, got %+v", final)
 	}
 }
 

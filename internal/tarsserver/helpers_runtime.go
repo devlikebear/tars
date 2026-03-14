@@ -159,7 +159,7 @@ func newHeartbeatRunner(
 	policy heartbeat.Policy,
 	state *heartbeatRuntimeState,
 ) func(ctx context.Context) (heartbeat.RunResult, error) {
-	return newHeartbeatRunnerWithNotify(workspaceDir, nowFn, ask, policy, state, nil)
+	return newHeartbeatRunnerWithNotify(workspaceDir, nowFn, ask, policy, state, nil, nil)
 }
 
 func newHeartbeatRunnerWithNotify(
@@ -169,6 +169,7 @@ func newHeartbeatRunnerWithNotify(
 	policy heartbeat.Policy,
 	state *heartbeatRuntimeState,
 	emit func(ctx context.Context, evt notificationEvent),
+	after func(ctx context.Context) error,
 ) func(ctx context.Context) (heartbeat.RunResult, error) {
 	return newSerializedSupervisorRunner(serializedSupervisorOptions[heartbeat.RunResult]{
 		nowFn:   nowFn,
@@ -183,6 +184,9 @@ func newHeartbeatRunnerWithNotify(
 		},
 		emit: func(ctx context.Context, result heartbeat.RunResult, runErr error) {
 			if emit == nil {
+				if after != nil {
+					_ = after(ctx)
+				}
 				return
 			}
 			if runErr != nil {
@@ -198,6 +202,9 @@ func newHeartbeatRunnerWithNotify(
 				evt := newNotificationEvent("heartbeat", "info", "Heartbeat action", trimForMemory(result.Response, 280))
 				emit(ctx, evt)
 			}
+			if after != nil {
+				_ = after(ctx)
+			}
 		},
 	})
 }
@@ -209,6 +216,7 @@ func newWorkspaceHeartbeatRunnerWithNotify(
 	policyForWorkspace func(workspaceID string) heartbeat.Policy,
 	state *heartbeatWorkspaceState,
 	emit func(ctx context.Context, evt notificationEvent),
+	after func(ctx context.Context) error,
 ) func(ctx context.Context) (heartbeat.RunResult, error) {
 	return newSerializedSupervisorRunner(serializedSupervisorOptions[heartbeat.RunResult]{
 		nowFn:   nowFn,
@@ -233,6 +241,9 @@ func newWorkspaceHeartbeatRunnerWithNotify(
 		},
 		emit: func(ctx context.Context, result heartbeat.RunResult, runErr error) {
 			if emit == nil {
+				if after != nil {
+					_ = after(ctx)
+				}
 				return
 			}
 			switch {
@@ -248,6 +259,9 @@ func newWorkspaceHeartbeatRunnerWithNotify(
 			default:
 				evt := newNotificationEvent("heartbeat", "info", "Heartbeat action", trimForMemory(result.Response, 280))
 				emit(ctx, evt)
+			}
+			if after != nil {
+				_ = after(ctx)
 			}
 		},
 	})

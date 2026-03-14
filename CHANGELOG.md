@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.5.11] - 2026-03-14
+
+### Fixed
+
+- Project autopilot now stays alive in a periodic supervisor loop until the board reaches `done` instead of stopping after one bounded burst of dispatches
+- Server startup now recreates autopilot loops for incomplete projects so active work resumes automatically after a TARS restart
+- Heartbeat-triggered supervision now force-starts missing autopilot loops for incomplete projects as a safety net when a project is active but no live PM loop is attached
+
+### Changed
+
+- PM supervision now auto-requeues stalled `in_progress` work back to `todo`, records an automatic retry decision/replan, and keeps moving without asking the user for routine retry decisions
+
 ## [0.5.10] - 2026-03-14
 
 ### Added
