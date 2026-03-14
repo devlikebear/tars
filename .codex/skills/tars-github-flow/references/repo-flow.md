@@ -26,12 +26,13 @@ gh issue create \
   --body $'## Summary\n- Add init/doctor/service flow\n\n## Acceptance Criteria\n- `tars init` creates starter files\n- `tars doctor --fix` repairs local setup\n- `tars service ...` manages launchd'
 ```
 
-## Phase 3: Create a Feature Branch
+## Phase 3: Create a Feature Worktree
 
-- Branch from `main`.
+- Branch from `main` into a dedicated worktree.
 - Use `feat/<name>`, `fix/<name>`, or `chore/<name>`.
 - Keep names lowercase kebab-case.
-- Do the work on that local feature branch, not on `main`.
+- Keep the worktree outside the repository root when possible, for example under `../tars-worktrees/`.
+- Do the work in that worktree-backed feature branch, not on `main`.
 
 Example:
 
@@ -39,15 +40,17 @@ Example:
 git fetch origin
 git switch main
 git pull --rebase
-git switch -c feat/onboarding-service-flow
+mkdir -p ../tars-worktrees
+git worktree add ../tars-worktrees/feat-onboarding-service-flow -b feat/onboarding-service-flow main
+cd ../tars-worktrees/feat-onboarding-service-flow
 ```
 
 Fallback when `.git` writes are blocked in the Codex environment:
 
-- This is an exception path only after you have clearly told the user that the normal path is local feature branch -> local commit -> clean `git status` -> push -> PR.
+- This is an exception path only after you have clearly told the user that the normal path is local worktree-backed feature branch -> local commit -> clean `git status` -> push -> PR.
 - Create the remote branch with `gh api repos/<owner>/<repo>/git/refs`.
 - Commit through the GitHub Git Data API only when local `.git` writes are truly blocked.
-- Tell the user that local branch creation and local main sync still need to happen in their own shell.
+- Tell the user that local worktree creation and local main sync still need to happen in their own shell.
 
 ## Phase 4: Develop With TDD
 
@@ -79,9 +82,9 @@ Current repository release rules:
 
 - Keep the commit subject imperative and under 72 characters.
 - Prefer one commit per logical unit when possible.
-- Commit on the local feature branch before any remote push.
-- Run `git status --short --branch` after committing and confirm the feature branch is clean.
-- If the feature branch is not clean, do not push and do not open a PR yet.
+- Commit on the local worktree-backed feature branch before any remote push.
+- Run `git status --short --branch` after committing and confirm the feature branch worktree is clean.
+- If the feature branch worktree is not clean, do not push and do not open a PR yet.
 
 Example:
 
@@ -97,7 +100,7 @@ git push -u origin feat/onboarding-service-flow
 - Use the repository PR template at `.github/pull_request_template.md`.
 - Fill all sections: `Summary`, `Changes`, `Validation`, `Checklist`, `Risks / Rollback`.
 - Explicitly document any local-only test failure that is unrelated to the change.
-- Open the PR only after the local feature branch commit exists and `git status --short --branch` is clean.
+- Open the PR only after the local feature branch commit exists in the worktree and `git status --short --branch` is clean there.
 
 Required checks and merge rules on `main`:
 
@@ -128,11 +131,13 @@ gh pr merge <number> --squash --delete-branch
 
 ## Phase 9: Sync Local Main
 
-- After merge, sync local `main`.
+- After merge, clean up the feature worktree and sync local `main`.
 
 Preferred:
 
 ```bash
+git worktree remove ../tars-worktrees/feat-onboarding-service-flow
+git worktree prune
 git fetch origin
 git switch main
 git pull --rebase

@@ -1,4 +1,4 @@
 interface:
   display_name: "TARS GitHub Flow"
-  short_description: "TARS repo GitHub Flow from issue to release"
-  default_prompt: "Use $tars-github-flow to run the TARS repository workflow from planning and issue creation through PR, merge, and release verification."
+  short_description: "TARS repo GitHub Flow with worktree-based branch flow"
+  default_prompt: "Use $tars-github-flow to run the TARS repository workflow from planning and issue creation through a dedicated feature worktree, PR, merge, and release verification."
