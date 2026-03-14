@@ -61,6 +61,7 @@ func TestStoreBoardRoundtrip(t *testing.T) {
 				Status:         "in_progress",
 				Assignee:       "dev-1",
 				Role:           "developer",
+				WorkerKind:     WorkerKindCodexCLI,
 				ReviewRequired: true,
 				TestCommand:    "go test ./internal/project",
 				BuildCommand:   "go test ./internal/tarsserver",
@@ -83,6 +84,9 @@ func TestStoreBoardRoundtrip(t *testing.T) {
 	}
 	if len(loaded.Tasks) != 1 || loaded.Tasks[0].Assignee != "dev-1" {
 		t.Fatalf("unexpected loaded tasks: %+v", loaded.Tasks)
+	}
+	if loaded.Tasks[0].WorkerKind != WorkerKindCodexCLI {
+		t.Fatalf("expected worker kind %q, got %+v", WorkerKindCodexCLI, loaded.Tasks[0])
 	}
 
 	second, err := store.UpdateBoard(created.ID, BoardUpdateInput{

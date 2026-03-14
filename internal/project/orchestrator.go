@@ -18,21 +18,23 @@ const (
 )
 
 type TaskRunRequest struct {
-	ProjectID string
-	TaskID    string
-	Title     string
-	Prompt    string
-	Agent     string
-	Role      string
+	ProjectID  string
+	TaskID     string
+	Title      string
+	Prompt     string
+	Agent      string
+	Role       string
+	WorkerKind string
 }
 
 type TaskRun struct {
-	ID       string
-	TaskID   string
-	Agent    string
-	Status   TaskRunStatus
-	Response string
-	Error    string
+	ID         string
+	TaskID     string
+	Agent      string
+	WorkerKind string
+	Status     TaskRunStatus
+	Response   string
+	Error      string
 }
 
 type TaskRunner interface {
@@ -111,7 +113,14 @@ func (o *Orchestrator) DispatchTodo(ctx context.Context, projectID string) (Disp
 }
 
 func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task BoardTask) (TaskRun, error) {
-	if err := o.setBoardTaskStatus(projectID, task.ID, "in_progress"); err != nil {
+	profile, err := ResolveWorkerProfile(task)
+	if err != nil {
+		return TaskRun{}, err
+	}
+	if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
+		item.Status = "in_progress"
+		item.WorkerKind = profile.Kind
+	}); err != nil {
 		return TaskRun{}, err
 	}
 	if err := o.store.appendSystemActivity(projectID, ActivityAppendInput{
@@ -120,42 +129,54 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 		Status:  "in_progress",
 		Message: "Task dispatched to worker",
 		Meta: map[string]string{
-			"assignee": task.Assignee,
-			"role":     task.Role,
+			"assignee":    task.Assignee,
+			"role":        task.Role,
+			"worker_kind": profile.Kind,
 		},
 	}); err != nil {
 		return TaskRun{}, err
 	}
 
 	run, err := o.runner.Start(ctx, TaskRunRequest{
-		ProjectID: strings.TrimSpace(projectID),
-		TaskID:    task.ID,
-		Title:     task.Title,
-		Prompt:    buildTaskPrompt(task, projectID),
-		Agent:     task.Assignee,
-		Role:      task.Role,
+		ProjectID:  strings.TrimSpace(projectID),
+		TaskID:     task.ID,
+		Title:      task.Title,
+		Prompt:     BuildTaskPrompt(task, projectID, profile),
+		Agent:      task.Assignee,
+		Role:       task.Role,
+		WorkerKind: profile.Kind,
 	})
 	if err != nil {
-		_ = o.setBoardTaskStatus(projectID, task.ID, "todo")
+		_ = o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
+			item.Status = "todo"
+			item.WorkerKind = profile.Kind
+		})
 		_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
 			TaskID:  task.ID,
 			Kind:    ActivityKindTaskStatus,
 			Status:  "failed",
 			Message: "Task dispatch failed",
+			Meta: map[string]string{
+				"worker_kind": profile.Kind,
+			},
 		})
 		return TaskRun{}, err
 	}
 
 	finished, err := o.runner.Wait(ctx, run.ID)
 	if err != nil {
-		_ = o.setBoardTaskStatus(projectID, task.ID, "todo")
+		_ = o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
+			item.Status = "todo"
+			item.WorkerKind = profile.Kind
+		})
 		_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
 			TaskID:  task.ID,
 			Kind:    ActivityKindTaskStatus,
 			Status:  "failed",
 			Message: "Task run failed",
 			Meta: map[string]string{
-				"run_id": run.ID,
+				"run_id":      run.ID,
+				"worker_kind": profile.Kind,
 			},
 		})
 		return run, err
@@ -168,7 +189,10 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 	if finished.Status == TaskRunStatusFailed || finished.Status == TaskRunStatusCanceled {
 		finalStatus = "todo"
 	}
-	if err := o.setBoardTaskStatus(projectID, task.ID, finalStatus); err != nil {
+	if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
+		item.Status = finalStatus
+		item.WorkerKind = firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind)
+	}); err != nil {
 		return finished, err
 	}
 
@@ -184,8 +208,10 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 		Status:  activityStatus,
 		Message: message,
 		Meta: map[string]string{
-			"run_id": run.ID,
-			"agent":  firstNonEmpty(strings.TrimSpace(finished.Agent), strings.TrimSpace(task.Assignee)),
+			"run_id":      run.ID,
+			"agent":       firstNonEmpty(strings.TrimSpace(finished.Agent), strings.TrimSpace(task.Assignee)),
+			"assignee":    strings.TrimSpace(task.Assignee),
+			"worker_kind": firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind),
 		},
 	}); err != nil {
 		return finished, err
@@ -193,7 +219,7 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 	return finished, nil
 }
 
-func (o *Orchestrator) setBoardTaskStatus(projectID, taskID, status string) error {
+func (o *Orchestrator) updateBoardTask(projectID, taskID string, mutate func(*BoardTask)) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
@@ -205,7 +231,7 @@ func (o *Orchestrator) setBoardTaskStatus(projectID, taskID, status string) erro
 	tasks := make([]BoardTask, 0, len(board.Tasks))
 	for _, task := range board.Tasks {
 		if task.ID == strings.TrimSpace(taskID) {
-			task.Status = strings.TrimSpace(status)
+			mutate(&task)
 			updated = true
 		}
 		tasks = append(tasks, task)
@@ -218,27 +244,6 @@ func (o *Orchestrator) setBoardTaskStatus(projectID, taskID, status string) erro
 		Tasks:   tasks,
 	})
 	return err
-}
-
-func buildTaskPrompt(task BoardTask, projectID string) string {
-	var builder strings.Builder
-	builder.WriteString("Project ID: ")
-	builder.WriteString(strings.TrimSpace(projectID))
-	builder.WriteString("\nTask: ")
-	builder.WriteString(strings.TrimSpace(task.Title))
-	if role := strings.TrimSpace(task.Role); role != "" {
-		builder.WriteString("\nRole: ")
-		builder.WriteString(role)
-	}
-	if testCmd := strings.TrimSpace(task.TestCommand); testCmd != "" {
-		builder.WriteString("\nTest command: ")
-		builder.WriteString(testCmd)
-	}
-	if buildCmd := strings.TrimSpace(task.BuildCommand); buildCmd != "" {
-		builder.WriteString("\nBuild command: ")
-		builder.WriteString(buildCmd)
-	}
-	return builder.String()
 }
 
 func firstNonEmpty(values ...string) string {
