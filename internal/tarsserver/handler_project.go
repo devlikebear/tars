@@ -306,6 +306,70 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 			return
 		}
 
+		if len(parts) == 2 && parts[1] == "activity" {
+			switch r.Method {
+			case http.MethodGet:
+				limit, ok := parsePositiveLimit(w, r, 50)
+				if !ok {
+					return
+				}
+				items, err := store.ListActivity(projectID, limit)
+				if err != nil {
+					if strings.Contains(strings.ToLower(err.Error()), "not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+						return
+					}
+					logger.Error().Err(err).Str("project_id", projectID).Msg("list project activity failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list project activity failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "items": items})
+			case http.MethodPost:
+				var req struct {
+					TaskID    string            `json:"task_id,omitempty"`
+					Source    string            `json:"source"`
+					Agent     string            `json:"agent,omitempty"`
+					Kind      string            `json:"kind"`
+					Status    string            `json:"status,omitempty"`
+					Message   string            `json:"message,omitempty"`
+					Timestamp string            `json:"timestamp,omitempty"`
+					Meta      map[string]string `json:"meta,omitempty"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+					return
+				}
+				item, err := store.AppendActivity(projectID, project.ActivityAppendInput{
+					TaskID:    req.TaskID,
+					Source:    req.Source,
+					Agent:     req.Agent,
+					Kind:      req.Kind,
+					Status:    req.Status,
+					Message:   req.Message,
+					Timestamp: req.Timestamp,
+					Meta:      req.Meta,
+				})
+				if err != nil {
+					lower := strings.ToLower(err.Error())
+					if strings.Contains(lower, "not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+						return
+					}
+					if strings.Contains(lower, "required") || strings.Contains(lower, "invalid") {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
+					logger.Error().Err(err).Str("project_id", projectID).Msg("append project activity failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "append project activity failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, item)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+
 		if len(parts) == 2 && parts[1] == "activate" {
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

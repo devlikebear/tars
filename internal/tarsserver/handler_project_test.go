@@ -205,3 +205,69 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 		t.Fatalf("expected next_action in state patch response, got %q", statePatchRec.Body.String())
 	}
 }
+
+func TestProjectAPI_ActivityRoutes(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	projectStore := project.NewStore(root, nil)
+	handler := newProjectAPIHandler(projectStore, store, "", zerolog.New(io.Discard))
+
+	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	appendReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/activity", strings.NewReader(`{
+		"task_id":"task-1",
+		"source":"pm",
+		"kind":"assignment",
+		"status":"queued",
+		"message":"Assign task-1 to dev-1",
+		"meta":{"agent":"dev-1"}
+	}`))
+	appendReq.Header.Set("Content-Type", "application/json")
+	appendRec := httptest.NewRecorder()
+	handler.ServeHTTP(appendRec, appendReq)
+	if appendRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for activity append, got %d body=%q", appendRec.Code, appendRec.Body.String())
+	}
+
+	secondReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/activity", strings.NewReader(`{
+		"task_id":"task-1",
+		"source":"agent",
+		"agent":"dev-1",
+		"kind":"task_status",
+		"status":"in_progress",
+		"message":"Started implementing tests"
+	}`))
+	secondReq.Header.Set("Content-Type", "application/json")
+	secondRec := httptest.NewRecorder()
+	handler.ServeHTTP(secondRec, secondReq)
+	if secondRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for second activity append, got %d body=%q", secondRec.Code, secondRec.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/projects/"+created.ID+"/activity?limit=1", nil)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for activity list, got %d body=%q", listRec.Code, listRec.Body.String())
+	}
+
+	var payload struct {
+		Count int                `json:"count"`
+		Items []project.Activity `json:"items"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode activity payload: %v", err)
+	}
+	if payload.Count != 1 || len(payload.Items) != 1 {
+		t.Fatalf("expected one limited activity item, got %+v", payload)
+	}
+	if payload.Items[0].Status != "in_progress" {
+		t.Fatalf("expected newest activity first, got %+v", payload.Items)
+	}
+}
