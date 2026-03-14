@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/serverauth"
@@ -26,7 +27,13 @@ func buildChatToolRegistry(
 	registry.Register(tool.NewProjectGetTool(projectStore))
 	registry.Register(tool.NewProjectUpdateTool(projectStore))
 	registry.Register(tool.NewProjectDeleteTool(projectStore))
+	registry.Register(tool.NewProjectBoardGetTool(projectStore))
+	registry.Register(tool.NewProjectBoardUpdateTool(projectStore))
+	registry.Register(tool.NewProjectActivityGetTool(projectStore))
+	registry.Register(tool.NewProjectActivityAppendTool(projectStore))
 	registry.Register(tool.NewProjectActivateTool(projectStore, reqStore, deps.mainSessionID))
+	registry.Register(tool.NewProjectDispatchTool(projectStore, gateway.NewProjectTaskRunner(deps.tooling.Gateway, ""), project.DefaultGitHubAuthChecker()))
+	registry.Register(tool.NewProjectAutopilotStartTool(deps.tooling.ProjectAutopilot))
 	registry.Register(tool.NewProjectBriefGetTool(projectStore))
 	registry.Register(tool.NewProjectBriefUpdateTool(projectStore))
 	registry.Register(tool.NewProjectBriefFinalizeTool(projectStore, reqStore))
@@ -190,9 +197,16 @@ func defaultMinimalToolNames() []string {
 		"memory_get",
 		"memory_search",
 		"memory_save",
+		"project_create",
 		"project_get",
 		"project_list",
 		"project_update",
+		"project_board_get",
+		"project_board_update",
+		"project_activity_get",
+		"project_activity_append",
+		"project_dispatch",
+		"project_autopilot_start",
 		"project_activate",
 		"project_brief_get",
 		"project_brief_update",

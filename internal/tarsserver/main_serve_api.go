@@ -341,6 +341,7 @@ func buildAPIMux(
 		processManager,
 		extensionsManager,
 		gatewayRuntime,
+		nil,
 		cfg.ToolsDefaultSet,
 		cfg.ToolsAllowHighRiskUser,
 		cfg.APIMaxInflightChat,
@@ -375,6 +376,13 @@ func buildAPIMux(
 	if cfg.ChannelsTelegramEnabled {
 		chatTools = append(chatTools, telegramSendTool)
 	}
+	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
+	projectDashboardBroker := newProjectDashboardBroker()
+	projectTaskRunner := gateway.NewProjectTaskRunner(gatewayRuntime, "")
+	projectAutopilot := project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), func(projectID string, kind string) {
+		projectDashboardBroker.publish(newProjectDashboardEvent(projectID, kind))
+	})
+	chatTooling.ProjectAutopilot = projectAutopilot
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,
 		sessionStore,
@@ -387,9 +395,6 @@ func buildAPIMux(
 		chatTools...,
 	)
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
-	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
-	projectDashboardBroker := newProjectDashboardBroker()
-	projectTaskRunner := gateway.NewProjectTaskRunner(gatewayRuntime, "")
 	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, projectDashboardBroker, logger)
 	dashboardHandler := newProjectDashboardHandler(projectStore, projectDashboardBroker, logger)
 	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)

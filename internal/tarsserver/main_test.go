@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1729,6 +1730,7 @@ func TestChatAPI_UsesConfiguredMaxIterations(t *testing.T) {
 }
 
 type mockLLMClient struct {
+	mu              sync.Mutex
 	response        llm.ChatResponse
 	responses       []llm.ChatResponse
 	disableDelta    bool
@@ -1747,6 +1749,8 @@ func (m *mockLLMClient) Ask(ctx context.Context, prompt string) (string, error) 
 }
 
 func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.callCount++
 	msgCopy := append([]llm.ChatMessage(nil), messages...)
 	m.seenMessages = append(m.seenMessages, msgCopy)

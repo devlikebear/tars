@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-14
+
+### Added
+
+- Bundled `project-swarm` plugin with `project-start` and `project-autopilot` skills for workspace project kickoff and autonomous follow-through
+- Built-in project runtime tools for board read/write, activity read/append, task dispatch, and background autopilot start
+- Natural-language project kickoff routing for chat and Telegram when a project brief is being collected or a project start request is detected
+- Background project autopilot loop that can keep dispatching `todo` and `review` stages while updating project state for the dashboard
+
+### Changed
+
+- Minimal chat tool injection now includes safe project runtime tools needed by the bundled project skills
+- Project kickoff can proceed from a brief-driven interview instead of requiring only manual API calls
+- Test chat helpers are synchronized for concurrent inflight chat coverage
+
 ## [0.3.0] - 2026-03-14
 
 ### Added

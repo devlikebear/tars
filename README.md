@@ -106,6 +106,14 @@ curl -N http://127.0.0.1:43180/ui/projects/<project-id>/stream
 tars
 ```
 
+Kick off a project from chat:
+
+```text
+todo 앱 만드는 프로젝트 시작해줘
+```
+
+The bundled `project-start` skill will collect a few brief answers, finalize the project, seed the board, and start background autopilot execution.
+
 7. Run basic checks:
 
 ```bash
@@ -115,6 +123,10 @@ make smoke-auth
 ```
 
 ## Project Manager API
+
+TARS now ships a bundled `project-swarm` plugin under [`plugins/project-swarm`](plugins/project-swarm). Its skills are mirrored into the workspace runtime and can be invoked explicitly with `/project-start` or selected automatically from natural-language kickoff messages in chat and Telegram.
+
+For direct API control, the project manager routes remain available:
 
 Create a project:
 
@@ -161,6 +173,8 @@ curl -s http://127.0.0.1:43180/v1/projects/<project-id>/dispatch \
 ```
 
 Tasks that require review will only move to `done` after the reviewer stage approves them. Developer runs must also report passing test/build results plus issue/branch/PR metadata before the task can advance.
+
+An end-to-end curl example is available in [`examples/project/README.md`](examples/project/README.md).
 
 ## Build
 

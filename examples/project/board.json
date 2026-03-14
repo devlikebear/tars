@@ -1,0 +1,32 @@
+{
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Implement dispatch workflow",
+      "status": "todo",
+      "assignee": "dev-1",
+      "role": "developer",
+      "worker_kind": "codex-cli",
+      "review_required": true,
+      "test_command": "go test ./internal/project",
+      "build_command": "go test ./internal/tarsserver",
+      "issue": "https://github.com/devlikebear/tars/issues/101",
+      "branch": "feat/project-dispatch-workflow",
+      "pr": "https://github.com/devlikebear/tars/pull/101"
+    },
+    {
+      "id": "task-2",
+      "title": "Review dispatch workflow",
+      "status": "review",
+      "assignee": "review-1",
+      "role": "reviewer",
+      "worker_kind": "claude-code",
+      "review_required": false,
+      "test_command": "go test ./internal/project",
+      "build_command": "go test ./internal/tarsserver",
+      "issue": "https://github.com/devlikebear/tars/issues/101",
+      "branch": "feat/project-dispatch-workflow",
+      "pr": "https://github.com/devlikebear/tars/pull/101"
+    }
+  ]
+}
