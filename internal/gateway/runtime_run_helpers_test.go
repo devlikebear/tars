@@ -56,27 +56,45 @@ func TestResolveSpawnProjectID_UsesSessionProjectAndPersistsOverride(t *testing.
 	}
 }
 
-func TestResolveSpawnSessionID_UsesProjectWorkerSessionByDefault(t *testing.T) {
+func TestResolveSpawnSessionID_CreatesDistinctHiddenWorkerSessionsPerProjectRun(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	mainSession, err := store.EnsureMain()
 	if err != nil {
 		t.Fatalf("ensure main: %v", err)
 	}
 
-	sessionID, err := resolveSpawnSessionID(store, SpawnRequest{ProjectID: "proj_demo"}, AgentInfo{}, "worker")
+	firstSessionID, err := resolveSpawnSessionID(store, SpawnRequest{ProjectID: "proj_demo"}, AgentInfo{}, "worker")
 	if err != nil {
 		t.Fatalf("resolve worker session: %v", err)
 	}
-	if sessionID == "" || sessionID == mainSession.ID {
-		t.Fatalf("expected project worker session distinct from main, got %q", sessionID)
+	if firstSessionID == "" || firstSessionID == mainSession.ID {
+		t.Fatalf("expected project worker session distinct from main, got %q", firstSessionID)
 	}
 
-	sess, err := store.Get(sessionID)
+	secondSessionID, err := resolveSpawnSessionID(store, SpawnRequest{ProjectID: "proj_demo"}, AgentInfo{}, "worker")
 	if err != nil {
-		t.Fatalf("get worker session: %v", err)
+		t.Fatalf("resolve second worker session: %v", err)
 	}
-	if sess.Kind != "worker" || !sess.Hidden {
-		t.Fatalf("unexpected worker session metadata: %+v", sess)
+	if secondSessionID == "" || secondSessionID == mainSession.ID {
+		t.Fatalf("expected second project worker session distinct from main, got %q", secondSessionID)
+	}
+	if firstSessionID == secondSessionID {
+		t.Fatalf("expected project worker runs to use distinct hidden sessions, got %q", firstSessionID)
+	}
+
+	first, err := store.Get(firstSessionID)
+	if err != nil {
+		t.Fatalf("get first worker session: %v", err)
+	}
+	if first.Kind != "worker" || !first.Hidden {
+		t.Fatalf("unexpected first worker session metadata: %+v", first)
+	}
+	second, err := store.Get(secondSessionID)
+	if err != nil {
+		t.Fatalf("get second worker session: %v", err)
+	}
+	if second.Kind != "worker" || !second.Hidden {
+		t.Fatalf("unexpected second worker session metadata: %+v", second)
 	}
 }
 

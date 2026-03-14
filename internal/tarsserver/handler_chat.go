@@ -35,13 +35,8 @@ func resolveChatSession(store *session.Store, sessionID string, mainSessionID st
 		return id, nil
 	}
 	if _, err := store.Get(strings.TrimSpace(sessionID)); err != nil {
-		// Requested session is stale; fall back to the main session
-		// or create a new one so the chat request is not rejected.
-		if id := strings.TrimSpace(mainSessionID); id != "" && id != strings.TrimSpace(sessionID) {
-			if _, mainErr := store.Get(id); mainErr == nil {
-				return id, nil
-			}
-		}
+		// Requested session is stale; create a fresh session instead of
+		// silently attaching the request to the main session.
 		return createFallbackChatSession(store)
 	}
 	return strings.TrimSpace(sessionID), nil

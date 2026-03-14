@@ -2,11 +2,16 @@ package project
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
+
+const autopilotRunDocumentName = "AUTOPILOT.json"
 
 type AutopilotRunStatus string
 
@@ -58,6 +63,29 @@ func NewAutopilotManager(
 	}
 }
 
+func (m *AutopilotManager) RestorePersistedRuns() error {
+	if m == nil || m.store == nil {
+		return nil
+	}
+	projects, err := m.store.List()
+	if err != nil {
+		return err
+	}
+	for _, item := range projects {
+		run, err := m.loadRun(item.ID)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if _, err := m.restoreRun(item.ID, run); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *AutopilotManager) Start(_ context.Context, projectID string) (AutopilotRun, error) {
 	if m == nil || m.store == nil {
 		return AutopilotRun{}, fmt.Errorf("autopilot manager store is not configured")
@@ -90,6 +118,9 @@ func (m *AutopilotManager) Start(_ context.Context, projectID string) (Autopilot
 	}
 	m.runs[projectID] = run
 	m.mu.Unlock()
+	if err := m.persistRun(run); err != nil {
+		return AutopilotRun{}, err
+	}
 
 	m.publish(projectID, "autopilot")
 	go m.run(projectID, run.RunID)
@@ -100,10 +131,22 @@ func (m *AutopilotManager) Status(projectID string) (AutopilotRun, bool) {
 	if m == nil {
 		return AutopilotRun{}, false
 	}
+	projectID = strings.TrimSpace(projectID)
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-	item, ok := m.runs[strings.TrimSpace(projectID)]
-	return item, ok
+	item, ok := m.runs[projectID]
+	m.mu.RUnlock()
+	if ok {
+		return item, true
+	}
+	item, err := m.loadRun(projectID)
+	if err != nil {
+		return AutopilotRun{}, false
+	}
+	item, err = m.restoreRun(projectID, item)
+	if err != nil {
+		return AutopilotRun{}, false
+	}
+	return item, true
 }
 
 func (m *AutopilotManager) run(projectID, runID string) {
@@ -222,13 +265,15 @@ func (m *AutopilotManager) setRun(projectID string, mutate func(*AutopilotRun)) 
 	if m == nil {
 		return
 	}
+	projectID = strings.TrimSpace(projectID)
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	item := m.runs[strings.TrimSpace(projectID)]
+	item := m.runs[projectID]
 	mutate(&item)
-	item.ProjectID = strings.TrimSpace(projectID)
+	item.ProjectID = projectID
 	item.UpdatedAt = m.store.nowFn().UTC().Format(time.RFC3339)
-	m.runs[strings.TrimSpace(projectID)] = item
+	m.runs[projectID] = item
+	m.mu.Unlock()
+	_ = m.persistRun(item)
 }
 
 func (m *AutopilotManager) updateState(projectID, phase, status, nextAction, summary, stopReason string) {
@@ -363,4 +408,129 @@ func (m *AutopilotManager) appendPMActivity(projectID, kind, status, message str
 		Meta:    meta,
 	})
 	return err
+}
+
+func (m *AutopilotManager) cacheRun(projectID string, run AutopilotRun) {
+	if m == nil {
+		return
+	}
+	projectID = strings.TrimSpace(projectID)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.runs[projectID] = run
+}
+
+func (m *AutopilotManager) loadRun(projectID string) (AutopilotRun, error) {
+	if m == nil || m.store == nil {
+		return AutopilotRun{}, fmt.Errorf("autopilot manager store is not configured")
+	}
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return AutopilotRun{}, fmt.Errorf("project id is required")
+	}
+	raw, err := os.ReadFile(m.autopilotRunPath(projectID))
+	if err != nil {
+		return AutopilotRun{}, err
+	}
+	var item AutopilotRun
+	if err := json.Unmarshal(raw, &item); err != nil {
+		return AutopilotRun{}, err
+	}
+	if strings.TrimSpace(item.ProjectID) == "" {
+		item.ProjectID = projectID
+	}
+	return item, nil
+}
+
+func (m *AutopilotManager) persistRun(item AutopilotRun) error {
+	if m == nil || m.store == nil {
+		return nil
+	}
+	projectID := strings.TrimSpace(item.ProjectID)
+	if projectID == "" {
+		return fmt.Errorf("autopilot project id is required")
+	}
+	if _, err := m.store.Get(projectID); err != nil {
+		return err
+	}
+	return writeJSONAtomicWithTrailingNewline(m.autopilotRunPath(projectID), item)
+}
+
+func interruptedAutopilotMessage(current string) string {
+	current = strings.TrimSpace(current)
+	if current == "" {
+		return "Autopilot was interrupted by a server restart; review the board and restart autopilot."
+	}
+	return current + " Autopilot was interrupted by a server restart; restart autopilot to continue."
+}
+
+func (m *AutopilotManager) restoreRun(projectID string, item AutopilotRun) (AutopilotRun, error) {
+	projectID = strings.TrimSpace(projectID)
+	if strings.TrimSpace(item.ProjectID) == "" {
+		item.ProjectID = projectID
+	}
+	if item.Status == AutopilotStatusRunning {
+		item.Status = AutopilotStatusBlocked
+		item.Message = interruptedAutopilotMessage(item.Message)
+		item.UpdatedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+		if strings.TrimSpace(item.FinishedAt) == "" {
+			item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+		}
+		if err := m.appendPMActivity(projectID, ActivityKindBlocker, "interrupted", item.Message, map[string]string{
+			"run_id": item.RunID,
+		}); err != nil {
+			return AutopilotRun{}, err
+		}
+		m.updateState(projectID, "blocked", "blocked", "Restart autopilot to continue", item.Message, item.Message)
+	}
+	m.cacheRun(projectID, item)
+	if err := m.persistRun(item); err != nil {
+		return AutopilotRun{}, err
+	}
+	return item, nil
+}
+
+func (m *AutopilotManager) autopilotRunPath(projectID string) string {
+	if m == nil || m.store == nil {
+		return ""
+	}
+	return m.store.ProjectFilePath(projectID, autopilotRunDocumentName)
+}
+
+func writeJSONAtomicWithTrailingNewline(path string, payload any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }

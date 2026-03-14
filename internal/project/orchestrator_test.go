@@ -128,6 +128,72 @@ func TestOrchestratorDispatchTodoRunsTasksInParallel(t *testing.T) {
 	}
 }
 
+func TestOrchestratorDispatchTodo_StagesBootstrapBeforeDependentSeedTasks(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 13, 15, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Seeded PM Project"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{ID: "pm-seed-bootstrap", Title: "Bootstrap MVP", Status: "todo", Assignee: "dev-1", Role: "developer", ReviewRequired: true},
+			{ID: "pm-seed-vertical-slice", Title: "Implement first vertical slice", Status: "todo", Assignee: "dev-2", Role: "developer", ReviewRequired: true},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	runner := newStubTaskRunner()
+	orchestrator := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error { return nil })
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, runErr := orchestrator.DispatchTodo(context.Background(), created.ID)
+		errCh <- runErr
+	}()
+
+	select {
+	case <-runner.startedCh:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected bootstrap task run to start")
+	}
+	select {
+	case <-runner.startedCh:
+		t.Fatal("expected seeded dependent task to stay queued until bootstrap finishes")
+	case <-time.After(120 * time.Millisecond):
+	}
+	close(runner.waitGate)
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("dispatch todo: %v", err)
+	}
+
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	if len(runner.started) != 1 {
+		t.Fatalf("expected only bootstrap task to be dispatched, got %+v", runner.started)
+	}
+	if runner.started[0].TaskID != "pm-seed-bootstrap" {
+		t.Fatalf("expected bootstrap task first, got %+v", runner.started[0])
+	}
+
+	board, err := store.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board: %v", err)
+	}
+	if len(board.Tasks) != 2 {
+		t.Fatalf("expected 2 tasks, got %+v", board.Tasks)
+	}
+	if board.Tasks[0].Status != "review" {
+		t.Fatalf("expected bootstrap task to advance, got %+v", board.Tasks[0])
+	}
+	if board.Tasks[1].Status != "todo" {
+		t.Fatalf("expected dependent task to remain queued, got %+v", board.Tasks[1])
+	}
+}
+
 func TestOrchestratorDispatchTodoRestoresFailedTaskToTodo(t *testing.T) {
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 14, 13, 0, 0, 0, time.UTC)
