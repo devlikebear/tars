@@ -601,6 +601,7 @@ func TestRelayProtocol_ForwardEvent_BroadcastToMultipleCDPClients(t *testing.T) 
 		t.Fatalf("dial cdp2: %v", err)
 	}
 	defer cdp2.Close()
+	waitForRelayCDPClients(t, srv, 2)
 
 	eventPayload := `{"method":"forwardCDPEvent","params":{"method":"Page.frameNavigated","params":{"frame":{"id":"f-1"}},"sessionId":"s-1"}}`
 	if err := extConn.WriteMessage(websocket.TextMessage, []byte(eventPayload)); err != nil {
@@ -643,6 +644,24 @@ func waitForRelayCDPReady(t *testing.T, srv *Server) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	t.Fatalf("relay cdp did not become ready before timeout")
+}
+
+func waitForRelayCDPClients(t *testing.T, srv *Server, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		srv.mu.RLock()
+		got := len(srv.cdpClients)
+		srv.mu.RUnlock()
+		if got >= want {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	srv.mu.RLock()
+	got := len(srv.cdpClients)
+	srv.mu.RUnlock()
+	t.Fatalf("expected %d cdp clients, got %d", want, got)
 }
 
 func TestRelayRejectsExtensionWithoutToken(t *testing.T) {

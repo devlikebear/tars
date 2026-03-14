@@ -71,6 +71,8 @@ Or tail the live event stream:
 curl -N "http://127.0.0.1:43180/ui/projects/${PROJECT_ID}/stream"
 ```
 
+The dashboard now shows autopilot status, worker reports, PM blocker/decision/replan notes, and GitHub Flow metadata for each task.
+
 ## 4. Inspect From The TUI
 
 Open the client and inspect the current project state:

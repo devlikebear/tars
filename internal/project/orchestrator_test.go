@@ -167,8 +167,8 @@ func TestOrchestratorDispatchTodoRestoresFailedTaskToTodo(t *testing.T) {
 	}
 	close(runner.waitGate)
 
-	if err := <-errCh; err != nil {
-		t.Fatalf("dispatch todo: %v", err)
+	if err := <-errCh; err == nil {
+		t.Fatal("expected failed task run error")
 	}
 
 	board, err := store.GetBoard(created.ID)
@@ -178,6 +178,9 @@ func TestOrchestratorDispatchTodoRestoresFailedTaskToTodo(t *testing.T) {
 	if len(board.Tasks) != 1 || board.Tasks[0].Status != "todo" {
 		t.Fatalf("expected failed task to return to todo, got %+v", board.Tasks)
 	}
+	if board.Tasks[0].WorkerKind != WorkerKindCodexCLI {
+		t.Fatalf("expected failed task to preserve logical worker kind %q, got %+v", WorkerKindCodexCLI, board.Tasks[0])
+	}
 
 	activity, err := store.ListActivity(created.ID, 20)
 	if err != nil {
@@ -185,6 +188,12 @@ func TestOrchestratorDispatchTodoRestoresFailedTaskToTodo(t *testing.T) {
 	}
 	if !hasTaskStatusActivity(activity, "task-1", "failed") {
 		t.Fatalf("expected failed task activity, got %+v", activity)
+	}
+	if !hasAgentReport(activity, "task-1", "failed", "boom") {
+		t.Fatalf("expected failed agent report with error details, got %+v", activity)
+	}
+	if hasActivityKindStatus(activity, ActivityKindTestStatus, "blocked") || hasActivityKindStatus(activity, ActivityKindBuildStatus, "blocked") {
+		t.Fatalf("did not expect fake verification statuses for a failed run, got %+v", activity)
 	}
 }
 
@@ -203,6 +212,18 @@ func hasTaskStatusMeta(items []Activity, taskID, key, want string) bool {
 			continue
 		}
 		if item.Meta[key] == want {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAgentReport(items []Activity, taskID, status, errorText string) bool {
+	for _, item := range items {
+		if item.TaskID != taskID || item.Kind != ActivityKindAgentReport || item.Status != status {
+			continue
+		}
+		if item.Meta["error"] == errorText {
 			return true
 		}
 	}

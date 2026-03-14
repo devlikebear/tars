@@ -22,6 +22,10 @@ const (
 
 const (
 	ActivityKindAssignment       = "assignment"
+	ActivityKindAgentReport      = "agent_report"
+	ActivityKindBlocker          = "blocker"
+	ActivityKindDecision         = "decision"
+	ActivityKindReplan           = "replan"
 	ActivityKindTaskStatus       = "task_status"
 	ActivityKindProjectCreated   = "project_created"
 	ActivityKindProjectUpdated   = "project_updated"

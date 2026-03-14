@@ -55,6 +55,8 @@ Use this skill when the user wants to start a new software project from a chat U
 
 - Prefer short follow-up questions over long questionnaires.
 - If the user already specified enough detail, do not ask unnecessary questions.
+- If the user explicitly wants to start now, work autonomously, or keep to MVP scope, default low-risk implementation choices instead of blocking on one last stack or styling preference.
+- Treat framework or stack selection as defaultable when the core product shape, persistence, deployment target, and MVP scope are already clear.
 - Keep the backlog small and MVP-focused.
 - Use the built-in project tools before describing raw HTTP API routes.
 - If you mention APIs, reference these canonical routes:

@@ -189,7 +189,7 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 			TaskID:  task.ID,
 			Kind:    ActivityKindTaskStatus,
 			Status:  "failed",
-			Message: "Task dispatch failed",
+			Message: firstNonEmpty("Task dispatch failed: "+strings.TrimSpace(err.Error()), "Task dispatch failed"),
 			Meta: map[string]string{
 				"worker_kind": profile.Kind,
 			},
@@ -216,14 +216,39 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 		return run, err
 	}
 
+	report := ParseTaskReport(finished.Response)
+	if finished.Status == TaskRunStatusFailed || finished.Status == TaskRunStatusCanceled {
+		if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
+			item.Status = "todo"
+			item.WorkerKind = firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind)
+		}); err != nil {
+			return finished, err
+		}
+		_ = o.appendAgentReport(projectID, task, finished, report)
+		message := firstNonEmpty(strings.TrimSpace(finished.Error), taskReportSummary(report, finished), "task run failed")
+		if err := o.store.appendSystemActivity(projectID, ActivityAppendInput{
+			TaskID:  task.ID,
+			Kind:    ActivityKindTaskStatus,
+			Status:  "failed",
+			Message: "Task run failed: " + strings.TrimSpace(message),
+			Meta: map[string]string{
+				"run_id":                run.ID,
+				"agent":                 firstNonEmpty(strings.TrimSpace(finished.Agent), strings.TrimSpace(task.Assignee)),
+				"assignee":              strings.TrimSpace(task.Assignee),
+				"worker_kind":           firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind),
+				"worker_executor_agent": strings.TrimSpace(finished.Agent),
+				"error":                 strings.TrimSpace(finished.Error),
+			},
+		}); err != nil {
+			return finished, err
+		}
+		return finished, fmt.Errorf("task run failed: %s", strings.TrimSpace(message))
+	}
+
 	finalStatus := "done"
 	if task.ReviewRequired {
 		finalStatus = "review"
 	}
-	if finished.Status == TaskRunStatusFailed || finished.Status == TaskRunStatusCanceled {
-		finalStatus = "todo"
-	}
-	report := ParseTaskReport(finished.Response)
 	testStatus := verificationStatus(report.Tests)
 	buildStatus := verificationStatus(report.Build)
 	issueRef := firstNonEmpty(strings.TrimSpace(report.Issue), strings.TrimSpace(task.Issue))
@@ -328,10 +353,12 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 			"agent":       firstNonEmpty(strings.TrimSpace(finished.Agent), strings.TrimSpace(task.Assignee)),
 			"assignee":    strings.TrimSpace(task.Assignee),
 			"worker_kind": firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind),
+			"report":      taskReportStatus(report, finished.Status),
 		},
 	}); err != nil {
 		return finished, err
 	}
+	_ = o.appendAgentReport(projectID, task, finished, report)
 	if len(gateErrs) > 0 && finished.Status != TaskRunStatusFailed && finished.Status != TaskRunStatusCanceled {
 		return finished, fmt.Errorf("task gate failed: %s", strings.Join(gateErrs, ", "))
 	}
@@ -416,6 +443,7 @@ func (o *Orchestrator) dispatchReviewTask(ctx context.Context, projectID string,
 	}); err != nil {
 		return finished, err
 	}
+	_ = o.appendAgentReport(projectID, task, finished, report)
 	return finished, nil
 }
 
@@ -460,4 +488,38 @@ func ternaryStatus(ok bool, whenTrue, whenFalse string) string {
 		return whenTrue
 	}
 	return whenFalse
+}
+
+func (o *Orchestrator) appendAgentReport(projectID string, task BoardTask, run TaskRun, report TaskReport) error {
+	if o == nil || o.store == nil {
+		return nil
+	}
+	status := taskReportStatus(report, run.Status)
+	message := taskReportSummary(report, run)
+	if strings.TrimSpace(message) == "" {
+		message = "Worker reported task progress"
+	}
+	meta := map[string]string{
+		"run_id":                strings.TrimSpace(run.ID),
+		"summary":               strings.TrimSpace(report.Summary),
+		"notes":                 strings.TrimSpace(report.Notes),
+		"tests":                 strings.TrimSpace(report.Tests),
+		"build":                 strings.TrimSpace(report.Build),
+		"issue":                 strings.TrimSpace(report.Issue),
+		"branch":                strings.TrimSpace(report.Branch),
+		"pr":                    strings.TrimSpace(report.PR),
+		"error":                 strings.TrimSpace(run.Error),
+		"worker_kind":           strings.TrimSpace(run.WorkerKind),
+		"worker_executor_agent": strings.TrimSpace(run.Agent),
+	}
+	_, err := o.store.AppendActivity(projectID, ActivityAppendInput{
+		TaskID:  task.ID,
+		Source:  ActivitySourceAgent,
+		Agent:   firstNonEmpty(strings.TrimSpace(run.Agent), strings.TrimSpace(task.Assignee)),
+		Kind:    ActivityKindAgentReport,
+		Status:  status,
+		Message: message,
+		Meta:    meta,
+	})
+	return err
 }

@@ -184,6 +184,50 @@ func TestAutopilotManager_StartBlocksWhenVerificationGateFails(t *testing.T) {
 	}
 }
 
+func TestAutopilotManager_StartBlocksWhenBoardIsEmpty(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 18, 45, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Empty"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	if _, err := manager.Start(context.Background(), created.ID); err != nil {
+		t.Fatalf("start autopilot: %v", err)
+	}
+
+	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusDone)
+	if final.Iterations < 1 {
+		t.Fatalf("expected autopilot to iterate after seeding backlog, got %+v", final)
+	}
+
+	state, err := store.GetState(created.ID)
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if state.Status != "done" || state.Phase != "done" {
+		t.Fatalf("expected seeded project to finish, got %+v", state)
+	}
+
+	board, err := store.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board: %v", err)
+	}
+	if len(board.Tasks) == 0 {
+		t.Fatalf("expected pm supervisor to seed backlog, got %+v", board)
+	}
+
+	activity, err := store.ListActivity(created.ID, 100)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if !hasActivityKindStatus(activity, ActivityKindReplan, "seeded") {
+		t.Fatalf("expected seeded replan activity, got %+v", activity)
+	}
+}
+
 func waitForAutopilotStatus(t *testing.T, manager *AutopilotManager, projectID string, want AutopilotRunStatus) AutopilotRun {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)

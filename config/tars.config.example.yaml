@@ -123,7 +123,9 @@ browser_site_flows_dir: ./workspace/automation/sites
 # In-process gateway / channels (safe-by-default)
 gateway_enabled: false
 gateway_default_agent: ""
-# gateway_agents_json: '[{"name":"worker","description":"external worker","command":"python3","args":["./worker_agent.py"],"working_dir":".","timeout_seconds":120,"enabled":true}]'
+# Leave gateway_default_agent empty to use the in-process default agent.
+# Only set gateway_agents_json when the referenced command and local paths actually exist.
+# gateway_agents_json: '[{"name":"worker","description":"external worker","command":"python3","args":["./path/to/worker_agent.py"],"working_dir":".","timeout_seconds":120,"enabled":true}]'
 gateway_agents_watch: true
 gateway_agents_watch_debounce_ms: 200
 # Gateway persistence/recovery (additive, safe default)

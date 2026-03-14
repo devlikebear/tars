@@ -6,6 +6,23 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-03-14
+
+### Fixed
+
+- Project autopilot now preserves the logical worker kind even when task dispatch falls back to the runtime default gateway agent
+- Failed worker runs now restore the task to `todo`, record the real worker error, and stop autopilot on the actual blocker instead of corrupting the next dispatch with an executor alias
+- Empty project boards now block autopilot for backlog seeding instead of incorrectly marking the project complete
+- `tars doctor` now fails fast when `gateway_default_agent` points to an enabled gateway executor with a missing local command or script path
+- The flaky browser relay broadcast test now waits for both CDP clients to be fully registered before asserting fan-out delivery
+
+### Changed
+
+- The project dashboard now shows autopilot run status and dedicated worker report entries extracted from structured task reports
+- The project dashboard now also shows PM blocker, decision, and replan notes from the supervisor loop
+- Project autopilot now behaves more like a PM supervisor by seeding a minimal MVP backlog when a project starts with an empty board
+- Bundled `project-start` and `project-autopilot` skill instructions now align with the runtime by defaulting low-risk kickoff decisions and by treating an empty board as blocked work rather than completed work
+
 ## [0.5.5] - 2026-03-14
 
 ### Added

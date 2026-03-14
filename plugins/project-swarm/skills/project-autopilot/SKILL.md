@@ -37,6 +37,7 @@ Use this skill to continue an already-created project until it reaches `done` or
 - Do not invent success. Read the board and activity before deciding.
 - Prefer dispatching existing tasks over rewriting the backlog.
 - Surface blockers clearly in project state and activity.
+- Do not mark a project `done` when the board is empty unless completed work was already recorded.
 - When GitHub Flow or verification gates block progress, tell the user exactly what is missing.
 
 ## Completion

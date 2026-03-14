@@ -16,10 +16,15 @@ import (
 type projectDashboardPageData struct {
 	Project    project.Project
 	State      *project.ProjectState
+	Autopilot  *project.AutopilotRun
 	Activity   []project.Activity
 	Board      project.Board
 	BoardStats []projectDashboardBoardStat
 	GitHubFlow []projectDashboardGitHubFlowRow
+	Reports    []projectDashboardWorkerReport
+	Blockers   []projectDashboardPMItem
+	Decisions  []projectDashboardPMItem
+	Replans    []projectDashboardPMItem
 	PagePath   string
 	StreamPath string
 }
@@ -40,6 +45,23 @@ type projectDashboardGitHubFlowRow struct {
 	IssueStatus      string
 	BranchStatus     string
 	PRStatus         string
+}
+
+type projectDashboardWorkerReport struct {
+	Task      string
+	Agent     string
+	Status    string
+	Message   string
+	Notes     string
+	RunID     string
+	Timestamp string
+}
+
+type projectDashboardPMItem struct {
+	Task      string
+	Status    string
+	Message   string
+	Timestamp string
 }
 
 type projectDashboardRoute struct {
@@ -162,6 +184,34 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       </article>
     </section>
 
+    <section id="autopilot-section" class="card">
+      <h2>Autopilot</h2>
+      {{if .Autopilot}}
+      <div class="grid">
+        <article class="stat">
+          <div class="label">Status</div>
+          <div class="value"><code>{{.Autopilot.Status}}</code></div>
+        </article>
+        <article class="stat">
+          <div class="label">Iterations</div>
+          <div class="value">{{.Autopilot.Iterations}}</div>
+        </article>
+        <article class="stat">
+          <div class="label">Run ID</div>
+          <div class="value"><code>{{.Autopilot.RunID}}</code></div>
+        </article>
+      </div>
+      {{if .Autopilot.Message}}<p>{{.Autopilot.Message}}</p>{{end}}
+      <p class="muted">
+        {{if .Autopilot.StartedAt}}started {{.Autopilot.StartedAt}}{{end}}
+        {{if .Autopilot.UpdatedAt}} · updated {{.Autopilot.UpdatedAt}}{{end}}
+        {{if .Autopilot.FinishedAt}} · finished {{.Autopilot.FinishedAt}}{{end}}
+      </p>
+      {{else}}
+      <p class="muted">No autopilot run recorded yet.</p>
+      {{end}}
+    </section>
+
     <section id="board-section" class="card">
       <h2>Board</h2>
       <div class="stats">
@@ -252,6 +302,81 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       <p class="muted">No GitHub Flow metadata recorded yet.</p>
       {{end}}
     </section>
+
+    <section id="reports-section" class="card">
+      <h2>Worker Reports</h2>
+      {{if .Reports}}
+      <ul>
+        {{range .Reports}}
+        <li>
+          <strong>{{.Task}}</strong>
+          <span class="muted">{{.Timestamp}}</span>
+          {{if .Agent}}<span class="muted">· {{.Agent}}</span>{{end}}
+          {{if .Status}}<span class="muted">· {{.Status}}</span>{{end}}
+          {{if .RunID}}<div class="muted"><code>{{.RunID}}</code></div>{{end}}
+          <div>{{.Message}}</div>
+          {{if .Notes}}<div class="muted">{{.Notes}}</div>{{end}}
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="muted">No worker reports recorded yet.</p>
+      {{end}}
+    </section>
+
+    <section id="blockers-section" class="card">
+      <h2>Blockers</h2>
+      {{if .Blockers}}
+      <ul>
+        {{range .Blockers}}
+        <li>
+          {{if .Task}}<strong>{{.Task}}</strong>{{end}}
+          <span class="muted">{{.Timestamp}}</span>
+          {{if .Status}}<span class="muted">· {{.Status}}</span>{{end}}
+          <div>{{.Message}}</div>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="muted">No blockers recorded yet.</p>
+      {{end}}
+    </section>
+
+    <section id="decisions-section" class="card">
+      <h2>Decisions</h2>
+      {{if .Decisions}}
+      <ul>
+        {{range .Decisions}}
+        <li>
+          {{if .Task}}<strong>{{.Task}}</strong>{{end}}
+          <span class="muted">{{.Timestamp}}</span>
+          {{if .Status}}<span class="muted">· {{.Status}}</span>{{end}}
+          <div>{{.Message}}</div>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="muted">No decisions recorded yet.</p>
+      {{end}}
+    </section>
+
+    <section id="replans-section" class="card">
+      <h2>Replans</h2>
+      {{if .Replans}}
+      <ul>
+        {{range .Replans}}
+        <li>
+          {{if .Task}}<strong>{{.Task}}</strong>{{end}}
+          <span class="muted">{{.Timestamp}}</span>
+          {{if .Status}}<span class="muted">· {{.Status}}</span>{{end}}
+          <div>{{.Message}}</div>
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="muted">No replans recorded yet.</p>
+      {{end}}
+    </section>
   </main>
   <script>
     (() => {
@@ -273,7 +398,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
           }
           const html = await response.text();
           const doc = new DOMParser().parseFromString(html, "text/html");
-          for (const id of ["board-section", "activity-section", "github-flow-section"]) {
+          for (const id of ["autopilot-section", "board-section", "activity-section", "github-flow-section", "reports-section", "blockers-section", "decisions-section", "replans-section"]) {
             const next = doc.getElementById(id);
             const current = document.getElementById(id);
             if (next && current) {
@@ -303,7 +428,11 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
 </body>
 </html>`))
 
-func newProjectDashboardHandler(store *project.Store, broker *projectDashboardBroker, logger zerolog.Logger) http.Handler {
+type projectAutopilotStatusProvider interface {
+	Status(projectID string) (project.AutopilotRun, bool)
+}
+
+func newProjectDashboardHandler(store *project.Store, autopilot projectAutopilotStatusProvider, broker *projectDashboardBroker, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
@@ -330,6 +459,12 @@ func newProjectDashboardHandler(store *project.Store, broker *projectDashboardBr
 		if current, err := store.GetState(route.ProjectID); err == nil {
 			state = &current
 		}
+		var autopilotRun *project.AutopilotRun
+		if autopilot != nil {
+			if current, ok := autopilot.Status(route.ProjectID); ok {
+				autopilotRun = &current
+			}
+		}
 		activity, err := store.ListRecentActivity(route.ProjectID)
 		if err != nil {
 			logger.Error().Err(err).Str("project_id", route.ProjectID).Msg("list project activity for dashboard failed")
@@ -346,10 +481,15 @@ func newProjectDashboardHandler(store *project.Store, broker *projectDashboardBr
 		if err := projectDashboardTemplate.Execute(w, projectDashboardPageData{
 			Project:    item,
 			State:      state,
+			Autopilot:  autopilotRun,
 			Activity:   activity,
 			Board:      board,
 			BoardStats: buildProjectDashboardBoardStats(board),
 			GitHubFlow: buildProjectDashboardGitHubFlow(board, activity),
+			Reports:    buildProjectDashboardWorkerReports(board, activity),
+			Blockers:   buildProjectDashboardPMItems(board, activity, project.ActivityKindBlocker),
+			Decisions:  buildProjectDashboardPMItems(board, activity, project.ActivityKindDecision),
+			Replans:    buildProjectDashboardPMItems(board, activity, project.ActivityKindReplan),
 			PagePath:   fmt.Sprintf("/ui/projects/%s", route.ProjectID),
 			StreamPath: fmt.Sprintf("/ui/projects/%s/stream", route.ProjectID),
 		}); err != nil {
@@ -406,6 +546,58 @@ func buildProjectDashboardGitHubFlow(board project.Board, activity []project.Act
 		})
 	}
 	return rows
+}
+
+func buildProjectDashboardWorkerReports(board project.Board, activity []project.Activity) []projectDashboardWorkerReport {
+	taskTitles := map[string]string{}
+	for _, task := range board.Tasks {
+		taskTitles[strings.TrimSpace(task.ID)] = strings.TrimSpace(task.Title)
+	}
+	rows := make([]projectDashboardWorkerReport, 0)
+	for _, item := range activity {
+		if item.Kind != project.ActivityKindAgentReport {
+			continue
+		}
+		rows = append(rows, projectDashboardWorkerReport{
+			Task:      dashboardFirstNonEmpty(taskTitles[strings.TrimSpace(item.TaskID)], strings.TrimSpace(item.TaskID), "unknown task"),
+			Agent:     strings.TrimSpace(item.Agent),
+			Status:    strings.TrimSpace(item.Status),
+			Message:   strings.TrimSpace(item.Message),
+			Notes:     strings.TrimSpace(item.Meta["notes"]),
+			RunID:     strings.TrimSpace(item.Meta["run_id"]),
+			Timestamp: strings.TrimSpace(item.Timestamp),
+		})
+	}
+	return rows
+}
+
+func buildProjectDashboardPMItems(board project.Board, activity []project.Activity, kind string) []projectDashboardPMItem {
+	taskTitles := map[string]string{}
+	for _, task := range board.Tasks {
+		taskTitles[strings.TrimSpace(task.ID)] = strings.TrimSpace(task.Title)
+	}
+	rows := make([]projectDashboardPMItem, 0)
+	for _, item := range activity {
+		if item.Kind != kind {
+			continue
+		}
+		rows = append(rows, projectDashboardPMItem{
+			Task:      dashboardFirstNonEmpty(taskTitles[strings.TrimSpace(item.TaskID)], strings.TrimSpace(item.TaskID)),
+			Status:    strings.TrimSpace(item.Status),
+			Message:   strings.TrimSpace(item.Message),
+			Timestamp: strings.TrimSpace(item.Timestamp),
+		})
+	}
+	return rows
+}
+
+func dashboardFirstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func serveProjectDashboardStream(w http.ResponseWriter, r *http.Request, projectID string, broker *projectDashboardBroker, logger zerolog.Logger) {

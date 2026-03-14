@@ -218,6 +218,59 @@ func TestRootCommand_DoctorFailsWhenClaudeCodeCLIIsMissing(t *testing.T) {
 	}
 }
 
+func TestRootCommand_DoctorFailsWhenGatewayDefaultAgentUsesMissingWorkspaceCommand(t *testing.T) {
+	clearDoctorEnv(t)
+	t.Setenv("OPENAI_API_KEY", "test-openai-key")
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
+
+	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
+	var initStdout strings.Builder
+	initCmd := newRootCommand(strings.NewReader(""), &initStdout, io.Discard)
+	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	if err := initCmd.Execute(); err != nil {
+		t.Fatalf("init command: %v", err)
+	}
+
+	workspaceAbs, err := filepath.Abs(workspaceDir)
+	if err != nil {
+		t.Fatalf("workspace abs path: %v", err)
+	}
+	configPath := filepath.Join(workspaceAbs, "config", "tars.config.yaml")
+	content := strings.TrimSpace(strings.Join([]string{
+		"mode: standalone",
+		"workspace_dir: " + workspaceAbs,
+		"api_auth_mode: off",
+		"api_allow_insecure_local_auth: true",
+		"llm_provider: openai",
+		"llm_auth_mode: api-key",
+		"llm_base_url: https://api.openai.com/v1",
+		"llm_model: gpt-4o-mini",
+		"llm_api_key: ${OPENAI_API_KEY}",
+		"gateway_enabled: true",
+		"gateway_default_agent: worker",
+		`gateway_agents_json: [{"name":"worker","command":"python3","args":["./worker_agent.py"],"working_dir":".","enabled":true}]`,
+	}, "\n")) + "\n"
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var doctorStdout strings.Builder
+	doctorCmd := newRootCommand(strings.NewReader(""), &doctorStdout, io.Discard)
+	doctorCmd.SetArgs([]string{"doctor", "--workspace-dir", workspaceDir})
+	err = doctorCmd.Execute()
+	if err == nil {
+		t.Fatal("expected doctor to fail when gateway default agent points to a missing workspace command")
+	}
+
+	out := doctorStdout.String()
+	if !strings.Contains(out, "gateway agents") {
+		t.Fatalf("expected gateway agents failure, got:\n%s", out)
+	}
+	if !strings.Contains(out, "worker_agent.py") {
+		t.Fatalf("expected missing worker agent detail, got:\n%s", out)
+	}
+}
+
 func clearDoctorEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{

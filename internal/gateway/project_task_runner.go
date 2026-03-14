@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/devlikebear/tars/internal/project"
 )
@@ -16,6 +17,8 @@ type projectTaskRuntime interface {
 type ProjectTaskRunner struct {
 	runtime     projectTaskRuntime
 	workspaceID string
+	mu          sync.Mutex
+	runKinds    map[string]string
 }
 
 func NewProjectTaskRunner(runtime projectTaskRuntime, workspaceID string) *ProjectTaskRunner {
@@ -53,15 +56,17 @@ func (r *ProjectTaskRunner) Start(ctx context.Context, req project.TaskRunReques
 	if err != nil {
 		return project.TaskRun{}, err
 	}
-	resolvedWorkerKind := workerKind
-	if actualAgent := strings.ToLower(strings.TrimSpace(run.Agent)); actualAgent != "" {
-		resolvedWorkerKind = actualAgent
+	r.mu.Lock()
+	if r.runKinds == nil {
+		r.runKinds = map[string]string{}
 	}
+	r.runKinds[strings.TrimSpace(run.ID)] = workerKind
+	r.mu.Unlock()
 	return project.TaskRun{
 		ID:         run.ID,
 		TaskID:     strings.TrimSpace(req.TaskID),
 		Agent:      run.Agent,
-		WorkerKind: resolvedWorkerKind,
+		WorkerKind: workerKind,
 		Status:     mapProjectTaskRunStatus(run.Status),
 		Response:   run.Response,
 		Error:      run.Error,
@@ -76,10 +81,20 @@ func (r *ProjectTaskRunner) Wait(ctx context.Context, runID string) (project.Tas
 	if err != nil {
 		return project.TaskRun{}, err
 	}
+	requestedWorkerKind := ""
+	r.mu.Lock()
+	if r.runKinds != nil {
+		requestedWorkerKind = strings.TrimSpace(r.runKinds[strings.TrimSpace(runID)])
+		delete(r.runKinds, strings.TrimSpace(runID))
+	}
+	r.mu.Unlock()
+	if requestedWorkerKind == "" {
+		requestedWorkerKind = strings.ToLower(strings.TrimSpace(run.Agent))
+	}
 	return project.TaskRun{
 		ID:         run.ID,
 		Agent:      run.Agent,
-		WorkerKind: strings.ToLower(strings.TrimSpace(run.Agent)),
+		WorkerKind: requestedWorkerKind,
 		Status:     mapProjectTaskRunStatus(run.Status),
 		Response:   run.Response,
 		Error:      run.Error,
