@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-03-14
+
+### Changed
+
+- Project task dispatch now falls back to the runtime default gateway agent when a requested worker alias such as `codex-cli` is not explicitly registered
+- Starter project autopilot can advance past gateway agent-name mismatches instead of failing immediately on `unknown agent`
+
 ## [0.5.2] - 2026-03-14
 
 ### Added

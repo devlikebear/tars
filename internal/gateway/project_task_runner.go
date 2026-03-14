@@ -41,14 +41,27 @@ func (r *ProjectTaskRunner) Start(ctx context.Context, req project.TaskRunReques
 		Prompt:      strings.TrimSpace(req.Prompt),
 		Agent:       workerKind,
 	})
+	if err != nil && strings.Contains(strings.ToLower(strings.TrimSpace(err.Error())), "unknown agent") {
+		run, err = r.runtime.Spawn(ctx, SpawnRequest{
+			WorkspaceID: r.workspaceID,
+			ProjectID:   strings.TrimSpace(req.ProjectID),
+			Title:       strings.TrimSpace(req.Title),
+			Prompt:      strings.TrimSpace(req.Prompt),
+			Agent:       "",
+		})
+	}
 	if err != nil {
 		return project.TaskRun{}, err
+	}
+	resolvedWorkerKind := workerKind
+	if actualAgent := strings.ToLower(strings.TrimSpace(run.Agent)); actualAgent != "" {
+		resolvedWorkerKind = actualAgent
 	}
 	return project.TaskRun{
 		ID:         run.ID,
 		TaskID:     strings.TrimSpace(req.TaskID),
 		Agent:      run.Agent,
-		WorkerKind: workerKind,
+		WorkerKind: resolvedWorkerKind,
 		Status:     mapProjectTaskRunStatus(run.Status),
 		Response:   run.Response,
 		Error:      run.Error,
