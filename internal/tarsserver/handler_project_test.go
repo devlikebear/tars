@@ -271,3 +271,54 @@ func TestProjectAPI_ActivityRoutes(t *testing.T) {
 		t.Fatalf("expected newest activity first, got %+v", payload.Items)
 	}
 }
+
+func TestProjectAPI_BoardRoutes(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	projectStore := project.NewStore(root, nil)
+	handler := newProjectAPIHandler(projectStore, store, "", zerolog.New(io.Discard))
+
+	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/projects/"+created.ID+"/board", nil)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for board get, got %d body=%q", getRec.Code, getRec.Body.String())
+	}
+
+	patchReq := httptest.NewRequest(http.MethodPatch, "/v1/projects/"+created.ID+"/board", strings.NewReader(`{
+		"tasks":[
+			{
+				"id":"task-1",
+				"title":"Build dashboard",
+				"status":"review",
+				"assignee":"dev-1",
+				"role":"developer",
+				"review_required":true,
+				"test_command":"go test ./internal/tarsserver",
+				"build_command":"go test ./..."
+			}
+		]
+	}`))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchRec := httptest.NewRecorder()
+	handler.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for board patch, got %d body=%q", patchRec.Code, patchRec.Body.String())
+	}
+
+	var board project.Board
+	if err := json.Unmarshal(patchRec.Body.Bytes(), &board); err != nil {
+		t.Fatalf("decode patched board: %v", err)
+	}
+	if len(board.Tasks) != 1 || board.Tasks[0].Status != "review" {
+		t.Fatalf("unexpected patched board: %+v", board)
+	}
+}

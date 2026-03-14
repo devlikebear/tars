@@ -370,6 +370,54 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 			return
 		}
 
+		if len(parts) == 2 && parts[1] == "board" {
+			switch r.Method {
+			case http.MethodGet:
+				item, err := store.GetBoard(projectID)
+				if err != nil {
+					if strings.Contains(strings.ToLower(err.Error()), "not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+						return
+					}
+					logger.Error().Err(err).Str("project_id", projectID).Msg("get project board failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get project board failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, item)
+			case http.MethodPatch:
+				var req struct {
+					Columns []string            `json:"columns,omitempty"`
+					Tasks   []project.BoardTask `json:"tasks,omitempty"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+					return
+				}
+				item, err := store.UpdateBoard(projectID, project.BoardUpdateInput{
+					Columns: req.Columns,
+					Tasks:   req.Tasks,
+				})
+				if err != nil {
+					lower := strings.ToLower(err.Error())
+					if strings.Contains(lower, "not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+						return
+					}
+					if strings.Contains(lower, "required") || strings.Contains(lower, "invalid") {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
+					logger.Error().Err(err).Str("project_id", projectID).Msg("update project board failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update project board failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, item)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+
 		if len(parts) == 2 && parts[1] == "activate" {
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
