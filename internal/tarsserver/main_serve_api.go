@@ -240,6 +240,7 @@ func buildAPIMux(
 			return apiRunPromptWithTools(ctx, runLabel, prompt, nil)
 		}
 	}
+	var projectAutopilot *project.AutopilotManager
 	heartbeatRunner := newWorkspaceHeartbeatRunnerWithNotify(
 		cfg.WorkspaceDir,
 		nowFn,
@@ -247,6 +248,16 @@ func buildAPIMux(
 		heartbeatPolicyForWorkspace,
 		heartbeatState,
 		dispatcher.Emit,
+		func(ctx context.Context) error {
+			if projectAutopilot == nil {
+				return nil
+			}
+			_, err := projectAutopilot.EnsureActiveRuns(ctx)
+			if err != nil {
+				logger.Error().Err(err).Msg("ensure project autopilot runs after heartbeat failed")
+			}
+			return err
+		},
 	)
 	watchdogState := newWatchdogWorkspaceState()
 	watchdogRunner := newWorkspaceWatchdogRunnerWithNotify(
@@ -379,7 +390,7 @@ func buildAPIMux(
 	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
 	projectDashboardBroker := newProjectDashboardBroker()
 	projectTaskRunner := gateway.NewProjectTaskRunner(gatewayRuntime, "")
-	projectAutopilot := project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), func(projectID string, kind string) {
+	projectAutopilot = project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), func(projectID string, kind string) {
 		projectDashboardBroker.publish(newProjectDashboardEvent(projectID, kind))
 	})
 	if err := projectAutopilot.RestorePersistedRuns(); err != nil {

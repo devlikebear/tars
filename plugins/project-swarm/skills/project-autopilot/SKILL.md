@@ -1,6 +1,6 @@
 ---
 name: project-autopilot
-description: "Run an existing project board toward completion by dispatching todo and review stages, updating project state, and surfacing blockers."
+description: "Run an existing project board toward completion by dispatching todo and review stages, automatically recovering stalled work, and continuously supervising until done."
 user-invocable: false
 recommended_tools:
   - project_get
@@ -21,7 +21,7 @@ wake_phases:
 
 # Project Autopilot
 
-Use this skill to continue an already-created project until it reaches `done` or a clear blocker.
+Use this skill to continue an already-created project until it reaches `done`, automatically recovering routine stalls without asking the user to manually restart the project.
 
 ## Workflow
 
@@ -29,21 +29,22 @@ Use this skill to continue an already-created project until it reaches `done` or
 2. If there are `todo` tasks, dispatch the `todo` stage.
 3. If there are `review` tasks, dispatch the `review` stage.
 4. After each stage, refresh board and activity.
-5. If tasks are blocked in `in_progress`, update `STATE.md` with the blocker and the next user-facing question.
-6. If all tasks are `done`, update `STATE.md` with a completion summary.
+5. If tasks are left in `in_progress`, diagnose whether they were interrupted, rejected in review, or blocked by verification and requeue them to `todo` when the next step is a routine retry.
+6. Keep supervising on a timer until all tasks are `done`.
+7. If all tasks are `done`, update `STATE.md` with a completion summary.
 
 ## Rules
 
 - Do not invent success. Read the board and activity before deciding.
 - Prefer dispatching existing tasks over rewriting the backlog.
-- Surface blockers clearly in project state and activity.
+- Surface blockers clearly in project state and activity, but do not stop for routine retry decisions that the PM can make safely.
 - Do not mark a project `done` when the board is empty unless completed work was already recorded.
-- When GitHub Flow or verification gates block progress, tell the user exactly what is missing.
+- When GitHub Flow or verification gates block progress, auto-retry the task when the fix is to rerun the implementation loop with the recorded blocker context.
+- If the server restarts or heartbeat finds an active project without a live autopilot loop, restart supervision automatically.
 
 ## Completion
 
 Stop when one of these is true:
 
 - all tasks are `done`
-- a blocker requires user input
-- the project has no actionable tasks left
+- a blocker is terminal and cannot be recovered automatically
