@@ -101,6 +101,9 @@ func TestOrchestratorDispatchTodoRunsTasksInParallel(t *testing.T) {
 		if task.Status != "review" {
 			t.Fatalf("expected task %s to move to review, got %+v", task.ID, task)
 		}
+		if task.WorkerKind != WorkerKindCodexCLI {
+			t.Fatalf("expected task %s worker kind %q, got %+v", task.ID, WorkerKindCodexCLI, task)
+		}
 	}
 
 	activity, err := store.ListActivity(created.ID, 20)
@@ -109,6 +112,9 @@ func TestOrchestratorDispatchTodoRunsTasksInParallel(t *testing.T) {
 	}
 	if !hasTaskStatusActivity(activity, "task-1", "review") || !hasTaskStatusActivity(activity, "task-2", "review") {
 		t.Fatalf("expected completion activity for both tasks, got %+v", activity)
+	}
+	if !hasTaskStatusMeta(activity, "task-1", "worker_kind", WorkerKindCodexCLI) {
+		t.Fatalf("expected task-1 worker kind activity meta, got %+v", activity)
 	}
 }
 
@@ -175,6 +181,18 @@ func TestOrchestratorDispatchTodoRestoresFailedTaskToTodo(t *testing.T) {
 func hasTaskStatusActivity(items []Activity, taskID, status string) bool {
 	for _, item := range items {
 		if item.TaskID == taskID && item.Kind == ActivityKindTaskStatus && item.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTaskStatusMeta(items []Activity, taskID, key, want string) bool {
+	for _, item := range items {
+		if item.TaskID != taskID || item.Kind != ActivityKindTaskStatus {
+			continue
+		}
+		if item.Meta[key] == want {
 			return true
 		}
 	}

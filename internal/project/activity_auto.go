@@ -51,6 +51,7 @@ func boardTaskActivityChanged(before, after BoardTask) bool {
 		before.Status != after.Status ||
 		before.Assignee != after.Assignee ||
 		before.Role != after.Role ||
+		before.WorkerKind != after.WorkerKind ||
 		before.ReviewRequired != after.ReviewRequired ||
 		before.TestCommand != after.TestCommand ||
 		before.BuildCommand != after.BuildCommand
