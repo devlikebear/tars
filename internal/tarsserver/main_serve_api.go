@@ -47,6 +47,7 @@ type apiRouteHandlers struct {
 	chat            http.Handler
 	sessions        http.Handler
 	projects        http.Handler
+	dashboard       http.Handler
 	usage           http.Handler
 	ops             http.Handler
 	status          http.Handler
@@ -386,7 +387,9 @@ func buildAPIMux(
 		chatTools...,
 	)
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
-	projectHandler := newProjectAPIHandler(project.NewStore(cfg.WorkspaceDir, nil), sessionStore, mainSessionID, logger)
+	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
+	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, logger)
+	dashboardHandler := newProjectDashboardHandler(projectStore, logger)
 	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
@@ -459,6 +462,7 @@ func buildAPIMux(
 		chat:            chatHandler,
 		sessions:        sessionHandler,
 		projects:        projectHandler,
+		dashboard:       dashboardHandler,
 		usage:           usageHandler,
 		ops:             opsHandler,
 		status:          statusHandler,
@@ -518,6 +522,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/projects", handlers.projects)
 	mux.Handle("/v1/projects/", handlers.projects)
 	mux.Handle("/v1/project-briefs/", handlers.projects)
+	mux.Handle("/ui/projects/", handlers.dashboard)
 	mux.Handle("/v1/usage/summary", handlers.usage)
 	mux.Handle("/v1/usage/limits", handlers.usage)
 	mux.Handle("/v1/ops/status", handlers.ops)

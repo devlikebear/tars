@@ -87,6 +87,12 @@ tars service status
 tars serve --config ./workspace/config/tars.config.yaml
 ```
 
+Open a project dashboard in the browser:
+
+```bash
+open http://127.0.0.1:43180/ui/projects/<project-id>
+```
+
 6. Start the client:
 
 ```bash
