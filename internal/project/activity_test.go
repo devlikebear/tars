@@ -11,6 +11,7 @@ func TestStoreActivityRoundtripNewestFirst(t *testing.T) {
 	root := t.TempDir()
 	times := []time.Time{
 		time.Date(2026, 3, 14, 8, 59, 0, 0, time.UTC),
+		time.Date(2026, 3, 14, 8, 59, 30, 0, time.UTC),
 		time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC),
 		time.Date(2026, 3, 14, 9, 1, 0, 0, time.UTC),
 	}

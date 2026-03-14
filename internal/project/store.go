@@ -97,6 +97,9 @@ func (s *Store) Create(input CreateInput) (Project, error) {
 	if err := s.write(project); err != nil {
 		return Project{}, err
 	}
+	if err := s.writeBoard(defaultBoard(project.ID, s.nowFn().UTC())); err != nil {
+		return Project{}, err
+	}
 	if input.CloneRepo && project.GitRepo != "" {
 		if err := cloneProjectRepo(filepath.Join(s.workspaceDir, "projects", project.ID), project.GitRepo); err != nil {
 			return Project{}, err
