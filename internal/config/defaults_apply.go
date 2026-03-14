@@ -36,6 +36,12 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	default:
 		cfg.APIAuthMode = defaults.APIAuthMode
 	}
+	cfg.DashboardAuthMode = strings.TrimSpace(strings.ToLower(cfg.DashboardAuthMode))
+	switch cfg.DashboardAuthMode {
+	case "inherit", "off":
+	default:
+		cfg.DashboardAuthMode = defaults.DashboardAuthMode
+	}
 	cfg.APIAuthToken = strings.TrimSpace(cfg.APIAuthToken)
 	cfg.APIUserToken = strings.TrimSpace(cfg.APIUserToken)
 	cfg.APIAdminToken = strings.TrimSpace(cfg.APIAdminToken)

@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/serverauth"
@@ -16,16 +17,20 @@ func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Hand
 		UserToken:                     cfg.APIUserToken,
 		AdminToken:                    cfg.APIAdminToken,
 		RequireWorkspaceForAuthorized: false,
-		SkipPaths:                     apiAuthSkipPaths(),
+		SkipPaths:                     apiAuthSkipPaths(cfg),
 		AdminPaths:                    apiAdminPaths(),
 	}, authLog)
 	return requestDebugMiddleware(logger, auth(withDefaultWorkspaceBinding(next)))
 }
 
-func apiAuthSkipPaths() []string {
-	return []string{
+func apiAuthSkipPaths(cfg config.Config) []string {
+	paths := []string{
 		"/v1/healthz",
 	}
+	if strings.TrimSpace(strings.ToLower(cfg.DashboardAuthMode)) == "off" {
+		paths = append(paths, "/dashboards", "/dashboards/", "/ui/projects/*")
+	}
+	return paths
 }
 
 func apiAdminPaths() []string {

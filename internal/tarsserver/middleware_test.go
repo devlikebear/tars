@@ -88,6 +88,43 @@ func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 	}
 }
 
+func TestApplyAPIMiddleware_AllowsDashboardRoutesWithoutAuthWhenDashboardAuthIsOff(t *testing.T) {
+	cfg := config.Config{
+		APIAuthMode:       "required",
+		APIUserToken:      "user-token",
+		APIAdminToken:     "admin-token",
+		DashboardAuthMode: "off",
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.URL.Path))
+	}), io.Discard)
+
+	for _, path := range []string{"/dashboards", "/ui/projects/demo"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.RemoteAddr = "192.0.2.10:5555"
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200 for dashboard path %q, got %d body=%q", path, rec.Code, rec.Body.String())
+			}
+			if got := strings.TrimSpace(rec.Body.String()); got != path {
+				t.Fatalf("expected dashboard path body %q, got %q", path, got)
+			}
+		})
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	req.RemoteAddr = "192.0.2.10:5555"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for api path, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestMiddleware_AdminPaths_TelegramSendIsNotAdminOnly(t *testing.T) {
 	cfg := config.Config{
 		APIAuthMode:   "required",

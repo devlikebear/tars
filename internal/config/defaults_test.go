@@ -1177,6 +1177,37 @@ func TestLoad_APIAuthModeInvalidFallsBackToRequired(t *testing.T) {
 	}
 }
 
+func TestLoad_DashboardAuthDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.DashboardAuthMode != "inherit" {
+		t.Fatalf("expected dashboard auth mode inherit, got %q", cfg.DashboardAuthMode)
+	}
+}
+
+func TestLoad_DashboardAuthYAMLAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"dashboard_auth_mode: off",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("DASHBOARD_AUTH_MODE", "inherit")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.DashboardAuthMode != "inherit" {
+		t.Fatalf("expected env override dashboard auth mode inherit, got %q", cfg.DashboardAuthMode)
+	}
+}
+
 func TestLoad_SecurityHardeningDefaults(t *testing.T) {
 	cfg, err := Load("")
 	if err != nil {

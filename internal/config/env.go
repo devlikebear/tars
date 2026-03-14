@@ -21,6 +21,9 @@ func applyEnv(cfg *Config) {
 	if v := firstNonEmpty(os.Getenv("API_AUTH_MODE"), os.Getenv("TARS_API_AUTH_MODE")); v != "" {
 		cfg.APIAuthMode = strings.TrimSpace(v)
 	}
+	if v := firstNonEmpty(os.Getenv("DASHBOARD_AUTH_MODE"), os.Getenv("TARS_DASHBOARD_AUTH_MODE")); v != "" {
+		cfg.DashboardAuthMode = strings.TrimSpace(v)
+	}
 	if v := firstNonEmpty(os.Getenv("API_AUTH_TOKEN"), os.Getenv("TARS_API_AUTH_TOKEN")); v != "" {
 		cfg.APIAuthToken = strings.TrimSpace(v)
 	}

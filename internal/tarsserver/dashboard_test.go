@@ -242,6 +242,79 @@ func TestProjectDashboardHandler_ProjectNotFound(t *testing.T) {
 	}
 }
 
+func TestProjectDashboardHandler_RendersProjectListPage(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := project.NewStore(root, nil)
+	first, err := store.Create(project.CreateInput{
+		Name:         "Alpha Dashboard",
+		Objective:    "Track project alpha",
+		Instructions: "Keep it lean",
+	})
+	if err != nil {
+		t.Fatalf("create first project: %v", err)
+	}
+	second, err := store.Create(project.CreateInput{
+		Name:         "Beta Dashboard",
+		Objective:    "Track project beta",
+		Instructions: "Keep it moving",
+	})
+	if err != nil {
+		t.Fatalf("create second project: %v", err)
+	}
+	phase := "executing"
+	status := "active"
+	nextAction := "Ship beta dashboard"
+	if _, err := store.UpdateState(second.ID, project.ProjectStateUpdateInput{
+		Phase:      &phase,
+		Status:     &status,
+		NextAction: &nextAction,
+	}); err != nil {
+		t.Fatalf("update second state: %v", err)
+	}
+
+	handler := newProjectDashboardHandler(
+		store,
+		dashboardAutopilotStub{
+			run: project.AutopilotRun{
+				ProjectID:  second.ID,
+				RunID:      "autopilot-beta",
+				Status:     project.AutopilotStatusRunning,
+				Iterations: 4,
+			},
+			ok: true,
+		},
+		newProjectDashboardBroker(),
+		zerolog.New(io.Discard),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/dashboards", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Projects",
+		"Alpha Dashboard",
+		"Beta Dashboard",
+		"Track project alpha",
+		"Track project beta",
+		"/ui/projects/" + first.ID,
+		"/ui/projects/" + second.ID,
+		"autopilot-beta",
+		"running",
+		"Ship beta dashboard",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected project list body to contain %q, got %q", want, body)
+		}
+	}
+}
+
 func TestProjectDashboardHandler_ProjectStreamEmitsProjectEvents(t *testing.T) {
 	broker := newProjectDashboardBroker()
 	handler := newProjectDashboardHandler(nil, nil, broker, zerolog.New(io.Discard))

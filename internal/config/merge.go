@@ -16,6 +16,9 @@ func merge(dst *Config, src Config) {
 	if src.APIAuthMode != "" {
 		dst.APIAuthMode = src.APIAuthMode
 	}
+	if src.DashboardAuthMode != "" {
+		dst.DashboardAuthMode = src.DashboardAuthMode
+	}
 	if src.APIAuthToken != "" {
 		dst.APIAuthToken = src.APIAuthToken
 	}

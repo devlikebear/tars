@@ -29,6 +29,24 @@ type projectDashboardPageData struct {
 	StreamPath string
 }
 
+type projectDashboardListPageData struct {
+	Projects []projectDashboardListItem
+}
+
+type projectDashboardListItem struct {
+	ID              string
+	Name            string
+	Objective       string
+	Status          string
+	Phase           string
+	NextAction      string
+	UpdatedAt       string
+	DashboardPath   string
+	AutopilotStatus string
+	AutopilotRunID  string
+	AutopilotNote   string
+}
+
 type projectDashboardBoardStat struct {
 	Status string
 	Count  int
@@ -126,20 +144,16 @@ func (b *projectDashboardBroker) publish(evt projectDashboardEvent) {
 	}
 }
 
-var projectDashboardTemplate = template.Must(template.New("project-dashboard").Parse(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{.Project.Name}} | TARS</title>
-  <style>
+const projectDashboardStyles = `
     :root { color-scheme: light; }
     body { margin: 0; font-family: Georgia, "Times New Roman", serif; background: #f3efe4; color: #1f1a14; }
     main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 48px; }
-    h1, h2 { margin: 0 0 12px; }
+    h1, h2, h3 { margin: 0 0 12px; }
     h1 { font-size: 2.1rem; }
     h2 { font-size: 1.1rem; letter-spacing: 0.02em; text-transform: uppercase; }
+    h3 { font-size: 1.25rem; }
     p { line-height: 1.5; }
+    a { color: #6b3f1d; }
     .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin: 20px 0 28px; }
     .card { background: #fffaf0; border: 1px solid #d8ccb5; border-radius: 14px; padding: 16px; box-shadow: 0 6px 18px rgba(77, 56, 28, 0.08); }
     .label { font-size: 0.78rem; text-transform: uppercase; color: #7a6545; margin-bottom: 6px; }
@@ -148,12 +162,24 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
     .stack { display: grid; gap: 12px; }
     .stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-bottom: 16px; }
     .stat { background: #f8f1e3; border-radius: 12px; padding: 12px; border: 1px solid #eadfc9; }
+    .project-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-top: 20px; }
+    .project-link { text-decoration: none; }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 10px 8px; border-top: 1px solid #e6dac4; vertical-align: top; }
     th { font-size: 0.78rem; text-transform: uppercase; color: #7a6545; }
     ul { margin: 0; padding-left: 18px; }
     li + li { margin-top: 10px; }
     code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.92em; }
+`
+
+var projectDashboardTemplate = template.Must(template.New("project-dashboard").Parse(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Project.Name}} | TARS</title>
+  <style>
+` + projectDashboardStyles + `
   </style>
 </head>
 <body>
@@ -161,6 +187,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
     <header class="card">
       <div class="label">Project</div>
       <h1>{{.Project.Name}}</h1>
+      <p class="muted"><a href="/dashboards">All projects</a></p>
       {{if .Project.Objective}}<p>{{.Project.Objective}}</p>{{end}}
       {{if .Project.Body}}<p class="muted">{{.Project.Body}}</p>{{end}}
     </header>
@@ -428,6 +455,67 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
 </body>
 </html>`))
 
+var projectDashboardListTemplate = template.Must(template.New("project-dashboard-list").Parse(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Projects | TARS</title>
+  <style>
+` + projectDashboardStyles + `
+  </style>
+</head>
+<body>
+  <main>
+    <header class="card">
+      <div class="label">Dashboards</div>
+      <h1>Projects</h1>
+      <p class="muted">Browse every project dashboard in the current workspace.</p>
+    </header>
+    {{if .Projects}}
+    <section class="project-grid">
+      {{range .Projects}}
+      <article class="card">
+        <div class="label">Project</div>
+        <h3><a class="project-link" href="{{.DashboardPath}}">{{.Name}}</a></h3>
+        <div class="muted"><code>{{.ID}}</code></div>
+        {{if .Objective}}<p>{{.Objective}}</p>{{end}}
+        <div class="stack">
+          <div>
+            <div class="label">Status</div>
+            <div class="value">{{.Status}}</div>
+          </div>
+          <div>
+            <div class="label">Phase</div>
+            <div class="value">{{.Phase}}</div>
+          </div>
+          <div>
+            <div class="label">Next Action</div>
+            <div class="value">{{if .NextAction}}{{.NextAction}}{{else}}-{{end}}</div>
+          </div>
+          <div>
+            <div class="label">Autopilot</div>
+            <div class="value">{{if .AutopilotStatus}}<code>{{.AutopilotStatus}}</code>{{else}}-{{end}}</div>
+            {{if .AutopilotRunID}}<div class="muted"><code>{{.AutopilotRunID}}</code></div>{{end}}
+            {{if .AutopilotNote}}<div class="muted">{{.AutopilotNote}}</div>{{end}}
+          </div>
+          <div>
+            <div class="label">Updated</div>
+            <div class="value">{{.UpdatedAt}}</div>
+          </div>
+        </div>
+      </article>
+      {{end}}
+    </section>
+    {{else}}
+    <section class="card">
+      <p class="muted">No projects recorded yet.</p>
+    </section>
+    {{end}}
+  </main>
+</body>
+</html>`))
+
 type projectAutopilotStatusProvider interface {
 	Status(projectID string) (project.AutopilotRun, bool)
 }
@@ -435,6 +523,10 @@ type projectAutopilotStatusProvider interface {
 func newProjectDashboardHandler(store *project.Store, autopilot projectAutopilotStatusProvider, broker *projectDashboardBroker, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		if isProjectDashboardListPath(r.URL.Path) {
+			serveProjectDashboardList(w, store, autopilot, logger)
 			return
 		}
 		route, ok := parseProjectDashboardPath(r.URL.Path)
@@ -496,6 +588,60 @@ func newProjectDashboardHandler(store *project.Store, autopilot projectAutopilot
 			logger.Error().Err(err).Str("project_id", route.ProjectID).Msg("render project dashboard failed")
 		}
 	})
+}
+
+func serveProjectDashboardList(w http.ResponseWriter, store *project.Store, autopilot projectAutopilotStatusProvider, logger zerolog.Logger) {
+	if store == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "project store is not configured"})
+		return
+	}
+	rows, err := buildProjectDashboardList(store, autopilot)
+	if err != nil {
+		logger.Error().Err(err).Msg("list projects for dashboard index failed")
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load dashboard failed"})
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := projectDashboardListTemplate.Execute(w, projectDashboardListPageData{Projects: rows}); err != nil {
+		logger.Error().Err(err).Msg("render project dashboard index failed")
+	}
+}
+
+func buildProjectDashboardList(store *project.Store, autopilot projectAutopilotStatusProvider) ([]projectDashboardListItem, error) {
+	projects, err := store.List()
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]projectDashboardListItem, 0, len(projects))
+	for _, item := range projects {
+		row := projectDashboardListItem{
+			ID:            strings.TrimSpace(item.ID),
+			Name:          strings.TrimSpace(item.Name),
+			Objective:     strings.TrimSpace(item.Objective),
+			Status:        strings.TrimSpace(item.Status),
+			Phase:         "planning",
+			UpdatedAt:     strings.TrimSpace(item.UpdatedAt),
+			DashboardPath: fmt.Sprintf("/ui/projects/%s", strings.TrimSpace(item.ID)),
+		}
+		if current, err := store.GetState(item.ID); err == nil {
+			if status := strings.TrimSpace(current.Status); status != "" {
+				row.Status = status
+			}
+			if phase := strings.TrimSpace(current.Phase); phase != "" {
+				row.Phase = phase
+			}
+			row.NextAction = strings.TrimSpace(current.NextAction)
+		}
+		if autopilot != nil {
+			if current, ok := autopilot.Status(item.ID); ok {
+				row.AutopilotStatus = strings.TrimSpace(string(current.Status))
+				row.AutopilotRunID = strings.TrimSpace(current.RunID)
+				row.AutopilotNote = strings.TrimSpace(current.Message)
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
 }
 
 func buildProjectDashboardBoardStats(board project.Board) []projectDashboardBoardStat {
@@ -656,6 +802,15 @@ func serveProjectDashboardStream(w http.ResponseWriter, r *http.Request, project
 				return
 			}
 		}
+	}
+}
+
+func isProjectDashboardListPath(path string) bool {
+	switch strings.TrimSpace(path) {
+	case "/dashboards", "/dashboards/":
+		return true
+	default:
+		return false
 	}
 }
 

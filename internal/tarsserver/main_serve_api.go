@@ -532,6 +532,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/projects", handlers.projects)
 	mux.Handle("/v1/projects/", handlers.projects)
 	mux.Handle("/v1/project-briefs/", handlers.projects)
+	mux.Handle("/dashboards", handlers.dashboard)
+	mux.Handle("/dashboards/", handlers.dashboard)
 	mux.Handle("/ui/projects/", handlers.dashboard)
 	mux.Handle("/v1/usage/summary", handlers.usage)
 	mux.Handle("/v1/usage/limits", handlers.usage)
