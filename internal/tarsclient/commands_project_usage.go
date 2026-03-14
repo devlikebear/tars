@@ -11,7 +11,7 @@ func cmdProject(c commandContext) (bool, string, error) {
 		return false, c.session, nil
 	}
 	if len(c.fields) < 2 {
-		return true, c.session, fmt.Errorf("usage: /project {list|get|create|activate|archive}")
+		return true, c.session, fmt.Errorf("usage: /project {list|get|create|activate|archive|board|activity|dispatch|autopilot}")
 	}
 	switch strings.ToLower(strings.TrimSpace(c.fields[1])) {
 	case "list":
@@ -91,8 +91,130 @@ func cmdProject(c commandContext) (bool, string, error) {
 		}
 		fmt.Fprintf(c.stdout, "SYSTEM > project archived %s\n", strings.TrimSpace(c.fields[2]))
 		return true, c.session, nil
+	case "board":
+		if len(c.fields) < 3 {
+			return true, c.session, fmt.Errorf("usage: /project board {project_id}")
+		}
+		item, err := c.runtime.getProjectBoard(c.ctx, c.fields[2])
+		if err != nil {
+			return true, c.session, err
+		}
+		fmt.Fprintf(c.stdout, "SYSTEM > project board %s columns=%s updated=%s\n",
+			strings.TrimSpace(item.ProjectID),
+			strings.Join(item.Columns, ","),
+			strings.TrimSpace(item.UpdatedAt),
+		)
+		if len(item.Tasks) == 0 {
+			fmt.Fprintln(c.stdout, "(no board tasks)")
+			return true, c.session, nil
+		}
+		for _, task := range item.Tasks {
+			fmt.Fprintf(c.stdout, "- %s status=%s assignee=%s role=%s title=%s\n",
+				strings.TrimSpace(task.ID),
+				strings.TrimSpace(task.Status),
+				strings.TrimSpace(task.Assignee),
+				strings.TrimSpace(task.Role),
+				strings.TrimSpace(task.Title),
+			)
+		}
+		return true, c.session, nil
+	case "activity":
+		if len(c.fields) < 3 {
+			return true, c.session, fmt.Errorf("usage: /project activity {project_id} [limit]")
+		}
+		limit := 10
+		if len(c.fields) >= 4 {
+			value, err := strconv.Atoi(strings.TrimSpace(c.fields[3]))
+			if err != nil || value < 0 {
+				return true, c.session, fmt.Errorf("limit must be a non-negative integer")
+			}
+			limit = value
+		}
+		items, err := c.runtime.listProjectActivity(c.ctx, c.fields[2], limit)
+		if err != nil {
+			return true, c.session, err
+		}
+		fmt.Fprintf(c.stdout, "SYSTEM > project activity %s count=%d\n", strings.TrimSpace(c.fields[2]), len(items))
+		if len(items) == 0 {
+			fmt.Fprintln(c.stdout, "(no recent activity)")
+			return true, c.session, nil
+		}
+		for _, item := range items {
+			fmt.Fprintf(c.stdout, "- %s source=%s kind=%s status=%s task=%s agent=%s message=%s\n",
+				strings.TrimSpace(item.Timestamp),
+				strings.TrimSpace(item.Source),
+				strings.TrimSpace(item.Kind),
+				strings.TrimSpace(item.Status),
+				strings.TrimSpace(item.TaskID),
+				strings.TrimSpace(item.Agent),
+				strings.TrimSpace(item.Message),
+			)
+		}
+		return true, c.session, nil
+	case "dispatch":
+		if len(c.fields) < 4 {
+			return true, c.session, fmt.Errorf("usage: /project dispatch {project_id} {todo|review}")
+		}
+		stage := strings.ToLower(strings.TrimSpace(c.fields[3]))
+		if stage != "todo" && stage != "review" {
+			return true, c.session, fmt.Errorf("stage must be todo|review")
+		}
+		report, err := c.runtime.dispatchProject(c.ctx, c.fields[2], stage)
+		if err != nil {
+			return true, c.session, err
+		}
+		fmt.Fprintf(c.stdout, "SYSTEM > project dispatch %s stage=%s runs=%d\n",
+			strings.TrimSpace(report.ProjectID),
+			stage,
+			len(report.Runs),
+		)
+		for _, run := range report.Runs {
+			fmt.Fprintf(c.stdout, "- %s task=%s agent=%s worker=%s status=%s\n",
+				strings.TrimSpace(run.ID),
+				strings.TrimSpace(run.TaskID),
+				strings.TrimSpace(run.Agent),
+				strings.TrimSpace(run.WorkerKind),
+				strings.TrimSpace(run.Status),
+			)
+		}
+		return true, c.session, nil
+	case "autopilot":
+		if len(c.fields) < 4 {
+			return true, c.session, fmt.Errorf("usage: /project autopilot {start|status} {project_id}")
+		}
+		action := strings.ToLower(strings.TrimSpace(c.fields[2]))
+		projectID := strings.TrimSpace(c.fields[3])
+		switch action {
+		case "start":
+			item, err := c.runtime.startProjectAutopilot(c.ctx, projectID)
+			if err != nil {
+				return true, c.session, err
+			}
+			fmt.Fprintf(c.stdout, "SYSTEM > autopilot started project_id=%s run_id=%s status=%s iterations=%d\n",
+				strings.TrimSpace(item.ProjectID),
+				strings.TrimSpace(item.RunID),
+				strings.TrimSpace(item.Status),
+				item.Iterations,
+			)
+			return true, c.session, nil
+		case "status":
+			item, err := c.runtime.getProjectAutopilot(c.ctx, projectID)
+			if err != nil {
+				return true, c.session, err
+			}
+			fmt.Fprintf(c.stdout, "SYSTEM > project autopilot %s run_id=%s status=%s iterations=%d message=%s\n",
+				strings.TrimSpace(item.ProjectID),
+				strings.TrimSpace(item.RunID),
+				strings.TrimSpace(item.Status),
+				item.Iterations,
+				strings.TrimSpace(item.Message),
+			)
+			return true, c.session, nil
+		default:
+			return true, c.session, fmt.Errorf("usage: /project autopilot {start|status} {project_id}")
+		}
 	default:
-		return true, c.session, fmt.Errorf("usage: /project {list|get|create|activate|archive}")
+		return true, c.session, fmt.Errorf("usage: /project {list|get|create|activate|archive|board|activity|dispatch|autopilot}")
 	}
 }
 

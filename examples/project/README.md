@@ -5,8 +5,9 @@ This example walks through the current project manager flow in TARS:
 1. Create a project.
 2. Seed the board with one developer task and one reviewer task.
 3. Open the dashboard or tail the SSE stream.
-4. Dispatch developer work.
-5. Dispatch reviewer work.
+4. Inspect the project from the TUI.
+5. Dispatch developer work.
+6. Dispatch reviewer work or start autopilot.
 
 The example assumes the local server is running at `http://127.0.0.1:43180`.
 
@@ -70,7 +71,23 @@ Or tail the live event stream:
 curl -N "http://127.0.0.1:43180/ui/projects/${PROJECT_ID}/stream"
 ```
 
-## 4. Dispatch Developer Work
+## 4. Inspect From The TUI
+
+Open the client and inspect the current project state:
+
+```text
+/project board ${PROJECT_ID}
+/project activity ${PROJECT_ID} 20
+```
+
+If you want TARS to continue from the backlog automatically:
+
+```text
+/project autopilot start ${PROJECT_ID}
+/project autopilot status ${PROJECT_ID}
+```
+
+## 5. Dispatch Developer Work
 
 Dispatch all `todo` tasks:
 
@@ -83,7 +100,13 @@ curl -s "http://127.0.0.1:43180/v1/projects/${PROJECT_ID}/dispatch" \
 
 At this stage, TARS will attempt to run the assigned developer workers and move tasks toward `review`.
 
-## 5. Dispatch Reviewer Work
+The same action is available from the TUI:
+
+```text
+/project dispatch ${PROJECT_ID} todo
+```
+
+## 6. Dispatch Reviewer Work
 
 Dispatch all `review` tasks:
 
@@ -95,6 +118,12 @@ curl -s "http://127.0.0.1:43180/v1/projects/${PROJECT_ID}/dispatch" \
 ```
 
 Tasks that require review move to `done` only after the reviewer approves them.
+
+From the TUI, the equivalent command is:
+
+```text
+/project dispatch ${PROJECT_ID} review
+```
 
 ## Inspect Current State
 
@@ -112,6 +141,6 @@ curl -s "http://127.0.0.1:43180/v1/projects/${PROJECT_ID}/activity"
 
 ## Notes
 
-- This example is intentionally small and uses direct API calls instead of the TUI.
+- This example now supports both TUI commands and direct API calls.
 - The example assumes the configured worker backends (`codex` or `claude`) are available in the local environment.
 - If `gh auth status` fails, GitHub Flow validation will surface that failure in task activity and the dashboard.

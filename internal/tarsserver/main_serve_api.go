@@ -395,7 +395,7 @@ func buildAPIMux(
 		chatTools...,
 	)
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
-	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, projectDashboardBroker, logger)
+	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, projectAutopilot, projectDashboardBroker, logger)
 	dashboardHandler := newProjectDashboardHandler(projectStore, projectDashboardBroker, logger)
 	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit)

@@ -26,6 +26,26 @@ func (c runtimeClient) activateProject(ctx context.Context, projectID, sessionID
 	return c.client().ActivateProject(ctx, projectID, sessionID)
 }
 
+func (c runtimeClient) getProjectBoard(ctx context.Context, projectID string) (projectBoard, error) {
+	return c.client().GetProjectBoard(ctx, projectID)
+}
+
+func (c runtimeClient) listProjectActivity(ctx context.Context, projectID string, limit int) ([]projectActivity, error) {
+	return c.client().ListProjectActivity(ctx, projectID, limit)
+}
+
+func (c runtimeClient) dispatchProject(ctx context.Context, projectID, stage string) (projectDispatchReport, error) {
+	return c.client().DispatchProject(ctx, projectID, stage)
+}
+
+func (c runtimeClient) startProjectAutopilot(ctx context.Context, projectID string) (projectAutopilotRun, error) {
+	return c.client().StartProjectAutopilot(ctx, projectID)
+}
+
+func (c runtimeClient) getProjectAutopilot(ctx context.Context, projectID string) (projectAutopilotRun, error) {
+	return c.client().GetProjectAutopilot(ctx, projectID)
+}
+
 func (c runtimeClient) usageSummary(ctx context.Context, period, groupBy string) (usageSummary, usageLimits, usageLimitStatus, error) {
 	return c.client().GetUsageSummary(ctx, period, groupBy)
 }

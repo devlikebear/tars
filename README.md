@@ -119,6 +119,16 @@ todo 앱 만드는 프로젝트 시작해줘
 
 The bundled `project-start` skill will collect a few brief answers, finalize the project, seed the board, and start background autopilot execution.
 
+Once a project exists, you can operate the workflow directly from the TUI without dropping to raw HTTP:
+
+```text
+/project board <project-id>
+/project activity <project-id> 20
+/project dispatch <project-id> todo
+/project autopilot start <project-id>
+/project autopilot status <project-id>
+```
+
 7. Run basic checks:
 
 ```bash
@@ -127,9 +137,18 @@ make api-sessions
 make smoke-auth
 ```
 
-## Project Manager API
+## Project Manager
 
 TARS now ships a bundled `project-swarm` plugin under [`plugins/project-swarm`](plugins/project-swarm). Installed builds carry it under `share/tars/plugins`, and `tars init` copies it into `workspace/plugins/project-swarm`. Its skills are mirrored into the workspace runtime and can be invoked explicitly with `/project-start` or selected automatically from natural-language kickoff messages in chat and Telegram.
+
+For day-to-day operation from the terminal client, use:
+
+```text
+/project board <project-id>
+/project activity <project-id> [limit]
+/project dispatch <project-id> {todo|review}
+/project autopilot {start|status} <project-id>
+```
 
 For direct API control, the project manager routes remain available:
 
@@ -177,9 +196,16 @@ curl -s http://127.0.0.1:43180/v1/projects/<project-id>/dispatch \
   -d '{"stage":"review"}'
 ```
 
+Start or inspect background autopilot:
+
+```bash
+curl -s http://127.0.0.1:43180/v1/projects/<project-id>/autopilot -X POST
+curl -s http://127.0.0.1:43180/v1/projects/<project-id>/autopilot
+```
+
 Tasks that require review will only move to `done` after the reviewer stage approves them. Developer runs must also report passing test/build results plus issue/branch/PR metadata before the task can advance.
 
-An end-to-end curl example is available in [`examples/project/README.md`](examples/project/README.md).
+An end-to-end TUI and curl example is available in [`examples/project/README.md`](examples/project/README.md).
 
 ## Build
 

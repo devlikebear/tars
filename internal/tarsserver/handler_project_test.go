@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,7 +31,7 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, nil, zerolog.New(io.Discard))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{
 		"name":"Ops A",
@@ -98,7 +99,7 @@ func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -153,7 +154,7 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 
 	projectStore := project.NewStore(root, nil)
 	broker := newProjectDashboardBroker()
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, broker, zerolog.New(io.Discard))
 
 	briefReq := httptest.NewRequest(http.MethodPatch, "/v1/project-briefs/"+mainSess.ID, strings.NewReader(`{
 		"title":"Orbit Hearts",
@@ -242,7 +243,7 @@ func TestProjectAPI_ActivityRoutes(t *testing.T) {
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
 	broker := newProjectDashboardBroker()
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, broker, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -336,7 +337,7 @@ func TestProjectAPI_BoardRoutes(t *testing.T) {
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
 	broker := newProjectDashboardBroker()
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, broker, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -470,7 +471,7 @@ notes: approved
 	})
 
 	taskRunner := gateway.NewProjectTaskRunner(runtime, "")
-	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, func(context.Context) error { return nil }, broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, func(context.Context) error { return nil }, nil, broker, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Dispatch Project", Type: "operations"})
 	if err != nil {
@@ -536,4 +537,139 @@ notes: approved
 	case <-time.After(300 * time.Millisecond):
 		t.Fatal("expected dashboard refresh event after dispatch")
 	}
+}
+
+func TestProjectAPI_AutopilotRoutes(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	projectStore := project.NewStore(root, nil)
+	broker := newProjectDashboardBroker()
+	runner := newAutopilotAPITaskRunner()
+	manager := project.NewAutopilotManager(projectStore, runner, func(context.Context) error { return nil }, func(projectID string, kind string) {
+		broker.publish(newProjectDashboardEvent(projectID, kind))
+	})
+	handler := newProjectAPIHandler(projectStore, store, "", runner, func(context.Context) error { return nil }, manager, broker, zerolog.New(io.Discard))
+
+	created, err := projectStore.Create(project.CreateInput{Name: "Autopilot Project", Type: "operations"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := projectStore.UpdateBoard(created.ID, project.BoardUpdateInput{
+		Tasks: []project.BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Build dashboard",
+				Status:         "todo",
+				Assignee:       "dev-1",
+				Role:           "developer",
+				ReviewRequired: true,
+				TestCommand:    "go test ./internal/project",
+				BuildCommand:   "go test ./internal/tarsserver",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	startReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/autopilot", nil)
+	startRec := httptest.NewRecorder()
+	handler.ServeHTTP(startRec, startReq)
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for autopilot start, got %d body=%q", startRec.Code, startRec.Body.String())
+	}
+
+	waitForAutopilotRun(t, manager, created.ID, project.AutopilotStatusDone)
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/v1/projects/"+created.ID+"/autopilot", nil)
+	statusRec := httptest.NewRecorder()
+	handler.ServeHTTP(statusRec, statusReq)
+	if statusRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for autopilot status, got %d body=%q", statusRec.Code, statusRec.Body.String())
+	}
+	if !strings.Contains(statusRec.Body.String(), `"status":"done"`) {
+		t.Fatalf("expected done status in autopilot response, got %q", statusRec.Body.String())
+	}
+
+	board, err := projectStore.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board after autopilot: %v", err)
+	}
+	if len(board.Tasks) != 1 || board.Tasks[0].Status != "done" {
+		t.Fatalf("expected autopilot to complete task, got %+v", board.Tasks)
+	}
+}
+
+type autopilotAPITaskRunner struct {
+	mu   sync.Mutex
+	reqs map[string]project.TaskRunRequest
+}
+
+func newAutopilotAPITaskRunner() *autopilotAPITaskRunner {
+	return &autopilotAPITaskRunner{reqs: map[string]project.TaskRunRequest{}}
+}
+
+func (r *autopilotAPITaskRunner) Start(_ context.Context, req project.TaskRunRequest) (project.TaskRun, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	runID := "run_" + strings.TrimSpace(req.TaskID) + "_" + strings.TrimSpace(req.Role)
+	r.reqs[runID] = req
+	return project.TaskRun{
+		ID:         runID,
+		TaskID:     req.TaskID,
+		Agent:      req.Agent,
+		WorkerKind: req.WorkerKind,
+		Status:     project.TaskRunStatusAccepted,
+	}, nil
+}
+
+func (r *autopilotAPITaskRunner) Wait(_ context.Context, runID string) (project.TaskRun, error) {
+	r.mu.Lock()
+	req := r.reqs[runID]
+	r.mu.Unlock()
+
+	response := `<task-report>
+summary: completed
+tests: passed
+build: passed
+issue: https://github.com/devlikebear/tars/issues/301
+branch: feat/task-1
+pr: https://github.com/devlikebear/tars/pull/401
+</task-report>`
+	if strings.EqualFold(strings.TrimSpace(req.Role), "reviewer") {
+		response = `<task-report>
+status: approved
+summary: reviewed
+tests: passed
+build: passed
+issue: https://github.com/devlikebear/tars/issues/301
+branch: feat/task-1
+pr: https://github.com/devlikebear/tars/pull/401
+</task-report>`
+	}
+	return project.TaskRun{
+		ID:         runID,
+		TaskID:     req.TaskID,
+		Agent:      req.Agent,
+		WorkerKind: req.WorkerKind,
+		Status:     project.TaskRunStatusCompleted,
+		Response:   response,
+	}, nil
+}
+
+func waitForAutopilotRun(t *testing.T, manager *project.AutopilotManager, projectID string, want project.AutopilotRunStatus) project.AutopilotRun {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		run, ok := manager.Status(projectID)
+		if ok && run.Status == want {
+			return run
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	run, _ := manager.Status(projectID)
+	t.Fatalf("expected autopilot status %q, got %+v", want, run)
+	return project.AutopilotRun{}
 }

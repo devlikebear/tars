@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-14
+
+### Added
+
+- TUI project workflow commands for board inspection, activity inspection, task dispatch, and autopilot start/status
+- `GET` and `POST /v1/projects/{id}/autopilot` so non-chat clients can start and inspect project autopilot runs
+
+### Changed
+
+- Project manager operations no longer require `curl` for common TUI workflows after a project has been created
+- Dogfooding documentation now shows both TUI and HTTP routes for project manager operation
+
 ## [0.5.0] - 2026-03-14
 
 ### Added
