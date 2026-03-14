@@ -1,9 +1,13 @@
 package tarsserver
 
 import (
+	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/rs/zerolog"
@@ -15,11 +19,75 @@ type projectDashboardPageData struct {
 	Activity   []project.Activity
 	Board      project.Board
 	BoardStats []projectDashboardBoardStat
+	PagePath   string
+	StreamPath string
 }
 
 type projectDashboardBoardStat struct {
 	Status string
 	Count  int
+}
+
+type projectDashboardRoute struct {
+	ProjectID string
+	Stream    bool
+}
+
+type projectDashboardEvent struct {
+	Type      string `json:"type"`
+	ProjectID string `json:"project_id"`
+	Kind      string `json:"kind"`
+	Timestamp string `json:"timestamp"`
+}
+
+type projectDashboardBroker struct {
+	mu     sync.RWMutex
+	nextID int
+	subs   map[int]chan projectDashboardEvent
+}
+
+func newProjectDashboardBroker() *projectDashboardBroker {
+	return &projectDashboardBroker{subs: map[int]chan projectDashboardEvent{}}
+}
+
+func newProjectDashboardEvent(projectID, kind string) projectDashboardEvent {
+	return projectDashboardEvent{
+		Type:      "project_dashboard",
+		ProjectID: strings.TrimSpace(projectID),
+		Kind:      strings.TrimSpace(kind),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
+func (b *projectDashboardBroker) subscribe() (<-chan projectDashboardEvent, func()) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.nextID++
+	id := b.nextID
+	ch := make(chan projectDashboardEvent, 32)
+	b.subs[id] = ch
+	return ch, func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if current, ok := b.subs[id]; ok {
+			delete(b.subs, id)
+			close(current)
+		}
+	}
+}
+
+func (b *projectDashboardBroker) publish(evt projectDashboardEvent) {
+	if b == nil {
+		return
+	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	for _, sub := range b.subs {
+		select {
+		case sub <- evt:
+		default:
+		}
+	}
 }
 
 var projectDashboardTemplate = template.Must(template.New("project-dashboard").Parse(`<!DOCTYPE html>
@@ -80,7 +148,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       </article>
     </section>
 
-    <section class="card">
+    <section id="board-section" class="card">
       <h2>Board</h2>
       <div class="stats">
         {{range .BoardStats}}
@@ -118,7 +186,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       {{end}}
     </section>
 
-    <section class="card">
+    <section id="activity-section" class="card">
       <h2>Recent Activity</h2>
       {{if .Activity}}
       <ul>
@@ -137,41 +205,92 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       {{end}}
     </section>
   </main>
+  <script>
+    (() => {
+      const streamPath = {{printf "%q" .StreamPath}};
+      const pagePath = {{printf "%q" .PagePath}};
+      if (!streamPath || !pagePath || typeof EventSource === "undefined") {
+        return;
+      }
+      let refreshing = false;
+      async function refreshSections() {
+        if (refreshing) {
+          return;
+        }
+        refreshing = true;
+        try {
+          const response = await fetch(pagePath, { headers: { "X-Tars-Dashboard": "refresh" } });
+          if (!response.ok) {
+            return;
+          }
+          const html = await response.text();
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          for (const id of ["board-section", "activity-section"]) {
+            const next = doc.getElementById(id);
+            const current = document.getElementById(id);
+            if (next && current) {
+              current.replaceWith(next);
+            }
+          }
+        } finally {
+          refreshing = false;
+        }
+      }
+      const source = new EventSource(streamPath);
+      source.onmessage = (event) => {
+        if (!event.data) {
+          return;
+        }
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === "keepalive" || payload.kind === "connected") {
+            return;
+          }
+        } catch (_) {
+        }
+        refreshSections();
+      };
+    })();
+  </script>
 </body>
 </html>`))
 
-func newProjectDashboardHandler(store *project.Store, logger zerolog.Logger) http.Handler {
+func newProjectDashboardHandler(store *project.Store, broker *projectDashboardBroker, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		route, ok := parseProjectDashboardPath(r.URL.Path)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		if route.Stream {
+			serveProjectDashboardStream(w, r, route.ProjectID, broker, logger)
 			return
 		}
 		if store == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "project store is not configured"})
 			return
 		}
-		projectID, ok := parseProjectDashboardPath(r.URL.Path)
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-		item, err := store.Get(projectID)
+		item, err := store.Get(route.ProjectID)
 		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
 		var state *project.ProjectState
-		if current, err := store.GetState(projectID); err == nil {
+		if current, err := store.GetState(route.ProjectID); err == nil {
 			state = &current
 		}
-		activity, err := store.ListActivity(projectID, 20)
+		activity, err := store.ListActivity(route.ProjectID, 20)
 		if err != nil {
-			logger.Error().Err(err).Str("project_id", projectID).Msg("list project activity for dashboard failed")
+			logger.Error().Err(err).Str("project_id", route.ProjectID).Msg("list project activity for dashboard failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load dashboard failed"})
 			return
 		}
-		board, err := store.GetBoard(projectID)
+		board, err := store.GetBoard(route.ProjectID)
 		if err != nil {
-			logger.Error().Err(err).Str("project_id", projectID).Msg("load project board for dashboard failed")
+			logger.Error().Err(err).Str("project_id", route.ProjectID).Msg("load project board for dashboard failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load dashboard failed"})
 			return
 		}
@@ -182,8 +301,10 @@ func newProjectDashboardHandler(store *project.Store, logger zerolog.Logger) htt
 			Activity:   activity,
 			Board:      board,
 			BoardStats: buildProjectDashboardBoardStats(board),
+			PagePath:   fmt.Sprintf("/ui/projects/%s", route.ProjectID),
+			StreamPath: fmt.Sprintf("/ui/projects/%s/stream", route.ProjectID),
 		}); err != nil {
-			logger.Error().Err(err).Str("project_id", projectID).Msg("render project dashboard failed")
+			logger.Error().Err(err).Str("project_id", route.ProjectID).Msg("render project dashboard failed")
 		}
 	})
 }
@@ -203,18 +324,84 @@ func buildProjectDashboardBoardStats(board project.Board) []projectDashboardBoar
 	return stats
 }
 
-func parseProjectDashboardPath(path string) (string, bool) {
+func serveProjectDashboardStream(w http.ResponseWriter, r *http.Request, projectID string, broker *projectDashboardBroker, logger zerolog.Logger) {
+	if broker == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "dashboard broker is not configured"})
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming is not supported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	ch, unsubscribe := broker.subscribe()
+	defer unsubscribe()
+
+	writeEvent := func(evt projectDashboardEvent) error {
+		payload, err := json.Marshal(evt)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+	_ = writeEvent(newProjectDashboardEvent(projectID, "connected"))
+
+	ping := time.NewTicker(10 * time.Second)
+	defer ping.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ping.C:
+			if _, err := fmt.Fprintf(w, "data: {\"type\":\"%s\"}\n\n", keepaliveEventType); err != nil {
+				return
+			}
+			flusher.Flush()
+		case evt, ok := <-ch:
+			if !ok {
+				return
+			}
+			if evt.ProjectID != projectID {
+				continue
+			}
+			if err := writeEvent(evt); err != nil {
+				logger.Debug().Err(err).Msg("dashboard stream write failed")
+				return
+			}
+		}
+	}
+}
+
+func parseProjectDashboardPath(path string) (projectDashboardRoute, bool) {
 	trimmed := strings.TrimSpace(strings.TrimPrefix(path, "/ui/projects/"))
 	if trimmed == "" {
-		return "", false
+		return projectDashboardRoute{}, false
 	}
 	parts := strings.Split(trimmed, "/")
-	if len(parts) != 1 {
-		return "", false
+	if len(parts) == 1 {
+		projectID := strings.TrimSpace(parts[0])
+		if projectID == "" {
+			return projectDashboardRoute{}, false
+		}
+		return projectDashboardRoute{ProjectID: projectID}, true
 	}
-	projectID := strings.TrimSpace(parts[0])
-	if projectID == "" {
-		return "", false
+	if len(parts) == 2 && strings.TrimSpace(parts[1]) == "stream" {
+		projectID := strings.TrimSpace(parts[0])
+		if projectID == "" {
+			return projectDashboardRoute{}, false
+		}
+		return projectDashboardRoute{ProjectID: projectID, Stream: true}, true
 	}
-	return projectID, true
+	return projectDashboardRoute{}, false
 }
