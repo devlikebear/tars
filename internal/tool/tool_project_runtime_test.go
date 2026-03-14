@@ -250,4 +250,24 @@ func TestProjectAutopilotStartTool_StartsBackgroundRunner(t *testing.T) {
 	if run.ProjectID != created.ID || run.Status != project.AutopilotStatusRunning {
 		t.Fatalf("unexpected autopilot run: %+v", run)
 	}
+
+	final := waitForAutopilotToFinish(t, manager, created.ID)
+	if final.Status != project.AutopilotStatusDone {
+		t.Fatalf("expected autopilot to finish with done status, got %+v", final)
+	}
+}
+
+func waitForAutopilotToFinish(t *testing.T, manager *project.AutopilotManager, projectID string) project.AutopilotRun {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		item, ok := manager.Status(projectID)
+		if ok && item.Status != project.AutopilotStatusRunning {
+			return item
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	item, _ := manager.Status(projectID)
+	t.Fatalf("expected autopilot run to finish, got %+v", item)
+	return project.AutopilotRun{}
 }
