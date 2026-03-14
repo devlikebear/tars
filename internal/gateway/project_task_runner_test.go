@@ -70,3 +70,45 @@ func TestProjectTaskRunner_StartAndWaitUsesSelectedWorkerKind(t *testing.T) {
 		t.Fatalf("expected gateway agent name %q, got %+v", project.WorkerKindCodexCLI, final)
 	}
 }
+
+func TestProjectTaskRunner_StartFallsBackToDefaultAgentWhenWorkerAliasIsMissing(t *testing.T) {
+	runtime := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: session.NewStore(t.TempDir()),
+		DefaultAgent: "default",
+		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
+			return "default:" + prompt, nil
+		},
+		Now: func() time.Time {
+			return time.Date(2026, 3, 14, 14, 30, 0, 0, time.UTC)
+		},
+	})
+	t.Cleanup(func() { closeGatewayRuntime(t, runtime) })
+
+	runner := NewProjectTaskRunner(runtime, "")
+	run, err := runner.Start(context.Background(), project.TaskRunRequest{
+		ProjectID:  "proj_demo",
+		TaskID:     "task-1",
+		Title:      "Implement worker integration",
+		Prompt:     "do the task",
+		Role:       "developer",
+		WorkerKind: project.WorkerKindCodexCLI,
+	})
+	if err != nil {
+		t.Fatalf("expected default-agent fallback, got %v", err)
+	}
+	if run.Agent != "default" {
+		t.Fatalf("expected default agent fallback, got %+v", run)
+	}
+	if run.WorkerKind != "default" {
+		t.Fatalf("expected fallback worker kind to reflect actual agent, got %+v", run)
+	}
+
+	final, err := runner.Wait(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("wait task run: %v", err)
+	}
+	if final.Agent != "default" || final.WorkerKind != "default" {
+		t.Fatalf("expected default agent on wait result, got %+v", final)
+	}
+}

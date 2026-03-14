@@ -150,6 +150,8 @@ For day-to-day operation from the terminal client, use:
 /project autopilot {start|status} <project-id>
 ```
 
+When dedicated `codex-cli` or `claude-code` gateway agents are not explicitly registered, project dispatch falls back to the runtime default gateway agent instead of failing immediately on an unknown worker alias.
+
 For direct API control, the project manager routes remain available:
 
 Create a project:

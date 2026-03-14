@@ -39,6 +39,19 @@ func TestResolveWorkerProfile_UsesExplicitWorkerAndRoleDefaults(t *testing.T) {
 		}
 	})
 
+	t.Run("default worker alias resolves", func(t *testing.T) {
+		profile, err := ResolveWorkerProfile(BoardTask{
+			Role:       "developer",
+			WorkerKind: "default",
+		})
+		if err != nil {
+			t.Fatalf("resolve worker profile: %v", err)
+		}
+		if profile.Kind != "default" || profile.ExecutorName != "default" {
+			t.Fatalf("expected default alias profile, got %+v", profile)
+		}
+	})
+
 	t.Run("unknown worker kind fails", func(t *testing.T) {
 		if _, err := ResolveWorkerProfile(BoardTask{WorkerKind: "unknown-cli"}); err == nil {
 			t.Fatal("expected unknown worker kind error")

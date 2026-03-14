@@ -6,6 +6,7 @@ import (
 )
 
 const (
+	WorkerKindDefault    = "default"
 	WorkerKindCodexCLI   = "codex-cli"
 	WorkerKindClaudeCode = "claude-code"
 )
@@ -20,6 +21,13 @@ type WorkerProfile struct {
 
 func BuiltinWorkerProfiles() map[string]WorkerProfile {
 	return map[string]WorkerProfile{
+		WorkerKindDefault: {
+			Kind:         WorkerKindDefault,
+			ExecutorName: WorkerKindDefault,
+			Command:      "",
+			Args:         nil,
+			Description:  "Runtime default gateway agent used when a dedicated worker alias is unavailable",
+		},
 		WorkerKindCodexCLI: {
 			Kind:         WorkerKindCodexCLI,
 			ExecutorName: WorkerKindCodexCLI,
