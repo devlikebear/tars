@@ -116,6 +116,20 @@ func TestStoreStateRoundtripAndNormalization(t *testing.T) {
 	if got := strings.Join(loaded.RemainingTasks, ","); got != "Summarize blockers,Define next checkpoint" {
 		t.Fatalf("unexpected remaining_tasks: %q", got)
 	}
+
+	activity, err := store.ListActivity(created.ID, 10)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if len(activity) < 2 {
+		t.Fatalf("expected state activity to be recorded, got %d items", len(activity))
+	}
+	if activity[0].Kind != ActivityKindStateChanged {
+		t.Fatalf("expected newest activity kind %q, got %+v", ActivityKindStateChanged, activity[0])
+	}
+	if activity[0].Status != "paused" {
+		t.Fatalf("expected state activity status paused, got %+v", activity[0])
+	}
 }
 
 func TestStoreStatePreservesDraftingPhase(t *testing.T) {

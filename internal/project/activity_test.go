@@ -67,16 +67,47 @@ func TestStoreActivityRoundtripNewestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list activity: %v", err)
 	}
-	if len(items) != 2 {
-		t.Fatalf("expected 2 activity items, got %d", len(items))
+	if len(items) != 3 {
+		t.Fatalf("expected 3 activity items, got %d", len(items))
 	}
 	if items[0].Status != "in_progress" {
 		t.Fatalf("expected newest item first, got %+v", items)
 	}
 	if items[1].Source != "pm" {
-		t.Fatalf("expected older item second, got %+v", items)
+		t.Fatalf("expected manual pm item second, got %+v", items)
 	}
-	if items[0].Timestamp <= items[1].Timestamp {
-		t.Fatalf("expected newest timestamp first, got %+v", items)
+	if items[2].Kind != ActivityKindProjectCreated {
+		t.Fatalf("expected oldest create item, got %+v", items)
+	}
+}
+
+func TestStoreListRecentActivityReturnsLatest50Items(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root, func() time.Time {
+		return time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC)
+	})
+
+	created, err := store.Create(CreateInput{Name: "Recent Activity Project"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	for i := 0; i < 55; i++ {
+		if _, err := store.AppendActivity(created.ID, ActivityAppendInput{
+			Source:  "agent",
+			Kind:    ActivityKindTaskStatus,
+			Status:  "in_progress",
+			Message: "item",
+		}); err != nil {
+			t.Fatalf("append activity %d: %v", i, err)
+		}
+	}
+
+	items, err := store.ListRecentActivity(created.ID)
+	if err != nil {
+		t.Fatalf("list recent activity: %v", err)
+	}
+	if len(items) != 50 {
+		t.Fatalf("expected 50 recent items, got %d", len(items))
 	}
 }

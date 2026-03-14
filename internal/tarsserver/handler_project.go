@@ -173,6 +173,7 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 				return
 			}
 			writeJSON(w, http.StatusOK, created)
+			dashboardBroker.publish(newProjectDashboardEvent(created.ID, "activity"))
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -225,6 +226,7 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update project failed"})
 					return
 				}
+				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
 				writeJSON(w, http.StatusOK, updated)
 			case http.MethodDelete:
 				if _, err := store.Archive(projectID); err != nil {
@@ -236,6 +238,7 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "archive project failed"})
 					return
 				}
+				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
 				w.WriteHeader(http.StatusNoContent)
 			default:
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -299,6 +302,7 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update project state failed"})
 					return
 				}
+				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
 				writeJSON(w, http.StatusOK, updated)
 			default:
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
