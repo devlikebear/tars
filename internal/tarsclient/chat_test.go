@@ -263,3 +263,68 @@ func TestChatClientStream_RetriesWithoutSessionWhenNoMainSessionExists(t *testin
 		t.Fatalf("expected second attempt without session, got %+v", attempts[1])
 	}
 }
+
+func TestChatClientStream_RetriesWithEmptySessionWhenRecoveredSessionAlsoStale(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		attempts []chatRequest
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat":
+			var req chatRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			mu.Lock()
+			attempts = append(attempts, req)
+			attempt := len(attempts)
+			mu.Unlock()
+			// First two attempts fail (stale session and stale main session).
+			if attempt <= 2 {
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"code":    "not_found",
+					"message": "session not found",
+				})
+				return
+			}
+			// Third attempt with empty session succeeds.
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: {\"type\":\"delta\",\"text\":\"Hello\"}\n")
+			fmt.Fprint(w, "data: {\"type\":\"done\",\"session_id\":\"sess-fresh\"}\n")
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"workspace_dir":   "/tmp/ws",
+				"session_count":   1,
+				"main_session_id": "stale-main",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := chatClient{serverURL: server.URL}
+	res, err := client.stream(context.Background(), chatRequest{Message: "hi", SessionID: "stale-1"}, nil, nil)
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	if res.SessionID != "sess-fresh" {
+		t.Fatalf("expected session_id sess-fresh, got %q", res.SessionID)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(attempts) != 3 {
+		t.Fatalf("expected three chat attempts, got %d", len(attempts))
+	}
+	if attempts[0].SessionID != "stale-1" {
+		t.Fatalf("expected first attempt with stale-1, got %+v", attempts[0])
+	}
+	if attempts[1].SessionID != "stale-main" {
+		t.Fatalf("expected second attempt with stale-main, got %+v", attempts[1])
+	}
+	if attempts[2].SessionID != "" {
+		t.Fatalf("expected third attempt with empty session, got %+v", attempts[2])
+	}
+}

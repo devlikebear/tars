@@ -27,21 +27,32 @@ func resolveChatSession(store *session.Store, sessionID string, mainSessionID st
 	if strings.TrimSpace(sessionID) == "" {
 		id := strings.TrimSpace(mainSessionID)
 		if id == "" {
-			sess, err := store.Create("chat")
-			if err != nil {
-				return "", err
-			}
-			return sess.ID, nil
+			return createFallbackChatSession(store)
 		}
 		if _, err := store.Get(id); err != nil {
-			return "", err
+			return createFallbackChatSession(store)
 		}
 		return id, nil
 	}
 	if _, err := store.Get(strings.TrimSpace(sessionID)); err != nil {
-		return "", err
+		// Requested session is stale; fall back to the main session
+		// or create a new one so the chat request is not rejected.
+		if id := strings.TrimSpace(mainSessionID); id != "" && id != strings.TrimSpace(sessionID) {
+			if _, mainErr := store.Get(id); mainErr == nil {
+				return id, nil
+			}
+		}
+		return createFallbackChatSession(store)
 	}
 	return strings.TrimSpace(sessionID), nil
+}
+
+func createFallbackChatSession(store *session.Store) (string, error) {
+	sess, err := store.Create("chat")
+	if err != nil {
+		return "", err
+	}
+	return sess.ID, nil
 }
 
 func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, toolChoice string, err error) {
