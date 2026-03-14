@@ -188,6 +188,7 @@ func (s *Store) UpdateState(projectID string, input ProjectStateUpdateInput) (Pr
 		return ProjectState{}, fmt.Errorf("project id is required")
 	}
 	item, err := s.GetState(projectID)
+	hadState := err == nil
 	if err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "project state not found") {
 			return ProjectState{}, err
@@ -197,6 +198,7 @@ func (s *Store) UpdateState(projectID string, input ProjectStateUpdateInput) (Pr
 		}
 		item = ProjectState{ProjectID: projectID, Phase: "planning", Status: "active"}
 	}
+	before := item
 	applyProjectStateUpdateInput(&item, input)
 	item.ProjectID = projectID
 	item.Phase = normalizeProjectStatePhase(item.Phase)
@@ -204,7 +206,29 @@ func (s *Store) UpdateState(projectID string, input ProjectStateUpdateInput) (Pr
 	if err := s.writeState(item); err != nil {
 		return ProjectState{}, err
 	}
-	return s.GetState(projectID)
+	updated, err := s.GetState(projectID)
+	if err != nil {
+		return ProjectState{}, err
+	}
+	if hadState && !projectStateActivityChanged(before, updated) {
+		return updated, nil
+	}
+	message := "Project state updated"
+	if !hadState {
+		message = "Project state initialized"
+	}
+	if err := s.appendSystemActivity(projectID, ActivityAppendInput{
+		Kind:    ActivityKindStateChanged,
+		Status:  updated.Status,
+		Message: message,
+		Meta: map[string]string{
+			"phase":       updated.Phase,
+			"next_action": updated.NextAction,
+		},
+	}); err != nil {
+		return ProjectState{}, err
+	}
+	return updated, nil
 }
 
 func (s *Store) FinalizeBrief(id string, sessionStore *session.Store) (Project, Brief, error) {

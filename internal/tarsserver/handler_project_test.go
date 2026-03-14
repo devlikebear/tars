@@ -150,7 +150,8 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, zerolog.New(io.Discard))
+	broker := newProjectDashboardBroker()
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, broker, zerolog.New(io.Discard))
 
 	briefReq := httptest.NewRequest(http.MethodPatch, "/v1/project-briefs/"+mainSess.ID, strings.NewReader(`{
 		"title":"Orbit Hearts",
@@ -204,6 +205,30 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 	}
 	if !strings.Contains(statePatchRec.Body.String(), "Draft chapter one") {
 		t.Fatalf("expected next_action in state patch response, got %q", statePatchRec.Body.String())
+	}
+
+	events, unsubscribe := broker.subscribe()
+	defer unsubscribe()
+
+	statePatchReq2 := httptest.NewRequest(http.MethodPatch, "/v1/projects/"+payload.Project.ID+"/state", strings.NewReader(`{
+		"phase":"review",
+		"status":"paused",
+		"next_action":"Wait for feedback"
+	}`))
+	statePatchReq2.Header.Set("Content-Type", "application/json")
+	statePatchRec2 := httptest.NewRecorder()
+	handler.ServeHTTP(statePatchRec2, statePatchReq2)
+	if statePatchRec2.Code != http.StatusOK {
+		t.Fatalf("expected 200 for second state patch, got %d body=%q", statePatchRec2.Code, statePatchRec2.Body.String())
+	}
+
+	select {
+	case evt := <-events:
+		if evt.ProjectID != payload.Project.ID || evt.Kind != "activity" {
+			t.Fatalf("unexpected dashboard event: %+v", evt)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected dashboard event for state patch")
 	}
 }
 

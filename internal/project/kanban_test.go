@@ -84,4 +84,37 @@ func TestStoreBoardRoundtrip(t *testing.T) {
 	if len(loaded.Tasks) != 1 || loaded.Tasks[0].Assignee != "dev-1" {
 		t.Fatalf("unexpected loaded tasks: %+v", loaded.Tasks)
 	}
+
+	second, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Build activity feed",
+				Status:         "review",
+				Assignee:       "dev-1",
+				Role:           "developer",
+				ReviewRequired: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update board second time: %v", err)
+	}
+	if second.Tasks[0].Status != "review" {
+		t.Fatalf("expected review status, got %+v", second.Tasks[0])
+	}
+
+	activity, err := store.ListActivity(created.ID, 10)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if len(activity) < 3 {
+		t.Fatalf("expected board activities, got %d items", len(activity))
+	}
+	if activity[0].Kind != ActivityKindBoardTaskUpdated {
+		t.Fatalf("expected newest board update activity, got %+v", activity[0])
+	}
+	if activity[1].Kind != ActivityKindBoardTaskCreated {
+		t.Fatalf("expected board task create activity next, got %+v", activity[1])
+	}
 }

@@ -282,7 +282,7 @@ func newProjectDashboardHandler(store *project.Store, broker *projectDashboardBr
 		if current, err := store.GetState(route.ProjectID); err == nil {
 			state = &current
 		}
-		activity, err := store.ListActivity(route.ProjectID, 20)
+		activity, err := store.ListRecentActivity(route.ProjectID)
 		if err != nil {
 			logger.Error().Err(err).Str("project_id", route.ProjectID).Msg("list project activity for dashboard failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load dashboard failed"})

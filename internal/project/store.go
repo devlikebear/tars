@@ -105,6 +105,13 @@ func (s *Store) Create(input CreateInput) (Project, error) {
 			return Project{}, err
 		}
 	}
+	if err := s.appendSystemActivity(project.ID, ActivityAppendInput{
+		Kind:    ActivityKindProjectCreated,
+		Status:  project.Status,
+		Message: "Project created",
+	}); err != nil {
+		return Project{}, err
+	}
 	return s.Get(project.ID)
 }
 
@@ -186,6 +193,7 @@ func (s *Store) Update(id string, input UpdateInput) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
+	before := item
 	if err := applyUpdateInput(&item, input); err != nil {
 		return Project{}, err
 	}
@@ -193,7 +201,27 @@ func (s *Store) Update(id string, input UpdateInput) (Project, error) {
 	if err := s.write(item); err != nil {
 		return Project{}, err
 	}
-	return s.Get(item.ID)
+	updated, err := s.Get(item.ID)
+	if err != nil {
+		return Project{}, err
+	}
+	if !projectActivityChanged(before, updated) {
+		return updated, nil
+	}
+	kind := ActivityKindProjectUpdated
+	message := "Project updated"
+	if before.Status != updated.Status && updated.Status == "archived" {
+		kind = ActivityKindProjectArchived
+		message = "Project archived"
+	}
+	if err := s.appendSystemActivity(updated.ID, ActivityAppendInput{
+		Kind:    kind,
+		Status:  updated.Status,
+		Message: message,
+	}); err != nil {
+		return Project{}, err
+	}
+	return updated, nil
 }
 
 func (s *Store) Archive(id string) (Project, error) {

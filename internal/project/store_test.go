@@ -103,6 +103,23 @@ func TestStoreUpdateAndArchive(t *testing.T) {
 	if archived.Status != "archived" {
 		t.Fatalf("expected archived status, got %q", archived.Status)
 	}
+
+	activity, err := store.ListActivity(created.ID, 10)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if len(activity) < 3 {
+		t.Fatalf("expected at least 3 activity items, got %d", len(activity))
+	}
+	if activity[0].Kind != ActivityKindProjectArchived {
+		t.Fatalf("expected newest archived activity, got %+v", activity[0])
+	}
+	if activity[1].Kind != ActivityKindProjectUpdated {
+		t.Fatalf("expected update activity second, got %+v", activity[1])
+	}
+	if activity[len(activity)-1].Kind != ActivityKindProjectCreated {
+		t.Fatalf("expected oldest created activity, got %+v", activity[len(activity)-1])
+	}
 }
 
 func TestStoreUpdatePreservesExistingCollectionsWhenInputSlicesAreEmpty(t *testing.T) {

@@ -86,6 +86,7 @@ func (s *Store) UpdateBoard(projectID string, input BoardUpdateInput) (Board, er
 	if err != nil {
 		return Board{}, err
 	}
+	previous := board
 	if input.Columns != nil {
 		board.Columns = normalizeBoardColumns(input.Columns)
 	}
@@ -99,7 +100,50 @@ func (s *Store) UpdateBoard(projectID string, input BoardUpdateInput) (Board, er
 	if err := s.writeBoard(board); err != nil {
 		return Board{}, err
 	}
-	return s.GetBoard(projectID)
+	updated, err := s.GetBoard(projectID)
+	if err != nil {
+		return Board{}, err
+	}
+	previousTasks := make(map[string]BoardTask, len(previous.Tasks))
+	for _, task := range previous.Tasks {
+		previousTasks[task.ID] = task
+	}
+	for _, task := range updated.Tasks {
+		before, existed := previousTasks[task.ID]
+		if !existed {
+			if err := s.appendSystemActivity(projectID, ActivityAppendInput{
+				TaskID:  task.ID,
+				Kind:    ActivityKindBoardTaskCreated,
+				Status:  task.Status,
+				Message: "Board task created",
+				Meta: map[string]string{
+					"title":    task.Title,
+					"assignee": task.Assignee,
+					"role":     task.Role,
+				},
+			}); err != nil {
+				return Board{}, err
+			}
+			continue
+		}
+		if !boardTaskActivityChanged(before, task) {
+			continue
+		}
+		if err := s.appendSystemActivity(projectID, ActivityAppendInput{
+			TaskID:  task.ID,
+			Kind:    ActivityKindBoardTaskUpdated,
+			Status:  task.Status,
+			Message: "Board task updated",
+			Meta: map[string]string{
+				"title":    task.Title,
+				"assignee": task.Assignee,
+				"role":     task.Role,
+			},
+		}); err != nil {
+			return Board{}, err
+		}
+	}
+	return updated, nil
 }
 
 func (s *Store) writeBoard(board Board) error {

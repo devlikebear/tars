@@ -12,6 +12,29 @@ import (
 
 const projectActivityDocumentName = "ACTIVITY.jsonl"
 
+const defaultRecentActivityLimit = 50
+
+const (
+	ActivitySourceSystem = "system"
+	ActivitySourcePM     = "pm"
+	ActivitySourceAgent  = "agent"
+)
+
+const (
+	ActivityKindAssignment       = "assignment"
+	ActivityKindTaskStatus       = "task_status"
+	ActivityKindProjectCreated   = "project_created"
+	ActivityKindProjectUpdated   = "project_updated"
+	ActivityKindProjectArchived  = "project_archived"
+	ActivityKindStateChanged     = "state_changed"
+	ActivityKindBoardTaskCreated = "board_task_created"
+	ActivityKindBoardTaskUpdated = "board_task_updated"
+	ActivityKindTestStatus       = "test_status"
+	ActivityKindBuildStatus      = "build_status"
+	ActivityKindIssueStatus      = "issue_status"
+	ActivityKindPRStatus         = "pr_status"
+)
+
 type Activity struct {
 	ID        string            `json:"id"`
 	ProjectID string            `json:"project_id"`
@@ -55,7 +78,7 @@ func (s *Store) AppendActivity(projectID string, input ActivityAppendInput) (Act
 	if source == "" {
 		return Activity{}, fmt.Errorf("source is required")
 	}
-	kind := strings.ToLower(strings.TrimSpace(input.Kind))
+	kind := normalizeActivityKind(input.Kind)
 	if kind == "" {
 		return Activity{}, fmt.Errorf("kind is required")
 	}
@@ -99,6 +122,10 @@ func (s *Store) AppendActivity(projectID string, input ActivityAppendInput) (Act
 		return Activity{}, err
 	}
 	return item, nil
+}
+
+func (s *Store) ListRecentActivity(projectID string) ([]Activity, error) {
+	return s.ListActivity(projectID, defaultRecentActivityLimit)
 }
 
 func (s *Store) ListActivity(projectID string, limit int) ([]Activity, error) {
@@ -176,4 +203,8 @@ func normalizeActivityMeta(raw map[string]string) map[string]string {
 		return nil
 	}
 	return out
+}
+
+func normalizeActivityKind(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
 }
