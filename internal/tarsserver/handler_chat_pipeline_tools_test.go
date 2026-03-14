@@ -65,6 +65,33 @@ func TestResolveInjectedToolSchemas_ProjectRiskMaxConstrainsAllowedTools(t *test
 	}
 }
 
+func TestResolveInjectedToolSchemas_MinimalIncludesProjectRuntimeTools(t *testing.T) {
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.NewProcessManager())
+	for _, expected := range []string{
+		"project_create",
+		"project_board_get",
+		"project_activity_get",
+		"project_dispatch",
+		"project_autopilot_start",
+	} {
+		registry.Register(tool.Tool{Name: expected})
+	}
+
+	schemas := resolveInjectedToolSchemas(registry, "minimal", nil, "user", false)
+	names := toolNamesFromSchemas(schemas)
+	for _, expected := range []string{
+		"project_create",
+		"project_board_get",
+		"project_activity_get",
+		"project_dispatch",
+		"project_autopilot_start",
+	} {
+		if !hasToolName(names, expected) {
+			t.Fatalf("expected %s in minimal tool set, got %+v", expected, names)
+		}
+	}
+}
+
 func hasToolName(names []string, target string) bool {
 	for _, name := range names {
 		if name == target {

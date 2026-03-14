@@ -82,7 +82,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	if deps.tooling.Extensions != nil {
 		extSnapshot = deps.tooling.Extensions.Snapshot()
 	}
-	invokedSkill := resolveInvokedSkill(req.Message, deps.tooling.Extensions)
+	invokedSkill := resolveSkillForMessage(req.Message, deps.tooling.Extensions, requestWorkspaceDir, sessionID)
 	resolvedProjectID, activeProject, projectPrompt, err := resolveChatProjectContext(requestWorkspaceDir, reqStore, sessionID, strings.TrimSpace(req.ProjectID))
 	if err != nil {
 		return chatRunState{}, http.StatusNotFound, err.Error(), err

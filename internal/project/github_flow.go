@@ -22,6 +22,10 @@ func defaultGitHubAuthChecker(ctx context.Context) error {
 	return nil
 }
 
+func DefaultGitHubAuthChecker() GitHubAuthChecker {
+	return defaultGitHubAuthChecker
+}
+
 func verificationStatus(raw string) string {
 	value := strings.ToLower(strings.TrimSpace(raw))
 	switch {

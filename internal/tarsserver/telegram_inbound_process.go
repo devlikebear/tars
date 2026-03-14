@@ -58,7 +58,7 @@ func (h *telegramInboundHandler) processMessage(
 	if h.tooling.Extensions != nil {
 		extSnapshot = h.tooling.Extensions.Snapshot()
 	}
-	invokedSkill := resolveInvokedSkill(text, h.tooling.Extensions)
+	invokedSkill := resolveSkillForMessage(text, h.tooling.Extensions, h.workspaceDir, sessionID)
 	resolvedProjectID, activeProject, projectPrompt, _ := resolveChatProjectContext(h.workspaceDir, h.store, sessionID, "")
 	systemPrompt, toolChoice, err := prepareChatContextWithExtensions(h.workspaceDir, resolvedProjectID, sessionID, text, extSnapshot, invokedSkill)
 	if err != nil {

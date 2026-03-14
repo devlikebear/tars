@@ -1,0 +1,6 @@
+{
+  "name": "Project PM Demo",
+  "type": "operations",
+  "objective": "Ship the MVP with a tracked board and review gate",
+  "instructions": "Use TDD, keep activity logs clear, and follow GitHub Flow metadata."
+}

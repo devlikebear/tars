@@ -11,6 +11,7 @@ import (
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/heartbeat"
+	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 )
@@ -72,6 +73,7 @@ func buildChatToolingOptions(
 	processManager *tool.ProcessManager,
 	manager *extensions.Manager,
 	gatewayRuntime *gateway.Runtime,
+	projectAutopilot *project.AutopilotManager,
 	toolsDefaultSet string,
 	toolsAllowHighRiskUser bool,
 	apiMaxInflightChat int,
@@ -83,6 +85,7 @@ func buildChatToolingOptions(
 		ProcessManager:         processManager,
 		Extensions:             extensionManager,
 		Gateway:                gatewayRuntime,
+		ProjectAutopilot:       projectAutopilot,
 		ToolsDefaultSet:        strings.TrimSpace(strings.ToLower(toolsDefaultSet)),
 		ToolsAllowHighRiskUser: toolsAllowHighRiskUser,
 		APIMaxInflightChat:     apiMaxInflightChat,

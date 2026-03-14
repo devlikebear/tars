@@ -203,6 +203,78 @@ func resolveInvokedSkill(message string, manager *extensions.Manager) *skill.Def
 	return &copySkill
 }
 
+func resolveSkillForMessage(message string, manager *extensions.Manager, workspaceDir, sessionID string) *skill.Definition {
+	if invoked := resolveInvokedSkill(message, manager); invoked != nil {
+		return invoked
+	}
+	projectStart := findProjectStartSkill(manager)
+	if projectStart == nil {
+		return nil
+	}
+	if hasActiveProjectBrief(workspaceDir, sessionID) {
+		return projectStart
+	}
+	if isProjectKickoffMessage(message) {
+		return projectStart
+	}
+	return nil
+}
+
+func findProjectStartSkill(manager *extensions.Manager) *skill.Definition {
+	if manager == nil {
+		return nil
+	}
+	for _, name := range []string{"project-start", "project_start"} {
+		if skillDef, ok := manager.FindSkill(name); ok {
+			copySkill := skillDef
+			return &copySkill
+		}
+	}
+	return nil
+}
+
+func hasActiveProjectBrief(workspaceDir, sessionID string) bool {
+	if strings.TrimSpace(workspaceDir) == "" || strings.TrimSpace(sessionID) == "" {
+		return false
+	}
+	store := project.NewStore(workspaceDir, nil)
+	item, err := store.GetBrief(strings.TrimSpace(sessionID))
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(item.Status)) {
+	case "collecting", "ready":
+		return true
+	default:
+		return false
+	}
+}
+
+func isProjectKickoffMessage(message string) bool {
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if lower == "" || strings.HasPrefix(lower, "/") {
+		return false
+	}
+	projectHints := []string{"project", "프로젝트"}
+	actionHints := []string{"start", "시작", "만들", "build", "create", "개발", "구축"}
+	hasProject := false
+	for _, hint := range projectHints {
+		if strings.Contains(lower, hint) {
+			hasProject = true
+			break
+		}
+	}
+	if !hasProject {
+		return false
+	}
+	for _, hint := range actionHints {
+		if strings.Contains(lower, hint) {
+			return true
+		}
+	}
+	return false
+}
+
 func setupAgentLoop(
 	client llm.Client,
 	registry *tool.Registry,
@@ -296,6 +368,7 @@ type chatToolingOptions struct {
 	ProcessManager              *tool.ProcessManager
 	Extensions                  *extensions.Manager
 	Gateway                     *gateway.Runtime
+	ProjectAutopilot            *project.AutopilotManager
 	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
 	ToolsDefaultSet             string
 	ToolsAllowHighRiskUser      bool
