@@ -68,3 +68,56 @@ func TestResolveSession_MainSession_CreatesWhenNoSessions(t *testing.T) {
 		t.Fatalf("expected main session to exist: %v", err)
 	}
 }
+
+func TestResolveSession_StaleMainSession_CreatesNewSession(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	// Simulate a stale mainSessionID that no longer exists in the store.
+	resolved, err := resolveChatSession(store, "", "deleted-stale-id")
+	if err != nil {
+		t.Fatalf("expected fallback to new session, got error: %v", err)
+	}
+	if strings.TrimSpace(resolved) == "" {
+		t.Fatalf("expected non-empty session id")
+	}
+	if resolved == "deleted-stale-id" {
+		t.Fatalf("should not return the stale id")
+	}
+	// Verify the new session exists in the store.
+	if _, err := store.Get(resolved); err != nil {
+		t.Fatalf("new session should exist in store: %v", err)
+	}
+}
+
+func TestResolveSession_StaleExplicitSession_FallsBackToMain(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	mainSession, err := store.Create("main")
+	if err != nil {
+		t.Fatalf("create main session: %v", err)
+	}
+	// Explicit session ID is stale, should fall back to main session.
+	resolved, err := resolveChatSession(store, "stale-explicit-id", mainSession.ID)
+	if err != nil {
+		t.Fatalf("expected fallback, got error: %v", err)
+	}
+	if resolved != mainSession.ID {
+		t.Fatalf("expected main session %q, got %q", mainSession.ID, resolved)
+	}
+}
+
+func TestResolveSession_StaleExplicitAndMainSession_CreatesNew(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	// Both explicit and main session IDs are stale.
+	resolved, err := resolveChatSession(store, "stale-explicit", "stale-main")
+	if err != nil {
+		t.Fatalf("expected fallback to new session, got error: %v", err)
+	}
+	if strings.TrimSpace(resolved) == "" {
+		t.Fatalf("expected non-empty session id")
+	}
+	if resolved == "stale-explicit" || resolved == "stale-main" {
+		t.Fatalf("should not return stale ids, got %q", resolved)
+	}
+	if _, err := store.Get(resolved); err != nil {
+		t.Fatalf("new session should exist in store: %v", err)
+	}
+}

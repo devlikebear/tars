@@ -36,7 +36,17 @@ func (c chatClient) stream(ctx context.Context, req chatRequest, onStatus func(c
 	}
 	retryReq := req
 	retryReq.SessionID = c.recoverChatSessionID(ctx, req.SessionID)
-	return c.client().StreamChat(ctx, retryReq, onStatus, onDelta)
+	result, err = c.client().StreamChat(ctx, retryReq, onStatus, onDelta)
+	if err == nil || retryReq.SessionID == "" {
+		return result, err
+	}
+	// Recovery session was also stale; final attempt with empty session
+	// so the server creates a fresh one.
+	if shouldRecoverMissingChatSession(retryReq.SessionID, err) {
+		retryReq.SessionID = ""
+		return c.client().StreamChat(ctx, retryReq, onStatus, onDelta)
+	}
+	return result, err
 }
 
 func shouldRecoverMissingChatSession(sessionID string, err error) bool {

@@ -106,6 +106,8 @@ type tarsAppModel struct {
 	inflightCanceled bool
 	assistantLine    int
 
+	chatScrollOffset int // 0 = bottom (latest), positive = lines scrolled up
+
 	asyncCh chan tea.Msg
 }
 
@@ -172,6 +174,7 @@ func (m *tarsAppModel) appendChatLine(line string) {
 	if len(m.chatLines) > maxChatLines {
 		m.chatLines = m.chatLines[len(m.chatLines)-maxChatLines:]
 	}
+	m.chatScrollOffset = 0 // snap to bottom on new message
 }
 
 func (m *tarsAppModel) appendChatBlock(block string) {
@@ -209,6 +212,7 @@ func (m *tarsAppModel) setAssistantLine() {
 			m.assistantLine = -1
 		}
 	}
+	m.chatScrollOffset = 0
 }
 
 func (m *tarsAppModel) appendAssistantChunk(chunk string) {
@@ -218,9 +222,11 @@ func (m *tarsAppModel) appendAssistantChunk(chunk string) {
 	if m.assistantLine < 0 || m.assistantLine >= len(m.chatLines) {
 		m.chatLines = append(m.chatLines, "TARS > "+chunk)
 		m.assistantLine = len(m.chatLines) - 1
+		m.chatScrollOffset = 0
 		return
 	}
 	m.chatLines[m.assistantLine] += chunk
+	m.chatScrollOffset = 0
 }
 
 func (m *tarsAppModel) pushHistory(value string) {

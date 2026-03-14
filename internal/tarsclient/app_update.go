@@ -54,10 +54,24 @@ func (m *tarsAppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.input.SetValue("")
 			return m, nil
+		case tea.KeyPgUp:
+			m.scrollChatUp(m.chatPanelPageSize())
+			return m, nil
+		case tea.KeyPgDown:
+			m.scrollChatDown(m.chatPanelPageSize())
+			return m, nil
 		case tea.KeyUp:
+			if typed.Alt {
+				m.scrollChatUp(1)
+				return m, nil
+			}
 			m.historyPrev()
 			return m, nil
 		case tea.KeyDown:
+			if typed.Alt {
+				m.scrollChatDown(1)
+				return m, nil
+			}
 			m.historyNext()
 			return m, nil
 		case tea.KeyTab:
@@ -302,6 +316,28 @@ func (m *tarsAppModel) cancelInFlight(reason string) {
 	m.inflightCanceled = true
 	m.appendStatusLine(reason)
 	m.inflightCancel()
+}
+
+func (m *tarsAppModel) scrollChatUp(lines int) {
+	m.chatScrollOffset += lines
+}
+
+func (m *tarsAppModel) scrollChatDown(lines int) {
+	m.chatScrollOffset -= lines
+	if m.chatScrollOffset < 0 {
+		m.chatScrollOffset = 0
+	}
+}
+
+func (m *tarsAppModel) chatPanelPageSize() int {
+	contentHeight := m.height - 5
+	if contentHeight < 9 {
+		contentHeight = 9
+	}
+	if m.width < 120 {
+		return maxInt(1, contentHeight/2-2)
+	}
+	return maxInt(1, contentHeight-2)
 }
 
 func maxInt(a, b int) int {

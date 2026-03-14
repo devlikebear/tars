@@ -97,13 +97,25 @@ func (m *tarsAppModel) View() string {
 
 func (m *tarsAppModel) renderChatPanel(width, height int) string {
 	contentWidth := innerPanelWidth(width)
-	content := renderPanelLines(m.chatLines, contentWidth, height-2, func(original, segment string) string {
+	limit := height - 2
+	content, totalVisual := renderPanelLinesWithScroll(m.chatLines, contentWidth, limit, m.chatScrollOffset, func(original, segment string) string {
 		return formatChatLine(original, segment)
 	})
+	// clamp scroll offset to valid range
+	maxOffset := totalVisual - limit
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if m.chatScrollOffset > maxOffset {
+		m.chatScrollOffset = maxOffset
+	}
 	if strings.TrimSpace(content) == "" {
 		content = "(no chat yet)"
 	}
 	title := chatTitleStyle.Render("Chat")
+	if m.chatScrollOffset > 0 {
+		title += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render(fmt.Sprintf("(↑%d)", m.chatScrollOffset))
+	}
 	return panelStyle.Width(width).Height(height).Render(title + "\n" + content)
 }
 
@@ -149,6 +161,11 @@ func innerPanelWidth(width int) int {
 }
 
 func renderPanelLines(lines []string, width, limit int, formatter func(original, segment string) string) string {
+	content, _ := renderPanelLinesWithScroll(lines, width, limit, 0, formatter)
+	return content
+}
+
+func renderPanelLinesWithScroll(lines []string, width, limit, scrollOffset int, formatter func(original, segment string) string) (string, int) {
 	if width <= 0 {
 		width = 1
 	}
@@ -156,7 +173,7 @@ func renderPanelLines(lines []string, width, limit int, formatter func(original,
 		limit = 1
 	}
 	if len(lines) == 0 {
-		return ""
+		return "", 0
 	}
 	visual := make([]string, 0, len(lines))
 	for _, line := range lines {
@@ -168,11 +185,23 @@ func renderPanelLines(lines []string, width, limit int, formatter func(original,
 			visual = append(visual, segment)
 		}
 	}
-	start := 0
-	if len(visual) > limit {
-		start = len(visual) - limit
+	total := len(visual)
+	// end is the last line index (exclusive) to show
+	end := total - scrollOffset
+	if end < 0 {
+		end = 0
 	}
-	return strings.Join(visual[start:], "\n")
+	if end > total {
+		end = total
+	}
+	start := end - limit
+	if start < 0 {
+		start = 0
+	}
+	if start >= end {
+		return "", total
+	}
+	return strings.Join(visual[start:end], "\n"), total
 }
 
 func wrapVisualLine(line string, width int) []string {
