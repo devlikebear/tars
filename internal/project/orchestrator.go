@@ -61,6 +61,19 @@ func NewOrchestrator(store *Store, runner TaskRunner) *Orchestrator {
 }
 
 func (o *Orchestrator) DispatchTodo(ctx context.Context, projectID string) (DispatchReport, error) {
+	return o.dispatchTasksByStatus(ctx, projectID, "todo", o.dispatchTask)
+}
+
+func (o *Orchestrator) DispatchReview(ctx context.Context, projectID string) (DispatchReport, error) {
+	return o.dispatchTasksByStatus(ctx, projectID, "review", o.dispatchReviewTask)
+}
+
+func (o *Orchestrator) dispatchTasksByStatus(
+	ctx context.Context,
+	projectID string,
+	status string,
+	dispatchFn func(context.Context, string, BoardTask) (TaskRun, error),
+) (DispatchReport, error) {
 	if o == nil || o.store == nil {
 		return DispatchReport{}, fmt.Errorf("project orchestrator store is not configured")
 	}
@@ -73,7 +86,7 @@ func (o *Orchestrator) DispatchTodo(ctx context.Context, projectID string) (Disp
 	}
 	tasks := make([]BoardTask, 0, len(board.Tasks))
 	for _, task := range board.Tasks {
-		if task.Status == "todo" {
+		if task.Status == strings.TrimSpace(status) {
 			tasks = append(tasks, task)
 		}
 	}
@@ -94,7 +107,7 @@ func (o *Orchestrator) DispatchTodo(ctx context.Context, projectID string) (Disp
 		wg.Add(1)
 		go func(index int, task BoardTask) {
 			defer wg.Done()
-			run, runErr := o.dispatchTask(ctx, projectID, task)
+			run, runErr := dispatchFn(ctx, projectID, task)
 			report.Runs[index] = run
 			if runErr != nil {
 				errMu.Lock()
@@ -212,6 +225,87 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 			"agent":       firstNonEmpty(strings.TrimSpace(finished.Agent), strings.TrimSpace(task.Assignee)),
 			"assignee":    strings.TrimSpace(task.Assignee),
 			"worker_kind": firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind),
+		},
+	}); err != nil {
+		return finished, err
+	}
+	return finished, nil
+}
+
+func (o *Orchestrator) dispatchReviewTask(ctx context.Context, projectID string, task BoardTask) (TaskRun, error) {
+	reviewTask := task
+	reviewTask.Role = "reviewer"
+	reviewTask.WorkerKind = ""
+
+	profile, err := ResolveWorkerProfile(reviewTask)
+	if err != nil {
+		return TaskRun{}, err
+	}
+	prompt := BuildTaskPrompt(reviewTask, projectID, profile) +
+		"\n\nCurrent task status: review" +
+		"\nImplementation worker_kind: " + strings.TrimSpace(task.WorkerKind)
+
+	run, err := o.runner.Start(ctx, TaskRunRequest{
+		ProjectID:  strings.TrimSpace(projectID),
+		TaskID:     task.ID,
+		Title:      task.Title,
+		Prompt:     prompt,
+		Agent:      firstNonEmpty(strings.TrimSpace(task.Assignee), "reviewer"),
+		Role:       "reviewer",
+		WorkerKind: profile.Kind,
+	})
+	if err != nil {
+		return TaskRun{}, err
+	}
+
+	finished, err := o.runner.Wait(ctx, run.ID)
+	if err != nil {
+		_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
+			TaskID:  task.ID,
+			Kind:    ActivityKindReviewStatus,
+			Status:  "blocked",
+			Message: "Review run failed",
+			Meta: map[string]string{
+				"run_id":      run.ID,
+				"worker_kind": profile.Kind,
+			},
+		})
+		return run, err
+	}
+
+	report := ParseTaskReport(finished.Response)
+	reviewStatus := strings.ToLower(strings.TrimSpace(report.Status))
+	nextStatus := "review"
+	approvedBy := ""
+	message := "Review blocked"
+	switch reviewStatus {
+	case "approved":
+		nextStatus = "done"
+		approvedBy = firstNonEmpty(strings.TrimSpace(finished.Agent), profile.Kind)
+		message = "Review approved"
+	case "rejected":
+		nextStatus = "in_progress"
+		message = "Review rejected"
+	default:
+		reviewStatus = "blocked"
+	}
+
+	if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
+		item.Status = nextStatus
+		item.ReviewApprovedBy = approvedBy
+	}); err != nil {
+		return finished, err
+	}
+
+	if err := o.store.appendSystemActivity(projectID, ActivityAppendInput{
+		TaskID:  task.ID,
+		Kind:    ActivityKindReviewStatus,
+		Status:  reviewStatus,
+		Message: message,
+		Meta: map[string]string{
+			"run_id":      run.ID,
+			"worker_kind": profile.Kind,
+			"reviewer":    firstNonEmpty(strings.TrimSpace(finished.Agent), profile.Kind),
 		},
 	}); err != nil {
 		return finished, err
