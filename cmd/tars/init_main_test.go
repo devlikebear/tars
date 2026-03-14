@@ -43,6 +43,9 @@ func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
 	if !strings.Contains(configText, "api_auth_mode: off") {
 		t.Fatalf("expected local starter auth mode in config, got:\n%s", configText)
 	}
+	if !strings.Contains(configText, "gateway_enabled: true") {
+		t.Fatalf("expected starter gateway to be enabled, got:\n%s", configText)
+	}
 	if !strings.Contains(configText, "${OPENAI_API_KEY}") {
 		t.Fatalf("expected OPENAI_API_KEY placeholder in config, got:\n%s", configText)
 	}

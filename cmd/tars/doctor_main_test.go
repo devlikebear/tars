@@ -131,6 +131,49 @@ func TestRootCommand_DoctorFixRestoresBundledWorkspacePlugin(t *testing.T) {
 	assertPathExists(t, manifestPath)
 }
 
+func TestRootCommand_DoctorWarnsWhenGatewayDisabledForProjectWorkflow(t *testing.T) {
+	clearDoctorEnv(t)
+	t.Setenv("OPENAI_API_KEY", "test-openai-key")
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
+
+	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
+	var initStdout strings.Builder
+	initCmd := newRootCommand(strings.NewReader(""), &initStdout, io.Discard)
+	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	if err := initCmd.Execute(); err != nil {
+		t.Fatalf("init command: %v", err)
+	}
+
+	workspaceAbs, err := filepath.Abs(workspaceDir)
+	if err != nil {
+		t.Fatalf("workspace abs path: %v", err)
+	}
+	configPath := filepath.Join(workspaceAbs, "config", "tars.config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	configText := strings.Replace(string(data), "gateway_enabled: true", "gateway_enabled: false", 1)
+	if err := os.WriteFile(configPath, []byte(configText), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var doctorStdout strings.Builder
+	doctorCmd := newRootCommand(strings.NewReader(""), &doctorStdout, io.Discard)
+	doctorCmd.SetArgs([]string{"doctor", "--workspace-dir", workspaceDir})
+	if err := doctorCmd.Execute(); err != nil {
+		t.Fatalf("doctor command: %v", err)
+	}
+
+	out := doctorStdout.String()
+	if !strings.Contains(out, "[warn] project workflow gateway") {
+		t.Fatalf("expected gateway warning, got:\n%s", out)
+	}
+	if !strings.Contains(out, "gateway_enabled: true") {
+		t.Fatalf("expected gateway enable guidance, got:\n%s", out)
+	}
+}
+
 func clearDoctorEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{

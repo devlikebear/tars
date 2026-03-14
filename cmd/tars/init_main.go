@@ -240,7 +240,7 @@ llm_base_url: https://api.openai.com/v1
 llm_model: gpt-4o-mini
 llm_api_key: ${OPENAI_API_KEY}
 
-# Gateway stays off until you opt in.
-gateway_enabled: false
+# Gateway is enabled so bundled project workflows can dispatch local agents.
+gateway_enabled: true
 `+"\n", workspaceDir))
 }

@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-03-14
+
+### Added
+
+- `tars doctor` now warns when `gateway_enabled=false` would disable the bundled project workflow and autopilot
+
+### Changed
+
+- Starter workspaces created by `tars init` now enable the gateway path required by bundled project workflows out of the box
+
 ## [0.5.1] - 2026-03-14
 
 ### Added
