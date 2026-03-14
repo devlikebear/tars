@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mainSessionID string, logger zerolog.Logger) http.Handler {
+func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mainSessionID string, dashboardBroker *projectDashboardBroker, logger zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/v1/project-briefs/", func(w http.ResponseWriter, r *http.Request) {
@@ -363,6 +363,7 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "append project activity failed"})
 					return
 				}
+				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
 				writeJSON(w, http.StatusOK, item)
 			default:
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -411,6 +412,7 @@ func newProjectAPIHandler(store *project.Store, sessionStore *session.Store, mai
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update project board failed"})
 					return
 				}
+				dashboardBroker.publish(newProjectDashboardEvent(projectID, "board"))
 				writeJSON(w, http.StatusOK, item)
 			default:
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/project"
@@ -27,7 +28,7 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, zerolog.New(io.Discard))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{
 		"name":"Ops A",
@@ -95,7 +96,7 @@ func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -149,7 +150,7 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, zerolog.New(io.Discard))
 
 	briefReq := httptest.NewRequest(http.MethodPatch, "/v1/project-briefs/"+mainSess.ID, strings.NewReader(`{
 		"title":"Orbit Hearts",
@@ -213,7 +214,8 @@ func TestProjectAPI_ActivityRoutes(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", zerolog.New(io.Discard))
+	broker := newProjectDashboardBroker()
+	handler := newProjectAPIHandler(projectStore, store, "", broker, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -270,6 +272,33 @@ func TestProjectAPI_ActivityRoutes(t *testing.T) {
 	if payload.Items[0].Status != "in_progress" {
 		t.Fatalf("expected newest activity first, got %+v", payload.Items)
 	}
+
+	events, unsubscribe := broker.subscribe()
+	defer unsubscribe()
+
+	thirdReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/activity", strings.NewReader(`{
+		"task_id":"task-2",
+		"source":"agent",
+		"agent":"dev-2",
+		"kind":"task_status",
+		"status":"review",
+		"message":"Ready for review"
+	}`))
+	thirdReq.Header.Set("Content-Type", "application/json")
+	thirdRec := httptest.NewRecorder()
+	handler.ServeHTTP(thirdRec, thirdReq)
+	if thirdRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for third activity append, got %d body=%q", thirdRec.Code, thirdRec.Body.String())
+	}
+
+	select {
+	case evt := <-events:
+		if evt.ProjectID != created.ID || evt.Kind != "activity" {
+			t.Fatalf("unexpected dashboard event: %+v", evt)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected dashboard activity event")
+	}
 }
 
 func TestProjectAPI_BoardRoutes(t *testing.T) {
@@ -279,7 +308,8 @@ func TestProjectAPI_BoardRoutes(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", zerolog.New(io.Discard))
+	broker := newProjectDashboardBroker()
+	handler := newProjectAPIHandler(projectStore, store, "", broker, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -320,5 +350,34 @@ func TestProjectAPI_BoardRoutes(t *testing.T) {
 	}
 	if len(board.Tasks) != 1 || board.Tasks[0].Status != "review" {
 		t.Fatalf("unexpected patched board: %+v", board)
+	}
+
+	events, unsubscribe := broker.subscribe()
+	defer unsubscribe()
+
+	secondPatchReq := httptest.NewRequest(http.MethodPatch, "/v1/projects/"+created.ID+"/board", strings.NewReader(`{
+		"tasks":[
+			{
+				"id":"task-1",
+				"title":"Build dashboard",
+				"status":"done",
+				"assignee":"dev-1"
+			}
+		]
+	}`))
+	secondPatchReq.Header.Set("Content-Type", "application/json")
+	secondPatchRec := httptest.NewRecorder()
+	handler.ServeHTTP(secondPatchRec, secondPatchReq)
+	if secondPatchRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for second board patch, got %d body=%q", secondPatchRec.Code, secondPatchRec.Body.String())
+	}
+
+	select {
+	case evt := <-events:
+		if evt.ProjectID != created.ID || evt.Kind != "board" {
+			t.Fatalf("unexpected dashboard event: %+v", evt)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected dashboard board event")
 	}
 }

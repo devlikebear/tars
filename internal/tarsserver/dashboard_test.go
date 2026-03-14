@@ -1,12 +1,14 @@
 package tarsserver
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/project"
@@ -73,7 +75,7 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		t.Fatalf("update board: %v", err)
 	}
 
-	handler := newProjectDashboardHandler(store, zerolog.New(io.Discard))
+	handler := newProjectDashboardHandler(store, newProjectDashboardBroker(), zerolog.New(io.Discard))
 	req := httptest.NewRequest(http.MethodGet, "/ui/projects/"+created.ID, nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -100,6 +102,9 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		"todo",
 		"0",
 		"1 active",
+		"/ui/projects/" + created.ID + "/stream",
+		"board-section",
+		"activity-section",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected dashboard body to contain %q, got %q", want, body)
@@ -112,12 +117,46 @@ func TestProjectDashboardHandler_ProjectNotFound(t *testing.T) {
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
 	}
-	handler := newProjectDashboardHandler(project.NewStore(root, nil), zerolog.New(io.Discard))
+	handler := newProjectDashboardHandler(project.NewStore(root, nil), newProjectDashboardBroker(), zerolog.New(io.Discard))
 	req := httptest.NewRequest(http.MethodGet, "/ui/projects/missing", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProjectDashboardHandler_ProjectStreamEmitsProjectEvents(t *testing.T) {
+	broker := newProjectDashboardBroker()
+	handler := newProjectDashboardHandler(nil, broker, zerolog.New(io.Discard))
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/projects/demo/stream", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		handler.ServeHTTP(rec, req)
+		close(done)
+	}()
+	time.Sleep(30 * time.Millisecond)
+
+	broker.publish(newProjectDashboardEvent("demo", "activity"))
+	time.Sleep(30 * time.Millisecond)
+	cancel()
+	<-done
+
+	if got := rec.Header().Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("expected text/event-stream, got %q", got)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "\"project_id\":\"demo\"") {
+		t.Fatalf("expected stream body to include project id, got %q", body)
+	}
+	if !strings.Contains(body, "\"kind\":\"activity\"") {
+		t.Fatalf("expected stream body to include event kind, got %q", body)
 	}
 }
