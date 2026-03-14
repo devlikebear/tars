@@ -15,15 +15,16 @@ const projectBoardDocumentName = "KANBAN.md"
 var defaultBoardColumns = []string{"todo", "in_progress", "review", "done"}
 
 type BoardTask struct {
-	ID             string `json:"id" yaml:"id"`
-	Title          string `json:"title" yaml:"title"`
-	Status         string `json:"status" yaml:"status"`
-	Assignee       string `json:"assignee,omitempty" yaml:"assignee,omitempty"`
-	Role           string `json:"role,omitempty" yaml:"role,omitempty"`
-	WorkerKind     string `json:"worker_kind,omitempty" yaml:"worker_kind,omitempty"`
-	ReviewRequired bool   `json:"review_required,omitempty" yaml:"review_required,omitempty"`
-	TestCommand    string `json:"test_command,omitempty" yaml:"test_command,omitempty"`
-	BuildCommand   string `json:"build_command,omitempty" yaml:"build_command,omitempty"`
+	ID               string `json:"id" yaml:"id"`
+	Title            string `json:"title" yaml:"title"`
+	Status           string `json:"status" yaml:"status"`
+	Assignee         string `json:"assignee,omitempty" yaml:"assignee,omitempty"`
+	Role             string `json:"role,omitempty" yaml:"role,omitempty"`
+	WorkerKind       string `json:"worker_kind,omitempty" yaml:"worker_kind,omitempty"`
+	ReviewApprovedBy string `json:"review_approved_by,omitempty" yaml:"review_approved_by,omitempty"`
+	ReviewRequired   bool   `json:"review_required,omitempty" yaml:"review_required,omitempty"`
+	TestCommand      string `json:"test_command,omitempty" yaml:"test_command,omitempty"`
+	BuildCommand     string `json:"build_command,omitempty" yaml:"build_command,omitempty"`
 }
 
 type Board struct {
@@ -249,15 +250,16 @@ func normalizeBoardTasks(raw []BoardTask, columns []string) []BoardTask {
 	out := make([]BoardTask, 0, len(raw))
 	for _, task := range raw {
 		item := BoardTask{
-			ID:             strings.TrimSpace(task.ID),
-			Title:          strings.TrimSpace(task.Title),
-			Status:         strings.ToLower(strings.TrimSpace(task.Status)),
-			Assignee:       strings.TrimSpace(task.Assignee),
-			Role:           strings.TrimSpace(task.Role),
-			WorkerKind:     strings.ToLower(strings.TrimSpace(task.WorkerKind)),
-			ReviewRequired: task.ReviewRequired,
-			TestCommand:    strings.TrimSpace(task.TestCommand),
-			BuildCommand:   strings.TrimSpace(task.BuildCommand),
+			ID:               strings.TrimSpace(task.ID),
+			Title:            strings.TrimSpace(task.Title),
+			Status:           strings.ToLower(strings.TrimSpace(task.Status)),
+			Assignee:         strings.TrimSpace(task.Assignee),
+			Role:             strings.TrimSpace(task.Role),
+			WorkerKind:       strings.ToLower(strings.TrimSpace(task.WorkerKind)),
+			ReviewApprovedBy: strings.TrimSpace(task.ReviewApprovedBy),
+			ReviewRequired:   task.ReviewRequired,
+			TestCommand:      strings.TrimSpace(task.TestCommand),
+			BuildCommand:     strings.TrimSpace(task.BuildCommand),
 		}
 		if _, ok := allowedStatus[item.Status]; !ok {
 			item.Status = normalizedColumns[0]

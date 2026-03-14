@@ -56,15 +56,16 @@ func TestStoreBoardRoundtrip(t *testing.T) {
 	updated, err := store.UpdateBoard(created.ID, BoardUpdateInput{
 		Tasks: []BoardTask{
 			{
-				ID:             "task-1",
-				Title:          "Build activity feed",
-				Status:         "in_progress",
-				Assignee:       "dev-1",
-				Role:           "developer",
-				WorkerKind:     WorkerKindCodexCLI,
-				ReviewRequired: true,
-				TestCommand:    "go test ./internal/project",
-				BuildCommand:   "go test ./internal/tarsserver",
+				ID:               "task-1",
+				Title:            "Build activity feed",
+				Status:           "in_progress",
+				Assignee:         "dev-1",
+				Role:             "developer",
+				WorkerKind:       WorkerKindCodexCLI,
+				ReviewApprovedBy: "review-bot",
+				ReviewRequired:   true,
+				TestCommand:      "go test ./internal/project",
+				BuildCommand:     "go test ./internal/tarsserver",
 			},
 		},
 	})
@@ -87,6 +88,9 @@ func TestStoreBoardRoundtrip(t *testing.T) {
 	}
 	if loaded.Tasks[0].WorkerKind != WorkerKindCodexCLI {
 		t.Fatalf("expected worker kind %q, got %+v", WorkerKindCodexCLI, loaded.Tasks[0])
+	}
+	if loaded.Tasks[0].ReviewApprovedBy != "review-bot" {
+		t.Fatalf("expected review approver to round-trip, got %+v", loaded.Tasks[0])
 	}
 
 	second, err := store.UpdateBoard(created.ID, BoardUpdateInput{
