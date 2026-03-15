@@ -6,6 +6,38 @@ type WorkflowPolicy struct{}
 
 var DefaultWorkflowPolicy WorkflowPolicy
 
+type workflowStateUpdate struct {
+	Phase             string
+	Status            string
+	NextAction        string
+	LastRunSummary    string
+	StopReason        string
+	CompletionSummary string
+}
+
+func (u workflowStateUpdate) stateInput() ProjectStateUpdateInput {
+	input := ProjectStateUpdateInput{}
+	if trimmed := strings.TrimSpace(u.Phase); trimmed != "" {
+		input.Phase = stringValuePtr(trimmed)
+	}
+	if trimmed := strings.TrimSpace(u.Status); trimmed != "" {
+		input.Status = stringValuePtr(trimmed)
+	}
+	if trimmed := strings.TrimSpace(u.NextAction); trimmed != "" {
+		input.NextAction = stringValuePtr(trimmed)
+	}
+	if trimmed := strings.TrimSpace(u.LastRunSummary); trimmed != "" {
+		input.LastRunSummary = stringValuePtr(trimmed)
+	}
+	if trimmed := strings.TrimSpace(u.StopReason); trimmed != "" {
+		input.StopReason = stringValuePtr(trimmed)
+	}
+	if trimmed := strings.TrimSpace(u.CompletionSummary); trimmed != "" {
+		input.CompletionSummary = stringValuePtr(trimmed)
+	}
+	return input
+}
+
 func (WorkflowPolicy) NormalizeBriefStatus(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "collecting", "ready", "finalized":
@@ -52,6 +84,42 @@ func (p WorkflowPolicy) DefaultProjectNextAction(brief Brief) string {
 	return "Review project instructions and define the first executable milestone in STATE.md."
 }
 
+func (p WorkflowPolicy) DefaultProjectState(projectID string) ProjectState {
+	return ProjectState{
+		ProjectID: strings.TrimSpace(projectID),
+		Phase:     p.NormalizeProjectStatePhase(""),
+		Status:    p.NormalizeProjectStateStatus(""),
+	}
+}
+
+func (p WorkflowPolicy) InitialProjectState(brief Brief) workflowStateUpdate {
+	return workflowStateUpdate{
+		Phase:          "planning",
+		Status:         "active",
+		NextAction:     p.DefaultProjectNextAction(brief),
+		LastRunSummary: "Project initialized from brief.",
+	}
+}
+
+func (p WorkflowPolicy) ProjectStateSummary(item Project, state *ProjectState) (status, phase, nextAction string) {
+	status = strings.TrimSpace(item.Status)
+	if status == "" {
+		status = p.NormalizeProjectStateStatus("")
+	}
+	phase = p.NormalizeProjectStatePhase("")
+	if state == nil {
+		return status, phase, ""
+	}
+	if current := strings.TrimSpace(state.Status); current != "" {
+		status = p.NormalizeProjectStateStatus(current)
+	}
+	if current := strings.TrimSpace(state.Phase); current != "" {
+		phase = p.NormalizeProjectStatePhase(current)
+	}
+	nextAction = strings.TrimSpace(state.NextAction)
+	return status, phase, nextAction
+}
+
 func (WorkflowPolicy) IsKickoffMessage(message string) bool {
 	lower := strings.ToLower(strings.TrimSpace(message))
 	if lower == "" || strings.HasPrefix(lower, "/") {
@@ -86,6 +154,98 @@ func (WorkflowPolicy) NormalizeDispatchStage(raw string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func (WorkflowPolicy) AutopilotSeededBacklogState() workflowStateUpdate {
+	return workflowStateUpdate{
+		Phase:          "planning",
+		Status:         "active",
+		NextAction:     "Dispatch seeded backlog",
+		LastRunSummary: "PM seeded MVP backlog",
+	}
+}
+
+func (WorkflowPolicy) AutopilotDispatchState(stage string) (workflowStateUpdate, bool) {
+	switch strings.ToLower(strings.TrimSpace(stage)) {
+	case "todo":
+		return workflowStateUpdate{
+			Phase:          "executing",
+			Status:         "active",
+			NextAction:     "Dispatch todo tasks",
+			LastRunSummary: "Autopilot dispatching todo tasks",
+		}, true
+	case "review":
+		return workflowStateUpdate{
+			Phase:          "reviewing",
+			Status:         "active",
+			NextAction:     "Dispatch review tasks",
+			LastRunSummary: "Autopilot dispatching review tasks",
+		}, true
+	default:
+		return workflowStateUpdate{}, false
+	}
+}
+
+func (WorkflowPolicy) AutopilotRecoveredState(message string) workflowStateUpdate {
+	return workflowStateUpdate{
+		Phase:          "executing",
+		Status:         "active",
+		NextAction:     "Retry recovered tasks",
+		LastRunSummary: strings.TrimSpace(message),
+	}
+}
+
+func (WorkflowPolicy) AutopilotBlockedState(message string, nextAction string) workflowStateUpdate {
+	trimmedMessage := strings.TrimSpace(message)
+	trimmedNext := strings.TrimSpace(nextAction)
+	if trimmedNext == "" {
+		trimmedNext = "Autopilot will retry after the loop interval"
+	}
+	return workflowStateUpdate{
+		Phase:          "blocked",
+		Status:         "blocked",
+		NextAction:     trimmedNext,
+		LastRunSummary: trimmedMessage,
+		StopReason:     trimmedMessage,
+	}
+}
+
+func (WorkflowPolicy) AutopilotFailedState(message string) workflowStateUpdate {
+	trimmed := strings.TrimSpace(message)
+	return workflowStateUpdate{
+		Phase:          "blocked",
+		Status:         "blocked",
+		NextAction:     "Inspect autopilot failure",
+		LastRunSummary: trimmed,
+		StopReason:     trimmed,
+	}
+}
+
+func (WorkflowPolicy) AutopilotCompletedState(message string) workflowStateUpdate {
+	trimmed := strings.TrimSpace(message)
+	return workflowStateUpdate{
+		Phase:             "done",
+		Status:            "done",
+		NextAction:        "Project complete",
+		LastRunSummary:    trimmed,
+		CompletionSummary: trimmed,
+	}
+}
+
+func (WorkflowPolicy) RecoverStalledTasks(tasks []BoardTask) ([]BoardTask, []string, bool) {
+	recovered := make([]BoardTask, 0, len(tasks))
+	recoveredIDs := make([]string, 0)
+	for _, task := range tasks {
+		if strings.TrimSpace(task.Status) == "in_progress" {
+			task.Status = "todo"
+			recoveredIDs = append(recoveredIDs, task.ID)
+		}
+		recovered = append(recovered, task)
+	}
+	if len(recoveredIDs) == 0 {
+		return nil, nil, false
+	}
+	return recovered, recoveredIDs, true
 }
 
 func (WorkflowPolicy) FilterDispatchableTasks(status string, tasks []BoardTask) []BoardTask {

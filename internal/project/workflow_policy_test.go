@@ -94,3 +94,98 @@ func TestWorkflowPolicyDispatchAndAutopilotHelpers(t *testing.T) {
 		t.Fatalf("expected done project state to stop autopilot")
 	}
 }
+
+func TestWorkflowPolicyProjectStateDefaultsAndSummary(t *testing.T) {
+	policy := DefaultWorkflowPolicy
+
+	defaultState := policy.DefaultProjectState("project-1")
+	if defaultState.ProjectID != "project-1" {
+		t.Fatalf("expected project id to round-trip, got %+v", defaultState)
+	}
+	if defaultState.Phase != "planning" || defaultState.Status != "active" {
+		t.Fatalf("expected default planning/active state, got %+v", defaultState)
+	}
+
+	initial := policy.InitialProjectState(Brief{
+		Goal:          "Ship dashboard",
+		OpenQuestions: []string{"Who owns the first release?"},
+	})
+	if initial.Phase != "planning" || initial.Status != "active" {
+		t.Fatalf("expected brief init state to start planning/active, got %+v", initial)
+	}
+	if initial.NextAction != "Who owns the first release?" {
+		t.Fatalf("expected brief next action from open question, got %+v", initial)
+	}
+	if initial.LastRunSummary != "Project initialized from brief." {
+		t.Fatalf("expected brief init summary, got %+v", initial)
+	}
+
+	status, phase, nextAction := policy.ProjectStateSummary(Project{Status: "active"}, nil)
+	if status != "active" || phase != "planning" || nextAction != "" {
+		t.Fatalf("expected dashboard fallback summary, got status=%q phase=%q next=%q", status, phase, nextAction)
+	}
+
+	status, phase, nextAction = policy.ProjectStateSummary(Project{Status: "archived"}, &ProjectState{
+		Status:     "blocked",
+		Phase:      "reviewing",
+		NextAction: "Review blocker",
+	})
+	if status != "blocked" || phase != "reviewing" || nextAction != "Review blocker" {
+		t.Fatalf("expected state summary to prefer normalized project state, got status=%q phase=%q next=%q", status, phase, nextAction)
+	}
+}
+
+func TestWorkflowPolicyAutopilotStateUpdates(t *testing.T) {
+	policy := DefaultWorkflowPolicy
+
+	seeded := policy.AutopilotSeededBacklogState()
+	if seeded.Phase != "planning" || seeded.Status != "active" || seeded.NextAction != "Dispatch seeded backlog" {
+		t.Fatalf("unexpected seeded backlog state: %+v", seeded)
+	}
+
+	todo, ok := policy.AutopilotDispatchState("todo")
+	if !ok || todo.Phase != "executing" || todo.Status != "active" || todo.NextAction != "Dispatch todo tasks" {
+		t.Fatalf("unexpected todo dispatch state: ok=%v state=%+v", ok, todo)
+	}
+	review, ok := policy.AutopilotDispatchState("review")
+	if !ok || review.Phase != "reviewing" || review.Status != "active" || review.NextAction != "Dispatch review tasks" {
+		t.Fatalf("unexpected review dispatch state: ok=%v state=%+v", ok, review)
+	}
+	if _, ok := policy.AutopilotDispatchState("unknown"); ok {
+		t.Fatalf("expected unknown dispatch stage to be rejected")
+	}
+
+	recovered := policy.AutopilotRecoveredState("PM auto-requeued stalled task: task-1")
+	if recovered.Phase != "executing" || recovered.Status != "active" || recovered.NextAction != "Retry recovered tasks" {
+		t.Fatalf("unexpected recovered state: %+v", recovered)
+	}
+
+	blocked := policy.AutopilotBlockedState("Autopilot waiting on task: task-1", "")
+	if blocked.Phase != "blocked" || blocked.Status != "blocked" || blocked.NextAction != "Autopilot will retry after the loop interval" {
+		t.Fatalf("unexpected blocked state: %+v", blocked)
+	}
+
+	failed := policy.AutopilotFailedState("runner crashed")
+	if failed.Phase != "blocked" || failed.Status != "blocked" || failed.NextAction != "Inspect autopilot failure" || failed.StopReason != "runner crashed" {
+		t.Fatalf("unexpected failure state: %+v", failed)
+	}
+
+	done := policy.AutopilotCompletedState("Autopilot completed all project tasks")
+	if done.Phase != "done" || done.Status != "done" || done.NextAction != "Project complete" || done.CompletionSummary != "Autopilot completed all project tasks" {
+		t.Fatalf("unexpected completed state: %+v", done)
+	}
+
+	recoveredTasks, recoveredIDs, ok := policy.RecoverStalledTasks([]BoardTask{
+		{ID: "task-1", Status: "in_progress"},
+		{ID: "task-2", Status: "done"},
+	})
+	if !ok {
+		t.Fatalf("expected stalled task recovery to be detected")
+	}
+	if len(recoveredIDs) != 1 || recoveredIDs[0] != "task-1" {
+		t.Fatalf("unexpected recovered ids: %v", recoveredIDs)
+	}
+	if recoveredTasks[0].Status != "todo" || recoveredTasks[1].Status != "done" {
+		t.Fatalf("unexpected recovered tasks: %+v", recoveredTasks)
+	}
+}

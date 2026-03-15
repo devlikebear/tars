@@ -243,7 +243,7 @@ func (m *AutopilotManager) run(ctx context.Context, projectID, runID string) {
 				item.Iterations = iteration
 				item.FinishedAt = ""
 			})
-			m.updateState(projectID, "planning", "active", "Dispatch seeded backlog", "PM seeded MVP backlog", "")
+			m.updateState(projectID, DefaultWorkflowPolicy.AutopilotSeededBacklogState())
 			m.publish(projectID)
 			immediateStreak++
 			continue
@@ -254,7 +254,9 @@ func (m *AutopilotManager) run(ctx context.Context, projectID, runID string) {
 				item.Iterations = iteration
 				item.FinishedAt = ""
 			})
-			m.updateState(projectID, "executing", "active", "Dispatch todo tasks", "Autopilot dispatching todo tasks", "")
+			if update, ok := DefaultWorkflowPolicy.AutopilotDispatchState("todo"); ok {
+				m.updateState(projectID, update)
+			}
 			if _, err := orch.DispatchTodo(context.Background(), projectID); err != nil {
 				recovered, recoverErr := m.autoRecover(projectID, iteration, "todo dispatch", err)
 				if recoverErr != nil {
@@ -282,7 +284,9 @@ func (m *AutopilotManager) run(ctx context.Context, projectID, runID string) {
 				item.Iterations = iteration
 				item.FinishedAt = ""
 			})
-			m.updateState(projectID, "reviewing", "active", "Dispatch review tasks", "Autopilot dispatching review tasks", "")
+			if update, ok := DefaultWorkflowPolicy.AutopilotDispatchState("review"); ok {
+				m.updateState(projectID, update)
+			}
 			if _, err := orch.DispatchReview(context.Background(), projectID); err != nil {
 				recovered, recoverErr := m.autoRecover(projectID, iteration, "review dispatch", err)
 				if recoverErr != nil {
@@ -328,7 +332,7 @@ func (m *AutopilotManager) run(ctx context.Context, projectID, runID string) {
 			continue
 		case allBoardTasksDone(board):
 			message := "Autopilot completed all project tasks"
-			m.updateState(projectID, "done", "done", "Project complete", message, "")
+			m.updateState(projectID, DefaultWorkflowPolicy.AutopilotCompletedState(message))
 			m.setRun(projectID, func(item *AutopilotRun) {
 				item.Status = AutopilotStatusDone
 				item.Message = message
@@ -355,7 +359,7 @@ func (m *AutopilotManager) run(ctx context.Context, projectID, runID string) {
 }
 
 func (m *AutopilotManager) fail(projectID, runID string, iteration int, message string) {
-	m.updateState(projectID, "blocked", "blocked", "Inspect autopilot failure", strings.TrimSpace(message), strings.TrimSpace(message))
+	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotFailedState(message))
 	m.setRun(projectID, func(item *AutopilotRun) {
 		item.RunID = runID
 		item.Status = AutopilotStatusFailed
@@ -368,7 +372,7 @@ func (m *AutopilotManager) fail(projectID, runID string, iteration int, message 
 
 func (m *AutopilotManager) block(projectID, runID string, iteration int, message string) {
 	_ = m.appendPMActivity(projectID, ActivityKindBlocker, "blocked", strings.TrimSpace(message), nil)
-	m.updateState(projectID, "blocked", "blocked", "Review blocker and continue", strings.TrimSpace(message), strings.TrimSpace(message))
+	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotBlockedState(message, "Review blocker and continue"))
 	m.setRun(projectID, func(item *AutopilotRun) {
 		item.RunID = runID
 		item.Status = AutopilotStatusBlocked
@@ -382,10 +386,7 @@ func (m *AutopilotManager) block(projectID, runID string, iteration int, message
 func (m *AutopilotManager) noteBlocked(projectID, runID string, iteration int, message string, nextAction string) {
 	message = strings.TrimSpace(message)
 	nextAction = strings.TrimSpace(nextAction)
-	if nextAction == "" {
-		nextAction = "Autopilot will retry after the loop interval"
-	}
-	m.updateState(projectID, "blocked", "blocked", nextAction, message, message)
+	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotBlockedState(message, nextAction))
 	m.setRun(projectID, func(item *AutopilotRun) {
 		item.RunID = runID
 		item.Status = AutopilotStatusRunning
@@ -411,30 +412,13 @@ func (m *AutopilotManager) setRun(projectID string, mutate func(*AutopilotRun)) 
 	m.runs[projectID] = item
 }
 
-func (m *AutopilotManager) updateState(projectID, phase, status, nextAction, summary, stopReason string) {
+func (m *AutopilotManager) updateState(projectID string, update workflowStateUpdate) {
 	if m == nil || m.store == nil {
 		return
 	}
-	phaseValue := phase
-	statusValue := status
-	next := nextAction
-	lastRunSummary := summary
-	stop := stopReason
 	lastRunAt := m.store.nowFn().UTC().Format(time.RFC3339)
-	input := ProjectStateUpdateInput{
-		Phase:          &phaseValue,
-		Status:         &statusValue,
-		NextAction:     &next,
-		LastRunSummary: &lastRunSummary,
-		LastRunAt:      &lastRunAt,
-	}
-	if strings.TrimSpace(stopReason) != "" {
-		input.StopReason = &stop
-	}
-	if strings.EqualFold(status, "done") {
-		completionSummary := summary
-		input.CompletionSummary = &completionSummary
-	}
+	input := update.stateInput()
+	input.LastRunAt = &lastRunAt
 	_, _ = m.store.UpdateState(projectID, input)
 }
 
@@ -539,16 +523,8 @@ func (m *AutopilotManager) autoRecover(projectID string, iteration int, reason e
 	if !boardHasStatus(board, "in_progress") {
 		return false, nil
 	}
-	tasks := make([]BoardTask, 0, len(board.Tasks))
-	recoveredIDs := make([]string, 0)
-	for _, task := range board.Tasks {
-		if task.Status == "in_progress" {
-			task.Status = "todo"
-			recoveredIDs = append(recoveredIDs, task.ID)
-		}
-		tasks = append(tasks, task)
-	}
-	if len(recoveredIDs) == 0 {
+	tasks, recoveredIDs, ok := DefaultWorkflowPolicy.RecoverStalledTasks(board.Tasks)
+	if !ok {
 		return false, nil
 	}
 	if _, err := m.store.UpdateBoard(projectID, BoardUpdateInput{
@@ -570,7 +546,7 @@ func (m *AutopilotManager) autoRecover(projectID string, iteration int, reason e
 	}
 	_ = m.appendPMActivity(projectID, ActivityKindDecision, "auto_retry", "PM diagnosed the blocker and retried the implementation loop without user input", meta)
 	_ = m.appendPMActivity(projectID, ActivityKindReplan, "applied", message, meta)
-	m.updateState(projectID, "executing", "active", "Retry recovered tasks", message, "")
+	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotRecoveredState(message))
 	return true, nil
 }
 
