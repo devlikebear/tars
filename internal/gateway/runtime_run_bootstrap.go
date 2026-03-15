@@ -10,8 +10,8 @@ import (
 )
 
 func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
-	if r == nil || !r.opts.Enabled {
-		return Run{}, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return Run{}, err
 	}
 	prompt := strings.TrimSpace(req.Prompt)
 	if prompt == "" {

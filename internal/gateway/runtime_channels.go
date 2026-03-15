@@ -11,8 +11,8 @@ func (r *Runtime) MessageSend(channelID, threadID, text string) (ChannelMessage,
 }
 
 func (r *Runtime) MessageSendByWorkspace(workspaceID, channelID, threadID, text string) (ChannelMessage, error) {
-	if r == nil || !r.opts.Enabled {
-		return ChannelMessage{}, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return ChannelMessage{}, err
 	}
 	if !r.opts.ChannelsLocalEnabled {
 		return ChannelMessage{}, fmt.Errorf("local channels are disabled")
@@ -25,8 +25,8 @@ func (r *Runtime) MessageRead(channelID string, limit int) ([]ChannelMessage, er
 }
 
 func (r *Runtime) MessageReadByWorkspace(workspaceID, channelID string, limit int) ([]ChannelMessage, error) {
-	if r == nil || !r.opts.Enabled {
-		return nil, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return nil, err
 	}
 	key := strings.TrimSpace(channelID)
 	if key == "" {
@@ -61,8 +61,8 @@ func (r *Runtime) InboundWebhook(channelID, threadID, text string, payload map[s
 }
 
 func (r *Runtime) InboundWebhookByWorkspace(workspaceID, channelID, threadID, text string, payload map[string]any) (ChannelMessage, error) {
-	if r == nil || !r.opts.Enabled {
-		return ChannelMessage{}, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return ChannelMessage{}, err
 	}
 	if !r.opts.ChannelsWebhookEnabled {
 		return ChannelMessage{}, fmt.Errorf("webhook channels are disabled")
@@ -75,8 +75,8 @@ func (r *Runtime) InboundTelegram(botID, threadID, text string, payload map[stri
 }
 
 func (r *Runtime) InboundTelegramByWorkspace(workspaceID, botID, threadID, text string, payload map[string]any) (ChannelMessage, error) {
-	if r == nil || !r.opts.Enabled {
-		return ChannelMessage{}, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return ChannelMessage{}, err
 	}
 	if !r.opts.ChannelsTelegramEnabled {
 		return ChannelMessage{}, fmt.Errorf("telegram channels are disabled")
@@ -93,8 +93,8 @@ func (r *Runtime) OutboundTelegram(botID, chatID, threadID, text string, payload
 }
 
 func (r *Runtime) OutboundTelegramByWorkspace(workspaceID, botID, chatID, threadID, text string, payload map[string]any) (ChannelMessage, error) {
-	if r == nil || !r.opts.Enabled {
-		return ChannelMessage{}, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return ChannelMessage{}, err
 	}
 	if !r.opts.ChannelsTelegramEnabled {
 		return ChannelMessage{}, fmt.Errorf("telegram channels are disabled")

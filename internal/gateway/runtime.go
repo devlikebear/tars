@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -66,6 +67,13 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 
 func (r *Runtime) Enabled() bool {
 	return r != nil && r.opts.Enabled
+}
+
+func (r *Runtime) requireEnabled() error {
+	if !r.Enabled() {
+		return fmt.Errorf("gateway runtime is disabled")
+	}
+	return nil
 }
 
 func (r *Runtime) Close(ctx context.Context) error {
