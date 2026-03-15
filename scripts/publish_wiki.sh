@@ -11,8 +11,9 @@ usage() {
 Usage:
   scripts/publish_wiki.sh [--session-id <id>] [--dry-run]
 
-Publishes the latest (or specified) .analysis session outputs to the
-GitHub wiki of the current repository.
+Publishes the stable `.analysis/outputs` bundle, or a specified
+`.analysis/sessions/<id>/outputs` bundle, to the GitHub wiki of the
+current repository.
 
 Options:
   --session-id <id>   Publish a specific session (default: latest)
@@ -53,6 +54,69 @@ find_latest_session() {
     exit 1
   fi
   echo "${latest}"
+}
+
+find_resume_session() {
+  local resume_file="${ANALYSIS_DIR}/RESUME.md"
+  if [[ ! -f "${resume_file}" ]]; then
+    return 0
+  fi
+
+  python3 - "${resume_file}" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+match = re.search(r"- Session: `([^`]+)`", text)
+if match:
+    print(match.group(1))
+PY
+}
+
+resolve_default_session() {
+  local session_id=""
+  session_id=$(find_resume_session)
+  if [[ -n "${session_id}" ]]; then
+    echo "${session_id}"
+    return 0
+  fi
+
+  if [[ ! -d "${ANALYSIS_DIR}/sessions" ]]; then
+    echo "stable-outputs"
+    return 0
+  fi
+
+  find_latest_session
+}
+
+resolve_outputs_target() {
+  local requested_session="${1:-}"
+  local session_id=""
+  local outputs_dir=""
+  local source_label=""
+
+  if [[ -n "${requested_session}" ]]; then
+    session_id="${requested_session}"
+    outputs_dir="${ANALYSIS_DIR}/sessions/${session_id}/outputs"
+    source_label=".analysis/sessions/${session_id}/outputs"
+  else
+    session_id=$(resolve_default_session)
+    if [[ -d "${ANALYSIS_DIR}/outputs" ]]; then
+      outputs_dir="${ANALYSIS_DIR}/outputs"
+      source_label=".analysis/outputs"
+    else
+      outputs_dir="${ANALYSIS_DIR}/sessions/${session_id}/outputs"
+      source_label=".analysis/sessions/${session_id}/outputs"
+    fi
+  fi
+
+  if [[ ! -d "${outputs_dir}" ]]; then
+    echo "error: outputs directory not found: ${outputs_dir}" >&2
+    exit 1
+  fi
+
+  printf '%s\n%s\n%s\n' "${session_id}" "${outputs_dir}" "${source_label}"
 }
 
 get_remote_url() {
@@ -210,6 +274,7 @@ build_home() {
   local wiki_dir="$1"
   local session_id="$2"
   local modules_dir="$3"
+  local source_label="$4"
   local repo_name
   repo_name=$(basename "${REPO_ROOT}")
   local repo_title="${repo_name^^}"
@@ -220,7 +285,7 @@ build_home() {
 > 세션: \`${session_id}\`
 > 생성일: $(date -u +%Y-%m-%d)
 
-이 위키는 \`.analysis/sessions/${session_id}/outputs\` 산출물을 GitHub Wiki 형식으로 게시한 결과입니다.
+이 위키는 \`${source_label}\` 산출물을 GitHub Wiki 형식으로 게시한 결과입니다.
 
 ## 문서 목록
 
@@ -264,6 +329,10 @@ EOF
 main() {
   local session_id=""
   local dry_run=false
+  local outputs_dir=""
+  local source_label=""
+  local target_blob=""
+  local -a target_info=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -288,17 +357,19 @@ main() {
   done
 
   if [[ -z "${session_id}" ]]; then
-    session_id=$(find_latest_session)
+    target_blob=$(resolve_outputs_target)
+  else
+    target_blob=$(resolve_outputs_target "${session_id}")
   fi
+  mapfile -t target_info <<< "${target_blob}"
 
-  local outputs_dir="${ANALYSIS_DIR}/sessions/${session_id}/outputs"
-  if [[ ! -d "${outputs_dir}" ]]; then
-    echo "error: outputs directory not found: ${outputs_dir}" >&2
-    exit 1
-  fi
+  session_id="${target_info[0]}"
+  outputs_dir="${target_info[1]}"
+  source_label="${target_info[2]}"
 
   echo "session: ${session_id}"
   echo "outputs: ${outputs_dir}"
+  echo "source: ${source_label}"
 
   local wiki_url
   wiki_url=$(get_remote_url)
@@ -344,7 +415,7 @@ main() {
   fi
 
   # Build Home and Sidebar
-  build_home "${wiki_dir}" "${session_id}" "${modules_dir}"
+  build_home "${wiki_dir}" "${session_id}" "${modules_dir}" "${source_label}"
   echo "  page: Home.md"
   build_sidebar "${wiki_dir}" "${modules_dir}"
   echo "  page: _Sidebar.md"
