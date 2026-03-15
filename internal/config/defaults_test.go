@@ -3,9 +3,150 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestConfigInputFields_ApplyFromEnvUsesConfiguredAliases(t *testing.T) {
+	t.Setenv("SESSION_DEFAULT_ID", " legacy-session ")
+	t.Setenv("TARS_SESSION_DEFAULT_ID", "new-session")
+
+	var cfg Config
+	applyConfigInputFieldsFromEnv(&cfg, configInputFields)
+
+	if cfg.SessionDefaultID != "legacy-session" {
+		t.Fatalf("expected first configured env alias to win, got %q", cfg.SessionDefaultID)
+	}
+}
+
+func TestConfigInputFieldByYAMLKey_AppliesNormalizationAndMergeRules(t *testing.T) {
+	sessionField, ok := configInputFieldByYAMLKey("session_telegram_scope")
+	if !ok {
+		t.Fatal("expected session_telegram_scope field metadata")
+	}
+
+	var cfg Config
+	sessionField.apply(&cfg, " Per-User ")
+	if cfg.SessionTelegramScope != "per-user" {
+		t.Fatalf("expected normalized session scope, got %q", cfg.SessionTelegramScope)
+	}
+
+	dst := Config{SessionTelegramScope: "main"}
+	sessionField.merge(&dst, Config{})
+	if dst.SessionTelegramScope != "main" {
+		t.Fatalf("expected empty merge source to preserve destination, got %q", dst.SessionTelegramScope)
+	}
+
+	sessionField.merge(&dst, Config{SessionTelegramScope: "per-user"})
+	if dst.SessionTelegramScope != "per-user" {
+		t.Fatalf("expected non-empty merge source to override destination, got %q", dst.SessionTelegramScope)
+	}
+
+	boolField, ok := configInputFieldByYAMLKey("assistant_enabled")
+	if !ok {
+		t.Fatal("expected assistant_enabled field metadata")
+	}
+
+	dst = Config{AssistantEnabled: true}
+	boolField.merge(&dst, Config{})
+	if !dst.AssistantEnabled {
+		t.Fatal("expected false merge source to preserve destination for bool fields")
+	}
+
+	var boolCfg Config
+	boolField.apply(&boolCfg, "true")
+	if !boolCfg.AssistantEnabled {
+		t.Fatal("expected bool parser to set assistant_enabled from input field")
+	}
+
+	priceField, ok := configInputFieldByYAMLKey("usage_price_overrides_json")
+	if !ok {
+		t.Fatal("expected usage_price_overrides_json field metadata")
+	}
+
+	var priceCfg Config
+	priceField.apply(&priceCfg, `{"gpt-4o":{"input_per_1m_usd":1.5,"output_per_1m_usd":2.5}}`)
+	if got := priceCfg.UsagePriceOverrides["gpt-4o"].InputPer1MUSD; got != 1.5 {
+		t.Fatalf("expected usage price override to parse, got %v", got)
+	}
+
+	srcPrices := map[string]UsagePrice{
+		"gpt-4o": {InputPer1MUSD: 1.5, OutputPer1MUSD: 2.5},
+	}
+	var merged Config
+	priceField.merge(&merged, Config{UsagePriceOverrides: srcPrices})
+	if !reflect.DeepEqual(merged.UsagePriceOverrides, srcPrices) {
+		t.Fatalf("expected price overrides to copy on merge, got %#v", merged.UsagePriceOverrides)
+	}
+
+	srcPrices["gpt-4o"] = UsagePrice{InputPer1MUSD: 9.9, OutputPer1MUSD: 9.9}
+	if got := merged.UsagePriceOverrides["gpt-4o"].InputPer1MUSD; got != 1.5 {
+		t.Fatalf("expected merged map to be cloned, got %v", got)
+	}
+}
+
+func TestConfigInputFieldByYAMLKey_CoversStructuredFields(t *testing.T) {
+	profileField, ok := configInputFieldByYAMLKey("browser_default_profile")
+	if !ok {
+		t.Fatal("expected browser_default_profile field metadata")
+	}
+
+	var profileCfg Config
+	profileField.apply(&profileCfg, " Work ")
+	if profileCfg.BrowserDefaultProfile != "work" {
+		t.Fatalf("expected browser profile to normalize to lower-trimmed value, got %q", profileCfg.BrowserDefaultProfile)
+	}
+
+	allowlistField, ok := configInputFieldByYAMLKey("tools_web_fetch_private_host_allowlist_json")
+	if !ok {
+		t.Fatal("expected tools_web_fetch_private_host_allowlist_json field metadata")
+	}
+
+	var allowlistCfg Config
+	allowlistField.apply(&allowlistCfg, `[" localhost ", "10.0.0.5"]`)
+	if !reflect.DeepEqual(allowlistCfg.ToolsWebFetchPrivateHostAllowlist, []string{"localhost", "10.0.0.5"}) {
+		t.Fatalf("expected private host allowlist to parse, got %#v", allowlistCfg.ToolsWebFetchPrivateHostAllowlist)
+	}
+
+	srcAllowlist := []string{"localhost", "10.0.0.5"}
+	var mergedAllowlist Config
+	allowlistField.merge(&mergedAllowlist, Config{ToolsWebFetchPrivateHostAllowlist: srcAllowlist})
+	srcAllowlist[0] = "mutated"
+	if !reflect.DeepEqual(mergedAllowlist.ToolsWebFetchPrivateHostAllowlist, []string{"localhost", "10.0.0.5"}) {
+		t.Fatalf("expected merged allowlist to be cloned, got %#v", mergedAllowlist.ToolsWebFetchPrivateHostAllowlist)
+	}
+
+	agentField, ok := configInputFieldByYAMLKey("gateway_agents_json")
+	if !ok {
+		t.Fatal("expected gateway_agents_json field metadata")
+	}
+
+	var agentCfg Config
+	agentField.apply(&agentCfg, `[{"name":"ops","command":"run-agent","args":["--fast"],"env":{"MODE":"prod"}}]`)
+	if len(agentCfg.GatewayAgents) != 1 || agentCfg.GatewayAgents[0].Name != "ops" || agentCfg.GatewayAgents[0].Command != "run-agent" {
+		t.Fatalf("expected gateway agents to parse, got %#v", agentCfg.GatewayAgents)
+	}
+
+	srcAgents := []GatewayAgent{{Name: "ops", Command: "run-agent"}}
+	var mergedAgents Config
+	agentField.merge(&mergedAgents, Config{GatewayAgents: srcAgents})
+	srcAgents[0].Name = "mutated"
+	if len(mergedAgents.GatewayAgents) != 1 || mergedAgents.GatewayAgents[0].Name != "ops" {
+		t.Fatalf("expected merged gateway agents slice to be copied, got %#v", mergedAgents.GatewayAgents)
+	}
+
+	mcpField, ok := configInputFieldByYAMLKey("mcp_servers_json")
+	if !ok {
+		t.Fatal("expected mcp_servers_json field metadata")
+	}
+
+	var mcpCfg Config
+	mcpField.apply(&mcpCfg, `[{"name":"fs","command":"npx","args":["-y","mcp"]}]`)
+	if len(mcpCfg.MCPServers) != 1 || mcpCfg.MCPServers[0].Name != "fs" || mcpCfg.MCPServers[0].Command != "npx" {
+		t.Fatalf("expected mcp servers to parse, got %#v", mcpCfg.MCPServers)
+	}
+}
 
 func TestLoad_DefaultOnly(t *testing.T) {
 	cfg, err := Load("")
