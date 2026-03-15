@@ -82,3 +82,18 @@ func TestAuthWhoamiAPI_OffModeReturnsAnonymous(t *testing.T) {
 		t.Fatalf("expected auth_mode off, got %+v", body)
 	}
 }
+
+func TestAuthWhoamiAPI_RejectsNonGet(t *testing.T) {
+	handler := newAuthAPIHandler("required")
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/whoami", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "method not allowed\n" {
+		t.Fatalf("expected plain text method-not-allowed body, got %q", rec.Body.String())
+	}
+}

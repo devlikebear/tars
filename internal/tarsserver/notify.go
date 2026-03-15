@@ -272,8 +272,7 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 
 func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if broker == nil {
@@ -339,8 +338,7 @@ func newEventsAPIHandler(broker *eventBroker, store *notificationStore, logger z
 	mux.Handle("/v1/events/stream", newEventStreamHandler(broker, logger))
 
 	mux.HandleFunc("/v1/events/history", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if store == nil {
@@ -372,8 +370,7 @@ func newEventsAPIHandler(broker *eventBroker, store *notificationStore, logger z
 	})
 
 	mux.HandleFunc("/v1/events/read", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if store == nil {

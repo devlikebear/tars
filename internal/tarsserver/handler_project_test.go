@@ -92,6 +92,65 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 	}
 }
 
+func TestProjectAPI_RejectsDisallowedMethods(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	mainSess, err := store.Create("main")
+	if err != nil {
+		t.Fatalf("create main session: %v", err)
+	}
+
+	projectStore := project.NewStore(root, nil)
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, nil, zerolog.New(io.Discard))
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{"name":"Ops A","type":"operations"}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for create, got %d body=%q", createRec.Code, createRec.Body.String())
+	}
+	var created project.Project
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created project: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		req  *http.Request
+	}{
+		{
+			name: "projects collection",
+			req:  httptest.NewRequest(http.MethodPut, "/v1/projects", nil),
+		},
+		{
+			name: "brief finalize",
+			req:  httptest.NewRequest(http.MethodGet, "/v1/project-briefs/"+mainSess.ID+"/finalize", nil),
+		},
+		{
+			name: "project dispatch",
+			req:  httptest.NewRequest(http.MethodGet, "/v1/projects/"+created.ID+"/dispatch", nil),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, tc.req)
+
+			if rec.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("expected 405, got %d body=%q", rec.Code, rec.Body.String())
+			}
+			if rec.Body.String() != "method not allowed\n" {
+				t.Fatalf("expected plain text method-not-allowed body, got %q", rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {

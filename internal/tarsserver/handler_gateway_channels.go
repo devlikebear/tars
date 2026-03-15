@@ -51,8 +51,7 @@ func newChannelsAPIHandlerWithTelegramPairings(
 }
 
 func handleWebhookInbound(w http.ResponseWriter, r *http.Request, runtime *gateway.Runtime, logger zerolog.Logger) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	if runtime == nil {
@@ -79,8 +78,7 @@ func handleWebhookInbound(w http.ResponseWriter, r *http.Request, runtime *gatew
 }
 
 func handleTelegramInbound(w http.ResponseWriter, r *http.Request, runtime *gateway.Runtime, logger zerolog.Logger) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	if runtime == nil {
@@ -113,8 +111,7 @@ func handleTelegramSend(
 	sender telegramSender,
 	logger zerolog.Logger,
 ) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	if runtime == nil {
@@ -190,8 +187,7 @@ func handleTelegramPairingsList(
 	dmPolicy string,
 	pollingEnabled bool,
 ) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	if pairings == nil {
@@ -207,8 +203,7 @@ func handleTelegramPairingsAction(w http.ResponseWriter, r *http.Request, pairin
 		http.NotFound(w, r)
 		return
 	}
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	if pairings == nil {

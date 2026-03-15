@@ -16,6 +16,9 @@ func newScheduleAPIHandler(store *schedule.Store, logger zerolog.Logger) http.Ha
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "schedule store is not configured"})
 			return
 		}
+		if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
+			return
+		}
 		switch r.Method {
 		case http.MethodGet:
 			items, err := store.List()
@@ -50,8 +53,6 @@ func newScheduleAPIHandler(store *schedule.Store, logger zerolog.Logger) http.Ha
 				return
 			}
 			writeJSON(w, http.StatusOK, created)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
 
@@ -63,6 +64,9 @@ func newScheduleAPIHandler(store *schedule.Store, logger zerolog.Logger) http.Ha
 		id := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/schedules/"))
 		if id == "" || strings.Contains(id, "/") {
 			http.NotFound(w, r)
+			return
+		}
+		if !requireMethod(w, r, http.MethodPatch, http.MethodDelete) {
 			return
 		}
 		switch r.Method {
@@ -105,8 +109,6 @@ func newScheduleAPIHandler(store *schedule.Store, logger zerolog.Logger) http.Ha
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
 

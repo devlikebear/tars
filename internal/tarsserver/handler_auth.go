@@ -10,8 +10,7 @@ import (
 func newAuthAPIHandler(authMode string) http.Handler {
 	mode := serverauth.NormalizeMode(authMode)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		role := strings.TrimSpace(serverauth.RoleFromRequest(r))

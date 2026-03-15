@@ -66,6 +66,9 @@ func newCronAPIHandlerWithRunnerAndResolver(
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
 			return
 		}
+		if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
+			return
+		}
 		switch r.Method {
 		case http.MethodGet:
 			jobs, err := reqStore.List()
@@ -121,8 +124,6 @@ func newCronAPIHandlerWithRunnerAndResolver(
 				return
 			}
 			writeJSON(w, http.StatusOK, job)
-		default:
-			requireMethod(w, r)
 		}
 	})
 
@@ -141,6 +142,9 @@ func newCronAPIHandlerWithRunnerAndResolver(
 		}
 		jobID := pathParts[0]
 		if len(pathParts) == 1 {
+			if !requireMethod(w, r, http.MethodGet, http.MethodPut, http.MethodDelete) {
+				return
+			}
 			switch r.Method {
 			case http.MethodGet:
 				job, err := reqStore.Get(jobID)
@@ -206,8 +210,6 @@ func newCronAPIHandlerWithRunnerAndResolver(
 					return
 				}
 				w.WriteHeader(http.StatusNoContent)
-			default:
-				requireMethod(w, r)
 			}
 			return
 		}
