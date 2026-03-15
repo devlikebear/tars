@@ -55,16 +55,7 @@ func newReadToolWithName(name, workspaceDir string) Tool {
 				return readFileErrorResult("path is required"), nil
 			}
 
-			maxBytes := defaultReadFileMaxBytes
-			if input.MaxBytes != nil {
-				maxBytes = *input.MaxBytes
-			}
-			if maxBytes <= 0 {
-				maxBytes = defaultReadFileMaxBytes
-			}
-			if maxBytes > maxReadFileMaxBytes {
-				maxBytes = maxReadFileMaxBytes
-			}
+			maxBytes := resolvePositiveBoundedInt(defaultReadFileMaxBytes, maxReadFileMaxBytes, input.MaxBytes)
 
 			absPath, err := resolveWorkspacePath(workspaceDir, input.Path)
 			if err != nil {

@@ -52,16 +52,7 @@ func NewListDirTool(workspaceDir string) Tool {
 				return listDirErrorResult(fmt.Sprintf("invalid arguments: %v", err)), nil
 			}
 
-			maxEntries := defaultListDirMaxEntries
-			if input.MaxEntries != nil {
-				maxEntries = *input.MaxEntries
-			}
-			if maxEntries <= 0 {
-				maxEntries = defaultListDirMaxEntries
-			}
-			if maxEntries > maxListDirMaxEntries {
-				maxEntries = maxListDirMaxEntries
-			}
+			maxEntries := resolvePositiveBoundedInt(defaultListDirMaxEntries, maxListDirMaxEntries, input.MaxEntries)
 
 			absPath, err := resolveWorkspacePath(workspaceDir, input.Path)
 			if err != nil {
