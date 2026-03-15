@@ -136,9 +136,62 @@ func (o *Orchestrator) dispatchTasksByStatus(
 }
 
 func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task BoardTask) (TaskRun, error) {
-	profile, err := ResolveWorkerProfile(task)
+	profile, err := o.prepareTaskDispatch(ctx, projectID, task)
 	if err != nil {
 		return TaskRun{}, err
+	}
+
+	run, err := o.startTaskRun(ctx, projectID, task, profile)
+	if err != nil {
+		return TaskRun{}, err
+	}
+
+	finished, err := o.waitTaskRun(ctx, projectID, task, run, profile)
+	if err != nil {
+		return finished, err
+	}
+
+	report := ParseTaskReport(finished.Response)
+	if finished.Status == TaskRunStatusFailed || finished.Status == TaskRunStatusCanceled {
+		return o.handleFailedTaskRun(projectID, task, run, finished, profile, report)
+	}
+
+	resolution := o.newDispatchTaskResolution(task, report)
+	o.recordDispatchVerificationActivities(projectID, task, resolution)
+	gateErrs := o.verifyDispatchGates(task, resolution)
+	resolution.FinalStatus = o.resolveTaskFinalStatus(task, finished, gateErrs)
+	if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
+		item.Status = resolution.FinalStatus
+		item.WorkerKind = firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind)
+		item.Issue = resolution.IssueRef
+		item.Branch = resolution.BranchRef
+		item.PR = resolution.PRRef
+	}); err != nil {
+		return finished, err
+	}
+	if err := o.appendDispatchCompletionActivity(projectID, task, run.ID, finished, profile, report, resolution.FinalStatus, gateErrs); err != nil {
+		return finished, err
+	}
+	_ = o.appendAgentReport(projectID, task, finished, report)
+	if len(gateErrs) > 0 {
+		return finished, fmt.Errorf("task gate failed: %s", strings.Join(gateErrs, ", "))
+	}
+	return finished, nil
+}
+
+type dispatchTaskResolution struct {
+	FinalStatus string
+	TestStatus  string
+	BuildStatus string
+	IssueRef    string
+	BranchRef   string
+	PRRef       string
+}
+
+func (o *Orchestrator) prepareTaskDispatch(ctx context.Context, projectID string, task BoardTask) (WorkerProfile, error) {
+	profile, err := ResolveWorkerProfile(task)
+	if err != nil {
+		return WorkerProfile{}, err
 	}
 	if o.githubAuthChecker != nil {
 		if err := o.githubAuthChecker(ctx); err != nil {
@@ -149,14 +202,14 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 				Status:  "blocked",
 				Message: strings.TrimSpace(wrapped.Error()),
 			})
-			return TaskRun{}, wrapped
+			return WorkerProfile{}, wrapped
 		}
 	}
 	if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
 		item.Status = "in_progress"
 		item.WorkerKind = profile.Kind
 	}); err != nil {
-		return TaskRun{}, err
+		return WorkerProfile{}, err
 	}
 	if err := o.store.appendSystemActivity(projectID, ActivityAppendInput{
 		TaskID:  task.ID,
@@ -169,9 +222,12 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 			"worker_kind": profile.Kind,
 		},
 	}); err != nil {
-		return TaskRun{}, err
+		return WorkerProfile{}, err
 	}
+	return profile, nil
+}
 
+func (o *Orchestrator) startTaskRun(ctx context.Context, projectID string, task BoardTask, profile WorkerProfile) (TaskRun, error) {
 	run, err := o.runner.Start(ctx, TaskRunRequest{
 		ProjectID:  strings.TrimSpace(projectID),
 		TaskID:     task.ID,
@@ -181,86 +237,131 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 		Role:       task.Role,
 		WorkerKind: profile.Kind,
 	})
-	if err != nil {
-		_ = o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
-			item.Status = "todo"
-			item.WorkerKind = profile.Kind
-		})
-		_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
-			TaskID:  task.ID,
-			Kind:    ActivityKindTaskStatus,
-			Status:  "failed",
-			Message: firstNonEmpty("Task dispatch failed: "+strings.TrimSpace(err.Error()), "Task dispatch failed"),
-			Meta: map[string]string{
-				"worker_kind": profile.Kind,
-			},
-		})
-		return TaskRun{}, err
+	if err == nil {
+		return run, nil
 	}
+	_ = o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
+		item.Status = "todo"
+		item.WorkerKind = profile.Kind
+	})
+	_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
+		TaskID:  task.ID,
+		Kind:    ActivityKindTaskStatus,
+		Status:  "failed",
+		Message: firstNonEmpty("Task dispatch failed: "+strings.TrimSpace(err.Error()), "Task dispatch failed"),
+		Meta: map[string]string{
+			"worker_kind": profile.Kind,
+		},
+	})
+	return TaskRun{}, err
+}
 
+func (o *Orchestrator) waitTaskRun(ctx context.Context, projectID string, task BoardTask, run TaskRun, profile WorkerProfile) (TaskRun, error) {
 	finished, err := o.runner.Wait(ctx, run.ID)
-	if err != nil {
-		_ = o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
-			item.Status = "todo"
-			item.WorkerKind = profile.Kind
-		})
-		_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
-			TaskID:  task.ID,
-			Kind:    ActivityKindTaskStatus,
-			Status:  "failed",
-			Message: "Task run failed",
-			Meta: map[string]string{
-				"run_id":      run.ID,
-				"worker_kind": profile.Kind,
-			},
-		})
-		return run, err
+	if err == nil {
+		return finished, nil
 	}
+	_ = o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
+		item.Status = "todo"
+		item.WorkerKind = profile.Kind
+	})
+	_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
+		TaskID:  task.ID,
+		Kind:    ActivityKindTaskStatus,
+		Status:  "failed",
+		Message: "Task run failed",
+		Meta: map[string]string{
+			"run_id":      run.ID,
+			"worker_kind": profile.Kind,
+		},
+	})
+	return run, err
+}
 
-	report := ParseTaskReport(finished.Response)
+func (o *Orchestrator) handleFailedTaskRun(
+	projectID string,
+	task BoardTask,
+	run TaskRun,
+	finished TaskRun,
+	profile WorkerProfile,
+	report TaskReport,
+) (TaskRun, error) {
+	if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
+		item.Status = "todo"
+		item.WorkerKind = firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind)
+	}); err != nil {
+		return finished, err
+	}
+	_ = o.appendAgentReport(projectID, task, finished, report)
+	message := firstNonEmpty(strings.TrimSpace(finished.Error), taskReportSummary(report, finished), "task run failed")
+	if err := o.store.appendSystemActivity(projectID, ActivityAppendInput{
+		TaskID:  task.ID,
+		Kind:    ActivityKindTaskStatus,
+		Status:  "failed",
+		Message: "Task run failed: " + strings.TrimSpace(message),
+		Meta: map[string]string{
+			"run_id":                run.ID,
+			"agent":                 firstNonEmpty(strings.TrimSpace(finished.Agent), strings.TrimSpace(task.Assignee)),
+			"assignee":              strings.TrimSpace(task.Assignee),
+			"worker_kind":           firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind),
+			"worker_executor_agent": strings.TrimSpace(finished.Agent),
+			"error":                 strings.TrimSpace(finished.Error),
+		},
+	}); err != nil {
+		return finished, err
+	}
+	return finished, fmt.Errorf("task run failed: %s", strings.TrimSpace(message))
+}
+
+func (o *Orchestrator) newDispatchTaskResolution(task BoardTask, report TaskReport) dispatchTaskResolution {
+	return dispatchTaskResolution{
+		TestStatus:  verificationStatus(report.Tests),
+		BuildStatus: verificationStatus(report.Build),
+		IssueRef:    firstNonEmpty(strings.TrimSpace(report.Issue), strings.TrimSpace(task.Issue)),
+		BranchRef:   firstNonEmpty(strings.TrimSpace(report.Branch), strings.TrimSpace(task.Branch)),
+		PRRef:       firstNonEmpty(strings.TrimSpace(report.PR), strings.TrimSpace(task.PR)),
+	}
+}
+
+func (o *Orchestrator) verifyDispatchGates(task BoardTask, resolution dispatchTaskResolution) []string {
+	gateErrs := []string{}
+	if strings.TrimSpace(task.TestCommand) != "" && resolution.TestStatus != "passed" {
+		gateErrs = append(gateErrs, "tests not passed")
+	}
+	if strings.TrimSpace(task.BuildCommand) != "" && resolution.BuildStatus != "passed" {
+		gateErrs = append(gateErrs, "build not passed")
+	}
+	if strings.TrimSpace(resolution.IssueRef) == "" {
+		gateErrs = append(gateErrs, "issue missing")
+	}
+	if strings.TrimSpace(resolution.BranchRef) == "" {
+		gateErrs = append(gateErrs, "branch missing")
+	}
+	if strings.TrimSpace(resolution.PRRef) == "" {
+		gateErrs = append(gateErrs, "pr missing")
+	}
+	return gateErrs
+}
+
+func (o *Orchestrator) resolveTaskFinalStatus(task BoardTask, finished TaskRun, gateErrs []string) string {
 	if finished.Status == TaskRunStatusFailed || finished.Status == TaskRunStatusCanceled {
-		if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
-			item.Status = "todo"
-			item.WorkerKind = firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind)
-		}); err != nil {
-			return finished, err
-		}
-		_ = o.appendAgentReport(projectID, task, finished, report)
-		message := firstNonEmpty(strings.TrimSpace(finished.Error), taskReportSummary(report, finished), "task run failed")
-		if err := o.store.appendSystemActivity(projectID, ActivityAppendInput{
-			TaskID:  task.ID,
-			Kind:    ActivityKindTaskStatus,
-			Status:  "failed",
-			Message: "Task run failed: " + strings.TrimSpace(message),
-			Meta: map[string]string{
-				"run_id":                run.ID,
-				"agent":                 firstNonEmpty(strings.TrimSpace(finished.Agent), strings.TrimSpace(task.Assignee)),
-				"assignee":              strings.TrimSpace(task.Assignee),
-				"worker_kind":           firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind),
-				"worker_executor_agent": strings.TrimSpace(finished.Agent),
-				"error":                 strings.TrimSpace(finished.Error),
-			},
-		}); err != nil {
-			return finished, err
-		}
-		return finished, fmt.Errorf("task run failed: %s", strings.TrimSpace(message))
+		return "todo"
 	}
-
-	finalStatus := "done"
+	if len(gateErrs) > 0 {
+		return "in_progress"
+	}
 	if task.ReviewRequired {
-		finalStatus = "review"
+		return "review"
 	}
-	testStatus := verificationStatus(report.Tests)
-	buildStatus := verificationStatus(report.Build)
-	issueRef := firstNonEmpty(strings.TrimSpace(report.Issue), strings.TrimSpace(task.Issue))
-	branchRef := firstNonEmpty(strings.TrimSpace(report.Branch), strings.TrimSpace(task.Branch))
-	prRef := firstNonEmpty(strings.TrimSpace(report.PR), strings.TrimSpace(task.PR))
+	return "done"
+}
 
+func (o *Orchestrator) recordDispatchVerificationActivities(projectID string, task BoardTask, resolution dispatchTaskResolution) {
 	if strings.TrimSpace(task.TestCommand) != "" {
 		_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
 			TaskID:  task.ID,
 			Kind:    ActivityKindTestStatus,
-			Status:  testStatus,
+			Status:  resolution.TestStatus,
 			Message: "Task test verification reported",
 			Meta: map[string]string{
 				"command": task.TestCommand,
@@ -271,7 +372,7 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 		_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
 			TaskID:  task.ID,
 			Kind:    ActivityKindBuildStatus,
-			Status:  buildStatus,
+			Status:  resolution.BuildStatus,
 			Message: "Task build verification reported",
 			Meta: map[string]string{
 				"command": task.BuildCommand,
@@ -281,89 +382,61 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 	_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
 		TaskID:  task.ID,
 		Kind:    ActivityKindIssueStatus,
-		Status:  ternaryStatus(issueRef != "", "ready", "blocked"),
+		Status:  ternaryStatus(resolution.IssueRef != "", "ready", "blocked"),
 		Message: "Task issue metadata recorded",
 		Meta: map[string]string{
-			"issue": issueRef,
+			"issue": resolution.IssueRef,
 		},
 	})
 	_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
 		TaskID:  task.ID,
 		Kind:    ActivityKindBranchStatus,
-		Status:  ternaryStatus(branchRef != "", "ready", "blocked"),
+		Status:  ternaryStatus(resolution.BranchRef != "", "ready", "blocked"),
 		Message: "Task branch metadata recorded",
 		Meta: map[string]string{
-			"branch": branchRef,
+			"branch": resolution.BranchRef,
 		},
 	})
 	_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
 		TaskID:  task.ID,
 		Kind:    ActivityKindPRStatus,
-		Status:  ternaryStatus(prRef != "", "ready", "blocked"),
+		Status:  ternaryStatus(resolution.PRRef != "", "ready", "blocked"),
 		Message: "Task pull request metadata recorded",
 		Meta: map[string]string{
-			"pr": prRef,
+			"pr": resolution.PRRef,
 		},
 	})
+}
 
-	gateErrs := []string{}
-	if strings.TrimSpace(task.TestCommand) != "" && testStatus != "passed" {
-		gateErrs = append(gateErrs, "tests not passed")
-	}
-	if strings.TrimSpace(task.BuildCommand) != "" && buildStatus != "passed" {
-		gateErrs = append(gateErrs, "build not passed")
-	}
-	if strings.TrimSpace(issueRef) == "" {
-		gateErrs = append(gateErrs, "issue missing")
-	}
-	if strings.TrimSpace(branchRef) == "" {
-		gateErrs = append(gateErrs, "branch missing")
-	}
-	if strings.TrimSpace(prRef) == "" {
-		gateErrs = append(gateErrs, "pr missing")
-	}
-	if len(gateErrs) > 0 && finished.Status != TaskRunStatusFailed && finished.Status != TaskRunStatusCanceled {
-		finalStatus = "in_progress"
-	}
-	if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
-		item.Status = finalStatus
-		item.WorkerKind = firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind)
-		item.Issue = issueRef
-		item.Branch = branchRef
-		item.PR = prRef
-	}); err != nil {
-		return finished, err
-	}
-
+func (o *Orchestrator) appendDispatchCompletionActivity(
+	projectID string,
+	task BoardTask,
+	runID string,
+	finished TaskRun,
+	profile WorkerProfile,
+	report TaskReport,
+	finalStatus string,
+	gateErrs []string,
+) error {
 	activityStatus := finalStatus
 	message := "Task run completed"
-	if finished.Status == TaskRunStatusFailed || finished.Status == TaskRunStatusCanceled {
-		activityStatus = "failed"
-		message = "Task run failed"
-	} else if len(gateErrs) > 0 {
+	if len(gateErrs) > 0 {
 		activityStatus = "in_progress"
 		message = "Task run blocked by verification or GitHub Flow gate"
 	}
-	if err := o.store.appendSystemActivity(projectID, ActivityAppendInput{
+	return o.store.appendSystemActivity(projectID, ActivityAppendInput{
 		TaskID:  task.ID,
 		Kind:    ActivityKindTaskStatus,
 		Status:  activityStatus,
 		Message: message,
 		Meta: map[string]string{
-			"run_id":      run.ID,
+			"run_id":      runID,
 			"agent":       firstNonEmpty(strings.TrimSpace(finished.Agent), strings.TrimSpace(task.Assignee)),
 			"assignee":    strings.TrimSpace(task.Assignee),
 			"worker_kind": firstNonEmpty(strings.TrimSpace(finished.WorkerKind), profile.Kind),
 			"report":      taskReportStatus(report, finished.Status),
 		},
-	}); err != nil {
-		return finished, err
-	}
-	_ = o.appendAgentReport(projectID, task, finished, report)
-	if len(gateErrs) > 0 && finished.Status != TaskRunStatusFailed && finished.Status != TaskRunStatusCanceled {
-		return finished, fmt.Errorf("task gate failed: %s", strings.Join(gateErrs, ", "))
-	}
-	return finished, nil
+	})
 }
 
 func (o *Orchestrator) dispatchReviewTask(ctx context.Context, projectID string, task BoardTask) (TaskRun, error) {
