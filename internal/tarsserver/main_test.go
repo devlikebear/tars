@@ -546,6 +546,60 @@ func TestCronAPI_ListCreateRun(t *testing.T) {
 	}
 }
 
+func TestCronAPI_RejectsDisallowedMethods(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := cron.NewStore(root)
+	handler := newCronAPIHandler(
+		store,
+		func(_ context.Context, prompt string) (string, error) { return "ok:" + prompt, nil },
+		zerolog.New(io.Discard),
+	)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs", strings.NewReader(`{"name":"morning","prompt":"check inbox"}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK && createRec.Code != http.StatusCreated {
+		t.Fatalf("expected create status 200/201, got %d body=%q", createRec.Code, createRec.Body.String())
+	}
+	var created cron.Job
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		req  *http.Request
+	}{
+		{
+			name: "jobs collection",
+			req:  httptest.NewRequest(http.MethodPatch, "/v1/cron/jobs", nil),
+		},
+		{
+			name: "job run",
+			req:  httptest.NewRequest(http.MethodGet, "/v1/cron/jobs/"+created.ID+"/run", nil),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, tc.req)
+
+			if rec.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("expected 405, got %d body=%q", rec.Code, rec.Body.String())
+			}
+			if rec.Body.String() != "method not allowed\n" {
+				t.Fatalf("expected plain text method-not-allowed body, got %q", rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestCronAPI_RunDeletesJobWhenDeleteAfterRunEnabled(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {

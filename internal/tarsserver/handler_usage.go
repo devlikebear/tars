@@ -18,8 +18,7 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
 			return
 		}
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		period := strings.TrimSpace(r.URL.Query().Get("period"))
@@ -40,6 +39,9 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 	mux.HandleFunc("/v1/usage/limits", func(w http.ResponseWriter, r *http.Request) {
 		if tracker == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
+			return
+		}
+		if !requireMethod(w, r, http.MethodGet, http.MethodPatch) {
 			return
 		}
 		switch r.Method {
@@ -79,8 +81,6 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 				return
 			}
 			writeJSON(w, http.StatusOK, updated)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
 

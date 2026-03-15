@@ -17,8 +17,7 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ops manager is not configured"})
 			return
 		}
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		status, err := manager.Status(r.Context())
@@ -35,8 +34,7 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ops manager is not configured"})
 			return
 		}
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		plan, err := manager.CreateCleanupPlan(r.Context())
@@ -56,8 +54,7 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ops manager is not configured"})
 			return
 		}
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		var req struct {
@@ -82,8 +79,7 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ops manager is not configured"})
 			return
 		}
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		items, err := manager.ListApprovals()
@@ -107,8 +103,7 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 		}
 		approvalID := strings.TrimSpace(parts[0])
 		action := strings.TrimSpace(parts[1])
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		var err error

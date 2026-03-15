@@ -33,8 +33,7 @@ func newHeartbeatAPIHandlerWithRunner(
 ) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/heartbeat/run-once", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		result, err := runHeartbeat(r.Context())

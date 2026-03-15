@@ -20,8 +20,7 @@ type mcpProvider interface {
 func newMCPAPIHandler(provider mcpProvider, logger zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/mcp/servers", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if provider == nil {
@@ -37,8 +36,7 @@ func newMCPAPIHandler(provider mcpProvider, logger zerolog.Logger) http.Handler 
 		writeJSON(w, http.StatusOK, servers)
 	})
 	mux.HandleFunc("/v1/mcp/tools", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if provider == nil {
@@ -64,8 +62,7 @@ type extensionsProvider interface {
 func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger, afterReload func() (bool, int)) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/skills", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if provider == nil {
@@ -80,8 +77,7 @@ func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger,
 		writeJSON(w, http.StatusOK, skills)
 	})
 	mux.HandleFunc("/v1/skills/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if provider == nil {
@@ -103,8 +99,7 @@ func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger,
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
 	})
 	mux.HandleFunc("/v1/plugins", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if provider == nil {
@@ -119,8 +114,7 @@ func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger,
 		writeJSON(w, http.StatusOK, plugins)
 	})
 	mux.HandleFunc("/v1/runtime/extensions/reload", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if provider == nil {

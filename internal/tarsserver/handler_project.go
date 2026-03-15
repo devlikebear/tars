@@ -40,6 +40,9 @@ func newProjectAPIHandler(
 		}
 		briefID := strings.TrimSpace(parts[0])
 		if len(parts) == 1 {
+			if !requireMethod(w, r, http.MethodGet, http.MethodPatch) {
+				return
+			}
 			switch r.Method {
 			case http.MethodGet:
 				item, err := store.GetBrief(briefID)
@@ -107,14 +110,11 @@ func newProjectAPIHandler(
 					return
 				}
 				writeJSON(w, http.StatusOK, updated)
-			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
 			return
 		}
 		if len(parts) == 2 && parts[1] == "finalize" {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			if !requireMethod(w, r, http.MethodPost) {
 				return
 			}
 			created, brief, err := store.FinalizeBrief(briefID, sessionStore)
@@ -144,6 +144,9 @@ func newProjectAPIHandler(
 	mux.HandleFunc("/v1/projects", func(w http.ResponseWriter, r *http.Request) {
 		if store == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "project store is not configured"})
+			return
+		}
+		if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
 			return
 		}
 		switch r.Method {
@@ -186,8 +189,6 @@ func newProjectAPIHandler(
 			}
 			writeJSON(w, http.StatusOK, created)
 			dashboardBroker.publish(newProjectDashboardEvent(created.ID, "activity"))
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
 
@@ -205,6 +206,9 @@ func newProjectAPIHandler(
 		projectID := strings.TrimSpace(parts[0])
 
 		if len(parts) == 1 {
+			if !requireMethod(w, r, http.MethodGet, http.MethodPatch, http.MethodDelete) {
+				return
+			}
 			switch r.Method {
 			case http.MethodGet:
 				item, err := store.Get(projectID)
@@ -251,13 +255,14 @@ func newProjectAPIHandler(
 				}
 				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
 				w.WriteHeader(http.StatusNoContent)
-			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
 			return
 		}
 
 		if len(parts) == 2 && parts[1] == "state" {
+			if !requireMethod(w, r, http.MethodGet, http.MethodPatch) {
+				return
+			}
 			switch r.Method {
 			case http.MethodGet:
 				item, err := store.GetState(projectID)
@@ -314,13 +319,14 @@ func newProjectAPIHandler(
 				}
 				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
 				writeJSON(w, http.StatusOK, updated)
-			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
 			return
 		}
 
 		if len(parts) == 2 && parts[1] == "activity" {
+			if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
+				return
+			}
 			switch r.Method {
 			case http.MethodGet:
 				limit, ok := parsePositiveLimit(w, r, 50)
@@ -378,13 +384,14 @@ func newProjectAPIHandler(
 				}
 				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
 				writeJSON(w, http.StatusOK, item)
-			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
 			return
 		}
 
 		if len(parts) == 2 && parts[1] == "board" {
+			if !requireMethod(w, r, http.MethodGet, http.MethodPatch) {
+				return
+			}
 			switch r.Method {
 			case http.MethodGet:
 				item, err := store.GetBoard(projectID)
@@ -426,15 +433,12 @@ func newProjectAPIHandler(
 				}
 				dashboardBroker.publish(newProjectDashboardEvent(projectID, "board"))
 				writeJSON(w, http.StatusOK, item)
-			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
 			return
 		}
 
 		if len(parts) == 2 && parts[1] == "dispatch" {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			if !requireMethod(w, r, http.MethodPost) {
 				return
 			}
 			if taskRunner == nil {
@@ -480,6 +484,9 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project autopilot manager is not configured"})
 				return
 			}
+			if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
+				return
+			}
 			switch r.Method {
 			case http.MethodGet:
 				item, ok := autopilot.Status(projectID)
@@ -505,15 +512,12 @@ func newProjectAPIHandler(
 					return
 				}
 				writeJSON(w, http.StatusOK, item)
-			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
 			return
 		}
 
 		if len(parts) == 2 && parts[1] == "activate" {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			if !requireMethod(w, r, http.MethodPost) {
 				return
 			}
 			if sessionStore == nil {

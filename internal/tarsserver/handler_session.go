@@ -332,8 +332,7 @@ func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string
 
 func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.Client, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		var req struct {
