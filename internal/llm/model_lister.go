@@ -22,19 +22,17 @@ type ModelFetcher interface {
 }
 
 type modelFetcher struct {
-	httpClient             *http.Client
-	resolveToken           func(opts auth.ResolveOptions) (string, error)
-	resolveCodexCredential func(opts auth.CodexResolveOptions) (auth.CodexCredential, error)
-	refreshCodexCredential func(ctx context.Context, cred auth.CodexCredential, opts auth.CodexRefreshOptions) (auth.CodexCredential, error)
-	openAICodexModelsURL   string
+	httpClient           *http.Client
+	resolveCredential    func(config auth.ProviderAuthConfig) (auth.ProviderCredential, error)
+	refreshCredential    func(ctx context.Context, config auth.ProviderAuthConfig, cred auth.ProviderCredential, opts auth.ProviderRefreshOptions) (auth.ProviderCredential, error)
+	openAICodexModelsURL string
 }
 
 type modelFetcherDeps struct {
-	httpClient             *http.Client
-	resolveToken           func(opts auth.ResolveOptions) (string, error)
-	resolveCodexCredential func(opts auth.CodexResolveOptions) (auth.CodexCredential, error)
-	refreshCodexCredential func(ctx context.Context, cred auth.CodexCredential, opts auth.CodexRefreshOptions) (auth.CodexCredential, error)
-	openAICodexModelsURL   string
+	httpClient           *http.Client
+	resolveCredential    func(config auth.ProviderAuthConfig) (auth.ProviderCredential, error)
+	refreshCredential    func(ctx context.Context, config auth.ProviderAuthConfig, cred auth.ProviderCredential, opts auth.ProviderRefreshOptions) (auth.ProviderCredential, error)
+	openAICodexModelsURL string
 }
 
 func NewModelFetcher() ModelFetcher {
@@ -46,28 +44,23 @@ func newModelFetcherWithDeps(deps modelFetcherDeps) *modelFetcher {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 20 * time.Second}
 	}
-	resolveToken := deps.resolveToken
-	if resolveToken == nil {
-		resolveToken = auth.ResolveToken
+	resolveCredential := deps.resolveCredential
+	if resolveCredential == nil {
+		resolveCredential = auth.ResolveProviderCredential
 	}
-	resolveCodexCredential := deps.resolveCodexCredential
-	if resolveCodexCredential == nil {
-		resolveCodexCredential = auth.ResolveCodexCredential
-	}
-	refreshCodexCredential := deps.refreshCodexCredential
-	if refreshCodexCredential == nil {
-		refreshCodexCredential = auth.RefreshCodexCredential
+	refreshCredential := deps.refreshCredential
+	if refreshCredential == nil {
+		refreshCredential = auth.RefreshProviderCredential
 	}
 	openAICodexModelsURL := strings.TrimSpace(deps.openAICodexModelsURL)
 	if openAICodexModelsURL == "" {
 		openAICodexModelsURL = defaultOpenAICodexModelsURL
 	}
 	return &modelFetcher{
-		httpClient:             httpClient,
-		resolveToken:           resolveToken,
-		resolveCodexCredential: resolveCodexCredential,
-		refreshCodexCredential: refreshCodexCredential,
-		openAICodexModelsURL:   openAICodexModelsURL,
+		httpClient:           httpClient,
+		resolveCredential:    resolveCredential,
+		refreshCredential:    refreshCredential,
+		openAICodexModelsURL: openAICodexModelsURL,
 	}
 }
 
@@ -81,19 +74,14 @@ func (f *modelFetcher) FetchModels(ctx context.Context, opts ProviderOptions) ([
 	case "gemini", "gemini-native":
 		return f.fetchGeminiNativeModels(ctx, opts)
 	case "openai-codex":
-		return f.fetchOpenAICodexModels(ctx)
+		return f.fetchOpenAICodexModels(ctx, opts)
 	default:
 		return nil, fmt.Errorf("unsupported llm provider: %s", provider)
 	}
 }
 
 func (f *modelFetcher) fetchOpenAICompatibleModels(ctx context.Context, opts ProviderOptions) ([]string, error) {
-	token, err := f.resolveToken(auth.ResolveOptions{
-		Provider:      opts.Provider,
-		AuthMode:      opts.AuthMode,
-		OAuthProvider: opts.OAuthProvider,
-		APIKey:        opts.APIKey,
-	})
+	cred, err := f.resolveCredential(providerAuthConfig(opts))
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +90,7 @@ func (f *modelFetcher) fetchOpenAICompatibleModels(ctx context.Context, opts Pro
 		return nil, err
 	}
 	models, _, err := f.fetchOpenAIStyleModelIDs(ctx, strings.TrimSpace(strings.ToLower(opts.Provider)), modelsURL, map[string]string{
-		"Authorization": "Bearer " + strings.TrimSpace(token),
+		"Authorization": "Bearer " + strings.TrimSpace(cred.AccessToken),
 	})
 	if err != nil {
 		return nil, err
@@ -111,12 +99,7 @@ func (f *modelFetcher) fetchOpenAICompatibleModels(ctx context.Context, opts Pro
 }
 
 func (f *modelFetcher) fetchAnthropicModels(ctx context.Context, opts ProviderOptions) ([]string, error) {
-	token, err := f.resolveToken(auth.ResolveOptions{
-		Provider:      opts.Provider,
-		AuthMode:      opts.AuthMode,
-		OAuthProvider: opts.OAuthProvider,
-		APIKey:        opts.APIKey,
-	})
+	cred, err := f.resolveCredential(providerAuthConfig(opts))
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +108,7 @@ func (f *modelFetcher) fetchAnthropicModels(ctx context.Context, opts ProviderOp
 		return nil, err
 	}
 	models, _, err := f.fetchOpenAIStyleModelIDs(ctx, "anthropic", modelsURL, map[string]string{
-		"x-api-key":         strings.TrimSpace(token),
+		"x-api-key":         strings.TrimSpace(cred.AccessToken),
 		"anthropic-version": anthropicAPIVersion,
 		"content-type":      "application/json",
 	})
@@ -136,12 +119,7 @@ func (f *modelFetcher) fetchAnthropicModels(ctx context.Context, opts ProviderOp
 }
 
 func (f *modelFetcher) fetchGeminiNativeModels(ctx context.Context, opts ProviderOptions) ([]string, error) {
-	token, err := f.resolveToken(auth.ResolveOptions{
-		Provider:      opts.Provider,
-		AuthMode:      opts.AuthMode,
-		OAuthProvider: opts.OAuthProvider,
-		APIKey:        opts.APIKey,
-	})
+	cred, err := f.resolveCredential(providerAuthConfig(opts))
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +128,7 @@ func (f *modelFetcher) fetchGeminiNativeModels(ctx context.Context, opts Provide
 		return nil, err
 	}
 	body, _, err := f.fetchModelsBody(ctx, strings.TrimSpace(strings.ToLower(opts.Provider)), modelsURL, map[string]string{
-		"x-goog-api-key": strings.TrimSpace(token),
+		"x-goog-api-key": strings.TrimSpace(cred.AccessToken),
 	})
 	if err != nil {
 		return nil, err
@@ -162,8 +140,9 @@ func (f *modelFetcher) fetchGeminiNativeModels(ctx context.Context, opts Provide
 	return models, nil
 }
 
-func (f *modelFetcher) fetchOpenAICodexModels(ctx context.Context) ([]string, error) {
-	cred, err := f.resolveCodexCredential(auth.CodexResolveOptions{})
+func (f *modelFetcher) fetchOpenAICodexModels(ctx context.Context, opts ProviderOptions) ([]string, error) {
+	authConfig := providerAuthConfig(opts)
+	cred, err := f.resolveCredential(authConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +158,7 @@ func (f *modelFetcher) fetchOpenAICodexModels(ctx context.Context) ([]string, er
 	if strings.TrimSpace(cred.RefreshToken) == "" {
 		return nil, err
 	}
-	refreshed, refreshErr := f.refreshCodexCredential(ctx, cred, auth.CodexRefreshOptions{PersistFile: true})
+	refreshed, refreshErr := f.refreshCredential(ctx, authConfig, cred, auth.ProviderRefreshOptions{PersistSource: true})
 	if refreshErr != nil {
 		return nil, refreshErr
 	}

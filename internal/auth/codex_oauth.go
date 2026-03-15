@@ -46,22 +46,25 @@ type CodexRefreshOptions struct {
 }
 
 func ResolveCodexCredential(opts CodexResolveOptions) (CodexCredential, error) {
-	if cred, ok := resolveCodexCredentialFromEnv(); ok {
-		return cred, nil
-	}
-
-	path, err := resolveCodexAuthPath(opts.CodexHome)
-	if err != nil {
-		return CodexCredential{}, err
-	}
-	cred, err := resolveCodexCredentialFromFile(path)
-	if err != nil {
-		return CodexCredential{}, err
-	}
-	return cred, nil
+	return ResolveProviderCredential(ProviderAuthConfig{
+		Provider:  "openai-codex",
+		AuthMode:  "oauth",
+		CodexHome: opts.CodexHome,
+	})
 }
 
 func RefreshCodexCredential(ctx context.Context, cred CodexCredential, opts CodexRefreshOptions) (CodexCredential, error) {
+	return RefreshProviderCredential(ctx, ProviderAuthConfig{
+		Provider: "openai-codex",
+		AuthMode: "oauth",
+	}, cred, ProviderRefreshOptions{
+		TokenURL:      opts.TokenURL,
+		HTTPClient:    opts.HTTPClient,
+		PersistSource: opts.PersistFile,
+	})
+}
+
+func refreshOpenAICodexCredential(ctx context.Context, cred CodexCredential, opts ProviderRefreshOptions) (CodexCredential, error) {
 	if strings.TrimSpace(cred.RefreshToken) == "" {
 		return CodexCredential{}, fmt.Errorf("openai-codex refresh token is required")
 	}
@@ -119,7 +122,7 @@ func RefreshCodexCredential(ctx context.Context, cred CodexCredential, opts Code
 		next.AccountID = ParseCodexAccountIDFromJWT(next.AccessToken)
 	}
 
-	if opts.PersistFile && next.Source == CodexCredentialSourceFile && strings.TrimSpace(next.SourcePath) != "" {
+	if opts.PersistSource && next.Source == CodexCredentialSourceFile && strings.TrimSpace(next.SourcePath) != "" {
 		if err := persistCodexCredentialFile(next.SourcePath, next); err != nil {
 			return CodexCredential{}, err
 		}

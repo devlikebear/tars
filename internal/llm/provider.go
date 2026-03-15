@@ -90,6 +90,7 @@ type ProviderOptions struct {
 	Provider        string
 	AuthMode        string
 	OAuthProvider   string
+	AuthConfig      auth.ProviderAuthConfig
 	BaseURL         string
 	WorkDir         string
 	Model           string
@@ -105,9 +106,12 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	if provider == "" {
 		provider = "bifrost"
 	}
+	authOpts := opts
+	authOpts.Provider = provider
+	authConfig := providerAuthConfig(authOpts)
 	zlog.Debug().
 		Str("provider", provider).
-		Str("auth_mode", strings.TrimSpace(strings.ToLower(opts.AuthMode))).
+		Str("auth_mode", authConfig.AuthMode).
 		Str("model", strings.TrimSpace(opts.Model)).
 		Str("base_url", strings.TrimSpace(opts.BaseURL)).
 		Msg("llm new provider request")
@@ -117,12 +121,13 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	}
 	if provider == "openai-codex" {
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
-		return NewOpenAICodexClient(
+		return newOpenAICodexClientWithAuthConfig(
 			firstNonEmptyTrimmed(opts.BaseURL, "https://chatgpt.com/backend-api"),
 			firstNonEmptyTrimmed(opts.Model, "gpt-5.3-codex"),
-			firstNonEmptyTrimmed(opts.AuthMode, "oauth"),
-			firstNonEmptyTrimmed(opts.OAuthProvider, "openai-codex"),
-			strings.TrimSpace(opts.APIKey),
+			authConfig,
+			DefaultClientConfig(),
+			nil,
+			nil,
 		)
 	}
 	if provider == "claude-code-cli" {
@@ -130,15 +135,11 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 		return NewClaudeCodeCLIClient(opts.WorkDir, opts.Model)
 	}
 
-	token, err := auth.ResolveToken(auth.ResolveOptions{
-		Provider:      provider,
-		AuthMode:      opts.AuthMode,
-		OAuthProvider: opts.OAuthProvider,
-		APIKey:        opts.APIKey,
-	})
+	cred, err := auth.ResolveProviderCredential(authConfig)
 	if err != nil {
 		return nil, err
 	}
+	token := strings.TrimSpace(cred.AccessToken)
 
 	switch provider {
 	case "bifrost":
@@ -186,6 +187,39 @@ func providerClientConfig(opts ProviderOptions) ClientConfig {
 		config.ThinkingBudget = opts.ThinkingBudget
 	}
 	config.ServiceTier = normalizeServiceTier(opts.ServiceTier)
+	return config
+}
+
+func providerAuthConfig(opts ProviderOptions) auth.ProviderAuthConfig {
+	config := opts.AuthConfig
+	if strings.TrimSpace(config.Provider) == "" {
+		config.Provider = strings.TrimSpace(strings.ToLower(opts.Provider))
+	}
+	if strings.TrimSpace(config.AuthMode) == "" {
+		config.AuthMode = strings.TrimSpace(strings.ToLower(opts.AuthMode))
+	}
+	if strings.TrimSpace(config.OAuthProvider) == "" {
+		config.OAuthProvider = strings.TrimSpace(strings.ToLower(opts.OAuthProvider))
+	}
+	if strings.TrimSpace(config.APIKey) == "" {
+		config.APIKey = strings.TrimSpace(opts.APIKey)
+	}
+
+	switch strings.TrimSpace(strings.ToLower(config.Provider)) {
+	case "openai-codex":
+		if strings.TrimSpace(config.AuthMode) == "" {
+			config.AuthMode = "oauth"
+		}
+		if strings.TrimSpace(config.OAuthProvider) == "" {
+			config.OAuthProvider = "openai-codex"
+		}
+	}
+
+	config.Provider = strings.TrimSpace(strings.ToLower(config.Provider))
+	config.AuthMode = strings.TrimSpace(strings.ToLower(config.AuthMode))
+	config.OAuthProvider = strings.TrimSpace(strings.ToLower(config.OAuthProvider))
+	config.APIKey = strings.TrimSpace(config.APIKey)
+	config.CodexHome = strings.TrimSpace(config.CodexHome)
 	return config
 }
 

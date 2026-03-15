@@ -34,11 +34,11 @@ func TestModelFetcher_OpenAICompatible_Parses(t *testing.T) {
 
 	fetcher := newModelFetcherWithDeps(modelFetcherDeps{
 		httpClient: server.Client(),
-		resolveToken: func(opts auth.ResolveOptions) (string, error) {
-			if opts.Provider != "openai" {
-				t.Fatalf("expected openai provider, got %q", opts.Provider)
+		resolveCredential: func(config auth.ProviderAuthConfig) (auth.ProviderCredential, error) {
+			if config.Provider != "openai" {
+				t.Fatalf("expected openai provider, got %+v", config)
 			}
-			return "openai-token", nil
+			return auth.ProviderCredential{AccessToken: "openai-token"}, nil
 		},
 	})
 
@@ -79,11 +79,11 @@ func TestModelFetcher_Anthropic_Parses(t *testing.T) {
 
 	fetcher := newModelFetcherWithDeps(modelFetcherDeps{
 		httpClient: server.Client(),
-		resolveToken: func(opts auth.ResolveOptions) (string, error) {
-			if opts.Provider != "anthropic" {
-				t.Fatalf("expected anthropic provider, got %q", opts.Provider)
+		resolveCredential: func(config auth.ProviderAuthConfig) (auth.ProviderCredential, error) {
+			if config.Provider != "anthropic" {
+				t.Fatalf("expected anthropic provider, got %+v", config)
 			}
-			return "anthropic-token", nil
+			return auth.ProviderCredential{AccessToken: "anthropic-token"}, nil
 		},
 	})
 
@@ -123,11 +123,11 @@ func TestModelFetcher_GeminiNativeSinglePath_Parses(t *testing.T) {
 
 	fetcher := newModelFetcherWithDeps(modelFetcherDeps{
 		httpClient: server.Client(),
-		resolveToken: func(opts auth.ResolveOptions) (string, error) {
-			if opts.Provider != "gemini" {
-				t.Fatalf("expected gemini provider, got %q", opts.Provider)
+		resolveCredential: func(config auth.ProviderAuthConfig) (auth.ProviderCredential, error) {
+			if config.Provider != "gemini" {
+				t.Fatalf("expected gemini provider, got %+v", config)
 			}
-			return "gemini-key", nil
+			return auth.ProviderCredential{AccessToken: "gemini-key"}, nil
 		},
 	})
 
@@ -177,26 +177,32 @@ func TestModelFetcher_OpenAICodexRefreshRetry401_(t *testing.T) {
 	fetcher := newModelFetcherWithDeps(modelFetcherDeps{
 		httpClient:           server.Client(),
 		openAICodexModelsURL: server.URL + "/v1/models",
-		resolveCodexCredential: func(opts auth.CodexResolveOptions) (auth.CodexCredential, error) {
-			return auth.CodexCredential{
+		resolveCredential: func(config auth.ProviderAuthConfig) (auth.ProviderCredential, error) {
+			if config.Provider != "openai-codex" || config.AuthMode != "oauth" {
+				t.Fatalf("unexpected auth config: %+v", config)
+			}
+			return auth.ProviderCredential{
 				AccessToken:  "old-token",
 				RefreshToken: "refresh-token",
-				Source:       auth.CodexCredentialSourceFile,
+				Source:       auth.CredentialSourceFile,
 				SourcePath:   "/tmp/auth.json",
 			}, nil
 		},
-		refreshCodexCredential: func(ctx context.Context, cred auth.CodexCredential, opts auth.CodexRefreshOptions) (auth.CodexCredential, error) {
+		refreshCredential: func(ctx context.Context, config auth.ProviderAuthConfig, cred auth.ProviderCredential, opts auth.ProviderRefreshOptions) (auth.ProviderCredential, error) {
 			refreshCalls++
-			if !opts.PersistFile {
-				t.Fatalf("expected PersistFile=true")
+			if config.Provider != "openai-codex" || config.AuthMode != "oauth" {
+				t.Fatalf("unexpected auth config: %+v", config)
+			}
+			if !opts.PersistSource {
+				t.Fatalf("expected PersistSource=true")
 			}
 			if cred.RefreshToken != "refresh-token" {
 				t.Fatalf("expected refresh token refresh-token, got %q", cred.RefreshToken)
 			}
-			return auth.CodexCredential{
+			return auth.ProviderCredential{
 				AccessToken:  "new-token",
 				RefreshToken: "refresh-token-2",
-				Source:       auth.CodexCredentialSourceFile,
+				Source:       auth.CredentialSourceFile,
 				SourcePath:   "/tmp/auth.json",
 			}, nil
 		},

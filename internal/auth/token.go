@@ -16,22 +16,20 @@ type ResolveOptions struct {
 }
 
 func ResolveToken(opts ResolveOptions) (string, error) {
-	mode := strings.ToLower(strings.TrimSpace(opts.AuthMode))
-	if mode == "" {
-		mode = "api-key"
+	if strings.TrimSpace(strings.ToLower(opts.Provider)) == "openai-codex" &&
+		strings.TrimSpace(strings.ToLower(opts.AuthMode)) == "oauth" {
+		return "", fmt.Errorf("unsupported oauth provider: openai-codex")
 	}
-
-	switch mode {
-	case "api-key":
-		if strings.TrimSpace(opts.APIKey) == "" {
-			return "", fmt.Errorf("api key is required for auth mode api-key")
-		}
-		return opts.APIKey, nil
-	case "oauth":
-		return resolveOAuthToken(opts.Provider, opts.OAuthProvider)
-	default:
-		return "", fmt.Errorf("unsupported auth mode: %s", opts.AuthMode)
+	cred, err := ResolveProviderCredential(ProviderAuthConfig{
+		Provider:      opts.Provider,
+		AuthMode:      opts.AuthMode,
+		OAuthProvider: opts.OAuthProvider,
+		APIKey:        opts.APIKey,
+	})
+	if err != nil {
+		return "", err
 	}
+	return strings.TrimSpace(cred.AccessToken), nil
 }
 
 func resolveOAuthToken(provider, oauthProvider string) (string, error) {
