@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -8,6 +9,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
+	zlog "github.com/rs/zerolog/log"
 )
 
 func TestJSONRequestSpec_BuildRequest(t *testing.T) {
@@ -101,6 +105,75 @@ func TestJSONRequestSpec_DoRequestWrapsHTTPStatus(t *testing.T) {
 	}
 	if !strings.Contains(providerErr.Error(), "anthropic status 401: denied") {
 		t.Fatalf("unexpected error message: %v", providerErr)
+	}
+}
+
+func TestExecuteJSONChatRequest_ReturnsRequestAndResponse(t *testing.T) {
+	var capturedAuth string
+	var capturedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	req, resp, err := executeJSONChatRequest(context.Background(), jsonRequestSpec{
+		Provider: "openai",
+		URL:      server.URL,
+		Headers: map[string]string{
+			"Authorization": "Bearer test-key",
+			"Content-Type":  "application/json",
+		},
+		Body: map[string]any{"model": "gpt-test"},
+	}, &http.Client{Timeout: time.Second}, false)
+	if err != nil {
+		t.Fatalf("execute json chat request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if req == nil {
+		t.Fatal("expected request")
+	}
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if got := req.URL.String(); got != server.URL {
+		t.Fatalf("expected request URL %q, got %q", server.URL, got)
+	}
+	if capturedAuth != "Bearer test-key" {
+		t.Fatalf("expected authorization header, got %q", capturedAuth)
+	}
+	if capturedBody["model"] != "gpt-test" {
+		t.Fatalf("unexpected request body: %+v", capturedBody)
+	}
+}
+
+func TestLogChatRequestStart_LogsStructuredFields(t *testing.T) {
+	var buf bytes.Buffer
+	prev := zlog.Logger
+	zlog.Logger = zerolog.New(&buf).Level(zerolog.DebugLevel)
+	defer func() { zlog.Logger = prev }()
+
+	logChatRequestStart("openai", "gpt-4o-mini", "https://example.com/v1/chat/completions", 2, true, 1, "required")
+
+	logged := buf.String()
+	for _, want := range []string{
+		`"provider":"openai"`,
+		`"model":"gpt-4o-mini"`,
+		`"url":"https://example.com/v1/chat/completions"`,
+		`"message_count":2`,
+		`"stream":true`,
+		`"tool_count":1`,
+		`"tool_choice":"required"`,
+		`"message":"llm request start"`,
+	} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("expected log to contain %q, got %q", want, logged)
+		}
 	}
 }
 
