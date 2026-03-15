@@ -10,6 +10,17 @@ import (
 	"github.com/devlikebear/tars/internal/auth"
 )
 
+func TestNormalizeLowerTrimmed(t *testing.T) {
+	t.Parallel()
+
+	if got := normalizeLowerTrimmed("  OpenAI-Codex "); got != "openai-codex" {
+		t.Fatalf("expected openai-codex, got %q", got)
+	}
+	if got := normalizeLowerTrimmed(" \t "); got != "" {
+		t.Fatalf("expected empty string, got %q", got)
+	}
+}
+
 func TestNewProvider_Unsupported(t *testing.T) {
 	_, err := NewProvider(ProviderOptions{
 		Provider: "unknown",

@@ -60,11 +60,7 @@ func NewClaudeCodeCLIClient(workDir, model string) (*ClaudeCodeCLIClient, error)
 }
 
 func (c *ClaudeCodeCLIClient) Ask(ctx context.Context, prompt string) (string, error) {
-	resp, err := c.Chat(ctx, []ChatMessage{{Role: "user", Content: prompt}}, ChatOptions{})
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(resp.Message.Content), nil
+	return askFromSinglePrompt(ctx, c.Chat, prompt, strings.TrimSpace)
 }
 
 func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {

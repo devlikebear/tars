@@ -92,11 +92,11 @@ func newOpenAICodexClientWithConfig(
 	resolver codexCredentialResolver,
 	refresher codexCredentialRefresher,
 ) (*OpenAICodexClient, error) {
-	if strings.TrimSpace(baseURL) == "" {
-		return nil, fmt.Errorf("%s base url is required", openAICodexProviderLabel)
+	if _, err := requireConfiguredValue(openAICodexProviderLabel, "base url", baseURL); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(model) == "" {
-		return nil, fmt.Errorf("%s model is required", openAICodexProviderLabel)
+	if _, err := requireConfiguredValue(openAICodexProviderLabel, "model", model); err != nil {
+		return nil, err
 	}
 
 	mode := strings.TrimSpace(strings.ToLower(authMode))
@@ -141,11 +141,7 @@ func newOpenAICodexClientWithConfig(
 }
 
 func (c *OpenAICodexClient) Ask(ctx context.Context, prompt string) (string, error) {
-	resp, err := c.Chat(ctx, []ChatMessage{{Role: "user", Content: prompt}}, ChatOptions{})
-	if err != nil {
-		return "", err
-	}
-	return resp.Message.Content, nil
+	return askFromSinglePrompt(ctx, c.Chat, prompt)
 }
 
 func (c *OpenAICodexClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {

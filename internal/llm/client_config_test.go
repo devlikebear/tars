@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -16,6 +17,26 @@ func TestDefaultClientConfig(t *testing.T) {
 	}
 	if cfg.MaxTokens != 0 {
 		t.Fatalf("expected MaxTokens 0, got %d", cfg.MaxTokens)
+	}
+}
+
+func TestRequireConfiguredValue(t *testing.T) {
+	t.Parallel()
+
+	got, err := requireConfiguredValue("openai", "model", "  gpt-4o-mini  ")
+	if err != nil {
+		t.Fatalf("require configured value: %v", err)
+	}
+	if got != "gpt-4o-mini" {
+		t.Fatalf("expected trimmed value, got %q", got)
+	}
+
+	_, err = requireConfiguredValue("anthropic", "api key", " \t ")
+	if err == nil {
+		t.Fatal("expected error for blank configured value")
+	}
+	if !strings.Contains(err.Error(), "anthropic api key is required") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

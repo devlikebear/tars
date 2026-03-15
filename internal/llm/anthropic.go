@@ -25,14 +25,14 @@ type AnthropicClient struct {
 
 func NewAnthropicClient(baseURL, apiKey, model string, maxTokens int) (*AnthropicClient, error) {
 	config := DefaultClientConfig()
-	if strings.TrimSpace(baseURL) == "" {
-		return nil, fmt.Errorf("anthropic base url is required")
+	if _, err := requireConfiguredValue("anthropic", "base url", baseURL); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("anthropic api key is required")
+	if _, err := requireConfiguredValue("anthropic", "api key", apiKey); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(model) == "" {
-		return nil, fmt.Errorf("anthropic model is required")
+	if _, err := requireConfiguredValue("anthropic", "model", model); err != nil {
+		return nil, err
 	}
 
 	if maxTokens <= 0 {
@@ -94,16 +94,7 @@ func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts
 }
 
 func (c *AnthropicClient) Ask(ctx context.Context, prompt string) (string, error) {
-	resp, err := c.Chat(ctx, []ChatMessage{
-		{
-			Role:    "user",
-			Content: prompt,
-		},
-	}, ChatOptions{})
-	if err != nil {
-		return "", err
-	}
-	return resp.Message.Content, nil
+	return askFromSinglePrompt(ctx, c.Chat, prompt)
 }
 
 func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOptions, streaming bool) map[string]any {

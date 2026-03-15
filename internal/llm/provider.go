@@ -193,19 +193,19 @@ func providerClientConfig(opts ProviderOptions) ClientConfig {
 func providerAuthConfig(opts ProviderOptions) auth.ProviderAuthConfig {
 	config := opts.AuthConfig
 	if strings.TrimSpace(config.Provider) == "" {
-		config.Provider = strings.TrimSpace(strings.ToLower(opts.Provider))
+		config.Provider = normalizeLowerTrimmed(opts.Provider)
 	}
 	if strings.TrimSpace(config.AuthMode) == "" {
-		config.AuthMode = strings.TrimSpace(strings.ToLower(opts.AuthMode))
+		config.AuthMode = normalizeLowerTrimmed(opts.AuthMode)
 	}
 	if strings.TrimSpace(config.OAuthProvider) == "" {
-		config.OAuthProvider = strings.TrimSpace(strings.ToLower(opts.OAuthProvider))
+		config.OAuthProvider = normalizeLowerTrimmed(opts.OAuthProvider)
 	}
 	if strings.TrimSpace(config.APIKey) == "" {
 		config.APIKey = strings.TrimSpace(opts.APIKey)
 	}
 
-	switch strings.TrimSpace(strings.ToLower(config.Provider)) {
+	switch normalizeLowerTrimmed(config.Provider) {
 	case "openai-codex":
 		if strings.TrimSpace(config.AuthMode) == "" {
 			config.AuthMode = "oauth"
@@ -215,9 +215,9 @@ func providerAuthConfig(opts ProviderOptions) auth.ProviderAuthConfig {
 		}
 	}
 
-	config.Provider = strings.TrimSpace(strings.ToLower(config.Provider))
-	config.AuthMode = strings.TrimSpace(strings.ToLower(config.AuthMode))
-	config.OAuthProvider = strings.TrimSpace(strings.ToLower(config.OAuthProvider))
+	config.Provider = normalizeLowerTrimmed(config.Provider)
+	config.AuthMode = normalizeLowerTrimmed(config.AuthMode)
+	config.OAuthProvider = normalizeLowerTrimmed(config.OAuthProvider)
 	config.APIKey = strings.TrimSpace(config.APIKey)
 	config.CodexHome = strings.TrimSpace(config.CodexHome)
 	return config
@@ -242,8 +242,12 @@ func firstNonEmptyTrimmed(values ...string) string {
 	return ""
 }
 
+func normalizeLowerTrimmed(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
+}
+
 func normalizeReasoningEffort(raw string) string {
-	switch strings.TrimSpace(strings.ToLower(raw)) {
+	switch normalizeLowerTrimmed(raw) {
 	case "":
 		return ""
 	case "none", "off", "disabled":
@@ -264,11 +268,11 @@ func normalizeReasoningEffort(raw string) string {
 }
 
 func normalizeServiceTier(raw string) string {
-	switch strings.TrimSpace(strings.ToLower(raw)) {
+	switch normalized := normalizeLowerTrimmed(raw); normalized {
 	case "":
 		return ""
 	case "auto", "default", "flex", "priority":
-		return strings.TrimSpace(strings.ToLower(raw))
+		return normalized
 	default:
 		return ""
 	}
