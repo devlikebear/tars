@@ -16,6 +16,9 @@ import (
 type projectDashboardPageData struct {
 	Project    project.Project
 	State      *project.ProjectState
+	Status     string
+	Phase      string
+	NextAction string
 	Autopilot  *project.AutopilotRun
 	Activity   []project.Activity
 	Board      project.Board
@@ -284,15 +287,15 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       </article>
       <article class="card">
         <div class="label">Status</div>
-        <div class="value">{{if .State}}{{.State.Status}}{{else}}{{.Project.Status}}{{end}}</div>
+        <div class="value">{{.Status}}</div>
       </article>
       <article class="card">
         <div class="label">Phase</div>
-        <div class="value">{{if .State}}{{.State.Phase}}{{else}}planning{{end}}</div>
+        <div class="value">{{.Phase}}</div>
       </article>
       <article class="card">
         <div class="label">Next Action</div>
-        <div class="value">{{if and .State .State.NextAction}}{{.State.NextAction}}{{else}}-{{end}}</div>
+        <div class="value">{{if .NextAction}}{{.NextAction}}{{else}}-{{end}}</div>
       </article>
     </section>
 
@@ -686,23 +689,20 @@ func buildProjectDashboardList(store *project.Store, autopilot projectAutopilotS
 	}
 	rows := make([]projectDashboardListItem, 0, len(projects))
 	for _, item := range projects {
+		var state *project.ProjectState
+		if current, err := store.GetState(item.ID); err == nil {
+			state = &current
+		}
+		status, phase, nextAction := project.DefaultWorkflowPolicy.ProjectStateSummary(item, state)
 		row := projectDashboardListItem{
 			ID:            strings.TrimSpace(item.ID),
 			Name:          strings.TrimSpace(item.Name),
 			Objective:     strings.TrimSpace(item.Objective),
-			Status:        strings.TrimSpace(item.Status),
-			Phase:         "planning",
+			Status:        status,
+			Phase:         phase,
+			NextAction:    nextAction,
 			UpdatedAt:     strings.TrimSpace(item.UpdatedAt),
 			DashboardPath: fmt.Sprintf("/ui/projects/%s", strings.TrimSpace(item.ID)),
-		}
-		if current, err := store.GetState(item.ID); err == nil {
-			if status := strings.TrimSpace(current.Status); status != "" {
-				row.Status = status
-			}
-			if phase := strings.TrimSpace(current.Phase); phase != "" {
-				row.Phase = phase
-			}
-			row.NextAction = strings.TrimSpace(current.NextAction)
 		}
 		if autopilot != nil {
 			if current, ok := autopilot.Status(item.ID); ok {
@@ -738,9 +738,13 @@ func buildProjectDashboardPageData(
 	activity []project.Activity,
 	board project.Board,
 ) projectDashboardPageData {
+	status, phase, nextAction := project.DefaultWorkflowPolicy.ProjectStateSummary(item, state)
 	data := projectDashboardPageData{
 		Project:    item,
 		State:      state,
+		Status:     status,
+		Phase:      phase,
+		NextAction: nextAction,
 		Autopilot:  autopilotRun,
 		Activity:   activity,
 		Board:      board,

@@ -196,7 +196,7 @@ func (s *Store) UpdateState(projectID string, input ProjectStateUpdateInput) (Pr
 		if _, getErr := s.Get(projectID); getErr != nil {
 			return ProjectState{}, getErr
 		}
-		item = ProjectState{ProjectID: projectID, Phase: "planning", Status: "active"}
+		item = DefaultWorkflowPolicy.DefaultProjectState(projectID)
 	}
 	before := item
 	applyProjectStateUpdateInput(&item, input)
@@ -257,14 +257,10 @@ func (s *Store) FinalizeBrief(id string, sessionStore *session.Store) (Project, 
 	if err != nil {
 		return Project{}, Brief{}, err
 	}
-	_, err = s.UpdateState(created.ID, ProjectStateUpdateInput{
-		Goal:           stringValuePtr(strings.TrimSpace(brief.Goal)),
-		Phase:          stringValuePtr("planning"),
-		Status:         stringValuePtr("active"),
-		NextAction:     stringValuePtr(defaultProjectNextAction(brief)),
-		RemainingTasks: append([]string(nil), brief.OpenQuestions...),
-		LastRunSummary: stringValuePtr("Project initialized from brief."),
-	})
+	initial := DefaultWorkflowPolicy.InitialProjectState(brief).stateInput()
+	initial.Goal = stringValuePtr(strings.TrimSpace(brief.Goal))
+	initial.RemainingTasks = append([]string(nil), brief.OpenQuestions...)
+	_, err = s.UpdateState(created.ID, initial)
 	if err != nil {
 		return Project{}, Brief{}, err
 	}
@@ -407,7 +403,9 @@ func parseProjectStateDocument(raw string) (ProjectState, error) {
 		return ProjectState{}, err
 	}
 	if !hasMeta {
-		return ProjectState{Phase: "planning", Status: "active", Body: strings.TrimSpace(raw)}, nil
+		item := DefaultWorkflowPolicy.DefaultProjectState("")
+		item.Body = strings.TrimSpace(raw)
+		return item, nil
 	}
 	parsed := map[string]any{}
 	if err := yaml.Unmarshal([]byte(metaRaw), &parsed); err != nil {
