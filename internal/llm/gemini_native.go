@@ -76,11 +76,7 @@ func newGeminiNativeClientWithConfig(baseURL, apiKey, model string, config Clien
 }
 
 func (c *GeminiNativeClient) Ask(ctx context.Context, prompt string) (string, error) {
-	resp, err := c.Chat(ctx, []ChatMessage{{Role: "user", Content: prompt}}, ChatOptions{})
-	if err != nil {
-		return "", err
-	}
-	return resp.Message.Content, nil
+	return askFromSinglePrompt(ctx, c.Chat, prompt)
 }
 
 func (c *GeminiNativeClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {

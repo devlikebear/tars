@@ -28,6 +28,28 @@ func TestSanitizeTelegramLogText_RedactsBotToken(t *testing.T) {
 	}
 }
 
+func TestSanitizeTelegramLogText_RedactsURLEncodedToken(t *testing.T) {
+	raw := `telegram relay failed: GET "/relay?token=12345%3AABC&chat_id=1"`
+	redacted := sanitizeTelegramLogText(raw, "12345:ABC")
+	if strings.Contains(strings.ToLower(redacted), "12345%3aabc") {
+		t.Fatalf("expected encoded token to be redacted, got %q", redacted)
+	}
+	if !strings.Contains(redacted, "token=[REDACTED]") {
+		t.Fatalf("expected encoded token marker, got %q", redacted)
+	}
+}
+
+func TestSanitizeTelegramLogText_RedactsJSONEscapedBotPath(t *testing.T) {
+	raw := `{"description":"Post \"https:\/\/api.telegram.org\/bot12345:ABC\/sendMessage\": EOF"}`
+	redacted := sanitizeTelegramLogText(raw, "12345:ABC")
+	if strings.Contains(redacted, "12345:ABC") {
+		t.Fatalf("expected token to be redacted, got %q", redacted)
+	}
+	if !strings.Contains(redacted, `\/bot[REDACTED]\/sendMessage`) {
+		t.Fatalf("expected escaped bot path to be redacted, got %q", redacted)
+	}
+}
+
 func TestTelegramUpdatePoller_FetchUpdates_RedactsTokenInError(t *testing.T) {
 	poller := newTelegramUpdatePoller("secret-token", zerolog.New(io.Discard), func(context.Context, telegramUpdate) {})
 	if poller == nil {

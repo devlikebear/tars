@@ -26,14 +26,14 @@ type OpenAICompatibleClient struct {
 type openAICompatibleResponseContextKey struct{}
 
 func newOpenAICompatibleClientWithConfig(label, baseURL, apiKey, model string, config ClientConfig) (*OpenAICompatibleClient, error) {
-	if strings.TrimSpace(baseURL) == "" {
-		return nil, fmt.Errorf("%s base url is required", label)
+	if _, err := requireConfiguredValue(label, "base url", baseURL); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("%s api key is required", label)
+	if _, err := requireConfiguredValue(label, "api key", apiKey); err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(model) == "" {
-		return nil, fmt.Errorf("%s model is required", label)
+	if _, err := requireConfiguredValue(label, "model", model); err != nil {
+		return nil, err
 	}
 
 	return &OpenAICompatibleClient{
@@ -287,11 +287,7 @@ func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http
 }
 
 func (c *OpenAICompatibleClient) Ask(ctx context.Context, prompt string) (string, error) {
-	resp, err := c.Chat(ctx, []ChatMessage{{Role: "user", Content: prompt}}, ChatOptions{})
-	if err != nil {
-		return "", err
-	}
-	return resp.Message.Content, nil
+	return askFromSinglePrompt(ctx, c.Chat, prompt)
 }
 
 func orderedToolCalls(m map[int]ToolCall) []ToolCall {
