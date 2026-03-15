@@ -311,7 +311,7 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, mainSessionI
 	})
 }
 
-func newHealthzAPIHandler(nowFn func() time.Time) http.Handler {
+func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string]any) http.Handler {
 	if nowFn == nil {
 		nowFn = time.Now
 	}
@@ -319,11 +319,15 @@ func newHealthzAPIHandler(nowFn func() time.Time) http.Handler {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		body := map[string]any{
 			"ok":        true,
 			"component": "tars",
 			"time":      nowFn().UTC().Format(time.RFC3339),
-		})
+		}
+		if dashboardAuthStatus != nil {
+			body["dashboard_auth"] = dashboardAuthStatus
+		}
+		writeJSON(w, http.StatusOK, body)
 	})
 }
 

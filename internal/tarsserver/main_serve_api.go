@@ -415,7 +415,7 @@ func buildAPIMux(
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
-	healthzHandler := newHealthzAPIHandler(nowFn)
+	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg))
 	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
 	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmClient, logger)
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)

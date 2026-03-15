@@ -115,6 +115,33 @@ func TestMiddleware_Off_AllowsAnyRequest(t *testing.T) {
 	}
 }
 
+func TestMiddleware_LoopbackSkipPaths_SkipOnlyAppliesToLoopbackRequests(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:              ModeRequired,
+		BearerToken:       "dev-token",
+		LoopbackSkipPaths: []string{"/dashboards", "/ui/projects/*"},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.URL.Path))
+	}))
+
+	loopbackReq := httptest.NewRequest(http.MethodGet, "/ui/projects/demo", nil)
+	loopbackReq.RemoteAddr = "127.0.0.1:1234"
+	loopbackRec := httptest.NewRecorder()
+	h.ServeHTTP(loopbackRec, loopbackReq)
+	if loopbackRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for loopback skip path, got %d body=%q", loopbackRec.Code, loopbackRec.Body.String())
+	}
+
+	externalReq := httptest.NewRequest(http.MethodGet, "/ui/projects/demo", nil)
+	externalReq.RemoteAddr = "192.0.2.44:5555"
+	externalRec := httptest.NewRecorder()
+	h.ServeHTTP(externalRec, externalReq)
+	if externalRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for external request on loopback-only skip path, got %d body=%q", externalRec.Code, externalRec.Body.String())
+	}
+}
+
 func TestMiddleware_SetsWorkspaceIDFromHeader(t *testing.T) {
 	mw := NewMiddleware(Options{
 		Mode:            ModeOff,

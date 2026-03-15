@@ -88,7 +88,7 @@ func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 	}
 }
 
-func TestApplyAPIMiddleware_AllowsDashboardRoutesWithoutAuthWhenDashboardAuthIsOff(t *testing.T) {
+func TestApplyAPIMiddleware_DashboardRoutesWithoutAuthAreLoopbackOnlyWhenDashboardAuthIsOff(t *testing.T) {
 	cfg := config.Config{
 		APIAuthMode:       "required",
 		APIUserToken:      "user-token",
@@ -98,19 +98,29 @@ func TestApplyAPIMiddleware_AllowsDashboardRoutesWithoutAuthWhenDashboardAuthIsO
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(r.URL.Path))
 	}), io.Discard)
-
 	for _, path := range []string{"/dashboards", "/ui/projects/demo"} {
-		t.Run(path, func(t *testing.T) {
+		t.Run("loopback "+path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.RemoteAddr = "127.0.0.1:5555"
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200 for loopback dashboard path %q, got %d body=%q", path, rec.Code, rec.Body.String())
+			}
+			if got := strings.TrimSpace(rec.Body.String()); got != path {
+				t.Fatalf("expected dashboard path body %q, got %q", path, got)
+			}
+		})
+
+		t.Run("external "+path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			req.RemoteAddr = "192.0.2.10:5555"
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 
-			if rec.Code != http.StatusOK {
-				t.Fatalf("expected 200 for dashboard path %q, got %d body=%q", path, rec.Code, rec.Body.String())
-			}
-			if got := strings.TrimSpace(rec.Body.String()); got != path {
-				t.Fatalf("expected dashboard path body %q, got %q", path, got)
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("expected 401 for external dashboard path %q, got %d body=%q", path, rec.Code, rec.Body.String())
 			}
 		})
 	}
