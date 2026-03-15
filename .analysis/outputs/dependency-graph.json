@@ -1,0 +1,248 @@
+{
+  "README.md": [],
+  "go.mod": [],
+  "cmd/tars/main.go": [
+    "internal/buildinfo/buildinfo.go",
+    "internal/envloader/load.go"
+  ],
+  "cmd/tars/client_main.go": [
+    "internal/tarsclient/app_model.go",
+    "pkg/tarsclient/browser.go"
+  ],
+  "cmd/tars/server_main.go": [
+    "internal/tarsserver/browser_otp_requester.go"
+  ],
+  "cmd/tars/assistant_main.go": [
+    "internal/assistant/doctor.go",
+    "pkg/tarsclient/browser.go"
+  ],
+  "internal/config/load.go": [],
+  "internal/config/types.go": [],
+  "internal/tarsclient/client_main.go": [
+    "internal/secrets/secrets.go"
+  ],
+  "internal/tarsclient/app_model.go": [],
+  "internal/tarsclient/app_update.go": [],
+  "internal/tarsclient/runtime.go": [
+    "pkg/tarsclient/browser.go"
+  ],
+  "internal/tarsclient/chat.go": [
+    "pkg/tarsclient/browser.go"
+  ],
+  "internal/tarsserver/main.go": [
+    "internal/cli/errors.go",
+    "internal/envloader/load.go"
+  ],
+  "internal/tarsserver/main_bootstrap.go": [
+    "internal/cli/errors.go",
+    "internal/config/defaults.go",
+    "internal/heartbeat/heartbeat.go",
+    "internal/llm/anthropic.go",
+    "internal/memory/experience.go",
+    "internal/session/compaction.go",
+    "internal/usage/client.go"
+  ],
+  "internal/tarsserver/main_serve_api.go": [
+    "internal/approval/otp.go",
+    "internal/cli/errors.go",
+    "internal/config/defaults.go",
+    "internal/cron/helpers.go",
+    "internal/extensions/manager.go",
+    "internal/gateway/executor.go",
+    "internal/heartbeat/heartbeat.go",
+    "internal/llm/anthropic.go",
+    "internal/mcp/client.go",
+    "internal/ops/manager.go",
+    "internal/project/activity.go",
+    "internal/research/service.go",
+    "internal/schedule/store.go",
+    "internal/tool/apply_patch.go",
+    "internal/usage/client.go"
+  ],
+  "internal/tarsserver/main_options.go": [
+    "internal/session/compaction.go"
+  ],
+  "internal/tarsserver/handlers.go": [
+    "internal/heartbeat/heartbeat.go",
+    "internal/serverauth/middleware.go"
+  ],
+  "internal/tarsserver/handler_chat.go": [
+    "internal/agent/hooks.go",
+    "internal/extensions/manager.go",
+    "internal/gateway/executor.go",
+    "internal/llm/anthropic.go",
+    "internal/ops/manager.go",
+    "internal/project/activity.go",
+    "internal/prompt/bootstrap_sections.go",
+    "internal/research/service.go",
+    "internal/schedule/store.go",
+    "internal/secrets/secrets.go",
+    "internal/session/compaction.go",
+    "internal/skill/frontmatter.go",
+    "internal/tool/apply_patch.go",
+    "internal/usage/client.go"
+  ],
+  "internal/tarsserver/handler_chat_context.go": [
+    "internal/extensions/manager.go",
+    "internal/llm/anthropic.go",
+    "internal/project/activity.go",
+    "internal/serverauth/middleware.go",
+    "internal/session/compaction.go",
+    "internal/tool/apply_patch.go"
+  ],
+  "internal/tarsserver/handler_chat_execution.go": [
+    "internal/agent/hooks.go",
+    "internal/llm/anthropic.go",
+    "internal/session/compaction.go"
+  ],
+  "internal/tarsserver/handler_chat_pipeline.go": [
+    "internal/llm/anthropic.go",
+    "internal/session/compaction.go",
+    "internal/tool/apply_patch.go",
+    "internal/usage/client.go"
+  ],
+  "internal/tarsserver/helpers_build_tools.go": [
+    "internal/config/defaults.go",
+    "internal/cron/helpers.go",
+    "internal/extensions/manager.go",
+    "internal/gateway/executor.go",
+    "internal/heartbeat/heartbeat.go",
+    "internal/project/activity.go",
+    "internal/tool/apply_patch.go",
+    "internal/usage/client.go"
+  ],
+  "internal/tarsserver/helpers_build_extensions.go": [
+    "internal/assetpath/resolve.go",
+    "internal/config/defaults.go",
+    "internal/extensions/manager.go",
+    "internal/plugin/loader.go",
+    "internal/skill/frontmatter.go"
+  ],
+  "internal/agent/loop.go": [
+    "internal/llm/anthropic.go",
+    "internal/secrets/secrets.go",
+    "internal/tool/apply_patch.go"
+  ],
+  "internal/session/session.go": [],
+  "internal/session/transcript.go": [],
+  "internal/session/compaction.go": [],
+  "internal/llm/provider.go": [
+    "internal/auth/codex_oauth.go"
+  ],
+  "internal/prompt/builder.go": [],
+  "internal/extensions/manager.go": [
+    "internal/config/defaults.go",
+    "internal/plugin/loader.go",
+    "internal/skill/frontmatter.go",
+    "internal/tool/apply_patch.go"
+  ],
+  "internal/gateway/runtime.go": [
+    "internal/browser/flow.go"
+  ],
+  "internal/browser/service.go": [],
+  "internal/tool/tool.go": [
+    "internal/llm/anthropic.go"
+  ],
+  "internal/assistant/runtime.go": [
+    "pkg/tarsclient/browser.go"
+  ],
+  "internal/project/store.go": [],
+  "internal/memory/workspace.go": [],
+  "internal/usage/tracker.go": [],
+  "internal/research/service.go": [],
+  "internal/cron/manager.go": [],
+  "pkg/tarsclient/client.go": [],
+  "internal/mcp/client.go": [
+    "internal/config/defaults.go"
+  ],
+  "internal/skill/loader.go": [],
+  "internal/tarsserver/middleware.go": [
+    "internal/config/defaults.go",
+    "internal/serverauth/middleware.go"
+  ],
+  "internal/serverauth/middleware.go": [],
+  "internal/plugin/loader.go": [],
+  "internal/plugin/manifest.go": [],
+  "internal/plugin/types.go": [
+    "internal/config/defaults.go"
+  ],
+  "internal/schedule/store.go": [
+    "internal/cron/helpers.go",
+    "internal/scheduleexpr/normalize.go"
+  ],
+  "internal/ops/manager.go": [],
+  "internal/ops/manager_cleanup.go": [],
+  "internal/ops/manager_system.go": [],
+  "internal/ops/manager_approvals.go": [],
+  "internal/gateway/runtime_runs.go": [
+    "internal/session/compaction.go"
+  ],
+  "internal/gateway/runtime_run_bootstrap.go": [
+    "internal/session/compaction.go"
+  ],
+  "internal/gateway/runtime_run_execute.go": [
+    "internal/project/activity.go",
+    "internal/serverauth/middleware.go",
+    "internal/session/compaction.go",
+    "internal/usage/client.go"
+  ],
+  "internal/gateway/runtime_persist.go": [],
+  "internal/gateway/types.go": [
+    "internal/browser/flow.go",
+    "internal/session/compaction.go"
+  ],
+  "internal/browser/playwright_flow_runner.go": [],
+  "internal/browser/playwright_exec.go": [],
+  "internal/browser/flow.go": [],
+  "internal/config/defaults.go": [],
+  "internal/config/defaults_apply.go": [],
+  "internal/config/env.go": [],
+  "internal/config/merge.go": [],
+  "internal/config/yaml.go": [],
+  "cmd/tars/doctor_main.go": [
+    "internal/config/defaults.go",
+    "internal/llm/anthropic.go"
+  ],
+  "cmd/tars/service_main.go": [
+    "cmd/tars/doctor_main.go"
+  ],
+  "cmd/tars/init_main.go": [
+    "internal/assetpath/resolve.go",
+    "internal/config/defaults.go",
+    "internal/memory/experience.go",
+    "internal/plugin/loader.go"
+  ],
+  "config/tars.config.example.yaml": [],
+  "internal/approval/otp.go": [],
+  "internal/auth/codex_oauth.go": [],
+  "internal/auth/token.go": [],
+  "internal/browserrelay/server.go": [],
+  "internal/llm/anthropic.go": [],
+  "internal/llm/openai_compat_client.go": [],
+  "internal/llm/gemini_native.go": [
+    "internal/llm/gemini_native_chat.go",
+    "internal/llm/gemini_native_convert.go"
+  ],
+  "internal/project/activity.go": [],
+  "internal/project/activity_auto.go": [],
+  "internal/project/brief_state.go": [
+    "internal/session/compaction.go"
+  ],
+  "internal/project/github_flow.go": [],
+  "internal/project/kanban.go": [],
+  "internal/project/orchestrator.go": [],
+  "internal/project/project_runner.go": [],
+  "internal/project/task_report.go": [],
+  "internal/project/worker_profiles.go": [],
+  "internal/gateway/project_task_runner.go": [
+    "internal/project/activity.go"
+  ],
+  "internal/tarsserver/dashboard.go": [
+    "internal/project/activity.go"
+  ],
+  "internal/llm/openai_codex_client.go": [
+    "internal/auth/codex_oauth.go"
+  ],
+  "plugins/project-swarm/skills/project-autopilot/SKILL.md": [],
+  "plugins/project-swarm/skills/project-start/SKILL.md": []
+}
