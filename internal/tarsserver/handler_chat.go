@@ -25,7 +25,7 @@ import (
 
 func resolveChatSession(store *session.Store, sessionID string, mainSessionID string, userMessage string) (string, error) {
 	if strings.TrimSpace(sessionID) == "" {
-		if isProjectKickoffMessage(userMessage) {
+		if project.DefaultWorkflowPolicy.IsKickoffMessage(userMessage) {
 			return createFallbackChatSession(store)
 		}
 		id := strings.TrimSpace(mainSessionID)
@@ -223,7 +223,7 @@ func resolveSkillForMessage(message string, manager *extensions.Manager, workspa
 	if hasActiveProjectBrief(workspaceDir, sessionID) {
 		return projectStart
 	}
-	if isProjectKickoffMessage(message) {
+	if project.DefaultWorkflowPolicy.IsKickoffMessage(message) {
 		return projectStart
 	}
 	return nil
@@ -251,37 +251,7 @@ func hasActiveProjectBrief(workspaceDir, sessionID string) bool {
 	if err != nil {
 		return false
 	}
-	switch strings.ToLower(strings.TrimSpace(item.Status)) {
-	case "collecting", "ready":
-		return true
-	default:
-		return false
-	}
-}
-
-func isProjectKickoffMessage(message string) bool {
-	lower := strings.ToLower(strings.TrimSpace(message))
-	if lower == "" || strings.HasPrefix(lower, "/") {
-		return false
-	}
-	projectHints := []string{"project", "프로젝트"}
-	actionHints := []string{"start", "시작", "만들", "build", "create", "개발", "구축"}
-	hasProject := false
-	for _, hint := range projectHints {
-		if strings.Contains(lower, hint) {
-			hasProject = true
-			break
-		}
-	}
-	if !hasProject {
-		return false
-	}
-	for _, hint := range actionHints {
-		if strings.Contains(lower, hint) {
-			return true
-		}
-	}
-	return false
+	return project.DefaultWorkflowPolicy.HasActiveBriefStatus(item.Status)
 }
 
 func setupAgentLoop(

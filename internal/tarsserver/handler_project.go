@@ -457,9 +457,10 @@ func newProjectAPIHandler(
 				return
 			}
 			orchestrator := project.NewOrchestratorWithGitHubAuthChecker(store, taskRunner, githubAuthChecker)
-			stage := strings.ToLower(strings.TrimSpace(req.Stage))
-			if stage == "" {
-				stage = "todo"
+			stage, ok := project.DefaultWorkflowPolicy.NormalizeDispatchStage(req.Stage)
+			if !ok {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage must be todo or review"})
+				return
 			}
 
 			var (
@@ -471,9 +472,6 @@ func newProjectAPIHandler(
 				report, err = orchestrator.DispatchTodo(r.Context(), projectID)
 			case "review":
 				report, err = orchestrator.DispatchReview(r.Context(), projectID)
-			default:
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage must be todo or review"})
-				return
 			}
 			if err != nil {
 				logger.Error().Err(err).Str("project_id", projectID).Str("stage", stage).Msg("dispatch project tasks failed")

@@ -485,15 +485,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func filterDispatchableTasksByStatus(status string, tasks []BoardTask) []BoardTask {
-	if strings.TrimSpace(status) != "todo" || len(tasks) <= 1 {
-		return tasks
-	}
-	for _, task := range tasks {
-		if strings.TrimSpace(task.ID) == "pm-seed-bootstrap" {
-			return []BoardTask{task}
-		}
-	}
-	return tasks
+	return DefaultWorkflowPolicy.FilterDispatchableTasks(status, tasks)
 }
 
 func ternaryStatus(ok bool, whenTrue, whenFalse string) string {
