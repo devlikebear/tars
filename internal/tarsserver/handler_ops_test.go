@@ -61,3 +61,31 @@ func TestOpsAPI_StatusAndApprovalFlow(t *testing.T) {
 		t.Fatalf("expected 200 for apply, got %d body=%q", applyRec.Code, applyRec.Body.String())
 	}
 }
+
+func TestOpsAPI_CleanupApplyRejectsOversizedBody(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	home := filepath.Join(t.TempDir(), "home")
+	if err := os.MkdirAll(filepath.Join(home, "Downloads"), 0o755); err != nil {
+		t.Fatalf("mkdir downloads: %v", err)
+	}
+	mgr := ops.NewManager(workspace, ops.Options{HomeDir: home})
+	handler := newOpsAPIHandler(mgr, zerolog.New(io.Discard), nil)
+
+	body := `{"approval_id":"` + strings.Repeat("a", int(defaultJSONBodyLimitBytes+1)) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/ops/cleanup/apply", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	if payload["error"] != "request body too large" {
+		t.Fatalf("unexpected body: %+v", payload)
+	}
+}

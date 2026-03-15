@@ -1,7 +1,6 @@
 package tarsserver
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -57,8 +56,7 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 				MonthlyUSD *float64 `json:"monthly_usd,omitempty"`
 				Mode       *string  `json:"mode,omitempty"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			next := tracker.Limits()

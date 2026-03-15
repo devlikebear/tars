@@ -2,8 +2,6 @@ package tarsserver
 
 import (
 	"context"
-	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 
@@ -76,8 +74,7 @@ func newProjectAPIHandler(
 					Summary            *string  `json:"summary,omitempty"`
 					Body               *string  `json:"body,omitempty"`
 				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+				if !decodeJSONBody(w, r, &req) {
 					return
 				}
 				updated, err := store.UpdateBrief(briefID, project.BriefUpdateInput{
@@ -167,8 +164,7 @@ func newProjectAPIHandler(
 				Instructions string `json:"instructions,omitempty"`
 				CloneRepo    bool   `json:"clone_repo,omitempty"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			created, err := store.Create(project.CreateInput{
@@ -224,8 +220,7 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusOK, item)
 			case http.MethodPatch:
 				var req project.UpdatePayload
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+				if !decodeJSONBody(w, r, &req) {
 					return
 				}
 				updated, err := store.Update(projectID, req.ToUpdateInput())
@@ -289,8 +284,7 @@ func newProjectAPIHandler(
 					StopReason        *string  `json:"stop_reason,omitempty"`
 					Body              *string  `json:"body,omitempty"`
 				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+				if !decodeJSONBody(w, r, &req) {
 					return
 				}
 				updated, err := store.UpdateState(projectID, project.ProjectStateUpdateInput{
@@ -355,8 +349,7 @@ func newProjectAPIHandler(
 					Timestamp string            `json:"timestamp,omitempty"`
 					Meta      map[string]string `json:"meta,omitempty"`
 				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+				if !decodeJSONBody(w, r, &req) {
 					return
 				}
 				item, err := store.AppendActivity(projectID, project.ActivityAppendInput{
@@ -410,8 +403,7 @@ func newProjectAPIHandler(
 					Columns []string            `json:"columns,omitempty"`
 					Tasks   []project.BoardTask `json:"tasks,omitempty"`
 				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+				if !decodeJSONBody(w, r, &req) {
 					return
 				}
 				item, err := store.UpdateBoard(projectID, project.BoardUpdateInput{
@@ -452,8 +444,7 @@ func newProjectAPIHandler(
 			var req struct {
 				Stage string `json:"stage,omitempty"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			if !decodeOptionalJSONBody(w, r, &req) {
 				return
 			}
 			orchestrator := project.NewOrchestratorWithGitHubAuthChecker(store, taskRunner, githubAuthChecker)
@@ -541,8 +532,7 @@ func newProjectAPIHandler(
 			var req struct {
 				SessionID string `json:"session_id,omitempty"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			sessionID := strings.TrimSpace(req.SessionID)

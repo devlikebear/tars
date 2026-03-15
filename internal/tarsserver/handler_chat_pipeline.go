@@ -44,9 +44,8 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		defer release()
 	}
 
-	req, status, message := decodeChatRequestPayload(r)
-	if status != 0 {
-		writeError(w, status, "", message)
+	req, ok := decodeChatRequestPayload(w, r)
+	if !ok {
 		return
 	}
 

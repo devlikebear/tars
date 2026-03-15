@@ -1,7 +1,6 @@
 package tarsserver
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -35,8 +34,7 @@ func newScheduleAPIHandler(store *schedule.Store, logger zerolog.Logger) http.Ha
 				ProjectID string `json:"project_id,omitempty"`
 				Timezone  string `json:"timezone,omitempty"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			created, err := store.Create(schedule.CreateInput{
@@ -77,8 +75,7 @@ func newScheduleAPIHandler(store *schedule.Store, logger zerolog.Logger) http.Ha
 				ProjectID *string `json:"project_id,omitempty"`
 				Timezone  *string `json:"timezone,omitempty"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			updated, err := store.Update(id, schedule.UpdateInput{
