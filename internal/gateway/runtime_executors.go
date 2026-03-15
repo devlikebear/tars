@@ -115,8 +115,8 @@ func (r *Runtime) executorNamesLocked() []string {
 }
 
 func (r *Runtime) resolveExecutor(agentName string) (string, AgentExecutor, error) {
-	if r == nil {
-		return "", nil, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return "", nil, err
 	}
 	requested := strings.TrimSpace(agentName)
 

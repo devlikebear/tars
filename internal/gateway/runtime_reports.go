@@ -63,8 +63,8 @@ func (r *Runtime) ReportsSummary() (ReportSummary, error) {
 }
 
 func (r *Runtime) ReportsSummaryByWorkspace(workspaceID string) (ReportSummary, error) {
-	if r == nil || !r.opts.Enabled {
-		return ReportSummary{}, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return ReportSummary{}, err
 	}
 	targetWorkspaceID := normalizeWorkspaceID(workspaceID)
 	r.mu.RLock()
@@ -119,8 +119,8 @@ func (r *Runtime) ReportsRuns(limit int) (ReportRuns, error) {
 }
 
 func (r *Runtime) ReportsRunsByWorkspace(workspaceID string, limit int) (ReportRuns, error) {
-	if r == nil || !r.opts.Enabled {
-		return ReportRuns{}, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return ReportRuns{}, err
 	}
 	if !r.opts.GatewayArchiveEnabled {
 		return ReportRuns{}, fmt.Errorf("gateway archive report is disabled")
@@ -142,8 +142,8 @@ func (r *Runtime) ReportsChannels(limit int) (ReportChannels, error) {
 }
 
 func (r *Runtime) ReportsChannelsByWorkspace(workspaceID string, limit int) (ReportChannels, error) {
-	if r == nil || !r.opts.Enabled {
-		return ReportChannels{}, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return ReportChannels{}, err
 	}
 	if !r.opts.GatewayArchiveEnabled {
 		return ReportChannels{}, fmt.Errorf("gateway archive report is disabled")

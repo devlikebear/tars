@@ -149,8 +149,8 @@ func (r *Runtime) CancelByWorkspace(workspaceID, runID string) (Run, error) {
 }
 
 func (r *Runtime) cancelRun(runID, workspaceID string) (Run, error) {
-	if r == nil {
-		return Run{}, fmt.Errorf("gateway runtime is disabled")
+	if err := r.requireEnabled(); err != nil {
+		return Run{}, err
 	}
 	runID = strings.TrimSpace(runID)
 	targetWorkspaceID := strings.TrimSpace(workspaceID)
