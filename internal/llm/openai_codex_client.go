@@ -33,6 +33,7 @@ type OpenAICodexClient struct {
 	authMode      string
 	oauthProvider string
 	apiKey        string
+	authConfig    auth.ProviderAuthConfig
 	config        ClientConfig
 	httpClient    *http.Client
 
@@ -45,16 +46,44 @@ type OpenAICodexClient struct {
 }
 
 func NewOpenAICodexClient(baseURL, model, authMode, oauthProvider, apiKey string) (*OpenAICodexClient, error) {
-	return newOpenAICodexClientWithConfig(
+	return newOpenAICodexClientWithAuthConfig(
 		baseURL,
 		model,
-		authMode,
-		oauthProvider,
-		apiKey,
+		auth.ProviderAuthConfig{
+			Provider:      openAICodexProviderLabel,
+			AuthMode:      authMode,
+			OAuthProvider: oauthProvider,
+			APIKey:        apiKey,
+		},
 		DefaultClientConfig(),
 		nil,
 		nil,
 	)
+}
+
+func newOpenAICodexClientWithAuthConfig(
+	baseURL, model string,
+	authConfig auth.ProviderAuthConfig,
+	config ClientConfig,
+	resolver codexCredentialResolver,
+	refresher codexCredentialRefresher,
+) (*OpenAICodexClient, error) {
+	authConfig = normalizeOpenAICodexAuthConfig(authConfig)
+	client, err := newOpenAICodexClientWithConfig(
+		baseURL,
+		model,
+		authConfig.AuthMode,
+		authConfig.OAuthProvider,
+		authConfig.APIKey,
+		config,
+		resolver,
+		refresher,
+	)
+	if err != nil {
+		return nil, err
+	}
+	client.authConfig = authConfig
+	return client, nil
 }
 
 func newOpenAICodexClientWithConfig(
@@ -79,11 +108,17 @@ func newOpenAICodexClientWithConfig(
 	}
 
 	client := &OpenAICodexClient{
-		baseURL:           strings.TrimRight(baseURL, "/"),
-		model:             strings.TrimSpace(model),
-		authMode:          mode,
-		oauthProvider:     strings.TrimSpace(strings.ToLower(oauthProvider)),
-		apiKey:            strings.TrimSpace(apiKey),
+		baseURL:       strings.TrimRight(baseURL, "/"),
+		model:         strings.TrimSpace(model),
+		authMode:      mode,
+		oauthProvider: strings.TrimSpace(strings.ToLower(oauthProvider)),
+		apiKey:        strings.TrimSpace(apiKey),
+		authConfig: normalizeOpenAICodexAuthConfig(auth.ProviderAuthConfig{
+			Provider:      openAICodexProviderLabel,
+			AuthMode:      mode,
+			OAuthProvider: strings.TrimSpace(strings.ToLower(oauthProvider)),
+			APIKey:        strings.TrimSpace(apiKey),
+		}),
 		config:            config,
 		httpClient:        newHTTPClient(config.HTTPTimeout),
 		resolveCredential: resolver,
@@ -259,21 +294,11 @@ func (c *OpenAICodexClient) setOverrideCredential(cred auth.CodexCredential) {
 }
 
 func (c *OpenAICodexClient) defaultResolveCredential() (auth.CodexCredential, error) {
-	if c.authMode == "api-key" {
-		if strings.TrimSpace(c.apiKey) == "" {
-			return auth.CodexCredential{}, fmt.Errorf("%s api key is required for auth mode api-key", openAICodexProviderLabel)
-		}
-		return auth.CodexCredential{
-			AccessToken: strings.TrimSpace(c.apiKey),
-			AccountID:   auth.ParseCodexAccountIDFromJWT(strings.TrimSpace(c.apiKey)),
-			Source:      auth.CodexCredentialSourceEnv,
-		}, nil
-	}
-	return auth.ResolveCodexCredential(auth.CodexResolveOptions{})
+	return auth.ResolveProviderCredential(c.authConfig)
 }
 
 func (c *OpenAICodexClient) defaultRefreshCredential(ctx context.Context, cred auth.CodexCredential) (auth.CodexCredential, error) {
-	return auth.RefreshCodexCredential(ctx, cred, auth.CodexRefreshOptions{PersistFile: true})
+	return auth.RefreshProviderCredential(ctx, c.authConfig, cred, auth.ProviderRefreshOptions{PersistSource: true})
 }
 
 func resolveOpenAICodexResponsesURL(baseURL string) string {
@@ -285,6 +310,24 @@ func resolveOpenAICodexResponsesURL(baseURL string) string {
 		return normalized + "/responses"
 	}
 	return normalized + "/codex/responses"
+}
+
+func normalizeOpenAICodexAuthConfig(config auth.ProviderAuthConfig) auth.ProviderAuthConfig {
+	if strings.TrimSpace(config.Provider) == "" {
+		config.Provider = openAICodexProviderLabel
+	}
+	config.Provider = strings.TrimSpace(strings.ToLower(config.Provider))
+	config.AuthMode = strings.TrimSpace(strings.ToLower(config.AuthMode))
+	config.OAuthProvider = strings.TrimSpace(strings.ToLower(config.OAuthProvider))
+	config.APIKey = strings.TrimSpace(config.APIKey)
+	config.CodexHome = strings.TrimSpace(config.CodexHome)
+	if config.AuthMode == "" {
+		config.AuthMode = "oauth"
+	}
+	if config.OAuthProvider == "" {
+		config.OAuthProvider = openAICodexProviderLabel
+	}
+	return config
 }
 
 func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model string, stream bool, nameMap openAICodexToolNameMap) (map[string]any, error) {

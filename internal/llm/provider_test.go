@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/devlikebear/tars/internal/auth"
 )
 
 func TestNewProvider_Unsupported(t *testing.T) {
@@ -42,6 +44,73 @@ func TestNewProvider_OpenAICodex_UsesCodexClient(t *testing.T) {
 	}
 	if _, ok := client.(*OpenAICodexClient); !ok {
 		t.Fatalf("expected OpenAICodexClient, got %T", client)
+	}
+}
+
+func TestProviderOptionsAuthConfig_DefaultsOpenAICodexOAuth(t *testing.T) {
+	config := providerAuthConfig(ProviderOptions{
+		Provider: "openai-codex",
+		APIKey:   "token",
+	})
+	if config.Provider != "openai-codex" {
+		t.Fatalf("expected provider openai-codex, got %+v", config)
+	}
+	if config.AuthMode != "oauth" {
+		t.Fatalf("expected default auth mode oauth, got %+v", config)
+	}
+	if config.OAuthProvider != "openai-codex" {
+		t.Fatalf("expected default oauth provider openai-codex, got %+v", config)
+	}
+	if config.APIKey != "token" {
+		t.Fatalf("expected api key to carry through, got %+v", config)
+	}
+}
+
+func TestProviderOptionsAuthConfig_PrefersExplicitAuthConfig(t *testing.T) {
+	config := providerAuthConfig(ProviderOptions{
+		Provider:      "openai",
+		AuthMode:      "api-key",
+		OAuthProvider: "legacy",
+		APIKey:        "legacy-key",
+		AuthConfig: auth.ProviderAuthConfig{
+			Provider:      "anthropic",
+			AuthMode:      "oauth",
+			OAuthProvider: "claude-code",
+			APIKey:        "override-key",
+		},
+	})
+	if config.Provider != "anthropic" || config.AuthMode != "oauth" || config.OAuthProvider != "claude-code" {
+		t.Fatalf("expected explicit auth config to win, got %+v", config)
+	}
+	if config.APIKey != "override-key" {
+		t.Fatalf("expected explicit api key override, got %+v", config)
+	}
+}
+
+func TestNewProvider_OpenAICodex_PassesExplicitAuthConfig(t *testing.T) {
+	client, err := NewProvider(ProviderOptions{
+		Provider: "openai-codex",
+		BaseURL:  "https://chatgpt.com/backend-api",
+		Model:    "gpt-5.3-codex",
+		AuthConfig: auth.ProviderAuthConfig{
+			Provider:  "openai-codex",
+			AuthMode:  "api-key",
+			APIKey:    "token",
+			CodexHome: "/tmp/custom-codex-home",
+		},
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	codexClient, ok := client.(*OpenAICodexClient)
+	if !ok {
+		t.Fatalf("expected OpenAICodexClient, got %T", client)
+	}
+	if codexClient.authConfig.AuthMode != "api-key" || codexClient.authConfig.APIKey != "token" {
+		t.Fatalf("unexpected auth config: %+v", codexClient.authConfig)
+	}
+	if codexClient.authConfig.CodexHome != "/tmp/custom-codex-home" {
+		t.Fatalf("expected CodexHome override to propagate, got %+v", codexClient.authConfig)
 	}
 }
 
