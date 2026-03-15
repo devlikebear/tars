@@ -54,6 +54,47 @@ func TestDecodeJSONBody_WritesInvalidRequestBodyError(t *testing.T) {
 	}
 }
 
+func TestDecodeJSONBodyWithLimit_WritesRequestEntityTooLarge(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/v1/test", strings.NewReader(`{"name":"too-long"}`))
+	rec := httptest.NewRecorder()
+	var payload struct {
+		Name string `json:"name"`
+	}
+
+	ok := decodeJSONBodyWithLimit(rec, req, &payload, 8, false)
+
+	if ok {
+		t.Fatal("expected decodeJSONBodyWithLimit to reject oversized body")
+	}
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body["error"] != "request body too large" {
+		t.Fatalf("expected request body too large error, got %+v", body)
+	}
+}
+
+func TestDecodeJSONBodyWithLimit_AllowsOptionalEOF(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/v1/test", strings.NewReader(""))
+	rec := httptest.NewRecorder()
+	var payload struct {
+		Name string `json:"name"`
+	}
+
+	ok := decodeJSONBodyWithLimit(rec, req, &payload, 8, true)
+
+	if !ok {
+		t.Fatal("expected decodeJSONBodyWithLimit to allow empty body when EOF is permitted")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected recorder to stay untouched, got %d", rec.Code)
+	}
+}
+
 func TestParsePositiveLimit_WritesValidationError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/test?limit=0", nil)
 	rec := httptest.NewRecorder()

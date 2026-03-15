@@ -383,8 +383,7 @@ func newEventsAPIHandler(broker *eventBroker, store *notificationStore, logger z
 		var req struct {
 			LastID int64 `json:"last_id"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		if !decodeJSONBody(w, r, &req) {
 			return
 		}
 		role := normalizeNotificationRoleKey(serverauth.RoleFromRequest(r))

@@ -2,7 +2,6 @@ package tarsserver
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -64,8 +63,7 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 		var req struct {
 			ApprovalID string `json:"approval_id"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		if !decodeJSONBody(w, r, &req) {
 			return
 		}
 		result, err := manager.ApplyCleanup(r.Context(), strings.TrimSpace(req.ApprovalID))

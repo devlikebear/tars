@@ -1,7 +1,6 @@
 package tarsserver
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -342,8 +341,7 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.
 			KeepRecent       int    `json:"keep_recent"`
 			KeepRecentTokens int    `json:"keep_recent_tokens"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		if !decodeJSONBody(w, r, &req) {
 			return
 		}
 

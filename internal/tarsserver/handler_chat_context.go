@@ -1,7 +1,6 @@
 package tarsserver
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -29,15 +28,16 @@ type chatRunState struct {
 	injectedSchemas     []llm.ToolSchema
 }
 
-func decodeChatRequestPayload(r *http.Request) (chatRequestPayload, int, string) {
+func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
 	var req chatRequestPayload
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return chatRequestPayload{}, http.StatusBadRequest, "invalid request body"
+	if !decodeJSONBody(w, r, &req) {
+		return chatRequestPayload{}, false
 	}
 	if strings.TrimSpace(req.Message) == "" {
-		return chatRequestPayload{}, http.StatusBadRequest, "message is required"
+		writeError(w, http.StatusBadRequest, "", "message is required")
+		return chatRequestPayload{}, false
 	}
-	return req, 0, ""
+	return req, true
 }
 
 func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandlerDeps) (chatRunState, int, string, error) {
