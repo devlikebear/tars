@@ -312,6 +312,54 @@ func TestCronJobRunner_RejectsPseudoToolContamination(t *testing.T) {
 	}
 }
 
+func TestCronJobRunner_EmitsErrorNotificationOnContamination(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+
+	events := make([]notificationEvent, 0, 1)
+	runner := newCronJobRunnerWithNotify(
+		root,
+		store,
+		func(_ context.Context, _ string, _ string) (string, error) {
+			return `{"command":"python3 -V","timeout_ms":1000}`, nil
+		},
+		zerolog.Nop(),
+		func(_ context.Context, evt notificationEvent) {
+			events = append(events, evt)
+		},
+		mainSession.ID,
+		2,
+		nil,
+	)
+
+	_, err = runner(context.Background(), cron.Job{
+		ID:        "job_demo",
+		Name:      "nightly writer",
+		Prompt:    "write next chapter",
+		Schedule:  "every:1m",
+		ProjectID: "proj_demo",
+	})
+	if err == nil {
+		t.Fatal("expected pseudo-tool contamination error")
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected one notification event, got %+v", events)
+	}
+	if events[0].Severity != "error" {
+		t.Fatalf("expected error severity, got %+v", events[0])
+	}
+	if !containsAll(events[0].Title, "Cron failed", "nightly writer") {
+		t.Fatalf("unexpected notification title: %+v", events[0])
+	}
+	if strings.TrimSpace(events[0].OpenPath) == "" {
+		t.Fatalf("expected contamination failure to persist an artifact path, got %+v", events[0])
+	}
+}
+
 func TestPersistCronProjectArtifact_IncludesTelemetry(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 3, 8, 1, 30, 0, 0, time.UTC)
