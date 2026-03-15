@@ -3,6 +3,7 @@ package project
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -240,6 +241,152 @@ func TestOrchestratorDispatchTodo_CanonicalizesLegacyKanbanColumnsDuringRun(t *t
 	close(runner.waitGate)
 	if err := <-errCh; err != nil {
 		t.Fatalf("dispatch todo: %v", err)
+	}
+}
+
+func TestOrchestratorDispatchTodo_CompletesTaskWithoutReviewRequirement(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 13, 30, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Done Project"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Ship metrics page",
+				Status:         "todo",
+				Assignee:       "dev-1",
+				Role:           "developer",
+				ReviewRequired: false,
+				TestCommand:    "go test ./internal/project",
+				BuildCommand:   "go test ./internal/tarsserver",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	runner := newStubTaskRunner()
+	orchestrator := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error { return nil })
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, runErr := orchestrator.DispatchTodo(context.Background(), created.ID)
+		errCh <- runErr
+	}()
+
+	select {
+	case <-runner.startedCh:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected task run to start")
+	}
+	close(runner.waitGate)
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("dispatch todo: %v", err)
+	}
+
+	board, err := store.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board: %v", err)
+	}
+	if len(board.Tasks) != 1 || board.Tasks[0].Status != "done" {
+		t.Fatalf("expected task to move to done, got %+v", board.Tasks)
+	}
+
+	activity, err := store.ListActivity(created.ID, 20)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if !hasTaskStatusActivity(activity, "task-1", "done") {
+		t.Fatalf("expected done task activity, got %+v", activity)
+	}
+}
+
+func TestOrchestratorDispatchTodo_BlocksTaskWhenGitHubFlowMetadataMissing(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 13, 35, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Blocked Project"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Ship metrics page",
+				Status:         "todo",
+				Assignee:       "dev-1",
+				Role:           "developer",
+				ReviewRequired: false,
+				TestCommand:    "go test ./internal/project",
+				BuildCommand:   "go test ./internal/tarsserver",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	runner := newStubTaskRunner()
+	runner.results["run-task-1"] = TaskRun{
+		ID:         "run-task-1",
+		TaskID:     "task-1",
+		Agent:      "dev-1",
+		WorkerKind: WorkerKindCodexCLI,
+		Status:     TaskRunStatusCompleted,
+		Response: `<task-report>
+status: completed
+summary: ok
+tests: passed
+build: passed
+</task-report>`,
+	}
+	orchestrator := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error { return nil })
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, runErr := orchestrator.DispatchTodo(context.Background(), created.ID)
+		errCh <- runErr
+	}()
+
+	select {
+	case <-runner.startedCh:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected task run to start")
+	}
+	close(runner.waitGate)
+
+	if err := <-errCh; err == nil || !strings.Contains(err.Error(), "task gate failed") {
+		t.Fatalf("expected task gate failed error, got %v", err)
+	}
+
+	board, err := store.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board: %v", err)
+	}
+	if len(board.Tasks) != 1 || board.Tasks[0].Status != "in_progress" {
+		t.Fatalf("expected task to remain in_progress when gates fail, got %+v", board.Tasks)
+	}
+
+	activity, err := store.ListActivity(created.ID, 20)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if !hasTaskStatusActivity(activity, "task-1", "in_progress") {
+		t.Fatalf("expected in_progress task activity, got %+v", activity)
+	}
+	if !hasActivityKindStatus(activity, ActivityKindIssueStatus, "blocked") {
+		t.Fatalf("expected blocked issue status activity, got %+v", activity)
+	}
+	if !hasActivityKindStatus(activity, ActivityKindBranchStatus, "blocked") {
+		t.Fatalf("expected blocked branch status activity, got %+v", activity)
+	}
+	if !hasActivityKindStatus(activity, ActivityKindPRStatus, "blocked") {
+		t.Fatalf("expected blocked pr status activity, got %+v", activity)
 	}
 }
 
