@@ -54,16 +54,7 @@ func NewGlobTool(workspaceDir string) Tool {
 				return jsonTextResult(globResponse{Message: "pattern escapes workspace"}, true), nil
 			}
 
-			limit := defaultGlobLimit
-			if input.Limit != nil {
-				limit = *input.Limit
-			}
-			if limit <= 0 {
-				limit = defaultGlobLimit
-			}
-			if limit > maxGlobLimit {
-				limit = maxGlobLimit
-			}
+			limit := resolvePositiveBoundedInt(defaultGlobLimit, maxGlobLimit, input.Limit)
 
 			rootAbs, err := filepath.Abs(workspaceDir)
 			if err != nil {

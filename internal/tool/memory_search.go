@@ -61,16 +61,7 @@ func NewMemorySearchTool(workspaceDir string) Tool {
 				return memorySearchErrorResult("query is required"), nil
 			}
 
-			limit := defaultMemorySearchLimit
-			if input.Limit != nil {
-				limit = *input.Limit
-			}
-			if limit <= 0 {
-				limit = defaultMemorySearchLimit
-			}
-			if limit > maxMemorySearchLimit {
-				limit = maxMemorySearchLimit
-			}
+			limit := resolvePositiveBoundedInt(defaultMemorySearchLimit, maxMemorySearchLimit, input.Limit)
 
 			includeMemory := true
 			if input.IncludeMemory != nil {

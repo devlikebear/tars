@@ -77,16 +77,7 @@ func NewWebFetchToolWithOptions(opts WebFetchOptions) Tool {
 			if rawURL == "" {
 				return jsonTextResult(webFetchResponse{Message: "url is required"}, true), nil
 			}
-			maxChars := defaultWebFetchMaxChars
-			if input.MaxChars != nil {
-				maxChars = *input.MaxChars
-			}
-			if maxChars <= 0 {
-				maxChars = defaultWebFetchMaxChars
-			}
-			if maxChars > maxWebFetchMaxChars {
-				maxChars = maxWebFetchMaxChars
-			}
+			maxChars := resolvePositiveBoundedInt(defaultWebFetchMaxChars, maxWebFetchMaxChars, input.MaxChars)
 
 			finalURL, resp, err := fetchWithSSRFGuard(ctx, httpClient, rawURL, opts.AllowPrivateHosts, allowlist)
 			if err != nil {
