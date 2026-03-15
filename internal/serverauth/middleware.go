@@ -33,6 +33,7 @@ type Options struct {
 	UserWorkspaceAllowlist        []string
 	AdminWorkspaceAllowlist       []string
 	SkipPaths                     []string
+	LoopbackSkipPaths             []string
 	AdminPaths                    []string
 }
 
@@ -45,6 +46,7 @@ type compiledOptions struct {
 	mode                          string
 	workspaceHeader               string
 	skipPaths                     pathMatcher
+	loopbackSkipPaths             pathMatcher
 	adminPaths                    pathMatcher
 	requireWorkspaceForAuthorized bool
 	userWorkspaceAllowlist        map[string]struct{}
@@ -151,6 +153,7 @@ func compileOptions(opts Options, logOut io.Writer) compiledOptions {
 		mode:                          NormalizeMode(opts.Mode),
 		workspaceHeader:               workspaceHeader,
 		skipPaths:                     newPathMatcher(opts.SkipPaths),
+		loopbackSkipPaths:             newPathMatcher(opts.LoopbackSkipPaths),
 		adminPaths:                    newPathMatcher(opts.AdminPaths),
 		requireWorkspaceForAuthorized: opts.RequireWorkspaceForAuthorized,
 		userWorkspaceAllowlist:        toWorkspaceAllowlist(opts.UserWorkspaceAllowlist),
@@ -262,6 +265,9 @@ func (c compiledOptions) requirementForRequest(r *http.Request) requestRequireme
 		return requestRequirement{}
 	}
 	if c.skipPaths.match(r.URL.Path) {
+		return requestRequirement{skip: true}
+	}
+	if c.loopbackSkipPaths.match(r.URL.Path) && isLoopbackRemoteAddr(r.RemoteAddr) {
 		return requestRequirement{skip: true}
 	}
 	requireToken := c.mode == ModeRequired

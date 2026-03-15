@@ -2144,7 +2144,7 @@ func TestStatusAPI(t *testing.T) {
 
 func TestHealthzAPI(t *testing.T) {
 	now := time.Date(2026, 2, 18, 8, 0, 0, 0, time.UTC)
-	handler := newHealthzAPIHandler(func() time.Time { return now })
+	handler := newHealthzAPIHandler(func() time.Time { return now }, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
@@ -2176,6 +2176,34 @@ func TestHealthzAPI(t *testing.T) {
 	handler.ServeHTTP(methodRec, methodReq)
 	if methodRec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d body=%q", methodRec.Code, methodRec.Body.String())
+	}
+}
+
+func TestHealthzAPI_IncludesDashboardAuthWarning(t *testing.T) {
+	now := time.Date(2026, 2, 18, 8, 0, 0, 0, time.UTC)
+	handler := newHealthzAPIHandler(func() time.Time { return now }, map[string]any{
+		"mode":          "off",
+		"public_access": "loopback-only",
+		"warning":       "dashboard auth off is restricted to loopback requests",
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode healthz response: %v", err)
+	}
+	dashboardAuth, ok := payload["dashboard_auth"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected dashboard_auth object, got %+v", payload["dashboard_auth"])
+	}
+	if got := strings.TrimSpace(asString(dashboardAuth["public_access"])); got != "loopback-only" {
+		t.Fatalf("expected public_access loopback-only, got %q", got)
 	}
 }
 
