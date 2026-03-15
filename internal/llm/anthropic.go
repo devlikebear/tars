@@ -55,20 +55,13 @@ func newAnthropicClientWithConfig(baseURL, apiKey, model string, config ClientCo
 
 func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
 	streaming := opts.OnDelta != nil
-	zlog.Debug().
-		Str("provider", "anthropic").
-		Str("model", c.model).
-		Str("url", c.baseURL+"/v1/messages").
-		Int("message_count", len(messages)).
-		Bool("stream", streaming).
-		Int("tool_count", len(opts.Tools)).
-		Str("tool_choice", strings.TrimSpace(opts.ToolChoice)).
-		Msg("llm request start")
+	url := c.baseURL + "/v1/messages"
+	logChatRequestStart("anthropic", c.model, url, len(messages), streaming, len(opts.Tools), opts.ToolChoice)
 
 	reqBody := c.buildChatRequest(messages, opts, streaming)
-	req, err := jsonRequestSpec{
+	_, resp, err := executeJSONChatRequest(ctx, jsonRequestSpec{
 		Provider: "anthropic",
-		URL:      c.baseURL + "/v1/messages",
+		URL:      url,
 		Headers: map[string]string{
 			"x-api-key":         c.apiKey,
 			"anthropic-version": anthropicAPIVersion,
@@ -76,16 +69,11 @@ func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts
 			"content-type":      "application/json",
 		},
 		Body: reqBody,
-	}.buildRequest(ctx)
-	if err != nil {
-		return ChatResponse{}, err
-	}
-	resp, err := doPreparedRequest(req, "anthropic", transportHTTPClient(c.httpClient, streaming))
+	}, c.httpClient, streaming)
 	if err != nil {
 		return ChatResponse{}, err
 	}
 	defer resp.Body.Close()
-	zlog.Debug().Str("provider", "anthropic").Int("status", resp.StatusCode).Msg("llm response received")
 
 	if streaming {
 		return c.chatStreamingResponse(resp.Body, opts.OnDelta)

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	zlog "github.com/rs/zerolog/log"
 )
 
 type jsonRequestSpec struct {
@@ -47,11 +49,34 @@ func transportHTTPClient(base *http.Client, streaming bool) *http.Client {
 }
 
 func doJSONRequest(spec jsonRequestSpec, httpClient *http.Client, streaming bool) (*http.Response, error) {
-	req, err := spec.buildRequest(context.Background())
+	_, resp, err := executeJSONChatRequest(context.Background(), spec, httpClient, streaming)
+	return resp, err
+}
+
+func executeJSONChatRequest(ctx context.Context, spec jsonRequestSpec, httpClient *http.Client, streaming bool) (*http.Request, *http.Response, error) {
+	req, err := spec.buildRequest(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return doPreparedRequest(req, strings.TrimSpace(spec.Provider), transportHTTPClient(httpClient, streaming))
+	provider := strings.TrimSpace(spec.Provider)
+	resp, err := doPreparedRequest(req, provider, transportHTTPClient(httpClient, streaming))
+	if err != nil {
+		return nil, nil, err
+	}
+	zlog.Debug().Str("provider", provider).Int("status", resp.StatusCode).Msg("llm response received")
+	return req, resp, nil
+}
+
+func logChatRequestStart(provider, model, url string, messageCount int, streaming bool, toolCount int, toolChoice string) {
+	zlog.Debug().
+		Str("provider", strings.TrimSpace(provider)).
+		Str("model", strings.TrimSpace(model)).
+		Str("url", strings.TrimSpace(url)).
+		Int("message_count", messageCount).
+		Bool("stream", streaming).
+		Int("tool_count", toolCount).
+		Str("tool_choice", strings.TrimSpace(toolChoice)).
+		Msg("llm request start")
 }
 
 func doPreparedRequest(req *http.Request, provider string, httpClient *http.Client) (*http.Response, error) {

@@ -60,39 +60,27 @@ func NewGeminiClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, er
 
 func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
 	streaming := opts.OnDelta != nil
-	zlog.Debug().
-		Str("provider", c.label).
-		Str("model", c.model).
-		Str("url", c.baseURL+"/chat/completions").
-		Int("message_count", len(messages)).
-		Bool("stream", streaming).
-		Int("tool_count", len(opts.Tools)).
-		Str("tool_choice", strings.TrimSpace(opts.ToolChoice)).
-		Msg("llm request start")
+	url := c.baseURL + "/chat/completions"
+	logChatRequestStart(c.label, c.model, url, len(messages), streaming, len(opts.Tools), opts.ToolChoice)
 
 	reqBody, err := c.buildChatRequest(messages, opts)
 	if err != nil {
 		return ChatResponse{}, err
 	}
 
-	req, err := jsonRequestSpec{
+	req, resp, err := executeJSONChatRequest(ctx, jsonRequestSpec{
 		Provider: c.label,
-		URL:      c.baseURL + "/chat/completions",
+		URL:      url,
 		Headers: map[string]string{
 			"Authorization": "Bearer " + c.apiKey,
 			"Content-Type":  "application/json",
 		},
 		Body: reqBody,
-	}.buildRequest(ctx)
-	if err != nil {
-		return ChatResponse{}, err
-	}
-	resp, err := doPreparedRequest(req, c.label, transportHTTPClient(c.httpClient, streaming))
+	}, c.httpClient, streaming)
 	if err != nil {
 		return ChatResponse{}, err
 	}
 	defer resp.Body.Close()
-	zlog.Debug().Str("provider", c.label).Int("status", resp.StatusCode).Msg("llm response received")
 
 	req = req.WithContext(context.WithValue(req.Context(), openAICompatibleResponseContextKey{}, resp))
 	if opts.OnDelta != nil {

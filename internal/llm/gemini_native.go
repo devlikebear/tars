@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	zlog "github.com/rs/zerolog/log"
 	"google.golang.org/genai"
 )
 
@@ -85,15 +84,7 @@ func (c *GeminiNativeClient) Chat(ctx context.Context, messages []ChatMessage, o
 	}
 
 	streaming := opts.OnDelta != nil
-	zlog.Debug().
-		Str("provider", "gemini-native").
-		Str("model", c.model).
-		Str("url", c.requestURL(streaming)).
-		Int("message_count", len(messages)).
-		Bool("stream", streaming).
-		Int("tool_count", len(opts.Tools)).
-		Str("tool_choice", strings.TrimSpace(opts.ToolChoice)).
-		Msg("llm request start")
+	logChatRequestStart("gemini-native", c.model, c.requestURL(streaming), len(messages), streaming, len(opts.Tools), opts.ToolChoice)
 
 	contents := toGeminiNativeContents(messages)
 	config := c.buildGenerateContentConfig(messages, opts)
