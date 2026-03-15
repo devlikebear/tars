@@ -280,13 +280,13 @@ func (e *CommandExecutor) Execute(ctx context.Context, req ExecuteRequest) (stri
 	for key, value := range e.env {
 		env = append(env, key+"="+value)
 	}
-	if v := strings.TrimSpace(req.RunID); v != "" {
+	if v, ok := sanitizeMetadataEnvValue(req.RunID); ok {
 		env = append(env, "TARS_RUN_ID="+v)
 	}
-	if v := strings.TrimSpace(req.SessionID); v != "" {
+	if v, ok := sanitizeMetadataEnvValue(req.SessionID); ok {
 		env = append(env, "TARS_SESSION_ID="+v)
 	}
-	if v := strings.TrimSpace(req.WorkspaceID); v != "" {
+	if v, ok := sanitizeMetadataEnvValue(req.WorkspaceID); ok {
 		env = append(env, "TARS_WORKSPACE_ID="+v)
 	}
 	cmd.Env = env
@@ -312,6 +312,19 @@ func normalizePolicyMode(raw string) string {
 		return mode
 	}
 	return "full"
+}
+
+func sanitizeMetadataEnvValue(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", false
+	}
+	for _, r := range trimmed {
+		if r < 0x20 || r == 0x7f {
+			return "", false
+		}
+	}
+	return trimmed, true
 }
 
 func sanitizeToolsAllow(raw []string) []string {

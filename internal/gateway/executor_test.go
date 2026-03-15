@@ -7,6 +7,34 @@ import (
 	"time"
 )
 
+func TestSanitizeMetadataEnvValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  string
+		want   string
+		wantOK bool
+	}{
+		{name: "accepts normal identifier", input: "run_123", want: "run_123", wantOK: true},
+		{name: "rejects newline", input: "run_123\nINJECT=1", want: "", wantOK: false},
+		{name: "rejects null byte", input: "session\x00abc", want: "", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := sanitizeMetadataEnvValue(tt.input)
+			if ok != tt.wantOK {
+				t.Fatalf("expected ok=%v, got %v", tt.wantOK, ok)
+			}
+			if got != tt.want {
+				t.Fatalf("expected value %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestNewCommandExecutor_ValidateRequiredFields(t *testing.T) {
 	if _, err := NewCommandExecutor(CommandExecutorOptions{
 		Command: "sh",
@@ -40,6 +68,29 @@ func TestCommandExecutor_Execute_StdinAndMetadata(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 	if out != "run_123|session_abc|hello from prompt" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestCommandExecutor_Execute_SkipsUnsafeMetadataEnvValues(t *testing.T) {
+	executor, err := NewCommandExecutor(CommandExecutorOptions{
+		Name:    "worker",
+		Command: "sh",
+		Args:    []string{"-c", `printf "%s|%s|%s" "${TARS_RUN_ID:-missing}" "${TARS_SESSION_ID:-missing}" "${TARS_WORKSPACE_ID:-missing}"`},
+	})
+	if err != nil {
+		t.Fatalf("new command executor: %v", err)
+	}
+
+	out, err := executor.Execute(context.Background(), ExecuteRequest{
+		RunID:       "run_123\nINJECT=1",
+		SessionID:   "session_abc\r\nINJECT=1",
+		WorkspaceID: "workspace\x00abc",
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if out != "missing|missing|missing" {
 		t.Fatalf("unexpected output: %q", out)
 	}
 }
