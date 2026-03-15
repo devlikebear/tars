@@ -212,17 +212,14 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		"0",
 		"1 active",
 		"/ui/projects/" + created.ID + "/stream",
-		"autopilot-section",
-		"board-section",
-		"activity-section",
-		"reports-section",
-		"blockers-section",
-		"decisions-section",
-		"replans-section",
-		"github-flow-section",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected dashboard body to contain %q, got %q", want, body)
+		}
+	}
+	for _, sectionID := range projectDashboardRefreshSectionIDs() {
+		if !strings.Contains(body, sectionID) {
+			t.Fatalf("expected dashboard body to contain section id %q, got %q", sectionID, body)
 		}
 	}
 }

@@ -25,6 +25,7 @@ type projectDashboardPageData struct {
 	Blockers   []projectDashboardPMItem
 	Decisions  []projectDashboardPMItem
 	Replans    []projectDashboardPMItem
+	Sections   projectDashboardSections
 	PagePath   string
 	StreamPath string
 }
@@ -82,6 +83,29 @@ type projectDashboardPMItem struct {
 	Timestamp string
 }
 
+type projectDashboardSectionMeta struct {
+	ID string
+}
+
+type projectDashboardSections struct {
+	Autopilot  projectDashboardSectionMeta
+	Board      projectDashboardSectionMeta
+	Activity   projectDashboardSectionMeta
+	GitHubFlow projectDashboardSectionMeta
+	Reports    projectDashboardSectionMeta
+	Blockers   projectDashboardSectionMeta
+	Decisions  projectDashboardSectionMeta
+	Replans    projectDashboardSectionMeta
+	RefreshIDs []string
+}
+
+type projectDashboardSectionSpec struct {
+	Key      string
+	ID       string
+	Refresh  bool
+	Populate func(*projectDashboardPageData, project.Board, []project.Activity)
+}
+
 type projectDashboardRoute struct {
 	ProjectID string
 	Stream    bool
@@ -92,6 +116,67 @@ type projectDashboardEvent struct {
 	ProjectID string `json:"project_id"`
 	Kind      string `json:"kind"`
 	Timestamp string `json:"timestamp"`
+}
+
+var projectDashboardSectionRegistry = []projectDashboardSectionSpec{
+	{
+		Key:     "autopilot",
+		ID:      "autopilot-section",
+		Refresh: true,
+	},
+	{
+		Key:     "board",
+		ID:      "board-section",
+		Refresh: true,
+		Populate: func(data *projectDashboardPageData, board project.Board, _ []project.Activity) {
+			data.BoardStats = buildProjectDashboardBoardStats(board)
+		},
+	},
+	{
+		Key:     "activity",
+		ID:      "activity-section",
+		Refresh: true,
+	},
+	{
+		Key:     "github-flow",
+		ID:      "github-flow-section",
+		Refresh: true,
+		Populate: func(data *projectDashboardPageData, board project.Board, activity []project.Activity) {
+			data.GitHubFlow = buildProjectDashboardGitHubFlow(board, activity)
+		},
+	},
+	{
+		Key:     "reports",
+		ID:      "reports-section",
+		Refresh: true,
+		Populate: func(data *projectDashboardPageData, board project.Board, activity []project.Activity) {
+			data.Reports = buildProjectDashboardWorkerReports(board, activity)
+		},
+	},
+	{
+		Key:     "blockers",
+		ID:      "blockers-section",
+		Refresh: true,
+		Populate: func(data *projectDashboardPageData, board project.Board, activity []project.Activity) {
+			data.Blockers = buildProjectDashboardPMItems(board, activity, project.ActivityKindBlocker)
+		},
+	},
+	{
+		Key:     "decisions",
+		ID:      "decisions-section",
+		Refresh: true,
+		Populate: func(data *projectDashboardPageData, board project.Board, activity []project.Activity) {
+			data.Decisions = buildProjectDashboardPMItems(board, activity, project.ActivityKindDecision)
+		},
+	},
+	{
+		Key:     "replans",
+		ID:      "replans-section",
+		Refresh: true,
+		Populate: func(data *projectDashboardPageData, board project.Board, activity []project.Activity) {
+			data.Replans = buildProjectDashboardPMItems(board, activity, project.ActivityKindReplan)
+		},
+	},
 }
 
 type projectDashboardBroker struct {
@@ -211,7 +296,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       </article>
     </section>
 
-    <section id="autopilot-section" class="card">
+    <section id="{{.Sections.Autopilot.ID}}" class="card">
       <h2>Autopilot</h2>
       {{if .Autopilot}}
       <div class="grid">
@@ -239,7 +324,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       {{end}}
     </section>
 
-    <section id="board-section" class="card">
+    <section id="{{.Sections.Board.ID}}" class="card">
       <h2>Board</h2>
       <div class="stats">
         {{range .BoardStats}}
@@ -277,7 +362,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       {{end}}
     </section>
 
-    <section id="activity-section" class="card">
+    <section id="{{.Sections.Activity.ID}}" class="card">
       <h2>Recent Activity</h2>
       {{if .Activity}}
       <ul>
@@ -296,7 +381,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       {{end}}
     </section>
 
-    <section id="github-flow-section" class="card">
+    <section id="{{.Sections.GitHubFlow.ID}}" class="card">
       <h2>GitHub Flow</h2>
       {{if .GitHubFlow}}
       <table>
@@ -330,7 +415,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       {{end}}
     </section>
 
-    <section id="reports-section" class="card">
+    <section id="{{.Sections.Reports.ID}}" class="card">
       <h2>Worker Reports</h2>
       {{if .Reports}}
       <ul>
@@ -351,7 +436,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       {{end}}
     </section>
 
-    <section id="blockers-section" class="card">
+    <section id="{{.Sections.Blockers.ID}}" class="card">
       <h2>Blockers</h2>
       {{if .Blockers}}
       <ul>
@@ -369,7 +454,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       {{end}}
     </section>
 
-    <section id="decisions-section" class="card">
+    <section id="{{.Sections.Decisions.ID}}" class="card">
       <h2>Decisions</h2>
       {{if .Decisions}}
       <ul>
@@ -387,7 +472,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
       {{end}}
     </section>
 
-    <section id="replans-section" class="card">
+    <section id="{{.Sections.Replans.ID}}" class="card">
       <h2>Replans</h2>
       {{if .Replans}}
       <ul>
@@ -409,6 +494,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
     (() => {
       const streamPath = {{printf "%q" .StreamPath}};
       const pagePath = {{printf "%q" .PagePath}};
+      const refreshIDs = [{{range $index, $id := .Sections.RefreshIDs}}{{if $index}}, {{end}}{{printf "%q" $id}}{{end}}];
       if (!streamPath || !pagePath || typeof EventSource === "undefined") {
         return;
       }
@@ -425,7 +511,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
           }
           const html = await response.text();
           const doc = new DOMParser().parseFromString(html, "text/html");
-          for (const id of ["autopilot-section", "board-section", "activity-section", "github-flow-section", "reports-section", "blockers-section", "decisions-section", "replans-section"]) {
+          for (const id of refreshIDs) {
             const next = doc.getElementById(id);
             const current = document.getElementById(id);
             if (next && current) {
@@ -570,21 +656,7 @@ func newProjectDashboardHandler(store *project.Store, autopilot projectAutopilot
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := projectDashboardTemplate.Execute(w, projectDashboardPageData{
-			Project:    item,
-			State:      state,
-			Autopilot:  autopilotRun,
-			Activity:   activity,
-			Board:      board,
-			BoardStats: buildProjectDashboardBoardStats(board),
-			GitHubFlow: buildProjectDashboardGitHubFlow(board, activity),
-			Reports:    buildProjectDashboardWorkerReports(board, activity),
-			Blockers:   buildProjectDashboardPMItems(board, activity, project.ActivityKindBlocker),
-			Decisions:  buildProjectDashboardPMItems(board, activity, project.ActivityKindDecision),
-			Replans:    buildProjectDashboardPMItems(board, activity, project.ActivityKindReplan),
-			PagePath:   fmt.Sprintf("/ui/projects/%s", route.ProjectID),
-			StreamPath: fmt.Sprintf("/ui/projects/%s/stream", route.ProjectID),
-		}); err != nil {
+		if err := projectDashboardTemplate.Execute(w, buildProjectDashboardPageData(item, state, autopilotRun, activity, board)); err != nil {
 			logger.Error().Err(err).Str("project_id", route.ProjectID).Msg("render project dashboard failed")
 		}
 	})
@@ -657,6 +729,66 @@ func buildProjectDashboardBoardStats(board project.Board) []projectDashboardBoar
 		})
 	}
 	return stats
+}
+
+func buildProjectDashboardPageData(
+	item project.Project,
+	state *project.ProjectState,
+	autopilotRun *project.AutopilotRun,
+	activity []project.Activity,
+	board project.Board,
+) projectDashboardPageData {
+	data := projectDashboardPageData{
+		Project:    item,
+		State:      state,
+		Autopilot:  autopilotRun,
+		Activity:   activity,
+		Board:      board,
+		Sections:   buildProjectDashboardSections(),
+		PagePath:   fmt.Sprintf("/ui/projects/%s", strings.TrimSpace(item.ID)),
+		StreamPath: fmt.Sprintf("/ui/projects/%s/stream", strings.TrimSpace(item.ID)),
+	}
+	for _, spec := range projectDashboardSectionRegistry {
+		if spec.Populate != nil {
+			spec.Populate(&data, board, activity)
+		}
+	}
+	return data
+}
+
+func buildProjectDashboardSections() projectDashboardSections {
+	sections := projectDashboardSections{}
+	refreshIDs := make([]string, 0, len(projectDashboardSectionRegistry))
+	for _, spec := range projectDashboardSectionRegistry {
+		meta := projectDashboardSectionMeta{ID: spec.ID}
+		switch spec.Key {
+		case "autopilot":
+			sections.Autopilot = meta
+		case "board":
+			sections.Board = meta
+		case "activity":
+			sections.Activity = meta
+		case "github-flow":
+			sections.GitHubFlow = meta
+		case "reports":
+			sections.Reports = meta
+		case "blockers":
+			sections.Blockers = meta
+		case "decisions":
+			sections.Decisions = meta
+		case "replans":
+			sections.Replans = meta
+		}
+		if spec.Refresh {
+			refreshIDs = append(refreshIDs, spec.ID)
+		}
+	}
+	sections.RefreshIDs = refreshIDs
+	return sections
+}
+
+func projectDashboardRefreshSectionIDs() []string {
+	return append([]string(nil), buildProjectDashboardSections().RefreshIDs...)
 }
 
 func buildProjectDashboardGitHubFlow(board project.Board, activity []project.Activity) []projectDashboardGitHubFlowRow {
