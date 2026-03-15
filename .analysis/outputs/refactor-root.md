@@ -14,9 +14,9 @@
 ## 요약 (Summary) / Summary
 
 이 지시서는 저장소 핵심 운영 경로에서 발견된 코드 품질/보안/구조 문제를 해결하기 위한 리팩토링 작업을 정의합니다.
-총 6개의 이슈가 발견되었으며 (`DUP` 0건 / `SEC` 2건 / `TIDY` 4건), 이 중 3건은 완료되었고 3건이 남아 있습니다.
+총 6개의 이슈가 발견되었으며 (`DUP` 0건 / `SEC` 2건 / `TIDY` 4건), 이 중 5건은 완료되었고 1건이 남아 있습니다.
 This work order defines the refactoring tasks required to address code quality, security, and structural issues found in the repository's core runtime paths.
-There are 6 issues in total (`DUP` 0 / `SEC` 2 / `TIDY` 4), with 3 completed and 3 remaining.
+There are 6 issues in total (`DUP` 0 / `SEC` 2 / `TIDY` 4), with 5 completed and 1 remaining.
 
 ---
 
@@ -25,9 +25,9 @@ There are 6 issues in total (`DUP` 0 / `SEC` 2 / `TIDY` 4), with 3 completed and
 | # | 분류 코드 | 이슈 유형 | 상태 | 위치 | 근거 | 위험도 | 영향 범위 |
 |---|-----------|-----------|------|------|------|--------|-----------|
 | 1 | `TIDY-001` | 설정 스키마 매핑 중복 | 완료 | `internal/config/defaults_apply.go:13-144`, `internal/config/env.go:8-320`, `internal/config/yaml.go:12-263`, `internal/config/merge.go:3-280` | 같은 `Config` 필드 집합을 입력원별로 반복 매핑 | 중간 | 설정 로딩 전역 |
-| 2 | `TIDY-002` | 프로젝트 workflow 전이 분산 | 남음 | `internal/tarsserver/handler_chat.go:26-45`, `internal/project/brief_state.go:128-280`, `internal/project/orchestrator.go:72-136`, `internal/project/project_runner.go:208-320`, `internal/tarsserver/handler_project.go:460-523` | kickoff, brief/state 저장, dispatch, autopilot 루프가 별도 규칙으로 흩어짐 | 높음 | 프로젝트 시작, 자동 실행, 대시보드 |
+| 2 | `TIDY-002` | 프로젝트 workflow 전이 분산 | 완료 | `internal/tarsserver/handler_chat.go:26-45`, `internal/project/brief_state.go:128-280`, `internal/project/orchestrator.go:72-136`, `internal/project/project_runner.go:208-320`, `internal/tarsserver/handler_project.go:460-523` | kickoff, brief/state 저장, dispatch, autopilot 루프가 별도 규칙으로 흩어짐 | 높음 | 프로젝트 시작, 자동 실행, 대시보드 |
 | 3 | `SEC-001` | 대시보드 공개 모드 오사용 위험 | 완료 | `internal/tarsserver/middleware.go:26-33` | `dashboard_auth_mode=off` 시 `/dashboards`, `/ui/projects/*` 전체가 인증 skip path가 됨 | 높음 | 프로젝트 메타데이터 노출 |
-| 4 | `TIDY-003` | 대시보드 섹션 정의 중복 | 남음 | `internal/tarsserver/dashboard.go:214-406`, `internal/tarsserver/dashboard.go:416-428`, `internal/tarsserver/dashboard.go:573-586` | 섹션 ID, refresh 대상, 서버 데이터 조립이 암묵적으로 묶여 있음 | 중간 | 대시보드 렌더링/추가 개발 |
+| 4 | `TIDY-003` | 대시보드 섹션 정의 중복 | 완료 | `internal/tarsserver/dashboard.go:214-406`, `internal/tarsserver/dashboard.go:416-428`, `internal/tarsserver/dashboard.go:573-586` | 섹션 ID, refresh 대상, 서버 데이터 조립이 암묵적으로 묶여 있음 | 중간 | 대시보드 렌더링/추가 개발 |
 | 5 | `TIDY-004` | Provider credential lifecycle 분산 | 남음 | `internal/auth/token.go:18-97`, `internal/auth/codex_oauth.go:48-247`, `internal/llm/provider.go:118-140`, `internal/llm/openai_codex_client.go:171-185`, `internal/llm/model_lister.go:165-193` | 토큰 해석, provider 특화 credential, refresh retry가 여러 계층에 분산 | 중간 | LLM provider onboarding, 인증 회복 |
 | 6 | `SEC-002` | Browser relay query token 노출 가능성 | 완료 | `internal/browserrelay/server.go:24-25`, `internal/browserrelay/server.go:1456-1484` | opt-in 이지만 query string의 `token` / `relay_token`을 그대로 인증값으로 허용 | 중간 | 로컬 브라우저 relay 인증 |
 
@@ -94,6 +94,7 @@ If left unchanged, each new setting or validation rule multiplies edit points an
 **분류 코드 / Classification Code**: `TIDY-002`
 **유형 / Type**: Extract Policy / State Machine / Move Logic
 **심각도 / Severity**: 높음
+**상태 / Status**: 완료, PR [#70](https://github.com/devlikebear/tars/pull/70), PR [#74](https://github.com/devlikebear/tars/pull/74)
 **선행 작업 / Prerequisite**: 없음
 **근거 / Evidence**: kickoff 감지는 `handler_chat.go`의 `resolveChatSession`/`resolveSkillForMessage`, brief/state 초기화는 `brief_state.go`, stage dispatch는 `orchestrator.go`, 자동 전이는 `project_runner.go`, API 트리거는 `handler_project.go`에 분산돼 있습니다. 상태 전이를 선언적으로 설명하는 단일 모델이 없어 채널별 동작 차이를 만들기 쉽습니다.
 **소스 이슈 / Source Issue**: `TIDY-002`
@@ -125,14 +126,14 @@ That makes it easy for chat, API, and autopilot behavior to drift when phases or
 5. 구조 정리 이후에만 phase 추가나 자동 복구 동작 변경을 진행하십시오.
 
 **완료 기준 / Completion Criteria**
-- [ ] 프로젝트 workflow 전이가 선언적 정책 또는 상태기계로 한 곳에 모임
-- [ ] chat/API/autopilot이 같은 전이 규칙을 재사용함
-- [ ] 새 phase 또는 retry rule 변경 시 수정 지점이 명확히 줄어듦
+- [x] 프로젝트 workflow 전이가 선언적 정책 또는 상태기계로 한 곳에 모임
+- [x] chat/API/autopilot이 같은 전이 규칙을 재사용함
+- [x] 새 phase 또는 retry rule 변경 시 수정 지점이 명확히 줄어듦
 
 **테스트 기준 / Test Criteria**
-- [ ] 단위 테스트: kickoff 판정, state normalization, dispatchable stage, retry rule 검증
-- [ ] 통합 테스트: brief finalize -> dispatch -> review -> done 흐름 검증
-- [ ] 회귀 테스트: stalled task recovery, empty board seed, review-required task 경로 검증
+- [x] 단위 테스트: kickoff 판정, state normalization, dispatchable stage, retry rule 검증
+- [x] 통합 테스트: brief finalize -> dispatch -> review -> done 흐름 검증
+- [x] 회귀 테스트: stalled task recovery, empty board seed, review-required task 경로 검증
 
 ---
 
@@ -185,6 +186,7 @@ If this is enabled on a non-loopback deployment by mistake, internal project dat
 **분류 코드 / Classification Code**: `TIDY-003`
 **유형 / Type**: Extract Constant / Introduce Registry / Split Template Data
 **심각도 / Severity**: 중간
+**상태 / Status**: 완료, PR [#72](https://github.com/devlikebear/tars/pull/72)
 **선행 작업 / Prerequisite**: 없음
 **근거 / Evidence**: 템플릿 본문은 `autopilot-section`, `board-section`, `activity-section`, `github-flow-section`, `reports-section`, `blockers-section`, `decisions-section`, `replans-section`를 직접 선언하고, refresh 스크립트는 같은 목록을 다시 문자열 배열로 들고 있습니다. 서버는 별도의 builder 호출로 같은 섹션 데이터를 수동 조립합니다.
 **소스 이슈 / Source Issue**: `TIDY-003`
@@ -214,14 +216,14 @@ That duplication makes section additions and renames fragile.
 5. 섹션별 테스트는 hard-coded ID 목록 대신 registry 결과를 검증하도록 바꾸십시오.
 
 **완료 기준 / Completion Criteria**
-- [ ] 섹션 ID와 refresh 대상 목록이 단일 레지스트리에서 관리됨
-- [ ] 새 섹션 추가 시 템플릿/스크립트/서버를 각각 따로 수정하지 않아도 됨
-- [ ] 기존 대시보드 렌더 결과와 refresh 동작이 유지됨
+- [x] 섹션 ID와 refresh 대상 목록이 단일 레지스트리에서 관리됨
+- [x] 새 섹션 추가 시 템플릿/스크립트/서버를 각각 따로 수정하지 않아도 됨
+- [x] 기존 대시보드 렌더 결과와 refresh 동작이 유지됨
 
 **테스트 기준 / Test Criteria**
-- [ ] 단위 테스트: registry 기반 섹션 목록과 data builder 매핑 검증
-- [ ] 통합 테스트: dashboard HTML 렌더와 refresh fetch가 같은 섹션 ID 집합을 사용하는지 검증
-- [ ] 회귀 테스트: 기존 8개 섹션이 동일 순서 또는 승인된 새 순서로 출력됨을 확인
+- [x] 단위 테스트: registry 기반 섹션 목록과 data builder 매핑 검증
+- [x] 통합 테스트: dashboard HTML 렌더와 refresh fetch가 같은 섹션 ID 집합을 사용하는지 검증
+- [x] 회귀 테스트: 기존 8개 섹션이 동일 순서 또는 승인된 새 순서로 출력됨을 확인
 
 ---
 
