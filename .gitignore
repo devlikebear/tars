@@ -48,6 +48,7 @@ node_modules/
 # for development, ignore the following files
 .claude/*.local.json
 .docs/
-.analysis/
+.analysis/sessions/
+.analysis/RESUME.md
 AGENTS.md
 tesseract-threat-model.md
