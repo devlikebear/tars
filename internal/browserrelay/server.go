@@ -337,6 +337,7 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	payload := map[string]any{
 		"Browser": "Tars Relay",
 	}
+	s.addQueryTokenStatus(payload)
 	if s.hasExtension() {
 		payload["webSocketDebuggerUrl"] = s.CDPWebSocketURL()
 	}
@@ -532,10 +533,20 @@ func (s *Server) handleExtensionStatus(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeRelayRequest(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	payload := map[string]any{
 		"connected":     s.hasExtension(),
 		"attached_tabs": s.AttachedTabs(),
-	})
+	}
+	s.addQueryTokenStatus(payload)
+	writeJSON(w, http.StatusOK, payload)
+}
+
+func (s *Server) addQueryTokenStatus(payload map[string]any) {
+	if payload == nil || s == nil || !s.opts.AllowQueryToken {
+		return
+	}
+	payload["query_token_enabled"] = true
+	payload["query_token_warning"] = "query token auth is enabled and may leak through browser history or logs"
 }
 
 func (s *Server) forwardExtensionToCDP(conn *websocket.Conn) {

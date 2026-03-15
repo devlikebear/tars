@@ -741,6 +741,47 @@ func TestRelayExtensionStatusRequiresToken(t *testing.T) {
 	}
 }
 
+func TestRelayExtensionStatusWarnsWhenQueryTokensAreEnabled(t *testing.T) {
+	srv, err := New(Options{
+		Addr:            "127.0.0.1:0",
+		RelayToken:      "relay-token",
+		AllowQueryToken: true,
+		OriginAllowlist: []string{"chrome-extension://*"},
+	})
+	if err != nil {
+		t.Fatalf("new relay: %v", err)
+	}
+	if err := srv.Start(context.Background()); err != nil {
+		t.Fatalf("start relay: %v", err)
+	}
+	t.Cleanup(func() { _ = srv.Close(context.Background()) })
+
+	req, err := http.NewRequest(http.MethodGet, "http://"+srv.Addr()+"/extension/status", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Tars-Relay-Token", "relay-token")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("get extension status: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for /extension/status with token, got %d", res.StatusCode)
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode extension status: %v", err)
+	}
+	if enabled, ok := payload["query_token_enabled"].(bool); !ok || !enabled {
+		t.Fatalf("expected query_token_enabled=true, got %+v", payload["query_token_enabled"])
+	}
+	if got := strings.TrimSpace(asString(payload["query_token_warning"])); got == "" {
+		t.Fatalf("expected query_token_warning to be populated, got %+v", payload)
+	}
+}
+
 func TestRelayJSONActivateAndCloseWithToken(t *testing.T) {
 	srv, err := New(Options{
 		Addr:            "127.0.0.1:0",
