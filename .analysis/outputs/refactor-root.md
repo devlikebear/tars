@@ -14,9 +14,9 @@
 ## 요약 (Summary) / Summary
 
 이 지시서는 저장소 핵심 운영 경로에서 발견된 코드 품질/보안/구조 문제를 해결하기 위한 리팩토링 작업을 정의합니다.
-총 6개의 이슈가 발견되었으며 (`DUP` 0건 / `SEC` 2건 / `TIDY` 4건), 이 중 5건은 완료되었고 1건이 남아 있습니다.
+총 6개의 이슈가 발견되었으며 (`DUP` 0건 / `SEC` 2건 / `TIDY` 4건), 이 중 6건이 완료되었고 남은 항목은 없습니다.
 This work order defines the refactoring tasks required to address code quality, security, and structural issues found in the repository's core runtime paths.
-There are 6 issues in total (`DUP` 0 / `SEC` 2 / `TIDY` 4), with 5 completed and 1 remaining.
+There are 6 issues in total (`DUP` 0 / `SEC` 2 / `TIDY` 4), with all 6 completed and no remaining items.
 
 ---
 
@@ -28,7 +28,7 @@ There are 6 issues in total (`DUP` 0 / `SEC` 2 / `TIDY` 4), with 5 completed and
 | 2 | `TIDY-002` | 프로젝트 workflow 전이 분산 | 완료 | `internal/tarsserver/handler_chat.go:26-45`, `internal/project/brief_state.go:128-280`, `internal/project/orchestrator.go:72-136`, `internal/project/project_runner.go:208-320`, `internal/tarsserver/handler_project.go:460-523` | kickoff, brief/state 저장, dispatch, autopilot 루프가 별도 규칙으로 흩어짐 | 높음 | 프로젝트 시작, 자동 실행, 대시보드 |
 | 3 | `SEC-001` | 대시보드 공개 모드 오사용 위험 | 완료 | `internal/tarsserver/middleware.go:26-33` | `dashboard_auth_mode=off` 시 `/dashboards`, `/ui/projects/*` 전체가 인증 skip path가 됨 | 높음 | 프로젝트 메타데이터 노출 |
 | 4 | `TIDY-003` | 대시보드 섹션 정의 중복 | 완료 | `internal/tarsserver/dashboard.go:214-406`, `internal/tarsserver/dashboard.go:416-428`, `internal/tarsserver/dashboard.go:573-586` | 섹션 ID, refresh 대상, 서버 데이터 조립이 암묵적으로 묶여 있음 | 중간 | 대시보드 렌더링/추가 개발 |
-| 5 | `TIDY-004` | Provider credential lifecycle 분산 | 남음 | `internal/auth/token.go:18-97`, `internal/auth/codex_oauth.go:48-247`, `internal/llm/provider.go:118-140`, `internal/llm/openai_codex_client.go:171-185`, `internal/llm/model_lister.go:165-193` | 토큰 해석, provider 특화 credential, refresh retry가 여러 계층에 분산 | 중간 | LLM provider onboarding, 인증 회복 |
+| 5 | `TIDY-004` | Provider credential lifecycle 분산 | 완료 | `internal/auth/token.go:18-97`, `internal/auth/codex_oauth.go:48-247`, `internal/llm/provider.go:118-140`, `internal/llm/openai_codex_client.go:171-185`, `internal/llm/model_lister.go:165-193` | 토큰 해석, provider 특화 credential, refresh retry가 여러 계층에 분산 | 중간 | LLM provider onboarding, 인증 회복 |
 | 6 | `SEC-002` | Browser relay query token 노출 가능성 | 완료 | `internal/browserrelay/server.go:24-25`, `internal/browserrelay/server.go:1456-1484` | opt-in 이지만 query string의 `token` / `relay_token`을 그대로 인증값으로 허용 | 중간 | 로컬 브라우저 relay 인증 |
 
 ---
@@ -232,6 +232,7 @@ That duplication makes section additions and renames fragile.
 **분류 코드 / Classification Code**: `TIDY-004`
 **유형 / Type**: Extract Strategy / Introduce Registry / Move Logic
 **심각도 / Severity**: 중간
+**상태 / Status**: 완료, PR [#78](https://github.com/devlikebear/tars/pull/78)
 **선행 작업 / Prerequisite**: 없음
 **근거 / Evidence**: 일반 OAuth token 해석은 `internal/auth/token.go`, Codex 전용 credential 파일/refresh/persist는 `internal/auth/codex_oauth.go`, provider 생성은 `internal/llm/provider.go`, Codex chat retry는 `internal/llm/openai_codex_client.go`, live model fetch retry는 `internal/llm/model_lister.go`에 분산되어 있습니다. provider 추가 시 인증 lifecycle를 여러 파일에서 다시 조합해야 합니다.
 **소스 이슈 / Source Issue**: `TIDY-004`
@@ -263,14 +264,14 @@ That makes onboarding or evolving providers harder because resolution, refresh, 
 5. 구조 정리 이후에만 refresh 시점 조정 같은 행동 변경을 적용하십시오.
 
 **완료 기준 / Completion Criteria**
-- [ ] provider별 인증 lifecycle이 명시적 전략/레지스트리로 표현됨
-- [ ] chat client와 model fetcher가 같은 refresh/persist 규약을 재사용함
-- [ ] 새 provider 추가 시 인증 관련 수정 지점이 예측 가능하게 줄어듦
+- [x] provider별 인증 lifecycle이 명시적 전략/레지스트리로 표현됨
+- [x] chat client와 model fetcher가 같은 refresh/persist 규약을 재사용함
+- [x] 새 provider 추가 시 인증 관련 수정 지점이 예측 가능하게 줄어듦
 
 **테스트 기준 / Test Criteria**
-- [ ] 단위 테스트: provider별 resolve/refresh/persist 전략 검증
-- [ ] 통합 테스트: `openai-codex`의 chat unauthorized retry와 model list retry가 동일 계약으로 동작하는지 검증
-- [ ] 회귀 테스트: `anthropic`, `gemini`, `openai`, `openai-codex` 기존 인증 경로 유지 확인
+- [x] 단위 테스트: provider별 resolve/refresh/persist 전략 검증
+- [x] 통합 테스트: `openai-codex`의 chat unauthorized retry와 model list retry가 동일 계약으로 동작하는지 검증
+- [x] 회귀 테스트: `anthropic`, `gemini`, `openai`, `openai-codex` 기존 인증 경로 유지 확인
 
 ---
 
