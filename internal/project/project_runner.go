@@ -213,149 +213,204 @@ func (m *AutopilotManager) run(ctx context.Context, projectID, runID string) {
 	orch := NewOrchestratorWithGitHubAuthChecker(m.store, m.runner, m.githubAuthChecker)
 	immediateStreak := 0
 	for iteration := 1; ; iteration++ {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		board, err := m.store.GetBoard(projectID)
-		if err != nil {
-			m.fail(projectID, runID, iteration, err.Error())
+		if ctx.Err() != nil {
 			return
 		}
-		switch {
-		case len(board.Tasks) == 0:
-			if err := m.seedBacklog(projectID); err != nil {
-				message := "Autopilot blocked: no tasks on the board"
-				if strings.TrimSpace(err.Error()) != "" {
-					message += ": " + strings.TrimSpace(err.Error())
-				}
-				m.noteBlocked(projectID, runID, iteration, message, "Autopilot will retry after the loop interval")
-				if !m.waitForNextTick(ctx) {
-					return
-				}
-				immediateStreak = 0
-				continue
-			}
-			m.setRun(projectID, func(item *AutopilotRun) {
-				item.Status = AutopilotStatusRunning
-				item.Message = "PM seeded backlog and resumed autopilot"
-				item.Iterations = iteration
-				item.FinishedAt = ""
-			})
-			m.updateState(projectID, DefaultWorkflowPolicy.AutopilotSeededBacklogState())
-			m.publish(projectID)
-			immediateStreak++
-			continue
-		case boardHasStatus(board, "todo"):
-			m.setRun(projectID, func(item *AutopilotRun) {
-				item.Status = AutopilotStatusRunning
-				item.Message = "Dispatching todo tasks"
-				item.Iterations = iteration
-				item.FinishedAt = ""
-			})
-			if update, ok := DefaultWorkflowPolicy.AutopilotDispatchState("todo"); ok {
-				m.updateState(projectID, update)
-			}
-			if _, err := orch.DispatchTodo(context.Background(), projectID); err != nil {
-				recovered, recoverErr := m.autoRecover(projectID, iteration, "todo dispatch", err)
-				if recoverErr != nil {
-					m.fail(projectID, runID, iteration, recoverErr.Error())
-					return
-				}
-				if recovered {
-					immediateStreak++
-					m.publish(projectID)
-					continue
-				}
-				m.noteBlocked(projectID, runID, iteration, "Autopilot blocked after todo dispatch: "+strings.TrimSpace(err.Error()), "Autopilot will retry after the loop interval")
-				if !m.waitForNextTick(ctx) {
-					return
-				}
-				immediateStreak = 0
-				continue
-			}
-			m.publish(projectID)
-			immediateStreak++
-		case boardHasStatus(board, "review"):
-			m.setRun(projectID, func(item *AutopilotRun) {
-				item.Status = AutopilotStatusRunning
-				item.Message = "Dispatching review tasks"
-				item.Iterations = iteration
-				item.FinishedAt = ""
-			})
-			if update, ok := DefaultWorkflowPolicy.AutopilotDispatchState("review"); ok {
-				m.updateState(projectID, update)
-			}
-			if _, err := orch.DispatchReview(context.Background(), projectID); err != nil {
-				recovered, recoverErr := m.autoRecover(projectID, iteration, "review dispatch", err)
-				if recoverErr != nil {
-					m.fail(projectID, runID, iteration, recoverErr.Error())
-					return
-				}
-				if recovered {
-					immediateStreak++
-					m.publish(projectID)
-					continue
-				}
-				m.noteBlocked(projectID, runID, iteration, "Autopilot blocked after review dispatch: "+strings.TrimSpace(err.Error()), "Autopilot will retry after the loop interval")
-				if !m.waitForNextTick(ctx) {
-					return
-				}
-				immediateStreak = 0
-				continue
-			}
-			m.publish(projectID)
-			immediateStreak++
-		case boardHasStatus(board, "in_progress"):
-			task := firstTaskByStatus(board, "in_progress")
-			recovered, recoverErr := m.autoRecover(projectID, iteration, "stalled in-progress task", nil)
-			if recoverErr != nil {
-				m.fail(projectID, runID, iteration, recoverErr.Error())
-				return
-			}
-			if recovered {
-				immediateStreak++
-				m.publish(projectID)
-				continue
-			}
-			message := "Autopilot waiting on in-progress task"
-			nextAction := "Autopilot will retry after the loop interval"
-			if strings.TrimSpace(task.Title) != "" {
-				message = "Autopilot waiting on task: " + strings.TrimSpace(task.Title)
-			}
-			m.noteBlocked(projectID, runID, iteration, message, nextAction)
-			if !m.waitForNextTick(ctx) {
-				return
-			}
-			immediateStreak = 0
-			continue
-		case allBoardTasksDone(board):
-			message := "Autopilot completed all project tasks"
-			m.updateState(projectID, DefaultWorkflowPolicy.AutopilotCompletedState(message))
-			m.setRun(projectID, func(item *AutopilotRun) {
-				item.Status = AutopilotStatusDone
-				item.Message = message
-				item.Iterations = iteration
-				item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
-			})
-			m.publish(projectID)
+		step := m.runIteration(ctx, orch, projectID, runID, iteration)
+		if step.Stop {
 			return
-		default:
-			m.noteBlocked(projectID, runID, iteration, "Autopilot found no actionable todo or review tasks", "Autopilot will retry after the loop interval")
-			if !m.waitForNextTick(ctx) {
-				return
-			}
-			immediateStreak = 0
-			continue
 		}
-		if m.maxIterations > 0 && immediateStreak >= m.maxIterations {
-			if !m.waitForNextTick(ctx) {
-				return
-			}
+		if step.Immediate {
+			immediateStreak++
+		} else {
 			immediateStreak = 0
+		}
+		if !m.applyImmediateThrottle(ctx, &immediateStreak) {
+			return
 		}
 	}
+}
+
+type autopilotStepResult struct {
+	Immediate bool
+	Stop      bool
+}
+
+func (m *AutopilotManager) runIteration(
+	ctx context.Context,
+	orch *Orchestrator,
+	projectID string,
+	runID string,
+	iteration int,
+) autopilotStepResult {
+	board, err := m.store.GetBoard(projectID)
+	if err != nil {
+		m.fail(projectID, runID, iteration, err.Error())
+		return autopilotStepResult{Stop: true}
+	}
+	switch {
+	case len(board.Tasks) == 0:
+		return m.handleEmptyBoard(ctx, projectID, runID, iteration)
+	case boardHasStatus(board, "todo"):
+		return m.handleDispatchStage(ctx, orch, projectID, runID, iteration, "todo")
+	case boardHasStatus(board, "review"):
+		return m.handleDispatchStage(ctx, orch, projectID, runID, iteration, "review")
+	case boardHasStatus(board, "in_progress"):
+		return m.handleInProgressBoard(ctx, projectID, runID, iteration, board)
+	case allBoardTasksDone(board):
+		m.completeRun(projectID, iteration)
+		return autopilotStepResult{Stop: true}
+	default:
+		return m.handleIdleBoard(ctx, projectID, runID, iteration)
+	}
+}
+
+func (m *AutopilotManager) handleEmptyBoard(
+	ctx context.Context,
+	projectID string,
+	runID string,
+	iteration int,
+) autopilotStepResult {
+	if err := m.seedBacklog(projectID); err != nil {
+		message := "Autopilot blocked: no tasks on the board"
+		if strings.TrimSpace(err.Error()) != "" {
+			message += ": " + strings.TrimSpace(err.Error())
+		}
+		return m.waitBlockedLoop(ctx, projectID, runID, iteration, message, "Autopilot will retry after the loop interval")
+	}
+	m.setRunningRun(projectID, "PM seeded backlog and resumed autopilot", iteration)
+	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotSeededBacklogState())
+	m.publish(projectID)
+	return autopilotStepResult{Immediate: true}
+}
+
+func (m *AutopilotManager) handleDispatchStage(
+	ctx context.Context,
+	orch *Orchestrator,
+	projectID string,
+	runID string,
+	iteration int,
+	stage string,
+) autopilotStepResult {
+	m.setRunningRun(projectID, "Dispatching "+stage+" tasks", iteration)
+	if update, ok := DefaultWorkflowPolicy.AutopilotDispatchState(stage); ok {
+		m.updateState(projectID, update)
+	}
+	var err error
+	switch stage {
+	case "review":
+		_, err = orch.DispatchReview(context.Background(), projectID)
+	default:
+		_, err = orch.DispatchTodo(context.Background(), projectID)
+	}
+	if err == nil {
+		m.publish(projectID)
+		return autopilotStepResult{Immediate: true}
+	}
+	recovered, recoverErr := m.autoRecover(projectID, iteration, errorSource(stage+" dispatch"), err)
+	if recoverErr != nil {
+		m.fail(projectID, runID, iteration, recoverErr.Error())
+		return autopilotStepResult{Stop: true}
+	}
+	if recovered {
+		m.publish(projectID)
+		return autopilotStepResult{Immediate: true}
+	}
+	return m.waitBlockedLoop(
+		ctx,
+		projectID,
+		runID,
+		iteration,
+		"Autopilot blocked after "+stage+" dispatch: "+strings.TrimSpace(err.Error()),
+		"Autopilot will retry after the loop interval",
+	)
+}
+
+func (m *AutopilotManager) handleInProgressBoard(
+	ctx context.Context,
+	projectID string,
+	runID string,
+	iteration int,
+	board Board,
+) autopilotStepResult {
+	recovered, recoverErr := m.autoRecover(projectID, iteration, "stalled in-progress task", nil)
+	if recoverErr != nil {
+		m.fail(projectID, runID, iteration, recoverErr.Error())
+		return autopilotStepResult{Stop: true}
+	}
+	if recovered {
+		m.publish(projectID)
+		return autopilotStepResult{Immediate: true}
+	}
+	task := firstTaskByStatus(board, "in_progress")
+	message := "Autopilot waiting on in-progress task"
+	if strings.TrimSpace(task.Title) != "" {
+		message = "Autopilot waiting on task: " + strings.TrimSpace(task.Title)
+	}
+	return m.waitBlockedLoop(ctx, projectID, runID, iteration, message, "Autopilot will retry after the loop interval")
+}
+
+func (m *AutopilotManager) handleIdleBoard(
+	ctx context.Context,
+	projectID string,
+	runID string,
+	iteration int,
+) autopilotStepResult {
+	return m.waitBlockedLoop(
+		ctx,
+		projectID,
+		runID,
+		iteration,
+		"Autopilot found no actionable todo or review tasks",
+		"Autopilot will retry after the loop interval",
+	)
+}
+
+func (m *AutopilotManager) waitBlockedLoop(
+	ctx context.Context,
+	projectID string,
+	runID string,
+	iteration int,
+	message string,
+	nextAction string,
+) autopilotStepResult {
+	m.noteBlocked(projectID, runID, iteration, message, nextAction)
+	if !m.waitForNextTick(ctx) {
+		return autopilotStepResult{Stop: true}
+	}
+	return autopilotStepResult{}
+}
+
+func (m *AutopilotManager) setRunningRun(projectID string, message string, iteration int) {
+	m.setRun(projectID, func(item *AutopilotRun) {
+		item.Status = AutopilotStatusRunning
+		item.Message = strings.TrimSpace(message)
+		item.Iterations = iteration
+		item.FinishedAt = ""
+	})
+}
+
+func (m *AutopilotManager) completeRun(projectID string, iteration int) {
+	message := "Autopilot completed all project tasks"
+	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotCompletedState(message))
+	m.setRun(projectID, func(item *AutopilotRun) {
+		item.Status = AutopilotStatusDone
+		item.Message = message
+		item.Iterations = iteration
+		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	})
+	m.publish(projectID)
+}
+
+func (m *AutopilotManager) applyImmediateThrottle(ctx context.Context, immediateStreak *int) bool {
+	if m.maxIterations <= 0 || *immediateStreak < m.maxIterations {
+		return true
+	}
+	if !m.waitForNextTick(ctx) {
+		return false
+	}
+	*immediateStreak = 0
+	return true
 }
 
 func (m *AutopilotManager) fail(projectID, runID string, iteration int, message string) {
