@@ -29,6 +29,7 @@ func TestResolveProviderCredential_APIKeyStrategy(t *testing.T) {
 }
 
 func TestResolveProviderCredential_OpenAICodexOAuthStrategy(t *testing.T) {
+	withCodexRefreshTokenStoreForTests(t, nil)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	path := filepath.Join(home, ".codex", "auth.json")
@@ -56,6 +57,7 @@ func TestResolveProviderCredential_OpenAICodexOAuthStrategy(t *testing.T) {
 }
 
 func TestRefreshProviderCredential_OpenAICodexStrategy(t *testing.T) {
+	withCodexRefreshTokenStoreForTests(t, nil)
 	home := t.TempDir()
 	path := filepath.Join(home, ".codex", "auth.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

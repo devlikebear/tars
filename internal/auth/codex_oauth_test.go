@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -38,6 +39,7 @@ func TestResolveCodexCredential_EnvOnly(t *testing.T) {
 }
 
 func TestResolveCodexCredential_File(t *testing.T) {
+	withCodexRefreshTokenStoreForTests(t, nil)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("OPENAI_CODEX_OAUTH_TOKEN", "")
@@ -73,6 +75,7 @@ func TestResolveCodexCredential_File(t *testing.T) {
 }
 
 func TestResolveCodexCredential_PrefersEnvOverFile(t *testing.T) {
+	withCodexRefreshTokenStoreForTests(t, nil)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	path := filepath.Join(home, ".codex", "auth.json")
@@ -166,6 +169,7 @@ func TestRefreshCodexCredential_RequiresFields(t *testing.T) {
 }
 
 func TestRefreshCodexCredential_PersistAtomic(t *testing.T) {
+	withCodexRefreshTokenStoreForTests(t, nil)
 	home := t.TempDir()
 	path := filepath.Join(home, ".codex", "auth.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -234,4 +238,171 @@ func makeJWTWithAccountID(t *testing.T, accountID string) string {
 	payloadJSON := `{"https://api.openai.com/auth":{"chatgpt_account_id":"` + accountID + `"}}`
 	payload := base64.RawURLEncoding.EncodeToString([]byte(payloadJSON))
 	return header + "." + payload + ".sig"
+}
+
+type stubCodexRefreshTokenStore struct {
+	name      string
+	loadToken string
+	loadErr   error
+	saveErr   error
+	savedPath string
+	saved     string
+}
+
+func (s *stubCodexRefreshTokenStore) Name() string {
+	if strings.TrimSpace(s.name) == "" {
+		return "stub"
+	}
+	return s.name
+}
+
+func (s *stubCodexRefreshTokenStore) Load(path string) (string, error) {
+	s.savedPath = path
+	return s.loadToken, s.loadErr
+}
+
+func (s *stubCodexRefreshTokenStore) Save(path string, token string) error {
+	s.savedPath = path
+	s.saved = token
+	return s.saveErr
+}
+
+func withCodexRefreshTokenStoreForTests(t *testing.T, store codexRefreshTokenStore) {
+	t.Helper()
+	prev := currentCodexRefreshTokenStore
+	currentCodexRefreshTokenStore = func() codexRefreshTokenStore {
+		return store
+	}
+	t.Cleanup(func() {
+		currentCodexRefreshTokenStore = prev
+	})
+}
+
+func TestResolveCodexCredential_FilePrefersSecureStoreRefreshToken(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("OPENAI_CODEX_OAUTH_TOKEN", "")
+	t.Setenv("OPENAI_CODEX_REFRESH_TOKEN", "")
+	t.Setenv("OPENAI_CODEX_ACCOUNT_ID", "")
+	path := filepath.Join(home, ".codex", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(`{"tokens":{"access_token":"file-access","refresh_token":"file-refresh","account_id":"acc-file"}}`), 0o644); err != nil {
+		t.Fatalf("write auth file: %v", err)
+	}
+	withCodexRefreshTokenStoreForTests(t, &stubCodexRefreshTokenStore{
+		name:      "test-store",
+		loadToken: "secure-refresh",
+	})
+
+	cred, err := ResolveCodexCredential(CodexResolveOptions{})
+	if err != nil {
+		t.Fatalf("resolve codex credential: %v", err)
+	}
+	if cred.RefreshToken != "secure-refresh" {
+		t.Fatalf("expected secure-store refresh token, got %q", cred.RefreshToken)
+	}
+}
+
+func TestRefreshCodexCredential_PersistUsesSecureStoreWhenAvailable(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".codex", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(`{"tokens":{"access_token":"old-access","refresh_token":"old-refresh","account_id":"acc-old"}}`), 0o644); err != nil {
+		t.Fatalf("write auth file: %v", err)
+	}
+
+	store := &stubCodexRefreshTokenStore{name: "test-store"}
+	withCodexRefreshTokenStoreForTests(t, store)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600}`))
+	}))
+	defer srv.Close()
+
+	_, err := RefreshCodexCredential(context.Background(), CodexCredential{
+		AccessToken:  "old-access",
+		RefreshToken: "old-refresh",
+		AccountID:    "acc-old",
+		Source:       CodexCredentialSourceFile,
+		SourcePath:   path,
+	}, CodexRefreshOptions{
+		TokenURL:    srv.URL,
+		HTTPClient:  srv.Client(),
+		PersistFile: true,
+	})
+	if err != nil {
+		t.Fatalf("refresh codex credential: %v", err)
+	}
+	if store.saved != "new-refresh" {
+		t.Fatalf("expected secure store save new-refresh, got %q", store.saved)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read auth file: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse auth file: %v", err)
+	}
+	tokens, _ := parsed["tokens"].(map[string]any)
+	if _, ok := tokens["refresh_token"]; ok {
+		t.Fatalf("expected refresh_token to be scrubbed from auth file, got %+v", tokens)
+	}
+}
+
+func TestRefreshCodexCredential_PersistFallsBackToFileWhenSecureStoreFails(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".codex", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(`{"tokens":{"access_token":"old-access","refresh_token":"old-refresh","account_id":"acc-old"}}`), 0o644); err != nil {
+		t.Fatalf("write auth file: %v", err)
+	}
+
+	withCodexRefreshTokenStoreForTests(t, &stubCodexRefreshTokenStore{
+		name:    "test-store",
+		saveErr: errors.New("save failed"),
+	})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600}`))
+	}))
+	defer srv.Close()
+
+	_, err := RefreshCodexCredential(context.Background(), CodexCredential{
+		AccessToken:  "old-access",
+		RefreshToken: "old-refresh",
+		AccountID:    "acc-old",
+		Source:       CodexCredentialSourceFile,
+		SourcePath:   path,
+	}, CodexRefreshOptions{
+		TokenURL:    srv.URL,
+		HTTPClient:  srv.Client(),
+		PersistFile: true,
+	})
+	if err != nil {
+		t.Fatalf("refresh codex credential: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read auth file: %v", err)
+	}
+	var parsed struct {
+		Tokens struct {
+			RefreshToken string `json:"refresh_token"`
+		} `json:"tokens"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse auth file: %v", err)
+	}
+	if parsed.Tokens.RefreshToken != "new-refresh" {
+		t.Fatalf("expected file fallback refresh token new-refresh, got %q", parsed.Tokens.RefreshToken)
+	}
 }
