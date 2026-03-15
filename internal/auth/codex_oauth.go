@@ -182,6 +182,11 @@ func resolveCodexCredentialFromFile(path string) (CodexCredential, error) {
 		return CodexCredential{}, fmt.Errorf("openai-codex auth file %q missing tokens.access_token", path)
 	}
 	refresh := strings.TrimSpace(asString(tokens["refresh_token"]))
+	if store := currentCodexRefreshTokenStore(); store != nil {
+		if secureRefresh, loadErr := store.Load(path); loadErr == nil && strings.TrimSpace(secureRefresh) != "" {
+			refresh = strings.TrimSpace(secureRefresh)
+		}
+	}
 	accountID := strings.TrimSpace(asString(tokens["account_id"]))
 	if accountID == "" {
 		accountID = ParseCodexAccountIDFromJWT(access)
@@ -210,7 +215,18 @@ func persistCodexCredentialFile(path string, cred CodexCredential) error {
 		tokens = map[string]any{}
 	}
 	tokens["access_token"] = cred.AccessToken
-	tokens["refresh_token"] = cred.RefreshToken
+	refreshPersistedSecurely := false
+	if store := currentCodexRefreshTokenStore(); store != nil && strings.TrimSpace(cred.RefreshToken) != "" {
+		if err := store.Save(path, cred.RefreshToken); err == nil {
+			delete(tokens, "refresh_token")
+			parsed["refresh_token_store"] = store.Name()
+			refreshPersistedSecurely = true
+		}
+	}
+	if !refreshPersistedSecurely {
+		tokens["refresh_token"] = cred.RefreshToken
+		delete(parsed, "refresh_token_store")
+	}
 	if strings.TrimSpace(cred.AccountID) != "" {
 		tokens["account_id"] = cred.AccountID
 	}
