@@ -468,6 +468,22 @@ func TestCompiledOptions_RequirementForRequest(t *testing.T) {
 			wantTokenNeeded: false,
 		},
 		{
+			name:            "ipv6 loopback request in external required mode is optional",
+			path:            "/v1/chat",
+			remoteAddr:      "[::1]:8080",
+			wantRequireAuth: false,
+			wantAdminPath:   false,
+			wantTokenNeeded: false,
+		},
+		{
+			name:            "loopback alias request in external required mode is optional",
+			path:            "/v1/chat",
+			remoteAddr:      "127.0.0.2:8080",
+			wantRequireAuth: false,
+			wantAdminPath:   false,
+			wantTokenNeeded: false,
+		},
+		{
 			name:            "external request in external required mode needs token",
 			path:            "/v1/chat",
 			remoteAddr:      "192.0.2.10:443",
@@ -503,6 +519,30 @@ func TestCompiledOptions_RequirementForRequest(t *testing.T) {
 			}
 			if got.tokenNeeded != tc.wantTokenNeeded {
 				t.Fatalf("expected tokenNeeded=%v, got %v", tc.wantTokenNeeded, got.tokenNeeded)
+			}
+		})
+	}
+}
+
+func TestIsLoopbackRemoteAddr(t *testing.T) {
+	cases := []struct {
+		name       string
+		remoteAddr string
+		want       bool
+	}{
+		{name: "ipv4 loopback", remoteAddr: "127.0.0.1:8080", want: true},
+		{name: "ipv4 loopback alias", remoteAddr: "127.0.0.2:8080", want: true},
+		{name: "ipv6 loopback", remoteAddr: "[::1]:8080", want: true},
+		{name: "ipv6 loopback zone suffix", remoteAddr: "[::1%lo0]:8080", want: true},
+		{name: "external ipv4", remoteAddr: "192.0.2.10:443", want: false},
+		{name: "empty", remoteAddr: "", want: false},
+		{name: "host name", remoteAddr: "localhost:8080", want: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isLoopbackRemoteAddr(tc.remoteAddr); got != tc.want {
+				t.Fatalf("expected %v, got %v for %q", tc.want, got, tc.remoteAddr)
 			}
 		})
 	}
