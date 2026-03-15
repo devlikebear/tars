@@ -454,33 +454,16 @@ func (m *AutopilotManager) publish(projectID string, kinds ...string) {
 }
 
 func boardHasStatus(board Board, status string) bool {
-	for _, task := range board.Tasks {
-		if task.Status == strings.TrimSpace(status) {
-			return true
-		}
-	}
-	return false
+	return DefaultWorkflowPolicy.BoardHasStatus(board, status)
 }
 
 func firstTaskByStatus(board Board, status string) BoardTask {
-	for _, task := range board.Tasks {
-		if task.Status == strings.TrimSpace(status) {
-			return task
-		}
-	}
-	return BoardTask{}
+	task, _ := DefaultWorkflowPolicy.FirstTaskByStatus(board, status)
+	return task
 }
 
 func allBoardTasksDone(board Board) bool {
-	if len(board.Tasks) == 0 {
-		return true
-	}
-	for _, task := range board.Tasks {
-		if task.Status != "done" {
-			return false
-		}
-	}
-	return true
+	return DefaultWorkflowPolicy.AllBoardTasksDone(board)
 }
 
 func (m *AutopilotManager) seedBacklog(projectID string) error {
@@ -666,24 +649,18 @@ func (m *AutopilotManager) shouldAutopilotProjectRun(projectID string) (bool, er
 	if err != nil {
 		return false, err
 	}
-	if item.Status == "archived" {
-		return false, nil
-	}
 	board, err := m.store.GetBoard(projectID)
 	if err != nil {
 		return false, err
 	}
-	if len(board.Tasks) == 0 {
-		return true, nil
-	}
-	if !allBoardTasksDone(board) {
-		return true, nil
-	}
 	state, err := m.store.GetState(projectID)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "project state not found") {
+			return DefaultWorkflowPolicy.ShouldAutopilotRun(item, board, nil), nil
+		}
 		return false, err
 	}
-	return state.Status != "done", nil
+	return DefaultWorkflowPolicy.ShouldAutopilotRun(item, board, &state), nil
 }
 
 func (m *AutopilotManager) waitForNextTick(ctx context.Context) bool {

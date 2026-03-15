@@ -540,30 +540,15 @@ func normalizeBriefKind(raw string) string {
 }
 
 func normalizeBriefStatus(raw string) string {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "collecting", "ready", "finalized":
-		return strings.ToLower(strings.TrimSpace(raw))
-	default:
-		return "collecting"
-	}
+	return DefaultWorkflowPolicy.NormalizeBriefStatus(raw)
 }
 
 func normalizeProjectStatePhase(raw string) string {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "planning", "drafting", "executing", "reviewing", "blocked", "done":
-		return strings.ToLower(strings.TrimSpace(raw))
-	default:
-		return "planning"
-	}
+	return DefaultWorkflowPolicy.NormalizeProjectStatePhase(raw)
 }
 
 func normalizeProjectStateStatus(raw string) string {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "active", "paused", "blocked", "done":
-		return strings.ToLower(strings.TrimSpace(raw))
-	default:
-		return "active"
-	}
+	return DefaultWorkflowPolicy.NormalizeProjectStateStatus(raw)
 }
 
 func buildProjectInstructionsFromBrief(brief Brief) string {
@@ -596,13 +581,7 @@ func buildProjectInstructionsFromBrief(brief Brief) string {
 }
 
 func defaultProjectNextAction(brief Brief) string {
-	if len(brief.OpenQuestions) > 0 {
-		return strings.TrimSpace(brief.OpenQuestions[0])
-	}
-	if isNarrativeBriefKind(brief.Kind) {
-		return "Review STORY_BIBLE.md, CHARACTERS.md, and PLOT.md, then update STATE.md with the first writing milestone."
-	}
-	return "Review project instructions and define the first executable milestone in STATE.md."
+	return DefaultWorkflowPolicy.DefaultProjectNextAction(brief)
 }
 
 func isNarrativeBriefKind(kind string) bool {

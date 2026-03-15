@@ -14,22 +14,22 @@
 ## 요약 (Summary) / Summary
 
 이 지시서는 저장소 핵심 운영 경로에서 발견된 코드 품질/보안/구조 문제를 해결하기 위한 리팩토링 작업을 정의합니다.
-총 6개의 이슈가 발견되었으며 (`DUP` 0건 / `SEC` 2건 / `TIDY` 4건), 아래 작업 목록을 순서대로 실행하십시오.
+총 6개의 이슈가 발견되었으며 (`DUP` 0건 / `SEC` 2건 / `TIDY` 4건), 이 중 3건은 완료되었고 3건이 남아 있습니다.
 This work order defines the refactoring tasks required to address code quality, security, and structural issues found in the repository's core runtime paths.
-There are 6 issues in total (`DUP` 0 / `SEC` 2 / `TIDY` 4), and the work orders below should be executed in sequence.
+There are 6 issues in total (`DUP` 0 / `SEC` 2 / `TIDY` 4), with 3 completed and 3 remaining.
 
 ---
 
 ## 발견된 이슈 목록 (Issues Found) / Issues Found
 
-| # | 분류 코드 | 이슈 유형 | 위치 | 근거 | 위험도 | 영향 범위 |
-|---|-----------|-----------|------|------|--------|-----------|
-| 1 | `TIDY-001` | 설정 스키마 매핑 중복 | `internal/config/defaults_apply.go:13-144`, `internal/config/env.go:8-320`, `internal/config/yaml.go:12-263`, `internal/config/merge.go:3-280` | 같은 `Config` 필드 집합을 입력원별로 반복 매핑 | 중간 | 설정 로딩 전역 |
-| 2 | `TIDY-002` | 프로젝트 workflow 전이 분산 | `internal/tarsserver/handler_chat.go:26-45`, `internal/project/brief_state.go:128-280`, `internal/project/orchestrator.go:72-136`, `internal/project/project_runner.go:208-320`, `internal/tarsserver/handler_project.go:460-523` | kickoff, brief/state 저장, dispatch, autopilot 루프가 별도 규칙으로 흩어짐 | 높음 | 프로젝트 시작, 자동 실행, 대시보드 |
-| 3 | `SEC-001` | 대시보드 공개 모드 오사용 위험 | `internal/tarsserver/middleware.go:26-33` | `dashboard_auth_mode=off` 시 `/dashboards`, `/ui/projects/*` 전체가 인증 skip path가 됨 | 높음 | 프로젝트 메타데이터 노출 |
-| 4 | `TIDY-003` | 대시보드 섹션 정의 중복 | `internal/tarsserver/dashboard.go:214-406`, `internal/tarsserver/dashboard.go:416-428`, `internal/tarsserver/dashboard.go:573-586` | 섹션 ID, refresh 대상, 서버 데이터 조립이 암묵적으로 묶여 있음 | 중간 | 대시보드 렌더링/추가 개발 |
-| 5 | `TIDY-004` | Provider credential lifecycle 분산 | `internal/auth/token.go:18-97`, `internal/auth/codex_oauth.go:48-247`, `internal/llm/provider.go:118-140`, `internal/llm/openai_codex_client.go:171-185`, `internal/llm/model_lister.go:165-193` | 토큰 해석, provider 특화 credential, refresh retry가 여러 계층에 분산 | 중간 | LLM provider onboarding, 인증 회복 |
-| 6 | `SEC-002` | Browser relay query token 노출 가능성 | `internal/browserrelay/server.go:24-25`, `internal/browserrelay/server.go:1456-1484` | opt-in 이지만 query string의 `token` / `relay_token`을 그대로 인증값으로 허용 | 중간 | 로컬 브라우저 relay 인증 |
+| # | 분류 코드 | 이슈 유형 | 상태 | 위치 | 근거 | 위험도 | 영향 범위 |
+|---|-----------|-----------|------|------|------|--------|-----------|
+| 1 | `TIDY-001` | 설정 스키마 매핑 중복 | 완료 | `internal/config/defaults_apply.go:13-144`, `internal/config/env.go:8-320`, `internal/config/yaml.go:12-263`, `internal/config/merge.go:3-280` | 같은 `Config` 필드 집합을 입력원별로 반복 매핑 | 중간 | 설정 로딩 전역 |
+| 2 | `TIDY-002` | 프로젝트 workflow 전이 분산 | 남음 | `internal/tarsserver/handler_chat.go:26-45`, `internal/project/brief_state.go:128-280`, `internal/project/orchestrator.go:72-136`, `internal/project/project_runner.go:208-320`, `internal/tarsserver/handler_project.go:460-523` | kickoff, brief/state 저장, dispatch, autopilot 루프가 별도 규칙으로 흩어짐 | 높음 | 프로젝트 시작, 자동 실행, 대시보드 |
+| 3 | `SEC-001` | 대시보드 공개 모드 오사용 위험 | 완료 | `internal/tarsserver/middleware.go:26-33` | `dashboard_auth_mode=off` 시 `/dashboards`, `/ui/projects/*` 전체가 인증 skip path가 됨 | 높음 | 프로젝트 메타데이터 노출 |
+| 4 | `TIDY-003` | 대시보드 섹션 정의 중복 | 남음 | `internal/tarsserver/dashboard.go:214-406`, `internal/tarsserver/dashboard.go:416-428`, `internal/tarsserver/dashboard.go:573-586` | 섹션 ID, refresh 대상, 서버 데이터 조립이 암묵적으로 묶여 있음 | 중간 | 대시보드 렌더링/추가 개발 |
+| 5 | `TIDY-004` | Provider credential lifecycle 분산 | 남음 | `internal/auth/token.go:18-97`, `internal/auth/codex_oauth.go:48-247`, `internal/llm/provider.go:118-140`, `internal/llm/openai_codex_client.go:171-185`, `internal/llm/model_lister.go:165-193` | 토큰 해석, provider 특화 credential, refresh retry가 여러 계층에 분산 | 중간 | LLM provider onboarding, 인증 회복 |
+| 6 | `SEC-002` | Browser relay query token 노출 가능성 | 완료 | `internal/browserrelay/server.go:24-25`, `internal/browserrelay/server.go:1456-1484` | opt-in 이지만 query string의 `token` / `relay_token`을 그대로 인증값으로 허용 | 중간 | 로컬 브라우저 relay 인증 |
 
 ---
 
@@ -47,6 +47,7 @@ If there is a dependency, fill in the "Prerequisite" field.
 **분류 코드 / Classification Code**: `TIDY-001`
 **유형 / Type**: Extract Table / Split Responsibility / Centralize Mapping
 **심각도 / Severity**: 중간
+**상태 / Status**: 완료, PR [#64](https://github.com/devlikebear/tars/pull/64)
 **선행 작업 / Prerequisite**: 없음
 **근거 / Evidence**: `defaults_apply.go`, `env.go`, `yaml.go`, `merge.go`가 같은 `Config` 필드 집합을 서로 다른 분기문으로 반복 처리합니다. 새 설정 키를 추가하면 입력원별 규칙을 각각 수정해야 해서 누락 회귀가 쉽게 발생합니다.
 **소스 이슈 / Source Issue**: `TIDY-001`
@@ -77,14 +78,14 @@ If left unchanged, each new setting or validation rule multiplies edit points an
 5. 새 설정 키 추가 시 수정 지점이 descriptor 한 곳과 필요한 validator 정도로 제한되도록 만드십시오.
 
 **완료 기준 / Completion Criteria**
-- [ ] 동일 설정 필드 매핑 로직이 입력원별 switch/if 중복 없이 공통 메타데이터를 통해 정의됨
-- [ ] YAML/env/default/merge 경로가 같은 정규화 규칙을 재사용함
-- [ ] 새 설정 키 추가 절차가 기존보다 명확하고 짧아짐
+- [x] 동일 설정 필드 매핑 로직이 입력원별 switch/if 중복 없이 공통 메타데이터를 통해 정의됨
+- [x] YAML/env/default/merge 경로가 같은 정규화 규칙을 재사용함
+- [x] 새 설정 키 추가 절차가 기존보다 명확하고 짧아짐
 
 **테스트 기준 / Test Criteria**
-- [ ] 단위 테스트: 대표 설정 키에 대해 default, YAML, env, merge precedence 검증
-- [ ] 통합 테스트: `Load` 경로에서 기존 설정 파일과 env override가 동일하게 동작하는지 검증
-- [ ] 회귀 테스트: bool/list/int/string 타입별 기존 파싱 결과 유지 확인
+- [x] 단위 테스트: 대표 설정 키에 대해 default, YAML, env, merge precedence 검증
+- [x] 통합 테스트: `Load` 경로에서 기존 설정 파일과 env override가 동일하게 동작하는지 검증
+- [x] 회귀 테스트: bool/list/int/string 타입별 기존 파싱 결과 유지 확인
 
 ---
 
@@ -140,6 +141,7 @@ That makes it easy for chat, API, and autopilot behavior to drift when phases or
 **분류 코드 / Classification Code**: `SEC-001`
 **유형 / Type**: Harden Default / Add Guard / Add Warning
 **심각도 / Severity**: 높음
+**상태 / Status**: 완료, PR [#66](https://github.com/devlikebear/tars/pull/66)
 **선행 작업 / Prerequisite**: 없음
 **근거 / Evidence**: `apiAuthSkipPaths`는 `dashboard_auth_mode=off`일 때 `/dashboards`, `/dashboards/`, `/ui/projects/*`를 인증 예외로 추가합니다. 해당 화면에는 objective, board, activity, worker report, blocker 같은 내부 운영 데이터가 포함됩니다.
 **소스 이슈 / Source Issue**: `SEC-001`
@@ -167,14 +169,14 @@ If this is enabled on a non-loopback deployment by mistake, internal project dat
 5. 기존 `APIAuthMode`와의 상호작용을 문서와 테스트에 반영하십시오.
 
 **완료 기준 / Completion Criteria**
-- [ ] 인증 비활성화만으로 외부 공개가 즉시 성립하지 않음
-- [ ] 위험한 공개 모드 활성화 시 운영 경고가 명확히 남음
-- [ ] dashboard 접근 정책이 테스트와 문서에서 재현 가능하게 설명됨
+- [x] 인증 비활성화만으로 외부 공개가 즉시 성립하지 않음
+- [x] 위험한 공개 모드 활성화 시 운영 경고가 명확히 남음
+- [x] dashboard 접근 정책이 테스트와 문서에서 재현 가능하게 설명됨
 
 **테스트 기준 / Test Criteria**
-- [ ] 단위 테스트: loopback/non-loopback 환경에서 skip path 정책 검증
-- [ ] 통합 테스트: `dashboard_auth_mode=off`와 보호 플래그 조합별 HTTP status 검증
-- [ ] 회귀 테스트: 기본 설정과 기존 인증 on 경로가 변하지 않음 확인
+- [x] 단위 테스트: loopback/non-loopback 환경에서 skip path 정책 검증
+- [x] 통합 테스트: `dashboard_auth_mode=off`와 보호 플래그 조합별 HTTP status 검증
+- [x] 회귀 테스트: 기본 설정과 기존 인증 on 경로가 변하지 않음 확인
 
 ---
 
@@ -275,6 +277,7 @@ That makes onboarding or evolving providers harder because resolution, refresh, 
 **분류 코드 / Classification Code**: `SEC-002`
 **유형 / Type**: Reduce Attack Surface / Add Guard / Add Warning
 **심각도 / Severity**: 중간
+**상태 / Status**: 완료, PR [#68](https://github.com/devlikebear/tars/pull/68)
 **선행 작업 / Prerequisite**: 없음
 **근거 / Evidence**: `relayTokenFromRequest`는 header가 없을 때 `AllowQueryToken`이 켜져 있으면 `token`과 `relay_token` query parameter를 인증값으로 사용합니다. loopback 제한은 있지만 URL 기반 토큰은 브라우저 기록, 프록시 로그, 디버그 출력에 남기 쉽습니다.
 **소스 이슈 / Source Issue**: `SEC-002`
@@ -303,14 +306,14 @@ Even with loopback-only access, token exposure becomes easier once it enters bro
 5. URL에 토큰이 포함된 요청이 로그/에러 메시지에 남지 않도록 검토하십시오.
 
 **완료 기준 / Completion Criteria**
-- [ ] query string 기반 relay 인증 사용 면적이 줄어듦
-- [ ] query token 사용 시 운영자가 즉시 인지할 수 있는 경고 경로가 추가됨
-- [ ] header-only 경로가 기본이 되고 테스트로 고정됨
+- [x] query string 기반 relay 인증 사용 면적이 줄어듦
+- [x] query token 사용 시 운영자가 즉시 인지할 수 있는 경고 경로가 추가됨
+- [x] header-only 경로가 기본이 되고 테스트로 고정됨
 
 **테스트 기준 / Test Criteria**
-- [ ] 단위 테스트: header token, query token, disabled query token 조합별 인증 결과 검증
-- [ ] 통합 테스트: loopback 제한과 token 전달 경로가 함께 검증됨
-- [ ] 회귀 테스트: 기존 브라우저 확장 연결이 승인된 방식으로 계속 동작함을 확인
+- [x] 단위 테스트: header token, query token, disabled query token 조합별 인증 결과 검증
+- [x] 통합 테스트: loopback 제한과 token 전달 경로가 함께 검증됨
+- [x] 회귀 테스트: 기존 브라우저 확장 연결이 승인된 방식으로 계속 동작함을 확인
 
 ---
 
@@ -327,16 +330,13 @@ Even with loopback-only access, token exposure becomes easier once it enters bro
 
 ## 리팩토링 순서 (Recommended Order) / Recommended Order
 
-의존 관계 없는 작업은 병렬 실행 가능합니다.
-Work orders without dependencies can be executed in parallel.
+남은 작업은 병렬 실행이 가능하지만, `WO-002`를 먼저 정리하면 이후 대시보드와 provider 경로의 정책 drift를 줄이기 쉽습니다.
+The remaining work can still run in parallel, but finishing `WO-002` first reduces policy drift for later dashboard and provider refactors.
 
 ```text
-WO-003 (대시보드 공개 모드 방어)
-WO-006 (relay query token 축소)
-WO-001 (설정 매핑 메타데이터화)
-WO-005 (credential lifecycle registry)
 WO-002 (project workflow 상태기계화)
 WO-004 (dashboard section registry)
+WO-005 (credential lifecycle registry)
 ```
 
 ---
