@@ -55,64 +55,18 @@ func newCronJobRunnerWithNotify(
 		return nil
 	}
 	return func(ctx context.Context, job cron.Job) (string, error) {
-		targetWorkspaceDir := strings.TrimSpace(workspaceDir)
-		targetStore := store
-		if targetStore == nil && targetWorkspaceDir != "" {
-			if err := memory.EnsureWorkspace(targetWorkspaceDir); err != nil {
-				return "", err
-			}
-			targetStore = session.NewStore(targetWorkspaceDir)
-		}
-
-		promptText := strings.TrimSpace(job.Prompt)
-		telemetry := cronRunTelemetry{}
-		if payload := strings.TrimSpace(string(job.Payload)); payload != "" {
-			promptText += "\n\nCRON_PAYLOAD_JSON:\n" + payload
-		}
-		if projectPrompt := buildCronProjectPromptSection(targetWorkspaceDir, job.ProjectID); projectPrompt != "" {
-			promptText += "\n\n" + projectPrompt
-		}
-		if err := validateCronProjectPrerequisites(targetWorkspaceDir, job, promptText); err != nil {
-			return "", err
-		}
-		telegramPrompt, err := buildCronTelegramPromptSection(ctx, resolveDefaultTelegramChatID)
+		prepared, err := prepareCronJobRun(
+			ctx,
+			workspaceDir,
+			store,
+			job,
+			mainSessionID,
+			resolveDefaultTelegramChatID,
+		)
 		if err != nil {
 			return "", err
 		}
-		if telegramPrompt != "" {
-			promptText += "\n\n" + telegramPrompt
-		}
-		projectFileSnapshot, err := snapshotCronProjectFiles(targetWorkspaceDir, job.ProjectID)
-		if err != nil {
-			return "", err
-		}
-
-		targetSessionID, explicitTarget, err := resolveCronTargetSessionID(targetStore, job, mainSessionID)
-		if err != nil {
-			return "", err
-		}
-		if strings.TrimSpace(job.ProjectID) != "" && targetStore != nil && targetSessionID != "" {
-			_ = targetStore.SetProjectID(targetSessionID, strings.TrimSpace(job.ProjectID))
-		}
-		if targetSessionID != "" {
-			targetSession, err := lookupCronDeliverySession(targetStore, targetSessionID)
-			if err != nil {
-				return "", err
-			}
-			includeTargetContext := targetSession != nil && !(targetSession.Hidden && strings.EqualFold(strings.TrimSpace(targetSession.Kind), "worker"))
-			if includeTargetContext {
-				contextText, err := sessionContextByID(targetStore, targetSessionID, 6)
-				if err != nil {
-					return "", err
-				}
-				if contextText != "" {
-					promptText += "\n\nTARGET_SESSION_CONTEXT:\n" + contextText
-					telemetry.TargetSessionContextUsed = true
-					telemetry.TargetSessionContextTokens = promptTokenEstimate(contextText)
-				}
-			}
-		}
-		telemetry.PromptTokens = promptTokenEstimate(promptText)
+		telemetry := prepared.telemetry
 
 		runLabel := "cron"
 		if strings.TrimSpace(job.ID) != "" {
@@ -120,21 +74,16 @@ func newCronJobRunnerWithNotify(
 		}
 		runCtx := usage.WithCallMeta(ctx, usage.CallMeta{
 			Source:    "cron",
-			SessionID: targetSessionID,
+			SessionID: prepared.targetSessionID,
 			ProjectID: strings.TrimSpace(job.ProjectID),
 			RunID:     strings.TrimSpace(job.ID),
 		})
 		agentTelemetry := &agentPromptTelemetry{}
 		runCtx = withAgentPromptTelemetry(runCtx, agentTelemetry)
-		response, err := runPrompt(runCtx, runLabel, promptText)
+		response, err := runPrompt(runCtx, runLabel, prepared.promptText)
 		artifactNow := time.Now().UTC()
-		artifactPath := ""
 		if err != nil {
-			artifactPath, _ = persistCronProjectArtifact(targetWorkspaceDir, job, "", artifactNow, telemetry, artifactHistoryLimit)
-			if emit != nil {
-				evt := buildCronNotificationEvent(job, "error", "Cron failed", err.Error(), artifactPath, strings.TrimSpace(targetSessionID))
-				emit(ctx, evt)
-			}
+			emitCronRunFailure(ctx, emit, prepared.workspaceDir, job, "", artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, "Cron failed", err)
 			return "", err
 		}
 		telemetry.SystemPromptTokens = agentTelemetry.SystemPromptTokens
@@ -144,38 +93,141 @@ func newCronJobRunnerWithNotify(
 		telemetry.ContaminationMarkers = detectPseudoToolContamination(response)
 		if len(telemetry.ContaminationMarkers) > 0 {
 			err := fmt.Errorf("pseudo-tool contamination detected: %s", strings.Join(telemetry.ContaminationMarkers, ", "))
-			artifactPath, _ = persistCronProjectArtifact(targetWorkspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit)
-			if emit != nil {
-				evt := buildCronNotificationEvent(job, "error", "Cron failed", err.Error(), artifactPath, strings.TrimSpace(targetSessionID))
-				emit(ctx, evt)
-			}
+			emitCronRunFailure(ctx, emit, prepared.workspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, "Cron failed", err)
 			return "", err
 		}
-		if err := verifyCronClaimedFileUpdates(targetWorkspaceDir, job, response, projectFileSnapshot); err != nil {
-			artifactPath, _ = persistCronProjectArtifact(targetWorkspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit)
-			if emit != nil {
-				evt := buildCronNotificationEvent(job, "error", "Cron failed", err.Error(), artifactPath, strings.TrimSpace(targetSessionID))
-				emit(ctx, evt)
-			}
+		if err := verifyCronClaimedFileUpdates(prepared.workspaceDir, job, response, prepared.projectFileSnapshot); err != nil {
+			emitCronRunFailure(ctx, emit, prepared.workspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, "Cron failed", err)
 			return "", err
 		}
-		if err := deliverCronResult(targetWorkspaceDir, targetStore, job, targetSessionID, explicitTarget, response, time.Now().UTC(), logger); err != nil {
-			artifactPath, _ = persistCronProjectArtifact(targetWorkspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit)
-			if emit != nil {
-				evt := buildCronNotificationEvent(job, "error", "Cron delivery failed", err.Error(), artifactPath, strings.TrimSpace(targetSessionID))
-				emit(ctx, evt)
-			}
+		if err := deliverCronResult(prepared.workspaceDir, prepared.targetStore, job, prepared.targetSessionID, prepared.explicitTarget, response, time.Now().UTC(), logger); err != nil {
+			emitCronRunFailure(ctx, emit, prepared.workspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, "Cron delivery failed", err)
 			return "", err
 		}
-		artifactPath, err = persistCronProjectArtifact(targetWorkspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit)
-		if err != nil {
-			logger.Debug().Err(err).Str("job_id", strings.TrimSpace(job.ID)).Str("project_id", strings.TrimSpace(job.ProjectID)).Msg("persist cron project artifact failed")
-		}
-		if emit != nil {
-			evt := buildCronNotificationEvent(job, "info", "Cron completed", response, artifactPath, strings.TrimSpace(targetSessionID))
-			emit(ctx, evt)
-		}
+		emitCronRunSuccess(ctx, emit, prepared.workspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, logger)
 		return response, nil
+	}
+}
+
+type preparedCronJobRun struct {
+	workspaceDir        string
+	targetStore         *session.Store
+	promptText          string
+	telemetry           cronRunTelemetry
+	projectFileSnapshot map[string]time.Time
+	targetSessionID     string
+	explicitTarget      bool
+}
+
+func prepareCronJobRun(
+	ctx context.Context,
+	workspaceDir string,
+	store *session.Store,
+	job cron.Job,
+	mainSessionID string,
+	resolveDefaultTelegramChatID func(context.Context) (string, error),
+) (preparedCronJobRun, error) {
+	prepared := preparedCronJobRun{
+		workspaceDir: strings.TrimSpace(workspaceDir),
+		targetStore:  store,
+		promptText:   strings.TrimSpace(job.Prompt),
+		telemetry:    cronRunTelemetry{},
+	}
+	if prepared.targetStore == nil && prepared.workspaceDir != "" {
+		if err := memory.EnsureWorkspace(prepared.workspaceDir); err != nil {
+			return prepared, err
+		}
+		prepared.targetStore = session.NewStore(prepared.workspaceDir)
+	}
+	if payload := strings.TrimSpace(string(job.Payload)); payload != "" {
+		prepared.promptText += "\n\nCRON_PAYLOAD_JSON:\n" + payload
+	}
+	if projectPrompt := buildCronProjectPromptSection(prepared.workspaceDir, job.ProjectID); projectPrompt != "" {
+		prepared.promptText += "\n\n" + projectPrompt
+	}
+	if err := validateCronProjectPrerequisites(prepared.workspaceDir, job, prepared.promptText); err != nil {
+		return prepared, err
+	}
+	telegramPrompt, err := buildCronTelegramPromptSection(ctx, resolveDefaultTelegramChatID)
+	if err != nil {
+		return prepared, err
+	}
+	if telegramPrompt != "" {
+		prepared.promptText += "\n\n" + telegramPrompt
+	}
+	prepared.projectFileSnapshot, err = snapshotCronProjectFiles(prepared.workspaceDir, job.ProjectID)
+	if err != nil {
+		return prepared, err
+	}
+	prepared.targetSessionID, prepared.explicitTarget, err = resolveCronTargetSessionID(prepared.targetStore, job, mainSessionID)
+	if err != nil {
+		return prepared, err
+	}
+	if strings.TrimSpace(job.ProjectID) != "" && prepared.targetStore != nil && prepared.targetSessionID != "" {
+		_ = prepared.targetStore.SetProjectID(prepared.targetSessionID, strings.TrimSpace(job.ProjectID))
+	}
+	if prepared.targetSessionID != "" {
+		targetSession, err := lookupCronDeliverySession(prepared.targetStore, prepared.targetSessionID)
+		if err != nil {
+			return prepared, err
+		}
+		includeTargetContext := targetSession != nil && !(targetSession.Hidden && strings.EqualFold(strings.TrimSpace(targetSession.Kind), "worker"))
+		if includeTargetContext {
+			contextText, err := sessionContextByID(prepared.targetStore, prepared.targetSessionID, 6)
+			if err != nil {
+				return prepared, err
+			}
+			if contextText != "" {
+				prepared.promptText += "\n\nTARGET_SESSION_CONTEXT:\n" + contextText
+				prepared.telemetry.TargetSessionContextUsed = true
+				prepared.telemetry.TargetSessionContextTokens = promptTokenEstimate(contextText)
+			}
+		}
+	}
+	prepared.telemetry.PromptTokens = promptTokenEstimate(prepared.promptText)
+	return prepared, nil
+}
+
+func emitCronRunFailure(
+	ctx context.Context,
+	emit func(ctx context.Context, evt notificationEvent),
+	workspaceDir string,
+	job cron.Job,
+	response string,
+	now time.Time,
+	telemetry cronRunTelemetry,
+	artifactHistoryLimit int,
+	targetSessionID string,
+	title string,
+	err error,
+) string {
+	artifactPath, _ := persistCronProjectArtifact(workspaceDir, job, response, now, telemetry, artifactHistoryLimit)
+	if emit != nil {
+		evt := buildCronNotificationEvent(job, "error", title, err.Error(), artifactPath, strings.TrimSpace(targetSessionID))
+		emit(ctx, evt)
+	}
+	return artifactPath
+}
+
+func emitCronRunSuccess(
+	ctx context.Context,
+	emit func(ctx context.Context, evt notificationEvent),
+	workspaceDir string,
+	job cron.Job,
+	response string,
+	now time.Time,
+	telemetry cronRunTelemetry,
+	artifactHistoryLimit int,
+	targetSessionID string,
+	logger zerolog.Logger,
+) {
+	artifactPath, err := persistCronProjectArtifact(workspaceDir, job, response, now, telemetry, artifactHistoryLimit)
+	if err != nil {
+		logger.Debug().Err(err).Str("job_id", strings.TrimSpace(job.ID)).Str("project_id", strings.TrimSpace(job.ProjectID)).Msg("persist cron project artifact failed")
+	}
+	if emit != nil {
+		evt := buildCronNotificationEvent(job, "info", "Cron completed", response, artifactPath, strings.TrimSpace(targetSessionID))
+		emit(ctx, evt)
 	}
 }
 
