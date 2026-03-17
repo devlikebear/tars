@@ -11,7 +11,12 @@ import (
 )
 
 func TestResolveExtensionsWatchDebounce(t *testing.T) {
-	cfg := config.Config{SkillsWatchDebounceMS: 350, PluginsWatchDebounceMS: 120}
+	cfg := config.Config{
+		ExtensionConfig: config.ExtensionConfig{
+			SkillsWatchDebounceMS:  350,
+			PluginsWatchDebounceMS: 120,
+		},
+	}
 	if got, want := resolveExtensionsWatchDebounce(cfg), 120*time.Millisecond; got != want {
 		t.Fatalf("unexpected debounce: got=%s want=%s", got, want)
 	}

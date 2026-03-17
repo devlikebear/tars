@@ -17,13 +17,17 @@ import (
 func TestBuildGatewayExecutors_CommandExecutor(t *testing.T) {
 	workspace := t.TempDir()
 	cfg := config.Config{
-		WorkspaceDir: workspace,
-		GatewayAgents: []config.GatewayAgent{
-			{
-				Name:    "worker",
-				Command: "sh",
-				Args:    []string{"-c", "pwd"},
-				Enabled: true,
+		RuntimeConfig: config.RuntimeConfig{
+			WorkspaceDir: workspace,
+		},
+		GatewayConfig: config.GatewayConfig{
+			GatewayAgents: []config.GatewayAgent{
+				{
+					Name:    "worker",
+					Command: "sh",
+					Args:    []string{"-c", "pwd"},
+					Enabled: true,
+				},
 			},
 		},
 	}
@@ -59,14 +63,18 @@ func TestBuildGatewayExecutors_ResolveRelativeWorkingDir(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	cfg := config.Config{
-		WorkspaceDir: workspace,
-		GatewayAgents: []config.GatewayAgent{
-			{
-				Name:       "worker",
-				Command:    "sh",
-				Args:       []string{"-c", "pwd"},
-				WorkingDir: relativeDir,
-				Enabled:    true,
+		RuntimeConfig: config.RuntimeConfig{
+			WorkspaceDir: workspace,
+		},
+		GatewayConfig: config.GatewayConfig{
+			GatewayAgents: []config.GatewayAgent{
+				{
+					Name:       "worker",
+					Command:    "sh",
+					Args:       []string{"-c", "pwd"},
+					WorkingDir: relativeDir,
+					Enabled:    true,
+				},
 			},
 		},
 	}
@@ -94,24 +102,28 @@ func TestBuildGatewayExecutors_ResolveRelativeWorkingDir(t *testing.T) {
 
 func TestBuildGatewayExecutors_SkipDisabledAndInvalid(t *testing.T) {
 	cfg := config.Config{
-		WorkspaceDir: t.TempDir(),
-		GatewayAgents: []config.GatewayAgent{
-			{
-				Name:    "disabled",
-				Command: "sh",
-				Args:    []string{"-c", "echo disabled"},
-				Enabled: false,
-			},
-			{
-				Name:    "invalid",
-				Command: "",
-				Enabled: true,
-			},
-			{
-				Name:    "ok",
-				Command: "sh",
-				Args:    []string{"-c", "echo ok"},
-				Enabled: true,
+		RuntimeConfig: config.RuntimeConfig{
+			WorkspaceDir: t.TempDir(),
+		},
+		GatewayConfig: config.GatewayConfig{
+			GatewayAgents: []config.GatewayAgent{
+				{
+					Name:    "disabled",
+					Command: "sh",
+					Args:    []string{"-c", "echo disabled"},
+					Enabled: false,
+				},
+				{
+					Name:    "invalid",
+					Command: "",
+					Enabled: true,
+				},
+				{
+					Name:    "ok",
+					Command: "sh",
+					Args:    []string{"-c", "echo ok"},
+					Enabled: true,
+				},
 			},
 		},
 	}
@@ -148,7 +160,7 @@ Find evidence first and answer with concise bullets.
 		capturedPrompt = prompt
 		return "ok", nil
 	}
-	cfg := config.Config{WorkspaceDir: workspace}
+	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace}}
 
 	executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
 	if len(executors) != 1 {
@@ -204,13 +216,17 @@ func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.
 		return "prompt", nil
 	}
 	cfg := config.Config{
-		WorkspaceDir: workspace,
-		GatewayAgents: []config.GatewayAgent{
-			{
-				Name:    "researcher",
-				Command: "sh",
-				Args:    []string{"-c", "echo config"},
-				Enabled: true,
+		RuntimeConfig: config.RuntimeConfig{
+			WorkspaceDir: workspace,
+		},
+		GatewayConfig: config.GatewayConfig{
+			GatewayAgents: []config.GatewayAgent{
+				{
+					Name:    "researcher",
+					Command: "sh",
+					Args:    []string{"-c", "echo config"},
+					Enabled: true,
+				},
 			},
 		},
 	}

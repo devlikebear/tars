@@ -13,8 +13,10 @@ import (
 
 func TestAuthWhoamiAPI_ReturnsRole(t *testing.T) {
 	cfg := config.Config{
-		APIAuthMode:  "required",
-		APIUserToken: "user-token",
+		APIConfig: config.APIConfig{
+			APIAuthMode:  "required",
+			APIUserToken: "user-token",
+		},
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), newAuthAPIHandler(cfg.APIAuthMode), io.Discard)
 
@@ -52,7 +54,9 @@ func TestAuthWhoamiAPI_ReturnsRole(t *testing.T) {
 
 func TestAuthWhoamiAPI_OffModeReturnsAnonymous(t *testing.T) {
 	cfg := config.Config{
-		APIAuthMode: "off",
+		APIConfig: config.APIConfig{
+			APIAuthMode: "off",
+		},
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), newAuthAPIHandler(cfg.APIAuthMode), io.Discard)
 

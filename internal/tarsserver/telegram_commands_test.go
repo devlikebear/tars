@@ -61,9 +61,11 @@ func TestTelegramCommand_Allowed_Providers(t *testing.T) {
 		t.Fatalf("newProviderModelsCache: %v", err)
 	}
 	service := newProviderModelsService(config.Config{
-		LLMProvider: "openai-codex",
-		LLMModel:    "gpt-5.3-codex",
-		LLMAuthMode: "oauth",
+		LLMConfig: config.LLMConfig{
+			LLMProvider: "openai-codex",
+			LLMModel:    "gpt-5.3-codex",
+			LLMAuthMode: "oauth",
+		},
 	}, cache, &fakeModelFetcher{}, time.Now)
 	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
 		Store:          store,
@@ -95,10 +97,12 @@ func TestTelegramCommand_Allowed_ModelsUnsupportedForOpenAICodex(t *testing.T) {
 		t.Fatalf("newProviderModelsCache: %v", err)
 	}
 	service := newProviderModelsService(config.Config{
-		LLMProvider: "openai-codex",
-		LLMModel:    "gpt-5.3-codex",
-		LLMAuthMode: "oauth",
-		LLMBaseURL:  "https://chatgpt.com/backend-api",
+		LLMConfig: config.LLMConfig{
+			LLMProvider: "openai-codex",
+			LLMModel:    "gpt-5.3-codex",
+			LLMAuthMode: "oauth",
+			LLMBaseURL:  "https://chatgpt.com/backend-api",
+		},
 	}, cache, &fakeModelFetcher{models: []string{"gpt-5.3-codex", "gpt-4.1-codex"}}, time.Now)
 	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
 		Store:          store,

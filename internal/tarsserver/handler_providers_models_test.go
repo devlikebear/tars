@@ -35,7 +35,9 @@ func (f *fakeModelFetcher) FetchModels(_ context.Context, opts llm.ProviderOptio
 
 func TestModelCache_PathUnderGatewayPersistenceDir_(t *testing.T) {
 	cfg := config.Config{
-		GatewayPersistenceDir: filepath.Join(t.TempDir(), "gateway"),
+		GatewayConfig: config.GatewayConfig{
+			GatewayPersistenceDir: filepath.Join(t.TempDir(), "gateway"),
+		},
 	}
 	got := providerModelsCachePath(cfg)
 	want := filepath.Join(cfg.GatewayPersistenceDir, providerModelsCacheFile)
@@ -46,9 +48,11 @@ func TestModelCache_PathUnderGatewayPersistenceDir_(t *testing.T) {
 
 func TestProvidersAPI_ReturnsCurrentAndSupportedProviders(t *testing.T) {
 	cfg := config.Config{
-		LLMProvider: "openai-codex",
-		LLMModel:    "gpt-5.3-codex",
-		LLMAuthMode: "oauth",
+		LLMConfig: config.LLMConfig{
+			LLMProvider: "openai-codex",
+			LLMModel:    "gpt-5.3-codex",
+			LLMAuthMode: "oauth",
+		},
 	}
 	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, time.Now)
 	if err != nil {
@@ -84,10 +88,12 @@ func TestProvidersAPI_ReturnsCurrentAndSupportedProviders(t *testing.T) {
 func TestModelsAPI_OpenAICodexUnsupported_(t *testing.T) {
 	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
 	cfg := config.Config{
-		LLMProvider: "openai-codex",
-		LLMModel:    "gpt-5.3-codex",
-		LLMAuthMode: "oauth",
-		LLMBaseURL:  "https://chatgpt.com/backend-api",
+		LLMConfig: config.LLMConfig{
+			LLMProvider: "openai-codex",
+			LLMModel:    "gpt-5.3-codex",
+			LLMAuthMode: "oauth",
+			LLMBaseURL:  "https://chatgpt.com/backend-api",
+		},
 	}
 	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
 	if err != nil {
@@ -117,10 +123,12 @@ func TestModelsAPI_OpenAICodexUnsupported_(t *testing.T) {
 func TestModelsAPI_CacheHitFresh_(t *testing.T) {
 	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
 	cfg := config.Config{
-		LLMProvider: "openai",
-		LLMModel:    "gpt-4o-mini",
-		LLMAuthMode: "api-key",
-		LLMBaseURL:  "https://api.openai.com/v1",
+		LLMConfig: config.LLMConfig{
+			LLMProvider: "openai",
+			LLMModel:    "gpt-4o-mini",
+			LLMAuthMode: "api-key",
+			LLMBaseURL:  "https://api.openai.com/v1",
+		},
 	}
 	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
 	if err != nil {
@@ -158,10 +166,12 @@ func TestModelsAPI_CacheHitFresh_(t *testing.T) {
 func TestModelsAPI_ExpiredLiveFailReturnsStale_(t *testing.T) {
 	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
 	cfg := config.Config{
-		LLMProvider: "openai",
-		LLMModel:    "gpt-4o-mini",
-		LLMAuthMode: "api-key",
-		LLMBaseURL:  "https://api.openai.com/v1",
+		LLMConfig: config.LLMConfig{
+			LLMProvider: "openai",
+			LLMModel:    "gpt-4o-mini",
+			LLMAuthMode: "api-key",
+			LLMBaseURL:  "https://api.openai.com/v1",
+		},
 	}
 	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
 	if err != nil {
@@ -199,10 +209,12 @@ func TestModelsAPI_ExpiredLiveFailReturnsStale_(t *testing.T) {
 func TestModelsAPI_NoCacheLiveFail_(t *testing.T) {
 	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
 	cfg := config.Config{
-		LLMProvider: "openai",
-		LLMModel:    "gpt-4o-mini",
-		LLMAuthMode: "api-key",
-		LLMBaseURL:  "https://api.openai.com/v1",
+		LLMConfig: config.LLMConfig{
+			LLMProvider: "openai",
+			LLMModel:    "gpt-4o-mini",
+			LLMAuthMode: "api-key",
+			LLMBaseURL:  "https://api.openai.com/v1",
+		},
 	}
 	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
 	if err != nil {
@@ -228,9 +240,11 @@ func TestModelsAPI_NoCacheLiveFail_(t *testing.T) {
 
 func TestProvidersAPI_ClaudeCodeCLIListedWithoutLiveModels(t *testing.T) {
 	cfg := config.Config{
-		LLMProvider: "claude-code-cli",
-		LLMModel:    "sonnet",
-		LLMAuthMode: "cli",
+		LLMConfig: config.LLMConfig{
+			LLMProvider: "claude-code-cli",
+			LLMModel:    "sonnet",
+			LLMAuthMode: "cli",
+		},
 	}
 	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, time.Now)
 	if err != nil {
@@ -271,9 +285,11 @@ func TestProvidersAPI_ClaudeCodeCLIListedWithoutLiveModels(t *testing.T) {
 func TestModelsAPI_ClaudeCodeCLIUnsupported_(t *testing.T) {
 	now := time.Date(2026, 3, 14, 12, 0, 0, 0, time.UTC)
 	cfg := config.Config{
-		LLMProvider: "claude-code-cli",
-		LLMModel:    "sonnet",
-		LLMAuthMode: "cli",
+		LLMConfig: config.LLMConfig{
+			LLMProvider: "claude-code-cli",
+			LLMModel:    "sonnet",
+			LLMAuthMode: "cli",
+		},
 	}
 	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
 	if err != nil {

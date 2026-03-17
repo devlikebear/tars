@@ -11,7 +11,9 @@ import (
 
 func TestTelegramPairingStore_PathFollowsGatewayPersistenceDir(t *testing.T) {
 	cfg := config.Config{
-		GatewayPersistenceDir: filepath.Join(t.TempDir(), "gateway-state"),
+		GatewayConfig: config.GatewayConfig{
+			GatewayPersistenceDir: filepath.Join(t.TempDir(), "gateway-state"),
+		},
 	}
 	got := telegramPairingStorePath(cfg)
 	want := filepath.Join(cfg.GatewayPersistenceDir, "telegram_pairings.json")

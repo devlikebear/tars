@@ -370,7 +370,7 @@ func TestAgentRunsAPIHandler_IgnoresWorkspaceHeaderAndUsesSingleNamespace(t *tes
 	runtime := newTestGatewayRuntime(t)
 	baseHandler := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 	handler := applyAPIMiddleware(config.Config{
-		APIAuthMode: "off",
+		APIConfig: config.APIConfig{APIAuthMode: "off"},
 	}, zerolog.New(io.Discard), baseHandler, io.Discard)
 
 	spawn := func(workspaceID, message string) map[string]any {
@@ -665,11 +665,11 @@ func TestGatewayAPIHandler_ReportsSummarySingleWorkspaceNamespace(t *testing.T) 
 	runtime := newTestGatewayRuntime(t)
 	baseAgentHandler := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 	agentHandler := applyAPIMiddleware(config.Config{
-		APIAuthMode: "off",
+		APIConfig: config.APIConfig{APIAuthMode: "off"},
 	}, zerolog.New(io.Discard), baseAgentHandler, io.Discard)
 	baseGatewayHandler := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
 	gatewayHandler := applyAPIMiddleware(config.Config{
-		APIAuthMode: "off",
+		APIConfig: config.APIConfig{APIAuthMode: "off"},
 	}, zerolog.New(io.Discard), baseGatewayHandler, io.Discard)
 
 	spawn := func(workspaceID, message string) {
@@ -833,7 +833,7 @@ func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 			t.Fatalf("close gateway runtime: %v", err)
 		}
 	})
-	cfg := config.Config{WorkspaceDir: workspace}
+	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace}}
 	refresh := func() {
 		executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
 		runtime.SetExecutors(executors, "")
@@ -927,8 +927,10 @@ func TestChannelsAPI_TelegramSend_UserAllowed(t *testing.T) {
 		}, nil
 	})
 	h := applyAPIMiddleware(config.Config{
-		APIAuthMode:  "required",
-		APIUserToken: "user-token",
+		APIConfig: config.APIConfig{
+			APIAuthMode:  "required",
+			APIUserToken: "user-token",
+		},
 	}, zerolog.New(io.Discard), newChannelsAPIHandlerWithTelegramSender(runtime, sender, zerolog.New(io.Discard)), io.Discard)
 
 	body := bytes.NewBufferString(`{"chat_id":"chat-1","text":"hello"}`)

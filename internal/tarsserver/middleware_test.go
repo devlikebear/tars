@@ -18,8 +18,10 @@ import (
 
 func TestApplyAPIMiddleware_RejectsExternalWithoutToken(t *testing.T) {
 	cfg := config.Config{
-		APIAuthMode:  "external-required",
-		APIAuthToken: "dev-token",
+		APIConfig: config.APIConfig{
+			APIAuthMode:  "external-required",
+			APIAuthToken: "dev-token",
+		},
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -37,8 +39,10 @@ func TestApplyAPIMiddleware_RejectsExternalWithoutToken(t *testing.T) {
 
 func TestApplyAPIMiddleware_AllowsExternalWithTokenAndBindsDefaultWorkspace(t *testing.T) {
 	cfg := config.Config{
-		APIAuthMode:  "external-required",
-		APIAuthToken: "dev-token",
+		APIConfig: config.APIConfig{
+			APIAuthMode:  "external-required",
+			APIAuthToken: "dev-token",
+		},
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(serverauth.WorkspaceIDFromContext(r.Context())))
@@ -61,9 +65,11 @@ func TestApplyAPIMiddleware_AllowsExternalWithTokenAndBindsDefaultWorkspace(t *t
 
 func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 	cfg := config.Config{
-		APIAuthMode:   "required",
-		APIUserToken:  "user-token",
-		APIAdminToken: "admin-token",
+		APIConfig: config.APIConfig{
+			APIAuthMode:   "required",
+			APIUserToken:  "user-token",
+			APIAdminToken: "admin-token",
+		},
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -90,10 +96,12 @@ func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 
 func TestApplyAPIMiddleware_DashboardRoutesWithoutAuthAreLoopbackOnlyWhenDashboardAuthIsOff(t *testing.T) {
 	cfg := config.Config{
-		APIAuthMode:       "required",
-		APIUserToken:      "user-token",
-		APIAdminToken:     "admin-token",
-		DashboardAuthMode: "off",
+		APIConfig: config.APIConfig{
+			APIAuthMode:       "required",
+			APIUserToken:      "user-token",
+			APIAdminToken:     "admin-token",
+			DashboardAuthMode: "off",
+		},
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(r.URL.Path))
@@ -137,9 +145,11 @@ func TestApplyAPIMiddleware_DashboardRoutesWithoutAuthAreLoopbackOnlyWhenDashboa
 
 func TestMiddleware_AdminPaths_TelegramSendIsNotAdminOnly(t *testing.T) {
 	cfg := config.Config{
-		APIAuthMode:   "required",
-		APIUserToken:  "user-token",
-		APIAdminToken: "admin-token",
+		APIConfig: config.APIConfig{
+			APIAuthMode:   "required",
+			APIUserToken:  "user-token",
+			APIAdminToken: "admin-token",
+		},
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -157,9 +167,11 @@ func TestMiddleware_AdminPaths_TelegramSendIsNotAdminOnly(t *testing.T) {
 
 func TestMiddleware_AdminPaths_TelegramPairingsAreAdminOnly(t *testing.T) {
 	cfg := config.Config{
-		APIAuthMode:   "required",
-		APIUserToken:  "user-token",
-		APIAdminToken: "admin-token",
+		APIConfig: config.APIConfig{
+			APIAuthMode:   "required",
+			APIUserToken:  "user-token",
+			APIAdminToken: "admin-token",
+		},
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -199,9 +211,11 @@ func TestApplyAPIMiddleware_StatusIncludesAuthMetadataSingleWorkspace(t *testing
 	}
 	statusHandler := newStatusAPIHandler(root, store, mainSession, zerolog.New(io.Discard))
 	cfg := config.Config{
-		APIAuthMode:   "required",
-		APIUserToken:  "user-token",
-		APIAdminToken: "admin-token",
+		APIConfig: config.APIConfig{
+			APIAuthMode:   "required",
+			APIUserToken:  "user-token",
+			APIAdminToken: "admin-token",
+		},
 	}
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), statusHandler, io.Discard)
 
@@ -236,9 +250,11 @@ func TestApplyAPIMiddleware_StatusIncludesAuthMetadataSingleWorkspace(t *testing
 func TestApplyAPIMiddleware_DebugLogIncludesRoleOnly(t *testing.T) {
 	var logs bytes.Buffer
 	cfg := config.Config{
-		APIAuthMode:   "required",
-		APIUserToken:  "user-token",
-		APIAdminToken: "admin-token",
+		APIConfig: config.APIConfig{
+			APIAuthMode:   "required",
+			APIUserToken:  "user-token",
+			APIAdminToken: "admin-token",
+		},
 	}
 	logger := zerolog.New(&logs).Level(zerolog.DebugLevel)
 	h := applyAPIMiddleware(cfg, logger, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
