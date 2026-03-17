@@ -314,6 +314,62 @@ func TestAutopilotManager_StartBlocksWhenBoardIsEmpty(t *testing.T) {
 	}
 }
 
+func TestAutopilotManager_StartRecoversStalledInProgressTaskAndCompletes(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 18, 50, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Stalled"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Recover stalled task",
+				Status:         "in_progress",
+				Assignee:       "dev-1",
+				Role:           "developer",
+				ReviewRequired: true,
+				TestCommand:    "go test ./internal/project",
+				BuildCommand:   "go test ./internal/tool",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager.loopInterval = 5 * time.Millisecond
+	if _, err := manager.Start(context.Background(), created.ID); err != nil {
+		t.Fatalf("start autopilot: %v", err)
+	}
+
+	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusDone)
+	if final.Iterations < 3 {
+		t.Fatalf("expected recovery iteration before completion, got %+v", final)
+	}
+
+	board, err := store.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board: %v", err)
+	}
+	if len(board.Tasks) != 1 || board.Tasks[0].Status != "done" {
+		t.Fatalf("expected recovered task to finish, got %+v", board.Tasks)
+	}
+
+	activity, err := store.ListActivity(created.ID, 100)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if !hasActivityKindStatus(activity, ActivityKindDecision, "auto_retry") {
+		t.Fatalf("expected auto-retry decision activity, got %+v", activity)
+	}
+	if !hasActivityKindStatus(activity, ActivityKindReplan, "applied") {
+		t.Fatalf("expected applied replan activity, got %+v", activity)
+	}
+}
+
 func TestAutopilotManager_StatusRestoresPersistedRunAfterRestart(t *testing.T) {
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 14, 19, 0, 0, 0, time.UTC)
