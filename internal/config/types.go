@@ -25,86 +25,116 @@ type GatewayAgent struct {
 	Enabled        bool              `json:"enabled,omitempty"`
 }
 
-// Config holds top-level runtime settings.
-type Config struct {
-	Mode                                 string
-	WorkspaceDir                         string
-	SessionDefaultID                     string
-	SessionTelegramScope                 string
-	APIAuthMode                          string
-	DashboardAuthMode                    string
-	APIAuthToken                         string
-	APIUserToken                         string
-	APIAdminToken                        string
-	APIAllowInsecureLocalAuth            bool
-	APIMaxInflightChat                   int
-	APIMaxInflightAgentRuns              int
-	LLMProvider                          string
-	LLMAuthMode                          string
-	LLMOAuthProvider                     string
-	LLMBaseURL                           string
-	LLMAPIKey                            string
-	LLMModel                             string
-	LLMReasoningEffort                   string
-	LLMThinkingBudget                    int
-	LLMServiceTier                       string
-	UsageLimitDailyUSD                   float64
-	UsageLimitWeeklyUSD                  float64
-	UsageLimitMonthlyUSD                 float64
-	UsageLimitMode                       string
-	UsagePriceOverrides                  map[string]UsagePrice
-	AgentMaxIterations                   int
-	HeartbeatActiveHours                 string
-	HeartbeatTimezone                    string
-	CronRunHistoryLimit                  int
-	NotifyCommand                        string
-	NotifyWhenNoClients                  bool
-	AssistantEnabled                     bool
-	AssistantHotkey                      string
-	AssistantWhisperBin                  string
-	AssistantFFmpegBin                   string
-	AssistantTTSBin                      string
-	ScheduleTimezone                     string
-	BifrostBase                          string
-	BifrostAPIKey                        string
-	BifrostModel                         string
-	ToolsWebSearchEnabled                bool
-	ToolsWebFetchEnabled                 bool
-	ToolsDefaultSet                      string
-	ToolsAllowHighRiskUser               bool
-	ToolsWebSearchAPIKey                 string
-	ToolsWebSearchProvider               string
-	ToolsWebSearchPerplexityAPIKey       string
-	ToolsWebSearchPerplexityModel        string
-	ToolsWebSearchPerplexityBaseURL      string
-	ToolsWebSearchCacheTTLSeconds        int
-	ToolsWebFetchPrivateHostAllowlist    []string
-	ToolsWebFetchAllowPrivateHosts       bool
-	ToolsApplyPatchEnabled               bool
-	VaultEnabled                         bool
-	VaultAddr                            string
-	VaultAuthMode                        string
-	VaultToken                           string
-	VaultNamespace                       string
-	VaultTimeoutMS                       int
-	VaultKVMount                         string
-	VaultKVVersion                       int
-	VaultAppRoleMount                    string
-	VaultAppRoleRoleID                   string
-	VaultAppRoleSecretID                 string
-	VaultSecretPathAllowlist             []string
-	BrowserRuntimeEnabled                bool
-	BrowserDefaultProfile                string
-	BrowserManagedHeadless               bool
-	BrowserManagedExecutablePath         string
-	BrowserManagedUserDataDir            string
-	BrowserRelayEnabled                  bool
-	BrowserRelayAddr                     string
-	BrowserRelayToken                    string
-	BrowserRelayAllowQueryToken          bool
-	BrowserRelayOriginAllowlist          []string
-	BrowserSiteFlowsDir                  string
-	BrowserAutoLoginSiteAllowlist        []string
+type RuntimeConfig struct {
+	Mode                 string
+	WorkspaceDir         string
+	SessionDefaultID     string
+	SessionTelegramScope string
+}
+
+type APIConfig struct {
+	APIAuthMode               string
+	DashboardAuthMode         string
+	APIAuthToken              string
+	APIUserToken              string
+	APIAdminToken             string
+	APIAllowInsecureLocalAuth bool
+	APIMaxInflightChat        int
+	APIMaxInflightAgentRuns   int
+}
+
+type LLMConfig struct {
+	LLMProvider        string
+	LLMAuthMode        string
+	LLMOAuthProvider   string
+	LLMBaseURL         string
+	LLMAPIKey          string
+	LLMModel           string
+	LLMReasoningEffort string
+	LLMThinkingBudget  int
+	LLMServiceTier     string
+	BifrostBase        string
+	BifrostAPIKey      string
+	BifrostModel       string
+}
+
+type UsageConfig struct {
+	UsageLimitDailyUSD   float64
+	UsageLimitWeeklyUSD  float64
+	UsageLimitMonthlyUSD float64
+	UsageLimitMode       string
+	UsagePriceOverrides  map[string]UsagePrice
+}
+
+type AutomationConfig struct {
+	AgentMaxIterations   int
+	HeartbeatActiveHours string
+	HeartbeatTimezone    string
+	CronRunHistoryLimit  int
+	NotifyCommand        string
+	NotifyWhenNoClients  bool
+	ScheduleTimezone     string
+}
+
+type AssistantConfig struct {
+	AssistantEnabled    bool
+	AssistantHotkey     string
+	AssistantWhisperBin string
+	AssistantFFmpegBin  string
+	AssistantTTSBin     string
+}
+
+type ToolConfig struct {
+	ToolsWebSearchEnabled             bool
+	ToolsWebFetchEnabled              bool
+	ToolsDefaultSet                   string
+	ToolsAllowHighRiskUser            bool
+	ToolsWebSearchAPIKey              string
+	ToolsWebSearchProvider            string
+	ToolsWebSearchPerplexityAPIKey    string
+	ToolsWebSearchPerplexityModel     string
+	ToolsWebSearchPerplexityBaseURL   string
+	ToolsWebSearchCacheTTLSeconds     int
+	ToolsWebFetchPrivateHostAllowlist []string
+	ToolsWebFetchAllowPrivateHosts    bool
+	ToolsApplyPatchEnabled            bool
+	ToolsMessageEnabled               bool
+	ToolsBrowserEnabled               bool
+	ToolsNodesEnabled                 bool
+	ToolsGatewayEnabled               bool
+}
+
+type VaultConfig struct {
+	VaultEnabled             bool
+	VaultAddr                string
+	VaultAuthMode            string
+	VaultToken               string
+	VaultNamespace           string
+	VaultTimeoutMS           int
+	VaultKVMount             string
+	VaultKVVersion           int
+	VaultAppRoleMount        string
+	VaultAppRoleRoleID       string
+	VaultAppRoleSecretID     string
+	VaultSecretPathAllowlist []string
+}
+
+type BrowserConfig struct {
+	BrowserRuntimeEnabled         bool
+	BrowserDefaultProfile         string
+	BrowserManagedHeadless        bool
+	BrowserManagedExecutablePath  string
+	BrowserManagedUserDataDir     string
+	BrowserRelayEnabled           bool
+	BrowserRelayAddr              string
+	BrowserRelayToken             string
+	BrowserRelayAllowQueryToken   bool
+	BrowserRelayOriginAllowlist   []string
+	BrowserSiteFlowsDir           string
+	BrowserAutoLoginSiteAllowlist []string
+}
+
+type GatewayConfig struct {
 	GatewayEnabled                       bool
 	GatewayDefaultAgent                  string
 	GatewayAgents                        []GatewayAgent
@@ -122,29 +152,47 @@ type Config struct {
 	GatewayArchiveDir                    string
 	GatewayArchiveRetentionDays          int
 	GatewayArchiveMaxFileBytes           int
-	ChannelsLocalEnabled                 bool
-	ChannelsWebhookEnabled               bool
-	ChannelsTelegramEnabled              bool
-	ChannelsTelegramDMPolicy             string
-	ChannelsTelegramPollingEnabled       bool
-	TelegramBotToken                     string
-	ToolsMessageEnabled                  bool
-	ToolsBrowserEnabled                  bool
-	ToolsNodesEnabled                    bool
-	ToolsGatewayEnabled                  bool
-	SkillsEnabled                        bool
-	SkillsWatch                          bool
-	SkillsWatchDebounceMS                int
-	SkillsExtraDirs                      []string
-	SkillsBundledDir                     string
-	PluginsEnabled                       bool
-	PluginsWatch                         bool
-	PluginsWatchDebounceMS               int
-	PluginsExtraDirs                     []string
-	PluginsBundledDir                    string
-	PluginsAllowMCPServers               bool
-	MCPServers                           []MCPServer
-	MCPCommandAllowlist                  []string
+}
+
+type ChannelConfig struct {
+	ChannelsLocalEnabled           bool
+	ChannelsWebhookEnabled         bool
+	ChannelsTelegramEnabled        bool
+	ChannelsTelegramDMPolicy       string
+	ChannelsTelegramPollingEnabled bool
+	TelegramBotToken               string
+}
+
+type ExtensionConfig struct {
+	SkillsEnabled          bool
+	SkillsWatch            bool
+	SkillsWatchDebounceMS  int
+	SkillsExtraDirs        []string
+	SkillsBundledDir       string
+	PluginsEnabled         bool
+	PluginsWatch           bool
+	PluginsWatchDebounceMS int
+	PluginsExtraDirs       []string
+	PluginsBundledDir      string
+	PluginsAllowMCPServers bool
+	MCPServers             []MCPServer
+	MCPCommandAllowlist    []string
+}
+
+// Config holds top-level runtime settings grouped by concern.
+type Config struct {
+	RuntimeConfig
+	APIConfig
+	LLMConfig
+	UsageConfig
+	AutomationConfig
+	AssistantConfig
+	ToolConfig
+	VaultConfig
+	BrowserConfig
+	GatewayConfig
+	ChannelConfig
+	ExtensionConfig
 }
 
 const DefaultConfigFilename = "config/standalone.yaml"

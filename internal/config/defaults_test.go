@@ -32,13 +32,13 @@ func TestConfigInputFieldByYAMLKey_AppliesNormalizationAndMergeRules(t *testing.
 		t.Fatalf("expected normalized session scope, got %q", cfg.SessionTelegramScope)
 	}
 
-	dst := Config{SessionTelegramScope: "main"}
+	dst := Config{RuntimeConfig: RuntimeConfig{SessionTelegramScope: "main"}}
 	sessionField.merge(&dst, Config{})
 	if dst.SessionTelegramScope != "main" {
 		t.Fatalf("expected empty merge source to preserve destination, got %q", dst.SessionTelegramScope)
 	}
 
-	sessionField.merge(&dst, Config{SessionTelegramScope: "per-user"})
+	sessionField.merge(&dst, Config{RuntimeConfig: RuntimeConfig{SessionTelegramScope: "per-user"}})
 	if dst.SessionTelegramScope != "per-user" {
 		t.Fatalf("expected non-empty merge source to override destination, got %q", dst.SessionTelegramScope)
 	}
@@ -48,7 +48,7 @@ func TestConfigInputFieldByYAMLKey_AppliesNormalizationAndMergeRules(t *testing.
 		t.Fatal("expected assistant_enabled field metadata")
 	}
 
-	dst = Config{AssistantEnabled: true}
+	dst = Config{AssistantConfig: AssistantConfig{AssistantEnabled: true}}
 	boolField.merge(&dst, Config{})
 	if !dst.AssistantEnabled {
 		t.Fatal("expected false merge source to preserve destination for bool fields")
@@ -75,7 +75,7 @@ func TestConfigInputFieldByYAMLKey_AppliesNormalizationAndMergeRules(t *testing.
 		"gpt-4o": {InputPer1MUSD: 1.5, OutputPer1MUSD: 2.5},
 	}
 	var merged Config
-	priceField.merge(&merged, Config{UsagePriceOverrides: srcPrices})
+	priceField.merge(&merged, Config{UsageConfig: UsageConfig{UsagePriceOverrides: srcPrices}})
 	if !reflect.DeepEqual(merged.UsagePriceOverrides, srcPrices) {
 		t.Fatalf("expected price overrides to copy on merge, got %#v", merged.UsagePriceOverrides)
 	}
@@ -111,7 +111,7 @@ func TestConfigInputFieldByYAMLKey_CoversStructuredFields(t *testing.T) {
 
 	srcAllowlist := []string{"localhost", "10.0.0.5"}
 	var mergedAllowlist Config
-	allowlistField.merge(&mergedAllowlist, Config{ToolsWebFetchPrivateHostAllowlist: srcAllowlist})
+	allowlistField.merge(&mergedAllowlist, Config{ToolConfig: ToolConfig{ToolsWebFetchPrivateHostAllowlist: srcAllowlist}})
 	srcAllowlist[0] = "mutated"
 	if !reflect.DeepEqual(mergedAllowlist.ToolsWebFetchPrivateHostAllowlist, []string{"localhost", "10.0.0.5"}) {
 		t.Fatalf("expected merged allowlist to be cloned, got %#v", mergedAllowlist.ToolsWebFetchPrivateHostAllowlist)
@@ -130,7 +130,7 @@ func TestConfigInputFieldByYAMLKey_CoversStructuredFields(t *testing.T) {
 
 	srcAgents := []GatewayAgent{{Name: "ops", Command: "run-agent"}}
 	var mergedAgents Config
-	agentField.merge(&mergedAgents, Config{GatewayAgents: srcAgents})
+	agentField.merge(&mergedAgents, Config{GatewayConfig: GatewayConfig{GatewayAgents: srcAgents}})
 	srcAgents[0].Name = "mutated"
 	if len(mergedAgents.GatewayAgents) != 1 || mergedAgents.GatewayAgents[0].Name != "ops" {
 		t.Fatalf("expected merged gateway agents slice to be copied, got %#v", mergedAgents.GatewayAgents)
@@ -1525,7 +1525,7 @@ func TestDefaultConfigValues_SharedBaseline(t *testing.T) {
 
 func TestApplyDefaults_UsesSharedDefaults(t *testing.T) {
 	cfg := Config{
-		WorkspaceDir: "./workspace",
+		RuntimeConfig: RuntimeConfig{WorkspaceDir: "./workspace"},
 	}
 
 	applyDefaults(&cfg)
@@ -1546,7 +1546,7 @@ func TestApplyDefaults_UsesSharedDefaults(t *testing.T) {
 
 func TestDefaultAndApplyDefaults_StayAlignedForCoreValues(t *testing.T) {
 	cfg := Config{
-		WorkspaceDir: "./workspace",
+		RuntimeConfig: RuntimeConfig{WorkspaceDir: "./workspace"},
 	}
 
 	applyDefaults(&cfg)

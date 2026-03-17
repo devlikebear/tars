@@ -26,7 +26,7 @@ func TestBuildSkillSources_UsesPrimaryAndLegacyUserDirs(t *testing.T) {
 		_ = os.Unsetenv("HOME")
 	}()
 
-	cfg := config.Config{WorkspaceDir: filepath.Join(home, "workspace")}
+	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: filepath.Join(home, "workspace")}}
 	got := buildSkillSources(cfg)
 
 	want := []skill.SourceDir{
@@ -51,7 +51,7 @@ func TestBuildPluginSources_UsesPrimaryAndLegacyUserDirs(t *testing.T) {
 		_ = os.Unsetenv("HOME")
 	}()
 
-	cfg := config.Config{WorkspaceDir: filepath.Join(home, "workspace")}
+	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: filepath.Join(home, "workspace")}}
 	got := buildPluginSources(cfg)
 
 	want := []extensions.PluginSourceDir{
@@ -76,9 +76,13 @@ func TestBuildPluginSources_ResolvesBundledDirRelativeToExecutable(t *testing.T)
 	defer func() { assetpath.ExecutablePathFunc = previous }()
 
 	cfg := config.Config{
-		WorkspaceDir:      filepath.Join(root, "workspace"),
-		PluginsBundledDir: "./plugins",
-		PluginsExtraDirs:  []string{},
+		RuntimeConfig: config.RuntimeConfig{
+			WorkspaceDir: filepath.Join(root, "workspace"),
+		},
+		ExtensionConfig: config.ExtensionConfig{
+			PluginsBundledDir: "./plugins",
+			PluginsExtraDirs:  []string{},
+		},
 	}
 	got := buildPluginSources(cfg)
 	if len(got) == 0 || got[0].Dir != bundledDir {
