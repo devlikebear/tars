@@ -10,6 +10,9 @@ const (
 	defaultAPIMaxInflightAgentRuns       = 4
 	defaultLLMProvider                   = "bifrost"
 	defaultLLMAuthMode                   = "api-key"
+	defaultMemoryEmbedProvider           = "gemini"
+	defaultMemoryEmbedModel              = "gemini-embedding-2-preview"
+	defaultMemoryEmbedDimensions         = 768
 	defaultUsageLimitDailyUSD            = 10.0
 	defaultUsageLimitWeeklyUSD           = 50.0
 	defaultUsageLimitMonthlyUSD          = 150.0
@@ -76,6 +79,13 @@ func defaultConfigValues() Config {
 			LLMProvider:  defaultLLMProvider,
 			LLMAuthMode:  defaultLLMAuthMode,
 			BifrostModel: defaultBifrostModel,
+		},
+		MemoryConfig: MemoryConfig{
+			MemorySemanticEnabled: false,
+			MemoryEmbedProvider:   defaultMemoryEmbedProvider,
+			MemoryEmbedBaseURL:    defaultGeminiNativeBaseURL,
+			MemoryEmbedModel:      defaultMemoryEmbedModel,
+			MemoryEmbedDimensions: defaultMemoryEmbedDimensions,
 		},
 		UsageConfig: UsageConfig{
 			UsageLimitDailyUSD:   defaultUsageLimitDailyUSD,

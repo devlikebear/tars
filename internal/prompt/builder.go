@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/memory"
 )
 
 // BuildOptions configures system prompt generation.
@@ -15,6 +17,7 @@ type BuildOptions struct {
 	Query                string
 	ProjectID            string
 	SessionID            string
+	MemorySearcher       memory.Searcher
 	ForceRelevantMemory  bool
 	StaticBudgetTokens   int
 	RelevantBudgetTokens int

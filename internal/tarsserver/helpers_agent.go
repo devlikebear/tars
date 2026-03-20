@@ -50,11 +50,12 @@ func newBaseToolRegistry(workspaceDir string) *tool.Registry {
 	return newBaseToolRegistryWithProcess(workspaceDir, nil)
 }
 
-func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.ProcessManager) *tool.Registry {
+func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.ProcessManager, semanticCfg ...memory.SemanticConfig) *tool.Registry {
 	registry := tool.NewRegistry()
-	registry.Register(tool.NewMemorySearchTool(workspaceDir))
+	memService := buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...))
+	registry.Register(tool.NewMemorySearchTool(workspaceDir, memService))
 	registry.Register(tool.NewMemoryGetTool(workspaceDir))
-	registry.Register(tool.NewMemorySaveTool(workspaceDir, nil))
+	registry.Register(tool.NewMemorySaveTool(workspaceDir, memService, nil))
 	projectStore := project.NewStore(workspaceDir, nil)
 	registry.Register(tool.NewProjectCreateTool(projectStore))
 	registry.Register(tool.NewProjectListTool(projectStore))
@@ -103,8 +104,8 @@ func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.Pr
 	return registry
 }
 
-func newAgentAskFunc(workspaceDir string, client llm.Client, maxIterations int, logger zerolog.Logger) heartbeat.AskFunc {
-	runner := newAgentPromptRunner(workspaceDir, client, maxIterations, logger)
+func newAgentAskFunc(workspaceDir string, client llm.Client, maxIterations int, logger zerolog.Logger, semanticCfg ...memory.SemanticConfig) heartbeat.AskFunc {
+	runner := newAgentPromptRunner(workspaceDir, client, maxIterations, logger, semanticCfg...)
 	if runner == nil {
 		return nil
 	}
@@ -118,8 +119,15 @@ func newAgentPromptRunner(
 	client llm.Client,
 	maxIterations int,
 	logger zerolog.Logger,
+	semanticCfg ...memory.SemanticConfig,
 ) func(ctx context.Context, runLabel string, promptText string) (string, error) {
-	runnerWithTools := newAgentPromptRunnerWithTools(workspaceDir, client, maxIterations, logger)
+	runnerWithTools := newAgentPromptRunnerWithToolsAndMemory(
+		workspaceDir,
+		client,
+		maxIterations,
+		logger,
+		firstSemanticConfig(semanticCfg...),
+	)
 	if runnerWithTools == nil {
 		return nil
 	}
@@ -133,6 +141,17 @@ func newAgentPromptRunnerWithTools(
 	client llm.Client,
 	maxIterations int,
 	logger zerolog.Logger,
+	extraTools ...tool.Tool,
+) gatewayPromptRunner {
+	return newAgentPromptRunnerWithToolsAndMemory(workspaceDir, client, maxIterations, logger, memory.SemanticConfig{}, extraTools...)
+}
+
+func newAgentPromptRunnerWithToolsAndMemory(
+	workspaceDir string,
+	client llm.Client,
+	maxIterations int,
+	logger zerolog.Logger,
+	semanticCfg memory.SemanticConfig,
 	extraTools ...tool.Tool,
 ) gatewayPromptRunner {
 	if client == nil {
@@ -151,8 +170,8 @@ func newAgentPromptRunnerWithTools(
 		}
 
 		profile := agentPromptProfileForLabel(label)
-		systemPrompt := buildAgentSystemPrompt(targetWorkspaceDir, profile)
-		registry := newToolRegistryForAgentProfile(targetWorkspaceDir, profile)
+		systemPrompt := buildAgentSystemPrompt(targetWorkspaceDir, profile, semanticCfg)
+		registry := newToolRegistryForAgentProfile(targetWorkspaceDir, profile, semanticCfg)
 		for _, extra := range extraTools {
 			if strings.TrimSpace(extra.Name) == "" {
 				continue
@@ -227,22 +246,25 @@ func agentPromptProfileForLabel(label string) agentPromptProfile {
 	return agentPromptProfile{includeMemory: true}
 }
 
-func buildAgentSystemPrompt(workspaceDir string, profile agentPromptProfile) string {
+func buildAgentSystemPrompt(workspaceDir string, profile agentPromptProfile, semanticCfg ...memory.SemanticConfig) string {
 	if profile.minimalPrompt {
 		return strings.TrimSpace(fmt.Sprintf(
 			"You are TARS running an automated background job.\nCurrent time: %s\nKeep output minimal and action-oriented.\nNever echo tool calls, JSON arguments, or pseudo-tool syntax in your final answer.\nIf no durable project change is needed, return a short plain-text summary only.\nIf telegram_send is available and the prompt includes CRON_TELEGRAM_CONTEXT with a default paired chat, you may call telegram_send without chat_id to notify that paired Telegram chat.",
 			time.Now().UTC().Format(time.RFC3339),
 		)) + "\n"
 	}
-	systemPrompt := prompt.Build(prompt.BuildOptions{WorkspaceDir: workspaceDir})
+	systemPrompt := prompt.Build(prompt.BuildOptions{
+		WorkspaceDir:   workspaceDir,
+		MemorySearcher: buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...)),
+	})
 	if profile.includeMemory {
 		systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
 	}
 	return systemPrompt
 }
 
-func newToolRegistryForAgentProfile(workspaceDir string, profile agentPromptProfile) *tool.Registry {
-	registry := newBaseToolRegistry(workspaceDir)
+func newToolRegistryForAgentProfile(workspaceDir string, profile agentPromptProfile, semanticCfg ...memory.SemanticConfig) *tool.Registry {
+	registry := newBaseToolRegistryWithProcess(workspaceDir, nil, semanticCfg...)
 	if len(profile.allowedToolIDs) == 0 {
 		return registry
 	}
@@ -253,6 +275,13 @@ func newToolRegistryForAgentProfile(workspaceDir string, profile agentPromptProf
 		}
 	}
 	return filtered
+}
+
+func firstSemanticConfig(values ...memory.SemanticConfig) memory.SemanticConfig {
+	if len(values) == 0 {
+		return memory.SemanticConfig{}
+	}
+	return values[0]
 }
 
 func normalizeAllowedToolsForRegistry(raw []string, registry *tool.Registry) []string {

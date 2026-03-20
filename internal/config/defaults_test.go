@@ -146,6 +146,26 @@ func TestConfigInputFieldByYAMLKey_CoversStructuredFields(t *testing.T) {
 	if len(mcpCfg.MCPServers) != 1 || mcpCfg.MCPServers[0].Name != "fs" || mcpCfg.MCPServers[0].Command != "npx" {
 		t.Fatalf("expected mcp servers to parse, got %#v", mcpCfg.MCPServers)
 	}
+
+	memoryProviderField, ok := configInputFieldByYAMLKey("memory_embed_provider")
+	if !ok {
+		t.Fatal("expected memory_embed_provider field metadata")
+	}
+
+	var memoryCfg Config
+	memoryProviderField.apply(&memoryCfg, " Gemini ")
+	if memoryCfg.MemoryEmbedProvider != "gemini" {
+		t.Fatalf("expected memory embed provider to normalize, got %q", memoryCfg.MemoryEmbedProvider)
+	}
+
+	memoryDimensionsField, ok := configInputFieldByYAMLKey("memory_embed_dimensions")
+	if !ok {
+		t.Fatal("expected memory_embed_dimensions field metadata")
+	}
+	memoryDimensionsField.apply(&memoryCfg, "1024")
+	if memoryCfg.MemoryEmbedDimensions != 1024 {
+		t.Fatalf("expected memory embed dimensions to parse, got %d", memoryCfg.MemoryEmbedDimensions)
+	}
 }
 
 func TestLoad_DefaultOnly(t *testing.T) {
@@ -172,6 +192,18 @@ func TestLoad_DefaultOnly(t *testing.T) {
 	}
 	if cfg.BifrostModel != "openai/gpt-4o-mini" {
 		t.Fatalf("expected default BifrostModel openai/gpt-4o-mini, got %q", cfg.BifrostModel)
+	}
+	if cfg.MemoryEmbedProvider != "gemini" {
+		t.Fatalf("expected MemoryEmbedProvider gemini, got %q", cfg.MemoryEmbedProvider)
+	}
+	if cfg.MemoryEmbedBaseURL != "https://generativelanguage.googleapis.com/v1beta" {
+		t.Fatalf("expected MemoryEmbedBaseURL gemini native endpoint, got %q", cfg.MemoryEmbedBaseURL)
+	}
+	if cfg.MemoryEmbedModel != "gemini-embedding-2-preview" {
+		t.Fatalf("expected MemoryEmbedModel gemini-embedding-2-preview, got %q", cfg.MemoryEmbedModel)
+	}
+	if cfg.MemoryEmbedDimensions != 768 {
+		t.Fatalf("expected MemoryEmbedDimensions 768, got %d", cfg.MemoryEmbedDimensions)
 	}
 	if cfg.AgentMaxIterations != 8 {
 		t.Fatalf("expected default AgentMaxIterations 8, got %d", cfg.AgentMaxIterations)
@@ -1518,6 +1550,9 @@ func TestDefaultConfigValues_SharedBaseline(t *testing.T) {
 	if defaults.APIMaxInflightChat != 2 {
 		t.Fatalf("expected inflight chat default 2, got %d", defaults.APIMaxInflightChat)
 	}
+	if defaults.MemoryEmbedModel != "gemini-embedding-2-preview" {
+		t.Fatalf("expected memory embedding model default, got %q", defaults.MemoryEmbedModel)
+	}
 	if defaults.BrowserRelayAddr != "127.0.0.1:43182" {
 		t.Fatalf("expected browser relay addr default, got %q", defaults.BrowserRelayAddr)
 	}
@@ -1538,6 +1573,9 @@ func TestApplyDefaults_UsesSharedDefaults(t *testing.T) {
 	}
 	if cfg.ToolsWebSearchPerplexityBaseURL != "https://api.perplexity.ai/chat/completions" {
 		t.Fatalf("expected perplexity base url default, got %q", cfg.ToolsWebSearchPerplexityBaseURL)
+	}
+	if cfg.MemoryEmbedDimensions != 768 {
+		t.Fatalf("expected memory embed dimensions default 768, got %d", cfg.MemoryEmbedDimensions)
 	}
 	if cfg.GatewayRunsMaxRecords != 2000 {
 		t.Fatalf("expected gateway runs max records default 2000, got %d", cfg.GatewayRunsMaxRecords)
@@ -1560,6 +1598,9 @@ func TestDefaultAndApplyDefaults_StayAlignedForCoreValues(t *testing.T) {
 	}
 	if cfg.CronRunHistoryLimit != defaults.CronRunHistoryLimit {
 		t.Fatalf("expected cron history alignment, got cfg=%d defaults=%d", cfg.CronRunHistoryLimit, defaults.CronRunHistoryLimit)
+	}
+	if cfg.MemoryEmbedBaseURL != defaults.MemoryEmbedBaseURL {
+		t.Fatalf("expected memory embed base URL alignment, got cfg=%q defaults=%q", cfg.MemoryEmbedBaseURL, defaults.MemoryEmbedBaseURL)
 	}
 	if cfg.BrowserRelayOriginAllowlist[0] != defaults.BrowserRelayOriginAllowlist[0] {
 		t.Fatalf("expected relay origin allowlist alignment, got cfg=%q defaults=%q", cfg.BrowserRelayOriginAllowlist[0], defaults.BrowserRelayOriginAllowlist[0])

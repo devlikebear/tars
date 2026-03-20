@@ -70,6 +70,9 @@ func EnsureWorkspace(root string) error {
 	if err := os.MkdirAll(filepath.Join(root, "memory"), 0o755); err != nil {
 		return fmt.Errorf("create memory dir: %w", err)
 	}
+	if err := os.MkdirAll(filepath.Join(root, "memory", "index"), 0o755); err != nil {
+		return fmt.Errorf("create memory index dir: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Join(root, "projects"), 0o755); err != nil {
 		return fmt.Errorf("create projects dir: %w", err)
 	}
