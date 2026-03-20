@@ -11,6 +11,7 @@ import (
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/heartbeat"
+	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
@@ -76,6 +77,7 @@ func buildChatToolingOptions(
 	projectAutopilot *project.AutopilotManager,
 	toolsDefaultSet string,
 	toolsAllowHighRiskUser bool,
+	memorySemanticConfig memory.SemanticConfig,
 	apiMaxInflightChat int,
 	usageTracker *usage.Tracker,
 ) chatToolingOptions {
@@ -88,6 +90,7 @@ func buildChatToolingOptions(
 		ProjectAutopilot:       projectAutopilot,
 		ToolsDefaultSet:        strings.TrimSpace(strings.ToLower(toolsDefaultSet)),
 		ToolsAllowHighRiskUser: toolsAllowHighRiskUser,
+		MemorySemanticConfig:   memorySemanticConfig,
 		APIMaxInflightChat:     apiMaxInflightChat,
 		UsageTracker:           usageTracker,
 	}

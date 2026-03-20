@@ -224,11 +224,12 @@ func buildAPIMux(
 	}))
 	apiRunPromptWithTools := deps.runPromptWithTools
 	if cfg.ChannelsTelegramEnabled {
-		if runnerWithTelegram := newAgentPromptRunnerWithTools(
+		if runnerWithTelegram := newAgentPromptRunnerWithToolsAndMemory(
 			cfg.WorkspaceDir,
 			deps.llmClient,
 			cfg.AgentMaxIterations,
 			logger,
+			semanticMemoryConfigFromConfig(cfg),
 			telegramSendTool,
 		); runnerWithTelegram != nil {
 			apiRunPromptWithTools = runnerWithTelegram
@@ -355,6 +356,7 @@ func buildAPIMux(
 		nil,
 		cfg.ToolsDefaultSet,
 		cfg.ToolsAllowHighRiskUser,
+		semanticMemoryConfigFromConfig(cfg),
 		cfg.APIMaxInflightChat,
 		deps.usageTracker,
 	)

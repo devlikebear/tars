@@ -16,6 +16,7 @@ func applyDefaults(cfg *Config) {
 	}
 	defaults := defaultConfigValues()
 	applyCoreDefaults(cfg, defaults)
+	applyMemoryDefaults(cfg, defaults)
 	applyToolDefaults(cfg, defaults)
 	applyVaultDefaults(cfg, defaults)
 	applyBrowserDefaults(cfg, defaults)
@@ -172,6 +173,25 @@ func normalizeLLMServiceTier(raw string) string {
 		return strings.TrimSpace(strings.ToLower(raw))
 	default:
 		return ""
+	}
+}
+
+func applyMemoryDefaults(cfg *Config, defaults Config) {
+	cfg.MemoryEmbedProvider = strings.TrimSpace(strings.ToLower(cfg.MemoryEmbedProvider))
+	if cfg.MemoryEmbedProvider == "" {
+		cfg.MemoryEmbedProvider = defaults.MemoryEmbedProvider
+	}
+	cfg.MemoryEmbedBaseURL = strings.TrimSpace(cfg.MemoryEmbedBaseURL)
+	if cfg.MemoryEmbedBaseURL == "" {
+		cfg.MemoryEmbedBaseURL = defaults.MemoryEmbedBaseURL
+	}
+	cfg.MemoryEmbedAPIKey = strings.TrimSpace(cfg.MemoryEmbedAPIKey)
+	cfg.MemoryEmbedModel = strings.TrimSpace(cfg.MemoryEmbedModel)
+	if cfg.MemoryEmbedModel == "" {
+		cfg.MemoryEmbedModel = defaults.MemoryEmbedModel
+	}
+	if cfg.MemoryEmbedDimensions <= 0 {
+		cfg.MemoryEmbedDimensions = defaults.MemoryEmbedDimensions
 	}
 }
 

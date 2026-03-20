@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/memory"
 )
 
 const (
@@ -30,7 +32,7 @@ type memorySearchResult struct {
 	Message string              `json:"message,omitempty"`
 }
 
-func NewMemorySearchTool(workspaceDir string) Tool {
+func NewMemorySearchTool(workspaceDir string, semantic *memory.Service) Tool {
 	return Tool{
 		Name:        "memory_search",
 		Description: "Search MEMORY.md and daily memory logs for text snippets with source metadata.",
@@ -72,7 +74,7 @@ func NewMemorySearchTool(workspaceDir string) Tool {
 				includeDaily = *input.IncludeDaily
 			}
 
-			matches, message := runMemorySearch(workspaceDir, query, limit, includeMemory, includeDaily)
+			matches, message := runMemorySearch(context.Background(), workspaceDir, query, limit, includeMemory, includeDaily, semantic)
 			payload := memorySearchResult{
 				Query:   query,
 				Limit:   limit,
@@ -100,7 +102,25 @@ type memorySearchFile struct {
 	MTime  time.Time
 }
 
-func runMemorySearch(workspaceDir, query string, limit int, includeMemory, includeDaily bool) ([]memorySearchMatch, string) {
+func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int, includeMemory, includeDaily bool, semantic *memory.Service) ([]memorySearchMatch, string) {
+	if semantic != nil {
+		hits, err := semantic.Search(ctx, memory.SearchRequest{
+			Query: query,
+			Limit: limit,
+		})
+		if err == nil && len(hits) > 0 {
+			results := make([]memorySearchMatch, 0, len(hits))
+			for _, hit := range hits {
+				results = append(results, memorySearchMatch{
+					Source:  hit.Source,
+					Date:    hit.Date.UTC().Format("2006-01-02"),
+					Line:    0,
+					Snippet: hit.Snippet,
+				})
+			}
+			return results, ""
+		}
+	}
 	files := collectMemorySearchFiles(workspaceDir, includeMemory, includeDaily)
 	if len(files) == 0 {
 		return nil, "no memory files found"

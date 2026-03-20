@@ -58,7 +58,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 
 	transcriptPath := reqStore.TranscriptPath(sessionID)
 	deps.logger.Debug().Str("session_id", sessionID).Str("transcript_path", transcriptPath).Msg("chat session resolved")
-	if err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, deps.client, deps.logger); err != nil {
+	if err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, deps.client, deps.logger, deps.tooling.MemorySemanticConfig); err != nil {
 		deps.logger.Error().Err(err).Str("session_id", sessionID).Msg("auto compaction failed")
 		return chatRunState{}, http.StatusInternalServerError, "auto compaction failed", err
 	}
@@ -87,7 +87,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	if err != nil {
 		return chatRunState{}, http.StatusNotFound, err.Error(), err
 	}
-	contextDetails, err := prepareChatContextDetailsWithExtensions(requestWorkspaceDir, resolvedProjectID, sessionID, req.Message, extSnapshot, invokedSkill)
+	contextDetails, err := prepareChatContextDetailsWithExtensions(requestWorkspaceDir, resolvedProjectID, sessionID, req.Message, extSnapshot, invokedSkill, deps.tooling.MemorySemanticConfig)
 	if err != nil {
 		return chatRunState{}, http.StatusInternalServerError, "prepare chat context failed", err
 	}

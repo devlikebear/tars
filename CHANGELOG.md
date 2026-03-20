@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-20
+
+### Added
+
+- Semantic Memory V2 with local derived indexing under `workspace/memory/index` for durable memories and project documents
+- Gemini embedding configuration for semantic retrieval with `memory_semantic_enabled`, `memory_embed_*`, and default `gemini-embedding-2-preview` support
+
+### Changed
+
+- Prompt assembly now prefers semantic memory recall for paraphrases and project-scoped context, with lexical retrieval kept as the fallback path
+- `memory_save` now dual-writes to both `experiences.jsonl` and the semantic memory index when semantic memory is enabled
+- Session compaction now stores compaction summaries and extracted durable memory candidates in the semantic index without breaking compaction when extraction fails
+- `memory_search` now uses semantic recall first and falls back to the existing file-based substring search when embeddings are unavailable
+
 ## [0.5.11] - 2026-03-14
 
 ### Fixed

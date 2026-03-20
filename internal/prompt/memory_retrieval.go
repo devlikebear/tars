@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -94,6 +95,9 @@ func collectRelevantMemory(opts BuildOptions) []relevantMemoryMatch {
 	if len(terms) == 0 && !opts.ForceRelevantMemory {
 		return nil
 	}
+	if semantic := collectSemanticMatches(opts); len(semantic) > 0 {
+		return semantic
+	}
 
 	matches := make([]relevantMemoryMatch, 0, 16)
 	matches = append(matches, collectProjectDocumentMatches(opts, terms)...)
@@ -136,6 +140,36 @@ func collectRelevantMemory(opts BuildOptions) []relevantMemoryMatch {
 		}
 	}
 	return filtered
+}
+
+func collectSemanticMatches(opts BuildOptions) []relevantMemoryMatch {
+	if opts.MemorySearcher == nil {
+		return nil
+	}
+	hits, err := opts.MemorySearcher.Search(context.Background(), memory.SearchRequest{
+		Query:     strings.TrimSpace(opts.Query),
+		ProjectID: strings.TrimSpace(opts.ProjectID),
+		SessionID: strings.TrimSpace(opts.SessionID),
+		Limit:     defaultRelevantResultLimit,
+	})
+	if err != nil || len(hits) == 0 {
+		return nil
+	}
+	matches := make([]relevantMemoryMatch, 0, len(hits))
+	for _, hit := range hits {
+		snippet := strings.TrimSpace(hit.Snippet)
+		if snippet == "" {
+			continue
+		}
+		score := int(hit.Score * 1000)
+		matches = append(matches, relevantMemoryMatch{
+			Source:    strings.TrimSpace(hit.Source),
+			Snippet:   snippet,
+			Score:     score,
+			Timestamp: hit.Date,
+		})
+	}
+	return matches
 }
 
 func collectProjectDocumentMatches(opts BuildOptions, terms []string) []relevantMemoryMatch {

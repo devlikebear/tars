@@ -58,6 +58,15 @@ type LLMConfig struct {
 	BifrostModel       string
 }
 
+type MemoryConfig struct {
+	MemorySemanticEnabled bool
+	MemoryEmbedProvider   string
+	MemoryEmbedBaseURL    string
+	MemoryEmbedAPIKey     string
+	MemoryEmbedModel      string
+	MemoryEmbedDimensions int
+}
+
 type UsageConfig struct {
 	UsageLimitDailyUSD   float64
 	UsageLimitWeeklyUSD  float64
@@ -184,6 +193,7 @@ type Config struct {
 	RuntimeConfig
 	APIConfig
 	LLMConfig
+	MemoryConfig
 	UsageConfig
 	AutomationConfig
 	AssistantConfig

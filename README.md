@@ -18,6 +18,7 @@ It combines a terminal client, a local HTTP runtime, agent tools, sessions, sche
 - Project manager workflow with a project board, activity feed, dispatch API, and GitHub Flow status dashboard
 - Session lifecycle and transcript storage
 - Agent loop with built-in file, process, scheduling, memory, and ops tools
+- Semantic memory recall for durable memories, compaction summaries, and active project documents
 - Runtime extension loading for skills, plugins, and MCP servers
 - Playwright-based browser automation
 - Optional macOS assistant workflow
@@ -26,6 +27,7 @@ It combines a terminal client, a local HTTP runtime, agent tools, sessions, sche
 
 - Go `1.25.6` or newer
 - Provider credentials for API-backed models, or a local Claude Code CLI install for `llm_provider: claude-code-cli`
+- Optional: a Gemini API key if you enable semantic memory embeddings
 - Optional: Node.js for Playwright browser installation
 
 ## Install
@@ -75,6 +77,16 @@ Or switch the starter config to Claude Code CLI:
 llm_provider: claude-code-cli
 llm_auth_mode: cli
 llm_model: sonnet
+```
+
+If you want semantic memory recall, add Gemini embeddings to the starter config:
+
+```yaml
+memory_semantic_enabled: true
+memory_embed_provider: gemini
+memory_embed_api_key: ${GEMINI_API_KEY}
+memory_embed_model: gemini-embedding-2-preview
+memory_embed_dimensions: 768
 ```
 
 3. Check or repair the local starter setup:
@@ -160,6 +172,16 @@ make api-status
 make api-sessions
 make smoke-auth
 ```
+
+## Semantic Memory
+
+When `memory_semantic_enabled: true`, TARS keeps the existing workspace files as the source of truth and builds a derived semantic index under `workspace/memory/index`.
+
+- `memory_save` still appends to `memory/experiences.jsonl`, then also indexes the saved memory for semantic recall
+- prompt assembly searches project docs, saved experiences, and compaction-derived memories with embeddings before falling back to lexical matches
+- compaction summaries can produce durable memory candidates that get indexed without blocking transcript compaction if extraction fails
+
+If semantic memory is disabled, or the embedding request fails, TARS keeps using the current lexical retrieval path.
 
 ## Project Manager
 
