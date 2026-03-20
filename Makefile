@@ -42,7 +42,9 @@ BUILDINFO_PKG ?= github.com/devlikebear/tars/internal/buildinfo
 GO_LDFLAGS ?= -X $(BUILDINFO_PKG).Version=$(VERSION) -X $(BUILDINFO_PKG).Commit=$(GIT_COMMIT) -X $(BUILDINFO_PKG).Date=$(BUILD_DATE)
 RELEASE_GOOS ?= $(shell $(GO) env GOOS)
 RELEASE_GOARCH ?= $(shell $(GO) env GOARCH)
-RELEASE_CGO_ENABLED ?= 1
+# Release archives use the no-CGO fallback path so darwin packaging does not
+# depend on Objective-C hotkey bindings during CI cross-builds.
+RELEASE_CGO_ENABLED ?= 0
 RELEASE_ARCHIVE_NAME ?= tars_$(VERSION)_$(RELEASE_GOOS)_$(RELEASE_GOARCH).tar.gz
 RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 
