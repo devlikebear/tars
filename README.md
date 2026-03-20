@@ -35,8 +35,8 @@ It combines a terminal client, a local HTTP runtime, agent tools, sessions, sche
 Homebrew tap:
 
 ```bash
-brew tap devlikebear/tars
-brew install devlikebear/tars/tars
+brew tap devlikebear/tap
+brew install devlikebear/tap/tars
 ```
 
 Curl installer:
