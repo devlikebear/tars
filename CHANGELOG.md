@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-03-20
+
+### Changed
+
+- Homebrew release automation now updates the unified `devlikebear/homebrew-tap` repository instead of the dedicated `homebrew-tars` tap
+- Public install instructions now use `brew tap devlikebear/tap` and `brew install devlikebear/tap/tars`
+
 ## [0.6.0] - 2026-03-20
 
 ### Added
@@ -198,7 +205,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - Automated release workflow driven by `VERSION.txt` changes on `main`, including tag/release publishing and Homebrew tap updates
 - Public `install.sh` for curl-based macOS installs from GitHub Releases
-- Homebrew tap formula generation for `devlikebear/homebrew-tars`
+- Homebrew tap formula generation for `devlikebear/homebrew-tap`
 
 ### Changed
 

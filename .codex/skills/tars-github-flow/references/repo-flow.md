@@ -158,12 +158,12 @@ Verify:
 gh run list --workflow release-on-version-bump.yml --limit 5
 gh release view v<version> --repo devlikebear/tars
 gh api repos/devlikebear/tars/git/ref/tags/v<version>
-gh api 'repos/devlikebear/homebrew-tars/contents/Formula/tars.rb?ref=main'
+gh api 'repos/devlikebear/homebrew-tap/contents/Formula/tars.rb?ref=main'
 ```
 
 - Confirm the tag points to the merge commit.
 - Confirm the release has both macOS archives and `checksums.txt`.
-- Confirm `homebrew-tars` points to the same version and checksums.
+- Confirm `homebrew-tap` points to the same version and checksums.
 
 ## Completion
 
