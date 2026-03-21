@@ -14,6 +14,7 @@ import (
 	"github.com/devlikebear/tars/internal/envloader"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // Serve executes tars runtime directly with structured options.
@@ -38,7 +39,9 @@ func Serve(ctx context.Context, serveOpts ServeOptions, stdout, stderr io.Writer
 	}
 	applyOptionDefaults(opts)
 
-	logger, cleanup := setupRuntimeLogger(opts.LogFile, stderr)
+	logger, cleanup := setupRuntimeLogger(loggerConfig{
+		FilePath: opts.LogFile,
+	}, stderr)
 	defer cleanup()
 	zlog.Logger = logger
 
@@ -70,7 +73,15 @@ func applyOptionDefaults(opts *options) {
 	}
 }
 
-func setupRuntimeLogger(logFilePath string, stderr io.Writer) (zerolog.Logger, func()) {
+type loggerConfig struct {
+	FilePath       string
+	Level          string
+	RotateMaxSizeMB  int
+	RotateMaxDays    int
+	RotateMaxBackups int
+}
+
+func setupRuntimeLogger(cfg loggerConfig, stderr io.Writer) (zerolog.Logger, func()) {
 	consoleWriter := zerolog.ConsoleWriter{
 		Out:        stderr,
 		TimeFormat: "15:04:05",
@@ -78,34 +89,66 @@ func setupRuntimeLogger(logFilePath string, stderr io.Writer) (zerolog.Logger, f
 	}
 	logWriter := io.Writer(consoleWriter)
 
-	trimmedLogPath := strings.TrimSpace(logFilePath)
+	trimmedLogPath := strings.TrimSpace(cfg.FilePath)
+	// If the path looks like a directory (ends with /), append default filename.
+	if trimmedLogPath != "" && strings.HasSuffix(trimmedLogPath, "/") {
+		trimmedLogPath = trimmedLogPath + "tars.log"
+	}
 
-	var logFile *os.File
-	var logFileErr error
+	var closers []func()
 	if trimmedLogPath != "" {
-		parentDir := filepath.Dir(trimmedLogPath)
-		if mkErr := os.MkdirAll(parentDir, 0o755); mkErr != nil {
-			logFileErr = fmt.Errorf("create log directory %q: %w", parentDir, mkErr)
-		} else {
-			logFile, logFileErr = os.OpenFile(trimmedLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		// Ensure parent directory exists before lumberjack opens the file.
+		if dir := filepath.Dir(trimmedLogPath); dir != "" && dir != "." {
+			_ = os.MkdirAll(dir, 0o755)
 		}
-		if logFileErr == nil {
-			logWriter = zerolog.MultiLevelWriter(consoleWriter, logFile)
+		maxSize := cfg.RotateMaxSizeMB
+		if maxSize <= 0 {
+			maxSize = 100 // default 100MB
 		}
+		maxDays := cfg.RotateMaxDays
+		if maxDays <= 0 {
+			maxDays = 30 // default 30 days
+		}
+		maxBackups := cfg.RotateMaxBackups
+		if maxBackups <= 0 {
+			maxBackups = 5 // default 5 backups
+		}
+		lj := &lumberjack.Logger{
+			Filename:   trimmedLogPath,
+			MaxSize:    maxSize,
+			MaxAge:     maxDays,
+			MaxBackups: maxBackups,
+			LocalTime:  true,
+			Compress:   true,
+		}
+		logWriter = zerolog.MultiLevelWriter(consoleWriter, lj)
+		closers = append(closers, func() { _ = lj.Close() })
 	}
 
-	logger := zerolog.New(logWriter).With().Timestamp().Str("component", "tars").Logger()
-	if logFileErr != nil {
-		logger.Error().
-			Err(logFileErr).
-			Str("path", trimmedLogPath).
-			Msg("failed to open log file; using console logging only")
-	}
+	level := parseLogLevel(cfg.Level)
+	logger := zerolog.New(logWriter).With().Timestamp().Str("component", "tars").Logger().Level(level)
 
 	cleanup := func() {
-		if logFile != nil {
-			_ = logFile.Close()
+		for _, fn := range closers {
+			fn()
 		}
 	}
 	return logger, cleanup
+}
+
+func parseLogLevel(s string) zerolog.Level {
+	switch strings.TrimSpace(strings.ToLower(s)) {
+	case "trace":
+		return zerolog.TraceLevel
+	case "debug":
+		return zerolog.DebugLevel
+	case "info":
+		return zerolog.InfoLevel
+	case "warn", "warning":
+		return zerolog.WarnLevel
+	case "error":
+		return zerolog.ErrorLevel
+	default:
+		return zerolog.DebugLevel
+	}
 }

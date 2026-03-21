@@ -40,6 +40,7 @@ type serveAPIRuntime struct {
 	cronManager        *workspaceCronManager
 	watchdogManager    *workspaceWatchdogManager
 	telegramPoller     *telegramUpdatePoller
+	projectAutopilot   *project.AutopilotManager
 }
 
 type apiRouteHandlers struct {
@@ -395,9 +396,8 @@ func buildAPIMux(
 	projectAutopilot = project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), func(projectID string, kind string) {
 		projectDashboardBroker.publish(newProjectDashboardEvent(projectID, kind))
 	})
-	if err := projectAutopilot.RestorePersistedRuns(); err != nil {
-		logger.Error().Err(err).Msg("restore persisted project autopilot runs failed")
-	}
+	// NOTE: RestorePersistedRuns is deferred to startBackgrounds() so that
+	// autopilot loops do not fire LLM requests before the server is ready.
 	chatTooling.ProjectAutopilot = projectAutopilot
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,
@@ -529,6 +529,7 @@ func buildAPIMux(
 		cronManager:        cronManager,
 		watchdogManager:    watchdogManager,
 		telegramPoller:     telegramPoller,
+		projectAutopilot:   projectAutopilot,
 	}, nil
 }
 
@@ -653,6 +654,14 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 				Str("dm_policy", normalizeTelegramDMPolicy(cfg.ChannelsTelegramDMPolicy)).
 				Msg("telegram polling started")
 		}
+	}
+	// Restore persisted project autopilot runs after all other backgrounds are up.
+	if runtime.projectAutopilot != nil {
+		go func() {
+			if err := runtime.projectAutopilot.RestorePersistedRuns(); err != nil {
+				logger.Error().Err(err).Msg("restore persisted project autopilot runs failed")
+			}
+		}()
 	}
 	return nil
 }
