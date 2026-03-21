@@ -1,20 +1,25 @@
 {
   "entrypoints": {
     "path": "cmd/tars/",
-    "responsibility": "CLI command entrypoints that choose the runtime path for client, server, assistant, and diagnostics.",
+    "responsibility": "CLI entrypoints and hub-management commands that choose the runtime path for client, server, assistant, diagnostics, skills, and plugins.",
     "key_files": [
       "cmd/tars/main.go",
+      "cmd/tars/mainthread_darwin.go",
+      "cmd/tars/mainthread_other.go",
       "cmd/tars/client_main.go",
       "cmd/tars/server_main.go",
       "cmd/tars/assistant_main.go",
-      "cmd/tars/doctor_main.go"
+      "cmd/tars/doctor_main.go",
+      "cmd/tars/skill_main.go",
+      "cmd/tars/plugin_main.go"
     ]
   },
   "configuration-doctor": {
     "path": "internal/config/",
-    "responsibility": "Loads, normalizes, and validates runtime configuration together with starter-environment diagnostics.",
+    "responsibility": "Loads, normalizes, and validates runtime configuration with field-table driven YAML/env merge and starter-environment diagnostics.",
     "key_files": [
       "internal/config/load.go",
+      "internal/config/config_input_fields.go",
       "internal/config/defaults_apply.go",
       "internal/config/env.go",
       "internal/config/yaml.go",
@@ -35,19 +40,21 @@
   },
   "server-chat-pipeline": {
     "path": "internal/tarsserver/",
-    "responsibility": "Server bootstrap, API routing, and /v1/chat execution with session/project context resolution.",
+    "responsibility": "Server bootstrap, API routing, chat execution, semantic-memory-aware prompt assembly, and provider-model discovery endpoints.",
     "key_files": [
       "internal/tarsserver/main.go",
+      "internal/tarsserver/main_cli.go",
       "internal/tarsserver/main_bootstrap.go",
       "internal/tarsserver/main_serve_api.go",
       "internal/tarsserver/handler_chat.go",
       "internal/tarsserver/handler_chat_context.go",
-      "internal/tarsserver/handler_chat_execution.go"
+      "internal/tarsserver/helpers_memory.go",
+      "internal/tarsserver/handler_transport_helpers.go"
     ]
   },
   "auth-plugin-loading": {
     "path": "internal/serverauth/",
-    "responsibility": "Enforces API auth policy and keeps plugin skill/MCP paths inside trusted boundaries.",
+    "responsibility": "Enforces API auth policy, loopback dashboard exceptions, and plugin skill/MCP paths inside trusted boundaries.",
     "key_files": [
       "internal/tarsserver/middleware.go",
       "internal/serverauth/middleware.go",
@@ -58,10 +65,11 @@
   },
   "extensions-tools": {
     "path": "internal/extensions/",
-    "responsibility": "Builds unified skill/plugin/MCP snapshots and exposes tools to the agent loop.",
+    "responsibility": "Builds unified skill/plugin/MCP snapshots, mirrors runtime skills into the workspace, and exposes tools to the agent loop.",
     "key_files": [
       "internal/extensions/manager.go",
       "internal/skill/loader.go",
+      "internal/skill/mirror.go",
       "internal/mcp/client.go",
       "internal/tool/tool.go",
       "internal/agent/loop.go",
@@ -70,7 +78,7 @@
   },
   "workspace-data": {
     "path": "internal/session/",
-    "responsibility": "Persists sessions, transcripts, memory, projects, usage, and research as local workspace files.",
+    "responsibility": "Persists sessions, transcripts, projects, usage, schedules, and shared runtime state as local workspace files.",
     "key_files": [
       "internal/session/session.go",
       "internal/session/transcript.go",
@@ -83,38 +91,40 @@
   },
   "automation-gateway-browser": {
     "path": "internal/gateway/",
-    "responsibility": "Runs background agent jobs, schedule/ops automation, and browser orchestration outside the chat request lifecycle.",
+    "responsibility": "Runs background agent jobs, channel and report surfaces, schedule/ops automation, and browser orchestration outside the chat request lifecycle.",
     "key_files": [
+      "internal/gateway/executor.go",
       "internal/gateway/runtime.go",
       "internal/gateway/runtime_run_bootstrap.go",
-      "internal/gateway/runtime_run_execute.go",
-      "internal/gateway/runtime_persist.go",
+      "internal/gateway/runtime_runs.go",
+      "internal/gateway/runtime_channels.go",
+      "internal/gateway/runtime_reports.go",
       "internal/browser/service.go",
       "internal/browser/playwright_exec.go"
     ]
   },
   "external-integrations": {
-    "path": "cmd/tars/ + internal/approval/ + internal/auth/ + internal/browserrelay/ + internal/llm/",
-    "responsibility": "Bridges TARS to host launchd services, browser extension relay traffic, human OTP approval waits, and provider-specific credential/transport adapters.",
+    "path": "cmd/tars/ + internal/auth/ + internal/browserrelay/ + internal/llm/",
+    "responsibility": "Bridges TARS to host launchd services, browser relay traffic, human OTP waits, provider credential strategies, and provider-specific transport adapters.",
     "key_files": [
       "cmd/tars/service_main.go",
       "internal/browserrelay/server.go",
       "internal/approval/otp.go",
+      "internal/auth/provider_credentials.go",
       "internal/auth/codex_oauth.go",
-      "internal/auth/token.go",
-      "internal/llm/anthropic.go",
-      "internal/llm/openai_compat_client.go",
+      "internal/auth/codex_refresh_store.go",
+      "internal/llm/provider.go",
+      "internal/llm/model_lister.go",
       "internal/llm/openai_codex_client.go",
       "internal/llm/gemini_native.go"
     ]
   },
   "project-autopilot-dashboard": {
     "path": "internal/project/",
-    "responsibility": "Manages project briefs, board/activity/state documents, autopilot supervision, and dashboard rendering.",
+    "responsibility": "Manages project briefs, workflow policy, board and activity documents, autopilot supervision, and dashboard rendering.",
     "key_files": [
       "internal/project/brief_state.go",
-      "internal/project/kanban.go",
-      "internal/project/activity.go",
+      "internal/project/workflow_policy.go",
       "internal/project/orchestrator.go",
       "internal/project/project_runner.go",
       "internal/gateway/project_task_runner.go",
@@ -128,7 +138,31 @@
       "plugins/project-swarm/skills/project-start/SKILL.md",
       "plugins/project-swarm/skills/project-autopilot/SKILL.md",
       "internal/project/project_runner.go",
+      "internal/project/workflow_policy.go",
       "internal/tarsserver/dashboard.go"
+    ]
+  },
+  "skillhub-distribution": {
+    "path": "cmd/tars/ + internal/skillhub/",
+    "responsibility": "Searches the remote TARS Hub, installs or updates skills/plugins into the workspace, and records installed registry state.",
+    "key_files": [
+      "cmd/tars/skill_main.go",
+      "cmd/tars/plugin_main.go",
+      "internal/skillhub/registry.go",
+      "internal/skillhub/install.go",
+      "internal/skillhub/types.go"
+    ]
+  },
+  "semantic-memory": {
+    "path": "internal/memory/",
+    "responsibility": "Indexes explicit memories, compaction summaries, and project documents into embeddings and injects relevant recall into prompts and tools.",
+    "key_files": [
+      "internal/memory/semantic.go",
+      "internal/memory/gemini_embed.go",
+      "internal/prompt/memory_retrieval.go",
+      "internal/tool/memory_search.go",
+      "internal/tool/memory_save.go",
+      "internal/tarsserver/helpers_chat.go"
     ]
   }
 }
