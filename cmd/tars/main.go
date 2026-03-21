@@ -48,6 +48,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newServeCommand(stdout, stderr))
 	cmd.AddCommand(newAssistantCommand(stdout, stderr))
 	cmd.AddCommand(newSkillCommand(stdout, stderr))
+	cmd.AddCommand(newPluginCommand(stdout, stderr))
 	cmd.AddCommand(newVersionCommand(stdout))
 	return cmd
 }

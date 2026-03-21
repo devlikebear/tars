@@ -10,16 +10,17 @@ import (
 
 func testIndex() RegistryIndex {
 	return RegistryIndex{
-		Version: 1,
+		Version: 2,
 		Skills: []RegistryEntry{
 			{
-				Name:          "project-start",
-				Description:   "Kick off a software project",
-				Version:       "0.6.0",
-				Author:        "devlikebear",
-				Tags:          []string{"project", "kickoff"},
-				Path:          "skills/project-start",
-				UserInvocable: true,
+				Name:           "project-start",
+				Description:    "Kick off a software project",
+				Version:        "0.6.0",
+				Author:         "devlikebear",
+				Tags:           []string{"project", "kickoff"},
+				Path:           "skills/project-start",
+				UserInvocable:  true,
+				RequiresPlugin: "project-swarm",
 			},
 			{
 				Name:          "novelist",
@@ -29,6 +30,17 @@ func testIndex() RegistryIndex {
 				Tags:          []string{"creative", "writing"},
 				Path:          "skills/novelist",
 				UserInvocable: true,
+			},
+		},
+		Plugins: []PluginEntry{
+			{
+				Name:        "project-swarm",
+				Description: "Project kickoff and autonomous execution skills",
+				Version:     "0.7.0",
+				Author:      "devlikebear",
+				Tags:        []string{"project", "automation"},
+				Path:        "plugins/project-swarm",
+				Files:       []string{"tars.plugin.json", "skills/project-start/SKILL.md"},
 			},
 		},
 	}
@@ -44,6 +56,12 @@ func newTestServer(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("/skills/project-start/SKILL.md", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("---\nname: project-start\n---\n# Project Start\n"))
+	})
+	mux.HandleFunc("/plugins/project-swarm/tars.plugin.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"project-swarm","name":"Project Swarm"}`))
+	})
+	mux.HandleFunc("/plugins/project-swarm/skills/project-start/SKILL.md", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("---\nname: project-start\n---\n# Project Start (bundled)\n"))
 	})
 	return httptest.NewServer(mux)
 }
@@ -160,6 +178,90 @@ func TestFetchSkillContent(t *testing.T) {
 	content, err := reg.FetchSkillContent(context.Background(), entry)
 	if err != nil {
 		t.Fatalf("FetchSkillContent: %v", err)
+	}
+	if len(content) == 0 {
+		t.Fatal("expected non-empty content")
+	}
+}
+
+func TestSearchPlugins(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL: srv.URL + "/registry.json",
+		HTTPClient:  srv.Client(),
+	}
+	results, err := reg.SearchPlugins(context.Background(), "project")
+	if err != nil {
+		t.Fatalf("SearchPlugins: %v", err)
+	}
+	if len(results) != 1 || results[0].Name != "project-swarm" {
+		t.Fatalf("expected [project-swarm], got %v", results)
+	}
+}
+
+func TestSearchPluginsEmpty(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL: srv.URL + "/registry.json",
+		HTTPClient:  srv.Client(),
+	}
+	results, err := reg.SearchPlugins(context.Background(), "")
+	if err != nil {
+		t.Fatalf("SearchPlugins: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 plugin, got %d", len(results))
+	}
+}
+
+func TestFindPluginByName(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL: srv.URL + "/registry.json",
+		HTTPClient:  srv.Client(),
+	}
+	entry, err := reg.FindPluginByName(context.Background(), "project-swarm")
+	if err != nil {
+		t.Fatalf("FindPluginByName: %v", err)
+	}
+	if entry.Name != "project-swarm" {
+		t.Fatalf("expected project-swarm, got %s", entry.Name)
+	}
+}
+
+func TestFindPluginByNameNotFound(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL: srv.URL + "/registry.json",
+		HTTPClient:  srv.Client(),
+	}
+	_, err := reg.FindPluginByName(context.Background(), "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent plugin")
+	}
+}
+
+func TestFetchPluginFile(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL:  srv.URL + "/registry.json",
+		SkillBaseURL: srv.URL,
+		HTTPClient:   srv.Client(),
+	}
+	entry := &PluginEntry{Path: "plugins/project-swarm"}
+	content, err := reg.FetchPluginFile(context.Background(), entry, "tars.plugin.json")
+	if err != nil {
+		t.Fatalf("FetchPluginFile: %v", err)
 	}
 	if len(content) == 0 {
 		t.Fatal("expected non-empty content")
