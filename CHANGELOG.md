@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-03-21
+
+### Added
+
+- TARS Plugin Hub CLI: `tars plugin {search,install,uninstall,list,update,info}` for managing plugins from the public registry
+- Registry v2 format with `plugins` section in `devlikebear/tars-skills`
+- Skill install now warns when a `requires_plugin` dependency is missing and suggests the install command
+- CI coverage reporting with Codecov upload
+
+### Changed
+
+- README rewritten: repositioned as "local-first AI project autopilot" with badges, three-tier feature structure, and concise quick start
+- GitHub repository description and topics updated
+- `web/relay-extension/` extracted to standalone `devlikebear/tars-relay-extension` repository
+- CI now runs `make test-cover` instead of `make test`
+
 ## [0.7.0] - 2026-03-21
 
 ### Added
