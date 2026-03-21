@@ -6,11 +6,117 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-
-	"google.golang.org/genai"
 )
 
-func parseGeminiNativeParts(content *genai.Content) (string, []ToolCall) {
+// --- Gemini REST API types (replaces google.golang.org/genai SDK) ---
+
+type geminiContent struct {
+	Role  string        `json:"role,omitempty"`
+	Parts []*geminiPart `json:"parts"`
+}
+
+type geminiPart struct {
+	Text             string               `json:"text,omitempty"`
+	FunctionCall     *geminiFunctionCall  `json:"functionCall,omitempty"`
+	FunctionResponse *geminiFunctionResp  `json:"functionResponse,omitempty"`
+	Thought          bool                 `json:"thought,omitempty"`
+	ThoughtSignature []byte               `json:"thoughtSignature,omitempty"`
+}
+
+type geminiFunctionCall struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name"`
+	Args any    `json:"args,omitempty"`
+}
+
+type geminiFunctionResp struct {
+	Name     string         `json:"name"`
+	Response map[string]any `json:"response"`
+}
+
+type geminiGenerateRequest struct {
+	Contents          []*geminiContent  `json:"contents"`
+	SystemInstruction *geminiContent    `json:"systemInstruction,omitempty"`
+	Tools             []*geminiTool     `json:"tools,omitempty"`
+	ToolConfig        *geminiToolConfig `json:"toolConfig,omitempty"`
+	GenerationConfig  *geminiGenConfig  `json:"generationConfig,omitempty"`
+}
+
+type geminiTool struct {
+	FunctionDeclarations []*geminiFuncDecl `json:"functionDeclarations"`
+}
+
+type geminiFuncDecl struct {
+	Name                 string `json:"name"`
+	Description          string `json:"description,omitempty"`
+	ParametersJsonSchema any    `json:"parametersJsonSchema,omitempty"`
+}
+
+type geminiToolConfig struct {
+	FunctionCallingConfig *geminiFuncCallingConfig `json:"functionCallingConfig"`
+}
+
+type geminiFuncCallingConfig struct {
+	Mode string `json:"mode"`
+}
+
+type geminiGenConfig struct {
+	MaxOutputTokens int32                 `json:"maxOutputTokens,omitempty"`
+	ThinkingConfig  *geminiThinkingConfig `json:"thinkingConfig,omitempty"`
+}
+
+type geminiThinkingConfig struct {
+	ThinkingLevel  string `json:"thinkingLevel,omitempty"`
+	ThinkingBudget *int32 `json:"thinkingBudget,omitempty"`
+}
+
+const (
+	geminiThinkingMinimal = "THINKING_LEVEL_MINIMAL"
+	geminiThinkingLow     = "THINKING_LEVEL_LOW"
+	geminiThinkingMedium  = "THINKING_LEVEL_MEDIUM"
+	geminiThinkingHigh    = "THINKING_LEVEL_HIGH"
+)
+
+type geminiGenerateResponse struct {
+	Candidates    []geminiCandidate    `json:"candidates"`
+	UsageMetadata *geminiUsageMetadata `json:"usageMetadata"`
+}
+
+type geminiCandidate struct {
+	Content      *geminiContent `json:"content"`
+	FinishReason string         `json:"finishReason"`
+}
+
+type geminiUsageMetadata struct {
+	PromptTokenCount     int32 `json:"promptTokenCount"`
+	CandidatesTokenCount int32 `json:"candidatesTokenCount"`
+}
+
+type geminiModelInfo struct {
+	Name                       string   `json:"name"`
+	SupportedActions           []string `json:"supportedActions"`
+	SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
+}
+
+type geminiErrorResponse struct {
+	Error struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// geminiRequestConfig holds config built by buildGenerateContentConfig.
+type geminiRequestConfig struct {
+	SystemInstruction *geminiContent
+	Tools             []*geminiTool
+	ToolConfig        *geminiToolConfig
+	MaxOutputTokens   int32
+	ThinkingConfig    *geminiThinkingConfig
+}
+
+// --- Conversion functions ---
+
+func parseGeminiNativeParts(content *geminiContent) (string, []ToolCall) {
 	if content == nil {
 		return "", nil
 	}
@@ -34,7 +140,7 @@ func parseGeminiNativeParts(content *genai.Content) (string, []ToolCall) {
 	return builder.String(), toolCalls
 }
 
-func geminiNativeFunctionCallToToolCall(part *genai.Part, idx int) ToolCall {
+func geminiNativeFunctionCallToToolCall(part *geminiPart, idx int) ToolCall {
 	if part == nil || part.FunctionCall == nil {
 		return ToolCall{ID: fmt.Sprintf("tool_call_%d", idx), Name: "", Arguments: "{}"}
 	}
@@ -87,7 +193,7 @@ func normalizeGeminiNativeStopReason(raw string, hasToolCalls bool) string {
 	}
 }
 
-func extractGeminiNativeUsage(metadata *genai.GenerateContentResponseUsageMetadata) Usage {
+func extractGeminiNativeUsage(metadata *geminiUsageMetadata) Usage {
 	if metadata == nil {
 		return Usage{}
 	}
@@ -97,12 +203,12 @@ func extractGeminiNativeUsage(metadata *genai.GenerateContentResponseUsageMetada
 	}
 }
 
-func toGeminiNativeContents(messages []ChatMessage) []*genai.Content {
+func toGeminiNativeContents(messages []ChatMessage) []*geminiContent {
 	if len(messages) == 0 {
 		return nil
 	}
 
-	out := make([]*genai.Content, 0, len(messages))
+	out := make([]*geminiContent, 0, len(messages))
 	toolNameByID := map[string]string{}
 
 	for _, msg := range messages {
@@ -114,16 +220,14 @@ func toGeminiNativeContents(messages []ChatMessage) []*genai.Content {
 			if strings.TrimSpace(msg.Content) == "" {
 				continue
 			}
-			out = append(out, &genai.Content{
-				Role: string(genai.RoleUser),
-				Parts: []*genai.Part{{
-					Text: msg.Content,
-				}},
+			out = append(out, &geminiContent{
+				Role:  "user",
+				Parts: []*geminiPart{{Text: msg.Content}},
 			})
 		case "assistant":
-			parts := make([]*genai.Part, 0, len(msg.ToolCalls)+1)
+			parts := make([]*geminiPart, 0, len(msg.ToolCalls)+1)
 			if strings.TrimSpace(msg.Content) != "" {
-				parts = append(parts, &genai.Part{Text: msg.Content})
+				parts = append(parts, &geminiPart{Text: msg.Content})
 			}
 			for idx, tc := range msg.ToolCalls {
 				name := strings.TrimSpace(tc.Name)
@@ -135,8 +239,8 @@ func toGeminiNativeContents(messages []ChatMessage) []*genai.Content {
 					callID = fmt.Sprintf("tool_call_%d", idx)
 				}
 				toolNameByID[callID] = name
-				part := &genai.Part{
-					FunctionCall: &genai.FunctionCall{
+				part := &geminiPart{
+					FunctionCall: &geminiFunctionCall{
 						ID:   callID,
 						Name: name,
 						Args: parseToolArgumentsObject(tc.Arguments),
@@ -150,16 +254,16 @@ func toGeminiNativeContents(messages []ChatMessage) []*genai.Content {
 			if len(parts) == 0 {
 				continue
 			}
-			out = append(out, &genai.Content{Role: string(genai.RoleModel), Parts: parts})
+			out = append(out, &geminiContent{Role: "model", Parts: parts})
 		case "tool":
 			toolName := strings.TrimSpace(toolNameByID[strings.TrimSpace(msg.ToolCallID)])
 			if toolName == "" {
 				toolName = "tool_call"
 			}
-			out = append(out, &genai.Content{
-				Role: string(genai.RoleUser),
-				Parts: []*genai.Part{{
-					FunctionResponse: &genai.FunctionResponse{
+			out = append(out, &geminiContent{
+				Role: "user",
+				Parts: []*geminiPart{{
+					FunctionResponse: &geminiFunctionResp{
 						Name:     toolName,
 						Response: parseGeminiNativeToolResponse(msg.Content),
 					},
@@ -190,19 +294,19 @@ func parseGeminiNativeToolResponse(raw string) map[string]any {
 	}
 }
 
-func toGeminiNativeTools(tools []ToolSchema) []*genai.Tool {
+func toGeminiNativeTools(tools []ToolSchema) []*geminiTool {
 	if len(tools) == 0 {
 		return nil
 	}
 
-	declarations := make([]*genai.FunctionDeclaration, 0, len(tools))
+	declarations := make([]*geminiFuncDecl, 0, len(tools))
 	for _, tl := range tools {
 		name := strings.TrimSpace(tl.Function.Name)
 		if name == "" {
 			continue
 		}
 
-		decl := &genai.FunctionDeclaration{
+		decl := &geminiFuncDecl{
 			Name:        name,
 			Description: strings.TrimSpace(tl.Function.Description),
 		}
@@ -221,40 +325,47 @@ func toGeminiNativeTools(tools []ToolSchema) []*genai.Tool {
 		return nil
 	}
 
-	return []*genai.Tool{{FunctionDeclarations: declarations}}
+	return []*geminiTool{{FunctionDeclarations: declarations}}
 }
 
-func toGeminiNativeToolConfig(choice string) *genai.ToolConfig {
-	mode := genai.FunctionCallingConfigModeAuto
+func toGeminiNativeToolConfig(choice string) *geminiToolConfig {
+	var mode string
 	switch strings.ToLower(strings.TrimSpace(choice)) {
 	case "required":
-		mode = genai.FunctionCallingConfigModeAny
+		mode = "ANY"
 	case "none":
-		mode = genai.FunctionCallingConfigModeNone
+		mode = "NONE"
 	case "", "auto":
-		mode = genai.FunctionCallingConfigModeAuto
+		mode = "AUTO"
 	default:
 		return nil
 	}
 
-	return &genai.ToolConfig{
-		FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: mode},
+	return &geminiToolConfig{
+		FunctionCallingConfig: &geminiFuncCallingConfig{Mode: mode},
 	}
 }
 
-func validateGeminiSupportedActions(model *genai.Model) error {
-	if model == nil || len(model.SupportedActions) == 0 {
+func validateGeminiSupportedActions(model *geminiModelInfo) error {
+	if model == nil {
 		return nil
 	}
-	for _, action := range model.SupportedActions {
+	// Check both fields — API versions vary on which field is populated.
+	actions := append([]string(nil), model.SupportedActions...)
+	actions = append(actions, model.SupportedGenerationMethods...)
+	if len(actions) == 0 {
+		return nil
+	}
+	for _, action := range actions {
 		normalized := strings.ToLower(strings.TrimSpace(action))
 		if normalized == "generatecontent" || normalized == "generate_content" || strings.HasSuffix(normalized, ".generatecontent") {
 			return nil
 		}
 	}
-	actions := append([]string(nil), model.SupportedActions...)
-	slices.Sort(actions)
-	return fmt.Errorf("model %q does not support generateContent (supported actions: %s)", strings.TrimSpace(model.Name), strings.Join(actions, ", "))
+	all := append([]string(nil), model.SupportedActions...)
+	all = append(all, model.SupportedGenerationMethods...)
+	slices.Sort(all)
+	return fmt.Errorf("model %q does not support generateContent (supported actions: %s)", strings.TrimSpace(model.Name), strings.Join(all, ", "))
 }
 
 func decodeGeminiThoughtSignature(encoded string) ([]byte, bool) {

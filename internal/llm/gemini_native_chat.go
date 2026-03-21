@@ -1,16 +1,17 @@
 package llm
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
 
 	zlog "github.com/rs/zerolog/log"
-	"google.golang.org/genai"
 )
 
 func (c *GeminiNativeClient) ensureModelSupportsGenerateContent(ctx context.Context) error {
@@ -29,9 +30,10 @@ func (c *GeminiNativeClient) ensureModelSupportsGenerateContent(ctx context.Cont
 	}
 	defer cancel()
 
-	model, err := c.client.Models.Get(checkCtx, c.model, nil)
+	modelURL := fmt.Sprintf("%s/%s/%s", strings.TrimRight(c.apiBaseURL, "/"), c.apiVersion, geminiNativeModelPath(c.model))
+	model, err := c.fetchModelInfo(checkCtx, modelURL)
 	if err != nil {
-		err = wrapGeminiNativeSDKError("preflight", err)
+		err = wrapGeminiHTTPError("preflight", err)
 		c.preflightMu.Lock()
 		c.preflightErr = err
 		c.preflightChecked = true
@@ -54,14 +56,84 @@ func (c *GeminiNativeClient) ensureModelSupportsGenerateContent(ctx context.Cont
 	return nil
 }
 
-func (c *GeminiNativeClient) chatNonStreamingResponse(ctx context.Context, contents []*genai.Content, config *genai.GenerateContentConfig) (ChatResponse, error) {
-	parsed, err := c.client.Models.GenerateContent(ctx, c.model, contents, config)
+func (c *GeminiNativeClient) fetchModelInfo(ctx context.Context, modelURL string) (*geminiModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelURL, nil)
 	if err != nil {
-		return ChatResponse{}, wrapGeminiNativeSDKError("request", err)
+		return nil, fmt.Errorf("build model info request: %w", err)
 	}
-	if respJSON, err := json.Marshal(parsed); err == nil {
-		logLLMResponsePayload("gemini-native", http.StatusOK, string(respJSON))
+	req.Header.Set("x-goog-api-key", c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch model info: %w", err)
 	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
+	if err != nil {
+		return nil, fmt.Errorf("read model info: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp geminiErrorResponse
+		_ = json.Unmarshal(body, &errResp)
+		return nil, &ProviderError{
+			Provider:   "gemini-native",
+			Operation:  "preflight",
+			StatusCode: resp.StatusCode,
+			Message:    strings.TrimSpace(errResp.Error.Message),
+		}
+	}
+
+	var model geminiModelInfo
+	if err := json.Unmarshal(body, &model); err != nil {
+		return nil, fmt.Errorf("parse model info: %w", err)
+	}
+	return &model, nil
+}
+
+func (c *GeminiNativeClient) chatNonStreamingResponse(ctx context.Context, contents []*geminiContent, config *geminiRequestConfig) (ChatResponse, error) {
+	reqBody := c.buildHTTPRequestBody(contents, config)
+	encoded, err := json.Marshal(reqBody)
+	if err != nil {
+		return ChatResponse{}, newProviderError("gemini-native", "request", fmt.Errorf("marshal request: %w", err))
+	}
+
+	reqURL := c.requestURL(false)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(encoded))
+	if err != nil {
+		return ChatResponse{}, newProviderError("gemini-native", "request", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", c.apiKey)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return ChatResponse{}, wrapGeminiHTTPError("request", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	if err != nil {
+		return ChatResponse{}, newProviderError("gemini-native", "request", fmt.Errorf("read response: %w", err))
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp geminiErrorResponse
+		_ = json.Unmarshal(body, &errResp)
+		return ChatResponse{}, &ProviderError{
+			Provider:   "gemini-native",
+			Operation:  "request",
+			StatusCode: resp.StatusCode,
+			Message:    strings.TrimSpace(errResp.Error.Message),
+		}
+	}
+
+	var parsed geminiGenerateResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ChatResponse{}, newProviderError("gemini-native", "parse", fmt.Errorf("unmarshal response: %w", err))
+	}
+	logLLMResponsePayload("gemini-native", resp.StatusCode, string(body))
 
 	if len(parsed.Candidates) == 0 {
 		return ChatResponse{}, newProviderError("gemini-native", "parse", fmt.Errorf("gemini-native response has no candidates"))
@@ -69,7 +141,7 @@ func (c *GeminiNativeClient) chatNonStreamingResponse(ctx context.Context, conte
 
 	candidate := parsed.Candidates[0]
 	content, toolCalls := parseGeminiNativeParts(candidate.Content)
-	stopReason := normalizeGeminiNativeStopReason(string(candidate.FinishReason), len(toolCalls) > 0)
+	stopReason := normalizeGeminiNativeStopReason(candidate.FinishReason, len(toolCalls) > 0)
 	usage := extractGeminiNativeUsage(parsed.UsageMetadata)
 
 	zlog.Debug().
@@ -92,7 +164,39 @@ func (c *GeminiNativeClient) chatNonStreamingResponse(ctx context.Context, conte
 	}, nil
 }
 
-func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents []*genai.Content, config *genai.GenerateContentConfig, onDelta func(text string)) (ChatResponse, error) {
+func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents []*geminiContent, config *geminiRequestConfig, onDelta func(text string)) (ChatResponse, error) {
+	reqBody := c.buildHTTPRequestBody(contents, config)
+	encoded, err := json.Marshal(reqBody)
+	if err != nil {
+		return ChatResponse{}, newProviderError("gemini-native", "stream", fmt.Errorf("marshal request: %w", err))
+	}
+
+	reqURL := c.requestURL(true)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(encoded))
+	if err != nil {
+		return ChatResponse{}, newProviderError("gemini-native", "stream", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", c.apiKey)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return ChatResponse{}, wrapGeminiHTTPError("stream", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
+		var errResp geminiErrorResponse
+		_ = json.Unmarshal(body, &errResp)
+		return ChatResponse{}, &ProviderError{
+			Provider:   "gemini-native",
+			Operation:  "stream",
+			StatusCode: resp.StatusCode,
+			Message:    strings.TrimSpace(errResp.Error.Message),
+		}
+	}
+
 	var (
 		builder       strings.Builder
 		stopReasonRaw string
@@ -101,32 +205,38 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 		seenToolCalls = map[string]struct{}{}
 	)
 
-	for parsed, err := range c.client.Models.GenerateContentStream(ctx, c.model, contents, config) {
-		if err != nil {
-			return ChatResponse{}, wrapGeminiNativeSDKError("stream", err)
-		}
-		if parsed == nil {
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 256*1024), 1*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		if chunkJSON, err := json.Marshal(parsed); err == nil {
+		data := strings.TrimPrefix(line, "data: ")
+
+		var chunk geminiGenerateResponse
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if chunkJSON, err := json.Marshal(chunk); err == nil {
 			logLLMStreamPayload("gemini-native", string(chunkJSON))
 		}
 
-		if parsed.UsageMetadata != nil {
-			if parsed.UsageMetadata.PromptTokenCount > 0 {
-				usage.InputTokens = int(parsed.UsageMetadata.PromptTokenCount)
+		if chunk.UsageMetadata != nil {
+			if chunk.UsageMetadata.PromptTokenCount > 0 {
+				usage.InputTokens = int(chunk.UsageMetadata.PromptTokenCount)
 			}
-			if parsed.UsageMetadata.CandidatesTokenCount > 0 {
-				usage.OutputTokens = int(parsed.UsageMetadata.CandidatesTokenCount)
+			if chunk.UsageMetadata.CandidatesTokenCount > 0 {
+				usage.OutputTokens = int(chunk.UsageMetadata.CandidatesTokenCount)
 			}
 		}
 
-		if len(parsed.Candidates) == 0 {
+		if len(chunk.Candidates) == 0 {
 			continue
 		}
-		candidate := parsed.Candidates[0]
+		candidate := chunk.Candidates[0]
 		if candidate.FinishReason != "" {
-			stopReasonRaw = string(candidate.FinishReason)
+			stopReasonRaw = candidate.FinishReason
 		}
 		if candidate.Content == nil {
 			continue
@@ -176,8 +286,8 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 	}, nil
 }
 
-func (c *GeminiNativeClient) buildGenerateContentConfig(messages []ChatMessage, opts ChatOptions) *genai.GenerateContentConfig {
-	config := &genai.GenerateContentConfig{}
+func (c *GeminiNativeClient) buildGenerateContentConfig(messages []ChatMessage, opts ChatOptions) *geminiRequestConfig {
+	config := &geminiRequestConfig{}
 	if c.config.MaxTokens > 0 {
 		config.MaxOutputTokens = int32(c.config.MaxTokens)
 	}
@@ -192,7 +302,7 @@ func (c *GeminiNativeClient) buildGenerateContentConfig(messages []ChatMessage, 
 		}
 	}
 	if len(systemParts) > 0 {
-		config.SystemInstruction = &genai.Content{Parts: []*genai.Part{{Text: strings.Join(systemParts, "\n")}}}
+		config.SystemInstruction = &geminiContent{Parts: []*geminiPart{{Text: strings.Join(systemParts, "\n")}}}
 	}
 
 	if tools := toGeminiNativeTools(opts.Tools); len(tools) > 0 {
@@ -205,29 +315,45 @@ func (c *GeminiNativeClient) buildGenerateContentConfig(messages []ChatMessage, 
 	return config
 }
 
-func buildGeminiThinkingConfig(config ClientConfig, opts ChatOptions) *genai.ThinkingConfig {
+func (c *GeminiNativeClient) buildHTTPRequestBody(contents []*geminiContent, config *geminiRequestConfig) *geminiGenerateRequest {
+	req := &geminiGenerateRequest{
+		Contents:          contents,
+		SystemInstruction: config.SystemInstruction,
+		Tools:             config.Tools,
+		ToolConfig:        config.ToolConfig,
+	}
+	if config.MaxOutputTokens > 0 || config.ThinkingConfig != nil {
+		req.GenerationConfig = &geminiGenConfig{
+			MaxOutputTokens: config.MaxOutputTokens,
+			ThinkingConfig:  config.ThinkingConfig,
+		}
+	}
+	return req
+}
+
+func buildGeminiThinkingConfig(config ClientConfig, opts ChatOptions) *geminiThinkingConfig {
 	effort := effectiveReasoningEffort(config, opts)
 	budget := effectiveThinkingBudget(config, opts)
 	if effort == "" && budget <= 0 {
 		return nil
 	}
 
-	thinkingConfig := &genai.ThinkingConfig{}
+	tc := &geminiThinkingConfig{}
 	if budget > 0 {
 		value := int32(budget)
-		thinkingConfig.ThinkingBudget = &value
+		tc.ThinkingBudget = &value
 	}
 	switch effort {
 	case "minimal":
-		thinkingConfig.ThinkingLevel = genai.ThinkingLevelMinimal
+		tc.ThinkingLevel = geminiThinkingMinimal
 	case "low":
-		thinkingConfig.ThinkingLevel = genai.ThinkingLevelLow
+		tc.ThinkingLevel = geminiThinkingLow
 	case "medium":
-		thinkingConfig.ThinkingLevel = genai.ThinkingLevelMedium
+		tc.ThinkingLevel = geminiThinkingMedium
 	case "high":
-		thinkingConfig.ThinkingLevel = genai.ThinkingLevelHigh
+		tc.ThinkingLevel = geminiThinkingHigh
 	}
-	return thinkingConfig
+	return tc
 }
 
 func (c *GeminiNativeClient) requestURL(streaming bool) string {
@@ -238,21 +364,10 @@ func (c *GeminiNativeClient) requestURL(streaming bool) string {
 	return strings.TrimRight(c.apiBaseURL, "/") + "/" + path
 }
 
-func wrapGeminiNativeSDKError(operation string, err error) error {
+func wrapGeminiHTTPError(operation string, err error) error {
 	if err == nil {
 		return nil
 	}
-
-	var apiErr genai.APIError
-	if errors.As(err, &apiErr) {
-		return &ProviderError{
-			Provider:   "gemini-native",
-			Operation:  operation,
-			StatusCode: apiErr.Code,
-			Message:    strings.TrimSpace(apiErr.Message),
-		}
-	}
-
 	return newProviderError("gemini-native", operation, err)
 }
 

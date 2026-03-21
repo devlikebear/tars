@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-
-	"google.golang.org/genai"
 )
 
 type GeminiNativeClient struct {
@@ -19,7 +17,6 @@ type GeminiNativeClient struct {
 	model      string
 	config     ClientConfig
 	httpClient *http.Client
-	client     *genai.Client
 
 	preflightMu      sync.Mutex
 	preflightChecked bool
@@ -47,21 +44,6 @@ func newGeminiNativeClientWithConfig(baseURL, apiKey, model string, config Clien
 		return nil, err
 	}
 
-	sdkClient, err := genai.NewClient(context.Background(), &genai.ClientConfig{
-		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
-		HTTPClient: &http.Client{
-			Transport: http.DefaultTransport,
-		},
-		HTTPOptions: genai.HTTPOptions{
-			BaseURL:    apiBaseURL,
-			APIVersion: apiVersion,
-		},
-	})
-	if err != nil {
-		return nil, newProviderError("gemini-native", "init", err)
-	}
-
 	return &GeminiNativeClient{
 		baseURL:    strings.TrimRight(trimmedBaseURL, "/"),
 		apiBaseURL: apiBaseURL,
@@ -70,7 +52,6 @@ func newGeminiNativeClientWithConfig(baseURL, apiKey, model string, config Clien
 		model:      model,
 		config:     config,
 		httpClient: newHTTPClient(config.HTTPTimeout),
-		client:     sdkClient,
 	}, nil
 }
 
