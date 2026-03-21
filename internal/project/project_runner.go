@@ -81,12 +81,22 @@ func (m *AutopilotManager) RestorePersistedRuns() error {
 			if !os.IsNotExist(err) {
 				return err
 			}
-		} else {
-			m.cacheRun(item.ID, run)
+			continue
 		}
+		// Fix stale "running" status for runs that were actually blocked/failed.
+		if run.Status == AutopilotStatusRunning {
+			msg := strings.ToLower(run.Message)
+			if strings.Contains(msg, "blocked") {
+				run.Status = AutopilotStatusBlocked
+			} else if strings.Contains(msg, "failed") {
+				run.Status = AutopilotStatusFailed
+			}
+		}
+		m.cacheRun(item.ID, run)
 	}
-	_, err = m.EnsureActiveRuns(context.Background())
-	return err
+	// Do NOT call EnsureActiveRuns here; autopilot loops will resume
+	// naturally on the next heartbeat via EnsureActiveRuns callback.
+	return nil
 }
 
 func (m *AutopilotManager) Start(_ context.Context, projectID string) (AutopilotRun, error) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/cli"
@@ -40,6 +41,44 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 			}
 
 			deps, err := buildRuntimeDeps(opts, nowFn, logger)
+			if err == nil {
+				// Reconfigure logger from config values.
+				cfg := deps.cfg
+				needReconfigure := false
+				logCfg := loggerConfig{FilePath: opts.LogFile}
+				// Config log_file takes precedence over CLI default.
+				if strings.TrimSpace(cfg.LogFile) != "" {
+					logCfg.FilePath = cfg.LogFile
+					needReconfigure = true
+				}
+				if strings.TrimSpace(cfg.LogLevel) != "" {
+					logCfg.Level = cfg.LogLevel
+					needReconfigure = true
+				}
+				if cfg.LogRotateMaxSizeMB > 0 {
+					logCfg.RotateMaxSizeMB = cfg.LogRotateMaxSizeMB
+				}
+				if cfg.LogRotateMaxDays > 0 {
+					logCfg.RotateMaxDays = cfg.LogRotateMaxDays
+				}
+				if cfg.LogRotateMaxBackups > 0 {
+					logCfg.RotateMaxBackups = cfg.LogRotateMaxBackups
+				}
+				if needReconfigure {
+					newLogger, newCleanup := setupRuntimeLogger(logCfg, stderr)
+					// Replace global logger; previous cleanup runs via deferred Serve().
+					zlog.Logger = newLogger
+					logger = newLogger
+					_ = newCleanup // cleanup will be handled by the process lifecycle
+				}
+				logger.Info().
+					Str("log_level", logCfg.Level).
+					Str("log_file", logCfg.FilePath).
+					Int("rotate_max_size_mb", logCfg.RotateMaxSizeMB).
+					Int("rotate_max_days", logCfg.RotateMaxDays).
+					Int("rotate_max_backups", logCfg.RotateMaxBackups).
+					Msg("logger configured")
+			}
 			if err != nil {
 				var depErr *runtimeDepsError
 				if errors.As(err, &depErr) {

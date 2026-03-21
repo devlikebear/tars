@@ -39,6 +39,8 @@ VERSION ?= $(strip $(shell test -f "$(VERSION_FILE)" && tr -d '[:space:]' < "$(V
 GIT_COMMIT ?= $(strip $(shell git rev-parse --short HEAD 2>/dev/null || printf 'unknown'))
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILDINFO_PKG ?= github.com/devlikebear/tars/internal/buildinfo
+comma := ,
+CGO_LDFLAGS_EXTRA := $(if $(filter darwin,$(shell uname -s 2>/dev/null | tr A-Z a-z)),-Wl$(comma)-no_warn_duplicate_libraries,)
 GO_LDFLAGS ?= -X $(BUILDINFO_PKG).Version=$(VERSION) -X $(BUILDINFO_PKG).Commit=$(GIT_COMMIT) -X $(BUILDINFO_PKG).Date=$(BUILD_DATE)
 RELEASE_GOOS ?= $(shell $(GO) env GOOS)
 RELEASE_GOARCH ?= $(shell $(GO) env GOARCH)
@@ -142,11 +144,12 @@ test-cover:
 	$(GO) test -coverprofile=$(COVER_OUT) $(PKG)
 
 build:
-	$(GO) build -ldflags "$(GO_LDFLAGS)" ./...
+	mkdir -p $(BIN_DIR)
+	CGO_LDFLAGS="$(CGO_LDFLAGS_EXTRA)" $(GO) build -ldflags "$(GO_LDFLAGS)" -o $(BIN_DIR)/tars ./cmd/tars
 
 build-bins:
 	mkdir -p $(BIN_DIR)
-	$(GO) build -ldflags "$(GO_LDFLAGS)" -o $(BIN_DIR)/tars ./cmd/tars
+	CGO_LDFLAGS="$(CGO_LDFLAGS_EXTRA)" $(GO) build -ldflags "$(GO_LDFLAGS)" -o $(BIN_DIR)/tars ./cmd/tars
 
 release-asset:
 	mkdir -p "$(DIST_DIR)"

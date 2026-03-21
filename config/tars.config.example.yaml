@@ -10,6 +10,16 @@
 mode: standalone
 workspace_dir: ./workspace
 
+# Logging
+# log_level: trace | debug | info | warn | error (default: debug)
+log_level: debug
+# log_file: path to write JSON log lines (empty = console only)
+log_file: ""
+# Log rotation (applies when log_file is set)
+log_rotate_max_size_mb: 100  # max size per file before rotation
+log_rotate_max_days: 30      # max days to retain old files
+log_rotate_max_backups: 5    # max number of old files to keep
+
 # API auth (no X- prefix headers)
 # off | external-required | required
 api_auth_mode: required

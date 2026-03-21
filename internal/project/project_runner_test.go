@@ -514,6 +514,14 @@ func TestAutopilotManager_RestorePersistedRunsRestartsRunningRunsAtStartup(t *te
 		t.Fatalf("restore persisted runs: %v", err)
 	}
 
+	// RestorePersistedRuns only caches; EnsureActiveRuns triggers actual loops.
+	if restarted.IsRunning(created.ID) {
+		t.Fatalf("expected run NOT to be auto-started on restore")
+	}
+	if _, err := restarted.EnsureActiveRuns(context.Background()); err != nil {
+		t.Fatalf("ensure active runs: %v", err)
+	}
+
 	restored := waitForAutopilotStatus(t, restarted, created.ID, AutopilotStatusDone)
 	if restored.Iterations < 1 {
 		t.Fatalf("expected restarted loop to advance the project, got %+v", restored)
@@ -577,6 +585,22 @@ func TestAutopilotManager_RestorePersistedRunsRestartsIncompleteProjects(t *test
 		t.Fatalf("restore persisted runs: %v", err)
 	}
 
+	// RestorePersistedRuns only caches runs; loops are not auto-started.
+	if restarted.IsRunning(created.ID) {
+		t.Fatalf("expected run NOT to be auto-started on restore")
+	}
+	cached, ok := restarted.Status(created.ID)
+	if !ok {
+		t.Fatalf("expected cached run after restore")
+	}
+	if cached.Status != AutopilotStatusBlocked {
+		t.Fatalf("expected cached status blocked, got %s", cached.Status)
+	}
+
+	// Explicit EnsureActiveRuns triggers the loop (like a heartbeat would).
+	if _, err := restarted.EnsureActiveRuns(context.Background()); err != nil {
+		t.Fatalf("ensure active runs: %v", err)
+	}
 	final := waitForAutopilotStatus(t, restarted, created.ID, AutopilotStatusDone)
 	if final.Iterations < 2 {
 		t.Fatalf("expected restored loop to continue running, got %+v", final)

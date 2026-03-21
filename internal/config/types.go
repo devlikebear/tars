@@ -30,6 +30,11 @@ type RuntimeConfig struct {
 	WorkspaceDir         string
 	SessionDefaultID     string
 	SessionTelegramScope string
+	LogLevel             string
+	LogFile              string
+	LogRotateMaxSizeMB   int
+	LogRotateMaxDays     int
+	LogRotateMaxBackups  int
 }
 
 type APIConfig struct {
