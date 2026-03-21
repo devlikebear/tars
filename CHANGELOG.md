@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-03-21
+
+### Fixed
+
+- MCP server failures no longer block server startup; continues without MCP tools
+
 ## [0.6.2] - 2026-03-21
 
 ### Fixed
