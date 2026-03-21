@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-21
+
+### Added
+
+- TARS Skill Hub CLI: `tars skill {search,install,uninstall,list,update,info}` for discovering and installing skills from the public `devlikebear/tars-skills` registry
+- Companion file support for skills: scripts (`.sh`, `.py`, `.ts`), templates, and other reference files are installed alongside `SKILL.md` and mirrored to runtime
+- `internal/skillhub` package with registry fetch, search, install, list, and update operations
+- Skill registry `files` field for declaring companion files in `registry.json`
+
+### Changed
+
+- Skill runtime mirror now copies all companion files from the source skill directory, preserving subdirectory structure and executable permissions
+
 ## [0.6.3] - 2026-03-21
 
 ### Fixed
