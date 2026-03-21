@@ -82,12 +82,16 @@ func newSkillInstallCommand(stdout, stderr io.Writer) *cobra.Command {
 	return cmd
 }
 
-func runSkillInstall(ctx context.Context, stdout, _ io.Writer, workspaceDir, name string) error {
+func runSkillInstall(ctx context.Context, stdout, stderr io.Writer, workspaceDir, name string) error {
 	inst := skillhub.NewInstaller(workspaceDir)
-	if err := inst.Install(ctx, name); err != nil {
+	result, err := inst.Install(ctx, name)
+	if err != nil {
 		return fmt.Errorf("install %q: %w", name, err)
 	}
 	fmt.Fprintf(stdout, "Installed skill %q to %s/skills/%s\n", name, workspaceDir, name)
+	if result.RequiresPlugin != "" {
+		fmt.Fprintf(stderr, "⚠ This skill requires plugin %q. Install it with: tars plugin install %s\n", result.RequiresPlugin, result.RequiresPlugin)
+	}
 	return nil
 }
 

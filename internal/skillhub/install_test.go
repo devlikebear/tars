@@ -21,7 +21,7 @@ func TestInstallAndList(t *testing.T) {
 		},
 	}
 
-	if err := inst.Install(context.Background(), "project-start"); err != nil {
+	if _, err := inst.Install(context.Background(), "project-start"); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestUninstall(t *testing.T) {
 		},
 	}
 
-	if err := inst.Install(context.Background(), "project-start"); err != nil {
+	if _, err := inst.Install(context.Background(), "project-start"); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	if err := inst.Uninstall("project-start"); err != nil {
@@ -98,6 +98,126 @@ func TestListEmpty(t *testing.T) {
 	}
 }
 
+func TestInstallRequiresPluginWarning(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	result, err := inst.Install(context.Background(), "project-start")
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if result.RequiresPlugin != "project-swarm" {
+		t.Fatalf("expected RequiresPlugin=project-swarm, got %q", result.RequiresPlugin)
+	}
+}
+
+func TestInstallNoPluginWarningWhenInstalled(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	// Install the plugin first.
+	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+		t.Fatalf("InstallPlugin: %v", err)
+	}
+
+	result, err := inst.Install(context.Background(), "project-start")
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if result.RequiresPlugin != "" {
+		t.Fatalf("expected no RequiresPlugin warning, got %q", result.RequiresPlugin)
+	}
+}
+
+func TestInstallPluginAndList(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+		t.Fatalf("InstallPlugin: %v", err)
+	}
+
+	// Verify manifest exists.
+	manifest := filepath.Join(tmpDir, "plugins", "project-swarm", "tars.plugin.json")
+	if _, err := os.Stat(manifest); err != nil {
+		t.Fatalf("plugin manifest not found: %v", err)
+	}
+
+	// List should show it.
+	plugins, err := inst.ListPlugins()
+	if err != nil {
+		t.Fatalf("ListPlugins: %v", err)
+	}
+	if len(plugins) != 1 || plugins[0].Name != "project-swarm" {
+		t.Fatalf("expected [project-swarm], got %v", plugins)
+	}
+}
+
+func TestUninstallPlugin(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+		t.Fatalf("InstallPlugin: %v", err)
+	}
+	if err := inst.UninstallPlugin("project-swarm"); err != nil {
+		t.Fatalf("UninstallPlugin: %v", err)
+	}
+
+	plugins, err := inst.ListPlugins()
+	if err != nil {
+		t.Fatalf("ListPlugins: %v", err)
+	}
+	if len(plugins) != 0 {
+		t.Fatalf("expected empty list, got %v", plugins)
+	}
+
+	pluginDir := filepath.Join(tmpDir, "plugins", "project-swarm")
+	if _, err := os.Stat(pluginDir); !os.IsNotExist(err) {
+		t.Fatalf("expected plugin dir to be removed")
+	}
+}
+
 func TestUpdate(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
@@ -113,7 +233,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Install first.
-	if err := inst.Install(context.Background(), "project-start"); err != nil {
+	if _, err := inst.Install(context.Background(), "project-start"); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 
