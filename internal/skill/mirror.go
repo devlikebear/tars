@@ -2,6 +2,7 @@ package skill
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,13 @@ func MirrorToWorkspace(workspaceDir string, snapshot Snapshot) (Snapshot, error)
 		if err := os.WriteFile(target, []byte(content), 0o644); err != nil {
 			return Snapshot{}, fmt.Errorf("write mirrored skill file %q: %w", target, err)
 		}
+
+		// Copy companion files (scripts, configs, etc.) from the source directory.
+		srcDir := filepath.Dir(next.Skills[i].FilePath)
+		if strings.TrimSpace(srcDir) != "" && srcDir != "." {
+			_ = copyCompanionFiles(srcDir, dstDir)
+		}
+
 		next.Skills[i].RuntimePath = filepath.ToSlash(filepath.Join(runtimeMirrorRoot, slug, "SKILL.md"))
 	}
 
@@ -51,6 +59,51 @@ func MirrorToWorkspace(workspaceDir string, snapshot Snapshot) (Snapshot, error)
 		return Snapshot{}, err
 	}
 	return next, nil
+}
+
+// copyCompanionFiles copies all non-SKILL.md files from srcDir to dstDir,
+// preserving subdirectory structure. This allows scripts, configs, and other
+// reference files to be available at runtime alongside the skill.
+func copyCompanionFiles(srcDir, dstDir string) error {
+	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		rel, err := filepath.Rel(srcDir, path)
+		if err != nil || rel == "." {
+			return nil
+		}
+		dst := filepath.Join(dstDir, rel)
+		if d.IsDir() {
+			return os.MkdirAll(dst, 0o755)
+		}
+		if strings.EqualFold(filepath.Base(path), "SKILL.md") {
+			return nil // already written above
+		}
+		return copyFile(path, dst)
+	})
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	// Preserve executable bit if source is executable.
+	info, err := in.Stat()
+	if err == nil && info.Mode()&0o111 != 0 {
+		_ = out.Chmod(info.Mode())
+	}
+	return nil
 }
 
 func cleanupMirroredSkills(root string, keep map[string]struct{}) error {
