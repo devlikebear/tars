@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-03-21
+
+### Fixed
+
+- Startup LLM traffic storm: `RestorePersistedRuns` no longer auto-starts all project autopilot loops on startup; runs resume on next heartbeat instead
+- Session 404 error: translate public session ID `"main"` to internal hash ID in chat handler
+- Stale `AUTOPILOT.json` status correction: persisted `running` status with blocked/failed message is fixed on restore
+- macOS build warning: suppress `-lobjc` duplicate library linker warning
+
+### Added
+
+- Log rotation config: `log_level`, `log_file`, `log_rotate_max_size_mb`, `log_rotate_max_days`, `log_rotate_max_backups` with lumberjack
+- Logger configuration printed as INFO on server startup
+- Config `log_file` takes precedence over CLI default; parent directory auto-created
+- `make build` outputs binary to `bin/` directory
+
 ## [0.6.1] - 2026-03-20
 
 ### Changed
