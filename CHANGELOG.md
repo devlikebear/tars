@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-03-21
+
+### Changed
+
+- Gemini native provider rewritten to raw HTTP, removing `google.golang.org/genai` SDK and all transitive dependencies (cloud.google.com, grpc, protobuf)
+- Reduced binary dependency footprint and build time
+
+### Added
+
+- Plugin interface documentation (`docs/plugins.md`) covering manifest schema, skill directories, MCP servers, plugin sources, and the `project-swarm` reference implementation
+
 ## [0.7.1] - 2026-03-21
 
 ### Added
