@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 )
@@ -78,7 +79,11 @@ func newEditToolWithName(name, workspaceDir string) Tool {
 				n = -1
 			}
 			updated := strings.Replace(text, input.OldText, input.NewText, n)
-			if err := os.WriteFile(absPath, []byte(updated), 0o644); err != nil {
+			mode := fs.FileMode(0o644)
+			if info, err := os.Stat(absPath); err == nil {
+				mode = info.Mode().Perm()
+			}
+			if err := writeTextFileAtomic(absPath, updated, mode); err != nil {
 				return jsonTextResult(editFileResponse{Message: fmt.Sprintf("write file failed: %v", err)}, true), nil
 			}
 			replacements := 1
