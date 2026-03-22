@@ -7,8 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"google.golang.org/genai"
 )
 
 func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
@@ -132,8 +130,8 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 	if builtConfig.ThinkingConfig == nil {
 		t.Fatal("expected ThinkingConfig in generated config")
 	}
-	if builtConfig.ThinkingConfig.ThinkingLevel != genai.ThinkingLevelMinimal {
-		t.Fatalf("expected thinkingLevel MINIMAL, got %+v", builtConfig.ThinkingConfig.ThinkingLevel)
+	if builtConfig.ThinkingConfig.ThinkingLevel != geminiThinkingMinimal {
+		t.Fatalf("expected thinkingLevel THINKING_LEVEL_MINIMAL, got %+v", builtConfig.ThinkingConfig.ThinkingLevel)
 	}
 	if builtConfig.ThinkingConfig.ThinkingBudget == nil || *builtConfig.ThinkingConfig.ThinkingBudget != 2048 {
 		t.Fatalf("expected thinkingBudget 2048, got %+v", builtConfig.ThinkingConfig.ThinkingBudget)

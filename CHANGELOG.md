@@ -6,6 +6,89 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-03-21
+
+### Changed
+
+- Gemini native provider rewritten to raw HTTP, removing `google.golang.org/genai` SDK and all transitive dependencies (cloud.google.com, grpc, protobuf)
+- Reduced binary dependency footprint and build time
+
+### Added
+
+- Plugin interface documentation (`docs/plugins.md`) covering manifest schema, skill directories, MCP servers, plugin sources, and the `project-swarm` reference implementation
+
+## [0.7.1] - 2026-03-21
+
+### Added
+
+- TARS Plugin Hub CLI: `tars plugin {search,install,uninstall,list,update,info}` for managing plugins from the public registry
+- Registry v2 format with `plugins` section in `devlikebear/tars-skills`
+- Skill install now warns when a `requires_plugin` dependency is missing and suggests the install command
+- CI coverage reporting with Codecov upload
+
+### Changed
+
+- README rewritten: repositioned as "local-first AI project autopilot" with badges, three-tier feature structure, and concise quick start
+- GitHub repository description and topics updated
+- `web/relay-extension/` extracted to standalone `devlikebear/tars-relay-extension` repository
+- CI now runs `make test-cover` instead of `make test`
+
+## [0.7.0] - 2026-03-21
+
+### Added
+
+- TARS Skill Hub CLI: `tars skill {search,install,uninstall,list,update,info}` for discovering and installing skills from the public `devlikebear/tars-skills` registry
+- Companion file support for skills: scripts (`.sh`, `.py`, `.ts`), templates, and other reference files are installed alongside `SKILL.md` and mirrored to runtime
+- `internal/skillhub` package with registry fetch, search, install, list, and update operations
+- Skill registry `files` field for declaring companion files in `registry.json`
+
+### Changed
+
+- Skill runtime mirror now copies all companion files from the source skill directory, preserving subdirectory structure and executable permissions
+
+## [0.6.3] - 2026-03-21
+
+### Fixed
+
+- MCP server failures no longer block server startup; continues without MCP tools
+
+## [0.6.2] - 2026-03-21
+
+### Fixed
+
+- Startup LLM traffic storm: `RestorePersistedRuns` no longer auto-starts all project autopilot loops on startup; runs resume on next heartbeat instead
+- Session 404 error: translate public session ID `"main"` to internal hash ID in chat handler
+- Stale `AUTOPILOT.json` status correction: persisted `running` status with blocked/failed message is fixed on restore
+- macOS build warning: suppress `-lobjc` duplicate library linker warning
+
+### Added
+
+- Log rotation config: `log_level`, `log_file`, `log_rotate_max_size_mb`, `log_rotate_max_days`, `log_rotate_max_backups` with lumberjack
+- Logger configuration printed as INFO on server startup
+- Config `log_file` takes precedence over CLI default; parent directory auto-created
+- `make build` outputs binary to `bin/` directory
+
+## [0.6.1] - 2026-03-20
+
+### Changed
+
+- Homebrew release automation now updates the unified `devlikebear/homebrew-tap` repository instead of the dedicated `homebrew-tars` tap
+- Public install instructions now use `brew tap devlikebear/tap` and `brew install devlikebear/tap/tars`
+
+## [0.6.0] - 2026-03-20
+
+### Added
+
+- Semantic Memory V2 with local derived indexing under `workspace/memory/index` for durable memories and project documents
+- Gemini embedding configuration for semantic retrieval with `memory_semantic_enabled`, `memory_embed_*`, and default `gemini-embedding-2-preview` support
+
+### Changed
+
+- Prompt assembly now prefers semantic memory recall for paraphrases and project-scoped context, with lexical retrieval kept as the fallback path
+- `memory_save` now dual-writes to both `experiences.jsonl` and the semantic memory index when semantic memory is enabled
+- Session compaction now stores compaction summaries and extracted durable memory candidates in the semantic index without breaking compaction when extraction fails
+- `memory_search` now uses semantic recall first and falls back to the existing file-based substring search when embeddings are unavailable
+
 ## [0.5.11] - 2026-03-14
 
 ### Fixed
@@ -184,7 +267,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - Automated release workflow driven by `VERSION.txt` changes on `main`, including tag/release publishing and Homebrew tap updates
 - Public `install.sh` for curl-based macOS installs from GitHub Releases
-- Homebrew tap formula generation for `devlikebear/homebrew-tars`
+- Homebrew tap formula generation for `devlikebear/homebrew-tap`
 
 ### Changed
 

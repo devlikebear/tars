@@ -30,6 +30,11 @@ type RuntimeConfig struct {
 	WorkspaceDir         string
 	SessionDefaultID     string
 	SessionTelegramScope string
+	LogLevel             string
+	LogFile              string
+	LogRotateMaxSizeMB   int
+	LogRotateMaxDays     int
+	LogRotateMaxBackups  int
 }
 
 type APIConfig struct {
@@ -56,6 +61,15 @@ type LLMConfig struct {
 	BifrostBase        string
 	BifrostAPIKey      string
 	BifrostModel       string
+}
+
+type MemoryConfig struct {
+	MemorySemanticEnabled bool
+	MemoryEmbedProvider   string
+	MemoryEmbedBaseURL    string
+	MemoryEmbedAPIKey     string
+	MemoryEmbedModel      string
+	MemoryEmbedDimensions int
 }
 
 type UsageConfig struct {
@@ -184,6 +198,7 @@ type Config struct {
 	RuntimeConfig
 	APIConfig
 	LLMConfig
+	MemoryConfig
 	UsageConfig
 	AutomationConfig
 	AssistantConfig

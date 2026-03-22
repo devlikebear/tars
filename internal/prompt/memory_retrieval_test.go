@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,21 @@ import (
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 )
+
+type promptStubEmbedder struct {
+	vectors map[string][]float64
+}
+
+func (s promptStubEmbedder) Embed(_ context.Context, req memory.EmbedRequest) ([]float64, error) {
+	key := req.TaskType + "|" + req.Text
+	vector, ok := s.vectors[key]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	out := make([]float64, len(vector))
+	copy(out, vector)
+	return out, nil
+}
 
 func TestBuild_IncludesRelevantMemoryByQueryAndProject(t *testing.T) {
 	root := t.TempDir()
@@ -177,5 +193,54 @@ func TestBuild_IncludesProjectStateAndPlotDocs(t *testing.T) {
 	}
 	if !strings.Contains(result, "traitor") {
 		t.Fatalf("expected plot doc content in relevant memory, got %q", result)
+	}
+}
+
+func TestBuild_UsesSemanticMemoryForParaphraseQueries(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	semantic := memory.NewService(root, memory.ServiceOptions{
+		Config: memory.SemanticConfig{
+			Enabled:         true,
+			EmbedProvider:   "gemini",
+			EmbedBaseURL:    "https://example.test",
+			EmbedAPIKey:     "secret",
+			EmbedModel:      "gemini-embedding-2-preview",
+			EmbedDimensions: 3,
+		},
+		Embedder: promptStubEmbedder{
+			vectors: map[string][]float64{
+				"RETRIEVAL_DOCUMENT|User prefers decaf espresso during late-night sessions.": {0.95, 0.05, 0.0},
+				"RETRIEVAL_QUERY|what coffee should I order without caffeine tonight?":       {0.94, 0.06, 0.0},
+			},
+		},
+	})
+	if err := semantic.IndexExperience(context.Background(), memory.Experience{
+		Timestamp:     time.Date(2026, 3, 20, 8, 0, 0, 0, time.UTC),
+		Category:      "preference",
+		Summary:       "User prefers decaf espresso during late-night sessions.",
+		ProjectID:     "alpha",
+		SourceSession: "sess-alpha",
+		Importance:    9,
+	}); err != nil {
+		t.Fatalf("index experience: %v", err)
+	}
+
+	result := Build(BuildOptions{
+		WorkspaceDir:   root,
+		Query:          "what coffee should I order without caffeine tonight?",
+		ProjectID:      "alpha",
+		SessionID:      "sess-alpha",
+		MemorySearcher: semantic,
+	})
+
+	if !strings.Contains(result, "## Relevant Memory") {
+		t.Fatalf("expected relevant memory section, got %q", result)
+	}
+	if !strings.Contains(result, "decaf espresso") {
+		t.Fatalf("expected semantic memory hit in prompt, got %q", result)
 	}
 }

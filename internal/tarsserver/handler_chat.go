@@ -10,6 +10,7 @@ import (
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/prompt"
@@ -24,6 +25,11 @@ import (
 )
 
 func resolveChatSession(store *session.Store, sessionID string, mainSessionID string, userMessage string) (string, error) {
+	// The public session API exposes the main session as id="main";
+	// translate it back to the real internal ID so store.Get succeeds.
+	if strings.EqualFold(strings.TrimSpace(sessionID), "main") {
+		sessionID = strings.TrimSpace(mainSessionID)
+	}
 	if strings.TrimSpace(sessionID) == "" {
 		if project.DefaultWorkflowPolicy.IsKickoffMessage(userMessage) {
 			return createFallbackChatSession(store)
@@ -72,8 +78,9 @@ func prepareChatContextWithExtensions(
 	userMessage string,
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
+	semanticCfg ...memory.SemanticConfig,
 ) (systemPrompt string, toolChoice string, err error) {
-	details, err := prepareChatContextDetailsWithExtensions(workspaceDir, projectID, sessionID, userMessage, extSnapshot, invokedSkill)
+	details, err := prepareChatContextDetailsWithExtensions(workspaceDir, projectID, sessionID, userMessage, extSnapshot, invokedSkill, semanticCfg...)
 	if err != nil {
 		return "", "", err
 	}
@@ -87,14 +94,17 @@ func prepareChatContextDetailsWithExtensions(
 	userMessage string,
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
+	semanticCfg ...memory.SemanticConfig,
 ) (preparedChatContext, error) {
 	forceRelevantMemory := shouldForceMemoryToolCall(userMessage)
 	extSnapshot = filterSkillSnapshotForProject(extSnapshot, workspaceDir, projectID)
+	memService := buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...))
 	buildResult := prompt.BuildResultFor(prompt.BuildOptions{
 		WorkspaceDir:        workspaceDir,
 		Query:               userMessage,
 		ProjectID:           projectID,
 		SessionID:           sessionID,
+		MemorySearcher:      memService,
 		ForceRelevantMemory: forceRelevantMemory,
 	})
 	systemPrompt := buildResult.Prompt
@@ -351,6 +361,7 @@ type chatToolingOptions struct {
 	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
 	ToolsDefaultSet             string
 	ToolsAllowHighRiskUser      bool
+	MemorySemanticConfig        memory.SemanticConfig
 	APIMaxInflightChat          int
 	UsageTracker                *usage.Tracker
 	OpsManager                  *ops.Manager

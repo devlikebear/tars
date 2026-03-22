@@ -20,7 +20,7 @@ func buildChatToolRegistry(
 	history []session.Message,
 	deps chatHandlerDeps,
 ) *tool.Registry {
-	registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, deps.tooling.ProcessManager)
+	registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, deps.tooling.ProcessManager, deps.tooling.MemorySemanticConfig)
 	projectStore := project.NewStore(requestWorkspaceDir, nil)
 	registry.Register(tool.NewProjectCreateTool(projectStore))
 	registry.Register(tool.NewProjectListTool(projectStore))

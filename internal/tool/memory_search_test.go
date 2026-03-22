@@ -12,6 +12,20 @@ import (
 	"github.com/devlikebear/tars/internal/memory"
 )
 
+type searchStubEmbedder struct {
+	vectors map[string][]float64
+}
+
+func (s searchStubEmbedder) Embed(_ context.Context, req memory.EmbedRequest) ([]float64, error) {
+	vector, ok := s.vectors[req.TaskType+"|"+req.Text]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	out := make([]float64, len(vector))
+	copy(out, vector)
+	return out, nil
+}
+
 func TestMemorySearchTool_QueryAndMetadata(t *testing.T) {
 	root := t.TempDir()
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -29,7 +43,7 @@ func TestMemorySearchTool_QueryAndMetadata(t *testing.T) {
 	_ = os.Chtimes(memPath, time.Date(2026, 2, 13, 0, 0, 0, 0, time.UTC), time.Date(2026, 2, 13, 0, 0, 0, 0, time.UTC))
 	_ = os.Chtimes(dailyPath, time.Date(2026, 2, 14, 0, 0, 0, 0, time.UTC), time.Date(2026, 2, 14, 0, 0, 0, 0, time.UTC))
 
-	tl := NewMemorySearchTool(root)
+	tl := NewMemorySearchTool(root, nil)
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"coffee","limit":5}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -75,7 +89,7 @@ func TestMemorySearchTool_LimitCap(t *testing.T) {
 		t.Fatalf("write daily file: %v", err)
 	}
 
-	tl := NewMemorySearchTool(root)
+	tl := NewMemorySearchTool(root, nil)
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"capword","limit":100,"include_memory":false,"include_daily":true}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -104,7 +118,7 @@ func TestMemorySearchTool_IncludeFlags(t *testing.T) {
 		t.Fatalf("write daily: %v", err)
 	}
 
-	tl := NewMemorySearchTool(root)
+	tl := NewMemorySearchTool(root, nil)
 
 	onlyMemory, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"alpha","include_memory":true,"include_daily":false}`))
 	if err != nil {
@@ -126,5 +140,49 @@ func TestMemorySearchTool_IncludeFlags(t *testing.T) {
 	}
 	if strings.Contains(onlyDaily.Text(), `"source":"MEMORY.md"`) {
 		t.Fatalf("did not expect MEMORY.md source in daily-only result, got %q", onlyDaily.Text())
+	}
+}
+
+func TestMemorySearchTool_UsesSemanticSearchBeforeLexicalFallback(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	semantic := memory.NewService(root, memory.ServiceOptions{
+		Config: memory.SemanticConfig{
+			Enabled:         true,
+			EmbedProvider:   "gemini",
+			EmbedBaseURL:    "https://example.test",
+			EmbedAPIKey:     "secret",
+			EmbedModel:      "gemini-embedding-2-preview",
+			EmbedDimensions: 3,
+		},
+		Embedder: searchStubEmbedder{
+			vectors: map[string][]float64{
+				"RETRIEVAL_DOCUMENT|User prefers decaf espresso during late-night sessions.": {0.92, 0.08, 0.0},
+				"RETRIEVAL_QUERY|what coffee should I order without caffeine tonight?":       {0.91, 0.09, 0.0},
+			},
+		},
+	})
+	if err := semantic.IndexExperience(context.Background(), memory.Experience{
+		Timestamp:     time.Date(2026, 3, 20, 8, 0, 0, 0, time.UTC),
+		Category:      "preference",
+		Summary:       "User prefers decaf espresso during late-night sessions.",
+		ProjectID:     "alpha",
+		SourceSession: "sess-alpha",
+		Importance:    8,
+	}); err != nil {
+		t.Fatalf("index experience: %v", err)
+	}
+
+	tl := NewMemorySearchTool(root, semantic)
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"what coffee should I order without caffeine tonight?","limit":5}`))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if !strings.Contains(result.Text(), "decaf espresso") {
+		t.Fatalf("expected semantic result in output, got %q", result.Text())
 	}
 }

@@ -46,3 +46,74 @@ func TestMirrorToWorkspace(t *testing.T) {
 		t.Fatalf("unexpected mirrored content: %q", string(data))
 	}
 }
+
+func TestMirrorToWorkspace_CompanionFiles(t *testing.T) {
+	workspaceDir := t.TempDir()
+
+	// Create a source skill directory with SKILL.md + companion files.
+	srcDir := filepath.Join(t.TempDir(), "skills", "my-skill")
+	if err := os.MkdirAll(filepath.Join(srcDir, "scripts"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# My Skill"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "helper.sh"), []byte("#!/bin/bash\necho hello"), 0o755); err != nil {
+		t.Fatalf("write helper.sh: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "scripts", "run.py"), []byte("print('hello')"), 0o644); err != nil {
+		t.Fatalf("write run.py: %v", err)
+	}
+
+	snapshot := Snapshot{
+		Skills: []Definition{
+			{
+				Name:     "my-skill",
+				Source:   SourceUser,
+				FilePath: filepath.Join(srcDir, "SKILL.md"),
+				Content:  "# My Skill",
+			},
+		},
+	}
+
+	next, err := MirrorToWorkspace(workspaceDir, snapshot)
+	if err != nil {
+		t.Fatalf("mirror: %v", err)
+	}
+
+	runtimeDir := filepath.Join(workspaceDir, "_shared", "skills_runtime", "my_skill")
+
+	// SKILL.md should exist.
+	if _, err := os.Stat(filepath.Join(runtimeDir, "SKILL.md")); err != nil {
+		t.Fatalf("SKILL.md not mirrored: %v", err)
+	}
+
+	// helper.sh should be copied.
+	helperData, err := os.ReadFile(filepath.Join(runtimeDir, "helper.sh"))
+	if err != nil {
+		t.Fatalf("helper.sh not mirrored: %v", err)
+	}
+	if string(helperData) != "#!/bin/bash\necho hello" {
+		t.Fatalf("unexpected helper.sh content: %q", string(helperData))
+	}
+
+	// Check executable bit preserved.
+	info, err := os.Stat(filepath.Join(runtimeDir, "helper.sh"))
+	if err != nil {
+		t.Fatalf("stat helper.sh: %v", err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Fatalf("helper.sh should be executable, got %v", info.Mode())
+	}
+
+	// Subdirectory file should be copied.
+	pyData, err := os.ReadFile(filepath.Join(runtimeDir, "scripts", "run.py"))
+	if err != nil {
+		t.Fatalf("scripts/run.py not mirrored: %v", err)
+	}
+	if string(pyData) != "print('hello')" {
+		t.Fatalf("unexpected run.py content: %q", string(pyData))
+	}
+
+	_ = next
+}

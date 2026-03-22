@@ -13,6 +13,7 @@ func TestConfig_UsesFocusedEmbeddedGroups(t *testing.T) {
 		"RuntimeConfig",
 		"APIConfig",
 		"LLMConfig",
+		"MemoryConfig",
 		"UsageConfig",
 		"AutomationConfig",
 		"AssistantConfig",

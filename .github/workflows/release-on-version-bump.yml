@@ -178,14 +178,14 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
-            echo "HOMEBREW_TAP_TOKEN is required to update devlikebear/homebrew-tars" >&2
+            echo "HOMEBREW_TAP_TOKEN is required to update devlikebear/homebrew-tap" >&2
             exit 1
           fi
 
       - name: Checkout Homebrew tap repository
         uses: actions/checkout@v4
         with:
-          repository: devlikebear/homebrew-tars
+          repository: devlikebear/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
 
