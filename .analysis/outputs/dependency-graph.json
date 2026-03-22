@@ -71,9 +71,11 @@
     "internal/extensions/manager.go",
     "internal/gateway/executor.go",
     "internal/llm/anthropic.go",
+    "internal/memory/semantic.go",
     "internal/ops/manager.go",
     "internal/project/activity.go",
-    "internal/prompt/bootstrap_sections.go",
+    "internal/project/workflow_policy.go",
+    "internal/prompt/memory_retrieval.go",
     "internal/research/service.go",
     "internal/schedule/store.go",
     "internal/secrets/secrets.go",
@@ -127,14 +129,20 @@
   "internal/session/transcript.go": [],
   "internal/session/compaction.go": [],
   "internal/llm/provider.go": [
-    "internal/auth/codex_oauth.go"
+    "internal/auth/provider_credentials.go",
+    "internal/llm/openai_compat_client.go",
+    "internal/llm/anthropic.go",
+    "internal/llm/gemini_native.go",
+    "internal/llm/openai_codex_client.go"
   ],
   "internal/prompt/builder.go": [],
   "internal/extensions/manager.go": [
     "internal/config/defaults.go",
     "internal/plugin/loader.go",
-    "internal/skill/frontmatter.go",
-    "internal/tool/apply_patch.go"
+    "internal/skill/loader.go",
+    "internal/skill/mirror.go",
+    "internal/mcp/client.go",
+    "internal/tool/tool.go"
   ],
   "internal/gateway/runtime.go": [
     "internal/browser/flow.go"
@@ -230,19 +238,98 @@
   ],
   "internal/project/github_flow.go": [],
   "internal/project/kanban.go": [],
-  "internal/project/orchestrator.go": [],
-  "internal/project/project_runner.go": [],
+  "internal/project/orchestrator.go": [
+    "internal/project/task_report.go",
+    "internal/project/worker_profiles.go"
+  ],
+  "internal/project/project_runner.go": [
+    "internal/project/orchestrator.go",
+    "internal/project/workflow_policy.go"
+  ],
   "internal/project/task_report.go": [],
   "internal/project/worker_profiles.go": [],
   "internal/gateway/project_task_runner.go": [
     "internal/project/activity.go"
   ],
   "internal/tarsserver/dashboard.go": [
-    "internal/project/activity.go"
+    "internal/project/activity.go",
+    "internal/project/store.go",
+    "internal/project/workflow_policy.go"
   ],
   "internal/llm/openai_codex_client.go": [
     "internal/auth/codex_oauth.go"
   ],
   "plugins/project-swarm/skills/project-autopilot/SKILL.md": [],
-  "plugins/project-swarm/skills/project-start/SKILL.md": []
+  "plugins/project-swarm/skills/project-start/SKILL.md": [],
+  "cmd/tars/mainthread_darwin.go": [],
+  "cmd/tars/mainthread_other.go": [],
+  "cmd/tars/plugin_main.go": [
+    "internal/skillhub/install.go",
+    "internal/skillhub/registry.go",
+    "internal/skillhub/types.go"
+  ],
+  "cmd/tars/skill_main.go": [
+    "internal/skillhub/install.go",
+    "internal/skillhub/registry.go",
+    "internal/skillhub/types.go"
+  ],
+  "internal/config/config_input_fields.go": [],
+  "internal/auth/provider_credentials.go": [
+    "internal/auth/codex_oauth.go",
+    "internal/auth/token.go"
+  ],
+  "internal/auth/codex_refresh_store.go": [],
+  "internal/gateway/executor.go": [],
+  "internal/gateway/runtime_channels.go": [],
+  "internal/gateway/runtime_reports.go": [],
+  "internal/llm/ask.go": [],
+  "internal/llm/model_lister.go": [
+    "internal/auth/provider_credentials.go"
+  ],
+  "internal/llm/transport.go": [],
+  "internal/memory/gemini_embed.go": [],
+  "internal/memory/semantic.go": [
+    "internal/project/store.go"
+  ],
+  "internal/project/workflow_policy.go": [],
+  "internal/prompt/memory_retrieval.go": [
+    "internal/memory/semantic.go",
+    "internal/project/store.go",
+    "internal/session/session.go"
+  ],
+  "internal/skill/mirror.go": [],
+  "internal/skillhub/install.go": [
+    "internal/skillhub/registry.go",
+    "internal/skillhub/types.go"
+  ],
+  "internal/skillhub/registry.go": [
+    "internal/skillhub/types.go"
+  ],
+  "internal/skillhub/types.go": [],
+  "internal/tarsserver/handler_transport_helpers.go": [],
+  "internal/tarsserver/helpers_agent.go": [
+    "internal/llm/provider.go",
+    "internal/memory/semantic.go",
+    "internal/project/store.go",
+    "internal/tool/memory_search.go",
+    "internal/tool/memory_save.go"
+  ],
+  "internal/tarsserver/helpers_chat.go": [
+    "internal/llm/ask.go",
+    "internal/memory/semantic.go",
+    "internal/session/compaction.go"
+  ],
+  "internal/tarsserver/helpers_memory.go": [
+    "internal/memory/semantic.go"
+  ],
+  "internal/tarsserver/main_cli.go": [
+    "internal/cli/errors.go"
+  ],
+  "internal/tool/memory_save.go": [
+    "internal/memory/experience.go",
+    "internal/memory/semantic.go"
+  ],
+  "internal/tool/memory_search.go": [
+    "internal/memory/semantic.go"
+  ]
 }

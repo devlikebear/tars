@@ -9,6 +9,7 @@
 
 - `spf13/cobra`: `cmd/tars/*.go`에서 CLI 명령 트리를 만든다.
 - `charmbracelet/bubbletea`, `bubbles`, `lipgloss`: `internal/tarsclient` TUI를 구성한다.
+- `golang.design/x/mainthread`: macOS + cgo 빌드에서 전역 hotkey 제약을 맞추기 위해 루트 명령을 메인 스레드에서 실행한다.
 
 ## HTTP와 스트리밍
 
@@ -20,18 +21,21 @@
 ## 인증과 보안 경계
 
 - SHA-256 + constant-time compare: `internal/serverauth/middleware.go`에서 bearer token 비교에 사용한다.
-- 경로 기반 권한 분기: admin path, skip path, loopback 판정을 별도 matcher로 관리한다.
+- 경로 기반 권한 분기: admin path, skip path, loopback skip path를 별도 matcher로 관리한다.
+- macOS Keychain: `internal/auth/codex_refresh_store.go`가 Codex refresh token을 안전하게 보관하는 선택 경로다.
 
 ## LLM 계층
 
 - 공통 인터페이스: `internal/llm/provider.go`
-- 공급자 지원: OpenAI 호환, Gemini OpenAI 호환, Gemini Native, Anthropic, OpenAI Codex OAuth
-- 인증 보조: `internal/auth/*`
+- 공급자 지원: OpenAI 호환, Gemini OpenAI 호환, Gemini Native REST, Anthropic, OpenAI Codex OAuth
+- 인증 전략: `internal/auth/provider_credentials.go`
 - OpenAI-compatible Chat Completions: `internal/llm/openai_compat_client.go`
 - Anthropic Messages API: `internal/llm/anthropic.go`
-- Google GenAI SDK: `google.golang.org/genai`, `internal/llm/gemini_native.go`
-- OpenAI Codex Responses API: `internal/llm/openai_codex_client.go`가 `/codex/responses` 형식, tool name 변환, refresh retry를 처리한다.
-- 실행 전 진단: `cmd/tars/doctor_main.go`가 API key, Claude CLI, gateway executor 경로를 점검한다.
+- Gemini Native REST: `internal/llm/gemini_native.go`, `internal/llm/gemini_native_convert.go`
+- OpenAI Codex Responses API: `internal/llm/openai_codex_client.go`
+- live model discovery: `internal/llm/model_lister.go`
+
+이 저장소는 더 이상 Gemini SDK에 의존하지 않는다. Gemini Native 요청/응답 변환은 REST payload 타입을 직접 구현한다.
 
 ## 자동화와 스케줄링
 
@@ -44,9 +48,26 @@
 
 - skill 로딩: `internal/skill/*`
 - plugin 로딩: `internal/plugin/*`
+- runtime skill mirror: `internal/skill/mirror.go`
 - 파일 감시: `fsnotify`
 - MCP 서버 통신: `internal/mcp/client.go`
 - plugin manifest: JSON 기반 `tars.plugin.json`
+
+## Skill Hub 배포
+
+- 원격 registry: `internal/skillhub/registry.go`
+- 설치 상태 DB: workspace `skillhub.json`
+- 전송 원본: `raw.githubusercontent.com` 기반 registry/file fetch
+
+즉, extension runtime과 원격 배포 계층이 분리돼 있다.
+
+## 메모리와 검색
+
+- 파일 기반 memory: `workspace/MEMORY.md`, `workspace/memory/*.md`
+- semantic index: `internal/memory/semantic.go`
+- embedding adapter: `internal/memory/gemini_embed.go`
+- prompt recall: `internal/prompt/memory_retrieval.go`
+- agent tool surface: `internal/tool/memory_search.go`, `internal/tool/memory_save.go`
 
 ## 브라우저 자동화
 
@@ -58,15 +79,15 @@
 ## 호스트 운영 통합
 
 - `launchctl`: `cmd/tars/service_main.go`가 macOS LaunchAgent plist를 설치하고 관리한다.
-- 표준 라이브러리 `os/exec`: `launchctl` 같은 host command를 직접 호출한다.
+- 표준 라이브러리 `os/exec`: `launchctl`이나 gateway command executor 같은 host command를 직접 호출한다.
 - in-memory OTP coordinator: `internal/approval/otp.go`가 외부 채널 입력을 브라우저 로그인 흐름과 연결한다.
-- credential file adapter: `internal/auth/codex_oauth.go`가 `~/.codex/auth.json` 류의 파일을 읽고 atomic rename 으로 갱신한다.
 
 ## 로깅과 설정
 
 - `rs/zerolog`: 구조화 로그
 - `gopkg.in/yaml.v3`: 설정 파일 로딩
 - `.env` + `.env.secret` + YAML + 환경 변수 병합
+- field metadata table: `internal/config/config_input_fields.go`
 - `gh` CLI: 프로젝트 task dispatch 전에 GitHub Flow 전제조건으로 인증 상태를 확인한다.
 
 ## 저장 방식
@@ -77,7 +98,8 @@
 - 오토파일럿 상태: `AUTOPILOT.json`
 - 사용량/제한: JSON
 - 연구 보고서: Markdown + `summary.jsonl`
+- semantic memory index: JSON entries + source state
 
 ## 이 저장소의 기술적 성격
 
-TARS는 프레임워크 중심 앱이라기보다 "Go 표준 라이브러리 + 작은 라이브러리 조합"에 가깝다. 핵심 복잡도는 프레임워크가 아니라 로컬 워크스페이스 파일, 프롬프트 조립, 툴 주입, 백그라운드 런타임 관리에서 나온다.
+TARS는 프레임워크 중심 앱이라기보다 "Go 표준 라이브러리 + 작은 라이브러리 조합"에 가깝다. 핵심 복잡도는 프레임워크가 아니라 로컬 워크스페이스 파일, 프롬프트 조립, semantic recall, 툴 주입, 백그라운드 런타임 관리에서 나온다.
