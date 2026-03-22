@@ -25,9 +25,14 @@ type Run struct {
 	ID                 string    `json:"run_id"`
 	WorkspaceID        string    `json:"-"`
 	SessionID          string    `json:"session_id,omitempty"`
+	SessionKind        string    `json:"session_kind,omitempty"`
 	ProjectID          string    `json:"project_id,omitempty"`
 	Agent              string    `json:"agent,omitempty"`
 	Prompt             string    `json:"prompt,omitempty"`
+	ParentRunID        string    `json:"parent_run_id,omitempty"`
+	RootRunID          string    `json:"root_run_id,omitempty"`
+	ParentSessionID    string    `json:"parent_session_id,omitempty"`
+	Depth              int       `json:"depth,omitempty"`
 	Status             RunStatus `json:"status"`
 	Accepted           bool      `json:"accepted"`
 	Response           string    `json:"response,omitempty"`
@@ -45,12 +50,18 @@ type Run struct {
 }
 
 type SpawnRequest struct {
-	WorkspaceID string
-	SessionID   string
-	ProjectID   string
-	Title       string
-	Prompt      string
-	Agent       string
+	WorkspaceID     string
+	SessionID       string
+	ProjectID       string
+	Title           string
+	Prompt          string
+	Agent           string
+	ParentRunID     string
+	RootRunID       string
+	ParentSessionID string
+	Depth           int
+	SessionKind     string
+	SessionHidden   bool
 }
 
 type ChannelMessage struct {
@@ -162,6 +173,8 @@ type RuntimeOptions struct {
 	GatewayChannelsPersistenceEnabled    bool
 	GatewayRunsMaxRecords                int
 	GatewayChannelsMaxMessagesPerChannel int
+	GatewaySubagentsMaxThreads           int
+	GatewaySubagentsMaxDepth             int
 	GatewayPersistenceDir                string
 	GatewayRestoreOnStartup              bool
 	GatewayReportSummaryEnabled          bool

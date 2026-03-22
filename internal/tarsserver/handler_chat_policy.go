@@ -56,6 +56,7 @@ func buildChatToolRegistry(
 	registry.Register(tool.NewSessionsSendTool(deps.tooling.Gateway))
 	registry.Register(tool.NewSessionsSpawnTool(deps.tooling.Gateway))
 	registry.Register(tool.NewSessionsRunsTool(deps.tooling.Gateway))
+	registry.Register(tool.NewSubagentsRunTool(deps.tooling.Gateway))
 	registry.Register(tool.NewAgentsListTool(deps.tooling.Gateway))
 	if deps.tooling.AutomationToolsForWorkspace != nil {
 		for _, autoTool := range deps.tooling.AutomationToolsForWorkspace(workspaceID) {

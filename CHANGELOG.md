@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-03-22
+
+### Added
+
+- `subagents_run` chat tool for parallel read-only delegation to gateway-backed explorer subagents
+- Built-in `explorer` gateway agent with a read-only allowlist for codebase and project research tasks
+- Gateway run metadata for subagent lineage and hidden subagent sessions
+- Config knobs `gateway_subagents_max_threads` and `gateway_subagents_max_depth`
+
+### Changed
+
+- Hidden subagent runs now append compact system summaries back to the parent chat session instead of leaking raw child transcripts into the main conversation context
+
 ## [0.9.0] - 2026-03-22
 
 ### Added

@@ -136,6 +136,7 @@ var toolNameAliases = map[string]string{
 	"session_send":    "sessions_send",
 	"session_spawn":   "sessions_spawn",
 	"session_runs":    "sessions_runs",
+	"subagent_run":    "subagents_run",
 	"agent_runs":      "sessions_runs",
 	"gateway_status":  "gateway",
 }

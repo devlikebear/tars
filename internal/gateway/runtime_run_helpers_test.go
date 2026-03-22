@@ -98,6 +98,34 @@ func TestResolveSpawnSessionID_CreatesDistinctHiddenWorkerSessionsPerProjectRun(
 	}
 }
 
+func TestResolveSpawnSessionID_CreatesHiddenSubagentSessionWhenRequested(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	parent, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create parent session: %v", err)
+	}
+
+	sessionID, err := resolveSpawnSessionID(store, SpawnRequest{
+		Title:           "scan docs",
+		ParentSessionID: parent.ID,
+		SessionKind:     "subagent",
+		SessionHidden:   true,
+	}, AgentInfo{}, "explorer")
+	if err != nil {
+		t.Fatalf("resolve subagent session: %v", err)
+	}
+	if sessionID == "" || sessionID == parent.ID {
+		t.Fatalf("expected hidden subagent session distinct from parent, got %q", sessionID)
+	}
+	sess, err := store.Get(sessionID)
+	if err != nil {
+		t.Fatalf("get subagent session: %v", err)
+	}
+	if sess.Kind != "subagent" || !sess.Hidden {
+		t.Fatalf("unexpected subagent session metadata: %+v", sess)
+	}
+}
+
 func TestFinalizeRunLocked_PopulatesPolicyFailureMetadata(t *testing.T) {
 	fixedNow := time.Date(2026, 3, 7, 1, 2, 3, 0, time.UTC)
 	rt := NewRuntime(RuntimeOptions{

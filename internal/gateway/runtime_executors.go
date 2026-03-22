@@ -177,6 +177,32 @@ func (r *Runtime) Agents() []map[string]any {
 	return out
 }
 
+func (r *Runtime) LookupAgent(name string) (AgentInfo, bool) {
+	if r == nil {
+		return AgentInfo{}, false
+	}
+	key := strings.TrimSpace(name)
+	if key == "" {
+		return AgentInfo{}, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	executor, ok := r.executors[key]
+	if !ok || executor == nil {
+		return AgentInfo{}, false
+	}
+	return executor.Info(), true
+}
+
+func (r *Runtime) SubagentLimits() (maxThreads int, maxDepth int) {
+	if r == nil {
+		return 0, 0
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.opts.GatewaySubagentsMaxThreads, r.opts.GatewaySubagentsMaxDepth
+}
+
 func gatewayAgentInfo(executor AgentExecutor) AgentInfo {
 	if executor == nil {
 		return AgentInfo{}

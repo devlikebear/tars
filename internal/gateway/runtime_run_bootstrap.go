@@ -62,6 +62,23 @@ func resolveSpawnSessionID(sessionStore *session.Store, req SpawnRequest, info A
 		}
 	}
 	if sessionID == "" {
+		if strings.TrimSpace(req.SessionKind) != "" || req.SessionHidden {
+			title := strings.TrimSpace(req.Title)
+			if title == "" {
+				title = strings.TrimSpace(req.SessionKind)
+			}
+			if title == "" {
+				title = "chat"
+			}
+			s, err := sessionStore.CreateWithOptions(title, strings.TrimSpace(req.SessionKind), req.SessionHidden)
+			if err != nil {
+				return "", fmt.Errorf("create session: %w", err)
+			}
+			if strings.TrimSpace(req.ProjectID) != "" && strings.TrimSpace(s.ProjectID) != strings.TrimSpace(req.ProjectID) {
+				_ = sessionStore.SetProjectID(s.ID, strings.TrimSpace(req.ProjectID))
+			}
+			return s.ID, nil
+		}
 		if strings.TrimSpace(req.ProjectID) != "" {
 			worker, err := sessionStore.CreateWithOptions("worker:"+strings.TrimSpace(req.ProjectID), "worker", true)
 			if err != nil {
@@ -119,16 +136,21 @@ func (r *Runtime) newAcceptedRunState(
 	runCtx, cancel := context.WithCancel(context.Background())
 	workspaceID := normalizeWorkspaceID(req.WorkspaceID)
 	run := Run{
-		ID:          runID,
-		WorkspaceID: workspaceID,
-		SessionID:   sessionID,
-		ProjectID:   strings.TrimSpace(projectID),
-		Agent:       selectedAgent,
-		Prompt:      prompt,
-		Status:      RunStatusAccepted,
-		Accepted:    true,
-		CreatedAt:   now.Format(time.RFC3339),
-		UpdatedAt:   now.Format(time.RFC3339),
+		ID:              runID,
+		WorkspaceID:     workspaceID,
+		SessionID:       sessionID,
+		SessionKind:     strings.TrimSpace(req.SessionKind),
+		ProjectID:       strings.TrimSpace(projectID),
+		Agent:           selectedAgent,
+		Prompt:          prompt,
+		ParentRunID:     strings.TrimSpace(req.ParentRunID),
+		RootRunID:       strings.TrimSpace(req.RootRunID),
+		ParentSessionID: strings.TrimSpace(req.ParentSessionID),
+		Depth:           req.Depth,
+		Status:          RunStatusAccepted,
+		Accepted:        true,
+		CreatedAt:       now.Format(time.RFC3339),
+		UpdatedAt:       now.Format(time.RFC3339),
 	}
 	return runCtx, &runState{run: run, executor: executor, cancel: cancel, done: make(chan struct{})}
 }

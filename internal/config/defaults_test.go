@@ -960,6 +960,12 @@ func TestLoad_GatewayPersistenceDefaults(t *testing.T) {
 	if cfg.GatewayChannelsMaxMessagesPerChannel != 500 {
 		t.Fatalf("expected gateway channel max messages 500, got %d", cfg.GatewayChannelsMaxMessagesPerChannel)
 	}
+	if cfg.GatewaySubagentsMaxThreads != 4 {
+		t.Fatalf("expected gateway subagent max threads 4, got %d", cfg.GatewaySubagentsMaxThreads)
+	}
+	if cfg.GatewaySubagentsMaxDepth != 1 {
+		t.Fatalf("expected gateway subagent max depth 1, got %d", cfg.GatewaySubagentsMaxDepth)
+	}
 	expectedDir := filepath.Join(cfg.WorkspaceDir, "_shared", "gateway")
 	if cfg.GatewayPersistenceDir != expectedDir {
 		t.Fatalf("expected gateway persistence dir %q, got %q", expectedDir, cfg.GatewayPersistenceDir)
@@ -976,6 +982,8 @@ func TestLoad_GatewayPersistenceFromYAMLAndEnv(t *testing.T) {
 		"gateway_channels_persistence_enabled: true",
 		"gateway_runs_max_records: 1234",
 		"gateway_channels_max_messages_per_channel: 234",
+		"gateway_subagents_max_threads: 6",
+		"gateway_subagents_max_depth: 2",
 		"gateway_persistence_dir: /tmp/yaml-gateway",
 		"gateway_restore_on_startup: true",
 	}, "\n")
@@ -988,6 +996,8 @@ func TestLoad_GatewayPersistenceFromYAMLAndEnv(t *testing.T) {
 	t.Setenv("GATEWAY_CHANNELS_PERSISTENCE_ENABLED", "false")
 	t.Setenv("GATEWAY_RUNS_MAX_RECORDS", "345")
 	t.Setenv("GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "67")
+	t.Setenv("GATEWAY_SUBAGENTS_MAX_THREADS", "3")
+	t.Setenv("GATEWAY_SUBAGENTS_MAX_DEPTH", "4")
 	t.Setenv("GATEWAY_PERSISTENCE_DIR", "/tmp/env-gateway")
 	t.Setenv("GATEWAY_RESTORE_ON_STARTUP", "false")
 
@@ -1010,6 +1020,12 @@ func TestLoad_GatewayPersistenceFromYAMLAndEnv(t *testing.T) {
 	if cfg.GatewayChannelsMaxMessagesPerChannel != 67 {
 		t.Fatalf("expected gateway channels max messages 67, got %d", cfg.GatewayChannelsMaxMessagesPerChannel)
 	}
+	if cfg.GatewaySubagentsMaxThreads != 3 {
+		t.Fatalf("expected gateway subagent max threads 3, got %d", cfg.GatewaySubagentsMaxThreads)
+	}
+	if cfg.GatewaySubagentsMaxDepth != 4 {
+		t.Fatalf("expected gateway subagent max depth 4, got %d", cfg.GatewaySubagentsMaxDepth)
+	}
 	if cfg.GatewayPersistenceDir != "/tmp/env-gateway" {
 		t.Fatalf("expected gateway persistence dir /tmp/env-gateway, got %q", cfg.GatewayPersistenceDir)
 	}
@@ -1021,6 +1037,8 @@ func TestLoad_GatewayPersistenceFromYAMLAndEnv(t *testing.T) {
 func TestLoad_GatewayPersistenceInvalidIntFallback(t *testing.T) {
 	t.Setenv("GATEWAY_RUNS_MAX_RECORDS", "not-a-number")
 	t.Setenv("GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "-1")
+	t.Setenv("GATEWAY_SUBAGENTS_MAX_THREADS", "0")
+	t.Setenv("GATEWAY_SUBAGENTS_MAX_DEPTH", "-1")
 
 	cfg, err := Load("")
 	if err != nil {
@@ -1031,6 +1049,12 @@ func TestLoad_GatewayPersistenceInvalidIntFallback(t *testing.T) {
 	}
 	if cfg.GatewayChannelsMaxMessagesPerChannel != 500 {
 		t.Fatalf("expected gateway channels max messages fallback 500, got %d", cfg.GatewayChannelsMaxMessagesPerChannel)
+	}
+	if cfg.GatewaySubagentsMaxThreads != 4 {
+		t.Fatalf("expected gateway subagent max threads fallback 4, got %d", cfg.GatewaySubagentsMaxThreads)
+	}
+	if cfg.GatewaySubagentsMaxDepth != 1 {
+		t.Fatalf("expected gateway subagent max depth fallback 1, got %d", cfg.GatewaySubagentsMaxDepth)
 	}
 }
 

@@ -72,6 +72,72 @@ func TestRuntimeSpawnAndWait(t *testing.T) {
 	}
 }
 
+func TestRuntimeSpawn_PersistsSubagentLineageMetadata(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:                    true,
+		SessionStore:               store,
+		GatewaySubagentsMaxDepth:   1,
+		GatewaySubagentsMaxThreads: 4,
+		Executors: []AgentExecutor{
+			stubExecutor{
+				info: AgentInfo{
+					Name:        "explorer",
+					Description: "read-only explorer",
+					Enabled:     true,
+					Kind:        "prompt",
+					PolicyMode:  "allowlist",
+					ToolsAllow:  []string{"read_file", "list_dir", "glob"},
+				},
+				exec: func(_ context.Context, req ExecuteRequest) (string, error) {
+					return "summary:" + req.Prompt, nil
+				},
+			},
+		},
+		DefaultAgent: "explorer",
+	})
+	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+
+	parent, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create parent session: %v", err)
+	}
+	run, err := rt.Spawn(context.Background(), SpawnRequest{
+		Title:           "scan backend",
+		Prompt:          "inspect backend",
+		Agent:           "explorer",
+		ParentRunID:     "run_parent",
+		RootRunID:       "run_root",
+		ParentSessionID: parent.ID,
+		Depth:           1,
+		SessionKind:     "subagent",
+		SessionHidden:   true,
+	})
+	if err != nil {
+		t.Fatalf("spawn subagent run: %v", err)
+	}
+	final, err := rt.Wait(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("wait subagent run: %v", err)
+	}
+	if final.ParentRunID != "run_parent" || final.RootRunID != "run_root" {
+		t.Fatalf("expected lineage ids on run, got %+v", final)
+	}
+	if final.ParentSessionID != parent.ID {
+		t.Fatalf("expected parent session id %q, got %+v", parent.ID, final)
+	}
+	if final.Depth != 1 || final.SessionKind != "subagent" {
+		t.Fatalf("expected depth/session kind metadata, got %+v", final)
+	}
+	sess, err := store.Get(final.SessionID)
+	if err != nil {
+		t.Fatalf("get spawned session: %v", err)
+	}
+	if sess.Kind != "subagent" || !sess.Hidden {
+		t.Fatalf("unexpected spawned session metadata: %+v", sess)
+	}
+}
+
 type stubExecutor struct {
 	info AgentInfo
 	exec func(ctx context.Context, req ExecuteRequest) (string, error)
