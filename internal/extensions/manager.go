@@ -14,6 +14,7 @@ import (
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/plugin"
 	"github.com/devlikebear/tars/internal/skill"
+	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/fsnotify/fsnotify"
 )
@@ -152,7 +153,12 @@ func (m *Manager) Reload(ctx context.Context) error {
 	if m.opts.PluginsAllowMCPServers {
 		pluginMCPServers = plugins.MCPServers
 	}
-	mcpServers := mergeMCPServers(m.opts.MCPBaseServers, pluginMCPServers)
+	hubMCPServers, hubDiagnostics := skillhub.LoadInstalledMCPServers(m.opts.WorkspaceDir)
+	mcpServers, mcpDiagnostics := mergeMCPServers(
+		mcpServerGroup{label: "config", servers: m.opts.MCPBaseServers},
+		mcpServerGroup{label: "plugin", servers: pluginMCPServers},
+		mcpServerGroup{label: "hub", servers: hubMCPServers},
+	)
 	mcpTools := make([]tool.Tool, 0)
 	if m.opts.MCPRuntime != nil {
 		m.opts.MCPRuntime.SetServers(mcpServers)
@@ -163,13 +169,15 @@ func (m *Manager) Reload(ctx context.Context) error {
 		}
 	}
 
-	diagnostics := make([]string, 0, len(skills.Diagnostics)+len(plugins.Diagnostics))
+	diagnostics := make([]string, 0, len(skills.Diagnostics)+len(plugins.Diagnostics)+len(hubDiagnostics)+len(mcpDiagnostics))
 	for _, d := range skills.Diagnostics {
 		diagnostics = append(diagnostics, formatDiagnostic(d.Path, d.Message))
 	}
 	for _, d := range plugins.Diagnostics {
 		diagnostics = append(diagnostics, formatDiagnostic(d.Path, d.Message))
 	}
+	diagnostics = append(diagnostics, hubDiagnostics...)
+	diagnostics = append(diagnostics, mcpDiagnostics...)
 
 	nextVersion := m.version.Add(1)
 	nextSnapshot := Snapshot{
@@ -370,25 +378,34 @@ func mergeSkillSources(base []skill.SourceDir, plugins []plugin.Definition, plug
 	return sortSkillSources(out)
 }
 
-func mergeMCPServers(base []config.MCPServer, pluginServers []config.MCPServer) []config.MCPServer {
-	out := append([]config.MCPServer(nil), base...)
+type mcpServerGroup struct {
+	label   string
+	servers []config.MCPServer
+}
+
+func mergeMCPServers(groups ...mcpServerGroup) ([]config.MCPServer, []string) {
+	out := make([]config.MCPServer, 0)
+	diagnostics := make([]string, 0)
 	index := map[string]int{}
-	for i, server := range out {
-		index[strings.ToLower(strings.TrimSpace(server.Name))] = i
-	}
-	for _, server := range pluginServers {
-		name := strings.ToLower(strings.TrimSpace(server.Name))
-		if name == "" {
-			continue
+	owners := make([]string, 0)
+	for _, group := range groups {
+		for _, server := range group.servers {
+			name := strings.ToLower(strings.TrimSpace(server.Name))
+			if name == "" {
+				continue
+			}
+			if idx, ok := index[name]; ok {
+				diagnostics = append(diagnostics, fmt.Sprintf("mcp server %q from %s overrides %s source", server.Name, group.label, owners[idx]))
+				out[idx] = server
+				owners[idx] = group.label
+				continue
+			}
+			index[name] = len(out)
+			out = append(out, server)
+			owners = append(owners, group.label)
 		}
-		if idx, ok := index[name]; ok {
-			out[idx] = server
-			continue
-		}
-		index[name] = len(out)
-		out = append(out, server)
 	}
-	return out
+	return out, diagnostics
 }
 
 func toSkillSource(source plugin.Source) skill.Source {

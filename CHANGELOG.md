@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-03-22
+
+### Added
+
+- Trusted MCP Hub CLI: `tars mcp {search,install,uninstall,list,update,info}` for discovering and managing vetted MCP packages from `devlikebear/tars-skills`
+- Registry v3 format with `mcp_servers` section and checksum-verified package files
+- Hub-managed MCP runtime source that loads installed MCP manifests alongside base config and plugin-provided MCP servers
+
+### Changed
+
+- Extension reload diagnostics now report MCP source overrides and malformed installed MCP manifests
+- Public docs now distinguish plugin-embedded MCP servers from hub-managed MCP packages and document the `mcp_command_allowlist_json` requirement
+
 ## [0.8.0] - 2026-03-21
 
 ### Changed

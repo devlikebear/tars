@@ -19,6 +19,7 @@ const (
 type InstalledDB struct {
 	Skills  []InstalledSkill  `json:"skills"`
 	Plugins []InstalledPlugin `json:"plugins,omitempty"`
+	MCPs    []InstalledMCP    `json:"mcps,omitempty"`
 }
 
 // Installer handles installing and managing hub skills.
@@ -336,6 +337,10 @@ func (inst *Installer) pluginDir(name string) string {
 	return filepath.Join(inst.WorkspaceDir, hubPluginsDir, name)
 }
 
+func (inst *Installer) mcpDir(name string) string {
+	return filepath.Join(inst.WorkspaceDir, hubMCPDir, name)
+}
+
 func (inst *Installer) isPluginInstalled(name string) bool {
 	db, err := inst.loadDB()
 	if err != nil {
@@ -372,5 +377,170 @@ func (inst *Installer) addPluginToDB(plugin InstalledPlugin) error {
 		}
 	}
 	db.Plugins = append(db.Plugins, plugin)
+	return inst.saveDB(db)
+}
+
+// --- MCP operations ---
+
+// InstallMCP downloads and installs an MCP package from the registry.
+func (inst *Installer) InstallMCP(ctx context.Context, name string) error {
+	entry, err := inst.Registry.FindMCPByName(ctx, name)
+	if err != nil {
+		return err
+	}
+	installed, err := inst.installMCPEntry(ctx, entry)
+	if err != nil {
+		return err
+	}
+	return inst.addMCPToDB(installed)
+}
+
+// UninstallMCP removes an installed MCP package.
+func (inst *Installer) UninstallMCP(name string) error {
+	db, err := inst.loadDB()
+	if err != nil {
+		return err
+	}
+	key := strings.ToLower(strings.TrimSpace(name))
+	found := false
+	var remaining []InstalledMCP
+	for _, mcp := range db.MCPs {
+		if strings.ToLower(mcp.Name) == key {
+			found = true
+			_ = os.RemoveAll(mcp.Dir)
+			continue
+		}
+		remaining = append(remaining, mcp)
+	}
+	if !found {
+		return fmt.Errorf("mcp server %q is not installed", name)
+	}
+	db.MCPs = remaining
+	return inst.saveDB(db)
+}
+
+// ListMCPs returns all installed hub MCP packages.
+func (inst *Installer) ListMCPs() ([]InstalledMCP, error) {
+	db, err := inst.loadDB()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return db.MCPs, nil
+}
+
+// UpdateMCPs re-installs all installed MCP packages with the latest version.
+func (inst *Installer) UpdateMCPs(ctx context.Context) ([]string, error) {
+	db, err := inst.loadDB()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var updated []string
+	for i, installed := range db.MCPs {
+		entry, err := inst.Registry.FindMCPByName(ctx, installed.Name)
+		if err != nil {
+			continue
+		}
+		if entry.Version == installed.Version {
+			continue
+		}
+		nextInstalled, err := inst.installMCPEntry(ctx, entry)
+		if err != nil {
+			continue
+		}
+		db.MCPs[i] = nextInstalled
+		updated = append(updated, installed.Name)
+	}
+	if len(updated) > 0 {
+		_ = inst.saveDB(db)
+	}
+	return updated, nil
+}
+
+func (inst *Installer) installMCPEntry(ctx context.Context, entry *MCPEntry) (InstalledMCP, error) {
+	manifestPath := strings.TrimSpace(entry.Manifest)
+	if manifestPath == "" {
+		manifestPath = defaultMCPManifest
+	}
+	cleanManifestPath, err := cleanRegistryRelativePath(manifestPath)
+	if err != nil {
+		return InstalledMCP{}, fmt.Errorf("invalid manifest path for mcp server %q: %w", entry.Name, err)
+	}
+	files, err := inst.downloadMCPFiles(ctx, entry, cleanManifestPath)
+	if err != nil {
+		return InstalledMCP{}, err
+	}
+	manifestData, ok := files[cleanManifestPath]
+	if !ok {
+		return InstalledMCP{}, fmt.Errorf("mcp server %q manifest %q is missing", entry.Name, cleanManifestPath)
+	}
+	if _, err := parseMCPManifest(manifestData, entry.Name); err != nil {
+		return InstalledMCP{}, err
+	}
+
+	mcpDir := inst.mcpDir(entry.Name)
+	if err := materializePackageFiles(mcpDir, files); err != nil {
+		return InstalledMCP{}, err
+	}
+	return InstalledMCP{
+		Name:     entry.Name,
+		Version:  entry.Version,
+		Source:   "tars-hub",
+		Dir:      mcpDir,
+		Manifest: cleanManifestPath,
+	}, nil
+}
+
+func (inst *Installer) downloadMCPFiles(ctx context.Context, entry *MCPEntry, manifestPath string) (map[string][]byte, error) {
+	if len(entry.Files) == 0 {
+		return nil, fmt.Errorf("mcp server %q has no downloadable files", entry.Name)
+	}
+	files := make(map[string][]byte, len(entry.Files))
+	manifestFound := false
+	for _, file := range entry.Files {
+		relPath, err := cleanRegistryRelativePath(file.Path)
+		if err != nil {
+			return nil, fmt.Errorf("invalid file path for mcp server %q: %w", entry.Name, err)
+		}
+		content, err := inst.Registry.FetchMCPFile(ctx, entry, relPath)
+		if err != nil {
+			return nil, err
+		}
+		if err := verifyFileChecksum(content, file.SHA256); err != nil {
+			return nil, fmt.Errorf("verify %q for mcp server %q: %w", relPath, entry.Name, err)
+		}
+		files[relPath] = content
+		if relPath == manifestPath {
+			manifestFound = true
+		}
+	}
+	if !manifestFound {
+		return nil, fmt.Errorf("mcp server %q manifest %q is not declared in registry files", entry.Name, manifestPath)
+	}
+	return files, nil
+}
+
+func (inst *Installer) addMCPToDB(mcp InstalledMCP) error {
+	db, err := inst.loadDB()
+	if err != nil {
+		if os.IsNotExist(err) {
+			db = &InstalledDB{}
+		} else {
+			return err
+		}
+	}
+	key := strings.ToLower(mcp.Name)
+	for i, existing := range db.MCPs {
+		if strings.ToLower(existing.Name) == key {
+			db.MCPs[i] = mcp
+			return inst.saveDB(db)
+		}
+	}
+	db.MCPs = append(db.MCPs, mcp)
 	return inst.saveDB(db)
 }

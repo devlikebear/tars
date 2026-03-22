@@ -2,6 +2,8 @@ package skillhub
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,8 +11,10 @@ import (
 )
 
 func testIndex() RegistryIndex {
+	mcpManifest := []byte(`{"schema_version":1,"server":{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","${MCP_DIR}/sandbox"]}}`)
+	mcpReadme := []byte("# Filesystem MCP\n")
 	return RegistryIndex{
-		Version: 2,
+		Version: 3,
 		Skills: []RegistryEntry{
 			{
 				Name:           "project-start",
@@ -43,7 +47,39 @@ func testIndex() RegistryIndex {
 				Files:       []string{"tars.plugin.json", "skills/project-start/SKILL.md"},
 			},
 		},
+		MCPServers: []MCPEntry{
+			{
+				Name:        "filesystem",
+				Description: "Managed filesystem MCP server",
+				Version:     "0.1.0",
+				Author:      "devlikebear",
+				Tags:        []string{"mcp", "filesystem"},
+				Path:        "mcp-servers/filesystem",
+				Manifest:    "tars.mcp.json",
+				Files: []RegistryFile{
+					{Path: "tars.mcp.json", SHA256: sha256Hex(mcpManifest)},
+					{Path: "README.md", SHA256: sha256Hex(mcpReadme)},
+				},
+			},
+			{
+				Name:        "broken-checksum",
+				Description: "Broken checksum fixture",
+				Version:     "0.1.0",
+				Author:      "devlikebear",
+				Tags:        []string{"mcp", "broken"},
+				Path:        "mcp-servers/broken-checksum",
+				Manifest:    "tars.mcp.json",
+				Files: []RegistryFile{
+					{Path: "tars.mcp.json", SHA256: "deadbeef"},
+				},
+			},
+		},
 	}
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 func newTestServer(t *testing.T) *httptest.Server {
@@ -62,6 +98,15 @@ func newTestServer(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("/plugins/project-swarm/skills/project-start/SKILL.md", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("---\nname: project-start\n---\n# Project Start (bundled)\n"))
+	})
+	mux.HandleFunc("/mcp-servers/filesystem/tars.mcp.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"schema_version":1,"server":{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","${MCP_DIR}/sandbox"]}}`))
+	})
+	mux.HandleFunc("/mcp-servers/filesystem/README.md", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("# Filesystem MCP\n"))
+	})
+	mux.HandleFunc("/mcp-servers/broken-checksum/tars.mcp.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"schema_version":1,"server":{"name":"broken","command":"npx","args":["-y","broken"]}}`))
 	})
 	return httptest.NewServer(mux)
 }
@@ -262,6 +307,59 @@ func TestFetchPluginFile(t *testing.T) {
 	content, err := reg.FetchPluginFile(context.Background(), entry, "tars.plugin.json")
 	if err != nil {
 		t.Fatalf("FetchPluginFile: %v", err)
+	}
+	if len(content) == 0 {
+		t.Fatal("expected non-empty content")
+	}
+}
+
+func TestSearchMCPServers(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL: srv.URL + "/registry.json",
+		HTTPClient:  srv.Client(),
+	}
+	results, err := reg.SearchMCPServers(context.Background(), "filesystem")
+	if err != nil {
+		t.Fatalf("SearchMCPServers: %v", err)
+	}
+	if len(results) != 1 || results[0].Name != "filesystem" {
+		t.Fatalf("expected [filesystem], got %v", results)
+	}
+}
+
+func TestFindMCPByName(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL: srv.URL + "/registry.json",
+		HTTPClient:  srv.Client(),
+	}
+	entry, err := reg.FindMCPByName(context.Background(), "filesystem")
+	if err != nil {
+		t.Fatalf("FindMCPByName: %v", err)
+	}
+	if entry.Name != "filesystem" {
+		t.Fatalf("expected filesystem, got %s", entry.Name)
+	}
+}
+
+func TestFetchMCPFile(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL:  srv.URL + "/registry.json",
+		SkillBaseURL: srv.URL,
+		HTTPClient:   srv.Client(),
+	}
+	entry := &MCPEntry{Path: "mcp-servers/filesystem"}
+	content, err := reg.FetchMCPFile(context.Background(), entry, "tars.mcp.json")
+	if err != nil {
+		t.Fatalf("FetchMCPFile: %v", err)
 	}
 	if len(content) == 0 {
 		t.Fatal("expected non-empty content")

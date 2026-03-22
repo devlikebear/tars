@@ -207,3 +207,10 @@ func TestRootCommand_VersionFlagPrintsBuildInfo(t *testing.T) {
 		t.Fatalf("unexpected version output: %q", got)
 	}
 }
+
+func TestRootCommand_IncludesMCPSubcommand(t *testing.T) {
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	if subcmd, _, err := cmd.Find([]string{"mcp"}); err != nil || subcmd == nil || subcmd.Name() != "mcp" {
+		t.Fatalf("expected mcp subcommand, got subcmd=%v err=%v", subcmd, err)
+	}
+}

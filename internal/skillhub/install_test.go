@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -254,5 +255,101 @@ func TestUpdate(t *testing.T) {
 	db, _ = inst.loadDB()
 	if db.Skills[0].Version != "0.6.0" {
 		t.Fatalf("expected version 0.6.0, got %s", db.Skills[0].Version)
+	}
+}
+
+func TestInstallMCPAndList(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	if err := inst.InstallMCP(context.Background(), "filesystem"); err != nil {
+		t.Fatalf("InstallMCP: %v", err)
+	}
+
+	manifest := filepath.Join(tmpDir, "mcp-servers", "filesystem", "tars.mcp.json")
+	if _, err := os.Stat(manifest); err != nil {
+		t.Fatalf("manifest not found: %v", err)
+	}
+
+	mcps, err := inst.ListMCPs()
+	if err != nil {
+		t.Fatalf("ListMCPs: %v", err)
+	}
+	if len(mcps) != 1 || mcps[0].Name != "filesystem" {
+		t.Fatalf("expected [filesystem], got %v", mcps)
+	}
+
+	servers, diagnostics := LoadInstalledMCPServers(tmpDir)
+	if len(diagnostics) != 0 {
+		t.Fatalf("expected no diagnostics, got %v", diagnostics)
+	}
+	if len(servers) != 1 || servers[0].Name != "filesystem" {
+		t.Fatalf("expected one filesystem server, got %+v", servers)
+	}
+	if len(servers[0].Args) < 3 || !strings.Contains(servers[0].Args[2], filepath.Join(tmpDir, "mcp-servers", "filesystem")) {
+		t.Fatalf("expected MCP_DIR placeholder expansion, got %+v", servers[0].Args)
+	}
+}
+
+func TestInstallMCPChecksumMismatch(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	err := inst.InstallMCP(context.Background(), "broken-checksum")
+	if err == nil {
+		t.Fatal("expected checksum mismatch error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "checksum") {
+		t.Fatalf("expected checksum error, got %v", err)
+	}
+}
+
+func TestUninstallMCP(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	if err := inst.InstallMCP(context.Background(), "filesystem"); err != nil {
+		t.Fatalf("InstallMCP: %v", err)
+	}
+	if err := inst.UninstallMCP("filesystem"); err != nil {
+		t.Fatalf("UninstallMCP: %v", err)
+	}
+
+	mcps, err := inst.ListMCPs()
+	if err != nil {
+		t.Fatalf("ListMCPs: %v", err)
+	}
+	if len(mcps) != 0 {
+		t.Fatalf("expected empty list, got %v", mcps)
 	}
 }
