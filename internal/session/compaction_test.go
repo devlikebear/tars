@@ -8,6 +8,47 @@ import (
 	"time"
 )
 
+func TestBuildCompactionSummaryWithOptions_StructuredSectionsAndIdentifiers(t *testing.T) {
+	messages := []Message{
+		{
+			Role:      "user",
+			Content:   "Use $tars-github-flow and implement `/compact` for `internal/session/compaction.go` with issue #130 on branch feat/session-compaction-upgrade.",
+			Timestamp: time.Date(2026, 3, 22, 9, 0, 0, 0, time.UTC),
+		},
+		{
+			Role:      "assistant",
+			Content:   "Current code already compacts through /v1/compact and `BuildCompactionSummary`; next likely edits are `internal/tarsserver/helpers_chat.go` and `internal/tarsclient/commands_session.go`.",
+			Timestamp: time.Date(2026, 3, 22, 9, 1, 0, 0, time.UTC),
+		},
+		{
+			Role:      "user",
+			Content:   "Focus on decisions and open questions.",
+			Timestamp: time.Date(2026, 3, 22, 9, 2, 0, 0, time.UTC),
+		},
+	}
+
+	summary := BuildCompactionSummaryWithOptions(messages, CompactionSummaryOptions{
+		FocusInstructions: "Focus on decisions and open questions",
+	})
+
+	for _, needle := range []string{
+		"[COMPACTION SUMMARY]",
+		"Requested Focus:",
+		"Current Goal:",
+		"Identifiers To Preserve:",
+		"Recent Context:",
+		"Open State:",
+		"/compact",
+		"internal/session/compaction.go",
+		"feat/session-compaction-upgrade",
+		"#130",
+	} {
+		if !strings.Contains(summary, needle) {
+			t.Fatalf("expected summary to contain %q, got:\n%s", needle, summary)
+		}
+	}
+}
+
 func TestCompactTranscript(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "transcript.jsonl")
@@ -119,5 +160,25 @@ func TestCompactTranscript_WithTokenBudget(t *testing.T) {
 	}
 	if msgs[1].Content != "token budget message 8 "+strings.Repeat("x", 80) {
 		t.Fatalf("unexpected first kept message: %q", msgs[1].Content)
+	}
+}
+
+func TestCutoffIndexByRecentTokenShare_PrefersUserBoundary(t *testing.T) {
+	messages := make([]Message, 0, 30)
+	for i := 0; i < 30; i++ {
+		role := "assistant"
+		if i%2 == 0 {
+			role = "user"
+		}
+		messages = append(messages, Message{
+			Role:      role,
+			Content:   fmt.Sprintf("message %02d %s", i, strings.Repeat("x", 80)),
+			Timestamp: time.Date(2026, 3, 22, 9, 0, i, 0, time.UTC),
+		})
+	}
+
+	cutoff := cutoffIndexByRecentTokenShare(messages, 0.30, 1, 5)
+	if cutoff != 22 {
+		t.Fatalf("expected cutoff at next user boundary 22, got %d", cutoff)
 	}
 }

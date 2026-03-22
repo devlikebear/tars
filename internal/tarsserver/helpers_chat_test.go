@@ -28,6 +28,7 @@ func (s compactionStubEmbedder) Embed(_ context.Context, req memory.EmbedRequest
 type compactionLLMClient struct {
 	summary string
 	extract string
+	seen    []llm.ChatMessage
 }
 
 func (c *compactionLLMClient) Ask(_ context.Context, _ string) (string, error) {
@@ -35,6 +36,7 @@ func (c *compactionLLMClient) Ask(_ context.Context, _ string) (string, error) {
 }
 
 func (c *compactionLLMClient) Chat(_ context.Context, messages []llm.ChatMessage, _ llm.ChatOptions) (llm.ChatResponse, error) {
+	c.seen = append([]llm.ChatMessage(nil), messages...)
 	last := messages[len(messages)-1].Content
 	content := c.summary
 	if strings.Contains(last, "Return strict JSON") {
@@ -86,7 +88,7 @@ func TestCompactWithMemoryFlush_IndexesSummaryAndExtractedMemories(t *testing.T)
 		extract: `{"memories":[{"category":"preference","summary":"User prefers decaf espresso.","importance":8}]}`,
 	}
 
-	if _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, 20, client, time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC), semantic); err != nil {
+	if _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, 20, 0, "", client, time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC), semantic); err != nil {
 		t.Fatalf("compact with memory flush: %v", err)
 	}
 
@@ -96,5 +98,42 @@ func TestCompactWithMemoryFlush_IndexesSummaryAndExtractedMemories(t *testing.T)
 	}
 	if len(entries) < 2 {
 		t.Fatalf("expected summary and extracted memory entries, got %d", len(entries))
+	}
+}
+
+func TestCompactWithMemoryFlush_PassesInstructionsToLLMSummary(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	transcriptPath := store.TranscriptPath(sess.ID)
+	for i := 0; i < 8; i++ {
+		if err := session.AppendMessage(transcriptPath, session.Message{
+			Role:      "user",
+			Content:   strings.Repeat("Need a compaction summary with decisions and open questions. ", 8),
+			Timestamp: time.Date(2026, 3, 20, 8, 0, i, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append message %d: %v", i, err)
+		}
+	}
+
+	client := &compactionLLMClient{
+		summary: "[COMPACTION SUMMARY]\nFocused summary.",
+	}
+	if _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, 20, 0, "focus on decisions and open questions", client, time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("compact with memory flush: %v", err)
+	}
+
+	if len(client.seen) == 0 {
+		t.Fatal("expected stub client to be used")
+	}
+	last := client.seen[len(client.seen)-1].Content
+	if !strings.Contains(last, "Requested focus:") || !strings.Contains(last, "focus on decisions and open questions") {
+		t.Fatalf("expected focus instructions in llm prompt, got %q", last)
 	}
 }

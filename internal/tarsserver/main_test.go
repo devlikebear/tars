@@ -2552,6 +2552,66 @@ func TestCompactAPI_WithTokenBudget(t *testing.T) {
 	}
 }
 
+func TestCompactAPI_AcceptsMainAliasAndInstructions(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	sess, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+	transcriptPath := store.TranscriptPath(sess.ID)
+	for i := 0; i < 12; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		if err := session.AppendMessage(transcriptPath, session.Message{
+			Role:      role,
+			Content:   fmt.Sprintf("compact message %d about internal/session/compaction.go", i),
+			Timestamp: time.Date(2026, 3, 22, 9, 0, i, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append message %d: %v", i, err)
+		}
+	}
+
+	handler := newCompactAPIHandler(root, store, nil, logger)
+	reqBody, err := json.Marshal(map[string]any{
+		"session_id":   "main",
+		"keep_recent":  5,
+		"instructions": "focus on decisions and open questions",
+	})
+	if err != nil {
+		t.Fatalf("marshal compact request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/compact", bytes.NewReader(reqBody))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	msgs, err := session.ReadMessages(transcriptPath)
+	if err != nil {
+		t.Fatalf("read compacted transcript: %v", err)
+	}
+	if len(msgs) == 0 {
+		t.Fatalf("expected compacted transcript entries")
+	}
+	if !strings.Contains(msgs[0].Content, "Requested Focus:") {
+		t.Fatalf("expected structured summary with requested focus, got %q", msgs[0].Content)
+	}
+	if !strings.Contains(msgs[0].Content, "focus on decisions and open questions") {
+		t.Fatalf("expected instructions to persist in summary, got %q", msgs[0].Content)
+	}
+}
+
 func TestShouldForceMemoryToolCall(t *testing.T) {
 	if !shouldForceMemoryToolCall("내 취향 기억나?") {
 		t.Fatalf("expected korean memory query to be true")

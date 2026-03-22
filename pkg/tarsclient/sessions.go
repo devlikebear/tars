@@ -114,12 +114,17 @@ func (c *Client) Healthz(ctx context.Context) (HealthInfo, error) {
 }
 
 func (c *Client) Compact(ctx context.Context, sessionID string) (CompactInfo, error) {
-	id := strings.TrimSpace(sessionID)
+	return c.CompactWithOptions(ctx, CompactRequest{SessionID: sessionID})
+}
+
+func (c *Client) CompactWithOptions(ctx context.Context, req CompactRequest) (CompactInfo, error) {
+	id := strings.TrimSpace(req.SessionID)
 	if id == "" {
 		return CompactInfo{}, fmt.Errorf("session id is required")
 	}
+	req.SessionID = id
+	req.Instructions = strings.TrimSpace(req.Instructions)
 	var out CompactInfo
-	req := map[string]string{"session_id": id}
 	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/compact", req, false, &out); err != nil {
 		return CompactInfo{}, err
 	}
