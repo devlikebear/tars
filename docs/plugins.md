@@ -95,6 +95,34 @@ Hub-installed plugins go into `workspace/plugins/`.
 
 Drop a directory with a valid `tars.plugin.json` into any plugin source directory.
 
+## Trusted Hub MCP Packages
+
+TARS also supports MCP packages that are hosted directly in the trusted [`tars-skills`](https://github.com/devlikebear/tars-skills) registry instead of being embedded in a plugin.
+
+```bash
+tars mcp search
+tars mcp install safe-time
+tars mcp list
+tars mcp update
+```
+
+These packages install into `workspace/mcp-servers/` and are tracked in `workspace/skillhub.json`.
+
+Each MCP package contains a `tars.mcp.json` manifest:
+
+```json
+{
+  "schema_version": 1,
+  "server": {
+    "name": "safe-time",
+    "command": "node",
+    "args": ["${MCP_DIR}/server.js"]
+  }
+}
+```
+
+`"${MCP_DIR}"` expands to the installed package directory at runtime. All declared package files are checksum-verified during install. Runtime launch still honors `mcp_command_allowlist_json`, so the command in the manifest must be explicitly allowlisted.
+
 ## Skills vs Plugins
 
 | | Skill | Plugin |

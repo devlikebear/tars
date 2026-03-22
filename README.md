@@ -38,9 +38,9 @@ tars init && tars serve
 
 ### Extensibility
 
-- **[Skill Hub](https://github.com/devlikebear/tars-skills)** — `tars skill search`, `tars skill install`, `tars plugin install` from a public registry
+- **[Skill Hub](https://github.com/devlikebear/tars-skills)** — `tars skill search`, `tars plugin install`, and `tars mcp install` from a vetted registry
 - **Plugins** — Bundle MCP servers, tools, and skills into installable packages
-- **MCP servers** — Integrate external tool providers
+- **Managed MCP Hub** — Install checksum-verified MCP packages hosted in `tars-skills`
 - **Skills** — LLM instruction files (SKILL.md) with companion scripts
 
 ## Install
@@ -90,6 +90,19 @@ Kick off a project from chat, or use the TUI commands directly:
 
 Open the dashboard: `http://127.0.0.1:43180/dashboards`
 
+Install trusted MCP packages from the hub:
+
+```bash
+tars mcp search
+tars mcp install safe-time
+```
+
+Hub-managed MCP packages still respect `mcp_command_allowlist_json`. For example, a Node-based MCP package requires a config allowlist such as:
+
+```yaml
+mcp_command_allowlist_json: ["node"]
+```
+
 ## Requirements
 
 - Go 1.25.6+ (for building from source)
@@ -108,6 +121,7 @@ bin/tars version
 
 - [Getting Started](GETTING_STARTED.md)
 - [Project Workflow Example](examples/project/README.md)
+- [Plugin and MCP Packaging Guide](docs/plugins.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
 

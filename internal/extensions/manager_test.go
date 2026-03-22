@@ -17,10 +17,30 @@ func TestManagerReload_AggregatesSkillsPluginsAndMCP(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace")
 	workspaceSkillsDir := filepath.Join(workspaceDir, "skills", "workspace-skill")
+	hubMCPDir := filepath.Join(workspaceDir, "mcp-servers", "filesystem")
 	pluginDir := filepath.Join(root, "plugins", "ops")
 	pluginSkillsDir := filepath.Join(pluginDir, "skills", "plugin-skill")
 
 	writeFile(t, filepath.Join(workspaceSkillsDir, "SKILL.md"), "# Workspace Skill\nFrom workspace")
+	writeFile(t, filepath.Join(hubMCPDir, "tars.mcp.json"), `{
+  "schema_version": 1,
+  "server": {
+    "name": "hub-filesystem",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_DIR}/sandbox"]
+  }
+}`)
+	writeFile(t, filepath.Join(workspaceDir, "skillhub.json"), `{
+  "mcps": [
+    {
+      "name": "filesystem",
+      "version": "0.1.0",
+      "source": "tars-hub",
+      "dir": "`+hubMCPDir+`",
+      "manifest": "tars.mcp.json"
+    }
+  ]
+}`)
 	writeFile(t, filepath.Join(pluginSkillsDir, "SKILL.md"), "# Plugin Skill\nFrom plugin")
 	writeFile(t, filepath.Join(pluginDir, "tars.plugin.json"), `{
   "id":"ops",
@@ -70,14 +90,17 @@ func TestManagerReload_AggregatesSkillsPluginsAndMCP(t *testing.T) {
 	if snapshot.SkillPrompt == "" {
 		t.Fatalf("expected skill prompt block")
 	}
-	if len(snapshot.MCPServers) != 2 {
+	if len(snapshot.MCPServers) != 3 {
 		t.Fatalf("expected merged mcp servers, got %d", len(snapshot.MCPServers))
 	}
 	if len(manager.ChatTools()) != 1 {
 		t.Fatalf("expected 1 dynamic mcp tool, got %d", len(manager.ChatTools()))
 	}
-	if len(mcpRuntime.lastServers) != 2 {
+	if len(mcpRuntime.lastServers) != 3 {
 		t.Fatalf("expected runtime to receive merged server config, got %+v", mcpRuntime.lastServers)
+	}
+	if mcpRuntime.lastServers[2].Name != "hub-filesystem" {
+		t.Fatalf("expected hub-managed mcp to be merged, got %+v", mcpRuntime.lastServers)
 	}
 }
 
