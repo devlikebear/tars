@@ -188,17 +188,38 @@ type SkillDef struct {
 	RuntimePath   string `json:"runtime_path,omitempty"`
 }
 
+type PluginRequires struct {
+	Bins []string `json:"bins,omitempty"`
+	Env  []string `json:"env,omitempty"`
+}
+
+type PluginPolicies struct {
+	ToolsAllow []string `json:"tools_allow,omitempty"`
+	ToolsDeny  []string `json:"tools_deny,omitempty"`
+}
+
 type PluginDef struct {
-	ID      string `json:"id"`
-	Name    string `json:"name,omitempty"`
-	Version string `json:"version,omitempty"`
-	Source  string `json:"source,omitempty"`
-	RootDir string `json:"root_dir,omitempty"`
+	SchemaVersion         int            `json:"schema_version,omitempty"`
+	ID                    string         `json:"id"`
+	Name                  string         `json:"name,omitempty"`
+	Version               string         `json:"version,omitempty"`
+	Description           string         `json:"description,omitempty"`
+	Source                string         `json:"source,omitempty"`
+	RootDir               string         `json:"root_dir,omitempty"`
+	DefaultProjectProfile string         `json:"default_project_profile,omitempty"`
+	SupportedOS           []string       `json:"supported_os,omitempty"`
+	SupportedArch         []string       `json:"supported_arch,omitempty"`
+	Requires              PluginRequires `json:"requires,omitempty"`
+	Policies              PluginPolicies `json:"policies,omitempty"`
 }
 
 type MCPServerInfo struct {
 	Name      string `json:"name"`
 	Command   string `json:"command,omitempty"`
+	URL       string `json:"url,omitempty"`
+	Transport string `json:"transport,omitempty"`
+	Source    string `json:"source,omitempty"`
+	AuthMode  string `json:"auth_mode,omitempty"`
 	Connected bool   `json:"connected"`
 	ToolCount int    `json:"tool_count"`
 	Error     string `json:"error,omitempty"`

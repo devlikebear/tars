@@ -230,6 +230,64 @@ name: notes
 	}
 }
 
+func TestManagerReload_SkipsUnavailablePluginsAndAnnotatesMCPSource(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	pluginRoot := filepath.Join(root, "plugins")
+	writeFile(t, filepath.Join(pluginRoot, "available", "skills", "deploy", "SKILL.md"), "# Deploy")
+	writeFile(t, filepath.Join(pluginRoot, "available", "tars.plugin.json"), `{
+  "schema_version": 2,
+  "id":"available",
+  "skills":["skills"],
+  "mcp_servers":[{"name":"plugin-http","transport":"streamable_http","url":"https://example.com/mcp"}]
+}`)
+	writeFile(t, filepath.Join(pluginRoot, "blocked", "skills", "ops", "SKILL.md"), "# Ops")
+	writeFile(t, filepath.Join(pluginRoot, "blocked", "tars.plugin.json"), `{
+  "schema_version": 2,
+  "id":"blocked",
+  "requires":{"env":["PLUGIN_TOKEN"]},
+  "skills":["skills"],
+  "mcp_servers":[{"name":"blocked-http","transport":"streamable_http","url":"https://blocked.example.com/mcp"}]
+}`)
+
+	t.Setenv("PLUGIN_TOKEN", "")
+	manager, err := NewManager(Options{
+		WorkspaceDir:           workspaceDir,
+		SkillsEnabled:          true,
+		PluginsEnabled:         true,
+		PluginsAllowMCPServers: true,
+		PluginSources: []PluginSourceDir{
+			{Source: SourceWorkspace, Dir: pluginRoot},
+		},
+		MCPBaseServers: []config.MCPServer{
+			{Name: "base-http", Transport: "streamable_http", URL: "https://base.example.com/mcp"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	if err := manager.Reload(context.Background()); err != nil {
+		t.Fatalf("reload manager: %v", err)
+	}
+	snapshot := manager.Snapshot()
+	if len(snapshot.Plugins) != 1 || snapshot.Plugins[0].ID != "available" {
+		t.Fatalf("expected only available plugin in snapshot, got %+v", snapshot.Plugins)
+	}
+	if len(snapshot.Skills) != 1 || snapshot.Skills[0].Name != "deploy" {
+		t.Fatalf("expected only skill from available plugin, got %+v", snapshot.Skills)
+	}
+	if len(snapshot.MCPServers) != 2 {
+		t.Fatalf("expected base + available plugin mcp servers, got %+v", snapshot.MCPServers)
+	}
+	if snapshot.MCPServers[0].Source != "config" || snapshot.MCPServers[1].Source != "plugin" {
+		t.Fatalf("expected mcp source labels config/plugin, got %+v", snapshot.MCPServers)
+	}
+	if len(snapshot.Diagnostics) == 0 || !strings.Contains(strings.Join(snapshot.Diagnostics, "\n"), "PLUGIN_TOKEN") {
+		t.Fatalf("expected diagnostics to mention blocked plugin env, got %+v", snapshot.Diagnostics)
+	}
+}
+
 type stubMCPRuntime struct {
 	lastServers []config.MCPServer
 	tools       []tool.Tool

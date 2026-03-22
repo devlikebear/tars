@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"github.com/devlikebear/tars/internal/config"
 )
 
 type rpcRequest struct {
@@ -31,10 +33,12 @@ type rpcResponse struct {
 }
 
 type session struct {
-	stdin  io.WriteCloser
-	reader *bufio.Reader
-	abort  func()
-	mode   rpcMode
+	pooled    *pooledSession
+	stdin     io.WriteCloser
+	reader    *bufio.Reader
+	abort     func()
+	mode      rpcMode
+	transport string
 }
 
 func (c *Client) initializeSession(ctx context.Context, sess *session) error {
@@ -59,6 +63,14 @@ func (c *Client) request(ctx context.Context, sess *session, method string, para
 		ID:      id,
 		Method:  method,
 		Params:  params,
+	}
+	switch sess.transport {
+	case config.MCPTransportStreamableHTTP:
+		return c.requestStreamableHTTP(ctx, sess, req)
+	case config.MCPTransportSSE:
+		return c.requestLegacySSE(ctx, sess, req)
+	case config.MCPTransportWebSocket:
+		return c.requestWebSocket(ctx, sess, req)
 	}
 	var err error
 	switch sess.mode {
@@ -122,11 +134,18 @@ func (c *Client) request(ctx context.Context, sess *session, method string, para
 }
 
 func (c *Client) notify(ctx context.Context, sess *session, method string, params any) error {
-	_ = ctx
 	req := rpcRequest{
 		JSONRPC: "2.0",
 		Method:  method,
 		Params:  params,
+	}
+	switch sess.transport {
+	case config.MCPTransportStreamableHTTP:
+		return c.notifyStreamableHTTP(ctx, sess, req)
+	case config.MCPTransportSSE:
+		return c.notifyLegacySSE(ctx, sess, req)
+	case config.MCPTransportWebSocket:
+		return c.notifyWebSocket(ctx, sess, req)
 	}
 	if sess.mode == rpcModeJSONLine {
 		return writeRPCJSONLine(sess.stdin, req)

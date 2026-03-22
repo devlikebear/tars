@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-03-22
+
+### Added
+
+- Plugin manifest v2 metadata: `schema_version`, `requires`, `supported_os`, `supported_arch`, `default_project_profile`, and `policies`
+- Remote MCP transports for `streamable_http`, legacy `sse`, and `websocket`, alongside existing `stdio`
+- MCP server auth settings for bearer-token env injection and OAuth-backed bearer headers on remote transports
+
+### Changed
+
+- Plugin loading now applies runtime availability gating, so unavailable plugins no longer contribute skills or MCP servers
+- MCP server status APIs now expose transport, source, URL, and auth mode metadata in addition to connectivity state
+- Bundled `project-swarm` plugin manifest now declares schema version 2 and its default project profile
+
 ## [0.10.3] - 2026-03-22
 
 ### Added

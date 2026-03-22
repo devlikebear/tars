@@ -7,21 +7,28 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/gorilla/websocket"
 )
 
 type ServerConfig = config.MCPServer
 
 type ServerStatus struct {
 	Name      string `json:"name"`
-	Command   string `json:"command"`
+	Command   string `json:"command,omitempty"`
+	URL       string `json:"url,omitempty"`
+	Transport string `json:"transport,omitempty"`
+	Source    string `json:"source,omitempty"`
+	AuthMode  string `json:"auth_mode,omitempty"`
 	Connected bool   `json:"connected"`
 	ToolCount int    `json:"tool_count"`
 	Error     string `json:"error,omitempty"`
@@ -46,9 +53,16 @@ type Client struct {
 
 type pooledSession struct {
 	server      ServerConfig
+	transport   string
 	cmd         *exec.Cmd
 	stdin       io.WriteCloser
 	reader      *bufio.Reader
+	httpClient  *http.Client
+	sessionID   string
+	sseBody     io.ReadCloser
+	sseReader   *bufio.Reader
+	ssePostURL  string
+	wsConn      *websocket.Conn
 	mode        rpcMode
 	mu          sync.Mutex
 	initialized bool
@@ -94,22 +108,23 @@ func (c *Client) SetServers(servers []ServerConfig) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	nextNames := map[string]struct{}{}
+	nextByName := map[string]ServerConfig{}
 	for _, server := range normalized {
-		nextNames[server.Name] = struct{}{}
-		inferred := inferRPCMode(server)
-		if prev, ok := c.serverModes[server.Name]; ok && prev == rpcModeJSONLine && inferred == rpcModeContentLength {
+		nextByName[server.Name] = server
+		if config.MCPServerIsRemote(server) {
+			delete(c.serverModes, server.Name)
 			continue
 		}
+		inferred := inferRPCMode(server)
 		c.serverModes[server.Name] = inferred
 	}
 	for name, sess := range c.sessions {
-		if _, ok := nextNames[name]; ok {
-			continue
+		next, ok := nextByName[name]
+		if !ok || !reflect.DeepEqual(sess.server, next) {
+			sess.close()
+			delete(c.sessions, name)
+			delete(c.serverModes, name)
 		}
-		sess.close()
-		delete(c.sessions, name)
-		delete(c.serverModes, name)
 	}
 	c.servers = normalized
 }
@@ -131,6 +146,12 @@ func (s *pooledSession) close() {
 	if s.stdin != nil {
 		_ = s.stdin.Close()
 	}
+	if s.sseBody != nil {
+		_ = s.sseBody.Close()
+	}
+	if s.wsConn != nil {
+		_ = s.wsConn.Close()
+	}
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 		_, _ = s.cmd.Process.Wait()
@@ -143,7 +164,7 @@ func (c *Client) withPersistentSession(ctx context.Context, server ServerConfig,
 		return nil
 	}
 	switchedMode := false
-	if c.currentMode(server.Name) == rpcModeContentLength && shouldFallbackToJSONLine(err) {
+	if !config.MCPServerIsRemote(server) && c.currentMode(server.Name) == rpcModeContentLength && shouldFallbackToJSONLine(err) {
 		c.setServerMode(server.Name, rpcModeJSONLine)
 		switchedMode = true
 	}
@@ -165,7 +186,7 @@ func (c *Client) withPersistentSessionOnce(ctx context.Context, server ServerCon
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	ps, err := c.getOrStartSession(server)
+	ps, err := c.getOrStartSession(callCtx, server)
 	if err != nil {
 		return err
 	}
@@ -176,15 +197,17 @@ func (c *Client) withPersistentSessionOnce(ctx context.Context, server ServerCon
 	}
 
 	sess := &session{
-		stdin:  ps.stdin,
-		reader: ps.reader,
-		abort:  ps.close,
-		mode:   ps.mode,
+		pooled:    ps,
+		stdin:     ps.stdin,
+		reader:    ps.reader,
+		abort:     ps.close,
+		mode:      ps.mode,
+		transport: ps.transport,
 	}
 	if !ps.initialized {
 		if err := c.initializeSession(callCtx, sess); err != nil {
 			ps.close()
-			return fmt.Errorf("initialize mcp session (%s): %w", sess.mode.String(), err)
+			return fmt.Errorf("initialize mcp session (%s): %w", sessionLabel(ps), err)
 		}
 		ps.initialized = true
 	}
@@ -192,12 +215,12 @@ func (c *Client) withPersistentSessionOnce(ctx context.Context, server ServerCon
 		if strings.Contains(strings.ToLower(err.Error()), "broken pipe") || strings.Contains(strings.ToLower(err.Error()), "eof") {
 			ps.close()
 		}
-		return fmt.Errorf("mcp request failed (%s): %w", sess.mode.String(), err)
+		return fmt.Errorf("mcp request failed (%s): %w", sessionLabel(ps), err)
 	}
 	return nil
 }
 
-func (c *Client) getOrStartSession(server ServerConfig) (*pooledSession, error) {
+func (c *Client) getOrStartSession(ctx context.Context, server ServerConfig) (*pooledSession, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.sessions == nil {
@@ -207,31 +230,47 @@ func (c *Client) getOrStartSession(server ServerConfig) (*pooledSession, error) 
 		return existing, nil
 	}
 
-	cmd := exec.Command(server.Command, server.Args...)
-	cmd.Stderr = io.Discard
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, fmt.Errorf("create stdin pipe: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("create stdout pipe: %w", err)
-	}
-	if len(server.Env) > 0 {
-		cmd.Env = append(os.Environ(), commandEnv(server.Env)...)
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start mcp server %s: %w", server.Name, err)
+	transport := config.MCPTransportStdio
+	if server.Transport != "" {
+		transport = server.Transport
 	}
 	ps := &pooledSession{
-		server: server,
-		cmd:    cmd,
-		stdin:  stdin,
-		reader: bufio.NewReader(stdout),
-		mode:   rpcModeContentLength,
+		server:    server,
+		transport: transport,
+		mode:      rpcModeContentLength,
 	}
 	if mode, ok := c.serverModes[server.Name]; ok {
 		ps.mode = mode
+	}
+	switch transport {
+	case config.MCPTransportStreamableHTTP, config.MCPTransportSSE:
+		ps.httpClient = &http.Client{}
+	case config.MCPTransportWebSocket:
+		conn, err := c.dialWebSocket(ctx, server)
+		if err != nil {
+			return nil, err
+		}
+		ps.wsConn = conn
+	default:
+		cmd := exec.Command(server.Command, server.Args...)
+		cmd.Stderr = io.Discard
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			return nil, fmt.Errorf("create stdin pipe: %w", err)
+		}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, fmt.Errorf("create stdout pipe: %w", err)
+		}
+		if len(server.Env) > 0 {
+			cmd.Env = append(os.Environ(), commandEnv(server.Env)...)
+		}
+		if err := cmd.Start(); err != nil {
+			return nil, fmt.Errorf("start mcp server %s: %w", server.Name, err)
+		}
+		ps.cmd = cmd
+		ps.stdin = stdin
+		ps.reader = bufio.NewReader(stdout)
 	}
 	c.sessions[server.Name] = ps
 	return ps, nil
@@ -264,6 +303,9 @@ func commandEnv(extra map[string]string) []string {
 }
 
 func inferRPCMode(server ServerConfig) rpcMode {
+	if config.MCPServerIsRemote(server) {
+		return rpcModeContentLength
+	}
 	if strings.TrimSpace(server.Command) == "mcp-server-sequential-thinking" {
 		return rpcModeJSONLine
 	}
@@ -317,23 +359,11 @@ func (c *Client) serverSnapshot() []ServerConfig {
 func normalizeServers(servers []ServerConfig) []ServerConfig {
 	copyServers := make([]ServerConfig, 0, len(servers))
 	for _, s := range servers {
-		name := strings.TrimSpace(s.Name)
-		command := strings.TrimSpace(s.Command)
-		if name == "" || command == "" {
+		normalized := config.NormalizeMCPServer(s)
+		if !config.MCPServerEnabled(normalized) {
 			continue
 		}
-		copied := ServerConfig{
-			Name:    name,
-			Command: command,
-			Args:    append([]string(nil), s.Args...),
-		}
-		if len(s.Env) > 0 {
-			copied.Env = make(map[string]string, len(s.Env))
-			for k, v := range s.Env {
-				copied.Env[k] = v
-			}
-		}
-		copyServers = append(copyServers, copied)
+		copyServers = append(copyServers, normalized)
 	}
 	return copyServers
 }
@@ -376,6 +406,9 @@ func (c *Client) validateServerCommands() error {
 	c.mu.RUnlock()
 
 	for _, server := range servers {
+		if config.MCPServerIsRemote(server) {
+			continue
+		}
 		if isCommandAllowed(server.Command, allowlist) {
 			continue
 		}
@@ -386,4 +419,14 @@ func (c *Client) validateServerCommands() error {
 		)
 	}
 	return nil
+}
+
+func sessionLabel(ps *pooledSession) string {
+	if ps == nil {
+		return "unknown"
+	}
+	if ps.transport != "" && ps.transport != config.MCPTransportStdio {
+		return ps.transport
+	}
+	return ps.mode.String()
 }

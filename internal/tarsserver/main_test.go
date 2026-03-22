@@ -892,7 +892,7 @@ func TestCronRunner_DeliversToSessionAndDailyLog(t *testing.T) {
 func TestMCPAPI_ListServersAndTools(t *testing.T) {
 	provider := &mockMCPProvider{
 		servers: []mcp.ServerStatus{
-			{Name: "filesystem", Command: "npx", Connected: true, ToolCount: 2},
+			{Name: "filesystem", Command: "npx", Transport: "stdio", Source: "plugin", AuthMode: "oauth", Connected: true, ToolCount: 2},
 		},
 		tools: []mcp.ToolInfo{
 			{Server: "filesystem", Name: "read_file", Description: "read"},
@@ -912,6 +912,9 @@ func TestMCPAPI_ListServersAndTools(t *testing.T) {
 	}
 	if len(servers) != 1 || servers[0].Name != "filesystem" {
 		t.Fatalf("unexpected servers payload: %+v", servers)
+	}
+	if servers[0].Transport != "stdio" || servers[0].Source != "plugin" || servers[0].AuthMode != "oauth" {
+		t.Fatalf("expected transport/source/auth metadata, got %+v", servers[0])
 	}
 
 	toolsReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/tools", nil)
@@ -937,10 +940,10 @@ func TestExtensionsAPI_ListAndReload(t *testing.T) {
 				{Name: "deploy", RuntimePath: "_shared/skills_runtime/deploy/SKILL.md", UserInvocable: true},
 			},
 			Plugins: []plugin.Definition{
-				{ID: "ops", Name: "Ops Plugin"},
+				{SchemaVersion: 2, ID: "ops", Name: "Ops Plugin", DefaultProjectProfile: "swarm", Policies: plugin.Policies{ToolsAllow: []string{"read_file"}}},
 			},
 			MCPServers: []config.MCPServer{
-				{Name: "filesystem", Command: "npx"},
+				{Name: "filesystem", Command: "npx", Transport: "stdio", Source: "plugin"},
 			},
 		},
 	}
@@ -965,6 +968,13 @@ func TestExtensionsAPI_ListAndReload(t *testing.T) {
 	handler.ServeHTTP(pluginsRec, pluginsReq)
 	if pluginsRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for plugins, got %d body=%q", pluginsRec.Code, pluginsRec.Body.String())
+	}
+	var pluginsPayload []plugin.Definition
+	if err := json.Unmarshal(pluginsRec.Body.Bytes(), &pluginsPayload); err != nil {
+		t.Fatalf("decode plugins payload: %v", err)
+	}
+	if len(pluginsPayload) != 1 || pluginsPayload[0].SchemaVersion != 2 || pluginsPayload[0].DefaultProjectProfile != "swarm" {
+		t.Fatalf("unexpected plugins payload: %+v", pluginsPayload)
 	}
 
 	reloadReq := httptest.NewRequest(http.MethodPost, "/v1/runtime/extensions/reload", nil)

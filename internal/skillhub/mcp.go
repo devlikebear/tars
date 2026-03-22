@@ -47,37 +47,24 @@ func parseMCPManifest(data []byte, fallbackName string) (MCPManifest, error) {
 }
 
 func normalizeMCPServer(server config.MCPServer, fallbackName string) config.MCPServer {
-	out := config.MCPServer{
-		Name:    strings.TrimSpace(server.Name),
-		Command: strings.TrimSpace(server.Command),
-		Args:    make([]string, 0, len(server.Args)),
-	}
+	out := config.NormalizeMCPServer(server)
 	if out.Name == "" {
 		out.Name = strings.TrimSpace(fallbackName)
-	}
-	for _, arg := range server.Args {
-		if trimmed := strings.TrimSpace(arg); trimmed != "" {
-			out.Args = append(out.Args, trimmed)
-		}
-	}
-	if len(server.Env) > 0 {
-		out.Env = make(map[string]string, len(server.Env))
-		for key, value := range server.Env {
-			trimmedKey := strings.TrimSpace(key)
-			if trimmedKey == "" {
-				continue
-			}
-			out.Env[trimmedKey] = value
-		}
 	}
 	return out
 }
 
 func expandMCPServer(server config.MCPServer, mcpDir string) config.MCPServer {
 	out := config.MCPServer{
-		Name:    server.Name,
-		Command: expandMCPPlaceholder(server.Command, mcpDir),
-		Args:    make([]string, 0, len(server.Args)),
+		Name:          server.Name,
+		Command:       expandMCPPlaceholder(server.Command, mcpDir),
+		Transport:     server.Transport,
+		URL:           expandMCPPlaceholder(server.URL, mcpDir),
+		AuthMode:      server.AuthMode,
+		AuthTokenEnv:  server.AuthTokenEnv,
+		OAuthProvider: server.OAuthProvider,
+		Source:        server.Source,
+		Args:          make([]string, 0, len(server.Args)),
 	}
 	for _, arg := range server.Args {
 		out.Args = append(out.Args, expandMCPPlaceholder(arg, mcpDir))
@@ -86,6 +73,12 @@ func expandMCPServer(server config.MCPServer, mcpDir string) config.MCPServer {
 		out.Env = make(map[string]string, len(server.Env))
 		for key, value := range server.Env {
 			out.Env[key] = expandMCPPlaceholder(value, mcpDir)
+		}
+	}
+	if len(server.Headers) > 0 {
+		out.Headers = make(map[string]string, len(server.Headers))
+		for key, value := range server.Headers {
+			out.Headers[key] = expandMCPPlaceholder(value, mcpDir)
 		}
 	}
 	return out

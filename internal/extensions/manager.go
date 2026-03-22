@@ -129,7 +129,8 @@ func (m *Manager) Reload(ctx context.Context) error {
 	var err error
 	if m.opts.PluginsEnabled {
 		plugins, err = plugin.Load(plugin.LoadOptions{
-			Sources: toPluginSources(m.opts.PluginSources),
+			Sources:      toPluginSources(m.opts.PluginSources),
+			Availability: plugin.AvailabilityOptions{},
 		})
 		if err != nil {
 			return err
@@ -413,6 +414,7 @@ func mergeMCPServers(groups ...mcpServerGroup) ([]config.MCPServer, []string) {
 			if name == "" {
 				continue
 			}
+			server.Source = group.label
 			if idx, ok := index[name]; ok {
 				diagnostics = append(diagnostics, fmt.Sprintf("mcp server %q from %s overrides %s source", server.Name, group.label, owners[idx]))
 				out[idx] = server

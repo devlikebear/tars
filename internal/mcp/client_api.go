@@ -26,8 +26,12 @@ func (c *Client) ListServers(ctx context.Context) ([]ServerStatus, error) {
 			defer wg.Done()
 			tools, err := c.listToolsForServer(ctx, server)
 			status := ServerStatus{
-				Name:    server.Name,
-				Command: server.Command,
+				Name:      server.Name,
+				Command:   server.Command,
+				URL:       server.URL,
+				Transport: server.Transport,
+				Source:    server.Source,
+				AuthMode:  server.AuthMode,
 			}
 			if err != nil {
 				status.Error = err.Error()

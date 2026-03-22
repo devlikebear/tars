@@ -8,10 +8,22 @@ Every plugin is a directory containing a `tars.plugin.json` manifest:
 
 ```json
 {
+  "schema_version": 2,
   "id": "project-swarm",
   "name": "Project Swarm",
   "description": "Project kickoff and autonomous execution skills.",
   "version": "0.1.0",
+  "default_project_profile": "swarm",
+  "requires": {
+    "bins": ["git"],
+    "env": ["GITHUB_TOKEN"]
+  },
+  "supported_os": ["darwin", "linux"],
+  "supported_arch": ["arm64", "amd64"],
+  "policies": {
+    "tools_allow": ["read_file", "grep"],
+    "tools_deny": ["write_file"]
+  },
   "skills": ["skills"],
   "mcp_servers": []
 }
@@ -19,12 +31,32 @@ Every plugin is a directory containing a `tars.plugin.json` manifest:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `schema_version` | int | no | Manifest schema version; current version is `2` |
 | `id` | string | yes | Unique identifier, used as directory name |
 | `name` | string | no | Human-readable display name |
 | `description` | string | no | Short summary |
 | `version` | string | no | SemVer version |
+| `default_project_profile` | string | no | Suggested project profile when this plugin is active |
+| `requires` | object | no | Runtime prerequisites for the plugin itself |
+| `supported_os` | string[] | no | Restrict plugin loading to matching `GOOS` values |
+| `supported_arch` | string[] | no | Restrict plugin loading to matching `GOARCH` values |
+| `policies` | object | no | Declared tool policy metadata bundled with the plugin |
 | `skills` | string[] | no | Relative paths to skill directories within the plugin |
 | `mcp_servers` | object[] | no | MCP server definitions (see below) |
+
+`requires` currently supports:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `bins` | string[] | Each executable must be present on `PATH` |
+| `env` | string[] | Each environment variable must exist and be non-empty |
+
+`policies` currently supports:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tools_allow` | string[] | Declared tools the plugin expects to use |
+| `tools_deny` | string[] | Declared tools the plugin wants withheld |
 
 ## Skill Directories
 
@@ -74,6 +106,25 @@ arch: [arm64, amd64]
 
 The loader resolves source priority first and then evaluates these requirements. If the winning definition is unavailable, TARS skips it and emits an extension diagnostic instead of silently falling back to a lower-priority copy.
 
+## Plugin Availability
+
+Plugin manifests can gate themselves before any bundled skills or MCP servers are activated:
+
+```json
+{
+  "schema_version": 2,
+  "id": "remote-ops",
+  "requires": {
+    "bins": ["uv"],
+    "env": ["OPENAI_API_KEY"]
+  },
+  "supported_os": ["darwin", "linux"],
+  "supported_arch": ["arm64"]
+}
+```
+
+If the selected plugin copy is unavailable, TARS omits that plugin from the runtime snapshot, does not load its skill directories, does not merge its MCP servers, and emits extension diagnostics describing the missing requirements.
+
 ## MCP Servers
 
 Plugins can declare MCP servers that the runtime starts alongside the main process:
@@ -83,16 +134,40 @@ Plugins can declare MCP servers that the runtime starts alongside the main proce
   "id": "my-plugin",
   "mcp_servers": [
     {
-      "name": "my-tools",
+      "name": "local-tools",
+      "transport": "stdio",
       "command": "node",
       "args": ["server.js"],
       "env": {"PORT": "9100"}
+    },
+    {
+      "name": "remote-tools",
+      "transport": "streamable_http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {"X-Team": "core"},
+      "auth_mode": "bearer",
+      "auth_token_env": "MCP_REMOTE_TOKEN"
     }
   ]
 }
 ```
 
-The runtime manages the lifecycle of declared MCP servers and injects their tools into the agent loop.
+Supported MCP server fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Server identifier used in tool naming and status APIs |
+| `transport` | string | no | `stdio` (default), `streamable_http`, `sse`, or `websocket` |
+| `command` | string | yes for `stdio` | Executable to launch for local stdio servers |
+| `args` | string[] | no | Command arguments for `stdio` servers |
+| `env` | object | no | Extra environment variables for `stdio` servers |
+| `url` | string | yes for remote transports | Remote MCP endpoint URL |
+| `headers` | object | no | Static extra HTTP/WebSocket headers |
+| `auth_mode` | string | no | `bearer` or `oauth` for remote transports |
+| `auth_token_env` | string | no | Env var used when `auth_mode` is `bearer` |
+| `oauth_provider` | string | no | OAuth token source such as `claude-code` or `google-antigravity` |
+
+The runtime manages the lifecycle of declared MCP servers and injects their tools into the agent loop. `mcp_command_allowlist_json` still applies to local `stdio` servers. Remote transports are not command-launched, so they are not subject to the local command allowlist.
 
 ## Plugin Sources
 
@@ -170,7 +245,7 @@ At runtime, skill availability is also gated by `requires_plugin`, `requires_bin
 
 The bundled [`project-swarm`](../plugins/project-swarm) plugin is the reference:
 
-- **Manifest**: `tars.plugin.json` with `"skills": ["skills"]`
+- **Manifest**: schema v2 `tars.plugin.json` with `"default_project_profile": "swarm"` and `"skills": ["skills"]`
 - **Skills**: `project-start` (user-invocable kickoff) and `project-autopilot` (PM supervisor loop)
 - **Runtime tools**: Project board, activity log, task dispatch, and autopilot start are built into the runtime and activated when the plugin is loaded
 
