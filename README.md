@@ -36,13 +36,14 @@ tars init && tars serve
 - Built-in file tools with 2,000-line read pagination, continuation hints, and safe atomic writes
 - Structured session compaction with identifier-preserving summaries, a safer recent-tail preserve policy, and manual `/compact [instructions]`
 - Parallel read-only chat subagents through the built-in `explorer` gateway agent
+- MCP transports for local stdio servers and remote HTTP/WebSocket endpoints, with bearer or OAuth auth for remote servers
 - Semantic memory recall with Gemini embeddings (optional)
 - Playwright-based browser automation
 
 ### Extensibility
 
 - **[Skill Hub](https://github.com/devlikebear/tars-skills)** — `tars skill search`, `tars plugin install`, and `tars mcp install` from a vetted registry
-- **Plugins** — Bundle MCP servers, tools, and skills into installable packages
+- **Plugins** — Bundle skills and MCP servers with manifest metadata, runtime gating, and default project profiles
 - **Managed MCP Hub** — Install checksum-verified MCP packages hosted in `tars-skills`
 - **Skills** — LLM instruction files (SKILL.md) with companion scripts and runtime gating by plugin, binary, env, and platform requirements
 
@@ -107,7 +108,7 @@ tars mcp search
 tars mcp install safe-time
 ```
 
-Hub-managed MCP packages still respect `mcp_command_allowlist_json`. For example, a Node-based MCP package requires a config allowlist such as:
+Local stdio MCP servers still respect `mcp_command_allowlist_json`. For example, a Node-based MCP package requires a config allowlist such as:
 
 ```yaml
 mcp_command_allowlist_json: ["node"]

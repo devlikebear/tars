@@ -46,23 +46,11 @@ func parseMCPServersJSON(raw string, fallback []MCPServer) []MCPServer {
 	}
 	out := make([]MCPServer, 0, len(parsed))
 	for _, server := range parsed {
-		name := strings.TrimSpace(server.Name)
-		command := strings.TrimSpace(server.Command)
-		if name == "" || command == "" {
+		normalized := NormalizeMCPServer(server)
+		if !MCPServerEnabled(normalized) {
 			continue
 		}
-		s := MCPServer{
-			Name:    name,
-			Command: command,
-			Args:    append([]string(nil), server.Args...),
-		}
-		if len(server.Env) > 0 {
-			s.Env = make(map[string]string, len(server.Env))
-			for k, v := range server.Env {
-				s.Env[k] = v
-			}
-		}
-		out = append(out, s)
+		out = append(out, normalized)
 	}
 	if len(out) == 0 {
 		return fallback

@@ -3,7 +3,9 @@ package plugin
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -39,6 +41,7 @@ func Load(opts LoadOptions) (Snapshot, error) {
 	sort.Slice(snapshot.Plugins, func(i, j int) bool {
 		return strings.ToLower(snapshot.Plugins[i].ID) < strings.ToLower(snapshot.Plugins[j].ID)
 	})
+	snapshot = filterUnavailablePlugins(snapshot, opts.Availability)
 
 	snapshot.SkillDirs = collectSkillDirs(snapshot.Plugins, &snapshot.Diagnostics)
 	snapshot.MCPServers = collectMCPServers(snapshot.Plugins)
@@ -82,15 +85,24 @@ func loadSourcePlugins(source Source, dir string) ([]Definition, []Diagnostic, e
 		rootDir := filepath.Dir(path)
 		key := strings.ToLower(strings.TrimSpace(manifest.ID))
 		definition := Definition{
-			ID:           manifest.ID,
-			Name:         manifest.Name,
-			Description:  manifest.Description,
-			Version:      manifest.Version,
-			Source:       source,
-			RootDir:      rootDir,
-			ManifestPath: path,
-			Skills:       append([]string(nil), manifest.Skills...),
-			MCPServers:   append([]ServerConfig(nil), manifest.MCPServers...),
+			SchemaVersion:         manifest.SchemaVersion,
+			ID:                    manifest.ID,
+			Name:                  manifest.Name,
+			Description:           manifest.Description,
+			Version:               manifest.Version,
+			Source:                source,
+			RootDir:               rootDir,
+			ManifestPath:          path,
+			Skills:                append([]string(nil), manifest.Skills...),
+			MCPServers:            append([]ServerConfig(nil), manifest.MCPServers...),
+			Requires:              manifest.Requires,
+			SupportedOS:           append([]string(nil), manifest.SupportedOS...),
+			SupportedArch:         append([]string(nil), manifest.SupportedArch...),
+			DefaultProjectProfile: manifest.DefaultProjectProfile,
+			Policies: Policies{
+				ToolsAllow: append([]string(nil), manifest.Policies.ToolsAllow...),
+				ToolsDeny:  append([]string(nil), manifest.Policies.ToolsDeny...),
+			},
 		}
 		priority := manifestPriority(path)
 		if currentPriority, ok := priorities[key]; !ok || priority >= currentPriority {
@@ -183,6 +195,116 @@ func collectMCPServers(plugins []Definition) []ServerConfig {
 			seen[key] = struct{}{}
 			out = append(out, server)
 		}
+	}
+	return out
+}
+
+func filterUnavailablePlugins(snapshot Snapshot, opts AvailabilityOptions) Snapshot {
+	checker := buildAvailabilityChecker(opts)
+	if len(snapshot.Plugins) == 0 {
+		return snapshot
+	}
+	available := make([]Definition, 0, len(snapshot.Plugins))
+	for _, def := range snapshot.Plugins {
+		reasons := checker.unavailableReasons(def)
+		if len(reasons) == 0 {
+			available = append(available, def)
+			continue
+		}
+		snapshot.Diagnostics = append(snapshot.Diagnostics, Diagnostic{
+			Path:    def.ManifestPath,
+			Message: fmt.Sprintf("plugin %q unavailable: %s", def.ID, strings.Join(reasons, "; ")),
+		})
+	}
+	snapshot.Plugins = available
+	return snapshot
+}
+
+type availabilityChecker struct {
+	os         string
+	arch       string
+	hasEnv     func(string) bool
+	hasCommand func(string) bool
+}
+
+func buildAvailabilityChecker(opts AvailabilityOptions) availabilityChecker {
+	checker := availabilityChecker{
+		os:         strings.ToLower(strings.TrimSpace(opts.OS)),
+		arch:       strings.ToLower(strings.TrimSpace(opts.Arch)),
+		hasEnv:     opts.HasEnv,
+		hasCommand: opts.HasCommand,
+	}
+	if checker.os == "" {
+		checker.os = runtime.GOOS
+	}
+	if checker.arch == "" {
+		checker.arch = runtime.GOARCH
+	}
+	if checker.hasEnv == nil {
+		checker.hasEnv = func(key string) bool {
+			value, ok := os.LookupEnv(strings.TrimSpace(key))
+			return ok && strings.TrimSpace(value) != ""
+		}
+	}
+	if checker.hasCommand == nil {
+		checker.hasCommand = func(name string) bool {
+			_, err := exec.LookPath(strings.TrimSpace(name))
+			return err == nil
+		}
+	}
+	return checker
+}
+
+func (c availabilityChecker) unavailableReasons(def Definition) []string {
+	reasons := make([]string, 0, 4)
+	for _, bin := range def.Requires.Bins {
+		if !c.hasCommand(bin) {
+			reasons = append(reasons, fmt.Sprintf("missing required binary %q", bin))
+		}
+	}
+	for _, key := range def.Requires.Env {
+		if !c.hasEnv(key) {
+			reasons = append(reasons, fmt.Sprintf("missing required env %q", key))
+		}
+	}
+	if !matchesPlatform(c.os, def.SupportedOS) {
+		reasons = append(reasons, fmt.Sprintf("os %q not in supported set [%s]", c.os, strings.Join(def.SupportedOS, ", ")))
+	}
+	if !matchesPlatform(c.arch, def.SupportedArch) {
+		reasons = append(reasons, fmt.Sprintf("arch %q not in supported set [%s]", c.arch, strings.Join(def.SupportedArch, ", ")))
+	}
+	return uniqueReasons(reasons)
+}
+
+func matchesPlatform(current string, supported []string) bool {
+	if len(supported) == 0 {
+		return true
+	}
+	current = strings.ToLower(strings.TrimSpace(current))
+	for _, item := range supported {
+		if current == strings.ToLower(strings.TrimSpace(item)) {
+			return true
+		}
+	}
+	return false
+}
+
+func uniqueReasons(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
 	}
 	return out
 }

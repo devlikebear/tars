@@ -1,10 +1,17 @@
 package config
 
 type MCPServer struct {
-	Name    string            `json:"name"`
-	Command string            `json:"command"`
-	Args    []string          `json:"args,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
+	Name          string            `json:"name"`
+	Command       string            `json:"command,omitempty"`
+	Args          []string          `json:"args,omitempty"`
+	Env           map[string]string `json:"env,omitempty"`
+	Transport     string            `json:"transport,omitempty"`
+	URL           string            `json:"url,omitempty"`
+	Headers       map[string]string `json:"headers,omitempty"`
+	AuthMode      string            `json:"auth_mode,omitempty"`
+	AuthTokenEnv  string            `json:"auth_token_env,omitempty"`
+	OAuthProvider string            `json:"oauth_provider,omitempty"`
+	Source        string            `json:"source,omitempty"`
 }
 
 type UsagePrice struct {

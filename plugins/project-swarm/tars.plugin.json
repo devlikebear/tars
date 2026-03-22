@@ -1,8 +1,10 @@
 {
+  "schema_version": 2,
   "id": "project-swarm",
   "name": "Project Swarm",
   "description": "Project kickoff and autonomous execution skills for TARS project manager workflows.",
   "version": "0.1.0",
+  "default_project_profile": "swarm",
   "skills": [
     "skills"
   ]
