@@ -98,6 +98,62 @@ Use it`)
 	}
 }
 
+func TestLoad_FiltersUnavailableSkillsAndReportsDiagnostics(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace", "skills")
+	writeSkillFile(t, filepath.Join(workspaceDir, "available", "SKILL.md"), `---
+name: available
+requires_bins: [git]
+requires_env: [OPENAI_API_KEY]
+requires_plugin: deploy-tools
+os: [darwin]
+arch: [arm64]
+---
+# Available`)
+	writeSkillFile(t, filepath.Join(workspaceDir, "blocked", "SKILL.md"), `---
+name: blocked
+requires_bins: [missing-bin]
+requires_env: [MISSING_ENV]
+requires_plugin: missing-plugin
+os: [linux]
+arch: [amd64]
+---
+# Blocked`)
+
+	snapshot, err := Load(LoadOptions{
+		Sources: []SourceDir{{Source: SourceWorkspace, Dir: workspaceDir}},
+		Availability: AvailabilityOptions{
+			OS:               "darwin",
+			Arch:             "arm64",
+			InstalledPlugins: []string{"deploy-tools"},
+			HasEnv: func(key string) bool {
+				return key == "OPENAI_API_KEY"
+			},
+			HasCommand: func(name string) bool {
+				return name == "git"
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("load skills: %v", err)
+	}
+	if len(snapshot.Skills) != 1 {
+		t.Fatalf("expected only available skill, got %d", len(snapshot.Skills))
+	}
+	if snapshot.Skills[0].Name != "available" {
+		t.Fatalf("expected available skill to remain, got %+v", snapshot.Skills)
+	}
+	if len(snapshot.Diagnostics) == 0 {
+		t.Fatalf("expected diagnostics for unavailable skill")
+	}
+	joined := snapshot.Diagnostics[0].Message
+	for _, needle := range []string{"blocked", "missing-bin", "MISSING_ENV", "missing-plugin", "linux", "amd64"} {
+		if !strings.Contains(joined, needle) {
+			t.Fatalf("expected diagnostic to mention %q, got %q", needle, joined)
+		}
+	}
+}
+
 func writeSkillFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
