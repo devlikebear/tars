@@ -113,6 +113,8 @@ var configInputFields = []configInputField{
 	boolField("gateway_channels_persistence_enabled", []string{"GATEWAY_CHANNELS_PERSISTENCE_ENABLED", "TARS_GATEWAY_CHANNELS_PERSISTENCE_ENABLED"}, func(cfg *Config) *bool { return &cfg.GatewayChannelsPersistenceEnabled }),
 	intField("gateway_runs_max_records", []string{"GATEWAY_RUNS_MAX_RECORDS", "TARS_GATEWAY_RUNS_MAX_RECORDS"}, func(cfg *Config) *int { return &cfg.GatewayRunsMaxRecords }, parsePositiveInt),
 	intField("gateway_channels_max_messages_per_channel", []string{"GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "TARS_GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL"}, func(cfg *Config) *int { return &cfg.GatewayChannelsMaxMessagesPerChannel }, parsePositiveInt),
+	intField("gateway_subagents_max_threads", []string{"GATEWAY_SUBAGENTS_MAX_THREADS", "TARS_GATEWAY_SUBAGENTS_MAX_THREADS"}, func(cfg *Config) *int { return &cfg.GatewaySubagentsMaxThreads }, parsePositiveInt),
+	intField("gateway_subagents_max_depth", []string{"GATEWAY_SUBAGENTS_MAX_DEPTH", "TARS_GATEWAY_SUBAGENTS_MAX_DEPTH"}, func(cfg *Config) *int { return &cfg.GatewaySubagentsMaxDepth }, parsePositiveInt),
 	stringField("gateway_persistence_dir", []string{"GATEWAY_PERSISTENCE_DIR", "TARS_GATEWAY_PERSISTENCE_DIR"}, func(cfg *Config) *string { return &cfg.GatewayPersistenceDir }, strings.TrimSpace),
 	boolField("gateway_restore_on_startup", []string{"GATEWAY_RESTORE_ON_STARTUP", "TARS_GATEWAY_RESTORE_ON_STARTUP"}, func(cfg *Config) *bool { return &cfg.GatewayRestoreOnStartup }),
 	boolField("gateway_report_summary_enabled", []string{"GATEWAY_REPORT_SUMMARY_ENABLED", "TARS_GATEWAY_REPORT_SUMMARY_ENABLED"}, func(cfg *Config) *bool { return &cfg.GatewayReportSummaryEnabled }),

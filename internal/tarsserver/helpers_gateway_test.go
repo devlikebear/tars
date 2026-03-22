@@ -136,6 +136,49 @@ func TestBuildGatewayExecutors_SkipDisabledAndInvalid(t *testing.T) {
 	}
 }
 
+func TestBuildGatewayExecutors_AddsBuiltInExplorerExecutor(t *testing.T) {
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{
+			WorkspaceDir: t.TempDir(),
+		},
+	}
+	runPrompt := func(_ context.Context, runLabel string, prompt string, allowedTools []string) (string, error) {
+		if len(allowedTools) == 0 {
+			t.Fatalf("expected built-in explorer to forward a read-only allowlist")
+		}
+		if !strings.Contains(runLabel, "explorer") {
+			t.Fatalf("expected explorer run label, got %q", runLabel)
+		}
+		return "ok:" + prompt, nil
+	}
+
+	executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
+	found := false
+	for _, executor := range executors {
+		info := executor.Info()
+		if info.Name != "explorer" {
+			continue
+		}
+		found = true
+		if info.PolicyMode != "allowlist" {
+			t.Fatalf("expected explorer allowlist policy, got %+v", info)
+		}
+		if len(info.ToolsAllow) == 0 {
+			t.Fatalf("expected built-in explorer tools allowlist, got %+v", info)
+		}
+		out, err := executor.Execute(context.Background(), gateway.ExecuteRequest{RunID: "run_explorer", Prompt: "inspect repo"})
+		if err != nil {
+			t.Fatalf("explorer execute: %v", err)
+		}
+		if out != "ok:inspect repo" {
+			t.Fatalf("unexpected explorer output %q", out)
+		}
+	}
+	if !found {
+		t.Fatalf("expected built-in explorer executor to be registered")
+	}
+}
+
 func TestBuildGatewayExecutors_LoadWorkspaceMarkdownAgent(t *testing.T) {
 	workspace := t.TempDir()
 	agentFile := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
@@ -163,20 +206,24 @@ Find evidence first and answer with concise bullets.
 	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace}}
 
 	executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
-	if len(executors) != 1 {
-		t.Fatalf("expected markdown agent executor, got %d", len(executors))
+	var researcher gateway.AgentExecutor
+	for _, executor := range executors {
+		if executor.Info().Name == "researcher" {
+			researcher = executor
+			break
+		}
 	}
-	if executors[0].Info().Name != "researcher" {
-		t.Fatalf("unexpected executor info: %+v", executors[0].Info())
+	if researcher == nil {
+		t.Fatalf("expected researcher executor, got %+v", executors)
 	}
-	if executors[0].Info().Source != "workspace" {
-		t.Fatalf("expected workspace source, got %+v", executors[0].Info())
+	if researcher.Info().Source != "workspace" {
+		t.Fatalf("expected workspace source, got %+v", researcher.Info())
 	}
-	if !strings.Contains(executors[0].Info().Entry, "AGENT.md") {
-		t.Fatalf("expected AGENT.md entry path, got %+v", executors[0].Info())
+	if !strings.Contains(researcher.Info().Entry, "AGENT.md") {
+		t.Fatalf("expected AGENT.md entry path, got %+v", researcher.Info())
 	}
 
-	out, err := executors[0].Execute(context.Background(), gateway.ExecuteRequest{
+	out, err := researcher.Execute(context.Background(), gateway.ExecuteRequest{
 		RunID:  "run_test",
 		Prompt: "analyze TODO list",
 	})
@@ -232,10 +279,17 @@ func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.
 	}
 
 	executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
-	if len(executors) != 1 {
-		t.Fatalf("expected one executor, got %d", len(executors))
+	var researcher gateway.AgentExecutor
+	for _, executor := range executors {
+		if executor.Info().Name == "researcher" {
+			researcher = executor
+			break
+		}
 	}
-	out, err := executors[0].Execute(context.Background(), gateway.ExecuteRequest{Prompt: "hello"})
+	if researcher == nil {
+		t.Fatalf("expected configured researcher executor, got %+v", executors)
+	}
+	out, err := researcher.Execute(context.Background(), gateway.ExecuteRequest{Prompt: "hello"})
 	if err != nil {
 		t.Fatalf("executor execute: %v", err)
 	}

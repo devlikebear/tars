@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,6 +71,38 @@ func buildGatewayExecutors(
 		}
 		out = append(out, executor)
 		registeredNames[strings.ToLower(name)] = struct{}{}
+	}
+
+	if runPrompt != nil {
+		if _, exists := registeredNames["explorer"]; !exists {
+			executor, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+				Name:        "explorer",
+				Description: "Built-in read-only codebase exploration agent",
+				Source:      "builtin",
+				Entry:       "llm-loop:explorer",
+				PolicyMode:  "allowlist",
+				ToolsAllow: []string{
+					"memory_get", "memory_search",
+					"project_activity_get", "project_board_get", "project_brief_get", "project_get", "project_list", "project_state_get",
+					"read", "read_file", "list_dir", "glob",
+					"research_report", "usage_report",
+				},
+				RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error) {
+					label := strings.TrimSpace(runLabel)
+					if label == "" {
+						label = "spawn"
+					}
+					label += ":explorer"
+					return runPrompt(ctx, label, prompt, allowedTools)
+				},
+			})
+			if err != nil {
+				logger.Warn().Err(err).Msg("failed to build built-in explorer executor")
+			} else {
+				out = append(out, executor)
+				registeredNames["explorer"] = struct{}{}
+			}
+		}
 	}
 
 	if runPrompt == nil {

@@ -33,6 +33,7 @@ tars init && tars serve
 - Terminal client with a Bubble Tea TUI + local HTTP API (`tars serve`)
 - Session lifecycle, transcript storage, and context compaction
 - Agent loop with built-in file, process, scheduling, memory, and ops tools
+- Parallel read-only chat subagents through the built-in `explorer` gateway agent
 - Semantic memory recall with Gemini embeddings (optional)
 - Playwright-based browser automation
 
@@ -86,6 +87,13 @@ Kick off a project from chat, or use the TUI commands directly:
 /project board <project-id>
 /project dispatch <project-id> todo
 /project autopilot start <project-id>
+```
+
+For read-heavy codebase research in chat, TARS can now fan out parallel `explorer` subagents and merge back compact summaries. The runtime defaults are:
+
+```yaml
+gateway_subagents_max_threads: 4
+gateway_subagents_max_depth: 1
 ```
 
 Open the dashboard: `http://127.0.0.1:43180/dashboards`

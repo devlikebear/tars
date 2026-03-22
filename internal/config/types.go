@@ -159,6 +159,8 @@ type GatewayConfig struct {
 	GatewayChannelsPersistenceEnabled    bool
 	GatewayRunsMaxRecords                int
 	GatewayChannelsMaxMessagesPerChannel int
+	GatewaySubagentsMaxThreads           int
+	GatewaySubagentsMaxDepth             int
 	GatewayPersistenceDir                string
 	GatewayRestoreOnStartup              bool
 	GatewayReportSummaryEnabled          bool

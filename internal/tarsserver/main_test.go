@@ -21,6 +21,7 @@ import (
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/envloader"
 	"github.com/devlikebear/tars/internal/extensions"
+	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/heartbeat"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
@@ -1478,6 +1479,114 @@ func TestChatAPI_ToolCallReadFile(t *testing.T) {
 	}
 	if !strings.Contains(last.Content, "workspace note") {
 		t.Fatalf("expected tool result content to include file text, got %q", last.Content)
+	}
+}
+
+func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	runPrompt := func(_ context.Context, _ string, prompt string, allowedTools []string) (string, error) {
+		if len(allowedTools) == 0 {
+			t.Fatalf("expected explorer allowlist to be present")
+		}
+		return "summary: " + prompt, nil
+	}
+	explorer, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+		Name:        "explorer",
+		Description: "Read-only explorer",
+		PolicyMode:  "allowlist",
+		ToolsAllow:  []string{"read_file", "list_dir", "glob"},
+		RunPrompt:   runPrompt,
+	})
+	if err != nil {
+		t.Fatalf("new explorer executor: %v", err)
+	}
+	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+		Enabled:                    true,
+		WorkspaceDir:               root,
+		SessionStore:               store,
+		Executors:                  []gateway.AgentExecutor{explorer},
+		DefaultAgent:               "explorer",
+		GatewaySubagentsMaxThreads: 4,
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := runtime.Close(ctx); err != nil {
+			t.Fatalf("close gateway runtime: %v", err)
+		}
+	})
+
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:   "call_subagents_1",
+							Name: "subagents_run",
+							Arguments: `{"tasks":[
+								{"title":"backend","prompt":"inspect backend"},
+								{"title":"docs","prompt":"inspect docs"}
+							]}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "Merged subagent findings.",
+				},
+			},
+		},
+	}
+
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		mockClient,
+		logger,
+		8,
+		nil,
+		"",
+		chatToolingOptions{Gateway: runtime},
+	)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"parallel inspect this repo"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"tool_name":"subagents_run"`) {
+		t.Fatalf("expected subagents_run tool call in SSE, got %q", body)
+	}
+	if !strings.Contains(body, "Merged subagent findings.") {
+		t.Fatalf("expected final assistant response, got %q", body)
+	}
+	if mockClient.callCount != 2 {
+		t.Fatalf("expected 2 llm calls (tool + final), got %d", mockClient.callCount)
+	}
+	if len(mockClient.seenTools) == 0 {
+		t.Fatalf("expected captured tool schemas")
+	}
+	found := false
+	for _, name := range mockClient.seenTools[0] {
+		if name == "subagents_run" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected subagents_run to be injected, got %+v", mockClient.seenTools)
 	}
 }
 

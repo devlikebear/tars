@@ -323,6 +323,8 @@ func buildAPIMux(
 		GatewayChannelsPersistenceEnabled:    cfg.GatewayChannelsPersistenceEnabled,
 		GatewayRunsMaxRecords:                cfg.GatewayRunsMaxRecords,
 		GatewayChannelsMaxMessagesPerChannel: cfg.GatewayChannelsMaxMessagesPerChannel,
+		GatewaySubagentsMaxThreads:           cfg.GatewaySubagentsMaxThreads,
+		GatewaySubagentsMaxDepth:             cfg.GatewaySubagentsMaxDepth,
 		GatewayPersistenceDir:                cfg.GatewayPersistenceDir,
 		GatewayRestoreOnStartup:              cfg.GatewayRestoreOnStartup,
 		GatewayReportSummaryEnabled:          cfg.GatewayReportSummaryEnabled,

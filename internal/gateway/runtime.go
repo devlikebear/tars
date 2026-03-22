@@ -21,6 +21,12 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 	if opts.GatewayChannelsMaxMessagesPerChannel <= 0 {
 		opts.GatewayChannelsMaxMessagesPerChannel = 500
 	}
+	if opts.GatewaySubagentsMaxThreads <= 0 {
+		opts.GatewaySubagentsMaxThreads = 4
+	}
+	if opts.GatewaySubagentsMaxDepth <= 0 {
+		opts.GatewaySubagentsMaxDepth = 1
+	}
 	if strings.TrimSpace(opts.GatewayPersistenceDir) == "" {
 		opts.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(opts.WorkspaceDir), "_shared", "gateway")
 	}

@@ -244,5 +244,9 @@ llm_api_key: ${OPENAI_API_KEY}
 
 # Gateway is enabled so bundled project workflows can dispatch local agents.
 gateway_enabled: true
+
+# Optional subagent limits for parallel read-only research in chat.
+# gateway_subagents_max_threads: 4
+# gateway_subagents_max_depth: 1
 `+"\n", workspaceDir))
 }

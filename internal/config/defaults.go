@@ -41,6 +41,8 @@ const (
 	defaultGatewayWatchDebounceMS        = 200
 	defaultGatewayRunsMaxRecords         = 2000
 	defaultGatewayChannelsMaxMessages    = 500
+	defaultGatewaySubagentsMaxThreads    = 4
+	defaultGatewaySubagentsMaxDepth      = 1
 	defaultGatewayArchiveRetentionDays   = 30
 	defaultGatewayArchiveMaxFileBytes    = 10485760
 	defaultChannelsTelegramDMPolicy      = "pairing"
@@ -137,6 +139,8 @@ func defaultConfigValues() Config {
 			GatewayChannelsPersistenceEnabled:    true,
 			GatewayRunsMaxRecords:                defaultGatewayRunsMaxRecords,
 			GatewayChannelsMaxMessagesPerChannel: defaultGatewayChannelsMaxMessages,
+			GatewaySubagentsMaxThreads:           defaultGatewaySubagentsMaxThreads,
+			GatewaySubagentsMaxDepth:             defaultGatewaySubagentsMaxDepth,
 			GatewayRestoreOnStartup:              true,
 			GatewayReportSummaryEnabled:          true,
 			GatewayArchiveEnabled:                false,

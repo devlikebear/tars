@@ -63,5 +63,6 @@ const memoryToolSystemRule = `
 
 ## Runtime Tool Policy
 - For async background agent tasks across sessions, use sessions_spawn and sessions_runs.
+- For parallel read-only codebase exploration or diff review, prefer subagents_run before manually coordinating multiple sessions.
 - For channel or gateway runtime operations, use message / gateway tools when available.
 `

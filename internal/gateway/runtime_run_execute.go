@@ -203,17 +203,23 @@ func (r *Runtime) appendRunSummaryToMain(run Run, response string) {
 	if r == nil || sessionStore == nil || strings.TrimSpace(run.SessionID) == "" {
 		return
 	}
-	targetSession, err := sessionStore.Get(run.SessionID)
-	if err != nil || !targetSession.Hidden || !strings.EqualFold(strings.TrimSpace(targetSession.Kind), "worker") {
+	targetSessionID := strings.TrimSpace(run.ParentSessionID)
+	if targetSessionID == "" {
+		targetSession, err := sessionStore.Get(run.SessionID)
+		if err != nil || !targetSession.Hidden || !strings.EqualFold(strings.TrimSpace(targetSession.Kind), "worker") {
+			return
+		}
+		mainSession, err := sessionStore.EnsureMain()
+		if err != nil || strings.TrimSpace(mainSession.ID) == "" || strings.TrimSpace(mainSession.ID) == strings.TrimSpace(run.SessionID) {
+			return
+		}
+		targetSessionID = mainSession.ID
+	}
+	if strings.TrimSpace(targetSessionID) == strings.TrimSpace(run.SessionID) {
 		return
 	}
-	mainSession, err := sessionStore.EnsureMain()
-	if err != nil || strings.TrimSpace(mainSession.ID) == "" || strings.TrimSpace(mainSession.ID) == strings.TrimSpace(run.SessionID) {
-		return
-	}
-
 	summary := buildRunSummaryMessage(run, response)
-	_ = r.appendSessionMessage(run.WorkspaceID, mainSession.ID, "system", summary, r.nowFn().UTC())
+	_ = r.appendSessionMessage(run.WorkspaceID, targetSessionID, "system", summary, r.nowFn().UTC())
 }
 
 func buildRunSummaryMessage(run Run, response string) string {

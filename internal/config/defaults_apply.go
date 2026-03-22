@@ -271,6 +271,12 @@ func applyGatewayDefaults(cfg *Config, defaults Config) {
 	if cfg.GatewayChannelsMaxMessagesPerChannel <= 0 {
 		cfg.GatewayChannelsMaxMessagesPerChannel = defaults.GatewayChannelsMaxMessagesPerChannel
 	}
+	if cfg.GatewaySubagentsMaxThreads <= 0 {
+		cfg.GatewaySubagentsMaxThreads = defaults.GatewaySubagentsMaxThreads
+	}
+	if cfg.GatewaySubagentsMaxDepth <= 0 {
+		cfg.GatewaySubagentsMaxDepth = defaults.GatewaySubagentsMaxDepth
+	}
 	if strings.TrimSpace(cfg.GatewayPersistenceDir) == "" {
 		cfg.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway")
 	}
