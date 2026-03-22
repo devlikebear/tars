@@ -44,7 +44,7 @@ tars init && tars serve
 - **[Skill Hub](https://github.com/devlikebear/tars-skills)** — `tars skill search`, `tars plugin install`, and `tars mcp install` from a vetted registry
 - **Plugins** — Bundle MCP servers, tools, and skills into installable packages
 - **Managed MCP Hub** — Install checksum-verified MCP packages hosted in `tars-skills`
-- **Skills** — LLM instruction files (SKILL.md) with companion scripts
+- **Skills** — LLM instruction files (SKILL.md) with companion scripts and runtime gating by plugin, binary, env, and platform requirements
 
 ## Install
 

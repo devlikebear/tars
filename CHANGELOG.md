@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-03-22
+
+### Added
+
+- Skill runtime gating for `SKILL.md` frontmatter: `requires_plugin`, `requires_bins`, `requires_env`, `os`, and `arch`
+
+### Changed
+
+- Unavailable skills are now excluded from the runtime snapshot and prompt, with extension diagnostics explaining missing plugins, binaries, environment variables, or platform mismatches
+- Plugin source priority documentation now matches runtime behavior: `workspace > user > bundled`
+
 ## [0.10.2] - 2026-03-22
 
 ### Added

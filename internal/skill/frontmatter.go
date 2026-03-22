@@ -10,6 +10,11 @@ type Frontmatter struct {
 	Name                    string
 	Description             string
 	UserInvocable           *bool
+	RequiresPlugin          string
+	RequiresBins            []string
+	RequiresEnv             []string
+	OS                      []string
+	Arch                    []string
 	RecommendedTools        []string
 	RecommendedProjectFiles []string
 	WakePhases              []string
@@ -55,6 +60,14 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 			return
 		}
 		switch currentListKey {
+		case "requires_bins":
+			meta.RequiresBins = normalizeFrontmatterList(currentList)
+		case "requires_env":
+			meta.RequiresEnv = normalizeFrontmatterList(currentList)
+		case "os":
+			meta.OS = normalizeFrontmatterList(currentList)
+		case "arch":
+			meta.Arch = normalizeFrontmatterList(currentList)
 		case "recommended_tools":
 			meta.RecommendedTools = normalizeFrontmatterList(currentList)
 		case "recommended_project_files":
@@ -81,7 +94,7 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 		if !ok {
 			return Frontmatter{}, fmt.Errorf("invalid frontmatter line: %q", line)
 		}
-		k := strings.ToLower(strings.TrimSpace(key))
+		k := canonicalFrontmatterKey(key)
 		v := strings.TrimSpace(value)
 		if v == "" && isFrontmatterListKey(k) {
 			currentListKey = k
@@ -94,12 +107,22 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 			meta.Name = v
 		case "description":
 			meta.Description = v
-		case "user-invocable", "user_invocable":
+		case "user_invocable":
 			parsed, err := strconv.ParseBool(v)
 			if err != nil {
 				return Frontmatter{}, fmt.Errorf("invalid user-invocable value %q", v)
 			}
 			meta.UserInvocable = &parsed
+		case "requires_plugin":
+			meta.RequiresPlugin = v
+		case "requires_bins":
+			meta.RequiresBins = parseFrontmatterListValue(v)
+		case "requires_env":
+			meta.RequiresEnv = parseFrontmatterListValue(v)
+		case "os":
+			meta.OS = parseFrontmatterListValue(v)
+		case "arch":
+			meta.Arch = parseFrontmatterListValue(v)
 		case "recommended_tools":
 			meta.RecommendedTools = parseFrontmatterListValue(v)
 		case "recommended_project_files":
@@ -114,11 +137,18 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 
 func isFrontmatterListKey(key string) bool {
 	switch key {
-	case "recommended_tools", "recommended_project_files", "wake_phases":
+	case "requires_bins", "requires_env", "os", "arch", "recommended_tools", "recommended_project_files", "wake_phases":
 		return true
 	default:
 		return false
 	}
+}
+
+func canonicalFrontmatterKey(raw string) string {
+	key := strings.ToLower(strings.TrimSpace(raw))
+	key = strings.ReplaceAll(key, "-", "_")
+	key = strings.ReplaceAll(key, ".", "_")
+	return key
 }
 
 func parseFrontmatterListValue(raw string) []string {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -180,6 +181,53 @@ func TestManagerWatch_BumpsVersionOnSkillChange(t *testing.T) {
 		time.Sleep(30 * time.Millisecond)
 	}
 	t.Fatalf("expected snapshot version to increase after file update (before=%d after=%d)", before, manager.Snapshot().Version)
+}
+
+func TestManagerReload_SkipsUnavailableSkillsFromSnapshotAndPrompt(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	writeFile(t, filepath.Join(workspaceDir, "skills", "deploy", "SKILL.md"), `---
+name: deploy
+requires_env: [DEPLOY_TOKEN]
+---
+# Deploy`)
+	writeFile(t, filepath.Join(workspaceDir, "skills", "notes", "SKILL.md"), `---
+name: notes
+---
+# Notes`)
+
+	t.Setenv("DEPLOY_TOKEN", "")
+	manager, err := NewManager(Options{
+		WorkspaceDir:   workspaceDir,
+		SkillsEnabled:  true,
+		PluginsEnabled: false,
+		SkillSources: []skill.SourceDir{
+			{Source: skill.SourceWorkspace, Dir: filepath.Join(workspaceDir, "skills")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	if err := manager.Reload(context.Background()); err != nil {
+		t.Fatalf("reload manager: %v", err)
+	}
+	snapshot := manager.Snapshot()
+	if len(snapshot.Skills) != 1 || snapshot.Skills[0].Name != "notes" {
+		t.Fatalf("expected only notes skill in snapshot, got %+v", snapshot.Skills)
+	}
+	if strings.Contains(snapshot.SkillPrompt, "<name>deploy</name>") {
+		t.Fatalf("expected unavailable skill to be removed from prompt, got %q", snapshot.SkillPrompt)
+	}
+	if _, ok := manager.FindSkill("deploy"); ok {
+		t.Fatalf("expected unavailable skill to be absent from manager lookup")
+	}
+	if _, ok := manager.FindSkill("notes"); !ok {
+		t.Fatalf("expected available skill to remain in manager lookup")
+	}
+	if len(snapshot.Diagnostics) == 0 || !strings.Contains(strings.Join(snapshot.Diagnostics, "\n"), "DEPLOY_TOKEN") {
+		t.Fatalf("expected diagnostics to mention missing env var, got %+v", snapshot.Diagnostics)
+	}
 }
 
 type stubMCPRuntime struct {

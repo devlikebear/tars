@@ -7,6 +7,14 @@ func TestParseFrontmatter(t *testing.T) {
 name: quick_notes
 description: Quick note capture helper
 user-invocable: false
+requires_plugin: deploy-tools
+requires_bins:
+  - git
+  - gh
+requires_env: [GITHUB_TOKEN, OPENAI_API_KEY]
+os: [darwin, linux]
+arch:
+  - arm64
 recommended_tools:
   - read_file
   - write_file
@@ -28,6 +36,21 @@ Use this skill for short capture.
 	}
 	if meta.UserInvocable == nil || *meta.UserInvocable {
 		t.Fatalf("expected user-invocable=false, got %+v", meta.UserInvocable)
+	}
+	if meta.RequiresPlugin != "deploy-tools" {
+		t.Fatalf("expected requires_plugin=deploy-tools, got %q", meta.RequiresPlugin)
+	}
+	if got := len(meta.RequiresBins); got != 2 {
+		t.Fatalf("expected 2 required bins, got %+v", meta.RequiresBins)
+	}
+	if got := len(meta.RequiresEnv); got != 2 {
+		t.Fatalf("expected 2 required env vars, got %+v", meta.RequiresEnv)
+	}
+	if got := len(meta.OS); got != 2 {
+		t.Fatalf("expected 2 os values, got %+v", meta.OS)
+	}
+	if got := len(meta.Arch); got != 1 {
+		t.Fatalf("expected 1 arch value, got %+v", meta.Arch)
 	}
 	if got := len(meta.RecommendedTools); got != 2 {
 		t.Fatalf("expected 2 recommended tools, got %+v", meta.RecommendedTools)
@@ -63,5 +86,34 @@ name: broken`
 	_, _, err := ParseFrontmatter(raw)
 	if err == nil {
 		t.Fatal("expected error for unterminated frontmatter")
+	}
+}
+
+func TestParseFrontmatter_SupportsDotRequiresKeys(t *testing.T) {
+	raw := `---
+name: gated
+requires.bins: [uv, node]
+requires.env:
+  - GEMINI_API_KEY
+os: darwin, linux
+arch: [amd64, arm64]
+---
+# Gated
+`
+	meta, _, err := ParseFrontmatter(raw)
+	if err != nil {
+		t.Fatalf("parse frontmatter: %v", err)
+	}
+	if got := len(meta.RequiresBins); got != 2 {
+		t.Fatalf("expected 2 required bins, got %+v", meta.RequiresBins)
+	}
+	if got := len(meta.RequiresEnv); got != 1 {
+		t.Fatalf("expected 1 required env var, got %+v", meta.RequiresEnv)
+	}
+	if got := len(meta.OS); got != 2 {
+		t.Fatalf("expected 2 os values, got %+v", meta.OS)
+	}
+	if got := len(meta.Arch); got != 2 {
+		t.Fatalf("expected 2 arch values, got %+v", meta.Arch)
 	}
 }

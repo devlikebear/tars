@@ -139,7 +139,12 @@ func (m *Manager) Reload(ctx context.Context) error {
 	skills := skill.Snapshot{}
 	if m.opts.SkillsEnabled {
 		skillSources := mergeSkillSources(m.opts.SkillSources, plugins.Plugins, plugins.SkillDirs)
-		skills, err = skill.Load(skill.LoadOptions{Sources: skillSources})
+		skills, err = skill.Load(skill.LoadOptions{
+			Sources: skillSources,
+			Availability: skill.AvailabilityOptions{
+				InstalledPlugins: pluginIDs(plugins.Plugins),
+			},
+		})
 		if err != nil {
 			return err
 		}
@@ -303,6 +308,20 @@ func (m *Manager) watchDirs() []string {
 		}
 	}
 	return uniqueStrings(dirs)
+}
+
+func pluginIDs(defs []plugin.Definition) []string {
+	if len(defs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(defs))
+	for _, def := range defs {
+		if strings.TrimSpace(def.ID) == "" {
+			continue
+		}
+		out = append(out, def.ID)
+	}
+	return out
 }
 
 func addWatchRecursive(w *fsnotify.Watcher, root string) error {

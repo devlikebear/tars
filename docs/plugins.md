@@ -44,6 +44,36 @@ plugins/project-swarm/
 
 With `"skills": ["skills"]`, both `project-start` and `project-autopilot` are discovered.
 
+## Skill Frontmatter
+
+`SKILL.md` files use YAML frontmatter plus Markdown body content. TARS supports the shared `name`, `description`, and `user-invocable` fields, plus runtime gating fields that control whether a skill is exposed in the current environment.
+
+```yaml
+---
+name: deploy
+description: Ship the current branch through GitHub Flow
+user-invocable: true
+requires_plugin: project-swarm
+requires_bins: [git, gh]
+requires_env: [GITHUB_TOKEN]
+os: [darwin, linux]
+arch: [arm64, amd64]
+---
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | no | Display name; defaults to the directory name |
+| `description` | string | no | Short summary shown in the skill prompt |
+| `user-invocable` | bool | no | Exposes the skill as `/skill-name` |
+| `requires_plugin` | string | no | Requires an installed plugin with the same `id` |
+| `requires_bins` | string[] | no | Requires each named executable to be present on `PATH` |
+| `requires_env` | string[] | no | Requires each environment variable to exist and be non-empty |
+| `os` | string[] | no | Restricts loading to matching `GOOS` values |
+| `arch` | string[] | no | Restricts loading to matching `GOARCH` values |
+
+The loader resolves source priority first and then evaluates these requirements. If the winning definition is unavailable, TARS skips it and emits an extension diagnostic instead of silently falling back to a lower-priority copy.
+
 ## MCP Servers
 
 Plugins can declare MCP servers that the runtime starts alongside the main process:
@@ -69,8 +99,8 @@ The runtime manages the lifecycle of declared MCP servers and injects their tool
 The runtime loads plugins from multiple sources, in priority order:
 
 1. **Workspace plugins** — `workspace/plugins/` (highest priority, user-managed)
-2. **Bundled plugins** — `share/tars/plugins/` (shipped with the binary)
-3. **User plugins** — `~/.tars/plugins/` (user-global)
+2. **User plugins** — `~/.tars/plugins/` (user-global)
+3. **Bundled plugins** — `share/tars/plugins/` (shipped with the binary)
 
 When plugins with the same `id` exist in multiple sources, the highest-priority source wins.
 
@@ -133,6 +163,8 @@ Each MCP package contains a `tars.mcp.json` manifest:
 | Relationship | Can require a plugin via `requires_plugin` | Can bundle skills via `skills` directories |
 
 A skill can work independently if it only needs built-in tools. When a skill requires tools provided by a plugin, its registry entry declares `requires_plugin`, and `tars skill install` warns if the dependency is missing.
+
+At runtime, skill availability is also gated by `requires_plugin`, `requires_bins`, `requires_env`, `os`, and `arch`, so only usable skills appear in the active prompt and manager snapshot.
 
 ## Reference Implementation
 
