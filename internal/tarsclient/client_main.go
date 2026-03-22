@@ -73,6 +73,7 @@ func helpText(advanced bool) string {
 	sessionSection := `
 Session:
   /session
+  /compact [instructions]
 `
 	debugSection := ""
 	if advanced {

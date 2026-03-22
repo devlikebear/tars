@@ -39,9 +39,28 @@ func cmdSession(c commandContext) (bool, string, error) {
 		fmt.Fprintf(c.stdout, "SYSTEM > %s\n", singleMainSessionMessage())
 		return true, c.session, nil
 	case "/compact":
-		fmt.Fprintf(c.stdout, "SYSTEM > %s\n", singleMainSessionMessage())
+		info, err := c.runtime.compact(c.ctx, compactRequest{
+			SessionID:    "main",
+			Instructions: parseCompactInstructions(c.line),
+		})
+		if err != nil {
+			return true, c.session, err
+		}
+		fmt.Fprintf(c.stdout, "SYSTEM > %s\n", strings.TrimSpace(info.Message))
 		return true, c.session, nil
 	default:
 		return false, c.session, nil
 	}
+}
+
+func parseCompactInstructions(line string) string {
+	trimmed := strings.TrimSpace(line)
+	if len(trimmed) < len("/compact") || !strings.HasPrefix(strings.ToLower(trimmed), "/compact") {
+		return ""
+	}
+	rest := strings.TrimSpace(trimmed[len("/compact"):])
+	if strings.HasPrefix(rest, ":") {
+		rest = strings.TrimSpace(rest[1:])
+	}
+	return rest
 }

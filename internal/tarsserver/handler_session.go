@@ -339,6 +339,7 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.
 			SessionID        string `json:"session_id"`
 			KeepRecent       int    `json:"keep_recent"`
 			KeepRecentTokens int    `json:"keep_recent_tokens"`
+			Instructions     string `json:"instructions"`
 		}
 		if !decodeJSONBody(w, r, &req) {
 			return
@@ -349,12 +350,23 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "session_id is required"})
 			return
 		}
+		publicSessionID := sessionID
 
 		reqStore, resolvedWorkspaceDir, _, err := resolveSessionStoreForRequest(workspaceDir, store, r)
 		if err != nil {
 			logger.Error().Err(err).Msg("resolve workspace session store failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
 			return
+		}
+		if strings.EqualFold(sessionID, "main") {
+			resolvedMainID, err := resolveMainSessionID(reqStore, "")
+			if err != nil {
+				logger.Error().Err(err).Msg("resolve main session failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve main session failed"})
+				return
+			}
+			sessionID = resolvedMainID
+			publicSessionID = publicMainSessionLabel(resolvedMainID)
 		}
 		if _, err := reqStore.Get(sessionID); err != nil {
 			if strings.Contains(err.Error(), "session not found") {
@@ -367,25 +379,43 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.
 		}
 
 		now := time.Now().UTC()
-		result, err := compactWithMemoryFlush(resolvedWorkspaceDir, reqStore.TranscriptPath(sessionID), sessionID, req.KeepRecent, req.KeepRecentTokens, client, now)
+		keepRecentFraction := 0.0
+		if req.KeepRecent <= 0 && req.KeepRecentTokens <= 0 {
+			keepRecentFraction = session.DefaultKeepRecentFraction
+		}
+		result, err := compactWithMemoryFlush(
+			resolvedWorkspaceDir,
+			reqStore.TranscriptPath(sessionID),
+			sessionID,
+			req.KeepRecent,
+			req.KeepRecentTokens,
+			keepRecentFraction,
+			req.Instructions,
+			client,
+			now,
+		)
 		if err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("compact transcript failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compact failed"})
 			return
 		}
+		displaySessionID := publicSessionID
+		if strings.TrimSpace(displaySessionID) == "" {
+			displaySessionID = sessionID
+		}
 
 		message := fmt.Sprintf(
 			"compaction complete (session=%s compacted=%d final=%d)",
-			sessionID,
+			displaySessionID,
 			result.CompactedCount,
 			result.FinalCount,
 		)
 		if !result.Compacted {
-			message = fmt.Sprintf("compaction skipped (session=%s message_count=%d)", sessionID, result.OriginalCount)
+			message = fmt.Sprintf("compaction skipped (session=%s message_count=%d)", displaySessionID, result.OriginalCount)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"message":        message,
-			"session_id":     sessionID,
+			"session_id":     publicSessionID,
 			"compacted":      result.Compacted,
 			"original_count": result.OriginalCount,
 			"final_count":    result.FinalCount,

@@ -128,19 +128,42 @@ func TestExecuteCommand_ModelListIsUnsupported(t *testing.T) {
 	}
 }
 
-func TestExecuteCommand_CompactRequiresSession(t *testing.T) {
+func TestExecuteCommand_CompactUsesMainSession(t *testing.T) {
+	var seenBody struct {
+		SessionID    string `json:"session_id"`
+		Instructions string `json:"instructions"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/compact":
+			if err := json.NewDecoder(r.Body).Decode(&seenBody); err != nil {
+				t.Fatalf("decode compact body: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": "compaction complete"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	runtime := runtimeClient{serverURL: "http://127.0.0.1:43180"}
-	handled, session, err := executeCommand(context.Background(), runtime, "/compact", "", stdout, stderr)
+	runtime := runtimeClient{serverURL: server.URL}
+	handled, session, err := executeCommand(context.Background(), runtime, "/compact focus on decisions and open questions", "", stdout, stderr)
 	if err != nil {
 		t.Fatalf("/compact: %v", err)
 	}
 	if !handled || session != "" {
 		t.Fatalf("expected handled without session switch, handled=%t session=%q", handled, session)
 	}
-	if !strings.Contains(stdout.String(), "single-main-session mode") {
-		t.Fatalf("expected single-main-session output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "compaction complete") {
+		t.Fatalf("expected compaction output, got %q", stdout.String())
+	}
+	if seenBody.SessionID != "main" {
+		t.Fatalf("expected compact session_id main, got %+v", seenBody)
+	}
+	if seenBody.Instructions != "focus on decisions and open questions" {
+		t.Fatalf("expected compact instructions to be forwarded, got %+v", seenBody)
 	}
 }
 
@@ -626,7 +649,10 @@ func TestExecuteCommand_HelpStructured(t *testing.T) {
 	if !strings.Contains(out, "Session:") || !strings.Contains(out, "/session") {
 		t.Fatalf("expected default help to show read-only session info, got %q", out)
 	}
-	for _, removed := range []string{"/new", "/resume", "/sessions", "/history", "/export", "/search", "/compact"} {
+	if !strings.Contains(out, "/compact [instructions]") {
+		t.Fatalf("expected /compact in default help, got %q", out)
+	}
+	for _, removed := range []string{"/new", "/resume", "/sessions", "/history", "/export", "/search"} {
 		if strings.Contains(out, removed) {
 			t.Fatalf("did not expect %s in default help, got %q", removed, out)
 		}
@@ -653,7 +679,10 @@ func TestExecuteCommand_HelpAdvancedShowsSingleMainNote(t *testing.T) {
 	if !strings.Contains(out, "Session:") || !strings.Contains(out, "/session") {
 		t.Fatalf("expected advanced help to show /session, got %q", out)
 	}
-	for _, removed := range []string{"/new", "/resume", "/sessions", "/history", "/export", "/search", "/compact"} {
+	if !strings.Contains(out, "/compact [instructions]") {
+		t.Fatalf("expected /compact in advanced help, got %q", out)
+	}
+	for _, removed := range []string{"/new", "/resume", "/sessions", "/history", "/export", "/search"} {
 		if strings.Contains(out, removed) {
 			t.Fatalf("did not expect %s in advanced help, got %q", removed, out)
 		}

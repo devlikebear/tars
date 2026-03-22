@@ -45,6 +45,7 @@ func TestParseProfileFlag(t *testing.T) {
 func TestRuntimeClientEndpoints(t *testing.T) {
 	adminAuth := ""
 	normalAuth := ""
+	var compactBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/sessions":
@@ -64,6 +65,9 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/healthz":
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "component": "tars", "time": "2026-02-19T00:00:00Z"})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/compact":
+			if err := json.NewDecoder(r.Body).Decode(&compactBody); err != nil {
+				t.Fatalf("decode compact body: %v", err)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"message": "compaction complete"})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/heartbeat/run-once":
 			_ = json.NewEncoder(w).Encode(map[string]any{"response": "ok", "skipped": false})
@@ -218,8 +222,14 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	if health, err := client.healthz(ctx); err != nil || !health.OK {
 		t.Fatalf("healthz: health=%+v err=%v", health, err)
 	}
-	if _, err := client.compact(ctx, "s1"); err != nil {
+	if _, err := client.compact(ctx, compactRequest{SessionID: "main", Instructions: "focus on decisions"}); err != nil {
 		t.Fatalf("compact: %v", err)
+	}
+	if got, _ := compactBody["session_id"].(string); strings.TrimSpace(got) != "main" {
+		t.Fatalf("expected compact session_id main, got %+v", compactBody)
+	}
+	if got, _ := compactBody["instructions"].(string); strings.TrimSpace(got) != "focus on decisions" {
+		t.Fatalf("expected compact instructions forwarded, got %+v", compactBody)
 	}
 	if _, err := client.heartbeatRunOnce(ctx); err != nil {
 		t.Fatalf("heartbeatRunOnce: %v", err)

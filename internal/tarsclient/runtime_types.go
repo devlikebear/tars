@@ -20,6 +20,8 @@ type whoamiInfo = tarsclient.WhoamiInfo
 
 type healthInfo = tarsclient.HealthInfo
 
+type compactRequest = tarsclient.CompactRequest
+
 type compactInfo = tarsclient.CompactInfo
 
 type heartbeatInfo = tarsclient.HeartbeatInfo

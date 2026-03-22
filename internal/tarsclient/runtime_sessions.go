@@ -42,8 +42,8 @@ func (c runtimeClient) healthz(ctx context.Context) (healthInfo, error) {
 	return c.client().Healthz(ctx)
 }
 
-func (c runtimeClient) compact(ctx context.Context, sessionID string) (compactInfo, error) {
-	return c.client().Compact(ctx, sessionID)
+func (c runtimeClient) compact(ctx context.Context, req compactRequest) (compactInfo, error) {
+	return c.client().CompactWithOptions(ctx, req)
 }
 
 func (c runtimeClient) heartbeatRunOnce(ctx context.Context) (heartbeatInfo, error) {

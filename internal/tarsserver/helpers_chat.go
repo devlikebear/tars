@@ -30,6 +30,8 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, cli
 		sessionID,
 		autoCompactKeepRecent,
 		autoCompactKeepTokens,
+		autoCompactKeepShare,
+		"",
 		client,
 		now,
 		buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...)),
@@ -47,15 +49,19 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, cli
 	return nil
 }
 
-func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, keepRecentTokens int, client llm.Client, now time.Time, semantic ...*memory.Service) (session.CompactResult, error) {
+func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, keepRecentTokens int, keepRecentFraction float64, instructions string, client llm.Client, now time.Time, semantic ...*memory.Service) (session.CompactResult, error) {
 	memService := firstSemanticService(semantic...)
 	return session.CompactTranscriptWithOptions(transcriptPath, keepRecent, now, session.CompactOptions{
-		KeepRecentTokens: keepRecentTokens,
+		KeepRecentTokens:    keepRecentTokens,
+		KeepRecentFraction:  keepRecentFraction,
+		SummaryInstructions: instructions,
 		SummaryBuilder: func(messages []session.Message) (string, error) {
 			if client == nil {
-				return session.BuildCompactionSummary(messages), nil
+				return session.BuildCompactionSummaryWithOptions(messages, session.CompactionSummaryOptions{
+					FocusInstructions: instructions,
+				}), nil
 			}
-			return buildLLMCompactionSummary(messages, client, now)
+			return buildLLMCompactionSummary(messages, client, now, instructions)
 		},
 		BeforeRewrite: func(summary string, compactedCount int, originalCount int) error {
 			note := fmt.Sprintf("session %s compacted %d/%d messages", sessionID, compactedCount, originalCount)
@@ -88,7 +94,7 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 	})
 }
 
-func buildLLMCompactionSummary(messages []session.Message, client llm.Client, now time.Time) (string, error) {
+func buildLLMCompactionSummary(messages []session.Message, client llm.Client, now time.Time, instructions string) (string, error) {
 	const maxMessages = 80
 	msgs := messages
 	if len(msgs) > maxMessages {
@@ -104,11 +110,18 @@ func buildLLMCompactionSummary(messages []session.Message, client llm.Client, no
 		_, _ = fmt.Fprintf(&b, "- [%s] %s\n", m.Role, content)
 	}
 
+	focusBlock := ""
+	if focus := strings.TrimSpace(instructions); focus != "" {
+		focusBlock = "Requested focus:\n" + focus + "\n\n"
+	}
+
 	userPrompt := fmt.Sprintf(
 		"Create a compact context summary for old chat messages.\n"+
+			"%s"+
 			"Keep concrete facts, goals, decisions, user preferences, unresolved tasks.\n"+
 			"Return plain markdown under 900 characters.\n"+
 			"Current UTC: %s\n\nMessages:\n%s",
+		focusBlock,
 		now.UTC().Format(time.RFC3339),
 		b.String(),
 	)
@@ -124,12 +137,16 @@ func buildLLMCompactionSummary(messages []session.Message, client llm.Client, no
 		},
 	}, llm.ChatOptions{})
 	if err != nil {
-		return session.BuildCompactionSummary(messages), nil
+		return session.BuildCompactionSummaryWithOptions(messages, session.CompactionSummaryOptions{
+			FocusInstructions: instructions,
+		}), nil
 	}
 
 	summary := strings.TrimSpace(resp.Message.Content)
 	if summary == "" {
-		return session.BuildCompactionSummary(messages), nil
+		return session.BuildCompactionSummaryWithOptions(messages, session.CompactionSummaryOptions{
+			FocusInstructions: instructions,
+		}), nil
 	}
 	if strings.Contains(summary, "[COMPACTION SUMMARY]") {
 		return summary, nil

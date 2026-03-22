@@ -31,9 +31,10 @@ tars init && tars serve
 ### Agent Runtime
 
 - Terminal client with a Bubble Tea TUI + local HTTP API (`tars serve`)
-- Session lifecycle, transcript storage, and context compaction
+- Session lifecycle, transcript storage, and structured context compaction
 - Agent loop with built-in file, process, scheduling, memory, and ops tools
 - Built-in file tools with 2,000-line read pagination, continuation hints, and safe atomic writes
+- Structured session compaction with identifier-preserving summaries, a safer recent-tail preserve policy, and manual `/compact [instructions]`
 - Parallel read-only chat subagents through the built-in `explorer` gateway agent
 - Semantic memory recall with Gemini embeddings (optional)
 - Playwright-based browser automation

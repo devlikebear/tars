@@ -161,6 +161,13 @@ type HealthInfo struct {
 	Time      string `json:"time,omitempty"`
 }
 
+type CompactRequest struct {
+	SessionID        string `json:"session_id"`
+	KeepRecent       int    `json:"keep_recent,omitempty"`
+	KeepRecentTokens int    `json:"keep_recent_tokens,omitempty"`
+	Instructions     string `json:"instructions,omitempty"`
+}
+
 type CompactInfo struct {
 	Message string `json:"message"`
 }

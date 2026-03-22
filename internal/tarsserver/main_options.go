@@ -47,6 +47,7 @@ const (
 	autoCompactTriggerTokens = 100000
 	autoCompactKeepRecent    = 0
 	autoCompactKeepTokens    = session.DefaultKeepRecentTokens
+	autoCompactKeepShare     = session.DefaultKeepRecentFraction
 )
 
 const memoryToolSystemRule = `
