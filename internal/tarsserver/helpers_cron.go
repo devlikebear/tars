@@ -35,7 +35,7 @@ var briefIDPattern = regexp.MustCompile(`\bbrief_id=([A-Za-z0-9_-]+)\b`)
 func newCronJobRunner(
 	workspaceDir string,
 	store *session.Store,
-	runPrompt func(ctx context.Context, runLabel string, promptText string) (string, error),
+	runPrompt gatewayPromptRunner,
 	logger zerolog.Logger,
 ) func(ctx context.Context, job cron.Job) (string, error) {
 	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil, "", 0, nil)
@@ -44,7 +44,7 @@ func newCronJobRunner(
 func newCronJobRunnerWithNotify(
 	workspaceDir string,
 	store *session.Store,
-	runPrompt func(ctx context.Context, runLabel string, promptText string) (string, error),
+	runPrompt gatewayPromptRunner,
 	logger zerolog.Logger,
 	emit func(ctx context.Context, evt notificationEvent),
 	mainSessionID string,
@@ -80,7 +80,7 @@ func newCronJobRunnerWithNotify(
 		})
 		agentTelemetry := &agentPromptTelemetry{}
 		runCtx = withAgentPromptTelemetry(runCtx, agentTelemetry)
-		response, err := runPrompt(runCtx, runLabel, prepared.promptText)
+		response, err := runPrompt(runCtx, runLabel, prepared.promptText, prepared.allowedTools)
 		artifactNow := time.Now().UTC()
 		if err != nil {
 			emitCronRunFailure(ctx, emit, prepared.workspaceDir, job, "", artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, "Cron failed", err)
@@ -113,6 +113,7 @@ type preparedCronJobRun struct {
 	workspaceDir        string
 	targetStore         *session.Store
 	promptText          string
+	allowedTools        []string
 	telemetry           cronRunTelemetry
 	projectFileSnapshot map[string]time.Time
 	targetSessionID     string
@@ -142,6 +143,7 @@ func prepareCronJobRun(
 	if payload := strings.TrimSpace(string(job.Payload)); payload != "" {
 		prepared.promptText += "\n\nCRON_PAYLOAD_JSON:\n" + payload
 	}
+	prepared.allowedTools = resolveCronAllowedTools(prepared.workspaceDir, job)
 	if projectPrompt := buildCronProjectPromptSection(prepared.workspaceDir, job.ProjectID); projectPrompt != "" {
 		prepared.promptText += "\n\n" + projectPrompt
 	}
@@ -186,6 +188,44 @@ func prepareCronJobRun(
 	}
 	prepared.telemetry.PromptTokens = promptTokenEstimate(prepared.promptText)
 	return prepared, nil
+}
+
+func resolveCronAllowedTools(workspaceDir string, job cron.Job) []string {
+	root := strings.TrimSpace(workspaceDir)
+	projectID := strings.TrimSpace(job.ProjectID)
+	if root == "" || projectID == "" {
+		return nil
+	}
+	item, err := project.NewStore(root, nil).Get(projectID)
+	if err != nil {
+		return nil
+	}
+	registry := newBaseToolRegistry(root)
+	policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
+		ToolsAllow:               item.ToolsAllow,
+		ToolsAllowExists:         len(item.ToolsAllow) > 0,
+		ToolsAllowGroups:         item.ToolsAllowGroups,
+		ToolsAllowGroupsExists:   len(item.ToolsAllowGroups) > 0,
+		ToolsAllowPatterns:       item.ToolsAllowPatterns,
+		ToolsAllowPatternsExists: len(item.ToolsAllowPatterns) > 0,
+		ToolsDeny:                item.ToolsDeny,
+		ToolsDenyExists:          len(item.ToolsDeny) > 0,
+		ToolsRiskMax:             item.ToolsRiskMax,
+		ToolsRiskMaxExists:       strings.TrimSpace(item.ToolsRiskMax) != "",
+	}, knownToolsFromRegistry(registry), project.ToolPolicyOptions{})
+	if !policy.HasPolicy {
+		return nil
+	}
+	names := defaultMinimalToolNames()
+	if len(policy.AllowedTools) > 0 {
+		names = append(names, policy.AllowedTools...)
+	}
+	names = normalizeToolNames(names)
+	names = project.ApplyToolConstraints(names, policy)
+	if len(names) == 0 {
+		return nil
+	}
+	return names
 }
 
 func emitCronRunFailure(

@@ -843,7 +843,7 @@ func TestCronRunner_DeliversToSessionAndDailyLog(t *testing.T) {
 	runner := newCronJobRunner(
 		root,
 		store,
-		func(_ context.Context, _ string, prompt string) (string, error) {
+		func(_ context.Context, _ string, prompt string, _ []string) (string, error) {
 			seenPrompt = prompt
 			return "cron delivered", nil
 		},

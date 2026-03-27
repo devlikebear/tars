@@ -276,7 +276,7 @@ func buildAPIMux(
 	cronRunner := newCronJobRunnerWithNotify(
 		cfg.WorkspaceDir,
 		sessionStore,
-		apiRunPrompt,
+		apiRunPromptWithTools,
 		logger,
 		dispatcher.Emit,
 		mainSessionID,
