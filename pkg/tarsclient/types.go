@@ -69,6 +69,8 @@ type ChatEvent struct {
 	ToolCallID        string `json:"tool_call_id"`
 	ToolArgsPreview   string `json:"tool_args_preview"`
 	ToolResultPreview string `json:"tool_result_preview"`
+	SkillName         string `json:"skill_name"`
+	SkillReason       string `json:"skill_reason"`
 }
 
 type ChatResult struct {
@@ -368,14 +370,18 @@ type ProjectDispatchReport struct {
 }
 
 type ProjectAutopilotRun struct {
-	ProjectID  string `json:"project_id"`
-	RunID      string `json:"run_id"`
-	Status     string `json:"status"`
-	Message    string `json:"message,omitempty"`
-	Iterations int    `json:"iterations"`
-	StartedAt  string `json:"started_at,omitempty"`
-	UpdatedAt  string `json:"updated_at,omitempty"`
-	FinishedAt string `json:"finished_at,omitempty"`
+	ProjectID   string `json:"project_id"`
+	RunID       string `json:"run_id"`
+	Status      string `json:"status"`
+	Message     string `json:"message,omitempty"`
+	Iterations  int    `json:"iterations"`
+	StartedAt   string `json:"started_at,omitempty"`
+	UpdatedAt   string `json:"updated_at,omitempty"`
+	FinishedAt  string `json:"finished_at,omitempty"`
+	Phase       string `json:"phase,omitempty"`
+	PhaseStatus string `json:"phase_status,omitempty"`
+	NextAction  string `json:"next_action,omitempty"`
+	Summary     string `json:"summary,omitempty"`
 }
 
 type ProjectPhaseSnapshot struct {

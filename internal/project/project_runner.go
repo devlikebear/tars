@@ -13,6 +13,11 @@ import (
 
 const autopilotRunDocumentName = "AUTOPILOT.json"
 
+const (
+	defaultPlanningBlockTimeout  = 24 * time.Hour
+	defaultAutopilotRunRetention = 30 * 24 * time.Hour
+)
+
 type AutopilotRunStatus string
 
 const (
@@ -34,12 +39,14 @@ type AutopilotRun struct {
 }
 
 type AutopilotManager struct {
-	store             *Store
-	runner            TaskRunner
-	githubAuthChecker GitHubAuthChecker
-	notify            func(projectID string, kind string)
-	maxIterations     int
-	loopInterval      time.Duration
+	store                *Store
+	runner               TaskRunner
+	githubAuthChecker    GitHubAuthChecker
+	notify               func(projectID string, kind string)
+	maxIterations        int
+	loopInterval         time.Duration
+	planningBlockTimeout time.Duration
+	runRetention         time.Duration
 
 	mu    sync.RWMutex
 	runs  map[string]AutopilotRun
@@ -57,15 +64,17 @@ func NewAutopilotManager(
 		checker = defaultGitHubAuthChecker
 	}
 	return &AutopilotManager{
-		store:             store,
-		runner:            runner,
-		githubAuthChecker: checker,
-		notify:            notify,
-		maxIterations:     16,
-		loopInterval:      time.Minute,
-		runs:              map[string]AutopilotRun{},
-		loops:             map[string]context.CancelFunc{},
-		steps:             map[string]bool{},
+		store:                store,
+		runner:               runner,
+		githubAuthChecker:    checker,
+		notify:               notify,
+		maxIterations:        16,
+		loopInterval:         time.Minute,
+		planningBlockTimeout: defaultPlanningBlockTimeout,
+		runRetention:         defaultAutopilotRunRetention,
+		runs:                 map[string]AutopilotRun{},
+		loops:                map[string]context.CancelFunc{},
+		steps:                map[string]bool{},
 	}
 }
 
@@ -83,6 +92,10 @@ func (m *AutopilotManager) RestorePersistedRuns() error {
 			if !os.IsNotExist(err) {
 				return err
 			}
+			continue
+		}
+		if m.runExpired(run) {
+			m.removeRun(item.ID)
 			continue
 		}
 		// Fix stale "running" status for runs that were actually blocked/failed.
@@ -167,10 +180,18 @@ func (m *AutopilotManager) Status(projectID string) (AutopilotRun, bool) {
 	item, ok := m.runs[projectID]
 	m.mu.RUnlock()
 	if ok {
+		if m.runExpired(item) {
+			m.removeRun(projectID)
+			return AutopilotRun{}, false
+		}
 		return item, true
 	}
 	item, err := m.loadRun(projectID)
 	if err != nil {
+		return AutopilotRun{}, false
+	}
+	if m.runExpired(item) {
+		m.removeRun(projectID)
 		return AutopilotRun{}, false
 	}
 	m.cacheRun(projectID, item)
@@ -288,6 +309,12 @@ func (m *AutopilotManager) handleEmptyBoard(
 	iteration int,
 	isBackgroundRun bool,
 ) autopilotStepResult {
+	if isBackgroundRun && m.planningBlockExpired(projectID) {
+		message := "Planning approval timed out: backlog is still empty"
+		nextAction := "Update or approve the backlog, then run /project autopilot advance to continue"
+		m.planningTimedOut(projectID, runID, iteration, message, nextAction)
+		return autopilotStepResult{Stop: true}
+	}
 	_ = ctx
 	_ = isBackgroundRun
 	message := "Autopilot paused: backlog is empty"
@@ -467,6 +494,19 @@ func (m *AutopilotManager) blockWithNextAction(projectID, runID string, iteratio
 func (m *AutopilotManager) planningRequired(projectID, runID string, iteration int, message string, nextAction string) {
 	_ = m.appendPMActivity(projectID, ActivityKindDecision, "needed", strings.TrimSpace(message), nil)
 	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotPlanningRequiredState(message, nextAction))
+	m.setRun(projectID, func(item *AutopilotRun) {
+		item.RunID = runID
+		item.Status = AutopilotStatusBlocked
+		item.Message = strings.TrimSpace(message)
+		item.Iterations = iteration
+		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	})
+	m.publish(projectID)
+}
+
+func (m *AutopilotManager) planningTimedOut(projectID, runID string, iteration int, message string, nextAction string) {
+	_ = m.appendPMActivity(projectID, ActivityKindDecision, "expired", strings.TrimSpace(message), nil)
+	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotBlockedState(message, nextAction))
 	m.setRun(projectID, func(item *AutopilotRun) {
 		item.RunID = runID
 		item.Status = AutopilotStatusBlocked
@@ -682,7 +722,13 @@ func (m *AutopilotManager) shouldAutopilotProjectRun(projectID string) (bool, er
 		}
 		return false, err
 	}
-	return DefaultWorkflowPolicy.ShouldAutopilotRun(item, board, &state), nil
+	if DefaultWorkflowPolicy.ShouldAutopilotRun(item, board, &state) {
+		return true, nil
+	}
+	if len(board.Tasks) == 0 && m.planningBlockExpired(projectID) {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (m *AutopilotManager) waitForNextTick(ctx context.Context) bool {
@@ -698,6 +744,71 @@ func (m *AutopilotManager) waitForNextTick(ctx context.Context) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+func (m *AutopilotManager) planningBlockExpired(projectID string) bool {
+	if m == nil || m.store == nil || m.planningBlockTimeout <= 0 {
+		return false
+	}
+	state, err := m.store.GetState(projectID)
+	if err != nil {
+		return false
+	}
+	if DefaultWorkflowPolicy.NormalizeProjectStatePhase(state.Phase) != string(PhasePlanning) {
+		return false
+	}
+	if DefaultWorkflowPolicy.NormalizeProjectStateStatus(state.Status) != string(PhaseStatusBlocked) {
+		return false
+	}
+	lastRunAt := parseTime(state.LastRunAt)
+	if lastRunAt.IsZero() {
+		return false
+	}
+	return !m.store.nowFn().UTC().Before(lastRunAt.Add(m.planningBlockTimeout))
+}
+
+func (m *AutopilotManager) runExpired(item AutopilotRun) bool {
+	if m == nil || m.runRetention <= 0 {
+		return false
+	}
+	if !isTerminalAutopilotRunStatus(item.Status) {
+		return false
+	}
+	lastTouched := parseTime(item.FinishedAt)
+	if lastTouched.IsZero() {
+		lastTouched = parseTime(item.UpdatedAt)
+	}
+	if lastTouched.IsZero() {
+		lastTouched = parseTime(item.StartedAt)
+	}
+	if lastTouched.IsZero() {
+		return false
+	}
+	return lastTouched.Before(m.store.nowFn().UTC().Add(-m.runRetention))
+}
+
+func isTerminalAutopilotRunStatus(status AutopilotRunStatus) bool {
+	switch status {
+	case AutopilotStatusDone, AutopilotStatusBlocked, AutopilotStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m *AutopilotManager) removeRun(projectID string) {
+	if m == nil {
+		return
+	}
+	projectID = strings.TrimSpace(projectID)
+	m.mu.Lock()
+	delete(m.runs, projectID)
+	m.mu.Unlock()
+	path := m.autopilotRunPath(projectID)
+	if strings.TrimSpace(path) == "" {
+		return
+	}
+	_ = os.Remove(path)
 }
 
 type errorSource string

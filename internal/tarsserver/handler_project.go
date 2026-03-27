@@ -9,6 +9,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type projectAutopilotStatusResponse struct {
+	project.AutopilotRun
+	Phase       string `json:"phase,omitempty"`
+	PhaseStatus string `json:"phase_status,omitempty"`
+	NextAction  string `json:"next_action,omitempty"`
+	Summary     string `json:"summary,omitempty"`
+}
+
 func newProjectAPIHandler(
 	store *project.Store,
 	sessionStore *session.Store,
@@ -526,7 +534,14 @@ func newProjectAPIHandler(
 					writeJSON(w, http.StatusNotFound, map[string]string{"error": "project autopilot run not found"})
 					return
 				}
-				writeJSON(w, http.StatusOK, item)
+				payload := projectAutopilotStatusResponse{AutopilotRun: item}
+				if current, ok := autopilot.Current(projectID); ok {
+					payload.Phase = strings.TrimSpace(string(current.Name))
+					payload.PhaseStatus = strings.TrimSpace(string(current.Status))
+					payload.NextAction = strings.TrimSpace(current.NextAction)
+					payload.Summary = strings.TrimSpace(current.Summary)
+				}
+				writeJSON(w, http.StatusOK, payload)
 			case http.MethodPost:
 				item, err := autopilot.Start(r.Context(), projectID)
 				if err != nil {

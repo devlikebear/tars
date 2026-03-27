@@ -216,11 +216,14 @@ func cmdProject(c commandContext) (bool, string, error) {
 			if err != nil {
 				return true, c.session, err
 			}
-			fmt.Fprintf(c.stdout, "SYSTEM > project autopilot %s run_id=%s status=%s iterations=%d message=%s\n",
+			fmt.Fprintf(c.stdout, "SYSTEM > project autopilot %s run_id=%s status=%s iterations=%d phase=%s phase_status=%s next_action=%s message=%s\n",
 				strings.TrimSpace(item.ProjectID),
 				strings.TrimSpace(item.RunID),
 				strings.TrimSpace(item.Status),
 				item.Iterations,
+				strings.TrimSpace(item.Phase),
+				strings.TrimSpace(item.PhaseStatus),
+				strings.TrimSpace(item.NextAction),
 				strings.TrimSpace(item.Message),
 			)
 			return true, c.session, nil

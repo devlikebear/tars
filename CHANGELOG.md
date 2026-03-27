@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-03-27
+
+### Added
+
+- Project autopilot status responses now include phase, phase status, summary, and next action metadata for CLI/API clients
+- Typed chat events now expose `skill_name` and `skill_reason` when auto skill routing is announced
+
+### Changed
+
+- Planning blockers now age into an explicit timeout/escalation path instead of staying in an unbounded blocked-planning state forever
+- Expired terminal `AUTOPILOT.json` snapshots are pruned during status/restore so stale runtime state does not linger indefinitely
+- Telegram chat replies now surface auto-selected skill notices for active brief and explicit skill routing
+- CI and release workflows now opt into the Node 24 GitHub Actions runtime and use the current checkout/setup action majors to avoid deprecation warnings
+
 ## [0.12.0] - 2026-03-27
 
 ### Added

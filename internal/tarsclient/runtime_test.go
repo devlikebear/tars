@@ -379,10 +379,13 @@ func TestRuntimeClientProjectWorkflowEndpoints(t *testing.T) {
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/projects/proj_1/autopilot":
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"project_id": "proj_1",
-				"run_id":     "auto_1",
-				"status":     "done",
-				"iterations": 2,
+				"project_id":   "proj_1",
+				"run_id":       "auto_1",
+				"status":       "done",
+				"iterations":   2,
+				"phase":        "done",
+				"phase_status": "done",
+				"next_action":  "Project complete",
 			})
 		default:
 			http.NotFound(w, r)
@@ -437,7 +440,7 @@ func TestRuntimeClientProjectWorkflowEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getProjectAutopilot: %v", err)
 	}
-	if status.Status != "done" || status.Iterations != 2 {
+	if status.Status != "done" || status.Iterations != 2 || status.Phase != "done" || status.PhaseStatus != "done" {
 		t.Fatalf("unexpected autopilot status: %+v", status)
 	}
 }
