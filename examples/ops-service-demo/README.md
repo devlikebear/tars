@@ -104,6 +104,20 @@ Inspect the project in the TUI or dashboard:
 /project autopilot status ${PROJECT_ID}
 ```
 
+Use the cloned project repo as the authoritative runtime repo from this point forward so cron jobs and your manual checks operate on the same path:
+
+```bash
+PROJECT_REPO_DIR="$(
+  curl -s "http://127.0.0.1:43180/v1/projects/${PROJECT_ID}" | jq -r '.path + "/repo"'
+)"
+echo "$PROJECT_REPO_DIR"
+
+docker compose -f ../ops-service-demo-repo/docker-compose.yml down || true
+docker compose -f "${PROJECT_REPO_DIR}/docker-compose.yml" up -d --build
+"${PROJECT_REPO_DIR}/opsctl" inject-failure timeout
+"${PROJECT_REPO_DIR}/opsctl" errors
+```
+
 ## 3. Register Cron Jobs
 
 Create the log triage job:
@@ -131,7 +145,10 @@ curl -s http://127.0.0.1:43180/v1/cron/jobs \
 Run the triage job once immediately:
 
 ```bash
-JOB_ID="$(curl -s http://127.0.0.1:43180/v1/cron/jobs | jq -r '.[] | select(.name=="triage-logs") | .id')"
+JOB_ID="$(
+  curl -s http://127.0.0.1:43180/v1/cron/jobs |
+    jq -r --arg pid "${PROJECT_ID}" '.[] | select(.name=="triage-logs" and .project_id==$pid) | .id'
+)"
 curl -s -X POST "http://127.0.0.1:43180/v1/cron/jobs/${JOB_ID}/run"
 ```
 

@@ -94,6 +94,8 @@ Kick off a project from chat, or use the TUI commands directly:
 
 The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly, and `status` shows the current phase, run status, and next action without opening the dashboard.
 
+Project-linked cron jobs also inherit the project's tool allowlist now, so background workflows can use approved shell/file tools for examples like the bundled ops-service triage loop.
+
 For read-heavy codebase research in chat, TARS can now fan out parallel `explorer` subagents and merge back compact summaries. The runtime defaults are:
 
 ```yaml

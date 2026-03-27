@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -139,11 +140,13 @@ func TestCronJobRunner_HiddenWorkerDoesNotInjectTargetSessionContext(t *testing.
 	}
 
 	var seenPrompt string
+	var seenAllowedTools []string
 	runner := newCronJobRunnerWithNotify(
 		root,
 		store,
-		func(_ context.Context, _ string, promptText string) (string, error) {
+		func(_ context.Context, _ string, promptText string, allowedTools []string) (string, error) {
 			seenPrompt = promptText
+			seenAllowedTools = append([]string(nil), allowedTools...)
 			return "ok", nil
 		},
 		zerolog.Nop(),
@@ -166,6 +169,9 @@ func TestCronJobRunner_HiddenWorkerDoesNotInjectTargetSessionContext(t *testing.
 	if strings.Contains(seenPrompt, "TARGET_SESSION_CONTEXT:") {
 		t.Fatalf("did not expect hidden worker session context in prompt, got %q", seenPrompt)
 	}
+	if len(seenAllowedTools) != 0 {
+		t.Fatalf("did not expect project tool allowlist for project without tool policy, got %+v", seenAllowedTools)
+	}
 }
 
 func TestCronJobRunner_IncludesDefaultTelegramChatContext(t *testing.T) {
@@ -180,7 +186,7 @@ func TestCronJobRunner_IncludesDefaultTelegramChatContext(t *testing.T) {
 	runner := newCronJobRunnerWithNotify(
 		root,
 		store,
-		func(_ context.Context, _ string, promptText string) (string, error) {
+		func(_ context.Context, _ string, promptText string, _ []string) (string, error) {
 			seenPrompt = promptText
 			return "ok", nil
 		},
@@ -228,7 +234,7 @@ func TestCronJobRunner_RequiresFinalizedBriefForAutonomousProjectWork(t *testing
 	runner := newCronJobRunnerWithNotify(
 		root,
 		session.NewStore(root),
-		func(ctx context.Context, runLabel string, promptText string) (string, error) {
+		func(ctx context.Context, runLabel string, promptText string, _ []string) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -271,7 +277,7 @@ func TestCronJobRunner_RejectsPseudoToolContamination(t *testing.T) {
 	runner := newCronJobRunnerWithNotify(
 		root,
 		store,
-		func(_ context.Context, _ string, _ string) (string, error) {
+		func(_ context.Context, _ string, _ string, _ []string) (string, error) {
 			return `{"command":"python3 -V","timeout_ms":1000}`, nil
 		},
 		zerolog.Nop(),
@@ -324,7 +330,7 @@ func TestCronJobRunner_EmitsErrorNotificationOnContamination(t *testing.T) {
 	runner := newCronJobRunnerWithNotify(
 		root,
 		store,
-		func(_ context.Context, _ string, _ string) (string, error) {
+		func(_ context.Context, _ string, _ string, _ []string) (string, error) {
 			return `{"command":"python3 -V","timeout_ms":1000}`, nil
 		},
 		zerolog.Nop(),
@@ -474,7 +480,7 @@ func TestCronJobRunner_FailsWhenClaimedFileUpdateIsNotObserved(t *testing.T) {
 	runner := newCronJobRunnerWithNotify(
 		root,
 		store,
-		func(_ context.Context, _ string, _ string) (string, error) {
+		func(_ context.Context, _ string, _ string, _ []string) (string, error) {
 			return "- `projects/proj_demo/TIMELINE_MAP.md` 추가\n- `STATE.md` 갱신", nil
 		},
 		zerolog.Nop(),
@@ -496,6 +502,60 @@ func TestCronJobRunner_FailsWhenClaimedFileUpdateIsNotObserved(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "claimed file update not observed") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCronJobRunner_ProjectToolPolicyAddsShellToolsToAllowlist(t *testing.T) {
+	root := t.TempDir()
+	projectStore := project.NewStore(root, nil)
+	item, err := projectStore.Create(project.CreateInput{
+		Name: "Ops Demo",
+		Type: "operations",
+	})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	updated, err := projectStore.Update(item.ID, project.UpdateInput{
+		ToolsAllowGroups:   []string{"files", "shell"},
+		ToolsAllowPatterns: []string{"^project_"},
+	})
+	if err != nil {
+		t.Fatalf("update project policy: %v", err)
+	}
+
+	var seenAllowedTools []string
+	runner := newCronJobRunnerWithNotify(
+		root,
+		session.NewStore(root),
+		func(_ context.Context, _ string, _ string, allowedTools []string) (string, error) {
+			seenAllowedTools = append([]string(nil), allowedTools...)
+			return "ok", nil
+		},
+		zerolog.Nop(),
+		nil,
+		"",
+		0,
+		nil,
+	)
+
+	if _, err := runner(context.Background(), cron.Job{
+		ID:        "job_demo",
+		Name:      "triage logs",
+		Prompt:    "inspect logs",
+		Schedule:  "every:5m",
+		ProjectID: updated.ID,
+	}); err != nil {
+		t.Fatalf("run cron job: %v", err)
+	}
+
+	if !slices.Contains(seenAllowedTools, "exec") {
+		t.Fatalf("expected shell allowlist to include exec, got %+v", seenAllowedTools)
+	}
+	if !slices.Contains(seenAllowedTools, "read_file") {
+		t.Fatalf("expected files allowlist to include read_file, got %+v", seenAllowedTools)
+	}
+	if !slices.Contains(seenAllowedTools, "project_get") {
+		t.Fatalf("expected project tool allowlist to retain project_get, got %+v", seenAllowedTools)
 	}
 }
 

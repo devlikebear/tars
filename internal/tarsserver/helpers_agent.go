@@ -172,7 +172,15 @@ func newAgentPromptRunnerWithToolsAndMemory(
 
 		profile := agentPromptProfileForLabel(label)
 		systemPrompt := buildAgentSystemPrompt(targetWorkspaceDir, profile, semanticCfg)
-		registry := newToolRegistryForAgentProfile(targetWorkspaceDir, profile, semanticCfg)
+		baseRegistry := newBaseToolRegistryWithProcess(targetWorkspaceDir, nil, semanticCfg)
+		for _, extra := range extraTools {
+			if strings.TrimSpace(extra.Name) == "" {
+				continue
+			}
+			baseRegistry.Register(extra)
+		}
+		allowed := normalizeAllowedToolsForRegistry(allowedTools, baseRegistry)
+		registry := filterToolRegistryForAgentProfile(baseRegistry, profile, allowed)
 		for _, extra := range extraTools {
 			if strings.TrimSpace(extra.Name) == "" {
 				continue
@@ -180,7 +188,6 @@ func newAgentPromptRunnerWithToolsAndMemory(
 			registry.Register(extra)
 		}
 		tools := registry.Schemas()
-		allowed := normalizeAllowedToolsForRegistry(allowedTools, registry)
 		if len(allowed) > 0 {
 			tools = registry.SchemasForNames(allowed)
 		}
@@ -264,13 +271,21 @@ func buildAgentSystemPrompt(workspaceDir string, profile agentPromptProfile, sem
 	return systemPrompt
 }
 
-func newToolRegistryForAgentProfile(workspaceDir string, profile agentPromptProfile, semanticCfg ...memory.SemanticConfig) *tool.Registry {
+func newToolRegistryForAgentProfile(workspaceDir string, profile agentPromptProfile, extraAllowed []string, semanticCfg ...memory.SemanticConfig) *tool.Registry {
 	registry := newBaseToolRegistryWithProcess(workspaceDir, nil, semanticCfg...)
-	if len(profile.allowedToolIDs) == 0 {
+	return filterToolRegistryForAgentProfile(registry, profile, extraAllowed)
+}
+
+func filterToolRegistryForAgentProfile(registry *tool.Registry, profile agentPromptProfile, extraAllowed []string) *tool.Registry {
+	if registry == nil {
+		return nil
+	}
+	names := normalizeToolNames(append(append([]string(nil), profile.allowedToolIDs...), extraAllowed...))
+	if len(names) == 0 {
 		return registry
 	}
 	filtered := tool.NewRegistry()
-	for _, name := range profile.allowedToolIDs {
+	for _, name := range names {
 		if tl, ok := registry.Get(name); ok {
 			filtered.Register(tl)
 		}
