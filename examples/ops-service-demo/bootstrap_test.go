@@ -25,6 +25,12 @@ func TestBootstrapDemoRepoCreatesStandaloneGoModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bootstrap demo repo: %v\n%s", err, output)
 	}
+	if strings.Contains(string(output), "docker compose up -d --build") {
+		t.Fatalf("expected bootstrap output to avoid runtime instructions, got:\n%s", output)
+	}
+	if !strings.Contains(string(output), "seed repo") || !strings.Contains(string(output), "projects/<project-id>/repo") {
+		t.Fatalf("expected bootstrap output to explain seed repo vs project clone, got:\n%s", output)
+	}
 
 	data, err := os.ReadFile(filepath.Join(dest, "go.mod"))
 	if err != nil {

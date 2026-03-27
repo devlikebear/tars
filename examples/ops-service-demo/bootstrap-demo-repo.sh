@@ -8,11 +8,11 @@ usage() {
   cat <<'EOF'
 usage: ./bootstrap-demo-repo.sh <destination-dir> [--github owner/name] [--public]
 
-Creates a standalone demo repository from the ops-service template.
+Creates a standalone seed repository from the ops-service template.
 
 Examples:
-  ./bootstrap-demo-repo.sh ../ops-demo
-  ./bootstrap-demo-repo.sh ../ops-demo --github your-org/ops-demo
+  ./bootstrap-demo-repo.sh ../ops-demo-seed
+  ./bootstrap-demo-repo.sh ../ops-demo-seed --github your-org/ops-demo
 EOF
 }
 
@@ -100,8 +100,13 @@ if [ -n "$GITHUB_REPO" ]; then
   gh repo create "$GITHUB_REPO" --source "$DEST_DIR" --push "--$VISIBILITY"
 fi
 
-printf 'bootstrapped demo repo: %s\n' "$DEST_DIR"
+printf 'bootstrapped demo seed repo: %s\n' "$DEST_DIR"
 printf 'next steps:\n'
 printf '  cd %s\n' "$DEST_DIR"
-printf '  docker compose up -d --build\n'
-printf '  ./opsctl status\n'
+if [ -z "$GITHUB_REPO" ]; then
+  printf '  gh repo create your-org/ops-service-demo --source . --push --private\n'
+fi
+printf '\n'
+printf 'This repo is only a seed repo for the initial GitHub push.\n'
+printf 'After you create the TARS project, run the service from the project clone instead:\n'
+printf '  <workspace>/projects/<project-id>/repo\n'
