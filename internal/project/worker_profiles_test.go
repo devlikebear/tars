@@ -3,6 +3,7 @@ package project
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolveWorkerProfile_UsesExplicitWorkerAndRoleDefaults(t *testing.T) {
@@ -95,6 +96,33 @@ func TestResolveWorkerProfileForProject_UsesWorkflowProfileDefaultsAndOverrides(
 		}
 		if profile.Kind != WorkerKindClaudeCode {
 			t.Fatalf("expected %q, got %+v", WorkerKindClaudeCode, profile)
+		}
+	})
+}
+
+func TestResolveWorkflowRuntimePolicy_UsesDefaultsAndOverrides(t *testing.T) {
+	t.Run("defaults remain unchanged without rules", func(t *testing.T) {
+		policy := ResolveWorkflowRuntimePolicy(Project{})
+		if policy.PlanningBlockTimeout != defaultPlanningBlockTimeout {
+			t.Fatalf("expected default planning timeout %s, got %s", defaultPlanningBlockTimeout, policy.PlanningBlockTimeout)
+		}
+		if policy.RunRetention != defaultAutopilotRunRetention {
+			t.Fatalf("expected default run retention %s, got %s", defaultAutopilotRunRetention, policy.RunRetention)
+		}
+	})
+
+	t.Run("workflow rules override runtime settings", func(t *testing.T) {
+		policy := ResolveWorkflowRuntimePolicy(Project{
+			WorkflowRules: []WorkflowRule{
+				{Name: "planning_block_timeout", Params: map[string]string{"duration": "45m"}},
+				{Name: "run_retention", Params: map[string]string{"duration": "72h"}},
+			},
+		})
+		if policy.PlanningBlockTimeout != 45*time.Minute {
+			t.Fatalf("expected planning timeout override, got %s", policy.PlanningBlockTimeout)
+		}
+		if policy.RunRetention != 72*time.Hour {
+			t.Fatalf("expected run retention override, got %s", policy.RunRetention)
 		}
 	})
 }
