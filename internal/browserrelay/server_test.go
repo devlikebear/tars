@@ -380,6 +380,8 @@ func TestRelayAttachAndCDPToken(t *testing.T) {
 	}
 	defer extConn.Close()
 
+	waitForRelayCDPReady(t, srv)
+
 	resp2, err := http.Get(versionURL + "?token=relay-token")
 	if err != nil {
 		t.Fatalf("get version after attach: %v", err)
