@@ -11,6 +11,39 @@ import (
 	"github.com/devlikebear/tars/internal/project"
 )
 
+func TestProjectCreateTool_UsesWorkflowInputs(t *testing.T) {
+	store := project.NewStore(filepath.Join(t.TempDir(), "workspace"), nil)
+	tl := NewProjectCreateTool(store)
+
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{
+		"name":"Ops A",
+		"type":"operations",
+		"objective":"Keep service green",
+		"workflow_profile":"research",
+		"workflow_rules":[
+			{"name":"require_sources","params":{"count":"3"}}
+		],
+		"instructions":"Check alerts first"
+	}`))
+	if err != nil {
+		t.Fatalf("execute project_create: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error result: %s", result.Text())
+	}
+
+	var created project.Project
+	if err := json.Unmarshal([]byte(result.Text()), &created); err != nil {
+		t.Fatalf("decode tool result: %v", err)
+	}
+	if created.WorkflowProfile != "research" {
+		t.Fatalf("expected workflow_profile=research, got %q", created.WorkflowProfile)
+	}
+	if len(created.WorkflowRules) != 1 || created.WorkflowRules[0].Name != "require_sources" {
+		t.Fatalf("unexpected workflow_rules: %+v", created.WorkflowRules)
+	}
+}
+
 func TestProjectUpdateTool_UsesSharedUpdatePayload(t *testing.T) {
 	store := project.NewStore(filepath.Join(t.TempDir(), "workspace"), nil)
 	created, err := store.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
@@ -24,7 +57,11 @@ func TestProjectUpdateTool_UsesSharedUpdatePayload(t *testing.T) {
 		"objective":"Keep service green",
 		"instructions":"Check alerts first",
 		"tools_allow":["read_file","exec"],
-		"tools_risk_max":"medium"
+		"tools_risk_max":"medium",
+		"workflow_profile":"research",
+		"workflow_rules":[
+			{"name":"require_sources","params":{"count":"3"}}
+		]
 	}`))
 	if err != nil {
 		t.Fatalf("execute project_update: %v", err)
@@ -48,6 +85,12 @@ func TestProjectUpdateTool_UsesSharedUpdatePayload(t *testing.T) {
 	}
 	if updated.ToolsRiskMax != "medium" {
 		t.Fatalf("expected tools_risk_max=medium, got %q", updated.ToolsRiskMax)
+	}
+	if updated.WorkflowProfile != "research" {
+		t.Fatalf("expected workflow_profile=research, got %q", updated.WorkflowProfile)
+	}
+	if len(updated.WorkflowRules) != 1 || updated.WorkflowRules[0].Name != "require_sources" {
+		t.Fatalf("unexpected workflow_rules: %+v", updated.WorkflowRules)
 	}
 }
 

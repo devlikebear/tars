@@ -2,6 +2,7 @@ package project
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -36,6 +37,8 @@ func parseDocument(raw string) (Project, error) {
 		ToolsDeny:          mapStringList(parsed, "tools_deny", "tools-deny"),
 		ToolsRiskMax:       mapString(parsed, "tools_risk_max", "tools-risk-max"),
 		SkillsAllow:        mapStringList(parsed, "skills_allow", "skills-allow"),
+		WorkflowProfile:    normalizeWorkflowProfile(mapString(parsed, "workflow_profile", "workflow-profile")),
+		WorkflowRules:      mapWorkflowRuleList(parsed, "workflow_rules", "workflow-rules"),
 		MCPServers:         mapStringList(parsed, "mcp_servers", "mcp-servers"),
 		SecretsRefs:        mapStringList(parsed, "secrets_refs", "secrets-refs"),
 		Body:               strings.TrimSpace(body),
@@ -79,6 +82,10 @@ func buildDocument(project Project) string {
 		_, _ = fmt.Fprintf(&b, "tools_risk_max: %s\n", quoteYAML(v))
 	}
 	writeDocumentList(&b, "skills_allow", project.SkillsAllow)
+	if v := strings.TrimSpace(project.WorkflowProfile); v != "" {
+		_, _ = fmt.Fprintf(&b, "workflow_profile: %s\n", quoteYAML(v))
+	}
+	writeWorkflowRuleList(&b, "workflow_rules", project.WorkflowRules)
 	writeDocumentList(&b, "mcp_servers", project.MCPServers)
 	writeDocumentList(&b, "secrets_refs", project.SecretsRefs)
 	b.WriteString("---\n")
@@ -99,6 +106,29 @@ func writeDocumentList(b *strings.Builder, key string, values []string) {
 	_, _ = fmt.Fprintf(b, "%s:\n", key)
 	for _, item := range vals {
 		_, _ = fmt.Fprintf(b, "  - %s\n", quoteYAML(item))
+	}
+}
+
+func writeWorkflowRuleList(b *strings.Builder, key string, rules []WorkflowRule) {
+	items := normalizeWorkflowRules(rules)
+	if len(items) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(b, "%s:\n", key)
+	for _, rule := range items {
+		_, _ = fmt.Fprintf(b, "  - name: %s\n", quoteYAML(rule.Name))
+		if len(rule.Params) == 0 {
+			continue
+		}
+		_, _ = fmt.Fprintf(b, "    params:\n")
+		keys := make([]string, 0, len(rule.Params))
+		for key := range rule.Params {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, paramKey := range keys {
+			_, _ = fmt.Fprintf(b, "      %s: %s\n", quoteYAML(paramKey), quoteYAML(rule.Params[paramKey]))
+		}
 	}
 }
 
@@ -147,6 +177,25 @@ func mapStringList(values map[string]any, keys ...string) []string {
 		case string:
 			return normalizeList([]string{v})
 		}
+	}
+	return nil
+}
+
+func mapWorkflowRuleList(values map[string]any, keys ...string) []WorkflowRule {
+	for _, key := range keys {
+		raw, ok := values[key]
+		if !ok {
+			continue
+		}
+		data, err := yaml.Marshal(raw)
+		if err != nil {
+			continue
+		}
+		var rules []WorkflowRule
+		if err := yaml.Unmarshal(data, &rules); err != nil {
+			continue
+		}
+		return normalizeWorkflowRules(rules)
 	}
 	return nil
 }

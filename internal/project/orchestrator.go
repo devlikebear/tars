@@ -136,7 +136,13 @@ func (o *Orchestrator) dispatchTasksByStatus(
 }
 
 func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task BoardTask) (TaskRun, error) {
-	profile, err := o.prepareTaskDispatch(ctx, projectID, task)
+	projectItem, err := o.store.Get(projectID)
+	if err != nil {
+		return TaskRun{}, err
+	}
+	workflow := ResolveWorkflowExecutionPolicy(projectItem)
+
+	profile, err := o.prepareTaskDispatch(ctx, projectID, projectItem, workflow, task)
 	if err != nil {
 		return TaskRun{}, err
 	}
@@ -158,7 +164,7 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 
 	resolution := o.newDispatchTaskResolution(task, report)
 	o.recordDispatchVerificationActivities(projectID, task, resolution)
-	gateErrs := o.verifyDispatchGates(task, resolution)
+	gateErrs := o.verifyDispatchGates(workflow, task, resolution)
 	resolution.FinalStatus = o.resolveTaskFinalStatus(task, finished, gateErrs)
 	if err := o.updateBoardTask(projectID, task.ID, func(item *BoardTask) {
 		item.Status = resolution.FinalStatus
@@ -188,12 +194,12 @@ type dispatchTaskResolution struct {
 	PRRef       string
 }
 
-func (o *Orchestrator) prepareTaskDispatch(ctx context.Context, projectID string, task BoardTask) (WorkerProfile, error) {
-	profile, err := ResolveWorkerProfile(task)
+func (o *Orchestrator) prepareTaskDispatch(ctx context.Context, projectID string, projectItem Project, workflow WorkflowExecutionPolicy, task BoardTask) (WorkerProfile, error) {
+	profile, err := ResolveWorkerProfileForProject(projectItem, task)
 	if err != nil {
 		return WorkerProfile{}, err
 	}
-	if o.githubAuthChecker != nil {
+	if workflow.RequireGitHubAuth && o.githubAuthChecker != nil {
 		if err := o.githubAuthChecker(ctx); err != nil {
 			wrapped := fmt.Errorf("github auth precondition failed: %w", err)
 			_ = o.store.appendSystemActivity(projectID, ActivityAppendInput{
@@ -323,21 +329,21 @@ func (o *Orchestrator) newDispatchTaskResolution(task BoardTask, report TaskRepo
 	}
 }
 
-func (o *Orchestrator) verifyDispatchGates(task BoardTask, resolution dispatchTaskResolution) []string {
+func (o *Orchestrator) verifyDispatchGates(workflow WorkflowExecutionPolicy, task BoardTask, resolution dispatchTaskResolution) []string {
 	gateErrs := []string{}
-	if strings.TrimSpace(task.TestCommand) != "" && resolution.TestStatus != "passed" {
+	if workflow.RequireTests && strings.TrimSpace(task.TestCommand) != "" && resolution.TestStatus != "passed" {
 		gateErrs = append(gateErrs, "tests not passed")
 	}
-	if strings.TrimSpace(task.BuildCommand) != "" && resolution.BuildStatus != "passed" {
+	if workflow.RequireBuild && strings.TrimSpace(task.BuildCommand) != "" && resolution.BuildStatus != "passed" {
 		gateErrs = append(gateErrs, "build not passed")
 	}
-	if strings.TrimSpace(resolution.IssueRef) == "" {
+	if workflow.RequireIssue && strings.TrimSpace(resolution.IssueRef) == "" {
 		gateErrs = append(gateErrs, "issue missing")
 	}
-	if strings.TrimSpace(resolution.BranchRef) == "" {
+	if workflow.RequireBranch && strings.TrimSpace(resolution.BranchRef) == "" {
 		gateErrs = append(gateErrs, "branch missing")
 	}
-	if strings.TrimSpace(resolution.PRRef) == "" {
+	if workflow.RequirePR && strings.TrimSpace(resolution.PRRef) == "" {
 		gateErrs = append(gateErrs, "pr missing")
 	}
 	return gateErrs
@@ -440,11 +446,15 @@ func (o *Orchestrator) appendDispatchCompletionActivity(
 }
 
 func (o *Orchestrator) dispatchReviewTask(ctx context.Context, projectID string, task BoardTask) (TaskRun, error) {
+	projectItem, err := o.store.Get(projectID)
+	if err != nil {
+		return TaskRun{}, err
+	}
 	reviewTask := task
 	reviewTask.Role = "reviewer"
 	reviewTask.WorkerKind = ""
 
-	profile, err := ResolveWorkerProfile(reviewTask)
+	profile, err := ResolveWorkerProfileForProject(projectItem, reviewTask)
 	if err != nil {
 		return TaskRun{}, err
 	}

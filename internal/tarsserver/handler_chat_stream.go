@@ -67,6 +67,20 @@ func (s *chatStreamWriter) status(phase, message, toolName, toolCallID, toolArgs
 	s.send(payload)
 }
 
+func (s *chatStreamWriter) skillSelected(name, reason string) {
+	payload := map[string]string{
+		"type":       "status",
+		"phase":      "skill_selected",
+		"message":    "using skill " + strings.TrimSpace(name),
+		"session_id": s.sessionID,
+		"skill_name": strings.TrimSpace(name),
+	}
+	if strings.TrimSpace(reason) != "" {
+		payload["skill_reason"] = strings.TrimSpace(reason)
+	}
+	s.send(payload)
+}
+
 func (s *chatStreamWriter) delta(text string) {
 	s.send(map[string]string{"type": "delta", "text": text})
 }

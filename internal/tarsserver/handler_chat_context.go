@@ -11,6 +11,7 @@ import (
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/skill"
 	"github.com/devlikebear/tars/internal/tool"
 )
 
@@ -20,6 +21,8 @@ type chatRunState struct {
 	store               *session.Store
 	sessionID           string
 	projectID           string
+	invokedSkill        *skill.Definition
+	invokedSkillReason  string
 	transcriptPath      string
 	history             []session.Message
 	registry            *tool.Registry
@@ -82,7 +85,8 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	if deps.tooling.Extensions != nil {
 		extSnapshot = deps.tooling.Extensions.Snapshot()
 	}
-	invokedSkill := resolveSkillForMessage(req.Message, deps.tooling.Extensions, requestWorkspaceDir, sessionID)
+	resolvedSkill := resolveSkillSelection(req.Message, deps.tooling.Extensions, requestWorkspaceDir, sessionID)
+	invokedSkill := resolvedSkill.Definition
 	resolvedProjectID, activeProject, projectPrompt, err := resolveChatProjectContext(requestWorkspaceDir, reqStore, sessionID, strings.TrimSpace(req.ProjectID))
 	if err != nil {
 		return chatRunState{}, http.StatusNotFound, err.Error(), err
@@ -136,6 +140,8 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		store:               reqStore,
 		sessionID:           sessionID,
 		projectID:           resolvedProjectID,
+		invokedSkill:        invokedSkill,
+		invokedSkillReason:  resolvedSkill.Reason,
 		transcriptPath:      transcriptPath,
 		history:             history,
 		registry:            registry,

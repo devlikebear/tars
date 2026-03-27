@@ -31,16 +31,16 @@ import (
 )
 
 type serveAPIRuntime struct {
-	cfg                config.Config
-	mainSessionID      string
-	server             *http.Server
-	extensionsManager  *extensions.Manager
-	gatewayRuntime     *gateway.Runtime
-	gatewayAgentsWatch *gatewayAgentsWatcher
-	cronManager        *workspaceCronManager
-	watchdogManager    *workspaceWatchdogManager
-	telegramPoller     *telegramUpdatePoller
-	projectAutopilot   *project.AutopilotManager
+	cfg                     config.Config
+	mainSessionID           string
+	server                  *http.Server
+	extensionsManager       *extensions.Manager
+	gatewayRuntime          *gateway.Runtime
+	gatewayAgentsWatch      *gatewayAgentsWatcher
+	cronManager             *workspaceCronManager
+	watchdogManager         *workspaceWatchdogManager
+	telegramPoller          *telegramUpdatePoller
+	restoreProjectAutopilot func() error
 }
 
 type apiRouteHandlers struct {
@@ -242,7 +242,11 @@ func buildAPIMux(
 			return apiRunPromptWithTools(ctx, runLabel, prompt, nil)
 		}
 	}
-	var projectAutopilot *project.AutopilotManager
+	var (
+		projectAutopilot        project.PhaseEngine
+		ensureProjectAutopilot  func(context.Context) error
+		restoreProjectAutopilot func() error
+	)
 	heartbeatRunner := newWorkspaceHeartbeatRunnerWithNotify(
 		cfg.WorkspaceDir,
 		nowFn,
@@ -251,10 +255,10 @@ func buildAPIMux(
 		heartbeatState,
 		dispatcher.Emit,
 		func(ctx context.Context) error {
-			if projectAutopilot == nil {
+			if ensureProjectAutopilot == nil {
 				return nil
 			}
-			_, err := projectAutopilot.EnsureActiveRuns(ctx)
+			err := ensureProjectAutopilot(ctx)
 			if err != nil {
 				logger.Error().Err(err).Msg("ensure project autopilot runs after heartbeat failed")
 			}
@@ -395,9 +399,18 @@ func buildAPIMux(
 	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
 	projectDashboardBroker := newProjectDashboardBroker()
 	projectTaskRunner := gateway.NewProjectTaskRunner(gatewayRuntime, "")
-	projectAutopilot = project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), func(projectID string, kind string) {
+	projectAutopilotManager := project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), func(projectID string, kind string) {
 		projectDashboardBroker.publish(newProjectDashboardEvent(projectID, kind))
 	})
+	projectAutopilot = projectAutopilotManager
+	ensureProjectAutopilot = func(ctx context.Context) error {
+		if projectAutopilot == nil {
+			return nil
+		}
+		_, err := projectAutopilot.EnsureActiveRuns(ctx)
+		return err
+	}
+	restoreProjectAutopilot = projectAutopilotManager.RestorePersistedRuns
 	// NOTE: RestorePersistedRuns is deferred to startBackgrounds() so that
 	// autopilot loops do not fire LLM requests before the server is ready.
 	chatTooling.ProjectAutopilot = projectAutopilot
@@ -522,16 +535,16 @@ func buildAPIMux(
 	watchdogManager := newWorkspaceWatchdogManager(watchdogRunner, defaultWatchdogInterval)
 
 	return &serveAPIRuntime{
-		cfg:                cfg,
-		mainSessionID:      mainSessionID,
-		server:             server,
-		extensionsManager:  extensionsManager,
-		gatewayRuntime:     gatewayRuntime,
-		gatewayAgentsWatch: gatewayAgentsWatch,
-		cronManager:        cronManager,
-		watchdogManager:    watchdogManager,
-		telegramPoller:     telegramPoller,
-		projectAutopilot:   projectAutopilot,
+		cfg:                     cfg,
+		mainSessionID:           mainSessionID,
+		server:                  server,
+		extensionsManager:       extensionsManager,
+		gatewayRuntime:          gatewayRuntime,
+		gatewayAgentsWatch:      gatewayAgentsWatch,
+		cronManager:             cronManager,
+		watchdogManager:         watchdogManager,
+		telegramPoller:          telegramPoller,
+		restoreProjectAutopilot: restoreProjectAutopilot,
 	}, nil
 }
 
@@ -658,9 +671,9 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 		}
 	}
 	// Restore persisted project autopilot runs after all other backgrounds are up.
-	if runtime.projectAutopilot != nil {
+	if runtime.restoreProjectAutopilot != nil {
 		go func() {
-			if err := runtime.projectAutopilot.RestorePersistedRuns(); err != nil {
+			if err := runtime.restoreProjectAutopilot(); err != nil {
 				logger.Error().Err(err).Msg("restore persisted project autopilot runs failed")
 			}
 		}()

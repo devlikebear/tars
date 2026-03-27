@@ -59,6 +59,46 @@ func TestResolveWorkerProfile_UsesExplicitWorkerAndRoleDefaults(t *testing.T) {
 	})
 }
 
+func TestResolveWorkerProfileForProject_UsesWorkflowProfileDefaultsAndOverrides(t *testing.T) {
+	t.Run("research defaults to runtime worker", func(t *testing.T) {
+		project := Project{WorkflowProfile: "research"}
+		profile, err := ResolveWorkerProfileForProject(project, BoardTask{Role: "developer"})
+		if err != nil {
+			t.Fatalf("resolve worker profile: %v", err)
+		}
+		if profile.Kind != WorkerKindDefault {
+			t.Fatalf("expected %q, got %+v", WorkerKindDefault, profile)
+		}
+	})
+
+	t.Run("research reviewer also defaults to runtime worker", func(t *testing.T) {
+		project := Project{WorkflowProfile: "research"}
+		profile, err := ResolveWorkerProfileForProject(project, BoardTask{Role: "reviewer"})
+		if err != nil {
+			t.Fatalf("resolve worker profile: %v", err)
+		}
+		if profile.Kind != WorkerKindDefault {
+			t.Fatalf("expected %q, got %+v", WorkerKindDefault, profile)
+		}
+	})
+
+	t.Run("workflow rule overrides default worker kind", func(t *testing.T) {
+		project := Project{
+			WorkflowProfile: "research",
+			WorkflowRules: []WorkflowRule{
+				{Name: "worker_kind", Params: map[string]string{"role": "developer", "kind": WorkerKindClaudeCode}},
+			},
+		}
+		profile, err := ResolveWorkerProfileForProject(project, BoardTask{Role: "developer"})
+		if err != nil {
+			t.Fatalf("resolve worker profile: %v", err)
+		}
+		if profile.Kind != WorkerKindClaudeCode {
+			t.Fatalf("expected %q, got %+v", WorkerKindClaudeCode, profile)
+		}
+	})
+}
+
 func TestBuildTaskPrompt_UsesFixedReportContract(t *testing.T) {
 	profile, err := ResolveWorkerProfile(BoardTask{Role: "developer"})
 	if err != nil {

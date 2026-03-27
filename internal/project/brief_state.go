@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/devlikebear/tars/internal/session"
 	"gopkg.in/yaml.v3"
@@ -37,6 +38,8 @@ type Brief struct {
 	Body               string   `json:"body,omitempty"`
 	Path               string   `json:"path,omitempty"`
 }
+
+var briefFinalizeLocks sync.Map
 
 type BriefUpdateInput struct {
 	Title              *string
@@ -235,6 +238,8 @@ func (s *Store) FinalizeBrief(id string, sessionStore *session.Store) (Project, 
 	if s == nil {
 		return Project{}, Brief{}, fmt.Errorf("project store is nil")
 	}
+	unlock := lockBriefFinalize(s.workspaceDir, id)
+	defer unlock()
 	brief, err := s.GetBrief(id)
 	if err != nil {
 		return Project{}, Brief{}, err
@@ -278,6 +283,14 @@ func (s *Store) FinalizeBrief(id string, sessionStore *session.Store) (Project, 
 		return Project{}, Brief{}, err
 	}
 	return created, finalized, nil
+}
+
+func lockBriefFinalize(workspaceDir, id string) func() {
+	key := strings.TrimSpace(workspaceDir) + "::" + strings.TrimSpace(id)
+	actual, _ := briefFinalizeLocks.LoadOrStore(key, &sync.Mutex{})
+	mu := actual.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 func (s *Store) writeBrief(item Brief) error {

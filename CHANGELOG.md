@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-03-27
+
+### Added
+
+- Typed `PhaseEngine` project runtime with a step-wise `advance` flow exposed through chat tools, REST, and TUI project commands
+- Project workflow metadata fields `workflow_profile` and `workflow_rules` for per-project worker and verification policy overrides
+- Chat status events that surface automatic skill routing decisions before execution starts
+
+### Changed
+
+- Project autopilot now follows a planning-first, phase-centric workflow instead of immediately seeding and cycling a Kanban board from an empty brief
+- Empty backlog states now fall back to planning or approval instead of auto-seeding bootstrap tasks
+- Dashboard project views now prioritize phase status, run status, pending human decisions, and blockers over raw board columns
+- Built-in project-start and project-autopilot skills now align with the phase engine, approval gates, and one-step runtime control
+- Non-software workflow profiles can disable software-specific worker defaults and GitHub/test/build gates without changing core code
+
 ## [0.11.0] - 2026-03-22
 
 ### Added

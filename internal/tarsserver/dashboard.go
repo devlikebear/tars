@@ -13,23 +13,28 @@ import (
 )
 
 type projectDashboardPageData struct {
-	Project    project.Project
-	State      *project.ProjectState
-	Status     string
-	Phase      string
-	NextAction string
-	Autopilot  *project.AutopilotRun
-	Activity   []project.Activity
-	Board      project.Board
-	BoardStats []projectDashboardBoardStat
-	GitHubFlow []projectDashboardGitHubFlowRow
-	Reports    []projectDashboardWorkerReport
-	Blockers   []projectDashboardPMItem
-	Decisions  []projectDashboardPMItem
-	Replans    []projectDashboardPMItem
-	Sections   projectDashboardSections
-	PagePath   string
-	StreamPath string
+	Project         project.Project
+	State           *project.ProjectState
+	Current         *project.PhaseSnapshot
+	Status          string
+	Phase           string
+	RunStatus       string
+	NextAction      string
+	PhaseNote       string
+	Autopilot       *project.AutopilotRun
+	Activity        []project.Activity
+	Board           project.Board
+	BoardStats      []projectDashboardBoardStat
+	GitHubFlow      []projectDashboardGitHubFlowRow
+	Reports         []projectDashboardWorkerReport
+	Blockers        []projectDashboardPMItem
+	Decisions       []projectDashboardPMItem
+	Replans         []projectDashboardPMItem
+	CurrentBlocker  *projectDashboardPMItem
+	PendingDecision *projectDashboardPMItem
+	Sections        projectDashboardSections
+	PagePath        string
+	StreamPath      string
 }
 
 type projectDashboardListPageData struct {
@@ -231,11 +236,7 @@ func (b *projectDashboardBroker) publish(evt projectDashboardEvent) {
 	}
 }
 
-type projectAutopilotStatusProvider interface {
-	Status(projectID string) (project.AutopilotRun, bool)
-}
-
-func newProjectDashboardHandler(store *project.Store, autopilot projectAutopilotStatusProvider, broker *projectDashboardBroker, logger zerolog.Logger) http.Handler {
+func newProjectDashboardHandler(store *project.Store, autopilot project.PhaseEngine, broker *projectDashboardBroker, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
@@ -266,8 +267,12 @@ func newProjectDashboardHandler(store *project.Store, autopilot projectAutopilot
 		if current, err := store.GetState(route.ProjectID); err == nil {
 			state = &current
 		}
+		var phaseSnapshot *project.PhaseSnapshot
 		var autopilotRun *project.AutopilotRun
 		if autopilot != nil {
+			if current, ok := autopilot.Current(route.ProjectID); ok {
+				phaseSnapshot = &current
+			}
 			if current, ok := autopilot.Status(route.ProjectID); ok {
 				autopilotRun = &current
 			}
@@ -285,13 +290,13 @@ func newProjectDashboardHandler(store *project.Store, autopilot projectAutopilot
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := projectDashboardTemplate.Execute(w, buildProjectDashboardPageData(item, state, autopilotRun, activity, board)); err != nil {
+		if err := projectDashboardTemplate.Execute(w, buildProjectDashboardPageData(item, state, phaseSnapshot, autopilotRun, activity, board)); err != nil {
 			logger.Error().Err(err).Str("project_id", route.ProjectID).Msg("render project dashboard failed")
 		}
 	})
 }
 
-func serveProjectDashboardList(w http.ResponseWriter, store *project.Store, autopilot projectAutopilotStatusProvider, logger zerolog.Logger) {
+func serveProjectDashboardList(w http.ResponseWriter, store *project.Store, autopilot project.PhaseEngine, logger zerolog.Logger) {
 	if store == nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "project store is not configured"})
 		return
@@ -308,7 +313,7 @@ func serveProjectDashboardList(w http.ResponseWriter, store *project.Store, auto
 	}
 }
 
-func buildProjectDashboardList(store *project.Store, autopilot projectAutopilotStatusProvider) ([]projectDashboardListItem, error) {
+func buildProjectDashboardList(store *project.Store, autopilot project.PhaseEngine) ([]projectDashboardListItem, error) {
 	projects, err := store.List()
 	if err != nil {
 		return nil, err
@@ -331,10 +336,18 @@ func buildProjectDashboardList(store *project.Store, autopilot projectAutopilotS
 			DashboardPath: fmt.Sprintf("/ui/projects/%s", strings.TrimSpace(item.ID)),
 		}
 		if autopilot != nil {
+			if current, ok := autopilot.Current(item.ID); ok {
+				row.Status = strings.TrimSpace(string(current.Status))
+				row.Phase = strings.TrimSpace(string(current.Name))
+				row.NextAction = strings.TrimSpace(current.NextAction)
+				row.AutopilotNote = dashboardFirstNonEmpty(strings.TrimSpace(current.Message), strings.TrimSpace(current.Summary))
+			}
 			if current, ok := autopilot.Status(item.ID); ok {
 				row.AutopilotStatus = strings.TrimSpace(string(current.Status))
 				row.AutopilotRunID = strings.TrimSpace(current.RunID)
-				row.AutopilotNote = strings.TrimSpace(current.Message)
+				if strings.TrimSpace(row.AutopilotNote) == "" {
+					row.AutopilotNote = strings.TrimSpace(current.Message)
+				}
 			}
 		}
 		rows = append(rows, row)
@@ -360,17 +373,39 @@ func buildProjectDashboardBoardStats(board project.Board) []projectDashboardBoar
 func buildProjectDashboardPageData(
 	item project.Project,
 	state *project.ProjectState,
+	current *project.PhaseSnapshot,
 	autopilotRun *project.AutopilotRun,
 	activity []project.Activity,
 	board project.Board,
 ) projectDashboardPageData {
 	status, phase, nextAction := project.DefaultWorkflowPolicy.ProjectStateSummary(item, state)
+	phaseNote := ""
+	runStatus := ""
+	if current != nil {
+		if trimmed := strings.TrimSpace(string(current.Status)); trimmed != "" {
+			status = trimmed
+		}
+		if trimmed := strings.TrimSpace(string(current.Name)); trimmed != "" {
+			phase = trimmed
+		}
+		if trimmed := strings.TrimSpace(current.NextAction); trimmed != "" {
+			nextAction = trimmed
+		}
+		phaseNote = dashboardFirstNonEmpty(strings.TrimSpace(current.Summary), strings.TrimSpace(current.Message))
+		runStatus = strings.TrimSpace(string(current.RunStatus))
+	}
+	if runStatus == "" && autopilotRun != nil {
+		runStatus = strings.TrimSpace(string(autopilotRun.Status))
+	}
 	data := projectDashboardPageData{
 		Project:    item,
 		State:      state,
+		Current:    current,
 		Status:     status,
 		Phase:      phase,
+		RunStatus:  runStatus,
 		NextAction: nextAction,
+		PhaseNote:  phaseNote,
 		Autopilot:  autopilotRun,
 		Activity:   activity,
 		Board:      board,
@@ -382,6 +417,12 @@ func buildProjectDashboardPageData(
 		if spec.Populate != nil {
 			spec.Populate(&data, board, activity)
 		}
+	}
+	if len(data.Blockers) > 0 {
+		data.CurrentBlocker = &data.Blockers[0]
+	}
+	if len(data.Decisions) > 0 {
+		data.PendingDecision = &data.Decisions[0]
 	}
 	return data
 }

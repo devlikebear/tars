@@ -1,11 +1,39 @@
 package tarsserver
 
 import (
+	"context"
 	"testing"
 
 	"github.com/devlikebear/tars/internal/project"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
 )
+
+type chatPhaseEngineStub struct{}
+
+func (chatPhaseEngineStub) Start(context.Context, string) (project.AutopilotRun, error) {
+	return project.AutopilotRun{}, nil
+}
+
+func (chatPhaseEngineStub) Status(string) (project.AutopilotRun, bool) {
+	return project.AutopilotRun{}, false
+}
+
+func (chatPhaseEngineStub) Current(string) (project.PhaseSnapshot, bool) {
+	return project.PhaseSnapshot{}, false
+}
+
+func (chatPhaseEngineStub) Advance(context.Context, string) (project.PhaseSnapshot, error) {
+	return project.PhaseSnapshot{}, nil
+}
+
+func (chatPhaseEngineStub) EnsureActiveRuns(context.Context) (int, error) {
+	return 0, nil
+}
+
+func (chatPhaseEngineStub) Escalate(string, string) error {
+	return nil
+}
 
 func TestResolveInjectedToolSchemas_FiltersHighRiskToolsForUserRole(t *testing.T) {
 	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.NewProcessManager())
@@ -72,6 +100,7 @@ func TestResolveInjectedToolSchemas_MinimalIncludesProjectRuntimeTools(t *testin
 		"project_board_get",
 		"project_activity_get",
 		"project_dispatch",
+		"project_autopilot_advance",
 		"project_autopilot_start",
 	} {
 		registry.Register(tool.Tool{Name: expected})
@@ -84,10 +113,34 @@ func TestResolveInjectedToolSchemas_MinimalIncludesProjectRuntimeTools(t *testin
 		"project_board_get",
 		"project_activity_get",
 		"project_dispatch",
+		"project_autopilot_advance",
 		"project_autopilot_start",
 	} {
 		if !hasToolName(names, expected) {
 			t.Fatalf("expected %s in minimal tool set, got %+v", expected, names)
+		}
+	}
+}
+
+func TestBuildChatToolRegistry_RegistersAutopilotPhaseToolsFromPhaseEngine(t *testing.T) {
+	workspaceDir := t.TempDir()
+	registry := buildChatToolRegistry(
+		session.NewStore(workspaceDir),
+		defaultWorkspaceID,
+		"session-1",
+		workspaceDir,
+		nil,
+		chatHandlerDeps{
+			tooling: chatToolingOptions{
+				ProjectAutopilot: chatPhaseEngineStub{},
+			},
+		},
+	)
+
+	names := toolNamesFromSchemas(registry.Schemas())
+	for _, expected := range []string{"project_autopilot_start", "project_autopilot_advance"} {
+		if !hasToolName(names, expected) {
+			t.Fatalf("expected %s to be registered from phase engine tooling", expected)
 		}
 	}
 }

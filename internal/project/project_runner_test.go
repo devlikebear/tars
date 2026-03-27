@@ -284,33 +284,33 @@ func TestAutopilotManager_StartBlocksWhenBoardIsEmpty(t *testing.T) {
 		t.Fatalf("start autopilot: %v", err)
 	}
 
-	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusDone)
+	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusBlocked)
 	if final.Iterations < 1 {
-		t.Fatalf("expected autopilot to iterate after seeding backlog, got %+v", final)
+		t.Fatalf("expected autopilot to record a planning fallback iteration, got %+v", final)
 	}
 
 	state, err := store.GetState(created.ID)
 	if err != nil {
 		t.Fatalf("get state: %v", err)
 	}
-	if state.Status != "done" || state.Phase != "done" {
-		t.Fatalf("expected seeded project to finish, got %+v", state)
+	if state.Status != "blocked" || state.Phase != "planning" {
+		t.Fatalf("expected empty board to return to planning, got %+v", state)
 	}
 
 	board, err := store.GetBoard(created.ID)
 	if err != nil {
 		t.Fatalf("get board: %v", err)
 	}
-	if len(board.Tasks) == 0 {
-		t.Fatalf("expected pm supervisor to seed backlog, got %+v", board)
+	if len(board.Tasks) != 0 {
+		t.Fatalf("expected empty board to remain empty pending planning, got %+v", board)
 	}
 
 	activity, err := store.ListActivity(created.ID, 100)
 	if err != nil {
 		t.Fatalf("list activity: %v", err)
 	}
-	if !hasActivityKindStatus(activity, ActivityKindReplan, "seeded") {
-		t.Fatalf("expected seeded replan activity, got %+v", activity)
+	if !hasActivityKindStatus(activity, ActivityKindDecision, "needed") {
+		t.Fatalf("expected planning decision activity, got %+v", activity)
 	}
 }
 
@@ -522,7 +522,7 @@ func TestAutopilotManager_RestorePersistedRunsRestartsRunningRunsAtStartup(t *te
 		t.Fatalf("ensure active runs: %v", err)
 	}
 
-	restored := waitForAutopilotStatus(t, restarted, created.ID, AutopilotStatusDone)
+	restored := waitForAutopilotStatus(t, restarted, created.ID, AutopilotStatusBlocked)
 	if restored.Iterations < 1 {
 		t.Fatalf("expected restarted loop to advance the project, got %+v", restored)
 	}
@@ -531,16 +531,16 @@ func TestAutopilotManager_RestorePersistedRunsRestartsRunningRunsAtStartup(t *te
 	if err != nil {
 		t.Fatalf("get state: %v", err)
 	}
-	if state.Status != "done" || state.Phase != "done" {
-		t.Fatalf("expected startup recovery to resume and finish, got %+v", state)
+	if state.Status != "blocked" || state.Phase != "planning" {
+		t.Fatalf("expected startup recovery to return to planning, got %+v", state)
 	}
 
 	activity, err := store.ListActivity(created.ID, 20)
 	if err != nil {
 		t.Fatalf("list activity: %v", err)
 	}
-	if !hasActivityKindStatus(activity, ActivityKindReviewStatus, "approved") {
-		t.Fatalf("expected restart recovery to finish the recovered workflow, got %+v", activity)
+	if !hasActivityKindStatus(activity, ActivityKindDecision, "needed") {
+		t.Fatalf("expected restart recovery to request planning, got %+v", activity)
 	}
 }
 
@@ -645,6 +645,36 @@ func TestAutopilotManager_EnsureActiveRunsStartsMissingLoop(t *testing.T) {
 	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusDone)
 	if final.Status != AutopilotStatusDone {
 		t.Fatalf("expected done status, got %+v", final)
+	}
+}
+
+func TestAutopilotManager_EnsureActiveRunsSkipsEmptyPlanningProjects(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 20, 10, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Empty Planning"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	phase := "planning"
+	status := "active"
+	if _, err := store.UpdateState(created.ID, ProjectStateUpdateInput{
+		Phase:  &phase,
+		Status: &status,
+	}); err != nil {
+		t.Fatalf("seed planning state: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	started, err := manager.EnsureActiveRuns(context.Background())
+	if err != nil {
+		t.Fatalf("ensure active runs: %v", err)
+	}
+	if started != 0 {
+		t.Fatalf("expected empty planning project to be skipped, got %d", started)
+	}
+	if manager.IsRunning(created.ID) {
+		t.Fatalf("expected no background loop for empty planning project")
 	}
 }
 

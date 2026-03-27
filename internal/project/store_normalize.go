@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+var builtInWorkflowProfiles = map[string]struct{}{
+	"software-dev": {},
+	"research":     {},
+	"creative":     {},
+}
+
 func applyUpdateInput(item *Project, input UpdateInput) error {
 	if input.Name != nil {
 		v := strings.TrimSpace(*input.Name)
@@ -49,6 +55,12 @@ func applyUpdateInput(item *Project, input UpdateInput) error {
 	if len(input.SkillsAllow) > 0 {
 		item.SkillsAllow = normalizeList(input.SkillsAllow)
 	}
+	if input.WorkflowProfile != nil {
+		item.WorkflowProfile = normalizeWorkflowProfile(*input.WorkflowProfile)
+	}
+	if len(input.WorkflowRules) > 0 {
+		item.WorkflowRules = normalizeWorkflowRules(input.WorkflowRules)
+	}
 	if len(input.MCPServers) > 0 {
 		item.MCPServers = normalizeList(input.MCPServers)
 	}
@@ -80,10 +92,73 @@ func normalizeProjectForWrite(project Project, nowFn func() time.Time) (Project,
 	project.ToolsAllowPatterns = normalizeList(project.ToolsAllowPatterns)
 	project.ToolsDeny = normalizeList(project.ToolsDeny)
 	project.SkillsAllow = normalizeList(project.SkillsAllow)
+	project.WorkflowProfile = normalizeWorkflowProfile(project.WorkflowProfile)
+	project.WorkflowRules = normalizeWorkflowRules(project.WorkflowRules)
 	project.MCPServers = normalizeList(project.MCPServers)
 	project.SecretsRefs = normalizeList(project.SecretsRefs)
 	project.ToolsRiskMax = strings.TrimSpace(strings.ToLower(project.ToolsRiskMax))
 	return project, nil
+}
+
+func normalizeWorkflowProfile(raw string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(raw))
+	if trimmed == "" {
+		return ""
+	}
+	trimmed = strings.ReplaceAll(trimmed, " ", "-")
+	return trimmed
+}
+
+func workflowProfileWarning(raw string) string {
+	profile := normalizeWorkflowProfile(raw)
+	if profile == "" {
+		return ""
+	}
+	if _, ok := builtInWorkflowProfiles[profile]; ok {
+		return ""
+	}
+	return fmt.Sprintf("Workflow profile %q is not a built-in profile; built-in execution defaults will not apply until workflow rules or skills define it.", profile)
+}
+
+func normalizeWorkflowRules(rules []WorkflowRule) []WorkflowRule {
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]WorkflowRule, 0, len(rules))
+	for _, rule := range rules {
+		name := strings.TrimSpace(rule.Name)
+		if name == "" {
+			continue
+		}
+		normalized := WorkflowRule{
+			Name:   name,
+			Params: normalizeWorkflowRuleParams(rule.Params),
+		}
+		out = append(out, normalized)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeWorkflowRuleParams(params map[string]string) map[string]string {
+	if len(params) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(params))
+	for key, value := range params {
+		trimmedKey := strings.TrimSpace(key)
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedKey == "" || trimmedValue == "" {
+			continue
+		}
+		out[trimmedKey] = trimmedValue
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func normalizeType(raw string) string {

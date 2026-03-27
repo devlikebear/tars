@@ -29,6 +29,8 @@ func projectActivityChanged(before, after Project) bool {
 		!stringSlicesEqual(before.ToolsDeny, after.ToolsDeny) ||
 		before.ToolsRiskMax != after.ToolsRiskMax ||
 		!stringSlicesEqual(before.SkillsAllow, after.SkillsAllow) ||
+		before.WorkflowProfile != after.WorkflowProfile ||
+		!workflowRulesEqual(before.WorkflowRules, after.WorkflowRules) ||
 		!stringSlicesEqual(before.MCPServers, after.MCPServers) ||
 		!stringSlicesEqual(before.SecretsRefs, after.SecretsRefs)
 }
@@ -68,6 +70,26 @@ func stringSlicesEqual(left, right []string) bool {
 	for i := range left {
 		if left[i] != right[i] {
 			return false
+		}
+	}
+	return true
+}
+
+func workflowRulesEqual(left, right []WorkflowRule) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i].Name != right[i].Name {
+			return false
+		}
+		if len(left[i].Params) != len(right[i].Params) {
+			return false
+		}
+		for key, leftValue := range left[i].Params {
+			if right[i].Params[key] != leftValue {
+				return false
+			}
 		}
 	}
 	return true

@@ -1,7 +1,6 @@
 package tarsserver
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
@@ -10,18 +9,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type projectAutopilotManager interface {
-	Start(context.Context, string) (project.AutopilotRun, error)
-	Status(string) (project.AutopilotRun, bool)
-}
-
 func newProjectAPIHandler(
 	store *project.Store,
 	sessionStore *session.Store,
 	mainSessionID string,
 	taskRunner project.TaskRunner,
 	githubAuthChecker project.GitHubAuthChecker,
-	autopilot projectAutopilotManager,
+	autopilot project.PhaseEngine,
 	dashboardBroker *projectDashboardBroker,
 	logger zerolog.Logger,
 ) http.Handler {
@@ -131,10 +125,17 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "finalize brief failed"})
 				return
 			}
+			state, err := store.GetState(created.ID)
+			if err != nil {
+				logger.Error().Err(err).Str("project_id", created.ID).Msg("get project state after brief finalize failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load project state failed"})
+				return
+			}
 			writeJSON(w, http.StatusOK, map[string]any{
-				"project": created,
-				"brief":   brief,
-				"seeded":  true,
+				"project":        created,
+				"brief":          brief,
+				"state":          state,
+				"planning_ready": true,
 			})
 			return
 		}
@@ -160,23 +161,27 @@ func newProjectAPIHandler(
 			writeJSON(w, http.StatusOK, items)
 		case http.MethodPost:
 			var req struct {
-				Name         string `json:"name"`
-				Type         string `json:"type,omitempty"`
-				GitRepo      string `json:"git_repo,omitempty"`
-				Objective    string `json:"objective,omitempty"`
-				Instructions string `json:"instructions,omitempty"`
-				CloneRepo    bool   `json:"clone_repo,omitempty"`
+				Name            string                 `json:"name"`
+				Type            string                 `json:"type,omitempty"`
+				GitRepo         string                 `json:"git_repo,omitempty"`
+				Objective       string                 `json:"objective,omitempty"`
+				WorkflowProfile string                 `json:"workflow_profile,omitempty"`
+				WorkflowRules   []project.WorkflowRule `json:"workflow_rules,omitempty"`
+				Instructions    string                 `json:"instructions,omitempty"`
+				CloneRepo       bool                   `json:"clone_repo,omitempty"`
 			}
 			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			created, err := store.Create(project.CreateInput{
-				Name:         req.Name,
-				Type:         req.Type,
-				GitRepo:      req.GitRepo,
-				Objective:    req.Objective,
-				Instructions: req.Instructions,
-				CloneRepo:    req.CloneRepo,
+				Name:            req.Name,
+				Type:            req.Type,
+				GitRepo:         req.GitRepo,
+				Objective:       req.Objective,
+				WorkflowProfile: req.WorkflowProfile,
+				WorkflowRules:   req.WorkflowRules,
+				Instructions:    req.Instructions,
+				CloneRepo:       req.CloneRepo,
 			})
 			if err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "required") || strings.Contains(strings.ToLower(err.Error()), "invalid") {
@@ -476,6 +481,33 @@ func newProjectAPIHandler(
 			dashboardBroker.publish(newProjectDashboardEvent(projectID, "board"))
 			dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
 			writeJSON(w, http.StatusOK, report)
+			return
+		}
+
+		if len(parts) == 3 && parts[1] == "autopilot" && parts[2] == "advance" {
+			if autopilot == nil {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project autopilot manager is not configured"})
+				return
+			}
+			if !requireMethod(w, r, http.MethodPost) {
+				return
+			}
+			item, err := autopilot.Advance(r.Context(), projectID)
+			if err != nil {
+				lower := strings.ToLower(err.Error())
+				if strings.Contains(lower, "not found") {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+					return
+				}
+				if strings.Contains(lower, "required") || strings.Contains(lower, "invalid") {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+					return
+				}
+				logger.Error().Err(err).Str("project_id", projectID).Msg("advance project autopilot failed")
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, item)
 			return
 		}
 

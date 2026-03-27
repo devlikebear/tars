@@ -223,20 +223,27 @@ func resolveInvokedSkill(message string, manager *extensions.Manager) *skill.Def
 }
 
 func resolveSkillForMessage(message string, manager *extensions.Manager, workspaceDir, sessionID string) *skill.Definition {
+	resolved := resolveSkillSelection(message, manager, workspaceDir, sessionID)
+	return resolved.Definition
+}
+
+type skillSelection struct {
+	Definition *skill.Definition
+	Reason     string
+}
+
+func resolveSkillSelection(message string, manager *extensions.Manager, workspaceDir, sessionID string) skillSelection {
 	if invoked := resolveInvokedSkill(message, manager); invoked != nil {
-		return invoked
+		return skillSelection{Definition: invoked, Reason: "explicit_command"}
 	}
 	projectStart := findProjectStartSkill(manager)
 	if projectStart == nil {
-		return nil
+		return skillSelection{}
 	}
 	if hasActiveProjectBrief(workspaceDir, sessionID) {
-		return projectStart
+		return skillSelection{Definition: projectStart, Reason: "active_brief"}
 	}
-	if project.DefaultWorkflowPolicy.IsKickoffMessage(message) {
-		return projectStart
-	}
-	return nil
+	return skillSelection{}
 }
 
 func findProjectStartSkill(manager *extensions.Manager) *skill.Definition {
@@ -357,7 +364,7 @@ type chatToolingOptions struct {
 	ProcessManager              *tool.ProcessManager
 	Extensions                  *extensions.Manager
 	Gateway                     *gateway.Runtime
-	ProjectAutopilot            *project.AutopilotManager
+	ProjectAutopilot            project.PhaseEngine
 	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
 	ToolsDefaultSet             string
 	ToolsAllowHighRiskUser      bool

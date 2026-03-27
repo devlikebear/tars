@@ -67,6 +67,7 @@ func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.Pr
 	registry.Register(tool.NewProjectActivityGetTool(projectStore))
 	registry.Register(tool.NewProjectActivityAppendTool(projectStore))
 	registry.Register(tool.NewProjectDispatchTool(projectStore, nil, nil))
+	registry.Register(tool.NewProjectAutopilotAdvanceTool(nil))
 	registry.Register(tool.NewProjectAutopilotStartTool(nil))
 	registry.Register(tool.NewProjectBriefGetTool(projectStore))
 	registry.Register(tool.NewProjectBriefUpdateTool(projectStore))

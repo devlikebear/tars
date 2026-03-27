@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agent"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/project"
@@ -176,6 +177,63 @@ func TestChatAPI_ProjectKickoffWithoutSessionID_CreatesFreshSession(t *testing.T
 	}
 	if len(kickoffMessages) == 0 || kickoffMessages[0].Content != "todo 앱 만드는 프로젝트 시작해줘" {
 		t.Fatalf("expected kickoff transcript to capture user message, got %+v", kickoffMessages)
+	}
+}
+
+func TestChatAPI_EmitsSkillSelectedStatusForActiveBrief(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	workspaceDir := filepath.Join(root, "workspace")
+	if err := memory.EnsureWorkspace(workspaceDir); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(workspaceDir)
+	manager := newTestSkillManager(t, root, workspaceDir)
+	mockClient := &mockLLMClient{response: llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "ok"}}}
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	status := "collecting"
+	goal := "Ship a todo app"
+	projectStore := project.NewStore(workspaceDir, nil)
+	if _, err := projectStore.UpdateBrief(sess.ID, project.BriefUpdateInput{
+		Goal:   &goal,
+		Status: &status,
+	}); err != nil {
+		t.Fatalf("update brief: %v", err)
+	}
+
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		workspaceDir,
+		store,
+		mockClient,
+		logger,
+		agent.DefaultMaxLoopIters,
+		nil,
+		"",
+		chatToolingOptions{Extensions: manager},
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"session_id":"`+sess.ID+`","message":"로그인은 이메일 기반이면 돼"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"phase":"skill_selected"`) {
+		t.Fatalf("expected skill_selected status event, got %q", body)
+	}
+	if !strings.Contains(body, `"skill_name":"project-start"`) {
+		t.Fatalf("expected project-start skill in status event, got %q", body)
+	}
+	if !strings.Contains(body, `"skill_reason":"active_brief"`) {
+		t.Fatalf("expected active_brief reason in status event, got %q", body)
 	}
 }
 

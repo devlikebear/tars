@@ -74,7 +74,7 @@ func buildChatToolingOptions(
 	processManager *tool.ProcessManager,
 	manager *extensions.Manager,
 	gatewayRuntime *gateway.Runtime,
-	projectAutopilot *project.AutopilotManager,
+	projectAutopilot project.PhaseEngine,
 	toolsDefaultSet string,
 	toolsAllowHighRiskUser bool,
 	memorySemanticConfig memory.SemanticConfig,

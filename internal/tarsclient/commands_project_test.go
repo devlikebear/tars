@@ -71,6 +71,15 @@ func TestExecuteCommand_ProjectWorkflowCommands(t *testing.T) {
 				"message":    "Autopilot started",
 				"iterations": 0,
 			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/projects/proj_1/autopilot/advance":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"project_id":  "proj_1",
+				"name":        "planning",
+				"status":      "blocked",
+				"run_status":  "blocked",
+				"next_action": "Approve the first phase backlog",
+				"message":     "No backlog items remain for the current phase.",
+			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/projects/proj_1/autopilot":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"project_id": "proj_1",
@@ -118,6 +127,14 @@ func TestExecuteCommand_ProjectWorkflowCommands(t *testing.T) {
 	}
 	if out := stdout.String(); !strings.Contains(out, "autopilot started") || !strings.Contains(out, "run_id=auto_1") {
 		t.Fatalf("unexpected /project autopilot start output: %q", out)
+	}
+
+	stdout.Reset()
+	if _, _, err := executeCommand(context.Background(), runtime, "/project autopilot advance proj_1", "", stdout, stderr); err != nil {
+		t.Fatalf("/project autopilot advance: %v", err)
+	}
+	if out := stdout.String(); !strings.Contains(out, "project autopilot advance proj_1") || !strings.Contains(out, "phase=planning") || !strings.Contains(out, "status=blocked") || !strings.Contains(out, "run_status=blocked") {
+		t.Fatalf("unexpected /project autopilot advance output: %q", out)
 	}
 
 	stdout.Reset()

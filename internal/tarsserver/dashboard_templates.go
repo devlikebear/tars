@@ -113,8 +113,24 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
         <div class="value">{{.Phase}}</div>
       </article>
       <article class="card">
+        <div class="label">Run Status</div>
+        <div class="value">{{if .RunStatus}}<code>{{.RunStatus}}</code>{{else}}-{{end}}</div>
+      </article>
+      <article class="card">
         <div class="label">Next Action</div>
         <div class="value">{{if .NextAction}}{{.NextAction}}{{else}}-{{end}}</div>
+      </article>
+      <article class="card">
+        <div class="label">Phase Note</div>
+        <div class="value">{{if .PhaseNote}}{{.PhaseNote}}{{else}}-{{end}}</div>
+      </article>
+      <article class="card">
+        <div class="label">Pending Decision</div>
+        <div class="value">{{if .PendingDecision}}{{.PendingDecision.Message}}{{else}}-{{end}}</div>
+      </article>
+      <article class="card">
+        <div class="label">Current Blocker</div>
+        <div class="value">{{if .CurrentBlocker}}{{.CurrentBlocker.Message}}{{else}}-{{end}}</div>
       </article>
     </section>
 
@@ -136,6 +152,7 @@ var projectDashboardTemplate = template.Must(template.New("project-dashboard").P
         </article>
       </div>
       {{if .Autopilot.Message}}<p>{{.Autopilot.Message}}</p>{{end}}
+      {{if .PhaseNote}}<p class="muted">{{.PhaseNote}}</p>{{end}}
       <p class="muted">
         {{if .Autopilot.StartedAt}}started {{.Autopilot.StartedAt}}{{end}}
         {{if .Autopilot.UpdatedAt}} · updated {{.Autopilot.UpdatedAt}}{{end}}
@@ -355,6 +372,10 @@ var projectDashboardListTemplate = template.Must(template.New("project-dashboard
           <div>
             <div class="label">Next Action</div>
             <div class="value">{{if .NextAction}}{{.NextAction}}{{else}}-{{end}}</div>
+          </div>
+          <div>
+            <div class="label">Phase Note</div>
+            <div class="value">{{if .AutopilotNote}}{{.AutopilotNote}}{{else}}-{{end}}</div>
           </div>
           <div>
             <div class="label">Autopilot</div>

@@ -227,7 +227,7 @@ type projectAutopilotStarter interface {
 func NewProjectAutopilotStartTool(manager projectAutopilotStarter) Tool {
 	return Tool{
 		Name:        "project_autopilot_start",
-		Description: "Start the background autopilot loop for a project.",
+		Description: "Start or resume autonomous execution for a project phase in the background.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{"project_id":{"type":"string"}},
@@ -249,6 +249,39 @@ func NewProjectAutopilotStartTool(manager projectAutopilotStarter) Tool {
 				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
 			return jsonTextResult(run, false), nil
+		},
+	}
+}
+
+type projectAutopilotAdvancer interface {
+	Advance(context.Context, string) (project.PhaseSnapshot, error)
+}
+
+func NewProjectAutopilotAdvanceTool(manager projectAutopilotAdvancer) Tool {
+	return Tool{
+		Name:        "project_autopilot_advance",
+		Description: "Advance the project phase engine by one synchronous step and return the current phase snapshot.",
+		Parameters: json.RawMessage(`{
+  "type":"object",
+  "properties":{"project_id":{"type":"string"}},
+  "required":["project_id"],
+  "additionalProperties":false
+}`),
+		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
+			if manager == nil {
+				return jsonTextResult(map[string]any{"message": "project autopilot manager is not configured"}, true), nil
+			}
+			var input struct {
+				ProjectID string `json:"project_id"`
+			}
+			if err := json.Unmarshal(params, &input); err != nil {
+				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+			}
+			snapshot, err := manager.Advance(ctx, strings.TrimSpace(input.ProjectID))
+			if err != nil {
+				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+			}
+			return jsonTextResult(snapshot, false), nil
 		},
 	}
 }

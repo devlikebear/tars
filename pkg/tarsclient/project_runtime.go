@@ -77,3 +77,15 @@ func (c *Client) GetProjectAutopilot(ctx context.Context, projectID string) (Pro
 	}
 	return out, nil
 }
+
+func (c *Client) AdvanceProjectAutopilot(ctx context.Context, projectID string) (ProjectPhaseSnapshot, error) {
+	id := strings.TrimSpace(projectID)
+	if id == "" {
+		return ProjectPhaseSnapshot{}, fmt.Errorf("project id is required")
+	}
+	var out ProjectPhaseSnapshot
+	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/projects/"+url.PathEscape(id)+"/autopilot/advance", nil, false, &out); err != nil {
+		return ProjectPhaseSnapshot{}, err
+	}
+	return out, nil
+}

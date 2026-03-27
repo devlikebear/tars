@@ -4,8 +4,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func TestStoreCreateWritesProjectMarkdown(t *testing.T) {
@@ -14,10 +17,15 @@ func TestStoreCreateWritesProjectMarkdown(t *testing.T) {
 	store := NewStore(root, func() time.Time { return now })
 
 	created, err := store.Create(CreateInput{
-		Name:         "Alpha Maint",
-		Type:         "development",
-		GitRepo:      "https://example.com/acme/alpha.git",
-		Objective:    "Maintain the alpha production service",
+		Name:            "Alpha Maint",
+		Type:            "development",
+		GitRepo:         "https://example.com/acme/alpha.git",
+		Objective:       "Maintain the alpha production service",
+		WorkflowProfile: " Software-Dev ",
+		WorkflowRules: []WorkflowRule{
+			{Name: "require_tests", Params: map[string]string{"command": "go test ./..."}},
+			{Name: "require_review", Params: map[string]string{"mode": "human"}},
+		},
 		Instructions: "Always run tests before deploy",
 	})
 	if err != nil {
@@ -35,6 +43,12 @@ func TestStoreCreateWritesProjectMarkdown(t *testing.T) {
 	if created.Type != "development" {
 		t.Fatalf("expected development type, got %q", created.Type)
 	}
+	if created.WorkflowProfile != "software-dev" {
+		t.Fatalf("expected normalized workflow profile, got %q", created.WorkflowProfile)
+	}
+	if len(created.WorkflowRules) != 2 {
+		t.Fatalf("expected workflow rules to be stored, got %+v", created.WorkflowRules)
+	}
 
 	projectPath := filepath.Join(root, "projects", created.ID, "PROJECT.md")
 	raw, err := os.ReadFile(projectPath)
@@ -47,6 +61,12 @@ func TestStoreCreateWritesProjectMarkdown(t *testing.T) {
 	}
 	if !strings.Contains(content, "objective: \"Maintain the alpha production service\"") {
 		t.Fatalf("expected objective frontmatter in PROJECT.md, got %q", content)
+	}
+	if !strings.Contains(content, "workflow_profile: \"software-dev\"") {
+		t.Fatalf("expected workflow_profile frontmatter in PROJECT.md, got %q", content)
+	}
+	if !strings.Contains(content, "workflow_rules:") || !strings.Contains(content, "name: \"require_tests\"") {
+		t.Fatalf("expected workflow_rules frontmatter in PROJECT.md, got %q", content)
 	}
 	if !strings.Contains(content, "Always run tests before deploy") {
 		t.Fatalf("expected body instructions in PROJECT.md, got %q", content)
@@ -119,6 +139,35 @@ func TestStoreUpdateAndArchive(t *testing.T) {
 	}
 	if activity[len(activity)-1].Kind != ActivityKindProjectCreated {
 		t.Fatalf("expected oldest created activity, got %+v", activity[len(activity)-1])
+	}
+}
+
+func TestStoreCreate_AppendsWarningForUnknownWorkflowProfile(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
+	store := NewStore(root, func() time.Time { return now })
+
+	created, err := store.Create(CreateInput{
+		Name:            "Custom Profile Project",
+		WorkflowProfile: "softwre-dev",
+	})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	activity, err := store.ListActivity(created.ID, 10)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	found := false
+	for _, item := range activity {
+		if item.Kind == ActivityKindDecision && item.Status == "warning" && strings.Contains(item.Message, "softwre-dev") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected workflow profile warning activity, got %+v", activity)
 	}
 }
 
@@ -202,6 +251,14 @@ tools_allow:
   - exec
 skills_allow:
   - deploy
+workflow_profile: "software-dev"
+workflow_rules:
+  - name: "require_tests"
+    params:
+      "command": "go test ./..."
+  - name: "require_review"
+    params:
+      "mode": "human"
 mcp_servers:
   - filesystem
 secrets_refs:
@@ -223,6 +280,12 @@ Operate this project carefully.
 	if got := strings.Join(parsed.ToolsAllow, ","); got != "read_file,exec" {
 		t.Fatalf("unexpected tools_allow: %q", got)
 	}
+	if parsed.WorkflowProfile != "software-dev" {
+		t.Fatalf("unexpected workflow profile: %q", parsed.WorkflowProfile)
+	}
+	if len(parsed.WorkflowRules) != 2 || parsed.WorkflowRules[0].Name != "require_tests" {
+		t.Fatalf("unexpected workflow rules: %+v", parsed.WorkflowRules)
+	}
 	if !strings.Contains(parsed.Body, "Operate this project") {
 		t.Fatalf("expected markdown body, got %q", parsed.Body)
 	}
@@ -233,6 +296,67 @@ Operate this project carefully.
 	}
 	if !strings.Contains(encoded, "Operate this project carefully") {
 		t.Fatalf("expected body in encoded document, got %q", encoded)
+	}
+}
+
+func TestStoreFinalizeBrief_IsIdempotentAcrossConcurrentCalls(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 2, 22, 13, 0, 0, 0, time.UTC)
+	storeA := NewStore(root, func() time.Time { return now })
+	storeB := NewStore(root, func() time.Time { return now })
+	sessionStore := session.NewStore(root)
+
+	title := "Orbit Hearts"
+	goal := "Ship the first serial arc"
+	status := "ready"
+	if _, err := storeA.UpdateBrief("sess-1", BriefUpdateInput{
+		Title:  &title,
+		Goal:   &goal,
+		Status: &status,
+	}); err != nil {
+		t.Fatalf("update brief: %v", err)
+	}
+
+	start := make(chan struct{})
+	type finalizeResult struct {
+		projectID string
+		err       error
+	}
+	results := make(chan finalizeResult, 2)
+	var wg sync.WaitGroup
+	for _, store := range []*Store{storeA, storeB} {
+		wg.Add(1)
+		go func(store *Store) {
+			defer wg.Done()
+			<-start
+			created, _, err := store.FinalizeBrief("sess-1", sessionStore)
+			results <- finalizeResult{projectID: created.ID, err: err}
+		}(store)
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	successes := 0
+	for result := range results {
+		if result.err == nil {
+			successes++
+			continue
+		}
+		if !strings.Contains(strings.ToLower(result.err.Error()), "already finalized") {
+			t.Fatalf("expected already-finalized error, got %v", result.err)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("expected exactly one successful finalize, got %d", successes)
+	}
+
+	projects, err := storeA.List()
+	if err != nil {
+		t.Fatalf("list projects: %v", err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("expected one created project after concurrent finalize, got %+v", projects)
 	}
 }
 

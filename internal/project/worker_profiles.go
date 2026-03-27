@@ -19,6 +19,18 @@ type WorkerProfile struct {
 	Description  string
 }
 
+type WorkflowExecutionPolicy struct {
+	Profile           string
+	DefaultWorkerKind string
+	ReviewWorkerKind  string
+	RequireGitHubAuth bool
+	RequireTests      bool
+	RequireBuild      bool
+	RequireIssue      bool
+	RequireBranch     bool
+	RequirePR         bool
+}
+
 func BuiltinWorkerProfiles() map[string]WorkerProfile {
 	return map[string]WorkerProfile{
 		WorkerKindDefault: {
@@ -45,15 +57,105 @@ func BuiltinWorkerProfiles() map[string]WorkerProfile {
 	}
 }
 
+func ResolveWorkflowExecutionPolicy(project Project) WorkflowExecutionPolicy {
+	profile := effectiveWorkflowProfile(project)
+	policy := WorkflowExecutionPolicy{
+		Profile:           profile,
+		DefaultWorkerKind: WorkerKindDefault,
+		ReviewWorkerKind:  WorkerKindDefault,
+	}
+
+	if profile == "software-dev" {
+		policy.DefaultWorkerKind = WorkerKindCodexCLI
+		policy.ReviewWorkerKind = WorkerKindClaudeCode
+		policy.RequireGitHubAuth = true
+		policy.RequireTests = true
+		policy.RequireBuild = true
+		policy.RequireIssue = true
+		policy.RequireBranch = true
+		policy.RequirePR = true
+	}
+
+	for _, rule := range project.WorkflowRules {
+		name := strings.ToLower(strings.TrimSpace(rule.Name))
+		switch name {
+		case "require_github_auth":
+			policy.RequireGitHubAuth = workflowRuleEnabled(rule.Params, true)
+		case "require_tests":
+			policy.RequireTests = workflowRuleEnabled(rule.Params, true)
+		case "require_build":
+			policy.RequireBuild = workflowRuleEnabled(rule.Params, true)
+		case "require_issue":
+			policy.RequireIssue = workflowRuleEnabled(rule.Params, true)
+		case "require_branch":
+			policy.RequireBranch = workflowRuleEnabled(rule.Params, true)
+		case "require_pr":
+			policy.RequirePR = workflowRuleEnabled(rule.Params, true)
+		case "default_worker":
+			if kind := strings.ToLower(strings.TrimSpace(rule.Params["kind"])); kind != "" {
+				policy.DefaultWorkerKind = kind
+			}
+		case "review_worker":
+			if kind := strings.ToLower(strings.TrimSpace(rule.Params["kind"])); kind != "" {
+				policy.ReviewWorkerKind = kind
+			}
+		case "worker_kind":
+			kind := strings.ToLower(strings.TrimSpace(rule.Params["kind"]))
+			role := strings.ToLower(strings.TrimSpace(rule.Params["role"]))
+			if kind == "" {
+				continue
+			}
+			switch role {
+			case "", "developer", "implementation":
+				policy.DefaultWorkerKind = kind
+			case "reviewer", "review":
+				policy.ReviewWorkerKind = kind
+			case "all":
+				policy.DefaultWorkerKind = kind
+				policy.ReviewWorkerKind = kind
+			}
+		}
+	}
+	return policy
+}
+
+func effectiveWorkflowProfile(project Project) string {
+	if profile := normalizeWorkflowProfile(project.WorkflowProfile); profile != "" {
+		return profile
+	}
+	// Backward-compatible default until all existing projects set workflow_profile explicitly.
+	return "software-dev"
+}
+
+func workflowRuleEnabled(params map[string]string, defaultValue bool) bool {
+	if len(params) == 0 {
+		return defaultValue
+	}
+	raw := strings.ToLower(strings.TrimSpace(params["enabled"]))
+	switch raw {
+	case "false", "0", "no", "off":
+		return false
+	case "true", "1", "yes", "on":
+		return true
+	default:
+		return defaultValue
+	}
+}
+
 func ResolveWorkerProfile(task BoardTask) (WorkerProfile, error) {
+	return ResolveWorkerProfileForProject(Project{}, task)
+}
+
+func ResolveWorkerProfileForProject(project Project, task BoardTask) (WorkerProfile, error) {
 	profiles := BuiltinWorkerProfiles()
 	workerKind := strings.ToLower(strings.TrimSpace(task.WorkerKind))
 	if workerKind == "" {
+		policy := ResolveWorkflowExecutionPolicy(project)
 		switch strings.ToLower(strings.TrimSpace(task.Role)) {
 		case "reviewer", "review", "pm", "manager":
-			workerKind = WorkerKindClaudeCode
+			workerKind = policy.ReviewWorkerKind
 		default:
-			workerKind = WorkerKindCodexCLI
+			workerKind = policy.DefaultWorkerKind
 		}
 	}
 	profile, ok := profiles[workerKind]

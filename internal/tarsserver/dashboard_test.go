@@ -16,8 +16,14 @@ import (
 )
 
 type dashboardAutopilotStub struct {
-	run project.AutopilotRun
-	ok  bool
+	run        project.AutopilotRun
+	ok         bool
+	snapshot   project.PhaseSnapshot
+	snapshotOK bool
+}
+
+func (s dashboardAutopilotStub) Start(context.Context, string) (project.AutopilotRun, error) {
+	return s.run, nil
 }
 
 func (s dashboardAutopilotStub) Status(projectID string) (project.AutopilotRun, bool) {
@@ -25,6 +31,42 @@ func (s dashboardAutopilotStub) Status(projectID string) (project.AutopilotRun, 
 		return project.AutopilotRun{}, false
 	}
 	return s.run, true
+}
+
+func (s dashboardAutopilotStub) Current(projectID string) (project.PhaseSnapshot, bool) {
+	if s.snapshotOK && strings.TrimSpace(projectID) != "" {
+		current := s.snapshot
+		if strings.TrimSpace(current.ProjectID) == "" {
+			current.ProjectID = projectID
+		}
+		return current, true
+	}
+	if !s.ok || strings.TrimSpace(projectID) == "" {
+		return project.PhaseSnapshot{}, false
+	}
+	return project.PhaseSnapshot{
+		ProjectID: projectID,
+		RunStatus: s.run.Status,
+		Message:   s.run.Message,
+		UpdatedAt: s.run.UpdatedAt,
+	}, true
+}
+
+func (s dashboardAutopilotStub) Advance(context.Context, string) (project.PhaseSnapshot, error) {
+	return project.PhaseSnapshot{
+		ProjectID: s.run.ProjectID,
+		RunStatus: s.run.Status,
+		Message:   s.run.Message,
+		UpdatedAt: s.run.UpdatedAt,
+	}, nil
+}
+
+func (s dashboardAutopilotStub) EnsureActiveRuns(context.Context) (int, error) {
+	return 0, nil
+}
+
+func (s dashboardAutopilotStub) Escalate(string, string) error {
+	return nil
 }
 
 func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T) {
@@ -163,6 +205,17 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 				UpdatedAt:  "2026-03-14T00:01:00Z",
 			},
 			ok: true,
+			snapshot: project.PhaseSnapshot{
+				ProjectID:  created.ID,
+				Name:       project.PhaseReviewing,
+				Status:     project.PhaseStatusBlocked,
+				NextAction: "Approve the next review decision",
+				Summary:    "Review is waiting on a human gate",
+				Message:    "Waiting for review decision",
+				RunStatus:  project.AutopilotStatusBlocked,
+				UpdatedAt:  "2026-03-14T00:01:00Z",
+			},
+			snapshotOK: true,
 		},
 		newProjectDashboardBroker(),
 		zerolog.New(io.Discard),
@@ -181,8 +234,12 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 	for _, want := range []string{
 		"Dashboard Project",
 		"Ship a simple dashboard",
-		"executing",
-		"active",
+		"reviewing",
+		"blocked",
+		"Run Status",
+		"Approve the next review decision",
+		"Pending Decision",
+		"Current Blocker",
 		"Rendering dashboard page",
 		"Assign dashboard build to dev-1",
 		"Board",
@@ -191,6 +248,7 @@ func TestProjectDashboardHandler_RendersProjectOverviewAndActivity(t *testing.T)
 		"GitHub Flow",
 		"Autopilot",
 		"Waiting for review decision",
+		"Review is waiting on a human gate",
 		"autopilot-1",
 		"Worker Reports",
 		"Implemented board rendering",
@@ -282,6 +340,15 @@ func TestProjectDashboardHandler_RendersProjectListPage(t *testing.T) {
 				Iterations: 4,
 			},
 			ok: true,
+			snapshot: project.PhaseSnapshot{
+				ProjectID:  second.ID,
+				Name:       project.PhaseExecuting,
+				Status:     project.PhaseStatusActive,
+				NextAction: "Ship beta dashboard",
+				Message:    "Dispatching todo tasks",
+				RunStatus:  project.AutopilotStatusRunning,
+			},
+			snapshotOK: true,
 		},
 		newProjectDashboardBroker(),
 		zerolog.New(io.Discard),

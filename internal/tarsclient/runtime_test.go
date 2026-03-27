@@ -368,6 +368,15 @@ func TestRuntimeClientProjectWorkflowEndpoints(t *testing.T) {
 				"run_id":     "auto_1",
 				"status":     "running",
 			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/projects/proj_1/autopilot/advance":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"project_id":  "proj_1",
+				"name":        "planning",
+				"status":      "blocked",
+				"run_status":  "blocked",
+				"next_action": "Approve the first phase backlog",
+				"message":     "No backlog items remain for the current phase.",
+			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/projects/proj_1/autopilot":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"project_id": "proj_1",
@@ -414,6 +423,14 @@ func TestRuntimeClientProjectWorkflowEndpoints(t *testing.T) {
 	}
 	if started.RunID != "auto_1" || started.Status != "running" {
 		t.Fatalf("unexpected started autopilot: %+v", started)
+	}
+
+	advanced, err := client.advanceProjectAutopilot(ctx, "proj_1")
+	if err != nil {
+		t.Fatalf("advanceProjectAutopilot: %v", err)
+	}
+	if advanced.Name != "planning" || advanced.Status != "blocked" || advanced.RunStatus != "blocked" {
+		t.Fatalf("unexpected autopilot advance snapshot: %+v", advanced)
 	}
 
 	status, err := client.getProjectAutopilot(ctx, "proj_1")

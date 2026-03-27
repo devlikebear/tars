@@ -22,6 +22,11 @@ func TestUpdatePayload_ToUpdateInput(t *testing.T) {
 		"tools_deny":["write_file"],
 		"tools_risk_max":"medium",
 		"skills_allow":["deploy"],
+		"workflow_profile":"software-dev",
+		"workflow_rules":[
+			{"name":"require_tests","params":{"command":"go test ./..."}},
+			{"name":"require_review","params":{"mode":"human"}}
+		],
 		"mcp_servers":["filesystem"],
 		"secrets_refs":["VAULT/prod/db"]
 	}`)
@@ -43,8 +48,13 @@ func TestUpdatePayload_ToUpdateInput(t *testing.T) {
 		ToolsDeny:          []string{"write_file"},
 		ToolsRiskMax:       stringPtr("medium"),
 		SkillsAllow:        []string{"deploy"},
-		MCPServers:         []string{"filesystem"},
-		SecretsRefs:        []string{"VAULT/prod/db"},
+		WorkflowProfile:    stringPtr("software-dev"),
+		WorkflowRules: []WorkflowRule{
+			{Name: "require_tests", Params: map[string]string{"command": "go test ./..."}},
+			{Name: "require_review", Params: map[string]string{"mode": "human"}},
+		},
+		MCPServers:  []string{"filesystem"},
+		SecretsRefs: []string{"VAULT/prod/db"},
 	}
 	if payload.ProjectID != " proj_demo " {
 		t.Fatalf("expected project id to remain available for caller, got %q", payload.ProjectID)
@@ -62,10 +72,10 @@ func TestUpdatePayload_ToUpdateInput_PreservesOmittedOptionals(t *testing.T) {
 
 	got := payload.ToUpdateInput()
 
-	if got.Name != nil || got.Type != nil || got.Status != nil || got.GitRepo != nil || got.Objective != nil || got.Instructions != nil || got.ToolsRiskMax != nil {
+	if got.Name != nil || got.Type != nil || got.Status != nil || got.GitRepo != nil || got.Objective != nil || got.Instructions != nil || got.ToolsRiskMax != nil || got.WorkflowProfile != nil {
 		t.Fatalf("expected omitted pointer fields to stay nil, got %+v", got)
 	}
-	if got.ToolsAllow != nil || got.ToolsAllowGroups != nil || got.ToolsAllowPatterns != nil || got.ToolsDeny != nil || got.SkillsAllow != nil || got.MCPServers != nil || got.SecretsRefs != nil {
+	if got.ToolsAllow != nil || got.ToolsAllowGroups != nil || got.ToolsAllowPatterns != nil || got.ToolsDeny != nil || got.SkillsAllow != nil || got.WorkflowRules != nil || got.MCPServers != nil || got.SecretsRefs != nil {
 		t.Fatalf("expected omitted slices to stay nil, got %+v", got)
 	}
 }
