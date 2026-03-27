@@ -26,6 +26,7 @@ shift
 
 GITHUB_REPO=""
 VISIBILITY="private"
+MODULE_PATH="example.com/ops-service-demo"
 while [ $# -gt 0 ]; do
   case "$1" in
     --github)
@@ -34,6 +35,7 @@ while [ $# -gt 0 ]; do
         exit 1
       fi
       GITHUB_REPO=$2
+      MODULE_PATH="github.com/$2"
       shift 2
       ;;
     --public)
@@ -64,6 +66,23 @@ fi
 
 cp -R "$TEMPLATE_DIR"/. "$DEST_DIR"/
 chmod +x "$DEST_DIR/opsctl"
+cat > "$DEST_DIR/go.mod" <<EOF
+module $MODULE_PATH
+
+go 1.25.6
+EOF
+TARGET_IMPORT_PREFIX="github.com/devlikebear/tars/examples/ops-service-demo/template"
+find "$DEST_DIR" -type f -name '*.go' | while IFS= read -r file; do
+  python3 - "$file" "$TARGET_IMPORT_PREFIX" "$MODULE_PATH" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+needle = sys.argv[2]
+replacement = sys.argv[3]
+path.write_text(path.read_text().replace(needle, replacement))
+PY
+done
 
 if command -v git >/dev/null 2>&1; then
   git -C "$DEST_DIR" init -b main >/dev/null

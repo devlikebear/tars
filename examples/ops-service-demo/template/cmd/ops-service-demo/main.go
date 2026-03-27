@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"example.com/ops-service-demo/internal/app"
+	"github.com/devlikebear/tars/examples/ops-service-demo/template/internal/app"
 )
 
 func main() {

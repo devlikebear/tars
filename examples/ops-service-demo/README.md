@@ -17,6 +17,14 @@ The example keeps the core runtime unchanged. It uses:
 - cron jobs for recurring triage and reporting
 - Telegram as a report channel only
 
+From the TARS repo root, the bundled template itself is testable with:
+
+```bash
+go test ./examples/ops-service-demo/...
+```
+
+The standalone demo repo gets its own `go.mod` when you bootstrap it with the script below.
+
 ## Prerequisites
 
 - local TARS server running
