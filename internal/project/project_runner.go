@@ -747,7 +747,7 @@ func (m *AutopilotManager) waitForNextTick(ctx context.Context) bool {
 }
 
 func (m *AutopilotManager) planningBlockExpired(projectID string) bool {
-	if m == nil || m.store == nil || m.planningBlockTimeout <= 0 {
+	if m == nil || m.store == nil {
 		return false
 	}
 	state, err := m.store.GetState(projectID)
@@ -764,11 +764,15 @@ func (m *AutopilotManager) planningBlockExpired(projectID string) bool {
 	if lastRunAt.IsZero() {
 		return false
 	}
-	return !m.store.nowFn().UTC().Before(lastRunAt.Add(m.planningBlockTimeout))
+	timeout := m.runtimePolicyForProject(projectID).PlanningBlockTimeout
+	if timeout <= 0 {
+		return false
+	}
+	return !m.store.nowFn().UTC().Before(lastRunAt.Add(timeout))
 }
 
 func (m *AutopilotManager) runExpired(item AutopilotRun) bool {
-	if m == nil || m.runRetention <= 0 {
+	if m == nil {
 		return false
 	}
 	if !isTerminalAutopilotRunStatus(item.Status) {
@@ -784,7 +788,37 @@ func (m *AutopilotManager) runExpired(item AutopilotRun) bool {
 	if lastTouched.IsZero() {
 		return false
 	}
-	return lastTouched.Before(m.store.nowFn().UTC().Add(-m.runRetention))
+	retention := m.runtimePolicyForProject(item.ProjectID).RunRetention
+	if retention <= 0 {
+		return false
+	}
+	return lastTouched.Before(m.store.nowFn().UTC().Add(-retention))
+}
+
+func (m *AutopilotManager) runtimePolicyForProject(projectID string) WorkflowRuntimePolicy {
+	policy := WorkflowRuntimePolicy{
+		PlanningBlockTimeout: m.planningBlockTimeout,
+		RunRetention:         m.runRetention,
+	}
+	if policy.PlanningBlockTimeout <= 0 {
+		policy.PlanningBlockTimeout = defaultPlanningBlockTimeout
+	}
+	if policy.RunRetention <= 0 {
+		policy.RunRetention = defaultAutopilotRunRetention
+	}
+	if m == nil || m.store == nil {
+		return policy
+	}
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return policy
+	}
+	project, err := m.store.Get(projectID)
+	if err != nil {
+		return policy
+	}
+	applyWorkflowRuntimeRuleOverrides(&policy, project.WorkflowRules)
+	return policy
 }
 
 func isTerminalAutopilotRunStatus(status AutopilotRunStatus) bool {

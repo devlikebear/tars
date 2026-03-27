@@ -483,13 +483,17 @@ func TestAutopilotManager_RestorePersistedRunsPrunesExpiredTerminalRuns(t *testi
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC)
 	})
-	created, err := store.Create(CreateInput{Name: "Autopilot Expired"})
+	created, err := store.Create(CreateInput{
+		Name: "Autopilot Expired",
+		WorkflowRules: []WorkflowRule{
+			{Name: "run_retention", Params: map[string]string{"duration": "24h"}},
+		},
+	})
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
 
 	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
-	manager.runRetention = 24 * time.Hour
 	manager.setRun(created.ID, func(item *AutopilotRun) {
 		item.ProjectID = created.ID
 		item.RunID = "autopilot-expired"
@@ -502,7 +506,6 @@ func TestAutopilotManager_RestorePersistedRunsPrunesExpiredTerminalRuns(t *testi
 	})
 
 	restarted := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
-	restarted.runRetention = 24 * time.Hour
 	if err := restarted.RestorePersistedRuns(); err != nil {
 		t.Fatalf("restore persisted runs: %v", err)
 	}
@@ -583,7 +586,12 @@ func TestAutopilotManager_EnsureActiveRunsEscalatesExpiredPlanningBlocker(t *tes
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 14, 21, 0, 0, 0, time.UTC)
 	})
-	created, err := store.Create(CreateInput{Name: "Autopilot Planning Timeout"})
+	created, err := store.Create(CreateInput{
+		Name: "Autopilot Planning Timeout",
+		WorkflowRules: []WorkflowRule{
+			{Name: "planning_block_timeout", Params: map[string]string{"duration": "5m"}},
+		},
+	})
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
@@ -603,7 +611,6 @@ func TestAutopilotManager_EnsureActiveRunsEscalatesExpiredPlanningBlocker(t *tes
 	}
 
 	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
-	manager.planningBlockTimeout = 5 * time.Minute
 	if _, err := manager.EnsureActiveRuns(context.Background()); err != nil {
 		t.Fatalf("ensure active runs: %v", err)
 	}
