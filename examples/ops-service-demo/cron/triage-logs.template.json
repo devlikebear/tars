@@ -1,0 +1,10 @@
+{
+  "name": "triage-logs",
+  "project_id": "__PROJECT_ID__",
+  "session_target": "main",
+  "wake_mode": "agent_loop",
+  "delivery_mode": "session",
+  "schedule": "every:15m",
+  "enabled": true,
+  "prompt": "Use the active project's cloned repo in project_artifacts_dir. Run ./opsctl status, ./opsctl health, and ./opsctl errors. If there is no active incident, append a short activity note and stop. If a recurring failure signature exists, reuse or create the matching GitHub issue with gh, then inspect the current phase. If the phase is approved and no human decision is pending, call project_autopilot_advance once and resume autonomous execution only when the project becomes ready. Escalate instead of proceeding when the root cause is unclear, remediation is risky, or repeated attempts already failed."
+}

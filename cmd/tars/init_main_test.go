@@ -31,6 +31,7 @@ func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
 	assertPathExists(t, filepath.Join(workspaceAbs, "MEMORY.md"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "AGENTS.md"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "plugins", "project-swarm", "tars.plugin.json"))
+	assertPathExists(t, filepath.Join(workspaceAbs, "plugins", "ops-service", "tars.plugin.json"))
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -104,12 +105,12 @@ func assertPathExists(t *testing.T, path string) {
 func writeBundledPluginSource(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "bundled-plugins")
-	pluginDir := filepath.Join(root, "project-swarm")
-	skillDir := filepath.Join(pluginDir, "skills", "project-start")
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+	projectPluginDir := filepath.Join(root, "project-swarm")
+	projectSkillDir := filepath.Join(projectPluginDir, "skills", "project-start")
+	if err := os.MkdirAll(projectSkillDir, 0o755); err != nil {
 		t.Fatalf("mkdir plugin skill dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(pluginDir, "tars.plugin.json"), []byte(`{
+	if err := os.WriteFile(filepath.Join(projectPluginDir, "tars.plugin.json"), []byte(`{
   "id": "project-swarm",
   "name": "Project Swarm",
   "version": "0.0.0-test",
@@ -117,8 +118,25 @@ func writeBundledPluginSource(t *testing.T) string {
 }`), 0o644); err != nil {
 		t.Fatalf("write plugin manifest: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`# Project Start`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectSkillDir, "SKILL.md"), []byte(`# Project Start`), 0o644); err != nil {
 		t.Fatalf("write plugin skill: %v", err)
+	}
+
+	opsPluginDir := filepath.Join(root, "ops-service")
+	opsSkillDir := filepath.Join(opsPluginDir, "skills", "ops-plan")
+	if err := os.MkdirAll(opsSkillDir, 0o755); err != nil {
+		t.Fatalf("mkdir ops plugin skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(opsPluginDir, "tars.plugin.json"), []byte(`{
+  "id": "ops-service",
+  "name": "Ops Service",
+  "version": "0.0.0-test",
+  "skills": ["skills/ops-plan"]
+}`), 0o644); err != nil {
+		t.Fatalf("write ops plugin manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(opsSkillDir, "SKILL.md"), []byte(`# Ops Plan`), 0o644); err != nil {
+		t.Fatalf("write ops plugin skill: %v", err)
 	}
 	return root
 }

@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-03-27
+
+### Added
+
+- Bundled `ops-service` plugin with operational planning, log triage, issue creation, remediation, PR, and reporting skills
+- `examples/ops-service-demo/` with a bootstrap script, standalone demo repo template, `opsctl` operational CLI, Docker Compose service, and example project/cron payloads
+
+### Changed
+
+- Workspace bootstrap and repair flows now restore the bundled `ops-service` plugin alongside the existing bundled project workflow plugin
+- README documentation now includes the new end-to-end ops-service example walkthrough
+
 ## [0.12.1] - 2026-03-27
 
 ### Added

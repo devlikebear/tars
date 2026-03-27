@@ -60,6 +60,7 @@ func TestRootCommand_DoctorFixCreatesStarterWorkspaceButStillRequiresBYOK(t *tes
 	assertPathExists(t, filepath.Join(workspaceAbs, "memory"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "MEMORY.md"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "plugins", "project-swarm", "tars.plugin.json"))
+	assertPathExists(t, filepath.Join(workspaceAbs, "plugins", "ops-service", "tars.plugin.json"))
 
 	out := stdout.String()
 	if !strings.Contains(out, "[fixed] config file") {
@@ -129,6 +130,7 @@ func TestRootCommand_DoctorFixRestoresBundledWorkspacePlugin(t *testing.T) {
 	}
 
 	assertPathExists(t, manifestPath)
+	assertPathExists(t, filepath.Join(workspaceAbs, "plugins", "ops-service", "tars.plugin.json"))
 }
 
 func TestRootCommand_DoctorWarnsWhenGatewayDisabledForProjectWorkflow(t *testing.T) {
