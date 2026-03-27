@@ -34,22 +34,13 @@ The standalone demo repo gets its own `go.mod` when you bootstrap it with the sc
 
 If the workspace was initialized from a recent build, the bundled `ops-service` plugin should already exist at `workspace/plugins/ops-service`.
 
-## 1. Bootstrap The Demo Repo
+## 1. Bootstrap The Seed Repo
 
-Create a standalone service repo outside this TARS checkout:
-
-```bash
-examples/ops-service-demo/bootstrap-demo-repo.sh ../ops-service-demo-repo
-cd ../ops-service-demo-repo
-docker compose up -d --build
-./opsctl status
-```
-
-Inject a reproducible failure:
+Create a standalone seed repo outside this TARS checkout. Use it only to seed or publish the demo repository. Do not treat this path as the long-running runtime repo once the TARS project exists.
 
 ```bash
-./opsctl inject-failure timeout
-./opsctl errors
+examples/ops-service-demo/bootstrap-demo-repo.sh ../ops-service-demo-seed
+cd ../ops-service-demo-seed
 ```
 
 Optionally publish the demo repo to GitHub so issue/PR commands work against a remote:
@@ -112,10 +103,16 @@ PROJECT_REPO_DIR="$(
 )"
 echo "$PROJECT_REPO_DIR"
 
-docker compose -f ../ops-service-demo-repo/docker-compose.yml down || true
 docker compose -f "${PROJECT_REPO_DIR}/docker-compose.yml" up -d --build
+"${PROJECT_REPO_DIR}/opsctl" status
 "${PROJECT_REPO_DIR}/opsctl" inject-failure timeout
 "${PROJECT_REPO_DIR}/opsctl" errors
+```
+
+If you started the service earlier from the standalone seed repo, stop it before switching:
+
+```bash
+docker compose -f ../ops-service-demo-seed/docker-compose.yml down || true
 ```
 
 ## 3. Register Cron Jobs
