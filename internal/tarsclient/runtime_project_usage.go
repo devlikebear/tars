@@ -42,6 +42,10 @@ func (c runtimeClient) startProjectAutopilot(ctx context.Context, projectID stri
 	return c.client().StartProjectAutopilot(ctx, projectID)
 }
 
+func (c runtimeClient) advanceProjectAutopilot(ctx context.Context, projectID string) (projectPhaseSnapshot, error) {
+	return c.client().AdvanceProjectAutopilot(ctx, projectID)
+}
+
 func (c runtimeClient) getProjectAutopilot(ctx context.Context, projectID string) (projectAutopilotRun, error) {
 	return c.client().GetProjectAutopilot(ctx, projectID)
 }

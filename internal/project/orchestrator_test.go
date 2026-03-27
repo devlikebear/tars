@@ -129,7 +129,7 @@ func TestOrchestratorDispatchTodoRunsTasksInParallel(t *testing.T) {
 	}
 }
 
-func TestOrchestratorDispatchTodo_StagesBootstrapBeforeDependentSeedTasks(t *testing.T) {
+func TestOrchestratorDispatchTodo_DoesNotSpecialCaseLegacySeedTaskIDs(t *testing.T) {
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 14, 13, 15, 0, 0, time.UTC)
 	})
@@ -158,12 +158,12 @@ func TestOrchestratorDispatchTodo_StagesBootstrapBeforeDependentSeedTasks(t *tes
 	select {
 	case <-runner.startedCh:
 	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected bootstrap task run to start")
+		t.Fatal("expected first legacy-seed task run to start")
 	}
 	select {
 	case <-runner.startedCh:
-		t.Fatal("expected seeded dependent task to stay queued until bootstrap finishes")
-	case <-time.After(120 * time.Millisecond):
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected second legacy-seed task to start without special-casing")
 	}
 	close(runner.waitGate)
 
@@ -173,11 +173,8 @@ func TestOrchestratorDispatchTodo_StagesBootstrapBeforeDependentSeedTasks(t *tes
 
 	runner.mu.Lock()
 	defer runner.mu.Unlock()
-	if len(runner.started) != 1 {
-		t.Fatalf("expected only bootstrap task to be dispatched, got %+v", runner.started)
-	}
-	if runner.started[0].TaskID != "pm-seed-bootstrap" {
-		t.Fatalf("expected bootstrap task first, got %+v", runner.started[0])
+	if len(runner.started) != 2 {
+		t.Fatalf("expected both legacy-seed tasks to be dispatched, got %+v", runner.started)
 	}
 
 	board, err := store.GetBoard(created.ID)
@@ -187,11 +184,8 @@ func TestOrchestratorDispatchTodo_StagesBootstrapBeforeDependentSeedTasks(t *tes
 	if len(board.Tasks) != 2 {
 		t.Fatalf("expected 2 tasks, got %+v", board.Tasks)
 	}
-	if board.Tasks[0].Status != "review" {
-		t.Fatalf("expected bootstrap task to advance, got %+v", board.Tasks[0])
-	}
-	if board.Tasks[1].Status != "todo" {
-		t.Fatalf("expected dependent task to remain queued, got %+v", board.Tasks[1])
+	if board.Tasks[0].Status != "review" || board.Tasks[1].Status != "review" {
+		t.Fatalf("expected both legacy-seed tasks to advance, got %+v", board.Tasks)
 	}
 }
 
@@ -387,6 +381,156 @@ build: passed
 	}
 	if !hasActivityKindStatus(activity, ActivityKindPRStatus, "blocked") {
 		t.Fatalf("expected blocked pr status activity, got %+v", activity)
+	}
+}
+
+func TestOrchestratorDispatchTodo_ResearchProfileSkipsSoftwareDevGates(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 13, 37, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{
+		Name:            "Research Project",
+		WorkflowProfile: "research",
+	})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Summarize recent papers",
+				Status:         "todo",
+				Assignee:       "analyst-1",
+				Role:           "developer",
+				ReviewRequired: false,
+				TestCommand:    "go test ./internal/project",
+				BuildCommand:   "go test ./internal/tarsserver",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	runner := newStubTaskRunner()
+	runner.results["run-task-1"] = TaskRun{
+		ID:         "run-task-1",
+		TaskID:     "task-1",
+		Agent:      "analyst-1",
+		WorkerKind: WorkerKindDefault,
+		Status:     TaskRunStatusCompleted,
+		Response: `<task-report>
+status: completed
+summary: summarized sources
+tests: not run
+build: not run
+notes: ready
+</task-report>`,
+	}
+	orchestrator := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error {
+		t.Fatal("did not expect github auth checker for research profile")
+		return nil
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, runErr := orchestrator.DispatchTodo(context.Background(), created.ID)
+		errCh <- runErr
+	}()
+
+	select {
+	case <-runner.startedCh:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected research task run to start")
+	}
+	close(runner.waitGate)
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("dispatch todo: %v", err)
+	}
+
+	board, err := store.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board: %v", err)
+	}
+	if len(board.Tasks) != 1 || board.Tasks[0].Status != "done" {
+		t.Fatalf("expected research task to move to done, got %+v", board.Tasks)
+	}
+	if board.Tasks[0].WorkerKind != WorkerKindDefault {
+		t.Fatalf("expected runtime default worker, got %+v", board.Tasks[0])
+	}
+}
+
+func TestOrchestratorDispatchTodo_WorkflowRulesCanRequireMetadataOutsideSoftwareDev(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 13, 39, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{
+		Name:            "Research Gated Project",
+		WorkflowProfile: "research",
+		WorkflowRules: []WorkflowRule{
+			{Name: "require_issue"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{
+				ID:             "task-1",
+				Title:          "Summarize recent papers",
+				Status:         "todo",
+				Assignee:       "analyst-1",
+				Role:           "developer",
+				ReviewRequired: false,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	runner := newStubTaskRunner()
+	runner.results["run-task-1"] = TaskRun{
+		ID:         "run-task-1",
+		TaskID:     "task-1",
+		Agent:      "analyst-1",
+		WorkerKind: WorkerKindDefault,
+		Status:     TaskRunStatusCompleted,
+		Response: `<task-report>
+status: completed
+summary: summarized sources
+notes: ready
+</task-report>`,
+	}
+	orchestrator := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error {
+		t.Fatal("did not expect github auth checker for research metadata rule")
+		return nil
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, runErr := orchestrator.DispatchTodo(context.Background(), created.ID)
+		errCh <- runErr
+	}()
+
+	select {
+	case <-runner.startedCh:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected gated research task run to start")
+	}
+	close(runner.waitGate)
+
+	if err := <-errCh; err == nil || !strings.Contains(err.Error(), "task gate failed") {
+		t.Fatalf("expected task gate failure, got %v", err)
+	}
+
+	board, err := store.GetBoard(created.ID)
+	if err != nil {
+		t.Fatalf("get board: %v", err)
+	}
+	if len(board.Tasks) != 1 || board.Tasks[0].Status != "in_progress" {
+		t.Fatalf("expected workflow rule to keep task in_progress, got %+v", board.Tasks)
 	}
 }
 

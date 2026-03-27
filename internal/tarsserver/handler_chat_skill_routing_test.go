@@ -11,17 +11,14 @@ import (
 	"github.com/devlikebear/tars/internal/skill"
 )
 
-func TestResolveSkillForMessage_AutoRoutesProjectStartIntent(t *testing.T) {
+func TestResolveSkillForMessage_DoesNotAutoRouteNaturalLanguageKickoff(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace")
 	manager := newTestSkillManager(t, root, workspaceDir)
 
 	got := resolveSkillForMessage("todo 앱 만드는 프로젝트 시작해줘", manager, workspaceDir, "sess-1")
-	if got == nil {
-		t.Fatal("expected project-start skill to be resolved")
-	}
-	if got.Name != "project-start" {
-		t.Fatalf("expected project-start skill, got %+v", got)
+	if got != nil {
+		t.Fatalf("expected natural language kickoff to avoid implicit project-start routing, got %+v", got)
 	}
 }
 
@@ -46,6 +43,30 @@ func TestResolveSkillForMessage_UsesProjectStartWhileBriefCollecting(t *testing.
 	}
 	if got.Name != "project-start" {
 		t.Fatalf("expected project-start skill, got %+v", got)
+	}
+
+	resolved := resolveSkillSelection("로그인은 이메일 기반이면 돼", manager, workspaceDir, "sess-1")
+	if resolved.Definition == nil || resolved.Reason != "active_brief" {
+		t.Fatalf("expected active_brief routing metadata, got %+v", resolved)
+	}
+}
+
+func TestResolveSkillForMessage_UsesExplicitProjectStartCommand(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	manager := newTestSkillManager(t, root, workspaceDir)
+
+	got := resolveSkillForMessage("/project-start 새 프로젝트 계획하자", manager, workspaceDir, "sess-1")
+	if got == nil {
+		t.Fatal("expected explicit project-start command to resolve")
+	}
+	if got.Name != "project-start" {
+		t.Fatalf("expected project-start skill, got %+v", got)
+	}
+
+	resolved := resolveSkillSelection("/project-start 새 프로젝트 계획하자", manager, workspaceDir, "sess-1")
+	if resolved.Definition == nil || resolved.Reason != "explicit_command" {
+		t.Fatalf("expected explicit_command routing metadata, got %+v", resolved)
 	}
 }
 

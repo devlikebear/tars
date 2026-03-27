@@ -37,6 +37,10 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 		"name":"Ops A",
 		"type":"operations",
 		"objective":"Operate service A",
+		"workflow_profile":"software-dev",
+		"workflow_rules":[
+			{"name":"require_tests","params":{"command":"go test ./..."}}
+		],
 		"instructions":"Check alerts first"
 	}`))
 	createReq.Header.Set("Content-Type", "application/json")
@@ -51,6 +55,12 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 	}
 	if strings.TrimSpace(created.ID) == "" {
 		t.Fatalf("expected project id")
+	}
+	if created.WorkflowProfile != "software-dev" {
+		t.Fatalf("expected workflow profile on create, got %q", created.WorkflowProfile)
+	}
+	if len(created.WorkflowRules) != 1 || created.WorkflowRules[0].Name != "require_tests" {
+		t.Fatalf("expected workflow rules on create, got %+v", created.WorkflowRules)
 	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/projects/"+created.ID, nil)
@@ -170,7 +180,11 @@ func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
 		"instructions":"Check alerts first",
 		"tools_allow":["read_file","exec"],
 		"tools_risk_max":"medium",
-		"skills_allow":["deploy"]
+		"skills_allow":["deploy"],
+		"workflow_profile":"research",
+		"workflow_rules":[
+			{"name":"require_sources","params":{"count":"3"}}
+		]
 	}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -197,6 +211,12 @@ func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
 	}
 	if got := strings.Join(updated.SkillsAllow, ","); got != "deploy" {
 		t.Fatalf("unexpected skills_allow: %q", got)
+	}
+	if updated.WorkflowProfile != "research" {
+		t.Fatalf("expected workflow_profile=research, got %q", updated.WorkflowProfile)
+	}
+	if len(updated.WorkflowRules) != 1 || updated.WorkflowRules[0].Name != "require_sources" {
+		t.Fatalf("unexpected workflow_rules: %+v", updated.WorkflowRules)
 	}
 }
 
@@ -237,13 +257,32 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 		t.Fatalf("expected 200 for brief finalize, got %d body=%q", finalizeRec.Code, finalizeRec.Body.String())
 	}
 	var payload struct {
-		Project project.Project `json:"project"`
+		Project         project.Project      `json:"project"`
+		Brief           project.Brief        `json:"brief"`
+		State           project.ProjectState `json:"state"`
+		PlanningReady   bool                 `json:"planning_ready"`
+		Seeded          *bool                `json:"seeded"`
 	}
 	if err := json.Unmarshal(finalizeRec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode finalize payload: %v", err)
 	}
 	if strings.TrimSpace(payload.Project.ID) == "" {
 		t.Fatalf("expected finalized project id")
+	}
+	if payload.Brief.Status != "finalized" {
+		t.Fatalf("expected finalized brief in payload, got %+v", payload.Brief)
+	}
+	if payload.State.ProjectID != payload.Project.ID {
+		t.Fatalf("expected state for finalized project, got %+v", payload.State)
+	}
+	if payload.State.Phase != "planning" || payload.State.Status != "active" {
+		t.Fatalf("expected planning-ready state, got %+v", payload.State)
+	}
+	if !payload.PlanningReady {
+		t.Fatalf("expected planning_ready=true, got false")
+	}
+	if payload.Seeded != nil {
+		t.Fatalf("expected legacy seeded field to be absent, got %+v", payload.Seeded)
 	}
 
 	stateGetReq := httptest.NewRequest(http.MethodGet, "/v1/projects/"+payload.Project.ID+"/state", nil)
@@ -658,6 +697,49 @@ func TestProjectAPI_AutopilotRoutes(t *testing.T) {
 	}
 	if len(board.Tasks) != 1 || board.Tasks[0].Status != "done" {
 		t.Fatalf("expected autopilot to complete task, got %+v", board.Tasks)
+	}
+}
+
+func TestProjectAPI_AutopilotAdvanceRoute(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	projectStore := project.NewStore(root, nil)
+	broker := newProjectDashboardBroker()
+	manager := project.NewAutopilotManager(projectStore, newAutopilotAPITaskRunner(), func(context.Context) error { return nil }, func(projectID string, kind string) {
+		broker.publish(newProjectDashboardEvent(projectID, kind))
+	})
+	handler := newProjectAPIHandler(projectStore, store, "", nil, func(context.Context) error { return nil }, manager, broker, zerolog.New(io.Discard))
+
+	created, err := projectStore.Create(project.CreateInput{Name: "Autopilot Advance Project", Type: "operations"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/autopilot/advance", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for autopilot advance, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var snapshot project.PhaseSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
+		t.Fatalf("decode phase snapshot: %v", err)
+	}
+	if snapshot.ProjectID != created.ID {
+		t.Fatalf("expected project id %q, got %+v", created.ID, snapshot)
+	}
+	if snapshot.Name != project.PhasePlanning || snapshot.Status != project.PhaseStatusBlocked {
+		t.Fatalf("expected planning blocked snapshot, got %+v", snapshot)
+	}
+	if snapshot.RunStatus != project.AutopilotStatusBlocked {
+		t.Fatalf("expected blocked run status, got %+v", snapshot)
+	}
+	if strings.TrimSpace(snapshot.NextAction) == "" {
+		t.Fatalf("expected next action after advance, got %+v", snapshot)
 	}
 }
 

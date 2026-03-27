@@ -33,6 +33,7 @@ func buildChatToolRegistry(
 	registry.Register(tool.NewProjectActivityAppendTool(projectStore))
 	registry.Register(tool.NewProjectActivateTool(projectStore, reqStore, deps.mainSessionID))
 	registry.Register(tool.NewProjectDispatchTool(projectStore, gateway.NewProjectTaskRunner(deps.tooling.Gateway, ""), project.DefaultGitHubAuthChecker()))
+	registry.Register(tool.NewProjectAutopilotAdvanceTool(deps.tooling.ProjectAutopilot))
 	registry.Register(tool.NewProjectAutopilotStartTool(deps.tooling.ProjectAutopilot))
 	registry.Register(tool.NewProjectBriefGetTool(projectStore))
 	registry.Register(tool.NewProjectBriefUpdateTool(projectStore))
@@ -207,6 +208,7 @@ func defaultMinimalToolNames() []string {
 		"project_activity_get",
 		"project_activity_append",
 		"project_dispatch",
+		"project_autopilot_advance",
 		"project_autopilot_start",
 		"project_activate",
 		"project_brief_get",

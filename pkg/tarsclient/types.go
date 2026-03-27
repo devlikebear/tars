@@ -378,6 +378,17 @@ type ProjectAutopilotRun struct {
 	FinishedAt string `json:"finished_at,omitempty"`
 }
 
+type ProjectPhaseSnapshot struct {
+	ProjectID  string `json:"project_id"`
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	NextAction string `json:"next_action,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	Message    string `json:"message,omitempty"`
+	RunStatus  string `json:"run_status,omitempty"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
+}
+
 type UsageLimits struct {
 	DailyUSD   float64 `json:"daily_usd"`
 	WeeklyUSD  float64 `json:"weekly_usd"`

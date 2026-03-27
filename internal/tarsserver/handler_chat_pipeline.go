@@ -65,6 +65,9 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	stream := newChatStreamWriter(w, state.sessionID, deps.logger)
 	stream.status("stream_open", "stream connected", "", "", "", "")
+	if state.invokedSkill != nil {
+		stream.skillSelected(state.invokedSkill.Name, state.invokedSkillReason)
+	}
 
 	chatCtx := usage.WithCallMeta(r.Context(), usage.CallMeta{
 		Source:    "chat",

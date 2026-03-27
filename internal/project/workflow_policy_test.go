@@ -63,8 +63,8 @@ func TestWorkflowPolicyDispatchAndAutopilotHelpers(t *testing.T) {
 		{ID: "pm-seed-vertical-slice", Status: "todo"},
 	}
 	filtered := policy.FilterDispatchableTasks("todo", tasks)
-	if len(filtered) != 1 || filtered[0].ID != "pm-seed-bootstrap" {
-		t.Fatalf("expected bootstrap-only dispatch, got %+v", filtered)
+	if len(filtered) != len(tasks) {
+		t.Fatalf("expected todo tasks to stay dispatchable without seed heuristic, got %+v", filtered)
 	}
 
 	board := Board{Tasks: []BoardTask{
@@ -82,8 +82,14 @@ func TestWorkflowPolicyDispatchAndAutopilotHelpers(t *testing.T) {
 		t.Fatalf("expected first review task, got ok=%v task=%+v", ok, task)
 	}
 
-	if !policy.ShouldAutopilotRun(Project{Status: "active"}, Board{}, nil) {
-		t.Fatalf("expected empty board to keep autopilot eligible for seeding")
+	if policy.ShouldAutopilotRun(Project{Status: "active"}, Board{}, nil) {
+		t.Fatalf("expected empty board without state to wait for planning")
+	}
+	if policy.ShouldAutopilotRun(Project{Status: "active"}, Board{}, &ProjectState{Phase: "planning", Status: "active"}) {
+		t.Fatalf("expected planning phase with empty board to wait for human approval")
+	}
+	if !policy.ShouldAutopilotRun(Project{Status: "active"}, Board{}, &ProjectState{Phase: "executing", Status: "active"}) {
+		t.Fatalf("expected non-planning active state to remain autopilot-eligible")
 	}
 	if policy.ShouldAutopilotRun(Project{Status: "archived"}, Board{}, nil) {
 		t.Fatalf("expected archived project to skip autopilot")
@@ -138,9 +144,9 @@ func TestWorkflowPolicyProjectStateDefaultsAndSummary(t *testing.T) {
 func TestWorkflowPolicyAutopilotStateUpdates(t *testing.T) {
 	policy := DefaultWorkflowPolicy
 
-	seeded := policy.AutopilotSeededBacklogState()
-	if seeded.Phase != "planning" || seeded.Status != "active" || seeded.NextAction != "Dispatch seeded backlog" {
-		t.Fatalf("unexpected seeded backlog state: %+v", seeded)
+	planningRequired := policy.AutopilotPlanningRequiredState("Autopilot paused: backlog is empty", "")
+	if planningRequired.Phase != "planning" || planningRequired.Status != "blocked" || planningRequired.NextAction != "Create or approve the next phase backlog" {
+		t.Fatalf("unexpected planning-required state: %+v", planningRequired)
 	}
 
 	todo, ok := policy.AutopilotDispatchState("todo")

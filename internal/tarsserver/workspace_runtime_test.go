@@ -146,6 +146,26 @@ func TestWorkspaceHeartbeatRunner_EnsuresMissingProjectAutopilotLoops(t *testing
 	}
 }
 
+func TestStartBackgrounds_RestoresProjectAutopilotViaClosure(t *testing.T) {
+	restored := make(chan struct{}, 1)
+	runtime := &serveAPIRuntime{
+		restoreProjectAutopilot: func() error {
+			restored <- struct{}{}
+			return nil
+		},
+	}
+
+	if err := startBackgrounds(context.Background(), runtime, zerolog.Nop()); err != nil {
+		t.Fatalf("start backgrounds: %v", err)
+	}
+
+	select {
+	case <-restored:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected startup to restore project autopilot via closure")
+	}
+}
+
 func TestSerializedSupervisorRunner_SerializesConcurrentRuns(t *testing.T) {
 	var active atomic.Int64
 	var maxActive atomic.Int64

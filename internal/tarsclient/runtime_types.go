@@ -58,6 +58,8 @@ type projectTaskRun = tarsclient.ProjectTaskRun
 
 type projectAutopilotRun = tarsclient.ProjectAutopilotRun
 
+type projectPhaseSnapshot = tarsclient.ProjectPhaseSnapshot
+
 type usageLimits = tarsclient.UsageLimits
 
 type usageSummary = tarsclient.UsageSummary

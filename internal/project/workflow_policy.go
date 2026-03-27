@@ -156,12 +156,18 @@ func (WorkflowPolicy) NormalizeDispatchStage(raw string) (string, bool) {
 	}
 }
 
-func (WorkflowPolicy) AutopilotSeededBacklogState() workflowStateUpdate {
+func (WorkflowPolicy) AutopilotPlanningRequiredState(message string, nextAction string) workflowStateUpdate {
+	trimmedMessage := strings.TrimSpace(message)
+	trimmedNext := strings.TrimSpace(nextAction)
+	if trimmedNext == "" {
+		trimmedNext = "Create or approve the next phase backlog"
+	}
 	return workflowStateUpdate{
 		Phase:          "planning",
-		Status:         "active",
-		NextAction:     "Dispatch seeded backlog",
-		LastRunSummary: "PM seeded MVP backlog",
+		Status:         "blocked",
+		NextAction:     trimmedNext,
+		LastRunSummary: trimmedMessage,
+		StopReason:     trimmedMessage,
 	}
 }
 
@@ -249,14 +255,7 @@ func (WorkflowPolicy) RecoverStalledTasks(tasks []BoardTask) ([]BoardTask, []str
 }
 
 func (WorkflowPolicy) FilterDispatchableTasks(status string, tasks []BoardTask) []BoardTask {
-	if strings.TrimSpace(status) != "todo" || len(tasks) <= 1 {
-		return tasks
-	}
-	for _, task := range tasks {
-		if strings.TrimSpace(task.ID) == "pm-seed-bootstrap" {
-			return []BoardTask{task}
-		}
-	}
+	_ = status
 	return tasks
 }
 
@@ -295,7 +294,13 @@ func (p WorkflowPolicy) ShouldAutopilotRun(item Project, board Board, state *Pro
 		return false
 	}
 	if len(board.Tasks) == 0 {
-		return true
+		if state == nil {
+			return false
+		}
+		if p.NormalizeProjectStateStatus(state.Status) != "active" {
+			return false
+		}
+		return p.NormalizeProjectStatePhase(state.Phase) != "planning"
 	}
 	if !p.AllBoardTasksDone(board) {
 		return true

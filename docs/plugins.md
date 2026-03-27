@@ -246,7 +246,7 @@ At runtime, skill availability is also gated by `requires_plugin`, `requires_bin
 The bundled [`project-swarm`](../plugins/project-swarm) plugin is the reference:
 
 - **Manifest**: schema v2 `tars.plugin.json` with `"default_project_profile": "swarm"` and `"skills": ["skills"]`
-- **Skills**: `project-start` (user-invocable kickoff) and `project-autopilot` (PM supervisor loop)
-- **Runtime tools**: Project board, activity log, task dispatch, and autopilot start are built into the runtime and activated when the plugin is loaded
+- **Skills**: `project-start` (user-invocable planning kickoff) and `project-autopilot` (phase-aware supervisor loop)
+- **Runtime tools**: Project board, activity log, task dispatch, one-step autopilot advance, and autopilot start are built into the runtime and activated when the plugin is loaded
 
 The plugin is also published to the [TARS Hub registry](https://github.com/devlikebear/tars-skills) for `tars plugin install`.

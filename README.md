@@ -7,7 +7,7 @@
 
 **TARS is a local-first AI project autopilot.**
 
-Unlike Claude Code, Aider, or Cursor — which operate at the file and conversation level — TARS manages entire projects autonomously: it seeds a Kanban board from a natural-language brief, dispatches tasks to AI worker agents, reviews their output, retries failures, and keeps going until the project is done. All in a single Go binary running on your machine.
+Unlike Claude Code, Aider, or Cursor, which mostly operate at the file and conversation level, TARS manages long-running projects autonomously: it plans phases with you, executes backlog work inside each phase, coordinates tools and worker agents, and only brings you back for approvals or real blockers. All in a single Go binary running on your machine.
 
 ## Key Features
 
@@ -15,12 +15,11 @@ Unlike Claude Code, Aider, or Cursor — which operate at the file and conversat
 
 The killer feature. Describe what you want to build, and TARS handles the rest:
 
-1. **Brief** — Collects requirements through a short interview
-2. **Board** — Seeds a Kanban board with `todo` / `in_progress` / `review` / `done` stages
-3. **Dispatch** — Assigns tasks to AI worker agents (Claude Code CLI, Codex, or any gateway agent)
-4. **Review** — Validates test/build results and GitHub Flow metadata before promotion
-5. **Retry** — Auto-recovers stalled work without asking you to intervene
-6. **Dashboard** — Live project status, worker reports, and PM notes in a browser
+1. **Plan** — Collects requirements through a short interview and turns them into a phase plan
+2. **Phase Loop** — Builds a backlog, selects the next task, executes it, evaluates the result, and replans when needed
+3. **Capabilities** — Combines built-in tools, skills, MCP servers, web research, and worker agents in one runtime
+4. **Human-in-the-Loop** — Escalates at phase approvals and real blockers instead of asking for every routine retry
+5. **Dashboard** — Live phase status, run status, pending decisions, blockers, and worker reports in a browser
 
 ```
 tars init && tars serve
@@ -88,9 +87,11 @@ Kick off a project from chat, or use the TUI commands directly:
 
 ```text
 /project board <project-id>
-/project dispatch <project-id> todo
 /project autopilot start <project-id>
+/project autopilot advance <project-id>
 ```
+
+The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly.
 
 For read-heavy codebase research in chat, TARS can now fan out parallel `explorer` subagents and merge back compact summaries. The runtime defaults are:
 

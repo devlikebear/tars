@@ -44,6 +44,7 @@ type AutopilotManager struct {
 	mu    sync.RWMutex
 	runs  map[string]AutopilotRun
 	loops map[string]context.CancelFunc
+	steps map[string]bool
 }
 
 func NewAutopilotManager(
@@ -64,6 +65,7 @@ func NewAutopilotManager(
 		loopInterval:      time.Minute,
 		runs:              map[string]AutopilotRun{},
 		loops:             map[string]context.CancelFunc{},
+		steps:             map[string]bool{},
 	}
 }
 
@@ -182,6 +184,9 @@ func (m *AutopilotManager) IsRunning(projectID string) bool {
 	projectID = strings.TrimSpace(projectID)
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	if m.steps[projectID] {
+		return true
+	}
 	cancel, ok := m.loops[projectID]
 	return ok && cancel != nil
 }
@@ -226,7 +231,7 @@ func (m *AutopilotManager) run(ctx context.Context, projectID, runID string) {
 		if ctx.Err() != nil {
 			return
 		}
-		step := m.runIteration(ctx, orch, projectID, runID, iteration)
+		step := m.runIteration(ctx, orch, projectID, runID, iteration, true)
 		if step.Stop {
 			return
 		}
@@ -252,6 +257,7 @@ func (m *AutopilotManager) runIteration(
 	projectID string,
 	runID string,
 	iteration int,
+	isBackgroundRun bool,
 ) autopilotStepResult {
 	board, err := m.store.GetBoard(projectID)
 	if err != nil {
@@ -260,18 +266,18 @@ func (m *AutopilotManager) runIteration(
 	}
 	switch {
 	case len(board.Tasks) == 0:
-		return m.handleEmptyBoard(ctx, projectID, runID, iteration)
+		return m.handleEmptyBoard(ctx, projectID, runID, iteration, isBackgroundRun)
 	case boardHasStatus(board, "todo"):
-		return m.handleDispatchStage(ctx, orch, projectID, runID, iteration, "todo")
+		return m.handleDispatchStage(ctx, orch, projectID, runID, iteration, "todo", isBackgroundRun)
 	case boardHasStatus(board, "review"):
-		return m.handleDispatchStage(ctx, orch, projectID, runID, iteration, "review")
+		return m.handleDispatchStage(ctx, orch, projectID, runID, iteration, "review", isBackgroundRun)
 	case boardHasStatus(board, "in_progress"):
-		return m.handleInProgressBoard(ctx, projectID, runID, iteration, board)
+		return m.handleInProgressBoard(ctx, projectID, runID, iteration, board, isBackgroundRun)
 	case allBoardTasksDone(board):
 		m.completeRun(projectID, iteration)
 		return autopilotStepResult{Stop: true}
 	default:
-		return m.handleIdleBoard(ctx, projectID, runID, iteration)
+		return m.handleIdleBoard(ctx, projectID, runID, iteration, isBackgroundRun)
 	}
 }
 
@@ -280,18 +286,14 @@ func (m *AutopilotManager) handleEmptyBoard(
 	projectID string,
 	runID string,
 	iteration int,
+	isBackgroundRun bool,
 ) autopilotStepResult {
-	if err := m.seedBacklog(projectID); err != nil {
-		message := "Autopilot blocked: no tasks on the board"
-		if strings.TrimSpace(err.Error()) != "" {
-			message += ": " + strings.TrimSpace(err.Error())
-		}
-		return m.waitBlockedLoop(ctx, projectID, runID, iteration, message, "Autopilot will retry after the loop interval")
-	}
-	m.setRunningRun(projectID, "PM seeded backlog and resumed autopilot", iteration)
-	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotSeededBacklogState())
-	m.publish(projectID)
-	return autopilotStepResult{Immediate: true}
+	_ = ctx
+	_ = isBackgroundRun
+	message := "Autopilot paused: backlog is empty"
+	nextAction := "Create or approve the next phase backlog"
+	m.planningRequired(projectID, runID, iteration, message, nextAction)
+	return autopilotStepResult{Stop: true}
 }
 
 func (m *AutopilotManager) handleDispatchStage(
@@ -301,6 +303,7 @@ func (m *AutopilotManager) handleDispatchStage(
 	runID string,
 	iteration int,
 	stage string,
+	isBackgroundRun bool,
 ) autopilotStepResult {
 	m.setRunningRun(projectID, "Dispatching "+stage+" tasks", iteration)
 	if update, ok := DefaultWorkflowPolicy.AutopilotDispatchState(stage); ok {
@@ -333,6 +336,7 @@ func (m *AutopilotManager) handleDispatchStage(
 		iteration,
 		"Autopilot blocked after "+stage+" dispatch: "+strings.TrimSpace(err.Error()),
 		"Autopilot will retry after the loop interval",
+		isBackgroundRun,
 	)
 }
 
@@ -342,6 +346,7 @@ func (m *AutopilotManager) handleInProgressBoard(
 	runID string,
 	iteration int,
 	board Board,
+	isBackgroundRun bool,
 ) autopilotStepResult {
 	recovered, recoverErr := m.autoRecover(projectID, iteration, "stalled in-progress task", nil)
 	if recoverErr != nil {
@@ -357,7 +362,7 @@ func (m *AutopilotManager) handleInProgressBoard(
 	if strings.TrimSpace(task.Title) != "" {
 		message = "Autopilot waiting on task: " + strings.TrimSpace(task.Title)
 	}
-	return m.waitBlockedLoop(ctx, projectID, runID, iteration, message, "Autopilot will retry after the loop interval")
+	return m.waitBlockedLoop(ctx, projectID, runID, iteration, message, "Autopilot will retry after the loop interval", isBackgroundRun)
 }
 
 func (m *AutopilotManager) handleIdleBoard(
@@ -365,6 +370,7 @@ func (m *AutopilotManager) handleIdleBoard(
 	projectID string,
 	runID string,
 	iteration int,
+	isBackgroundRun bool,
 ) autopilotStepResult {
 	return m.waitBlockedLoop(
 		ctx,
@@ -373,6 +379,7 @@ func (m *AutopilotManager) handleIdleBoard(
 		iteration,
 		"Autopilot found no actionable todo or review tasks",
 		"Autopilot will retry after the loop interval",
+		isBackgroundRun,
 	)
 }
 
@@ -383,7 +390,12 @@ func (m *AutopilotManager) waitBlockedLoop(
 	iteration int,
 	message string,
 	nextAction string,
+	isBackgroundRun bool,
 ) autopilotStepResult {
+	if !isBackgroundRun {
+		m.blockWithNextAction(projectID, runID, iteration, message, nextAction)
+		return autopilotStepResult{Stop: true}
+	}
 	m.noteBlocked(projectID, runID, iteration, message, nextAction)
 	if !m.waitForNextTick(ctx) {
 		return autopilotStepResult{Stop: true}
@@ -436,8 +448,25 @@ func (m *AutopilotManager) fail(projectID, runID string, iteration int, message 
 }
 
 func (m *AutopilotManager) block(projectID, runID string, iteration int, message string) {
+	m.blockWithNextAction(projectID, runID, iteration, message, "Review blocker and continue")
+}
+
+func (m *AutopilotManager) blockWithNextAction(projectID, runID string, iteration int, message string, nextAction string) {
 	_ = m.appendPMActivity(projectID, ActivityKindBlocker, "blocked", strings.TrimSpace(message), nil)
-	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotBlockedState(message, "Review blocker and continue"))
+	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotBlockedState(message, nextAction))
+	m.setRun(projectID, func(item *AutopilotRun) {
+		item.RunID = runID
+		item.Status = AutopilotStatusBlocked
+		item.Message = strings.TrimSpace(message)
+		item.Iterations = iteration
+		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	})
+	m.publish(projectID)
+}
+
+func (m *AutopilotManager) planningRequired(projectID, runID string, iteration int, message string, nextAction string) {
+	_ = m.appendPMActivity(projectID, ActivityKindDecision, "needed", strings.TrimSpace(message), nil)
+	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotPlanningRequiredState(message, nextAction))
 	m.setRun(projectID, func(item *AutopilotRun) {
 		item.RunID = runID
 		item.Status = AutopilotStatusBlocked
@@ -513,54 +542,6 @@ func firstTaskByStatus(board Board, status string) BoardTask {
 
 func allBoardTasksDone(board Board) bool {
 	return DefaultWorkflowPolicy.AllBoardTasksDone(board)
-}
-
-func (m *AutopilotManager) seedBacklog(projectID string) error {
-	if m == nil || m.store == nil {
-		return fmt.Errorf("autopilot manager store is not configured")
-	}
-	item, err := m.store.Get(projectID)
-	if err != nil {
-		return err
-	}
-	board, err := m.store.GetBoard(projectID)
-	if err != nil {
-		return err
-	}
-	if len(board.Tasks) > 0 {
-		return nil
-	}
-
-	projectLabel := firstNonEmpty(strings.TrimSpace(item.Name), strings.TrimSpace(item.Objective), "project")
-	tasks := []BoardTask{
-		{
-			ID:             "pm-seed-bootstrap",
-			Title:          "Bootstrap MVP for " + projectLabel,
-			Status:         "todo",
-			Assignee:       "dev-1",
-			Role:           "developer",
-			WorkerKind:     WorkerKindCodexCLI,
-			ReviewRequired: true,
-		},
-		{
-			ID:             "pm-seed-vertical-slice",
-			Title:          "Implement first vertical slice for " + projectLabel,
-			Status:         "todo",
-			Assignee:       "dev-2",
-			Role:           "developer",
-			WorkerKind:     WorkerKindCodexCLI,
-			ReviewRequired: true,
-		},
-	}
-	if _, err := m.store.UpdateBoard(projectID, BoardUpdateInput{
-		Columns: board.Columns,
-		Tasks:   tasks,
-	}); err != nil {
-		return err
-	}
-	return m.appendPMActivity(projectID, ActivityKindReplan, "seeded", "PM seeded MVP backlog from the current project objective", map[string]string{
-		"seed_tasks": fmt.Sprintf("%d", len(tasks)),
-	})
 }
 
 func (m *AutopilotManager) appendPMActivity(projectID, kind, status, message string, meta map[string]string) error {

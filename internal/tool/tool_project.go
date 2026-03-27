@@ -14,13 +14,26 @@ func NewProjectCreateTool(store *project.Store) Tool {
 	return Tool{
 		Name:        "project_create",
 		Description: "Create a new project workspace and project metadata document.",
-		Parameters: json.RawMessage(`{
+	Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
     "name":{"type":"string"},
     "type":{"type":"string"},
     "git_repo":{"type":"string"},
     "objective":{"type":"string"},
+    "workflow_profile":{"type":"string"},
+    "workflow_rules":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "properties":{
+          "name":{"type":"string"},
+          "params":{"type":"object","additionalProperties":{"type":"string"}}
+        },
+        "required":["name"],
+        "additionalProperties":false
+      }
+    },
     "instructions":{"type":"string"},
     "clone_repo":{"type":"boolean"}
   },
@@ -32,23 +45,27 @@ func NewProjectCreateTool(store *project.Store) Tool {
 				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
-				Name         string `json:"name"`
-				Type         string `json:"type,omitempty"`
-				GitRepo      string `json:"git_repo,omitempty"`
-				Objective    string `json:"objective,omitempty"`
-				Instructions string `json:"instructions,omitempty"`
-				CloneRepo    bool   `json:"clone_repo,omitempty"`
+				Name            string                 `json:"name"`
+				Type            string                 `json:"type,omitempty"`
+				GitRepo         string                 `json:"git_repo,omitempty"`
+				Objective       string                 `json:"objective,omitempty"`
+				WorkflowProfile string                 `json:"workflow_profile,omitempty"`
+				WorkflowRules   []project.WorkflowRule `json:"workflow_rules,omitempty"`
+				Instructions    string                 `json:"instructions,omitempty"`
+				CloneRepo       bool                   `json:"clone_repo,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			created, err := store.Create(project.CreateInput{
-				Name:         input.Name,
-				Type:         input.Type,
-				GitRepo:      input.GitRepo,
-				Objective:    input.Objective,
-				Instructions: input.Instructions,
-				CloneRepo:    input.CloneRepo,
+				Name:            input.Name,
+				Type:            input.Type,
+				GitRepo:         input.GitRepo,
+				Objective:       input.Objective,
+				WorkflowProfile: input.WorkflowProfile,
+				WorkflowRules:   input.WorkflowRules,
+				Instructions:    input.Instructions,
+				CloneRepo:       input.CloneRepo,
 			})
 			if err != nil {
 				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
@@ -125,6 +142,19 @@ func NewProjectUpdateTool(store *project.Store) Tool {
     "tools_deny":{"type":"array","items":{"type":"string"}},
     "tools_risk_max":{"type":"string"},
     "skills_allow":{"type":"array","items":{"type":"string"}},
+    "workflow_profile":{"type":"string"},
+    "workflow_rules":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "properties":{
+          "name":{"type":"string"},
+          "params":{"type":"object","additionalProperties":{"type":"string"}}
+        },
+        "required":["name"],
+        "additionalProperties":false
+      }
+    },
     "mcp_servers":{"type":"array","items":{"type":"string"}},
     "secrets_refs":{"type":"array","items":{"type":"string"}}
   },

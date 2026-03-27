@@ -12,33 +12,42 @@ import (
 const projectDocumentName = "PROJECT.md"
 
 type Project struct {
-	ID                 string   `json:"id" yaml:"id"`
-	Name               string   `json:"name" yaml:"name"`
-	Type               string   `json:"type" yaml:"type"`
-	Status             string   `json:"status" yaml:"status"`
-	GitRepo            string   `json:"git_repo,omitempty" yaml:"git_repo,omitempty"`
-	CreatedAt          string   `json:"created_at" yaml:"created_at"`
-	UpdatedAt          string   `json:"updated_at" yaml:"updated_at"`
-	Objective          string   `json:"objective,omitempty" yaml:"objective,omitempty"`
-	ToolsAllow         []string `json:"tools_allow,omitempty" yaml:"tools_allow,omitempty"`
-	ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty" yaml:"tools_allow_groups,omitempty"`
-	ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty" yaml:"tools_allow_patterns,omitempty"`
-	ToolsDeny          []string `json:"tools_deny,omitempty" yaml:"tools_deny,omitempty"`
-	ToolsRiskMax       string   `json:"tools_risk_max,omitempty" yaml:"tools_risk_max,omitempty"`
-	SkillsAllow        []string `json:"skills_allow,omitempty" yaml:"skills_allow,omitempty"`
-	MCPServers         []string `json:"mcp_servers,omitempty" yaml:"mcp_servers,omitempty"`
-	SecretsRefs        []string `json:"secrets_refs,omitempty" yaml:"secrets_refs,omitempty"`
-	Body               string   `json:"body,omitempty" yaml:"-"`
-	Path               string   `json:"path,omitempty" yaml:"-"`
+	ID                 string         `json:"id" yaml:"id"`
+	Name               string         `json:"name" yaml:"name"`
+	Type               string         `json:"type" yaml:"type"`
+	Status             string         `json:"status" yaml:"status"`
+	GitRepo            string         `json:"git_repo,omitempty" yaml:"git_repo,omitempty"`
+	CreatedAt          string         `json:"created_at" yaml:"created_at"`
+	UpdatedAt          string         `json:"updated_at" yaml:"updated_at"`
+	Objective          string         `json:"objective,omitempty" yaml:"objective,omitempty"`
+	ToolsAllow         []string       `json:"tools_allow,omitempty" yaml:"tools_allow,omitempty"`
+	ToolsAllowGroups   []string       `json:"tools_allow_groups,omitempty" yaml:"tools_allow_groups,omitempty"`
+	ToolsAllowPatterns []string       `json:"tools_allow_patterns,omitempty" yaml:"tools_allow_patterns,omitempty"`
+	ToolsDeny          []string       `json:"tools_deny,omitempty" yaml:"tools_deny,omitempty"`
+	ToolsRiskMax       string         `json:"tools_risk_max,omitempty" yaml:"tools_risk_max,omitempty"`
+	SkillsAllow        []string       `json:"skills_allow,omitempty" yaml:"skills_allow,omitempty"`
+	WorkflowProfile    string         `json:"workflow_profile,omitempty" yaml:"workflow_profile,omitempty"`
+	WorkflowRules      []WorkflowRule `json:"workflow_rules,omitempty" yaml:"workflow_rules,omitempty"`
+	MCPServers         []string       `json:"mcp_servers,omitempty" yaml:"mcp_servers,omitempty"`
+	SecretsRefs        []string       `json:"secrets_refs,omitempty" yaml:"secrets_refs,omitempty"`
+	Body               string         `json:"body,omitempty" yaml:"-"`
+	Path               string         `json:"path,omitempty" yaml:"-"`
+}
+
+type WorkflowRule struct {
+	Name   string            `json:"name" yaml:"name"`
+	Params map[string]string `json:"params,omitempty" yaml:"params,omitempty"`
 }
 
 type CreateInput struct {
-	Name         string
-	Type         string
-	GitRepo      string
-	Objective    string
-	Instructions string
-	CloneRepo    bool
+	Name            string
+	Type            string
+	GitRepo         string
+	Objective       string
+	WorkflowProfile string
+	WorkflowRules   []WorkflowRule
+	Instructions    string
+	CloneRepo       bool
 }
 
 type UpdateInput struct {
@@ -54,6 +63,8 @@ type UpdateInput struct {
 	ToolsDeny          []string
 	ToolsRiskMax       *string
 	SkillsAllow        []string
+	WorkflowProfile    *string
+	WorkflowRules      []WorkflowRule
 	MCPServers         []string
 	SecretsRefs        []string
 }
@@ -84,15 +95,17 @@ func (s *Store) Create(input CreateInput) (Project, error) {
 	now := s.nowFn().UTC().Format(time.RFC3339)
 	id := newProjectID(name)
 	project := Project{
-		ID:        id,
-		Name:      name,
-		Type:      normalizeType(input.Type),
-		Status:    "active",
-		GitRepo:   strings.TrimSpace(input.GitRepo),
-		CreatedAt: now,
-		UpdatedAt: now,
-		Objective: strings.TrimSpace(input.Objective),
-		Body:      strings.TrimSpace(input.Instructions),
+		ID:              id,
+		Name:            name,
+		Type:            normalizeType(input.Type),
+		Status:          "active",
+		GitRepo:         strings.TrimSpace(input.GitRepo),
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		Objective:       strings.TrimSpace(input.Objective),
+		WorkflowProfile: normalizeWorkflowProfile(input.WorkflowProfile),
+		WorkflowRules:   normalizeWorkflowRules(input.WorkflowRules),
+		Body:            strings.TrimSpace(input.Instructions),
 	}
 	if err := s.write(project); err != nil {
 		return Project{}, err
@@ -111,6 +124,18 @@ func (s *Store) Create(input CreateInput) (Project, error) {
 		Message: "Project created",
 	}); err != nil {
 		return Project{}, err
+	}
+	if warning := workflowProfileWarning(project.WorkflowProfile); warning != "" {
+		if err := s.appendSystemActivity(project.ID, ActivityAppendInput{
+			Kind:    ActivityKindDecision,
+			Status:  "warning",
+			Message: warning,
+			Meta: map[string]string{
+				"workflow_profile": project.WorkflowProfile,
+			},
+		}); err != nil {
+			return Project{}, err
+		}
 	}
 	return s.Get(project.ID)
 }
@@ -220,6 +245,20 @@ func (s *Store) Update(id string, input UpdateInput) (Project, error) {
 		Message: message,
 	}); err != nil {
 		return Project{}, err
+	}
+	if before.WorkflowProfile != updated.WorkflowProfile {
+		if warning := workflowProfileWarning(updated.WorkflowProfile); warning != "" {
+			if err := s.appendSystemActivity(updated.ID, ActivityAppendInput{
+				Kind:    ActivityKindDecision,
+				Status:  "warning",
+				Message: warning,
+				Meta: map[string]string{
+					"workflow_profile": updated.WorkflowProfile,
+				},
+			}); err != nil {
+				return Project{}, err
+			}
+		}
 	}
 	return updated, nil
 }

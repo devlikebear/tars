@@ -180,7 +180,7 @@ func cmdProject(c commandContext) (bool, string, error) {
 		return true, c.session, nil
 	case "autopilot":
 		if len(c.fields) < 4 {
-			return true, c.session, fmt.Errorf("usage: /project autopilot {start|status} {project_id}")
+			return true, c.session, fmt.Errorf("usage: /project autopilot {start|advance|status} {project_id}")
 		}
 		action := strings.ToLower(strings.TrimSpace(c.fields[2]))
 		projectID := strings.TrimSpace(c.fields[3])
@@ -197,6 +197,20 @@ func cmdProject(c commandContext) (bool, string, error) {
 				item.Iterations,
 			)
 			return true, c.session, nil
+		case "advance":
+			item, err := c.runtime.advanceProjectAutopilot(c.ctx, projectID)
+			if err != nil {
+				return true, c.session, err
+			}
+			fmt.Fprintf(c.stdout, "SYSTEM > project autopilot advance %s phase=%s status=%s run_status=%s next_action=%s message=%s\n",
+				strings.TrimSpace(item.ProjectID),
+				strings.TrimSpace(item.Name),
+				strings.TrimSpace(item.Status),
+				strings.TrimSpace(item.RunStatus),
+				strings.TrimSpace(item.NextAction),
+				strings.TrimSpace(item.Message),
+			)
+			return true, c.session, nil
 		case "status":
 			item, err := c.runtime.getProjectAutopilot(c.ctx, projectID)
 			if err != nil {
@@ -211,7 +225,7 @@ func cmdProject(c commandContext) (bool, string, error) {
 			)
 			return true, c.session, nil
 		default:
-			return true, c.session, fmt.Errorf("usage: /project autopilot {start|status} {project_id}")
+			return true, c.session, fmt.Errorf("usage: /project autopilot {start|advance|status} {project_id}")
 		}
 	default:
 		return true, c.session, fmt.Errorf("usage: /project {list|get|create|activate|archive|board|activity|dispatch|autopilot}")

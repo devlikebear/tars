@@ -257,6 +257,43 @@ func TestProjectAutopilotStartTool_StartsBackgroundRunner(t *testing.T) {
 	}
 }
 
+func TestProjectAutopilotAdvanceTool_ReturnsPlanningBlockerForEmptyBacklog(t *testing.T) {
+	store := project.NewStore(filepath.Join(t.TempDir(), "workspace"), func() time.Time {
+		return time.Date(2026, 3, 14, 17, 45, 0, 0, time.UTC)
+	})
+	created, err := store.Create(project.CreateInput{Name: "Autopilot Advance Tool Project"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	manager := project.NewAutopilotManager(store, stubProjectTaskRunner{}, func(context.Context) error { return nil }, nil)
+	tool := NewProjectAutopilotAdvanceTool(manager)
+	result, err := tool.Execute(context.Background(), json.RawMessage(`{"project_id":"`+created.ID+`"}`))
+	if err != nil {
+		t.Fatalf("execute project_autopilot_advance: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error result: %s", result.Text())
+	}
+
+	var snapshot project.PhaseSnapshot
+	if err := json.Unmarshal([]byte(result.Text()), &snapshot); err != nil {
+		t.Fatalf("decode phase snapshot: %v", err)
+	}
+	if snapshot.ProjectID != created.ID {
+		t.Fatalf("expected project id %q, got %+v", created.ID, snapshot)
+	}
+	if snapshot.Name != project.PhasePlanning || snapshot.Status != project.PhaseStatusBlocked {
+		t.Fatalf("expected planning-blocked snapshot, got %+v", snapshot)
+	}
+	if snapshot.RunStatus != project.AutopilotStatusBlocked {
+		t.Fatalf("expected blocked run status, got %+v", snapshot)
+	}
+	if snapshot.NextAction == "" {
+		t.Fatalf("expected next action for planning fallback, got %+v", snapshot)
+	}
+}
+
 func waitForAutopilotToFinish(t *testing.T, manager *project.AutopilotManager, projectID string) project.AutopilotRun {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)

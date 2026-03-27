@@ -1,6 +1,6 @@
 # Step 18. 상태 머신 + Autopilot
 
-> 학습 목표: phase 기반 상태 머신과 LLM 콜백으로 자율 실행 루프를 구현
+> 학습 목표: `PhaseEngine` 중심의 phase 상태 머신으로 자율 실행 루프를 구현
 
 ## 왜 상태 머신인가
 
@@ -15,42 +15,46 @@ Step 16에서 프로젝트와 태스크를 저장하는 Store를 만들었습니
 ## Phase 상태 전이도
 
 ```
-planning ──→ awaiting_approval ──→ executing ──→ reviewing ──→ completed
-    ↑                                               │
-    └───────────────── re-planning ←────────────────┘
-                    (goal not met)
+planning ──→ executing ──→ reviewing ──→ done
+    ↑             │              │
+    └─ re-plan ───┴──── blocked ─┘
 
-어디서든 → paused (Resume으로 복귀)
-어디서든 → cancelled (종료)
+필요 시 → blocked (human decision / retry / re-plan)
 ```
 
 각 phase에서 Autopilot이 하는 일:
 
 | Phase | 동작 |
 |-------|------|
-| `planning` | LLM에게 태스크+산출물 계획 요청 |
-| `awaiting_approval` | 대기 (사용자 승인/거절) |
-| `executing` | todo 태스크를 하나씩 실행 |
-| `reviewing` | LLM에게 목표 달성 여부 평가 |
-| `completed` | 루프 종료 |
-| `paused` | 대기 (사용자 Resume) |
-| `cancelled` | 루프 종료 |
+| `planning` | 다음 phase 또는 backlog가 필요한지 판단 |
+| `executing` | backlog item을 실행하거나 dispatch |
+| `reviewing` | 결과를 평가하고 keep / re-plan / block 결정 |
+| `blocked` | 사용자 승인, 추가 정보, 복구 대기 |
+| `done` | 현재 phase 또는 run 종료 |
 
-## 핵심 설계: 콜백 패턴
+## 핵심 설계: 단일 PhaseEngine 의존점
 
-Autopilot은 **LLM을 직접 호출하지 않습니다.** 대신 3개의 콜백을 주입받습니다:
+현재 구현에서 외부 코드가 의존해야 할 것은 planner/selector/executor/evaluator 각각이 아니라 **`PhaseEngine` 하나**입니다:
 
 ```go
-type PlanGenerator func(ctx context.Context, project *Project) (*PlanResult, error)
-type TaskRunner    func(ctx context.Context, projectID string, task BoardTask, deliverables []Deliverable) error
-type GoalEvaluator func(ctx context.Context, project *Project, completedTasks []BoardTask) (done bool, reason string, err error)
+type PhaseSnapshot struct {
+    ProjectID  string
+    Phase      PhaseName
+    Status     PhaseStatus
+    Message    string
+    NextAction string
+}
+
+type PhaseEngine interface {
+    Start(ctx context.Context, projectID string) (AutopilotRun, error)
+    Status(projectID string) (AutopilotRun, bool)
+    Current(projectID string) (PhaseSnapshot, bool)
+    Advance(ctx context.Context, projectID string) (PhaseSnapshot, error)
+    Escalate(projectID, reason string) error
+}
 ```
 
-**왜 콜백인가?**
-- Autopilot은 "상태 전이 규칙"만 알면 됨
-- LLM 호출 방법은 서버(`server.go`)가 결정
-- 테스트 시 Mock 콜백을 주입할 수 있음
-- Provider가 바뀌어도 Autopilot 코드를 수정할 필요 없음
+planner / selector / executor / evaluator는 `PhaseEngine` **내부 전략**입니다. heartbeat, API handler, dashboard는 이 내부 전략을 알지 못해야 coupling이 작아집니다.
 
 ## 실습
 
@@ -70,64 +74,48 @@ type AutopilotRun struct {
 
 `AUTOPILOT.json`에 매 상태 변경마다 저장합니다. 서버가 재시작해도 마지막 상태를 확인할 수 있습니다.
 
-### 18-2. 메인 루프
+### 18-2. 메인 루프와 한-step 전진
 
 ```go
-func (a *Autopilot) loop(ctx context.Context, projectID string) {
-    for iteration := 1; ; iteration++ {
-        if ctx.Err() != nil { return }
-
-        p, _ := a.store.Get(projectID)
-        if p.Phase == "awaiting_approval" || p.Phase == "paused" {
-            // 대기 상태: 로그 없이 2초마다 체크
-            a.step(ctx, projectID, iteration)
-            time.Sleep(2 * time.Second)
-            continue
-        }
-
-        // 활성 상태: 로그 출력 + 10초 간격
-        stop := a.step(ctx, projectID, iteration)
-        if stop { return }
-        time.Sleep(a.interval)
-    }
+func (m *AutopilotManager) Advance(ctx context.Context, projectID string) (PhaseSnapshot, error) {
+    // background loop를 무조건 띄우지 않고 현재 프로젝트를 한 번만 전진시킴
+    // blocked 경로에서는 sleep 없이 즉시 snapshot 반환
 }
 ```
 
-**대기 상태 최적화:** `awaiting_approval`과 `paused`에서는 iteration 로그를 출력하지 않습니다. 초기 구현에서 이 처리가 없어 "Waiting for human approval..." 로그가 수백 줄 찍히는 문제가 있었습니다.
+`Advance()`를 따로 두면 dashboard, API, 테스트에서 phase 전이를 동기적으로 검증하기 쉽고, background heartbeat는 필요할 때만 별도로 보강할 수 있습니다.
 
 ### 18-3. step 함수 — phase별 디스패치
 
 ```go
-func (a *Autopilot) step(ctx context.Context, projectID string, iteration int) bool {
-    p, _ := a.store.Get(projectID)
-    switch p.Phase {
+func (m *AutopilotManager) runIteration(ctx context.Context, projectID string, iteration int, waitForRetry bool) autopilotStepResult {
+    state, _ := m.store.GetState(projectID)
+    switch state.Phase {
     case "planning":
-        return a.stepPlanning(ctx, p, iteration)
-    case "awaiting_approval":
-        // 상태 메시지 1회만 출력
-        return false
+        return m.handlePlanningPhase(...)
     case "executing":
-        return a.stepExecuting(ctx, p, iteration)
+        return m.handleDispatchableTasks(...)
     case "reviewing":
-        return a.stepReviewing(ctx, p, iteration)
-    case "completed", "cancelled":
-        return true // 루프 종료
+        return m.handleReviewPhase(...)
+    case "blocked", "done":
+        return autopilotStepResult{Stop: true}
     }
 }
 ```
 
-`step`이 `true`를 반환하면 루프가 종료됩니다.
+핵심은 **보드 상태가 엔진 그 자체가 아니라 projection**이라는 점입니다. `todo/review/in_progress`는 phase 내부의 작업 표현일 뿐, 외부가 의존해야 할 핵심 상태는 아닙니다.
 
-### 18-4. stepPlanning — 계획 생성
+### 18-4. planning fallback
+
+현재 구현에서는 빈 보드를 즉시 seed하지 않습니다. 대신:
 
 ```go
-plan, err := a.planner(ctx, p)
-// plan.Tasks → board에 저장
-// plan.Deliverables → DELIVERABLES.json에 저장
-// phase → "awaiting_approval"
+if len(board.Tasks) == 0 {
+    return m.planningRequired(projectID, run, "No backlog items remain for the current phase.", "Create or approve the next phase backlog")
+}
 ```
 
-PlanGenerator가 반환하는 `PlanResult`에는 태스크와 산출물 명세가 함께 들어있습니다. (산출물 상세는 Step 19에서)
+즉 `empty board => auto-seed`가 아니라 `empty board => planning fallback` 입니다.
 
 ### 18-5. stepExecuting — 태스크 실행
 
@@ -149,26 +137,25 @@ for i, task := range board.Tasks {
 }
 ```
 
-**한 iteration에 한 태스크만 실행합니다.** 이유:
-- LLM 호출이 오래 걸릴 수 있음
-- 중간에 pause/cancel 체크 가능
-- SSE로 진행 상태를 실시간 전파 가능
+**한 iteration에 작은 단위만 전진**시키는 이유:
+- 테스트와 dashboard가 phase 변화를 관찰하기 쉬움
+- blocked / retry / human decision을 즉시 surface 가능
+- background loop가 없어도 API에서 한 step씩 밀어볼 수 있음
 
 **실패 재시도:** 같은 태스크가 3번 연속 실패하면 "done"으로 스킵 처리하고 `task_skipped` 활동 로그를 남깁니다. 초기 구현에서 API 에러가 나면 무한 재시도하는 문제가 있었습니다.
 
 ### 18-6. stepReviewing — 목표 평가
 
 ```go
-done, reason, err := a.evaluator(ctx, p, completed)
+done, reason, err := evaluator(...)
 if done {
-    // phase → "completed"
-    return true
+    // phase -> done
+} else {
+    // same-phase re-plan or blocked
 }
-// phase → "planning" (재계획)
-return false
 ```
 
-GoalEvaluator가 `false`를 반환하면 다시 `planning`으로 돌아갑니다. 이것이 **재계획 루프**입니다.
+평가 결과는 단순 완료/미완료만이 아니라, `same-phase re-plan`, `next-phase planning`, `blocked`를 구분할 수 있어야 합니다.
 
 ### 18-7. LLM 콜백 구현 (server.go)
 
@@ -208,11 +195,11 @@ go run ./cmd/tars/ serve --config ... 2>&1 | grep "\[autopilot\]"
 
 ## 체크포인트
 
-- [x] autopilot이 planning → awaiting_approval로 전이한다
-- [x] 승인 후 executing에서 태스크를 자동 실행한다
-- [x] 3회 연속 실패 시 태스크를 스킵한다
-- [x] reviewing에서 목표 미달 시 re-planning이 동작한다
+- [x] 외부 서버 코드는 `PhaseEngine` 하나에만 의존한다
+- [x] `Advance()`가 현재 프로젝트를 한 step만 전진시킨다
+- [x] 빈 보드는 auto-seed가 아니라 planning fallback으로 해석된다
+- [x] dashboard가 phase / next action / blocker를 우선 표시한다
 
 ## 다음 단계
 
-상태 머신이 돌아가지만, `awaiting_approval`에서 승인할 방법이 API뿐입니다. Step 19에서 Human-in-the-loop 제어와 산출물 시스템을 만듭니다.
+상태 머신이 돌아가기 시작했지만, 이제 중요한 건 사람 개입 지점을 최소화하면서도 명확히 드러내는 것입니다. Step 19에서는 planning 승인, blocker, 산출물 관점에서 Human-in-the-loop를 정리합니다.
