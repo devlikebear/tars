@@ -89,9 +89,10 @@ Kick off a project from chat, or use the TUI commands directly:
 /project board <project-id>
 /project autopilot start <project-id>
 /project autopilot advance <project-id>
+/project autopilot status <project-id>
 ```
 
-The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly.
+The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly, and `status` shows the current phase, run status, and next action without opening the dashboard.
 
 For read-heavy codebase research in chat, TARS can now fan out parallel `explorer` subagents and merge back compact summaries. The runtime defaults are:
 

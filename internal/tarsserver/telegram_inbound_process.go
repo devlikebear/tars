@@ -58,7 +58,8 @@ func (h *telegramInboundHandler) processMessage(
 	if h.tooling.Extensions != nil {
 		extSnapshot = h.tooling.Extensions.Snapshot()
 	}
-	invokedSkill := resolveSkillForMessage(text, h.tooling.Extensions, h.workspaceDir, sessionID)
+	resolvedSkill := resolveSkillSelection(text, h.tooling.Extensions, h.workspaceDir, sessionID)
+	invokedSkill := resolvedSkill.Definition
 	resolvedProjectID, activeProject, projectPrompt, _ := resolveChatProjectContext(h.workspaceDir, h.store, sessionID, "")
 	systemPrompt, toolChoice, err := prepareChatContextWithExtensions(h.workspaceDir, resolvedProjectID, sessionID, text, extSnapshot, invokedSkill, h.tooling.MemorySemanticConfig)
 	if err != nil {
@@ -109,6 +110,13 @@ func (h *telegramInboundHandler) processMessage(
 	answer := strings.TrimSpace(resp.Message.Content)
 	if answer == "" {
 		answer = "(empty response)"
+	}
+	if invokedSkill != nil {
+		notice := "SYSTEM > using skill " + strings.TrimSpace(invokedSkill.Name)
+		if strings.TrimSpace(resolvedSkill.Reason) != "" {
+			notice += " reason=" + strings.TrimSpace(resolvedSkill.Reason)
+		}
+		answer = notice + "\n\n" + answer
 	}
 	assistantAt := time.Now().UTC()
 	if err := session.AppendMessage(transcriptPath, session.Message{

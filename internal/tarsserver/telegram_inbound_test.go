@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -236,6 +237,62 @@ func TestTelegramInbound_PairingThenApproveAndReply(t *testing.T) {
 	}
 	if messages[1].Role != "assistant" || strings.TrimSpace(messages[1].Content) != "hello from tars" {
 		t.Fatalf("unexpected assistant transcript message: %+v", messages[1])
+	}
+}
+
+func TestTelegramInbound_ProcessMessagePrefixesSkillSelectionNotice(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	mockLLM := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{
+				Role:    "assistant",
+				Content: "hello from tars",
+			},
+		},
+	}
+	handler := newTelegramInboundHandler(
+		workspace,
+		store,
+		mockLLM,
+		nil,
+		nil,
+		nil,
+		"open",
+		zerolog.New(io.Discard),
+	)
+	handler.sessionScope = "main"
+	manager := newTestSkillManager(t, t.TempDir(), workspace)
+	handler.tooling.Extensions = manager
+
+	mainSession, err := store.Create("telegram:main")
+	if err != nil {
+		t.Fatalf("create main session: %v", err)
+	}
+	handler.mainSessionID = mainSession.ID
+	sessionID := mainSession.ID
+	goal := "Ship a todo app"
+	status := "collecting"
+	projectStore := project.NewStore(workspace, nil)
+	if _, err := projectStore.UpdateBrief(sessionID, project.BriefUpdateInput{
+		Goal:   &goal,
+		Status: &status,
+	}); err != nil {
+		t.Fatalf("update brief: %v", err)
+	}
+
+	answer, gotSessionID, err := handler.processMessage(context.Background(), 11, "alice", "로그인은 이메일 기반이면 돼")
+	if err != nil {
+		t.Fatalf("processMessage: %v", err)
+	}
+	if gotSessionID != sessionID {
+		t.Fatalf("expected session %q, got %q", sessionID, gotSessionID)
+	}
+	if !strings.Contains(answer, "SYSTEM > using skill project-start reason=active_brief") {
+		t.Fatalf("expected skill notice in telegram answer, got %q", answer)
+	}
+	if !strings.Contains(answer, "hello from tars") {
+		t.Fatalf("expected assistant answer in telegram response, got %q", answer)
 	}
 }
 

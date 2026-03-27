@@ -479,6 +479,41 @@ func TestAutopilotManager_RestorePersistedRunsPreloadsCompletedRuns(t *testing.T
 	}
 }
 
+func TestAutopilotManager_RestorePersistedRunsPrunesExpiredTerminalRuns(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Expired"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager.runRetention = 24 * time.Hour
+	manager.setRun(created.ID, func(item *AutopilotRun) {
+		item.ProjectID = created.ID
+		item.RunID = "autopilot-expired"
+		item.Status = AutopilotStatusDone
+		item.Message = "Autopilot completed all project tasks"
+		item.Iterations = 3
+		item.StartedAt = "2026-03-15T09:00:00Z"
+		item.UpdatedAt = "2026-03-15T10:00:00Z"
+		item.FinishedAt = "2026-03-15T10:00:00Z"
+	})
+
+	restarted := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	restarted.runRetention = 24 * time.Hour
+	if err := restarted.RestorePersistedRuns(); err != nil {
+		t.Fatalf("restore persisted runs: %v", err)
+	}
+	if _, ok := restarted.Status(created.ID); ok {
+		t.Fatalf("expected expired terminal run to be pruned")
+	}
+	if _, err := os.Stat(store.ProjectFilePath(created.ID, autopilotRunDocumentName)); !os.IsNotExist(err) {
+		t.Fatalf("expected expired run document to be deleted, got err=%v", err)
+	}
+}
+
 func TestAutopilotManager_RestorePersistedRunsRestartsRunningRunsAtStartup(t *testing.T) {
 	store := NewStore(t.TempDir(), func() time.Time {
 		return time.Date(2026, 3, 14, 19, 45, 0, 0, time.UTC)
@@ -541,6 +576,60 @@ func TestAutopilotManager_RestorePersistedRunsRestartsRunningRunsAtStartup(t *te
 	}
 	if !hasActivityKindStatus(activity, ActivityKindDecision, "needed") {
 		t.Fatalf("expected restart recovery to request planning, got %+v", activity)
+	}
+}
+
+func TestAutopilotManager_EnsureActiveRunsEscalatesExpiredPlanningBlocker(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 21, 0, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{Name: "Autopilot Planning Timeout"})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	phase := "planning"
+	status := "blocked"
+	nextAction := "Create or approve the next phase backlog"
+	lastRunSummary := "Autopilot paused: backlog is empty"
+	lastRunAt := "2026-03-14T20:45:00Z"
+	if _, err := store.UpdateState(created.ID, ProjectStateUpdateInput{
+		Phase:          &phase,
+		Status:         &status,
+		NextAction:     &nextAction,
+		LastRunSummary: &lastRunSummary,
+		LastRunAt:      &lastRunAt,
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
+	manager.planningBlockTimeout = 5 * time.Minute
+	if _, err := manager.EnsureActiveRuns(context.Background()); err != nil {
+		t.Fatalf("ensure active runs: %v", err)
+	}
+
+	final := waitForAutopilotStatus(t, manager, created.ID, AutopilotStatusBlocked)
+	if !strings.Contains(strings.ToLower(final.Message), "timed out") {
+		t.Fatalf("expected timeout message, got %+v", final)
+	}
+
+	state, err := store.GetState(created.ID)
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if state.Phase != "blocked" || state.Status != "blocked" {
+		t.Fatalf("expected stale planning blocker to escalate into blocked state, got %+v", state)
+	}
+	if !strings.Contains(strings.ToLower(state.NextAction), "advance") {
+		t.Fatalf("expected next action to call for explicit advance, got %+v", state)
+	}
+
+	activity, err := store.ListActivity(created.ID, 20)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if !hasActivityKindStatus(activity, ActivityKindDecision, "expired") {
+		t.Fatalf("expected expired planning decision activity, got %+v", activity)
 	}
 }
 

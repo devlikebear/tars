@@ -257,11 +257,11 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 		t.Fatalf("expected 200 for brief finalize, got %d body=%q", finalizeRec.Code, finalizeRec.Body.String())
 	}
 	var payload struct {
-		Project         project.Project      `json:"project"`
-		Brief           project.Brief        `json:"brief"`
-		State           project.ProjectState `json:"state"`
-		PlanningReady   bool                 `json:"planning_ready"`
-		Seeded          *bool                `json:"seeded"`
+		Project       project.Project      `json:"project"`
+		Brief         project.Brief        `json:"brief"`
+		State         project.ProjectState `json:"state"`
+		PlanningReady bool                 `json:"planning_ready"`
+		Seeded        *bool                `json:"seeded"`
 	}
 	if err := json.Unmarshal(finalizeRec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode finalize payload: %v", err)
@@ -689,6 +689,9 @@ func TestProjectAPI_AutopilotRoutes(t *testing.T) {
 	}
 	if !strings.Contains(statusRec.Body.String(), `"status":"done"`) {
 		t.Fatalf("expected done status in autopilot response, got %q", statusRec.Body.String())
+	}
+	if !strings.Contains(statusRec.Body.String(), `"phase":"done"`) || !strings.Contains(statusRec.Body.String(), `"phase_status":"done"`) {
+		t.Fatalf("expected phase summary in autopilot status response, got %q", statusRec.Body.String())
 	}
 
 	board, err := projectStore.GetBoard(created.ID)
