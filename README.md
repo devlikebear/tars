@@ -134,6 +134,7 @@ bin/tars version
 
 - [Getting Started](GETTING_STARTED.md)
 - [Project Workflow Example](examples/project/README.md)
+- [Ops Service Example](examples/ops-service-demo/README.md)
 - [Plugin and MCP Packaging Guide](docs/plugins.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)

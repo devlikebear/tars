@@ -1,0 +1,24 @@
+{
+  "project_id": "__PROJECT_ID__",
+  "skills_allow": [
+    "project-start",
+    "project-autopilot",
+    "ops-plan",
+    "ops-log-triage",
+    "ops-issue-create",
+    "ops-fix-implement",
+    "ops-pr-open",
+    "ops-report"
+  ],
+  "tools_allow": [
+    "telegram_send"
+  ],
+  "tools_allow_groups": [
+    "files",
+    "shell",
+    "web"
+  ],
+  "tools_allow_patterns": [
+    "^project_"
+  ]
+}
