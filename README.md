@@ -21,15 +21,16 @@ The killer feature. Describe what you want to build, and TARS handles the rest:
 4. **Human-in-the-Loop** — Escalates at phase approvals and real blockers instead of asking for every routine retry
 5. **Dashboard** — Live phase status, run status, pending decisions, blockers, and worker reports in a browser
 
-```
+```bash
 tars init && tars serve
-# In the TUI:
-> todo 앱 만드는 프로젝트 시작해줘
+tars
 ```
+
+Open the web console, then start a chat such as `todo 앱 만드는 프로젝트 시작해줘`.
 
 ### Agent Runtime
 
-- Terminal client with a Bubble Tea TUI + local HTTP API (`tars serve`)
+- Browser-based operator console + local HTTP API (`tars serve`)
 - Session lifecycle, transcript storage, and structured context compaction
 - Agent loop with built-in file, process, scheduling, memory, and ops tools
 - Built-in file tools with 2,000-line read pagination, continuation hints, and safe atomic writes
@@ -79,20 +80,22 @@ tars serve --config ./workspace/config/tars.config.yaml
 # Or as a macOS background service:
 tars service install && tars service start
 
-# 5. Launch the TUI client
+# 5. Launch the web console
 tars
 ```
 
-Kick off a project from chat, or use the TUI commands directly:
+`tars tui` is now a hidden, deprecated escape hatch for legacy debugging only. The supported paths are the web console and one-shot CLI commands.
 
-```text
-/project board <project-id>
-/project autopilot start <project-id>
-/project autopilot advance <project-id>
-/project autopilot status <project-id>
+Kick off a project from chat in the console, or use the CLI commands directly:
+
+```bash
+tars project activity <project-id> 20
+tars project autopilot start <project-id>
+tars project autopilot advance <project-id>
+tars project autopilot status <project-id>
 ```
 
-The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly, and `status` shows the current phase, run status, and next action without opening the dashboard.
+The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly, and `status` shows the current phase, run status, and next action without switching to the web console.
 
 Project-linked cron jobs also inherit the project's tool allowlist now, so background workflows can use approved shell/file tools for examples like the bundled ops-service triage loop.
 
@@ -103,7 +106,7 @@ gateway_subagents_max_threads: 4
 gateway_subagents_max_depth: 1
 ```
 
-Open the dashboard: `http://127.0.0.1:43180/dashboards`
+Open the console: `http://127.0.0.1:43180/console`
 
 Install trusted MCP packages from the hub:
 

@@ -18,8 +18,6 @@ type modelsInfo = tarsclient.ModelsInfo
 
 type whoamiInfo = tarsclient.WhoamiInfo
 
-type healthInfo = tarsclient.HealthInfo
-
 type compactRequest = tarsclient.CompactRequest
 
 type compactInfo = tarsclient.CompactInfo
@@ -36,30 +34,6 @@ type mcpToolInfo = tarsclient.MCPToolInfo
 
 type extensionsReloadInfo = tarsclient.ExtensionsReloadInfo
 
-type cronJob = tarsclient.CronJob
-
-type cronRunRecord = tarsclient.CronRunRecord
-
-type projectInfo = tarsclient.Project
-
-type projectCreateRequest = tarsclient.ProjectCreateRequest
-
-type projectUpdateRequest = tarsclient.ProjectUpdateRequest
-
-type projectBoard = tarsclient.ProjectBoard
-
-type projectBoardTask = tarsclient.ProjectBoardTask
-
-type projectActivity = tarsclient.ProjectActivity
-
-type projectDispatchReport = tarsclient.ProjectDispatchReport
-
-type projectTaskRun = tarsclient.ProjectTaskRun
-
-type projectAutopilotRun = tarsclient.ProjectAutopilotRun
-
-type projectPhaseSnapshot = tarsclient.ProjectPhaseSnapshot
-
 type usageLimits = tarsclient.UsageLimits
 
 type usageSummary = tarsclient.UsageSummary
@@ -69,10 +43,6 @@ type usageLimitStatus = tarsclient.UsageLimitStatus
 type opsStatus = tarsclient.OpsStatus
 
 type cleanupPlan = tarsclient.CleanupPlan
-
-type approvalItem = tarsclient.Approval
-
-type cleanupApplyResult = tarsclient.CleanupApplyResult
 
 type scheduleItem = tarsclient.ScheduleItem
 

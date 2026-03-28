@@ -106,7 +106,7 @@ func TestApplyAPIMiddleware_DashboardRoutesWithoutAuthAreLoopbackOnlyWhenDashboa
 	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(r.URL.Path))
 	}), io.Discard)
-	for _, path := range []string{"/dashboards", "/ui/projects/demo"} {
+	for _, path := range []string{"/console", "/console/projects/demo", "/dashboards", "/ui/projects/demo"} {
 		t.Run("loopback "+path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			req.RemoteAddr = "127.0.0.1:5555"

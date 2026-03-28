@@ -153,6 +153,43 @@ func TestEventStreamHandler_BroadcastsPublishedNotifications(t *testing.T) {
 	}
 }
 
+func TestEventStreamHandler_FiltersByProjectID(t *testing.T) {
+	broker := newEventBroker()
+	handler := newEventStreamHandler(broker, zerolog.New(io.Discard))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/events/stream?project_id=proj-a", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		handler.ServeHTTP(rec, req)
+		close(done)
+	}()
+	time.Sleep(30 * time.Millisecond)
+
+	match := newNotificationEvent("cron", "info", "event A", "job complete")
+	match.ProjectID = "proj-a"
+	other := newNotificationEvent("cron", "info", "event B", "job complete")
+	other.ProjectID = "proj-b"
+	broker.publish(match)
+	broker.publish(other)
+
+	time.Sleep(30 * time.Millisecond)
+	cancel()
+	<-done
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event A") {
+		t.Fatalf("expected matching project event in stream body, got %q", body)
+	}
+	if strings.Contains(body, "event B") {
+		t.Fatalf("did not expect non-matching project event in stream body, got %q", body)
+	}
+}
+
 func TestNotificationEvent_JSONShape(t *testing.T) {
 	evt := newNotificationEvent("heartbeat", "info", "Heartbeat", "ok")
 	raw, err := json.Marshal(evt)

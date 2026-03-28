@@ -10,20 +10,6 @@ import (
 
 func cmdRuntime(c commandContext) (bool, string, error) {
 	switch c.fields[0] {
-	case "/status":
-		status, err := c.runtime.status(c.ctx)
-		if err != nil {
-			return true, c.session, err
-		}
-		fmt.Fprintf(c.stdout, "SYSTEM > workspace=%s sessions=%d", status.WorkspaceDir, status.SessionCount)
-		if strings.TrimSpace(status.MainSessionID) != "" {
-			fmt.Fprintf(c.stdout, " main_session=%s", strings.TrimSpace(status.MainSessionID))
-		}
-		if strings.TrimSpace(status.AuthRole) != "" {
-			fmt.Fprintf(c.stdout, " auth_role=%s", status.AuthRole)
-		}
-		fmt.Fprintln(c.stdout)
-		return true, c.session, nil
 	case "/providers":
 		info, err := c.runtime.providers(c.ctx)
 		if err != nil {
@@ -64,13 +50,6 @@ func cmdRuntime(c commandContext) (bool, string, error) {
 		}
 		fmt.Fprintf(c.stdout, "SYSTEM > authenticated=%t role=%s admin=%t mode=%s\n",
 			identity.Authenticated, role, identity.IsAdmin, mode)
-		return true, c.session, nil
-	case "/health":
-		status, err := c.runtime.healthz(c.ctx)
-		if err != nil {
-			return true, c.session, err
-		}
-		fmt.Fprintf(c.stdout, "SYSTEM > ok=%t component=%s time=%s\n", status.OK, status.Component, status.Time)
 		return true, c.session, nil
 	case "/heartbeat":
 		result, err := c.runtime.heartbeatRunOnce(c.ctx)

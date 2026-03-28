@@ -27,15 +27,10 @@ type localRuntimeState struct {
 	chatTraceFilter string
 }
 
-func Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, opts Options) error {
+func Run(ctx context.Context, _ io.Reader, stdout, stderr io.Writer, opts Options) error {
 	chat := chatClient{
 		serverURL: opts.ServerURL,
 		apiToken:  opts.APIToken,
-	}
-	runtime := runtimeClient{
-		serverURL:     opts.ServerURL,
-		apiToken:      opts.APIToken,
-		adminAPIToken: opts.AdminToken,
 	}
 	session := strings.TrimSpace(opts.SessionID)
 	if strings.TrimSpace(opts.Message) != "" {
@@ -48,7 +43,7 @@ func Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, opts Op
 		}
 		return nil
 	}
-	return runTUI(ctx, stdin, stdout, chat, runtime, session, opts.Verbose)
+	return fmt.Errorf("interactive terminal UI has been removed; use the web console at /console or one-shot CLI commands")
 }
 
 func executeCommand(ctx context.Context, runtime runtimeClient, line, session string, stdout, stderr io.Writer) (bool, string, error) {
@@ -86,11 +81,9 @@ Debug:
 	return strings.TrimSpace(`SYSTEM > commands` + sessionSection + `
 
 Runtime:
-  /status
   /providers
   /models
   /whoami
-  /health
   /heartbeat
   /skills
   /plugins
@@ -106,17 +99,21 @@ Runtime:
   /vault {status}
   /channels
   /telegram {pairings|pairing approve {code}}
-  /cron {list|get|runs|add|run|delete|enable|disable}
-  /project {list|get|create|activate|archive|board|activity|dispatch|autopilot}
   /usage {summary|limits|set-limits}
   /ops {status|cleanup plan}
-  /approve {list|run|reject}
   /schedule {list|add|done|remove}
   /notify {list|filter|open|clear}
 
 Chat:
   /trace [on|off|filter {all|llm|tool|error|system}]
   /quit
+
+Use one-shot CLI commands outside the legacy TUI:
+  tars status
+  tars health
+  tars project ...
+  tars cron ...
+  tars approve ...
 ` + debugSection + `
 
 Use /help advanced for debug notes.`)

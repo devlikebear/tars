@@ -4,7 +4,7 @@ This example walks through the current project manager flow in TARS:
 
 1. Create a project.
 2. Seed the board with one developer task and one reviewer task.
-3. Open the dashboard or tail the SSE stream.
+3. Open the console or tail the project-filtered event stream.
 4. Inspect the project from the TUI.
 5. Dispatch developer work.
 6. Dispatch reviewer work or start autopilot.
@@ -59,19 +59,19 @@ The seeded tasks demonstrate the required metadata for the GitHub Flow and TDD g
 
 ## 3. Monitor Progress
 
-Open the server-rendered dashboard:
+Open the console:
 
 ```bash
-open "http://127.0.0.1:43180/ui/projects/${PROJECT_ID}"
+open "http://127.0.0.1:43180/console/projects/${PROJECT_ID}"
 ```
 
-Or tail the live event stream:
+Or tail the live project event stream:
 
 ```bash
-curl -N "http://127.0.0.1:43180/ui/projects/${PROJECT_ID}/stream"
+curl -N "http://127.0.0.1:43180/v1/events/stream?project_id=${PROJECT_ID}"
 ```
 
-The dashboard now shows autopilot status, worker reports, PM blocker/decision/replan notes, and GitHub Flow metadata for each task.
+The console now shows autopilot status, worker reports, PM blocker/decision/replan notes, and GitHub Flow metadata for each task.
 
 ## 4. Inspect From The TUI
 
@@ -145,4 +145,4 @@ curl -s "http://127.0.0.1:43180/v1/projects/${PROJECT_ID}/activity"
 
 - This example now supports both TUI commands and direct API calls.
 - The example assumes the configured worker backends (`codex` or `claude`) are available in the local environment.
-- If `gh auth status` fails, GitHub Flow validation will surface that failure in task activity and the dashboard.
+- If `gh auth status` fails, GitHub Flow validation will surface that failure in task activity and the console.

@@ -305,4 +305,4 @@ TARS는 핵심 패턴(비동기 Spawn/Wait, Run 라이프사이클, executor 인
 
 ## 다음 단계
 
-Step 23에서는 Bubble Tea 기반 TUI 클라이언트를 구현합니다. Gateway API를 사용해서 터미널에서 세션을 선택하고, 실시간 스트리밍을 확인하는 풍부한 인터페이스를 만듭니다.
+Step 23은 현재 아카이브된 레거시 TUI 구현 기록입니다. 최신 TARS는 Gateway API와 프로젝트 운영 기능을 `/console` 기반 웹 콘솔과 one-shot CLI로 노출합니다.

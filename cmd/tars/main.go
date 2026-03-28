@@ -31,13 +31,16 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	showVersion := false
 	cmd := &cobra.Command{
 		Use:   "tars",
-		Short: "Go TUI client for tars",
+		Short: "Web console and automation CLI for tars",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showVersion {
 				_, err := fmt.Fprintln(stdout, buildinfo.Summary())
 				return err
 			}
-			return runClientCommand(cmd.Context(), stdin, stdout, stderr, clientOpts)
+			if clientOpts.message != "" {
+				return clientCommandRunner(cmd.Context(), stdin, stdout, stderr, clientOpts)
+			}
+			return consoleCommandRunner(cmd.Context(), stdout, stderr, clientOpts)
 		},
 	}
 	bindClientFlags(cmd, &clientOpts)
@@ -46,10 +49,16 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newDoctorCommand(stdout, stderr))
 	cmd.AddCommand(newServiceCommand(stdout, stderr))
 	cmd.AddCommand(newServeCommand(stdout, stderr))
+	cmd.AddCommand(newStatusCommand(stdout, stderr))
+	cmd.AddCommand(newHealthCommand(stdout, stderr))
+	cmd.AddCommand(newProjectCommand(stdout, stderr))
+	cmd.AddCommand(newCronCommand(stdout, stderr))
+	cmd.AddCommand(newApproveCommand(stdout, stderr))
 	cmd.AddCommand(newAssistantCommand(stdout, stderr))
 	cmd.AddCommand(newSkillCommand(stdout, stderr))
 	cmd.AddCommand(newPluginCommand(stdout, stderr))
 	cmd.AddCommand(newMCPCommand(stdout, stderr))
+	cmd.AddCommand(newTUICommand(stdin, stdout, stderr))
 	cmd.AddCommand(newVersionCommand(stdout))
 	return cmd
 }
@@ -63,4 +72,22 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 			return err
 		},
 	}
+}
+
+func newTUICommand(_ io.Reader, stdout, stderr io.Writer) *cobra.Command {
+	opts := defaultClientOptions()
+	cmd := &cobra.Command{
+		Use:        "tui",
+		Short:      "Launch the legacy terminal UI",
+		Hidden:     true,
+		Deprecated: "use the web console or one-shot CLI commands instead",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if _, err := fmt.Fprintln(stderr, "warning: `tars tui` is deprecated; use the web console or one-shot CLI commands instead."); err != nil {
+				return err
+			}
+			return consoleCommandRunner(cmd.Context(), stdout, stderr, opts)
+		},
+	}
+	bindClientFlags(cmd, &opts)
+	return cmd
 }

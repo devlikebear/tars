@@ -782,6 +782,7 @@ func buildCronNotificationEvent(job cron.Job, severity string, baseTitle string,
 	message := buildCronNotificationMessage(job, details)
 	evt := newNotificationEvent("cron", severity, title, message)
 	evt.JobID = strings.TrimSpace(job.ID)
+	evt.ProjectID = strings.TrimSpace(job.ProjectID)
 	evt.SessionID = strings.TrimSpace(sessionID)
 	evt.OpenPath = strings.TrimSpace(openPath)
 	return evt

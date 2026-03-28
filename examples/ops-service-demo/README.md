@@ -88,7 +88,7 @@ curl -s "http://127.0.0.1:43180/v1/projects/${PROJECT_ID}" \
   -d @/tmp/ops-update.json
 ```
 
-Inspect the project in the TUI or dashboard:
+Inspect the project in the CLI or console:
 
 ```text
 /project get ${PROJECT_ID}
@@ -151,11 +151,11 @@ curl -s -X POST "http://127.0.0.1:43180/v1/cron/jobs/${JOB_ID}/run"
 
 ## 4. Observe The Loop
 
-Use the dashboard or CLI:
+Use the console or CLI:
 
 ```bash
-open "http://127.0.0.1:43180/ui/projects/${PROJECT_ID}"
-curl -N "http://127.0.0.1:43180/ui/projects/${PROJECT_ID}/stream"
+open "http://127.0.0.1:43180/console/projects/${PROJECT_ID}"
+curl -N "http://127.0.0.1:43180/v1/events/stream?project_id=${PROJECT_ID}"
 ```
 
 ```text
@@ -174,7 +174,7 @@ gh pr list --repo "${DEMO_REPO_URL#https://github.com/}"
 
 ## Human In The Loop
 
-For this example, Telegram is report-only. Use the dashboard, TUI, or API when TARS needs approval to:
+For this example, Telegram is report-only. Use the console, CLI, or API when TARS needs approval to:
 
 - accept the next phase plan
 - continue after an unclear root cause

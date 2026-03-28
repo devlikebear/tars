@@ -166,7 +166,7 @@ func (h *telegramCommandHandler) cmdGateway(fields []string) (string, error) {
 			status.AgentsCount,
 		), nil
 	case "reload", "restart":
-		return blockedCommandMessage("admin-only command. use tars tui or admin api token."), nil
+		return blockedCommandMessage("admin-only command. use the web console or an admin api token."), nil
 	default:
 		return "", fmt.Errorf("usage: /gateway {status}")
 	}
