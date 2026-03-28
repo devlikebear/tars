@@ -45,11 +45,11 @@ func (h *telegramCommandHandler) dispatchTelegramCommand(
 	case "/resume":
 		return telegramCommandResult{handled: true, result: blockInMainSessionMessage()}
 	case "/reload":
-		return telegramCommandResult{handled: true, result: blockedCommandMessage("admin-only command. use tars tui or admin api token.")}
+		return telegramCommandResult{handled: true, result: blockedCommandMessage("admin-only command. use the web console or an admin api token.")}
 	case "/notify", "/trace", "/quit":
-		return telegramCommandResult{handled: true, result: blockedCommandMessage("tui-only command.")}
+		return telegramCommandResult{handled: true, result: blockedCommandMessage("console-only command. use the web console.")}
 	case "/telegram":
-		return telegramCommandResult{handled: true, result: blockedCommandMessage("admin-only command. use tars tui or admin api token.")}
+		return telegramCommandResult{handled: true, result: blockedCommandMessage("admin-only command. use the web console or an admin api token.")}
 	default:
 		_ = currentSessionID
 		return telegramCommandResult{}
