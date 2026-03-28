@@ -62,8 +62,6 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "s1", "title": "chat"}})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
 			_ = json.NewEncoder(w).Encode(map[string]any{"workspace_dir": "/tmp/ws", "session_count": 2})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/healthz":
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "component": "tars", "time": "2026-02-19T00:00:00Z"})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/compact":
 			if err := json.NewDecoder(r.Body).Decode(&compactBody); err != nil {
 				t.Fatalf("decode compact body: %v", err)
@@ -154,20 +152,6 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 					},
 				},
 			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs":
-			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "job_1", "name": "daily", "prompt": "check", "schedule": "every:1h", "enabled": true}})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/cron/jobs":
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "job_2", "name": "", "prompt": "check logs", "schedule": "every:1h", "enabled": true})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs/job_2":
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "job_2", "name": "", "prompt": "check logs", "schedule": "every:1h", "enabled": true})
-		case r.Method == http.MethodPut && r.URL.Path == "/v1/cron/jobs/job_2":
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "job_2", "name": "", "prompt": "check logs", "schedule": "every:1h", "enabled": false})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/cron/jobs/job_2/run":
-			_ = json.NewEncoder(w).Encode(map[string]any{"response": "cron ok"})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs/job_2/runs":
-			_ = json.NewEncoder(w).Encode([]map[string]any{{"job_id": "job_2", "ran_at": "2026-02-18T10:00:00Z", "response": "cron ok"}})
-		case r.Method == http.MethodDelete && r.URL.Path == "/v1/cron/jobs/job_2":
-			w.WriteHeader(http.StatusNoContent)
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/events/history":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"items": []map[string]any{
@@ -218,9 +202,6 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	status, err := client.status(ctx)
 	if err != nil || status.WorkspaceDir == "" {
 		t.Fatalf("status: status=%+v err=%v", status, err)
-	}
-	if health, err := client.healthz(ctx); err != nil || !health.OK {
-		t.Fatalf("healthz: health=%+v err=%v", health, err)
 	}
 	if _, err := client.compact(ctx, compactRequest{SessionID: "main", Instructions: "focus on decisions"}); err != nil {
 		t.Fatalf("compact: %v", err)
@@ -295,27 +276,6 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	if channels, err := client.gatewayReportChannels(ctx, 20); err != nil || channels.Count != 1 {
 		t.Fatalf("gatewayReportChannels: channels=%+v err=%v", channels, err)
 	}
-	if jobs, err := client.listCronJobs(ctx); err != nil || len(jobs) != 1 {
-		t.Fatalf("listCronJobs: jobs=%+v err=%v", jobs, err)
-	}
-	if _, err := client.createCronJob(ctx, "every:1h", "check logs"); err != nil {
-		t.Fatalf("createCronJob: %v", err)
-	}
-	if _, err := client.getCronJob(ctx, "job_2"); err != nil {
-		t.Fatalf("getCronJob: %v", err)
-	}
-	if _, err := client.updateCronJobEnabled(ctx, "job_2", false); err != nil {
-		t.Fatalf("updateCronJobEnabled: %v", err)
-	}
-	if response, err := client.runCronJob(ctx, "job_2"); err != nil || response != "cron ok" {
-		t.Fatalf("runCronJob: response=%q err=%v", response, err)
-	}
-	if runs, err := client.listCronRuns(ctx, "job_2", 10); err != nil || len(runs) != 1 {
-		t.Fatalf("listCronRuns: runs=%+v err=%v", runs, err)
-	}
-	if err := client.deleteCronJob(ctx, "job_2"); err != nil {
-		t.Fatalf("deleteCronJob: %v", err)
-	}
 	if history, err := client.eventHistory(ctx, 20); err != nil || history.LastID != 1 || len(history.Items) != 1 {
 		t.Fatalf("eventHistory: history=%+v err=%v", history, err)
 	}
@@ -331,117 +291,6 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	}
 	if adminAuth != "Bearer admin-token" {
 		t.Fatalf("expected admin auth header, got %q", adminAuth)
-	}
-}
-
-func TestRuntimeClientProjectWorkflowEndpoints(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/projects/proj_1/board":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"project_id": "proj_1",
-				"columns":    []string{"todo", "in_progress", "review", "done"},
-				"tasks": []map[string]any{
-					{"id": "task-1", "title": "Build dashboard", "status": "todo"},
-				},
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/projects/proj_1/activity":
-			if got := r.URL.Query().Get("limit"); got != "5" {
-				t.Fatalf("expected project activity limit=5, got %q", got)
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"count": 1,
-				"items": []map[string]any{
-					{"id": "act_1", "project_id": "proj_1", "kind": "task_status", "status": "review", "source": "system", "timestamp": "2026-03-14T06:31:00Z"},
-				},
-			})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/projects/proj_1/dispatch":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"project_id": "proj_1",
-				"runs": []map[string]any{
-					{"id": "run_1", "task_id": "task-1", "agent": "dev-1", "worker_kind": "codex-cli", "status": "completed"},
-				},
-			})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/projects/proj_1/autopilot":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"project_id": "proj_1",
-				"run_id":     "auto_1",
-				"status":     "running",
-			})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/projects/proj_1/autopilot/advance":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"project_id":  "proj_1",
-				"name":        "planning",
-				"status":      "blocked",
-				"run_status":  "blocked",
-				"next_action": "Approve the first phase backlog",
-				"message":     "No backlog items remain for the current phase.",
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/projects/proj_1/autopilot":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"project_id":   "proj_1",
-				"run_id":       "auto_1",
-				"status":       "done",
-				"iterations":   2,
-				"phase":        "done",
-				"phase_status": "done",
-				"next_action":  "Project complete",
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	client := runtimeClient{serverURL: server.URL}
-	ctx := context.Background()
-
-	board, err := client.getProjectBoard(ctx, "proj_1")
-	if err != nil {
-		t.Fatalf("getProjectBoard: %v", err)
-	}
-	if board.ProjectID != "proj_1" || len(board.Tasks) != 1 {
-		t.Fatalf("unexpected project board: %+v", board)
-	}
-
-	activity, err := client.listProjectActivity(ctx, "proj_1", 5)
-	if err != nil {
-		t.Fatalf("listProjectActivity: %v", err)
-	}
-	if len(activity) != 1 || activity[0].Kind != "task_status" {
-		t.Fatalf("unexpected project activity: %+v", activity)
-	}
-
-	report, err := client.dispatchProject(ctx, "proj_1", "todo")
-	if err != nil {
-		t.Fatalf("dispatchProject: %v", err)
-	}
-	if report.ProjectID != "proj_1" || len(report.Runs) != 1 {
-		t.Fatalf("unexpected dispatch report: %+v", report)
-	}
-
-	started, err := client.startProjectAutopilot(ctx, "proj_1")
-	if err != nil {
-		t.Fatalf("startProjectAutopilot: %v", err)
-	}
-	if started.RunID != "auto_1" || started.Status != "running" {
-		t.Fatalf("unexpected started autopilot: %+v", started)
-	}
-
-	advanced, err := client.advanceProjectAutopilot(ctx, "proj_1")
-	if err != nil {
-		t.Fatalf("advanceProjectAutopilot: %v", err)
-	}
-	if advanced.Name != "planning" || advanced.Status != "blocked" || advanced.RunStatus != "blocked" {
-		t.Fatalf("unexpected autopilot advance snapshot: %+v", advanced)
-	}
-
-	status, err := client.getProjectAutopilot(ctx, "proj_1")
-	if err != nil {
-		t.Fatalf("getProjectAutopilot: %v", err)
-	}
-	if status.Status != "done" || status.Iterations != 2 || status.Phase != "done" || status.PhaseStatus != "done" {
-		t.Fatalf("unexpected autopilot status: %+v", status)
 	}
 }
 

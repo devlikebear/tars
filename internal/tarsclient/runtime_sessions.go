@@ -38,10 +38,6 @@ func (c runtimeClient) whoami(ctx context.Context) (whoamiInfo, error) {
 	return c.client().Whoami(ctx)
 }
 
-func (c runtimeClient) healthz(ctx context.Context) (healthInfo, error) {
-	return c.client().Healthz(ctx)
-}
-
 func (c runtimeClient) compact(ctx context.Context, req compactRequest) (compactInfo, error) {
 	return c.client().CompactWithOptions(ctx, req)
 }
