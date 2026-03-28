@@ -7,7 +7,7 @@ export default defineConfig(({ command }) => ({
   base: command === 'serve' ? '/' : '/console/',
   build: {
     outDir: '../../internal/tarsserver/consoleassets/dist',
-    emptyOutDir: true,
+    emptyOutDir: false,
   },
   server: {
     port: 5173,

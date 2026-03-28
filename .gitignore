@@ -4,6 +4,9 @@
 # Build
 bin/
 dist/
+!internal/tarsserver/consoleassets/dist/
+internal/tarsserver/consoleassets/dist/**
+!internal/tarsserver/consoleassets/dist/.placeholder
 *.exe
 *.dll
 *.so
