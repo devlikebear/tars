@@ -214,3 +214,92 @@ func TestRootCommand_IncludesMCPSubcommand(t *testing.T) {
 		t.Fatalf("expected mcp subcommand, got subcmd=%v err=%v", subcmd, err)
 	}
 }
+
+func TestRootCommand_NoArgsOpensConsole(t *testing.T) {
+	originalConsoleRunner := consoleCommandRunner
+	originalClientRunner := clientCommandRunner
+	defer func() {
+		consoleCommandRunner = originalConsoleRunner
+		clientCommandRunner = originalClientRunner
+	}()
+
+	var got clientOptions
+	consoleCalled := false
+	clientCalled := false
+	consoleCommandRunner = func(_ context.Context, _ io.Writer, _ io.Writer, opts clientOptions) error {
+		consoleCalled = true
+		got = opts
+		return nil
+	}
+	clientCommandRunner = func(context.Context, io.Reader, io.Writer, io.Writer, clientOptions) error {
+		clientCalled = true
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs(nil)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("root command: %v", err)
+	}
+	if !consoleCalled {
+		t.Fatal("expected root command to open console")
+	}
+	if clientCalled {
+		t.Fatal("did not expect root command to launch legacy TUI client")
+	}
+	if strings.TrimSpace(got.serverURL) != tarsclient.DefaultServerURL {
+		t.Fatalf("unexpected serverURL: %q", got.serverURL)
+	}
+}
+
+func TestRootCommand_MessageFlagUsesClientRunner(t *testing.T) {
+	originalConsoleRunner := consoleCommandRunner
+	originalClientRunner := clientCommandRunner
+	defer func() {
+		consoleCommandRunner = originalConsoleRunner
+		clientCommandRunner = originalClientRunner
+	}()
+
+	consoleCalled := false
+	var got clientOptions
+	consoleCommandRunner = func(context.Context, io.Writer, io.Writer, clientOptions) error {
+		consoleCalled = true
+		return nil
+	}
+	clientCommandRunner = func(_ context.Context, _ io.Reader, _ io.Writer, _ io.Writer, opts clientOptions) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"--message", "hello"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("root command with message: %v", err)
+	}
+	if consoleCalled {
+		t.Fatal("did not expect message mode to open console")
+	}
+	if got.message != "hello" {
+		t.Fatalf("unexpected message: %#v", got)
+	}
+}
+
+func TestRootCommand_TUISubcommandUsesClientRunner(t *testing.T) {
+	originalClientRunner := clientCommandRunner
+	defer func() { clientCommandRunner = originalClientRunner }()
+
+	var got clientOptions
+	clientCommandRunner = func(_ context.Context, _ io.Reader, _ io.Writer, _ io.Writer, opts clientOptions) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"tui", "--server-url", "http://127.0.0.1:43180"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("tui command: %v", err)
+	}
+	if got.serverURL != "http://127.0.0.1:43180" {
+		t.Fatalf("unexpected serverURL: %#v", got)
+	}
+}

@@ -31,13 +31,16 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	showVersion := false
 	cmd := &cobra.Command{
 		Use:   "tars",
-		Short: "Go TUI client for tars",
+		Short: "CLI and web console launcher for tars",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showVersion {
 				_, err := fmt.Fprintln(stdout, buildinfo.Summary())
 				return err
 			}
-			return runClientCommand(cmd.Context(), stdin, stdout, stderr, clientOpts)
+			if clientOpts.message != "" {
+				return clientCommandRunner(cmd.Context(), stdin, stdout, stderr, clientOpts)
+			}
+			return consoleCommandRunner(cmd.Context(), stdout, stderr, clientOpts)
 		},
 	}
 	bindClientFlags(cmd, &clientOpts)
@@ -50,6 +53,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newSkillCommand(stdout, stderr))
 	cmd.AddCommand(newPluginCommand(stdout, stderr))
 	cmd.AddCommand(newMCPCommand(stdout, stderr))
+	cmd.AddCommand(newTUICommand(stdin, stdout, stderr))
 	cmd.AddCommand(newVersionCommand(stdout))
 	return cmd
 }
@@ -63,4 +67,17 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 			return err
 		},
 	}
+}
+
+func newTUICommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
+	opts := defaultClientOptions()
+	cmd := &cobra.Command{
+		Use:   "tui",
+		Short: "Launch the legacy terminal UI",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return clientCommandRunner(cmd.Context(), stdin, stdout, stderr, opts)
+		},
+	}
+	bindClientFlags(cmd, &opts)
+	return cmd
 }

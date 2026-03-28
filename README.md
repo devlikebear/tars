@@ -21,15 +21,16 @@ The killer feature. Describe what you want to build, and TARS handles the rest:
 4. **Human-in-the-Loop** — Escalates at phase approvals and real blockers instead of asking for every routine retry
 5. **Dashboard** — Live phase status, run status, pending decisions, blockers, and worker reports in a browser
 
-```
+```bash
 tars init && tars serve
-# In the TUI:
-> todo 앱 만드는 프로젝트 시작해줘
+tars
 ```
+
+Open the web console, then start a chat such as `todo 앱 만드는 프로젝트 시작해줘`.
 
 ### Agent Runtime
 
-- Terminal client with a Bubble Tea TUI + local HTTP API (`tars serve`)
+- Browser-based operator console + local HTTP API (`tars serve`)
 - Session lifecycle, transcript storage, and structured context compaction
 - Agent loop with built-in file, process, scheduling, memory, and ops tools
 - Built-in file tools with 2,000-line read pagination, continuation hints, and safe atomic writes
@@ -79,11 +80,13 @@ tars serve --config ./workspace/config/tars.config.yaml
 # Or as a macOS background service:
 tars service install && tars service start
 
-# 5. Launch the TUI client
+# 5. Launch the web console
 tars
 ```
 
-Kick off a project from chat, or use the TUI commands directly:
+If you still need the legacy terminal UI during the transition, use `tars tui`.
+
+Kick off a project from chat in the console, or use the CLI commands directly:
 
 ```text
 /project board <project-id>
