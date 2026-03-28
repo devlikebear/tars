@@ -102,6 +102,22 @@ export type Approval = {
   }
 }
 
+export type Session = {
+  id: string
+  title: string
+  kind?: string
+  hidden?: boolean
+  project_id?: string
+  created_at: string
+  updated_at: string
+}
+
+export type SessionMessage = {
+  role: string
+  content: string
+  timestamp: string
+}
+
 export type APIErrorPayload = {
   error?: string
 }
