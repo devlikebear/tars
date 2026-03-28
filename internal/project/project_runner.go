@@ -441,14 +441,13 @@ func (m *AutopilotManager) setRunningRun(projectID string, message string, itera
 
 func (m *AutopilotManager) completeRun(projectID string, iteration int) {
 	message := "Autopilot completed all project tasks"
-	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotCompletedState(message))
-	m.setRun(projectID, func(item *AutopilotRun) {
-		item.Status = AutopilotStatusDone
-		item.Message = message
-		item.Iterations = iteration
-		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	m.transition(projectID, autopilotTransition{
+		runStatus:  AutopilotStatusDone,
+		message:    message,
+		iteration:  iteration,
+		terminal:   true,
+		stateUpdate: DefaultWorkflowPolicy.AutopilotCompletedState(message),
 	})
-	m.publish(projectID)
 }
 
 func (m *AutopilotManager) applyImmediateThrottle(ctx context.Context, immediateStreak *int) bool {
@@ -463,15 +462,14 @@ func (m *AutopilotManager) applyImmediateThrottle(ctx context.Context, immediate
 }
 
 func (m *AutopilotManager) fail(projectID, runID string, iteration int, message string) {
-	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotFailedState(message))
-	m.setRun(projectID, func(item *AutopilotRun) {
-		item.RunID = runID
-		item.Status = AutopilotStatusFailed
-		item.Message = strings.TrimSpace(message)
-		item.Iterations = iteration
-		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	m.transition(projectID, autopilotTransition{
+		runID:       runID,
+		runStatus:   AutopilotStatusFailed,
+		message:     message,
+		iteration:   iteration,
+		terminal:    true,
+		stateUpdate: DefaultWorkflowPolicy.AutopilotFailedState(message),
 	})
-	m.publish(projectID)
 }
 
 func (m *AutopilotManager) block(projectID, runID string, iteration int, message string) {
@@ -480,53 +478,78 @@ func (m *AutopilotManager) block(projectID, runID string, iteration int, message
 
 func (m *AutopilotManager) blockWithNextAction(projectID, runID string, iteration int, message string, nextAction string) {
 	_ = m.appendPMActivity(projectID, ActivityKindBlocker, "blocked", strings.TrimSpace(message), nil)
-	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotBlockedState(message, nextAction))
-	m.setRun(projectID, func(item *AutopilotRun) {
-		item.RunID = runID
-		item.Status = AutopilotStatusBlocked
-		item.Message = strings.TrimSpace(message)
-		item.Iterations = iteration
-		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	m.transition(projectID, autopilotTransition{
+		runID:       runID,
+		runStatus:   AutopilotStatusBlocked,
+		message:     message,
+		iteration:   iteration,
+		terminal:    true,
+		stateUpdate: DefaultWorkflowPolicy.AutopilotBlockedState(message, nextAction),
 	})
-	m.publish(projectID)
 }
 
 func (m *AutopilotManager) planningRequired(projectID, runID string, iteration int, message string, nextAction string) {
 	_ = m.appendPMActivity(projectID, ActivityKindDecision, "needed", strings.TrimSpace(message), nil)
-	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotPlanningRequiredState(message, nextAction))
-	m.setRun(projectID, func(item *AutopilotRun) {
-		item.RunID = runID
-		item.Status = AutopilotStatusBlocked
-		item.Message = strings.TrimSpace(message)
-		item.Iterations = iteration
-		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	m.transition(projectID, autopilotTransition{
+		runID:       runID,
+		runStatus:   AutopilotStatusBlocked,
+		message:     message,
+		iteration:   iteration,
+		terminal:    true,
+		stateUpdate: DefaultWorkflowPolicy.AutopilotPlanningRequiredState(message, nextAction),
 	})
-	m.publish(projectID)
 }
 
 func (m *AutopilotManager) planningTimedOut(projectID, runID string, iteration int, message string, nextAction string) {
 	_ = m.appendPMActivity(projectID, ActivityKindDecision, "expired", strings.TrimSpace(message), nil)
-	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotBlockedState(message, nextAction))
-	m.setRun(projectID, func(item *AutopilotRun) {
-		item.RunID = runID
-		item.Status = AutopilotStatusBlocked
-		item.Message = strings.TrimSpace(message)
-		item.Iterations = iteration
-		item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	m.transition(projectID, autopilotTransition{
+		runID:       runID,
+		runStatus:   AutopilotStatusBlocked,
+		message:     message,
+		iteration:   iteration,
+		terminal:    true,
+		stateUpdate: DefaultWorkflowPolicy.AutopilotBlockedState(message, nextAction),
 	})
-	m.publish(projectID)
 }
 
 func (m *AutopilotManager) noteBlocked(projectID, runID string, iteration int, message string, nextAction string) {
-	message = strings.TrimSpace(message)
-	nextAction = strings.TrimSpace(nextAction)
-	m.updateState(projectID, DefaultWorkflowPolicy.AutopilotBlockedState(message, nextAction))
+	m.transition(projectID, autopilotTransition{
+		runID:       runID,
+		runStatus:   AutopilotStatusRunning,
+		message:     message,
+		iteration:   iteration,
+		terminal:    false,
+		stateUpdate: DefaultWorkflowPolicy.AutopilotBlockedState(message, nextAction),
+	})
+}
+
+// autopilotTransition describes a state change for an autopilot run.
+// All transition methods delegate to transition() to avoid repeating
+// the updateState → setRun → publish sequence.
+type autopilotTransition struct {
+	runID       string
+	runStatus   AutopilotRunStatus
+	message     string
+	iteration   int
+	terminal    bool // true → set FinishedAt; false → clear it
+	stateUpdate workflowStateUpdate
+}
+
+func (m *AutopilotManager) transition(projectID string, t autopilotTransition) {
+	m.updateState(projectID, t.stateUpdate)
+	msg := strings.TrimSpace(t.message)
 	m.setRun(projectID, func(item *AutopilotRun) {
-		item.RunID = runID
-		item.Status = AutopilotStatusRunning
-		item.Message = message
-		item.Iterations = iteration
-		item.FinishedAt = ""
+		if t.runID != "" {
+			item.RunID = t.runID
+		}
+		item.Status = t.runStatus
+		item.Message = msg
+		item.Iterations = t.iteration
+		if t.terminal {
+			item.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+		} else {
+			item.FinishedAt = ""
+		}
 	})
 	m.publish(projectID)
 }
