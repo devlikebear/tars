@@ -1,5 +1,7 @@
 # Step 23. TUI 클라이언트
 
+> 참고: `tars tui`는 이제 deprecated 상태의 숨김 레거시 진입점입니다. 현재 권장 경로는 웹 콘솔(`/console`)과 one-shot CLI이며, 이 문서는 Bubble Tea 기반 구현을 이해하거나 유지보수할 때만 참고하세요.
+
 > 학습 목표: Bubble Tea로 터미널 기반 대화형 채팅 인터페이스 구현
 
 ## 왜 TUI인가

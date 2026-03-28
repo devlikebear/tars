@@ -84,15 +84,15 @@ tars service install && tars service start
 tars
 ```
 
-If you still need the legacy terminal UI during the transition, use `tars tui`.
+`tars tui` is now a hidden, deprecated escape hatch for legacy debugging only. The supported paths are the web console and one-shot CLI commands.
 
 Kick off a project from chat in the console, or use the CLI commands directly:
 
-```text
-/project board <project-id>
-/project autopilot start <project-id>
-/project autopilot advance <project-id>
-/project autopilot status <project-id>
+```bash
+tars project activity <project-id> 20
+tars project autopilot start <project-id>
+tars project autopilot advance <project-id>
+tars project autopilot status <project-id>
 ```
 
 The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly, and `status` shows the current phase, run status, and next action without switching to the web console.

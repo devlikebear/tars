@@ -289,18 +289,34 @@ func TestRootCommand_TUISubcommandUsesClientRunner(t *testing.T) {
 	defer func() { clientCommandRunner = originalClientRunner }()
 
 	var got clientOptions
+	var stderr strings.Builder
 	clientCommandRunner = func(_ context.Context, _ io.Reader, _ io.Writer, _ io.Writer, opts clientOptions) error {
 		got = opts
 		return nil
 	}
 
-	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, &stderr)
 	cmd.SetArgs([]string{"tui", "--server-url", "http://127.0.0.1:43180"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("tui command: %v", err)
 	}
 	if got.serverURL != "http://127.0.0.1:43180" {
 		t.Fatalf("unexpected serverURL: %#v", got)
+	}
+	if !strings.Contains(stderr.String(), "deprecated") {
+		t.Fatalf("expected tui deprecation warning, got %q", stderr.String())
+	}
+}
+
+func TestRootCommand_HelpDoesNotListLegacyTUI(t *testing.T) {
+	var stdout strings.Builder
+	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+	cmd.SetArgs([]string{"--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("root help: %v", err)
+	}
+	if strings.Contains(stdout.String(), "tui") {
+		t.Fatalf("expected root help to hide legacy tui command, got %q", stdout.String())
 	}
 }
 

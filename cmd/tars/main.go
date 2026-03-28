@@ -31,7 +31,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	showVersion := false
 	cmd := &cobra.Command{
 		Use:   "tars",
-		Short: "CLI and web console launcher for tars",
+		Short: "Web console and automation CLI for tars",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showVersion {
 				_, err := fmt.Fprintln(stdout, buildinfo.Summary())
@@ -77,9 +77,14 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 func newTUICommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	opts := defaultClientOptions()
 	cmd := &cobra.Command{
-		Use:   "tui",
-		Short: "Launch the legacy terminal UI",
+		Use:        "tui",
+		Short:      "Launch the legacy terminal UI",
+		Hidden:     true,
+		Deprecated: "use the web console or one-shot CLI commands instead",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if _, err := fmt.Fprintln(stderr, "warning: `tars tui` is deprecated; use the web console or one-shot CLI commands instead."); err != nil {
+				return err
+			}
 			return clientCommandRunner(cmd.Context(), stdin, stdout, stderr, opts)
 		},
 	}
