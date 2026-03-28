@@ -48,6 +48,7 @@ type apiRouteHandlers struct {
 	chat            http.Handler
 	sessions        http.Handler
 	projects        http.Handler
+	console         http.Handler
 	dashboard       http.Handler
 	usage           http.Handler
 	ops             http.Handler
@@ -428,6 +429,10 @@ func buildAPIMux(
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
 	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, projectAutopilot, projectDashboardBroker, logger)
 	dashboardHandler := newProjectDashboardHandler(projectStore, projectAutopilot, projectDashboardBroker, logger)
+	consoleHandler, err := newConsoleHandler(logger)
+	if err != nil {
+		return nil, err
+	}
 	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
@@ -500,6 +505,7 @@ func buildAPIMux(
 		chat:            chatHandler,
 		sessions:        sessionHandler,
 		projects:        projectHandler,
+		console:         consoleHandler,
 		dashboard:       dashboardHandler,
 		usage:           usageHandler,
 		ops:             opsHandler,
@@ -561,6 +567,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/projects", handlers.projects)
 	mux.Handle("/v1/projects/", handlers.projects)
 	mux.Handle("/v1/project-briefs/", handlers.projects)
+	mux.Handle("/console", handlers.console)
+	mux.Handle("/console/", handlers.console)
 	mux.Handle("/dashboards", handlers.dashboard)
 	mux.Handle("/dashboards/", handlers.dashboard)
 	mux.Handle("/ui/projects/", handlers.dashboard)
