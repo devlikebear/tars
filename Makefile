@@ -157,10 +157,10 @@ build-bins:
 console-install:
 	cd frontend/console && npm install
 
-console-build:
+console-build: console-install
 	cd frontend/console && npm run build
 
-release-asset:
+release-asset: console-build
 	mkdir -p "$(DIST_DIR)"
 	rm -rf "$(RELEASE_STAGE_DIR)"
 	mkdir -p "$(RELEASE_STAGE_DIR)/share/tars"
