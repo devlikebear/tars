@@ -31,7 +31,7 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{
 		"name":"Ops A",
@@ -114,7 +114,7 @@ func TestProjectAPI_RejectsDisallowedMethods(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{"name":"Ops A","type":"operations"}`))
 	createReq.Header.Set("Content-Type", "application/json")
@@ -168,7 +168,7 @@ func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -232,8 +232,7 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	broker := newProjectDashboardBroker()
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
 
 	briefReq := httptest.NewRequest(http.MethodPatch, "/v1/project-briefs/"+mainSess.ID, strings.NewReader(`{
 		"title":"Orbit Hearts",
@@ -308,29 +307,6 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 		t.Fatalf("expected next_action in state patch response, got %q", statePatchRec.Body.String())
 	}
 
-	events, unsubscribe := broker.subscribe()
-	defer unsubscribe()
-
-	statePatchReq2 := httptest.NewRequest(http.MethodPatch, "/v1/projects/"+payload.Project.ID+"/state", strings.NewReader(`{
-		"phase":"review",
-		"status":"paused",
-		"next_action":"Wait for feedback"
-	}`))
-	statePatchReq2.Header.Set("Content-Type", "application/json")
-	statePatchRec2 := httptest.NewRecorder()
-	handler.ServeHTTP(statePatchRec2, statePatchReq2)
-	if statePatchRec2.Code != http.StatusOK {
-		t.Fatalf("expected 200 for second state patch, got %d body=%q", statePatchRec2.Code, statePatchRec2.Body.String())
-	}
-
-	select {
-	case evt := <-events:
-		if evt.ProjectID != payload.Project.ID || evt.Kind != "activity" {
-			t.Fatalf("unexpected dashboard event: %+v", evt)
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected dashboard event for state patch")
-	}
 }
 
 func TestProjectAPI_ActivityRoutes(t *testing.T) {
@@ -340,8 +316,7 @@ func TestProjectAPI_ActivityRoutes(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	broker := newProjectDashboardBroker()
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -399,32 +374,6 @@ func TestProjectAPI_ActivityRoutes(t *testing.T) {
 		t.Fatalf("expected newest activity first, got %+v", payload.Items)
 	}
 
-	events, unsubscribe := broker.subscribe()
-	defer unsubscribe()
-
-	thirdReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/activity", strings.NewReader(`{
-		"task_id":"task-2",
-		"source":"agent",
-		"agent":"dev-2",
-		"kind":"task_status",
-		"status":"review",
-		"message":"Ready for review"
-	}`))
-	thirdReq.Header.Set("Content-Type", "application/json")
-	thirdRec := httptest.NewRecorder()
-	handler.ServeHTTP(thirdRec, thirdReq)
-	if thirdRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 for third activity append, got %d body=%q", thirdRec.Code, thirdRec.Body.String())
-	}
-
-	select {
-	case evt := <-events:
-		if evt.ProjectID != created.ID || evt.Kind != "activity" {
-			t.Fatalf("unexpected dashboard event: %+v", evt)
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected dashboard activity event")
-	}
 }
 
 func TestProjectAPI_BoardRoutes(t *testing.T) {
@@ -434,8 +383,7 @@ func TestProjectAPI_BoardRoutes(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	broker := newProjectDashboardBroker()
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -478,9 +426,6 @@ func TestProjectAPI_BoardRoutes(t *testing.T) {
 		t.Fatalf("unexpected patched board: %+v", board)
 	}
 
-	events, unsubscribe := broker.subscribe()
-	defer unsubscribe()
-
 	secondPatchReq := httptest.NewRequest(http.MethodPatch, "/v1/projects/"+created.ID+"/board", strings.NewReader(`{
 		"tasks":[
 			{
@@ -497,15 +442,6 @@ func TestProjectAPI_BoardRoutes(t *testing.T) {
 	if secondPatchRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for second board patch, got %d body=%q", secondPatchRec.Code, secondPatchRec.Body.String())
 	}
-
-	select {
-	case evt := <-events:
-		if evt.ProjectID != created.ID || evt.Kind != "board" {
-			t.Fatalf("unexpected dashboard event: %+v", evt)
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected dashboard board event")
-	}
 }
 
 func TestProjectAPI_DispatchRoute(t *testing.T) {
@@ -515,7 +451,6 @@ func TestProjectAPI_DispatchRoute(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	broker := newProjectDashboardBroker()
 
 	codexExecutor, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
 		Name: "codex-cli",
@@ -569,7 +504,7 @@ notes: approved
 	})
 
 	taskRunner := gateway.NewProjectTaskRunner(runtime, "")
-	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, func(context.Context) error { return nil }, nil, broker, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, func(context.Context) error { return nil }, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Dispatch Project", Type: "operations"})
 	if err != nil {
@@ -591,9 +526,6 @@ notes: approved
 	}); err != nil {
 		t.Fatalf("seed board: %v", err)
 	}
-
-	events, unsubscribe := broker.subscribe()
-	defer unsubscribe()
 
 	todoReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/dispatch", strings.NewReader(`{"stage":"todo"}`))
 	todoReq.Header.Set("Content-Type", "application/json")
@@ -626,15 +558,6 @@ notes: approved
 	if len(boardAfterReview.Tasks) != 1 || boardAfterReview.Tasks[0].Status != "done" {
 		t.Fatalf("expected task to move to done, got %+v", boardAfterReview.Tasks)
 	}
-
-	select {
-	case evt := <-events:
-		if evt.ProjectID != created.ID {
-			t.Fatalf("unexpected dashboard event: %+v", evt)
-		}
-	case <-time.After(300 * time.Millisecond):
-		t.Fatal("expected dashboard refresh event after dispatch")
-	}
 }
 
 func TestProjectAPI_AutopilotRoutes(t *testing.T) {
@@ -644,12 +567,9 @@ func TestProjectAPI_AutopilotRoutes(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	broker := newProjectDashboardBroker()
 	runner := newAutopilotAPITaskRunner()
-	manager := project.NewAutopilotManager(projectStore, runner, func(context.Context) error { return nil }, func(projectID string, kind string) {
-		broker.publish(newProjectDashboardEvent(projectID, kind))
-	})
-	handler := newProjectAPIHandler(projectStore, store, "", runner, func(context.Context) error { return nil }, manager, broker, zerolog.New(io.Discard))
+	manager := project.NewAutopilotManager(projectStore, runner, func(context.Context) error { return nil }, nil)
+	handler := newProjectAPIHandler(projectStore, store, "", runner, func(context.Context) error { return nil }, manager, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Autopilot Project", Type: "operations"})
 	if err != nil {
@@ -710,11 +630,8 @@ func TestProjectAPI_AutopilotAdvanceRoute(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	broker := newProjectDashboardBroker()
-	manager := project.NewAutopilotManager(projectStore, newAutopilotAPITaskRunner(), func(context.Context) error { return nil }, func(projectID string, kind string) {
-		broker.publish(newProjectDashboardEvent(projectID, kind))
-	})
-	handler := newProjectAPIHandler(projectStore, store, "", nil, func(context.Context) error { return nil }, manager, broker, zerolog.New(io.Discard))
+	manager := project.NewAutopilotManager(projectStore, newAutopilotAPITaskRunner(), func(context.Context) error { return nil }, nil)
+	handler := newProjectAPIHandler(projectStore, store, "", nil, func(context.Context) error { return nil }, manager, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Autopilot Advance Project", Type: "operations"})
 	if err != nil {
