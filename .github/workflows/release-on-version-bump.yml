@@ -78,6 +78,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Build console assets
+        run: make console-install console-build
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
