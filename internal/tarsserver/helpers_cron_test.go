@@ -415,7 +415,7 @@ func TestPersistCronProjectArtifact_IncludesTelemetry(t *testing.T) {
 func TestBuildCronNotificationEvent_UsesFriendlySummaryAndOpenPath(t *testing.T) {
 	job := cron.Job{ID: "job_demo", Name: "novelist-1m", ProjectID: "project-134127"}
 	evt := buildCronNotificationEvent(job, "info", "Cron completed", "# Result\n\n상태 문서를 갱신하고 1화 초안을 다듬었습니다.\n\n변경 파일:\n- `projects/project-134127/STATE.md`", "/tmp/cron.md", "sess-main")
-	if evt.JobID != "job_demo" || evt.SessionID != "sess-main" {
+	if evt.JobID != "job_demo" || evt.ProjectID != "project-134127" || evt.SessionID != "sess-main" {
 		t.Fatalf("unexpected ids in notification: %+v", evt)
 	}
 	if evt.OpenPath != "/tmp/cron.md" {

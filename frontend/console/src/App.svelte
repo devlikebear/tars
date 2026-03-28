@@ -1,8 +1,29 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { getProject, getProjectAutopilot, listProjects, streamChat } from './lib/api'
+  import {
+    getEventsHistory,
+    getProject,
+    getProjectAutopilot,
+    listApprovals,
+    listCronJobs,
+    listCronRuns,
+    listProjectActivity,
+    listProjects,
+    reviewApproval,
+    streamChat,
+    streamEvents,
+  } from './lib/api'
   import { currentProjectIdFromPath, isConsoleRoot, projectPath } from './lib/router'
-  import type { ChatEvent, Project, ProjectAutopilotRun } from './lib/types'
+  import type {
+    Approval,
+    ChatEvent,
+    CronJob,
+    CronRunRecord,
+    NotificationMessage,
+    Project,
+    ProjectActivity,
+    ProjectAutopilotRun,
+  } from './lib/types'
 
   type ChatMessage = {
     id: string
@@ -16,16 +37,30 @@
   let selectedAutopilot: ProjectAutopilotRun | null = null
   let currentPathname = '/console'
 
+  let projectActivity: ProjectActivity[] = []
+  let projectCronJobs: CronJob[] = []
+  let cronRunsByJob: Record<string, CronRunRecord[]> = {}
+  let notificationItems: NotificationMessage[] = []
+  let approvals: Approval[] = []
+
   let loadingProjects = true
   let loadingDetail = false
+  let loadingPanels = false
   let listError = ''
   let detailError = ''
+  let panelError = ''
 
   let chatInput = ''
   let chatBusy = false
   let chatError = ''
   let chatSessionId = ''
   let chatStatusLine = ''
+  let eventStatusLine = 'idle'
+  let approvalBusyId = ''
+
+  let stopProjectEvents: (() => void) | null = null
+  let activeEventProjectId = ''
+
   let chatMessages: ChatMessage[] = [
     {
       id: 'system-welcome',
@@ -49,6 +84,29 @@
     }).format(date)
   }
 
+  function compact(value?: string, max = 180): string {
+    const text = value?.trim()
+    if (!text) {
+      return '—'
+    }
+    if (text.length <= max) {
+      return text
+    }
+    return `${text.slice(0, max - 1)}…`
+  }
+
+  function resetPanelState() {
+    projectActivity = []
+    projectCronJobs = []
+    cronRunsByJob = {}
+    notificationItems = []
+    approvals = []
+    loadingPanels = false
+    panelError = ''
+    eventStatusLine = 'idle'
+    approvalBusyId = ''
+  }
+
   function resetChatForProject(projectId: string) {
     chatInput = ''
     chatBusy = false
@@ -62,6 +120,139 @@
         text: `Chat is scoped to project ${projectId}. Persistent session history will be added in a later slice.`,
       },
     ]
+  }
+
+  function filterProjectNotifications(items: NotificationMessage[], projectId: string): NotificationMessage[] {
+    return items
+      .filter((item) => item.project_id?.trim() === projectId)
+      .sort((left, right) => {
+        const leftTime = new Date(left.timestamp).getTime()
+        const rightTime = new Date(right.timestamp).getTime()
+        return rightTime - leftTime
+      })
+      .slice(0, 20)
+  }
+
+  function mergeNotification(event: NotificationMessage, projectId: string) {
+    notificationItems = filterProjectNotifications(
+      [event, ...notificationItems.filter((item) => item.id !== event.id)],
+      projectId,
+    )
+  }
+
+  async function loadProjectDetail(projectId: string) {
+    loadingDetail = true
+    detailError = ''
+    try {
+      const [project, autopilot] = await Promise.all([
+        getProject(projectId),
+        getProjectAutopilot(projectId),
+      ])
+      if (selectedProjectId !== projectId) {
+        return
+      }
+      selectedProject = project
+      selectedAutopilot = autopilot
+    } catch (error) {
+      if (selectedProjectId !== projectId) {
+        return
+      }
+      selectedProject = null
+      selectedAutopilot = null
+      detailError = error instanceof Error ? error.message : 'Failed to load project detail'
+    } finally {
+      if (selectedProjectId === projectId) {
+        loadingDetail = false
+      }
+    }
+  }
+
+  async function loadProjectActivityPanel(projectId: string) {
+    const items = await listProjectActivity(projectId, 20)
+    if (selectedProjectId === projectId) {
+      projectActivity = items
+    }
+  }
+
+  async function loadProjectCronPanel(projectId: string) {
+    const jobs = (await listCronJobs()).filter((job) => job.project_id?.trim() === projectId)
+    const runsByJobEntries = await Promise.all(
+      jobs.map(async (job) => [job.id, await listCronRuns(job.id, 5)] as const),
+    )
+    if (selectedProjectId === projectId) {
+      projectCronJobs = jobs
+      cronRunsByJob = Object.fromEntries(runsByJobEntries)
+    }
+  }
+
+  async function loadProjectNotificationsPanel(projectId: string) {
+    const history = await getEventsHistory(40)
+    if (selectedProjectId === projectId) {
+      notificationItems = filterProjectNotifications(history.items ?? [], projectId)
+    }
+  }
+
+  async function loadApprovalsPanel() {
+    approvals = await listApprovals()
+  }
+
+  async function loadProjectPanels(projectId: string) {
+    loadingPanels = true
+    panelError = ''
+
+    const results = await Promise.allSettled([
+      loadProjectActivityPanel(projectId),
+      loadProjectCronPanel(projectId),
+      loadProjectNotificationsPanel(projectId),
+      loadApprovalsPanel(),
+    ])
+
+    if (selectedProjectId === projectId) {
+      const failures = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => (result.reason instanceof Error ? result.reason.message : 'Panel refresh failed'))
+      panelError = failures.join(' · ')
+      loadingPanels = false
+    }
+  }
+
+  function syncProjectEventStream(projectId: string) {
+    if (activeEventProjectId === projectId) {
+      return
+    }
+    stopProjectEvents?.()
+    activeEventProjectId = projectId
+    eventStatusLine = 'connecting'
+    stopProjectEvents = streamEvents(
+      projectId,
+      (event) => {
+        if (selectedProjectId !== projectId) {
+          return
+        }
+        eventStatusLine = `${event.category} · ${event.title}`
+        mergeNotification(event, projectId)
+        if (event.category === 'cron' || event.category === 'watchdog') {
+          void loadProjectActivityPanel(projectId)
+          void loadProjectCronPanel(projectId)
+          return
+        }
+        if (event.category === 'ops') {
+          void loadApprovalsPanel()
+        }
+      },
+      (message) => {
+        if (selectedProjectId === projectId) {
+          eventStatusLine = message
+        }
+      },
+    )
+  }
+
+  function clearProjectEventStream() {
+    stopProjectEvents?.()
+    stopProjectEvents = null
+    activeEventProjectId = ''
+    eventStatusLine = 'idle'
   }
 
   function selectProject(projectId: string, replace = false) {
@@ -79,8 +270,11 @@
     currentPathname = nextPath
     if (projectChanged) {
       resetChatForProject(normalized)
+      resetPanelState()
+      syncProjectEventStream(normalized)
     }
     void loadProjectDetail(normalized)
+    void loadProjectPanels(normalized)
   }
 
   async function loadProjectsAndSelection() {
@@ -97,9 +291,11 @@
         selectProject(projects[0].id, isConsoleRoot(window.location.pathname))
         return
       }
+      clearProjectEventStream()
       selectedProjectId = null
       selectedProject = null
       selectedAutopilot = null
+      resetPanelState()
     } catch (error) {
       listError = error instanceof Error ? error.message : 'Failed to load projects'
     } finally {
@@ -107,29 +303,10 @@
     }
   }
 
-  async function loadProjectDetail(projectId: string) {
-    loadingDetail = true
-    detailError = ''
-    try {
-      const [project, autopilot] = await Promise.all([
-        getProject(projectId),
-        getProjectAutopilot(projectId),
-      ])
-      selectedProject = project
-      selectedAutopilot = autopilot
-    } catch (error) {
-      selectedProject = null
-      selectedAutopilot = null
-      detailError = error instanceof Error ? error.message : 'Failed to load project detail'
-    } finally {
-      loadingDetail = false
-    }
-  }
-
   function handleChatEvent(event: ChatEvent, assistantId: string) {
     switch (event.type) {
       case 'status':
-        chatStatusLine = [event.phase, event.message, event.tool_name].filter(Boolean).join(' · ')
+        chatStatusLine = [event.phase, event.message, event.tool_name, event.skill_name].filter(Boolean).join(' · ')
         break
       case 'delta': {
         const chunk = event.text ?? ''
@@ -195,6 +372,22 @@
     }
   }
 
+  async function handleApprovalAction(approvalId: string, action: 'approve' | 'reject') {
+    if (!approvalId.trim() || approvalBusyId) {
+      return
+    }
+    approvalBusyId = approvalId
+    panelError = ''
+    try {
+      await reviewApproval(approvalId, action)
+      await loadApprovalsPanel()
+    } catch (error) {
+      panelError = error instanceof Error ? error.message : `Failed to ${action} approval`
+    } finally {
+      approvalBusyId = ''
+    }
+  }
+
   onMount(() => {
     currentPathname = window.location.pathname
     void loadProjectsAndSelection()
@@ -203,27 +396,25 @@
       currentPathname = window.location.pathname
       const routeProjectId = currentProjectIdFromPath(window.location.pathname)
       if (routeProjectId) {
-        const projectChanged = routeProjectId !== selectedProjectId
-        selectedProjectId = routeProjectId
-        if (projectChanged) {
-          resetChatForProject(routeProjectId)
-        }
-        void loadProjectDetail(routeProjectId)
+        selectProject(routeProjectId, true)
         return
       }
       if (projects.length > 0) {
-        selectedProjectId = projects[0].id
-        resetChatForProject(projects[0].id)
-        void loadProjectDetail(projects[0].id)
+        selectProject(projects[0].id, true)
         return
       }
+      clearProjectEventStream()
       selectedProjectId = null
       selectedProject = null
       selectedAutopilot = null
+      resetPanelState()
     }
 
     window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+      clearProjectEventStream()
+    }
   })
 </script>
 
@@ -233,13 +424,15 @@
       <div class="eyebrow">TARS Console</div>
       <h1>Project operator console</h1>
       <p class="lead">
-        The console now supports project navigation, live project-scoped chat, and phase/run inspection from
-        <code>/console</code>.
+        The console now supports project navigation, phase/run inspection, project-scoped chat, and live project
+        notifications from <code>/console</code>.
       </p>
     </div>
     <div class="hero-card">
       <div class="meta-label">Current path</div>
       <div class="mono">{currentPathname}</div>
+      <div class="meta-label">Event stream</div>
+      <div class="meta-value">{eventStatusLine}</div>
       <div class="meta-label">Chat session</div>
       <div class="meta-value mono">{chatSessionId || 'new'}</div>
     </div>
@@ -276,7 +469,7 @@
               </div>
               <div class="project-item-meta">{project.type || 'project'}</div>
               {#if project.objective}
-                <p>{project.objective}</p>
+                <p>{compact(project.objective, 120)}</p>
               {/if}
               <div class="project-item-time">updated {fmt(project.updated_at)}</div>
             </button>
@@ -290,8 +483,8 @@
         <div>
           <div class="panel-title-row">
             <h2>Project detail</h2>
-            {#if loadingDetail}
-              <span class="panel-pill">refreshing</span>
+            {#if loadingDetail || loadingPanels}
+              <span class="panel-pill">{loadingDetail ? 'refreshing detail' : 'refreshing panels'}</span>
             {/if}
           </div>
           {#if selectedProject}
@@ -307,6 +500,10 @@
       {#if detailError}
         <div class="error-box">{detailError}</div>
       {:else if selectedProject}
+        {#if panelError}
+          <div class="error-box compact">{panelError}</div>
+        {/if}
+
         <div class="detail-grid">
           <article class="card">
             <div class="card-label">Identity</div>
@@ -399,6 +596,164 @@
                 {chatBusy ? 'Streaming...' : 'Send'}
               </button>
             </form>
+          </article>
+
+          <article class="card card-wide">
+            <div class="panel-title-row">
+              <div class="card-label">Recent activity</div>
+              <span class="panel-pill">{projectActivity.length} items</span>
+            </div>
+            {#if projectActivity.length === 0}
+              <div class="empty-box compact-box">
+                <p>No project activity has been recorded yet.</p>
+              </div>
+            {:else}
+              <div class="timeline-list">
+                {#each projectActivity as item}
+                  <div class="timeline-item">
+                    <div class="timeline-title">
+                      <strong>{item.kind}</strong>
+                      <span>{item.status || item.source}</span>
+                    </div>
+                    <p>{item.message || 'No activity message'}</p>
+                    <div class="timeline-meta">
+                      <span>{fmt(item.timestamp)}</span>
+                      {#if item.task_id}
+                        <span class="mono">{item.task_id}</span>
+                      {/if}
+                      {#if item.agent}
+                        <span>{item.agent}</span>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </article>
+
+          <article class="card card-wide">
+            <div class="panel-title-row">
+              <div class="card-label">Cron</div>
+              <span class="panel-pill">{projectCronJobs.length} jobs</span>
+            </div>
+            {#if projectCronJobs.length === 0}
+              <div class="empty-box compact-box">
+                <p>No cron jobs are attached to this project yet.</p>
+              </div>
+            {:else}
+              <div class="cron-job-list">
+                {#each projectCronJobs as job}
+                  <div class="cron-job-card">
+                    <div class="timeline-title">
+                      <strong>{job.name}</strong>
+                      <span>{job.enabled ? job.schedule : 'disabled'}</span>
+                    </div>
+                    <p>{compact(job.prompt, 180)}</p>
+                    <div class="timeline-meta">
+                      <span>last run {fmt(job.last_run_at)}</span>
+                      {#if job.last_run_error}
+                        <span class="severity-error">{compact(job.last_run_error, 90)}</span>
+                      {/if}
+                    </div>
+                    {#if (cronRunsByJob[job.id] ?? []).length > 0}
+                      <div class="cron-run-list">
+                        {#each cronRunsByJob[job.id] ?? [] as run}
+                          <div class="cron-run-item">
+                            <strong>{fmt(run.ran_at)}</strong>
+                            <span>{compact(run.error || run.response || 'No output', 180)}</span>
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </article>
+
+          <article class="card card-wide">
+            <div class="panel-title-row">
+              <div class="card-label">Notifications</div>
+              <span class="panel-pill">{notificationItems.length} project events</span>
+            </div>
+            {#if notificationItems.length === 0}
+              <div class="empty-box compact-box">
+                <p>No project-scoped notifications are available yet.</p>
+              </div>
+            {:else}
+              <div class="timeline-list">
+                {#each notificationItems as item}
+                  <div class="timeline-item">
+                    <div class="timeline-title">
+                      <strong>{item.title}</strong>
+                      <span>{item.severity}</span>
+                    </div>
+                    <p>{item.message}</p>
+                    <div class="timeline-meta">
+                      <span>{fmt(item.timestamp)}</span>
+                      <span>{item.category}</span>
+                      {#if item.job_id}
+                        <span class="mono">{item.job_id}</span>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </article>
+
+          <article class="card card-wide">
+            <div class="panel-title-row">
+              <div class="card-label">Approvals</div>
+              <span class="panel-pill">{approvals.length} total</span>
+            </div>
+            {#if approvals.length === 0}
+              <div class="empty-box compact-box">
+                <p>No ops approvals are waiting right now.</p>
+              </div>
+            {:else}
+              <div class="approval-list">
+                {#each approvals as approval}
+                  <div class="approval-item">
+                    <div class="timeline-title">
+                      <strong>{approval.type}</strong>
+                      <span>{approval.status}</span>
+                    </div>
+                    <p>
+                      requested {fmt(approval.requested_at)} · {approval.plan.candidates.length} candidates ·
+                      {approval.plan.total_bytes} bytes
+                    </p>
+                    {#if approval.note}
+                      <p>{approval.note}</p>
+                    {/if}
+                    {#if approval.status === 'pending'}
+                      <div class="approval-actions">
+                        <button
+                          type="button"
+                          class="ghost-button"
+                          disabled={approvalBusyId === approval.id}
+                          onclick={() => {
+                            void handleApprovalAction(approval.id, 'approve')
+                          }}
+                        >
+                          {approvalBusyId === approval.id ? 'Working...' : 'Approve'}
+                        </button>
+                        <button
+                          type="button"
+                          class="ghost-button danger"
+                          disabled={approvalBusyId === approval.id}
+                          onclick={() => {
+                            void handleApprovalAction(approval.id, 'reject')
+                          }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {/if}
           </article>
 
           <article class="card card-wide">

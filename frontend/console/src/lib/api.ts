@@ -1,4 +1,16 @@
-import type { APIErrorPayload, ChatEvent, ChatRequest, Project, ProjectAutopilotRun } from './types'
+import type {
+  APIErrorPayload,
+  Approval,
+  ChatEvent,
+  ChatRequest,
+  CronJob,
+  CronRunRecord,
+  EventsHistoryInfo,
+  NotificationMessage,
+  Project,
+  ProjectActivity,
+  ProjectAutopilotRun,
+} from './types'
 
 async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
@@ -57,6 +69,63 @@ export async function getProjectAutopilot(projectId: string): Promise<ProjectAut
   }
 
   return (await response.json()) as ProjectAutopilotRun
+}
+
+export async function listProjectActivity(projectId: string, limit = 20): Promise<ProjectActivity[]> {
+  const payload = await requestJSON<{ count: number; items: ProjectActivity[] }>(
+    `/v1/projects/${encodeURIComponent(projectId)}/activity?limit=${limit}`,
+  )
+  return payload.items ?? []
+}
+
+export async function listCronJobs(): Promise<CronJob[]> {
+  return requestJSON<CronJob[]>('/v1/cron/jobs')
+}
+
+export async function listCronRuns(jobId: string, limit = 5): Promise<CronRunRecord[]> {
+  return requestJSON<CronRunRecord[]>(`/v1/cron/jobs/${encodeURIComponent(jobId)}/runs?limit=${limit}`)
+}
+
+export async function listApprovals(): Promise<Approval[]> {
+  return requestJSON<Approval[]>('/v1/ops/approvals')
+}
+
+export async function reviewApproval(approvalId: string, action: 'approve' | 'reject'): Promise<void> {
+  await requestJSON<{ ok: boolean }>(`/v1/ops/approvals/${encodeURIComponent(approvalId)}/${action}`, {
+    method: 'POST',
+  })
+}
+
+export async function getEventsHistory(limit = 30): Promise<EventsHistoryInfo> {
+  return requestJSON<EventsHistoryInfo>(`/v1/events/history?limit=${limit}`)
+}
+
+export function streamEvents(
+  projectId: string,
+  onEvent: (event: NotificationMessage) => void,
+  onError?: (message: string) => void,
+): () => void {
+  const stream = new EventSource(`/v1/events/stream?project_id=${encodeURIComponent(projectId)}`)
+  stream.onmessage = (message) => {
+    if (!message.data) {
+      return
+    }
+    try {
+      const payload = JSON.parse(message.data) as NotificationMessage
+      if (payload.type === 'keepalive') {
+        return
+      }
+      onEvent(payload)
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : 'Failed to parse event stream payload')
+    }
+  }
+  stream.onerror = () => {
+    onError?.('Project event stream disconnected')
+  }
+  return () => {
+    stream.close()
+  }
 }
 
 export async function streamChat(
