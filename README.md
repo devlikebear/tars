@@ -135,6 +135,15 @@ make build-bins
 bin/tars version
 ```
 
+When you run TARS directly from a source checkout, build the embedded web console once before opening `/console`:
+
+```bash
+make console-install
+make console-build
+```
+
+For live frontend work, run `npm run dev` inside `frontend/console` and start the Go server with `TARS_CONSOLE_DEV_URL=http://127.0.0.1:5173`.
+
 ## Documentation
 
 - [Getting Started](GETTING_STARTED.md)

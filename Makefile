@@ -55,6 +55,7 @@ RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover \
 	build build-bins release-asset clean tidy fmt vet lint \
+	console-install console-build \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
@@ -86,6 +87,8 @@ help:
 	@echo "  make build         - go build ./..."
 	@echo "  make build-bins    - build cmd binaries to $(BIN_DIR)"
 	@echo "  make release-asset - build a versioned release archive to $(DIST_DIR)"
+	@echo "  make console-install - npm install in frontend/console"
+	@echo "  make console-build - build the embedded Svelte console assets"
 	@echo "  make browser-install - npm install + playwright chromium install"
 	@echo "  make install       - build $(TARS_BIN) and (re)install io.tars.server + io.tars.assistant launch agents"
 	@echo "  make uninstall     - stop and remove io.tars.server + io.tars.assistant launch agents"
@@ -150,6 +153,12 @@ build:
 build-bins:
 	mkdir -p $(BIN_DIR)
 	CGO_LDFLAGS="$(CGO_LDFLAGS_EXTRA)" $(GO) build -ldflags "$(GO_LDFLAGS)" -o $(BIN_DIR)/tars ./cmd/tars
+
+console-install:
+	cd frontend/console && npm install
+
+console-build:
+	cd frontend/console && npm run build
 
 release-asset:
 	mkdir -p "$(DIST_DIR)"
