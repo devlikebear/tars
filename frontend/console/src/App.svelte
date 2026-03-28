@@ -3,6 +3,7 @@
   import Shell from './components/Shell.svelte'
   import Home from './components/Home.svelte'
   import ProjectView from './components/ProjectView.svelte'
+  import Sessions from './components/Sessions.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { getEventsHistory, streamEvents } from './lib/api'
 
@@ -74,10 +75,7 @@
   {:else if route.view === 'projects'}
     <Home onNavigate={navigate} />
   {:else if route.view === 'sessions'}
-    <div class="placeholder-view">
-      <h2>Sessions</h2>
-      <p>Chat history and session management. Coming soon.</p>
-    </div>
+    <Sessions />
   {:else if route.view === 'ops'}
     <div class="placeholder-view">
       <h2>Operations</h2>

@@ -10,6 +10,8 @@ import type {
   Project,
   ProjectActivity,
   ProjectAutopilotRun,
+  Session,
+  SessionMessage,
 } from './types'
 
 async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
@@ -94,6 +96,19 @@ export async function reviewApproval(approvalId: string, action: 'approve' | 're
   await requestJSON<{ ok: boolean }>(`/v1/ops/approvals/${encodeURIComponent(approvalId)}/${action}`, {
     method: 'POST',
   })
+}
+
+export async function listSessions(includeHidden = false): Promise<Session[]> {
+  const params = includeHidden ? '?hidden=1' : ''
+  return requestJSON<Session[]>(`/v1/admin/sessions${params}`)
+}
+
+export async function getSession(sessionId: string): Promise<Session> {
+  return requestJSON<Session>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}`)
+}
+
+export async function getSessionHistory(sessionId: string): Promise<SessionMessage[]> {
+  return requestJSON<SessionMessage[]>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/history`)
 }
 
 export async function getEventsHistory(limit = 30): Promise<EventsHistoryInfo> {
