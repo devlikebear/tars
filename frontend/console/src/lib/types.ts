@@ -118,6 +118,32 @@ export type SessionMessage = {
   timestamp: string
 }
 
+export type OpsStatus = {
+  timestamp: string
+  disk_total_bytes: number
+  disk_free_bytes: number
+  disk_used_percent: number
+  process_count: number
+}
+
+export type CleanupPlan = {
+  approval_id: string
+  created_at: string
+  total_bytes: number
+  candidates: Array<{
+    path: string
+    size_bytes: number
+    reason?: string
+  }>
+}
+
+export type CleanupApplyResult = {
+  approval_id: string
+  deleted_count: number
+  deleted_bytes: number
+  errors?: string[]
+}
+
 export type APIErrorPayload = {
   error?: string
 }

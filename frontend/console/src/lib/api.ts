@@ -3,10 +3,13 @@ import type {
   Approval,
   ChatEvent,
   ChatRequest,
+  CleanupApplyResult,
+  CleanupPlan,
   CronJob,
   CronRunRecord,
   EventsHistoryInfo,
   NotificationMessage,
+  OpsStatus,
   Project,
   ProjectActivity,
   ProjectAutopilotRun,
@@ -86,6 +89,22 @@ export async function listCronJobs(): Promise<CronJob[]> {
 
 export async function listCronRuns(jobId: string, limit = 5): Promise<CronRunRecord[]> {
   return requestJSON<CronRunRecord[]>(`/v1/cron/jobs/${encodeURIComponent(jobId)}/runs?limit=${limit}`)
+}
+
+export async function getOpsStatus(): Promise<OpsStatus> {
+  return requestJSON<OpsStatus>('/v1/ops/status')
+}
+
+export async function createCleanupPlan(): Promise<CleanupPlan> {
+  return requestJSON<CleanupPlan>('/v1/ops/cleanup/plan', { method: 'POST' })
+}
+
+export async function applyCleanup(approvalId: string): Promise<CleanupApplyResult> {
+  return requestJSON<CleanupApplyResult>('/v1/ops/cleanup/apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approval_id: approvalId }),
+  })
 }
 
 export async function listApprovals(): Promise<Approval[]> {
