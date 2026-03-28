@@ -77,6 +77,32 @@ func TestBootstrapDemoRepoUsesGitHubRepoAsModulePath(t *testing.T) {
 	}
 }
 
+func TestBootstrapDemoRepoDoesNotPinContainerName(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("bootstrap script uses POSIX shell")
+	}
+
+	root := repoRoot(t)
+	script := filepath.Join(root, "examples", "ops-service-demo", "bootstrap-demo-repo.sh")
+	dest := filepath.Join(t.TempDir(), "repo")
+
+	cmd := exec.Command("sh", script, dest)
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("bootstrap demo repo: %v\n%s", err, output)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dest, "docker-compose.yml"))
+	if err != nil {
+		t.Fatalf("read docker-compose.yml: %v", err)
+	}
+	if strings.Contains(string(data), "container_name:") {
+		t.Fatalf("expected docker compose template to avoid fixed container names, got:\n%s", data)
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
