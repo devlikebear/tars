@@ -86,11 +86,9 @@ Debug:
 	return strings.TrimSpace(`SYSTEM > commands` + sessionSection + `
 
 Runtime:
-  /status
   /providers
   /models
   /whoami
-  /health
   /heartbeat
   /skills
   /plugins
@@ -106,17 +104,21 @@ Runtime:
   /vault {status}
   /channels
   /telegram {pairings|pairing approve {code}}
-  /cron {list|get|runs|add|run|delete|enable|disable}
-  /project {list|get|create|activate|archive|board|activity|dispatch|autopilot}
   /usage {summary|limits|set-limits}
   /ops {status|cleanup plan}
-  /approve {list|run|reject}
   /schedule {list|add|done|remove}
   /notify {list|filter|open|clear}
 
 Chat:
   /trace [on|off|filter {all|llm|tool|error|system}]
   /quit
+
+Use one-shot CLI commands outside the legacy TUI:
+  tars status
+  tars health
+  tars project ...
+  tars cron ...
+  tars approve ...
 ` + debugSection + `
 
 Use /help advanced for debug notes.`)

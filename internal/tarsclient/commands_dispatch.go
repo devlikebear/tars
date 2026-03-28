@@ -29,12 +29,10 @@ var commandHandlers = map[string]commandHandler{
 	"/export":     cmdSession,
 	"/search":     cmdSession,
 	"/compact":    cmdSession,
-	"/status":     cmdRuntime,
 	"/providers":  cmdRuntime,
 	"/models":     cmdRuntime,
 	"/model":      cmdRuntime,
 	"/whoami":     cmdRuntime,
-	"/health":     cmdRuntime,
 	"/heartbeat":  cmdRuntime,
 	"/skills":     cmdRuntime,
 	"/plugins":    cmdRuntime,
@@ -50,21 +48,31 @@ var commandHandlers = map[string]commandHandler{
 	"/vault":      cmdVault,
 	"/channels":   cmdChannels,
 	"/telegram":   cmdTelegram,
-	"/cron":       cmdCron,
-	"/project":    cmdProject,
 	"/usage":      cmdUsage,
 	"/ops":        cmdOps,
-	"/approve":    cmdApprove,
 	"/schedule":   cmdSchedule,
 	"/notify":     cmdNotify,
 	"/trace":      cmdTrace,
+}
+
+var legacyTUICommandHints = map[string]string{
+	"/status":  "Use `tars status` or open the web console at /console.",
+	"/health":  "Use `tars health` or open the web console at /console.",
+	"/project": "Use `tars project ...` or manage projects in the web console.",
+	"/cron":    "Use `tars cron ...` or manage cron jobs in the web console.",
+	"/approve": "Use `tars approve ...` or review approvals in the web console.",
 }
 
 func dispatchCommand(c commandContext) (bool, string, error) {
 	if len(c.fields) == 0 {
 		return true, c.session, nil
 	}
-	handler, ok := commandHandlers[strings.TrimSpace(c.fields[0])]
+	command := strings.TrimSpace(c.fields[0])
+	if hint, ok := legacyTUICommandHints[command]; ok {
+		_, err := io.WriteString(c.stdout, "SYSTEM > legacy TUI no longer handles "+command+". "+hint+"\n")
+		return true, c.session, err
+	}
+	handler, ok := commandHandlers[command]
 	if !ok {
 		return false, c.session, nil
 	}

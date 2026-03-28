@@ -17,11 +17,9 @@ const (
 
 var slashCommands = []string{
 	"/help",
-	"/status",
 	"/providers",
 	"/models",
 	"/whoami",
-	"/health",
 	"/heartbeat",
 	"/skills",
 	"/plugins",
@@ -37,8 +35,6 @@ var slashCommands = []string{
 	"/vault",
 	"/channels",
 	"/telegram",
-	"/cron",
-	"/project",
 	"/usage",
 	"/notify",
 	"/trace",
@@ -347,10 +343,6 @@ func completeCommandInput(current string) (string, bool) {
 			return completeByPosition(value, fields, hasTrailingSpace, 2, []string{"all", "llm", "tool", "error", "system"})
 		}
 		return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"on", "off", "filter"})
-	case "/cron":
-		return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"list", "get", "runs", "add", "run", "delete", "enable", "disable"})
-	case "/project":
-		return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"list", "get", "create", "activate", "archive"})
 	case "/usage":
 		return completeByPosition(value, fields, hasTrailingSpace, 1, []string{"summary", "limits", "set-limits"})
 	case "/notify":

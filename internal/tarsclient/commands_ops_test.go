@@ -17,14 +17,6 @@ func TestExecuteCommand_OpsAndApprove(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"disk_used_percent": 80.0, "process_count": 333, "disk_free_bytes": 1000})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/ops/cleanup/plan":
 			_ = json.NewEncoder(w).Encode(map[string]any{"approval_id": "apr_1", "total_bytes": 10, "candidates": []map[string]any{{"path": "/tmp/a", "size_bytes": 10}}})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/ops/approvals":
-			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "apr_1", "type": "cleanup", "status": "pending", "plan": map[string]any{"approval_id": "apr_1", "candidates": []map[string]any{{"path": "/tmp/a"}}}}})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/ops/approvals/apr_1/approve":
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/ops/cleanup/apply":
-			_ = json.NewEncoder(w).Encode(map[string]any{"approval_id": "apr_1", "deleted_count": 1, "deleted_bytes": 10})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/ops/approvals/apr_1/reject":
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 		default:
 			http.NotFound(w, r)
 		}
@@ -54,7 +46,7 @@ func TestExecuteCommand_OpsAndApprove(t *testing.T) {
 	if _, _, err := executeCommand(context.Background(), runtime, "/approve list", "", stdout, stderr); err != nil {
 		t.Fatalf("/approve list: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "apr_1") {
+	if !strings.Contains(stdout.String(), "legacy TUI no longer handles /approve") || !strings.Contains(stdout.String(), "tars approve") {
 		t.Fatalf("unexpected /approve list output: %q", stdout.String())
 	}
 
@@ -62,7 +54,7 @@ func TestExecuteCommand_OpsAndApprove(t *testing.T) {
 	if _, _, err := executeCommand(context.Background(), runtime, "/approve run apr_1", "", stdout, stderr); err != nil {
 		t.Fatalf("/approve run: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "deleted=1") {
+	if !strings.Contains(stdout.String(), "legacy TUI no longer handles /approve") {
 		t.Fatalf("unexpected /approve run output: %q", stdout.String())
 	}
 
@@ -70,7 +62,7 @@ func TestExecuteCommand_OpsAndApprove(t *testing.T) {
 	if _, _, err := executeCommand(context.Background(), runtime, "/approve reject apr_1", "", stdout, stderr); err != nil {
 		t.Fatalf("/approve reject: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "approval rejected") {
+	if !strings.Contains(stdout.String(), "legacy TUI no longer handles /approve") {
 		t.Fatalf("unexpected /approve reject output: %q", stdout.String())
 	}
 }

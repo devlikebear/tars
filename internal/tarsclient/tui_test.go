@@ -192,8 +192,8 @@ func TestFormatChatLine_HelpStylingPreservesText(t *testing.T) {
 		t.Fatalf("expected section text preserved, got %q", section)
 	}
 
-	cmd := formatChatLine("  /status", "  /status")
-	if !strings.Contains(cmd, "/status") {
+	cmd := formatChatLine("  /browser", "  /browser")
+	if !strings.Contains(cmd, "/browser") {
 		t.Fatalf("expected command text preserved, got %q", cmd)
 	}
 

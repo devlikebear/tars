@@ -14,17 +14,7 @@ import (
 )
 
 func TestExecuteCommand_SessionAndStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/status":
-			_ = json.NewEncoder(w).Encode(map[string]any{"workspace_dir": "/tmp/ws", "session_count": 1, "main_session_id": "main"})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	runtime := runtimeClient{serverURL: server.URL}
+	runtime := runtimeClient{serverURL: "http://127.0.0.1:43180"}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
@@ -44,8 +34,8 @@ func TestExecuteCommand_SessionAndStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("/status: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "workspace=/tmp/ws") {
-		t.Fatalf("expected workspace status output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "legacy TUI no longer handles /status") || !strings.Contains(stdout.String(), "tars status") {
+		t.Fatalf("expected status redirect output, got %q", stdout.String())
 	}
 }
 
@@ -170,17 +160,6 @@ func TestExecuteCommand_CompactUsesMainSession(t *testing.T) {
 func TestExecuteCommand_CronAndChannels(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs":
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": "job_1", "name": "daily", "prompt": "check", "schedule": "every:1h", "enabled": true},
-			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs/job_1":
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "job_1", "name": "daily", "prompt": "check", "schedule": "every:1h", "enabled": true})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/cron/jobs/job_1/runs":
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"job_id": "job_1", "ran_at": "2026-02-18T09:00:00Z", "response": "ok"},
-				{"job_id": "job_1", "ran_at": "2026-02-18T08:00:00Z", "error": "timeout"},
-			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/status":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"enabled":                   true,
@@ -203,8 +182,8 @@ func TestExecuteCommand_CronAndChannels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("/cron list: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "job_1") {
-		t.Fatalf("expected cron list output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "legacy TUI no longer handles /cron") || !strings.Contains(stdout.String(), "tars cron") {
+		t.Fatalf("expected cron list redirect output, got %q", stdout.String())
 	}
 
 	stdout.Reset()
@@ -212,14 +191,8 @@ func TestExecuteCommand_CronAndChannels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("/cron get: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "schedule=every:1h") {
-		t.Fatalf("expected cron get output, got %q", stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "prompt:") || !strings.Contains(stdout.String(), "check") {
-		t.Fatalf("expected cron prompt output, got %q", stdout.String())
-	}
-	if !strings.Contains(stdout.String(), "cron run logs") || !strings.Contains(stdout.String(), "error=timeout") {
-		t.Fatalf("expected cron run logs output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "legacy TUI no longer handles /cron") {
+		t.Fatalf("expected cron get redirect output, got %q", stdout.String())
 	}
 
 	stdout.Reset()
@@ -227,8 +200,8 @@ func TestExecuteCommand_CronAndChannels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("/cron runs: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "2026-02-18T09:00:00Z") {
-		t.Fatalf("expected cron runs output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "legacy TUI no longer handles /cron") {
+		t.Fatalf("expected cron runs redirect output, got %q", stdout.String())
 	}
 
 	stdout.Reset()
@@ -974,25 +947,15 @@ func TestExecuteCommand_GatewayStatusShowsReloadAndRestoreDetails(t *testing.T) 
 }
 
 func TestExecuteCommand_Health(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/healthz":
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "component": "tars", "time": "2026-02-19T00:00:00Z"})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	runtime := runtimeClient{serverURL: server.URL}
+	runtime := runtimeClient{serverURL: "http://127.0.0.1:43180"}
 
 	if _, _, err := executeCommand(context.Background(), runtime, "/health", "", stdout, stderr); err != nil {
 		t.Fatalf("/health: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "ok=true") {
-		t.Fatalf("expected health output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "legacy TUI no longer handles /health") || !strings.Contains(stdout.String(), "tars health") {
+		t.Fatalf("expected health redirect output, got %q", stdout.String())
 	}
 }
 
