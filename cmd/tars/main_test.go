@@ -343,3 +343,63 @@ func TestRootCommand_HealthSubcommandUsesRunner(t *testing.T) {
 		t.Fatalf("unexpected options: %#v", got)
 	}
 }
+
+func TestRootCommand_ProjectListSubcommandUsesRunner(t *testing.T) {
+	original := projectCommandRunner
+	defer func() { projectCommandRunner = original }()
+
+	var got projectCommandOptions
+	projectCommandRunner = func(_ context.Context, _ io.Writer, _ io.Writer, opts projectCommandOptions) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"project", "list", "--server-url", "http://127.0.0.1:43180", "--api-token", "token"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("project list command: %v", err)
+	}
+	if got.action != "list" || got.client.serverURL != "http://127.0.0.1:43180" || got.client.apiToken != "token" {
+		t.Fatalf("unexpected options: %#v", got)
+	}
+}
+
+func TestRootCommand_ProjectActivitySubcommandUsesRunner(t *testing.T) {
+	original := projectCommandRunner
+	defer func() { projectCommandRunner = original }()
+
+	var got projectCommandOptions
+	projectCommandRunner = func(_ context.Context, _ io.Writer, _ io.Writer, opts projectCommandOptions) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"project", "activity", "proj_123", "25"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("project activity command: %v", err)
+	}
+	if got.action != "activity" || got.projectID != "proj_123" || got.limit != 25 {
+		t.Fatalf("unexpected options: %#v", got)
+	}
+}
+
+func TestRootCommand_ProjectAutopilotAdvanceSubcommandUsesRunner(t *testing.T) {
+	original := projectCommandRunner
+	defer func() { projectCommandRunner = original }()
+
+	var got projectCommandOptions
+	projectCommandRunner = func(_ context.Context, _ io.Writer, _ io.Writer, opts projectCommandOptions) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"project", "autopilot", "advance", "proj_123"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("project autopilot advance command: %v", err)
+	}
+	if got.action != "autopilot-advance" || got.projectID != "proj_123" {
+		t.Fatalf("unexpected options: %#v", got)
+	}
+}
