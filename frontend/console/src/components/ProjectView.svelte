@@ -9,12 +9,10 @@
     listCronRuns,
     listProjectActivity,
     reviewApproval,
-    streamChat,
     streamEvents,
   } from '../lib/api'
   import type {
     Approval,
-    ChatEvent,
     CronJob,
     CronRunRecord,
     NotificationMessage,
@@ -22,15 +20,10 @@
     ProjectActivity,
     ProjectAutopilotRun,
   } from '../lib/types'
+  import ChatPanel from './ChatPanel.svelte'
 
   interface Props {
     projectId: string
-  }
-
-  type ChatMessage = {
-    id: string
-    role: 'user' | 'assistant' | 'system' | 'error'
-    text: string
   }
 
   let { projectId }: Props = $props()
@@ -48,14 +41,7 @@
   let detailError = $state('')
   let panelError = $state('')
 
-  let chatInput = $state('')
-  let chatBusy = $state(false)
-  let chatError = $state('')
-  let chatSessionId = $state('')
-  let chatStatusLine = $state('')
   let approvalBusyId = $state('')
-
-  let chatMessages: ChatMessage[] = $state([])
   let stopEventStream: (() => void) | null = null
 
   function fmt(value?: string): string {
@@ -142,59 +128,6 @@
     )
   }
 
-  function handleChatEvent(event: ChatEvent, assistantId: string) {
-    switch (event.type) {
-      case 'status':
-        chatStatusLine = [event.phase, event.message, event.tool_name, event.skill_name]
-          .filter(Boolean).join(' \u00b7 ')
-        break
-      case 'delta': {
-        const chunk = event.text ?? ''
-        if (!chunk) break
-        const idx = chatMessages.findIndex((m) => m.id === assistantId)
-        if (idx >= 0) {
-          chatMessages[idx] = { ...chatMessages[idx], text: chatMessages[idx].text + chunk }
-          chatMessages = [...chatMessages]
-        }
-        break
-      }
-      case 'done':
-        chatSessionId = event.session_id?.trim() || chatSessionId
-        chatStatusLine = 'done'
-        break
-      case 'error':
-        chatError = event.error?.trim() || 'Stream failed'
-        break
-    }
-  }
-
-  async function submitChat() {
-    const message = chatInput.trim()
-    if (!message || chatBusy) return
-    chatBusy = true
-    chatError = ''
-    chatStatusLine = 'connecting'
-    chatInput = ''
-    const userId = `user-${Date.now()}`
-    const assistantId = `assistant-${Date.now()}`
-    chatMessages = [
-      ...chatMessages,
-      { id: userId, role: 'user', text: message },
-      { id: assistantId, role: 'assistant', text: '' },
-    ]
-    try {
-      await streamChat(
-        { message, session_id: chatSessionId || undefined, project_id: projectId },
-        (event) => handleChatEvent(event, assistantId),
-      )
-    } catch (err) {
-      chatError = err instanceof Error ? err.message : 'Failed to send'
-      chatMessages = [...chatMessages, { id: `error-${Date.now()}`, role: 'error', text: chatError }]
-    } finally {
-      chatBusy = false
-    }
-  }
-
   async function handleApprovalAction(approvalId: string, action: 'approve' | 'reject') {
     if (!approvalId.trim() || approvalBusyId) return
     approvalBusyId = approvalId
@@ -230,7 +163,6 @@
   }
 
   onMount(() => {
-    chatMessages = [{ id: 'system-init', role: 'system', text: `Chat scoped to project ${projectId}` }]
     void loadDetail()
     void loadPanels()
     startEventStream()
@@ -326,30 +258,7 @@
       <!-- Chat -->
       <section class="card pv-wide">
         <span class="card-title">Chat</span>
-        <div class="pv-chat-status">
-          {chatBusy ? 'streaming' : chatStatusLine || 'idle'}
-        </div>
-        <div class="pv-chat-log">
-          {#each chatMessages as msg}
-            <div class="pv-chat-msg pv-chat-{msg.role}">
-              <span class="pv-chat-role">{msg.role}</span>
-              <div class="pv-chat-text">{msg.text || '\u2026'}</div>
-            </div>
-          {/each}
-        </div>
-        {#if chatError}
-          <div class="error-banner" style="margin-bottom: var(--space-3)">{chatError}</div>
-        {/if}
-        <form class="pv-chat-form" onsubmit={(e) => { e.preventDefault(); void submitChat() }}>
-          <textarea
-            bind:value={chatInput}
-            rows="3"
-            placeholder="Ask TARS about this project..."
-          ></textarea>
-          <button type="submit" class="btn btn-primary" disabled={chatBusy || !chatInput.trim()}>
-            {chatBusy ? 'Streaming...' : 'Send'}
-          </button>
-        </form>
+        <ChatPanel {projectId} />
       </section>
 
       <!-- Activity -->
@@ -596,61 +505,6 @@
     margin: 0;
     word-break: break-word;
     font-size: var(--text-sm);
-  }
-
-  /* ── Chat ─────────────────────────────────────── */
-  .pv-chat-status {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    margin-bottom: var(--space-3);
-  }
-
-  .pv-chat-log {
-    display: grid;
-    gap: var(--space-2);
-    max-height: 400px;
-    overflow-y: auto;
-    margin-bottom: var(--space-3);
-  }
-
-  .pv-chat-msg {
-    padding: var(--space-3);
-    border-radius: var(--radius-md);
-    background: var(--bg-base);
-  }
-
-  .pv-chat-user {
-    background: rgba(224, 145, 69, 0.08);
-    border: 1px solid rgba(224, 145, 69, 0.12);
-  }
-
-  .pv-chat-assistant {
-    background: var(--bg-elevated);
-  }
-
-  .pv-chat-error {
-    background: var(--error-muted);
-    border: 1px solid rgba(248, 113, 113, 0.15);
-  }
-
-  .pv-chat-role {
-    font-family: var(--font-display);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--text-tertiary);
-    margin-bottom: var(--space-1);
-    display: block;
-  }
-
-  .pv-chat-text {
-    white-space: pre-wrap;
-    font-size: var(--text-sm);
-    line-height: 1.55;
-  }
-
-  .pv-chat-form {
-    display: grid;
-    gap: var(--space-3);
   }
 
   /* ── Timeline ─────────────────────────────────── */

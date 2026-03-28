@@ -12,6 +12,7 @@
     NotificationMessage,
     Project,
   } from '../lib/types'
+  import ChatPanel from './ChatPanel.svelte'
 
   interface Props {
     onNavigate: (path: string) => void
@@ -211,6 +212,14 @@
         {/if}
       </section>
 
+      <!-- Global Chat -->
+      <section class="card home-section home-wide">
+        <div class="card-header">
+          <span class="card-title">Chat</span>
+        </div>
+        <ChatPanel />
+      </section>
+
       <!-- Cron health -->
       <section class="card home-section">
         <div class="card-header">
@@ -332,6 +341,10 @@
 
   .home-section {
     min-height: 200px;
+  }
+
+  .home-wide {
+    grid-column: 1 / -1;
   }
 
   /* ── Project cards ────────────────────────────── */
