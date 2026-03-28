@@ -27,15 +27,10 @@ type localRuntimeState struct {
 	chatTraceFilter string
 }
 
-func Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, opts Options) error {
+func Run(ctx context.Context, _ io.Reader, stdout, stderr io.Writer, opts Options) error {
 	chat := chatClient{
 		serverURL: opts.ServerURL,
 		apiToken:  opts.APIToken,
-	}
-	runtime := runtimeClient{
-		serverURL:     opts.ServerURL,
-		apiToken:      opts.APIToken,
-		adminAPIToken: opts.AdminToken,
 	}
 	session := strings.TrimSpace(opts.SessionID)
 	if strings.TrimSpace(opts.Message) != "" {
@@ -48,7 +43,7 @@ func Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, opts Op
 		}
 		return nil
 	}
-	return runTUI(ctx, stdin, stdout, chat, runtime, session, opts.Verbose)
+	return fmt.Errorf("interactive terminal UI has been removed; use the web console at /console or one-shot CLI commands")
 }
 
 func executeCommand(ctx context.Context, runtime runtimeClient, line, session string, stdout, stderr io.Writer) (bool, string, error) {

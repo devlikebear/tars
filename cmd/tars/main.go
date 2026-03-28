@@ -74,7 +74,7 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 	}
 }
 
-func newTUICommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
+func newTUICommand(_ io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	opts := defaultClientOptions()
 	cmd := &cobra.Command{
 		Use:        "tui",
@@ -85,7 +85,7 @@ func newTUICommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 			if _, err := fmt.Fprintln(stderr, "warning: `tars tui` is deprecated; use the web console or one-shot CLI commands instead."); err != nil {
 				return err
 			}
-			return clientCommandRunner(cmd.Context(), stdin, stdout, stderr, opts)
+			return consoleCommandRunner(cmd.Context(), stdout, stderr, opts)
 		},
 	}
 	bindClientFlags(cmd, &opts)

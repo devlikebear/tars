@@ -284,14 +284,24 @@ func TestRootCommand_MessageFlagUsesClientRunner(t *testing.T) {
 	}
 }
 
-func TestRootCommand_TUISubcommandUsesClientRunner(t *testing.T) {
+func TestRootCommand_TUISubcommandRedirectsToConsole(t *testing.T) {
+	originalConsoleRunner := consoleCommandRunner
 	originalClientRunner := clientCommandRunner
-	defer func() { clientCommandRunner = originalClientRunner }()
+	defer func() {
+		consoleCommandRunner = originalConsoleRunner
+		clientCommandRunner = originalClientRunner
+	}()
 
 	var got clientOptions
+	consoleCalled := false
 	var stderr strings.Builder
-	clientCommandRunner = func(_ context.Context, _ io.Reader, _ io.Writer, _ io.Writer, opts clientOptions) error {
+	consoleCommandRunner = func(_ context.Context, _ io.Writer, _ io.Writer, opts clientOptions) error {
+		consoleCalled = true
 		got = opts
+		return nil
+	}
+	clientCommandRunner = func(_ context.Context, _ io.Reader, _ io.Writer, _ io.Writer, opts clientOptions) error {
+		t.Fatalf("did not expect legacy client runner to be called: %#v", opts)
 		return nil
 	}
 
@@ -299,6 +309,9 @@ func TestRootCommand_TUISubcommandUsesClientRunner(t *testing.T) {
 	cmd.SetArgs([]string{"tui", "--server-url", "http://127.0.0.1:43180"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("tui command: %v", err)
+	}
+	if !consoleCalled {
+		t.Fatal("expected tui command to redirect to console")
 	}
 	if got.serverURL != "http://127.0.0.1:43180" {
 		t.Fatalf("unexpected serverURL: %#v", got)
