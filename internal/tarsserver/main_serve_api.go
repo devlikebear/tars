@@ -49,7 +49,6 @@ type apiRouteHandlers struct {
 	sessions        http.Handler
 	projects        http.Handler
 	console         http.Handler
-	dashboard       http.Handler
 	usage           http.Handler
 	ops             http.Handler
 	status          http.Handler
@@ -398,11 +397,8 @@ func buildAPIMux(
 		chatTools = append(chatTools, telegramSendTool)
 	}
 	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
-	projectDashboardBroker := newProjectDashboardBroker()
 	projectTaskRunner := gateway.NewProjectTaskRunner(gatewayRuntime, "")
-	projectAutopilotManager := project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), func(projectID string, kind string) {
-		projectDashboardBroker.publish(newProjectDashboardEvent(projectID, kind))
-	})
+	projectAutopilotManager := project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), nil)
 	projectAutopilot = projectAutopilotManager
 	ensureProjectAutopilot = func(ctx context.Context) error {
 		if projectAutopilot == nil {
@@ -427,8 +423,7 @@ func buildAPIMux(
 		chatTools...,
 	)
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
-	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, projectAutopilot, projectDashboardBroker, logger)
-	dashboardHandler := newProjectDashboardHandler(projectStore, projectAutopilot, projectDashboardBroker, logger)
+	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, projectAutopilot, logger)
 	consoleHandler, err := newConsoleHandler(logger)
 	if err != nil {
 		return nil, err
@@ -506,7 +501,6 @@ func buildAPIMux(
 		sessions:        sessionHandler,
 		projects:        projectHandler,
 		console:         consoleHandler,
-		dashboard:       dashboardHandler,
 		usage:           usageHandler,
 		ops:             opsHandler,
 		status:          statusHandler,
@@ -558,7 +552,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	if mux == nil {
 		return
 	}
-	legacyDashboard := newLegacyDashboardRedirectHandler(handlers.console, handlers.dashboard)
+	legacyDashboard := newLegacyDashboardRedirectHandler()
 	mux.Handle("/v1/heartbeat/", handlers.heartbeat)
 	mux.Handle("/v1/chat", handlers.chat)
 	mux.Handle("/v1/sessions", handlers.sessions)

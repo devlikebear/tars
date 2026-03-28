@@ -24,7 +24,6 @@ func newProjectAPIHandler(
 	taskRunner project.TaskRunner,
 	githubAuthChecker project.GitHubAuthChecker,
 	autopilot project.PhaseEngine,
-	dashboardBroker *projectDashboardBroker,
 	logger zerolog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -201,7 +200,7 @@ func newProjectAPIHandler(
 				return
 			}
 			writeJSON(w, http.StatusOK, created)
-			dashboardBroker.publish(newProjectDashboardEvent(created.ID, "activity"))
+
 		}
 	})
 
@@ -254,7 +253,7 @@ func newProjectAPIHandler(
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update project failed"})
 					return
 				}
-				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
+
 				writeJSON(w, http.StatusOK, updated)
 			case http.MethodDelete:
 				if _, err := store.Archive(projectID); err != nil {
@@ -266,7 +265,7 @@ func newProjectAPIHandler(
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "archive project failed"})
 					return
 				}
-				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
+
 				w.WriteHeader(http.StatusNoContent)
 			}
 			return
@@ -330,7 +329,7 @@ func newProjectAPIHandler(
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update project state failed"})
 					return
 				}
-				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
+
 				writeJSON(w, http.StatusOK, updated)
 			}
 			return
@@ -395,7 +394,7 @@ func newProjectAPIHandler(
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "append project activity failed"})
 					return
 				}
-				dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
+
 				writeJSON(w, http.StatusOK, item)
 			}
 			return
@@ -444,7 +443,7 @@ func newProjectAPIHandler(
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update project board failed"})
 					return
 				}
-				dashboardBroker.publish(newProjectDashboardEvent(projectID, "board"))
+
 				writeJSON(w, http.StatusOK, item)
 			}
 			return
@@ -486,8 +485,6 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 				return
 			}
-			dashboardBroker.publish(newProjectDashboardEvent(projectID, "board"))
-			dashboardBroker.publish(newProjectDashboardEvent(projectID, "activity"))
 			writeJSON(w, http.StatusOK, report)
 			return
 		}
