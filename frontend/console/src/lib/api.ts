@@ -101,11 +101,16 @@ export async function getEventsHistory(limit = 30): Promise<EventsHistoryInfo> {
 }
 
 export function streamEvents(
-  projectId: string,
+  projectId: string | undefined,
   onEvent: (event: NotificationMessage) => void,
   onError?: (message: string) => void,
+  onOpen?: () => void,
 ): () => void {
-  const stream = new EventSource(`/v1/events/stream?project_id=${encodeURIComponent(projectId)}`)
+  const params = projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''
+  const stream = new EventSource(`/v1/events/stream${params}`)
+  stream.onopen = () => {
+    onOpen?.()
+  }
   stream.onmessage = (message) => {
     if (!message.data) {
       return
@@ -121,7 +126,7 @@ export function streamEvents(
     }
   }
   stream.onerror = () => {
-    onError?.('Project event stream disconnected')
+    onError?.('Event stream disconnected')
   }
   return () => {
     stream.close()

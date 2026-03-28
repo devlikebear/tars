@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import {
     getEventsHistory,
     listApprovals,
     listCronJobs,
     listProjects,
+    streamEvents,
   } from '../lib/api'
   import type {
     Approval,
@@ -28,6 +29,7 @@
 
   let loading = $state(true)
   let error = $state('')
+  let stopStream: (() => void) | null = null
 
   function fmt(value?: string): string {
     const text = value?.trim()
@@ -79,7 +81,35 @@
     }
   }
 
-  onMount(() => { void load() })
+  function startEventStream() {
+    stopStream?.()
+    stopStream = streamEvents(
+      undefined,
+      (event) => {
+        notifications = [event, ...notifications.filter((n) => n.id !== event.id)].slice(0, 10)
+        unreadCount++
+
+        if (event.category === 'cron' || event.category === 'watchdog') {
+          void listCronJobs().then((jobs) => { cronJobs = jobs })
+        }
+        if (event.category === 'ops') {
+          void listApprovals().then((list) => { approvals = list })
+        }
+        if (event.category === 'project') {
+          void listProjects().then((list) => { projects = list })
+        }
+      },
+    )
+  }
+
+  onMount(() => {
+    void load()
+    startEventStream()
+  })
+
+  onDestroy(() => {
+    stopStream?.()
+  })
 </script>
 
 <div class="home">
