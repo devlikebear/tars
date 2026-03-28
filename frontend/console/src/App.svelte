@@ -4,6 +4,7 @@
   import Home from './components/Home.svelte'
   import ProjectView from './components/ProjectView.svelte'
   import Sessions from './components/Sessions.svelte'
+  import Ops from './components/Ops.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { getEventsHistory, streamEvents } from './lib/api'
 
@@ -77,31 +78,7 @@
   {:else if route.view === 'sessions'}
     <Sessions />
   {:else if route.view === 'ops'}
-    <div class="placeholder-view">
-      <h2>Operations</h2>
-      <p>Approvals, cron jobs, and system operations. Coming soon.</p>
-    </div>
+    <Ops />
   {/if}
 </Shell>
 
-<style>
-  .placeholder-view {
-    padding: var(--space-10);
-    text-align: center;
-    animation: fadeIn var(--duration-normal) var(--ease-out);
-  }
-
-  .placeholder-view h2 {
-    margin-bottom: var(--space-2);
-    font-size: var(--text-2xl);
-  }
-
-  .placeholder-view p {
-    color: var(--text-tertiary);
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-</style>
