@@ -303,3 +303,43 @@ func TestRootCommand_TUISubcommandUsesClientRunner(t *testing.T) {
 		t.Fatalf("unexpected serverURL: %#v", got)
 	}
 }
+
+func TestRootCommand_StatusSubcommandUsesRunner(t *testing.T) {
+	original := statusCommandRunner
+	defer func() { statusCommandRunner = original }()
+
+	var got clientOptions
+	statusCommandRunner = func(_ context.Context, _ io.Writer, _ io.Writer, opts clientOptions) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"status", "--server-url", "http://127.0.0.1:43180", "--api-token", "token"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("status command: %v", err)
+	}
+	if got.serverURL != "http://127.0.0.1:43180" || got.apiToken != "token" {
+		t.Fatalf("unexpected options: %#v", got)
+	}
+}
+
+func TestRootCommand_HealthSubcommandUsesRunner(t *testing.T) {
+	original := healthCommandRunner
+	defer func() { healthCommandRunner = original }()
+
+	var got clientOptions
+	healthCommandRunner = func(_ context.Context, _ io.Writer, _ io.Writer, opts clientOptions) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"health", "--server-url", "http://127.0.0.1:43180", "--api-token", "token"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("health command: %v", err)
+	}
+	if got.serverURL != "http://127.0.0.1:43180" || got.apiToken != "token" {
+		t.Fatalf("unexpected options: %#v", got)
+	}
+}

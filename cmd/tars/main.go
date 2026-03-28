@@ -49,6 +49,8 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newDoctorCommand(stdout, stderr))
 	cmd.AddCommand(newServiceCommand(stdout, stderr))
 	cmd.AddCommand(newServeCommand(stdout, stderr))
+	cmd.AddCommand(newStatusCommand(stdout, stderr))
+	cmd.AddCommand(newHealthCommand(stdout, stderr))
 	cmd.AddCommand(newAssistantCommand(stdout, stderr))
 	cmd.AddCommand(newSkillCommand(stdout, stderr))
 	cmd.AddCommand(newPluginCommand(stdout, stderr))
