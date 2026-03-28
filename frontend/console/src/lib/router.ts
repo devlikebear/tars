@@ -1,13 +1,42 @@
 const consoleBase = '/console'
 const projectPrefix = `${consoleBase}/projects/`
 
-export function currentProjectIdFromPath(pathname: string): string | null {
+export type Route =
+  | { view: 'home' }
+  | { view: 'projects' }
+  | { view: 'project'; projectId: string }
+  | { view: 'sessions' }
+  | { view: 'ops' }
+
+export function resolveRoute(pathname: string): Route {
   const path = pathname.trim()
-  if (!path.startsWith(projectPrefix)) {
-    return null
+
+  if (path.startsWith(projectPrefix)) {
+    const projectId = path.slice(projectPrefix.length).split('/')[0]?.trim()
+    if (projectId) {
+      return { view: 'project', projectId: decodeURIComponent(projectId) }
+    }
+    return { view: 'projects' }
   }
-  const value = path.slice(projectPrefix.length).split('/')[0]?.trim()
-  return value ? decodeURIComponent(value) : null
+
+  if (path === `${consoleBase}/projects` || path === `${consoleBase}/projects/`) {
+    return { view: 'projects' }
+  }
+
+  if (path.startsWith(`${consoleBase}/sessions`)) {
+    return { view: 'sessions' }
+  }
+
+  if (path.startsWith(`${consoleBase}/ops`)) {
+    return { view: 'ops' }
+  }
+
+  return { view: 'home' }
+}
+
+export function currentProjectIdFromPath(pathname: string): string | null {
+  const route = resolveRoute(pathname)
+  return route.view === 'project' ? route.projectId : null
 }
 
 export function projectPath(projectId: string): string {
