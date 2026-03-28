@@ -109,6 +109,8 @@ docker compose -f "${PROJECT_REPO_DIR}/docker-compose.yml" up -d --build
 "${PROJECT_REPO_DIR}/opsctl" errors
 ```
 
+Docker Compose now uses the default project-scoped container names, so repeated seed repos no longer collide on a fixed `ops-service-demo` container. The host port is still `18080`, so only one copy of the demo service should be running at a time.
+
 If you started the service earlier from the standalone seed repo, stop it before switching:
 
 ```bash

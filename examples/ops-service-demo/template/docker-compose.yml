@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ops-service-demo
     environment:
       PORT: "18080"
       SYNTHETIC_CHECK_INTERVAL: "5s"
