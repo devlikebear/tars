@@ -403,3 +403,63 @@ func TestRootCommand_ProjectAutopilotAdvanceSubcommandUsesRunner(t *testing.T) {
 		t.Fatalf("unexpected options: %#v", got)
 	}
 }
+
+func TestRootCommand_CronListSubcommandUsesRunner(t *testing.T) {
+	original := cronCommandRunner
+	defer func() { cronCommandRunner = original }()
+
+	var got cronCommandOptions
+	cronCommandRunner = func(_ context.Context, _ io.Writer, _ io.Writer, opts cronCommandOptions) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"cron", "list", "--server-url", "http://127.0.0.1:43180", "--api-token", "token"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cron list command: %v", err)
+	}
+	if got.action != "list" || got.client.serverURL != "http://127.0.0.1:43180" || got.client.apiToken != "token" {
+		t.Fatalf("unexpected options: %#v", got)
+	}
+}
+
+func TestRootCommand_CronRunSubcommandUsesRunner(t *testing.T) {
+	original := cronCommandRunner
+	defer func() { cronCommandRunner = original }()
+
+	var got cronCommandOptions
+	cronCommandRunner = func(_ context.Context, _ io.Writer, _ io.Writer, opts cronCommandOptions) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"cron", "run", "job_123"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cron run command: %v", err)
+	}
+	if got.action != "run" || got.jobID != "job_123" {
+		t.Fatalf("unexpected options: %#v", got)
+	}
+}
+
+func TestRootCommand_ApproveRunSubcommandUsesRunner(t *testing.T) {
+	original := approvalCommandRunner
+	defer func() { approvalCommandRunner = original }()
+
+	var got approvalCommandOptions
+	approvalCommandRunner = func(_ context.Context, _ io.Writer, _ io.Writer, opts approvalCommandOptions) error {
+		got = opts
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"approve", "run", "approval_123", "--server-url", "http://127.0.0.1:43180"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("approve run command: %v", err)
+	}
+	if got.action != "run" || got.approvalID != "approval_123" || got.client.serverURL != "http://127.0.0.1:43180" {
+		t.Fatalf("unexpected options: %#v", got)
+	}
+}
