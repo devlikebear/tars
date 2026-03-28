@@ -558,6 +558,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	if mux == nil {
 		return
 	}
+	legacyDashboard := newLegacyDashboardRedirectHandler(handlers.console, handlers.dashboard)
 	mux.Handle("/v1/heartbeat/", handlers.heartbeat)
 	mux.Handle("/v1/chat", handlers.chat)
 	mux.Handle("/v1/sessions", handlers.sessions)
@@ -569,9 +570,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/project-briefs/", handlers.projects)
 	mux.Handle("/console", handlers.console)
 	mux.Handle("/console/", handlers.console)
-	mux.Handle("/dashboards", handlers.dashboard)
-	mux.Handle("/dashboards/", handlers.dashboard)
-	mux.Handle("/ui/projects/", handlers.dashboard)
+	mux.Handle("/dashboards", legacyDashboard)
+	mux.Handle("/dashboards/", legacyDashboard)
+	mux.Handle("/ui/projects/", legacyDashboard)
 	mux.Handle("/v1/usage/summary", handlers.usage)
 	mux.Handle("/v1/usage/limits", handlers.usage)
 	mux.Handle("/v1/ops/status", handlers.ops)

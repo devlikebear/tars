@@ -92,7 +92,7 @@ Kick off a project from chat, or use the TUI commands directly:
 /project autopilot status <project-id>
 ```
 
-The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly, and `status` shows the current phase, run status, and next action without opening the dashboard.
+The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly, and `status` shows the current phase, run status, and next action without switching to the web console.
 
 Project-linked cron jobs also inherit the project's tool allowlist now, so background workflows can use approved shell/file tools for examples like the bundled ops-service triage loop.
 
@@ -103,7 +103,7 @@ gateway_subagents_max_threads: 4
 gateway_subagents_max_depth: 1
 ```
 
-Open the dashboard: `http://127.0.0.1:43180/dashboards`
+Open the console: `http://127.0.0.1:43180/console`
 
 Install trusted MCP packages from the hub:
 

@@ -36,14 +36,20 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
+	consoleHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	dashboardHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 
 	registerAPIRoutes(mux, apiRouteHandlers{
 		heartbeat:       handler,
 		chat:            handler,
 		sessions:        handler,
 		projects:        handler,
-		console:         handler,
-		dashboard:       handler,
+		console:         consoleHandler,
+		dashboard:       dashboardHandler,
 		usage:           handler,
 		ops:             handler,
 		status:          handler,
@@ -75,10 +81,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/console",
 		"/console/",
 		"/console/projects/demo",
-		"/dashboards",
-		"/dashboards/",
-		"/ui/projects/demo",
-		"/ui/projects/demo/stream",
 		"/v1/project-briefs/demo",
 		"/v1/project-briefs/demo/finalize",
 		"/v1/usage/summary",
@@ -135,5 +137,106 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		if rec.Code == http.StatusNotFound {
 			t.Fatalf("expected registered route, got 404 for %s", path)
 		}
+	}
+}
+
+func TestRegisterAPIRoutes_LegacyDashboardPathsRedirectToConsole(t *testing.T) {
+	mux := http.NewServeMux()
+	base := http.NotFoundHandler()
+	consoleHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	dashboardHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("dashboard:" + r.URL.Path))
+	})
+
+	registerAPIRoutes(mux, apiRouteHandlers{
+		heartbeat:       base,
+		chat:            base,
+		sessions:        base,
+		projects:        base,
+		console:         consoleHandler,
+		dashboard:       dashboardHandler,
+		usage:           base,
+		ops:             base,
+		status:          base,
+		auth:            base,
+		healthz:         base,
+		providersModels: base,
+		compact:         base,
+		cron:            base,
+		schedules:       base,
+		mcp:             base,
+		extensions:      base,
+		agentRuns:       base,
+		gateway:         base,
+		browser:         base,
+		channels:        base,
+		events:          base,
+	})
+
+	tests := []struct {
+		path     string
+		location string
+	}{
+		{path: "/dashboards", location: "/console"},
+		{path: "/dashboards/", location: "/console"},
+		{path: "/ui/projects/demo", location: "/console/projects/demo"},
+		{path: "/ui/projects/demo?tab=activity", location: "/console/projects/demo?tab=activity"},
+	}
+
+	for _, tc := range tests {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusFound {
+			t.Fatalf("expected redirect for %s, got %d body=%q", tc.path, rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("Location"); got != tc.location {
+			t.Fatalf("expected location %q for %s, got %q", tc.location, tc.path, got)
+		}
+	}
+}
+
+func TestRegisterAPIRoutes_LegacyDashboardStreamPassesThrough(t *testing.T) {
+	mux := http.NewServeMux()
+	base := http.NotFoundHandler()
+	dashboardHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("dashboard:" + r.URL.Path))
+	})
+
+	registerAPIRoutes(mux, apiRouteHandlers{
+		heartbeat:       base,
+		chat:            base,
+		sessions:        base,
+		projects:        base,
+		console:         base,
+		dashboard:       dashboardHandler,
+		usage:           base,
+		ops:             base,
+		status:          base,
+		auth:            base,
+		healthz:         base,
+		providersModels: base,
+		compact:         base,
+		cron:            base,
+		schedules:       base,
+		mcp:             base,
+		extensions:      base,
+		agentRuns:       base,
+		gateway:         base,
+		browser:         base,
+		channels:        base,
+		events:          base,
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ui/projects/demo/stream", nil)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected stream passthrough status 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != "dashboard:/ui/projects/demo/stream" {
+		t.Fatalf("expected dashboard stream passthrough body, got %q", got)
 	}
 }
