@@ -167,6 +167,39 @@ func TestLoad_FiltersUnavailablePluginsAndSkipsTheirSkillsAndMCP(t *testing.T) {
 	}
 }
 
+func TestLoad_V3PluginFieldsCarried(t *testing.T) {
+	root := t.TempDir()
+	pluginsDir := filepath.Join(root, "plugins")
+	writeManifest(t, filepath.Join(pluginsDir, "browser", "tars.plugin.json"), `{
+  "schema_version": 3,
+  "id": "browser",
+  "name": "Browser",
+  "tools_provider": {"type": "script", "entry": "bin/tools"},
+  "lifecycle": {"on_start": "echo start", "on_stop": "echo stop"},
+  "http_routes": [{"path": "/v1/browser/*", "handler": "bh"}]
+}`)
+
+	snapshot, err := Load(LoadOptions{
+		Sources: []SourceDir{{Source: SourceWorkspace, Dir: pluginsDir}},
+	})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(snapshot.Plugins) != 1 {
+		t.Fatalf("expected 1 plugin, got %d", len(snapshot.Plugins))
+	}
+	p := snapshot.Plugins[0]
+	if p.ToolsProvider == nil || p.ToolsProvider.Type != "script" || p.ToolsProvider.Entry != "bin/tools" {
+		t.Fatalf("tools_provider not carried: %+v", p.ToolsProvider)
+	}
+	if p.Lifecycle == nil || p.Lifecycle.OnStart != "echo start" || p.Lifecycle.OnStop != "echo stop" {
+		t.Fatalf("lifecycle not carried: %+v", p.Lifecycle)
+	}
+	if len(p.HTTPRoutes) != 1 || p.HTTPRoutes[0].Path != "/v1/browser/*" {
+		t.Fatalf("http_routes not carried: %+v", p.HTTPRoutes)
+	}
+}
+
 func writeManifest(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

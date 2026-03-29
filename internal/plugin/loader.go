@@ -103,6 +103,9 @@ func loadSourcePlugins(source Source, dir string) ([]Definition, []Diagnostic, e
 				ToolsAllow: append([]string(nil), manifest.Policies.ToolsAllow...),
 				ToolsDeny:  append([]string(nil), manifest.Policies.ToolsDeny...),
 			},
+			ToolsProvider: manifest.ToolsProvider,
+			Lifecycle:     manifest.Lifecycle,
+			HTTPRoutes:    append([]HTTPRoute(nil), manifest.HTTPRoutes...),
 		}
 		priority := manifestPriority(path)
 		if currentPriority, ok := priorities[key]; !ok || priority >= currentPriority {
