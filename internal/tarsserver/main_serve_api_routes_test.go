@@ -138,6 +138,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/hub/install",
 		"/v1/hub/uninstall",
 		"/v1/hub/update",
+		"/v1/hub/skill-content",
 	}
 	for _, path := range paths {
 		rec := httptest.NewRecorder()

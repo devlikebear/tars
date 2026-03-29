@@ -181,5 +181,37 @@ func newSkillhubAPIHandler(
 		})
 	})
 
+	// GET /v1/hub/skill-content?name=X — fetch SKILL.md content from registry
+	mux.HandleFunc("/v1/hub/skill-content", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		if installer == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "hub is not configured"})
+			return
+		}
+		name := strings.TrimSpace(r.URL.Query().Get("name"))
+		if name == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+			return
+		}
+		entry, err := installer.Registry.FindByName(r.Context(), name)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		content, err := installer.Registry.FetchSkillContent(r.Context(), entry)
+		if err != nil {
+			logger.Error().Err(err).Str("name", name).Msg("fetch skill content failed")
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to fetch skill content"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{
+			"name":    entry.Name,
+			"version": entry.Version,
+			"content": string(content),
+		})
+	})
+
 	return mux
 }

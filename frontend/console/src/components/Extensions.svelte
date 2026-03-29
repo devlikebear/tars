@@ -3,6 +3,8 @@
   import {
     getHubRegistry,
     getHubInstalled,
+    getHubSkillContent,
+    getSkillDetail,
     getDisabledExtensions,
     setExtensionDisabled,
     hubInstall,
@@ -13,6 +15,7 @@
     listMCPServers,
     reloadExtensions,
   } from '../lib/api'
+  import { renderMarkdown } from '../lib/markdown'
   import type {
     HubRegistry,
     HubRegistryEntry,
@@ -47,6 +50,39 @@
   let reloading = $state(false)
   let updating = $state(false)
   let togglingItem = $state('')
+
+  // Detail panel
+  let detailKey: string | null = $state(null)
+  let detailContent = $state('')
+  let detailLoading = $state(false)
+  let detailMeta: Record<string, string> = $state({})
+
+  async function toggleDetail(kind: string, name: string, source: 'installed' | 'hub') {
+    const key = `${source}-${kind}:${name}`
+    if (detailKey === key) { detailKey = null; return }
+    detailKey = key
+    detailContent = ''
+    detailMeta = {}
+    detailLoading = true
+    try {
+      if (kind === 'skill' && source === 'installed') {
+        const detail = await getSkillDetail(name)
+        detailContent = detail.content || 'No content available.'
+        detailMeta = { source: detail.source || '', invocable: detail.user_invocable ? 'Yes — use /' + name + ' in chat' : 'No — system use only' }
+      } else if (kind === 'skill' && source === 'hub') {
+        const result = await getHubSkillContent(name)
+        detailContent = result.content || 'No content available.'
+        detailMeta = { version: result.version }
+      } else {
+        detailContent = 'Detail view is available for skills.'
+      }
+    } catch { detailContent = 'Failed to load details.' }
+    finally { detailLoading = false }
+  }
+
+  function isDetailOpen(kind: string, name: string, source: 'installed' | 'hub'): boolean {
+    return detailKey === `${source}-${kind}:${name}`
+  }
 
   async function loadInstalled() {
     loading = true
@@ -251,29 +287,37 @@
         {:else}
           <div class="ext-list">
             {#each skills as s}
-              <div class="ext-item">
-                <div class="ext-item-info">
-                  <strong>{s.name}</strong>
-                  <span class="ext-desc">{s.description || '\u2014'}</span>
-                  <div class="ext-meta">
-                    {#if s.source}<span class="badge badge-default">{s.source}</span>{/if}
-                    {#if s.user_invocable}<span class="badge badge-accent" title="User can invoke via /skill-name in chat">/{s.name}</span>{/if}
+              <div class="ext-item-wrapper">
+                <div class="ext-item">
+                  <div class="ext-item-info">
+                    <button class="ext-name-btn" onclick={() => toggleDetail('skill', s.name, 'installed')}>
+                      <strong>{s.name}</strong>
+                      <span class="detail-chevron" class:open={isDetailOpen('skill', s.name, 'installed')}>{'\u25b8'}</span>
+                    </button>
+                    <span class="ext-desc">{s.description || '\u2014'}</span>
+                    <div class="ext-meta">
+                      {#if s.source}<span class="badge badge-default">{s.source}</span>{/if}
+                      {#if s.user_invocable}<span class="badge badge-accent" title="User can invoke via /skill-name in chat">/{s.name}</span>{/if}
+                    </div>
+                  </div>
+                  <div class="ext-item-actions">
+                    <button class="toggle-switch" class:on={!isDisabledExt('skill', s.name)} disabled={togglingItem === 'skill:' + s.name} onclick={() => handleToggle('skill', s.name)}>{isDisabledExt('skill', s.name) ? 'OFF' : 'ON'}</button>
+                    {#if isHubInstalled('skill', s.name)}
+                      <button class="btn btn-danger btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleUninstall('skill', s.name)}>{busyItem === 'skill:' + s.name ? '...' : 'Uninstall'}</button>
+                    {/if}
                   </div>
                 </div>
-                <div class="ext-item-actions">
-                  <button
-                    class="toggle-switch"
-                    class:on={!isDisabledExt('skill', s.name)}
-                    disabled={togglingItem === 'skill:' + s.name}
-                    title={isDisabledExt('skill', s.name) ? 'Enable' : 'Disable'}
-                    onclick={() => handleToggle('skill', s.name)}
-                  >{isDisabledExt('skill', s.name) ? 'OFF' : 'ON'}</button>
-                  {#if isHubInstalled('skill', s.name)}
-                    <button class="btn btn-danger btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleUninstall('skill', s.name)}>
-                      {busyItem === 'skill:' + s.name ? '...' : 'Uninstall'}
-                    </button>
-                  {/if}
-                </div>
+                {#if isDetailOpen('skill', s.name, 'installed')}
+                  <div class="ext-detail">
+                    {#if detailLoading}<div class="ext-detail-loading">Loading...</div>
+                    {:else}
+                      {#if Object.keys(detailMeta).length > 0}
+                        <div class="ext-detail-meta">{#each Object.entries(detailMeta) as [k, v]}{#if v}<span><strong>{k}:</strong> {v}</span>{/if}{/each}</div>
+                      {/if}
+                      <div class="ext-detail-content ext-md">{@html renderMarkdown(detailContent)}</div>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
@@ -373,26 +417,33 @@
         </div>
         <div class="ext-list">
           {#each registry.skills as entry}
-            <div class="ext-item">
-              <div class="ext-item-info">
-                <div class="ext-item-top">
-                  <strong>{entry.name}</strong>
-                  <span class="ext-version">v{entry.version}</span>
-                  {#if entry.author}<span class="ext-meta-tag">by {entry.author}</span>{/if}
-                </div>
-                <span class="ext-desc">{entry.description}</span>
-                {#if entry.tags?.length}
-                  <div class="ext-tags">
-                    {#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}
+            <div class="ext-item-wrapper">
+              <div class="ext-item">
+                <div class="ext-item-info">
+                  <div class="ext-item-top">
+                    <button class="ext-name-btn" onclick={() => toggleDetail('skill', entry.name, 'hub')}>
+                      <strong>{entry.name}</strong>
+                      <span class="detail-chevron" class:open={isDetailOpen('skill', entry.name, 'hub')}>{'\u25b8'}</span>
+                    </button>
+                    <span class="ext-version">v{entry.version}</span>
+                    {#if entry.author}<span class="ext-meta-tag">by {entry.author}</span>{/if}
                   </div>
+                  <span class="ext-desc">{entry.description}</span>
+                  {#if entry.tags?.length}
+                    <div class="ext-tags">{#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}</div>
+                  {/if}
+                </div>
+                {#if isInstalled('skill', entry.name)}
+                  <span class="badge badge-success">Installed</span>
+                {:else}
+                  <button class="btn btn-primary btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => handleInstall('skill', entry.name)}>{busyItem === 'skill:' + entry.name ? 'Installing...' : 'Install'}</button>
                 {/if}
               </div>
-              {#if isInstalled('skill', entry.name)}
-                <span class="badge badge-success">Installed</span>
-              {:else}
-                <button class="btn btn-primary btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => handleInstall('skill', entry.name)}>
-                  {busyItem === 'skill:' + entry.name ? 'Installing...' : 'Install'}
-                </button>
+              {#if isDetailOpen('skill', entry.name, 'hub')}
+                <div class="ext-detail">
+                  {#if detailLoading}<div class="ext-detail-loading">Loading...</div>
+                  {:else}<div class="ext-detail-content ext-md">{@html renderMarkdown(detailContent)}</div>{/if}
+                </div>
               {/if}
             </div>
           {/each}
@@ -558,6 +609,30 @@
   }
   .toggle-switch:hover { transform: scale(1.05); }
   .toggle-switch:disabled { opacity: 0.5; cursor: default; transform: none; }
+
+  .ext-item-wrapper { border-bottom: 1px solid var(--border-subtle); }
+  .ext-item-wrapper:last-child { border-bottom: none; }
+  .ext-item-wrapper .ext-item { border-bottom: none; }
+  .ext-name-btn { display: flex; align-items: center; gap: var(--space-1); background: none; border: none; cursor: pointer; padding: 0; }
+  .ext-name-btn strong { color: var(--text-primary); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 500; }
+  .ext-name-btn:hover strong { color: var(--accent); }
+  .detail-chevron { font-size: 10px; color: var(--text-ghost); transition: transform var(--duration-fast) var(--ease-out); display: inline-block; }
+  .detail-chevron.open { transform: rotate(90deg); }
+  .ext-detail { padding: var(--space-3) var(--space-4); background: var(--bg-base); border-top: 1px solid var(--border-subtle); }
+  .ext-detail-loading { color: var(--text-tertiary); font-size: var(--text-xs); }
+  .ext-detail-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-subtle); font-size: var(--text-xs); color: var(--text-secondary); }
+  .ext-detail-meta strong { color: var(--text-tertiary); margin-right: 2px; }
+  .ext-detail-content { font-size: var(--text-sm); line-height: 1.6; color: var(--text-secondary); max-height: 400px; overflow-y: auto; }
+  .ext-md :global(h1), .ext-md :global(h2), .ext-md :global(h3) { font-family: var(--font-display); font-weight: 600; color: var(--text-primary); margin: var(--space-3) 0 var(--space-1); }
+  .ext-md :global(h1) { font-size: var(--text-base); }
+  .ext-md :global(h2) { font-size: var(--text-sm); }
+  .ext-md :global(p) { margin: 0 0 var(--space-2); }
+  .ext-md :global(ul), .ext-md :global(ol) { margin: var(--space-1) 0; padding-left: var(--space-5); }
+  .ext-md :global(li) { margin-bottom: var(--space-1); font-size: var(--text-sm); }
+  .ext-md :global(code) { font-family: var(--font-mono); font-size: 0.9em; background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px; }
+  .ext-md :global(pre) { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-2); overflow-x: auto; margin: var(--space-2) 0; font-family: var(--font-mono); font-size: var(--text-xs); }
+  .ext-md :global(pre code) { background: none; padding: 0; }
+  .ext-md :global(strong) { font-weight: 600; color: var(--text-primary); }
 
   .ext-tags { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: 2px; }
   .ext-tag {

@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-03-29
+
+### Added
+
+- Extension detail view: click skill name to expand full SKILL.md content with markdown rendering
+- Works for both installed skills and hub skills with full usage/help documentation
+- Detail panel shows metadata (source, invocable status) and scrollable content
+
 ## [0.14.2] - 2026-03-29
 
 ### Fixed
