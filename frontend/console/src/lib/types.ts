@@ -116,6 +116,9 @@ export type SessionMessage = {
   role: string
   content: string
   timestamp: string
+  tool_name?: string
+  tool_call_id?: string
+  tool_args?: string
 }
 
 export type OpsStatus = {

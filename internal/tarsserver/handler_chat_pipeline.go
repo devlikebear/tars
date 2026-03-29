@@ -81,7 +81,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		SessionID: state.sessionID,
 		ProjectID: state.projectID,
 	})
-	chatResp, deltaSent, err := executeChatLoop(chatCtx, deps, state, stream)
+	chatResp, deltaSent, toolCalls, err := executeChatLoop(chatCtx, deps, state, stream)
 	if err != nil {
 		stream.error(err)
 		return
@@ -94,7 +94,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		stream.delta(chatResp.Message.Content)
 	}
 
-	persistChatResult(state, req.Message, chatResp, deps.logger)
+	persistChatResult(state, req.Message, chatResp, toolCalls, deps.logger)
 	stream.done(chatResp.Usage)
 	deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request complete")
 }

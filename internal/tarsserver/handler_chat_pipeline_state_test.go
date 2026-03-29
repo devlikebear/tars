@@ -86,7 +86,7 @@ func TestPersistChatResult_AppendsAssistantMessageAndTouchesSession(t *testing.T
 			Role:    "assistant",
 			Content: "reply",
 		},
-	}, logger)
+	}, nil, logger)
 
 	msgs, err := session.ReadMessages(store.TranscriptPath(sess.ID))
 	if err != nil {
@@ -149,8 +149,8 @@ func TestPersistChatResult_PromotesMemoryAndDedupesExperience(t *testing.T) {
 	}
 	userMessage := "remember I prefer black coffee"
 
-	persistChatResult(state, userMessage, response, logger)
-	persistChatResult(state, userMessage, response, logger)
+	persistChatResult(state, userMessage, response, nil, logger)
+	persistChatResult(state, userMessage, response, nil, logger)
 
 	memoryFile, err := os.ReadFile(filepath.Join(root, "MEMORY.md"))
 	if err != nil {

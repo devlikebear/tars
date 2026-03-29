@@ -156,17 +156,39 @@
             {:else}
               <div class="transcript-messages">
                 {#each history as msg}
-                  <div class="transcript-msg transcript-{msg.role}">
-                    <div class="transcript-msg-top">
-                      <span class="transcript-role">{msg.role}</span>
-                      <span class="transcript-time">{fmt(msg.timestamp)}</span>
+                  {#if msg.role === 'tool'}
+                    <div class="transcript-msg transcript-tool">
+                      <div class="transcript-msg-top">
+                        <span class="transcript-tool-icon">{'\u2713'}</span>
+                        <span class="transcript-tool-name">{msg.tool_name || 'tool'}</span>
+                        <span class="transcript-time">{fmt(msg.timestamp)}</span>
+                      </div>
+                      {#if msg.tool_args}
+                        <div class="transcript-tool-detail">
+                          <span class="transcript-tool-label">args</span>
+                          <code class="transcript-tool-value">{msg.tool_args}</code>
+                        </div>
+                      {/if}
+                      {#if msg.content}
+                        <div class="transcript-tool-detail">
+                          <span class="transcript-tool-label">result</span>
+                          <code class="transcript-tool-value">{msg.content}</code>
+                        </div>
+                      {/if}
                     </div>
-                    {#if msg.role === 'assistant'}
-                      <div class="transcript-content transcript-md">{@html renderMarkdown(msg.content || '')}</div>
-                    {:else}
-                      <div class="transcript-content">{msg.content || ''}</div>
-                    {/if}
-                  </div>
+                  {:else}
+                    <div class="transcript-msg transcript-{msg.role}">
+                      <div class="transcript-msg-top">
+                        <span class="transcript-role">{msg.role}</span>
+                        <span class="transcript-time">{fmt(msg.timestamp)}</span>
+                      </div>
+                      {#if msg.role === 'assistant'}
+                        <div class="transcript-content transcript-md">{@html renderMarkdown(msg.content || '')}</div>
+                      {:else}
+                        <div class="transcript-content">{msg.content || ''}</div>
+                      {/if}
+                    </div>
+                  {/if}
                 {/each}
               </div>
             {/if}
@@ -370,6 +392,23 @@
 
   .transcript-assistant {
     background: var(--bg-elevated);
+  }
+
+  .transcript-tool {
+    background: rgba(139, 92, 246, 0.06);
+    border: 1px solid rgba(139, 92, 246, 0.12);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+  }
+  .transcript-tool-icon { font-size: var(--text-sm); }
+  .transcript-tool-name { font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); }
+  .transcript-tool-detail { margin-top: var(--space-1); display: flex; gap: var(--space-2); align-items: flex-start; }
+  .transcript-tool-label { font-family: var(--font-mono); color: var(--text-ghost); flex-shrink: 0; min-width: 36px; }
+  .transcript-tool-value {
+    font-family: var(--font-mono); color: var(--text-secondary);
+    white-space: pre-wrap; word-break: break-all; font-size: var(--text-xs);
+    background: rgba(255, 255, 255, 0.04); padding: 2px 6px; border-radius: 3px;
+    max-height: 120px; overflow-y: auto;
   }
 
   .transcript-system {
