@@ -15,10 +15,10 @@ func executeChatLoop(
 	deps chatHandlerDeps,
 	state chatRunState,
 	stream *chatStreamWriter,
-) (llm.ChatResponse, bool, error) {
+) (llm.ChatResponse, bool, []ToolCallRecord, error) {
 	streamingAnnounced := false
 	deltaSent := false
-	loop := setupAgentLoop(deps.client, state.registry, state.sessionID, len(state.history), deps.logger, stream.status)
+	loop, toolCallRecords := setupAgentLoop(deps.client, state.registry, state.sessionID, len(state.history), deps.logger, stream.status)
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")
 	chatResp, err := loop.Run(ctx, state.llmMessages, agent.RunOptions{
@@ -40,7 +40,7 @@ func executeChatLoop(
 	})
 	if err != nil {
 		deps.logger.Debug().Str("session_id", state.sessionID).Err(err).Msg("llm chat call failed")
-		return llm.ChatResponse{}, false, err
+		return llm.ChatResponse{}, false, nil, err
 	}
 	deps.logger.Debug().
 		Str("session_id", state.sessionID).
@@ -50,11 +50,26 @@ func executeChatLoop(
 		Str("stop_reason", chatResp.StopReason).
 		Msg("llm chat call complete")
 
-	return chatResp, deltaSent, nil
+	return chatResp, deltaSent, *toolCallRecords, nil
 }
 
-func persistChatResult(state chatRunState, userMessage string, chatResp llm.ChatResponse, logger zerolog.Logger) {
-	assistantMsg := session.Message{Role: "assistant", Content: chatResp.Message.Content, Timestamp: time.Now().UTC()}
+func persistChatResult(state chatRunState, userMessage string, chatResp llm.ChatResponse, toolCalls []ToolCallRecord, logger zerolog.Logger) {
+	now := time.Now().UTC()
+	// Persist tool call messages before the assistant response
+	for _, tc := range toolCalls {
+		toolMsg := session.Message{
+			Role:       "tool",
+			Content:    tc.ToolResult,
+			Timestamp:  now,
+			ToolName:   tc.ToolName,
+			ToolCallID: tc.ToolCallID,
+			ToolArgs:   tc.ToolArgs,
+		}
+		if err := session.AppendMessage(state.transcriptPath, toolMsg); err != nil {
+			logger.Error().Err(err).Str("tool", tc.ToolName).Msg("append tool message failed")
+		}
+	}
+	assistantMsg := session.Message{Role: "assistant", Content: chatResp.Message.Content, Timestamp: now}
 	if err := session.AppendMessage(state.transcriptPath, assistantMsg); err != nil {
 		logger.Error().Err(err).Msg("append assistant message failed")
 	} else if err := state.store.Touch(state.sessionID, assistantMsg.Timestamp); err != nil {

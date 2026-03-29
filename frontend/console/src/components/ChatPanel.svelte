@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
-  import { streamChat } from '../lib/api'
+  import { streamChat, listSessions, getSessionHistory } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
-  import type { ChatAttachment, ChatEvent } from '../lib/types'
+  import type { ChatAttachment, ChatEvent, Session, SessionMessage } from '../lib/types'
 
   type ChatMessage = {
     id: string
@@ -32,6 +32,56 @@
 
   let chatLogEl: HTMLDivElement | undefined = $state()
   let autoScroll = $state(true)
+
+  // Multi-session
+  let sessions: Session[] = $state([])
+  let showSessions = $state(false)
+
+  async function loadSessions() {
+    try {
+      sessions = await listSessions()
+    } catch { /* ignore */ }
+  }
+
+  async function switchSession(sid: string) {
+    chatSessionId = sid
+    chatMessages = [{ id: 'system-init', role: 'system', text: `Session: ${sid.slice(0, 8)}...` }]
+    chatStatusLine = ''
+    chatError = ''
+    showSessions = false
+    try {
+      const history = await getSessionHistory(sid)
+      for (const msg of history) {
+        if (msg.role === 'tool') {
+          chatMessages.push({
+            id: `tool-${msg.tool_call_id || Date.now()}`,
+            role: 'tool',
+            text: '',
+            toolName: msg.tool_name,
+            toolCallId: msg.tool_call_id,
+            toolArgs: msg.tool_args,
+            toolResult: msg.content,
+            toolDone: true,
+          })
+        } else {
+          chatMessages.push({
+            id: `hist-${chatMessages.length}`,
+            role: msg.role as ChatMessage['role'],
+            text: msg.content,
+          })
+        }
+      }
+      chatMessages = [...chatMessages]
+    } catch { /* ignore */ }
+  }
+
+  function startNewSession() {
+    chatSessionId = ''
+    chatMessages = [{ id: 'system-init', role: 'system', text: 'New session' }]
+    chatStatusLine = ''
+    chatError = ''
+    showSessions = false
+  }
 
   function handleScroll() {
     if (!chatLogEl) return
@@ -104,6 +154,7 @@
       case 'done':
         chatSessionId = event.session_id?.trim() || chatSessionId
         chatStatusLine = 'done'
+        void loadSessions()
         break
       case 'error':
         chatError = event.error?.trim() || 'Stream failed'
@@ -233,20 +284,44 @@
   let textareaEl: HTMLTextAreaElement | undefined = $state()
 
   onMount(() => {
-    if (sessionId) chatSessionId = sessionId
-    const scope = sessionId ? `session ${sessionId}` : projectId ? `project ${projectId}` : 'TARS'
-    chatMessages = [{ id: 'system-init', role: 'system', text: `Chat scoped to ${scope}` }]
+    if (sessionId) {
+      chatSessionId = sessionId
+      void switchSession(sessionId)
+    } else {
+      const scope = projectId ? `project ${projectId}` : 'TARS'
+      chatMessages = [{ id: 'system-init', role: 'system', text: `Chat scoped to ${scope}` }]
+    }
     if (initialPrompt) {
       chatInput = initialPrompt
       tick().then(() => textareaEl?.focus())
     }
+    void loadSessions()
   })
 </script>
 
 <div class="chat-panel">
-  <div class="chat-status">
-    {chatBusy ? 'streaming' : chatStatusLine || 'idle'}
+  <div class="chat-toolbar-row">
+    <div class="chat-status">
+      {chatBusy ? 'streaming' : chatStatusLine || 'idle'}
+    </div>
+    <div class="session-controls">
+      {#if chatSessionId}
+        <span class="session-id" title={chatSessionId}>{chatSessionId.slice(0, 8)}</span>
+      {/if}
+      <button class="btn btn-ghost btn-sm" onclick={() => { showSessions = !showSessions; if (showSessions) void loadSessions() }}>Sessions</button>
+      <button class="btn btn-ghost btn-sm" onclick={startNewSession}>New</button>
+    </div>
   </div>
+  {#if showSessions && sessions.length > 0}
+    <div class="session-list">
+      {#each sessions.slice(0, 20) as s}
+        <button class="session-item" class:active={chatSessionId === s.id} onclick={() => switchSession(s.id)}>
+          <span class="session-item-title">{s.title || s.id.slice(0, 12)}</span>
+          <span class="session-item-meta">{s.kind || 'main'}</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
   <div class="chat-log" bind:this={chatLogEl} onscroll={handleScroll}>
     {#each chatMessages as msg}
       {#if msg.role === 'tool'}
@@ -340,10 +415,72 @@
     min-height: 0;
   }
 
+  .chat-toolbar-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-2);
+  }
+
   .chat-status {
     font-size: var(--text-xs);
     color: var(--text-tertiary);
-    margin-bottom: var(--space-3);
+  }
+
+  .session-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .session-id {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-ghost);
+    background: var(--bg-elevated);
+    padding: 1px var(--space-1);
+    border-radius: var(--radius-sm);
+  }
+
+  .session-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: var(--space-2);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .session-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-3);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .session-item:hover { background: rgba(255, 255, 255, 0.03); }
+  .session-item.active { background: rgba(224, 145, 69, 0.1); border-left: 2px solid var(--accent); }
+
+  .session-item-title {
+    font-size: var(--text-xs);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+
+  .session-item-meta {
+    font-size: 10px;
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
   }
 
   .chat-log {

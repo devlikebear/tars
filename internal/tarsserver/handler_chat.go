@@ -355,6 +355,14 @@ func hasActiveProjectBrief(workspaceDir, sessionID string) bool {
 	return project.DefaultWorkflowPolicy.HasActiveBriefStatus(item.Status)
 }
 
+// ToolCallRecord holds a tool invocation for transcript persistence.
+type ToolCallRecord struct {
+	ToolName   string
+	ToolCallID string
+	ToolArgs   string
+	ToolResult string
+}
+
 func setupAgentLoop(
 	client llm.Client,
 	registry *tool.Registry,
@@ -362,7 +370,8 @@ func setupAgentLoop(
 	historyLen int,
 	logger zerolog.Logger,
 	sendStatus func(string, string, string, string, string, string),
-) *agent.Loop {
+) (*agent.Loop, *[]ToolCallRecord) {
+	toolCalls := &[]ToolCallRecord{}
 	if _, ok := registry.Get("session_status"); !ok {
 		registry.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
 			return tool.SessionStatus{
@@ -407,6 +416,12 @@ func setupAgentLoop(
 				"",
 				statusPreview(evt.ToolResult, 180),
 			)
+			*toolCalls = append(*toolCalls, ToolCallRecord{
+				ToolName:   evt.ToolName,
+				ToolCallID: evt.ToolCallID,
+				ToolArgs:   statusPreview(evt.ToolArgs, 500),
+				ToolResult: statusPreview(evt.ToolResult, 500),
+			})
 		case agent.EventLoopEnd:
 			sendStatus("loop_end", "agent loop completed", "", "", "", "")
 			logger.Debug().
@@ -422,7 +437,7 @@ func setupAgentLoop(
 			sendStatus("error", msg, evt.ToolName, evt.ToolCallID, "", "")
 		}
 	})
-	return agent.NewLoop(client, registry, counterHook, auditHook, logHook)
+	return agent.NewLoop(client, registry, counterHook, auditHook, logHook), toolCalls
 }
 
 func resolveAgentMaxIterations(value int) int {
