@@ -421,6 +421,33 @@ func (c *Client) validateServerCommands() error {
 	return nil
 }
 
+// blockedServerCommands returns a map of server name → reason for servers
+// whose commands are not in the allowlist.
+func (c *Client) blockedServerCommands() map[string]string {
+	c.mu.RLock()
+	servers := append([]ServerConfig(nil), c.servers...)
+	allowlist := map[string]struct{}{}
+	for command := range c.allowlist {
+		allowlist[command] = struct{}{}
+	}
+	c.mu.RUnlock()
+
+	blocked := map[string]string{}
+	for _, server := range servers {
+		if config.MCPServerIsRemote(server) {
+			continue
+		}
+		if isCommandAllowed(server.Command, allowlist) {
+			continue
+		}
+		blocked[server.Name] = fmt.Sprintf(
+			"command %q is blocked by mcp_command_allowlist_json",
+			strings.TrimSpace(server.Command),
+		)
+	}
+	return blocked
+}
+
 func sessionLabel(ps *pooledSession) string {
 	if ps == nil {
 		return "unknown"

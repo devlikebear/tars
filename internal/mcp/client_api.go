@@ -11,9 +11,7 @@ import (
 )
 
 func (c *Client) ListServers(ctx context.Context) ([]ServerStatus, error) {
-	if err := c.validateServerCommands(); err != nil {
-		return nil, err
-	}
+	blocked := c.blockedServerCommands()
 	servers := c.serverSnapshot()
 	if len(servers) == 0 {
 		return []ServerStatus{}, nil
@@ -24,7 +22,6 @@ func (c *Client) ListServers(ctx context.Context) ([]ServerStatus, error) {
 		wg.Add(1)
 		go func(index int, server ServerConfig) {
 			defer wg.Done()
-			tools, err := c.listToolsForServer(ctx, server)
 			status := ServerStatus{
 				Name:      server.Name,
 				Command:   server.Command,
@@ -33,11 +30,16 @@ func (c *Client) ListServers(ctx context.Context) ([]ServerStatus, error) {
 				Source:    server.Source,
 				AuthMode:  server.AuthMode,
 			}
-			if err != nil {
-				status.Error = err.Error()
+			if reason, ok := blocked[server.Name]; ok {
+				status.Error = reason
 			} else {
-				status.Connected = true
-				status.ToolCount = len(tools)
+				tools, err := c.listToolsForServer(ctx, server)
+				if err != nil {
+					status.Error = err.Error()
+				} else {
+					status.Connected = true
+					status.ToolCount = len(tools)
+				}
 			}
 			statuses[index] = status
 		}(i, server)
