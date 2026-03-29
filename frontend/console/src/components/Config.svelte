@@ -26,6 +26,41 @@
 
   let hasDirtyFields = $derived(Object.keys(dirtyFields).length > 0)
 
+  // -- Diff popup --
+  let showDiff = $state(false)
+
+  let diffEntries = $derived.by(() => {
+    return Object.entries(dirtyFields).map(([key, newVal]) => {
+      const field = schema.find((f) => f.key === key)
+      return {
+        key,
+        label: field?.label || key,
+        oldVal: values[key] !== undefined && values[key] !== null ? String(values[key]) : '\u2014',
+        newVal: newVal !== undefined && newVal !== null ? String(newVal) : '\u2014',
+      }
+    })
+  })
+
+  // -- Search/filter --
+  let searchQuery = $state('')
+
+  let filteredSections = $derived.by(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return sections
+    return sections
+      .map((section) => ({
+        name: section.name,
+        fields: section.fields.filter(
+          (f) =>
+            f.label.toLowerCase().includes(q) ||
+            f.key.toLowerCase().includes(q) ||
+            f.description.toLowerCase().includes(q) ||
+            f.section.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((s) => s.fields.length > 0)
+  })
+
   // -- Restart --
   let restartBusy = $state(false)
   let restartConfirm = $state(false)
@@ -293,7 +328,7 @@
     </div>
     <div class="page-header-right">
       {#if viewMode === 'form' && hasDirtyFields}
-        <span class="badge badge-warning">{Object.keys(dirtyFields).length} changed</span>
+        <button class="badge badge-warning diff-badge" onclick={() => { showDiff = !showDiff }} title="View changes">{Object.keys(dirtyFields).length} changed</button>
         <button class="btn btn-ghost btn-sm" onclick={handleDiscardFields}>Discard</button>
         <button class="btn btn-primary btn-sm" disabled={fieldSaving} onclick={handleSaveFields}>
           {fieldSaving ? 'Saving...' : 'Save'}
@@ -320,9 +355,44 @@
       <div class="message message-success">{success}</div>
     {/if}
 
+    {#if showDiff && hasDirtyFields}
+      <div class="diff-panel card">
+        <div class="card-header">
+          <span class="card-title">Pending Changes</span>
+          <button class="btn btn-ghost btn-sm" onclick={() => { showDiff = false }}>Close</button>
+        </div>
+        <div class="diff-body">
+          {#each diffEntries as entry}
+            <div class="diff-row">
+              <div class="diff-field">
+                <span class="diff-label">{entry.label}</span>
+                <span class="diff-key">{entry.key}</span>
+              </div>
+              <div class="diff-values">
+                <span class="diff-old">{entry.oldVal}</span>
+                <span class="diff-arrow">&rarr;</span>
+                <span class="diff-new">{entry.newVal}</span>
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
     {#if viewMode === 'form'}
+      <div class="search-bar">
+        <input
+          type="text"
+          class="search-input"
+          placeholder="Filter settings..."
+          bind:value={searchQuery}
+        />
+        {#if searchQuery}
+          <button class="search-clear" onclick={() => { searchQuery = '' }}>&times;</button>
+        {/if}
+      </div>
       <div class="sections">
-        {#each sections as section}
+        {#each filteredSections as section}
           <div class="section-card card">
             <button class="section-header" onclick={() => toggleSection(section.name)}>
               <div class="section-header-left">
@@ -333,7 +403,7 @@
               <span class="section-chevron" class:open={expandedSections[section.name]}>{'\u25b8'}</span>
             </button>
 
-            {#if expandedSections[section.name]}
+            {#if expandedSections[section.name] || searchQuery.trim()}
               <div class="section-body">
                 {#each section.fields as field}
                   <div class="field-row" class:field-dirty={isDirty(field.key)}>
@@ -761,4 +831,67 @@
   .danger-info { display: flex; flex-direction: column; gap: 2px; }
   .danger-info strong { font-family: var(--font-display); font-size: var(--text-sm); font-weight: 500; color: var(--text-primary); }
   .danger-info span { font-size: var(--text-xs); color: var(--text-tertiary); }
+
+  /* ── Diff panel ──────────────────────────── */
+  .diff-badge { cursor: pointer; }
+  .diff-panel { border-color: rgba(224, 145, 69, 0.3); }
+  .diff-body { display: flex; flex-direction: column; }
+
+  .diff-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: var(--text-xs);
+  }
+  .diff-row:last-child { border-bottom: none; }
+
+  .diff-field { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .diff-label { font-family: var(--font-display); font-weight: 500; color: var(--text-primary); }
+  .diff-key { font-family: var(--font-mono); font-size: 10px; color: var(--text-ghost); }
+
+  .diff-values { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; font-family: var(--font-mono); }
+  .diff-old { color: var(--red); text-decoration: line-through; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .diff-arrow { color: var(--text-ghost); }
+  .diff-new { color: var(--green); font-weight: 600; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Search bar ──────────────────────────── */
+  .search-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .search-input {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    padding-right: var(--space-8);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+  }
+  .search-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.2);
+  }
+  .search-input::placeholder { color: var(--text-ghost); }
+
+  .search-clear {
+    position: absolute;
+    right: var(--space-2);
+    background: none;
+    border: none;
+    color: var(--text-ghost);
+    font-size: var(--text-md);
+    cursor: pointer;
+    padding: 2px 6px;
+    line-height: 1;
+  }
+  .search-clear:hover { color: var(--text-primary); }
 </style>
