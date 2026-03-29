@@ -371,11 +371,63 @@ func toAnthropicWireMessages(messages []ChatMessage) []anthropicWireMessage {
 		case "tool":
 			out = append(out, toAnthropicToolResultMessage(msg))
 		default:
-			out = append(out, anthropicWireMessage{
-				Role:    msg.Role,
-				Content: msg.Content,
+			if len(msg.ContentBlocks) > 0 {
+				out = append(out, anthropicWireMessage{
+					Role:    msg.Role,
+					Content: toAnthropicContentBlocks(msg.Content, msg.ContentBlocks),
+				})
+			} else {
+				out = append(out, anthropicWireMessage{
+					Role:    msg.Role,
+					Content: msg.Content,
+				})
+			}
+		}
+	}
+	return out
+}
+
+// toAnthropicContentBlocks converts ContentBlocks to Anthropic wire format.
+// Supports text, image (base64 source), and document (base64 source) blocks.
+func toAnthropicContentBlocks(textContent string, blocks []ContentBlock) []map[string]any {
+	out := make([]map[string]any, 0, len(blocks)+1)
+	if strings.TrimSpace(textContent) != "" {
+		out = append(out, map[string]any{
+			"type": "text",
+			"text": textContent,
+		})
+	}
+	for _, b := range blocks {
+		switch b.Type {
+		case "text":
+			if strings.TrimSpace(b.Text) != "" {
+				out = append(out, map[string]any{
+					"type": "text",
+					"text": b.Text,
+				})
+			}
+		case "image":
+			out = append(out, map[string]any{
+				"type": "image",
+				"source": map[string]string{
+					"type":       "base64",
+					"media_type": b.MediaType,
+					"data":       b.Data,
+				},
+			})
+		case "document":
+			out = append(out, map[string]any{
+				"type": "document",
+				"source": map[string]string{
+					"type":       "base64",
+					"media_type": b.MediaType,
+					"data":       b.Data,
+				},
 			})
 		}
+	}
+	if len(out) == 0 {
+		return []map[string]any{{"type": "text", "text": textContent}}
 	}
 	return out
 }

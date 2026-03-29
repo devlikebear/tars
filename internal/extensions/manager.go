@@ -61,11 +61,12 @@ type Snapshot struct {
 }
 
 type Manager struct {
-	opts      Options
-	mu        sync.RWMutex
-	snapshot  Snapshot
-	chatTools []tool.Tool
-	version   atomic.Int64
+	opts          Options
+	mu            sync.RWMutex
+	snapshot      Snapshot
+	chatTools     []tool.Tool
+	version       atomic.Int64
+	disabledStore *disabledStore
 
 	watcherMu sync.Mutex
 	watcher   *fsnotify.Watcher
@@ -79,7 +80,24 @@ func NewManager(opts Options) (*Manager, error) {
 	if opts.WatchDebounce <= 0 {
 		opts.WatchDebounce = 200 * time.Millisecond
 	}
-	return &Manager{opts: opts}, nil
+	return &Manager{
+		opts:          opts,
+		disabledStore: newDisabledStore(opts.WorkspaceDir),
+	}, nil
+}
+
+// DisabledSet returns the current disabled extensions.
+func (m *Manager) DisabledSet() DisabledSet {
+	ds, _ := m.disabledStore.Load()
+	return ds
+}
+
+// SetDisabled enables or disables an extension and reloads.
+func (m *Manager) SetDisabled(ctx context.Context, kind, name string, disabled bool) error {
+	if err := m.disabledStore.SetDisabled(kind, name, disabled); err != nil {
+		return err
+	}
+	return m.Reload(ctx)
 }
 
 func (m *Manager) Start(ctx context.Context) error {
@@ -173,6 +191,48 @@ func (m *Manager) Reload(ctx context.Context) error {
 			// MCP server failures should not block startup; continue without mcp tools.
 			mcpTools = nil
 		}
+	}
+
+	// Filter out user-disabled extensions
+	disabled, _ := m.disabledStore.Load()
+	{
+		filtered := make([]skill.Definition, 0, len(skills.Skills))
+		for _, s := range skills.Skills {
+			if disabled.isSkillDisabled(s.Name) {
+				skills.Diagnostics = append(skills.Diagnostics, skill.Diagnostic{
+					Path:    s.FilePath,
+					Message: "disabled by user",
+				})
+				continue
+			}
+			filtered = append(filtered, s)
+		}
+		skills.Skills = filtered
+	}
+	{
+		filtered := make([]plugin.Definition, 0, len(plugins.Plugins))
+		for _, p := range plugins.Plugins {
+			if disabled.isPluginDisabled(p.ID) {
+				plugins.Diagnostics = append(plugins.Diagnostics, plugin.Diagnostic{
+					Path:    p.RootDir,
+					Message: "disabled by user",
+				})
+				continue
+			}
+			filtered = append(filtered, p)
+		}
+		plugins.Plugins = filtered
+	}
+	{
+		filtered := make([]config.MCPServer, 0, len(mcpServers))
+		for _, s := range mcpServers {
+			if disabled.isMCPDisabled(s.Name) {
+				mcpDiagnostics = append(mcpDiagnostics, "mcp server "+s.Name+": disabled by user")
+				continue
+			}
+			filtered = append(filtered, s)
+		}
+		mcpServers = filtered
 	}
 
 	diagnostics := make([]string, 0, len(skills.Diagnostics)+len(plugins.Diagnostics)+len(hubDiagnostics)+len(mcpDiagnostics))

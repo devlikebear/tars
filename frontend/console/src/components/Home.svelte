@@ -17,9 +17,10 @@
 
   interface Props {
     onNavigate: (path: string) => void
+    initialPrompt?: string
   }
 
-  let { onNavigate }: Props = $props()
+  let { onNavigate, initialPrompt }: Props = $props()
 
   let projects: Project[] = $state([])
   let approvals: Approval[] = $state([])
@@ -154,6 +155,11 @@
       </div>
     </div>
 
+    <!-- Chat (main feature) -->
+    <section class="chat-main card">
+      <ChatPanel {initialPrompt} />
+    </section>
+
     <div class="home-grid">
       <!-- Projects -->
       <section class="card home-section">
@@ -165,7 +171,7 @@
         </div>
         {#if projects.length === 0}
           <div class="empty-state">
-            <p>No projects yet. Create one through the API or CLI.</p>
+            <p>No projects yet. Go to <strong>Projects</strong> to create one.</p>
           </div>
         {:else}
           <div class="project-cards">
@@ -212,42 +218,6 @@
             {/each}
           </div>
         {/if}
-      </section>
-
-      <!-- Recent notifications -->
-      <section class="card home-section">
-        <div class="card-header">
-          <span class="card-title">Recent notifications</span>
-          {#if unreadCount > 0}
-            <span class="badge badge-accent">{unreadCount} unread</span>
-          {/if}
-        </div>
-        {#if notifications.length === 0}
-          <div class="empty-state">
-            <p>No notifications yet.</p>
-          </div>
-        {:else}
-          <div class="list-items">
-            {#each notifications as item}
-              <div class="list-item">
-                <div class="list-item-top">
-                  <strong>{item.title}</strong>
-                  <span class="badge badge-default">{item.category}</span>
-                </div>
-                <p class="list-item-detail">{compact(item.message, 140)}</p>
-                <span class="list-item-time">{fmt(item.timestamp)}</span>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      <!-- Global Chat -->
-      <section class="card home-section home-wide">
-        <div class="card-header">
-          <span class="card-title">Chat</span>
-        </div>
-        <ChatPanel />
       </section>
 
       <!-- Cron health -->
@@ -362,6 +332,11 @@
     flex-shrink: 0;
   }
 
+  /* ── Chat main ────────────────────────────────── */
+  .chat-main {
+    margin-bottom: var(--space-5);
+  }
+
   /* ── Home grid ────────────────────────────────── */
   .home-grid {
     display: grid;
@@ -371,10 +346,6 @@
 
   .home-section {
     min-height: 200px;
-  }
-
-  .home-wide {
-    grid-column: 1 / -1;
   }
 
   /* ── Project cards ────────────────────────────── */

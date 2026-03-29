@@ -62,6 +62,8 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		browser:         handler,
 		channels:        handler,
 		events:          handler,
+		config:          handler,
+		skillhub:        handler,
 	})
 
 	paths := []string{
@@ -102,6 +104,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/skills/default",
 		"/v1/plugins",
 		"/v1/runtime/extensions/reload",
+		"/v1/runtime/extensions/disabled",
 		"/v1/agent/agents",
 		"/v1/agent/runs",
 		"/v1/agent/runs/run-1",
@@ -125,6 +128,16 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/events/stream",
 		"/v1/events/history",
 		"/v1/events/read",
+		"/v1/admin/config",
+		"/v1/admin/config/values",
+		"/v1/admin/config/schema",
+		"/v1/admin/reset/workspace",
+		"/v1/admin/restart",
+		"/v1/hub/registry",
+		"/v1/hub/installed",
+		"/v1/hub/install",
+		"/v1/hub/uninstall",
+		"/v1/hub/update",
 	}
 	for _, path := range paths {
 		rec := httptest.NewRecorder()
@@ -165,6 +178,8 @@ func TestRegisterAPIRoutes_LegacyDashboardPathsRedirectToConsole(t *testing.T) {
 		browser:         base,
 		channels:        base,
 		events:          base,
+		config:          base,
+		skillhub:        base,
 	})
 
 	tests := []struct {

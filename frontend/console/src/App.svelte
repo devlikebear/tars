@@ -4,7 +4,10 @@
   import Home from './components/Home.svelte'
   import ProjectView from './components/ProjectView.svelte'
   import Sessions from './components/Sessions.svelte'
+  import Projects from './components/Projects.svelte'
   import Ops from './components/Ops.svelte'
+  import Config from './components/Config.svelte'
+  import Extensions from './components/Extensions.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { getEventsHistory, streamEvents } from './lib/api'
 
@@ -12,6 +15,7 @@
   let route: Route = $state({ view: 'home' })
   let serverHealth = $state('connecting')
   let unreadCount = $state(0)
+  let aiPrompt = $state('')
   let stopGlobalStream: (() => void) | null = null
 
   function navigate(path: string) {
@@ -19,6 +23,11 @@
     window.history.pushState(null, '', path)
     currentPath = path
     route = resolveRoute(path)
+  }
+
+  function navigateWithPrompt(prompt: string) {
+    aiPrompt = prompt
+    navigate('/console')
   }
 
   function syncFromBrowser() {
@@ -66,19 +75,26 @@
   {serverHealth}
   {unreadCount}
   onNavigate={navigate}
+  onUnreadChange={(count) => { unreadCount = count }}
 >
   {#if route.view === 'home'}
-    <Home onNavigate={navigate} />
+    {#key aiPrompt}
+      <Home onNavigate={navigate} initialPrompt={aiPrompt} />
+    {/key}
   {:else if route.view === 'project'}
     {#key route.projectId}
       <ProjectView projectId={route.projectId} />
     {/key}
   {:else if route.view === 'projects'}
-    <Home onNavigate={navigate} />
+    <Projects onNavigate={navigate} onAskAI={navigateWithPrompt} />
   {:else if route.view === 'sessions'}
     <Sessions />
   {:else if route.view === 'ops'}
-    <Ops />
+    <Ops onAskAI={navigateWithPrompt} />
+  {:else if route.view === 'config'}
+    <Config />
+  {:else if route.view === 'extensions'}
+    <Extensions />
   {/if}
 </Shell>
 

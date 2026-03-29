@@ -3,6 +3,7 @@
   import { listSessions, getSessionHistory } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
   import type { Session, SessionMessage } from '../lib/types'
+  import ChatPanel from './ChatPanel.svelte'
 
   let sessions: Session[] = $state([])
   let loading = $state(true)
@@ -135,6 +136,14 @@
             <div><dt>Created</dt><dd>{fmt(selectedSession.created_at)}</dd></div>
             <div><dt>Updated</dt><dd>{fmt(selectedSession.updated_at)}</dd></div>
           </dl>
+
+          <!-- Chat -->
+          <div class="session-chat">
+            <span class="card-title">Chat</span>
+            {#key selectedSession.id}
+              <ChatPanel sessionId={selectedSession.id} projectId={selectedSession.project_id || undefined} />
+            {/key}
+          </div>
 
           <div class="session-transcript">
             <span class="card-title">Transcript</span>
@@ -326,6 +335,13 @@
     margin: 0;
     font-size: var(--text-sm);
     word-break: break-word;
+  }
+
+  /* ── Chat ───────────────────────────────────── */
+  .session-chat {
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   /* ── Transcript ────────────────────────────── */

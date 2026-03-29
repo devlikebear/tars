@@ -2,7 +2,7 @@
   import { onMount, onDestroy, tick } from 'svelte'
   import { streamChat } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
-  import type { ChatEvent } from '../lib/types'
+  import type { ChatAttachment, ChatEvent } from '../lib/types'
 
   type ChatMessage = {
     id: string
@@ -12,9 +12,11 @@
 
   interface Props {
     projectId?: string
+    sessionId?: string
+    initialPrompt?: string
   }
 
-  let { projectId }: Props = $props()
+  let { projectId, sessionId, initialPrompt }: Props = $props()
 
   let chatInput = $state('')
   let chatBusy = $state(false)
@@ -73,20 +75,29 @@
     chatStatusLine = 'connecting'
     chatInput = ''
     autoScroll = true
+
+    const currentFiles = [...attachedFiles]
+    attachedFiles = []
+
+    const fileLabel = currentFiles.length > 0
+      ? ` [${currentFiles.map((f) => f.name).join(', ')}]`
+      : ''
     const userId = `user-${Date.now()}`
     const assistantId = `assistant-${Date.now()}`
     chatMessages = [
       ...chatMessages,
-      { id: userId, role: 'user', text: message },
+      { id: userId, role: 'user', text: message + fileLabel },
       { id: assistantId, role: 'assistant', text: '' },
     ]
     void scrollToBottom()
     try {
+      const chatAttachments = currentFiles.length > 0 ? await filesToAttachments(currentFiles) : undefined
       await streamChat(
         {
           message,
           session_id: chatSessionId || undefined,
           project_id: projectId || undefined,
+          attachments: chatAttachments,
         },
         (event) => handleChatEvent(event, assistantId),
       )
@@ -99,6 +110,48 @@
     }
   }
 
+  // -- File attachments --
+  let attachedFiles: File[] = $state([])
+  let fileInputEl: HTMLInputElement | undefined = $state()
+
+  function handleFileSelect(e: Event) {
+    const input = e.target as HTMLInputElement
+    if (!input.files) return
+    for (const file of input.files) {
+      if (attachedFiles.length >= 5) break
+      attachedFiles = [...attachedFiles, file]
+    }
+    input.value = ''
+  }
+
+  function removeAttachment(index: number) {
+    attachedFiles = attachedFiles.filter((_, i) => i !== index)
+  }
+
+  async function filesToAttachments(files: File[]): Promise<ChatAttachment[]> {
+    const results: ChatAttachment[] = []
+    for (const file of files) {
+      const buffer = await file.arrayBuffer()
+      const bytes = new Uint8Array(buffer)
+      let binary = ''
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i])
+      }
+      results.push({
+        name: file.name,
+        mime_type: file.type || 'application/octet-stream',
+        data: btoa(binary),
+      })
+    }
+    return results
+  }
+
+  function fmtSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -106,9 +159,43 @@
     }
   }
 
+  function handlePaste(e: ClipboardEvent) {
+    if (!e.clipboardData) return
+    const items = e.clipboardData.items
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      // Image from clipboard (screenshot, copy-paste)
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file && attachedFiles.length < 5) {
+          const name = `clipboard-${Date.now()}.${item.type.split('/')[1] || 'png'}`
+          const renamed = new File([file], name, { type: file.type })
+          attachedFiles = [...attachedFiles, renamed]
+        }
+        return
+      }
+      // File from clipboard (some browsers support this)
+      if (item.kind === 'file') {
+        const file = item.getAsFile()
+        if (file && attachedFiles.length < 5) {
+          attachedFiles = [...attachedFiles, file]
+        }
+      }
+    }
+    // Text paste is handled natively by the textarea
+  }
+
+  let textareaEl: HTMLTextAreaElement | undefined = $state()
+
   onMount(() => {
-    const scope = projectId ? `project ${projectId}` : 'TARS'
+    if (sessionId) chatSessionId = sessionId
+    const scope = sessionId ? `session ${sessionId}` : projectId ? `project ${projectId}` : 'TARS'
     chatMessages = [{ id: 'system-init', role: 'system', text: `Chat scoped to ${scope}` }]
+    if (initialPrompt) {
+      chatInput = initialPrompt
+      tick().then(() => textareaEl?.focus())
+    }
   })
 </script>
 
@@ -131,13 +218,45 @@
   {#if chatError}
     <div class="error-banner" style="margin-bottom: var(--space-3)">{chatError}</div>
   {/if}
+  {#if attachedFiles.length > 0}
+    <div class="chat-attachments">
+      {#each attachedFiles as file, i}
+        <div class="attachment-chip">
+          <span class="attachment-icon">{file.type.startsWith('image/') ? '\ud83d\uddbc' : '\ud83d\udcc4'}</span>
+          <span class="attachment-name">{file.name}</span>
+          <span class="attachment-size">{fmtSize(file.size)}</span>
+          <button class="attachment-remove" onclick={() => removeAttachment(i)}>&times;</button>
+        </div>
+      {/each}
+    </div>
+  {/if}
   <form class="chat-form" onsubmit={(e) => { e.preventDefault(); void submitChat() }}>
-    <textarea
-      bind:value={chatInput}
-      rows="2"
-      placeholder={projectId ? 'Ask TARS about this project...' : 'Ask TARS anything...'}
-      onkeydown={handleKeydown}
-    ></textarea>
+    <div class="chat-input-row">
+      <div class="chat-toolbar">
+        <input
+          type="file"
+          multiple
+          accept="image/*,.pdf,.txt,.md,.json,.csv,.yaml,.yml"
+          bind:this={fileInputEl}
+          onchange={handleFileSelect}
+          class="file-input-hidden"
+        />
+        <button type="button" class="toolbar-btn" title="Attach file (coming soon)" onclick={() => fileInputEl?.click()}>
+          <span class="toolbar-icon">{'\ud83d\udcce'}</span>
+        </button>
+        <button type="button" class="toolbar-btn" title="Attach image (coming soon)" onclick={() => { if (fileInputEl) { fileInputEl.accept = 'image/*'; fileInputEl.click(); fileInputEl.accept = 'image/*,.pdf,.txt,.md,.json,.csv,.yaml,.yml' } }}>
+          <span class="toolbar-icon">{'\ud83d\uddbc'}</span>
+        </button>
+      </div>
+      <textarea
+        bind:this={textareaEl}
+        bind:value={chatInput}
+        rows="2"
+        placeholder={sessionId ? 'Continue this session...' : projectId ? 'Ask TARS about this project...' : 'Ask TARS anything... (paste images with Ctrl+V)'}
+        onkeydown={handleKeydown}
+        onpaste={handlePaste}
+      ></textarea>
+    </div>
     <button type="submit" class="btn btn-primary" disabled={chatBusy || !chatInput.trim()}>
       {chatBusy ? 'Streaming...' : 'Send'}
     </button>
@@ -291,9 +410,93 @@
   .chat-md :global(h3) { font-size: var(--text-base); }
   .chat-md :global(h4) { font-size: var(--text-sm); }
 
+  /* ── Attachments ─────────────────────────────── */
+  .chat-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+  }
+
+  .attachment-chip {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px var(--space-2);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+  }
+
+  .attachment-icon { font-size: var(--text-sm); }
+  .attachment-name {
+    color: var(--text-primary);
+    max-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .attachment-size { color: var(--text-ghost); }
+  .attachment-remove {
+    background: none;
+    border: none;
+    color: var(--text-ghost);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .attachment-remove:hover { color: var(--error); }
+
   /* ── Form ───────────────────────────────────── */
   .chat-form {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .chat-input-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+  }
+
+  .chat-input-row textarea {
+    flex: 1;
+  }
+
+  .chat-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-shrink: 0;
+    padding-top: 4px;
+  }
+
+  .toolbar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
+  }
+  .toolbar-btn:hover {
+    background: var(--bg-elevated);
+    border-color: var(--border-default);
+  }
+
+  .toolbar-icon { font-size: 14px; }
+
+  .file-input-hidden {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    overflow: hidden;
   }
 </style>

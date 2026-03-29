@@ -18,6 +18,8 @@
     { id: 'projects', label: 'Projects', path: '/console/projects', icon: '\u25eb' },
     { id: 'sessions', label: 'Sessions', path: '/console/sessions', icon: '\u25ce' },
     { id: 'ops', label: 'Operations', path: '/console/ops', icon: '\u2699' },
+    { id: 'extensions', label: 'Extensions', path: '/console/extensions', icon: '\u2756' },
+    { id: 'config', label: 'Settings', path: '/console/config', icon: '\u2638' },
   ]
 
   function isActive(itemPath: string, current: string): boolean {

@@ -24,10 +24,17 @@ type chatHandlerDeps struct {
 	extraTools    []tool.Tool
 }
 
+type chatAttachment struct {
+	Name     string `json:"name"`
+	MimeType string `json:"mime_type"`
+	Data     string `json:"data"` // base64-encoded content
+}
+
 type chatRequestPayload struct {
-	SessionID string `json:"session_id"`
-	Message   string `json:"message"`
-	ProjectID string `json:"project_id,omitempty"`
+	SessionID   string           `json:"session_id"`
+	Message     string           `json:"message"`
+	ProjectID   string           `json:"project_id,omitempty"`
+	Attachments []chatAttachment `json:"attachments,omitempty"`
 }
 
 func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerDeps) {

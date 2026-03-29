@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import {
+    advanceAutopilot,
+    deleteProject,
     getEventsHistory,
     getProject,
     getProjectAutopilot,
@@ -9,7 +11,9 @@
     listCronRuns,
     listProjectActivity,
     reviewApproval,
+    startAutopilot,
     streamEvents,
+    updateProject,
   } from '../lib/api'
   import type {
     Approval,
@@ -43,6 +47,92 @@
 
   let approvalBusyId = $state('')
   let stopEventStream: (() => void) | null = null
+
+  // -- Edit / Delete / Autopilot --
+  let editing = $state(false)
+  let editName = $state('')
+  let editObjective = $state('')
+  let editGitRepo = $state('')
+  let editSaving = $state(false)
+  let editError = $state('')
+  let deleting = $state(false)
+  let deleteConfirm = $state(false)
+  let autopilotBusy = $state(false)
+  let autopilotError = $state('')
+
+  function enterEdit() {
+    if (!project) return
+    editName = project.name
+    editObjective = project.objective || ''
+    editGitRepo = project.git_repo || ''
+    editError = ''
+    editing = true
+  }
+
+  function cancelEdit() {
+    editing = false
+    editError = ''
+  }
+
+  async function handleSaveEdit() {
+    if (!project || !editName.trim()) return
+    editSaving = true
+    editError = ''
+    try {
+      project = await updateProject(projectId, {
+        name: editName.trim(),
+        objective: editObjective.trim() || undefined,
+        git_repo: editGitRepo.trim() || undefined,
+      })
+      editing = false
+    } catch (e) {
+      editError = e instanceof Error ? e.message : 'Failed to update project'
+    } finally {
+      editSaving = false
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteConfirm) {
+      deleteConfirm = true
+      return
+    }
+    deleting = true
+    try {
+      await deleteProject(projectId)
+      window.history.pushState(null, '', '/console')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    } catch (e) {
+      panelError = e instanceof Error ? e.message : 'Failed to delete project'
+      deleteConfirm = false
+    } finally {
+      deleting = false
+    }
+  }
+
+  async function handleStartAutopilot() {
+    autopilotBusy = true
+    autopilotError = ''
+    try {
+      autopilot = await startAutopilot(projectId)
+    } catch (e) {
+      autopilotError = e instanceof Error ? e.message : 'Failed to start autopilot'
+    } finally {
+      autopilotBusy = false
+    }
+  }
+
+  async function handleAdvanceAutopilot() {
+    autopilotBusy = true
+    autopilotError = ''
+    try {
+      autopilot = await advanceAutopilot(projectId)
+    } catch (e) {
+      autopilotError = e instanceof Error ? e.message : 'Failed to advance autopilot'
+    } finally {
+      autopilotBusy = false
+    }
+  }
 
   function fmt(value?: string): string {
     const text = value?.trim()
@@ -182,13 +272,36 @@
     <!-- Project header -->
     <div class="pv-header">
       <div>
-        <h2>{project.name}</h2>
-        <p class="pv-objective">{project.objective || 'No objective recorded.'}</p>
+        {#if editing}
+          <div class="inline-form">
+            {#if editError}
+              <div class="form-error">{editError}</div>
+            {/if}
+            <input type="text" placeholder="Project name *" bind:value={editName} class="form-input" />
+            <input type="text" placeholder="Objective" bind:value={editObjective} class="form-input" />
+            <input type="text" placeholder="Git repo URL" bind:value={editGitRepo} class="form-input" />
+            <div style="display:flex;gap:var(--space-2)">
+              <button class="btn btn-primary btn-sm" disabled={!editName.trim() || editSaving} onclick={handleSaveEdit}>
+                {editSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick={cancelEdit}>Cancel</button>
+            </div>
+          </div>
+        {:else}
+          <h2>{project.name}</h2>
+          <p class="pv-objective">{project.objective || 'No objective recorded.'}</p>
+        {/if}
       </div>
       <div class="pv-header-meta">
         <span class="badge badge-default">{project.status || 'active'}</span>
         {#if loadingPanels}
           <span class="badge badge-default">refreshing</span>
+        {/if}
+        {#if !editing}
+          <button class="btn btn-ghost btn-sm" onclick={enterEdit}>Edit</button>
+          <button class="btn btn-danger btn-sm" disabled={deleting} onclick={handleDelete}>
+            {deleteConfirm ? 'Confirm Delete?' : 'Delete'}
+          </button>
         {/if}
       </div>
     </div>
@@ -221,7 +334,21 @@
           <span class="label">No autopilot run active</span>
         </div>
       {/if}
+      <div class="pv-phase-actions">
+        {#if !autopilot || autopilot.status === 'done' || autopilot.status === 'failed'}
+          <button class="btn btn-primary btn-sm" disabled={autopilotBusy} onclick={handleStartAutopilot}>
+            {autopilotBusy ? 'Starting...' : 'Start Autopilot'}
+          </button>
+        {:else}
+          <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleAdvanceAutopilot}>
+            {autopilotBusy ? 'Advancing...' : 'Advance'}
+          </button>
+        {/if}
+      </div>
     </div>
+    {#if autopilotError}
+      <div class="error-banner" style="margin-bottom: var(--space-4)">{autopilotError}</div>
+    {/if}
 
     {#if autopilot?.next_action}
       <div class="pv-next-action">
@@ -571,6 +698,38 @@
     display: flex;
     gap: var(--space-2);
     margin-top: var(--space-2);
+  }
+
+  /* ── Inline form ──────────────────────────────── */
+  .inline-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .inline-form .form-input {
+    width: 100%;
+    max-width: 500px;
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+  .inline-form .form-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .form-error {
+    font-size: var(--text-xs);
+    color: var(--error);
+  }
+
+  .pv-phase-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
   }
 
   /* ── Responsive ───────────────────────────────── */

@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -185,13 +186,96 @@ func loadSessionHistorySnapshot(transcriptPath string, maxTokens int) (session.H
 }
 
 func buildLLMMessages(systemPrompt string, history []session.Message, userMessage string) []llm.ChatMessage {
+	return buildLLMMessagesWithBlocks(systemPrompt, history, userMessage, nil)
+}
+
+func buildLLMMessagesWithBlocks(systemPrompt string, history []session.Message, userMessage string, contentBlocks []llm.ContentBlock) []llm.ChatMessage {
 	llmMessages := make([]llm.ChatMessage, 0, len(history)+2)
 	llmMessages = append(llmMessages, llm.ChatMessage{Role: "system", Content: systemPrompt})
 	for _, m := range history {
 		llmMessages = append(llmMessages, llm.ChatMessage{Role: m.Role, Content: m.Content})
 	}
-	llmMessages = append(llmMessages, llm.ChatMessage{Role: "user", Content: userMessage})
+	msg := llm.ChatMessage{Role: "user", Content: userMessage, ContentBlocks: contentBlocks}
+	llmMessages = append(llmMessages, msg)
 	return llmMessages
+}
+
+// attachmentsToContentBlocks converts chat attachments to LLM content blocks.
+// Text files are injected as text blocks, images as image blocks, PDFs as document blocks.
+func attachmentsToContentBlocks(attachments []chatAttachment) []llm.ContentBlock {
+	if len(attachments) == 0 {
+		return nil
+	}
+	blocks := make([]llm.ContentBlock, 0, len(attachments))
+	for _, a := range attachments {
+		mime := strings.TrimSpace(a.MimeType)
+		data := strings.TrimSpace(a.Data)
+		if data == "" {
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(mime, "text/") || isTextMime(mime):
+			// Decode base64 text content and inject as text block
+			decoded, err := base64Decode(data)
+			if err != nil {
+				continue
+			}
+			label := strings.TrimSpace(a.Name)
+			if label == "" {
+				label = "attachment"
+			}
+			blocks = append(blocks, llm.ContentBlock{
+				Type: "text",
+				Text: fmt.Sprintf("--- File: %s ---\n%s\n--- End of file ---", label, string(decoded)),
+			})
+		case strings.HasPrefix(mime, "image/"):
+			blocks = append(blocks, llm.ContentBlock{
+				Type:      "image",
+				MediaType: mime,
+				Data:      data,
+			})
+		case mime == "application/pdf":
+			blocks = append(blocks, llm.ContentBlock{
+				Type:      "document",
+				MediaType: mime,
+				Data:      data,
+			})
+		default:
+			// Unknown binary — try as text
+			decoded, err := base64Decode(data)
+			if err != nil {
+				continue
+			}
+			label := strings.TrimSpace(a.Name)
+			if label == "" {
+				label = "attachment"
+			}
+			blocks = append(blocks, llm.ContentBlock{
+				Type: "text",
+				Text: fmt.Sprintf("--- File: %s ---\n%s\n--- End of file ---", label, string(decoded)),
+			})
+		}
+	}
+	return blocks
+}
+
+func isTextMime(mime string) bool {
+	textTypes := []string{
+		"application/json", "application/xml", "application/yaml",
+		"application/x-yaml", "application/javascript", "application/typescript",
+		"application/toml", "application/x-sh",
+	}
+	for _, t := range textTypes {
+		if mime == t {
+			return true
+		}
+	}
+	return false
+}
+
+func base64Decode(data string) ([]byte, error) {
+	return base64.StdEncoding.DecodeString(data)
 }
 
 func statusPreview(value string, maxLen int) string {

@@ -93,12 +93,9 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 		t.Fatalf("expected 204 for delete, got %d body=%q", deleteRec.Code, deleteRec.Body.String())
 	}
 
-	archived, err := projectStore.Get(created.ID)
-	if err != nil {
-		t.Fatalf("get archived project: %v", err)
-	}
-	if archived.Status != "archived" {
-		t.Fatalf("expected archived status, got %q", archived.Status)
+	_, err = projectStore.Get(created.ID)
+	if err == nil {
+		t.Fatalf("expected project to be deleted, but it still exists")
 	}
 }
 

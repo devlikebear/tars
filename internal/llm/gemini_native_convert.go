@@ -17,10 +17,16 @@ type geminiContent struct {
 
 type geminiPart struct {
 	Text             string               `json:"text,omitempty"`
+	InlineData       *geminiInlineData    `json:"inlineData,omitempty"`
 	FunctionCall     *geminiFunctionCall  `json:"functionCall,omitempty"`
 	FunctionResponse *geminiFunctionResp  `json:"functionResponse,omitempty"`
 	Thought          bool                 `json:"thought,omitempty"`
 	ThoughtSignature []byte               `json:"thoughtSignature,omitempty"`
+}
+
+type geminiInlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"` // base64
 }
 
 type geminiFunctionCall struct {
@@ -203,6 +209,35 @@ func extractGeminiNativeUsage(metadata *geminiUsageMetadata) Usage {
 	}
 }
 
+func toGeminiUserParts(msg ChatMessage) []*geminiPart {
+	if len(msg.ContentBlocks) == 0 {
+		return []*geminiPart{{Text: msg.Content}}
+	}
+	parts := make([]*geminiPart, 0, len(msg.ContentBlocks)+1)
+	if strings.TrimSpace(msg.Content) != "" {
+		parts = append(parts, &geminiPart{Text: msg.Content})
+	}
+	for _, b := range msg.ContentBlocks {
+		switch b.Type {
+		case "text":
+			if strings.TrimSpace(b.Text) != "" {
+				parts = append(parts, &geminiPart{Text: b.Text})
+			}
+		case "image", "document":
+			parts = append(parts, &geminiPart{
+				InlineData: &geminiInlineData{
+					MimeType: b.MediaType,
+					Data:     b.Data,
+				},
+			})
+		}
+	}
+	if len(parts) == 0 {
+		return []*geminiPart{{Text: msg.Content}}
+	}
+	return parts
+}
+
 func toGeminiNativeContents(messages []ChatMessage) []*geminiContent {
 	if len(messages) == 0 {
 		return nil
@@ -217,12 +252,13 @@ func toGeminiNativeContents(messages []ChatMessage) []*geminiContent {
 		case "system":
 			continue
 		case "user":
-			if strings.TrimSpace(msg.Content) == "" {
+			if strings.TrimSpace(msg.Content) == "" && len(msg.ContentBlocks) == 0 {
 				continue
 			}
+			parts := toGeminiUserParts(msg)
 			out = append(out, &geminiContent{
 				Role:  "user",
-				Parts: []*geminiPart{{Text: msg.Content}},
+				Parts: parts,
 			})
 		case "assistant":
 			parts := make([]*geminiPart, 0, len(msg.ToolCalls)+1)

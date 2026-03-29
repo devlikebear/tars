@@ -2,12 +2,26 @@ package tarsserver
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/rs/zerolog"
 )
+
+func formatBytes(bytes int64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	}
+	if bytes < 1024*1024*1024 {
+		return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+	}
+	return fmt.Sprintf("%.1f GB", float64(bytes)/(1024*1024*1024))
+}
 
 func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(context.Context, notificationEvent)) http.Handler {
 	mux := http.NewServeMux()
@@ -110,8 +124,24 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 		switch action {
 		case "approve":
 			err = manager.Approve(approvalID)
-			if err == nil && emit != nil {
-				emit(r.Context(), newNotificationEvent("ops", "info", "Cleanup approval approved", "approval_id="+approvalID))
+			if err == nil {
+				result, applyErr := manager.ApplyCleanup(r.Context(), approvalID)
+				if applyErr != nil {
+					logger.Error().Err(applyErr).Str("approval_id", approvalID).Msg("auto-apply after approve failed")
+					_ = manager.SetNote(approvalID, fmt.Sprintf("Apply failed: %s", applyErr.Error()))
+					if emit != nil {
+						emit(r.Context(), newNotificationEvent("ops", "error", "Cleanup apply failed", "approval_id="+approvalID+" error="+applyErr.Error()))
+					}
+				} else {
+					note := fmt.Sprintf("Deleted %d files, freed %s", result.DeletedCount, formatBytes(result.DeletedBytes))
+					if len(result.Errors) > 0 {
+						note += fmt.Sprintf(" (%d errors)", len(result.Errors))
+					}
+					_ = manager.SetNote(approvalID, note)
+					if emit != nil {
+						emit(r.Context(), newNotificationEvent("ops", "success", "Cleanup completed", note))
+					}
+				}
 			}
 		case "reject":
 			err = manager.Reject(approvalID)

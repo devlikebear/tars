@@ -45,20 +45,13 @@ func TestOpsAPI_StatusAndApprovalFlow(t *testing.T) {
 		t.Fatalf("decode cleanup plan: %v", err)
 	}
 
+	// Approve now auto-applies the cleanup plan
 	approveReq := httptest.NewRequest(http.MethodPost, "/v1/ops/approvals/"+plan.ApprovalID+"/approve", strings.NewReader(`{}`))
 	approveReq.Header.Set("Content-Type", "application/json")
 	approveRec := httptest.NewRecorder()
 	handler.ServeHTTP(approveRec, approveReq)
 	if approveRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for approve, got %d body=%q", approveRec.Code, approveRec.Body.String())
-	}
-
-	applyReq := httptest.NewRequest(http.MethodPost, "/v1/ops/cleanup/apply", strings.NewReader(`{"approval_id":"`+plan.ApprovalID+`"}`))
-	applyReq.Header.Set("Content-Type", "application/json")
-	applyRec := httptest.NewRecorder()
-	handler.ServeHTTP(applyRec, applyReq)
-	if applyRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 for apply, got %d body=%q", applyRec.Code, applyRec.Body.String())
 	}
 }
 
