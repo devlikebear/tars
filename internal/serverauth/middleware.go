@@ -178,6 +178,9 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 			req = withDebugWorkspaceHeader(req)
 			requirement := compiled.requirementForRequest(r)
 			if compiled.mode == ModeOff || requirement.skip {
+				if compiled.mode == ModeOff {
+					req = withRole(req, RoleAdmin)
+				}
 				next.ServeHTTP(w, req)
 				return
 			}

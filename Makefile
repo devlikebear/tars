@@ -60,7 +60,7 @@ RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
 	logs logs-server logs-server-err logs-assistant logs-assistant-err \
-	dev-serve dev-serve-once dev-serve-loop dev-chat dev-heartbeat dev-tars \
+	dev-serve dev-serve-once dev-serve-loop dev-chat dev-heartbeat dev-tars dev-console \
 	api-status api-sessions api-compact api-chat api-heartbeat smoke-auth \
 	vault-up vault-down vault-logs security-scan \
 	run-serve
@@ -110,6 +110,7 @@ help:
 	@echo "  make dev-serve     - run server via tars serve (API mode)"
 	@echo "  make dev-serve-once - run one heartbeat via tars serve"
 	@echo "  make dev-serve-loop - run heartbeat loop via tars serve"
+	@echo "  make dev-console   - run Go server + Vite dev server (hot-reload, no build needed)"
 	@echo "  make dev-chat      - run Go client (cmd/tars)"
 	@echo "  make dev-tars      - run Go client (cmd/tars)"
 	@echo "  make dev-heartbeat - call heartbeat run-once via API"
@@ -284,6 +285,21 @@ dev-serve-once:
 
 dev-serve-loop:
 	$(GO) run ./cmd/tars serve --verbose --run-loop $(if $(TARS_CONFIG),--config $(TARS_CONFIG),) --heartbeat-interval $(HEARTBEAT_INTERVAL) --max-heartbeats $(MAX_HEARTBEATS) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
+
+dev-console: console-install
+	@echo "Starting Vite dev server (hot-reload) + Go API server..."
+	@echo "  Console: http://$(API_ADDR)/console"
+	@echo "  Vite:    http://127.0.0.1:5173 (proxied via Go server)"
+	@echo ""
+	@cd frontend/console && npm run dev &
+	@sleep 2
+	TARS_CONSOLE_DEV_URL=http://127.0.0.1:5173 \
+	TARS_API_AUTH_MODE=off \
+	TARS_DASHBOARD_AUTH_MODE=off \
+	TARS_API_ALLOW_INSECURE_LOCAL_AUTH=true \
+	$(GO) run ./cmd/tars serve --verbose --serve-api \
+		$(if $(TARS_CONFIG),--config $(TARS_CONFIG),) \
+		--workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
 
 dev-chat:
 	$(GO) run ./cmd/tars --server-url $(SERVER_URL) $(if $(SESSION),--session $(SESSION),) $(ARGS)
