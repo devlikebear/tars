@@ -14,6 +14,24 @@ type Policies struct {
 	ToolsDeny  []string `json:"tools_deny,omitempty"`
 }
 
+// ToolsProvider declares how a plugin provides tools (v3+).
+type ToolsProvider struct {
+	Type  string `json:"type"`            // "mcp_server", "go_plugin", or "script"
+	Entry string `json:"entry,omitempty"` // entrypoint path or command
+}
+
+// Lifecycle declares shell commands to run at server start/stop (v3+).
+type Lifecycle struct {
+	OnStart string `json:"on_start,omitempty"`
+	OnStop  string `json:"on_stop,omitempty"`
+}
+
+// HTTPRoute declares an HTTP endpoint a plugin handles (v3+).
+type HTTPRoute struct {
+	Path    string `json:"path"`
+	Handler string `json:"handler,omitempty"`
+}
+
 type Source string
 
 const (
@@ -35,6 +53,9 @@ type Manifest struct {
 	SupportedArch         []string           `json:"supported_arch,omitempty"`
 	DefaultProjectProfile string             `json:"default_project_profile,omitempty"`
 	Policies              Policies           `json:"policies,omitempty"`
+	ToolsProvider         *ToolsProvider     `json:"tools_provider,omitempty"`
+	Lifecycle             *Lifecycle         `json:"lifecycle,omitempty"`
+	HTTPRoutes            []HTTPRoute        `json:"http_routes,omitempty"`
 }
 
 type Definition struct {
@@ -53,6 +74,9 @@ type Definition struct {
 	SupportedArch         []string           `json:"supported_arch,omitempty"`
 	DefaultProjectProfile string             `json:"default_project_profile,omitempty"`
 	Policies              Policies           `json:"policies,omitempty"`
+	ToolsProvider         *ToolsProvider     `json:"tools_provider,omitempty"`
+	Lifecycle             *Lifecycle         `json:"lifecycle,omitempty"`
+	HTTPRoutes            []HTTPRoute        `json:"http_routes,omitempty"`
 }
 
 type Diagnostic struct {

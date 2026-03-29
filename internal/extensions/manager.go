@@ -104,6 +104,17 @@ func (m *Manager) Start(ctx context.Context) error {
 	if err := m.Reload(ctx); err != nil {
 		return err
 	}
+
+	// Run on_start lifecycle hooks (non-fatal)
+	m.mu.RLock()
+	plugins := append([]plugin.Definition(nil), m.snapshot.Plugins...)
+	m.mu.RUnlock()
+	if diags := runLifecycleHooks(ctx, plugins, "on_start", 0); len(diags) > 0 {
+		m.mu.Lock()
+		m.snapshot.Diagnostics = append(m.snapshot.Diagnostics, diags...)
+		m.mu.Unlock()
+	}
+
 	if !m.opts.WatchSkills && !m.opts.WatchPlugins {
 		return nil
 	}
@@ -130,6 +141,12 @@ func (m *Manager) Start(ctx context.Context) error {
 }
 
 func (m *Manager) Close() {
+	// Run on_stop lifecycle hooks before shutdown
+	m.mu.RLock()
+	plugins := append([]plugin.Definition(nil), m.snapshot.Plugins...)
+	m.mu.RUnlock()
+	_ = runLifecycleHooks(context.Background(), plugins, "on_stop", 0)
+
 	m.watcherMu.Lock()
 	defer m.watcherMu.Unlock()
 	if m.stopWatch != nil {
@@ -255,9 +272,17 @@ func (m *Manager) Reload(ctx context.Context) error {
 		Diagnostics: diagnostics,
 	}
 
+	// Collect tool provider tools (stub — Phase 2 will implement actual providers)
+	providerTools, providerDiags := m.collectToolProviderTools(ctx, plugins.Plugins)
+	if len(providerDiags) > 0 {
+		nextSnapshot.Diagnostics = append(nextSnapshot.Diagnostics, providerDiags...)
+	}
+
 	m.mu.Lock()
 	m.snapshot = nextSnapshot
-	m.chatTools = append([]tool.Tool(nil), mcpTools...)
+	allTools := append([]tool.Tool(nil), mcpTools...)
+	allTools = append(allTools, providerTools...)
+	m.chatTools = allTools
 	m.mu.Unlock()
 	return nil
 }
@@ -527,6 +552,26 @@ func formatDiagnostic(path string, message string) string {
 		return message
 	}
 	return fmt.Sprintf("%s: %s", path, message)
+}
+
+// collectToolProviderTools collects tools from plugins that declare a tools_provider.
+// Phase 1 stub: returns empty for all provider types. Phase 2 will implement actual providers.
+// mcp_server type is intentionally skipped here since those tools already flow through MCPRuntime.
+func (m *Manager) collectToolProviderTools(_ context.Context, plugins []plugin.Definition) ([]tool.Tool, []string) {
+	var tools []tool.Tool
+	var diagnostics []string
+	for _, p := range plugins {
+		if p.ToolsProvider == nil {
+			continue
+		}
+		switch p.ToolsProvider.Type {
+		case "mcp_server":
+			// Already handled by MCPRuntime — skip to avoid double-registration
+		case "go_plugin", "script":
+			diagnostics = append(diagnostics, fmt.Sprintf("plugin %q: tools_provider type %q not yet supported", p.ID, p.ToolsProvider.Type))
+		}
+	}
+	return tools, diagnostics
 }
 
 func uniqueStrings(values []string) []string {
