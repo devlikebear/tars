@@ -53,5 +53,3 @@ node_modules/
 .docs/
 .analysis/sessions/
 .analysis/RESUME.md
-AGENTS.md
-tesseract-threat-model.md
