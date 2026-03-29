@@ -73,16 +73,16 @@ func (c *Client) ListTools(ctx context.Context) ([]ToolInfo, error) {
 	wg.Wait()
 
 	out := make([]ToolInfo, 0)
-	failed := 0
-	for _, result := range results {
+	var errs []string
+	for i, result := range results {
 		if result.err != nil {
-			failed++
+			errs = append(errs, fmt.Sprintf("mcp server %q: %v", servers[i].Name, result.err))
 			continue
 		}
 		out = append(out, result.tools...)
 	}
-	if len(out) == 0 && failed > 0 {
-		return nil, fmt.Errorf("all configured mcp servers failed")
+	if len(out) == 0 && len(errs) > 0 {
+		return nil, fmt.Errorf("all configured mcp servers failed: %s", strings.Join(errs, "; "))
 	}
 	return out, nil
 }
