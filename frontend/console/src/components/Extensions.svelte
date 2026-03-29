@@ -51,6 +51,30 @@
   let updating = $state(false)
   let togglingItem = $state('')
 
+  // Version tracking for update detection
+  let installedVersions: Map<string, string> = $state(new Map())
+  let registryVersions: Map<string, string> = $state(new Map())
+
+  function hasUpdate(type: string, name: string): boolean {
+    const instVer = installedVersions.get(type + ':' + name)
+    const regVer = registryVersions.get(type + ':' + name)
+    if (!instVer || !regVer) return false
+    return instVer !== regVer
+  }
+
+  function registryVersion(type: string, name: string): string {
+    return registryVersions.get(type + ':' + name) || ''
+  }
+
+  let updateCount = $derived.by(() => {
+    let count = 0
+    for (const [key] of installedVersions) {
+      const reg = registryVersions.get(key)
+      if (reg && reg !== installedVersions.get(key)) count++
+    }
+    return count
+  })
+
   // Detail panel
   let detailKey: string | null = $state(null)
   let detailContent = $state('')
@@ -109,6 +133,13 @@
       disabledSkills = new Set((dis.skills ?? []).map((n: string) => n.toLowerCase()))
       disabledPlugins = new Set((dis.plugins ?? []).map((n: string) => n.toLowerCase()))
       disabledMCPs = new Set((dis.mcp_servers ?? []).map((n: string) => n.toLowerCase()))
+
+      // Track installed versions for update detection
+      const versions = new Map<string, string>()
+      for (const i of inst.skills) versions.set('skill:' + i.name, i.version || '')
+      for (const i of inst.plugins) versions.set('plugin:' + i.name, i.version || '')
+      for (const i of inst.mcps) versions.set('mcp:' + i.name, i.version || '')
+      installedVersions = versions
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load extensions'
     } finally {
@@ -127,6 +158,12 @@
         plugins: raw.plugins ?? [],
         mcp_servers: raw.mcp_servers ?? [],
       }
+      // Track registry versions for update detection
+      const regVers = new Map<string, string>()
+      for (const e of registry.skills) regVers.set('skill:' + e.name, e.version || '')
+      for (const e of registry.plugins) regVers.set('plugin:' + e.name, e.version || '')
+      for (const e of registry.mcp_servers) regVers.set('mcp:' + e.name, e.version || '')
+      registryVersions = regVers
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to fetch registry'
     } finally {
@@ -238,6 +275,7 @@
 
   onMount(() => {
     void loadInstalled()
+    void loadHub() // fetch registry for version comparison
   })
 </script>
 
@@ -268,9 +306,12 @@
       <button class="btn btn-ghost btn-sm" disabled={reloading} onclick={handleReload}>
         {reloading ? 'Reloading...' : 'Reload'}
       </button>
-      <button class="btn btn-ghost btn-sm" disabled={updating} onclick={handleUpdateAll}>
+      <button class="btn btn-ghost btn-sm" disabled={updating || updateCount === 0} onclick={handleUpdateAll}>
         {updating ? 'Updating...' : 'Update All'}
       </button>
+      {#if updateCount > 0}
+        <span class="badge badge-warning">{updateCount} update{updateCount > 1 ? 's' : ''}</span>
+      {/if}
     </div>
 
     {#if loading}
@@ -302,6 +343,11 @@
                   </div>
                   <div class="ext-item-actions">
                     <button class="toggle-switch" class:on={!isDisabledExt('skill', s.name)} disabled={togglingItem === 'skill:' + s.name} onclick={() => handleToggle('skill', s.name)}>{isDisabledExt('skill', s.name) ? 'OFF' : 'ON'}</button>
+                    {#if hasUpdate('skill', s.name)}
+                      <button class="btn btn-warning btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleInstall('skill', s.name)} title="Update to v{registryVersion('skill', s.name)}">
+                        {busyItem === 'skill:' + s.name ? '...' : 'Update'}
+                      </button>
+                    {/if}
                     {#if isHubInstalled('skill', s.name)}
                       <button class="btn btn-danger btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleUninstall('skill', s.name)}>{busyItem === 'skill:' + s.name ? '...' : 'Uninstall'}</button>
                     {/if}
@@ -349,6 +395,11 @@
                     title={isDisabledExt('plugin', p.id || p.name) ? 'Enable' : 'Disable'}
                     onclick={() => handleToggle('plugin', p.id || p.name)}
                   >{isDisabledExt('plugin', p.id || p.name) ? 'OFF' : 'ON'}</button>
+                  {#if hasUpdate('plugin', p.id || p.name)}
+                    <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleInstall('plugin', p.id || p.name)} title="Update to v{registryVersion('plugin', p.id || p.name)}">
+                      {busyItem === 'plugin:' + (p.id || p.name) ? '...' : 'Update'}
+                    </button>
+                  {/if}
                   {#if isHubInstalled('plugin', p.id || p.name)}
                     <button class="btn btn-danger btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleUninstall('plugin', p.id || p.name)}>
                       {busyItem === 'plugin:' + (p.id || p.name) ? '...' : 'Uninstall'}
@@ -389,6 +440,11 @@
                     title={isDisabledExt('mcp', m.name) ? 'Enable' : 'Disable'}
                     onclick={() => handleToggle('mcp', m.name)}
                   >{isDisabledExt('mcp', m.name) ? 'OFF' : 'ON'}</button>
+                  {#if hasUpdate('mcp', m.name)}
+                    <button class="btn btn-warning btn-sm" disabled={busyItem === 'mcp:' + m.name} onclick={() => handleInstall('mcp', m.name)} title="Update to v{registryVersion('mcp', m.name)}">
+                      {busyItem === 'mcp:' + m.name ? '...' : 'Update'}
+                    </button>
+                  {/if}
                   {#if isHubInstalled('mcp', m.name)}
                     <button class="btn btn-danger btn-sm" disabled={busyItem === 'mcp:' + m.name} onclick={() => handleUninstall('mcp', m.name)}>
                       {busyItem === 'mcp:' + m.name ? '...' : 'Uninstall'}
@@ -433,7 +489,11 @@
                     <div class="ext-tags">{#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}</div>
                   {/if}
                 </div>
-                {#if isInstalled('skill', entry.name)}
+                {#if hasUpdate('skill', entry.name)}
+                  <button class="btn btn-warning btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => handleInstall('skill', entry.name)}>
+                    {busyItem === 'skill:' + entry.name ? 'Updating...' : 'Update'}
+                  </button>
+                {:else if isInstalled('skill', entry.name)}
                   <span class="badge badge-success">Installed</span>
                 {:else}
                   <button class="btn btn-primary btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => handleInstall('skill', entry.name)}>{busyItem === 'skill:' + entry.name ? 'Installing...' : 'Install'}</button>
@@ -471,7 +531,11 @@
                   </div>
                 {/if}
               </div>
-              {#if isInstalled('plugin', entry.name)}
+              {#if hasUpdate('plugin', entry.name)}
+                <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
+                  {busyItem === 'plugin:' + entry.name ? 'Updating...' : 'Update'}
+                </button>
+              {:else if isInstalled('plugin', entry.name)}
                 <span class="badge badge-success">Installed</span>
               {:else}
                 <button class="btn btn-primary btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
@@ -504,7 +568,11 @@
                   </div>
                 {/if}
               </div>
-              {#if isInstalled('mcp', entry.name)}
+              {#if hasUpdate('mcp', entry.name)}
+                <button class="btn btn-warning btn-sm" disabled={busyItem === 'mcp:' + entry.name} onclick={() => handleInstall('mcp', entry.name)}>
+                  {busyItem === 'mcp:' + entry.name ? 'Updating...' : 'Update'}
+                </button>
+              {:else if isInstalled('mcp', entry.name)}
                 <span class="badge badge-success">Installed</span>
               {:else}
                 <button class="btn btn-primary btn-sm" disabled={busyItem === 'mcp:' + entry.name} onclick={() => handleInstall('mcp', entry.name)}>
