@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { listSessions, getSessionHistory } from '../lib/api'
-  import { renderMarkdown } from '../lib/markdown'
-  import type { Session, SessionMessage } from '../lib/types'
+  import { listSessions } from '../lib/api'
+  import type { Session } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
 
   let sessions: Session[] = $state([])
@@ -11,9 +10,6 @@
   let showHidden = $state(false)
 
   let selectedSession: Session | null = $state(null)
-  let history: SessionMessage[] = $state([])
-  let historyLoading = $state(false)
-  let historyError = $state('')
 
   function fmt(value?: string): string {
     const text = value?.trim()
@@ -47,29 +43,17 @@
     }
   }
 
-  async function selectSession(session: Session) {
+  function selectSession(session: Session) {
     if (selectedSession?.id === session.id) {
       selectedSession = null
-      history = []
       return
     }
     selectedSession = session
-    historyLoading = true
-    historyError = ''
-    history = []
-    try {
-      history = await getSessionHistory(session.id)
-    } catch (err) {
-      historyError = err instanceof Error ? err.message : 'Failed to load history'
-    } finally {
-      historyLoading = false
-    }
   }
 
   function toggleHidden() {
     showHidden = !showHidden
     selectedSession = null
-    history = []
     void load()
   }
 
@@ -137,61 +121,11 @@
             <div><dt>Updated</dt><dd>{fmt(selectedSession.updated_at)}</dd></div>
           </dl>
 
-          <!-- Chat -->
+          <!-- Chat (includes history + tool cards) -->
           <div class="session-chat">
-            <span class="card-title">Chat</span>
             {#key selectedSession.id}
-              <ChatPanel sessionId={selectedSession.id} projectId={selectedSession.project_id || undefined} />
+              <ChatPanel sessionId={selectedSession.id} projectId={selectedSession.project_id || undefined} onSessionChange={load} />
             {/key}
-          </div>
-
-          <div class="session-transcript">
-            <span class="card-title">Transcript</span>
-            {#if historyLoading}
-              <div class="sessions-loading">Loading transcript...</div>
-            {:else if historyError}
-              <div class="error-banner">{historyError}</div>
-            {:else if history.length === 0}
-              <div class="empty-state"><p>No messages in this session.</p></div>
-            {:else}
-              <div class="transcript-messages">
-                {#each history as msg}
-                  {#if msg.role === 'tool'}
-                    <div class="transcript-msg transcript-tool">
-                      <div class="transcript-msg-top">
-                        <span class="transcript-tool-icon">{'\u2713'}</span>
-                        <span class="transcript-tool-name">{msg.tool_name || 'tool'}</span>
-                        <span class="transcript-time">{fmt(msg.timestamp)}</span>
-                      </div>
-                      {#if msg.tool_args}
-                        <div class="transcript-tool-detail">
-                          <span class="transcript-tool-label">args</span>
-                          <code class="transcript-tool-value">{msg.tool_args}</code>
-                        </div>
-                      {/if}
-                      {#if msg.content}
-                        <div class="transcript-tool-detail">
-                          <span class="transcript-tool-label">result</span>
-                          <code class="transcript-tool-value">{msg.content}</code>
-                        </div>
-                      {/if}
-                    </div>
-                  {:else}
-                    <div class="transcript-msg transcript-{msg.role}">
-                      <div class="transcript-msg-top">
-                        <span class="transcript-role">{msg.role}</span>
-                        <span class="transcript-time">{fmt(msg.timestamp)}</span>
-                      </div>
-                      {#if msg.role === 'assistant'}
-                        <div class="transcript-content transcript-md">{@html renderMarkdown(msg.content || '')}</div>
-                      {:else}
-                        <div class="transcript-content">{msg.content || ''}</div>
-                      {/if}
-                    </div>
-                  {/if}
-                {/each}
-              </div>
-            {/if}
           </div>
         </div>
       {/if}
