@@ -19,9 +19,10 @@
     projectId?: string
     sessionId?: string
     initialPrompt?: string
+    onSessionChange?: () => void
   }
 
-  let { projectId, sessionId, initialPrompt }: Props = $props()
+  let { projectId, sessionId, initialPrompt, onSessionChange }: Props = $props()
 
   let chatInput = $state('')
   let chatBusy = $state(false)
@@ -49,6 +50,7 @@
     chatStatusLine = ''
     chatError = ''
     showSessions = false
+    autoScroll = true
     try {
       const history = await getSessionHistory(sid)
       for (const msg of history) {
@@ -72,6 +74,7 @@
         }
       }
       chatMessages = [...chatMessages]
+      void scrollToBottom()
     } catch { /* ignore */ }
   }
 
@@ -155,6 +158,7 @@
         chatSessionId = event.session_id?.trim() || chatSessionId
         chatStatusLine = 'done'
         void loadSessions()
+        onSessionChange?.()
         break
       case 'error':
         chatError = event.error?.trim() || 'Stream failed'
