@@ -564,6 +564,11 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/project-briefs/", handlers.projects)
 	mux.Handle("/console", handlers.console)
 	mux.Handle("/console/", handlers.console)
+	if viteProxy := newConsoleDevViteHandler(); viteProxy != nil {
+		for _, prefix := range []string{"/@vite/", "/@fs/", "/src/", "/node_modules/"} {
+			mux.Handle(prefix, viteProxy)
+		}
+	}
 	mux.Handle("/dashboards", legacyDashboard)
 	mux.Handle("/dashboards/", legacyDashboard)
 	mux.Handle("/ui/projects/", legacyDashboard)

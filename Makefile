@@ -291,8 +291,14 @@ dev-console: console-install
 	@echo "  Console: http://$(API_ADDR)/console"
 	@echo "  Vite:    http://127.0.0.1:5173 (proxied via Go server)"
 	@echo ""
-	@cd frontend/console && npm run dev &
-	@sleep 2
+	@trap 'kill 0' EXIT; \
+	cd frontend/console && npm run dev & \
+	echo "Waiting for Vite on port 5173..."; \
+	for i in $$(seq 1 30); do \
+		if curl -s -o /dev/null http://127.0.0.1:5173 2>/dev/null; then break; fi; \
+		sleep 1; \
+	done; \
+	echo "Vite ready — starting Go server"; \
 	TARS_CONSOLE_DEV_URL=http://127.0.0.1:5173 \
 	TARS_API_AUTH_MODE=off \
 	TARS_DASHBOARD_AUTH_MODE=off \

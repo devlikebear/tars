@@ -31,6 +31,21 @@ func newConsoleHandler(logger zerolog.Logger) (http.Handler, error) {
 	return newConsoleStaticHandler(logger, distFS, consoleHasBuiltAssets(distFS)), nil
 }
 
+// newConsoleDevViteHandler returns a passthrough proxy for Vite dev server
+// paths (/@vite/, /src/, /@fs/, /node_modules/) that are requested at the
+// root level by Vite's HMR client. Returns nil when not in dev proxy mode.
+func newConsoleDevViteHandler() http.Handler {
+	proxyURL := strings.TrimSpace(os.Getenv(consoleDevProxyEnv))
+	if proxyURL == "" {
+		return nil
+	}
+	target, err := url.Parse(proxyURL)
+	if err != nil {
+		return nil
+	}
+	return httputil.NewSingleHostReverseProxy(target)
+}
+
 func newConsoleStaticHandler(logger zerolog.Logger, distFS fs.FS, builtAssets bool) http.Handler {
 	if !builtAssets {
 		logger.Warn().
