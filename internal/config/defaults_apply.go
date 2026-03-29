@@ -246,13 +246,6 @@ func applyBrowserDefaults(cfg *Config, defaults Config) {
 	if cfg.BrowserDefaultProfile == "" {
 		cfg.BrowserDefaultProfile = defaults.BrowserDefaultProfile
 	}
-	if cfg.BrowserRelayAddr == "" {
-		cfg.BrowserRelayAddr = defaults.BrowserRelayAddr
-	}
-	cfg.BrowserRelayToken = strings.TrimSpace(cfg.BrowserRelayToken)
-	if len(cfg.BrowserRelayOriginAllowlist) == 0 {
-		cfg.BrowserRelayOriginAllowlist = append([]string{}, defaults.BrowserRelayOriginAllowlist...)
-	}
 	if strings.TrimSpace(cfg.BrowserSiteFlowsDir) == "" {
 		cfg.BrowserSiteFlowsDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "automation", "sites")
 	}

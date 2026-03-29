@@ -146,11 +146,6 @@ type BrowserConfig struct {
 	BrowserManagedHeadless        bool
 	BrowserManagedExecutablePath  string
 	BrowserManagedUserDataDir     string
-	BrowserRelayEnabled           bool
-	BrowserRelayAddr              string
-	BrowserRelayToken             string
-	BrowserRelayAllowQueryToken   bool
-	BrowserRelayOriginAllowlist   []string
 	BrowserSiteFlowsDir           string
 	BrowserAutoLoginSiteAllowlist []string
 }

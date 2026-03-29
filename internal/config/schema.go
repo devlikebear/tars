@@ -122,8 +122,6 @@ func Schema() []FieldMeta {
 		f("browser_managed_headless", "Browser", "bool", "Headless Mode", "Run managed browser without GUI"),
 		f("browser_managed_executable_path", "Browser", "string", "Executable Path", "Path to browser executable"),
 		f("browser_managed_user_data_dir", "Browser", "string", "User Data Dir", "Browser user data directory"),
-		f("browser_relay_enabled", "Browser", "bool", "Relay Enabled", "Enable browser relay WebSocket server"),
-		f("browser_relay_addr", "Browser", "string", "Relay Address", "WebSocket relay listen address"),
 		f("browser_site_flows_dir", "Browser", "string", "Site Flows Dir", "Directory for browser site flow definitions"),
 
 		// ── Gateway ──────────────────────────────
@@ -341,10 +339,6 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.BrowserManagedExecutablePath
 	case "browser_managed_user_data_dir":
 		return cfg.BrowserManagedUserDataDir
-	case "browser_relay_enabled":
-		return cfg.BrowserRelayEnabled
-	case "browser_relay_addr":
-		return cfg.BrowserRelayAddr
 	case "browser_site_flows_dir":
 		return cfg.BrowserSiteFlowsDir
 	// Gateway
