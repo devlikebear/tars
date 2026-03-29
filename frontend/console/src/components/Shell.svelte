@@ -9,6 +9,7 @@
     activeProject?: string
     unreadCount?: number
     onNavigate: (path: string) => void
+    onUnreadChange?: (count: number) => void
     children: Snippet
   }
 
@@ -18,6 +19,7 @@
     activeProject = '',
     unreadCount = 0,
     onNavigate,
+    onUnreadChange,
     children,
   }: Props = $props()
 </script>
@@ -25,7 +27,7 @@
 <div class="shell">
   <Nav {currentPath} {onNavigate} />
   <div class="shell-main">
-    <Header {serverHealth} {activeProject} {unreadCount} />
+    <Header {serverHealth} {activeProject} {unreadCount} {onUnreadChange} />
     <main class="shell-content">
       {@render children()}
     </main>
