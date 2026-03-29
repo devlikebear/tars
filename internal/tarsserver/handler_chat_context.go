@@ -119,7 +119,8 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusInternalServerError, "save message failed", err
 	}
 
-	llmMessages := buildLLMMessages(systemPrompt, history, req.Message)
+	contentBlocks := attachmentsToContentBlocks(req.Attachments)
+	llmMessages := buildLLMMessagesWithBlocks(systemPrompt, history, req.Message, contentBlocks)
 	authRole := strings.TrimSpace(serverauth.RoleFromRequest(r))
 	injectedSchemas := resolveInjectedToolSchemas(
 		registry,

@@ -11,11 +11,21 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
+// ContentBlock represents a single block in a multimodal message.
+// Type is "text", "image", or "document".
+type ContentBlock struct {
+	Type      string `json:"type"`                 // "text", "image", "document"
+	Text      string `json:"text,omitempty"`        // for type=text
+	MediaType string `json:"media_type,omitempty"`  // e.g. "image/png", "application/pdf"
+	Data      string `json:"data,omitempty"`        // base64-encoded binary
+}
+
 type ChatMessage struct {
-	Role       string     `json:"role"` // system, user, assistant, tool
-	Content    string     `json:"content"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
+	Role          string         `json:"role"` // system, user, assistant, tool
+	Content       string         `json:"content"`
+	ContentBlocks []ContentBlock `json:"content_blocks,omitempty"` // multimodal content (takes priority over Content when non-empty)
+	ToolCalls     []ToolCall     `json:"tool_calls,omitempty"`
+	ToolCallID    string         `json:"tool_call_id,omitempty"`
 }
 
 type ToolCall struct {

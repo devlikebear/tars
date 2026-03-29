@@ -339,11 +339,10 @@ func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model
 				instructions = append(instructions, s)
 			}
 		case "user":
+			content := toCodexUserContent(msg)
 			input = append(input, map[string]any{
-				"role": "user",
-				"content": []any{
-					map[string]any{"type": "input_text", "text": msg.Content},
-				},
+				"role":    "user",
+				"content": content,
 			})
 		case "assistant":
 			if strings.TrimSpace(msg.Content) != "" {
@@ -817,4 +816,43 @@ func firstNonEmptyAny(values ...any) string {
 		}
 	}
 	return ""
+}
+
+// toCodexUserContent converts a ChatMessage to OpenAI Responses API content blocks.
+// Supports text + images (input_image with data URL).
+func toCodexUserContent(msg ChatMessage) []any {
+	if len(msg.ContentBlocks) == 0 {
+		return []any{
+			map[string]any{"type": "input_text", "text": msg.Content},
+		}
+	}
+
+	blocks := make([]any, 0, len(msg.ContentBlocks)+1)
+	if strings.TrimSpace(msg.Content) != "" {
+		blocks = append(blocks, map[string]any{"type": "input_text", "text": msg.Content})
+	}
+	for _, b := range msg.ContentBlocks {
+		switch b.Type {
+		case "text":
+			if strings.TrimSpace(b.Text) != "" {
+				blocks = append(blocks, map[string]any{"type": "input_text", "text": b.Text})
+			}
+		case "image":
+			dataURL := "data:" + b.MediaType + ";base64," + b.Data
+			blocks = append(blocks, map[string]any{
+				"type":      "input_image",
+				"image_url": dataURL,
+			})
+		case "document":
+			// Responses API doesn't natively support documents; inject as file reference text
+			blocks = append(blocks, map[string]any{
+				"type": "input_text",
+				"text": "[Attached PDF document — content available in base64 format]",
+			})
+		}
+	}
+	if len(blocks) == 0 {
+		return []any{map[string]any{"type": "input_text", "text": msg.Content}}
+	}
+	return blocks
 }

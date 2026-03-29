@@ -334,9 +334,47 @@ type openAIWireToolCall struct {
 
 type openAIWireMessage struct {
 	Role       string               `json:"role"`
-	Content    string               `json:"content,omitempty"`
+	Content    any                  `json:"content,omitempty"`
 	ToolCalls  []openAIWireToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string               `json:"tool_call_id,omitempty"`
+}
+
+// toOpenAIContent converts a ChatMessage to OpenAI Chat Completions content format.
+// Returns string for text-only, or array for multimodal (text + image_url).
+func toOpenAIContent(msg ChatMessage) any {
+	if len(msg.ContentBlocks) == 0 {
+		return msg.Content
+	}
+
+	blocks := make([]map[string]any, 0, len(msg.ContentBlocks)+1)
+	if strings.TrimSpace(msg.Content) != "" {
+		blocks = append(blocks, map[string]any{"type": "text", "text": msg.Content})
+	}
+	for _, b := range msg.ContentBlocks {
+		switch b.Type {
+		case "text":
+			if strings.TrimSpace(b.Text) != "" {
+				blocks = append(blocks, map[string]any{"type": "text", "text": b.Text})
+			}
+		case "image":
+			dataURL := "data:" + b.MediaType + ";base64," + b.Data
+			blocks = append(blocks, map[string]any{
+				"type": "image_url",
+				"image_url": map[string]string{
+					"url": dataURL,
+				},
+			})
+		case "document":
+			blocks = append(blocks, map[string]any{
+				"type": "text",
+				"text": "[Attached PDF document]",
+			})
+		}
+	}
+	if len(blocks) == 0 {
+		return msg.Content
+	}
+	return blocks
 }
 
 func toOpenAIWireMessages(messages []ChatMessage) []openAIWireMessage {
@@ -347,7 +385,7 @@ func toOpenAIWireMessages(messages []ChatMessage) []openAIWireMessage {
 	for _, m := range messages {
 		wire := openAIWireMessage{
 			Role:       m.Role,
-			Content:    m.Content,
+			Content:    toOpenAIContent(m),
 			ToolCallID: m.ToolCallID,
 		}
 		if len(m.ToolCalls) > 0 {
