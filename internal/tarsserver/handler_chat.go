@@ -25,7 +25,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func resolveChatSession(store *session.Store, sessionID string, mainSessionID string, userMessage string) (string, error) {
+func resolveChatSession(store *session.Store, sessionID string, mainSessionID string, userMessage string, projectID string) (string, error) {
 	// The public session API exposes the main session as id="main";
 	// translate it back to the real internal ID so store.Get succeeds.
 	trimmedID := strings.TrimSpace(sessionID)
@@ -35,6 +35,10 @@ func resolveChatSession(store *session.Store, sessionID string, mainSessionID st
 		return createFallbackChatSession(store)
 	}
 	if strings.TrimSpace(sessionID) == "" {
+		// Project chats always get their own session — never fall back to main
+		if strings.TrimSpace(projectID) != "" {
+			return createFallbackChatSession(store)
+		}
 		if project.DefaultWorkflowPolicy.IsKickoffMessage(userMessage) {
 			return createFallbackChatSession(store)
 		}
