@@ -156,6 +156,9 @@ export type ChatEvent = {
   message?: string
   phase?: string
   tool_name?: string
+  tool_call_id?: string
+  tool_args_preview?: string
+  tool_result_preview?: string
   skill_name?: string
   skill_reason?: string
 }
