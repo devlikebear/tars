@@ -28,8 +28,11 @@ import (
 func resolveChatSession(store *session.Store, sessionID string, mainSessionID string, userMessage string) (string, error) {
 	// The public session API exposes the main session as id="main";
 	// translate it back to the real internal ID so store.Get succeeds.
-	if strings.EqualFold(strings.TrimSpace(sessionID), "main") {
+	trimmedID := strings.TrimSpace(sessionID)
+	if strings.EqualFold(trimmedID, "main") {
 		sessionID = strings.TrimSpace(mainSessionID)
+	} else if strings.EqualFold(trimmedID, "new") {
+		return createFallbackChatSession(store)
 	}
 	if strings.TrimSpace(sessionID) == "" {
 		if project.DefaultWorkflowPolicy.IsKickoffMessage(userMessage) {

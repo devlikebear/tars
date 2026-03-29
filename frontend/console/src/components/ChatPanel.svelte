@@ -76,7 +76,7 @@
   }
 
   function startNewSession() {
-    chatSessionId = ''
+    chatSessionId = 'new'
     chatMessages = [{ id: 'system-init', role: 'system', text: 'New session' }]
     chatStatusLine = ''
     chatError = ''
