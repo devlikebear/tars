@@ -868,6 +868,44 @@ func (m *AutopilotManager) removeRun(projectID string) {
 	_ = os.Remove(path)
 }
 
+// Resume re-starts a blocked or failed autopilot run.
+func (m *AutopilotManager) Resume(ctx context.Context, projectID string) (AutopilotRun, error) {
+	if m == nil {
+		return AutopilotRun{}, fmt.Errorf("autopilot manager not configured")
+	}
+	projectID = strings.TrimSpace(projectID)
+	run, ok := m.Status(projectID)
+	if !ok {
+		return AutopilotRun{}, fmt.Errorf("no autopilot run for project %s", projectID)
+	}
+	if run.Status != AutopilotStatusBlocked && run.Status != AutopilotStatusFailed {
+		return run, nil // already running or done
+	}
+	// Reset status and restart the loop
+	m.stopLoop(projectID)
+	m.setRun(projectID, func(r *AutopilotRun) {
+		r.Status = AutopilotStatusRunning
+		r.Message = "resumed by user"
+		r.FinishedAt = ""
+		r.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	})
+	_ = m.persistCurrentRun(projectID)
+	runID := run.RunID
+	go m.run(ctx, projectID, runID)
+	updated, _ := m.Status(projectID)
+	return updated, nil
+}
+
+// Reset removes the current autopilot run, allowing a fresh start.
+func (m *AutopilotManager) Reset(projectID string) error {
+	if m == nil {
+		return fmt.Errorf("autopilot manager not configured")
+	}
+	m.stopLoop(strings.TrimSpace(projectID))
+	m.removeRun(strings.TrimSpace(projectID))
+	return nil
+}
+
 type errorSource string
 
 func writeJSONAtomicWithTrailingNewline(path string, payload any) error {
