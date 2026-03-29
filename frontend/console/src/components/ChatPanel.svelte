@@ -6,8 +6,13 @@
 
   type ChatMessage = {
     id: string
-    role: 'user' | 'assistant' | 'system' | 'error'
+    role: 'user' | 'assistant' | 'system' | 'error' | 'tool'
     text: string
+    toolName?: string
+    toolCallId?: string
+    toolArgs?: string
+    toolResult?: string
+    toolDone?: boolean
   }
 
   interface Props {
@@ -43,6 +48,45 @@
   function handleChatEvent(event: ChatEvent, assistantId: string) {
     switch (event.type) {
       case 'status':
+        if (event.phase === 'before_tool_call' && event.tool_name) {
+          const toolMsg: ChatMessage = {
+            id: `tool-${event.tool_call_id || Date.now()}`,
+            role: 'tool',
+            text: '',
+            toolName: event.tool_name,
+            toolCallId: event.tool_call_id,
+            toolArgs: event.tool_args_preview,
+            toolDone: false,
+          }
+          const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
+          if (aIdx >= 0) {
+            chatMessages.splice(aIdx, 0, toolMsg)
+            chatMessages = [...chatMessages]
+            void scrollToBottom()
+          }
+        } else if (event.phase === 'after_tool_call' && event.tool_call_id) {
+          const tIdx = chatMessages.findIndex((m) => m.toolCallId === event.tool_call_id)
+          if (tIdx >= 0) {
+            chatMessages[tIdx] = {
+              ...chatMessages[tIdx],
+              toolResult: event.tool_result_preview,
+              toolDone: true,
+            }
+            chatMessages = [...chatMessages]
+            void scrollToBottom()
+          }
+        } else if (event.phase === 'skill_selected' && event.skill_name) {
+          const skillMsg: ChatMessage = {
+            id: `skill-${Date.now()}`,
+            role: 'system',
+            text: `skill selected: ${event.skill_name}`,
+          }
+          const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
+          if (aIdx >= 0) {
+            chatMessages.splice(aIdx, 0, skillMsg)
+            chatMessages = [...chatMessages]
+          }
+        }
         chatStatusLine = [event.phase, event.message, event.tool_name, event.skill_name]
           .filter(Boolean).join(' \u00b7 ')
         break
@@ -205,14 +249,40 @@
   </div>
   <div class="chat-log" bind:this={chatLogEl} onscroll={handleScroll}>
     {#each chatMessages as msg}
-      <div class="chat-msg chat-{msg.role}">
-        <span class="chat-role">{msg.role}</span>
-        {#if msg.role === 'assistant'}
-          <div class="chat-text chat-md">{@html renderMarkdown(msg.text || '\u2026')}</div>
-        {:else}
-          <div class="chat-text">{msg.text || '\u2026'}</div>
-        {/if}
-      </div>
+      {#if msg.role === 'tool'}
+        <div class="chat-msg chat-tool">
+          <div class="tool-header">
+            <span class="tool-icon">{msg.toolDone ? '\u2713' : '\u27F3'}</span>
+            <span class="tool-name">{msg.toolName}</span>
+            {#if msg.toolDone}
+              <span class="badge badge-success tool-badge">done</span>
+            {:else}
+              <span class="badge badge-accent tool-badge">running</span>
+            {/if}
+          </div>
+          {#if msg.toolArgs}
+            <div class="tool-detail">
+              <span class="tool-detail-label">args</span>
+              <code class="tool-detail-value">{msg.toolArgs}</code>
+            </div>
+          {/if}
+          {#if msg.toolResult}
+            <div class="tool-detail">
+              <span class="tool-detail-label">result</span>
+              <code class="tool-detail-value">{msg.toolResult}</code>
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <div class="chat-msg chat-{msg.role}">
+          <span class="chat-role">{msg.role}</span>
+          {#if msg.role === 'assistant'}
+            <div class="chat-text chat-md">{@html renderMarkdown(msg.text || '\u2026')}</div>
+          {:else}
+            <div class="chat-text">{msg.text || '\u2026'}</div>
+          {/if}
+        </div>
+      {/if}
     {/each}
   </div>
   {#if chatError}
@@ -309,6 +379,56 @@
   .chat-error {
     background: var(--error-muted);
     border: 1px solid rgba(248, 113, 113, 0.15);
+  }
+
+  .chat-tool {
+    background: rgba(139, 92, 246, 0.06);
+    border: 1px solid rgba(139, 92, 246, 0.12);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+  }
+
+  .tool-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .tool-icon { font-size: var(--text-sm); }
+
+  .tool-name {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .tool-badge { font-size: 10px; padding: 1px 6px; }
+
+  .tool-detail {
+    margin-top: var(--space-1);
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+  }
+
+  .tool-detail-label {
+    font-family: var(--font-mono);
+    color: var(--text-ghost);
+    flex-shrink: 0;
+    min-width: 36px;
+  }
+
+  .tool-detail-value {
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: var(--text-xs);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 2px 6px;
+    border-radius: 3px;
+    max-height: 120px;
+    overflow-y: auto;
   }
 
   .chat-role {
