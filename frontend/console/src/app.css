@@ -222,6 +222,8 @@ code, .mono {
 .btn-ghost:hover:not(:disabled) { background: var(--bg-elevated); color: var(--text-primary); }
 .btn-danger { background: transparent; border-color: rgba(248, 113, 113, 0.3); color: var(--error); }
 .btn-danger:hover:not(:disabled) { background: var(--error-muted); }
+.btn-warning { background: transparent; border-color: rgba(224, 145, 69, 0.4); color: var(--accent); }
+.btn-warning:hover:not(:disabled) { background: rgba(224, 145, 69, 0.1); }
 .btn-sm { padding: 4px 10px; font-size: var(--text-xs); }
 
 /* ── Form ──────────────────────────────────────── */
