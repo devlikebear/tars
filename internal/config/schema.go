@@ -1,5 +1,7 @@
 package config
 
+import "strings"
+
 // FieldMeta describes a single configuration field for UI rendering.
 type FieldMeta struct {
 	Key         string   `json:"key"`
@@ -106,7 +108,7 @@ func Schema() []FieldMeta {
 		f("tools_gateway_enabled", "Tools", "bool", "Gateway Tool", "Enable gateway dispatch tool"),
 
 		// ── MCP ──────────────────────────────────
-		f("mcp_command_allowlist_json", "MCP", "json", "Command Allowlist", "JSON array of allowed commands for MCP servers (e.g. [\"npx\",\"node\",\"uvx\",\"python3\"])"),
+		f("mcp_command_allowlist_json", "MCP", "string", "Command Allowlist", "Comma-separated list of allowed commands for MCP servers (e.g. npx,node,uvx,python3)"),
 
 		// ── Vault ────────────────────────────────
 		f("vault_enabled", "Vault", "bool", "Enabled", "Enable HashiCorp Vault integration"),
@@ -313,7 +315,7 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsGatewayEnabled
 	// MCP
 	case "mcp_command_allowlist_json":
-		return cfg.MCPCommandAllowlist
+		return strings.Join(cfg.MCPCommandAllowlist, ",")
 	// Vault
 	case "vault_enabled":
 		return cfg.VaultEnabled
