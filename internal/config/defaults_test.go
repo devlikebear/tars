@@ -1152,18 +1152,6 @@ func TestLoad_VaultAndBrowserRuntimeDefaults(t *testing.T) {
 	if cfg.BrowserDefaultProfile != "managed" {
 		t.Fatalf("expected browser default profile managed, got %q", cfg.BrowserDefaultProfile)
 	}
-	if cfg.BrowserRelayEnabled != true {
-		t.Fatalf("expected browser relay enabled by default")
-	}
-	if cfg.BrowserRelayAddr != "127.0.0.1:43182" {
-		t.Fatalf("expected browser relay addr default, got %q", cfg.BrowserRelayAddr)
-	}
-	if cfg.BrowserRelayToken != "" {
-		t.Fatalf("expected browser relay token default empty, got %q", cfg.BrowserRelayToken)
-	}
-	if len(cfg.BrowserRelayOriginAllowlist) != 1 || cfg.BrowserRelayOriginAllowlist[0] != "chrome-extension://*" {
-		t.Fatalf("unexpected relay origin allowlist: %+v", cfg.BrowserRelayOriginAllowlist)
-	}
 	if cfg.BrowserSiteFlowsDir != filepath.Join(cfg.WorkspaceDir, "automation", "sites") {
 		t.Fatalf("unexpected browser site flows dir: %q", cfg.BrowserSiteFlowsDir)
 	}
@@ -1194,10 +1182,6 @@ func TestLoad_VaultAndBrowserRuntimeFromYAMLAndEnv(t *testing.T) {
 		"browser_managed_headless: true",
 		"browser_managed_executable_path: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 		"browser_managed_user_data_dir: /tmp/yaml-browser-profile",
-		"browser_relay_enabled: true",
-		"browser_relay_addr: 127.0.0.1:53182",
-		"browser_relay_token: yaml-relay-token",
-		`browser_relay_origin_allowlist_json: ["chrome-extension://abc*"]`,
 		"browser_site_flows_dir: /tmp/yaml-site-flows",
 		`browser_auto_login_site_allowlist_json: ["intranet","grafana"]`,
 	}, "\n")
@@ -1209,9 +1193,6 @@ func TestLoad_VaultAndBrowserRuntimeFromYAMLAndEnv(t *testing.T) {
 	t.Setenv("VAULT_TIMEOUT_MS", "3200")
 	t.Setenv("VAULT_TOKEN", "env-vault-token")
 	t.Setenv("BROWSER_DEFAULT_PROFILE", "managed")
-	t.Setenv("BROWSER_RELAY_ADDR", "127.0.0.1:63182")
-	t.Setenv("BROWSER_RELAY_TOKEN", "env-relay-token")
-
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -1231,28 +1212,11 @@ func TestLoad_VaultAndBrowserRuntimeFromYAMLAndEnv(t *testing.T) {
 	if cfg.BrowserDefaultProfile != "managed" {
 		t.Fatalf("expected env browser default profile managed, got %q", cfg.BrowserDefaultProfile)
 	}
-	if cfg.BrowserRelayAddr != "127.0.0.1:63182" {
-		t.Fatalf("expected env browser relay addr, got %q", cfg.BrowserRelayAddr)
-	}
-	if cfg.BrowserRelayToken != "env-relay-token" {
-		t.Fatalf("expected env browser relay token, got %q", cfg.BrowserRelayToken)
-	}
 	if len(cfg.BrowserAutoLoginSiteAllowlist) != 2 {
 		t.Fatalf("unexpected browser auto login allowlist: %+v", cfg.BrowserAutoLoginSiteAllowlist)
 	}
 	if len(cfg.VaultSecretPathAllowlist) != 2 {
 		t.Fatalf("unexpected vault secret path allowlist: %+v", cfg.VaultSecretPathAllowlist)
-	}
-}
-
-func TestLoad_BrowserRelayTokenFromTarsEnvAlias(t *testing.T) {
-	t.Setenv("TARS_BROWSER_RELAY_TOKEN", "relay-from-alias")
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-	if cfg.BrowserRelayToken != "relay-from-alias" {
-		t.Fatalf("expected relay token from TARS_BROWSER_RELAY_TOKEN, got %q", cfg.BrowserRelayToken)
 	}
 }
 
@@ -1422,9 +1386,6 @@ func TestLoad_SecurityHardeningDefaults(t *testing.T) {
 	if cfg.ToolsAllowHighRiskUser {
 		t.Fatalf("expected tools_allow_high_risk_user=false by default")
 	}
-	if cfg.BrowserRelayAllowQueryToken {
-		t.Fatalf("expected browser_relay_allow_query_token=false by default")
-	}
 	if cfg.PluginsAllowMCPServers {
 		t.Fatalf("expected plugins_allow_mcp_servers=false by default")
 	}
@@ -1441,7 +1402,6 @@ func TestLoad_SecurityHardeningFromYAMLAndEnv(t *testing.T) {
 		"api_max_inflight_chat: 7",
 		"api_max_inflight_agent_runs: 9",
 		"tools_allow_high_risk_user: true",
-		"browser_relay_allow_query_token: true",
 		"plugins_allow_mcp_servers: true",
 		`mcp_command_allowlist_json: ["npx","node"]`,
 	}, "\n")
@@ -1468,9 +1428,6 @@ func TestLoad_SecurityHardeningFromYAMLAndEnv(t *testing.T) {
 	}
 	if !cfg.ToolsAllowHighRiskUser {
 		t.Fatalf("expected yaml tools_allow_high_risk_user=true")
-	}
-	if !cfg.BrowserRelayAllowQueryToken {
-		t.Fatalf("expected yaml browser_relay_allow_query_token=true")
 	}
 	if !cfg.PluginsAllowMCPServers {
 		t.Fatalf("expected yaml plugins_allow_mcp_servers=true")
@@ -1577,9 +1534,6 @@ func TestDefaultConfigValues_SharedBaseline(t *testing.T) {
 	if defaults.MemoryEmbedModel != "gemini-embedding-2-preview" {
 		t.Fatalf("expected memory embedding model default, got %q", defaults.MemoryEmbedModel)
 	}
-	if defaults.BrowserRelayAddr != "127.0.0.1:43182" {
-		t.Fatalf("expected browser relay addr default, got %q", defaults.BrowserRelayAddr)
-	}
 }
 
 func TestApplyDefaults_UsesSharedDefaults(t *testing.T) {
@@ -1625,8 +1579,5 @@ func TestDefaultAndApplyDefaults_StayAlignedForCoreValues(t *testing.T) {
 	}
 	if cfg.MemoryEmbedBaseURL != defaults.MemoryEmbedBaseURL {
 		t.Fatalf("expected memory embed base URL alignment, got cfg=%q defaults=%q", cfg.MemoryEmbedBaseURL, defaults.MemoryEmbedBaseURL)
-	}
-	if cfg.BrowserRelayOriginAllowlist[0] != defaults.BrowserRelayOriginAllowlist[0] {
-		t.Fatalf("expected relay origin allowlist alignment, got cfg=%q defaults=%q", cfg.BrowserRelayOriginAllowlist[0], defaults.BrowserRelayOriginAllowlist[0])
 	}
 }

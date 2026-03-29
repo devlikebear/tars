@@ -37,7 +37,6 @@ const (
 	defaultVaultKVVersion                = 2
 	defaultVaultAppRoleMount             = "approle"
 	defaultBrowserDefaultProfile         = "managed"
-	defaultBrowserRelayAddr              = "127.0.0.1:43182"
 	defaultGatewayWatchDebounceMS        = 200
 	defaultGatewayRunsMaxRecords         = 2000
 	defaultGatewayChannelsMaxMessages    = 500
@@ -61,7 +60,6 @@ const (
 	defaultOpenAICodexOAuthProvider      = "openai-codex"
 	defaultClaudeOAuthProvider           = "claude-code"
 	defaultGeminiOAuthProvider           = "google-antigravity"
-	defaultChromeExtensionOrigin         = "chrome-extension://*"
 )
 
 func defaultConfigValues() Config {
@@ -125,11 +123,8 @@ func defaultConfigValues() Config {
 			VaultAppRoleMount: defaultVaultAppRoleMount,
 		},
 		BrowserConfig: BrowserConfig{
-			BrowserRuntimeEnabled:       true,
-			BrowserDefaultProfile:       defaultBrowserDefaultProfile,
-			BrowserRelayEnabled:         true,
-			BrowserRelayAddr:            defaultBrowserRelayAddr,
-			BrowserRelayOriginAllowlist: []string{defaultChromeExtensionOrigin},
+			BrowserRuntimeEnabled: true,
+			BrowserDefaultProfile: defaultBrowserDefaultProfile,
 		},
 		GatewayConfig: GatewayConfig{
 			GatewayAgentsWatch:                   true,
