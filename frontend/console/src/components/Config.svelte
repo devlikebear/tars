@@ -138,6 +138,7 @@
   }
 
   function commitEdit(field: ConfigFieldMeta) {
+    if (editingKey === null) return // already committed (e.g. Enter then blur)
     let parsed: unknown
     if (field.type === 'bool') {
       parsed = editBool
