@@ -7,6 +7,8 @@ export type Route =
   | { view: 'project'; projectId: string }
   | { view: 'sessions' }
   | { view: 'ops' }
+  | { view: 'config' }
+  | { view: 'extensions' }
 
 export function resolveRoute(pathname: string): Route {
   const path = pathname.trim()
@@ -29,6 +31,14 @@ export function resolveRoute(pathname: string): Route {
 
   if (path.startsWith(`${consoleBase}/ops`)) {
     return { view: 'ops' }
+  }
+
+  if (path.startsWith(`${consoleBase}/config`)) {
+    return { view: 'config' }
+  }
+
+  if (path.startsWith(`${consoleBase}/extensions`)) {
+    return { view: 'extensions' }
   }
 
   return { view: 'home' }

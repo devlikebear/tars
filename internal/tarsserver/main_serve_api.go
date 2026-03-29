@@ -25,6 +25,7 @@ import (
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/schedule"
+	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
@@ -32,6 +33,7 @@ import (
 
 type serveAPIRuntime struct {
 	cfg                     config.Config
+	configPath              string
 	mainSessionID           string
 	server                  *http.Server
 	extensionsManager       *extensions.Manager
@@ -65,6 +67,8 @@ type apiRouteHandlers struct {
 	browser         http.Handler
 	channels        http.Handler
 	events          http.Handler
+	config          http.Handler
+	skillhub        http.Handler
 }
 
 func runServeAPICommand(
@@ -494,7 +498,11 @@ func buildAPIMux(
 		cfg.ChannelsTelegramPollingEnabled,
 		logger,
 	)
+	hubInstaller := skillhub.NewInstaller(cfg.WorkspaceDir)
+	skillhubHandler := newSkillhubAPIHandler(hubInstaller, extensionsManager, logger)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
+	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
+	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		heartbeat:       heartbeatHandler,
 		chat:            chatHandler,
@@ -517,6 +525,8 @@ func buildAPIMux(
 		browser:         browserHandler,
 		channels:        channelsHandler,
 		events:          eventsHandler,
+		config:          configHandler,
+		skillhub:        skillhubHandler,
 	})
 
 	server := &http.Server{
@@ -536,6 +546,7 @@ func buildAPIMux(
 
 	return &serveAPIRuntime{
 		cfg:                     cfg,
+		configPath:              resolvedConfigPath,
 		mainSessionID:           mainSessionID,
 		server:                  server,
 		extensionsManager:       extensionsManager,
@@ -595,6 +606,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/skills/", handlers.extensions)
 	mux.Handle("/v1/plugins", handlers.extensions)
 	mux.Handle("/v1/runtime/extensions/reload", handlers.extensions)
+	mux.Handle("/v1/runtime/extensions/disabled", handlers.extensions)
 	mux.Handle("/v1/agent/agents", handlers.agentRuns)
 	mux.Handle("/v1/agent/runs", handlers.agentRuns)
 	mux.Handle("/v1/agent/runs/", handlers.agentRuns)
@@ -613,6 +625,16 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/events/stream", handlers.events)
 	mux.Handle("/v1/events/history", handlers.events)
 	mux.Handle("/v1/events/read", handlers.events)
+	mux.Handle("/v1/admin/config", handlers.config)
+	mux.Handle("/v1/admin/config/values", handlers.config)
+	mux.Handle("/v1/admin/config/schema", handlers.config)
+	mux.Handle("/v1/admin/reset/workspace", handlers.config)
+	mux.Handle("/v1/admin/restart", handlers.config)
+	mux.Handle("/v1/hub/registry", handlers.skillhub)
+	mux.Handle("/v1/hub/installed", handlers.skillhub)
+	mux.Handle("/v1/hub/install", handlers.skillhub)
+	mux.Handle("/v1/hub/uninstall", handlers.skillhub)
+	mux.Handle("/v1/hub/update", handlers.skillhub)
 }
 
 func registerBrowserRoutes(mux *http.ServeMux, browserHandler http.Handler) {
