@@ -72,17 +72,23 @@ func parseCSVList(raw string) []string {
 }
 
 func parseJSONStringList(raw string, fallback []string) []string {
-	var parsed []string
-	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
 		return fallback
+	}
+	// Try JSON array first
+	var parsed []string
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+		// Fall back to comma-separated
+		parsed = strings.Split(trimmed, ",")
 	}
 	out := make([]string, 0, len(parsed))
 	for _, item := range parsed {
-		trimmed := strings.TrimSpace(item)
-		if trimmed == "" {
+		v := strings.TrimSpace(item)
+		if v == "" {
 			continue
 		}
-		out = append(out, trimmed)
+		out = append(out, v)
 	}
 	if len(out) == 0 {
 		return fallback
