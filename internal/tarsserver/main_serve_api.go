@@ -635,6 +635,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/hub/install", handlers.skillhub)
 	mux.Handle("/v1/hub/uninstall", handlers.skillhub)
 	mux.Handle("/v1/hub/update", handlers.skillhub)
+	mux.Handle("/v1/hub/skill-content", handlers.skillhub)
 }
 
 func registerBrowserRoutes(mux *http.ServeMux, browserHandler http.Handler) {

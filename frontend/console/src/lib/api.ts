@@ -318,6 +318,14 @@ export async function setExtensionDisabled(kind: string, name: string, disabled:
   })
 }
 
+export async function getSkillDetail(name: string): Promise<SkillDef & { content?: string }> {
+  return requestJSON<SkillDef & { content?: string }>(`/v1/skills/${encodeURIComponent(name)}`)
+}
+
+export async function getHubSkillContent(name: string): Promise<{ name: string; version: string; content: string }> {
+  return requestJSON<{ name: string; version: string; content: string }>(`/v1/hub/skill-content?name=${encodeURIComponent(name)}`)
+}
+
 export async function reloadExtensions(): Promise<{ reloaded: boolean; skills: number; plugins: number; mcp_count: number }> {
   return requestJSON<{ reloaded: boolean; skills: number; plugins: number; mcp_count: number }>('/v1/runtime/extensions/reload', { method: 'POST' })
 }
