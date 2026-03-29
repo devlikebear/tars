@@ -19,7 +19,7 @@ func TestResolveSession_MainSession_UsesMainWhenEmpty(t *testing.T) {
 	}
 	_ = otherSession
 
-	resolved, err := resolveChatSession(store, "", mainSession.ID, "hello")
+	resolved, err := resolveChatSession(store, "", mainSession.ID, "hello", "")
 	if err != nil {
 		t.Fatalf("resolveChatSession: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestResolveSession_MainSession_ExplicitSessionWins(t *testing.T) {
 		t.Fatalf("create custom session: %v", err)
 	}
 
-	resolved, err := resolveChatSession(store, customSession.ID, mainSession.ID, "hello")
+	resolved, err := resolveChatSession(store, customSession.ID, mainSession.ID, "hello", "")
 	if err != nil {
 		t.Fatalf("resolveChatSession: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestResolveSession_MainSession_CreatesWhenNoSessions(t *testing.T) {
 func TestResolveSession_StaleMainSession_CreatesNewSession(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	// Simulate a stale mainSessionID that no longer exists in the store.
-	resolved, err := resolveChatSession(store, "", "deleted-stale-id", "hello")
+	resolved, err := resolveChatSession(store, "", "deleted-stale-id", "hello", "")
 	if err != nil {
 		t.Fatalf("expected fallback to new session, got error: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestResolveSession_StaleExplicitSession_CreatesNewSession(t *testing.T) {
 	}
 	// Explicit session ID is stale, should create a fresh session instead of
 	// silently attaching to the main session.
-	resolved, err := resolveChatSession(store, "stale-explicit-id", mainSession.ID, "hello")
+	resolved, err := resolveChatSession(store, "stale-explicit-id", mainSession.ID, "hello", "")
 	if err != nil {
 		t.Fatalf("expected fallback to new session, got error: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestResolveSession_StaleExplicitSession_CreatesNewSession(t *testing.T) {
 func TestResolveSession_StaleExplicitAndMainSession_CreatesNew(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	// Both explicit and main session IDs are stale.
-	resolved, err := resolveChatSession(store, "stale-explicit", "stale-main", "hello")
+	resolved, err := resolveChatSession(store, "stale-explicit", "stale-main", "hello", "")
 	if err != nil {
 		t.Fatalf("expected fallback to new session, got error: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestResolveSession_EmptyKickoffMessage_CreatesNewSession(t *testing.T) {
 		t.Fatalf("create main session: %v", err)
 	}
 
-	resolved, err := resolveChatSession(store, "", mainSession.ID, "todo 앱 만드는 프로젝트 시작해줘")
+	resolved, err := resolveChatSession(store, "", mainSession.ID, "todo 앱 만드는 프로젝트 시작해줘", "")
 	if err != nil {
 		t.Fatalf("resolveChatSession: %v", err)
 	}

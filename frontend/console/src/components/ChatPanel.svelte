@@ -312,7 +312,7 @@
     } else if (projectId) {
       // Find the latest session for this project
       await loadSessions()
-      const projectSession = sessions.find((s) => s.project_id === projectId && s.kind === 'main')
+      const projectSession = sessions.find((s) => s.project_id === projectId)
       if (projectSession) {
         void switchSession(projectSession.id)
       } else {

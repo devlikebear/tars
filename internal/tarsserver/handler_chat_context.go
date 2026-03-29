@@ -50,7 +50,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusInternalServerError, "resolve workspace failed", err
 	}
 
-	sessionID, err := resolveChatSession(reqStore, req.SessionID, deps.mainSessionID, req.Message)
+	sessionID, err := resolveChatSession(reqStore, req.SessionID, deps.mainSessionID, req.Message, req.ProjectID)
 	if err != nil {
 		if strings.TrimSpace(req.SessionID) == "" {
 			deps.logger.Error().Err(err).Msg("create session failed")
