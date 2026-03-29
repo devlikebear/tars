@@ -268,6 +268,35 @@ func (s *Store) Archive(id string) (Project, error) {
 	return s.Update(id, UpdateInput{Status: &status})
 }
 
+// Delete permanently removes a project directory from disk.
+func (s *Store) Delete(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("project id is empty")
+	}
+	dir := filepath.Join(s.workspaceDir, "projects", id)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return fmt.Errorf("project not found: %s", id)
+	}
+	return os.RemoveAll(dir)
+}
+
+// DeleteAll permanently removes all project directories from disk.
+func (s *Store) DeleteAll() (int, error) {
+	projects, err := s.List()
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, p := range projects {
+		if err := s.Delete(p.ID); err != nil {
+			return count, fmt.Errorf("delete project %s: %w", p.ID, err)
+		}
+		count++
+	}
+	return count, nil
+}
+
 func (s *Store) write(project Project) error {
 	project, err := normalizeProjectForWrite(project, s.nowFn)
 	if err != nil {

@@ -5,8 +5,18 @@ import type {
   ChatRequest,
   CleanupApplyResult,
   CleanupPlan,
+  ConfigFile,
+  ConfigSchema,
+  HubInstalled,
+  HubRegistry,
+  MCPServerStatus,
+  PluginDef,
+  SkillDef,
+  CreateCronJobRequest,
+  CreateProjectRequest,
   CronJob,
   CronRunRecord,
+  CronRunResult,
   EventsHistoryInfo,
   NotificationMessage,
   OpsStatus,
@@ -15,6 +25,8 @@ import type {
   ProjectAutopilotRun,
   Session,
   SessionMessage,
+  UpdateCronJobRequest,
+  UpdateProjectRequest,
 } from './types'
 
 async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
@@ -38,6 +50,10 @@ async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
       // ignore non-JSON error bodies
     }
     throw new Error(message)
+  }
+
+  if (response.status === 204) {
+    return undefined as T
   }
 
   return (await response.json()) as T
@@ -133,6 +149,180 @@ export async function getSessionHistory(sessionId: string): Promise<SessionMessa
 export async function getEventsHistory(limit = 30): Promise<EventsHistoryInfo> {
   return requestJSON<EventsHistoryInfo>(`/v1/events/history?limit=${limit}`)
 }
+
+export async function markEventsRead(lastId: number): Promise<{ unread_count: number }> {
+  return requestJSON<{ acknowledged: boolean; read_cursor: number; unread_count: number }>('/v1/events/read', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ last_id: lastId }),
+  })
+}
+
+// --- Project CRUD ---
+
+export async function createProject(data: CreateProjectRequest): Promise<Project> {
+  return requestJSON<Project>('/v1/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateProject(projectId: string, data: UpdateProjectRequest): Promise<Project> {
+  return requestJSON<Project>(`/v1/projects/${encodeURIComponent(projectId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  await requestJSON<Record<string, never>>(`/v1/projects/${encodeURIComponent(projectId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function deleteAllProjects(): Promise<{ deleted: number }> {
+  return requestJSON<{ deleted: number }>('/v1/projects', { method: 'DELETE' })
+}
+
+export async function startAutopilot(projectId: string): Promise<ProjectAutopilotRun> {
+  return requestJSON<ProjectAutopilotRun>(
+    `/v1/projects/${encodeURIComponent(projectId)}/autopilot`,
+    { method: 'POST' },
+  )
+}
+
+export async function advanceAutopilot(projectId: string): Promise<ProjectAutopilotRun> {
+  return requestJSON<ProjectAutopilotRun>(
+    `/v1/projects/${encodeURIComponent(projectId)}/autopilot/advance`,
+    { method: 'POST' },
+  )
+}
+
+// --- Cron Job CRUD ---
+
+export async function createCronJob(data: CreateCronJobRequest): Promise<CronJob> {
+  return requestJSON<CronJob>('/v1/cron/jobs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateCronJob(jobId: string, data: UpdateCronJobRequest): Promise<CronJob> {
+  return requestJSON<CronJob>(`/v1/cron/jobs/${encodeURIComponent(jobId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteCronJob(jobId: string): Promise<void> {
+  await requestJSON<Record<string, never>>(`/v1/cron/jobs/${encodeURIComponent(jobId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function runCronJob(jobId: string): Promise<CronRunResult> {
+  return requestJSON<CronRunResult>(`/v1/cron/jobs/${encodeURIComponent(jobId)}/run`, {
+    method: 'POST',
+  })
+}
+
+// --- Config ---
+
+export async function getConfig(): Promise<ConfigFile> {
+  return requestJSON<ConfigFile>('/v1/admin/config')
+}
+
+export async function getConfigSchema(): Promise<ConfigSchema> {
+  return requestJSON<ConfigSchema>('/v1/admin/config/schema')
+}
+
+export async function saveConfig(content: string): Promise<void> {
+  await requestJSON<{ ok: string }>('/v1/admin/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+}
+
+export async function restartServer(): Promise<{ ok: string; mode: string; info: string }> {
+  return requestJSON<{ ok: string; mode: string; info: string }>('/v1/admin/restart', { method: 'POST' })
+}
+
+export async function resetWorkspace(): Promise<{ removed_dirs: number }> {
+  return requestJSON<{ removed_dirs: number }>('/v1/admin/reset/workspace', { method: 'POST' })
+}
+
+export async function patchConfigValues(updates: Record<string, unknown>): Promise<void> {
+  await requestJSON<{ ok: string }>('/v1/admin/config/values', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ updates }),
+  })
+}
+
+// --- Hub / Extensions ---
+
+export async function getHubRegistry(): Promise<HubRegistry> {
+  return requestJSON<HubRegistry>('/v1/hub/registry')
+}
+
+export async function getHubInstalled(): Promise<HubInstalled> {
+  return requestJSON<HubInstalled>('/v1/hub/installed')
+}
+
+export async function hubInstall(type: string, name: string): Promise<void> {
+  await requestJSON<{ ok: string }>('/v1/hub/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, name }),
+  })
+}
+
+export async function hubUninstall(type: string, name: string): Promise<void> {
+  await requestJSON<{ ok: string }>('/v1/hub/uninstall', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, name }),
+  })
+}
+
+export async function hubUpdate(): Promise<{ updated_skills: string[]; updated_plugins: string[] }> {
+  return requestJSON<{ updated_skills: string[]; updated_plugins: string[] }>('/v1/hub/update', { method: 'POST' })
+}
+
+export async function listSkills(): Promise<SkillDef[]> {
+  return requestJSON<SkillDef[]>('/v1/skills')
+}
+
+export async function listPlugins(): Promise<PluginDef[]> {
+  return requestJSON<PluginDef[]>('/v1/plugins')
+}
+
+export async function listMCPServers(): Promise<MCPServerStatus[]> {
+  return requestJSON<MCPServerStatus[]>('/v1/mcp/servers')
+}
+
+export async function getDisabledExtensions(): Promise<{ skills: string[]; plugins: string[]; mcp_servers: string[] }> {
+  return requestJSON('/v1/runtime/extensions/disabled')
+}
+
+export async function setExtensionDisabled(kind: string, name: string, disabled: boolean): Promise<void> {
+  await requestJSON<{ ok: boolean }>('/v1/runtime/extensions/disabled', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, name, disabled }),
+  })
+}
+
+export async function reloadExtensions(): Promise<{ reloaded: boolean; skills: number; plugins: number; mcp_count: number }> {
+  return requestJSON<{ reloaded: boolean; skills: number; plugins: number; mcp_count: number }>('/v1/runtime/extensions/reload', { method: 'POST' })
+}
+
+// --- Events ---
 
 export function streamEvents(
   projectId: string | undefined,

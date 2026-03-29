@@ -154,10 +154,18 @@ func newProjectAPIHandler(
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "project store is not configured"})
 			return
 		}
-		if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
+		if !requireMethod(w, r, http.MethodGet, http.MethodPost, http.MethodDelete) {
 			return
 		}
 		switch r.Method {
+		case http.MethodDelete:
+			count, err := store.DeleteAll()
+			if err != nil {
+				logger.Error().Err(err).Msg("delete all projects failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete all projects failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]int{"deleted": count})
 		case http.MethodGet:
 			items, err := store.List()
 			if err != nil {
@@ -256,13 +264,13 @@ func newProjectAPIHandler(
 
 				writeJSON(w, http.StatusOK, updated)
 			case http.MethodDelete:
-				if _, err := store.Archive(projectID); err != nil {
+				if err := store.Delete(projectID); err != nil {
 					if strings.Contains(strings.ToLower(err.Error()), "not found") {
 						writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
 						return
 					}
-					logger.Error().Err(err).Str("project_id", projectID).Msg("archive project failed")
-					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "archive project failed"})
+					logger.Error().Err(err).Str("project_id", projectID).Msg("delete project failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete project failed"})
 					return
 				}
 

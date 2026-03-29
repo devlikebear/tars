@@ -160,8 +160,138 @@ export type ChatEvent = {
   skill_reason?: string
 }
 
+export type ChatAttachment = {
+  name: string
+  mime_type: string
+  data: string // base64
+}
+
 export type ChatRequest = {
   message: string
   session_id?: string
   project_id?: string
+  attachments?: ChatAttachment[]
+}
+
+export type CreateProjectRequest = {
+  name: string
+  type?: string
+  git_repo?: string
+  objective?: string
+  instructions?: string
+}
+
+export type UpdateProjectRequest = {
+  name?: string
+  type?: string
+  status?: string
+  git_repo?: string
+  objective?: string
+  instructions?: string
+}
+
+export type CreateCronJobRequest = {
+  name?: string
+  prompt: string
+  schedule?: string
+  enabled?: boolean
+  session_target?: string
+  project_id?: string
+}
+
+export type UpdateCronJobRequest = {
+  name?: string
+  prompt?: string
+  schedule?: string
+  enabled?: boolean
+  session_target?: string
+  project_id?: string
+}
+
+export type CronRunResult = {
+  job_id: string
+  job_name: string
+  response?: string
+  error?: string
+}
+
+// --- Hub / Extensions ---
+
+export type HubRegistryEntry = {
+  name: string
+  description: string
+  version: string
+  author: string
+  tags: string[]
+  path: string
+  user_invocable?: boolean
+  requires_plugin?: string
+  files?: string[] | { path: string; sha256: string }[]
+  manifest?: string
+}
+
+export type HubRegistry = {
+  version: number
+  skills: HubRegistryEntry[]
+  plugins: HubRegistryEntry[]
+  mcp_servers: HubRegistryEntry[]
+}
+
+export type HubInstalledItem = {
+  name: string
+  version: string
+  source: string
+  dir: string
+  manifest?: string
+}
+
+export type HubInstalled = {
+  skills: HubInstalledItem[]
+  plugins: HubInstalledItem[]
+  mcps: HubInstalledItem[]
+}
+
+export type SkillDef = {
+  name: string
+  description: string
+  source?: string
+  user_invocable?: boolean
+  available?: boolean
+}
+
+export type PluginDef = {
+  id: string
+  name: string
+  description?: string
+  version?: string
+  available?: boolean
+}
+
+export type MCPServerStatus = {
+  name: string
+  transport?: string
+  status?: string
+  source?: string
+  tools_count?: number
+}
+
+export type ConfigFile = {
+  path: string
+  content: string
+}
+
+export type ConfigFieldMeta = {
+  key: string
+  section: string
+  type: string
+  label: string
+  description: string
+  sensitive?: boolean
+  options?: string[]
+}
+
+export type ConfigSchema = {
+  path: string
+  fields: ConfigFieldMeta[]
+  values: Record<string, unknown>
 }

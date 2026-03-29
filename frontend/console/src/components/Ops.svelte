@@ -1,20 +1,31 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import {
+    createCronJob,
+    deleteCronJob,
     getOpsStatus,
     listApprovals,
     listCronJobs,
     listCronRuns,
     reviewApproval,
+    runCronJob,
     createCleanupPlan,
     streamEvents,
+    updateCronJob,
   } from '../lib/api'
   import type {
     Approval,
     CronJob,
     CronRunRecord,
+    CronRunResult,
     OpsStatus,
   } from '../lib/types'
+
+  interface Props {
+    onAskAI?: (prompt: string) => void
+  }
+
+  let { onAskAI }: Props = $props()
 
   let status: OpsStatus | null = $state(null)
   let approvals: Approval[] = $state([])
@@ -29,6 +40,117 @@
   let runsLoading = $state('')
 
   let stopStream: (() => void) | null = null
+
+  // -- Cron CRUD --
+  let showNewJob = $state(false)
+  let newJobName = $state('')
+  let newJobPrompt = $state('')
+  let newJobSchedule = $state('')
+  let newJobProjectId = $state('')
+  let newJobSaving = $state(false)
+  let newJobError = $state('')
+
+  let editingJobId: string | null = $state(null)
+  let editJobName = $state('')
+  let editJobPrompt = $state('')
+  let editJobSchedule = $state('')
+  let editJobEnabled = $state(true)
+  let editJobSaving = $state(false)
+  let editJobError = $state('')
+
+  let runningJobId = $state('')
+  let runResult: CronRunResult | null = $state(null)
+  let deletingJobId = $state('')
+  let deleteConfirmId: string | null = $state(null)
+
+  async function handleCreateJob() {
+    if (!newJobPrompt.trim()) return
+    newJobSaving = true
+    newJobError = ''
+    try {
+      await createCronJob({
+        name: newJobName.trim() || undefined,
+        prompt: newJobPrompt.trim(),
+        schedule: newJobSchedule.trim() || undefined,
+        project_id: newJobProjectId.trim() || undefined,
+      })
+      cronJobs = await listCronJobs()
+      showNewJob = false
+      newJobName = ''
+      newJobPrompt = ''
+      newJobSchedule = ''
+      newJobProjectId = ''
+    } catch (e) {
+      newJobError = e instanceof Error ? e.message : 'Failed to create cron job'
+    } finally {
+      newJobSaving = false
+    }
+  }
+
+  function enterEditJob(job: CronJob) {
+    editingJobId = job.id
+    editJobName = job.name
+    editJobPrompt = job.prompt
+    editJobSchedule = job.schedule
+    editJobEnabled = job.enabled
+    editJobError = ''
+  }
+
+  function cancelEditJob() {
+    editingJobId = null
+    editJobError = ''
+  }
+
+  async function handleSaveEditJob() {
+    if (!editingJobId || !editJobPrompt.trim()) return
+    editJobSaving = true
+    editJobError = ''
+    try {
+      await updateCronJob(editingJobId, {
+        name: editJobName.trim() || undefined,
+        prompt: editJobPrompt.trim(),
+        schedule: editJobSchedule.trim() || undefined,
+        enabled: editJobEnabled,
+      })
+      cronJobs = await listCronJobs()
+      editingJobId = null
+    } catch (e) {
+      editJobError = e instanceof Error ? e.message : 'Failed to update cron job'
+    } finally {
+      editJobSaving = false
+    }
+  }
+
+  async function handleDeleteJob(jobId: string) {
+    if (deleteConfirmId !== jobId) {
+      deleteConfirmId = jobId
+      return
+    }
+    deletingJobId = jobId
+    try {
+      await deleteCronJob(jobId)
+      cronJobs = await listCronJobs()
+      deleteConfirmId = null
+      if (expandedJob === jobId) expandedJob = null
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to delete cron job'
+    } finally {
+      deletingJobId = ''
+    }
+  }
+
+  async function handleRunJob(jobId: string) {
+    runningJobId = jobId
+    runResult = null
+    try {
+      runResult = await runCronJob(jobId)
+      cronJobs = await listCronJobs()
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to run cron job'
+    } finally {
+      runningJobId = ''
+    }
+  }
 
   function fmt(value?: string): string {
     const text = value?.trim()
@@ -255,7 +377,7 @@
                   <span>{fmtBytes(approval.plan.total_bytes)}</span>
                   {#if approval.note}
                     <span class="approval-dot"></span>
-                    <span class="approval-note">{compact(approval.note, 80)}</span>
+                    <span class="approval-note" class:approval-result={approval.status === 'applied'}>{compact(approval.note, 120)}</span>
                   {/if}
                 </div>
 
@@ -306,50 +428,125 @@
       <section class="card ops-section">
         <div class="card-header">
           <span class="card-title">Cron jobs</span>
-          <span class="badge badge-default">{cronJobs.length} total</span>
+          <div class="card-header-actions">
+            <span class="badge badge-default">{cronJobs.length} total</span>
+            {#if onAskAI}
+              <button type="button" class="btn btn-ghost btn-sm ask-ai-btn" onclick={() => onAskAI('Create a cron job: ')}>
+                Ask AI
+              </button>
+            {/if}
+            <button type="button" class="btn btn-primary btn-sm" onclick={() => { showNewJob = !showNewJob }}>
+              {showNewJob ? 'Cancel' : '+ New Job'}
+            </button>
+          </div>
         </div>
 
-        {#if cronJobs.length === 0}
-          <div class="empty-state"><p>No cron jobs configured.</p></div>
+        {#if showNewJob}
+          <div class="inline-form">
+            {#if newJobError}
+              <div class="form-error">{newJobError}</div>
+            {/if}
+            <input type="text" placeholder="Job name (optional)" bind:value={newJobName} class="form-input" />
+            <textarea placeholder="Prompt *" bind:value={newJobPrompt} class="form-input form-textarea" rows="3"></textarea>
+            <input type="text" placeholder="Schedule (e.g. */30 * * * * or @at 2026-04-01T10:00:00Z)" bind:value={newJobSchedule} class="form-input" />
+            <input type="text" placeholder="Project ID (optional)" bind:value={newJobProjectId} class="form-input" />
+            <button
+              class="btn btn-primary btn-sm"
+              disabled={!newJobPrompt.trim() || newJobSaving}
+              onclick={handleCreateJob}
+            >{newJobSaving ? 'Creating...' : 'Create Job'}</button>
+          </div>
+        {/if}
+
+        {#if runResult}
+          <div class="run-result">
+            <div class="run-result-header">
+              <strong>Run result: {runResult.job_name}</strong>
+              <button class="btn btn-ghost btn-sm" onclick={() => { runResult = null }}>Dismiss</button>
+            </div>
+            {#if runResult.error}
+              <p class="form-error">{runResult.error}</p>
+            {:else}
+              <p class="run-result-text">{compact(runResult.response, 300)}</p>
+            {/if}
+          </div>
+        {/if}
+
+        {#if cronJobs.length === 0 && !showNewJob}
+          <div class="empty-state"><p>No cron jobs configured. Click <strong>+ New Job</strong> to create one.</p></div>
         {:else}
           <div class="cron-list">
             {#each cronJobs as job}
               <div class="cron-item">
-                <button
-                  type="button"
-                  class="cron-item-btn"
-                  class:active={expandedJob === job.id}
-                  onclick={() => { void toggleJobRuns(job.id) }}
-                >
-                  <div class="cron-item-top">
-                    <strong class="cron-name">{job.name}</strong>
-                    <div class="cron-badges">
-                      <span
-                        class="badge"
-                        class:badge-success={job.enabled && !job.last_run_error}
-                        class:badge-error={!!job.last_run_error}
-                        class:badge-default={!job.enabled}
-                      >
-                        {job.last_run_error ? 'failed' : job.enabled ? 'active' : 'disabled'}
-                      </span>
-                      <span class="badge badge-default">{job.schedule}</span>
+                {#if editingJobId === job.id}
+                  <div class="inline-form" style="padding: var(--space-3) var(--space-4)">
+                    {#if editJobError}
+                      <div class="form-error">{editJobError}</div>
+                    {/if}
+                    <input type="text" placeholder="Job name" bind:value={editJobName} class="form-input" />
+                    <textarea placeholder="Prompt *" bind:value={editJobPrompt} class="form-input form-textarea" rows="3"></textarea>
+                    <input type="text" placeholder="Schedule" bind:value={editJobSchedule} class="form-input" />
+                    <label class="form-checkbox">
+                      <input type="checkbox" bind:checked={editJobEnabled} />
+                      Enabled
+                    </label>
+                    <div style="display:flex;gap:var(--space-2)">
+                      <button class="btn btn-primary btn-sm" disabled={!editJobPrompt.trim() || editJobSaving} onclick={handleSaveEditJob}>
+                        {editJobSaving ? 'Saving...' : 'Save'}
+                      </button>
+                      <button class="btn btn-ghost btn-sm" onclick={cancelEditJob}>Cancel</button>
                     </div>
                   </div>
-                  <p class="cron-prompt">{compact(job.prompt, 120)}</p>
-                  <div class="cron-meta">
-                    {#if job.project_id}
-                      <span>project: {job.project_id}</span>
-                    {/if}
-                    {#if job.last_run_at}
-                      <span>Last run: {fmt(job.last_run_at)}</span>
-                    {/if}
-                    {#if job.last_run_error}
-                      <span class="cron-error">{compact(job.last_run_error, 80)}</span>
-                    {/if}
-                  </div>
-                </button>
+                {:else}
+                  <button
+                    type="button"
+                    class="cron-item-btn"
+                    class:active={expandedJob === job.id}
+                    onclick={() => { void toggleJobRuns(job.id) }}
+                  >
+                    <div class="cron-item-top">
+                      <strong class="cron-name">{job.name}</strong>
+                      <div class="cron-badges">
+                        <span
+                          class="badge"
+                          class:badge-success={job.enabled && !job.last_run_error}
+                          class:badge-error={!!job.last_run_error}
+                          class:badge-default={!job.enabled}
+                        >
+                          {job.last_run_error ? 'failed' : job.enabled ? 'active' : 'disabled'}
+                        </span>
+                        <span class="badge badge-default">{job.schedule}</span>
+                      </div>
+                    </div>
+                    <p class="cron-prompt">{compact(job.prompt, 120)}</p>
+                    <div class="cron-meta">
+                      {#if job.project_id}
+                        <span>project: {job.project_id}</span>
+                      {/if}
+                      {#if job.last_run_at}
+                        <span>Last run: {fmt(job.last_run_at)}</span>
+                      {/if}
+                      {#if job.last_run_error}
+                        <span class="cron-error">{compact(job.last_run_error, 80)}</span>
+                      {/if}
+                    </div>
+                  </button>
 
-                {#if expandedJob === job.id}
+                  <div class="cron-actions">
+                    <button class="btn btn-ghost btn-sm" disabled={runningJobId === job.id} onclick={(e: MouseEvent) => { e.stopPropagation(); void handleRunJob(job.id) }}>
+                      {runningJobId === job.id ? 'Running...' : 'Run'}
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick={(e: MouseEvent) => { e.stopPropagation(); enterEditJob(job) }}>Edit</button>
+                    {#if onAskAI}
+                      <button class="btn btn-ghost btn-sm ask-ai-btn" onclick={(e: MouseEvent) => { e.stopPropagation(); onAskAI(`Update cron job "${job.name}" (${job.id}): `) }}>AI</button>
+                    {/if}
+                    <button class="btn btn-danger btn-sm" disabled={deletingJobId === job.id} onclick={(e: MouseEvent) => { e.stopPropagation(); void handleDeleteJob(job.id) }}>
+                      {deleteConfirmId === job.id ? 'Confirm?' : 'Delete'}
+                    </button>
+                  </div>
+                {/if}
+
+                {#if expandedJob === job.id && editingJobId !== job.id}
                   <div class="cron-runs">
                     {#if runsLoading === job.id}
                       <div class="runs-loading">Loading runs...</div>
@@ -602,6 +799,10 @@
   .approval-note {
     color: var(--text-tertiary);
   }
+  .approval-note.approval-result {
+    color: var(--green);
+    font-weight: 500;
+  }
 
   .approval-actions {
     display: flex;
@@ -779,6 +980,78 @@
   .run-error-text {
     color: var(--error);
   }
+
+  /* ── Inline form ──────────────────────────────── */
+  .inline-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .inline-form .form-input {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+  .inline-form .form-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .inline-form .form-textarea {
+    font-family: var(--font-mono);
+    resize: vertical;
+    min-height: 60px;
+  }
+  .form-error {
+    font-size: var(--text-xs);
+    color: var(--error);
+    padding: var(--space-1) 0;
+  }
+  .form-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  /* ── Cron actions ────────────────────────────── */
+  .cron-actions {
+    display: flex;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-4) var(--space-2);
+  }
+
+  /* ── Run result ──────────────────────────────── */
+  .run-result {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-elevated);
+  }
+  .run-result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+    font-size: var(--text-sm);
+  }
+  .run-result-text {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* ── Ask AI button ────────────────────────────── */
+  .ask-ai-btn { color: var(--accent); }
+  .ask-ai-btn:hover { background: var(--accent-muted); }
 
   /* ── Responsive ───────────────────────────────── */
   @media (max-width: 600px) {
