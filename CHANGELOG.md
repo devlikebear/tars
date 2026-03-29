@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-03-29
+
+### Fixed
+
+- Workspace reset now fully reinitializes to `tars init` state: removes all runtime artifacts (sessions, projects, cron, gateway, skills, plugins, mcp-servers, skillhub.json, ops, memory data) while preserving config/ and .md template files, then re-runs EnsureWorkspace to recreate the pristine directory structure
+
 ## [0.14.0] - 2026-03-29
 
 ### Added
