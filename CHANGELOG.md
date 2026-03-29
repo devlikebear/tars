@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-03-29
+
+### Fixed
+
+- Extensions Hub tab no longer crashes when registry response has missing or null `plugins`/`skills`/`mcp_servers` arrays
+
 ## [0.14.1] - 2026-03-29
 
 ### Fixed
