@@ -57,6 +57,8 @@ func newMCPAPIHandler(provider mcpProvider, logger zerolog.Logger) http.Handler 
 type extensionsProvider interface {
 	Snapshot() extensions.Snapshot
 	Reload(ctx context.Context) error
+	DisabledSet() extensions.DisabledSet
+	SetDisabled(ctx context.Context, kind, name string, disabled bool) error
 }
 
 func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger, afterReload func() (bool, int)) http.Handler {
@@ -113,6 +115,46 @@ func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger,
 		}
 		writeJSON(w, http.StatusOK, plugins)
 	})
+	mux.HandleFunc("/v1/runtime/extensions/disabled", func(w http.ResponseWriter, r *http.Request) {
+		if provider == nil {
+			writeJSON(w, http.StatusOK, extensions.DisabledSet{})
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, http.StatusOK, provider.DisabledSet())
+		case http.MethodPost:
+			var req struct {
+				Kind     string `json:"kind"` // skill, plugin, mcp
+				Name     string `json:"name"`
+				Disabled bool   `json:"disabled"`
+			}
+			if !decodeJSONBody(w, r, &req) {
+				return
+			}
+			if strings.TrimSpace(req.Name) == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+				return
+			}
+			if err := provider.SetDisabled(r.Context(), req.Kind, req.Name, req.Disabled); err != nil {
+				logger.Error().Err(err).Str("kind", req.Kind).Str("name", req.Name).Bool("disabled", req.Disabled).Msg("set disabled failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			gatewayRefreshed := false
+			gatewayAgents := 0
+			if afterReload != nil {
+				gatewayRefreshed, gatewayAgents = afterReload()
+			}
+			_ = gatewayRefreshed
+			_ = gatewayAgents
+			logger.Info().Str("kind", req.Kind).Str("name", req.Name).Bool("disabled", req.Disabled).Msg("extension disabled state changed")
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "kind": req.Kind, "name": req.Name, "disabled": req.Disabled})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	mux.HandleFunc("/v1/runtime/extensions/reload", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {
 			return

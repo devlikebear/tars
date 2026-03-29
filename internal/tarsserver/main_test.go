@@ -1990,6 +1990,14 @@ func (m *mockExtensionsProvider) Reload(context.Context) error {
 	return m.reloadErr
 }
 
+func (m *mockExtensionsProvider) DisabledSet() extensions.DisabledSet {
+	return extensions.DisabledSet{}
+}
+
+func (m *mockExtensionsProvider) SetDisabled(_ context.Context, _, _ string, _ bool) error {
+	return nil
+}
+
 func TestSessionAPIs(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
