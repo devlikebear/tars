@@ -75,7 +75,7 @@ func NewListDirTool(workspaceDir string) Tool {
 				return listDirErrorResult(fmt.Sprintf("list directory failed: %v", err)), nil
 			}
 
-			return jsonTextResult(listDirResponse{
+			return JSONTextResult(listDirResponse{
 				Path:      workspaceRelativePath(workspaceDir, absPath),
 				Recursive: input.Recursive,
 				Count:     len(entries),
@@ -154,7 +154,7 @@ func buildListDirEntry(workspaceDir, absPath string, mode fs.FileMode) (listDirE
 }
 
 func listDirErrorResult(message string) Result {
-	return jsonTextResult(listDirResponse{Message: message}, true)
+	return JSONTextResult(listDirResponse{Message: message}, true)
 }
 
 func minInt(a, b int) int {

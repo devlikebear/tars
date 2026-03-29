@@ -6,13 +6,17 @@ import (
 	"github.com/devlikebear/tars/internal/config"
 )
 
-func TestBuildBrowserService_UsesRuntimeConfig(t *testing.T) {
+func TestBuildBrowserPluginConfig_PopulatesFields(t *testing.T) {
 	cfg := config.Default()
 	cfg.BrowserRuntimeEnabled = true
+	cfg.BrowserDefaultProfile = "chrome"
 	cfg.WorkspaceDir = t.TempDir()
 
-	service := buildBrowserService(cfg, nil, nil)
-	if service == nil {
-		t.Fatal("expected browser service")
+	m := buildBrowserPluginConfig(cfg, nil, vaultStatusSnapshot{}, nil)
+	if enabled, _ := m["browser_runtime_enabled"].(bool); !enabled {
+		t.Fatal("expected browser_runtime_enabled=true")
+	}
+	if profile, _ := m["browser_default_profile"].(string); profile != "chrome" {
+		t.Fatalf("expected browser_default_profile=chrome, got %q", profile)
 	}
 }

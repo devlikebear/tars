@@ -6,31 +6,6 @@ import (
 	"testing"
 )
 
-func TestRegisterBrowserRoutes_RegistersBrowserRoutes(t *testing.T) {
-	mux := http.NewServeMux()
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
-	registerBrowserRoutes(mux, handler)
-
-	paths := []string{
-		"/v1/browser/status",
-		"/v1/browser/profiles",
-		"/v1/browser/login",
-		"/v1/browser/check",
-		"/v1/browser/run",
-		"/v1/vault/status",
-	}
-	for _, path := range paths {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, path, nil)
-		mux.ServeHTTP(rec, req)
-		if rec.Code == http.StatusNotFound {
-			t.Fatalf("expected registered route, got 404 for %s", path)
-		}
-	}
-}
-
 func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 	mux := http.NewServeMux()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +34,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		extensions:      handler,
 		agentRuns:       handler,
 		gateway:         handler,
-		browser:         handler,
 		channels:        handler,
 		events:          handler,
 		config:          handler,
@@ -114,12 +88,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/gateway/reports/summary",
 		"/v1/gateway/reports/runs",
 		"/v1/gateway/reports/channels",
-		"/v1/browser/status",
-		"/v1/browser/profiles",
-		"/v1/browser/login",
-		"/v1/browser/check",
-		"/v1/browser/run",
-		"/v1/vault/status",
 		"/v1/channels/webhook/inbound/general",
 		"/v1/channels/telegram/webhook/bot-1",
 		"/v1/channels/telegram/send",
@@ -176,7 +144,6 @@ func TestRegisterAPIRoutes_LegacyDashboardPathsRedirectToConsole(t *testing.T) {
 		extensions:      base,
 		agentRuns:       base,
 		gateway:         base,
-		browser:         base,
 		channels:        base,
 		events:          base,
 		config:          base,

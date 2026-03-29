@@ -65,10 +65,10 @@ func NewTelegramSendTool(sender TelegramSender, enabled bool, resolver TelegramD
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if !enabled {
-				return jsonTextResult(map[string]any{"message": "telegram_send tool is disabled"}, true), nil
+				return JSONTextResult(map[string]any{"message": "telegram_send tool is disabled"}, true), nil
 			}
 			if sender == nil {
-				return jsonTextResult(map[string]any{"message": "telegram sender is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "telegram sender is not configured"}, true), nil
 			}
 			var input struct {
 				ChatID    string `json:"chat_id"`
@@ -78,22 +78,22 @@ func NewTelegramSendTool(sender TelegramSender, enabled bool, resolver TelegramD
 				BotID     string `json:"bot_id,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			chatID := strings.TrimSpace(input.ChatID)
 			if chatID == "" && resolver != nil {
 				defaultChatID, err := resolver.ResolveDefaultChatID(ctx)
 				if err != nil {
-					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
 				chatID = strings.TrimSpace(defaultChatID)
 			}
 			if chatID == "" {
-				return jsonTextResult(map[string]any{"message": "chat_id is required (no default paired chat available)"}, true), nil
+				return JSONTextResult(map[string]any{"message": "chat_id is required (no default paired chat available)"}, true), nil
 			}
 			text := strings.TrimSpace(input.Text)
 			if text == "" {
-				return jsonTextResult(map[string]any{"message": "text is required"}, true), nil
+				return JSONTextResult(map[string]any{"message": "text is required"}, true), nil
 			}
 			result, err := sender.Send(ctx, TelegramSendRequest{
 				BotID:     strings.TrimSpace(input.BotID),
@@ -103,9 +103,9 @@ func NewTelegramSendTool(sender TelegramSender, enabled bool, resolver TelegramD
 				ParseMode: strings.TrimSpace(input.ParseMode),
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(result, false), nil
+			return JSONTextResult(result, false), nil
 		},
 	}
 }

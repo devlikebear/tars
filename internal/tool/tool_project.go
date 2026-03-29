@@ -42,7 +42,7 @@ func NewProjectCreateTool(store *project.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				Name            string                 `json:"name"`
@@ -55,7 +55,7 @@ func NewProjectCreateTool(store *project.Store) Tool {
 				CloneRepo       bool                   `json:"clone_repo,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			created, err := store.Create(project.CreateInput{
 				Name:            input.Name,
@@ -68,9 +68,9 @@ func NewProjectCreateTool(store *project.Store) Tool {
 				CloneRepo:       input.CloneRepo,
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(created, false), nil
+			return JSONTextResult(created, false), nil
 		},
 	}
 }
@@ -82,13 +82,13 @@ func NewProjectListTool(store *project.Store) Tool {
 		Parameters:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
 		Execute: func(_ context.Context, _ json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			items, err := store.List()
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(items, false), nil
+			return JSONTextResult(items, false), nil
 		},
 	}
 }
@@ -105,19 +105,19 @@ func NewProjectGetTool(store *project.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string `json:"project_id"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			item, err := store.Get(strings.TrimSpace(input.ProjectID))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
@@ -163,17 +163,17 @@ func NewProjectUpdateTool(store *project.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input project.UpdatePayload
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			updated, err := store.Update(strings.TrimSpace(input.ProjectID), input.ToUpdateInput())
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(updated, false), nil
+			return JSONTextResult(updated, false), nil
 		},
 	}
 }
@@ -190,19 +190,19 @@ func NewProjectDeleteTool(store *project.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string `json:"project_id"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			item, err := store.Archive(strings.TrimSpace(input.ProjectID))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
@@ -222,18 +222,18 @@ func NewProjectActivateTool(store *project.Store, sessionStore *session.Store, m
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil || sessionStore == nil {
-				return jsonTextResult(map[string]any{"message": "project/session store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project/session store is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string `json:"project_id"`
 				SessionID string `json:"session_id,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			item, err := store.Get(strings.TrimSpace(input.ProjectID))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
 			targetSession := strings.TrimSpace(input.SessionID)
 			if targetSession == "" {
@@ -246,15 +246,15 @@ func NewProjectActivateTool(store *project.Store, sessionStore *session.Store, m
 				}
 			}
 			if targetSession == "" {
-				return jsonTextResult(map[string]any{"message": "session_id is required"}, true), nil
+				return JSONTextResult(map[string]any{"message": "session_id is required"}, true), nil
 			}
 			if _, err := sessionStore.Get(targetSession); err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
 			if err := sessionStore.SetProjectID(targetSession, item.ID); err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(map[string]any{"project_id": item.ID, "session_id": targetSession, "activated": true}, false), nil
+			return JSONTextResult(map[string]any{"project_id": item.ID, "session_id": targetSession, "activated": true}, false), nil
 		},
 	}
 }

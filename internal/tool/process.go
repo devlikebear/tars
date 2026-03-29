@@ -31,7 +31,7 @@ func NewProcessTool(manager *ProcessManager) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if manager == nil {
-				return jsonTextResult(processResponse{Message: "process manager is not configured"}, true), nil
+				return JSONTextResult(processResponse{Message: "process manager is not configured"}, true), nil
 			}
 			var input struct {
 				Action    string `json:"action"`
@@ -39,46 +39,46 @@ func NewProcessTool(manager *ProcessManager) Tool {
 				Chars     string `json:"chars,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(processResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(processResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			action := strings.ToLower(strings.TrimSpace(input.Action))
 			switch action {
 			case "list":
-				return jsonTextResult(processResponse{Action: action, Sessions: manager.List()}, false), nil
+				return JSONTextResult(processResponse{Action: action, Sessions: manager.List()}, false), nil
 			case "poll":
 				s, err := manager.Poll(input.SessionID)
 				if err != nil {
-					return jsonTextResult(processResponse{Action: action, Message: err.Error()}, true), nil
+					return JSONTextResult(processResponse{Action: action, Message: err.Error()}, true), nil
 				}
-				return jsonTextResult(processResponse{Action: action, Session: &s}, false), nil
+				return JSONTextResult(processResponse{Action: action, Session: &s}, false), nil
 			case "log":
 				s, err := manager.Log(input.SessionID)
 				if err != nil {
-					return jsonTextResult(processResponse{Action: action, Message: err.Error()}, true), nil
+					return JSONTextResult(processResponse{Action: action, Message: err.Error()}, true), nil
 				}
-				return jsonTextResult(processResponse{Action: action, Session: &s}, false), nil
+				return JSONTextResult(processResponse{Action: action, Session: &s}, false), nil
 			case "write":
 				s, err := manager.Write(input.SessionID, input.Chars)
 				if err != nil {
-					return jsonTextResult(processResponse{Action: action, Session: &s, Message: err.Error()}, true), nil
+					return JSONTextResult(processResponse{Action: action, Session: &s, Message: err.Error()}, true), nil
 				}
-				return jsonTextResult(processResponse{Action: action, Session: &s}, false), nil
+				return JSONTextResult(processResponse{Action: action, Session: &s}, false), nil
 			case "kill":
 				s, err := manager.Kill(input.SessionID)
 				if err != nil {
-					return jsonTextResult(processResponse{Action: action, Session: &s, Message: err.Error()}, true), nil
+					return JSONTextResult(processResponse{Action: action, Session: &s, Message: err.Error()}, true), nil
 				}
-				return jsonTextResult(processResponse{Action: action, Session: &s}, false), nil
+				return JSONTextResult(processResponse{Action: action, Session: &s}, false), nil
 			case "remove":
 				if err := manager.Remove(input.SessionID); err != nil {
-					return jsonTextResult(processResponse{Action: action, Message: err.Error()}, true), nil
+					return JSONTextResult(processResponse{Action: action, Message: err.Error()}, true), nil
 				}
-				return jsonTextResult(processResponse{Action: action, Removed: 1}, false), nil
+				return JSONTextResult(processResponse{Action: action, Removed: 1}, false), nil
 			case "clear":
 				removed := manager.ClearDone()
-				return jsonTextResult(processResponse{Action: action, Removed: removed}, false), nil
+				return JSONTextResult(processResponse{Action: action, Removed: removed}, false), nil
 			default:
-				return jsonTextResult(processResponse{Message: "action is required and must be one of: list,poll,log,write,kill,clear,remove"}, true), nil
+				return JSONTextResult(processResponse{Message: "action is required and must be one of: list,poll,log,write,kill,clear,remove"}, true), nil
 			}
 		},
 	}

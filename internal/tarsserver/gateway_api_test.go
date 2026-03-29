@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tars/internal/browser"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/session"
@@ -26,7 +25,6 @@ func newTestGatewayRuntime(t *testing.T) *gateway.Runtime {
 	rt := gateway.NewRuntime(gateway.RuntimeOptions{
 		Enabled:                     true,
 		WorkspaceDir:                t.TempDir(),
-		BrowserManagedHeadless:      true,
 		SessionStore:                store,
 		ChannelsLocalEnabled:        true,
 		ChannelsWebhookEnabled:      true,
@@ -876,26 +874,6 @@ func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 	}
 }
 
-func TestBrowserAPIHandler_LoginRejectsInvalidBody(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
-	h := newBrowserAPIHandler(runtime, vaultStatusSnapshot{}, zerolog.New(io.Discard))
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/browser/login", strings.NewReader("{"))
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode payload: %v", err)
-	}
-	if payload["error"] != "invalid request body" {
-		t.Fatalf("unexpected payload: %+v", payload)
-	}
-}
-
 func TestChannelsAPIHandler_WebhookAndTelegramInbound(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
 	h := newChannelsAPIHandler(runtime, zerolog.New(io.Discard))
@@ -1060,131 +1038,6 @@ func TestChannelsAPI_TelegramPairingsApproveUnknownCodeReturnsNotFound(t *testin
 	}
 	if strings.TrimSpace(asString(payload["error"])) == "" {
 		t.Fatalf("expected error payload, got %+v", payload)
-	}
-}
-
-func TestBrowserAPIHandler_StatusProfilesAndVaultStatus(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
-	handler := newBrowserAPIHandler(runtime, vaultStatusSnapshot{
-		Enabled:        true,
-		Ready:          false,
-		AuthMode:       "token",
-		Addr:           "http://127.0.0.1:8200",
-		AllowlistCount: 2,
-		LastError:      "not configured",
-	}, zerolog.New(io.Discard))
-
-	recStatus := httptest.NewRecorder()
-	reqStatus := httptest.NewRequest(http.MethodGet, "/v1/browser/status", nil)
-	handler.ServeHTTP(recStatus, reqStatus)
-	if recStatus.Code != http.StatusOK {
-		t.Fatalf("browser status expected 200, got %d body=%s", recStatus.Code, recStatus.Body.String())
-	}
-
-	recProfiles := httptest.NewRecorder()
-	reqProfiles := httptest.NewRequest(http.MethodGet, "/v1/browser/profiles", nil)
-	handler.ServeHTTP(recProfiles, reqProfiles)
-	if recProfiles.Code != http.StatusOK {
-		t.Fatalf("browser profiles expected 200, got %d body=%s", recProfiles.Code, recProfiles.Body.String())
-	}
-	var profilesPayload struct {
-		Count int `json:"count"`
-	}
-	if err := json.Unmarshal(recProfiles.Body.Bytes(), &profilesPayload); err != nil {
-		t.Fatalf("decode browser profiles payload: %v", err)
-	}
-	if profilesPayload.Count < 1 {
-		t.Fatalf("expected non-empty browser profiles payload: %s", recProfiles.Body.String())
-	}
-
-	recVault := httptest.NewRecorder()
-	reqVault := httptest.NewRequest(http.MethodGet, "/v1/vault/status", nil)
-	handler.ServeHTTP(recVault, reqVault)
-	if recVault.Code != http.StatusOK {
-		t.Fatalf("vault status expected 200, got %d body=%s", recVault.Code, recVault.Body.String())
-	}
-	var vaultPayload map[string]any
-	if err := json.Unmarshal(recVault.Body.Bytes(), &vaultPayload); err != nil {
-		t.Fatalf("decode vault status payload: %v", err)
-	}
-	if vaultPayload["enabled"] != true {
-		t.Fatalf("expected vault enabled in payload: %+v", vaultPayload)
-	}
-}
-
-func TestBrowserAPIHandler_LoginCheckRun(t *testing.T) {
-	workspace := t.TempDir()
-	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, `<html><body><div id="ready">hello</div><button id="export">export</button></body></html>`)
-	}))
-	defer site.Close()
-	flowDir := filepath.Join(workspace, "automation", "sites")
-	if err := os.MkdirAll(flowDir, 0o755); err != nil {
-		t.Fatalf("mkdir flow dir: %v", err)
-	}
-	flow := strings.Join([]string{
-		"id: sample",
-		"enabled: true",
-		"profile: managed",
-		"url: '" + site.URL + "'",
-		"checks:",
-		"  - selector: '#ready'",
-		"    contains: 'hello'",
-		"actions:",
-		"  ping:",
-		"    steps:",
-		"      - open: '" + site.URL + "'",
-		"      - click: '#export'",
-	}, "\n")
-	if err := os.WriteFile(filepath.Join(flowDir, "sample.yaml"), []byte(flow), 0o644); err != nil {
-		t.Fatalf("write sample flow: %v", err)
-	}
-
-	store := session.NewStore(filepath.Join(workspace, "sessions"))
-	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
-		Enabled:      true,
-		WorkspaceDir: workspace,
-		SessionStore: store,
-		BrowserService: browser.NewService(browser.Config{
-			WorkspaceDir:    workspace,
-			SiteFlowsDir:    flowDir,
-			DefaultProfile:  "managed",
-			ManagedHeadless: true,
-		}),
-	})
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		if err := runtime.Close(ctx); err != nil {
-			t.Fatalf("close gateway runtime: %v", err)
-		}
-	})
-
-	runtime.BrowserStartWithProfile("managed")
-	handler := newBrowserAPIHandler(runtime, vaultStatusSnapshot{Enabled: false}, zerolog.New(io.Discard))
-
-	loginBody := bytes.NewBufferString(`{"site_id":"sample"}`)
-	recLogin := httptest.NewRecorder()
-	reqLogin := httptest.NewRequest(http.MethodPost, "/v1/browser/login", loginBody)
-	handler.ServeHTTP(recLogin, reqLogin)
-	if recLogin.Code != http.StatusOK {
-		t.Fatalf("browser login expected 200, got %d body=%s", recLogin.Code, recLogin.Body.String())
-	}
-
-	checkBody := bytes.NewBufferString(`{"site_id":"sample"}`)
-	recCheck := httptest.NewRecorder()
-	reqCheck := httptest.NewRequest(http.MethodPost, "/v1/browser/check", checkBody)
-	handler.ServeHTTP(recCheck, reqCheck)
-	if recCheck.Code != http.StatusOK {
-		t.Fatalf("browser check expected 200, got %d body=%s", recCheck.Code, recCheck.Body.String())
-	}
-
-	runBody := bytes.NewBufferString(`{"site_id":"sample","flow_action":"ping"}`)
-	recRun := httptest.NewRecorder()
-	reqRun := httptest.NewRequest(http.MethodPost, "/v1/browser/run", runBody)
-	handler.ServeHTTP(recRun, reqRun)
-	if recRun.Code != http.StatusOK {
-		t.Fatalf("browser run expected 200, got %d body=%s", recRun.Code, recRun.Body.String())
 	}
 }
 

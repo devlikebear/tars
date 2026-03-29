@@ -21,19 +21,19 @@ func NewProjectBoardGetTool(store *project.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string `json:"project_id"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			item, err := store.GetBoard(strings.TrimSpace(input.ProjectID))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
@@ -54,7 +54,7 @@ func NewProjectBoardUpdateTool(store *project.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string              `json:"project_id"`
@@ -62,16 +62,16 @@ func NewProjectBoardUpdateTool(store *project.Store) Tool {
 				Tasks     []project.BoardTask `json:"tasks,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			item, err := store.UpdateBoard(strings.TrimSpace(input.ProjectID), project.BoardUpdateInput{
 				Columns: input.Columns,
 				Tasks:   input.Tasks,
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
@@ -91,20 +91,20 @@ func NewProjectActivityGetTool(store *project.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string `json:"project_id"`
 				Limit     int    `json:"limit,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			items, err := store.ListActivity(strings.TrimSpace(input.ProjectID), input.Limit)
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"count": len(items),
 				"items": items,
 			}, false), nil
@@ -134,7 +134,7 @@ func NewProjectActivityAppendTool(store *project.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string            `json:"project_id"`
@@ -148,7 +148,7 @@ func NewProjectActivityAppendTool(store *project.Store) Tool {
 				Meta      map[string]string `json:"meta,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			item, err := store.AppendActivity(strings.TrimSpace(input.ProjectID), project.ActivityAppendInput{
 				TaskID:    input.TaskID,
@@ -161,9 +161,9 @@ func NewProjectActivityAppendTool(store *project.Store) Tool {
 				Meta:      input.Meta,
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
@@ -183,17 +183,17 @@ func NewProjectDispatchTool(store *project.Store, runner project.TaskRunner, che
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			if runner == nil {
-				return jsonTextResult(map[string]any{"message": "project task runner is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project task runner is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string `json:"project_id"`
 				Stage     string `json:"stage,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			stage := strings.ToLower(strings.TrimSpace(input.Stage))
 			if stage == "" {
@@ -210,12 +210,12 @@ func NewProjectDispatchTool(store *project.Store, runner project.TaskRunner, che
 			case "review":
 				report, err = orchestrator.DispatchReview(ctx, strings.TrimSpace(input.ProjectID))
 			default:
-				return jsonTextResult(map[string]any{"message": "stage must be todo or review"}, true), nil
+				return JSONTextResult(map[string]any{"message": "stage must be todo or review"}, true), nil
 			}
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(report, false), nil
+			return JSONTextResult(report, false), nil
 		},
 	}
 }
@@ -236,19 +236,19 @@ func NewProjectAutopilotStartTool(manager projectAutopilotStarter) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if manager == nil {
-				return jsonTextResult(map[string]any{"message": "project autopilot manager is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project autopilot manager is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string `json:"project_id"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			run, err := manager.Start(ctx, strings.TrimSpace(input.ProjectID))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(run, false), nil
+			return JSONTextResult(run, false), nil
 		},
 	}
 }
@@ -269,19 +269,19 @@ func NewProjectAutopilotAdvanceTool(manager projectAutopilotAdvancer) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if manager == nil {
-				return jsonTextResult(map[string]any{"message": "project autopilot manager is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project autopilot manager is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string `json:"project_id"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			snapshot, err := manager.Advance(ctx, strings.TrimSpace(input.ProjectID))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(snapshot, false), nil
+			return JSONTextResult(snapshot, false), nil
 		},
 	}
 }

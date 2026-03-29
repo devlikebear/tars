@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/devlikebear/tars/internal/buildinfo"
+	_ "github.com/devlikebear/tars/internal/browserplugin" // register browser plugin
 	"github.com/devlikebear/tars/internal/envloader"
 	"github.com/spf13/cobra"
 )

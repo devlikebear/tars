@@ -43,7 +43,7 @@ func NewHeartbeatStatusTool(getStatus func(ctx context.Context) (HeartbeatStatus
 			if err != nil {
 				return automationErrorResult(fmt.Sprintf("get heartbeat status failed: %v", err)), nil
 			}
-			return jsonTextResult(status, false), nil
+			return JSONTextResult(status, false), nil
 		},
 	}
 }
@@ -61,7 +61,7 @@ func NewHeartbeatRunOnceTool(runOnce func(ctx context.Context) (HeartbeatRunResu
 			if err != nil {
 				return automationErrorResult(fmt.Sprintf("run heartbeat failed: %v", err)), nil
 			}
-			return jsonTextResult(result, false), nil
+			return JSONTextResult(result, false), nil
 		},
 	}
 }

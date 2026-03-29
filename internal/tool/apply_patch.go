@@ -36,33 +36,33 @@ func NewApplyPatchTool(workspaceDir string, enabled bool) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if !enabled {
-				return jsonTextResult(applyPatchResponse{Message: "apply_patch is disabled"}, true), nil
+				return JSONTextResult(applyPatchResponse{Message: "apply_patch is disabled"}, true), nil
 			}
 			var input struct {
 				Patch  string `json:"patch"`
 				DryRun bool   `json:"dry_run,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(applyPatchResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(applyPatchResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			patchText := strings.TrimSpace(input.Patch)
 			if patchText == "" {
-				return jsonTextResult(applyPatchResponse{Message: "patch is required"}, true), nil
+				return JSONTextResult(applyPatchResponse{Message: "patch is required"}, true), nil
 			}
 			files, err := parsePatchFiles(patchText)
 			if err != nil {
-				return jsonTextResult(applyPatchResponse{Message: err.Error()}, true), nil
+				return JSONTextResult(applyPatchResponse{Message: err.Error()}, true), nil
 			}
 			if len(files) > maxApplyPatchFiles {
-				return jsonTextResult(applyPatchResponse{Message: fmt.Sprintf("too many files in patch (max=%d)", maxApplyPatchFiles)}, true), nil
+				return JSONTextResult(applyPatchResponse{Message: fmt.Sprintf("too many files in patch (max=%d)", maxApplyPatchFiles)}, true), nil
 			}
 			for _, f := range files {
 				if filepath.IsAbs(f) {
-					return jsonTextResult(applyPatchResponse{Message: fmt.Sprintf("absolute path is not allowed: %s", f)}, true), nil
+					return JSONTextResult(applyPatchResponse{Message: fmt.Sprintf("absolute path is not allowed: %s", f)}, true), nil
 				}
 				clean := filepath.Clean(strings.TrimSpace(f))
 				if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-					return jsonTextResult(applyPatchResponse{Message: fmt.Sprintf("patch path escapes workspace: %s", f)}, true), nil
+					return JSONTextResult(applyPatchResponse{Message: fmt.Sprintf("patch path escapes workspace: %s", f)}, true), nil
 				}
 			}
 
@@ -87,9 +87,9 @@ func NewApplyPatchTool(workspaceDir string, enabled bool) Tool {
 			}
 			if err != nil {
 				resp.Message = fmt.Sprintf("patch apply failed: %v", err)
-				return jsonTextResult(resp, true), nil
+				return JSONTextResult(resp, true), nil
 			}
-			return jsonTextResult(resp, false), nil
+			return JSONTextResult(resp, false), nil
 		},
 	}
 }

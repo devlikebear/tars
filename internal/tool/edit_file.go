@@ -46,33 +46,33 @@ func newEditToolWithName(name, workspaceDir string) Tool {
 				ReplaceAll bool   `json:"replace_all,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(editFileResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(editFileResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			if input.Path == "" {
-				return jsonTextResult(editFileResponse{Message: "path is required"}, true), nil
+				return JSONTextResult(editFileResponse{Message: "path is required"}, true), nil
 			}
 			if input.OldText == "" {
-				return jsonTextResult(editFileResponse{Message: "old_text is required"}, true), nil
+				return JSONTextResult(editFileResponse{Message: "old_text is required"}, true), nil
 			}
 
 			absPath, err := resolveWorkspacePath(workspaceDir, input.Path)
 			if err != nil {
-				return jsonTextResult(editFileResponse{Message: err.Error()}, true), nil
+				return JSONTextResult(editFileResponse{Message: err.Error()}, true), nil
 			}
 			body, err := os.ReadFile(absPath)
 			if err != nil {
 				if os.IsNotExist(err) {
-					return jsonTextResult(editFileResponse{Message: "file not found"}, true), nil
+					return JSONTextResult(editFileResponse{Message: "file not found"}, true), nil
 				}
-				return jsonTextResult(editFileResponse{Message: fmt.Sprintf("read file failed: %v", err)}, true), nil
+				return JSONTextResult(editFileResponse{Message: fmt.Sprintf("read file failed: %v", err)}, true), nil
 			}
 			text := string(body)
 			count := strings.Count(text, input.OldText)
 			if count == 0 {
-				return jsonTextResult(editFileResponse{Message: "old_text not found"}, true), nil
+				return JSONTextResult(editFileResponse{Message: "old_text not found"}, true), nil
 			}
 			if !input.ReplaceAll && count > 1 {
-				return jsonTextResult(editFileResponse{Message: "old_text is not unique; set replace_all=true"}, true), nil
+				return JSONTextResult(editFileResponse{Message: "old_text is not unique; set replace_all=true"}, true), nil
 			}
 			n := 1
 			if input.ReplaceAll {
@@ -84,13 +84,13 @@ func newEditToolWithName(name, workspaceDir string) Tool {
 				mode = info.Mode().Perm()
 			}
 			if err := writeTextFileAtomic(absPath, updated, mode); err != nil {
-				return jsonTextResult(editFileResponse{Message: fmt.Sprintf("write file failed: %v", err)}, true), nil
+				return JSONTextResult(editFileResponse{Message: fmt.Sprintf("write file failed: %v", err)}, true), nil
 			}
 			replacements := 1
 			if input.ReplaceAll {
 				replacements = count
 			}
-			return jsonTextResult(editFileResponse{
+			return JSONTextResult(editFileResponse{
 				Path:         workspaceRelativePath(workspaceDir, absPath),
 				Replacements: replacements,
 			}, false), nil

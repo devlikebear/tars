@@ -25,7 +25,7 @@ func NewResearchReportTool(service *research.Service) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if service == nil {
-				return jsonTextResult(map[string]any{"message": "research service is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "research service is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string `json:"project_id"`
@@ -34,7 +34,7 @@ func NewResearchReportTool(service *research.Service) Tool {
 				Body      string `json:"body,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			report, err := service.Run(research.RunInput{
 				ProjectID: input.ProjectID,
@@ -43,9 +43,9 @@ func NewResearchReportTool(service *research.Service) Tool {
 				Body:      input.Body,
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(report, false), nil
+			return JSONTextResult(report, false), nil
 		},
 	}
 }

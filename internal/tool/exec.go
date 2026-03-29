@@ -98,7 +98,7 @@ func NewExecToolWithManager(workspaceDir string, manager *ProcessManager) Tool {
 				if err != nil {
 					return execErrorResult(commandLine, err.Error(), -1, "", "", 0, false), nil
 				}
-				return jsonTextResult(execResponse{
+				return JSONTextResult(execResponse{
 					Command:   commandLine,
 					Status:    "running",
 					SessionID: snap.SessionID,
@@ -127,7 +127,7 @@ func NewExecToolWithManager(workspaceDir string, manager *ProcessManager) Tool {
 			stderrText := trimOutput(stderr.String(), maxExecOutputBytes)
 
 			if err == nil {
-				return jsonTextResult(execResponse{
+				return JSONTextResult(execResponse{
 					Command:    commandLine,
 					ExitCode:   0,
 					Stdout:     stdoutText,
@@ -151,7 +151,7 @@ func NewExecToolWithManager(workspaceDir string, manager *ProcessManager) Tool {
 }
 
 func execErrorResult(commandLine, message string, exitCode int, stdout, stderr string, durationMS int64, timedOut bool) Result {
-	return jsonTextResult(execResponse{
+	return JSONTextResult(execResponse{
 		Command:    commandLine,
 		ExitCode:   exitCode,
 		Stdout:     stdout,
