@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-03-29
+
+### Added
+
+- **Config Management** — structured Settings UI with field-level editing, select dropdowns for enumerable options, YAML raw editor toggle, server restart (launchd/exec auto-detection), workspace reset, and Danger Zone actions
+- **Console CRUD** — project create/edit/delete with physical removal, cron job create/edit/delete/manual-run, session chat with ChatPanel embedding
+- **Multimodal Chat** — file upload (image/PDF/text) with base64 encoding, clipboard paste (Ctrl+V), ContentBlock support across all LLM providers (Anthropic, OpenAI Codex, OpenAI Compat, Gemini)
+- **Notification Panel** — clickable header badge with dropdown, newest-first sort, All/Unread/Read filter tabs, mark-all-read via events API
+- **Projects Page** — dedicated project list separated from Home dashboard, with search, status filter (All/Active/Archived), table view, and Ask AI button for natural language editing
+- **Extensions Management** — new Extensions page with Hub tab (browse/install/uninstall from tars-skills registry) and Installed tab with ON/OFF toggle per skill/plugin/MCP server, persistent disable state via `extensions_disabled.json`
+- **Skillhub API** — `/v1/hub/registry`, `/v1/hub/installed`, `/v1/hub/install`, `/v1/hub/uninstall`, `/v1/hub/update` endpoints wrapping existing `skillhub.Installer`
+- **Ask AI** buttons on Projects and Ops pages that navigate to Home chat with context-prefilled prompts
+
+### Fixed
+
+- Cleanup approval now auto-applies on approve (no separate Apply step), with result stored in Approval.Note and displayed in Ops UI
+- Blocked MCP servers no longer cause the entire `ListServers` API to return 500; blocked servers are included with error field set while others return normally
+- Project DELETE now physically removes the directory instead of soft-archiving
+- `requestJSON` handles 204 No Content responses without JSON parse errors
+- `openai-codex` added to LLM provider select options in Settings UI
+
+### Changed
+
+- Home page redesigned with Chat as the primary feature (moved to top), summary widgets below
+- Notification section removed from Home (replaced by header notification panel)
+
 ## [0.13.5] - 2026-03-28
 
 ### Fixed
