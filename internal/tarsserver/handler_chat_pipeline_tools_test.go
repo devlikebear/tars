@@ -35,6 +35,14 @@ func (chatPhaseEngineStub) Escalate(string, string) error {
 	return nil
 }
 
+func (chatPhaseEngineStub) Resume(context.Context, string) (project.AutopilotRun, error) {
+	return project.AutopilotRun{}, nil
+}
+
+func (chatPhaseEngineStub) Reset(string) error {
+	return nil
+}
+
 func TestResolveInjectedToolSchemas_FiltersHighRiskToolsForUserRole(t *testing.T) {
 	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.NewProcessManager())
 	registry.Register(tool.NewApplyPatchTool(t.TempDir(), true))

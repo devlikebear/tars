@@ -12,6 +12,8 @@
     listProjectActivity,
     reviewApproval,
     startAutopilot,
+    resumeAutopilot,
+    resetAutopilot,
     streamEvents,
     updateProject,
   } from '../lib/api'
@@ -129,6 +131,31 @@
       autopilot = await advanceAutopilot(projectId)
     } catch (e) {
       autopilotError = e instanceof Error ? e.message : 'Failed to advance autopilot'
+    } finally {
+      autopilotBusy = false
+    }
+  }
+
+  async function handleResumeAutopilot() {
+    autopilotBusy = true
+    autopilotError = ''
+    try {
+      autopilot = await resumeAutopilot(projectId)
+    } catch (e) {
+      autopilotError = e instanceof Error ? e.message : 'Failed to resume autopilot'
+    } finally {
+      autopilotBusy = false
+    }
+  }
+
+  async function handleResetAutopilot() {
+    autopilotBusy = true
+    autopilotError = ''
+    try {
+      await resetAutopilot(projectId)
+      autopilot = null
+    } catch (e) {
+      autopilotError = e instanceof Error ? e.message : 'Failed to reset autopilot'
     } finally {
       autopilotBusy = false
     }
@@ -335,10 +362,15 @@
         </div>
       {/if}
       <div class="pv-phase-actions">
-        {#if !autopilot || autopilot.status === 'done' || autopilot.status === 'failed'}
+        {#if !autopilot || autopilot.status === 'done'}
           <button class="btn btn-primary btn-sm" disabled={autopilotBusy} onclick={handleStartAutopilot}>
             {autopilotBusy ? 'Starting...' : 'Start Autopilot'}
           </button>
+        {:else if autopilot.status === 'blocked' || autopilot.status === 'failed'}
+          <button class="btn btn-primary btn-sm" disabled={autopilotBusy} onclick={handleResumeAutopilot}>
+            {autopilotBusy ? 'Resuming...' : 'Resume'}
+          </button>
+          <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleResetAutopilot}>Reset</button>
         {:else}
           <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleAdvanceAutopilot}>
             {autopilotBusy ? 'Advancing...' : 'Advance'}
@@ -350,7 +382,20 @@
       <div class="error-banner" style="margin-bottom: var(--space-4)">{autopilotError}</div>
     {/if}
 
-    {#if autopilot?.next_action}
+    {#if autopilot && (autopilot.status === 'blocked' || autopilot.status === 'failed') && autopilot.message}
+      <div class="pv-blocked-banner">
+        <div class="pv-blocked-header">
+          <span class="badge badge-error">{autopilot.status}</span>
+          <strong>{autopilot.message}</strong>
+        </div>
+        {#if autopilot.next_action}
+          <p class="pv-blocked-action">{autopilot.next_action}</p>
+        {/if}
+        {#if autopilot.summary && autopilot.summary !== autopilot.message}
+          <p class="pv-blocked-summary">{autopilot.summary}</p>
+        {/if}
+      </div>
+    {:else if autopilot?.next_action}
       <div class="pv-next-action">
         <span class="label">Next action</span>
         <p>{autopilot.next_action}</p>
@@ -584,6 +629,34 @@
 
   .pv-phase-empty {
     padding: var(--space-2) 0;
+  }
+
+  .pv-blocked-banner {
+    padding: var(--space-3) var(--space-4);
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+  }
+  .pv-blocked-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .pv-blocked-header strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+  .pv-blocked-action {
+    margin-top: var(--space-2);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-style: italic;
+  }
+  .pv-blocked-summary {
+    margin-top: var(--space-1);
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
   }
 
   .pv-next-action {

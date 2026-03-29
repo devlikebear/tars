@@ -207,6 +207,20 @@ export async function advanceAutopilot(projectId: string): Promise<ProjectAutopi
   )
 }
 
+export async function resumeAutopilot(projectId: string): Promise<ProjectAutopilotRun> {
+  return requestJSON<ProjectAutopilotRun>(
+    `/v1/projects/${encodeURIComponent(projectId)}/autopilot/resume`,
+    { method: 'POST' },
+  )
+}
+
+export async function resetAutopilot(projectId: string): Promise<void> {
+  await requestJSON(
+    `/v1/projects/${encodeURIComponent(projectId)}/autopilot/reset`,
+    { method: 'POST' },
+  )
+}
+
 // --- Cron Job CRUD ---
 
 export async function createCronJob(data: CreateCronJobRequest): Promise<CronJob> {
