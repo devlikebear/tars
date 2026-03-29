@@ -287,7 +287,7 @@ func (m *AutopilotManager) runIteration(
 	}
 	switch {
 	case len(board.Tasks) == 0:
-		return m.handleEmptyBoard(ctx, projectID, runID, iteration, isBackgroundRun)
+		return m.handleEmptyBoard(ctx, orch, projectID, runID, iteration, isBackgroundRun)
 	case boardHasStatus(board, "todo"):
 		return m.handleDispatchStage(ctx, orch, projectID, runID, iteration, "todo", isBackgroundRun)
 	case boardHasStatus(board, "review"):
@@ -304,23 +304,53 @@ func (m *AutopilotManager) runIteration(
 
 func (m *AutopilotManager) handleEmptyBoard(
 	ctx context.Context,
+	orch *Orchestrator,
 	projectID string,
 	runID string,
 	iteration int,
 	isBackgroundRun bool,
 ) autopilotStepResult {
-	if isBackgroundRun && m.planningBlockExpired(projectID) {
-		message := "Planning approval timed out: backlog is still empty"
-		nextAction := "Update or approve the backlog, then run /project autopilot advance to continue"
-		m.planningTimedOut(projectID, runID, iteration, message, nextAction)
+	// Try auto-planning via LLM before blocking
+	m.setRunningRun(projectID, "Planning next phase via LLM", iteration)
+	m.publish(projectID, "autopilot")
+	_ = m.appendPMActivity(projectID, "autopilot", "planning", "Auto-planning: generating backlog from project brief", nil)
+
+	tasks, err := orch.PlanTasks(ctx, projectID)
+	if err != nil {
+		// Planning failed — fall back to manual block
+		_ = m.appendPMActivity(projectID, "autopilot", "blocked", fmt.Sprintf("Auto-planning failed: %v", err), nil)
+		if isBackgroundRun && m.planningBlockExpired(projectID) {
+			message := "Planning approval timed out: backlog is still empty"
+			nextAction := "Update or approve the backlog, then run /project autopilot advance to continue"
+			m.planningTimedOut(projectID, runID, iteration, message, nextAction)
+			return autopilotStepResult{Stop: true}
+		}
+		message := fmt.Sprintf("Auto-planning failed: %v", err)
+		nextAction := "Create or approve the next phase backlog manually"
+		m.planningRequired(projectID, runID, iteration, message, nextAction)
 		return autopilotStepResult{Stop: true}
 	}
-	_ = ctx
-	_ = isBackgroundRun
-	message := "Autopilot paused: backlog is empty"
-	nextAction := "Create or approve the next phase backlog"
-	m.planningRequired(projectID, runID, iteration, message, nextAction)
-	return autopilotStepResult{Stop: true}
+
+	// Update board with planned tasks
+	board, _ := m.store.GetBoard(projectID)
+	board.Tasks = tasks
+	if _, updateErr := m.store.UpdateBoard(projectID, BoardUpdateInput{
+		Columns: board.Columns,
+		Tasks:   tasks,
+	}); updateErr != nil {
+		message := fmt.Sprintf("Failed to update board with planned tasks: %v", updateErr)
+		m.planningRequired(projectID, runID, iteration, message, "Retry or manually update the board")
+		return autopilotStepResult{Stop: true}
+	}
+
+	taskTitles := make([]string, 0, len(tasks))
+	for _, t := range tasks {
+		taskTitles = append(taskTitles, t.Title)
+	}
+	_ = m.appendPMActivity(projectID, "autopilot", "planned",
+		fmt.Sprintf("Auto-planned %d tasks: %s", len(tasks), strings.Join(taskTitles, "; ")), nil)
+	m.publish(projectID, "autopilot", "board")
+	return autopilotStepResult{Immediate: true} // continue to dispatch
 }
 
 func (m *AutopilotManager) handleDispatchStage(
