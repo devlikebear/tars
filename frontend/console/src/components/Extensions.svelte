@@ -84,7 +84,13 @@
     hubLoading = true
     error = ''
     try {
-      registry = await getHubRegistry()
+      const raw = await getHubRegistry()
+      registry = {
+        version: raw.version ?? 0,
+        skills: raw.skills ?? [],
+        plugins: raw.plugins ?? [],
+        mcp_servers: raw.mcp_servers ?? [],
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to fetch registry'
     } finally {
