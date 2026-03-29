@@ -94,7 +94,6 @@ func Schema() []FieldMeta {
 		// ── Tools ────────────────────────────────
 		f("tools_web_search_enabled", "Tools", "bool", "Web Search", "Enable web search tool"),
 		f("tools_web_fetch_enabled", "Tools", "bool", "Web Fetch", "Enable web fetch tool"),
-		fsel("tools_default_set", "Tools", "Default Tool Set", "Tool set preset", []string{"minimal", "standard", "full"}),
 		f("tools_allow_high_risk_user", "Tools", "bool", "Allow High-Risk Tools", "Allow user-level access to high-risk tools"),
 		fs("tools_web_search_api_key", "Tools", "Search API Key", "API key for web search provider", true),
 		fsel("tools_web_search_provider", "Tools", "Search Provider", "Web search backend", []string{"brave", "perplexity"}),
@@ -105,6 +104,9 @@ func Schema() []FieldMeta {
 		f("tools_browser_enabled", "Tools", "bool", "Browser Tool", "Enable browser automation tool"),
 		f("tools_nodes_enabled", "Tools", "bool", "Nodes Tool", "Enable sub-agent nodes tool"),
 		f("tools_gateway_enabled", "Tools", "bool", "Gateway Tool", "Enable gateway dispatch tool"),
+
+		// ── MCP ──────────────────────────────────
+		f("mcp_command_allowlist_json", "MCP", "json", "Command Allowlist", "JSON array of allowed commands for MCP servers (e.g. [\"npx\",\"node\",\"uvx\",\"python3\"])"),
 
 		// ── Vault ────────────────────────────────
 		f("vault_enabled", "Vault", "bool", "Enabled", "Enable HashiCorp Vault integration"),
@@ -289,8 +291,6 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsWebSearchEnabled
 	case "tools_web_fetch_enabled":
 		return cfg.ToolsWebFetchEnabled
-	case "tools_default_set":
-		return cfg.ToolsDefaultSet
 	case "tools_allow_high_risk_user":
 		return cfg.ToolsAllowHighRiskUser
 	case "tools_web_search_api_key":
@@ -311,6 +311,9 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsNodesEnabled
 	case "tools_gateway_enabled":
 		return cfg.ToolsGatewayEnabled
+	// MCP
+	case "mcp_command_allowlist_json":
+		return cfg.MCPCommandAllowlist
 	// Vault
 	case "vault_enabled":
 		return cfg.VaultEnabled

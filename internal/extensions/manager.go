@@ -233,7 +233,8 @@ func (m *Manager) Reload(ctx context.Context) error {
 		m.opts.MCPRuntime.SetServers(mcpServers)
 		mcpTools, err = m.opts.MCPRuntime.BuildTools(ctx)
 		if err != nil {
-			// MCP server failures should not block startup; continue without mcp tools.
+			// MCP server failures should not block startup; record diagnostic and continue.
+			mcpDiagnostics = append(mcpDiagnostics, fmt.Sprintf("mcp tools build failed: %v", err))
 			mcpTools = nil
 		}
 	}

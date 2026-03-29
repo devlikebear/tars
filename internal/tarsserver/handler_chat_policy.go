@@ -83,7 +83,7 @@ func buildChatToolRegistry(
 
 func resolveInjectedToolSchemas(
 	registry *tool.Registry,
-	toolsDefaultSet string,
+	_ string, // toolsDefaultSet — deprecated, individual tool toggles + high-risk filter used instead
 	activeProject *project.Project,
 	authRole string,
 	allowHighRiskUser bool,
@@ -91,12 +91,9 @@ func resolveInjectedToolSchemas(
 	if registry == nil {
 		return nil
 	}
-	mode := strings.TrimSpace(strings.ToLower(toolsDefaultSet))
+
 	if activeProject == nil {
-		if mode == "minimal" {
-			names := filterHighRiskToolNamesForRole(defaultMinimalToolNames(), authRole, allowHighRiskUser)
-			return registry.SchemasForNames(names)
-		}
+		// No project context: use all registered tools, filtered by high-risk policy
 		if shouldFilterHighRiskTools(authRole, allowHighRiskUser) {
 			names := filterHighRiskToolNamesForRole(toolNamesFromSchemas(registry.Schemas()), authRole, allowHighRiskUser)
 			return registry.SchemasForNames(names)
@@ -104,7 +101,8 @@ func resolveInjectedToolSchemas(
 		return registry.Schemas()
 	}
 
-	names := defaultMinimalToolNames()
+	// Project context: start with all registered tools, apply project policy
+	names := toolNamesFromSchemas(registry.Schemas())
 	policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
 		ToolsAllow:               activeProject.ToolsAllow,
 		ToolsAllowExists:         len(activeProject.ToolsAllow) > 0,
@@ -117,10 +115,6 @@ func resolveInjectedToolSchemas(
 		ToolsRiskMax:             activeProject.ToolsRiskMax,
 		ToolsRiskMaxExists:       strings.TrimSpace(activeProject.ToolsRiskMax) != "",
 	}, knownToolsFromRegistry(registry), project.ToolPolicyOptions{})
-	if len(policy.AllowedTools) > 0 {
-		names = append(names, policy.AllowedTools...)
-	}
-	names = normalizeToolNames(names)
 	names = project.ApplyToolConstraints(names, policy)
 	names = filterHighRiskToolNamesForRole(names, authRole, allowHighRiskUser)
 	if len(names) == 0 {
