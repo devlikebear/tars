@@ -52,7 +52,7 @@ func TestAuthWhoamiAPI_ReturnsRole(t *testing.T) {
 	}
 }
 
-func TestAuthWhoamiAPI_OffModeReturnsAnonymous(t *testing.T) {
+func TestAuthWhoamiAPI_OffModeGrantsAdminRole(t *testing.T) {
 	cfg := config.Config{
 		APIConfig: config.APIConfig{
 			APIAuthMode: "off",
@@ -76,11 +76,11 @@ func TestAuthWhoamiAPI_OffModeReturnsAnonymous(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode whoami response: %v", err)
 	}
-	if body.Authenticated {
-		t.Fatalf("expected authenticated=false, got %+v", body)
+	if !body.Authenticated {
+		t.Fatalf("expected authenticated=true in off mode, got %+v", body)
 	}
-	if body.AuthRole != "" {
-		t.Fatalf("expected empty auth_role, got %+v", body)
+	if body.AuthRole != "admin" {
+		t.Fatalf("expected admin role in off mode, got %+v", body)
 	}
 	if body.AuthMode != "off" {
 		t.Fatalf("expected auth_mode off, got %+v", body)
