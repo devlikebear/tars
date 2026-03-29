@@ -41,7 +41,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return jsonTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
 			}
 			var input struct {
 				Agent     string `json:"agent,omitempty"`
@@ -52,17 +52,17 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				} `json:"tasks"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			if len(input.Tasks) == 0 {
-				return jsonTextResult(map[string]any{"message": "tasks must contain at least one item"}, true), nil
+				return JSONTextResult(map[string]any{"message": "tasks must contain at least one item"}, true), nil
 			}
 
 			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
 			meta := usage.CallMetaFromContext(ctx)
 			maxThreads, maxDepth := runtime.SubagentLimits()
 			if maxThreads > 0 && len(input.Tasks) > maxThreads {
-				return jsonTextResult(map[string]any{
+				return JSONTextResult(map[string]any{
 					"message": fmt.Sprintf("requested %d tasks exceeds gateway_subagents_max_threads=%d", len(input.Tasks), maxThreads),
 				}, true), nil
 			}
@@ -73,10 +73,10 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 			}
 			info, ok := runtime.LookupAgent(agentName)
 			if !ok {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("subagent %q is not available", agentName)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("subagent %q is not available", agentName)}, true), nil
 			}
 			if msg := validateSafeSubagent(info); msg != "" {
-				return jsonTextResult(map[string]any{"message": msg}, true), nil
+				return JSONTextResult(map[string]any{"message": msg}, true), nil
 			}
 
 			parentRunID := strings.TrimSpace(meta.RunID)
@@ -85,7 +85,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 			if parentRunID != "" {
 				parentRun, found := runtime.GetByWorkspace(workspaceID, parentRunID)
 				if !found {
-					return jsonTextResult(map[string]any{"message": fmt.Sprintf("parent run not found: %s", parentRunID)}, true), nil
+					return JSONTextResult(map[string]any{"message": fmt.Sprintf("parent run not found: %s", parentRunID)}, true), nil
 				}
 				rootRunID = strings.TrimSpace(parentRun.RootRunID)
 				if rootRunID == "" {
@@ -94,7 +94,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				nextDepth = parentRun.Depth + 1
 			}
 			if maxDepth > 0 && nextDepth > maxDepth {
-				return jsonTextResult(map[string]any{
+				return JSONTextResult(map[string]any{
 					"message": fmt.Sprintf("subagent depth %d exceeds gateway_subagents_max_depth=%d", nextDepth, maxDepth),
 				}, true), nil
 			}
@@ -117,7 +117,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				prompt := strings.TrimSpace(task.Prompt)
 				if prompt == "" {
 					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
-					return jsonTextResult(map[string]any{"message": "each task prompt is required"}, true), nil
+					return JSONTextResult(map[string]any{"message": "each task prompt is required"}, true), nil
 				}
 				title := strings.TrimSpace(task.Title)
 				if title == "" {
@@ -138,7 +138,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				})
 				if err != nil {
 					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
-					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
 				spawnedRuns = append(spawnedRuns, run)
 				requests = append(requests, subagentRequest{title: title, prompt: prompt, run: run})
@@ -162,7 +162,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				final, err := runtime.Wait(waitCtx, item.run.ID)
 				if err != nil {
 					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
-					return jsonTextResult(map[string]any{"message": fmt.Sprintf("wait subagent %s failed: %v", item.run.ID, err)}, true), nil
+					return JSONTextResult(map[string]any{"message": fmt.Sprintf("wait subagent %s failed: %v", item.run.ID, err)}, true), nil
 				}
 				summary := trimSubagentSummary(final.Response, 220)
 				if summary == "" {
@@ -185,7 +185,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				})
 			}
 
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"count":     len(results),
 				"agent":     agentName,
 				"subagents": results,

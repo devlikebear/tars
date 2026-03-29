@@ -23,21 +23,21 @@ func NewUsageReportTool(tracker *usage.Tracker) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if tracker == nil {
-				return jsonTextResult(map[string]any{"message": "usage tracker is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "usage tracker is not configured"}, true), nil
 			}
 			var input struct {
 				Period  string `json:"period,omitempty"`
 				GroupBy string `json:"group_by,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			summary, err := tracker.Summary(strings.TrimSpace(input.Period), strings.TrimSpace(input.GroupBy))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
 			limits := tracker.Limits()
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"summary": summary,
 				"limits":  limits,
 			}, false), nil

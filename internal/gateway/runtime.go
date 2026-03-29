@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/devlikebear/tars/internal/browser"
 )
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
@@ -49,22 +47,6 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 		version:            1,
 		persistStore:       newSnapshotStore(opts.GatewayPersistenceDir),
 		stateVersion:       1,
-	}
-	rt.browserService = opts.BrowserService
-	if rt.browserService == nil {
-		rt.browserService = browser.NewService(browser.Config{
-			WorkspaceDir:           strings.TrimSpace(opts.WorkspaceDir),
-			DefaultProfile:         strings.TrimSpace(opts.BrowserDefaultProfile),
-			ManagedHeadless:        opts.BrowserManagedHeadless,
-			ManagedExecutablePath:  strings.TrimSpace(opts.BrowserManagedExecutablePath),
-			ManagedUserDataDir:     strings.TrimSpace(opts.BrowserManagedUserDataDir),
-			SiteFlowsDir:           strings.TrimSpace(opts.BrowserSiteFlowsDir),
-			AutoLoginSiteAllowlist: append([]string(nil), opts.BrowserAutoLoginSiteAllowlist...),
-			Vault:                  opts.BrowserVaultReader,
-		})
-	}
-	if rt.browserService != nil {
-		rt.browser = toGatewayBrowserState(rt.browserService.Status())
 	}
 	rt.initExecutors()
 	rt.restoreSnapshotOnStartup()

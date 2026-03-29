@@ -23,13 +23,13 @@ func NewSessionsListTool(store *session.Store) Tool {
 }`),
 		Execute: func(_ context.Context, _ json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "session store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "session store is not configured"}, true), nil
 			}
 			sessions, err := store.List()
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("list sessions failed: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("list sessions failed: %v", err)}, true), nil
 			}
-			return jsonTextResult(map[string]any{"count": len(sessions), "sessions": sessions}, false), nil
+			return JSONTextResult(map[string]any{"count": len(sessions), "sessions": sessions}, false), nil
 		},
 	}
 }
@@ -49,25 +49,25 @@ func NewSessionsHistoryTool(store *session.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "session store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "session store is not configured"}, true), nil
 			}
 			var input struct {
 				SessionID string `json:"session_id"`
 				Limit     int    `json:"limit,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			input.SessionID = strings.TrimSpace(input.SessionID)
 			if input.SessionID == "" {
-				return jsonTextResult(map[string]any{"message": "session_id is required"}, true), nil
+				return JSONTextResult(map[string]any{"message": "session_id is required"}, true), nil
 			}
 			if _, err := store.Get(input.SessionID); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("get session failed: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("get session failed: %v", err)}, true), nil
 			}
 			messages, err := session.ReadMessages(store.TranscriptPath(input.SessionID))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("read history failed: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("read history failed: %v", err)}, true), nil
 			}
 			limit := input.Limit
 			if limit <= 0 {
@@ -76,7 +76,7 @@ func NewSessionsHistoryTool(store *session.Store) Tool {
 			if len(messages) > limit {
 				messages = messages[len(messages)-limit:]
 			}
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"session_id": input.SessionID,
 				"count":      len(messages),
 				"messages":   messages,
@@ -103,7 +103,7 @@ func NewSessionsSendTool(runtime *gateway.Runtime) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return jsonTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
 			}
 			var input struct {
 				SessionID string `json:"session_id"`
@@ -113,7 +113,7 @@ func NewSessionsSendTool(runtime *gateway.Runtime) Tool {
 				TimeoutMS int    `json:"timeout_ms,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
 			run, err := runtime.Spawn(ctx, gateway.SpawnRequest{
@@ -124,7 +124,7 @@ func NewSessionsSendTool(runtime *gateway.Runtime) Tool {
 				Agent:       input.Agent,
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
 			timeout := input.TimeoutMS
 			if timeout <= 0 {
@@ -134,7 +134,7 @@ func NewSessionsSendTool(runtime *gateway.Runtime) Tool {
 			defer cancel()
 			final, err := runtime.Wait(waitCtx, run.ID)
 			if err != nil {
-				return jsonTextResult(map[string]any{
+				return JSONTextResult(map[string]any{
 					"accepted":   true,
 					"run_id":     run.ID,
 					"session_id": run.SessionID,
@@ -143,7 +143,7 @@ func NewSessionsSendTool(runtime *gateway.Runtime) Tool {
 				}, true), nil
 			}
 			isError := final.Status != gateway.RunStatusCompleted
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"accepted":     true,
 				"run_id":       final.ID,
 				"session_id":   final.SessionID,
@@ -173,7 +173,7 @@ func NewSessionsSpawnTool(runtime *gateway.Runtime) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return jsonTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
 			}
 			var input struct {
 				SessionID string `json:"session_id"`
@@ -182,7 +182,7 @@ func NewSessionsSpawnTool(runtime *gateway.Runtime) Tool {
 				Agent     string `json:"agent"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
 			run, err := runtime.Spawn(ctx, gateway.SpawnRequest{
@@ -193,9 +193,9 @@ func NewSessionsSpawnTool(runtime *gateway.Runtime) Tool {
 				Agent:       input.Agent,
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"accepted":   true,
 				"run_id":     run.ID,
 				"session_id": run.SessionID,
@@ -221,7 +221,7 @@ func NewSessionsRunsTool(runtime *gateway.Runtime) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return jsonTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
 			}
 			var input struct {
 				Action string `json:"action"`
@@ -229,35 +229,35 @@ func NewSessionsRunsTool(runtime *gateway.Runtime) Tool {
 				Limit  int    `json:"limit,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
 			switch strings.TrimSpace(input.Action) {
 			case "list":
 				runs := runtime.ListByWorkspace(workspaceID, input.Limit)
-				return jsonTextResult(map[string]any{"count": len(runs), "runs": runs}, false), nil
+				return JSONTextResult(map[string]any{"count": len(runs), "runs": runs}, false), nil
 			case "get":
 				runID := strings.TrimSpace(input.RunID)
 				if runID == "" {
-					return jsonTextResult(map[string]any{"message": "run_id is required"}, true), nil
+					return JSONTextResult(map[string]any{"message": "run_id is required"}, true), nil
 				}
 				run, ok := runtime.GetByWorkspace(workspaceID, runID)
 				if !ok {
-					return jsonTextResult(map[string]any{"message": "run not found"}, true), nil
+					return JSONTextResult(map[string]any{"message": "run not found"}, true), nil
 				}
-				return jsonTextResult(run, false), nil
+				return JSONTextResult(run, false), nil
 			case "cancel":
 				runID := strings.TrimSpace(input.RunID)
 				if runID == "" {
-					return jsonTextResult(map[string]any{"message": "run_id is required"}, true), nil
+					return JSONTextResult(map[string]any{"message": "run_id is required"}, true), nil
 				}
 				run, err := runtime.CancelByWorkspace(workspaceID, runID)
 				if err != nil {
-					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
-				return jsonTextResult(run, false), nil
+				return JSONTextResult(run, false), nil
 			default:
-				return jsonTextResult(map[string]any{"message": "action must be one of: list|get|cancel"}, true), nil
+				return JSONTextResult(map[string]any{"message": "action must be one of: list|get|cancel"}, true), nil
 			}
 		},
 	}
@@ -270,10 +270,10 @@ func NewAgentsListTool(runtime *gateway.Runtime) Tool {
 		Parameters:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
 		Execute: func(_ context.Context, _ json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return jsonTextResult(map[string]any{"count": 0, "agents": []map[string]any{}}, false), nil
+				return JSONTextResult(map[string]any{"count": 0, "agents": []map[string]any{}}, false), nil
 			}
 			agents := runtime.Agents()
-			return jsonTextResult(map[string]any{"count": len(agents), "agents": agents}, false), nil
+			return JSONTextResult(map[string]any{"count": len(agents), "agents": agents}, false), nil
 		},
 	}
 }

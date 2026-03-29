@@ -64,30 +64,30 @@ func NewWebFetchToolWithOptions(opts WebFetchOptions) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if !opts.Enabled {
-				return jsonTextResult(webFetchResponse{Message: "web_fetch is disabled"}, true), nil
+				return JSONTextResult(webFetchResponse{Message: "web_fetch is disabled"}, true), nil
 			}
 			var input struct {
 				URL      string `json:"url"`
 				MaxChars *int   `json:"max_chars,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(webFetchResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(webFetchResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			rawURL := strings.TrimSpace(input.URL)
 			if rawURL == "" {
-				return jsonTextResult(webFetchResponse{Message: "url is required"}, true), nil
+				return JSONTextResult(webFetchResponse{Message: "url is required"}, true), nil
 			}
 			maxChars := resolvePositiveBoundedInt(defaultWebFetchMaxChars, maxWebFetchMaxChars, input.MaxChars)
 
 			finalURL, resp, err := fetchWithSSRFGuard(ctx, httpClient, rawURL, opts.AllowPrivateHosts, allowlist)
 			if err != nil {
-				return jsonTextResult(webFetchResponse{Message: err.Error()}, true), nil
+				return JSONTextResult(webFetchResponse{Message: err.Error()}, true), nil
 			}
 			defer resp.Body.Close()
 
 			raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxWebFetchMaxChars*4)))
 			if err != nil {
-				return jsonTextResult(webFetchResponse{Message: fmt.Sprintf("read response failed: %v", err)}, true), nil
+				return JSONTextResult(webFetchResponse{Message: fmt.Sprintf("read response failed: %v", err)}, true), nil
 			}
 			text := string(raw)
 			if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "html") {
@@ -99,7 +99,7 @@ func NewWebFetchToolWithOptions(opts WebFetchOptions) Tool {
 				text = text[:maxChars]
 				truncated = true
 			}
-			return jsonTextResult(webFetchResponse{URL: finalURL, Content: text, Bytes: len(raw), Truncated: truncated}, false), nil
+			return JSONTextResult(webFetchResponse{URL: finalURL, Content: text, Bytes: len(raw), Truncated: truncated}, false), nil
 		},
 	}
 }

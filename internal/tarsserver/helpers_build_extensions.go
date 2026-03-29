@@ -13,7 +13,7 @@ import (
 	"github.com/devlikebear/tars/internal/skill"
 )
 
-func buildExtensionsManager(cfg config.Config, runtime extensions.MPRuntime) (*extensions.Manager, error) {
+func buildExtensionsManager(cfg config.Config, runtime extensions.MPRuntime, pluginConfig map[string]map[string]any) (*extensions.Manager, error) {
 	manager, err := extensions.NewManager(extensions.Options{
 		WorkspaceDir:           cfg.WorkspaceDir,
 		SkillsEnabled:          cfg.SkillsEnabled,
@@ -26,6 +26,7 @@ func buildExtensionsManager(cfg config.Config, runtime extensions.MPRuntime) (*e
 		WatchSkills:            cfg.SkillsWatch,
 		WatchPlugins:           cfg.PluginsWatch,
 		WatchDebounce:          resolveExtensionsWatchDebounce(cfg),
+		PluginConfig:           pluginConfig,
 	})
 	if err != nil {
 		return nil, err

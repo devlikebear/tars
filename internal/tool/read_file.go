@@ -120,7 +120,7 @@ func newReadToolWithName(name, workspaceDir string) Tool {
 
 			if totalLines == 0 {
 				payload.Content = ""
-				return jsonTextResult(payload, false), nil
+				return JSONTextResult(payload, false), nil
 			}
 
 			startIndex := startLine - 1
@@ -150,7 +150,7 @@ func newReadToolWithName(name, workspaceDir string) Tool {
 				payload.NextOffset = endIndex + 1
 			}
 			payload.Message = buildReadFileMessage(payload, shortenedLines, byteTruncated, maxBytes)
-			return jsonTextResult(payload, false), nil
+			return JSONTextResult(payload, false), nil
 		},
 	}
 }
@@ -273,7 +273,8 @@ func buildReadFileMessage(body readFileResponse, shortenedLines int, byteTruncat
 	return strings.Join(parts, "\n")
 }
 
-func jsonTextResult(value any, isError bool) Result {
+// JSONTextResult marshals a value to JSON text and wraps it in a Result.
+func JSONTextResult(value any, isError bool) Result {
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return Result{
@@ -292,5 +293,5 @@ func jsonTextResult(value any, isError bool) Result {
 }
 
 func readFileErrorResult(message string) Result {
-	return jsonTextResult(readFileResponse{Message: message}, true)
+	return JSONTextResult(readFileResponse{Message: message}, true)
 }

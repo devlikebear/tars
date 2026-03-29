@@ -9,6 +9,21 @@ import (
 	"github.com/devlikebear/tars/internal/vaultclient"
 )
 
+func buildBrowserPluginConfig(cfg config.Config, vaultReader vaultclient.SecretReader, vaultStatus vaultStatusSnapshot, otpRequester browser.OTPRequester) map[string]any {
+	return map[string]any{
+		"browser_runtime_enabled":            cfg.BrowserRuntimeEnabled,
+		"browser_default_profile":            cfg.BrowserDefaultProfile,
+		"browser_managed_headless":           cfg.BrowserManagedHeadless,
+		"browser_managed_executable_path":    cfg.BrowserManagedExecutablePath,
+		"browser_managed_user_data_dir":      cfg.BrowserManagedUserDataDir,
+		"browser_site_flows_dir":             cfg.BrowserSiteFlowsDir,
+		"browser_auto_login_site_allowlist":  cfg.BrowserAutoLoginSiteAllowlist,
+		"vault_reader":                       vaultReader,
+		"vault_status":                       vaultStatus,
+		"otp_requester":                      otpRequester,
+	}
+}
+
 type vaultStatusSnapshot struct {
 	Enabled        bool   `json:"enabled"`
 	Ready          bool   `json:"ready"`
@@ -52,19 +67,3 @@ func buildVaultReader(cfg config.Config) (vaultclient.SecretReader, vaultStatusS
 	return client, status, nil
 }
 
-func buildBrowserService(cfg config.Config, vaultReader vaultclient.SecretReader, otpRequester browser.OTPRequester) *browser.Service {
-	if !cfg.BrowserRuntimeEnabled {
-		return nil
-	}
-	return browser.NewService(browser.Config{
-		WorkspaceDir:           cfg.WorkspaceDir,
-		DefaultProfile:         cfg.BrowserDefaultProfile,
-		ManagedHeadless:        cfg.BrowserManagedHeadless,
-		ManagedExecutablePath:  cfg.BrowserManagedExecutablePath,
-		ManagedUserDataDir:     cfg.BrowserManagedUserDataDir,
-		SiteFlowsDir:           cfg.BrowserSiteFlowsDir,
-		AutoLoginSiteAllowlist: cfg.BrowserAutoLoginSiteAllowlist,
-		Vault:                  vaultReader,
-		OTP:                    otpRequester,
-	})
-}

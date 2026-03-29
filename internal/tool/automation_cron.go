@@ -33,7 +33,7 @@ func NewCronListTool(store *cron.Store) Tool {
 			if err != nil {
 				return automationErrorResult(fmt.Sprintf("list cron jobs failed: %v", err)), nil
 			}
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"count": len(jobs),
 				"jobs":  jobs,
 			}, false), nil
@@ -113,7 +113,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
 			if err != nil {
 				return automationErrorResult(fmt.Sprintf("create cron job failed: %v", err)), nil
 			}
-			return jsonTextResult(job, false), nil
+			return JSONTextResult(job, false), nil
 		},
 	}
 }
@@ -206,7 +206,7 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 			if err != nil {
 				return automationErrorResult(fmt.Sprintf("update cron job failed: %v", err)), nil
 			}
-			return jsonTextResult(job, false), nil
+			return JSONTextResult(job, false), nil
 		},
 	}
 }
@@ -247,7 +247,7 @@ func NewCronDeleteTool(store *cron.Store) Tool {
 			if err := store.Delete(input.JobID); err != nil {
 				return automationErrorResult(fmt.Sprintf("delete cron job failed: %v", err)), nil
 			}
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"job_id":  input.JobID,
 				"deleted": true,
 			}, false), nil
@@ -293,7 +293,7 @@ func NewCronRunTool(store *cron.Store, runJob func(ctx context.Context, job cron
 			if runErr != nil {
 				return automationErrorResult(fmt.Sprintf("run cron job failed: %v", runErr)), nil
 			}
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"job_id":     job.ID,
 				"job_name":   job.Name,
 				"job_prompt": job.Prompt,
@@ -331,7 +331,7 @@ func NewCronGetTool(store *cron.Store) Tool {
 			if err != nil {
 				return automationErrorResult(fmt.Sprintf("get cron job failed: %v", err)), nil
 			}
-			return jsonTextResult(job, false), nil
+			return JSONTextResult(job, false), nil
 		},
 	}
 }
@@ -371,7 +371,7 @@ func NewCronRunsTool(store *cron.Store) Tool {
 			if err != nil {
 				return automationErrorResult(fmt.Sprintf("list cron runs failed: %v", err)), nil
 			}
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"job_id": input.JobID,
 				"count":  len(runs),
 				"runs":   runs,

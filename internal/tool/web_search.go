@@ -205,7 +205,7 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if !opts.Enabled {
-				return jsonTextResult(webSearchResponse{Message: "web_search is disabled"}, true), nil
+				return JSONTextResult(webSearchResponse{Message: "web_search is disabled"}, true), nil
 			}
 			var input struct {
 				Query    string `json:"query"`
@@ -213,11 +213,11 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 				Provider string `json:"provider,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(webSearchResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(webSearchResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			query := strings.TrimSpace(input.Query)
 			if query == "" {
-				return jsonTextResult(webSearchResponse{Message: "query is required"}, true), nil
+				return JSONTextResult(webSearchResponse{Message: "query is required"}, true), nil
 			}
 			count := 5
 			if input.Count != nil {
@@ -241,7 +241,7 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 					payload := cached.Value
 					payload.Cached = true
 					cacheMu.Unlock()
-					return jsonTextResult(payload, false), nil
+					return JSONTextResult(payload, false), nil
 				}
 				cacheMu.Unlock()
 			}
@@ -257,14 +257,14 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 				err = fmt.Errorf("provider must be one of: brave|perplexity")
 			}
 			if err != nil {
-				return jsonTextResult(webSearchResponse{Provider: provider, Query: query, Message: err.Error()}, true), nil
+				return JSONTextResult(webSearchResponse{Provider: provider, Query: query, Message: err.Error()}, true), nil
 			}
 			if cacheTTL > 0 {
 				cacheMu.Lock()
 				cache[cacheKey] = webSearchCacheEntry{Expires: time.Now().Add(cacheTTL), Value: payload}
 				cacheMu.Unlock()
 			}
-			return jsonTextResult(payload, false), nil
+			return JSONTextResult(payload, false), nil
 		},
 	}
 }

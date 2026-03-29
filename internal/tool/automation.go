@@ -126,7 +126,7 @@ func normalizeAutomationActionInput(params json.RawMessage) (json.RawMessage, st
 }
 
 func automationErrorResult(message string) Result {
-	return jsonTextResult(map[string]string{
+	return JSONTextResult(map[string]string{
 		"error": strings.TrimSpace(message),
 	}, true)
 }

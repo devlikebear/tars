@@ -46,14 +46,14 @@ func newWriteToolWithName(name, workspaceDir string) Tool {
 				CreateDirs *bool  `json:"create_dirs,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(writeFileResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(writeFileResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			if input.Path == "" {
-				return jsonTextResult(writeFileResponse{Message: "path is required"}, true), nil
+				return JSONTextResult(writeFileResponse{Message: "path is required"}, true), nil
 			}
 			absPath, err := resolveWorkspaceWritePath(workspaceDir, input.Path)
 			if err != nil {
-				return jsonTextResult(writeFileResponse{Message: err.Error()}, true), nil
+				return JSONTextResult(writeFileResponse{Message: err.Error()}, true), nil
 			}
 
 			createDirs := true
@@ -62,17 +62,17 @@ func newWriteToolWithName(name, workspaceDir string) Tool {
 			}
 			if createDirs {
 				if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-					return jsonTextResult(writeFileResponse{Message: fmt.Sprintf("create parent directories failed: %v", err)}, true), nil
+					return JSONTextResult(writeFileResponse{Message: fmt.Sprintf("create parent directories failed: %v", err)}, true), nil
 				}
 			}
 
 			info, statErr := os.Stat(absPath)
 			created := os.IsNotExist(statErr)
 			if statErr == nil && info.IsDir() {
-				return jsonTextResult(writeFileResponse{Message: "path is a directory"}, true), nil
+				return JSONTextResult(writeFileResponse{Message: "path is a directory"}, true), nil
 			}
 			if statErr != nil && !created {
-				return jsonTextResult(writeFileResponse{Message: fmt.Sprintf("stat file failed: %v", statErr)}, true), nil
+				return JSONTextResult(writeFileResponse{Message: fmt.Sprintf("stat file failed: %v", statErr)}, true), nil
 			}
 
 			mode := fs.FileMode(0o644)
@@ -80,9 +80,9 @@ func newWriteToolWithName(name, workspaceDir string) Tool {
 				mode = info.Mode().Perm()
 			}
 			if err := writeTextFileAtomic(absPath, input.Content, mode); err != nil {
-				return jsonTextResult(writeFileResponse{Message: fmt.Sprintf("write file failed: %v", err)}, true), nil
+				return JSONTextResult(writeFileResponse{Message: fmt.Sprintf("write file failed: %v", err)}, true), nil
 			}
-			return jsonTextResult(writeFileResponse{
+			return JSONTextResult(writeFileResponse{
 				Path:    workspaceRelativePath(workspaceDir, absPath),
 				Bytes:   len(input.Content),
 				Created: created,

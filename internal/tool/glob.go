@@ -40,30 +40,30 @@ func NewGlobTool(workspaceDir string) Tool {
 				Limit   *int   `json:"limit,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(globResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(globResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			pattern := strings.TrimSpace(input.Pattern)
 			if pattern == "" {
-				return jsonTextResult(globResponse{Message: "pattern is required"}, true), nil
+				return JSONTextResult(globResponse{Message: "pattern is required"}, true), nil
 			}
 			if filepath.IsAbs(pattern) {
-				return jsonTextResult(globResponse{Message: "absolute pattern is not allowed"}, true), nil
+				return JSONTextResult(globResponse{Message: "absolute pattern is not allowed"}, true), nil
 			}
 			cleanPattern := filepath.Clean(pattern)
 			if cleanPattern == ".." || strings.HasPrefix(cleanPattern, ".."+string(filepath.Separator)) {
-				return jsonTextResult(globResponse{Message: "pattern escapes workspace"}, true), nil
+				return JSONTextResult(globResponse{Message: "pattern escapes workspace"}, true), nil
 			}
 
 			limit := resolvePositiveBoundedInt(defaultGlobLimit, maxGlobLimit, input.Limit)
 
 			rootAbs, err := filepath.Abs(workspaceDir)
 			if err != nil {
-				return jsonTextResult(globResponse{Message: fmt.Sprintf("resolve workspace failed: %v", err)}, true), nil
+				return JSONTextResult(globResponse{Message: fmt.Sprintf("resolve workspace failed: %v", err)}, true), nil
 			}
 			fullPattern := filepath.Join(rootAbs, cleanPattern)
 			matches, err := filepath.Glob(fullPattern)
 			if err != nil {
-				return jsonTextResult(globResponse{Message: fmt.Sprintf("invalid glob pattern: %v", err)}, true), nil
+				return JSONTextResult(globResponse{Message: fmt.Sprintf("invalid glob pattern: %v", err)}, true), nil
 			}
 
 			result := make([]string, 0, len(matches))
@@ -78,7 +78,7 @@ func NewGlobTool(workspaceDir string) Tool {
 				}
 				result = append(result, workspaceRelativePath(workspaceDir, m))
 			}
-			return jsonTextResult(globResponse{
+			return JSONTextResult(globResponse{
 				Pattern:   pattern,
 				Count:     len(result),
 				Truncated: truncated,

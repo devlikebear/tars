@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/devlikebear/tars/internal/browser"
 	"github.com/devlikebear/tars/internal/session"
 )
 
@@ -76,27 +75,6 @@ type ChannelMessage struct {
 	Timestamp   string         `json:"timestamp"`
 }
 
-type BrowserState struct {
-	Running            bool   `json:"running"`
-	Profile            string `json:"profile,omitempty"`
-	Driver             string `json:"driver,omitempty"`
-	CurrentURL         string `json:"current_url,omitempty"`
-	LastSnapshot       string `json:"last_snapshot,omitempty"`
-	LastAction         string `json:"last_action,omitempty"`
-	LastScreenshot     string `json:"last_screenshot,omitempty"`
-	ExtensionConnected bool   `json:"extension_connected,omitempty"`
-	AttachedTabs       int    `json:"attached_tabs,omitempty"`
-	LastError          string `json:"last_error,omitempty"`
-}
-
-type BrowserProfile struct {
-	Name               string `json:"name"`
-	Driver             string `json:"driver"`
-	Default            bool   `json:"default"`
-	Running            bool   `json:"running"`
-	ExtensionConnected bool   `json:"extension_connected,omitempty"`
-}
-
 type NodeInfo struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -126,7 +104,6 @@ type GatewayStatus struct {
 	LastRestoreError           string       `json:"last_restore_error,omitempty"`
 	LastReloadAt               string       `json:"last_reload_at,omitempty"`
 	LastRestartAt              string       `json:"last_restart_at,omitempty"`
-	Browser                    BrowserState `json:"browser"`
 	Nodes                      []NodeInfo   `json:"nodes"`
 }
 
@@ -182,14 +159,6 @@ type RuntimeOptions struct {
 	GatewayArchiveDir                    string
 	GatewayArchiveRetentionDays          int
 	GatewayArchiveMaxFileBytes           int
-	BrowserDefaultProfile                string
-	BrowserManagedHeadless               bool
-	BrowserManagedExecutablePath         string
-	BrowserManagedUserDataDir            string
-	BrowserSiteFlowsDir                  string
-	BrowserAutoLoginSiteAllowlist        []string
-	BrowserVaultReader                   browser.SecretReader
-	BrowserService                       *browser.Service
 	Now                                  func() time.Time
 }
 
@@ -218,7 +187,6 @@ type Runtime struct {
 	agentsWatchEnabled  bool
 	agentsReloadVersion int64
 	agentsLastReload    time.Time
-	browser             BrowserState
 	version             int64
 	lastReload          time.Time
 	lastRestart         time.Time
@@ -230,7 +198,6 @@ type Runtime struct {
 	lastRestoreError    string
 	runsRestored        int
 	channelsRestored    int
-	browserService      *browser.Service
 }
 
 const DefaultWorkspaceID = "default"

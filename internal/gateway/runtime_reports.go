@@ -37,7 +37,6 @@ func (r *Runtime) Status() GatewayStatus {
 		RunsRestored:               r.runsRestored,
 		ChannelsRestored:           r.channelsRestored,
 		LastRestoreError:           strings.TrimSpace(r.lastRestoreError),
-		Browser:                    r.browser,
 		Nodes:                      defaultNodes(),
 	}
 	if !r.lastPersistAt.IsZero() {
@@ -214,11 +213,6 @@ func (r *Runtime) Restart() GatewayStatus {
 			state.run.UpdatedAt = now
 			r.closeRunDoneLocked(state)
 		}
-	}
-	if r.browserService != nil {
-		r.browser = toGatewayBrowserState(r.browserService.Stop())
-	} else {
-		r.browser = BrowserState{}
 	}
 	r.trimRunHistoryLocked()
 	r.version++

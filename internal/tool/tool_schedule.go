@@ -27,7 +27,7 @@ func NewScheduleCreateTool(store *schedule.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
 			}
 			var input struct {
 				Natural   string `json:"natural"`
@@ -38,14 +38,14 @@ func NewScheduleCreateTool(store *schedule.Store) Tool {
 				Timezone  string `json:"timezone,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			if strings.TrimSpace(input.Prompt) != "" {
 				if err := validateNaturalTaskPrompt(input.Prompt); err != nil {
-					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
 				if err := validateAutonomousProjectSchedule(input.Prompt, input.ProjectID); err != nil {
-					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
 			}
 			item, err := store.Create(schedule.CreateInput{
@@ -57,9 +57,9 @@ func NewScheduleCreateTool(store *schedule.Store) Tool {
 				Timezone:  input.Timezone,
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
@@ -71,13 +71,13 @@ func NewScheduleListTool(store *schedule.Store) Tool {
 		Parameters:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
 		Execute: func(_ context.Context, _ json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
 			}
 			items, err := store.List()
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(items, false), nil
+			return JSONTextResult(items, false), nil
 		},
 	}
 }
@@ -102,7 +102,7 @@ func NewScheduleUpdateTool(store *schedule.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
 			}
 			var input struct {
 				ScheduleID string  `json:"schedule_id"`
@@ -114,16 +114,16 @@ func NewScheduleUpdateTool(store *schedule.Store) Tool {
 				Timezone   *string `json:"timezone,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			if input.Prompt != nil {
 				if err := validateNaturalTaskPrompt(*input.Prompt); err != nil {
-					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
 			}
 			current, err := store.Get(strings.TrimSpace(input.ScheduleID))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
 			effectivePrompt := current.Prompt
 			if input.Prompt != nil {
@@ -135,7 +135,7 @@ func NewScheduleUpdateTool(store *schedule.Store) Tool {
 			}
 			if strings.TrimSpace(effectivePrompt) != "" {
 				if err := validateAutonomousProjectSchedule(effectivePrompt, effectiveProjectID); err != nil {
-					return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
 			}
 			item, err := store.Update(strings.TrimSpace(input.ScheduleID), schedule.UpdateInput{
@@ -147,9 +147,9 @@ func NewScheduleUpdateTool(store *schedule.Store) Tool {
 				Timezone:  input.Timezone,
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
@@ -166,18 +166,18 @@ func NewScheduleDeleteTool(store *schedule.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
 			}
 			var input struct {
 				ScheduleID string `json:"schedule_id"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			if err := store.Delete(strings.TrimSpace(input.ScheduleID)); err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(map[string]any{"schedule_id": strings.TrimSpace(input.ScheduleID), "deleted": true}, false), nil
+			return JSONTextResult(map[string]any{"schedule_id": strings.TrimSpace(input.ScheduleID), "deleted": true}, false), nil
 		},
 	}
 }
@@ -194,19 +194,19 @@ func NewScheduleCompleteTool(store *schedule.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
 			}
 			var input struct {
 				ScheduleID string `json:"schedule_id"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			item, err := store.Complete(strings.TrimSpace(input.ScheduleID))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }

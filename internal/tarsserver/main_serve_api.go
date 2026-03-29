@@ -64,7 +64,6 @@ type apiRouteHandlers struct {
 	extensions      http.Handler
 	agentRuns       http.Handler
 	gateway         http.Handler
-	browser         http.Handler
 	channels        http.Handler
 	events          http.Handler
 	config          http.Handler
@@ -300,20 +299,19 @@ func buildAPIMux(
 	processManager := tool.NewProcessManager()
 	mcpClient := mcp.NewClient(cfg.MCPServers)
 	mcpClient.SetCommandAllowlist(cfg.MCPCommandAllowlist)
-	extensionsManager, err := buildExtensionsManager(cfg, mcpClient)
-	if err != nil {
-		return nil, err
-	}
 	vaultReader, vaultStatus, vaultErr := buildVaultReader(cfg)
 	if vaultErr != nil {
 		logger.Warn().Err(vaultErr).Msg("vault client initialization failed; browser auto-login will be unavailable")
 	}
 	otpManager := approval.NewOTPManager(nowFn)
-	browserService := buildBrowserService(
-		cfg,
-		vaultReader,
-		newBrowserTelegramOTPRequester(telegramSender, telegramPairings, otpManager),
-	)
+	browserPluginConfig := buildBrowserPluginConfig(cfg, vaultReader, vaultStatus,
+		newBrowserTelegramOTPRequester(telegramSender, telegramPairings, otpManager))
+	extensionsManager, err := buildExtensionsManager(cfg, mcpClient, map[string]map[string]any{
+		"tars-browser": browserPluginConfig,
+	})
+	if err != nil {
+		return nil, err
+	}
 	gatewayRuntime := gateway.NewRuntime(gateway.RuntimeOptions{
 		Enabled:                              cfg.GatewayEnabled,
 		WorkspaceDir:                         cfg.WorkspaceDir,
@@ -340,14 +338,6 @@ func buildAPIMux(
 		GatewayArchiveDir:                    cfg.GatewayArchiveDir,
 		GatewayArchiveRetentionDays:          cfg.GatewayArchiveRetentionDays,
 		GatewayArchiveMaxFileBytes:           cfg.GatewayArchiveMaxFileBytes,
-		BrowserDefaultProfile:                cfg.BrowserDefaultProfile,
-		BrowserManagedHeadless:               cfg.BrowserManagedHeadless,
-		BrowserManagedExecutablePath:         cfg.BrowserManagedExecutablePath,
-		BrowserManagedUserDataDir:            cfg.BrowserManagedUserDataDir,
-		BrowserSiteFlowsDir:                  cfg.BrowserSiteFlowsDir,
-		BrowserAutoLoginSiteAllowlist:        cfg.BrowserAutoLoginSiteAllowlist,
-		BrowserVaultReader:                   vaultReader,
-		BrowserService:                       browserService,
 		Now:                                  nowFn,
 	})
 	gatewayRuntimeForTelegram = gatewayRuntime
@@ -452,11 +442,6 @@ func buildAPIMux(
 	gatewayHandler := newGatewayAPIHandler(gatewayRuntime, logger, func() {
 		_ = refreshGatewayExecutors("gateway_reload")
 	})
-	browserHandler := newBrowserAPIHandler(
-		gatewayRuntime,
-		vaultStatus,
-		logger,
-	)
 	telegramInbound := newTelegramInboundHandler(
 		cfg.WorkspaceDir,
 		sessionStore,
@@ -522,12 +507,16 @@ func buildAPIMux(
 		extensions:      extensionsHandler,
 		agentRuns:       agentRunsHandler,
 		gateway:         gatewayHandler,
-		browser:         browserHandler,
 		channels:        channelsHandler,
 		events:          eventsHandler,
 		config:          configHandler,
 		skillhub:        skillhubHandler,
 	})
+
+	// Register plugin HTTP handlers
+	for _, entry := range extensionsManager.CollectHTTPHandlers() {
+		mux.Handle(entry.Pattern, entry.Handler)
+	}
 
 	server := &http.Server{
 		Addr:    opts.APIAddr,
@@ -616,7 +605,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/gateway/reports/summary", handlers.gateway)
 	mux.Handle("/v1/gateway/reports/runs", handlers.gateway)
 	mux.Handle("/v1/gateway/reports/channels", handlers.gateway)
-	registerBrowserRoutes(mux, handlers.browser)
+	// Browser routes are now registered via plugin HTTP handlers
 	mux.Handle("/v1/channels/webhook/inbound/", handlers.channels)
 	mux.Handle("/v1/channels/telegram/webhook/", handlers.channels)
 	mux.Handle("/v1/channels/telegram/send", handlers.channels)
@@ -636,18 +625,6 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/hub/uninstall", handlers.skillhub)
 	mux.Handle("/v1/hub/update", handlers.skillhub)
 	mux.Handle("/v1/hub/skill-content", handlers.skillhub)
-}
-
-func registerBrowserRoutes(mux *http.ServeMux, browserHandler http.Handler) {
-	if mux == nil || browserHandler == nil {
-		return
-	}
-	mux.Handle("/v1/browser/status", browserHandler)
-	mux.Handle("/v1/browser/profiles", browserHandler)
-	mux.Handle("/v1/browser/login", browserHandler)
-	mux.Handle("/v1/browser/check", browserHandler)
-	mux.Handle("/v1/browser/run", browserHandler)
-	mux.Handle("/v1/vault/status", browserHandler)
 }
 
 func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zerolog.Logger) error {

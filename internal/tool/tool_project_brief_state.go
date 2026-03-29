@@ -22,23 +22,23 @@ func NewProjectBriefGetTool(store *project.Store) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				BriefID string `json:"brief_id,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			briefID := resolveBriefIDFromContext(ctx, input.BriefID)
 			if briefID == "" {
-				return jsonTextResult(map[string]any{"message": "brief_id is required"}, true), nil
+				return JSONTextResult(map[string]any{"message": "brief_id is required"}, true), nil
 			}
 			item, err := store.GetBrief(briefID)
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
@@ -74,7 +74,7 @@ func NewProjectBriefUpdateTool(store *project.Store) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				BriefID            string   `json:"brief_id,omitempty"`
@@ -98,11 +98,11 @@ func NewProjectBriefUpdateTool(store *project.Store) Tool {
 				Body               *string  `json:"body,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			briefID := resolveBriefIDFromContext(ctx, input.BriefID)
 			if briefID == "" {
-				return jsonTextResult(map[string]any{"message": "brief_id is required"}, true), nil
+				return JSONTextResult(map[string]any{"message": "brief_id is required"}, true), nil
 			}
 			item, err := store.UpdateBrief(briefID, project.BriefUpdateInput{
 				Title:              input.Title,
@@ -125,9 +125,9 @@ func NewProjectBriefUpdateTool(store *project.Store) Tool {
 				Body:               input.Body,
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
@@ -143,23 +143,23 @@ func NewProjectBriefFinalizeTool(store *project.Store, sessionStore *session.Sto
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				BriefID string `json:"brief_id,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			briefID := resolveBriefIDFromContext(ctx, input.BriefID)
 			if briefID == "" {
-				return jsonTextResult(map[string]any{"message": "brief_id is required"}, true), nil
+				return JSONTextResult(map[string]any{"message": "brief_id is required"}, true), nil
 			}
 			created, brief, err := store.FinalizeBrief(briefID, sessionStore)
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(map[string]any{
+			return JSONTextResult(map[string]any{
 				"project":  created,
 				"brief":    brief,
 				"seeded":   true,
@@ -181,19 +181,19 @@ func NewProjectStateGetTool(store *project.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID string `json:"project_id"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			item, err := store.GetState(strings.TrimSpace(input.ProjectID))
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
@@ -222,7 +222,7 @@ func NewProjectStateUpdateTool(store *project.Store) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if store == nil {
-				return jsonTextResult(map[string]any{"message": "project store is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
 				ProjectID         string   `json:"project_id"`
@@ -238,7 +238,7 @@ func NewProjectStateUpdateTool(store *project.Store) Tool {
 				Body              *string  `json:"body,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
-				return jsonTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			item, err := store.UpdateState(strings.TrimSpace(input.ProjectID), project.ProjectStateUpdateInput{
 				Goal:              input.Goal,
@@ -253,9 +253,9 @@ func NewProjectStateUpdateTool(store *project.Store) Tool {
 				Body:              input.Body,
 			})
 			if err != nil {
-				return jsonTextResult(map[string]any{"message": err.Error()}, true), nil
+				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			return jsonTextResult(item, false), nil
+			return JSONTextResult(item, false), nil
 		},
 	}
 }
