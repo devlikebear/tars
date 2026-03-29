@@ -220,3 +220,24 @@ func (m *Manager) Approve(approvalID string) error {
 func (m *Manager) Reject(approvalID string) error {
 	return m.updateApprovalStatus(approvalID, "rejected")
 }
+
+// SetNote updates the note field of an approval record.
+func (m *Manager) SetNote(approvalID, note string) error {
+	if m == nil {
+		return fmt.Errorf("ops manager is nil")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	approvals, err := m.loadApprovalsLocked()
+	if err != nil {
+		return err
+	}
+	for i, a := range approvals {
+		if a.ID == approvalID {
+			approvals[i].Note = note
+			return m.saveApprovalsLocked(approvals)
+		}
+	}
+	return fmt.Errorf("approval not found: %s", approvalID)
+}
