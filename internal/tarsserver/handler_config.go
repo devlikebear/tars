@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/memory"
 	"github.com/rs/zerolog"
 )
 
@@ -209,24 +210,44 @@ func handleResetWorkspace(w http.ResponseWriter, workspaceDir string, logger zer
 		return
 	}
 
-	// Remove subdirectories that hold runtime data
-	targets := []string{"sessions", "cron", "gateway", "logs", "memory", "daily_logs"}
-	removed := 0
-	for _, sub := range targets {
-		dir := filepath.Join(workspaceDir, sub)
-		if _, err := os.Stat(dir); err == nil {
-			if err := os.RemoveAll(dir); err != nil {
-				logger.Error().Err(err).Str("dir", dir).Msg("failed to remove workspace subdirectory")
-				continue
-			}
-			removed++
-		}
+	// Preserve only: config/ directory and top-level .md template files
+	// Remove everything else (sessions, projects, cron, gateway, skills, plugins, etc.)
+	preserve := map[string]bool{"config": true}
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read workspace directory failed"})
+		return
 	}
 
-	logger.Info().Int("removed", removed).Str("workspace", workspaceDir).Msg("workspace reset")
+	removed := 0
+	var removedItems []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if preserve[name] {
+			continue
+		}
+		// Preserve top-level .md template files (HEARTBEAT.md, MEMORY.md, etc.)
+		if !entry.IsDir() && filepath.Ext(name) == ".md" {
+			continue
+		}
+		target := filepath.Join(workspaceDir, name)
+		if err := os.RemoveAll(target); err != nil {
+			logger.Error().Err(err).Str("path", target).Msg("failed to remove workspace item")
+			continue
+		}
+		removed++
+		removedItems = append(removedItems, name)
+	}
+
+	// Re-initialize workspace to pristine state (recreate dirs + template files)
+	if err := memory.EnsureWorkspace(workspaceDir); err != nil {
+		logger.Error().Err(err).Msg("re-initialize workspace failed")
+	}
+
+	logger.Info().Int("removed", removed).Strs("items", removedItems).Str("workspace", workspaceDir).Msg("workspace reset to initial state")
 	writeJSON(w, http.StatusOK, map[string]any{
-		"removed_dirs": removed,
-		"targets":      targets,
+		"removed":       removed,
+		"removed_items": removedItems,
 	})
 }
 
