@@ -56,7 +56,9 @@
 
   async function loadSessions() {
     try {
-      sessions = await listSessions()
+      const all = await listSessions()
+      // Filter by project if scoped
+      sessions = projectId ? all.filter((s) => s.project_id === projectId) : all
     } catch { /* ignore */ }
   }
 
@@ -303,19 +305,27 @@
 
   let textareaEl: HTMLTextAreaElement | undefined = $state()
 
-  onMount(() => {
+  onMount(async () => {
     if (sessionId) {
       chatSessionId = sessionId
       void switchSession(sessionId)
+    } else if (projectId) {
+      // Find the latest session for this project
+      await loadSessions()
+      const projectSession = sessions.find((s) => s.project_id === projectId && s.kind === 'main')
+      if (projectSession) {
+        void switchSession(projectSession.id)
+      } else {
+        chatMessages = [{ id: 'system-init', role: 'system', text: `Project: ${projectId}` }]
+      }
     } else {
-      const scope = projectId ? `project ${projectId}` : 'TARS'
-      chatMessages = [{ id: 'system-init', role: 'system', text: `Chat scoped to ${scope}` }]
+      chatMessages = [{ id: 'system-init', role: 'system', text: 'TARS' }]
     }
     if (initialPrompt) {
       chatInput = initialPrompt
       tick().then(() => textareaEl?.focus())
     }
-    void loadSessions()
+    if (!sessionId) void loadSessions()
   })
 </script>
 
