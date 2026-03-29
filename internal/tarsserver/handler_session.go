@@ -130,6 +130,22 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 					return
 				}
 				writeJSON(w, http.StatusOK, mainSession)
+			case http.MethodPatch:
+				actualID := sessionID
+				if isPublicMain {
+					actualID = internalMainID
+				}
+				var req struct {
+					Title string `json:"title"`
+				}
+				if !decodeJSONBody(w, r, &req) {
+					return
+				}
+				if err := reqStore.SetTitle(actualID, req.Title); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 			case http.MethodDelete:
 				publicUnsupported(w)
 			default:

@@ -202,6 +202,24 @@ func (s *Store) Touch(id string, updatedAt time.Time) error {
 	return s.saveIndex(index)
 }
 
+// SetTitle renames a session.
+func (s *Store) SetTitle(id string, title string) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	sess.Title = strings.TrimSpace(title)
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
 func (s *Store) SetProjectID(id string, projectID string) error {
 	unlock := lockPath(s.indexPath())
 	defer unlock()

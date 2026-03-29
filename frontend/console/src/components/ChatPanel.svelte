@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
-  import { streamChat, listSessions, getSessionHistory } from '../lib/api'
+  import { streamChat, listSessions, getSessionHistory, renameSession } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
   import type { ChatAttachment, ChatEvent, Session, SessionMessage } from '../lib/types'
 
@@ -37,6 +37,22 @@
   // Multi-session
   let sessions: Session[] = $state([])
   let showSessions = $state(false)
+  let renamingId: string | null = $state(null)
+  let renameValue = $state('')
+
+  function startRename(s: Session) {
+    renamingId = s.id
+    renameValue = s.title || s.id.slice(0, 12)
+  }
+
+  async function commitRename() {
+    if (!renamingId || !renameValue.trim()) { renamingId = null; return }
+    try {
+      await renameSession(renamingId, renameValue.trim())
+      await loadSessions()
+    } catch { /* ignore */ }
+    renamingId = null
+  }
 
   async function loadSessions() {
     try {
@@ -319,10 +335,22 @@
   {#if showSessions && sessions.length > 0}
     <div class="session-list">
       {#each sessions.slice(0, 20) as s}
-        <button class="session-item" class:active={chatSessionId === s.id} onclick={() => switchSession(s.id)}>
-          <span class="session-item-title">{s.title || s.id.slice(0, 12)}</span>
+        <div class="session-item" class:active={chatSessionId === s.id}>
+          {#if renamingId === s.id}
+            <input
+              class="session-rename-input"
+              bind:value={renameValue}
+              onkeydown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') renamingId = null }}
+              onblur={() => commitRename()}
+            />
+          {:else}
+            <button class="session-item-btn" onclick={() => switchSession(s.id)}>
+              <span class="session-item-title">{s.title || s.id.slice(0, 12)}</span>
+            </button>
+            <button class="session-rename-btn" onclick={() => startRename(s)} title="Rename">&#9998;</button>
+          {/if}
           <span class="session-item-meta">{s.kind || 'main'}</span>
-        </button>
+        </div>
       {/each}
     </div>
   {/if}
@@ -461,16 +489,23 @@
   .session-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: var(--space-2) var(--space-3);
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
     background: transparent;
-    border: none;
-    cursor: pointer;
-    text-align: left;
     transition: background var(--duration-fast) var(--ease-out);
   }
   .session-item:hover { background: rgba(255, 255, 255, 0.03); }
   .session-item.active { background: rgba(224, 145, 69, 0.1); border-left: 2px solid var(--accent); }
+
+  .session-item-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    padding: var(--space-1) 0;
+    min-width: 0;
+  }
 
   .session-item-title {
     font-size: var(--text-xs);
@@ -478,13 +513,39 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 200px;
+    display: block;
+  }
+  .session-item-btn:hover .session-item-title { color: var(--accent); }
+
+  .session-rename-btn {
+    background: none;
+    border: none;
+    color: var(--text-ghost);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px;
+    opacity: 0;
+    transition: opacity var(--duration-fast);
+  }
+  .session-item:hover .session-rename-btn { opacity: 1; }
+  .session-rename-btn:hover { color: var(--accent); }
+
+  .session-rename-input {
+    flex: 1;
+    padding: 2px var(--space-1);
+    font-size: var(--text-xs);
+    background: var(--bg-base);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    outline: none;
   }
 
   .session-item-meta {
     font-size: 10px;
     color: var(--text-ghost);
     font-family: var(--font-mono);
+    flex-shrink: 0;
   }
 
   .chat-log {

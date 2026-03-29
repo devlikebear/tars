@@ -146,6 +146,13 @@ export async function getSessionHistory(sessionId: string): Promise<SessionMessa
   return requestJSON<SessionMessage[]>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/history`)
 }
 
+export async function renameSession(sessionId: string, title: string): Promise<void> {
+  await requestJSON(`/v1/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  })
+}
+
 export async function getEventsHistory(limit = 30): Promise<EventsHistoryInfo> {
   return requestJSON<EventsHistoryInfo>(`/v1/events/history?limit=${limit}`)
 }
