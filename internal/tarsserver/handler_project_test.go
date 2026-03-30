@@ -596,7 +596,9 @@ func TestProjectAPI_AutopilotRoutes(t *testing.T) {
 		t.Fatalf("expected 200 for autopilot start, got %d body=%q", startRec.Code, startRec.Body.String())
 	}
 
-	waitForAutopilotRun(t, manager, created.ID, project.AutopilotStatusDone)
+	// After all tasks done, autopilot clears board and attempts auto-planning.
+	// Mock runner returns invalid planning response, so autopilot blocks.
+	waitForAutopilotRun(t, manager, created.ID, project.AutopilotStatusBlocked)
 
 	statusReq := httptest.NewRequest(http.MethodGet, "/v1/projects/"+created.ID+"/autopilot", nil)
 	statusRec := httptest.NewRecorder()
@@ -604,19 +606,20 @@ func TestProjectAPI_AutopilotRoutes(t *testing.T) {
 	if statusRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for autopilot status, got %d body=%q", statusRec.Code, statusRec.Body.String())
 	}
-	if !strings.Contains(statusRec.Body.String(), `"status":"done"`) {
-		t.Fatalf("expected done status in autopilot response, got %q", statusRec.Body.String())
-	}
-	if !strings.Contains(statusRec.Body.String(), `"phase":"done"`) || !strings.Contains(statusRec.Body.String(), `"phase_status":"done"`) {
-		t.Fatalf("expected phase summary in autopilot status response, got %q", statusRec.Body.String())
+	// With multi-phase, tasks done → board cleared → re-plan attempted.
+	// Mock runner can't produce valid planning JSON, so status is blocked.
+	if !strings.Contains(statusRec.Body.String(), `"status":"blocked"`) {
+		t.Fatalf("expected blocked status in autopilot response, got %q", statusRec.Body.String())
 	}
 
 	board, err := projectStore.GetBoard(created.ID)
 	if err != nil {
 		t.Fatalf("get board after autopilot: %v", err)
 	}
-	if len(board.Tasks) != 1 || board.Tasks[0].Status != "done" {
-		t.Fatalf("expected autopilot to complete task, got %+v", board.Tasks)
+	// Board is cleared after all tasks done (multi-phase transition).
+	// With mock runner, re-planning fails, so board remains empty.
+	if len(board.Tasks) != 0 {
+		t.Fatalf("expected empty board after phase transition attempt, got %+v", board.Tasks)
 	}
 }
 
