@@ -526,6 +526,22 @@ func newProjectAPIHandler(
 			return
 		}
 
+		if len(parts) == 3 && parts[1] == "autopilot" && parts[2] == "stop" {
+			if autopilot == nil {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project autopilot manager is not configured"})
+				return
+			}
+			if !requireMethod(w, r, http.MethodPost) {
+				return
+			}
+			if err := autopilot.Stop(projectID); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+			return
+		}
+
 		if len(parts) == 3 && parts[1] == "autopilot" && parts[2] == "resume" {
 			if autopilot == nil {
 				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project autopilot manager is not configured"})

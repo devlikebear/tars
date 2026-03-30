@@ -14,6 +14,7 @@
     startAutopilot,
     resumeAutopilot,
     resetAutopilot,
+    stopAutopilot,
     streamEvents,
     updateProject,
     listProjectFiles,
@@ -173,6 +174,19 @@
     }
   }
 
+  async function handleStopAutopilot() {
+    autopilotBusy = true
+    autopilotError = ''
+    try {
+      await stopAutopilot(projectId)
+      autopilot = await getProjectAutopilot(projectId)
+    } catch (e) {
+      autopilotError = e instanceof Error ? e.message : 'Failed to stop autopilot'
+    } finally {
+      autopilotBusy = false
+    }
+  }
+
   async function handleResetAutopilot() {
     autopilotBusy = true
     autopilotError = ''
@@ -308,6 +322,7 @@
   function statusColor(status?: string): string {
     switch (status?.toLowerCase()) {
       case 'running': return 'badge-success'
+      case 'scheduled': return 'badge-info'
       case 'blocked': return 'badge-error'
       case 'done': case 'completed': return 'badge-default'
       case 'failed': return 'badge-error'
@@ -428,10 +443,14 @@
             {autopilotBusy ? 'Resuming...' : 'Resume'}
           </button>
           <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleResetAutopilot}>Reset</button>
+        {:else if autopilot.status === 'scheduled'}
+          <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleAdvanceAutopilot}>Run Now</button>
+          <button class="btn btn-danger btn-sm" disabled={autopilotBusy} onclick={handleStopAutopilot}>Stop</button>
         {:else}
           <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleAdvanceAutopilot}>
             {autopilotBusy ? 'Advancing...' : 'Advance'}
           </button>
+          <button class="btn btn-danger btn-sm" disabled={autopilotBusy} onclick={handleStopAutopilot}>Stop</button>
         {/if}
       </div>
     </div>
@@ -439,7 +458,12 @@
       <div class="error-banner" style="margin-bottom: var(--space-4)">{autopilotError}</div>
     {/if}
 
-    {#if autopilot && (autopilot.status === 'blocked' || autopilot.status === 'failed') && autopilot.message}
+    {#if autopilot && autopilot.status === 'scheduled'}
+      <div class="pv-scheduled-banner">
+        <span class="badge badge-info">scheduled</span>
+        <span>{autopilot.message || 'Waiting for next scheduled run'}</span>
+      </div>
+    {:else if autopilot && (autopilot.status === 'blocked' || autopilot.status === 'failed') && autopilot.message}
       <div class="pv-blocked-banner">
         <div class="pv-blocked-header">
           <span class="badge badge-error">{autopilot.status}</span>
@@ -726,6 +750,19 @@
 
   .pv-phase-empty {
     padding: var(--space-2) 0;
+  }
+
+  .pv-scheduled-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
   }
 
   .pv-blocked-banner {

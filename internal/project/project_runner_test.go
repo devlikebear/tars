@@ -206,11 +206,14 @@ func TestAutopilotManager_StartCompletesTodoAndReviewFlow(t *testing.T) {
 	// Multi-phase: after all tasks complete, autopilot clears the board and attempts
 	// to plan the next phase. Mock runners return invalid HTML so planning fails,
 	// leaving the project "blocked" in "planning" instead of "done".
-	if final.Status == AutopilotStatusBlocked {
+	switch final.Status {
+	case AutopilotStatusBlocked:
 		if state.Phase != "planning" || state.Status != "blocked" {
 			t.Fatalf("expected blocked planning state after multi-phase transition, got %+v", state)
 		}
-	} else {
+	case AutopilotStatusScheduled:
+		// Budget exhausted before finishing — acceptable in cron mode.
+	default:
 		if state.Status != "done" || state.Phase != "done" {
 			t.Fatalf("expected done state, got %+v", state)
 		}
@@ -249,7 +252,7 @@ func TestAutopilotManager_StartRecoversVerificationGateFailureAndCompletes(t *te
 	}
 
 	manager := NewAutopilotManager(store, &recoveringTaskRunner{}, func(context.Context) error { return nil }, nil)
-	manager.loopInterval = 5 * time.Millisecond
+	manager.cronInterval = 5 * time.Millisecond
 	if _, err := manager.Start(context.Background(), created.ID); err != nil {
 		t.Fatalf("start autopilot: %v", err)
 	}
@@ -258,8 +261,8 @@ func TestAutopilotManager_StartRecoversVerificationGateFailureAndCompletes(t *te
 	if final.Iterations < 3 {
 		t.Fatalf("expected retry iterations before completion, got %+v", final)
 	}
-	if final.Status != AutopilotStatusBlocked && final.Status != AutopilotStatusDone {
-		t.Fatalf("expected recovered autopilot to finish or block on next phase, got %+v", final)
+	if final.Status != AutopilotStatusBlocked && final.Status != AutopilotStatusDone && final.Status != AutopilotStatusScheduled {
+		t.Fatalf("expected recovered autopilot to finish, block, or schedule, got %+v", final)
 	}
 
 	activity, err := store.ListActivity(created.ID, 100)
@@ -344,7 +347,7 @@ func TestAutopilotManager_StartRecoversStalledInProgressTaskAndCompletes(t *test
 	}
 
 	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
-	manager.loopInterval = 5 * time.Millisecond
+	manager.cronInterval = 5 * time.Millisecond
 	if _, err := manager.Start(context.Background(), created.ID); err != nil {
 		t.Fatalf("start autopilot: %v", err)
 	}
@@ -543,7 +546,7 @@ func TestAutopilotManager_RestorePersistedRunsRestartsRunningRunsAtStartup(t *te
 	})
 
 	restarted := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
-	restarted.loopInterval = 5 * time.Millisecond
+	restarted.cronInterval = 5 * time.Millisecond
 	if err := restarted.RestorePersistedRuns(); err != nil {
 		t.Fatalf("restore persisted runs: %v", err)
 	}
@@ -672,7 +675,7 @@ func TestAutopilotManager_RestorePersistedRunsRestartsIncompleteProjects(t *test
 	})
 
 	restarted := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
-	restarted.loopInterval = 5 * time.Millisecond
+	restarted.cronInterval = 5 * time.Millisecond
 	if err := restarted.RestorePersistedRuns(); err != nil {
 		t.Fatalf("restore persisted runs: %v", err)
 	}
@@ -725,7 +728,7 @@ func TestAutopilotManager_EnsureActiveRunsStartsMissingLoop(t *testing.T) {
 	}
 
 	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
-	manager.loopInterval = 5 * time.Millisecond
+	manager.cronInterval = 5 * time.Millisecond
 	started, err := manager.EnsureActiveRuns(context.Background())
 	if err != nil {
 		t.Fatalf("ensure active runs: %v", err)
@@ -735,8 +738,8 @@ func TestAutopilotManager_EnsureActiveRunsStartsMissingLoop(t *testing.T) {
 	}
 
 	final := waitForAutopilotTerminalStatus(t, manager, created.ID)
-	if final.Status != AutopilotStatusBlocked && final.Status != AutopilotStatusDone {
-		t.Fatalf("expected done or blocked status, got %+v", final)
+	if final.Status != AutopilotStatusBlocked && final.Status != AutopilotStatusDone && final.Status != AutopilotStatusScheduled {
+		t.Fatalf("expected done, blocked, or scheduled status, got %+v", final)
 	}
 }
 
@@ -822,12 +825,12 @@ func waitForAutopilotTerminalStatus(t *testing.T, manager *AutopilotManager, pro
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		item, ok := manager.Status(projectID)
-		if ok && (item.Status == AutopilotStatusDone || item.Status == AutopilotStatusBlocked) {
+		if ok && (item.Status == AutopilotStatusDone || item.Status == AutopilotStatusBlocked || item.Status == AutopilotStatusScheduled) {
 			return item
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	item, _ := manager.Status(projectID)
-	t.Fatalf("expected autopilot terminal status (done or blocked), got %+v", item)
+	t.Fatalf("expected autopilot terminal status (done, blocked, or scheduled), got %+v", item)
 	return AutopilotRun{}
 }

@@ -276,7 +276,7 @@ func buildAPIMux(
 		watchdogState,
 		dispatcher.Emit,
 	)
-	cronRunner := newCronJobRunnerWithNotify(
+	baseCronRunner := newCronJobRunnerWithNotify(
 		cfg.WorkspaceDir,
 		sessionStore,
 		apiRunPromptWithTools,
@@ -292,6 +292,21 @@ func buildAPIMux(
 			return telegramPairings.resolveDefaultChatID()
 		},
 	)
+
+	// Wrap cron runner to intercept autopilot tick jobs
+	cronRunner := func(ctx context.Context, job cron.Job) (string, error) {
+		if strings.HasPrefix(job.Prompt, "__autopilot_tick:") {
+			pid := strings.TrimPrefix(job.Prompt, "__autopilot_tick:")
+			if projectAutopilot != nil {
+				return projectAutopilot.RunScheduled(ctx, pid)
+			}
+			return "", fmt.Errorf("autopilot not configured")
+		}
+		if baseCronRunner != nil {
+			return baseCronRunner(ctx, job)
+		}
+		return "", fmt.Errorf("cron runner not configured")
+	}
 
 	mux := http.NewServeMux()
 	heartbeatHandler := newHeartbeatAPIHandlerWithRunner(heartbeatRunner, logger)
@@ -393,6 +408,29 @@ func buildAPIMux(
 	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
 	projectTaskRunner := gateway.NewProjectTaskRunner(gatewayRuntime, "")
 	projectAutopilotManager := project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), nil)
+	projectAutopilotManager.SetCronCallbacks(&project.CronJobCallbacks{
+		CreateJob: func(projectID string, interval time.Duration) error {
+			_, err := cronStore.CreateWithOptions(cron.CreateInput{
+				Name:     fmt.Sprintf("autopilot:%s", projectID),
+				Prompt:   fmt.Sprintf("__autopilot_tick:%s", projectID),
+				Schedule: fmt.Sprintf("@every %s", interval.String()),
+				ProjectID: projectID,
+			})
+			return err
+		},
+		DeleteJob: func(projectID string) error {
+			jobs, err := cronStore.List()
+			if err != nil {
+				return err
+			}
+			for _, j := range jobs {
+				if j.Name == fmt.Sprintf("autopilot:%s", projectID) {
+					return cronStore.Delete(j.ID)
+				}
+			}
+			return nil
+		},
+	})
 	projectAutopilot = projectAutopilotManager
 	ensureProjectAutopilot = func(ctx context.Context) error {
 		if projectAutopilot == nil {

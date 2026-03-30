@@ -239,7 +239,7 @@ func TestAutopilotManager_AdvanceDoesNotSleepOnBlockedStep(t *testing.T) {
 	}
 
 	manager := NewAutopilotManager(store, stagedTaskRunner{}, func(context.Context) error { return nil }, nil)
-	manager.loopInterval = time.Second
+	manager.cronInterval = time.Second
 
 	start := time.Now()
 	current, err := manager.Advance(context.Background(), created.ID)
