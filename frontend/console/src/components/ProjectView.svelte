@@ -1,18 +1,12 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount } from 'svelte'
   import {
     deleteProject,
-    getEventsHistory,
     getProject,
     getProjectSession,
     clearProjectSession,
     compactProjectSession,
-    listApprovals,
-    listCronJobs,
-    listCronRuns,
     listProjectActivity,
-    reviewApproval,
-    streamEvents,
     updateProject,
     listProjectFiles,
     getProjectFileContent,
@@ -20,10 +14,6 @@
   import type { ProjectFile } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
   import type {
-    Approval,
-    CronJob,
-    CronRunRecord,
-    NotificationMessage,
     Project,
     ProjectActivity,
     ProjectSessionInfo,
@@ -40,18 +30,10 @@
   let sessionInfo: ProjectSessionInfo | null = $state(null)
   let sessionBusy = $state(false)
   let activity: ProjectActivity[] = $state([])
-  let cronJobs: CronJob[] = $state([])
-  let cronRunsByJob: Record<string, CronRunRecord[]> = $state({})
-  let notifications: NotificationMessage[] = $state([])
-  let approvals: Approval[] = $state([])
 
   let loadingDetail = $state(true)
-  let loadingPanels = $state(false)
   let detailError = $state('')
   let panelError = $state('')
-
-  let approvalBusyId = $state('')
-  let stopEventStream: (() => void) | null = null
 
   // -- Edit / Delete --
   let editing = $state(false)
@@ -168,19 +150,6 @@
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
   }
 
-  function compact(value?: string, max = 180): string {
-    const text = value?.trim()
-    if (!text) return '\u2014'
-    return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`
-  }
-
-  function filterProjectNotifications(items: NotificationMessage[], pid: string): NotificationMessage[] {
-    return items
-      .filter((item) => item.project_id?.trim() === pid)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 20)
-  }
-
   async function loadDetail() {
     loadingDetail = true
     detailError = ''
@@ -194,74 +163,17 @@
     }
   }
 
-  async function loadPanels() {
-    loadingPanels = true
-    panelError = ''
-    const results = await Promise.allSettled([
-      listProjectActivity(projectId, 20).then((items) => { activity = items }),
-      listCronJobs().then(async (allJobs) => {
-        const jobs = allJobs.filter((j) => j.project_id?.trim() === projectId)
-        const runsEntries = await Promise.all(
-          jobs.map(async (j) => [j.id, await listCronRuns(j.id, 5)] as const),
-        )
-        cronJobs = jobs
-        cronRunsByJob = Object.fromEntries(runsEntries)
-      }),
-      getEventsHistory(40).then((history) => {
-        notifications = filterProjectNotifications(history.items ?? [], projectId)
-      }),
-      listApprovals().then((list) => { approvals = list }),
-    ])
-    const failures = results
-      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-      .map((r) => (r.reason instanceof Error ? r.reason.message : 'Panel error'))
-    panelError = failures.join(' \u00b7 ')
-    loadingPanels = false
-  }
-
-  function startEventStream() {
-    stopEventStream?.()
-    stopEventStream = streamEvents(
-      projectId,
-      (event) => {
-        notifications = filterProjectNotifications(
-          [event, ...notifications.filter((n) => n.id !== event.id)],
-          projectId,
-        )
-        if (event.category === 'cron' || event.category === 'watchdog') {
-          void loadPanels()
-        }
-        if (event.category === 'ops') {
-          void listApprovals().then((list) => { approvals = list })
-        }
-      },
-    )
-  }
-
-  async function handleApprovalAction(approvalId: string, action: 'approve' | 'reject') {
-    if (!approvalId.trim() || approvalBusyId) return
-    approvalBusyId = approvalId
-    panelError = ''
+  async function loadActivity() {
     try {
-      await reviewApproval(approvalId, action)
-      approvals = await listApprovals()
-    } catch (err) {
-      panelError = err instanceof Error ? err.message : `Failed to ${action}`
-    } finally {
-      approvalBusyId = ''
-    }
+      activity = await listProjectActivity(projectId, 20)
+    } catch { activity = [] }
   }
 
   onMount(() => {
     void loadDetail()
-    void loadPanels()
+    void loadActivity()
     void loadFiles()
     void loadSessionInfo()
-    startEventStream()
-  })
-
-  onDestroy(() => {
-    stopEventStream?.()
   })
 </script>
 
@@ -296,9 +208,6 @@
       </div>
       <div class="pv-header-meta">
         <span class="badge badge-default">{project.status || 'active'}</span>
-        {#if loadingPanels}
-          <span class="badge badge-default">refreshing</span>
-        {/if}
         {#if !editing}
           <button class="btn btn-ghost btn-sm" onclick={enterEdit}>Edit</button>
           <button class="btn btn-danger btn-sm" disabled={deleting} onclick={handleDelete}>
@@ -414,106 +323,6 @@
         {/if}
       </section>
 
-      <!-- Cron -->
-      <section class="card pv-wide">
-        <div class="card-header">
-          <span class="card-title">Cron jobs</span>
-          <span class="badge badge-default">{cronJobs.length}</span>
-        </div>
-        {#if cronJobs.length === 0}
-          <div class="empty-state"><p>No cron jobs attached.</p></div>
-        {:else}
-          <div class="pv-timeline">
-            {#each cronJobs as job}
-              <div class="pv-timeline-item">
-                <div class="pv-timeline-top">
-                  <strong>{job.name}</strong>
-                  <span class="badge" class:badge-success={job.enabled && !job.last_run_error}
-                    class:badge-error={!!job.last_run_error}
-                    class:badge-default={!job.enabled}>
-                    {job.enabled ? job.schedule : 'disabled'}
-                  </span>
-                </div>
-                <p>{compact(job.prompt, 160)}</p>
-                {#if (cronRunsByJob[job.id] ?? []).length > 0}
-                  <div class="pv-cron-runs">
-                    {#each cronRunsByJob[job.id] ?? [] as run}
-                      <div class="pv-cron-run">
-                        <strong>{fmt(run.ran_at)}</strong>
-                        <span>{compact(run.error || run.response || 'No output', 140)}</span>
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      <!-- Notifications -->
-      <section class="card pv-wide">
-        <div class="card-header">
-          <span class="card-title">Notifications</span>
-          <span class="badge badge-default">{notifications.length}</span>
-        </div>
-        {#if notifications.length === 0}
-          <div class="empty-state"><p>No project notifications.</p></div>
-        {:else}
-          <div class="pv-timeline">
-            {#each notifications as item}
-              <div class="pv-timeline-item">
-                <div class="pv-timeline-top">
-                  <strong>{item.title}</strong>
-                  <span class="badge badge-default">{item.severity}</span>
-                </div>
-                <p>{item.message}</p>
-                <div class="pv-timeline-meta">
-                  <span>{fmt(item.timestamp)}</span>
-                  <span>{item.category}</span>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      <!-- Approvals -->
-      <section class="card pv-wide">
-        <div class="card-header">
-          <span class="card-title">Approvals</span>
-          <span class="badge badge-default">{approvals.length}</span>
-        </div>
-        {#if approvals.length === 0}
-          <div class="empty-state"><p>No approvals pending.</p></div>
-        {:else}
-          <div class="pv-timeline">
-            {#each approvals as approval}
-              <div class="pv-timeline-item">
-                <div class="pv-timeline-top">
-                  <strong>{approval.type}</strong>
-                  <span class="badge badge-default">{approval.status}</span>
-                </div>
-                <p>{approval.plan.candidates.length} candidates, {approval.plan.total_bytes} bytes</p>
-                {#if approval.status === 'pending'}
-                  <div class="pv-approval-actions">
-                    <button type="button" class="btn btn-secondary btn-sm"
-                      disabled={approvalBusyId === approval.id}
-                      onclick={() => { void handleApprovalAction(approval.id, 'approve') }}>
-                      Approve
-                    </button>
-                    <button type="button" class="btn btn-danger btn-sm"
-                      disabled={approvalBusyId === approval.id}
-                      onclick={() => { void handleApprovalAction(approval.id, 'reject') }}>
-                      Reject
-                    </button>
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
     </div>
   {/if}
 </div>
@@ -675,30 +484,6 @@
     color: var(--text-ghost);
   }
 
-  .pv-cron-runs {
-    display: grid;
-    gap: var(--space-1);
-    margin-top: var(--space-2);
-  }
-
-  .pv-cron-run {
-    display: grid;
-    gap: 2px;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    background: var(--bg-surface);
-    font-size: var(--text-sm);
-  }
-
-  .pv-cron-run span {
-    color: var(--text-secondary);
-  }
-
-  .pv-approval-actions {
-    display: flex;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
-  }
 
   /* ── Inline form ──────────────────────────────── */
   .inline-form {

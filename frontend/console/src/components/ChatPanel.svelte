@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte'
-  import { streamChat, listSessions, getSessionHistory, renameSession } from '../lib/api'
+  import { onMount, tick } from 'svelte'
+  import { streamChat, listSessions, getSessionHistory } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
-  import type { ChatAttachment, ChatEvent, Session, SessionMessage } from '../lib/types'
+  import type { ChatAttachment, ChatEvent, SessionMessage } from '../lib/types'
 
   type ChatMessage = {
     id: string
@@ -34,74 +34,38 @@
   let chatLogEl: HTMLDivElement | undefined = $state()
   let autoScroll = $state(true)
 
-  // Multi-session
-  let sessions: Session[] = $state([])
-  let showSessions = $state(false)
-  let renamingId: string | null = $state(null)
-  let renameValue = $state('')
-
-  function startRename(s: Session) {
-    renamingId = s.id
-    renameValue = s.title || s.id.slice(0, 12)
-  }
-
-  async function commitRename() {
-    if (!renamingId || !renameValue.trim()) { renamingId = null; return }
-    try {
-      await renameSession(renamingId, renameValue.trim())
-      await loadSessions()
-    } catch { /* ignore */ }
-    renamingId = null
-  }
-
-  async function loadSessions() {
+  async function loadProjectSession() {
     try {
       const all = await listSessions()
-      // Filter by project if scoped
-      sessions = projectId ? all.filter((s) => s.project_id === projectId) : all
-    } catch { /* ignore */ }
-  }
-
-  async function switchSession(sid: string) {
-    chatSessionId = sid
-    chatMessages = [{ id: 'system-init', role: 'system', text: `Session: ${sid.slice(0, 8)}...` }]
-    chatStatusLine = ''
-    chatError = ''
-    showSessions = false
-    autoScroll = true
-    try {
-      const history = await getSessionHistory(sid)
-      for (const msg of history) {
-        if (msg.role === 'tool') {
-          chatMessages.push({
-            id: `tool-${msg.tool_call_id || Date.now()}`,
-            role: 'tool',
-            text: '',
-            toolName: msg.tool_name,
-            toolCallId: msg.tool_call_id,
-            toolArgs: msg.tool_args,
-            toolResult: msg.content,
-            toolDone: true,
-          })
-        } else {
-          chatMessages.push({
-            id: `hist-${chatMessages.length}`,
-            role: msg.role as ChatMessage['role'],
-            text: msg.content,
-          })
+      const projectSession = projectId ? all.find((s) => s.project_id === projectId) : null
+      if (projectSession) {
+        chatSessionId = projectSession.id
+        chatMessages = [{ id: 'system-init', role: 'system', text: `Session: ${projectSession.id.slice(0, 8)}...` }]
+        const history = await getSessionHistory(projectSession.id)
+        for (const msg of history) {
+          if (msg.role === 'tool') {
+            chatMessages.push({
+              id: `tool-${msg.tool_call_id || Date.now()}`,
+              role: 'tool',
+              text: '',
+              toolName: msg.tool_name,
+              toolCallId: msg.tool_call_id,
+              toolArgs: msg.tool_args,
+              toolResult: msg.content,
+              toolDone: true,
+            })
+          } else {
+            chatMessages.push({
+              id: `hist-${chatMessages.length}`,
+              role: msg.role as ChatMessage['role'],
+              text: msg.content,
+            })
+          }
         }
+        chatMessages = [...chatMessages]
+        void scrollToBottom()
       }
-      chatMessages = [...chatMessages]
-      void scrollToBottom()
     } catch { /* ignore */ }
-  }
-
-  function startNewSession() {
-    chatSessionId = 'new'
-    chatMessages = [{ id: 'system-init', role: 'system', text: 'New session' }]
-    chatStatusLine = ''
-    chatError = ''
-    showSessions = false
   }
 
   function handleScroll() {
@@ -175,7 +139,6 @@
       case 'done':
         chatSessionId = event.session_id?.trim() || chatSessionId
         chatStatusLine = 'done'
-        void loadSessions()
         onSessionChange?.()
         break
       case 'error':
@@ -308,16 +271,34 @@
   onMount(async () => {
     if (sessionId) {
       chatSessionId = sessionId
-      void switchSession(sessionId)
+      chatMessages = [{ id: 'system-init', role: 'system', text: `Session: ${sessionId.slice(0, 8)}...` }]
+      try {
+        const history = await getSessionHistory(sessionId)
+        for (const msg of history) {
+          if (msg.role === 'tool') {
+            chatMessages.push({
+              id: `tool-${msg.tool_call_id || Date.now()}`,
+              role: 'tool',
+              text: '',
+              toolName: msg.tool_name,
+              toolCallId: msg.tool_call_id,
+              toolArgs: msg.tool_args,
+              toolResult: msg.content,
+              toolDone: true,
+            })
+          } else {
+            chatMessages.push({
+              id: `hist-${chatMessages.length}`,
+              role: msg.role as ChatMessage['role'],
+              text: msg.content,
+            })
+          }
+        }
+        chatMessages = [...chatMessages]
+        void scrollToBottom()
+      } catch { /* ignore */ }
     } else if (projectId) {
-      // Find the latest session for this project
-      await loadSessions()
-      const projectSession = sessions.find((s) => s.project_id === projectId)
-      if (projectSession) {
-        void switchSession(projectSession.id)
-      } else {
-        chatMessages = [{ id: 'system-init', role: 'system', text: `Project: ${projectId}` }]
-      }
+      await loadProjectSession()
     } else {
       chatMessages = [{ id: 'system-init', role: 'system', text: 'TARS' }]
     }
@@ -325,7 +306,6 @@
       chatInput = initialPrompt
       tick().then(() => textareaEl?.focus())
     }
-    if (!sessionId) void loadSessions()
   })
 </script>
 
@@ -334,36 +314,10 @@
     <div class="chat-status">
       {chatBusy ? 'streaming' : chatStatusLine || 'idle'}
     </div>
-    <div class="session-controls">
-      {#if chatSessionId}
-        <span class="session-id" title={chatSessionId}>{chatSessionId.slice(0, 8)}</span>
-      {/if}
-      <button class="btn btn-ghost btn-sm" onclick={() => { showSessions = !showSessions; if (showSessions) void loadSessions() }}>Sessions</button>
-      <button class="btn btn-ghost btn-sm" onclick={startNewSession}>New</button>
-    </div>
+    {#if chatSessionId}
+      <span class="session-id" title={chatSessionId}>{chatSessionId.slice(0, 8)}</span>
+    {/if}
   </div>
-  {#if showSessions && sessions.length > 0}
-    <div class="session-list">
-      {#each sessions.slice(0, 20) as s}
-        <div class="session-item" class:active={chatSessionId === s.id}>
-          {#if renamingId === s.id}
-            <input
-              class="session-rename-input"
-              bind:value={renameValue}
-              onkeydown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') renamingId = null }}
-              onblur={() => commitRename()}
-            />
-          {:else}
-            <button class="session-item-btn" onclick={() => switchSession(s.id)}>
-              <span class="session-item-title">{s.title || s.id.slice(0, 12)}</span>
-            </button>
-            <button class="session-rename-btn" onclick={() => startRename(s)} title="Rename">&#9998;</button>
-          {/if}
-          <span class="session-item-meta">{s.kind || 'main'}</span>
-        </div>
-      {/each}
-    </div>
-  {/if}
   <div class="chat-log" bind:this={chatLogEl} onscroll={handleScroll}>
     {#each chatMessages as msg}
       {#if msg.role === 'tool'}
@@ -469,12 +423,6 @@
     color: var(--text-tertiary);
   }
 
-  .session-controls {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-  }
-
   .session-id {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -482,80 +430,6 @@
     background: var(--bg-elevated);
     padding: 1px var(--space-1);
     border-radius: var(--radius-sm);
-  }
-
-  .session-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    max-height: 200px;
-    overflow-y: auto;
-    margin-bottom: var(--space-2);
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-  }
-
-  .session-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    padding: var(--space-1) var(--space-3);
-    background: transparent;
-    transition: background var(--duration-fast) var(--ease-out);
-  }
-  .session-item:hover { background: rgba(255, 255, 255, 0.03); }
-  .session-item.active { background: rgba(224, 145, 69, 0.1); border-left: 2px solid var(--accent); }
-
-  .session-item-btn {
-    flex: 1;
-    background: none;
-    border: none;
-    cursor: pointer;
-    text-align: left;
-    padding: var(--space-1) 0;
-    min-width: 0;
-  }
-
-  .session-item-title {
-    font-size: var(--text-xs);
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: block;
-  }
-  .session-item-btn:hover .session-item-title { color: var(--accent); }
-
-  .session-rename-btn {
-    background: none;
-    border: none;
-    color: var(--text-ghost);
-    cursor: pointer;
-    font-size: 11px;
-    padding: 2px;
-    opacity: 0;
-    transition: opacity var(--duration-fast);
-  }
-  .session-item:hover .session-rename-btn { opacity: 1; }
-  .session-rename-btn:hover { color: var(--accent); }
-
-  .session-rename-input {
-    flex: 1;
-    padding: 2px var(--space-1);
-    font-size: var(--text-xs);
-    background: var(--bg-base);
-    border: 1px solid var(--accent);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    outline: none;
-  }
-
-  .session-item-meta {
-    font-size: 10px;
-    color: var(--text-ghost);
-    font-family: var(--font-mono);
-    flex-shrink: 0;
   }
 
   .chat-log {
