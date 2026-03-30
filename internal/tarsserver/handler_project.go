@@ -1,24 +1,16 @@
 package tarsserver
 
 import (
-	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
-
-type projectAutopilotStatusResponse struct {
-	project.AutopilotRun
-	Phase       string `json:"phase,omitempty"`
-	PhaseStatus string `json:"phase_status,omitempty"`
-	NextAction  string `json:"next_action,omitempty"`
-	Summary     string `json:"summary,omitempty"`
-}
 
 func newProjectAPIHandler(
 	store *project.Store,
@@ -26,7 +18,6 @@ func newProjectAPIHandler(
 	mainSessionID string,
 	taskRunner project.TaskRunner,
 	githubAuthChecker project.GitHubAuthChecker,
-	autopilot project.PhaseEngine,
 	logger zerolog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -500,184 +491,162 @@ func newProjectAPIHandler(
 			return
 		}
 
-		if len(parts) == 3 && parts[1] == "autopilot" && parts[2] == "advance" {
-			if autopilot == nil {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project autopilot manager is not configured"})
-				return
-			}
-			if !requireMethod(w, r, http.MethodPost) {
-				return
-			}
-			item, err := autopilot.Advance(r.Context(), projectID)
-			if err != nil {
-				lower := strings.ToLower(err.Error())
-				if strings.Contains(lower, "not found") {
-					writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
-					return
-				}
-				if strings.Contains(lower, "required") || strings.Contains(lower, "invalid") {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-					return
-				}
-				logger.Error().Err(err).Str("project_id", projectID).Msg("advance project autopilot failed")
-				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-				return
-			}
-			writeJSON(w, http.StatusOK, item)
-			return
-		}
-
-		if len(parts) == 3 && parts[1] == "autopilot" && parts[2] == "stop" {
-			if autopilot == nil {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project autopilot manager is not configured"})
-				return
-			}
-			if !requireMethod(w, r, http.MethodPost) {
-				return
-			}
-			if err := autopilot.Stop(projectID); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
-			return
-		}
-
-		if len(parts) == 3 && parts[1] == "autopilot" && parts[2] == "resume" {
-			if autopilot == nil {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project autopilot manager is not configured"})
-				return
-			}
-			if !requireMethod(w, r, http.MethodPost) {
-				return
-			}
-			run, err := autopilot.Resume(r.Context(), projectID)
-			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-				return
-			}
-			writeJSON(w, http.StatusOK, run)
-			return
-		}
-
-		if len(parts) == 3 && parts[1] == "autopilot" && parts[2] == "reset" {
-			if autopilot == nil {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project autopilot manager is not configured"})
-				return
-			}
-			if !requireMethod(w, r, http.MethodPost) {
-				return
-			}
-			if err := autopilot.Reset(projectID); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
-			return
-		}
-
-		if len(parts) == 2 && parts[1] == "autopilot" {
-			if autopilot == nil {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project autopilot manager is not configured"})
-				return
-			}
-			if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
-				return
-			}
-			switch r.Method {
-			case http.MethodGet:
-				item, ok := autopilot.Status(projectID)
-				if !ok {
-					writeJSON(w, http.StatusNotFound, map[string]string{"error": "project autopilot run not found"})
-					return
-				}
-				payload := projectAutopilotStatusResponse{AutopilotRun: item}
-				if current, ok := autopilot.Current(projectID); ok {
-					payload.Phase = strings.TrimSpace(string(current.Name))
-					payload.PhaseStatus = strings.TrimSpace(string(current.Status))
-					payload.NextAction = strings.TrimSpace(current.NextAction)
-					payload.Summary = strings.TrimSpace(current.Summary)
-				}
-				writeJSON(w, http.StatusOK, payload)
-			case http.MethodPost:
-				var startReq project.StartOptions
-				// Best-effort parse — empty body is fine (uses defaults)
-				_ = json.NewDecoder(r.Body).Decode(&startReq)
-				item, err := autopilot.Start(r.Context(), projectID, startReq)
-				if err != nil {
-					lower := strings.ToLower(err.Error())
-					if strings.Contains(lower, "not found") {
-						writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
-						return
-					}
-					if strings.Contains(lower, "required") || strings.Contains(lower, "invalid") {
-						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-						return
-					}
-					logger.Error().Err(err).Str("project_id", projectID).Msg("start project autopilot failed")
-					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "start project autopilot failed"})
-					return
-				}
-				writeJSON(w, http.StatusOK, item)
-			}
-			return
-		}
-
 		if len(parts) == 2 && parts[1] == "activate" {
 			if !requireMethod(w, r, http.MethodPost) {
 				return
 			}
-			if sessionStore == nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session store is not configured"})
-				return
-			}
-			if _, err := store.Get(projectID); err != nil {
+			activeStatus := "active"
+			updated, err := store.Update(projectID, project.UpdateInput{Status: &activeStatus})
+			if err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "not found") {
 					writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
 					return
 				}
-				logger.Error().Err(err).Str("project_id", projectID).Msg("get project failed")
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get project failed"})
-				return
-			}
-			var req struct {
-				SessionID string `json:"session_id,omitempty"`
-			}
-			if !decodeJSONBody(w, r, &req) {
-				return
-			}
-			sessionID := strings.TrimSpace(req.SessionID)
-			if sessionID == "" {
-				sessionID = strings.TrimSpace(mainSessionID)
-			}
-			if sessionID == "" {
-				latest, err := sessionStore.Latest()
-				if err == nil {
-					sessionID = strings.TrimSpace(latest.ID)
-				}
-			}
-			if sessionID == "" {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "session_id is required"})
-				return
-			}
-			if _, err := sessionStore.Get(sessionID); err != nil {
-				if strings.Contains(strings.ToLower(err.Error()), "not found") {
-					writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
-					return
-				}
-				logger.Error().Err(err).Str("session_id", sessionID).Msg("get session failed")
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get session failed"})
-				return
-			}
-			if err := sessionStore.SetProjectID(sessionID, projectID); err != nil {
-				logger.Error().Err(err).Str("session_id", sessionID).Str("project_id", projectID).Msg("set session project failed")
+				logger.Error().Err(err).Str("project_id", projectID).Msg("activate project failed")
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "activate project failed"})
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"activated":  true,
 				"project_id": projectID,
+				"session_id": updated.SessionID,
+			})
+			return
+		}
+
+		if len(parts) == 2 && parts[1] == "deactivate" {
+			if !requireMethod(w, r, http.MethodPost) {
+				return
+			}
+			archivedStatus := "archived"
+			updated, err := store.Update(projectID, project.UpdateInput{Status: &archivedStatus})
+			if err != nil {
+				if strings.Contains(strings.ToLower(err.Error()), "not found") {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+					return
+				}
+				logger.Error().Err(err).Str("project_id", projectID).Msg("deactivate project failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "deactivate project failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"deactivated": true,
+				"project_id":  updated.ID,
+			})
+			return
+		}
+
+		// Project session endpoints
+		if len(parts) == 2 && parts[1] == "session" {
+			if !requireMethod(w, r, http.MethodGet) {
+				return
+			}
+			item, err := store.Get(projectID)
+			if err != nil {
+				if strings.Contains(strings.ToLower(err.Error()), "not found") {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+					return
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get project failed"})
+				return
+			}
+			sessionID := strings.TrimSpace(item.SessionID)
+			if sessionID == "" {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"project_id": projectID,
+					"session_id": "",
+					"messages":   0,
+					"tokens":     0,
+				})
+				return
+			}
+			messages, _ := session.ReadMessages(sessionStore.TranscriptPath(sessionID))
+			tokens := 0
+			for _, m := range messages {
+				cost := len(m.Content) / 4
+				if cost < 1 {
+					cost = 1
+				}
+				tokens += cost
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"project_id": projectID,
 				"session_id": sessionID,
+				"messages":   len(messages),
+				"tokens":     tokens,
+			})
+			return
+		}
+
+		if len(parts) == 3 && parts[1] == "session" && parts[2] == "clear" {
+			if !requireMethod(w, r, http.MethodPost) {
+				return
+			}
+			item, err := store.Get(projectID)
+			if err != nil {
+				if strings.Contains(strings.ToLower(err.Error()), "not found") {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+					return
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get project failed"})
+				return
+			}
+			sessionID := strings.TrimSpace(item.SessionID)
+			if sessionID == "" {
+				writeJSON(w, http.StatusOK, map[string]any{"cleared": false, "reason": "no session"})
+				return
+			}
+			path := sessionStore.TranscriptPath(sessionID)
+			if err := session.RewriteMessages(path, nil); err != nil {
+				logger.Error().Err(err).Str("session_id", sessionID).Msg("clear session failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "clear session failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"cleared":    true,
+				"project_id": projectID,
+				"session_id": sessionID,
+			})
+			return
+		}
+
+		if len(parts) == 3 && parts[1] == "session" && parts[2] == "compact" {
+			if !requireMethod(w, r, http.MethodPost) {
+				return
+			}
+			item, err := store.Get(projectID)
+			if err != nil {
+				if strings.Contains(strings.ToLower(err.Error()), "not found") {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+					return
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get project failed"})
+				return
+			}
+			sessionID := strings.TrimSpace(item.SessionID)
+			if sessionID == "" {
+				writeJSON(w, http.StatusOK, map[string]any{"compacted": false, "reason": "no session"})
+				return
+			}
+			path := sessionStore.TranscriptPath(sessionID)
+			messages, _ := session.ReadMessages(path)
+			originalCount := len(messages)
+			compacted, err := session.CompactTranscriptWithOptions(path, 0, time.Now().UTC(), session.CompactOptions{
+				KeepRecentTokens:    12000,
+				KeepRecentFraction:  0.30,
+			})
+			if err != nil {
+				logger.Error().Err(err).Str("session_id", sessionID).Msg("compact session failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compact session failed"})
+				return
+			}
+			finalMessages, _ := session.ReadMessages(path)
+			writeJSON(w, http.StatusOK, map[string]any{
+				"compacted":      compacted,
+				"project_id":     projectID,
+				"session_id":     sessionID,
+				"original_count": originalCount,
+				"final_count":    len(finalMessages),
 			})
 			return
 		}
@@ -702,7 +671,7 @@ func newProjectAPIHandler(
 				}
 				systemFiles := map[string]bool{
 					"PROJECT.md": true, "STATE.md": true, "KANBAN.md": true,
-					"AUTOPILOT.json": true, "ACTIVITY.jsonl": true,
+					"ACTIVITY.jsonl": true,
 				}
 				type fileEntry struct {
 					Name   string `json:"name"`

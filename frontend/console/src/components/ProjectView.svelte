@@ -1,21 +1,12 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount } from 'svelte'
   import {
-    advanceAutopilot,
     deleteProject,
-    getEventsHistory,
     getProject,
-    getProjectAutopilot,
-    listApprovals,
-    listCronJobs,
-    listCronRuns,
+    getProjectSession,
+    clearProjectSession,
+    compactProjectSession,
     listProjectActivity,
-    reviewApproval,
-    startAutopilot,
-    resumeAutopilot,
-    resetAutopilot,
-    stopAutopilot,
-    streamEvents,
     updateProject,
     listProjectFiles,
     getProjectFileContent,
@@ -23,13 +14,9 @@
   import type { ProjectFile } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
   import type {
-    Approval,
-    CronJob,
-    CronRunRecord,
-    NotificationMessage,
     Project,
     ProjectActivity,
-    ProjectAutopilotRun,
+    ProjectSessionInfo,
   } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
 
@@ -40,22 +27,15 @@
   let { projectId }: Props = $props()
 
   let project: Project | null = $state(null)
-  let autopilot: ProjectAutopilotRun | null = $state(null)
+  let sessionInfo: ProjectSessionInfo | null = $state(null)
+  let sessionBusy = $state(false)
   let activity: ProjectActivity[] = $state([])
-  let cronJobs: CronJob[] = $state([])
-  let cronRunsByJob: Record<string, CronRunRecord[]> = $state({})
-  let notifications: NotificationMessage[] = $state([])
-  let approvals: Approval[] = $state([])
 
   let loadingDetail = $state(true)
-  let loadingPanels = $state(false)
   let detailError = $state('')
   let panelError = $state('')
 
-  let approvalBusyId = $state('')
-  let stopEventStream: (() => void) | null = null
-
-  // -- Edit / Delete / Autopilot --
+  // -- Edit / Delete --
   let editing = $state(false)
   let editName = $state('')
   let editObjective = $state('')
@@ -64,8 +44,6 @@
   let editError = $state('')
   let deleting = $state(false)
   let deleteConfirm = $state(false)
-  let autopilotBusy = $state(false)
-  let autopilotError = $state('')
 
   // -- Artifacts --
   let projectFiles: ProjectFile[] = $state([])
@@ -138,71 +116,30 @@
     }
   }
 
-  let showStartForm = $state(false)
-  let startInterval = $state(10)
-  let startBudget = $state(3)
-
-  async function handleStartAutopilot() {
-    autopilotBusy = true
-    autopilotError = ''
+  async function loadSessionInfo() {
     try {
-      autopilot = await startAutopilot(projectId, { interval_minutes: startInterval, budget_per_run: startBudget })
-      showStartForm = false
-    } catch (e) {
-      autopilotError = e instanceof Error ? e.message : 'Failed to start autopilot'
-    } finally {
-      autopilotBusy = false
-    }
+      sessionInfo = await getProjectSession(projectId)
+    } catch { sessionInfo = null }
   }
 
-  async function handleAdvanceAutopilot() {
-    autopilotBusy = true
-    autopilotError = ''
+  async function handleClearSession() {
+    sessionBusy = true
     try {
-      autopilot = await advanceAutopilot(projectId)
+      await clearProjectSession(projectId)
+      await loadSessionInfo()
     } catch (e) {
-      autopilotError = e instanceof Error ? e.message : 'Failed to advance autopilot'
-    } finally {
-      autopilotBusy = false
-    }
+      panelError = e instanceof Error ? e.message : 'Failed to clear session'
+    } finally { sessionBusy = false }
   }
 
-  async function handleResumeAutopilot() {
-    autopilotBusy = true
-    autopilotError = ''
+  async function handleCompactSession() {
+    sessionBusy = true
     try {
-      autopilot = await resumeAutopilot(projectId)
+      await compactProjectSession(projectId)
+      await loadSessionInfo()
     } catch (e) {
-      autopilotError = e instanceof Error ? e.message : 'Failed to resume autopilot'
-    } finally {
-      autopilotBusy = false
-    }
-  }
-
-  async function handleStopAutopilot() {
-    autopilotBusy = true
-    autopilotError = ''
-    try {
-      await stopAutopilot(projectId)
-      autopilot = await getProjectAutopilot(projectId)
-    } catch (e) {
-      autopilotError = e instanceof Error ? e.message : 'Failed to stop autopilot'
-    } finally {
-      autopilotBusy = false
-    }
-  }
-
-  async function handleResetAutopilot() {
-    autopilotBusy = true
-    autopilotError = ''
-    try {
-      await resetAutopilot(projectId)
-      autopilot = null
-    } catch (e) {
-      autopilotError = e instanceof Error ? e.message : 'Failed to reset autopilot'
-    } finally {
-      autopilotBusy = false
-    }
+      panelError = e instanceof Error ? e.message : 'Failed to compact session'
+    } finally { sessionBusy = false }
   }
 
   function fmt(value?: string): string {
@@ -213,157 +150,30 @@
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
   }
 
-  function compact(value?: string, max = 180): string {
-    const text = value?.trim()
-    if (!text) return '\u2014'
-    return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`
-  }
-
-  function filterProjectNotifications(items: NotificationMessage[], pid: string): NotificationMessage[] {
-    return items
-      .filter((item) => item.project_id?.trim() === pid)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 20)
-  }
-
   async function loadDetail() {
     loadingDetail = true
     detailError = ''
     try {
-      const [p, a] = await Promise.all([
-        getProject(projectId),
-        getProjectAutopilot(projectId),
-      ])
-      project = p
-      autopilot = a
+      project = await getProject(projectId)
     } catch (err) {
       project = null
-      autopilot = null
       detailError = err instanceof Error ? err.message : 'Failed to load project'
     } finally {
       loadingDetail = false
     }
   }
 
-  async function refreshAutopilot() {
+  async function loadActivity() {
     try {
-      autopilot = await getProjectAutopilot(projectId)
-    } catch {
-      // ignore — may not have an active run
-    }
-  }
-
-  async function loadPanels() {
-    loadingPanels = true
-    panelError = ''
-    const results = await Promise.allSettled([
-      listProjectActivity(projectId, 20).then((items) => { activity = items }),
-      listCronJobs().then(async (allJobs) => {
-        const jobs = allJobs.filter((j) => j.project_id?.trim() === projectId)
-        const runsEntries = await Promise.all(
-          jobs.map(async (j) => [j.id, await listCronRuns(j.id, 5)] as const),
-        )
-        cronJobs = jobs
-        cronRunsByJob = Object.fromEntries(runsEntries)
-      }),
-      getEventsHistory(40).then((history) => {
-        notifications = filterProjectNotifications(history.items ?? [], projectId)
-      }),
-      listApprovals().then((list) => { approvals = list }),
-    ])
-    const failures = results
-      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-      .map((r) => (r.reason instanceof Error ? r.reason.message : 'Panel error'))
-    panelError = failures.join(' \u00b7 ')
-    loadingPanels = false
-  }
-
-  function startEventStream() {
-    stopEventStream?.()
-    stopEventStream = streamEvents(
-      projectId,
-      (event) => {
-        notifications = filterProjectNotifications(
-          [event, ...notifications.filter((n) => n.id !== event.id)],
-          projectId,
-        )
-        if (event.category === 'cron' || event.category === 'watchdog') {
-          void loadPanels()
-        }
-        if (event.category === 'ops') {
-          void listApprovals().then((list) => { approvals = list })
-        }
-        if (event.category === 'autopilot' || event.category === 'board' || event.category === 'project') {
-          void refreshAutopilot()
-        }
-      },
-    )
-  }
-
-  async function handleApprovalAction(approvalId: string, action: 'approve' | 'reject') {
-    if (!approvalId.trim() || approvalBusyId) return
-    approvalBusyId = approvalId
-    panelError = ''
-    try {
-      await reviewApproval(approvalId, action)
-      approvals = await listApprovals()
-    } catch (err) {
-      panelError = err instanceof Error ? err.message : `Failed to ${action}`
-    } finally {
-      approvalBusyId = ''
-    }
-  }
-
-  function phaseColor(phase?: string): string {
-    switch (phase?.toLowerCase()) {
-      case 'executing': return 'badge-success'
-      case 'reviewing': return 'badge-info'
-      case 'blocked': return 'badge-error'
-      case 'done': return 'badge-default'
-      default: return 'badge-accent'
-    }
-  }
-
-  function statusColor(status?: string): string {
-    switch (status?.toLowerCase()) {
-      case 'running': return 'badge-success'
-      case 'scheduled': return 'badge-info'
-      case 'blocked': return 'badge-error'
-      case 'done': case 'completed': return 'badge-default'
-      case 'failed': return 'badge-error'
-      default: return 'badge-accent'
-    }
-  }
-
-  let autopilotPollTimer: ReturnType<typeof setInterval> | null = null
-
-  function startAutopilotPolling() {
-    stopAutopilotPolling()
-    autopilotPollTimer = setInterval(() => {
-      if (autopilot && (autopilot.status === 'running' || autopilot.status === 'blocked')) {
-        void refreshAutopilot()
-      }
-    }, 5000)
-  }
-
-  function stopAutopilotPolling() {
-    if (autopilotPollTimer) {
-      clearInterval(autopilotPollTimer)
-      autopilotPollTimer = null
-    }
+      activity = await listProjectActivity(projectId, 20)
+    } catch { activity = [] }
   }
 
   onMount(() => {
     void loadDetail()
-    void loadPanels()
+    void loadActivity()
     void loadFiles()
-    startEventStream()
-    startAutopilotPolling()
-  })
-
-  onDestroy(() => {
-    stopEventStream?.()
-    stopAutopilotPolling()
+    void loadSessionInfo()
   })
 </script>
 
@@ -398,9 +208,6 @@
       </div>
       <div class="pv-header-meta">
         <span class="badge badge-default">{project.status || 'active'}</span>
-        {#if loadingPanels}
-          <span class="badge badge-default">refreshing</span>
-        {/if}
         {#if !editing}
           <button class="btn btn-ghost btn-sm" onclick={enterEdit}>Edit</button>
           <button class="btn btn-danger btn-sm" disabled={deleting} onclick={handleDelete}>
@@ -414,92 +221,20 @@
       <div class="error-banner" style="margin-bottom: var(--space-4)">{panelError}</div>
     {/if}
 
-    <!-- Phase / Run -->
-    <div class="pv-phase-strip">
-      {#if autopilot}
-        <div class="pv-phase-item">
-          <span class="label">Phase</span>
-          <span class="badge {phaseColor(autopilot.phase)}">{autopilot.phase || '\u2014'}</span>
+    <!-- Session info -->
+    {#if sessionInfo}
+      <div class="card" style="margin-top:0.75rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <span class="label">Session</span>
+            <span class="badge-default" style="margin-left:0.5rem;">{sessionInfo.messages} msgs</span>
+            <span class="badge-default" style="margin-left:0.25rem;">~{Math.round(sessionInfo.tokens / 1000)}k tokens</span>
+          </div>
+          <div style="display:flex;gap:0.5rem;">
+            <button class="btn-ghost btn-sm" onclick={handleCompactSession} disabled={sessionBusy}>Compact</button>
+            <button class="btn-danger btn-sm" onclick={handleClearSession} disabled={sessionBusy}>Clear</button>
+          </div>
         </div>
-        <div class="pv-phase-item">
-          <span class="label">Status</span>
-          <span class="badge {phaseColor(autopilot.phase_status)}">{autopilot.phase_status || '\u2014'}</span>
-        </div>
-        <div class="pv-phase-item">
-          <span class="label">Run</span>
-          <span class="badge {statusColor(autopilot.status)}">{autopilot.status || '\u2014'}</span>
-        </div>
-        <div class="pv-phase-item">
-          <span class="label">Iterations</span>
-          <strong>{autopilot.iterations}</strong>
-        </div>
-      {:else}
-        <div class="pv-phase-empty">
-          <span class="label">No autopilot run active</span>
-        </div>
-      {/if}
-      <div class="pv-phase-actions">
-        {#if !autopilot || autopilot.status === 'done'}
-          {#if showStartForm}
-            <div class="autopilot-start-form">
-              <label class="autopilot-param">
-                <span>Interval</span>
-                <input type="number" min="1" max="1440" bind:value={startInterval} class="autopilot-param-input" /> <span class="autopilot-param-unit">min</span>
-              </label>
-              <label class="autopilot-param">
-                <span>Budget</span>
-                <input type="number" min="1" max="20" bind:value={startBudget} class="autopilot-param-input" /> <span class="autopilot-param-unit">iter</span>
-              </label>
-              <button class="btn btn-primary btn-sm" disabled={autopilotBusy} onclick={handleStartAutopilot}>
-                {autopilotBusy ? 'Starting...' : 'Start'}
-              </button>
-              <button class="btn btn-ghost btn-sm" onclick={() => { showStartForm = false }}>Cancel</button>
-            </div>
-          {:else}
-            <button class="btn btn-primary btn-sm" onclick={() => { showStartForm = true }}>Start Autopilot</button>
-          {/if}
-        {:else if autopilot.status === 'blocked' || autopilot.status === 'failed'}
-          <button class="btn btn-primary btn-sm" disabled={autopilotBusy} onclick={handleResumeAutopilot}>
-            {autopilotBusy ? 'Resuming...' : 'Resume'}
-          </button>
-          <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleResetAutopilot}>Reset</button>
-        {:else if autopilot.status === 'scheduled'}
-          <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleAdvanceAutopilot}>Run Now</button>
-          <button class="btn btn-danger btn-sm" disabled={autopilotBusy} onclick={handleStopAutopilot}>Stop</button>
-        {:else}
-          <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleAdvanceAutopilot}>
-            {autopilotBusy ? 'Advancing...' : 'Advance'}
-          </button>
-          <button class="btn btn-danger btn-sm" disabled={autopilotBusy} onclick={handleStopAutopilot}>Stop</button>
-        {/if}
-      </div>
-    </div>
-    {#if autopilotError}
-      <div class="error-banner" style="margin-bottom: var(--space-4)">{autopilotError}</div>
-    {/if}
-
-    {#if autopilot && autopilot.status === 'scheduled'}
-      <div class="pv-scheduled-banner">
-        <span class="badge badge-info">scheduled</span>
-        <span>{autopilot.message || 'Waiting for next scheduled run'}</span>
-      </div>
-    {:else if autopilot && (autopilot.status === 'blocked' || autopilot.status === 'failed') && autopilot.message}
-      <div class="pv-blocked-banner">
-        <div class="pv-blocked-header">
-          <span class="badge badge-error">{autopilot.status}</span>
-          <strong>{autopilot.message}</strong>
-        </div>
-        {#if autopilot.next_action}
-          <p class="pv-blocked-action">{autopilot.next_action}</p>
-        {/if}
-        {#if autopilot.summary && autopilot.summary !== autopilot.message}
-          <p class="pv-blocked-summary">{autopilot.summary}</p>
-        {/if}
-      </div>
-    {:else if autopilot?.next_action}
-      <div class="pv-next-action">
-        <span class="label">Next action</span>
-        <p>{autopilot.next_action}</p>
       </div>
     {/if}
 
@@ -555,19 +290,6 @@
         </dl>
       </section>
 
-      <!-- Run detail -->
-      {#if autopilot}
-        <section class="card">
-          <span class="card-title">Run detail</span>
-          <dl class="pv-facts">
-            <div><dt>Run ID</dt><dd class="mono">{autopilot.run_id || '\u2014'}</dd></div>
-            <div><dt>Summary</dt><dd>{autopilot.summary || '\u2014'}</dd></div>
-            <div><dt>Message</dt><dd>{autopilot.message || '\u2014'}</dd></div>
-            <div><dt>Updated</dt><dd>{fmt(autopilot.updated_at)}</dd></div>
-          </dl>
-        </section>
-      {/if}
-
       <!-- Chat -->
       <section class="card pv-wide">
         <span class="card-title">Chat</span>
@@ -601,106 +323,6 @@
         {/if}
       </section>
 
-      <!-- Cron -->
-      <section class="card pv-wide">
-        <div class="card-header">
-          <span class="card-title">Cron jobs</span>
-          <span class="badge badge-default">{cronJobs.length}</span>
-        </div>
-        {#if cronJobs.length === 0}
-          <div class="empty-state"><p>No cron jobs attached.</p></div>
-        {:else}
-          <div class="pv-timeline">
-            {#each cronJobs as job}
-              <div class="pv-timeline-item">
-                <div class="pv-timeline-top">
-                  <strong>{job.name}</strong>
-                  <span class="badge" class:badge-success={job.enabled && !job.last_run_error}
-                    class:badge-error={!!job.last_run_error}
-                    class:badge-default={!job.enabled}>
-                    {job.enabled ? job.schedule : 'disabled'}
-                  </span>
-                </div>
-                <p>{compact(job.prompt, 160)}</p>
-                {#if (cronRunsByJob[job.id] ?? []).length > 0}
-                  <div class="pv-cron-runs">
-                    {#each cronRunsByJob[job.id] ?? [] as run}
-                      <div class="pv-cron-run">
-                        <strong>{fmt(run.ran_at)}</strong>
-                        <span>{compact(run.error || run.response || 'No output', 140)}</span>
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      <!-- Notifications -->
-      <section class="card pv-wide">
-        <div class="card-header">
-          <span class="card-title">Notifications</span>
-          <span class="badge badge-default">{notifications.length}</span>
-        </div>
-        {#if notifications.length === 0}
-          <div class="empty-state"><p>No project notifications.</p></div>
-        {:else}
-          <div class="pv-timeline">
-            {#each notifications as item}
-              <div class="pv-timeline-item">
-                <div class="pv-timeline-top">
-                  <strong>{item.title}</strong>
-                  <span class="badge badge-default">{item.severity}</span>
-                </div>
-                <p>{item.message}</p>
-                <div class="pv-timeline-meta">
-                  <span>{fmt(item.timestamp)}</span>
-                  <span>{item.category}</span>
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      <!-- Approvals -->
-      <section class="card pv-wide">
-        <div class="card-header">
-          <span class="card-title">Approvals</span>
-          <span class="badge badge-default">{approvals.length}</span>
-        </div>
-        {#if approvals.length === 0}
-          <div class="empty-state"><p>No approvals pending.</p></div>
-        {:else}
-          <div class="pv-timeline">
-            {#each approvals as approval}
-              <div class="pv-timeline-item">
-                <div class="pv-timeline-top">
-                  <strong>{approval.type}</strong>
-                  <span class="badge badge-default">{approval.status}</span>
-                </div>
-                <p>{approval.plan.candidates.length} candidates, {approval.plan.total_bytes} bytes</p>
-                {#if approval.status === 'pending'}
-                  <div class="pv-approval-actions">
-                    <button type="button" class="btn btn-secondary btn-sm"
-                      disabled={approvalBusyId === approval.id}
-                      onclick={() => { void handleApprovalAction(approval.id, 'approve') }}>
-                      Approve
-                    </button>
-                    <button type="button" class="btn btn-danger btn-sm"
-                      disabled={approvalBusyId === approval.id}
-                      onclick={() => { void handleApprovalAction(approval.id, 'reject') }}>
-                      Reject
-                    </button>
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
     </div>
   {/if}
 </div>
@@ -743,115 +365,6 @@
     display: flex;
     gap: var(--space-2);
     flex-shrink: 0;
-  }
-
-  /* ── Phase strip ──────────────────────────────── */
-  .pv-phase-strip {
-    display: flex;
-    gap: var(--space-5);
-    padding: var(--space-4) var(--space-5);
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    margin-bottom: var(--space-4);
-  }
-
-  .pv-phase-item {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .pv-phase-item strong {
-    font-family: var(--font-display);
-    font-size: var(--text-lg);
-    color: var(--text-primary);
-  }
-
-  .pv-phase-empty {
-    padding: var(--space-2) 0;
-  }
-
-  /* ── Autopilot start form ──────────────────── */
-  .autopilot-start-form {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-  .autopilot-param {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-  }
-  .autopilot-param-input {
-    width: 50px;
-    padding: 2px var(--space-1);
-    font-size: var(--text-xs);
-    font-family: var(--font-mono);
-    background: var(--bg-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    text-align: center;
-  }
-  .autopilot-param-input:focus { outline: none; border-color: var(--accent); }
-  .autopilot-param-unit { font-size: 10px; color: var(--text-ghost); }
-
-  .pv-scheduled-banner {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
-    background: rgba(96, 165, 250, 0.08);
-    border: 1px solid rgba(96, 165, 250, 0.2);
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-4);
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-  }
-
-  .pv-blocked-banner {
-    padding: var(--space-3) var(--space-4);
-    background: rgba(248, 113, 113, 0.08);
-    border: 1px solid rgba(248, 113, 113, 0.2);
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-4);
-  }
-  .pv-blocked-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .pv-blocked-header strong {
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-  }
-  .pv-blocked-action {
-    margin-top: var(--space-2);
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-    font-style: italic;
-  }
-  .pv-blocked-summary {
-    margin-top: var(--space-1);
-    color: var(--text-tertiary);
-    font-size: var(--text-xs);
-  }
-
-  .pv-next-action {
-    padding: var(--space-3) var(--space-4);
-    background: var(--accent-muted);
-    border: 1px solid rgba(224, 145, 69, 0.2);
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-4);
-  }
-
-  .pv-next-action p {
-    margin-top: var(--space-1);
-    color: var(--text-primary);
   }
 
   /* ── Artifacts ─────────────────────────────── */
@@ -971,30 +484,6 @@
     color: var(--text-ghost);
   }
 
-  .pv-cron-runs {
-    display: grid;
-    gap: var(--space-1);
-    margin-top: var(--space-2);
-  }
-
-  .pv-cron-run {
-    display: grid;
-    gap: 2px;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    background: var(--bg-surface);
-    font-size: var(--text-sm);
-  }
-
-  .pv-cron-run span {
-    color: var(--text-secondary);
-  }
-
-  .pv-approval-actions {
-    display: flex;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
-  }
 
   /* ── Inline form ──────────────────────────────── */
   .inline-form {
@@ -1021,21 +510,10 @@
     color: var(--error);
   }
 
-  .pv-phase-actions {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
   /* ── Responsive ───────────────────────────────── */
   @media (max-width: 900px) {
     .pv-grid {
       grid-template-columns: 1fr;
-    }
-
-    .pv-phase-strip {
-      flex-wrap: wrap;
     }
   }
 </style>

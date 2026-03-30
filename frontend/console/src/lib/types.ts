@@ -9,21 +9,14 @@ export type Project = {
   objective?: string
   path?: string
   body?: string
+  session_id?: string
 }
 
-export type ProjectAutopilotRun = {
+export type ProjectSessionInfo = {
   project_id: string
-  run_id: string
-  status: string
-  message?: string
-  iterations: number
-  started_at?: string
-  updated_at?: string
-  finished_at?: string
-  phase?: string
-  phase_status?: string
-  next_action?: string
-  summary?: string
+  session_id: string
+  messages: number
+  tokens: number
 }
 
 export type ProjectActivity = {

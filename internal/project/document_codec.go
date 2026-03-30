@@ -41,6 +41,7 @@ func parseDocument(raw string) (Project, error) {
 		WorkflowRules:      mapWorkflowRuleList(parsed, "workflow_rules", "workflow-rules"),
 		MCPServers:         mapStringList(parsed, "mcp_servers", "mcp-servers"),
 		SecretsRefs:        mapStringList(parsed, "secrets_refs", "secrets-refs"),
+		SessionID:          mapString(parsed, "session_id"),
 		Body:               strings.TrimSpace(body),
 	}
 	if item.CreatedAt == "" {
@@ -88,6 +89,9 @@ func buildDocument(project Project) string {
 	writeWorkflowRuleList(&b, "workflow_rules", project.WorkflowRules)
 	writeDocumentList(&b, "mcp_servers", project.MCPServers)
 	writeDocumentList(&b, "secrets_refs", project.SecretsRefs)
+	if v := strings.TrimSpace(project.SessionID); v != "" {
+		_, _ = fmt.Fprintf(&b, "session_id: %s\n", v)
+	}
 	b.WriteString("---\n")
 	if body := strings.TrimSpace(project.Body); body != "" {
 		b.WriteString(body)

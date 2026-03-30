@@ -12,8 +12,7 @@ import (
 	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/heartbeat"
 	"github.com/devlikebear/tars/internal/memory"
-	"github.com/devlikebear/tars/internal/project"
-	"github.com/devlikebear/tars/internal/tool"
+"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 )
 
@@ -74,7 +73,6 @@ func buildChatToolingOptions(
 	processManager *tool.ProcessManager,
 	manager *extensions.Manager,
 	gatewayRuntime *gateway.Runtime,
-	projectAutopilot project.PhaseEngine,
 	toolsDefaultSet string,
 	toolsAllowHighRiskUser bool,
 	memorySemanticConfig memory.SemanticConfig,
@@ -87,7 +85,6 @@ func buildChatToolingOptions(
 		ProcessManager:         processManager,
 		Extensions:             extensionManager,
 		Gateway:                gatewayRuntime,
-		ProjectAutopilot:       projectAutopilot,
 		ToolsDefaultSet:        strings.TrimSpace(strings.ToLower(toolsDefaultSet)),
 		ToolsAllowHighRiskUser: toolsAllowHighRiskUser,
 		MemorySemanticConfig:   memorySemanticConfig,

@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -31,7 +30,7 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, zerolog.New(io.Discard))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{
 		"name":"Ops A",
@@ -70,7 +69,7 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 		t.Fatalf("expected 200 for get, got %d body=%q", getRec.Code, getRec.Body.String())
 	}
 
-	activateReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/activate", strings.NewReader(`{"session_id":"`+mainSess.ID+`"}`))
+	activateReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/activate", nil)
 	activateReq.Header.Set("Content-Type", "application/json")
 	activateRec := httptest.NewRecorder()
 	handler.ServeHTTP(activateRec, activateReq)
@@ -78,12 +77,27 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 		t.Fatalf("expected 200 for activate, got %d body=%q", activateRec.Code, activateRec.Body.String())
 	}
 
-	mainAfter, err := store.Get(mainSess.ID)
-	if err != nil {
-		t.Fatalf("get main session after activate: %v", err)
+	var activateResp map[string]any
+	if err := json.Unmarshal(activateRec.Body.Bytes(), &activateResp); err != nil {
+		t.Fatalf("decode activate response: %v", err)
 	}
-	if mainAfter.ProjectID != created.ID {
-		t.Fatalf("expected session project_id %q, got %q", created.ID, mainAfter.ProjectID)
+	if activateResp["activated"] != true {
+		t.Fatalf("expected activated=true, got %v", activateResp["activated"])
+	}
+	if activateResp["project_id"] != created.ID {
+		t.Fatalf("expected project_id=%q, got %v", created.ID, activateResp["project_id"])
+	}
+
+	// Verify project status is now active
+	getAfterActivate := httptest.NewRequest(http.MethodGet, "/v1/projects/"+created.ID, nil)
+	getAfterActivateRec := httptest.NewRecorder()
+	handler.ServeHTTP(getAfterActivateRec, getAfterActivate)
+	var afterActivate project.Project
+	if err := json.Unmarshal(getAfterActivateRec.Body.Bytes(), &afterActivate); err != nil {
+		t.Fatalf("decode project after activate: %v", err)
+	}
+	if afterActivate.Status != "active" {
+		t.Fatalf("expected project status 'active', got %q", afterActivate.Status)
 	}
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/projects/"+created.ID, nil)
@@ -111,7 +125,7 @@ func TestProjectAPI_RejectsDisallowedMethods(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, zerolog.New(io.Discard))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{"name":"Ops A","type":"operations"}`))
 	createReq.Header.Set("Content-Type", "application/json")
@@ -165,7 +179,7 @@ func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -229,7 +243,7 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, zerolog.New(io.Discard))
 
 	briefReq := httptest.NewRequest(http.MethodPatch, "/v1/project-briefs/"+mainSess.ID, strings.NewReader(`{
 		"title":"Orbit Hearts",
@@ -313,7 +327,7 @@ func TestProjectAPI_ActivityRoutes(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -380,7 +394,7 @@ func TestProjectAPI_BoardRoutes(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -501,7 +515,7 @@ notes: approved
 	})
 
 	taskRunner := gateway.NewProjectTaskRunner(runtime, "")
-	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, func(context.Context) error { return nil }, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, func(context.Context) error { return nil }, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Dispatch Project", Type: "operations"})
 	if err != nil {
@@ -557,199 +571,3 @@ notes: approved
 	}
 }
 
-func TestProjectAPI_AutopilotRoutes(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "workspace")
-	if err := memory.EnsureWorkspace(root); err != nil {
-		t.Fatalf("ensure workspace: %v", err)
-	}
-	store := session.NewStore(root)
-	projectStore := project.NewStore(root, nil)
-	runner := newAutopilotAPITaskRunner()
-	manager := project.NewAutopilotManager(projectStore, runner, func(context.Context) error { return nil }, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", runner, func(context.Context) error { return nil }, manager, zerolog.New(io.Discard))
-
-	created, err := projectStore.Create(project.CreateInput{Name: "Autopilot Project", Type: "operations"})
-	if err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-	if _, err := projectStore.UpdateBoard(created.ID, project.BoardUpdateInput{
-		Tasks: []project.BoardTask{
-			{
-				ID:             "task-1",
-				Title:          "Build dashboard",
-				Status:         "todo",
-				Assignee:       "dev-1",
-				Role:           "developer",
-				ReviewRequired: true,
-				TestCommand:    "go test ./internal/project",
-				BuildCommand:   "go test ./internal/tarsserver",
-			},
-		},
-	}); err != nil {
-		t.Fatalf("seed board: %v", err)
-	}
-
-	startReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/autopilot", nil)
-	startRec := httptest.NewRecorder()
-	handler.ServeHTTP(startRec, startReq)
-	if startRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 for autopilot start, got %d body=%q", startRec.Code, startRec.Body.String())
-	}
-
-	// After all tasks done, autopilot clears board and attempts auto-planning.
-	// Mock runner returns invalid planning response, so autopilot either blocks
-	// or enters scheduled status when budget is exhausted (cron mode).
-	waitForAutopilotRunAny(t, manager, created.ID, project.AutopilotStatusBlocked, project.AutopilotStatusScheduled)
-
-	statusReq := httptest.NewRequest(http.MethodGet, "/v1/projects/"+created.ID+"/autopilot", nil)
-	statusRec := httptest.NewRecorder()
-	handler.ServeHTTP(statusRec, statusReq)
-	if statusRec.Code != http.StatusOK {
-		t.Fatalf("expected 200 for autopilot status, got %d body=%q", statusRec.Code, statusRec.Body.String())
-	}
-	body := statusRec.Body.String()
-	if !strings.Contains(body, `"status":"blocked"`) && !strings.Contains(body, `"status":"scheduled"`) {
-		t.Fatalf("expected blocked or scheduled status in autopilot response, got %q", body)
-	}
-
-	board, err := projectStore.GetBoard(created.ID)
-	if err != nil {
-		t.Fatalf("get board after autopilot: %v", err)
-	}
-	// Board is cleared after all tasks done (multi-phase transition).
-	// With mock runner, re-planning fails, so board remains empty.
-	if len(board.Tasks) != 0 {
-		t.Fatalf("expected empty board after phase transition attempt, got %+v", board.Tasks)
-	}
-}
-
-func TestProjectAPI_AutopilotAdvanceRoute(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "workspace")
-	if err := memory.EnsureWorkspace(root); err != nil {
-		t.Fatalf("ensure workspace: %v", err)
-	}
-	store := session.NewStore(root)
-	projectStore := project.NewStore(root, nil)
-	manager := project.NewAutopilotManager(projectStore, newAutopilotAPITaskRunner(), func(context.Context) error { return nil }, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", nil, func(context.Context) error { return nil }, manager, zerolog.New(io.Discard))
-
-	created, err := projectStore.Create(project.CreateInput{Name: "Autopilot Advance Project", Type: "operations"})
-	if err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/autopilot/advance", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 for autopilot advance, got %d body=%q", rec.Code, rec.Body.String())
-	}
-
-	var snapshot project.PhaseSnapshot
-	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
-		t.Fatalf("decode phase snapshot: %v", err)
-	}
-	if snapshot.ProjectID != created.ID {
-		t.Fatalf("expected project id %q, got %+v", created.ID, snapshot)
-	}
-	if snapshot.Name != project.PhasePlanning || snapshot.Status != project.PhaseStatusBlocked {
-		t.Fatalf("expected planning blocked snapshot, got %+v", snapshot)
-	}
-	if snapshot.RunStatus != project.AutopilotStatusBlocked {
-		t.Fatalf("expected blocked run status, got %+v", snapshot)
-	}
-	if strings.TrimSpace(snapshot.NextAction) == "" {
-		t.Fatalf("expected next action after advance, got %+v", snapshot)
-	}
-}
-
-type autopilotAPITaskRunner struct {
-	mu   sync.Mutex
-	reqs map[string]project.TaskRunRequest
-}
-
-func newAutopilotAPITaskRunner() *autopilotAPITaskRunner {
-	return &autopilotAPITaskRunner{reqs: map[string]project.TaskRunRequest{}}
-}
-
-func (r *autopilotAPITaskRunner) Start(_ context.Context, req project.TaskRunRequest) (project.TaskRun, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	runID := "run_" + strings.TrimSpace(req.TaskID) + "_" + strings.TrimSpace(req.Role)
-	r.reqs[runID] = req
-	return project.TaskRun{
-		ID:         runID,
-		TaskID:     req.TaskID,
-		Agent:      req.Agent,
-		WorkerKind: req.WorkerKind,
-		Status:     project.TaskRunStatusAccepted,
-	}, nil
-}
-
-func (r *autopilotAPITaskRunner) Wait(_ context.Context, runID string) (project.TaskRun, error) {
-	r.mu.Lock()
-	req := r.reqs[runID]
-	r.mu.Unlock()
-
-	response := `<task-report>
-summary: completed
-tests: passed
-build: passed
-issue: https://github.com/devlikebear/tars/issues/301
-branch: feat/task-1
-pr: https://github.com/devlikebear/tars/pull/401
-</task-report>`
-	if strings.EqualFold(strings.TrimSpace(req.Role), "reviewer") {
-		response = `<task-report>
-status: approved
-summary: reviewed
-tests: passed
-build: passed
-issue: https://github.com/devlikebear/tars/issues/301
-branch: feat/task-1
-pr: https://github.com/devlikebear/tars/pull/401
-</task-report>`
-	}
-	return project.TaskRun{
-		ID:         runID,
-		TaskID:     req.TaskID,
-		Agent:      req.Agent,
-		WorkerKind: req.WorkerKind,
-		Status:     project.TaskRunStatusCompleted,
-		Response:   response,
-	}, nil
-}
-
-func waitForAutopilotRun(t *testing.T, manager *project.AutopilotManager, projectID string, want project.AutopilotRunStatus) project.AutopilotRun {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		run, ok := manager.Status(projectID)
-		if ok && run.Status == want {
-			return run
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	run, _ := manager.Status(projectID)
-	t.Fatalf("expected autopilot status %q, got %+v", want, run)
-	return project.AutopilotRun{}
-}
-
-func waitForAutopilotRunAny(t *testing.T, manager *project.AutopilotManager, projectID string, wants ...project.AutopilotRunStatus) project.AutopilotRun {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		run, ok := manager.Status(projectID)
-		if ok {
-			for _, w := range wants {
-				if run.Status == w {
-					return run
-				}
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	run, _ := manager.Status(projectID)
-	t.Fatalf("expected autopilot status in %v, got %+v", wants, run)
-	return project.AutopilotRun{}
-}

@@ -65,12 +65,19 @@ func TestStoreUpdateBriefAndFinalize(t *testing.T) {
 			t.Fatalf("expected %s to be created: %v", name, err)
 		}
 	}
-	sessAfter, err := sessionStore.Get(sess.ID)
+	refreshed, err := store.Get(created.ID)
 	if err != nil {
-		t.Fatalf("get session after finalize: %v", err)
+		t.Fatalf("get project after finalize: %v", err)
 	}
-	if sessAfter.ProjectID != created.ID {
-		t.Fatalf("expected session project_id %q, got %q", created.ID, sessAfter.ProjectID)
+	if refreshed.SessionID == "" {
+		t.Fatal("expected project to have a dedicated session_id after finalize")
+	}
+	projSess, err := sessionStore.Get(refreshed.SessionID)
+	if err != nil {
+		t.Fatalf("get project session: %v", err)
+	}
+	if projSess.ProjectID != created.ID {
+		t.Fatalf("expected session project_id %q, got %q", created.ID, projSess.ProjectID)
 	}
 }
 

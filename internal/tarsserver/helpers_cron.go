@@ -169,12 +169,7 @@ func prepareCronJobRun(
 		_ = prepared.targetStore.SetProjectID(prepared.targetSessionID, strings.TrimSpace(job.ProjectID))
 	}
 	if prepared.targetSessionID != "" {
-		targetSession, err := lookupCronDeliverySession(prepared.targetStore, prepared.targetSessionID)
-		if err != nil {
-			return prepared, err
-		}
-		includeTargetContext := targetSession != nil && !(targetSession.Hidden && strings.EqualFold(strings.TrimSpace(targetSession.Kind), "worker"))
-		if includeTargetContext {
+		{
 			contextText, err := sessionContextByID(prepared.targetStore, prepared.targetSessionID, 6)
 			if err != nil {
 				return prepared, err
@@ -584,16 +579,6 @@ func resolveCronTargetSessionID(store *session.Store, job cron.Job, mainSessionI
 	}
 	target := strings.TrimSpace(job.SessionTarget)
 	if target == "" || strings.EqualFold(target, "isolated") {
-		if strings.TrimSpace(job.ProjectID) != "" {
-			worker, err := store.EnsureWorker(strings.TrimSpace(job.ProjectID))
-			if err != nil {
-				return "", false, err
-			}
-			if strings.TrimSpace(worker.ProjectID) != strings.TrimSpace(job.ProjectID) {
-				_ = store.SetProjectID(worker.ID, strings.TrimSpace(job.ProjectID))
-			}
-			return strings.TrimSpace(worker.ID), false, nil
-		}
 		return "", false, nil
 	}
 	if strings.EqualFold(target, "main") || strings.EqualFold(target, "current") {
@@ -683,42 +668,20 @@ func deliverCronResult(
 			return err
 		}
 	}
-	targetSession, err := lookupCronDeliverySession(store, targetSessionID)
-	if err != nil {
-		return err
-	}
-	writeWorkerSession := targetSession != nil && targetSession.Hidden && strings.EqualFold(strings.TrimSpace(targetSession.Kind), "worker")
 	if writeSession {
 		if targetSessionID == "" {
 			if explicitTarget {
 				return fmt.Errorf("cron delivery session target is not available")
 			}
-			if mode == "session" {
-				return nil
-			}
 			return nil
 		}
-	}
-	if writeSession || writeWorkerSession {
 		if err := appendCronSessionMessage(store, targetSessionID, buildCronSessionContent(job, response), now); err != nil {
 			return err
 		}
 		logger.Debug().
 			Str("job_id", job.ID).
 			Str("session_id", targetSessionID).
-			Bool("hidden", targetSession != nil && targetSession.Hidden).
 			Msg("cron response delivered to session")
-	}
-	if writeWorkerSession {
-		mainSession, err := store.EnsureMain()
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(mainSession.ID) != "" && strings.TrimSpace(mainSession.ID) != strings.TrimSpace(targetSessionID) {
-			if err := appendCronSessionMessage(store, mainSession.ID, buildCronSummaryContent(job, response), now); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }

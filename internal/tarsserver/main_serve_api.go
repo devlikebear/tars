@@ -42,7 +42,6 @@ type serveAPIRuntime struct {
 	cronManager             *workspaceCronManager
 	watchdogManager         *workspaceWatchdogManager
 	telegramPoller          *telegramUpdatePoller
-	restoreProjectAutopilot func() error
 }
 
 type apiRouteHandlers struct {
@@ -245,11 +244,7 @@ func buildAPIMux(
 			return apiRunPromptWithTools(ctx, runLabel, prompt, nil)
 		}
 	}
-	var (
-		projectAutopilot        project.PhaseEngine
-		ensureProjectAutopilot  func(context.Context) error
-		restoreProjectAutopilot func() error
-	)
+	var projectProgressAfterHeartbeat func(ctx context.Context) error
 	heartbeatRunner := newWorkspaceHeartbeatRunnerWithNotify(
 		cfg.WorkspaceDir,
 		nowFn,
@@ -258,14 +253,10 @@ func buildAPIMux(
 		heartbeatState,
 		dispatcher.Emit,
 		func(ctx context.Context) error {
-			if ensureProjectAutopilot == nil {
-				return nil
+			if projectProgressAfterHeartbeat != nil {
+				return projectProgressAfterHeartbeat(ctx)
 			}
-			err := ensureProjectAutopilot(ctx)
-			if err != nil {
-				logger.Error().Err(err).Msg("ensure project autopilot runs after heartbeat failed")
-			}
-			return err
+			return nil
 		},
 	)
 	watchdogState := newWatchdogWorkspaceState()
@@ -293,15 +284,7 @@ func buildAPIMux(
 		},
 	)
 
-	// Wrap cron runner to intercept autopilot tick jobs
 	cronRunner := func(ctx context.Context, job cron.Job) (string, error) {
-		if strings.HasPrefix(job.Prompt, "__autopilot_tick:") {
-			pid := strings.TrimPrefix(job.Prompt, "__autopilot_tick:")
-			if projectAutopilot != nil {
-				return projectAutopilot.RunScheduled(ctx, pid)
-			}
-			return "", fmt.Errorf("autopilot not configured")
-		}
 		if baseCronRunner != nil {
 			return baseCronRunner(ctx, job)
 		}
@@ -369,7 +352,6 @@ func buildAPIMux(
 		processManager,
 		extensionsManager,
 		gatewayRuntime,
-		nil,
 		cfg.ToolsDefaultSet,
 		cfg.ToolsAllowHighRiskUser,
 		semanticMemoryConfigFromConfig(cfg),
@@ -407,42 +389,7 @@ func buildAPIMux(
 	}
 	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
 	projectTaskRunner := gateway.NewProjectTaskRunner(gatewayRuntime, "")
-	projectAutopilotManager := project.NewAutopilotManager(projectStore, projectTaskRunner, project.DefaultGitHubAuthChecker(), nil)
-	projectAutopilotManager.SetCronCallbacks(&project.CronJobCallbacks{
-		CreateJob: func(projectID string, interval time.Duration) error {
-			_, err := cronStore.CreateWithOptions(cron.CreateInput{
-				Name:     fmt.Sprintf("autopilot:%s", projectID),
-				Prompt:   fmt.Sprintf("__autopilot_tick:%s", projectID),
-				Schedule: fmt.Sprintf("@every %s", interval.String()),
-				ProjectID: projectID,
-			})
-			return err
-		},
-		DeleteJob: func(projectID string) error {
-			jobs, err := cronStore.List()
-			if err != nil {
-				return err
-			}
-			for _, j := range jobs {
-				if j.Name == fmt.Sprintf("autopilot:%s", projectID) {
-					return cronStore.Delete(j.ID)
-				}
-			}
-			return nil
-		},
-	})
-	projectAutopilot = projectAutopilotManager
-	ensureProjectAutopilot = func(ctx context.Context) error {
-		if projectAutopilot == nil {
-			return nil
-		}
-		_, err := projectAutopilot.EnsureActiveRuns(ctx)
-		return err
-	}
-	restoreProjectAutopilot = projectAutopilotManager.RestorePersistedRuns
-	// NOTE: RestorePersistedRuns is deferred to startBackgrounds() so that
-	// autopilot loops do not fire LLM requests before the server is ready.
-	chatTooling.ProjectAutopilot = projectAutopilot
+	projectProgressAfterHeartbeat = newProjectProgressAfterHeartbeat(projectStore, projectTaskRunner, logger)
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,
 		sessionStore,
@@ -455,7 +402,7 @@ func buildAPIMux(
 		chatTools...,
 	)
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
-	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, projectAutopilot, logger)
+	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, logger)
 	consoleHandler, err := newConsoleHandler(logger)
 	if err != nil {
 		return nil, err
@@ -582,7 +529,6 @@ func buildAPIMux(
 		cronManager:             cronManager,
 		watchdogManager:         watchdogManager,
 		telegramPoller:          telegramPoller,
-		restoreProjectAutopilot: restoreProjectAutopilot,
 	}, nil
 }
 
@@ -715,14 +661,6 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 				Str("dm_policy", normalizeTelegramDMPolicy(cfg.ChannelsTelegramDMPolicy)).
 				Msg("telegram polling started")
 		}
-	}
-	// Restore persisted project autopilot runs after all other backgrounds are up.
-	if runtime.restoreProjectAutopilot != nil {
-		go func() {
-			if err := runtime.restoreProjectAutopilot(); err != nil {
-				logger.Error().Err(err).Msg("restore persisted project autopilot runs failed")
-			}
-		}()
 	}
 	return nil
 }
