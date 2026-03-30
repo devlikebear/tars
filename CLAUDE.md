@@ -79,12 +79,12 @@ cd frontend/console && npm run check   # svelte-check + tsc
 ```bash
 # Create worktree
 git fetch origin && git switch main && git pull --rebase
-git worktree add ../tars-worktrees/<branch-name> -b <branch-name> main
+git worktree add .claude/worktrees/<branch-name> -b <branch-name> main
 
 # Branch naming: feat/<name>, fix/<name>, chore/<name> (lowercase kebab-case)
 
 # After PR merge, cleanup
-git worktree remove ../tars-worktrees/<branch-name>
+git worktree remove .claude/worktrees/<branch-name>
 git worktree prune
 git fetch origin && git switch main && git pull --rebase
 ```
