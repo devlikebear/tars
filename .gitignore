@@ -50,6 +50,7 @@ node_modules/
 
 # for development, ignore the following files
 .claude/*.local.json
+.claude/worktrees/
 .docs/
 .analysis/sessions/
 .analysis/RESUME.md
