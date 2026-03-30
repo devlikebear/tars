@@ -138,11 +138,16 @@
     }
   }
 
+  let showStartForm = $state(false)
+  let startInterval = $state(10)
+  let startBudget = $state(3)
+
   async function handleStartAutopilot() {
     autopilotBusy = true
     autopilotError = ''
     try {
-      autopilot = await startAutopilot(projectId)
+      autopilot = await startAutopilot(projectId, { interval_minutes: startInterval, budget_per_run: startBudget })
+      showStartForm = false
     } catch (e) {
       autopilotError = e instanceof Error ? e.message : 'Failed to start autopilot'
     } finally {
@@ -435,9 +440,24 @@
       {/if}
       <div class="pv-phase-actions">
         {#if !autopilot || autopilot.status === 'done'}
-          <button class="btn btn-primary btn-sm" disabled={autopilotBusy} onclick={handleStartAutopilot}>
-            {autopilotBusy ? 'Starting...' : 'Start Autopilot'}
-          </button>
+          {#if showStartForm}
+            <div class="autopilot-start-form">
+              <label class="autopilot-param">
+                <span>Interval</span>
+                <input type="number" min="1" max="1440" bind:value={startInterval} class="autopilot-param-input" /> <span class="autopilot-param-unit">min</span>
+              </label>
+              <label class="autopilot-param">
+                <span>Budget</span>
+                <input type="number" min="1" max="20" bind:value={startBudget} class="autopilot-param-input" /> <span class="autopilot-param-unit">iter</span>
+              </label>
+              <button class="btn btn-primary btn-sm" disabled={autopilotBusy} onclick={handleStartAutopilot}>
+                {autopilotBusy ? 'Starting...' : 'Start'}
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick={() => { showStartForm = false }}>Cancel</button>
+            </div>
+          {:else}
+            <button class="btn btn-primary btn-sm" onclick={() => { showStartForm = true }}>Start Autopilot</button>
+          {/if}
         {:else if autopilot.status === 'blocked' || autopilot.status === 'failed'}
           <button class="btn btn-primary btn-sm" disabled={autopilotBusy} onclick={handleResumeAutopilot}>
             {autopilotBusy ? 'Resuming...' : 'Resume'}
@@ -751,6 +771,34 @@
   .pv-phase-empty {
     padding: var(--space-2) 0;
   }
+
+  /* ── Autopilot start form ──────────────────── */
+  .autopilot-start-form {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+  .autopilot-param {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+  .autopilot-param-input {
+    width: 50px;
+    padding: 2px var(--space-1);
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    text-align: center;
+  }
+  .autopilot-param-input:focus { outline: none; border-color: var(--accent); }
+  .autopilot-param-unit { font-size: 10px; color: var(--text-ghost); }
 
   .pv-scheduled-banner {
     display: flex;

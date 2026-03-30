@@ -129,7 +129,20 @@ func (m *AutopilotManager) RestorePersistedRuns() error {
 	return nil
 }
 
-func (m *AutopilotManager) Start(_ context.Context, projectID string) (AutopilotRun, error) {
+// StartOptions controls autopilot execution parameters.
+type StartOptions struct {
+	IntervalMinutes int `json:"interval_minutes,omitempty"` // cron interval in minutes (default 10)
+	BudgetPerRun    int `json:"budget_per_run,omitempty"`   // max iterations per cron tick (default 3)
+}
+
+func (m *AutopilotManager) Start(_ context.Context, projectID string, opts ...StartOptions) (AutopilotRun, error) {
+	// Apply per-start options
+	if len(opts) > 0 && opts[0].IntervalMinutes > 0 {
+		m.cronInterval = time.Duration(opts[0].IntervalMinutes) * time.Minute
+	}
+	if len(opts) > 0 && opts[0].BudgetPerRun > 0 {
+		m.budgetPerRun = opts[0].BudgetPerRun
+	}
 	if m == nil || m.store == nil {
 		return AutopilotRun{}, fmt.Errorf("autopilot manager store is not configured")
 	}

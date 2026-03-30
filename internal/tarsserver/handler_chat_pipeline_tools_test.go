@@ -12,7 +12,7 @@ import (
 
 type chatPhaseEngineStub struct{}
 
-func (chatPhaseEngineStub) Start(context.Context, string) (project.AutopilotRun, error) {
+func (chatPhaseEngineStub) Start(context.Context, string, ...project.StartOptions) (project.AutopilotRun, error) {
 	return project.AutopilotRun{}, nil
 }
 
