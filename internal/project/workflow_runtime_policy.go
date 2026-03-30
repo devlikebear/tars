@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+const (
+	defaultPlanningBlockTimeout = 24 * time.Hour
+	defaultRunRetention         = 30 * 24 * time.Hour
+)
+
 type WorkflowRuntimePolicy struct {
 	PlanningBlockTimeout time.Duration
 	RunRetention         time.Duration
@@ -13,7 +18,7 @@ type WorkflowRuntimePolicy struct {
 func ResolveWorkflowRuntimePolicy(project Project) WorkflowRuntimePolicy {
 	policy := WorkflowRuntimePolicy{
 		PlanningBlockTimeout: defaultPlanningBlockTimeout,
-		RunRetention:         defaultAutopilotRunRetention,
+		RunRetention:         defaultRunRetention,
 	}
 	applyWorkflowRuntimeRuleOverrides(&policy, project.WorkflowRules)
 	return policy

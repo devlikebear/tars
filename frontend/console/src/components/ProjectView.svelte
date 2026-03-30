@@ -1,20 +1,17 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import {
-    advanceAutopilot,
     deleteProject,
     getEventsHistory,
     getProject,
-    getProjectAutopilot,
+    getProjectSession,
+    clearProjectSession,
+    compactProjectSession,
     listApprovals,
     listCronJobs,
     listCronRuns,
     listProjectActivity,
     reviewApproval,
-    startAutopilot,
-    resumeAutopilot,
-    resetAutopilot,
-    stopAutopilot,
     streamEvents,
     updateProject,
     listProjectFiles,
@@ -29,7 +26,7 @@
     NotificationMessage,
     Project,
     ProjectActivity,
-    ProjectAutopilotRun,
+    ProjectSessionInfo,
   } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
 
@@ -40,7 +37,8 @@
   let { projectId }: Props = $props()
 
   let project: Project | null = $state(null)
-  let autopilot: ProjectAutopilotRun | null = $state(null)
+  let sessionInfo: ProjectSessionInfo | null = $state(null)
+  let sessionBusy = $state(false)
   let activity: ProjectActivity[] = $state([])
   let cronJobs: CronJob[] = $state([])
   let cronRunsByJob: Record<string, CronRunRecord[]> = $state({})
@@ -55,7 +53,7 @@
   let approvalBusyId = $state('')
   let stopEventStream: (() => void) | null = null
 
-  // -- Edit / Delete / Autopilot --
+  // -- Edit / Delete --
   let editing = $state(false)
   let editName = $state('')
   let editObjective = $state('')
@@ -64,8 +62,6 @@
   let editError = $state('')
   let deleting = $state(false)
   let deleteConfirm = $state(false)
-  let autopilotBusy = $state(false)
-  let autopilotError = $state('')
 
   // -- Artifacts --
   let projectFiles: ProjectFile[] = $state([])
@@ -138,71 +134,30 @@
     }
   }
 
-  let showStartForm = $state(false)
-  let startInterval = $state(10)
-  let startBudget = $state(3)
-
-  async function handleStartAutopilot() {
-    autopilotBusy = true
-    autopilotError = ''
+  async function loadSessionInfo() {
     try {
-      autopilot = await startAutopilot(projectId, { interval_minutes: startInterval, budget_per_run: startBudget })
-      showStartForm = false
-    } catch (e) {
-      autopilotError = e instanceof Error ? e.message : 'Failed to start autopilot'
-    } finally {
-      autopilotBusy = false
-    }
+      sessionInfo = await getProjectSession(projectId)
+    } catch { sessionInfo = null }
   }
 
-  async function handleAdvanceAutopilot() {
-    autopilotBusy = true
-    autopilotError = ''
+  async function handleClearSession() {
+    sessionBusy = true
     try {
-      autopilot = await advanceAutopilot(projectId)
+      await clearProjectSession(projectId)
+      await loadSessionInfo()
     } catch (e) {
-      autopilotError = e instanceof Error ? e.message : 'Failed to advance autopilot'
-    } finally {
-      autopilotBusy = false
-    }
+      panelError = e instanceof Error ? e.message : 'Failed to clear session'
+    } finally { sessionBusy = false }
   }
 
-  async function handleResumeAutopilot() {
-    autopilotBusy = true
-    autopilotError = ''
+  async function handleCompactSession() {
+    sessionBusy = true
     try {
-      autopilot = await resumeAutopilot(projectId)
+      await compactProjectSession(projectId)
+      await loadSessionInfo()
     } catch (e) {
-      autopilotError = e instanceof Error ? e.message : 'Failed to resume autopilot'
-    } finally {
-      autopilotBusy = false
-    }
-  }
-
-  async function handleStopAutopilot() {
-    autopilotBusy = true
-    autopilotError = ''
-    try {
-      await stopAutopilot(projectId)
-      autopilot = await getProjectAutopilot(projectId)
-    } catch (e) {
-      autopilotError = e instanceof Error ? e.message : 'Failed to stop autopilot'
-    } finally {
-      autopilotBusy = false
-    }
-  }
-
-  async function handleResetAutopilot() {
-    autopilotBusy = true
-    autopilotError = ''
-    try {
-      await resetAutopilot(projectId)
-      autopilot = null
-    } catch (e) {
-      autopilotError = e instanceof Error ? e.message : 'Failed to reset autopilot'
-    } finally {
-      autopilotBusy = false
-    }
+      panelError = e instanceof Error ? e.message : 'Failed to compact session'
+    } finally { sessionBusy = false }
   }
 
   function fmt(value?: string): string {
@@ -230,26 +185,12 @@
     loadingDetail = true
     detailError = ''
     try {
-      const [p, a] = await Promise.all([
-        getProject(projectId),
-        getProjectAutopilot(projectId),
-      ])
-      project = p
-      autopilot = a
+      project = await getProject(projectId)
     } catch (err) {
       project = null
-      autopilot = null
       detailError = err instanceof Error ? err.message : 'Failed to load project'
     } finally {
       loadingDetail = false
-    }
-  }
-
-  async function refreshAutopilot() {
-    try {
-      autopilot = await getProjectAutopilot(projectId)
-    } catch {
-      // ignore — may not have an active run
     }
   }
 
@@ -293,9 +234,6 @@
         if (event.category === 'ops') {
           void listApprovals().then((list) => { approvals = list })
         }
-        if (event.category === 'autopilot' || event.category === 'board' || event.category === 'project') {
-          void refreshAutopilot()
-        }
       },
     )
   }
@@ -314,56 +252,16 @@
     }
   }
 
-  function phaseColor(phase?: string): string {
-    switch (phase?.toLowerCase()) {
-      case 'executing': return 'badge-success'
-      case 'reviewing': return 'badge-info'
-      case 'blocked': return 'badge-error'
-      case 'done': return 'badge-default'
-      default: return 'badge-accent'
-    }
-  }
-
-  function statusColor(status?: string): string {
-    switch (status?.toLowerCase()) {
-      case 'running': return 'badge-success'
-      case 'scheduled': return 'badge-info'
-      case 'blocked': return 'badge-error'
-      case 'done': case 'completed': return 'badge-default'
-      case 'failed': return 'badge-error'
-      default: return 'badge-accent'
-    }
-  }
-
-  let autopilotPollTimer: ReturnType<typeof setInterval> | null = null
-
-  function startAutopilotPolling() {
-    stopAutopilotPolling()
-    autopilotPollTimer = setInterval(() => {
-      if (autopilot && (autopilot.status === 'running' || autopilot.status === 'blocked')) {
-        void refreshAutopilot()
-      }
-    }, 5000)
-  }
-
-  function stopAutopilotPolling() {
-    if (autopilotPollTimer) {
-      clearInterval(autopilotPollTimer)
-      autopilotPollTimer = null
-    }
-  }
-
   onMount(() => {
     void loadDetail()
     void loadPanels()
     void loadFiles()
+    void loadSessionInfo()
     startEventStream()
-    startAutopilotPolling()
   })
 
   onDestroy(() => {
     stopEventStream?.()
-    stopAutopilotPolling()
   })
 </script>
 
@@ -414,92 +312,20 @@
       <div class="error-banner" style="margin-bottom: var(--space-4)">{panelError}</div>
     {/if}
 
-    <!-- Phase / Run -->
-    <div class="pv-phase-strip">
-      {#if autopilot}
-        <div class="pv-phase-item">
-          <span class="label">Phase</span>
-          <span class="badge {phaseColor(autopilot.phase)}">{autopilot.phase || '\u2014'}</span>
+    <!-- Session info -->
+    {#if sessionInfo}
+      <div class="card" style="margin-top:0.75rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <span class="label">Session</span>
+            <span class="badge-default" style="margin-left:0.5rem;">{sessionInfo.messages} msgs</span>
+            <span class="badge-default" style="margin-left:0.25rem;">~{Math.round(sessionInfo.tokens / 1000)}k tokens</span>
+          </div>
+          <div style="display:flex;gap:0.5rem;">
+            <button class="btn-ghost btn-sm" onclick={handleCompactSession} disabled={sessionBusy}>Compact</button>
+            <button class="btn-danger btn-sm" onclick={handleClearSession} disabled={sessionBusy}>Clear</button>
+          </div>
         </div>
-        <div class="pv-phase-item">
-          <span class="label">Status</span>
-          <span class="badge {phaseColor(autopilot.phase_status)}">{autopilot.phase_status || '\u2014'}</span>
-        </div>
-        <div class="pv-phase-item">
-          <span class="label">Run</span>
-          <span class="badge {statusColor(autopilot.status)}">{autopilot.status || '\u2014'}</span>
-        </div>
-        <div class="pv-phase-item">
-          <span class="label">Iterations</span>
-          <strong>{autopilot.iterations}</strong>
-        </div>
-      {:else}
-        <div class="pv-phase-empty">
-          <span class="label">No autopilot run active</span>
-        </div>
-      {/if}
-      <div class="pv-phase-actions">
-        {#if !autopilot || autopilot.status === 'done'}
-          {#if showStartForm}
-            <div class="autopilot-start-form">
-              <label class="autopilot-param">
-                <span>Interval</span>
-                <input type="number" min="1" max="1440" bind:value={startInterval} class="autopilot-param-input" /> <span class="autopilot-param-unit">min</span>
-              </label>
-              <label class="autopilot-param">
-                <span>Budget</span>
-                <input type="number" min="1" max="20" bind:value={startBudget} class="autopilot-param-input" /> <span class="autopilot-param-unit">iter</span>
-              </label>
-              <button class="btn btn-primary btn-sm" disabled={autopilotBusy} onclick={handleStartAutopilot}>
-                {autopilotBusy ? 'Starting...' : 'Start'}
-              </button>
-              <button class="btn btn-ghost btn-sm" onclick={() => { showStartForm = false }}>Cancel</button>
-            </div>
-          {:else}
-            <button class="btn btn-primary btn-sm" onclick={() => { showStartForm = true }}>Start Autopilot</button>
-          {/if}
-        {:else if autopilot.status === 'blocked' || autopilot.status === 'failed'}
-          <button class="btn btn-primary btn-sm" disabled={autopilotBusy} onclick={handleResumeAutopilot}>
-            {autopilotBusy ? 'Resuming...' : 'Resume'}
-          </button>
-          <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleResetAutopilot}>Reset</button>
-        {:else if autopilot.status === 'scheduled'}
-          <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleAdvanceAutopilot}>Run Now</button>
-          <button class="btn btn-danger btn-sm" disabled={autopilotBusy} onclick={handleStopAutopilot}>Stop</button>
-        {:else}
-          <button class="btn btn-ghost btn-sm" disabled={autopilotBusy} onclick={handleAdvanceAutopilot}>
-            {autopilotBusy ? 'Advancing...' : 'Advance'}
-          </button>
-          <button class="btn btn-danger btn-sm" disabled={autopilotBusy} onclick={handleStopAutopilot}>Stop</button>
-        {/if}
-      </div>
-    </div>
-    {#if autopilotError}
-      <div class="error-banner" style="margin-bottom: var(--space-4)">{autopilotError}</div>
-    {/if}
-
-    {#if autopilot && autopilot.status === 'scheduled'}
-      <div class="pv-scheduled-banner">
-        <span class="badge badge-info">scheduled</span>
-        <span>{autopilot.message || 'Waiting for next scheduled run'}</span>
-      </div>
-    {:else if autopilot && (autopilot.status === 'blocked' || autopilot.status === 'failed') && autopilot.message}
-      <div class="pv-blocked-banner">
-        <div class="pv-blocked-header">
-          <span class="badge badge-error">{autopilot.status}</span>
-          <strong>{autopilot.message}</strong>
-        </div>
-        {#if autopilot.next_action}
-          <p class="pv-blocked-action">{autopilot.next_action}</p>
-        {/if}
-        {#if autopilot.summary && autopilot.summary !== autopilot.message}
-          <p class="pv-blocked-summary">{autopilot.summary}</p>
-        {/if}
-      </div>
-    {:else if autopilot?.next_action}
-      <div class="pv-next-action">
-        <span class="label">Next action</span>
-        <p>{autopilot.next_action}</p>
       </div>
     {/if}
 
@@ -554,19 +380,6 @@
           <div><dt>Repo</dt><dd class="mono">{project.git_repo || '\u2014'}</dd></div>
         </dl>
       </section>
-
-      <!-- Run detail -->
-      {#if autopilot}
-        <section class="card">
-          <span class="card-title">Run detail</span>
-          <dl class="pv-facts">
-            <div><dt>Run ID</dt><dd class="mono">{autopilot.run_id || '\u2014'}</dd></div>
-            <div><dt>Summary</dt><dd>{autopilot.summary || '\u2014'}</dd></div>
-            <div><dt>Message</dt><dd>{autopilot.message || '\u2014'}</dd></div>
-            <div><dt>Updated</dt><dd>{fmt(autopilot.updated_at)}</dd></div>
-          </dl>
-        </section>
-      {/if}
 
       <!-- Chat -->
       <section class="card pv-wide">
@@ -745,115 +558,6 @@
     flex-shrink: 0;
   }
 
-  /* ── Phase strip ──────────────────────────────── */
-  .pv-phase-strip {
-    display: flex;
-    gap: var(--space-5);
-    padding: var(--space-4) var(--space-5);
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    margin-bottom: var(--space-4);
-  }
-
-  .pv-phase-item {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .pv-phase-item strong {
-    font-family: var(--font-display);
-    font-size: var(--text-lg);
-    color: var(--text-primary);
-  }
-
-  .pv-phase-empty {
-    padding: var(--space-2) 0;
-  }
-
-  /* ── Autopilot start form ──────────────────── */
-  .autopilot-start-form {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-  .autopilot-param {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-  }
-  .autopilot-param-input {
-    width: 50px;
-    padding: 2px var(--space-1);
-    font-size: var(--text-xs);
-    font-family: var(--font-mono);
-    background: var(--bg-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    text-align: center;
-  }
-  .autopilot-param-input:focus { outline: none; border-color: var(--accent); }
-  .autopilot-param-unit { font-size: 10px; color: var(--text-ghost); }
-
-  .pv-scheduled-banner {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
-    background: rgba(96, 165, 250, 0.08);
-    border: 1px solid rgba(96, 165, 250, 0.2);
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-4);
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-  }
-
-  .pv-blocked-banner {
-    padding: var(--space-3) var(--space-4);
-    background: rgba(248, 113, 113, 0.08);
-    border: 1px solid rgba(248, 113, 113, 0.2);
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-4);
-  }
-  .pv-blocked-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .pv-blocked-header strong {
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-  }
-  .pv-blocked-action {
-    margin-top: var(--space-2);
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-    font-style: italic;
-  }
-  .pv-blocked-summary {
-    margin-top: var(--space-1);
-    color: var(--text-tertiary);
-    font-size: var(--text-xs);
-  }
-
-  .pv-next-action {
-    padding: var(--space-3) var(--space-4);
-    background: var(--accent-muted);
-    border: 1px solid rgba(224, 145, 69, 0.2);
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-4);
-  }
-
-  .pv-next-action p {
-    margin-top: var(--space-1);
-    color: var(--text-primary);
-  }
-
   /* ── Artifacts ─────────────────────────────── */
   .pv-files-list { display: flex; flex-direction: column; }
   .pv-file-item {
@@ -1021,21 +725,10 @@
     color: var(--error);
   }
 
-  .pv-phase-actions {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
   /* ── Responsive ───────────────────────────────── */
   @media (max-width: 900px) {
     .pv-grid {
       grid-template-columns: 1fr;
-    }
-
-    .pv-phase-strip {
-      flex-wrap: wrap;
     }
   }
 </style>

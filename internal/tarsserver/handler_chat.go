@@ -470,7 +470,6 @@ type chatToolingOptions struct {
 	ProcessManager              *tool.ProcessManager
 	Extensions                  *extensions.Manager
 	Gateway                     *gateway.Runtime
-	ProjectAutopilot            project.PhaseEngine
 	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
 	ToolsDefaultSet             string
 	ToolsAllowHighRiskUser      bool

@@ -300,13 +300,12 @@ func resolveWatchdogSession(store *session.Store, projectID string, explicitTarg
 	if strings.TrimSpace(projectID) == "" {
 		return nil, nil
 	}
-	sessions, err := store.ListAll()
+	sessions, err := store.List()
 	if err != nil {
 		return nil, err
 	}
-	expectedTitle := "worker:" + strings.TrimSpace(projectID)
 	for _, sess := range sessions {
-		if strings.EqualFold(strings.TrimSpace(sess.Kind), "worker") && strings.EqualFold(strings.TrimSpace(sess.Title), expectedTitle) {
+		if strings.TrimSpace(sess.ProjectID) == strings.TrimSpace(projectID) {
 			sessionCopy := sess
 			return &sessionCopy, nil
 		}

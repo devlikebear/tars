@@ -121,51 +121,6 @@ func TestWorkspaceHeartbeatRunner_AlwaysWritesDefaultWorkspace(t *testing.T) {
 	}
 }
 
-func TestWorkspaceHeartbeatRunner_EnsuresMissingProjectAutopilotLoops(t *testing.T) {
-	var ensured atomic.Int64
-	runner := newWorkspaceHeartbeatRunnerWithNotify(
-		t.TempDir(),
-		func() time.Time { return time.Date(2026, 3, 14, 21, 0, 0, 0, time.UTC) },
-		func(_ context.Context, _ string) (string, error) { return "heartbeat-ok", nil },
-		func(_ string) heartbeat.Policy {
-			return heartbeat.Policy{ShouldRun: func(context.Context, time.Time) (bool, string) { return false, "skip llm" }}
-		},
-		newHeartbeatWorkspaceState(),
-		nil,
-		func(context.Context) error {
-			ensured.Add(1)
-			return nil
-		},
-	)
-
-	if _, err := runner(context.Background()); err != nil {
-		t.Fatalf("run heartbeat: %v", err)
-	}
-	if ensured.Load() != 1 {
-		t.Fatalf("expected heartbeat to ensure missing project autopilot loops once, got %d", ensured.Load())
-	}
-}
-
-func TestStartBackgrounds_RestoresProjectAutopilotViaClosure(t *testing.T) {
-	restored := make(chan struct{}, 1)
-	runtime := &serveAPIRuntime{
-		restoreProjectAutopilot: func() error {
-			restored <- struct{}{}
-			return nil
-		},
-	}
-
-	if err := startBackgrounds(context.Background(), runtime, zerolog.Nop()); err != nil {
-		t.Fatalf("start backgrounds: %v", err)
-	}
-
-	select {
-	case <-restored:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected startup to restore project autopilot via closure")
-	}
-}
-
 func TestSerializedSupervisorRunner_SerializesConcurrentRuns(t *testing.T) {
 	var active atomic.Int64
 	var maxActive atomic.Int64

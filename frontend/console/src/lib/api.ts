@@ -22,7 +22,7 @@ import type {
   OpsStatus,
   Project,
   ProjectActivity,
-  ProjectAutopilotRun,
+  ProjectSessionInfo,
   Session,
   SessionMessage,
   UpdateCronJobRequest,
@@ -67,29 +67,24 @@ export async function getProject(projectId: string): Promise<Project> {
   return requestJSON<Project>(`/v1/projects/${encodeURIComponent(projectId)}`)
 }
 
-export async function getProjectAutopilot(projectId: string): Promise<ProjectAutopilotRun | null> {
-  const response = await fetch(`/v1/projects/${encodeURIComponent(projectId)}/autopilot`, {
-    credentials: 'same-origin',
-    headers: { Accept: 'application/json' },
-  })
+export async function getProjectSession(projectId: string): Promise<ProjectSessionInfo> {
+  return requestJSON<ProjectSessionInfo>(
+    `/v1/projects/${encodeURIComponent(projectId)}/session`,
+  )
+}
 
-  if (response.status === 404) {
-    return null
-  }
-  if (!response.ok) {
-    let message = `${response.status} ${response.statusText}`.trim()
-    try {
-      const payload = (await response.json()) as APIErrorPayload
-      if (payload?.error?.trim()) {
-        message = payload.error.trim()
-      }
-    } catch {
-      // ignore non-JSON error bodies
-    }
-    throw new Error(message)
-  }
+export async function clearProjectSession(projectId: string): Promise<{ cleared: boolean }> {
+  return requestJSON<{ cleared: boolean }>(
+    `/v1/projects/${encodeURIComponent(projectId)}/session/clear`,
+    { method: 'POST' },
+  )
+}
 
-  return (await response.json()) as ProjectAutopilotRun
+export async function compactProjectSession(projectId: string): Promise<{ compacted: boolean; original_count: number; final_count: number }> {
+  return requestJSON<{ compacted: boolean; original_count: number; final_count: number }>(
+    `/v1/projects/${encodeURIComponent(projectId)}/session/compact`,
+    { method: 'POST' },
+  )
 }
 
 export async function listProjectActivity(projectId: string, limit = 20): Promise<ProjectActivity[]> {
@@ -213,37 +208,16 @@ export async function getProjectFileContent(projectId: string, filename: string)
   return requestJSON<ProjectFileContent>(`/v1/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(filename)}`)
 }
 
-export async function startAutopilot(projectId: string, opts?: { interval_minutes?: number; budget_per_run?: number }): Promise<ProjectAutopilotRun> {
-  return requestJSON<ProjectAutopilotRun>(
-    `/v1/projects/${encodeURIComponent(projectId)}/autopilot`,
-    { method: 'POST', body: opts ? JSON.stringify(opts) : undefined },
-  )
-}
-
-export async function advanceAutopilot(projectId: string): Promise<ProjectAutopilotRun> {
-  return requestJSON<ProjectAutopilotRun>(
-    `/v1/projects/${encodeURIComponent(projectId)}/autopilot/advance`,
+export async function activateProject(projectId: string): Promise<{ activated: boolean }> {
+  return requestJSON<{ activated: boolean }>(
+    `/v1/projects/${encodeURIComponent(projectId)}/activate`,
     { method: 'POST' },
   )
 }
 
-export async function resumeAutopilot(projectId: string): Promise<ProjectAutopilotRun> {
-  return requestJSON<ProjectAutopilotRun>(
-    `/v1/projects/${encodeURIComponent(projectId)}/autopilot/resume`,
-    { method: 'POST' },
-  )
-}
-
-export async function resetAutopilot(projectId: string): Promise<void> {
-  await requestJSON(
-    `/v1/projects/${encodeURIComponent(projectId)}/autopilot/reset`,
-    { method: 'POST' },
-  )
-}
-
-export async function stopAutopilot(projectId: string): Promise<void> {
-  await requestJSON(
-    `/v1/projects/${encodeURIComponent(projectId)}/autopilot/stop`,
+export async function deactivateProject(projectId: string): Promise<{ deactivated: boolean }> {
+  return requestJSON<{ deactivated: boolean }>(
+    `/v1/projects/${encodeURIComponent(projectId)}/deactivate`,
     { method: 'POST' },
   )
 }

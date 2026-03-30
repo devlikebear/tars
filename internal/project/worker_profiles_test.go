@@ -106,8 +106,8 @@ func TestResolveWorkflowRuntimePolicy_UsesDefaultsAndOverrides(t *testing.T) {
 		if policy.PlanningBlockTimeout != defaultPlanningBlockTimeout {
 			t.Fatalf("expected default planning timeout %s, got %s", defaultPlanningBlockTimeout, policy.PlanningBlockTimeout)
 		}
-		if policy.RunRetention != defaultAutopilotRunRetention {
-			t.Fatalf("expected default run retention %s, got %s", defaultAutopilotRunRetention, policy.RunRetention)
+		if policy.RunRetention != defaultRunRetention {
+			t.Fatalf("expected default run retention %s, got %s", defaultRunRetention, policy.RunRetention)
 		}
 	})
 

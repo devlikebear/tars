@@ -56,7 +56,7 @@ func TestResolveCronTargetSessionID_CurrentUsesConfiguredMainSession(t *testing.
 	}
 }
 
-func TestResolveCronTargetSessionID_ProjectUsesWorkerSessionWhenImplicit(t *testing.T) {
+func TestResolveCronTargetSessionID_EmptyTargetReturnsEmpty(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	mainSession, err := store.EnsureMain()
 	if err != nil {
@@ -65,62 +65,43 @@ func TestResolveCronTargetSessionID_ProjectUsesWorkerSessionWhenImplicit(t *test
 
 	sessionID, explicit, err := resolveCronTargetSessionID(store, cron.Job{ProjectID: "proj_demo"}, mainSession.ID)
 	if err != nil {
-		t.Fatalf("resolve worker target: %v", err)
+		t.Fatalf("resolve empty target: %v", err)
 	}
 	if explicit {
-		t.Fatalf("worker target should not be explicit")
+		t.Fatalf("empty target should not be explicit")
 	}
-	if sessionID == "" || sessionID == mainSession.ID {
-		t.Fatalf("expected hidden worker session distinct from main, got %q", sessionID)
-	}
-
-	sess, err := store.Get(sessionID)
-	if err != nil {
-		t.Fatalf("get worker session: %v", err)
-	}
-	if sess.Kind != "worker" || !sess.Hidden {
-		t.Fatalf("unexpected worker session metadata: %+v", sess)
+	if sessionID != "" {
+		t.Fatalf("expected empty session id for implicit project target, got %q", sessionID)
 	}
 }
 
-func TestDeliverCronResult_WorkerSessionGetsRawAndMainGetsSummary(t *testing.T) {
+func TestDeliverCronResult_DeliversToTargetSession(t *testing.T) {
 	root := t.TempDir()
 	store := session.NewStore(root)
 	mainSession, err := store.EnsureMain()
 	if err != nil {
 		t.Fatalf("ensure main session: %v", err)
 	}
-	worker, err := store.EnsureWorker("proj_demo")
-	if err != nil {
-		t.Fatalf("ensure worker session: %v", err)
-	}
 
 	now := time.Date(2026, 3, 7, 22, 0, 0, 0, time.UTC)
 	job := cron.Job{
-		ID:        "job_demo",
-		Name:      "nightly writer",
-		Prompt:    "write next chapter",
-		Schedule:  "every:5m",
-		ProjectID: "proj_demo",
+		ID:            "job_demo",
+		Name:          "nightly writer",
+		Prompt:        "write next chapter",
+		Schedule:      "every:5m",
+		ProjectID:     "proj_demo",
+		SessionTarget: "main",
 	}
-	if err := deliverCronResult(root, store, job, worker.ID, false, "drafted episode 2 and updated plot beats", now, zerolog.Nop()); err != nil {
+	if err := deliverCronResult(root, store, job, mainSession.ID, false, "drafted episode 2 and updated plot beats", now, zerolog.Nop()); err != nil {
 		t.Fatalf("deliver cron result: %v", err)
 	}
 
-	workerMessages, err := session.ReadMessages(store.TranscriptPath(worker.ID))
+	messages, err := session.ReadMessages(store.TranscriptPath(mainSession.ID))
 	if err != nil {
-		t.Fatalf("read worker transcript: %v", err)
+		t.Fatalf("read target transcript: %v", err)
 	}
-	if len(workerMessages) != 1 || workerMessages[0].Role != "system" || !containsAll(workerMessages[0].Content, "[CRON]", "response: drafted episode 2") {
-		t.Fatalf("unexpected worker transcript: %+v", workerMessages)
-	}
-
-	mainMessages, err := session.ReadMessages(store.TranscriptPath(mainSession.ID))
-	if err != nil {
-		t.Fatalf("read main transcript: %v", err)
-	}
-	if len(mainMessages) != 1 || mainMessages[0].Role != "system" || !containsAll(mainMessages[0].Content, "[CRON SUMMARY]", "project_id: proj_demo", "status: completed", "drafted episode 2") {
-		t.Fatalf("unexpected main transcript: %+v", mainMessages)
+	if len(messages) != 1 || messages[0].Role != "system" || !containsAll(messages[0].Content, "[CRON]", "response: drafted episode 2") {
+		t.Fatalf("unexpected target transcript: %+v", messages)
 	}
 }
 

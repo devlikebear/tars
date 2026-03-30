@@ -56,12 +56,20 @@ func TestProjectBriefTools_DefaultToSessionIDAndFinalize(t *testing.T) {
 		t.Fatalf("expected finalize success, got %s", finalized.Text())
 	}
 
-	sessAfter, err := sessionStore.Get(sess.ID)
+	// FinalizeBrief creates a dedicated session for the new project
+	allSessions, err := sessionStore.List()
 	if err != nil {
-		t.Fatalf("get session after finalize: %v", err)
+		t.Fatalf("list sessions after finalize: %v", err)
 	}
-	if strings.TrimSpace(sessAfter.ProjectID) == "" {
-		t.Fatalf("expected session project binding after finalize")
+	found := false
+	for _, s := range allSessions {
+		if strings.TrimSpace(s.ProjectID) != "" && s.ID != sess.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected a new session with project binding after finalize")
 	}
 }
 

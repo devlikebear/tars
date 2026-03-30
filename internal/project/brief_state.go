@@ -275,7 +275,12 @@ func (s *Store) FinalizeBrief(id string, sessionStore *session.Store) (Project, 
 		}
 	}
 	if sessionStore != nil {
-		_ = sessionStore.SetProjectID(strings.TrimSpace(id), created.ID)
+		sess, err := sessionStore.Create(projectName)
+		if err == nil {
+			_ = sessionStore.SetProjectID(sess.ID, created.ID)
+			created.SessionID = sess.ID
+			_, _ = s.Update(created.ID, UpdateInput{SessionID: &sess.ID})
+		}
 	}
 	finalizedStatus := "finalized"
 	finalized, err := s.UpdateBrief(id, BriefUpdateInput{Status: &finalizedStatus})

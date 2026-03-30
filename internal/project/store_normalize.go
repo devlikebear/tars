@@ -67,6 +67,9 @@ func applyUpdateInput(item *Project, input UpdateInput) error {
 	if len(input.SecretsRefs) > 0 {
 		item.SecretsRefs = normalizeList(input.SecretsRefs)
 	}
+	if input.SessionID != nil {
+		item.SessionID = strings.TrimSpace(*input.SessionID)
+	}
 	return nil
 }
 

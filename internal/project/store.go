@@ -30,6 +30,7 @@ type Project struct {
 	WorkflowRules      []WorkflowRule `json:"workflow_rules,omitempty" yaml:"workflow_rules,omitempty"`
 	MCPServers         []string       `json:"mcp_servers,omitempty" yaml:"mcp_servers,omitempty"`
 	SecretsRefs        []string       `json:"secrets_refs,omitempty" yaml:"secrets_refs,omitempty"`
+	SessionID          string         `json:"session_id,omitempty" yaml:"session_id,omitempty"`
 	Body               string         `json:"body,omitempty" yaml:"-"`
 	Path               string         `json:"path,omitempty" yaml:"-"`
 }
@@ -57,6 +58,7 @@ type UpdateInput struct {
 	GitRepo            *string
 	Objective          *string
 	Instructions       *string
+	SessionID          *string
 	ToolsAllow         []string
 	ToolsAllowGroups   []string
 	ToolsAllowPatterns []string
