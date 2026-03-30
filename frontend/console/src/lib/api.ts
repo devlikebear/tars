@@ -193,6 +193,26 @@ export async function deleteAllProjects(): Promise<{ deleted: number }> {
   return requestJSON<{ deleted: number }>('/v1/projects', { method: 'DELETE' })
 }
 
+export type ProjectFile = {
+  name: string
+  size: number
+  system: boolean
+}
+
+export type ProjectFileContent = {
+  name: string
+  content: string
+  size: number
+}
+
+export async function listProjectFiles(projectId: string): Promise<ProjectFile[]> {
+  return requestJSON<ProjectFile[]>(`/v1/projects/${encodeURIComponent(projectId)}/files`)
+}
+
+export async function getProjectFileContent(projectId: string, filename: string): Promise<ProjectFileContent> {
+  return requestJSON<ProjectFileContent>(`/v1/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(filename)}`)
+}
+
 export async function startAutopilot(projectId: string): Promise<ProjectAutopilotRun> {
   return requestJSON<ProjectAutopilotRun>(
     `/v1/projects/${encodeURIComponent(projectId)}/autopilot`,

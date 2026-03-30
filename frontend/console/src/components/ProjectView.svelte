@@ -16,7 +16,11 @@
     resetAutopilot,
     streamEvents,
     updateProject,
+    listProjectFiles,
+    getProjectFileContent,
   } from '../lib/api'
+  import type { ProjectFile } from '../lib/api'
+  import { renderMarkdown } from '../lib/markdown'
   import type {
     Approval,
     CronJob,
@@ -61,6 +65,27 @@
   let deleteConfirm = $state(false)
   let autopilotBusy = $state(false)
   let autopilotError = $state('')
+
+  // -- Artifacts --
+  let projectFiles: ProjectFile[] = $state([])
+  let selectedFile: { name: string; content: string } | null = $state(null)
+  let fileLoading = $state(false)
+
+  async function loadFiles() {
+    try {
+      projectFiles = await listProjectFiles(projectId)
+    } catch { projectFiles = [] }
+  }
+
+  async function viewFile(name: string) {
+    if (selectedFile?.name === name) { selectedFile = null; return }
+    fileLoading = true
+    try {
+      const result = await getProjectFileContent(projectId, name)
+      selectedFile = { name: result.name, content: result.content }
+    } catch { selectedFile = { name, content: 'Failed to load file.' } }
+    finally { fileLoading = false }
+  }
 
   function enterEdit() {
     if (!project) return
@@ -311,6 +336,7 @@
   onMount(() => {
     void loadDetail()
     void loadPanels()
+    void loadFiles()
     startEventStream()
     startAutopilotPolling()
   })
@@ -431,6 +457,46 @@
         <span class="label">Next action</span>
         <p>{autopilot.next_action}</p>
       </div>
+    {/if}
+
+    <!-- Artifacts -->
+    {#if projectFiles.length > 0}
+      <section class="card" style="margin-bottom: var(--space-4)">
+        <div class="card-header">
+          <span class="card-title">Artifacts</span>
+          <span class="badge badge-default">{projectFiles.filter(f => !f.system).length} files</span>
+        </div>
+        <div class="pv-files-list">
+          {#each projectFiles.filter(f => !f.system) as file}
+            <button class="pv-file-item" class:active={selectedFile?.name === file.name} onclick={() => viewFile(file.name)}>
+              <span class="pv-file-name">{file.name}</span>
+              <span class="pv-file-size">{file.size > 1024 ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'}</span>
+            </button>
+          {/each}
+          {#if projectFiles.some(f => f.system)}
+            <div class="pv-files-sep">System files</div>
+            {#each projectFiles.filter(f => f.system) as file}
+              <button class="pv-file-item system" class:active={selectedFile?.name === file.name} onclick={() => viewFile(file.name)}>
+                <span class="pv-file-name">{file.name}</span>
+                <span class="pv-file-size">{file.size > 1024 ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'}</span>
+              </button>
+            {/each}
+          {/if}
+        </div>
+        {#if selectedFile}
+          <div class="pv-file-preview">
+            <div class="pv-file-preview-header">
+              <strong>{selectedFile.name}</strong>
+              <button class="btn btn-ghost btn-sm" onclick={() => { selectedFile = null }}>Close</button>
+            </div>
+            {#if fileLoading}
+              <div class="pv-file-preview-loading">Loading...</div>
+            {:else}
+              <div class="pv-file-preview-content pv-md">{@html renderMarkdown(selectedFile.content)}</div>
+            {/if}
+          </div>
+        {/if}
+      </section>
     {/if}
 
     <div class="pv-grid">
@@ -702,6 +768,47 @@
     margin-top: var(--space-1);
     color: var(--text-primary);
   }
+
+  /* ── Artifacts ─────────────────────────────── */
+  .pv-files-list { display: flex; flex-direction: column; }
+  .pv-file-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-2) var(--space-4);
+    background: none; border: none; border-bottom: 1px solid var(--border-subtle);
+    cursor: pointer; text-align: left;
+    transition: background var(--duration-fast);
+  }
+  .pv-file-item:hover { background: rgba(255,255,255,0.02); }
+  .pv-file-item.active { background: rgba(224,145,69,0.08); border-left: 2px solid var(--accent); }
+  .pv-file-item.system { opacity: 0.5; }
+  .pv-file-item:last-child { border-bottom: none; }
+  .pv-file-name { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-primary); }
+  .pv-file-size { font-family: var(--font-mono); font-size: 10px; color: var(--text-ghost); }
+  .pv-files-sep {
+    padding: var(--space-1) var(--space-4); font-size: 10px; color: var(--text-ghost);
+    border-bottom: 1px solid var(--border-subtle); background: var(--bg-base);
+  }
+  .pv-file-preview {
+    border-top: 1px solid var(--border-subtle);
+    max-height: 400px; overflow-y: auto;
+  }
+  .pv-file-preview-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-2) var(--space-4); position: sticky; top: 0;
+    background: var(--bg-elevated); border-bottom: 1px solid var(--border-subtle);
+  }
+  .pv-file-preview-header strong { font-family: var(--font-mono); font-size: var(--text-xs); }
+  .pv-file-preview-loading { padding: var(--space-4); color: var(--text-tertiary); font-size: var(--text-xs); }
+  .pv-file-preview-content {
+    padding: var(--space-3) var(--space-4); font-size: var(--text-sm); line-height: 1.6; color: var(--text-secondary);
+  }
+  .pv-md :global(h1), .pv-md :global(h2), .pv-md :global(h3) { font-family: var(--font-display); font-weight: 600; color: var(--text-primary); margin: var(--space-3) 0 var(--space-1); }
+  .pv-md :global(p) { margin: 0 0 var(--space-2); }
+  .pv-md :global(ul), .pv-md :global(ol) { margin: var(--space-1) 0; padding-left: var(--space-5); }
+  .pv-md :global(li) { margin-bottom: var(--space-1); font-size: var(--text-sm); }
+  .pv-md :global(code) { font-family: var(--font-mono); font-size: 0.9em; background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px; }
+  .pv-md :global(pre) { background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-2); overflow-x: auto; margin: var(--space-2) 0; font-family: var(--font-mono); font-size: var(--text-xs); }
+  .pv-md :global(strong) { font-weight: 600; color: var(--text-primary); }
 
   /* ── Grid ─────────────────────────────────────── */
   .pv-grid {
