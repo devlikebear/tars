@@ -136,6 +136,8 @@ func (p *telegramUpdatePoller) Run(ctx context.Context) {
 		}
 	}
 	backoff := 500 * time.Millisecond
+	consecutiveErrors := 0
+	const maxBackoff = 60 * time.Second
 	for {
 		if ctx.Err() != nil {
 			return
@@ -145,21 +147,31 @@ func (p *telegramUpdatePoller) Run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			p.logger.Debug().Err(err).Msg("telegram polling failed")
+			consecutiveErrors++
+			// Log first few errors at debug, then warn once, then suppress
+			if consecutiveErrors <= 3 {
+				p.logger.Debug().Err(err).Int("consecutive_errors", consecutiveErrors).Msg("telegram polling failed")
+			} else if consecutiveErrors == 4 {
+				p.logger.Warn().Err(err).Int("consecutive_errors", consecutiveErrors).Msg("telegram polling repeatedly failing, suppressing further logs until recovery")
+			}
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.After(backoff):
 			}
-			if backoff < 5*time.Second {
+			if backoff < maxBackoff {
 				backoff *= 2
-				if backoff > 5*time.Second {
-					backoff = 5 * time.Second
+				if backoff > maxBackoff {
+					backoff = maxBackoff
 				}
 			}
 			continue
 		}
+		if consecutiveErrors > 3 {
+			p.logger.Info().Int("recovered_after", consecutiveErrors).Msg("telegram polling recovered")
+		}
 		backoff = 500 * time.Millisecond
+		consecutiveErrors = 0
 		for _, update := range updates {
 			if update.UpdateID >= offset {
 				offset = update.UpdateID + 1
