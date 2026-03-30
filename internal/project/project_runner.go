@@ -295,8 +295,7 @@ func (m *AutopilotManager) runIteration(
 	case boardHasStatus(board, "in_progress"):
 		return m.handleInProgressBoard(ctx, projectID, runID, iteration, board, isBackgroundRun)
 	case allBoardTasksDone(board):
-		m.completeRun(projectID, iteration)
-		return autopilotStepResult{Stop: true}
+		return m.handleAllTasksDone(ctx, orch, projectID, runID, iteration, board)
 	default:
 		return m.handleIdleBoard(ctx, projectID, runID, iteration, isBackgroundRun)
 	}
@@ -328,6 +327,13 @@ func (m *AutopilotManager) handleEmptyBoard(
 		message := fmt.Sprintf("Auto-planning failed: %v", err)
 		nextAction := "Create or approve the next phase backlog manually"
 		m.planningRequired(projectID, runID, iteration, message, nextAction)
+		return autopilotStepResult{Stop: true}
+	}
+
+	// Empty tasks = LLM determined project goal is fully achieved
+	if len(tasks) == 0 {
+		_ = m.appendPMActivity(projectID, "autopilot", "complete", "LLM determined all project goals are achieved", nil)
+		m.completeRun(projectID, iteration)
 		return autopilotStepResult{Stop: true}
 	}
 
@@ -468,6 +474,41 @@ func (m *AutopilotManager) setRunningRun(projectID string, message string, itera
 		item.Iterations = iteration
 		item.FinishedAt = ""
 	})
+}
+
+func (m *AutopilotManager) handleAllTasksDone(
+	ctx context.Context,
+	orch *Orchestrator,
+	projectID string,
+	runID string,
+	iteration int,
+	board Board,
+) autopilotStepResult {
+	// Clear the board so handleEmptyBoard can plan the next phase.
+	// If the LLM determines the project goal is fully met, PlanTasks
+	// will return an error ("planning produced no tasks") and the
+	// autopilot will block, allowing the user to finalize or resume.
+	m.setRunningRun(projectID, "Phase complete, planning next phase", iteration)
+	m.publish(projectID, "autopilot")
+
+	doneCount := len(board.Tasks)
+	_ = m.appendPMActivity(projectID, "autopilot", "phase_done",
+		fmt.Sprintf("All %d tasks completed, clearing board for next phase", doneCount), nil)
+
+	cleanBoard := Board{
+		ProjectID: projectID,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		Columns:   append([]string(nil), defaultBoardColumns...),
+		Tasks:     []BoardTask{},
+	}
+	if err := m.store.writeBoard(cleanBoard); err != nil {
+		m.fail(projectID, runID, iteration, fmt.Sprintf("clear board failed: %v", err))
+		return autopilotStepResult{Stop: true}
+	}
+	m.publish(projectID, "board")
+
+	// Continue to next iteration — handleEmptyBoard will auto-plan
+	return autopilotStepResult{Immediate: true}
 }
 
 func (m *AutopilotManager) completeRun(projectID string, iteration int) {

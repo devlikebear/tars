@@ -44,9 +44,7 @@ func (o *Orchestrator) PlanTasks(ctx context.Context, projectID string) ([]Board
 	if err != nil {
 		return nil, fmt.Errorf("parse planning response: %w", err)
 	}
-	if len(tasks) == 0 {
-		return nil, fmt.Errorf("planning produced no tasks")
-	}
+	// Empty array means LLM determined the project goal is complete
 	return tasks, nil
 }
 
@@ -95,17 +93,23 @@ func (o *Orchestrator) buildPlanningPrompt(projectID string) (string, error) {
 	}
 
 	parts = append(parts, "## Instructions")
-	parts = append(parts, "Generate 1-5 concrete tasks for the next phase. Each task should be a small, actionable unit of work.")
+	parts = append(parts, "Based on the project goal and current state, decide what to do next:")
 	parts = append(parts, "")
-	parts = append(parts, "IMPORTANT: Do NOT use any tools. Do NOT modify any files. ONLY respond with the JSON array below.")
+	parts = append(parts, "1. If the project goal is NOT yet fully achieved, generate 1-5 concrete tasks for the next phase.")
+	parts = append(parts, "2. If the project goal IS fully achieved (all deliverables complete), respond with an empty array: []")
 	parts = append(parts, "")
-	parts = append(parts, "Respond with a JSON array of task objects. Each task must have:")
+	parts = append(parts, "IMPORTANT: Do NOT use any tools. Do NOT modify any files. ONLY respond with the JSON array.")
+	parts = append(parts, "")
+	parts = append(parts, "Each task must have:")
 	parts = append(parts, `- "id": unique short identifier (e.g., "task-1")`)
 	parts = append(parts, `- "title": clear description of what to do`)
 	parts = append(parts, `- "status": always "todo"`)
 	parts = append(parts, "")
-	parts = append(parts, "Example:")
-	parts = append(parts, `[{"id":"task-1","title":"Write chapter outline","status":"todo"},{"id":"task-2","title":"Draft opening scene","status":"todo"}]`)
+	parts = append(parts, "Example (more work needed):")
+	parts = append(parts, `[{"id":"task-1","title":"Draft chapter 1","status":"todo"}]`)
+	parts = append(parts, "")
+	parts = append(parts, "Example (project complete):")
+	parts = append(parts, `[]`)
 	parts = append(parts, "")
 	parts = append(parts, "Respond with ONLY the JSON array, no other text. No markdown code blocks.")
 
