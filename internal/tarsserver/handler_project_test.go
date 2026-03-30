@@ -515,7 +515,7 @@ notes: approved
 	})
 
 	taskRunner := gateway.NewProjectTaskRunner(runtime, "")
-	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, func(context.Context) error { return nil }, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Dispatch Project", Type: "operations"})
 	if err != nil {
