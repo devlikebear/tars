@@ -2,6 +2,8 @@ package tarsserver
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/project"
@@ -656,6 +658,76 @@ func newProjectAPIHandler(
 				"activated":  true,
 				"project_id": projectID,
 				"session_id": sessionID,
+			})
+			return
+		}
+
+		// Project files browser
+		if len(parts) >= 2 && parts[1] == "files" {
+			if !requireMethod(w, r, http.MethodGet) {
+				return
+			}
+			projectDir := store.ProjectDir(projectID)
+			if projectDir == "" {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "project directory not found"})
+				return
+			}
+
+			if len(parts) == 2 {
+				// List files
+				entries, err := os.ReadDir(projectDir)
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read project directory failed"})
+					return
+				}
+				systemFiles := map[string]bool{
+					"PROJECT.md": true, "STATE.md": true, "KANBAN.md": true,
+					"AUTOPILOT.json": true, "ACTIVITY.jsonl": true,
+				}
+				type fileEntry struct {
+					Name   string `json:"name"`
+					Size   int64  `json:"size"`
+					System bool   `json:"system"`
+				}
+				files := make([]fileEntry, 0)
+				for _, e := range entries {
+					if e.IsDir() {
+						continue
+					}
+					info, err := e.Info()
+					if err != nil {
+						continue
+					}
+					files = append(files, fileEntry{
+						Name:   e.Name(),
+						Size:   info.Size(),
+						System: systemFiles[e.Name()],
+					})
+				}
+				writeJSON(w, http.StatusOK, files)
+				return
+			}
+
+			// Read file content: /v1/projects/{id}/files/{filename}
+			filename := strings.Join(parts[2:], "/")
+			if strings.Contains(filename, "..") {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid filename"})
+				return
+			}
+			filePath := filepath.Join(projectDir, filename)
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				if os.IsNotExist(err) {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+					return
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read file failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"name":    filename,
+				"content": string(data),
+				"size":    len(data),
 			})
 			return
 		}

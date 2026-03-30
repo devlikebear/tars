@@ -84,6 +84,14 @@ func NewStore(workspaceDir string, nowFn func() time.Time) *Store {
 	}
 }
 
+// ProjectDir returns the filesystem path for a project's directory.
+func (s *Store) ProjectDir(projectID string) string {
+	if s == nil || strings.TrimSpace(projectID) == "" {
+		return ""
+	}
+	return filepath.Join(s.workspaceDir, "projects", strings.TrimSpace(projectID))
+}
+
 func (s *Store) Create(input CreateInput) (Project, error) {
 	if s == nil {
 		return Project{}, fmt.Errorf("project store is nil")
