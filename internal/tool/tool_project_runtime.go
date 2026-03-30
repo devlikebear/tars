@@ -221,7 +221,7 @@ func NewProjectDispatchTool(store *project.Store, runner project.TaskRunner, che
 }
 
 type projectAutopilotStarter interface {
-	Start(context.Context, string) (project.AutopilotRun, error)
+	Start(context.Context, string, ...project.StartOptions) (project.AutopilotRun, error)
 }
 
 func NewProjectAutopilotStartTool(manager projectAutopilotStarter) Tool {

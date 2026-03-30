@@ -213,10 +213,10 @@ export async function getProjectFileContent(projectId: string, filename: string)
   return requestJSON<ProjectFileContent>(`/v1/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(filename)}`)
 }
 
-export async function startAutopilot(projectId: string): Promise<ProjectAutopilotRun> {
+export async function startAutopilot(projectId: string, opts?: { interval_minutes?: number; budget_per_run?: number }): Promise<ProjectAutopilotRun> {
   return requestJSON<ProjectAutopilotRun>(
     `/v1/projects/${encodeURIComponent(projectId)}/autopilot`,
-    { method: 'POST' },
+    { method: 'POST', body: opts ? JSON.stringify(opts) : undefined },
   )
 }
 

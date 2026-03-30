@@ -39,7 +39,7 @@ type PhaseSnapshot struct {
 }
 
 type PhaseEngine interface {
-	Start(context.Context, string) (AutopilotRun, error)
+	Start(context.Context, string, ...StartOptions) (AutopilotRun, error)
 	Status(string) (AutopilotRun, bool)
 	Current(string) (PhaseSnapshot, bool)
 	Advance(context.Context, string) (PhaseSnapshot, error)

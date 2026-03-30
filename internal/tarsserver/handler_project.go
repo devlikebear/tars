@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -599,7 +600,10 @@ func newProjectAPIHandler(
 				}
 				writeJSON(w, http.StatusOK, payload)
 			case http.MethodPost:
-				item, err := autopilot.Start(r.Context(), projectID)
+				var startReq project.StartOptions
+				// Best-effort parse — empty body is fine (uses defaults)
+				_ = json.NewDecoder(r.Body).Decode(&startReq)
+				item, err := autopilot.Start(r.Context(), projectID, startReq)
 				if err != nil {
 					lower := strings.ToLower(err.Error())
 					if strings.Contains(lower, "not found") {
