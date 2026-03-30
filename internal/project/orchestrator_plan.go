@@ -97,17 +97,17 @@ func (o *Orchestrator) buildPlanningPrompt(projectID string) (string, error) {
 	parts = append(parts, "## Instructions")
 	parts = append(parts, "Generate 1-5 concrete tasks for the next phase. Each task should be a small, actionable unit of work.")
 	parts = append(parts, "")
+	parts = append(parts, "IMPORTANT: Do NOT use any tools. Do NOT modify any files. ONLY respond with the JSON array below.")
+	parts = append(parts, "")
 	parts = append(parts, "Respond with a JSON array of task objects. Each task must have:")
 	parts = append(parts, `- "id": unique short identifier (e.g., "task-1")`)
 	parts = append(parts, `- "title": clear description of what to do`)
 	parts = append(parts, `- "status": always "todo"`)
 	parts = append(parts, "")
-	parts = append(parts, "Example response:")
-	parts = append(parts, "```json")
+	parts = append(parts, "Example:")
 	parts = append(parts, `[{"id":"task-1","title":"Write chapter outline","status":"todo"},{"id":"task-2","title":"Draft opening scene","status":"todo"}]`)
-	parts = append(parts, "```")
 	parts = append(parts, "")
-	parts = append(parts, "Respond with ONLY the JSON array, no other text.")
+	parts = append(parts, "Respond with ONLY the JSON array, no other text. No markdown code blocks.")
 
 	return strings.Join(parts, "\n"), nil
 }

@@ -331,14 +331,15 @@ func (m *AutopilotManager) handleEmptyBoard(
 		return autopilotStepResult{Stop: true}
 	}
 
-	// Update board with planned tasks
-	board, _ := m.store.GetBoard(projectID)
-	board.Tasks = tasks
-	if _, updateErr := m.store.UpdateBoard(projectID, BoardUpdateInput{
-		Columns: board.Columns,
-		Tasks:   tasks,
-	}); updateErr != nil {
-		message := fmt.Sprintf("Failed to update board with planned tasks: %v", updateErr)
+	// Write a clean board with planned tasks (overwrite any corrupted KANBAN.md)
+	cleanBoard := Board{
+		ProjectID: projectID,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		Columns:   append([]string(nil), defaultBoardColumns...),
+		Tasks:     tasks,
+	}
+	if writeErr := m.store.writeBoard(cleanBoard); writeErr != nil {
+		message := fmt.Sprintf("Failed to write board with planned tasks: %v", writeErr)
 		m.planningRequired(projectID, runID, iteration, message, "Retry or manually update the board")
 		return autopilotStepResult{Stop: true}
 	}
