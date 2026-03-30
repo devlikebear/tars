@@ -597,8 +597,9 @@ func TestProjectAPI_AutopilotRoutes(t *testing.T) {
 	}
 
 	// After all tasks done, autopilot clears board and attempts auto-planning.
-	// Mock runner returns invalid planning response, so autopilot blocks.
-	waitForAutopilotRun(t, manager, created.ID, project.AutopilotStatusBlocked)
+	// Mock runner returns invalid planning response, so autopilot either blocks
+	// or enters scheduled status when budget is exhausted (cron mode).
+	waitForAutopilotRunAny(t, manager, created.ID, project.AutopilotStatusBlocked, project.AutopilotStatusScheduled)
 
 	statusReq := httptest.NewRequest(http.MethodGet, "/v1/projects/"+created.ID+"/autopilot", nil)
 	statusRec := httptest.NewRecorder()
@@ -606,10 +607,9 @@ func TestProjectAPI_AutopilotRoutes(t *testing.T) {
 	if statusRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for autopilot status, got %d body=%q", statusRec.Code, statusRec.Body.String())
 	}
-	// With multi-phase, tasks done → board cleared → re-plan attempted.
-	// Mock runner can't produce valid planning JSON, so status is blocked.
-	if !strings.Contains(statusRec.Body.String(), `"status":"blocked"`) {
-		t.Fatalf("expected blocked status in autopilot response, got %q", statusRec.Body.String())
+	body := statusRec.Body.String()
+	if !strings.Contains(body, `"status":"blocked"`) && !strings.Contains(body, `"status":"scheduled"`) {
+		t.Fatalf("expected blocked or scheduled status in autopilot response, got %q", body)
 	}
 
 	board, err := projectStore.GetBoard(created.ID)
@@ -732,5 +732,24 @@ func waitForAutopilotRun(t *testing.T, manager *project.AutopilotManager, projec
 	}
 	run, _ := manager.Status(projectID)
 	t.Fatalf("expected autopilot status %q, got %+v", want, run)
+	return project.AutopilotRun{}
+}
+
+func waitForAutopilotRunAny(t *testing.T, manager *project.AutopilotManager, projectID string, wants ...project.AutopilotRunStatus) project.AutopilotRun {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		run, ok := manager.Status(projectID)
+		if ok {
+			for _, w := range wants {
+				if run.Status == w {
+					return run
+				}
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	run, _ := manager.Status(projectID)
+	t.Fatalf("expected autopilot status in %v, got %+v", wants, run)
 	return project.AutopilotRun{}
 }

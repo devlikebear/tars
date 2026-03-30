@@ -47,6 +47,9 @@ type PhaseEngine interface {
 	Escalate(string, string) error
 	Resume(context.Context, string) (AutopilotRun, error)
 	Reset(string) error
+	RunScheduled(context.Context, string) (string, error)
+	Stop(string) error
+	CronInterval() time.Duration
 }
 
 func normalizePhaseName(raw string) PhaseName {

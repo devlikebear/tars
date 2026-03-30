@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
@@ -41,6 +42,18 @@ func (chatPhaseEngineStub) Resume(context.Context, string) (project.AutopilotRun
 
 func (chatPhaseEngineStub) Reset(string) error {
 	return nil
+}
+
+func (chatPhaseEngineStub) RunScheduled(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (chatPhaseEngineStub) Stop(string) error {
+	return nil
+}
+
+func (chatPhaseEngineStub) CronInterval() time.Duration {
+	return 0
 }
 
 func TestResolveInjectedToolSchemas_FiltersHighRiskToolsForUserRole(t *testing.T) {

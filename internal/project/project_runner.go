@@ -21,10 +21,11 @@ const (
 type AutopilotRunStatus string
 
 const (
-	AutopilotStatusRunning AutopilotRunStatus = "running"
-	AutopilotStatusDone    AutopilotRunStatus = "done"
-	AutopilotStatusBlocked AutopilotRunStatus = "blocked"
-	AutopilotStatusFailed  AutopilotRunStatus = "failed"
+	AutopilotStatusRunning   AutopilotRunStatus = "running"
+	AutopilotStatusScheduled AutopilotRunStatus = "scheduled"
+	AutopilotStatusDone      AutopilotRunStatus = "done"
+	AutopilotStatusBlocked   AutopilotRunStatus = "blocked"
+	AutopilotStatusFailed    AutopilotRunStatus = "failed"
 )
 
 type AutopilotRun struct {
@@ -38,13 +39,20 @@ type AutopilotRun struct {
 	FinishedAt string             `json:"finished_at,omitempty"`
 }
 
+// CronJobCallbacks allows AutopilotManager to create/delete cron jobs without importing cron package.
+type CronJobCallbacks struct {
+	CreateJob func(projectID string, interval time.Duration) error
+	DeleteJob func(projectID string) error
+}
+
 type AutopilotManager struct {
 	store                *Store
 	runner               TaskRunner
 	githubAuthChecker    GitHubAuthChecker
 	notify               func(projectID string, kind string)
-	maxIterations        int
-	loopInterval         time.Duration
+	cronCallbacks        *CronJobCallbacks
+	budgetPerRun         int
+	cronInterval         time.Duration
 	planningBlockTimeout time.Duration
 	runRetention         time.Duration
 
@@ -68,13 +76,20 @@ func NewAutopilotManager(
 		runner:               runner,
 		githubAuthChecker:    checker,
 		notify:               notify,
-		maxIterations:        16,
-		loopInterval:         time.Minute,
+		budgetPerRun:         3,
+		cronInterval:         10 * time.Minute,
 		planningBlockTimeout: defaultPlanningBlockTimeout,
 		runRetention:         defaultAutopilotRunRetention,
 		runs:                 map[string]AutopilotRun{},
 		loops:                map[string]context.CancelFunc{},
 		steps:                map[string]bool{},
+	}
+}
+
+// SetCronCallbacks sets the cron job lifecycle callbacks.
+func (m *AutopilotManager) SetCronCallbacks(cb *CronJobCallbacks) {
+	if m != nil {
+		m.cronCallbacks = cb
 	}
 }
 
@@ -166,9 +181,39 @@ func (m *AutopilotManager) Start(_ context.Context, projectID string) (Autopilot
 		return AutopilotRun{}, err
 	}
 
+	// Create cron job for periodic execution
+	if m.cronCallbacks != nil && m.cronCallbacks.CreateJob != nil {
+		if err := m.cronCallbacks.CreateJob(projectID, m.cronInterval); err != nil {
+			// Non-fatal: autopilot still runs the first budget
+			_ = m.appendPMActivity(projectID, "autopilot", "warning",
+				fmt.Sprintf("Failed to create cron job: %v", err), nil)
+		}
+	}
+
 	m.publish(projectID, "autopilot")
 	go m.run(loopCtx, projectID, run.RunID)
 	return run, nil
+}
+
+// Stop stops a running autopilot and deletes its cron job.
+func (m *AutopilotManager) Stop(projectID string) error {
+	if m == nil {
+		return nil
+	}
+	projectID = strings.TrimSpace(projectID)
+	m.stopLoop(projectID)
+	m.setRun(projectID, func(r *AutopilotRun) {
+		r.Status = AutopilotStatusDone
+		r.Message = "stopped by user"
+		r.FinishedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+		r.UpdatedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	})
+	_ = m.persistCurrentRun(projectID)
+	if m.cronCallbacks != nil && m.cronCallbacks.DeleteJob != nil {
+		_ = m.cronCallbacks.DeleteJob(projectID)
+	}
+	m.publish(projectID, "autopilot")
+	return nil
 }
 
 func (m *AutopilotManager) Status(projectID string) (AutopilotRun, bool) {
@@ -247,8 +292,17 @@ func (m *AutopilotManager) run(ctx context.Context, projectID, runID string) {
 		m.publish(projectID, "autopilot")
 	}()
 	orch := NewOrchestratorWithGitHubAuthChecker(m.store, m.runner, m.githubAuthChecker)
-	immediateStreak := 0
-	for iteration := 1; ; iteration++ {
+
+	// Read current iteration count to continue from where we left off
+	currentRun, _ := m.Status(projectID)
+	startIter := currentRun.Iterations + 1
+	budget := m.budgetPerRun
+	if budget <= 0 {
+		budget = 3
+	}
+
+	for i := 0; i < budget; i++ {
+		iteration := startIter + i
 		if ctx.Err() != nil {
 			return
 		}
@@ -256,15 +310,23 @@ func (m *AutopilotManager) run(ctx context.Context, projectID, runID string) {
 		if step.Stop {
 			return
 		}
-		if step.Immediate {
-			immediateStreak++
-		} else {
-			immediateStreak = 0
-		}
-		if !m.applyImmediateThrottle(ctx, &immediateStreak) {
-			return
+		// If not immediate, we consumed a real iteration — count it toward budget
+		// If immediate (phase transition), don't count it
+		if !step.Immediate {
+			continue
 		}
 	}
+
+	// Budget exhausted — set to "scheduled" and wait for next cron tick
+	m.setRun(projectID, func(r *AutopilotRun) {
+		r.Status = AutopilotStatusScheduled
+		r.Message = fmt.Sprintf("Budget exhausted (%d iterations), waiting for next scheduled run", budget)
+		r.UpdatedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	})
+	_ = m.persistCurrentRun(projectID)
+	_ = m.appendPMActivity(projectID, "autopilot", "scheduled",
+		fmt.Sprintf("Paused after %d iterations, next run in %s", budget, m.cronInterval), nil)
+	m.publish(projectID, "autopilot")
 }
 
 type autopilotStepResult struct {
@@ -523,7 +585,7 @@ func (m *AutopilotManager) completeRun(projectID string, iteration int) {
 }
 
 func (m *AutopilotManager) applyImmediateThrottle(ctx context.Context, immediateStreak *int) bool {
-	if m.maxIterations <= 0 || *immediateStreak < m.maxIterations {
+	if m.budgetPerRun <= 0 || *immediateStreak < m.budgetPerRun {
 		return true
 	}
 	if !m.waitForNextTick(ctx) {
@@ -827,7 +889,7 @@ func (m *AutopilotManager) shouldAutopilotProjectRun(projectID string) (bool, er
 }
 
 func (m *AutopilotManager) waitForNextTick(ctx context.Context) bool {
-	interval := m.loopInterval
+	interval := m.cronInterval
 	if interval <= 0 {
 		interval = time.Minute
 	}
@@ -976,6 +1038,49 @@ func (m *AutopilotManager) Reset(projectID string) error {
 	m.stopLoop(strings.TrimSpace(projectID))
 	m.removeRun(strings.TrimSpace(projectID))
 	return nil
+}
+
+// RunScheduled is called by the cron system to continue a scheduled autopilot run.
+// Returns the run status and a response string for cron logging.
+func (m *AutopilotManager) RunScheduled(ctx context.Context, projectID string) (string, error) {
+	if m == nil {
+		return "", fmt.Errorf("autopilot manager not configured")
+	}
+	projectID = strings.TrimSpace(projectID)
+	run, ok := m.Status(projectID)
+	if !ok {
+		return "", fmt.Errorf("no autopilot run for project %s", projectID)
+	}
+	if run.Status != AutopilotStatusScheduled {
+		return fmt.Sprintf("autopilot is %s, not scheduled", run.Status), nil
+	}
+	if m.IsRunning(projectID) {
+		return "autopilot already running", nil
+	}
+
+	m.setRun(projectID, func(r *AutopilotRun) {
+		r.Status = AutopilotStatusRunning
+		r.Message = "resumed by cron"
+		r.UpdatedAt = m.store.nowFn().UTC().Format(time.RFC3339)
+	})
+	_ = m.persistCurrentRun(projectID)
+
+	loopCtx, cancel := context.WithCancel(ctx)
+	m.mu.Lock()
+	m.loops[projectID] = cancel
+	m.mu.Unlock()
+
+	m.publish(projectID, "autopilot")
+	go m.run(loopCtx, projectID, run.RunID)
+	return fmt.Sprintf("autopilot resumed for project %s", projectID), nil
+}
+
+// CronInterval returns the configured interval for autopilot cron jobs.
+func (m *AutopilotManager) CronInterval() time.Duration {
+	if m == nil || m.cronInterval <= 0 {
+		return 10 * time.Minute
+	}
+	return m.cronInterval
 }
 
 type errorSource string
