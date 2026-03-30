@@ -201,6 +201,14 @@
     }
   }
 
+  async function refreshAutopilot() {
+    try {
+      autopilot = await getProjectAutopilot(projectId)
+    } catch {
+      // ignore — may not have an active run
+    }
+  }
+
   async function loadPanels() {
     loadingPanels = true
     panelError = ''
@@ -241,6 +249,9 @@
         if (event.category === 'ops') {
           void listApprovals().then((list) => { approvals = list })
         }
+        if (event.category === 'autopilot' || event.category === 'board' || event.category === 'project') {
+          void refreshAutopilot()
+        }
       },
     )
   }
@@ -279,14 +290,34 @@
     }
   }
 
+  let autopilotPollTimer: ReturnType<typeof setInterval> | null = null
+
+  function startAutopilotPolling() {
+    stopAutopilotPolling()
+    autopilotPollTimer = setInterval(() => {
+      if (autopilot && (autopilot.status === 'running' || autopilot.status === 'blocked')) {
+        void refreshAutopilot()
+      }
+    }, 5000)
+  }
+
+  function stopAutopilotPolling() {
+    if (autopilotPollTimer) {
+      clearInterval(autopilotPollTimer)
+      autopilotPollTimer = null
+    }
+  }
+
   onMount(() => {
     void loadDetail()
     void loadPanels()
     startEventStream()
+    startAutopilotPolling()
   })
 
   onDestroy(() => {
     stopEventStream?.()
+    stopAutopilotPolling()
   })
 </script>
 
