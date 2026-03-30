@@ -159,6 +159,13 @@ func (m *AutopilotManager) Start(_ context.Context, projectID string, opts ...St
 	if current, ok := m.Status(projectID); ok && m.IsRunning(projectID) {
 		return current, nil
 	}
+	// Reset project state to active when starting fresh
+	if state, err := m.store.GetState(projectID); err == nil && (state.Phase == "done" || state.Status == "done") {
+		m.updateState(projectID, workflowStateUpdate{
+			Phase:  "planning",
+			Status: "active",
+		})
+	}
 
 	now := m.store.nowFn().UTC()
 	message := "Autopilot started"
@@ -595,6 +602,10 @@ func (m *AutopilotManager) completeRun(projectID string, iteration int) {
 		terminal:   true,
 		stateUpdate: DefaultWorkflowPolicy.AutopilotCompletedState(message),
 	})
+	// Clean up the cron job
+	if m.cronCallbacks != nil && m.cronCallbacks.DeleteJob != nil {
+		_ = m.cronCallbacks.DeleteJob(projectID)
+	}
 }
 
 func (m *AutopilotManager) applyImmediateThrottle(ctx context.Context, immediateStreak *int) bool {
