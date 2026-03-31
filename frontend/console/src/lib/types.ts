@@ -32,6 +32,9 @@ export type Project = {
   objective?: string
   path?: string
   body?: string
+  execution_mode?: string
+  max_phases?: number
+  sub_agents?: string[]
   session_id?: string
 }
 

@@ -67,6 +67,15 @@ func applyUpdateInput(item *Project, input UpdateInput) error {
 	if len(input.SecretsRefs) > 0 {
 		item.SecretsRefs = normalizeList(input.SecretsRefs)
 	}
+	if input.ExecutionMode != nil {
+		item.ExecutionMode = normalizeExecutionMode(*input.ExecutionMode)
+	}
+	if input.MaxPhases != nil {
+		item.MaxPhases = normalizeMaxPhases(*input.MaxPhases, item.ExecutionMode)
+	}
+	if len(input.SubAgents) > 0 {
+		item.SubAgents = normalizeList(input.SubAgents)
+	}
 	if input.SessionID != nil {
 		item.SessionID = strings.TrimSpace(*input.SessionID)
 	}
@@ -162,6 +171,25 @@ func normalizeWorkflowRuleParams(params map[string]string) map[string]string {
 		return nil
 	}
 	return out
+}
+
+func normalizeExecutionMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "autonomous":
+		return "autonomous"
+	default:
+		return "manual"
+	}
+}
+
+func normalizeMaxPhases(value int, mode string) int {
+	if value > 0 {
+		return value
+	}
+	if normalizeExecutionMode(mode) == "autonomous" {
+		return 3
+	}
+	return 0
 }
 
 func normalizeType(raw string) string {

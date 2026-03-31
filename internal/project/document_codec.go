@@ -41,6 +41,9 @@ func parseDocument(raw string) (Project, error) {
 		WorkflowRules:      mapWorkflowRuleList(parsed, "workflow_rules", "workflow-rules"),
 		MCPServers:         mapStringList(parsed, "mcp_servers", "mcp-servers"),
 		SecretsRefs:        mapStringList(parsed, "secrets_refs", "secrets-refs"),
+		ExecutionMode:      mapString(parsed, "execution_mode"),
+		MaxPhases:          mapInt(parsed, "max_phases"),
+		SubAgents:          mapStringList(parsed, "sub_agents"),
 		SessionID:          mapString(parsed, "session_id"),
 		Body:               strings.TrimSpace(body),
 	}
@@ -89,6 +92,13 @@ func buildDocument(project Project) string {
 	writeWorkflowRuleList(&b, "workflow_rules", project.WorkflowRules)
 	writeDocumentList(&b, "mcp_servers", project.MCPServers)
 	writeDocumentList(&b, "secrets_refs", project.SecretsRefs)
+	if v := strings.TrimSpace(project.ExecutionMode); v != "" && v != "manual" {
+		_, _ = fmt.Fprintf(&b, "execution_mode: %s\n", v)
+	}
+	if project.MaxPhases > 0 {
+		_, _ = fmt.Fprintf(&b, "max_phases: %d\n", project.MaxPhases)
+	}
+	writeDocumentList(&b, "sub_agents", project.SubAgents)
 	if v := strings.TrimSpace(project.SessionID); v != "" {
 		_, _ = fmt.Fprintf(&b, "session_id: %s\n", v)
 	}
@@ -152,6 +162,24 @@ func splitFrontmatter(raw string) (string, string, bool, error) {
 	meta := rest[:end]
 	body := rest[end+len("\n---\n"):]
 	return meta, body, true, nil
+}
+
+func mapInt(values map[string]any, keys ...string) int {
+	for _, key := range keys {
+		if value, ok := values[key]; ok {
+			switch v := value.(type) {
+			case int:
+				return v
+			case float64:
+				return int(v)
+			case string:
+				n := 0
+				fmt.Sscanf(v, "%d", &n)
+				return n
+			}
+		}
+	}
+	return 0
 }
 
 func mapString(values map[string]any, keys ...string) string {

@@ -10,6 +10,7 @@
     compactProjectSession,
     listProjectActivity,
     updateProject,
+    updateProjectBoard,
     listProjectFiles,
     getProjectFileContent,
   } from '../lib/api'
@@ -21,6 +22,7 @@
     ProjectBoard,
     ProjectState,
     ProjectSessionInfo,
+    BoardTask,
   } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
 
@@ -52,6 +54,63 @@
   let deleteConfirm = $state(false)
 
   let showAllActivity = $state(false)
+
+  // -- Board editing --
+  let newTaskTitle = $state('')
+  let boardBusy = $state(false)
+  let editingTaskId: string | null = $state(null)
+  let editingTaskTitle = $state('')
+
+  async function addTask() {
+    if (!newTaskTitle.trim() || !board || boardBusy) return
+    boardBusy = true
+    try {
+      const id = `task-${Date.now()}`
+      const tasks: BoardTask[] = [...board.tasks, { id, title: newTaskTitle.trim(), status: 'todo' }]
+      board = await updateProjectBoard(projectId, tasks)
+      newTaskTitle = ''
+    } catch (e) {
+      panelError = e instanceof Error ? e.message : 'Add task failed'
+    } finally { boardBusy = false }
+  }
+
+  async function removeTask(taskId: string) {
+    if (!board || boardBusy) return
+    boardBusy = true
+    try {
+      const tasks = board.tasks.filter((t) => t.id !== taskId)
+      board = await updateProjectBoard(projectId, tasks)
+    } catch (e) {
+      panelError = e instanceof Error ? e.message : 'Remove task failed'
+    } finally { boardBusy = false }
+  }
+
+  async function changeTaskStatus(taskId: string, status: string) {
+    if (!board || boardBusy) return
+    boardBusy = true
+    try {
+      const tasks = board.tasks.map((t) => t.id === taskId ? { ...t, status } : t)
+      board = await updateProjectBoard(projectId, tasks)
+    } catch (e) {
+      panelError = e instanceof Error ? e.message : 'Update task failed'
+    } finally { boardBusy = false }
+  }
+
+  function startEditTask(task: BoardTask) {
+    editingTaskId = task.id
+    editingTaskTitle = task.title
+  }
+
+  async function commitEditTask() {
+    if (!editingTaskId || !editingTaskTitle.trim() || !board) { editingTaskId = null; return }
+    boardBusy = true
+    try {
+      const tasks = board.tasks.map((t) => t.id === editingTaskId ? { ...t, title: editingTaskTitle.trim() } : t)
+      board = await updateProjectBoard(projectId, tasks)
+    } catch (e) {
+      panelError = e instanceof Error ? e.message : 'Edit task failed'
+    } finally { boardBusy = false; editingTaskId = null }
+  }
 
   // -- Artifacts --
   let projectFiles: ProjectFile[] = $state([])
@@ -242,6 +301,11 @@
       </div>
       <div class="pv-header-meta">
         <span class="badge badge-default">{project.status || 'active'}</span>
+        {#if project.execution_mode === 'autonomous'}
+          <span class="badge badge-accent">autonomous</span>
+        {:else}
+          <span class="badge badge-default">manual</span>
+        {/if}
         {#if !editing}
           <button class="btn btn-ghost btn-sm" onclick={enterEdit}>Edit</button>
           <button class="btn btn-danger btn-sm" disabled={deleting} onclick={handleDelete}>
@@ -290,25 +354,59 @@
             </dl>
           </div>
         {/if}
-        {#if board && board.tasks.length > 0}
-          <div class="card pv-board-card">
-            <div class="card-header">
-              <span class="card-title">Board</span>
-              <span class="badge badge-default">{board.tasks.length} tasks</span>
-            </div>
+        <div class="card pv-board-card">
+          <div class="card-header">
+            <span class="card-title">Board</span>
+            <span class="badge badge-default">{board?.tasks.length ?? 0} tasks</span>
+          </div>
+          {#if board && board.tasks.length > 0}
             <div class="pv-board-tasks">
               {#each board.tasks as task}
                 <div class="pv-board-task">
-                  <span class="badge {statusBadgeClass(task.status)}">{task.status}</span>
-                  <span class="pv-board-task-title">{task.title}</span>
+                  <select
+                    class="pv-board-status-select"
+                    value={task.status}
+                    disabled={boardBusy}
+                    onchange={(e) => changeTaskStatus(task.id, (e.target as HTMLSelectElement).value)}
+                  >
+                    <option value="todo">todo</option>
+                    <option value="in_progress">in_progress</option>
+                    <option value="review">review</option>
+                    <option value="done">done</option>
+                  </select>
+                  {#if editingTaskId === task.id}
+                    <input
+                      class="pv-board-task-edit"
+                      bind:value={editingTaskTitle}
+                      onkeydown={(e) => { if (e.key === 'Enter') commitEditTask(); if (e.key === 'Escape') editingTaskId = null }}
+                      onblur={() => commitEditTask()}
+                    />
+                  {:else}
+                    <button class="pv-board-task-title-btn" onclick={() => startEditTask(task)} title="Click to edit">
+                      {task.title}
+                    </button>
+                  {/if}
                   {#if task.worker_kind}
                     <span class="pv-board-task-meta">{task.worker_kind}</span>
                   {/if}
+                  <button class="pv-board-task-remove" disabled={boardBusy} onclick={() => removeTask(task.id)} title="Remove">&times;</button>
                 </div>
               {/each}
             </div>
-          </div>
-        {/if}
+          {:else}
+            <div class="pv-board-empty">No tasks. Add one below.</div>
+          {/if}
+          <form class="pv-board-add" onsubmit={(e) => { e.preventDefault(); addTask() }}>
+            <input
+              class="pv-board-add-input"
+              type="text"
+              placeholder="New task..."
+              bind:value={newTaskTitle}
+              disabled={boardBusy}
+            />
+            <button class="btn btn-primary btn-sm" type="submit" disabled={!newTaskTitle.trim() || boardBusy}>Add</button>
+          </form>
+        </div>
       </div>
     {/if}
 
@@ -487,6 +585,85 @@
     color: var(--text-ghost);
     font-family: var(--font-mono);
     flex-shrink: 0;
+  }
+
+  .pv-board-status-select {
+    padding: 2px 4px;
+    font-size: var(--text-xs);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    flex-shrink: 0;
+  }
+
+  .pv-board-task-title-btn {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0;
+  }
+  .pv-board-task-title-btn:hover {
+    color: var(--accent);
+  }
+
+  .pv-board-task-edit {
+    flex: 1;
+    min-width: 0;
+    padding: 2px var(--space-1);
+    font-size: var(--text-sm);
+    background: var(--bg-base);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    outline: none;
+  }
+
+  .pv-board-task-remove {
+    background: none;
+    border: none;
+    color: var(--text-ghost);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+  .pv-board-task-remove:hover { color: var(--error); }
+
+  .pv-board-empty {
+    padding: var(--space-3);
+    color: var(--text-ghost);
+    font-size: var(--text-sm);
+  }
+
+  .pv-board-add {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .pv-board-add-input {
+    flex: 1;
+    padding: var(--space-1) var(--space-2);
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+  .pv-board-add-input:focus {
+    outline: none;
+    border-color: var(--accent);
   }
 
   @media (max-width: 900px) {

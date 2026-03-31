@@ -30,6 +30,9 @@ type Project struct {
 	WorkflowRules      []WorkflowRule `json:"workflow_rules,omitempty" yaml:"workflow_rules,omitempty"`
 	MCPServers         []string       `json:"mcp_servers,omitempty" yaml:"mcp_servers,omitempty"`
 	SecretsRefs        []string       `json:"secrets_refs,omitempty" yaml:"secrets_refs,omitempty"`
+	ExecutionMode      string         `json:"execution_mode,omitempty" yaml:"execution_mode,omitempty"`
+	MaxPhases          int            `json:"max_phases,omitempty" yaml:"max_phases,omitempty"`
+	SubAgents          []string       `json:"sub_agents,omitempty" yaml:"sub_agents,omitempty"`
 	SessionID          string         `json:"session_id,omitempty" yaml:"session_id,omitempty"`
 	Body               string         `json:"body,omitempty" yaml:"-"`
 	Path               string         `json:"path,omitempty" yaml:"-"`
@@ -49,6 +52,9 @@ type CreateInput struct {
 	WorkflowRules   []WorkflowRule
 	Instructions    string
 	CloneRepo       bool
+	ExecutionMode   string
+	MaxPhases       int
+	SubAgents       []string
 }
 
 type UpdateInput struct {
@@ -58,6 +64,9 @@ type UpdateInput struct {
 	GitRepo            *string
 	Objective          *string
 	Instructions       *string
+	ExecutionMode      *string
+	MaxPhases          *int
+	SubAgents          []string
 	SessionID          *string
 	ToolsAllow         []string
 	ToolsAllowGroups   []string
@@ -115,6 +124,9 @@ func (s *Store) Create(input CreateInput) (Project, error) {
 		Objective:       strings.TrimSpace(input.Objective),
 		WorkflowProfile: normalizeWorkflowProfile(input.WorkflowProfile),
 		WorkflowRules:   normalizeWorkflowRules(input.WorkflowRules),
+		ExecutionMode:   normalizeExecutionMode(input.ExecutionMode),
+		MaxPhases:       normalizeMaxPhases(input.MaxPhases, input.ExecutionMode),
+		SubAgents:       normalizeList(input.SubAgents),
 		Body:            strings.TrimSpace(input.Instructions),
 	}
 	if err := s.write(project); err != nil {

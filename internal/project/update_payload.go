@@ -8,6 +8,9 @@ type UpdatePayload struct {
 	GitRepo            *string        `json:"git_repo,omitempty"`
 	Objective          *string        `json:"objective,omitempty"`
 	Instructions       *string        `json:"instructions,omitempty"`
+	ExecutionMode      *string        `json:"execution_mode,omitempty"`
+	MaxPhases          *int           `json:"max_phases,omitempty"`
+	SubAgents          []string       `json:"sub_agents,omitempty"`
 	ToolsAllow         []string       `json:"tools_allow,omitempty"`
 	ToolsAllowGroups   []string       `json:"tools_allow_groups,omitempty"`
 	ToolsAllowPatterns []string       `json:"tools_allow_patterns,omitempty"`
@@ -36,6 +39,9 @@ func (p UpdatePayload) ToUpdateInput() UpdateInput {
 		SkillsAllow:        p.SkillsAllow,
 		WorkflowProfile:    p.WorkflowProfile,
 		WorkflowRules:      p.WorkflowRules,
+		ExecutionMode:      p.ExecutionMode,
+		MaxPhases:          p.MaxPhases,
+		SubAgents:          p.SubAgents,
 		MCPServers:         p.MCPServers,
 		SecretsRefs:        p.SecretsRefs,
 	}
