@@ -2,14 +2,12 @@
   import { onMount, onDestroy } from 'svelte'
   import {
     getEventsHistory,
-    listApprovals,
-    listCronJobs,
+    getHeartbeatStatus,
     listProjects,
     streamEvents,
   } from '../lib/api'
   import type {
-    Approval,
-    CronJob,
+    HeartbeatStatus,
     NotificationMessage,
     Project,
   } from '../lib/types'
@@ -23,8 +21,7 @@
   let { onNavigate, initialPrompt }: Props = $props()
 
   let projects: Project[] = $state([])
-  let approvals: Approval[] = $state([])
-  let cronJobs: CronJob[] = $state([])
+  let heartbeat: HeartbeatStatus | null = $state(null)
   let notifications: NotificationMessage[] = $state([])
   let unreadCount = $state(0)
 
@@ -46,12 +43,15 @@
     return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`
   }
 
-  function pendingApprovals(list: Approval[]): Approval[] {
-    return list.filter((a) => a.status === 'pending')
-  }
-
-  function failedCronJobs(list: CronJob[]): CronJob[] {
-    return list.filter((j) => j.last_run_error?.trim())
+  function relativeTime(value?: string): string {
+    if (!value?.trim()) return 'never'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
+    if (seconds < 60) return `${seconds}s ago`
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+    return `${Math.floor(seconds / 86400)}d ago`
   }
 
   function goToProject(projectId: string) {
@@ -62,15 +62,13 @@
     loading = true
     error = ''
     try {
-      const [p, a, c, e] = await Promise.allSettled([
+      const [p, h, e] = await Promise.allSettled([
         listProjects(),
-        listApprovals(),
-        listCronJobs(),
+        getHeartbeatStatus(),
         getEventsHistory(20),
       ])
       projects = p.status === 'fulfilled' ? p.value : []
-      approvals = a.status === 'fulfilled' ? a.value : []
-      cronJobs = c.status === 'fulfilled' ? c.value : []
+      heartbeat = h.status === 'fulfilled' ? h.value : null
       if (e.status === 'fulfilled') {
         notifications = (e.value.items ?? []).slice(0, 10)
         unreadCount = e.value.unread_count ?? 0
@@ -89,15 +87,11 @@
       (event) => {
         notifications = [event, ...notifications.filter((n) => n.id !== event.id)].slice(0, 10)
         unreadCount++
-
-        if (event.category === 'cron' || event.category === 'watchdog') {
-          void listCronJobs().then((jobs) => { cronJobs = jobs })
-        }
-        if (event.category === 'ops') {
-          void listApprovals().then((list) => { approvals = list })
-        }
         if (event.category === 'project') {
           void listProjects().then((list) => { projects = list })
+        }
+        if (event.category === 'heartbeat') {
+          void getHeartbeatStatus().then((s) => { heartbeat = s }).catch(() => {})
         }
       },
     )
@@ -136,17 +130,17 @@
       </div>
       <div class="pulse-divider"></div>
       <div class="pulse-item">
-        <span class="pulse-value" class:has-attention={pendingApprovals(approvals).length > 0}>
-          {pendingApprovals(approvals).length}
+        <span class="pulse-value" class:has-attention={heartbeat?.interval && !heartbeat?.last_error}>
+          {heartbeat?.interval || 'off'}
         </span>
-        <span class="pulse-label">Pending approvals</span>
+        <span class="pulse-label">Heartbeat</span>
       </div>
       <div class="pulse-divider"></div>
       <div class="pulse-item">
-        <span class="pulse-value" class:has-warning={failedCronJobs(cronJobs).length > 0}>
-          {failedCronJobs(cronJobs).length}
+        <span class="pulse-value" class:has-warning={!!heartbeat?.last_error}>
+          {heartbeat?.last_run_at ? relativeTime(heartbeat.last_run_at) : 'never'}
         </span>
-        <span class="pulse-label">Failed cron jobs</span>
+        <span class="pulse-label">Last heartbeat</span>
       </div>
       <div class="pulse-divider"></div>
       <div class="pulse-item">
@@ -191,61 +185,56 @@
         {/if}
       </section>
 
-      <!-- Approvals -->
+      <!-- Heartbeat -->
       <section class="card home-section">
         <div class="card-header">
-          <span class="card-title">Pending approvals</span>
-          {#if pendingApprovals(approvals).length > 0}
-            <span class="badge badge-warning">{pendingApprovals(approvals).length}</span>
+          <span class="card-title">Heartbeat</span>
+          {#if heartbeat?.configured}
+            <span class="badge badge-success">active</span>
+          {:else}
+            <span class="badge badge-default">off</span>
           {/if}
         </div>
-        {#if pendingApprovals(approvals).length === 0}
-          <div class="empty-state">
-            <p>No pending approvals right now.</p>
+        {#if heartbeat?.last_response}
+          <div class="list-items">
+            <div class="list-item">
+              <p class="list-item-detail">{compact(heartbeat.last_response, 200)}</p>
+              <span class="list-item-time">{relativeTime(heartbeat.last_run_at)}</span>
+            </div>
+          </div>
+        {:else if heartbeat?.last_error}
+          <div class="list-items">
+            <div class="list-item">
+              <p class="list-item-detail" style="color:var(--error)">{compact(heartbeat.last_error, 200)}</p>
+            </div>
           </div>
         {:else}
-          <div class="list-items">
-            {#each pendingApprovals(approvals) as approval}
-              <div class="list-item">
-                <div class="list-item-top">
-                  <strong>{approval.type}</strong>
-                  <span class="text-tertiary">{fmt(approval.requested_at)}</span>
-                </div>
-                <p class="list-item-detail">
-                  {approval.plan.candidates.length} candidates, {approval.plan.total_bytes} bytes
-                </p>
-              </div>
-            {/each}
+          <div class="empty-state">
+            <p>No heartbeat runs yet.</p>
           </div>
         {/if}
       </section>
 
-      <!-- Cron health -->
+      <!-- Recent notifications -->
       <section class="card home-section">
         <div class="card-header">
-          <span class="card-title">Cron jobs</span>
-          <span class="badge badge-default">{cronJobs.length} total</span>
+          <span class="card-title">Recent notifications</span>
+          <span class="badge badge-default">{notifications.length}</span>
         </div>
-        {#if cronJobs.length === 0}
+        {#if notifications.length === 0}
           <div class="empty-state">
-            <p>No cron jobs configured.</p>
+            <p>No recent notifications.</p>
           </div>
         {:else}
           <div class="list-items">
-            {#each cronJobs.slice(0, 5) as job}
+            {#each notifications.slice(0, 5) as item}
               <div class="list-item">
                 <div class="list-item-top">
-                  <strong>{job.name}</strong>
-                  <span class="badge" class:badge-success={job.enabled && !job.last_run_error}
-                    class:badge-error={!!job.last_run_error}
-                    class:badge-default={!job.enabled}>
-                    {job.last_run_error ? 'failed' : job.enabled ? job.schedule : 'disabled'}
-                  </span>
+                  <strong>{item.title}</strong>
+                  <span class="badge badge-default">{item.category}</span>
                 </div>
-                <p class="list-item-detail">{compact(job.prompt, 100)}</p>
-                {#if job.last_run_at}
-                  <span class="list-item-time">Last run {fmt(job.last_run_at)}</span>
-                {/if}
+                <p class="list-item-detail">{compact(item.message, 120)}</p>
+                <span class="list-item-time">{fmt(item.timestamp)}</span>
               </div>
             {/each}
           </div>
@@ -447,11 +436,6 @@
   .list-item-time {
     font-size: var(--text-xs);
     color: var(--text-ghost);
-  }
-
-  .text-tertiary {
-    color: var(--text-tertiary);
-    font-size: var(--text-xs);
   }
 
   /* ── Responsive ───────────────────────────────── */
