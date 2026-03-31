@@ -236,6 +236,9 @@ export type CreateProjectRequest = {
   git_repo?: string
   objective?: string
   instructions?: string
+  execution_mode?: string
+  max_phases?: number
+  sub_agents?: string[]
 }
 
 export type UpdateProjectRequest = {

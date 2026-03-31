@@ -46,6 +46,9 @@
   let newProjectObjective = $state('')
   let newProjectGitRepo = $state('')
   let newProjectType = $state('')
+  let newProjectMode: 'manual' | 'autonomous' = $state('manual')
+  let newProjectMaxPhases = $state(3)
+  let newProjectSubAgents = $state('')
   let newProjectSaving = $state(false)
   let newProjectError = $state('')
 
@@ -82,11 +85,17 @@
     newProjectSaving = true
     newProjectError = ''
     try {
+      const subAgents = newProjectSubAgents.trim()
+        ? newProjectSubAgents.split(',').map((s) => s.trim()).filter(Boolean)
+        : undefined
       const p = await createProject({
         name: newProjectName.trim(),
         type: newProjectType.trim() || undefined,
         objective: newProjectObjective.trim() || undefined,
         git_repo: newProjectGitRepo.trim() || undefined,
+        execution_mode: newProjectMode,
+        max_phases: newProjectMode === 'autonomous' ? newProjectMaxPhases : undefined,
+        sub_agents: subAgents,
       })
       projects = [p, ...projects]
       showNewProject = false
@@ -94,6 +103,9 @@
       newProjectObjective = ''
       newProjectGitRepo = ''
       newProjectType = ''
+      newProjectMode = 'manual'
+      newProjectMaxPhases = 3
+      newProjectSubAgents = ''
       goToProject(p.id)
     } catch (e) {
       newProjectError = e instanceof Error ? e.message : 'Failed to create project'
@@ -169,6 +181,25 @@
         <input type="text" placeholder="Type (optional)" bind:value={newProjectType} class="form-input" />
         <input type="text" placeholder="Objective (optional)" bind:value={newProjectObjective} class="form-input form-span-2" />
         <input type="text" placeholder="Git repo URL (optional)" bind:value={newProjectGitRepo} class="form-input form-span-2" />
+        <div class="form-span-2 form-row">
+          <label class="form-label">
+            Execution mode
+            <select bind:value={newProjectMode} class="form-select">
+              <option value="manual">Manual</option>
+              <option value="autonomous">Autonomous</option>
+            </select>
+          </label>
+          {#if newProjectMode === 'autonomous'}
+            <label class="form-label">
+              Max phases
+              <input type="number" min="1" max="20" bind:value={newProjectMaxPhases} class="form-input form-input-sm" />
+            </label>
+            <label class="form-label">
+              Sub-agents
+              <input type="text" placeholder="critic, reviewer (comma-separated)" bind:value={newProjectSubAgents} class="form-input" />
+            </label>
+          {/if}
+        </div>
       </div>
       <button
         class="btn btn-primary btn-sm"
@@ -287,6 +318,28 @@
     font-size: var(--text-sm);
   }
   .form-input:focus { outline: none; border-color: var(--accent); }
+  .form-input-sm { max-width: 80px; }
+  .form-select {
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+  .form-row {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .form-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
   .form-error { font-size: var(--text-xs); color: var(--error); }
 
   /* ── Filter bar ──────────────────────────── */

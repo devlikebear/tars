@@ -82,11 +82,25 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 	// Count task statuses
 	counts := countTaskStatuses(board)
 
-	// Case 1: Board empty or all done → plan next phase
-	if len(board.Tasks) == 0 || (counts["done"] == len(board.Tasks) && len(board.Tasks) > 0) {
+	// Case 1: Board empty → plan first phase
+	if len(board.Tasks) == 0 {
 		if ask == nil {
 			logger.Debug().Str("project_id", p.ID).Msg("autonomous: skip planning (no LLM)")
 			return
+		}
+		nextPhase := state.PhaseNumber + 1
+		planAutonomousTasks(ctx, store, ask, p, nextPhase, logger)
+		return
+	}
+
+	// Case 2: All tasks done → critic review (if configured), then next phase
+	if counts["done"] == len(board.Tasks) {
+		if ask == nil {
+			return
+		}
+		// Run critic review if sub_agents includes "critic"
+		if hasCritic(p.SubAgents) {
+			runCriticReview(ctx, store, ask, p, board, state.PhaseNumber, logger)
 		}
 		nextPhase := state.PhaseNumber + 1
 		planAutonomousTasks(ctx, store, ask, p, nextPhase, logger)
@@ -251,3 +265,52 @@ func parseTasksFromLLM(response string) []llmTask {
 	return result
 }
 
+func hasCritic(subAgents []string) bool {
+	for _, a := range subAgents {
+		if strings.EqualFold(strings.TrimSpace(a), "critic") {
+			return true
+		}
+	}
+	return false
+}
+
+// runCriticReview asks the LLM to critically review the completed tasks
+// and logs the feedback to project activity.
+func runCriticReview(ctx context.Context, store *project.Store, ask heartbeat.AskFunc, p project.Project, board project.Board, phaseNumber int, logger zerolog.Logger) {
+	taskSummary := ""
+	for _, t := range board.Tasks {
+		taskSummary += fmt.Sprintf("- [%s] %s\n", t.Status, t.Title)
+	}
+
+	prompt := fmt.Sprintf(
+		`You are a critical reviewer. Review the following completed work for project "%s".
+
+Objective: %s
+
+Completed tasks (phase %d):
+%s
+
+Provide a brief critical review (3-5 sentences):
+1. What was done well?
+2. What is missing or could be improved?
+3. Should the next phase address any gaps?
+
+Be constructive but honest. Reply in plain text only.`,
+		p.Name, p.Objective, phaseNumber, taskSummary,
+	)
+
+	response, err := ask(ctx, prompt)
+	if err != nil {
+		logger.Debug().Err(err).Str("project_id", p.ID).Msg("autonomous: critic review failed")
+		return
+	}
+
+	// Record review as activity
+	_, _ = store.AppendActivity(p.ID, project.ActivityAppendInput{
+		Source:  "critic",
+		Kind:    "review",
+		Status:  "completed",
+		Message: strings.TrimSpace(response),
+	})
+	logger.Info().Str("project_id", p.ID).Int("phase", phaseNumber).Msg("autonomous: critic review completed")
+}
