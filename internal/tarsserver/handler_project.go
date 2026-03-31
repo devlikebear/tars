@@ -514,6 +514,13 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "activate project failed"})
 				return
 			}
+			// Sync STATE.md back to active
+			planningPhase := "planning"
+			activeState := "active"
+			_, _ = store.UpdateState(projectID, project.ProjectStateUpdateInput{
+				Phase:  &planningPhase,
+				Status: &activeState,
+			})
 			writeJSON(w, http.StatusOK, map[string]any{
 				"activated":  true,
 				"project_id": projectID,
@@ -537,6 +544,15 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "deactivate project failed"})
 				return
 			}
+			// Sync STATE.md to done/archived
+			donePhase := "done"
+			doneStatus := "done"
+			stopReason := "Project archived"
+			_, _ = store.UpdateState(projectID, project.ProjectStateUpdateInput{
+				Phase:      &donePhase,
+				Status:     &doneStatus,
+				StopReason: &stopReason,
+			})
 			writeJSON(w, http.StatusOK, map[string]any{
 				"deactivated": true,
 				"project_id":  updated.ID,
