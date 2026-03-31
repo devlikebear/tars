@@ -182,10 +182,24 @@ export async function getSessionHistory(sessionId: string): Promise<SessionMessa
 }
 
 export async function renameSession(sessionId: string, title: string): Promise<void> {
-  await requestJSON(`/v1/sessions/${encodeURIComponent(sessionId)}`, {
+  await requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}`, {
     method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
   })
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function compactSession(sessionId: string): Promise<{ compacted: boolean }> {
+  return requestJSON<{ compacted: boolean }>(
+    `/v1/admin/sessions/${encodeURIComponent(sessionId)}/compact`,
+    { method: 'POST' },
+  )
 }
 
 export async function getEventsHistory(limit = 30): Promise<EventsHistoryInfo> {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { listSessions } from '../lib/api'
+  import { listSessions, deleteSession, compactSession, renameSession } from '../lib/api'
   import type { Session } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
 
@@ -10,6 +10,16 @@
   let showHidden = $state(false)
 
   let selectedSession: Session | null = $state(null)
+  let searchQuery = $state('')
+  let sortBy: 'updated' | 'name' = $state('updated')
+
+  // Rename state
+  let renamingId: string | null = $state(null)
+  let renameValue = $state('')
+
+  // Action state
+  let actionBusy = $state('')
+  let actionError = $state('')
 
   function fmt(value?: string): string {
     const text = value?.trim()
@@ -31,6 +41,24 @@
     return 'badge-info'
   }
 
+  function filteredSessions(): Session[] {
+    let result = sessions
+    const q = searchQuery.trim().toLowerCase()
+    if (q) {
+      result = result.filter((s) =>
+        (s.title || '').toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q) ||
+        (s.project_id || '').toLowerCase().includes(q)
+      )
+    }
+    if (sortBy === 'name') {
+      result = [...result].sort((a, b) => (a.title || a.id).localeCompare(b.title || b.id))
+    } else {
+      result = [...result].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    }
+    return result
+  }
+
   async function load() {
     loading = true
     error = ''
@@ -49,12 +77,58 @@
       return
     }
     selectedSession = session
+    renamingId = null
+    actionError = ''
   }
 
   function toggleHidden() {
     showHidden = !showHidden
     selectedSession = null
     void load()
+  }
+
+  function startRename(s: Session) {
+    renamingId = s.id
+    renameValue = s.title || s.id.slice(0, 12)
+  }
+
+  async function commitRename() {
+    if (!renamingId || !renameValue.trim()) { renamingId = null; return }
+    try {
+      await renameSession(renamingId, renameValue.trim())
+      await load()
+      if (selectedSession?.id === renamingId) {
+        selectedSession = sessions.find((s) => s.id === renamingId) || selectedSession
+      }
+    } catch { /* ignore */ }
+    renamingId = null
+  }
+
+  async function handleDelete(id: string) {
+    actionBusy = id
+    actionError = ''
+    try {
+      await deleteSession(id)
+      if (selectedSession?.id === id) selectedSession = null
+      await load()
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : 'Delete failed'
+    } finally {
+      actionBusy = ''
+    }
+  }
+
+  async function handleCompact(id: string) {
+    actionBusy = id
+    actionError = ''
+    try {
+      await compactSession(id)
+      await load()
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : 'Compact failed'
+    } finally {
+      actionBusy = ''
+    }
   }
 
   onMount(() => { void load() })
@@ -64,7 +138,7 @@
   <div class="sessions-header">
     <div>
       <h2>Sessions</h2>
-      <p class="sessions-subtitle">Chat sessions and worker transcripts.</p>
+      <p class="sessions-subtitle">Chat sessions and transcripts.</p>
     </div>
     <label class="sessions-toggle">
       <input type="checkbox" checked={showHidden} onchange={toggleHidden} />
@@ -76,52 +150,72 @@
     <div class="error-banner">{error}</div>
   {/if}
 
+  <!-- Search + Sort toolbar -->
+  <div class="sessions-toolbar">
+    <input type="text" class="sessions-search" placeholder="Search sessions..." bind:value={searchQuery} />
+    <div class="sessions-sort">
+      <button class="btn btn-ghost btn-sm" class:active={sortBy === 'updated'} onclick={() => { sortBy = 'updated' }}>Recent</button>
+      <button class="btn btn-ghost btn-sm" class:active={sortBy === 'name'} onclick={() => { sortBy = 'name' }}>Name</button>
+    </div>
+  </div>
+
+  {#if actionError}
+    <div class="error-banner" style="margin-bottom:var(--space-3)">{actionError}</div>
+  {/if}
+
   {#if loading}
     <div class="sessions-loading">Loading sessions...</div>
-  {:else if sessions.length === 0}
-    <div class="empty-state"><p>No sessions found.</p></div>
+  {:else if filteredSessions().length === 0}
+    <div class="empty-state"><p>{searchQuery ? 'No matching sessions.' : 'No sessions found.'}</p></div>
   {:else}
     <div class="sessions-layout">
       <div class="sessions-list">
-        {#each sessions as session}
-          <button
-            type="button"
-            class="session-item"
-            class:active={selectedSession?.id === session.id}
-            onclick={() => { void selectSession(session) }}
-          >
-            <div class="session-item-top">
-              <strong class="session-item-title">{session.title || session.id}</strong>
-              <span class="badge {kindBadge(session)}">{kindLabel(session)}</span>
+        {#each filteredSessions() as session}
+          <div class="session-item-wrap" class:active={selectedSession?.id === session.id}>
+            <button
+              type="button"
+              class="session-item"
+              onclick={() => { void selectSession(session) }}
+            >
+              <div class="session-item-top">
+                {#if renamingId === session.id}
+                  <!-- svelte-ignore a11y_autofocus -->
+                  <input
+                    class="session-rename-input"
+                    bind:value={renameValue}
+                    autofocus
+                    onkeydown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { renamingId = null } }}
+                    onblur={() => commitRename()}
+                    onclick={(e) => e.stopPropagation()}
+                  />
+                {:else}
+                  <strong class="session-item-title">{session.title || session.id.slice(0, 12)}</strong>
+                {/if}
+                <span class="badge {kindBadge(session)}">{kindLabel(session)}</span>
+              </div>
+              <div class="session-item-meta">
+                {#if session.project_id}
+                  <span>project: {session.project_id}</span>
+                {/if}
+                <span>{fmt(session.updated_at)}</span>
+              </div>
+            </button>
+            <div class="session-item-actions">
+              <button class="btn-icon" title="Rename" onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
+              <button class="btn-icon" title="Compact" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
+              <button class="btn-icon btn-icon-danger" title="Delete" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleDelete(session.id) }}>&times;</button>
             </div>
-            <div class="session-item-meta">
-              <span class="mono">{session.id}</span>
-              {#if session.project_id}
-                <span>project: {session.project_id}</span>
-              {/if}
-              <span>{fmt(session.updated_at)}</span>
-            </div>
-          </button>
+          </div>
         {/each}
       </div>
 
       {#if selectedSession}
         <div class="session-detail">
           <div class="session-detail-header">
-            <h3>{selectedSession.title || selectedSession.id}</h3>
+            <h3>{selectedSession.title || selectedSession.id.slice(0, 12)}</h3>
             <span class="badge {kindBadge(selectedSession)}">{kindLabel(selectedSession)}</span>
           </div>
-          <dl class="session-facts">
-            <div><dt>ID</dt><dd class="mono">{selectedSession.id}</dd></div>
-            <div><dt>Kind</dt><dd>{selectedSession.kind || '\u2014'}</dd></div>
-            {#if selectedSession.project_id}
-              <div><dt>Project</dt><dd class="mono">{selectedSession.project_id}</dd></div>
-            {/if}
-            <div><dt>Created</dt><dd>{fmt(selectedSession.created_at)}</dd></div>
-            <div><dt>Updated</dt><dd>{fmt(selectedSession.updated_at)}</dd></div>
-          </dl>
 
-          <!-- Chat (includes history + tool cards) -->
           <div class="session-chat">
             {#key selectedSession.id}
               <ChatPanel sessionId={selectedSession.id} projectId={selectedSession.project_id || undefined} onSessionChange={load} />
@@ -148,7 +242,7 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--space-4);
-    margin-bottom: var(--space-6);
+    margin-bottom: var(--space-4);
   }
 
   .sessions-header h2 {
@@ -174,13 +268,43 @@
     accent-color: var(--accent);
   }
 
+  .sessions-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+
+  .sessions-search {
+    flex: 1;
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+  .sessions-search:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .sessions-sort {
+    display: flex;
+    gap: var(--space-1);
+    flex-shrink: 0;
+  }
+  .sessions-sort .active {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
   .sessions-loading {
     padding: var(--space-10);
     text-align: center;
     color: var(--text-tertiary);
   }
 
-  /* ── Layout ────────────────────────────────── */
   .sessions-layout {
     display: grid;
     grid-template-columns: 360px minmax(0, 1fr);
@@ -188,36 +312,38 @@
     align-items: start;
   }
 
-  /* ── List ──────────────────────────────────── */
   .sessions-list {
     display: grid;
-    gap: var(--space-2);
-    max-height: calc(100vh - 200px);
+    gap: var(--space-1);
+    max-height: calc(100vh - 260px);
     overflow-y: auto;
   }
 
-  .session-item {
-    display: block;
-    width: 100%;
-    padding: var(--space-3) var(--space-4);
+  .session-item-wrap {
+    display: flex;
+    align-items: stretch;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     background: var(--bg-surface);
-    text-align: left;
-    cursor: pointer;
-    transition:
-      border-color var(--duration-fast) var(--ease-out),
-      background var(--duration-fast) var(--ease-out);
+    transition: border-color var(--duration-fast) var(--ease-out);
   }
-
-  .session-item:hover {
+  .session-item-wrap:hover {
     border-color: var(--border-default);
-    background: var(--bg-elevated);
   }
-
-  .session-item.active {
+  .session-item-wrap.active {
     border-color: var(--accent);
     background: var(--accent-muted);
+  }
+
+  .session-item {
+    flex: 1;
+    display: block;
+    padding: var(--space-2) var(--space-3);
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    min-width: 0;
   }
 
   .session-item-top {
@@ -225,7 +351,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
-    margin-bottom: var(--space-1);
+    margin-bottom: 2px;
   }
 
   .session-item-title {
@@ -243,16 +369,55 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-1) var(--space-3);
-    font-size: var(--text-xs);
+    font-size: 10px;
     color: var(--text-ghost);
   }
 
-  /* ── Detail ────────────────────────────────── */
+  .session-item-actions {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: var(--space-1);
+    opacity: 0;
+    transition: opacity var(--duration-fast);
+  }
+  .session-item-wrap:hover .session-item-actions {
+    opacity: 1;
+  }
+
+  .btn-icon {
+    background: none;
+    border: none;
+    color: var(--text-ghost);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    line-height: 1;
+  }
+  .btn-icon:hover { color: var(--accent); background: rgba(255,255,255,0.04); }
+  .btn-icon-danger:hover { color: var(--error); }
+
+  .session-rename-input {
+    flex: 1;
+    padding: 2px var(--space-1);
+    font-size: var(--text-sm);
+    background: var(--bg-base);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    outline: none;
+    min-width: 0;
+  }
+
   .session-detail {
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
-    padding: var(--space-5);
+    padding: var(--space-4);
+    position: sticky;
+    top: var(--space-4);
   }
 
   .session-detail-header {
@@ -260,7 +425,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-3);
   }
 
   .session-detail-header h3 {
@@ -268,172 +433,16 @@
     font-weight: 500;
   }
 
-  .session-facts {
-    display: grid;
-    gap: var(--space-2);
-    margin-bottom: var(--space-5);
-    padding-bottom: var(--space-4);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .session-facts div {
-    display: grid;
-    grid-template-columns: 80px minmax(0, 1fr);
-    gap: var(--space-3);
-  }
-
-  .session-facts dt {
-    color: var(--text-tertiary);
-    font-size: var(--text-sm);
-  }
-
-  .session-facts dd {
-    margin: 0;
-    font-size: var(--text-sm);
-    word-break: break-word;
-  }
-
-  /* ── Chat ───────────────────────────────────── */
   .session-chat {
-    margin-bottom: var(--space-5);
-    padding-bottom: var(--space-4);
-    border-bottom: 1px solid var(--border-subtle);
+    min-height: 0;
   }
 
-  /* ── Transcript ────────────────────────────── */
-  .session-transcript {
-    margin-top: var(--space-3);
-  }
-
-  .transcript-messages {
-    display: grid;
-    gap: var(--space-2);
-    max-height: 600px;
-    overflow-y: auto;
-    margin-top: var(--space-3);
-  }
-
-  .transcript-msg {
-    padding: var(--space-3);
-    border-radius: var(--radius-md);
-    background: var(--bg-base);
-  }
-
-  .transcript-user {
-    background: rgba(224, 145, 69, 0.08);
-    border: 1px solid rgba(224, 145, 69, 0.12);
-  }
-
-  .transcript-assistant {
-    background: var(--bg-elevated);
-  }
-
-  .transcript-tool {
-    background: rgba(139, 92, 246, 0.06);
-    border: 1px solid rgba(139, 92, 246, 0.12);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-xs);
-  }
-  .transcript-tool-icon { font-size: var(--text-sm); }
-  .transcript-tool-name { font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); }
-  .transcript-tool-detail { margin-top: var(--space-1); display: flex; gap: var(--space-2); align-items: flex-start; }
-  .transcript-tool-label { font-family: var(--font-mono); color: var(--text-ghost); flex-shrink: 0; min-width: 36px; }
-  .transcript-tool-value {
-    font-family: var(--font-mono); color: var(--text-secondary);
-    white-space: pre-wrap; word-break: break-all; font-size: var(--text-xs);
-    background: rgba(255, 255, 255, 0.04); padding: 2px 6px; border-radius: 3px;
-    max-height: 120px; overflow-y: auto;
-  }
-
-  .transcript-system {
-    background: transparent;
-    opacity: 0.6;
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .transcript-msg-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    margin-bottom: var(--space-1);
-  }
-
-  .transcript-role {
-    font-family: var(--font-display);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--text-tertiary);
-  }
-
-  .transcript-time {
-    font-size: var(--text-xs);
-    color: var(--text-ghost);
-  }
-
-  .transcript-content {
-    white-space: pre-wrap;
-    font-size: var(--text-sm);
-    line-height: 1.55;
-  }
-
-  .transcript-md {
-    white-space: normal;
-  }
-
-  .transcript-md :global(p) {
-    margin: 0 0 var(--space-2);
-  }
-
-  .transcript-md :global(p:last-child) {
-    margin-bottom: 0;
-  }
-
-  .transcript-md :global(pre) {
-    background: var(--bg-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    padding: var(--space-3);
-    overflow-x: auto;
-    margin: var(--space-2) 0;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    line-height: 1.5;
-  }
-
-  .transcript-md :global(code) {
-    font-family: var(--font-mono);
-    font-size: 0.9em;
-    background: rgba(255, 255, 255, 0.06);
-    padding: 1px 5px;
-    border-radius: 3px;
-  }
-
-  .transcript-md :global(pre code) {
-    background: none;
-    padding: 0;
-  }
-
-  .transcript-md :global(strong) {
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .transcript-md :global(ul),
-  .transcript-md :global(ol) {
-    margin: var(--space-2) 0;
-    padding-left: var(--space-5);
-  }
-
-  .transcript-md :global(li) {
-    margin-bottom: var(--space-1);
-    font-size: var(--text-sm);
-  }
-
-  /* ── Responsive ────────────────────────────── */
   @media (max-width: 900px) {
     .sessions-layout {
       grid-template-columns: 1fr;
+    }
+    .session-detail {
+      position: static;
     }
   }
 </style>

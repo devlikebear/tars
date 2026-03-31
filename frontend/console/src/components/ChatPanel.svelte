@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { streamChat, listSessions, getSessionHistory } from '../lib/api'
+  import { streamChat, listSessions, getSessionHistory, renameSession } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
   import type { ChatAttachment, ChatEvent, SessionMessage } from '../lib/types'
 
@@ -30,6 +30,7 @@
   let chatSessionId = $state('')
   let chatStatusLine = $state('')
   let chatMessages: ChatMessage[] = $state([])
+  let autoTitled = $state(false)
 
   let chatLogEl: HTMLDivElement | undefined = $state()
   let autoScroll = $state(true)
@@ -66,6 +67,7 @@
           }
         }
         chatMessages = [...chatMessages]
+        autoTitled = true
         void scrollToBottom()
       }
     } catch { /* ignore */ }
@@ -142,6 +144,15 @@
       case 'done':
         chatSessionId = event.session_id?.trim() || chatSessionId
         chatStatusLine = 'done'
+        // Auto-title: use first user message as session title for new sessions
+        if (chatSessionId && !autoTitled) {
+          autoTitled = true
+          const firstUser = chatMessages.find((m) => m.role === 'user')
+          if (firstUser?.text) {
+            const title = firstUser.text.slice(0, 60).trim() + (firstUser.text.length > 60 ? '...' : '')
+            renameSession(chatSessionId, title).catch(() => {})
+          }
+        }
         onSessionChange?.()
         break
       case 'error':
@@ -301,6 +312,7 @@
           }
         }
         chatMessages = [...chatMessages]
+        autoTitled = true
         void scrollToBottom()
       } catch { /* ignore */ }
     } else if (projectId) {

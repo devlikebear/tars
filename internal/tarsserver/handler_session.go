@@ -253,20 +253,65 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 		}
 		switch {
 		case len(pathParts) == 1:
-			if !requireMethod(w, r, http.MethodGet) {
+			if !requireMethod(w, r, http.MethodGet, http.MethodPatch, http.MethodDelete) {
 				return
 			}
-			sess, err := reqStore.Get(sessionID)
-			if err != nil {
+			switch r.Method {
+			case http.MethodGet:
+				sess, err := reqStore.Get(sessionID)
+				if err != nil {
+					if strings.Contains(err.Error(), "session not found") {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+						return
+					}
+					logger.Error().Err(err).Str("session_id", sessionID).Msg("get session failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get session failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, sess)
+			case http.MethodPatch:
+				var req struct {
+					Title string `json:"title"`
+				}
+				if !decodeJSONBody(w, r, &req) {
+					return
+				}
+				if err := reqStore.SetTitle(sessionID, req.Title); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+			case http.MethodDelete:
+				if err := reqStore.Delete(sessionID); err != nil {
+					logger.Error().Err(err).Str("session_id", sessionID).Msg("delete session failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete session failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+			}
+		case len(pathParts) == 2 && pathParts[1] == "compact":
+			if !requireMethod(w, r, http.MethodPost) {
+				return
+			}
+			if _, err := reqStore.Get(sessionID); err != nil {
 				if strings.Contains(err.Error(), "session not found") {
 					writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 					return
 				}
-				logger.Error().Err(err).Str("session_id", sessionID).Msg("get session failed")
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get session failed"})
 				return
 			}
-			writeJSON(w, http.StatusOK, sess)
+			path := reqStore.TranscriptPath(sessionID)
+			compacted, err := session.CompactTranscriptWithOptions(path, 0, time.Now().UTC(), session.CompactOptions{
+				KeepRecentTokens:   12000,
+				KeepRecentFraction: 0.30,
+			})
+			if err != nil {
+				logger.Error().Err(err).Str("session_id", sessionID).Msg("compact session failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compact session failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"compacted": compacted, "session_id": sessionID})
 		case len(pathParts) == 2 && pathParts[1] == "history":
 			if !requireMethod(w, r, http.MethodGet) {
 				return
