@@ -156,7 +156,10 @@ func NewProjectUpdateTool(store *project.Store) Tool {
       }
     },
     "mcp_servers":{"type":"array","items":{"type":"string"}},
-    "secrets_refs":{"type":"array","items":{"type":"string"}}
+    "secrets_refs":{"type":"array","items":{"type":"string"}},
+    "execution_mode":{"type":"string"},
+    "max_phases":{"type":"integer"},
+    "sub_agents":{"type":"array","items":{"type":"string"}}
   },
   "required":["project_id"],
   "additionalProperties":false
