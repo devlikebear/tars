@@ -307,7 +307,7 @@
 
   .sessions-layout {
     display: grid;
-    grid-template-columns: 360px minmax(0, 1fr);
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
     gap: var(--space-4);
     align-items: start;
   }
@@ -317,6 +317,8 @@
     gap: var(--space-1);
     max-height: calc(100vh - 260px);
     overflow-y: auto;
+    overflow-x: hidden;
+    min-width: 0;
   }
 
   .session-item-wrap {
@@ -325,6 +327,7 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     background: var(--bg-surface);
+    overflow: hidden;
     transition: border-color var(--duration-fast) var(--ease-out);
   }
   .session-item-wrap:hover {
@@ -416,8 +419,8 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     padding: var(--space-4);
-    position: sticky;
-    top: var(--space-4);
+    min-width: 0;
+    overflow: hidden;
   }
 
   .session-detail-header {
