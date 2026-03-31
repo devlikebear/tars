@@ -1,7 +1,6 @@
 package tarsserver
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -176,7 +175,8 @@ func resolveChatProjectContext(
 	projectStore := project.NewStore(workspaceDir, nil)
 	item, err := projectStore.Get(resolvedID)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("project not found: %s", resolvedID)
+		// Project deleted or not found — continue chat without project context
+		return "", nil, "", nil
 	}
 	if store != nil && strings.TrimSpace(sessionID) != "" && strings.TrimSpace(requestProjectID) != "" {
 		_ = store.SetProjectID(strings.TrimSpace(sessionID), item.ID)
