@@ -292,7 +292,21 @@ func buildAPIMux(
 	}
 
 	mux := http.NewServeMux()
-	heartbeatHandler := newHeartbeatAPIHandlerWithRunner(heartbeatRunner, logger)
+	heartbeatHandler := newHeartbeatAPIHandlerFull(
+		resolveWorkspaceDir(cfg.WorkspaceDir, defaultWorkspaceID),
+		nowFn,
+		heartbeatRunner,
+		func() tool.HeartbeatStatus {
+			return heartbeatState.snapshot(
+				defaultWorkspaceID,
+				deps.ask != nil,
+				cfg.HeartbeatActiveHours,
+				cfg.HeartbeatTimezone,
+				activity.isChatBusy(),
+			)
+		},
+		logger,
+	)
 
 	processManager := tool.NewProcessManager()
 	mcpClient := mcp.NewClient(cfg.MCPServers)

@@ -8,6 +8,7 @@
   import Ops from './components/Ops.svelte'
   import Config from './components/Config.svelte'
   import Extensions from './components/Extensions.svelte'
+  import Heartbeat from './components/Heartbeat.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { getEventsHistory, streamEvents } from './lib/api'
 
@@ -93,6 +94,8 @@
     <Ops onAskAI={navigateWithPrompt} />
   {:else if route.view === 'config'}
     <Config />
+  {:else if route.view === 'heartbeat'}
+    <Heartbeat />
   {:else if route.view === 'extensions'}
     <Extensions />
   {/if}
