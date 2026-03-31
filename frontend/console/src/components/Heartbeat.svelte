@@ -152,6 +152,7 @@
         {/if}
       </div>
       <dl class="hb-facts">
+        <div><dt>Interval</dt><dd>{status?.interval || 'disabled'}</dd></div>
         <div><dt>Active Hours</dt><dd>{status?.active_hours || 'always'}</dd></div>
         <div><dt>Timezone</dt><dd>{status?.timezone || 'system'}</dd></div>
         <div><dt>Last Run</dt><dd>{relativeTime(status?.last_run_at)}</dd></div>

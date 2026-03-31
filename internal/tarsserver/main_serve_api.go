@@ -41,6 +41,7 @@ type serveAPIRuntime struct {
 	gatewayAgentsWatch      *gatewayAgentsWatcher
 	cronManager             *workspaceCronManager
 	watchdogManager         *workspaceWatchdogManager
+	heartbeatTicker         *heartbeatTickerManager
 	telegramPoller          *telegramUpdatePoller
 }
 
@@ -300,6 +301,7 @@ func buildAPIMux(
 			return heartbeatState.snapshot(
 				defaultWorkspaceID,
 				deps.ask != nil,
+				cfg.HeartbeatInterval,
 				cfg.HeartbeatActiveHours,
 				cfg.HeartbeatTimezone,
 				activity.isChatBusy(),
@@ -389,6 +391,7 @@ func buildAPIMux(
 				return heartbeatState.snapshot(
 					defaultWorkspaceID,
 					deps.ask != nil,
+					cfg.HeartbeatInterval,
 					cfg.HeartbeatActiveHours,
 					cfg.HeartbeatTimezone,
 					activity.isChatBusy(),
@@ -532,6 +535,16 @@ func buildAPIMux(
 	cronManager := newWorkspaceCronManager(cronStoreResolver, cronRunner, 30*time.Second, nowFn, logger)
 	watchdogManager := newWorkspaceWatchdogManager(watchdogRunner, defaultWatchdogInterval)
 
+	var heartbeatTickerInterval time.Duration
+	if raw := strings.TrimSpace(cfg.HeartbeatInterval); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
+			heartbeatTickerInterval = parsed
+		} else {
+			logger.Warn().Str("value", raw).Msg("invalid heartbeat_interval, heartbeat ticker disabled")
+		}
+	}
+	heartbeatTicker := newHeartbeatTickerManager(heartbeatRunner, heartbeatTickerInterval, logger)
+
 	return &serveAPIRuntime{
 		cfg:                     cfg,
 		configPath:              resolvedConfigPath,
@@ -542,6 +555,7 @@ func buildAPIMux(
 		gatewayAgentsWatch:      gatewayAgentsWatch,
 		cronManager:             cronManager,
 		watchdogManager:         watchdogManager,
+		heartbeatTicker:         heartbeatTicker,
 		telegramPoller:          telegramPoller,
 	}, nil
 }
@@ -656,6 +670,13 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 		go func() {
 			if err := runtime.cronManager.Start(ctx); err != nil {
 				logger.Error().Err(err).Msg("cron manager stopped with error")
+			}
+		}()
+	}
+	if runtime.heartbeatTicker != nil {
+		go func() {
+			if err := runtime.heartbeatTicker.Start(ctx); err != nil {
+				logger.Error().Err(err).Msg("heartbeat ticker stopped with error")
 			}
 		}()
 	}

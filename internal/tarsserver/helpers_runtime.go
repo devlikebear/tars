@@ -96,19 +96,20 @@ func (s *heartbeatWorkspaceState) record(workspaceID string, ranAt time.Time, re
 func (s *heartbeatWorkspaceState) snapshot(
 	workspaceID string,
 	configured bool,
-	activeHours, timezone string,
+	interval, activeHours, timezone string,
 	chatBusy bool,
 ) tool.HeartbeatStatus {
 	state := s.get(workspaceID)
 	if state == nil {
 		return tool.HeartbeatStatus{
 			Configured:  configured,
+			Interval:    strings.TrimSpace(interval),
 			ActiveHours: strings.TrimSpace(activeHours),
 			Timezone:    strings.TrimSpace(timezone),
 			ChatBusy:    chatBusy,
 		}
 	}
-	return state.snapshot(configured, activeHours, timezone, chatBusy)
+	return state.snapshot(configured, interval, activeHours, timezone, chatBusy)
 }
 
 func (s *heartbeatRuntimeState) record(ranAt time.Time, result heartbeat.RunResult, runErr error) {
@@ -127,9 +128,10 @@ func (s *heartbeatRuntimeState) record(ranAt time.Time, result heartbeat.RunResu
 	}
 }
 
-func (s *heartbeatRuntimeState) snapshot(configured bool, activeHours, timezone string, chatBusy bool) tool.HeartbeatStatus {
+func (s *heartbeatRuntimeState) snapshot(configured bool, interval, activeHours, timezone string, chatBusy bool) tool.HeartbeatStatus {
 	status := tool.HeartbeatStatus{
 		Configured:  configured,
+		Interval:    strings.TrimSpace(interval),
 		ActiveHours: strings.TrimSpace(activeHours),
 		Timezone:    strings.TrimSpace(timezone),
 		ChatBusy:    chatBusy,

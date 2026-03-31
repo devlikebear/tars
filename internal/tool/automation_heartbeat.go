@@ -9,6 +9,7 @@ import (
 
 type HeartbeatStatus struct {
 	Configured       bool   `json:"configured"`
+	Interval         string `json:"interval,omitempty"`
 	ActiveHours      string `json:"active_hours,omitempty"`
 	Timezone         string `json:"timezone,omitempty"`
 	ChatBusy         bool   `json:"chat_busy,omitempty"`

@@ -89,6 +89,7 @@ type UsageConfig struct {
 
 type AutomationConfig struct {
 	AgentMaxIterations   int
+	HeartbeatInterval    string
 	HeartbeatActiveHours string
 	HeartbeatTimezone    string
 	CronRunHistoryLimit  int
