@@ -406,7 +406,7 @@ func buildAPIMux(
 	}
 	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
 	projectTaskRunner := gateway.NewProjectTaskRunner(gatewayRuntime, "")
-	projectProgressAfterHeartbeat = newProjectProgressAfterHeartbeat(projectStore, projectTaskRunner, logger)
+	projectProgressAfterHeartbeat = newProjectProgressAfterHeartbeat(projectStore, projectTaskRunner, deps.ask, logger)
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,
 		sessionStore,

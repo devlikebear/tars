@@ -222,6 +222,7 @@ export type ProjectState = {
   project_id: string
   phase?: string
   status?: string
+  phase_number?: number
   next_action?: string
   goal?: string
   last_run_summary?: string

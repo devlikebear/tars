@@ -67,6 +67,7 @@ type ProjectState struct {
 	Goal              string   `json:"goal,omitempty"`
 	Phase             string   `json:"phase,omitempty"`
 	Status            string   `json:"status,omitempty"`
+	PhaseNumber       int      `json:"phase_number,omitempty"`
 	NextAction        string   `json:"next_action,omitempty"`
 	RemainingTasks    []string `json:"remaining_tasks,omitempty"`
 	CompletionSummary string   `json:"completion_summary,omitempty"`
@@ -81,6 +82,7 @@ type ProjectStateUpdateInput struct {
 	Goal              *string
 	Phase             *string
 	Status            *string
+	PhaseNumber       *int
 	NextAction        *string
 	RemainingTasks    []string
 	CompletionSummary *string
@@ -515,6 +517,9 @@ func applyProjectStateUpdateInput(item *ProjectState, input ProjectStateUpdateIn
 	}
 	if input.Status != nil {
 		item.Status = normalizeProjectStateStatus(*input.Status)
+	}
+	if input.PhaseNumber != nil {
+		item.PhaseNumber = *input.PhaseNumber
 	}
 	assignStringPtr(&item.NextAction, input.NextAction)
 	if len(input.RemainingTasks) > 0 {

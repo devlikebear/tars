@@ -343,7 +343,12 @@
           <div class="card pv-state-card">
             <span class="card-title">State</span>
             <dl class="pv-facts">
-              <div><dt>Phase</dt><dd><span class="badge {statusBadgeClass(projectState.phase || '')}">{projectState.phase || '\u2014'}</span></dd></div>
+              <div><dt>Phase</dt><dd>
+                <span class="badge {statusBadgeClass(projectState.phase || '')}">{projectState.phase || '\u2014'}</span>
+                {#if projectState.phase_number}
+                  <span style="margin-left:var(--space-1);font-size:var(--text-xs);color:var(--text-ghost)">#{projectState.phase_number}{#if project?.max_phases}/{project.max_phases}{/if}</span>
+                {/if}
+              </dd></div>
               <div><dt>Status</dt><dd><span class="badge {statusBadgeClass(projectState.status || '')}">{projectState.status || '\u2014'}</span></dd></div>
               {#if projectState.next_action}
                 <div><dt>Next</dt><dd>{projectState.next_action}</dd></div>
