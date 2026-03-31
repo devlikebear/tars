@@ -114,7 +114,7 @@ type ProviderOptions struct {
 func NewProvider(opts ProviderOptions) (Client, error) {
 	provider := strings.ToLower(strings.TrimSpace(opts.Provider))
 	if provider == "" {
-		provider = "bifrost"
+		provider = "anthropic"
 	}
 	authOpts := opts
 	authOpts.Provider = provider
@@ -152,9 +152,6 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	token := strings.TrimSpace(cred.AccessToken)
 
 	switch provider {
-	case "bifrost":
-		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
-		return newOpenAICompatibleClientWithConfig("bifrost", opts.BaseURL, token, opts.Model, providerClientConfig(opts))
 	case "openai":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return newOpenAICompatibleClientWithConfig("openai", opts.BaseURL, token, opts.Model, providerClientConfig(opts))

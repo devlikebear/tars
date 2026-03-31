@@ -33,7 +33,6 @@ func defaultPriceTable() map[string]ModelPrice {
 		"anthropic/*":                {InputPer1MUSD: 3.00, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.30, CacheWritePer1MUSD: 3.75},
 		"gemini/*":                   {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50},
 		"gemini-native/*":            {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50},
-		"bifrost/*":                  {InputPer1MUSD: 0.00, OutputPer1MUSD: 0.00},
 	}
 }
 

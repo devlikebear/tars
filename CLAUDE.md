@@ -51,7 +51,7 @@ cd frontend/console && npm run check   # svelte-check + tsc
 | `session` | File-based chat sessions: index + transcripts in `workspace/sessions/`. Kinds: `main` (user-visible), `worker` (hidden) |
 | `cron` | Tick-based scheduler (30s default). Supports `@at` (one-time) and cron expressions. Run history capped at 50/job |
 | `ops` | System health (disk/processes), cleanup planning with approval workflow |
-| `llm` | Provider abstraction: Anthropic, OpenAI-compat, Gemini, Bifrost |
+| `llm` | Provider abstraction: Anthropic, OpenAI-compat, Gemini |
 | `tool` | Built-in agent tools: file ops, exec, web fetch/search, project, gateway, telegram |
 | `serverauth` | Bearer token auth with SHA256, three token tiers (legacy/user/admin), loopback bypass |
 | `config` | YAML → env var override → defaults. 60+ config fields across Runtime/API/LLM/Memory/Usage sections |

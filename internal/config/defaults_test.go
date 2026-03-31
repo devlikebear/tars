@@ -181,17 +181,14 @@ func TestLoad_DefaultOnly(t *testing.T) {
 	if cfg.WorkspaceDir != "./workspace" {
 		t.Fatalf("expected WorkspaceDir ./workspace, got %q", cfg.WorkspaceDir)
 	}
-	if cfg.LLMProvider != "bifrost" {
-		t.Fatalf("expected LLMProvider bifrost, got %q", cfg.LLMProvider)
+	if cfg.LLMProvider != "anthropic" {
+		t.Fatalf("expected LLMProvider anthropic, got %q", cfg.LLMProvider)
 	}
 	if cfg.LLMAuthMode != "api-key" {
 		t.Fatalf("expected LLMAuthMode api-key, got %q", cfg.LLMAuthMode)
 	}
-	if cfg.LLMModel != "openai/gpt-4o-mini" {
-		t.Fatalf("expected LLMModel openai/gpt-4o-mini, got %q", cfg.LLMModel)
-	}
-	if cfg.BifrostModel != "openai/gpt-4o-mini" {
-		t.Fatalf("expected default BifrostModel openai/gpt-4o-mini, got %q", cfg.BifrostModel)
+	if cfg.LLMModel != "claude-3-5-haiku-latest" {
+		t.Fatalf("expected LLMModel claude-3-5-haiku-latest, got %q", cfg.LLMModel)
 	}
 	if cfg.MemoryEmbedProvider != "gemini" {
 		t.Fatalf("expected MemoryEmbedProvider gemini, got %q", cfg.MemoryEmbedProvider)
@@ -219,7 +216,7 @@ func TestLoad_DefaultOnly(t *testing.T) {
 func TestLoad_YAMLOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	content := "mode: service\nworkspace_dir: ./tenant-workspace\nllm_provider: openai\nllm_auth_mode: oauth\nllm_oauth_provider: claude-code\nllm_base_url: http://localhost:8888/v1\nllm_api_key: llm-yaml-key\nllm_model: llm-yaml-model\nbifrost_base_url: http://localhost:8080/v1\nbifrost_api_key: yaml-key\nbifrost_model: yaml-model\n"
+	content := "mode: service\nworkspace_dir: ./tenant-workspace\nllm_provider: openai\nllm_auth_mode: oauth\nllm_oauth_provider: claude-code\nllm_base_url: http://localhost:8888/v1\nllm_api_key: llm-yaml-key\nllm_model: llm-yaml-model\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -253,30 +250,18 @@ func TestLoad_YAMLOverridesDefault(t *testing.T) {
 	if cfg.LLMModel != "llm-yaml-model" {
 		t.Fatalf("expected LLMModel from yaml, got %q", cfg.LLMModel)
 	}
-	if cfg.BifrostBase != "http://localhost:8080/v1" {
-		t.Fatalf("expected BifrostBase from yaml, got %q", cfg.BifrostBase)
-	}
-	if cfg.BifrostAPIKey != "yaml-key" {
-		t.Fatalf("expected BifrostAPIKey from yaml, got %q", cfg.BifrostAPIKey)
-	}
-	if cfg.BifrostModel != "yaml-model" {
-		t.Fatalf("expected BifrostModel from yaml, got %q", cfg.BifrostModel)
-	}
 }
 
 func TestLoad_EnvOverridesYAML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	content := "mode: service\nworkspace_dir: ./tenant-workspace\nllm_provider: anthropic\nllm_auth_mode: api-key\nllm_oauth_provider: claude-code\nllm_base_url: http://localhost:8000\nllm_api_key: llm-yaml-key\nllm_model: llm-yaml-model\nbifrost_base_url: http://localhost:8080/v1\nbifrost_api_key: yaml-key\nbifrost_model: yaml-model\n"
+	content := "mode: service\nworkspace_dir: ./tenant-workspace\nllm_provider: anthropic\nllm_auth_mode: api-key\nllm_oauth_provider: claude-code\nllm_base_url: http://localhost:8000\nllm_api_key: llm-yaml-key\nllm_model: llm-yaml-model\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
 	t.Setenv("TARS_MODE", "standalone")
 	t.Setenv("TARS_WORKSPACE_DIR", "./env-workspace")
-	t.Setenv("BIFROST_BASE_URL", "http://localhost:9090/v1")
-	t.Setenv("BIFROST_API_KEY", "env-key")
-	t.Setenv("BIFROST_MODEL", "env-model")
 	t.Setenv("LLM_PROVIDER", "openai")
 	t.Setenv("LLM_AUTH_MODE", "oauth")
 	t.Setenv("LLM_OAUTH_PROVIDER", "claude-code")
@@ -324,15 +309,6 @@ func TestLoad_EnvOverridesYAML(t *testing.T) {
 	}
 	if cfg.LLMServiceTier != "priority" {
 		t.Fatalf("expected LLMServiceTier from env, got %q", cfg.LLMServiceTier)
-	}
-	if cfg.BifrostBase != "http://localhost:9090/v1" {
-		t.Fatalf("expected BifrostBase from env, got %q", cfg.BifrostBase)
-	}
-	if cfg.BifrostAPIKey != "env-key" {
-		t.Fatalf("expected BifrostAPIKey from env, got %q", cfg.BifrostAPIKey)
-	}
-	if cfg.BifrostModel != "env-model" {
-		t.Fatalf("expected BifrostModel from env, got %q", cfg.BifrostModel)
 	}
 }
 

@@ -15,7 +15,6 @@ import (
 )
 
 var supportedLiveModelProviders = []string{
-	"bifrost",
 	"openai",
 	"openai-codex",
 	"claude-code-cli",

@@ -13,7 +13,7 @@ import (
 )
 
 // OpenAICompatibleClient works with any OpenAI-compatible /chat/completions API
-// (Bifrost, OpenAI, Azure OpenAI, etc.).
+// (OpenAI, Azure OpenAI, etc.).
 type OpenAICompatibleClient struct {
 	label      string
 	baseURL    string
@@ -44,10 +44,6 @@ func newOpenAICompatibleClientWithConfig(label, baseURL, apiKey, model string, c
 		config:     config,
 		httpClient: newHTTPClient(config.HTTPTimeout),
 	}, nil
-}
-
-func NewBifrostClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, error) {
-	return newOpenAICompatibleClientWithConfig("bifrost", baseURL, apiKey, model, DefaultClientConfig())
 }
 
 func NewOpenAIClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, error) {

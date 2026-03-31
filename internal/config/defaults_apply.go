@@ -290,16 +290,6 @@ func applyGatewayDefaults(cfg *Config, defaults Config) {
 func applyProviderDefaults(cfg *Config, defaults Config) {
 	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
 		switch cfg.LLMProvider {
-		case "bifrost":
-			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = cfg.BifrostBase
-			}
-			if cfg.LLMModel == "" {
-				cfg.LLMModel = cfg.BifrostModel
-			}
-			if cfg.LLMAPIKey == "" {
-				cfg.LLMAPIKey = cfg.BifrostAPIKey
-			}
 		case "openai":
 			if cfg.LLMBaseURL == "" {
 				cfg.LLMBaseURL = defaultOpenAIBaseURL
@@ -355,9 +345,6 @@ func applyProviderDefaults(cfg *Config, defaults Config) {
 				cfg.LLMAPIKey = os.Getenv("ANTHROPIC_API_KEY")
 			}
 		}
-	}
-	if cfg.BifrostModel == "" {
-		cfg.BifrostModel = defaults.BifrostModel
 	}
 }
 

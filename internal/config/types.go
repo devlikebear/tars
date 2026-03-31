@@ -65,9 +65,6 @@ type LLMConfig struct {
 	LLMReasoningEffort string
 	LLMThinkingBudget  int
 	LLMServiceTier     string
-	BifrostBase        string
-	BifrostAPIKey      string
-	BifrostModel       string
 }
 
 type MemoryConfig struct {
