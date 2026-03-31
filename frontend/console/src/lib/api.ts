@@ -23,6 +23,8 @@ import type {
   Project,
   ProjectActivity,
   ProjectSessionInfo,
+  ProjectBoard,
+  ProjectState,
   HeartbeatStatus,
   HeartbeatRunResult,
   Session,
@@ -122,6 +124,14 @@ export async function listProjectActivity(projectId: string, limit = 20): Promis
     `/v1/projects/${encodeURIComponent(projectId)}/activity?limit=${limit}`,
   )
   return payload.items ?? []
+}
+
+export async function getProjectBoard(projectId: string): Promise<ProjectBoard> {
+  return requestJSON<ProjectBoard>(`/v1/projects/${encodeURIComponent(projectId)}/board`)
+}
+
+export async function getProjectState(projectId: string): Promise<ProjectState> {
+  return requestJSON<ProjectState>(`/v1/projects/${encodeURIComponent(projectId)}/state`)
 }
 
 export async function listCronJobs(): Promise<CronJob[]> {

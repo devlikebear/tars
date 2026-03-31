@@ -195,6 +195,37 @@ export type ChatRequest = {
   attachments?: ChatAttachment[]
 }
 
+export type BoardTask = {
+  id: string
+  title: string
+  status: string
+  assignee?: string
+  role?: string
+  worker_kind?: string
+  issue?: string
+  branch?: string
+  pr?: string
+  review_required?: boolean
+}
+
+export type ProjectBoard = {
+  project_id: string
+  updated_at?: string
+  columns: string[]
+  tasks: BoardTask[]
+}
+
+export type ProjectState = {
+  project_id: string
+  phase?: string
+  status?: string
+  next_action?: string
+  goal?: string
+  last_run_summary?: string
+  completion_summary?: string
+  stop_reason?: string
+}
+
 export type CreateProjectRequest = {
   name: string
   type?: string

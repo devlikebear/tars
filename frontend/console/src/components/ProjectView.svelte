@@ -3,6 +3,8 @@
   import {
     deleteProject,
     getProject,
+    getProjectBoard,
+    getProjectState,
     getProjectSession,
     clearProjectSession,
     compactProjectSession,
@@ -16,6 +18,8 @@
   import type {
     Project,
     ProjectActivity,
+    ProjectBoard,
+    ProjectState,
     ProjectSessionInfo,
   } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
@@ -27,6 +31,8 @@
   let { projectId }: Props = $props()
 
   let project: Project | null = $state(null)
+  let board: ProjectBoard | null = $state(null)
+  let projectState: ProjectState | null = $state(null)
   let sessionInfo: ProjectSessionInfo | null = $state(null)
   let sessionBusy = $state(false)
   let activity: ProjectActivity[] = $state([])
@@ -171,8 +177,32 @@
     } catch { activity = [] }
   }
 
+  async function loadBoard() {
+    try {
+      board = await getProjectBoard(projectId)
+    } catch { board = null }
+  }
+
+  async function loadState() {
+    try {
+      projectState = await getProjectState(projectId)
+    } catch { projectState = null }
+  }
+
+  function statusBadgeClass(status: string): string {
+    switch (status) {
+      case 'done': return 'badge-success'
+      case 'in_progress': return 'badge-accent'
+      case 'review': return 'badge-info'
+      case 'todo': return 'badge-default'
+      default: return 'badge-default'
+    }
+  }
+
   onMount(() => {
     void loadDetail()
+    void loadBoard()
+    void loadState()
     void loadActivity()
     void loadFiles()
     void loadSessionInfo()
@@ -237,6 +267,46 @@
             <button class="btn-danger btn-sm" onclick={handleClearSession} disabled={sessionBusy}>Clear</button>
           </div>
         </div>
+      </div>
+    {/if}
+
+    <!-- State + Board -->
+    {#if projectState || board}
+      <div class="pv-state-board">
+        {#if projectState}
+          <div class="card pv-state-card">
+            <span class="card-title">State</span>
+            <dl class="pv-facts">
+              <div><dt>Phase</dt><dd><span class="badge {statusBadgeClass(projectState.phase || '')}">{projectState.phase || '\u2014'}</span></dd></div>
+              <div><dt>Status</dt><dd><span class="badge {statusBadgeClass(projectState.status || '')}">{projectState.status || '\u2014'}</span></dd></div>
+              {#if projectState.next_action}
+                <div><dt>Next</dt><dd>{projectState.next_action}</dd></div>
+              {/if}
+              {#if projectState.last_run_summary}
+                <div><dt>Summary</dt><dd>{projectState.last_run_summary}</dd></div>
+              {/if}
+            </dl>
+          </div>
+        {/if}
+        {#if board && board.tasks.length > 0}
+          <div class="card pv-board-card">
+            <div class="card-header">
+              <span class="card-title">Board</span>
+              <span class="badge badge-default">{board.tasks.length} tasks</span>
+            </div>
+            <div class="pv-board-tasks">
+              {#each board.tasks as task}
+                <div class="pv-board-task">
+                  <span class="badge {statusBadgeClass(task.status)}">{task.status}</span>
+                  <span class="pv-board-task-title">{task.title}</span>
+                  {#if task.worker_kind}
+                    <span class="pv-board-task-meta">{task.worker_kind}</span>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
       </div>
     {/if}
 
@@ -372,6 +442,55 @@
     display: flex;
     gap: var(--space-2);
     flex-shrink: 0;
+  }
+
+  /* ── State + Board ────────────────────────────── */
+  .pv-state-board {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+  }
+
+  .pv-state-card {
+    min-width: 200px;
+  }
+
+  .pv-board-tasks {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .pv-board-task {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-base);
+    border-radius: var(--radius-sm);
+  }
+
+  .pv-board-task-title {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pv-board-task-meta {
+    font-size: var(--text-xs);
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 900px) {
+    .pv-state-board {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ── Artifacts ─────────────────────────────── */
