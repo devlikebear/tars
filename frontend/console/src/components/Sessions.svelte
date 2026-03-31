@@ -267,19 +267,21 @@
                 <span>{fmt(session.updated_at)}</span>
               </div>
             </button>
-            {#if !isMainSession(session)}
-              <div class="session-item-actions">
+            <div class="session-item-actions">
+              {#if !isMainSession(session)}
                 <button class="btn-icon" title="Rename" onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
                 <button class="btn-icon" title="Auto title" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>&#9733;</button>
-                <button class="btn-icon" title="Compact" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
+              {/if}
+              <button class="btn-icon" title="Compact" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
+              {#if !isMainSession(session)}
                 <button
                   class="btn-icon btn-icon-danger"
                   title={deleteConfirmId === session.id ? 'Click again to confirm' : 'Delete'}
                   disabled={actionBusy === session.id}
                   onclick={(e) => { e.stopPropagation(); requestDelete(session.id) }}
                 >{deleteConfirmId === session.id ? '!!' : '\u00d7'}</button>
-              </div>
-            {/if}
+              {/if}
+            </div>
           </div>
         {/each}
       </div>
@@ -288,7 +290,19 @@
         <div class="session-detail">
           <div class="session-detail-header">
             <h3>{selectedSession.title || selectedSession.id.slice(0, 12)}</h3>
-            <span class="badge {kindBadge(selectedSession)}">{sessionKind(selectedSession)}</span>
+            <div class="session-detail-actions">
+              <span class="badge {kindBadge(selectedSession)}">{sessionKind(selectedSession)}</span>
+              {#if !isMainSession(selectedSession)}
+                <button class="btn btn-ghost btn-sm" disabled={actionBusy === selectedSession.id} onclick={() => { if (selectedSession) startRename(selectedSession) }}>Rename</button>
+                <button class="btn btn-ghost btn-sm" disabled={actionBusy === selectedSession.id} onclick={() => { if (selectedSession) handleGenerateTitle(selectedSession) }}>Auto Title</button>
+              {/if}
+              <button class="btn btn-ghost btn-sm" disabled={actionBusy === selectedSession?.id} onclick={() => { if (selectedSession) handleCompact(selectedSession.id) }}>Compact</button>
+              {#if !isMainSession(selectedSession)}
+                <button class="btn btn-danger btn-sm" disabled={actionBusy === selectedSession.id} onclick={() => { if (selectedSession) requestDelete(selectedSession.id) }}>
+                  {deleteConfirmId === selectedSession.id ? 'Confirm Delete?' : 'Delete'}
+                </button>
+              {/if}
+            </div>
           </div>
 
           <div class="session-chat">
@@ -521,6 +535,18 @@
   .session-detail-header h3 {
     font-size: var(--text-lg);
     font-weight: 500;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .session-detail-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+    flex-wrap: wrap;
   }
 
   .session-chat {
