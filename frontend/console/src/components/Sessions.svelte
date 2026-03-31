@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { listSessions, deleteSession, compactSession, renameSession } from '../lib/api'
+  import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory } from '../lib/api'
   import type { Session } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
 
@@ -12,10 +12,14 @@
   let selectedSession: Session | null = $state(null)
   let searchQuery = $state('')
   let sortBy: 'updated' | 'name' = $state('updated')
+  let filterKind: 'all' | 'session' | 'main' | 'worker' | 'project' = $state('all')
 
   // Rename state
   let renamingId: string | null = $state(null)
   let renameValue = $state('')
+
+  // Delete confirm state
+  let deleteConfirmId: string | null = $state(null)
 
   // Action state
   let actionBusy = $state('')
@@ -29,20 +33,33 @@
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
   }
 
-  function kindLabel(session: Session): string {
+  function sessionKind(session: Session): string {
     if (session.kind === 'main') return 'main'
     if (session.hidden) return 'worker'
-    return session.kind || 'session'
+    if (session.project_id) return 'project'
+    return 'session'
   }
 
   function kindBadge(session: Session): string {
-    if (session.kind === 'main') return 'badge-accent'
-    if (session.hidden) return 'badge-default'
-    return 'badge-info'
+    switch (sessionKind(session)) {
+      case 'main': return 'badge-accent'
+      case 'worker': return 'badge-default'
+      case 'project': return 'badge-info'
+      default: return 'badge-info'
+    }
+  }
+
+  function isMainSession(session: Session): boolean {
+    return session.kind === 'main'
   }
 
   function filteredSessions(): Session[] {
     let result = sessions
+    // Kind filter
+    if (filterKind !== 'all') {
+      result = result.filter((s) => sessionKind(s) === filterKind)
+    }
+    // Search
     const q = searchQuery.trim().toLowerCase()
     if (q) {
       result = result.filter((s) =>
@@ -51,6 +68,7 @@
         (s.project_id || '').toLowerCase().includes(q)
       )
     }
+    // Sort
     if (sortBy === 'name') {
       result = [...result].sort((a, b) => (a.title || a.id).localeCompare(b.title || b.id))
     } else {
@@ -78,6 +96,7 @@
     }
     selectedSession = session
     renamingId = null
+    deleteConfirmId = null
     actionError = ''
   }
 
@@ -88,6 +107,7 @@
   }
 
   function startRename(s: Session) {
+    if (isMainSession(s)) return
     renamingId = s.id
     renameValue = s.title || s.id.slice(0, 12)
   }
@@ -104,9 +124,18 @@
     renamingId = null
   }
 
+  function requestDelete(id: string) {
+    if (deleteConfirmId === id) {
+      void handleDelete(id)
+    } else {
+      deleteConfirmId = id
+    }
+  }
+
   async function handleDelete(id: string) {
     actionBusy = id
     actionError = ''
+    deleteConfirmId = null
     try {
       await deleteSession(id)
       if (selectedSession?.id === id) selectedSession = null
@@ -131,6 +160,39 @@
     }
   }
 
+  async function handleGenerateTitle(s: Session) {
+    actionBusy = s.id
+    actionError = ''
+    try {
+      const history = await getSessionHistory(s.id)
+      const userMsgs = history.filter((m) => m.role === 'user')
+      const assistantMsgs = history.filter((m) => m.role === 'assistant')
+      let title = ''
+      if (userMsgs.length > 0) {
+        // Use first user message, cleaned up
+        const raw = userMsgs[0].content.trim()
+        // Remove newlines, collapse whitespace
+        const clean = raw.replace(/\n/g, ' ').replace(/\s+/g, ' ')
+        title = clean.length > 50 ? clean.slice(0, 47) + '...' : clean
+      } else if (assistantMsgs.length > 0) {
+        const raw = assistantMsgs[0].content.trim()
+        const clean = raw.replace(/\n/g, ' ').replace(/\s+/g, ' ')
+        title = clean.length > 50 ? clean.slice(0, 47) + '...' : clean
+      }
+      if (title) {
+        await renameSession(s.id, title)
+        await load()
+        if (selectedSession?.id === s.id) {
+          selectedSession = sessions.find((ss) => ss.id === s.id) || selectedSession
+        }
+      }
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : 'Generate title failed'
+    } finally {
+      actionBusy = ''
+    }
+  }
+
   onMount(() => { void load() })
 </script>
 
@@ -150,9 +212,14 @@
     <div class="error-banner">{error}</div>
   {/if}
 
-  <!-- Search + Sort toolbar -->
+  <!-- Toolbar: search + kind filter + sort -->
   <div class="sessions-toolbar">
     <input type="text" class="sessions-search" placeholder="Search sessions..." bind:value={searchQuery} />
+    <div class="sessions-filters">
+      {#each ['all', 'session', 'main', 'worker', 'project'] as kind}
+        <button class="btn btn-ghost btn-sm" class:active={filterKind === kind} onclick={() => { filterKind = kind as typeof filterKind }}>{kind}</button>
+      {/each}
+    </div>
     <div class="sessions-sort">
       <button class="btn btn-ghost btn-sm" class:active={sortBy === 'updated'} onclick={() => { sortBy = 'updated' }}>Recent</button>
       <button class="btn btn-ghost btn-sm" class:active={sortBy === 'name'} onclick={() => { sortBy = 'name' }}>Name</button>
@@ -166,7 +233,7 @@
   {#if loading}
     <div class="sessions-loading">Loading sessions...</div>
   {:else if filteredSessions().length === 0}
-    <div class="empty-state"><p>{searchQuery ? 'No matching sessions.' : 'No sessions found.'}</p></div>
+    <div class="empty-state"><p>{searchQuery || filterKind !== 'all' ? 'No matching sessions.' : 'No sessions found.'}</p></div>
   {:else}
     <div class="sessions-layout">
       <div class="sessions-list">
@@ -191,7 +258,7 @@
                 {:else}
                   <strong class="session-item-title">{session.title || session.id.slice(0, 12)}</strong>
                 {/if}
-                <span class="badge {kindBadge(session)}">{kindLabel(session)}</span>
+                <span class="badge {kindBadge(session)}">{sessionKind(session)}</span>
               </div>
               <div class="session-item-meta">
                 {#if session.project_id}
@@ -200,11 +267,19 @@
                 <span>{fmt(session.updated_at)}</span>
               </div>
             </button>
-            <div class="session-item-actions">
-              <button class="btn-icon" title="Rename" onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
-              <button class="btn-icon" title="Compact" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
-              <button class="btn-icon btn-icon-danger" title="Delete" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleDelete(session.id) }}>&times;</button>
-            </div>
+            {#if !isMainSession(session)}
+              <div class="session-item-actions">
+                <button class="btn-icon" title="Rename" onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
+                <button class="btn-icon" title="Auto title" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>&#9733;</button>
+                <button class="btn-icon" title="Compact" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
+                <button
+                  class="btn-icon btn-icon-danger"
+                  title={deleteConfirmId === session.id ? 'Click again to confirm' : 'Delete'}
+                  disabled={actionBusy === session.id}
+                  onclick={(e) => { e.stopPropagation(); requestDelete(session.id) }}
+                >{deleteConfirmId === session.id ? '!!' : '\u00d7'}</button>
+              </div>
+            {/if}
           </div>
         {/each}
       </div>
@@ -213,7 +288,7 @@
         <div class="session-detail">
           <div class="session-detail-header">
             <h3>{selectedSession.title || selectedSession.id.slice(0, 12)}</h3>
-            <span class="badge {kindBadge(selectedSession)}">{kindLabel(selectedSession)}</span>
+            <span class="badge {kindBadge(selectedSession)}">{sessionKind(selectedSession)}</span>
           </div>
 
           <div class="session-chat">
@@ -273,10 +348,12 @@
     align-items: center;
     gap: var(--space-3);
     margin-bottom: var(--space-4);
+    flex-wrap: wrap;
   }
 
   .sessions-search {
     flex: 1;
+    min-width: 160px;
     padding: var(--space-2) var(--space-3);
     background: var(--bg-base);
     border: 1px solid var(--border-subtle);
@@ -286,6 +363,16 @@
   }
   .sessions-search:focus {
     outline: none;
+    border-color: var(--accent);
+  }
+
+  .sessions-filters {
+    display: flex;
+    gap: var(--space-1);
+    flex-shrink: 0;
+  }
+  .sessions-filters .active {
+    color: var(--accent);
     border-color: var(--accent);
   }
 
@@ -315,7 +402,7 @@
   .sessions-list {
     display: grid;
     gap: var(--space-1);
-    max-height: calc(100vh - 260px);
+    max-height: calc(100vh - 300px);
     overflow-y: auto;
     overflow-x: hidden;
     min-width: 0;
@@ -443,9 +530,6 @@
   @media (max-width: 900px) {
     .sessions-layout {
       grid-template-columns: 1fr;
-    }
-    .session-detail {
-      position: static;
     }
   }
 </style>
