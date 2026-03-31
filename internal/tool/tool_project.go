@@ -35,7 +35,10 @@ func NewProjectCreateTool(store *project.Store) Tool {
       }
     },
     "instructions":{"type":"string"},
-    "clone_repo":{"type":"boolean"}
+    "clone_repo":{"type":"boolean"},
+    "execution_mode":{"type":"string","description":"autonomous or manual (default: manual)"},
+    "max_phases":{"type":"integer","description":"max phases for autonomous mode (default: 3)"},
+    "sub_agents":{"type":"array","items":{"type":"string"},"description":"sub-agent roles (e.g. critic)"}
   },
   "required":["name"],
   "additionalProperties":false
@@ -53,6 +56,9 @@ func NewProjectCreateTool(store *project.Store) Tool {
 				WorkflowRules   []project.WorkflowRule `json:"workflow_rules,omitempty"`
 				Instructions    string                 `json:"instructions,omitempty"`
 				CloneRepo       bool                   `json:"clone_repo,omitempty"`
+				ExecutionMode   string                 `json:"execution_mode,omitempty"`
+				MaxPhases       int                    `json:"max_phases,omitempty"`
+				SubAgents       []string               `json:"sub_agents,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
@@ -66,6 +72,9 @@ func NewProjectCreateTool(store *project.Store) Tool {
 				WorkflowRules:   input.WorkflowRules,
 				Instructions:    input.Instructions,
 				CloneRepo:       input.CloneRepo,
+				ExecutionMode:   input.ExecutionMode,
+				MaxPhases:       input.MaxPhases,
+				SubAgents:       input.SubAgents,
 			})
 			if err != nil {
 				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
