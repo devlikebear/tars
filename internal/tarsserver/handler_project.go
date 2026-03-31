@@ -178,6 +178,9 @@ func newProjectAPIHandler(
 				WorkflowRules   []project.WorkflowRule `json:"workflow_rules,omitempty"`
 				Instructions    string                 `json:"instructions,omitempty"`
 				CloneRepo       bool                   `json:"clone_repo,omitempty"`
+				ExecutionMode   string                 `json:"execution_mode,omitempty"`
+				MaxPhases       int                    `json:"max_phases,omitempty"`
+				SubAgents       []string               `json:"sub_agents,omitempty"`
 			}
 			if !decodeJSONBody(w, r, &req) {
 				return
@@ -191,6 +194,9 @@ func newProjectAPIHandler(
 				WorkflowRules:   req.WorkflowRules,
 				Instructions:    req.Instructions,
 				CloneRepo:       req.CloneRepo,
+				ExecutionMode:   req.ExecutionMode,
+				MaxPhases:       req.MaxPhases,
+				SubAgents:       req.SubAgents,
 			})
 			if err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "required") || strings.Contains(strings.ToLower(err.Error()), "invalid") {

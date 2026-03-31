@@ -25,6 +25,7 @@ import type {
   ProjectSessionInfo,
   ProjectBoard,
   ProjectState,
+  BoardTask,
   HeartbeatStatus,
   HeartbeatRunResult,
   Session,
@@ -128,6 +129,14 @@ export async function listProjectActivity(projectId: string, limit = 20): Promis
 
 export async function getProjectBoard(projectId: string): Promise<ProjectBoard> {
   return requestJSON<ProjectBoard>(`/v1/projects/${encodeURIComponent(projectId)}/board`)
+}
+
+export async function updateProjectBoard(projectId: string, tasks: BoardTask[]): Promise<ProjectBoard> {
+  return requestJSON<ProjectBoard>(`/v1/projects/${encodeURIComponent(projectId)}/board`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tasks }),
+  })
 }
 
 export async function getProjectState(projectId: string): Promise<ProjectState> {
