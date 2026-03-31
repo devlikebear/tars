@@ -50,7 +50,7 @@ func Schema() []FieldMeta {
 		f("api_max_inflight_agent_runs", "API", "int", "Max Inflight Agent Runs", "Maximum concurrent agent run requests"),
 
 		// ── LLM ──────────────────────────────────
-		fsel("llm_provider", "LLM", "Provider", "LLM provider backend", []string{"anthropic", "openai", "openai-codex", "gemini", "bifrost"}),
+		fsel("llm_provider", "LLM", "Provider", "LLM provider backend", []string{"anthropic", "openai", "openai-codex", "gemini"}),
 		fsel("llm_auth_mode", "LLM", "Auth Mode", "LLM authentication mode", []string{"api-key", "oauth"}),
 		fsel("llm_oauth_provider", "LLM", "OAuth Provider", "OAuth provider name when auth_mode is oauth", []string{"", "openai-codex"}),
 		f("llm_base_url", "LLM", "string", "Base URL", "Custom base URL for the LLM API endpoint"),
@@ -59,9 +59,6 @@ func Schema() []FieldMeta {
 		fsel("llm_reasoning_effort", "LLM", "Reasoning Effort", "Reasoning effort level", []string{"", "low", "medium", "high"}),
 		f("llm_thinking_budget", "LLM", "int", "Thinking Budget", "Max tokens for extended thinking (0 = disabled)"),
 		f("llm_service_tier", "LLM", "string", "Service Tier", "Service tier hint for the provider"),
-		f("bifrost_base_url", "LLM", "string", "Bifrost Base URL", "Base URL for Bifrost gateway"),
-		fs("bifrost_api_key", "LLM", "Bifrost API Key", "API key for Bifrost gateway", true),
-		f("bifrost_model", "LLM", "string", "Bifrost Model", "Default model for Bifrost (e.g. openai/gpt-4o-mini)"),
 
 		// ── Memory ───────────────────────────────
 		f("memory_semantic_enabled", "Memory", "bool", "Semantic Memory", "Enable semantic memory with vector embeddings"),
@@ -235,12 +232,6 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.LLMThinkingBudget
 	case "llm_service_tier":
 		return cfg.LLMServiceTier
-	case "bifrost_base_url":
-		return cfg.BifrostBase
-	case "bifrost_api_key":
-		return cfg.BifrostAPIKey
-	case "bifrost_model":
-		return cfg.BifrostModel
 	// Memory
 	case "memory_semantic_enabled":
 		return cfg.MemorySemanticEnabled

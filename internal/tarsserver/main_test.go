@@ -279,11 +279,12 @@ func TestRun_RunOnceAppendsHeartbeatLog(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	server := newBifrostTestServer(t)
+	server := newTestLLMServer(t)
 	defer server.Close()
-	t.Setenv("BIFROST_BASE_URL", server.URL+"/v1")
-	t.Setenv("BIFROST_API_KEY", "test-key")
-	t.Setenv("BIFROST_MODEL", "test-model")
+	t.Setenv("LLM_PROVIDER", "openai")
+	t.Setenv("LLM_BASE_URL", server.URL+"/v1")
+	t.Setenv("LLM_API_KEY", "test-key")
+	t.Setenv("LLM_MODEL", "test-model")
 
 	code := run([]string{"--workspace-dir", root, "--run-once"}, stdout, stderr)
 	if code != 0 {
@@ -325,11 +326,12 @@ func TestRun_RunLoopAppendsHeartbeatLog(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	server := newBifrostTestServer(t)
+	server := newTestLLMServer(t)
 	defer server.Close()
-	t.Setenv("BIFROST_BASE_URL", server.URL+"/v1")
-	t.Setenv("BIFROST_API_KEY", "test-key")
-	t.Setenv("BIFROST_MODEL", "test-model")
+	t.Setenv("LLM_PROVIDER", "openai")
+	t.Setenv("LLM_BASE_URL", server.URL+"/v1")
+	t.Setenv("LLM_API_KEY", "test-key")
+	t.Setenv("LLM_MODEL", "test-model")
 
 	code := run([]string{
 		"--workspace-dir", root,
@@ -348,7 +350,7 @@ func TestRun_RunLoopAppendsHeartbeatLog(t *testing.T) {
 	}
 }
 
-func newBifrostTestServer(t *testing.T) *httptest.Server {
+func newTestLLMServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" {

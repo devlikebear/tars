@@ -8,7 +8,7 @@ const (
 	defaultDashboardAuthMode             = "inherit"
 	defaultAPIMaxInflightChat            = 2
 	defaultAPIMaxInflightAgentRuns       = 4
-	defaultLLMProvider                   = "bifrost"
+	defaultLLMProvider                   = "anthropic"
 	defaultLLMAuthMode                   = "api-key"
 	defaultMemoryEmbedProvider           = "gemini"
 	defaultMemoryEmbedModel              = "gemini-embedding-2-preview"
@@ -17,7 +17,6 @@ const (
 	defaultUsageLimitWeeklyUSD           = 50.0
 	defaultUsageLimitMonthlyUSD          = 150.0
 	defaultUsageLimitMode                = "soft"
-	defaultBifrostModel                  = "openai/gpt-4o-mini"
 	defaultAgentMaxIterations            = 8
 	defaultCronRunHistoryLimit           = 200
 	defaultAssistantHotkey               = "Ctrl+Option+Space"
@@ -76,9 +75,8 @@ func defaultConfigValues() Config {
 			APIMaxInflightAgentRuns: defaultAPIMaxInflightAgentRuns,
 		},
 		LLMConfig: LLMConfig{
-			LLMProvider:  defaultLLMProvider,
-			LLMAuthMode:  defaultLLMAuthMode,
-			BifrostModel: defaultBifrostModel,
+			LLMProvider: defaultLLMProvider,
+			LLMAuthMode: defaultLLMAuthMode,
 		},
 		MemoryConfig: MemoryConfig{
 			MemorySemanticEnabled: false,

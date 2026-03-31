@@ -67,7 +67,7 @@ func newModelFetcherWithDeps(deps modelFetcherDeps) *modelFetcher {
 func (f *modelFetcher) FetchModels(ctx context.Context, opts ProviderOptions) ([]string, error) {
 	provider := strings.TrimSpace(strings.ToLower(opts.Provider))
 	switch provider {
-	case "openai", "bifrost":
+	case "openai":
 		return f.fetchOpenAICompatibleModels(ctx, opts)
 	case "anthropic":
 		return f.fetchAnthropicModels(ctx, opts)

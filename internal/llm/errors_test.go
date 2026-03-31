@@ -6,10 +6,10 @@ import (
 )
 
 func TestProviderError_Error_HTTP(t *testing.T) {
-	err := newHTTPError("bifrost", 429, "  too many requests \n")
+	err := newHTTPError("openai", 429, "  too many requests \n")
 
 	got := err.Error()
-	if got != "bifrost status 429: too many requests" {
+	if got != "openai status 429: too many requests" {
 		t.Fatalf("unexpected error: %q", got)
 	}
 }

@@ -243,8 +243,6 @@ func llmCredentialHint(provider, configPath string) string {
 		return fmt.Sprintf("set llm_auth_mode: oauth or configure OPENAI_CODEX_OAUTH_TOKEN in %s", configPath)
 	case "claude-code-cli":
 		return fmt.Sprintf("install Claude Code or set CLAUDE_CODE_CLI_PATH; no api key is required in %s", configPath)
-	case "bifrost":
-		return fmt.Sprintf("set BIFROST_API_KEY, TARS_LLM_API_KEY, or llm_api_key in %s", configPath)
 	default:
 		return fmt.Sprintf("set TARS_LLM_API_KEY or llm_api_key in %s", configPath)
 	}

@@ -43,7 +43,7 @@ func TestRequireConfiguredValue(t *testing.T) {
 func TestNewOpenAICompatibleClientWithConfig_UsesConfig(t *testing.T) {
 	cfg := ClientConfig{HTTPTimeout: 5 * time.Second, MaxTokens: 1234}
 
-	client, err := newOpenAICompatibleClientWithConfig("bifrost", "http://localhost", "k", "m", cfg)
+	client, err := newOpenAICompatibleClientWithConfig("openai", "http://localhost", "k", "m", cfg)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}

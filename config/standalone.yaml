@@ -1,13 +1,10 @@
 mode: standalone
 workspace_dir: ./workspace
-# provider: bifrost | openai | openai-codex | anthropic | gemini | gemini-native | claude-code-cli
-llm_provider: bifrost
+# provider: openai | openai-codex | anthropic | gemini | gemini-native | claude-code-cli
+llm_provider: anthropic
 llm_auth_mode: api-key
 llm_oauth_provider: ""
-llm_base_url: http://localhost:8080/v1
-llm_model: openai/gpt-4o-mini
-llm_api_key: ${BIFROST_API_KEY}
+llm_base_url: https://api.anthropic.com
+llm_model: claude-3-5-haiku-latest
+llm_api_key: ${ANTHROPIC_API_KEY}
 agent_max_iterations: 8
-bifrost_base_url: http://localhost:8080/v1
-bifrost_api_key: ${BIFROST_API_KEY}
-bifrost_model: openai/gpt-4o-mini
