@@ -45,6 +45,8 @@
   let deleting = $state(false)
   let deleteConfirm = $state(false)
 
+  let showAllActivity = $state(false)
+
   // -- Artifacts --
   let projectFiles: ProjectFile[] = $state([])
   let selectedFile: { name: string; content: string } | null = $state(null)
@@ -301,12 +303,17 @@
         <div class="card-header">
           <span class="card-title">Activity</span>
           <span class="badge badge-default">{activity.length}</span>
+          {#if activity.length > 5 && !showAllActivity}
+            <button class="btn btn-ghost btn-sm" onclick={() => { showAllActivity = true }}>Show all</button>
+          {:else if showAllActivity}
+            <button class="btn btn-ghost btn-sm" onclick={() => { showAllActivity = false }}>Collapse</button>
+          {/if}
         </div>
         {#if activity.length === 0}
           <div class="empty-state"><p>No activity recorded yet.</p></div>
         {:else}
           <div class="pv-timeline">
-            {#each activity as item}
+            {#each (showAllActivity ? activity : activity.slice(0, 5)) as item}
               <div class="pv-timeline-item">
                 <div class="pv-timeline-top">
                   <strong>{item.kind}</strong>

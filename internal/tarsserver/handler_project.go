@@ -201,6 +201,14 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create project failed"})
 				return
 			}
+			// Auto-create a dedicated session for the project
+			if sessionStore != nil && strings.TrimSpace(created.SessionID) == "" {
+				if sess, err := sessionStore.Create(strings.TrimSpace(created.Name)); err == nil {
+					_ = sessionStore.SetProjectID(sess.ID, created.ID)
+					sessID := sess.ID
+					created, _ = store.Update(created.ID, project.UpdateInput{SessionID: &sessID})
+				}
+			}
 			writeJSON(w, http.StatusOK, created)
 
 		}

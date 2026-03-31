@@ -73,9 +73,6 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 	if err := memory.EnsureWorkspace(cfg.WorkspaceDir); err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "ensure_workspace", err: err}
 	}
-	if err := memory.AppendDailyLog(cfg.WorkspaceDir, nowFn(), "tars startup complete"); err != nil {
-		return runtimeDeps{}, &runtimeDepsError{stage: "daily_log", err: err}
-	}
 
 	deps := runtimeDeps{
 		cfg:                  cfg,

@@ -16,7 +16,6 @@
   const items: NavItem[] = [
     { id: 'home', label: 'Home', path: '/console', icon: '\u2302' },
     { id: 'projects', label: 'Projects', path: '/console/projects', icon: '\u25eb' },
-    { id: 'sessions', label: 'Sessions', path: '/console/sessions', icon: '\u25ce' },
     { id: 'ops', label: 'Operations', path: '/console/ops', icon: '\u2699' },
     { id: 'heartbeat', label: 'Heartbeat', path: '/console/heartbeat', icon: '\u2661' },
     { id: 'extensions', label: 'Extensions', path: '/console/extensions', icon: '\u2756' },
