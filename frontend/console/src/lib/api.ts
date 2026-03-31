@@ -23,6 +23,8 @@ import type {
   Project,
   ProjectActivity,
   ProjectSessionInfo,
+  HeartbeatStatus,
+  HeartbeatRunResult,
   Session,
   SessionMessage,
   UpdateCronJobRequest,
@@ -58,6 +60,34 @@ async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
 
   return (await response.json()) as T
 }
+
+// --- Heartbeat ---
+
+export async function getHeartbeatStatus(): Promise<HeartbeatStatus> {
+  return requestJSON<HeartbeatStatus>('/v1/heartbeat/status')
+}
+
+export async function runHeartbeatOnce(): Promise<HeartbeatRunResult> {
+  return requestJSON<HeartbeatRunResult>('/v1/heartbeat/run-once', { method: 'POST' })
+}
+
+export async function getHeartbeatConfig(): Promise<{ content: string }> {
+  return requestJSON<{ content: string }>('/v1/heartbeat/config')
+}
+
+export async function saveHeartbeatConfig(content: string): Promise<void> {
+  await requestJSON<{ ok: string }>('/v1/heartbeat/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+}
+
+export async function getHeartbeatLog(): Promise<{ date: string; content: string }> {
+  return requestJSON<{ date: string; content: string }>('/v1/heartbeat/log')
+}
+
+// --- Projects ---
 
 export async function listProjects(): Promise<Project[]> {
   return requestJSON<Project[]>('/v1/projects')

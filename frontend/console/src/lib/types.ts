@@ -1,3 +1,25 @@
+export type HeartbeatStatus = {
+  configured: boolean
+  active_hours?: string
+  timezone?: string
+  chat_busy?: boolean
+  last_run_at?: string
+  last_skipped?: boolean
+  last_skip_reason?: string
+  last_logged?: boolean
+  last_acknowledged?: boolean
+  last_response?: string
+  last_error?: string
+}
+
+export type HeartbeatRunResult = {
+  response?: string
+  skipped?: boolean
+  skip_reason?: string
+  acknowledged?: boolean
+  logged?: boolean
+}
+
 export type Project = {
   id: string
   name: string
