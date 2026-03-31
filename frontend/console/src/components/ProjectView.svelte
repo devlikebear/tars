@@ -199,14 +199,16 @@
     }
   }
 
-  onMount(() => {
+  function refreshAll() {
     void loadDetail()
     void loadBoard()
     void loadState()
     void loadActivity()
     void loadFiles()
     void loadSessionInfo()
-  })
+  }
+
+  onMount(refreshAll)
 </script>
 
 <div class="pv">
@@ -365,7 +367,7 @@
       <!-- Chat -->
       <section class="card pv-wide">
         <span class="card-title">Chat</span>
-        <ChatPanel {projectId} />
+        <ChatPanel {projectId} onSessionChange={refreshAll} />
       </section>
 
       <!-- Activity -->

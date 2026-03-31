@@ -43,6 +43,9 @@
         chatMessages = [{ id: 'system-init', role: 'system', text: `Session: ${projectSession.id.slice(0, 8)}...` }]
         const history = await getSessionHistory(projectSession.id)
         for (const msg of history) {
+          if (msg.role === 'system' && (msg.content.startsWith('[HEARTBEAT]') || msg.content.startsWith('[COMPACTION SUMMARY]') || msg.content.startsWith('[CRON]'))) {
+            continue
+          }
           if (msg.role === 'tool') {
             chatMessages.push({
               id: `tool-${msg.tool_call_id || Date.now()}`,
@@ -275,6 +278,9 @@
       try {
         const history = await getSessionHistory(sessionId)
         for (const msg of history) {
+          if (msg.role === 'system' && (msg.content.startsWith('[HEARTBEAT]') || msg.content.startsWith('[COMPACTION SUMMARY]') || msg.content.startsWith('[CRON]'))) {
+            continue
+          }
           if (msg.role === 'tool') {
             chatMessages.push({
               id: `tool-${msg.tool_call_id || Date.now()}`,
