@@ -267,3 +267,36 @@ func TestRunOnceWithLLMResultWithPolicy_IncludesSessionContextAndAppendsTurn(t *
 		t.Fatalf("expected session turn append with response, got %+v", appended)
 	}
 }
+
+func TestParseClockMinutes_AutoCorrects(t *testing.T) {
+	cases := []struct {
+		input   string
+		want    int
+		wantErr bool
+	}{
+		{"09:00", 9 * 60, false},
+		{"23:59", 23*60 + 59, false},
+		{"00:00", 0, false},
+		{"24:00", 23*60 + 59, false},  // auto-correct
+		{"0:00", 0, false},            // auto-correct
+		{"25:30", 23*60 + 30, false},  // clamp hour
+		{"12:99", 12*60 + 59, false},  // clamp minute
+		{"abc", 0, true},
+	}
+	for _, tc := range cases {
+		got, err := parseClockMinutes(tc.input)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("parseClockMinutes(%q) expected error", tc.input)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("parseClockMinutes(%q) unexpected error: %v", tc.input, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("parseClockMinutes(%q) = %d, want %d", tc.input, got, tc.want)
+		}
+	}
+}

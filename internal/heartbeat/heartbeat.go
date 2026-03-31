@@ -317,8 +317,31 @@ func parseActiveHourRange(raw string) (int, int, error) {
 
 func parseClockMinutes(raw string) (int, error) {
 	value := strings.TrimSpace(raw)
+	// Auto-correct common invalid values
+	switch value {
+	case "24:00":
+		return 23*60 + 59, nil
+	case "0:00":
+		return 0, nil
+	}
 	t, err := time.Parse("15:04", value)
 	if err != nil {
+		// Try to salvage: parse as H:MM or HH:M
+		parts := strings.SplitN(value, ":", 2)
+		if len(parts) == 2 {
+			h, m := 0, 0
+			if _, e := fmt.Sscanf(parts[0], "%d", &h); e == nil {
+				if _, e := fmt.Sscanf(parts[1], "%d", &m); e == nil {
+					if h > 23 {
+						h = 23
+					}
+					if m > 59 {
+						m = 59
+					}
+					return h*60 + m, nil
+				}
+			}
+		}
 		return 0, fmt.Errorf("invalid active_hours clock %q (expected HH:MM)", value)
 	}
 	return t.Hour()*60 + t.Minute(), nil
