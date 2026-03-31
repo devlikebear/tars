@@ -255,7 +255,7 @@
         <button class="btn btn-ghost btn-sm" onclick={loadLog}>Refresh</button>
       </div>
       {#if dailyLog}
-        <div class="hb-log hb-md">{@html renderMarkdown(dailyLog)}</div>
+        <pre class="hb-log-pre">{dailyLog}</pre>
       {:else}
         <div class="hb-empty">No heartbeat entries for today.</div>
       {/if}
@@ -439,12 +439,18 @@
   }
   .hb-md :global(strong) { font-weight: 600; color: var(--text-primary); }
 
-  .hb-log {
+  .hb-log-pre {
     padding: var(--space-3);
-    font-size: var(--text-sm);
-    line-height: 1.6;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.7;
     color: var(--text-secondary);
+    background: var(--bg-base);
+    border-radius: var(--radius-md);
     max-height: 400px;
     overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
   }
 </style>

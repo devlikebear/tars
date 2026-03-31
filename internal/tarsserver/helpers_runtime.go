@@ -250,17 +250,13 @@ func newWorkspaceHeartbeatRunnerWithNotify(
 			}
 			switch {
 			case runErr != nil:
-				evt := newNotificationEvent("heartbeat", "error", "Heartbeat failed", trimForMemory(runErr.Error(), 240))
-				emit(ctx, evt)
+				emit(ctx, newNotificationEvent("heartbeat", "error", "Heartbeat failed", trimForMemory(runErr.Error(), 240)))
 			case result.Skipped:
-				evt := newNotificationEvent("heartbeat", "info", "Heartbeat skipped", trimForMemory(result.SkipReason, 240))
-				emit(ctx, evt)
+				// skip — don't emit notification for routine skips
 			case result.Acknowledged:
-				evt := newNotificationEvent("heartbeat", "info", "Heartbeat acknowledged", "no follow-up action")
-				emit(ctx, evt)
+				// skip — don't emit notification for acknowledged heartbeats
 			default:
-				evt := newNotificationEvent("heartbeat", "info", "Heartbeat action", trimForMemory(result.Response, 280))
-				emit(ctx, evt)
+				emit(ctx, newNotificationEvent("heartbeat", "info", "Heartbeat action", trimForMemory(result.Response, 280)))
 			}
 			if after != nil {
 				_ = after(ctx)

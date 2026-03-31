@@ -550,7 +550,7 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get project failed"})
 				return
 			}
-			sessionID := strings.TrimSpace(item.SessionID)
+			sessionID := resolveProjectSessionID(item, sessionStore)
 			if sessionID == "" {
 				writeJSON(w, http.StatusOK, map[string]any{
 					"project_id": projectID,
@@ -591,7 +591,7 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get project failed"})
 				return
 			}
-			sessionID := strings.TrimSpace(item.SessionID)
+			sessionID := resolveProjectSessionID(item, sessionStore)
 			if sessionID == "" {
 				writeJSON(w, http.StatusOK, map[string]any{"cleared": false, "reason": "no session"})
 				return
@@ -623,7 +623,7 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get project failed"})
 				return
 			}
-			sessionID := strings.TrimSpace(item.SessionID)
+			sessionID := resolveProjectSessionID(item, sessionStore)
 			if sessionID == "" {
 				writeJSON(w, http.StatusOK, map[string]any{"compacted": false, "reason": "no session"})
 				return
@@ -671,7 +671,7 @@ func newProjectAPIHandler(
 				}
 				systemFiles := map[string]bool{
 					"PROJECT.md": true, "STATE.md": true, "KANBAN.md": true,
-					"ACTIVITY.jsonl": true,
+					"ACTIVITY.jsonl": true, "AUTOPILOT.json": true,
 				}
 				type fileEntry struct {
 					Name   string `json:"name"`
@@ -725,4 +725,23 @@ func newProjectAPIHandler(
 	})
 
 	return mux
+}
+
+func resolveProjectSessionID(item project.Project, sessionStore *session.Store) string {
+	if id := strings.TrimSpace(item.SessionID); id != "" {
+		return id
+	}
+	if sessionStore == nil {
+		return ""
+	}
+	allSessions, err := sessionStore.List()
+	if err != nil {
+		return ""
+	}
+	for _, s := range allSessions {
+		if strings.TrimSpace(s.ProjectID) == strings.TrimSpace(item.ID) {
+			return s.ID
+		}
+	}
+	return ""
 }
