@@ -54,6 +54,7 @@ var configInputFields = []configInputField{
 	stringField("usage_limit_mode", []string{"USAGE_LIMIT_MODE", "TARS_USAGE_LIMIT_MODE"}, func(cfg *Config) *string { return &cfg.UsageLimitMode }, lowerTrimmedString),
 	usagePriceOverridesField("usage_price_overrides_json", []string{"USAGE_PRICE_OVERRIDES_JSON", "TARS_USAGE_PRICE_OVERRIDES_JSON"}),
 	intField("agent_max_iterations", []string{"AGENT_MAX_ITERATIONS", "TARS_AGENT_MAX_ITERATIONS"}, func(cfg *Config) *int { return &cfg.AgentMaxIterations }, parsePositiveInt),
+	stringField("heartbeat_interval", []string{"HEARTBEAT_INTERVAL", "TARS_HEARTBEAT_INTERVAL"}, func(cfg *Config) *string { return &cfg.HeartbeatInterval }, strings.TrimSpace),
 	stringField("heartbeat_active_hours", []string{"HEARTBEAT_ACTIVE_HOURS", "TARS_HEARTBEAT_ACTIVE_HOURS"}, func(cfg *Config) *string { return &cfg.HeartbeatActiveHours }, strings.TrimSpace),
 	stringField("heartbeat_timezone", []string{"HEARTBEAT_TIMEZONE", "TARS_HEARTBEAT_TIMEZONE"}, func(cfg *Config) *string { return &cfg.HeartbeatTimezone }, strings.TrimSpace),
 	intField("cron_run_history_limit", []string{"CRON_RUN_HISTORY_LIMIT", "TARS_CRON_RUN_HISTORY_LIMIT"}, func(cfg *Config) *int { return &cfg.CronRunHistoryLimit }, parsePositiveInt),

@@ -1,5 +1,6 @@
 export type HeartbeatStatus = {
   configured: boolean
+  interval?: string
   active_hours?: string
   timezone?: string
   chat_busy?: boolean

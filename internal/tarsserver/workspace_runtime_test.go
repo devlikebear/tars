@@ -111,11 +111,11 @@ func TestWorkspaceHeartbeatRunner_AlwaysWritesDefaultWorkspace(t *testing.T) {
 		t.Fatalf("expected default heartbeat tick log, got %q", string(defaultLog))
 	}
 
-	defaultStatus := state.snapshot(defaultWorkspaceID, true, "", "", false)
+	defaultStatus := state.snapshot(defaultWorkspaceID, true, "", "", "", false)
 	if strings.TrimSpace(defaultStatus.LastRunAt) == "" {
 		t.Fatalf("expected default heartbeat state to record last run")
 	}
-	tenantStatus := state.snapshot("team-a", true, "", "", false)
+	tenantStatus := state.snapshot("team-a", true, "", "", "", false)
 	if strings.TrimSpace(tenantStatus.LastRunAt) != "" {
 		t.Fatalf("did not expect team-a heartbeat state, got %+v", tenantStatus)
 	}

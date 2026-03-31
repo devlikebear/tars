@@ -79,6 +79,7 @@ func Schema() []FieldMeta {
 
 		// ── Automation ───────────────────────────
 		f("agent_max_iterations", "Automation", "int", "Max Iterations", "Maximum agent loop iterations per request"),
+		f("heartbeat_interval", "Automation", "string", "Heartbeat Interval", "Heartbeat tick interval (e.g. 5m, 30m). Empty = disabled."),
 		f("heartbeat_active_hours", "Automation", "string", "Active Hours", "Heartbeat active hours range (e.g. 09:00-18:00)"),
 		f("heartbeat_timezone", "Automation", "string", "Timezone", "Timezone for active hours evaluation"),
 		f("cron_run_history_limit", "Automation", "int", "Cron History Limit", "Maximum run records kept per cron job"),
@@ -265,6 +266,8 @@ func extractValue(yamlKey string, cfg Config) any {
 	// Automation
 	case "agent_max_iterations":
 		return cfg.AgentMaxIterations
+	case "heartbeat_interval":
+		return cfg.HeartbeatInterval
 	case "heartbeat_active_hours":
 		return cfg.HeartbeatActiveHours
 	case "heartbeat_timezone":
