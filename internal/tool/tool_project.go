@@ -13,7 +13,7 @@ import (
 func NewProjectCreateTool(store *project.Store) Tool {
 	return Tool{
 		Name:        "project_create",
-		Description: "Create a new project workspace and project metadata document.",
+		Description: "Create a new project. Set execution_mode to 'autonomous' when user wants AI to run the project independently (자율실행/자동실행/autonomous), or 'manual' (default) for user-driven execution. For autonomous projects, optionally set max_phases (default 3) and sub_agents (e.g. ['critic'] for critical review loop).",
 	Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
@@ -36,9 +36,9 @@ func NewProjectCreateTool(store *project.Store) Tool {
     },
     "instructions":{"type":"string"},
     "clone_repo":{"type":"boolean"},
-    "execution_mode":{"type":"string","description":"autonomous or manual (default: manual)"},
-    "max_phases":{"type":"integer","description":"max phases for autonomous mode (default: 3)"},
-    "sub_agents":{"type":"array","items":{"type":"string"},"description":"sub-agent roles (e.g. critic)"}
+    "execution_mode":{"type":"string","enum":["autonomous","manual"],"description":"Set to 'autonomous' for AI-driven auto-execution, 'manual' for user-driven. Keywords: 자율실행, 자동, autonomous → use 'autonomous'."},
+    "max_phases":{"type":"integer","description":"Maximum iteration phases for autonomous mode (default: 3). Each phase plans and executes a batch of tasks."},
+    "sub_agents":{"type":"array","items":{"type":"string"},"description":"Sub-agent roles for autonomous review loop. Use ['critic'] to enable critical review after each phase."}
   },
   "required":["name"],
   "additionalProperties":false
