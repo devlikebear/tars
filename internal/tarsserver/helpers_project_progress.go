@@ -19,6 +19,7 @@ func newProjectProgressAfterHeartbeat(
 	store *project.Store,
 	runner project.TaskRunner,
 	ask heartbeat.AskFunc,
+	skillResolver project.SkillResolver,
 	logger zerolog.Logger,
 ) func(ctx context.Context) error {
 	if store == nil || runner == nil {
@@ -34,9 +35,9 @@ func newProjectProgressAfterHeartbeat(
 				continue
 			}
 			if strings.TrimSpace(p.ExecutionMode) == "autonomous" {
-				advanceAutonomousProject(ctx, store, runner, ask, p, logger)
+				advanceAutonomousProject(ctx, store, runner, ask, skillResolver, p, logger)
 			} else {
-				advanceManualProject(ctx, store, runner, p, logger)
+				advanceManualProject(ctx, store, runner, skillResolver, p, logger)
 			}
 		}
 		return nil
@@ -44,12 +45,12 @@ func newProjectProgressAfterHeartbeat(
 }
 
 // advanceManualProject dispatches existing todo/review tasks only.
-func advanceManualProject(ctx context.Context, store *project.Store, runner project.TaskRunner, p project.Project, logger zerolog.Logger) {
+func advanceManualProject(ctx context.Context, store *project.Store, runner project.TaskRunner, skillResolver project.SkillResolver, p project.Project, logger zerolog.Logger) {
 	board, err := store.GetBoard(p.ID)
 	if err != nil {
 		return
 	}
-	dispatchBoardTasks(ctx, store, runner, p.ID, board, logger)
+	dispatchBoardTasks(ctx, store, runner, skillResolver, p.ID, board, logger)
 }
 
 // advanceAutonomousProject runs the full autonomous cycle:
@@ -57,7 +58,7 @@ func advanceManualProject(ctx context.Context, store *project.Store, runner proj
 // 2. If board empty → LLM generates tasks (planning)
 // 3. If has todo/review → dispatch
 // 4. If all done → advance phase or complete project
-func advanceAutonomousProject(ctx context.Context, store *project.Store, runner project.TaskRunner, ask heartbeat.AskFunc, p project.Project, logger zerolog.Logger) {
+func advanceAutonomousProject(ctx context.Context, store *project.Store, runner project.TaskRunner, ask heartbeat.AskFunc, skillResolver project.SkillResolver, p project.Project, logger zerolog.Logger) {
 	state, err := store.GetState(p.ID)
 	if err != nil {
 		state = project.ProjectState{ProjectID: p.ID}
@@ -123,7 +124,7 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 
 	// Case 3: Has todo/review → dispatch
 	if counts["todo"] > 0 || counts["review"] > 0 {
-		dispatchBoardTasks(ctx, store, runner, p.ID, board, logger)
+		dispatchBoardTasks(ctx, store, runner, skillResolver, p.ID, board, logger)
 		return
 	}
 }
@@ -247,7 +248,7 @@ func completeProject(store *project.Store, projectID string, reason string, logg
 }
 
 // dispatchBoardTasks dispatches todo and review tasks via orchestrator.
-func dispatchBoardTasks(ctx context.Context, store *project.Store, runner project.TaskRunner, projectID string, board project.Board, logger zerolog.Logger) {
+func dispatchBoardTasks(ctx context.Context, store *project.Store, runner project.TaskRunner, skillResolver project.SkillResolver, projectID string, board project.Board, logger zerolog.Logger) {
 	hasTodo := false
 	hasReview := false
 	for _, task := range board.Tasks {
@@ -262,6 +263,7 @@ func dispatchBoardTasks(ctx context.Context, store *project.Store, runner projec
 		return
 	}
 	orch := project.NewOrchestrator(store, runner)
+	orch.SetSkillResolver(skillResolver)
 	if hasTodo {
 		report, err := orch.DispatchTodo(ctx, projectID)
 		if err != nil {

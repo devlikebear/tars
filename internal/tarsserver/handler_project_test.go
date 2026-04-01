@@ -30,7 +30,7 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{
 		"name":"Ops A",
@@ -125,7 +125,7 @@ func TestProjectAPI_RejectsDisallowedMethods(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{"name":"Ops A","type":"operations"}`))
 	createReq.Header.Set("Content-Type", "application/json")
@@ -179,7 +179,7 @@ func TestProjectAPI_PatchUpdatesPolicyFields(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -243,7 +243,7 @@ func TestProjectAPI_BriefFinalizeAndStateRoutes(t *testing.T) {
 	}
 
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, mainSess.ID, nil, nil, nil, zerolog.New(io.Discard))
 
 	briefReq := httptest.NewRequest(http.MethodPatch, "/v1/project-briefs/"+mainSess.ID, strings.NewReader(`{
 		"title":"Orbit Hearts",
@@ -327,7 +327,7 @@ func TestProjectAPI_ActivityRoutes(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -394,7 +394,7 @@ func TestProjectAPI_BoardRoutes(t *testing.T) {
 	}
 	store := session.NewStore(root)
 	projectStore := project.NewStore(root, nil)
-	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", nil, nil, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
 	if err != nil {
@@ -515,7 +515,7 @@ notes: approved
 	})
 
 	taskRunner := gateway.NewProjectTaskRunner(runtime, "")
-	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, func(context.Context) error { return nil }, zerolog.New(io.Discard))
+	handler := newProjectAPIHandler(projectStore, store, "", taskRunner, func(context.Context) error { return nil }, nil, zerolog.New(io.Discard))
 
 	created, err := projectStore.Create(project.CreateInput{Name: "Dispatch Project", Type: "operations"})
 	if err != nil {

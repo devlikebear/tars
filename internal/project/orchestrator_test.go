@@ -635,3 +635,121 @@ func hasAgentReport(items []Activity, taskID, status, errorText string) bool {
 	}
 	return false
 }
+
+// stubSkillResolver implements SkillResolver for testing.
+type stubSkillResolver struct {
+	skills []SkillContent
+}
+
+func (s *stubSkillResolver) ResolveSkills(_ []string) []SkillContent {
+	return s.skills
+}
+
+func TestOrchestratorDispatchTodo_InjectsProjectSkillsIntoPrompt(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 13, 0, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{
+		Name:        "Skill Project",
+		SkillsAllow: []string{"github-dev"},
+	})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{ID: "task-1", Title: "Create issue", Status: "todo", Assignee: "planner", Role: "developer", ReviewRequired: true},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	runner := newStubTaskRunner()
+	orch := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error { return nil })
+	orch.SetSkillResolver(&stubSkillResolver{
+		skills: []SkillContent{
+			{Name: "github-dev", Content: "Always use `gh issue create` for issue creation."},
+		},
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, runErr := orch.DispatchTodo(context.Background(), created.ID)
+		errCh <- runErr
+	}()
+
+	select {
+	case <-runner.startedCh:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected task run to start")
+	}
+	close(runner.waitGate)
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	if len(runner.started) != 1 {
+		t.Fatalf("expected 1 started task, got %d", len(runner.started))
+	}
+	prompt := runner.started[0].Prompt
+	if !strings.Contains(prompt, "## Project Skills") {
+		t.Fatalf("expected skills section in prompt, got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "### github-dev") {
+		t.Fatalf("expected github-dev skill header in prompt")
+	}
+	if !strings.Contains(prompt, "gh issue create") {
+		t.Fatalf("expected skill content in prompt")
+	}
+}
+
+func TestOrchestratorDispatchTodo_NoSkillsWhenResolverNil(t *testing.T) {
+	store := NewStore(t.TempDir(), func() time.Time {
+		return time.Date(2026, 3, 14, 13, 0, 0, 0, time.UTC)
+	})
+	created, err := store.Create(CreateInput{
+		Name:        "No Skill Project",
+		SkillsAllow: []string{"github-dev"},
+	})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if _, err := store.UpdateBoard(created.ID, BoardUpdateInput{
+		Tasks: []BoardTask{
+			{ID: "task-1", Title: "Do work", Status: "todo", Assignee: "dev", Role: "developer", ReviewRequired: true},
+		},
+	}); err != nil {
+		t.Fatalf("seed board: %v", err)
+	}
+
+	runner := newStubTaskRunner()
+	orch := NewOrchestratorWithGitHubAuthChecker(store, runner, func(context.Context) error { return nil })
+	// No SetSkillResolver — resolver is nil
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, runErr := orch.DispatchTodo(context.Background(), created.ID)
+		errCh <- runErr
+	}()
+
+	select {
+	case <-runner.startedCh:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected task run to start")
+	}
+	close(runner.waitGate)
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	prompt := runner.started[0].Prompt
+	if strings.Contains(prompt, "## Project Skills") {
+		t.Fatalf("expected no skills section when resolver is nil, got:\n%s", prompt)
+	}
+}

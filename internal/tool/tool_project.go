@@ -59,6 +59,7 @@ func NewProjectCreateTool(store *project.Store) Tool {
 				ExecutionMode   string                      `json:"execution_mode,omitempty"`
 				MaxPhases       int                         `json:"max_phases,omitempty"`
 				SubAgents       []project.SubAgentConfig    `json:"sub_agents,omitempty"`
+				SkillsAllow     []string                    `json:"skills_allow,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
@@ -75,6 +76,7 @@ func NewProjectCreateTool(store *project.Store) Tool {
 				ExecutionMode:   input.ExecutionMode,
 				MaxPhases:       input.MaxPhases,
 				SubAgents:       input.SubAgents,
+				SkillsAllow:     input.SkillsAllow,
 			})
 			if err != nil {
 				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil

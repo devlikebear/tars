@@ -406,7 +406,8 @@ func buildAPIMux(
 	}
 	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
 	projectTaskRunner := gateway.NewProjectTaskRunner(gatewayRuntime, "")
-	projectProgressAfterHeartbeat = newProjectProgressAfterHeartbeat(projectStore, projectTaskRunner, deps.ask, logger)
+	projectSkillResolver := newExtensionsSkillResolver(extensionsManager)
+	projectProgressAfterHeartbeat = newProjectProgressAfterHeartbeat(projectStore, projectTaskRunner, deps.ask, projectSkillResolver, logger)
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,
 		sessionStore,
@@ -419,7 +420,7 @@ func buildAPIMux(
 		chatTools...,
 	)
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
-	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, logger)
+	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, projectSkillResolver, logger)
 	consoleHandler, err := newConsoleHandler(logger)
 	if err != nil {
 		return nil, err

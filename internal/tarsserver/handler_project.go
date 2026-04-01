@@ -18,6 +18,7 @@ func newProjectAPIHandler(
 	mainSessionID string,
 	taskRunner project.TaskRunner,
 	githubAuthChecker project.GitHubAuthChecker,
+	skillResolver project.SkillResolver,
 	logger zerolog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -181,6 +182,7 @@ func newProjectAPIHandler(
 				ExecutionMode   string                      `json:"execution_mode,omitempty"`
 				MaxPhases       int                         `json:"max_phases,omitempty"`
 				SubAgents       []project.SubAgentConfig    `json:"sub_agents,omitempty"`
+				SkillsAllow     []string                    `json:"skills_allow,omitempty"`
 			}
 			if !decodeJSONBody(w, r, &req) {
 				return
@@ -197,6 +199,7 @@ func newProjectAPIHandler(
 				ExecutionMode:   req.ExecutionMode,
 				MaxPhases:       req.MaxPhases,
 				SubAgents:       req.SubAgents,
+				SkillsAllow:     req.SkillsAllow,
 			})
 			if err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "required") || strings.Contains(strings.ToLower(err.Error()), "invalid") {
@@ -482,6 +485,7 @@ func newProjectAPIHandler(
 				return
 			}
 			orchestrator := project.NewOrchestratorWithGitHubAuthChecker(store, taskRunner, githubAuthChecker)
+			orchestrator.SetSkillResolver(skillResolver)
 			stage, ok := project.DefaultWorkflowPolicy.NormalizeDispatchStage(req.Stage)
 			if !ok {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage must be todo or review"})

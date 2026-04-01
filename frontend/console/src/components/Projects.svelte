@@ -49,6 +49,7 @@
   let newProjectMode: 'manual' | 'autonomous' = $state('manual')
   let newProjectMaxPhases = $state(3)
   let newProjectSubAgents = $state('')
+  let newProjectSkillsAllow = $state('')
   let newProjectSaving = $state(false)
   let newProjectError = $state('')
 
@@ -88,6 +89,9 @@
       const subAgents = newProjectSubAgents.trim()
         ? newProjectSubAgents.split(',').map((s) => s.trim()).filter(Boolean).map((role) => ({ role, run_after: 'phase_done' as const }))
         : undefined
+      const skillsAllow = newProjectSkillsAllow.trim()
+        ? newProjectSkillsAllow.split(',').map((s) => s.trim()).filter(Boolean)
+        : undefined
       const p = await createProject({
         name: newProjectName.trim(),
         type: newProjectType.trim() || undefined,
@@ -96,6 +100,7 @@
         execution_mode: newProjectMode,
         max_phases: newProjectMode === 'autonomous' ? newProjectMaxPhases : undefined,
         sub_agents: subAgents,
+        skills_allow: skillsAllow,
       })
       projects = [p, ...projects]
       showNewProject = false
@@ -106,6 +111,7 @@
       newProjectMode = 'manual'
       newProjectMaxPhases = 3
       newProjectSubAgents = ''
+      newProjectSkillsAllow = ''
       goToProject(p.id)
     } catch (e) {
       newProjectError = e instanceof Error ? e.message : 'Failed to create project'
@@ -181,6 +187,7 @@
         <input type="text" placeholder="Type (optional)" bind:value={newProjectType} class="form-input" />
         <input type="text" placeholder="Objective (optional)" bind:value={newProjectObjective} class="form-input form-span-2" />
         <input type="text" placeholder="Git repo URL (optional)" bind:value={newProjectGitRepo} class="form-input form-span-2" />
+        <input type="text" placeholder="Skills (comma-separated, e.g. github-dev, testing)" bind:value={newProjectSkillsAllow} class="form-input form-span-2" />
         <div class="form-span-2 form-row">
           <label class="form-label">
             Execution mode

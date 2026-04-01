@@ -48,6 +48,7 @@
   let editName = $state('')
   let editObjective = $state('')
   let editGitRepo = $state('')
+  let editSkillsAllow = $state('')
   let editSaving = $state(false)
   let editError = $state('')
   let deleting = $state(false)
@@ -147,6 +148,7 @@
     editName = project.name
     editObjective = project.objective || ''
     editGitRepo = project.git_repo || ''
+    editSkillsAllow = (project.skills_allow || []).join(', ')
     editError = ''
     editing = true
   }
@@ -161,10 +163,14 @@
     editSaving = true
     editError = ''
     try {
+      const skillsAllow = editSkillsAllow.trim()
+        ? editSkillsAllow.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : undefined
       project = await updateProject(projectId, {
         name: editName.trim(),
         objective: editObjective.trim() || undefined,
         git_repo: editGitRepo.trim() || undefined,
+        skills_allow: skillsAllow,
       })
       editing = false
     } catch (e) {
@@ -296,6 +302,7 @@
             <input type="text" placeholder="Project name *" bind:value={editName} class="form-input" />
             <input type="text" placeholder="Objective" bind:value={editObjective} class="form-input" />
             <input type="text" placeholder="Git repo URL" bind:value={editGitRepo} class="form-input" />
+            <input type="text" placeholder="Skills (comma-separated, e.g. github-dev)" bind:value={editSkillsAllow} class="form-input" />
             <div style="display:flex;gap:var(--space-2)">
               <button class="btn btn-primary btn-sm" disabled={!editName.trim() || editSaving} onclick={handleSaveEdit}>
                 {editSaving ? 'Saving...' : 'Save'}
@@ -314,6 +321,11 @@
           <span class="badge badge-accent">autonomous</span>
         {:else}
           <span class="badge badge-default">manual</span>
+        {/if}
+        {#if project.skills_allow?.length}
+          {#each project.skills_allow as skill}
+            <span class="badge badge-info">{skill}</span>
+          {/each}
         {/if}
         {#if !editing}
           <button class="btn btn-ghost btn-sm" onclick={enterEdit}>Edit</button>

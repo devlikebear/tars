@@ -287,12 +287,13 @@ type Project struct {
 }
 
 type ProjectCreateRequest struct {
-	Name         string `json:"name"`
-	Type         string `json:"type,omitempty"`
-	GitRepo      string `json:"git_repo,omitempty"`
-	Objective    string `json:"objective,omitempty"`
-	Instructions string `json:"instructions,omitempty"`
-	CloneRepo    bool   `json:"clone_repo,omitempty"`
+	Name         string   `json:"name"`
+	Type         string   `json:"type,omitempty"`
+	GitRepo      string   `json:"git_repo,omitempty"`
+	Objective    string   `json:"objective,omitempty"`
+	Instructions string   `json:"instructions,omitempty"`
+	CloneRepo    bool     `json:"clone_repo,omitempty"`
+	SkillsAllow  []string `json:"skills_allow,omitempty"`
 }
 
 type ProjectUpdateRequest struct {
