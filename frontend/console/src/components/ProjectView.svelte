@@ -602,18 +602,23 @@
   /* ── State + Board ────────────────────────────── */
   .pv-state-board {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: 1fr;
     gap: var(--space-4);
     margin-bottom: var(--space-4);
   }
 
   .pv-state-card {
-    min-width: 200px;
+    min-width: 0;
   }
 
   .pv-board-tasks {
     display: grid;
     gap: var(--space-1);
+  }
+
+  .pv-board-card {
+    min-width: 0;
+    overflow: hidden;
   }
 
   .pv-board-task {
@@ -623,6 +628,8 @@
     padding: var(--space-2) var(--space-3);
     background: var(--bg-base);
     border-radius: var(--radius-sm);
+    min-width: 0;
+    overflow: hidden;
   }
 
   .pv-board-task-title {
@@ -721,11 +728,6 @@
     border-color: var(--accent);
   }
 
-  @media (max-width: 900px) {
-    .pv-state-board {
-      grid-template-columns: 1fr;
-    }
-  }
 
   /* ── Artifacts ─────────────────────────────── */
   .pv-files-list { display: flex; flex-direction: column; }
