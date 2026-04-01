@@ -74,7 +74,7 @@ func applyUpdateInput(item *Project, input UpdateInput) error {
 		item.MaxPhases = normalizeMaxPhases(*input.MaxPhases, item.ExecutionMode)
 	}
 	if len(input.SubAgents) > 0 {
-		item.SubAgents = normalizeList(input.SubAgents)
+		item.SubAgents = normalizeSubAgents(input.SubAgents)
 	}
 	if input.SessionID != nil {
 		item.SessionID = strings.TrimSpace(*input.SessionID)
@@ -210,6 +210,38 @@ func normalizeStatus(raw string) string {
 	default:
 		return "active"
 	}
+}
+
+func normalizeSubAgents(agents []SubAgentConfig) []SubAgentConfig {
+	if len(agents) == 0 {
+		return nil
+	}
+	out := make([]SubAgentConfig, 0, len(agents))
+	seen := map[string]struct{}{}
+	for _, a := range agents {
+		role := strings.TrimSpace(a.Role)
+		if role == "" {
+			continue
+		}
+		key := strings.ToLower(role)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		runAfter := strings.TrimSpace(a.RunAfter)
+		if runAfter == "" {
+			runAfter = "phase_done"
+		}
+		out = append(out, SubAgentConfig{
+			Role:        role,
+			Description: strings.TrimSpace(a.Description),
+			RunAfter:    runAfter,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func normalizeList(values []string) []string {

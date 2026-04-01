@@ -170,17 +170,17 @@ func newProjectAPIHandler(
 			writeJSON(w, http.StatusOK, items)
 		case http.MethodPost:
 			var req struct {
-				Name            string                 `json:"name"`
-				Type            string                 `json:"type,omitempty"`
-				GitRepo         string                 `json:"git_repo,omitempty"`
-				Objective       string                 `json:"objective,omitempty"`
-				WorkflowProfile string                 `json:"workflow_profile,omitempty"`
-				WorkflowRules   []project.WorkflowRule `json:"workflow_rules,omitempty"`
-				Instructions    string                 `json:"instructions,omitempty"`
-				CloneRepo       bool                   `json:"clone_repo,omitempty"`
-				ExecutionMode   string                 `json:"execution_mode,omitempty"`
-				MaxPhases       int                    `json:"max_phases,omitempty"`
-				SubAgents       []string               `json:"sub_agents,omitempty"`
+				Name            string                      `json:"name"`
+				Type            string                      `json:"type,omitempty"`
+				GitRepo         string                      `json:"git_repo,omitempty"`
+				Objective       string                      `json:"objective,omitempty"`
+				WorkflowProfile string                      `json:"workflow_profile,omitempty"`
+				WorkflowRules   []project.WorkflowRule      `json:"workflow_rules,omitempty"`
+				Instructions    string                      `json:"instructions,omitempty"`
+				CloneRepo       bool                        `json:"clone_repo,omitempty"`
+				ExecutionMode   string                      `json:"execution_mode,omitempty"`
+				MaxPhases       int                         `json:"max_phases,omitempty"`
+				SubAgents       []project.SubAgentConfig    `json:"sub_agents,omitempty"`
 			}
 			if !decodeJSONBody(w, r, &req) {
 				return

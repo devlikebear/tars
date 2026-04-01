@@ -32,7 +32,7 @@ type Project struct {
 	SecretsRefs        []string       `json:"secrets_refs,omitempty" yaml:"secrets_refs,omitempty"`
 	ExecutionMode      string         `json:"execution_mode,omitempty" yaml:"execution_mode,omitempty"`
 	MaxPhases          int            `json:"max_phases,omitempty" yaml:"max_phases,omitempty"`
-	SubAgents          []string       `json:"sub_agents,omitempty" yaml:"sub_agents,omitempty"`
+	SubAgents          []SubAgentConfig `json:"sub_agents,omitempty" yaml:"sub_agents,omitempty"`
 	SessionID          string         `json:"session_id,omitempty" yaml:"session_id,omitempty"`
 	Body               string         `json:"body,omitempty" yaml:"-"`
 	Path               string         `json:"path,omitempty" yaml:"-"`
@@ -41,6 +41,12 @@ type Project struct {
 type WorkflowRule struct {
 	Name   string            `json:"name" yaml:"name"`
 	Params map[string]string `json:"params,omitempty" yaml:"params,omitempty"`
+}
+
+type SubAgentConfig struct {
+	Role        string `json:"role" yaml:"role"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	RunAfter    string `json:"run_after,omitempty" yaml:"run_after,omitempty"`
 }
 
 type CreateInput struct {
@@ -54,7 +60,7 @@ type CreateInput struct {
 	CloneRepo       bool
 	ExecutionMode   string
 	MaxPhases       int
-	SubAgents       []string
+	SubAgents       []SubAgentConfig
 }
 
 type UpdateInput struct {
@@ -66,7 +72,7 @@ type UpdateInput struct {
 	Instructions       *string
 	ExecutionMode      *string
 	MaxPhases          *int
-	SubAgents          []string
+	SubAgents          []SubAgentConfig
 	SessionID          *string
 	ToolsAllow         []string
 	ToolsAllowGroups   []string
@@ -126,7 +132,7 @@ func (s *Store) Create(input CreateInput) (Project, error) {
 		WorkflowRules:   normalizeWorkflowRules(input.WorkflowRules),
 		ExecutionMode:   normalizeExecutionMode(input.ExecutionMode),
 		MaxPhases:       normalizeMaxPhases(input.MaxPhases, input.ExecutionMode),
-		SubAgents:       normalizeList(input.SubAgents),
+		SubAgents:       normalizeSubAgents(input.SubAgents),
 		Body:            strings.TrimSpace(input.Instructions),
 	}
 	if err := s.write(project); err != nil {
