@@ -436,6 +436,7 @@ func parseProjectStateDocument(raw string) (ProjectState, error) {
 		Goal:              mapString(parsed, "goal"),
 		Phase:             normalizeProjectStatePhase(mapString(parsed, "phase")),
 		Status:            normalizeProjectStateStatus(mapString(parsed, "status")),
+		PhaseNumber:       mapInt(parsed, "phase_number"),
 		NextAction:        mapString(parsed, "next_action", "next-action"),
 		RemainingTasks:    mapStringList(parsed, "remaining_tasks", "remaining-tasks"),
 		CompletionSummary: mapString(parsed, "completion_summary", "completion-summary"),
@@ -452,6 +453,9 @@ func buildProjectStateDocument(item ProjectState) string {
 	_, _ = fmt.Fprintf(&b, "project_id: %s\n", quoteYAML(strings.TrimSpace(item.ProjectID)))
 	_, _ = fmt.Fprintf(&b, "phase: %s\n", quoteYAML(normalizeProjectStatePhase(item.Phase)))
 	_, _ = fmt.Fprintf(&b, "status: %s\n", quoteYAML(normalizeProjectStateStatus(item.Status)))
+	if item.PhaseNumber > 0 {
+		_, _ = fmt.Fprintf(&b, "phase_number: %d\n", item.PhaseNumber)
+	}
 	writeOptionalYAMLField(&b, "goal", item.Goal)
 	writeOptionalYAMLField(&b, "next_action", item.NextAction)
 	writeDocumentList(&b, "remaining_tasks", item.RemainingTasks)
