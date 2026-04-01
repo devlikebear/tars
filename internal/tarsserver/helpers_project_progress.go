@@ -94,18 +94,25 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 		return
 	}
 
-	// Case 2: All tasks done → critic review (if configured), then next phase
+	// Case 2: All tasks done → run phase_done agents (if configured), then next phase
 	if counts["done"] == len(board.Tasks) {
 		if ask == nil {
 			return
 		}
-		// Run critic review if sub_agents includes "critic"
-		var criticFeedback string
-		if hasCritic(p.SubAgents) {
-			criticFeedback = runCriticReview(ctx, store, ask, p, board, state.PhaseNumber, logger)
+		// Run all sub-agents triggered by "phase_done"
+		var agentFeedback string
+		phaseDoneAgents := findAgentsByTrigger(p.SubAgents, "phase_done")
+		for _, agent := range phaseDoneAgents {
+			feedback := runAgentReview(ctx, store, ask, p, board, state.PhaseNumber, agent, logger)
+			if feedback != "" {
+				if agentFeedback != "" {
+					agentFeedback += "\n\n"
+				}
+				agentFeedback += fmt.Sprintf("[%s] %s", agent.Role, feedback)
+			}
 		}
 		nextPhase := state.PhaseNumber + 1
-		planAutonomousTasks(ctx, store, ask, p, nextPhase, criticFeedback, logger)
+		planAutonomousTasks(ctx, store, ask, p, nextPhase, agentFeedback, logger)
 		return
 	}
 
@@ -139,13 +146,27 @@ func planAutonomousTasks(ctx context.Context, store *project.Store, ask heartbea
 		criticContext = fmt.Sprintf("\n\nCRITIC FEEDBACK FROM PREVIOUS PHASE (address these issues):\n%s", strings.TrimSpace(criticFeedback))
 	}
 
+	// Build agent context
+	agentContext := ""
+	if len(p.SubAgents) > 0 {
+		var agentNames []string
+		for _, a := range p.SubAgents {
+			desc := a.Role
+			if a.Description != "" {
+				desc += " (" + a.Description + ")"
+			}
+			agentNames = append(agentNames, desc)
+		}
+		agentContext = fmt.Sprintf("\nAvailable agents: %s", strings.Join(agentNames, ", "))
+	}
+
 	prompt := fmt.Sprintf(
 		`You are a project executor. Generate tasks for phase %d/%d of this project.
 
 Project: %s
 Objective: %s
 Instructions: %s
-%s%s
+%s%s%s
 CRITICAL RULES:
 - Each task MUST produce a concrete deliverable file (not a plan, not a template, not analysis).
 - If the objective is to write stories → tasks should be "Write story X and save as story-X.md"
@@ -153,14 +174,14 @@ CRITICAL RULES:
 - Do NOT generate planning/analysis/template tasks. The output must be the FINAL deliverable.
 - Phase %d of %d: %s
 
-Return a JSON array of task objects. Each task has "id" (string), "title" (string).
+Return a JSON array of task objects. Each task has "id" (string), "title" (string), and optionally "assignee" (string, agent role name).
 Generate 1-3 tasks that produce actual deliverables. Only return the JSON array.
-Example: [{"id":"task-1","title":"Write the complete first short story and save as story-1.md"}]`,
+Example: [{"id":"task-1","title":"Write the complete first short story and save as story-1.md","assignee":"writer"}]`,
 		phaseNumber, maxPhases,
 		strings.TrimSpace(p.Name),
 		strings.TrimSpace(p.Objective),
 		strings.TrimSpace(p.Body),
-		filesContext, criticContext,
+		filesContext, criticContext, agentContext,
 		phaseNumber, maxPhases,
 		phaseGuidance(phaseNumber, maxPhases),
 	)
@@ -182,9 +203,10 @@ Example: [{"id":"task-1","title":"Write the complete first short story and save 
 	boardTasks := make([]project.BoardTask, len(tasks))
 	for i, t := range tasks {
 		boardTasks[i] = project.BoardTask{
-			ID:     fmt.Sprintf("phase%d-task-%d", phaseNumber, i+1),
-			Title:  t.Title,
-			Status: "todo",
+			ID:       fmt.Sprintf("phase%d-task-%d", phaseNumber, i+1),
+			Title:    t.Title,
+			Status:   "todo",
+			Assignee: strings.TrimSpace(t.Assignee),
 		}
 	}
 	if _, err := store.UpdateBoard(p.ID, project.BoardUpdateInput{Tasks: boardTasks}); err != nil {
@@ -267,8 +289,9 @@ func countTaskStatuses(board project.Board) map[string]int {
 }
 
 type llmTask struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Assignee string `json:"assignee,omitempty"`
 }
 
 func parseTasksFromLLM(response string) []llmTask {
@@ -293,13 +316,18 @@ func parseTasksFromLLM(response string) []llmTask {
 	return result
 }
 
-func hasCritic(subAgents []string) bool {
-	for _, a := range subAgents {
-		if strings.EqualFold(strings.TrimSpace(a), "critic") {
-			return true
+func findAgentsByTrigger(agents []project.SubAgentConfig, trigger string) []project.SubAgentConfig {
+	var result []project.SubAgentConfig
+	for _, a := range agents {
+		runAfter := strings.TrimSpace(a.RunAfter)
+		if runAfter == "" {
+			runAfter = "phase_done"
+		}
+		if strings.EqualFold(runAfter, trigger) {
+			result = append(result, a)
 		}
 	}
-	return false
+	return result
 }
 
 func phaseGuidance(phase, max int) string {
@@ -335,34 +363,42 @@ func listProjectArtifactNames(store *project.Store, projectID string) []string {
 	return names
 }
 
-// runCriticReview asks the LLM to critically review the completed tasks
+// runAgentReview asks the LLM to perform a review as the given agent role
 // and logs the feedback to project activity.
-func runCriticReview(ctx context.Context, store *project.Store, ask heartbeat.AskFunc, p project.Project, board project.Board, phaseNumber int, logger zerolog.Logger) string {
+func runAgentReview(ctx context.Context, store *project.Store, ask heartbeat.AskFunc, p project.Project, board project.Board, phaseNumber int, agent project.SubAgentConfig, logger zerolog.Logger) string {
 	taskSummary := ""
 	for _, t := range board.Tasks {
 		taskSummary += fmt.Sprintf("- [%s] %s\n", t.Status, t.Title)
 	}
 
+	roleDesc := agent.Role
+	if agent.Description != "" {
+		roleDesc = agent.Description
+	}
+
 	prompt := fmt.Sprintf(
-		`You are a critical reviewer. Review the following completed work for project "%s".
+		`You are a %s. %s
+
+Review the following completed work for project "%s".
 
 Objective: %s
 
 Completed tasks (phase %d):
 %s
 
-Provide a brief critical review (3-5 sentences):
+Provide a brief review (3-5 sentences):
 1. What was done well?
 2. What is missing or could be improved?
 3. Should the next phase address any gaps?
 
 Be constructive but honest. Reply in plain text only.`,
+		agent.Role, roleDesc,
 		p.Name, p.Objective, phaseNumber, taskSummary,
 	)
 
 	response, err := ask(ctx, prompt)
 	if err != nil {
-		logger.Debug().Err(err).Str("project_id", p.ID).Msg("autonomous: critic review failed")
+		logger.Debug().Err(err).Str("project_id", p.ID).Str("agent", agent.Role).Msg("autonomous: agent review failed")
 		return ""
 	}
 
@@ -370,11 +406,11 @@ Be constructive but honest. Reply in plain text only.`,
 
 	// Record review as activity
 	_, _ = store.AppendActivity(p.ID, project.ActivityAppendInput{
-		Source:  "critic",
+		Source:  agent.Role,
 		Kind:    "review",
 		Status:  "completed",
 		Message: feedback,
 	})
-	logger.Info().Str("project_id", p.ID).Int("phase", phaseNumber).Msg("autonomous: critic review completed")
+	logger.Info().Str("project_id", p.ID).Str("agent", agent.Role).Int("phase", phaseNumber).Msg("autonomous: agent review completed")
 	return feedback
 }

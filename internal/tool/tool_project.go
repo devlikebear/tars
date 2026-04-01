@@ -38,7 +38,7 @@ func NewProjectCreateTool(store *project.Store) Tool {
     "clone_repo":{"type":"boolean"},
     "execution_mode":{"type":"string","enum":["autonomous","manual"],"description":"Set to 'autonomous' for AI-driven auto-execution, 'manual' for user-driven. Keywords: 자율실행, 자동, autonomous → use 'autonomous'."},
     "max_phases":{"type":"integer","description":"Maximum iteration phases for autonomous mode (default: 3). Each phase plans and executes a batch of tasks."},
-    "sub_agents":{"type":"array","items":{"type":"string"},"description":"Sub-agent roles for autonomous review loop. Use ['critic'] to enable critical review after each phase."}
+    "sub_agents":{"type":"array","items":{"type":"object","properties":{"role":{"type":"string"},"description":{"type":"string"},"run_after":{"type":"string","enum":["phase_done","each_task"]}},"required":["role"]},"description":"Sub-agent configurations for autonomous execution. Each agent has a role, optional description, and run_after trigger (phase_done or each_task)."}
   },
   "required":["name"],
   "additionalProperties":false
@@ -48,17 +48,17 @@ func NewProjectCreateTool(store *project.Store) Tool {
 				return JSONTextResult(map[string]any{"message": "project store is not configured"}, true), nil
 			}
 			var input struct {
-				Name            string                 `json:"name"`
-				Type            string                 `json:"type,omitempty"`
-				GitRepo         string                 `json:"git_repo,omitempty"`
-				Objective       string                 `json:"objective,omitempty"`
-				WorkflowProfile string                 `json:"workflow_profile,omitempty"`
-				WorkflowRules   []project.WorkflowRule `json:"workflow_rules,omitempty"`
-				Instructions    string                 `json:"instructions,omitempty"`
-				CloneRepo       bool                   `json:"clone_repo,omitempty"`
-				ExecutionMode   string                 `json:"execution_mode,omitempty"`
-				MaxPhases       int                    `json:"max_phases,omitempty"`
-				SubAgents       []string               `json:"sub_agents,omitempty"`
+				Name            string                      `json:"name"`
+				Type            string                      `json:"type,omitempty"`
+				GitRepo         string                      `json:"git_repo,omitempty"`
+				Objective       string                      `json:"objective,omitempty"`
+				WorkflowProfile string                      `json:"workflow_profile,omitempty"`
+				WorkflowRules   []project.WorkflowRule      `json:"workflow_rules,omitempty"`
+				Instructions    string                      `json:"instructions,omitempty"`
+				CloneRepo       bool                        `json:"clone_repo,omitempty"`
+				ExecutionMode   string                      `json:"execution_mode,omitempty"`
+				MaxPhases       int                         `json:"max_phases,omitempty"`
+				SubAgents       []project.SubAgentConfig    `json:"sub_agents,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
@@ -168,7 +168,7 @@ func NewProjectUpdateTool(store *project.Store) Tool {
     "secrets_refs":{"type":"array","items":{"type":"string"}},
     "execution_mode":{"type":"string"},
     "max_phases":{"type":"integer"},
-    "sub_agents":{"type":"array","items":{"type":"string"}}
+    "sub_agents":{"type":"array","items":{"type":"object","properties":{"role":{"type":"string"},"description":{"type":"string"},"run_after":{"type":"string","enum":["phase_done","each_task"]}},"required":["role"]}}
   },
   "required":["project_id"],
   "additionalProperties":false

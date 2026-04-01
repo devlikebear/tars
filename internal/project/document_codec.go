@@ -43,7 +43,7 @@ func parseDocument(raw string) (Project, error) {
 		SecretsRefs:        mapStringList(parsed, "secrets_refs", "secrets-refs"),
 		ExecutionMode:      mapString(parsed, "execution_mode"),
 		MaxPhases:          mapInt(parsed, "max_phases"),
-		SubAgents:          mapStringList(parsed, "sub_agents"),
+		SubAgents:          mapSubAgentConfigList(parsed, "sub_agents"),
 		SessionID:          mapString(parsed, "session_id"),
 		Body:               strings.TrimSpace(body),
 	}
@@ -98,7 +98,7 @@ func buildDocument(project Project) string {
 	if project.MaxPhases > 0 {
 		_, _ = fmt.Fprintf(&b, "max_phases: %d\n", project.MaxPhases)
 	}
-	writeDocumentList(&b, "sub_agents", project.SubAgents)
+	writeSubAgentConfigList(&b, "sub_agents", project.SubAgents)
 	if v := strings.TrimSpace(project.SessionID); v != "" {
 		_, _ = fmt.Fprintf(&b, "session_id: %s\n", v)
 	}
@@ -211,6 +211,61 @@ func mapStringList(values map[string]any, keys ...string) []string {
 		}
 	}
 	return nil
+}
+
+func mapSubAgentConfigList(values map[string]any, keys ...string) []SubAgentConfig {
+	for _, key := range keys {
+		raw, ok := values[key]
+		if !ok {
+			continue
+		}
+		switch v := raw.(type) {
+		case []any:
+			var configs []SubAgentConfig
+			for _, entry := range v {
+				switch e := entry.(type) {
+				case string:
+					// Old format: plain string → convert to SubAgentConfig
+					role := strings.TrimSpace(e)
+					if role != "" {
+						configs = append(configs, SubAgentConfig{
+							Role:     role,
+							RunAfter: "phase_done",
+						})
+					}
+				case map[string]any:
+					// New format: object with role, description, run_after
+					cfg := SubAgentConfig{
+						Role:        mapString(map[string]any(e), "role"),
+						Description: mapString(map[string]any(e), "description"),
+						RunAfter:    mapString(map[string]any(e), "run_after"),
+					}
+					if cfg.Role != "" {
+						configs = append(configs, cfg)
+					}
+				}
+			}
+			return normalizeSubAgents(configs)
+		}
+	}
+	return nil
+}
+
+func writeSubAgentConfigList(b *strings.Builder, key string, agents []SubAgentConfig) {
+	agents = normalizeSubAgents(agents)
+	if len(agents) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(b, "%s:\n", key)
+	for _, a := range agents {
+		_, _ = fmt.Fprintf(b, "  - role: %s\n", quoteYAML(a.Role))
+		if v := strings.TrimSpace(a.Description); v != "" {
+			_, _ = fmt.Fprintf(b, "    description: %s\n", quoteYAML(v))
+		}
+		if v := strings.TrimSpace(a.RunAfter); v != "" {
+			_, _ = fmt.Fprintf(b, "    run_after: %s\n", quoteYAML(v))
+		}
+	}
 }
 
 func mapWorkflowRuleList(values map[string]any, keys ...string) []WorkflowRule {

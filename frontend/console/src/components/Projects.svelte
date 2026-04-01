@@ -86,7 +86,7 @@
     newProjectError = ''
     try {
       const subAgents = newProjectSubAgents.trim()
-        ? newProjectSubAgents.split(',').map((s) => s.trim()).filter(Boolean)
+        ? newProjectSubAgents.split(',').map((s) => s.trim()).filter(Boolean).map((role) => ({ role, run_after: 'phase_done' as const }))
         : undefined
       const p = await createProject({
         name: newProjectName.trim(),

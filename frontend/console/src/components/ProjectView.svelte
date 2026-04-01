@@ -485,12 +485,19 @@
           </div>
           <div class="pv-agents-list">
             {#each project.sub_agents as agent}
-              {@const agentActivity = activity.filter((a) => a.source === agent)}
+              {@const role = typeof agent === 'string' ? agent : agent.role}
+              {@const desc = typeof agent === 'string' ? '' : (agent.description || '')}
+              {@const trigger = typeof agent === 'string' ? 'phase_done' : (agent.run_after || 'phase_done')}
+              {@const agentActivity = activity.filter((a) => a.source === role)}
               <div class="pv-agent-item">
                 <div class="pv-agent-top">
-                  <span class="badge badge-info">{agent}</span>
+                  <span class="badge badge-info">{role}</span>
+                  <span class="badge badge-default">{trigger}</span>
                   <span class="pv-agent-count">{agentActivity.length} activities</span>
                 </div>
+                {#if desc}
+                  <div class="pv-agent-desc">{desc}</div>
+                {/if}
                 {#if agentActivity.length > 0}
                   <div class="pv-agent-last">
                     <span class="pv-agent-last-label">Last:</span>
@@ -803,6 +810,14 @@
   .pv-agent-count {
     font-size: var(--text-xs);
     color: var(--text-ghost);
+    margin-left: auto;
+  }
+
+  .pv-agent-desc {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    margin-top: 2px;
+    line-height: 1.4;
   }
 
   .pv-agent-last {

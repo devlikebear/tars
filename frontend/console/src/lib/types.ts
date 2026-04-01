@@ -21,6 +21,12 @@ export type HeartbeatRunResult = {
   logged?: boolean
 }
 
+export type SubAgentConfig = {
+  role: string
+  description?: string
+  run_after?: string
+}
+
 export type Project = {
   id: string
   name: string
@@ -34,7 +40,7 @@ export type Project = {
   body?: string
   execution_mode?: string
   max_phases?: number
-  sub_agents?: string[]
+  sub_agents?: SubAgentConfig[]
   session_id?: string
 }
 
@@ -238,7 +244,7 @@ export type CreateProjectRequest = {
   instructions?: string
   execution_mode?: string
   max_phases?: number
-  sub_agents?: string[]
+  sub_agents?: SubAgentConfig[]
 }
 
 export type UpdateProjectRequest = {
