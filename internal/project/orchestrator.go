@@ -51,6 +51,7 @@ type Orchestrator struct {
 	store             *Store
 	runner            TaskRunner
 	githubAuthChecker GitHubAuthChecker
+	skillResolver     SkillResolver
 	mu                sync.Mutex
 }
 
@@ -67,6 +68,12 @@ func NewOrchestratorWithGitHubAuthChecker(store *Store, runner TaskRunner, check
 		runner:            runner,
 		githubAuthChecker: checker,
 	}
+}
+
+// SetSkillResolver sets the resolver used to inject project skill content
+// into task prompts. May be nil.
+func (o *Orchestrator) SetSkillResolver(r SkillResolver) {
+	o.skillResolver = r
 }
 
 func (o *Orchestrator) DispatchTodo(ctx context.Context, projectID string) (DispatchReport, error) {
@@ -147,7 +154,8 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 		return TaskRun{}, err
 	}
 
-	run, err := o.startTaskRun(ctx, projectID, task, profile)
+	skills := o.resolveProjectSkills(projectItem)
+	run, err := o.startTaskRun(ctx, projectID, task, profile, skills)
 	if err != nil {
 		return TaskRun{}, err
 	}
@@ -233,12 +241,19 @@ func (o *Orchestrator) prepareTaskDispatch(ctx context.Context, projectID string
 	return profile, nil
 }
 
-func (o *Orchestrator) startTaskRun(ctx context.Context, projectID string, task BoardTask, profile WorkerProfile) (TaskRun, error) {
+func (o *Orchestrator) resolveProjectSkills(p Project) []SkillContent {
+	if o.skillResolver == nil || len(p.SkillsAllow) == 0 {
+		return nil
+	}
+	return o.skillResolver.ResolveSkills(p.SkillsAllow)
+}
+
+func (o *Orchestrator) startTaskRun(ctx context.Context, projectID string, task BoardTask, profile WorkerProfile, skills []SkillContent) (TaskRun, error) {
 	run, err := o.runner.Start(ctx, TaskRunRequest{
 		ProjectID:  strings.TrimSpace(projectID),
 		TaskID:     task.ID,
 		Title:      task.Title,
-		Prompt:     BuildTaskPrompt(task, projectID, profile),
+		Prompt:     BuildTaskPrompt(task, projectID, profile, skills...),
 		Agent:      task.Assignee,
 		Role:       task.Role,
 		WorkerKind: profile.Kind,
@@ -458,7 +473,8 @@ func (o *Orchestrator) dispatchReviewTask(ctx context.Context, projectID string,
 	if err != nil {
 		return TaskRun{}, err
 	}
-	prompt := BuildTaskPrompt(reviewTask, projectID, profile) +
+	skills := o.resolveProjectSkills(projectItem)
+	prompt := BuildTaskPrompt(reviewTask, projectID, profile, skills...) +
 		"\n\nCurrent task status: review" +
 		"\nImplementation worker_kind: " + strings.TrimSpace(task.WorkerKind)
 

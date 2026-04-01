@@ -159,3 +159,83 @@ func TestBuildTaskPrompt_UsesFixedReportContract(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildTaskPrompt_InjectsSkillContent(t *testing.T) {
+	profile, _ := ResolveWorkerProfile(BoardTask{Role: "developer"})
+
+	t.Run("no skills produces no section", func(t *testing.T) {
+		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, "proj", profile)
+		if strings.Contains(prompt, "## Project Skills") {
+			t.Fatal("unexpected skills section in prompt without skills")
+		}
+	})
+
+	t.Run("skills injected between metadata and report", func(t *testing.T) {
+		skills := []SkillContent{
+			{Name: "github-dev", Content: "Use gh CLI to create issues."},
+			{Name: "testing", Content: "Run go test ./... after changes."},
+		}
+		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, "proj", profile, skills...)
+		if !strings.Contains(prompt, "## Project Skills") {
+			t.Fatal("expected skills section header")
+		}
+		if !strings.Contains(prompt, "### github-dev") {
+			t.Fatal("expected github-dev skill header")
+		}
+		if !strings.Contains(prompt, "Use gh CLI to create issues.") {
+			t.Fatal("expected github-dev skill content")
+		}
+		if !strings.Contains(prompt, "### testing") {
+			t.Fatal("expected testing skill header")
+		}
+		// Skills should appear before the report format
+		skillsIdx := strings.Index(prompt, "## Project Skills")
+		reportIdx := strings.Index(prompt, "<task-report>")
+		if skillsIdx >= reportIdx {
+			t.Fatal("skills section should appear before task-report")
+		}
+	})
+
+	t.Run("skill content truncated at limit", func(t *testing.T) {
+		longContent := strings.Repeat("x", maxSkillContentChars+500)
+		skills := []SkillContent{{Name: "big", Content: longContent}}
+		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, "proj", profile, skills...)
+		if !strings.Contains(prompt, "…(truncated)") {
+			t.Fatal("expected truncation marker")
+		}
+		// Should not contain the full content
+		if strings.Contains(prompt, longContent) {
+			t.Fatal("full content should be truncated")
+		}
+	})
+
+	t.Run("max skills cap applied", func(t *testing.T) {
+		skills := make([]SkillContent, 7)
+		for i := range skills {
+			skills[i] = SkillContent{Name: "skill-" + string(rune('a'+i)), Content: "content"}
+		}
+		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, "proj", profile, skills...)
+		count := strings.Count(prompt, "### skill-")
+		if count > maxSkillsInPrompt {
+			t.Fatalf("expected at most %d skills, got %d", maxSkillsInPrompt, count)
+		}
+	})
+
+	t.Run("empty skills skipped", func(t *testing.T) {
+		skills := []SkillContent{
+			{Name: "", Content: "no name"},
+			{Name: "valid", Content: ""},
+			{Name: "ok", Content: "good content"},
+		}
+		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, "proj", profile, skills...)
+		if strings.Contains(prompt, "no name") {
+			t.Fatal("nameless skill should be skipped")
+		}
+		if strings.Contains(prompt, "### valid") {
+			t.Fatal("empty content skill should be skipped")
+		}
+		if !strings.Contains(prompt, "### ok") {
+			t.Fatal("valid skill should be included")
+		}
+	})
+}

@@ -41,6 +41,7 @@ export type Project = {
   execution_mode?: string
   max_phases?: number
   sub_agents?: SubAgentConfig[]
+  skills_allow?: string[]
   session_id?: string
 }
 
@@ -245,6 +246,7 @@ export type CreateProjectRequest = {
   execution_mode?: string
   max_phases?: number
   sub_agents?: SubAgentConfig[]
+  skills_allow?: string[]
 }
 
 export type UpdateProjectRequest = {
@@ -254,6 +256,7 @@ export type UpdateProjectRequest = {
   git_repo?: string
   objective?: string
   instructions?: string
+  skills_allow?: string[]
 }
 
 export type CreateCronJobRequest = {

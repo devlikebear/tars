@@ -61,6 +61,7 @@ type CreateInput struct {
 	ExecutionMode   string
 	MaxPhases       int
 	SubAgents       []SubAgentConfig
+	SkillsAllow     []string
 }
 
 type UpdateInput struct {
@@ -133,6 +134,7 @@ func (s *Store) Create(input CreateInput) (Project, error) {
 		ExecutionMode:   normalizeExecutionMode(input.ExecutionMode),
 		MaxPhases:       normalizeMaxPhases(input.MaxPhases, input.ExecutionMode),
 		SubAgents:       normalizeSubAgents(input.SubAgents),
+		SkillsAllow:    normalizeList(input.SkillsAllow),
 		Body:            strings.TrimSpace(input.Instructions),
 	}
 	if err := s.write(project); err != nil {

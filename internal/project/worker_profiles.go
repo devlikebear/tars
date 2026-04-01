@@ -165,7 +165,16 @@ func ResolveWorkerProfileForProject(project Project, task BoardTask) (WorkerProf
 	return profile, nil
 }
 
-func BuildTaskPrompt(task BoardTask, projectID string, profile WorkerProfile) string {
+// maxSkillContentChars is the per-skill character cap when injecting skill
+// content into task prompts.
+const maxSkillContentChars = 4000
+
+// maxSkillsInPrompt is the upper bound on skills injected into a single prompt.
+const maxSkillsInPrompt = 5
+
+// BuildTaskPrompt assembles the initial instruction for a task worker.
+// Optional skills are appended as a ## Project Skills section.
+func BuildTaskPrompt(task BoardTask, projectID string, profile WorkerProfile, skills ...SkillContent) string {
 	var builder strings.Builder
 	workerKind := firstNonEmpty(strings.TrimSpace(task.WorkerKind), profile.Kind)
 	role := firstNonEmpty(strings.TrimSpace(task.Role), "developer")
@@ -198,6 +207,8 @@ func BuildTaskPrompt(task BoardTask, projectID string, profile WorkerProfile) st
 		builder.WriteString(buildCmd)
 	}
 
+	writeSkillsSection(&builder, skills)
+
 	builder.WriteString("\n\n")
 	switch strings.ToLower(role) {
 	case "reviewer", "review":
@@ -228,4 +239,31 @@ func BuildTaskPrompt(task BoardTask, projectID string, profile WorkerProfile) st
 		builder.WriteString("</task-report>")
 	}
 	return builder.String()
+}
+
+func writeSkillsSection(builder *strings.Builder, skills []SkillContent) {
+	if len(skills) == 0 {
+		return
+	}
+	cap := len(skills)
+	if cap > maxSkillsInPrompt {
+		cap = maxSkillsInPrompt
+	}
+	builder.WriteString("\n\n## Project Skills\n")
+	builder.WriteString("The following skills define how to perform domain-specific operations in this project. Follow these instructions strictly.\n")
+	for _, sk := range skills[:cap] {
+		name := strings.TrimSpace(sk.Name)
+		content := strings.TrimSpace(sk.Content)
+		if name == "" || content == "" {
+			continue
+		}
+		if len(content) > maxSkillContentChars {
+			content = content[:maxSkillContentChars] + "\n…(truncated)"
+		}
+		builder.WriteString("\n### ")
+		builder.WriteString(name)
+		builder.WriteString("\n")
+		builder.WriteString(content)
+		builder.WriteString("\n")
+	}
 }
