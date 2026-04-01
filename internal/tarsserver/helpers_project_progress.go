@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/heartbeat"
@@ -121,20 +122,42 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 
 // planAutonomousTasks uses LLM to generate tasks for the next phase.
 func planAutonomousTasks(ctx context.Context, store *project.Store, ask heartbeat.AskFunc, p project.Project, phaseNumber int, logger zerolog.Logger) {
+	maxPhases := p.MaxPhases
+	if maxPhases <= 0 {
+		maxPhases = 3
+	}
+
+	// Build context of existing files
+	existingFiles := listProjectArtifactNames(store, p.ID)
+	filesContext := ""
+	if len(existingFiles) > 0 {
+		filesContext = fmt.Sprintf("\nExisting files in project: %s", strings.Join(existingFiles, ", "))
+	}
+
 	prompt := fmt.Sprintf(
-		`You are a project planner. Generate a concise task list for phase %d of this project.
+		`You are a project executor. Generate tasks for phase %d/%d of this project.
 
 Project: %s
 Objective: %s
 Instructions: %s
+%s
+CRITICAL RULES:
+- Each task MUST produce a concrete deliverable file (not a plan, not a template, not analysis).
+- If the objective is to write stories → tasks should be "Write story X and save as story-X.md"
+- If the objective is to build code → tasks should be "Implement feature X in file Y"
+- Do NOT generate planning/analysis/template tasks. The output must be the FINAL deliverable.
+- Phase %d of %d: %s
 
 Return a JSON array of task objects. Each task has "id" (string), "title" (string).
-Generate 1-5 concrete, actionable tasks. Only return the JSON array, nothing else.
-Example: [{"id":"task-1","title":"Write introduction section"}]`,
-		phaseNumber,
+Generate 1-3 tasks that produce actual deliverables. Only return the JSON array.
+Example: [{"id":"task-1","title":"Write the complete first short story and save as story-1.md"}]`,
+		phaseNumber, maxPhases,
 		strings.TrimSpace(p.Name),
 		strings.TrimSpace(p.Objective),
 		strings.TrimSpace(p.Body),
+		filesContext,
+		phaseNumber, maxPhases,
+		phaseGuidance(phaseNumber, maxPhases),
 	)
 
 	response, err := ask(ctx, prompt)
@@ -272,6 +295,39 @@ func hasCritic(subAgents []string) bool {
 		}
 	}
 	return false
+}
+
+func phaseGuidance(phase, max int) string {
+	if phase == 1 {
+		return "This is the FIRST phase — create the core deliverables."
+	}
+	if phase >= max {
+		return "This is the FINAL phase — polish, finalize, and complete all remaining deliverables."
+	}
+	return "Continue building on previous work — add more deliverables or improve existing ones."
+}
+
+func listProjectArtifactNames(store *project.Store, projectID string) []string {
+	dir := store.ProjectDir(projectID)
+	if dir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	systemFiles := map[string]bool{
+		"PROJECT.md": true, "STATE.md": true, "KANBAN.md": true,
+		"ACTIVITY.jsonl": true, "AUTOPILOT.json": true,
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || systemFiles[e.Name()] {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	return names
 }
 
 // runCriticReview asks the LLM to critically review the completed tasks
