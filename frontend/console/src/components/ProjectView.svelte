@@ -54,6 +54,15 @@
   let deleteConfirm = $state(false)
 
   let showAllActivity = $state(false)
+  let activityFilter = $state('all')
+
+  function activitySources(): string[] {
+    return [...new Set(activity.map((a) => a.source).filter(Boolean))]
+  }
+
+  function filteredActivity(): ProjectActivity[] {
+    return activityFilter === 'all' ? activity : activity.filter((a) => a.source === activityFilter)
+  }
 
   // -- Board editing --
   let newTaskTitle = $state('')
@@ -467,6 +476,36 @@
         </dl>
       </section>
 
+      <!-- Sub-Agents -->
+      {#if project.sub_agents && project.sub_agents.length > 0}
+        <section class="card">
+          <div class="card-header">
+            <span class="card-title">Sub-Agents</span>
+            <span class="badge badge-default">{project.sub_agents.length}</span>
+          </div>
+          <div class="pv-agents-list">
+            {#each project.sub_agents as agent}
+              {@const agentActivity = activity.filter((a) => a.source === agent)}
+              <div class="pv-agent-item">
+                <div class="pv-agent-top">
+                  <span class="badge badge-info">{agent}</span>
+                  <span class="pv-agent-count">{agentActivity.length} activities</span>
+                </div>
+                {#if agentActivity.length > 0}
+                  <div class="pv-agent-last">
+                    <span class="pv-agent-last-label">Last:</span>
+                    <span class="pv-agent-last-msg">{agentActivity[0].message?.slice(0, 100) || 'No message'}{(agentActivity[0].message?.length ?? 0) > 100 ? '...' : ''}</span>
+                    <span class="pv-agent-last-time">{fmt(agentActivity[0].timestamp)}</span>
+                  </div>
+                {:else}
+                  <div class="pv-agent-idle">No activity yet</div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
       <!-- Chat -->
       <section class="card pv-wide">
         <span class="card-title">Chat</span>
@@ -477,22 +516,33 @@
       <section class="card pv-wide">
         <div class="card-header">
           <span class="card-title">Activity</span>
-          <span class="badge badge-default">{activity.length}</span>
-          {#if activity.length > 5 && !showAllActivity}
+          <span class="badge badge-default">{filteredActivity().length}</span>
+          {#if activitySources().length > 1}
+            <div class="pv-activity-filters">
+              <button class="btn btn-ghost btn-sm" class:active={activityFilter === 'all'} onclick={() => { activityFilter = 'all' }}>all</button>
+              {#each activitySources() as src}
+                <button class="btn btn-ghost btn-sm" class:active={activityFilter === src} onclick={() => { activityFilter = src }}>{src}</button>
+              {/each}
+            </div>
+          {/if}
+          {#if filteredActivity().length > 5 && !showAllActivity}
             <button class="btn btn-ghost btn-sm" onclick={() => { showAllActivity = true }}>Show all</button>
           {:else if showAllActivity}
             <button class="btn btn-ghost btn-sm" onclick={() => { showAllActivity = false }}>Collapse</button>
           {/if}
         </div>
-        {#if activity.length === 0}
+        {#if filteredActivity().length === 0}
           <div class="empty-state"><p>No activity recorded yet.</p></div>
         {:else}
           <div class="pv-timeline">
-            {#each (showAllActivity ? activity : activity.slice(0, 5)) as item}
+            {#each (showAllActivity ? filteredActivity() : filteredActivity().slice(0, 5)) as item}
               <div class="pv-timeline-item">
                 <div class="pv-timeline-top">
                   <strong>{item.kind}</strong>
                   <span class="badge badge-default">{item.status || item.source}</span>
+                  {#if item.source && item.source !== 'system'}
+                    <span class="badge badge-info">{item.source}</span>
+                  {/if}
                 </div>
                 <p>{item.message || 'No message'}</p>
                 <div class="pv-timeline-meta">
@@ -727,6 +777,64 @@
 
   .pv-wide {
     grid-column: 1 / -1;
+  }
+
+  /* ── Sub-Agents ───────────────────────────── */
+  .pv-agents-list {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .pv-agent-item {
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-base);
+    border-radius: var(--radius-sm);
+  }
+
+  .pv-agent-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-1);
+  }
+
+  .pv-agent-count {
+    font-size: var(--text-xs);
+    color: var(--text-ghost);
+  }
+
+  .pv-agent-last {
+    display: grid;
+    gap: 2px;
+    font-size: var(--text-xs);
+  }
+
+  .pv-agent-last-label {
+    color: var(--text-tertiary);
+  }
+
+  .pv-agent-last-msg {
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .pv-agent-last-time {
+    color: var(--text-ghost);
+  }
+
+  .pv-agent-idle {
+    font-size: var(--text-xs);
+    color: var(--text-ghost);
+  }
+
+  /* ── Activity filters ─────────────────────── */
+  .pv-activity-filters {
+    display: flex;
+    gap: var(--space-1);
+  }
+  .pv-activity-filters .active {
+    color: var(--accent);
+    border-color: var(--accent);
   }
 
   /* ── Facts ────────────────────────────────────── */
