@@ -90,7 +90,7 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 			return
 		}
 		nextPhase := state.PhaseNumber + 1
-		planAutonomousTasks(ctx, store, ask, p, nextPhase, logger)
+		planAutonomousTasks(ctx, store, ask, p, nextPhase, "", logger)
 		return
 	}
 
@@ -100,11 +100,12 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 			return
 		}
 		// Run critic review if sub_agents includes "critic"
+		var criticFeedback string
 		if hasCritic(p.SubAgents) {
-			runCriticReview(ctx, store, ask, p, board, state.PhaseNumber, logger)
+			criticFeedback = runCriticReview(ctx, store, ask, p, board, state.PhaseNumber, logger)
 		}
 		nextPhase := state.PhaseNumber + 1
-		planAutonomousTasks(ctx, store, ask, p, nextPhase, logger)
+		planAutonomousTasks(ctx, store, ask, p, nextPhase, criticFeedback, logger)
 		return
 	}
 
@@ -121,7 +122,7 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 }
 
 // planAutonomousTasks uses LLM to generate tasks for the next phase.
-func planAutonomousTasks(ctx context.Context, store *project.Store, ask heartbeat.AskFunc, p project.Project, phaseNumber int, logger zerolog.Logger) {
+func planAutonomousTasks(ctx context.Context, store *project.Store, ask heartbeat.AskFunc, p project.Project, phaseNumber int, criticFeedback string, logger zerolog.Logger) {
 	maxPhases := p.MaxPhases
 	if maxPhases <= 0 {
 		maxPhases = 3
@@ -133,6 +134,10 @@ func planAutonomousTasks(ctx context.Context, store *project.Store, ask heartbea
 	if len(existingFiles) > 0 {
 		filesContext = fmt.Sprintf("\nExisting files in project: %s", strings.Join(existingFiles, ", "))
 	}
+	criticContext := ""
+	if strings.TrimSpace(criticFeedback) != "" {
+		criticContext = fmt.Sprintf("\n\nCRITIC FEEDBACK FROM PREVIOUS PHASE (address these issues):\n%s", strings.TrimSpace(criticFeedback))
+	}
 
 	prompt := fmt.Sprintf(
 		`You are a project executor. Generate tasks for phase %d/%d of this project.
@@ -140,7 +145,7 @@ func planAutonomousTasks(ctx context.Context, store *project.Store, ask heartbea
 Project: %s
 Objective: %s
 Instructions: %s
-%s
+%s%s
 CRITICAL RULES:
 - Each task MUST produce a concrete deliverable file (not a plan, not a template, not analysis).
 - If the objective is to write stories → tasks should be "Write story X and save as story-X.md"
@@ -155,7 +160,7 @@ Example: [{"id":"task-1","title":"Write the complete first short story and save 
 		strings.TrimSpace(p.Name),
 		strings.TrimSpace(p.Objective),
 		strings.TrimSpace(p.Body),
-		filesContext,
+		filesContext, criticContext,
 		phaseNumber, maxPhases,
 		phaseGuidance(phaseNumber, maxPhases),
 	)
@@ -332,7 +337,7 @@ func listProjectArtifactNames(store *project.Store, projectID string) []string {
 
 // runCriticReview asks the LLM to critically review the completed tasks
 // and logs the feedback to project activity.
-func runCriticReview(ctx context.Context, store *project.Store, ask heartbeat.AskFunc, p project.Project, board project.Board, phaseNumber int, logger zerolog.Logger) {
+func runCriticReview(ctx context.Context, store *project.Store, ask heartbeat.AskFunc, p project.Project, board project.Board, phaseNumber int, logger zerolog.Logger) string {
 	taskSummary := ""
 	for _, t := range board.Tasks {
 		taskSummary += fmt.Sprintf("- [%s] %s\n", t.Status, t.Title)
@@ -358,15 +363,18 @@ Be constructive but honest. Reply in plain text only.`,
 	response, err := ask(ctx, prompt)
 	if err != nil {
 		logger.Debug().Err(err).Str("project_id", p.ID).Msg("autonomous: critic review failed")
-		return
+		return ""
 	}
+
+	feedback := strings.TrimSpace(response)
 
 	// Record review as activity
 	_, _ = store.AppendActivity(p.ID, project.ActivityAppendInput{
 		Source:  "critic",
 		Kind:    "review",
 		Status:  "completed",
-		Message: strings.TrimSpace(response),
+		Message: feedback,
 	})
 	logger.Info().Str("project_id", p.ID).Int("phase", phaseNumber).Msg("autonomous: critic review completed")
+	return feedback
 }
