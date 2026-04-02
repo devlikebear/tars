@@ -19,7 +19,7 @@ This work order defines the refactoring tasks required to address structural, se
 There are 4 validated issues in total (`DUP` 0 / `SEC` 1 / `TIDY` 3), and the work orders below should be executed in sequence.
 
 추가 검증 메모:
-기존 후보 `SEC-002`는 현재 헤드에서 false positive로 판단했습니다. `browserrelay` 서버 소스는 저장소에서 제거되었고, `/browser relay` 경로도 [internal/tarsclient/commands_gateway_browser.go](/Users/changheonshin/workspace/myworks/tars/internal/tarsclient/commands_gateway_browser.go#L161)에서 제거 안내만 남아 있어 본 지시서 범위에서 제외합니다.
+기존 후보 `SEC-002`는 현재 헤드에서 false positive로 판단했습니다. `browserrelay` 서버 소스는 저장소에서 제거되었고, `/browser relay` 경로도 [internal/tarsclient/commands_gateway_browser.go](internal/tarsclient/commands_gateway_browser.go#L161)에서 제거 안내만 남아 있어 본 지시서 범위에서 제외합니다.
 
 ---
 
@@ -49,7 +49,7 @@ If there is a dependency, fill in the "Prerequisite" field.
 **유형 / Type**: Extract State Machine / Introduce Runtime Policy / Move Logic
 **심각도 / Severity**: 높음 / High
 **선행 작업 / Prerequisite**: 없음 / None
-**근거 / Evidence**: kickoff 세션 분기와 skill routing은 [internal/tarsserver/handler_chat.go](/Users/changheonshin/workspace/myworks/tars/internal/tarsserver/handler_chat.go#L37), brief/state 초기화는 [internal/project/brief_state.go](/Users/changheonshin/workspace/myworks/tars/internal/project/brief_state.go#L187), planning은 [internal/project/orchestrator_plan.go](/Users/changheonshin/workspace/myworks/tars/internal/project/orchestrator_plan.go#L12), dispatch는 [internal/project/orchestrator.go](/Users/changheonshin/workspace/myworks/tars/internal/project/orchestrator.go#L79), heartbeat 기반 autonomous progress는 [internal/tarsserver/helpers_project_progress.go](/Users/changheonshin/workspace/myworks/tars/internal/tarsserver/helpers_project_progress.go#L18), API state sync는 [internal/tarsserver/handler_project.go](/Users/changheonshin/workspace/myworks/tars/internal/tarsserver/handler_project.go#L112)와 [internal/tarsserver/handler_project.go](/Users/changheonshin/workspace/myworks/tars/internal/tarsserver/handler_project.go#L752)에 흩어져 있습니다.
+**근거 / Evidence**: kickoff 세션 분기와 skill routing은 [internal/tarsserver/handler_chat.go](internal/tarsserver/handler_chat.go#L37), brief/state 초기화는 [internal/project/brief_state.go](internal/project/brief_state.go#L187), planning은 [internal/project/orchestrator_plan.go](internal/project/orchestrator_plan.go#L12), dispatch는 [internal/project/orchestrator.go](internal/project/orchestrator.go#L79), heartbeat 기반 autonomous progress는 [internal/tarsserver/helpers_project_progress.go](internal/tarsserver/helpers_project_progress.go#L18), API state sync는 [internal/tarsserver/handler_project.go](internal/tarsserver/handler_project.go#L112)와 [internal/tarsserver/handler_project.go](internal/tarsserver/handler_project.go#L752)에 흩어져 있습니다.
 **소스 이슈 / Source Issue**: `TIDY-002`
 **영향 범위 / Impact Area**: 프로젝트 kickoff, brief finalize, planning, dispatch, autonomous progress, project API
 
@@ -75,7 +75,7 @@ That makes chat, API, and autonomous execution drift-prone whenever phases, retr
 
 **지시 사항 / Instructions**
 1. `kickoff`, `brief_finalized`, `planning_requested`, `dispatch_requested`, `phase_completed`, `project_archived` 같은 이벤트를 처리하는 공통 workflow runtime 타입을 추가하십시오.
-2. [internal/tarsserver/handler_chat.go](/Users/changheonshin/workspace/myworks/tars/internal/tarsserver/handler_chat.go), [internal/project/brief_state.go](/Users/changheonshin/workspace/myworks/tars/internal/project/brief_state.go), [internal/project/orchestrator.go](/Users/changheonshin/workspace/myworks/tars/internal/project/orchestrator.go), [internal/project/orchestrator_plan.go](/Users/changheonshin/workspace/myworks/tars/internal/project/orchestrator_plan.go), [internal/tarsserver/helpers_project_progress.go](/Users/changheonshin/workspace/myworks/tars/internal/tarsserver/helpers_project_progress.go), [internal/tarsserver/handler_project.go](/Users/changheonshin/workspace/myworks/tars/internal/tarsserver/handler_project.go)가 그 공통 runtime 결과를 사용하도록 바꾸십시오.
+2. [internal/tarsserver/handler_chat.go](internal/tarsserver/handler_chat.go), [internal/project/brief_state.go](internal/project/brief_state.go), [internal/project/orchestrator.go](internal/project/orchestrator.go), [internal/project/orchestrator_plan.go](internal/project/orchestrator_plan.go), [internal/tarsserver/helpers_project_progress.go](internal/tarsserver/helpers_project_progress.go), [internal/tarsserver/handler_project.go](internal/tarsserver/handler_project.go)가 그 공통 runtime 결과를 사용하도록 바꾸십시오.
 3. `policy.go`의 tool policy와 workflow policy/runtime policy는 별도 타입으로 유지하되, workflow 해석 결과가 API/chat/autonomous 경로에 동일하게 주입되도록 경계를 정리하십시오.
 4. `FinalizeBrief`, `PlanTasks`, `DispatchTodo/DispatchReview`, `advanceAutonomousProject`가 raw 문자열 상태를 직접 해석하지 않도록 하십시오.
 5. 구조 정리 완료 전에는 phase semantics나 retry 동작을 바꾸지 말고, 먼저 동작 보존 테스트를 고정하십시오.
@@ -98,7 +98,7 @@ That makes chat, API, and autonomous execution drift-prone whenever phases, retr
 **유형 / Type**: Introduce Provider Registry / Add Validation / Fail Fast
 **심각도 / Severity**: 중간 / Medium
 **선행 작업 / Prerequisite**: 없음 / None
-**근거 / Evidence**: [internal/config/schema.go](/Users/changheonshin/workspace/myworks/tars/internal/config/schema.go#L64)는 `memory_embed_provider`에 `gemini`, `openai`를 모두 허용하지만, [internal/memory/semantic.go](/Users/changheonshin/workspace/myworks/tars/internal/memory/semantic.go#L159)의 `NewService`는 `gemini`일 때만 embedder를 생성합니다. [cmd/tars/doctor_main.go](/Users/changheonshin/workspace/myworks/tars/cmd/tars/doctor_main.go#L162)은 LLM 자격증명만 확인하고 semantic embed provider 유효성은 검사하지 않습니다.
+**근거 / Evidence**: [internal/config/schema.go](internal/config/schema.go#L64)는 `memory_embed_provider`에 `gemini`, `openai`를 모두 허용하지만, [internal/memory/semantic.go](internal/memory/semantic.go#L159)의 `NewService`는 `gemini`일 때만 embedder를 생성합니다. [cmd/tars/doctor_main.go](cmd/tars/doctor_main.go#L162)은 LLM 자격증명만 확인하고 semantic embed provider 유효성은 검사하지 않습니다.
 **소스 이슈 / Source Issue**: `TIDY-005`
 **영향 범위 / Impact Area**: semantic memory 설정, startup validation, 운영 진단
 
@@ -144,7 +144,7 @@ That mismatch allows unsupported configurations to fail silently and increases o
 **유형 / Type**: Add Integrity Verification / Harden Supply Chain / Fail Closed
 **심각도 / Severity**: 높음 / High
 **선행 작업 / Prerequisite**: 없음 / None
-**근거 / Evidence**: [internal/skillhub/types.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/types.go#L12)와 [internal/skillhub/types.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/types.go#L29)에서 plugin/skill 파일 목록은 checksum 없는 `[]string`인데, MCP만 [internal/skillhub/types.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/types.go#L41)에서 `[]RegistryFile`을 사용합니다. [internal/skillhub/registry.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/registry.go#L185)는 raw GitHub 파일을 내려받기만 하고, [internal/skillhub/install.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/install.go#L45)와 [internal/skillhub/install.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/install.go#L229)는 그대로 기록합니다. 반면 MCP는 [internal/skillhub/mcp.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/mcp.go#L103)와 [internal/skillhub/install.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/install.go#L499)에서 checksum을 검증합니다.
+**근거 / Evidence**: [internal/skillhub/types.go](internal/skillhub/types.go#L12)와 [internal/skillhub/types.go](internal/skillhub/types.go#L29)에서 plugin/skill 파일 목록은 checksum 없는 `[]string`인데, MCP만 [internal/skillhub/types.go](internal/skillhub/types.go#L41)에서 `[]RegistryFile`을 사용합니다. [internal/skillhub/registry.go](internal/skillhub/registry.go#L185)는 raw GitHub 파일을 내려받기만 하고, [internal/skillhub/install.go](internal/skillhub/install.go#L45)와 [internal/skillhub/install.go](internal/skillhub/install.go#L229)는 그대로 기록합니다. 반면 MCP는 [internal/skillhub/mcp.go](internal/skillhub/mcp.go#L103)와 [internal/skillhub/install.go](internal/skillhub/install.go#L499)에서 checksum을 검증합니다.
 **소스 이슈 / Source Issue**: `SEC-003`
 **영향 범위 / Impact Area**: 원격 Hub skill/plugin 설치 및 업데이트
 
@@ -191,7 +191,7 @@ If the registry content is compromised or tampered with in transit, malicious pa
 **유형 / Type**: Stage Package / Atomic Replace / Fail Closed
 **심각도 / Severity**: 중간 / Medium
 **선행 작업 / Prerequisite**: `WO-003` 완료 후 / after `WO-003`
-**근거 / Evidence**: skill 설치는 [internal/skillhub/install.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/install.go#L56)에서 디렉터리를 먼저 만들고 companion file 실패를 `continue`로 무시한 뒤 [internal/skillhub/install.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/install.go#L80)에서 DB를 갱신합니다. skill/plugin update도 [internal/skillhub/install.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/install.go#L145), [internal/skillhub/install.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/install.go#L310)에서 best-effort로 버전을 올립니다. 반면 MCP는 [internal/skillhub/mcp.go](/Users/changheonshin/workspace/myworks/tars/internal/skillhub/mcp.go#L116)의 temp dir + rename으로 원자적으로 materialize합니다.
+**근거 / Evidence**: skill 설치는 [internal/skillhub/install.go](internal/skillhub/install.go#L56)에서 디렉터리를 먼저 만들고 companion file 실패를 `continue`로 무시한 뒤 [internal/skillhub/install.go](internal/skillhub/install.go#L80)에서 DB를 갱신합니다. skill/plugin update도 [internal/skillhub/install.go](internal/skillhub/install.go#L145), [internal/skillhub/install.go](internal/skillhub/install.go#L310)에서 best-effort로 버전을 올립니다. 반면 MCP는 [internal/skillhub/mcp.go](internal/skillhub/mcp.go#L116)의 temp dir + rename으로 원자적으로 materialize합니다.
 **소스 이슈 / Source Issue**: `TIDY-006`
 **영향 범위 / Impact Area**: Hub skill/plugin install/update reliability
 
