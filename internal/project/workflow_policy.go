@@ -6,6 +6,108 @@ type WorkflowPolicy struct{}
 
 var DefaultWorkflowPolicy WorkflowPolicy
 
+type WorkflowRuntimeState struct {
+	ProjectStatus string
+	Status        string
+	Phase         string
+	NextAction    string
+	PhaseNumber   int
+}
+
+type WorkflowBoardState struct {
+	TaskCount       int
+	TodoCount       int
+	InProgressCount int
+	ReviewCount     int
+	DoneCount       int
+}
+
+type WorkflowEvent string
+
+const (
+	WorkflowEventKickoffRequested  WorkflowEvent = "kickoff_requested"
+	WorkflowEventBriefFinalized    WorkflowEvent = "brief_finalized"
+	WorkflowEventPlanningRequested WorkflowEvent = "planning_requested"
+)
+
+type WorkflowEventContext struct {
+	UserMessage string
+	ProjectID   string
+	Project     Project
+	State       *ProjectState
+	Brief       Brief
+}
+
+type WorkflowStateTransition struct {
+	Update         workflowStateUpdate
+	Goal           string
+	RemainingTasks []string
+}
+
+type WorkflowEventResolution struct {
+	RuntimeState           WorkflowRuntimeState
+	Transition             WorkflowStateTransition
+	CreateDedicatedSession bool
+	PlanningReady          bool
+}
+
+func (s WorkflowRuntimeState) PlanningReady() bool {
+	return s.Status == "active" && s.Phase == "planning"
+}
+
+func (s WorkflowRuntimeState) IsProjectArchived() bool {
+	return s.ProjectStatus == "archived"
+}
+
+func (s WorkflowRuntimeState) PhaseLimitReached(maxPhases int) bool {
+	if maxPhases <= 0 {
+		return false
+	}
+	return s.PhaseNumber >= maxPhases
+}
+
+func (t WorkflowStateTransition) StateInput() ProjectStateUpdateInput {
+	input := t.Update.stateInput()
+	if trimmed := strings.TrimSpace(t.Goal); trimmed != "" {
+		input.Goal = stringValuePtr(trimmed)
+	}
+	if t.RemainingTasks != nil {
+		input.RemainingTasks = append([]string(nil), t.RemainingTasks...)
+	}
+	return input
+}
+
+func (s WorkflowBoardState) IsEmpty() bool {
+	return s.TaskCount == 0
+}
+
+func (s WorkflowBoardState) AllDone() bool {
+	return s.TaskCount == 0 || s.DoneCount == s.TaskCount
+}
+
+func (s WorkflowBoardState) HasInProgressTasks() bool {
+	return s.InProgressCount > 0
+}
+
+func (s WorkflowBoardState) HasDispatchableTasks() bool {
+	return s.TodoCount > 0 || s.ReviewCount > 0
+}
+
+func (s WorkflowBoardState) CountForStatus(status string) int {
+	switch canonicalBoardStatus(status) {
+	case "todo":
+		return s.TodoCount
+	case "in_progress":
+		return s.InProgressCount
+	case "review":
+		return s.ReviewCount
+	case "done":
+		return s.DoneCount
+	default:
+		return 0
+	}
+}
+
 type workflowStateUpdate struct {
 	Phase             string
 	Status            string
@@ -102,22 +204,89 @@ func (p WorkflowPolicy) InitialProjectState(brief Brief) workflowStateUpdate {
 }
 
 func (p WorkflowPolicy) ProjectStateSummary(item Project, state *ProjectState) (status, phase, nextAction string) {
-	status = strings.TrimSpace(item.Status)
-	if status == "" {
-		status = p.NormalizeProjectStateStatus("")
+	runtimeState := p.ResolveRuntimeState(item, state)
+	return runtimeState.Status, runtimeState.Phase, runtimeState.NextAction
+}
+
+func (p WorkflowPolicy) ResolveRuntimeState(item Project, state *ProjectState) WorkflowRuntimeState {
+	runtimeState := WorkflowRuntimeState{
+		ProjectStatus: normalizeStatus(item.Status),
+		Status:        p.NormalizeProjectStateStatus(""),
+		Phase:         p.NormalizeProjectStatePhase(""),
 	}
-	phase = p.NormalizeProjectStatePhase("")
 	if state == nil {
-		return status, phase, ""
+		return runtimeState
 	}
 	if current := strings.TrimSpace(state.Status); current != "" {
-		status = p.NormalizeProjectStateStatus(current)
+		runtimeState.Status = p.NormalizeProjectStateStatus(current)
 	}
 	if current := strings.TrimSpace(state.Phase); current != "" {
-		phase = p.NormalizeProjectStatePhase(current)
+		runtimeState.Phase = p.NormalizeProjectStatePhase(current)
 	}
-	nextAction = strings.TrimSpace(state.NextAction)
-	return status, phase, nextAction
+	runtimeState.NextAction = strings.TrimSpace(state.NextAction)
+	runtimeState.PhaseNumber = state.PhaseNumber
+	return runtimeState
+}
+
+func (p WorkflowPolicy) ResolveEvent(event WorkflowEvent, ctx WorkflowEventContext) WorkflowEventResolution {
+	switch event {
+	case WorkflowEventKickoffRequested:
+		return WorkflowEventResolution{
+			CreateDedicatedSession: strings.TrimSpace(ctx.ProjectID) != "" || p.IsKickoffMessage(ctx.UserMessage),
+		}
+	case WorkflowEventBriefFinalized:
+		transition := WorkflowStateTransition{
+			Update: p.InitialProjectState(ctx.Brief),
+			Goal:   strings.TrimSpace(ctx.Brief.Goal),
+		}
+		if ctx.Brief.OpenQuestions != nil {
+			transition.RemainingTasks = append([]string(nil), ctx.Brief.OpenQuestions...)
+		}
+		runtimeState := p.ResolveRuntimeState(Project{Status: "active"}, &ProjectState{
+			Status:     transition.Update.Status,
+			Phase:      transition.Update.Phase,
+			NextAction: transition.Update.NextAction,
+		})
+		return WorkflowEventResolution{
+			RuntimeState:  runtimeState,
+			Transition:    transition,
+			PlanningReady: runtimeState.PlanningReady(),
+		}
+	case WorkflowEventPlanningRequested:
+		runtimeState := p.ResolveRuntimeState(ctx.Project, ctx.State)
+		return WorkflowEventResolution{
+			RuntimeState:  runtimeState,
+			PlanningReady: runtimeState.PlanningReady(),
+		}
+	default:
+		return WorkflowEventResolution{}
+	}
+}
+
+func (p WorkflowPolicy) StateUpdateForProjectStatus(status string) (workflowStateUpdate, bool) {
+	switch normalizeStatus(status) {
+	case "archived":
+		return workflowStateUpdate{
+			Phase:      p.NormalizeProjectStatePhase("done"),
+			Status:     p.NormalizeProjectStateStatus("done"),
+			StopReason: "Project archived",
+		}, true
+	case "active":
+		return workflowStateUpdate{
+			Phase:  p.NormalizeProjectStatePhase("planning"),
+			Status: p.NormalizeProjectStateStatus("active"),
+		}, true
+	default:
+		return workflowStateUpdate{}, false
+	}
+}
+
+func (p WorkflowPolicy) StateInputForProjectStatus(status string) (ProjectStateUpdateInput, bool) {
+	update, ok := p.StateUpdateForProjectStatus(status)
+	if !ok {
+		return ProjectStateUpdateInput{}, false
+	}
+	return update.stateInput(), true
 }
 
 func (WorkflowPolicy) IsKickoffMessage(message string) bool {
@@ -177,33 +346,52 @@ func (WorkflowPolicy) FilterDispatchableTasks(status string, tasks []BoardTask) 
 	return tasks
 }
 
-func (WorkflowPolicy) BoardHasStatus(board Board, status string) bool {
+func (WorkflowPolicy) ResolveBoardState(board Board) WorkflowBoardState {
+	state := WorkflowBoardState{}
 	for _, task := range board.Tasks {
-		if task.Status == strings.TrimSpace(status) {
-			return true
+		state.TaskCount++
+		switch canonicalBoardStatus(task.Status) {
+		case "todo":
+			state.TodoCount++
+		case "in_progress":
+			state.InProgressCount++
+		case "review":
+			state.ReviewCount++
+		case "done":
+			state.DoneCount++
 		}
 	}
-	return false
+	return state
+}
+
+func (p WorkflowPolicy) TasksForDispatchStage(board Board, status string) []BoardTask {
+	stage, ok := p.NormalizeDispatchStage(status)
+	if !ok {
+		return nil
+	}
+	tasks := make([]BoardTask, 0, len(board.Tasks))
+	for _, task := range board.Tasks {
+		if canonicalBoardStatus(task.Status) == stage {
+			tasks = append(tasks, task)
+		}
+	}
+	return p.FilterDispatchableTasks(stage, tasks)
+}
+
+func (p WorkflowPolicy) BoardHasStatus(board Board, status string) bool {
+	return p.ResolveBoardState(board).CountForStatus(status) > 0
 }
 
 func (WorkflowPolicy) FirstTaskByStatus(board Board, status string) (BoardTask, bool) {
+	target := canonicalBoardStatus(status)
 	for _, task := range board.Tasks {
-		if task.Status == strings.TrimSpace(status) {
+		if canonicalBoardStatus(task.Status) == target {
 			return task, true
 		}
 	}
 	return BoardTask{}, false
 }
 
-func (WorkflowPolicy) AllBoardTasksDone(board Board) bool {
-	if len(board.Tasks) == 0 {
-		return true
-	}
-	for _, task := range board.Tasks {
-		if task.Status != "done" {
-			return false
-		}
-	}
-	return true
+func (p WorkflowPolicy) AllBoardTasksDone(board Board) bool {
+	return p.ResolveBoardState(board).AllDone()
 }
-

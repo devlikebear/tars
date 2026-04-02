@@ -133,11 +133,15 @@ func newProjectAPIHandler(
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load project state failed"})
 				return
 			}
+			planning := project.DefaultWorkflowPolicy.ResolveEvent(project.WorkflowEventPlanningRequested, project.WorkflowEventContext{
+				Project: created,
+				State:   &state,
+			})
 			writeJSON(w, http.StatusOK, map[string]any{
 				"project":        created,
 				"brief":          brief,
 				"state":          state,
-				"planning_ready": true,
+				"planning_ready": planning.PlanningReady,
 			})
 			return
 		}
@@ -171,18 +175,18 @@ func newProjectAPIHandler(
 			writeJSON(w, http.StatusOK, items)
 		case http.MethodPost:
 			var req struct {
-				Name            string                      `json:"name"`
-				Type            string                      `json:"type,omitempty"`
-				GitRepo         string                      `json:"git_repo,omitempty"`
-				Objective       string                      `json:"objective,omitempty"`
-				WorkflowProfile string                      `json:"workflow_profile,omitempty"`
-				WorkflowRules   []project.WorkflowRule      `json:"workflow_rules,omitempty"`
-				Instructions    string                      `json:"instructions,omitempty"`
-				CloneRepo       bool                        `json:"clone_repo,omitempty"`
-				ExecutionMode   string                      `json:"execution_mode,omitempty"`
-				MaxPhases       int                         `json:"max_phases,omitempty"`
-				SubAgents       []project.SubAgentConfig    `json:"sub_agents,omitempty"`
-				SkillsAllow     []string                    `json:"skills_allow,omitempty"`
+				Name            string                   `json:"name"`
+				Type            string                   `json:"type,omitempty"`
+				GitRepo         string                   `json:"git_repo,omitempty"`
+				Objective       string                   `json:"objective,omitempty"`
+				WorkflowProfile string                   `json:"workflow_profile,omitempty"`
+				WorkflowRules   []project.WorkflowRule   `json:"workflow_rules,omitempty"`
+				Instructions    string                   `json:"instructions,omitempty"`
+				CloneRepo       bool                     `json:"clone_repo,omitempty"`
+				ExecutionMode   string                   `json:"execution_mode,omitempty"`
+				MaxPhases       int                      `json:"max_phases,omitempty"`
+				SubAgents       []project.SubAgentConfig `json:"sub_agents,omitempty"`
+				SkillsAllow     []string                 `json:"skills_allow,omitempty"`
 			}
 			if !decodeJSONBody(w, r, &req) {
 				return
@@ -654,8 +658,8 @@ func newProjectAPIHandler(
 			messages, _ := session.ReadMessages(path)
 			originalCount := len(messages)
 			compacted, err := session.CompactTranscriptWithOptions(path, 0, time.Now().UTC(), session.CompactOptions{
-				KeepRecentTokens:    12000,
-				KeepRecentFraction:  0.30,
+				KeepRecentTokens:   12000,
+				KeepRecentFraction: 0.30,
 			})
 			if err != nil {
 				logger.Error().Err(err).Str("session_id", sessionID).Msg("compact session failed")
@@ -753,21 +757,11 @@ func syncProjectStateOnStatusChange(store *project.Store, projectID, status stri
 	if store == nil {
 		return
 	}
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "archived":
-		donePhase := "done"
-		doneStatus := "done"
-		stopReason := "Project archived"
-		_, _ = store.UpdateState(projectID, project.ProjectStateUpdateInput{
-			Phase: &donePhase, Status: &doneStatus, StopReason: &stopReason,
-		})
-	case "active":
-		planningPhase := "planning"
-		activeStatus := "active"
-		_, _ = store.UpdateState(projectID, project.ProjectStateUpdateInput{
-			Phase: &planningPhase, Status: &activeStatus,
-		})
+	update, ok := project.DefaultWorkflowPolicy.StateInputForProjectStatus(status)
+	if !ok {
+		return
 	}
+	_, _ = store.UpdateState(projectID, update)
 }
 
 func resolveProjectSessionID(item project.Project, sessionStore *session.Store) string {

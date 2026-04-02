@@ -14,6 +14,8 @@ import (
 const (
 	DefaultRegistryURL  = "https://raw.githubusercontent.com/devlikebear/tars-skills/main/registry.json"
 	DefaultSkillBaseURL = "https://raw.githubusercontent.com/devlikebear/tars-skills/main"
+	minRegistryVersion  = 3
+	maxRegistryVersion  = 4
 )
 
 // Registry fetches and searches the remote skill registry.
@@ -57,6 +59,14 @@ func (r *Registry) FetchIndex(ctx context.Context) (*RegistryIndex, error) {
 	if err := json.Unmarshal(body, &index); err != nil {
 		return nil, fmt.Errorf("parse registry: %w", err)
 	}
+	if index.Version < minRegistryVersion || index.Version > maxRegistryVersion {
+		return nil, fmt.Errorf(
+			"unsupported registry version %d (supported: %d-%d)",
+			index.Version,
+			minRegistryVersion,
+			maxRegistryVersion,
+		)
+	}
 	return &index, nil
 }
 
@@ -96,7 +106,7 @@ func (r *Registry) FindByName(ctx context.Context, name string) (*RegistryEntry,
 
 // FetchSkillContent downloads the SKILL.md for the given entry.
 func (r *Registry) FetchSkillContent(ctx context.Context, entry *RegistryEntry) ([]byte, error) {
-	return r.fetchHubFile(ctx, entry.Path, "SKILL.md", "skill")
+	return r.FetchFile(ctx, entry, "SKILL.md")
 }
 
 // FetchFile downloads a companion file relative to the skill's path.

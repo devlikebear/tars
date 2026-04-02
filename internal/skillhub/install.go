@@ -13,6 +13,8 @@ const (
 	hubSkillsDir    = "skills"
 	hubPluginsDir   = "plugins"
 	installedDBFile = "skillhub.json"
+	skillManifest   = "SKILL.md"
+	pluginManifest  = "tars.plugin.json"
 )
 
 // InstalledDB tracks installed hub skills and plugins.
@@ -48,33 +50,14 @@ func (inst *Installer) Install(ctx context.Context, name string) (*InstallResult
 		return nil, err
 	}
 
-	content, err := inst.Registry.FetchSkillContent(ctx, entry)
+	files, err := inst.downloadSkillFiles(ctx, entry)
 	if err != nil {
 		return nil, err
 	}
 
 	skillDir := inst.skillDir(entry.Name)
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create skill dir: %w", err)
-	}
-	skillFile := filepath.Join(skillDir, "SKILL.md")
-	if err := os.WriteFile(skillFile, content, 0o644); err != nil {
-		return nil, fmt.Errorf("write skill file: %w", err)
-	}
-
-	// Download companion files listed in the registry entry.
-	for _, relPath := range entry.Files {
-		fileContent, err := inst.Registry.FetchFile(ctx, entry, relPath)
-		if err != nil {
-			continue // best-effort: skip files that fail to download
-		}
-		dst := filepath.Join(skillDir, filepath.FromSlash(relPath))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			continue
-		}
-		if err := os.WriteFile(dst, fileContent, 0o644); err != nil {
-			continue
-		}
+	if err := materializePackageFiles(skillDir, files); err != nil {
+		return nil, err
 	}
 
 	if err := inst.addToDB(InstalledSkill{
@@ -150,22 +133,22 @@ func (inst *Installer) Update(ctx context.Context) ([]string, error) {
 		if entry.Version == skill.Version {
 			continue
 		}
-		content, err := inst.Registry.FetchSkillContent(ctx, entry)
+		files, err := inst.downloadSkillFiles(ctx, entry)
 		if err != nil {
-			continue
-		}
-		skillFile := filepath.Join(skill.Dir, "SKILL.md")
-		if err := os.WriteFile(skillFile, content, 0o644); err != nil {
-			continue
-		}
-		for _, relPath := range entry.Files {
-			fileContent, fetchErr := inst.Registry.FetchFile(ctx, entry, relPath)
-			if fetchErr != nil {
-				continue
+			if len(updated) > 0 {
+				if saveErr := inst.saveDB(db); saveErr != nil {
+					return updated, saveErr
+				}
 			}
-			dst := filepath.Join(skill.Dir, filepath.FromSlash(relPath))
-			_ = os.MkdirAll(filepath.Dir(dst), 0o755)
-			_ = os.WriteFile(dst, fileContent, 0o644)
+			return updated, err
+		}
+		if err := materializePackageFiles(skill.Dir, files); err != nil {
+			if len(updated) > 0 {
+				if saveErr := inst.saveDB(db); saveErr != nil {
+					return updated, saveErr
+				}
+			}
+			return updated, fmt.Errorf("update skill %q: %w", skill.Name, err)
 		}
 		db.Skills[i].Version = entry.Version
 		updated = append(updated, skill.Name)
@@ -233,24 +216,13 @@ func (inst *Installer) InstallPlugin(ctx context.Context, name string) error {
 		return err
 	}
 
-	pluginDir := inst.pluginDir(entry.Name)
-	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
-		return fmt.Errorf("create plugin dir: %w", err)
+	files, err := inst.downloadPluginFiles(ctx, entry)
+	if err != nil {
+		return err
 	}
-
-	// Download all declared files.
-	for _, relPath := range entry.Files {
-		content, err := inst.Registry.FetchPluginFile(ctx, entry, relPath)
-		if err != nil {
-			continue // best-effort
-		}
-		dst := filepath.Join(pluginDir, filepath.FromSlash(relPath))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			continue
-		}
-		if err := os.WriteFile(dst, content, 0o644); err != nil {
-			continue
-		}
+	pluginDir := inst.pluginDir(entry.Name)
+	if err := materializePackageFiles(pluginDir, files); err != nil {
+		return err
 	}
 
 	return inst.addPluginToDB(InstalledPlugin{
@@ -315,14 +287,22 @@ func (inst *Installer) UpdatePlugins(ctx context.Context) ([]string, error) {
 		if entry.Version == plugin.Version {
 			continue
 		}
-		for _, relPath := range entry.Files {
-			content, fetchErr := inst.Registry.FetchPluginFile(ctx, entry, relPath)
-			if fetchErr != nil {
-				continue
+		files, err := inst.downloadPluginFiles(ctx, entry)
+		if err != nil {
+			if len(updated) > 0 {
+				if saveErr := inst.saveDB(db); saveErr != nil {
+					return updated, saveErr
+				}
 			}
-			dst := filepath.Join(plugin.Dir, filepath.FromSlash(relPath))
-			_ = os.MkdirAll(filepath.Dir(dst), 0o755)
-			_ = os.WriteFile(dst, content, 0o644)
+			return updated, err
+		}
+		if err := materializePackageFiles(plugin.Dir, files); err != nil {
+			if len(updated) > 0 {
+				if saveErr := inst.saveDB(db); saveErr != nil {
+					return updated, saveErr
+				}
+			}
+			return updated, fmt.Errorf("update plugin %q: %w", plugin.Name, err)
 		}
 		db.Plugins[i].Version = entry.Version
 		updated = append(updated, plugin.Name)
@@ -378,6 +358,56 @@ func (inst *Installer) addPluginToDB(plugin InstalledPlugin) error {
 	}
 	db.Plugins = append(db.Plugins, plugin)
 	return inst.saveDB(db)
+}
+
+func (inst *Installer) downloadSkillFiles(ctx context.Context, entry *RegistryEntry) (map[string][]byte, error) {
+	return inst.downloadVerifiedHubFiles(entry.Name, "skill", entry.Files, skillManifest, func(relPath string) ([]byte, error) {
+		return inst.Registry.FetchFile(ctx, entry, relPath)
+	})
+}
+
+func (inst *Installer) downloadPluginFiles(ctx context.Context, entry *PluginEntry) (map[string][]byte, error) {
+	return inst.downloadVerifiedHubFiles(entry.Name, "plugin", entry.Files, pluginManifest, func(relPath string) ([]byte, error) {
+		return inst.Registry.FetchPluginFile(ctx, entry, relPath)
+	})
+}
+
+func (inst *Installer) downloadVerifiedHubFiles(
+	name string,
+	label string,
+	files RegistryFiles,
+	requiredPath string,
+	fetch func(relPath string) ([]byte, error),
+) (map[string][]byte, error) {
+	if len(files) == 0 {
+		return nil, fmt.Errorf("%s %q has no downloadable files", label, name)
+	}
+	downloaded := make(map[string][]byte, len(files))
+	requiredFound := false
+	for _, file := range files {
+		relPath, err := cleanRegistryRelativePath(file.Path)
+		if err != nil {
+			return nil, fmt.Errorf("invalid file path for %s %q: %w", label, name, err)
+		}
+		if strings.TrimSpace(file.SHA256) == "" {
+			return nil, fmt.Errorf("%s %q file %q is missing sha256 checksum", label, name, relPath)
+		}
+		content, err := fetch(relPath)
+		if err != nil {
+			return nil, err
+		}
+		if err := verifyFileChecksum(content, file.SHA256); err != nil {
+			return nil, fmt.Errorf("verify %q for %s %q: %w", relPath, label, name, err)
+		}
+		downloaded[relPath] = content
+		if relPath == requiredPath {
+			requiredFound = true
+		}
+	}
+	if requiredPath != "" && !requiredFound {
+		return nil, fmt.Errorf("%s %q manifest %q is not declared in registry files", label, name, requiredPath)
+	}
+	return downloaded, nil
 }
 
 // --- MCP operations ---

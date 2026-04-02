@@ -60,6 +60,19 @@ func TestStoreUpdateBriefAndFinalize(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "projects", created.ID, "STATE.md")); err != nil {
 		t.Fatalf("expected STATE.md to be created: %v", err)
 	}
+	state, err := store.GetState(created.ID)
+	if err != nil {
+		t.Fatalf("get project state after finalize: %v", err)
+	}
+	if state.Goal != goal || state.Phase != "planning" || state.Status != "active" {
+		t.Fatalf("expected finalized brief to initialize planning state, got %+v", state)
+	}
+	if state.NextAction != "Who betrays the crew in arc one?" {
+		t.Fatalf("expected open question to seed next action, got %+v", state)
+	}
+	if got := strings.Join(state.RemainingTasks, ","); got != "Who betrays the crew in arc one?,What is the cost of the map?" {
+		t.Fatalf("expected open questions to seed remaining tasks, got %+v", state.RemainingTasks)
+	}
 	for _, name := range []string{"STORY_BIBLE.md", "CHARACTERS.md", "PLOT.md"} {
 		if _, err := os.Stat(filepath.Join(root, "projects", created.ID, name)); err != nil {
 			t.Fatalf("expected %s to be created: %v", name, err)

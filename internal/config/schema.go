@@ -1,6 +1,10 @@
 package config
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/devlikebear/tars/internal/memory"
+)
 
 // FieldMeta describes a single configuration field for UI rendering.
 type FieldMeta struct {
@@ -62,7 +66,7 @@ func Schema() []FieldMeta {
 
 		// ── Memory ───────────────────────────────
 		f("memory_semantic_enabled", "Memory", "bool", "Semantic Memory", "Enable semantic memory with vector embeddings"),
-		fsel("memory_embed_provider", "Memory", "Embed Provider", "Embedding provider", []string{"gemini", "openai"}),
+		fsel("memory_embed_provider", "Memory", "Embed Provider", "Embedding provider", memory.SupportedEmbedProviders()),
 		f("memory_embed_base_url", "Memory", "string", "Embed Base URL", "Base URL for embedding API"),
 		fs("memory_embed_api_key", "Memory", "Embed API Key", "API key for the embedding provider", true),
 		f("memory_embed_model", "Memory", "string", "Embed Model", "Embedding model identifier"),

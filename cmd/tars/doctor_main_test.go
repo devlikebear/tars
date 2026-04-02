@@ -273,6 +273,57 @@ func TestRootCommand_DoctorFailsWhenGatewayDefaultAgentUsesMissingWorkspaceComma
 	}
 }
 
+func TestRootCommand_DoctorFailsWhenSemanticMemoryProviderIsUnsupported(t *testing.T) {
+	clearDoctorEnv(t)
+	t.Setenv("OPENAI_API_KEY", "test-openai-key")
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
+
+	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
+	var initStdout strings.Builder
+	initCmd := newRootCommand(strings.NewReader(""), &initStdout, io.Discard)
+	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	if err := initCmd.Execute(); err != nil {
+		t.Fatalf("init command: %v", err)
+	}
+
+	workspaceAbs, err := filepath.Abs(workspaceDir)
+	if err != nil {
+		t.Fatalf("workspace abs path: %v", err)
+	}
+	configPath := filepath.Join(workspaceAbs, "config", "tars.config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	configText := strings.TrimSpace(string(data)) + "\n" + strings.Join([]string{
+		"memory_semantic_enabled: true",
+		"memory_embed_provider: openai",
+		"memory_embed_base_url: https://api.openai.com/v1",
+		"memory_embed_api_key: test-embed-key",
+		"memory_embed_model: text-embedding-3-small",
+		"memory_embed_dimensions: 1536",
+	}, "\n") + "\n"
+	if err := os.WriteFile(configPath, []byte(configText), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var doctorStdout strings.Builder
+	doctorCmd := newRootCommand(strings.NewReader(""), &doctorStdout, io.Discard)
+	doctorCmd.SetArgs([]string{"doctor", "--workspace-dir", workspaceDir})
+	err = doctorCmd.Execute()
+	if err == nil {
+		t.Fatal("expected doctor to fail for unsupported semantic memory provider")
+	}
+
+	out := doctorStdout.String()
+	if !strings.Contains(out, "[fail] semantic memory") {
+		t.Fatalf("expected semantic memory failure, got:\n%s", out)
+	}
+	if !strings.Contains(out, "supported providers: gemini") {
+		t.Fatalf("expected supported provider guidance, got:\n%s", out)
+	}
+}
+
 func clearDoctorEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{

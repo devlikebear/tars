@@ -207,7 +207,7 @@ func runPluginInfo(ctx context.Context, stdout io.Writer, name string) error {
 		fmt.Fprintf(stdout, "Tags:        %s\n", strings.Join(entry.Tags, ", "))
 	}
 	if len(entry.Files) > 0 {
-		fmt.Fprintf(stdout, "Files:       %s\n", strings.Join(entry.Files, ", "))
+		fmt.Fprintf(stdout, "Files:       %s\n", strings.Join(entry.Files.Paths(), ", "))
 	}
 	return nil
 }

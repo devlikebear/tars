@@ -125,6 +125,9 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 		return runtimeDeps{}, &runtimeDepsError{stage: "init_llm", err: err}
 	}
 	semanticCfg := semanticMemoryConfigFromConfig(cfg)
+	if err := memory.ValidateSemanticConfig(semanticCfg); err != nil {
+		return runtimeDeps{}, &runtimeDepsError{stage: "init_semantic_memory", err: err}
+	}
 	deps.llmClient = usage.NewTrackedClient(client, tracker, cfg.LLMProvider, cfg.LLMModel)
 	deps.runPrompt = newAgentPromptRunner(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger, semanticCfg)
 	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger, semanticCfg)

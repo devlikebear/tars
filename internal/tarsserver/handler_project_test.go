@@ -99,6 +99,36 @@ func TestProjectAPI_CRUDAndActivate(t *testing.T) {
 	if afterActivate.Status != "active" {
 		t.Fatalf("expected project status 'active', got %q", afterActivate.Status)
 	}
+	state, err := projectStore.GetState(created.ID)
+	if err != nil {
+		t.Fatalf("get state after activate: %v", err)
+	}
+	if state.Phase != "planning" || state.Status != "active" {
+		t.Fatalf("expected planning/active state after activate, got %+v", state)
+	}
+
+	deactivateReq := httptest.NewRequest(http.MethodPost, "/v1/projects/"+created.ID+"/deactivate", nil)
+	deactivateReq.Header.Set("Content-Type", "application/json")
+	deactivateRec := httptest.NewRecorder()
+	handler.ServeHTTP(deactivateRec, deactivateReq)
+	if deactivateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for deactivate, got %d body=%q", deactivateRec.Code, deactivateRec.Body.String())
+	}
+
+	archived, err := projectStore.Get(created.ID)
+	if err != nil {
+		t.Fatalf("get project after deactivate: %v", err)
+	}
+	if archived.Status != "archived" {
+		t.Fatalf("expected project status 'archived', got %q", archived.Status)
+	}
+	state, err = projectStore.GetState(created.ID)
+	if err != nil {
+		t.Fatalf("get state after deactivate: %v", err)
+	}
+	if state.Phase != "done" || state.Status != "done" || state.StopReason != "Project archived" {
+		t.Fatalf("expected done/done archived state, got %+v", state)
+	}
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/projects/"+created.ID, nil)
 	deleteRec := httptest.NewRecorder()
@@ -570,4 +600,3 @@ notes: approved
 		t.Fatalf("expected task to move to done, got %+v", boardAfterReview.Tasks)
 	}
 }
-

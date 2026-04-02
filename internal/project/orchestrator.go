@@ -100,13 +100,7 @@ func (o *Orchestrator) dispatchTasksByStatus(
 	if err != nil {
 		return DispatchReport{}, err
 	}
-	tasks := make([]BoardTask, 0, len(board.Tasks))
-	for _, task := range board.Tasks {
-		if task.Status == strings.TrimSpace(status) {
-			tasks = append(tasks, task)
-		}
-	}
-	tasks = filterDispatchableTasksByStatus(strings.TrimSpace(status), tasks)
+	tasks := DefaultWorkflowPolicy.TasksForDispatchStage(board, status)
 	report := DispatchReport{
 		ProjectID: strings.TrimSpace(projectID),
 		Runs:      make([]TaskRun, len(tasks)),
@@ -581,10 +575,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func filterDispatchableTasksByStatus(status string, tasks []BoardTask) []BoardTask {
-	return DefaultWorkflowPolicy.FilterDispatchableTasks(status, tasks)
 }
 
 func ternaryStatus(ok bool, whenTrue, whenFalse string) string {

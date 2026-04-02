@@ -76,12 +76,20 @@ func (o *Orchestrator) buildPlanningPrompt(projectID string) (string, error) {
 	// Project state
 	state, err := o.store.GetState(projectID)
 	if err == nil {
-		parts = append(parts, "## Current State")
-		if state.Phase != "" {
-			parts = append(parts, fmt.Sprintf("Phase: %s", state.Phase))
+		projectItem, projectErr := o.store.Get(projectID)
+		if projectErr != nil {
+			return "", fmt.Errorf("get project: %w", projectErr)
 		}
-		if state.NextAction != "" {
-			parts = append(parts, fmt.Sprintf("Next action: %s", state.NextAction))
+		planning := DefaultWorkflowPolicy.ResolveEvent(WorkflowEventPlanningRequested, WorkflowEventContext{
+			Project: projectItem,
+			State:   &state,
+		})
+		parts = append(parts, "## Current State")
+		if planning.RuntimeState.Phase != "" {
+			parts = append(parts, fmt.Sprintf("Phase: %s", planning.RuntimeState.Phase))
+		}
+		if planning.RuntimeState.NextAction != "" {
+			parts = append(parts, fmt.Sprintf("Next action: %s", planning.RuntimeState.NextAction))
 		}
 		if state.LastRunSummary != "" {
 			parts = append(parts, fmt.Sprintf("Last run: %s", state.LastRunSummary))

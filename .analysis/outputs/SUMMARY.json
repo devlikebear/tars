@@ -2,10 +2,10 @@
   "session_id": "analyze-20260310-140305",
   "mode": "analyze",
   "scope": ".",
-  "status": "completed",
-  "commit": "2e39196ae4e93e60655cc0f670b2423575882ca6",
-  "visited_count": 120,
-  "frontier_count": 0,
+  "status": "paused",
+  "commit": "a631b495f8b4fc5c3ebc36c5cd711da3513c65d9",
+  "visited_count": 134,
+  "frontier_count": 4,
   "modules": [
     {
       "name": "auth-plugin-loading",
@@ -100,5 +100,5 @@
     "outputs/modules/workspace-data.md",
     ".analysis/AI_CONTEXT.md"
   ],
-  "checkpoints_count": 13
+  "checkpoints_count": 15
 }

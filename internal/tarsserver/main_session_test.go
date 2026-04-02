@@ -150,3 +150,25 @@ func TestResolveSession_EmptyKickoffMessage_CreatesNewSession(t *testing.T) {
 		t.Fatalf("expected created kickoff session to exist: %v", err)
 	}
 }
+
+func TestResolveSession_ProjectChat_CreatesDedicatedSession(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	mainSession, err := store.Create("main")
+	if err != nil {
+		t.Fatalf("create main session: %v", err)
+	}
+
+	resolved, err := resolveChatSession(store, "", mainSession.ID, "hello", "project-1")
+	if err != nil {
+		t.Fatalf("resolveChatSession: %v", err)
+	}
+	if strings.TrimSpace(resolved) == "" {
+		t.Fatalf("expected dedicated project session id")
+	}
+	if resolved == mainSession.ID {
+		t.Fatalf("expected project chat to avoid main session %q", mainSession.ID)
+	}
+	if _, err := store.Get(resolved); err != nil {
+		t.Fatalf("expected created project session to exist: %v", err)
+	}
+}
