@@ -18,6 +18,7 @@ coverage.out
 # Runtime
 *.db
 *.log
+logs/
 workspace/
 
 # Secrets
