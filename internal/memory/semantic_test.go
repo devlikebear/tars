@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -22,6 +24,31 @@ func (s stubEmbedder) Embed(_ context.Context, req EmbedRequest) ([]float64, err
 	out := make([]float64, len(vector))
 	copy(out, vector)
 	return out, nil
+}
+
+func TestSupportedEmbedProviders(t *testing.T) {
+	got := SupportedEmbedProviders()
+	want := []string{"gemini"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected supported providers %v, got %v", want, got)
+	}
+}
+
+func TestValidateSemanticConfigRejectsUnsupportedProvider(t *testing.T) {
+	err := ValidateSemanticConfig(SemanticConfig{
+		Enabled:         true,
+		EmbedProvider:   "openai",
+		EmbedBaseURL:    "https://api.openai.com/v1",
+		EmbedAPIKey:     "test-key",
+		EmbedModel:      "text-embedding-3-small",
+		EmbedDimensions: 1536,
+	})
+	if err == nil {
+		t.Fatal("expected unsupported provider error")
+	}
+	if !strings.Contains(err.Error(), "supported providers: gemini") {
+		t.Fatalf("expected supported provider guidance, got %v", err)
+	}
 }
 
 func TestSemanticService_SearchesParaphrasesWithinProject(t *testing.T) {

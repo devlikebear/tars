@@ -264,9 +264,9 @@ func (s *Store) FinalizeBrief(id string, sessionStore *session.Store) (Project, 
 	if err != nil {
 		return Project{}, Brief{}, err
 	}
-	initial := DefaultWorkflowPolicy.InitialProjectState(brief).stateInput()
-	initial.Goal = stringValuePtr(strings.TrimSpace(brief.Goal))
-	initial.RemainingTasks = append([]string(nil), brief.OpenQuestions...)
+	initial := DefaultWorkflowPolicy.ResolveEvent(WorkflowEventBriefFinalized, WorkflowEventContext{
+		Brief: brief,
+	}).Transition.StateInput()
 	_, err = s.UpdateState(created.ID, initial)
 	if err != nil {
 		return Project{}, Brief{}, err

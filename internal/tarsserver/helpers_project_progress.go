@@ -31,7 +31,7 @@ func newProjectProgressAfterHeartbeat(
 			return err
 		}
 		for _, p := range projects {
-			if strings.TrimSpace(p.Status) == "archived" {
+			if project.DefaultWorkflowPolicy.ResolveRuntimeState(p, nil).IsProjectArchived() {
 				continue
 			}
 			if strings.TrimSpace(p.ExecutionMode) == "autonomous" {
@@ -63,14 +63,15 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 	if err != nil {
 		state = project.ProjectState{ProjectID: p.ID}
 	}
+	runtimeState := project.DefaultWorkflowPolicy.ResolveRuntimeState(p, &state)
 
 	// Check phase limit
 	maxPhases := p.MaxPhases
 	if maxPhases <= 0 {
 		maxPhases = 3
 	}
-	if state.PhaseNumber >= maxPhases {
-		if state.Status != "done" {
+	if runtimeState.PhaseLimitReached(maxPhases) {
+		if runtimeState.Status != "done" {
 			completeProject(store, p.ID, "Maximum phases reached", logger)
 		}
 		return
@@ -80,23 +81,21 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 	if err != nil {
 		return
 	}
-
-	// Count task statuses
-	counts := countTaskStatuses(board)
+	boardState := project.DefaultWorkflowPolicy.ResolveBoardState(board)
 
 	// Case 1: Board empty → plan first phase
-	if len(board.Tasks) == 0 {
+	if boardState.IsEmpty() {
 		if ask == nil {
 			logger.Debug().Str("project_id", p.ID).Msg("autonomous: skip planning (no LLM)")
 			return
 		}
-		nextPhase := state.PhaseNumber + 1
+		nextPhase := runtimeState.PhaseNumber + 1
 		planAutonomousTasks(ctx, store, ask, p, nextPhase, "", logger)
 		return
 	}
 
 	// Case 2: All tasks done → run phase_done agents (if configured), then next phase
-	if counts["done"] == len(board.Tasks) {
+	if boardState.AllDone() {
 		if ask == nil {
 			return
 		}
@@ -104,7 +103,7 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 		var agentFeedback string
 		phaseDoneAgents := findAgentsByTrigger(p.SubAgents, "phase_done")
 		for _, agent := range phaseDoneAgents {
-			feedback := runAgentReview(ctx, store, ask, p, board, state.PhaseNumber, agent, logger)
+			feedback := runAgentReview(ctx, store, ask, p, board, runtimeState.PhaseNumber, agent, logger)
 			if feedback != "" {
 				if agentFeedback != "" {
 					agentFeedback += "\n\n"
@@ -112,18 +111,18 @@ func advanceAutonomousProject(ctx context.Context, store *project.Store, runner 
 				agentFeedback += fmt.Sprintf("[%s] %s", agent.Role, feedback)
 			}
 		}
-		nextPhase := state.PhaseNumber + 1
+		nextPhase := runtimeState.PhaseNumber + 1
 		planAutonomousTasks(ctx, store, ask, p, nextPhase, agentFeedback, logger)
 		return
 	}
 
 	// Case 2: Has in_progress tasks → skip (running)
-	if counts["in_progress"] > 0 {
+	if boardState.HasInProgressTasks() {
 		return
 	}
 
 	// Case 3: Has todo/review → dispatch
-	if counts["todo"] > 0 || counts["review"] > 0 {
+	if boardState.HasDispatchableTasks() {
 		dispatchBoardTasks(ctx, store, runner, skillResolver, p.ID, board, logger)
 		return
 	}
@@ -249,16 +248,9 @@ func completeProject(store *project.Store, projectID string, reason string, logg
 
 // dispatchBoardTasks dispatches todo and review tasks via orchestrator.
 func dispatchBoardTasks(ctx context.Context, store *project.Store, runner project.TaskRunner, skillResolver project.SkillResolver, projectID string, board project.Board, logger zerolog.Logger) {
-	hasTodo := false
-	hasReview := false
-	for _, task := range board.Tasks {
-		switch strings.TrimSpace(task.Status) {
-		case "todo":
-			hasTodo = true
-		case "review":
-			hasReview = true
-		}
-	}
+	boardState := project.DefaultWorkflowPolicy.ResolveBoardState(board)
+	hasTodo := boardState.TodoCount > 0
+	hasReview := boardState.ReviewCount > 0
 	if !hasTodo && !hasReview {
 		return
 	}
@@ -280,14 +272,6 @@ func dispatchBoardTasks(ctx context.Context, store *project.Store, runner projec
 			logger.Info().Str("project_id", projectID).Int("dispatched", len(report.Runs)).Msg("project progress: dispatched review tasks")
 		}
 	}
-}
-
-func countTaskStatuses(board project.Board) map[string]int {
-	counts := map[string]int{}
-	for _, t := range board.Tasks {
-		counts[strings.TrimSpace(t.Status)]++
-	}
-	return counts
 }
 
 type llmTask struct {

@@ -26,6 +26,14 @@ const (
 
 var ErrSemanticUnavailable = errors.New("semantic memory is unavailable")
 
+type embedderFactory func(SemanticConfig, *http.Client) Embedder
+
+var embedderFactories = map[string]embedderFactory{
+	"gemini": func(cfg SemanticConfig, client *http.Client) Embedder {
+		return newGeminiEmbedder(cfg, client)
+	},
+}
+
 type SemanticConfig struct {
 	Enabled         bool
 	EmbedProvider   string
@@ -36,7 +44,7 @@ type SemanticConfig struct {
 }
 
 func (cfg SemanticConfig) normalized() SemanticConfig {
-	cfg.EmbedProvider = strings.TrimSpace(strings.ToLower(cfg.EmbedProvider))
+	cfg.EmbedProvider = NormalizeEmbedProvider(cfg.EmbedProvider)
 	cfg.EmbedBaseURL = strings.TrimSpace(cfg.EmbedBaseURL)
 	cfg.EmbedAPIKey = strings.TrimSpace(cfg.EmbedAPIKey)
 	cfg.EmbedModel = strings.TrimSpace(cfg.EmbedModel)
@@ -54,6 +62,53 @@ func (cfg SemanticConfig) ready() bool {
 		cfg.EmbedAPIKey != "" &&
 		cfg.EmbedModel != "" &&
 		cfg.EmbedDimensions > 0
+}
+
+func NormalizeEmbedProvider(raw string) string {
+	return strings.TrimSpace(strings.ToLower(raw))
+}
+
+func SupportedEmbedProviders() []string {
+	providers := make([]string, 0, len(embedderFactories))
+	for provider := range embedderFactories {
+		providers = append(providers, provider)
+	}
+	sort.Strings(providers)
+	return providers
+}
+
+func IsSupportedEmbedProvider(raw string) bool {
+	_, ok := embedderFactories[NormalizeEmbedProvider(raw)]
+	return ok
+}
+
+func ValidateSemanticConfig(cfg SemanticConfig) error {
+	cfg = cfg.normalized()
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.EmbedProvider == "" {
+		return fmt.Errorf("semantic memory enabled but memory_embed_provider is empty")
+	}
+	if !IsSupportedEmbedProvider(cfg.EmbedProvider) {
+		return fmt.Errorf(
+			"semantic memory provider %q is not supported; supported providers: %s",
+			cfg.EmbedProvider,
+			strings.Join(SupportedEmbedProviders(), ", "),
+		)
+	}
+	switch {
+	case cfg.EmbedBaseURL == "":
+		return fmt.Errorf("semantic memory enabled but memory_embed_base_url is empty")
+	case cfg.EmbedAPIKey == "":
+		return fmt.Errorf("semantic memory enabled but memory_embed_api_key is empty")
+	case cfg.EmbedModel == "":
+		return fmt.Errorf("semantic memory enabled but memory_embed_model is empty")
+	case cfg.EmbedDimensions <= 0:
+		return fmt.Errorf("semantic memory enabled but memory_embed_dimensions must be greater than zero")
+	default:
+		return nil
+	}
 }
 
 type EmbedRequest struct {
@@ -157,9 +212,8 @@ func NewService(root string, opts ServiceOptions) *Service {
 	}
 	embedder := opts.Embedder
 	if embedder == nil && cfg.ready() {
-		switch cfg.EmbedProvider {
-		case "gemini":
-			embedder = newGeminiEmbedder(cfg, opts.HTTPClient)
+		if factory, ok := embedderFactories[cfg.EmbedProvider]; ok {
+			embedder = factory(cfg, opts.HTTPClient)
 		}
 	}
 	return &Service{

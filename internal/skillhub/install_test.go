@@ -2,6 +2,7 @@ package skillhub
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,6 +123,62 @@ func TestInstallRequiresPluginWarning(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsTamperedSkill(t *testing.T) {
+	srv := newRegistryServer(t, testIntegrityIndex(), testHubFiles())
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	_, err := inst.Install(context.Background(), "tampered-skill")
+	if err == nil {
+		t.Fatal("expected checksum mismatch error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "checksum") {
+		t.Fatalf("expected checksum error, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "skills", "tampered-skill")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no installed tampered skill, got stat err %v", statErr)
+	}
+	skills, listErr := inst.List()
+	if listErr != nil && !os.IsNotExist(listErr) {
+		t.Fatalf("List: %v", listErr)
+	}
+	if len(skills) != 0 {
+		t.Fatalf("expected no installed skills, got %v", skills)
+	}
+}
+
+func TestInstallRejectsMissingSkillChecksum(t *testing.T) {
+	srv := newRegistryServer(t, testIntegrityIndex(), testHubFiles())
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	_, err := inst.Install(context.Background(), "missing-skill-checksum")
+	if err == nil {
+		t.Fatal("expected missing checksum error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "sha256") {
+		t.Fatalf("expected sha256 error, got %v", err)
+	}
+}
+
 func TestInstallNoPluginWarningWhenInstalled(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
@@ -181,6 +238,32 @@ func TestInstallPluginAndList(t *testing.T) {
 	}
 	if len(plugins) != 1 || plugins[0].Name != "project-swarm" {
 		t.Fatalf("expected [project-swarm], got %v", plugins)
+	}
+}
+
+func TestInstallPluginRejectsTamperedPayload(t *testing.T) {
+	srv := newRegistryServer(t, testIntegrityIndex(), testHubFiles())
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	err := inst.InstallPlugin(context.Background(), "tampered-plugin")
+	if err == nil {
+		t.Fatal("expected checksum mismatch error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "checksum") {
+		t.Fatalf("expected checksum error, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "plugins", "tampered-plugin")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no installed tampered plugin, got stat err %v", statErr)
 	}
 }
 
@@ -255,6 +338,224 @@ func TestUpdate(t *testing.T) {
 	db, _ = inst.loadDB()
 	if db.Skills[0].Version != "0.6.0" {
 		t.Fatalf("expected version 0.6.0, got %s", db.Skills[0].Version)
+	}
+}
+
+func TestUpdateRejectsTamperedSkillAndKeepsExistingInstall(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	if _, err := inst.Install(context.Background(), "project-start"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	skillPath := filepath.Join(tmpDir, "skills", "project-start", "SKILL.md")
+	originalContent, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	db, _ := inst.loadDB()
+	db.Skills[0].Version = "0.1.0"
+	_ = inst.saveDB(db)
+
+	tamperedIndex := testIndex()
+	tamperedIndex.Skills[0].Version = "0.7.0"
+	tamperedIndex.Skills[0].Files[0].SHA256 = "deadbeef"
+	tamperedSrv := newRegistryServer(t, tamperedIndex, testHubFiles())
+	defer tamperedSrv.Close()
+	inst.Registry = &Registry{
+		RegistryURL:  tamperedSrv.URL + "/registry.json",
+		SkillBaseURL: tamperedSrv.URL,
+		HTTPClient:   tamperedSrv.Client(),
+	}
+
+	updated, err := inst.Update(context.Background())
+	if err == nil {
+		t.Fatal("expected checksum mismatch update error")
+	}
+	if len(updated) != 0 {
+		t.Fatalf("expected no updated skills, got %v", updated)
+	}
+
+	currentContent, readErr := os.ReadFile(skillPath)
+	if readErr != nil {
+		t.Fatalf("ReadFile after update: %v", readErr)
+	}
+	if string(currentContent) != string(originalContent) {
+		t.Fatalf("expected skill content to remain unchanged after failed update")
+	}
+	db, _ = inst.loadDB()
+	if db.Skills[0].Version != "0.1.0" {
+		t.Fatalf("expected version to remain 0.1.0, got %s", db.Skills[0].Version)
+	}
+}
+
+func TestMaterializePackageFilesRollsBackOnActivationFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	dstDir := filepath.Join(tmpDir, "package")
+	oldFile := filepath.Join(dstDir, "SKILL.md")
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(oldFile, []byte("old"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	origRename := renamePackagePath
+	renamePackagePath = func(oldpath, newpath string) error {
+		if strings.HasSuffix(oldpath, ".tmp") && newpath == dstDir {
+			return errors.New("simulated activation failure")
+		}
+		return os.Rename(oldpath, newpath)
+	}
+	defer func() {
+		renamePackagePath = origRename
+	}()
+
+	err := materializePackageFiles(dstDir, map[string][]byte{
+		"SKILL.md": []byte("new"),
+	})
+	if err == nil {
+		t.Fatal("expected activation failure")
+	}
+
+	content, readErr := os.ReadFile(oldFile)
+	if readErr != nil {
+		t.Fatalf("ReadFile: %v", readErr)
+	}
+	if string(content) != "old" {
+		t.Fatalf("expected old content to remain, got %q", string(content))
+	}
+	if _, statErr := os.Stat(dstDir + ".tmp"); !os.IsNotExist(statErr) {
+		t.Fatalf("expected temp dir cleanup, got %v", statErr)
+	}
+	if _, statErr := os.Stat(dstDir + ".bak"); !os.IsNotExist(statErr) {
+		t.Fatalf("expected backup dir cleanup, got %v", statErr)
+	}
+}
+
+func TestUpdatePlugins(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+		t.Fatalf("InstallPlugin: %v", err)
+	}
+
+	db, _ := inst.loadDB()
+	db.Plugins[0].Version = "0.1.0"
+	_ = inst.saveDB(db)
+
+	updated, err := inst.UpdatePlugins(context.Background())
+	if err != nil {
+		t.Fatalf("UpdatePlugins: %v", err)
+	}
+	if len(updated) != 1 || updated[0] != "project-swarm" {
+		t.Fatalf("expected [project-swarm] updated, got %v", updated)
+	}
+
+	db, _ = inst.loadDB()
+	if db.Plugins[0].Version != "0.7.0" {
+		t.Fatalf("expected version 0.7.0, got %s", db.Plugins[0].Version)
+	}
+}
+
+func TestUpdatePluginsRollsBackOnActivationFailure(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+		t.Fatalf("InstallPlugin: %v", err)
+	}
+	pluginPath := filepath.Join(tmpDir, "plugins", "project-swarm", "tars.plugin.json")
+	originalContent, err := os.ReadFile(pluginPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	db, _ := inst.loadDB()
+	db.Plugins[0].Version = "0.1.0"
+	_ = inst.saveDB(db)
+
+	updatedIndex := testIndex()
+	updatedIndex.Plugins[0].Version = "0.8.0"
+	files := testHubFiles()
+	files["/plugins/project-swarm/tars.plugin.json"] = []byte(`{"id":"project-swarm","name":"Project Swarm v2"}`)
+	updatedIndex.Plugins[0].Files[0].SHA256 = sha256Hex(files["/plugins/project-swarm/tars.plugin.json"])
+	updatedSrv := newRegistryServer(t, updatedIndex, files)
+	defer updatedSrv.Close()
+	inst.Registry = &Registry{
+		RegistryURL:  updatedSrv.URL + "/registry.json",
+		SkillBaseURL: updatedSrv.URL,
+		HTTPClient:   updatedSrv.Client(),
+	}
+
+	pluginDir := filepath.Join(tmpDir, "plugins", "project-swarm")
+	origRename := renamePackagePath
+	renamePackagePath = func(oldpath, newpath string) error {
+		if strings.HasSuffix(oldpath, ".tmp") && newpath == pluginDir {
+			return errors.New("simulated activation failure")
+		}
+		return os.Rename(oldpath, newpath)
+	}
+	defer func() {
+		renamePackagePath = origRename
+	}()
+
+	updated, err := inst.UpdatePlugins(context.Background())
+	if err == nil {
+		t.Fatal("expected activation failure")
+	}
+	if len(updated) != 0 {
+		t.Fatalf("expected no updated plugins, got %v", updated)
+	}
+
+	currentContent, readErr := os.ReadFile(pluginPath)
+	if readErr != nil {
+		t.Fatalf("ReadFile after update: %v", readErr)
+	}
+	if string(currentContent) != string(originalContent) {
+		t.Fatalf("expected plugin content to remain unchanged after failed update")
+	}
+	db, _ = inst.loadDB()
+	if db.Plugins[0].Version != "0.1.0" {
+		t.Fatalf("expected version to remain 0.1.0, got %s", db.Plugins[0].Version)
+	}
+	if _, statErr := os.Stat(pluginDir + ".tmp"); !os.IsNotExist(statErr) {
+		t.Fatalf("expected temp dir cleanup, got %v", statErr)
+	}
+	if _, statErr := os.Stat(pluginDir + ".bak"); !os.IsNotExist(statErr) {
+		t.Fatalf("expected backup dir cleanup, got %v", statErr)
 	}
 }
 

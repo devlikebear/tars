@@ -35,11 +35,11 @@ func resolveChatSession(store *session.Store, sessionID string, mainSessionID st
 		return createFallbackChatSession(store)
 	}
 	if strings.TrimSpace(sessionID) == "" {
-		// Project chats always get their own session — never fall back to main
-		if strings.TrimSpace(projectID) != "" {
-			return createFallbackChatSession(store)
-		}
-		if project.DefaultWorkflowPolicy.IsKickoffMessage(userMessage) {
+		kickoff := project.DefaultWorkflowPolicy.ResolveEvent(project.WorkflowEventKickoffRequested, project.WorkflowEventContext{
+			UserMessage: userMessage,
+			ProjectID:   projectID,
+		})
+		if kickoff.CreateDedicatedSession {
 			return createFallbackChatSession(store)
 		}
 		id := strings.TrimSpace(mainSessionID)

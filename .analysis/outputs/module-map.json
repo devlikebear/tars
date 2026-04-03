@@ -1,17 +1,23 @@
 {
   "entrypoints": {
     "path": "cmd/tars/",
-    "responsibility": "CLI entrypoints and hub-management commands that choose the runtime path for client, server, assistant, diagnostics, skills, and plugins.",
+    "responsibility": "CLI entrypoints and console-first command surface that choose the runtime path for browser launch, one-shot chat, server, project/ops commands, diagnostics, and hub management.",
     "key_files": [
       "cmd/tars/main.go",
+      "cmd/tars/console_main.go",
       "cmd/tars/mainthread_darwin.go",
       "cmd/tars/mainthread_other.go",
       "cmd/tars/client_main.go",
       "cmd/tars/server_main.go",
       "cmd/tars/assistant_main.go",
       "cmd/tars/doctor_main.go",
+      "cmd/tars/project_main.go",
+      "cmd/tars/cron_main.go",
+      "cmd/tars/approval_main.go",
       "cmd/tars/skill_main.go",
-      "cmd/tars/plugin_main.go"
+      "cmd/tars/plugin_main.go",
+      "cmd/tars/mcp_main.go",
+      "cmd/tars/service_main.go"
     ]
   },
   "configuration-doctor": {
@@ -29,45 +35,51 @@
   },
   "client-tui": {
     "path": "internal/tarsclient/",
-    "responsibility": "Terminal UI flow and reusable HTTP/SSE client behavior for chat.",
+    "responsibility": "Runs one-shot CLI chat and local runtime commands, and provides reusable HTTP/SSE client behavior; the old interactive TUI remains only as a deprecated compatibility stub.",
     "key_files": [
       "internal/tarsclient/client_main.go",
-      "internal/tarsclient/app_model.go",
-      "internal/tarsclient/app_update.go",
       "internal/tarsclient/chat.go",
+      "internal/tarsclient/commands_runtime.go",
+      "internal/tarsclient/runtime_ops.go",
       "pkg/tarsclient/client.go"
     ]
   },
   "server-chat-pipeline": {
     "path": "internal/tarsserver/",
-    "responsibility": "Server bootstrap, API routing, chat execution, semantic-memory-aware prompt assembly, and provider-model discovery endpoints.",
+    "responsibility": "Server bootstrap, API and console routing, chat execution, semantic-memory-aware prompt assembly, per-request tool policy, SSE streaming, and provider/config/runtime endpoints.",
     "key_files": [
       "internal/tarsserver/main.go",
       "internal/tarsserver/main_cli.go",
       "internal/tarsserver/main_bootstrap.go",
       "internal/tarsserver/main_serve_api.go",
+      "internal/tarsserver/console.go",
       "internal/tarsserver/handler_chat.go",
       "internal/tarsserver/handler_chat_context.go",
+      "internal/tarsserver/handler_chat_policy.go",
+      "internal/tarsserver/handler_chat_stream.go",
       "internal/tarsserver/helpers_memory.go",
       "internal/tarsserver/handler_transport_helpers.go"
     ]
   },
   "auth-plugin-loading": {
-    "path": "internal/serverauth/",
-    "responsibility": "Enforces API auth policy, loopback dashboard exceptions, and plugin skill/MCP paths inside trusted boundaries.",
+    "path": "internal/serverauth/ + internal/plugin/",
+    "responsibility": "Enforces API auth policy, loopback console/dashboard exceptions, plugin manifest validation, and trusted plugin skill/MCP boundaries.",
     "key_files": [
       "internal/tarsserver/middleware.go",
       "internal/serverauth/middleware.go",
       "internal/plugin/loader.go",
+      "internal/plugin/builtin.go",
+      "internal/plugin/builtin_registry.go",
       "internal/plugin/manifest.go",
       "internal/plugin/types.go"
     ]
   },
   "extensions-tools": {
     "path": "internal/extensions/",
-    "responsibility": "Builds unified skill/plugin/MCP snapshots, mirrors runtime skills into the workspace, and exposes tools to the agent loop.",
+    "responsibility": "Builds unified skill/plugin/MCP snapshots, runs built-in plugin lifecycle hooks, mirrors runtime skills into the workspace, and exposes tool and HTTP surfaces to the server and agent loop.",
     "key_files": [
       "internal/extensions/manager.go",
+      "internal/extensions/lifecycle.go",
       "internal/skill/loader.go",
       "internal/skill/mirror.go",
       "internal/mcp/client.go",
@@ -120,14 +132,17 @@
     ]
   },
   "project-autopilot-dashboard": {
-    "path": "internal/project/",
-    "responsibility": "Manages project briefs, workflow policy, board and activity documents, autopilot supervision, and dashboard rendering.",
+    "path": "internal/project/ + internal/tarsserver/",
+    "responsibility": "Manages project briefs, tool/workflow policy, board and activity documents, backlog planning, dispatch/review, heartbeat-driven autonomous progress, and dashboard rendering.",
     "key_files": [
       "internal/project/brief_state.go",
+      "internal/project/policy.go",
       "internal/project/workflow_policy.go",
+      "internal/project/workflow_runtime_policy.go",
       "internal/project/orchestrator.go",
-      "internal/project/project_runner.go",
-      "internal/gateway/project_task_runner.go",
+      "internal/project/orchestrator_plan.go",
+      "internal/project/store_normalize.go",
+      "internal/tarsserver/helpers_project_progress.go",
       "internal/tarsserver/dashboard.go"
     ]
   },

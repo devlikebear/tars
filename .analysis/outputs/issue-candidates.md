@@ -1,8 +1,8 @@
 ### TIDY-002: 프로젝트 workflow 모델 단일화 추가 정리
 
-- Module: `internal/project/`
+- Module: `internal/project/ + internal/tarsserver/`
 - Type: `TIDY`
-- Evidence: `workflow_policy.go`가 normalize/default 규칙을 모으긴 했지만 kickoff trigger는 `handler_chat.go`, dispatch gate는 `orchestrator.go`, supervisor loop는 `project_runner.go`, dashboard projection은 `dashboard.go`에 여전히 나뉘어 있다.
+- Evidence: `workflow_policy.go`와 `policy.go`가 normalize/tool-policy 규칙을 모으긴 했지만 kickoff trigger는 `handler_chat.go`, planner run은 `orchestrator_plan.go`, dispatch gate는 `orchestrator.go`, autonomous progress는 `helpers_project_progress.go`, dashboard projection은 `dashboard.go`에 여전히 나뉘어 있다.
 - Suggested action: chat/autopilot/dashboard가 공통으로 쓰는 stage/event 모델을 두고 state transition과 projection 규칙을 한 레이어로 더 끌어올린다.
 
 ### SEC-002: Browser relay query token 노출 위험은 완전히 제거되지 않음

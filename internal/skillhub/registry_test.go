@@ -11,10 +11,9 @@ import (
 )
 
 func testIndex() RegistryIndex {
-	mcpManifest := []byte(`{"schema_version":1,"server":{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","${MCP_DIR}/sandbox"]}}`)
-	mcpReadme := []byte("# Filesystem MCP\n")
+	files := testHubFiles()
 	return RegistryIndex{
-		Version: 3,
+		Version: 4,
 		Skills: []RegistryEntry{
 			{
 				Name:           "project-start",
@@ -25,6 +24,9 @@ func testIndex() RegistryIndex {
 				Path:           "skills/project-start",
 				UserInvocable:  true,
 				RequiresPlugin: "project-swarm",
+				Files: RegistryFiles{
+					{Path: "SKILL.md", SHA256: sha256Hex(files["/skills/project-start/SKILL.md"])},
+				},
 			},
 			{
 				Name:          "novelist",
@@ -34,6 +36,9 @@ func testIndex() RegistryIndex {
 				Tags:          []string{"creative", "writing"},
 				Path:          "skills/novelist",
 				UserInvocable: true,
+				Files: RegistryFiles{
+					{Path: "SKILL.md", SHA256: sha256Hex(files["/skills/novelist/SKILL.md"])},
+				},
 			},
 		},
 		Plugins: []PluginEntry{
@@ -44,7 +49,10 @@ func testIndex() RegistryIndex {
 				Author:      "devlikebear",
 				Tags:        []string{"project", "automation"},
 				Path:        "plugins/project-swarm",
-				Files:       []string{"tars.plugin.json", "skills/project-start/SKILL.md"},
+				Files: RegistryFiles{
+					{Path: "tars.plugin.json", SHA256: sha256Hex(files["/plugins/project-swarm/tars.plugin.json"])},
+					{Path: "skills/project-start/SKILL.md", SHA256: sha256Hex(files["/plugins/project-swarm/skills/project-start/SKILL.md"])},
+				},
 			},
 		},
 		MCPServers: []MCPEntry{
@@ -57,8 +65,8 @@ func testIndex() RegistryIndex {
 				Path:        "mcp-servers/filesystem",
 				Manifest:    "tars.mcp.json",
 				Files: []RegistryFile{
-					{Path: "tars.mcp.json", SHA256: sha256Hex(mcpManifest)},
-					{Path: "README.md", SHA256: sha256Hex(mcpReadme)},
+					{Path: "tars.mcp.json", SHA256: sha256Hex(files["/mcp-servers/filesystem/tars.mcp.json"])},
+					{Path: "README.md", SHA256: sha256Hex(files["/mcp-servers/filesystem/README.md"])},
 				},
 			},
 			{
@@ -77,37 +85,86 @@ func testIndex() RegistryIndex {
 	}
 }
 
+func testIntegrityIndex() RegistryIndex {
+	index := testIndex()
+	index.Skills = append(index.Skills,
+		RegistryEntry{
+			Name:          "tampered-skill",
+			Description:   "Checksum mismatch skill fixture",
+			Version:       "0.1.0",
+			Author:        "devlikebear",
+			Tags:          []string{"broken"},
+			Path:          "skills/tampered-skill",
+			UserInvocable: true,
+			Files: RegistryFiles{
+				{Path: "SKILL.md", SHA256: "deadbeef"},
+			},
+		},
+		RegistryEntry{
+			Name:          "missing-skill-checksum",
+			Description:   "Missing checksum skill fixture",
+			Version:       "0.1.0",
+			Author:        "devlikebear",
+			Tags:          []string{"broken"},
+			Path:          "skills/missing-skill-checksum",
+			UserInvocable: true,
+			Files: RegistryFiles{
+				{Path: "SKILL.md"},
+			},
+		},
+	)
+	index.Plugins = append(index.Plugins, PluginEntry{
+		Name:        "tampered-plugin",
+		Description: "Checksum mismatch plugin fixture",
+		Version:     "0.1.0",
+		Author:      "devlikebear",
+		Tags:        []string{"broken"},
+		Path:        "plugins/tampered-plugin",
+		Files: RegistryFiles{
+			{Path: "tars.plugin.json", SHA256: "deadbeef"},
+		},
+	})
+	return index
+}
+
+func testHubFiles() map[string][]byte {
+	return map[string][]byte{
+		"/skills/project-start/SKILL.md":                       []byte("---\nname: project-start\n---\n# Project Start\n"),
+		"/skills/novelist/SKILL.md":                            []byte("---\nname: novelist\n---\n# Novelist\n"),
+		"/skills/tampered-skill/SKILL.md":                      []byte("---\nname: tampered-skill\n---\n# Tampered Skill\n"),
+		"/skills/missing-skill-checksum/SKILL.md":              []byte("---\nname: missing-skill-checksum\n---\n# Missing Skill Checksum\n"),
+		"/plugins/project-swarm/tars.plugin.json":              []byte(`{"id":"project-swarm","name":"Project Swarm"}`),
+		"/plugins/project-swarm/skills/project-start/SKILL.md": []byte("---\nname: project-start\n---\n# Project Start (bundled)\n"),
+		"/plugins/tampered-plugin/tars.plugin.json":            []byte(`{"id":"tampered-plugin","name":"Tampered Plugin"}`),
+		"/mcp-servers/filesystem/tars.mcp.json":                []byte(`{"schema_version":1,"server":{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","${MCP_DIR}/sandbox"]}}`),
+		"/mcp-servers/filesystem/README.md":                    []byte("# Filesystem MCP\n"),
+		"/mcp-servers/broken-checksum/tars.mcp.json":           []byte(`{"schema_version":1,"server":{"name":"broken","command":"npx","args":["-y","broken"]}}`),
+	}
+}
+
 func sha256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
 
 func newTestServer(t *testing.T) *httptest.Server {
+	return newRegistryServer(t, testIndex(), testHubFiles())
+}
+
+func newRegistryServer(t *testing.T, index RegistryIndex, files map[string][]byte) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/registry.json", func(w http.ResponseWriter, _ *http.Request) {
-		data, _ := json.Marshal(testIndex())
+		data, _ := json.Marshal(index)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(data)
 	})
-	mux.HandleFunc("/skills/project-start/SKILL.md", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("---\nname: project-start\n---\n# Project Start\n"))
-	})
-	mux.HandleFunc("/plugins/project-swarm/tars.plugin.json", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"id":"project-swarm","name":"Project Swarm"}`))
-	})
-	mux.HandleFunc("/plugins/project-swarm/skills/project-start/SKILL.md", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("---\nname: project-start\n---\n# Project Start (bundled)\n"))
-	})
-	mux.HandleFunc("/mcp-servers/filesystem/tars.mcp.json", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"schema_version":1,"server":{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","${MCP_DIR}/sandbox"]}}`))
-	})
-	mux.HandleFunc("/mcp-servers/filesystem/README.md", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("# Filesystem MCP\n"))
-	})
-	mux.HandleFunc("/mcp-servers/broken-checksum/tars.mcp.json", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"schema_version":1,"server":{"name":"broken","command":"npx","args":["-y","broken"]}}`))
-	})
+	for route, content := range files {
+		fileContent := content
+		mux.HandleFunc(route, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write(fileContent)
+		})
+	}
 	return httptest.NewServer(mux)
 }
 
@@ -125,6 +182,22 @@ func TestFetchIndex(t *testing.T) {
 	}
 	if len(index.Skills) != 2 {
 		t.Fatalf("expected 2 skills, got %d", len(index.Skills))
+	}
+}
+
+func TestFetchIndexRejectsUnsupportedVersion(t *testing.T) {
+	index := testIndex()
+	index.Version = 99
+	srv := newRegistryServer(t, index, testHubFiles())
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL: srv.URL + "/registry.json",
+		HTTPClient:  srv.Client(),
+	}
+	_, err := reg.FetchIndex(context.Background())
+	if err == nil {
+		t.Fatal("expected unsupported version error")
 	}
 }
 

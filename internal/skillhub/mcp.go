@@ -20,6 +20,8 @@ const (
 	defaultMCPManifestVer = 1
 )
 
+var renamePackagePath = os.Rename
+
 type MCPManifest struct {
 	SchemaVersion int              `json:"schema_version,omitempty"`
 	Server        config.MCPServer `json:"server"`
@@ -119,7 +121,9 @@ func materializePackageFiles(dstDir string, files map[string][]byte) error {
 		return fmt.Errorf("create package parent dir: %w", err)
 	}
 	tmpDir := dstDir + ".tmp"
+	backupDir := dstDir + ".bak"
 	_ = os.RemoveAll(tmpDir)
+	_ = os.RemoveAll(backupDir)
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return fmt.Errorf("create temp package dir: %w", err)
 	}
@@ -134,11 +138,31 @@ func materializePackageFiles(dstDir string, files map[string][]byte) error {
 			return fmt.Errorf("write package file: %w", err)
 		}
 	}
-	_ = os.RemoveAll(dstDir)
-	if err := os.Rename(tmpDir, dstDir); err != nil {
+
+	if _, err := os.Stat(dstDir); err != nil {
+		if !os.IsNotExist(err) {
+			_ = os.RemoveAll(tmpDir)
+			return fmt.Errorf("stat package dir: %w", err)
+		}
+		if err := renamePackagePath(tmpDir, dstDir); err != nil {
+			_ = os.RemoveAll(tmpDir)
+			return fmt.Errorf("activate package dir: %w", err)
+		}
+		return nil
+	}
+
+	if err := renamePackagePath(dstDir, backupDir); err != nil {
 		_ = os.RemoveAll(tmpDir)
+		return fmt.Errorf("stage existing package dir: %w", err)
+	}
+	if err := renamePackagePath(tmpDir, dstDir); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		if rollbackErr := renamePackagePath(backupDir, dstDir); rollbackErr != nil {
+			return fmt.Errorf("activate package dir: %w (rollback failed: %v)", err, rollbackErr)
+		}
 		return fmt.Errorf("activate package dir: %w", err)
 	}
+	_ = os.RemoveAll(backupDir)
 	return nil
 }
 

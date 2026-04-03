@@ -11,6 +11,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/memory"
 	"github.com/spf13/cobra"
 )
 
@@ -136,6 +137,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 		checkDoctorGatewayAgents(&report, cfg)
 		checkDoctorLLMCredentials(&report, cfg, configPath)
 		checkDoctorLLMRuntime(&report, cfg)
+		checkDoctorSemanticMemory(&report, cfg, configPath)
 	}
 
 	if report.failureCount() > 0 {
@@ -229,6 +231,31 @@ func checkDoctorLLMRuntime(report *doctorReport, cfg config.Config) {
 		}
 		report.add("ok", "llm runtime", fmt.Sprintf("provider=%s cli=%s", cfg.LLMProvider, path))
 	}
+}
+
+func checkDoctorSemanticMemory(report *doctorReport, cfg config.Config, configPath string) {
+	semanticCfg := memory.SemanticConfig{
+		Enabled:         cfg.MemorySemanticEnabled,
+		EmbedProvider:   cfg.MemoryEmbedProvider,
+		EmbedBaseURL:    cfg.MemoryEmbedBaseURL,
+		EmbedAPIKey:     cfg.MemoryEmbedAPIKey,
+		EmbedModel:      cfg.MemoryEmbedModel,
+		EmbedDimensions: cfg.MemoryEmbedDimensions,
+	}
+	if !semanticCfg.Enabled {
+		report.add("ok", "semantic memory", "disabled")
+		return
+	}
+	if err := memory.ValidateSemanticConfig(semanticCfg); err != nil {
+		report.add("fail", "semantic memory", err.Error())
+		report.addHint(fmt.Sprintf(
+			"set `memory_embed_provider` to one of [%s], or disable semantic memory in %s",
+			strings.Join(memory.SupportedEmbedProviders(), ", "),
+			configPath,
+		))
+		return
+	}
+	report.add("ok", "semantic memory", fmt.Sprintf("provider=%s model=%s", semanticCfg.EmbedProvider, semanticCfg.EmbedModel))
 }
 
 func llmCredentialHint(provider, configPath string) string {
