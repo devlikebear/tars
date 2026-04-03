@@ -32,6 +32,16 @@
   let chatStatusLine = $state('')
   let chatMessages: ChatMessage[] = $state([])
   let autoTitled = $state(false)
+  let autoSendDone = false
+
+  // One-shot auto-send: fires once when autoSend becomes true with a prompt
+  $effect(() => {
+    if (autoSend && initialPrompt && !autoSendDone && !chatBusy) {
+      autoSendDone = true
+      chatInput = initialPrompt
+      tick().then(() => submitChat())
+    }
+  })
 
   let chatLogEl: HTMLDivElement | undefined = $state()
   let autoScroll = $state(true)
@@ -321,14 +331,9 @@
     } else {
       chatMessages = [{ id: 'system-init', role: 'system', text: 'TARS' }]
     }
-    if (initialPrompt) {
+    if (initialPrompt && !autoSend) {
       chatInput = initialPrompt
-      if (autoSend) {
-        await tick()
-        void submitChat()
-      } else {
-        tick().then(() => textareaEl?.focus())
-      }
+      tick().then(() => textareaEl?.focus())
     }
   })
 </script>

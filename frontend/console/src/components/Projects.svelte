@@ -68,7 +68,7 @@
   }
 
   function goToProject(projectId: string) {
-    onNavigate(`/console/projects/${encodeURIComponent(projectId)}`)
+    onNavigate(`/console/projects/${encodeURIComponent(projectId)}?new=1`)
   }
 
   async function load() {

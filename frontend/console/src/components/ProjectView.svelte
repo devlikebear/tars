@@ -62,20 +62,6 @@
   // -- Onboarding --
   let onboardingPrompt = $state('')
   let shouldAutoSend = $state(false)
-  let onboardingChecked = false
-
-  $effect(() => {
-    if (onboardingChecked) return
-    if (projectState && sessionInfo !== null) {
-      onboardingChecked = true
-      if (projectState.phase === 'planning' && sessionInfo.messages === 0) {
-        shouldAutoSend = true
-        onboardingPrompt = project?.body
-          ? '프로젝트를 시작합니다. 프로젝트 문서를 확인하고 작업 계획을 세워주세요.'
-          : '새 프로젝트를 시작합니다. 프로젝트 계획을 함께 세워봅시다.'
-      }
-    }
-  })
 
   function activitySources(): string[] {
     return [...new Set(activity.map((a) => a.source).filter(Boolean))]
@@ -304,7 +290,28 @@
     void loadSessionInfo()
   }
 
-  onMount(refreshAll)
+  onMount(async () => {
+    // Check if this is a newly created project (navigated from creation form)
+    const params = new URLSearchParams(window.location.search)
+    const isNew = params.get('new') === '1'
+    if (isNew) {
+      // Remove ?new=1 from URL without reloading
+      const url = new URL(window.location.href)
+      url.searchParams.delete('new')
+      window.history.replaceState({}, '', url.toString())
+    }
+
+    // Load all data
+    await Promise.all([loadDetail(), loadBoard(), loadState(), loadActivity(), loadFiles(), loadSessionInfo()])
+
+    // Trigger onboarding only for newly created projects
+    if (isNew && projectState?.phase === 'planning') {
+      shouldAutoSend = true
+      onboardingPrompt = project?.body
+        ? '프로젝트를 시작합니다. 프로젝트 문서를 확인하고 작업 계획을 세워주세요.'
+        : '새 프로젝트를 시작합니다. 프로젝트 계획을 함께 세워봅시다.'
+    }
+  })
 </script>
 
 <div class="pv">
