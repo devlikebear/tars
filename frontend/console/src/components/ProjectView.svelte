@@ -25,6 +25,7 @@
     BoardTask,
   } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
+  import DirectoryPicker from './DirectoryPicker.svelte'
 
   interface Props {
     projectId: string
@@ -305,7 +306,7 @@
             <input type="text" placeholder="Project name *" bind:value={editName} class="form-input" />
             <input type="text" placeholder="Objective" bind:value={editObjective} class="form-input" />
             <input type="text" placeholder="Git repo URL" bind:value={editGitRepo} class="form-input" />
-            <input type="text" placeholder="Source path (absolute path to codebase)" bind:value={editSourcePath} class="form-input" />
+            <DirectoryPicker bind:value={editSourcePath} placeholder="Source path (absolute path to codebase)" />
             <input type="text" placeholder="Skills (comma-separated, e.g. github-dev)" bind:value={editSkillsAllow} class="form-input" />
             <div style="display:flex;gap:var(--space-2)">
               <button class="btn btn-primary btn-sm" disabled={!editName.trim() || editSaving} onclick={handleSaveEdit}>

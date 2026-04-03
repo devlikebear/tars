@@ -38,6 +38,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		events:          handler,
 		config:          handler,
 		skillhub:        handler,
+		filesystem:      handler,
 	})
 
 	paths := []string{
@@ -107,6 +108,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/hub/uninstall",
 		"/v1/hub/update",
 		"/v1/hub/skill-content",
+		"/v1/filesystem/browse",
 	}
 	for _, path := range paths {
 		rec := httptest.NewRecorder()
@@ -148,6 +150,7 @@ func TestRegisterAPIRoutes_LegacyDashboardPathsRedirectToConsole(t *testing.T) {
 		events:          base,
 		config:          base,
 		skillhub:        base,
+		filesystem:      base,
 	})
 
 	tests := []struct {

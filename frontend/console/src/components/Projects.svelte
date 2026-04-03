@@ -7,6 +7,7 @@
     streamEvents,
   } from '../lib/api'
   import type { Project } from '../lib/types'
+  import DirectoryPicker from './DirectoryPicker.svelte'
 
   interface Props {
     onNavigate: (path: string) => void
@@ -190,7 +191,9 @@
         <input type="text" placeholder="Type (optional)" bind:value={newProjectType} class="form-input" />
         <input type="text" placeholder="Objective (optional)" bind:value={newProjectObjective} class="form-input form-span-2" />
         <input type="text" placeholder="Git repo URL (optional)" bind:value={newProjectGitRepo} class="form-input form-span-2" />
-        <input type="text" placeholder="Source path — absolute path to codebase (optional)" bind:value={newProjectSourcePath} class="form-input form-span-2" />
+        <div class="form-span-2">
+          <DirectoryPicker bind:value={newProjectSourcePath} placeholder="Source path — absolute path to codebase (optional)" />
+        </div>
         <input type="text" placeholder="Skills (comma-separated, e.g. github-dev, testing)" bind:value={newProjectSkillsAllow} class="form-input form-span-2" />
         <div class="form-span-2 form-row">
           <label class="form-label">
