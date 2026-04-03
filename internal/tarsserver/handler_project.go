@@ -224,6 +224,21 @@ func newProjectAPIHandler(
 					created, _ = store.Update(created.ID, project.UpdateInput{SessionID: &sessID})
 				}
 			}
+			// Initialize project state with phase based on project.md presence
+			initPhase := "planning"
+			initNextAction := "Discuss project goals and build a project plan with the user"
+			if strings.TrimSpace(created.Body) != "" {
+				initPhase = "executing"
+				initNextAction = "Review project instructions and start working"
+			}
+			initStatus := "active"
+			initGoal := strings.TrimSpace(created.Objective)
+			_, _ = store.UpdateState(created.ID, project.ProjectStateUpdateInput{
+				Phase:      &initPhase,
+				Status:     &initStatus,
+				Goal:       &initGoal,
+				NextAction: &initNextAction,
+			})
 			writeJSON(w, http.StatusOK, created)
 
 		}

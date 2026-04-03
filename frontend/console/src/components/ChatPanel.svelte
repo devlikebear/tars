@@ -19,10 +19,11 @@
     projectId?: string
     sessionId?: string
     initialPrompt?: string
+    autoSend?: boolean
     onSessionChange?: () => void
   }
 
-  let { projectId, sessionId, initialPrompt, onSessionChange }: Props = $props()
+  let { projectId, sessionId, initialPrompt, autoSend, onSessionChange }: Props = $props()
 
   let chatInput = $state('')
   let chatBusy = $state(false)
@@ -322,7 +323,12 @@
     }
     if (initialPrompt) {
       chatInput = initialPrompt
-      tick().then(() => textareaEl?.focus())
+      if (autoSend) {
+        await tick()
+        void submitChat()
+      } else {
+        tick().then(() => textareaEl?.focus())
+      }
     }
   })
 </script>

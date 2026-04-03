@@ -242,6 +242,39 @@ func ProjectPromptContext(item Project) string {
 	return RenderPromptContext(item, opts)
 }
 
+// PhaseAwareProjectPromptContext renders project context with planning-mode instructions
+// when the project state is in the "planning" phase.
+func PhaseAwareProjectPromptContext(item Project, state *ProjectState) string {
+	base := ProjectPromptContext(item)
+	if state == nil || state.Phase != "planning" {
+		return base
+	}
+	return base + "\n\n" + planningModePrompt(item)
+}
+
+func planningModePrompt(item Project) string {
+	targetPath := item.WorkingDir()
+	if targetPath == "" {
+		targetPath = item.Path
+	}
+	return `## Planning Mode Active
+
+This project is in the **planning** phase. Do NOT start implementation yet.
+
+Your role:
+1. Greet the user and explain that a project plan is needed.
+2. Ask focused questions about: goals, scope, technical constraints, deliverables, timeline.
+3. After 2-5 rounds of clarification, summarize into a structured project plan.
+4. Write the plan to ` + "`" + targetPath + "/project.md" + "`" + ` using the file write tool.
+   Keep it concise (under 4KB). Reference detailed docs separately if needed.
+5. After the user confirms the plan, call project_state_update with phase="executing" to exit planning mode.
+
+Guidelines:
+- Ask one focused question at a time, not a list of 10 questions.
+- Match the user's language (Korean/English).
+- If source_path is set, scan the codebase first to inform your questions.`
+}
+
 func CronPromptContext(workspaceDir string, item Project) string {
 	artifactsDir := item.WorkingDir()
 	if artifactsDir == "" {

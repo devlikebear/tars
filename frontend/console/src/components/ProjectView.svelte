@@ -59,6 +59,24 @@
   let showAllActivity = $state(false)
   let activityFilter = $state('all')
 
+  // -- Onboarding --
+  let onboardingPrompt = $state('')
+  let shouldAutoSend = $state(false)
+  let onboardingChecked = false
+
+  $effect(() => {
+    if (onboardingChecked) return
+    if (projectState && sessionInfo !== null) {
+      onboardingChecked = true
+      if (projectState.phase === 'planning' && sessionInfo.messages === 0) {
+        shouldAutoSend = true
+        onboardingPrompt = project?.body
+          ? '프로젝트를 시작합니다. 프로젝트 문서를 확인하고 작업 계획을 세워주세요.'
+          : '새 프로젝트를 시작합니다. 프로젝트 계획을 함께 세워봅시다.'
+      }
+    }
+  })
+
   function activitySources(): string[] {
     return [...new Set(activity.map((a) => a.source).filter(Boolean))]
   }
@@ -535,8 +553,18 @@
 
       <!-- Chat -->
       <section class="card pv-wide">
-        <span class="card-title">Chat</span>
-        <ChatPanel {projectId} onSessionChange={refreshAll} />
+        <div class="card-header">
+          <span class="card-title">Chat</span>
+          {#if projectState?.phase}
+            <span class="badge" class:badge-accent={projectState.phase === 'planning'}
+                                class:badge-success={projectState.phase === 'executing'}
+                                class:badge-info={projectState.phase === 'reviewing'}
+                                class:badge-default={!['planning', 'executing', 'reviewing'].includes(projectState.phase)}>
+              {projectState.phase}
+            </span>
+          {/if}
+        </div>
+        <ChatPanel {projectId} initialPrompt={onboardingPrompt} autoSend={shouldAutoSend} onSessionChange={refreshAll} />
       </section>
 
       <!-- Activity -->
