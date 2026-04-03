@@ -33,6 +33,7 @@ export type Project = {
   type: string
   status: string
   git_repo?: string
+  source_path?: string
   created_at?: string
   updated_at?: string
   objective?: string
@@ -241,6 +242,7 @@ export type CreateProjectRequest = {
   name: string
   type?: string
   git_repo?: string
+  source_path?: string
   objective?: string
   instructions?: string
   execution_mode?: string
@@ -254,6 +256,7 @@ export type UpdateProjectRequest = {
   type?: string
   status?: string
   git_repo?: string
+  source_path?: string
   objective?: string
   instructions?: string
   skills_allow?: string[]

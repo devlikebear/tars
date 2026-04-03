@@ -204,6 +204,9 @@ func RenderPromptContext(item Project, opts PromptContextOptions) string {
 	if opts.IncludeObjective {
 		writeField("objective", item.Objective)
 	}
+	if sp := strings.TrimSpace(item.SourcePath); sp != "" {
+		writeField("source_path", sp)
+	}
 	if strings.TrimSpace(opts.ArtifactsDir) != "" {
 		_, _ = fmt.Fprintf(&b, "- artifacts_dir: %s\n", strings.TrimSpace(opts.ArtifactsDir))
 	}
@@ -227,19 +230,27 @@ func RenderPromptContext(item Project, opts PromptContextOptions) string {
 }
 
 func ProjectPromptContext(item Project) string {
-	return RenderPromptContext(item, PromptContextOptions{
+	opts := PromptContextOptions{
 		Header:            "## Active Project",
 		IncludeObjective:  true,
 		IncludeToolsAllow: true,
 		IncludeBody:       true,
-	})
+	}
+	if wd := item.WorkingDir(); wd != item.Path {
+		opts.ArtifactsDir = wd
+	}
+	return RenderPromptContext(item, opts)
 }
 
 func CronPromptContext(workspaceDir string, item Project) string {
+	artifactsDir := item.WorkingDir()
+	if artifactsDir == "" {
+		artifactsDir = filepath.Join(strings.TrimSpace(workspaceDir), "projects", strings.TrimSpace(item.ID))
+	}
 	return RenderPromptContext(item, PromptContextOptions{
 		Header:       "CRON_PROJECT_CONTEXT:",
 		FieldPrefix:  "project_",
-		ArtifactsDir: filepath.Join(strings.TrimSpace(workspaceDir), "projects", strings.TrimSpace(item.ID)),
+		ArtifactsDir: artifactsDir,
 		IncludeBody:  true,
 		BodyHeader:   "PROJECT_INSTRUCTIONS:",
 	})

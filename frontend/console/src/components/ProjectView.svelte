@@ -48,6 +48,7 @@
   let editName = $state('')
   let editObjective = $state('')
   let editGitRepo = $state('')
+  let editSourcePath = $state('')
   let editSkillsAllow = $state('')
   let editSaving = $state(false)
   let editError = $state('')
@@ -148,6 +149,7 @@
     editName = project.name
     editObjective = project.objective || ''
     editGitRepo = project.git_repo || ''
+    editSourcePath = project.source_path || ''
     editSkillsAllow = (project.skills_allow || []).join(', ')
     editError = ''
     editing = true
@@ -170,6 +172,7 @@
         name: editName.trim(),
         objective: editObjective.trim() || undefined,
         git_repo: editGitRepo.trim() || undefined,
+        source_path: editSourcePath.trim() || undefined,
         skills_allow: skillsAllow,
       })
       editing = false
@@ -302,6 +305,7 @@
             <input type="text" placeholder="Project name *" bind:value={editName} class="form-input" />
             <input type="text" placeholder="Objective" bind:value={editObjective} class="form-input" />
             <input type="text" placeholder="Git repo URL" bind:value={editGitRepo} class="form-input" />
+            <input type="text" placeholder="Source path (absolute path to codebase)" bind:value={editSourcePath} class="form-input" />
             <input type="text" placeholder="Skills (comma-separated, e.g. github-dev)" bind:value={editSkillsAllow} class="form-input" />
             <div style="display:flex;gap:var(--space-2)">
               <button class="btn btn-primary btn-sm" disabled={!editName.trim() || editSaving} onclick={handleSaveEdit}>
@@ -483,7 +487,10 @@
         <dl class="pv-facts">
           <div><dt>ID</dt><dd class="mono">{project.id}</dd></div>
           <div><dt>Type</dt><dd>{project.type || '\u2014'}</dd></div>
-          <div><dt>Path</dt><dd class="mono">{project.path || '\u2014'}</dd></div>
+          {#if project.source_path}
+            <div><dt>Source Path</dt><dd class="mono">{project.source_path}</dd></div>
+          {/if}
+          <div><dt>Workspace Path</dt><dd class="mono">{project.path || '\u2014'}</dd></div>
           <div><dt>Repo</dt><dd class="mono">{project.git_repo || '\u2014'}</dd></div>
         </dl>
       </section>

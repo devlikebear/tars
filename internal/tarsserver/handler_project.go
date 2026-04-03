@@ -178,6 +178,7 @@ func newProjectAPIHandler(
 				Name            string                   `json:"name"`
 				Type            string                   `json:"type,omitempty"`
 				GitRepo         string                   `json:"git_repo,omitempty"`
+				SourcePath      string                   `json:"source_path,omitempty"`
 				Objective       string                   `json:"objective,omitempty"`
 				WorkflowProfile string                   `json:"workflow_profile,omitempty"`
 				WorkflowRules   []project.WorkflowRule   `json:"workflow_rules,omitempty"`
@@ -195,6 +196,7 @@ func newProjectAPIHandler(
 				Name:            req.Name,
 				Type:            req.Type,
 				GitRepo:         req.GitRepo,
+				SourcePath:      req.SourcePath,
 				Objective:       req.Objective,
 				WorkflowProfile: req.WorkflowProfile,
 				WorkflowRules:   req.WorkflowRules,

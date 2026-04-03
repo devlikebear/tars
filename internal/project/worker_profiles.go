@@ -174,7 +174,7 @@ const maxSkillsInPrompt = 5
 
 // BuildTaskPrompt assembles the initial instruction for a task worker.
 // Optional skills are appended as a ## Project Skills section.
-func BuildTaskPrompt(task BoardTask, projectID string, profile WorkerProfile, skills ...SkillContent) string {
+func BuildTaskPrompt(task BoardTask, proj Project, profile WorkerProfile, skills ...SkillContent) string {
 	var builder strings.Builder
 	workerKind := firstNonEmpty(strings.TrimSpace(task.WorkerKind), profile.Kind)
 	role := firstNonEmpty(strings.TrimSpace(task.Role), "developer")
@@ -183,7 +183,11 @@ func BuildTaskPrompt(task BoardTask, projectID string, profile WorkerProfile, sk
 	builder.WriteString("Follow repository instructions from AGENTS.md and use relevant local skills when they apply.\n")
 	builder.WriteString("Use TDD: write or update failing tests first, implement the smallest fix, rerun verification, and summarize results.\n")
 	builder.WriteString("\nProject ID: ")
-	builder.WriteString(strings.TrimSpace(projectID))
+	builder.WriteString(strings.TrimSpace(proj.ID))
+	if wd := proj.WorkingDir(); wd != "" && wd != proj.Path {
+		builder.WriteString("\nProject dir: ")
+		builder.WriteString(wd)
+	}
 	builder.WriteString("\nTask ID: ")
 	builder.WriteString(strings.TrimSpace(task.ID))
 	builder.WriteString("\nTask: ")

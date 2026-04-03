@@ -333,7 +333,8 @@ func persistCronProjectArtifact(workspaceDir string, job cron.Job, response stri
 	if root == "" || projectID == "" {
 		return "", nil
 	}
-	if item, err := project.NewStore(root, nil).Get(projectID); err == nil && strings.EqualFold(strings.TrimSpace(item.Type), "research") {
+	projectItem, getErr := project.NewStore(root, nil).Get(projectID)
+	if getErr == nil && strings.EqualFold(strings.TrimSpace(projectItem.Type), "research") {
 		_, _ = research.NewService(root, research.Options{Now: func() time.Time { return now }}).Run(research.RunInput{
 			ProjectID: projectID,
 			Topic:     "cron:" + strings.TrimSpace(job.Name),
@@ -341,7 +342,11 @@ func persistCronProjectArtifact(workspaceDir string, job cron.Job, response stri
 			Body:      strings.TrimSpace(response),
 		})
 	}
-	artifactDir := filepath.Join(root, "projects", projectID, "cron_runs")
+	artifactBase := filepath.Join(root, "projects", projectID)
+	if getErr == nil {
+		artifactBase = projectItem.WorkingDir()
+	}
+	artifactDir := filepath.Join(artifactBase, "cron_runs")
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
 		return "", err
 	}
