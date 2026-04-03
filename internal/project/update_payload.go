@@ -6,6 +6,7 @@ type UpdatePayload struct {
 	Type               *string        `json:"type,omitempty"`
 	Status             *string        `json:"status,omitempty"`
 	GitRepo            *string        `json:"git_repo,omitempty"`
+	SourcePath         *string        `json:"source_path,omitempty"`
 	Objective          *string        `json:"objective,omitempty"`
 	Instructions       *string        `json:"instructions,omitempty"`
 	ExecutionMode      *string        `json:"execution_mode,omitempty"`
@@ -29,6 +30,7 @@ func (p UpdatePayload) ToUpdateInput() UpdateInput {
 		Type:               p.Type,
 		Status:             p.Status,
 		GitRepo:            p.GitRepo,
+		SourcePath:         p.SourcePath,
 		Objective:          p.Objective,
 		Instructions:       p.Instructions,
 		ToolsAllow:         p.ToolsAllow,

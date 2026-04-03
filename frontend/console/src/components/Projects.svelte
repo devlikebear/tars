@@ -7,6 +7,7 @@
     streamEvents,
   } from '../lib/api'
   import type { Project } from '../lib/types'
+  import DirectoryPicker from './DirectoryPicker.svelte'
 
   interface Props {
     onNavigate: (path: string) => void
@@ -50,6 +51,7 @@
   let newProjectMaxPhases = $state(3)
   let newProjectSubAgents = $state('')
   let newProjectSkillsAllow = $state('')
+  let newProjectSourcePath = $state('')
   let newProjectSaving = $state(false)
   let newProjectError = $state('')
 
@@ -97,6 +99,7 @@
         type: newProjectType.trim() || undefined,
         objective: newProjectObjective.trim() || undefined,
         git_repo: newProjectGitRepo.trim() || undefined,
+        source_path: newProjectSourcePath.trim() || undefined,
         execution_mode: newProjectMode,
         max_phases: newProjectMode === 'autonomous' ? newProjectMaxPhases : undefined,
         sub_agents: subAgents,
@@ -112,6 +115,7 @@
       newProjectMaxPhases = 3
       newProjectSubAgents = ''
       newProjectSkillsAllow = ''
+      newProjectSourcePath = ''
       goToProject(p.id)
     } catch (e) {
       newProjectError = e instanceof Error ? e.message : 'Failed to create project'
@@ -187,6 +191,9 @@
         <input type="text" placeholder="Type (optional)" bind:value={newProjectType} class="form-input" />
         <input type="text" placeholder="Objective (optional)" bind:value={newProjectObjective} class="form-input form-span-2" />
         <input type="text" placeholder="Git repo URL (optional)" bind:value={newProjectGitRepo} class="form-input form-span-2" />
+        <div class="form-span-2">
+          <DirectoryPicker bind:value={newProjectSourcePath} placeholder="Source path — absolute path to codebase (optional)" />
+        </div>
         <input type="text" placeholder="Skills (comma-separated, e.g. github-dev, testing)" bind:value={newProjectSkillsAllow} class="form-input form-span-2" />
         <div class="form-span-2 form-row">
           <label class="form-label">

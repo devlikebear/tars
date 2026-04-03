@@ -149,7 +149,7 @@ func (o *Orchestrator) dispatchTask(ctx context.Context, projectID string, task 
 	}
 
 	skills := o.resolveProjectSkills(projectItem)
-	run, err := o.startTaskRun(ctx, projectID, task, profile, skills)
+	run, err := o.startTaskRun(ctx, projectItem, task, profile, skills)
 	if err != nil {
 		return TaskRun{}, err
 	}
@@ -236,18 +236,23 @@ func (o *Orchestrator) prepareTaskDispatch(ctx context.Context, projectID string
 }
 
 func (o *Orchestrator) resolveProjectSkills(p Project) []SkillContent {
-	if o.skillResolver == nil || len(p.SkillsAllow) == 0 {
-		return nil
+	var skills []SkillContent
+	if sp := strings.TrimSpace(p.SourcePath); sp != "" {
+		skills = append(skills, loadSourcePathSkills(sp)...)
 	}
-	return o.skillResolver.ResolveSkills(p.SkillsAllow)
+	if o.skillResolver != nil && len(p.SkillsAllow) > 0 {
+		skills = append(skills, o.skillResolver.ResolveSkills(p.SkillsAllow)...)
+	}
+	return skills
 }
 
-func (o *Orchestrator) startTaskRun(ctx context.Context, projectID string, task BoardTask, profile WorkerProfile, skills []SkillContent) (TaskRun, error) {
+func (o *Orchestrator) startTaskRun(ctx context.Context, proj Project, task BoardTask, profile WorkerProfile, skills []SkillContent) (TaskRun, error) {
+	projectID := strings.TrimSpace(proj.ID)
 	run, err := o.runner.Start(ctx, TaskRunRequest{
-		ProjectID:  strings.TrimSpace(projectID),
+		ProjectID:  projectID,
 		TaskID:     task.ID,
 		Title:      task.Title,
-		Prompt:     BuildTaskPrompt(task, projectID, profile, skills...),
+		Prompt:     BuildTaskPrompt(task, proj, profile, skills...),
 		Agent:      task.Assignee,
 		Role:       task.Role,
 		WorkerKind: profile.Kind,
@@ -468,7 +473,7 @@ func (o *Orchestrator) dispatchReviewTask(ctx context.Context, projectID string,
 		return TaskRun{}, err
 	}
 	skills := o.resolveProjectSkills(projectItem)
-	prompt := BuildTaskPrompt(reviewTask, projectID, profile, skills...) +
+	prompt := BuildTaskPrompt(reviewTask, projectItem, profile, skills...) +
 		"\n\nCurrent task status: review" +
 		"\nImplementation worker_kind: " + strings.TrimSpace(task.WorkerKind)
 

@@ -20,6 +20,7 @@ func NewProjectCreateTool(store *project.Store) Tool {
     "name":{"type":"string"},
     "type":{"type":"string"},
     "git_repo":{"type":"string"},
+    "source_path":{"type":"string","description":"Absolute path to external codebase directory for this project."},
     "objective":{"type":"string"},
     "workflow_profile":{"type":"string"},
     "workflow_rules":{
@@ -51,6 +52,7 @@ func NewProjectCreateTool(store *project.Store) Tool {
 				Name            string                      `json:"name"`
 				Type            string                      `json:"type,omitempty"`
 				GitRepo         string                      `json:"git_repo,omitempty"`
+				SourcePath      string                      `json:"source_path,omitempty"`
 				Objective       string                      `json:"objective,omitempty"`
 				WorkflowProfile string                      `json:"workflow_profile,omitempty"`
 				WorkflowRules   []project.WorkflowRule      `json:"workflow_rules,omitempty"`
@@ -68,6 +70,7 @@ func NewProjectCreateTool(store *project.Store) Tool {
 				Name:            input.Name,
 				Type:            input.Type,
 				GitRepo:         input.GitRepo,
+				SourcePath:      input.SourcePath,
 				Objective:       input.Objective,
 				WorkflowProfile: input.WorkflowProfile,
 				WorkflowRules:   input.WorkflowRules,
@@ -145,6 +148,7 @@ func NewProjectUpdateTool(store *project.Store) Tool {
     "type":{"type":"string"},
     "status":{"type":"string"},
     "git_repo":{"type":"string"},
+    "source_path":{"type":"string"},
     "objective":{"type":"string"},
     "instructions":{"type":"string"},
     "tools_allow":{"type":"array","items":{"type":"string"}},

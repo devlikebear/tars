@@ -507,3 +507,16 @@ export async function streamChat(
     }
   }
 }
+
+// --- Filesystem ---
+
+export type FilesystemBrowseResult = {
+  path: string
+  parent: string
+  entries: { name: string; is_dir: boolean; is_git?: boolean }[]
+}
+
+export async function browseFilesystem(path?: string): Promise<FilesystemBrowseResult> {
+  const params = path ? `?path=${encodeURIComponent(path)}` : ''
+  return requestJSON(`/v1/filesystem/browse${params}`)
+}

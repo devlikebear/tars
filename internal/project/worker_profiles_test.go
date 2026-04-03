@@ -140,7 +140,7 @@ func TestBuildTaskPrompt_UsesFixedReportContract(t *testing.T) {
 		WorkerKind:   WorkerKindCodexCLI,
 		TestCommand:  "go test ./internal/project",
 		BuildCommand: "go test ./internal/tarsserver",
-	}, "proj_demo", profile)
+	}, Project{ID: "proj_demo"}, profile)
 
 	want := []string{
 		"Project ID: proj_demo",
@@ -164,7 +164,7 @@ func TestBuildTaskPrompt_InjectsSkillContent(t *testing.T) {
 	profile, _ := ResolveWorkerProfile(BoardTask{Role: "developer"})
 
 	t.Run("no skills produces no section", func(t *testing.T) {
-		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, "proj", profile)
+		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, Project{ID: "proj"}, profile)
 		if strings.Contains(prompt, "## Project Skills") {
 			t.Fatal("unexpected skills section in prompt without skills")
 		}
@@ -175,7 +175,7 @@ func TestBuildTaskPrompt_InjectsSkillContent(t *testing.T) {
 			{Name: "github-dev", Content: "Use gh CLI to create issues."},
 			{Name: "testing", Content: "Run go test ./... after changes."},
 		}
-		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, "proj", profile, skills...)
+		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, Project{ID: "proj"}, profile, skills...)
 		if !strings.Contains(prompt, "## Project Skills") {
 			t.Fatal("expected skills section header")
 		}
@@ -199,7 +199,7 @@ func TestBuildTaskPrompt_InjectsSkillContent(t *testing.T) {
 	t.Run("skill content truncated at limit", func(t *testing.T) {
 		longContent := strings.Repeat("x", maxSkillContentChars+500)
 		skills := []SkillContent{{Name: "big", Content: longContent}}
-		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, "proj", profile, skills...)
+		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, Project{ID: "proj"}, profile, skills...)
 		if !strings.Contains(prompt, "…(truncated)") {
 			t.Fatal("expected truncation marker")
 		}
@@ -214,7 +214,7 @@ func TestBuildTaskPrompt_InjectsSkillContent(t *testing.T) {
 		for i := range skills {
 			skills[i] = SkillContent{Name: "skill-" + string(rune('a'+i)), Content: "content"}
 		}
-		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, "proj", profile, skills...)
+		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, Project{ID: "proj"}, profile, skills...)
 		count := strings.Count(prompt, "### skill-")
 		if count > maxSkillsInPrompt {
 			t.Fatalf("expected at most %d skills, got %d", maxSkillsInPrompt, count)
@@ -227,7 +227,7 @@ func TestBuildTaskPrompt_InjectsSkillContent(t *testing.T) {
 			{Name: "valid", Content: ""},
 			{Name: "ok", Content: "good content"},
 		}
-		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, "proj", profile, skills...)
+		prompt := BuildTaskPrompt(BoardTask{ID: "t1", Title: "do stuff"}, Project{ID: "proj"}, profile, skills...)
 		if strings.Contains(prompt, "no name") {
 			t.Fatal("nameless skill should be skipped")
 		}

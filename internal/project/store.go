@@ -17,6 +17,7 @@ type Project struct {
 	Type               string         `json:"type" yaml:"type"`
 	Status             string         `json:"status" yaml:"status"`
 	GitRepo            string         `json:"git_repo,omitempty" yaml:"git_repo,omitempty"`
+	SourcePath         string         `json:"source_path,omitempty" yaml:"source_path,omitempty"`
 	CreatedAt          string         `json:"created_at" yaml:"created_at"`
 	UpdatedAt          string         `json:"updated_at" yaml:"updated_at"`
 	Objective          string         `json:"objective,omitempty" yaml:"objective,omitempty"`
@@ -38,6 +39,15 @@ type Project struct {
 	Path               string         `json:"path,omitempty" yaml:"-"`
 }
 
+// WorkingDir returns the project's working directory.
+// If SourcePath is set, returns it; otherwise returns the metadata Path.
+func (p Project) WorkingDir() string {
+	if sp := strings.TrimSpace(p.SourcePath); sp != "" {
+		return sp
+	}
+	return p.Path
+}
+
 type WorkflowRule struct {
 	Name   string            `json:"name" yaml:"name"`
 	Params map[string]string `json:"params,omitempty" yaml:"params,omitempty"`
@@ -53,6 +63,7 @@ type CreateInput struct {
 	Name            string
 	Type            string
 	GitRepo         string
+	SourcePath      string
 	Objective       string
 	WorkflowProfile string
 	WorkflowRules   []WorkflowRule
@@ -69,6 +80,7 @@ type UpdateInput struct {
 	Type               *string
 	Status             *string
 	GitRepo            *string
+	SourcePath         *string
 	Objective          *string
 	Instructions       *string
 	ExecutionMode      *string
@@ -118,6 +130,15 @@ func (s *Store) Create(input CreateInput) (Project, error) {
 	if name == "" {
 		return Project{}, fmt.Errorf("name is required")
 	}
+	sourcePath := strings.TrimSpace(input.SourcePath)
+	if sourcePath != "" {
+		if !filepath.IsAbs(sourcePath) {
+			return Project{}, fmt.Errorf("source_path must be an absolute path")
+		}
+		if _, err := os.Stat(sourcePath); err != nil {
+			return Project{}, fmt.Errorf("source_path does not exist: %s", sourcePath)
+		}
+	}
 	now := s.nowFn().UTC().Format(time.RFC3339)
 	id := newProjectID(name)
 	project := Project{
@@ -126,6 +147,7 @@ func (s *Store) Create(input CreateInput) (Project, error) {
 		Type:            normalizeType(input.Type),
 		Status:          "active",
 		GitRepo:         strings.TrimSpace(input.GitRepo),
+		SourcePath:      sourcePath,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 		Objective:       strings.TrimSpace(input.Objective),
@@ -136,6 +158,11 @@ func (s *Store) Create(input CreateInput) (Project, error) {
 		SubAgents:       normalizeSubAgents(input.SubAgents),
 		SkillsAllow:    normalizeList(input.SkillsAllow),
 		Body:            strings.TrimSpace(input.Instructions),
+	}
+	if project.Body == "" && project.SourcePath != "" {
+		if data, err := os.ReadFile(filepath.Join(project.SourcePath, "project.md")); err == nil {
+			project.Body = strings.TrimSpace(string(data))
+		}
 	}
 	if err := s.write(project); err != nil {
 		return Project{}, err
@@ -237,6 +264,11 @@ func (s *Store) Get(id string) (Project, error) {
 	parsed.Path = filepath.Join(s.workspaceDir, "projects", projectID)
 	parsed.Type = normalizeType(parsed.Type)
 	parsed.Status = normalizeStatus(parsed.Status)
+	if parsed.Body == "" && strings.TrimSpace(parsed.SourcePath) != "" {
+		if data, err := os.ReadFile(filepath.Join(parsed.SourcePath, "project.md")); err == nil {
+			parsed.Body = strings.TrimSpace(string(data))
+		}
+	}
 	return parsed, nil
 }
 

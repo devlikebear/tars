@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -30,6 +31,13 @@ func applyUpdateInput(item *Project, input UpdateInput) error {
 	}
 	if input.GitRepo != nil {
 		item.GitRepo = strings.TrimSpace(*input.GitRepo)
+	}
+	if input.SourcePath != nil {
+		sp := strings.TrimSpace(*input.SourcePath)
+		if sp != "" && !filepath.IsAbs(sp) {
+			return fmt.Errorf("source_path must be an absolute path")
+		}
+		item.SourcePath = sp
 	}
 	if input.Objective != nil {
 		item.Objective = strings.TrimSpace(*input.Objective)

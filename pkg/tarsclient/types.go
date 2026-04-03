@@ -271,6 +271,7 @@ type Project struct {
 	Type               string   `json:"type"`
 	Status             string   `json:"status"`
 	GitRepo            string   `json:"git_repo,omitempty"`
+	SourcePath         string   `json:"source_path,omitempty"`
 	CreatedAt          string   `json:"created_at,omitempty"`
 	UpdatedAt          string   `json:"updated_at,omitempty"`
 	Objective          string   `json:"objective,omitempty"`
@@ -290,6 +291,7 @@ type ProjectCreateRequest struct {
 	Name         string   `json:"name"`
 	Type         string   `json:"type,omitempty"`
 	GitRepo      string   `json:"git_repo,omitempty"`
+	SourcePath   string   `json:"source_path,omitempty"`
 	Objective    string   `json:"objective,omitempty"`
 	Instructions string   `json:"instructions,omitempty"`
 	CloneRepo    bool     `json:"clone_repo,omitempty"`
@@ -301,6 +303,7 @@ type ProjectUpdateRequest struct {
 	Type               *string  `json:"type,omitempty"`
 	Status             *string  `json:"status,omitempty"`
 	GitRepo            *string  `json:"git_repo,omitempty"`
+	SourcePath         *string  `json:"source_path,omitempty"`
 	Objective          *string  `json:"objective,omitempty"`
 	Instructions       *string  `json:"instructions,omitempty"`
 	ToolsAllow         []string `json:"tools_allow,omitempty"`

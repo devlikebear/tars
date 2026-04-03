@@ -68,6 +68,7 @@ type apiRouteHandlers struct {
 	events          http.Handler
 	config          http.Handler
 	skillhub        http.Handler
+	filesystem      http.Handler
 }
 
 func runServeAPICommand(
@@ -491,6 +492,7 @@ func buildAPIMux(
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
 	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
+	filesystemHandler := newFilesystemBrowseHandler(logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		heartbeat:       heartbeatHandler,
 		chat:            chatHandler,
@@ -514,6 +516,7 @@ func buildAPIMux(
 		events:          eventsHandler,
 		config:          configHandler,
 		skillhub:        skillhubHandler,
+		filesystem:      filesystemHandler,
 	})
 
 	// Register plugin HTTP handlers
@@ -638,6 +641,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/hub/uninstall", handlers.skillhub)
 	mux.Handle("/v1/hub/update", handlers.skillhub)
 	mux.Handle("/v1/hub/skill-content", handlers.skillhub)
+	mux.Handle("/v1/filesystem/browse", handlers.filesystem)
 }
 
 func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zerolog.Logger) error {

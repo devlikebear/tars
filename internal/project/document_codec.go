@@ -28,6 +28,7 @@ func parseDocument(raw string) (Project, error) {
 		Type:               normalizeType(mapString(parsed, "type")),
 		Status:             normalizeStatus(mapString(parsed, "status")),
 		GitRepo:            mapString(parsed, "git_repo", "git-repo"),
+		SourcePath:         mapString(parsed, "source_path", "source-path"),
 		CreatedAt:          mapString(parsed, "created_at", "created-at"),
 		UpdatedAt:          mapString(parsed, "updated_at", "updated-at"),
 		Objective:          mapString(parsed, "objective"),
@@ -68,6 +69,9 @@ func buildDocument(project Project) string {
 	_, _ = fmt.Fprintf(&b, "status: %s\n", strings.TrimSpace(project.Status))
 	if v := strings.TrimSpace(project.GitRepo); v != "" {
 		_, _ = fmt.Fprintf(&b, "git_repo: %s\n", quoteYAML(v))
+	}
+	if v := strings.TrimSpace(project.SourcePath); v != "" {
+		_, _ = fmt.Fprintf(&b, "source_path: %s\n", quoteYAML(v))
 	}
 	if v := strings.TrimSpace(project.CreatedAt); v != "" {
 		_, _ = fmt.Fprintf(&b, "created_at: %s\n", quoteYAML(v))
