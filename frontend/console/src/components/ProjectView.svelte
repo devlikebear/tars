@@ -406,9 +406,9 @@
         <div class="card pv-board-card">
           <div class="card-header">
             <span class="card-title">Board</span>
-            <span class="badge badge-default">{board?.tasks.length ?? 0} tasks</span>
+            <span class="badge badge-default">{board?.tasks?.length ?? 0} tasks</span>
           </div>
-          {#if board && board.tasks.length > 0}
+          {#if board?.tasks?.length}
             <div class="pv-board-tasks">
               {#each board.tasks as task}
                 <div class="pv-board-task">
