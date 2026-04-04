@@ -185,3 +185,63 @@ func TestMemoryAPIHandler_ListsEditsFilesAndRunsSearch(t *testing.T) {
 		t.Fatalf("unexpected memory search response: code=%d body=%q", searchRec.Code, searchRec.Body.String())
 	}
 }
+
+func TestMemoryAPIHandler_ListsAndEditsSyspromptFiles(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.Remove(filepath.Join(root, "USER.md")); err != nil {
+		t.Fatalf("remove USER.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("# AGENTS.md\n\n- follow repo rules\n"), 0o644); err != nil {
+		t.Fatalf("write AGENTS.md: %v", err)
+	}
+
+	handler := newMemoryAPIHandler(root, nil, zerolog.Nop())
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/workspace/sysprompt/files", nil)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected sysprompt files 200, got %d body=%q", listRec.Code, listRec.Body.String())
+	}
+	if !strings.Contains(listRec.Body.String(), `"path":"USER.md"`) ||
+		!strings.Contains(listRec.Body.String(), `"exists":false`) ||
+		!strings.Contains(listRec.Body.String(), `"path":"AGENTS.md"`) ||
+		!strings.Contains(listRec.Body.String(), `"prompt_targets":["sub_agent"]`) ||
+		!strings.Contains(listRec.Body.String(), `"path":"IDENTITY.md"`) ||
+		!strings.Contains(listRec.Body.String(), `"prompt_targets":["main_agent"]`) {
+		t.Fatalf("unexpected workspace file list: %q", listRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/workspace/sysprompt/file?scope=workspace&path=USER.md", nil)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected sysprompt file 200, got %d body=%q", getRec.Code, getRec.Body.String())
+	}
+	if !strings.Contains(getRec.Body.String(), `"exists":false`) || !strings.Contains(getRec.Body.String(), `# USER.md`) {
+		t.Fatalf("expected missing USER.md to include starter content, got %q", getRec.Body.String())
+	}
+
+	saveReq := httptest.NewRequest(http.MethodPut, "/v1/workspace/sysprompt/file", strings.NewReader(`{
+		"scope":"workspace",
+		"path":"USER.md",
+		"content":"# USER.md\n\n- prefers concise Korean answers\n"
+	}`))
+	saveReq.Header.Set("Content-Type", "application/json")
+	saveRec := httptest.NewRecorder()
+	handler.ServeHTTP(saveRec, saveReq)
+	if saveRec.Code != http.StatusOK {
+		t.Fatalf("expected sysprompt save 200, got %d body=%q", saveRec.Code, saveRec.Body.String())
+	}
+
+	updatedRaw, err := os.ReadFile(filepath.Join(root, "USER.md"))
+	if err != nil {
+		t.Fatalf("read USER.md: %v", err)
+	}
+	if !strings.Contains(string(updatedRaw), "prefers concise Korean answers") {
+		t.Fatalf("expected USER.md to be created, got %q", string(updatedRaw))
+	}
+}

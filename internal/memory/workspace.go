@@ -65,6 +65,67 @@ const defaultToolsTemplate = `# TOOLS.md
 - Note any tool restrictions or preferred usage patterns.
 `
 
+// WorkspaceBootstrapFileSpec describes one top-level workspace bootstrap file.
+type WorkspaceBootstrapFileSpec struct {
+	Path            string
+	Title           string
+	Description     string
+	DefaultContent  string
+	EnsureByDefault bool
+}
+
+var workspaceBootstrapFileSpecs = []WorkspaceBootstrapFileSpec{
+	{
+		Path:            "PROJECT.md",
+		Title:           "Project Guidance",
+		Description:     "Global project execution policy and reporting format.",
+		DefaultContent:  defaultProjectTemplate,
+		EnsureByDefault: true,
+	},
+	{
+		Path:            "USER.md",
+		Title:           "User Identity",
+		Description:     "Persistent user information such as name, timezone, preferences, and working style.",
+		DefaultContent:  defaultUserTemplate,
+		EnsureByDefault: true,
+	},
+	{
+		Path:            "IDENTITY.md",
+		Title:           "TARS Identity",
+		Description:     "TARS persona, voice, behavioral boundaries, and self-identity.",
+		DefaultContent:  defaultIdentityTemplate,
+		EnsureByDefault: true,
+	},
+	{
+		Path:            "SOUL.md",
+		Title:           "Legacy Persona Extension",
+		Description:     "Optional legacy persona extension absorbed into the Identity section.",
+		DefaultContent:  "",
+		EnsureByDefault: false,
+	},
+	{
+		Path:            "HEARTBEAT.md",
+		Title:           "Heartbeat Guidance",
+		Description:     "Background/heartbeat operating guidance.",
+		DefaultContent:  defaultHeartbeatTemplate,
+		EnsureByDefault: true,
+	},
+	{
+		Path:            "AGENTS.md",
+		Title:           "Agent Guidelines",
+		Description:     "Execution rules, autonomy boundaries, and workspace operating guidance for agents.",
+		DefaultContent:  defaultAgentsTemplate,
+		EnsureByDefault: true,
+	},
+	{
+		Path:            "TOOLS.md",
+		Title:           "Tool Guidance",
+		Description:     "Available tools, constraints, and preferred usage patterns for agents.",
+		DefaultContent:  defaultToolsTemplate,
+		EnsureByDefault: true,
+	},
+}
+
 const defaultKnowledgeIndexTemplate = `# Knowledge Base Index
 
 ## Purpose
@@ -101,26 +162,16 @@ func EnsureWorkspace(root string) error {
 	if err := os.MkdirAll(filepath.Join(root, "_shared"), 0o755); err != nil {
 		return fmt.Errorf("create shared dir: %w", err)
 	}
-	if err := ensureFile(filepath.Join(root, "HEARTBEAT.md"), defaultHeartbeatTemplate); err != nil {
-		return err
-	}
 	if err := ensureFile(filepath.Join(root, "MEMORY.md"), defaultMemoryTemplate); err != nil {
 		return err
 	}
-	if err := ensureFile(filepath.Join(root, "PROJECT.md"), defaultProjectTemplate); err != nil {
-		return err
-	}
-	if err := ensureFile(filepath.Join(root, "AGENTS.md"), defaultAgentsTemplate); err != nil {
-		return err
-	}
-	if err := ensureFile(filepath.Join(root, "USER.md"), defaultUserTemplate); err != nil {
-		return err
-	}
-	if err := ensureFile(filepath.Join(root, "IDENTITY.md"), defaultIdentityTemplate); err != nil {
-		return err
-	}
-	if err := ensureFile(filepath.Join(root, "TOOLS.md"), defaultToolsTemplate); err != nil {
-		return err
+	for _, spec := range workspaceBootstrapFileSpecs {
+		if !spec.EnsureByDefault {
+			continue
+		}
+		if err := ensureFile(filepath.Join(root, spec.Path), spec.DefaultContent); err != nil {
+			return err
+		}
 	}
 	if err := ensureFile(filepath.Join(root, "memory", "wiki", "index.md"), defaultKnowledgeIndexTemplate); err != nil {
 		return err
@@ -129,6 +180,21 @@ func EnsureWorkspace(root string) error {
 		return err
 	}
 	return nil
+}
+
+func WorkspaceBootstrapFileSpecs() []WorkspaceBootstrapFileSpec {
+	out := make([]WorkspaceBootstrapFileSpec, len(workspaceBootstrapFileSpecs))
+	copy(out, workspaceBootstrapFileSpecs)
+	return out
+}
+
+func WorkspaceBootstrapFileSpecFor(path string) (WorkspaceBootstrapFileSpec, bool) {
+	for _, spec := range workspaceBootstrapFileSpecs {
+		if strings.EqualFold(strings.TrimSpace(path), spec.Path) {
+			return spec, true
+		}
+	}
+	return WorkspaceBootstrapFileSpec{}, false
 }
 
 // AppendDailyLog appends one line into workspace/memory/YYYY-MM-DD.md.

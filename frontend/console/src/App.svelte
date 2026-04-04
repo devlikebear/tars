@@ -3,6 +3,7 @@
   import Shell from './components/Shell.svelte'
   import Chat from './components/Chat.svelte'
   import MemoryCenter from './components/MemoryCenter.svelte'
+  import SyspromptCenter from './components/SyspromptCenter.svelte'
   import ProjectView from './components/ProjectView.svelte'
   import Projects from './components/Projects.svelte'
   import Ops from './components/Ops.svelte'
@@ -90,6 +91,8 @@
     <Projects onNavigate={navigate} onAskAI={navigateWithPrompt} />
   {:else if route.view === 'memory'}
     <MemoryCenter onAskAI={navigateWithPrompt} />
+  {:else if route.view === 'sysprompt'}
+    <SyspromptCenter />
   {:else if route.view === 'ops'}
     <Ops onAskAI={navigateWithPrompt} />
   {:else if route.view === 'config'}

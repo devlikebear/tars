@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-04-04
+
+### Added
+
+- Dedicated system prompt built-in tools: `workspace_sysprompt_get`, `workspace_sysprompt_set`, `agent_sysprompt_get`, `agent_sysprompt_set`
+- Explicit system prompt management API endpoints: `/v1/workspace/sysprompt/files` and `/v1/workspace/sysprompt/file`
+- Dedicated System Prompt console page at `/console/sysprompt` for managing `USER.md`, `IDENTITY.md`, `AGENTS.md`, and `TOOLS.md`
+
+### Changed
+
+- Workspace bootstrap metadata now treats `USER.md` as user identity, `IDENTITY.md` as TARS persona, `AGENTS.md` as agent operating rules, and `TOOLS.md` as tool guidance
+- Prompt-source files can now be managed through domain-specific sysprompt surfaces instead of relying only on generic file tools
+
 ## [0.17.0] - 2026-04-04
 
 ### Added
