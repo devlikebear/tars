@@ -249,15 +249,9 @@
       <span class="pulse-val">{unreadCount}</span>
       <span class="pulse-lbl">Unread</span>
     </div>
-    {#if chatArtifacts.length > 0}
-      <div class="pulse-sep"></div>
-      <button type="button" class="pulse-artifact-btn" class:active={rightPanel === 'artifacts'} onclick={() => togglePanel('artifacts')}>
-        <span class="pulse-val">{chatArtifacts.length}</span>
-        <span class="pulse-lbl">Artifacts</span>
-      </button>
-    {/if}
     <div class="pulse-sep"></div>
     <div class="pulse-panel-toggles">
+      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'artifacts'} onclick={() => togglePanel('artifacts')} title="Files browser">Files{#if chatArtifacts.length > 0} ({chatArtifacts.length}){/if}</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'config'} onclick={() => togglePanel('config')} title="Session tool config">Config</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'context'} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prompt'} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
@@ -396,24 +390,6 @@
     height: 16px;
     background: var(--border-subtle);
     flex-shrink: 0;
-  }
-
-  .pulse-artifact-btn {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 2px var(--space-2);
-    border-radius: var(--radius-sm);
-    transition: background var(--duration-fast) var(--ease-out);
-  }
-  .pulse-artifact-btn:hover {
-    background: var(--bg-elevated);
-  }
-  .pulse-artifact-btn.active {
-    background: rgba(224, 145, 69, 0.12);
   }
 
   .pulse-panel-toggles {
