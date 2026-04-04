@@ -37,6 +37,7 @@ import type {
   Session,
   SessionMessage,
   UpdateCronJobRequest,
+  SessionTasks,
   UpdateProjectRequest,
 } from './types'
 
@@ -215,6 +216,10 @@ export async function compactSession(sessionId: string): Promise<{ compacted: bo
     `/v1/admin/sessions/${encodeURIComponent(sessionId)}/compact`,
     { method: 'POST' },
   )
+}
+
+export async function getSessionTasks(sessionId: string): Promise<SessionTasks> {
+  return requestJSON<SessionTasks>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks`)
 }
 
 // --- Knowledge Base ---

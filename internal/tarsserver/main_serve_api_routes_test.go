@@ -39,6 +39,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		config:          handler,
 		skillhub:        handler,
 		filesystem:      handler,
+		workspaceFiles:  handler,
 	})
 
 	paths := []string{
@@ -111,6 +112,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/hub/update",
 		"/v1/hub/skill-content",
 		"/v1/filesystem/browse",
+		"/v1/workspace/files",
 	}
 	for _, path := range paths {
 		rec := httptest.NewRecorder()
@@ -153,6 +155,7 @@ func TestRegisterAPIRoutes_LegacyDashboardPathsRedirectToConsole(t *testing.T) {
 		config:          base,
 		skillhub:        base,
 		filesystem:      base,
+		workspaceFiles:  base,
 	})
 
 	tests := []struct {
