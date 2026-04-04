@@ -18,6 +18,11 @@ func TestEnsureWorkspace(t *testing.T) {
 	paths := []string{
 		root,
 		filepath.Join(root, "memory"),
+		filepath.Join(root, "memory", "raw"),
+		filepath.Join(root, "memory", "wiki"),
+		filepath.Join(root, "memory", "wiki", "notes"),
+		filepath.Join(root, "memory", "wiki", "index.md"),
+		filepath.Join(root, "memory", "wiki", "graph.json"),
 		filepath.Join(root, "projects"),
 		filepath.Join(root, "_shared"),
 		filepath.Join(root, "HEARTBEAT.md"),

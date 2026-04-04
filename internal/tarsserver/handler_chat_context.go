@@ -28,6 +28,7 @@ type chatRunState struct {
 	toolChoice          string
 	llmMessages         []llm.ChatMessage
 	injectedSchemas     []llm.ToolSchema
+	llmClient           llm.Client
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -161,6 +162,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		toolChoice:          toolChoice,
 		llmMessages:         llmMessages,
 		injectedSchemas:     injectedSchemas,
+		llmClient:           deps.client,
 	}, 0, "", nil
 }
 

@@ -467,7 +467,7 @@ func applyToolConstraints(allowed []string, denied []string, riskMax string) []s
 
 func toolRiskLevel(toolName string) string {
 	switch strings.TrimSpace(toolName) {
-	case "read", "read_file", "list_dir", "memory_search", "memory_get", "memory_save", "session_status":
+	case "read", "read_file", "list_dir", "memory_search", "memory_get", "memory_save", "memory_kb_list", "memory_kb_get", "memory_kb_upsert", "memory_kb_delete", "session_status":
 		return "low"
 	case "glob", "web_search", "web_fetch":
 		return "medium"

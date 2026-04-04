@@ -65,13 +65,36 @@ const defaultToolsTemplate = `# TOOLS.md
 - Note any tool restrictions or preferred usage patterns.
 `
 
+const defaultKnowledgeIndexTemplate = `# Knowledge Base Index
+
+## Purpose
+- Durable wiki-style notes compiled from conversations and explicit memory operations.
+- Keep note files in memory/wiki/notes and let the agent maintain them.
+`
+
+const defaultKnowledgeGraphTemplate = `{
+  "updated_at": "",
+  "nodes": [],
+  "edges": []
+}
+`
+
 // EnsureWorkspace creates the minimum workspace layout used by tars.
 func EnsureWorkspace(root string) error {
 	if err := os.MkdirAll(filepath.Join(root, "memory"), 0o755); err != nil {
 		return fmt.Errorf("create memory dir: %w", err)
 	}
+	if err := os.MkdirAll(filepath.Join(root, "memory", "raw"), 0o755); err != nil {
+		return fmt.Errorf("create memory raw dir: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Join(root, "memory", "index"), 0o755); err != nil {
 		return fmt.Errorf("create memory index dir: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "memory", "wiki"), 0o755); err != nil {
+		return fmt.Errorf("create memory wiki dir: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "memory", "wiki", "notes"), 0o755); err != nil {
+		return fmt.Errorf("create memory wiki notes dir: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "projects"), 0o755); err != nil {
 		return fmt.Errorf("create projects dir: %w", err)
@@ -98,6 +121,12 @@ func EnsureWorkspace(root string) error {
 		return err
 	}
 	if err := ensureFile(filepath.Join(root, "TOOLS.md"), defaultToolsTemplate); err != nil {
+		return err
+	}
+	if err := ensureFile(filepath.Join(root, "memory", "wiki", "index.md"), defaultKnowledgeIndexTemplate); err != nil {
+		return err
+	}
+	if err := ensureFile(filepath.Join(root, "memory", "wiki", "graph.json"), defaultKnowledgeGraphTemplate); err != nil {
 		return err
 	}
 	return nil

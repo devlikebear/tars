@@ -142,6 +142,7 @@ func (h *telegramInboundHandler) processMessage(
 		UserMessage:      text,
 		AssistantMessage: answer,
 		AssistantTime:    assistantAt,
+		LLMClient:        h.llmClient,
 	}); err != nil {
 		h.logger.Debug().Err(err).Str("session_id", sessionID).Msg("telegram write chat memory failed")
 	}

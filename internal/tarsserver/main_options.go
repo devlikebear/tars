@@ -58,6 +58,7 @@ const memoryToolSystemRule = `
 - When the user references something from a previous conversation (e.g., "that thing we discussed", "last time", "continue", "그거", "아까 그", "전에 말한", "지난번"), memory_search is mandatory — do not skip it.
 - If memory_search returns relevant prior context, weave it naturally into your response — do not dump raw search results.
 - When you discover useful context from memory, briefly acknowledge it (e.g., "Based on our previous conversation...") before continuing.
+- Use memory_kb_list / memory_kb_get / memory_kb_upsert / memory_kb_delete when you need to inspect or manage the long-term wiki-style knowledge base directly.
 - Tool-call arguments must be valid JSON.
 
 ## Automation Tool Policy

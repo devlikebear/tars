@@ -6,6 +6,7 @@ export type Route =
   | { view: 'chat'; sessionId?: string }
   | { view: 'projects' }
   | { view: 'project'; projectId: string }
+  | { view: 'knowledge' }
   | { view: 'ops' }
   | { view: 'config' }
   | { view: 'extensions' }
@@ -43,6 +44,10 @@ export function resolveRoute(pathname: string): Route {
 
   if (path.startsWith(`${consoleBase}/ops`)) {
     return { view: 'ops' }
+  }
+
+  if (path.startsWith(`${consoleBase}/knowledge`)) {
+    return { view: 'knowledge' }
   }
 
   if (path.startsWith(`${consoleBase}/config`)) {

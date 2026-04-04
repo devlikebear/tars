@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-04-04
+
+### Added
+
+- Obsidian-style knowledge base layer under `memory/wiki/`: durable markdown notes, `index.md`, and `graph.json`
+- Automatic post-chat knowledge compilation: the LLM can turn each completed chat turn into durable wiki notes and graph links
+- Built-in KB CRUD tools: `memory_kb_list`, `memory_kb_get`, `memory_kb_upsert`, `memory_kb_delete`
+- Knowledge Base API endpoints: `/v1/memory/kb/notes`, `/v1/memory/kb/notes/{slug}`, `/v1/memory/kb/graph`
+- Dedicated console Knowledge page for browsing, editing, creating, and deleting wiki notes plus reviewing graph relations
+
+### Changed
+
+- `memory_search` now searches knowledge-base notes alongside `MEMORY.md`, daily logs, semantic recall, and optional session transcripts
+- Workspace init/doctor now provision and validate `memory/raw` plus `memory/wiki/{notes,index.md,graph.json}`
+
 ## [0.15.2] - 2026-04-04
 
 ### Changed

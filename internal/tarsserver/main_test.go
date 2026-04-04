@@ -1238,8 +1238,8 @@ func TestChatAPI_WithAutomationTools(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "automation tool flow done") {
 		t.Fatalf("expected final response in SSE body, got %q", rec.Body.String())
 	}
-	if mockClient.callCount != 2 {
-		t.Fatalf("expected 2 llm calls for tool flow, got %d", mockClient.callCount)
+	if mockClient.callCount != 3 {
+		t.Fatalf("expected 3 llm calls for tool flow plus knowledge compile, got %d", mockClient.callCount)
 	}
 }
 
@@ -1300,7 +1300,7 @@ func TestChatAPI_InjectsAllToolsByDefault(t *testing.T) {
 		t.Fatalf("expected successful final response, got %q", rec.Body.String())
 	}
 	if len(mockClient.seenToolCounts) < 2 {
-		t.Fatalf("expected 2 llm calls, got %v", mockClient.seenToolCounts)
+		t.Fatalf("expected at least 2 tool-bearing llm calls before compile, got %v", mockClient.seenToolCounts)
 	}
 	if mockClient.seenToolCounts[0] < 10 {
 		t.Fatalf("expected full tool set to be injected, got %d", mockClient.seenToolCounts[0])
@@ -1418,8 +1418,8 @@ func TestChatAPI_ToolCallMemorySearch(t *testing.T) {
 	if !strings.Contains(body, "Memory says: you prefer black coffee.") {
 		t.Fatalf("expected final assistant text in SSE, got %q", body)
 	}
-	if mockClient.callCount != 2 {
-		t.Fatalf("expected 2 llm calls (tool + final), got %d", mockClient.callCount)
+	if mockClient.callCount != 3 {
+		t.Fatalf("expected 3 llm calls (tool + final + knowledge compile), got %d", mockClient.callCount)
 	}
 	if len(mockClient.seenToolCounts) == 0 || mockClient.seenToolCounts[0] == 0 {
 		t.Fatalf("expected tool schemas to be forwarded, got %+v", mockClient.seenToolCounts)
@@ -1469,8 +1469,8 @@ func TestChatAPI_ToolCallReadFile(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
 	}
-	if mockClient.callCount != 2 {
-		t.Fatalf("expected 2 llm calls (tool + final), got %d", mockClient.callCount)
+	if mockClient.callCount != 3 {
+		t.Fatalf("expected 3 llm calls (tool + final + knowledge compile), got %d", mockClient.callCount)
 	}
 	if len(mockClient.seenMessages) < 2 || len(mockClient.seenMessages[1]) == 0 {
 		t.Fatalf("expected captured second llm call messages")
@@ -1584,8 +1584,8 @@ func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 	if !strings.Contains(body, "Merged subagent findings.") {
 		t.Fatalf("expected final assistant response, got %q", body)
 	}
-	if mockClient.callCount != 2 {
-		t.Fatalf("expected 2 llm calls (tool + final), got %d", mockClient.callCount)
+	if mockClient.callCount != 3 {
+		t.Fatalf("expected 3 llm calls (tool + final + knowledge compile), got %d", mockClient.callCount)
 	}
 	if len(mockClient.seenTools) == 0 {
 		t.Fatalf("expected captured tool schemas")

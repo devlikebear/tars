@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -224,5 +225,62 @@ func TestDeriveAutoExperience_Heuristics(t *testing.T) {
 				t.Fatalf("expected summary %q, got %q", tc.wantSummary, got.Summary)
 			}
 		})
+	}
+}
+
+type knowledgeCompileStubClient struct {
+	content string
+}
+
+func (c *knowledgeCompileStubClient) Ask(_ context.Context, _ string) (string, error) {
+	return c.content, nil
+}
+
+func (c *knowledgeCompileStubClient) Chat(_ context.Context, _ []llm.ChatMessage, _ llm.ChatOptions) (llm.ChatResponse, error) {
+	return llm.ChatResponse{
+		Message: llm.ChatMessage{
+			Role:    "assistant",
+			Content: c.content,
+		},
+	}, nil
+}
+
+func TestPersistChatResult_CompilesKnowledgeBaseNote(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	state := chatRunState{
+		requestWorkspaceDir: root,
+		store:               store,
+		sessionID:           sess.ID,
+		projectID:           "alpha",
+		transcriptPath:      store.TranscriptPath(sess.ID),
+		llmClient: &knowledgeCompileStubClient{
+			content: `{"notes":[{"slug":"coffee-preference","title":"Coffee Preference","kind":"preference","summary":"User prefers black coffee.","body":"Keep coffee suggestions unsweetened.","tags":["coffee"],"aliases":["black coffee"]}],"edges":[]}`,
+		},
+	}
+
+	persistChatResult(state, "remember I prefer black coffee", llm.ChatResponse{
+		Message: llm.ChatMessage{
+			Role:    "assistant",
+			Content: "I will remember that you prefer black coffee.",
+		},
+	}, nil, logger)
+
+	noteRaw, err := os.ReadFile(filepath.Join(root, "memory", "wiki", "notes", "coffee-preference.md"))
+	if err != nil {
+		t.Fatalf("read compiled note: %v", err)
+	}
+	if !strings.Contains(string(noteRaw), "Coffee Preference") || !strings.Contains(string(noteRaw), "black coffee") {
+		t.Fatalf("expected compiled knowledge note, got %q", string(noteRaw))
 	}
 }

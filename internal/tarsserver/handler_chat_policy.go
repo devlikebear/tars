@@ -233,6 +233,10 @@ func normalizeToolNames(names []string) []string {
 func defaultMinimalToolNames() []string {
 	return []string{
 		"memory_get",
+		"memory_kb_delete",
+		"memory_kb_get",
+		"memory_kb_list",
+		"memory_kb_upsert",
 		"memory_search",
 		"memory_save",
 		"project_create",
