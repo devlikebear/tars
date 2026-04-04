@@ -297,6 +297,37 @@ export type KnowledgeGraph = {
   edges: KnowledgeGraphEdge[]
 }
 
+export type MemoryAsset = {
+  path: string
+  kind: string
+  editable: boolean
+  size_bytes: number
+  updated_at?: string
+}
+
+export type MemoryFile = {
+  path: string
+  kind: string
+  editable: boolean
+  content: string
+  size_bytes?: number
+  updated_at?: string
+}
+
+export type MemorySearchMatch = {
+  source: string
+  date: string
+  line: number
+  snippet: string
+}
+
+export type MemorySearchResult = {
+  query: string
+  limit: number
+  results: MemorySearchMatch[]
+  message?: string
+}
+
 export type CreateProjectRequest = {
   name: string
   type?: string

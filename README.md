@@ -33,7 +33,8 @@ Open the web console, then start a chat such as `todo 앱 만드는 프로젝트
 - Browser-based operator console + local HTTP API (`tars serve`)
 - Session lifecycle, transcript storage, and structured context compaction
 - Agent loop with built-in file, process, scheduling, memory, and ops tools
-- Obsidian-style knowledge base: durable markdown wiki notes, graph/index metadata, built-in KB CRUD tools, and a dedicated console page
+- Unified memory console: manage `MEMORY.md`, `memory/experiences.jsonl`, daily durable memory files, semantic memory artifacts, and the knowledge base from one page
+- Obsidian-style knowledge base: durable markdown wiki notes, graph/index metadata, built-in KB CRUD tools, and explicit opt-in lookup from memory search
 - Built-in file tools with 2,000-line read pagination, continuation hints, and safe atomic writes
 - Structured session compaction with identifier-preserving summaries, a safer recent-tail preserve policy, and manual `/compact [instructions]`
 - Parallel read-only chat subagents through the built-in `explorer` gateway agent
@@ -109,7 +110,7 @@ gateway_subagents_max_depth: 1
 
 Open the console: `http://127.0.0.1:43180/console`
 
-The console now includes a dedicated Knowledge page at `/console/knowledge` for browsing, editing, and deleting compiled wiki notes plus reviewing graph relationships.
+The console now includes a dedicated Memory page at `/console/memory` for editing durable memory files, testing `memory_search`, and browsing or editing compiled knowledge-base notes. Legacy `/console/knowledge` links still open the same page.
 
 Install trusted MCP packages from the hub:
 

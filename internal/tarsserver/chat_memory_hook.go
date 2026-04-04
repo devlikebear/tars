@@ -69,7 +69,7 @@ func applyPostChatMemoryHooks(input chatMemoryHookInput) error {
 }
 
 func maybeCompileKnowledgeBase(input chatMemoryHookInput) error {
-	if input.LLMClient == nil {
+	if input.LLMClient == nil || !shouldCompileKnowledgeBase(input) {
 		return nil
 	}
 	store := memory.NewKnowledgeStore(input.WorkspaceDir, nil)
@@ -137,11 +137,42 @@ func maybeCompileKnowledgeBase(input chatMemoryHookInput) error {
 	return store.ApplyUpdate(update, input.AssistantTime.UTC())
 }
 
+func shouldCompileKnowledgeBase(input chatMemoryHookInput) bool {
+	if shouldPromoteToMemory(input.UserMessage) {
+		return true
+	}
+	if _, ok := deriveUserAutoExperience(strings.TrimSpace(input.SessionID), strings.TrimSpace(input.ProjectID), input.UserMessage, input.AssistantTime); ok {
+		return true
+	}
+	if _, ok := deriveAssistantAutoExperience(strings.TrimSpace(input.SessionID), strings.TrimSpace(input.ProjectID), input.AssistantMessage, input.AssistantTime); ok {
+		return true
+	}
+
+	combined := strings.ToLower(strings.TrimSpace(input.UserMessage + "\n" + input.AssistantMessage))
+	if combined == "" {
+		return false
+	}
+	for _, hint := range []string{
+		"prefer", "preference", "habit", "workflow", "policy", "decision", "owns",
+		"선호", "취향", "습관", "워크플로", "규칙", "정책", "결정", "보유",
+	} {
+		if strings.Contains(combined, hint) {
+			return true
+		}
+	}
+	return false
+}
+
 func shouldPromoteToMemory(userMessage string) bool {
 	lower := strings.ToLower(strings.TrimSpace(userMessage))
 	return strings.HasPrefix(lower, "remember ") ||
 		strings.HasPrefix(lower, "remember:") ||
+		strings.Contains(lower, "remember this") ||
+		strings.Contains(lower, "please remember") ||
 		strings.HasPrefix(lower, "기억해") ||
+		strings.Contains(lower, "기억해줘") ||
+		strings.Contains(lower, "기억해 줘") ||
+		strings.Contains(lower, "기억해두") ||
 		strings.HasPrefix(lower, "메모해")
 }
 

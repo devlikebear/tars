@@ -6,7 +6,7 @@ export type Route =
   | { view: 'chat'; sessionId?: string }
   | { view: 'projects' }
   | { view: 'project'; projectId: string }
-  | { view: 'knowledge' }
+  | { view: 'memory' }
   | { view: 'ops' }
   | { view: 'config' }
   | { view: 'extensions' }
@@ -46,8 +46,8 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'ops' }
   }
 
-  if (path.startsWith(`${consoleBase}/knowledge`)) {
-    return { view: 'knowledge' }
+  if (path.startsWith(`${consoleBase}/memory`) || path.startsWith(`${consoleBase}/knowledge`)) {
+    return { view: 'memory' }
   }
 
   if (path.startsWith(`${consoleBase}/config`)) {
