@@ -6,6 +6,23 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-04-04
+
+### Added
+
+- Proactive memory search: LLM now MUST call memory_search before answering questions about prior conversations, decisions, preferences, or facts
+- Session transcript search via `include_sessions` parameter in memory_search tool for conversational continuity
+- In-process memory cache with TTL (5 min) — cache-first strategy skips semantic search on cache hit
+- Async memory prefetch goroutine for next-turn cache warming (fire-and-forget)
+- `memory_recall` SSE event type for frontend memory notification
+- 20+ conversational continuity detection patterns (EN/KR): "그거", "지난번", "you mentioned", "last time", etc.
+- Deep session content search fallback in relevant memory collection
+- Source type tags in Prior Context section: `conversation`, `experience`, `project`, `daily`
+
+### Changed
+
+- Renamed "Relevant Memory" section to "Prior Context" with source-type-tagged format
+
 ## [0.14.3] - 2026-03-29
 
 ### Added
