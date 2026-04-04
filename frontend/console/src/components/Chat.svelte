@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { getEventsHistory, getHeartbeatStatus, listProjects, streamEvents } from '../lib/api'
+  import {
+    getEventsHistory, getHeartbeatStatus, listProjects, streamEvents,
+    getSession, renameSession, deleteSession, compactSession, getSessionHistory,
+  } from '../lib/api'
   import type { HeartbeatStatus, NotificationMessage, Project, Session } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
   import SessionSidebar from './SessionSidebar.svelte'
@@ -22,17 +25,26 @@
 
   // Session selection — synced from sessionId prop
   let selectedSessionId: string | null = $state(null)
-  let chatKey = $state(0) // force ChatPanel re-mount
+  let selectedSession: Session | null = $state(null)
+  let chatKey = $state(0)
   let lastPropSessionId: string | undefined = undefined
 
   $effect(() => {
-    const sid = sessionId // read prop dependency
+    const sid = sessionId
     if (sid !== lastPropSessionId) {
       lastPropSessionId = sid
       selectedSessionId = sid || null
+      selectedSession = null
       chatKey++
+      if (sid) loadSelectedSession(sid)
     }
   })
+
+  // Session action state
+  let renaming = $state(false)
+  let renameValue = $state('')
+  let actionBusy = $state(false)
+  let deleteConfirm = $state(false)
 
   // Artifact panel
   let chatArtifacts: Artifact[] = $state([])
@@ -52,24 +64,38 @@
     return `${Math.floor(seconds / 86400)}d ago`
   }
 
+  async function loadSelectedSession(id: string) {
+    try {
+      selectedSession = await getSession(id)
+    } catch { /* ignore */ }
+  }
+
   function handleSelectSession(session: Session) {
     selectedSessionId = session.id
+    selectedSession = session
     chatKey++
     chatArtifacts = []
     showArtifacts = false
+    renaming = false
+    deleteConfirm = false
     onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
   }
 
   function handleNewSession() {
     selectedSessionId = null
+    selectedSession = null
     chatKey++
     chatArtifacts = []
     showArtifacts = false
+    renaming = false
+    deleteConfirm = false
     onNavigate('/console/chat')
   }
 
   function handleSessionChange() {
     sidebarRef?.load()
+    // Refresh selected session title (may have been auto-titled)
+    if (selectedSessionId) loadSelectedSession(selectedSessionId)
   }
 
   function handleArtifactsChange(arts: Artifact[]) {
@@ -77,6 +103,78 @@
     if (arts.length > 0 && !showArtifacts) {
       showArtifacts = true
     }
+  }
+
+  // Session actions
+  function startRename() {
+    if (!selectedSession || selectedSession.kind === 'main') return
+    renaming = true
+    renameValue = selectedSession.title || selectedSession.id.slice(0, 12)
+  }
+
+  async function commitRename() {
+    if (!selectedSessionId || !renameValue.trim()) { renaming = false; return }
+    actionBusy = true
+    try {
+      await renameSession(selectedSessionId, renameValue.trim())
+      await loadSelectedSession(selectedSessionId)
+      sidebarRef?.load()
+    } catch { /* ignore */ }
+    renaming = false
+    actionBusy = false
+  }
+
+  async function handleAutoTitle() {
+    if (!selectedSessionId || !selectedSession) return
+    actionBusy = true
+    try {
+      const history = await getSessionHistory(selectedSessionId)
+      const userMsgs = history.filter((m) => m.role === 'user')
+      const assistantMsgs = history.filter((m) => m.role === 'assistant')
+      let title = ''
+      if (userMsgs.length > 0) {
+        const raw = userMsgs[0].content.trim()
+        const clean = raw.replace(/\n/g, ' ').replace(/\s+/g, ' ')
+        title = clean.length > 50 ? clean.slice(0, 47) + '...' : clean
+      } else if (assistantMsgs.length > 0) {
+        const raw = assistantMsgs[0].content.trim()
+        const clean = raw.replace(/\n/g, ' ').replace(/\s+/g, ' ')
+        title = clean.length > 50 ? clean.slice(0, 47) + '...' : clean
+      }
+      if (title) {
+        await renameSession(selectedSessionId, title)
+        await loadSelectedSession(selectedSessionId)
+        sidebarRef?.load()
+      }
+    } catch { /* ignore */ }
+    actionBusy = false
+  }
+
+  async function handleCompact() {
+    if (!selectedSessionId) return
+    actionBusy = true
+    try {
+      await compactSession(selectedSessionId)
+      sidebarRef?.load()
+    } catch { /* ignore */ }
+    actionBusy = false
+  }
+
+  async function handleDelete() {
+    if (!selectedSessionId) return
+    if (!deleteConfirm) { deleteConfirm = true; return }
+    actionBusy = true
+    try {
+      await deleteSession(selectedSessionId)
+      sidebarRef?.load()
+      handleNewSession()
+    } catch { /* ignore */ }
+    actionBusy = false
+    deleteConfirm = false
+  }
+
+  function isMainSession(): boolean {
+    return selectedSession?.kind === 'main'
   }
 
   async function loadDashboard() {
@@ -151,6 +249,42 @@
 
     <!-- Chat area -->
     <main class="chat-main">
+      <!-- Session header with actions -->
+      {#if selectedSession}
+        <div class="session-header">
+          <div class="session-title-row">
+            {#if renaming}
+              <!-- svelte-ignore a11y_autofocus -->
+              <input
+                class="session-rename-input"
+                bind:value={renameValue}
+                autofocus
+                onkeydown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { renaming = false } }}
+                onblur={() => commitRename()}
+              />
+            {:else}
+              <h3 class="session-title">{selectedSession.title || selectedSession.id.slice(0, 12)}</h3>
+            {/if}
+          </div>
+          <div class="session-actions">
+            {#if !isMainSession()}
+              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={startRename}>Rename</button>
+              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleAutoTitle} title="Generate title from first message">AI Title</button>
+            {/if}
+            <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleCompact} title="Compress transcript">Compact</button>
+            {#if !isMainSession()}
+              <button class="btn btn-danger btn-sm" disabled={actionBusy} onclick={handleDelete}>
+                {deleteConfirm ? 'Confirm?' : 'Delete'}
+              </button>
+            {/if}
+          </div>
+        </div>
+      {:else}
+        <div class="session-header">
+          <h3 class="session-title new-chat-title">New Chat</h3>
+        </div>
+      {/if}
+
       {#key chatKey}
         <ChatPanel
           sessionId={selectedSessionId || undefined}
@@ -255,6 +389,7 @@
     flex-direction: column;
     min-height: 0;
     padding: var(--space-4);
+    padding-top: 0;
     overflow: hidden;
   }
 
@@ -262,6 +397,56 @@
     border-left: 1px solid var(--border-subtle);
     background: var(--bg-surface);
     overflow: hidden;
+  }
+
+  /* Session header */
+  .session-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+
+  .session-title-row {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .session-title {
+    font-family: var(--font-display);
+    font-size: var(--text-base);
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+  }
+
+  .new-chat-title {
+    color: var(--text-tertiary);
+  }
+
+  .session-rename-input {
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-base);
+    font-family: var(--font-display);
+    background: var(--bg-base);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    outline: none;
+  }
+
+  .session-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
   }
 
   @media (max-width: 768px) {
@@ -276,5 +461,8 @@
       gap: var(--space-2);
     }
     .pulse-sep { display: none; }
+    .session-actions {
+      flex-wrap: wrap;
+    }
   }
 </style>
