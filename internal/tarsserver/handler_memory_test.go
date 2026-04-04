@@ -83,3 +83,29 @@ func TestMemoryAPIHandler_KnowledgeCRUDAndGraph(t *testing.T) {
 	}
 }
 
+func TestMemoryAPIHandler_EmptyKnowledgeGraph(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	handler := newMemoryAPIHandler(root, nil, zerolog.Nop())
+
+	graphReq := httptest.NewRequest(http.MethodGet, "/v1/memory/kb/graph", nil)
+	graphRec := httptest.NewRecorder()
+	handler.ServeHTTP(graphRec, graphReq)
+	if graphRec.Code != http.StatusOK {
+		t.Fatalf("unexpected graph response: code=%d body=%q", graphRec.Code, graphRec.Body.String())
+	}
+
+	var graph struct {
+		Nodes []memory.KnowledgeGraphNode `json:"nodes"`
+		Edges []memory.KnowledgeGraphEdge `json:"edges"`
+	}
+	if err := json.Unmarshal(graphRec.Body.Bytes(), &graph); err != nil {
+		t.Fatalf("decode graph: %v", err)
+	}
+	if len(graph.Nodes) != 0 || len(graph.Edges) != 0 {
+		t.Fatalf("expected empty graph payload, got %+v", graph)
+	}
+}

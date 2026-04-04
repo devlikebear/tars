@@ -113,3 +113,26 @@ func TestKnowledgeStore_UpsertListGetDeleteAndGraph(t *testing.T) {
 	}
 }
 
+func TestKnowledgeStore_GraphOnEmptyKnowledgeBase(t *testing.T) {
+	root := t.TempDir()
+	if err := EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := NewKnowledgeStore(root, nil)
+	graph, err := store.Graph()
+	if err != nil {
+		t.Fatalf("graph on empty knowledge base: %v", err)
+	}
+	if len(graph.Nodes) != 0 || len(graph.Edges) != 0 {
+		t.Fatalf("expected empty graph, got %+v", graph)
+	}
+
+	graphRaw, err := os.ReadFile(filepath.Join(root, "memory", "wiki", "graph.json"))
+	if err != nil {
+		t.Fatalf("read graph.json: %v", err)
+	}
+	if strings.Contains(string(graphRaw), `"updated_at": ""`) {
+		t.Fatalf("expected repaired graph artifact without blank updated_at, got %q", string(graphRaw))
+	}
+}

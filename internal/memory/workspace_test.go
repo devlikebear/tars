@@ -97,6 +97,14 @@ func TestEnsureWorkspace(t *testing.T) {
 	if !strings.Contains(string(toolsFile), "Environment Tools") {
 		t.Fatalf("expected default TOOLS template, got %q", string(toolsFile))
 	}
+
+	graphFile, err := os.ReadFile(filepath.Join(root, "memory", "wiki", "graph.json"))
+	if err != nil {
+		t.Fatalf("read graph.json: %v", err)
+	}
+	if strings.Contains(string(graphFile), `"updated_at": ""`) {
+		t.Fatalf("expected default graph template without blank updated_at, got %q", string(graphFile))
+	}
 }
 
 func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {

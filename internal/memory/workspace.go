@@ -73,7 +73,6 @@ const defaultKnowledgeIndexTemplate = `# Knowledge Base Index
 `
 
 const defaultKnowledgeGraphTemplate = `{
-  "updated_at": "",
   "nodes": [],
   "edges": []
 }

@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-04-04
+
+### Fixed
+
+- Empty knowledge bases no longer break `/v1/memory/kb/graph` with a 500 when `graph.json` has a blank `updated_at`
+- Existing legacy `memory/wiki/graph.json` artifacts with blank timestamps are now tolerated and automatically repaired on read
+
 ## [0.16.0] - 2026-04-04
 
 ### Added
