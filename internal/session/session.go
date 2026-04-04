@@ -147,7 +147,12 @@ func (s *Store) ensureNamedSession(title string, kind string, hidden bool) (Sess
 	trimmedTitle := strings.TrimSpace(title)
 	trimmedKind := strings.TrimSpace(kind)
 	for id, sess := range index {
-		if strings.TrimSpace(sess.Kind) == trimmedKind && strings.TrimSpace(sess.Title) == trimmedTitle {
+		sessKind := strings.TrimSpace(sess.Kind)
+		// For unique-kind sessions (main, worker), match by kind only — title may have been renamed.
+		// For regular sessions, match by both kind and title.
+		kindMatch := sessKind == trimmedKind
+		titleMatch := trimmedKind == "main" || strings.TrimSpace(sess.Title) == trimmedTitle
+		if kindMatch && titleMatch {
 			sess.Hidden = hidden
 			if sess.CreatedAt.IsZero() {
 				sess.CreatedAt = time.Now().UTC()
