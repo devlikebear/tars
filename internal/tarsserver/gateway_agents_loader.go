@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/devlikebear/tars/internal/project"
+	"github.com/devlikebear/tars/internal/tool"
 )
 
 func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, []string, error) {
@@ -165,42 +165,100 @@ func buildWorkspaceGatewayAgentPolicy(
 	}
 
 	policyMode = "allowlist"
-	policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
-		ToolsAllow:               meta.ToolsAllow,
-		ToolsAllowExists:         meta.ToolsAllowExists,
-		ToolsAllowGroups:         meta.ToolsAllowGroups,
-		ToolsAllowGroupsExists:   meta.ToolsAllowGroupsExists,
-		ToolsAllowPatterns:       meta.ToolsAllowPatterns,
-		ToolsAllowPatternsExists: meta.ToolsAllowPatternsExists,
-		ToolsDeny:                meta.ToolsDeny,
-		ToolsDenyExists:          meta.ToolsDenyExists,
-		ToolsRiskMax:             meta.ToolsRiskMax,
-		ToolsRiskMaxExists:       meta.ToolsRiskMaxExists,
-	}, knownTools, project.ToolPolicyOptions{
-		ExpandAllKnownWhenPolicyWithoutAllowSource: true,
-	})
-	if len(policy.UnknownTools) > 0 {
-		diagnostics = append(diagnostics, fmt.Sprintf("agent %s tools_allow ignored unknown tools: %s", name, strings.Join(policy.UnknownTools, ", ")))
-	}
-	if len(policy.UnknownGroups) > 0 {
-		diagnostics = append(diagnostics, fmt.Sprintf("agent %s tools_allow_groups ignored unknown groups: %s", name, strings.Join(policy.UnknownGroups, ", ")))
-	}
-	if len(policy.InvalidPatterns) > 0 {
-		diagnostics = append(diagnostics, fmt.Sprintf("agent %s tools_allow_patterns ignored invalid patterns: %s", name, strings.Join(policy.InvalidPatterns, ", ")))
-	}
-	if len(policy.UnknownDeny) > 0 {
-		diagnostics = append(diagnostics, fmt.Sprintf("agent %s tools_deny ignored unknown tools: %s", name, strings.Join(policy.UnknownDeny, ", ")))
-	}
-	if policy.InvalidRiskMax {
-		diagnostics = append(diagnostics, fmt.Sprintf("agent %s tools_risk_max ignored invalid value: %q", name, strings.TrimSpace(meta.ToolsRiskMax)))
+	seen := map[string]struct{}{}
+	addUnique := func(names []string) {
+		for _, n := range names {
+			if _, exists := seen[n]; !exists {
+				seen[n] = struct{}{}
+				toolsAllow = append(toolsAllow, n)
+			}
+		}
 	}
 
-	toolsAllowGroups = policy.ToolsAllowGroups
-	toolsAllowPatterns = policy.ToolsAllowPatterns
-	toolsDeny = policy.ToolsDeny
-	toolsRiskMax = policy.ToolsRiskMax
-	toolsAllow = policy.AllowedTools
-	if len(toolsAllow) == 0 {
+	// Explicit allow list
+	if meta.ToolsAllowExists {
+		for _, t := range meta.ToolsAllow {
+			normalized := tool.CanonicalToolName(t)
+			if normalized == "" {
+				continue
+			}
+			if _, ok := knownTools[normalized]; ok {
+				addUnique([]string{normalized})
+			} else {
+				diagnostics = append(diagnostics, fmt.Sprintf("agent %s tools_allow ignored unknown tool: %s", name, normalized))
+			}
+		}
+	}
+
+	// Expand groups
+	if meta.ToolsAllowGroupsExists {
+		validGroups, expanded, unknowns := tool.ExpandToolGroups(meta.ToolsAllowGroups, knownTools)
+		toolsAllowGroups = validGroups
+		addUnique(expanded)
+		for _, u := range unknowns {
+			diagnostics = append(diagnostics, fmt.Sprintf("agent %s tools_allow_groups ignored unknown group: %s", name, u))
+		}
+	}
+
+	// Expand patterns
+	if meta.ToolsAllowPatternsExists {
+		validPatterns, matched, invalids := tool.ExpandToolPatterns(meta.ToolsAllowPatterns, knownTools)
+		toolsAllowPatterns = validPatterns
+		addUnique(matched)
+		for _, inv := range invalids {
+			diagnostics = append(diagnostics, fmt.Sprintf("agent %s tools_allow_patterns invalid regex: %s", name, inv))
+		}
+	}
+
+	// If no allow sources specified but policy requested, allow all
+	if !meta.ToolsAllowExists && !meta.ToolsAllowGroupsExists && !meta.ToolsAllowPatternsExists && len(knownTools) > 0 {
+		for t := range knownTools {
+			addUnique([]string{t})
+		}
+	}
+
+	// Deny list
+	if meta.ToolsDenyExists {
+		for _, t := range meta.ToolsDeny {
+			normalized := tool.CanonicalToolName(t)
+			if normalized == "" {
+				continue
+			}
+			toolsDeny = append(toolsDeny, normalized)
+		}
+	}
+	toolsRiskMax = strings.TrimSpace(meta.ToolsRiskMax)
+
+	// Apply deny filter
+	if len(toolsDeny) > 0 {
+		denySet := map[string]struct{}{}
+		for _, d := range toolsDeny {
+			denySet[d] = struct{}{}
+		}
+		filtered := make([]string, 0, len(toolsAllow))
+		for _, t := range toolsAllow {
+			if _, denied := denySet[t]; !denied {
+				filtered = append(filtered, t)
+			}
+		}
+		toolsAllow = filtered
+	}
+
+	// Apply risk_max filter
+	if toolsRiskMax != "" {
+		filtered := make([]string, 0, len(toolsAllow))
+		for _, t := range toolsAllow {
+			if toolsRiskMax == "low" && isHighRiskToolName(t) {
+				continue
+			}
+			filtered = append(filtered, t)
+		}
+		toolsAllow = filtered
+	}
+
+	sort.Strings(toolsAllow)
+
+	if len(toolsAllow) == 0 && (meta.ToolsAllowExists || meta.ToolsAllowGroupsExists || meta.ToolsAllowPatternsExists) {
 		diagnostics = append(diagnostics, fmt.Sprintf("skip agent %s: tools_allow has no valid tools", name))
 		return policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsAllowPatterns, diagnostics, false
 	}

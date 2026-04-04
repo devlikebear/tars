@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 )
 
@@ -18,16 +17,9 @@ func TestResolveSpawnProjectID_UsesSessionProjectAndPersistsOverride(t *testing.
 		t.Fatalf("create session: %v", err)
 	}
 
-	projectStore := project.NewStore(t.TempDir(), nil)
-	original, err := projectStore.Create(project.CreateInput{Name: "Original"})
-	if err != nil {
-		t.Fatalf("create original project: %v", err)
-	}
-	override, err := projectStore.Create(project.CreateInput{Name: "Override"})
-	if err != nil {
-		t.Fatalf("create override project: %v", err)
-	}
-	if err := store.SetProjectID(sess.ID, original.ID); err != nil {
+	originalID := "proj_original"
+	overrideID := "proj_override"
+	if err := store.SetProjectID(sess.ID, originalID); err != nil {
 		t.Fatalf("set session project: %v", err)
 	}
 
@@ -35,24 +27,24 @@ func TestResolveSpawnProjectID_UsesSessionProjectAndPersistsOverride(t *testing.
 	if err != nil {
 		t.Fatalf("resolve project from session: %v", err)
 	}
-	if resolved != original.ID {
-		t.Fatalf("expected session project %q, got %q", original.ID, resolved)
+	if resolved != originalID {
+		t.Fatalf("expected session project %q, got %q", originalID, resolved)
 	}
 
-	resolved, err = resolveSpawnProjectID(store, sess.ID, override.ID)
+	resolved, err = resolveSpawnProjectID(store, sess.ID, overrideID)
 	if err != nil {
 		t.Fatalf("resolve override project: %v", err)
 	}
-	if resolved != override.ID {
-		t.Fatalf("expected override project %q, got %q", override.ID, resolved)
+	if resolved != overrideID {
+		t.Fatalf("expected override project %q, got %q", overrideID, resolved)
 	}
 
 	updated, err := store.Get(sess.ID)
 	if err != nil {
 		t.Fatalf("get updated session: %v", err)
 	}
-	if updated.ProjectID != override.ID {
-		t.Fatalf("expected session project override %q, got %q", override.ID, updated.ProjectID)
+	if updated.ProjectID != overrideID {
+		t.Fatalf("expected session project override %q, got %q", overrideID, updated.ProjectID)
 	}
 }
 

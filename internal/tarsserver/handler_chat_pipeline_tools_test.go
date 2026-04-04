@@ -3,7 +3,6 @@ package tarsserver
 import (
 	"testing"
 
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/tool"
 )
 
@@ -48,49 +47,14 @@ func TestResolveInjectedToolSchemas_AllowHighRiskUserOverride(t *testing.T) {
 	}
 }
 
-func TestResolveInjectedToolSchemas_ProjectRiskMaxConstrainsAllowedTools(t *testing.T) {
+func TestResolveInjectedToolSchemas_PassesThroughWithoutProjectPolicy(t *testing.T) {
 	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.NewProcessManager())
 
-	schemas := resolveInjectedToolSchemas(registry, "standard", &project.Project{
-		ToolsAllow:   []string{"read_file", "glob"},
-		ToolsRiskMax: "low",
-	}, "admin", true)
+	// Without project policy, all tools should pass through (only role-based filtering)
+	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "admin", true)
 	names := toolNamesFromSchemas(schemas)
-
-	if hasToolName(names, "glob") {
-		t.Fatalf("expected glob to be filtered by project tools_risk_max, got %+v", names)
-	}
 	if !hasToolName(names, "read_file") {
-		t.Fatalf("expected read_file to remain allowed, got %+v", names)
-	}
-}
-
-func TestResolveInjectedToolSchemas_MinimalIncludesProjectRuntimeTools(t *testing.T) {
-	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.NewProcessManager())
-	for _, expected := range []string{
-		"project_create",
-		"project_board_get",
-		"project_activity_get",
-		"project_dispatch",
-		"project_autopilot_advance",
-		"project_autopilot_start",
-	} {
-		registry.Register(tool.Tool{Name: expected})
-	}
-
-	schemas := resolveInjectedToolSchemas(registry, "minimal", nil, "user", false)
-	names := toolNamesFromSchemas(schemas)
-	for _, expected := range []string{
-		"project_create",
-		"project_board_get",
-		"project_activity_get",
-		"project_dispatch",
-		"project_autopilot_advance",
-		"project_autopilot_start",
-	} {
-		if !hasToolName(names, expected) {
-			t.Fatalf("expected %s in minimal tool set, got %+v", expected, names)
-		}
+		t.Fatalf("expected read_file to be available, got %+v", names)
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
@@ -143,36 +142,8 @@ func blockedToolNameFromReason(reason string) string {
 	return toolName
 }
 
-func resolveRunAllowedTools(baseWorkspaceDir, projectID string, executorAllowed []string) []string {
-	base := sanitizeStringList(executorAllowed)
-	if strings.TrimSpace(projectID) == "" {
-		return base
-	}
-	workspaceDir := strings.TrimSpace(baseWorkspaceDir)
-	if workspaceDir == "" {
-		return base
-	}
-	store := project.NewStore(workspaceDir, nil)
-	item, err := store.Get(strings.TrimSpace(projectID))
-	if err != nil {
-		return base
-	}
-	policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
-		ToolsAllow:               item.ToolsAllow,
-		ToolsAllowExists:         len(item.ToolsAllow) > 0,
-		ToolsAllowGroups:         item.ToolsAllowGroups,
-		ToolsAllowGroupsExists:   len(item.ToolsAllowGroups) > 0,
-		ToolsAllowPatterns:       item.ToolsAllowPatterns,
-		ToolsAllowPatternsExists: len(item.ToolsAllowPatterns) > 0,
-		ToolsDeny:                item.ToolsDeny,
-		ToolsDenyExists:          len(item.ToolsDeny) > 0,
-		ToolsRiskMax:             item.ToolsRiskMax,
-		ToolsRiskMaxExists:       strings.TrimSpace(item.ToolsRiskMax) != "",
-	}, sanitizeStringListAsSet(base), project.ToolPolicyOptions{})
-	if !policy.HasPolicy {
-		return base
-	}
-	return project.ApplyToolPolicy(base, policy)
+func resolveRunAllowedTools(_, _ string, executorAllowed []string) []string {
+	return sanitizeStringList(executorAllowed)
 }
 
 func sanitizeStringListAsSet(values []string) map[string]struct{} {

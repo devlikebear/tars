@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-04-04
+
+### Added
+
+- Session-scoped `tasks` tool with plan + task management (actions: plan_set, plan_get, add, update, remove, list, clear)
+- Tasks are stored per-session in `{sessionID}.tasks.json`, archived to memory when replaced
+- Tool group utilities (`tool.KnownToolGroups`, `tool.ExpandToolGroups`, `tool.ExpandToolPatterns`) for agent policy resolution
+
+### Removed
+
+- **Breaking:** Removed entire project system (`internal/project/` package, ~30 files)
+- Removed project tools (`project`, `project_work`, `project_brief` aggregators)
+- Removed project API routes (`/v1/projects`, `/v1/project-briefs/`)
+- Removed project CLI commands (`tars project list/get/activity/autopilot`)
+- Removed project-related gateway integration (`project_task_runner`)
+- Removed `Session.ProjectID` field and `SetProjectID()`, `EnsureWorker()` methods
+- Removed worker session type (sessions are now `main` or general)
+- Removed project frontend pages (`Projects.svelte`, `ProjectView.svelte`)
+- Removed `project-swarm` plugin
+
+### Changed
+
+- Session tasks replace project-based task management with a simpler, session-scoped model
+- System prompt rules updated to guide LLM on tasks tool usage
+- Gateway agent policy resolution simplified (no longer depends on project package)
+
 ## [0.19.0] - 2026-04-04
 
 ### Changed

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 )
 
@@ -251,25 +250,10 @@ func TestRuntimeSpawn_WithCustomExecutor(t *testing.T) {
 	}
 }
 
-func TestResolveRunAllowedTools_UsesProjectGroupsPatternsAndRisk(t *testing.T) {
-	workspace := t.TempDir()
-	store := project.NewStore(workspace, nil)
-	created, err := store.Create(project.CreateInput{Name: "Ops A", Type: "operations"})
-	if err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-	medium := "medium"
-	if _, err := store.Update(created.ID, project.UpdateInput{
-		ToolsAllowGroups:   []string{"memory"},
-		ToolsAllowPatterns: []string{"^web_"},
-		ToolsRiskMax:       &medium,
-	}); err != nil {
-		t.Fatalf("update project: %v", err)
-	}
-
-	got := resolveRunAllowedTools(workspace, created.ID, []string{"memory_get", "memory_save", "web_search", "exec"})
-
-	if want := []string{"memory_get", "memory_save", "web_search"}; strings.Join(got, ",") != strings.Join(want, ",") {
+func TestResolveRunAllowedTools_PassesThroughExecutorTools(t *testing.T) {
+	got := resolveRunAllowedTools("", "", []string{"memory_get", "memory_save", "web_search", "exec"})
+	want := []string{"memory_get", "memory_save", "web_search", "exec"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("unexpected allowed tools: got=%v want=%v", got, want)
 	}
 }

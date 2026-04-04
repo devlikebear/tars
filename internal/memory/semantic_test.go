@@ -3,8 +3,6 @@ package memory
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -106,78 +104,5 @@ func TestSemanticService_SearchesParaphrasesWithinProject(t *testing.T) {
 	}
 }
 
-func TestSemanticService_ReindexesProjectDocsOnlyWhenChanged(t *testing.T) {
-	root := t.TempDir()
-	if err := EnsureWorkspace(root); err != nil {
-		t.Fatalf("ensure workspace: %v", err)
-	}
-
-	service := NewService(root, ServiceOptions{
-		Config: SemanticConfig{
-			Enabled:         true,
-			EmbedProvider:   "gemini",
-			EmbedBaseURL:    "https://example.test",
-			EmbedAPIKey:     "secret",
-			EmbedModel:      "gemini-embedding-2-preview",
-			EmbedDimensions: 2,
-		},
-		Embedder: stubEmbedder{
-			vectors: map[string][]float64{
-				"RETRIEVAL_DOCUMENT|Write chapter five next.": {0.7, 0.3},
-				"RETRIEVAL_DOCUMENT|Write chapter six next.":  {0.7, 0.3},
-			},
-		},
-	})
-
-	projectDir := filepath.Join(root, "projects", "proj-1")
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
-		t.Fatalf("mkdir project dir: %v", err)
-	}
-	statePath := filepath.Join(projectDir, "STATE.md")
-	if err := os.WriteFile(statePath, []byte("Write chapter five next.\n"), 0o644); err != nil {
-		t.Fatalf("write state doc: %v", err)
-	}
-
-	if err := service.EnsureProjectDocuments(context.Background(), "proj-1", ""); err != nil {
-		t.Fatalf("ensure docs first pass: %v", err)
-	}
-	entries, err := service.LoadEntries()
-	if err != nil {
-		t.Fatalf("load entries first pass: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected one indexed doc, got %d", len(entries))
-	}
-	firstHash := entries[0].ContentHash
-
-	if err := service.EnsureProjectDocuments(context.Background(), "proj-1", ""); err != nil {
-		t.Fatalf("ensure docs second pass: %v", err)
-	}
-	entries, err = service.LoadEntries()
-	if err != nil {
-		t.Fatalf("load entries second pass: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected one indexed doc after no-op reindex, got %d", len(entries))
-	}
-	if entries[0].ContentHash != firstHash {
-		t.Fatalf("expected unchanged doc hash on no-op reindex, got %q -> %q", firstHash, entries[0].ContentHash)
-	}
-
-	if err := os.WriteFile(statePath, []byte("Write chapter six next.\n"), 0o644); err != nil {
-		t.Fatalf("rewrite state doc: %v", err)
-	}
-	if err := service.EnsureProjectDocuments(context.Background(), "proj-1", ""); err != nil {
-		t.Fatalf("ensure docs third pass: %v", err)
-	}
-	entries, err = service.LoadEntries()
-	if err != nil {
-		t.Fatalf("load entries third pass: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected one indexed doc after rewrite, got %d", len(entries))
-	}
-	if entries[0].ContentHash == firstHash {
-		t.Fatalf("expected content hash to change after rewrite")
-	}
-}
+// TestSemanticService_ReindexesProjectDocsOnlyWhenChanged was removed
+// along with the project system (EnsureProjectDocuments no longer exists).

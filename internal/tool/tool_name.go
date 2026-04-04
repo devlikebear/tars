@@ -32,28 +32,6 @@ var toolNameAliases = map[string]string{
 	"agent_sysprompt_get":     "workspace",
 	"agent_sysprompt_set":     "workspace",
 
-	// project aliases → project aggregator
-	"project_create":   "project",
-	"project_list":     "project",
-	"project_get":      "project",
-	"project_update":   "project",
-	"project_delete":   "project",
-	"project_activate": "project",
-
-	// project runtime aliases → project_work aggregator
-	"project_board_get":       "project_work",
-	"project_board_update":    "project_work",
-	"project_activity_get":    "project_work",
-	"project_activity_append": "project_work",
-	"project_dispatch":        "project_work",
-	"project_state_get":       "project_work",
-	"project_state_update":    "project_work",
-
-	// project brief aliases → project_brief aggregator
-	"project_brief_get":      "project_brief",
-	"project_brief_update":   "project_brief",
-	"project_brief_finalize": "project_brief",
-
 	// ops aliases → ops aggregator
 	"ops_status":        "ops",
 	"ops_cleanup_plan":  "ops",

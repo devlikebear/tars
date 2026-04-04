@@ -11,12 +11,11 @@ import (
 
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 
-func TestResolveChatProjectContext_AssociatesRequestedProjectToSession(t *testing.T) {
+func TestResolveSessionProjectID_ResolvesFromSessionAndRequest(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
@@ -28,37 +27,25 @@ func TestResolveChatProjectContext_AssociatesRequestedProjectToSession(t *testin
 		t.Fatalf("create session: %v", err)
 	}
 
-	projectStore := project.NewStore(root, nil)
-	item, err := projectStore.Create(project.CreateInput{
-		Name:         "Alpha",
-		Objective:    "Ship the refactor",
-		Instructions: "Keep behavior stable",
-	})
-	if err != nil {
-		t.Fatalf("create project: %v", err)
+	// No project set, no request ID → empty
+	resolvedID := resolveSessionProjectID(store, sess.ID, "")
+	if resolvedID != "" {
+		t.Fatalf("expected empty project ID, got %q", resolvedID)
 	}
 
-	resolvedID, activeProject, prompt, err := resolveChatProjectContext(root, store, sess.ID, item.ID)
-	if err != nil {
-		t.Fatalf("resolve chat project context: %v", err)
+	// Set session project ID
+	if err := store.SetProjectID(sess.ID, "proj_alpha"); err != nil {
+		t.Fatalf("set project: %v", err)
 	}
-	if resolvedID != item.ID {
-		t.Fatalf("expected resolved project %q, got %q", item.ID, resolvedID)
-	}
-	if activeProject == nil || activeProject.ID != item.ID {
-		t.Fatalf("expected active project %q, got %+v", item.ID, activeProject)
-	}
-	expectedPrompt := project.ProjectPromptContext(item)
-	if prompt != expectedPrompt {
-		t.Fatalf("expected prompt %q, got %q", expectedPrompt, prompt)
+	resolvedID = resolveSessionProjectID(store, sess.ID, "")
+	if resolvedID != "proj_alpha" {
+		t.Fatalf("expected session project %q, got %q", "proj_alpha", resolvedID)
 	}
 
-	updated, err := store.Get(sess.ID)
-	if err != nil {
-		t.Fatalf("get session: %v", err)
-	}
-	if updated.ProjectID != item.ID {
-		t.Fatalf("expected session project %q, got %q", item.ID, updated.ProjectID)
+	// Request project ID overrides session
+	resolvedID = resolveSessionProjectID(store, sess.ID, "proj_beta")
+	if resolvedID != "proj_beta" {
+		t.Fatalf("expected request project %q, got %q", "proj_beta", resolvedID)
 	}
 }
 

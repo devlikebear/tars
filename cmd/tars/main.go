@@ -52,7 +52,6 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newServeCommand(stdout, stderr))
 	cmd.AddCommand(newStatusCommand(stdout, stderr))
 	cmd.AddCommand(newHealthCommand(stdout, stderr))
-	cmd.AddCommand(newProjectCommand(stdout, stderr))
 	cmd.AddCommand(newCronCommand(stdout, stderr))
 	cmd.AddCommand(newApproveCommand(stdout, stderr))
 	cmd.AddCommand(newAssistantCommand(stdout, stderr))

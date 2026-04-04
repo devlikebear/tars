@@ -11,11 +11,9 @@ import (
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/ops"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/prompt"
 	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/serverauth"
-	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
@@ -52,18 +50,12 @@ func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.Pr
 	registry := tool.NewRegistry()
 	memService := buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...))
 
-	// Memory & workspace aggregators (replaces 11 individual tools → 3)
+	// Memory & workspace aggregators
 	registry.Register(tool.NewMemoryTool(workspaceDir, memService, nil))
 	registry.Register(tool.NewKnowledgeTool(workspaceDir, memService))
 	registry.Register(tool.NewWorkspaceTool(workspaceDir))
 
-	// Project aggregators (replaces 16 individual tools → 3)
-	projectStore := project.NewStore(workspaceDir, nil)
-	registry.Register(tool.NewProjectTool(projectStore, nil, ""))
-	registry.Register(tool.NewProjectWorkTool(projectStore, nil, nil))
-	registry.Register(tool.NewProjectBriefTool(projectStore, session.NewStore(workspaceDir)))
-
-	// Ops aggregator (replaces 3 individual tools → 1)
+	// Ops aggregator
 	opsManager := ops.NewManager(workspaceDir, ops.Options{})
 	registry.Register(tool.NewOpsTool(opsManager))
 
@@ -230,7 +222,6 @@ func agentPromptProfileForLabel(label string) agentPromptProfile {
 			includeMemory: false,
 			allowedToolIDs: []string{
 				"read_file", "write_file", "edit_file", "list_dir", "glob",
-				"project", "project_work",
 				"research_report",
 			},
 			maxIters: 4,

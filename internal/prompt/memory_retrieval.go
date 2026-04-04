@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 )
 
@@ -173,50 +172,14 @@ func collectSemanticMatches(opts BuildOptions) []relevantMemoryMatch {
 	return matches
 }
 
-func collectProjectDocumentMatches(opts BuildOptions, terms []string) []relevantMemoryMatch {
-	projectID := strings.TrimSpace(opts.ProjectID)
-	if projectID == "" {
-		return nil
-	}
-	docs := []struct {
-		name      string
-		baseScore int
-	}{
-		{name: "STATE.md", baseScore: 210},
-		{name: "PROJECT.md", baseScore: 180},
-		{name: "STORY_BIBLE.md", baseScore: 165},
-		{name: "CHARACTERS.md", baseScore: 165},
-		{name: "PLOT.md", baseScore: 165},
-	}
-	out := make([]relevantMemoryMatch, 0, len(docs)*2)
-	store := project.NewStore(opts.WorkspaceDir, nil)
-	for _, doc := range docs {
-		path := store.ProjectFilePath(projectID, doc.name)
-		stat, err := os.Stat(path)
-		if err != nil {
-			continue
-		}
-		source := filepath.ToSlash(filepath.Join("projects", projectID, doc.name))
-		out = append(out, collectFileLineMatches(path, source, stat.ModTime().UTC(), opts, terms, doc.baseScore)...)
-	}
-	return out
+func collectProjectDocumentMatches(_ BuildOptions, _ []string) []relevantMemoryMatch {
+	// Project documents are no longer available after project package removal.
+	return nil
 }
 
-func collectBriefMatches(opts BuildOptions, terms []string) []relevantMemoryMatch {
-	if strings.TrimSpace(opts.ProjectID) != "" {
-		return nil
-	}
-	briefID := strings.TrimSpace(opts.SessionID)
-	if briefID == "" {
-		return nil
-	}
-	store := project.NewStore(opts.WorkspaceDir, nil)
-	path := store.BriefPath(briefID)
-	stat, err := os.Stat(path)
-	if err != nil {
-		return nil
-	}
-	return collectFileLineMatches(path, filepath.ToSlash(filepath.Join("_shared", "project_briefs", briefID, "BRIEF.md")), stat.ModTime().UTC(), opts, terms, 220)
+func collectBriefMatches(_ BuildOptions, _ []string) []relevantMemoryMatch {
+	// Project briefs are no longer available after project package removal.
+	return nil
 }
 
 func collectExperienceMatches(opts BuildOptions, terms []string) []relevantMemoryMatch {

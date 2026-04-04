@@ -7,7 +7,6 @@ import (
 
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
@@ -87,19 +86,13 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 	resolvedSkill := resolveSkillSelection(req.Message, deps.tooling.Extensions, requestWorkspaceDir, sessionID)
 	invokedSkill := resolvedSkill.Definition
-	resolvedProjectID, activeProject, projectPrompt, err := resolveChatProjectContext(requestWorkspaceDir, reqStore, sessionID, strings.TrimSpace(req.ProjectID))
-	if err != nil {
-		return chatRunState{}, http.StatusNotFound, err.Error(), err
-	}
+	resolvedProjectID := resolveSessionProjectID(reqStore, sessionID, strings.TrimSpace(req.ProjectID))
 	contextDetails, err := prepareChatContextDetailsWithCache(requestWorkspaceDir, resolvedProjectID, sessionID, req.Message, extSnapshot, invokedSkill, deps.tooling.MemoryCache, deps.tooling.MemorySemanticConfig)
 	if err != nil {
 		return chatRunState{}, http.StatusInternalServerError, "prepare chat context failed", err
 	}
 	systemPrompt := contextDetails.SystemPrompt
 	toolChoice := contextDetails.ToolChoice
-	if strings.TrimSpace(projectPrompt) != "" {
-		systemPrompt += "\n" + strings.TrimSpace(projectPrompt) + "\n"
-	}
 	deps.logger.Debug().
 		Str("session_id", sessionID).
 		Str("project_id", resolvedProjectID).
@@ -137,7 +130,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	injectedSchemas := resolveInjectedToolSchemas(
 		registry,
 		deps.tooling.ToolsDefaultSet,
-		activeProject,
+		nil,
 		authRole,
 		deps.tooling.ToolsAllowHighRiskUser,
 		sessionToolConfigs...,
@@ -166,39 +159,22 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}, 0, "", nil
 }
 
-func resolveChatProjectContext(
-	workspaceDir string,
+// resolveSessionProjectID returns the effective project ID for a chat session.
+// It prefers the explicit request project ID, falling back to the session's stored one.
+func resolveSessionProjectID(
 	store *session.Store,
 	sessionID string,
 	requestProjectID string,
-) (string, *project.Project, string, error) {
-	var sessionProjectID string
+) string {
+	resolvedID := strings.TrimSpace(requestProjectID)
+	if resolvedID != "" {
+		return resolvedID
+	}
 	if store != nil && strings.TrimSpace(sessionID) != "" {
 		sess, err := store.Get(strings.TrimSpace(sessionID))
 		if err == nil {
-			sessionProjectID = strings.TrimSpace(sess.ProjectID)
+			return strings.TrimSpace(sess.ProjectID)
 		}
 	}
-	resolvedID := strings.TrimSpace(requestProjectID)
-	if resolvedID == "" {
-		resolvedID = sessionProjectID
-	}
-	if resolvedID == "" {
-		return "", nil, "", nil
-	}
-
-	projectStore := project.NewStore(workspaceDir, nil)
-	item, err := projectStore.Get(resolvedID)
-	if err != nil {
-		// Project deleted or not found — continue chat without project context
-		return "", nil, "", nil
-	}
-	var state *project.ProjectState
-	if s, err := projectStore.GetState(resolvedID); err == nil {
-		state = &s
-	}
-	if store != nil && strings.TrimSpace(sessionID) != "" && strings.TrimSpace(requestProjectID) != "" {
-		_ = store.SetProjectID(strings.TrimSpace(sessionID), item.ID)
-	}
-	return item.ID, &item, project.PhaseAwareProjectPromptContext(item, state), nil
+	return ""
 }

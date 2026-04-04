@@ -4,8 +4,6 @@
   import Chat from './components/Chat.svelte'
   import MemoryCenter from './components/MemoryCenter.svelte'
   import SyspromptCenter from './components/SyspromptCenter.svelte'
-  import ProjectView from './components/ProjectView.svelte'
-  import Projects from './components/Projects.svelte'
   import Ops from './components/Ops.svelte'
   import Config from './components/Config.svelte'
   import Extensions from './components/Extensions.svelte'
@@ -83,12 +81,6 @@
     {#key aiPrompt}
       <Chat sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
     {/key}
-  {:else if route.view === 'project'}
-    {#key route.projectId}
-      <ProjectView projectId={route.projectId} />
-    {/key}
-  {:else if route.view === 'projects'}
-    <Projects onNavigate={navigate} onAskAI={navigateWithPrompt} />
   {:else if route.view === 'memory'}
     <MemoryCenter onAskAI={navigateWithPrompt} />
   {:else if route.view === 'sysprompt'}

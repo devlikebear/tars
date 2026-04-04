@@ -60,19 +60,16 @@ func (h *telegramInboundHandler) processMessage(
 	}
 	resolvedSkill := resolveSkillSelection(text, h.tooling.Extensions, h.workspaceDir, sessionID)
 	invokedSkill := resolvedSkill.Definition
-	resolvedProjectID, activeProject, projectPrompt, _ := resolveChatProjectContext(h.workspaceDir, h.store, sessionID, "")
+	resolvedProjectID := resolveSessionProjectID(h.store, sessionID, "")
 	systemPrompt, toolChoice, err := prepareChatContextWithExtensions(h.workspaceDir, resolvedProjectID, sessionID, text, extSnapshot, invokedSkill, h.tooling.MemorySemanticConfig)
 	if err != nil {
 		return "", sessionID, err
-	}
-	if strings.TrimSpace(projectPrompt) != "" {
-		systemPrompt += "\n" + strings.TrimSpace(projectPrompt) + "\n"
 	}
 	llmMessages := buildLLMMessages(systemPrompt, history, text)
 	injectedSchemas := resolveInjectedToolSchemas(
 		registry,
 		h.tooling.ToolsDefaultSet,
-		activeProject,
+		nil,
 		"user",
 		h.tooling.ToolsAllowHighRiskUser,
 	)

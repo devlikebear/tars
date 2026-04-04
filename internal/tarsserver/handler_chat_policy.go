@@ -4,9 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
@@ -22,12 +20,6 @@ func buildChatToolRegistry(
 ) *tool.Registry {
 	registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, deps.tooling.ProcessManager, deps.tooling.MemorySemanticConfig)
 
-	// Re-register project aggregators with full deps (overrides base registry's nil-dep versions)
-	projectStore := project.NewStore(requestWorkspaceDir, nil)
-	registry.Register(tool.NewProjectTool(projectStore, reqStore, deps.mainSessionID))
-	registry.Register(tool.NewProjectWorkTool(projectStore, gateway.NewProjectTaskRunner(deps.tooling.Gateway, ""), project.DefaultGitHubAuthChecker()))
-	registry.Register(tool.NewProjectBriefTool(projectStore, reqStore))
-
 	// Re-register ops aggregator with deps manager
 	registry.Register(tool.NewOpsTool(deps.tooling.OpsManager))
 
@@ -36,6 +28,9 @@ func buildChatToolRegistry(
 	if deps.tooling.UsageTracker != nil {
 		registry.Register(tool.NewUsageReportTool(deps.tooling.UsageTracker))
 	}
+
+	// Tasks aggregator (session-scoped plan + tasks)
+	registry.Register(tool.NewTasksTool(reqStore, requestWorkspaceDir, func() string { return sessionID }))
 
 	// Session aggregator + subagents
 	registry.Register(tool.NewSessionTool(reqStore, deps.tooling.Gateway, func(_ context.Context) (tool.SessionStatus, error) {
@@ -68,7 +63,7 @@ func buildChatToolRegistry(
 func resolveInjectedToolSchemas(
 	registry *tool.Registry,
 	_ string, // toolsDefaultSet — deprecated, individual tool toggles + high-risk filter used instead
-	activeProject *project.Project,
+	_ any, // activeProject — removed (was *project.Project)
 	authRole string,
 	allowHighRiskUser bool,
 	sessionConfig ...session.SessionToolConfig,
@@ -77,26 +72,7 @@ func resolveInjectedToolSchemas(
 		return nil
 	}
 
-	var names []string
-	if activeProject == nil {
-		names = toolNamesFromSchemas(registry.Schemas())
-	} else {
-		// Project context: start with all registered tools, apply project policy
-		names = toolNamesFromSchemas(registry.Schemas())
-		policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
-			ToolsAllow:               activeProject.ToolsAllow,
-			ToolsAllowExists:         len(activeProject.ToolsAllow) > 0,
-			ToolsAllowGroups:         activeProject.ToolsAllowGroups,
-			ToolsAllowGroupsExists:   len(activeProject.ToolsAllowGroups) > 0,
-			ToolsAllowPatterns:       activeProject.ToolsAllowPatterns,
-			ToolsAllowPatternsExists: len(activeProject.ToolsAllowPatterns) > 0,
-			ToolsDeny:                activeProject.ToolsDeny,
-			ToolsDenyExists:          len(activeProject.ToolsDeny) > 0,
-			ToolsRiskMax:             activeProject.ToolsRiskMax,
-			ToolsRiskMaxExists:       strings.TrimSpace(activeProject.ToolsRiskMax) != "",
-		}, knownToolsFromRegistry(registry), project.ToolPolicyOptions{})
-		names = project.ApplyToolConstraints(names, policy)
-	}
+	names := toolNamesFromSchemas(registry.Schemas())
 
 	// Apply session-level tool config (if provided)
 	if len(sessionConfig) > 0 {
@@ -221,11 +197,9 @@ func defaultMinimalToolNames() []string {
 		"memory",
 		"knowledge",
 		"workspace",
-		"project",
-		"project_work",
-		"project_brief",
 		"ops",
 		"cron",
+		"tasks",
 		"research_report",
 		"usage_report",
 		"session",

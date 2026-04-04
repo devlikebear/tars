@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 )
 
@@ -131,68 +130,22 @@ func TestBuild_SkipsRelevantMemoryWhenNoMeaningfulMatches(t *testing.T) {
 	}
 }
 
-func TestBuild_IncludesBriefWhenNoProjectIsActive(t *testing.T) {
+func TestBuild_NoBriefOrProjectDocsAfterProjectRemoval(t *testing.T) {
 	root := t.TempDir()
-	store := project.NewStore(root, nil)
-	briefID := "sess-brief"
-	title := "Orbit Hearts"
-	goal := "Write a serialized space opera"
-	kind := "serial"
-	if _, err := store.UpdateBrief(briefID, project.BriefUpdateInput{
-		Title:         &title,
-		Goal:          &goal,
-		Kind:          &kind,
-		OpenQuestions: []string{"How long should the first arc be?"},
-	}); err != nil {
-		t.Fatalf("update brief: %v", err)
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
 	}
 
+	// After project package removal, brief and project doc matches return nil
 	result := Build(BuildOptions{
 		WorkspaceDir: root,
 		Query:        "what is the goal for this serial?",
-		SessionID:    briefID,
+		SessionID:    "sess-brief",
 	})
 
-	if !strings.Contains(result, "## Prior Context") {
-		t.Fatalf("expected relevant memory section, got %q", result)
-	}
-	if !strings.Contains(result, "serialized space opera") {
-		t.Fatalf("expected brief content in relevant memory, got %q", result)
-	}
-	if !strings.Contains(result, "_shared/project_briefs/"+briefID+"/BRIEF.md") {
-		t.Fatalf("expected brief source path in relevant memory, got %q", result)
-	}
-}
-
-func TestBuild_IncludesProjectStateAndPlotDocs(t *testing.T) {
-	root := t.TempDir()
-	store := project.NewStore(root, nil)
-	created, err := store.Create(project.CreateInput{Name: "Orbit Hearts", Objective: "Write a serialized space opera"})
-	if err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-	nextAction := "Draft chapter one"
-	if _, err := store.UpdateState(created.ID, project.ProjectStateUpdateInput{
-		NextAction: &nextAction,
-	}); err != nil {
-		t.Fatalf("update state: %v", err)
-	}
-	if err := os.WriteFile(store.ProjectFilePath(created.ID, "PLOT.md"), []byte("# Plot\n\nThe dead-star map reveals the traitor."), 0o644); err != nil {
-		t.Fatalf("write plot doc: %v", err)
-	}
-
-	result := Build(BuildOptions{
-		WorkspaceDir: root,
-		Query:        "what should I draft next and what is the big plot reveal?",
-		ProjectID:    created.ID,
-		SessionID:    "sess-active",
-	})
-
-	if !strings.Contains(result, "Draft chapter one") {
-		t.Fatalf("expected state next_action in relevant memory, got %q", result)
-	}
-	if !strings.Contains(result, "traitor") {
-		t.Fatalf("expected plot doc content in relevant memory, got %q", result)
+	// Should not fail; just no project-related context
+	if strings.Contains(result, "_shared/project_briefs/") {
+		t.Fatalf("did not expect brief content after project removal, got %q", result)
 	}
 }
 

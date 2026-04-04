@@ -106,7 +106,7 @@ func TestAgentPromptRunnerWithTools_CronUsesMinimalToolsetAndPrompt(t *testing.T
 	if strings.Contains(got, "exec") || strings.Contains(got, "memory") || strings.Contains(got, "cron") {
 		t.Fatalf("unexpected broad cron toolset: %s", got)
 	}
-	for _, want := range []string{"read_file", "write_file", "edit_file", "list_dir", "glob", "project", "project_work"} {
+	for _, want := range []string{"read_file", "write_file", "edit_file", "list_dir", "glob", "research_report"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected cron tool %q in %s", want, got)
 		}

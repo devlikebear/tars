@@ -337,7 +337,7 @@ Find evidence first and answer briefly.
 	if agent.PolicyMode != "allowlist" {
 		t.Fatalf("expected allowlist mode, got %+v", agent)
 	}
-	if got, want := strings.Join(agent.ToolsAllow, ","), "read_file"; got != want {
+	if got, want := strings.Join(agent.ToolsAllow, ","), "glob,read_file"; got != want {
 		t.Fatalf("unexpected tools allow list after deny/risk filter: got=%q want=%q", got, want)
 	}
 	if got, want := strings.Join(agent.ToolsDeny, ","), "exec"; got != want {

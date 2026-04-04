@@ -15,7 +15,6 @@
 
   const items: NavItem[] = [
     { id: 'chat', label: 'Chat', path: '/console/chat', icon: '\u25ce' },
-    { id: 'projects', label: 'Projects', path: '/console/projects', icon: '\u25eb' },
     { id: 'memory', label: 'Memory', path: '/console/memory', icon: '\u22c8' },
     { id: 'sysprompt', label: 'System Prompt', path: '/console/sysprompt', icon: '\u2691' },
     { id: 'ops', label: 'Operations', path: '/console/ops', icon: '\u2699' },
