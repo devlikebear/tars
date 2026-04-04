@@ -218,19 +218,71 @@
   // -- File attachments --
   let attachedFiles: File[] = $state([])
   let fileInputEl: HTMLInputElement | undefined = $state()
+  let isDragging = $state(false)
+  let filePreviews: Map<string, string> = $state(new Map()) // file name → preview URL or text
+
+  function addFiles(files: FileList | File[]) {
+    for (const file of files) {
+      if (attachedFiles.length >= 5) break
+      attachedFiles = [...attachedFiles, file]
+      generatePreview(file)
+    }
+  }
+
+  function generatePreview(file: File) {
+    const key = `${file.name}-${file.size}-${file.lastModified}`
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file)
+      filePreviews = new Map([...filePreviews, [key, url]])
+    } else if (file.type.startsWith('text/') || /\.(txt|md|json|csv|yaml|yml|ts|js|py|go)$/i.test(file.name)) {
+      file.slice(0, 500).text().then((text) => {
+        const lines = text.split('\n').slice(0, 3).join('\n')
+        filePreviews = new Map([...filePreviews, [key, lines]])
+      }).catch(() => {})
+    }
+  }
+
+  function getPreviewKey(file: File): string {
+    return `${file.name}-${file.size}-${file.lastModified}`
+  }
 
   function handleFileSelect(e: Event) {
     const input = e.target as HTMLInputElement
     if (!input.files) return
-    for (const file of input.files) {
-      if (attachedFiles.length >= 5) break
-      attachedFiles = [...attachedFiles, file]
-    }
+    addFiles(input.files)
     input.value = ''
   }
 
   function removeAttachment(index: number) {
+    const file = attachedFiles[index]
+    const key = getPreviewKey(file)
+    const preview = filePreviews.get(key)
+    if (preview && preview.startsWith('blob:')) URL.revokeObjectURL(preview)
+    filePreviews.delete(key)
+    filePreviews = new Map(filePreviews)
     attachedFiles = attachedFiles.filter((_, i) => i !== index)
+  }
+
+  // Drag & drop
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault()
+    isDragging = true
+  }
+
+  function handleDragLeave(e: DragEvent) {
+    // Only clear if leaving the panel itself (not a child)
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    if (e.clientX <= rect.left || e.clientX >= rect.right || e.clientY <= rect.top || e.clientY >= rect.bottom) {
+      isDragging = false
+    }
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault()
+    isDragging = false
+    if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+      addFiles(e.dataTransfer.files)
+    }
   }
 
   async function filesToAttachments(files: File[]): Promise<ChatAttachment[]> {
@@ -267,28 +319,36 @@
   function handlePaste(e: ClipboardEvent) {
     if (!e.clipboardData) return
     const items = e.clipboardData.items
+
+    // Check for images or files first
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
-      // Image from clipboard (screenshot, copy-paste)
       if (item.type.startsWith('image/')) {
         e.preventDefault()
         const file = item.getAsFile()
         if (file && attachedFiles.length < 5) {
           const name = `clipboard-${Date.now()}.${item.type.split('/')[1] || 'png'}`
           const renamed = new File([file], name, { type: file.type })
-          attachedFiles = [...attachedFiles, renamed]
+          addFiles([renamed])
         }
         return
       }
-      // File from clipboard (some browsers support this)
       if (item.kind === 'file') {
         const file = item.getAsFile()
         if (file && attachedFiles.length < 5) {
-          attachedFiles = [...attachedFiles, file]
+          addFiles([file])
         }
       }
     }
-    // Text paste is handled natively by the textarea
+
+    // Long text paste → attach as file instead of flooding textarea
+    const text = e.clipboardData.getData('text/plain')
+    if (text && text.length > 500 && attachedFiles.length < 5) {
+      e.preventDefault()
+      const file = new File([text], `clipboard-text-${Date.now()}.txt`, { type: 'text/plain' })
+      addFiles([file])
+    }
+    // Short text paste is handled natively by the textarea
   }
 
   let textareaEl: HTMLTextAreaElement | undefined = $state()
@@ -338,7 +398,13 @@
   })
 </script>
 
-<div class="chat-panel">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="chat-panel" role="region" aria-label="Chat" ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+  {#if isDragging}
+    <div class="drop-overlay">
+      <div class="drop-label">Drop files here</div>
+    </div>
+  {/if}
   <div class="chat-toolbar-row">
     <div class="chat-status">
       {chatBusy ? 'streaming' : chatStatusLine || 'idle'}
@@ -391,10 +457,19 @@
   {#if attachedFiles.length > 0}
     <div class="chat-attachments">
       {#each attachedFiles as file, i}
-        <div class="attachment-chip">
-          <span class="attachment-icon">{file.type.startsWith('image/') ? '\ud83d\uddbc' : '\ud83d\udcc4'}</span>
-          <span class="attachment-name">{file.name}</span>
-          <span class="attachment-size">{fmtSize(file.size)}</span>
+        {@const preview = filePreviews.get(getPreviewKey(file))}
+        <div class="attachment-card">
+          {#if file.type.startsWith('image/') && preview}
+            <img class="attachment-thumb" src={preview} alt={file.name} />
+          {:else if preview && !preview.startsWith('blob:')}
+            <pre class="attachment-text-preview">{preview}</pre>
+          {:else}
+            <span class="attachment-icon-lg">{file.type.startsWith('image/') ? '\ud83d\uddbc' : file.type === 'application/pdf' ? '\ud83d\udcc3' : '\ud83d\udcc4'}</span>
+          {/if}
+          <div class="attachment-info">
+            <span class="attachment-name">{file.name}</span>
+            <span class="attachment-size">{fmtSize(file.size)}</span>
+          </div>
           <button class="attachment-remove" onclick={() => removeAttachment(i)}>&times;</button>
         </div>
       {/each}
@@ -411,10 +486,10 @@
           onchange={handleFileSelect}
           class="file-input-hidden"
         />
-        <button type="button" class="toolbar-btn" title="Attach file (coming soon)" onclick={() => fileInputEl?.click()}>
+        <button type="button" class="toolbar-btn" title="Attach file" onclick={() => fileInputEl?.click()}>
           <span class="toolbar-icon">{'\ud83d\udcce'}</span>
         </button>
-        <button type="button" class="toolbar-btn" title="Attach image (coming soon)" onclick={() => { if (fileInputEl) { fileInputEl.accept = 'image/*'; fileInputEl.click(); fileInputEl.accept = 'image/*,.pdf,.txt,.md,.json,.csv,.yaml,.yml' } }}>
+        <button type="button" class="toolbar-btn" title="Attach image" onclick={() => { if (fileInputEl) { fileInputEl.accept = 'image/*'; fileInputEl.click(); fileInputEl.accept = 'image/*,.pdf,.txt,.md,.json,.csv,.yaml,.yml' } }}>
           <span class="toolbar-icon">{'\ud83d\uddbc'}</span>
         </button>
       </div>
@@ -439,6 +514,26 @@
     flex-direction: column;
     min-height: 0;
     flex: 1;
+    position: relative;
+  }
+
+  .drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    background: rgba(224, 145, 69, 0.08);
+    border: 2px dashed var(--accent);
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .drop-label {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 500;
+    color: var(--accent);
   }
 
   .chat-toolbar-row {
@@ -567,40 +662,96 @@
   .chat-attachments {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-1);
+    gap: var(--space-2);
     margin-bottom: var(--space-2);
   }
 
-  .attachment-chip {
+  .attachment-card {
     display: flex;
     align-items: center;
-    gap: var(--space-1);
-    padding: 2px var(--space-2);
+    gap: var(--space-2);
+    padding: var(--space-2);
     background: var(--bg-elevated);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     font-size: var(--text-xs);
+    max-width: 240px;
+    position: relative;
   }
 
-  .attachment-icon { font-size: var(--text-sm); }
+  .attachment-thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+  }
+
+  .attachment-text-preview {
+    width: 48px;
+    height: 48px;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 7px;
+    line-height: 1.3;
+    color: var(--text-ghost);
+    background: var(--bg-base);
+    border-radius: var(--radius-sm);
+    padding: 2px 3px;
+    flex-shrink: 0;
+    white-space: pre;
+    margin: 0;
+  }
+
+  .attachment-icon-lg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+    background: var(--bg-base);
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+  }
+
+  .attachment-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
   .attachment-name {
     color: var(--text-primary);
-    max-width: 120px;
+    max-width: 140px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-weight: 500;
   }
   .attachment-size { color: var(--text-ghost); }
   .attachment-remove {
-    background: none;
-    border: none;
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: 50%;
     color: var(--text-ghost);
     cursor: pointer;
-    font-size: var(--text-sm);
-    padding: 0 2px;
+    font-size: 12px;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
     line-height: 1;
+    opacity: 0;
+    transition: opacity var(--duration-fast);
   }
-  .attachment-remove:hover { color: var(--error); }
+  .attachment-card:hover .attachment-remove { opacity: 1; }
+  .attachment-remove:hover { color: var(--error); border-color: var(--error); }
 
   /* ── Form ───────────────────────────────────── */
   .chat-form {
