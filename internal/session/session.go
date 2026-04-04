@@ -36,10 +36,17 @@ func (s *Store) Create(title string) (Session, error) {
 }
 
 func (s *Store) CreateWithOptions(title string, kind string, hidden bool) (Session, error) {
+	trimmedKind := strings.TrimSpace(kind)
+
+	// Enforce main session uniqueness: use EnsureMain() instead.
+	if trimmedKind == "main" {
+		return Session{}, fmt.Errorf("cannot create main session directly; use EnsureMain()")
+	}
+
 	now := time.Now().UTC()
 	session := Session{
 		Title:     title,
-		Kind:      strings.TrimSpace(kind),
+		Kind:      trimmedKind,
 		Hidden:    hidden,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -78,7 +85,45 @@ func (s *Store) CreateWithOptions(title string, kind string, hidden bool) (Sessi
 }
 
 func (s *Store) EnsureMain() (Session, error) {
+	// Deduplicate any stale main sessions before ensuring
+	s.deduplicateMain()
 	return s.ensureNamedSession("main", "main", false)
+}
+
+// deduplicateMain removes duplicate main sessions, keeping only the oldest.
+func (s *Store) deduplicateMain() {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return
+	}
+	var mains []Session
+	for _, sess := range index {
+		if strings.TrimSpace(sess.Kind) == "main" {
+			mains = append(mains, sess)
+		}
+	}
+	if len(mains) <= 1 {
+		return
+	}
+	// Keep the oldest main session, remove the rest
+	oldest := mains[0]
+	for _, m := range mains[1:] {
+		if m.CreatedAt.Before(oldest.CreatedAt) {
+			oldest = m
+		}
+	}
+	changed := false
+	for _, m := range mains {
+		if m.ID != oldest.ID {
+			delete(index, m.ID)
+			changed = true
+		}
+	}
+	if changed {
+		_ = s.saveIndex(index)
+	}
 }
 
 func (s *Store) EnsureWorker(projectID string) (Session, error) {
