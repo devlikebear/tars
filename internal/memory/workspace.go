@@ -155,6 +155,9 @@ func EnsureWorkspace(root string) error {
 	if err := os.MkdirAll(filepath.Join(root, "_shared"), 0o755); err != nil {
 		return fmt.Errorf("create shared dir: %w", err)
 	}
+	if err := os.MkdirAll(filepath.Join(root, "artifacts"), 0o755); err != nil {
+		return fmt.Errorf("create artifacts dir: %w", err)
+	}
 	if err := ensureFile(filepath.Join(root, "MEMORY.md"), defaultMemoryTemplate); err != nil {
 		return err
 	}

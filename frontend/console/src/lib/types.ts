@@ -491,3 +491,8 @@ export type SessionTasks = {
   plan?: SessionPlan
   tasks: SessionTask[]
 }
+
+export type SessionWorkDirs = {
+  work_dirs: string[]
+  current_dir: string
+}
