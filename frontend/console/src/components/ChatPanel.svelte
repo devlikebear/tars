@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { streamChat, listSessions, getSessionHistory, renameSession } from '../lib/api'
-  import { renderMarkdown } from '../lib/markdown'
   import type { ChatAttachment, ChatEvent, SessionMessage } from '../lib/types'
+  import MarkdownContent from './MarkdownContent.svelte'
 
   type ChatMessage = {
     id: string
@@ -377,7 +377,7 @@
         <div class="chat-msg chat-{msg.role}">
           <span class="chat-role">{msg.role}</span>
           {#if msg.role === 'assistant'}
-            <div class="chat-text chat-md">{@html renderMarkdown(msg.text || '\u2026')}</div>
+            <div class="chat-text"><MarkdownContent text={msg.text} /></div>
           {:else}
             <div class="chat-text">{msg.text || '\u2026'}</div>
           {/if}
@@ -560,90 +560,6 @@
     font-size: var(--text-sm);
     line-height: 1.55;
   }
-
-  /* ── Markdown rendered content ─────────────── */
-  .chat-md {
-    white-space: normal;
-  }
-
-  .chat-md :global(p) {
-    margin: 0 0 var(--space-2);
-  }
-
-  .chat-md :global(p:last-child) {
-    margin-bottom: 0;
-  }
-
-  .chat-md :global(pre) {
-    background: var(--bg-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    padding: var(--space-3);
-    overflow-x: auto;
-    margin: var(--space-2) 0;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    line-height: 1.5;
-  }
-
-  .chat-md :global(code) {
-    font-family: var(--font-mono);
-    font-size: 0.9em;
-    background: rgba(255, 255, 255, 0.06);
-    padding: 1px 5px;
-    border-radius: 3px;
-  }
-
-  .chat-md :global(pre code) {
-    background: none;
-    padding: 0;
-    border-radius: 0;
-    font-size: inherit;
-  }
-
-  .chat-md :global(strong) {
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .chat-md :global(em) {
-    font-style: italic;
-  }
-
-  .chat-md :global(a) {
-    color: var(--accent);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-
-  .chat-md :global(a:hover) {
-    color: var(--accent-hover);
-  }
-
-  .chat-md :global(ul),
-  .chat-md :global(ol) {
-    margin: var(--space-2) 0;
-    padding-left: var(--space-5);
-  }
-
-  .chat-md :global(li) {
-    margin-bottom: var(--space-1);
-    font-size: var(--text-sm);
-    line-height: 1.55;
-  }
-
-  .chat-md :global(h3),
-  .chat-md :global(h4),
-  .chat-md :global(h5),
-  .chat-md :global(h6) {
-    font-family: var(--font-display);
-    font-weight: 600;
-    margin: var(--space-3) 0 var(--space-1);
-    color: var(--text-primary);
-  }
-
-  .chat-md :global(h3) { font-size: var(--text-base); }
-  .chat-md :global(h4) { font-size: var(--text-sm); }
 
   /* ── Attachments ─────────────────────────────── */
   .chat-attachments {
