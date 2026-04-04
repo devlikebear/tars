@@ -455,8 +455,8 @@ func TestHeartbeatAPI_RunOnce_UsesAgentLoopToolFlow(t *testing.T) {
 	if body.Response != "heartbeat tool flow done" {
 		t.Fatalf("unexpected heartbeat response: %q", body.Response)
 	}
-	if mockClient.callCount != 3 {
-		t.Fatalf("expected 3 llm calls for tool flow plus knowledge compile, got %d", mockClient.callCount)
+	if mockClient.callCount != 2 {
+		t.Fatalf("expected 2 llm calls for tool flow, got %d", mockClient.callCount)
 	}
 	if len(mockClient.seenToolCounts) == 0 || mockClient.seenToolCounts[0] == 0 {
 		t.Fatalf("expected tool schemas in heartbeat call, got %+v", mockClient.seenToolCounts)
