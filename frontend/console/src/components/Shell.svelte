@@ -51,7 +51,6 @@
   .shell-content {
     flex: 1;
     padding: var(--space-6);
-    max-width: 1200px;
     width: 100%;
   }
 
