@@ -634,8 +634,8 @@ func TestTelegramInbound_LLMPath_InjectsToolsAndRunsToolCall(t *testing.T) {
 	if got := strings.TrimSpace(sender.lastText()); got != "tool path ok" {
 		t.Fatalf("expected final assistant response, got %q", got)
 	}
-	if mockLLM.callCount != 3 {
-		t.Fatalf("expected 3 llm calls (tool + final + knowledge compile), got %d", mockLLM.callCount)
+	if mockLLM.callCount != 2 {
+		t.Fatalf("expected 2 llm calls (tool + final, no knowledge compile), got %d", mockLLM.callCount)
 	}
 	if len(mockLLM.seenToolCounts) == 0 || mockLLM.seenToolCounts[0] == 0 {
 		t.Fatalf("expected tools to be injected on first llm call, got %+v", mockLLM.seenToolCounts)
