@@ -177,6 +177,26 @@
     return selectedSession?.kind === 'main'
   }
 
+  let chatPanelRef: ChatPanel | undefined = $state()
+
+  function handleCopyChat() {
+    const md = chatPanelRef?.exportAsMarkdown()
+    if (md) navigator.clipboard.writeText(md).catch(() => {})
+  }
+
+  function handleDownloadChat() {
+    const md = chatPanelRef?.exportAsMarkdown()
+    if (!md) return
+    const title = selectedSession?.title || 'chat'
+    const blob = new Blob([md], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${title.replace(/[^a-zA-Z0-9가-힣-_ ]/g, '').slice(0, 50)}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function loadDashboard() {
     const [p, h, e] = await Promise.allSettled([
       listProjects(),
@@ -272,7 +292,11 @@
               <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleAutoTitle} title="Generate title from first message">AI Title</button>
             {/if}
             <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleCompact} title="Compress transcript">Compact</button>
+            <span class="session-actions-sep"></span>
+            <button class="btn btn-ghost btn-sm" onclick={handleCopyChat} title="Copy conversation to clipboard">Copy All</button>
+            <button class="btn btn-ghost btn-sm" onclick={handleDownloadChat} title="Download as markdown file">Download</button>
             {#if !isMainSession()}
+              <span class="session-actions-sep"></span>
               <button class="btn btn-danger btn-sm" disabled={actionBusy} onclick={handleDelete}>
                 {deleteConfirm ? 'Confirm?' : 'Delete'}
               </button>
@@ -287,6 +311,7 @@
 
       {#key chatKey}
         <ChatPanel
+          bind:this={chatPanelRef}
           sessionId={selectedSessionId || undefined}
           {initialPrompt}
           onSessionChange={handleSessionChange}
@@ -447,6 +472,13 @@
     align-items: center;
     gap: var(--space-1);
     flex-shrink: 0;
+  }
+
+  .session-actions-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border-subtle);
+    margin: 0 var(--space-1);
   }
 
   @media (max-width: 768px) {

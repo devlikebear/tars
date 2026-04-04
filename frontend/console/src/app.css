@@ -494,26 +494,35 @@ textarea { resize: vertical; min-height: 80px; }
 
 /* Mermaid diagrams */
 .chat-md .mermaid-block {
-  margin: var(--space-3) 0;
-  padding: var(--space-3);
-  background: var(--bg-surface);
+  margin: var(--space-2) 0;
+}
+.chat-md .mermaid-block .code-toolbar {
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.chat-md .mermaid-preview {
+  background: var(--bg-base);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: var(--space-4);
   overflow-x: auto;
   text-align: center;
+  min-height: 60px;
 }
-.chat-md .mermaid-block svg {
+.chat-md .mermaid-preview svg {
   max-width: 100%;
   height: auto;
 }
 .chat-md .mermaid-src {
   background: var(--bg-base);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
   padding: var(--space-3);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   text-align: left;
+  margin: 0;
 }
 .chat-md .mermaid-error {
   border-color: rgba(248, 113, 113, 0.3);
