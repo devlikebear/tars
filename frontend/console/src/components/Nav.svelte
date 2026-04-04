@@ -14,9 +14,8 @@
   let { currentPath, onNavigate }: Props = $props()
 
   const items: NavItem[] = [
-    { id: 'home', label: 'Home', path: '/console', icon: '\u2302' },
+    { id: 'chat', label: 'Chat', path: '/console/chat', icon: '\u25ce' },
     { id: 'projects', label: 'Projects', path: '/console/projects', icon: '\u25eb' },
-    { id: 'sessions', label: 'Sessions', path: '/console/sessions', icon: '\u25ce' },
     { id: 'ops', label: 'Operations', path: '/console/ops', icon: '\u2699' },
     { id: 'heartbeat', label: 'Heartbeat', path: '/console/heartbeat', icon: '\u2661' },
     { id: 'extensions', label: 'Extensions', path: '/console/extensions', icon: '\u2756' },
@@ -24,8 +23,8 @@
   ]
 
   function isActive(itemPath: string, current: string): boolean {
-    if (itemPath === '/console') {
-      return current === '/console' || current === '/console/'
+    if (itemPath === '/console/chat') {
+      return current === '/console' || current === '/console/' || current.startsWith('/console/chat') || current.startsWith('/console/sessions')
     }
     return current.startsWith(itemPath)
   }
