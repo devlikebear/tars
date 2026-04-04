@@ -90,7 +90,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 		report.add("fixed", "config file", fmt.Sprintf("created starter config at %s", configPath))
 	default:
 		report.add("fail", "config file", fmt.Sprintf("missing: %s", configPath))
-		report.addHint(fmt.Sprintf("run `tars doctor --workspace-dir %s --fix` to create starter files", workspaceAbs))
+		report.addHint("run `tars doctor --fix` to create starter files")
 	}
 
 	cfg, cfgLoaded := config.Config{}, false
@@ -127,7 +127,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 			}
 		default:
 			report.add("fail", "workspace", fmt.Sprintf("missing starter paths in %s: %s", runtimeWorkspaceAbs, strings.Join(missing, ", ")))
-			report.addHint(fmt.Sprintf("run `tars doctor --workspace-dir %s --fix` to create missing workspace files", runtimeWorkspaceAbs))
+			report.addHint("run `tars doctor --fix` to create missing workspace files")
 		}
 	}
 

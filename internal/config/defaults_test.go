@@ -178,8 +178,8 @@ func TestLoad_DefaultOnly(t *testing.T) {
 		t.Fatalf("expected mode standalone, got %q", cfg.Mode)
 	}
 
-	if cfg.WorkspaceDir != "./workspace" {
-		t.Fatalf("expected WorkspaceDir ./workspace, got %q", cfg.WorkspaceDir)
+	if cfg.WorkspaceDir != DefaultWorkspaceDir() {
+		t.Fatalf("expected WorkspaceDir %q, got %q", DefaultWorkspaceDir(), cfg.WorkspaceDir)
 	}
 	if cfg.LLMProvider != "anthropic" {
 		t.Fatalf("expected LLMProvider anthropic, got %q", cfg.LLMProvider)
@@ -617,6 +617,35 @@ func TestResolveConfigPath_DefaultCandidate(t *testing.T) {
 
 	if got := ResolveConfigPath(""); got != DefaultConfigFilename {
 		t.Fatalf("expected default candidate %q, got %q", DefaultConfigFilename, got)
+	}
+}
+
+func TestResolveConfigPath_FixedPathFallback(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
+	// No config/standalone.yaml in CWD, create fixed config.
+	emptyDir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(emptyDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+
+	fixedPath := FixedConfigPath()
+	if err := os.MkdirAll(filepath.Dir(fixedPath), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(fixedPath, []byte("mode: standalone\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got := ResolveConfigPath("")
+	if got != fixedPath {
+		t.Fatalf("expected fixed path %q, got %q", fixedPath, got)
 	}
 }
 
@@ -1498,8 +1527,8 @@ func TestDefaultConfigValues_SharedBaseline(t *testing.T) {
 	if defaults.Mode != "standalone" {
 		t.Fatalf("expected mode standalone, got %q", defaults.Mode)
 	}
-	if defaults.WorkspaceDir != "./workspace" {
-		t.Fatalf("expected workspace default ./workspace, got %q", defaults.WorkspaceDir)
+	if defaults.WorkspaceDir != DefaultWorkspaceDir() {
+		t.Fatalf("expected workspace default %q, got %q", DefaultWorkspaceDir(), defaults.WorkspaceDir)
 	}
 	if defaults.APIAuthMode != "required" {
 		t.Fatalf("expected api auth mode required, got %q", defaults.APIAuthMode)

@@ -6,9 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/devlikebear/tars/internal/config"
 )
 
 func TestRootCommand_DoctorFailsForMissingStarterState(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
 	clearDoctorEnv(t)
 
 	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
@@ -34,6 +38,8 @@ func TestRootCommand_DoctorFailsForMissingStarterState(t *testing.T) {
 }
 
 func TestRootCommand_DoctorFixCreatesStarterWorkspaceButStillRequiresBYOK(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
@@ -55,7 +61,7 @@ func TestRootCommand_DoctorFixCreatesStarterWorkspaceButStillRequiresBYOK(t *tes
 		t.Fatalf("expected failing checks error, got %v", err)
 	}
 
-	configPath := filepath.Join(workspaceAbs, "config", "tars.config.yaml")
+	configPath := config.FixedConfigPath()
 	assertPathExists(t, configPath)
 	assertPathExists(t, filepath.Join(workspaceAbs, "memory"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "MEMORY.md"))
@@ -72,6 +78,8 @@ func TestRootCommand_DoctorFixCreatesStarterWorkspaceButStillRequiresBYOK(t *tes
 }
 
 func TestRootCommand_DoctorPassesWhenStarterWorkspaceAndBYOKPresent(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
@@ -101,6 +109,8 @@ func TestRootCommand_DoctorPassesWhenStarterWorkspaceAndBYOKPresent(t *testing.T
 }
 
 func TestRootCommand_DoctorFixRestoresBundledWorkspacePlugin(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
@@ -134,6 +144,8 @@ func TestRootCommand_DoctorFixRestoresBundledWorkspacePlugin(t *testing.T) {
 }
 
 func TestRootCommand_DoctorWarnsWhenGatewayDisabledForProjectWorkflow(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
@@ -146,11 +158,7 @@ func TestRootCommand_DoctorWarnsWhenGatewayDisabledForProjectWorkflow(t *testing
 		t.Fatalf("init command: %v", err)
 	}
 
-	workspaceAbs, err := filepath.Abs(workspaceDir)
-	if err != nil {
-		t.Fatalf("workspace abs path: %v", err)
-	}
-	configPath := filepath.Join(workspaceAbs, "config", "tars.config.yaml")
+	configPath := config.FixedConfigPath()
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
@@ -177,6 +185,8 @@ func TestRootCommand_DoctorWarnsWhenGatewayDisabledForProjectWorkflow(t *testing
 }
 
 func TestRootCommand_DoctorFailsWhenClaudeCodeCLIIsMissing(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 	t.Setenv("CLAUDE_CODE_CLI_PATH", filepath.Join(t.TempDir(), "missing-claude"))
@@ -189,11 +199,7 @@ func TestRootCommand_DoctorFailsWhenClaudeCodeCLIIsMissing(t *testing.T) {
 		t.Fatalf("init command: %v", err)
 	}
 
-	workspaceAbs, err := filepath.Abs(workspaceDir)
-	if err != nil {
-		t.Fatalf("workspace abs path: %v", err)
-	}
-	configPath := filepath.Join(workspaceAbs, "config", "tars.config.yaml")
+	configPath := config.FixedConfigPath()
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("read config: %v", err)
@@ -221,6 +227,8 @@ func TestRootCommand_DoctorFailsWhenClaudeCodeCLIIsMissing(t *testing.T) {
 }
 
 func TestRootCommand_DoctorFailsWhenGatewayDefaultAgentUsesMissingWorkspaceCommand(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
@@ -237,7 +245,7 @@ func TestRootCommand_DoctorFailsWhenGatewayDefaultAgentUsesMissingWorkspaceComma
 	if err != nil {
 		t.Fatalf("workspace abs path: %v", err)
 	}
-	configPath := filepath.Join(workspaceAbs, "config", "tars.config.yaml")
+	configPath := config.FixedConfigPath()
 	content := strings.TrimSpace(strings.Join([]string{
 		"mode: standalone",
 		"workspace_dir: " + workspaceAbs,
@@ -274,6 +282,8 @@ func TestRootCommand_DoctorFailsWhenGatewayDefaultAgentUsesMissingWorkspaceComma
 }
 
 func TestRootCommand_DoctorFailsWhenSemanticMemoryProviderIsUnsupported(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
@@ -286,11 +296,7 @@ func TestRootCommand_DoctorFailsWhenSemanticMemoryProviderIsUnsupported(t *testi
 		t.Fatalf("init command: %v", err)
 	}
 
-	workspaceAbs, err := filepath.Abs(workspaceDir)
-	if err != nil {
-		t.Fatalf("workspace abs path: %v", err)
-	}
-	configPath := filepath.Join(workspaceAbs, "config", "tars.config.yaml")
+	configPath := config.FixedConfigPath()
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("read config: %v", err)

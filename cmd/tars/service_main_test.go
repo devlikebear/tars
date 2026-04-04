@@ -8,9 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/devlikebear/tars/internal/config"
 )
 
 func TestRootCommand_ServiceInstallWritesLaunchAgentPlist(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 
@@ -29,7 +34,6 @@ func TestRootCommand_ServiceInstallWritesLaunchAgentPlist(t *testing.T) {
 	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
 	cmd.SetArgs([]string{
 		"service", "install",
-		"--workspace-dir", workspaceDir,
 		"--plist-path", plistPath,
 		"--stdout-log", stdoutLog,
 		"--stderr-log", stderrLog,
@@ -43,11 +47,7 @@ func TestRootCommand_ServiceInstallWritesLaunchAgentPlist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read plist: %v", err)
 	}
-	workspaceAbs, err := filepath.Abs(workspaceDir)
-	if err != nil {
-		t.Fatalf("workspace abs: %v", err)
-	}
-	configPath := starterConfigPath(workspaceAbs)
+	configPath := config.FixedConfigPath()
 	plist := string(data)
 	for _, token := range []string{
 		"io.tars.server",
@@ -75,6 +75,16 @@ func TestRootCommand_ServiceStartBootstrapsAndKickstartsLaunchAgent(t *testing.T
 	plistPath := filepath.Join(t.TempDir(), "io.tars.server.plist")
 	if err := os.WriteFile(plistPath, []byte("<plist/>"), 0o644); err != nil {
 		t.Fatalf("write plist: %v", err)
+	}
+
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	fixedCfg := config.FixedConfigPath()
+	if err := os.MkdirAll(filepath.Dir(fixedCfg), 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(fixedCfg, []byte("mode: standalone\nworkspace_dir: /tmp/ws\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
 
 	var calls [][]string
@@ -124,6 +134,16 @@ func TestRootCommand_ServiceStopBootsOutLaunchAgent(t *testing.T) {
 		t.Fatalf("write plist: %v", err)
 	}
 
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	fixedCfg := config.FixedConfigPath()
+	if err := os.MkdirAll(filepath.Dir(fixedCfg), 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(fixedCfg, []byte("mode: standalone\nworkspace_dir: /tmp/ws\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
 	var calls [][]string
 	serviceLaunchctlRun = func(_ context.Context, args ...string) (string, error) {
 		calls = append(calls, append([]string{}, args...))
@@ -161,6 +181,16 @@ func TestRootCommand_ServiceStatusReportsInstalledButNotLoaded(t *testing.T) {
 		t.Fatalf("write plist: %v", err)
 	}
 
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	fixedCfg := config.FixedConfigPath()
+	if err := os.MkdirAll(filepath.Dir(fixedCfg), 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(fixedCfg, []byte("mode: standalone\nworkspace_dir: /tmp/ws\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
 	serviceLaunchctlRun = func(_ context.Context, args ...string) (string, error) {
 		if len(args) > 0 && args[0] == "print" {
 			return "Could not find service", errors.New("exit status 113")
@@ -193,6 +223,9 @@ func TestRootCommand_ServiceStatusReportsInstalledButNotLoaded(t *testing.T) {
 
 func runInitForTest(t *testing.T, workspaceDir string) {
 	t.Helper()
+	bundledPluginsDir := writeBundledPluginSource(t)
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", bundledPluginsDir)
+
 	var stdout strings.Builder
 	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
 	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})

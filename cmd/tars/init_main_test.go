@@ -6,9 +6,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/devlikebear/tars/internal/config"
 )
 
 func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
 	bundledPluginsDir := writeBundledPluginSource(t)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", bundledPluginsDir)
 
@@ -25,7 +30,7 @@ func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workspace abs path: %v", err)
 	}
-	configPath := filepath.Join(workspaceAbs, "config", "tars.config.yaml")
+	configPath := config.FixedConfigPath()
 	assertPathExists(t, configPath)
 	assertPathExists(t, filepath.Join(workspaceAbs, "memory"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "MEMORY.md"))
@@ -55,18 +60,16 @@ func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
 	if !strings.Contains(out, "OPENAI_API_KEY") {
 		t.Fatalf("expected BYOK guidance in output, got:\n%s", out)
 	}
-	if !strings.Contains(out, "tars serve --config") {
+	if !strings.Contains(out, "tars serve") {
 		t.Fatalf("expected next-step serve command in output, got:\n%s", out)
 	}
 }
 
 func TestRootCommand_InitRefusesToOverwriteExistingConfig(t *testing.T) {
-	workspaceDir := filepath.Join(t.TempDir(), "starter-workspace")
-	workspaceAbs, err := filepath.Abs(workspaceDir)
-	if err != nil {
-		t.Fatalf("workspace abs path: %v", err)
-	}
-	configPath := filepath.Join(workspaceAbs, "config", "tars.config.yaml")
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
+	configPath := config.FixedConfigPath()
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
@@ -74,11 +77,12 @@ func TestRootCommand_InitRefusesToOverwriteExistingConfig(t *testing.T) {
 		t.Fatalf("write sentinel config: %v", err)
 	}
 
+	workspaceDir := filepath.Join(t.TempDir(), "starter-workspace")
 	var stdout strings.Builder
 	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
 	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
 
-	err = cmd.Execute()
+	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected init to fail when config already exists")
 	}
@@ -92,6 +96,97 @@ func TestRootCommand_InitRefusesToOverwriteExistingConfig(t *testing.T) {
 	}
 	if string(data) != "sentinel-config" {
 		t.Fatalf("expected existing config to stay unchanged, got %q", string(data))
+	}
+}
+
+func TestRootCommand_InitMigratesLegacyConfig(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
+	// Create legacy config in CWD.
+	legacyDir := t.TempDir()
+	legacyConfigDir := filepath.Join(legacyDir, "workspace", "config")
+	if err := os.MkdirAll(legacyConfigDir, 0o755); err != nil {
+		t.Fatalf("mkdir legacy config dir: %v", err)
+	}
+	legacyConfig := filepath.Join(legacyConfigDir, "tars.config.yaml")
+	if err := os.WriteFile(legacyConfig, []byte("mode: standalone\nworkspace_dir: ./workspace\n"), 0o644); err != nil {
+		t.Fatalf("write legacy config: %v", err)
+	}
+
+	// Change to the directory with legacy config.
+	wd, _ := os.Getwd()
+	_ = os.Chdir(legacyDir)
+	defer func() { _ = os.Chdir(wd) }()
+
+	var stdout strings.Builder
+	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+	cmd.SetArgs([]string{"init"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init command: %v", err)
+	}
+
+	// Fixed config should exist with migrated content.
+	fixedPath := config.FixedConfigPath()
+	assertPathExists(t, fixedPath)
+
+	out := stdout.String()
+	if !strings.Contains(out, "migrated legacy config") {
+		t.Fatalf("expected migration output, got:\n%s", out)
+	}
+
+	// Original should still exist.
+	assertPathExists(t, legacyConfig)
+}
+
+func TestRootCommand_InitMoveWorkspace(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
+	bundledPluginsDir := writeBundledPluginSource(t)
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", bundledPluginsDir)
+
+	// First init.
+	workspaceDir := filepath.Join(t.TempDir(), "orig-workspace")
+	var stdout strings.Builder
+	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init command: %v", err)
+	}
+
+	workspaceAbs, _ := filepath.Abs(workspaceDir)
+	assertPathExists(t, workspaceAbs)
+
+	// Move workspace.
+	targetDir := filepath.Join(t.TempDir(), "new-workspace")
+	stdout.Reset()
+	cmd = newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+	cmd.SetArgs([]string{"init", "move", "--to", targetDir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init move command: %v", err)
+	}
+
+	// Old workspace should be gone, new one should exist.
+	if _, err := os.Stat(workspaceAbs); !os.IsNotExist(err) {
+		t.Fatalf("expected old workspace to be removed, got err=%v", err)
+	}
+	targetAbs, _ := filepath.Abs(targetDir)
+	assertPathExists(t, targetAbs)
+
+	// Config should point to new workspace.
+	cfg, err := config.Load(config.FixedConfigPath())
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.WorkspaceDir != targetAbs {
+		t.Fatalf("expected workspace_dir=%q, got %q", targetAbs, cfg.WorkspaceDir)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "workspace moved") {
+		t.Fatalf("expected move output, got:\n%s", out)
 	}
 }
 

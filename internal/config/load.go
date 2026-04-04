@@ -85,5 +85,10 @@ func ResolveConfigPath(raw string) string {
 	if _, err := os.Stat(DefaultConfigFilename); err == nil {
 		return DefaultConfigFilename
 	}
+	if fixed := FixedConfigPath(); fixed != "" {
+		if _, err := os.Stat(fixed); err == nil {
+			return fixed
+		}
+	}
 	return ""
 }
