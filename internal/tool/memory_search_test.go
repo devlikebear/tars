@@ -293,6 +293,34 @@ func TestMemorySearchTool_IncludeSessionsSkipsSystemAndTool(t *testing.T) {
 	}
 }
 
+func TestMemorySearchTool_SearchesExperienceLogByTerms(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := memory.AppendExperience(root, memory.Experience{
+		Timestamp:     time.Date(2026, 4, 4, 7, 30, 0, 0, time.UTC),
+		Category:      "fact",
+		Summary:       "나는 삼성전자와 SK하이닉스 주식을 보유하고 있어.",
+		Tags:          []string{"주식", "보유종목", "반도체"},
+		SourceSession: "sess-korea",
+	}); err != nil {
+		t.Fatalf("append experience: %v", err)
+	}
+
+	tl := NewMemorySearchTool(root, nil)
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"관심있는 주식","include_memory":false,"include_daily":false,"include_sessions":false}`))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(result.Text(), "삼성전자와 SK하이닉스") {
+		t.Fatalf("expected experience log match in output, got %q", result.Text())
+	}
+	if !strings.Contains(result.Text(), `"source":"experience:fact"`) {
+		t.Fatalf("expected experience source in output, got %q", result.Text())
+	}
+}
+
 func TestMemorySearchTool_SearchesKnowledgeBaseNotes(t *testing.T) {
 	root := t.TempDir()
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -313,6 +341,14 @@ func TestMemorySearchTool_SearchesKnowledgeBaseNotes(t *testing.T) {
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"black coffee","include_memory":false,"include_daily":false}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
+	}
+	if strings.Contains(result.Text(), "memory/wiki/notes/coffee-preference.md") {
+		t.Fatalf("did not expect knowledge note source without explicit opt-in, got %q", result.Text())
+	}
+
+	result, err = tl.Execute(context.Background(), json.RawMessage(`{"query":"black coffee","include_memory":false,"include_daily":false,"include_knowledge":true}`))
+	if err != nil {
+		t.Fatalf("execute with knowledge: %v", err)
 	}
 	if !strings.Contains(result.Text(), "memory/wiki/notes/coffee-preference.md") {
 		t.Fatalf("expected knowledge note source in output, got %q", result.Text())

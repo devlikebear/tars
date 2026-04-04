@@ -62,6 +62,9 @@ func NewMemorySaveTool(workspaceDir string, semantic *memory.Service, nowFn func
 			if err != nil {
 				return memoryGetErrorResult(err.Error()), nil
 			}
+			if err := memory.AppendMemoryNote(workspaceDir, exp.Timestamp, summary); err != nil {
+				return memoryGetErrorResult(err.Error()), nil
+			}
 			if semantic != nil {
 				_ = semantic.IndexExperience(context.Background(), exp)
 			}

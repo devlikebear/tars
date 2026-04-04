@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -79,6 +80,14 @@ func TestMemorySaveTool_AppendsExperience(t *testing.T) {
 
 	if _, err := filepath.Glob(filepath.Join(root, "memory", "experiences.jsonl")); err != nil {
 		t.Fatalf("glob experiences path: %v", err)
+	}
+
+	memoryRaw, err := os.ReadFile(filepath.Join(root, "MEMORY.md"))
+	if err != nil {
+		t.Fatalf("read memory file: %v", err)
+	}
+	if !strings.Contains(string(memoryRaw), "User prefers concise Korean responses") {
+		t.Fatalf("expected MEMORY.md to include saved summary, got %q", string(memoryRaw))
 	}
 }
 

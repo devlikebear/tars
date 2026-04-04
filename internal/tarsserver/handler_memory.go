@@ -1,18 +1,142 @@
 package tarsserver
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/tool"
 	"github.com/rs/zerolog"
 )
+
+type managedMemoryAsset struct {
+	Path      string `json:"path"`
+	Kind      string `json:"kind"`
+	Editable  bool   `json:"editable"`
+	SizeBytes int64  `json:"size_bytes"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
 
 func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger zerolog.Logger) http.Handler {
 	store := memory.NewKnowledgeStore(workspaceDir, semantic)
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("/v1/memory/assets", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		items, err := listManagedMemoryAssets(workspaceDir)
+		if err != nil {
+			logger.Error().Err(err).Msg("list memory assets failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list memory assets failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count": len(items),
+			"items": items,
+		})
+	})
+
+	mux.HandleFunc("/v1/memory/file", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet, http.MethodPut) {
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			relPath := strings.TrimSpace(r.URL.Query().Get("path"))
+			absPath, kind, err := resolveManagedMemoryPath(workspaceDir, relPath)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			raw, err := os.ReadFile(absPath)
+			if err != nil {
+				if os.IsNotExist(err) {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "memory file not found"})
+					return
+				}
+				logger.Error().Err(err).Str("path", relPath).Msg("read memory file failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read memory file failed"})
+				return
+			}
+			stat, _ := os.Stat(absPath)
+			payload := map[string]any{
+				"path":     filepath.ToSlash(relPath),
+				"kind":     kind,
+				"editable": true,
+				"content":  string(raw),
+			}
+			if stat != nil {
+				payload["size_bytes"] = stat.Size()
+				payload["updated_at"] = stat.ModTime().UTC().Format(time.RFC3339)
+			}
+			writeJSON(w, http.StatusOK, payload)
+		case http.MethodPut:
+			var req struct {
+				Path    string `json:"path"`
+				Content string `json:"content"`
+			}
+			if !decodeJSONBody(w, r, &req) {
+				return
+			}
+			absPath, kind, err := resolveManagedMemoryPath(workspaceDir, req.Path)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+				logger.Error().Err(err).Str("path", req.Path).Msg("ensure memory file dir failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "prepare memory file failed"})
+				return
+			}
+			if err := os.WriteFile(absPath, []byte(req.Content), 0o644); err != nil {
+				logger.Error().Err(err).Str("path", req.Path).Msg("write memory file failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "write memory file failed"})
+				return
+			}
+			stat, _ := os.Stat(absPath)
+			payload := map[string]any{
+				"path":     filepath.ToSlash(strings.TrimSpace(req.Path)),
+				"kind":     kind,
+				"editable": true,
+				"saved":    true,
+			}
+			if stat != nil {
+				payload["size_bytes"] = stat.Size()
+				payload["updated_at"] = stat.ModTime().UTC().Format(time.RFC3339)
+			}
+			writeJSON(w, http.StatusOK, payload)
+		}
+	})
+
+	mux.HandleFunc("/v1/memory/search", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		var raw json.RawMessage
+		if !decodeJSONBody(w, r, &raw) {
+			return
+		}
+		result, err := tool.NewMemorySearchTool(workspaceDir, semantic).Execute(context.Background(), raw)
+		if err != nil {
+			logger.Error().Err(err).Msg("memory search failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "memory search failed"})
+			return
+		}
+		if result.IsError {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": strings.TrimSpace(result.Text())})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(result.Text()))
+	})
 
 	mux.HandleFunc("/v1/memory/kb/graph", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
@@ -173,4 +297,104 @@ func trimOptionalStringSlice(value *[]string) *[]string {
 		out = append(out, trimmed)
 	}
 	return &out
+}
+
+func listManagedMemoryAssets(workspaceDir string) ([]managedMemoryAsset, error) {
+	paths := []string{"MEMORY.md", filepath.ToSlash(filepath.Join("memory", "experiences.jsonl"))}
+
+	dailyPaths, err := filepath.Glob(filepath.Join(workspaceDir, "memory", "*.md"))
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range dailyPaths {
+		paths = append(paths, filepath.ToSlash(strings.TrimPrefix(path, workspaceDir+string(filepath.Separator))))
+	}
+
+	indexPaths, err := filepath.Glob(filepath.Join(workspaceDir, "memory", "index", "*"))
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range indexPaths {
+		info, statErr := os.Stat(path)
+		if statErr != nil || info.IsDir() {
+			continue
+		}
+		paths = append(paths, filepath.ToSlash(strings.TrimPrefix(path, workspaceDir+string(filepath.Separator))))
+	}
+
+	rawPaths, err := filepath.Glob(filepath.Join(workspaceDir, "memory", "raw", "*"))
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range rawPaths {
+		info, statErr := os.Stat(path)
+		if statErr != nil || info.IsDir() {
+			continue
+		}
+		paths = append(paths, filepath.ToSlash(strings.TrimPrefix(path, workspaceDir+string(filepath.Separator))))
+	}
+
+	seen := map[string]struct{}{}
+	items := make([]managedMemoryAsset, 0, len(paths))
+	for _, relPath := range paths {
+		relPath = filepath.ToSlash(strings.TrimSpace(relPath))
+		if relPath == "" {
+			continue
+		}
+		if _, exists := seen[relPath]; exists {
+			continue
+		}
+		seen[relPath] = struct{}{}
+		absPath, kind, err := resolveManagedMemoryPath(workspaceDir, relPath)
+		if err != nil {
+			continue
+		}
+		stat, err := os.Stat(absPath)
+		if err != nil || stat.IsDir() {
+			continue
+		}
+		items = append(items, managedMemoryAsset{
+			Path:      relPath,
+			Kind:      kind,
+			Editable:  true,
+			SizeBytes: stat.Size(),
+			UpdatedAt: stat.ModTime().UTC().Format(time.RFC3339),
+		})
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].UpdatedAt == items[j].UpdatedAt {
+			return items[i].Path < items[j].Path
+		}
+		return items[i].UpdatedAt > items[j].UpdatedAt
+	})
+	return items, nil
+}
+
+func resolveManagedMemoryPath(workspaceDir, relPath string) (string, string, error) {
+	relPath = filepath.ToSlash(strings.TrimSpace(relPath))
+	if relPath == "" {
+		return "", "", http.ErrMissingFile
+	}
+	if strings.HasPrefix(relPath, "/") || strings.Contains(relPath, "..") {
+		return "", "", os.ErrPermission
+	}
+	switch {
+	case relPath == "MEMORY.md":
+		return filepath.Join(workspaceDir, "MEMORY.md"), "long_term_memory", nil
+	case relPath == "memory/experiences.jsonl":
+		return filepath.Join(workspaceDir, filepath.FromSlash(relPath)), "experience_log", nil
+	case strings.HasPrefix(relPath, "memory/wiki/"):
+		return "", "", os.ErrPermission
+	case strings.HasPrefix(relPath, "memory/index/"):
+		return filepath.Join(workspaceDir, filepath.FromSlash(relPath)), "semantic_index", nil
+	case strings.HasPrefix(relPath, "memory/raw/"):
+		return filepath.Join(workspaceDir, filepath.FromSlash(relPath)), "semantic_raw", nil
+	case strings.HasPrefix(relPath, "memory/") && strings.HasSuffix(relPath, ".md"):
+		base := filepath.Base(relPath)
+		if strings.Count(base, "-") == 2 && len(strings.TrimSuffix(base, ".md")) == len("2006-01-02") {
+			return filepath.Join(workspaceDir, filepath.FromSlash(relPath)), "daily_memory", nil
+		}
+	}
+	return "", "", os.ErrNotExist
 }

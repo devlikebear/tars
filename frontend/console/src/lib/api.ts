@@ -10,6 +10,9 @@ import type {
   HubInstalled,
   HubRegistry,
   MCPServerStatus,
+  MemoryAsset,
+  MemoryFile,
+  MemorySearchResult,
   PluginDef,
   SkillDef,
   CreateCronJobRequest,
@@ -260,6 +263,37 @@ export async function deleteKnowledgeNote(slug: string): Promise<{ deleted: bool
 
 export async function getKnowledgeGraph(): Promise<KnowledgeGraph> {
   return requestJSON<KnowledgeGraph>('/v1/memory/kb/graph')
+}
+
+export async function listMemoryAssets(): Promise<{ count: number; items: MemoryAsset[] }> {
+  return requestJSON<{ count: number; items: MemoryAsset[] }>('/v1/memory/assets')
+}
+
+export async function getMemoryFile(path: string): Promise<MemoryFile> {
+  return requestJSON<MemoryFile>(`/v1/memory/file?path=${encodeURIComponent(path)}`)
+}
+
+export async function saveMemoryFile(path: string, content: string): Promise<MemoryFile> {
+  return requestJSON<MemoryFile>('/v1/memory/file', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, content }),
+  })
+}
+
+export async function runMemorySearch(payload: {
+  query: string
+  limit?: number
+  include_memory?: boolean
+  include_daily?: boolean
+  include_knowledge?: boolean
+  include_sessions?: boolean
+}): Promise<MemorySearchResult> {
+  return requestJSON<MemorySearchResult>('/v1/memory/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }
 
 // --- Session Config ---

@@ -64,6 +64,40 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func isolateRunEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	for _, key := range []string{
+		"TARS_CONFIG",
+		"TARS_CONFIG_PATH",
+		"LLM_PROVIDER",
+		"TARS_LLM_PROVIDER",
+		"LLM_AUTH_MODE",
+		"TARS_LLM_AUTH_MODE",
+		"LLM_OAUTH_PROVIDER",
+		"TARS_LLM_OAUTH_PROVIDER",
+		"LLM_BASE_URL",
+		"TARS_LLM_BASE_URL",
+		"LLM_API_KEY",
+		"TARS_LLM_API_KEY",
+		"LLM_MODEL",
+		"TARS_LLM_MODEL",
+		"LLM_REASONING_EFFORT",
+		"TARS_LLM_REASONING_EFFORT",
+		"LLM_THINKING_BUDGET",
+		"TARS_LLM_THINKING_BUDGET",
+		"LLM_SERVICE_TIER",
+		"TARS_LLM_SERVICE_TIER",
+		"OPENAI_API_KEY",
+		"OPENAI_CODEX_OAUTH_TOKEN",
+		"TARS_OPENAI_CODEX_OAUTH_TOKEN",
+		"GEMINI_API_KEY",
+		"ANTHROPIC_API_KEY",
+	} {
+		t.Setenv(key, "")
+	}
+}
+
 func flagValueForTest(args []string, name string) string {
 	value := ""
 	prefix := name + "="
@@ -82,6 +116,7 @@ func flagValueForTest(args []string, name string) string {
 }
 
 func TestRun_DefaultConfig(t *testing.T) {
+	isolateRunEnv(t)
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -101,6 +136,7 @@ func TestRun_DefaultConfig(t *testing.T) {
 }
 
 func TestRun_LogFileWritesJSONLines(t *testing.T) {
+	isolateRunEnv(t)
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
 	logPath := filepath.Join(t.TempDir(), "tars.log")
 	stdout := &bytes.Buffer{}
@@ -129,6 +165,7 @@ func TestRun_LogFileWritesJSONLines(t *testing.T) {
 }
 
 func TestRun_LogFileOpenFailureFallsBackToConsole(t *testing.T) {
+	isolateRunEnv(t)
 	// With lumberjack, write errors are deferred until first log write.
 	// When the path is a directory, lumberjack silently fails and console
 	// output still works.
@@ -166,6 +203,7 @@ func TestSetupRuntimeLogger_CreatesParentDirForLogFile(t *testing.T) {
 }
 
 func TestRun_FlagOverridesEnvAndYAML(t *testing.T) {
+	isolateRunEnv(t)
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	content := "mode: service\nworkspace_dir: ./tenant-workspace\n"
@@ -189,6 +227,7 @@ func TestRun_FlagOverridesEnvAndYAML(t *testing.T) {
 }
 
 func TestRun_InvalidConfigPathReturnsError(t *testing.T) {
+	isolateRunEnv(t)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
@@ -204,6 +243,7 @@ func TestRun_InvalidConfigPathReturnsError(t *testing.T) {
 }
 
 func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {
+	isolateRunEnv(t)
 	root := t.TempDir()
 	configDir := filepath.Join(root, "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
@@ -237,6 +277,7 @@ func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {
 }
 
 func TestRun_UsesEnvConfigPathWhenFlagIsEmpty(t *testing.T) {
+	isolateRunEnv(t)
 	root := t.TempDir()
 	configPath := filepath.Join(root, "custom.yaml")
 	if err := os.WriteFile(configPath, []byte("mode: service\n"), 0o644); err != nil {
@@ -258,6 +299,7 @@ func TestRun_UsesEnvConfigPathWhenFlagIsEmpty(t *testing.T) {
 }
 
 func TestRun_CreatesWorkspaceAndDailyLog(t *testing.T) {
+	isolateRunEnv(t)
 	root := filepath.Join(t.TempDir(), "workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -276,6 +318,7 @@ func TestRun_CreatesWorkspaceAndDailyLog(t *testing.T) {
 }
 
 func TestRun_RunOnceAppendsHeartbeatLog(t *testing.T) {
+	isolateRunEnv(t)
 	root := filepath.Join(t.TempDir(), "workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -298,6 +341,7 @@ func TestRun_RunOnceAppendsHeartbeatLog(t *testing.T) {
 }
 
 func TestRun_MutuallyExclusiveRunFlags(t *testing.T) {
+	isolateRunEnv(t)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
@@ -309,6 +353,7 @@ func TestRun_MutuallyExclusiveRunFlags(t *testing.T) {
 }
 
 func TestRun_HelpReturnsZero(t *testing.T) {
+	isolateRunEnv(t)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
@@ -323,6 +368,7 @@ func TestRun_HelpReturnsZero(t *testing.T) {
 }
 
 func TestRun_RunLoopAppendsHeartbeatLog(t *testing.T) {
+	isolateRunEnv(t)
 	root := filepath.Join(t.TempDir(), "workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -1238,8 +1284,8 @@ func TestChatAPI_WithAutomationTools(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "automation tool flow done") {
 		t.Fatalf("expected final response in SSE body, got %q", rec.Body.String())
 	}
-	if mockClient.callCount != 3 {
-		t.Fatalf("expected 3 llm calls for tool flow plus knowledge compile, got %d", mockClient.callCount)
+	if mockClient.callCount != 2 {
+		t.Fatalf("expected 2 llm calls for tool flow without knowledge compile, got %d", mockClient.callCount)
 	}
 }
 
@@ -1469,8 +1515,8 @@ func TestChatAPI_ToolCallReadFile(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
 	}
-	if mockClient.callCount != 3 {
-		t.Fatalf("expected 3 llm calls (tool + final + knowledge compile), got %d", mockClient.callCount)
+	if mockClient.callCount != 2 {
+		t.Fatalf("expected 2 llm calls (tool + final, no knowledge compile), got %d", mockClient.callCount)
 	}
 	if len(mockClient.seenMessages) < 2 || len(mockClient.seenMessages[1]) == 0 {
 		t.Fatalf("expected captured second llm call messages")
@@ -1584,8 +1630,8 @@ func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 	if !strings.Contains(body, "Merged subagent findings.") {
 		t.Fatalf("expected final assistant response, got %q", body)
 	}
-	if mockClient.callCount != 3 {
-		t.Fatalf("expected 3 llm calls (tool + final + knowledge compile), got %d", mockClient.callCount)
+	if mockClient.callCount != 2 {
+		t.Fatalf("expected 2 llm calls (tool + final, no knowledge compile), got %d", mockClient.callCount)
 	}
 	if len(mockClient.seenTools) == 0 {
 		t.Fatalf("expected captured tool schemas")

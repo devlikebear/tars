@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-04-04
+
+### Added
+
+- Memory management API endpoints for durable memory assets and search testing: `/v1/memory/assets`, `/v1/memory/file`, `/v1/memory/search`
+- Dedicated Memory console page at `/console/memory` for inspecting and editing `MEMORY.md`, `memory/experiences.jsonl`, daily durable memory files, semantic index artifacts, and the knowledge base in one place
+- In-console memory search test harness with toggles for `MEMORY.md`, daily logs, session history, and opt-in knowledge-base lookup
+
+### Changed
+
+- `memory_save` now writes durable memory to both `memory/experiences.jsonl` and `MEMORY.md`
+- `memory_search` now searches `experiences.jsonl` with term-based lexical scoring, improving recall for cross-session memory checks without semantic embeddings
+- Knowledge-base lookup is no longer part of default `memory_search`; callers must explicitly opt in with `include_knowledge=true`
+- Automatic KB compilation is now gated to durable-signal turns instead of every chat turn
+
+### Fixed
+
+- Korean remember requests such as `... 기억해줘` now trigger durable memory promotion
+- Cross-session recall no longer depends on KB note creation when only structured durable memory was saved
+
 ## [0.16.1] - 2026-04-04
 
 ### Fixed

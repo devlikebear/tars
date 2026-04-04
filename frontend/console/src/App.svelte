@@ -2,9 +2,9 @@
   import { onMount, onDestroy } from 'svelte'
   import Shell from './components/Shell.svelte'
   import Chat from './components/Chat.svelte'
+  import MemoryCenter from './components/MemoryCenter.svelte'
   import ProjectView from './components/ProjectView.svelte'
   import Projects from './components/Projects.svelte'
-  import KnowledgeBase from './components/KnowledgeBase.svelte'
   import Ops from './components/Ops.svelte'
   import Config from './components/Config.svelte'
   import Extensions from './components/Extensions.svelte'
@@ -88,8 +88,8 @@
     {/key}
   {:else if route.view === 'projects'}
     <Projects onNavigate={navigate} onAskAI={navigateWithPrompt} />
-  {:else if route.view === 'knowledge'}
-    <KnowledgeBase onAskAI={navigateWithPrompt} />
+  {:else if route.view === 'memory'}
+    <MemoryCenter onAskAI={navigateWithPrompt} />
   {:else if route.view === 'ops'}
     <Ops onAskAI={navigateWithPrompt} />
   {:else if route.view === 'config'}
