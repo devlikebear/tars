@@ -8,11 +8,12 @@
   let { text }: Props = $props()
 
   let containerEl: HTMLDivElement | undefined = $state()
+  let mermaidTimer: ReturnType<typeof setTimeout> | null = null
+  let mermaidModule: typeof import('mermaid')['default'] | null = null
 
-  // Attach copy-button click handlers and render mermaid blocks
+  // Attach copy-button click handlers (runs on every text change)
   $effect(() => {
     if (!containerEl) return
-    // Re-run when text changes (renderMarkdown is called in the template)
     void text
 
     // Copy buttons
@@ -35,11 +36,28 @@
       handlers.push([btn, handler])
     }
 
-    // Mermaid blocks — lazy load
-    const mermaidBlocks = containerEl.querySelectorAll<HTMLDivElement>('.mermaid-block:not([data-rendered])')
-    if (mermaidBlocks.length > 0) {
-      import('mermaid').then(({ default: mermaid }) => {
-        mermaid.initialize({
+    // Debounced mermaid rendering — wait for streaming to settle
+    if (mermaidTimer) clearTimeout(mermaidTimer)
+    mermaidTimer = setTimeout(() => renderMermaidBlocks(), 500)
+
+    return () => {
+      for (const [btn, handler] of handlers) {
+        btn.removeEventListener('click', handler)
+      }
+    }
+  })
+
+  async function renderMermaidBlocks() {
+    if (!containerEl) return
+    const blocks = containerEl.querySelectorAll<HTMLDivElement>('.mermaid-block:not([data-rendered])')
+    if (blocks.length === 0) return
+
+    // Lazy load mermaid once
+    if (!mermaidModule) {
+      try {
+        const mod = await import('mermaid')
+        mermaidModule = mod.default
+        mermaidModule.initialize({
           startOnLoad: false,
           theme: 'dark',
           themeVariables: {
@@ -53,31 +71,28 @@
             tertiaryColor: '#2a2a2a',
           },
         })
-
-        mermaidBlocks.forEach(async (block, i) => {
-          const graph = block.getAttribute('data-graph')
-          if (!graph) return
-          try {
-            const id = `mermaid-${Date.now()}-${i}`
-            const { svg } = await mermaid.render(id, graph)
-            block.innerHTML = svg
-            block.setAttribute('data-rendered', 'true')
-          } catch {
-            // Leave the source code visible on render failure
-            block.classList.add('mermaid-error')
-          }
-        })
-      }).catch(() => {
-        // Mermaid not available — leave source visible
-      })
-    }
-
-    return () => {
-      for (const [btn, handler] of handlers) {
-        btn.removeEventListener('click', handler)
+      } catch {
+        return
       }
     }
-  })
+
+    // Re-query after async load — DOM may have changed
+    const freshBlocks = containerEl.querySelectorAll<HTMLDivElement>('.mermaid-block:not([data-rendered])')
+    for (let i = 0; i < freshBlocks.length; i++) {
+      const block = freshBlocks[i]
+      const graph = block.getAttribute('data-graph')
+      if (!graph) continue
+      try {
+        const id = `mermaid-${Date.now()}-${i}`
+        const { svg } = await mermaidModule!.render(id, graph)
+        block.innerHTML = svg
+        block.setAttribute('data-rendered', 'true')
+      } catch {
+        block.classList.add('mermaid-error')
+        block.setAttribute('data-rendered', 'true')
+      }
+    }
+  }
 </script>
 
 <div class="chat-md" bind:this={containerEl}>
