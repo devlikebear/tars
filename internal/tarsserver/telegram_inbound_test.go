@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/llm"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -240,7 +239,7 @@ func TestTelegramInbound_PairingThenApproveAndReply(t *testing.T) {
 	}
 }
 
-func TestTelegramInbound_ProcessMessagePrefixesSkillSelectionNotice(t *testing.T) {
+func TestTelegramInbound_ProcessMessageNoSkillRoutingWithoutProjectSystem(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(workspace)
 	mockLLM := &mockLLMClient{
@@ -270,26 +269,17 @@ func TestTelegramInbound_ProcessMessagePrefixesSkillSelectionNotice(t *testing.T
 		t.Fatalf("create main session: %v", err)
 	}
 	handler.mainSessionID = mainSession.ID
-	sessionID := mainSession.ID
-	goal := "Ship a todo app"
-	status := "collecting"
-	projectStore := project.NewStore(workspace, nil)
-	if _, err := projectStore.UpdateBrief(sessionID, project.BriefUpdateInput{
-		Goal:   &goal,
-		Status: &status,
-	}); err != nil {
-		t.Fatalf("update brief: %v", err)
-	}
 
 	answer, gotSessionID, err := handler.processMessage(context.Background(), 11, "alice", "로그인은 이메일 기반이면 돼")
 	if err != nil {
 		t.Fatalf("processMessage: %v", err)
 	}
-	if gotSessionID != sessionID {
-		t.Fatalf("expected session %q, got %q", sessionID, gotSessionID)
+	if gotSessionID != mainSession.ID {
+		t.Fatalf("expected session %q, got %q", mainSession.ID, gotSessionID)
 	}
-	if !strings.Contains(answer, "SYSTEM > using skill project-start reason=active_brief") {
-		t.Fatalf("expected skill notice in telegram answer, got %q", answer)
+	// Without project system, no skill routing notice should appear
+	if strings.Contains(answer, "active_brief") {
+		t.Fatalf("did not expect active_brief routing, got %q", answer)
 	}
 	if !strings.Contains(answer, "hello from tars") {
 		t.Fatalf("expected assistant answer in telegram response, got %q", answer)

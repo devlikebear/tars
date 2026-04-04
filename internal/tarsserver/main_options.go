@@ -68,6 +68,12 @@ const memoryToolSystemRule = `
 - For reminders/todos from natural language, use cron(action=create) with natural schedule expressions.
 - For heartbeat status or triggering, use heartbeat(action=status|run_once).
 
+## Task Management Policy
+- For complex tasks with 3+ steps, use tasks(action=plan_set) to set a plan goal, then tasks(action=add) to create individual tasks.
+- Only ONE task should be in_progress at a time. Mark completed immediately when done.
+- When setting a new plan, the previous plan and tasks are automatically archived to memory.
+- Use tasks(action=list) to review current progress. Use tasks(action=clear) to reset when done.
+
 ## Runtime Tool Policy
 - For session management, use session(action=list|history|send|spawn|runs|agents|status).
 - For parallel read-only codebase exploration or diff review, prefer subagents_run.

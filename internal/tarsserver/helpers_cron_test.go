@@ -4,13 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/devlikebear/tars/internal/cron"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -199,23 +197,14 @@ func TestCronJobRunner_IncludesDefaultTelegramChatContext(t *testing.T) {
 	}
 }
 
-func TestCronJobRunner_RequiresFinalizedBriefForAutonomousProjectWork(t *testing.T) {
+func TestCronJobRunner_NoProjectPrerequisiteValidationAfterRemoval(t *testing.T) {
 	root := t.TempDir()
-	projectStore := project.NewStore(root, nil)
-	goal := "write thriller"
-	status := "collecting"
-	if _, err := projectStore.UpdateBrief("brief-1", project.BriefUpdateInput{
-		Goal:   &goal,
-		Status: &status,
-	}); err != nil {
-		t.Fatalf("update brief: %v", err)
-	}
 
 	called := false
 	runner := newCronJobRunnerWithNotify(
 		root,
 		session.NewStore(root),
-		func(ctx context.Context, runLabel string, promptText string, _ []string) (string, error) {
+		func(_ context.Context, _ string, _ string, _ []string) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -226,20 +215,18 @@ func TestCronJobRunner_RequiresFinalizedBriefForAutonomousProjectWork(t *testing
 		nil,
 	)
 
+	// After project removal, no brief validation occurs
 	_, err := runner(context.Background(), cron.Job{
 		ID:       "job-1",
 		Name:     "writer",
 		Prompt:   "현재 활성 세션의 소설 프로젝트 brief_id=brief-1 를 이어서 진행하라.",
 		Schedule: "every:5m",
 	})
-	if err == nil {
-		t.Fatalf("expected brief validation error")
+	if err != nil {
+		t.Fatalf("expected no error without brief validation, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "brief brief-1 is not finalized") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if called {
-		t.Fatalf("expected runPrompt not to be called")
+	if !called {
+		t.Fatalf("expected runPrompt to be called")
 	}
 }
 
@@ -486,23 +473,8 @@ func TestCronJobRunner_FailsWhenClaimedFileUpdateIsNotObserved(t *testing.T) {
 	}
 }
 
-func TestCronJobRunner_ProjectToolPolicyAddsShellToolsToAllowlist(t *testing.T) {
+func TestCronJobRunner_NoProjectToolPolicyAfterRemoval(t *testing.T) {
 	root := t.TempDir()
-	projectStore := project.NewStore(root, nil)
-	item, err := projectStore.Create(project.CreateInput{
-		Name: "Ops Demo",
-		Type: "operations",
-	})
-	if err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-	updated, err := projectStore.Update(item.ID, project.UpdateInput{
-		ToolsAllowGroups:   []string{"files", "shell"},
-		ToolsAllowPatterns: []string{"^project_"},
-	})
-	if err != nil {
-		t.Fatalf("update project policy: %v", err)
-	}
 
 	var seenAllowedTools []string
 	runner := newCronJobRunnerWithNotify(
@@ -524,19 +496,14 @@ func TestCronJobRunner_ProjectToolPolicyAddsShellToolsToAllowlist(t *testing.T) 
 		Name:      "triage logs",
 		Prompt:    "inspect logs",
 		Schedule:  "every:5m",
-		ProjectID: updated.ID,
+		ProjectID: "proj_demo",
 	}); err != nil {
 		t.Fatalf("run cron job: %v", err)
 	}
 
-	if !slices.Contains(seenAllowedTools, "exec") {
-		t.Fatalf("expected shell allowlist to include exec, got %+v", seenAllowedTools)
-	}
-	if !slices.Contains(seenAllowedTools, "read_file") {
-		t.Fatalf("expected files allowlist to include read_file, got %+v", seenAllowedTools)
-	}
-	if !slices.Contains(seenAllowedTools, "project") {
-		t.Fatalf("expected project tool allowlist to retain project, got %+v", seenAllowedTools)
+	// After project removal, no tool policy filtering occurs — allowed tools should be nil
+	if seenAllowedTools != nil {
+		t.Fatalf("expected nil allowed tools without project policy, got %+v", seenAllowedTools)
 	}
 }
 

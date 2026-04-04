@@ -14,8 +14,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/devlikebear/tars/internal/project"
 )
 
 const (
@@ -124,7 +122,6 @@ type Embedder interface {
 
 type Searcher interface {
 	Search(ctx context.Context, req SearchRequest) ([]SearchHit, error)
-	EnsureProjectDocuments(ctx context.Context, projectID, sessionID string) error
 }
 
 type ServiceOptions struct {
@@ -324,57 +321,9 @@ func (s *Service) IndexCompactionMemories(ctx context.Context, sessionID string,
 	return nil
 }
 
-func (s *Service) EnsureProjectDocuments(ctx context.Context, projectID, sessionID string) error {
-	if !s.Enabled() {
-		return nil
-	}
-	docs := collectProjectDocs(s.root, projectID, sessionID)
-	if len(docs) == 0 {
-		return nil
-	}
-	state, err := loadIndexState(s.statePath())
-	if err != nil {
-		return err
-	}
-	if state.Sources == nil {
-		state.Sources = map[string]indexedSourceRef{}
-	}
-	for _, doc := range docs {
-		contentHash := hashText(doc.Body)
-		ref, ok := state.Sources[doc.SourcePath]
-		if ok &&
-			ref.ContentHash == contentHash &&
-			state.EmbeddingModel == s.config.EmbedModel &&
-			state.EmbeddingDimensions == s.config.EmbedDimensions {
-			continue
-		}
-		entry := MemoryEntry{
-			ID:          "project-doc:" + hashText(doc.SourcePath),
-			Kind:        "project_doc",
-			Scope:       deriveScope(doc.ProjectID, doc.SessionID),
-			ProjectID:   strings.TrimSpace(doc.ProjectID),
-			SessionID:   strings.TrimSpace(doc.SessionID),
-			SourcePath:  filepath.ToSlash(doc.SourcePath),
-			ContentHash: contentHash,
-			Abstract:    firstMeaningfulParagraph(doc.Body, 200),
-			Overview:    summarizeText(doc.Body, 1200),
-			Body:        summarizeText(doc.Body, 4000),
-			Importance:  7,
-			CreatedAt:   doc.UpdatedAt.UTC(),
-			UpdatedAt:   doc.UpdatedAt.UTC(),
-		}
-		if err := s.upsertEmbeddedEntry(ctx, entry, taskTypeRetrievalDoc); err != nil {
-			return err
-		}
-		state.EmbeddingModel = s.config.EmbedModel
-		state.EmbeddingDimensions = s.config.EmbedDimensions
-		state.Sources[doc.SourcePath] = indexedSourceRef{
-			ContentHash: contentHash,
-			EntryID:     entry.ID,
-			UpdatedAt:   doc.UpdatedAt.UTC(),
-		}
-	}
-	return saveIndexState(s.statePath(), state)
+func (s *Service) EnsureProjectDocuments(_ context.Context, _, _ string) error {
+	// Project documents are no longer indexed after the project package was removed.
+	return nil
 }
 
 func (s *Service) Search(ctx context.Context, req SearchRequest) ([]SearchHit, error) {
@@ -602,43 +551,6 @@ func writeAtomicFile(path string, content []byte) error {
 	return os.Rename(tmp, path)
 }
 
-func collectProjectDocs(root, projectID, sessionID string) []projectDocInput {
-	store := project.NewStore(root, nil)
-	docs := []projectDocInput{}
-	projectID = strings.TrimSpace(projectID)
-	if projectID != "" {
-		names := []string{"STATE.md", "PROJECT.md", "STORY_BIBLE.md", "CHARACTERS.md", "PLOT.md"}
-		for _, name := range names {
-			path := store.ProjectFilePath(projectID, name)
-			raw, stat, ok := readDoc(path)
-			if !ok {
-				continue
-			}
-			docs = append(docs, projectDocInput{
-				SourcePath: filepath.ToSlash(filepath.Join("projects", projectID, name)),
-				ProjectID:  projectID,
-				Body:       raw,
-				UpdatedAt:  stat.ModTime().UTC(),
-			})
-		}
-		return docs
-	}
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return nil
-	}
-	path := store.BriefPath(sessionID)
-	raw, stat, ok := readDoc(path)
-	if !ok {
-		return nil
-	}
-	return []projectDocInput{{
-		SourcePath: filepath.ToSlash(filepath.Join("_shared", "project_briefs", sessionID, "BRIEF.md")),
-		SessionID:  sessionID,
-		Body:       raw,
-		UpdatedAt:  stat.ModTime().UTC(),
-	}}
-}
 
 func readDoc(path string) (string, os.FileInfo, bool) {
 	stat, err := os.Stat(path)

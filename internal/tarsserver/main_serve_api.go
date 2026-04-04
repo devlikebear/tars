@@ -22,7 +22,6 @@ import (
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/ops"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/schedule"
 	"github.com/devlikebear/tars/internal/skillhub"
@@ -49,7 +48,6 @@ type apiRouteHandlers struct {
 	heartbeat       http.Handler
 	chat            http.Handler
 	sessions        http.Handler
-	projects        http.Handler
 	memory          http.Handler
 	console         http.Handler
 	usage           http.Handler
@@ -406,10 +404,6 @@ func buildAPIMux(
 	if cfg.ChannelsTelegramEnabled {
 		chatTools = append(chatTools, telegramSendTool)
 	}
-	projectStore := project.NewStore(cfg.WorkspaceDir, nil)
-	projectTaskRunner := gateway.NewProjectTaskRunner(gatewayRuntime, "")
-	projectSkillResolver := newExtensionsSkillResolver(extensionsManager)
-	projectProgressAfterHeartbeat = newProjectProgressAfterHeartbeat(projectStore, projectTaskRunner, deps.ask, projectSkillResolver, logger)
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,
 		sessionStore,
@@ -422,7 +416,6 @@ func buildAPIMux(
 		chatTools...,
 	)
 	sessionHandler := newSessionAPIHandler(sessionStore, logger)
-	projectHandler := newProjectAPIHandler(projectStore, sessionStore, mainSessionID, projectTaskRunner, nil, projectSkillResolver, logger)
 	consoleHandler, err := newConsoleHandler(logger)
 	if err != nil {
 		return nil, err
@@ -499,7 +492,6 @@ func buildAPIMux(
 		heartbeat:       heartbeatHandler,
 		chat:            chatHandler,
 		sessions:        sessionHandler,
-		projects:        projectHandler,
 		memory:          memoryHandler,
 		console:         consoleHandler,
 		usage:           usageHandler,
@@ -579,9 +571,6 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/sessions/", handlers.sessions)
 	mux.Handle("/v1/admin/sessions", handlers.sessions)
 	mux.Handle("/v1/admin/sessions/", handlers.sessions)
-	mux.Handle("/v1/projects", handlers.projects)
-	mux.Handle("/v1/projects/", handlers.projects)
-	mux.Handle("/v1/project-briefs/", handlers.projects)
 	mux.Handle("/v1/memory/assets", handlers.memory)
 	mux.Handle("/v1/memory/file", handlers.memory)
 	mux.Handle("/v1/memory/search", handlers.memory)

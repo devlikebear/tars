@@ -12,8 +12,6 @@ import (
 
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/memory"
-	"github.com/devlikebear/tars/internal/project"
-	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
@@ -29,8 +27,6 @@ type cronRunTelemetry struct {
 	ResponseTokens             int
 	ContaminationMarkers       []string
 }
-
-var briefIDPattern = regexp.MustCompile(`\bbrief_id=([A-Za-z0-9_-]+)\b`)
 
 func newCronJobRunner(
 	workspaceDir string,
@@ -185,42 +181,9 @@ func prepareCronJobRun(
 	return prepared, nil
 }
 
-func resolveCronAllowedTools(workspaceDir string, job cron.Job) []string {
-	root := strings.TrimSpace(workspaceDir)
-	projectID := strings.TrimSpace(job.ProjectID)
-	if root == "" || projectID == "" {
-		return nil
-	}
-	item, err := project.NewStore(root, nil).Get(projectID)
-	if err != nil {
-		return nil
-	}
-	registry := newBaseToolRegistry(root)
-	policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
-		ToolsAllow:               item.ToolsAllow,
-		ToolsAllowExists:         len(item.ToolsAllow) > 0,
-		ToolsAllowGroups:         item.ToolsAllowGroups,
-		ToolsAllowGroupsExists:   len(item.ToolsAllowGroups) > 0,
-		ToolsAllowPatterns:       item.ToolsAllowPatterns,
-		ToolsAllowPatternsExists: len(item.ToolsAllowPatterns) > 0,
-		ToolsDeny:                item.ToolsDeny,
-		ToolsDenyExists:          len(item.ToolsDeny) > 0,
-		ToolsRiskMax:             item.ToolsRiskMax,
-		ToolsRiskMaxExists:       strings.TrimSpace(item.ToolsRiskMax) != "",
-	}, knownToolsFromRegistry(registry), project.ToolPolicyOptions{})
-	if !policy.HasPolicy {
-		return nil
-	}
-	names := defaultMinimalToolNames()
-	if len(policy.AllowedTools) > 0 {
-		names = append(names, policy.AllowedTools...)
-	}
-	names = normalizeToolNames(names)
-	names = project.ApplyToolConstraints(names, policy)
-	if len(names) == 0 {
-		return nil
-	}
-	return names
+func resolveCronAllowedTools(_ string, _ cron.Job) []string {
+	// No project-based tool policy after project package removal.
+	return nil
 }
 
 func emitCronRunFailure(
@@ -266,29 +229,8 @@ func emitCronRunSuccess(
 	}
 }
 
-func validateCronProjectPrerequisites(workspaceDir string, job cron.Job, promptText string) error {
-	if strings.TrimSpace(workspaceDir) == "" {
-		return nil
-	}
-	if strings.TrimSpace(job.ProjectID) != "" {
-		return nil
-	}
-	matches := briefIDPattern.FindStringSubmatch(promptText)
-	if len(matches) != 2 {
-		return nil
-	}
-	briefID := strings.TrimSpace(matches[1])
-	if briefID == "" {
-		return nil
-	}
-	store := project.NewStore(workspaceDir, nil)
-	brief, err := store.GetBrief(briefID)
-	if err != nil {
-		return nil
-	}
-	if !strings.EqualFold(strings.TrimSpace(brief.Status), "finalized") {
-		return fmt.Errorf("brief %s is not finalized; create a project before scheduling autonomous work", briefID)
-	}
+func validateCronProjectPrerequisites(_ string, _ cron.Job, _ string) error {
+	// No project prerequisite validation after project package removal.
 	return nil
 }
 
@@ -313,18 +255,12 @@ func buildCronTelegramPromptSection(ctx context.Context, resolveDefaultTelegramC
 	), nil
 }
 
-func buildCronProjectPromptSection(workspaceDir string, projectID string) string {
-	root := strings.TrimSpace(workspaceDir)
+func buildCronProjectPromptSection(_ string, projectID string) string {
 	id := strings.TrimSpace(projectID)
-	if root == "" || id == "" {
+	if id == "" {
 		return ""
 	}
-	store := project.NewStore(root, nil)
-	item, err := store.Get(id)
-	if err != nil {
-		return fmt.Sprintf("CRON_PROJECT_CONTEXT:\n- project_id: %s\n- warning: project metadata not found", id)
-	}
-	return project.CronPromptContext(root, item)
+	return fmt.Sprintf("CRON_PROJECT_CONTEXT:\n- project_id: %s\n- note: project metadata not available", id)
 }
 
 func persistCronProjectArtifact(workspaceDir string, job cron.Job, response string, now time.Time, telemetry cronRunTelemetry, historyLimit int) (string, error) {
@@ -333,19 +269,7 @@ func persistCronProjectArtifact(workspaceDir string, job cron.Job, response stri
 	if root == "" || projectID == "" {
 		return "", nil
 	}
-	projectItem, getErr := project.NewStore(root, nil).Get(projectID)
-	if getErr == nil && strings.EqualFold(strings.TrimSpace(projectItem.Type), "research") {
-		_, _ = research.NewService(root, research.Options{Now: func() time.Time { return now }}).Run(research.RunInput{
-			ProjectID: projectID,
-			Topic:     "cron:" + strings.TrimSpace(job.Name),
-			Summary:   trimForMemory(response, 220),
-			Body:      strings.TrimSpace(response),
-		})
-	}
 	artifactBase := filepath.Join(root, "projects", projectID)
-	if getErr == nil {
-		artifactBase = projectItem.WorkingDir()
-	}
 	artifactDir := filepath.Join(artifactBase, "cron_runs")
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
 		return "", err

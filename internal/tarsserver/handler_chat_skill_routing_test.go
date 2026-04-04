@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/extensions"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/skill"
 )
 
@@ -22,32 +21,15 @@ func TestResolveSkillForMessage_DoesNotAutoRouteNaturalLanguageKickoff(t *testin
 	}
 }
 
-func TestResolveSkillForMessage_UsesProjectStartWhileBriefCollecting(t *testing.T) {
+func TestResolveSkillForMessage_NoBriefRoutingAfterProjectRemoval(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace")
 	manager := newTestSkillManager(t, root, workspaceDir)
 
-	store := project.NewStore(workspaceDir, nil)
-	status := "collecting"
-	goal := "Ship a todo app"
-	if _, err := store.UpdateBrief("sess-1", project.BriefUpdateInput{
-		Goal:   &goal,
-		Status: &status,
-	}); err != nil {
-		t.Fatalf("update brief: %v", err)
-	}
-
+	// After project package removal, brief routing always returns nil
 	got := resolveSkillForMessage("로그인은 이메일 기반이면 돼", manager, workspaceDir, "sess-1")
-	if got == nil {
-		t.Fatal("expected collecting brief to continue with project-start skill")
-	}
-	if got.Name != "project-start" {
-		t.Fatalf("expected project-start skill, got %+v", got)
-	}
-
-	resolved := resolveSkillSelection("로그인은 이메일 기반이면 돼", manager, workspaceDir, "sess-1")
-	if resolved.Definition == nil || resolved.Reason != "active_brief" {
-		t.Fatalf("expected active_brief routing metadata, got %+v", resolved)
+	if got != nil {
+		t.Fatalf("expected nil skill without active brief system, got %+v", got)
 	}
 }
 

@@ -27,7 +27,6 @@ import (
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/plugin"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
 	"github.com/devlikebear/tars/internal/tool"
@@ -1129,19 +1128,10 @@ func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
 	}
 }
 
-func TestPrepareChatContextWithExtensions_FiltersSkillsByActiveProject(t *testing.T) {
+func TestPrepareChatContextWithExtensions_PassesThroughAllSkillsWithoutProject(t *testing.T) {
 	root := t.TempDir()
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
-	}
-	projectStore := project.NewStore(root, nil)
-	item, err := projectStore.Create(project.CreateInput{Name: "Writer", Objective: "Ship the novel"})
-	if err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-	updated, err := projectStore.Update(item.ID, project.UpdateInput{SkillsAllow: []string{"novelist"}})
-	if err != nil {
-		t.Fatalf("update project skills_allow: %v", err)
 	}
 
 	snapshot := extensions.Snapshot{
@@ -1155,15 +1145,16 @@ func TestPrepareChatContextWithExtensions_FiltersSkillsByActiveProject(t *testin
 		}),
 	}
 
-	systemPrompt, _, err := prepareChatContextWithExtensions(root, updated.ID, "sess-1", "/novelist start planning", snapshot, nil)
+	systemPrompt, _, err := prepareChatContextWithExtensions(root, "", "sess-1", "/novelist start planning", snapshot, nil)
 	if err != nil {
 		t.Fatalf("prepare chat context: %v", err)
 	}
+	// Without project filtering, all skills should pass through
 	if !strings.Contains(systemPrompt, "<name>novelist</name>") {
-		t.Fatalf("expected allowed skill to remain in prompt, got %q", systemPrompt)
+		t.Fatalf("expected novelist skill in prompt, got %q", systemPrompt)
 	}
-	if strings.Contains(systemPrompt, "<name>deploy</name>") {
-		t.Fatalf("expected disallowed skill to be filtered from prompt, got %q", systemPrompt)
+	if !strings.Contains(systemPrompt, "<name>deploy</name>") {
+		t.Fatalf("expected deploy skill in prompt (no filtering), got %q", systemPrompt)
 	}
 }
 

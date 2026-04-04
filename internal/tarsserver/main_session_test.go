@@ -129,44 +129,37 @@ func TestResolveSession_StaleExplicitAndMainSession_CreatesNew(t *testing.T) {
 	}
 }
 
-func TestResolveSession_EmptyKickoffMessage_CreatesNewSession(t *testing.T) {
+func TestResolveSession_KickoffMessage_UsesMainSession(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	mainSession, err := store.Create("main")
 	if err != nil {
 		t.Fatalf("create main session: %v", err)
 	}
 
+	// After project removal, kickoff messages use the main session
 	resolved, err := resolveChatSession(store, "", mainSession.ID, "todo 앱 만드는 프로젝트 시작해줘", "")
 	if err != nil {
 		t.Fatalf("resolveChatSession: %v", err)
 	}
-	if strings.TrimSpace(resolved) == "" {
-		t.Fatalf("expected new session id")
-	}
-	if resolved == mainSession.ID {
-		t.Fatalf("expected kickoff message to avoid main session %q", mainSession.ID)
-	}
-	if _, err := store.Get(resolved); err != nil {
-		t.Fatalf("expected created kickoff session to exist: %v", err)
+	if resolved != mainSession.ID {
+		t.Fatalf("expected main session %q, got %q", mainSession.ID, resolved)
 	}
 }
 
-func TestResolveSession_ProjectChat_CreatesDedicatedSession(t *testing.T) {
+func TestResolveSession_ProjectChat_UsesMainSession(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	mainSession, err := store.Create("main")
 	if err != nil {
 		t.Fatalf("create main session: %v", err)
 	}
 
+	// After project removal, project ID doesn't trigger dedicated session
 	resolved, err := resolveChatSession(store, "", mainSession.ID, "hello", "project-1")
 	if err != nil {
 		t.Fatalf("resolveChatSession: %v", err)
 	}
-	if strings.TrimSpace(resolved) == "" {
-		t.Fatalf("expected dedicated project session id")
-	}
-	if resolved == mainSession.ID {
-		t.Fatalf("expected project chat to avoid main session %q", mainSession.ID)
+	if resolved != mainSession.ID {
+		t.Fatalf("expected main session %q, got %q", mainSession.ID, resolved)
 	}
 	if _, err := store.Get(resolved); err != nil {
 		t.Fatalf("expected created project session to exist: %v", err)

@@ -19,7 +19,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		heartbeat:       handler,
 		chat:            handler,
 		sessions:        handler,
-		projects:        handler,
 		memory:          handler,
 		console:         consoleHandler,
 		usage:           handler,
@@ -49,9 +48,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/sessions/main",
 		"/v1/admin/sessions",
 		"/v1/admin/sessions/main",
-		"/v1/projects",
-		"/v1/projects/demo",
-		"/v1/projects/demo/state",
 		"/v1/memory/kb/notes",
 		"/v1/memory/kb/notes/coffee-preference",
 		"/v1/memory/kb/graph",
@@ -62,9 +58,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/workspace/sysprompt/file",
 		"/console",
 		"/console/",
-		"/console/projects/demo",
-		"/v1/project-briefs/demo",
-		"/v1/project-briefs/demo/finalize",
 		"/v1/usage/summary",
 		"/v1/usage/limits",
 		"/v1/ops/status",
@@ -140,7 +133,6 @@ func TestRegisterAPIRoutes_LegacyDashboardPathsRedirectToConsole(t *testing.T) {
 		heartbeat:       base,
 		chat:            base,
 		sessions:        base,
-		projects:        base,
 		memory:          base,
 		console:         consoleHandler,
 		usage:           base,
@@ -169,9 +161,6 @@ func TestRegisterAPIRoutes_LegacyDashboardPathsRedirectToConsole(t *testing.T) {
 	}{
 		{path: "/dashboards", location: "/console"},
 		{path: "/dashboards/", location: "/console"},
-		{path: "/ui/projects/demo", location: "/console/projects/demo"},
-		{path: "/ui/projects/demo?tab=activity", location: "/console/projects/demo?tab=activity"},
-		{path: "/ui/projects/demo/stream", location: "/console/projects/demo"},
 	}
 
 	for _, tc := range tests {

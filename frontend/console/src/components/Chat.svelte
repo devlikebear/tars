@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import {
-    getEventsHistory, getHeartbeatStatus, listProjects, streamEvents,
+    getEventsHistory, getHeartbeatStatus, streamEvents,
     getSession, renameSession, deleteSession, compactSession, getSessionHistory,
   } from '../lib/api'
-  import type { HeartbeatStatus, NotificationMessage, Project, Session } from '../lib/types'
+  import type { HeartbeatStatus, NotificationMessage, Session } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
   import SessionSidebar from './SessionSidebar.svelte'
   import ChatPanel from './ChatPanel.svelte'
@@ -22,7 +22,7 @@
   let { sessionId, onNavigate, initialPrompt }: Props = $props()
 
   // Dashboard mini state
-  let projects: Project[] = $state([])
+  // Dashboard mini state removed: projects
   let heartbeat: HeartbeatStatus | null = $state(null)
   let unreadCount = $state(0)
 
@@ -206,12 +206,10 @@
   }
 
   async function loadDashboard() {
-    const [p, h, e] = await Promise.allSettled([
-      listProjects(),
+    const [h, e] = await Promise.allSettled([
       getHeartbeatStatus(),
       getEventsHistory(1),
     ])
-    projects = p.status === 'fulfilled' ? p.value : []
     heartbeat = h.status === 'fulfilled' ? h.value : null
     if (e.status === 'fulfilled') {
       unreadCount = e.value.unread_count ?? 0
@@ -234,11 +232,6 @@
 <div class="chat-page">
   <!-- Mini dashboard pulse -->
   <div class="chat-pulse">
-    <div class="pulse-item">
-      <span class="pulse-val">{projects.length}</span>
-      <span class="pulse-lbl">Projects</span>
-    </div>
-    <div class="pulse-sep"></div>
     <div class="pulse-item">
       <span class="pulse-val" class:warn={!!heartbeat?.last_error}>
         {heartbeat?.interval || 'off'}

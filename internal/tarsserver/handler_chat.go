@@ -13,7 +13,6 @@ import (
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/ops"
-	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/prompt"
 	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/schedule"
@@ -25,7 +24,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func resolveChatSession(store *session.Store, sessionID string, mainSessionID string, userMessage string, projectID string) (string, error) {
+func resolveChatSession(store *session.Store, sessionID string, mainSessionID string, _ string, _ string) (string, error) {
 	// The public session API exposes the main session as id="main";
 	// translate it back to the real internal ID so store.Get succeeds.
 	trimmedID := strings.TrimSpace(sessionID)
@@ -35,13 +34,6 @@ func resolveChatSession(store *session.Store, sessionID string, mainSessionID st
 		return createFallbackChatSession(store)
 	}
 	if strings.TrimSpace(sessionID) == "" {
-		kickoff := project.DefaultWorkflowPolicy.ResolveEvent(project.WorkflowEventKickoffRequested, project.WorkflowEventContext{
-			UserMessage: userMessage,
-			ProjectID:   projectID,
-		})
-		if kickoff.CreateDedicatedSession {
-			return createFallbackChatSession(store)
-		}
 		id := strings.TrimSpace(mainSessionID)
 		if id == "" {
 			return createFallbackChatSession(store)
@@ -177,38 +169,8 @@ func buildContextFromResult(
 	}
 }
 
-func filterSkillSnapshotForProject(snapshot extensions.Snapshot, workspaceDir, projectID string) extensions.Snapshot {
-	projectID = strings.TrimSpace(projectID)
-	if projectID == "" || strings.TrimSpace(workspaceDir) == "" {
-		return snapshot
-	}
-	store := project.NewStore(workspaceDir, nil)
-	item, err := store.Get(projectID)
-	if err != nil || len(item.SkillsAllow) == 0 {
-		return snapshot
-	}
-	allowed := map[string]struct{}{}
-	for _, name := range item.SkillsAllow {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if key == "" {
-			continue
-		}
-		allowed[key] = struct{}{}
-	}
-	filtered := make([]skill.Definition, 0, len(snapshot.Skills))
-	for _, def := range snapshot.Skills {
-		if _, ok := allowed[strings.ToLower(strings.TrimSpace(def.Name))]; !ok {
-			continue
-		}
-		filtered = append(filtered, def)
-	}
-	if len(filtered) == 0 {
-		snapshot.SkillPrompt = ""
-		snapshot.Skills = nil
-		return snapshot
-	}
-	snapshot.Skills = filtered
-	snapshot.SkillPrompt = skill.FormatAvailableSkills(filtered)
+func filterSkillSnapshotForProject(snapshot extensions.Snapshot, _, _ string) extensions.Snapshot {
+	// No project-level skill filtering after project package removal.
 	return snapshot
 }
 
@@ -382,16 +344,9 @@ func findProjectStartSkill(manager *extensions.Manager) *skill.Definition {
 	return nil
 }
 
-func hasActiveProjectBrief(workspaceDir, sessionID string) bool {
-	if strings.TrimSpace(workspaceDir) == "" || strings.TrimSpace(sessionID) == "" {
-		return false
-	}
-	store := project.NewStore(workspaceDir, nil)
-	item, err := store.GetBrief(strings.TrimSpace(sessionID))
-	if err != nil {
-		return false
-	}
-	return project.DefaultWorkflowPolicy.HasActiveBriefStatus(item.Status)
+func hasActiveProjectBrief(_, _ string) bool {
+	// Project briefs are no longer available after project package removal.
+	return false
 }
 
 // ToolCallRecord holds a tool invocation for transcript persistence.
