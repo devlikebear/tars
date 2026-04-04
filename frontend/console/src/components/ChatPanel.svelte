@@ -19,10 +19,11 @@
     projectId?: string
     sessionId?: string
     initialPrompt?: string
+    autoSend?: boolean
     onSessionChange?: () => void
   }
 
-  let { projectId, sessionId, initialPrompt, onSessionChange }: Props = $props()
+  let { projectId, sessionId, initialPrompt, autoSend, onSessionChange }: Props = $props()
 
   let chatInput = $state('')
   let chatBusy = $state(false)
@@ -31,6 +32,16 @@
   let chatStatusLine = $state('')
   let chatMessages: ChatMessage[] = $state([])
   let autoTitled = $state(false)
+  let autoSendDone = false
+
+  // One-shot auto-send: fires once when autoSend becomes true with a prompt
+  $effect(() => {
+    if (autoSend && initialPrompt && !autoSendDone && !chatBusy) {
+      autoSendDone = true
+      chatInput = initialPrompt
+      tick().then(() => submitChat())
+    }
+  })
 
   let chatLogEl: HTMLDivElement | undefined = $state()
   let autoScroll = $state(true)
@@ -320,7 +331,7 @@
     } else {
       chatMessages = [{ id: 'system-init', role: 'system', text: 'TARS' }]
     }
-    if (initialPrompt) {
+    if (initialPrompt && !autoSend) {
       chatInput = initialPrompt
       tick().then(() => textareaEl?.focus())
     }

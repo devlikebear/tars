@@ -59,6 +59,10 @@
   let showAllActivity = $state(false)
   let activityFilter = $state('all')
 
+  // -- Onboarding --
+  let onboardingPrompt = $state('')
+  let shouldAutoSend = $state(false)
+
   function activitySources(): string[] {
     return [...new Set(activity.map((a) => a.source).filter(Boolean))]
   }
@@ -286,7 +290,28 @@
     void loadSessionInfo()
   }
 
-  onMount(refreshAll)
+  onMount(async () => {
+    // Check if this is a newly created project (navigated from creation form)
+    const params = new URLSearchParams(window.location.search)
+    const isNew = params.get('new') === '1'
+    if (isNew) {
+      // Remove ?new=1 from URL without reloading
+      const url = new URL(window.location.href)
+      url.searchParams.delete('new')
+      window.history.replaceState({}, '', url.toString())
+    }
+
+    // Load all data
+    await Promise.all([loadDetail(), loadBoard(), loadState(), loadActivity(), loadFiles(), loadSessionInfo()])
+
+    // Trigger onboarding only for newly created projects
+    if (isNew && projectState?.phase === 'planning') {
+      shouldAutoSend = true
+      onboardingPrompt = project?.body
+        ? '프로젝트를 시작합니다. 프로젝트 문서를 확인하고 작업 계획을 세워주세요.'
+        : '새 프로젝트를 시작합니다. 프로젝트 계획을 함께 세워봅시다.'
+    }
+  })
 </script>
 
 <div class="pv">
@@ -388,9 +413,9 @@
         <div class="card pv-board-card">
           <div class="card-header">
             <span class="card-title">Board</span>
-            <span class="badge badge-default">{board?.tasks.length ?? 0} tasks</span>
+            <span class="badge badge-default">{board?.tasks?.length ?? 0} tasks</span>
           </div>
-          {#if board && board.tasks.length > 0}
+          {#if board?.tasks?.length}
             <div class="pv-board-tasks">
               {#each board.tasks as task}
                 <div class="pv-board-task">
@@ -535,8 +560,18 @@
 
       <!-- Chat -->
       <section class="card pv-wide">
-        <span class="card-title">Chat</span>
-        <ChatPanel {projectId} onSessionChange={refreshAll} />
+        <div class="card-header">
+          <span class="card-title">Chat</span>
+          {#if projectState?.phase}
+            <span class="badge" class:badge-accent={projectState.phase === 'planning'}
+                                class:badge-success={projectState.phase === 'executing'}
+                                class:badge-info={projectState.phase === 'reviewing'}
+                                class:badge-default={!['planning', 'executing', 'reviewing'].includes(projectState.phase)}>
+              {projectState.phase}
+            </span>
+          {/if}
+        </div>
+        <ChatPanel {projectId} initialPrompt={onboardingPrompt} autoSend={shouldAutoSend} onSessionChange={refreshAll} />
       </section>
 
       <!-- Activity -->

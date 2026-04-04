@@ -178,12 +178,12 @@ func resolveChatProjectContext(
 		// Project deleted or not found — continue chat without project context
 		return "", nil, "", nil
 	}
+	var state *project.ProjectState
+	if s, err := projectStore.GetState(resolvedID); err == nil {
+		state = &s
+	}
 	if store != nil && strings.TrimSpace(sessionID) != "" && strings.TrimSpace(requestProjectID) != "" {
 		_ = store.SetProjectID(strings.TrimSpace(sessionID), item.ID)
 	}
-	return item.ID, &item, formatProjectPromptSection(item), nil
-}
-
-func formatProjectPromptSection(item project.Project) string {
-	return project.ProjectPromptContext(item)
+	return item.ID, &item, project.PhaseAwareProjectPromptContext(item, state), nil
 }
