@@ -1,9 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import Shell from './components/Shell.svelte'
-  import Home from './components/Home.svelte'
+  import Chat from './components/Chat.svelte'
   import ProjectView from './components/ProjectView.svelte'
-  import Sessions from './components/Sessions.svelte'
   import Projects from './components/Projects.svelte'
   import Ops from './components/Ops.svelte'
   import Config from './components/Config.svelte'
@@ -13,7 +12,7 @@
   import { getEventsHistory, streamEvents } from './lib/api'
 
   let currentPath = $state('/console')
-  let route: Route = $state({ view: 'home' })
+  let route: Route = $state({ view: 'chat' })
   let serverHealth = $state('connecting')
   let unreadCount = $state(0)
   let aiPrompt = $state('')
@@ -28,7 +27,7 @@
 
   function navigateWithPrompt(prompt: string) {
     aiPrompt = prompt
-    navigate('/console')
+    navigate('/console/chat')
   }
 
   function syncFromBrowser() {
@@ -78,9 +77,9 @@
   onNavigate={navigate}
   onUnreadChange={(count) => { unreadCount = count }}
 >
-  {#if route.view === 'home'}
+  {#if route.view === 'chat'}
     {#key aiPrompt}
-      <Home onNavigate={navigate} initialPrompt={aiPrompt} />
+      <Chat sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
     {/key}
   {:else if route.view === 'project'}
     {#key route.projectId}
@@ -88,8 +87,6 @@
     {/key}
   {:else if route.view === 'projects'}
     <Projects onNavigate={navigate} onAskAI={navigateWithPrompt} />
-  {:else if route.view === 'sessions'}
-    <Sessions />
   {:else if route.view === 'ops'}
     <Ops onAskAI={navigateWithPrompt} />
   {:else if route.view === 'config'}
@@ -100,4 +97,3 @@
     <Extensions />
   {/if}
 </Shell>
-

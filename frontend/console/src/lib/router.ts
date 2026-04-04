@@ -1,11 +1,11 @@
 const consoleBase = '/console'
 const projectPrefix = `${consoleBase}/projects/`
+const chatPrefix = `${consoleBase}/chat`
 
 export type Route =
-  | { view: 'home' }
+  | { view: 'chat'; sessionId?: string }
   | { view: 'projects' }
   | { view: 'project'; projectId: string }
-  | { view: 'sessions' }
   | { view: 'ops' }
   | { view: 'config' }
   | { view: 'extensions' }
@@ -26,8 +26,19 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'projects' }
   }
 
+  // /console/chat or /console/chat/:sessionId
+  if (path.startsWith(chatPrefix)) {
+    const rest = path.slice(chatPrefix.length)
+    if (rest.startsWith('/') && rest.length > 1) {
+      const sessionId = decodeURIComponent(rest.slice(1).split('/')[0]?.trim() || '')
+      if (sessionId) return { view: 'chat', sessionId }
+    }
+    return { view: 'chat' }
+  }
+
+  // Legacy /console/sessions → redirect to chat
   if (path.startsWith(`${consoleBase}/sessions`)) {
-    return { view: 'sessions' }
+    return { view: 'chat' }
   }
 
   if (path.startsWith(`${consoleBase}/ops`)) {
@@ -46,7 +57,13 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'heartbeat' }
   }
 
-  return { view: 'home' }
+  // Default: /console → chat
+  return { view: 'chat' }
+}
+
+export function chatPath(sessionId?: string): string {
+  if (sessionId) return `${chatPrefix}/${encodeURIComponent(sessionId)}`
+  return chatPrefix
 }
 
 export function currentProjectIdFromPath(pathname: string): string | null {

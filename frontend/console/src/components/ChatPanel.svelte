@@ -438,6 +438,7 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    flex: 1;
   }
 
   .chat-toolbar-row {
@@ -464,10 +465,11 @@
   .chat-log {
     display: grid;
     gap: var(--space-2);
-    max-height: 480px;
+    flex: 1;
     overflow-y: auto;
     margin-bottom: var(--space-3);
     scroll-behavior: smooth;
+    min-height: 0;
   }
 
   .chat-msg {
