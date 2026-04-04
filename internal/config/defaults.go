@@ -1,8 +1,32 @@
 package config
 
+import (
+	"os"
+	"path/filepath"
+)
+
+// TarsHomeDir returns the base directory for TARS data (~/.tars).
+func TarsHomeDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".", ".tars")
+	}
+	return filepath.Join(home, ".tars")
+}
+
+// FixedConfigPath returns the fixed config file path (~/.tars/config/config.yaml).
+// This path is not user-overridable; all commands use it.
+func FixedConfigPath() string {
+	return filepath.Join(TarsHomeDir(), "config", "config.yaml")
+}
+
+// DefaultWorkspaceDir returns the default workspace directory (~/.tars/workspace).
+func DefaultWorkspaceDir() string {
+	return filepath.Join(TarsHomeDir(), "workspace")
+}
+
 const (
 	defaultMode                          = "standalone"
-	defaultWorkspaceDir                  = "./workspace"
 	defaultSessionTelegramScope          = "main"
 	defaultAPIAuthMode                   = "required"
 	defaultDashboardAuthMode             = "inherit"
@@ -65,7 +89,7 @@ func defaultConfigValues() Config {
 	return Config{
 		RuntimeConfig: RuntimeConfig{
 			Mode:                 defaultMode,
-			WorkspaceDir:         defaultWorkspaceDir,
+			WorkspaceDir:         DefaultWorkspaceDir(),
 			SessionTelegramScope: defaultSessionTelegramScope,
 		},
 		APIConfig: APIConfig{

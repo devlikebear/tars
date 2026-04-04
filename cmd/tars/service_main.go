@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -21,8 +22,6 @@ const (
 
 type serviceOptions struct {
 	action          string
-	workspaceDir    string
-	configPath      string
 	label           string
 	plistPath       string
 	stdoutLog       string
@@ -51,7 +50,6 @@ var (
 
 func defaultServiceOptions() serviceOptions {
 	return serviceOptions{
-		workspaceDir:    defaultWorkspaceDir(),
 		label:           defaultServiceLabel,
 		launchctlDomain: "gui/" + strconv.Itoa(serviceGetuid()),
 		launchPath:      defaultServiceLaunchPath,
@@ -123,8 +121,6 @@ func newServiceCommand(stdout, stderr io.Writer) *cobra.Command {
 }
 
 func bindServiceFlags(cmd *cobra.Command, opts *serviceOptions) {
-	cmd.Flags().StringVar(&opts.workspaceDir, "workspace-dir", opts.workspaceDir, "workspace directory")
-	cmd.Flags().StringVar(&opts.configPath, "config", "", "config file path")
 	cmd.Flags().StringVar(&opts.label, "label", opts.label, "launch agent label")
 	cmd.Flags().StringVar(&opts.plistPath, "plist-path", opts.plistPath, "override launch agent plist path")
 	cmd.Flags().StringVar(&opts.stdoutLog, "stdout-log", opts.stdoutLog, "stdout log file path")
@@ -137,13 +133,14 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 		return fmt.Errorf("service commands are only supported on macOS")
 	}
 
-	workspaceAbs, err := resolveWorkspaceDir(opts.workspaceDir)
+	configPath := config.FixedConfigPath()
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("load config %s: %w", configPath, err)
+	}
+	workspaceAbs, err := resolveWorkspaceDir(cfg.WorkspaceDir)
 	if err != nil {
 		return fmt.Errorf("resolve workspace dir: %w", err)
-	}
-	configPath, err := resolveConfigPath(opts.configPath, workspaceAbs)
-	if err != nil {
-		return fmt.Errorf("resolve config path: %w", err)
 	}
 	label := strings.TrimSpace(firstNonEmpty(opts.label, defaultServiceLabel))
 	plistPath, err := defaultedServicePlistPath(opts.plistPath, label)
@@ -191,7 +188,7 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 		if err := os.WriteFile(plistPath, []byte(content), 0o644); err != nil {
 			return fmt.Errorf("write launchagent plist: %w", err)
 		}
-		_, _ = fmt.Fprintf(stdout, "service installed\nlabel: %s\nplist: %s\nconfig: %s\nstdout log: %s\nstderr log: %s\nnext: tars service start --config %s --workspace-dir %s\n", label, plistPath, configPath, stdoutLog, stderrLog, configPath, workspaceAbs)
+		_, _ = fmt.Fprintf(stdout, "service installed\nlabel: %s\nplist: %s\nconfig: %s\nworkspace: %s\nstdout log: %s\nstderr log: %s\nnext: tars service start\n", label, plistPath, configPath, workspaceAbs, stdoutLog, stderrLog)
 		return nil
 	case "start":
 		if exists, err := pathExists(plistPath); err != nil {
