@@ -386,6 +386,16 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				}
 				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 			}
+		case len(pathParts) == 2 && pathParts[1] == "tasks":
+			if !requireMethod(w, r, http.MethodGet) {
+				return
+			}
+			tasks, err := reqStore.GetTasks(sessionID)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, tasks)
 		default:
 			http.NotFound(w, r)
 		}

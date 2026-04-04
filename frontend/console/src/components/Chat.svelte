@@ -12,6 +12,7 @@
   import SessionConfigPanel from './SessionConfigPanel.svelte'
   import ContextMonitor from './ContextMonitor.svelte'
   import PromptEditor from './PromptEditor.svelte'
+  import TasksPanel from './TasksPanel.svelte'
 
   interface Props {
     sessionId?: string
@@ -51,7 +52,7 @@
 
   // Right panel state
   let chatArtifacts: Artifact[] = $state([])
-  type RightPanel = 'none' | 'artifacts' | 'config' | 'context' | 'prompt'
+  type RightPanel = 'none' | 'artifacts' | 'config' | 'context' | 'prompt' | 'tasks'
   let rightPanel = $state<RightPanel>('none')
 
   let sidebarRef: SessionSidebar | undefined = $state()
@@ -260,6 +261,7 @@
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'config'} onclick={() => togglePanel('config')} title="Session tool config">Config</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'context'} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prompt'} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
+      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'tasks'} onclick={() => togglePanel('tasks')} title="Session tasks">Tasks</button>
     </div>
   </div>
 
@@ -338,6 +340,8 @@
           <ContextMonitor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'prompt'}
           <PromptEditor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
+        {:else if rightPanel === 'tasks' && selectedSessionId}
+          <TasksPanel sessionId={selectedSessionId} onClose={() => rightPanel = 'none'} />
         {/if}
       </aside>
     {/if}

@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-04-04
+
+### Added
+
+- Tasks panel in chat UI — view session plan, task progress bar, and task cards with status badges
+- `GET /v1/admin/sessions/{id}/tasks` API endpoint for fetching session tasks
+- Workspace file browser API: `GET /v1/workspace/files?path=` for directory listing and file content preview
+- Tasks toggle button in chat pulse bar with live task count
+
 ## [0.20.0] - 2026-04-04
 
 ### Added

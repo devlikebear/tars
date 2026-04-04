@@ -473,3 +473,21 @@ export type ConfigSchema = {
   fields: ConfigFieldMeta[]
   values: Record<string, unknown>
 }
+
+export type SessionPlan = {
+  goal: string
+  constraints?: string
+  created_at: string
+}
+
+export type SessionTask = {
+  id: string
+  title: string
+  status: string
+  description?: string
+}
+
+export type SessionTasks = {
+  plan?: SessionPlan
+  tasks: SessionTask[]
+}
