@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-04-04
+
+### Added
+
+- Project onboarding flow with planning mode: new projects without `project.md` enter planning phase where AI guides project planning via conversation
+- Phase-aware system prompt: planning phase injects structured prompts for collaborative project definition
+- Auto-transition from planning to executing phase when `project.md` is created
+- Frontend: phase badge display (planning/executing), auto-send onboarding message on project creation
+
 ## [0.15.0] - 2026-04-04
 
 ### Added
