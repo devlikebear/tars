@@ -3,19 +3,87 @@ package tool
 import "strings"
 
 var toolNameAliases = map[string]string{
-	"shell_execute":   "exec",
-	"shell_exec":      "exec",
-	"run_command":     "exec",
-	"terminal_exec":   "exec",
-	"execute_shell":   "exec",
-	"session_list":    "sessions_list",
-	"session_history": "sessions_history",
-	"session_send":    "sessions_send",
-	"session_spawn":   "sessions_spawn",
-	"session_runs":    "sessions_runs",
-	"subagent_run":    "subagents_run",
-	"agent_runs":      "sessions_runs",
-	"gateway_status":  "gateway",
+	// exec aliases
+	"shell_execute": "exec",
+	"shell_exec":    "exec",
+	"run_command":   "exec",
+	"terminal_exec": "exec",
+	"execute_shell": "exec",
+
+	// file I/O aliases (short → canonical)
+	"read":  "read_file",
+	"write": "write_file",
+	"edit":  "edit_file",
+
+	// memory aliases → memory aggregator
+	"memory_save":   "memory",
+	"memory_search": "memory",
+	"memory_get":    "memory",
+
+	// knowledge aliases → knowledge aggregator
+	"memory_kb_list":   "knowledge",
+	"memory_kb_get":    "knowledge",
+	"memory_kb_upsert": "knowledge",
+	"memory_kb_delete": "knowledge",
+
+	// sysprompt aliases → workspace aggregator
+	"workspace_sysprompt_get": "workspace",
+	"workspace_sysprompt_set": "workspace",
+	"agent_sysprompt_get":     "workspace",
+	"agent_sysprompt_set":     "workspace",
+
+	// project aliases → project aggregator
+	"project_create":   "project",
+	"project_list":     "project",
+	"project_get":      "project",
+	"project_update":   "project",
+	"project_delete":   "project",
+	"project_activate": "project",
+
+	// project runtime aliases → project_work aggregator
+	"project_board_get":       "project_work",
+	"project_board_update":    "project_work",
+	"project_activity_get":    "project_work",
+	"project_activity_append": "project_work",
+	"project_dispatch":        "project_work",
+	"project_state_get":       "project_work",
+	"project_state_update":    "project_work",
+
+	// project brief aliases → project_brief aggregator
+	"project_brief_get":      "project_brief",
+	"project_brief_update":   "project_brief",
+	"project_brief_finalize": "project_brief",
+
+	// ops aliases → ops aggregator
+	"ops_status":        "ops",
+	"ops_cleanup_plan":  "ops",
+	"ops_cleanup_apply": "ops",
+
+	// schedule aliases → cron aggregator
+	"schedule_create":   "cron",
+	"schedule_list":     "cron",
+	"schedule_update":   "cron",
+	"schedule_delete":   "cron",
+	"schedule_complete": "cron",
+
+	// session aliases → session aggregator
+	"session_list":    "session",
+	"session_history": "session",
+	"session_send":    "session",
+	"session_spawn":   "session",
+	"session_runs":    "session",
+	"sessions_list":   "session",
+	"sessions_history": "session",
+	"sessions_send":   "session",
+	"sessions_spawn":  "session",
+	"sessions_runs":   "session",
+	"agents_list":     "session",
+	"session_status":  "session",
+	"agent_runs":      "session",
+
+	// other
+	"subagent_run":   "subagents_run",
+	"gateway_status": "gateway",
 }
 
 func CanonicalToolName(name string) string {

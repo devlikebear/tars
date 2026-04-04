@@ -68,7 +68,7 @@ func KnownToolGroups(known map[string]struct{}) map[string][]string {
 	}
 	for name := range known {
 		switch {
-		case strings.HasPrefix(name, "memory_"):
+		case name == "memory" || name == "knowledge" || strings.HasPrefix(name, "memory_"):
 			groups["memory"] = append(groups["memory"], name)
 		case name == "exec" || name == "process":
 			groups["shell"] = append(groups["shell"], name)

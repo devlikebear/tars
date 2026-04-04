@@ -224,7 +224,7 @@ func validateSafeSubagent(info gateway.AgentInfo) string {
 func isHighRiskSubagentTool(name string) bool {
 	canonical := CanonicalToolName(name)
 	switch canonical {
-	case "exec", "process", "write", "write_file", "edit", "edit_file", "apply_patch":
+	case "exec", "process", "write_file", "edit_file", "apply_patch", "workspace":
 		return true
 	}
 	return strings.HasPrefix(canonical, "write_") || strings.HasPrefix(canonical, "edit_")

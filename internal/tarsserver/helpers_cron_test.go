@@ -535,8 +535,8 @@ func TestCronJobRunner_ProjectToolPolicyAddsShellToolsToAllowlist(t *testing.T) 
 	if !slices.Contains(seenAllowedTools, "read_file") {
 		t.Fatalf("expected files allowlist to include read_file, got %+v", seenAllowedTools)
 	}
-	if !slices.Contains(seenAllowedTools, "project_get") {
-		t.Fatalf("expected project tool allowlist to retain project_get, got %+v", seenAllowedTools)
+	if !slices.Contains(seenAllowedTools, "project") {
+		t.Fatalf("expected project tool allowlist to retain project, got %+v", seenAllowedTools)
 	}
 }
 

@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-04-04
+
+### Changed
+
+- **Tool consolidation: 71 → 27 built-in tools** using aggregator pattern
+  - `memory` aggregator (replaces memory_save, memory_search, memory_get)
+  - `knowledge` aggregator (replaces memory_kb_list/get/upsert/delete)
+  - `workspace` aggregator (replaces workspace_sysprompt_get/set, agent_sysprompt_get/set)
+  - `project` aggregator (replaces project_create/list/get/update/delete/activate)
+  - `project_work` aggregator (replaces project_board/activity/dispatch/state tools)
+  - `project_brief` aggregator (replaces project_brief_get/update/finalize)
+  - `session` aggregator (replaces sessions_list/history/send/spawn/runs, agents_list, session_status)
+  - `ops` aggregator (replaces ops_status/cleanup_plan/cleanup_apply)
+  - `cron`/`heartbeat` aggregators: individual sub-tools removed from registry
+  - Schedule tools absorbed into cron; file I/O aliases (read/write/edit) removed
+- System prompt tool routing rules now explicitly guide LLM to use `workspace` for user profile updates
+- Tool group expansion updated to recognize aggregator names (`memory`, `knowledge`)
+- High-risk tool classification updated for aggregator names
+
+### Removed
+
+- SOUL.md removed from sysprompt specs, bootstrap files, and prompt builder (fully absorbed into IDENTITY.md)
+- Individual cron/heartbeat sub-tools removed from tool registry (aggregators remain)
+- Schedule tools removed (use cron aggregator instead)
+- File I/O short aliases (`read`, `write`, `edit`) removed — use `read_file`, `write_file`, `edit_file`
+
 ## [0.18.0] - 2026-04-04
 
 ### Added

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agent"
-	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/heartbeat"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
@@ -15,7 +14,6 @@ import (
 	"github.com/devlikebear/tars/internal/project"
 	"github.com/devlikebear/tars/internal/prompt"
 	"github.com/devlikebear/tars/internal/research"
-	"github.com/devlikebear/tars/internal/schedule"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
@@ -53,55 +51,36 @@ func newBaseToolRegistry(workspaceDir string) *tool.Registry {
 func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.ProcessManager, semanticCfg ...memory.SemanticConfig) *tool.Registry {
 	registry := tool.NewRegistry()
 	memService := buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...))
-	registry.Register(tool.NewMemorySearchTool(workspaceDir, memService))
-	registry.Register(tool.NewMemoryGetTool(workspaceDir))
-	registry.Register(tool.NewMemorySaveTool(workspaceDir, memService, nil))
-	registry.Register(tool.NewMemoryKBListTool(workspaceDir))
-	registry.Register(tool.NewMemoryKBGetTool(workspaceDir))
-	registry.Register(tool.NewMemoryKBUpsertTool(workspaceDir, memService))
-	registry.Register(tool.NewMemoryKBDeleteTool(workspaceDir, memService))
+
+	// Memory & workspace aggregators (replaces 11 individual tools → 3)
+	registry.Register(tool.NewMemoryTool(workspaceDir, memService, nil))
+	registry.Register(tool.NewKnowledgeTool(workspaceDir, memService))
+	registry.Register(tool.NewWorkspaceTool(workspaceDir))
+
+	// Project aggregators (replaces 16 individual tools → 3)
 	projectStore := project.NewStore(workspaceDir, nil)
-	registry.Register(tool.NewProjectCreateTool(projectStore))
-	registry.Register(tool.NewProjectListTool(projectStore))
-	registry.Register(tool.NewProjectGetTool(projectStore))
-	registry.Register(tool.NewProjectUpdateTool(projectStore))
-	registry.Register(tool.NewProjectDeleteTool(projectStore))
-	registry.Register(tool.NewProjectBoardGetTool(projectStore))
-	registry.Register(tool.NewProjectBoardUpdateTool(projectStore))
-	registry.Register(tool.NewProjectActivityGetTool(projectStore))
-	registry.Register(tool.NewProjectActivityAppendTool(projectStore))
-	registry.Register(tool.NewProjectDispatchTool(projectStore, nil, nil))
-	registry.Register(tool.NewProjectBriefGetTool(projectStore))
-	registry.Register(tool.NewProjectBriefUpdateTool(projectStore))
-	registry.Register(tool.NewProjectBriefFinalizeTool(projectStore, session.NewStore(workspaceDir)))
-	registry.Register(tool.NewProjectStateGetTool(projectStore))
-	registry.Register(tool.NewProjectStateUpdateTool(projectStore))
+	registry.Register(tool.NewProjectTool(projectStore, nil, ""))
+	registry.Register(tool.NewProjectWorkTool(projectStore, nil, nil))
+	registry.Register(tool.NewProjectBriefTool(projectStore, session.NewStore(workspaceDir)))
+
+	// Ops aggregator (replaces 3 individual tools → 1)
 	opsManager := ops.NewManager(workspaceDir, ops.Options{})
-	registry.Register(tool.NewOpsStatusTool(opsManager))
-	registry.Register(tool.NewOpsCleanupPlanTool(opsManager))
-	registry.Register(tool.NewOpsCleanupApplyTool(opsManager))
-	scheduleStore := schedule.NewStore(workspaceDir, cron.NewStore(workspaceDir), schedule.Options{})
-	registry.Register(tool.NewScheduleCreateTool(scheduleStore))
-	registry.Register(tool.NewScheduleListTool(scheduleStore))
-	registry.Register(tool.NewScheduleUpdateTool(scheduleStore))
-	registry.Register(tool.NewScheduleDeleteTool(scheduleStore))
-	registry.Register(tool.NewScheduleCompleteTool(scheduleStore))
+	registry.Register(tool.NewOpsTool(opsManager))
+
+	// Standalone tools
 	registry.Register(tool.NewResearchReportTool(research.NewService(workspaceDir, research.Options{})))
 	if usageTracker, err := usage.NewTracker(workspaceDir, usage.TrackerOptions{}); err == nil {
 		registry.Register(tool.NewUsageReportTool(usageTracker))
 	}
-	registry.Register(tool.NewReadTool(workspaceDir))
+
+	// File I/O (no aliases — canonical names only)
 	registry.Register(tool.NewReadFileTool(workspaceDir))
-	registry.Register(tool.NewWorkspaceSyspromptGetTool(workspaceDir))
-	registry.Register(tool.NewWorkspaceSyspromptSetTool(workspaceDir))
-	registry.Register(tool.NewAgentSyspromptGetTool(workspaceDir))
-	registry.Register(tool.NewAgentSyspromptSetTool(workspaceDir))
-	registry.Register(tool.NewWriteTool(workspaceDir))
 	registry.Register(tool.NewWriteFileTool(workspaceDir))
-	registry.Register(tool.NewEditTool(workspaceDir))
 	registry.Register(tool.NewEditFileTool(workspaceDir))
 	registry.Register(tool.NewListDirTool(workspaceDir))
 	registry.Register(tool.NewGlobTool(workspaceDir))
+
+	// Exec / process
 	if processManager != nil {
 		registry.Register(tool.NewProcessTool(processManager))
 		registry.Register(tool.NewExecToolWithManager(workspaceDir, processManager))
@@ -251,7 +230,7 @@ func agentPromptProfileForLabel(label string) agentPromptProfile {
 			includeMemory: false,
 			allowedToolIDs: []string{
 				"read_file", "write_file", "edit_file", "list_dir", "glob",
-				"project_get", "project_update", "project_state_get", "project_state_update",
+				"project", "project_work",
 				"research_report",
 			},
 			maxIters: 4,

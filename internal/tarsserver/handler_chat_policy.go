@@ -21,47 +21,39 @@ func buildChatToolRegistry(
 	deps chatHandlerDeps,
 ) *tool.Registry {
 	registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, deps.tooling.ProcessManager, deps.tooling.MemorySemanticConfig)
+
+	// Re-register project aggregators with full deps (overrides base registry's nil-dep versions)
 	projectStore := project.NewStore(requestWorkspaceDir, nil)
-	registry.Register(tool.NewProjectCreateTool(projectStore))
-	registry.Register(tool.NewProjectListTool(projectStore))
-	registry.Register(tool.NewProjectGetTool(projectStore))
-	registry.Register(tool.NewProjectUpdateTool(projectStore))
-	registry.Register(tool.NewProjectDeleteTool(projectStore))
-	registry.Register(tool.NewProjectBoardGetTool(projectStore))
-	registry.Register(tool.NewProjectBoardUpdateTool(projectStore))
-	registry.Register(tool.NewProjectActivityGetTool(projectStore))
-	registry.Register(tool.NewProjectActivityAppendTool(projectStore))
-	registry.Register(tool.NewProjectActivateTool(projectStore, reqStore, deps.mainSessionID))
-	registry.Register(tool.NewProjectDispatchTool(projectStore, gateway.NewProjectTaskRunner(deps.tooling.Gateway, ""), project.DefaultGitHubAuthChecker()))
-	registry.Register(tool.NewProjectBriefGetTool(projectStore))
-	registry.Register(tool.NewProjectBriefUpdateTool(projectStore))
-	registry.Register(tool.NewProjectBriefFinalizeTool(projectStore, reqStore))
-	registry.Register(tool.NewProjectStateGetTool(projectStore))
-	registry.Register(tool.NewProjectStateUpdateTool(projectStore))
-	registry.Register(tool.NewOpsStatusTool(deps.tooling.OpsManager))
-	registry.Register(tool.NewOpsCleanupPlanTool(deps.tooling.OpsManager))
-	registry.Register(tool.NewOpsCleanupApplyTool(deps.tooling.OpsManager))
-	registry.Register(tool.NewScheduleCreateTool(deps.tooling.ScheduleStore))
-	registry.Register(tool.NewScheduleListTool(deps.tooling.ScheduleStore))
-	registry.Register(tool.NewScheduleUpdateTool(deps.tooling.ScheduleStore))
-	registry.Register(tool.NewScheduleDeleteTool(deps.tooling.ScheduleStore))
-	registry.Register(tool.NewScheduleCompleteTool(deps.tooling.ScheduleStore))
+	registry.Register(tool.NewProjectTool(projectStore, reqStore, deps.mainSessionID))
+	registry.Register(tool.NewProjectWorkTool(projectStore, gateway.NewProjectTaskRunner(deps.tooling.Gateway, ""), project.DefaultGitHubAuthChecker()))
+	registry.Register(tool.NewProjectBriefTool(projectStore, reqStore))
+
+	// Re-register ops aggregator with deps manager
+	registry.Register(tool.NewOpsTool(deps.tooling.OpsManager))
+
+	// Standalone tools
 	registry.Register(tool.NewResearchReportTool(deps.tooling.ResearchService))
 	if deps.tooling.UsageTracker != nil {
 		registry.Register(tool.NewUsageReportTool(deps.tooling.UsageTracker))
 	}
-	registry.Register(tool.NewSessionsListTool(reqStore))
-	registry.Register(tool.NewSessionsHistoryTool(reqStore))
-	registry.Register(tool.NewSessionsSendTool(deps.tooling.Gateway))
-	registry.Register(tool.NewSessionsSpawnTool(deps.tooling.Gateway))
-	registry.Register(tool.NewSessionsRunsTool(deps.tooling.Gateway))
+
+	// Session aggregator + subagents
+	registry.Register(tool.NewSessionTool(reqStore, deps.tooling.Gateway, func(_ context.Context) (tool.SessionStatus, error) {
+		return tool.SessionStatus{
+			SessionID:       sessionID,
+			HistoryMessages: len(history) + 1,
+		}, nil
+	}))
 	registry.Register(tool.NewSubagentsRunTool(deps.tooling.Gateway))
-	registry.Register(tool.NewAgentsListTool(deps.tooling.Gateway))
+
+	// Automation (cron + heartbeat aggregators)
 	if deps.tooling.AutomationToolsForWorkspace != nil {
 		for _, autoTool := range deps.tooling.AutomationToolsForWorkspace(workspaceID) {
 			registry.Register(autoTool)
 		}
 	}
+
+	// Extra tools + extensions
 	for _, extra := range deps.extraTools {
 		registry.Register(extra)
 	}
@@ -70,12 +62,6 @@ func buildChatToolRegistry(
 			registry.Register(extra)
 		}
 	}
-	registry.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
-		return tool.SessionStatus{
-			SessionID:       sessionID,
-			HistoryMessages: len(history) + 1,
-		}, nil
-	}))
 	return registry
 }
 
@@ -192,7 +178,7 @@ func isHighRiskToolName(name string) bool {
 		return false
 	}
 	switch canonical {
-	case "exec", "process", "write", "write_file", "edit", "edit_file", "apply_patch", "workspace_sysprompt_set", "agent_sysprompt_set":
+	case "exec", "process", "write_file", "edit_file", "apply_patch", "workspace":
 		return true
 	}
 	return strings.HasPrefix(canonical, "write_") || strings.HasPrefix(canonical, "edit_")
@@ -232,38 +218,16 @@ func normalizeToolNames(names []string) []string {
 
 func defaultMinimalToolNames() []string {
 	return []string{
-		"memory_get",
-		"memory_kb_delete",
-		"memory_kb_get",
-		"memory_kb_list",
-		"memory_kb_upsert",
-		"memory_search",
-		"memory_save",
-		"project_create",
-		"project_get",
-		"project_list",
-		"project_update",
-		"project_board_get",
-		"project_board_update",
-		"project_activity_get",
-		"project_activity_append",
-		"project_dispatch",
-		"project_autopilot_advance",
-		"project_autopilot_start",
-		"project_activate",
-		"project_brief_get",
-		"project_brief_update",
-		"project_brief_finalize",
-		"project_state_get",
-		"project_state_update",
-		"ops_status",
-		"ops_cleanup_plan",
-		"schedule_list",
-		"schedule_create",
+		"memory",
+		"knowledge",
+		"workspace",
+		"project",
+		"project_work",
+		"project_brief",
+		"ops",
+		"cron",
 		"research_report",
 		"usage_report",
-		"session_status",
-		"sessions_list",
-		"sessions_history",
+		"session",
 	}
 }
