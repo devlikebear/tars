@@ -182,10 +182,9 @@
     <button type="button" class="btn btn-primary btn-sm new-chat-btn" onclick={onNewSession}>
       + New Chat
     </button>
-    <label class="sidebar-toggle" title="Show worker sessions">
-      <input type="checkbox" checked={showHidden} onchange={toggleHidden} />
-      <span class="toggle-icon">{showHidden ? '\u25C9' : '\u25CB'}</span>
-    </label>
+    <button type="button" class="btn btn-ghost btn-sm" onclick={toggleHidden} title={showHidden ? 'Hide worker sessions' : 'Show worker sessions'}>
+      {showHidden ? 'All' : 'Active'}
+    </button>
   </div>
 
   <input type="text" class="sidebar-search" placeholder="Search..." bind:value={searchQuery} />
@@ -280,18 +279,6 @@
 
   .new-chat-btn {
     flex: 1;
-  }
-
-  .sidebar-toggle {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-  .sidebar-toggle input { display: none; }
-  .toggle-icon {
-    font-size: var(--text-md);
-    color: var(--text-tertiary);
   }
 
   .sidebar-search {

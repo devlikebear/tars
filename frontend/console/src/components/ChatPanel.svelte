@@ -484,16 +484,16 @@
         </div>
       {:else}
         <div class="chat-msg chat-{msg.role}">
-          <div class="chat-msg-header">
-            <span class="chat-role">{msg.role}</span>
-            {#if (msg.role === 'assistant' || msg.role === 'user') && msg.text}
-              <button type="button" class="msg-copy-btn" title="Copy message" onclick={() => copyMessageText(msg.text)}>Copy</button>
-            {/if}
-          </div>
+          <span class="chat-role">{msg.role}</span>
           {#if msg.role === 'assistant'}
             <div class="chat-text"><MarkdownContent text={msg.text} /></div>
           {:else}
             <div class="chat-text">{msg.text || '\u2026'}</div>
+          {/if}
+          {#if (msg.role === 'assistant' || msg.role === 'user') && msg.text}
+            <div class="chat-msg-footer">
+              <button type="button" class="msg-copy-btn" title="Copy message" onclick={() => copyMessageText(msg.text)}>Copy</button>
+            </div>
           {/if}
         </div>
       {/if}
@@ -670,34 +670,36 @@
     overflow-y: auto;
   }
 
-  .chat-msg-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-1);
-  }
-
   .chat-role {
     font-family: var(--font-display);
     font-size: var(--text-xs);
     font-weight: 500;
     color: var(--text-tertiary);
+    margin-bottom: var(--space-1);
+    display: block;
   }
 
+  .chat-msg-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: var(--space-2);
+    opacity: 0;
+    transition: opacity var(--duration-fast);
+  }
+  .chat-msg:hover .chat-msg-footer { opacity: 1; }
+
   .msg-copy-btn {
-    background: none;
-    border: none;
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
     color: var(--text-ghost);
     font-family: var(--font-mono);
     font-size: 10px;
     cursor: pointer;
-    padding: 1px 6px;
+    padding: 2px 10px;
     border-radius: var(--radius-sm);
-    opacity: 0;
-    transition: opacity var(--duration-fast), color var(--duration-fast);
+    transition: all var(--duration-fast);
   }
-  .chat-msg:hover .msg-copy-btn { opacity: 1; }
-  .msg-copy-btn:hover { color: var(--accent); }
+  .msg-copy-btn:hover { color: var(--accent); border-color: var(--accent); }
 
   .chat-text {
     white-space: pre-wrap;
