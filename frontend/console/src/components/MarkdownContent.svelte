@@ -11,16 +11,20 @@
   let mermaidTimer: ReturnType<typeof setTimeout> | null = null
   let mermaidModule: typeof import('mermaid')['default'] | null = null
 
-  // Attach copy-button click handlers (runs on every text change)
   $effect(() => {
     if (!containerEl) return
     void text
 
+    const handlers: Array<[Element, string, EventListener]> = []
+
+    function on(el: Element, event: string, fn: EventListener) {
+      el.addEventListener(event, fn)
+      handlers.push([el, event, fn])
+    }
+
     // Copy buttons
-    const copyButtons = containerEl.querySelectorAll<HTMLButtonElement>('.code-copy')
-    const handlers: Array<[HTMLButtonElement, () => void]> = []
-    for (const btn of copyButtons) {
-      const handler = () => {
+    for (const btn of containerEl.querySelectorAll<HTMLButtonElement>('.code-copy')) {
+      on(btn, 'click', () => {
         const code = btn.getAttribute('data-code') || ''
         navigator.clipboard.writeText(code).then(() => {
           const original = btn.textContent
@@ -31,18 +35,41 @@
             btn.classList.remove('copied')
           }, 1500)
         }).catch(() => {})
-      }
-      btn.addEventListener('click', handler)
-      handlers.push([btn, handler])
+      })
     }
 
-    // Debounced mermaid rendering — wait for streaming to settle
+    // Code/Preview toggle buttons
+    for (const btn of containerEl.querySelectorAll<HTMLButtonElement>('.code-toggle')) {
+      on(btn, 'click', () => {
+        const block = btn.closest('.code-block')
+        if (!block) return
+        const mode = btn.getAttribute('data-mode')
+        const pre = block.querySelector('pre')
+        const preview = block.querySelector<HTMLElement>('[data-preview]')
+        if (!pre || !preview) return
+
+        // Update active state on sibling toggles
+        for (const sib of block.querySelectorAll('.code-toggle')) {
+          sib.classList.toggle('active', sib === btn)
+        }
+
+        if (mode === 'preview') {
+          pre.style.display = 'none'
+          preview.style.display = 'block'
+        } else {
+          pre.style.display = ''
+          preview.style.display = 'none'
+        }
+      })
+    }
+
+    // Debounced mermaid rendering
     if (mermaidTimer) clearTimeout(mermaidTimer)
     mermaidTimer = setTimeout(() => renderMermaidBlocks(), 500)
 
     return () => {
-      for (const [btn, handler] of handlers) {
-        btn.removeEventListener('click', handler)
+      for (const [el, event, fn] of handlers) {
+        el.removeEventListener(event, fn)
       }
     }
   })
@@ -52,7 +79,6 @@
     const blocks = containerEl.querySelectorAll<HTMLDivElement>('.mermaid-block:not([data-rendered])')
     if (blocks.length === 0) return
 
-    // Lazy load mermaid once
     if (!mermaidModule) {
       try {
         const mod = await import('mermaid')
@@ -76,7 +102,6 @@
       }
     }
 
-    // Re-query after async load — DOM may have changed
     const freshBlocks = containerEl.querySelectorAll<HTMLDivElement>('.mermaid-block:not([data-rendered])')
     for (let i = 0; i < freshBlocks.length; i++) {
       const block = freshBlocks[i]

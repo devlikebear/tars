@@ -45,6 +45,13 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 	b.WriteString("You are TARS, a personal AI assistant.\n")
 	b.WriteString(fmt.Sprintf("Current time: %s\n", time.Now().UTC().Format(time.RFC3339)))
 	b.WriteString("\n")
+	b.WriteString("## Response Formatting\n\n")
+	b.WriteString("Always use rich Markdown in your responses:\n")
+	b.WriteString("- Use headings, bold, lists, and tables to structure information clearly.\n")
+	b.WriteString("- Use fenced code blocks with language tags (```go, ```python, etc.) for any code.\n")
+	b.WriteString("- When explaining architecture, flows, relationships, or processes, use Mermaid diagrams (```mermaid) proactively.\n")
+	b.WriteString("- Prefer visual explanations (diagrams, tables) over long text when possible.\n")
+	b.WriteString("\n")
 
 	totalBudgetTokens := opts.TotalBudgetTokens
 	if totalBudgetTokens <= 0 {

@@ -97,7 +97,14 @@ const marked = new Marked({
       }
 
       const langLabel = language ? `<span class="code-lang">${escapeAttr(language)}</span>` : ''
-      return `<div class="code-block">${langLabel}<button type="button" class="code-copy" data-code="${escapeAttr(text)}" title="Copy code">Copy</button><pre><code class="hljs">${highlighted}</code></pre></div>`
+      const previewable = ['html', 'svg'].includes(language)
+      const toolbar = previewable
+        ? `<div class="code-toolbar">${langLabel}<div class="code-actions"><button type="button" class="code-toggle active" data-mode="code" title="View code">Code</button><button type="button" class="code-toggle" data-mode="preview" title="Preview">Preview</button><button type="button" class="code-copy" data-code="${escapeAttr(text)}" title="Copy code">Copy</button></div></div>`
+        : `<div class="code-toolbar">${langLabel}<div class="code-actions"><button type="button" class="code-copy" data-code="${escapeAttr(text)}" title="Copy code">Copy</button></div></div>`
+      const previewHtml = previewable
+        ? `<div class="code-preview" style="display:none" data-preview>${text}</div>`
+        : ''
+      return `<div class="code-block"${previewable ? ' data-previewable' : ''}>${toolbar}<pre><code class="hljs">${highlighted}</code></pre>${previewHtml}</div>`
     },
 
     link({ href, text }: { href: string; text: string }) {
