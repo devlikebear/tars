@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-04-04
+
+### Changed
+
+- Default workspace path changed from `./workspace` to `~/.tars/workspace`
+- Config path is now fixed at `~/.tars/config/config.yaml` (not user-overridable)
+- `tars service install/start` no longer requires `--workspace-dir` or `--config` flags
+- `ResolveConfigPath` fallback chain now includes `~/.tars/config/config.yaml`
+
+### Added
+
+- `tars init move --to <dir>` subcommand to relocate workspace directory (updates config and advises service restart)
+- Auto-migration of legacy configs (`./workspace/config/tars.config.yaml`) on `tars init`
+- `config.TarsHomeDir()`, `config.FixedConfigPath()`, `config.DefaultWorkspaceDir()` helpers
+
 ## [0.15.1] - 2026-04-04
 
 ### Added
