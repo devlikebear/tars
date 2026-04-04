@@ -2,8 +2,10 @@
   import { onMount, onDestroy } from 'svelte'
   import { getEventsHistory, getHeartbeatStatus, listProjects, streamEvents } from '../lib/api'
   import type { HeartbeatStatus, NotificationMessage, Project, Session } from '../lib/types'
+  import type { Artifact } from '../lib/artifacts'
   import SessionSidebar from './SessionSidebar.svelte'
   import ChatPanel from './ChatPanel.svelte'
+  import ArtifactPanel from './ArtifactPanel.svelte'
 
   interface Props {
     sessionId?: string
@@ -27,6 +29,10 @@
     chatKey++
   })
 
+  // Artifact panel
+  let chatArtifacts: Artifact[] = $state([])
+  let showArtifacts = $state(false)
+
   let sidebarRef: SessionSidebar | undefined = $state()
   let stopStream: (() => void) | null = null
 
@@ -44,12 +50,16 @@
   function handleSelectSession(session: Session) {
     selectedSessionId = session.id
     chatKey++
+    chatArtifacts = []
+    showArtifacts = false
     onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
   }
 
   function handleNewSession() {
     selectedSessionId = null
     chatKey++
+    chatArtifacts = []
+    showArtifacts = false
     onNavigate('/console/chat')
   }
 
@@ -57,6 +67,12 @@
     sidebarRef?.load()
   }
 
+  function handleArtifactsChange(arts: Artifact[]) {
+    chatArtifacts = arts
+    if (arts.length > 0 && !showArtifacts) {
+      showArtifacts = true
+    }
+  }
 
   async function loadDashboard() {
     const [p, h, e] = await Promise.allSettled([
@@ -108,9 +124,16 @@
       <span class="pulse-val">{unreadCount}</span>
       <span class="pulse-lbl">Unread</span>
     </div>
+    {#if chatArtifacts.length > 0}
+      <div class="pulse-sep"></div>
+      <button type="button" class="pulse-artifact-btn" onclick={() => { showArtifacts = !showArtifacts }}>
+        <span class="pulse-val">{chatArtifacts.length}</span>
+        <span class="pulse-lbl">Artifacts {showArtifacts ? '\u25B8' : '\u25C2'}</span>
+      </button>
+    {/if}
   </div>
 
-  <div class="chat-layout">
+  <div class="chat-layout" class:has-artifacts={showArtifacts}>
     <!-- Session sidebar -->
     <aside class="chat-sidebar">
       <SessionSidebar
@@ -128,9 +151,17 @@
           sessionId={selectedSessionId || undefined}
           {initialPrompt}
           onSessionChange={handleSessionChange}
+          onArtifactsChange={handleArtifactsChange}
         />
       {/key}
     </main>
+
+    <!-- Artifact panel -->
+    {#if showArtifacts}
+      <aside class="chat-artifacts">
+        <ArtifactPanel artifacts={chatArtifacts} onClose={() => { showArtifacts = false }} />
+      </aside>
+    {/if}
   </div>
 </div>
 
@@ -181,12 +212,30 @@
     flex-shrink: 0;
   }
 
+  .pulse-artifact-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-sm);
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .pulse-artifact-btn:hover {
+    background: var(--bg-elevated);
+  }
+
   /* Layout */
   .chat-layout {
     flex: 1;
     display: grid;
     grid-template-columns: 280px 1fr;
     min-height: 0;
+  }
+  .chat-layout.has-artifacts {
+    grid-template-columns: 280px 1fr 280px;
   }
 
   .chat-sidebar {
@@ -204,11 +253,17 @@
     overflow: hidden;
   }
 
+  .chat-artifacts {
+    border-left: 1px solid var(--border-subtle);
+    background: var(--bg-surface);
+    overflow: hidden;
+  }
+
   @media (max-width: 768px) {
-    .chat-layout {
+    .chat-layout, .chat-layout.has-artifacts {
       grid-template-columns: 1fr;
     }
-    .chat-sidebar {
+    .chat-sidebar, .chat-artifacts {
       display: none;
     }
     .chat-pulse {

@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte'
   import { streamChat, listSessions, getSessionHistory, renameSession } from '../lib/api'
   import type { ChatAttachment, ChatEvent, SessionMessage } from '../lib/types'
+  import { extractArtifact, extractArtifactsFromHistory, type Artifact } from '../lib/artifacts'
   import MarkdownContent from './MarkdownContent.svelte'
 
   type ChatMessage = {
@@ -21,9 +22,12 @@
     initialPrompt?: string
     autoSend?: boolean
     onSessionChange?: () => void
+    onArtifactsChange?: (artifacts: Artifact[]) => void
   }
 
-  let { projectId, sessionId, initialPrompt, autoSend, onSessionChange }: Props = $props()
+  let { projectId, sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange }: Props = $props()
+
+  let artifacts: Artifact[] = $state([])
 
   let chatInput = $state('')
   let chatBusy = $state(false)
@@ -78,6 +82,8 @@
           }
         }
         chatMessages = [...chatMessages]
+        artifacts = extractArtifactsFromHistory(chatMessages)
+        if (artifacts.length > 0) onArtifactsChange?.(artifacts)
         autoTitled = true
         void scrollToBottom()
       }
@@ -125,6 +131,24 @@
             }
             chatMessages = [...chatMessages]
             void scrollToBottom()
+
+            // Track artifacts
+            const artifact = extractArtifact(
+              event.tool_name || '',
+              event.tool_call_id,
+              event.tool_args_preview,
+              event.tool_result_preview,
+            )
+            if (artifact) {
+              // Update existing or add new
+              const existing = artifacts.findIndex((a) => a.path === artifact.path)
+              if (existing >= 0) {
+                artifacts[existing] = artifact
+              } else {
+                artifacts = [...artifacts, artifact]
+              }
+              onArtifactsChange?.(artifacts)
+            }
           }
         } else if (event.phase === 'skill_selected' && event.skill_name) {
           const skillMsg: ChatMessage = {
@@ -383,6 +407,9 @@
           }
         }
         chatMessages = [...chatMessages]
+        // Extract artifacts from history
+        artifacts = extractArtifactsFromHistory(chatMessages)
+        if (artifacts.length > 0) onArtifactsChange?.(artifacts)
         autoTitled = true
         void scrollToBottom()
       } catch { /* ignore */ }
