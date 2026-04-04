@@ -20,13 +20,18 @@
   let heartbeat: HeartbeatStatus | null = $state(null)
   let unreadCount = $state(0)
 
-  // Session selection — synced via $effect from sessionId prop
+  // Session selection — synced from sessionId prop
   let selectedSessionId: string | null = $state(null)
   let chatKey = $state(0) // force ChatPanel re-mount
-  // Initialize from prop on first render
+  let lastPropSessionId: string | undefined = undefined
+
   $effect(() => {
-    selectedSessionId = sessionId || null
-    chatKey++
+    const sid = sessionId // read prop dependency
+    if (sid !== lastPropSessionId) {
+      lastPropSessionId = sid
+      selectedSessionId = sid || null
+      chatKey++
+    }
   })
 
   // Artifact panel
