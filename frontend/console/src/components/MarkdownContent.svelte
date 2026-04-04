@@ -38,27 +38,42 @@
       })
     }
 
-    // Code/Preview toggle buttons
+    // Code/Preview toggle buttons (for code-block and mermaid-block)
     for (const btn of containerEl.querySelectorAll<HTMLButtonElement>('.code-toggle')) {
       on(btn, 'click', () => {
-        const block = btn.closest('.code-block')
+        const block = btn.closest('.code-block, .mermaid-block')
         if (!block) return
         const mode = btn.getAttribute('data-mode')
-        const pre = block.querySelector('pre')
-        const preview = block.querySelector<HTMLElement>('[data-preview]')
-        if (!pre || !preview) return
 
         // Update active state on sibling toggles
         for (const sib of block.querySelectorAll('.code-toggle')) {
           sib.classList.toggle('active', sib === btn)
         }
 
-        if (mode === 'preview') {
-          pre.style.display = 'none'
-          preview.style.display = 'block'
-        } else {
-          pre.style.display = ''
-          preview.style.display = 'none'
+        // For code-block (html/svg preview)
+        const codeBlockPre = block.querySelector<HTMLElement>(':scope > pre')
+        const codeBlockPreview = block.querySelector<HTMLElement>('[data-preview]')
+        if (codeBlockPre && codeBlockPreview) {
+          if (mode === 'preview') {
+            codeBlockPre.style.display = 'none'
+            codeBlockPreview.style.display = 'block'
+          } else {
+            codeBlockPre.style.display = ''
+            codeBlockPreview.style.display = 'none'
+          }
+        }
+
+        // For mermaid-block (code/diagram toggle)
+        const mermaidSrc = block.querySelector<HTMLElement>('.mermaid-src')
+        const mermaidPreview = block.querySelector<HTMLElement>('[data-mermaid-preview]')
+        if (mermaidSrc && mermaidPreview) {
+          if (mode === 'code') {
+            mermaidSrc.style.display = ''
+            mermaidPreview.style.display = 'none'
+          } else {
+            mermaidSrc.style.display = 'none'
+            mermaidPreview.style.display = ''
+          }
         }
       })
     }
@@ -107,12 +122,15 @@
       const block = freshBlocks[i]
       const graph = block.getAttribute('data-graph')
       if (!graph) continue
+      const previewEl = block.querySelector<HTMLElement>('[data-mermaid-preview]')
+      if (!previewEl) continue
       try {
         const id = `mermaid-${Date.now()}-${i}`
         const { svg } = await mermaidModule!.render(id, graph)
-        block.innerHTML = svg
+        previewEl.innerHTML = svg
         block.setAttribute('data-rendered', 'true')
       } catch {
+        previewEl.innerHTML = '<span style="color:var(--error);font-size:var(--text-xs)">Diagram render failed</span>'
         block.classList.add('mermaid-error')
         block.setAttribute('data-rendered', 'true')
       }

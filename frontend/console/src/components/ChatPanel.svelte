@@ -224,7 +224,7 @@
       await streamChat(
         {
           message,
-          session_id: chatSessionId || undefined,
+          session_id: chatSessionId || 'new',
           project_id: projectId || undefined,
           attachments: chatAttachments,
         },
@@ -325,6 +325,30 @@
       })
     }
     return results
+  }
+
+  function copyMessageText(text: string) {
+    navigator.clipboard.writeText(text).catch(() => {})
+  }
+
+  export function exportAsMarkdown(): string {
+    const lines: string[] = []
+    for (const msg of chatMessages) {
+      if (msg.role === 'system') continue
+      if (msg.role === 'tool') {
+        lines.push(`> **Tool: ${msg.toolName}**`)
+        if (msg.toolArgs) lines.push(`> Args: \`${msg.toolArgs}\``)
+        if (msg.toolResult) lines.push(`> Result: \`${msg.toolResult}\``)
+        lines.push('')
+      } else if (msg.role === 'user') {
+        lines.push(`### User\n\n${msg.text}\n`)
+      } else if (msg.role === 'assistant') {
+        lines.push(`### Assistant\n\n${msg.text}\n`)
+      } else if (msg.role === 'error') {
+        lines.push(`> **Error:** ${msg.text}\n`)
+      }
+    }
+    return lines.join('\n')
   }
 
   function fmtSize(bytes: number): string {
@@ -432,14 +456,6 @@
       <div class="drop-label">Drop files here</div>
     </div>
   {/if}
-  <div class="chat-toolbar-row">
-    <div class="chat-status">
-      {chatBusy ? 'streaming' : chatStatusLine || 'idle'}
-    </div>
-    {#if chatSessionId}
-      <span class="session-id" title={chatSessionId}>{chatSessionId.slice(0, 8)}</span>
-    {/if}
-  </div>
   <div class="chat-log" bind:this={chatLogEl} onscroll={handleScroll}>
     {#each chatMessages as msg}
       {#if msg.role === 'tool'}
@@ -468,7 +484,12 @@
         </div>
       {:else}
         <div class="chat-msg chat-{msg.role}">
-          <span class="chat-role">{msg.role}</span>
+          <div class="chat-msg-header">
+            <span class="chat-role">{msg.role}</span>
+            {#if (msg.role === 'assistant' || msg.role === 'user') && msg.text}
+              <button type="button" class="msg-copy-btn" title="Copy message" onclick={() => copyMessageText(msg.text)}>Copy</button>
+            {/if}
+          </div>
           {#if msg.role === 'assistant'}
             <div class="chat-text"><MarkdownContent text={msg.text} /></div>
           {:else}
@@ -563,27 +584,6 @@
     color: var(--accent);
   }
 
-  .chat-toolbar-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-2);
-  }
-
-  .chat-status {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-  }
-
-  .session-id {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-ghost);
-    background: var(--bg-elevated);
-    padding: 1px var(--space-1);
-    border-radius: var(--radius-sm);
-  }
-
   .chat-log {
     display: grid;
     gap: var(--space-2);
@@ -670,14 +670,34 @@
     overflow-y: auto;
   }
 
+  .chat-msg-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-1);
+  }
+
   .chat-role {
     font-family: var(--font-display);
     font-size: var(--text-xs);
     font-weight: 500;
     color: var(--text-tertiary);
-    margin-bottom: var(--space-1);
-    display: block;
   }
+
+  .msg-copy-btn {
+    background: none;
+    border: none;
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    transition: opacity var(--duration-fast), color var(--duration-fast);
+  }
+  .chat-msg:hover .msg-copy-btn { opacity: 1; }
+  .msg-copy-btn:hover { color: var(--accent); }
 
   .chat-text {
     white-space: pre-wrap;

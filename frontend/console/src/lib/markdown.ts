@@ -77,9 +77,9 @@ const marked = new Marked({
     code({ text, lang }: { text: string; lang?: string }) {
       const language = lang?.trim().toLowerCase() || ''
 
-      // Mermaid diagrams: render as placeholder for lazy-load
+      // Mermaid diagrams: toolbar + code/preview toggle + lazy-load
       if (language === 'mermaid') {
-        return `<div class="mermaid-block" data-graph="${escapeAttr(text)}"><pre class="mermaid-src"><code>${escapeAttr(text)}</code></pre></div>`
+        return `<div class="mermaid-block" data-graph="${escapeAttr(text)}"><div class="code-toolbar"><span class="code-lang">mermaid</span><div class="code-actions"><button type="button" class="code-toggle" data-mode="code" title="View code">Code</button><button type="button" class="code-toggle active" data-mode="preview" title="Preview diagram">Preview</button><button type="button" class="code-copy" data-code="${escapeAttr(text)}" title="Copy code">Copy</button></div></div><pre class="mermaid-src" style="display:none"><code>${escapeAttr(text)}</code></pre><div class="mermaid-preview" data-mermaid-preview></div></div>`
       }
 
       // Syntax highlighting
