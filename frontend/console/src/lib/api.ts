@@ -28,6 +28,8 @@ import type {
   BoardTask,
   HeartbeatStatus,
   HeartbeatRunResult,
+  KnowledgeGraph,
+  KnowledgeNote,
   Session,
   SessionMessage,
   UpdateCronJobRequest,
@@ -209,6 +211,55 @@ export async function compactSession(sessionId: string): Promise<{ compacted: bo
     `/v1/admin/sessions/${encodeURIComponent(sessionId)}/compact`,
     { method: 'POST' },
   )
+}
+
+// --- Knowledge Base ---
+
+export async function listKnowledgeNotes(params: {
+  query?: string
+  kind?: string
+  tag?: string
+  project_id?: string
+  limit?: number
+} = {}): Promise<{ count: number; items: KnowledgeNote[] }> {
+  const search = new URLSearchParams()
+  if (params.query?.trim()) search.set('query', params.query.trim())
+  if (params.kind?.trim()) search.set('kind', params.kind.trim())
+  if (params.tag?.trim()) search.set('tag', params.tag.trim())
+  if (params.project_id?.trim()) search.set('project_id', params.project_id.trim())
+  if (params.limit && params.limit > 0) search.set('limit', String(params.limit))
+  const qs = search.toString()
+  return requestJSON<{ count: number; items: KnowledgeNote[] }>(`/v1/memory/kb/notes${qs ? `?${qs}` : ''}`)
+}
+
+export async function getKnowledgeNote(slug: string): Promise<KnowledgeNote> {
+  return requestJSON<KnowledgeNote>(`/v1/memory/kb/notes/${encodeURIComponent(slug)}`)
+}
+
+export async function createKnowledgeNote(payload: Partial<KnowledgeNote>): Promise<KnowledgeNote> {
+  return requestJSON<KnowledgeNote>('/v1/memory/kb/notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateKnowledgeNote(slug: string, payload: Partial<KnowledgeNote>): Promise<KnowledgeNote> {
+  return requestJSON<KnowledgeNote>(`/v1/memory/kb/notes/${encodeURIComponent(slug)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteKnowledgeNote(slug: string): Promise<{ deleted: boolean; slug: string }> {
+  return requestJSON<{ deleted: boolean; slug: string }>(`/v1/memory/kb/notes/${encodeURIComponent(slug)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getKnowledgeGraph(): Promise<KnowledgeGraph> {
+  return requestJSON<KnowledgeGraph>('/v1/memory/kb/graph')
 }
 
 // --- Session Config ---

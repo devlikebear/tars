@@ -1,10 +1,13 @@
 package tarsserver
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 )
 
@@ -15,6 +18,7 @@ type chatMemoryHookInput struct {
 	UserMessage      string
 	AssistantMessage string
 	AssistantTime    time.Time
+	LLMClient        llm.Client
 }
 
 func applyPostChatMemoryHooks(input chatMemoryHookInput) error {
@@ -58,7 +62,79 @@ func applyPostChatMemoryHooks(input chatMemoryHookInput) error {
 			return err
 		}
 	}
+	if err := maybeCompileKnowledgeBase(input); err != nil {
+		return err
+	}
 	return nil
+}
+
+func maybeCompileKnowledgeBase(input chatMemoryHookInput) error {
+	if input.LLMClient == nil {
+		return nil
+	}
+	store := memory.NewKnowledgeStore(input.WorkspaceDir, nil)
+	existing, err := store.List(memory.KnowledgeListOptions{Limit: 12})
+	if err != nil {
+		return nil
+	}
+
+	var refs strings.Builder
+	for _, item := range existing {
+		_, _ = fmt.Fprintf(&refs, "- slug=%s | title=%s | kind=%s | summary=%s\n", item.Slug, item.Title, item.Kind, trimForMemory(item.Summary, 120))
+	}
+	if refs.Len() == 0 {
+		refs.WriteString("- (none)\n")
+	}
+
+	userPrompt := fmt.Sprintf(
+		"Compile durable knowledge from the latest chat turn into a wiki-style knowledge base.\n"+
+			"Return strict JSON with shape {\"notes\":[{\"slug\":\"lower-kebab-case\",\"title\":\"...\",\"kind\":\"preference|fact|decision|habit|workflow|topic|project_note|person|note\",\"summary\":\"...\",\"body\":\"...\",\"tags\":[\"...\"],\"aliases\":[\"...\"],\"links\":[{\"target\":\"slug\",\"relation\":\"related_to|depends_on|supports|part_of|contradicts\"}],\"project_id\":\"...\",\"source_session\":\"...\"}],\"edges\":[{\"source\":\"slug\",\"target\":\"slug\",\"relation\":\"...\"}]}.\n"+
+			"Only keep durable knowledge worth reusing after chat/session reset.\n"+
+			"Reuse existing slugs when the note already exists. Return empty arrays when nothing durable should be added.\n\n"+
+			"Current note refs:\n%s\n"+
+			"Session: %s\nProject: %s\nUser: %s\nAssistant: %s",
+		refs.String(),
+		strings.TrimSpace(input.SessionID),
+		strings.TrimSpace(input.ProjectID),
+		strings.TrimSpace(input.UserMessage),
+		strings.TrimSpace(input.AssistantMessage),
+	)
+	resp, err := input.LLMClient.Chat(context.Background(), []llm.ChatMessage{
+		{
+			Role:    "system",
+			Content: "You maintain a structured markdown knowledge base. Return strict JSON only.",
+		},
+		{
+			Role:    "user",
+			Content: userPrompt,
+		},
+	}, llm.ChatOptions{})
+	if err != nil {
+		return nil
+	}
+	raw := strings.TrimSpace(resp.Message.Content)
+	raw = strings.TrimPrefix(raw, "```json")
+	raw = strings.TrimPrefix(raw, "```")
+	raw = strings.TrimSuffix(raw, "```")
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	var update memory.KnowledgeUpdate
+	if err := json.Unmarshal([]byte(raw), &update); err != nil {
+		return nil
+	}
+	for i := range update.Notes {
+		if strings.TrimSpace(update.Notes[i].ProjectID) == "" {
+			update.Notes[i].ProjectID = strings.TrimSpace(input.ProjectID)
+		}
+		if strings.TrimSpace(update.Notes[i].SourceSession) == "" {
+			update.Notes[i].SourceSession = strings.TrimSpace(input.SessionID)
+		}
+		update.Notes[i].UpdatedAt = input.AssistantTime.UTC()
+	}
+	return store.ApplyUpdate(update, input.AssistantTime.UTC())
 }
 
 func shouldPromoteToMemory(userMessage string) bool {

@@ -50,6 +50,7 @@ type apiRouteHandlers struct {
 	chat            http.Handler
 	sessions        http.Handler
 	projects        http.Handler
+	memory          http.Handler
 	console         http.Handler
 	usage           http.Handler
 	ops             http.Handler
@@ -493,11 +494,13 @@ func buildAPIMux(
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
 	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
 	filesystemHandler := newFilesystemBrowseHandler(logger)
+	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildSemanticMemoryService(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg)), logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		heartbeat:       heartbeatHandler,
 		chat:            chatHandler,
 		sessions:        sessionHandler,
 		projects:        projectHandler,
+		memory:          memoryHandler,
 		console:         consoleHandler,
 		usage:           usageHandler,
 		ops:             opsHandler,
@@ -579,6 +582,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/projects", handlers.projects)
 	mux.Handle("/v1/projects/", handlers.projects)
 	mux.Handle("/v1/project-briefs/", handlers.projects)
+	mux.Handle("/v1/memory/kb/notes", handlers.memory)
+	mux.Handle("/v1/memory/kb/notes/", handlers.memory)
+	mux.Handle("/v1/memory/kb/graph", handlers.memory)
 	mux.Handle("/console", handlers.console)
 	mux.Handle("/console/", handlers.console)
 	if viteProxy := newConsoleDevViteHandler(); viteProxy != nil {

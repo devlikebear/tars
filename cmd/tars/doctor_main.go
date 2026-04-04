@@ -334,6 +334,11 @@ func doctorLooksLikeLocalPath(value string) bool {
 func missingWorkspacePaths(root string, bundledPluginsDir string) []string {
 	required := []string{
 		filepath.Join(root, "memory"),
+		filepath.Join(root, "memory", "raw"),
+		filepath.Join(root, "memory", "wiki"),
+		filepath.Join(root, "memory", "wiki", "notes"),
+		filepath.Join(root, "memory", "wiki", "index.md"),
+		filepath.Join(root, "memory", "wiki", "graph.json"),
 		filepath.Join(root, "projects"),
 		filepath.Join(root, "_shared"),
 		filepath.Join(root, "MEMORY.md"),

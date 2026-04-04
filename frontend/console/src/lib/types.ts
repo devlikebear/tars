@@ -254,6 +254,49 @@ export type ProjectState = {
   stop_reason?: string
 }
 
+export type KnowledgeLink = {
+  target: string
+  relation?: string
+}
+
+export type KnowledgeNote = {
+  slug: string
+  title: string
+  kind?: string
+  summary?: string
+  body?: string
+  tags?: string[]
+  aliases?: string[]
+  links?: KnowledgeLink[]
+  project_id?: string
+  source_session?: string
+  created_at?: string
+  updated_at?: string
+  path?: string
+}
+
+export type KnowledgeGraphNode = {
+  slug: string
+  title: string
+  kind?: string
+  path?: string
+  tags?: string[]
+  updated_at?: string
+}
+
+export type KnowledgeGraphEdge = {
+  source: string
+  target: string
+  relation?: string
+  updated_at?: string
+}
+
+export type KnowledgeGraph = {
+  updated_at?: string
+  nodes: KnowledgeGraphNode[]
+  edges: KnowledgeGraphEdge[]
+}
+
 export type CreateProjectRequest = {
   name: string
   type?: string

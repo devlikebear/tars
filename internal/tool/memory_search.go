@@ -37,7 +37,7 @@ type memorySearchResult struct {
 func NewMemorySearchTool(workspaceDir string, semantic *memory.Service) Tool {
 	return Tool{
 		Name:        "memory_search",
-		Description: "Search MEMORY.md, daily memory logs, and optionally past session transcripts for text snippets with source metadata.",
+		Description: "Search knowledge-base notes, MEMORY.md, daily memory logs, and optionally past session transcripts for text snippets with source metadata.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
@@ -111,7 +111,23 @@ type memorySearchFile struct {
 }
 
 func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int, includeMemory, includeDaily, includeSessions bool, semantic *memory.Service) ([]memorySearchMatch, string) {
-	var results []memorySearchMatch
+	results := make([]memorySearchMatch, 0, limit)
+	seen := map[string]struct{}{}
+	appendMatch := func(match memorySearchMatch) bool {
+		key := strings.ToLower(strings.TrimSpace(match.Source + "|" + match.Snippet))
+		if match.Line > 0 {
+			key = fmt.Sprintf("%s|%d", key, match.Line)
+		}
+		if key == "|" {
+			return false
+		}
+		if _, exists := seen[key]; exists {
+			return false
+		}
+		seen[key] = struct{}{}
+		results = append(results, match)
+		return len(results) >= limit
+	}
 
 	if semantic != nil {
 		hits, err := semantic.Search(ctx, memory.SearchRequest{
@@ -120,29 +136,30 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 		})
 		if err == nil && len(hits) > 0 {
 			for _, hit := range hits {
-				results = append(results, memorySearchMatch{
+				if appendMatch(memorySearchMatch{
 					Source:  hit.Source,
 					Date:    hit.Date.UTC().Format("2006-01-02"),
 					Line:    0,
 					Snippet: hit.Snippet,
-				})
+				}) {
+					return results, ""
+				}
 			}
-			// If sessions also requested, merge session results
-			if includeSessions && len(results) < limit {
-				sessionResults := searchSessionTranscripts(workspaceDir, query, limit-len(results))
-				results = append(results, sessionResults...)
-			}
+		}
+	}
+
+	for _, match := range searchKnowledgeNotes(workspaceDir, query, limit-len(results)) {
+		if appendMatch(match) {
 			return results, ""
 		}
 	}
 
 	files := collectMemorySearchFiles(workspaceDir, includeMemory, includeDaily)
-	if len(files) == 0 && !includeSessions {
+	if len(files) == 0 && !includeSessions && len(results) == 0 {
 		return nil, "no memory files found"
 	}
 
 	lowerQuery := strings.ToLower(query)
-	results = make([]memorySearchMatch, 0, limit)
 	for _, file := range files {
 		raw, err := os.ReadFile(file.Path)
 		if err != nil {
@@ -153,13 +170,12 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 			if !strings.Contains(strings.ToLower(line), lowerQuery) {
 				continue
 			}
-			results = append(results, memorySearchMatch{
+			if appendMatch(memorySearchMatch{
 				Source:  file.Source,
 				Date:    file.Date,
 				Line:    i + 1,
 				Snippet: strings.TrimSpace(line),
-			})
-			if len(results) >= limit {
+			}) {
 				return results, ""
 			}
 		}
@@ -167,13 +183,50 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 
 	if includeSessions && len(results) < limit {
 		sessionResults := searchSessionTranscripts(workspaceDir, query, limit-len(results))
-		results = append(results, sessionResults...)
+		for _, match := range sessionResults {
+			if appendMatch(match) {
+				return results, ""
+			}
+		}
 	}
 
 	if len(results) == 0 {
 		return nil, "no matches found"
 	}
 	return results, ""
+}
+
+func searchKnowledgeNotes(workspaceDir, query string, limit int) []memorySearchMatch {
+	if limit <= 0 {
+		return nil
+	}
+	items, err := memory.NewKnowledgeStore(workspaceDir, nil).List(memory.KnowledgeListOptions{
+		Query: query,
+		Limit: limit,
+	})
+	if err != nil {
+		return nil
+	}
+	results := make([]memorySearchMatch, 0, len(items))
+	for _, item := range items {
+		snippet := strings.TrimSpace(item.Summary)
+		if snippet == "" {
+			snippet = strings.TrimSpace(item.Body)
+		}
+		if snippet == "" {
+			snippet = strings.TrimSpace(item.Title)
+		}
+		if len(snippet) > 200 {
+			snippet = snippet[:200] + "..."
+		}
+		results = append(results, memorySearchMatch{
+			Source:  item.Path,
+			Date:    item.UpdatedAt.UTC().Format("2006-01-02"),
+			Line:    0,
+			Snippet: snippet,
+		})
+	}
+	return results
 }
 
 func searchSessionTranscripts(workspaceDir, query string, limit int) []memorySearchMatch {
