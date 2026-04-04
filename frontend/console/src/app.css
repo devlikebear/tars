@@ -265,6 +265,243 @@ textarea { resize: vertical; min-height: 80px; }
 ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
+/* ── Markdown rendered content (chat-md) ──────── */
+.chat-md {
+  white-space: normal;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.chat-md p {
+  margin: 0 0 var(--space-2);
+}
+.chat-md p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-md strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.chat-md em {
+  font-style: italic;
+}
+.chat-md del {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
+}
+
+.chat-md a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chat-md a:hover {
+  color: var(--accent-hover);
+}
+
+/* Headings */
+.chat-md h1, .chat-md h2, .chat-md h3,
+.chat-md h4, .chat-md h5, .chat-md h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--text-primary);
+}
+.chat-md h1 { font-size: var(--text-xl); }
+.chat-md h2 { font-size: var(--text-lg); }
+.chat-md h3 { font-size: var(--text-base); }
+.chat-md h4 { font-size: var(--text-sm); }
+.chat-md h5, .chat-md h6 { font-size: var(--text-sm); color: var(--text-secondary); }
+
+/* Lists */
+.chat-md ul, .chat-md ol {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-5);
+}
+.chat-md li {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+.chat-md li > ul, .chat-md li > ol {
+  margin-top: var(--space-1);
+  margin-bottom: 0;
+}
+.chat-md input[type="checkbox"] {
+  accent-color: var(--accent);
+  margin-right: var(--space-1);
+  vertical-align: middle;
+}
+
+/* Inline code */
+.chat-md code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.chat-md pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* Code blocks */
+.chat-md .code-block {
+  position: relative;
+  margin: var(--space-2) 0;
+}
+.chat-md .code-block pre {
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  padding-top: var(--space-5);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  margin: 0;
+}
+.chat-md .code-lang {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-ghost);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.chat-md .code-copy {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-2);
+  padding: 2px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  z-index: 1;
+}
+.chat-md .code-copy:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+.chat-md .code-copy.copied {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+/* Tables */
+.chat-md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-3) 0;
+  font-size: var(--text-xs);
+}
+.chat-md thead th {
+  background: var(--bg-elevated);
+  font-family: var(--font-display);
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+}
+.chat-md tbody td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+.chat-md tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+/* Blockquote */
+.chat-md blockquote {
+  border-left: 3px solid var(--accent);
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-4);
+  background: rgba(224, 145, 69, 0.05);
+  color: var(--text-secondary);
+}
+.chat-md blockquote p {
+  margin-bottom: var(--space-1);
+}
+.chat-md blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* Horizontal rule */
+.chat-md hr {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: var(--space-4) 0;
+}
+
+/* Mermaid diagrams */
+.chat-md .mermaid-block {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  text-align: center;
+}
+.chat-md .mermaid-block svg {
+  max-width: 100%;
+  height: auto;
+}
+.chat-md .mermaid-src {
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: left;
+}
+.chat-md .mermaid-error {
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+/* highlight.js token colors — Warm Workshop theme */
+.chat-md .hljs { color: var(--text-primary); }
+.chat-md .hljs-keyword,
+.chat-md .hljs-selector-tag,
+.chat-md .hljs-built_in { color: #c792ea; }
+.chat-md .hljs-string,
+.chat-md .hljs-attr { color: #c3e88d; }
+.chat-md .hljs-number,
+.chat-md .hljs-literal { color: #f78c6c; }
+.chat-md .hljs-comment,
+.chat-md .hljs-quote { color: #6b6560; font-style: italic; }
+.chat-md .hljs-function .hljs-title,
+.chat-md .hljs-title.function_ { color: #82aaff; }
+.chat-md .hljs-type,
+.chat-md .hljs-title.class_ { color: #ffcb6b; }
+.chat-md .hljs-variable,
+.chat-md .hljs-template-variable { color: #f07178; }
+.chat-md .hljs-params { color: var(--text-secondary); }
+.chat-md .hljs-meta { color: #89ddff; }
+.chat-md .hljs-regexp { color: #89ddff; }
+.chat-md .hljs-tag { color: #f07178; }
+.chat-md .hljs-name { color: #f07178; }
+.chat-md .hljs-selector-id,
+.chat-md .hljs-selector-class { color: #ffcb6b; }
+.chat-md .hljs-addition { color: #c3e88d; background: rgba(195, 232, 141, 0.08); }
+.chat-md .hljs-deletion { color: #f07178; background: rgba(240, 113, 120, 0.08); }
+
 @media (max-width: 768px) {
   :root { --nav-width: 0px; }
 }

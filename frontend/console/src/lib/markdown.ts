@@ -1,97 +1,125 @@
 /**
- * Lightweight markdown renderer for chat messages.
- * Handles: code blocks, inline code, bold, italic, links, lists, line breaks.
- * No external dependencies.
+ * Markdown renderer for chat messages.
+ * Uses marked (GFM) + highlight.js for syntax highlighting.
  */
 
-function escapeHtml(text: string): string {
+import { Marked } from 'marked'
+import hljs from 'highlight.js/lib/core'
+
+// Selective language imports to keep bundle small
+import go from 'highlight.js/lib/languages/go'
+import typescript from 'highlight.js/lib/languages/typescript'
+import javascript from 'highlight.js/lib/languages/javascript'
+import python from 'highlight.js/lib/languages/python'
+import bash from 'highlight.js/lib/languages/bash'
+import shell from 'highlight.js/lib/languages/shell'
+import json from 'highlight.js/lib/languages/json'
+import yaml from 'highlight.js/lib/languages/yaml'
+import css from 'highlight.js/lib/languages/css'
+import xml from 'highlight.js/lib/languages/xml'
+import sql from 'highlight.js/lib/languages/sql'
+import markdown from 'highlight.js/lib/languages/markdown'
+import java from 'highlight.js/lib/languages/java'
+import rust from 'highlight.js/lib/languages/rust'
+import cpp from 'highlight.js/lib/languages/cpp'
+import diff from 'highlight.js/lib/languages/diff'
+import dockerfile from 'highlight.js/lib/languages/dockerfile'
+import kotlin from 'highlight.js/lib/languages/kotlin'
+import swift from 'highlight.js/lib/languages/swift'
+import ruby from 'highlight.js/lib/languages/ruby'
+
+hljs.registerLanguage('go', go)
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('ts', typescript)
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('js', javascript)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('py', python)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('sh', bash)
+hljs.registerLanguage('shell', shell)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('yaml', yaml)
+hljs.registerLanguage('yml', yaml)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('html', xml)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('markdown', markdown)
+hljs.registerLanguage('md', markdown)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('rust', rust)
+hljs.registerLanguage('rs', rust)
+hljs.registerLanguage('cpp', cpp)
+hljs.registerLanguage('c', cpp)
+hljs.registerLanguage('diff', diff)
+hljs.registerLanguage('dockerfile', dockerfile)
+hljs.registerLanguage('docker', dockerfile)
+hljs.registerLanguage('kotlin', kotlin)
+hljs.registerLanguage('kt', kotlin)
+hljs.registerLanguage('swift', swift)
+hljs.registerLanguage('ruby', ruby)
+hljs.registerLanguage('rb', ruby)
+
+function escapeAttr(text: string): string {
   return text
     .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }
 
-function renderInline(text: string): string {
-  return text
-    // inline code
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // bold
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // italic
-    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
-    // links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+const marked = new Marked({
+  gfm: true,
+  breaks: false,
+  renderer: {
+    code({ text, lang }: { text: string; lang?: string }) {
+      const language = lang?.trim().toLowerCase() || ''
+
+      // Mermaid diagrams: render as placeholder for lazy-load
+      if (language === 'mermaid') {
+        return `<div class="mermaid-block" data-graph="${escapeAttr(text)}"><pre class="mermaid-src"><code>${escapeAttr(text)}</code></pre></div>`
+      }
+
+      // Syntax highlighting
+      let highlighted: string
+      if (language && hljs.getLanguage(language)) {
+        highlighted = hljs.highlight(text, { language }).value
+      } else if (language) {
+        try {
+          highlighted = hljs.highlightAuto(text).value
+        } catch {
+          highlighted = escapeAttr(text)
+        }
+      } else {
+        highlighted = escapeAttr(text)
+      }
+
+      const langLabel = language ? `<span class="code-lang">${escapeAttr(language)}</span>` : ''
+      return `<div class="code-block">${langLabel}<button type="button" class="code-copy" data-code="${escapeAttr(text)}" title="Copy code">Copy</button><pre><code class="hljs">${highlighted}</code></pre></div>`
+    },
+
+    link({ href, text }: { href: string; text: string }) {
+      return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener">${text}</a>`
+    },
+
+    checkbox({ checked }: { checked: boolean }) {
+      return `<input type="checkbox" disabled ${checked ? 'checked' : ''} />`
+    },
+  },
+})
+
+// Strip dangerous tags from output
+function sanitize(html: string): string {
+  return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
 }
 
 export function renderMarkdown(source: string): string {
-  const lines = source.split('\n')
-  const out: string[] = []
-  let i = 0
-  let inList = false
-
-  while (i < lines.length) {
-    const line = lines[i]
-
-    // fenced code block
-    if (line.startsWith('```')) {
-      const lang = line.slice(3).trim()
-      const codeLines: string[] = []
-      i++
-      while (i < lines.length && !lines[i].startsWith('```')) {
-        codeLines.push(escapeHtml(lines[i]))
-        i++
-      }
-      i++ // skip closing ```
-      if (inList) { out.push('</ul>'); inList = false }
-      const langAttr = lang ? ` data-lang="${escapeHtml(lang)}"` : ''
-      out.push(`<pre${langAttr}><code>${codeLines.join('\n')}</code></pre>`)
-      continue
-    }
-
-    // unordered list item
-    if (/^[\-\*]\s/.test(line)) {
-      if (!inList) { out.push('<ul>'); inList = true }
-      out.push(`<li>${renderInline(escapeHtml(line.replace(/^[\-\*]\s+/, '')))}</li>`)
-      i++
-      continue
-    }
-
-    // ordered list item
-    if (/^\d+\.\s/.test(line)) {
-      if (!inList) { out.push('<ol>'); inList = true }
-      out.push(`<li>${renderInline(escapeHtml(line.replace(/^\d+\.\s+/, '')))}</li>`)
-      i++
-      continue
-    }
-
-    // close list if needed
-    if (inList && line.trim() !== '') {
-      out.push('</ul>')
-      inList = false
-    }
-
-    // heading
-    const headingMatch = line.match(/^(#{1,4})\s+(.+)/)
-    if (headingMatch) {
-      const level = headingMatch[1].length
-      out.push(`<h${level + 2}>${renderInline(escapeHtml(headingMatch[2]))}</h${level + 2}>`)
-      i++
-      continue
-    }
-
-    // blank line
-    if (line.trim() === '') {
-      if (inList) { out.push('</ul>'); inList = false }
-      i++
-      continue
-    }
-
-    // paragraph
-    out.push(`<p>${renderInline(escapeHtml(line))}</p>`)
-    i++
+  if (!source) return ''
+  const result = marked.parse(source)
+  if (typeof result === 'string') {
+    return sanitize(result)
   }
-
-  if (inList) { out.push('</ul>') }
-  return out.join('\n')
+  return ''
 }
