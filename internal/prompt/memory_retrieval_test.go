@@ -63,7 +63,7 @@ func TestBuild_IncludesRelevantMemoryByQueryAndProject(t *testing.T) {
 		SessionID:    "sess-alpha",
 	})
 
-	if !strings.Contains(result, "## Relevant Memory") {
+	if !strings.Contains(result, "## Prior Context") {
 		t.Fatalf("expected relevant memory section, got %q", result)
 	}
 	if !strings.Contains(result, "black coffee") {
@@ -101,7 +101,7 @@ func TestBuild_RelevantMemoryUsesOtherSessionCompactionSummary(t *testing.T) {
 		SessionID:    "current-session",
 	})
 
-	if !strings.Contains(result, "## Relevant Memory") {
+	if !strings.Contains(result, "## Prior Context") {
 		t.Fatalf("expected relevant memory section, got %q", result)
 	}
 	if !strings.Contains(result, "black coffee") {
@@ -126,7 +126,7 @@ func TestBuild_SkipsRelevantMemoryWhenNoMeaningfulMatches(t *testing.T) {
 		Query:        "hello there",
 	})
 
-	if strings.Contains(result, "## Relevant Memory") {
+	if strings.Contains(result, "## Prior Context") {
 		t.Fatalf("did not expect relevant memory section without matches, got %q", result)
 	}
 }
@@ -153,7 +153,7 @@ func TestBuild_IncludesBriefWhenNoProjectIsActive(t *testing.T) {
 		SessionID:    briefID,
 	})
 
-	if !strings.Contains(result, "## Relevant Memory") {
+	if !strings.Contains(result, "## Prior Context") {
 		t.Fatalf("expected relevant memory section, got %q", result)
 	}
 	if !strings.Contains(result, "serialized space opera") {
@@ -237,7 +237,7 @@ func TestBuild_UsesSemanticMemoryForParaphraseQueries(t *testing.T) {
 		MemorySearcher: semantic,
 	})
 
-	if !strings.Contains(result, "## Relevant Memory") {
+	if !strings.Contains(result, "## Prior Context") {
 		t.Fatalf("expected relevant memory section, got %q", result)
 	}
 	if !strings.Contains(result, "decaf espresso") {

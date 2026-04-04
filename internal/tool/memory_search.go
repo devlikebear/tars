@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 const (
 	defaultMemorySearchLimit = 8
 	maxMemorySearchLimit     = 30
+	maxSessionsToSearch      = 10
 )
 
 type memorySearchMatch struct {
@@ -35,24 +37,26 @@ type memorySearchResult struct {
 func NewMemorySearchTool(workspaceDir string, semantic *memory.Service) Tool {
 	return Tool{
 		Name:        "memory_search",
-		Description: "Search MEMORY.md and daily memory logs for text snippets with source metadata.",
+		Description: "Search MEMORY.md, daily memory logs, and optionally past session transcripts for text snippets with source metadata.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
     "query":{"type":"string","description":"Search query text."},
     "limit":{"type":"integer","minimum":1,"maximum":30,"default":8},
     "include_memory":{"type":"boolean","default":true},
-    "include_daily":{"type":"boolean","default":true}
+    "include_daily":{"type":"boolean","default":true},
+    "include_sessions":{"type":"boolean","default":false,"description":"Search past session transcripts for conversational continuity."}
   },
   "required":["query"],
   "additionalProperties":false
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			var input struct {
-				Query         string `json:"query"`
-				Limit         *int   `json:"limit,omitempty"`
-				IncludeMemory *bool  `json:"include_memory,omitempty"`
-				IncludeDaily  *bool  `json:"include_daily,omitempty"`
+				Query           string `json:"query"`
+				Limit           *int   `json:"limit,omitempty"`
+				IncludeMemory   *bool  `json:"include_memory,omitempty"`
+				IncludeDaily    *bool  `json:"include_daily,omitempty"`
+				IncludeSessions *bool  `json:"include_sessions,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return memorySearchErrorResult(fmt.Sprintf("invalid arguments: %v", err)), nil
@@ -73,8 +77,12 @@ func NewMemorySearchTool(workspaceDir string, semantic *memory.Service) Tool {
 			if input.IncludeDaily != nil {
 				includeDaily = *input.IncludeDaily
 			}
+			includeSessions := false
+			if input.IncludeSessions != nil {
+				includeSessions = *input.IncludeSessions
+			}
 
-			matches, message := runMemorySearch(context.Background(), workspaceDir, query, limit, includeMemory, includeDaily, semantic)
+			matches, message := runMemorySearch(context.Background(), workspaceDir, query, limit, includeMemory, includeDaily, includeSessions, semantic)
 			payload := memorySearchResult{
 				Query:   query,
 				Limit:   limit,
@@ -102,14 +110,15 @@ type memorySearchFile struct {
 	MTime  time.Time
 }
 
-func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int, includeMemory, includeDaily bool, semantic *memory.Service) ([]memorySearchMatch, string) {
+func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int, includeMemory, includeDaily, includeSessions bool, semantic *memory.Service) ([]memorySearchMatch, string) {
+	var results []memorySearchMatch
+
 	if semantic != nil {
 		hits, err := semantic.Search(ctx, memory.SearchRequest{
 			Query: query,
 			Limit: limit,
 		})
 		if err == nil && len(hits) > 0 {
-			results := make([]memorySearchMatch, 0, len(hits))
 			for _, hit := range hits {
 				results = append(results, memorySearchMatch{
 					Source:  hit.Source,
@@ -118,16 +127,22 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 					Snippet: hit.Snippet,
 				})
 			}
+			// If sessions also requested, merge session results
+			if includeSessions && len(results) < limit {
+				sessionResults := searchSessionTranscripts(workspaceDir, query, limit-len(results))
+				results = append(results, sessionResults...)
+			}
 			return results, ""
 		}
 	}
+
 	files := collectMemorySearchFiles(workspaceDir, includeMemory, includeDaily)
-	if len(files) == 0 {
+	if len(files) == 0 && !includeSessions {
 		return nil, "no memory files found"
 	}
 
 	lowerQuery := strings.ToLower(query)
-	results := make([]memorySearchMatch, 0, limit)
+	results = make([]memorySearchMatch, 0, limit)
 	for _, file := range files {
 		raw, err := os.ReadFile(file.Path)
 		if err != nil {
@@ -150,10 +165,68 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 		}
 	}
 
+	if includeSessions && len(results) < limit {
+		sessionResults := searchSessionTranscripts(workspaceDir, query, limit-len(results))
+		results = append(results, sessionResults...)
+	}
+
 	if len(results) == 0 {
 		return nil, "no matches found"
 	}
 	return results, ""
+}
+
+func searchSessionTranscripts(workspaceDir, query string, limit int) []memorySearchMatch {
+	store := session.NewStore(workspaceDir)
+	sessions, err := store.List()
+	if err != nil || len(sessions) == 0 {
+		return nil
+	}
+	sort.SliceStable(sessions, func(i, j int) bool {
+		return sessions[i].UpdatedAt.After(sessions[j].UpdatedAt)
+	})
+	if len(sessions) > maxSessionsToSearch {
+		sessions = sessions[:maxSessionsToSearch]
+	}
+
+	lowerQuery := strings.ToLower(query)
+	var results []memorySearchMatch
+	for _, item := range sessions {
+		if strings.TrimSpace(item.ID) == "" {
+			continue
+		}
+		msgs, err := session.ReadMessages(store.TranscriptPath(item.ID))
+		if err != nil || len(msgs) == 0 {
+			continue
+		}
+		for _, msg := range msgs {
+			if msg.Role == "system" || msg.Role == "tool" {
+				continue
+			}
+			content := strings.TrimSpace(msg.Content)
+			if content == "" || !strings.Contains(strings.ToLower(content), lowerQuery) {
+				continue
+			}
+			snippet := content
+			if len(snippet) > 200 {
+				snippet = snippet[:200] + "..."
+			}
+			date := item.UpdatedAt.UTC().Format("2006-01-02")
+			if !msg.Timestamp.IsZero() {
+				date = msg.Timestamp.UTC().Format("2006-01-02")
+			}
+			results = append(results, memorySearchMatch{
+				Source:  fmt.Sprintf("session:%s", item.ID),
+				Date:    date,
+				Line:    0,
+				Snippet: fmt.Sprintf("[%s] %s", msg.Role, snippet),
+			})
+			if len(results) >= limit {
+				return results
+			}
+		}
+	}
+	return results
 }
 
 func collectMemorySearchFiles(workspaceDir string, includeMemory, includeDaily bool) []memorySearchFile {

@@ -12,7 +12,7 @@ import (
 	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/heartbeat"
 	"github.com/devlikebear/tars/internal/memory"
-"github.com/devlikebear/tars/internal/tool"
+	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 )
 
@@ -88,6 +88,7 @@ func buildChatToolingOptions(
 		ToolsDefaultSet:        strings.TrimSpace(strings.ToLower(toolsDefaultSet)),
 		ToolsAllowHighRiskUser: toolsAllowHighRiskUser,
 		MemorySemanticConfig:   memorySemanticConfig,
+		MemoryCache:            newMemoryCache(defaultMemoryCacheTTL),
 		APIMaxInflightChat:     apiMaxInflightChat,
 		UsageTracker:           usageTracker,
 	}

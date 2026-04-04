@@ -227,9 +227,11 @@ func shouldForceMemoryToolCall(userMessage string) bool {
 		return false
 	}
 	keywords := []string{
+		// Explicit memory tool references
 		"memory_search",
 		"memory_get",
 		"memory",
+		// English memory keywords
 		"remember",
 		"recall",
 		"history",
@@ -238,12 +240,35 @@ func shouldForceMemoryToolCall(userMessage string) bool {
 		"what did i",
 		"what do you remember",
 		"preference",
+		// English conversational continuity
+		"last time",
+		"continue where",
+		"more about",
+		"that thing",
+		"we discussed",
+		"we talked",
+		"you said",
+		"you told me",
+		"you mentioned",
+		// Korean memory keywords
 		"기억",
 		"메모리",
 		"기록",
 		"이전",
 		"지난",
 		"취향",
+		// Korean conversational continuity
+		"그거",
+		"그때",
+		"아까",
+		"전에 말한",
+		"지난번",
+		"더 알려줘",
+		"자세히",
+		"그 얘기",
+		"말했던",
+		"얘기했던",
+		"알려줬던",
 	}
 	for _, kw := range keywords {
 		if strings.Contains(v, kw) {

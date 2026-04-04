@@ -49,7 +49,7 @@ func buildRelevantMemorySection(opts BuildOptions, budgetTokens int) (string, in
 	}
 
 	var section strings.Builder
-	section.WriteString("## Relevant Memory\n\n")
+	section.WriteString("## Prior Context\n\n")
 	usedTokens := sectionHeaderTokenCost
 	remainingTokens -= sectionHeaderTokenCost
 	added := 0
@@ -65,14 +65,15 @@ func buildRelevantMemorySection(opts BuildOptions, budgetTokens int) (string, in
 		if snippet == "" {
 			continue
 		}
-		line := fmt.Sprintf("- [%s] %s\n", source, snippet)
+		tag := classifySourceTag(source)
+		line := fmt.Sprintf("- [%s|%s] %s\n", tag, source, snippet)
 		lineTokens := estimateTokens(line)
 		if lineTokens > remainingTokens {
 			snippet = trimToBudget(match.Snippet, 240, max(1, remainingTokens-8))
 			if snippet == "" {
 				continue
 			}
-			line = fmt.Sprintf("- [%s] %s\n", source, snippet)
+			line = fmt.Sprintf("- [%s|%s] %s\n", tag, source, snippet)
 			lineTokens = estimateTokens(line)
 			if lineTokens > remainingTokens {
 				break
@@ -350,6 +351,10 @@ func collectSessionMatches(opts BuildOptions, terms []string) []relevantMemoryMa
 			snippet = recentSessionExcerpt(msgs, sessionFallbackMessageCount)
 			base = 75
 		}
+		if snippet == "" {
+			snippet = searchSessionMessageContent(msgs, terms, 3)
+			base = 90
+		}
 		snippet = strings.TrimSpace(snippet)
 		if snippet == "" {
 			continue
@@ -477,4 +482,47 @@ func recencyScore(ts time.Time) int {
 	default:
 		return 0
 	}
+}
+
+func classifySourceTag(source string) string {
+	switch {
+	case strings.HasPrefix(source, "session:"):
+		return "conversation"
+	case strings.HasPrefix(source, "experience"):
+		return "experience"
+	case strings.HasPrefix(source, "projects/"):
+		return "project"
+	case strings.HasPrefix(source, "_shared/"):
+		return "brief"
+	case source == "MEMORY.md":
+		return "memory"
+	case strings.HasPrefix(source, "memory/"):
+		return "daily"
+	default:
+		return "context"
+	}
+}
+
+func searchSessionMessageContent(msgs []session.Message, terms []string, maxMatches int) string {
+	var parts []string
+	for _, msg := range msgs {
+		if msg.Role == "system" || msg.Role == "tool" {
+			continue
+		}
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		score := scoreRelevantText(content, terms)
+		if score > 0 {
+			if len(content) > 160 {
+				content = content[:160] + "..."
+			}
+			parts = append(parts, fmt.Sprintf("[%s] %s", msg.Role, content))
+			if len(parts) >= maxMatches {
+				break
+			}
+		}
+	}
+	return strings.Join(parts, " | ")
 }
