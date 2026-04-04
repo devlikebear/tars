@@ -79,6 +79,148 @@ type KnowledgeGraph struct {
 	Edges     []KnowledgeGraphEdge `json:"edges"`
 }
 
+func (n KnowledgeGraphNode) MarshalJSON() ([]byte, error) {
+	type knowledgeGraphNodeJSON struct {
+		Slug      string   `json:"slug"`
+		Title     string   `json:"title"`
+		Kind      string   `json:"kind,omitempty"`
+		Path      string   `json:"path,omitempty"`
+		Tags      []string `json:"tags,omitempty"`
+		UpdatedAt string   `json:"updated_at,omitempty"`
+	}
+	payload := knowledgeGraphNodeJSON{
+		Slug:  n.Slug,
+		Title: n.Title,
+		Kind:  n.Kind,
+		Path:  n.Path,
+		Tags:  n.Tags,
+	}
+	if !n.UpdatedAt.IsZero() {
+		payload.UpdatedAt = n.UpdatedAt.UTC().Format(time.RFC3339)
+	}
+	return json.Marshal(payload)
+}
+
+func (n *KnowledgeGraphNode) UnmarshalJSON(data []byte) error {
+	type knowledgeGraphNodeJSON struct {
+		Slug      string   `json:"slug"`
+		Title     string   `json:"title"`
+		Kind      string   `json:"kind,omitempty"`
+		Path      string   `json:"path,omitempty"`
+		Tags      []string `json:"tags,omitempty"`
+		UpdatedAt string   `json:"updated_at,omitempty"`
+	}
+	var payload knowledgeGraphNodeJSON
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	updatedAt, err := parseKnowledgeJSONTime(payload.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("parse knowledge graph node updated_at: %w", err)
+	}
+	*n = KnowledgeGraphNode{
+		Slug:      payload.Slug,
+		Title:     payload.Title,
+		Kind:      payload.Kind,
+		Path:      payload.Path,
+		Tags:      payload.Tags,
+		UpdatedAt: updatedAt,
+	}
+	return nil
+}
+
+func (e KnowledgeGraphEdge) MarshalJSON() ([]byte, error) {
+	type knowledgeGraphEdgeJSON struct {
+		Source    string `json:"source"`
+		Target    string `json:"target"`
+		Relation  string `json:"relation,omitempty"`
+		UpdatedAt string `json:"updated_at,omitempty"`
+	}
+	payload := knowledgeGraphEdgeJSON{
+		Source:   e.Source,
+		Target:   e.Target,
+		Relation: e.Relation,
+	}
+	if !e.UpdatedAt.IsZero() {
+		payload.UpdatedAt = e.UpdatedAt.UTC().Format(time.RFC3339)
+	}
+	return json.Marshal(payload)
+}
+
+func (e *KnowledgeGraphEdge) UnmarshalJSON(data []byte) error {
+	type knowledgeGraphEdgeJSON struct {
+		Source    string `json:"source"`
+		Target    string `json:"target"`
+		Relation  string `json:"relation,omitempty"`
+		UpdatedAt string `json:"updated_at,omitempty"`
+	}
+	var payload knowledgeGraphEdgeJSON
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	updatedAt, err := parseKnowledgeJSONTime(payload.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("parse knowledge graph edge updated_at: %w", err)
+	}
+	*e = KnowledgeGraphEdge{
+		Source:    payload.Source,
+		Target:    payload.Target,
+		Relation:  payload.Relation,
+		UpdatedAt: updatedAt,
+	}
+	return nil
+}
+
+func (g KnowledgeGraph) MarshalJSON() ([]byte, error) {
+	type knowledgeGraphJSON struct {
+		UpdatedAt string               `json:"updated_at,omitempty"`
+		Nodes     []KnowledgeGraphNode `json:"nodes"`
+		Edges     []KnowledgeGraphEdge `json:"edges"`
+	}
+	payload := knowledgeGraphJSON{
+		Nodes: g.Nodes,
+		Edges: g.Edges,
+	}
+	if payload.Nodes == nil {
+		payload.Nodes = []KnowledgeGraphNode{}
+	}
+	if payload.Edges == nil {
+		payload.Edges = []KnowledgeGraphEdge{}
+	}
+	if !g.UpdatedAt.IsZero() {
+		payload.UpdatedAt = g.UpdatedAt.UTC().Format(time.RFC3339)
+	}
+	return json.Marshal(payload)
+}
+
+func (g *KnowledgeGraph) UnmarshalJSON(data []byte) error {
+	type knowledgeGraphJSON struct {
+		UpdatedAt string               `json:"updated_at,omitempty"`
+		Nodes     []KnowledgeGraphNode `json:"nodes"`
+		Edges     []KnowledgeGraphEdge `json:"edges"`
+	}
+	var payload knowledgeGraphJSON
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	updatedAt, err := parseKnowledgeJSONTime(payload.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("parse knowledge graph updated_at: %w", err)
+	}
+	*g = KnowledgeGraph{
+		UpdatedAt: updatedAt,
+		Nodes:     payload.Nodes,
+		Edges:     payload.Edges,
+	}
+	if g.Nodes == nil {
+		g.Nodes = []KnowledgeGraphNode{}
+	}
+	if g.Edges == nil {
+		g.Edges = []KnowledgeGraphEdge{}
+	}
+	return nil
+}
+
 type KnowledgeUpdate struct {
 	Notes []KnowledgeNote      `json:"notes"`
 	Edges []KnowledgeGraphEdge `json:"edges,omitempty"`
@@ -360,13 +502,27 @@ func (s *KnowledgeStore) Graph() (KnowledgeGraph, error) {
 	}
 	var graph KnowledgeGraph
 	if err := json.Unmarshal(raw, &graph); err != nil {
-		return KnowledgeGraph{}, fmt.Errorf("decode knowledge graph: %w", err)
+		if rebuildErr := s.rebuildArtifacts(); rebuildErr != nil {
+			return KnowledgeGraph{}, fmt.Errorf("decode knowledge graph: %w", err)
+		}
+		raw, err = os.ReadFile(filepath.Join(s.root, "memory", "wiki", "graph.json"))
+		if err != nil {
+			return KnowledgeGraph{}, fmt.Errorf("read knowledge graph: %w", err)
+		}
+		if err := json.Unmarshal(raw, &graph); err != nil {
+			return KnowledgeGraph{}, fmt.Errorf("decode knowledge graph: %w", err)
+		}
 	}
 	if graph.Nodes == nil {
 		graph.Nodes = []KnowledgeGraphNode{}
 	}
 	if graph.Edges == nil {
 		graph.Edges = []KnowledgeGraphEdge{}
+	}
+	if strings.Contains(string(raw), `"updated_at": ""`) {
+		if err := s.rebuildArtifacts(); err != nil {
+			return KnowledgeGraph{}, err
+		}
 	}
 	return graph, nil
 }
@@ -636,6 +792,18 @@ func normalizeKnowledgeSlug(raw string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+func parseKnowledgeJSONTime(raw string) (time.Time, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed.UTC(), nil
 }
 
 func normalizeKnowledgeKind(raw string) string {
