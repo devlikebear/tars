@@ -13,7 +13,6 @@ func TestBuild(t *testing.T) {
 	// Create bootstrap files
 	files := map[string]string{
 		"IDENTITY.md":  "# IDENTITY.md\n\nName: TARS",
-		"SOUL.md":      "# SOUL.md\n\nFriendly assistant",
 		"USER.md":      "# USER.md\n\nName: Alice",
 		"PROJECT.md":   "# PROJECT.md\n\nProject policy",
 		"AGENTS.md":    "# AGENTS.md\n\nOperating guidelines",
@@ -29,10 +28,9 @@ func TestBuild(t *testing.T) {
 
 	result := Build(BuildOptions{WorkspaceDir: root})
 
-	// Static bootstrap should include identity/user/project/heartbeat and absorb soul.
+	// Static bootstrap should include identity/user/project/heartbeat.
 	wantIncluded := []string{
 		files["IDENTITY.md"],
-		files["SOUL.md"],
 		files["USER.md"],
 		files["PROJECT.md"],
 		files["HEARTBEAT.md"],
@@ -60,7 +58,6 @@ func TestBuild_SubAgent(t *testing.T) {
 
 	files := map[string]string{
 		"IDENTITY.md":  "# IDENTITY.md\n\nName: TARS",
-		"SOUL.md":      "# SOUL.md\n\nFriendly assistant",
 		"USER.md":      "# USER.md\n\nName: Alice",
 		"PROJECT.md":   "# PROJECT.md\n\nProject policy",
 		"AGENTS.md":    "# AGENTS.md\n\nOperating guidelines",
@@ -87,9 +84,6 @@ func TestBuild_SubAgent(t *testing.T) {
 	// Sub-agent should NOT include other files
 	if strings.Contains(result, "Name: TARS") {
 		t.Error("sub-agent prompt should not contain IDENTITY.md content")
-	}
-	if strings.Contains(result, "Friendly assistant") {
-		t.Error("sub-agent prompt should not contain SOUL.md content")
 	}
 	if strings.Contains(result, "Name: Alice") {
 		t.Error("sub-agent prompt should not contain USER.md content")
@@ -135,24 +129,15 @@ func TestBuild_MissingFiles(t *testing.T) {
 	}
 }
 
-func TestBuild_SoulIsAppendedToIdentitySection(t *testing.T) {
+func TestBuild_IdentitySection(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "IDENTITY.md"), []byte("identity core"), 0o644); err != nil {
 		t.Fatalf("write IDENTITY.md: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "SOUL.md"), []byte("persona extension"), 0o644); err != nil {
-		t.Fatalf("write SOUL.md: %v", err)
 	}
 
 	result := Build(BuildOptions{WorkspaceDir: root})
 	if !strings.Contains(result, "identity core") {
 		t.Fatalf("expected identity content in prompt, got %q", result)
-	}
-	if !strings.Contains(result, "persona extension") {
-		t.Fatalf("expected deprecated SOUL.md content in prompt, got %q", result)
-	}
-	if strings.Contains(result, "## Persona") {
-		t.Fatalf("expected SOUL.md to be absorbed into identity, got %q", result)
 	}
 }
 

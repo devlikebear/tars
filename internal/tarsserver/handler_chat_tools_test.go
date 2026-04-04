@@ -43,10 +43,9 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 		"read_file",
 		"write_file",
 		"edit_file",
-		"workspace_sysprompt_get",
-		"workspace_sysprompt_set",
-		"agent_sysprompt_get",
-		"agent_sysprompt_set",
+		"workspace",
+		"memory",
+		"knowledge",
 	} {
 		if !names[want] {
 			t.Fatalf("expected tool %q in /v1/chat/tools, got %+v", want, names)

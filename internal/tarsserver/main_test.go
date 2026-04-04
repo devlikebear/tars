@@ -1246,8 +1246,8 @@ func TestChatAPI_WithAutomationTools(t *testing.T) {
 					ToolCalls: []llm.ToolCall{
 						{
 							ID:        "call_cron_1",
-							Name:      "cron_list",
-							Arguments: `{}`,
+							Name:      "cron",
+							Arguments: `{"action":"list"}`,
 						},
 					},
 				},

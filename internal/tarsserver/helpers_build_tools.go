@@ -25,13 +25,6 @@ func buildAutomationTools(
 ) []tool.Tool {
 	return []tool.Tool{
 		tool.NewCronTool(cronStore, cronRunner),
-		tool.NewCronListTool(cronStore),
-		tool.NewCronGetTool(cronStore),
-		tool.NewCronRunsTool(cronStore),
-		tool.NewCronCreateTool(cronStore),
-		tool.NewCronUpdateTool(cronStore),
-		tool.NewCronDeleteTool(cronStore),
-		tool.NewCronRunTool(cronStore, cronRunner),
 		tool.NewHeartbeatTool(
 			heartbeatStatusProvider,
 			func(ctx context.Context) (tool.HeartbeatRunResult, error) {
@@ -50,22 +43,6 @@ func buildAutomationTools(
 				}, err
 			},
 		),
-		tool.NewHeartbeatStatusTool(heartbeatStatusProvider),
-		tool.NewHeartbeatRunOnceTool(func(ctx context.Context) (tool.HeartbeatRunResult, error) {
-			if heartbeatRunner == nil {
-				return tool.HeartbeatRunResult{}, fmt.Errorf("heartbeat runner is not configured")
-			}
-			ranAt := nowFn().UTC()
-			result, err := heartbeatRunner(ctx)
-			return tool.HeartbeatRunResult{
-				Response:     result.Response,
-				Skipped:      result.Skipped,
-				SkipReason:   result.SkipReason,
-				Logged:       result.Logged,
-				Acknowledged: result.Acknowledged,
-				RanAt:        ranAt,
-			}, err
-		}),
 	}
 }
 

@@ -97,13 +97,6 @@ var workspaceBootstrapFileSpecs = []WorkspaceBootstrapFileSpec{
 		EnsureByDefault: true,
 	},
 	{
-		Path:            "SOUL.md",
-		Title:           "Legacy Persona Extension",
-		Description:     "Optional legacy persona extension absorbed into the Identity section.",
-		DefaultContent:  "",
-		EnsureByDefault: false,
-	},
-	{
 		Path:            "HEARTBEAT.md",
 		Title:           "Heartbeat Guidance",
 		Description:     "Background/heartbeat operating guidance.",

@@ -21,12 +21,7 @@
   let editorContent = $state('')
   let tools: ChatToolInfo[] = $state([])
 
-  const relevantToolNames = [
-    'workspace_sysprompt_get',
-    'workspace_sysprompt_set',
-    'agent_sysprompt_get',
-    'agent_sysprompt_set',
-  ]
+  const relevantToolNames = ['workspace']
 
   let workspaceFiles = $derived(files.filter((item) => item.scope === 'workspace'))
   let agentFiles = $derived(files.filter((item) => item.scope === 'agent'))
@@ -122,8 +117,6 @@
         return 'Workspace-level project policy.'
       case 'HEARTBEAT.md':
         return 'Heartbeat/background execution guidance.'
-      case 'SOUL.md':
-        return 'Legacy persona extension folded into identity.'
       default:
         return 'System prompt source file.'
     }
@@ -246,10 +239,12 @@
       <div class="diag-block">
         <div class="group-label">Role Semantics</div>
         <div class="diag-list">
-          <div><strong>USER.md</strong><span>User identity and durable personal facts.</span></div>
-          <div><strong>IDENTITY.md</strong><span>TARS persona and self-identity.</span></div>
-          <div><strong>AGENTS.md</strong><span>Agent execution rules and autonomy boundaries.</span></div>
-          <div><strong>TOOLS.md</strong><span>Tool environment guidance and usage policy.</span></div>
+          <div><strong>USER.md</strong><span>User identity — name, language, preferences.</span></div>
+          <div><strong>IDENTITY.md</strong><span>TARS persona, voice, and behavioral style.</span></div>
+          <div><strong>PROJECT.md</strong><span>Workspace-level project execution policy.</span></div>
+          <div><strong>HEARTBEAT.md</strong><span>Background heartbeat operating guidance.</span></div>
+          <div><strong>AGENTS.md</strong><span>Sub-agent execution rules and autonomy.</span></div>
+          <div><strong>TOOLS.md</strong><span>Tool constraints and usage patterns.</span></div>
         </div>
       </div>
 
