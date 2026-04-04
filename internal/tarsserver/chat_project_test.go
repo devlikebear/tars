@@ -106,7 +106,7 @@ func TestChatAPI_RelevantMemoryIsInjectedIntoSystemPrompt(t *testing.T) {
 		t.Fatalf("expected captured llm messages")
 	}
 	systemPrompt := mockClient.seenMessages[0][0].Content
-	if !strings.Contains(systemPrompt, "## Relevant Memory") {
+	if !strings.Contains(systemPrompt, "## Prior Context") {
 		t.Fatalf("expected relevant memory section in system prompt, got %q", systemPrompt)
 	}
 	if !strings.Contains(systemPrompt, "black coffee") {

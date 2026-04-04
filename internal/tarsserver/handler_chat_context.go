@@ -90,7 +90,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	if err != nil {
 		return chatRunState{}, http.StatusNotFound, err.Error(), err
 	}
-	contextDetails, err := prepareChatContextDetailsWithExtensions(requestWorkspaceDir, resolvedProjectID, sessionID, req.Message, extSnapshot, invokedSkill, deps.tooling.MemorySemanticConfig)
+	contextDetails, err := prepareChatContextDetailsWithCache(requestWorkspaceDir, resolvedProjectID, sessionID, req.Message, extSnapshot, invokedSkill, deps.tooling.MemoryCache, deps.tooling.MemorySemanticConfig)
 	if err != nil {
 		return chatRunState{}, http.StatusInternalServerError, "prepare chat context failed", err
 	}

@@ -104,8 +104,27 @@ func prepareChatContextDetailsWithExtensions(
 	invokedSkill *skill.Definition,
 	semanticCfg ...memory.SemanticConfig,
 ) (preparedChatContext, error) {
+	return prepareChatContextDetailsWithCache(workspaceDir, projectID, sessionID, userMessage, extSnapshot, invokedSkill, nil, semanticCfg...)
+}
+
+func prepareChatContextDetailsWithCache(
+	workspaceDir string,
+	projectID string,
+	sessionID string,
+	userMessage string,
+	extSnapshot extensions.Snapshot,
+	invokedSkill *skill.Definition,
+	cache *memoryCache,
+	semanticCfg ...memory.SemanticConfig,
+) (preparedChatContext, error) {
 	forceRelevantMemory := shouldForceMemoryToolCall(userMessage)
 	extSnapshot = filterSkillSnapshotForProject(extSnapshot, workspaceDir, projectID)
+
+	// Cache-first strategy: check cache before expensive memory search
+	if cached, ok := cache.Get(userMessage, projectID, sessionID); ok {
+		return buildContextFromResult(cached, extSnapshot, invokedSkill, forceRelevantMemory), nil
+	}
+
 	memService := buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...))
 	buildResult := prompt.BuildResultFor(prompt.BuildOptions{
 		WorkspaceDir:        workspaceDir,
@@ -115,6 +134,19 @@ func prepareChatContextDetailsWithExtensions(
 		MemorySearcher:      memService,
 		ForceRelevantMemory: forceRelevantMemory,
 	})
+
+	// Populate cache with search result
+	cache.Put(userMessage, projectID, sessionID, buildResult)
+
+	return buildContextFromResult(buildResult, extSnapshot, invokedSkill, forceRelevantMemory), nil
+}
+
+func buildContextFromResult(
+	buildResult prompt.BuildResult,
+	extSnapshot extensions.Snapshot,
+	invokedSkill *skill.Definition,
+	forceRelevantMemory bool,
+) preparedChatContext {
 	systemPrompt := buildResult.Prompt
 	systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
 	if strings.TrimSpace(extSnapshot.SkillPrompt) != "" {
@@ -142,7 +174,7 @@ func prepareChatContextDetailsWithExtensions(
 		SystemPromptTokens:   promptTokenEstimate(systemPrompt),
 		RelevantMemoryCount:  buildResult.RelevantMemoryCount,
 		RelevantMemoryTokens: buildResult.RelevantTokens,
-	}, nil
+	}
 }
 
 func filterSkillSnapshotForProject(snapshot extensions.Snapshot, workspaceDir, projectID string) extensions.Snapshot {
@@ -474,6 +506,7 @@ type chatToolingOptions struct {
 	ToolsDefaultSet             string
 	ToolsAllowHighRiskUser      bool
 	MemorySemanticConfig        memory.SemanticConfig
+	MemoryCache                 *memoryCache
 	APIMaxInflightChat          int
 	UsageTracker                *usage.Tracker
 	OpsManager                  *ops.Manager

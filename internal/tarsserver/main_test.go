@@ -2642,6 +2642,30 @@ func TestShouldForceMemoryToolCall(t *testing.T) {
 	if shouldForceMemoryToolCall("hello there") {
 		t.Fatalf("expected non-memory query to be false")
 	}
+	// Conversational continuity - Korean
+	if !shouldForceMemoryToolCall("지난번에 말한 요리법 알려줘") {
+		t.Fatalf("expected korean continuity pattern to be true")
+	}
+	if !shouldForceMemoryToolCall("그거 더 알려줘") {
+		t.Fatalf("expected korean continuity '그거' to be true")
+	}
+	if !shouldForceMemoryToolCall("아까 얘기했던 거") {
+		t.Fatalf("expected korean continuity '아까' to be true")
+	}
+	// Conversational continuity - English
+	if !shouldForceMemoryToolCall("continue where we left off") {
+		t.Fatalf("expected english continuity 'continue where' to be true")
+	}
+	if !shouldForceMemoryToolCall("tell me more about that thing") {
+		t.Fatalf("expected english continuity 'more about' to be true")
+	}
+	if !shouldForceMemoryToolCall("you mentioned something about cooking") {
+		t.Fatalf("expected english continuity 'you mentioned' to be true")
+	}
+	// Negative case
+	if shouldForceMemoryToolCall("what's the weather today") {
+		t.Fatalf("expected non-memory query to be false")
+	}
 }
 
 func readLatestDailyLog(t *testing.T, root string) (string, []byte) {

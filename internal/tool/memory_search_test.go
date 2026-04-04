@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 type searchStubEmbedder struct {
@@ -184,5 +185,110 @@ func TestMemorySearchTool_UsesSemanticSearchBeforeLexicalFallback(t *testing.T) 
 
 	if !strings.Contains(result.Text(), "decaf espresso") {
 		t.Fatalf("expected semantic result in output, got %q", result.Text())
+	}
+}
+
+func TestMemorySearchTool_IncludeSessions(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("test session")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	transcriptPath := store.TranscriptPath(sess.ID)
+	if err := session.AppendMessage(transcriptPath, session.Message{
+		Role:      "user",
+		Content:   "I love cooking pasta with tomato sauce",
+		Timestamp: time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("append user message: %v", err)
+	}
+	if err := session.AppendMessage(transcriptPath, session.Message{
+		Role:      "assistant",
+		Content:   "Here is a great pasta recipe with tomato sauce",
+		Timestamp: time.Date(2026, 3, 20, 10, 1, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("append assistant message: %v", err)
+	}
+
+	tl := NewMemorySearchTool(root, nil)
+
+	// With include_sessions=true, should find session content
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"pasta","include_sessions":true}`))
+	if err != nil {
+		t.Fatalf("execute with sessions: %v", err)
+	}
+	if !strings.Contains(result.Text(), "pasta") {
+		t.Fatalf("expected session match for pasta, got %q", result.Text())
+	}
+	if !strings.Contains(result.Text(), "session:") {
+		t.Fatalf("expected session source prefix, got %q", result.Text())
+	}
+
+	// With include_sessions=false (default), should NOT find session content
+	result2, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"pasta","include_sessions":false}`))
+	if err != nil {
+		t.Fatalf("execute without sessions: %v", err)
+	}
+	if strings.Contains(result2.Text(), "session:") {
+		t.Fatalf("did not expect session results when include_sessions=false, got %q", result2.Text())
+	}
+}
+
+func TestMemorySearchTool_IncludeSessionsSkipsSystemAndTool(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("test")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	transcriptPath := store.TranscriptPath(sess.ID)
+	// System and tool messages should be skipped
+	if err := session.AppendMessage(transcriptPath, session.Message{
+		Role:    "system",
+		Content: "secretword system prompt",
+	}); err != nil {
+		t.Fatalf("append system message: %v", err)
+	}
+	if err := session.AppendMessage(transcriptPath, session.Message{
+		Role:    "tool",
+		Content: "secretword tool result",
+	}); err != nil {
+		t.Fatalf("append tool message: %v", err)
+	}
+	if err := session.AppendMessage(transcriptPath, session.Message{
+		Role:    "user",
+		Content: "visible user message",
+	}); err != nil {
+		t.Fatalf("append user message: %v", err)
+	}
+
+	tl := NewMemorySearchTool(root, nil)
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"secretword","include_sessions":true}`))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	// Results should not include system/tool message content as snippets
+	var payload struct {
+		Results []struct {
+			Source  string `json:"source"`
+			Snippet string `json:"snippet"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(result.Text()), &payload); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	for _, r := range payload.Results {
+		if strings.Contains(r.Snippet, "system prompt") || strings.Contains(r.Snippet, "tool result") {
+			t.Fatalf("should not find system/tool messages in results, got snippet=%q", r.Snippet)
+		}
 	}
 }

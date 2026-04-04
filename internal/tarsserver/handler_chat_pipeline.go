@@ -95,6 +95,17 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	}
 
 	persistChatResult(state, req.Message, chatResp, toolCalls, deps.logger)
+
+	// Fire-and-forget: warm cache for next turn based on current user message
+	startMemoryPrefetchForNextTurn(
+		state.requestWorkspaceDir,
+		req.Message,
+		state.projectID,
+		state.sessionID,
+		deps.tooling.MemorySemanticConfig,
+		deps.tooling.MemoryCache,
+	)
+
 	stream.done(chatResp.Usage)
 	deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request complete")
 }

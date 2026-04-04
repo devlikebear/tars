@@ -93,6 +93,14 @@ func (s *chatStreamWriter) error(err error) {
 	s.send(map[string]string{"type": "error", "error": msg})
 }
 
+func (s *chatStreamWriter) memoryRecall(count int) {
+	s.send(map[string]any{
+		"type":         "memory_recall",
+		"session_id":   s.sessionID,
+		"memory_count": count,
+	})
+}
+
 func (s *chatStreamWriter) done(usage llm.Usage) {
 	s.send(map[string]any{
 		"type":       "done",
