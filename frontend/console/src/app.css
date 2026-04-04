@@ -357,48 +357,92 @@ textarea { resize: vertical; min-height: 80px; }
 .chat-md .code-block pre {
   background: var(--bg-base);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
   padding: var(--space-3);
-  padding-top: var(--space-5);
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: 1.5;
   margin: 0;
 }
+
+/* Code block toolbar */
+.chat-md .code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
 .chat-md .code-lang {
-  position: absolute;
-  top: var(--space-1);
-  left: var(--space-3);
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-ghost);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.chat-md .code-copy {
-  position: absolute;
-  top: var(--space-1);
-  right: var(--space-2);
+.chat-md .code-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.chat-md .code-toggle {
   padding: 2px 8px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  color: var(--text-tertiary);
+  color: var(--text-ghost);
   font-family: var(--font-mono);
   font-size: 10px;
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
-  z-index: 1;
+}
+.chat-md .code-toggle:hover {
+  color: var(--text-secondary);
+}
+.chat-md .code-toggle.active {
+  background: var(--bg-base);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+.chat-md .code-copy {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-ghost);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
 }
 .chat-md .code-copy:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
-  border-color: var(--border-default);
+  border-color: var(--border-subtle);
 }
 .chat-md .code-copy.copied {
   color: var(--success);
   border-color: var(--success);
+}
+
+/* Code preview (rendered HTML/SVG) */
+.chat-md .code-preview {
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: var(--space-4);
+  overflow: auto;
+  max-height: 500px;
+}
+.chat-md .code-preview img,
+.chat-md .code-preview svg {
+  max-width: 100%;
+  height: auto;
 }
 
 /* Tables */
