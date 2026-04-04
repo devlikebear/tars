@@ -14,7 +14,6 @@
   let sessions: Session[] = $state([])
   let loading = $state(true)
   let error = $state('')
-  let showHidden = $state(false)
 
   let searchQuery = $state('')
   let sortBy: 'updated' | 'name' = $state('updated')
@@ -82,17 +81,12 @@
     loading = true
     error = ''
     try {
-      sessions = await listSessions(showHidden)
+      sessions = await listSessions(true)
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load sessions'
     } finally {
       loading = false
     }
-  }
-
-  function toggleHidden() {
-    showHidden = !showHidden
-    void load()
   }
 
   function startRename(s: Session) {
@@ -181,9 +175,6 @@
   <div class="sidebar-header">
     <button type="button" class="btn btn-primary btn-sm new-chat-btn" onclick={onNewSession}>
       + New Chat
-    </button>
-    <button type="button" class="btn btn-ghost btn-sm" onclick={toggleHidden} title={showHidden ? 'Hide worker sessions' : 'Show worker sessions'}>
-      {showHidden ? 'All' : 'Active'}
     </button>
   </div>
 
