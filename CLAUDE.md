@@ -46,17 +46,27 @@ cd frontend/console && npm run check   # svelte-check + tsc
 
 | Package | Purpose |
 |---------|---------|
-| `project` | Autopilot lifecycle: `AutopilotManager` → `runIteration()` loop → `Orchestrator` dispatches tasks. States: running/blocked/done/failed. Persisted as `AUTOPILOT.json` |
+| `project` | Autopilot lifecycle: `AutopilotManager` → `runIteration()` loop → `Orchestrator` dispatches tasks. States: running/blocked/done/failed. Persisted as `AUTOPILOT.json`. Phase-aware onboarding (planning → executing) |
 | `gateway` | Agent execution platform: runtime state machine, multi-threaded subagents (max 4), run persistence in `workspace/_shared/gateway/` |
 | `session` | File-based chat sessions: index + transcripts in `workspace/sessions/`. Kinds: `main` (user-visible), `worker` (hidden) |
 | `cron` | Tick-based scheduler (30s default). Supports `@at` (one-time) and cron expressions. Run history capped at 50/job |
 | `ops` | System health (disk/processes), cleanup planning with approval workflow |
 | `llm` | Provider abstraction: Anthropic, OpenAI-compat, Gemini |
-| `tool` | Built-in agent tools: file ops, exec, web fetch/search, project, gateway, telegram |
+| `memory` | Semantic memory: Gemini embeddings, cosine similarity search, experience/compaction indexing, JSONL entries |
+| `tool` | Built-in agent tools: file ops, exec, web fetch/search, project, gateway, telegram, memory |
 | `serverauth` | Bearer token auth with SHA256, three token tiers (legacy/user/admin), loopback bypass |
 | `config` | YAML → env var override → defaults. 60+ config fields across Runtime/API/LLM/Memory/Usage sections |
 | `mcp` | Model Context Protocol client for external tool servers |
 | `skill` | `.md` skill files with YAML frontmatter, loaded from disk |
+
+**Chat Memory System** (`internal/tarsserver` + `internal/memory` + `internal/prompt`):
+- **Cache-first strategy**: In-process `memoryCache` (TTL 5min) checked before every semantic search
+- **Proactive search**: System prompt instructs LLM to MUST call `memory_search` for prior context
+- **Session transcript search**: `memory_search` tool supports `include_sessions=true` for cross-session lookup
+- **Async prefetch**: Goroutine warms cache for next turn after each response (`startMemoryPrefetchForNextTurn`)
+- **Prior Context section**: System prompt includes `## Prior Context` with source-tagged matches (`conversation|experience|project|daily`)
+- **Continuity detection**: `shouldForceMemoryToolCall` detects 30+ patterns (EN/KR) like "그거", "지난번", "you mentioned"
+- **Post-chat hooks**: Auto-extract experiences, daily log, compaction memories
 
 **Frontend** (`frontend/console/`) — Svelte 5 SPA embedded via `go:embed`
 
@@ -71,6 +81,7 @@ cd frontend/console && npm run check   # svelte-check + tsc
 - `/v1/events/stream` — global event stream, optional `?project_id=` filter
 - Events: `{ type, category, severity, title, message, timestamp }`, keepalive filtered client-side
 - `/v1/events/history?limit=N` — recent events with `unread_count`
+- `memory_recall` event — signals async memory prefetch results to frontend
 
 ## Git Workflow
 
@@ -84,16 +95,16 @@ git worktree add .claude/worktrees/<branch-name> -b <branch-name> main
 # Branch naming: feat/<name>, fix/<name>, chore/<name> (lowercase kebab-case)
 
 # After PR merge, cleanup
-git worktree remove .claude/worktrees/<branch-name>
+rm -rf .claude/worktrees/<branch-name>  # --force if dirty
 git worktree prune
 git fetch origin && git switch main && git pull --rebase
 ```
 
 **Conventional commits**: `feat:`, `fix:`, `chore:`, `refactor:`. Include `Closes #N` for issue references.
 
-**PR flow**: push → `gh pr create` → CI (security + test) → `gh pr merge --squash --delete-branch --admin`
+**PR flow**: push → `gh pr create` → CI (security + test) → `gh pr merge --squash --admin`
 
-**Note**: `--delete-branch` fails when worktree exists — always `git worktree remove` after merge.
+**Note**: Do NOT use `--delete-branch` with worktrees — use `rm -rf` + `git worktree prune` instead.
 
 ## Config
 
