@@ -171,6 +171,26 @@ func TestStoreEnsureMain_ReusesStableMainSession(t *testing.T) {
 	}
 }
 
+func TestStoreEnsureMain_FindsMainAfterTitleChange(t *testing.T) {
+	store := NewStore(t.TempDir())
+	first, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+	// Simulate auto-title renaming the main session
+	if err := store.SetTitle(first.ID, "user's first question here"); err != nil {
+		t.Fatalf("set title: %v", err)
+	}
+	// EnsureMain should still find the same session by kind, not title
+	second, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main after rename: %v", err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("expected same main session after rename, got %q and %q", first.ID, second.ID)
+	}
+}
+
 func TestStoreEnsureWorker_HidesWorkerSessionFromDefaultList(t *testing.T) {
 	store := NewStore(t.TempDir())
 	worker, err := store.EnsureWorker("proj_demo")
