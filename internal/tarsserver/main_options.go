@@ -54,7 +54,8 @@ const memoryToolSystemRule = `
 ## Memory Tool Policy
 - Before answering questions that may relate to prior conversations, decisions, dates, people, preferences, habits, or any topic discussed in past sessions, you MUST call memory_search first.
 - Do not guess memory-backed facts without first checking tools.
-- When the user references something from a previous conversation (e.g., "that thing we discussed", "last time", "continue", "그거", "아까 그", "전에 말한", "지난번"), call memory_search with include_sessions=true to find the relevant conversation context.
+- When calling memory_search, ALWAYS pass include_sessions=true. This searches past chat session transcripts across all sessions, enabling cross-session context recall.
+- When the user references something from a previous conversation (e.g., "that thing we discussed", "last time", "continue", "그거", "아까 그", "전에 말한", "지난번"), memory_search is mandatory — do not skip it.
 - If memory_search returns relevant prior context, weave it naturally into your response — do not dump raw search results.
 - When you discover useful context from memory, briefly acknowledge it (e.g., "Based on our previous conversation...") before continuing.
 - Tool-call arguments must be valid JSON.

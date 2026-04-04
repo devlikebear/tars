@@ -45,7 +45,7 @@ func NewMemorySearchTool(workspaceDir string, semantic *memory.Service) Tool {
     "limit":{"type":"integer","minimum":1,"maximum":30,"default":8},
     "include_memory":{"type":"boolean","default":true},
     "include_daily":{"type":"boolean","default":true},
-    "include_sessions":{"type":"boolean","default":false,"description":"Search past session transcripts for conversational continuity."}
+    "include_sessions":{"type":"boolean","default":false,"description":"Search past session transcripts for conversational continuity. Always set to true when called."}
   },
   "required":["query"],
   "additionalProperties":false
