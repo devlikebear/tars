@@ -698,6 +698,36 @@ export async function cancelChat(sessionId: string): Promise<boolean> {
   }
 }
 
+// --- Workspace Files ---
+
+export type WorkspaceFileEntry = {
+  name: string
+  path: string
+  is_dir: boolean
+  size?: number
+  updated_at?: string
+}
+
+export type WorkspaceFileContent = {
+  path: string
+  name: string
+  size: number
+  updated_at: string
+  content: string
+}
+
+export async function listWorkspaceFiles(path = '.'): Promise<{ path: string; files: WorkspaceFileEntry[] }> {
+  return requestJSON<{ path: string; files: WorkspaceFileEntry[] }>(
+    `/v1/workspace/files?path=${encodeURIComponent(path)}`
+  )
+}
+
+export async function readWorkspaceFile(path: string): Promise<WorkspaceFileContent> {
+  return requestJSON<WorkspaceFileContent>(
+    `/v1/workspace/files?path=${encodeURIComponent(path)}`
+  )
+}
+
 // --- Filesystem ---
 
 export type FilesystemBrowseResult = {
