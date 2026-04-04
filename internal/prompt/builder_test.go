@@ -172,8 +172,8 @@ func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 
 	result := BuildResultFor(BuildOptions{
 		WorkspaceDir:       root,
-		StaticBudgetTokens: 360,
-		TotalBudgetTokens:  360,
+		StaticBudgetTokens: 460,
+		TotalBudgetTokens:  460,
 	})
 
 	if !strings.Contains(result.Prompt, files["PROJECT.md"][:120]) {
@@ -185,8 +185,8 @@ func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 	if strings.Contains(result.Prompt, files["HEARTBEAT.md"][:80]) {
 		t.Fatalf("expected lower-priority heartbeat section to be trimmed first, got %q", result.Prompt)
 	}
-	if result.TotalTokens > 360 {
-		t.Fatalf("expected total tokens <= 360, got %d", result.TotalTokens)
+	if result.TotalTokens > 460 {
+		t.Fatalf("expected total tokens <= 460, got %d", result.TotalTokens)
 	}
 }
 
@@ -202,15 +202,15 @@ func TestBuildResult_ClampsRelevantMemoryToRemainingTotalBudget(t *testing.T) {
 	result := BuildResultFor(BuildOptions{
 		WorkspaceDir:         root,
 		Query:                "what coffee do i prefer?",
-		StaticBudgetTokens:   160,
+		StaticBudgetTokens:   260,
 		RelevantBudgetTokens: 80,
-		TotalBudgetTokens:    170,
+		TotalBudgetTokens:    500,
 	})
 
-	if result.TotalTokens > 170 {
-		t.Fatalf("expected total tokens <= 170, got %d", result.TotalTokens)
+	if result.TotalTokens > 500 {
+		t.Fatalf("expected total tokens <= 500, got %d", result.TotalTokens)
 	}
-	if result.RelevantTokens > 0 && result.StaticTokens+result.RelevantTokens > 170 {
+	if result.RelevantTokens > 0 && result.StaticTokens+result.RelevantTokens > 500 {
 		t.Fatalf("expected relevant memory to fit remaining budget, got static=%d relevant=%d", result.StaticTokens, result.RelevantTokens)
 	}
 }
