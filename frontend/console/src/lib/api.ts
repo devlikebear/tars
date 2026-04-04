@@ -211,6 +211,74 @@ export async function compactSession(sessionId: string): Promise<{ compacted: bo
   )
 }
 
+// --- Session Config ---
+
+export type SessionToolConfig = {
+  tools_enabled?: string[]
+  tools_disabled?: string[]
+  skills_enabled?: string[]
+  mcp_enabled?: string[]
+}
+
+export async function getSessionConfig(sessionId: string): Promise<SessionToolConfig> {
+  return requestJSON<SessionToolConfig>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/config`)
+}
+
+export async function updateSessionConfig(sessionId: string, config: SessionToolConfig): Promise<void> {
+  await requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/config`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  })
+}
+
+export type ChatToolInfo = {
+  name: string
+  description: string
+  high_risk: boolean
+}
+
+export type ChatToolsResponse = {
+  tools: ChatToolInfo[]
+  skills?: string[]
+  mcp_servers?: string[]
+}
+
+export async function listChatTools(): Promise<ChatToolsResponse> {
+  return requestJSON<ChatToolsResponse>('/v1/chat/tools')
+}
+
+// --- Chat Context ---
+
+export type ChatContextInfo = {
+  session_id: string
+  system_prompt: string
+  system_prompt_tokens: number
+  history_tokens: number
+  history_messages: number
+  tool_count: number
+  tool_names: string[]
+  memory_count: number
+  memory_tokens: number
+  prompt_override: string
+}
+
+export async function getChatContext(sessionId: string): Promise<ChatContextInfo> {
+  return requestJSON<ChatContextInfo>(`/v1/chat/context?session_id=${encodeURIComponent(sessionId)}`)
+}
+
+export async function getSessionPrompt(sessionId: string): Promise<{ prompt_override: string }> {
+  return requestJSON<{ prompt_override: string }>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/prompt`)
+}
+
+export async function updateSessionPrompt(sessionId: string, promptOverride: string): Promise<void> {
+  await requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/prompt`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt_override: promptOverride }),
+  })
+}
+
 export async function getEventsHistory(limit = 30): Promise<EventsHistoryInfo> {
   return requestJSON<EventsHistoryInfo>(`/v1/events/history?limit=${limit}`)
 }
@@ -453,6 +521,7 @@ export function streamEvents(
 export async function streamChat(
   request: ChatRequest,
   onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch('/v1/chat', {
     method: 'POST',
@@ -462,6 +531,7 @@ export async function streamChat(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(request),
+    signal,
   })
 
   if (!response.ok) {
@@ -505,6 +575,18 @@ export async function streamChat(
     if (done) {
       break
     }
+  }
+}
+
+export async function cancelChat(sessionId: string): Promise<boolean> {
+  try {
+    const result = await requestJSON<{ cancelled: boolean }>(
+      `/v1/chat/cancel?session_id=${encodeURIComponent(sessionId)}`,
+      { method: 'POST' },
+    )
+    return result.cancelled
+  } catch {
+    return false
   }
 }
 

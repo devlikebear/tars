@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { streamChat, listSessions, getSessionHistory, renameSession } from '../lib/api'
+  import { streamChat, cancelChat, listSessions, getSessionHistory, renameSession } from '../lib/api'
   import type { ChatAttachment, ChatEvent, SessionMessage } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, type Artifact } from '../lib/artifacts'
   import MarkdownContent from './MarkdownContent.svelte'
@@ -14,6 +14,7 @@
     toolArgs?: string
     toolResult?: string
     toolDone?: boolean
+    usage?: { input_tokens: number; output_tokens: number; cached_tokens: number; cache_read_tokens: number; cache_write_tokens: number }
   }
 
   interface Props {
@@ -37,6 +38,8 @@
   let chatMessages: ChatMessage[] = $state([])
   let autoTitled = $state(false)
   let autoSendDone = false
+  let abortController: AbortController | null = $state(null)
+  let contextInfo: { system_prompt_tokens?: number; history_tokens?: number; history_messages?: number; tool_count?: number; memory_count?: number; memory_tokens?: number; tool_names?: string[] } = $state({})
 
   // One-shot auto-send: fires once when autoSend becomes true with a prompt
   $effect(() => {
@@ -176,9 +179,28 @@
         }
         break
       }
-      case 'done':
+      case 'context_info':
+        contextInfo = {
+          system_prompt_tokens: event.system_prompt_tokens,
+          history_tokens: event.history_tokens,
+          history_messages: event.history_messages,
+          tool_count: event.tool_count,
+          memory_count: event.memory_count,
+          memory_tokens: event.memory_tokens,
+          tool_names: event.tool_names,
+        }
+        break
+      case 'done': {
         chatSessionId = event.session_id?.trim() || chatSessionId
         chatStatusLine = 'done'
+        // Attach usage to assistant message
+        if (event.usage) {
+          const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
+          if (aIdx >= 0) {
+            chatMessages[aIdx] = { ...chatMessages[aIdx], usage: event.usage }
+            chatMessages = [...chatMessages]
+          }
+        }
         // Auto-title: use first user message as session title for new sessions
         if (chatSessionId && !autoTitled) {
           autoTitled = true
@@ -188,6 +210,11 @@
             renameSession(chatSessionId, title).catch(() => {})
           }
         }
+        onSessionChange?.()
+        break
+      }
+      case 'cancelled':
+        chatStatusLine = 'cancelled'
         onSessionChange?.()
         break
       case 'error':
@@ -219,6 +246,8 @@
       { id: assistantId, role: 'assistant', text: '' },
     ]
     void scrollToBottom()
+    const ac = new AbortController()
+    abortController = ac
     try {
       const chatAttachments = currentFiles.length > 0 ? await filesToAttachments(currentFiles) : undefined
       await streamChat(
@@ -229,14 +258,27 @@
           attachments: chatAttachments,
         },
         (event) => handleChatEvent(event, assistantId),
+        ac.signal,
       )
     } catch (err) {
-      chatError = err instanceof Error ? err.message : 'Failed to send'
-      chatMessages = [...chatMessages, { id: `error-${Date.now()}`, role: 'error', text: chatError }]
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // User cancelled — no error to show
+      } else {
+        chatError = err instanceof Error ? err.message : 'Failed to send'
+        chatMessages = [...chatMessages, { id: `error-${Date.now()}`, role: 'error', text: chatError }]
+      }
     } finally {
+      abortController = null
       chatBusy = false
       void scrollToBottom()
     }
+  }
+
+  async function handleCancel() {
+    if (chatSessionId) {
+      await cancelChat(chatSessionId)
+    }
+    abortController?.abort()
   }
 
   // -- File attachments --
@@ -492,6 +534,9 @@
           {/if}
           {#if (msg.role === 'assistant' || msg.role === 'user') && msg.text}
             <div class="chat-msg-footer">
+              {#if msg.usage}
+                <span class="usage-badge" title="Token usage">In: {msg.usage.input_tokens.toLocaleString()} &middot; Out: {msg.usage.output_tokens.toLocaleString()}{msg.usage.cache_read_tokens ? ` \u00b7 Cached: ${msg.usage.cache_read_tokens.toLocaleString()}` : ''}</span>
+              {/if}
               <button type="button" class="msg-copy-btn" title="Copy message" onclick={() => copyMessageText(msg.text)}>Copy</button>
             </div>
           {/if}
@@ -550,9 +595,16 @@
         onpaste={handlePaste}
       ></textarea>
     </div>
-    <button type="submit" class="btn btn-primary" disabled={chatBusy || !chatInput.trim()}>
-      {chatBusy ? 'Streaming...' : 'Send'}
-    </button>
+    <div class="chat-form-actions">
+      {#if chatBusy}
+        <button type="button" class="btn btn-danger btn-sm" onclick={handleCancel}>Stop</button>
+      {:else}
+        <button type="submit" class="btn btn-primary" disabled={!chatInput.trim()}>Send</button>
+      {/if}
+      {#if chatStatusLine && chatBusy}
+        <span class="chat-status-line">{chatStatusLine}</span>
+      {/if}
+    </div>
   </form>
 </div>
 
@@ -844,6 +896,31 @@
   }
 
   .toolbar-icon { font-size: 14px; }
+
+  .chat-form-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .chat-status-line {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-ghost);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .usage-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-ghost);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    margin-right: auto;
+  }
 
   .file-input-hidden {
     position: absolute;

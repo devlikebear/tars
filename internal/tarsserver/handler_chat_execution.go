@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/agent"
@@ -18,6 +19,7 @@ func executeChatLoop(
 ) (llm.ChatResponse, bool, []ToolCallRecord, error) {
 	streamingAnnounced := false
 	deltaSent := false
+	var accumulated strings.Builder
 	loop, toolCallRecords := setupAgentLoop(deps.client, state.registry, state.sessionID, len(state.history), deps.logger, stream.status)
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")
@@ -29,6 +31,7 @@ func executeChatLoop(
 			if text == "" {
 				return
 			}
+			accumulated.WriteString(text)
 			if !streamingAnnounced {
 				streamingAnnounced = true
 				stream.status("llm_stream", "streaming response", "", "", "", "")
@@ -39,6 +42,12 @@ func executeChatLoop(
 		},
 	})
 	if err != nil {
+		if ctx.Err() == context.Canceled {
+			// Return partial content on cancellation
+			partial := accumulated.String()
+			deps.logger.Debug().Str("session_id", state.sessionID).Int("partial_len", len(partial)).Msg("chat cancelled, returning partial")
+			return llm.ChatResponse{Message: llm.ChatMessage{Content: partial}}, deltaSent, *toolCallRecords, err
+		}
 		deps.logger.Debug().Str("session_id", state.sessionID).Err(err).Msg("llm chat call failed")
 		return llm.ChatResponse{}, false, nil, err
 	}

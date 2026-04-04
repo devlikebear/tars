@@ -191,6 +191,22 @@ export type ChatEvent = {
   tool_result_preview?: string
   skill_name?: string
   skill_reason?: string
+  // context_info fields
+  system_prompt_tokens?: number
+  history_tokens?: number
+  history_messages?: number
+  tool_count?: number
+  tool_names?: string[]
+  memory_count?: number
+  memory_tokens?: number
+  // done event usage
+  usage?: {
+    input_tokens: number
+    output_tokens: number
+    cached_tokens: number
+    cache_read_tokens: number
+    cache_write_tokens: number
+  }
 }
 
 export type ChatAttachment = {

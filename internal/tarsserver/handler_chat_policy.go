@@ -85,40 +85,84 @@ func resolveInjectedToolSchemas(
 	activeProject *project.Project,
 	authRole string,
 	allowHighRiskUser bool,
+	sessionConfig ...session.SessionToolConfig,
 ) []llm.ToolSchema {
 	if registry == nil {
 		return nil
 	}
 
+	var names []string
 	if activeProject == nil {
-		// No project context: use all registered tools, filtered by high-risk policy
-		if shouldFilterHighRiskTools(authRole, allowHighRiskUser) {
-			names := filterHighRiskToolNamesForRole(toolNamesFromSchemas(registry.Schemas()), authRole, allowHighRiskUser)
-			return registry.SchemasForNames(names)
-		}
-		return registry.Schemas()
+		names = toolNamesFromSchemas(registry.Schemas())
+	} else {
+		// Project context: start with all registered tools, apply project policy
+		names = toolNamesFromSchemas(registry.Schemas())
+		policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
+			ToolsAllow:               activeProject.ToolsAllow,
+			ToolsAllowExists:         len(activeProject.ToolsAllow) > 0,
+			ToolsAllowGroups:         activeProject.ToolsAllowGroups,
+			ToolsAllowGroupsExists:   len(activeProject.ToolsAllowGroups) > 0,
+			ToolsAllowPatterns:       activeProject.ToolsAllowPatterns,
+			ToolsAllowPatternsExists: len(activeProject.ToolsAllowPatterns) > 0,
+			ToolsDeny:                activeProject.ToolsDeny,
+			ToolsDenyExists:          len(activeProject.ToolsDeny) > 0,
+			ToolsRiskMax:             activeProject.ToolsRiskMax,
+			ToolsRiskMaxExists:       strings.TrimSpace(activeProject.ToolsRiskMax) != "",
+		}, knownToolsFromRegistry(registry), project.ToolPolicyOptions{})
+		names = project.ApplyToolConstraints(names, policy)
 	}
 
-	// Project context: start with all registered tools, apply project policy
-	names := toolNamesFromSchemas(registry.Schemas())
-	policy := project.NormalizeToolPolicy(project.ToolPolicySpec{
-		ToolsAllow:               activeProject.ToolsAllow,
-		ToolsAllowExists:         len(activeProject.ToolsAllow) > 0,
-		ToolsAllowGroups:         activeProject.ToolsAllowGroups,
-		ToolsAllowGroupsExists:   len(activeProject.ToolsAllowGroups) > 0,
-		ToolsAllowPatterns:       activeProject.ToolsAllowPatterns,
-		ToolsAllowPatternsExists: len(activeProject.ToolsAllowPatterns) > 0,
-		ToolsDeny:                activeProject.ToolsDeny,
-		ToolsDenyExists:          len(activeProject.ToolsDeny) > 0,
-		ToolsRiskMax:             activeProject.ToolsRiskMax,
-		ToolsRiskMaxExists:       strings.TrimSpace(activeProject.ToolsRiskMax) != "",
-	}, knownToolsFromRegistry(registry), project.ToolPolicyOptions{})
-	names = project.ApplyToolConstraints(names, policy)
+	// Apply session-level tool config (if provided)
+	if len(sessionConfig) > 0 {
+		names = applySessionToolConfig(names, sessionConfig[0])
+	}
+
 	names = filterHighRiskToolNamesForRole(names, authRole, allowHighRiskUser)
 	if len(names) == 0 {
 		return nil
 	}
 	return registry.SchemasForNames(names)
+}
+
+// applySessionToolConfig filters tool names based on per-session configuration.
+func applySessionToolConfig(names []string, config session.SessionToolConfig) []string {
+	// If ToolsEnabled is set, use it as an allowlist
+	if len(config.ToolsEnabled) > 0 {
+		allowed := map[string]struct{}{}
+		for _, name := range config.ToolsEnabled {
+			canonical := tool.CanonicalToolName(name)
+			if canonical != "" {
+				allowed[canonical] = struct{}{}
+			}
+		}
+		filtered := make([]string, 0, len(names))
+		for _, name := range names {
+			canonical := tool.CanonicalToolName(name)
+			if _, ok := allowed[canonical]; ok {
+				filtered = append(filtered, name)
+			}
+		}
+		names = filtered
+	}
+	// Apply deny list
+	if len(config.ToolsDisabled) > 0 {
+		denied := map[string]struct{}{}
+		for _, name := range config.ToolsDisabled {
+			canonical := tool.CanonicalToolName(name)
+			if canonical != "" {
+				denied[canonical] = struct{}{}
+			}
+		}
+		filtered := make([]string, 0, len(names))
+		for _, name := range names {
+			canonical := tool.CanonicalToolName(name)
+			if _, ok := denied[canonical]; !ok {
+				filtered = append(filtered, name)
+			}
+		}
+		names = filtered
+	}
+	return names
 }
 
 func shouldFilterHighRiskTools(authRole string, allowHighRiskUser bool) bool {

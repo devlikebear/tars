@@ -498,6 +498,14 @@ func promptTokenEstimate(content string) int {
 	return tokens
 }
 
+func sumHistoryTokens(messages []session.Message) int {
+	total := 0
+	for _, m := range messages {
+		total += promptTokenEstimate(m.Content)
+	}
+	return total
+}
+
 type chatToolingOptions struct {
 	ProcessManager              *tool.ProcessManager
 	Extensions                  *extensions.Manager
@@ -599,19 +607,154 @@ func newChatAPIHandlerWithRuntimeConfig(
 ) http.Handler {
 	maxIters := resolveAgentMaxIterations(maxIterations)
 	chatLimiter := newInflightLimiter(tooling.APIMaxInflightChat, 2)
+	cancelRegistry := newChatCancelRegistry()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		handleChatRequest(w, r, chatHandlerDeps{
-			workspaceDir:  workspaceDir,
-			store:         store,
-			client:        client,
-			logger:        logger,
-			maxIters:      maxIters,
-			chatLimiter:   chatLimiter,
-			activity:      activity,
-			mainSessionID: strings.TrimSpace(mainSessionID),
-			tooling:       tooling,
-			extraTools:    extraTools,
+			workspaceDir:   workspaceDir,
+			store:          store,
+			client:         client,
+			logger:         logger,
+			maxIters:       maxIters,
+			chatLimiter:    chatLimiter,
+			activity:       activity,
+			mainSessionID:  strings.TrimSpace(mainSessionID),
+			tooling:        tooling,
+			extraTools:     extraTools,
+			cancelRegistry: cancelRegistry,
+		})
+	})
+	mux.HandleFunc("/v1/chat/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w)
+			return
+		}
+		sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
+		if sessionID == "" {
+			writeError(w, http.StatusBadRequest, "", "session_id is required")
+			return
+		}
+		if cancelRegistry.Cancel(sessionID) {
+			writeJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
+		} else {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active chat for session"})
+		}
+	})
+	mux.HandleFunc("/v1/chat/tools", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeMethodNotAllowed(w)
+			return
+		}
+		reqStore, requestWorkspaceDir, _, err := resolveSessionStoreForRequest(workspaceDir, store, r)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "", "resolve workspace failed")
+			return
+		}
+		registry := buildChatToolRegistry(
+			reqStore, "", "", requestWorkspaceDir, nil, chatHandlerDeps{
+				workspaceDir:  workspaceDir,
+				store:         store,
+				client:        client,
+				logger:        logger,
+				tooling:       tooling,
+				extraTools:    extraTools,
+				mainSessionID: strings.TrimSpace(mainSessionID),
+			},
+		)
+		type toolInfo struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			HighRisk    bool   `json:"high_risk"`
+		}
+		schemas := registry.Schemas()
+		tools := make([]toolInfo, 0, len(schemas))
+		for _, s := range schemas {
+			tools = append(tools, toolInfo{
+				Name:        s.Function.Name,
+				Description: s.Function.Description,
+				HighRisk:    isHighRiskToolName(s.Function.Name),
+			})
+		}
+		// Include skills and MCP info if available
+		type chatToolsResponse struct {
+			Tools  []toolInfo `json:"tools"`
+			Skills []string   `json:"skills,omitempty"`
+			MCP    []string   `json:"mcp_servers,omitempty"`
+		}
+		resp := chatToolsResponse{Tools: tools}
+		if tooling.Extensions != nil {
+			snap := tooling.Extensions.Snapshot()
+			for _, sk := range snap.Skills {
+				resp.Skills = append(resp.Skills, sk.Name)
+			}
+		}
+		writeJSON(w, http.StatusOK, resp)
+	})
+	mux.HandleFunc("/v1/chat/context", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeMethodNotAllowed(w)
+			return
+		}
+		sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
+		if sessionID == "" {
+			writeError(w, http.StatusBadRequest, "", "session_id is required")
+			return
+		}
+		reqStore, requestWorkspaceDir, _, err := resolveSessionStoreForRequest(workspaceDir, store, r)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "", "resolve workspace failed")
+			return
+		}
+		sess, err := reqStore.Get(sessionID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+			return
+		}
+		transcriptPath := reqStore.TranscriptPath(sessionID)
+		historySnapshot, err := loadSessionHistorySnapshot(transcriptPath, chatHistoryMaxTokens)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "", "load history failed")
+			return
+		}
+		extSnapshot := extensions.Snapshot{}
+		if tooling.Extensions != nil {
+			extSnapshot = tooling.Extensions.Snapshot()
+		}
+		contextDetails, err := prepareChatContextDetailsWithCache(
+			requestWorkspaceDir, sess.ProjectID, sessionID, "(context preview)",
+			extSnapshot, nil, tooling.MemoryCache, tooling.MemorySemanticConfig,
+		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "", "prepare context failed")
+			return
+		}
+		systemPrompt := contextDetails.SystemPrompt
+		if strings.TrimSpace(sess.PromptOverride) != "" {
+			systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(sess.PromptOverride) + "\n"
+		}
+		registry := buildChatToolRegistry(
+			reqStore, "", sessionID, requestWorkspaceDir, historySnapshot.Messages, chatHandlerDeps{
+				workspaceDir:  workspaceDir,
+				store:         store,
+				client:        client,
+				logger:        logger,
+				tooling:       tooling,
+				extraTools:    extraTools,
+				mainSessionID: strings.TrimSpace(mainSessionID),
+			},
+		)
+		injectedSchemas := resolveInjectedToolSchemas(registry, tooling.ToolsDefaultSet, nil, "admin", tooling.ToolsAllowHighRiskUser)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"session_id":           sessionID,
+			"system_prompt":        systemPrompt,
+			"system_prompt_tokens": promptTokenEstimate(systemPrompt),
+			"history_tokens":       sumHistoryTokens(historySnapshot.Messages),
+			"history_messages":     len(historySnapshot.Messages),
+			"tool_count":           len(injectedSchemas),
+			"tool_names":           toolNamesFromSchemas(injectedSchemas),
+			"memory_count":         contextDetails.RelevantMemoryCount,
+			"memory_tokens":        contextDetails.RelevantMemoryTokens,
+			"prompt_override":      sess.PromptOverride,
 		})
 	})
 	return mux
