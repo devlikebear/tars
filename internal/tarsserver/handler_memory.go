@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/sysprompt"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/rs/zerolog"
 )
@@ -136,6 +137,71 @@ func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger z
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(result.Text()))
+	})
+
+	mux.HandleFunc("/v1/workspace/sysprompt/files", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		items, err := sysprompt.List(workspaceDir, parseSyspromptScope(r.URL.Query().Get("scope")))
+		if err != nil {
+			logger.Error().Err(err).Msg("list sysprompt files failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list sysprompt files failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count": len(items),
+			"items": items,
+		})
+	})
+
+	mux.HandleFunc("/v1/workspace/sysprompt/file", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet, http.MethodPut) {
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			item, err := sysprompt.Get(
+				workspaceDir,
+				parseSyspromptScope(r.URL.Query().Get("scope")),
+				strings.TrimSpace(r.URL.Query().Get("path")),
+			)
+			if err != nil {
+				if os.IsNotExist(err) {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown sysprompt file"})
+					return
+				}
+				logger.Error().Err(err).Msg("read sysprompt file failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read sysprompt file failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, item)
+		case http.MethodPut:
+			var req struct {
+				Scope   string `json:"scope"`
+				Path    string `json:"path"`
+				Content string `json:"content"`
+			}
+			if !decodeJSONBody(w, r, &req) {
+				return
+			}
+			item, err := sysprompt.Save(
+				workspaceDir,
+				parseSyspromptScope(req.Scope),
+				strings.TrimSpace(req.Path),
+				req.Content,
+			)
+			if err != nil {
+				if os.IsNotExist(err) {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown sysprompt file"})
+					return
+				}
+				logger.Error().Err(err).Msg("write sysprompt file failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "write sysprompt file failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, item)
+		}
 	})
 
 	mux.HandleFunc("/v1/memory/kb/graph", func(w http.ResponseWriter, r *http.Request) {
@@ -397,4 +463,17 @@ func resolveManagedMemoryPath(workspaceDir, relPath string) (string, string, err
 		}
 	}
 	return "", "", os.ErrNotExist
+}
+
+func parseSyspromptScope(raw string) sysprompt.Scope {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		return ""
+	case string(sysprompt.ScopeAgent):
+		return sysprompt.ScopeAgent
+	case string(sysprompt.ScopeWorkspace):
+		return sysprompt.ScopeWorkspace
+	default:
+		return ""
+	}
 }

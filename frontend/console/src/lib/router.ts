@@ -7,6 +7,7 @@ export type Route =
   | { view: 'projects' }
   | { view: 'project'; projectId: string }
   | { view: 'memory' }
+  | { view: 'sysprompt' }
   | { view: 'ops' }
   | { view: 'config' }
   | { view: 'extensions' }
@@ -48,6 +49,10 @@ export function resolveRoute(pathname: string): Route {
 
   if (path.startsWith(`${consoleBase}/memory`) || path.startsWith(`${consoleBase}/knowledge`)) {
     return { view: 'memory' }
+  }
+
+  if (path.startsWith(`${consoleBase}/sysprompt`) || path.startsWith(`${consoleBase}/workspace`)) {
+    return { view: 'sysprompt' }
   }
 
   if (path.startsWith(`${consoleBase}/config`)) {

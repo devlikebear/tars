@@ -314,6 +314,22 @@ export type MemoryFile = {
   updated_at?: string
 }
 
+export type SyspromptScope = 'workspace' | 'agent'
+
+export type SyspromptFile = {
+  scope: SyspromptScope
+  path: string
+  title: string
+  description: string
+  exists: boolean
+  editable: boolean
+  size_bytes?: number
+  updated_at?: string
+  content?: string
+  starter_content?: string
+  prompt_targets?: string[]
+}
+
 export type MemorySearchMatch = {
   source: string
   date: string

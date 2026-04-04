@@ -13,6 +13,7 @@ import type {
   MemoryAsset,
   MemoryFile,
   MemorySearchResult,
+  SyspromptFile,
   PluginDef,
   SkillDef,
   CreateCronJobRequest,
@@ -293,6 +294,23 @@ export async function runMemorySearch(payload: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  })
+}
+
+export async function listSyspromptFiles(scope?: 'workspace' | 'agent'): Promise<{ count: number; items: SyspromptFile[] }> {
+  const qs = scope ? `?scope=${encodeURIComponent(scope)}` : ''
+  return requestJSON<{ count: number; items: SyspromptFile[] }>(`/v1/workspace/sysprompt/files${qs}`)
+}
+
+export async function getSyspromptFile(scope: 'workspace' | 'agent', path: string): Promise<SyspromptFile> {
+  return requestJSON<SyspromptFile>(`/v1/workspace/sysprompt/file?scope=${encodeURIComponent(scope)}&path=${encodeURIComponent(path)}`)
+}
+
+export async function saveSyspromptFile(scope: 'workspace' | 'agent', path: string, content: string): Promise<SyspromptFile> {
+  return requestJSON<SyspromptFile>('/v1/workspace/sysprompt/file', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scope, path, content }),
   })
 }
 

@@ -92,6 +92,10 @@ func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.Pr
 	}
 	registry.Register(tool.NewReadTool(workspaceDir))
 	registry.Register(tool.NewReadFileTool(workspaceDir))
+	registry.Register(tool.NewWorkspaceSyspromptGetTool(workspaceDir))
+	registry.Register(tool.NewWorkspaceSyspromptSetTool(workspaceDir))
+	registry.Register(tool.NewAgentSyspromptGetTool(workspaceDir))
+	registry.Register(tool.NewAgentSyspromptSetTool(workspaceDir))
 	registry.Register(tool.NewWriteTool(workspaceDir))
 	registry.Register(tool.NewWriteFileTool(workspaceDir))
 	registry.Register(tool.NewEditTool(workspaceDir))

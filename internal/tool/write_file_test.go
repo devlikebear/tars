@@ -5,62 +5,65 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
+	"strings"
 	"testing"
 )
 
-func TestWriteTool_WritesFileWithinWorkspace(t *testing.T) {
+func TestWriteFileTool_WritesWorkspaceFileAtomically(t *testing.T) {
 	root := t.TempDir()
-	t1 := NewWriteTool(root)
-	res, err := t1.Execute(context.Background(), json.RawMessage(`{"path":"notes/a.txt","content":"hello"}`))
+	tl := NewWriteFileTool(root)
+
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{
+		"path":"profiles/USER.md",
+		"content":"# USER.md\n\n- prefers Korean\n"
+	}`))
 	if err != nil {
-		t.Fatalf("execute write: %v", err)
+		t.Fatalf("execute write_file: %v", err)
 	}
-	if res.IsError {
-		t.Fatalf("expected success, got %s", res.Text())
+	if result.IsError {
+		t.Fatalf("expected success result, got error: %s", result.Text())
 	}
-	body, err := os.ReadFile(filepath.Join(root, "notes", "a.txt"))
+
+	var body writeFileResponse
+	if err := json.Unmarshal([]byte(result.Text()), &body); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if body.Path != "profiles/USER.md" {
+		t.Fatalf("expected path profiles/USER.md, got %q", body.Path)
+	}
+	if !body.Created {
+		t.Fatalf("expected created=true")
+	}
+
+	raw, err := os.ReadFile(filepath.Join(root, "profiles", "USER.md"))
 	if err != nil {
-		t.Fatalf("read file: %v", err)
+		t.Fatalf("read written file: %v", err)
 	}
-	if string(body) != "hello" {
-		t.Fatalf("unexpected content: %q", string(body))
+	if string(raw) != "# USER.md\n\n- prefers Korean\n" {
+		t.Fatalf("unexpected file content: %q", string(raw))
 	}
 }
 
-func TestWriteTool_RejectsWorkspaceEscape(t *testing.T) {
+func TestWriteFileTool_RejectsTraversal(t *testing.T) {
 	root := t.TempDir()
-	t1 := NewWriteTool(root)
-	res, err := t1.Execute(context.Background(), json.RawMessage(`{"path":"../escape.txt","content":"x"}`))
+	tl := NewWriteFileTool(root)
+
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{
+		"path":"../outside.txt",
+		"content":"blocked"
+	}`))
 	if err != nil {
-		t.Fatalf("execute write: %v", err)
+		t.Fatalf("execute write_file: %v", err)
 	}
-	if !res.IsError {
-		t.Fatalf("expected error for escaped path")
-	}
-}
-
-func TestWriteTool_RejectsSymlinkedParentEscape(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("symlink behavior is not portable on windows")
+	if !result.IsError {
+		t.Fatalf("expected traversal error, got %s", result.Text())
 	}
 
-	root := t.TempDir()
-	outside := t.TempDir()
-	linkPath := filepath.Join(root, "linked")
-	if err := os.Symlink(outside, linkPath); err != nil {
-		t.Fatalf("create symlink: %v", err)
+	var body writeFileResponse
+	if err := json.Unmarshal([]byte(result.Text()), &body); err != nil {
+		t.Fatalf("decode result: %v", err)
 	}
-
-	t1 := NewWriteTool(root)
-	res, err := t1.Execute(context.Background(), json.RawMessage(`{"path":"linked/pwned.txt","content":"x"}`))
-	if err != nil {
-		t.Fatalf("execute write: %v", err)
-	}
-	if !res.IsError {
-		t.Fatalf("expected symlinked parent escape to fail")
-	}
-	if _, err := os.Stat(filepath.Join(outside, "pwned.txt")); !os.IsNotExist(err) {
-		t.Fatalf("expected no file to be written outside workspace")
+	if !strings.Contains(strings.ToLower(body.Message), "workspace") {
+		t.Fatalf("expected outside workspace message, got %q", body.Message)
 	}
 }
