@@ -9,6 +9,9 @@
   import SessionSidebar from './SessionSidebar.svelte'
   import ChatPanel from './ChatPanel.svelte'
   import ArtifactPanel from './ArtifactPanel.svelte'
+  import SessionConfigPanel from './SessionConfigPanel.svelte'
+  import ContextMonitor from './ContextMonitor.svelte'
+  import PromptEditor from './PromptEditor.svelte'
 
   interface Props {
     sessionId?: string
@@ -46,9 +49,10 @@
   let actionBusy = $state(false)
   let deleteConfirm = $state(false)
 
-  // Artifact panel
+  // Right panel state
   let chatArtifacts: Artifact[] = $state([])
-  let showArtifacts = $state(false)
+  type RightPanel = 'none' | 'artifacts' | 'config' | 'context' | 'prompt'
+  let rightPanel = $state<RightPanel>('none')
 
   let sidebarRef: SessionSidebar | undefined = $state()
   let stopStream: (() => void) | null = null
@@ -75,7 +79,7 @@
     selectedSession = session
     chatKey++
     chatArtifacts = []
-    showArtifacts = false
+    rightPanel = 'none'
     renaming = false
     deleteConfirm = false
     onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
@@ -86,7 +90,7 @@
     selectedSession = null
     chatKey++
     chatArtifacts = []
-    showArtifacts = false
+    rightPanel = 'none'
     renaming = false
     deleteConfirm = false
     onNavigate('/console/chat')
@@ -100,9 +104,13 @@
 
   function handleArtifactsChange(arts: Artifact[]) {
     chatArtifacts = arts
-    if (arts.length > 0 && !showArtifacts) {
-      showArtifacts = true
+    if (arts.length > 0 && rightPanel === 'none') {
+      rightPanel = 'artifacts'
     }
+  }
+
+  function togglePanel(panel: RightPanel) {
+    rightPanel = rightPanel === panel ? 'none' : panel
   }
 
   // Session actions
@@ -249,14 +257,20 @@
     </div>
     {#if chatArtifacts.length > 0}
       <div class="pulse-sep"></div>
-      <button type="button" class="pulse-artifact-btn" onclick={() => { showArtifacts = !showArtifacts }}>
+      <button type="button" class="pulse-artifact-btn" class:active={rightPanel === 'artifacts'} onclick={() => togglePanel('artifacts')}>
         <span class="pulse-val">{chatArtifacts.length}</span>
-        <span class="pulse-lbl">Artifacts {showArtifacts ? '\u25B8' : '\u25C2'}</span>
+        <span class="pulse-lbl">Artifacts</span>
       </button>
     {/if}
+    <div class="pulse-sep"></div>
+    <div class="pulse-panel-toggles">
+      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'config'} onclick={() => togglePanel('config')} title="Session tool config">Config</button>
+      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'context'} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
+      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prompt'} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
+    </div>
   </div>
 
-  <div class="chat-layout" class:has-artifacts={showArtifacts}>
+  <div class="chat-layout" class:has-right-panel={rightPanel !== 'none'}>
     <!-- Session sidebar -->
     <aside class="chat-sidebar">
       <SessionSidebar
@@ -320,10 +334,18 @@
       {/key}
     </main>
 
-    <!-- Artifact panel -->
-    {#if showArtifacts}
-      <aside class="chat-artifacts">
-        <ArtifactPanel artifacts={chatArtifacts} onClose={() => { showArtifacts = false }} />
+    <!-- Right panel -->
+    {#if rightPanel !== 'none'}
+      <aside class="chat-right-panel">
+        {#if rightPanel === 'artifacts'}
+          <ArtifactPanel artifacts={chatArtifacts} onClose={() => { rightPanel = 'none' }} />
+        {:else if rightPanel === 'config' && (selectedSessionId || true)}
+          <SessionConfigPanel sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
+        {:else if rightPanel === 'context'}
+          <ContextMonitor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
+        {:else if rightPanel === 'prompt'}
+          <PromptEditor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
+        {/if}
       </aside>
     {/if}
   </div>
@@ -390,6 +412,35 @@
   .pulse-artifact-btn:hover {
     background: var(--bg-elevated);
   }
+  .pulse-artifact-btn.active {
+    background: rgba(224, 145, 69, 0.12);
+  }
+
+  .pulse-panel-toggles {
+    display: flex;
+    gap: 2px;
+  }
+
+  .pulse-toggle-btn {
+    background: none;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    transition: all var(--duration-fast);
+  }
+  .pulse-toggle-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border-default);
+  }
+  .pulse-toggle-btn.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(224, 145, 69, 0.08);
+  }
 
   /* Layout */
   .chat-layout {
@@ -398,8 +449,8 @@
     grid-template-columns: 280px 1fr;
     min-height: 0;
   }
-  .chat-layout.has-artifacts {
-    grid-template-columns: 280px 1fr 280px;
+  .chat-layout.has-right-panel {
+    grid-template-columns: 280px 1fr 300px;
   }
 
   .chat-sidebar {
@@ -418,10 +469,9 @@
     overflow: hidden;
   }
 
-  .chat-artifacts {
-    border-left: 1px solid var(--border-subtle);
-    background: var(--bg-surface);
+  .chat-right-panel {
     overflow: hidden;
+    min-height: 0;
   }
 
   /* Session header */
@@ -482,10 +532,10 @@
   }
 
   @media (max-width: 768px) {
-    .chat-layout, .chat-layout.has-artifacts {
+    .chat-layout, .chat-layout.has-right-panel {
       grid-template-columns: 1fr;
     }
-    .chat-sidebar, .chat-artifacts {
+    .chat-sidebar, .chat-right-panel {
       display: none;
     }
     .chat-pulse {

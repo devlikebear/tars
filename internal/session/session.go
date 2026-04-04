@@ -11,14 +11,25 @@ import (
 	"time"
 )
 
+// SessionToolConfig holds per-session tool/skill/MCP configuration.
+// nil slices mean "inherit all from system defaults".
+type SessionToolConfig struct {
+	ToolsEnabled  []string `json:"tools_enabled,omitempty"`
+	ToolsDisabled []string `json:"tools_disabled,omitempty"`
+	SkillsEnabled []string `json:"skills_enabled,omitempty"`
+	MCPEnabled    []string `json:"mcp_enabled,omitempty"`
+}
+
 type Session struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Kind      string    `json:"kind,omitempty"`
-	Hidden    bool      `json:"hidden,omitempty"`
-	ProjectID string    `json:"project_id,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID             string             `json:"id"`
+	Title          string             `json:"title"`
+	Kind           string             `json:"kind,omitempty"`
+	Hidden         bool               `json:"hidden,omitempty"`
+	ProjectID      string             `json:"project_id,omitempty"`
+	ToolConfig     *SessionToolConfig `json:"tool_config,omitempty"`
+	PromptOverride string             `json:"prompt_override,omitempty"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
 }
 
 type Store struct {
@@ -282,6 +293,42 @@ func (s *Store) SetProjectID(id string, projectID string) error {
 		return fmt.Errorf("session not found")
 	}
 	sess.ProjectID = strings.TrimSpace(projectID)
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+// SetToolConfig updates the per-session tool configuration.
+func (s *Store) SetToolConfig(id string, config *SessionToolConfig) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	sess.ToolConfig = config
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+// SetPromptOverride updates the per-session prompt override.
+func (s *Store) SetPromptOverride(id string, override string) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	sess.PromptOverride = override
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)

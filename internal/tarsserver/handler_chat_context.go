@@ -118,15 +118,28 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusInternalServerError, "save message failed", err
 	}
 
+	// Apply session-level prompt override
+	sess, sessErr := reqStore.Get(sessionID)
+	if sessErr == nil && strings.TrimSpace(sess.PromptOverride) != "" {
+		systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(sess.PromptOverride) + "\n"
+	}
+
 	contentBlocks := attachmentsToContentBlocks(req.Attachments)
 	llmMessages := buildLLMMessagesWithBlocks(systemPrompt, history, req.Message, contentBlocks)
 	authRole := strings.TrimSpace(serverauth.RoleFromRequest(r))
+
+	// Apply session-level tool config if present
+	var sessionToolConfigs []session.SessionToolConfig
+	if sessErr == nil && sess.ToolConfig != nil {
+		sessionToolConfigs = append(sessionToolConfigs, *sess.ToolConfig)
+	}
 	injectedSchemas := resolveInjectedToolSchemas(
 		registry,
 		deps.tooling.ToolsDefaultSet,
 		activeProject,
 		authRole,
 		deps.tooling.ToolsAllowHighRiskUser,
+		sessionToolConfigs...,
 	)
 	deps.logger.Debug().
 		Str("session_id", sessionID).

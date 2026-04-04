@@ -332,6 +332,60 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				return
 			}
 			writeJSON(w, http.StatusOK, messages)
+		case len(pathParts) == 2 && pathParts[1] == "config":
+			if !requireMethod(w, r, http.MethodGet, http.MethodPatch) {
+				return
+			}
+			sess, err := reqStore.Get(sessionID)
+			if err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+				return
+			}
+			switch r.Method {
+			case http.MethodGet:
+				config := sess.ToolConfig
+				if config == nil {
+					config = &session.SessionToolConfig{}
+				}
+				writeJSON(w, http.StatusOK, config)
+			case http.MethodPatch:
+				var config session.SessionToolConfig
+				if !decodeJSONBody(w, r, &config) {
+					return
+				}
+				if err := reqStore.SetToolConfig(sessionID, &config); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+			}
+		case len(pathParts) == 2 && pathParts[1] == "prompt":
+			if !requireMethod(w, r, http.MethodGet, http.MethodPut) {
+				return
+			}
+			sess, err := reqStore.Get(sessionID)
+			if err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+				return
+			}
+			switch r.Method {
+			case http.MethodGet:
+				writeJSON(w, http.StatusOK, map[string]string{
+					"prompt_override": sess.PromptOverride,
+				})
+			case http.MethodPut:
+				var req struct {
+					PromptOverride string `json:"prompt_override"`
+				}
+				if !decodeJSONBody(w, r, &req) {
+					return
+				}
+				if err := reqStore.SetPromptOverride(sessionID, req.PromptOverride); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+			}
 		default:
 			http.NotFound(w, r)
 		}

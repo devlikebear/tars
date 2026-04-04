@@ -32,17 +32,17 @@ import (
 )
 
 type serveAPIRuntime struct {
-	cfg                     config.Config
-	configPath              string
-	mainSessionID           string
-	server                  *http.Server
-	extensionsManager       *extensions.Manager
-	gatewayRuntime          *gateway.Runtime
-	gatewayAgentsWatch      *gatewayAgentsWatcher
-	cronManager             *workspaceCronManager
-	watchdogManager         *workspaceWatchdogManager
-	heartbeatTicker         *heartbeatTickerManager
-	telegramPoller          *telegramUpdatePoller
+	cfg                config.Config
+	configPath         string
+	mainSessionID      string
+	server             *http.Server
+	extensionsManager  *extensions.Manager
+	gatewayRuntime     *gateway.Runtime
+	gatewayAgentsWatch *gatewayAgentsWatcher
+	cronManager        *workspaceCronManager
+	watchdogManager    *workspaceWatchdogManager
+	heartbeatTicker    *heartbeatTickerManager
+	telegramPoller     *telegramUpdatePoller
 }
 
 type apiRouteHandlers struct {
@@ -550,17 +550,17 @@ func buildAPIMux(
 	heartbeatTicker := newHeartbeatTickerManager(heartbeatRunner, heartbeatTickerInterval, logger)
 
 	return &serveAPIRuntime{
-		cfg:                     cfg,
-		configPath:              resolvedConfigPath,
-		mainSessionID:           mainSessionID,
-		server:                  server,
-		extensionsManager:       extensionsManager,
-		gatewayRuntime:          gatewayRuntime,
-		gatewayAgentsWatch:      gatewayAgentsWatch,
-		cronManager:             cronManager,
-		watchdogManager:         watchdogManager,
-		heartbeatTicker:         heartbeatTicker,
-		telegramPoller:          telegramPoller,
+		cfg:                cfg,
+		configPath:         resolvedConfigPath,
+		mainSessionID:      mainSessionID,
+		server:             server,
+		extensionsManager:  extensionsManager,
+		gatewayRuntime:     gatewayRuntime,
+		gatewayAgentsWatch: gatewayAgentsWatch,
+		cronManager:        cronManager,
+		watchdogManager:    watchdogManager,
+		heartbeatTicker:    heartbeatTicker,
+		telegramPoller:     telegramPoller,
 	}, nil
 }
 
@@ -571,6 +571,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	legacyDashboard := newLegacyDashboardRedirectHandler()
 	mux.Handle("/v1/heartbeat/", handlers.heartbeat)
 	mux.Handle("/v1/chat", handlers.chat)
+	mux.Handle("/v1/chat/", handlers.chat)
 	mux.Handle("/v1/sessions", handlers.sessions)
 	mux.Handle("/v1/sessions/", handlers.sessions)
 	mux.Handle("/v1/admin/sessions", handlers.sessions)

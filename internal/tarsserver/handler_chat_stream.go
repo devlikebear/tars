@@ -101,6 +101,19 @@ func (s *chatStreamWriter) memoryRecall(count int) {
 	})
 }
 
+func (s *chatStreamWriter) cancelled() {
+	s.send(map[string]string{
+		"type":       "cancelled",
+		"session_id": s.sessionID,
+	})
+}
+
+func (s *chatStreamWriter) contextInfo(info map[string]any) {
+	info["type"] = "context_info"
+	info["session_id"] = s.sessionID
+	s.send(info)
+}
+
 func (s *chatStreamWriter) done(usage llm.Usage) {
 	s.send(map[string]any{
 		"type":       "done",

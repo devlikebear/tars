@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -12,16 +13,17 @@ import (
 )
 
 type chatHandlerDeps struct {
-	workspaceDir  string
-	store         *session.Store
-	client        llm.Client
-	logger        zerolog.Logger
-	maxIters      int
-	chatLimiter   *inflightLimiter
-	activity      *runtimeActivity
-	mainSessionID string
-	tooling       chatToolingOptions
-	extraTools    []tool.Tool
+	workspaceDir   string
+	store          *session.Store
+	client         llm.Client
+	logger         zerolog.Logger
+	maxIters       int
+	chatLimiter    *inflightLimiter
+	activity       *runtimeActivity
+	mainSessionID  string
+	tooling        chatToolingOptions
+	extraTools     []tool.Tool
+	cancelRegistry *chatCancelRegistry
 }
 
 type chatAttachment struct {
@@ -76,13 +78,37 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		stream.skillSelected(state.invokedSkill.Name, state.invokedSkillReason)
 	}
 
-	chatCtx := usage.WithCallMeta(r.Context(), usage.CallMeta{
+	// Emit context info for frontend monitoring
+	stream.contextInfo(map[string]any{
+		"system_prompt_tokens": promptTokenEstimate(state.llmMessages[0].Content),
+		"history_tokens":       sumHistoryTokens(state.history),
+		"history_messages":     len(state.history),
+		"tool_count":           len(state.injectedSchemas),
+		"tool_names":           toolNamesFromSchemas(state.injectedSchemas),
+	})
+
+	baseCtx := usage.WithCallMeta(r.Context(), usage.CallMeta{
 		Source:    "chat",
 		SessionID: state.sessionID,
 		ProjectID: state.projectID,
 	})
+	chatCtx, cancelChat := context.WithCancel(baseCtx)
+	defer cancelChat()
+	if deps.cancelRegistry != nil {
+		deps.cancelRegistry.Register(state.sessionID, cancelChat)
+		defer deps.cancelRegistry.Unregister(state.sessionID)
+	}
+
 	chatResp, deltaSent, toolCalls, err := executeChatLoop(chatCtx, deps, state, stream)
 	if err != nil {
+		if chatCtx.Err() == context.Canceled {
+			stream.cancelled()
+			if chatResp.Message.Content != "" {
+				persistChatResult(state, req.Message, chatResp, toolCalls, deps.logger)
+			}
+			deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request cancelled")
+			return
+		}
 		stream.error(err)
 		return
 	}
