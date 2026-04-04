@@ -327,7 +327,7 @@
     {#if rightPanel !== 'none'}
       <aside class="chat-right-panel">
         {#if rightPanel === 'artifacts'}
-          <ArtifactPanel artifacts={chatArtifacts} onClose={() => { rightPanel = 'none' }} />
+          <ArtifactPanel artifacts={chatArtifacts} sessionId={selectedSessionId || ''} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'config' && (selectedSessionId || true)}
           <SessionConfigPanel sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'context'}

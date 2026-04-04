@@ -31,8 +31,14 @@ func newWorkspaceFilesHandler(workspaceDir string, logger zerolog.Logger) http.H
 			relPath = "."
 		}
 
+		// Allow overriding the root directory (for session work dirs)
+		rootDir := strings.TrimSpace(r.URL.Query().Get("root"))
+		if rootDir == "" {
+			rootDir = workspaceDir
+		}
+
 		// Prevent path traversal
-		cleanRoot := strings.TrimRight(filepath.Clean(workspaceDir), "/")
+		cleanRoot := strings.TrimRight(filepath.Clean(rootDir), "/")
 		absPath := filepath.Join(cleanRoot, filepath.Clean(relPath))
 		if !strings.HasPrefix(absPath, cleanRoot) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})

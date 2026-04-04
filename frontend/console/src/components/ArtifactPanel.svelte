@@ -1,18 +1,23 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
   import type { Artifact } from '../lib/artifacts'
   import { fileIcon } from '../lib/artifacts'
-  import { listWorkspaceFiles, readWorkspaceFile, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
+  import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
+  import type { SessionWorkDirs } from '../lib/types'
 
   interface Props {
     artifacts: Artifact[]
+    sessionId: string
     onClose: () => void
   }
 
-  let { artifacts, onClose }: Props = $props()
+  let { artifacts, sessionId, onClose }: Props = $props()
 
   type Tab = 'session' | 'workspace'
   let activeTab: Tab = $state(artifacts.length > 0 ? 'session' : 'workspace')
+
+  // WorkDirs state
+  let workDirs: SessionWorkDirs = $state({ work_dirs: [], current_dir: '' })
+  let newDirInput = $state('')
 
   // Workspace browser state
   let currentPath = $state('.')
@@ -26,11 +31,47 @@
   let previewError = $state('')
   let copied = $state(false)
 
+  const effectiveRoot = $derived(workDirs.current_dir || undefined)
+
+  async function loadWorkDirs() {
+    if (!sessionId) return
+    try {
+      workDirs = await getSessionWorkDirs(sessionId)
+    } catch { /* ignore */ }
+  }
+
+  async function switchDir(dir: string) {
+    await updateSessionWorkDirs(sessionId, { ...workDirs, current_dir: dir })
+    workDirs.current_dir = dir
+    currentPath = '.'
+    await browseDir('.')
+  }
+
+  async function addDir() {
+    const dir = newDirInput.trim()
+    if (!dir) return
+    const dirs = [...workDirs.work_dirs, dir]
+    await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: dir })
+    workDirs = { work_dirs: dirs, current_dir: dir }
+    newDirInput = ''
+    currentPath = '.'
+    await browseDir('.')
+  }
+
+  async function removeDir(dir: string) {
+    const dirs = workDirs.work_dirs.filter(d => d !== dir)
+    const cd = dir === workDirs.current_dir ? (dirs[0] || '') : workDirs.current_dir
+    await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: cd })
+    workDirs = { work_dirs: dirs, current_dir: cd }
+    currentPath = '.'
+    await browseDir('.')
+  }
+
   async function browseDir(path: string) {
     wsLoading = true
     wsError = ''
     try {
-      const result = await listWorkspaceFiles(path)
+      const result = await listWorkspaceFiles(path, effectiveRoot)
       wsFiles = result.files || []
       currentPath = result.path || path
     } catch (err) {
@@ -45,7 +86,7 @@
     previewError = ''
     previewFile = null
     try {
-      previewFile = await readWorkspaceFile(path)
+      previewFile = await readWorkspaceFile(path, effectiveRoot)
     } catch (err) {
       previewError = err instanceof Error ? err.message : 'Failed to read file'
     } finally {
@@ -84,9 +125,10 @@
   }
 
   function breadcrumbs(path: string): Array<{ label: string; path: string }> {
-    if (path === '.') return [{ label: 'workspace', path: '.' }]
+    const rootLabel = effectiveRoot ? (effectiveRoot.split('/').pop() || 'root') : 'workspace'
+    if (path === '.') return [{ label: rootLabel, path: '.' }]
     const parts = path.split('/').filter(Boolean)
-    const crumbs = [{ label: 'workspace', path: '.' }]
+    const crumbs = [{ label: rootLabel, path: '.' }]
     for (let i = 0; i < parts.length; i++) {
       crumbs.push({ label: parts[i], path: parts.slice(0, i + 1).join('/') })
     }
@@ -134,7 +176,7 @@
 
   $effect(() => {
     if (activeTab === 'workspace') {
-      void browseDir(currentPath)
+      void loadWorkDirs().then(() => browseDir(currentPath))
     }
   })
 </script>
@@ -179,6 +221,26 @@
     </div>
 
   {:else}
+    <!-- WorkDir bar -->
+    <div class="workdir-bar">
+      {#if workDirs.work_dirs.length > 0}
+        <div class="workdir-list">
+          <select class="workdir-select" value={workDirs.current_dir} onchange={(e) => switchDir(e.currentTarget.value)}>
+            {#each workDirs.work_dirs as dir}
+              <option value={dir}>{dir.split('/').pop() || dir}</option>
+            {/each}
+          </select>
+          <button type="button" class="btn btn-ghost btn-sm" title="Remove current directory" onclick={() => removeDir(workDirs.current_dir)}>-</button>
+        </div>
+      {:else}
+        <span class="workdir-default">workspace/</span>
+      {/if}
+      <div class="workdir-add">
+        <input type="text" placeholder="Add directory path..." bind:value={newDirInput} class="workdir-input" onkeydown={(e) => e.key === 'Enter' && addDir()} />
+        <button type="button" class="btn btn-ghost btn-sm" onclick={addDir} disabled={!newDirInput.trim()}>+</button>
+      </div>
+    </div>
+
     <!-- Workspace browser -->
     <div class="ws-breadcrumbs">
       {#each breadcrumbs(currentPath) as crumb, i}
@@ -319,6 +381,56 @@
     line-height: 1;
   }
   .artifact-close:hover { color: var(--text-primary); }
+
+  /* WorkDir bar */
+  .workdir-bar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+
+  .workdir-list {
+    display: flex;
+    gap: var(--space-1);
+    align-items: center;
+  }
+
+  .workdir-select {
+    flex: 1;
+    background: var(--bg-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  .workdir-default {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 4px 0;
+  }
+
+  .workdir-add {
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  .workdir-input {
+    flex: 1;
+    background: var(--bg-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 6px;
+  }
 
   .artifact-list {
     flex: 1;

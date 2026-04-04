@@ -396,6 +396,39 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				return
 			}
 			writeJSON(w, http.StatusOK, tasks)
+		case len(pathParts) == 2 && pathParts[1] == "workdirs":
+			if !requireMethod(w, r, http.MethodGet, http.MethodPut) {
+				return
+			}
+			sess, err := reqStore.Get(sessionID)
+			if err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+				return
+			}
+			switch r.Method {
+			case http.MethodGet:
+				workDirs := sess.WorkDirs
+				if workDirs == nil {
+					workDirs = []string{}
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"work_dirs":   workDirs,
+					"current_dir": sess.CurrentDir,
+				})
+			case http.MethodPut:
+				var req struct {
+					WorkDirs   []string `json:"work_dirs"`
+					CurrentDir string   `json:"current_dir"`
+				}
+				if !decodeJSONBody(w, r, &req) {
+					return
+				}
+				if err := reqStore.SetWorkDirs(sessionID, req.WorkDirs, req.CurrentDir); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+			}
 		default:
 			http.NotFound(w, r)
 		}

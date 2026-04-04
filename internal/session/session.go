@@ -28,6 +28,8 @@ type Session struct {
 	ProjectID      string             `json:"project_id,omitempty"`
 	ToolConfig     *SessionToolConfig `json:"tool_config,omitempty"`
 	PromptOverride string             `json:"prompt_override,omitempty"`
+	WorkDirs       []string           `json:"work_dirs,omitempty"`
+	CurrentDir     string             `json:"current_dir,omitempty"`
 	CreatedAt      time.Time          `json:"created_at"`
 	UpdatedAt      time.Time          `json:"updated_at"`
 }
@@ -329,6 +331,86 @@ func (s *Store) SetPromptOverride(id string, override string) error {
 		return fmt.Errorf("session not found")
 	}
 	sess.PromptOverride = override
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+// SetWorkDirs updates the per-session working directories and current directory.
+func (s *Store) SetWorkDirs(id string, dirs []string, currentDir string) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	// Normalize and deduplicate dirs
+	cleaned := make([]string, 0, len(dirs))
+	seen := map[string]struct{}{}
+	for _, d := range dirs {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		if _, exists := seen[d]; exists {
+			continue
+		}
+		seen[d] = struct{}{}
+		cleaned = append(cleaned, d)
+	}
+	sess.WorkDirs = cleaned
+	// Validate currentDir is in WorkDirs
+	cd := strings.TrimSpace(currentDir)
+	if cd != "" {
+		found := false
+		for _, d := range cleaned {
+			if d == cd {
+				found = true
+				break
+			}
+		}
+		if !found && len(cleaned) > 0 {
+			cd = cleaned[0]
+		}
+	} else if len(cleaned) > 0 {
+		cd = cleaned[0]
+	}
+	sess.CurrentDir = cd
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+// SetCurrentDir updates only the current working directory for a session.
+func (s *Store) SetCurrentDir(id string, dir string) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	cd := strings.TrimSpace(dir)
+	if cd != "" && len(sess.WorkDirs) > 0 {
+		found := false
+		for _, d := range sess.WorkDirs {
+			if d == cd {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("directory not in work_dirs")
+		}
+	}
+	sess.CurrentDir = cd
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)

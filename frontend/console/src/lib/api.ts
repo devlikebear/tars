@@ -38,6 +38,7 @@ import type {
   SessionMessage,
   UpdateCronJobRequest,
   SessionTasks,
+  SessionWorkDirs,
   UpdateProjectRequest,
 } from './types'
 
@@ -220,6 +221,18 @@ export async function compactSession(sessionId: string): Promise<{ compacted: bo
 
 export async function getSessionTasks(sessionId: string): Promise<SessionTasks> {
   return requestJSON<SessionTasks>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks`)
+}
+
+export async function getSessionWorkDirs(sessionId: string): Promise<SessionWorkDirs> {
+  return requestJSON<SessionWorkDirs>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/workdirs`)
+}
+
+export async function updateSessionWorkDirs(sessionId: string, data: { work_dirs: string[]; current_dir: string }): Promise<void> {
+  await requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/workdirs`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
 }
 
 // --- Knowledge Base ---
@@ -716,15 +729,19 @@ export type WorkspaceFileContent = {
   content: string
 }
 
-export async function listWorkspaceFiles(path = '.'): Promise<{ path: string; files: WorkspaceFileEntry[] }> {
+export async function listWorkspaceFiles(path = '.', root?: string): Promise<{ path: string; files: WorkspaceFileEntry[] }> {
+  const params = new URLSearchParams({ path })
+  if (root) params.set('root', root)
   return requestJSON<{ path: string; files: WorkspaceFileEntry[] }>(
-    `/v1/workspace/files?path=${encodeURIComponent(path)}`
+    `/v1/workspace/files?${params}`
   )
 }
 
-export async function readWorkspaceFile(path: string): Promise<WorkspaceFileContent> {
+export async function readWorkspaceFile(path: string, root?: string): Promise<WorkspaceFileContent> {
+  const params = new URLSearchParams({ path })
+  if (root) params.set('root', root)
   return requestJSON<WorkspaceFileContent>(
-    `/v1/workspace/files?path=${encodeURIComponent(path)}`
+    `/v1/workspace/files?${params}`
   )
 }
 
