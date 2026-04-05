@@ -210,7 +210,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 		if !requireAdmin(w, r) {
 			return
 		}
-		if !requireMethod(w, r, http.MethodGet) {
+		if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
 			return
 		}
 		reqStore, err := resolveStore(r)
@@ -219,19 +219,39 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
 			return
 		}
-		includeHidden := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("hidden")), "1") || strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("hidden")), "true")
-		var sessions []session.Session
-		if includeHidden {
-			sessions, err = reqStore.ListAll()
-		} else {
-			sessions, err = reqStore.List()
+		switch r.Method {
+		case http.MethodGet:
+			includeHidden := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("hidden")), "1") || strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("hidden")), "true")
+			var sessions []session.Session
+			if includeHidden {
+				sessions, err = reqStore.ListAll()
+			} else {
+				sessions, err = reqStore.List()
+			}
+			if err != nil {
+				logger.Error().Err(err).Msg("list sessions failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list sessions failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, sessions)
+		case http.MethodPost:
+			var req struct {
+				Title string `json:"title,omitempty"`
+			}
+			if !decodeJSONBody(w, r, &req) {
+				return
+			}
+			title := strings.TrimSpace(req.Title)
+			if title == "" {
+				title = "New Chat"
+			}
+			sess, err := reqStore.Create(title)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusCreated, sess)
 		}
-		if err != nil {
-			logger.Error().Err(err).Msg("list sessions failed")
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list sessions failed"})
-			return
-		}
-		writeJSON(w, http.StatusOK, sessions)
 	})
 
 	mux.HandleFunc("/v1/admin/sessions/", func(w http.ResponseWriter, r *http.Request) {

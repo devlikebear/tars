@@ -129,6 +129,14 @@ export async function listSessions(includeHidden = false): Promise<Session[]> {
   return requestJSON<Session[]>(`/v1/admin/sessions${params}`)
 }
 
+export async function createSession(title?: string): Promise<Session> {
+  return requestJSON<Session>('/v1/admin/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: title || 'New Chat' }),
+  })
+}
+
 export async function getSession(sessionId: string): Promise<Session> {
   return requestJSON<Session>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}`)
 }
