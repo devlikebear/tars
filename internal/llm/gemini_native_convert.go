@@ -16,12 +16,12 @@ type geminiContent struct {
 }
 
 type geminiPart struct {
-	Text             string               `json:"text,omitempty"`
-	InlineData       *geminiInlineData    `json:"inlineData,omitempty"`
-	FunctionCall     *geminiFunctionCall  `json:"functionCall,omitempty"`
-	FunctionResponse *geminiFunctionResp  `json:"functionResponse,omitempty"`
-	Thought          bool                 `json:"thought,omitempty"`
-	ThoughtSignature []byte               `json:"thoughtSignature,omitempty"`
+	Text             string              `json:"text,omitempty"`
+	InlineData       *geminiInlineData   `json:"inlineData,omitempty"`
+	FunctionCall     *geminiFunctionCall `json:"functionCall,omitempty"`
+	FunctionResponse *geminiFunctionResp `json:"functionResponse,omitempty"`
+	Thought          bool                `json:"thought,omitempty"`
+	ThoughtSignature []byte              `json:"thoughtSignature,omitempty"`
 }
 
 type geminiInlineData struct {

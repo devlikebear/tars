@@ -25,7 +25,6 @@ type Session struct {
 	Title          string             `json:"title"`
 	Kind           string             `json:"kind,omitempty"`
 	Hidden         bool               `json:"hidden,omitempty"`
-	ProjectID      string             `json:"project_id,omitempty"`
 	ToolConfig     *SessionToolConfig `json:"tool_config,omitempty"`
 	PromptOverride string             `json:"prompt_override,omitempty"`
 	WorkDirs       []string           `json:"work_dirs,omitempty"`
@@ -278,23 +277,6 @@ func (s *Store) SetTitle(id string, title string) error {
 		return fmt.Errorf("session not found")
 	}
 	sess.Title = strings.TrimSpace(title)
-	sess.UpdatedAt = time.Now().UTC()
-	index[id] = sess
-	return s.saveIndex(index)
-}
-
-func (s *Store) SetProjectID(id string, projectID string) error {
-	unlock := lockPath(s.indexPath())
-	defer unlock()
-	index, err := s.loadIndex()
-	if err != nil {
-		return err
-	}
-	sess, ok := index[id]
-	if !ok {
-		return fmt.Errorf("session not found")
-	}
-	sess.ProjectID = strings.TrimSpace(projectID)
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)

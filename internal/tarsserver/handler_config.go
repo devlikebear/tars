@@ -64,9 +64,9 @@ func newConfigAPIHandler(configPath string, cfg config.Config, workspaceDir stri
 }
 
 type configSchemaResponse struct {
-	Path   string                  `json:"path"`
-	Fields []config.FieldMeta      `json:"fields"`
-	Values map[string]any          `json:"values"`
+	Path   string             `json:"path"`
+	Fields []config.FieldMeta `json:"fields"`
+	Values map[string]any     `json:"values"`
 }
 
 func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.Config) {

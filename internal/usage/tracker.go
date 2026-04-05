@@ -35,7 +35,6 @@ type Entry struct {
 	EstimatedCostUSD float64   `json:"estimated_cost_usd"`
 	Source           string    `json:"source"`
 	SessionID        string    `json:"session_id,omitempty"`
-	ProjectID        string    `json:"project_id,omitempty"`
 	RunID            string    `json:"run_id,omitempty"`
 	PricingKnown     bool      `json:"pricing_known"`
 }

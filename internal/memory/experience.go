@@ -22,16 +22,14 @@ type Experience struct {
 	Summary       string    `json:"summary"`
 	Tags          []string  `json:"tags,omitempty"`
 	SourceSession string    `json:"source_session,omitempty"`
-	ProjectID     string    `json:"project_id,omitempty"`
 	Importance    int       `json:"importance,omitempty"`
 	Auto          bool      `json:"auto,omitempty"`
 }
 
 type SearchOptions struct {
-	Query     string
-	Category  string
-	ProjectID string
-	Limit     int
+	Query    string
+	Category string
+	Limit    int
 }
 
 func AppendExperience(root string, exp Experience) error {
@@ -47,7 +45,6 @@ func AppendExperience(root string, exp Experience) error {
 		return fmt.Errorf("summary is required")
 	}
 	exp.SourceSession = strings.TrimSpace(exp.SourceSession)
-	exp.ProjectID = strings.TrimSpace(exp.ProjectID)
 	exp.Importance = normalizeImportance(exp.Importance)
 	exp.Tags = normalizeStringList(exp.Tags)
 	if exp.Timestamp.IsZero() {
@@ -86,7 +83,6 @@ func SearchExperiences(root string, opts SearchOptions) ([]Experience, error) {
 
 	query := strings.ToLower(strings.TrimSpace(opts.Query))
 	category := strings.ToLower(strings.TrimSpace(opts.Category))
-	projectID := strings.TrimSpace(opts.ProjectID)
 	limit := opts.Limit
 	if limit <= 0 {
 		limit = defaultExperienceLimit
@@ -106,7 +102,7 @@ func SearchExperiences(root string, opts SearchOptions) ([]Experience, error) {
 		if err := json.Unmarshal([]byte(line), &item); err != nil {
 			continue
 		}
-		if !matchesExperience(item, query, category, projectID) {
+		if !matchesExperience(item, query, category) {
 			continue
 		}
 		rows = append(rows, normalizeExperience(item))
@@ -132,7 +128,6 @@ func normalizeExperience(exp Experience) Experience {
 	exp.Category = strings.TrimSpace(strings.ToLower(exp.Category))
 	exp.Summary = strings.TrimSpace(exp.Summary)
 	exp.SourceSession = strings.TrimSpace(exp.SourceSession)
-	exp.ProjectID = strings.TrimSpace(exp.ProjectID)
 	exp.Tags = normalizeStringList(exp.Tags)
 	exp.Importance = normalizeImportance(exp.Importance)
 	if exp.Category == "" {
@@ -175,11 +170,8 @@ func normalizeStringList(values []string) []string {
 	return out
 }
 
-func matchesExperience(item Experience, query, category, projectID string) bool {
+func matchesExperience(item Experience, query, category string) bool {
 	if category != "" && strings.ToLower(strings.TrimSpace(item.Category)) != category {
-		return false
-	}
-	if projectID != "" && strings.TrimSpace(item.ProjectID) != projectID {
 		return false
 	}
 	if query == "" {
@@ -194,9 +186,6 @@ func matchesExperience(item Experience, query, category, projectID string) bool 
 		}
 	}
 	if strings.Contains(strings.ToLower(strings.TrimSpace(item.SourceSession)), query) {
-		return true
-	}
-	if strings.Contains(strings.ToLower(strings.TrimSpace(item.ProjectID)), query) {
 		return true
 	}
 	return false

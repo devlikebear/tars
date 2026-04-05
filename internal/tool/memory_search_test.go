@@ -170,7 +170,6 @@ func TestMemorySearchTool_UsesSemanticSearchBeforeLexicalFallback(t *testing.T) 
 		Timestamp:     time.Date(2026, 3, 20, 8, 0, 0, 0, time.UTC),
 		Category:      "preference",
 		Summary:       "User prefers decaf espresso during late-night sessions.",
-		ProjectID:     "alpha",
 		SourceSession: "sess-alpha",
 		Importance:    8,
 	}); err != nil {

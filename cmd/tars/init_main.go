@@ -429,7 +429,7 @@ llm_base_url: https://api.openai.com/v1
 llm_model: gpt-4o-mini
 llm_api_key: ${OPENAI_API_KEY}
 
-# Gateway is enabled so bundled project workflows can dispatch local agents.
+# Gateway is enabled so agents can dispatch local subagents.
 gateway_enabled: true
 
 # Optional subagent limits for parallel read-only research in chat.

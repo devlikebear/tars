@@ -12,7 +12,7 @@
   let selectedSession: Session | null = $state(null)
   let searchQuery = $state('')
   let sortBy: 'updated' | 'name' = $state('updated')
-  let filterKind: 'all' | 'session' | 'main' | 'worker' | 'project' = $state('all')
+  let filterKind: 'all' | 'session' | 'main' | 'worker' = $state('all')
 
   // Rename state
   let renamingId: string | null = $state(null)
@@ -36,7 +36,6 @@
   function sessionKind(session: Session): string {
     if (session.kind === 'main') return 'main'
     if (session.hidden) return 'worker'
-    if (session.project_id) return 'project'
     return 'session'
   }
 
@@ -44,7 +43,6 @@
     switch (sessionKind(session)) {
       case 'main': return 'badge-accent'
       case 'worker': return 'badge-default'
-      case 'project': return 'badge-info'
       default: return 'badge-info'
     }
   }
@@ -64,8 +62,7 @@
     if (q) {
       result = result.filter((s) =>
         (s.title || '').toLowerCase().includes(q) ||
-        s.id.toLowerCase().includes(q) ||
-        (s.project_id || '').toLowerCase().includes(q)
+        s.id.toLowerCase().includes(q)
       )
     }
     // Sort
@@ -216,7 +213,7 @@
   <div class="sessions-toolbar">
     <input type="text" class="sessions-search" placeholder="Search sessions..." bind:value={searchQuery} />
     <div class="sessions-filters">
-      {#each ['all', 'session', 'main', 'worker', 'project'] as kind}
+      {#each ['all', 'session', 'main', 'worker'] as kind}
         <button class="btn btn-ghost btn-sm" class:active={filterKind === kind} onclick={() => { filterKind = kind as typeof filterKind }}>{kind}</button>
       {/each}
     </div>
@@ -261,9 +258,6 @@
                 <span class="badge {kindBadge(session)}">{sessionKind(session)}</span>
               </div>
               <div class="session-item-meta">
-                {#if session.project_id}
-                  <span>project: {session.project_id}</span>
-                {/if}
                 <span>{fmt(session.updated_at)}</span>
               </div>
             </button>
@@ -307,7 +301,7 @@
 
           <div class="session-chat">
             {#key selectedSession.id}
-              <ChatPanel sessionId={selectedSession.id} projectId={selectedSession.project_id || undefined} onSessionChange={load} />
+              <ChatPanel sessionId={selectedSession.id} onSessionChange={load} />
             {/key}
           </div>
         </div>

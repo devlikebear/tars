@@ -32,7 +32,6 @@ func startMemoryPrefetch(ctx context.Context, state chatRunState, deps chatHandl
 		result := prompt.BuildResultFor(prompt.BuildOptions{
 			WorkspaceDir:        state.requestWorkspaceDir,
 			Query:               query,
-			ProjectID:           state.projectID,
 			SessionID:           state.sessionID,
 			MemorySearcher:      memService,
 			ForceRelevantMemory: shouldForceMemoryToolCall(query),
@@ -70,7 +69,6 @@ func collectPrefetchResult(ch <-chan prefetchResult, timeout time.Duration) *pro
 func startMemoryPrefetchForNextTurn(
 	workspaceDir string,
 	userMessage string,
-	projectID string,
 	sessionID string,
 	semanticCfg memory.SemanticConfig,
 	cache *memoryCache,
@@ -83,13 +81,12 @@ func startMemoryPrefetchForNextTurn(
 		result := prompt.BuildResultFor(prompt.BuildOptions{
 			WorkspaceDir:        workspaceDir,
 			Query:               userMessage,
-			ProjectID:           projectID,
 			SessionID:           sessionID,
 			MemorySearcher:      memService,
 			ForceRelevantMemory: shouldForceMemoryToolCall(userMessage),
 		})
 		if result.RelevantMemoryCount > 0 {
-			cache.Put(userMessage, projectID, sessionID, result)
+			cache.Put(userMessage, sessionID, result)
 		}
 	}()
 }

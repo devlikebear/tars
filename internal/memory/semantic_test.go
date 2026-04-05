@@ -76,7 +76,6 @@ func TestSemanticService_SearchesParaphrasesWithinProject(t *testing.T) {
 		Timestamp:     time.Date(2026, 3, 20, 8, 0, 0, 0, time.UTC),
 		Category:      "preference",
 		Summary:       "User prefers decaf espresso during late-night sessions.",
-		ProjectID:     "alpha",
 		SourceSession: "sess-alpha",
 		Importance:    8,
 	})
@@ -86,7 +85,6 @@ func TestSemanticService_SearchesParaphrasesWithinProject(t *testing.T) {
 
 	hits, err := service.Search(context.Background(), SearchRequest{
 		Query:     "what coffee should I order without caffeine tonight?",
-		ProjectID: "alpha",
 		SessionID: "sess-alpha",
 		Limit:     3,
 	})
@@ -95,9 +93,6 @@ func TestSemanticService_SearchesParaphrasesWithinProject(t *testing.T) {
 	}
 	if len(hits) != 1 {
 		t.Fatalf("expected one hit, got %d", len(hits))
-	}
-	if hits[0].Entry.ProjectID != "alpha" {
-		t.Fatalf("expected project scoped hit, got %#v", hits[0].Entry)
 	}
 	if hits[0].Snippet == "" {
 		t.Fatalf("expected snippet for search hit")

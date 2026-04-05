@@ -225,11 +225,10 @@ func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger z
 		case http.MethodGet:
 			limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
 			items, err := store.List(memory.KnowledgeListOptions{
-				Query:     strings.TrimSpace(r.URL.Query().Get("query")),
-				Kind:      strings.TrimSpace(r.URL.Query().Get("kind")),
-				Tag:       strings.TrimSpace(r.URL.Query().Get("tag")),
-				ProjectID: strings.TrimSpace(r.URL.Query().Get("project_id")),
-				Limit:     limit,
+				Query: strings.TrimSpace(r.URL.Query().Get("query")),
+				Kind:  strings.TrimSpace(r.URL.Query().Get("kind")),
+				Tag:   strings.TrimSpace(r.URL.Query().Get("tag")),
+				Limit: limit,
 			})
 			if err != nil {
 				logger.Error().Err(err).Msg("list knowledge notes failed")
@@ -322,7 +321,6 @@ func decodeKnowledgePatchRequest(w http.ResponseWriter, r *http.Request) (memory
 		Tags          *[]string               `json:"tags,omitempty"`
 		Aliases       *[]string               `json:"aliases,omitempty"`
 		Links         *[]memory.KnowledgeLink `json:"links,omitempty"`
-		ProjectID     *string                 `json:"project_id,omitempty"`
 		SourceSession *string                 `json:"source_session,omitempty"`
 	}
 	if !decodeJSONBody(w, r, &req) {
@@ -337,7 +335,6 @@ func decodeKnowledgePatchRequest(w http.ResponseWriter, r *http.Request) (memory
 		Tags:          trimOptionalStringSlice(req.Tags),
 		Aliases:       trimOptionalStringSlice(req.Aliases),
 		Links:         req.Links,
-		ProjectID:     trimOptionalString(req.ProjectID),
 		SourceSession: trimOptionalString(req.SourceSession),
 	}, true
 }

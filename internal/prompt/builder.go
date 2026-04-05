@@ -15,7 +15,6 @@ type BuildOptions struct {
 	WorkspaceDir         string // path to workspace root
 	SubAgent             bool   // if true, only inject AGENTS.md and TOOLS.md
 	Query                string
-	ProjectID            string
 	SessionID            string
 	MemorySearcher       memory.Searcher
 	ForceRelevantMemory  bool

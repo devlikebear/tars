@@ -11,13 +11,6 @@ func newLegacyDashboardRedirectHandler() http.Handler {
 		switch {
 		case path == "/dashboards" || path == "/dashboards/":
 			redirectToConsole(w, r, "/console")
-		case strings.HasPrefix(path, "/ui/projects/"):
-			redirectPath := strings.TrimPrefix(path, "/ui/projects")
-			if strings.TrimSpace(redirectPath) == "" || redirectPath == "/" {
-				redirectPath = ""
-			}
-			redirectPath = strings.TrimSuffix(redirectPath, "/stream")
-			redirectToConsole(w, r, "/console/projects"+redirectPath)
 		default:
 			redirectToConsole(w, r, "/console")
 		}

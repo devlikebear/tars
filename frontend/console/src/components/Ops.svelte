@@ -46,7 +46,6 @@
   let newJobName = $state('')
   let newJobPrompt = $state('')
   let newJobSchedule = $state('')
-  let newJobProjectId = $state('')
   let newJobSaving = $state(false)
   let newJobError = $state('')
 
@@ -72,14 +71,12 @@
         name: newJobName.trim() || undefined,
         prompt: newJobPrompt.trim(),
         schedule: newJobSchedule.trim() || undefined,
-        project_id: newJobProjectId.trim() || undefined,
       })
       cronJobs = await listCronJobs()
       showNewJob = false
       newJobName = ''
       newJobPrompt = ''
       newJobSchedule = ''
-      newJobProjectId = ''
     } catch (e) {
       newJobError = e instanceof Error ? e.message : 'Failed to create cron job'
     } finally {
@@ -253,7 +250,6 @@
   onMount(() => {
     void load()
     stopStream = streamEvents(
-      undefined,
       (event) => {
         if (event.category === 'ops') {
           void listApprovals().then((list) => { approvals = list })
@@ -449,7 +445,6 @@
             <input type="text" placeholder="Job name (optional)" bind:value={newJobName} class="form-input" />
             <textarea placeholder="Prompt *" bind:value={newJobPrompt} class="form-input form-textarea" rows="3"></textarea>
             <input type="text" placeholder="Schedule (e.g. */30 * * * * or @at 2026-04-01T10:00:00Z)" bind:value={newJobSchedule} class="form-input" />
-            <input type="text" placeholder="Project ID (optional)" bind:value={newJobProjectId} class="form-input" />
             <button
               class="btn btn-primary btn-sm"
               disabled={!newJobPrompt.trim() || newJobSaving}
@@ -520,9 +515,6 @@
                     </div>
                     <p class="cron-prompt">{compact(job.prompt, 120)}</p>
                     <div class="cron-meta">
-                      {#if job.project_id}
-                        <span>project: {job.project_id}</span>
-                      {/if}
                       {#if job.last_run_at}
                         <span>Last run: {fmt(job.last_run_at)}</span>
                       {/if}

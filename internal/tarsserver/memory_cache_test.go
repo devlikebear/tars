@@ -14,9 +14,9 @@ func TestMemoryCache_PutGet(t *testing.T) {
 		RelevantMemoryCount: 3,
 		RelevantTokens:      120,
 	}
-	cache.Put("coffee preference", "proj1", "sess1", result)
+	cache.Put("coffee preference", "sess1", result)
 
-	got, ok := cache.Get("coffee preference", "proj1", "sess1")
+	got, ok := cache.Get("coffee preference", "sess1")
 	if !ok {
 		t.Fatal("expected cache hit")
 	}
@@ -30,7 +30,7 @@ func TestMemoryCache_PutGet(t *testing.T) {
 
 func TestMemoryCache_Miss(t *testing.T) {
 	cache := newMemoryCache(5 * time.Minute)
-	_, ok := cache.Get("unknown query", "", "")
+	_, ok := cache.Get("unknown query", "")
 	if ok {
 		t.Fatal("expected cache miss for unknown key")
 	}
@@ -38,10 +38,10 @@ func TestMemoryCache_Miss(t *testing.T) {
 
 func TestMemoryCache_TTLExpiry(t *testing.T) {
 	cache := newMemoryCache(50 * time.Millisecond)
-	cache.Put("query", "", "", prompt.BuildResult{RelevantMemoryCount: 1})
+	cache.Put("query", "", prompt.BuildResult{RelevantMemoryCount: 1})
 
 	// Should hit immediately
-	_, ok := cache.Get("query", "", "")
+	_, ok := cache.Get("query", "")
 	if !ok {
 		t.Fatal("expected cache hit before TTL")
 	}
@@ -49,7 +49,7 @@ func TestMemoryCache_TTLExpiry(t *testing.T) {
 	time.Sleep(60 * time.Millisecond)
 
 	// Should miss after TTL
-	_, ok = cache.Get("query", "", "")
+	_, ok = cache.Get("query", "")
 	if ok {
 		t.Fatal("expected cache miss after TTL expiry")
 	}
@@ -57,9 +57,9 @@ func TestMemoryCache_TTLExpiry(t *testing.T) {
 
 func TestMemoryCache_EvictExpired(t *testing.T) {
 	cache := newMemoryCache(50 * time.Millisecond)
-	cache.Put("old", "", "", prompt.BuildResult{RelevantMemoryCount: 1})
+	cache.Put("old", "", prompt.BuildResult{RelevantMemoryCount: 1})
 	time.Sleep(60 * time.Millisecond)
-	cache.Put("new", "", "", prompt.BuildResult{RelevantMemoryCount: 2})
+	cache.Put("new", "", prompt.BuildResult{RelevantMemoryCount: 2})
 
 	// evictExpired was called by Put, old entry should be gone
 	cache.mu.RLock()
@@ -72,20 +72,20 @@ func TestMemoryCache_EvictExpired(t *testing.T) {
 
 func TestMemoryCache_NilSafe(t *testing.T) {
 	var cache *memoryCache
-	_, ok := cache.Get("query", "", "")
+	_, ok := cache.Get("query", "")
 	if ok {
 		t.Fatal("expected miss on nil cache")
 	}
 	// Should not panic
-	cache.Put("query", "", "", prompt.BuildResult{})
+	cache.Put("query", "", prompt.BuildResult{})
 	cache.evictExpired()
 }
 
 func TestMemoryCache_CaseInsensitiveQuery(t *testing.T) {
 	cache := newMemoryCache(5 * time.Minute)
-	cache.Put("Coffee Preference", "proj1", "", prompt.BuildResult{RelevantMemoryCount: 1})
+	cache.Put("Coffee Preference", "", prompt.BuildResult{RelevantMemoryCount: 1})
 
-	_, ok := cache.Get("coffee preference", "proj1", "")
+	_, ok := cache.Get("coffee preference", "")
 	if !ok {
 		t.Fatal("expected case-insensitive cache hit")
 	}

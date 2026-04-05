@@ -18,7 +18,6 @@ type chatRunState struct {
 	workspaceID         string
 	store               *session.Store
 	sessionID           string
-	projectID           string
 	invokedSkill        *skill.Definition
 	invokedSkillReason  string
 	transcriptPath      string
@@ -49,7 +48,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusInternalServerError, "resolve workspace failed", err
 	}
 
-	sessionID, err := resolveChatSession(reqStore, req.SessionID, deps.mainSessionID, req.Message, req.ProjectID)
+	sessionID, err := resolveChatSession(reqStore, req.SessionID, deps.mainSessionID)
 	if err != nil {
 		if strings.TrimSpace(req.SessionID) == "" {
 			deps.logger.Error().Err(err).Msg("create session failed")
@@ -86,8 +85,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 	resolvedSkill := resolveSkillSelection(req.Message, deps.tooling.Extensions, requestWorkspaceDir, sessionID)
 	invokedSkill := resolvedSkill.Definition
-	resolvedProjectID := resolveSessionProjectID(reqStore, sessionID, strings.TrimSpace(req.ProjectID))
-	contextDetails, err := prepareChatContextDetailsWithCache(requestWorkspaceDir, resolvedProjectID, sessionID, req.Message, extSnapshot, invokedSkill, deps.tooling.MemoryCache, deps.tooling.MemorySemanticConfig)
+	contextDetails, err := prepareChatContextDetailsWithCache(requestWorkspaceDir, sessionID, req.Message, extSnapshot, invokedSkill, deps.tooling.MemoryCache, deps.tooling.MemorySemanticConfig)
 	if err != nil {
 		return chatRunState{}, http.StatusInternalServerError, "prepare chat context failed", err
 	}
@@ -95,7 +93,6 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	toolChoice := contextDetails.ToolChoice
 	deps.logger.Debug().
 		Str("session_id", sessionID).
-		Str("project_id", resolvedProjectID).
 		Int("history_messages", len(history)).
 		Int("history_tokens", historySnapshot.Tokens).
 		Bool("compaction_used", historySnapshot.CompactionUsed).
@@ -146,7 +143,6 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		workspaceID:         workspaceID,
 		store:               reqStore,
 		sessionID:           sessionID,
-		projectID:           resolvedProjectID,
 		invokedSkill:        invokedSkill,
 		invokedSkillReason:  resolvedSkill.Reason,
 		transcriptPath:      transcriptPath,
@@ -157,24 +153,4 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		injectedSchemas:     injectedSchemas,
 		llmClient:           deps.client,
 	}, 0, "", nil
-}
-
-// resolveSessionProjectID returns the effective project ID for a chat session.
-// It prefers the explicit request project ID, falling back to the session's stored one.
-func resolveSessionProjectID(
-	store *session.Store,
-	sessionID string,
-	requestProjectID string,
-) string {
-	resolvedID := strings.TrimSpace(requestProjectID)
-	if resolvedID != "" {
-		return resolvedID
-	}
-	if store != nil && strings.TrimSpace(sessionID) != "" {
-		sess, err := store.Get(strings.TrimSpace(sessionID))
-		if err == nil {
-			return strings.TrimSpace(sess.ProjectID)
-		}
-	}
-	return ""
 }

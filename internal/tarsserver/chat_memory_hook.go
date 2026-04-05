@@ -14,7 +14,6 @@ import (
 type chatMemoryHookInput struct {
 	WorkspaceDir     string
 	SessionID        string
-	ProjectID        string
 	UserMessage      string
 	AssistantMessage string
 	AssistantTime    time.Time
@@ -43,7 +42,6 @@ func applyPostChatMemoryHooks(input chatMemoryHookInput) error {
 			Summary:       trimForMemory(strings.TrimSpace(input.UserMessage), 220),
 			Tags:          []string{"manual-memory"},
 			SourceSession: strings.TrimSpace(input.SessionID),
-			ProjectID:     strings.TrimSpace(input.ProjectID),
 			Importance:    8,
 			Auto:          true,
 		}); err != nil {
@@ -53,7 +51,6 @@ func applyPostChatMemoryHooks(input chatMemoryHookInput) error {
 
 	for _, exp := range deriveAutoExperiences(
 		strings.TrimSpace(input.SessionID),
-		strings.TrimSpace(input.ProjectID),
 		input.UserMessage,
 		input.AssistantMessage,
 		input.AssistantTime,
@@ -88,14 +85,13 @@ func maybeCompileKnowledgeBase(input chatMemoryHookInput) error {
 
 	userPrompt := fmt.Sprintf(
 		"Compile durable knowledge from the latest chat turn into a wiki-style knowledge base.\n"+
-			"Return strict JSON with shape {\"notes\":[{\"slug\":\"lower-kebab-case\",\"title\":\"...\",\"kind\":\"preference|fact|decision|habit|workflow|topic|project_note|person|note\",\"summary\":\"...\",\"body\":\"...\",\"tags\":[\"...\"],\"aliases\":[\"...\"],\"links\":[{\"target\":\"slug\",\"relation\":\"related_to|depends_on|supports|part_of|contradicts\"}],\"project_id\":\"...\",\"source_session\":\"...\"}],\"edges\":[{\"source\":\"slug\",\"target\":\"slug\",\"relation\":\"...\"}]}.\n"+
+			"Return strict JSON with shape {\"notes\":[{\"slug\":\"lower-kebab-case\",\"title\":\"...\",\"kind\":\"preference|fact|decision|habit|workflow|topic|project_note|person|note\",\"summary\":\"...\",\"body\":\"...\",\"tags\":[\"...\"],\"aliases\":[\"...\"],\"links\":[{\"target\":\"slug\",\"relation\":\"related_to|depends_on|supports|part_of|contradicts\"}],\"source_session\":\"...\"}],\"edges\":[{\"source\":\"slug\",\"target\":\"slug\",\"relation\":\"...\"}]}.\n"+
 			"Only keep durable knowledge worth reusing after chat/session reset.\n"+
 			"Reuse existing slugs when the note already exists. Return empty arrays when nothing durable should be added.\n\n"+
 			"Current note refs:\n%s\n"+
-			"Session: %s\nProject: %s\nUser: %s\nAssistant: %s",
+			"Session: %s\nUser: %s\nAssistant: %s",
 		refs.String(),
 		strings.TrimSpace(input.SessionID),
-		strings.TrimSpace(input.ProjectID),
 		strings.TrimSpace(input.UserMessage),
 		strings.TrimSpace(input.AssistantMessage),
 	)
@@ -126,9 +122,6 @@ func maybeCompileKnowledgeBase(input chatMemoryHookInput) error {
 		return nil
 	}
 	for i := range update.Notes {
-		if strings.TrimSpace(update.Notes[i].ProjectID) == "" {
-			update.Notes[i].ProjectID = strings.TrimSpace(input.ProjectID)
-		}
 		if strings.TrimSpace(update.Notes[i].SourceSession) == "" {
 			update.Notes[i].SourceSession = strings.TrimSpace(input.SessionID)
 		}
@@ -141,10 +134,10 @@ func shouldCompileKnowledgeBase(input chatMemoryHookInput) bool {
 	if shouldPromoteToMemory(input.UserMessage) {
 		return true
 	}
-	if _, ok := deriveUserAutoExperience(strings.TrimSpace(input.SessionID), strings.TrimSpace(input.ProjectID), input.UserMessage, input.AssistantTime); ok {
+	if _, ok := deriveUserAutoExperience(strings.TrimSpace(input.SessionID), input.UserMessage, input.AssistantTime); ok {
 		return true
 	}
-	if _, ok := deriveAssistantAutoExperience(strings.TrimSpace(input.SessionID), strings.TrimSpace(input.ProjectID), input.AssistantMessage, input.AssistantTime); ok {
+	if _, ok := deriveAssistantAutoExperience(strings.TrimSpace(input.SessionID), input.AssistantMessage, input.AssistantTime); ok {
 		return true
 	}
 
@@ -184,23 +177,22 @@ func trimForMemory(s string, max int) string {
 	return v[:max] + "..."
 }
 
-func deriveAutoExperiences(sessionID, projectID, userMessage, assistantMessage string, now time.Time) []memory.Experience {
+func deriveAutoExperiences(sessionID, userMessage, assistantMessage string, now time.Time) []memory.Experience {
 	out := make([]memory.Experience, 0, 2)
-	if exp, ok := deriveUserAutoExperience(sessionID, projectID, userMessage, now); ok {
+	if exp, ok := deriveUserAutoExperience(sessionID, userMessage, now); ok {
 		out = append(out, exp)
 	}
-	if exp, ok := deriveAssistantAutoExperience(sessionID, projectID, assistantMessage, now); ok {
+	if exp, ok := deriveAssistantAutoExperience(sessionID, assistantMessage, now); ok {
 		out = append(out, exp)
 	}
 	return out
 }
 
-func deriveUserAutoExperience(sessionID, projectID, userMessage string, now time.Time) (memory.Experience, bool) {
+func deriveUserAutoExperience(sessionID, userMessage string, now time.Time) (memory.Experience, bool) {
 	lowerUser := strings.ToLower(strings.TrimSpace(userMessage))
 	exp := memory.Experience{
 		Timestamp:     now.UTC(),
 		SourceSession: strings.TrimSpace(sessionID),
-		ProjectID:     strings.TrimSpace(projectID),
 		Importance:    6,
 		Auto:          true,
 	}
@@ -216,12 +208,11 @@ func deriveUserAutoExperience(sessionID, projectID, userMessage string, now time
 	}
 }
 
-func deriveAssistantAutoExperience(sessionID, projectID, assistantMessage string, now time.Time) (memory.Experience, bool) {
+func deriveAssistantAutoExperience(sessionID, assistantMessage string, now time.Time) (memory.Experience, bool) {
 	lowerAssistant := strings.ToLower(strings.TrimSpace(assistantMessage))
 	exp := memory.Experience{
 		Timestamp:     now.UTC(),
 		SourceSession: strings.TrimSpace(sessionID),
-		ProjectID:     strings.TrimSpace(projectID),
 		Importance:    6,
 		Auto:          true,
 	}
@@ -244,11 +235,11 @@ func deriveAssistantAutoExperience(sessionID, projectID, assistantMessage string
 	}
 }
 
-func deriveAutoExperience(sessionID, projectID, userMessage, assistantMessage string, now time.Time) (memory.Experience, bool) {
-	if exp, ok := deriveUserAutoExperience(sessionID, projectID, userMessage, now); ok {
+func deriveAutoExperience(sessionID, userMessage, assistantMessage string, now time.Time) (memory.Experience, bool) {
+	if exp, ok := deriveUserAutoExperience(sessionID, userMessage, now); ok {
 		return exp, true
 	}
-	return deriveAssistantAutoExperience(sessionID, projectID, assistantMessage, now)
+	return deriveAssistantAutoExperience(sessionID, assistantMessage, now)
 }
 
 func appendExperienceIfNew(workspaceDir string, exp memory.Experience) error {
@@ -256,9 +247,8 @@ func appendExperienceIfNew(workspaceDir string, exp memory.Experience) error {
 		return nil
 	}
 	existing, err := memory.SearchExperiences(workspaceDir, memory.SearchOptions{
-		Query:     strings.TrimSpace(exp.Summary),
-		ProjectID: strings.TrimSpace(exp.ProjectID),
-		Limit:     6,
+		Query: strings.TrimSpace(exp.Summary),
+		Limit: 6,
 	})
 	if err == nil {
 		normalizedSummary := strings.ToLower(strings.TrimSpace(exp.Summary))

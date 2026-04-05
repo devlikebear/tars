@@ -28,7 +28,6 @@ type Item struct {
 	Natural   string    `json:"natural,omitempty"`
 	Schedule  string    `json:"schedule"`
 	Status    string    `json:"status"`
-	ProjectID string    `json:"project_id,omitempty"`
 	CronJobID string    `json:"cron_job_id,omitempty"`
 	Timezone  string    `json:"timezone,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
@@ -36,21 +35,19 @@ type Item struct {
 }
 
 type CreateInput struct {
-	Natural   string
-	Title     string
-	Prompt    string
-	Schedule  string
-	ProjectID string
-	Timezone  string
+	Natural  string
+	Title    string
+	Prompt   string
+	Schedule string
+	Timezone string
 }
 
 type UpdateInput struct {
-	Title     *string
-	Prompt    *string
-	Schedule  *string
-	Status    *string
-	ProjectID *string
-	Timezone  *string
+	Title    *string
+	Prompt   *string
+	Schedule *string
+	Status   *string
+	Timezone *string
 }
 
 type Store struct {
@@ -194,7 +191,6 @@ func (s *Store) Create(input CreateInput) (Item, error) {
 		Schedule:  scheduleValue,
 		Enabled:   true,
 		HasEnable: true,
-		ProjectID: strings.TrimSpace(input.ProjectID),
 		Payload:   payload,
 	})
 	if err != nil {
@@ -228,7 +224,6 @@ func (s *Store) Update(id string, input UpdateInput) (Item, error) {
 	name := strings.TrimSpace(job.Name)
 	prompt := strings.TrimSpace(job.Prompt)
 	scheduleValue := strings.TrimSpace(job.Schedule)
-	projectID := strings.TrimSpace(job.ProjectID)
 	status := normalizeStatus(meta.Status)
 	if status == "" {
 		status = inferStatus(job.Enabled, "")
@@ -247,9 +242,6 @@ func (s *Store) Update(id string, input UpdateInput) (Item, error) {
 	}
 	if input.Prompt != nil {
 		prompt = strings.TrimSpace(*input.Prompt)
-	}
-	if input.ProjectID != nil {
-		projectID = strings.TrimSpace(*input.ProjectID)
 	}
 	if input.Timezone != nil {
 		timezone = strings.TrimSpace(*input.Timezone)
@@ -281,12 +273,11 @@ func (s *Store) Update(id string, input UpdateInput) (Item, error) {
 	enabled := status == "active"
 
 	updated, err := s.cronStore.Update(key, cron.UpdateInput{
-		Name:      &name,
-		Prompt:    &prompt,
-		Schedule:  &scheduleValue,
-		Enabled:   &enabled,
-		ProjectID: &projectID,
-		Payload:   &payload,
+		Name:     &name,
+		Prompt:   &prompt,
+		Schedule: &scheduleValue,
+		Enabled:  &enabled,
+		Payload:  &payload,
 	})
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "not found") {
@@ -362,7 +353,6 @@ func (s *Store) itemFromJob(job cron.Job) (Item, bool) {
 		Natural:   strings.TrimSpace(meta.Natural),
 		Schedule:  job.Schedule,
 		Status:    status,
-		ProjectID: strings.TrimSpace(job.ProjectID),
 		CronJobID: job.ID,
 		Timezone:  timezone,
 		CreatedAt: createdAt,
@@ -421,7 +411,6 @@ func (s *Store) upsertLegacyItemLocked(item Item, legacyCronMap map[string]strin
 	if prompt == "" {
 		prompt = "Reminder: " + title
 	}
-	projectID := strings.TrimSpace(item.ProjectID)
 	tz := strings.TrimSpace(item.Timezone)
 	if tz == "" {
 		tz = s.timezone
@@ -460,12 +449,11 @@ func (s *Store) upsertLegacyItemLocked(item Item, legacyCronMap map[string]strin
 			}
 			enabled := status == "active"
 			_, updateErr := s.cronStore.Update(targetJobID, cron.UpdateInput{
-				Name:      &title,
-				Prompt:    &prompt,
-				Schedule:  &scheduleValue,
-				Enabled:   &enabled,
-				ProjectID: &projectID,
-				Payload:   &payload,
+				Name:     &title,
+				Prompt:   &prompt,
+				Schedule: &scheduleValue,
+				Enabled:  &enabled,
+				Payload:  &payload,
 			})
 			if updateErr != nil {
 				return updateErr
@@ -484,7 +472,6 @@ func (s *Store) upsertLegacyItemLocked(item Item, legacyCronMap map[string]strin
 		Schedule:  scheduleValue,
 		Enabled:   status == "active",
 		HasEnable: true,
-		ProjectID: projectID,
 		Payload:   payload,
 	})
 	return err

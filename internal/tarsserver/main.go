@@ -74,8 +74,8 @@ func applyOptionDefaults(opts *options) {
 }
 
 type loggerConfig struct {
-	FilePath       string
-	Level          string
+	FilePath         string
+	Level            string
 	RotateMaxSizeMB  int
 	RotateMaxDays    int
 	RotateMaxBackups int

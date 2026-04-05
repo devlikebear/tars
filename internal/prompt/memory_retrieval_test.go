@@ -45,7 +45,6 @@ func TestBuild_IncludesRelevantMemoryByQueryAndProject(t *testing.T) {
 		Timestamp:     time.Date(2026, 3, 7, 1, 0, 0, 0, time.UTC),
 		Category:      "preference",
 		Summary:       "User prefers black coffee in project alpha.",
-		ProjectID:     "alpha",
 		SourceSession: "sess-alpha",
 		Importance:    9,
 	}); err != nil {
@@ -58,7 +57,6 @@ func TestBuild_IncludesRelevantMemoryByQueryAndProject(t *testing.T) {
 	result := Build(BuildOptions{
 		WorkspaceDir: root,
 		Query:        "what coffee do I prefer?",
-		ProjectID:    "alpha",
 		SessionID:    "sess-alpha",
 	})
 
@@ -175,7 +173,6 @@ func TestBuild_UsesSemanticMemoryForParaphraseQueries(t *testing.T) {
 		Timestamp:     time.Date(2026, 3, 20, 8, 0, 0, 0, time.UTC),
 		Category:      "preference",
 		Summary:       "User prefers decaf espresso during late-night sessions.",
-		ProjectID:     "alpha",
 		SourceSession: "sess-alpha",
 		Importance:    9,
 	}); err != nil {
@@ -185,7 +182,6 @@ func TestBuild_UsesSemanticMemoryForParaphraseQueries(t *testing.T) {
 	result := Build(BuildOptions{
 		WorkspaceDir:   root,
 		Query:          "what coffee should I order without caffeine tonight?",
-		ProjectID:      "alpha",
 		SessionID:      "sess-alpha",
 		MemorySearcher: semantic,
 	})

@@ -277,10 +277,10 @@ func TestParseClockMinutes_AutoCorrects(t *testing.T) {
 		{"09:00", 9 * 60, false},
 		{"23:59", 23*60 + 59, false},
 		{"00:00", 0, false},
-		{"24:00", 23*60 + 59, false},  // auto-correct
-		{"0:00", 0, false},            // auto-correct
-		{"25:30", 23*60 + 30, false},  // clamp hour
-		{"12:99", 12*60 + 59, false},  // clamp minute
+		{"24:00", 23*60 + 59, false}, // auto-correct
+		{"0:00", 0, false},           // auto-correct
+		{"25:30", 23*60 + 30, false}, // clamp hour
+		{"12:99", 12*60 + 59, false}, // clamp minute
 		{"abc", 0, true},
 	}
 	for _, tc := range cases {

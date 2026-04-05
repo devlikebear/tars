@@ -190,9 +190,8 @@ func printCronJob(stdout io.Writer, job protocol.CronJob) error {
 		cronValueOrDash(job.Name), cronValueOrDash(job.Schedule), job.Enabled, job.DeleteAfterRun); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(stdout, "session_target=%s project_id=%s wake_mode=%s delivery_mode=%s\n",
+	if _, err := fmt.Fprintf(stdout, "session_target=%s wake_mode=%s delivery_mode=%s\n",
 		cronValueOrDash(job.SessionTarget),
-		cronValueOrDash(job.ProjectID),
 		cronValueOrDash(job.WakeMode),
 		cronValueOrDash(job.DeliveryMode),
 	); err != nil {

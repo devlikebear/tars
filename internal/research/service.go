@@ -14,14 +14,12 @@ type Options struct {
 }
 
 type RunInput struct {
-	ProjectID string
-	Topic     string
-	Summary   string
-	Body      string
+	Topic   string
+	Summary string
+	Body    string
 }
 
 type Report struct {
-	ProjectID string    `json:"project_id"`
 	Topic     string    `json:"topic"`
 	Path      string    `json:"path"`
 	CreatedAt time.Time `json:"created_at"`
@@ -48,16 +46,12 @@ func (s *Service) Run(input RunInput) (Report, error) {
 	if s == nil {
 		return Report{}, fmt.Errorf("research service is nil")
 	}
-	projectID := strings.TrimSpace(input.ProjectID)
-	if projectID == "" {
-		return Report{}, fmt.Errorf("project_id is required")
-	}
 	topic := strings.TrimSpace(input.Topic)
 	if topic == "" {
 		return Report{}, fmt.Errorf("topic is required")
 	}
 	now := s.nowFn().UTC()
-	reportsDir := filepath.Join(s.workspace, "projects", projectID, "reports")
+	reportsDir := filepath.Join(s.workspace, "reports")
 	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
 		return Report{}, err
 	}
@@ -72,7 +66,7 @@ func (s *Service) Run(input RunInput) (Report, error) {
 	if err := os.WriteFile(reportPath, []byte(content), 0o644); err != nil {
 		return Report{}, err
 	}
-	report := Report{ProjectID: projectID, Topic: topic, Path: reportPath, CreatedAt: now}
+	report := Report{Topic: topic, Path: reportPath, CreatedAt: now}
 	if err := appendSummary(filepath.Join(reportsDir, "summary.jsonl"), report, strings.TrimSpace(input.Summary)); err != nil {
 		return Report{}, err
 	}
@@ -102,11 +96,10 @@ func appendSummary(path string, report Report, summary string) error {
 	}
 	defer f.Close()
 	payload := map[string]any{
-		"timestamp":  report.CreatedAt.Format(time.RFC3339),
-		"project_id": report.ProjectID,
-		"topic":      report.Topic,
-		"path":       report.Path,
-		"summary":    summary,
+		"timestamp": report.CreatedAt.Format(time.RFC3339),
+		"topic":     report.Topic,
+		"path":      report.Path,
+		"summary":   summary,
 	}
 	line, err := json.Marshal(payload)
 	if err != nil {

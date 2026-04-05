@@ -22,7 +22,6 @@ type Job struct {
 	Schedule            string          `json:"schedule"`
 	Enabled             bool            `json:"enabled"`
 	SessionTarget       string          `json:"session_target,omitempty"`
-	ProjectID           string          `json:"project_id,omitempty"`
 	WakeMode            string          `json:"wake_mode,omitempty"`
 	DeliveryMode        string          `json:"delivery_mode,omitempty"`
 	Payload             json.RawMessage `json:"payload,omitempty"`
@@ -50,7 +49,6 @@ type CreateInput struct {
 	Enabled           bool
 	HasEnable         bool
 	SessionTarget     string
-	ProjectID         string
 	WakeMode          string
 	DeliveryMode      string
 	Payload           json.RawMessage
@@ -64,7 +62,6 @@ type UpdateInput struct {
 	Schedule       *string
 	Enabled        *bool
 	SessionTarget  *string
-	ProjectID      *string
 	WakeMode       *string
 	DeliveryMode   *string
 	Payload        *json.RawMessage
@@ -160,7 +157,6 @@ func (s *Store) CreateWithOptions(input CreateInput) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	projectID := normalizeProjectID(input.ProjectID)
 	wakeMode, err := normalizeWakeMode(input.WakeMode)
 	if err != nil {
 		return Job{}, err
@@ -186,7 +182,6 @@ func (s *Store) CreateWithOptions(input CreateInput) (Job, error) {
 		Schedule:       schedule,
 		Enabled:        enabled,
 		SessionTarget:  sessionTarget,
-		ProjectID:      projectID,
 		WakeMode:       wakeMode,
 		DeliveryMode:   deliveryMode,
 		Payload:        payload,
@@ -280,9 +275,6 @@ func applyUpdateInput(job *Job, input UpdateInput) error {
 		if strings.TrimSpace(job.DeliveryMode) == "" {
 			job.DeliveryMode, _ = normalizeDeliveryMode("", sessionTarget)
 		}
-	}
-	if input.ProjectID != nil {
-		job.ProjectID = normalizeProjectID(*input.ProjectID)
 	}
 	if input.WakeMode != nil {
 		wakeMode, err := normalizeWakeMode(*input.WakeMode)
@@ -475,7 +467,6 @@ func (s *Store) load() ([]Job, error) {
 		} else {
 			jobs[i].DeliveryMode = "daily_log"
 		}
-		jobs[i].ProjectID = normalizeProjectID(jobs[i].ProjectID)
 		payload, err := normalizePayload(jobs[i].Payload)
 		if err == nil {
 			jobs[i].Payload = payload

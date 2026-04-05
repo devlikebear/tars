@@ -60,8 +60,7 @@ func (h *telegramInboundHandler) processMessage(
 	}
 	resolvedSkill := resolveSkillSelection(text, h.tooling.Extensions, h.workspaceDir, sessionID)
 	invokedSkill := resolvedSkill.Definition
-	resolvedProjectID := resolveSessionProjectID(h.store, sessionID, "")
-	systemPrompt, toolChoice, err := prepareChatContextWithExtensions(h.workspaceDir, resolvedProjectID, sessionID, text, extSnapshot, invokedSkill, h.tooling.MemorySemanticConfig)
+	systemPrompt, toolChoice, err := prepareChatContextWithExtensions(h.workspaceDir, sessionID, text, extSnapshot, invokedSkill, h.tooling.MemorySemanticConfig)
 	if err != nil {
 		return "", sessionID, err
 	}
@@ -82,17 +81,9 @@ func (h *telegramInboundHandler) processMessage(
 	}); err != nil {
 		return "", sessionID, err
 	}
-	sessionProjectID := ""
-	if sess, err := h.store.Get(sessionID); err == nil {
-		sessionProjectID = strings.TrimSpace(sess.ProjectID)
-	}
-	if strings.TrimSpace(resolvedProjectID) != "" {
-		sessionProjectID = strings.TrimSpace(resolvedProjectID)
-	}
 	runCtx := usage.WithCallMeta(ctx, usage.CallMeta{
 		Source:    "chat",
 		SessionID: sessionID,
-		ProjectID: sessionProjectID,
 	})
 
 	loop := agent.NewLoop(h.llmClient, registry)
@@ -126,16 +117,9 @@ func (h *telegramInboundHandler) processMessage(
 	if err := h.store.Touch(sessionID, assistantAt); err != nil {
 		h.logger.Debug().Err(err).Str("session_id", sessionID).Msg("telegram touch session failed")
 	}
-	projectID := ""
-	if h.store != nil {
-		if sess, getErr := h.store.Get(sessionID); getErr == nil {
-			projectID = strings.TrimSpace(sess.ProjectID)
-		}
-	}
 	if err := applyPostChatMemoryHooks(chatMemoryHookInput{
 		WorkspaceDir:     h.workspaceDir,
 		SessionID:        sessionID,
-		ProjectID:        projectID,
 		UserMessage:      text,
 		AssistantMessage: answer,
 		AssistantTime:    assistantAt,

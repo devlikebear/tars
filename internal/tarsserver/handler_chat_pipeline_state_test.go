@@ -15,40 +15,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestResolveSessionProjectID_ResolvesFromSessionAndRequest(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "workspace")
-	if err := memory.EnsureWorkspace(root); err != nil {
-		t.Fatalf("ensure workspace: %v", err)
-	}
-
-	store := session.NewStore(root)
-	sess, err := store.Create("chat")
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-
-	// No project set, no request ID → empty
-	resolvedID := resolveSessionProjectID(store, sess.ID, "")
-	if resolvedID != "" {
-		t.Fatalf("expected empty project ID, got %q", resolvedID)
-	}
-
-	// Set session project ID
-	if err := store.SetProjectID(sess.ID, "proj_alpha"); err != nil {
-		t.Fatalf("set project: %v", err)
-	}
-	resolvedID = resolveSessionProjectID(store, sess.ID, "")
-	if resolvedID != "proj_alpha" {
-		t.Fatalf("expected session project %q, got %q", "proj_alpha", resolvedID)
-	}
-
-	// Request project ID overrides session
-	resolvedID = resolveSessionProjectID(store, sess.ID, "proj_beta")
-	if resolvedID != "proj_beta" {
-		t.Fatalf("expected request project %q, got %q", "proj_beta", resolvedID)
-	}
-}
-
 func TestPersistChatResult_AppendsAssistantMessageAndTouchesSession(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -125,7 +91,6 @@ func TestPersistChatResult_PromotesMemoryAndDedupesExperience(t *testing.T) {
 		requestWorkspaceDir: root,
 		store:               store,
 		sessionID:           sess.ID,
-		projectID:           "alpha",
 		transcriptPath:      store.TranscriptPath(sess.ID),
 	}
 
@@ -148,7 +113,7 @@ func TestPersistChatResult_PromotesMemoryAndDedupesExperience(t *testing.T) {
 		t.Fatalf("expected durable memory note, got %q", string(memoryFile))
 	}
 
-	rows, err := memory.SearchExperiences(root, memory.SearchOptions{ProjectID: "alpha", Limit: 10})
+	rows, err := memory.SearchExperiences(root, memory.SearchOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("search experiences: %v", err)
 	}
@@ -201,7 +166,7 @@ func TestDeriveAutoExperience_Heuristics(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := deriveAutoExperience("sess", "proj", tc.userMessage, tc.assistantText, now)
+			got, ok := deriveAutoExperience("sess", tc.userMessage, tc.assistantText, now)
 			if !ok {
 				t.Fatalf("expected auto experience")
 			}
@@ -249,7 +214,6 @@ func TestPersistChatResult_CompilesKnowledgeBaseNote(t *testing.T) {
 		requestWorkspaceDir: root,
 		store:               store,
 		sessionID:           sess.ID,
-		projectID:           "alpha",
 		transcriptPath:      store.TranscriptPath(sess.ID),
 		llmClient: &knowledgeCompileStubClient{
 			content: `{"notes":[{"slug":"coffee-preference","title":"Coffee Preference","kind":"preference","summary":"User prefers black coffee.","body":"Keep coffee suggestions unsweetened.","tags":["coffee"],"aliases":["black coffee"]}],"edges":[]}`,

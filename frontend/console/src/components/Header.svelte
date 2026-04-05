@@ -4,14 +4,12 @@
 
   interface Props {
     serverHealth?: string
-    activeProject?: string
     unreadCount?: number
     onUnreadChange?: (count: number) => void
   }
 
   let {
     serverHealth = 'ok',
-    activeProject = '',
     unreadCount = 0,
     onUnreadChange,
   }: Props = $props()
@@ -60,7 +58,6 @@
   function categoryIcon(category: string): string {
     switch (category) {
       case 'cron': return '\u23f0'
-      case 'project': return '\u25eb'
       case 'ops': return '\u2699'
       case 'usage': return '\u2261'
       case 'gateway': return '\u29bf'
@@ -114,13 +111,6 @@
   </div>
 
   <div class="header-right">
-    {#if activeProject}
-      <div class="header-meta">
-        <span class="label">Project</span>
-        <span class="header-meta-value">{activeProject}</span>
-      </div>
-    {/if}
-
     <div class="header-indicator" class:healthy={serverHealth === 'ok'}>
       <span class="header-dot"></span>
       <span class="header-indicator-label">{serverHealth === 'ok' ? 'Connected' : 'Disconnected'}</span>
@@ -168,9 +158,6 @@
                   <p class="notif-message">{item.message}</p>
                   <div class="notif-meta">
                     <span class="badge badge-default">{item.category}</span>
-                    {#if item.project_id}
-                      <span class="notif-meta-tag">project: {item.project_id}</span>
-                    {/if}
                   </div>
                 </div>
               {/each}

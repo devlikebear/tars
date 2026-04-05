@@ -10,86 +10,6 @@ import (
 	"github.com/devlikebear/tars/internal/session"
 )
 
-func TestResolveSpawnProjectID_UsesSessionProjectAndPersistsOverride(t *testing.T) {
-	store := session.NewStore(t.TempDir())
-	sess, err := store.Create("chat")
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-
-	originalID := "proj_original"
-	overrideID := "proj_override"
-	if err := store.SetProjectID(sess.ID, originalID); err != nil {
-		t.Fatalf("set session project: %v", err)
-	}
-
-	resolved, err := resolveSpawnProjectID(store, sess.ID, "")
-	if err != nil {
-		t.Fatalf("resolve project from session: %v", err)
-	}
-	if resolved != originalID {
-		t.Fatalf("expected session project %q, got %q", originalID, resolved)
-	}
-
-	resolved, err = resolveSpawnProjectID(store, sess.ID, overrideID)
-	if err != nil {
-		t.Fatalf("resolve override project: %v", err)
-	}
-	if resolved != overrideID {
-		t.Fatalf("expected override project %q, got %q", overrideID, resolved)
-	}
-
-	updated, err := store.Get(sess.ID)
-	if err != nil {
-		t.Fatalf("get updated session: %v", err)
-	}
-	if updated.ProjectID != overrideID {
-		t.Fatalf("expected session project override %q, got %q", overrideID, updated.ProjectID)
-	}
-}
-
-func TestResolveSpawnSessionID_CreatesDistinctHiddenWorkerSessionsPerProjectRun(t *testing.T) {
-	store := session.NewStore(t.TempDir())
-	mainSession, err := store.EnsureMain()
-	if err != nil {
-		t.Fatalf("ensure main: %v", err)
-	}
-
-	firstSessionID, err := resolveSpawnSessionID(store, SpawnRequest{ProjectID: "proj_demo"}, AgentInfo{}, "worker")
-	if err != nil {
-		t.Fatalf("resolve worker session: %v", err)
-	}
-	if firstSessionID == "" || firstSessionID == mainSession.ID {
-		t.Fatalf("expected project worker session distinct from main, got %q", firstSessionID)
-	}
-
-	secondSessionID, err := resolveSpawnSessionID(store, SpawnRequest{ProjectID: "proj_demo"}, AgentInfo{}, "worker")
-	if err != nil {
-		t.Fatalf("resolve second worker session: %v", err)
-	}
-	if secondSessionID == "" || secondSessionID == mainSession.ID {
-		t.Fatalf("expected second project worker session distinct from main, got %q", secondSessionID)
-	}
-	if firstSessionID == secondSessionID {
-		t.Fatalf("expected project worker runs to use distinct hidden sessions, got %q", firstSessionID)
-	}
-
-	first, err := store.Get(firstSessionID)
-	if err != nil {
-		t.Fatalf("get first worker session: %v", err)
-	}
-	if first.Kind != "worker" || !first.Hidden {
-		t.Fatalf("unexpected first worker session metadata: %+v", first)
-	}
-	second, err := store.Get(secondSessionID)
-	if err != nil {
-		t.Fatalf("get second worker session: %v", err)
-	}
-	if second.Kind != "worker" || !second.Hidden {
-		t.Fatalf("unexpected second worker session metadata: %+v", second)
-	}
-}
-
 func TestResolveSpawnSessionID_CreatesHiddenSubagentSessionWhenRequested(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	parent, err := store.Create("chat")
@@ -136,7 +56,6 @@ func TestFinalizeRunLocked_PopulatesPolicyFailureMetadata(t *testing.T) {
 			CreatedAt:   fixedNow.Add(-time.Minute).Format(time.RFC3339),
 			UpdatedAt:   fixedNow.Add(-time.Minute).Format(time.RFC3339),
 			SessionID:   "sess_1",
-			ProjectID:   "proj_1",
 			Accepted:    true,
 			Prompt:      "hello",
 			Agent:       "researcher",
@@ -218,7 +137,6 @@ func TestFinalizeRunLocked_HiddenWorkerSessionAppendsSummaryToMain(t *testing.T)
 			CreatedAt:   fixedNow.Add(-time.Minute).Format(time.RFC3339),
 			UpdatedAt:   fixedNow.Add(-time.Minute).Format(time.RFC3339),
 			SessionID:   worker.ID,
-			ProjectID:   "proj_demo",
 			Accepted:    true,
 			Prompt:      "draft episode 3",
 			Agent:       "novelist",
@@ -240,7 +158,7 @@ func TestFinalizeRunLocked_HiddenWorkerSessionAppendsSummaryToMain(t *testing.T)
 	if len(mainMessages) != 1 {
 		t.Fatalf("expected 1 main summary message, got %+v", mainMessages)
 	}
-	if got := mainMessages[0].Content; !strings.Contains(got, "[RUN SUMMARY]") || !strings.Contains(got, "project_id: proj_demo") || !strings.Contains(got, "status: completed") {
+	if got := mainMessages[0].Content; !strings.Contains(got, "[RUN SUMMARY]") || !strings.Contains(got, "status: completed") {
 		t.Fatalf("unexpected run summary: %q", got)
 	}
 }

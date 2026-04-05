@@ -28,7 +28,6 @@ type KnowledgeNote struct {
 	Tags          []string        `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Aliases       []string        `json:"aliases,omitempty" yaml:"aliases,omitempty"`
 	Links         []KnowledgeLink `json:"links,omitempty" yaml:"links,omitempty"`
-	ProjectID     string          `json:"project_id,omitempty" yaml:"project_id,omitempty"`
 	SourceSession string          `json:"source_session,omitempty" yaml:"source_session,omitempty"`
 	CreatedAt     time.Time       `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 	UpdatedAt     time.Time       `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
@@ -44,17 +43,15 @@ type KnowledgeNotePatch struct {
 	Tags          *[]string
 	Aliases       *[]string
 	Links         *[]KnowledgeLink
-	ProjectID     *string
 	SourceSession *string
 	UpdatedAt     time.Time
 }
 
 type KnowledgeListOptions struct {
-	Query     string
-	Kind      string
-	Tag       string
-	ProjectID string
-	Limit     int
+	Query string
+	Kind  string
+	Tag   string
+	Limit int
 }
 
 type KnowledgeGraphNode struct {
@@ -271,9 +268,6 @@ func (s *KnowledgeStore) Upsert(note KnowledgeNote) (KnowledgeNote, error) {
 	if links != nil {
 		patch.Links = &links
 	}
-	if strings.TrimSpace(note.ProjectID) != "" {
-		patch.ProjectID = stringPtr(note.ProjectID)
-	}
 	if strings.TrimSpace(note.SourceSession) != "" {
 		patch.SourceSession = stringPtr(note.SourceSession)
 	}
@@ -333,9 +327,6 @@ func (s *KnowledgeStore) ApplyPatch(patch KnowledgeNotePatch) (KnowledgeNote, er
 	}
 	if patch.Links != nil {
 		note.Links = normalizeKnowledgeLinks(*patch.Links)
-	}
-	if patch.ProjectID != nil {
-		note.ProjectID = strings.TrimSpace(*patch.ProjectID)
 	}
 	if patch.SourceSession != nil {
 		note.SourceSession = strings.TrimSpace(*patch.SourceSession)
@@ -428,7 +419,6 @@ func (s *KnowledgeStore) List(opts KnowledgeListOptions) ([]KnowledgeNote, error
 	query := strings.ToLower(strings.TrimSpace(opts.Query))
 	kind := normalizeKnowledgeKind(opts.Kind)
 	tag := strings.ToLower(strings.TrimSpace(opts.Tag))
-	projectID := strings.TrimSpace(opts.ProjectID)
 
 	items := make([]KnowledgeNote, 0, len(paths))
 	for _, path := range paths {
@@ -442,9 +432,6 @@ func (s *KnowledgeStore) List(opts KnowledgeListOptions) ([]KnowledgeNote, error
 		}
 		note.Path = filepath.ToSlash(filepath.Join("memory", "wiki", "notes", filepath.Base(path)))
 		if kind != "" && normalizeKnowledgeKind(note.Kind) != kind {
-			continue
-		}
-		if projectID != "" && strings.TrimSpace(note.ProjectID) != projectID {
 			continue
 		}
 		if tag != "" && !knowledgeHasTag(note, tag) {
@@ -648,7 +635,6 @@ func buildKnowledgeDocument(note KnowledgeNote) string {
 		Tags:          note.Tags,
 		Aliases:       note.Aliases,
 		Links:         note.Links,
-		ProjectID:     note.ProjectID,
 		SourceSession: note.SourceSession,
 		CreatedAt:     note.CreatedAt.UTC(),
 		UpdatedAt:     note.UpdatedAt.UTC(),
@@ -706,7 +692,6 @@ func parseKnowledgeDocument(raw string) (KnowledgeNote, error) {
 	note.Tags = normalizeStringList(note.Tags)
 	note.Aliases = normalizeStringList(note.Aliases)
 	note.Links = normalizeKnowledgeLinks(note.Links)
-	note.ProjectID = strings.TrimSpace(note.ProjectID)
 	note.SourceSession = strings.TrimSpace(note.SourceSession)
 	note.CreatedAt = note.CreatedAt.UTC()
 	note.UpdatedAt = note.UpdatedAt.UTC()
@@ -841,7 +826,6 @@ func knowledgeMatchesQuery(note KnowledgeNote, query string) bool {
 		note.Kind,
 		note.Summary,
 		note.Body,
-		note.ProjectID,
 		note.SourceSession,
 		strings.Join(note.Tags, " "),
 		strings.Join(note.Aliases, " "),

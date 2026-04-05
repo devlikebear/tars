@@ -149,8 +149,6 @@ func summaryKey(entry Entry, groupBy string) string {
 		return firstNonEmptyTrimmed(entry.Model, "(none)")
 	case "source":
 		return firstNonEmptyTrimmed(entry.Source, "(none)")
-	case "project":
-		return firstNonEmptyTrimmed(entry.ProjectID, "(none)")
 	case "run":
 		return firstNonEmptyTrimmed(entry.RunID, "(none)")
 	default:

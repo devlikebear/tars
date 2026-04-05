@@ -251,7 +251,7 @@ func TestRuntimeSpawn_WithCustomExecutor(t *testing.T) {
 }
 
 func TestResolveRunAllowedTools_PassesThroughExecutorTools(t *testing.T) {
-	got := resolveRunAllowedTools("", "", []string{"memory_get", "memory_save", "web_search", "exec"})
+	got := resolveRunAllowedTools("", []string{"memory_get", "memory_save", "web_search", "exec"})
 	want := []string{"memory_get", "memory_save", "web_search", "exec"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("unexpected allowed tools: got=%v want=%v", got, want)

@@ -119,45 +119,6 @@ func TestStore_UpdateAndDelete(t *testing.T) {
 	}
 }
 
-func TestStore_ProjectIDRoundTrip(t *testing.T) {
-	root := t.TempDir()
-	store := NewStore(root)
-
-	created, err := store.CreateWithOptions(CreateInput{
-		Name:      "project-job",
-		Prompt:    "execute project work",
-		Schedule:  "every:1h",
-		Enabled:   true,
-		HasEnable: true,
-		ProjectID: "proj_demo",
-	})
-	if err != nil {
-		t.Fatalf("create job: %v", err)
-	}
-	if created.ProjectID != "proj_demo" {
-		t.Fatalf("expected project_id proj_demo, got %q", created.ProjectID)
-	}
-
-	updated, err := store.Update(created.ID, UpdateInput{
-		ProjectID: ptrString("proj_next"),
-	})
-	if err != nil {
-		t.Fatalf("update job: %v", err)
-	}
-	if updated.ProjectID != "proj_next" {
-		t.Fatalf("expected project_id proj_next, got %q", updated.ProjectID)
-	}
-
-	reloaded := NewStore(root)
-	jobs, err := reloaded.List()
-	if err != nil {
-		t.Fatalf("list jobs: %v", err)
-	}
-	if len(jobs) != 1 || jobs[0].ProjectID != "proj_next" {
-		t.Fatalf("expected persisted project_id proj_next, got %+v", jobs)
-	}
-}
-
 func ptrString(v string) *string { return &v }
 func ptrBool(v bool) *bool       { return &v }
 

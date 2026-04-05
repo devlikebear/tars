@@ -31,7 +31,6 @@ func TestTracker_RecordAndSummary(t *testing.T) {
 		OutputTokens:     500,
 		EstimatedCostUSD: 0.001,
 		Source:           "chat",
-		ProjectID:        "proj_demo",
 		PricingKnown:     true,
 	}); err != nil {
 		t.Fatalf("record: %v", err)
@@ -117,7 +116,6 @@ func TestTracker_RecordNormalizesFieldsAndSummaryUsesProjectFallback(t *testing.
 		EstimatedCostUSD: 0.003,
 		Source:           " UNKNOWN ",
 		SessionID:        "  sess-1  ",
-		ProjectID:        "   ",
 		RunID:            " run-1 ",
 	}); err != nil {
 		t.Fatalf("record: %v", err)
@@ -147,19 +145,8 @@ func TestTracker_RecordNormalizesFieldsAndSummaryUsesProjectFallback(t *testing.
 	if recorded.SessionID != "sess-1" {
 		t.Fatalf("expected trimmed session id, got %q", recorded.SessionID)
 	}
-	if recorded.ProjectID != "" {
-		t.Fatalf("expected blank project id, got %q", recorded.ProjectID)
-	}
 	if recorded.RunID != "run-1" {
 		t.Fatalf("expected trimmed run id, got %q", recorded.RunID)
-	}
-
-	summary, err := tracker.Summary("today", "project")
-	if err != nil {
-		t.Fatalf("summary project: %v", err)
-	}
-	if len(summary.Rows) != 1 || summary.Rows[0].Key != "(none)" {
-		t.Fatalf("expected project fallback row, got %+v", summary.Rows)
 	}
 
 	runSummary, err := tracker.Summary("today", "run")

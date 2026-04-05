@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { streamChat, cancelChat, listSessions, getSessionHistory, renameSession } from '../lib/api'
+  import { streamChat, cancelChat, getSessionHistory, renameSession } from '../lib/api'
   import type { ChatAttachment, ChatEvent, SessionMessage } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, type Artifact } from '../lib/artifacts'
   import MarkdownContent from './MarkdownContent.svelte'
@@ -18,7 +18,6 @@
   }
 
   interface Props {
-    projectId?: string
     sessionId?: string
     initialPrompt?: string
     autoSend?: boolean
@@ -26,7 +25,7 @@
     onArtifactsChange?: (artifacts: Artifact[]) => void
   }
 
-  let { projectId, sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange }: Props = $props()
+  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -52,46 +51,6 @@
 
   let chatLogEl: HTMLDivElement | undefined = $state()
   let autoScroll = $state(true)
-
-  async function loadProjectSession() {
-    try {
-      const all = await listSessions()
-      const projectSession = projectId ? all.find((s) => s.project_id === projectId) : null
-      if (projectSession) {
-        chatSessionId = projectSession.id
-        chatMessages = [{ id: 'system-init', role: 'system', text: `Session: ${projectSession.id.slice(0, 8)}...` }]
-        const history = await getSessionHistory(projectSession.id)
-        for (const msg of history) {
-          if (msg.role === 'system' && (msg.content.startsWith('[HEARTBEAT]') || msg.content.startsWith('[COMPACTION SUMMARY]') || msg.content.startsWith('[CRON]'))) {
-            continue
-          }
-          if (msg.role === 'tool') {
-            chatMessages.push({
-              id: `tool-${msg.tool_call_id || Date.now()}`,
-              role: 'tool',
-              text: '',
-              toolName: msg.tool_name,
-              toolCallId: msg.tool_call_id,
-              toolArgs: msg.tool_args,
-              toolResult: msg.content,
-              toolDone: true,
-            })
-          } else {
-            chatMessages.push({
-              id: `hist-${chatMessages.length}`,
-              role: msg.role as ChatMessage['role'],
-              text: msg.content,
-            })
-          }
-        }
-        chatMessages = [...chatMessages]
-        artifacts = extractArtifactsFromHistory(chatMessages)
-        if (artifacts.length > 0) onArtifactsChange?.(artifacts)
-        autoTitled = true
-        void scrollToBottom()
-      }
-    } catch { /* ignore */ }
-  }
 
   function handleScroll() {
     if (!chatLogEl) return
@@ -254,7 +213,6 @@
         {
           message,
           session_id: chatSessionId || 'new',
-          project_id: projectId || undefined,
           attachments: chatAttachments,
         },
         (event) => handleChatEvent(event, assistantId),
@@ -479,8 +437,6 @@
         autoTitled = true
         void scrollToBottom()
       } catch { /* ignore */ }
-    } else if (projectId) {
-      await loadProjectSession()
     } else {
       chatMessages = [{ id: 'system-init', role: 'system', text: 'TARS' }]
     }
@@ -590,7 +546,7 @@
         bind:this={textareaEl}
         bind:value={chatInput}
         rows="2"
-        placeholder={sessionId ? 'Continue this session...' : projectId ? 'Ask TARS about this project...' : 'Ask TARS anything... (paste images with Ctrl+V)'}
+        placeholder={sessionId ? 'Continue this session...' : 'Ask TARS anything... (paste images with Ctrl+V)'}
         onkeydown={handleKeydown}
         onpaste={handlePaste}
       ></textarea>

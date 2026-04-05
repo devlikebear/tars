@@ -20,7 +20,6 @@ func NewScheduleCreateTool(store *schedule.Store) Tool {
     "title":{"type":"string"},
     "prompt":{"type":"string"},
     "schedule":{"type":"string"},
-    "project_id":{"type":"string"},
     "timezone":{"type":"string"}
   },
   "additionalProperties":false
@@ -30,12 +29,11 @@ func NewScheduleCreateTool(store *schedule.Store) Tool {
 				return JSONTextResult(map[string]any{"message": "schedule store is not configured"}, true), nil
 			}
 			var input struct {
-				Natural   string `json:"natural"`
-				Title     string `json:"title,omitempty"`
-				Prompt    string `json:"prompt,omitempty"`
-				Schedule  string `json:"schedule,omitempty"`
-				ProjectID string `json:"project_id,omitempty"`
-				Timezone  string `json:"timezone,omitempty"`
+				Natural  string `json:"natural"`
+				Title    string `json:"title,omitempty"`
+				Prompt   string `json:"prompt,omitempty"`
+				Schedule string `json:"schedule,omitempty"`
+				Timezone string `json:"timezone,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
@@ -44,17 +42,13 @@ func NewScheduleCreateTool(store *schedule.Store) Tool {
 				if err := validateNaturalTaskPrompt(input.Prompt); err != nil {
 					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 				}
-				if err := validateAutonomousProjectSchedule(input.Prompt, input.ProjectID); err != nil {
-					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
-				}
 			}
 			item, err := store.Create(schedule.CreateInput{
-				Natural:   input.Natural,
-				Title:     input.Title,
-				Prompt:    input.Prompt,
-				Schedule:  input.Schedule,
-				ProjectID: input.ProjectID,
-				Timezone:  input.Timezone,
+				Natural:  input.Natural,
+				Title:    input.Title,
+				Prompt:   input.Prompt,
+				Schedule: input.Schedule,
+				Timezone: input.Timezone,
 			})
 			if err != nil {
 				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
@@ -94,7 +88,6 @@ func NewScheduleUpdateTool(store *schedule.Store) Tool {
     "prompt":{"type":"string"},
     "schedule":{"type":"string"},
     "status":{"type":"string"},
-    "project_id":{"type":"string"},
     "timezone":{"type":"string"}
   },
   "required":["schedule_id"],
@@ -110,7 +103,6 @@ func NewScheduleUpdateTool(store *schedule.Store) Tool {
 				Prompt     *string `json:"prompt,omitempty"`
 				Schedule   *string `json:"schedule,omitempty"`
 				Status     *string `json:"status,omitempty"`
-				ProjectID  *string `json:"project_id,omitempty"`
 				Timezone   *string `json:"timezone,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
@@ -125,26 +117,13 @@ func NewScheduleUpdateTool(store *schedule.Store) Tool {
 			if err != nil {
 				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
-			effectivePrompt := current.Prompt
-			if input.Prompt != nil {
-				effectivePrompt = *input.Prompt
-			}
-			effectiveProjectID := current.ProjectID
-			if input.ProjectID != nil {
-				effectiveProjectID = *input.ProjectID
-			}
-			if strings.TrimSpace(effectivePrompt) != "" {
-				if err := validateAutonomousProjectSchedule(effectivePrompt, effectiveProjectID); err != nil {
-					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
-				}
-			}
+			_ = current // validated existence above
 			item, err := store.Update(strings.TrimSpace(input.ScheduleID), schedule.UpdateInput{
-				Title:     input.Title,
-				Prompt:    input.Prompt,
-				Schedule:  input.Schedule,
-				Status:    input.Status,
-				ProjectID: input.ProjectID,
-				Timezone:  input.Timezone,
+				Title:    input.Title,
+				Prompt:   input.Prompt,
+				Schedule: input.Schedule,
+				Status:   input.Status,
+				Timezone: input.Timezone,
 			})
 			if err != nil {
 				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil

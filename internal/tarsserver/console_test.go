@@ -2,8 +2,8 @@ package tarsserver
 
 import (
 	"bytes"
-	"io/fs"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -51,7 +51,7 @@ func TestConsoleHandler_ServesPlaceholderGuidanceWhenBuiltAssetsMissing(t *testi
 
 func TestConsoleHandler_ServesBuiltAssetsForConsoleRoutes(t *testing.T) {
 	handler := newConsoleStaticHandler(zerolog.New(io.Discard), fstest.MapFS{
-		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><div id=\"app\">console</div>")},
+		"index.html":    &fstest.MapFile{Data: []byte("<!doctype html><div id=\"app\">console</div>")},
 		"assets/app.js": &fstest.MapFile{Data: []byte("console.log('ok')")},
 	}, true)
 

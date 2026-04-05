@@ -148,7 +148,6 @@ func collectSemanticMatches(opts BuildOptions) []relevantMemoryMatch {
 	}
 	hits, err := opts.MemorySearcher.Search(context.Background(), memory.SearchRequest{
 		Query:     strings.TrimSpace(opts.Query),
-		ProjectID: strings.TrimSpace(opts.ProjectID),
 		SessionID: strings.TrimSpace(opts.SessionID),
 		Limit:     defaultRelevantResultLimit,
 	})
@@ -184,14 +183,10 @@ func collectBriefMatches(_ BuildOptions, _ []string) []relevantMemoryMatch {
 
 func collectExperienceMatches(opts BuildOptions, terms []string) []relevantMemoryMatch {
 	rows, err := memory.SearchExperiences(opts.WorkspaceDir, memory.SearchOptions{
-		ProjectID: strings.TrimSpace(opts.ProjectID),
-		Limit:     24,
+		Limit: 24,
 	})
 	if err != nil || len(rows) == 0 {
-		rows, err = memory.SearchExperiences(opts.WorkspaceDir, memory.SearchOptions{Limit: 24})
-		if err != nil || len(rows) == 0 {
-			return nil
-		}
+		return nil
 	}
 	out := make([]relevantMemoryMatch, 0, len(rows))
 	for _, row := range rows {
@@ -201,9 +196,6 @@ func collectExperienceMatches(opts BuildOptions, terms []string) []relevantMemor
 			continue
 		}
 		score += 140 + recencyScore(row.Timestamp)
-		if strings.TrimSpace(row.ProjectID) != "" && strings.TrimSpace(row.ProjectID) == strings.TrimSpace(opts.ProjectID) {
-			score += 40
-		}
 		if strings.TrimSpace(row.SourceSession) != "" && strings.TrimSpace(row.SourceSession) == strings.TrimSpace(opts.SessionID) {
 			score += 25
 		}
@@ -270,9 +262,6 @@ func collectFileLineMatches(path, source string, timestamp time.Time, opts Build
 			continue
 		}
 		score += baseScore + recencyScore(timestamp)
-		if strings.TrimSpace(opts.ProjectID) != "" && strings.Contains(strings.ToLower(snippet), strings.ToLower(strings.TrimSpace(opts.ProjectID))) {
-			score += 20
-		}
 		if strings.TrimSpace(opts.SessionID) != "" && strings.Contains(strings.ToLower(snippet), strings.ToLower(strings.TrimSpace(opts.SessionID))) {
 			score += 10
 		}

@@ -192,7 +192,6 @@ func TestWorkspaceWatchdogRunner_FlagsExplicitSessionTargetAndContaminatedTransc
 		Schedule:      "every:1m",
 		Enabled:       true,
 		HasEnable:     true,
-		ProjectID:     "project-1",
 		SessionTarget: legacySession.ID,
 	}); err != nil {
 		t.Fatalf("create cron job: %v", err)
@@ -217,9 +216,6 @@ func TestWorkspaceWatchdogRunner_FlagsExplicitSessionTargetAndContaminatedTransc
 	if result.Healthy {
 		t.Fatalf("expected unhealthy watchdog result, got %+v", result)
 	}
-	if !containsWatchdogKind(result.Findings, "explicit_session_target") {
-		t.Fatalf("expected explicit_session_target finding, got %+v", result.Findings)
-	}
 	if !containsWatchdogKind(result.Findings, "contaminated_transcript") {
 		t.Fatalf("expected contaminated_transcript finding, got %+v", result.Findings)
 	}
@@ -232,7 +228,9 @@ func TestWorkspaceWatchdogRunner_FlagsExplicitSessionTargetAndContaminatedTransc
 	}
 }
 
-func TestWorkspaceWatchdogRunner_FlagsStaleProjectProgress(t *testing.T) {
+func TestWorkspaceWatchdogRunner_StaleProjectProgressRemovedWithProjectSystem(t *testing.T) {
+	// stale_project_progress was removed with the project system.
+	// This test just verifies the watchdog does not return stale_project_progress findings.
 	root := t.TempDir()
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
@@ -265,7 +263,6 @@ func TestWorkspaceWatchdogRunner_FlagsStaleProjectProgress(t *testing.T) {
 		Schedule:  "every:1m",
 		Enabled:   true,
 		HasEnable: true,
-		ProjectID: "project-1",
 	})
 	if err != nil {
 		t.Fatalf("create cron job: %v", err)
@@ -287,8 +284,8 @@ func TestWorkspaceWatchdogRunner_FlagsStaleProjectProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run watchdog: %v", err)
 	}
-	if !containsWatchdogKind(result.Findings, "stale_project_progress") {
-		t.Fatalf("expected stale_project_progress finding, got %+v", result.Findings)
+	if containsWatchdogKind(result.Findings, "stale_project_progress") {
+		t.Fatalf("stale_project_progress should no longer be reported, got %+v", result.Findings)
 	}
 }
 

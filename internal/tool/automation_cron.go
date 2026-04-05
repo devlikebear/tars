@@ -10,14 +10,9 @@ import (
 	"github.com/devlikebear/tars/internal/cron"
 )
 
-func validateAutonomousProjectSchedule(prompt, projectID string) error {
-	if !strings.Contains(prompt, "brief_id=") {
-		return nil
-	}
-	if strings.TrimSpace(projectID) != "" {
-		return nil
-	}
-	return fmt.Errorf("autonomous project work requires a finalized project: brief를 먼저 finalize하고 project_id로 예약하세요")
+func validateAutonomousProjectSchedule(_, _ string) error {
+	// Project validation removed along with project system.
+	return nil
 }
 
 func NewCronListTool(store *cron.Store) Tool {
@@ -53,7 +48,6 @@ func NewCronCreateTool(store *cron.Store) Tool {
     "schedule":{"type":"string"},
     "enabled":{"type":"boolean"},
     "session_target":{"type":"string"},
-    "project_id":{"type":"string"},
     "wake_mode":{"type":"string"},
     "delivery_mode":{"type":"string"},
     "payload":{"type":"object"},
@@ -72,7 +66,6 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				Schedule       string          `json:"schedule"`
 				Enabled        *bool           `json:"enabled,omitempty"`
 				SessionTarget  string          `json:"session_target,omitempty"`
-				ProjectID      string          `json:"project_id,omitempty"`
 				WakeMode       string          `json:"wake_mode,omitempty"`
 				DeliveryMode   string          `json:"delivery_mode,omitempty"`
 				Payload        json.RawMessage `json:"payload,omitempty"`
@@ -82,9 +75,6 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				return automationErrorResult(fmt.Sprintf("invalid arguments: %v", err)), nil
 			}
 			if err := validateNaturalTaskPrompt(input.Prompt); err != nil {
-				return automationErrorResult(err.Error()), nil
-			}
-			if err := validateAutonomousProjectSchedule(input.Prompt, input.ProjectID); err != nil {
 				return automationErrorResult(err.Error()), nil
 			}
 			sessionTarget, err := resolveCronSessionTargetFromContext(ctx, input.SessionTarget)
@@ -103,7 +93,6 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				Enabled:           enabled,
 				HasEnable:         hasEnable,
 				SessionTarget:     sessionTarget,
-				ProjectID:         input.ProjectID,
 				WakeMode:          input.WakeMode,
 				DeliveryMode:      input.DeliveryMode,
 				Payload:           input.Payload,
@@ -131,7 +120,6 @@ func NewCronUpdateTool(store *cron.Store) Tool {
     "schedule":{"type":"string"},
     "enabled":{"type":"boolean"},
     "session_target":{"type":"string"},
-    "project_id":{"type":"string"},
     "wake_mode":{"type":"string"},
     "delivery_mode":{"type":"string"},
     "payload":{"type":"object"},
@@ -151,7 +139,6 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 				Schedule       *string          `json:"schedule,omitempty"`
 				Enabled        *bool            `json:"enabled,omitempty"`
 				SessionTarget  *string          `json:"session_target,omitempty"`
-				ProjectID      *string          `json:"project_id,omitempty"`
 				WakeMode       *string          `json:"wake_mode,omitempty"`
 				DeliveryMode   *string          `json:"delivery_mode,omitempty"`
 				Payload        *json.RawMessage `json:"payload,omitempty"`
@@ -164,8 +151,7 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 			if input.JobID == "" {
 				return automationErrorResult("job_id is required"), nil
 			}
-			current, err := store.Get(input.JobID)
-			if err != nil {
+			if _, err := store.Get(input.JobID); err != nil {
 				return automationErrorResult(fmt.Sprintf("get cron job failed: %v", err)), nil
 			}
 			if input.Prompt != nil {
@@ -180,24 +166,12 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 				}
 				input.SessionTarget = &resolved
 			}
-			effectivePrompt := current.Prompt
-			if input.Prompt != nil {
-				effectivePrompt = *input.Prompt
-			}
-			effectiveProjectID := current.ProjectID
-			if input.ProjectID != nil {
-				effectiveProjectID = *input.ProjectID
-			}
-			if err := validateAutonomousProjectSchedule(effectivePrompt, effectiveProjectID); err != nil {
-				return automationErrorResult(err.Error()), nil
-			}
 			job, err := store.Update(input.JobID, cron.UpdateInput{
 				Name:           input.Name,
 				Prompt:         input.Prompt,
 				Schedule:       input.Schedule,
 				Enabled:        input.Enabled,
 				SessionTarget:  input.SessionTarget,
-				ProjectID:      input.ProjectID,
 				WakeMode:       input.WakeMode,
 				DeliveryMode:   input.DeliveryMode,
 				Payload:        input.Payload,

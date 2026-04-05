@@ -376,7 +376,6 @@ func searchExperienceLog(workspaceDir, query string, terms []string, limit int) 
 			row.Category,
 			strings.Join(row.Tags, " "),
 			row.SourceSession,
-			row.ProjectID,
 		}, "\n")
 		score := scoreMemorySearchText(query, terms, haystack)
 		if score == 0 {

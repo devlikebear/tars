@@ -39,7 +39,6 @@ func TestMemorySaveTool_AppendsExperience(t *testing.T) {
 		"summary":"User prefers concise Korean responses",
 		"tags":["user","style"],
 		"source_session":"sess-1",
-		"project_id":"proj_demo",
 		"importance":7
 	}`))
 	if err != nil {
@@ -59,15 +58,11 @@ func TestMemorySaveTool_AppendsExperience(t *testing.T) {
 	if len(hits) != 1 {
 		t.Fatalf("expected one hit, got %d", len(hits))
 	}
-	if hits[0].ProjectID != "proj_demo" {
-		t.Fatalf("expected project_id proj_demo, got %q", hits[0].ProjectID)
-	}
 	if hits[0].SourceSession != "sess-1" {
 		t.Fatalf("expected source_session sess-1, got %q", hits[0].SourceSession)
 	}
 	semanticHits, err := semantic.Search(context.Background(), memory.SearchRequest{
 		Query:     "concise Korean responses",
-		ProjectID: "proj_demo",
 		SessionID: "sess-1",
 		Limit:     5,
 	})

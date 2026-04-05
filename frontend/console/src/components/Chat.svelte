@@ -220,7 +220,6 @@
   onMount(() => {
     void loadDashboard()
     stopStream = streamEvents(
-      undefined,
       () => { unreadCount++ },
     )
   })
