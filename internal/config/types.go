@@ -85,14 +85,11 @@ type UsageConfig struct {
 }
 
 type AutomationConfig struct {
-	AgentMaxIterations   int
-	HeartbeatInterval    string
-	HeartbeatActiveHours string
-	HeartbeatTimezone    string
-	CronRunHistoryLimit  int
-	NotifyCommand        string
-	NotifyWhenNoClients  bool
-	ScheduleTimezone     string
+	AgentMaxIterations  int
+	CronRunHistoryLimit int
+	NotifyCommand       string
+	NotifyWhenNoClients bool
+	ScheduleTimezone    string
 
 	// Pulse is the system-surface watchdog. All fields default to
 	// conservative values so it runs silently until signals appear.

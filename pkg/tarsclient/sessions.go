@@ -131,10 +131,13 @@ func (c *Client) CompactWithOptions(ctx context.Context, req CompactRequest) (Co
 	return out, nil
 }
 
-func (c *Client) HeartbeatRunOnce(ctx context.Context) (HeartbeatInfo, error) {
-	var out HeartbeatInfo
-	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/heartbeat/run-once", nil, false, &out); err != nil {
-		return HeartbeatInfo{}, err
+// PulseRunOnce triggers a single pulse watchdog tick on the server and
+// returns the resulting tick outcome. Replaces the previous
+// HeartbeatRunOnce call — heartbeat has been removed.
+func (c *Client) PulseRunOnce(ctx context.Context) (PulseInfo, error) {
+	var out PulseInfo
+	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/pulse/run-once", nil, false, &out); err != nil {
+		return PulseInfo{}, err
 	}
 	return out, nil
 }

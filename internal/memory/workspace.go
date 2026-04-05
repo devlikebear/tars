@@ -8,14 +8,6 @@ import (
 	"time"
 )
 
-const defaultHeartbeatTemplate = `# HEARTBEAT.md
-
-## Heartbeat Guidance
-- Check current work context from MEMORY.md and today's daily log.
-- Decide next smallest actionable step.
-- Write key decisions to today's daily log.
-`
-
 const defaultMemoryTemplate = `# MEMORY.md
 
 ## Long-Term Memory
@@ -25,7 +17,7 @@ const defaultMemoryTemplate = `# MEMORY.md
 const defaultAgentsTemplate = `# AGENTS.md
 
 ## Operating Guidelines
-- Define how the agent should use workspace files (HEARTBEAT.md, MEMORY.md, daily logs).
+- Define how the agent should use workspace files (MEMORY.md, daily logs).
 - Specify memory read/write conventions (when to update MEMORY.md, when to append daily logs).
 - Set boundaries for autonomous actions (what the agent may do without asking).
 `
@@ -80,13 +72,6 @@ var workspaceBootstrapFileSpecs = []WorkspaceBootstrapFileSpec{
 		Title:           "TARS Identity",
 		Description:     "TARS persona, voice, behavioral boundaries, and self-identity.",
 		DefaultContent:  defaultIdentityTemplate,
-		EnsureByDefault: true,
-	},
-	{
-		Path:            "HEARTBEAT.md",
-		Title:           "Heartbeat Guidance",
-		Description:     "Background/heartbeat operating guidance.",
-		DefaultContent:  defaultHeartbeatTemplate,
 		EnsureByDefault: true,
 	},
 	{

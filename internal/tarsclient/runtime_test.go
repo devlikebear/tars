@@ -67,8 +67,8 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 				t.Fatalf("decode compact body: %v", err)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"message": "compaction complete"})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/heartbeat/run-once":
-			_ = json.NewEncoder(w).Encode(map[string]any{"response": "ok", "skipped": false})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/pulse/run-once":
+			_ = json.NewEncoder(w).Encode(map[string]any{"skipped": false, "decider_invoked": true})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/skills":
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"name": "coder", "user_invocable": true}})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/plugins":
@@ -212,8 +212,8 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	if got, _ := compactBody["instructions"].(string); strings.TrimSpace(got) != "focus on decisions" {
 		t.Fatalf("expected compact instructions forwarded, got %+v", compactBody)
 	}
-	if _, err := client.heartbeatRunOnce(ctx); err != nil {
-		t.Fatalf("heartbeatRunOnce: %v", err)
+	if _, err := client.pulseRunOnce(ctx); err != nil {
+		t.Fatalf("pulseRunOnce: %v", err)
 	}
 	if skills, err := client.listSkills(ctx); err != nil || len(skills) != 1 {
 		t.Fatalf("listSkills: skills=%+v err=%v", skills, err)

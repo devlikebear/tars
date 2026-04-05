@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agent"
-	"github.com/devlikebear/tars/internal/heartbeat"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/prompt"
@@ -75,16 +74,6 @@ func newBaseToolRegistryWithProcess(workspaceDir string, policy tool.PathPolicy,
 		registry.Register(tool.NewExecToolWithPolicy(policy, nil))
 	}
 	return registry
-}
-
-func newAgentAskFunc(workspaceDir string, client llm.Client, maxIterations int, logger zerolog.Logger, semanticCfg ...memory.SemanticConfig) heartbeat.AskFunc {
-	runner := newAgentPromptRunner(workspaceDir, client, maxIterations, logger, semanticCfg...)
-	if runner == nil {
-		return nil
-	}
-	return func(ctx context.Context, promptText string) (string, error) {
-		return runner(ctx, "heartbeat", promptText)
-	}
 }
 
 func newAgentPromptRunner(

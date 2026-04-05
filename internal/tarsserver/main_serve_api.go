@@ -18,7 +18,6 @@ import (
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/gateway"
-	"github.com/devlikebear/tars/internal/heartbeat"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/ops"
@@ -41,13 +40,11 @@ type serveAPIRuntime struct {
 	gatewayAgentsWatch *gatewayAgentsWatcher
 	cronManager        *workspaceCronManager
 	watchdogManager    *workspaceWatchdogManager
-	heartbeatTicker    *heartbeatTickerManager
 	pulseRuntime       *pulse.Runtime
 	telegramPoller     *telegramUpdatePoller
 }
 
 type apiRouteHandlers struct {
-	heartbeat       http.Handler
 	pulse           http.Handler
 	chat            http.Handler
 	sessions        http.Handler
@@ -138,15 +135,6 @@ func buildAPIMux(
 	researchService := research.NewService(cfg.WorkspaceDir, research.Options{})
 	cronStoreResolver := newWorkspaceCronStoreResolver(cfg.WorkspaceDir, cfg.CronRunHistoryLimit, cronStore)
 	activity := &runtimeActivity{}
-	heartbeatState := newHeartbeatWorkspaceState()
-	heartbeatPolicyForWorkspace := func(workspaceID string) heartbeat.Policy {
-		return buildHeartbeatPolicy(
-			sessionStoreResolver(workspaceID),
-			cfg.HeartbeatActiveHours,
-			cfg.HeartbeatTimezone,
-			activity,
-		)
-	}
 	broker := newEventBroker()
 	notificationStore, err := newNotificationStore(
 		filepath.Join(strings.TrimSpace(cfg.GatewayPersistenceDir), "notifications.json"),
@@ -254,21 +242,6 @@ func buildAPIMux(
 			return apiRunPromptWithTools(ctx, runLabel, prompt, nil)
 		}
 	}
-	var projectProgressAfterHeartbeat func(ctx context.Context) error
-	heartbeatRunner := newWorkspaceHeartbeatRunnerWithNotify(
-		cfg.WorkspaceDir,
-		nowFn,
-		deps.ask,
-		heartbeatPolicyForWorkspace,
-		heartbeatState,
-		dispatcher.Emit,
-		func(ctx context.Context) error {
-			if projectProgressAfterHeartbeat != nil {
-				return projectProgressAfterHeartbeat(ctx)
-			}
-			return nil
-		},
-	)
 	watchdogState := newWatchdogWorkspaceState()
 	watchdogRunner := newWorkspaceWatchdogRunnerWithNotify(
 		cfg.WorkspaceDir,
@@ -280,22 +253,6 @@ func buildAPIMux(
 	var cronRunner func(ctx context.Context, job cron.Job) (string, error)
 
 	mux := http.NewServeMux()
-	heartbeatHandler := newHeartbeatAPIHandlerFull(
-		resolveWorkspaceDir(cfg.WorkspaceDir, defaultWorkspaceID),
-		nowFn,
-		heartbeatRunner,
-		func() tool.HeartbeatStatus {
-			return heartbeatState.snapshot(
-				defaultWorkspaceID,
-				deps.ask != nil,
-				cfg.HeartbeatInterval,
-				cfg.HeartbeatActiveHours,
-				cfg.HeartbeatTimezone,
-				activity.isChatBusy(),
-			)
-		},
-		logger,
-	)
 
 	processManager := tool.NewProcessManager()
 	mcpClient := mcp.NewClient(cfg.MCPServers)
@@ -383,22 +340,7 @@ func buildAPIMux(
 			logger.Warn().Err(err).Msg("resolve cron store failed for chat tools")
 			resolvedStore = cronStore
 		}
-		return buildAutomationTools(
-			resolvedStore,
-			cronRunner,
-			heartbeatRunner,
-			func(ctx context.Context) (tool.HeartbeatStatus, error) {
-				return heartbeatState.snapshot(
-					defaultWorkspaceID,
-					deps.ask != nil,
-					cfg.HeartbeatInterval,
-					cfg.HeartbeatActiveHours,
-					cfg.HeartbeatTimezone,
-					activity.isChatBusy(),
-				), nil
-			},
-			nowFn,
-		)
+		return buildAutomationTools(resolvedStore, cronRunner)
 	}
 	chatTools := buildOptionalChatTools(cfg, gatewayRuntime)
 	if cfg.ChannelsTelegramEnabled {
@@ -576,7 +518,6 @@ func buildAPIMux(
 	workspaceFilesHandler := newWorkspaceFilesHandler(cfg.WorkspaceDir, logger)
 	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildSemanticMemoryService(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg)), logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
-		heartbeat:       heartbeatHandler,
 		pulse:           pulseSetup.Handler,
 		chat:            chatHandler,
 		sessions:        sessionHandler,
@@ -623,16 +564,6 @@ func buildAPIMux(
 	cronManager := newWorkspaceCronManager(cronStoreResolver, cronRunner, 30*time.Second, nowFn, logger)
 	watchdogManager := newWorkspaceWatchdogManager(watchdogRunner, defaultWatchdogInterval)
 
-	var heartbeatTickerInterval time.Duration
-	if raw := strings.TrimSpace(cfg.HeartbeatInterval); raw != "" {
-		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
-			heartbeatTickerInterval = parsed
-		} else {
-			logger.Warn().Str("value", raw).Msg("invalid heartbeat_interval, heartbeat ticker disabled")
-		}
-	}
-	heartbeatTicker := newHeartbeatTickerManager(heartbeatRunner, heartbeatTickerInterval, logger)
-
 	return &serveAPIRuntime{
 		cfg:                cfg,
 		configPath:         resolvedConfigPath,
@@ -643,7 +574,6 @@ func buildAPIMux(
 		gatewayAgentsWatch: gatewayAgentsWatch,
 		cronManager:        cronManager,
 		watchdogManager:    watchdogManager,
-		heartbeatTicker:    heartbeatTicker,
 		pulseRuntime:       pulseSetup.Runtime,
 		telegramPoller:     telegramPoller,
 	}, nil
@@ -654,7 +584,6 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 		return
 	}
 	legacyDashboard := newLegacyDashboardRedirectHandler()
-	mux.Handle("/v1/heartbeat/", handlers.heartbeat)
 	mux.Handle("/v1/pulse/", handlers.pulse)
 	mux.Handle("/v1/chat", handlers.chat)
 	mux.Handle("/v1/chat/", handlers.chat)
@@ -768,13 +697,6 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 		go func() {
 			if err := runtime.cronManager.Start(ctx); err != nil {
 				logger.Error().Err(err).Msg("cron manager stopped with error")
-			}
-		}()
-	}
-	if runtime.heartbeatTicker != nil {
-		go func() {
-			if err := runtime.heartbeatTicker.Start(ctx); err != nil {
-				logger.Error().Err(err).Msg("heartbeat ticker stopped with error")
 			}
 		}()
 	}

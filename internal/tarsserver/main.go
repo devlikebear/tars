@@ -25,17 +25,15 @@ func Serve(ctx context.Context, serveOpts ServeOptions, stdout, stderr io.Writer
 	envloader.Load(".env", ".env.secret")
 
 	opts := &options{
-		ConfigPath:        strings.TrimSpace(serveOpts.ConfigPath),
-		Mode:              strings.TrimSpace(serveOpts.Mode),
-		WorkspaceDir:      strings.TrimSpace(serveOpts.WorkspaceDir),
-		LogFile:           strings.TrimSpace(serveOpts.LogFile),
-		Verbose:           serveOpts.Verbose,
-		RunOnce:           serveOpts.RunOnce,
-		RunLoop:           serveOpts.RunLoop,
-		ServeAPI:          serveOpts.ServeAPI,
-		APIAddr:           strings.TrimSpace(serveOpts.APIAddr),
-		HeartbeatInterval: serveOpts.HeartbeatInterval,
-		MaxHeartbeats:     serveOpts.MaxHeartbeats,
+		ConfigPath:   strings.TrimSpace(serveOpts.ConfigPath),
+		Mode:         strings.TrimSpace(serveOpts.Mode),
+		WorkspaceDir: strings.TrimSpace(serveOpts.WorkspaceDir),
+		LogFile:      strings.TrimSpace(serveOpts.LogFile),
+		Verbose:      serveOpts.Verbose,
+		RunOnce:      serveOpts.RunOnce,
+		RunLoop:      serveOpts.RunLoop,
+		ServeAPI:     serveOpts.ServeAPI,
+		APIAddr:      strings.TrimSpace(serveOpts.APIAddr),
 	}
 	applyOptionDefaults(opts)
 
@@ -67,9 +65,6 @@ func applyOptionDefaults(opts *options) {
 	}
 	if strings.TrimSpace(opts.APIAddr) == "" {
 		opts.APIAddr = DefaultAPIAddr
-	}
-	if opts.HeartbeatInterval <= 0 {
-		opts.HeartbeatInterval = DefaultHeartbeatInterval
 	}
 }
 

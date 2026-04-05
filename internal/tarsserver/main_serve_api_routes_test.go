@@ -16,7 +16,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 	})
 
 	registerAPIRoutes(mux, apiRouteHandlers{
-		heartbeat:       handler,
 		pulse:           handler,
 		chat:            handler,
 		sessions:        handler,
@@ -44,7 +43,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 	})
 
 	paths := []string{
-		"/v1/heartbeat/ws-main",
 		"/v1/pulse/status",
 		"/v1/pulse/run-once",
 		"/v1/pulse/config",
@@ -136,7 +134,6 @@ func TestRegisterAPIRoutes_LegacyDashboardPathsRedirectToConsole(t *testing.T) {
 	})
 
 	registerAPIRoutes(mux, apiRouteHandlers{
-		heartbeat:       base,
 		pulse:           base,
 		chat:            base,
 		sessions:        base,

@@ -55,40 +55,6 @@ func NewCronTool(store *cron.Store, runJob func(ctx context.Context, job cron.Jo
 	}
 }
 
-func NewHeartbeatTool(
-	getStatus func(ctx context.Context) (HeartbeatStatus, error),
-	runOnce func(ctx context.Context) (HeartbeatRunResult, error),
-) Tool {
-	statusTool := NewHeartbeatStatusTool(getStatus)
-	runTool := NewHeartbeatRunOnceTool(runOnce)
-	return Tool{
-		Name:        "heartbeat",
-		Description: "Manage heartbeat with actions: status, run_once.",
-		Parameters: json.RawMessage(`{
-  "type":"object",
-  "properties":{
-    "action":{"type":"string","enum":["status","run_once","run"]}
-  },
-  "required":["action"],
-  "additionalProperties":true
-}`),
-		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
-			payload, action, err := normalizeAutomationActionInput(params)
-			if err != nil {
-				return automationErrorResult(err.Error()), nil
-			}
-			switch action {
-			case "status":
-				return statusTool.Execute(ctx, json.RawMessage(`{}`))
-			case "run_once", "run":
-				return runTool.Execute(ctx, payload)
-			default:
-				return automationErrorResult("action must be one of: status,run_once"), nil
-			}
-		},
-	}
-}
-
 func normalizeAutomationActionInput(params json.RawMessage) (json.RawMessage, string, error) {
 	raw := strings.TrimSpace(string(params))
 	if raw == "" || raw == "null" {

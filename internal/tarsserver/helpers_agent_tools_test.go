@@ -70,9 +70,9 @@ func TestAgentPromptRunnerWithTools_IncludesExtraTools(t *testing.T) {
 func TestAgentPromptRunnerWithTools_CronUsesMinimalToolsetAndPrompt(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"IDENTITY.md":  "identity block",
-		"USER.md":      "user profile",
-		"HEARTBEAT.md": "heartbeat check list",
+		"IDENTITY.md": "identity block",
+		"USER.md":     "user profile",
+		"TOOLS.md":    "tools guidance",
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
@@ -92,9 +92,6 @@ func TestAgentPromptRunnerWithTools_CronUsesMinimalToolsetAndPrompt(t *testing.T
 		t.Fatalf("expected system+user messages, got %+v", client.messages)
 	}
 	systemPrompt := client.messages[0].Content
-	if strings.Contains(systemPrompt, "heartbeat check list") {
-		t.Fatalf("did not expect heartbeat content in cron system prompt: %q", systemPrompt)
-	}
 	if strings.Contains(systemPrompt, "memory_search") {
 		t.Fatalf("did not expect memory tool rule in cron system prompt: %q", systemPrompt)
 	}
