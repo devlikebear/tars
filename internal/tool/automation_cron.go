@@ -268,10 +268,12 @@ func resolveCronScopeFromContext(ctx context.Context, providedSessionID string, 
 	}
 	currentSessionID := currentSessionIDFromContext(ctx)
 	currentSessionKind := strings.ToLower(strings.TrimSpace(currentSessionKindFromContext(ctx)))
-	if currentSessionKind == "" {
-		return sessionID, sessionTarget, nil
-	}
 
+	// NOTE: Regular chat sessions are created with an empty kind (see
+	// session.Store.Create). Any non-"main" context — including the default
+	// empty kind used by console chat sessions — must fall through to the
+	// session-binding branch so that cron jobs created from a chat session
+	// default to being bound to that session instead of silently going global.
 	switch currentSessionKind {
 	case "main":
 		switch strings.ToLower(strings.TrimSpace(providedSessionID)) {

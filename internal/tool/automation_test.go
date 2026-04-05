@@ -218,6 +218,38 @@ func TestCronCreateTool_DefaultsSessionContextToBoundSession(t *testing.T) {
 	}
 }
 
+func TestCronCreateTool_EmptyKindChatSessionStillBindsToCurrentSession(t *testing.T) {
+	// Regular console chat sessions are created with kind="" (see
+	// session.Store.Create). Verify cron jobs scheduled from such a session
+	// are still bound to the current session rather than silently going
+	// global.
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	create := NewCronCreateTool(store)
+
+	ctx := WithCurrentSessionInfo(context.Background(), "sess-chat", "")
+	createResult, err := create.Execute(ctx, json.RawMessage(`{"name":"ops","prompt":"상태 확인하기","schedule":"every:30m"}`))
+	if err != nil {
+		t.Fatalf("execute cron_create: %v", err)
+	}
+	if createResult.IsError {
+		t.Fatalf("expected create success, got %s", createResult.Text())
+	}
+	var created cron.Job
+	if err := json.Unmarshal([]byte(createResult.Text()), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+	if created.SessionID != "sess-chat" {
+		t.Fatalf("expected empty-kind chat session to create session-bound cron job, got %+v", created)
+	}
+	if created.SessionTarget != "isolated" {
+		t.Fatalf("expected session-bound cron job to keep isolated target, got %+v", created)
+	}
+	if created.DeliveryMode != "session" {
+		t.Fatalf("expected session-bound cron job to default delivery_mode=session, got %+v", created)
+	}
+}
+
 func TestCronCreateTool_MainContextCurrentBindingStillCreatesGlobal(t *testing.T) {
 	root := t.TempDir()
 	store := cron.NewStore(root)
