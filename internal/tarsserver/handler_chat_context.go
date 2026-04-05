@@ -85,7 +85,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	var sessionWorkDirs []string
 	var sessionCurrentDir string
 	if sessErr == nil && len(sess.WorkDirs) > 0 {
-		sessionWorkDirs = append(sess.WorkDirs, artifactsDir)
+		sessionWorkDirs = append(sessionWorkDirs, sess.WorkDirs...)
 		sessionCurrentDir = sess.CurrentDir
 	} else {
 		sessionWorkDirs = []string{artifactsDir}

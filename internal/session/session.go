@@ -43,6 +43,173 @@ func NewStore(dir string) *Store {
 	}
 }
 
+func canonicalSessionPath(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	cleaned := filepath.Clean(value)
+	abs, err := filepath.Abs(cleaned)
+	if err != nil {
+		return cleaned
+	}
+	return canonicalizePathWithExistingAncestor(abs)
+}
+
+func canonicalizePathWithExistingAncestor(absPath string) string {
+	current := filepath.Clean(absPath)
+	var suffix []string
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			out := filepath.Clean(resolved)
+			for i := len(suffix) - 1; i >= 0; i-- {
+				out = filepath.Join(out, suffix[i])
+			}
+			return filepath.Clean(out)
+		}
+		if !os.IsNotExist(err) {
+			return absPath
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return absPath
+		}
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
+}
+
+func normalizeSessionWorkDirs(requiredDir string, dirs []string, currentDir string) ([]string, string) {
+	required := canonicalSessionPath(requiredDir)
+	cleanPath := func(value string) string {
+		return canonicalSessionPath(value)
+	}
+
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(dirs)+1)
+	addDir := func(value string) {
+		value = cleanPath(value)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+
+	if required != "" {
+		addDir(required)
+	}
+	for _, dir := range dirs {
+		addDir(dir)
+	}
+
+	current := cleanPath(currentDir)
+	if current == "" {
+		if required != "" {
+			current = required
+		} else if len(normalized) > 0 {
+			current = normalized[0]
+		}
+	}
+	if current != "" {
+		found := false
+		for _, dir := range normalized {
+			if dir == current {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if required != "" {
+				current = required
+			} else if len(normalized) > 0 {
+				current = normalized[0]
+			} else {
+				current = ""
+			}
+		}
+	}
+
+	return normalized, current
+}
+
+func sameStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) sessionArtifactDir(id string) string {
+	if s == nil {
+		return ""
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	return filepath.Join(s.WorkspaceDir(), "artifacts", id)
+}
+
+func (s *Store) applySessionDefaults(sess Session) (Session, bool, error) {
+	artifactDir := s.sessionArtifactDir(sess.ID)
+	if artifactDir == "" {
+		return sess, false, nil
+	}
+	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+		return sess, false, fmt.Errorf("create session artifact dir: %w", err)
+	}
+	if err := s.migrateLegacyArtifactDir(sess.ID, artifactDir); err != nil {
+		return sess, false, err
+	}
+
+	workDirs, currentDir := normalizeSessionWorkDirs(artifactDir, sess.WorkDirs, sess.CurrentDir)
+	changed := false
+	if !sameStringSlice(sess.WorkDirs, workDirs) {
+		sess.WorkDirs = workDirs
+		changed = true
+	}
+	if strings.TrimSpace(sess.CurrentDir) != strings.TrimSpace(currentDir) {
+		sess.CurrentDir = currentDir
+		changed = true
+	}
+	return sess, changed, nil
+}
+
+func (s *Store) migrateLegacyArtifactDir(id string, artifactDir string) error {
+	legacyDir := filepath.Join(s.WorkspaceDir(), "workspace", "artifacts", strings.TrimSpace(id))
+	entries, err := os.ReadDir(legacyDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read legacy session artifact dir: %w", err)
+	}
+	for _, entry := range entries {
+		src := filepath.Join(legacyDir, entry.Name())
+		dst := filepath.Join(artifactDir, entry.Name())
+		if _, err := os.Stat(dst); err == nil {
+			continue
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("stat migrated session artifact: %w", err)
+		}
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf("migrate legacy session artifact: %w", err)
+		}
+	}
+	_ = os.Remove(legacyDir)
+	return nil
+}
+
 func (s *Store) Create(title string) (Session, error) {
 	return s.CreateWithOptions(title, "", false)
 }
@@ -85,6 +252,11 @@ func (s *Store) CreateWithOptions(title string, kind string, hidden bool) (Sessi
 		}
 		session.ID = id
 		break
+	}
+
+	session, _, err = s.applySessionDefaults(session)
+	if err != nil {
+		return Session{}, err
 	}
 
 	index[session.ID] = session
@@ -172,6 +344,10 @@ func (s *Store) ensureNamedSession(title string, kind string, hidden bool) (Sess
 			if sess.UpdatedAt.IsZero() {
 				sess.UpdatedAt = sess.CreatedAt
 			}
+			sess, _, err = s.applySessionDefaults(sess)
+			if err != nil {
+				return Session{}, err
+			}
 			index[id] = sess
 			if err := s.saveIndex(index); err != nil {
 				return Session{}, err
@@ -198,6 +374,10 @@ func (s *Store) ensureNamedSession(title string, kind string, hidden bool) (Sess
 		created.ID = id
 		break
 	}
+	created, _, err = s.applySessionDefaults(created)
+	if err != nil {
+		return Session{}, err
+	}
 	index[created.ID] = created
 	if err := s.saveIndex(index); err != nil {
 		return Session{}, err
@@ -216,6 +396,16 @@ func (s *Store) Get(id string) (Session, error) {
 	session, ok := index[id]
 	if !ok {
 		return Session{}, fmt.Errorf("session not found")
+	}
+	session, changed, err := s.applySessionDefaults(session)
+	if err != nil {
+		return Session{}, err
+	}
+	if changed {
+		index[id] = session
+		if err := s.saveIndex(index); err != nil {
+			return Session{}, err
+		}
 	}
 
 	return session, nil
@@ -330,38 +520,12 @@ func (s *Store) SetWorkDirs(id string, dirs []string, currentDir string) error {
 	if !ok {
 		return fmt.Errorf("session not found")
 	}
-	// Normalize and deduplicate dirs
-	cleaned := make([]string, 0, len(dirs))
-	seen := map[string]struct{}{}
-	for _, d := range dirs {
-		d = strings.TrimSpace(d)
-		if d == "" {
-			continue
-		}
-		if _, exists := seen[d]; exists {
-			continue
-		}
-		seen[d] = struct{}{}
-		cleaned = append(cleaned, d)
+	sess.WorkDirs = append([]string(nil), dirs...)
+	sess.CurrentDir = currentDir
+	sess, _, err = s.applySessionDefaults(sess)
+	if err != nil {
+		return err
 	}
-	sess.WorkDirs = cleaned
-	// Validate currentDir is in WorkDirs
-	cd := strings.TrimSpace(currentDir)
-	if cd != "" {
-		found := false
-		for _, d := range cleaned {
-			if d == cd {
-				found = true
-				break
-			}
-		}
-		if !found && len(cleaned) > 0 {
-			cd = cleaned[0]
-		}
-	} else if len(cleaned) > 0 {
-		cd = cleaned[0]
-	}
-	sess.CurrentDir = cd
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)
@@ -379,7 +543,11 @@ func (s *Store) SetCurrentDir(id string, dir string) error {
 	if !ok {
 		return fmt.Errorf("session not found")
 	}
-	cd := strings.TrimSpace(dir)
+	sess, _, err = s.applySessionDefaults(sess)
+	if err != nil {
+		return err
+	}
+	cd := canonicalSessionPath(dir)
 	if cd != "" && len(sess.WorkDirs) > 0 {
 		found := false
 		for _, d := range sess.WorkDirs {

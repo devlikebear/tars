@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount, onDestroy, tick } from 'svelte'
   import {
     getEventsHistory, getHeartbeatStatus, streamEvents,
     getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
@@ -194,7 +194,7 @@
 
   let chatPanelRef: ChatPanel | undefined = $state()
   let tasksPanelRef: { load: () => void } | undefined = $state()
-  let artifactPanelRef: { refresh: () => void } | undefined = $state()
+  let artifactPanelRef: { refresh: () => void; openArtifactPath: (path: string) => Promise<void> } | undefined = $state()
 
   function handleToolComplete(toolName: string) {
     const taskTools = ['tasks']
@@ -206,6 +206,12 @@
     if (fileTools.includes(toolName) && rightPanel === 'artifacts') {
       artifactPanelRef?.refresh()
     }
+  }
+
+  async function handleArtifactOpen(path: string) {
+    rightPanel = 'artifacts'
+    await tick()
+    await artifactPanelRef?.openArtifactPath(path)
   }
 
   function handleCopyChat() {
@@ -339,6 +345,14 @@
           onSessionChange={handleSessionChange}
           onArtifactsChange={handleArtifactsChange}
           onToolComplete={handleToolComplete}
+          onSessionReady={(id) => {
+            if (!selectedSessionId) {
+              selectedSessionId = id
+              void loadSelectedSession(id)
+              sidebarRef?.load()
+            }
+          }}
+          onArtifactOpen={handleArtifactOpen}
         />
       {/key}
     </main>

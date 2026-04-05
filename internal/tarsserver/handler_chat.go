@@ -407,7 +407,7 @@ func setupAgentLoop(
 				"tool completed",
 				evt.ToolName,
 				evt.ToolCallID,
-				"",
+				statusPreview(evt.ToolArgs, 180),
 				statusPreview(evt.ToolResult, 180),
 			)
 			*toolCalls = append(*toolCalls, ToolCallRecord{

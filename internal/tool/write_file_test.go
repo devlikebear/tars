@@ -67,3 +67,33 @@ func TestWriteFileTool_RejectsTraversal(t *testing.T) {
 		t.Fatalf("expected outside workspace message, got %q", body.Message)
 	}
 }
+
+func TestWriteFileTool_NormalizesAllowedRootPrefixedRelativePath(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	artifactDir := filepath.Join(root, "artifacts", "sess-1")
+	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+		t.Fatalf("mkdir artifact dir: %v", err)
+	}
+
+	tl := NewWriteFileToolWithPolicy(NewPathPolicy(root, []string{artifactDir}, artifactDir))
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{
+		"path":"workspace/artifacts/sess-1/report.md",
+		"content":"saved"
+	}`))
+	if err != nil {
+		t.Fatalf("execute write_file: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success result, got error: %s", result.Text())
+	}
+
+	expectedPath := filepath.Join(root, "artifacts", "sess-1", "report.md")
+	if _, err := os.Stat(expectedPath); err != nil {
+		t.Fatalf("expected normalized file at %s: %v", expectedPath, err)
+	}
+
+	wrongNestedPath := filepath.Join(root, "artifacts", "sess-1", "workspace", "artifacts", "sess-1", "report.md")
+	if _, err := os.Stat(wrongNestedPath); !os.IsNotExist(err) {
+		t.Fatalf("expected no nested workspace path, stat err=%v", err)
+	}
+}

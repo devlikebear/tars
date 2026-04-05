@@ -12,6 +12,77 @@ export type Artifact = {
 
 const ARTIFACT_TOOLS = new Set(['write', 'write_file', 'edit_file', 'apply_patch'])
 
+function normalizePathSeparators(value: string): string {
+  return value.replace(/\\/g, '/')
+}
+
+export function normalizeArtifactPath(path: string, sessionId?: string): string {
+  const normalized = normalizePathSeparators(path.trim())
+  if (!normalized || !sessionId?.trim()) return normalized
+
+  const session = sessionId.trim()
+  for (const marker of [
+    `/artifacts/${session}/`,
+    `artifacts/${session}/`,
+  ]) {
+    const index = normalized.indexOf(marker)
+    if (index >= 0) {
+      return normalized.slice(index + marker.length)
+    }
+  }
+
+  return normalized
+}
+
+function extractPathPreview(value: string | undefined): string | null {
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(value) as { path?: string; file_path?: string }
+    const parsedPath = parsed.path || parsed.file_path
+    if (typeof parsedPath === 'string' && parsedPath.trim()) {
+      return parsedPath.trim()
+    }
+  } catch {
+    // fall back to regex preview parsing
+  }
+  const pathMatch = value.match(/"(?:path|file_path)"\s*:\s*"([^"]+)"/)
+  return pathMatch?.[1] || null
+}
+
+function extractCreatedFlag(toolResult: string | undefined): boolean {
+  if (!toolResult) return false
+  try {
+    const parsed = JSON.parse(toolResult) as { created?: boolean }
+    if (typeof parsed.created === 'boolean') {
+      return parsed.created
+    }
+  } catch {
+    // fall back to preview text heuristics
+  }
+  return toolResult.includes('"created":true') || toolResult.includes('created')
+}
+
+export function dedupeArtifacts(artifacts: Artifact[], sessionId?: string): Artifact[] {
+  const merged = new Map<string, Artifact>()
+
+  for (const artifact of artifacts) {
+    const normalizedPath = normalizeArtifactPath(artifact.path, sessionId)
+    if (!normalizedPath) continue
+
+    const nextArtifact = { ...artifact, path: normalizedPath }
+    if (merged.has(normalizedPath)) {
+      merged.delete(normalizedPath)
+    }
+    merged.set(normalizedPath, nextArtifact)
+  }
+
+  return Array.from(merged.values())
+}
+
+export function mergeArtifact(artifacts: Artifact[], artifact: Artifact, sessionId?: string): Artifact[] {
+  return dedupeArtifacts([...artifacts, artifact], sessionId)
+}
+
 /**
  * Attempt to extract an artifact from a tool call event.
  * Returns null if the tool is not a file operation or the path can't be parsed.
@@ -21,17 +92,16 @@ export function extractArtifact(
   toolCallId: string,
   toolArgs: string | undefined,
   toolResult: string | undefined,
+  sessionId?: string,
 ): Artifact | null {
   if (!ARTIFACT_TOOLS.has(toolName)) return null
-  if (!toolArgs) return null
 
-  // Parse file path from args preview
-  // Formats: {"path":"some/file.ts",...} or {"file_path":"some/file.ts",...}
-  const pathMatch = toolArgs.match(/"(?:path|file_path)"\s*:\s*"([^"]+)"/)
-  if (!pathMatch) return null
-
-  const path = pathMatch[1]
-  const created = toolResult ? toolResult.includes('"created":true') || toolResult.includes('created') : false
+  // Prefer the original args preview, but fall back to the tool result preview.
+  // Session history can miss tool_args while still preserving a result with "path".
+  const rawPath = extractPathPreview(toolArgs) || extractPathPreview(toolResult)
+  const path = rawPath ? normalizeArtifactPath(rawPath, sessionId) : ''
+  if (!path) return null
+  const created = extractCreatedFlag(toolResult)
   const action = (toolName === 'write' || toolName === 'write_file') && created ? 'created' : 'modified'
 
   return {
@@ -48,20 +118,19 @@ export function extractArtifact(
  */
 export function extractArtifactsFromHistory(
   messages: Array<{ role: string; toolName?: string; toolCallId?: string; toolArgs?: string; toolResult?: string }>,
+  sessionId?: string,
 ): Artifact[] {
   const artifacts: Artifact[] = []
-  const seen = new Set<string>()
 
   for (const msg of messages) {
     if (msg.role !== 'tool' || !msg.toolName) continue
-    const artifact = extractArtifact(msg.toolName, msg.toolCallId || '', msg.toolArgs, msg.toolResult)
-    if (artifact && !seen.has(artifact.path)) {
-      seen.add(artifact.path)
+    const artifact = extractArtifact(msg.toolName, msg.toolCallId || '', msg.toolArgs, msg.toolResult, sessionId)
+    if (artifact) {
       artifacts.push(artifact)
     }
   }
 
-  return artifacts
+  return dedupeArtifacts(artifacts, sessionId)
 }
 
 /**

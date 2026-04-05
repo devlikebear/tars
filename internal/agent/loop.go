@@ -196,6 +196,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				Iteration:  i + 1,
 				ToolName:   call.Name,
 				ToolCallID: call.ID,
+				ToolArgs:   effectiveArgs,
 				ToolResult: redactedResult,
 			})
 

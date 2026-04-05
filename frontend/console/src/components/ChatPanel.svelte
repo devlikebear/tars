@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte'
   import { streamChat, cancelChat, getSessionHistory, renameSession } from '../lib/api'
   import type { ChatAttachment, ChatEvent, SessionMessage } from '../lib/types'
-  import { extractArtifact, extractArtifactsFromHistory, type Artifact } from '../lib/artifacts'
+  import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import MarkdownContent from './MarkdownContent.svelte'
 
   type ChatMessage = {
@@ -24,9 +24,11 @@
     onSessionChange?: () => void
     onArtifactsChange?: (artifacts: Artifact[]) => void
     onToolComplete?: (toolName: string) => void
+    onSessionReady?: (sessionId: string) => void
+    onArtifactOpen?: (path: string) => void
   }
 
-  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onToolComplete }: Props = $props()
+  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onToolComplete, onSessionReady, onArtifactOpen }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -65,7 +67,16 @@
     chatLogEl.scrollTop = chatLogEl.scrollHeight
   }
 
+  function syncSessionId(nextSessionId: string | undefined) {
+    const resolved = nextSessionId?.trim()
+    if (!resolved || resolved === chatSessionId) return
+    chatSessionId = resolved
+    onSessionReady?.(resolved)
+  }
+
   function handleChatEvent(event: ChatEvent, assistantId: string) {
+    syncSessionId(event.session_id)
+
     switch (event.type) {
       case 'status':
         if (event.phase === 'before_tool_call' && event.tool_name) {
@@ -87,8 +98,10 @@
         } else if (event.phase === 'after_tool_call' && event.tool_call_id) {
           const tIdx = chatMessages.findIndex((m) => m.toolCallId === event.tool_call_id)
           if (tIdx >= 0) {
+            const toolArgs = event.tool_args_preview || chatMessages[tIdx].toolArgs
             chatMessages[tIdx] = {
               ...chatMessages[tIdx],
+              toolArgs,
               toolResult: event.tool_result_preview,
               toolDone: true,
             }
@@ -99,17 +112,12 @@
             const artifact = extractArtifact(
               event.tool_name || '',
               event.tool_call_id,
-              event.tool_args_preview,
+              toolArgs,
               event.tool_result_preview,
+              chatSessionId || sessionId,
             )
             if (artifact) {
-              // Update existing or add new
-              const existing = artifacts.findIndex((a) => a.path === artifact.path)
-              if (existing >= 0) {
-                artifacts[existing] = artifact
-              } else {
-                artifacts = [...artifacts, artifact]
-              }
+              artifacts = mergeArtifact(artifacts, artifact, chatSessionId || sessionId)
               onArtifactsChange?.(artifacts)
             }
 
@@ -435,7 +443,7 @@
         }
         chatMessages = [...chatMessages]
         // Extract artifacts from history
-        artifacts = extractArtifactsFromHistory(chatMessages)
+        artifacts = extractArtifactsFromHistory(chatMessages, sessionId)
         if (artifacts.length > 0) onArtifactsChange?.(artifacts)
         autoTitled = true
         void scrollToBottom()
@@ -487,7 +495,7 @@
         <div class="chat-msg chat-{msg.role}">
           <span class="chat-role">{msg.role}</span>
           {#if msg.role === 'assistant'}
-            <div class="chat-text"><MarkdownContent text={msg.text} /></div>
+            <div class="chat-text"><MarkdownContent text={msg.text} {artifacts} {onArtifactOpen} /></div>
           {:else}
             <div class="chat-text">{msg.text || '\u2026'}</div>
           {/if}

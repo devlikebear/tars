@@ -111,6 +111,34 @@ func resolveWorkspaceCandidatePath(rootCanonical, rawPath string) (string, error
 	return candidateAbs, nil
 }
 
+func resolveWorkspaceRootPrefixedRelative(policy PathPolicy, rawPath string) (string, string, bool) {
+	candidate := strings.TrimSpace(rawPath)
+	if candidate == "" || filepath.IsAbs(candidate) || len(policy.AllowedDirs) == 0 {
+		return "", "", false
+	}
+
+	workspaceRoot, _, err := resolveWorkspaceRoot(policy.AllowedDirs[0])
+	if err != nil {
+		return "", "", false
+	}
+
+	cleaned := filepath.Clean(candidate)
+	parts := strings.Split(cleaned, string(filepath.Separator))
+	if len(parts) == 0 {
+		return "", "", false
+	}
+	if parts[0] != filepath.Base(workspaceRoot) {
+		return "", "", false
+	}
+
+	relative := strings.TrimPrefix(cleaned, parts[0])
+	relative = strings.TrimPrefix(relative, string(filepath.Separator))
+	if relative == "" {
+		relative = "."
+	}
+	return workspaceRoot, relative, true
+}
+
 func pathWithinWorkspace(rootAbs, pathAbs string) bool {
 	rootClean := filepath.Clean(rootAbs)
 	pathClean := filepath.Clean(pathAbs)
@@ -172,6 +200,9 @@ func resolvePathWithPolicy(policy PathPolicy, rawPath string) (string, error) {
 		candidate = "."
 	}
 	if !filepath.IsAbs(candidate) {
+		if workspaceRoot, relative, ok := resolveWorkspaceRootPrefixedRelative(policy, candidate); ok {
+			return resolveWorkspacePath(workspaceRoot, relative)
+		}
 		return resolveWorkspacePath(policy.PrimaryDir, candidate)
 	}
 	candidateAbs, err := filepath.Abs(filepath.Clean(candidate))
@@ -204,6 +235,9 @@ func resolveWritePathWithPolicy(policy PathPolicy, rawPath string) (string, erro
 		return "", fmt.Errorf("path is required")
 	}
 	if !filepath.IsAbs(candidate) {
+		if workspaceRoot, relative, ok := resolveWorkspaceRootPrefixedRelative(policy, candidate); ok {
+			return resolveWorkspaceWritePath(workspaceRoot, relative)
+		}
 		return resolveWorkspaceWritePath(policy.PrimaryDir, candidate)
 	}
 	candidateAbs, err := filepath.Abs(filepath.Clean(candidate))
