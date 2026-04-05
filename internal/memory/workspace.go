@@ -22,13 +22,6 @@ const defaultMemoryTemplate = `# MEMORY.md
 - Keep only durable facts and preferences here.
 `
 
-const defaultProjectTemplate = `# PROJECT.md
-
-## Project Guidance
-- Define global project execution policy and reporting format.
-- Define global execution policy and reporting format.
-`
-
 const defaultAgentsTemplate = `# AGENTS.md
 
 ## Operating Guidelines
@@ -75,13 +68,6 @@ type WorkspaceBootstrapFileSpec struct {
 }
 
 var workspaceBootstrapFileSpecs = []WorkspaceBootstrapFileSpec{
-	{
-		Path:            "PROJECT.md",
-		Title:           "Project Guidance",
-		Description:     "Global project execution policy and reporting format.",
-		DefaultContent:  defaultProjectTemplate,
-		EnsureByDefault: true,
-	},
 	{
 		Path:            "USER.md",
 		Title:           "User Identity",
@@ -148,9 +134,6 @@ func EnsureWorkspace(root string) error {
 	}
 	if err := os.MkdirAll(filepath.Join(root, "memory", "wiki", "notes"), 0o755); err != nil {
 		return fmt.Errorf("create memory wiki notes dir: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, "projects"), 0o755); err != nil {
-		return fmt.Errorf("create projects dir: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "_shared"), 0o755); err != nil {
 		return fmt.Errorf("create shared dir: %w", err)

@@ -14,7 +14,6 @@ func TestBuild(t *testing.T) {
 	files := map[string]string{
 		"IDENTITY.md":  "# IDENTITY.md\n\nName: TARS",
 		"USER.md":      "# USER.md\n\nName: Alice",
-		"PROJECT.md":   "# PROJECT.md\n\nProject policy",
 		"AGENTS.md":    "# AGENTS.md\n\nOperating guidelines",
 		"TOOLS.md":     "# TOOLS.md\n\nAvailable tools",
 		"HEARTBEAT.md": "# HEARTBEAT.md\n\nCheck daily tasks",
@@ -42,10 +41,6 @@ func TestBuild(t *testing.T) {
 	if strings.Contains(result, files["MEMORY.md"]) {
 		t.Errorf("expected static prompt to exclude MEMORY.md content")
 	}
-	if strings.Contains(result, files["PROJECT.md"]) {
-		t.Errorf("expected prompt to exclude PROJECT.md content (project system removed)")
-	}
-
 	// Should have section headers
 	if !strings.Contains(result, "IDENTITY") {
 		t.Error("expected IDENTITY section")
@@ -58,7 +53,6 @@ func TestBuild_SubAgent(t *testing.T) {
 	files := map[string]string{
 		"IDENTITY.md":  "# IDENTITY.md\n\nName: TARS",
 		"USER.md":      "# USER.md\n\nName: Alice",
-		"PROJECT.md":   "# PROJECT.md\n\nProject policy",
 		"AGENTS.md":    "# AGENTS.md\n\nOperating guidelines",
 		"TOOLS.md":     "# TOOLS.md\n\nAvailable tools",
 		"HEARTBEAT.md": "# HEARTBEAT.md\n\nCheck daily tasks",
@@ -92,9 +86,6 @@ func TestBuild_SubAgent(t *testing.T) {
 	}
 	if strings.Contains(result, "Key facts") {
 		t.Error("sub-agent prompt should not contain MEMORY.md content")
-	}
-	if strings.Contains(result, "Project policy") {
-		t.Error("sub-agent prompt should not contain PROJECT.md content")
 	}
 }
 
@@ -172,8 +163,8 @@ func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 
 func TestBuildResult_ClampsRelevantMemoryToRemainingTotalBudget(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "PROJECT.md"), []byte(strings.Repeat("project ", 160)), 0o644); err != nil {
-		t.Fatalf("write PROJECT.md: %v", err)
+	if err := os.WriteFile(filepath.Join(root, "USER.md"), []byte(strings.Repeat("user ", 160)), 0o644); err != nil {
+		t.Fatalf("write USER.md: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("User prefers black coffee with oat milk.\n"), 0o644); err != nil {
 		t.Fatalf("write MEMORY.md: %v", err)

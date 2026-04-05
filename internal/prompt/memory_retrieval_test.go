@@ -35,9 +35,6 @@ func TestBuild_IncludesRelevantMemoryByQueryAndProject(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "IDENTITY.md"), []byte("identity"), 0o644); err != nil {
 		t.Fatalf("write IDENTITY.md: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "PROJECT.md"), []byte("project rules"), 0o644); err != nil {
-		t.Fatalf("write PROJECT.md: %v", err)
-	}
 	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("I prefer green tea.\n"), 0o644); err != nil {
 		t.Fatalf("write MEMORY.md: %v", err)
 	}
