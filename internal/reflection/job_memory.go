@@ -35,10 +35,14 @@ type SessionSource interface {
 //
 // The job is idempotent at the experience level: appendExperienceIfNew
 // dedupes against existing entries by summary+category match.
+//
+// The knowledge-compilation call uses the llm.RoleReflectionMemory role,
+// which operators can map to the light tier via llm_role_reflection_memory
+// to keep nightly runs cheap.
 type MemoryJob struct {
 	WorkspaceDir       string
 	Sessions           SessionSource
-	LLMClient          llm.Client
+	Router             llm.Router
 	Lookback           time.Duration
 	MaxTurnsPerSession int
 	Now                func() time.Time
@@ -191,7 +195,11 @@ func (m *MemoryJob) processTurnExperiences(sessionID string, t turn, now time.Ti
 }
 
 func (m *MemoryJob) compileKnowledge(ctx context.Context, sessionID string, t turn, now time.Time) bool {
-	if m.LLMClient == nil || !shouldCompileKnowledge(t) {
+	if m.Router == nil || !shouldCompileKnowledge(t) {
+		return false
+	}
+	client, _, err := m.Router.ClientFor(llm.RoleReflectionMemory)
+	if err != nil {
 		return false
 	}
 	store := memory.NewKnowledgeStore(m.WorkspaceDir, nil)
@@ -222,7 +230,7 @@ func (m *MemoryJob) compileKnowledge(ctx context.Context, sessionID string, t tu
 		strings.TrimSpace(t.AssistantMessage),
 	)
 
-	resp, err := m.LLMClient.Chat(ctx, []llm.ChatMessage{
+	resp, err := client.Chat(ctx, []llm.ChatMessage{
 		{Role: "system", Content: "You maintain a structured markdown knowledge base. Return strict JSON only."},
 		{Role: "user", Content: userPrompt},
 	}, llm.ChatOptions{})

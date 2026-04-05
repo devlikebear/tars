@@ -64,6 +64,7 @@ func TestChatAPIHandler_ReturnsOverloadedWhenInflightLimitExceeded(t *testing.T)
 		root,
 		store,
 		client,
+		nil,
 		logger,
 		4,
 		nil,

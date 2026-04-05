@@ -78,16 +78,20 @@ type DeciderPolicy struct {
 // Decider turns a set of signals into a Decision by calling the LLM. It
 // does not perform any side-effects; notification and autofix execution
 // happen downstream.
+//
+// Decider resolves its client from the router via RolePulseDecider on
+// every call, so operators can retarget pulse's model at runtime by
+// editing llm_role_pulse_decider in config.
 type Decider struct {
-	client llm.Client
+	router llm.Router
 	policy DeciderPolicy
 }
 
-// NewDecider constructs a Decider bound to an LLM client and a policy.
-// The client should be the same one used elsewhere in the server; pulse
-// is just another consumer.
-func NewDecider(client llm.Client, policy DeciderPolicy) *Decider {
-	return &Decider{client: client, policy: policy}
+// NewDecider constructs a Decider bound to an llm.Router and a policy.
+// The router's RolePulseDecider mapping decides which tier (typically
+// light) serves the classification calls.
+func NewDecider(router llm.Router, policy DeciderPolicy) *Decider {
+	return &Decider{router: router, policy: policy}
 }
 
 // Decide calls the LLM with a signal summary and returns the parsed
@@ -95,11 +99,16 @@ func NewDecider(client llm.Client, policy DeciderPolicy) *Decider {
 // the caller can record them on the TickOutcome; the caller is expected
 // to treat decider errors as non-fatal (the tick becomes an ignore).
 func (d *Decider) Decide(ctx context.Context, signals []Signal) (Decision, error) {
-	if d == nil || d.client == nil {
+	if d == nil || d.router == nil {
 		return Decision{}, fmt.Errorf("decider not configured")
 	}
 	if len(signals) == 0 {
 		return Decision{}, fmt.Errorf("decide called with no signals")
+	}
+
+	client, _, err := d.router.ClientFor(llm.RolePulseDecider)
+	if err != nil {
+		return Decision{}, fmt.Errorf("pulse router resolve: %w", err)
 	}
 
 	prompt := buildDeciderPrompt(signals, d.policy)
@@ -107,7 +116,7 @@ func (d *Decider) Decide(ctx context.Context, signals []Signal) (Decision, error
 		{Role: "system", Content: pulseSystemPrompt},
 		{Role: "user", Content: prompt},
 	}
-	resp, err := d.client.Chat(ctx, messages, llm.ChatOptions{
+	resp, err := client.Chat(ctx, messages, llm.ChatOptions{
 		Tools:      []llm.ToolSchema{PulseDecideToolSchema()},
 		ToolChoice: "required",
 	})

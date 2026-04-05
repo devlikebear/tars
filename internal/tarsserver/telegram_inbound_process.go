@@ -39,7 +39,7 @@ func (h *telegramInboundHandler) processMessage(
 		return "", sessionID, err
 	}
 	transcriptPath := h.store.TranscriptPath(sessionID)
-	if err := maybeAutoCompactSession(h.workspaceDir, transcriptPath, sessionID, h.llmClient, h.logger, h.tooling.MemorySemanticConfig); err != nil {
+	if err := maybeAutoCompactSession(h.workspaceDir, transcriptPath, sessionID, h.llmRouter, h.logger, h.tooling.MemorySemanticConfig); err != nil {
 		h.logger.Debug().Err(err).Str("session_id", sessionID).Msg("telegram auto compact skipped")
 	}
 	history, err := loadSessionHistory(transcriptPath, chatHistoryMaxTokens)

@@ -19,6 +19,7 @@ type telegramInboundHandler struct {
 	workspaceDir  string
 	store         *session.Store
 	llmClient     llm.Client
+	llmRouter     llm.Router
 	sender        telegramSender
 	commands      telegramCommandExecutor
 	media         telegramMediaDownloader

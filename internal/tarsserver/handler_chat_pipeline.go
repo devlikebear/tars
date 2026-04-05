@@ -16,6 +16,7 @@ type chatHandlerDeps struct {
 	workspaceDir   string
 	store          *session.Store
 	client         llm.Client
+	router         llm.Router
 	logger         zerolog.Logger
 	maxIters       int
 	chatLimiter    *inflightLimiter

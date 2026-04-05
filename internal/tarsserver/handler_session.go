@@ -508,7 +508,7 @@ func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string
 	})
 }
 
-func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.Client, logger zerolog.Logger) http.Handler {
+func newCompactAPIHandler(workspaceDir string, store *session.Store, router llm.Router, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {
 			return
@@ -569,7 +569,7 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, client llm.
 			req.KeepRecentTokens,
 			keepRecentFraction,
 			req.Instructions,
-			client,
+			router,
 			now,
 		)
 		if err != nil {

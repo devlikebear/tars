@@ -13,7 +13,21 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, client llm.Client, logger zerolog.Logger, semanticCfg ...memory.SemanticConfig) error {
+// compactionClient resolves the Router to a concrete client for the
+// context_compactor role. Returns nil when router is nil or resolution
+// fails, letting callers fall back to the deterministic non-LLM summary.
+func compactionClient(router llm.Router) llm.Client {
+	if router == nil {
+		return nil
+	}
+	client, _, err := router.ClientFor(llm.RoleContextCompactor)
+	if err != nil {
+		return nil
+	}
+	return client
+}
+
+func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, router llm.Router, logger zerolog.Logger, semanticCfg ...memory.SemanticConfig) error {
 	messages, err := session.ReadMessages(transcriptPath)
 	if err != nil {
 		return err
@@ -32,7 +46,7 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, cli
 		autoCompactKeepTokens,
 		autoCompactKeepShare,
 		"",
-		client,
+		router,
 		now,
 		buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...)),
 	)
@@ -49,8 +63,9 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, cli
 	return nil
 }
 
-func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, keepRecentTokens int, keepRecentFraction float64, instructions string, client llm.Client, now time.Time, semantic ...*memory.Service) (session.CompactResult, error) {
+func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, keepRecentTokens int, keepRecentFraction float64, instructions string, router llm.Router, now time.Time, semantic ...*memory.Service) (session.CompactResult, error) {
 	memService := firstSemanticService(semantic...)
+	client := compactionClient(router)
 	return session.CompactTranscriptWithOptions(transcriptPath, keepRecent, now, session.CompactOptions{
 		KeepRecentTokens:    keepRecentTokens,
 		KeepRecentFraction:  keepRecentFraction,
@@ -94,6 +109,10 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 	})
 }
 
+// buildLLMCompactionSummary continues to take a resolved llm.Client
+// because its caller (compactWithMemoryFlush) has already resolved the
+// router to a concrete client; passing the already-resolved client keeps
+// this pure-function boundary intact and testable.
 func buildLLMCompactionSummary(messages []session.Message, client llm.Client, now time.Time, instructions string) (string, error) {
 	const maxMessages = 80
 	msgs := messages

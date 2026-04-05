@@ -51,6 +51,7 @@ func runChatAndCollectTools(t *testing.T, role string, tooling chatToolingOption
 		root,
 		store,
 		mockClient,
+		nil,
 		logger,
 		4,
 		nil,

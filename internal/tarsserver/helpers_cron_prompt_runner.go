@@ -53,7 +53,7 @@ func newCronPromptRunnerWithSessionContext(fallback gatewayPromptRunner, deps ch
 		}
 
 		transcriptPath := deps.store.TranscriptPath(cfg.SessionID)
-		if err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, cfg.SessionID, deps.client, deps.logger, deps.tooling.MemorySemanticConfig); err != nil {
+		if err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, cfg.SessionID, deps.router, deps.logger, deps.tooling.MemorySemanticConfig); err != nil {
 			return "", err
 		}
 

@@ -1179,6 +1179,7 @@ func TestChatAPI_InjectsAllToolsByDefault(t *testing.T) {
 		root,
 		store,
 		mockClient,
+		nil,
 		logger,
 		8,
 		nil,
@@ -1467,6 +1468,7 @@ func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 		root,
 		store,
 		mockClient,
+		nil,
 		logger,
 		8,
 		nil,
@@ -2494,7 +2496,7 @@ func TestCompactAPI_UsesLLMSummaryWhenAvailable(t *testing.T) {
 		},
 	}
 
-	handler := newCompactAPIHandler(root, store, mockClient, logger)
+	handler := newCompactAPIHandler(root, store, testRouterForClient(t, mockClient), logger)
 	reqBody, err := json.Marshal(map[string]any{
 		"session_id":  sess.ID,
 		"keep_recent": 5,

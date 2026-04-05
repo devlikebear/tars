@@ -23,7 +23,7 @@ import (
 type pulseSetupInputs struct {
 	Config           config.Config
 	WorkspaceDir     string
-	LLMClient        llm.Client
+	Router           llm.Router
 	CronStore        *cron.Store
 	GatewayRuntime   *gateway.Runtime
 	OpsManager       *ops.Manager
@@ -94,7 +94,7 @@ func buildPulseRuntime(in pulseSetupInputs) pulseSetup {
 
 	minSeverity, _ := pulse.ParseSeverity(strings.TrimSpace(in.Config.PulseMinSeverity))
 
-	decider := pulse.NewDecider(in.LLMClient, pulse.DeciderPolicy{
+	decider := pulse.NewDecider(in.Router, pulse.DeciderPolicy{
 		AllowedAutofixes: allowedAutofixes,
 		MinSeverity:      minSeverity,
 	})
