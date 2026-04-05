@@ -33,9 +33,14 @@ func newWorkspaceFilesHandler(workspaceDir string, logger zerolog.Logger) http.H
 
 		// Allow overriding the root directory (for session work dirs)
 		// Default to artifacts/ subdirectory to avoid exposing internal workspace files
+		// Special value "~" resolves to user home directory
 		rootDir := strings.TrimSpace(r.URL.Query().Get("root"))
 		if rootDir == "" {
 			rootDir = filepath.Join(workspaceDir, "artifacts")
+		} else if rootDir == "~" {
+			if home, err := os.UserHomeDir(); err == nil {
+				rootDir = home
+			}
 		}
 
 		// Prevent path traversal
