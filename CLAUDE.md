@@ -49,7 +49,8 @@ cd frontend/console && npm run check   # svelte-check + tsc
 | `gateway` | Agent execution platform: runtime state machine, multi-threaded subagents (max 4), run persistence in `workspace/_shared/gateway/` |
 | `session` | File-based chat sessions: index + transcripts in `workspace/sessions/`. Kinds: `main` (user-visible), `worker` (hidden) |
 | `cron` | Tick-based scheduler (30s default). Supports `@at` (one-time) and cron expressions. Run history capped at 50/job |
-| `pulse` | System-surface watchdog (1-min tick). Scans cron failures, stuck gateway runs, disk pressure, telegram delivery failures. LLM classifies via `pulse_decide` tool → ignore / notify / autofix. See **System Surface** below. |
+| `pulse` | System-surface watchdog (1-min tick). Scans cron failures, stuck gateway runs, disk pressure, telegram delivery failures, reflection health. LLM classifies via `pulse_decide` tool → ignore / notify / autofix. See **System Surface** below. |
+| `reflection` | System-surface nightly batch (sleep-window tick, default 02:00-05:00). Runs memory cleanup (experience extraction + knowledge-base compilation, formerly per-turn) and KB cleanup (remove empty sessions). State satisfies `pulse.ReflectionHealthSource`. See **System Surface** below. |
 | `ops` | System health (disk/processes), cleanup planning with approval workflow. Consumed by pulse via narrow Go interfaces — no user-facing LLM tool wrappers (see **System Surface**). |
 | `llm` | Provider abstraction: Anthropic, OpenAI-compat, Gemini |
 | `memory` | Semantic memory: Gemini embeddings, cosine similarity search, experience/compaction indexing, JSONL entries |
@@ -66,6 +67,11 @@ cd frontend/console && npm run check   # svelte-check + tsc
 - Pulse's LLM is a classifier only: it may call exactly one tool (`pulse_decide`) to return `{action, severity, title, summary, autofix_name}`. Actions (notify / autofix) execute deterministically in Go.
 - Pulse policy lives in config (`pulse_enabled`, `pulse_interval`, thresholds, autofix allowlist, min severity). There is no `PULSE.md` policy file — "policy is config, mechanism is code".
 - Autofix whitelist (Phase 1): `compress_old_logs`, `cleanup_stale_tmp`. New autofixes require a Go implementation in `internal/pulse/autofix/` AND an entry in `pulse_allowed_autofixes` — the intersection is what the decider can invoke.
+- **Reflection** (nightly batch) is the second system-surface component. It ticks slowly (default every 5 min) but only actually runs jobs when (1) the current local time is inside `reflection_sleep_window` (default 02:00-05:00) AND (2) today's run has not already happened. Wrap-around windows (22:00-02:00) are supported; the "reflection day" is anchored to the start of the window.
+- Reflection Phase 1 ships two jobs, run sequentially: `memory` (batch variant of the old per-turn `chat_memory_hook`: experience derivation from keyword rules + LLM knowledge compilation) and `kb_cleanup` (remove sessions whose transcript is empty and older than `reflection_empty_session_age`). Main sessions are never touched.
+- Reflection has **no LLM tool surface** — its jobs call `llm.Client.Chat` directly for knowledge compilation without exposing tools to the model. Cross-surface leakage is still enforced at registry time for forward compatibility.
+- The per-turn `chat_memory_hook` has shrunk to the minimum: daily log append + the explicit `remember …` hot path (with inline dedup). All other derivation/compilation runs once nightly.
+- Pulse observes reflection health via the narrow `pulse.ReflectionHealthSource` interface (implemented by `reflection.State`). When `pulse_reflection_failure_threshold` consecutive nightly runs fail, pulse emits `SignalKindReflectionFailure` and the normal decider flow handles notification/autofix.
 - Heartbeat (the previous name) has been removed entirely. Legacy `--run-once` / `--run-loop` CLI flags and `/console/heartbeat` URLs are kept only as no-op redirects for backward compat.
 
 **Chat Memory System** (`internal/tarsserver` + `internal/memory` + `internal/prompt`):
