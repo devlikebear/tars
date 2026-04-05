@@ -3,9 +3,6 @@ package tarsserver
 import (
 	"context"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -32,7 +29,6 @@ type watchdogFinding struct {
 	Kind      string `json:"kind"`
 	Severity  string `json:"severity"`
 	JobID     string `json:"job_id,omitempty"`
-	ProjectID string `json:"project_id,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
 	Message   string `json:"message"`
 }
@@ -228,38 +224,21 @@ func runWorkspaceWatchdog(_ context.Context, workspaceDir string, cronStore *cro
 	return result, nil
 }
 
-func analyzeWatchdogJob(workspaceDir string, store *session.Store, job cron.Job) []watchdogFinding {
+func analyzeWatchdogJob(_ string, store *session.Store, job cron.Job) []watchdogFinding {
 	findings := make([]watchdogFinding, 0)
-	projectID := strings.TrimSpace(job.ProjectID)
 	target := strings.TrimSpace(job.SessionTarget)
-	if projectID != "" && target != "" && !strings.EqualFold(target, "main") && !strings.EqualFold(target, "isolated") {
-		findings = append(findings, watchdogFinding{
-			Kind:      "explicit_session_target",
-			Severity:  "warn",
-			JobID:     strings.TrimSpace(job.ID),
-			ProjectID: projectID,
-			SessionID: target,
-			Message:   fmt.Sprintf("job %s pins project work to explicit session %s", strings.TrimSpace(job.Name), target),
-		})
-	}
-	if finding, ok := findContaminatedTranscript(store, projectID, target); ok {
+	if finding, ok := findContaminatedTranscript(store, target); ok {
 		finding.JobID = strings.TrimSpace(job.ID)
-		if finding.ProjectID == "" {
-			finding.ProjectID = projectID
-		}
-		findings = append(findings, finding)
-	}
-	if finding, ok := findStaleProjectProgress(workspaceDir, job); ok {
 		findings = append(findings, finding)
 	}
 	return findings
 }
 
-func findContaminatedTranscript(store *session.Store, projectID string, explicitTarget string) (watchdogFinding, bool) {
+func findContaminatedTranscript(store *session.Store, explicitTarget string) (watchdogFinding, bool) {
 	if store == nil {
 		return watchdogFinding{}, false
 	}
-	sess, err := resolveWatchdogSession(store, projectID, explicitTarget)
+	sess, err := resolveWatchdogSession(store, explicitTarget)
 	if err != nil || sess == nil {
 		return watchdogFinding{}, false
 	}
@@ -278,7 +257,6 @@ func findContaminatedTranscript(store *session.Store, projectID string, explicit
 				return watchdogFinding{
 					Kind:      "contaminated_transcript",
 					Severity:  "warn",
-					ProjectID: strings.TrimSpace(projectID),
 					SessionID: strings.TrimSpace(sess.ID),
 					Message:   fmt.Sprintf("session %s contains tool/meta output contamination", strings.TrimSpace(sess.ID)),
 				}, true
@@ -288,7 +266,7 @@ func findContaminatedTranscript(store *session.Store, projectID string, explicit
 	return watchdogFinding{}, false
 }
 
-func resolveWatchdogSession(store *session.Store, projectID string, explicitTarget string) (*session.Session, error) {
+func resolveWatchdogSession(store *session.Store, explicitTarget string) (*session.Session, error) {
 	target := strings.TrimSpace(explicitTarget)
 	if target != "" && !strings.EqualFold(target, "main") && !strings.EqualFold(target, "isolated") {
 		sess, err := store.Get(target)
@@ -297,103 +275,7 @@ func resolveWatchdogSession(store *session.Store, projectID string, explicitTarg
 		}
 		return &sess, nil
 	}
-	if strings.TrimSpace(projectID) == "" {
-		return nil, nil
-	}
-	sessions, err := store.List()
-	if err != nil {
-		return nil, err
-	}
-	for _, sess := range sessions {
-		if strings.TrimSpace(sess.ProjectID) == strings.TrimSpace(projectID) {
-			sessionCopy := sess
-			return &sessionCopy, nil
-		}
-	}
 	return nil, nil
-}
-
-func findStaleProjectProgress(workspaceDir string, job cron.Job) (watchdogFinding, bool) {
-	projectID := strings.TrimSpace(job.ProjectID)
-	if workspaceDir == "" || projectID == "" || job.LastRunAt == nil {
-		return watchdogFinding{}, false
-	}
-	projectDocTime, hasProjectDoc := newestProjectContentTime(workspaceDir, projectID)
-	if !hasProjectDoc {
-		return watchdogFinding{}, false
-	}
-	artifactTime, hasArtifact := newestCronArtifactTime(workspaceDir, projectID)
-	if !hasArtifact {
-		return watchdogFinding{}, false
-	}
-	if !artifactTime.After(projectDocTime.Add(watchdogProjectStaleThreshold)) {
-		return watchdogFinding{}, false
-	}
-	return watchdogFinding{
-		Kind:      "stale_project_progress",
-		Severity:  "warn",
-		JobID:     strings.TrimSpace(job.ID),
-		ProjectID: projectID,
-		Message: fmt.Sprintf(
-			"project %s has cron runs after %s without project document updates",
-			projectID,
-			projectDocTime.UTC().Format(time.RFC3339),
-		),
-	}, true
-}
-
-func newestProjectContentTime(workspaceDir string, projectID string) (time.Time, bool) {
-	projectDir := filepath.Join(strings.TrimSpace(workspaceDir), "projects", strings.TrimSpace(projectID))
-	var newest time.Time
-	found := false
-	_ = filepath.WalkDir(projectDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if strings.EqualFold(d.Name(), "cron_runs") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		if !found || info.ModTime().After(newest) {
-			newest = info.ModTime().UTC()
-			found = true
-		}
-		return nil
-	})
-	return newest, found
-}
-
-func newestCronArtifactTime(workspaceDir string, projectID string) (time.Time, bool) {
-	artifactDir := filepath.Join(strings.TrimSpace(workspaceDir), "projects", strings.TrimSpace(projectID), "cron_runs")
-	entries, err := os.ReadDir(artifactDir)
-	if err != nil {
-		return time.Time{}, false
-	}
-	var newest time.Time
-	found := false
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		if !found || info.ModTime().After(newest) {
-			newest = info.ModTime().UTC()
-			found = true
-		}
-	}
-	return newest, found
 }
 
 func summarizeWatchdogFindings(findings []watchdogFinding) string {

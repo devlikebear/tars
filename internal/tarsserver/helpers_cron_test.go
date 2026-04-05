@@ -61,7 +61,7 @@ func TestResolveCronTargetSessionID_EmptyTargetReturnsEmpty(t *testing.T) {
 		t.Fatalf("ensure main session: %v", err)
 	}
 
-	sessionID, explicit, err := resolveCronTargetSessionID(store, cron.Job{ProjectID: "proj_demo"}, mainSession.ID)
+	sessionID, explicit, err := resolveCronTargetSessionID(store, cron.Job{}, mainSession.ID)
 	if err != nil {
 		t.Fatalf("resolve empty target: %v", err)
 	}
@@ -87,7 +87,6 @@ func TestDeliverCronResult_DeliversToTargetSession(t *testing.T) {
 		Name:          "nightly writer",
 		Prompt:        "write next chapter",
 		Schedule:      "every:5m",
-		ProjectID:     "proj_demo",
 		SessionTarget: "main",
 	}
 	if err := deliverCronResult(root, store, job, mainSession.ID, false, "drafted episode 2 and updated plot beats", now, zerolog.Nop()); err != nil {
@@ -136,11 +135,10 @@ func TestCronJobRunner_HiddenWorkerDoesNotInjectTargetSessionContext(t *testing.
 	)
 
 	_, err = runner(context.Background(), cron.Job{
-		ID:        "job_demo",
-		Name:      "nightly writer",
-		Prompt:    "write next chapter",
-		Schedule:  "every:1m",
-		ProjectID: "proj_demo",
+		ID:       "job_demo",
+		Name:     "nightly writer",
+		Prompt:   "write next chapter",
+		Schedule: "every:1m",
 	})
 	if err != nil {
 		t.Fatalf("run cron job: %v", err)
@@ -256,11 +254,10 @@ func TestCronJobRunner_RejectsPseudoToolContamination(t *testing.T) {
 	)
 
 	_, err = runner(context.Background(), cron.Job{
-		ID:        "job_demo",
-		Name:      "nightly writer",
-		Prompt:    "write next chapter",
-		Schedule:  "every:1m",
-		ProjectID: "proj_demo",
+		ID:       "job_demo",
+		Name:     "nightly writer",
+		Prompt:   "write next chapter",
+		Schedule: "every:1m",
 	})
 	if err == nil {
 		t.Fatal("expected pseudo-tool contamination error")
@@ -311,11 +308,10 @@ func TestCronJobRunner_EmitsErrorNotificationOnContamination(t *testing.T) {
 	)
 
 	_, err = runner(context.Background(), cron.Job{
-		ID:        "job_demo",
-		Name:      "nightly writer",
-		Prompt:    "write next chapter",
-		Schedule:  "every:1m",
-		ProjectID: "proj_demo",
+		ID:       "job_demo",
+		Name:     "nightly writer",
+		Prompt:   "write next chapter",
+		Schedule: "every:1m",
 	})
 	if err == nil {
 		t.Fatal("expected pseudo-tool contamination error")
@@ -329,61 +325,26 @@ func TestCronJobRunner_EmitsErrorNotificationOnContamination(t *testing.T) {
 	if !containsAll(events[0].Title, "Cron failed", "nightly writer") {
 		t.Fatalf("unexpected notification title: %+v", events[0])
 	}
-	if strings.TrimSpace(events[0].OpenPath) == "" {
-		t.Fatalf("expected contamination failure to persist an artifact path, got %+v", events[0])
-	}
+	// OpenPath is empty after project artifact persistence was removed
 }
 
-func TestPersistCronProjectArtifact_IncludesTelemetry(t *testing.T) {
+func TestPersistCronProjectArtifact_NoOp(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 3, 8, 1, 30, 0, 0, time.UTC)
-	job := cron.Job{
-		ID:        "job_demo",
-		Name:      "nightly writer",
-		Prompt:    "write next chapter",
-		ProjectID: "proj_demo",
-	}
-
-	path, err := persistCronProjectArtifact(root, job, "drafted episode 2", now, cronRunTelemetry{
-		PromptTokens:               120,
-		SystemPromptTokens:         80,
-		UserPromptTokens:           40,
-		TargetSessionContextTokens: 0,
-		TargetSessionContextUsed:   false,
-		ToolCount:                  9,
-		ResponseTokens:             22,
-		ContaminationMarkers:       []string{"{\"command\":"},
-	}, 0)
+	job := cron.Job{ID: "job_demo", Name: "nightly writer", Prompt: "write next chapter"}
+	path, err := persistCronProjectArtifact(root, job, "drafted episode 2", now, cronRunTelemetry{}, 0)
 	if err != nil {
 		t.Fatalf("persist artifact: %v", err)
 	}
-
-	expectedPath := filepath.Join(root, "projects", "proj_demo", "cron_runs", now.UTC().Format("20060102T150405Z")+"_job_demo.md")
-	if path != expectedPath {
-		t.Fatalf("expected artifact path %q, got %q", expectedPath, path)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read artifact: %v", err)
-	}
-	text := string(data)
-	if !containsAll(text,
-		"## Telemetry",
-		"prompt_tokens: 120",
-		"system_prompt_tokens: 80",
-		"user_prompt_tokens: 40",
-		"tool_count: 9",
-		"response_tokens: 22",
-		"contamination_markers: {\"command\":",
-	) {
-		t.Fatalf("artifact missing telemetry section:\n%s", text)
+	if path != "" {
+		t.Fatalf("expected empty path after project removal, got %q", path)
 	}
 }
 
 func TestBuildCronNotificationEvent_UsesFriendlySummaryAndOpenPath(t *testing.T) {
-	job := cron.Job{ID: "job_demo", Name: "novelist-1m", ProjectID: "project-134127"}
-	evt := buildCronNotificationEvent(job, "info", "Cron completed", "# Result\n\n상태 문서를 갱신하고 1화 초안을 다듬었습니다.\n\n변경 파일:\n- `projects/project-134127/STATE.md`", "/tmp/cron.md", "sess-main")
-	if evt.JobID != "job_demo" || evt.ProjectID != "project-134127" || evt.SessionID != "sess-main" {
+	job := cron.Job{ID: "job_demo", Name: "novelist-1m"}
+	evt := buildCronNotificationEvent(job, "info", "Cron completed", "# Result\n\n상태 문서를 갱신하고 1화 초안을 다듬었습니다.\n\n변경 파일:\n- STATE.md", "/tmp/cron.md", "sess-main")
+	if evt.JobID != "job_demo" || evt.SessionID != "sess-main" {
 		t.Fatalf("unexpected ids in notification: %+v", evt)
 	}
 	if evt.OpenPath != "/tmp/cron.md" {
@@ -392,7 +353,7 @@ func TestBuildCronNotificationEvent_UsesFriendlySummaryAndOpenPath(t *testing.T)
 	if !containsAll(evt.Title, "Cron completed", "novelist-1m") {
 		t.Fatalf("expected job name in title, got %q", evt.Title)
 	}
-	if !containsAll(evt.Message, "project-134127", "상태 문서를 갱신하고 1화 초안을 다듬었습니다") {
+	if !strings.Contains(evt.Message, "상태 문서를 갱신하고 1화 초안을 다듬었습니다") {
 		t.Fatalf("expected friendly summary message, got %q", evt.Message)
 	}
 }
@@ -459,11 +420,10 @@ func TestCronJobRunner_FailsWhenClaimedFileUpdateIsNotObserved(t *testing.T) {
 	)
 
 	_, err = runner(context.Background(), cron.Job{
-		ID:        "job_demo",
-		Name:      "nightly writer",
-		Prompt:    "write next chapter",
-		Schedule:  "every:1m",
-		ProjectID: "proj_demo",
+		ID:       "job_demo",
+		Name:     "nightly writer",
+		Prompt:   "write next chapter",
+		Schedule: "every:1m",
 	})
 	if err == nil {
 		t.Fatal("expected claimed update verification error")
@@ -492,11 +452,10 @@ func TestCronJobRunner_NoProjectToolPolicyAfterRemoval(t *testing.T) {
 	)
 
 	if _, err := runner(context.Background(), cron.Job{
-		ID:        "job_demo",
-		Name:      "triage logs",
-		Prompt:    "inspect logs",
-		Schedule:  "every:5m",
-		ProjectID: "proj_demo",
+		ID:       "job_demo",
+		Name:     "triage logs",
+		Prompt:   "inspect logs",
+		Schedule: "every:5m",
 	}); err != nil {
 		t.Fatalf("run cron job: %v", err)
 	}

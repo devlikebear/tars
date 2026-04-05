@@ -17,19 +17,12 @@ import type {
   PluginDef,
   SkillDef,
   CreateCronJobRequest,
-  CreateProjectRequest,
   CronJob,
   CronRunRecord,
   CronRunResult,
   EventsHistoryInfo,
   NotificationMessage,
   OpsStatus,
-  Project,
-  ProjectActivity,
-  ProjectSessionInfo,
-  ProjectBoard,
-  ProjectState,
-  BoardTask,
   HeartbeatStatus,
   HeartbeatRunResult,
   KnowledgeGraph,
@@ -39,7 +32,6 @@ import type {
   UpdateCronJobRequest,
   SessionTasks,
   SessionWorkDirs,
-  UpdateProjectRequest,
 } from './types'
 
 async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
@@ -96,59 +88,6 @@ export async function saveHeartbeatConfig(content: string): Promise<void> {
 
 export async function getHeartbeatLog(): Promise<{ date: string; content: string }> {
   return requestJSON<{ date: string; content: string }>('/v1/heartbeat/log')
-}
-
-// --- Projects ---
-
-export async function listProjects(): Promise<Project[]> {
-  return requestJSON<Project[]>('/v1/projects')
-}
-
-export async function getProject(projectId: string): Promise<Project> {
-  return requestJSON<Project>(`/v1/projects/${encodeURIComponent(projectId)}`)
-}
-
-export async function getProjectSession(projectId: string): Promise<ProjectSessionInfo> {
-  return requestJSON<ProjectSessionInfo>(
-    `/v1/projects/${encodeURIComponent(projectId)}/session`,
-  )
-}
-
-export async function clearProjectSession(projectId: string): Promise<{ cleared: boolean }> {
-  return requestJSON<{ cleared: boolean }>(
-    `/v1/projects/${encodeURIComponent(projectId)}/session/clear`,
-    { method: 'POST' },
-  )
-}
-
-export async function compactProjectSession(projectId: string): Promise<{ compacted: boolean; original_count: number; final_count: number }> {
-  return requestJSON<{ compacted: boolean; original_count: number; final_count: number }>(
-    `/v1/projects/${encodeURIComponent(projectId)}/session/compact`,
-    { method: 'POST' },
-  )
-}
-
-export async function listProjectActivity(projectId: string, limit = 20): Promise<ProjectActivity[]> {
-  const payload = await requestJSON<{ count: number; items: ProjectActivity[] }>(
-    `/v1/projects/${encodeURIComponent(projectId)}/activity?limit=${limit}`,
-  )
-  return payload.items ?? []
-}
-
-export async function getProjectBoard(projectId: string): Promise<ProjectBoard> {
-  return requestJSON<ProjectBoard>(`/v1/projects/${encodeURIComponent(projectId)}/board`)
-}
-
-export async function updateProjectBoard(projectId: string, tasks: BoardTask[]): Promise<ProjectBoard> {
-  return requestJSON<ProjectBoard>(`/v1/projects/${encodeURIComponent(projectId)}/board`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tasks }),
-  })
-}
-
-export async function getProjectState(projectId: string): Promise<ProjectState> {
-  return requestJSON<ProjectState>(`/v1/projects/${encodeURIComponent(projectId)}/state`)
 }
 
 export async function listCronJobs(): Promise<CronJob[]> {
@@ -241,14 +180,12 @@ export async function listKnowledgeNotes(params: {
   query?: string
   kind?: string
   tag?: string
-  project_id?: string
   limit?: number
 } = {}): Promise<{ count: number; items: KnowledgeNote[] }> {
   const search = new URLSearchParams()
   if (params.query?.trim()) search.set('query', params.query.trim())
   if (params.kind?.trim()) search.set('kind', params.kind.trim())
   if (params.tag?.trim()) search.set('tag', params.tag.trim())
-  if (params.project_id?.trim()) search.set('project_id', params.project_id.trim())
   if (params.limit && params.limit > 0) search.set('limit', String(params.limit))
   const qs = search.toString()
   return requestJSON<{ count: number; items: KnowledgeNote[] }>(`/v1/memory/kb/notes${qs ? `?${qs}` : ''}`)
@@ -412,68 +349,6 @@ export async function markEventsRead(lastId: number): Promise<{ unread_count: nu
   })
 }
 
-// --- Project CRUD ---
-
-export async function createProject(data: CreateProjectRequest): Promise<Project> {
-  return requestJSON<Project>('/v1/projects', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-}
-
-export async function updateProject(projectId: string, data: UpdateProjectRequest): Promise<Project> {
-  return requestJSON<Project>(`/v1/projects/${encodeURIComponent(projectId)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-}
-
-export async function deleteProject(projectId: string): Promise<void> {
-  await requestJSON<Record<string, never>>(`/v1/projects/${encodeURIComponent(projectId)}`, {
-    method: 'DELETE',
-  })
-}
-
-export async function deleteAllProjects(): Promise<{ deleted: number }> {
-  return requestJSON<{ deleted: number }>('/v1/projects', { method: 'DELETE' })
-}
-
-export type ProjectFile = {
-  name: string
-  size: number
-  system: boolean
-}
-
-export type ProjectFileContent = {
-  name: string
-  content: string
-  size: number
-}
-
-export async function listProjectFiles(projectId: string): Promise<ProjectFile[]> {
-  return requestJSON<ProjectFile[]>(`/v1/projects/${encodeURIComponent(projectId)}/files`)
-}
-
-export async function getProjectFileContent(projectId: string, filename: string): Promise<ProjectFileContent> {
-  return requestJSON<ProjectFileContent>(`/v1/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(filename)}`)
-}
-
-export async function activateProject(projectId: string): Promise<{ activated: boolean }> {
-  return requestJSON<{ activated: boolean }>(
-    `/v1/projects/${encodeURIComponent(projectId)}/activate`,
-    { method: 'POST' },
-  )
-}
-
-export async function deactivateProject(projectId: string): Promise<{ deactivated: boolean }> {
-  return requestJSON<{ deactivated: boolean }>(
-    `/v1/projects/${encodeURIComponent(projectId)}/deactivate`,
-    { method: 'POST' },
-  )
-}
-
 // --- Cron Job CRUD ---
 
 export async function createCronJob(data: CreateCronJobRequest): Promise<CronJob> {
@@ -607,13 +482,11 @@ export async function reloadExtensions(): Promise<{ reloaded: boolean; skills: n
 // --- Events ---
 
 export function streamEvents(
-  projectId: string | undefined,
   onEvent: (event: NotificationMessage) => void,
   onError?: (message: string) => void,
   onOpen?: () => void,
 ): () => void {
-  const params = projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''
-  const stream = new EventSource(`/v1/events/stream${params}`)
+  const stream = new EventSource('/v1/events/stream')
   stream.onopen = () => {
     onOpen?.()
   }

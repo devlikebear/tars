@@ -125,7 +125,6 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				}
 				run, err := runtime.Spawn(waitCtx, gateway.SpawnRequest{
 					WorkspaceID:     workspaceID,
-					ProjectID:       strings.TrimSpace(meta.ProjectID),
 					Title:           title,
 					Prompt:          prompt,
 					Agent:           agentName,

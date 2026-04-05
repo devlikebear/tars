@@ -67,7 +67,6 @@
   let editorBody = $state('')
   let editorTags = $state('')
   let editorAliases = $state('')
-  let editorProjectID = $state('')
   let editorSourceSession = $state('')
   let editorLinks = $state('')
 
@@ -210,7 +209,6 @@
     editorBody = ''
     editorTags = ''
     editorAliases = ''
-    editorProjectID = ''
     editorSourceSession = ''
     editorLinks = ''
     success = ''
@@ -225,7 +223,6 @@
     editorBody = note.body || ''
     editorTags = (note.tags || []).join(', ')
     editorAliases = (note.aliases || []).join(', ')
-    editorProjectID = note.project_id || ''
     editorSourceSession = note.source_session || ''
     editorLinks = formatLinks(note.links || [])
     success = ''
@@ -310,7 +307,6 @@
       tags: parseTags(editorTags),
       aliases: parseTags(editorAliases),
       links: parseLinks(editorLinks),
-      project_id: editorProjectID.trim() || undefined,
       source_session: editorSourceSession.trim() || undefined,
     }
     try {
@@ -368,9 +364,8 @@
   onMount(() => {
     void loadAll()
     stopStream = streamEvents(
-      undefined,
       (event) => {
-        if (event.category === 'chat' || event.category === 'project') {
+        if (event.category === 'chat') {
           void loadAll()
         }
       },
@@ -619,10 +614,6 @@
           <label class="form-field">
             <span>Aliases</span>
             <input class="form-input" bind:value={editorAliases} placeholder="black coffee" />
-          </label>
-          <label class="form-field">
-            <span>Project ID</span>
-            <input class="form-input" bind:value={editorProjectID} placeholder="optional" />
           </label>
           <label class="form-field">
             <span>Source Session</span>

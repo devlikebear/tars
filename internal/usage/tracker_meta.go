@@ -10,7 +10,6 @@ type callMetaKey struct{}
 type CallMeta struct {
 	Source    string
 	SessionID string
-	ProjectID string
 	RunID     string
 }
 
@@ -35,7 +34,6 @@ func normalizeCallMeta(meta CallMeta) CallMeta {
 	out := CallMeta{
 		Source:    strings.TrimSpace(strings.ToLower(meta.Source)),
 		SessionID: strings.TrimSpace(meta.SessionID),
-		ProjectID: strings.TrimSpace(meta.ProjectID),
 		RunID:     strings.TrimSpace(meta.RunID),
 	}
 	switch out.Source {

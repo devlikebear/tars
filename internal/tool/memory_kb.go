@@ -20,28 +20,25 @@ func NewMemoryKBListTool(workspaceDir string) Tool {
     "query":{"type":"string"},
     "kind":{"type":"string"},
     "tag":{"type":"string"},
-    "project_id":{"type":"string"},
     "limit":{"type":"integer","minimum":1,"maximum":200}
   },
   "additionalProperties":false
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			var input struct {
-				Query     string `json:"query,omitempty"`
-				Kind      string `json:"kind,omitempty"`
-				Tag       string `json:"tag,omitempty"`
-				ProjectID string `json:"project_id,omitempty"`
-				Limit     int    `json:"limit,omitempty"`
+				Query string `json:"query,omitempty"`
+				Kind  string `json:"kind,omitempty"`
+				Tag   string `json:"tag,omitempty"`
+				Limit int    `json:"limit,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			items, err := memory.NewKnowledgeStore(workspaceDir, nil).List(memory.KnowledgeListOptions{
-				Query:     strings.TrimSpace(input.Query),
-				Kind:      strings.TrimSpace(input.Kind),
-				Tag:       strings.TrimSpace(input.Tag),
-				ProjectID: strings.TrimSpace(input.ProjectID),
-				Limit:     input.Limit,
+				Query: strings.TrimSpace(input.Query),
+				Kind:  strings.TrimSpace(input.Kind),
+				Tag:   strings.TrimSpace(input.Tag),
+				Limit: input.Limit,
 			})
 			if err != nil {
 				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
@@ -95,23 +92,21 @@ func NewMemoryKBUpsertTool(workspaceDir string, semantic *memory.Service) Tool {
     "tags":{"type":"array","items":{"type":"string"}},
     "aliases":{"type":"array","items":{"type":"string"}},
     "links":{"type":"array","items":{"type":"object","properties":{"target":{"type":"string"},"relation":{"type":"string"}},"required":["target"],"additionalProperties":false}},
-    "project_id":{"type":"string"},
     "source_session":{"type":"string"}
   },
   "additionalProperties":false
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			var input struct {
-				Slug          string               `json:"slug,omitempty"`
-				Title         *string              `json:"title,omitempty"`
-				Kind          *string              `json:"kind,omitempty"`
-				Summary       *string              `json:"summary,omitempty"`
-				Body          *string              `json:"body,omitempty"`
-				Tags          *[]string            `json:"tags,omitempty"`
-				Aliases       *[]string            `json:"aliases,omitempty"`
+				Slug          string                  `json:"slug,omitempty"`
+				Title         *string                 `json:"title,omitempty"`
+				Kind          *string                 `json:"kind,omitempty"`
+				Summary       *string                 `json:"summary,omitempty"`
+				Body          *string                 `json:"body,omitempty"`
+				Tags          *[]string               `json:"tags,omitempty"`
+				Aliases       *[]string               `json:"aliases,omitempty"`
 				Links         *[]memory.KnowledgeLink `json:"links,omitempty"`
-				ProjectID     *string              `json:"project_id,omitempty"`
-				SourceSession *string              `json:"source_session,omitempty"`
+				SourceSession *string                 `json:"source_session,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
@@ -125,7 +120,6 @@ func NewMemoryKBUpsertTool(workspaceDir string, semantic *memory.Service) Tool {
 				Tags:          normalizeStringSlicePtr(input.Tags),
 				Aliases:       normalizeStringSlicePtr(input.Aliases),
 				Links:         input.Links,
-				ProjectID:     trimStringPtr(input.ProjectID),
 				SourceSession: trimStringPtr(input.SourceSession),
 				UpdatedAt:     time.Now().UTC(),
 			})

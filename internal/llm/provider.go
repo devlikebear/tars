@@ -15,9 +15,9 @@ import (
 // Type is "text", "image", or "document".
 type ContentBlock struct {
 	Type      string `json:"type"`                 // "text", "image", "document"
-	Text      string `json:"text,omitempty"`        // for type=text
-	MediaType string `json:"media_type,omitempty"`  // e.g. "image/png", "application/pdf"
-	Data      string `json:"data,omitempty"`        // base64-encoded binary
+	Text      string `json:"text,omitempty"`       // for type=text
+	MediaType string `json:"media_type,omitempty"` // e.g. "image/png", "application/pdf"
+	Data      string `json:"data,omitempty"`       // base64-encoded binary
 }
 
 type ChatMessage struct {

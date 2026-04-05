@@ -33,11 +33,11 @@ func newMemoryCache(ttl time.Duration) *memoryCache {
 	}
 }
 
-func (c *memoryCache) Get(query, projectID, sessionID string) (prompt.BuildResult, bool) {
+func (c *memoryCache) Get(query, sessionID string) (prompt.BuildResult, bool) {
 	if c == nil {
 		return prompt.BuildResult{}, false
 	}
-	key := memoryCacheKey(query, projectID, sessionID)
+	key := memoryCacheKey(query, sessionID)
 	c.mu.RLock()
 	entry, ok := c.entries[key]
 	c.mu.RUnlock()
@@ -53,11 +53,11 @@ func (c *memoryCache) Get(query, projectID, sessionID string) (prompt.BuildResul
 	return entry.Result, true
 }
 
-func (c *memoryCache) Put(query, projectID, sessionID string, result prompt.BuildResult) {
+func (c *memoryCache) Put(query, sessionID string, result prompt.BuildResult) {
 	if c == nil {
 		return
 	}
-	key := memoryCacheKey(query, projectID, sessionID)
+	key := memoryCacheKey(query, sessionID)
 	c.mu.Lock()
 	c.entries[key] = memoryCacheEntry{
 		Result:    result,
@@ -81,9 +81,8 @@ func (c *memoryCache) evictExpired() {
 	}
 }
 
-func memoryCacheKey(query, projectID, sessionID string) string {
+func memoryCacheKey(query, sessionID string) string {
 	raw := strings.ToLower(strings.TrimSpace(query)) + "|" +
-		strings.TrimSpace(projectID) + "|" +
 		strings.TrimSpace(sessionID)
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:16])

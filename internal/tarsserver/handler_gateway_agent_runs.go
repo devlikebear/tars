@@ -48,7 +48,6 @@ func handleAgentList(w http.ResponseWriter, runtime *gateway.Runtime) {
 
 type agentRunSpawnRequest struct {
 	SessionID string `json:"session_id"`
-	ProjectID string `json:"project_id,omitempty"`
 	Title     string `json:"title"`
 	Message   string `json:"message"`
 	Prompt    string `json:"prompt"`
@@ -80,7 +79,6 @@ func handleAgentRunSpawn(w http.ResponseWriter, r *http.Request, runtime *gatewa
 	run, err := runtime.Spawn(r.Context(), gateway.SpawnRequest{
 		WorkspaceID: defaultWorkspaceID,
 		SessionID:   req.SessionID,
-		ProjectID:   req.ProjectID,
 		Title:       req.Title,
 		Prompt:      message,
 		Agent:       req.Agent,

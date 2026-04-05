@@ -38,7 +38,6 @@
   function startGlobalStream() {
     stopGlobalStream?.()
     stopGlobalStream = streamEvents(
-      undefined,
       () => {
         unreadCount++
       },

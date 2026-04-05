@@ -26,7 +26,7 @@ const defaultProjectTemplate = `# PROJECT.md
 
 ## Project Guidance
 - Define global project execution policy and reporting format.
-- Keep per-project instructions inside workspace/projects/{project_id}/PROJECT.md.
+- Define global execution policy and reporting format.
 `
 
 const defaultAgentsTemplate = `# AGENTS.md

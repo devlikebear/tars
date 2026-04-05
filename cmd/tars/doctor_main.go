@@ -133,7 +133,6 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 
 	if cfgLoaded {
 		checkDoctorAPIAuth(&report, cfg)
-		checkDoctorProjectWorkflowGateway(&report, cfg)
 		checkDoctorGatewayAgents(&report, cfg)
 		checkDoctorLLMCredentials(&report, cfg, configPath)
 		checkDoctorLLMRuntime(&report, cfg)
@@ -174,15 +173,6 @@ func checkDoctorLLMCredentials(report *doctorReport, cfg config.Config, configPa
 	hint := llmCredentialHint(strings.TrimSpace(strings.ToLower(cfg.LLMProvider)), configPath)
 	report.add("fail", "llm credentials", fmt.Sprintf("provider=%s auth=api-key requires credentials", firstNonEmpty(cfg.LLMProvider, "unknown")))
 	report.addHint(hint)
-}
-
-func checkDoctorProjectWorkflowGateway(report *doctorReport, cfg config.Config) {
-	if cfg.GatewayEnabled {
-		report.add("ok", "project workflow gateway", "gateway_enabled=true")
-		return
-	}
-	report.add("warn", "project workflow gateway", "gateway_enabled=false disables bundled project workflow dispatch and autopilot")
-	report.addHint("set `gateway_enabled: true` in the starter config before using the bundled project workflow")
 }
 
 func checkDoctorGatewayAgents(report *doctorReport, cfg config.Config) {
@@ -339,7 +329,6 @@ func missingWorkspacePaths(root string, bundledPluginsDir string) []string {
 		filepath.Join(root, "memory", "wiki", "notes"),
 		filepath.Join(root, "memory", "wiki", "index.md"),
 		filepath.Join(root, "memory", "wiki", "graph.json"),
-		filepath.Join(root, "projects"),
 		filepath.Join(root, "_shared"),
 		filepath.Join(root, "MEMORY.md"),
 		filepath.Join(root, "AGENTS.md"),

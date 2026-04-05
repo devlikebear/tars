@@ -72,7 +72,6 @@ func (c *TrackedClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 		EstimatedCostUSD: estimatedCost,
 		Source:           meta.Source,
 		SessionID:        meta.SessionID,
-		ProjectID:        meta.ProjectID,
 		RunID:            meta.RunID,
 		PricingKnown:     pricingKnown,
 	})

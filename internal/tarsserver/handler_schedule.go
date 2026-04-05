@@ -30,23 +30,21 @@ func newScheduleAPIHandler(store *schedule.Store, logger zerolog.Logger) http.Ha
 			writeJSON(w, http.StatusOK, items)
 		case http.MethodPost:
 			var req struct {
-				Natural   string `json:"natural"`
-				Title     string `json:"title,omitempty"`
-				Prompt    string `json:"prompt,omitempty"`
-				Schedule  string `json:"schedule,omitempty"`
-				ProjectID string `json:"project_id,omitempty"`
-				Timezone  string `json:"timezone,omitempty"`
+				Natural  string `json:"natural"`
+				Title    string `json:"title,omitempty"`
+				Prompt   string `json:"prompt,omitempty"`
+				Schedule string `json:"schedule,omitempty"`
+				Timezone string `json:"timezone,omitempty"`
 			}
 			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			created, err := store.Create(schedule.CreateInput{
-				Natural:   req.Natural,
-				Title:     req.Title,
-				Prompt:    req.Prompt,
-				Schedule:  req.Schedule,
-				ProjectID: req.ProjectID,
-				Timezone:  req.Timezone,
+				Natural:  req.Natural,
+				Title:    req.Title,
+				Prompt:   req.Prompt,
+				Schedule: req.Schedule,
+				Timezone: req.Timezone,
 			})
 			if err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -72,23 +70,21 @@ func newScheduleAPIHandler(store *schedule.Store, logger zerolog.Logger) http.Ha
 		switch r.Method {
 		case http.MethodPatch:
 			var req struct {
-				Title     *string `json:"title,omitempty"`
-				Prompt    *string `json:"prompt,omitempty"`
-				Schedule  *string `json:"schedule,omitempty"`
-				Status    *string `json:"status,omitempty"`
-				ProjectID *string `json:"project_id,omitempty"`
-				Timezone  *string `json:"timezone,omitempty"`
+				Title    *string `json:"title,omitempty"`
+				Prompt   *string `json:"prompt,omitempty"`
+				Schedule *string `json:"schedule,omitempty"`
+				Status   *string `json:"status,omitempty"`
+				Timezone *string `json:"timezone,omitempty"`
 			}
 			if !decodeJSONBody(w, r, &req) {
 				return
 			}
 			updated, err := store.Update(id, schedule.UpdateInput{
-				Title:     req.Title,
-				Prompt:    req.Prompt,
-				Schedule:  req.Schedule,
-				Status:    req.Status,
-				ProjectID: req.ProjectID,
-				Timezone:  req.Timezone,
+				Title:    req.Title,
+				Prompt:   req.Prompt,
+				Schedule: req.Schedule,
+				Status:   req.Status,
+				Timezone: req.Timezone,
 			})
 			if err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "not found") {

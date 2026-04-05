@@ -168,7 +168,6 @@ func TestStore_MigrateLegacyItemsToCron(t *testing.T) {
 			Natural:   "내일 오후 3시에 레거시 테스트",
 			Schedule:  "at:2026-03-01T06:00:00Z",
 			Status:    "completed",
-			ProjectID: "proj_legacy",
 			Timezone:  "Asia/Seoul",
 			CreatedAt: time.Date(2026, 2, 1, 10, 0, 0, 0, time.UTC),
 			UpdatedAt: time.Date(2026, 2, 2, 10, 0, 0, 0, time.UTC),

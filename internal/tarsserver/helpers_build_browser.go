@@ -11,16 +11,16 @@ import (
 
 func buildBrowserPluginConfig(cfg config.Config, vaultReader vaultclient.SecretReader, vaultStatus vaultStatusSnapshot, otpRequester browser.OTPRequester) map[string]any {
 	return map[string]any{
-		"browser_runtime_enabled":            cfg.BrowserRuntimeEnabled,
-		"browser_default_profile":            cfg.BrowserDefaultProfile,
-		"browser_managed_headless":           cfg.BrowserManagedHeadless,
-		"browser_managed_executable_path":    cfg.BrowserManagedExecutablePath,
-		"browser_managed_user_data_dir":      cfg.BrowserManagedUserDataDir,
-		"browser_site_flows_dir":             cfg.BrowserSiteFlowsDir,
-		"browser_auto_login_site_allowlist":  cfg.BrowserAutoLoginSiteAllowlist,
-		"vault_reader":                       vaultReader,
-		"vault_status":                       vaultStatus,
-		"otp_requester":                      otpRequester,
+		"browser_runtime_enabled":           cfg.BrowserRuntimeEnabled,
+		"browser_default_profile":           cfg.BrowserDefaultProfile,
+		"browser_managed_headless":          cfg.BrowserManagedHeadless,
+		"browser_managed_executable_path":   cfg.BrowserManagedExecutablePath,
+		"browser_managed_user_data_dir":     cfg.BrowserManagedUserDataDir,
+		"browser_site_flows_dir":            cfg.BrowserSiteFlowsDir,
+		"browser_auto_login_site_allowlist": cfg.BrowserAutoLoginSiteAllowlist,
+		"vault_reader":                      vaultReader,
+		"vault_status":                      vaultStatus,
+		"otp_requester":                     otpRequester,
 	}
 }
 
@@ -66,4 +66,3 @@ func buildVaultReader(cfg config.Config) (vaultclient.SecretReader, vaultStatusS
 	status.Ready = true
 	return client, status, nil
 }
-

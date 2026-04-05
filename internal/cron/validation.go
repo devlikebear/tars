@@ -31,10 +31,6 @@ func normalizeSessionTarget(raw string) (string, error) {
 	}
 }
 
-func normalizeProjectID(raw string) string {
-	return strings.TrimSpace(raw)
-}
-
 func normalizeWakeMode(raw string) (string, error) {
 	v := strings.TrimSpace(raw)
 	if v == "" {

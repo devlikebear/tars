@@ -26,7 +26,6 @@ func TestKnowledgeStore_UpsertListGetDeleteAndGraph(t *testing.T) {
 		Tags:          []string{"coffee", "preference"},
 		Aliases:       []string{"black coffee"},
 		SourceSession: "sess-1",
-		ProjectID:     "proj-alpha",
 		UpdatedAt:     now,
 	})
 	if err != nil {
@@ -64,7 +63,7 @@ func TestKnowledgeStore_UpsertListGetDeleteAndGraph(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get note: %v", err)
 	}
-	if got.Title != "Coffee Preference" || got.ProjectID != "proj-alpha" {
+	if got.Title != "Coffee Preference" {
 		t.Fatalf("unexpected note: %+v", got)
 	}
 

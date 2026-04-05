@@ -52,11 +52,6 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'heartbeat' }
   }
 
-  // Legacy /console/projects → redirect to chat
-  if (path.startsWith(`${consoleBase}/projects`)) {
-    return { view: 'chat' }
-  }
-
   // Default: /console → chat
   return { view: 'chat' }
 }

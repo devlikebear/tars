@@ -6,7 +6,6 @@
   interface Props {
     currentPath: string
     serverHealth?: string
-    activeProject?: string
     unreadCount?: number
     onNavigate: (path: string) => void
     onUnreadChange?: (count: number) => void
@@ -16,7 +15,6 @@
   let {
     currentPath,
     serverHealth = 'ok',
-    activeProject = '',
     unreadCount = 0,
     onNavigate,
     onUnreadChange,
@@ -27,7 +25,7 @@
 <div class="shell">
   <Nav {currentPath} {onNavigate} />
   <div class="shell-main">
-    <Header {serverHealth} {activeProject} {unreadCount} {onUnreadChange} />
+    <Header {serverHealth} {unreadCount} {onUnreadChange} />
     <main class="shell-content">
       {@render children()}
     </main>

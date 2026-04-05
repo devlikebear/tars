@@ -25,7 +25,6 @@ type Run struct {
 	WorkspaceID        string    `json:"-"`
 	SessionID          string    `json:"session_id,omitempty"`
 	SessionKind        string    `json:"session_kind,omitempty"`
-	ProjectID          string    `json:"project_id,omitempty"`
 	Agent              string    `json:"agent,omitempty"`
 	Prompt             string    `json:"prompt,omitempty"`
 	ParentRunID        string    `json:"parent_run_id,omitempty"`
@@ -51,7 +50,6 @@ type Run struct {
 type SpawnRequest struct {
 	WorkspaceID     string
 	SessionID       string
-	ProjectID       string
 	Title           string
 	Prompt          string
 	Agent           string
@@ -81,30 +79,30 @@ type NodeInfo struct {
 }
 
 type GatewayStatus struct {
-	Enabled                    bool         `json:"enabled"`
-	Version                    int64        `json:"version"`
-	RunsTotal                  int          `json:"runs_total"`
-	RunsActive                 int          `json:"runs_active"`
-	AgentsCount                int          `json:"agents_count"`
-	AgentsWatchEnabled         bool         `json:"agents_watch_enabled"`
-	AgentsReloadVersion        int64        `json:"agents_reload_version"`
-	AgentsLastReloadAt         string       `json:"agents_last_reload_at,omitempty"`
-	ChannelsLocal              bool         `json:"channels_local_enabled"`
-	ChannelsWebhook            bool         `json:"channels_webhook_enabled"`
-	ChannelsTelegram           bool         `json:"channels_telegram_enabled"`
-	PersistenceEnabled         bool         `json:"persistence_enabled"`
-	RunsPersistenceEnabled     bool         `json:"runs_persistence_enabled"`
-	ChannelsPersistenceEnabled bool         `json:"channels_persistence_enabled"`
-	RestoreOnStartup           bool         `json:"restore_on_startup"`
-	PersistenceDir             string       `json:"persistence_dir,omitempty"`
-	RunsRestored               int          `json:"runs_restored"`
-	ChannelsRestored           int          `json:"channels_restored"`
-	LastPersistAt              string       `json:"last_persist_at,omitempty"`
-	LastRestoreAt              string       `json:"last_restore_at,omitempty"`
-	LastRestoreError           string       `json:"last_restore_error,omitempty"`
-	LastReloadAt               string       `json:"last_reload_at,omitempty"`
-	LastRestartAt              string       `json:"last_restart_at,omitempty"`
-	Nodes                      []NodeInfo   `json:"nodes"`
+	Enabled                    bool       `json:"enabled"`
+	Version                    int64      `json:"version"`
+	RunsTotal                  int        `json:"runs_total"`
+	RunsActive                 int        `json:"runs_active"`
+	AgentsCount                int        `json:"agents_count"`
+	AgentsWatchEnabled         bool       `json:"agents_watch_enabled"`
+	AgentsReloadVersion        int64      `json:"agents_reload_version"`
+	AgentsLastReloadAt         string     `json:"agents_last_reload_at,omitempty"`
+	ChannelsLocal              bool       `json:"channels_local_enabled"`
+	ChannelsWebhook            bool       `json:"channels_webhook_enabled"`
+	ChannelsTelegram           bool       `json:"channels_telegram_enabled"`
+	PersistenceEnabled         bool       `json:"persistence_enabled"`
+	RunsPersistenceEnabled     bool       `json:"runs_persistence_enabled"`
+	ChannelsPersistenceEnabled bool       `json:"channels_persistence_enabled"`
+	RestoreOnStartup           bool       `json:"restore_on_startup"`
+	PersistenceDir             string     `json:"persistence_dir,omitempty"`
+	RunsRestored               int        `json:"runs_restored"`
+	ChannelsRestored           int        `json:"channels_restored"`
+	LastPersistAt              string     `json:"last_persist_at,omitempty"`
+	LastRestoreAt              string     `json:"last_restore_at,omitempty"`
+	LastRestoreError           string     `json:"last_restore_error,omitempty"`
+	LastReloadAt               string     `json:"last_reload_at,omitempty"`
+	LastRestartAt              string     `json:"last_restart_at,omitempty"`
+	Nodes                      []NodeInfo `json:"nodes"`
 }
 
 type ReportSummary struct {

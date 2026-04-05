@@ -17,7 +17,7 @@
 
   let searchQuery = $state('')
   let sortBy: 'updated' | 'name' = $state('updated')
-  let filterKind: 'all' | 'session' | 'main' | 'worker' | 'project' = $state('all')
+  let filterKind: 'all' | 'session' | 'main' | 'worker' = $state('all')
 
   let renamingId: string | null = $state(null)
   let renameValue = $state('')
@@ -39,7 +39,6 @@
   function sessionKind(session: Session): string {
     if (session.kind === 'main') return 'main'
     if (session.hidden) return 'worker'
-    if (session.project_id) return 'project'
     return 'session'
   }
 
@@ -47,7 +46,6 @@
     switch (sessionKind(session)) {
       case 'main': return 'badge-accent'
       case 'worker': return 'badge-default'
-      case 'project': return 'badge-info'
       default: return 'badge-info'
     }
   }
@@ -65,8 +63,7 @@
     if (q) {
       result = result.filter((s) =>
         (s.title || '').toLowerCase().includes(q) ||
-        s.id.toLowerCase().includes(q) ||
-        (s.project_id || '').toLowerCase().includes(q)
+        s.id.toLowerCase().includes(q)
       )
     }
     if (sortBy === 'name') {
@@ -181,7 +178,7 @@
   <input type="text" class="sidebar-search" placeholder="Search..." bind:value={searchQuery} />
 
   <div class="sidebar-filters">
-    {#each ['all', 'session', 'main', 'worker', 'project'] as kind}
+    {#each ['all', 'session', 'main', 'worker'] as kind}
       <button
         class="filter-btn"
         class:active={filterKind === kind}

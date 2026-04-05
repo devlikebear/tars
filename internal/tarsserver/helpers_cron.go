@@ -71,7 +71,6 @@ func newCronJobRunnerWithNotify(
 		runCtx := usage.WithCallMeta(ctx, usage.CallMeta{
 			Source:    "cron",
 			SessionID: prepared.targetSessionID,
-			ProjectID: strings.TrimSpace(job.ProjectID),
 			RunID:     strings.TrimSpace(job.ID),
 		})
 		agentTelemetry := &agentPromptTelemetry{}
@@ -140,9 +139,6 @@ func prepareCronJobRun(
 		prepared.promptText += "\n\nCRON_PAYLOAD_JSON:\n" + payload
 	}
 	prepared.allowedTools = resolveCronAllowedTools(prepared.workspaceDir, job)
-	if projectPrompt := buildCronProjectPromptSection(prepared.workspaceDir, job.ProjectID); projectPrompt != "" {
-		prepared.promptText += "\n\n" + projectPrompt
-	}
 	if err := validateCronProjectPrerequisites(prepared.workspaceDir, job, prepared.promptText); err != nil {
 		return prepared, err
 	}
@@ -153,16 +149,9 @@ func prepareCronJobRun(
 	if telegramPrompt != "" {
 		prepared.promptText += "\n\n" + telegramPrompt
 	}
-	prepared.projectFileSnapshot, err = snapshotCronProjectFiles(prepared.workspaceDir, job.ProjectID)
-	if err != nil {
-		return prepared, err
-	}
 	prepared.targetSessionID, prepared.explicitTarget, err = resolveCronTargetSessionID(prepared.targetStore, job, mainSessionID)
 	if err != nil {
 		return prepared, err
-	}
-	if strings.TrimSpace(job.ProjectID) != "" && prepared.targetStore != nil && prepared.targetSessionID != "" {
-		_ = prepared.targetStore.SetProjectID(prepared.targetSessionID, strings.TrimSpace(job.ProjectID))
 	}
 	if prepared.targetSessionID != "" {
 		{
@@ -221,7 +210,7 @@ func emitCronRunSuccess(
 ) {
 	artifactPath, err := persistCronProjectArtifact(workspaceDir, job, response, now, telemetry, artifactHistoryLimit)
 	if err != nil {
-		logger.Debug().Err(err).Str("job_id", strings.TrimSpace(job.ID)).Str("project_id", strings.TrimSpace(job.ProjectID)).Msg("persist cron project artifact failed")
+		logger.Debug().Err(err).Str("job_id", strings.TrimSpace(job.ID)).Msg("persist cron project artifact failed")
 	}
 	if emit != nil {
 		evt := buildCronNotificationEvent(job, "info", "Cron completed", response, artifactPath, strings.TrimSpace(targetSessionID))
@@ -255,55 +244,9 @@ func buildCronTelegramPromptSection(ctx context.Context, resolveDefaultTelegramC
 	), nil
 }
 
-func buildCronProjectPromptSection(_ string, projectID string) string {
-	id := strings.TrimSpace(projectID)
-	if id == "" {
-		return ""
-	}
-	return fmt.Sprintf("CRON_PROJECT_CONTEXT:\n- project_id: %s\n- note: project metadata not available", id)
-}
-
-func persistCronProjectArtifact(workspaceDir string, job cron.Job, response string, now time.Time, telemetry cronRunTelemetry, historyLimit int) (string, error) {
-	root := strings.TrimSpace(workspaceDir)
-	projectID := strings.TrimSpace(job.ProjectID)
-	if root == "" || projectID == "" {
-		return "", nil
-	}
-	artifactBase := filepath.Join(root, "projects", projectID)
-	artifactDir := filepath.Join(artifactBase, "cron_runs")
-	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
-		return "", err
-	}
-	fileName := fmt.Sprintf("%s_%s.md", now.UTC().Format("20060102T150405Z"), sanitizeArtifactID(job.ID))
-	path := filepath.Join(artifactDir, fileName)
-	contaminationMarkers := "none"
-	if len(telemetry.ContaminationMarkers) > 0 {
-		contaminationMarkers = strings.Join(telemetry.ContaminationMarkers, ", ")
-	}
-	content := fmt.Sprintf(
-		"# Cron Run\n\n- project_id: %s\n- job_id: %s\n- job_name: %s\n- ran_at: %s\n\n## Telemetry\n\n- prompt_tokens: %d\n- system_prompt_tokens: %d\n- user_prompt_tokens: %d\n- target_session_context_used: %t\n- target_session_context_tokens: %d\n- tool_count: %d\n- response_tokens: %d\n- contamination_markers: %s\n\n## Prompt\n\n%s\n\n## Response\n\n%s\n",
-		projectID,
-		strings.TrimSpace(job.ID),
-		strings.TrimSpace(job.Name),
-		now.UTC().Format(time.RFC3339),
-		telemetry.PromptTokens,
-		telemetry.SystemPromptTokens,
-		telemetry.UserPromptTokens,
-		telemetry.TargetSessionContextUsed,
-		telemetry.TargetSessionContextTokens,
-		telemetry.ToolCount,
-		telemetry.ResponseTokens,
-		contaminationMarkers,
-		strings.TrimSpace(job.Prompt),
-		strings.TrimSpace(response),
-	)
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		return "", err
-	}
-	if err := trimCronProjectArtifacts(artifactDir, historyLimit); err != nil {
-		return path, err
-	}
-	return path, nil
+func persistCronProjectArtifact(_ string, _ cron.Job, _ string, _ time.Time, _ cronRunTelemetry, _ int) (string, error) {
+	// Project-scoped cron artifacts are no longer persisted.
+	return "", nil
 }
 
 func detectPseudoToolContamination(response string) []string {
@@ -379,34 +322,8 @@ func trimCronProjectArtifacts(dir string, historyLimit int) error {
 	return nil
 }
 
-func snapshotCronProjectFiles(workspaceDir string, projectID string) (map[string]time.Time, error) {
-	root := strings.TrimSpace(workspaceDir)
-	id := strings.TrimSpace(projectID)
-	if root == "" || id == "" {
-		return nil, nil
-	}
-	projectDir := filepath.Join(root, "projects", id)
-	entries := map[string]time.Time{}
-	err := filepath.Walk(projectDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
-		}
-		if info == nil || info.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(strings.ToLower(info.Name()), ".md") {
-			return nil
-		}
-		entries[path] = info.ModTime()
-		return nil
-	})
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	return entries, nil
+func snapshotCronProjectFiles(_ string, _ string) (map[string]time.Time, error) {
+	return nil, nil
 }
 
 func verifyCronClaimedFileUpdates(workspaceDir string, job cron.Job, response string, baseline map[string]time.Time) error {
@@ -415,9 +332,8 @@ func verifyCronClaimedFileUpdates(workspaceDir string, job cron.Job, response st
 		return nil
 	}
 	root := strings.TrimSpace(workspaceDir)
-	projectID := strings.TrimSpace(job.ProjectID)
 	for _, claimedPath := range claimed {
-		resolved := resolveClaimedCronPath(root, projectID, claimedPath)
+		resolved := resolveClaimedCronPath(root, claimedPath)
 		if resolved == "" {
 			continue
 		}
@@ -482,7 +398,7 @@ func extractClaimedCronFileUpdates(response string) []string {
 	return out
 }
 
-func resolveClaimedCronPath(workspaceDir string, projectID string, claimed string) string {
+func resolveClaimedCronPath(workspaceDir string, claimed string) string {
 	candidate := strings.TrimSpace(strings.Trim(claimed, "`\"'"))
 	if candidate == "" {
 		return ""
@@ -490,16 +406,7 @@ func resolveClaimedCronPath(workspaceDir string, projectID string, claimed strin
 	if filepath.IsAbs(candidate) {
 		return candidate
 	}
-	if strings.HasPrefix(candidate, "projects/") || strings.HasPrefix(candidate, "_shared/") {
-		return filepath.Join(workspaceDir, filepath.Clean(candidate))
-	}
-	if strings.Contains(candidate, "/") {
-		return filepath.Join(workspaceDir, filepath.Clean(candidate))
-	}
-	if strings.TrimSpace(projectID) == "" {
-		return filepath.Join(workspaceDir, filepath.Clean(candidate))
-	}
-	return filepath.Join(workspaceDir, "projects", projectID, filepath.Clean(candidate))
+	return filepath.Join(workspaceDir, filepath.Clean(candidate))
 }
 
 func resolveCronTargetSessionID(store *session.Store, job cron.Job, mainSessionID string) (sessionID string, explicitTarget bool, err error) {
@@ -658,9 +565,8 @@ func buildCronSummaryContent(job cron.Job, response string) string {
 		status = "completed"
 	}
 	return fmt.Sprintf(
-		"[CRON SUMMARY]\njob: %s\nproject_id: %s\nstatus: %s\nresult: %s",
+		"[CRON SUMMARY]\njob: %s\nstatus: %s\nresult: %s",
 		strings.TrimSpace(job.Name),
-		strings.TrimSpace(job.ProjectID),
 		status,
 		trimForMemory(response, 220),
 	)
@@ -674,7 +580,6 @@ func buildCronNotificationEvent(job cron.Job, severity string, baseTitle string,
 	message := buildCronNotificationMessage(job, details)
 	evt := newNotificationEvent("cron", severity, title, message)
 	evt.JobID = strings.TrimSpace(job.ID)
-	evt.ProjectID = strings.TrimSpace(job.ProjectID)
 	evt.SessionID = strings.TrimSpace(sessionID)
 	evt.OpenPath = strings.TrimSpace(openPath)
 	return evt
@@ -682,16 +587,10 @@ func buildCronNotificationEvent(job cron.Job, severity string, baseTitle string,
 
 func buildCronNotificationMessage(job cron.Job, details string) string {
 	summary := summarizeCronResponse(details)
-	switch {
-	case strings.TrimSpace(job.ProjectID) != "" && summary != "":
-		return fmt.Sprintf("%s · %s", strings.TrimSpace(job.ProjectID), summary)
-	case strings.TrimSpace(job.ProjectID) != "":
-		return strings.TrimSpace(job.ProjectID)
-	case summary != "":
+	if summary != "" {
 		return summary
-	default:
-		return "cron job finished"
 	}
+	return "cron job finished"
 }
 
 func summarizeCronResponse(raw string) string {

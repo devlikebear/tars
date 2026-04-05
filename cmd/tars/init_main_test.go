@@ -40,7 +40,6 @@ func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
 	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "wiki", "graph.json"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "MEMORY.md"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "AGENTS.md"))
-	assertPathExists(t, filepath.Join(workspaceAbs, "plugins", "project-swarm", "tars.plugin.json"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "plugins", "ops-service", "tars.plugin.json"))
 
 	data, err := os.ReadFile(configPath)
@@ -205,22 +204,6 @@ func assertPathExists(t *testing.T, path string) {
 func writeBundledPluginSource(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "bundled-plugins")
-	projectPluginDir := filepath.Join(root, "project-swarm")
-	projectSkillDir := filepath.Join(projectPluginDir, "skills", "project-start")
-	if err := os.MkdirAll(projectSkillDir, 0o755); err != nil {
-		t.Fatalf("mkdir plugin skill dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(projectPluginDir, "tars.plugin.json"), []byte(`{
-  "id": "project-swarm",
-  "name": "Project Swarm",
-  "version": "0.0.0-test",
-  "skills": ["skills/project-start"]
-}`), 0o644); err != nil {
-		t.Fatalf("write plugin manifest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(projectSkillDir, "SKILL.md"), []byte(`# Project Start`), 0o644); err != nil {
-		t.Fatalf("write plugin skill: %v", err)
-	}
 
 	opsPluginDir := filepath.Join(root, "ops-service")
 	opsSkillDir := filepath.Join(opsPluginDir, "skills", "ops-plan")

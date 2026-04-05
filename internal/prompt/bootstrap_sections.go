@@ -8,7 +8,6 @@ type bootstrapSection struct {
 }
 
 const (
-	projectSectionMaxChars   = 12000
 	userSectionMaxChars      = 6000
 	identitySectionMaxChars  = 8000
 	heartbeatSectionMaxChars = 4000
@@ -16,7 +15,6 @@ const (
 )
 
 var bootstrapSections = []bootstrapSection{
-	{name: "Project", files: []string{"PROJECT.md"}, maxChars: projectSectionMaxChars},
 	{name: "User", files: []string{"USER.md"}, maxChars: userSectionMaxChars},
 	{name: "Identity", files: []string{"IDENTITY.md"}, maxChars: identitySectionMaxChars},
 	{name: "Heartbeat", files: []string{"HEARTBEAT.md"}, maxChars: heartbeatSectionMaxChars},

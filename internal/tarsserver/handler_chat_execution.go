@@ -87,7 +87,6 @@ func persistChatResult(state chatRunState, userMessage string, chatResp llm.Chat
 	if err := applyPostChatMemoryHooks(chatMemoryHookInput{
 		WorkspaceDir:     state.requestWorkspaceDir,
 		SessionID:        state.sessionID,
-		ProjectID:        state.projectID,
 		UserMessage:      userMessage,
 		AssistantMessage: chatResp.Message.Content,
 		AssistantTime:    assistantMsg.Timestamp,

@@ -55,7 +55,6 @@ func (e *APIError) Error() string {
 type ChatRequest struct {
 	Message   string `json:"message"`
 	SessionID string `json:"session_id,omitempty"`
-	ProjectID string `json:"project_id,omitempty"`
 }
 
 type ChatEvent struct {
@@ -109,7 +108,6 @@ type EventsReadInfo struct {
 type SessionSummary struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
-	ProjectID string `json:"project_id,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
 }
@@ -251,7 +249,6 @@ type CronJob struct {
 	Enabled        bool   `json:"enabled"`
 	DeleteAfterRun bool   `json:"delete_after_run,omitempty"`
 	SessionTarget  string `json:"session_target,omitempty"`
-	ProjectID      string `json:"project_id,omitempty"`
 	WakeMode       string `json:"wake_mode,omitempty"`
 	DeliveryMode   string `json:"delivery_mode,omitempty"`
 	LastRunAt      string `json:"last_run_at,omitempty"`
@@ -263,140 +260,6 @@ type CronRunRecord struct {
 	RanAt    string `json:"ran_at"`
 	Response string `json:"response,omitempty"`
 	Error    string `json:"error,omitempty"`
-}
-
-type Project struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	Type               string   `json:"type"`
-	Status             string   `json:"status"`
-	GitRepo            string   `json:"git_repo,omitempty"`
-	SourcePath         string   `json:"source_path,omitempty"`
-	CreatedAt          string   `json:"created_at,omitempty"`
-	UpdatedAt          string   `json:"updated_at,omitempty"`
-	Objective          string   `json:"objective,omitempty"`
-	ToolsAllow         []string `json:"tools_allow,omitempty"`
-	ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty"`
-	ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
-	ToolsDeny          []string `json:"tools_deny,omitempty"`
-	ToolsRiskMax       string   `json:"tools_risk_max,omitempty"`
-	SkillsAllow        []string `json:"skills_allow,omitempty"`
-	MCPServers         []string `json:"mcp_servers,omitempty"`
-	SecretsRefs        []string `json:"secrets_refs,omitempty"`
-	Body               string   `json:"body,omitempty"`
-	Path               string   `json:"path,omitempty"`
-}
-
-type ProjectCreateRequest struct {
-	Name         string   `json:"name"`
-	Type         string   `json:"type,omitempty"`
-	GitRepo      string   `json:"git_repo,omitempty"`
-	SourcePath   string   `json:"source_path,omitempty"`
-	Objective    string   `json:"objective,omitempty"`
-	Instructions string   `json:"instructions,omitempty"`
-	CloneRepo    bool     `json:"clone_repo,omitempty"`
-	SkillsAllow  []string `json:"skills_allow,omitempty"`
-}
-
-type ProjectUpdateRequest struct {
-	Name               *string  `json:"name,omitempty"`
-	Type               *string  `json:"type,omitempty"`
-	Status             *string  `json:"status,omitempty"`
-	GitRepo            *string  `json:"git_repo,omitempty"`
-	SourcePath         *string  `json:"source_path,omitempty"`
-	Objective          *string  `json:"objective,omitempty"`
-	Instructions       *string  `json:"instructions,omitempty"`
-	ToolsAllow         []string `json:"tools_allow,omitempty"`
-	ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty"`
-	ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
-	ToolsDeny          []string `json:"tools_deny,omitempty"`
-	ToolsRiskMax       *string  `json:"tools_risk_max,omitempty"`
-	SkillsAllow        []string `json:"skills_allow,omitempty"`
-	MCPServers         []string `json:"mcp_servers,omitempty"`
-	SecretsRefs        []string `json:"secrets_refs,omitempty"`
-}
-
-type ProjectBoardTask struct {
-	ID               string `json:"id"`
-	Title            string `json:"title"`
-	Status           string `json:"status"`
-	Assignee         string `json:"assignee,omitempty"`
-	Role             string `json:"role,omitempty"`
-	WorkerKind       string `json:"worker_kind,omitempty"`
-	Issue            string `json:"issue,omitempty"`
-	Branch           string `json:"branch,omitempty"`
-	PR               string `json:"pr,omitempty"`
-	ReviewApprovedBy string `json:"review_approved_by,omitempty"`
-	ReviewRequired   bool   `json:"review_required,omitempty"`
-	TestCommand      string `json:"test_command,omitempty"`
-	BuildCommand     string `json:"build_command,omitempty"`
-}
-
-type ProjectBoard struct {
-	ProjectID string             `json:"project_id"`
-	UpdatedAt string             `json:"updated_at,omitempty"`
-	Columns   []string           `json:"columns"`
-	Tasks     []ProjectBoardTask `json:"tasks,omitempty"`
-	Path      string             `json:"path,omitempty"`
-}
-
-type ProjectActivity struct {
-	ID        string            `json:"id"`
-	ProjectID string            `json:"project_id"`
-	TaskID    string            `json:"task_id,omitempty"`
-	Source    string            `json:"source"`
-	Agent     string            `json:"agent,omitempty"`
-	Kind      string            `json:"kind"`
-	Status    string            `json:"status,omitempty"`
-	Message   string            `json:"message,omitempty"`
-	Timestamp string            `json:"timestamp"`
-	Meta      map[string]string `json:"meta,omitempty"`
-}
-
-type ProjectActivityList struct {
-	Count int               `json:"count"`
-	Items []ProjectActivity `json:"items"`
-}
-
-type ProjectTaskRun struct {
-	ID         string `json:"id"`
-	TaskID     string `json:"task_id"`
-	Agent      string `json:"agent,omitempty"`
-	WorkerKind string `json:"worker_kind,omitempty"`
-	Status     string `json:"status"`
-	Response   string `json:"response,omitempty"`
-	Error      string `json:"error,omitempty"`
-}
-
-type ProjectDispatchReport struct {
-	ProjectID string           `json:"project_id"`
-	Runs      []ProjectTaskRun `json:"runs"`
-}
-
-type ProjectAutopilotRun struct {
-	ProjectID   string `json:"project_id"`
-	RunID       string `json:"run_id"`
-	Status      string `json:"status"`
-	Message     string `json:"message,omitempty"`
-	Iterations  int    `json:"iterations"`
-	StartedAt   string `json:"started_at,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
-	FinishedAt  string `json:"finished_at,omitempty"`
-	Phase       string `json:"phase,omitempty"`
-	PhaseStatus string `json:"phase_status,omitempty"`
-	NextAction  string `json:"next_action,omitempty"`
-	Summary     string `json:"summary,omitempty"`
-}
-
-type ProjectPhaseSnapshot struct {
-	ProjectID  string `json:"project_id"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	NextAction string `json:"next_action,omitempty"`
-	Summary    string `json:"summary,omitempty"`
-	Message    string `json:"message,omitempty"`
-	RunStatus  string `json:"run_status,omitempty"`
-	UpdatedAt  string `json:"updated_at,omitempty"`
 }
 
 type UsageLimits struct {
@@ -484,7 +347,6 @@ type ScheduleItem struct {
 	Natural   string `json:"natural,omitempty"`
 	Schedule  string `json:"schedule"`
 	Status    string `json:"status"`
-	ProjectID string `json:"project_id,omitempty"`
 	CronJobID string `json:"cron_job_id,omitempty"`
 	Timezone  string `json:"timezone,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
@@ -492,21 +354,19 @@ type ScheduleItem struct {
 }
 
 type ScheduleCreateRequest struct {
-	Natural   string `json:"natural"`
-	Title     string `json:"title,omitempty"`
-	Prompt    string `json:"prompt,omitempty"`
-	Schedule  string `json:"schedule,omitempty"`
-	ProjectID string `json:"project_id,omitempty"`
-	Timezone  string `json:"timezone,omitempty"`
+	Natural  string `json:"natural"`
+	Title    string `json:"title,omitempty"`
+	Prompt   string `json:"prompt,omitempty"`
+	Schedule string `json:"schedule,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 type ScheduleUpdateRequest struct {
-	Title     *string `json:"title,omitempty"`
-	Prompt    *string `json:"prompt,omitempty"`
-	Schedule  *string `json:"schedule,omitempty"`
-	Status    *string `json:"status,omitempty"`
-	ProjectID *string `json:"project_id,omitempty"`
-	Timezone  *string `json:"timezone,omitempty"`
+	Title    *string `json:"title,omitempty"`
+	Prompt   *string `json:"prompt,omitempty"`
+	Schedule *string `json:"schedule,omitempty"`
+	Status   *string `json:"status,omitempty"`
+	Timezone *string `json:"timezone,omitempty"`
 }
 
 type AgentDescriptor struct {
@@ -532,7 +392,6 @@ type AgentDescriptor struct {
 type AgentRun struct {
 	RunID              string   `json:"run_id"`
 	SessionID          string   `json:"session_id,omitempty"`
-	ProjectID          string   `json:"project_id,omitempty"`
 	Agent              string   `json:"agent,omitempty"`
 	Status             string   `json:"status"`
 	Accepted           bool     `json:"accepted"`
@@ -691,7 +550,6 @@ type TelegramPairingsInfo struct {
 // CLI parsing types (for example, spawnCommand) stay in internal/tarsclient.
 type SpawnRequest struct {
 	SessionID string `json:"session_id,omitempty"`
-	ProjectID string `json:"project_id,omitempty"`
 	Title     string `json:"title,omitempty"`
 	Message   string `json:"message"`
 	Agent     string `json:"agent,omitempty"`

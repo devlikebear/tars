@@ -30,12 +30,8 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 	if err != nil {
 		return Run{}, err
 	}
-	projectID, err := resolveSpawnProjectID(sessionStore, sessionID, req.ProjectID)
-	if err != nil {
-		return Run{}, err
-	}
 
-	runCtx, state := r.newAcceptedRunState(req, prompt, selectedAgent, executor, sessionID, projectID)
+	runCtx, state := r.newAcceptedRunState(req, prompt, selectedAgent, executor, sessionID)
 	if err := r.registerAcceptedRunState(state); err != nil {
 		if state.cancel != nil {
 			state.cancel()
@@ -74,20 +70,7 @@ func resolveSpawnSessionID(sessionStore *session.Store, req SpawnRequest, info A
 			if err != nil {
 				return "", fmt.Errorf("create session: %w", err)
 			}
-			if strings.TrimSpace(req.ProjectID) != "" && strings.TrimSpace(s.ProjectID) != strings.TrimSpace(req.ProjectID) {
-				_ = sessionStore.SetProjectID(s.ID, strings.TrimSpace(req.ProjectID))
-			}
 			return s.ID, nil
-		}
-		if strings.TrimSpace(req.ProjectID) != "" {
-			worker, err := sessionStore.CreateWithOptions("worker:"+strings.TrimSpace(req.ProjectID), "worker", true)
-			if err != nil {
-				return "", fmt.Errorf("create worker session: %w", err)
-			}
-			if strings.TrimSpace(worker.ProjectID) != strings.TrimSpace(req.ProjectID) {
-				_ = sessionStore.SetProjectID(worker.ID, strings.TrimSpace(req.ProjectID))
-			}
-			return worker.ID, nil
 		}
 		title := strings.TrimSpace(req.Title)
 		if title == "" {
@@ -105,31 +88,12 @@ func resolveSpawnSessionID(sessionStore *session.Store, req SpawnRequest, info A
 	return sessionID, nil
 }
 
-func resolveSpawnProjectID(sessionStore *session.Store, sessionID, requestProjectID string) (string, error) {
-	projectID := strings.TrimSpace(requestProjectID)
-	if strings.TrimSpace(sessionID) == "" || sessionStore == nil {
-		return projectID, nil
-	}
-	sess, err := sessionStore.Get(sessionID)
-	if err != nil {
-		return projectID, nil
-	}
-	if projectID == "" {
-		return strings.TrimSpace(sess.ProjectID), nil
-	}
-	if strings.TrimSpace(sess.ProjectID) != projectID {
-		_ = sessionStore.SetProjectID(sessionID, projectID)
-	}
-	return projectID, nil
-}
-
 func (r *Runtime) newAcceptedRunState(
 	req SpawnRequest,
 	prompt string,
 	selectedAgent string,
 	executor AgentExecutor,
 	sessionID string,
-	projectID string,
 ) (context.Context, *runState) {
 	now := r.nowFn().UTC()
 	runID := fmt.Sprintf("run_%d", r.runSeq.Add(1))
@@ -140,7 +104,6 @@ func (r *Runtime) newAcceptedRunState(
 		WorkspaceID:     workspaceID,
 		SessionID:       sessionID,
 		SessionKind:     strings.TrimSpace(req.SessionKind),
-		ProjectID:       strings.TrimSpace(projectID),
 		Agent:           selectedAgent,
 		Prompt:          prompt,
 		ParentRunID:     strings.TrimSpace(req.ParentRunID),

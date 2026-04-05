@@ -62,21 +62,18 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 
 	allowedTools := resolveRunAllowedTools(
 		r.opts.WorkspaceDir,
-		strings.TrimSpace(state.run.ProjectID),
 		gatewayAgentInfo(executor).ToolsAllow,
 	)
 	execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{
 		Source:    "agent_run",
 		SessionID: state.run.SessionID,
-		ProjectID: state.run.ProjectID,
 		RunID:     state.run.ID,
 	})
 	resp, err := executor.Execute(execCtx, ExecuteRequest{
 		RunID:        state.run.ID,
 		WorkspaceID:  state.run.WorkspaceID,
 		SessionID:    state.run.SessionID,
-		ProjectID:    state.run.ProjectID,
 		Prompt:       state.run.Prompt,
 		AllowedTools: allowedTools,
 	})
@@ -142,7 +139,7 @@ func blockedToolNameFromReason(reason string) string {
 	return toolName
 }
 
-func resolveRunAllowedTools(_, _ string, executorAllowed []string) []string {
+func resolveRunAllowedTools(_ string, executorAllowed []string) []string {
 	return sanitizeStringList(executorAllowed)
 }
 
@@ -199,9 +196,8 @@ func buildRunSummaryMessage(run Run, response string) string {
 		detail = trimGatewaySummary(run.Error, 220)
 	}
 	return fmt.Sprintf(
-		"[RUN SUMMARY]\nagent: %s\nproject_id: %s\nstatus: %s\nresult: %s",
+		"[RUN SUMMARY]\nagent: %s\nstatus: %s\nresult: %s",
 		strings.TrimSpace(run.Agent),
-		strings.TrimSpace(run.ProjectID),
 		strings.TrimSpace(string(run.Status)),
 		detail,
 	)

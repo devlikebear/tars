@@ -21,51 +21,6 @@ export type HeartbeatRunResult = {
   logged?: boolean
 }
 
-export type SubAgentConfig = {
-  role: string
-  description?: string
-  run_after?: string
-}
-
-export type Project = {
-  id: string
-  name: string
-  type: string
-  status: string
-  git_repo?: string
-  source_path?: string
-  created_at?: string
-  updated_at?: string
-  objective?: string
-  path?: string
-  body?: string
-  execution_mode?: string
-  max_phases?: number
-  sub_agents?: SubAgentConfig[]
-  skills_allow?: string[]
-  session_id?: string
-}
-
-export type ProjectSessionInfo = {
-  project_id: string
-  session_id: string
-  messages: number
-  tokens: number
-}
-
-export type ProjectActivity = {
-  id: string
-  project_id: string
-  task_id?: string
-  source: string
-  agent?: string
-  kind: string
-  status?: string
-  message?: string
-  timestamp: string
-  meta?: Record<string, string>
-}
-
 export type CronJob = {
   id: string
   name: string
@@ -74,7 +29,6 @@ export type CronJob = {
   enabled: boolean
   delete_after_run?: boolean
   session_target?: string
-  project_id?: string
   wake_mode?: string
   delivery_mode?: string
   last_run_at?: string
@@ -97,7 +51,6 @@ export type NotificationMessage = {
   message: string
   timestamp: string
   job_id?: string
-  project_id?: string
   session_id?: string
   open_path?: string
 }
@@ -134,7 +87,6 @@ export type Session = {
   title: string
   kind?: string
   hidden?: boolean
-  project_id?: string
   created_at: string
   updated_at: string
 }
@@ -218,40 +170,7 @@ export type ChatAttachment = {
 export type ChatRequest = {
   message: string
   session_id?: string
-  project_id?: string
   attachments?: ChatAttachment[]
-}
-
-export type BoardTask = {
-  id: string
-  title: string
-  status: string
-  assignee?: string
-  role?: string
-  worker_kind?: string
-  issue?: string
-  branch?: string
-  pr?: string
-  review_required?: boolean
-}
-
-export type ProjectBoard = {
-  project_id: string
-  updated_at?: string
-  columns: string[]
-  tasks: BoardTask[]
-}
-
-export type ProjectState = {
-  project_id: string
-  phase?: string
-  status?: string
-  phase_number?: number
-  next_action?: string
-  goal?: string
-  last_run_summary?: string
-  completion_summary?: string
-  stop_reason?: string
 }
 
 export type KnowledgeLink = {
@@ -268,7 +187,6 @@ export type KnowledgeNote = {
   tags?: string[]
   aliases?: string[]
   links?: KnowledgeLink[]
-  project_id?: string
   source_session?: string
   created_at?: string
   updated_at?: string
@@ -344,37 +262,12 @@ export type MemorySearchResult = {
   message?: string
 }
 
-export type CreateProjectRequest = {
-  name: string
-  type?: string
-  git_repo?: string
-  source_path?: string
-  objective?: string
-  instructions?: string
-  execution_mode?: string
-  max_phases?: number
-  sub_agents?: SubAgentConfig[]
-  skills_allow?: string[]
-}
-
-export type UpdateProjectRequest = {
-  name?: string
-  type?: string
-  status?: string
-  git_repo?: string
-  source_path?: string
-  objective?: string
-  instructions?: string
-  skills_allow?: string[]
-}
-
 export type CreateCronJobRequest = {
   name?: string
   prompt: string
   schedule?: string
   enabled?: boolean
   session_target?: string
-  project_id?: string
 }
 
 export type UpdateCronJobRequest = {
@@ -383,7 +276,6 @@ export type UpdateCronJobRequest = {
   schedule?: string
   enabled?: boolean
   session_target?: string
-  project_id?: string
 }
 
 export type CronRunResult = {

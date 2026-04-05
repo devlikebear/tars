@@ -143,7 +143,6 @@ type MemoryEntry struct {
 	Kind                string    `json:"kind"`
 	Scope               string    `json:"scope"`
 	Category            string    `json:"category,omitempty"`
-	ProjectID           string    `json:"project_id,omitempty"`
 	SessionID           string    `json:"session_id,omitempty"`
 	SourcePath          string    `json:"source_path,omitempty"`
 	ContentHash         string    `json:"content_hash"`
@@ -168,7 +167,6 @@ type CompactionMemory struct {
 
 type SearchRequest struct {
 	Query     string
-	ProjectID string
 	SessionID string
 	Limit     int
 }
@@ -191,14 +189,6 @@ type indexedSourceRef struct {
 	ContentHash string    `json:"content_hash"`
 	EntryID     string    `json:"entry_id"`
 	UpdatedAt   time.Time `json:"updated_at,omitempty"`
-}
-
-type projectDocInput struct {
-	SourcePath string
-	ProjectID  string
-	SessionID  string
-	Body       string
-	UpdatedAt  time.Time
 }
 
 func NewService(root string, opts ServiceOptions) *Service {
@@ -242,11 +232,10 @@ func (s *Service) IndexExperience(ctx context.Context, exp Experience) error {
 		now = s.nowFn().UTC()
 	}
 	entry := MemoryEntry{
-		ID:          "experience:" + hashText(strings.Join([]string{exp.ProjectID, exp.SourceSession, exp.Category, exp.Summary, now.Format(time.RFC3339Nano)}, "|")),
+		ID:          "experience:" + hashText(strings.Join([]string{exp.SourceSession, exp.Category, exp.Summary, now.Format(time.RFC3339Nano)}, "|")),
 		Kind:        "explicit_memory",
-		Scope:       deriveScope(exp.ProjectID, exp.SourceSession),
+		Scope:       deriveScope(exp.SourceSession),
 		Category:    exp.Category,
-		ProjectID:   exp.ProjectID,
 		SessionID:   exp.SourceSession,
 		ContentHash: hashText(exp.Summary),
 		Abstract:    exp.Summary,
@@ -321,17 +310,9 @@ func (s *Service) IndexCompactionMemories(ctx context.Context, sessionID string,
 	return nil
 }
 
-func (s *Service) EnsureProjectDocuments(_ context.Context, _, _ string) error {
-	// Project documents are no longer indexed after the project package was removed.
-	return nil
-}
-
 func (s *Service) Search(ctx context.Context, req SearchRequest) ([]SearchHit, error) {
 	if !s.Enabled() {
 		return nil, ErrSemanticUnavailable
-	}
-	if err := s.EnsureProjectDocuments(ctx, req.ProjectID, req.SessionID); err != nil {
-		return nil, err
 	}
 	query := strings.TrimSpace(req.Query)
 	if query == "" {
@@ -360,9 +341,6 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) ([]SearchHit, e
 		}
 		score := cosineSimilarity(vector, entry.Embedding)
 		score += lexicalBoost(entry, terms)
-		if sameNormalized(entry.ProjectID, req.ProjectID) && strings.TrimSpace(req.ProjectID) != "" {
-			score += 0.18
-		}
 		if sameNormalized(entry.SessionID, req.SessionID) && strings.TrimSpace(req.SessionID) != "" {
 			score += 0.12
 		}
@@ -551,7 +529,6 @@ func writeAtomicFile(path string, content []byte) error {
 	return os.Rename(tmp, path)
 }
 
-
 func readDoc(path string) (string, os.FileInfo, bool) {
 	stat, err := os.Stat(path)
 	if err != nil {
@@ -688,15 +665,11 @@ func entrySource(entry MemoryEntry) string {
 	return "memory"
 }
 
-func deriveScope(projectID, sessionID string) string {
-	switch {
-	case strings.TrimSpace(projectID) != "":
-		return "project"
-	case strings.TrimSpace(sessionID) != "":
+func deriveScope(sessionID string) string {
+	if strings.TrimSpace(sessionID) != "" {
 		return "session"
-	default:
-		return "global"
 	}
+	return "global"
 }
 
 func hashText(value string) string {

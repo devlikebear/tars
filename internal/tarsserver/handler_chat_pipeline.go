@@ -35,7 +35,6 @@ type chatAttachment struct {
 type chatRequestPayload struct {
 	SessionID   string           `json:"session_id"`
 	Message     string           `json:"message"`
-	ProjectID   string           `json:"project_id,omitempty"`
 	Attachments []chatAttachment `json:"attachments,omitempty"`
 }
 
@@ -90,7 +89,6 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	baseCtx := usage.WithCallMeta(r.Context(), usage.CallMeta{
 		Source:    "chat",
 		SessionID: state.sessionID,
-		ProjectID: state.projectID,
 	})
 	chatCtx, cancelChat := context.WithCancel(baseCtx)
 	defer cancelChat()
@@ -126,7 +124,6 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	startMemoryPrefetchForNextTurn(
 		state.requestWorkspaceDir,
 		req.Message,
-		state.projectID,
 		state.sessionID,
 		deps.tooling.MemorySemanticConfig,
 		deps.tooling.MemoryCache,

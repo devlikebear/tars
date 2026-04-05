@@ -133,26 +133,6 @@ func TestStoreLatestNoSessionsReturnsError(t *testing.T) {
 	}
 }
 
-func TestStoreSetProjectID(t *testing.T) {
-	store := NewStore(t.TempDir())
-	s, err := store.Create("project session")
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-
-	if err := store.SetProjectID(s.ID, "proj_demo"); err != nil {
-		t.Fatalf("set project id: %v", err)
-	}
-
-	loaded, err := store.Get(s.ID)
-	if err != nil {
-		t.Fatalf("get session: %v", err)
-	}
-	if loaded.ProjectID != "proj_demo" {
-		t.Fatalf("expected project_id proj_demo, got %q", loaded.ProjectID)
-	}
-}
-
 func TestStoreEnsureMain_ReusesStableMainSession(t *testing.T) {
 	store := NewStore(t.TempDir())
 	first, err := store.EnsureMain()

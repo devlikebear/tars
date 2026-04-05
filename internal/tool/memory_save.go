@@ -24,7 +24,6 @@ func NewMemorySaveTool(workspaceDir string, semantic *memory.Service, nowFn func
     "summary":{"type":"string"},
     "tags":{"type":"array","items":{"type":"string"}},
     "source_session":{"type":"string"},
-    "project_id":{"type":"string"},
     "importance":{"type":"integer","minimum":1,"maximum":10},
     "auto":{"type":"boolean"}
   },
@@ -37,7 +36,6 @@ func NewMemorySaveTool(workspaceDir string, semantic *memory.Service, nowFn func
 				Summary       string   `json:"summary"`
 				Tags          []string `json:"tags,omitempty"`
 				SourceSession string   `json:"source_session,omitempty"`
-				ProjectID     string   `json:"project_id,omitempty"`
 				Importance    int      `json:"importance,omitempty"`
 				Auto          bool     `json:"auto,omitempty"`
 			}
@@ -54,7 +52,6 @@ func NewMemorySaveTool(workspaceDir string, semantic *memory.Service, nowFn func
 				Summary:       summary,
 				Tags:          input.Tags,
 				SourceSession: strings.TrimSpace(input.SourceSession),
-				ProjectID:     strings.TrimSpace(input.ProjectID),
 				Importance:    input.Importance,
 				Auto:          input.Auto,
 			}
@@ -71,9 +68,6 @@ func NewMemorySaveTool(workspaceDir string, semantic *memory.Service, nowFn func
 			out := map[string]any{
 				"saved":   true,
 				"summary": summary,
-			}
-			if strings.TrimSpace(input.ProjectID) != "" {
-				out["project_id"] = strings.TrimSpace(input.ProjectID)
 			}
 			encoded, err := json.Marshal(out)
 			if err != nil {

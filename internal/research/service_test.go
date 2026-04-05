@@ -13,10 +13,9 @@ func TestService_RunCreatesReportAndSummary(t *testing.T) {
 	svc := NewService(workspace, Options{Now: func() time.Time { return now }})
 
 	report, err := svc.Run(RunInput{
-		ProjectID: "proj_research",
-		Topic:     "MCP runtime health",
-		Summary:   "Weekly update",
-		Body:      "- finding A\n- finding B",
+		Topic:   "MCP runtime health",
+		Summary: "Weekly update",
+		Body:    "- finding A\n- finding B",
 	})
 	if err != nil {
 		t.Fatalf("run research: %v", err)
@@ -27,7 +26,7 @@ func TestService_RunCreatesReportAndSummary(t *testing.T) {
 	if _, err := os.Stat(report.Path); err != nil {
 		t.Fatalf("expected report file to exist: %v", err)
 	}
-	summaryPath := filepath.Join(workspace, "projects", "proj_research", "reports", "summary.jsonl")
+	summaryPath := filepath.Join(workspace, "reports", "summary.jsonl")
 	if _, err := os.Stat(summaryPath); err != nil {
 		t.Fatalf("expected summary jsonl to exist: %v", err)
 	}

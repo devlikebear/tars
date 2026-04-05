@@ -24,7 +24,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func resolveChatSession(store *session.Store, sessionID string, mainSessionID string, _ string, _ string) (string, error) {
+func resolveChatSession(store *session.Store, sessionID string, mainSessionID string) (string, error) {
 	// The public session API exposes the main session as id="main";
 	// translate it back to the real internal ID so store.Get succeeds.
 	trimmedID := strings.TrimSpace(sessionID)
@@ -60,7 +60,7 @@ func createFallbackChatSession(store *session.Store) (string, error) {
 }
 
 func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, toolChoice string, err error) {
-	return prepareChatContextWithExtensions(workspaceDir, "", "", userMessage, extensions.Snapshot{}, nil)
+	return prepareChatContextWithExtensions(workspaceDir, "", userMessage, extensions.Snapshot{}, nil)
 }
 
 type preparedChatContext struct {
@@ -73,14 +73,13 @@ type preparedChatContext struct {
 
 func prepareChatContextWithExtensions(
 	workspaceDir string,
-	projectID string,
 	sessionID string,
 	userMessage string,
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
 	semanticCfg ...memory.SemanticConfig,
 ) (systemPrompt string, toolChoice string, err error) {
-	details, err := prepareChatContextDetailsWithExtensions(workspaceDir, projectID, sessionID, userMessage, extSnapshot, invokedSkill, semanticCfg...)
+	details, err := prepareChatContextDetailsWithExtensions(workspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, semanticCfg...)
 	if err != nil {
 		return "", "", err
 	}
@@ -89,19 +88,17 @@ func prepareChatContextWithExtensions(
 
 func prepareChatContextDetailsWithExtensions(
 	workspaceDir string,
-	projectID string,
 	sessionID string,
 	userMessage string,
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
 	semanticCfg ...memory.SemanticConfig,
 ) (preparedChatContext, error) {
-	return prepareChatContextDetailsWithCache(workspaceDir, projectID, sessionID, userMessage, extSnapshot, invokedSkill, nil, semanticCfg...)
+	return prepareChatContextDetailsWithCache(workspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, nil, semanticCfg...)
 }
 
 func prepareChatContextDetailsWithCache(
 	workspaceDir string,
-	projectID string,
 	sessionID string,
 	userMessage string,
 	extSnapshot extensions.Snapshot,
@@ -110,10 +107,10 @@ func prepareChatContextDetailsWithCache(
 	semanticCfg ...memory.SemanticConfig,
 ) (preparedChatContext, error) {
 	forceRelevantMemory := shouldForceMemoryToolCall(userMessage)
-	extSnapshot = filterSkillSnapshotForProject(extSnapshot, workspaceDir, projectID)
+	extSnapshot = filterSkillSnapshotForProject(extSnapshot, workspaceDir)
 
 	// Cache-first strategy: check cache before expensive memory search
-	if cached, ok := cache.Get(userMessage, projectID, sessionID); ok {
+	if cached, ok := cache.Get(userMessage, sessionID); ok {
 		return buildContextFromResult(cached, extSnapshot, invokedSkill, forceRelevantMemory), nil
 	}
 
@@ -121,14 +118,13 @@ func prepareChatContextDetailsWithCache(
 	buildResult := prompt.BuildResultFor(prompt.BuildOptions{
 		WorkspaceDir:        workspaceDir,
 		Query:               userMessage,
-		ProjectID:           projectID,
 		SessionID:           sessionID,
 		MemorySearcher:      memService,
 		ForceRelevantMemory: forceRelevantMemory,
 	})
 
 	// Populate cache with search result
-	cache.Put(userMessage, projectID, sessionID, buildResult)
+	cache.Put(userMessage, sessionID, buildResult)
 
 	return buildContextFromResult(buildResult, extSnapshot, invokedSkill, forceRelevantMemory), nil
 }
@@ -169,7 +165,7 @@ func buildContextFromResult(
 	}
 }
 
-func filterSkillSnapshotForProject(snapshot extensions.Snapshot, _, _ string) extensions.Snapshot {
+func filterSkillSnapshotForProject(snapshot extensions.Snapshot, _ string) extensions.Snapshot {
 	// No project-level skill filtering after project package removal.
 	return snapshot
 }
@@ -676,7 +672,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 			extSnapshot = tooling.Extensions.Snapshot()
 		}
 		contextDetails, err := prepareChatContextDetailsWithCache(
-			requestWorkspaceDir, sess.ProjectID, sessionID, "(context preview)",
+			requestWorkspaceDir, sessionID, "(context preview)",
 			extSnapshot, nil, tooling.MemoryCache, tooling.MemorySemanticConfig,
 		)
 		if err != nil {

@@ -3,13 +3,11 @@
   import {
     getEventsHistory,
     getHeartbeatStatus,
-    listProjects,
     streamEvents,
   } from '../lib/api'
   import type {
     HeartbeatStatus,
     NotificationMessage,
-    Project,
   } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
 
@@ -20,7 +18,6 @@
 
   let { onNavigate, initialPrompt }: Props = $props()
 
-  let projects: Project[] = $state([])
   let heartbeat: HeartbeatStatus | null = $state(null)
   let notifications: NotificationMessage[] = $state([])
   let unreadCount = $state(0)
@@ -54,20 +51,14 @@
     return `${Math.floor(seconds / 86400)}d ago`
   }
 
-  function goToProject(projectId: string) {
-    onNavigate(`/console/projects/${encodeURIComponent(projectId)}`)
-  }
-
   async function load() {
     loading = true
     error = ''
     try {
-      const [p, h, e] = await Promise.allSettled([
-        listProjects(),
+      const [h, e] = await Promise.allSettled([
         getHeartbeatStatus(),
         getEventsHistory(20),
       ])
-      projects = p.status === 'fulfilled' ? p.value : []
       heartbeat = h.status === 'fulfilled' ? h.value : null
       if (e.status === 'fulfilled') {
         notifications = (e.value.items ?? []).slice(0, 10)
@@ -83,13 +74,9 @@
   function startEventStream() {
     stopStream?.()
     stopStream = streamEvents(
-      undefined,
       (event) => {
         notifications = [event, ...notifications.filter((n) => n.id !== event.id)].slice(0, 10)
         unreadCount++
-        if (event.category === 'project') {
-          void listProjects().then((list) => { projects = list })
-        }
         if (event.category === 'heartbeat') {
           void getHeartbeatStatus().then((s) => { heartbeat = s }).catch(() => {})
         }
@@ -125,11 +112,6 @@
     <!-- Pulse strip -->
     <div class="pulse-strip">
       <div class="pulse-item">
-        <span class="pulse-value">{projects.length}</span>
-        <span class="pulse-label">Projects</span>
-      </div>
-      <div class="pulse-divider"></div>
-      <div class="pulse-item">
         <span class="pulse-value" class:has-attention={heartbeat?.interval && !heartbeat?.last_error}>
           {heartbeat?.interval || 'off'}
         </span>
@@ -155,36 +137,6 @@
     </section>
 
     <div class="home-grid">
-      <!-- Projects -->
-      <section class="card home-section">
-        <div class="card-header">
-          <span class="card-title">Active projects</span>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/projects')}>
-            View all
-          </button>
-        </div>
-        {#if projects.length === 0}
-          <div class="empty-state">
-            <p>No projects yet. Go to <strong>Projects</strong> to create one.</p>
-          </div>
-        {:else}
-          <div class="project-cards">
-            {#each projects.slice(0, 6) as project}
-              <button type="button" class="project-card" onclick={() => goToProject(project.id)}>
-                <div class="project-card-top">
-                  <strong class="project-card-name">{project.name}</strong>
-                  <span class="badge badge-default">{project.status || 'active'}</span>
-                </div>
-                {#if project.objective}
-                  <p class="project-card-desc">{compact(project.objective, 100)}</p>
-                {/if}
-                <span class="project-card-time">{fmt(project.updated_at)}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
       <!-- Heartbeat -->
       <section class="card home-section">
         <div class="card-header">
@@ -335,65 +287,6 @@
 
   .home-section {
     min-height: 200px;
-  }
-
-  /* ── Project cards ────────────────────────────── */
-  .project-cards {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .project-card {
-    display: block;
-    width: 100%;
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    background: var(--bg-base);
-    text-align: left;
-    cursor: pointer;
-    transition:
-      border-color var(--duration-fast) var(--ease-out),
-      background var(--duration-fast) var(--ease-out);
-  }
-
-  .project-card:hover {
-    border-color: var(--border-default);
-    background: var(--bg-elevated);
-  }
-
-  .project-card-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    margin-bottom: var(--space-1);
-  }
-
-  .project-card-name {
-    font-family: var(--font-display);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-  }
-
-  .project-card-desc {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    margin-bottom: var(--space-2);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .project-card-time {
-    font-size: var(--text-xs);
-    color: var(--text-ghost);
   }
 
   /* ── List items ───────────────────────────────── */

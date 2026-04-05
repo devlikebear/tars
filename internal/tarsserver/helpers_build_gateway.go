@@ -83,7 +83,6 @@ func buildGatewayExecutors(
 				PolicyMode:  "allowlist",
 				ToolsAllow: []string{
 					"memory_get", "memory_search",
-					"project_activity_get", "project_board_get", "project_brief_get", "project_get", "project_list", "project_state_get",
 					"read", "read_file", "list_dir", "glob",
 					"research_report", "usage_report",
 				},

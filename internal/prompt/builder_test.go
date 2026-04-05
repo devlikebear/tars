@@ -28,11 +28,10 @@ func TestBuild(t *testing.T) {
 
 	result := Build(BuildOptions{WorkspaceDir: root})
 
-	// Static bootstrap should include identity/user/project/heartbeat.
+	// Static bootstrap should include identity/user/heartbeat.
 	wantIncluded := []string{
 		files["IDENTITY.md"],
 		files["USER.md"],
-		files["PROJECT.md"],
 		files["HEARTBEAT.md"],
 	}
 	for _, content := range wantIncluded {
@@ -43,13 +42,13 @@ func TestBuild(t *testing.T) {
 	if strings.Contains(result, files["MEMORY.md"]) {
 		t.Errorf("expected static prompt to exclude MEMORY.md content")
 	}
+	if strings.Contains(result, files["PROJECT.md"]) {
+		t.Errorf("expected prompt to exclude PROJECT.md content (project system removed)")
+	}
 
 	// Should have section headers
 	if !strings.Contains(result, "IDENTITY") {
 		t.Error("expected IDENTITY section")
-	}
-	if !strings.Contains(result, "PROJECT") {
-		t.Error("expected PROJECT section")
 	}
 }
 
@@ -144,7 +143,6 @@ func TestBuild_IdentitySection(t *testing.T) {
 func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"PROJECT.md":   strings.Repeat("project-", 120),
 		"USER.md":      strings.Repeat("user-", 120),
 		"IDENTITY.md":  strings.Repeat("identity-", 120),
 		"HEARTBEAT.md": strings.Repeat("heartbeat-", 120),
@@ -161,9 +159,6 @@ func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 		TotalBudgetTokens:  460,
 	})
 
-	if !strings.Contains(result.Prompt, files["PROJECT.md"][:120]) {
-		t.Fatalf("expected project section to survive tight budget, got %q", result.Prompt)
-	}
 	if !strings.Contains(result.Prompt, files["USER.md"][:120]) {
 		t.Fatalf("expected user section to survive tight budget, got %q", result.Prompt)
 	}

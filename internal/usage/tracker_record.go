@@ -47,7 +47,6 @@ func normalizeEntry(entry Entry, nowFn func() time.Time) Entry {
 	e.Model = strings.TrimSpace(e.Model)
 	e.Source = normalizeCallMeta(CallMeta{Source: e.Source}).Source
 	e.SessionID = strings.TrimSpace(e.SessionID)
-	e.ProjectID = strings.TrimSpace(e.ProjectID)
 	e.RunID = strings.TrimSpace(e.RunID)
 	return e
 }

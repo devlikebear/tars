@@ -21,7 +21,6 @@ func TestAppendAndSearchExperiences(t *testing.T) {
 		Tags:          []string{"user", "language"},
 		SourceSession: "sess-1",
 		Importance:    7,
-		ProjectID:     "proj_demo",
 	}); err != nil {
 		t.Fatalf("append first experience: %v", err)
 	}
@@ -32,7 +31,6 @@ func TestAppendAndSearchExperiences(t *testing.T) {
 		Tags:          []string{"gateway", "smoke"},
 		SourceSession: "sess-2",
 		Importance:    9,
-		ProjectID:     "proj_demo",
 	}); err != nil {
 		t.Fatalf("append second experience: %v", err)
 	}

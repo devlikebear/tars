@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { getConfig, getConfigSchema, saveConfig, patchConfigValues, deleteAllProjects, resetWorkspace, restartServer } from '../lib/api'
+  import { getConfig, getConfigSchema, saveConfig, patchConfigValues, resetWorkspace, restartServer } from '../lib/api'
   import type { ConfigFieldMeta, ConfigSchema } from '../lib/types'
 
   type ViewMode = 'form' | 'yaml'
@@ -82,26 +82,8 @@
   }
 
   // -- Reset / Danger zone --
-  let deleteAllConfirm = $state(false)
-  let deleteAllBusy = $state(false)
   let resetWsBusy = $state(false)
   let resetWsConfirm = $state(false)
-
-  async function handleDeleteAllProjects() {
-    if (!deleteAllConfirm) { deleteAllConfirm = true; return }
-    deleteAllBusy = true
-    error = ''
-    success = ''
-    try {
-      const result = await deleteAllProjects()
-      success = `Deleted ${result.deleted} projects.`
-      deleteAllConfirm = false
-    } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to delete projects'
-    } finally {
-      deleteAllBusy = false
-    }
-  }
 
   async function handleResetWorkspace() {
     if (!resetWsConfirm) { resetWsConfirm = true; return }
@@ -521,19 +503,8 @@
       <div class="danger-body">
         <div class="danger-row">
           <div class="danger-info">
-            <strong>Delete all projects</strong>
-            <span>Permanently remove all project directories and their data.</span>
-          </div>
-          <button
-            class="btn btn-danger btn-sm"
-            disabled={deleteAllBusy}
-            onclick={handleDeleteAllProjects}
-          >{deleteAllConfirm ? 'Click again to confirm' : deleteAllBusy ? 'Deleting...' : 'Delete All Projects'}</button>
-        </div>
-        <div class="danger-row">
-          <div class="danger-info">
             <strong>Reset workspace</strong>
-            <span>Remove sessions, cron state, gateway data, logs, and memory. Config and projects are preserved.</span>
+            <span>Remove sessions, cron state, gateway data, logs, and memory. Config is preserved.</span>
           </div>
           <button
             class="btn btn-danger btn-sm"

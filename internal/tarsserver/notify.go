@@ -30,7 +30,6 @@ type notificationEvent struct {
 	Message   string `json:"message"`
 	Timestamp string `json:"timestamp"`
 	JobID     string `json:"job_id,omitempty"`
-	ProjectID string `json:"project_id,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
 	OpenPath  string `json:"open_path,omitempty"`
 }
@@ -286,8 +285,6 @@ func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Hand
 			return
 		}
 
-		projectIDFilter := strings.TrimSpace(r.URL.Query().Get("project_id"))
-
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
@@ -301,9 +298,6 @@ func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Hand
 		defer ping.Stop()
 
 		writeEvent := func(evt notificationEvent) error {
-			if projectIDFilter != "" && evt.Type == notificationEventType && !strings.EqualFold(strings.TrimSpace(evt.ProjectID), projectIDFilter) {
-				return nil
-			}
 			payload, err := json.Marshal(evt)
 			if err != nil {
 				return err
