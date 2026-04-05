@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import {
     getEventsHistory, getHeartbeatStatus, streamEvents,
-    getSession, renameSession, deleteSession, compactSession, getSessionHistory,
+    getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
   } from '../lib/api'
   import type { HeartbeatStatus, NotificationMessage, Session } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
@@ -86,15 +86,21 @@
     onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
   }
 
-  function handleNewSession() {
-    selectedSessionId = null
-    selectedSession = null
+  async function handleNewSession() {
+    try {
+      const sess = await createSession()
+      selectedSessionId = sess.id
+      selectedSession = sess
+    } catch {
+      selectedSessionId = null
+      selectedSession = null
+    }
     chatKey++
     chatArtifacts = []
     rightPanel = 'none'
     renaming = false
     deleteConfirm = false
-    onNavigate('/console/chat')
+    onNavigate(selectedSessionId ? `/console/chat/${encodeURIComponent(selectedSessionId)}` : '/console/chat')
   }
 
   function handleSessionChange() {

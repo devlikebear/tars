@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Artifact } from '../lib/artifacts'
   import { fileIcon } from '../lib/artifacts'
-  import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
+  import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, browseFilesystem, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
   import type { SessionWorkDirs } from '../lib/types'
 
   interface Props {
@@ -18,7 +18,8 @@
   // WorkDirs state
   let workDirs: SessionWorkDirs = $state({ work_dirs: [], current_dir: '' })
   let pickingDir = $state(false)
-  let pickPath = $state('.')
+  let pickPath = $state('')
+  let pickParent = $state('')
   let pickFiles: WorkspaceFileEntry[] = $state([])
   let pickLoading = $state(false)
 
@@ -64,21 +65,26 @@
   // Directory picker — browse filesystem to select a working directory
   async function startPicking() {
     pickingDir = true
-    pickPath = '.'
-    await browsePick('.')
+    pickPath = ''
+    pickParent = ''
+    await browsePick(undefined)
   }
 
   function cancelPicking() {
     pickingDir = false
   }
 
-  async function browsePick(path: string) {
+  async function browsePick(path: string | undefined) {
     pickLoading = true
     try {
-      // Browse from user home directory
-      const result = await listWorkspaceFiles(path, '~')
-      pickFiles = (result.files || []).filter(f => f.is_dir)
-      pickPath = result.path || path
+      const result = await browseFilesystem(path)
+      pickFiles = result.entries.filter(e => e.is_dir).map(e => ({
+        name: e.name,
+        path: result.path + '/' + e.name,
+        is_dir: true,
+      }))
+      pickPath = result.path
+      pickParent = result.parent
     } catch {
       pickFiles = []
     } finally {
@@ -88,7 +94,7 @@
 
   async function selectPickedDir() {
     if (!sessionId) return
-    const absPath = pickPath === '.' ? '/' : '/' + pickPath
+    const absPath = pickPath
     const dirs = [...workDirs.work_dirs, absPath]
     await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: absPath })
     workDirs = { work_dirs: dirs, current_dir: absPath }
@@ -281,16 +287,13 @@
             <button type="button" class="btn btn-ghost btn-sm" onclick={cancelPicking}>Cancel</button>
           </div>
         </div>
-        <div class="pick-current">{pickPath === '.' ? '/' : '/' + pickPath}</div>
+        <div class="pick-current">{pickPath || '/'}</div>
         <div class="pick-list">
           {#if pickLoading}
             <div class="artifact-empty">Loading...</div>
           {:else}
-            {#if pickPath !== '.'}
-              <button type="button" class="artifact-item" onclick={() => {
-                const parts = pickPath.split('/').filter(Boolean)
-                browsePick(parts.length <= 1 ? '.' : parts.slice(0, -1).join('/'))
-              }}>
+            {#if pickParent}
+              <button type="button" class="artifact-item" onclick={() => browsePick(pickParent)}>
                 <span class="artifact-icon">&#x2191;</span>
                 <span class="artifact-name">..</span>
               </button>
@@ -301,7 +304,7 @@
                 <span class="artifact-name">{entry.name}</span>
               </button>
             {/each}
-            {#if pickFiles.length === 0 && pickPath !== '.'}
+            {#if pickFiles.length === 0 && pickParent}
               <div class="artifact-empty">No subdirectories</div>
             {/if}
           {/if}
