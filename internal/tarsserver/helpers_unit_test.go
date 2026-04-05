@@ -28,13 +28,16 @@ func TestResolveExtensionsWatchDebounce(t *testing.T) {
 }
 
 func TestEffectiveCronDeliveryMode(t *testing.T) {
-	if got := effectiveCronDeliveryMode("", "main"); got != "session" {
+	if got := effectiveCronDeliveryMode("", "main", ""); got != "session" {
 		t.Fatalf("expected default session mode for main target, got %q", got)
 	}
-	if got := effectiveCronDeliveryMode("", "other"); got != "daily_log" {
+	if got := effectiveCronDeliveryMode("", "other", ""); got != "daily_log" {
 		t.Fatalf("expected default daily_log mode, got %q", got)
 	}
-	if got := effectiveCronDeliveryMode("invalid", "main"); got != "daily_log" {
+	if got := effectiveCronDeliveryMode("", "isolated", "sess-1"); got != "session" {
+		t.Fatalf("expected bound session to default to session delivery, got %q", got)
+	}
+	if got := effectiveCronDeliveryMode("invalid", "main", ""); got != "daily_log" {
 		t.Fatalf("expected invalid mode fallback to daily_log, got %q", got)
 	}
 }

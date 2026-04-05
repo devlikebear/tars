@@ -47,6 +47,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
     "prompt":{"type":"string"},
     "schedule":{"type":"string"},
     "enabled":{"type":"boolean"},
+    "session_id":{"type":"string"},
     "session_target":{"type":"string"},
     "wake_mode":{"type":"string"},
     "delivery_mode":{"type":"string"},
@@ -65,6 +66,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				Prompt         string          `json:"prompt"`
 				Schedule       string          `json:"schedule"`
 				Enabled        *bool           `json:"enabled,omitempty"`
+				SessionID      string          `json:"session_id,omitempty"`
 				SessionTarget  string          `json:"session_target,omitempty"`
 				WakeMode       string          `json:"wake_mode,omitempty"`
 				DeliveryMode   string          `json:"delivery_mode,omitempty"`
@@ -81,6 +83,10 @@ func NewCronCreateTool(store *cron.Store) Tool {
 			if err != nil {
 				return automationErrorResult(err.Error()), nil
 			}
+			sessionID, err := resolveCronSessionBindingFromContext(ctx, input.SessionID)
+			if err != nil {
+				return automationErrorResult(err.Error()), nil
+			}
 			hasEnable := input.Enabled != nil
 			enabled := true
 			if input.Enabled != nil {
@@ -92,6 +98,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				Schedule:          input.Schedule,
 				Enabled:           enabled,
 				HasEnable:         hasEnable,
+				SessionID:         sessionID,
 				SessionTarget:     sessionTarget,
 				WakeMode:          input.WakeMode,
 				DeliveryMode:      input.DeliveryMode,
@@ -119,6 +126,7 @@ func NewCronUpdateTool(store *cron.Store) Tool {
     "prompt":{"type":"string"},
     "schedule":{"type":"string"},
     "enabled":{"type":"boolean"},
+    "session_id":{"type":"string"},
     "session_target":{"type":"string"},
     "wake_mode":{"type":"string"},
     "delivery_mode":{"type":"string"},
@@ -138,6 +146,7 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 				Prompt         *string          `json:"prompt,omitempty"`
 				Schedule       *string          `json:"schedule,omitempty"`
 				Enabled        *bool            `json:"enabled,omitempty"`
+				SessionID      *string          `json:"session_id,omitempty"`
 				SessionTarget  *string          `json:"session_target,omitempty"`
 				WakeMode       *string          `json:"wake_mode,omitempty"`
 				DeliveryMode   *string          `json:"delivery_mode,omitempty"`
@@ -166,11 +175,19 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 				}
 				input.SessionTarget = &resolved
 			}
+			if input.SessionID != nil {
+				resolved, err := resolveCronSessionBindingFromContext(ctx, *input.SessionID)
+				if err != nil {
+					return automationErrorResult(err.Error()), nil
+				}
+				input.SessionID = &resolved
+			}
 			job, err := store.Update(input.JobID, cron.UpdateInput{
 				Name:           input.Name,
 				Prompt:         input.Prompt,
 				Schedule:       input.Schedule,
 				Enabled:        input.Enabled,
+				SessionID:      input.SessionID,
 				SessionTarget:  input.SessionTarget,
 				WakeMode:       input.WakeMode,
 				DeliveryMode:   input.DeliveryMode,
@@ -192,6 +209,21 @@ func resolveCronSessionTargetFromContext(ctx context.Context, provided string) (
 		return sessionTarget, nil
 	}
 	return "main", nil
+}
+
+func resolveCronSessionBindingFromContext(ctx context.Context, provided string) (string, error) {
+	sessionID := strings.TrimSpace(provided)
+	if sessionID == "" || strings.EqualFold(sessionID, "global") || strings.EqualFold(sessionID, "isolated") || strings.EqualFold(sessionID, "none") {
+		return "", nil
+	}
+	if !strings.EqualFold(sessionID, "current") {
+		return sessionID, nil
+	}
+	current := currentSessionIDFromContext(ctx)
+	if current == "" {
+		return "", fmt.Errorf("current session is not available in this context")
+	}
+	return current, nil
 }
 
 func NewCronDeleteTool(store *cron.Store) Tool {

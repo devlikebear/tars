@@ -110,7 +110,8 @@ func runCronCommand(ctx context.Context, stdout, _ io.Writer, opts cronCommandOp
 			return err
 		}
 		for _, job := range jobs {
-			if _, err := fmt.Fprintf(stdout, "- %s name=%s schedule=%s enabled=%t\n", job.ID, job.Name, job.Schedule, job.Enabled); err != nil {
+			if _, err := fmt.Fprintf(stdout, "- %s name=%s schedule=%s enabled=%t session_id=%s\n",
+				job.ID, job.Name, job.Schedule, job.Enabled, cronValueOrDash(job.SessionID)); err != nil {
 				return err
 			}
 		}
@@ -190,7 +191,8 @@ func printCronJob(stdout io.Writer, job protocol.CronJob) error {
 		cronValueOrDash(job.Name), cronValueOrDash(job.Schedule), job.Enabled, job.DeleteAfterRun); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(stdout, "session_target=%s wake_mode=%s delivery_mode=%s\n",
+	if _, err := fmt.Fprintf(stdout, "session_id=%s session_target=%s wake_mode=%s delivery_mode=%s\n",
+		cronValueOrDash(job.SessionID),
 		cronValueOrDash(job.SessionTarget),
 		cronValueOrDash(job.WakeMode),
 		cronValueOrDash(job.DeliveryMode),

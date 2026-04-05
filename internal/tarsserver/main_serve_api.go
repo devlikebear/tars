@@ -269,29 +269,7 @@ func buildAPIMux(
 		watchdogState,
 		dispatcher.Emit,
 	)
-	baseCronRunner := newCronJobRunnerWithNotify(
-		cfg.WorkspaceDir,
-		sessionStore,
-		apiRunPromptWithTools,
-		logger,
-		dispatcher.Emit,
-		mainSessionID,
-		cfg.CronRunHistoryLimit,
-		func(ctx context.Context) (string, error) {
-			_ = ctx
-			if telegramPairings == nil {
-				return "", nil
-			}
-			return telegramPairings.resolveDefaultChatID()
-		},
-	)
-
-	cronRunner := func(ctx context.Context, job cron.Job) (string, error) {
-		if baseCronRunner != nil {
-			return baseCronRunner(ctx, job)
-		}
-		return "", fmt.Errorf("cron runner not configured")
-	}
+	var cronRunner func(ctx context.Context, job cron.Job) (string, error)
 
 	mux := http.NewServeMux()
 	heartbeatHandler := newHeartbeatAPIHandlerFull(
@@ -404,6 +382,38 @@ func buildAPIMux(
 	chatTools := buildOptionalChatTools(cfg, gatewayRuntime)
 	if cfg.ChannelsTelegramEnabled {
 		chatTools = append(chatTools, telegramSendTool)
+	}
+	cronPromptDeps := chatHandlerDeps{
+		workspaceDir:  cfg.WorkspaceDir,
+		store:         sessionStore,
+		client:        deps.llmClient,
+		logger:        logger,
+		maxIters:      cfg.AgentMaxIterations,
+		mainSessionID: mainSessionID,
+		tooling:       chatTooling,
+		extraTools:    chatTools,
+	}
+	baseCronRunner := newCronJobRunnerWithNotify(
+		cfg.WorkspaceDir,
+		sessionStore,
+		newCronPromptRunnerWithSessionContext(apiRunPromptWithTools, cronPromptDeps),
+		logger,
+		dispatcher.Emit,
+		mainSessionID,
+		cfg.CronRunHistoryLimit,
+		func(ctx context.Context) (string, error) {
+			_ = ctx
+			if telegramPairings == nil {
+				return "", nil
+			}
+			return telegramPairings.resolveDefaultChatID()
+		},
+	)
+	cronRunner = func(ctx context.Context, job cron.Job) (string, error) {
+		if baseCronRunner != nil {
+			return baseCronRunner(ctx, job)
+		}
+		return "", fmt.Errorf("cron runner not configured")
 	}
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,

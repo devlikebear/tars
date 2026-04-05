@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-04-05
+
+### Added
+
+- Session-bound cron jobs with optional `session_id` binding, so scheduled runs can reuse a chat session's tool and skill policy, work dirs, prompt override, and recent history
+- User-visible cron audit logs appended to `artifacts/<session_id>/cronjob-log.jsonl` for bound jobs and `artifacts/_global/cronjob-log.jsonl` for global jobs
+- Cron API, CLI, and console surfaces now show cron execution scope and session binding metadata
+
+### Fixed
+
+- Tasks panel no longer crashes when empty or legacy session task payloads omit the `tasks` array
+
 ## [0.22.0] - 2026-04-05
 
 ### Added

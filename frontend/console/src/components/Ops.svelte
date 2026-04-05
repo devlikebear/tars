@@ -46,6 +46,7 @@
   let newJobName = $state('')
   let newJobPrompt = $state('')
   let newJobSchedule = $state('')
+  let newJobSessionId = $state('')
   let newJobSaving = $state(false)
   let newJobError = $state('')
 
@@ -53,6 +54,7 @@
   let editJobName = $state('')
   let editJobPrompt = $state('')
   let editJobSchedule = $state('')
+  let editJobSessionId = $state('')
   let editJobEnabled = $state(true)
   let editJobSaving = $state(false)
   let editJobError = $state('')
@@ -71,12 +73,14 @@
         name: newJobName.trim() || undefined,
         prompt: newJobPrompt.trim(),
         schedule: newJobSchedule.trim() || undefined,
+        session_id: newJobSessionId.trim() || undefined,
       })
       cronJobs = await listCronJobs()
       showNewJob = false
       newJobName = ''
       newJobPrompt = ''
       newJobSchedule = ''
+      newJobSessionId = ''
     } catch (e) {
       newJobError = e instanceof Error ? e.message : 'Failed to create cron job'
     } finally {
@@ -89,6 +93,7 @@
     editJobName = job.name
     editJobPrompt = job.prompt
     editJobSchedule = job.schedule
+    editJobSessionId = job.session_id || ''
     editJobEnabled = job.enabled
     editJobError = ''
   }
@@ -108,6 +113,7 @@
         prompt: editJobPrompt.trim(),
         schedule: editJobSchedule.trim() || undefined,
         enabled: editJobEnabled,
+        session_id: editJobSessionId.trim() || undefined,
       })
       cronJobs = await listCronJobs()
       editingJobId = null
@@ -168,6 +174,11 @@
     const text = value?.trim()
     if (!text) return '\u2014'
     return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`
+  }
+
+  function cronScope(job: CronJob): string {
+    const sessionId = job.session_id?.trim()
+    return sessionId ? `session:${sessionId}` : 'global'
   }
 
   function statusBadge(s: string): string {
@@ -445,6 +456,7 @@
             <input type="text" placeholder="Job name (optional)" bind:value={newJobName} class="form-input" />
             <textarea placeholder="Prompt *" bind:value={newJobPrompt} class="form-input form-textarea" rows="3"></textarea>
             <input type="text" placeholder="Schedule (e.g. */30 * * * * or @at 2026-04-01T10:00:00Z)" bind:value={newJobSchedule} class="form-input" />
+            <input type="text" placeholder="Session ID (optional, blank = global)" bind:value={newJobSessionId} class="form-input" />
             <button
               class="btn btn-primary btn-sm"
               disabled={!newJobPrompt.trim() || newJobSaving}
@@ -481,6 +493,7 @@
                     <input type="text" placeholder="Job name" bind:value={editJobName} class="form-input" />
                     <textarea placeholder="Prompt *" bind:value={editJobPrompt} class="form-input form-textarea" rows="3"></textarea>
                     <input type="text" placeholder="Schedule" bind:value={editJobSchedule} class="form-input" />
+                    <input type="text" placeholder="Session ID (optional, blank = global)" bind:value={editJobSessionId} class="form-input" />
                     <label class="form-checkbox">
                       <input type="checkbox" bind:checked={editJobEnabled} />
                       Enabled
@@ -510,11 +523,13 @@
                         >
                           {job.last_run_error ? 'failed' : job.enabled ? 'active' : 'disabled'}
                         </span>
+                        <span class="badge badge-info">{job.session_id ? 'session' : 'global'}</span>
                         <span class="badge badge-default">{job.schedule}</span>
                       </div>
                     </div>
                     <p class="cron-prompt">{compact(job.prompt, 120)}</p>
                     <div class="cron-meta">
+                      <span>Execution: {cronScope(job)}</span>
                       {#if job.last_run_at}
                         <span>Last run: {fmt(job.last_run_at)}</span>
                       {/if}

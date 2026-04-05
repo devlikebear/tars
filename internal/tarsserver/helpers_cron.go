@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -68,11 +69,16 @@ func newCronJobRunnerWithNotify(
 		if strings.TrimSpace(job.ID) != "" {
 			runLabel = "cron:" + strings.TrimSpace(job.ID)
 		}
+		callSessionID := prepared.targetSessionID
+		if prepared.executionSessionID != "" {
+			callSessionID = prepared.executionSessionID
+		}
 		runCtx := usage.WithCallMeta(ctx, usage.CallMeta{
 			Source:    "cron",
-			SessionID: prepared.targetSessionID,
+			SessionID: callSessionID,
 			RunID:     strings.TrimSpace(job.ID),
 		})
+		runCtx = withCronExecutionContext(runCtx, cronExecutionContext{SessionID: prepared.executionSessionID})
 		agentTelemetry := &agentPromptTelemetry{}
 		runCtx = withAgentPromptTelemetry(runCtx, agentTelemetry)
 		response, err := runPrompt(runCtx, runLabel, prepared.promptText, prepared.allowedTools)
@@ -111,6 +117,7 @@ type preparedCronJobRun struct {
 	allowedTools        []string
 	telemetry           cronRunTelemetry
 	projectFileSnapshot map[string]time.Time
+	executionSessionID  string
 	targetSessionID     string
 	explicitTarget      bool
 }
@@ -138,6 +145,7 @@ func prepareCronJobRun(
 	if payload := strings.TrimSpace(string(job.Payload)); payload != "" {
 		prepared.promptText += "\n\nCRON_PAYLOAD_JSON:\n" + payload
 	}
+	prepared.executionSessionID = strings.TrimSpace(job.SessionID)
 	prepared.allowedTools = resolveCronAllowedTools(prepared.workspaceDir, job)
 	if err := validateCronProjectPrerequisites(prepared.workspaceDir, job, prepared.promptText); err != nil {
 		return prepared, err
@@ -153,7 +161,7 @@ func prepareCronJobRun(
 	if err != nil {
 		return prepared, err
 	}
-	if prepared.targetSessionID != "" {
+	if prepared.targetSessionID != "" && prepared.executionSessionID == "" {
 		{
 			contextText, err := sessionContextByID(prepared.targetStore, prepared.targetSessionID, 6)
 			if err != nil {
@@ -188,7 +196,7 @@ func emitCronRunFailure(
 	title string,
 	err error,
 ) string {
-	artifactPath, _ := persistCronProjectArtifact(workspaceDir, job, response, now, telemetry, artifactHistoryLimit)
+	artifactPath, _ := persistCronProjectArtifact(workspaceDir, job, response, err, now, telemetry, artifactHistoryLimit)
 	if emit != nil {
 		evt := buildCronNotificationEvent(job, "error", title, err.Error(), artifactPath, strings.TrimSpace(targetSessionID))
 		emit(ctx, evt)
@@ -208,7 +216,7 @@ func emitCronRunSuccess(
 	targetSessionID string,
 	logger zerolog.Logger,
 ) {
-	artifactPath, err := persistCronProjectArtifact(workspaceDir, job, response, now, telemetry, artifactHistoryLimit)
+	artifactPath, err := persistCronProjectArtifact(workspaceDir, job, response, nil, now, telemetry, artifactHistoryLimit)
 	if err != nil {
 		logger.Debug().Err(err).Str("job_id", strings.TrimSpace(job.ID)).Msg("persist cron project artifact failed")
 	}
@@ -244,9 +252,51 @@ func buildCronTelegramPromptSection(ctx context.Context, resolveDefaultTelegramC
 	), nil
 }
 
-func persistCronProjectArtifact(_ string, _ cron.Job, _ string, _ time.Time, _ cronRunTelemetry, _ int) (string, error) {
-	// Project-scoped cron artifacts are no longer persisted.
-	return "", nil
+func persistCronProjectArtifact(workspaceDir string, job cron.Job, response string, runErr error, now time.Time, telemetry cronRunTelemetry, _ int) (string, error) {
+	path := cronArtifactLogPath(strings.TrimSpace(workspaceDir), job)
+	if path == "" {
+		return "", nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", err
+	}
+
+	entry := map[string]any{
+		"job_id":          strings.TrimSpace(job.ID),
+		"job_name":        strings.TrimSpace(job.Name),
+		"scope":           cronExecutionScope(job),
+		"session_id":      strings.TrimSpace(job.SessionID),
+		"schedule":        strings.TrimSpace(job.Schedule),
+		"status":          "completed",
+		"ran_at":          now.UTC(),
+		"wake_mode":       strings.TrimSpace(job.WakeMode),
+		"delivery_mode":   effectiveCronDeliveryMode(job.DeliveryMode, job.SessionTarget, job.SessionID),
+		"prompt_preview":  trimForMemory(job.Prompt, 180),
+		"result_summary":  summarizeCronResponse(response),
+		"result_preview":  trimForMemory(response, 320),
+		"prompt_tokens":   telemetry.PromptTokens,
+		"tool_count":      telemetry.ToolCount,
+		"response_tokens": telemetry.ResponseTokens,
+	}
+	if runErr != nil {
+		entry["status"] = "error"
+		entry["error"] = strings.TrimSpace(runErr.Error())
+	}
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	line, err := json.Marshal(entry)
+	if err != nil {
+		return "", err
+	}
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func detectPseudoToolContamination(response string) []string {
@@ -415,7 +465,17 @@ func resolveCronTargetSessionID(store *session.Store, job cron.Job, mainSessionI
 	}
 	target := strings.TrimSpace(job.SessionTarget)
 	if target == "" || strings.EqualFold(target, "isolated") {
-		return "", false, nil
+		boundSessionID := strings.TrimSpace(job.SessionID)
+		if boundSessionID == "" {
+			return "", false, nil
+		}
+		if _, err := store.Get(boundSessionID); err != nil {
+			if strings.Contains(strings.ToLower(strings.TrimSpace(err.Error())), "session not found") {
+				return "", false, fmt.Errorf("bound session not found: %s", boundSessionID)
+			}
+			return "", false, err
+		}
+		return boundSessionID, false, nil
 	}
 	if strings.EqualFold(target, "main") || strings.EqualFold(target, "current") {
 		configuredMain := strings.TrimSpace(mainSessionID)
@@ -486,7 +546,7 @@ func deliverCronResult(
 	now time.Time,
 	logger zerolog.Logger,
 ) error {
-	mode := effectiveCronDeliveryMode(job.DeliveryMode, job.SessionTarget)
+	mode := effectiveCronDeliveryMode(job.DeliveryMode, job.SessionTarget, job.SessionID)
 	if mode == "none" {
 		return nil
 	}
@@ -612,10 +672,10 @@ func summarizeCronResponse(raw string) string {
 	return trimForMemory(strings.TrimSpace(raw), 180)
 }
 
-func effectiveCronDeliveryMode(raw string, sessionTarget string) string {
+func effectiveCronDeliveryMode(raw string, sessionTarget string, sessionID string) string {
 	v := strings.ToLower(strings.TrimSpace(raw))
 	if v == "" {
-		if strings.EqualFold(strings.TrimSpace(sessionTarget), "main") {
+		if strings.EqualFold(strings.TrimSpace(sessionTarget), "main") || strings.TrimSpace(sessionID) != "" {
 			return "session"
 		}
 		return "daily_log"
@@ -626,6 +686,23 @@ func effectiveCronDeliveryMode(raw string, sessionTarget string) string {
 	default:
 		return "daily_log"
 	}
+}
+
+func cronArtifactLogPath(workspaceDir string, job cron.Job) string {
+	if workspaceDir == "" {
+		return ""
+	}
+	if sessionID := strings.TrimSpace(job.SessionID); sessionID != "" {
+		return filepath.Join(workspaceDir, "artifacts", sessionID, "cronjob-log.jsonl")
+	}
+	return filepath.Join(workspaceDir, "artifacts", "_global", "cronjob-log.jsonl")
+}
+
+func cronExecutionScope(job cron.Job) string {
+	if strings.TrimSpace(job.SessionID) != "" {
+		return "session"
+	}
+	return "global"
 }
 
 type workspaceCronManager struct {

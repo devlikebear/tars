@@ -31,6 +31,16 @@ func normalizeSessionTarget(raw string) (string, error) {
 	}
 }
 
+func normalizeSessionID(raw string) string {
+	v := strings.TrimSpace(raw)
+	switch strings.ToLower(v) {
+	case "", "global", "isolated", "none":
+		return ""
+	default:
+		return v
+	}
+}
+
 func normalizeWakeMode(raw string) (string, error) {
 	v := strings.TrimSpace(raw)
 	if v == "" {
@@ -42,10 +52,10 @@ func normalizeWakeMode(raw string) (string, error) {
 	return "", fmt.Errorf("invalid wake_mode: %s (expected agent_loop)", v)
 }
 
-func normalizeDeliveryMode(raw, sessionTarget string) (string, error) {
+func normalizeDeliveryMode(raw, sessionTarget, sessionID string) (string, error) {
 	v := strings.TrimSpace(raw)
 	if v == "" {
-		if strings.EqualFold(sessionTarget, "main") {
+		if strings.EqualFold(sessionTarget, "main") || strings.TrimSpace(sessionID) != "" {
 			return "session", nil
 		}
 		return "daily_log", nil

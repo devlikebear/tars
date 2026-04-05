@@ -21,6 +21,7 @@ type Job struct {
 	Prompt              string          `json:"prompt"`
 	Schedule            string          `json:"schedule"`
 	Enabled             bool            `json:"enabled"`
+	SessionID           string          `json:"session_id,omitempty"`
 	SessionTarget       string          `json:"session_target,omitempty"`
 	WakeMode            string          `json:"wake_mode,omitempty"`
 	DeliveryMode        string          `json:"delivery_mode,omitempty"`
@@ -48,6 +49,7 @@ type CreateInput struct {
 	Schedule          string
 	Enabled           bool
 	HasEnable         bool
+	SessionID         string
 	SessionTarget     string
 	WakeMode          string
 	DeliveryMode      string
@@ -61,6 +63,7 @@ type UpdateInput struct {
 	Prompt         *string
 	Schedule       *string
 	Enabled        *bool
+	SessionID      *string
 	SessionTarget  *string
 	WakeMode       *string
 	DeliveryMode   *string
@@ -157,11 +160,12 @@ func (s *Store) CreateWithOptions(input CreateInput) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
+	sessionID := normalizeSessionID(input.SessionID)
 	wakeMode, err := normalizeWakeMode(input.WakeMode)
 	if err != nil {
 		return Job{}, err
 	}
-	deliveryMode, err := normalizeDeliveryMode(input.DeliveryMode, sessionTarget)
+	deliveryMode, err := normalizeDeliveryMode(input.DeliveryMode, sessionTarget, sessionID)
 	if err != nil {
 		return Job{}, err
 	}
@@ -181,6 +185,7 @@ func (s *Store) CreateWithOptions(input CreateInput) (Job, error) {
 		Prompt:         prompt,
 		Schedule:       schedule,
 		Enabled:        enabled,
+		SessionID:      sessionID,
 		SessionTarget:  sessionTarget,
 		WakeMode:       wakeMode,
 		DeliveryMode:   deliveryMode,
@@ -266,6 +271,12 @@ func applyUpdateInput(job *Job, input UpdateInput) error {
 	if input.Enabled != nil {
 		job.Enabled = *input.Enabled
 	}
+	if input.SessionID != nil {
+		job.SessionID = normalizeSessionID(*input.SessionID)
+		if strings.TrimSpace(job.DeliveryMode) == "" {
+			job.DeliveryMode, _ = normalizeDeliveryMode("", job.SessionTarget, job.SessionID)
+		}
+	}
 	if input.SessionTarget != nil {
 		sessionTarget, err := normalizeSessionTarget(*input.SessionTarget)
 		if err != nil {
@@ -273,7 +284,7 @@ func applyUpdateInput(job *Job, input UpdateInput) error {
 		}
 		job.SessionTarget = sessionTarget
 		if strings.TrimSpace(job.DeliveryMode) == "" {
-			job.DeliveryMode, _ = normalizeDeliveryMode("", sessionTarget)
+			job.DeliveryMode, _ = normalizeDeliveryMode("", sessionTarget, job.SessionID)
 		}
 	}
 	if input.WakeMode != nil {
@@ -284,7 +295,7 @@ func applyUpdateInput(job *Job, input UpdateInput) error {
 		job.WakeMode = wakeMode
 	}
 	if input.DeliveryMode != nil {
-		deliveryMode, err := normalizeDeliveryMode(*input.DeliveryMode, job.SessionTarget)
+		deliveryMode, err := normalizeDeliveryMode(*input.DeliveryMode, job.SessionTarget, job.SessionID)
 		if err != nil {
 			return err
 		}
@@ -452,6 +463,7 @@ func (s *Store) load() ([]Job, error) {
 		return nil, fmt.Errorf("decode cron jobs: %w", err)
 	}
 	for i := range jobs {
+		jobs[i].SessionID = normalizeSessionID(jobs[i].SessionID)
 		normalized, err := normalizeSessionTarget(jobs[i].SessionTarget)
 		if err != nil {
 			normalized = "isolated"
@@ -462,10 +474,14 @@ func (s *Store) load() ([]Job, error) {
 		} else {
 			jobs[i].WakeMode = "agent_loop"
 		}
-		if mode, err := normalizeDeliveryMode(jobs[i].DeliveryMode, jobs[i].SessionTarget); err == nil {
+		if mode, err := normalizeDeliveryMode(jobs[i].DeliveryMode, jobs[i].SessionTarget, jobs[i].SessionID); err == nil {
 			jobs[i].DeliveryMode = mode
 		} else {
-			jobs[i].DeliveryMode = "daily_log"
+			if strings.TrimSpace(jobs[i].SessionID) != "" || strings.EqualFold(jobs[i].SessionTarget, "main") {
+				jobs[i].DeliveryMode = "session"
+			} else {
+				jobs[i].DeliveryMode = "daily_log"
+			}
 		}
 		payload, err := normalizePayload(jobs[i].Payload)
 		if err == nil {
