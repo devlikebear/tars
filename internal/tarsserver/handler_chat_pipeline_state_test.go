@@ -1,13 +1,11 @@
 package tarsserver
 
 import (
-	"context"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
@@ -117,121 +115,26 @@ func TestPersistChatResult_PromotesMemoryAndDedupesExperience(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search experiences: %v", err)
 	}
+	// Only the explicit "remember …" hot path survives in the per-turn
+	// hook; auto-experience derivation (task_completed, error_resolved,
+	// etc.) moved to the nightly reflection job and is covered by
+	// reflection.TestMemoryJobExtractsExperiences.
 	preferenceCount := 0
-	taskCount := 0
 	for _, row := range rows {
-		switch {
-		case row.Category == "preference" && strings.Contains(strings.ToLower(row.Summary), "black coffee"):
+		if row.Category == "preference" && strings.Contains(strings.ToLower(row.Summary), "black coffee") {
 			preferenceCount++
-		case row.Category == "task_completed" && strings.Contains(strings.ToLower(row.Summary), "completed the coffee setup"):
-			taskCount++
 		}
 	}
 	if preferenceCount != 1 {
 		t.Fatalf("expected exactly one preference experience, got %d rows=%+v", preferenceCount, rows)
 	}
-	if taskCount != 1 {
-		t.Fatalf("expected exactly one task_completed experience, got %d rows=%+v", taskCount, rows)
-	}
 }
 
-func TestDeriveAutoExperience_Heuristics(t *testing.T) {
-	now := time.Date(2026, 3, 7, 3, 0, 0, 0, time.UTC)
-	tests := []struct {
-		name          string
-		userMessage   string
-		assistantText string
-		wantCategory  string
-		wantSummary   string
-	}{
-		{
-			name:         "preference from user",
-			userMessage:  "I prefer concise replies",
-			wantCategory: "preference",
-			wantSummary:  "I prefer concise replies",
-		},
-		{
-			name:          "task completed from assistant",
-			assistantText: "completed the deployment successfully",
-			wantCategory:  "task_completed",
-			wantSummary:   "completed the deployment successfully",
-		},
-		{
-			name:          "error resolved from assistant",
-			assistantText: "resolved the auth issue",
-			wantCategory:  "error_resolved",
-			wantSummary:   "resolved the auth issue",
-		},
-	}
+// Auto-experience derivation moved to internal/reflection. The
+// equivalent coverage now lives in reflection.TestDeriveUserExperience*
+// and TestDeriveAssistantExperience*.
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, ok := deriveAutoExperience("sess", tc.userMessage, tc.assistantText, now)
-			if !ok {
-				t.Fatalf("expected auto experience")
-			}
-			if got.Category != tc.wantCategory {
-				t.Fatalf("expected category %q, got %q", tc.wantCategory, got.Category)
-			}
-			if got.Summary != tc.wantSummary {
-				t.Fatalf("expected summary %q, got %q", tc.wantSummary, got.Summary)
-			}
-		})
-	}
-}
-
-type knowledgeCompileStubClient struct {
-	content string
-}
-
-func (c *knowledgeCompileStubClient) Ask(_ context.Context, _ string) (string, error) {
-	return c.content, nil
-}
-
-func (c *knowledgeCompileStubClient) Chat(_ context.Context, _ []llm.ChatMessage, _ llm.ChatOptions) (llm.ChatResponse, error) {
-	return llm.ChatResponse{
-		Message: llm.ChatMessage{
-			Role:    "assistant",
-			Content: c.content,
-		},
-	}, nil
-}
-
-func TestPersistChatResult_CompilesKnowledgeBaseNote(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "workspace")
-	if err := memory.EnsureWorkspace(root); err != nil {
-		t.Fatalf("ensure workspace: %v", err)
-	}
-
-	logger := zerolog.New(io.Discard)
-	store := session.NewStore(root)
-	sess, err := store.Create("chat")
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-
-	state := chatRunState{
-		requestWorkspaceDir: root,
-		store:               store,
-		sessionID:           sess.ID,
-		transcriptPath:      store.TranscriptPath(sess.ID),
-		llmClient: &knowledgeCompileStubClient{
-			content: `{"notes":[{"slug":"coffee-preference","title":"Coffee Preference","kind":"preference","summary":"User prefers black coffee.","body":"Keep coffee suggestions unsweetened.","tags":["coffee"],"aliases":["black coffee"]}],"edges":[]}`,
-		},
-	}
-
-	persistChatResult(state, "remember I prefer black coffee", llm.ChatResponse{
-		Message: llm.ChatMessage{
-			Role:    "assistant",
-			Content: "I will remember that you prefer black coffee.",
-		},
-	}, nil, logger)
-
-	noteRaw, err := os.ReadFile(filepath.Join(root, "memory", "wiki", "notes", "coffee-preference.md"))
-	if err != nil {
-		t.Fatalf("read compiled note: %v", err)
-	}
-	if !strings.Contains(string(noteRaw), "Coffee Preference") || !strings.Contains(string(noteRaw), "black coffee") {
-		t.Fatalf("expected compiled knowledge note, got %q", string(noteRaw))
-	}
-}
+// Per-turn knowledge-base compilation was removed along with
+// maybeCompileKnowledgeBase; the equivalent coverage now lives in
+// reflection.TestMemoryJobLLMKnowledgeCompile which exercises the
+// nightly batch form of the same LLM call.

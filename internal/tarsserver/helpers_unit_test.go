@@ -57,26 +57,8 @@ func TestShouldPromoteToMemory(t *testing.T) {
 	}
 }
 
-func TestShouldCompileKnowledgeBase(t *testing.T) {
-	if shouldCompileKnowledgeBase(chatMemoryHookInput{
-		UserMessage:      "hello there",
-		AssistantMessage: "hi",
-	}) {
-		t.Fatal("did not expect trivial chat to compile knowledge base")
-	}
-	if !shouldCompileKnowledgeBase(chatMemoryHookInput{
-		UserMessage:      "나는 삼성전자 주식을 보유하고 있어. 기억해줘",
-		AssistantMessage: "앞으로 반영할게",
-	}) {
-		t.Fatal("expected durable remember request to compile knowledge base")
-	}
-	if !shouldCompileKnowledgeBase(chatMemoryHookInput{
-		UserMessage:      "이번 프로젝트의 배포 정책은 blue-green으로 유지해",
-		AssistantMessage: "정책으로 기억할게",
-	}) {
-		t.Fatal("expected durable workflow/policy signal to compile knowledge base")
-	}
-}
+// Knowledge-base compile gating moved to internal/reflection. The
+// equivalent coverage now lives in reflection.TestShouldCompileKnowledgeHints.
 
 func TestNormalizeAllowedToolsForRegistry(t *testing.T) {
 	registry := tool.NewRegistry()

@@ -1319,8 +1319,11 @@ func TestChatAPI_ToolCallMemorySearch(t *testing.T) {
 	if !strings.Contains(body, "Memory says: you prefer black coffee.") {
 		t.Fatalf("expected final assistant text in SSE, got %q", body)
 	}
-	if mockClient.callCount != 3 {
-		t.Fatalf("expected 3 llm calls (tool + final + knowledge compile), got %d", mockClient.callCount)
+	// Two LLM calls: tool invocation + final response. Knowledge-base
+	// compilation moved to the nightly reflection job and no longer
+	// fires on the per-turn hot path.
+	if mockClient.callCount != 2 {
+		t.Fatalf("expected 2 llm calls (tool + final), got %d", mockClient.callCount)
 	}
 	if len(mockClient.seenToolCounts) == 0 || mockClient.seenToolCounts[0] == 0 {
 		t.Fatalf("expected tool schemas to be forwarded, got %+v", mockClient.seenToolCounts)
