@@ -39,7 +39,10 @@ func newWorkspaceFilesHandler(workspaceDir string, logger zerolog.Logger) http.H
 		}
 
 		// Prevent path traversal
-		cleanRoot := strings.TrimRight(filepath.Clean(rootDir), "/")
+		cleanRoot := filepath.Clean(rootDir)
+		if cleanRoot != "/" {
+			cleanRoot = strings.TrimRight(cleanRoot, "/")
+		}
 		absPath := filepath.Join(cleanRoot, filepath.Clean(relPath))
 		if !strings.HasPrefix(absPath, cleanRoot) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
