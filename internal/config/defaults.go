@@ -120,6 +120,23 @@ func defaultConfigValues() Config {
 			CronRunHistoryLimit: defaultCronRunHistoryLimit,
 			NotifyWhenNoClients: true,
 			ScheduleTimezone:    defaultScheduleTimezone,
+
+			// Pulse watchdog defaults — see internal/pulse for semantics.
+			PulseEnabled:                  true,
+			PulseInterval:                 "1m",
+			PulseTimeout:                  "2m",
+			PulseActiveHours:              "00:00-24:00",
+			PulseTimezone:                 "Local",
+			PulseMinSeverity:              "warn",
+			PulseAllowedAutofixes:         []string{"compress_old_logs", "cleanup_stale_tmp"},
+			PulseNotifyTelegram:           false,
+			PulseNotifySessionEvents:      true,
+			PulseCronFailureThreshold:     3,
+			PulseStuckRunMinutes:          60,
+			PulseDiskWarnPercent:          85,
+			PulseDiskCriticalPercent:      95,
+			PulseDeliveryFailureThreshold: 3,
+			PulseDeliveryFailureWindow:    "10m",
 		},
 		AssistantConfig: AssistantConfig{
 			AssistantEnabled:    true,

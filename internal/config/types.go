@@ -93,6 +93,24 @@ type AutomationConfig struct {
 	NotifyCommand        string
 	NotifyWhenNoClients  bool
 	ScheduleTimezone     string
+
+	// Pulse is the system-surface watchdog. All fields default to
+	// conservative values so it runs silently until signals appear.
+	PulseEnabled                  bool
+	PulseInterval                 string // duration string, e.g. "1m"
+	PulseTimeout                  string // duration string, e.g. "2m"
+	PulseActiveHours              string
+	PulseTimezone                 string
+	PulseMinSeverity              string
+	PulseAllowedAutofixes         []string
+	PulseNotifyTelegram           bool
+	PulseNotifySessionEvents      bool
+	PulseCronFailureThreshold     int
+	PulseStuckRunMinutes          int
+	PulseDiskWarnPercent          float64
+	PulseDiskCriticalPercent      float64
+	PulseDeliveryFailureThreshold int
+	PulseDeliveryFailureWindow    string // duration string, e.g. "10m"
 }
 
 type AssistantConfig struct {

@@ -22,6 +22,7 @@ import (
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/ops"
+	"github.com/devlikebear/tars/internal/pulse"
 	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/schedule"
 	"github.com/devlikebear/tars/internal/skillhub"
@@ -41,11 +42,13 @@ type serveAPIRuntime struct {
 	cronManager        *workspaceCronManager
 	watchdogManager    *workspaceWatchdogManager
 	heartbeatTicker    *heartbeatTickerManager
+	pulseRuntime       *pulse.Runtime
 	telegramPoller     *telegramUpdatePoller
 }
 
 type apiRouteHandlers struct {
 	heartbeat       http.Handler
+	pulse           http.Handler
 	chat            http.Handler
 	sessions        http.Handler
 	memory          http.Handler
@@ -339,6 +342,19 @@ func buildAPIMux(
 		Now:                                  nowFn,
 	})
 	gatewayRuntimeForTelegram = gatewayRuntime
+
+	pulseSetup := buildPulseRuntime(pulseSetupInputs{
+		Config:          cfg,
+		WorkspaceDir:    cfg.WorkspaceDir,
+		LLMClient:       deps.llmClient,
+		CronStore:       cronStore,
+		GatewayRuntime:  gatewayRuntime,
+		OpsManager:      opsManager,
+		DeliveryCounter: telegramDeliveryCounter,
+		NotifyEmit:      dispatcher.Emit,
+		Logger:          logger,
+	})
+
 	refreshGatewayExecutors := func(reason string) int {
 		executors := buildGatewayExecutors(cfg, apiRunPromptWithTools, logger)
 		gatewayRuntime.SetExecutors(executors, strings.TrimSpace(cfg.GatewayDefaultAgent))
@@ -561,6 +577,7 @@ func buildAPIMux(
 	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildSemanticMemoryService(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg)), logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		heartbeat:       heartbeatHandler,
+		pulse:           pulseSetup.Handler,
 		chat:            chatHandler,
 		sessions:        sessionHandler,
 		memory:          memoryHandler,
@@ -627,6 +644,7 @@ func buildAPIMux(
 		cronManager:        cronManager,
 		watchdogManager:    watchdogManager,
 		heartbeatTicker:    heartbeatTicker,
+		pulseRuntime:       pulseSetup.Runtime,
 		telegramPoller:     telegramPoller,
 	}, nil
 }
@@ -637,6 +655,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	}
 	legacyDashboard := newLegacyDashboardRedirectHandler()
 	mux.Handle("/v1/heartbeat/", handlers.heartbeat)
+	mux.Handle("/v1/pulse/", handlers.pulse)
 	mux.Handle("/v1/chat", handlers.chat)
 	mux.Handle("/v1/chat/", handlers.chat)
 	mux.Handle("/v1/sessions", handlers.sessions)
@@ -759,6 +778,9 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 			}
 		}()
 	}
+	if runtime.pulseRuntime != nil {
+		runtime.pulseRuntime.Start(ctx)
+	}
 	if runtime.watchdogManager != nil {
 		go func() {
 			if err := runtime.watchdogManager.Start(ctx); err != nil {
@@ -782,6 +804,9 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	if runtime == nil {
 		return
+	}
+	if runtime.pulseRuntime != nil {
+		runtime.pulseRuntime.Stop()
 	}
 	if runtime.extensionsManager != nil {
 		runtime.extensionsManager.Close()
