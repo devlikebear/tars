@@ -59,6 +59,48 @@ export type PulseConfigView = {
   disk_critical_percent: number
 }
 
+// --- Reflection (nightly batch runner) ---
+
+export type ReflectionJobResult = {
+  name: string
+  success: boolean
+  changed?: boolean
+  summary?: string
+  details?: Record<string, unknown>
+  err?: string
+  duration_ms: number
+}
+
+export type ReflectionRunSummary = {
+  started_at: string
+  finished_at: string
+  results: ReflectionJobResult[]
+  success: boolean
+  err?: string
+}
+
+export type ReflectionSnapshot = {
+  last_run_at: string
+  last_run_success: boolean
+  last_run_summary?: ReflectionRunSummary
+  last_successful_run_at?: string
+  consecutive_failures: number
+  total_runs: number
+  total_successes: number
+  total_failures: number
+  recent: ReflectionRunSummary[]
+}
+
+export type ReflectionConfigView = {
+  enabled: boolean
+  sleep_window: string
+  timezone: string
+  tick_interval_seconds: number
+  empty_session_age_seconds: number
+  memory_lookback_hours: number
+  max_turns_per_session: number
+}
+
 export type CronJob = {
   id: string
   name: string
