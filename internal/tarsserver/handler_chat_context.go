@@ -2,6 +2,8 @@ package tarsserver
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -74,17 +76,22 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	// Fetch session early for WorkDirs
 	sess, sessErr := reqStore.Get(sessionID)
 
+	// Session artifacts directory — always available, isolated per session
+	artifactsDir := filepath.Join(requestWorkspaceDir, "artifacts", sessionID)
+	_ = os.MkdirAll(artifactsDir, 0o755)
+
 	// Build PathPolicy from session work_dirs
 	var policy tool.PathPolicy
 	var sessionWorkDirs []string
 	var sessionCurrentDir string
 	if sessErr == nil && len(sess.WorkDirs) > 0 {
-		policy = tool.NewPathPolicy(requestWorkspaceDir, sess.WorkDirs, sess.CurrentDir)
-		sessionWorkDirs = sess.WorkDirs
+		sessionWorkDirs = append(sess.WorkDirs, artifactsDir)
 		sessionCurrentDir = sess.CurrentDir
 	} else {
-		policy = tool.SingleDirPolicy(requestWorkspaceDir)
+		sessionWorkDirs = []string{artifactsDir}
+		sessionCurrentDir = ""
 	}
+	policy = tool.NewPathPolicy(requestWorkspaceDir, sessionWorkDirs, sessionCurrentDir)
 
 	registry := buildChatToolRegistry(
 		reqStore,

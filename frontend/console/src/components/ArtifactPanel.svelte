@@ -210,6 +210,10 @@
     openFile(artifact.path)
   }
 
+  export function refresh() {
+    void browseDir(currentPath)
+  }
+
   $effect(() => {
     if (activeTab === 'workspace') {
       void loadWorkDirs().then(() => browseDir(currentPath))
