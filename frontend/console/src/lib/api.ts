@@ -26,6 +26,9 @@ import type {
   PulseSnapshot,
   PulseTickOutcome,
   PulseConfigView,
+  ReflectionSnapshot,
+  ReflectionRunSummary,
+  ReflectionConfigView,
   KnowledgeGraph,
   KnowledgeNote,
   Session,
@@ -84,6 +87,20 @@ export async function runPulseOnce(): Promise<PulseTickOutcome> {
 
 export async function getPulseConfig(): Promise<PulseConfigView> {
   return requestJSON<PulseConfigView>('/v1/pulse/config')
+}
+
+// --- Reflection (nightly batch runner) ---
+
+export async function getReflectionStatus(): Promise<ReflectionSnapshot> {
+  return requestJSON<ReflectionSnapshot>('/v1/reflection/status')
+}
+
+export async function runReflectionOnce(): Promise<ReflectionRunSummary> {
+  return requestJSON<ReflectionRunSummary>('/v1/reflection/run-once', { method: 'POST' })
+}
+
+export async function getReflectionConfig(): Promise<ReflectionConfigView> {
+  return requestJSON<ReflectionConfigView>('/v1/reflection/config')
 }
 
 export async function listCronJobs(): Promise<CronJob[]> {

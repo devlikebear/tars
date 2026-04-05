@@ -19,6 +19,7 @@
     { id: 'sysprompt', label: 'System Prompt', path: '/console/sysprompt', icon: '\u2691' },
     { id: 'ops', label: 'Operations', path: '/console/ops', icon: '\u2699' },
     { id: 'pulse', label: 'Pulse', path: '/console/pulse', icon: '\u2661' },
+    { id: 'reflection', label: 'Reflection', path: '/console/reflection', icon: '\u263e' },
     { id: 'extensions', label: 'Extensions', path: '/console/extensions', icon: '\u2756' },
     { id: 'config', label: 'Settings', path: '/console/config', icon: '\u2638' },
   ]

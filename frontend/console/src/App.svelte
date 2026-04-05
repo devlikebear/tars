@@ -8,6 +8,7 @@
   import Config from './components/Config.svelte'
   import Extensions from './components/Extensions.svelte'
   import Pulse from './components/Pulse.svelte'
+  import Reflection from './components/Reflection.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { getEventsHistory, streamEvents } from './lib/api'
 
@@ -90,6 +91,8 @@
     <Config />
   {:else if route.view === 'pulse'}
     <Pulse />
+  {:else if route.view === 'reflection'}
+    <Reflection />
   {:else if route.view === 'extensions'}
     <Extensions />
   {/if}

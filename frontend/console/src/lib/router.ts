@@ -9,6 +9,7 @@ export type Route =
   | { view: 'config' }
   | { view: 'extensions' }
   | { view: 'pulse' }
+  | { view: 'reflection' }
 
 export function resolveRoute(pathname: string): Route {
   const path = pathname.trim()
@@ -51,6 +52,10 @@ export function resolveRoute(pathname: string): Route {
   if (path.startsWith(`${consoleBase}/pulse`) || path.startsWith(`${consoleBase}/heartbeat`)) {
     // legacy /console/heartbeat URLs redirect to the pulse view
     return { view: 'pulse' }
+  }
+
+  if (path.startsWith(`${consoleBase}/reflection`)) {
+    return { view: 'reflection' }
   }
 
   // Default: /console → chat

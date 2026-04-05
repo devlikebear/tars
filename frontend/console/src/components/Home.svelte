@@ -3,10 +3,12 @@
   import {
     getEventsHistory,
     getPulseStatus,
+    getReflectionStatus,
     streamEvents,
   } from '../lib/api'
   import type {
     PulseSnapshot,
+    ReflectionSnapshot,
     NotificationMessage,
   } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
@@ -19,6 +21,7 @@
   let { onNavigate, initialPrompt }: Props = $props()
 
   let pulse: PulseSnapshot | null = $state(null)
+  let reflection: ReflectionSnapshot | null = $state(null)
   let notifications: NotificationMessage[] = $state([])
   let unreadCount = $state(0)
 
@@ -55,11 +58,13 @@
     loading = true
     error = ''
     try {
-      const [h, e] = await Promise.allSettled([
+      const [h, r, e] = await Promise.allSettled([
         getPulseStatus(),
+        getReflectionStatus(),
         getEventsHistory(20),
       ])
       pulse = h.status === 'fulfilled' ? h.value : null
+      reflection = r.status === 'fulfilled' ? r.value : null
       if (e.status === 'fulfilled') {
         notifications = (e.value.items ?? []).slice(0, 10)
         unreadCount = e.value.unread_count ?? 0
@@ -79,6 +84,9 @@
         unreadCount++
         if (event.category === 'pulse') {
           void getPulseStatus().then((s) => { pulse = s }).catch(() => {})
+          // A pulse reflection-failure signal means the reflection
+          // snapshot likely changed too — refresh both.
+          void getReflectionStatus().then((s) => { reflection = s }).catch(() => {})
         }
       },
     )
@@ -123,6 +131,13 @@
           {pulse?.last_tick_at ? relativeTime(pulse.last_tick_at) : 'never'}
         </span>
         <span class="pulse-label">Last tick</span>
+      </div>
+      <div class="pulse-divider"></div>
+      <div class="pulse-item">
+        <span class="pulse-value" class:has-warning={(reflection?.consecutive_failures ?? 0) > 0}>
+          {reflection?.last_successful_run_at ? relativeTime(reflection.last_successful_run_at) : 'never'}
+        </span>
+        <span class="pulse-label">Last reflection</span>
       </div>
       <div class="pulse-divider"></div>
       <div class="pulse-item">
