@@ -49,6 +49,10 @@ func NewExecTool(workspaceDir string) Tool {
 }
 
 func NewExecToolWithManager(workspaceDir string, manager *ProcessManager) Tool {
+	return NewExecToolWithPolicy(SingleDirPolicy(workspaceDir), manager)
+}
+
+func NewExecToolWithPolicy(policy PathPolicy, manager *ProcessManager) Tool {
 	return Tool{
 		Name:        "exec",
 		Description: "Run a shell command in workspace with timeout and safety restrictions.",
@@ -94,7 +98,7 @@ func NewExecToolWithManager(workspaceDir string, manager *ProcessManager) Tool {
 				if manager == nil {
 					return execErrorResult(commandLine, "background execution requires process manager", -1, "", "", 0, false), nil
 				}
-				snap, err := manager.Start(ctx, workspaceDir, commandLine, timeoutMS)
+				snap, err := manager.Start(ctx, policy.PrimaryDir, commandLine, timeoutMS)
 				if err != nil {
 					return execErrorResult(commandLine, err.Error(), -1, "", "", 0, false), nil
 				}
@@ -111,7 +115,7 @@ func NewExecToolWithManager(workspaceDir string, manager *ProcessManager) Tool {
 			defer cancel()
 
 			cmd := exec.CommandContext(runCtx, command, fields[1:]...)
-			cmd.Dir = workspaceDir
+			cmd.Dir = policy.PrimaryDir
 
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer

@@ -71,11 +71,27 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 	history := historySnapshot.Messages
 
+	// Fetch session early for WorkDirs
+	sess, sessErr := reqStore.Get(sessionID)
+
+	// Build PathPolicy from session work_dirs
+	var policy tool.PathPolicy
+	var sessionWorkDirs []string
+	var sessionCurrentDir string
+	if sessErr == nil && len(sess.WorkDirs) > 0 {
+		policy = tool.NewPathPolicy(requestWorkspaceDir, sess.WorkDirs, sess.CurrentDir)
+		sessionWorkDirs = sess.WorkDirs
+		sessionCurrentDir = sess.CurrentDir
+	} else {
+		policy = tool.SingleDirPolicy(requestWorkspaceDir)
+	}
+
 	registry := buildChatToolRegistry(
 		reqStore,
 		workspaceID,
 		sessionID,
 		requestWorkspaceDir,
+		policy,
 		history,
 		deps,
 	)
@@ -85,7 +101,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 	resolvedSkill := resolveSkillSelection(req.Message, deps.tooling.Extensions, requestWorkspaceDir, sessionID)
 	invokedSkill := resolvedSkill.Definition
-	contextDetails, err := prepareChatContextDetailsWithCache(requestWorkspaceDir, sessionID, req.Message, extSnapshot, invokedSkill, deps.tooling.MemoryCache, deps.tooling.MemorySemanticConfig)
+	contextDetails, err := prepareChatContextDetailsWithCache(requestWorkspaceDir, sessionID, req.Message, extSnapshot, invokedSkill, deps.tooling.MemoryCache, deps.tooling.MemorySemanticConfig, sessionWorkDirs, sessionCurrentDir)
 	if err != nil {
 		return chatRunState{}, http.StatusInternalServerError, "prepare chat context failed", err
 	}
@@ -109,8 +125,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusInternalServerError, "save message failed", err
 	}
 
-	// Apply session-level prompt override
-	sess, sessErr := reqStore.Get(sessionID)
+	// Apply session-level prompt override (reuse sess fetched earlier)
 	if sessErr == nil && strings.TrimSpace(sess.PromptOverride) != "" {
 		systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(sess.PromptOverride) + "\n"
 	}

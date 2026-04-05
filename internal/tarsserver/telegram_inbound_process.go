@@ -10,6 +10,7 @@ import (
 	"github.com/devlikebear/tars/internal/agent"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 )
 
@@ -44,6 +45,7 @@ func (h *telegramInboundHandler) processMessage(
 		defaultWorkspaceID,
 		sessionID,
 		h.workspaceDir,
+		tool.SingleDirPolicy(h.workspaceDir),
 		history,
 		chatHandlerDeps{
 			workspaceDir: h.workspaceDir,

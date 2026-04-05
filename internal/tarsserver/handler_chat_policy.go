@@ -15,10 +15,11 @@ func buildChatToolRegistry(
 	workspaceID string,
 	sessionID string,
 	requestWorkspaceDir string,
+	policy tool.PathPolicy,
 	history []session.Message,
 	deps chatHandlerDeps,
 ) *tool.Registry {
-	registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, deps.tooling.ProcessManager, deps.tooling.MemorySemanticConfig)
+	registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, policy, deps.tooling.ProcessManager, deps.tooling.MemorySemanticConfig)
 
 	// Re-register ops aggregator with deps manager
 	registry.Register(tool.NewOpsTool(deps.tooling.OpsManager))

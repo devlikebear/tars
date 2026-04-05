@@ -30,6 +30,10 @@ type listDirResponse struct {
 }
 
 func NewListDirTool(workspaceDir string) Tool {
+	return NewListDirToolWithPolicy(SingleDirPolicy(workspaceDir))
+}
+
+func NewListDirToolWithPolicy(policy PathPolicy) Tool {
 	return Tool{
 		Name:        "list_dir",
 		Description: "List files and directories under a workspace path.",
@@ -54,7 +58,7 @@ func NewListDirTool(workspaceDir string) Tool {
 
 			maxEntries := resolvePositiveBoundedInt(defaultListDirMaxEntries, maxListDirMaxEntries, input.MaxEntries)
 
-			absPath, err := resolveWorkspacePath(workspaceDir, input.Path)
+			absPath, err := resolvePathWithPolicy(policy, input.Path)
 			if err != nil {
 				return listDirErrorResult(err.Error()), nil
 			}
@@ -70,13 +74,13 @@ func NewListDirTool(workspaceDir string) Tool {
 				return listDirErrorResult("path is not a directory"), nil
 			}
 
-			entries, truncated, err := collectDirEntries(workspaceDir, absPath, input.Recursive, maxEntries)
+			entries, truncated, err := collectDirEntriesWithPolicy(policy, absPath, input.Recursive, maxEntries)
 			if err != nil {
 				return listDirErrorResult(fmt.Sprintf("list directory failed: %v", err)), nil
 			}
 
 			return JSONTextResult(listDirResponse{
-				Path:      workspaceRelativePath(workspaceDir, absPath),
+				Path:      policyRelativePath(policy, absPath),
 				Recursive: input.Recursive,
 				Count:     len(entries),
 				Truncated: truncated,
@@ -87,6 +91,10 @@ func NewListDirTool(workspaceDir string) Tool {
 }
 
 func collectDirEntries(workspaceDir, absPath string, recursive bool, maxEntries int) ([]listDirEntry, bool, error) {
+	return collectDirEntriesWithPolicy(SingleDirPolicy(workspaceDir), absPath, recursive, maxEntries)
+}
+
+func collectDirEntriesWithPolicy(policy PathPolicy, absPath string, recursive bool, maxEntries int) ([]listDirEntry, bool, error) {
 	if !recursive {
 		dirEntries, err := os.ReadDir(absPath)
 		if err != nil {
@@ -99,7 +107,7 @@ func collectDirEntries(workspaceDir, absPath string, recursive bool, maxEntries 
 				truncated = true
 				break
 			}
-			entry, err := buildListDirEntry(workspaceDir, filepath.Join(absPath, item.Name()), item.Type())
+			entry, err := buildListDirEntryWithPolicy(policy, filepath.Join(absPath, item.Name()), item.Type())
 			if err != nil {
 				continue
 			}
@@ -121,7 +129,7 @@ func collectDirEntries(workspaceDir, absPath string, recursive bool, maxEntries 
 			truncated = true
 			return fs.SkipAll
 		}
-		entry, buildErr := buildListDirEntry(workspaceDir, path, d.Type())
+		entry, buildErr := buildListDirEntryWithPolicy(policy, path, d.Type())
 		if buildErr != nil {
 			return nil
 		}
@@ -132,6 +140,10 @@ func collectDirEntries(workspaceDir, absPath string, recursive bool, maxEntries 
 }
 
 func buildListDirEntry(workspaceDir, absPath string, mode fs.FileMode) (listDirEntry, error) {
+	return buildListDirEntryWithPolicy(SingleDirPolicy(workspaceDir), absPath, mode)
+}
+
+func buildListDirEntryWithPolicy(policy PathPolicy, absPath string, mode fs.FileMode) (listDirEntry, error) {
 	entryType := "file"
 	if mode.IsDir() {
 		entryType = "dir"
@@ -144,7 +156,7 @@ func buildListDirEntry(workspaceDir, absPath string, mode fs.FileMode) (listDirE
 		return listDirEntry{}, err
 	}
 	entry := listDirEntry{
-		Path: workspaceRelativePath(workspaceDir, absPath),
+		Path: policyRelativePath(policy, absPath),
 		Type: entryType,
 	}
 	if !info.IsDir() {

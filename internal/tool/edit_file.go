@@ -23,7 +23,15 @@ func NewEditFileTool(workspaceDir string) Tool {
 	return newEditToolWithName("edit_file", workspaceDir)
 }
 
+func NewEditFileToolWithPolicy(policy PathPolicy) Tool {
+	return newEditToolWithPolicy("edit_file", policy)
+}
+
 func newEditToolWithName(name, workspaceDir string) Tool {
+	return newEditToolWithPolicy(name, SingleDirPolicy(workspaceDir))
+}
+
+func newEditToolWithPolicy(name string, policy PathPolicy) Tool {
 	return Tool{
 		Name:        name,
 		Description: "Edit a workspace file by replacing exact text.",
@@ -55,7 +63,7 @@ func newEditToolWithName(name, workspaceDir string) Tool {
 				return JSONTextResult(editFileResponse{Message: "old_text is required"}, true), nil
 			}
 
-			absPath, err := resolveWorkspacePath(workspaceDir, input.Path)
+			absPath, err := resolvePathWithPolicy(policy, input.Path)
 			if err != nil {
 				return JSONTextResult(editFileResponse{Message: err.Error()}, true), nil
 			}
@@ -91,7 +99,7 @@ func newEditToolWithName(name, workspaceDir string) Tool {
 				replacements = count
 			}
 			return JSONTextResult(editFileResponse{
-				Path:         workspaceRelativePath(workspaceDir, absPath),
+				Path:         policyRelativePath(policy, absPath),
 				Replacements: replacements,
 			}, false), nil
 		},

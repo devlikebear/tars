@@ -25,7 +25,15 @@ func NewWriteFileTool(workspaceDir string) Tool {
 	return newWriteToolWithName("write_file", workspaceDir)
 }
 
+func NewWriteFileToolWithPolicy(policy PathPolicy) Tool {
+	return newWriteToolWithPolicy("write_file", policy)
+}
+
 func newWriteToolWithName(name, workspaceDir string) Tool {
+	return newWriteToolWithPolicy(name, SingleDirPolicy(workspaceDir))
+}
+
+func newWriteToolWithPolicy(name string, policy PathPolicy) Tool {
 	return Tool{
 		Name:        name,
 		Description: "Write UTF-8 text content to a workspace file using safe, atomic writes.",
@@ -51,7 +59,7 @@ func newWriteToolWithName(name, workspaceDir string) Tool {
 			if input.Path == "" {
 				return JSONTextResult(writeFileResponse{Message: "path is required"}, true), nil
 			}
-			absPath, err := resolveWorkspaceWritePath(workspaceDir, input.Path)
+			absPath, err := resolveWritePathWithPolicy(policy, input.Path)
 			if err != nil {
 				return JSONTextResult(writeFileResponse{Message: err.Error()}, true), nil
 			}
@@ -83,7 +91,7 @@ func newWriteToolWithName(name, workspaceDir string) Tool {
 				return JSONTextResult(writeFileResponse{Message: fmt.Sprintf("write file failed: %v", err)}, true), nil
 			}
 			return JSONTextResult(writeFileResponse{
-				Path:    workspaceRelativePath(workspaceDir, absPath),
+				Path:    policyRelativePath(policy, absPath),
 				Bytes:   len(input.Content),
 				Created: created,
 			}, false), nil
