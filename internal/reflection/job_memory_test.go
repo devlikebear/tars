@@ -62,6 +62,30 @@ func (f *fakeLLM) Chat(ctx context.Context, msgs []llm.ChatMessage, opts llm.Cha
 	return llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: f.response}}, nil
 }
 
+// routerForFake wraps one fakeLLM into a three-tier router. All tiers
+// point at the same fake so the test can still assert call counts on it
+// regardless of which tier a role resolves to. RoleReflectionMemory is
+// mapped to light to exercise the role→tier lookup path.
+func routerForFake(t *testing.T, client *fakeLLM) llm.Router {
+	t.Helper()
+	entry := llm.TierEntry{Client: client, Provider: "fake", Model: "fake-model"}
+	router, err := llm.NewRouter(llm.RouterConfig{
+		Tiers: map[llm.Tier]llm.TierEntry{
+			llm.TierHeavy:    entry,
+			llm.TierStandard: entry,
+			llm.TierLight:    entry,
+		},
+		DefaultTier: llm.TierStandard,
+		RoleDefaults: map[llm.Role]llm.Tier{
+			llm.RoleReflectionMemory: llm.TierLight,
+		},
+	})
+	if err != nil {
+		t.Fatalf("build router: %v", err)
+	}
+	return router
+}
+
 func newTestWorkspace(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -246,7 +270,7 @@ func TestMemoryJobLLMKnowledgeCompile(t *testing.T) {
 	job := &MemoryJob{
 		WorkspaceDir: workspace,
 		Sessions:     src,
-		LLMClient:    fakeClient,
+		Router:       routerForFake(t, fakeClient),
 		Now:          func() time.Time { return time.Now() },
 	}
 	result, err := job.Run(context.Background())

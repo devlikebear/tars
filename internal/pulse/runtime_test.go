@@ -20,7 +20,7 @@ func buildRuntime(t *testing.T, resp llm.ChatResponse, llmErr error) (*Runtime, 
 		Thresholds{DiskUsedPercentWarn: 85},
 		time.Now(),
 	)
-	decider := NewDecider(&fakeLLMClient{resp: resp, err: llmErr}, DeciderPolicy{
+	decider := NewDecider(routerForClient(&fakeLLMClient{resp: resp, err: llmErr}), DeciderPolicy{
 		AllowedAutofixes: []string{"compress_old_logs"},
 	})
 	notif := &captureNotifier{}

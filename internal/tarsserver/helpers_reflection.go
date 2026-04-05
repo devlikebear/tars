@@ -29,7 +29,7 @@ func reflectionHealthFromSetup(setup reflectionSetup) pulse.ReflectionHealthSour
 type reflectionSetupInputs struct {
 	Config       config.Config
 	WorkspaceDir string
-	LLMClient    llm.Client
+	Router       llm.Router
 	SessionStore *session.Store
 	Logger       zerolog.Logger
 }
@@ -70,7 +70,7 @@ func buildReflectionRuntime(in reflectionSetupInputs) reflectionSetup {
 		&reflection.MemoryJob{
 			WorkspaceDir:       in.WorkspaceDir,
 			Sessions:           in.SessionStore,
-			LLMClient:          in.LLMClient,
+			Router:             in.Router,
 			Lookback:           cfg.EffectiveMemoryLookback(),
 			MaxTurnsPerSession: cfg.EffectiveMaxTurnsPerSession(),
 		},

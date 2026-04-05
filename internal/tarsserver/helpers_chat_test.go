@@ -45,6 +45,30 @@ func (c *compactionLLMClient) Chat(_ context.Context, messages []llm.ChatMessage
 	return llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: content}}, nil
 }
 
+// routerForCompactionClient wraps a single llm.Client into a three-tier
+// router where every tier resolves to that client. Used by compaction
+// tests that exercise the router-aware helpers without caring about
+// tier selection.
+func routerForCompactionClient(t *testing.T, client llm.Client) llm.Router {
+	t.Helper()
+	entry := llm.TierEntry{Client: client, Provider: "fake", Model: "fake-model"}
+	router, err := llm.NewRouter(llm.RouterConfig{
+		Tiers: map[llm.Tier]llm.TierEntry{
+			llm.TierHeavy:    entry,
+			llm.TierStandard: entry,
+			llm.TierLight:    entry,
+		},
+		DefaultTier: llm.TierLight,
+		RoleDefaults: map[llm.Role]llm.Tier{
+			llm.RoleContextCompactor: llm.TierLight,
+		},
+	})
+	if err != nil {
+		t.Fatalf("build router: %v", err)
+	}
+	return router
+}
+
 func TestCompactWithMemoryFlush_IndexesSummaryAndExtractedMemories(t *testing.T) {
 	root := t.TempDir()
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -88,7 +112,7 @@ func TestCompactWithMemoryFlush_IndexesSummaryAndExtractedMemories(t *testing.T)
 		extract: `{"memories":[{"category":"preference","summary":"User prefers decaf espresso.","importance":8}]}`,
 	}
 
-	if _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, 20, 0, "", client, time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC), semantic); err != nil {
+	if _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, 20, 0, "", routerForCompactionClient(t, client), time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC), semantic); err != nil {
 		t.Fatalf("compact with memory flush: %v", err)
 	}
 
@@ -125,7 +149,7 @@ func TestCompactWithMemoryFlush_PassesInstructionsToLLMSummary(t *testing.T) {
 	client := &compactionLLMClient{
 		summary: "[COMPACTION SUMMARY]\nFocused summary.",
 	}
-	if _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, 20, 0, "focus on decisions and open questions", client, time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC)); err != nil {
+	if _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, 20, 0, "focus on decisions and open questions", routerForCompactionClient(t, client), time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("compact with memory flush: %v", err)
 	}
 

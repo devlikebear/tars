@@ -306,7 +306,7 @@ func buildAPIMux(
 	reflectionSetup := buildReflectionRuntime(reflectionSetupInputs{
 		Config:       cfg,
 		WorkspaceDir: cfg.WorkspaceDir,
-		LLMClient:    deps.llmClient,
+		Router:       deps.llmRouter,
 		SessionStore: sessionStore,
 		Logger:       logger,
 	})
@@ -314,7 +314,7 @@ func buildAPIMux(
 	pulseSetup := buildPulseRuntime(pulseSetupInputs{
 		Config:           cfg,
 		WorkspaceDir:     cfg.WorkspaceDir,
-		LLMClient:        deps.llmClient,
+		Router:           deps.llmRouter,
 		CronStore:        cronStore,
 		GatewayRuntime:   gatewayRuntime,
 		OpsManager:       opsManager,
@@ -362,6 +362,7 @@ func buildAPIMux(
 		workspaceDir:  cfg.WorkspaceDir,
 		store:         sessionStore,
 		client:        deps.llmClient,
+		router:        deps.llmRouter,
 		logger:        logger,
 		maxIters:      cfg.AgentMaxIterations,
 		mainSessionID: mainSessionID,
@@ -448,6 +449,7 @@ func buildAPIMux(
 		cfg.WorkspaceDir,
 		sessionStore,
 		deps.llmClient,
+		deps.llmRouter,
 		logger,
 		cfg.AgentMaxIterations,
 		activity,
@@ -466,7 +468,7 @@ func buildAPIMux(
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
 	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg))
 	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
-	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmClient, logger)
+	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
 	scheduleHandler := newScheduleAPIHandler(scheduleStore, logger)
 	mcpHandler := newMCPAPIHandler(mcpClient, logger)
@@ -491,6 +493,7 @@ func buildAPIMux(
 		logger,
 	)
 	telegramInbound.mainSessionID = strings.TrimSpace(mainSessionID)
+	telegramInbound.llmRouter = deps.llmRouter
 	telegramInbound.sessionScope = normalizeTelegramSessionScope(cfg.SessionTelegramScope)
 	telegramInbound.maxIterations = cfg.AgentMaxIterations
 	telegramInbound.tooling = chatTooling
