@@ -79,11 +79,18 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	// Emit context info for frontend monitoring
 	stream.contextInfo(map[string]any{
-		"system_prompt_tokens": promptTokenEstimate(state.llmMessages[0].Content),
-		"history_tokens":       sumHistoryTokens(state.history),
-		"history_messages":     len(state.history),
-		"tool_count":           len(state.injectedSchemas),
-		"tool_names":           toolNamesFromSchemas(state.injectedSchemas),
+		"system_prompt_tokens":  promptTokenEstimate(state.llmMessages[0].Content),
+		"history_tokens":        sumHistoryTokens(state.history),
+		"history_messages":      len(state.history),
+		"tool_count":            len(state.injectedSchemas),
+		"tool_names":            toolNamesFromSchemas(state.injectedSchemas),
+		"skill_count":           len(state.availableSkillNames),
+		"skill_names":           state.availableSkillNames,
+		"memory_count":          state.relevantMemoryCount,
+		"memory_tokens":         state.relevantMemoryTokens,
+		"used_tool_names":       []string{},
+		"selected_skill_name":   skillNameOrEmpty(state.invokedSkill),
+		"selected_skill_reason": state.invokedSkillReason,
 	})
 
 	baseCtx := usage.WithCallMeta(r.Context(), usage.CallMeta{

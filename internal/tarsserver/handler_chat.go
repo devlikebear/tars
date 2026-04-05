@@ -317,8 +317,14 @@ type skillSelection struct {
 	Reason     string
 }
 
-func resolveSkillSelection(message string, manager *extensions.Manager, workspaceDir, sessionID string) skillSelection {
+func resolveSkillSelection(message string, manager *extensions.Manager, workspaceDir, sessionID string, sessionConfig ...session.SessionToolConfig) skillSelection {
 	if invoked := resolveInvokedSkill(message, manager); invoked != nil {
+		if len(sessionConfig) > 0 {
+			filtered := applySessionSkillConfig([]skill.Definition{*invoked}, sessionConfig[0])
+			if len(filtered) == 0 {
+				return skillSelection{}
+			}
+		}
 		return skillSelection{Definition: invoked, Reason: "explicit_command"}
 	}
 	projectStart := findProjectStartSkill(manager)
@@ -326,6 +332,12 @@ func resolveSkillSelection(message string, manager *extensions.Manager, workspac
 		return skillSelection{}
 	}
 	if hasActiveProjectBrief(workspaceDir, sessionID) {
+		if len(sessionConfig) > 0 {
+			filtered := applySessionSkillConfig([]skill.Definition{*projectStart}, sessionConfig[0])
+			if len(filtered) == 0 {
+				return skillSelection{}
+			}
+		}
 		return skillSelection{Definition: projectStart, Reason: "active_brief"}
 	}
 	return skillSelection{}
@@ -347,6 +359,42 @@ func findProjectStartSkill(manager *extensions.Manager) *skill.Definition {
 func hasActiveProjectBrief(_, _ string) bool {
 	// Project briefs are no longer available after project package removal.
 	return false
+}
+
+func latestTurnUsedTools(messages []session.Message) []string {
+	if len(messages) == 0 {
+		return nil
+	}
+	start := -1
+	for i := len(messages) - 1; i >= 0; i-- {
+		if strings.TrimSpace(messages[i].Role) == "user" {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+	used := make([]string, 0)
+	seen := map[string]struct{}{}
+	for i := start + 1; i < len(messages); i++ {
+		if strings.TrimSpace(messages[i].Role) == "user" {
+			break
+		}
+		if strings.TrimSpace(messages[i].Role) != "tool" {
+			continue
+		}
+		name := strings.TrimSpace(messages[i].ToolName)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		used = append(used, name)
+	}
+	return used
 }
 
 // ToolCallRecord holds a tool invocation for transcript persistence.
@@ -491,6 +539,25 @@ func toolNamesFromSchemas(schemas []llm.ToolSchema) []string {
 		out = append(out, name)
 	}
 	return out
+}
+
+func skillNamesFromDefinitions(defs []skill.Definition) []string {
+	out := make([]string, 0, len(defs))
+	for _, def := range defs {
+		name := strings.TrimSpace(def.Name)
+		if name == "" {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
+func skillNameOrEmpty(def *skill.Definition) string {
+	if def == nil {
+		return ""
+	}
+	return strings.TrimSpace(def.Name)
 }
 
 func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Client, logger zerolog.Logger) http.Handler {
@@ -675,6 +742,11 @@ func newChatAPIHandlerWithRuntimeConfig(
 		if tooling.Extensions != nil {
 			extSnapshot = tooling.Extensions.Snapshot()
 		}
+		var sessionToolConfigs []session.SessionToolConfig
+		if sess.ToolConfig != nil {
+			sessionToolConfigs = append(sessionToolConfigs, *sess.ToolConfig)
+		}
+		extSnapshot = filterExtensionsSnapshotForSession(extSnapshot, sessionToolConfigs...)
 		// Build PathPolicy from session work_dirs for context preview
 		var previewPolicy tool.PathPolicy
 		if len(sess.WorkDirs) > 0 {
@@ -706,7 +778,14 @@ func newChatAPIHandlerWithRuntimeConfig(
 				mainSessionID: strings.TrimSpace(mainSessionID),
 			},
 		)
-		injectedSchemas := resolveInjectedToolSchemas(registry, tooling.ToolsDefaultSet, nil, "admin", tooling.ToolsAllowHighRiskUser)
+		injectedSchemas := resolveInjectedToolSchemas(
+			registry,
+			tooling.ToolsDefaultSet,
+			nil,
+			"admin",
+			tooling.ToolsAllowHighRiskUser,
+			sessionToolConfigs...,
+		)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"session_id":           sessionID,
 			"system_prompt":        systemPrompt,
@@ -715,8 +794,11 @@ func newChatAPIHandlerWithRuntimeConfig(
 			"history_messages":     len(historySnapshot.Messages),
 			"tool_count":           len(injectedSchemas),
 			"tool_names":           toolNamesFromSchemas(injectedSchemas),
+			"skill_count":          len(extSnapshot.Skills),
+			"skill_names":          skillNamesFromDefinitions(extSnapshot.Skills),
 			"memory_count":         contextDetails.RelevantMemoryCount,
 			"memory_tokens":        contextDetails.RelevantMemoryTokens,
+			"used_tool_names":      latestTurnUsedTools(historySnapshot.Messages),
 			"prompt_override":      sess.PromptOverride,
 		})
 	})

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/extensions"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
 )
 
@@ -49,6 +50,19 @@ func TestResolveSkillForMessage_UsesExplicitProjectStartCommand(t *testing.T) {
 	resolved := resolveSkillSelection("/project-start 새 프로젝트 계획하자", manager, workspaceDir, "sess-1")
 	if resolved.Definition == nil || resolved.Reason != "explicit_command" {
 		t.Fatalf("expected explicit_command routing metadata, got %+v", resolved)
+	}
+}
+
+func TestResolveSkillForMessage_RespectsExplicitEmptySkillAllowlist(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	manager := newTestSkillManager(t, root, workspaceDir)
+
+	resolved := resolveSkillSelection("/project-start 새 프로젝트 계획하자", manager, workspaceDir, "sess-1", session.SessionToolConfig{
+		SkillsCustom: true,
+	})
+	if resolved.Definition != nil {
+		t.Fatalf("expected explicit empty skill allowlist to disable routing, got %+v", resolved)
 	}
 }
 

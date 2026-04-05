@@ -281,8 +281,10 @@ export async function saveSyspromptFile(scope: 'workspace' | 'agent', path: stri
 
 export type SessionToolConfig = {
   tools_enabled?: string[]
+  tools_custom?: boolean
   tools_disabled?: string[]
   skills_enabled?: string[]
+  skills_custom?: boolean
   mcp_enabled?: string[]
 }
 
@@ -324,8 +326,13 @@ export type ChatContextInfo = {
   history_messages: number
   tool_count: number
   tool_names: string[]
+  skill_count?: number
+  skill_names?: string[]
   memory_count: number
   memory_tokens: number
+  used_tool_names?: string[]
+  selected_skill_name?: string
+  selected_skill_reason?: string
   prompt_override: string
 }
 
