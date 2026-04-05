@@ -73,8 +73,8 @@
   async function browsePick(path: string) {
     pickLoading = true
     try {
-      // Browse from workspace root (pass root=workspaceDir equivalent via no root param with special marker)
-      const result = await listWorkspaceFiles(path, '/')
+      // Browse from user home directory
+      const result = await listWorkspaceFiles(path, '~')
       pickFiles = (result.files || []).filter(f => f.is_dir)
       pickPath = result.path || path
     } catch {
