@@ -84,7 +84,7 @@ Runtime:
   /providers
   /models
   /whoami
-  /heartbeat
+  /pulse
   /skills
   /plugins
   /mcp

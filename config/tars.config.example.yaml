@@ -58,9 +58,12 @@ llm_service_tier: ""
 # Agent loop
 agent_max_iterations: 20
 
-# Heartbeat policy
-heartbeat_active_hours: "09:00-22:00"
-heartbeat_timezone: Asia/Seoul
+# Pulse watchdog (1-min tick, system surface)
+pulse_active_hours: "00:00-24:00"
+pulse_timezone: Asia/Seoul
+# Reflection nightly batch (memory + KB cleanup)
+reflection_sleep_window: "02:00-05:00"
+reflection_timezone: Asia/Seoul
 
 # Cron
 cron_run_history_limit: 200

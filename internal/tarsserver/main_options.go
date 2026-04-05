@@ -59,7 +59,7 @@ const memoryToolSystemRule = `
 ## Automation Tool Policy
 - For cron jobs managed by this app, use cron(action=list|create|update|delete|run|get|runs) instead of OS commands like crontab.
 - For reminders/todos from natural language, use cron(action=create) with natural schedule expressions.
-- For heartbeat status or triggering, use heartbeat(action=status|run_once).
+- The pulse watchdog and reflection nightly runner live on the system surface — they are not user-callable tools. To inspect them or trigger a run, direct the user to the /console/pulse and /console/reflection pages.
 
 ## Task Management Policy
 - For complex tasks with 3+ steps, use tasks(action=plan_set) to set a plan goal, then tasks(action=add) to create individual tasks.
