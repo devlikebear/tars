@@ -1,7 +1,9 @@
 package session
 
 import (
+	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -210,5 +212,105 @@ func TestStoreEnsureWorker_ReusesProjectWorkerSession(t *testing.T) {
 	}
 	if first.ID != second.ID {
 		t.Fatalf("expected stable worker session, got %q and %q", first.ID, second.ID)
+	}
+}
+
+func TestStoreCreate_InitializesArtifactWorkDir(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	artifactDir := testCanonicalPath(t, filepath.Join(root, "artifacts", sess.ID))
+	if !reflect.DeepEqual(sess.WorkDirs, []string{artifactDir}) {
+		t.Fatalf("expected default work_dirs [%q], got %+v", artifactDir, sess.WorkDirs)
+	}
+	if sess.CurrentDir != artifactDir {
+		t.Fatalf("expected current_dir %q, got %q", artifactDir, sess.CurrentDir)
+	}
+	if _, err := os.Stat(artifactDir); err != nil {
+		t.Fatalf("expected artifact dir to exist: %v", err)
+	}
+}
+
+func TestStoreSetWorkDirs_PreservesMandatoryArtifactDirFirst(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	extraDir := testCanonicalPath(t, filepath.Join(root, "games", "2d-survivors"))
+	if err := os.MkdirAll(extraDir, 0o755); err != nil {
+		t.Fatalf("mkdir extra dir: %v", err)
+	}
+
+	if err := store.SetWorkDirs(sess.ID, []string{extraDir}, extraDir); err != nil {
+		t.Fatalf("set work dirs: %v", err)
+	}
+
+	got, err := store.Get(sess.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+
+	artifactDir := testCanonicalPath(t, filepath.Join(root, "artifacts", sess.ID))
+	wantDirs := []string{artifactDir, extraDir}
+	if !reflect.DeepEqual(got.WorkDirs, wantDirs) {
+		t.Fatalf("expected work_dirs %+v, got %+v", wantDirs, got.WorkDirs)
+	}
+	if got.CurrentDir != extraDir {
+		t.Fatalf("expected current_dir %q, got %q", extraDir, got.CurrentDir)
+	}
+
+	if err := store.SetWorkDirs(sess.ID, []string{}, ""); err != nil {
+		t.Fatalf("reset work dirs: %v", err)
+	}
+
+	got, err = store.Get(sess.ID)
+	if err != nil {
+		t.Fatalf("get session after reset: %v", err)
+	}
+	if !reflect.DeepEqual(got.WorkDirs, []string{artifactDir}) {
+		t.Fatalf("expected mandatory artifact dir to remain, got %+v", got.WorkDirs)
+	}
+	if got.CurrentDir != artifactDir {
+		t.Fatalf("expected current_dir to fall back to %q, got %q", artifactDir, got.CurrentDir)
+	}
+}
+
+func TestStoreGet_MigratesLegacyNestedArtifactDir(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	legacyDir := filepath.Join(root, "workspace", "artifacts", sess.ID)
+	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+		t.Fatalf("mkdir legacy dir: %v", err)
+	}
+	legacyFile := filepath.Join(legacyDir, "report.md")
+	if err := os.WriteFile(legacyFile, []byte("legacy"), 0o644); err != nil {
+		t.Fatalf("write legacy file: %v", err)
+	}
+
+	if _, err := store.Get(sess.ID); err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+
+	migratedFile := filepath.Join(root, "artifacts", sess.ID, "report.md")
+	if _, err := os.Stat(migratedFile); err != nil {
+		t.Fatalf("expected migrated file at %s: %v", migratedFile, err)
+	}
+	if _, err := os.Stat(legacyFile); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy file to be removed, stat err=%v", err)
 	}
 }

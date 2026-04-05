@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-04-05
+
+### Added
+
+- Session-aware Files panel flows for chat: artifact deep links from messages, typed file previews, and workspace folder creation from both the browser and the directory picker
+- Rich file preview modes for markdown render/raw text, syntax-highlighted code, zoomable images, and binary-file notices
+
+### Fixed
+
+- Session artifact tracking now keeps canonical paths, avoids duplicate entries, and opens the correct file reliably from chat history and the Files panel
+- Session workdirs now always keep the mandatory `artifacts/{sessionId}` directory first, normalize stored paths, and repair misresolved `workspace/workspace/artifacts/...` file writes
+- Workspace file APIs now handle absolute and relative artifact paths consistently, preventing transient or persistent 404s in file preview dialogs
+
 ## [0.21.0] - 2026-04-04
 
 ### Added

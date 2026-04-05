@@ -607,7 +607,14 @@ export type WorkspaceFileContent = {
   name: string
   size: number
   updated_at: string
-  content: string
+  kind: 'text' | 'markdown' | 'image' | 'binary'
+  mime_type: string
+  encoding?: 'utf-8' | 'base64'
+  content?: string
+  content_base64?: string
+  truncated?: boolean
+  is_binary?: boolean
+  message?: string
 }
 
 export async function listWorkspaceFiles(path = '.', root?: string): Promise<{ path: string; files: WorkspaceFileEntry[] }> {
@@ -626,6 +633,32 @@ export async function readWorkspaceFile(path: string, root?: string): Promise<Wo
   )
 }
 
+export async function createWorkspaceDirectory(parentPath: string, name: string, root?: string): Promise<{ path: string; name: string; is_dir: boolean }> {
+  const params = new URLSearchParams()
+  if (root) params.set('root', root)
+  return requestJSON<{ path: string; name: string; is_dir: boolean }>(
+    `/v1/workspace/files?${params}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parent_path: parentPath, name }),
+    },
+  )
+}
+
+export async function renameWorkspaceDirectory(path: string, newName: string, root?: string): Promise<{ path: string; name: string; is_dir: boolean }> {
+  const params = new URLSearchParams()
+  if (root) params.set('root', root)
+  return requestJSON<{ path: string; name: string; is_dir: boolean }>(
+    `/v1/workspace/files?${params}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, new_name: newName }),
+    },
+  )
+}
+
 // --- Filesystem ---
 
 export type FilesystemBrowseResult = {
@@ -637,4 +670,12 @@ export type FilesystemBrowseResult = {
 export async function browseFilesystem(path?: string): Promise<FilesystemBrowseResult> {
   const params = path ? `?path=${encodeURIComponent(path)}` : ''
   return requestJSON(`/v1/filesystem/browse${params}`)
+}
+
+export async function createFilesystemDirectory(parentPath: string, name: string): Promise<{ path: string; name: string; is_dir: boolean }> {
+  return requestJSON('/v1/filesystem/browse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parent_path: parentPath, name }),
+  })
 }

@@ -97,6 +97,35 @@ func isolateRunEnv(t *testing.T) {
 	}
 }
 
+func testCanonicalPath(t *testing.T, value string) string {
+	t.Helper()
+	abs, err := filepath.Abs(filepath.Clean(value))
+	if err != nil {
+		t.Fatalf("abs path %q: %v", value, err)
+	}
+	current := abs
+	var suffix []string
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			out := filepath.Clean(resolved)
+			for i := len(suffix) - 1; i >= 0; i-- {
+				out = filepath.Join(out, suffix[i])
+			}
+			return filepath.Clean(out)
+		}
+		if !os.IsNotExist(err) {
+			return abs
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return abs
+		}
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
+}
+
 func flagValueForTest(args []string, name string) string {
 	value := ""
 	prefix := name + "="
@@ -1483,7 +1512,7 @@ func TestChatAPI_ToolCallReadFile(t *testing.T) {
 						{
 							ID:        "call_read_1",
 							Name:      "read_file",
-							Arguments: `{"path":"README_LOCAL.txt"}`,
+							Arguments: `{"path":"workspace/README_LOCAL.txt"}`,
 						},
 					},
 				},
@@ -1516,7 +1545,7 @@ func TestChatAPI_ToolCallReadFile(t *testing.T) {
 	if !strings.Contains(body, `"tool_call_id":"call_read_1"`) {
 		t.Fatalf("expected tool_call_id in status events, got %q", body)
 	}
-	if !strings.Contains(body, `"tool_args_preview":"{\"path\":\"README_LOCAL.txt\"}"`) {
+	if !strings.Contains(body, `"tool_args_preview":"{\"path\":\"workspace/README_LOCAL.txt\"}"`) {
 		t.Fatalf("expected tool_args_preview in status events, got %q", body)
 	}
 	if !strings.Contains(body, `"tool_result_preview":"`) || !strings.Contains(body, `README_LOCAL.txt`) {
@@ -2312,6 +2341,102 @@ func TestSessionAPI_UserCannotInspectHiddenWorkerSessions(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSessionAPI_WorkDirsAlwaysIncludeSessionArtifactDir(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	handler := newSessionAPIHandler(store, logger)
+
+	type workDirsResponse struct {
+		WorkDirs   []string `json:"work_dirs"`
+		CurrentDir string   `json:"current_dir"`
+	}
+
+	getWorkDirs := func() workDirsResponse {
+		req := httptest.NewRequest(http.MethodGet, "/v1/admin/sessions/"+sess.ID+"/workdirs", nil)
+		req.Header.Set("Tars-Debug-Auth-Role", "admin")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+		}
+		var got workDirsResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decode workdirs response: %v", err)
+		}
+		return got
+	}
+
+	artifactDir := testCanonicalPath(t, filepath.Join(root, "artifacts", sess.ID))
+	initial := getWorkDirs()
+	if len(initial.WorkDirs) != 1 || initial.WorkDirs[0] != artifactDir {
+		t.Fatalf("expected only mandatory artifact dir, got %+v", initial.WorkDirs)
+	}
+	if initial.CurrentDir != artifactDir {
+		t.Fatalf("expected current_dir %q, got %q", artifactDir, initial.CurrentDir)
+	}
+
+	extraDir := testCanonicalPath(t, filepath.Join(root, "games", "2d-survivors"))
+	if err := os.MkdirAll(extraDir, 0o755); err != nil {
+		t.Fatalf("mkdir extra dir: %v", err)
+	}
+	updateBody, err := json.Marshal(map[string]any{
+		"work_dirs":   []string{extraDir},
+		"current_dir": extraDir,
+	})
+	if err != nil {
+		t.Fatalf("marshal update body: %v", err)
+	}
+	updateReq := httptest.NewRequest(http.MethodPut, "/v1/admin/sessions/"+sess.ID+"/workdirs", bytes.NewReader(updateBody))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateReq.Header.Set("Tars-Debug-Auth-Role", "admin")
+	updateRec := httptest.NewRecorder()
+	handler.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", updateRec.Code, updateRec.Body.String())
+	}
+
+	updated := getWorkDirs()
+	if len(updated.WorkDirs) != 2 || updated.WorkDirs[0] != artifactDir || updated.WorkDirs[1] != extraDir {
+		t.Fatalf("expected artifact dir first then extra dir, got %+v", updated.WorkDirs)
+	}
+	if updated.CurrentDir != extraDir {
+		t.Fatalf("expected current_dir %q, got %q", extraDir, updated.CurrentDir)
+	}
+
+	resetBody, err := json.Marshal(map[string]any{
+		"work_dirs":   []string{},
+		"current_dir": "",
+	})
+	if err != nil {
+		t.Fatalf("marshal reset body: %v", err)
+	}
+	resetReq := httptest.NewRequest(http.MethodPut, "/v1/admin/sessions/"+sess.ID+"/workdirs", bytes.NewReader(resetBody))
+	resetReq.Header.Set("Content-Type", "application/json")
+	resetReq.Header.Set("Tars-Debug-Auth-Role", "admin")
+	resetRec := httptest.NewRecorder()
+	handler.ServeHTTP(resetRec, resetReq)
+	if resetRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", resetRec.Code, resetRec.Body.String())
+	}
+
+	reset := getWorkDirs()
+	if len(reset.WorkDirs) != 1 || reset.WorkDirs[0] != artifactDir {
+		t.Fatalf("expected mandatory artifact dir after reset, got %+v", reset.WorkDirs)
+	}
+	if reset.CurrentDir != artifactDir {
+		t.Fatalf("expected current_dir %q after reset, got %q", artifactDir, reset.CurrentDir)
 	}
 }
 

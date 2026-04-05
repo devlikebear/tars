@@ -37,6 +37,7 @@ Open the web console, then start a chat such as `todo 앱 만드는 프로젝트
 - Unified memory console: manage `MEMORY.md`, `memory/experiences.jsonl`, daily durable memory files, semantic memory artifacts, and the knowledge base from one page
 - Obsidian-style knowledge base: durable markdown wiki notes, graph/index metadata, built-in KB CRUD tools, and explicit opt-in lookup from memory search
 - Built-in file tools with 2,000-line read pagination, continuation hints, and safe atomic writes
+- Session-aware Files panel for artifact history and workspace browsing, with typed previews for markdown/code/images and in-panel folder management
 - Structured session compaction with identifier-preserving summaries, a safer recent-tail preserve policy, and manual `/compact [instructions]`
 - Parallel read-only chat subagents through the built-in `explorer` gateway agent
 - MCP transports for local stdio servers and remote HTTP/WebSocket endpoints, with bearer or OAuth auth for remote servers

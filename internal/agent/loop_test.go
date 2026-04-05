@@ -71,8 +71,16 @@ func TestLoop_Run_WithToolCallAndHooks(t *testing.T) {
 	}
 
 	events := make([]EventType, 0, 8)
+	var beforeTool Event
+	var afterTool Event
 	loop := NewLoop(client, reg, HookFunc(func(_ context.Context, evt Event) {
 		events = append(events, evt.Type)
+		if evt.Type == EventBeforeTool {
+			beforeTool = evt
+		}
+		if evt.Type == EventAfterTool {
+			afterTool = evt
+		}
 	}))
 
 	resp, err := loop.Run(context.Background(), []llm.ChatMessage{
@@ -126,6 +134,12 @@ func TestLoop_Run_WithToolCallAndHooks(t *testing.T) {
 	}
 	if parsed.SessionID != "sess-xyz" {
 		t.Fatalf("unexpected session id in tool result: %q", parsed.SessionID)
+	}
+	if beforeTool.ToolArgs != "{}" {
+		t.Fatalf("expected before_tool args to be preserved, got %q", beforeTool.ToolArgs)
+	}
+	if afterTool.ToolArgs != "{}" {
+		t.Fatalf("expected after_tool args to be preserved, got %q", afterTool.ToolArgs)
 	}
 
 	want := []EventType{
