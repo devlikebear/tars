@@ -17,7 +17,10 @@
 
   // WorkDirs state
   let workDirs: SessionWorkDirs = $state({ work_dirs: [], current_dir: '' })
-  let newDirInput = $state('')
+  let pickingDir = $state(false)
+  let pickPath = $state('.')
+  let pickFiles: WorkspaceFileEntry[] = $state([])
+  let pickLoading = $state(false)
 
   // Workspace browser state
   let currentPath = $state('.')
@@ -47,22 +50,46 @@
     await browseDir('.')
   }
 
-  async function addDir() {
-    const dir = newDirInput.trim()
-    if (!dir) return
-    const dirs = [...workDirs.work_dirs, dir]
-    await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: dir })
-    workDirs = { work_dirs: dirs, current_dir: dir }
-    newDirInput = ''
-    currentPath = '.'
-    await browseDir('.')
-  }
-
   async function removeDir(dir: string) {
     const dirs = workDirs.work_dirs.filter(d => d !== dir)
     const cd = dir === workDirs.current_dir ? (dirs[0] || '') : workDirs.current_dir
     await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: cd })
     workDirs = { work_dirs: dirs, current_dir: cd }
+    currentPath = '.'
+    await browseDir('.')
+  }
+
+  // Directory picker — browse filesystem to select a working directory
+  async function startPicking() {
+    pickingDir = true
+    pickPath = '.'
+    await browsePick('.')
+  }
+
+  function cancelPicking() {
+    pickingDir = false
+  }
+
+  async function browsePick(path: string) {
+    pickLoading = true
+    try {
+      // Browse from workspace root (pass root=workspaceDir equivalent via no root param with special marker)
+      const result = await listWorkspaceFiles(path, '/')
+      pickFiles = (result.files || []).filter(f => f.is_dir)
+      pickPath = result.path || path
+    } catch {
+      pickFiles = []
+    } finally {
+      pickLoading = false
+    }
+  }
+
+  async function selectPickedDir() {
+    const absPath = pickPath === '.' ? '/' : '/' + pickPath
+    const dirs = [...workDirs.work_dirs, absPath]
+    await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: absPath })
+    workDirs = { work_dirs: dirs, current_dir: absPath }
+    pickingDir = false
     currentPath = '.'
     await browseDir('.')
   }
@@ -230,16 +257,54 @@
               <option value={dir}>{dir.split('/').pop() || dir}</option>
             {/each}
           </select>
-          <button type="button" class="btn btn-ghost btn-sm" title="Remove current directory" onclick={() => removeDir(workDirs.current_dir)}>-</button>
+          <button type="button" class="btn btn-ghost btn-sm" title="Remove current directory" onclick={() => removeDir(workDirs.current_dir)}>&#x2212;</button>
+          <button type="button" class="btn btn-ghost btn-sm" title="Add directory" onclick={startPicking}>+</button>
         </div>
       {:else}
-        <span class="workdir-default">workspace/</span>
+        <div class="workdir-list">
+          <span class="workdir-default">artifacts/</span>
+          <button type="button" class="btn btn-ghost btn-sm" title="Add working directory" onclick={startPicking}>+</button>
+        </div>
       {/if}
-      <div class="workdir-add">
-        <input type="text" placeholder="Add directory path..." bind:value={newDirInput} class="workdir-input" onkeydown={(e) => e.key === 'Enter' && addDir()} />
-        <button type="button" class="btn btn-ghost btn-sm" onclick={addDir} disabled={!newDirInput.trim()}>+</button>
-      </div>
     </div>
+
+    {#if pickingDir}
+      <!-- Directory picker overlay -->
+      <div class="pick-overlay">
+        <div class="pick-header">
+          <span class="pick-title">Select Directory</span>
+          <div class="pick-actions">
+            <button type="button" class="btn btn-primary btn-sm" onclick={selectPickedDir}>Select Here</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick={cancelPicking}>Cancel</button>
+          </div>
+        </div>
+        <div class="pick-current">{pickPath === '.' ? '/' : '/' + pickPath}</div>
+        <div class="pick-list">
+          {#if pickLoading}
+            <div class="artifact-empty">Loading...</div>
+          {:else}
+            {#if pickPath !== '.'}
+              <button type="button" class="artifact-item" onclick={() => {
+                const parts = pickPath.split('/').filter(Boolean)
+                browsePick(parts.length <= 1 ? '.' : parts.slice(0, -1).join('/'))
+              }}>
+                <span class="artifact-icon">&#x2191;</span>
+                <span class="artifact-name">..</span>
+              </button>
+            {/if}
+            {#each pickFiles as entry}
+              <button type="button" class="artifact-item" onclick={() => browsePick(entry.path)}>
+                <span class="artifact-icon">&#x1f4c1;</span>
+                <span class="artifact-name">{entry.name}</span>
+              </button>
+            {/each}
+            {#if pickFiles.length === 0 && pickPath !== '.'}
+              <div class="artifact-empty">No subdirectories</div>
+            {/if}
+          {/if}
+        </div>
+      </div>
+    {/if}
 
     <!-- Workspace browser -->
     <div class="ws-breadcrumbs">
@@ -416,20 +481,56 @@
     padding: 4px 0;
   }
 
-  .workdir-add {
+  .pick-overlay {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    border-top: 1px solid var(--accent);
+    background: var(--bg-surface);
+  }
+
+  .pick-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+
+  .pick-title {
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent-text);
+  }
+
+  .pick-actions {
     display: flex;
     gap: var(--space-1);
   }
 
-  .workdir-input {
-    flex: 1;
-    background: var(--bg-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
+  .pick-current {
+    padding: var(--space-1) var(--space-3);
     font-family: var(--font-mono);
     font-size: 10px;
-    padding: 3px 6px;
+    color: var(--text-secondary);
+    background: var(--bg-inset);
+    border-bottom: 1px solid var(--border-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pick-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
   }
 
   .artifact-list {
