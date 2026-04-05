@@ -12,8 +12,10 @@ import (
 
 // BuildOptions configures system prompt generation.
 type BuildOptions struct {
-	WorkspaceDir         string // path to workspace root
-	SubAgent             bool   // if true, only inject AGENTS.md and TOOLS.md
+	WorkspaceDir         string   // path to workspace root
+	WorkDirs             []string // additional working directories the session can access
+	CurrentDir           string   // session's current working directory (overrides WorkspaceDir for relative paths)
+	SubAgent             bool     // if true, only inject AGENTS.md and TOOLS.md
 	Query                string
 	SessionID            string
 	MemorySearcher       memory.Searcher
@@ -91,6 +93,30 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 		remainingStaticTokens -= sectionTokens
 		remainingTotalTokens -= sectionTokens
 	}
+	// Inject working directories section if session has work_dirs
+	if len(opts.WorkDirs) > 0 {
+		var dirSection strings.Builder
+		dirSection.WriteString("## Working Directories\n\n")
+		if opts.CurrentDir != "" {
+			dirSection.WriteString(fmt.Sprintf("Current directory: `%s`\n", opts.CurrentDir))
+		}
+		dirSection.WriteString("Available directories:\n")
+		for _, d := range opts.WorkDirs {
+			if d == opts.CurrentDir {
+				dirSection.WriteString(fmt.Sprintf("- `%s` (current)\n", d))
+			} else {
+				dirSection.WriteString(fmt.Sprintf("- `%s`\n", d))
+			}
+		}
+		dirSection.WriteString("\nFile tool paths resolve relative to the current directory. Use absolute paths to access other directories.\n\n")
+		content := dirSection.String()
+		b.WriteString(content)
+		sectionTokens := estimateTokens(content)
+		staticTokens += sectionTokens
+		totalTokens += sectionTokens
+		remainingTotalTokens -= sectionTokens
+	}
+
 	relevantTokens := 0
 	relevantCount := 0
 	if !opts.SubAgent {

@@ -22,6 +22,10 @@ const (
 )
 
 func NewGlobTool(workspaceDir string) Tool {
+	return NewGlobToolWithPolicy(SingleDirPolicy(workspaceDir))
+}
+
+func NewGlobToolWithPolicy(policy PathPolicy) Tool {
 	return Tool{
 		Name:        "glob",
 		Description: "Find workspace paths matching a glob pattern.",
@@ -56,11 +60,11 @@ func NewGlobTool(workspaceDir string) Tool {
 
 			limit := resolvePositiveBoundedInt(defaultGlobLimit, maxGlobLimit, input.Limit)
 
-			rootAbs, err := filepath.Abs(workspaceDir)
+			primaryAbs, err := filepath.Abs(policy.PrimaryDir)
 			if err != nil {
 				return JSONTextResult(globResponse{Message: fmt.Sprintf("resolve workspace failed: %v", err)}, true), nil
 			}
-			fullPattern := filepath.Join(rootAbs, cleanPattern)
+			fullPattern := filepath.Join(primaryAbs, cleanPattern)
 			matches, err := filepath.Glob(fullPattern)
 			if err != nil {
 				return JSONTextResult(globResponse{Message: fmt.Sprintf("invalid glob pattern: %v", err)}, true), nil
@@ -69,14 +73,21 @@ func NewGlobTool(workspaceDir string) Tool {
 			result := make([]string, 0, len(matches))
 			truncated := false
 			for _, m := range matches {
-				if !pathWithinWorkspace(rootAbs, m) {
+				allowed := false
+				for _, dir := range policy.AllowedDirs {
+					if pathWithinWorkspace(dir, m) {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
 					continue
 				}
 				if len(result) >= limit {
 					truncated = true
 					break
 				}
-				result = append(result, workspaceRelativePath(workspaceDir, m))
+				result = append(result, policyRelativePath(policy, m))
 			}
 			return JSONTextResult(globResponse{
 				Pattern:   pattern,

@@ -43,10 +43,10 @@ func agentPromptTelemetryFromContext(ctx context.Context) *agentPromptTelemetry 
 }
 
 func newBaseToolRegistry(workspaceDir string) *tool.Registry {
-	return newBaseToolRegistryWithProcess(workspaceDir, nil)
+	return newBaseToolRegistryWithProcess(workspaceDir, tool.SingleDirPolicy(workspaceDir), nil)
 }
 
-func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.ProcessManager, semanticCfg ...memory.SemanticConfig) *tool.Registry {
+func newBaseToolRegistryWithProcess(workspaceDir string, policy tool.PathPolicy, processManager *tool.ProcessManager, semanticCfg ...memory.SemanticConfig) *tool.Registry {
 	registry := tool.NewRegistry()
 	memService := buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...))
 
@@ -66,18 +66,18 @@ func newBaseToolRegistryWithProcess(workspaceDir string, processManager *tool.Pr
 	}
 
 	// File I/O (no aliases — canonical names only)
-	registry.Register(tool.NewReadFileTool(workspaceDir))
-	registry.Register(tool.NewWriteFileTool(workspaceDir))
-	registry.Register(tool.NewEditFileTool(workspaceDir))
-	registry.Register(tool.NewListDirTool(workspaceDir))
-	registry.Register(tool.NewGlobTool(workspaceDir))
+	registry.Register(tool.NewReadFileToolWithPolicy(policy))
+	registry.Register(tool.NewWriteFileToolWithPolicy(policy))
+	registry.Register(tool.NewEditFileToolWithPolicy(policy))
+	registry.Register(tool.NewListDirToolWithPolicy(policy))
+	registry.Register(tool.NewGlobToolWithPolicy(policy))
 
 	// Exec / process
 	if processManager != nil {
 		registry.Register(tool.NewProcessTool(processManager))
-		registry.Register(tool.NewExecToolWithManager(workspaceDir, processManager))
+		registry.Register(tool.NewExecToolWithPolicy(policy, processManager))
 	} else {
-		registry.Register(tool.NewExecTool(workspaceDir))
+		registry.Register(tool.NewExecToolWithPolicy(policy, nil))
 	}
 	return registry
 }
@@ -149,7 +149,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 
 		profile := agentPromptProfileForLabel(label)
 		systemPrompt := buildAgentSystemPrompt(targetWorkspaceDir, profile, semanticCfg)
-		baseRegistry := newBaseToolRegistryWithProcess(targetWorkspaceDir, nil, semanticCfg)
+		baseRegistry := newBaseToolRegistryWithProcess(targetWorkspaceDir, tool.SingleDirPolicy(targetWorkspaceDir), nil, semanticCfg)
 		for _, extra := range extraTools {
 			if strings.TrimSpace(extra.Name) == "" {
 				continue
@@ -248,7 +248,7 @@ func buildAgentSystemPrompt(workspaceDir string, profile agentPromptProfile, sem
 }
 
 func newToolRegistryForAgentProfile(workspaceDir string, profile agentPromptProfile, extraAllowed []string, semanticCfg ...memory.SemanticConfig) *tool.Registry {
-	registry := newBaseToolRegistryWithProcess(workspaceDir, nil, semanticCfg...)
+	registry := newBaseToolRegistryWithProcess(workspaceDir, tool.SingleDirPolicy(workspaceDir), nil, semanticCfg...)
 	return filterToolRegistryForAgentProfile(registry, profile, extraAllowed)
 }
 

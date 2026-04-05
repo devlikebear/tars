@@ -94,7 +94,7 @@ func prepareChatContextDetailsWithExtensions(
 	invokedSkill *skill.Definition,
 	semanticCfg ...memory.SemanticConfig,
 ) (preparedChatContext, error) {
-	return prepareChatContextDetailsWithCache(workspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, nil, semanticCfg...)
+	return prepareChatContextDetailsWithCache(workspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, nil, firstSemanticConfig(semanticCfg...), nil, "")
 }
 
 func prepareChatContextDetailsWithCache(
@@ -104,7 +104,9 @@ func prepareChatContextDetailsWithCache(
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
 	cache *memoryCache,
-	semanticCfg ...memory.SemanticConfig,
+	semanticCfg memory.SemanticConfig,
+	workDirs []string,
+	currentDir string,
 ) (preparedChatContext, error) {
 	forceRelevantMemory := shouldForceMemoryToolCall(userMessage)
 	extSnapshot = filterSkillSnapshotForProject(extSnapshot, workspaceDir)
@@ -114,9 +116,11 @@ func prepareChatContextDetailsWithCache(
 		return buildContextFromResult(cached, extSnapshot, invokedSkill, forceRelevantMemory), nil
 	}
 
-	memService := buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...))
+	memService := buildSemanticMemoryService(workspaceDir, semanticCfg)
 	buildResult := prompt.BuildResultFor(prompt.BuildOptions{
 		WorkspaceDir:        workspaceDir,
+		WorkDirs:            workDirs,
+		CurrentDir:          currentDir,
 		Query:               userMessage,
 		SessionID:           sessionID,
 		MemorySearcher:      memService,
@@ -602,7 +606,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 			return
 		}
 		registry := buildChatToolRegistry(
-			reqStore, "", "", requestWorkspaceDir, nil, chatHandlerDeps{
+			reqStore, "", "", requestWorkspaceDir, tool.SingleDirPolicy(requestWorkspaceDir), nil, chatHandlerDeps{
 				workspaceDir:  workspaceDir,
 				store:         store,
 				client:        client,
@@ -671,9 +675,17 @@ func newChatAPIHandlerWithRuntimeConfig(
 		if tooling.Extensions != nil {
 			extSnapshot = tooling.Extensions.Snapshot()
 		}
+		// Build PathPolicy from session work_dirs for context preview
+		var previewPolicy tool.PathPolicy
+		if len(sess.WorkDirs) > 0 {
+			previewPolicy = tool.NewPathPolicy(requestWorkspaceDir, sess.WorkDirs, sess.CurrentDir)
+		} else {
+			previewPolicy = tool.SingleDirPolicy(requestWorkspaceDir)
+		}
 		contextDetails, err := prepareChatContextDetailsWithCache(
 			requestWorkspaceDir, sessionID, "(context preview)",
 			extSnapshot, nil, tooling.MemoryCache, tooling.MemorySemanticConfig,
+			sess.WorkDirs, sess.CurrentDir,
 		)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "", "prepare context failed")
@@ -684,7 +696,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 			systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(sess.PromptOverride) + "\n"
 		}
 		registry := buildChatToolRegistry(
-			reqStore, "", sessionID, requestWorkspaceDir, historySnapshot.Messages, chatHandlerDeps{
+			reqStore, "", sessionID, requestWorkspaceDir, previewPolicy, historySnapshot.Messages, chatHandlerDeps{
 				workspaceDir:  workspaceDir,
 				store:         store,
 				client:        client,

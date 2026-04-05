@@ -42,7 +42,15 @@ func NewReadFileTool(workspaceDir string) Tool {
 	return newReadToolWithName("read_file", workspaceDir)
 }
 
+func NewReadFileToolWithPolicy(policy PathPolicy) Tool {
+	return newReadToolWithPolicy("read_file", policy)
+}
+
 func newReadToolWithName(name, workspaceDir string) Tool {
+	return newReadToolWithPolicy(name, SingleDirPolicy(workspaceDir))
+}
+
+func newReadToolWithPolicy(name string, policy PathPolicy) Tool {
 	return Tool{
 		Name:        name,
 		Description: "Read a UTF-8 text file from the workspace using line-oriented pagination.",
@@ -75,7 +83,7 @@ func newReadToolWithName(name, workspaceDir string) Tool {
 				return readFileErrorResult("path is required"), nil
 			}
 
-			absPath, err := resolveWorkspacePath(workspaceDir, input.Path)
+			absPath, err := resolvePathWithPolicy(policy, input.Path)
 			if err != nil {
 				return readFileErrorResult(err.Error()), nil
 			}
@@ -113,7 +121,7 @@ func newReadToolWithName(name, workspaceDir string) Tool {
 			}
 
 			payload := readFileResponse{
-				Path:       workspaceRelativePath(workspaceDir, absPath),
+				Path:       policyRelativePath(policy, absPath),
 				Bytes:      len(raw),
 				TotalLines: totalLines,
 			}

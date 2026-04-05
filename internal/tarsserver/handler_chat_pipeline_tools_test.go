@@ -7,7 +7,7 @@ import (
 )
 
 func TestResolveInjectedToolSchemas_FiltersHighRiskToolsForUserRole(t *testing.T) {
-	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.NewProcessManager())
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
 	registry.Register(tool.NewApplyPatchTool(t.TempDir(), true))
 
 	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "user", false)
@@ -23,7 +23,7 @@ func TestResolveInjectedToolSchemas_FiltersHighRiskToolsForUserRole(t *testing.T
 }
 
 func TestResolveInjectedToolSchemas_AllowAdminHighRiskTools(t *testing.T) {
-	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.NewProcessManager())
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
 	registry.Register(tool.NewApplyPatchTool(t.TempDir(), true))
 
 	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "admin", false)
@@ -36,7 +36,7 @@ func TestResolveInjectedToolSchemas_AllowAdminHighRiskTools(t *testing.T) {
 }
 
 func TestResolveInjectedToolSchemas_AllowHighRiskUserOverride(t *testing.T) {
-	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.NewProcessManager())
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
 
 	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "user", true)
 	names := toolNamesFromSchemas(schemas)
@@ -48,7 +48,7 @@ func TestResolveInjectedToolSchemas_AllowHighRiskUserOverride(t *testing.T) {
 }
 
 func TestResolveInjectedToolSchemas_PassesThroughWithoutProjectPolicy(t *testing.T) {
-	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.NewProcessManager())
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
 
 	// Without project policy, all tools should pass through (only role-based filtering)
 	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "admin", true)
