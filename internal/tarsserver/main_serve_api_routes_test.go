@@ -17,6 +17,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           handler,
+		reflection:      handler,
 		chat:            handler,
 		sessions:        handler,
 		memory:          handler,
@@ -46,6 +47,9 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/pulse/status",
 		"/v1/pulse/run-once",
 		"/v1/pulse/config",
+		"/v1/reflection/status",
+		"/v1/reflection/run-once",
+		"/v1/reflection/config",
 		"/v1/chat",
 		"/v1/sessions",
 		"/v1/sessions/main",
@@ -135,6 +139,7 @@ func TestRegisterAPIRoutes_LegacyDashboardPathsRedirectToConsole(t *testing.T) {
 
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           base,
+		reflection:      base,
 		chat:            base,
 		sessions:        base,
 		memory:          base,

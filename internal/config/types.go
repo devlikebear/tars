@@ -108,6 +108,19 @@ type AutomationConfig struct {
 	PulseDiskCriticalPercent      float64
 	PulseDeliveryFailureThreshold int
 	PulseDeliveryFailureWindow    string // duration string, e.g. "10m"
+	// PulseReflectionFailureThreshold is the number of consecutive
+	// reflection run failures that causes pulse to emit a reflection-
+	// failure signal.
+	PulseReflectionFailureThreshold int
+
+	// Reflection is the nightly batch runner (memory + KB cleanup).
+	ReflectionEnabled             bool
+	ReflectionSleepWindow         string // "HH:MM-HH:MM" in ReflectionTimezone
+	ReflectionTimezone            string
+	ReflectionTickInterval        string // duration string, e.g. "5m"
+	ReflectionEmptySessionAge     string // duration string, e.g. "24h"
+	ReflectionMemoryLookbackHours int
+	ReflectionMaxTurnsPerSession  int
 }
 
 type AssistantConfig struct {

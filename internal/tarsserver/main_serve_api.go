@@ -22,6 +22,7 @@ import (
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/pulse"
+	"github.com/devlikebear/tars/internal/reflection"
 	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/schedule"
 	"github.com/devlikebear/tars/internal/skillhub"
@@ -41,11 +42,13 @@ type serveAPIRuntime struct {
 	cronManager        *workspaceCronManager
 	watchdogManager    *workspaceWatchdogManager
 	pulseRuntime       *pulse.Runtime
+	reflectionRuntime  *reflection.Runtime
 	telegramPoller     *telegramUpdatePoller
 }
 
 type apiRouteHandlers struct {
 	pulse           http.Handler
+	reflection      http.Handler
 	chat            http.Handler
 	sessions        http.Handler
 	memory          http.Handler
@@ -300,16 +303,25 @@ func buildAPIMux(
 	})
 	gatewayRuntimeForTelegram = gatewayRuntime
 
+	reflectionSetup := buildReflectionRuntime(reflectionSetupInputs{
+		Config:       cfg,
+		WorkspaceDir: cfg.WorkspaceDir,
+		LLMClient:    deps.llmClient,
+		SessionStore: sessionStore,
+		Logger:       logger,
+	})
+
 	pulseSetup := buildPulseRuntime(pulseSetupInputs{
-		Config:          cfg,
-		WorkspaceDir:    cfg.WorkspaceDir,
-		LLMClient:       deps.llmClient,
-		CronStore:       cronStore,
-		GatewayRuntime:  gatewayRuntime,
-		OpsManager:      opsManager,
-		DeliveryCounter: telegramDeliveryCounter,
-		NotifyEmit:      dispatcher.Emit,
-		Logger:          logger,
+		Config:           cfg,
+		WorkspaceDir:     cfg.WorkspaceDir,
+		LLMClient:        deps.llmClient,
+		CronStore:        cronStore,
+		GatewayRuntime:   gatewayRuntime,
+		OpsManager:       opsManager,
+		DeliveryCounter:  telegramDeliveryCounter,
+		ReflectionHealth: reflectionHealthFromSetup(reflectionSetup),
+		NotifyEmit:       dispatcher.Emit,
+		Logger:           logger,
 	})
 
 	refreshGatewayExecutors := func(reason string) int {
@@ -519,6 +531,7 @@ func buildAPIMux(
 	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildSemanticMemoryService(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg)), logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           pulseSetup.Handler,
+		reflection:      reflectionSetup.Handler,
 		chat:            chatHandler,
 		sessions:        sessionHandler,
 		memory:          memoryHandler,
@@ -575,6 +588,7 @@ func buildAPIMux(
 		cronManager:        cronManager,
 		watchdogManager:    watchdogManager,
 		pulseRuntime:       pulseSetup.Runtime,
+		reflectionRuntime:  reflectionSetup.Runtime,
 		telegramPoller:     telegramPoller,
 	}, nil
 }
@@ -585,6 +599,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	}
 	legacyDashboard := newLegacyDashboardRedirectHandler()
 	mux.Handle("/v1/pulse/", handlers.pulse)
+	mux.Handle("/v1/reflection/", handlers.reflection)
 	mux.Handle("/v1/chat", handlers.chat)
 	mux.Handle("/v1/chat/", handlers.chat)
 	mux.Handle("/v1/sessions", handlers.sessions)
@@ -703,6 +718,9 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 	if runtime.pulseRuntime != nil {
 		runtime.pulseRuntime.Start(ctx)
 	}
+	if runtime.reflectionRuntime != nil {
+		runtime.reflectionRuntime.Start(ctx)
+	}
 	if runtime.watchdogManager != nil {
 		go func() {
 			if err := runtime.watchdogManager.Start(ctx); err != nil {
@@ -729,6 +747,9 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	}
 	if runtime.pulseRuntime != nil {
 		runtime.pulseRuntime.Stop()
+	}
+	if runtime.reflectionRuntime != nil {
+		runtime.reflectionRuntime.Stop()
 	}
 	if runtime.extensionsManager != nil {
 		runtime.extensionsManager.Close()

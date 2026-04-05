@@ -36,6 +36,14 @@ type DeliveryFailureCounter interface {
 	FailuresWithin(window time.Duration) int
 }
 
+// ReflectionHealthSource is the narrow interface pulse requires from the
+// reflection runtime to observe nightly-run health. The real
+// *reflection.State satisfies it without importing pulse in reverse.
+type ReflectionHealthSource interface {
+	ConsecutiveFailures() int
+	LastRunAt() time.Time
+}
+
 // Thresholds controls when signals are emitted. Zero values mean
 // "disabled" for that signal (never emit).
 type Thresholds struct {
@@ -63,15 +71,21 @@ type Thresholds struct {
 	// DeliveryFailureWindow — rolling window for counting delivery
 	// failures. Zero defaults to 10 minutes.
 	DeliveryFailureWindow time.Duration
+
+	// ReflectionConsecutiveFailures — emit when the reflection health
+	// source reports this many (or more) consecutive nightly failures.
+	// 0 = disabled.
+	ReflectionConsecutiveFailures int
 }
 
 // ScannerSources bundles the data sources a Scanner reads from. Any field
 // may be nil; nil sources yield no signals for that domain.
 type ScannerSources struct {
-	Cron     CronJobLister
-	Gateway  GatewayRunLister
-	Ops      DiskStatProvider
-	Delivery DeliveryFailureCounter
+	Cron       CronJobLister
+	Gateway    GatewayRunLister
+	Ops        DiskStatProvider
+	Delivery   DeliveryFailureCounter
+	Reflection ReflectionHealthSource
 }
 
 // Scanner collects Signals from the configured sources. It is stateless
@@ -116,7 +130,42 @@ func (s *Scanner) Scan(ctx context.Context) []Signal {
 	if sig := s.scanDelivery(now); sig != nil {
 		signals = append(signals, *sig)
 	}
+	if sig := s.scanReflection(now); sig != nil {
+		signals = append(signals, *sig)
+	}
 	return signals
+}
+
+// scanReflection emits a signal when the reflection runtime has
+// accumulated consecutive nightly failures at or above the configured
+// threshold. Reflection is cheap to read (in-memory counter) so this
+// scan runs on every pulse tick.
+func (s *Scanner) scanReflection(now time.Time) *Signal {
+	if s.sources.Reflection == nil || s.thresholds.ReflectionConsecutiveFailures <= 0 {
+		return nil
+	}
+	failures := s.sources.Reflection.ConsecutiveFailures()
+	if failures < s.thresholds.ReflectionConsecutiveFailures {
+		return nil
+	}
+	sev := SeverityWarn
+	if failures >= s.thresholds.ReflectionConsecutiveFailures*2 {
+		sev = SeverityError
+	}
+	return &Signal{
+		Kind:     SignalKindReflectionFailure,
+		Severity: sev,
+		Summary: fmt.Sprintf(
+			"reflection has failed %d consecutive night(s)",
+			failures,
+		),
+		Details: map[string]any{
+			"consecutive_failures": failures,
+			"threshold":            s.thresholds.ReflectionConsecutiveFailures,
+			"last_run_at":          s.sources.Reflection.LastRunAt().Format(time.RFC3339),
+		},
+		At: now,
+	}
 }
 
 func (s *Scanner) scanCron() *Signal {

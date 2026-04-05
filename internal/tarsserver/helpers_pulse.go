@@ -21,15 +21,16 @@ import (
 // struct (rather than positional args) because callers pass ~10 values
 // and the noise hurts readability at the call site.
 type pulseSetupInputs struct {
-	Config          config.Config
-	WorkspaceDir    string
-	LLMClient       llm.Client
-	CronStore       *cron.Store
-	GatewayRuntime  *gateway.Runtime
-	OpsManager      *ops.Manager
-	DeliveryCounter *telegramDeliveryCounter
-	NotifyEmit      func(ctx context.Context, evt notificationEvent)
-	Logger          zerolog.Logger
+	Config           config.Config
+	WorkspaceDir     string
+	LLMClient        llm.Client
+	CronStore        *cron.Store
+	GatewayRuntime   *gateway.Runtime
+	OpsManager       *ops.Manager
+	DeliveryCounter  *telegramDeliveryCounter
+	ReflectionHealth pulse.ReflectionHealthSource
+	NotifyEmit       func(ctx context.Context, evt notificationEvent)
+	Logger           zerolog.Logger
 }
 
 // pulseSetup is the result of wiring up a pulse runtime. A nil Runtime
@@ -59,19 +60,21 @@ func buildPulseRuntime(in pulseSetupInputs) pulseSetup {
 	deliveryWindow := parsePulseDuration(in.Config.PulseDeliveryFailureWindow, 10*time.Minute)
 
 	thresholds := pulse.Thresholds{
-		CronConsecutiveFailures:      in.Config.PulseCronFailureThreshold,
-		StuckRunMinutes:              in.Config.PulseStuckRunMinutes,
-		DiskUsedPercentWarn:          in.Config.PulseDiskWarnPercent,
-		DiskUsedPercentCritical:      in.Config.PulseDiskCriticalPercent,
-		DeliveryFailuresWithinWindow: in.Config.PulseDeliveryFailureThreshold,
-		DeliveryFailureWindow:        deliveryWindow,
+		CronConsecutiveFailures:       in.Config.PulseCronFailureThreshold,
+		StuckRunMinutes:               in.Config.PulseStuckRunMinutes,
+		DiskUsedPercentWarn:           in.Config.PulseDiskWarnPercent,
+		DiskUsedPercentCritical:       in.Config.PulseDiskCriticalPercent,
+		DeliveryFailuresWithinWindow:  in.Config.PulseDeliveryFailureThreshold,
+		DeliveryFailureWindow:         deliveryWindow,
+		ReflectionConsecutiveFailures: in.Config.PulseReflectionFailureThreshold,
 	}
 
 	sources := pulse.ScannerSources{
-		Cron:     in.CronStore,
-		Gateway:  in.GatewayRuntime,
-		Ops:      in.OpsManager,
-		Delivery: in.DeliveryCounter,
+		Cron:       in.CronStore,
+		Gateway:    in.GatewayRuntime,
+		Ops:        in.OpsManager,
+		Delivery:   in.DeliveryCounter,
+		Reflection: in.ReflectionHealth,
 	}
 	scanner := pulse.NewScanner(sources, thresholds)
 

@@ -97,6 +97,14 @@ func Schema() []FieldMeta {
 		f("pulse_disk_critical_percent", "Automation", "float", "Pulse Disk Critical %", "Disk usage percent that triggers a critical signal"),
 		f("pulse_delivery_failure_threshold", "Automation", "int", "Pulse Delivery Failure Threshold", "Telegram delivery failures in window before pulse reacts"),
 		f("pulse_delivery_failure_window", "Automation", "string", "Pulse Delivery Failure Window", "Rolling window for counting delivery failures (e.g. 10m)"),
+		f("pulse_reflection_failure_threshold", "Automation", "int", "Pulse Reflection Failure Threshold", "Consecutive nightly reflection failures before pulse reacts"),
+		f("reflection_enabled", "Automation", "bool", "Reflection Enabled", "Enable the nightly reflection batch runner"),
+		f("reflection_sleep_window", "Automation", "string", "Reflection Sleep Window", "HH:MM-HH:MM window during which reflection is allowed to run"),
+		f("reflection_timezone", "Automation", "string", "Reflection Timezone", "Timezone for reflection sleep-window evaluation"),
+		f("reflection_tick_interval", "Automation", "string", "Reflection Tick Interval", "How often reflection checks whether to run (e.g. 5m)"),
+		f("reflection_empty_session_age", "Automation", "string", "Empty Session Age", "Minimum age a zero-message session must reach before removal (e.g. 24h)"),
+		f("reflection_memory_lookback_hours", "Automation", "int", "Memory Lookback Hours", "How far back reflection reads session history for experience extraction"),
+		f("reflection_max_turns_per_session", "Automation", "int", "Max Turns Per Session", "Cap on turns reflection processes per session per run"),
 		f("notify_command", "Automation", "string", "Notify Command", "Shell command executed for notifications"),
 		f("notify_when_no_clients", "Automation", "bool", "Notify When No Clients", "Send notifications even when no SSE clients connected"),
 		f("schedule_timezone", "Automation", "string", "Schedule Timezone", "Default timezone for scheduled triggers"),
@@ -306,6 +314,22 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.PulseDeliveryFailureThreshold
 	case "pulse_delivery_failure_window":
 		return cfg.PulseDeliveryFailureWindow
+	case "pulse_reflection_failure_threshold":
+		return cfg.PulseReflectionFailureThreshold
+	case "reflection_enabled":
+		return cfg.ReflectionEnabled
+	case "reflection_sleep_window":
+		return cfg.ReflectionSleepWindow
+	case "reflection_timezone":
+		return cfg.ReflectionTimezone
+	case "reflection_tick_interval":
+		return cfg.ReflectionTickInterval
+	case "reflection_empty_session_age":
+		return cfg.ReflectionEmptySessionAge
+	case "reflection_memory_lookback_hours":
+		return cfg.ReflectionMemoryLookbackHours
+	case "reflection_max_turns_per_session":
+		return cfg.ReflectionMaxTurnsPerSession
 	case "notify_command":
 		return cfg.NotifyCommand
 	case "notify_when_no_clients":
