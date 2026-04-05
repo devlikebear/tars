@@ -32,11 +32,6 @@ var toolNameAliases = map[string]string{
 	"agent_sysprompt_get":     "workspace",
 	"agent_sysprompt_set":     "workspace",
 
-	// ops aliases → ops aggregator
-	"ops_status":        "ops",
-	"ops_cleanup_plan":  "ops",
-	"ops_cleanup_apply": "ops",
-
 	// schedule aliases → cron aggregator
 	"schedule_create":   "cron",
 	"schedule_list":     "cron",

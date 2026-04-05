@@ -87,14 +87,24 @@ func TestRegistryUserScopeRejectsReflectionPrefix(t *testing.T) {
 
 func TestRegistryUserScopeAllowsNormalTools(t *testing.T) {
 	r := NewRegistryWithScope(RegistryScopeUser)
-	// These must not panic.
-	normal := []string{"read_file", "exec", "memory_search", "ops_status"}
+	// Canonical user-facing tools must register without panicking.
+	normal := []string{"read_file", "exec", "memory_search", "cron"}
 	for _, n := range normal {
 		r.Register(makeTool(n))
 	}
 	if got := len(r.All()); got != len(normal) {
 		t.Fatalf("registered %d, want %d", got, len(normal))
 	}
+}
+
+func TestRegistryUserScopeRejectsOpsPrefix(t *testing.T) {
+	r := NewRegistryWithScope(RegistryScopeUser)
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic for ops_ tool in user scope")
+		}
+	}()
+	r.Register(makeTool("ops_status"))
 }
 
 func TestRegistryPulseScopeRejectsOpsAndReflection(t *testing.T) {

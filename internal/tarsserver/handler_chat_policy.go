@@ -23,9 +23,6 @@ func buildChatToolRegistry(
 ) *tool.Registry {
 	registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, policy, deps.tooling.ProcessManager, deps.tooling.MemorySemanticConfig)
 
-	// Re-register ops aggregator with deps manager
-	registry.Register(tool.NewOpsTool(deps.tooling.OpsManager))
-
 	// Standalone tools
 	registry.Register(tool.NewResearchReportTool(deps.tooling.ResearchService))
 	if deps.tooling.UsageTracker != nil {

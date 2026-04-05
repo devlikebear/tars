@@ -10,7 +10,6 @@ import (
 	"github.com/devlikebear/tars/internal/heartbeat"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
-	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/prompt"
 	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/serverauth"
@@ -47,17 +46,13 @@ func newBaseToolRegistry(workspaceDir string) *tool.Registry {
 }
 
 func newBaseToolRegistryWithProcess(workspaceDir string, policy tool.PathPolicy, processManager *tool.ProcessManager, semanticCfg ...memory.SemanticConfig) *tool.Registry {
-	registry := tool.NewRegistry()
+	registry := tool.NewRegistryWithScope(tool.RegistryScopeUser)
 	memService := buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...))
 
 	// Memory & workspace aggregators
 	registry.Register(tool.NewMemoryTool(workspaceDir, memService, nil))
 	registry.Register(tool.NewKnowledgeTool(workspaceDir, memService))
 	registry.Register(tool.NewWorkspaceTool(workspaceDir))
-
-	// Ops aggregator
-	opsManager := ops.NewManager(workspaceDir, ops.Options{})
-	registry.Register(tool.NewOpsTool(opsManager))
 
 	// Standalone tools
 	registry.Register(tool.NewResearchReportTool(research.NewService(workspaceDir, research.Options{})))

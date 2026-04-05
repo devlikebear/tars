@@ -58,12 +58,12 @@ func (s RegistryScope) String() string {
 // each scope. Any tool whose Name starts with a forbidden prefix triggers a
 // panic on Register(). An empty or missing entry means no restrictions.
 //
-// The "ops_" prefix is omitted from the user scope intentionally during the
-// heartbeat→pulse migration: ops_* tool wrappers still exist in this commit
-// and will be removed in a later commit of the same PR. Once removed, the
-// "ops_" prefix will be added here to prevent regressions.
+// The user surface is locked down against all three system prefixes:
+// pulse/reflection runtimes never expose tools into user sessions, and
+// ops_* tool wrappers have been deleted entirely (pulse calls the
+// internal/ops Go API directly).
 var registryForbiddenPrefixes = map[RegistryScope][]string{
-	RegistryScopeUser:       {"pulse_", "reflection_"},
+	RegistryScopeUser:       {"pulse_", "reflection_", "ops_"},
 	RegistryScopePulse:      {"ops_", "reflection_"},
 	RegistryScopeReflection: {"ops_", "pulse_"},
 }
