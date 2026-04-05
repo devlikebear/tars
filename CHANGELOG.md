@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-04-05
+
+### Added
+
+- Chat right panel now includes a dedicated `Cron` tab so main chats can manage global cron jobs and regular chats can manage only their bound session cron jobs in context
+- Reminder cron jobs now deliver deterministically: global reminders post into the main chat session and send Telegram notifications when a target chat is available, while session-bound reminders stay inside their bound chat session
+
+### Fixed
+
+- `cron(action=create)` now accepts reminder-style aliases like `task_type`, `message`, and `title`, and can parse natural schedules such as `in 1 minute`
+- Cron creation from chat now respects the current session kind by defaulting main chats to global/main-target jobs and regular chats to session-bound jobs
+
 ## [0.23.0] - 2026-04-05
 
 ### Added

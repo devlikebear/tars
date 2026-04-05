@@ -101,7 +101,7 @@ tars project autopilot status <project-id>
 
 The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly, and `status` shows the current phase, run status, and next action without switching to the web console.
 
-Cron jobs can now bind directly to a chat session with `session_id`. A bound cron run uses that session's tool and skill configuration, work directories, prompt override, and recent transcript context. User-visible audit logs are appended to `artifacts/<session_id>/cronjob-log.jsonl`, while global cron jobs continue to run with system defaults and append to `artifacts/_global/cronjob-log.jsonl`.
+Cron jobs can now bind directly to a chat session with `session_id`. A bound cron run uses that session's tool and skill configuration, work directories, prompt override, and recent transcript context. In the console chat view, the right panel now includes a `Cron` tab alongside Files, Config, Context, Prompt, and Tasks: the main chat manages global cron jobs, while regular chat sessions manage only their bound session cron jobs. User-visible audit logs are appended to `artifacts/<session_id>/cronjob-log.jsonl`, while global cron jobs continue to run with system defaults and append to `artifacts/_global/cronjob-log.jsonl`.
 
 For read-heavy codebase research in chat, TARS can now fan out parallel `explorer` subagents and merge back compact summaries. The runtime defaults are:
 

@@ -165,6 +165,117 @@ func TestCronCreateTool_ResolvesCurrentSessionBindingFromContext(t *testing.T) {
 	}
 }
 
+func TestCronCreateTool_DefaultsMainContextToGlobalMainTarget(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	create := NewCronCreateTool(store)
+
+	ctx := WithCurrentSessionInfo(context.Background(), "sess-main", "main")
+	createResult, err := create.Execute(ctx, json.RawMessage(`{"name":"ops","prompt":"상태 확인하기","schedule":"every:30m"}`))
+	if err != nil {
+		t.Fatalf("execute cron_create: %v", err)
+	}
+	if createResult.IsError {
+		t.Fatalf("expected create success, got %s", createResult.Text())
+	}
+	var created cron.Job
+	if err := json.Unmarshal([]byte(createResult.Text()), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+	if created.SessionID != "" {
+		t.Fatalf("expected main context to create global cron job, got %+v", created)
+	}
+	if created.SessionTarget != "main" {
+		t.Fatalf("expected main context to target main session, got %+v", created)
+	}
+	if created.DeliveryMode != "session" {
+		t.Fatalf("expected main-context cron to default delivery_mode=session, got %+v", created)
+	}
+}
+
+func TestCronCreateTool_DefaultsSessionContextToBoundSession(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	create := NewCronCreateTool(store)
+
+	ctx := WithCurrentSessionInfo(context.Background(), "sess-current", "session")
+	createResult, err := create.Execute(ctx, json.RawMessage(`{"name":"ops","prompt":"상태 확인하기","schedule":"every:30m"}`))
+	if err != nil {
+		t.Fatalf("execute cron_create: %v", err)
+	}
+	if createResult.IsError {
+		t.Fatalf("expected create success, got %s", createResult.Text())
+	}
+	var created cron.Job
+	if err := json.Unmarshal([]byte(createResult.Text()), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+	if created.SessionID != "sess-current" {
+		t.Fatalf("expected regular session context to create session-bound cron job, got %+v", created)
+	}
+	if created.SessionTarget != "isolated" {
+		t.Fatalf("expected session-bound cron job to keep isolated target, got %+v", created)
+	}
+}
+
+func TestCronCreateTool_MainContextCurrentBindingStillCreatesGlobal(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	create := NewCronCreateTool(store)
+
+	ctx := WithCurrentSessionInfo(context.Background(), "sess-main", "main")
+	createResult, err := create.Execute(ctx, json.RawMessage(`{"name":"ops","prompt":"상태 확인하기","schedule":"every:30m","session_id":"current"}`))
+	if err != nil {
+		t.Fatalf("execute cron_create: %v", err)
+	}
+	if createResult.IsError {
+		t.Fatalf("expected create success, got %s", createResult.Text())
+	}
+	var created cron.Job
+	if err := json.Unmarshal([]byte(createResult.Text()), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+	if created.SessionID != "" || created.SessionTarget != "main" {
+		t.Fatalf("expected main-context current alias to stay global/main-target, got %+v", created)
+	}
+}
+
+func TestCronCreateTool_AllowsReminderAliasesAndNaturalEnglishSchedule(t *testing.T) {
+	root := t.TempDir()
+	store := cron.NewStore(root)
+	create := NewCronCreateTool(store)
+
+	ctx := WithCurrentSessionInfo(context.Background(), "sess-main", "main")
+	createResult, err := create.Execute(ctx, json.RawMessage(`{"task_type":"reminder","schedule":"in 1 minute","message":"테스트 알림","title":"테스트 알림"}`))
+	if err != nil {
+		t.Fatalf("execute cron_create: %v", err)
+	}
+	if createResult.IsError {
+		t.Fatalf("expected create success, got %s", createResult.Text())
+	}
+	var created cron.Job
+	if err := json.Unmarshal([]byte(createResult.Text()), &created); err != nil {
+		t.Fatalf("decode created job: %v", err)
+	}
+	if created.Name != "테스트 알림" {
+		t.Fatalf("expected reminder title to map to job name, got %+v", created)
+	}
+	if created.Prompt == "" || !strings.Contains(created.Prompt, "테스트 알림") {
+		t.Fatalf("expected reminder message to map to prompt, got %+v", created)
+	}
+	if !strings.HasPrefix(created.Schedule, "at:") {
+		t.Fatalf("expected natural english schedule to normalize to at:, got %+v", created)
+	}
+	at, err := time.Parse(time.RFC3339, strings.TrimPrefix(created.Schedule, "at:"))
+	if err != nil {
+		t.Fatalf("parse normalized schedule: %v", err)
+	}
+	delta := time.Until(at)
+	if delta < 30*time.Second || delta > 2*time.Minute {
+		t.Fatalf("expected schedule about one minute ahead, got %s (%s)", created.Schedule, fmtDuration(delta))
+	}
+}
+
 func TestCronUpdateTool_ResolvesCurrentSessionBindingFromContext(t *testing.T) {
 	root := t.TempDir()
 	store := cron.NewStore(root)
@@ -195,6 +306,13 @@ func TestCronUpdateTool_ResolvesCurrentSessionBindingFromContext(t *testing.T) {
 	if updated.SessionID != "sess-current" {
 		t.Fatalf("expected current session binding to resolve, got %+v", updated)
 	}
+}
+
+func fmtDuration(d time.Duration) string {
+	if d < 0 {
+		return "-" + fmtDuration(-d)
+	}
+	return d.Truncate(time.Second).String()
 }
 
 func TestCronRunTool_ExecutesAndRecordsRun(t *testing.T) {

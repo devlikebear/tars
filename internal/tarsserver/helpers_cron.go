@@ -29,13 +29,15 @@ type cronRunTelemetry struct {
 	ContaminationMarkers       []string
 }
 
+type cronExternalReminderSender func(ctx context.Context, job cron.Job, reminderText string) error
+
 func newCronJobRunner(
 	workspaceDir string,
 	store *session.Store,
 	runPrompt gatewayPromptRunner,
 	logger zerolog.Logger,
 ) func(ctx context.Context, job cron.Job) (string, error) {
-	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil, "", 0, nil)
+	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil, "", 0, nil, nil)
 }
 
 func newCronJobRunnerWithNotify(
@@ -47,6 +49,7 @@ func newCronJobRunnerWithNotify(
 	mainSessionID string,
 	artifactHistoryLimit int,
 	resolveDefaultTelegramChatID func(ctx context.Context) (string, error),
+	sendExternalReminder cronExternalReminderSender,
 ) func(ctx context.Context, job cron.Job) (string, error) {
 	if runPrompt == nil {
 		return nil
@@ -64,6 +67,15 @@ func newCronJobRunnerWithNotify(
 			return "", err
 		}
 		telemetry := prepared.telemetry
+		if reminderText := cronReminderMessage(job); reminderText != "" {
+			artifactNow := time.Now().UTC()
+			if err := deliverCronResult(ctx, prepared.workspaceDir, prepared.targetStore, job, prepared.targetSessionID, prepared.explicitTarget, reminderText, artifactNow, logger, sendExternalReminder); err != nil {
+				emitCronRunFailure(ctx, emit, prepared.workspaceDir, job, reminderText, artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, "Cron delivery failed", err)
+				return "", err
+			}
+			emitCronRunSuccess(ctx, emit, prepared.workspaceDir, job, reminderText, artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, logger)
+			return reminderText, nil
+		}
 
 		runLabel := "cron"
 		if strings.TrimSpace(job.ID) != "" {
@@ -101,7 +113,7 @@ func newCronJobRunnerWithNotify(
 			emitCronRunFailure(ctx, emit, prepared.workspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, "Cron failed", err)
 			return "", err
 		}
-		if err := deliverCronResult(prepared.workspaceDir, prepared.targetStore, job, prepared.targetSessionID, prepared.explicitTarget, response, time.Now().UTC(), logger); err != nil {
+		if err := deliverCronResult(ctx, prepared.workspaceDir, prepared.targetStore, job, prepared.targetSessionID, prepared.explicitTarget, response, time.Now().UTC(), logger, sendExternalReminder); err != nil {
 			emitCronRunFailure(ctx, emit, prepared.workspaceDir, job, response, artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, "Cron delivery failed", err)
 			return "", err
 		}
@@ -537,6 +549,7 @@ func sessionContextByID(store *session.Store, sessionID string, maxMessages int)
 }
 
 func deliverCronResult(
+	ctx context.Context,
 	workspaceDir string,
 	store *session.Store,
 	job cron.Job,
@@ -545,6 +558,7 @@ func deliverCronResult(
 	response string,
 	now time.Time,
 	logger zerolog.Logger,
+	sendExternalReminder cronExternalReminderSender,
 ) error {
 	mode := effectiveCronDeliveryMode(job.DeliveryMode, job.SessionTarget, job.SessionID)
 	if mode == "none" {
@@ -579,6 +593,11 @@ func deliverCronResult(
 			Str("session_id", targetSessionID).
 			Msg("cron response delivered to session")
 	}
+	if reminderText := cronReminderMessage(job); reminderText != "" && strings.TrimSpace(job.SessionID) == "" && sendExternalReminder != nil {
+		if err := sendExternalReminder(ctx, job, reminderText); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -611,12 +630,33 @@ func appendCronSessionMessage(store *session.Store, sessionID string, content st
 }
 
 func buildCronSessionContent(job cron.Job, response string) string {
+	if reminderText := cronReminderMessage(job); reminderText != "" {
+		return fmt.Sprintf(
+			"[REMINDER]\njob: %s\nmessage: %s",
+			strings.TrimSpace(job.Name),
+			trimForMemory(reminderText, 320),
+		)
+	}
 	return fmt.Sprintf(
 		"[CRON]\njob: %s\nprompt: %s\nresponse: %s",
 		strings.TrimSpace(job.Name),
 		trimForMemory(job.Prompt, 180),
 		trimForMemory(response, 320),
 	)
+}
+
+func cronReminderMessage(job cron.Job) string {
+	meta, ok := cron.ExtractPayloadMeta(job.Payload)
+	if !ok || !strings.EqualFold(strings.TrimSpace(meta.TaskType), "reminder") {
+		return ""
+	}
+	if strings.TrimSpace(meta.ReminderMessage) != "" {
+		return strings.TrimSpace(meta.ReminderMessage)
+	}
+	if strings.TrimSpace(job.Name) != "" {
+		return strings.TrimSpace(job.Name)
+	}
+	return strings.TrimSpace(job.Prompt)
 }
 
 func buildCronSummaryContent(job cron.Job, response string) string {

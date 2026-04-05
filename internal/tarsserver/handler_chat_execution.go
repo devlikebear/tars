@@ -22,7 +22,7 @@ func executeChatLoop(
 	deltaSent := false
 	var accumulated strings.Builder
 	loop, toolCallRecords := setupAgentLoop(deps.client, state.registry, state.sessionID, len(state.history), deps.logger, stream.status)
-	ctx = tool.WithCurrentSessionID(ctx, state.sessionID)
+	ctx = tool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")
 	chatResp, err := loop.Run(ctx, state.llmMessages, agent.RunOptions{

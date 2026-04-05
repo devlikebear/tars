@@ -408,6 +408,60 @@ func buildAPIMux(
 			}
 			return telegramPairings.resolveDefaultChatID()
 		},
+		func(ctx context.Context, job cron.Job, reminderText string) error {
+			if telegramSender == nil || strings.TrimSpace(reminderText) == "" {
+				return nil
+			}
+			meta, _ := cron.ExtractPayloadMeta(job.Payload)
+			chatID := strings.TrimSpace(meta.TelegramChatID)
+			threadID := strings.TrimSpace(meta.TelegramThreadID)
+			botID := strings.TrimSpace(meta.TelegramBotID)
+			if chatID == "" && telegramPairings != nil {
+				resolvedChatID, err := telegramPairings.resolveDefaultChatID()
+				if err != nil {
+					if strings.Contains(strings.ToLower(strings.TrimSpace(err.Error())), "multiple paired telegram chats") {
+						logger.Debug().Str("job_id", strings.TrimSpace(job.ID)).Msg("skip cron reminder telegram send: multiple paired chats")
+						return nil
+					}
+					return err
+				}
+				chatID = strings.TrimSpace(resolvedChatID)
+			}
+			if chatID == "" {
+				return nil
+			}
+			sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			sendResult, err := telegramSender.Send(sendCtx, telegramSendRequest{
+				BotID:    botID,
+				ChatID:   chatID,
+				ThreadID: threadID,
+				Text:     reminderText,
+			})
+			if err != nil {
+				return err
+			}
+			if gatewayRuntime != nil {
+				recordPayload := map[string]any{
+					"provider":      "telegram",
+					"cron_job_id":   strings.TrimSpace(job.ID),
+					"cron_job_name": strings.TrimSpace(job.Name),
+				}
+				if botID != "" {
+					recordPayload["bot_id"] = botID
+				}
+				if sendResult.MessageID > 0 {
+					recordPayload["message_id"] = sendResult.MessageID
+				}
+				if sendResult.ChatID != "" {
+					recordPayload["provider_chat_id"] = sendResult.ChatID
+				}
+				if _, recordErr := gatewayRuntime.OutboundTelegram(botID, chatID, threadID, reminderText, recordPayload); recordErr != nil {
+					logger.Debug().Err(recordErr).Str("job_id", strings.TrimSpace(job.ID)).Str("chat_id", chatID).Msg("record cron reminder telegram outbound failed")
+				}
+			}
+			return nil
+		},
 	)
 	cronRunner = func(ctx context.Context, job cron.Job) (string, error) {
 		if baseCronRunner != nil {
