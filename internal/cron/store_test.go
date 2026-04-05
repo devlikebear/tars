@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -155,6 +156,19 @@ func TestStore_Create_ValidatesSchedule(t *testing.T) {
 	}
 	if want := "at:2026-03-01T06:00:00Z"; created.Schedule != want {
 		t.Fatalf("expected normalized at schedule %q, got %q", want, created.Schedule)
+	}
+
+	naturalCreated, err := store.CreateWithOptions(CreateInput{
+		Prompt:    "english natural schedule job",
+		Schedule:  "in 1 minute",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("expected english natural schedule to parse, got %v", err)
+	}
+	if !strings.HasPrefix(naturalCreated.Schedule, "at:") {
+		t.Fatalf("expected natural schedule normalized to at:, got %q", naturalCreated.Schedule)
 	}
 }
 

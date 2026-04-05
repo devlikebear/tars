@@ -270,7 +270,7 @@ func TestTelegramInbound_ProcessMessageNoSkillRoutingWithoutProjectSystem(t *tes
 	}
 	handler.mainSessionID = mainSession.ID
 
-	answer, gotSessionID, err := handler.processMessage(context.Background(), 11, "alice", "로그인은 이메일 기반이면 돼")
+	answer, gotSessionID, err := handler.processMessage(context.Background(), 11, "alice", "101", "", "로그인은 이메일 기반이면 돼")
 	if err != nil {
 		t.Fatalf("processMessage: %v", err)
 	}

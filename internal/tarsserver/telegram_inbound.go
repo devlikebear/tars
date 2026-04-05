@@ -174,7 +174,7 @@ func (h *telegramInboundHandler) HandleUpdate(ctx context.Context, update telegr
 	}
 
 	typingCancel := h.startTypingLoop(ctx, chatID, threadID)
-	responseText, sessionID, err := h.processMessage(ctx, userID, username, inputText)
+	responseText, sessionID, err := h.processMessage(ctx, userID, username, chatID, threadID, inputText)
 	typingCancel()
 	if err != nil {
 		h.logger.Error().Err(err).Int64("user_id", userID).Str("chat_id", chatID).Msg("telegram inbound processing failed")

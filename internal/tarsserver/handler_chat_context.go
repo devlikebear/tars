@@ -20,6 +20,7 @@ type chatRunState struct {
 	workspaceID          string
 	store                *session.Store
 	sessionID            string
+	sessionKind          string
 	invokedSkill         *skill.Definition
 	invokedSkillReason   string
 	availableSkillNames  []string
@@ -142,6 +143,7 @@ func buildSessionChatRunState(
 		workspaceID:          workspaceID,
 		store:                reqStore,
 		sessionID:            sessionID,
+		sessionKind:          strings.TrimSpace(sess.Kind),
 		invokedSkill:         invokedSkill,
 		invokedSkillReason:   resolvedSkill.Reason,
 		availableSkillNames:  skillNamesFromDefinitions(extSnapshot.Skills),

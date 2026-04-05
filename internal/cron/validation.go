@@ -11,7 +11,15 @@ import (
 )
 
 func normalizeSchedule(raw string) (string, error) {
-	return scheduleexpr.NormalizeExpression(raw)
+	normalized, err := scheduleexpr.NormalizeExpression(raw)
+	if err == nil {
+		return normalized, nil
+	}
+	natural, naturalErr := scheduleexpr.ParseNaturalSchedule(raw, "", time.Now().UTC())
+	if naturalErr == nil {
+		return natural, nil
+	}
+	return "", err
 }
 
 func normalizeSessionTarget(raw string) (string, error) {

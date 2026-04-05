@@ -18,6 +18,8 @@ func (h *telegramInboundHandler) processMessage(
 	ctx context.Context,
 	userID int64,
 	username string,
+	chatID string,
+	threadID string,
 	text string,
 ) (string, string, error) {
 	_ = userID
@@ -31,6 +33,10 @@ func (h *telegramInboundHandler) processMessage(
 	sessionID, err := h.resolveSession(userID, username)
 	if err != nil {
 		return "", "", err
+	}
+	sess, err := h.store.Get(sessionID)
+	if err != nil {
+		return "", sessionID, err
 	}
 	transcriptPath := h.store.TranscriptPath(sessionID)
 	if err := maybeAutoCompactSession(h.workspaceDir, transcriptPath, sessionID, h.llmClient, h.logger, h.tooling.MemorySemanticConfig); err != nil {
@@ -87,6 +93,8 @@ func (h *telegramInboundHandler) processMessage(
 		Source:    "chat",
 		SessionID: sessionID,
 	})
+	runCtx = tool.WithCurrentSessionInfo(runCtx, sessionID, sess.Kind)
+	runCtx = tool.WithCurrentTelegramTarget(runCtx, chatID, threadID, "telegram")
 
 	loop := agent.NewLoop(h.llmClient, registry)
 	resp, err := loop.Run(runCtx, llmMessages, agent.RunOptions{

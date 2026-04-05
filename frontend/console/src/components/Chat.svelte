@@ -13,6 +13,7 @@
   import ContextMonitor from './ContextMonitor.svelte'
   import PromptEditor from './PromptEditor.svelte'
   import TasksPanel from './TasksPanel.svelte'
+  import SessionCronPanel from './SessionCronPanel.svelte'
 
   interface Props {
     sessionId?: string
@@ -68,7 +69,7 @@
     selected_skill_reason?: string
   } = $state({})
   let contextRefreshVersion = $state(0)
-  type RightPanel = 'none' | 'artifacts' | 'config' | 'context' | 'prompt' | 'tasks'
+  type RightPanel = 'none' | 'artifacts' | 'config' | 'context' | 'prompt' | 'tasks' | 'cron'
   let rightPanel = $state<RightPanel>('none')
 
   let sidebarRef: SessionSidebar | undefined = $state()
@@ -299,6 +300,7 @@
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'context'} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prompt'} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'tasks'} onclick={() => togglePanel('tasks')} title="Session tasks">Tasks</button>
+      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'cron'} onclick={() => togglePanel('cron')} title="Session cron jobs">Cron</button>
     </div>
   </div>
 
@@ -398,6 +400,8 @@
           <PromptEditor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'tasks' && selectedSessionId}
           <TasksPanel bind:this={tasksPanelRef} sessionId={selectedSessionId} onClose={() => rightPanel = 'none'} />
+        {:else if rightPanel === 'cron' && selectedSessionId}
+          <SessionCronPanel sessionId={selectedSessionId} sessionKind={selectedSession?.kind ?? ''} onClose={() => rightPanel = 'none'} />
         {/if}
       </aside>
     {/if}

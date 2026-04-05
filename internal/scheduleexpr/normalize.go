@@ -61,6 +61,7 @@ func ResolveSchedule(explicit string, natural string, timezone string, now time.
 var tomorrowHourPattern = regexp.MustCompile(`(오전|오후)?\s*(\d{1,2})시`)
 var weeklyPattern = regexp.MustCompile(`매주\s*([월화수목금토일])요일?\s*(오전|오후)?\s*(\d{1,2})시`)
 var relativePattern = regexp.MustCompile(`(\d+)\s*(분|시간|일)\s*(뒤|후)`)
+var englishRelativePattern = regexp.MustCompile(`(?i)\bin\s+(\d+)\s*(minute|minutes|min|mins|hour|hours|hr|hrs|day|days)\b`)
 
 func ParseNaturalSchedule(natural string, timezone string, now time.Time) (string, error) {
 	input := strings.TrimSpace(natural)
@@ -112,6 +113,27 @@ func ParseNaturalSchedule(natural string, timezone string, now time.Time) (strin
 		case "시간":
 			target = base.Add(time.Duration(amount) * time.Hour)
 		case "일":
+			target = base.AddDate(0, 0, amount)
+		}
+		if !target.IsZero() {
+			return "at:" + target.Format(time.RFC3339), nil
+		}
+	}
+	englishRelative := englishRelativePattern.FindStringSubmatch(input)
+	if len(englishRelative) == 3 {
+		amount := 0
+		if _, err := fmt.Sscanf(strings.TrimSpace(englishRelative[1]), "%d", &amount); err != nil || amount <= 0 {
+			return "", fmt.Errorf("invalid relative schedule value: %s", strings.TrimSpace(englishRelative[1]))
+		}
+		unit := strings.ToLower(strings.TrimSpace(englishRelative[2]))
+		base := now.In(loc)
+		var target time.Time
+		switch unit {
+		case "minute", "minutes", "min", "mins":
+			target = base.Add(time.Duration(amount) * time.Minute)
+		case "hour", "hours", "hr", "hrs":
+			target = base.Add(time.Duration(amount) * time.Hour)
+		case "day", "days":
 			target = base.AddDate(0, 0, amount)
 		}
 		if !target.IsZero() {

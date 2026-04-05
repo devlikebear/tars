@@ -118,7 +118,7 @@ func TestDeliverCronResult_DeliversToTargetSession(t *testing.T) {
 		Schedule:      "every:5m",
 		SessionTarget: "main",
 	}
-	if err := deliverCronResult(root, store, job, mainSession.ID, false, "drafted episode 2 and updated plot beats", now, zerolog.Nop()); err != nil {
+	if err := deliverCronResult(context.Background(), root, store, job, mainSession.ID, false, "drafted episode 2 and updated plot beats", now, zerolog.Nop(), nil); err != nil {
 		t.Fatalf("deliver cron result: %v", err)
 	}
 
@@ -128,6 +128,134 @@ func TestDeliverCronResult_DeliversToTargetSession(t *testing.T) {
 	}
 	if len(messages) != 1 || messages[0].Role != "system" || !containsAll(messages[0].Content, "[CRON]", "response: drafted episode 2") {
 		t.Fatalf("unexpected target transcript: %+v", messages)
+	}
+}
+
+func TestCronJobRunner_GlobalReminderDeliversToMainSessionAndTelegram(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+	payload, err := cron.MergePayloadMeta(nil, cron.PayloadMeta{
+		TaskType:        "reminder",
+		ReminderMessage: "테스트 알림",
+		TelegramChatID:  "101",
+	})
+	if err != nil {
+		t.Fatalf("build reminder payload: %v", err)
+	}
+
+	sent := make([]string, 0, 1)
+	runner := newCronJobRunnerWithNotify(
+		root,
+		store,
+		func(_ context.Context, _ string, _ string, _ []string) (string, error) {
+			t.Fatal("expected reminder cron to bypass llm runner")
+			return "", nil
+		},
+		zerolog.Nop(),
+		nil,
+		mainSession.ID,
+		0,
+		nil,
+		func(_ context.Context, job cron.Job, reminderText string) error {
+			if job.ID != "job_reminder" {
+				t.Fatalf("unexpected reminder job: %+v", job)
+			}
+			sent = append(sent, reminderText)
+			return nil
+		},
+	)
+
+	response, err := runner(context.Background(), cron.Job{
+		ID:            "job_reminder",
+		Name:          "테스트 알림",
+		Prompt:        "다음 알림을 보내기: 테스트 알림",
+		Schedule:      "at:2026-03-08T06:17:09Z",
+		SessionTarget: "main",
+		Payload:       payload,
+	})
+	if err != nil {
+		t.Fatalf("run reminder cron job: %v", err)
+	}
+	if response != "테스트 알림" {
+		t.Fatalf("expected reminder response text, got %q", response)
+	}
+	if len(sent) != 1 || sent[0] != "테스트 알림" {
+		t.Fatalf("expected telegram reminder send, got %+v", sent)
+	}
+
+	messages, err := session.ReadMessages(store.TranscriptPath(mainSession.ID))
+	if err != nil {
+		t.Fatalf("read main transcript: %v", err)
+	}
+	if len(messages) != 1 || !containsAll(messages[0].Content, "[REMINDER]", "message: 테스트 알림") {
+		t.Fatalf("unexpected main reminder transcript: %+v", messages)
+	}
+}
+
+func TestCronJobRunner_SessionReminderStaysInBoundSession(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+	boundSession, err := store.Create("monitor")
+	if err != nil {
+		t.Fatalf("create bound session: %v", err)
+	}
+	payload, err := cron.MergePayloadMeta(nil, cron.PayloadMeta{
+		TaskType:        "reminder",
+		ReminderMessage: "세션 알림",
+		TelegramChatID:  "101",
+	})
+	if err != nil {
+		t.Fatalf("build reminder payload: %v", err)
+	}
+
+	externalSendCount := 0
+	runner := newCronJobRunnerWithNotify(
+		root,
+		store,
+		func(_ context.Context, _ string, _ string, _ []string) (string, error) {
+			t.Fatal("expected session reminder cron to bypass llm runner")
+			return "", nil
+		},
+		zerolog.Nop(),
+		nil,
+		mainSession.ID,
+		0,
+		nil,
+		func(_ context.Context, _ cron.Job, _ string) error {
+			externalSendCount++
+			return nil
+		},
+	)
+
+	_, err = runner(context.Background(), cron.Job{
+		ID:        "job_session_reminder",
+		Name:      "세션 알림",
+		Prompt:    "다음 알림을 보내기: 세션 알림",
+		Schedule:  "at:2026-03-08T06:17:09Z",
+		SessionID: boundSession.ID,
+		Payload:   payload,
+	})
+	if err != nil {
+		t.Fatalf("run session reminder cron job: %v", err)
+	}
+	if externalSendCount != 0 {
+		t.Fatalf("expected session reminder to avoid external channel sends, got %d", externalSendCount)
+	}
+
+	messages, err := session.ReadMessages(store.TranscriptPath(boundSession.ID))
+	if err != nil {
+		t.Fatalf("read bound transcript: %v", err)
+	}
+	if len(messages) != 1 || !containsAll(messages[0].Content, "[REMINDER]", "message: 세션 알림") {
+		t.Fatalf("unexpected bound reminder transcript: %+v", messages)
 	}
 }
 
@@ -160,6 +288,7 @@ func TestCronJobRunner_HiddenWorkerDoesNotInjectTargetSessionContext(t *testing.
 		nil,
 		"",
 		0,
+		nil,
 		nil,
 	)
 
@@ -203,6 +332,7 @@ func TestCronJobRunner_IncludesDefaultTelegramChatContext(t *testing.T) {
 		func(_ context.Context) (string, error) {
 			return "8432508298", nil
 		},
+		nil,
 	)
 
 	_, err = runner(context.Background(), cron.Job{
@@ -239,6 +369,7 @@ func TestCronJobRunner_NoProjectPrerequisiteValidationAfterRemoval(t *testing.T)
 		nil,
 		"",
 		0,
+		nil,
 		nil,
 	)
 
@@ -279,6 +410,7 @@ func TestCronJobRunner_RejectsPseudoToolContamination(t *testing.T) {
 		nil,
 		mainSession.ID,
 		0,
+		nil,
 		nil,
 	)
 
@@ -333,6 +465,7 @@ func TestCronJobRunner_EmitsErrorNotificationOnContamination(t *testing.T) {
 		},
 		mainSession.ID,
 		2,
+		nil,
 		nil,
 	)
 
@@ -581,6 +714,7 @@ func TestCronJobRunner_FailsWhenClaimedFileUpdateIsNotObserved(t *testing.T) {
 		mainSession.ID,
 		0,
 		nil,
+		nil,
 	)
 
 	_, err = runner(context.Background(), cron.Job{
@@ -612,6 +746,7 @@ func TestCronJobRunner_NoProjectToolPolicyAfterRemoval(t *testing.T) {
 		nil,
 		"",
 		0,
+		nil,
 		nil,
 	)
 

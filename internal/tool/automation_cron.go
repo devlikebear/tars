@@ -63,7 +63,10 @@ func NewCronCreateTool(store *cron.Store) Tool {
 			}
 			var input struct {
 				Name           string          `json:"name"`
+				Title          string          `json:"title,omitempty"`
 				Prompt         string          `json:"prompt"`
+				Message        string          `json:"message,omitempty"`
+				TaskType       string          `json:"task_type,omitempty"`
 				Schedule       string          `json:"schedule"`
 				Enabled        *bool           `json:"enabled,omitempty"`
 				SessionID      string          `json:"session_id,omitempty"`
@@ -76,14 +79,16 @@ func NewCronCreateTool(store *cron.Store) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return automationErrorResult(fmt.Sprintf("invalid arguments: %v", err)), nil
 			}
+			input.Name = resolveCronJobName(input.Name, input.Title, input.Message, input.Prompt)
+			input.Prompt = resolveCronJobPrompt(input.Prompt, input.Message, input.Title, input.TaskType)
 			if err := validateNaturalTaskPrompt(input.Prompt); err != nil {
 				return automationErrorResult(err.Error()), nil
 			}
-			sessionTarget, err := resolveCronSessionTargetFromContext(ctx, input.SessionTarget)
+			sessionID, sessionTarget, err := resolveCronScopeFromContext(ctx, input.SessionID, input.SessionTarget)
 			if err != nil {
 				return automationErrorResult(err.Error()), nil
 			}
-			sessionID, err := resolveCronSessionBindingFromContext(ctx, input.SessionID)
+			payload, err := augmentCronPayloadFromContext(ctx, input.Payload, input.TaskType, input.Name, input.Prompt, input.Message)
 			if err != nil {
 				return automationErrorResult(err.Error()), nil
 			}
@@ -102,7 +107,7 @@ func NewCronCreateTool(store *cron.Store) Tool {
 				SessionTarget:     sessionTarget,
 				WakeMode:          input.WakeMode,
 				DeliveryMode:      input.DeliveryMode,
-				Payload:           input.Payload,
+				Payload:           payload,
 				DeleteAfterRun:    input.DeleteAfterRun != nil && *input.DeleteAfterRun,
 				HasDeleteAfterRun: input.DeleteAfterRun != nil,
 			})
@@ -143,7 +148,10 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 			var input struct {
 				JobID          string           `json:"job_id"`
 				Name           *string          `json:"name,omitempty"`
+				Title          *string          `json:"title,omitempty"`
 				Prompt         *string          `json:"prompt,omitempty"`
+				Message        *string          `json:"message,omitempty"`
+				TaskType       *string          `json:"task_type,omitempty"`
 				Schedule       *string          `json:"schedule,omitempty"`
 				Enabled        *bool            `json:"enabled,omitempty"`
 				SessionID      *string          `json:"session_id,omitempty"`
@@ -160,8 +168,16 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 			if input.JobID == "" {
 				return automationErrorResult("job_id is required"), nil
 			}
-			if _, err := store.Get(input.JobID); err != nil {
+			currentJob, err := store.Get(input.JobID)
+			if err != nil {
 				return automationErrorResult(fmt.Sprintf("get cron job failed: %v", err)), nil
+			}
+			if input.Name == nil && input.Title != nil {
+				input.Name = input.Title
+			}
+			if input.Prompt == nil && input.Message != nil {
+				prompt := resolveCronJobPrompt("", *input.Message, derefString(input.Title), derefString(input.TaskType))
+				input.Prompt = &prompt
 			}
 			if input.Prompt != nil {
 				if err := validateNaturalTaskPrompt(*input.Prompt); err != nil {
@@ -182,6 +198,18 @@ func NewCronUpdateTool(store *cron.Store) Tool {
 				}
 				input.SessionID = &resolved
 			}
+			payload, err := augmentCronPayloadFromContext(
+				ctx,
+				derefRawMessage(input.Payload, currentJob.Payload),
+				derefString(input.TaskType),
+				derefString(input.Name),
+				derefString(input.Prompt),
+				derefString(input.Message),
+			)
+			if err != nil {
+				return automationErrorResult(err.Error()), nil
+			}
+			input.Payload = &payload
 			job, err := store.Update(input.JobID, cron.UpdateInput{
 				Name:           input.Name,
 				Prompt:         input.Prompt,
@@ -219,11 +247,147 @@ func resolveCronSessionBindingFromContext(ctx context.Context, provided string) 
 	if !strings.EqualFold(sessionID, "current") {
 		return sessionID, nil
 	}
+	if strings.EqualFold(currentSessionKindFromContext(ctx), "main") {
+		return "", nil
+	}
 	current := currentSessionIDFromContext(ctx)
 	if current == "" {
 		return "", fmt.Errorf("current session is not available in this context")
 	}
 	return current, nil
+}
+
+func resolveCronScopeFromContext(ctx context.Context, providedSessionID string, providedSessionTarget string) (string, string, error) {
+	sessionID, err := resolveCronSessionBindingFromContext(ctx, providedSessionID)
+	if err != nil {
+		return "", "", err
+	}
+	sessionTarget, err := resolveCronSessionTargetFromContext(ctx, providedSessionTarget)
+	if err != nil {
+		return "", "", err
+	}
+	currentSessionID := currentSessionIDFromContext(ctx)
+	currentSessionKind := strings.ToLower(strings.TrimSpace(currentSessionKindFromContext(ctx)))
+	if currentSessionKind == "" {
+		return sessionID, sessionTarget, nil
+	}
+
+	switch currentSessionKind {
+	case "main":
+		switch strings.ToLower(strings.TrimSpace(providedSessionID)) {
+		case "", "current", "global", "isolated", "none":
+			sessionID = ""
+			if strings.TrimSpace(sessionTarget) == "" || strings.EqualFold(sessionTarget, "isolated") {
+				sessionTarget = "main"
+			}
+		}
+	default:
+		if currentSessionID == "" {
+			return sessionID, sessionTarget, nil
+		}
+		switch strings.ToLower(strings.TrimSpace(providedSessionID)) {
+		case "", "current", "global", "isolated", "none":
+			sessionID = currentSessionID
+			if strings.TrimSpace(sessionTarget) == "" ||
+				strings.EqualFold(sessionTarget, "isolated") ||
+				strings.EqualFold(sessionTarget, "current") ||
+				strings.EqualFold(sessionTarget, "main") {
+				sessionTarget = ""
+			}
+		}
+	}
+	return sessionID, sessionTarget, nil
+}
+
+func resolveCronJobName(name string, title string, message string, prompt string) string {
+	for _, candidate := range []string{name, title, message, prompt} {
+		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func resolveCronJobPrompt(prompt string, message string, title string, taskType string) string {
+	if trimmed := strings.TrimSpace(prompt); trimmed != "" {
+		return trimmed
+	}
+	if strings.EqualFold(strings.TrimSpace(taskType), "reminder") {
+		reminderMessage := inferReminderMessage("", message, title, "")
+		if reminderMessage != "" {
+			return "다음 알림을 보내기: " + reminderMessage
+		}
+	}
+	if trimmed := strings.TrimSpace(message); trimmed != "" {
+		return trimmed
+	}
+	return strings.TrimSpace(title)
+}
+
+func augmentCronPayloadFromContext(
+	ctx context.Context,
+	raw json.RawMessage,
+	taskType string,
+	name string,
+	prompt string,
+	message string,
+) (json.RawMessage, error) {
+	resolvedTaskType := inferCronTaskType(taskType, name, prompt, message)
+	meta := cron.PayloadMeta{
+		TaskType:          resolvedTaskType,
+		ReminderMessage:   inferReminderMessage(resolvedTaskType, message, name, prompt),
+		SourceSessionKind: currentSessionKindFromContext(ctx),
+	}
+	target := currentTelegramTargetFromContext(ctx)
+	meta.TelegramChatID = target.ChatID
+	meta.TelegramThreadID = target.ThreadID
+	meta.TelegramBotID = target.BotID
+	return cron.MergePayloadMeta(raw, meta)
+}
+
+func inferCronTaskType(taskType string, name string, prompt string, message string) string {
+	switch strings.ToLower(strings.TrimSpace(taskType)) {
+	case "reminder", "alert", "notify", "notification":
+		return "reminder"
+	}
+	combined := strings.ToLower(strings.Join([]string{name, prompt, message}, " "))
+	if strings.Contains(combined, "알림") || strings.Contains(combined, "remind") || strings.Contains(combined, "notification") {
+		return "reminder"
+	}
+	return ""
+}
+
+func inferReminderMessage(taskType string, message string, title string, prompt string) string {
+	if trimmed := strings.TrimSpace(message); trimmed != "" {
+		return trimmed
+	}
+	if trimmed := strings.TrimSpace(title); trimmed != "" {
+		return trimmed
+	}
+	if !strings.EqualFold(strings.TrimSpace(taskType), "reminder") {
+		return ""
+	}
+	trimmed := strings.TrimSpace(prompt)
+	trimmed = strings.TrimPrefix(trimmed, "다음 알림을 보내기:")
+	trimmed = strings.TrimPrefix(trimmed, "Send this reminder:")
+	trimmed = strings.TrimSpace(trimmed)
+	trimmed = strings.TrimSuffix(trimmed, "알림 보내기")
+	trimmed = strings.TrimSuffix(trimmed, "알림 전송하기")
+	return strings.TrimSpace(trimmed)
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func derefRawMessage(value *json.RawMessage, fallback json.RawMessage) json.RawMessage {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
 
 func NewCronDeleteTool(store *cron.Store) Tool {
