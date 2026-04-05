@@ -248,6 +248,7 @@ type CronJob struct {
 	Schedule       string `json:"schedule"`
 	Enabled        bool   `json:"enabled"`
 	DeleteAfterRun bool   `json:"delete_after_run,omitempty"`
+	SessionID      string `json:"session_id,omitempty"`
 	SessionTarget  string `json:"session_target,omitempty"`
 	WakeMode       string `json:"wake_mode,omitempty"`
 	DeliveryMode   string `json:"delivery_mode,omitempty"`

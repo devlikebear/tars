@@ -14,6 +14,7 @@
   let loading = $state(true)
   let error = $state('')
   let planExpanded = $state(true)
+  let taskList = $derived(Array.isArray(data.tasks) ? data.tasks : [])
 
   export async function load() {
     loading = true
@@ -46,11 +47,11 @@
   }
 
   let summary = $derived({
-    total: data.tasks.length,
-    pending: data.tasks.filter(t => t.status === 'pending').length,
-    in_progress: data.tasks.filter(t => t.status === 'in_progress').length,
-    completed: data.tasks.filter(t => t.status === 'completed').length,
-    cancelled: data.tasks.filter(t => t.status === 'cancelled').length,
+    total: taskList.length,
+    pending: taskList.filter(t => t.status === 'pending').length,
+    in_progress: taskList.filter(t => t.status === 'in_progress').length,
+    completed: taskList.filter(t => t.status === 'completed').length,
+    cancelled: taskList.filter(t => t.status === 'cancelled').length,
   })
 
   let progress = $derived(
@@ -84,7 +85,7 @@
     <div class="empty-state">Loading tasks...</div>
   {:else if error}
     <div class="error-banner">{error}</div>
-  {:else if !data.plan && data.tasks.length === 0}
+  {:else if !data.plan && taskList.length === 0}
     <div class="empty-state">
       <p>No tasks yet.</p>
       <p class="hint">Ask TARS to create a plan and tasks for your work.</p>
@@ -122,7 +123,7 @@
     {/if}
 
     <div class="tasks-list">
-      {#each data.tasks as task (task.id)}
+      {#each taskList as task (task.id)}
         <div class="task-card" class:completed={task.status === 'completed'} class:cancelled={task.status === 'cancelled'} class:active={task.status === 'in_progress'}>
           <span class="task-status-icon">{statusIcon(task.status)}</span>
           <div class="task-content">

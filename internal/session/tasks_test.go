@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -18,6 +19,9 @@ func TestSessionTasks_CRUD(t *testing.T) {
 	}
 	if st.Plan != nil || len(st.Tasks) != 0 {
 		t.Fatalf("expected empty tasks, got %+v", st)
+	}
+	if st.Tasks == nil {
+		t.Fatal("expected empty tasks slice, got nil")
 	}
 
 	// Set plan and add tasks
@@ -43,6 +47,31 @@ func TestSessionTasks_CRUD(t *testing.T) {
 	}
 	if loaded.Tasks[0].Title != "Extract interfaces" {
 		t.Fatalf("unexpected first task: %+v", loaded.Tasks[0])
+	}
+}
+
+func TestSessionTasks_JSONIncludesEmptyTasksArray(t *testing.T) {
+	raw, err := json.Marshal(SessionTasks{})
+	if err != nil {
+		t.Fatalf("marshal session tasks: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("unmarshal session tasks: %v", err)
+	}
+
+	tasks, ok := payload["tasks"]
+	if !ok {
+		t.Fatalf("expected tasks field in payload, got %s", string(raw))
+	}
+
+	items, ok := tasks.([]any)
+	if !ok {
+		t.Fatalf("expected tasks array, got %T", tasks)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected empty tasks array, got %+v", items)
 	}
 }
 

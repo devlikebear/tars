@@ -64,6 +64,13 @@ async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
+function normalizeSessionTasks(data: Partial<SessionTasks> | null | undefined): SessionTasks {
+  return {
+    ...(data?.plan ? { plan: data.plan } : {}),
+    tasks: Array.isArray(data?.tasks) ? data.tasks : [],
+  }
+}
+
 // --- Heartbeat ---
 
 export async function getHeartbeatStatus(): Promise<HeartbeatStatus> {
@@ -167,7 +174,8 @@ export async function compactSession(sessionId: string): Promise<{ compacted: bo
 }
 
 export async function getSessionTasks(sessionId: string): Promise<SessionTasks> {
-  return requestJSON<SessionTasks>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks`)
+  const data = await requestJSON<Partial<SessionTasks>>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks`)
+  return normalizeSessionTasks(data)
 }
 
 export async function getSessionWorkDirs(sessionId: string): Promise<SessionWorkDirs> {

@@ -237,6 +237,29 @@ func TestStore_CreateWithSessionWakeDeliveryPayload(t *testing.T) {
 	}
 }
 
+func TestStore_CreateWithSessionBindingDefaultsToSessionDelivery(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	job, err := store.CreateWithOptions(CreateInput{
+		Name:      "monitor",
+		Prompt:    "check dashboard",
+		Schedule:  "every:10m",
+		Enabled:   true,
+		HasEnable: true,
+		SessionID: "sess-monitor",
+	})
+	if err != nil {
+		t.Fatalf("create session-bound cron job: %v", err)
+	}
+	if job.SessionID != "sess-monitor" {
+		t.Fatalf("expected session_id persisted, got %q", job.SessionID)
+	}
+	if job.DeliveryMode != "session" {
+		t.Fatalf("expected session-bound job to default delivery_mode=session, got %q", job.DeliveryMode)
+	}
+}
+
 func TestStore_Create_NormalizesCurrentSessionTargetToMain(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

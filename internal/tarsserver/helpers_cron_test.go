@@ -2,6 +2,8 @@ package tarsserver
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +11,10 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/ops"
+	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -70,6 +76,29 @@ func TestResolveCronTargetSessionID_EmptyTargetReturnsEmpty(t *testing.T) {
 	}
 	if sessionID != "" {
 		t.Fatalf("expected empty session id for implicit project target, got %q", sessionID)
+	}
+}
+
+func TestResolveCronTargetSessionID_SessionBindingDefaultsToBoundSession(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+	boundSession, err := store.Create("monitor")
+	if err != nil {
+		t.Fatalf("create bound session: %v", err)
+	}
+
+	sessionID, explicit, err := resolveCronTargetSessionID(store, cron.Job{SessionID: boundSession.ID}, mainSession.ID)
+	if err != nil {
+		t.Fatalf("resolve bound session target: %v", err)
+	}
+	if explicit {
+		t.Fatalf("session binding default target should not be treated as explicit")
+	}
+	if sessionID != boundSession.ID {
+		t.Fatalf("expected bound session id %q, got %q", boundSession.ID, sessionID)
 	}
 }
 
@@ -328,16 +357,151 @@ func TestCronJobRunner_EmitsErrorNotificationOnContamination(t *testing.T) {
 	// OpenPath is empty after project artifact persistence was removed
 }
 
-func TestPersistCronProjectArtifact_NoOp(t *testing.T) {
+func TestPersistCronProjectArtifact_AppendsSessionArtifactLog(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 3, 8, 1, 30, 0, 0, time.UTC)
-	job := cron.Job{ID: "job_demo", Name: "nightly writer", Prompt: "write next chapter"}
-	path, err := persistCronProjectArtifact(root, job, "drafted episode 2", now, cronRunTelemetry{}, 0)
+	job := cron.Job{ID: "job_demo", Name: "nightly writer", Prompt: "write next chapter", SessionID: "sess-main"}
+	path, err := persistCronProjectArtifact(root, job, "drafted episode 2", nil, now, cronRunTelemetry{ToolCount: 2}, 0)
 	if err != nil {
 		t.Fatalf("persist artifact: %v", err)
 	}
-	if path != "" {
-		t.Fatalf("expected empty path after project removal, got %q", path)
+	wantPath := filepath.Join(root, "artifacts", "sess-main", "cronjob-log.jsonl")
+	if path != wantPath {
+		t.Fatalf("expected session cron log path %q, got %q", wantPath, path)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read session cron log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected one session cron log line, got %d", len(lines))
+	}
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &entry); err != nil {
+		t.Fatalf("decode session cron log entry: %v", err)
+	}
+	if entry["job_id"] != "job_demo" || entry["session_id"] != "sess-main" {
+		t.Fatalf("unexpected session cron log entry: %+v", entry)
+	}
+	if entry["status"] != "completed" {
+		t.Fatalf("expected completed session cron log status, got %+v", entry)
+	}
+}
+
+func TestPersistCronProjectArtifact_AppendsGlobalArtifactLog(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 3, 8, 1, 35, 0, 0, time.UTC)
+	job := cron.Job{ID: "job_global", Name: "nightly writer", Prompt: "write next chapter"}
+	path, err := persistCronProjectArtifact(root, job, "", errors.New("boom"), now, cronRunTelemetry{}, 0)
+	if err != nil {
+		t.Fatalf("persist global artifact: %v", err)
+	}
+	wantPath := filepath.Join(root, "artifacts", "_global", "cronjob-log.jsonl")
+	if path != wantPath {
+		t.Fatalf("expected global cron log path %q, got %q", wantPath, path)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read global cron log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected one global cron log line, got %d", len(lines))
+	}
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &entry); err != nil {
+		t.Fatalf("decode global cron log entry: %v", err)
+	}
+	if entry["scope"] != "global" || entry["status"] != "error" {
+		t.Fatalf("unexpected global cron log entry: %+v", entry)
+	}
+}
+
+func TestCronPromptRunner_UsesBoundSessionContext(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	mainSession, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+	boundSession, err := store.Create("monitor")
+	if err != nil {
+		t.Fatalf("create bound session: %v", err)
+	}
+	if err := store.SetToolConfig(boundSession.ID, &session.SessionToolConfig{
+		ToolsCustom:  true,
+		ToolsEnabled: []string{"read_file"},
+	}); err != nil {
+		t.Fatalf("set bound session tool config: %v", err)
+	}
+	if err := store.SetPromptOverride(boundSession.ID, "SESSION OVERRIDE"); err != nil {
+		t.Fatalf("set prompt override: %v", err)
+	}
+	if err := session.AppendMessage(store.TranscriptPath(boundSession.ID), session.Message{
+		Role:      "assistant",
+		Content:   "previous monitoring summary",
+		Timestamp: time.Date(2026, 3, 8, 1, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("append bound session message: %v", err)
+	}
+
+	client := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{Role: "assistant", Content: "ok"},
+		},
+		disableDelta: true,
+	}
+
+	tooling := buildChatToolingOptions(nil, nil, nil, "standard", true, memory.SemanticConfig{}, 1, nil)
+	tooling.OpsManager = ops.NewManager(root, ops.Options{})
+	tooling.ResearchService = research.NewService(root, research.Options{})
+
+	deps := chatHandlerDeps{
+		workspaceDir:  root,
+		store:         store,
+		client:        client,
+		logger:        zerolog.Nop(),
+		maxIters:      1,
+		mainSessionID: mainSession.ID,
+		tooling:       tooling,
+	}
+
+	fallbackCalled := false
+	runner := newCronPromptRunnerWithSessionContext(func(_ context.Context, _ string, _ string, _ []string) (string, error) {
+		fallbackCalled = true
+		return "fallback", nil
+	}, deps)
+
+	ctx := withCronExecutionContext(context.Background(), cronExecutionContext{SessionID: boundSession.ID})
+	result, err := runner(ctx, "cron:job_demo", "check the website", nil)
+	if err != nil {
+		t.Fatalf("run bound cron prompt: %v", err)
+	}
+	if result != "ok" {
+		t.Fatalf("expected bound cron prompt result ok, got %q", result)
+	}
+	if fallbackCalled {
+		t.Fatal("expected bound cron prompt to bypass fallback runner")
+	}
+	if client.callCount != 1 {
+		t.Fatalf("expected one llm call, got %d", client.callCount)
+	}
+	if len(client.seenMessages) != 1 || len(client.seenMessages[0]) < 3 {
+		t.Fatalf("expected system/history/user messages, got %+v", client.seenMessages)
+	}
+	systemPrompt := client.seenMessages[0][0].Content
+	if !strings.Contains(systemPrompt, "SESSION OVERRIDE") {
+		t.Fatalf("expected session prompt override in system prompt, got %q", systemPrompt)
+	}
+	userMessage := client.seenMessages[0][len(client.seenMessages[0])-1].Content
+	if userMessage != "check the website" {
+		t.Fatalf("expected cron prompt as user message, got %q", userMessage)
+	}
+	if len(client.seenTools) != 1 || len(client.seenTools[0]) != 1 || client.seenTools[0][0] != "read_file" {
+		t.Fatalf("expected bound session tool filter to apply, got %+v", client.seenTools)
 	}
 }
 

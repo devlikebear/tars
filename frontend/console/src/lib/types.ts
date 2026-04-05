@@ -28,6 +28,7 @@ export type CronJob = {
   schedule: string
   enabled: boolean
   delete_after_run?: boolean
+  session_id?: string
   session_target?: string
   wake_mode?: string
   delivery_mode?: string
@@ -272,6 +273,7 @@ export type CreateCronJobRequest = {
   prompt: string
   schedule?: string
   enabled?: boolean
+  session_id?: string
   session_target?: string
 }
 
@@ -280,6 +282,7 @@ export type UpdateCronJobRequest = {
   prompt?: string
   schedule?: string
   enabled?: boolean
+  session_id?: string
   session_target?: string
 }
 

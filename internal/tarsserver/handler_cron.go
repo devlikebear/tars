@@ -84,6 +84,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 				Prompt         string          `json:"prompt"`
 				Schedule       string          `json:"schedule"`
 				Enabled        *bool           `json:"enabled,omitempty"`
+				SessionID      string          `json:"session_id,omitempty"`
 				SessionTarget  string          `json:"session_target,omitempty"`
 				WakeMode       string          `json:"wake_mode,omitempty"`
 				DeliveryMode   string          `json:"delivery_mode,omitempty"`
@@ -105,6 +106,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 				Schedule:          req.Schedule,
 				Enabled:           enabled,
 				HasEnable:         hasEnable,
+				SessionID:         req.SessionID,
 				SessionTarget:     req.SessionTarget,
 				WakeMode:          req.WakeMode,
 				DeliveryMode:      req.DeliveryMode,
@@ -162,6 +164,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 					Prompt         *string          `json:"prompt,omitempty"`
 					Schedule       *string          `json:"schedule,omitempty"`
 					Enabled        *bool            `json:"enabled,omitempty"`
+					SessionID      *string          `json:"session_id,omitempty"`
 					SessionTarget  *string          `json:"session_target,omitempty"`
 					WakeMode       *string          `json:"wake_mode,omitempty"`
 					DeliveryMode   *string          `json:"delivery_mode,omitempty"`
@@ -176,6 +179,7 @@ func newCronAPIHandlerWithRunnerAndResolver(
 					Prompt:         req.Prompt,
 					Schedule:       req.Schedule,
 					Enabled:        req.Enabled,
+					SessionID:      req.SessionID,
 					SessionTarget:  req.SessionTarget,
 					WakeMode:       req.WakeMode,
 					DeliveryMode:   req.DeliveryMode,

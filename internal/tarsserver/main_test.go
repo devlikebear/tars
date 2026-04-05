@@ -844,7 +844,7 @@ func TestCronAPI_CreateWithExecutionFields(t *testing.T) {
 		zerolog.New(io.Discard),
 	)
 
-	createReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs", strings.NewReader(`{"name":"typed","prompt":"check feed","schedule":"at:2026-02-16T10:00:00Z","session_target":"main","wake_mode":"agent_loop","delivery_mode":"session","payload":{"priority":"high"}}`))
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/cron/jobs", strings.NewReader(`{"name":"typed","prompt":"check feed","schedule":"at:2026-02-16T10:00:00Z","session_id":"sess-monitor","session_target":"main","wake_mode":"agent_loop","delivery_mode":"session","payload":{"priority":"high"}}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createRec := httptest.NewRecorder()
 	handler.ServeHTTP(createRec, createReq)
@@ -855,7 +855,7 @@ func TestCronAPI_CreateWithExecutionFields(t *testing.T) {
 	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create: %v", err)
 	}
-	if created.SessionTarget != "main" || created.WakeMode != "agent_loop" || created.DeliveryMode != "session" {
+	if created.SessionID != "sess-monitor" || created.SessionTarget != "main" || created.WakeMode != "agent_loop" || created.DeliveryMode != "session" {
 		t.Fatalf("unexpected execution fields: %+v", created)
 	}
 	if string(created.Payload) != `{"priority":"high"}` {

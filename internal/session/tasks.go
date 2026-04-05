@@ -28,7 +28,21 @@ type Task struct {
 // SessionTasks holds the current plan and its associated tasks for a session.
 type SessionTasks struct {
 	Plan  *Plan  `json:"plan,omitempty"`
-	Tasks []Task `json:"tasks,omitempty"`
+	Tasks []Task `json:"tasks"`
+}
+
+// MarshalJSON keeps the API contract stable by always emitting tasks as an array.
+func (st SessionTasks) MarshalJSON() ([]byte, error) {
+	type sessionTasksJSON struct {
+		Plan  *Plan  `json:"plan,omitempty"`
+		Tasks []Task `json:"tasks"`
+	}
+
+	normalized := normalizeSessionTasks(st)
+	return json.Marshal(sessionTasksJSON{
+		Plan:  normalized.Plan,
+		Tasks: normalized.Tasks,
+	})
 }
 
 // GetTasks reads the tasks file for a session. Returns empty SessionTasks if not found.
@@ -37,7 +51,7 @@ func (s *Store) GetTasks(sessionID string) (SessionTasks, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return SessionTasks{}, nil
+			return normalizeSessionTasks(SessionTasks{}), nil
 		}
 		return SessionTasks{}, fmt.Errorf("read tasks: %w", err)
 	}
@@ -45,7 +59,7 @@ func (s *Store) GetTasks(sessionID string) (SessionTasks, error) {
 	if err := json.Unmarshal(raw, &tasks); err != nil {
 		return SessionTasks{}, fmt.Errorf("unmarshal tasks: %w", err)
 	}
-	return tasks, nil
+	return normalizeSessionTasks(tasks), nil
 }
 
 // SaveTasks writes the tasks file for a session.
@@ -53,7 +67,7 @@ func (s *Store) SaveTasks(sessionID string, tasks SessionTasks) error {
 	if err := os.MkdirAll(s.dir, 0o755); err != nil {
 		return fmt.Errorf("create sessions directory: %w", err)
 	}
-	raw, err := json.MarshalIndent(tasks, "", "  ")
+	raw, err := json.MarshalIndent(normalizeSessionTasks(tasks), "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal tasks: %w", err)
 	}
@@ -62,6 +76,13 @@ func (s *Store) SaveTasks(sessionID string, tasks SessionTasks) error {
 		return fmt.Errorf("write tasks: %w", err)
 	}
 	return nil
+}
+
+func normalizeSessionTasks(tasks SessionTasks) SessionTasks {
+	if tasks.Tasks == nil {
+		tasks.Tasks = []Task{}
+	}
+	return tasks
 }
 
 func (s *Store) tasksPath(sessionID string) string {
