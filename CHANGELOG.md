@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-04-05
+
+### Fixed
+
+- Cron jobs created from the chat tool inside a regular console chat session are now correctly bound to that session instead of silently becoming global; empty-kind chat sessions are treated as session-bound contexts, matching the behavior already available to the `kind=session` and `kind=main` paths
+- Chat page now auto-refreshes when a background cron job delivers a result to the currently open session, and `[CRON]`/`[REMINDER]` transcript entries are no longer hidden from history so users can see why a scheduled run fired
+
 ## [0.24.0] - 2026-04-05
 
 ### Added

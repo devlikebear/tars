@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte'
-  import { streamChat, cancelChat, getSessionHistory, renameSession } from '../lib/api'
+  import { onMount, onDestroy, tick } from 'svelte'
+  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents } from '../lib/api'
   import type { ChatAttachment, ChatEvent, SessionMessage } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import MarkdownContent from './MarkdownContent.svelte'
@@ -468,40 +468,47 @@
   }
 
   let textareaEl: HTMLTextAreaElement | undefined = $state()
+  let stopEventStream: (() => void) | null = null
+
+  async function loadHistoryInto(targetSessionId: string) {
+    const rebuilt: ChatMessage[] = [
+      { id: 'system-init', role: 'system', text: `Session: ${targetSessionId.slice(0, 8)}...` },
+    ]
+    const history = await getSessionHistory(targetSessionId)
+    for (const msg of history) {
+      if (msg.role === 'system' && (msg.content.startsWith('[HEARTBEAT]') || msg.content.startsWith('[COMPACTION SUMMARY]'))) {
+        continue
+      }
+      if (msg.role === 'tool') {
+        rebuilt.push({
+          id: `tool-${msg.tool_call_id || Date.now()}`,
+          role: 'tool',
+          text: '',
+          toolName: msg.tool_name,
+          toolCallId: msg.tool_call_id,
+          toolArgs: msg.tool_args,
+          toolResult: msg.content,
+          toolDone: true,
+        })
+      } else {
+        rebuilt.push({
+          id: `hist-${rebuilt.length}`,
+          role: msg.role as ChatMessage['role'],
+          text: msg.content,
+        })
+      }
+    }
+    chatMessages = rebuilt
+    artifacts = extractArtifactsFromHistory(chatMessages, targetSessionId)
+    if (artifacts.length > 0) onArtifactsChange?.(artifacts)
+  }
 
   onMount(async () => {
     if (sessionId) {
       chatSessionId = sessionId
       chatMessages = [{ id: 'system-init', role: 'system', text: `Session: ${sessionId.slice(0, 8)}...` }]
       try {
-        const history = await getSessionHistory(sessionId)
-        for (const msg of history) {
-          if (msg.role === 'system' && (msg.content.startsWith('[HEARTBEAT]') || msg.content.startsWith('[COMPACTION SUMMARY]') || msg.content.startsWith('[CRON]'))) {
-            continue
-          }
-          if (msg.role === 'tool') {
-            chatMessages.push({
-              id: `tool-${msg.tool_call_id || Date.now()}`,
-              role: 'tool',
-              text: '',
-              toolName: msg.tool_name,
-              toolCallId: msg.tool_call_id,
-              toolArgs: msg.tool_args,
-              toolResult: msg.content,
-              toolDone: true,
-            })
-          } else {
-            chatMessages.push({
-              id: `hist-${chatMessages.length}`,
-              role: msg.role as ChatMessage['role'],
-              text: msg.content,
-            })
-          }
-        }
-        chatMessages = [...chatMessages]
-        // Extract artifacts from history
-        artifacts = extractArtifactsFromHistory(chatMessages, sessionId)
-        if (artifacts.length > 0) onArtifactsChange?.(artifacts)
+        await loadHistoryInto(sessionId)
         autoTitled = true
         void scrollToBottom()
       } catch { /* ignore */ }
@@ -512,6 +519,26 @@
       chatInput = initialPrompt
       tick().then(() => textareaEl?.focus())
     }
+
+    // Auto-refresh chat when a background cron job delivers a message to this
+    // session (session-bound cron, or main-bound cron delivering to main).
+    stopEventStream = streamEvents((event) => {
+      if (event.category !== 'cron') return
+      const currentId = (chatSessionId || sessionId || '').trim()
+      if (!currentId) return
+      if ((event.session_id || '').trim() !== currentId) return
+      if (chatBusy) return
+      void (async () => {
+        try {
+          await loadHistoryInto(currentId)
+          void scrollToBottom()
+        } catch { /* ignore */ }
+      })()
+    })
+  })
+
+  onDestroy(() => {
+    stopEventStream?.()
   })
 </script>
 
