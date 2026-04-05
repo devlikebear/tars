@@ -193,6 +193,20 @@
   }
 
   let chatPanelRef: ChatPanel | undefined = $state()
+  let tasksPanelRef: { load: () => void } | undefined = $state()
+  let artifactPanelRef: { refresh: () => void } | undefined = $state()
+
+  function handleToolComplete(toolName: string) {
+    const taskTools = ['tasks']
+    const fileTools = ['write_file', 'edit_file', 'exec', 'list_dir', 'read_file']
+
+    if (taskTools.includes(toolName)) {
+      tasksPanelRef?.load()
+    }
+    if (fileTools.includes(toolName) && rightPanel === 'artifacts') {
+      artifactPanelRef?.refresh()
+    }
+  }
 
   function handleCopyChat() {
     const md = chatPanelRef?.exportAsMarkdown()
@@ -324,6 +338,7 @@
           {initialPrompt}
           onSessionChange={handleSessionChange}
           onArtifactsChange={handleArtifactsChange}
+          onToolComplete={handleToolComplete}
         />
       {/key}
     </main>
@@ -332,7 +347,7 @@
     {#if rightPanel !== 'none'}
       <aside class="chat-right-panel">
         {#if rightPanel === 'artifacts'}
-          <ArtifactPanel artifacts={chatArtifacts} sessionId={selectedSessionId || ''} onClose={() => { rightPanel = 'none' }} />
+          <ArtifactPanel bind:this={artifactPanelRef} artifacts={chatArtifacts} sessionId={selectedSessionId || ''} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'config' && (selectedSessionId || true)}
           <SessionConfigPanel sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'context'}
@@ -340,7 +355,7 @@
         {:else if rightPanel === 'prompt'}
           <PromptEditor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'tasks' && selectedSessionId}
-          <TasksPanel sessionId={selectedSessionId} onClose={() => rightPanel = 'none'} />
+          <TasksPanel bind:this={tasksPanelRef} sessionId={selectedSessionId} onClose={() => rightPanel = 'none'} />
         {/if}
       </aside>
     {/if}

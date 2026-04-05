@@ -15,7 +15,7 @@
   let error = $state('')
   let planExpanded = $state(true)
 
-  async function load() {
+  export async function load() {
     loading = true
     error = ''
     try {

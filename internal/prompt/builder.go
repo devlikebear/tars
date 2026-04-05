@@ -108,7 +108,15 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 				dirSection.WriteString(fmt.Sprintf("- `%s`\n", d))
 			}
 		}
-		dirSection.WriteString("\nFile tool paths resolve relative to the current directory. Use absolute paths to access other directories.\n\n")
+		dirSection.WriteString("\nFile tool paths resolve relative to the current directory. Use absolute paths to access other directories.\n")
+		// Add artifacts usage hint
+		for _, d := range opts.WorkDirs {
+			if strings.Contains(d, "/artifacts/") {
+				dirSection.WriteString(fmt.Sprintf("Use `%s` for file outputs (reports, scripts, generated files).\n", d))
+				break
+			}
+		}
+		dirSection.WriteString("\n")
 		content := dirSection.String()
 		b.WriteString(content)
 		sectionTokens := estimateTokens(content)

@@ -23,9 +23,10 @@
     autoSend?: boolean
     onSessionChange?: () => void
     onArtifactsChange?: (artifacts: Artifact[]) => void
+    onToolComplete?: (toolName: string) => void
   }
 
-  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange }: Props = $props()
+  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onToolComplete }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -111,6 +112,8 @@
               }
               onArtifactsChange?.(artifacts)
             }
+
+            onToolComplete?.(event.tool_name || '')
           }
         } else if (event.phase === 'skill_selected' && event.skill_name) {
           const skillMsg: ChatMessage = {
