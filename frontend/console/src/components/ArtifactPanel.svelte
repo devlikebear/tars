@@ -44,6 +44,7 @@
   }
 
   async function switchDir(dir: string) {
+    if (!sessionId) return
     await updateSessionWorkDirs(sessionId, { ...workDirs, current_dir: dir })
     workDirs.current_dir = dir
     currentPath = '.'
@@ -51,6 +52,7 @@
   }
 
   async function removeDir(dir: string) {
+    if (!sessionId) return
     const dirs = workDirs.work_dirs.filter(d => d !== dir)
     const cd = dir === workDirs.current_dir ? (dirs[0] || '') : workDirs.current_dir
     await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: cd })
@@ -85,6 +87,7 @@
   }
 
   async function selectPickedDir() {
+    if (!sessionId) return
     const absPath = pickPath === '.' ? '/' : '/' + pickPath
     const dirs = [...workDirs.work_dirs, absPath]
     await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: absPath })
