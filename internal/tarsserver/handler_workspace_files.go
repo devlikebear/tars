@@ -32,9 +32,10 @@ func newWorkspaceFilesHandler(workspaceDir string, logger zerolog.Logger) http.H
 		}
 
 		// Allow overriding the root directory (for session work dirs)
+		// Default to artifacts/ subdirectory to avoid exposing internal workspace files
 		rootDir := strings.TrimSpace(r.URL.Query().Get("root"))
 		if rootDir == "" {
-			rootDir = workspaceDir
+			rootDir = filepath.Join(workspaceDir, "artifacts")
 		}
 
 		// Prevent path traversal
