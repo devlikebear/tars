@@ -115,8 +115,6 @@
         return 'Tool environment guidance and usage expectations.'
       case 'PROJECT.md':
         return 'Workspace-level project policy.'
-      case 'HEARTBEAT.md':
-        return 'Heartbeat/background execution guidance.'
       default:
         return 'System prompt source file.'
     }
@@ -242,7 +240,6 @@
           <div><strong>USER.md</strong><span>User identity — name, language, preferences.</span></div>
           <div><strong>IDENTITY.md</strong><span>TARS persona, voice, and behavioral style.</span></div>
           <div><strong>PROJECT.md</strong><span>Workspace-level project execution policy.</span></div>
-          <div><strong>HEARTBEAT.md</strong><span>Background heartbeat operating guidance.</span></div>
           <div><strong>AGENTS.md</strong><span>Sub-agent execution rules and autonomy.</span></div>
           <div><strong>TOOLS.md</strong><span>Tool constraints and usage patterns.</span></div>
         </div>

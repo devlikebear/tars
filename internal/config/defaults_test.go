@@ -691,9 +691,9 @@ func TestLoad_AgentMaxIterationsFromEnv(t *testing.T) {
 	}
 }
 
-func TestLoad_HeartbeatAndCronEnvOptions(t *testing.T) {
-	t.Setenv("HEARTBEAT_ACTIVE_HOURS", "09:00-18:00")
-	t.Setenv("HEARTBEAT_TIMEZONE", "Asia/Seoul")
+func TestLoad_PulseAndCronEnvOptions(t *testing.T) {
+	t.Setenv("PULSE_ACTIVE_HOURS", "09:00-18:00")
+	t.Setenv("PULSE_TIMEZONE", "Asia/Seoul")
 	t.Setenv("CRON_RUN_HISTORY_LIMIT", "77")
 	t.Setenv("NOTIFY_COMMAND", "echo notify")
 	t.Setenv("NOTIFY_WHEN_NO_CLIENTS", "false")
@@ -702,11 +702,11 @@ func TestLoad_HeartbeatAndCronEnvOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if cfg.HeartbeatActiveHours != "09:00-18:00" {
-		t.Fatalf("expected heartbeat active hours, got %q", cfg.HeartbeatActiveHours)
+	if cfg.PulseActiveHours != "09:00-18:00" {
+		t.Fatalf("expected pulse active hours, got %q", cfg.PulseActiveHours)
 	}
-	if cfg.HeartbeatTimezone != "Asia/Seoul" {
-		t.Fatalf("expected heartbeat timezone, got %q", cfg.HeartbeatTimezone)
+	if cfg.PulseTimezone != "Asia/Seoul" {
+		t.Fatalf("expected pulse timezone, got %q", cfg.PulseTimezone)
 	}
 	if cfg.CronRunHistoryLimit != 77 {
 		t.Fatalf("expected cron run history limit 77, got %d", cfg.CronRunHistoryLimit)

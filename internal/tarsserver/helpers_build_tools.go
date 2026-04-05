@@ -2,7 +2,6 @@ package tarsserver
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/gateway"
-	"github.com/devlikebear/tars/internal/heartbeat"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
@@ -19,30 +17,9 @@ import (
 func buildAutomationTools(
 	cronStore *cron.Store,
 	cronRunner func(ctx context.Context, job cron.Job) (string, error),
-	heartbeatRunner func(ctx context.Context) (heartbeat.RunResult, error),
-	heartbeatStatusProvider func(ctx context.Context) (tool.HeartbeatStatus, error),
-	nowFn func() time.Time,
 ) []tool.Tool {
 	return []tool.Tool{
 		tool.NewCronTool(cronStore, cronRunner),
-		tool.NewHeartbeatTool(
-			heartbeatStatusProvider,
-			func(ctx context.Context) (tool.HeartbeatRunResult, error) {
-				if heartbeatRunner == nil {
-					return tool.HeartbeatRunResult{}, fmt.Errorf("heartbeat runner is not configured")
-				}
-				ranAt := nowFn().UTC()
-				result, err := heartbeatRunner(ctx)
-				return tool.HeartbeatRunResult{
-					Response:     result.Response,
-					Skipped:      result.Skipped,
-					SkipReason:   result.SkipReason,
-					Logged:       result.Logged,
-					Acknowledged: result.Acknowledged,
-					RanAt:        ranAt,
-				}, err
-			},
-		),
 	}
 }
 

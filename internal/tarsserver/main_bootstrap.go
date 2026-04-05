@@ -8,7 +8,6 @@ import (
 
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
-	"github.com/devlikebear/tars/internal/heartbeat"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
@@ -22,7 +21,6 @@ type runtimeDeps struct {
 	sessionStoreResolver func(workspaceID string) *session.Store
 	llmClient            llm.Client
 	usageTracker         *usage.Tracker
-	ask                  heartbeat.AskFunc
 	runPrompt            func(ctx context.Context, runLabel string, prompt string) (string, error)
 	runPromptWithTools   gatewayPromptRunner
 }
@@ -131,7 +129,6 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 	deps.llmClient = usage.NewTrackedClient(client, tracker, cfg.LLMProvider, cfg.LLMModel)
 	deps.runPrompt = newAgentPromptRunner(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger, semanticCfg)
 	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger, semanticCfg)
-	deps.ask = newAgentAskFunc(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger, semanticCfg)
 
 	logger.Debug().
 		Str("provider", cfg.LLMProvider).
@@ -156,44 +153,22 @@ func validateAPIAuthSecurity(cfg config.Config, serveAPI bool) error {
 	return nil
 }
 
+// runHeartbeatModes used to execute heartbeat one-shot and loop modes,
+// but heartbeat has been replaced by the pulse surface. The CLI flags
+// that triggered these modes are now deprecated and the server treats
+// them as a request to run the HTTP server instead.
 func runHeartbeatModes(
-	parentCtx context.Context,
+	_ context.Context,
 	opts *options,
-	deps runtimeDeps,
-	nowFn func() time.Time,
+	_ runtimeDeps,
+	_ func() time.Time,
 	logger zerolog.Logger,
 ) error {
 	if opts == nil {
 		return &cli.ExitError{Code: 1, Err: fmt.Errorf("options are required")}
 	}
-
-	if opts.RunOnce {
-		ctx, cancel := context.WithTimeout(parentCtx, 30*time.Second)
-		defer cancel()
-		runPolicy := buildHeartbeatPolicy(deps.sessionStore, deps.cfg.HeartbeatActiveHours, deps.cfg.HeartbeatTimezone, nil)
-		if _, err := heartbeat.RunOnceWithLLMResultWithPolicy(ctx, deps.cfg.WorkspaceDir, nowFn(), deps.ask, runPolicy); err != nil {
-			logger.Error().Err(err).Msg("failed to run heartbeat once")
-			return &cli.ExitError{Code: 1, Err: err}
-		}
-		logger.Info().Msg("heartbeat run-once complete")
-	}
-
-	if opts.RunLoop {
-		runPolicy := buildHeartbeatPolicy(deps.sessionStore, deps.cfg.HeartbeatActiveHours, deps.cfg.HeartbeatTimezone, nil)
-		count, err := heartbeat.RunLoopWithLLMWithPolicy(
-			parentCtx,
-			deps.cfg.WorkspaceDir,
-			opts.HeartbeatInterval,
-			opts.MaxHeartbeats,
-			nowFn,
-			deps.ask,
-			runPolicy,
-		)
-		if err != nil {
-			logger.Error().Err(err).Msg("failed to run heartbeat loop")
-			return &cli.ExitError{Code: 1, Err: err}
-		}
-		logger.Info().Int("heartbeat_count", count).Msg("heartbeat run-loop complete")
+	if opts.RunOnce || opts.RunLoop {
+		logger.Warn().Msg("--run-once and --run-loop are deprecated; pulse runs automatically when the server is up")
 	}
 	return nil
 }

@@ -2,11 +2,11 @@
   import { onMount, onDestroy } from 'svelte'
   import {
     getEventsHistory,
-    getHeartbeatStatus,
+    getPulseStatus,
     streamEvents,
   } from '../lib/api'
   import type {
-    HeartbeatStatus,
+    PulseSnapshot,
     NotificationMessage,
   } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
@@ -18,7 +18,7 @@
 
   let { onNavigate, initialPrompt }: Props = $props()
 
-  let heartbeat: HeartbeatStatus | null = $state(null)
+  let pulse: PulseSnapshot | null = $state(null)
   let notifications: NotificationMessage[] = $state([])
   let unreadCount = $state(0)
 
@@ -56,10 +56,10 @@
     error = ''
     try {
       const [h, e] = await Promise.allSettled([
-        getHeartbeatStatus(),
+        getPulseStatus(),
         getEventsHistory(20),
       ])
-      heartbeat = h.status === 'fulfilled' ? h.value : null
+      pulse = h.status === 'fulfilled' ? h.value : null
       if (e.status === 'fulfilled') {
         notifications = (e.value.items ?? []).slice(0, 10)
         unreadCount = e.value.unread_count ?? 0
@@ -77,8 +77,8 @@
       (event) => {
         notifications = [event, ...notifications.filter((n) => n.id !== event.id)].slice(0, 10)
         unreadCount++
-        if (event.category === 'heartbeat') {
-          void getHeartbeatStatus().then((s) => { heartbeat = s }).catch(() => {})
+        if (event.category === 'pulse') {
+          void getPulseStatus().then((s) => { pulse = s }).catch(() => {})
         }
       },
     )
@@ -112,17 +112,17 @@
     <!-- Pulse strip -->
     <div class="pulse-strip">
       <div class="pulse-item">
-        <span class="pulse-value" class:has-attention={heartbeat?.interval && !heartbeat?.last_error}>
-          {heartbeat?.interval || 'off'}
+        <span class="pulse-value" class:has-attention={(pulse?.total_ticks ?? 0) > 0 && !pulse?.last_err}>
+          {pulse?.total_ticks ?? 0}
         </span>
-        <span class="pulse-label">Heartbeat</span>
+        <span class="pulse-label">Pulse ticks</span>
       </div>
       <div class="pulse-divider"></div>
       <div class="pulse-item">
-        <span class="pulse-value" class:has-warning={!!heartbeat?.last_error}>
-          {heartbeat?.last_run_at ? relativeTime(heartbeat.last_run_at) : 'never'}
+        <span class="pulse-value" class:has-warning={!!pulse?.last_err}>
+          {pulse?.last_tick_at ? relativeTime(pulse.last_tick_at) : 'never'}
         </span>
-        <span class="pulse-label">Last heartbeat</span>
+        <span class="pulse-label">Last tick</span>
       </div>
       <div class="pulse-divider"></div>
       <div class="pulse-item">
@@ -137,32 +137,32 @@
     </section>
 
     <div class="home-grid">
-      <!-- Heartbeat -->
+      <!-- Pulse -->
       <section class="card home-section">
         <div class="card-header">
-          <span class="card-title">Heartbeat</span>
-          {#if heartbeat?.configured}
+          <span class="card-title">Pulse</span>
+          {#if (pulse?.total_ticks ?? 0) > 0}
             <span class="badge badge-success">active</span>
           {:else}
-            <span class="badge badge-default">off</span>
+            <span class="badge badge-default">idle</span>
           {/if}
         </div>
-        {#if heartbeat?.last_response}
+        {#if pulse?.last_decision?.summary}
           <div class="list-items">
             <div class="list-item">
-              <p class="list-item-detail">{compact(heartbeat.last_response, 200)}</p>
-              <span class="list-item-time">{relativeTime(heartbeat.last_run_at)}</span>
+              <p class="list-item-detail">{compact(pulse.last_decision.summary, 200)}</p>
+              <span class="list-item-time">{relativeTime(pulse.last_tick_at)}</span>
             </div>
           </div>
-        {:else if heartbeat?.last_error}
+        {:else if pulse?.last_err}
           <div class="list-items">
             <div class="list-item">
-              <p class="list-item-detail" style="color:var(--error)">{compact(heartbeat.last_error, 200)}</p>
+              <p class="list-item-detail" style="color:var(--error)">{compact(pulse.last_err, 200)}</p>
             </div>
           </div>
         {:else}
           <div class="empty-state">
-            <p>No heartbeat runs yet.</p>
+            <p>No pulse decisions yet.</p>
           </div>
         {/if}
       </section>

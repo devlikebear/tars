@@ -392,49 +392,8 @@ func TestCronRunTool_ExecutesAndRecordsRun(t *testing.T) {
 	}
 }
 
-func TestHeartbeatTools_StatusAndRunOnce(t *testing.T) {
-	runCalled := 0
-	statusTool := NewHeartbeatStatusTool(func(context.Context) (HeartbeatStatus, error) {
-		return HeartbeatStatus{
-			Configured:   true,
-			ActiveHours:  "09:00-18:00",
-			Timezone:     "UTC",
-			LastRunAt:    "2026-02-16T10:00:00Z",
-			LastSkipped:  false,
-			LastLogged:   true,
-			LastResponse: "next action",
-		}, nil
-	})
-	statusResult, err := statusTool.Execute(context.Background(), json.RawMessage(`{}`))
-	if err != nil {
-		t.Fatalf("execute heartbeat_status: %v", err)
-	}
-	if statusResult.IsError {
-		t.Fatalf("expected heartbeat status success, got %s", statusResult.Text())
-	}
-
-	runTool := NewHeartbeatRunOnceTool(func(context.Context) (HeartbeatRunResult, error) {
-		runCalled++
-		return HeartbeatRunResult{
-			Response:     "done",
-			Skipped:      false,
-			SkipReason:   "",
-			Logged:       true,
-			Acknowledged: false,
-			RanAt:        time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC),
-		}, nil
-	})
-	runResult, err := runTool.Execute(context.Background(), json.RawMessage(`{}`))
-	if err != nil {
-		t.Fatalf("execute heartbeat_run_once: %v", err)
-	}
-	if runResult.IsError {
-		t.Fatalf("expected heartbeat run success, got %s", runResult.Text())
-	}
-	if runCalled != 1 {
-		t.Fatalf("expected run callback called once, got %d", runCalled)
-	}
-}
+// Heartbeat tool tests were removed along with the heartbeat concept.
+// The replacement pulse watchdog has its own tests in internal/pulse.
 
 func TestCronTool_ActionRouting(t *testing.T) {
 	root := t.TempDir()
@@ -591,37 +550,5 @@ func TestCronCreateTool_AllowsBriefAutonomousWork(t *testing.T) {
 	}
 	if result.IsError {
 		t.Fatalf("expected success after project validation removal, got %s", result.Text())
-	}
-}
-
-func TestHeartbeatTool_ActionRouting(t *testing.T) {
-	runCalled := 0
-	tl := NewHeartbeatTool(
-		func(context.Context) (HeartbeatStatus, error) {
-			return HeartbeatStatus{Configured: true}, nil
-		},
-		func(context.Context) (HeartbeatRunResult, error) {
-			runCalled++
-			return HeartbeatRunResult{Response: "done"}, nil
-		},
-	)
-
-	statusRes, err := tl.Execute(context.Background(), json.RawMessage(`{"action":"status"}`))
-	if err != nil {
-		t.Fatalf("heartbeat action status: %v", err)
-	}
-	if statusRes.IsError {
-		t.Fatalf("expected status success, got %s", statusRes.Text())
-	}
-
-	runRes, err := tl.Execute(context.Background(), json.RawMessage(`{"action":"run_once"}`))
-	if err != nil {
-		t.Fatalf("heartbeat action run_once: %v", err)
-	}
-	if runRes.IsError {
-		t.Fatalf("expected run_once success, got %s", runRes.Text())
-	}
-	if runCalled != 1 {
-		t.Fatalf("expected run callback called once, got %d", runCalled)
 	}
 }

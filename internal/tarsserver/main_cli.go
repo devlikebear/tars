@@ -123,12 +123,10 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 	cmd.Flags().StringVar(&opts.WorkspaceDir, "workspace-dir", opts.WorkspaceDir, "workspace directory override")
 	cmd.Flags().StringVar(&opts.LogFile, "log-file", opts.LogFile, "append json logs to file")
 	cmd.Flags().BoolVar(&opts.Verbose, "verbose", opts.Verbose, "enable verbose debug logging")
-	cmd.Flags().BoolVar(&opts.RunOnce, "run-once", opts.RunOnce, "run heartbeat once and exit")
-	cmd.Flags().BoolVar(&opts.RunLoop, "run-loop", opts.RunLoop, "run heartbeat loop")
+	cmd.Flags().BoolVar(&opts.RunOnce, "run-once", opts.RunOnce, "deprecated — pulse runs automatically; flag retained for backward compat and is a no-op")
+	cmd.Flags().BoolVar(&opts.RunLoop, "run-loop", opts.RunLoop, "deprecated — pulse runs automatically; flag retained for backward compat and is a no-op")
 	cmd.Flags().BoolVar(&opts.ServeAPI, "serve-api", opts.ServeAPI, "serve tars http api")
 	cmd.Flags().StringVar(&opts.APIAddr, "api-addr", opts.APIAddr, "http api listen address")
-	cmd.Flags().DurationVar(&opts.HeartbeatInterval, "heartbeat-interval", opts.HeartbeatInterval, "heartbeat interval (e.g. 30m, 5s)")
-	cmd.Flags().IntVar(&opts.MaxHeartbeats, "max-heartbeats", opts.MaxHeartbeats, "maximum heartbeat count in loop (0 means unlimited)")
 
 	return cmd, opts
 }

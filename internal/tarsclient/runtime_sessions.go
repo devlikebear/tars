@@ -42,8 +42,8 @@ func (c runtimeClient) compact(ctx context.Context, req compactRequest) (compact
 	return c.client().CompactWithOptions(ctx, req)
 }
 
-func (c runtimeClient) heartbeatRunOnce(ctx context.Context) (heartbeatInfo, error) {
-	return c.client().HeartbeatRunOnce(ctx)
+func (c runtimeClient) pulseRunOnce(ctx context.Context) (pulseInfo, error) {
+	return c.client().PulseRunOnce(ctx)
 }
 
 func (c runtimeClient) listSkills(ctx context.Context) ([]skillDef, error) {

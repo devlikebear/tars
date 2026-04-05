@@ -22,7 +22,6 @@ import (
 	"github.com/devlikebear/tars/internal/envloader"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/gateway"
-	"github.com/devlikebear/tars/internal/heartbeat"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/memory"
@@ -337,36 +336,18 @@ func TestRun_CreatesWorkspaceAndDailyLog(t *testing.T) {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
 
-	if _, err := os.Stat(filepath.Join(root, "HEARTBEAT.md")); err != nil {
-		t.Fatalf("expected HEARTBEAT.md: %v", err)
-	}
 	if _, err := os.Stat(filepath.Join(root, "MEMORY.md")); err != nil {
 		t.Fatalf("expected MEMORY.md: %v", err)
 	}
-}
-
-func TestRun_RunOnceAppendsHeartbeatLog(t *testing.T) {
-	isolateRunEnv(t)
-	root := filepath.Join(t.TempDir(), "workspace")
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	server := newTestLLMServer(t)
-	defer server.Close()
-	t.Setenv("LLM_PROVIDER", "openai")
-	t.Setenv("LLM_BASE_URL", server.URL+"/v1")
-	t.Setenv("LLM_API_KEY", "test-key")
-	t.Setenv("LLM_MODEL", "test-model")
-
-	code := run([]string{"--workspace-dir", root, "--run-once"}, stdout, stderr)
-	if code != 0 {
-		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
-	}
-
-	logPath, data := readLatestDailyLog(t, root)
-	if !strings.Contains(string(data), "heartbeat tick") {
-		t.Fatalf("expected heartbeat tick entry in %s, got %q", logPath, string(data))
+	// HEARTBEAT.md is no longer created — pulse lives in config now.
+	if _, err := os.Stat(filepath.Join(root, "HEARTBEAT.md")); !os.IsNotExist(err) {
+		t.Fatalf("HEARTBEAT.md should not be created: err=%v", err)
 	}
 }
+
+// Heartbeat run-once/run-loop CLI tests were removed along with the
+// heartbeat concept. Pulse is started automatically when the server
+// runs; there is no longer a one-shot or loop mode for it.
 
 func TestRun_MutuallyExclusiveRunFlags(t *testing.T) {
 	isolateRunEnv(t)
@@ -395,147 +376,8 @@ func TestRun_HelpReturnsZero(t *testing.T) {
 	}
 }
 
-func TestRun_RunLoopAppendsHeartbeatLog(t *testing.T) {
-	isolateRunEnv(t)
-	root := filepath.Join(t.TempDir(), "workspace")
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	server := newTestLLMServer(t)
-	defer server.Close()
-	t.Setenv("LLM_PROVIDER", "openai")
-	t.Setenv("LLM_BASE_URL", server.URL+"/v1")
-	t.Setenv("LLM_API_KEY", "test-key")
-	t.Setenv("LLM_MODEL", "test-model")
-
-	code := run([]string{
-		"--workspace-dir", root,
-		"--run-loop",
-		"--heartbeat-interval", "5ms",
-		"--max-heartbeats", "2",
-	}, stdout, stderr)
-	if code != 0 {
-		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
-	}
-
-	logPath, data := readLatestDailyLog(t, root)
-	content := string(data)
-	if strings.Count(content, "heartbeat tick") < 2 {
-		t.Fatalf("expected at least 2 heartbeat ticks in %s, got %q", logPath, content)
-	}
-}
-
-func newTestLLMServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/chat/completions" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"next step"}}]}`))
-	}))
-}
-
-func TestHeartbeatAPI_RunOnce(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "workspace")
-	if err := memory.EnsureWorkspace(root); err != nil {
-		t.Fatalf("ensure workspace: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "HEARTBEAT.md"), []byte("api-test"), 0o644); err != nil {
-		t.Fatalf("write heartbeat: %v", err)
-	}
-
-	now := time.Date(2026, 2, 13, 10, 0, 0, 0, time.UTC)
-	handler := newHeartbeatAPIHandler(
-		root,
-		func() time.Time { return now },
-		func(_ context.Context, prompt string) (string, error) {
-			if !strings.Contains(prompt, "HEARTBEAT:") {
-				t.Fatalf("unexpected prompt: %q", prompt)
-			}
-			return "next action from api", nil
-		},
-		zerolog.New(io.Discard),
-	)
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/heartbeat/run-once", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d body=%q", rec.Code, rec.Body.String())
-	}
-
-	var body struct {
-		Response string `json:"response"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body.Response != "next action from api" {
-		t.Fatalf("unexpected response: %q", body.Response)
-	}
-}
-
-func TestHeartbeatAPI_RunOnce_UsesAgentLoopToolFlow(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "workspace")
-	if err := memory.EnsureWorkspace(root); err != nil {
-		t.Fatalf("ensure workspace: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "HEARTBEAT.md"), []byte("check memory"), 0o644); err != nil {
-		t.Fatalf("write heartbeat: %v", err)
-	}
-
-	mockClient := &mockLLMClient{
-		responses: []llm.ChatResponse{
-			{
-				Message: llm.ChatMessage{
-					Role: "assistant",
-					ToolCalls: []llm.ToolCall{
-						{
-							ID:        "call_hb_1",
-							Name:      "read_file",
-							Arguments: `{"path":"MEMORY.md"}`,
-						},
-					},
-				},
-			},
-			{
-				Message: llm.ChatMessage{
-					Role:    "assistant",
-					Content: "heartbeat tool flow done",
-				},
-			},
-		},
-	}
-
-	now := time.Date(2026, 2, 13, 10, 0, 0, 0, time.UTC)
-	ask := newAgentAskFunc(root, mockClient, 6, zerolog.New(io.Discard))
-	handler := newHeartbeatAPIHandler(root, func() time.Time { return now }, ask, zerolog.New(io.Discard))
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/heartbeat/run-once", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d body=%q", rec.Code, rec.Body.String())
-	}
-
-	var body struct {
-		Response string `json:"response"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body.Response != "heartbeat tool flow done" {
-		t.Fatalf("unexpected heartbeat response: %q", body.Response)
-	}
-	if mockClient.callCount != 2 {
-		t.Fatalf("expected 2 llm calls for tool flow, got %d", mockClient.callCount)
-	}
-	if len(mockClient.seenToolCounts) == 0 || mockClient.seenToolCounts[0] == 0 {
-		t.Fatalf("expected tool schemas in heartbeat call, got %+v", mockClient.seenToolCounts)
-	}
-}
+// Heartbeat HTTP endpoint tests were removed. The pulse HTTP endpoint
+// has its own handler tests in handler_pulse_test.go.
 
 func TestCronAPI_ListCreateRun(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
@@ -1283,13 +1125,6 @@ func TestChatAPI_WithAutomationTools(t *testing.T) {
 	automationTools := buildAutomationTools(
 		cronStore,
 		func(_ context.Context, _ cron.Job) (string, error) { return "ok", nil },
-		func(_ context.Context) (heartbeat.RunResult, error) {
-			return heartbeat.RunResult{Response: "heartbeat ok", Logged: true}, nil
-		},
-		func(_ context.Context) (tool.HeartbeatStatus, error) {
-			return tool.HeartbeatStatus{Configured: true}, nil
-		},
-		time.Now,
 	)
 
 	handler := newChatAPIHandlerWithRuntime(root, sessionStore, mockClient, logger, 8, nil, automationTools...)

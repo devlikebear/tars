@@ -172,12 +172,17 @@ type CompactInfo struct {
 	Message string `json:"message"`
 }
 
-type HeartbeatInfo struct {
-	Response     string `json:"response"`
-	Skipped      bool   `json:"skipped"`
-	SkipReason   string `json:"skip_reason,omitempty"`
-	Acknowledged bool   `json:"acknowledged"`
-	Logged       bool   `json:"logged"`
+// PulseInfo summarizes the result of a pulse tick triggered via the
+// /v1/pulse/run-once endpoint. Fields mirror the server-side
+// pulse.TickOutcome with JSON field names aligned to that struct.
+type PulseInfo struct {
+	Skipped         bool   `json:"skipped,omitempty"`
+	SkipReason      string `json:"skip_reason,omitempty"`
+	DeciderInvoked  bool   `json:"decider_invoked,omitempty"`
+	NotifyDelivered bool   `json:"notify_delivered,omitempty"`
+	AutofixAttempt  string `json:"autofix_attempt,omitempty"`
+	AutofixOK       bool   `json:"autofix_ok,omitempty"`
+	Err             string `json:"err,omitempty"`
 }
 
 type SkillDef struct {

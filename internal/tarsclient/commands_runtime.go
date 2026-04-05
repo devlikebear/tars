@@ -51,8 +51,8 @@ func cmdRuntime(c commandContext) (bool, string, error) {
 		fmt.Fprintf(c.stdout, "SYSTEM > authenticated=%t role=%s admin=%t mode=%s\n",
 			identity.Authenticated, role, identity.IsAdmin, mode)
 		return true, c.session, nil
-	case "/heartbeat":
-		result, err := c.runtime.heartbeatRunOnce(c.ctx)
+	case "/pulse":
+		result, err := c.runtime.pulseRunOnce(c.ctx)
 		if err != nil {
 			return true, c.session, err
 		}
@@ -60,7 +60,12 @@ func cmdRuntime(c commandContext) (bool, string, error) {
 			fmt.Fprintf(c.stdout, "SYSTEM > skipped: %s\n", strings.TrimSpace(result.SkipReason))
 			return true, c.session, nil
 		}
-		fmt.Fprintf(c.stdout, "SYSTEM > %s\n", strings.TrimSpace(result.Response))
+		if result.Err != "" {
+			fmt.Fprintf(c.stdout, "SYSTEM > pulse error: %s\n", result.Err)
+			return true, c.session, nil
+		}
+		fmt.Fprintf(c.stdout, "SYSTEM > pulse decider_invoked=%t notify_delivered=%t autofix=%q autofix_ok=%t\n",
+			result.DeciderInvoked, result.NotifyDelivered, result.AutofixAttempt, result.AutofixOK)
 		return true, c.session, nil
 	case "/skills":
 		skills, err := c.runtime.listSkills(c.ctx)

@@ -1,24 +1,62 @@
-export type HeartbeatStatus = {
-  configured: boolean
-  interval?: string
-  active_hours?: string
-  timezone?: string
-  chat_busy?: boolean
-  last_run_at?: string
-  last_skipped?: boolean
-  last_skip_reason?: string
-  last_logged?: boolean
-  last_acknowledged?: boolean
-  last_response?: string
-  last_error?: string
+// --- Pulse (system watchdog) ---
+
+export type PulseDecision = {
+  action: 'ignore' | 'notify' | 'autofix'
+  severity: 'info' | 'warn' | 'error' | 'critical'
+  title?: string
+  summary?: string
+  details?: Record<string, unknown>
+  autofix_name?: string
 }
 
-export type HeartbeatRunResult = {
-  response?: string
+export type PulseSignal = {
+  kind: string
+  severity: 'info' | 'warn' | 'error' | 'critical'
+  summary: string
+  details?: Record<string, unknown>
+  at: string
+}
+
+export type PulseTickOutcome = {
+  at: string
   skipped?: boolean
   skip_reason?: string
-  acknowledged?: boolean
-  logged?: boolean
+  signals?: PulseSignal[]
+  decider_invoked?: boolean
+  decision?: PulseDecision
+  autofix_attempt?: string
+  autofix_ok?: boolean
+  autofix_err?: string
+  notify_delivered?: boolean
+  err?: string
+}
+
+export type PulseSnapshot = {
+  last_tick_at: string
+  last_decision?: PulseDecision
+  last_err?: string
+  total_ticks: number
+  total_skipped: number
+  total_decisions: number
+  total_autofixes: number
+  total_notifies: number
+  recent: PulseTickOutcome[]
+}
+
+export type PulseConfigView = {
+  enabled: boolean
+  interval_seconds: number
+  timeout_seconds: number
+  active_hours: string
+  timezone: string
+  min_severity: string
+  allowed_autofixes: string[]
+  notify_telegram: boolean
+  notify_session_events: boolean
+  cron_failure_threshold: number
+  stuck_run_minutes: number
+  disk_warn_percent: number
+  disk_critical_percent: number
 }
 
 export type CronJob = {

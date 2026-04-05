@@ -12,12 +12,11 @@ func TestBuild(t *testing.T) {
 
 	// Create bootstrap files
 	files := map[string]string{
-		"IDENTITY.md":  "# IDENTITY.md\n\nName: TARS",
-		"USER.md":      "# USER.md\n\nName: Alice",
-		"AGENTS.md":    "# AGENTS.md\n\nOperating guidelines",
-		"TOOLS.md":     "# TOOLS.md\n\nAvailable tools",
-		"HEARTBEAT.md": "# HEARTBEAT.md\n\nCheck daily tasks",
-		"MEMORY.md":    "# MEMORY.md\n\nKey facts",
+		"IDENTITY.md": "# IDENTITY.md\n\nName: TARS",
+		"USER.md":     "# USER.md\n\nName: Alice",
+		"AGENTS.md":   "# AGENTS.md\n\nOperating guidelines",
+		"TOOLS.md":    "# TOOLS.md\n\nAvailable tools",
+		"MEMORY.md":   "# MEMORY.md\n\nKey facts",
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
@@ -27,11 +26,10 @@ func TestBuild(t *testing.T) {
 
 	result := Build(BuildOptions{WorkspaceDir: root})
 
-	// Static bootstrap should include identity/user/heartbeat.
+	// Static bootstrap should include identity/user.
 	wantIncluded := []string{
 		files["IDENTITY.md"],
 		files["USER.md"],
-		files["HEARTBEAT.md"],
 	}
 	for _, content := range wantIncluded {
 		if !strings.Contains(result, content) {
@@ -51,12 +49,11 @@ func TestBuild_SubAgent(t *testing.T) {
 	root := t.TempDir()
 
 	files := map[string]string{
-		"IDENTITY.md":  "# IDENTITY.md\n\nName: TARS",
-		"USER.md":      "# USER.md\n\nName: Alice",
-		"AGENTS.md":    "# AGENTS.md\n\nOperating guidelines",
-		"TOOLS.md":     "# TOOLS.md\n\nAvailable tools",
-		"HEARTBEAT.md": "# HEARTBEAT.md\n\nCheck daily tasks",
-		"MEMORY.md":    "# MEMORY.md\n\nKey facts",
+		"IDENTITY.md": "# IDENTITY.md\n\nName: TARS",
+		"USER.md":     "# USER.md\n\nName: Alice",
+		"AGENTS.md":   "# AGENTS.md\n\nOperating guidelines",
+		"TOOLS.md":    "# TOOLS.md\n\nAvailable tools",
+		"MEMORY.md":   "# MEMORY.md\n\nKey facts",
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
@@ -80,9 +77,6 @@ func TestBuild_SubAgent(t *testing.T) {
 	}
 	if strings.Contains(result, "Name: Alice") {
 		t.Error("sub-agent prompt should not contain USER.md content")
-	}
-	if strings.Contains(result, "Check daily tasks") {
-		t.Error("sub-agent prompt should not contain HEARTBEAT.md content")
 	}
 	if strings.Contains(result, "Key facts") {
 		t.Error("sub-agent prompt should not contain MEMORY.md content")
@@ -134,9 +128,9 @@ func TestBuild_IdentitySection(t *testing.T) {
 func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"USER.md":      strings.Repeat("user-", 120),
-		"IDENTITY.md":  strings.Repeat("identity-", 120),
-		"HEARTBEAT.md": strings.Repeat("heartbeat-", 120),
+		"USER.md":     strings.Repeat("user-", 120),
+		"IDENTITY.md": strings.Repeat("identity-", 120),
+		"TOOLS.md":    strings.Repeat("tools-", 120),
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
@@ -152,9 +146,6 @@ func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 
 	if !strings.Contains(result.Prompt, files["USER.md"][:120]) {
 		t.Fatalf("expected user section to survive tight budget, got %q", result.Prompt)
-	}
-	if strings.Contains(result.Prompt, files["HEARTBEAT.md"][:80]) {
-		t.Fatalf("expected lower-priority heartbeat section to be trimmed first, got %q", result.Prompt)
 	}
 	if result.TotalTokens > 460 {
 		t.Fatalf("expected total tokens <= 460, got %d", result.TotalTokens)

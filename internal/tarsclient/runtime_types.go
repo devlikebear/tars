@@ -22,7 +22,7 @@ type compactRequest = tarsclient.CompactRequest
 
 type compactInfo = tarsclient.CompactInfo
 
-type heartbeatInfo = tarsclient.HeartbeatInfo
+type pulseInfo = tarsclient.PulseInfo
 
 type skillDef = tarsclient.SkillDef
 

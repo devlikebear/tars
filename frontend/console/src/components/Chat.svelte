@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
   import {
-    getEventsHistory, getHeartbeatStatus, streamEvents,
+    getEventsHistory, getPulseStatus, streamEvents,
     getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
   } from '../lib/api'
-  import type { HeartbeatStatus, NotificationMessage, Session } from '../lib/types'
+  import type { PulseSnapshot, NotificationMessage, Session } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
   import SessionSidebar from './SessionSidebar.svelte'
   import ChatPanel from './ChatPanel.svelte'
@@ -25,7 +25,7 @@
 
   // Dashboard mini state
   // Dashboard mini state removed: projects
-  let heartbeat: HeartbeatStatus | null = $state(null)
+  let pulse: PulseSnapshot | null = $state(null)
   let unreadCount = $state(0)
 
   // Session selection — synced from sessionId prop
@@ -253,10 +253,10 @@
 
   async function loadDashboard() {
     const [h, e] = await Promise.allSettled([
-      getHeartbeatStatus(),
+      getPulseStatus(),
       getEventsHistory(1),
     ])
-    heartbeat = h.status === 'fulfilled' ? h.value : null
+    pulse = h.status === 'fulfilled' ? h.value : null
     if (e.status === 'fulfilled') {
       unreadCount = e.value.unread_count ?? 0
     }
@@ -278,15 +278,15 @@
   <!-- Mini dashboard pulse -->
   <div class="chat-pulse">
     <div class="pulse-item">
-      <span class="pulse-val" class:warn={!!heartbeat?.last_error}>
-        {heartbeat?.interval || 'off'}
+      <span class="pulse-val" class:warn={!!pulse?.last_err}>
+        {pulse?.total_ticks ?? 0}
       </span>
-      <span class="pulse-lbl">Heartbeat</span>
+      <span class="pulse-lbl">Pulse ticks</span>
     </div>
     <div class="pulse-sep"></div>
     <div class="pulse-item">
-      <span class="pulse-val">{heartbeat?.last_run_at ? relativeTime(heartbeat.last_run_at) : 'never'}</span>
-      <span class="pulse-lbl">Last run</span>
+      <span class="pulse-val">{pulse?.last_tick_at ? relativeTime(pulse.last_tick_at) : 'never'}</span>
+      <span class="pulse-lbl">Last tick</span>
     </div>
     <div class="pulse-sep"></div>
     <div class="pulse-item">

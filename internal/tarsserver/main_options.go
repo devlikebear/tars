@@ -1,45 +1,38 @@
 package tarsserver
 
 import (
-	"time"
-
 	"github.com/devlikebear/tars/internal/session"
 )
 
 // ServeOptions configures Serve API execution without CLI argument parsing.
 type ServeOptions struct {
-	ConfigPath        string
-	Mode              string
-	WorkspaceDir      string
-	LogFile           string
-	Verbose           bool
-	RunOnce           bool
-	RunLoop           bool
-	ServeAPI          bool
-	APIAddr           string
-	HeartbeatInterval time.Duration
-	MaxHeartbeats     int
+	ConfigPath   string
+	Mode         string
+	WorkspaceDir string
+	LogFile      string
+	Verbose      bool
+	RunOnce      bool // deprecated — no longer runs heartbeat; pulse is automatic
+	RunLoop      bool // deprecated — no longer runs heartbeat; pulse is automatic
+	ServeAPI     bool
+	APIAddr      string
 }
 
 type options struct {
-	ConfigPath        string
-	Mode              string
-	WorkspaceDir      string
-	LogFile           string
-	Verbose           bool
-	RunOnce           bool
-	RunLoop           bool
-	ServeAPI          bool
-	APIAddr           string
-	HeartbeatInterval time.Duration
-	MaxHeartbeats     int
+	ConfigPath   string
+	Mode         string
+	WorkspaceDir string
+	LogFile      string
+	Verbose      bool
+	RunOnce      bool
+	RunLoop      bool
+	ServeAPI     bool
+	APIAddr      string
 }
 
 // Exported defaults used by cmd/tars entry wiring.
 // Keep this list minimal to avoid growing cmd<->server coupling.
 const (
-	DefaultAPIAddr           = "127.0.0.1:43180"
-	DefaultHeartbeatInterval = 30 * time.Minute
+	DefaultAPIAddr = "127.0.0.1:43180"
 )
 
 const (

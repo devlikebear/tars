@@ -24,7 +24,6 @@ func TestEnsureWorkspace(t *testing.T) {
 		filepath.Join(root, "memory", "wiki", "index.md"),
 		filepath.Join(root, "memory", "wiki", "graph.json"),
 		filepath.Join(root, "_shared"),
-		filepath.Join(root, "HEARTBEAT.md"),
 		filepath.Join(root, "MEMORY.md"),
 		filepath.Join(root, "AGENTS.md"),
 		filepath.Join(root, "USER.md"),
@@ -37,12 +36,9 @@ func TestEnsureWorkspace(t *testing.T) {
 		}
 	}
 
-	heartbeat, err := os.ReadFile(filepath.Join(root, "HEARTBEAT.md"))
-	if err != nil {
-		t.Fatalf("read HEARTBEAT.md: %v", err)
-	}
-	if !strings.Contains(string(heartbeat), "Heartbeat Guidance") {
-		t.Fatalf("expected default HEARTBEAT template, got %q", string(heartbeat))
+	// HEARTBEAT.md is no longer created — pulse policy lives in config.
+	if _, err := os.Stat(filepath.Join(root, "HEARTBEAT.md")); !os.IsNotExist(err) {
+		t.Fatalf("HEARTBEAT.md should not be created: err=%v", err)
 	}
 
 	memoryFile, err := os.ReadFile(filepath.Join(root, "MEMORY.md"))
@@ -102,15 +98,11 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatalf("mkdir workspace: %v", err)
 	}
-	customHeartbeat := "custom heartbeat"
 	customMemory := "custom memory"
 	customAgents := "custom agents"
 	customUser := "custom user"
 	customIdentity := "custom identity"
 	customTools := "custom tools"
-	if err := os.WriteFile(filepath.Join(root, "HEARTBEAT.md"), []byte(customHeartbeat), 0o644); err != nil {
-		t.Fatalf("write HEARTBEAT.md: %v", err)
-	}
 	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte(customMemory), 0o644); err != nil {
 		t.Fatalf("write MEMORY.md: %v", err)
 	}
@@ -129,14 +121,6 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 
 	if err := EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
-	}
-
-	heartbeat, err := os.ReadFile(filepath.Join(root, "HEARTBEAT.md"))
-	if err != nil {
-		t.Fatalf("read HEARTBEAT.md: %v", err)
-	}
-	if string(heartbeat) != customHeartbeat {
-		t.Fatalf("expected existing HEARTBEAT.md to remain unchanged, got %q", string(heartbeat))
 	}
 
 	memoryFile, err := os.ReadFile(filepath.Join(root, "MEMORY.md"))

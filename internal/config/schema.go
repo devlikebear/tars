@@ -80,10 +80,23 @@ func Schema() []FieldMeta {
 
 		// ── Automation ───────────────────────────
 		f("agent_max_iterations", "Automation", "int", "Max Iterations", "Maximum agent loop iterations per request"),
-		f("heartbeat_interval", "Automation", "string", "Heartbeat Interval", "Heartbeat tick interval (e.g. 5m, 30m). Empty = disabled."),
-		f("heartbeat_active_hours", "Automation", "string", "Active Hours", "Heartbeat active hours range (e.g. 09:00-18:00)"),
-		f("heartbeat_timezone", "Automation", "string", "Timezone", "Timezone for active hours evaluation"),
 		f("cron_run_history_limit", "Automation", "int", "Cron History Limit", "Maximum run records kept per cron job"),
+		// Pulse (system watchdog) schema entries
+		f("pulse_enabled", "Automation", "bool", "Pulse Enabled", "Enable the pulse system watchdog"),
+		f("pulse_interval", "Automation", "string", "Pulse Interval", "Pulse tick interval (e.g. 1m, 5m)"),
+		f("pulse_timeout", "Automation", "string", "Pulse Timeout", "Per-tick LLM call timeout"),
+		f("pulse_active_hours", "Automation", "string", "Pulse Active Hours", "Pulse active hours window (HH:MM-HH:MM)"),
+		f("pulse_timezone", "Automation", "string", "Pulse Timezone", "Timezone for pulse active hours"),
+		fsel("pulse_min_severity", "Automation", "Pulse Min Severity", "Minimum severity for notifications", []string{"info", "warn", "error", "critical"}),
+		f("pulse_allowed_autofixes_json", "Automation", "string_list", "Pulse Autofix Allowlist", "Autofixes the decider may invoke"),
+		f("pulse_notify_telegram", "Automation", "bool", "Pulse Notify Telegram", "Forward pulse notifications to telegram"),
+		f("pulse_notify_session_events", "Automation", "bool", "Pulse Notify Session Events", "Forward pulse notifications to the session event stream"),
+		f("pulse_cron_failure_threshold", "Automation", "int", "Pulse Cron Failure Threshold", "Consecutive cron failures before pulse reacts"),
+		f("pulse_stuck_run_minutes", "Automation", "int", "Pulse Stuck Run Minutes", "Minutes a gateway run may be running before pulse flags it"),
+		f("pulse_disk_warn_percent", "Automation", "float", "Pulse Disk Warn %", "Disk usage percent that triggers a warn signal"),
+		f("pulse_disk_critical_percent", "Automation", "float", "Pulse Disk Critical %", "Disk usage percent that triggers a critical signal"),
+		f("pulse_delivery_failure_threshold", "Automation", "int", "Pulse Delivery Failure Threshold", "Telegram delivery failures in window before pulse reacts"),
+		f("pulse_delivery_failure_window", "Automation", "string", "Pulse Delivery Failure Window", "Rolling window for counting delivery failures (e.g. 10m)"),
 		f("notify_command", "Automation", "string", "Notify Command", "Shell command executed for notifications"),
 		f("notify_when_no_clients", "Automation", "bool", "Notify When No Clients", "Send notifications even when no SSE clients connected"),
 		f("schedule_timezone", "Automation", "string", "Schedule Timezone", "Default timezone for scheduled triggers"),
@@ -261,14 +274,38 @@ func extractValue(yamlKey string, cfg Config) any {
 	// Automation
 	case "agent_max_iterations":
 		return cfg.AgentMaxIterations
-	case "heartbeat_interval":
-		return cfg.HeartbeatInterval
-	case "heartbeat_active_hours":
-		return cfg.HeartbeatActiveHours
-	case "heartbeat_timezone":
-		return cfg.HeartbeatTimezone
 	case "cron_run_history_limit":
 		return cfg.CronRunHistoryLimit
+	case "pulse_enabled":
+		return cfg.PulseEnabled
+	case "pulse_interval":
+		return cfg.PulseInterval
+	case "pulse_timeout":
+		return cfg.PulseTimeout
+	case "pulse_active_hours":
+		return cfg.PulseActiveHours
+	case "pulse_timezone":
+		return cfg.PulseTimezone
+	case "pulse_min_severity":
+		return cfg.PulseMinSeverity
+	case "pulse_allowed_autofixes_json":
+		return cfg.PulseAllowedAutofixes
+	case "pulse_notify_telegram":
+		return cfg.PulseNotifyTelegram
+	case "pulse_notify_session_events":
+		return cfg.PulseNotifySessionEvents
+	case "pulse_cron_failure_threshold":
+		return cfg.PulseCronFailureThreshold
+	case "pulse_stuck_run_minutes":
+		return cfg.PulseStuckRunMinutes
+	case "pulse_disk_warn_percent":
+		return cfg.PulseDiskWarnPercent
+	case "pulse_disk_critical_percent":
+		return cfg.PulseDiskCriticalPercent
+	case "pulse_delivery_failure_threshold":
+		return cfg.PulseDeliveryFailureThreshold
+	case "pulse_delivery_failure_window":
+		return cfg.PulseDeliveryFailureWindow
 	case "notify_command":
 		return cfg.NotifyCommand
 	case "notify_when_no_clients":
