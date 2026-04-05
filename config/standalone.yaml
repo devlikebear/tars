@@ -7,4 +7,35 @@ llm_oauth_provider: ""
 llm_base_url: https://api.anthropic.com
 llm_model: claude-3-5-haiku-latest
 llm_api_key: ${ANTHROPIC_API_KEY}
+
+# ---- 3-tier model routing (optional) ----
+# When any llm_tier_* field is left empty, that tier inherits the
+# matching legacy llm_* value above, so the default behavior is
+# unchanged: all three tiers resolve to the same model. Override
+# individual fields below to run different models per role.
+#
+# llm_default_tier: standard
+#
+# llm_tier_heavy_provider: anthropic
+# llm_tier_heavy_model: claude-opus-4-6
+# llm_tier_heavy_reasoning_effort: high
+# llm_tier_heavy_thinking_budget: 8000
+#
+# llm_tier_standard_provider: anthropic
+# llm_tier_standard_model: claude-sonnet-4-6
+# llm_tier_standard_reasoning_effort: medium
+#
+# llm_tier_light_provider: anthropic
+# llm_tier_light_model: claude-haiku-4-5-20251001
+# llm_tier_light_reasoning_effort: minimal
+#
+# Role → tier mapping. Unmapped roles fall back to llm_default_tier.
+# llm_role_chat_main: standard
+# llm_role_context_compactor: light
+# llm_role_memory_hook: light
+# llm_role_reflection_memory: light
+# llm_role_pulse_decider: light
+# llm_role_gateway_default: standard
+# llm_role_gateway_planner: heavy
+
 agent_max_iterations: 8

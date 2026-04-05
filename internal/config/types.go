@@ -65,6 +65,34 @@ type LLMConfig struct {
 	LLMReasoningEffort string
 	LLMThinkingBudget  int
 	LLMServiceTier     string
+
+	// 3-tier model routing. Each tier is an optional override of the legacy
+	// LLM* fields above. When a tier's fields are empty, that tier falls
+	// back to the legacy LLM* configuration (preserving current behavior).
+	// See internal/llm.Router and internal/config/llm_tiers.go.
+	LLMDefaultTier  string
+	LLMTierHeavy    LLMTierSettings
+	LLMTierStandard LLMTierSettings
+	LLMTierLight    LLMTierSettings
+
+	// LLMRoleDefaults maps a canonical role name (e.g. "chat_main",
+	// "pulse_decider") to a tier name ("heavy"|"standard"|"light"). Roles
+	// absent from the map fall back to LLMDefaultTier.
+	LLMRoleDefaults map[string]string
+}
+
+// LLMTierSettings holds the provider/model/knob overrides for a single
+// tier. Empty fields are inherited from the legacy top-level LLM* fields.
+type LLMTierSettings struct {
+	Provider        string
+	AuthMode        string
+	OAuthProvider   string
+	BaseURL         string
+	APIKey          string
+	Model           string
+	ReasoningEffort string
+	ThinkingBudget  int
+	ServiceTier     string
 }
 
 type MemoryConfig struct {

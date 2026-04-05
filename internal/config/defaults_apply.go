@@ -22,6 +22,10 @@ func applyDefaults(cfg *Config) {
 	applyBrowserDefaults(cfg, defaults)
 	applyGatewayDefaults(cfg, defaults)
 	applyProviderDefaults(cfg, defaults)
+	// Tier defaults must run last so that the legacy LLM* fields are
+	// fully resolved (provider/model/base URL) before we seed any empty
+	// per-tier fields from them.
+	EnsureLLMTierDefaults(cfg)
 }
 
 func applyCoreDefaults(cfg *Config, defaults Config) {
