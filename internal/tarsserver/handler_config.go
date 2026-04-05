@@ -226,7 +226,7 @@ func handleResetWorkspace(w http.ResponseWriter, workspaceDir string, logger zer
 		if preserve[name] {
 			continue
 		}
-		// Preserve top-level .md template files (HEARTBEAT.md, MEMORY.md, etc.)
+		// Preserve top-level .md template files (MEMORY.md, IDENTITY.md, etc.)
 		if !entry.IsDir() && filepath.Ext(name) == ".md" {
 			continue
 		}

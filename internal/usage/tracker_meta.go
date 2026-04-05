@@ -37,7 +37,7 @@ func normalizeCallMeta(meta CallMeta) CallMeta {
 		RunID:     strings.TrimSpace(meta.RunID),
 	}
 	switch out.Source {
-	case "chat", "cron", "heartbeat", "agent_run":
+	case "chat", "cron", "pulse", "reflection", "agent_run":
 	default:
 		out.Source = "chat"
 	}

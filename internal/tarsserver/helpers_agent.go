@@ -159,11 +159,8 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		}
 		meta := usage.CallMeta{Source: "agent_run"}
 		lowerLabel := strings.ToLower(label)
-		switch {
-		case strings.HasPrefix(lowerLabel, "cron"):
+		if strings.HasPrefix(lowerLabel, "cron") {
 			meta.Source = "cron"
-		case strings.HasPrefix(lowerLabel, "heartbeat"):
-			meta.Source = "heartbeat"
 		}
 		if idx := strings.Index(label, ":"); idx >= 0 && idx+1 < len(label) {
 			meta.RunID = strings.TrimSpace(label[idx+1:])

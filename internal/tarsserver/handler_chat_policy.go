@@ -41,7 +41,7 @@ func buildChatToolRegistry(
 	}))
 	registry.Register(tool.NewSubagentsRunTool(deps.tooling.Gateway))
 
-	// Automation (cron + heartbeat aggregators)
+	// Automation (cron aggregator; pulse/reflection live on the system surface)
 	if deps.tooling.AutomationToolsForWorkspace != nil {
 		for _, autoTool := range deps.tooling.AutomationToolsForWorkspace(workspaceID) {
 			registry.Register(autoTool)

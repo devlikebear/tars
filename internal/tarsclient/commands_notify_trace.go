@@ -42,7 +42,7 @@ func cmdNotify(c commandContext) (bool, string, error) {
 	switch sub {
 	case "filter":
 		if len(c.fields) < 3 {
-			return true, c.session, fmt.Errorf("usage: /notify filter {all|cron|heartbeat|error}")
+			return true, c.session, fmt.Errorf("usage: /notify filter {all|cron|pulse|reflection|error}")
 		}
 		if err := c.state.notifications.setFilter(c.fields[2]); err != nil {
 			return true, c.session, err

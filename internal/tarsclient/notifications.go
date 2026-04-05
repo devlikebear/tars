@@ -82,9 +82,9 @@ func (c *notificationCenter) setFilter(filter string) error {
 	}
 	next := strings.ToLower(strings.TrimSpace(filter))
 	switch next {
-	case "all", "cron", "heartbeat", "error":
+	case "all", "cron", "pulse", "reflection", "error":
 	default:
-		return fmt.Errorf("filter must be one of: all|cron|heartbeat|error")
+		return fmt.Errorf("filter must be one of: all|cron|pulse|reflection|error")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()

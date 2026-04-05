@@ -33,7 +33,7 @@ var commandHandlers = map[string]commandHandler{
 	"/models":     cmdRuntime,
 	"/model":      cmdRuntime,
 	"/whoami":     cmdRuntime,
-	"/heartbeat":  cmdRuntime,
+	"/pulse":      cmdRuntime,
 	"/skills":     cmdRuntime,
 	"/plugins":    cmdRuntime,
 	"/mcp":        cmdRuntime,

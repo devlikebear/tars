@@ -47,7 +47,6 @@ func specs() []FileSpec {
 	return []FileSpec{
 		workspaceSpec("USER.md", lookup),
 		workspaceSpec("IDENTITY.md", lookup),
-		workspaceSpec("HEARTBEAT.md", lookup),
 		agentSpec("AGENTS.md", lookup),
 		agentSpec("TOOLS.md", lookup),
 	}
