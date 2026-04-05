@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"testing"
 
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
 )
 
@@ -55,6 +56,17 @@ func TestResolveInjectedToolSchemas_PassesThroughWithoutProjectPolicy(t *testing
 	names := toolNamesFromSchemas(schemas)
 	if !hasToolName(names, "read_file") {
 		t.Fatalf("expected read_file to be available, got %+v", names)
+	}
+}
+
+func TestResolveInjectedToolSchemas_RespectsExplicitEmptyAllowlist(t *testing.T) {
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
+
+	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "admin", true, session.SessionToolConfig{
+		ToolsCustom: true,
+	})
+	if len(schemas) != 0 {
+		t.Fatalf("expected no injected tools for explicit empty allowlist, got %+v", toolNamesFromSchemas(schemas))
 	}
 }
 

@@ -15,8 +15,10 @@ import (
 // nil slices mean "inherit all from system defaults".
 type SessionToolConfig struct {
 	ToolsEnabled  []string `json:"tools_enabled,omitempty"`
+	ToolsCustom   bool     `json:"tools_custom,omitempty"`
 	ToolsDisabled []string `json:"tools_disabled,omitempty"`
 	SkillsEnabled []string `json:"skills_enabled,omitempty"`
+	SkillsCustom  bool     `json:"skills_custom,omitempty"`
 	MCPEnabled    []string `json:"mcp_enabled,omitempty"`
 }
 

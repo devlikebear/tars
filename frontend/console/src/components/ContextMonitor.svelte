@@ -8,14 +8,20 @@
       history_tokens?: number
       history_messages?: number
       tool_count?: number
+      tool_names?: string[]
+      skill_count?: number
+      skill_names?: string[]
       memory_count?: number
       memory_tokens?: number
-      tool_names?: string[]
+      used_tool_names?: string[]
+      selected_skill_name?: string
+      selected_skill_reason?: string
     }
+    refreshVersion?: number
     onClose?: () => void
   }
 
-  let { sessionId, contextInfo, onClose }: Props = $props()
+  let { sessionId, contextInfo, refreshVersion = 0, onClose }: Props = $props()
 
   let fullContext = $state<ChatContextInfo | null>(null)
   let loading = $state(false)
@@ -36,11 +42,20 @@
     return a ?? b ?? 0
   }
 
+  function listOr(primary: string[] | undefined, secondary: string[] | undefined): string[] {
+    return primary ?? secondary ?? []
+  }
+
   let totalTokens = $derived(
     valOr(contextInfo?.system_prompt_tokens, fullContext?.system_prompt_tokens) +
     valOr(contextInfo?.history_tokens, fullContext?.history_tokens) +
     valOr(contextInfo?.memory_tokens, fullContext?.memory_tokens)
   )
+  let injectedTools = $derived(listOr(contextInfo?.tool_names, fullContext?.tool_names))
+  let availableSkills = $derived(listOr(contextInfo?.skill_names, fullContext?.skill_names))
+  let usedTools = $derived(listOr(contextInfo?.used_tool_names, fullContext?.used_tool_names))
+  let selectedSkillName = $derived(contextInfo?.selected_skill_name ?? fullContext?.selected_skill_name ?? '')
+  let selectedSkillReason = $derived(contextInfo?.selected_skill_reason ?? fullContext?.selected_skill_reason ?? '')
 
   let contextLimit = 200000
   let usagePercent = $derived(Math.min(100, (totalTokens / contextLimit) * 100))
@@ -49,13 +64,14 @@
   )
 
   $effect(() => {
+    refreshVersion
     if (sessionId) void loadFullContext()
   })
 </script>
 
 <div class="monitor-panel">
   <div class="monitor-header">
-    <span class="monitor-title">Context Monitor</span>
+    <span class="monitor-title">Context HUD</span>
     {#if onClose}
       <button class="monitor-close" onclick={onClose}>&times;</button>
     {/if}
@@ -82,16 +98,55 @@
       <span class="stat-value">{contextInfo?.tool_count ?? fullContext?.tool_count ?? 0}</span>
     </div>
     <div class="monitor-stat">
+      <span class="stat-label">Skills</span>
+      <span class="stat-value">{contextInfo?.skill_count ?? fullContext?.skill_count ?? 0}</span>
+    </div>
+    <div class="monitor-stat">
       <span class="stat-label">Memory</span>
       <span class="stat-value">{(contextInfo?.memory_count ?? fullContext?.memory_count ?? 0)} ({(contextInfo?.memory_tokens ?? fullContext?.memory_tokens ?? 0).toLocaleString()} tokens)</span>
     </div>
+    <div class="monitor-stat">
+      <span class="stat-label">Used This Turn</span>
+      <span class="stat-value">{usedTools.length}</span>
+    </div>
   </div>
 
-  {#if fullContext?.tool_names && fullContext.tool_names.length > 0}
+  {#if selectedSkillName}
+    <div class="monitor-section">
+      <span class="section-title">Selected Skill</span>
+      <div class="tool-chips">
+        <span class="tool-chip">{selectedSkillName}{#if selectedSkillReason} · {selectedSkillReason}{/if}</span>
+      </div>
+    </div>
+  {/if}
+
+  {#if injectedTools.length > 0}
     <div class="monitor-section">
       <span class="section-title">Injected Tools</span>
       <div class="tool-chips">
-        {#each fullContext.tool_names as name}
+        {#each injectedTools as name}
+          <span class="tool-chip">{name}</span>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if availableSkills.length > 0}
+    <div class="monitor-section">
+      <span class="section-title">Available Skills</span>
+      <div class="tool-chips">
+        {#each availableSkills as name}
+          <span class="tool-chip">{name}</span>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if usedTools.length > 0}
+    <div class="monitor-section">
+      <span class="section-title">Used Tools</span>
+      <div class="tool-chips">
+        {#each usedTools as name}
           <span class="tool-chip">{name}</span>
         {/each}
       </div>

@@ -40,6 +40,7 @@
       selectedSessionId = sid || null
       selectedSession = null
       chatKey++
+      chatContextInfo = {}
       if (sid) loadSelectedSession(sid)
     }
   })
@@ -52,6 +53,21 @@
 
   // Right panel state
   let chatArtifacts: Artifact[] = $state([])
+  let chatContextInfo: {
+    system_prompt_tokens?: number
+    history_tokens?: number
+    history_messages?: number
+    tool_count?: number
+    tool_names?: string[]
+    skill_count?: number
+    skill_names?: string[]
+    memory_count?: number
+    memory_tokens?: number
+    used_tool_names?: string[]
+    selected_skill_name?: string
+    selected_skill_reason?: string
+  } = $state({})
+  let contextRefreshVersion = $state(0)
   type RightPanel = 'none' | 'artifacts' | 'config' | 'context' | 'prompt' | 'tasks'
   let rightPanel = $state<RightPanel>('none')
 
@@ -80,6 +96,7 @@
     selectedSession = session
     chatKey++
     chatArtifacts = []
+    chatContextInfo = {}
     rightPanel = 'none'
     renaming = false
     deleteConfirm = false
@@ -97,6 +114,7 @@
     }
     chatKey++
     chatArtifacts = []
+    chatContextInfo = {}
     rightPanel = 'none'
     renaming = false
     deleteConfirm = false
@@ -344,6 +362,7 @@
           {initialPrompt}
           onSessionChange={handleSessionChange}
           onArtifactsChange={handleArtifactsChange}
+          onContextInfo={(info) => { chatContextInfo = info }}
           onToolComplete={handleToolComplete}
           onSessionReady={(id) => {
             if (!selectedSessionId) {
@@ -363,9 +382,18 @@
         {#if rightPanel === 'artifacts'}
           <ArtifactPanel bind:this={artifactPanelRef} artifacts={chatArtifacts} sessionId={selectedSessionId || ''} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'config' && (selectedSessionId || true)}
-          <SessionConfigPanel sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
+          <SessionConfigPanel
+            sessionId={selectedSessionId ?? ''}
+            onClose={() => { rightPanel = 'none' }}
+            onChange={() => { contextRefreshVersion += 1 }}
+          />
         {:else if rightPanel === 'context'}
-          <ContextMonitor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
+          <ContextMonitor
+            sessionId={selectedSessionId ?? ''}
+            contextInfo={chatContextInfo}
+            refreshVersion={contextRefreshVersion}
+            onClose={() => { rightPanel = 'none' }}
+          />
         {:else if rightPanel === 'prompt'}
           <PromptEditor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'tasks' && selectedSessionId}

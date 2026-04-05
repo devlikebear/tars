@@ -4,9 +4,10 @@
   interface Props {
     sessionId: string
     onClose?: () => void
+    onChange?: () => void
   }
 
-  let { sessionId, onClose }: Props = $props()
+  let { sessionId, onClose, onChange }: Props = $props()
 
   let tools: ChatToolInfo[] = $state([])
   let skills: string[] = $state([])
@@ -33,18 +34,18 @@
       config = configResp
 
       // Initialize sets from config
-      if (config.tools_enabled && config.tools_enabled.length > 0) {
+      if (config.tools_custom || Array.isArray(config.tools_enabled)) {
         useCustomConfig = true
-        enabledSet = new Set(config.tools_enabled)
+        enabledSet = new Set(config.tools_enabled ?? [])
       } else {
         useCustomConfig = false
         enabledSet = new Set(tools.map((t) => t.name))
       }
       disabledSet = new Set(config.tools_disabled ?? [])
 
-      if (config.skills_enabled && config.skills_enabled.length > 0) {
+      if (config.skills_custom || Array.isArray(config.skills_enabled)) {
         useCustomSkills = true
-        skillsEnabledSet = new Set(config.skills_enabled)
+        skillsEnabledSet = new Set(config.skills_enabled ?? [])
       } else {
         useCustomSkills = false
         skillsEnabledSet = new Set(skills)
@@ -129,15 +130,19 @@
     if (!sessionId) return
     const newConfig: SessionToolConfig = {}
     if (useCustomConfig) {
+      newConfig.tools_custom = true
       newConfig.tools_enabled = [...enabledSet]
     }
     if (disabledSet.size > 0) {
       newConfig.tools_disabled = [...disabledSet]
     }
     if (useCustomSkills) {
+      newConfig.skills_custom = true
       newConfig.skills_enabled = [...skillsEnabledSet]
     }
-    await updateSessionConfig(sessionId, newConfig).catch(() => {})
+    await updateSessionConfig(sessionId, newConfig)
+      .then(() => onChange?.())
+      .catch(() => {})
   }
 
   let filteredTools = $derived(

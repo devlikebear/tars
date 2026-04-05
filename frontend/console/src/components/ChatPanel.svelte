@@ -23,12 +23,26 @@
     autoSend?: boolean
     onSessionChange?: () => void
     onArtifactsChange?: (artifacts: Artifact[]) => void
+    onContextInfo?: (info: {
+      system_prompt_tokens?: number
+      history_tokens?: number
+      history_messages?: number
+      tool_count?: number
+      tool_names?: string[]
+      skill_count?: number
+      skill_names?: string[]
+      memory_count?: number
+      memory_tokens?: number
+      used_tool_names?: string[]
+      selected_skill_name?: string
+      selected_skill_reason?: string
+    }) => void
     onToolComplete?: (toolName: string) => void
     onSessionReady?: (sessionId: string) => void
     onArtifactOpen?: (path: string) => void
   }
 
-  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onToolComplete, onSessionReady, onArtifactOpen }: Props = $props()
+  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -41,7 +55,36 @@
   let autoTitled = $state(false)
   let autoSendDone = false
   let abortController: AbortController | null = $state(null)
-  let contextInfo: { system_prompt_tokens?: number; history_tokens?: number; history_messages?: number; tool_count?: number; memory_count?: number; memory_tokens?: number; tool_names?: string[] } = $state({})
+  let contextInfo: {
+    system_prompt_tokens?: number
+    history_tokens?: number
+    history_messages?: number
+    tool_count?: number
+    tool_names?: string[]
+    skill_count?: number
+    skill_names?: string[]
+    memory_count?: number
+    memory_tokens?: number
+    used_tool_names?: string[]
+    selected_skill_name?: string
+    selected_skill_reason?: string
+  } = $state({})
+
+  function publishContextInfo(next: typeof contextInfo) {
+    contextInfo = next
+    onContextInfo?.(next)
+  }
+
+  function addUsedToolName(toolName?: string) {
+    const normalized = toolName?.trim()
+    if (!normalized) return
+    const used = new Set(contextInfo.used_tool_names ?? [])
+    used.add(normalized)
+    publishContextInfo({
+      ...contextInfo,
+      used_tool_names: [...used],
+    })
+  }
 
   // One-shot auto-send: fires once when autoSend becomes true with a prompt
   $effect(() => {
@@ -80,6 +123,7 @@
     switch (event.type) {
       case 'status':
         if (event.phase === 'before_tool_call' && event.tool_name) {
+          addUsedToolName(event.tool_name)
           const toolMsg: ChatMessage = {
             id: `tool-${event.tool_call_id || Date.now()}`,
             role: 'tool',
@@ -96,6 +140,7 @@
             void scrollToBottom()
           }
         } else if (event.phase === 'after_tool_call' && event.tool_call_id) {
+          addUsedToolName(event.tool_name)
           const tIdx = chatMessages.findIndex((m) => m.toolCallId === event.tool_call_id)
           if (tIdx >= 0) {
             const toolArgs = event.tool_args_preview || chatMessages[tIdx].toolArgs
@@ -124,6 +169,11 @@
             onToolComplete?.(event.tool_name || '')
           }
         } else if (event.phase === 'skill_selected' && event.skill_name) {
+          publishContextInfo({
+            ...contextInfo,
+            selected_skill_name: event.skill_name,
+            selected_skill_reason: event.skill_reason,
+          })
           const skillMsg: ChatMessage = {
             id: `skill-${Date.now()}`,
             role: 'system',
@@ -150,7 +200,8 @@
         break
       }
       case 'context_info':
-        contextInfo = {
+        publishContextInfo({
+          ...contextInfo,
           system_prompt_tokens: event.system_prompt_tokens,
           history_tokens: event.history_tokens,
           history_messages: event.history_messages,
@@ -158,7 +209,12 @@
           memory_count: event.memory_count,
           memory_tokens: event.memory_tokens,
           tool_names: event.tool_names,
-        }
+          skill_count: event.skill_count,
+          skill_names: event.skill_names,
+          used_tool_names: event.used_tool_names ?? contextInfo.used_tool_names ?? [],
+          selected_skill_name: event.selected_skill_name ?? contextInfo.selected_skill_name,
+          selected_skill_reason: event.selected_skill_reason ?? contextInfo.selected_skill_reason,
+        })
         break
       case 'done': {
         chatSessionId = event.session_id?.trim() || chatSessionId
@@ -201,6 +257,7 @@
     chatStatusLine = 'connecting'
     chatInput = ''
     autoScroll = true
+    publishContextInfo({})
 
     const currentFiles = [...attachedFiles]
     attachedFiles = []

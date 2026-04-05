@@ -4,9 +4,11 @@ import (
 	"context"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/skill"
 	"github.com/devlikebear/tars/internal/tool"
 )
 
@@ -90,7 +92,7 @@ func resolveInjectedToolSchemas(
 // applySessionToolConfig filters tool names based on per-session configuration.
 func applySessionToolConfig(names []string, config session.SessionToolConfig) []string {
 	// If ToolsEnabled is set, use it as an allowlist
-	if len(config.ToolsEnabled) > 0 {
+	if config.ToolsCustom || len(config.ToolsEnabled) > 0 {
 		allowed := map[string]struct{}{}
 		for _, name := range config.ToolsEnabled {
 			canonical := tool.CanonicalToolName(name)
@@ -126,6 +128,42 @@ func applySessionToolConfig(names []string, config session.SessionToolConfig) []
 		names = filtered
 	}
 	return names
+}
+
+func applySessionSkillConfig(skills []skill.Definition, config session.SessionToolConfig) []skill.Definition {
+	if !config.SkillsCustom && len(config.SkillsEnabled) == 0 {
+		return append([]skill.Definition(nil), skills...)
+	}
+	allowed := map[string]struct{}{}
+	for _, name := range config.SkillsEnabled {
+		normalized := strings.TrimSpace(strings.ToLower(name))
+		if normalized == "" {
+			continue
+		}
+		allowed[normalized] = struct{}{}
+	}
+	filtered := make([]skill.Definition, 0, len(skills))
+	for _, def := range skills {
+		normalized := strings.TrimSpace(strings.ToLower(def.Name))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := allowed[normalized]; !ok {
+			continue
+		}
+		filtered = append(filtered, def)
+	}
+	return filtered
+}
+
+func filterExtensionsSnapshotForSession(snapshot extensions.Snapshot, sessionConfig ...session.SessionToolConfig) extensions.Snapshot {
+	if len(sessionConfig) == 0 {
+		return snapshot
+	}
+	out := snapshot
+	out.Skills = applySessionSkillConfig(snapshot.Skills, sessionConfig[0])
+	out.SkillPrompt = skill.FormatAvailableSkills(out.Skills)
+	return out
 }
 
 func shouldFilterHighRiskTools(authRole string, allowHighRiskUser bool) bool {

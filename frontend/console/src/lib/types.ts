@@ -149,8 +149,13 @@ export type ChatEvent = {
   history_messages?: number
   tool_count?: number
   tool_names?: string[]
+  skill_count?: number
+  skill_names?: string[]
   memory_count?: number
   memory_tokens?: number
+  used_tool_names?: string[]
+  selected_skill_name?: string
+  selected_skill_reason?: string
   // done event usage
   usage?: {
     input_tokens: number

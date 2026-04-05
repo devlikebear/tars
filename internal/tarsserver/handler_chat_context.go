@@ -16,19 +16,22 @@ import (
 )
 
 type chatRunState struct {
-	requestWorkspaceDir string
-	workspaceID         string
-	store               *session.Store
-	sessionID           string
-	invokedSkill        *skill.Definition
-	invokedSkillReason  string
-	transcriptPath      string
-	history             []session.Message
-	registry            *tool.Registry
-	toolChoice          string
-	llmMessages         []llm.ChatMessage
-	injectedSchemas     []llm.ToolSchema
-	llmClient           llm.Client
+	requestWorkspaceDir  string
+	workspaceID          string
+	store                *session.Store
+	sessionID            string
+	invokedSkill         *skill.Definition
+	invokedSkillReason   string
+	availableSkillNames  []string
+	transcriptPath       string
+	history              []session.Message
+	registry             *tool.Registry
+	toolChoice           string
+	llmMessages          []llm.ChatMessage
+	injectedSchemas      []llm.ToolSchema
+	relevantMemoryCount  int
+	relevantMemoryTokens int
+	llmClient            llm.Client
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -106,7 +109,12 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	if deps.tooling.Extensions != nil {
 		extSnapshot = deps.tooling.Extensions.Snapshot()
 	}
-	resolvedSkill := resolveSkillSelection(req.Message, deps.tooling.Extensions, requestWorkspaceDir, sessionID)
+	var sessionToolConfigs []session.SessionToolConfig
+	if sessErr == nil && sess.ToolConfig != nil {
+		sessionToolConfigs = append(sessionToolConfigs, *sess.ToolConfig)
+	}
+	extSnapshot = filterExtensionsSnapshotForSession(extSnapshot, sessionToolConfigs...)
+	resolvedSkill := resolveSkillSelection(req.Message, deps.tooling.Extensions, requestWorkspaceDir, sessionID, sessionToolConfigs...)
 	invokedSkill := resolvedSkill.Definition
 	contextDetails, err := prepareChatContextDetailsWithCache(requestWorkspaceDir, sessionID, req.Message, extSnapshot, invokedSkill, deps.tooling.MemoryCache, deps.tooling.MemorySemanticConfig, sessionWorkDirs, sessionCurrentDir)
 	if err != nil {
@@ -141,11 +149,6 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	llmMessages := buildLLMMessagesWithBlocks(systemPrompt, history, req.Message, contentBlocks)
 	authRole := strings.TrimSpace(serverauth.RoleFromRequest(r))
 
-	// Apply session-level tool config if present
-	var sessionToolConfigs []session.SessionToolConfig
-	if sessErr == nil && sess.ToolConfig != nil {
-		sessionToolConfigs = append(sessionToolConfigs, *sess.ToolConfig)
-	}
 	injectedSchemas := resolveInjectedToolSchemas(
 		registry,
 		deps.tooling.ToolsDefaultSet,
@@ -161,18 +164,21 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		Msg("tool injection result")
 
 	return chatRunState{
-		requestWorkspaceDir: requestWorkspaceDir,
-		workspaceID:         workspaceID,
-		store:               reqStore,
-		sessionID:           sessionID,
-		invokedSkill:        invokedSkill,
-		invokedSkillReason:  resolvedSkill.Reason,
-		transcriptPath:      transcriptPath,
-		history:             history,
-		registry:            registry,
-		toolChoice:          toolChoice,
-		llmMessages:         llmMessages,
-		injectedSchemas:     injectedSchemas,
-		llmClient:           deps.client,
+		requestWorkspaceDir:  requestWorkspaceDir,
+		workspaceID:          workspaceID,
+		store:                reqStore,
+		sessionID:            sessionID,
+		invokedSkill:         invokedSkill,
+		invokedSkillReason:   resolvedSkill.Reason,
+		availableSkillNames:  skillNamesFromDefinitions(extSnapshot.Skills),
+		transcriptPath:       transcriptPath,
+		history:              history,
+		registry:             registry,
+		toolChoice:           toolChoice,
+		llmMessages:          llmMessages,
+		injectedSchemas:      injectedSchemas,
+		relevantMemoryCount:  contextDetails.RelevantMemoryCount,
+		relevantMemoryTokens: contextDetails.RelevantMemoryTokens,
+		llmClient:            deps.client,
 	}, 0, "", nil
 }
