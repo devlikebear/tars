@@ -126,6 +126,8 @@ func buildWorkspaceGatewayAgent(path, raw string, knownTools map[string]struct{}
 		return workspaceGatewayAgent{}, diagnostics, false, nil
 	}
 
+	tier := strings.ToLower(strings.TrimSpace(meta.Tier))
+
 	return workspaceGatewayAgent{
 		Name:               name,
 		Description:        description,
@@ -139,6 +141,7 @@ func buildWorkspaceGatewayAgent(path, raw string, knownTools map[string]struct{}
 		ToolsAllowPatterns: toolsAllowPatterns,
 		SessionRoutingMode: sessionRoutingMode,
 		SessionFixedID:     sessionFixedID,
+		Tier:               tier,
 	}, diagnostics, true, nil
 }
 

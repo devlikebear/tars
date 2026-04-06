@@ -137,7 +137,7 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 		Str("source", chatResolution.Source).
 		Msg("llm router resolved chat_main tier")
 	deps.runPrompt = newAgentPromptRunner(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger, semanticCfg)
-	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger, semanticCfg)
+	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg.WorkspaceDir, deps.llmClient, deps.llmRouter, cfg.AgentMaxIterations, logger, semanticCfg)
 
 	logger.Debug().
 		Str("provider", cfg.LLMProvider).

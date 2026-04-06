@@ -93,7 +93,7 @@ func newCronJobRunnerWithNotify(
 		runCtx = withCronExecutionContext(runCtx, cronExecutionContext{SessionID: prepared.executionSessionID})
 		agentTelemetry := &agentPromptTelemetry{}
 		runCtx = withAgentPromptTelemetry(runCtx, agentTelemetry)
-		response, err := runPrompt(runCtx, runLabel, prepared.promptText, prepared.allowedTools)
+		response, err := runPrompt(runCtx, runLabel, prepared.promptText, prepared.allowedTools, "")
 		artifactNow := time.Now().UTC()
 		if err != nil {
 			emitCronRunFailure(ctx, emit, prepared.workspaceDir, job, "", artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, "Cron failed", err)

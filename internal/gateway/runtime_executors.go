@@ -58,7 +58,7 @@ func (r *Runtime) applyExecutorsLocked(executors []AgentExecutor, requestedDefau
 				Description: "Default in-process agent loop",
 				Source:      "in-process",
 				Entry:       "llm-loop",
-				RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string) (string, error) {
+				RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string, _ string) (string, error) {
 					return r.opts.RunPrompt(ctx, runLabel, prompt)
 				},
 			}); err == nil && ex != nil {

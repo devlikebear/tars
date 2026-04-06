@@ -79,6 +79,9 @@ func parseWorkspaceGatewayAgentFrontmatter(raw string) (workspaceGatewayAgentFro
 	if value, ok := frontmatterValue(parsed, "session_fixed_id", "session-fixed-id"); ok {
 		meta.SessionFixedID = frontmatterString(value)
 	}
+	if value, ok := frontmatterValue(parsed, "tier"); ok {
+		meta.Tier = frontmatterString(value)
+	}
 	return meta, nil
 }
 

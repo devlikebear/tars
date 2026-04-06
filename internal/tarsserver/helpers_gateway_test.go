@@ -142,7 +142,7 @@ func TestBuildGatewayExecutors_AddsBuiltInExplorerExecutor(t *testing.T) {
 			WorkspaceDir: t.TempDir(),
 		},
 	}
-	runPrompt := func(_ context.Context, runLabel string, prompt string, allowedTools []string) (string, error) {
+	runPrompt := func(_ context.Context, runLabel string, prompt string, allowedTools []string, _ string) (string, error) {
 		if len(allowedTools) == 0 {
 			t.Fatalf("expected built-in explorer to forward a read-only allowlist")
 		}
@@ -198,7 +198,7 @@ Find evidence first and answer with concise bullets.
 
 	var capturedPrompt string
 	var capturedLabel string
-	runPrompt := func(_ context.Context, runLabel string, prompt string, _ []string) (string, error) {
+	runPrompt := func(_ context.Context, runLabel string, prompt string, _ []string, _ string) (string, error) {
 		capturedLabel = runLabel
 		capturedPrompt = prompt
 		return "ok", nil
@@ -258,7 +258,7 @@ func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.
 	}
 
 	runPromptCalls := 0
-	runPrompt := func(_ context.Context, _ string, _ string, _ []string) (string, error) {
+	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string) (string, error) {
 		runPromptCalls++
 		return "prompt", nil
 	}
@@ -317,7 +317,7 @@ func TestNewAgentPromptRunnerWithTools_InjectsAllowlistOnly(t *testing.T) {
 		t.Fatal("expected prompt runner")
 	}
 
-	resp, err := runner(context.Background(), "spawn:test", "hello", []string{"shell_exec", "read_file", "unknown_tool", "read_file"})
+	resp, err := runner(context.Background(), "spawn:test", "hello", []string{"shell_exec", "read_file", "unknown_tool", "read_file"}, "")
 	if err != nil {
 		t.Fatalf("run prompt: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestNewAgentPromptRunnerWithTools_HardBlocksDisallowedToolCall(t *testing.T
 		t.Fatal("expected prompt runner")
 	}
 
-	_, err := runner(context.Background(), "spawn:test", "hello", []string{"read_file"})
+	_, err := runner(context.Background(), "spawn:test", "hello", []string{"read_file"}, "")
 	if err == nil {
 		t.Fatal("expected hard block error for disallowed tool call")
 	}

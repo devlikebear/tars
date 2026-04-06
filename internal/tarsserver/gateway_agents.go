@@ -21,6 +21,7 @@ type workspaceGatewayAgent struct {
 	ToolsAllowPatterns []string
 	SessionRoutingMode string
 	SessionFixedID     string
+	Tier               string
 }
 
 type workspaceGatewayAgentFrontmatter struct {
@@ -38,11 +39,12 @@ type workspaceGatewayAgentFrontmatter struct {
 	ToolsAllowPatternsExists bool
 	SessionRoutingMode       string
 	SessionFixedID           string
+	Tier                     string
 }
 
 func newWorkspacePromptExecutor(
 	def workspaceGatewayAgent,
-	runPrompt func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error),
+	runPrompt func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string) (string, error),
 ) (gateway.AgentExecutor, error) {
 	if runPrompt == nil {
 		return nil, fmt.Errorf("run prompt is required")
@@ -66,13 +68,14 @@ func newWorkspacePromptExecutor(
 		ToolsAllowPatterns: append([]string(nil), def.ToolsAllowPatterns...),
 		SessionRoutingMode: normalizeGatewaySessionRoutingMode(def.SessionRoutingMode),
 		SessionFixedID:     strings.TrimSpace(def.SessionFixedID),
-		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error) {
+		Tier:               strings.TrimSpace(def.Tier),
+		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string) (string, error) {
 			label := strings.TrimSpace(runLabel)
 			if label == "" {
 				label = "spawn"
 			}
 			label += ":" + name
-			return runPrompt(ctx, label, composeWorkspaceAgentPrompt(name, instructions, prompt), allowedTools)
+			return runPrompt(ctx, label, composeWorkspaceAgentPrompt(name, instructions, prompt), allowedTools, tier)
 		},
 	})
 }

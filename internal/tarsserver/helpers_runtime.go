@@ -13,7 +13,7 @@ type runtimeActivity struct {
 	chatInFlight atomic.Int64
 }
 
-type gatewayPromptRunner func(ctx context.Context, runLabel string, promptText string, allowedTools []string) (string, error)
+type gatewayPromptRunner func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string) (string, error)
 
 func (a *runtimeActivity) beginChat() func() {
 	if a == nil {

@@ -110,6 +110,7 @@ func (r *Runtime) newAcceptedRunState(
 		RootRunID:       strings.TrimSpace(req.RootRunID),
 		ParentSessionID: strings.TrimSpace(req.ParentSessionID),
 		Depth:           req.Depth,
+		Tier:            strings.TrimSpace(req.Tier),
 		Status:          RunStatusAccepted,
 		Accepted:        true,
 		CreatedAt:       now.Format(time.RFC3339),

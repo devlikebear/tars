@@ -86,13 +86,13 @@ func buildGatewayExecutors(
 					"read", "read_file", "list_dir", "glob",
 					"research_report", "usage_report",
 				},
-				RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error) {
+				RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, _ string) (string, error) {
 					label := strings.TrimSpace(runLabel)
 					if label == "" {
 						label = "spawn"
 					}
 					label += ":explorer"
-					return runPrompt(ctx, label, prompt, allowedTools)
+					return runPrompt(ctx, label, prompt, allowedTools, "")
 				},
 			})
 			if err != nil {

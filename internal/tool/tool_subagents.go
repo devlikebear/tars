@@ -29,7 +29,8 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
         "type":"object",
         "properties":{
           "title":{"type":"string"},
-          "prompt":{"type":"string"}
+          "prompt":{"type":"string"},
+          "tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."}
         },
         "required":["prompt"],
         "additionalProperties":false
@@ -49,6 +50,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				Tasks     []struct {
 					Title  string `json:"title,omitempty"`
 					Prompt string `json:"prompt"`
+					Tier   string `json:"tier,omitempty"`
 				} `json:"tasks"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
@@ -123,6 +125,11 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				if title == "" {
 					title = "subagent"
 				}
+				// Tier resolution: explicit task tier > agent tier > empty (router default).
+				taskTier := strings.ToLower(strings.TrimSpace(task.Tier))
+				if taskTier == "" {
+					taskTier = strings.ToLower(strings.TrimSpace(info.Tier))
+				}
 				run, err := runtime.Spawn(waitCtx, gateway.SpawnRequest{
 					WorkspaceID:     workspaceID,
 					Title:           title,
@@ -134,6 +141,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 					Depth:           nextDepth,
 					SessionKind:     "subagent",
 					SessionHidden:   true,
+					Tier:            taskTier,
 				})
 				if err != nil {
 					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
@@ -149,6 +157,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				Agent           string `json:"agent"`
 				Title           string `json:"title"`
 				Status          string `json:"status"`
+				Tier            string `json:"tier,omitempty"`
 				ParentRunID     string `json:"parent_run_id,omitempty"`
 				ParentSessionID string `json:"parent_session_id,omitempty"`
 				Depth           int    `json:"depth,omitempty"`
@@ -176,6 +185,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 					Agent:           final.Agent,
 					Title:           item.title,
 					Status:          string(final.Status),
+					Tier:            final.Tier,
 					ParentRunID:     final.ParentRunID,
 					ParentSessionID: final.ParentSessionID,
 					Depth:           final.Depth,

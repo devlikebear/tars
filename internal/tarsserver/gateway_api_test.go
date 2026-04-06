@@ -166,7 +166,7 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 		ToolsAllowPatterns: []string{"^read"},
 		SessionRoutingMode: "fixed",
 		SessionFixedID:     "sess_fixed",
-		RunPrompt: func(_ context.Context, _ string, _ string, _ []string) (string, error) {
+		RunPrompt: func(_ context.Context, _ string, _ string, _ []string, _ string) (string, error) {
 			return "ok", nil
 		},
 	})
@@ -813,7 +813,7 @@ func TestGatewayAPIHandler_ReportsRunsRejectsInvalidLimit(t *testing.T) {
 func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(filepath.Join(workspace, "workspace"))
-	runPrompt := func(_ context.Context, _ string, _ string, _ []string) (string, error) {
+	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string) (string, error) {
 		return "ok", nil
 	}
 	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
@@ -821,7 +821,7 @@ func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 		WorkspaceDir: workspace,
 		SessionStore: store,
 		RunPrompt: func(ctx context.Context, runLabel string, prompt string) (string, error) {
-			return runPrompt(ctx, runLabel, prompt, nil)
+			return runPrompt(ctx, runLabel, prompt, nil, "")
 		},
 	})
 	t.Cleanup(func() {

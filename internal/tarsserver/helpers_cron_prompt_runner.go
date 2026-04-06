@@ -38,13 +38,13 @@ func newCronPromptRunnerWithSessionContext(fallback gatewayPromptRunner, deps ch
 	if fallback == nil && deps.client == nil {
 		return nil
 	}
-	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string) (string, error) {
+	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string) (string, error) {
 		cfg := cronExecutionContextFromContext(ctx)
 		if cfg.SessionID == "" {
 			if fallback == nil {
 				return "", fmt.Errorf("cron runner is not configured")
 			}
-			return fallback(ctx, runLabel, promptText, allowedTools)
+			return fallback(ctx, runLabel, promptText, allowedTools, tier)
 		}
 
 		requestWorkspaceDir := strings.TrimSpace(deps.workspaceDir)
