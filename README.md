@@ -5,83 +5,124 @@
 [![Go](https://img.shields.io/github/go-mod/go-version/devlikebear/tars)](go.mod)
 [![Release](https://img.shields.io/github/v/release/devlikebear/tars)](https://github.com/devlikebear/tars/releases)
 
-**TARS is a local-first AI project autopilot.**
+**TARS is a self-hosted AI agent runtime.**
 
-Unlike Claude Code, Aider, or Cursor, which mostly operate at the file and conversation level, TARS manages long-running projects autonomously: it plans phases with you, executes backlog work inside each phase, coordinates tools and worker agents, and only brings you back for approvals or real blockers. All in a single Go binary running on your machine.
+A single Go binary that runs on your machine and gives you: an interactive chat with durable memory, parallel sub-agents with model tier routing, background watchdog and nightly maintenance, scheduled jobs, and multi-channel I/O (console, Telegram, webhooks) — all configurable via YAML and extensible via skills, plugins, and MCP servers.
+
+## Why TARS
+
+| | Claude Code / Cursor / Aider | TARS |
+|---|---|---|
+| **Runtime** | IDE plugin or terminal session | Standalone HTTP server + web console |
+| **Memory** | Per-session context window | Durable knowledge base + semantic search + experience extraction |
+| **Agents** | Serial tool calling | Parallel sub-agents with per-task model tier routing |
+| **Background** | None | Pulse watchdog (1-min) + Reflection nightly batch |
+| **Scheduling** | None | Session-bound cron jobs with audit logs |
+| **Channels** | Terminal only | Console + Telegram + webhooks |
+| **Cost control** | Single model | 3-tier routing (heavy / standard / light) |
 
 ## Key Features
 
-### Project Autopilot
+### Chat + Memory
 
-The killer feature. Describe what you want to build, and TARS handles the rest:
+The primary interface. Browser-based console at `http://127.0.0.1:43180/console`.
 
-1. **Plan** — Collects requirements through a short interview and turns them into a phase plan
-2. **Phase Loop** — Builds a backlog, selects the next task, executes it, evaluates the result, and replans when needed
-3. **Capabilities** — Combines built-in tools, skills, MCP servers, web research, and worker agents in one runtime
-4. **Human-in-the-Loop** — Escalates at phase approvals and real blockers instead of asking for every routine retry
-5. **Dashboard** — Live phase status, run status, pending decisions, blockers, and worker reports in a browser
+- Multi-session chat with full LLM tool-calling loops
+- Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
+- Obsidian-style knowledge base: wiki notes with graph metadata and KB CRUD tools
+- Structured transcript compaction preserving identifiers and recent context
+- System prompt customization via `USER.md`, `IDENTITY.md`, `AGENTS.md`, `TOOLS.md`
 
-```bash
-tars init && tars serve
-tars
+### Sub-Agent Orchestration
+
+Spawn parallel agents for research, planning, and specialized tasks:
+
+```yaml
+# workspace/agents/explorer/AGENT.md
+---
+name: explorer
+tier: light
+tools_allow: [read_file, list_dir, glob, memory_search]
+---
 ```
 
-Open the web console, then start a chat such as `todo 앱 만드는 프로젝트 시작해줘`.
+The `subagents_run` tool supports per-task tier selection:
 
-### Agent Runtime
+```json
+{"tasks": [
+  {"prompt": "find all API endpoints", "tier": "light"},
+  {"prompt": "design the migration plan", "tier": "heavy"}
+]}
+```
 
-- Browser-based operator console + local HTTP API (`tars serve`)
-- Session lifecycle, transcript storage, and structured context compaction
-- Agent loop with built-in file, process, scheduling, memory, and ops tools
-- Dedicated system prompt tools for explicit control of user identity, TARS persona, agent rules, and tool guidance
-- Unified memory console: manage `MEMORY.md`, `memory/experiences.jsonl`, daily durable memory files, semantic memory artifacts, and the knowledge base from one page
-- Obsidian-style knowledge base: durable markdown wiki notes, graph/index metadata, built-in KB CRUD tools, and explicit opt-in lookup from memory search
-- Built-in file tools with 2,000-line read pagination, continuation hints, and safe atomic writes
-- Session-aware Files panel for artifact history and workspace browsing, with typed previews for markdown/code/images and in-panel folder management
-- Structured session compaction with identifier-preserving summaries, a safer recent-tail preserve policy, and manual `/compact [instructions]`
-- Parallel chat subagents with per-task model tier selection through the gateway agent system
-- MCP transports for local stdio servers and remote HTTP/WebSocket endpoints, with bearer or OAuth auth for remote servers
-- Semantic memory recall with Gemini embeddings (optional)
-- Playwright-based browser automation
+Tier resolution priority: task `tier` > agent YAML `tier` > config default.
 
 ### 3-Tier Model Routing
 
-Route different workloads to different models for cost and quality optimization:
+Route workloads to different models for cost and quality optimization:
 
-| Tier | Purpose | Typical Model |
-|------|---------|---------------|
-| **heavy** | Planning, complex reasoning, architecture decisions | claude-opus-4-6, gpt-5.4 |
-| **standard** | General chat, agent work, tool-calling loops | claude-sonnet-4-6, gpt-5.4 |
-| **light** | Summarization, classification, memory hooks, pulse watchdog | claude-haiku-4-5, gpt-4o-mini |
-
-Each system role (chat, pulse watchdog, reflection nightly batch, chat compaction, gateway agents) maps to a tier via config. Sub-agents can override the tier per task:
+| Tier | Purpose | Example |
+|------|---------|---------|
+| **heavy** | Planning, complex reasoning, architecture | claude-opus-4-6, gpt-5.4 |
+| **standard** | General chat, agent loops, tool calling | claude-sonnet-4-6, gpt-5.4 |
+| **light** | Summarization, classification, pulse, reflection | claude-haiku-4-5, gpt-4o-mini |
 
 ```yaml
 # tars.config.yaml
 llm_default_tier: standard
 llm_tier_heavy_model: claude-opus-4-6
-llm_tier_standard_model: claude-sonnet-4-6
 llm_tier_light_model: claude-haiku-4-5-20251001
 llm_role_pulse_decider: light
 llm_role_gateway_planner: heavy
 ```
 
-Agent YAML files support an optional `tier:` frontmatter field, and the `subagents_run` tool accepts a per-task `tier` parameter for fine-grained control.
+Each system role (chat, pulse, reflection, compaction, gateway agents) maps to a tier. Background surfaces default to `light`, keeping costs low.
 
-### System Surface
+### Background Surfaces
 
-TARS separates background maintenance from user-facing chat into isolated surfaces:
+Two isolated surfaces run independently from user chat:
 
-- **Pulse** — 1-minute watchdog that scans cron failures, stuck gateway runs, disk pressure, Telegram delivery failures, and reflection health. An LLM classifier picks `ignore`/`notify`/`autofix` per tick. Autofixes are whitelisted in config.
-- **Reflection** — Nightly batch (default 02:00–05:00) that runs memory cleanup (experience extraction + knowledge-base compilation) and KB cleanup. No LLM tool surface — calls `llm.Client.Chat` directly.
-- Both surfaces use the **light tier** by default, keeping background costs low while the main chat uses standard or heavy.
+- **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, disk pressure, Telegram delivery health, and reflection status. LLM classifier picks `ignore` / `notify` / `autofix`. Autofixes are whitelisted in config.
+- **Reflection** — Nightly batch (default 02:00–05:00) running memory cleanup (experience extraction + knowledge-base compilation) and empty-session pruning.
+
+Both use the `light` tier by default and have no access to user-facing tools (enforced at compile time via `RegistryScope`).
+
+### Scheduling
+
+Native cron with session binding:
+
+- Cron expressions and one-shot `@at` schedules
+- Session-bound jobs inherit the session's tool policy, work dirs, and prompt override
+- Audit logs: `artifacts/<session_id>/cronjob-log.jsonl`
+- Console Cron tab for per-session job management
+
+### Channels
+
+Multi-channel I/O beyond the web console:
+
+- **Telegram** — Bidirectional messaging with pairing-based access control
+- **Webhooks** — Inbound HTTP triggers for external integrations
+- **Local** — Direct API calls for scripts and automation
 
 ### Extensibility
 
-- **[Skill Hub](https://github.com/devlikebear/tars-skills)** — `tars skill search`, `tars plugin install`, and `tars mcp install` from a vetted registry
-- **Plugins** — Bundle skills and MCP servers with manifest metadata, runtime gating, and default project profiles
-- **Managed MCP Hub** — Install checksum-verified MCP packages hosted in `tars-skills`
-- **Skills** — LLM instruction files (SKILL.md) with companion scripts and runtime gating by plugin, binary, env, and platform requirements
+- **[Skill Hub](https://github.com/devlikebear/tars-skills)** — `tars skill search`, `tars plugin install`, `tars mcp install`
+- **Plugins** — Bundle skills + MCP servers with manifest metadata and runtime gating
+- **MCP** — Local stdio and remote HTTP/WebSocket servers with bearer or OAuth auth
+- **Skills** — Markdown instruction files with companion scripts and platform requirements
+- **Browser** — Playwright-based automation for web interaction
+
+### Project Autopilot
+
+For complex multi-phase projects, TARS can plan phases, build backlogs, execute tasks autonomously, and escalate for approvals:
+
+```bash
+tars project autopilot start <project-id>
+tars project autopilot advance <project-id>
+tars project autopilot status <project-id>
+```
+
+This is available as one workflow among many — most day-to-day work happens in interactive chat.
 
 ## Install
 
@@ -101,90 +142,43 @@ curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | 
 ## Quick Start
 
 ```bash
-# 1. Initialize workspace and config
+# Initialize workspace and config
 tars init
 
-# 2. Set your LLM provider
-export OPENAI_API_KEY="your-api-key"
-# Or use Claude Code CLI: set llm_provider: claude-code-cli in config
+# Set your LLM provider
+export ANTHROPIC_API_KEY="your-key"
+# Or: export OPENAI_API_KEY="your-key"
+# Or: set llm_provider: claude-code-cli in config for local Claude Code
 
-# 3. Validate setup
+# Validate setup
 tars doctor --fix
 
-# 4. Start the server
-tars serve --config ./workspace/config/tars.config.yaml
-# Or as a macOS background service:
-tars service install && tars service start
+# Start the server
+tars serve
 
-# 5. Launch the web console
+# Open the web console
 tars
 ```
 
-`tars tui` is now a hidden, deprecated escape hatch for legacy debugging only. The supported paths are the web console and one-shot CLI commands.
+Open `http://127.0.0.1:43180/console` and start chatting.
 
-Kick off a project from chat in the console, or use the CLI commands directly:
+## Console Pages
 
-```bash
-tars project activity <project-id> 20
-tars project autopilot start <project-id>
-tars project autopilot advance <project-id>
-tars project autopilot status <project-id>
-```
-
-The recommended path is planning first, then controlled phase advancement. `advance` runs one synchronous autopilot step so you can inspect approvals, blockers, and replans explicitly, and `status` shows the current phase, run status, and next action without switching to the web console.
-
-Cron jobs can now bind directly to a chat session with `session_id`. A bound cron run uses that session's tool and skill configuration, work directories, prompt override, and recent transcript context. In the console chat view, the right panel now includes a `Cron` tab alongside Files, Config, Context, Prompt, and Tasks: the main chat manages global cron jobs, while regular chat sessions manage only their bound session cron jobs. User-visible audit logs are appended to `artifacts/<session_id>/cronjob-log.jsonl`, while global cron jobs continue to run with system defaults and append to `artifacts/_global/cronjob-log.jsonl`.
-
-For read-heavy codebase research in chat, TARS can fan out parallel subagents and merge back compact summaries. Agents are defined as markdown files in `workspace/agents/`:
-
-```yaml
-# workspace/agents/explorer/AGENT.md frontmatter
----
-name: explorer
-tier: light
-tools_allow: [read_file, list_dir, glob, memory_search]
----
-```
-
-The `subagents_run` tool supports per-task tier selection:
-
-```json
-{"tasks": [
-  {"prompt": "search for auth middleware", "tier": "light"},
-  {"prompt": "design the refactor plan", "tier": "heavy"}
-]}
-```
-
-Runtime defaults:
-
-```yaml
-gateway_subagents_max_threads: 4
-gateway_subagents_max_depth: 1
-```
-
-Open the console: `http://127.0.0.1:43180/console`
-
-The console now includes a dedicated Memory page at `/console/memory` for editing durable memory files, testing `memory_search`, and browsing or editing compiled knowledge-base notes. Legacy `/console/knowledge` links still open the same page.
-
-The console also includes a dedicated System Prompt page at `/console/sysprompt` for editing `USER.md` (user identity and preferences), `IDENTITY.md` (TARS persona), `AGENTS.md` (agent operating rules), and `TOOLS.md` (tool guidance). These files are also exposed through explicit `workspace_sysprompt_*` and `agent_sysprompt_*` built-in tools.
-
-Install trusted MCP packages from the hub:
-
-```bash
-tars mcp search
-tars mcp install safe-time
-```
-
-Local stdio MCP servers still respect `mcp_command_allowlist_json`. For example, a Node-based MCP package requires a config allowlist such as:
-
-```yaml
-mcp_command_allowlist_json: ["node"]
-```
+| Page | Path | Purpose |
+|------|------|---------|
+| Chat | `/console` | Interactive agent chat with tool calling |
+| Memory | `/console/memory` | Edit durable memory, test semantic search, browse KB |
+| System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md |
+| Ops | `/console/ops` | System health and cleanup operations |
+| Pulse | `/console/pulse` | Watchdog status and run-now trigger |
+| Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
+| Extensions | `/console/extensions` | Skills, plugins, MCP servers |
+| Config | `/console/config` | Workspace configuration |
 
 ## Requirements
 
 - Go 1.25.6+ (for building from source)
-- LLM provider credentials, or a local Claude Code CLI install
+- LLM provider credentials (Anthropic, OpenAI, Gemini, or Claude Code CLI)
 - Optional: Gemini API key for semantic memory embeddings
 - Optional: Node.js for Playwright browser automation
 
@@ -195,20 +189,15 @@ make build-bins
 bin/tars version
 ```
 
-When you run TARS directly from a source checkout, build the embedded web console once before opening `/console`:
+For development with hot-reload:
 
 ```bash
-make console-install
-make console-build
+make dev-console    # Vite (5173) + Go API (43180), open http://127.0.0.1:43180/console
 ```
-
-For live frontend work, run `npm run dev` inside `frontend/console` and start the Go server with `TARS_CONSOLE_DEV_URL=http://127.0.0.1:5173`.
 
 ## Documentation
 
 - [Getting Started](GETTING_STARTED.md)
-- [Project Workflow Example](examples/project/README.md)
-- [Ops Service Example](examples/ops-service-demo/README.md)
 - [Plugin and MCP Packaging Guide](docs/plugins.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
