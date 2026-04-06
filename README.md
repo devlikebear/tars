@@ -9,17 +9,19 @@
 
 A single Go binary that runs on your machine and gives you: an interactive chat with durable memory, parallel sub-agents with model tier routing, background watchdog and nightly maintenance, scheduled jobs, and multi-channel I/O (console, Telegram, webhooks) — all configurable via YAML and extensible via skills, plugins, and MCP servers.
 
-## Why TARS
+## Comparison
 
-| | Claude Code / Cursor / Aider | TARS |
-|---|---|---|
-| **Runtime** | IDE plugin or terminal session | Standalone HTTP server + web console |
-| **Memory** | Per-session context window | Durable knowledge base + semantic search + experience extraction |
-| **Agents** | Serial tool calling | Parallel sub-agents with per-task model tier routing |
-| **Background** | None | Pulse watchdog (1-min) + Reflection nightly batch |
-| **Scheduling** | None | Session-bound cron jobs with audit logs |
-| **Channels** | Terminal only | Console + Telegram + webhooks |
-| **Cost control** | Single model | 3-tier routing (heavy / standard / light) |
+| | OpenClaw | Hermes Agent | TARS |
+|---|---|---|---|
+| **Language** | TypeScript | Python | Go (single binary) |
+| **Sub-agents** | ACP + subagent runtimes, push-based completion, Docker sandbox | ThreadPoolExecutor (max 3), ephemeral prompt, credential override | Gateway executor with per-task model tier, allowlist policy, depth control |
+| **Model routing** | Per-agent model override | Per-child provider/model override, MoA (4 frontier models) | 3-tier named bundles (heavy/standard/light) with role→tier config mapping |
+| **Memory** | Session transcripts | Honcho/Holographic plugin hooks | Durable KB + semantic search + experience extraction + nightly compilation |
+| **Background** | None | None | Pulse watchdog (1-min) + Reflection nightly batch |
+| **Scheduling** | None | None | Session-bound cron jobs with audit logs |
+| **Channels** | CLI | CLI + Gateway API | Console + Telegram + webhooks |
+| **Context mgmt** | Per-session | ContextCompressor (50% threshold, protect-last-N) | Structured compaction with identifier preservation + light-tier LLM summary |
+| **Extensibility** | Built-in tools | Toolsets (terminal, file, web, delegation) | Skills + Plugins + MCP servers + Skill Hub registry |
 
 ## Key Features
 
