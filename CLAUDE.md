@@ -101,7 +101,23 @@ cd frontend/console && npm run check   # svelte-check + tsc
 
 ## Git Workflow
 
-**All work in git worktrees** — never commit directly to main.
+Two tracks depending on change size:
+
+### Small changes (docs, config, 1-2 file fixes)
+
+Commit directly to main after `make test` passes locally:
+
+```bash
+git add <specific-files>
+git commit -m "fix: description"
+git push origin main
+```
+
+CI runs automatically on push to main (security + test). If it fails, fix forward immediately.
+
+### Feature work (3+ files, new features, refactors)
+
+Use git worktrees and PRs for review and CI gating:
 
 ```bash
 # Create worktree
@@ -116,11 +132,15 @@ git worktree prune
 git fetch origin && git switch main && git pull --rebase
 ```
 
-**Conventional commits**: `feat:`, `fix:`, `chore:`, `refactor:`. Include `Closes #N` for issue references.
-
 **PR flow**: push → `gh pr create` → CI (security + test) → `gh pr merge --squash --admin`
 
 **Note**: Do NOT use `--delete-branch` with worktrees — use `rm -rf` + `git worktree prune` instead.
+
+### Shared rules
+
+**Conventional commits**: `feat:`, `fix:`, `chore:`, `refactor:`. Include `Closes #N` for issue references.
+
+**Main branch protection**: deletion and force-push are blocked by GitHub ruleset. Direct push is allowed.
 
 ## Config
 
