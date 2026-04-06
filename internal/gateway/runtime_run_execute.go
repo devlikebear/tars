@@ -76,6 +76,7 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 		SessionID:    state.run.SessionID,
 		Prompt:       state.run.Prompt,
 		AllowedTools: allowedTools,
+		Tier:         state.run.Tier,
 	})
 	if err == nil && ctx.Err() == nil {
 		assistant := strings.TrimSpace(resp)

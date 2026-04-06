@@ -16,6 +16,7 @@ type ExecuteRequest struct {
 	SessionID    string
 	Prompt       string
 	AllowedTools []string
+	Tier         string
 }
 
 type AgentInfo struct {
@@ -35,6 +36,7 @@ type AgentInfo struct {
 	ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
 	SessionRoutingMode string   `json:"session_routing_mode,omitempty"`
 	SessionFixedID     string   `json:"session_fixed_id,omitempty"`
+	Tier               string   `json:"tier,omitempty"`
 }
 
 type AgentExecutor interface {
@@ -56,7 +58,8 @@ type PromptExecutor struct {
 	toolsAllowPatterns []string
 	sessionRoutingMode string
 	sessionFixedID     string
-	runPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error)
+	tier               string
+	runPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string) (string, error)
 }
 
 type PromptExecutorOptions struct {
@@ -72,7 +75,8 @@ type PromptExecutorOptions struct {
 	ToolsAllowPatterns []string
 	SessionRoutingMode string
 	SessionFixedID     string
-	RunPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error)
+	Tier               string
+	RunPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string) (string, error)
 }
 
 func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, error) {
@@ -119,6 +123,7 @@ func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, 
 		toolsAllowPatterns: toolsAllowPatterns,
 		sessionRoutingMode: sessionRoutingMode,
 		sessionFixedID:     sessionFixedID,
+		tier:               strings.ToLower(strings.TrimSpace(opts.Tier)),
 		runPrompt:          opts.RunPrompt,
 	}, nil
 }
@@ -127,7 +132,7 @@ func NewPromptExecutor(name, description string, runPrompt func(ctx context.Cont
 	return NewPromptExecutorWithOptions(PromptExecutorOptions{
 		Name:        name,
 		Description: description,
-		RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string) (string, error) {
+		RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string, _ string) (string, error) {
 			return runPrompt(ctx, runLabel, prompt)
 		},
 	})
@@ -154,6 +159,7 @@ func (e *PromptExecutor) Info() AgentInfo {
 		ToolsAllowPatterns: append([]string(nil), e.toolsAllowPatterns...),
 		SessionRoutingMode: normalizeSessionRoutingMode(e.sessionRoutingMode),
 		SessionFixedID:     strings.TrimSpace(e.sessionFixedID),
+		Tier:               strings.TrimSpace(e.tier),
 	}
 }
 
@@ -169,7 +175,7 @@ func (e *PromptExecutor) Execute(ctx context.Context, req ExecuteRequest) (strin
 	if len(allowed) == 0 {
 		allowed = append([]string(nil), e.toolsAllow...)
 	}
-	return e.runPrompt(ctx, runLabel, strings.TrimSpace(req.Prompt), allowed)
+	return e.runPrompt(ctx, runLabel, strings.TrimSpace(req.Prompt), allowed, strings.TrimSpace(req.Tier))
 }
 
 type CommandExecutorOptions struct {

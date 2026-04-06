@@ -231,6 +231,7 @@ func buildAPIMux(
 		if runnerWithTelegram := newAgentPromptRunnerWithToolsAndMemory(
 			cfg.WorkspaceDir,
 			deps.llmClient,
+			deps.llmRouter,
 			cfg.AgentMaxIterations,
 			logger,
 			semanticMemoryConfigFromConfig(cfg),
@@ -242,7 +243,7 @@ func buildAPIMux(
 	apiRunPrompt := deps.runPrompt
 	if apiRunPromptWithTools != nil {
 		apiRunPrompt = func(ctx context.Context, runLabel string, prompt string) (string, error) {
-			return apiRunPromptWithTools(ctx, runLabel, prompt, nil)
+			return apiRunPromptWithTools(ctx, runLabel, prompt, nil, "")
 		}
 	}
 	watchdogState := newWatchdogWorkspaceState()

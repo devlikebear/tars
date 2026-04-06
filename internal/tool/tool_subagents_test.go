@@ -17,7 +17,7 @@ func newGatewayRuntimeForSubagentToolTests(
 	t *testing.T,
 	maxThreads int,
 	maxDepth int,
-	runPrompt func(ctx context.Context, runLabel string, prompt string, allowedTools []string) (string, error),
+	runPrompt func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string) (string, error),
 ) (*gateway.Runtime, *session.Store) {
 	t.Helper()
 	workspaceDir := t.TempDir()
@@ -54,7 +54,7 @@ func newGatewayRuntimeForSubagentToolTests(
 func TestSubagentsRunTool_SpawnsParallelExplorerChildrenAndReturnsSummaries(t *testing.T) {
 	startedCh := make(chan string, 2)
 	release := make(chan struct{})
-	rt, store := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, allowedTools []string) (string, error) {
+	rt, store := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, allowedTools []string, _ string) (string, error) {
 		if len(allowedTools) == 0 {
 			t.Fatalf("expected explorer allowlist to be forwarded")
 		}
@@ -152,7 +152,7 @@ func TestSubagentsRunTool_SpawnsParallelExplorerChildrenAndReturnsSummaries(t *t
 }
 
 func TestSubagentsRunTool_RejectsTaskCountAboveThreadLimit(t *testing.T) {
-	rt, store := newGatewayRuntimeForSubagentToolTests(t, 1, 1, func(_ context.Context, _ string, prompt string, _ []string) (string, error) {
+	rt, store := newGatewayRuntimeForSubagentToolTests(t, 1, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	parent, err := store.Create("chat")
@@ -184,7 +184,7 @@ func TestSubagentsRunTool_RejectsTaskCountAboveThreadLimit(t *testing.T) {
 }
 
 func TestSubagentsRunTool_RejectsDepthAboveLimit(t *testing.T) {
-	rt, store := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string) (string, error) {
+	rt, store := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	parent, err := store.Create("chat")

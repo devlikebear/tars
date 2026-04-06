@@ -86,6 +86,7 @@ func newAgentPromptRunner(
 	runnerWithTools := newAgentPromptRunnerWithToolsAndMemory(
 		workspaceDir,
 		client,
+		nil,
 		maxIterations,
 		logger,
 		firstSemanticConfig(semanticCfg...),
@@ -94,7 +95,7 @@ func newAgentPromptRunner(
 		return nil
 	}
 	return func(ctx context.Context, runLabel string, promptText string) (string, error) {
-		return runnerWithTools(ctx, runLabel, promptText, nil)
+		return runnerWithTools(ctx, runLabel, promptText, nil, "")
 	}
 }
 
@@ -105,22 +106,23 @@ func newAgentPromptRunnerWithTools(
 	logger zerolog.Logger,
 	extraTools ...tool.Tool,
 ) gatewayPromptRunner {
-	return newAgentPromptRunnerWithToolsAndMemory(workspaceDir, client, maxIterations, logger, memory.SemanticConfig{}, extraTools...)
+	return newAgentPromptRunnerWithToolsAndMemory(workspaceDir, client, nil, maxIterations, logger, memory.SemanticConfig{}, extraTools...)
 }
 
 func newAgentPromptRunnerWithToolsAndMemory(
 	workspaceDir string,
 	client llm.Client,
+	router llm.Router,
 	maxIterations int,
 	logger zerolog.Logger,
 	semanticCfg memory.SemanticConfig,
 	extraTools ...tool.Tool,
 ) gatewayPromptRunner {
-	if client == nil {
+	if client == nil && router == nil {
 		return nil
 	}
 	maxIters := resolveAgentMaxIterations(maxIterations)
-	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string) (string, error) {
+	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string) (string, error) {
 		label := strings.TrimSpace(runLabel)
 		if label == "" {
 			label = "agent"
@@ -129,6 +131,25 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		targetWorkspaceDir := resolveWorkspaceDir(workspaceDir, workspaceID)
 		if err := memory.EnsureWorkspace(targetWorkspaceDir); err != nil {
 			return "", err
+		}
+
+		// Resolve the LLM client for this run. When a tier is set (from
+		// the SpawnRequest) AND a router is available, select that tier's
+		// client; otherwise fall back to the default chat client.
+		runClient := client
+		if router != nil {
+			tierNorm := strings.ToLower(strings.TrimSpace(tier))
+			if tierNorm != "" {
+				if parsed, err := llm.ParseTier(tierNorm); err == nil {
+					if c, _, err := router.ClientForTier(parsed); err == nil {
+						runClient = c
+					}
+				}
+			} else {
+				if c, _, err := router.ClientFor(llm.RoleGatewayDefault); err == nil {
+					runClient = c
+				}
+			}
 		}
 
 		profile := agentPromptProfileForLabel(label)
@@ -166,7 +187,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 			meta.RunID = strings.TrimSpace(label[idx+1:])
 		}
 		ctx = usage.WithCallMeta(ctx, meta)
-		loop, _ := setupAgentLoop(client, registry, label, 0, logger, func(string, string, string, string, string, string) {})
+		loop, _ := setupAgentLoop(runClient, registry, label, 0, logger, func(string, string, string, string, string, string) {})
 		resp, err := loop.Run(ctx, []llm.ChatMessage{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: promptText},

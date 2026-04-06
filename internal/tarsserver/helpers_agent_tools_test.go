@@ -52,7 +52,7 @@ func TestAgentPromptRunnerWithTools_IncludesExtraTools(t *testing.T) {
 	if runner == nil {
 		t.Fatalf("expected non-nil runner")
 	}
-	if _, err := runner(context.Background(), "cron:test", "hello", nil); err != nil {
+	if _, err := runner(context.Background(), "cron:test", "hello", nil, ""); err != nil {
 		t.Fatalf("runner call failed: %v", err)
 	}
 	found := false
@@ -85,7 +85,7 @@ func TestAgentPromptRunnerWithTools_CronUsesMinimalToolsetAndPrompt(t *testing.T
 	if runner == nil {
 		t.Fatalf("expected non-nil runner")
 	}
-	if _, err := runner(context.Background(), "cron:test", "hello", nil); err != nil {
+	if _, err := runner(context.Background(), "cron:test", "hello", nil, ""); err != nil {
 		t.Fatalf("runner call failed: %v", err)
 	}
 	if len(client.messages) < 2 {
