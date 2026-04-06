@@ -39,10 +39,42 @@ Open the web console, then start a chat such as `todo 앱 만드는 프로젝트
 - Built-in file tools with 2,000-line read pagination, continuation hints, and safe atomic writes
 - Session-aware Files panel for artifact history and workspace browsing, with typed previews for markdown/code/images and in-panel folder management
 - Structured session compaction with identifier-preserving summaries, a safer recent-tail preserve policy, and manual `/compact [instructions]`
-- Parallel read-only chat subagents through the built-in `explorer` gateway agent
+- Parallel chat subagents with per-task model tier selection through the gateway agent system
 - MCP transports for local stdio servers and remote HTTP/WebSocket endpoints, with bearer or OAuth auth for remote servers
 - Semantic memory recall with Gemini embeddings (optional)
 - Playwright-based browser automation
+
+### 3-Tier Model Routing
+
+Route different workloads to different models for cost and quality optimization:
+
+| Tier | Purpose | Typical Model |
+|------|---------|---------------|
+| **heavy** | Planning, complex reasoning, architecture decisions | claude-opus-4-6, gpt-5.4 |
+| **standard** | General chat, agent work, tool-calling loops | claude-sonnet-4-6, gpt-5.4 |
+| **light** | Summarization, classification, memory hooks, pulse watchdog | claude-haiku-4-5, gpt-4o-mini |
+
+Each system role (chat, pulse watchdog, reflection nightly batch, chat compaction, gateway agents) maps to a tier via config. Sub-agents can override the tier per task:
+
+```yaml
+# tars.config.yaml
+llm_default_tier: standard
+llm_tier_heavy_model: claude-opus-4-6
+llm_tier_standard_model: claude-sonnet-4-6
+llm_tier_light_model: claude-haiku-4-5-20251001
+llm_role_pulse_decider: light
+llm_role_gateway_planner: heavy
+```
+
+Agent YAML files support an optional `tier:` frontmatter field, and the `subagents_run` tool accepts a per-task `tier` parameter for fine-grained control.
+
+### System Surface
+
+TARS separates background maintenance from user-facing chat into isolated surfaces:
+
+- **Pulse** — 1-minute watchdog that scans cron failures, stuck gateway runs, disk pressure, Telegram delivery failures, and reflection health. An LLM classifier picks `ignore`/`notify`/`autofix` per tick. Autofixes are whitelisted in config.
+- **Reflection** — Nightly batch (default 02:00–05:00) that runs memory cleanup (experience extraction + knowledge-base compilation) and KB cleanup. No LLM tool surface — calls `llm.Client.Chat` directly.
+- Both surfaces use the **light tier** by default, keeping background costs low while the main chat uses standard or heavy.
 
 ### Extensibility
 
@@ -103,7 +135,27 @@ The recommended path is planning first, then controlled phase advancement. `adva
 
 Cron jobs can now bind directly to a chat session with `session_id`. A bound cron run uses that session's tool and skill configuration, work directories, prompt override, and recent transcript context. In the console chat view, the right panel now includes a `Cron` tab alongside Files, Config, Context, Prompt, and Tasks: the main chat manages global cron jobs, while regular chat sessions manage only their bound session cron jobs. User-visible audit logs are appended to `artifacts/<session_id>/cronjob-log.jsonl`, while global cron jobs continue to run with system defaults and append to `artifacts/_global/cronjob-log.jsonl`.
 
-For read-heavy codebase research in chat, TARS can now fan out parallel `explorer` subagents and merge back compact summaries. The runtime defaults are:
+For read-heavy codebase research in chat, TARS can fan out parallel subagents and merge back compact summaries. Agents are defined as markdown files in `workspace/agents/`:
+
+```yaml
+# workspace/agents/explorer/AGENT.md frontmatter
+---
+name: explorer
+tier: light
+tools_allow: [read_file, list_dir, glob, memory_search]
+---
+```
+
+The `subagents_run` tool supports per-task tier selection:
+
+```json
+{"tasks": [
+  {"prompt": "search for auth middleware", "tier": "light"},
+  {"prompt": "design the refactor plan", "tier": "heavy"}
+]}
+```
+
+Runtime defaults:
 
 ```yaml
 gateway_subagents_max_threads: 4
