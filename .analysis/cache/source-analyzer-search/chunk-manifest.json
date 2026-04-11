@@ -1,0 +1,2852 @@
+[
+  {
+    "id": "chunk-0001",
+    "kind": "module-map",
+    "title": "Module Map / auth-plugin-loading",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/middleware.go",
+      "internal/serverauth/middleware.go",
+      "internal/plugin/loader.go",
+      "internal/plugin/builtin.go",
+      "internal/plugin/builtin_registry.go",
+      "internal/plugin/manifest.go",
+      "internal/plugin/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0002",
+    "kind": "module-map",
+    "title": "Module Map / automation-gateway-browser",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/executor.go",
+      "internal/gateway/runtime.go",
+      "internal/gateway/runtime_run_bootstrap.go",
+      "internal/gateway/runtime_runs.go",
+      "internal/gateway/runtime_channels.go",
+      "internal/gateway/runtime_reports.go",
+      "internal/browser/service.go",
+      "internal/browser/playwright_exec.go"
+    ]
+  },
+  {
+    "id": "chunk-0003",
+    "kind": "module-map",
+    "title": "Module Map / client-tui",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsclient/client_main.go",
+      "internal/tarsclient/chat.go",
+      "internal/tarsclient/commands_runtime.go",
+      "internal/tarsclient/runtime_ops.go",
+      "pkg/tarsclient/client.go"
+    ]
+  },
+  {
+    "id": "chunk-0004",
+    "kind": "module-map",
+    "title": "Module Map / configuration-doctor",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/load.go",
+      "internal/config/config_input_fields.go",
+      "internal/config/defaults_apply.go",
+      "internal/config/env.go",
+      "internal/config/yaml.go",
+      "cmd/tars/doctor_main.go",
+      "config/tars.config.example.yaml"
+    ]
+  },
+  {
+    "id": "chunk-0005",
+    "kind": "module-map",
+    "title": "Module Map / entrypoints",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/main.go",
+      "cmd/tars/console_main.go",
+      "cmd/tars/mainthread_darwin.go",
+      "cmd/tars/mainthread_other.go",
+      "cmd/tars/client_main.go",
+      "cmd/tars/server_main.go",
+      "cmd/tars/assistant_main.go",
+      "cmd/tars/doctor_main.go",
+      "cmd/tars/project_main.go",
+      "cmd/tars/cron_main.go",
+      "cmd/tars/approval_main.go",
+      "cmd/tars/skill_main.go",
+      "cmd/tars/plugin_main.go",
+      "cmd/tars/mcp_main.go",
+      "cmd/tars/service_main.go"
+    ]
+  },
+  {
+    "id": "chunk-0006",
+    "kind": "module-map",
+    "title": "Module Map / extensions-tools",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/extensions/manager.go",
+      "internal/extensions/lifecycle.go",
+      "internal/skill/loader.go",
+      "internal/skill/mirror.go",
+      "internal/mcp/client.go",
+      "internal/tool/tool.go",
+      "internal/agent/loop.go",
+      "internal/tarsserver/helpers_build_tools.go"
+    ]
+  },
+  {
+    "id": "chunk-0007",
+    "kind": "module-map",
+    "title": "Module Map / external-integrations",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/service_main.go",
+      "internal/browserrelay/server.go",
+      "internal/approval/otp.go",
+      "internal/auth/provider_credentials.go",
+      "internal/auth/codex_oauth.go",
+      "internal/auth/codex_refresh_store.go",
+      "internal/llm/provider.go",
+      "internal/llm/model_lister.go",
+      "internal/llm/openai_codex_client.go",
+      "internal/llm/gemini_native.go"
+    ]
+  },
+  {
+    "id": "chunk-0008",
+    "kind": "module-map",
+    "title": "Module Map / project-autopilot-dashboard",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/brief_state.go",
+      "internal/project/policy.go",
+      "internal/project/workflow_policy.go",
+      "internal/project/workflow_runtime_policy.go",
+      "internal/project/orchestrator.go",
+      "internal/project/orchestrator_plan.go",
+      "internal/project/store_normalize.go",
+      "internal/tarsserver/helpers_project_progress.go",
+      "internal/tarsserver/dashboard.go"
+    ]
+  },
+  {
+    "id": "chunk-0009",
+    "kind": "module-map",
+    "title": "Module Map / project-swarm-dogfooding",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "plugins/project-swarm/skills/project-start/SKILL.md",
+      "plugins/project-swarm/skills/project-autopilot/SKILL.md",
+      "internal/project/project_runner.go",
+      "internal/project/workflow_policy.go",
+      "internal/tarsserver/dashboard.go"
+    ]
+  },
+  {
+    "id": "chunk-0010",
+    "kind": "module-map",
+    "title": "Module Map / semantic-memory",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/memory/semantic.go",
+      "internal/memory/gemini_embed.go",
+      "internal/prompt/memory_retrieval.go",
+      "internal/tool/memory_search.go",
+      "internal/tool/memory_save.go",
+      "internal/tarsserver/helpers_chat.go"
+    ]
+  },
+  {
+    "id": "chunk-0011",
+    "kind": "module-map",
+    "title": "Module Map / server-chat-pipeline",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/main.go",
+      "internal/tarsserver/main_cli.go",
+      "internal/tarsserver/main_bootstrap.go",
+      "internal/tarsserver/main_serve_api.go",
+      "internal/tarsserver/console.go",
+      "internal/tarsserver/handler_chat.go",
+      "internal/tarsserver/handler_chat_context.go",
+      "internal/tarsserver/handler_chat_policy.go",
+      "internal/tarsserver/handler_chat_stream.go",
+      "internal/tarsserver/helpers_memory.go",
+      "internal/tarsserver/handler_transport_helpers.go"
+    ]
+  },
+  {
+    "id": "chunk-0012",
+    "kind": "module-map",
+    "title": "Module Map / skillhub-distribution",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/skill_main.go",
+      "cmd/tars/plugin_main.go",
+      "internal/skillhub/registry.go",
+      "internal/skillhub/install.go",
+      "internal/skillhub/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0013",
+    "kind": "module-map",
+    "title": "Module Map / workspace-data",
+    "source_path": "outputs/module-map.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/session/session.go",
+      "internal/session/transcript.go",
+      "internal/session/compaction.go",
+      "internal/project/store.go",
+      "internal/memory/workspace.go",
+      "internal/usage/tracker.go",
+      "internal/research/service.go"
+    ]
+  },
+  {
+    "id": "chunk-0014",
+    "kind": "module-summary",
+    "title": "Summary / auth-plugin-loading",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/middleware.go",
+      "internal/serverauth/middleware.go",
+      "internal/plugin/loader.go",
+      "internal/plugin/builtin.go",
+      "internal/plugin/builtin_registry.go",
+      "internal/plugin/manifest.go",
+      "internal/plugin/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0015",
+    "kind": "module-summary",
+    "title": "Summary / automation-gateway-browser",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/executor.go",
+      "internal/gateway/runtime.go",
+      "internal/gateway/runtime_run_bootstrap.go",
+      "internal/gateway/runtime_runs.go",
+      "internal/gateway/runtime_channels.go",
+      "internal/gateway/runtime_reports.go",
+      "internal/browser/service.go",
+      "internal/browser/playwright_exec.go"
+    ]
+  },
+  {
+    "id": "chunk-0016",
+    "kind": "module-summary",
+    "title": "Summary / client-tui",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsclient/client_main.go",
+      "internal/tarsclient/chat.go",
+      "internal/tarsclient/commands_runtime.go",
+      "internal/tarsclient/runtime_ops.go",
+      "pkg/tarsclient/client.go"
+    ]
+  },
+  {
+    "id": "chunk-0017",
+    "kind": "module-summary",
+    "title": "Summary / configuration-doctor",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/load.go",
+      "internal/config/config_input_fields.go",
+      "internal/config/defaults_apply.go",
+      "internal/config/env.go",
+      "internal/config/yaml.go",
+      "cmd/tars/doctor_main.go",
+      "config/tars.config.example.yaml"
+    ]
+  },
+  {
+    "id": "chunk-0018",
+    "kind": "module-summary",
+    "title": "Summary / entrypoints",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/main.go",
+      "cmd/tars/console_main.go",
+      "cmd/tars/mainthread_darwin.go",
+      "cmd/tars/mainthread_other.go",
+      "cmd/tars/client_main.go",
+      "cmd/tars/server_main.go",
+      "cmd/tars/assistant_main.go",
+      "cmd/tars/doctor_main.go",
+      "cmd/tars/project_main.go",
+      "cmd/tars/cron_main.go",
+      "cmd/tars/approval_main.go",
+      "cmd/tars/skill_main.go",
+      "cmd/tars/plugin_main.go",
+      "cmd/tars/mcp_main.go",
+      "cmd/tars/service_main.go"
+    ]
+  },
+  {
+    "id": "chunk-0019",
+    "kind": "module-summary",
+    "title": "Summary / extensions-tools",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/extensions/manager.go",
+      "internal/extensions/lifecycle.go",
+      "internal/skill/loader.go",
+      "internal/skill/mirror.go",
+      "internal/mcp/client.go",
+      "internal/tool/tool.go",
+      "internal/agent/loop.go",
+      "internal/tarsserver/helpers_build_tools.go"
+    ]
+  },
+  {
+    "id": "chunk-0020",
+    "kind": "module-summary",
+    "title": "Summary / external-integrations",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/service_main.go",
+      "internal/browserrelay/server.go",
+      "internal/approval/otp.go",
+      "internal/auth/provider_credentials.go",
+      "internal/auth/codex_oauth.go",
+      "internal/auth/codex_refresh_store.go",
+      "internal/llm/provider.go",
+      "internal/llm/model_lister.go",
+      "internal/llm/openai_codex_client.go",
+      "internal/llm/gemini_native.go"
+    ]
+  },
+  {
+    "id": "chunk-0021",
+    "kind": "module-summary",
+    "title": "Summary / project-autopilot-dashboard",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/brief_state.go",
+      "internal/project/policy.go",
+      "internal/project/workflow_policy.go",
+      "internal/project/workflow_runtime_policy.go",
+      "internal/project/orchestrator.go",
+      "internal/project/orchestrator_plan.go",
+      "internal/project/store_normalize.go",
+      "internal/tarsserver/helpers_project_progress.go",
+      "internal/tarsserver/dashboard.go"
+    ]
+  },
+  {
+    "id": "chunk-0022",
+    "kind": "module-summary",
+    "title": "Summary / project-swarm-dogfooding",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "plugins/project-swarm/skills/project-start/SKILL.md",
+      "plugins/project-swarm/skills/project-autopilot/SKILL.md",
+      "internal/project/project_runner.go",
+      "internal/project/workflow_policy.go",
+      "internal/tarsserver/dashboard.go"
+    ]
+  },
+  {
+    "id": "chunk-0023",
+    "kind": "module-summary",
+    "title": "Summary / semantic-memory",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/memory/semantic.go",
+      "internal/memory/gemini_embed.go",
+      "internal/prompt/memory_retrieval.go",
+      "internal/tool/memory_search.go",
+      "internal/tool/memory_save.go",
+      "internal/tarsserver/helpers_chat.go"
+    ]
+  },
+  {
+    "id": "chunk-0024",
+    "kind": "module-summary",
+    "title": "Summary / server-chat-pipeline",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/main.go",
+      "internal/tarsserver/main_cli.go",
+      "internal/tarsserver/main_bootstrap.go",
+      "internal/tarsserver/main_serve_api.go",
+      "internal/tarsserver/console.go",
+      "internal/tarsserver/handler_chat.go",
+      "internal/tarsserver/handler_chat_context.go",
+      "internal/tarsserver/handler_chat_policy.go",
+      "internal/tarsserver/handler_chat_stream.go",
+      "internal/tarsserver/helpers_memory.go",
+      "internal/tarsserver/handler_transport_helpers.go"
+    ]
+  },
+  {
+    "id": "chunk-0025",
+    "kind": "module-summary",
+    "title": "Summary / skillhub-distribution",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/skill_main.go",
+      "cmd/tars/plugin_main.go",
+      "internal/skillhub/registry.go",
+      "internal/skillhub/install.go",
+      "internal/skillhub/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0026",
+    "kind": "module-summary",
+    "title": "Summary / workspace-data",
+    "source_path": "outputs/SUMMARY.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/session/session.go",
+      "internal/session/transcript.go",
+      "internal/session/compaction.go",
+      "internal/project/store.go",
+      "internal/memory/workspace.go",
+      "internal/usage/tracker.go",
+      "internal/research/service.go"
+    ]
+  },
+  {
+    "id": "chunk-0027",
+    "kind": "dependency-edges",
+    "title": "Dependencies / README.md",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "README.md"
+    ]
+  },
+  {
+    "id": "chunk-0028",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/assistant_main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/assistant_main.go",
+      "internal/assistant/doctor.go",
+      "pkg/tarsclient/browser.go"
+    ]
+  },
+  {
+    "id": "chunk-0029",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/client_main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/client_main.go",
+      "internal/tarsclient/app_model.go",
+      "pkg/tarsclient/browser.go"
+    ]
+  },
+  {
+    "id": "chunk-0030",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/doctor_main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/doctor_main.go",
+      "internal/config/defaults.go",
+      "internal/llm/anthropic.go"
+    ]
+  },
+  {
+    "id": "chunk-0031",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/init_main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/init_main.go",
+      "internal/assetpath/resolve.go",
+      "internal/config/defaults.go",
+      "internal/memory/experience.go",
+      "internal/plugin/loader.go"
+    ]
+  },
+  {
+    "id": "chunk-0032",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/main.go",
+      "internal/buildinfo/buildinfo.go",
+      "internal/envloader/load.go"
+    ]
+  },
+  {
+    "id": "chunk-0033",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/mainthread_darwin.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/mainthread_darwin.go"
+    ]
+  },
+  {
+    "id": "chunk-0034",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/mainthread_other.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/mainthread_other.go"
+    ]
+  },
+  {
+    "id": "chunk-0035",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/plugin_main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/plugin_main.go",
+      "internal/skillhub/install.go",
+      "internal/skillhub/registry.go",
+      "internal/skillhub/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0036",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/server_main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/server_main.go",
+      "internal/tarsserver/browser_otp_requester.go"
+    ]
+  },
+  {
+    "id": "chunk-0037",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/service_main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/service_main.go",
+      "cmd/tars/doctor_main.go"
+    ]
+  },
+  {
+    "id": "chunk-0038",
+    "kind": "dependency-edges",
+    "title": "Dependencies / cmd/tars/skill_main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/skill_main.go",
+      "internal/skillhub/install.go",
+      "internal/skillhub/registry.go",
+      "internal/skillhub/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0039",
+    "kind": "dependency-edges",
+    "title": "Dependencies / config/tars.config.example.yaml",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "config/tars.config.example.yaml"
+    ]
+  },
+  {
+    "id": "chunk-0040",
+    "kind": "dependency-edges",
+    "title": "Dependencies / go.mod",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "go.mod"
+    ]
+  },
+  {
+    "id": "chunk-0041",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/agent/loop.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/agent/loop.go",
+      "internal/llm/anthropic.go",
+      "internal/secrets/secrets.go",
+      "internal/tool/apply_patch.go"
+    ]
+  },
+  {
+    "id": "chunk-0042",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/approval/otp.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/approval/otp.go"
+    ]
+  },
+  {
+    "id": "chunk-0043",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/assistant/runtime.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/assistant/runtime.go",
+      "pkg/tarsclient/browser.go"
+    ]
+  },
+  {
+    "id": "chunk-0044",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/auth/codex_oauth.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/auth/codex_oauth.go"
+    ]
+  },
+  {
+    "id": "chunk-0045",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/auth/codex_refresh_store.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/auth/codex_refresh_store.go"
+    ]
+  },
+  {
+    "id": "chunk-0046",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/auth/provider_credentials.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/auth/provider_credentials.go",
+      "internal/auth/codex_oauth.go",
+      "internal/auth/token.go"
+    ]
+  },
+  {
+    "id": "chunk-0047",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/auth/token.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/auth/token.go"
+    ]
+  },
+  {
+    "id": "chunk-0048",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/browser/flow.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/browser/flow.go"
+    ]
+  },
+  {
+    "id": "chunk-0049",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/browser/playwright_exec.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/browser/playwright_exec.go"
+    ]
+  },
+  {
+    "id": "chunk-0050",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/browser/playwright_flow_runner.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/browser/playwright_flow_runner.go"
+    ]
+  },
+  {
+    "id": "chunk-0051",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/browser/service.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/browser/service.go"
+    ]
+  },
+  {
+    "id": "chunk-0052",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/browserrelay/server.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/browserrelay/server.go"
+    ]
+  },
+  {
+    "id": "chunk-0053",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/config/config_input_fields.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/config_input_fields.go"
+    ]
+  },
+  {
+    "id": "chunk-0054",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/config/defaults.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/defaults.go"
+    ]
+  },
+  {
+    "id": "chunk-0055",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/config/defaults_apply.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/defaults_apply.go"
+    ]
+  },
+  {
+    "id": "chunk-0056",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/config/env.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/env.go"
+    ]
+  },
+  {
+    "id": "chunk-0057",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/config/load.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/load.go"
+    ]
+  },
+  {
+    "id": "chunk-0058",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/config/merge.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/merge.go"
+    ]
+  },
+  {
+    "id": "chunk-0059",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/config/types.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0060",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/config/yaml.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/yaml.go"
+    ]
+  },
+  {
+    "id": "chunk-0061",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/cron/manager.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/cron/manager.go"
+    ]
+  },
+  {
+    "id": "chunk-0062",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/extensions/manager.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/extensions/manager.go",
+      "internal/config/defaults.go",
+      "internal/plugin/loader.go",
+      "internal/skill/loader.go",
+      "internal/skill/mirror.go",
+      "internal/mcp/client.go",
+      "internal/tool/tool.go"
+    ]
+  },
+  {
+    "id": "chunk-0063",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/gateway/executor.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/executor.go"
+    ]
+  },
+  {
+    "id": "chunk-0064",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/gateway/project_task_runner.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/project_task_runner.go",
+      "internal/project/activity.go"
+    ]
+  },
+  {
+    "id": "chunk-0065",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/gateway/runtime.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/runtime.go",
+      "internal/browser/flow.go"
+    ]
+  },
+  {
+    "id": "chunk-0066",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/gateway/runtime_channels.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/runtime_channels.go"
+    ]
+  },
+  {
+    "id": "chunk-0067",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/gateway/runtime_persist.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/runtime_persist.go"
+    ]
+  },
+  {
+    "id": "chunk-0068",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/gateway/runtime_reports.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/runtime_reports.go"
+    ]
+  },
+  {
+    "id": "chunk-0069",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/gateway/runtime_run_bootstrap.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/runtime_run_bootstrap.go",
+      "internal/session/compaction.go"
+    ]
+  },
+  {
+    "id": "chunk-0070",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/gateway/runtime_run_execute.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/runtime_run_execute.go",
+      "internal/project/activity.go",
+      "internal/serverauth/middleware.go",
+      "internal/session/compaction.go",
+      "internal/usage/client.go"
+    ]
+  },
+  {
+    "id": "chunk-0071",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/gateway/runtime_runs.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/runtime_runs.go",
+      "internal/session/compaction.go"
+    ]
+  },
+  {
+    "id": "chunk-0072",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/gateway/types.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/types.go",
+      "internal/browser/flow.go",
+      "internal/session/compaction.go"
+    ]
+  },
+  {
+    "id": "chunk-0073",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/llm/anthropic.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/llm/anthropic.go"
+    ]
+  },
+  {
+    "id": "chunk-0074",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/llm/ask.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/llm/ask.go"
+    ]
+  },
+  {
+    "id": "chunk-0075",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/llm/gemini_native.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/llm/gemini_native.go",
+      "internal/llm/gemini_native_chat.go",
+      "internal/llm/gemini_native_convert.go"
+    ]
+  },
+  {
+    "id": "chunk-0076",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/llm/model_lister.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/llm/model_lister.go",
+      "internal/auth/provider_credentials.go"
+    ]
+  },
+  {
+    "id": "chunk-0077",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/llm/openai_codex_client.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/llm/openai_codex_client.go",
+      "internal/auth/codex_oauth.go"
+    ]
+  },
+  {
+    "id": "chunk-0078",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/llm/openai_compat_client.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/llm/openai_compat_client.go"
+    ]
+  },
+  {
+    "id": "chunk-0079",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/llm/provider.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/llm/provider.go",
+      "internal/auth/provider_credentials.go",
+      "internal/llm/openai_compat_client.go",
+      "internal/llm/anthropic.go",
+      "internal/llm/gemini_native.go",
+      "internal/llm/openai_codex_client.go"
+    ]
+  },
+  {
+    "id": "chunk-0080",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/llm/transport.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/llm/transport.go"
+    ]
+  },
+  {
+    "id": "chunk-0081",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/mcp/client.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/mcp/client.go",
+      "internal/config/defaults.go"
+    ]
+  },
+  {
+    "id": "chunk-0082",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/memory/gemini_embed.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/memory/gemini_embed.go"
+    ]
+  },
+  {
+    "id": "chunk-0083",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/memory/semantic.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/memory/semantic.go",
+      "internal/project/store.go"
+    ]
+  },
+  {
+    "id": "chunk-0084",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/memory/workspace.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/memory/workspace.go"
+    ]
+  },
+  {
+    "id": "chunk-0085",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/ops/manager.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/ops/manager.go"
+    ]
+  },
+  {
+    "id": "chunk-0086",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/ops/manager_approvals.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/ops/manager_approvals.go"
+    ]
+  },
+  {
+    "id": "chunk-0087",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/ops/manager_cleanup.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/ops/manager_cleanup.go"
+    ]
+  },
+  {
+    "id": "chunk-0088",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/ops/manager_system.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/ops/manager_system.go"
+    ]
+  },
+  {
+    "id": "chunk-0089",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/plugin/loader.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/plugin/loader.go"
+    ]
+  },
+  {
+    "id": "chunk-0090",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/plugin/manifest.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/plugin/manifest.go"
+    ]
+  },
+  {
+    "id": "chunk-0091",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/plugin/types.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/plugin/types.go",
+      "internal/config/defaults.go"
+    ]
+  },
+  {
+    "id": "chunk-0092",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/activity.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/activity.go"
+    ]
+  },
+  {
+    "id": "chunk-0093",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/activity_auto.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/activity_auto.go"
+    ]
+  },
+  {
+    "id": "chunk-0094",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/brief_state.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/brief_state.go",
+      "internal/session/compaction.go"
+    ]
+  },
+  {
+    "id": "chunk-0095",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/github_flow.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/github_flow.go"
+    ]
+  },
+  {
+    "id": "chunk-0096",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/kanban.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/kanban.go"
+    ]
+  },
+  {
+    "id": "chunk-0097",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/orchestrator.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/orchestrator.go",
+      "internal/project/task_report.go",
+      "internal/project/worker_profiles.go"
+    ]
+  },
+  {
+    "id": "chunk-0098",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/project_runner.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/project_runner.go",
+      "internal/project/orchestrator.go",
+      "internal/project/workflow_policy.go"
+    ]
+  },
+  {
+    "id": "chunk-0099",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/store.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/store.go"
+    ]
+  },
+  {
+    "id": "chunk-0100",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/task_report.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/task_report.go"
+    ]
+  },
+  {
+    "id": "chunk-0101",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/worker_profiles.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/worker_profiles.go"
+    ]
+  },
+  {
+    "id": "chunk-0102",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/project/workflow_policy.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/workflow_policy.go"
+    ]
+  },
+  {
+    "id": "chunk-0103",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/prompt/builder.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/prompt/builder.go"
+    ]
+  },
+  {
+    "id": "chunk-0104",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/prompt/memory_retrieval.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/prompt/memory_retrieval.go",
+      "internal/memory/semantic.go",
+      "internal/project/store.go",
+      "internal/session/session.go"
+    ]
+  },
+  {
+    "id": "chunk-0105",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/research/service.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/research/service.go"
+    ]
+  },
+  {
+    "id": "chunk-0106",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/schedule/store.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/schedule/store.go",
+      "internal/cron/helpers.go",
+      "internal/scheduleexpr/normalize.go"
+    ]
+  },
+  {
+    "id": "chunk-0107",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/serverauth/middleware.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/serverauth/middleware.go"
+    ]
+  },
+  {
+    "id": "chunk-0108",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/session/compaction.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/session/compaction.go"
+    ]
+  },
+  {
+    "id": "chunk-0109",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/session/session.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/session/session.go"
+    ]
+  },
+  {
+    "id": "chunk-0110",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/session/transcript.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/session/transcript.go"
+    ]
+  },
+  {
+    "id": "chunk-0111",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/skill/loader.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/skill/loader.go"
+    ]
+  },
+  {
+    "id": "chunk-0112",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/skill/mirror.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/skill/mirror.go"
+    ]
+  },
+  {
+    "id": "chunk-0113",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/skillhub/install.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/skillhub/install.go",
+      "internal/skillhub/registry.go",
+      "internal/skillhub/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0114",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/skillhub/registry.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/skillhub/registry.go",
+      "internal/skillhub/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0115",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/skillhub/types.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/skillhub/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0116",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsclient/app_model.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsclient/app_model.go"
+    ]
+  },
+  {
+    "id": "chunk-0117",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsclient/app_update.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsclient/app_update.go"
+    ]
+  },
+  {
+    "id": "chunk-0118",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsclient/chat.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsclient/chat.go",
+      "pkg/tarsclient/browser.go"
+    ]
+  },
+  {
+    "id": "chunk-0119",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsclient/client_main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsclient/client_main.go",
+      "internal/secrets/secrets.go"
+    ]
+  },
+  {
+    "id": "chunk-0120",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsclient/runtime.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsclient/runtime.go",
+      "pkg/tarsclient/browser.go"
+    ]
+  },
+  {
+    "id": "chunk-0121",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/dashboard.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/dashboard.go",
+      "internal/project/activity.go",
+      "internal/project/store.go",
+      "internal/project/workflow_policy.go"
+    ]
+  },
+  {
+    "id": "chunk-0122",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/handler_chat.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/handler_chat.go",
+      "internal/agent/hooks.go",
+      "internal/extensions/manager.go",
+      "internal/gateway/executor.go",
+      "internal/llm/anthropic.go",
+      "internal/memory/semantic.go",
+      "internal/ops/manager.go",
+      "internal/project/activity.go",
+      "internal/project/workflow_policy.go",
+      "internal/prompt/memory_retrieval.go",
+      "internal/research/service.go",
+      "internal/schedule/store.go",
+      "internal/secrets/secrets.go",
+      "internal/session/compaction.go",
+      "internal/skill/frontmatter.go",
+      "internal/tool/apply_patch.go",
+      "internal/usage/client.go"
+    ]
+  },
+  {
+    "id": "chunk-0123",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/handler_chat_context.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/handler_chat_context.go",
+      "internal/extensions/manager.go",
+      "internal/llm/anthropic.go",
+      "internal/project/activity.go",
+      "internal/serverauth/middleware.go",
+      "internal/session/compaction.go",
+      "internal/tool/apply_patch.go"
+    ]
+  },
+  {
+    "id": "chunk-0124",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/handler_chat_execution.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/handler_chat_execution.go",
+      "internal/agent/hooks.go",
+      "internal/llm/anthropic.go",
+      "internal/session/compaction.go"
+    ]
+  },
+  {
+    "id": "chunk-0125",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/handler_chat_pipeline.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/handler_chat_pipeline.go",
+      "internal/llm/anthropic.go",
+      "internal/session/compaction.go",
+      "internal/tool/apply_patch.go",
+      "internal/usage/client.go"
+    ]
+  },
+  {
+    "id": "chunk-0126",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/handler_transport_helpers.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/handler_transport_helpers.go"
+    ]
+  },
+  {
+    "id": "chunk-0127",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/handlers.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/handlers.go",
+      "internal/heartbeat/heartbeat.go",
+      "internal/serverauth/middleware.go"
+    ]
+  },
+  {
+    "id": "chunk-0128",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/helpers_agent.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/helpers_agent.go",
+      "internal/llm/provider.go",
+      "internal/memory/semantic.go",
+      "internal/project/store.go",
+      "internal/tool/memory_search.go",
+      "internal/tool/memory_save.go"
+    ]
+  },
+  {
+    "id": "chunk-0129",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/helpers_build_extensions.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/helpers_build_extensions.go",
+      "internal/assetpath/resolve.go",
+      "internal/config/defaults.go",
+      "internal/extensions/manager.go",
+      "internal/plugin/loader.go",
+      "internal/skill/frontmatter.go"
+    ]
+  },
+  {
+    "id": "chunk-0130",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/helpers_build_tools.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/helpers_build_tools.go",
+      "internal/config/defaults.go",
+      "internal/cron/helpers.go",
+      "internal/extensions/manager.go",
+      "internal/gateway/executor.go",
+      "internal/heartbeat/heartbeat.go",
+      "internal/project/activity.go",
+      "internal/tool/apply_patch.go",
+      "internal/usage/client.go"
+    ]
+  },
+  {
+    "id": "chunk-0131",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/helpers_chat.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/helpers_chat.go",
+      "internal/llm/ask.go",
+      "internal/memory/semantic.go",
+      "internal/session/compaction.go"
+    ]
+  },
+  {
+    "id": "chunk-0132",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/helpers_memory.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/helpers_memory.go",
+      "internal/memory/semantic.go"
+    ]
+  },
+  {
+    "id": "chunk-0133",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/main.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/main.go",
+      "internal/cli/errors.go",
+      "internal/envloader/load.go"
+    ]
+  },
+  {
+    "id": "chunk-0134",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/main_bootstrap.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/main_bootstrap.go",
+      "internal/cli/errors.go",
+      "internal/config/defaults.go",
+      "internal/heartbeat/heartbeat.go",
+      "internal/llm/anthropic.go",
+      "internal/memory/experience.go",
+      "internal/session/compaction.go",
+      "internal/usage/client.go"
+    ]
+  },
+  {
+    "id": "chunk-0135",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/main_cli.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/main_cli.go",
+      "internal/cli/errors.go"
+    ]
+  },
+  {
+    "id": "chunk-0136",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/main_options.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/main_options.go",
+      "internal/session/compaction.go"
+    ]
+  },
+  {
+    "id": "chunk-0137",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/main_serve_api.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/main_serve_api.go",
+      "internal/approval/otp.go",
+      "internal/cli/errors.go",
+      "internal/config/defaults.go",
+      "internal/cron/helpers.go",
+      "internal/extensions/manager.go",
+      "internal/gateway/executor.go",
+      "internal/heartbeat/heartbeat.go",
+      "internal/llm/anthropic.go",
+      "internal/mcp/client.go",
+      "internal/ops/manager.go",
+      "internal/project/activity.go",
+      "internal/research/service.go",
+      "internal/schedule/store.go",
+      "internal/tool/apply_patch.go",
+      "internal/usage/client.go"
+    ]
+  },
+  {
+    "id": "chunk-0138",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tarsserver/middleware.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/middleware.go",
+      "internal/config/defaults.go",
+      "internal/serverauth/middleware.go"
+    ]
+  },
+  {
+    "id": "chunk-0139",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tool/memory_save.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tool/memory_save.go",
+      "internal/memory/experience.go",
+      "internal/memory/semantic.go"
+    ]
+  },
+  {
+    "id": "chunk-0140",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tool/memory_search.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tool/memory_search.go",
+      "internal/memory/semantic.go"
+    ]
+  },
+  {
+    "id": "chunk-0141",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/tool/tool.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tool/tool.go",
+      "internal/llm/anthropic.go"
+    ]
+  },
+  {
+    "id": "chunk-0142",
+    "kind": "dependency-edges",
+    "title": "Dependencies / internal/usage/tracker.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/usage/tracker.go"
+    ]
+  },
+  {
+    "id": "chunk-0143",
+    "kind": "dependency-edges",
+    "title": "Dependencies / pkg/tarsclient/client.go",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "pkg/tarsclient/client.go"
+    ]
+  },
+  {
+    "id": "chunk-0144",
+    "kind": "dependency-edges",
+    "title": "Dependencies / plugins/project-swarm/skills/project-autopilot/SKILL.md",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "plugins/project-swarm/skills/project-autopilot/SKILL.md"
+    ]
+  },
+  {
+    "id": "chunk-0145",
+    "kind": "dependency-edges",
+    "title": "Dependencies / plugins/project-swarm/skills/project-start/SKILL.md",
+    "source_path": "outputs/dependency-graph.json",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "plugins/project-swarm/skills/project-start/SKILL.md"
+    ]
+  },
+  {
+    "id": "chunk-0146",
+    "kind": "output-doc",
+    "title": "아키텍처 / 시스템 다이어그램",
+    "source_path": "outputs/architecture.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0147",
+    "kind": "output-doc",
+    "title": "아키텍처 / 서피스 격리",
+    "source_path": "outputs/architecture.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0148",
+    "kind": "output-doc",
+    "title": "아키텍처 / 3-Tier 모델 라우팅",
+    "source_path": "outputs/architecture.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0149",
+    "kind": "output-doc",
+    "title": "아키텍처 / 핵심 데이터 플로우",
+    "source_path": "outputs/architecture.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0150",
+    "kind": "output-doc",
+    "title": "아키텍처 / 패키지 의존성 레이어",
+    "source_path": "outputs/architecture.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0151",
+    "kind": "output-doc",
+    "title": "아키텍처 / 설정 모델",
+    "source_path": "outputs/architecture.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0152",
+    "kind": "output-doc",
+    "title": "튜토리얼: 미니 TARS 클론코딩 가이드 / 학습 목표",
+    "source_path": "outputs/clone-coding.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0153",
+    "kind": "output-doc",
+    "title": "튜토리얼: 미니 TARS 클론코딩 가이드 / 사전지식과 실행환경",
+    "source_path": "outputs/clone-coding.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0154",
+    "kind": "output-doc",
+    "title": "튜토리얼: 미니 TARS 클론코딩 가이드 / 아키텍처 한눈에 보기",
+    "source_path": "outputs/clone-coding.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0155",
+    "kind": "output-doc",
+    "title": "튜토리얼: 미니 TARS 클론코딩 가이드 / 단계별 클론코딩",
+    "source_path": "outputs/clone-coding.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0156",
+    "kind": "output-doc",
+    "title": "튜토리얼: 미니 TARS 클론코딩 가이드 / 자가검증 체크리스트",
+    "source_path": "outputs/clone-coding.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0157",
+    "kind": "output-doc",
+    "title": "튜토리얼: 미니 TARS 클론코딩 가이드 / 확장 미션",
+    "source_path": "outputs/clone-coding.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0158",
+    "kind": "output-doc",
+    "title": "용어집 / Workspace",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0159",
+    "kind": "output-doc",
+    "title": "용어집 / Session",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0160",
+    "kind": "output-doc",
+    "title": "용어집 / Transcript",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0161",
+    "kind": "output-doc",
+    "title": "용어집 / Compaction Summary",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0162",
+    "kind": "output-doc",
+    "title": "용어집 / Semantic Memory",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0163",
+    "kind": "output-doc",
+    "title": "용어집 / Relevant Memory",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0164",
+    "kind": "output-doc",
+    "title": "용어집 / Project",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0165",
+    "kind": "output-doc",
+    "title": "용어집 / Project Brief",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0166",
+    "kind": "output-doc",
+    "title": "용어집 / Workflow Policy",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0167",
+    "kind": "output-doc",
+    "title": "용어집 / Autopilot",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0168",
+    "kind": "output-doc",
+    "title": "용어집 / Worker Kind",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0169",
+    "kind": "output-doc",
+    "title": "용어집 / Dashboard",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0170",
+    "kind": "output-doc",
+    "title": "용어집 / Skill",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0171",
+    "kind": "output-doc",
+    "title": "용어집 / Runtime Skill Mirror",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0172",
+    "kind": "output-doc",
+    "title": "용어집 / Skill Hub",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0173",
+    "kind": "output-doc",
+    "title": "용어집 / Plugin",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0174",
+    "kind": "output-doc",
+    "title": "용어집 / MCP Server",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0175",
+    "kind": "output-doc",
+    "title": "용어집 / Tool Registry",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0176",
+    "kind": "output-doc",
+    "title": "용어집 / Agent Loop",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0177",
+    "kind": "output-doc",
+    "title": "용어집 / Gateway Runtime",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0178",
+    "kind": "output-doc",
+    "title": "용어집 / Browser Relay",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0179",
+    "kind": "output-doc",
+    "title": "용어집 / OTP Approval",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0180",
+    "kind": "output-doc",
+    "title": "용어집 / Provider Credential Strategy",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0181",
+    "kind": "output-doc",
+    "title": "용어집 / Codex Credential",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0182",
+    "kind": "output-doc",
+    "title": "용어집 / Provider Adapter",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0183",
+    "kind": "output-doc",
+    "title": "용어집 / Heartbeat",
+    "source_path": "outputs/glossary.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0184",
+    "kind": "output-doc",
+    "title": "구현 체크리스트 / 저장소 이해 순서",
+    "source_path": "outputs/implementation-checklist.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0185",
+    "kind": "output-doc",
+    "title": "구현 체크리스트 / 로컬 검증 순서",
+    "source_path": "outputs/implementation-checklist.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0186",
+    "kind": "output-doc",
+    "title": "구현 체크리스트 / 기능 추가 전 질문",
+    "source_path": "outputs/implementation-checklist.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0187",
+    "kind": "output-doc",
+    "title": "구현 체크리스트 / 리팩터링 전 질문",
+    "source_path": "outputs/implementation-checklist.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0188",
+    "kind": "issue-candidate",
+    "title": "TIDY-002: 프로젝트 workflow 모델 단일화 추가 정리",
+    "source_path": "outputs/issue-candidates.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/ + internal/tarsserver/"
+    ]
+  },
+  {
+    "id": "chunk-0189",
+    "kind": "issue-candidate",
+    "title": "SEC-002: Browser relay query token 노출 위험은 완전히 제거되지 않음",
+    "source_path": "outputs/issue-candidates.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/browserrelay/"
+    ]
+  },
+  {
+    "id": "chunk-0190",
+    "kind": "issue-candidate",
+    "title": "TIDY-005: Semantic embed provider surface와 실제 구현 범위가 어긋남",
+    "source_path": "outputs/issue-candidates.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/memory/"
+    ]
+  },
+  {
+    "id": "chunk-0191",
+    "kind": "issue-candidate",
+    "title": "SEC-003: Skill Hub 원격 설치 무결성 검증 부재",
+    "source_path": "outputs/issue-candidates.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/skillhub/"
+    ]
+  },
+  {
+    "id": "chunk-0192",
+    "kind": "issue-candidate",
+    "title": "TIDY-006: Skill Hub 설치가 부분 성공 상태를 정상 설치처럼 기록할 수 있음",
+    "source_path": "outputs/issue-candidates.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/skillhub/"
+    ]
+  },
+  {
+    "id": "chunk-0193",
+    "kind": "output-doc",
+    "title": "시스템 오버홀 지시서: TARS 저장소 전체 / 요약 (Summary) / Summary",
+    "source_path": "outputs/overhaul-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0194",
+    "kind": "output-doc",
+    "title": "시스템 오버홀 지시서: TARS 저장소 전체 / 이슈 코드 범례 / Issue Code Legend",
+    "source_path": "outputs/overhaul-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0195",
+    "kind": "output-doc",
+    "title": "시스템 오버홀 지시서: TARS 저장소 전체 / 발견된 이슈 목록 (Issues Found) / Issues Found",
+    "source_path": "outputs/overhaul-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0196",
+    "kind": "output-doc",
+    "title": "시스템 오버홀 지시서: TARS 저장소 전체 / 작업 지시서 (Work Orders) / Work Orders",
+    "source_path": "outputs/overhaul-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0197",
+    "kind": "output-doc",
+    "title": "시스템 오버홀 지시서: TARS 저장소 전체 / 기존 리팩터 지시서와의 관계 / Relationship with Existing Refactor Guide",
+    "source_path": "outputs/overhaul-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0198",
+    "kind": "output-doc",
+    "title": "시스템 오버홀 지시서: TARS 저장소 전체 / 오버홀 순서 (Recommended Order) / Recommended Order",
+    "source_path": "outputs/overhaul-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0199",
+    "kind": "output-doc",
+    "title": "시스템 오버홀 지시서: TARS 저장소 전체 / 체크포인트 진행 로그 (Checkpoint Progress Log) / Checkpoint Progress Log",
+    "source_path": "outputs/overhaul-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0200",
+    "kind": "output-doc",
+    "title": "시스템 오버홀 지시서: TARS 저장소 전체 / 다음 세션 재개 지점 (Resume Point) / Resume Point",
+    "source_path": "outputs/overhaul-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0201",
+    "kind": "output-doc",
+    "title": "시스템 오버홀 지시서: TARS 저장소 전체 / 완료 검증 체크리스트 / Completion Verification Checklist",
+    "source_path": "outputs/overhaul-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0202",
+    "kind": "output-doc",
+    "title": "TARS 개요 / 핵심 구조",
+    "source_path": "outputs/overview.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0203",
+    "kind": "output-doc",
+    "title": "TARS 개요 / 주요 수치",
+    "source_path": "outputs/overview.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0204",
+    "kind": "output-doc",
+    "title": "TARS 개요 / 기술 스택",
+    "source_path": "outputs/overview.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0205",
+    "kind": "output-doc",
+    "title": "TARS 개요 / 다른 도구와의 차이",
+    "source_path": "outputs/overview.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0206",
+    "kind": "output-doc",
+    "title": "리팩토링 지시서: 현재 헤드 핵심 리팩토링 경로 / 요약 (Summary) / Summary",
+    "source_path": "outputs/refactor-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0207",
+    "kind": "output-doc",
+    "title": "리팩토링 지시서: 현재 헤드 핵심 리팩토링 경로 / 발견된 이슈 목록 (Issues Found) / Issues Found",
+    "source_path": "outputs/refactor-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0208",
+    "kind": "output-doc",
+    "title": "리팩토링 지시서: 현재 헤드 핵심 리팩토링 경로 / 작업 지시서 (Work Orders) / Work Orders",
+    "source_path": "outputs/refactor-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0209",
+    "kind": "output-doc",
+    "title": "리팩토링 지시서: 현재 헤드 핵심 리팩토링 경로 / 켄트 백(Tidy First) 룰 매핑 테이블 / Kent Beck (Tidy First) Rule Mapping",
+    "source_path": "outputs/refactor-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0210",
+    "kind": "output-doc",
+    "title": "리팩토링 지시서: 현재 헤드 핵심 리팩토링 경로 / 리팩토링 순서 (Recommended Order) / Recommended Order",
+    "source_path": "outputs/refactor-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0211",
+    "kind": "output-doc",
+    "title": "리팩토링 지시서: 현재 헤드 핵심 리팩토링 경로 / 체크포인트 진행 로그 (Checkpoint Progress Log) / Checkpoint Progress Log",
+    "source_path": "outputs/refactor-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0212",
+    "kind": "output-doc",
+    "title": "리팩토링 지시서: 현재 헤드 핵심 리팩토링 경로 / 다음 세션 재개 지점 (Resume Point) / Resume Point",
+    "source_path": "outputs/refactor-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0213",
+    "kind": "output-doc",
+    "title": "리팩토링 지시서: 현재 헤드 핵심 리팩토링 경로 / 완료 검증 체크리스트 / Completion Verification Checklist",
+    "source_path": "outputs/refactor-root.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0214",
+    "kind": "output-doc",
+    "title": "기술 스택 / 언어와 빌드",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0215",
+    "kind": "output-doc",
+    "title": "기술 스택 / CLI와 UI",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0216",
+    "kind": "output-doc",
+    "title": "기술 스택 / HTTP와 스트리밍",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0217",
+    "kind": "output-doc",
+    "title": "기술 스택 / 인증과 보안 경계",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0218",
+    "kind": "output-doc",
+    "title": "기술 스택 / LLM 계층",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0219",
+    "kind": "output-doc",
+    "title": "기술 스택 / 자동화와 스케줄링",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0220",
+    "kind": "output-doc",
+    "title": "기술 스택 / 확장 시스템",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0221",
+    "kind": "output-doc",
+    "title": "기술 스택 / Skill Hub 배포",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0222",
+    "kind": "output-doc",
+    "title": "기술 스택 / 메모리와 검색",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0223",
+    "kind": "output-doc",
+    "title": "기술 스택 / 브라우저 자동화",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0224",
+    "kind": "output-doc",
+    "title": "기술 스택 / 호스트 운영 통합",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0225",
+    "kind": "output-doc",
+    "title": "기술 스택 / 로깅과 설정",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0226",
+    "kind": "output-doc",
+    "title": "기술 스택 / 저장 방식",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0227",
+    "kind": "output-doc",
+    "title": "기술 스택 / 이 저장소의 기술적 성격",
+    "source_path": "outputs/technologies.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0228",
+    "kind": "output-doc",
+    "title": "튜토리얼: TARS 로컬 채팅 런타임 / 학습 목표",
+    "source_path": "outputs/tutorial.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0229",
+    "kind": "output-doc",
+    "title": "튜토리얼: TARS 로컬 채팅 런타임 / 사전지식과 실행환경",
+    "source_path": "outputs/tutorial.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0230",
+    "kind": "output-doc",
+    "title": "튜토리얼: TARS 로컬 채팅 런타임 / 아키텍처 한눈에 보기",
+    "source_path": "outputs/tutorial.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0231",
+    "kind": "output-doc",
+    "title": "튜토리얼: TARS 로컬 채팅 런타임 / 단계별 따라 읽기",
+    "source_path": "outputs/tutorial.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0232",
+    "kind": "output-doc",
+    "title": "튜토리얼: TARS 로컬 채팅 런타임 / 자가검증 체크리스트",
+    "source_path": "outputs/tutorial.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0233",
+    "kind": "output-doc",
+    "title": "튜토리얼: TARS 로컬 채팅 런타임 / 확장 미션",
+    "source_path": "outputs/tutorial.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0234",
+    "kind": "module-doc",
+    "title": "모듈: 인증과 플러그인 로딩",
+    "source_path": "outputs/modules/auth-plugin-loading.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/middleware.go",
+      "internal/serverauth/middleware.go",
+      "internal/plugin/loader.go",
+      "internal/plugin/builtin.go",
+      "internal/plugin/builtin_registry.go",
+      "internal/plugin/manifest.go",
+      "internal/plugin/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0235",
+    "kind": "module-doc",
+    "title": "모듈: 자동화, 게이트웨이, 브라우저 실행",
+    "source_path": "outputs/modules/automation-gateway-browser.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/gateway/executor.go",
+      "internal/gateway/runtime.go",
+      "internal/gateway/runtime_run_bootstrap.go",
+      "internal/gateway/runtime_runs.go",
+      "internal/gateway/runtime_channels.go",
+      "internal/gateway/runtime_reports.go",
+      "internal/browser/service.go",
+      "internal/browser/playwright_exec.go"
+    ]
+  },
+  {
+    "id": "chunk-0236",
+    "kind": "module-doc",
+    "title": "모듈: 클라이언트와 TUI",
+    "source_path": "outputs/modules/client-tui.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsclient/client_main.go",
+      "internal/tarsclient/chat.go",
+      "internal/tarsclient/commands_runtime.go",
+      "internal/tarsclient/runtime_ops.go",
+      "pkg/tarsclient/client.go"
+    ]
+  },
+  {
+    "id": "chunk-0237",
+    "kind": "module-doc",
+    "title": "모듈: 설정 로딩과 Doctor 진단",
+    "source_path": "outputs/modules/configuration-doctor.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/config/load.go",
+      "internal/config/config_input_fields.go",
+      "internal/config/defaults_apply.go",
+      "internal/config/env.go",
+      "internal/config/yaml.go",
+      "cmd/tars/doctor_main.go",
+      "config/tars.config.example.yaml"
+    ]
+  },
+  {
+    "id": "chunk-0238",
+    "kind": "module-doc",
+    "title": "모듈: 엔트리포인트",
+    "source_path": "outputs/modules/entrypoints.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/main.go",
+      "cmd/tars/console_main.go",
+      "cmd/tars/mainthread_darwin.go",
+      "cmd/tars/mainthread_other.go",
+      "cmd/tars/client_main.go",
+      "cmd/tars/server_main.go",
+      "cmd/tars/assistant_main.go",
+      "cmd/tars/doctor_main.go",
+      "cmd/tars/project_main.go",
+      "cmd/tars/cron_main.go",
+      "cmd/tars/approval_main.go",
+      "cmd/tars/skill_main.go",
+      "cmd/tars/plugin_main.go",
+      "cmd/tars/mcp_main.go",
+      "cmd/tars/service_main.go"
+    ]
+  },
+  {
+    "id": "chunk-0239",
+    "kind": "module-doc",
+    "title": "모듈: 확장과 툴링",
+    "source_path": "outputs/modules/extensions-tools.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/extensions/manager.go",
+      "internal/extensions/lifecycle.go",
+      "internal/skill/loader.go",
+      "internal/skill/mirror.go",
+      "internal/mcp/client.go",
+      "internal/tool/tool.go",
+      "internal/agent/loop.go",
+      "internal/tarsserver/helpers_build_tools.go"
+    ]
+  },
+  {
+    "id": "chunk-0240",
+    "kind": "module-doc",
+    "title": "모듈: 호스트 서비스와 외부 경계",
+    "source_path": "outputs/modules/external-integrations.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/service_main.go",
+      "internal/browserrelay/server.go",
+      "internal/approval/otp.go",
+      "internal/auth/provider_credentials.go",
+      "internal/auth/codex_oauth.go",
+      "internal/auth/codex_refresh_store.go",
+      "internal/llm/provider.go",
+      "internal/llm/model_lister.go",
+      "internal/llm/openai_codex_client.go",
+      "internal/llm/gemini_native.go"
+    ]
+  },
+  {
+    "id": "chunk-0241",
+    "kind": "module-doc",
+    "title": "모듈: 프로젝트 오토파일럿과 대시보드",
+    "source_path": "outputs/modules/project-autopilot-dashboard.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/project/brief_state.go",
+      "internal/project/policy.go",
+      "internal/project/workflow_policy.go",
+      "internal/project/workflow_runtime_policy.go",
+      "internal/project/orchestrator.go",
+      "internal/project/orchestrator_plan.go",
+      "internal/project/store_normalize.go",
+      "internal/tarsserver/helpers_project_progress.go",
+      "internal/tarsserver/dashboard.go"
+    ]
+  },
+  {
+    "id": "chunk-0242",
+    "kind": "module-doc",
+    "title": "Project Swarm Dogfooding",
+    "source_path": "outputs/modules/project-swarm-dogfooding.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "plugins/project-swarm/skills/project-start/SKILL.md",
+      "plugins/project-swarm/skills/project-autopilot/SKILL.md",
+      "internal/project/project_runner.go",
+      "internal/project/workflow_policy.go",
+      "internal/tarsserver/dashboard.go"
+    ]
+  },
+  {
+    "id": "chunk-0243",
+    "kind": "module-doc",
+    "title": "모듈: Semantic Memory",
+    "source_path": "outputs/modules/semantic-memory.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/memory/semantic.go",
+      "internal/memory/gemini_embed.go",
+      "internal/prompt/memory_retrieval.go",
+      "internal/tool/memory_search.go",
+      "internal/tool/memory_save.go",
+      "internal/tarsserver/helpers_chat.go"
+    ]
+  },
+  {
+    "id": "chunk-0244",
+    "kind": "module-doc",
+    "title": "모듈: 서버와 채팅 파이프라인",
+    "source_path": "outputs/modules/server-chat-pipeline.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/tarsserver/main.go",
+      "internal/tarsserver/main_cli.go",
+      "internal/tarsserver/main_bootstrap.go",
+      "internal/tarsserver/main_serve_api.go",
+      "internal/tarsserver/console.go",
+      "internal/tarsserver/handler_chat.go",
+      "internal/tarsserver/handler_chat_context.go",
+      "internal/tarsserver/handler_chat_policy.go",
+      "internal/tarsserver/handler_chat_stream.go",
+      "internal/tarsserver/helpers_memory.go",
+      "internal/tarsserver/handler_transport_helpers.go"
+    ]
+  },
+  {
+    "id": "chunk-0245",
+    "kind": "module-doc",
+    "title": "모듈: Skill Hub 배포",
+    "source_path": "outputs/modules/skillhub-distribution.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "cmd/tars/skill_main.go",
+      "cmd/tars/plugin_main.go",
+      "internal/skillhub/registry.go",
+      "internal/skillhub/install.go",
+      "internal/skillhub/types.go"
+    ]
+  },
+  {
+    "id": "chunk-0246",
+    "kind": "module-doc",
+    "title": "모듈: 워크스페이스와 영속 데이터",
+    "source_path": "outputs/modules/workspace-data.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": [
+      "internal/session/session.go",
+      "internal/session/transcript.go",
+      "internal/session/compaction.go",
+      "internal/project/store.go",
+      "internal/memory/workspace.go",
+      "internal/usage/tracker.go",
+      "internal/research/service.go"
+    ]
+  },
+  {
+    "id": "chunk-0247",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 001: core runtime and chat pipeline analyzed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-001.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0248",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 002: auth and plugin loading analyzed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-002.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0249",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 003: automation, gateway, and browser execution analyzed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-003.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0250",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 004: project-swarm dogfooding findings",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-004.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0251",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 005: configuration and doctor diagnostics analyzed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-005.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0252",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 006: project autopilot and dashboard analyzed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-006.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0253",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 007: structured analysis outputs refreshed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-007.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0254",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 008: latest analysis synced and paused",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-008.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0255",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 009: host service, relay, and OTP boundaries analyzed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-009.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0256",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 010: provider credential boundaries analyzed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-010.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0257",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 011: provider transport adapters analyzed and session completed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-011.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0258",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 012: stable outputs published and AI context refreshed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-012.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0259",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 013: incremental analyze outputs refreshed for skill hub and semantic memory",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-013.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0260",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 014: incremental analyze outputs published for latest head",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-014.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0261",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 015: console-first runtime and project flow outputs refreshed",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-015.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  },
+  {
+    "id": "chunk-0262",
+    "kind": "checkpoint-summary",
+    "title": "Checkpoint 016: Update overview and architecture for new system identity",
+    "source_path": "sessions/analyze-20260310-140305/checkpoints/checkpoint-016.md",
+    "session_id": "analyze-20260310-140305",
+    "related_files": []
+  }
+]

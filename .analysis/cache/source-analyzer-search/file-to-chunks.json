@@ -1,0 +1,911 @@
+{
+  "internal/tarsserver/middleware.go": [
+    "chunk-0001",
+    "chunk-0014",
+    "chunk-0138",
+    "chunk-0234"
+  ],
+  "internal/serverauth/middleware.go": [
+    "chunk-0001",
+    "chunk-0014",
+    "chunk-0070",
+    "chunk-0107",
+    "chunk-0123",
+    "chunk-0127",
+    "chunk-0138",
+    "chunk-0234"
+  ],
+  "internal/plugin/loader.go": [
+    "chunk-0001",
+    "chunk-0014",
+    "chunk-0031",
+    "chunk-0062",
+    "chunk-0089",
+    "chunk-0129",
+    "chunk-0234"
+  ],
+  "internal/plugin/builtin.go": [
+    "chunk-0001",
+    "chunk-0014",
+    "chunk-0234"
+  ],
+  "internal/plugin/builtin_registry.go": [
+    "chunk-0001",
+    "chunk-0014",
+    "chunk-0234"
+  ],
+  "internal/plugin/manifest.go": [
+    "chunk-0001",
+    "chunk-0014",
+    "chunk-0090",
+    "chunk-0234"
+  ],
+  "internal/plugin/types.go": [
+    "chunk-0001",
+    "chunk-0014",
+    "chunk-0091",
+    "chunk-0234"
+  ],
+  "internal/gateway/executor.go": [
+    "chunk-0002",
+    "chunk-0015",
+    "chunk-0063",
+    "chunk-0122",
+    "chunk-0130",
+    "chunk-0137",
+    "chunk-0235"
+  ],
+  "internal/gateway/runtime.go": [
+    "chunk-0002",
+    "chunk-0015",
+    "chunk-0065",
+    "chunk-0235"
+  ],
+  "internal/gateway/runtime_run_bootstrap.go": [
+    "chunk-0002",
+    "chunk-0015",
+    "chunk-0069",
+    "chunk-0235"
+  ],
+  "internal/gateway/runtime_runs.go": [
+    "chunk-0002",
+    "chunk-0015",
+    "chunk-0071",
+    "chunk-0235"
+  ],
+  "internal/gateway/runtime_channels.go": [
+    "chunk-0002",
+    "chunk-0015",
+    "chunk-0066",
+    "chunk-0235"
+  ],
+  "internal/gateway/runtime_reports.go": [
+    "chunk-0002",
+    "chunk-0015",
+    "chunk-0068",
+    "chunk-0235"
+  ],
+  "internal/browser/service.go": [
+    "chunk-0002",
+    "chunk-0015",
+    "chunk-0051",
+    "chunk-0235"
+  ],
+  "internal/browser/playwright_exec.go": [
+    "chunk-0002",
+    "chunk-0015",
+    "chunk-0049",
+    "chunk-0235"
+  ],
+  "internal/tarsclient/client_main.go": [
+    "chunk-0003",
+    "chunk-0016",
+    "chunk-0119",
+    "chunk-0236"
+  ],
+  "internal/tarsclient/chat.go": [
+    "chunk-0003",
+    "chunk-0016",
+    "chunk-0118",
+    "chunk-0236"
+  ],
+  "internal/tarsclient/commands_runtime.go": [
+    "chunk-0003",
+    "chunk-0016",
+    "chunk-0236"
+  ],
+  "internal/tarsclient/runtime_ops.go": [
+    "chunk-0003",
+    "chunk-0016",
+    "chunk-0236"
+  ],
+  "pkg/tarsclient/client.go": [
+    "chunk-0003",
+    "chunk-0016",
+    "chunk-0143",
+    "chunk-0236"
+  ],
+  "internal/config/load.go": [
+    "chunk-0004",
+    "chunk-0017",
+    "chunk-0057",
+    "chunk-0237"
+  ],
+  "internal/config/config_input_fields.go": [
+    "chunk-0004",
+    "chunk-0017",
+    "chunk-0053",
+    "chunk-0237"
+  ],
+  "internal/config/defaults_apply.go": [
+    "chunk-0004",
+    "chunk-0017",
+    "chunk-0055",
+    "chunk-0237"
+  ],
+  "internal/config/env.go": [
+    "chunk-0004",
+    "chunk-0017",
+    "chunk-0056",
+    "chunk-0237"
+  ],
+  "internal/config/yaml.go": [
+    "chunk-0004",
+    "chunk-0017",
+    "chunk-0060",
+    "chunk-0237"
+  ],
+  "cmd/tars/doctor_main.go": [
+    "chunk-0004",
+    "chunk-0005",
+    "chunk-0017",
+    "chunk-0018",
+    "chunk-0030",
+    "chunk-0037",
+    "chunk-0237",
+    "chunk-0238"
+  ],
+  "config/tars.config.example.yaml": [
+    "chunk-0004",
+    "chunk-0017",
+    "chunk-0039",
+    "chunk-0237"
+  ],
+  "cmd/tars/main.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0032",
+    "chunk-0238"
+  ],
+  "cmd/tars/console_main.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0238"
+  ],
+  "cmd/tars/mainthread_darwin.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0033",
+    "chunk-0238"
+  ],
+  "cmd/tars/mainthread_other.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0034",
+    "chunk-0238"
+  ],
+  "cmd/tars/client_main.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0029",
+    "chunk-0238"
+  ],
+  "cmd/tars/server_main.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0036",
+    "chunk-0238"
+  ],
+  "cmd/tars/assistant_main.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0028",
+    "chunk-0238"
+  ],
+  "cmd/tars/project_main.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0238"
+  ],
+  "cmd/tars/cron_main.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0238"
+  ],
+  "cmd/tars/approval_main.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0238"
+  ],
+  "cmd/tars/skill_main.go": [
+    "chunk-0005",
+    "chunk-0012",
+    "chunk-0018",
+    "chunk-0025",
+    "chunk-0038",
+    "chunk-0238",
+    "chunk-0245"
+  ],
+  "cmd/tars/plugin_main.go": [
+    "chunk-0005",
+    "chunk-0012",
+    "chunk-0018",
+    "chunk-0025",
+    "chunk-0035",
+    "chunk-0238",
+    "chunk-0245"
+  ],
+  "cmd/tars/mcp_main.go": [
+    "chunk-0005",
+    "chunk-0018",
+    "chunk-0238"
+  ],
+  "cmd/tars/service_main.go": [
+    "chunk-0005",
+    "chunk-0007",
+    "chunk-0018",
+    "chunk-0020",
+    "chunk-0037",
+    "chunk-0238",
+    "chunk-0240"
+  ],
+  "internal/extensions/manager.go": [
+    "chunk-0006",
+    "chunk-0019",
+    "chunk-0062",
+    "chunk-0122",
+    "chunk-0123",
+    "chunk-0129",
+    "chunk-0130",
+    "chunk-0137",
+    "chunk-0239"
+  ],
+  "internal/extensions/lifecycle.go": [
+    "chunk-0006",
+    "chunk-0019",
+    "chunk-0239"
+  ],
+  "internal/skill/loader.go": [
+    "chunk-0006",
+    "chunk-0019",
+    "chunk-0062",
+    "chunk-0111",
+    "chunk-0239"
+  ],
+  "internal/skill/mirror.go": [
+    "chunk-0006",
+    "chunk-0019",
+    "chunk-0062",
+    "chunk-0112",
+    "chunk-0239"
+  ],
+  "internal/mcp/client.go": [
+    "chunk-0006",
+    "chunk-0019",
+    "chunk-0062",
+    "chunk-0081",
+    "chunk-0137",
+    "chunk-0239"
+  ],
+  "internal/tool/tool.go": [
+    "chunk-0006",
+    "chunk-0019",
+    "chunk-0062",
+    "chunk-0141",
+    "chunk-0239"
+  ],
+  "internal/agent/loop.go": [
+    "chunk-0006",
+    "chunk-0019",
+    "chunk-0041",
+    "chunk-0239"
+  ],
+  "internal/tarsserver/helpers_build_tools.go": [
+    "chunk-0006",
+    "chunk-0019",
+    "chunk-0130",
+    "chunk-0239"
+  ],
+  "internal/browserrelay/server.go": [
+    "chunk-0007",
+    "chunk-0020",
+    "chunk-0052",
+    "chunk-0240"
+  ],
+  "internal/approval/otp.go": [
+    "chunk-0007",
+    "chunk-0020",
+    "chunk-0042",
+    "chunk-0137",
+    "chunk-0240"
+  ],
+  "internal/auth/provider_credentials.go": [
+    "chunk-0007",
+    "chunk-0020",
+    "chunk-0046",
+    "chunk-0076",
+    "chunk-0079",
+    "chunk-0240"
+  ],
+  "internal/auth/codex_oauth.go": [
+    "chunk-0007",
+    "chunk-0020",
+    "chunk-0044",
+    "chunk-0046",
+    "chunk-0077",
+    "chunk-0240"
+  ],
+  "internal/auth/codex_refresh_store.go": [
+    "chunk-0007",
+    "chunk-0020",
+    "chunk-0045",
+    "chunk-0240"
+  ],
+  "internal/llm/provider.go": [
+    "chunk-0007",
+    "chunk-0020",
+    "chunk-0079",
+    "chunk-0128",
+    "chunk-0240"
+  ],
+  "internal/llm/model_lister.go": [
+    "chunk-0007",
+    "chunk-0020",
+    "chunk-0076",
+    "chunk-0240"
+  ],
+  "internal/llm/openai_codex_client.go": [
+    "chunk-0007",
+    "chunk-0020",
+    "chunk-0077",
+    "chunk-0079",
+    "chunk-0240"
+  ],
+  "internal/llm/gemini_native.go": [
+    "chunk-0007",
+    "chunk-0020",
+    "chunk-0075",
+    "chunk-0079",
+    "chunk-0240"
+  ],
+  "internal/project/brief_state.go": [
+    "chunk-0008",
+    "chunk-0021",
+    "chunk-0094",
+    "chunk-0241"
+  ],
+  "internal/project/policy.go": [
+    "chunk-0008",
+    "chunk-0021",
+    "chunk-0241"
+  ],
+  "internal/project/workflow_policy.go": [
+    "chunk-0008",
+    "chunk-0009",
+    "chunk-0021",
+    "chunk-0022",
+    "chunk-0098",
+    "chunk-0102",
+    "chunk-0121",
+    "chunk-0122",
+    "chunk-0241",
+    "chunk-0242"
+  ],
+  "internal/project/workflow_runtime_policy.go": [
+    "chunk-0008",
+    "chunk-0021",
+    "chunk-0241"
+  ],
+  "internal/project/orchestrator.go": [
+    "chunk-0008",
+    "chunk-0021",
+    "chunk-0097",
+    "chunk-0098",
+    "chunk-0241"
+  ],
+  "internal/project/orchestrator_plan.go": [
+    "chunk-0008",
+    "chunk-0021",
+    "chunk-0241"
+  ],
+  "internal/project/store_normalize.go": [
+    "chunk-0008",
+    "chunk-0021",
+    "chunk-0241"
+  ],
+  "internal/tarsserver/helpers_project_progress.go": [
+    "chunk-0008",
+    "chunk-0021",
+    "chunk-0241"
+  ],
+  "internal/tarsserver/dashboard.go": [
+    "chunk-0008",
+    "chunk-0009",
+    "chunk-0021",
+    "chunk-0022",
+    "chunk-0121",
+    "chunk-0241",
+    "chunk-0242"
+  ],
+  "plugins/project-swarm/skills/project-start/SKILL.md": [
+    "chunk-0009",
+    "chunk-0022",
+    "chunk-0145",
+    "chunk-0242"
+  ],
+  "plugins/project-swarm/skills/project-autopilot/SKILL.md": [
+    "chunk-0009",
+    "chunk-0022",
+    "chunk-0144",
+    "chunk-0242"
+  ],
+  "internal/project/project_runner.go": [
+    "chunk-0009",
+    "chunk-0022",
+    "chunk-0098",
+    "chunk-0242"
+  ],
+  "internal/memory/semantic.go": [
+    "chunk-0010",
+    "chunk-0023",
+    "chunk-0083",
+    "chunk-0104",
+    "chunk-0122",
+    "chunk-0128",
+    "chunk-0131",
+    "chunk-0132",
+    "chunk-0139",
+    "chunk-0140",
+    "chunk-0243"
+  ],
+  "internal/memory/gemini_embed.go": [
+    "chunk-0010",
+    "chunk-0023",
+    "chunk-0082",
+    "chunk-0243"
+  ],
+  "internal/prompt/memory_retrieval.go": [
+    "chunk-0010",
+    "chunk-0023",
+    "chunk-0104",
+    "chunk-0122",
+    "chunk-0243"
+  ],
+  "internal/tool/memory_search.go": [
+    "chunk-0010",
+    "chunk-0023",
+    "chunk-0128",
+    "chunk-0140",
+    "chunk-0243"
+  ],
+  "internal/tool/memory_save.go": [
+    "chunk-0010",
+    "chunk-0023",
+    "chunk-0128",
+    "chunk-0139",
+    "chunk-0243"
+  ],
+  "internal/tarsserver/helpers_chat.go": [
+    "chunk-0010",
+    "chunk-0023",
+    "chunk-0131",
+    "chunk-0243"
+  ],
+  "internal/tarsserver/main.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0133",
+    "chunk-0244"
+  ],
+  "internal/tarsserver/main_cli.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0135",
+    "chunk-0244"
+  ],
+  "internal/tarsserver/main_bootstrap.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0134",
+    "chunk-0244"
+  ],
+  "internal/tarsserver/main_serve_api.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0137",
+    "chunk-0244"
+  ],
+  "internal/tarsserver/console.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0244"
+  ],
+  "internal/tarsserver/handler_chat.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0122",
+    "chunk-0244"
+  ],
+  "internal/tarsserver/handler_chat_context.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0123",
+    "chunk-0244"
+  ],
+  "internal/tarsserver/handler_chat_policy.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0244"
+  ],
+  "internal/tarsserver/handler_chat_stream.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0244"
+  ],
+  "internal/tarsserver/helpers_memory.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0132",
+    "chunk-0244"
+  ],
+  "internal/tarsserver/handler_transport_helpers.go": [
+    "chunk-0011",
+    "chunk-0024",
+    "chunk-0126",
+    "chunk-0244"
+  ],
+  "internal/skillhub/registry.go": [
+    "chunk-0012",
+    "chunk-0025",
+    "chunk-0035",
+    "chunk-0038",
+    "chunk-0113",
+    "chunk-0114",
+    "chunk-0245"
+  ],
+  "internal/skillhub/install.go": [
+    "chunk-0012",
+    "chunk-0025",
+    "chunk-0035",
+    "chunk-0038",
+    "chunk-0113",
+    "chunk-0245"
+  ],
+  "internal/skillhub/types.go": [
+    "chunk-0012",
+    "chunk-0025",
+    "chunk-0035",
+    "chunk-0038",
+    "chunk-0113",
+    "chunk-0114",
+    "chunk-0115",
+    "chunk-0245"
+  ],
+  "internal/session/session.go": [
+    "chunk-0013",
+    "chunk-0026",
+    "chunk-0104",
+    "chunk-0109",
+    "chunk-0246"
+  ],
+  "internal/session/transcript.go": [
+    "chunk-0013",
+    "chunk-0026",
+    "chunk-0110",
+    "chunk-0246"
+  ],
+  "internal/session/compaction.go": [
+    "chunk-0013",
+    "chunk-0026",
+    "chunk-0069",
+    "chunk-0070",
+    "chunk-0071",
+    "chunk-0072",
+    "chunk-0094",
+    "chunk-0108",
+    "chunk-0122",
+    "chunk-0123",
+    "chunk-0124",
+    "chunk-0125",
+    "chunk-0131",
+    "chunk-0134",
+    "chunk-0136",
+    "chunk-0246"
+  ],
+  "internal/project/store.go": [
+    "chunk-0013",
+    "chunk-0026",
+    "chunk-0083",
+    "chunk-0099",
+    "chunk-0104",
+    "chunk-0121",
+    "chunk-0128",
+    "chunk-0246"
+  ],
+  "internal/memory/workspace.go": [
+    "chunk-0013",
+    "chunk-0026",
+    "chunk-0084",
+    "chunk-0246"
+  ],
+  "internal/usage/tracker.go": [
+    "chunk-0013",
+    "chunk-0026",
+    "chunk-0142",
+    "chunk-0246"
+  ],
+  "internal/research/service.go": [
+    "chunk-0013",
+    "chunk-0026",
+    "chunk-0105",
+    "chunk-0122",
+    "chunk-0137",
+    "chunk-0246"
+  ],
+  "README.md": [
+    "chunk-0027"
+  ],
+  "internal/assistant/doctor.go": [
+    "chunk-0028"
+  ],
+  "pkg/tarsclient/browser.go": [
+    "chunk-0028",
+    "chunk-0029",
+    "chunk-0043",
+    "chunk-0118",
+    "chunk-0120"
+  ],
+  "internal/tarsclient/app_model.go": [
+    "chunk-0029",
+    "chunk-0116"
+  ],
+  "internal/config/defaults.go": [
+    "chunk-0030",
+    "chunk-0031",
+    "chunk-0054",
+    "chunk-0062",
+    "chunk-0081",
+    "chunk-0091",
+    "chunk-0129",
+    "chunk-0130",
+    "chunk-0134",
+    "chunk-0137",
+    "chunk-0138"
+  ],
+  "internal/llm/anthropic.go": [
+    "chunk-0030",
+    "chunk-0041",
+    "chunk-0073",
+    "chunk-0079",
+    "chunk-0122",
+    "chunk-0123",
+    "chunk-0124",
+    "chunk-0125",
+    "chunk-0134",
+    "chunk-0137",
+    "chunk-0141"
+  ],
+  "cmd/tars/init_main.go": [
+    "chunk-0031"
+  ],
+  "internal/assetpath/resolve.go": [
+    "chunk-0031",
+    "chunk-0129"
+  ],
+  "internal/memory/experience.go": [
+    "chunk-0031",
+    "chunk-0134",
+    "chunk-0139"
+  ],
+  "internal/buildinfo/buildinfo.go": [
+    "chunk-0032"
+  ],
+  "internal/envloader/load.go": [
+    "chunk-0032",
+    "chunk-0133"
+  ],
+  "internal/tarsserver/browser_otp_requester.go": [
+    "chunk-0036"
+  ],
+  "go.mod": [
+    "chunk-0040"
+  ],
+  "internal/secrets/secrets.go": [
+    "chunk-0041",
+    "chunk-0119",
+    "chunk-0122"
+  ],
+  "internal/tool/apply_patch.go": [
+    "chunk-0041",
+    "chunk-0122",
+    "chunk-0123",
+    "chunk-0125",
+    "chunk-0130",
+    "chunk-0137"
+  ],
+  "internal/assistant/runtime.go": [
+    "chunk-0043"
+  ],
+  "internal/auth/token.go": [
+    "chunk-0046",
+    "chunk-0047"
+  ],
+  "internal/browser/flow.go": [
+    "chunk-0048",
+    "chunk-0065",
+    "chunk-0072"
+  ],
+  "internal/browser/playwright_flow_runner.go": [
+    "chunk-0050"
+  ],
+  "internal/config/merge.go": [
+    "chunk-0058"
+  ],
+  "internal/config/types.go": [
+    "chunk-0059"
+  ],
+  "internal/cron/manager.go": [
+    "chunk-0061"
+  ],
+  "internal/gateway/project_task_runner.go": [
+    "chunk-0064"
+  ],
+  "internal/project/activity.go": [
+    "chunk-0064",
+    "chunk-0070",
+    "chunk-0092",
+    "chunk-0121",
+    "chunk-0122",
+    "chunk-0123",
+    "chunk-0130",
+    "chunk-0137"
+  ],
+  "internal/gateway/runtime_persist.go": [
+    "chunk-0067"
+  ],
+  "internal/gateway/runtime_run_execute.go": [
+    "chunk-0070"
+  ],
+  "internal/usage/client.go": [
+    "chunk-0070",
+    "chunk-0122",
+    "chunk-0125",
+    "chunk-0130",
+    "chunk-0134",
+    "chunk-0137"
+  ],
+  "internal/gateway/types.go": [
+    "chunk-0072"
+  ],
+  "internal/llm/ask.go": [
+    "chunk-0074",
+    "chunk-0131"
+  ],
+  "internal/llm/gemini_native_chat.go": [
+    "chunk-0075"
+  ],
+  "internal/llm/gemini_native_convert.go": [
+    "chunk-0075"
+  ],
+  "internal/llm/openai_compat_client.go": [
+    "chunk-0078",
+    "chunk-0079"
+  ],
+  "internal/llm/transport.go": [
+    "chunk-0080"
+  ],
+  "internal/ops/manager.go": [
+    "chunk-0085",
+    "chunk-0122",
+    "chunk-0137"
+  ],
+  "internal/ops/manager_approvals.go": [
+    "chunk-0086"
+  ],
+  "internal/ops/manager_cleanup.go": [
+    "chunk-0087"
+  ],
+  "internal/ops/manager_system.go": [
+    "chunk-0088"
+  ],
+  "internal/project/activity_auto.go": [
+    "chunk-0093"
+  ],
+  "internal/project/github_flow.go": [
+    "chunk-0095"
+  ],
+  "internal/project/kanban.go": [
+    "chunk-0096"
+  ],
+  "internal/project/task_report.go": [
+    "chunk-0097",
+    "chunk-0100"
+  ],
+  "internal/project/worker_profiles.go": [
+    "chunk-0097",
+    "chunk-0101"
+  ],
+  "internal/prompt/builder.go": [
+    "chunk-0103"
+  ],
+  "internal/schedule/store.go": [
+    "chunk-0106",
+    "chunk-0122",
+    "chunk-0137"
+  ],
+  "internal/cron/helpers.go": [
+    "chunk-0106",
+    "chunk-0130",
+    "chunk-0137"
+  ],
+  "internal/scheduleexpr/normalize.go": [
+    "chunk-0106"
+  ],
+  "internal/tarsclient/app_update.go": [
+    "chunk-0117"
+  ],
+  "internal/tarsclient/runtime.go": [
+    "chunk-0120"
+  ],
+  "internal/agent/hooks.go": [
+    "chunk-0122",
+    "chunk-0124"
+  ],
+  "internal/skill/frontmatter.go": [
+    "chunk-0122",
+    "chunk-0129"
+  ],
+  "internal/tarsserver/handler_chat_execution.go": [
+    "chunk-0124"
+  ],
+  "internal/tarsserver/handler_chat_pipeline.go": [
+    "chunk-0125"
+  ],
+  "internal/tarsserver/handlers.go": [
+    "chunk-0127"
+  ],
+  "internal/heartbeat/heartbeat.go": [
+    "chunk-0127",
+    "chunk-0130",
+    "chunk-0134",
+    "chunk-0137"
+  ],
+  "internal/tarsserver/helpers_agent.go": [
+    "chunk-0128"
+  ],
+  "internal/tarsserver/helpers_build_extensions.go": [
+    "chunk-0129"
+  ],
+  "internal/cli/errors.go": [
+    "chunk-0133",
+    "chunk-0134",
+    "chunk-0135",
+    "chunk-0137"
+  ],
+  "internal/tarsserver/main_options.go": [
+    "chunk-0136"
+  ],
+  "internal/project/ + internal/tarsserver/": [
+    "chunk-0188"
+  ],
+  "internal/browserrelay/": [
+    "chunk-0189"
+  ],
+  "internal/memory/": [
+    "chunk-0190"
+  ],
+  "internal/skillhub/": [
+    "chunk-0191",
+    "chunk-0192"
+  ]
+}
