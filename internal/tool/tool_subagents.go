@@ -15,7 +15,7 @@ import (
 func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 	return Tool{
 		Name:        "subagents_run",
-		Description: "Run multiple read-only subagents in parallel and return compact summaries.",
+		Description: "Run multiple independent read-only subagents in parallel and return compact summaries.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
@@ -248,4 +248,27 @@ func trimSubagentSummary(text string, max int) string {
 		return value[:max]
 	}
 	return value[:max-3] + "..."
+}
+
+func sanitizeStringList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := set[trimmed]; exists {
+			continue
+		}
+		set[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

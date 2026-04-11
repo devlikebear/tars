@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
@@ -69,6 +70,13 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 		Source:    "agent_run",
 		SessionID: state.run.SessionID,
 		RunID:     state.run.ID,
+	})
+	execCtx = llm.WithSelectionMetadata(execCtx, llm.SelectionMetadata{
+		SessionID: state.run.SessionID,
+		RunID:     state.run.ID,
+		AgentName: state.run.Agent,
+		FlowID:    state.run.FlowID,
+		StepID:    state.run.StepID,
 	})
 	resp, err := executor.Execute(execCtx, ExecuteRequest{
 		RunID:        state.run.ID,

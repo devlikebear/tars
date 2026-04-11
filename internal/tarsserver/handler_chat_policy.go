@@ -40,6 +40,10 @@ func buildChatToolRegistry(
 		}, nil
 	}))
 	registry.Register(tool.NewSubagentsRunTool(deps.tooling.Gateway))
+	registry.Register(tool.NewSubagentsOrchestrateTool(deps.tooling.Gateway))
+	if deps.router != nil {
+		registry.Register(tool.NewSubagentsPlanTool(deps.tooling.Gateway, deps.router))
+	}
 
 	// Automation (cron aggregator; pulse/reflection live on the system surface)
 	if deps.tooling.AutomationToolsForWorkspace != nil {

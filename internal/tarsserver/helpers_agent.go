@@ -137,20 +137,38 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		// the SpawnRequest) AND a router is available, select that tier's
 		// client; otherwise fall back to the default chat client.
 		runClient := client
+		selection := llm.SelectionMetadata{}
 		if router != nil {
 			tierNorm := strings.ToLower(strings.TrimSpace(tier))
 			if tierNorm != "" {
 				if parsed, err := llm.ParseTier(tierNorm); err == nil {
-					if c, _, err := router.ClientForTier(parsed); err == nil {
+					if c, resolution, err := router.ClientForTier(parsed); err == nil {
 						runClient = c
+						selection.Tier = resolution.Tier
+						selection.Provider = resolution.Provider
+						selection.Model = resolution.Model
+						selection.Source = resolution.Source
 					}
 				}
 			} else {
-				if c, _, err := router.ClientFor(llm.RoleGatewayDefault); err == nil {
+				if c, resolution, err := router.ClientFor(llm.RoleGatewayDefault); err == nil {
 					runClient = c
+					selection.Role = llm.RoleGatewayDefault
+					selection.Tier = resolution.Tier
+					selection.Provider = resolution.Provider
+					selection.Model = resolution.Model
+					selection.Source = resolution.Source
 				}
 			}
 		}
+		ctx = llm.WithSelectionMetadata(ctx, llm.SelectionMetadata{
+			Role:      selection.Role,
+			Tier:      selection.Tier,
+			Provider:  selection.Provider,
+			Model:     selection.Model,
+			Source:    selection.Source,
+			AgentName: agentNameFromRunLabel(label),
+		})
 
 		profile := agentPromptProfileForLabel(label)
 		systemPrompt := buildAgentSystemPrompt(targetWorkspaceDir, profile, semanticCfg)
@@ -200,6 +218,18 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		}
 		return strings.TrimSpace(resp.Message.Content), nil
 	}
+}
+
+func agentNameFromRunLabel(label string) string {
+	trimmed := strings.TrimSpace(label)
+	if trimmed == "" {
+		return ""
+	}
+	parts := strings.Split(trimmed, ":")
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(parts[len(parts)-1])
 }
 
 type agentPromptProfile struct {

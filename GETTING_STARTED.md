@@ -125,7 +125,13 @@ tools_allow: [read_file, list_dir, glob, memory_search]
 Read-only codebase explorer for fast parallel searches.
 ```
 
-Use agents via chat: the LLM calls `subagents_run` to fan out parallel tasks.
+Use agents via chat:
+
+- `subagents_run` for independent parallel tasks.
+- `subagents_plan` to ask the heavy-tier gateway planner model for a staged execution flow.
+- `subagents_orchestrate` for staged flows where later tasks depend on earlier subagent output.
+
+Task tier precedence is `task tier` > `AGENT.md tier` > gateway default role tier.
 
 ## 8. Set Up Cron Jobs (Optional)
 

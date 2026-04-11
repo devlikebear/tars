@@ -40,7 +40,7 @@ func buildLLMRouter(cfg config.Config, tracker *usage.Tracker) (llm.Router, erro
 		if err != nil {
 			return nil, fmt.Errorf("tier %s: %w", spec.tier, err)
 		}
-		tracked := usage.NewTrackedClient(client, tracker, spec.settings.Provider, spec.settings.Model)
+		tracked := usage.NewTrackedClient(client, tracker, spec.settings.Provider, spec.settings.Model, spec.tier)
 		tiers[spec.tier] = llm.TierEntry{
 			Client:   tracked,
 			Provider: spec.settings.Provider,

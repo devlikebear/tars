@@ -18,6 +18,18 @@ func executeChatLoop(
 	state chatRunState,
 	stream *chatStreamWriter,
 ) (llm.ChatResponse, bool, []ToolCallRecord, error) {
+	if deps.router != nil {
+		if _, resolution, err := deps.router.ClientFor(llm.RoleChatMain); err == nil {
+			ctx = llm.WithSelectionMetadata(ctx, llm.SelectionMetadata{
+				Role:      llm.RoleChatMain,
+				Tier:      resolution.Tier,
+				Provider:  resolution.Provider,
+				Model:     resolution.Model,
+				Source:    resolution.Source,
+				SessionID: state.sessionID,
+			})
+		}
+	}
 	streamingAnnounced := false
 	deltaSent := false
 	var accumulated strings.Builder

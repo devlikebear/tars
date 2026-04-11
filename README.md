@@ -37,7 +37,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 
 ### Sub-Agent Orchestration
 
-Spawn parallel agents for research, planning, and specialized tasks:
+Spawn read-only agents for research, planning, and specialized tasks:
 
 ```yaml
 # workspace/agents/explorer/AGENT.md
@@ -48,7 +48,7 @@ tools_allow: [read_file, list_dir, glob, memory_search]
 ---
 ```
 
-The `subagents_run` tool supports per-task tier selection:
+Use `subagents_run` when tasks are independent and can fan out in parallel:
 
 ```json
 {"tasks": [
@@ -56,6 +56,10 @@ The `subagents_run` tool supports per-task tier selection:
   {"prompt": "design the migration plan", "tier": "heavy"}
 ]}
 ```
+
+Use `subagents_orchestrate` when later tasks depend on earlier subagent results. It executes staged `parallel` and `sequential` steps and supports placeholders such as `{{task.backend.summary}}`.
+
+Use `subagents_plan` before `subagents_orchestrate` when the main agent needs the heavy-tier planner model to decide which tasks should run in parallel versus sequence. The planner returns a validated staged flow that can be executed directly.
 
 Tier resolution priority: task `tier` > agent YAML `tier` > config default.
 
@@ -78,7 +82,7 @@ llm_role_pulse_decider: light
 llm_role_gateway_planner: heavy
 ```
 
-Each system role (chat, pulse, reflection, compaction, gateway agents) maps to a tier. Background surfaces default to `light`, keeping costs low.
+Each system role (chat, pulse, reflection, compaction, gateway agents) maps to a tier. Background surfaces default to `light`, keeping costs low. `llm_role_gateway_planner` is now exercised by `subagents_plan`, and TARS logs the resolved `role`, `tier`, `provider`, `model`, and `source` for chat and gateway LLM calls so tier selection is traceable in runtime logs.
 
 ### Background Surfaces
 

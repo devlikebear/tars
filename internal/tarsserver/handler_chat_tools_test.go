@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
@@ -17,7 +18,23 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 		t.Fatalf("ensure workspace: %v", err)
 	}
 
-	handler := newChatAPIHandler(root, session.NewStore(root), &mockLLMClient{}, zerolog.Nop())
+	router, _, err := llm.NewFakeRouter(llm.TierStandard, map[llm.Role]llm.Tier{
+		llm.RoleGatewayPlanner: llm.TierHeavy,
+	})
+	if err != nil {
+		t.Fatalf("new fake router: %v", err)
+	}
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		session.NewStore(root),
+		&mockLLMClient{},
+		router,
+		zerolog.Nop(),
+		4,
+		nil,
+		"",
+		defaultChatToolingOptions(),
+	)
 	req := httptest.NewRequest(http.MethodGet, "/v1/chat/tools", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -46,6 +63,9 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 		"workspace",
 		"memory",
 		"knowledge",
+		"subagents_plan",
+		"subagents_run",
+		"subagents_orchestrate",
 	} {
 		if !names[want] {
 			t.Fatalf("expected tool %q in /v1/chat/tools, got %+v", want, names)
