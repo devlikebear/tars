@@ -161,24 +161,40 @@ func TestRootCommand_DoctorFailsWhenClaudeCodeCLIIsMissing(t *testing.T) {
 		t.Fatalf("init command: %v", err)
 	}
 
+	// Rewrite the starter config to use claude-code-cli as the pool kind
+	// so that the doctor's runtime check looks for the local claude
+	// binary. The full content is rewritten rather than text-patched to
+	// avoid brittleness on future template changes.
 	configPath := config.FixedConfigPath()
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("read config: %v", err)
-	}
-	configText := strings.Replace(string(data), "llm_provider: openai", "llm_provider: claude-code-cli", 1)
-	configText = strings.Replace(configText, "llm_auth_mode: api-key", "llm_auth_mode: cli", 1)
-	configText = strings.Replace(configText, "llm_base_url: https://api.openai.com/v1", "llm_base_url: \"\"", 1)
-	configText = strings.Replace(configText, "llm_api_key: ${OPENAI_API_KEY}", "llm_api_key: \"\"", 1)
-	if err := os.WriteFile(configPath, []byte(configText), 0o644); err != nil {
+	claudeConfig := `mode: standalone
+workspace_dir: ` + workspaceDir + `
+api_auth_mode: off
+api_allow_insecure_local_auth: true
+llm_providers:
+  default:
+    kind: claude-code-cli
+    auth_mode: cli
+llm_tiers:
+  heavy:
+    provider: default
+    model: sonnet
+  standard:
+    provider: default
+    model: sonnet
+  light:
+    provider: default
+    model: sonnet
+llm_default_tier: standard
+gateway_enabled: true
+`
+	if err := os.WriteFile(configPath, []byte(claudeConfig), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
 	var doctorStdout strings.Builder
 	doctorCmd := newRootCommand(strings.NewReader(""), &doctorStdout, io.Discard)
 	doctorCmd.SetArgs([]string{"doctor", "--workspace-dir", workspaceDir})
-	err = doctorCmd.Execute()
-	if err == nil {
+	if err := doctorCmd.Execute(); err == nil {
 		t.Fatal("expected doctor to fail when claude cli is missing")
 	}
 

@@ -139,12 +139,9 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 	deps.runPrompt = newAgentPromptRunner(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger, semanticCfg)
 	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg.WorkspaceDir, deps.llmClient, deps.llmRouter, cfg.AgentMaxIterations, logger, semanticCfg)
 
-	logger.Debug().
-		Str("provider", cfg.LLMProvider).
-		Str("auth_mode", cfg.LLMAuthMode).
-		Str("model", cfg.LLMModel).
-		Str("base_url", cfg.LLMBaseURL).
-		Msg("llm provider initialized")
+	// Per-tier provider/model context already logged at the chatResolution
+	// site above; no additional top-level LLM log needed with the provider
+	// pool schema (there is no single "the" provider anymore).
 	return deps, nil
 }
 

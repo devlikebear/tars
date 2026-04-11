@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/session"
@@ -60,13 +59,7 @@ func TestTelegramCommand_Allowed_Providers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newProviderModelsCache: %v", err)
 	}
-	service := newProviderModelsService(config.Config{
-		LLMConfig: config.LLMConfig{
-			LLMProvider: "openai-codex",
-			LLMModel:    "gpt-5.3-codex",
-			LLMAuthMode: "oauth",
-		},
-	}, cache, &fakeModelFetcher{}, time.Now)
+	service := newProviderModelsService(makePoolTestCfg("openai-codex", "gpt-5.3-codex", "oauth", ""), cache, &fakeModelFetcher{}, time.Now)
 	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
 		Store:          store,
 		CronResolver:   newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),
@@ -96,14 +89,7 @@ func TestTelegramCommand_Allowed_ModelsUnsupportedForOpenAICodex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newProviderModelsCache: %v", err)
 	}
-	service := newProviderModelsService(config.Config{
-		LLMConfig: config.LLMConfig{
-			LLMProvider: "openai-codex",
-			LLMModel:    "gpt-5.3-codex",
-			LLMAuthMode: "oauth",
-			LLMBaseURL:  "https://chatgpt.com/backend-api",
-		},
-	}, cache, &fakeModelFetcher{models: []string{"gpt-5.3-codex", "gpt-4.1-codex"}}, time.Now)
+	service := newProviderModelsService(makePoolTestCfg("openai-codex", "gpt-5.3-codex", "oauth", "https://chatgpt.com/backend-api"), cache, &fakeModelFetcher{models: []string{"gpt-5.3-codex", "gpt-4.1-codex"}}, time.Now)
 	handler := newTelegramCommandHandler(telegramCommandHandlerOptions{
 		Store:          store,
 		CronResolver:   newWorkspaceCronStoreResolver(workspace, 0, cron.NewStore(workspace)),

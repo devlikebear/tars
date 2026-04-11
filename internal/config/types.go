@@ -55,44 +55,72 @@ type APIConfig struct {
 	APIMaxInflightAgentRuns   int
 }
 
+// LLMConfig holds the named provider pool + tier bindings that together
+// describe every LLM endpoint TARS will call. See
+// docs/plans/llm-provider-pool.md for the schema rationale.
+//
+// Legacy flat fields (LLMProvider, LLMAuthMode, ..., LLMTierHeavy/Standard/
+// Light) were removed in the cutover commit — user configs must migrate
+// to llm_providers + llm_tiers.
 type LLMConfig struct {
-	LLMProvider        string
-	LLMAuthMode        string
-	LLMOAuthProvider   string
-	LLMBaseURL         string
-	LLMAPIKey          string
-	LLMModel           string
-	LLMReasoningEffort string
-	LLMThinkingBudget  int
-	LLMServiceTier     string
+	// LLMProviders is the named provider pool. Each entry describes
+	// "where to call + how to authenticate" — credentials, base URL,
+	// auth mode. It does NOT carry a model; models are bound at the
+	// tier level via LLMTierBinding. One provider can therefore serve
+	// multiple models by being referenced from multiple tiers.
+	LLMProviders map[string]LLMProviderSettings
 
-	// 3-tier model routing. Each tier is an optional override of the legacy
-	// LLM* fields above. When a tier's fields are empty, that tier falls
-	// back to the legacy LLM* configuration (preserving current behavior).
-	// See internal/llm.Router and internal/config/llm_tiers.go.
-	LLMDefaultTier  string
-	LLMTierHeavy    LLMTierSettings
-	LLMTierStandard LLMTierSettings
-	LLMTierLight    LLMTierSettings
+	// LLMTiers binds each tier name (typically "heavy"/"standard"/"light")
+	// to a provider alias (key in LLMProviders) + a concrete model + the
+	// optional per-call knobs. A tier's binding.Provider must exist in
+	// LLMProviders or resolution errors.
+	LLMTiers map[string]LLMTierBinding
+
+	// LLMDefaultTier is the tier used when a role has no explicit
+	// mapping in LLMRoleDefaults. Must be a key in LLMTiers.
+	LLMDefaultTier string
 
 	// LLMRoleDefaults maps a canonical role name (e.g. "chat_main",
 	// "pulse_decider") to a tier name ("heavy"|"standard"|"light"). Roles
-	// absent from the map fall back to LLMDefaultTier.
+	// absent from the map fall back to LLMDefaultTier. Role names are
+	// validated at router build time via llm.ParseRole — this package
+	// does not import internal/llm.
 	LLMRoleDefaults map[string]string
 }
 
-// LLMTierSettings holds the provider/model/knob overrides for a single
-// tier. Empty fields are inherited from the legacy top-level LLM* fields.
-type LLMTierSettings struct {
-	Provider        string
-	AuthMode        string
-	OAuthProvider   string
-	BaseURL         string
-	APIKey          string
-	Model           string
-	ReasoningEffort string
-	ThinkingBudget  int
-	ServiceTier     string
+// LLMProviderSettings is one entry in the named provider pool. It holds
+// "where to call + how to authenticate" but NOT "what model to call".
+// Models are bound at the tier level (LLMTierBinding.Model) so that one
+// provider can serve multiple models.
+//
+// Kind identifies the provider type ("anthropic", "openai", "openai-codex",
+// "gemini", "gemini-native", "claude-code-cli") and maps to the value
+// passed to llm.NewProvider.Provider. The config package does not
+// validate Kind against a closed list — llm.NewProvider returns a clear
+// error for unknown kinds, keeping the config package free of an
+// internal/llm import.
+type LLMProviderSettings struct {
+	Kind          string `json:"kind"           yaml:"kind"`
+	AuthMode      string `json:"auth_mode"      yaml:"auth_mode"`
+	OAuthProvider string `json:"oauth_provider" yaml:"oauth_provider"`
+	BaseURL       string `json:"base_url"       yaml:"base_url"`
+	APIKey        string `json:"api_key"        yaml:"api_key"`
+	ServiceTier   string `json:"service_tier"   yaml:"service_tier"`
+}
+
+// LLMTierBinding binds a tier to a provider alias + concrete model +
+// per-call knobs. Provider must be a key in cfg.LLMProviders — the
+// resolver rejects unknown aliases with a loud error.
+//
+// ServiceTier here overrides the provider-level default when non-empty.
+// ReasoningEffort and ThinkingBudget are pure per-tier values (providers
+// do not set them at the pool level).
+type LLMTierBinding struct {
+	Provider        string `json:"provider"         yaml:"provider"`
+	Model           string `json:"model"            yaml:"model"`
+	ReasoningEffort string `json:"reasoning_effort" yaml:"reasoning_effort"`
+	ThinkingBudget  int    `json:"thinking_budget"  yaml:"thinking_budget"`
+	ServiceTier     string `json:"service_tier"     yaml:"service_tier"`
 }
 
 type MemoryConfig struct {

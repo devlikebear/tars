@@ -1,41 +1,50 @@
 mode: standalone
 workspace_dir: ./workspace
-# provider: openai | openai-codex | anthropic | gemini | gemini-native | claude-code-cli
-llm_provider: anthropic
-llm_auth_mode: api-key
-llm_oauth_provider: ""
-llm_base_url: https://api.anthropic.com
-llm_model: claude-3-5-haiku-latest
-llm_api_key: ${ANTHROPIC_API_KEY}
 
-# ---- 3-tier model routing (optional) ----
-# When any llm_tier_* field is left empty, that tier inherits the
-# matching legacy llm_* value above, so the default behavior is
-# unchanged: all three tiers resolve to the same model. Override
-# individual fields below to run different models per role.
-#
-# llm_default_tier: standard
-#
-# llm_tier_heavy_provider: anthropic
-# llm_tier_heavy_model: claude-opus-4-6
-# llm_tier_heavy_reasoning_effort: high
-# llm_tier_heavy_thinking_budget: 8000
-#
-# llm_tier_standard_provider: anthropic
-# llm_tier_standard_model: claude-sonnet-4-6
-# llm_tier_standard_reasoning_effort: medium
-#
-# llm_tier_light_provider: anthropic
-# llm_tier_light_model: claude-haiku-4-5-20251001
-# llm_tier_light_reasoning_effort: minimal
-#
-# Role → tier mapping. Unmapped roles fall back to llm_default_tier.
-# llm_role_chat_main: standard
-# llm_role_context_compactor: light
-# llm_role_memory_hook: light
-# llm_role_reflection_memory: light
-# llm_role_pulse_decider: light
-# llm_role_gateway_default: standard
-# llm_role_gateway_planner: heavy
+# ---- LLM provider pool ----
+# Each alias defines "where to call + how to authenticate" — no model
+# here. At minimum one provider must be defined. Credentials come
+# from environment variables. Supported kinds: anthropic, openai,
+# openai-codex, gemini, gemini-native, claude-code-cli.
+llm_providers:
+  default:
+    kind: anthropic
+    auth_mode: api-key
+    api_key: ${ANTHROPIC_API_KEY}
+    base_url: https://api.anthropic.com
+
+# ---- Tier bindings ----
+# Each tier binds to one provider alias + model + optional knobs.
+# All three tiers (heavy/standard/light) must be configured. Mix
+# multiple providers by adding entries above and referencing them
+# here — e.g. `provider: codex` for a second alias.
+llm_tiers:
+  heavy:
+    provider: default
+    model: claude-opus-4-6
+    reasoning_effort: high
+  standard:
+    provider: default
+    model: claude-sonnet-4-6
+    reasoning_effort: medium
+  light:
+    provider: default
+    model: claude-haiku-4-5-20251001
+    reasoning_effort: minimal
+
+llm_default_tier: standard
+
+# ---- Role → tier mapping (optional) ----
+# Roles absent from this map fall back to llm_default_tier. Role
+# names are validated at router build time — see internal/llm/role.go
+# for the canonical list.
+llm_role_defaults:
+  chat_main: standard
+  context_compactor: light
+  memory_hook: light
+  reflection_memory: light
+  pulse_decider: light
+  gateway_default: standard
+  gateway_planner: heavy
 
 agent_max_iterations: 8

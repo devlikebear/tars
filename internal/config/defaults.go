@@ -32,8 +32,6 @@ const (
 	defaultDashboardAuthMode             = "inherit"
 	defaultAPIMaxInflightChat            = 2
 	defaultAPIMaxInflightAgentRuns       = 4
-	defaultLLMProvider                   = "anthropic"
-	defaultLLMAuthMode                   = "api-key"
 	defaultMemoryEmbedProvider           = "gemini"
 	defaultMemoryEmbedModel              = "gemini-embedding-2-preview"
 	defaultMemoryEmbedDimensions         = 768
@@ -98,10 +96,11 @@ func defaultConfigValues() Config {
 			APIMaxInflightChat:      defaultAPIMaxInflightChat,
 			APIMaxInflightAgentRuns: defaultAPIMaxInflightAgentRuns,
 		},
-		LLMConfig: LLMConfig{
-			LLMProvider: defaultLLMProvider,
-			LLMAuthMode: defaultLLMAuthMode,
-		},
+		// LLMConfig: left empty here. Defaults live in applyLLMPoolDefaults
+		// (base_url / api_key / auth_mode auto-fill per Kind) and the
+		// checked-in config/standalone.yaml provides a minimal pool +
+		// tiers so first-run works without any local config.
+		LLMConfig: LLMConfig{},
 		MemoryConfig: MemoryConfig{
 			MemorySemanticEnabled: false,
 			MemoryEmbedProvider:   defaultMemoryEmbedProvider,
