@@ -80,6 +80,12 @@ var configInputFields = []configInputField{
 	llmRoleField("llm_role_pulse_decider", RolePulseDecider, []string{"LLM_ROLE_PULSE_DECIDER", "TARS_LLM_ROLE_PULSE_DECIDER"}),
 	llmRoleField("llm_role_gateway_default", RoleGatewayDefault, []string{"LLM_ROLE_GATEWAY_DEFAULT", "TARS_LLM_ROLE_GATEWAY_DEFAULT"}),
 	llmRoleField("llm_role_gateway_planner", RoleGatewayPlanner, []string{"LLM_ROLE_GATEWAY_PLANNER", "TARS_LLM_ROLE_GATEWAY_PLANNER"}),
+	// Named provider pool + tier bindings (replaces legacy flat LLM*/LLMTier*/llm_role_*
+	// fields in the cutover commit of the llm-provider-pool refactor). See
+	// docs/plans/llm-provider-pool.md and internal/config/llm_resolve.go.
+	llmProvidersField("llm_providers", []string{"LLM_PROVIDERS_JSON", "TARS_LLM_PROVIDERS_JSON"}),
+	llmTiersField("llm_tiers", []string{"LLM_TIERS_JSON", "TARS_LLM_TIERS_JSON"}),
+	llmRoleDefaultsField("llm_role_defaults", []string{"LLM_ROLE_DEFAULTS_JSON", "TARS_LLM_ROLE_DEFAULTS_JSON"}),
 	boolField("memory_semantic_enabled", []string{"MEMORY_SEMANTIC_ENABLED", "TARS_MEMORY_SEMANTIC_ENABLED"}, func(cfg *Config) *bool { return &cfg.MemorySemanticEnabled }),
 	stringField("memory_embed_provider", []string{"MEMORY_EMBED_PROVIDER", "TARS_MEMORY_EMBED_PROVIDER"}, func(cfg *Config) *string { return &cfg.MemoryEmbedProvider }, lowerTrimmedString),
 	stringField("memory_embed_base_url", []string{"MEMORY_EMBED_BASE_URL", "TARS_MEMORY_EMBED_BASE_URL"}, func(cfg *Config) *string { return &cfg.MemoryEmbedBaseURL }, strings.TrimSpace),
