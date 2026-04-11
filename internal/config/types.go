@@ -79,10 +79,31 @@ type LLMConfig struct {
 	// "pulse_decider") to a tier name ("heavy"|"standard"|"light"). Roles
 	// absent from the map fall back to LLMDefaultTier.
 	LLMRoleDefaults map[string]string
+
+	// LLMProviders is the named provider pool. Each entry describes
+	// "where to call + how to authenticate" — credentials, base URL,
+	// auth mode. It does NOT carry a model; models are bound at the
+	// tier level via LLMTierBinding. One provider can therefore serve
+	// multiple models by being referenced from multiple tiers.
+	//
+	// See docs/plans/llm-provider-pool.md.
+	LLMProviders map[string]LLMProviderSettings
+
+	// LLMTiers binds each tier name (typically "heavy"/"standard"/"light")
+	// to a provider alias (key in LLMProviders) + a concrete model + the
+	// optional per-call knobs. A tier's binding.Provider must exist in
+	// LLMProviders or resolution errors.
+	//
+	// See docs/plans/llm-provider-pool.md.
+	LLMTiers map[string]LLMTierBinding
 }
 
 // LLMTierSettings holds the provider/model/knob overrides for a single
 // tier. Empty fields are inherited from the legacy top-level LLM* fields.
+//
+// Deprecated: replaced by LLMProviderSettings + LLMTierBinding in the
+// provider-pool schema. Removed in the cutover commit of the
+// llm-provider-pool refactor.
 type LLMTierSettings struct {
 	Provider        string
 	AuthMode        string
@@ -93,6 +114,41 @@ type LLMTierSettings struct {
 	ReasoningEffort string
 	ThinkingBudget  int
 	ServiceTier     string
+}
+
+// LLMProviderSettings is one entry in the named provider pool. It holds
+// "where to call + how to authenticate" but NOT "what model to call".
+// Models are bound at the tier level (LLMTierBinding.Model) so that one
+// provider can serve multiple models.
+//
+// Kind identifies the provider type ("anthropic", "openai", "openai-codex",
+// "gemini", "gemini-native", "claude-code-cli") and maps to the value
+// passed to llm.NewProvider.Provider. The config package does not
+// validate Kind against a closed list — llm.NewProvider returns a clear
+// error for unknown kinds, keeping the config package free of an
+// internal/llm import.
+type LLMProviderSettings struct {
+	Kind          string `json:"kind"           yaml:"kind"`
+	AuthMode      string `json:"auth_mode"      yaml:"auth_mode"`
+	OAuthProvider string `json:"oauth_provider" yaml:"oauth_provider"`
+	BaseURL       string `json:"base_url"       yaml:"base_url"`
+	APIKey        string `json:"api_key"        yaml:"api_key"`
+	ServiceTier   string `json:"service_tier"   yaml:"service_tier"`
+}
+
+// LLMTierBinding binds a tier to a provider alias + concrete model +
+// per-call knobs. Provider must be a key in cfg.LLMProviders — the
+// resolver rejects unknown aliases with a loud error.
+//
+// ServiceTier here overrides the provider-level default when non-empty.
+// ReasoningEffort and ThinkingBudget are pure per-tier values (providers
+// do not set them at the pool level).
+type LLMTierBinding struct {
+	Provider        string `json:"provider"         yaml:"provider"`
+	Model           string `json:"model"            yaml:"model"`
+	ReasoningEffort string `json:"reasoning_effort" yaml:"reasoning_effort"`
+	ThinkingBudget  int    `json:"thinking_budget"  yaml:"thinking_budget"`
+	ServiceTier     string `json:"service_tier"     yaml:"service_tier"`
 }
 
 type MemoryConfig struct {
