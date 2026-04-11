@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-func applyLLMDefaults(cfg *Config) {
-	applyDefaults(cfg)
-}
-
 func applyDefaults(cfg *Config) {
 	if cfg == nil {
 		return
@@ -21,11 +17,7 @@ func applyDefaults(cfg *Config) {
 	applyVaultDefaults(cfg, defaults)
 	applyBrowserDefaults(cfg, defaults)
 	applyGatewayDefaults(cfg, defaults)
-	applyProviderDefaults(cfg, defaults)
-	// Tier defaults must run last so that the legacy LLM* fields are
-	// fully resolved (provider/model/base URL) before we seed any empty
-	// per-tier fields from them.
-	EnsureLLMTierDefaults(cfg)
+	applyLLMPoolDefaults(cfg)
 }
 
 func applyCoreDefaults(cfg *Config, defaults Config) {
@@ -63,15 +55,6 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	default:
 		cfg.SessionTelegramScope = defaults.SessionTelegramScope
 	}
-	cfg.LLMProvider = strings.TrimSpace(strings.ToLower(cfg.LLMProvider))
-	if cfg.LLMProvider == "" {
-		cfg.LLMProvider = defaults.LLMProvider
-	}
-	cfg.LLMReasoningEffort = normalizeLLMReasoningEffort(cfg.LLMReasoningEffort)
-	if cfg.LLMThinkingBudget < 0 {
-		cfg.LLMThinkingBudget = 0
-	}
-	cfg.LLMServiceTier = normalizeLLMServiceTier(cfg.LLMServiceTier)
 	cfg.ChannelsTelegramDMPolicy = strings.TrimSpace(strings.ToLower(cfg.ChannelsTelegramDMPolicy))
 	switch cfg.ChannelsTelegramDMPolicy {
 	case "pairing", "allowlist", "open", "disabled":
@@ -79,29 +62,6 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 		cfg.ChannelsTelegramDMPolicy = defaults.ChannelsTelegramDMPolicy
 	}
 	cfg.TelegramBotToken = strings.TrimSpace(cfg.TelegramBotToken)
-	cfg.LLMAuthMode = strings.TrimSpace(strings.ToLower(cfg.LLMAuthMode))
-	if cfg.LLMAuthMode == "" {
-		switch cfg.LLMProvider {
-		case "openai-codex":
-			cfg.LLMAuthMode = "oauth"
-		case "claude-code-cli":
-			cfg.LLMAuthMode = "cli"
-		default:
-			cfg.LLMAuthMode = defaults.LLMAuthMode
-		}
-	}
-	if cfg.LLMProvider == "openai-codex" && cfg.LLMAuthMode == "api-key" && strings.TrimSpace(cfg.LLMAPIKey) == "" {
-		cfg.LLMAuthMode = "oauth"
-	}
-	if cfg.LLMProvider == "claude-code-cli" && cfg.LLMAuthMode == "api-key" && strings.TrimSpace(cfg.LLMAPIKey) == "" {
-		cfg.LLMAuthMode = "cli"
-	}
-	cfg.LLMOAuthProvider = strings.TrimSpace(strings.ToLower(cfg.LLMOAuthProvider))
-	if cfg.LLMAuthMode == "oauth" && cfg.LLMOAuthProvider == "" {
-		if provider := defaultOAuthProvider(cfg.LLMProvider); provider != "" {
-			cfg.LLMOAuthProvider = provider
-		}
-	}
 	if cfg.AgentMaxIterations <= 0 {
 		cfg.AgentMaxIterations = defaults.AgentMaxIterations
 	}
@@ -291,65 +251,146 @@ func applyGatewayDefaults(cfg *Config, defaults Config) {
 	}
 }
 
-func applyProviderDefaults(cfg *Config, defaults Config) {
-	if cfg.LLMBaseURL == "" || cfg.LLMModel == "" || cfg.LLMAPIKey == "" {
-		switch cfg.LLMProvider {
-		case "openai":
-			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = defaultOpenAIBaseURL
-			}
-			if cfg.LLMModel == "" {
-				cfg.LLMModel = defaultOpenAIModel
-			}
-			if cfg.LLMAPIKey == "" {
-				cfg.LLMAPIKey = os.Getenv("OPENAI_API_KEY")
-			}
-		case "openai-codex":
-			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = defaultOpenAICodexBaseURL
-			}
-			if cfg.LLMModel == "" {
-				cfg.LLMModel = defaultOpenAICodexModel
-			}
-			if cfg.LLMAPIKey == "" {
-				cfg.LLMAPIKey = firstNonEmpty(os.Getenv("OPENAI_CODEX_OAUTH_TOKEN"), os.Getenv("TARS_OPENAI_CODEX_OAUTH_TOKEN"))
-			}
-		case "claude-code-cli":
-			if cfg.LLMModel == "" {
-				cfg.LLMModel = defaultClaudeCodeCLIModel
-			}
-		case "gemini":
-			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = defaultGeminiBaseURL
-			}
-			if cfg.LLMModel == "" {
-				cfg.LLMModel = defaultGeminiModel
-			}
-			if cfg.LLMAPIKey == "" {
-				cfg.LLMAPIKey = os.Getenv("GEMINI_API_KEY")
-			}
-		case "gemini-native":
-			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = defaultGeminiNativeBaseURL
-			}
-			if cfg.LLMModel == "" {
-				cfg.LLMModel = defaultGeminiModel
-			}
-			if cfg.LLMAPIKey == "" {
-				cfg.LLMAPIKey = os.Getenv("GEMINI_API_KEY")
-			}
-		case "anthropic":
-			if cfg.LLMBaseURL == "" {
-				cfg.LLMBaseURL = defaultAnthropicBaseURL
-			}
-			if cfg.LLMModel == "" {
-				cfg.LLMModel = defaultAnthropicModel
-			}
-			if cfg.LLMAPIKey == "" {
-				cfg.LLMAPIKey = os.Getenv("ANTHROPIC_API_KEY")
+// applyLLMPoolDefaults fills in Kind-specific defaults for each entry in
+// cfg.LLMProviders and normalizes per-tier knobs in cfg.LLMTiers.
+//
+// For each provider pool entry:
+//   - AuthMode defaults based on Kind (openai-codex → oauth,
+//     claude-code-cli → cli, everything else → api-key)
+//   - BaseURL defaults to the canonical endpoint for the Kind
+//   - APIKey defaults to the conventional env var for the Kind
+//     when the user did not set one explicitly
+//   - OAuthProvider defaults when AuthMode is oauth
+//
+// For each tier binding:
+//   - ReasoningEffort is normalized (aliases like "med" → "medium")
+//   - ServiceTier is normalized to a canonical value
+//   - negative ThinkingBudget is clamped to 0
+//
+// This function is the new-schema equivalent of the deleted
+// applyProviderDefaults + the LLM section of applyCoreDefaults.
+//
+// Validation of tier-to-provider references and missing tiers happens
+// at router build time via ResolveAllLLMTiers — this function never
+// errors, it only fills in blanks.
+func applyLLMPoolDefaults(cfg *Config) {
+	for alias, p := range cfg.LLMProviders {
+		p.Kind = strings.ToLower(strings.TrimSpace(p.Kind))
+		p.AuthMode = strings.ToLower(strings.TrimSpace(p.AuthMode))
+		p.OAuthProvider = strings.ToLower(strings.TrimSpace(p.OAuthProvider))
+		p.BaseURL = strings.TrimSpace(p.BaseURL)
+		p.APIKey = strings.TrimSpace(p.APIKey)
+		p.ServiceTier = normalizeLLMServiceTier(p.ServiceTier)
+
+		if p.AuthMode == "" {
+			switch p.Kind {
+			case "openai-codex":
+				p.AuthMode = "oauth"
+			case "claude-code-cli":
+				p.AuthMode = "cli"
+			default:
+				p.AuthMode = "api-key"
 			}
 		}
+
+		switch p.Kind {
+		case "openai":
+			if p.BaseURL == "" {
+				p.BaseURL = defaultOpenAIBaseURL
+			}
+			if p.APIKey == "" {
+				p.APIKey = os.Getenv("OPENAI_API_KEY")
+			}
+		case "openai-codex":
+			if p.BaseURL == "" {
+				p.BaseURL = defaultOpenAICodexBaseURL
+			}
+			if p.APIKey == "" {
+				p.APIKey = firstNonEmpty(os.Getenv("OPENAI_CODEX_OAUTH_TOKEN"), os.Getenv("TARS_OPENAI_CODEX_OAUTH_TOKEN"))
+			}
+		case "claude-code-cli":
+			// claude-code-cli resolves credentials through the local CLI,
+			// nothing to inject here.
+		case "gemini":
+			if p.BaseURL == "" {
+				p.BaseURL = defaultGeminiBaseURL
+			}
+			if p.APIKey == "" {
+				p.APIKey = os.Getenv("GEMINI_API_KEY")
+			}
+		case "gemini-native":
+			if p.BaseURL == "" {
+				p.BaseURL = defaultGeminiNativeBaseURL
+			}
+			if p.APIKey == "" {
+				p.APIKey = os.Getenv("GEMINI_API_KEY")
+			}
+		case "anthropic":
+			if p.BaseURL == "" {
+				p.BaseURL = defaultAnthropicBaseURL
+			}
+			if p.APIKey == "" {
+				p.APIKey = os.Getenv("ANTHROPIC_API_KEY")
+			}
+		}
+
+		if p.AuthMode == "oauth" && p.OAuthProvider == "" {
+			if provider := defaultOAuthProvider(p.Kind); provider != "" {
+				p.OAuthProvider = provider
+			}
+		}
+		// openai-codex falling back when api-key is requested but no key
+		// is present — preserve the old behavior of promoting to oauth.
+		if p.Kind == "openai-codex" && p.AuthMode == "api-key" && p.APIKey == "" {
+			p.AuthMode = "oauth"
+			if p.OAuthProvider == "" {
+				p.OAuthProvider = defaultOpenAICodexOAuthProvider
+			}
+		}
+		if p.Kind == "claude-code-cli" && p.AuthMode == "api-key" && p.APIKey == "" {
+			p.AuthMode = "cli"
+		}
+
+		cfg.LLMProviders[alias] = p
 	}
+
+	for tier, b := range cfg.LLMTiers {
+		b.Provider = strings.TrimSpace(b.Provider)
+		b.Model = strings.TrimSpace(b.Model)
+		b.ReasoningEffort = normalizeLLMReasoningEffort(b.ReasoningEffort)
+		if b.ThinkingBudget < 0 {
+			b.ThinkingBudget = 0
+		}
+		b.ServiceTier = normalizeLLMServiceTier(b.ServiceTier)
+		cfg.LLMTiers[tier] = b
+	}
+
+	cfg.LLMDefaultTier = strings.ToLower(strings.TrimSpace(cfg.LLMDefaultTier))
+	if cfg.LLMDefaultTier == "" {
+		cfg.LLMDefaultTier = "standard"
+	}
+
+	cfg.LLMRoleDefaults = normalizeLLMRoleDefaults(cfg.LLMRoleDefaults)
+}
+
+// normalizeLLMRoleDefaults lowercases + trims both keys and values and
+// drops empty entries. Unknown role names are NOT rejected here —
+// validation happens at router build time via llm.ParseRole so that
+// this package does not import internal/llm.
+func normalizeLLMRoleDefaults(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return src
+	}
+	out := make(map[string]string, len(src))
+	for role, tier := range src {
+		role = strings.ToLower(strings.TrimSpace(role))
+		tier = strings.ToLower(strings.TrimSpace(tier))
+		if role == "" || tier == "" {
+			continue
+		}
+		out[role] = tier
+	}
+	return out
 }
 
 func defaultOAuthProvider(provider string) string {

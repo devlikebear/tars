@@ -99,8 +99,8 @@ func runInitCommand(_ context.Context, opts initOptions, stdout, _ io.Writer) er
 	_, _ = fmt.Fprintf(stdout, "BYOK:\n")
 	_, _ = fmt.Fprintf(stdout, "  default starter provider: openai\n")
 	_, _ = fmt.Fprintf(stdout, "  export OPENAI_API_KEY='your-api-key'\n")
-	_, _ = fmt.Fprintf(stdout, "  or set llm_provider: claude-code-cli in %s to use the local Claude Code CLI\n", configPath)
-	_, _ = fmt.Fprintf(stdout, "  or edit llm_provider / llm_api_key in %s for anthropic or gemini\n\n", configPath)
+	_, _ = fmt.Fprintf(stdout, "  or set llm_providers.default.kind: claude-code-cli in %s to use the local Claude Code CLI\n", configPath)
+	_, _ = fmt.Fprintf(stdout, "  or edit llm_providers in %s for anthropic or gemini\n\n", configPath)
 	_, _ = fmt.Fprintf(stdout, "Next:\n")
 	_, _ = fmt.Fprintf(stdout, "  tars serve\n")
 	_, _ = fmt.Fprintf(stdout, "  tars service install && tars service start\n")
@@ -418,16 +418,32 @@ workspace_dir: %s
 api_auth_mode: off
 api_allow_insecure_local_auth: true
 
-# BYOK starter provider.
-# Other common choices:
-# - anthropic -> ${ANTHROPIC_API_KEY}
-# - gemini -> ${GEMINI_API_KEY}
-# - claude-code-cli -> local Claude Code install, no API key required
-llm_provider: openai
-llm_auth_mode: api-key
-llm_base_url: https://api.openai.com/v1
-llm_model: gpt-4o-mini
-llm_api_key: ${OPENAI_API_KEY}
+# BYOK starter provider pool. Each alias is one credential + endpoint.
+# Other common kinds: anthropic, gemini, gemini-native, openai-codex,
+# claude-code-cli.
+llm_providers:
+  default:
+    kind: openai
+    auth_mode: api-key
+    base_url: https://api.openai.com/v1
+    api_key: ${OPENAI_API_KEY}
+
+# Three tiers must be defined; they may all bind to the same provider.
+llm_tiers:
+  heavy:
+    provider: default
+    model: gpt-4o-mini
+    reasoning_effort: high
+  standard:
+    provider: default
+    model: gpt-4o-mini
+    reasoning_effort: medium
+  light:
+    provider: default
+    model: gpt-4o-mini
+    reasoning_effort: minimal
+
+llm_default_tier: standard
 
 # Gateway is enabled so agents can dispatch local subagents.
 gateway_enabled: true

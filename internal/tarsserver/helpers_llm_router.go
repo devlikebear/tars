@@ -9,48 +9,58 @@ import (
 )
 
 // buildLLMRouter constructs a 3-tier llm.Router from the resolved config.
-// Each tier gets its own llm.Client (may be identical when the operator
-// has not overridden the tier-specific fields, which matches legacy
-// behavior). All clients are wrapped with usage.TrackedClient so that
-// metering remains accurate per (provider, model).
 //
-// The caller is responsible for calling router.Close() on shutdown.
+// The provider pool schema (cfg.LLMProviders + cfg.LLMTiers) is read
+// through config.ResolveAllLLMTiers, which merges pool + binding into a
+// flat ResolvedLLMTier per tier. Each tier gets its own llm.Client and
+// is wrapped with usage.TrackedClient for per-(kind, model) metering.
+//
+// Errors loudly when:
+//   - any required tier is missing from cfg.LLMTiers
+//   - a tier references an unknown provider alias
+//   - cfg.LLMDefaultTier is not a key in cfg.LLMTiers
+//   - llm.NewProvider rejects the resolved (Kind, Model) combination
 func buildLLMRouter(cfg config.Config, tracker *usage.Tracker) (llm.Router, error) {
-	tiers := map[llm.Tier]llm.TierEntry{}
-	for _, spec := range []struct {
-		tier     llm.Tier
-		settings config.LLMTierSettings
-	}{
-		{llm.TierHeavy, cfg.LLMTierHeavy},
-		{llm.TierStandard, cfg.LLMTierStandard},
-		{llm.TierLight, cfg.LLMTierLight},
-	} {
+	resolved, err := config.ResolveAllLLMTiers(&cfg)
+	if err != nil {
+		return nil, fmt.Errorf("resolve llm tiers: %w", err)
+	}
+
+	tiers := make(map[llm.Tier]llm.TierEntry, len(resolved))
+	for _, r := range resolved {
+		tier, err := llm.ParseTier(r.Tier)
+		if err != nil {
+			return nil, fmt.Errorf("tier %q: %w", r.Tier, err)
+		}
 		client, err := llm.NewProvider(llm.ProviderOptions{
-			Provider:        spec.settings.Provider,
-			AuthMode:        spec.settings.AuthMode,
-			OAuthProvider:   spec.settings.OAuthProvider,
-			BaseURL:         spec.settings.BaseURL,
+			Provider:        r.Kind,
+			AuthMode:        r.AuthMode,
+			OAuthProvider:   r.OAuthProvider,
+			BaseURL:         r.BaseURL,
 			WorkDir:         cfg.WorkspaceDir,
-			Model:           spec.settings.Model,
-			APIKey:          spec.settings.APIKey,
-			ReasoningEffort: spec.settings.ReasoningEffort,
-			ThinkingBudget:  spec.settings.ThinkingBudget,
-			ServiceTier:     spec.settings.ServiceTier,
+			Model:           r.Model,
+			APIKey:          r.APIKey,
+			ReasoningEffort: r.ReasoningEffort,
+			ThinkingBudget:  r.ThinkingBudget,
+			ServiceTier:     r.ServiceTier,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("tier %s: %w", spec.tier, err)
+			return nil, fmt.Errorf("tier %s: %w", r.Tier, err)
 		}
-		tracked := usage.NewTrackedClient(client, tracker, spec.settings.Provider, spec.settings.Model)
-		tiers[spec.tier] = llm.TierEntry{
+		tracked := usage.NewTrackedClient(client, tracker, r.Kind, r.Model)
+		tiers[tier] = llm.TierEntry{
 			Client:   tracked,
-			Provider: spec.settings.Provider,
-			Model:    spec.settings.Model,
+			Provider: r.Kind,
+			Model:    r.Model,
 		}
 	}
 
-	defaultTier := llm.TierStandard
-	if parsed, err := llm.ParseTier(cfg.LLMDefaultTier); err == nil {
-		defaultTier = parsed
+	defaultTier, err := llm.ParseTier(cfg.LLMDefaultTier)
+	if err != nil {
+		return nil, fmt.Errorf("invalid llm_default_tier %q: %w", cfg.LLMDefaultTier, err)
+	}
+	if _, ok := tiers[defaultTier]; !ok {
+		return nil, fmt.Errorf("llm_default_tier %q is not present in llm_tiers", defaultTier)
 	}
 
 	roleDefaults := make(map[llm.Role]llm.Tier, len(cfg.LLMRoleDefaults))

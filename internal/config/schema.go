@@ -239,24 +239,8 @@ func extractValue(yamlKey string, cfg Config) any {
 	case "api_max_inflight_agent_runs":
 		return cfg.APIMaxInflightAgentRuns
 	// LLM
-	case "llm_provider":
-		return cfg.LLMProvider
-	case "llm_auth_mode":
-		return cfg.LLMAuthMode
-	case "llm_oauth_provider":
-		return cfg.LLMOAuthProvider
-	case "llm_base_url":
-		return cfg.LLMBaseURL
-	case "llm_api_key":
-		return cfg.LLMAPIKey
-	case "llm_model":
-		return cfg.LLMModel
-	case "llm_reasoning_effort":
-		return cfg.LLMReasoningEffort
-	case "llm_thinking_budget":
-		return cfg.LLMThinkingBudget
-	case "llm_service_tier":
-		return cfg.LLMServiceTier
+	case "llm_default_tier":
+		return cfg.LLMDefaultTier
 	// Memory
 	case "memory_semantic_enabled":
 		return cfg.MemorySemanticEnabled

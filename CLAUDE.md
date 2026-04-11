@@ -52,7 +52,7 @@ cd frontend/console && npm run check   # svelte-check + tsc
 | `pulse` | System-surface watchdog (1-min tick). Scans cron failures, stuck gateway runs, disk pressure, telegram delivery failures, reflection health. LLM classifies via `pulse_decide` tool → ignore / notify / autofix. See **System Surface** below. |
 | `reflection` | System-surface nightly batch (sleep-window tick, default 02:00-05:00). Runs memory cleanup (experience extraction + knowledge-base compilation, formerly per-turn) and KB cleanup (remove empty sessions). State satisfies `pulse.ReflectionHealthSource`. See **System Surface** below. |
 | `ops` | System health (disk/processes), cleanup planning with approval workflow. Consumed by pulse via narrow Go interfaces — no user-facing LLM tool wrappers (see **System Surface**). |
-| `llm` | Provider abstraction: Anthropic, OpenAI-compat, Gemini |
+| `llm` | Provider abstraction (anthropic, openai, openai-codex, gemini, gemini-native, claude-code-cli) + 3-tier `Router`. Router binds heavy/standard/light via `config.ResolveAllLLMTiers`. See **LLM Provider Pool** below. |
 | `memory` | Semantic memory: Gemini embeddings, cosine similarity search, experience/compaction indexing, JSONL entries |
 | `tool` | Built-in agent tools: file ops, exec, web fetch/search, gateway, telegram, memory. `tool.Registry` now has `RegistryScope` (user/pulse/reflection) — scope-forbidden prefixes panic at Register time. |
 | `serverauth` | Bearer token auth with SHA256, three token tiers (legacy/user/admin), loopback bypass |
@@ -73,6 +73,14 @@ cd frontend/console && npm run check   # svelte-check + tsc
 - The per-turn `chat_memory_hook` has shrunk to the minimum: daily log append + the explicit `remember …` hot path (with inline dedup). All other derivation/compilation runs once nightly.
 - Pulse observes reflection health via the narrow `pulse.ReflectionHealthSource` interface (implemented by `reflection.State`). When `pulse_reflection_failure_threshold` consecutive nightly runs fail, pulse emits `SignalKindReflectionFailure` and the normal decider flow handles notification/autofix.
 - Heartbeat (the previous name) has been removed entirely. Legacy `--run-once` / `--run-loop` CLI flags and `/console/heartbeat` URLs are kept only as no-op redirects for backward compat.
+
+**LLM Provider Pool (`LLMConfig` + `internal/llm`):**
+- `LLMConfig` has 4 fields: `LLMProviders` (alias → `LLMProviderSettings`: kind/auth_mode/oauth_provider/base_url/api_key/service_tier), `LLMTiers` (tier name → `LLMTierBinding`: provider alias + model + reasoning_effort + thinking_budget + optional service_tier override), `LLMDefaultTier`, and `LLMRoleDefaults` (role → tier).
+- **Credentials live at the provider level, never per-tier.** One provider alias can serve multiple tiers by being referenced from multiple bindings with different models. This is the principle fix vs. the old `llm_tier_*_*` flat-field schema where each tier duplicated its credentials.
+- Supported `kind` values match `llm.NewProvider`: `anthropic`, `openai`, `openai-codex`, `gemini`, `gemini-native`, `claude-code-cli`. The `config` package does NOT validate `kind` or role names against a closed list — that validation lives in `internal/llm` so `config` stays import-free of `llm`.
+- `config.ResolveLLMTier(cfg, tier)` merges a pool entry + tier binding into a flat `ResolvedLLMTier{Kind, AuthMode, OAuthProvider, BaseURL, APIKey, Model, ReasoningEffort, ThinkingBudget, ServiceTier, ProviderAlias}`. Single resolution path, loud errors on missing alias/tier/model/kind — no silent fallback. `buildLLMRouter` calls `ResolveAllLLMTiers` once at startup and hands each `ResolvedLLMTier` to `llm.NewProvider`.
+- Parser supports nested YAML (`llm_providers: { codex: { kind: openai-codex, ... } }`) and single-JSON env override (`TARS_LLM_PROVIDERS_JSON`, `TARS_LLM_TIERS_JSON`, `TARS_LLM_ROLE_DEFAULTS_JSON`). Nested string fields get `os.ExpandEnv` at parse time so `api_key: ${ANTHROPIC_API_KEY}` resolves inside nested maps (the shared YAML loader only expands top-level scalars).
+- `applyLLMPoolDefaults` fills base_url/api_key/auth_mode per `kind` (e.g. `kind: anthropic` with empty base_url gets `https://api.anthropic.com`), promotes openai-codex to oauth when api-key mode has no key, and normalizes `reasoning_effort`/`service_tier` per tier. Schema lives in `config/standalone.yaml`; local overrides in `workspace/config/tars.config.yaml` (gitignored). See `docs/plans/llm-provider-pool.md`.
 
 **Chat Memory System** (`internal/tarsserver` + `internal/memory` + `internal/prompt`):
 - **Cache-first strategy**: In-process `memoryCache` (TTL 5min) checked before every semantic search
@@ -144,10 +152,10 @@ git fetch origin && git switch main && git pull --rebase
 
 ## Config
 
-- `config/standalone.yaml` — checked-in default config
-- `workspace/config/tars.config.yaml` — local override (gitignored)
-- Environment variables override YAML: `TARS_API_AUTH_MODE`, `TARS_LLM_PROVIDER`, etc.
-- Config field mapping: `internal/config/config_input_fields.go`
+- `config/standalone.yaml` — checked-in default config. Ships a minimal anthropic provider pool + 3 tier bindings; new users get a working baseline after setting `ANTHROPIC_API_KEY`.
+- `workspace/config/tars.config.yaml` — local override (gitignored). Must define at least one entry under `llm_providers` and the three `llm_tiers` bindings (heavy/standard/light) or startup errors.
+- Environment variables override YAML: `TARS_API_AUTH_MODE`, `TARS_LLM_PROVIDERS_JSON`, `TARS_LLM_TIERS_JSON`, etc. Nested pool/tier maps are overridden as a single JSON blob.
+- Config field mapping: `internal/config/config_input_fields.go`. LLM pool parsers: `internal/config/llm_providers_field.go`. Resolver: `internal/config/llm_resolve.go`.
 
 ## CI
 
