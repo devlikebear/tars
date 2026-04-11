@@ -16,6 +16,18 @@ import (
 
 var orchestrationTaskPlaceholder = regexp.MustCompile(`\{\{\s*task\.([a-zA-Z0-9._-]+)\.(summary|response|error)\s*\}\}`)
 
+var (
+	subagentFlowSpawn = func(runtime *gateway.Runtime, ctx context.Context, req gateway.SpawnRequest) (gateway.Run, error) {
+		return runtime.Spawn(ctx, req)
+	}
+	subagentFlowWait = func(runtime *gateway.Runtime, ctx context.Context, runID string) (gateway.Run, error) {
+		return runtime.Wait(ctx, runID)
+	}
+	subagentFlowCancel = func(runtime *gateway.Runtime, workspaceID string, runs []gateway.Run) {
+		cancelSubagentRuns(runtime, workspaceID, runs)
+	}
+)
+
 type subagentFlowInput struct {
 	Agent     string                  `json:"agent,omitempty"`
 	FlowID    string                  `json:"flow_id,omitempty"`
@@ -214,7 +226,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 					for _, task := range step.Tasks {
 						renderedPrompt, renderErr := renderSubagentFlowPrompt(task.Prompt, completed)
 						if renderErr != nil {
-							cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
+							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
 							return JSONTextResult(map[string]any{"message": renderErr.Error()}, true), nil
 						}
 						taskTier := strings.ToLower(strings.TrimSpace(task.Tier))
@@ -228,7 +240,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 						if title == "" {
 							title = "subagent"
 						}
-						run, spawnErr := runtime.Spawn(waitCtx, gateway.SpawnRequest{
+						run, spawnErr := subagentFlowSpawn(runtime, waitCtx, gateway.SpawnRequest{
 							WorkspaceID:     workspaceID,
 							Title:           title,
 							Prompt:          renderedPrompt,
@@ -244,7 +256,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 							Tier:            taskTier,
 						})
 						if spawnErr != nil {
-							cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
+							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
 							return JSONTextResult(map[string]any{"message": spawnErr.Error()}, true), nil
 						}
 						zlog.Debug().
@@ -264,9 +276,9 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 						})
 					}
 					for _, task := range pending {
-						final, waitErr := runtime.Wait(waitCtx, task.run.ID)
+						final, waitErr := subagentFlowWait(runtime, waitCtx, task.run.ID)
 						if waitErr != nil {
-							cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
+							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
 							return JSONTextResult(map[string]any{"message": fmt.Sprintf("wait subagent %s failed: %v", task.run.ID, waitErr)}, true), nil
 						}
 						taskOut := buildSubagentTaskOutput(task.id, task.title, task.dependsOn, final)
@@ -299,7 +311,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 						if title == "" {
 							title = "subagent"
 						}
-						run, spawnErr := runtime.Spawn(waitCtx, gateway.SpawnRequest{
+						run, spawnErr := subagentFlowSpawn(runtime, waitCtx, gateway.SpawnRequest{
 							WorkspaceID:     workspaceID,
 							Title:           title,
 							Prompt:          renderedPrompt,
@@ -324,7 +336,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 							Str("run_id", run.ID).
 							Str("tier", taskTier).
 							Msg("subagent orchestration task spawned")
-						final, waitErr := runtime.Wait(waitCtx, run.ID)
+						final, waitErr := subagentFlowWait(runtime, waitCtx, run.ID)
 						if waitErr != nil {
 							_, _ = runtime.CancelByWorkspace(workspaceID, run.ID)
 							return JSONTextResult(map[string]any{"message": fmt.Sprintf("wait subagent %s failed: %v", run.ID, waitErr)}, true), nil
@@ -340,6 +352,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 							hadFailure = true
 							out.Status = "failed"
 							out.FailedTasks++
+							break
 						}
 					}
 				}

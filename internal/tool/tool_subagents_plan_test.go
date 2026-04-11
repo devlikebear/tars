@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 
 type plannerToolTestClient struct {
 	response     string
+	chatErr      error
 	chatCalls    int
 	seenMessages []llm.ChatMessage
 	seenMeta     llm.SelectionMetadata
@@ -26,6 +28,9 @@ func (c *plannerToolTestClient) Chat(ctx context.Context, messages []llm.ChatMes
 	c.chatCalls++
 	c.seenMessages = append([]llm.ChatMessage(nil), messages...)
 	c.seenMeta, _ = llm.SelectionMetadataFromContext(ctx)
+	if c.chatErr != nil {
+		return llm.ChatResponse{}, c.chatErr
+	}
 	return llm.ChatResponse{
 		Message: llm.ChatMessage{
 			Role:    "assistant",
@@ -64,6 +69,57 @@ func newPlannerToolTestRouter(t *testing.T, planner llm.Client) llm.Router {
 		t.Fatalf("new router: %v", err)
 	}
 	return router
+}
+
+func TestStripFencedJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  string
+		want   string
+		wantOK bool
+	}{
+		{
+			name:   "json fence",
+			input:  "```json\n{\"steps\":[]}\n```",
+			want:   "{\"steps\":[]}",
+			wantOK: true,
+		},
+		{
+			name:   "plain fence",
+			input:  "```\n{\"steps\":[]}\n```",
+			want:   "{\"steps\":[]}",
+			wantOK: true,
+		},
+		{
+			name:   "unclosed fence",
+			input:  "```json\n{\"steps\":[]}\n",
+			want:   "",
+			wantOK: false,
+		},
+		{
+			name:   "too few lines",
+			input:  "```json\n```",
+			want:   "",
+			wantOK: false,
+		},
+		{
+			name:   "trailing text after closing fence",
+			input:  "```json\n{\"steps\":[]}\n```\nextra",
+			want:   "",
+			wantOK: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := stripFencedJSON(tc.input)
+			if ok != tc.wantOK || got != tc.want {
+				t.Fatalf("stripFencedJSON(%q) = (%q, %v), want (%q, %v)", tc.input, got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
 }
 
 func TestSubagentsPlanTool_UsesGatewayPlannerRoleAndReturnsValidatedPlan(t *testing.T) {
@@ -195,6 +251,73 @@ func TestSubagentsPlanTool_RejectsInvalidPlannerOutput(t *testing.T) {
 	}
 	if !strings.Contains(res.Text(), "parallel step") {
 		t.Fatalf("expected planner validation diagnostic, got %s", res.Text())
+	}
+}
+
+func TestSubagentsPlanTool_ReturnsPlannerChatError(t *testing.T) {
+	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		return "summary for " + prompt, nil
+	})
+	planner := &plannerToolTestClient{chatErr: errors.New("planner unavailable")}
+	runTool := NewSubagentsPlanTool(rt, newPlannerToolTestRouter(t, planner))
+
+	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-plan")
+	res, err := runTool.Execute(ctx, json.RawMessage(`{"goal":"analyze auth flow changes"}`))
+	if err != nil {
+		t.Fatalf("subagents_plan execute: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected planner error payload, got %s", res.Text())
+	}
+	if !strings.Contains(res.Text(), "planner unavailable") {
+		t.Fatalf("expected planner error message, got %s", res.Text())
+	}
+}
+
+func TestSubagentsPlanTool_RejectsPlannerPlanOverMaxSteps(t *testing.T) {
+	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		return "summary for " + prompt, nil
+	})
+	planner := &plannerToolTestClient{
+		response: `{
+  "steps":[
+    {"id":"one","mode":"parallel","tasks":[{"id":"a","prompt":"inspect a"}]},
+    {"id":"two","mode":"parallel","tasks":[{"id":"b","prompt":"inspect b"}]}
+  ]
+}`,
+	}
+	runTool := NewSubagentsPlanTool(rt, newPlannerToolTestRouter(t, planner))
+
+	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-plan")
+	res, err := runTool.Execute(ctx, json.RawMessage(`{"goal":"analyze auth flow changes","max_steps":1}`))
+	if err != nil {
+		t.Fatalf("subagents_plan execute: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected max_steps error, got %s", res.Text())
+	}
+	if !strings.Contains(res.Text(), "exceeds max_steps") {
+		t.Fatalf("expected max_steps diagnostic, got %s", res.Text())
+	}
+}
+
+func TestSubagentsPlanTool_RejectsEmptyPlannerSteps(t *testing.T) {
+	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		return "summary for " + prompt, nil
+	})
+	planner := &plannerToolTestClient{response: `{"steps":[]}`}
+	runTool := NewSubagentsPlanTool(rt, newPlannerToolTestRouter(t, planner))
+
+	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-plan")
+	res, err := runTool.Execute(ctx, json.RawMessage(`{"goal":"analyze auth flow changes"}`))
+	if err != nil {
+		t.Fatalf("subagents_plan execute: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected empty-step error, got %s", res.Text())
+	}
+	if !strings.Contains(res.Text(), "empty step list") {
+		t.Fatalf("expected empty step diagnostic, got %s", res.Text())
 	}
 }
 

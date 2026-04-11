@@ -598,12 +598,6 @@ func plannerTaskForTarget(plan *subagentFlowInput, target string) *subagentFlowT
 			if targetDir != "" && strings.Contains(text, targetDir) {
 				score += 2
 			}
-			if strings.Contains(text, "config") && strings.Contains(strings.ToLower(target), "config") {
-				score++
-			}
-			if strings.Contains(text, "readme") && strings.Contains(strings.ToLower(targetBase), "readme") {
-				score++
-			}
 			if score > bestScore {
 				bestScore = score
 				best = task

@@ -3,10 +3,12 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/usage"
 )
@@ -171,5 +173,181 @@ func TestSubagentsOrchestrateTool_RejectsParallelDependencyWithinSameStep(t *tes
 	}
 	if !strings.Contains(res.Text(), "parallel step") {
 		t.Fatalf("expected parallel dependency diagnostic, got %s", res.Text())
+	}
+}
+
+func TestSubagentsOrchestrateTool_RejectsIncompletePlaceholderReference(t *testing.T) {
+	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		return "summary for " + prompt, nil
+	})
+
+	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-orchestrate")
+	ctx = usage.WithCallMeta(ctx, usage.CallMeta{
+		Source:    "chat",
+		SessionID: "sess-main",
+	})
+	runTool := NewSubagentsOrchestrateTool(rt)
+	res, err := runTool.Execute(ctx, json.RawMessage(`{
+		"steps":[
+			{
+				"id":"combine",
+				"mode":"sequential",
+				"tasks":[
+					{"id":"report","prompt":"combine {{task.missing.summary}}"}
+				]
+			}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("subagents_orchestrate execute: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected placeholder error, got %s", res.Text())
+	}
+	if !strings.Contains(res.Text(), "incomplete task: missing") {
+		t.Fatalf("expected placeholder diagnostic, got %s", res.Text())
+	}
+}
+
+func TestSubagentsOrchestrateTool_CancelsSpawnedRunsWhenParallelSpawnFails(t *testing.T) {
+	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(ctx context.Context, _ string, _ string, _ []string, _ string) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+
+	origSpawn := subagentFlowSpawn
+	origCancel := subagentFlowCancel
+	t.Cleanup(func() {
+		subagentFlowSpawn = origSpawn
+		subagentFlowCancel = origCancel
+	})
+
+	var firstRunID string
+	spawnCalls := 0
+	subagentFlowSpawn = func(runtime *gateway.Runtime, ctx context.Context, req gateway.SpawnRequest) (gateway.Run, error) {
+		spawnCalls++
+		if spawnCalls == 2 {
+			return gateway.Run{}, errors.New("forced spawn failure")
+		}
+		run, err := origSpawn(runtime, ctx, req)
+		if err == nil {
+			firstRunID = run.ID
+		}
+		return run, err
+	}
+
+	canceledRunIDs := []string{}
+	subagentFlowCancel = func(runtime *gateway.Runtime, workspaceID string, runs []gateway.Run) {
+		for _, run := range runs {
+			canceledRunIDs = append(canceledRunIDs, run.ID)
+		}
+		origCancel(runtime, workspaceID, runs)
+	}
+
+	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-orchestrate")
+	ctx = usage.WithCallMeta(ctx, usage.CallMeta{
+		Source:    "chat",
+		SessionID: "sess-main",
+	})
+	runTool := NewSubagentsOrchestrateTool(rt)
+	res, err := runTool.Execute(ctx, json.RawMessage(`{
+		"steps":[
+			{
+				"id":"research",
+				"mode":"parallel",
+				"tasks":[
+					{"id":"one","prompt":"inspect one"},
+					{"id":"two","prompt":"inspect two"}
+				]
+			}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("subagents_orchestrate execute: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected spawn failure payload, got %s", res.Text())
+	}
+	if !strings.Contains(res.Text(), "forced spawn failure") {
+		t.Fatalf("expected spawn failure diagnostic, got %s", res.Text())
+	}
+	if firstRunID == "" {
+		t.Fatal("expected first run to be spawned before injected failure")
+	}
+	if len(canceledRunIDs) != 1 || canceledRunIDs[0] != firstRunID {
+		t.Fatalf("expected spawned run %q to be canceled, got %+v", firstRunID, canceledRunIDs)
+	}
+	canceled, ok := rt.GetByWorkspace("ws-orchestrate", firstRunID)
+	if !ok {
+		t.Fatalf("expected canceled run %q to remain queryable", firstRunID)
+	}
+	if canceled.Status != gateway.RunStatusCanceled {
+		t.Fatalf("expected canceled run status, got %+v", canceled)
+	}
+}
+
+func TestSubagentsOrchestrateTool_StopsSequentialStepAfterFailure(t *testing.T) {
+	started := []string{}
+	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		started = append(started, prompt)
+		if prompt == "inspect backend" {
+			return "", errors.New("backend failed")
+		}
+		return "summary for " + prompt, nil
+	})
+
+	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-orchestrate")
+	ctx = usage.WithCallMeta(ctx, usage.CallMeta{
+		Source:    "chat",
+		SessionID: "sess-main",
+	})
+	runTool := NewSubagentsOrchestrateTool(rt)
+	res, err := runTool.Execute(ctx, json.RawMessage(`{
+		"steps":[
+			{
+				"id":"research",
+				"mode":"sequential",
+				"tasks":[
+					{"id":"backend","prompt":"inspect backend"},
+					{"id":"docs","prompt":"inspect docs"}
+				]
+			}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("subagents_orchestrate execute: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected sequential failure payload, got %s", res.Text())
+	}
+	if len(started) != 1 || started[0] != "inspect backend" {
+		t.Fatalf("expected only failing task to run, got %+v", started)
+	}
+
+	var payload struct {
+		Steps []struct {
+			Status      string `json:"status"`
+			FailedTasks int    `json:"failed_tasks"`
+			Tasks       []struct {
+				ID     string `json:"id"`
+				Status string `json:"status"`
+				Error  string `json:"error"`
+			} `json:"tasks"`
+		} `json:"steps"`
+	}
+	if err := json.Unmarshal([]byte(res.Text()), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if len(payload.Steps) != 1 {
+		t.Fatalf("expected one step, got %+v", payload)
+	}
+	if payload.Steps[0].Status != "failed" || payload.Steps[0].FailedTasks != 1 {
+		t.Fatalf("expected failed sequential step with one failed task, got %+v", payload.Steps[0])
+	}
+	if len(payload.Steps[0].Tasks) != 1 || payload.Steps[0].Tasks[0].ID != "backend" {
+		t.Fatalf("expected only backend task output, got %+v", payload.Steps[0].Tasks)
+	}
+	if payload.Steps[0].Tasks[0].Status != string(gateway.RunStatusFailed) {
+		t.Fatalf("expected backend task to fail, got %+v", payload.Steps[0].Tasks[0])
 	}
 }
