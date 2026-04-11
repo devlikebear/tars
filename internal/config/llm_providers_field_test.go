@@ -59,7 +59,9 @@ func TestParseLLMProvidersJSON_ValidInput(t *testing.T) {
 }
 
 func TestParseLLMProvidersJSON_EnvVarExpansion(t *testing.T) {
-	t.Setenv("TARS_TEST_PROVIDER_KEY", "sk-live-xyz-789")
+	// Low-entropy placeholder values to avoid tripping gitleaks'
+	// generic-api-key rule in CI.
+	t.Setenv("TARS_TEST_PROVIDER_KEY", "test-env-key-value")
 	t.Setenv("TARS_TEST_PROVIDER_URL", "https://custom.example.com")
 
 	raw := `{
@@ -76,8 +78,8 @@ func TestParseLLMProvidersJSON_EnvVarExpansion(t *testing.T) {
 	if !ok {
 		t.Fatal("missing live alias")
 	}
-	if live.APIKey != "sk-live-xyz-789" {
-		t.Errorf("APIKey = %q, want sk-live-xyz-789 (env expanded)", live.APIKey)
+	if live.APIKey != "test-env-key-value" {
+		t.Errorf("APIKey = %q, want test-env-key-value (env expanded)", live.APIKey)
 	}
 	if live.BaseURL != "https://custom.example.com" {
 		t.Errorf("BaseURL = %q, want https://custom.example.com (env expanded)", live.BaseURL)
