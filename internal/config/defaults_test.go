@@ -181,14 +181,17 @@ func TestLoad_DefaultOnly(t *testing.T) {
 	if cfg.WorkspaceDir != DefaultWorkspaceDir() {
 		t.Fatalf("expected WorkspaceDir %q, got %q", DefaultWorkspaceDir(), cfg.WorkspaceDir)
 	}
-	if cfg.LLMProvider != "anthropic" {
-		t.Fatalf("expected LLMProvider anthropic, got %q", cfg.LLMProvider)
+	// Default Config (no YAML, no env) has an empty provider pool — users
+	// must define llm_providers / llm_tiers in their config. Only the
+	// default tier gets a fallback value.
+	if len(cfg.LLMProviders) != 0 {
+		t.Fatalf("expected empty LLMProviders by default, got %d entries", len(cfg.LLMProviders))
 	}
-	if cfg.LLMAuthMode != "api-key" {
-		t.Fatalf("expected LLMAuthMode api-key, got %q", cfg.LLMAuthMode)
+	if len(cfg.LLMTiers) != 0 {
+		t.Fatalf("expected empty LLMTiers by default, got %d entries", len(cfg.LLMTiers))
 	}
-	if cfg.LLMModel != "claude-3-5-haiku-latest" {
-		t.Fatalf("expected LLMModel claude-3-5-haiku-latest, got %q", cfg.LLMModel)
+	if cfg.LLMDefaultTier != "standard" {
+		t.Fatalf("expected LLMDefaultTier standard, got %q", cfg.LLMDefaultTier)
 	}
 	if cfg.MemoryEmbedProvider != "gemini" {
 		t.Fatalf("expected MemoryEmbedProvider gemini, got %q", cfg.MemoryEmbedProvider)
@@ -216,7 +219,27 @@ func TestLoad_DefaultOnly(t *testing.T) {
 func TestLoad_YAMLOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	content := "mode: service\nworkspace_dir: ./tenant-workspace\nllm_provider: openai\nllm_auth_mode: oauth\nllm_oauth_provider: claude-code\nllm_base_url: http://localhost:8888/v1\nllm_api_key: llm-yaml-key\nllm_model: llm-yaml-model\n"
+	content := `
+mode: service
+workspace_dir: ./tenant-workspace
+llm_providers:
+  primary:
+    kind: openai
+    auth_mode: api-key
+    api_key: llm-yaml-key
+    base_url: http://localhost:8888/v1
+llm_tiers:
+  heavy:
+    provider: primary
+    model: llm-yaml-model
+  standard:
+    provider: primary
+    model: llm-yaml-model
+  light:
+    provider: primary
+    model: llm-yaml-model
+llm_default_tier: standard
+`
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -232,45 +255,58 @@ func TestLoad_YAMLOverridesDefault(t *testing.T) {
 	if cfg.WorkspaceDir != "./tenant-workspace" {
 		t.Fatalf("expected WorkspaceDir ./tenant-workspace, got %q", cfg.WorkspaceDir)
 	}
-	if cfg.LLMProvider != "openai" {
-		t.Fatalf("expected LLMProvider from yaml, got %q", cfg.LLMProvider)
+	primary, ok := cfg.LLMProviders["primary"]
+	if !ok {
+		t.Fatalf("expected primary provider from yaml, got %+v", cfg.LLMProviders)
 	}
-	if cfg.LLMAuthMode != "oauth" {
-		t.Fatalf("expected LLMAuthMode from yaml, got %q", cfg.LLMAuthMode)
+	if primary.Kind != "openai" {
+		t.Fatalf("expected primary Kind openai, got %q", primary.Kind)
 	}
-	if cfg.LLMOAuthProvider != "claude-code" {
-		t.Fatalf("expected LLMOAuthProvider from yaml, got %q", cfg.LLMOAuthProvider)
+	if primary.APIKey != "llm-yaml-key" {
+		t.Fatalf("expected primary APIKey from yaml, got %q", primary.APIKey)
 	}
-	if cfg.LLMBaseURL != "http://localhost:8888/v1" {
-		t.Fatalf("expected LLMBaseURL from yaml, got %q", cfg.LLMBaseURL)
+	if primary.BaseURL != "http://localhost:8888/v1" {
+		t.Fatalf("expected primary BaseURL from yaml, got %q", primary.BaseURL)
 	}
-	if cfg.LLMAPIKey != "llm-yaml-key" {
-		t.Fatalf("expected LLMAPIKey from yaml, got %q", cfg.LLMAPIKey)
+	if cfg.LLMDefaultTier != "standard" {
+		t.Fatalf("expected llm_default_tier standard, got %q", cfg.LLMDefaultTier)
 	}
-	if cfg.LLMModel != "llm-yaml-model" {
-		t.Fatalf("expected LLMModel from yaml, got %q", cfg.LLMModel)
+	if cfg.LLMTiers["heavy"].Model != "llm-yaml-model" {
+		t.Fatalf("expected heavy Model from yaml, got %q", cfg.LLMTiers["heavy"].Model)
 	}
 }
 
 func TestLoad_EnvOverridesYAML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	content := "mode: service\nworkspace_dir: ./tenant-workspace\nllm_provider: anthropic\nllm_auth_mode: api-key\nllm_oauth_provider: claude-code\nllm_base_url: http://localhost:8000\nllm_api_key: llm-yaml-key\nllm_model: llm-yaml-model\n"
+	content := `
+mode: service
+workspace_dir: ./tenant-workspace
+llm_providers:
+  yaml_prov:
+    kind: anthropic
+    auth_mode: api-key
+    api_key: yaml-key
+    base_url: http://localhost:8000
+llm_tiers:
+  heavy:
+    provider: yaml_prov
+    model: yaml-model
+  standard:
+    provider: yaml_prov
+    model: yaml-model
+  light:
+    provider: yaml_prov
+    model: yaml-model
+`
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
 	t.Setenv("TARS_MODE", "standalone")
 	t.Setenv("TARS_WORKSPACE_DIR", "./env-workspace")
-	t.Setenv("LLM_PROVIDER", "openai")
-	t.Setenv("LLM_AUTH_MODE", "oauth")
-	t.Setenv("LLM_OAUTH_PROVIDER", "claude-code")
-	t.Setenv("LLM_BASE_URL", "http://localhost:7000/v1")
-	t.Setenv("LLM_API_KEY", "llm-env-key")
-	t.Setenv("LLM_MODEL", "llm-env-model")
-	t.Setenv("LLM_REASONING_EFFORT", "veryhigh")
-	t.Setenv("LLM_THINKING_BUDGET", "4096")
-	t.Setenv("LLM_SERVICE_TIER", "priority")
+	t.Setenv("TARS_LLM_PROVIDERS_JSON", `{"env_prov":{"kind":"openai","auth_mode":"oauth","oauth_provider":"claude-code","base_url":"http://localhost:7000/v1","api_key":"env-key"}}`)
+	t.Setenv("TARS_LLM_TIERS_JSON", `{"heavy":{"provider":"env_prov","model":"env-model","reasoning_effort":"veryhigh","thinking_budget":4096,"service_tier":"priority"},"standard":{"provider":"env_prov","model":"env-model"},"light":{"provider":"env_prov","model":"env-model"}}`)
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -283,44 +319,42 @@ func TestLoad_EnvOverridesYAML(t *testing.T) {
 	if cfg.WorkspaceDir != "./env-workspace" {
 		t.Fatalf("expected WorkspaceDir ./env-workspace from env, got %q", cfg.WorkspaceDir)
 	}
-	if cfg.LLMProvider != "openai" {
-		t.Fatalf("expected LLMProvider from env, got %q", cfg.LLMProvider)
+	// Env override replaces the entire pool.
+	if _, ok := cfg.LLMProviders["yaml_prov"]; ok {
+		t.Fatal("expected env override to replace yaml pool")
 	}
-	if cfg.LLMAuthMode != "oauth" {
-		t.Fatalf("expected LLMAuthMode from env, got %q", cfg.LLMAuthMode)
+	envProv, ok := cfg.LLMProviders["env_prov"]
+	if !ok {
+		t.Fatalf("expected env_prov from env, got %+v", cfg.LLMProviders)
 	}
-	if cfg.LLMOAuthProvider != "claude-code" {
-		t.Fatalf("expected LLMOAuthProvider from env, got %q", cfg.LLMOAuthProvider)
+	if envProv.Kind != "openai" || envProv.AuthMode != "oauth" || envProv.OAuthProvider != "claude-code" {
+		t.Fatalf("env_prov fields mismatch: %+v", envProv)
 	}
-	if cfg.LLMBaseURL != "http://localhost:7000/v1" {
-		t.Fatalf("expected LLMBaseURL from env, got %q", cfg.LLMBaseURL)
+	// Env tier binding knobs are normalized by applyLLMPoolDefaults.
+	heavy := cfg.LLMTiers["heavy"]
+	if heavy.Provider != "env_prov" || heavy.Model != "env-model" {
+		t.Fatalf("heavy tier from env: %+v", heavy)
 	}
-	if cfg.LLMAPIKey != "llm-env-key" {
-		t.Fatalf("expected LLMAPIKey from env, got %q", cfg.LLMAPIKey)
+	if heavy.ReasoningEffort != "high" {
+		t.Fatalf("expected ReasoningEffort normalized (veryhigh→high), got %q", heavy.ReasoningEffort)
 	}
-	if cfg.LLMModel != "llm-env-model" {
-		t.Fatalf("expected LLMModel from env, got %q", cfg.LLMModel)
+	if heavy.ThinkingBudget != 4096 {
+		t.Fatalf("expected ThinkingBudget 4096, got %d", heavy.ThinkingBudget)
 	}
-	if cfg.LLMReasoningEffort != "high" {
-		t.Fatalf("expected LLMReasoningEffort normalized from env, got %q", cfg.LLMReasoningEffort)
-	}
-	if cfg.LLMThinkingBudget != 4096 {
-		t.Fatalf("expected LLMThinkingBudget from env, got %d", cfg.LLMThinkingBudget)
-	}
-	if cfg.LLMServiceTier != "priority" {
-		t.Fatalf("expected LLMServiceTier from env, got %q", cfg.LLMServiceTier)
+	if heavy.ServiceTier != "priority" {
+		t.Fatalf("expected ServiceTier priority, got %q", heavy.ServiceTier)
 	}
 }
 
-func TestLoad_LLMReasoningOptionsFromYAML(t *testing.T) {
+func TestLoad_LLMTierKnobsFromYAML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	content := strings.Join([]string{
-		"llm_provider: gemini-native",
-		"llm_reasoning_effort: minimal",
-		"llm_thinking_budget: 2048",
-		"llm_service_tier: flex",
-	}, "\n")
+		"llm_providers:",
+		"  p: {kind: gemini-native}",
+		"llm_tiers:",
+		"  heavy: {provider: p, model: gemini-2.5-pro, reasoning_effort: minimal, thinking_budget: 2048, service_tier: flex}",
+	}, "\n") + "\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -329,149 +363,161 @@ func TestLoad_LLMReasoningOptionsFromYAML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if cfg.LLMReasoningEffort != "minimal" {
-		t.Fatalf("expected reasoning effort minimal, got %q", cfg.LLMReasoningEffort)
+	heavy := cfg.LLMTiers["heavy"]
+	if heavy.ReasoningEffort != "minimal" {
+		t.Fatalf("expected reasoning effort minimal, got %q", heavy.ReasoningEffort)
 	}
-	if cfg.LLMThinkingBudget != 2048 {
-		t.Fatalf("expected thinking budget 2048, got %d", cfg.LLMThinkingBudget)
+	if heavy.ThinkingBudget != 2048 {
+		t.Fatalf("expected thinking budget 2048, got %d", heavy.ThinkingBudget)
 	}
-	if cfg.LLMServiceTier != "flex" {
-		t.Fatalf("expected service tier flex, got %q", cfg.LLMServiceTier)
+	if heavy.ServiceTier != "flex" {
+		t.Fatalf("expected service tier flex, got %q", heavy.ServiceTier)
 	}
 }
 
-func TestLoad_LLMProviderDefaults(t *testing.T) {
-	t.Setenv("LLM_PROVIDER", "openai")
+func TestLoad_LLMPoolKindDefaults_OpenAI(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "openai-key")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := "llm_providers:\n  p: {kind: openai}\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
-	cfg, err := Load("")
+	cfg, err := Load(path)
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("load: %v", err)
 	}
-
-	if cfg.LLMBaseURL != "https://api.openai.com/v1" {
-		t.Fatalf("expected openai default base url, got %q", cfg.LLMBaseURL)
+	p := cfg.LLMProviders["p"]
+	if p.BaseURL != "https://api.openai.com/v1" {
+		t.Errorf("expected openai default base url, got %q", p.BaseURL)
 	}
-	if cfg.LLMModel != "gpt-4o-mini" {
-		t.Fatalf("expected openai default model, got %q", cfg.LLMModel)
+	if p.APIKey != "openai-key" {
+		t.Errorf("expected OPENAI_API_KEY fallback, got %q", p.APIKey)
 	}
-	if cfg.LLMAPIKey != "openai-key" {
-		t.Fatalf("expected OPENAI_API_KEY fallback, got %q", cfg.LLMAPIKey)
+	if p.AuthMode != "api-key" {
+		t.Errorf("expected default AuthMode api-key, got %q", p.AuthMode)
 	}
 }
 
-func TestLoad_GeminiProviderDefaults(t *testing.T) {
-	t.Setenv("LLM_PROVIDER", "gemini")
+func TestLoad_LLMPoolKindDefaults_Gemini(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "gemini-key")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := "llm_providers:\n  p: {kind: gemini}\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
-	cfg, err := Load("")
+	cfg, err := Load(path)
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("load: %v", err)
 	}
-	if cfg.LLMProvider != "gemini" {
-		t.Fatalf("expected gemini provider, got %q", cfg.LLMProvider)
+	p := cfg.LLMProviders["p"]
+	if p.BaseURL != "https://generativelanguage.googleapis.com/v1beta/openai" {
+		t.Errorf("expected gemini base url, got %q", p.BaseURL)
 	}
-	if cfg.LLMBaseURL != "https://generativelanguage.googleapis.com/v1beta/openai" {
-		t.Fatalf("expected gemini base url, got %q", cfg.LLMBaseURL)
-	}
-	if cfg.LLMModel != "gemini-2.5-flash" {
-		t.Fatalf("expected gemini default model, got %q", cfg.LLMModel)
-	}
-	if cfg.LLMAPIKey != "gemini-key" {
-		t.Fatalf("expected GEMINI_API_KEY fallback, got %q", cfg.LLMAPIKey)
+	if p.APIKey != "gemini-key" {
+		t.Errorf("expected GEMINI_API_KEY fallback, got %q", p.APIKey)
 	}
 }
 
-func TestLoad_GeminiNativeProviderDefaults(t *testing.T) {
-	t.Setenv("LLM_PROVIDER", "gemini-native")
+func TestLoad_LLMPoolKindDefaults_GeminiNative(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "gemini-key")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := "llm_providers:\n  p: {kind: gemini-native}\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
-	cfg, err := Load("")
+	cfg, err := Load(path)
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("load: %v", err)
 	}
-	if cfg.LLMProvider != "gemini-native" {
-		t.Fatalf("expected gemini-native provider, got %q", cfg.LLMProvider)
+	p := cfg.LLMProviders["p"]
+	if p.BaseURL != "https://generativelanguage.googleapis.com/v1beta" {
+		t.Errorf("expected gemini-native base url, got %q", p.BaseURL)
 	}
-	if cfg.LLMBaseURL != "https://generativelanguage.googleapis.com/v1beta" {
-		t.Fatalf("expected gemini-native base url, got %q", cfg.LLMBaseURL)
-	}
-	if cfg.LLMModel != "gemini-2.5-flash" {
-		t.Fatalf("expected gemini-native default model, got %q", cfg.LLMModel)
-	}
-	if cfg.LLMAPIKey != "gemini-key" {
-		t.Fatalf("expected GEMINI_API_KEY fallback, got %q", cfg.LLMAPIKey)
+	if p.APIKey != "gemini-key" {
+		t.Errorf("expected GEMINI_API_KEY fallback, got %q", p.APIKey)
 	}
 }
 
-func TestLoad_GeminiOAuthDefaultsOAuthProvider(t *testing.T) {
-	t.Setenv("LLM_PROVIDER", "gemini")
-	t.Setenv("LLM_AUTH_MODE", "oauth")
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+func TestLoad_LLMPoolKindDefaults_Anthropic(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "anthropic-key")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := "llm_providers:\n  p: {kind: anthropic}\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
-	if cfg.LLMOAuthProvider != "google-antigravity" {
-		t.Fatalf("expected gemini oauth provider default google-antigravity, got %q", cfg.LLMOAuthProvider)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	p := cfg.LLMProviders["p"]
+	if p.BaseURL != "https://api.anthropic.com" {
+		t.Errorf("expected anthropic base url, got %q", p.BaseURL)
+	}
+	if p.APIKey != "anthropic-key" {
+		t.Errorf("expected ANTHROPIC_API_KEY fallback, got %q", p.APIKey)
 	}
 }
 
-func TestLoad_GeminiNativeOAuthDefaultsOAuthProvider(t *testing.T) {
-	t.Setenv("LLM_PROVIDER", "gemini-native")
-	t.Setenv("LLM_AUTH_MODE", "oauth")
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+func TestLoad_LLMPoolKindDefaults_OpenAICodex(t *testing.T) {
+	// Ensure codex oauth env vars are empty so we test the "api-key with
+	// no key → promote to oauth" fallback path.
+	t.Setenv("OPENAI_CODEX_OAUTH_TOKEN", "")
+	t.Setenv("TARS_OPENAI_CODEX_OAUTH_TOKEN", "")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := "llm_providers:\n  p: {kind: openai-codex, auth_mode: api-key}\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
-	if cfg.LLMOAuthProvider != "google-antigravity" {
-		t.Fatalf("expected gemini-native oauth provider default google-antigravity, got %q", cfg.LLMOAuthProvider)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	p := cfg.LLMProviders["p"]
+	if p.BaseURL != "https://chatgpt.com/backend-api" {
+		t.Errorf("expected openai-codex base url, got %q", p.BaseURL)
+	}
+	if p.AuthMode != "oauth" {
+		t.Errorf("expected api-key→oauth promotion when no key present, got %q", p.AuthMode)
+	}
+	if p.OAuthProvider != "openai-codex" {
+		t.Errorf("expected OAuthProvider openai-codex, got %q", p.OAuthProvider)
 	}
 }
 
-func TestLoad_OpenAICodexProviderDefaults(t *testing.T) {
-	t.Setenv("LLM_PROVIDER", "openai-codex")
+func TestLoad_LLMPoolGeminiOAuthDefaultsOAuthProvider(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := "llm_providers:\n  p: {kind: gemini, auth_mode: oauth}\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
-	cfg, err := Load("")
+	cfg, err := Load(path)
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("load: %v", err)
 	}
-	if cfg.LLMProvider != "openai-codex" {
-		t.Fatalf("expected openai-codex provider, got %q", cfg.LLMProvider)
-	}
-	if cfg.LLMBaseURL != "https://chatgpt.com/backend-api" {
-		t.Fatalf("expected openai-codex base url, got %q", cfg.LLMBaseURL)
-	}
-	if cfg.LLMModel != "gpt-5.3-codex" {
-		t.Fatalf("expected openai-codex default model gpt-5.3-codex, got %q", cfg.LLMModel)
-	}
-	if cfg.LLMAuthMode != "oauth" {
-		t.Fatalf("expected openai-codex default auth mode oauth, got %q", cfg.LLMAuthMode)
-	}
-	if cfg.LLMOAuthProvider != "openai-codex" {
-		t.Fatalf("expected openai-codex default oauth provider openai-codex, got %q", cfg.LLMOAuthProvider)
+	if got := cfg.LLMProviders["p"].OAuthProvider; got != "google-antigravity" {
+		t.Fatalf("expected gemini oauth provider default google-antigravity, got %q", got)
 	}
 }
 
-func TestLoad_ClaudeCodeCLIProviderDefaults(t *testing.T) {
-	t.Setenv("LLM_PROVIDER", "claude-code-cli")
-
+func TestLoad_LLMDefaultTierFallback(t *testing.T) {
 	cfg, err := Load("")
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("load: %v", err)
 	}
-	if cfg.LLMProvider != "claude-code-cli" {
-		t.Fatalf("expected claude-code-cli provider, got %q", cfg.LLMProvider)
-	}
-	if cfg.LLMModel != "sonnet" {
-		t.Fatalf("expected claude-code-cli default model sonnet, got %q", cfg.LLMModel)
-	}
-	if cfg.LLMAuthMode != "cli" {
-		t.Fatalf("expected claude-code-cli default auth mode cli, got %q", cfg.LLMAuthMode)
-	}
-	if cfg.LLMOAuthProvider != "" {
-		t.Fatalf("expected claude-code-cli oauth provider to stay empty, got %q", cfg.LLMOAuthProvider)
+	if cfg.LLMDefaultTier != "standard" {
+		t.Fatalf("expected default llm_default_tier=standard, got %q", cfg.LLMDefaultTier)
 	}
 }
 
@@ -663,10 +709,13 @@ func TestLoad_InvalidFormatReturnsError(t *testing.T) {
 }
 
 func TestLoad_YAMLExpandsEnvVars(t *testing.T) {
-	t.Setenv("TEST_SECRET_KEY", "expanded-value")
+	// Uses api_auth_token as a stand-in for testing ${VAR} expansion on
+	// top-level scalar fields. Nested fields (llm_providers etc.) have
+	// their own expansion path tested in llm_providers_field_test.go.
+	t.Setenv("TEST_SECRET_TOKEN", "expanded-value")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	content := "llm_api_key: ${TEST_SECRET_KEY}\n"
+	content := "api_auth_token: ${TEST_SECRET_TOKEN}\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -674,8 +723,8 @@ func TestLoad_YAMLExpandsEnvVars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if cfg.LLMAPIKey != "expanded-value" {
-		t.Fatalf("expected expanded value, got %q", cfg.LLMAPIKey)
+	if cfg.APIAuthToken != "expanded-value" {
+		t.Fatalf("expected expanded value, got %q", cfg.APIAuthToken)
 	}
 }
 

@@ -161,18 +161,54 @@ func checkDoctorAPIAuth(report *doctorReport, cfg config.Config) {
 }
 
 func checkDoctorLLMCredentials(report *doctorReport, cfg config.Config, configPath string) {
-	if strings.TrimSpace(strings.ToLower(cfg.LLMAuthMode)) != "api-key" {
-		report.add("ok", "llm credentials", fmt.Sprintf("provider=%s auth=%s", cfg.LLMProvider, cfg.LLMAuthMode))
+	resolved, err := config.ResolveAllLLMTiers(&cfg)
+	if err != nil {
+		report.add("fail", "llm credentials", fmt.Sprintf("resolve llm tiers: %v", err))
+		report.addHint("define llm_providers and llm_tiers in your config — see docs/plans/llm-provider-pool.md for the schema")
 		return
 	}
-	if strings.TrimSpace(cfg.LLMAPIKey) != "" {
-		report.add("ok", "llm credentials", fmt.Sprintf("provider=%s api key configured", cfg.LLMProvider))
+	if len(resolved) == 0 {
+		report.add("fail", "llm credentials", "no tiers configured in llm_tiers")
+		report.addHint("add heavy/standard/light entries under llm_tiers — see config/standalone.yaml for a template")
 		return
 	}
 
-	hint := llmCredentialHint(strings.TrimSpace(strings.ToLower(cfg.LLMProvider)), configPath)
-	report.add("fail", "llm credentials", fmt.Sprintf("provider=%s auth=api-key requires credentials", firstNonEmpty(cfg.LLMProvider, "unknown")))
-	report.addHint(hint)
+	// Check each resolved tier for credential presence per its auth mode.
+	var missing []string
+	for _, r := range resolved {
+		if r.AuthMode != "api-key" {
+			// oauth/cli modes don't require an api_key in config.
+			continue
+		}
+		if strings.TrimSpace(r.APIKey) == "" {
+			missing = append(missing, fmt.Sprintf("%s→%s/%s", r.Tier, r.ProviderAlias, r.Kind))
+		}
+	}
+
+	if len(missing) > 0 {
+		report.add("fail", "llm credentials", fmt.Sprintf("missing api_key for tiers: %s", strings.Join(missing, ", ")))
+		// Use the Kind of the first missing tier for the hint text.
+		firstKind := ""
+		for _, r := range resolved {
+			if r.AuthMode == "api-key" && strings.TrimSpace(r.APIKey) == "" {
+				firstKind = r.Kind
+				break
+			}
+		}
+		report.addHint(llmCredentialHint(firstKind, configPath))
+		return
+	}
+
+	// Summary: list each tier's kind/auth/model.
+	parts := make([]string, 0, len(resolved))
+	for _, tierName := range []string{"heavy", "standard", "light"} {
+		r, ok := resolved[tierName]
+		if !ok {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s/%s(auth=%s)", r.Tier, r.Kind, r.Model, r.AuthMode))
+	}
+	report.add("ok", "llm credentials", strings.Join(parts, " "))
 }
 
 func checkDoctorGatewayAgents(report *doctorReport, cfg config.Config) {
@@ -211,16 +247,25 @@ func checkDoctorGatewayAgents(report *doctorReport, cfg config.Config) {
 }
 
 func checkDoctorLLMRuntime(report *doctorReport, cfg config.Config) {
-	switch strings.TrimSpace(strings.ToLower(cfg.LLMProvider)) {
-	case "claude-code-cli":
-		path, err := llm.FindClaudeCodeCLIPath()
-		if err != nil {
-			report.add("fail", "llm runtime", err.Error())
-			report.addHint("install Claude Code or set `CLAUDE_CODE_CLI_PATH` to the local `claude` binary")
-			return
+	// Only check runtime for provider pool entries that actually need an
+	// external binary. Currently this is just claude-code-cli.
+	needsClaudeCLI := false
+	for _, p := range cfg.LLMProviders {
+		if strings.TrimSpace(strings.ToLower(p.Kind)) == "claude-code-cli" {
+			needsClaudeCLI = true
+			break
 		}
-		report.add("ok", "llm runtime", fmt.Sprintf("provider=%s cli=%s", cfg.LLMProvider, path))
 	}
+	if !needsClaudeCLI {
+		return
+	}
+	path, err := llm.FindClaudeCodeCLIPath()
+	if err != nil {
+		report.add("fail", "llm runtime", err.Error())
+		report.addHint("install Claude Code or set `CLAUDE_CODE_CLI_PATH` to the local `claude` binary")
+		return
+	}
+	report.add("ok", "llm runtime", fmt.Sprintf("claude-code-cli=%s", path))
 }
 
 func checkDoctorSemanticMemory(report *doctorReport, cfg config.Config, configPath string) {

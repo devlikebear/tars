@@ -55,65 +55,37 @@ type APIConfig struct {
 	APIMaxInflightAgentRuns   int
 }
 
+// LLMConfig holds the named provider pool + tier bindings that together
+// describe every LLM endpoint TARS will call. See
+// docs/plans/llm-provider-pool.md for the schema rationale.
+//
+// Legacy flat fields (LLMProvider, LLMAuthMode, ..., LLMTierHeavy/Standard/
+// Light) were removed in the cutover commit — user configs must migrate
+// to llm_providers + llm_tiers.
 type LLMConfig struct {
-	LLMProvider        string
-	LLMAuthMode        string
-	LLMOAuthProvider   string
-	LLMBaseURL         string
-	LLMAPIKey          string
-	LLMModel           string
-	LLMReasoningEffort string
-	LLMThinkingBudget  int
-	LLMServiceTier     string
-
-	// 3-tier model routing. Each tier is an optional override of the legacy
-	// LLM* fields above. When a tier's fields are empty, that tier falls
-	// back to the legacy LLM* configuration (preserving current behavior).
-	// See internal/llm.Router and internal/config/llm_tiers.go.
-	LLMDefaultTier  string
-	LLMTierHeavy    LLMTierSettings
-	LLMTierStandard LLMTierSettings
-	LLMTierLight    LLMTierSettings
-
-	// LLMRoleDefaults maps a canonical role name (e.g. "chat_main",
-	// "pulse_decider") to a tier name ("heavy"|"standard"|"light"). Roles
-	// absent from the map fall back to LLMDefaultTier.
-	LLMRoleDefaults map[string]string
-
 	// LLMProviders is the named provider pool. Each entry describes
 	// "where to call + how to authenticate" — credentials, base URL,
 	// auth mode. It does NOT carry a model; models are bound at the
 	// tier level via LLMTierBinding. One provider can therefore serve
 	// multiple models by being referenced from multiple tiers.
-	//
-	// See docs/plans/llm-provider-pool.md.
 	LLMProviders map[string]LLMProviderSettings
 
 	// LLMTiers binds each tier name (typically "heavy"/"standard"/"light")
 	// to a provider alias (key in LLMProviders) + a concrete model + the
 	// optional per-call knobs. A tier's binding.Provider must exist in
 	// LLMProviders or resolution errors.
-	//
-	// See docs/plans/llm-provider-pool.md.
 	LLMTiers map[string]LLMTierBinding
-}
 
-// LLMTierSettings holds the provider/model/knob overrides for a single
-// tier. Empty fields are inherited from the legacy top-level LLM* fields.
-//
-// Deprecated: replaced by LLMProviderSettings + LLMTierBinding in the
-// provider-pool schema. Removed in the cutover commit of the
-// llm-provider-pool refactor.
-type LLMTierSettings struct {
-	Provider        string
-	AuthMode        string
-	OAuthProvider   string
-	BaseURL         string
-	APIKey          string
-	Model           string
-	ReasoningEffort string
-	ThinkingBudget  int
-	ServiceTier     string
+	// LLMDefaultTier is the tier used when a role has no explicit
+	// mapping in LLMRoleDefaults. Must be a key in LLMTiers.
+	LLMDefaultTier string
+
+	// LLMRoleDefaults maps a canonical role name (e.g. "chat_main",
+	// "pulse_decider") to a tier name ("heavy"|"standard"|"light"). Roles
+	// absent from the map fall back to LLMDefaultTier. Role names are
+	// validated at router build time via llm.ParseRole — this package
+	// does not import internal/llm.
+	LLMRoleDefaults map[string]string
 }
 
 // LLMProviderSettings is one entry in the named provider pool. It holds
