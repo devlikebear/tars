@@ -69,6 +69,8 @@ const memoryToolSystemRule = `
 
 ## Runtime Tool Policy
 - For session management, use session(action=list|history|send|spawn|runs|agents|status).
-- For parallel read-only codebase exploration or diff review, prefer subagents_run.
+- For independent parallel read-only codebase exploration or diff review, prefer subagents_run.
+- When subagent work has dependencies, staged follow-up, or a required sequence, call subagents_plan first to create a staged flow, then call subagents_orchestrate with that plan.
+- When calling subagents_plan and the user provided exact file or directory paths, pass them through the tool's targets array verbatim. Do not shorten, rewrite, or relativize those paths.
 - For channel or gateway runtime operations, use message / gateway tools when available.
 `

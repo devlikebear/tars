@@ -41,6 +41,8 @@ type Run struct {
 	PolicyAllowedTools []string  `json:"policy_allowed_tools,omitempty"`
 	PolicyDeniedTools  []string  `json:"policy_denied_tools,omitempty"`
 	PolicyRiskMax      string    `json:"policy_risk_max,omitempty"`
+	FlowID             string    `json:"flow_id,omitempty"`
+	StepID             string    `json:"step_id,omitempty"`
 	Tier               string    `json:"tier,omitempty"`
 	CreatedAt          string    `json:"created_at"`
 	StartedAt          string    `json:"started_at,omitempty"`
@@ -60,6 +62,8 @@ type SpawnRequest struct {
 	Depth           int
 	SessionKind     string
 	SessionHidden   bool
+	FlowID          string
+	StepID          string
 	Tier            string
 }
 
