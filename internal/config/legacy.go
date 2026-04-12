@@ -69,7 +69,7 @@ func DetectLegacyKeys(path string) []LegacyKeyWarning {
 			continue
 		}
 		for _, prefix := range legacyKeyPrefixes {
-			if strings.HasPrefix(normalized, prefix.prefix) {
+			if strings.HasPrefix(normalized, prefix.prefix) && normalized != "llm_role_defaults" {
 				warnings = append(warnings, LegacyKeyWarning{Key: key, Migration: prefix.migration})
 				break
 			}

@@ -127,8 +127,10 @@ func TestApplyAPIMiddleware_DashboardRoutesWithoutAuthAreLoopbackOnlyWhenDashboa
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 
-			if rec.Code != http.StatusUnauthorized {
-				t.Fatalf("expected 401 for external dashboard path %q, got %d body=%q", path, rec.Code, rec.Body.String())
+			// Console static assets are always accessible (skip-path) — auth is
+			// enforced on the API endpoints the SPA calls, not the SPA itself.
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200 for external dashboard path %q (console is skip-path), got %d body=%q", path, rec.Code, rec.Body.String())
 			}
 		})
 	}
