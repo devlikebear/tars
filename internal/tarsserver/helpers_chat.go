@@ -95,11 +95,12 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 		KeepRecentTokens:    compaction.KeepRecentTokens,
 		KeepRecentFraction:  compaction.KeepRecentFraction,
 		SummaryInstructions: instructions,
-		SummaryBuilder: func(messages []session.Message) (string, error) {
+		SummaryBuilder: func(messages []session.Message, previousContext string) (string, error) {
 			if client == nil {
 				summaryMode = "deterministic"
 				return session.BuildCompactionSummaryWithOptions(messages, session.CompactionSummaryOptions{
 					FocusInstructions: instructions,
+					PreviousContext:   previousContext,
 				}), nil
 			}
 			ctx := context.Background()
@@ -108,7 +109,7 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 				ctx, cancel = context.WithTimeout(context.Background(), time.Duration(compaction.LLMTimeoutSeconds)*time.Second)
 				defer cancel()
 			}
-			built, usedLLM, err := buildLLMCompactionSummaryWithContext(ctx, messages, client, now, instructions)
+			built, usedLLM, err := buildLLMCompactionSummaryWithContext(ctx, messages, client, now, instructions, previousContext)
 			if usedLLM {
 				summaryMode = "llm"
 			} else {
@@ -158,23 +159,47 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 // because its caller (compactWithMemoryFlush) has already resolved the
 // router to a concrete client; passing the already-resolved client keeps
 // this pure-function boundary intact and testable.
-func buildLLMCompactionSummary(messages []session.Message, client llm.Client, now time.Time, instructions string) (string, error) {
-	summary, _, err := buildLLMCompactionSummaryWithContext(context.Background(), messages, client, now, instructions)
+func buildLLMCompactionSummary(messages []session.Message, client llm.Client, now time.Time, instructions string, previousContext string) (string, error) {
+	summary, _, err := buildLLMCompactionSummaryWithContext(context.Background(), messages, client, now, instructions, previousContext)
 	return summary, err
 }
 
-func buildLLMCompactionSummaryWithContext(ctx context.Context, messages []session.Message, client llm.Client, now time.Time, instructions string) (string, bool, error) {
-	const maxMessages = 80
-	msgs := messages
-	if len(msgs) > maxMessages {
-		msgs = msgs[len(msgs)-maxMessages:]
+func buildLLMCompactionSummaryWithContext(ctx context.Context, messages []session.Message, client llm.Client, now time.Time, instructions string, previousContext string) (string, bool, error) {
+	const inputTokenBudget = 8000
+
+	// Select messages within token budget, walking backward for recency bias
+	var selected []session.Message
+	tokens := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		cost := session.EstimateMessageTokenCost(messages[i])
+		if tokens+cost > inputTokenBudget && len(selected) > 0 {
+			break
+		}
+		selected = append(selected, messages[i])
+		tokens += cost
+	}
+	// Reverse to chronological order
+	for i, j := 0, len(selected)-1; i < j; i, j = i+1, j-1 {
+		selected[i], selected[j] = selected[j], selected[i]
+	}
+
+	// Proportional content length: more messages → shorter each; fewer → longer each
+	maxContentLen := 800
+	if len(selected) > 0 {
+		maxContentLen = inputTokenBudget * 4 / len(selected)
+		if maxContentLen < 240 {
+			maxContentLen = 240
+		}
+		if maxContentLen > 800 {
+			maxContentLen = 800
+		}
 	}
 
 	var b strings.Builder
-	for _, m := range msgs {
+	for _, m := range selected {
 		content := strings.TrimSpace(strings.ReplaceAll(m.Content, "\n", " "))
-		if len(content) > 240 {
-			content = content[:240] + "..."
+		if len(content) > maxContentLen {
+			content = content[:maxContentLen] + "..."
 		}
 		_, _ = fmt.Fprintf(&b, "- [%s] %s\n", m.Role, content)
 	}
@@ -184,12 +209,19 @@ func buildLLMCompactionSummaryWithContext(ctx context.Context, messages []sessio
 		focusBlock = "Requested focus:\n" + focus + "\n\n"
 	}
 
+	previousBlock := ""
+	if strings.TrimSpace(previousContext) != "" {
+		previousBlock = "Previous compaction summary (PRESERVE all existing info, ADD new progress, move completed items to Done):\n" + previousContext + "\n\n"
+	}
+
 	userPrompt := fmt.Sprintf(
 		"Create a compact context summary for old chat messages.\n"+
+			"%s"+
 			"%s"+
 			"Keep concrete facts, goals, decisions, user preferences, unresolved tasks.\n"+
 			"Return plain markdown under 900 characters.\n"+
 			"Current UTC: %s\n\nMessages:\n%s",
+		previousBlock,
 		focusBlock,
 		now.UTC().Format(time.RFC3339),
 		b.String(),
@@ -208,6 +240,7 @@ func buildLLMCompactionSummaryWithContext(ctx context.Context, messages []sessio
 	if err != nil {
 		return session.BuildCompactionSummaryWithOptions(messages, session.CompactionSummaryOptions{
 			FocusInstructions: instructions,
+			PreviousContext:   previousContext,
 		}), false, nil
 	}
 
@@ -215,6 +248,7 @@ func buildLLMCompactionSummaryWithContext(ctx context.Context, messages []sessio
 	if summary == "" {
 		return session.BuildCompactionSummaryWithOptions(messages, session.CompactionSummaryOptions{
 			FocusInstructions: instructions,
+			PreviousContext:   previousContext,
 		}), false, nil
 	}
 	if strings.Contains(summary, "[COMPACTION SUMMARY]") {

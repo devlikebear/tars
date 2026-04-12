@@ -34,10 +34,9 @@ func TestBuildCompactionSummaryWithOptions_StructuredSectionsAndIdentifiers(t *t
 	for _, needle := range []string{
 		"[COMPACTION SUMMARY]",
 		"Requested Focus:",
-		"Current Goal:",
-		"Identifiers To Preserve:",
-		"Recent Context:",
-		"Open State:",
+		"Topic:",
+		"Active Identifiers:",
+		"Current State:",
 		"/compact",
 		"internal/session/compaction.go",
 		"feat/session-compaction-upgrade",
