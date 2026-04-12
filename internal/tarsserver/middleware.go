@@ -65,7 +65,7 @@ func dashboardLoopbackSkipPaths(cfg config.Config) []string {
 	if !dashboardAuthIsLoopbackOnly(cfg) {
 		return nil
 	}
-	return []string{"/console", "/console/", "/console/*", "/dashboards", "/dashboards/", "/ui/projects/*"}
+	return []string{"/console", "/console/", "/console/*"}
 }
 
 func dashboardAuthHealthzStatus(cfg config.Config) map[string]any {

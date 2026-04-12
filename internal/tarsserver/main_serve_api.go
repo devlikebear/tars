@@ -633,7 +633,6 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	if mux == nil {
 		return
 	}
-	legacyDashboard := newLegacyDashboardRedirectHandler()
 	mux.Handle("/v1/pulse/", handlers.pulse)
 	mux.Handle("/v1/reflection/", handlers.reflection)
 	mux.Handle("/v1/chat", handlers.chat)
@@ -657,8 +656,6 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 			mux.Handle(prefix, viteProxy)
 		}
 	}
-	mux.Handle("/dashboards", legacyDashboard)
-	mux.Handle("/dashboards/", legacyDashboard)
 	mux.Handle("/v1/usage/summary", handlers.usage)
 	mux.Handle("/v1/usage/limits", handlers.usage)
 	mux.Handle("/v1/ops/status", handlers.ops)
