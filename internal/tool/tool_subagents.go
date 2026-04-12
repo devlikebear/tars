@@ -19,19 +19,41 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
-    "agent":{"type":"string","description":"Optional safe prompt agent. Defaults to explorer."},
+	    "agent":{"type":"string","description":"Optional safe prompt agent. Defaults to explorer."},
+	    "mode":{"type":"string","enum":["parallel","consensus"],"description":"Execution mode. Defaults to parallel."},
+	    "consensus":{
+	      "type":"object",
+	      "properties":{
+	        "strategy":{"type":"string","enum":["synthesize","vote"]},
+	        "variants":{
+	          "type":"array",
+	          "minItems":1,
+	          "items":{
+	            "type":"object",
+	            "properties":{
+	              "alias":{"type":"string"},
+	              "model":{"type":"string"}
+	            },
+	            "required":["alias"],
+	            "additionalProperties":false
+	          }
+	        }
+	      },
+	      "additionalProperties":false
+	    },
     "timeout_ms":{"type":"integer","minimum":1000,"maximum":300000,"default":60000},
     "tasks":{
       "type":"array",
       "minItems":1,
       "maxItems":8,
-      "items":{
-        "type":"object",
-        "properties":{
-          "title":{"type":"string"},
-          "prompt":{"type":"string"},
-          "tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."}
-        },
+		"items":{
+			"type":"object",
+			"properties":{
+			  "title":{"type":"string"},
+			  "prompt":{"type":"string"},
+			  "tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."},
+			  "provider_override":{"type":"object","properties":{"alias":{"type":"string"},"model":{"type":"string"}},"required":["alias"],"additionalProperties":false}
+			},
         "required":["prompt"],
         "additionalProperties":false
       }
@@ -46,11 +68,20 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 			}
 			var input struct {
 				Agent     string `json:"agent,omitempty"`
-				TimeoutMS int    `json:"timeout_ms,omitempty"`
+				Mode      string `json:"mode,omitempty"`
+				Consensus struct {
+					Strategy string `json:"strategy,omitempty"`
+					Variants []struct {
+						Alias string `json:"alias,omitempty"`
+						Model string `json:"model,omitempty"`
+					} `json:"variants,omitempty"`
+				} `json:"consensus,omitempty"`
+				TimeoutMS int `json:"timeout_ms,omitempty"`
 				Tasks     []struct {
-					Title  string `json:"title,omitempty"`
-					Prompt string `json:"prompt"`
-					Tier   string `json:"tier,omitempty"`
+					Title            string                    `json:"title,omitempty"`
+					Prompt           string                    `json:"prompt"`
+					Tier             string                    `json:"tier,omitempty"`
+					ProviderOverride *gateway.ProviderOverride `json:"provider_override,omitempty"`
 				} `json:"tasks"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
@@ -63,7 +94,19 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
 			meta := usage.CallMetaFromContext(ctx)
 			maxThreads, maxDepth := runtime.SubagentLimits()
-			if maxThreads > 0 && len(input.Tasks) > maxThreads {
+			mode := strings.ToLower(strings.TrimSpace(input.Mode))
+			if mode == "" {
+				mode = "parallel"
+			}
+			if mode == "consensus" {
+				if len(input.Tasks) != 1 {
+					return JSONTextResult(map[string]any{"message": "consensus mode requires exactly one task"}, true), nil
+				}
+				if len(input.Consensus.Variants) == 0 {
+					return JSONTextResult(map[string]any{"message": "consensus variants are required"}, true), nil
+				}
+			}
+			if mode != "consensus" && maxThreads > 0 && len(input.Tasks) > maxThreads {
 				return JSONTextResult(map[string]any{
 					"message": fmt.Sprintf("requested %d tasks exceeds gateway_subagents_max_threads=%d", len(input.Tasks), maxThreads),
 				}, true), nil
@@ -125,24 +168,38 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				if title == "" {
 					title = "subagent"
 				}
+				providerOverride, overrideErr := normalizeProviderOverride(task.ProviderOverride)
+				if overrideErr != "" {
+					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
+					return JSONTextResult(map[string]any{"message": overrideErr}, true), nil
+				}
 				// Tier resolution: explicit task tier > agent tier > empty (router default).
 				taskTier := strings.ToLower(strings.TrimSpace(task.Tier))
 				if taskTier == "" {
 					taskTier = strings.ToLower(strings.TrimSpace(info.Tier))
 				}
-				run, err := runtime.Spawn(waitCtx, gateway.SpawnRequest{
-					WorkspaceID:     workspaceID,
-					Title:           title,
-					Prompt:          prompt,
-					Agent:           agentName,
-					ParentRunID:     parentRunID,
-					RootRunID:       rootRunID,
-					ParentSessionID: strings.TrimSpace(meta.SessionID),
-					Depth:           nextDepth,
-					SessionKind:     "subagent",
-					SessionHidden:   true,
-					Tier:            taskTier,
-				})
+				spawnReq := gateway.SpawnRequest{
+					WorkspaceID:      workspaceID,
+					Title:            title,
+					Prompt:           prompt,
+					Agent:            agentName,
+					ParentRunID:      parentRunID,
+					RootRunID:        rootRunID,
+					ParentSessionID:  strings.TrimSpace(meta.SessionID),
+					Depth:            nextDepth,
+					SessionKind:      "subagent",
+					SessionHidden:    true,
+					Tier:             taskTier,
+					ProviderOverride: providerOverride,
+				}
+				if mode == "consensus" {
+					spawnReq.Mode = "consensus"
+					spawnReq.Consensus = &gateway.ConsensusSpec{Strategy: strings.TrimSpace(input.Consensus.Strategy)}
+					for _, variant := range input.Consensus.Variants {
+						spawnReq.Consensus.Variants = append(spawnReq.Consensus.Variants, gateway.ProviderOverride{Alias: strings.TrimSpace(variant.Alias), Model: strings.TrimSpace(variant.Model)})
+					}
+				}
+				run, err := runtime.Spawn(waitCtx, spawnReq)
 				if err != nil {
 					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
 					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
@@ -158,6 +215,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				Title           string `json:"title"`
 				Status          string `json:"status"`
 				Tier            string `json:"tier,omitempty"`
+				ConsensusMode   string `json:"consensus_mode,omitempty"`
 				ParentRunID     string `json:"parent_run_id,omitempty"`
 				ParentSessionID string `json:"parent_session_id,omitempty"`
 				Depth           int    `json:"depth,omitempty"`
@@ -186,6 +244,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 					Title:           item.title,
 					Status:          string(final.Status),
 					Tier:            final.Tier,
+					ConsensusMode:   final.ConsensusMode,
 					ParentRunID:     final.ParentRunID,
 					ParentSessionID: final.ParentSessionID,
 					Depth:           final.Depth,
@@ -210,6 +269,17 @@ func cancelSubagentRuns(runtime *gateway.Runtime, workspaceID string, runs []gat
 	for _, run := range runs {
 		_, _ = runtime.CancelByWorkspace(workspaceID, run.ID)
 	}
+}
+
+func normalizeProviderOverride(value *gateway.ProviderOverride) (*gateway.ProviderOverride, string) {
+	override := gateway.CloneProviderOverride(value)
+	if override == nil {
+		return nil, ""
+	}
+	if strings.TrimSpace(override.Alias) == "" {
+		return nil, "provider_override.alias is required"
+	}
+	return override, ""
 }
 
 func validateSafeSubagent(info gateway.AgentInfo) string {

@@ -27,7 +27,9 @@ func newGatewayRuntimeForSubagentToolTests(
 		Description: "Read-only explorer",
 		PolicyMode:  "allowlist",
 		ToolsAllow:  []string{"read_file", "list_dir", "glob", "memory_search"},
-		RunPrompt:   runPrompt,
+		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, _ *gateway.ProviderOverride) (string, error) {
+			return runPrompt(ctx, runLabel, prompt, allowedTools, tier)
+		},
 	})
 	if err != nil {
 		t.Fatalf("new prompt executor: %v", err)

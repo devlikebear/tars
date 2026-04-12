@@ -140,6 +140,9 @@ func TestAgentRunsAPIHandler_AgentsListIncludesSourceEntryDefault(t *testing.T) 
 	if _, ok := first["tools_allow_groups"]; !ok {
 		t.Fatalf("expected tools_allow_groups field, payload=%+v", payload)
 	}
+	if _, ok := first["tools_deny_groups"]; !ok {
+		t.Fatalf("expected tools_deny_groups field, payload=%+v", payload)
+	}
 	if _, ok := first["tools_allow_patterns"]; !ok {
 		t.Fatalf("expected tools_allow_patterns field, payload=%+v", payload)
 	}
@@ -163,10 +166,13 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 		ToolsDeny:          []string{"exec"},
 		ToolsRiskMax:       "medium",
 		ToolsAllowGroups:   []string{"memory"},
+		ToolsDenyGroups:    []string{"shell"},
 		ToolsAllowPatterns: []string{"^read"},
 		SessionRoutingMode: "fixed",
 		SessionFixedID:     "sess_fixed",
-		RunPrompt: func(_ context.Context, _ string, _ string, _ []string, _ string) (string, error) {
+		Tier:               "light",
+		ProviderOverride:   &gateway.ProviderOverride{Alias: "gemini_fast", Model: "gemini-2.5-flash"},
+		RunPrompt: func(_ context.Context, _ string, _ string, _ []string, _ string, _ *gateway.ProviderOverride) (string, error) {
 			return "ok", nil
 		},
 	})
@@ -232,6 +238,10 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 	if !ok || len(groups) != 1 {
 		t.Fatalf("expected tools_allow_groups list, got %+v", researcher)
 	}
+	denyGroups, ok := researcher["tools_deny_groups"].([]any)
+	if !ok || len(denyGroups) != 1 {
+		t.Fatalf("expected tools_deny_groups list, got %+v", researcher)
+	}
 	patterns, ok := researcher["tools_allow_patterns"].([]any)
 	if !ok || len(patterns) != 1 {
 		t.Fatalf("expected tools_allow_patterns list, got %+v", researcher)
@@ -251,6 +261,18 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 	routing, _ := researcher["session_routing_mode"].(string)
 	if routing != "fixed" {
 		t.Fatalf("expected session_routing_mode=fixed, got %+v", researcher)
+	}
+	tier, _ := researcher["tier"].(string)
+	if tier != "light" {
+		t.Fatalf("expected tier=light, got %+v", researcher)
+	}
+	providerOverride, ok := researcher["provider_override"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected provider_override object, got %+v", researcher)
+	}
+	alias, _ := providerOverride["alias"].(string)
+	if alias != "gemini_fast" {
+		t.Fatalf("expected provider_override.alias=gemini_fast, got %+v", researcher)
 	}
 	fixedID, _ := researcher["session_fixed_id"].(string)
 	if fixedID != "sess_fixed" {
@@ -813,7 +835,7 @@ func TestGatewayAPIHandler_ReportsRunsRejectsInvalidLimit(t *testing.T) {
 func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(filepath.Join(workspace, "workspace"))
-	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string) (string, error) {
+	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string, _ *gateway.ProviderOverride) (string, error) {
 		return "ok", nil
 	}
 	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
@@ -821,7 +843,7 @@ func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 		WorkspaceDir: workspace,
 		SessionStore: store,
 		RunPrompt: func(ctx context.Context, runLabel string, prompt string) (string, error) {
-			return runPrompt(ctx, runLabel, prompt, nil, "")
+			return runPrompt(ctx, runLabel, prompt, nil, "", nil)
 		},
 	})
 	t.Cleanup(func() {

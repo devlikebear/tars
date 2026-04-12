@@ -14,25 +14,28 @@ import (
 // SessionToolConfig holds per-session tool/skill/MCP configuration.
 // nil slices mean "inherit all from system defaults".
 type SessionToolConfig struct {
-	ToolsEnabled  []string `json:"tools_enabled,omitempty"`
-	ToolsCustom   bool     `json:"tools_custom,omitempty"`
-	ToolsDisabled []string `json:"tools_disabled,omitempty"`
-	SkillsEnabled []string `json:"skills_enabled,omitempty"`
-	SkillsCustom  bool     `json:"skills_custom,omitempty"`
-	MCPEnabled    []string `json:"mcp_enabled,omitempty"`
+	ToolsEnabled     []string `json:"tools_enabled,omitempty"`
+	ToolsCustom      bool     `json:"tools_custom,omitempty"`
+	ToolsDisabled    []string `json:"tools_disabled,omitempty"`
+	ToolsAllowGroups []string `json:"tools_allow_groups,omitempty"`
+	ToolsDenyGroups  []string `json:"tools_deny_groups,omitempty"`
+	SkillsEnabled    []string `json:"skills_enabled,omitempty"`
+	SkillsCustom     bool     `json:"skills_custom,omitempty"`
+	MCPEnabled       []string `json:"mcp_enabled,omitempty"`
 }
 
 type Session struct {
-	ID             string             `json:"id"`
-	Title          string             `json:"title"`
-	Kind           string             `json:"kind,omitempty"`
-	Hidden         bool               `json:"hidden,omitempty"`
-	ToolConfig     *SessionToolConfig `json:"tool_config,omitempty"`
-	PromptOverride string             `json:"prompt_override,omitempty"`
-	WorkDirs       []string           `json:"work_dirs,omitempty"`
-	CurrentDir     string             `json:"current_dir,omitempty"`
-	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedAt      time.Time          `json:"updated_at"`
+	ID                 string             `json:"id"`
+	Title              string             `json:"title"`
+	Kind               string             `json:"kind,omitempty"`
+	Hidden             bool               `json:"hidden,omitempty"`
+	ToolConfig         *SessionToolConfig `json:"tool_config,omitempty"`
+	LastCompactionMode string             `json:"last_compaction_mode,omitempty"`
+	PromptOverride     string             `json:"prompt_override,omitempty"`
+	WorkDirs           []string           `json:"work_dirs,omitempty"`
+	CurrentDir         string             `json:"current_dir,omitempty"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
 }
 
 type Store struct {
@@ -505,6 +508,23 @@ func (s *Store) SetPromptOverride(id string, override string) error {
 		return fmt.Errorf("session not found")
 	}
 	sess.PromptOverride = override
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+func (s *Store) SetLastCompactionMode(id string, mode string) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	sess.LastCompactionMode = strings.TrimSpace(mode)
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)

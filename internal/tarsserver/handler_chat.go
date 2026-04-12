@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/agent"
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
@@ -523,10 +524,28 @@ type chatToolingOptions struct {
 	OpsManager                  *ops.Manager
 	ScheduleStore               *schedule.Store
 	ResearchService             *research.Service
+	Compaction                  chatCompactionOptions
+}
+
+type chatCompactionOptions struct {
+	TriggerTokens      int
+	KeepRecentTokens   int
+	KeepRecentFraction float64
+	LLMMode            string
+	LLMTimeoutSeconds  int
 }
 
 func defaultChatToolingOptions() chatToolingOptions {
-	return chatToolingOptions{}
+	defaults := config.Default()
+	return chatToolingOptions{
+		Compaction: chatCompactionOptions{
+			TriggerTokens:      defaults.CompactionTriggerTokens,
+			KeepRecentTokens:   defaults.CompactionKeepRecentTokens,
+			KeepRecentFraction: defaults.CompactionKeepRecentFraction,
+			LLMMode:            defaults.CompactionLLMMode,
+			LLMTimeoutSeconds:  defaults.CompactionLLMTimeoutSeconds,
+		},
+	}
 }
 
 func toolNamesFromSchemas(schemas []llm.ToolSchema) []string {
@@ -693,14 +712,17 @@ func newChatAPIHandlerWithRuntimeConfig(
 			Name        string `json:"name"`
 			Description string `json:"description"`
 			HighRisk    bool   `json:"high_risk"`
+			Group       string `json:"group,omitempty"`
 		}
 		schemas := registry.Schemas()
 		tools := make([]toolInfo, 0, len(schemas))
 		for _, s := range schemas {
+			canonical := tool.CanonicalToolName(s.Function.Name)
 			tools = append(tools, toolInfo{
 				Name:        s.Function.Name,
 				Description: s.Function.Description,
 				HighRisk:    isHighRiskToolName(s.Function.Name),
+				Group:       tool.ToolGroupForName(canonical),
 			})
 		}
 		// Include skills and MCP info if available
@@ -794,19 +816,23 @@ func newChatAPIHandlerWithRuntimeConfig(
 			sessionToolConfigs...,
 		)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"session_id":           sessionID,
-			"system_prompt":        systemPrompt,
-			"system_prompt_tokens": promptTokenEstimate(systemPrompt),
-			"history_tokens":       sumHistoryTokens(historySnapshot.Messages),
-			"history_messages":     len(historySnapshot.Messages),
-			"tool_count":           len(injectedSchemas),
-			"tool_names":           toolNamesFromSchemas(injectedSchemas),
-			"skill_count":          len(extSnapshot.Skills),
-			"skill_names":          skillNamesFromDefinitions(extSnapshot.Skills),
-			"memory_count":         contextDetails.RelevantMemoryCount,
-			"memory_tokens":        contextDetails.RelevantMemoryTokens,
-			"used_tool_names":      latestTurnUsedTools(historySnapshot.Messages),
-			"prompt_override":      sess.PromptOverride,
+			"session_id":                      sessionID,
+			"system_prompt":                   systemPrompt,
+			"system_prompt_tokens":            promptTokenEstimate(systemPrompt),
+			"history_tokens":                  sumHistoryTokens(historySnapshot.Messages),
+			"history_messages":                len(historySnapshot.Messages),
+			"tool_count":                      len(injectedSchemas),
+			"tool_names":                      toolNamesFromSchemas(injectedSchemas),
+			"skill_count":                     len(extSnapshot.Skills),
+			"skill_names":                     skillNamesFromDefinitions(extSnapshot.Skills),
+			"memory_count":                    contextDetails.RelevantMemoryCount,
+			"memory_tokens":                   contextDetails.RelevantMemoryTokens,
+			"compaction_trigger_tokens":       tooling.Compaction.TriggerTokens,
+			"compaction_keep_recent_tokens":   tooling.Compaction.KeepRecentTokens,
+			"compaction_keep_recent_fraction": tooling.Compaction.KeepRecentFraction,
+			"compaction_last_mode":            strings.TrimSpace(sess.LastCompactionMode),
+			"used_tool_names":                 latestTurnUsedTools(historySnapshot.Messages),
+			"prompt_override":                 sess.PromptOverride,
 		})
 	})
 	return mux

@@ -41,7 +41,7 @@ type memorySearchCandidate struct {
 	Timestamp time.Time
 }
 
-func NewMemorySearchTool(workspaceDir string, semantic *memory.Service) Tool {
+func NewMemorySearchTool(workspaceDir string, backend memory.Backend) Tool {
 	return Tool{
 		Name:        "memory_search",
 		Description: "Search knowledge-base notes, MEMORY.md, daily memory logs, and optionally past session transcripts for text snippets with source metadata.",
@@ -95,7 +95,7 @@ func NewMemorySearchTool(workspaceDir string, semantic *memory.Service) Tool {
 				includeSessions = *input.IncludeSessions
 			}
 
-			matches, message := runMemorySearch(context.Background(), workspaceDir, query, limit, includeMemory, includeDaily, includeKnowledge, includeSessions, semantic)
+			matches, message := runMemorySearch(context.Background(), workspaceDir, query, limit, includeMemory, includeDaily, includeKnowledge, includeSessions, backend)
 			payload := memorySearchResult{
 				Query:   query,
 				Limit:   limit,
@@ -123,7 +123,7 @@ type memorySearchFile struct {
 	MTime  time.Time
 }
 
-func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int, includeMemory, includeDaily, includeKnowledge, includeSessions bool, semantic *memory.Service) ([]memorySearchMatch, string) {
+func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int, includeMemory, includeDaily, includeKnowledge, includeSessions bool, backend memory.Backend) ([]memorySearchMatch, string) {
 	results := make([]memorySearchMatch, 0, limit)
 	terms := memorySearchTerms(query)
 	seen := map[string]struct{}{}
@@ -144,8 +144,8 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 		return len(results) >= limit
 	}
 
-	if semantic != nil {
-		hits, err := semantic.Search(ctx, memory.SearchRequest{
+	if backend != nil {
+		hits, err := backend.Search(ctx, memory.SearchRequest{
 			Query: query,
 			Limit: limit,
 		})
@@ -171,12 +171,12 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 	hasSearchableSource := false
 
 	if includeKnowledge {
-		knowledgeMatches, hasKnowledge := searchKnowledgeNotes(workspaceDir, query, terms, limit)
+		knowledgeMatches, hasKnowledge := searchKnowledgeNotes(ctx, backend, query, terms, limit)
 		hasSearchableSource = hasSearchableSource || hasKnowledge
 		candidates = append(candidates, knowledgeMatches...)
 	}
 
-	experienceMatches, hasExperiences := searchExperienceLog(workspaceDir, query, terms, limit)
+	experienceMatches, hasExperiences := searchExperienceLog(ctx, backend, query, terms, limit)
 	hasSearchableSource = hasSearchableSource || hasExperiences
 	candidates = append(candidates, experienceMatches...)
 
@@ -216,11 +216,11 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 	return results, ""
 }
 
-func searchKnowledgeNotes(workspaceDir, query string, terms []string, limit int) ([]memorySearchCandidate, bool) {
+func searchKnowledgeNotes(ctx context.Context, backend memory.Backend, query string, terms []string, limit int) ([]memorySearchCandidate, bool) {
 	if limit <= 0 {
 		return nil, false
 	}
-	items, err := memory.NewKnowledgeStore(workspaceDir, nil).List(memory.KnowledgeListOptions{
+	items, err := backend.ListKnowledgeNotes(ctx, memory.KnowledgeListOptions{
 		Limit: max(limit*6, 50),
 	})
 	if err != nil {
@@ -317,6 +317,34 @@ func searchSessionTranscripts(workspaceDir, query string, terms []string, limit 
 	return results, true
 }
 
+func searchExperienceLog(ctx context.Context, backend memory.Backend, query string, terms []string, limit int) ([]memorySearchCandidate, bool) {
+	if limit <= 0 {
+		return nil, false
+	}
+	items, err := backend.SearchExperiences(ctx, memory.SearchOptions{Limit: max(limit*6, 50)})
+	if err != nil {
+		return nil, false
+	}
+	results := make([]memorySearchCandidate, 0, len(items))
+	for _, item := range items {
+		corpus := strings.Join([]string{item.Category, item.Summary, strings.Join(item.Tags, " "), item.SourceSession}, "\n")
+		score := scoreMemorySearchText(query, terms, corpus)
+		if score == 0 {
+			continue
+		}
+		results = append(results, memorySearchCandidate{
+			Match: memorySearchMatch{
+				Source:  "experience:" + item.Category,
+				Date:    item.Timestamp.UTC().Format("2006-01-02"),
+				Snippet: item.Summary,
+			},
+			Score:     score + 80,
+			Timestamp: item.Timestamp.UTC(),
+		})
+	}
+	return results, len(items) > 0
+}
+
 func collectMemorySearchFiles(workspaceDir string, includeMemory, includeDaily bool) []memorySearchFile {
 	files := make([]memorySearchFile, 0, 8)
 	if includeMemory {
@@ -362,44 +390,6 @@ func collectMemorySearchFiles(workspaceDir string, includeMemory, includeDaily b
 		return files[i].MTime.After(files[j].MTime)
 	})
 	return files
-}
-
-func searchExperienceLog(workspaceDir, query string, terms []string, limit int) ([]memorySearchCandidate, bool) {
-	rows, err := memory.SearchExperiences(workspaceDir, memory.SearchOptions{Limit: 100})
-	if err != nil || len(rows) == 0 {
-		return nil, false
-	}
-	results := make([]memorySearchCandidate, 0, min(limit, len(rows)))
-	for _, row := range rows {
-		haystack := strings.Join([]string{
-			row.Summary,
-			row.Category,
-			strings.Join(row.Tags, " "),
-			row.SourceSession,
-		}, "\n")
-		score := scoreMemorySearchText(query, terms, haystack)
-		if score == 0 {
-			continue
-		}
-		source := "experience"
-		if category := strings.TrimSpace(row.Category); category != "" {
-			source += ":" + category
-		}
-		results = append(results, memorySearchCandidate{
-			Match: memorySearchMatch{
-				Source:  source,
-				Date:    row.Timestamp.UTC().Format("2006-01-02"),
-				Line:    0,
-				Snippet: strings.TrimSpace(row.Summary),
-			},
-			Score:     score + 160,
-			Timestamp: row.Timestamp.UTC(),
-		})
-		if len(results) >= limit {
-			break
-		}
-	}
-	return results, true
 }
 
 func searchMemoryFiles(files []memorySearchFile, query string, terms []string, limit int) []memorySearchCandidate {

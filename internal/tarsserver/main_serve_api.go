@@ -229,9 +229,11 @@ func buildAPIMux(
 	apiRunPromptWithTools := deps.runPromptWithTools
 	if cfg.ChannelsTelegramEnabled {
 		if runnerWithTelegram := newAgentPromptRunnerWithToolsAndMemory(
+			cfg,
 			cfg.WorkspaceDir,
 			deps.llmClient,
 			deps.llmRouter,
+			deps.usageTracker,
 			cfg.AgentMaxIterations,
 			logger,
 			semanticMemoryConfigFromConfig(cfg),
@@ -243,7 +245,7 @@ func buildAPIMux(
 	apiRunPrompt := deps.runPrompt
 	if apiRunPromptWithTools != nil {
 		apiRunPrompt = func(ctx context.Context, runLabel string, prompt string) (string, error) {
-			return apiRunPromptWithTools(ctx, runLabel, prompt, nil, "")
+			return apiRunPromptWithTools(ctx, runLabel, prompt, nil, "", nil)
 		}
 	}
 	watchdogState := newWatchdogWorkspaceState()
@@ -293,6 +295,13 @@ func buildAPIMux(
 		GatewayChannelsMaxMessagesPerChannel: cfg.GatewayChannelsMaxMessagesPerChannel,
 		GatewaySubagentsMaxThreads:           cfg.GatewaySubagentsMaxThreads,
 		GatewaySubagentsMaxDepth:             cfg.GatewaySubagentsMaxDepth,
+		GatewayConsensusEnabled:              cfg.GatewayConsensusEnabled,
+		GatewayConsensusMaxFanout:            cfg.GatewayConsensusMaxFanout,
+		GatewayConsensusBudgetTokens:         cfg.GatewayConsensusBudgetTokens,
+		GatewayConsensusBudgetUSD:            cfg.GatewayConsensusBudgetUSD,
+		GatewayConsensusTimeoutSeconds:       cfg.GatewayConsensusTimeoutSeconds,
+		GatewayConsensusAllowedAliases:       append([]string(nil), cfg.GatewayConsensusAllowedAliases...),
+		GatewayConsensusConcurrentRuns:       cfg.GatewayConsensusConcurrentRuns,
 		GatewayPersistenceDir:                cfg.GatewayPersistenceDir,
 		GatewayRestoreOnStartup:              cfg.GatewayRestoreOnStartup,
 		GatewayReportSummaryEnabled:          cfg.GatewayReportSummaryEnabled,
@@ -300,7 +309,23 @@ func buildAPIMux(
 		GatewayArchiveDir:                    cfg.GatewayArchiveDir,
 		GatewayArchiveRetentionDays:          cfg.GatewayArchiveRetentionDays,
 		GatewayArchiveMaxFileBytes:           cfg.GatewayArchiveMaxFileBytes,
-		Now:                                  nowFn,
+		ResolveProviderOverride: func(tier string, override *gateway.ProviderOverride) (gateway.ResolvedProviderOverride, error) {
+			if override == nil {
+				return gateway.ResolvedProviderOverride{}, nil
+			}
+			resolved, err := resolveProviderOverrideClient(cfg, cfg.WorkspaceDir, deps.usageTracker, tier, override)
+			if err != nil {
+				return gateway.ResolvedProviderOverride{}, err
+			}
+			return gateway.ResolvedProviderOverride{Alias: strings.TrimSpace(override.Alias), Kind: resolved.provider, Model: resolved.model, Tier: resolved.tier}, nil
+		},
+		EstimateTokensCost: func(provider, model string, inputTokens, outputTokens int) (float64, bool) {
+			if deps.usageTracker == nil {
+				return 0, false
+			}
+			return deps.usageTracker.EstimateCost(provider, model, llm.Usage{InputTokens: inputTokens, OutputTokens: outputTokens})
+		},
+		Now: nowFn,
 	})
 	gatewayRuntimeForTelegram = gatewayRuntime
 
@@ -338,6 +363,13 @@ func buildAPIMux(
 		processManager,
 		extensionsManager,
 		gatewayRuntime,
+		chatCompactionOptions{
+			TriggerTokens:      cfg.CompactionTriggerTokens,
+			KeepRecentTokens:   cfg.CompactionKeepRecentTokens,
+			KeepRecentFraction: cfg.CompactionKeepRecentFraction,
+			LLMMode:            cfg.CompactionLLMMode,
+			LLMTimeoutSeconds:  cfg.CompactionLLMTimeoutSeconds,
+		},
 		cfg.ToolsDefaultSet,
 		cfg.ToolsAllowHighRiskUser,
 		semanticMemoryConfigFromConfig(cfg),
@@ -532,7 +564,7 @@ func buildAPIMux(
 	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
 	filesystemHandler := newFilesystemBrowseHandler(logger)
 	workspaceFilesHandler := newWorkspaceFilesHandler(cfg.WorkspaceDir, logger)
-	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildSemanticMemoryService(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg)), logger)
+	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg), cfg.MemoryBackend), logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           pulseSetup.Handler,
 		reflection:      reflectionSetup.Handler,
@@ -654,6 +686,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/agent/agents", handlers.agentRuns)
 	mux.Handle("/v1/agent/runs", handlers.agentRuns)
 	mux.Handle("/v1/agent/runs/", handlers.agentRuns)
+	mux.Handle("/v1/gateway/runs", handlers.agentRuns)
+	mux.Handle("/v1/gateway/runs/", handlers.agentRuns)
 	mux.Handle("/v1/gateway/status", handlers.gateway)
 	mux.Handle("/v1/gateway/reload", handlers.gateway)
 	mux.Handle("/v1/gateway/restart", handlers.gateway)

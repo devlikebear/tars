@@ -13,11 +13,23 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type chatCompactionInfo struct {
+	Applied               bool
+	Mode                  string
+	OriginalCount         int
+	FinalCount            int
+	CompactedCount        int
+	TriggerTokens         int
+	EstimatedTokensBefore int
+	KeepRecentTokens      int
+	KeepRecentFraction    float64
+}
+
 // compactionClient resolves the Router to a concrete client for the
 // context_compactor role. Returns nil when router is nil or resolution
 // fails, letting callers fall back to the deterministic non-LLM summary.
-func compactionClient(router llm.Router) llm.Client {
-	if router == nil {
+func compactionClient(router llm.Router, mode string) llm.Client {
+	if router == nil || strings.EqualFold(strings.TrimSpace(mode), "deterministic") {
 		return nil
 	}
 	client, _, err := router.ClientFor(llm.RoleContextCompactor)
@@ -27,56 +39,82 @@ func compactionClient(router llm.Router) llm.Client {
 	return client
 }
 
-func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, router llm.Router, logger zerolog.Logger, semanticCfg ...memory.SemanticConfig) error {
+func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, router llm.Router, logger zerolog.Logger, compaction chatCompactionOptions, semanticCfg ...memory.SemanticConfig) (chatCompactionInfo, error) {
+	compaction = normalizeChatCompactionOptions(compaction)
 	messages, err := session.ReadMessages(transcriptPath)
 	if err != nil {
-		return err
+		return chatCompactionInfo{}, err
 	}
 	estimated := session.EstimateTokens(messages)
-	if estimated < autoCompactTriggerTokens {
-		return nil
+	info := chatCompactionInfo{
+		TriggerTokens:         compaction.TriggerTokens,
+		EstimatedTokensBefore: estimated,
+		KeepRecentTokens:      compaction.KeepRecentTokens,
+		KeepRecentFraction:    compaction.KeepRecentFraction,
+	}
+	if estimated < compaction.TriggerTokens {
+		return info, nil
 	}
 
 	now := time.Now().UTC()
-	result, err := compactWithMemoryFlush(
+	result, summaryMode, err := compactWithMemoryFlush(
 		workspaceDir,
 		transcriptPath,
 		sessionID,
-		autoCompactKeepRecent,
-		autoCompactKeepTokens,
-		autoCompactKeepShare,
+		0,
+		compaction,
 		"",
 		router,
 		now,
 		buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...)),
 	)
 	if err != nil {
-		return err
+		return info, err
 	}
+	info.Applied = result.Compacted
+	info.Mode = summaryMode
+	info.OriginalCount = result.OriginalCount
+	info.FinalCount = result.FinalCount
+	info.CompactedCount = result.CompactedCount
 	logger.Debug().
 		Str("session_id", sessionID).
 		Int("estimated_tokens", estimated).
 		Bool("compacted", result.Compacted).
 		Int("original_count", result.OriginalCount).
 		Int("final_count", result.FinalCount).
+		Str("summary_mode", summaryMode).
 		Msg("auto compaction evaluated")
-	return nil
+	return info, nil
 }
 
-func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, keepRecentTokens int, keepRecentFraction float64, instructions string, router llm.Router, now time.Time, semantic ...*memory.Service) (session.CompactResult, error) {
+func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, compaction chatCompactionOptions, instructions string, router llm.Router, now time.Time, semantic ...*memory.Service) (session.CompactResult, string, error) {
 	memService := firstSemanticService(semantic...)
-	client := compactionClient(router)
-	return session.CompactTranscriptWithOptions(transcriptPath, keepRecent, now, session.CompactOptions{
-		KeepRecentTokens:    keepRecentTokens,
-		KeepRecentFraction:  keepRecentFraction,
+	client := compactionClient(router, compaction.LLMMode)
+	summaryMode := "deterministic"
+	result, err := session.CompactTranscriptWithOptions(transcriptPath, keepRecent, now, session.CompactOptions{
+		KeepRecentTokens:    compaction.KeepRecentTokens,
+		KeepRecentFraction:  compaction.KeepRecentFraction,
 		SummaryInstructions: instructions,
 		SummaryBuilder: func(messages []session.Message) (string, error) {
 			if client == nil {
+				summaryMode = "deterministic"
 				return session.BuildCompactionSummaryWithOptions(messages, session.CompactionSummaryOptions{
 					FocusInstructions: instructions,
 				}), nil
 			}
-			return buildLLMCompactionSummary(messages, client, now, instructions)
+			ctx := context.Background()
+			if compaction.LLMTimeoutSeconds > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(context.Background(), time.Duration(compaction.LLMTimeoutSeconds)*time.Second)
+				defer cancel()
+			}
+			built, usedLLM, err := buildLLMCompactionSummaryWithContext(ctx, messages, client, now, instructions)
+			if usedLLM {
+				summaryMode = "llm"
+			} else {
+				summaryMode = "deterministic"
+			}
+			return built, err
 		},
 		BeforeRewrite: func(summary string, compactedCount int, originalCount int) error {
 			note := fmt.Sprintf("session %s compacted %d/%d messages", sessionID, compactedCount, originalCount)
@@ -107,6 +145,13 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 			return memService.IndexCompactionMemories(context.Background(), sessionID, items, now)
 		},
 	})
+	if err != nil {
+		return session.CompactResult{}, summaryMode, err
+	}
+	if !result.Compacted {
+		summaryMode = ""
+	}
+	return result, summaryMode, nil
 }
 
 // buildLLMCompactionSummary continues to take a resolved llm.Client
@@ -114,6 +159,11 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 // router to a concrete client; passing the already-resolved client keeps
 // this pure-function boundary intact and testable.
 func buildLLMCompactionSummary(messages []session.Message, client llm.Client, now time.Time, instructions string) (string, error) {
+	summary, _, err := buildLLMCompactionSummaryWithContext(context.Background(), messages, client, now, instructions)
+	return summary, err
+}
+
+func buildLLMCompactionSummaryWithContext(ctx context.Context, messages []session.Message, client llm.Client, now time.Time, instructions string) (string, bool, error) {
 	const maxMessages = 80
 	msgs := messages
 	if len(msgs) > maxMessages {
@@ -145,7 +195,7 @@ func buildLLMCompactionSummary(messages []session.Message, client llm.Client, no
 		b.String(),
 	)
 
-	resp, err := client.Chat(context.Background(), []llm.ChatMessage{
+	resp, err := client.Chat(ctx, []llm.ChatMessage{
 		{
 			Role:    "system",
 			Content: "You are a precise summarizer for context compaction. Output only the summary text.",
@@ -158,19 +208,19 @@ func buildLLMCompactionSummary(messages []session.Message, client llm.Client, no
 	if err != nil {
 		return session.BuildCompactionSummaryWithOptions(messages, session.CompactionSummaryOptions{
 			FocusInstructions: instructions,
-		}), nil
+		}), false, nil
 	}
 
 	summary := strings.TrimSpace(resp.Message.Content)
 	if summary == "" {
 		return session.BuildCompactionSummaryWithOptions(messages, session.CompactionSummaryOptions{
 			FocusInstructions: instructions,
-		}), nil
+		}), false, nil
 	}
 	if strings.Contains(summary, "[COMPACTION SUMMARY]") {
-		return summary, nil
+		return summary, true, nil
 	}
-	return "[COMPACTION SUMMARY]\n" + summary, nil
+	return "[COMPACTION SUMMARY]\n" + summary, true, nil
 }
 
 func buildLLMCompactionMemories(summary string, client llm.Client, now time.Time) ([]memory.CompactionMemory, error) {
@@ -238,6 +288,31 @@ func firstSemanticService(values ...*memory.Service) *memory.Service {
 		return nil
 	}
 	return values[0]
+}
+
+func normalizeChatCompactionOptions(opts chatCompactionOptions) chatCompactionOptions {
+	defaults := defaultChatToolingOptions().Compaction
+	if opts.TriggerTokens <= 0 {
+		opts.TriggerTokens = defaults.TriggerTokens
+	}
+	if opts.KeepRecentTokens <= 0 {
+		opts.KeepRecentTokens = defaults.KeepRecentTokens
+	}
+	if opts.KeepRecentFraction <= 0 {
+		opts.KeepRecentFraction = defaults.KeepRecentFraction
+	}
+	switch strings.TrimSpace(strings.ToLower(opts.LLMMode)) {
+	case "", "auto":
+		opts.LLMMode = defaults.LLMMode
+	case "deterministic":
+		opts.LLMMode = "deterministic"
+	default:
+		opts.LLMMode = defaults.LLMMode
+	}
+	if opts.LLMTimeoutSeconds <= 0 {
+		opts.LLMTimeoutSeconds = defaults.LLMTimeoutSeconds
+	}
+	return opts
 }
 
 func shouldForceMemoryToolCall(userMessage string) bool {

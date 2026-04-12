@@ -15,10 +15,11 @@ func TestMemoryKnowledgeTools_CRUD(t *testing.T) {
 		t.Fatalf("ensure workspace: %v", err)
 	}
 
-	listTool := NewMemoryKBListTool(root)
-	getTool := NewMemoryKBGetTool(root)
-	upsertTool := NewMemoryKBUpsertTool(root, nil)
-	deleteTool := NewMemoryKBDeleteTool(root, nil)
+	backend := memory.NewFileBackend(root, nil)
+	listTool := NewMemoryKBListTool(backend)
+	getTool := NewMemoryKBGetTool(backend)
+	upsertTool := NewMemoryKBUpsertTool(backend)
+	deleteTool := NewMemoryKBDeleteTool(backend)
 
 	createResult, err := upsertTool.Execute(context.Background(), json.RawMessage(`{
 		"title":"Coffee Preference",

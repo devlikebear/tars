@@ -45,7 +45,8 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 
 	var payload struct {
 		Tools []struct {
-			Name string `json:"name"`
+			Name  string `json:"name"`
+			Group string `json:"group"`
 		} `json:"tools"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
@@ -53,8 +54,10 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 	}
 
 	names := map[string]bool{}
+	groups := map[string]string{}
 	for _, item := range payload.Tools {
 		names[item.Name] = true
+		groups[item.Name] = item.Group
 	}
 	for _, want := range []string{
 		"read_file",
@@ -70,5 +73,11 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 		if !names[want] {
 			t.Fatalf("expected tool %q in /v1/chat/tools, got %+v", want, names)
 		}
+	}
+	if groups["read_file"] != "files" {
+		t.Fatalf("expected read_file to be tagged as files, got %+v", groups)
+	}
+	if groups["memory"] != "memory" {
+		t.Fatalf("expected memory to be tagged as memory, got %+v", groups)
 	}
 }

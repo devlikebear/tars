@@ -26,61 +26,71 @@ func DefaultWorkspaceDir() string {
 }
 
 const (
-	defaultMode                          = "standalone"
-	defaultSessionTelegramScope          = "main"
-	defaultAPIAuthMode                   = "required"
-	defaultDashboardAuthMode             = "inherit"
-	defaultAPIMaxInflightChat            = 2
-	defaultAPIMaxInflightAgentRuns       = 4
-	defaultMemoryEmbedProvider           = "gemini"
-	defaultMemoryEmbedModel              = "gemini-embedding-2-preview"
-	defaultMemoryEmbedDimensions         = 768
-	defaultUsageLimitDailyUSD            = 10.0
-	defaultUsageLimitWeeklyUSD           = 50.0
-	defaultUsageLimitMonthlyUSD          = 150.0
-	defaultUsageLimitMode                = "soft"
-	defaultAgentMaxIterations            = 8
-	defaultCronRunHistoryLimit           = 200
-	defaultAssistantHotkey               = "Ctrl+Option+Space"
-	defaultAssistantWhisperBin           = "whisper-cli"
-	defaultAssistantFFmpegBin            = "ffmpeg"
-	defaultAssistantTTSBin               = "say"
-	defaultScheduleTimezone              = "Asia/Seoul"
-	defaultToolsDefaultSet               = "standard"
-	defaultToolsWebSearchProvider        = "brave"
-	defaultPerplexityModel               = "sonar"
-	defaultPerplexityBaseURL             = "https://api.perplexity.ai/chat/completions"
-	defaultToolsWebSearchCacheTTLSeconds = 60
-	defaultVaultAddr                     = "http://127.0.0.1:8200"
-	defaultVaultAuthMode                 = "token"
-	defaultVaultTimeoutMS                = 1500
-	defaultVaultKVMount                  = "secret"
-	defaultVaultKVVersion                = 2
-	defaultVaultAppRoleMount             = "approle"
-	defaultBrowserDefaultProfile         = "managed"
-	defaultGatewayWatchDebounceMS        = 200
-	defaultGatewayRunsMaxRecords         = 2000
-	defaultGatewayChannelsMaxMessages    = 500
-	defaultGatewaySubagentsMaxThreads    = 4
-	defaultGatewaySubagentsMaxDepth      = 1
-	defaultGatewayArchiveRetentionDays   = 30
-	defaultGatewayArchiveMaxFileBytes    = 10485760
-	defaultChannelsTelegramDMPolicy      = "pairing"
-	defaultSkillsBundledDir              = "./skills"
-	defaultPluginsBundledDir             = "./plugins"
-	defaultOpenAIBaseURL                 = "https://api.openai.com/v1"
-	defaultOpenAIModel                   = "gpt-4o-mini"
-	defaultOpenAICodexBaseURL            = "https://chatgpt.com/backend-api"
-	defaultOpenAICodexModel              = "gpt-5.3-codex"
-	defaultClaudeCodeCLIModel            = "sonnet"
-	defaultGeminiBaseURL                 = "https://generativelanguage.googleapis.com/v1beta/openai"
-	defaultGeminiNativeBaseURL           = "https://generativelanguage.googleapis.com/v1beta"
-	defaultGeminiModel                   = "gemini-2.5-flash"
-	defaultAnthropicBaseURL              = "https://api.anthropic.com"
-	defaultAnthropicModel                = "claude-3-5-haiku-latest"
-	defaultOpenAICodexOAuthProvider      = "openai-codex"
-	defaultClaudeOAuthProvider           = "claude-code"
-	defaultGeminiOAuthProvider           = "google-antigravity"
+	defaultMode                           = "standalone"
+	defaultSessionTelegramScope           = "main"
+	defaultAPIAuthMode                    = "required"
+	defaultDashboardAuthMode              = "inherit"
+	defaultAPIMaxInflightChat             = 2
+	defaultAPIMaxInflightAgentRuns        = 4
+	defaultMemoryEmbedProvider            = "gemini"
+	defaultMemoryEmbedModel               = "gemini-embedding-2-preview"
+	defaultMemoryEmbedDimensions          = 768
+	defaultUsageLimitDailyUSD             = 10.0
+	defaultUsageLimitWeeklyUSD            = 50.0
+	defaultUsageLimitMonthlyUSD           = 150.0
+	defaultUsageLimitMode                 = "soft"
+	defaultAgentMaxIterations             = 8
+	defaultCronRunHistoryLimit            = 200
+	defaultAssistantHotkey                = "Ctrl+Option+Space"
+	defaultAssistantWhisperBin            = "whisper-cli"
+	defaultAssistantFFmpegBin             = "ffmpeg"
+	defaultAssistantTTSBin                = "say"
+	defaultCompactionTriggerTokens        = 100000
+	defaultCompactionKeepRecentTokens     = 12000
+	defaultCompactionKeepRecentFraction   = 0.30
+	defaultCompactionLLMMode              = "auto"
+	defaultCompactionLLMTimeoutSeconds    = 15
+	defaultScheduleTimezone               = "Asia/Seoul"
+	defaultToolsDefaultSet                = "standard"
+	defaultToolsWebSearchProvider         = "brave"
+	defaultPerplexityModel                = "sonar"
+	defaultPerplexityBaseURL              = "https://api.perplexity.ai/chat/completions"
+	defaultToolsWebSearchCacheTTLSeconds  = 60
+	defaultVaultAddr                      = "http://127.0.0.1:8200"
+	defaultVaultAuthMode                  = "token"
+	defaultVaultTimeoutMS                 = 1500
+	defaultVaultKVMount                   = "secret"
+	defaultVaultKVVersion                 = 2
+	defaultVaultAppRoleMount              = "approle"
+	defaultBrowserDefaultProfile          = "managed"
+	defaultGatewayWatchDebounceMS         = 200
+	defaultGatewayRunsMaxRecords          = 2000
+	defaultGatewayChannelsMaxMessages     = 500
+	defaultGatewaySubagentsMaxThreads     = 4
+	defaultGatewaySubagentsMaxDepth       = 1
+	defaultGatewayConsensusMaxFanout      = 3
+	defaultGatewayConsensusBudgetTokens   = 20000
+	defaultGatewayConsensusBudgetUSD      = 0.50
+	defaultGatewayConsensusTimeoutSecs    = 120
+	defaultGatewayConsensusConcurrentRuns = 1
+	defaultGatewayArchiveRetentionDays    = 30
+	defaultGatewayArchiveMaxFileBytes     = 10485760
+	defaultChannelsTelegramDMPolicy       = "pairing"
+	defaultSkillsBundledDir               = "./skills"
+	defaultPluginsBundledDir              = "./plugins"
+	defaultOpenAIBaseURL                  = "https://api.openai.com/v1"
+	defaultOpenAIModel                    = "gpt-4o-mini"
+	defaultOpenAICodexBaseURL             = "https://chatgpt.com/backend-api"
+	defaultOpenAICodexModel               = "gpt-5.3-codex"
+	defaultClaudeCodeCLIModel             = "sonnet"
+	defaultGeminiBaseURL                  = "https://generativelanguage.googleapis.com/v1beta/openai"
+	defaultGeminiNativeBaseURL            = "https://generativelanguage.googleapis.com/v1beta"
+	defaultGeminiModel                    = "gemini-2.5-flash"
+	defaultAnthropicBaseURL               = "https://api.anthropic.com"
+	defaultAnthropicModel                 = "claude-3-5-haiku-latest"
+	defaultOpenAICodexOAuthProvider       = "openai-codex"
+	defaultClaudeOAuthProvider            = "claude-code"
+	defaultGeminiOAuthProvider            = "google-antigravity"
 )
 
 func defaultConfigValues() Config {
@@ -102,6 +112,7 @@ func defaultConfigValues() Config {
 		// tiers so first-run works without any local config.
 		LLMConfig: LLMConfig{},
 		MemoryConfig: MemoryConfig{
+			MemoryBackend:         "file",
 			MemorySemanticEnabled: false,
 			MemoryEmbedProvider:   defaultMemoryEmbedProvider,
 			MemoryEmbedBaseURL:    defaultGeminiNativeBaseURL,
@@ -154,6 +165,13 @@ func defaultConfigValues() Config {
 			AssistantFFmpegBin:  defaultAssistantFFmpegBin,
 			AssistantTTSBin:     defaultAssistantTTSBin,
 		},
+		CompactionConfig: CompactionConfig{
+			CompactionTriggerTokens:      defaultCompactionTriggerTokens,
+			CompactionKeepRecentTokens:   defaultCompactionKeepRecentTokens,
+			CompactionKeepRecentFraction: defaultCompactionKeepRecentFraction,
+			CompactionLLMMode:            defaultCompactionLLMMode,
+			CompactionLLMTimeoutSeconds:  defaultCompactionLLMTimeoutSeconds,
+		},
 		ToolConfig: ToolConfig{
 			ToolsDefaultSet:                 defaultToolsDefaultSet,
 			ToolsWebSearchProvider:          defaultToolsWebSearchProvider,
@@ -184,6 +202,13 @@ func defaultConfigValues() Config {
 			GatewayChannelsMaxMessagesPerChannel: defaultGatewayChannelsMaxMessages,
 			GatewaySubagentsMaxThreads:           defaultGatewaySubagentsMaxThreads,
 			GatewaySubagentsMaxDepth:             defaultGatewaySubagentsMaxDepth,
+			GatewayConsensusEnabled:              false,
+			GatewayConsensusMaxFanout:            defaultGatewayConsensusMaxFanout,
+			GatewayConsensusBudgetTokens:         defaultGatewayConsensusBudgetTokens,
+			GatewayConsensusBudgetUSD:            defaultGatewayConsensusBudgetUSD,
+			GatewayConsensusTimeoutSeconds:       defaultGatewayConsensusTimeoutSecs,
+			GatewayConsensusAllowedAliases:       []string{},
+			GatewayConsensusConcurrentRuns:       defaultGatewayConsensusConcurrentRuns,
 			GatewayRestoreOnStartup:              true,
 			GatewayReportSummaryEnabled:          true,
 			GatewayArchiveEnabled:                false,

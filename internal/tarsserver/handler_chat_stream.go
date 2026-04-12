@@ -114,6 +114,12 @@ func (s *chatStreamWriter) contextInfo(info map[string]any) {
 	s.send(info)
 }
 
+func (s *chatStreamWriter) compactionApplied(info map[string]any) {
+	info["type"] = "compaction_applied"
+	info["session_id"] = s.sessionID
+	s.send(info)
+}
+
 func (s *chatStreamWriter) done(usage llm.Usage) {
 	s.send(map[string]any{
 		"type":       "done",

@@ -17,6 +17,7 @@ func TestConfig_UsesFocusedEmbeddedGroups(t *testing.T) {
 		"UsageConfig",
 		"AutomationConfig",
 		"AssistantConfig",
+		"CompactionConfig",
 		"ToolConfig",
 		"VaultConfig",
 		"BrowserConfig",

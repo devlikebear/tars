@@ -274,7 +274,7 @@ func TestRuntimeSpawn_PromptExecutorSessionRoutingModes(t *testing.T) {
 		PolicyMode:         "allowlist",
 		ToolsAllow:         []string{"read_file"},
 		SessionRoutingMode: "new",
-		RunPrompt: func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		RunPrompt: func(_ context.Context, _ string, prompt string, _ []string, _ string, _ *ProviderOverride) (string, error) {
 			return "new:" + prompt, nil
 		},
 	})
@@ -286,7 +286,7 @@ func TestRuntimeSpawn_PromptExecutorSessionRoutingModes(t *testing.T) {
 		PolicyMode:         "allowlist",
 		ToolsAllow:         []string{"read_file"},
 		SessionRoutingMode: "caller",
-		RunPrompt: func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		RunPrompt: func(_ context.Context, _ string, prompt string, _ []string, _ string, _ *ProviderOverride) (string, error) {
 			return "caller:" + prompt, nil
 		},
 	})
@@ -299,7 +299,7 @@ func TestRuntimeSpawn_PromptExecutorSessionRoutingModes(t *testing.T) {
 		ToolsAllow:         []string{"read_file"},
 		SessionRoutingMode: "fixed",
 		SessionFixedID:     fixedSession.ID,
-		RunPrompt: func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		RunPrompt: func(_ context.Context, _ string, prompt string, _ []string, _ string, _ *ProviderOverride) (string, error) {
 			return "fixed:" + prompt, nil
 		},
 	})

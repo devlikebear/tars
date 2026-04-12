@@ -8,6 +8,8 @@ import type {
   ConfigFile,
   ConfigSchema,
   HubInstalled,
+  GatewayRun,
+  GatewayRunEvent,
   HubRegistry,
   MCPServerStatus,
   MemoryAsset,
@@ -172,6 +174,37 @@ export async function deleteSession(sessionId: string): Promise<void> {
   })
 }
 
+export async function listGatewayRuns(limit = 30): Promise<GatewayRun[]> {
+	const payload = await requestJSON<{ runs: GatewayRun[] }>(`/v1/gateway/runs?limit=${limit}`)
+	return payload.runs ?? []
+}
+
+export async function getGatewayRun(runId: string): Promise<GatewayRun> {
+	return requestJSON<GatewayRun>(`/v1/gateway/runs/${encodeURIComponent(runId)}`)
+}
+
+export function streamGatewayRunEvents(
+	runId: string,
+	onEvent: (event: GatewayRunEvent) => void,
+	onError?: (message: string) => void,
+	onOpen?: () => void,
+): () => void {
+	const stream = new EventSource(`/v1/gateway/runs/${encodeURIComponent(runId)}/events`)
+	stream.onopen = () => {
+		onOpen?.()
+	}
+	stream.onmessage = (message) => {
+		if (!message.data) return
+		try {
+			onEvent(JSON.parse(message.data) as GatewayRunEvent)
+		} catch {
+			onError?.('Failed to parse gateway run event')
+		}
+	}
+	stream.onerror = () => onError?.('Gateway run event stream disconnected')
+	return () => stream.close()
+}
+
 export async function compactSession(sessionId: string): Promise<{ compacted: boolean }> {
   return requestJSON<{ compacted: boolean }>(
     `/v1/admin/sessions/${encodeURIComponent(sessionId)}/compact`,
@@ -297,6 +330,8 @@ export type SessionToolConfig = {
   tools_enabled?: string[]
   tools_custom?: boolean
   tools_disabled?: string[]
+  tools_allow_groups?: string[]
+  tools_deny_groups?: string[]
   skills_enabled?: string[]
   skills_custom?: boolean
   mcp_enabled?: string[]
@@ -318,6 +353,7 @@ export type ChatToolInfo = {
   name: string
   description: string
   high_risk: boolean
+  group?: string
 }
 
 export type ChatToolsResponse = {
@@ -344,6 +380,10 @@ export type ChatContextInfo = {
   skill_names?: string[]
   memory_count: number
   memory_tokens: number
+  compaction_trigger_tokens?: number
+  compaction_keep_recent_tokens?: number
+  compaction_keep_recent_fraction?: number
+  compaction_last_mode?: string
   used_tool_names?: string[]
   selected_skill_name?: string
   selected_skill_reason?: string

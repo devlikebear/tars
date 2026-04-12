@@ -33,6 +33,10 @@
       skill_names?: string[]
       memory_count?: number
       memory_tokens?: number
+      compaction_trigger_tokens?: number
+      compaction_keep_recent_tokens?: number
+      compaction_keep_recent_fraction?: number
+      compaction_last_mode?: string
       used_tool_names?: string[]
       selected_skill_name?: string
       selected_skill_reason?: string
@@ -65,6 +69,10 @@
     skill_names?: string[]
     memory_count?: number
     memory_tokens?: number
+    compaction_trigger_tokens?: number
+    compaction_keep_recent_tokens?: number
+    compaction_keep_recent_fraction?: number
+    compaction_last_mode?: string
     used_tool_names?: string[]
     selected_skill_name?: string
     selected_skill_reason?: string
@@ -208,6 +216,10 @@
           tool_count: event.tool_count,
           memory_count: event.memory_count,
           memory_tokens: event.memory_tokens,
+          compaction_trigger_tokens: event.compaction_trigger_tokens,
+          compaction_keep_recent_tokens: event.compaction_keep_recent_tokens,
+          compaction_keep_recent_fraction: event.compaction_keep_recent_fraction,
+          compaction_last_mode: event.compaction_last_mode ?? contextInfo.compaction_last_mode,
           tool_names: event.tool_names,
           skill_count: event.skill_count,
           skill_names: event.skill_names,
@@ -215,6 +227,15 @@
           selected_skill_name: event.selected_skill_name ?? contextInfo.selected_skill_name,
           selected_skill_reason: event.selected_skill_reason ?? contextInfo.selected_skill_reason,
         })
+        break
+      case 'compaction_applied':
+        publishContextInfo({
+          ...contextInfo,
+          compaction_last_mode: event.compaction_last_mode ?? event.mode ?? contextInfo.compaction_last_mode,
+          compaction_trigger_tokens: event.trigger_tokens ?? contextInfo.compaction_trigger_tokens,
+        })
+        chatStatusLine = ['compaction', event.mode, `${event.compacted_count ?? 0} compacted`]
+          .filter(Boolean).join(' · ')
         break
       case 'done': {
         chatSessionId = event.session_id?.trim() || chatSessionId

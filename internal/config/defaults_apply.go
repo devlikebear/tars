@@ -13,6 +13,7 @@ func applyDefaults(cfg *Config) {
 	defaults := defaultConfigValues()
 	applyCoreDefaults(cfg, defaults)
 	applyMemoryDefaults(cfg, defaults)
+	applyCompactionDefaults(cfg, defaults)
 	applyToolDefaults(cfg, defaults)
 	applyVaultDefaults(cfg, defaults)
 	applyBrowserDefaults(cfg, defaults)
@@ -159,6 +160,29 @@ func applyMemoryDefaults(cfg *Config, defaults Config) {
 	}
 }
 
+func applyCompactionDefaults(cfg *Config, defaults Config) {
+	if cfg.CompactionTriggerTokens <= 0 {
+		cfg.CompactionTriggerTokens = defaults.CompactionTriggerTokens
+	}
+	if cfg.CompactionKeepRecentTokens <= 0 {
+		cfg.CompactionKeepRecentTokens = defaults.CompactionKeepRecentTokens
+	}
+	if cfg.CompactionKeepRecentFraction <= 0 {
+		cfg.CompactionKeepRecentFraction = defaults.CompactionKeepRecentFraction
+	}
+	cfg.CompactionLLMMode = strings.TrimSpace(strings.ToLower(cfg.CompactionLLMMode))
+	switch cfg.CompactionLLMMode {
+	case "", "auto":
+		cfg.CompactionLLMMode = defaults.CompactionLLMMode
+	case "deterministic":
+	default:
+		cfg.CompactionLLMMode = defaults.CompactionLLMMode
+	}
+	if cfg.CompactionLLMTimeoutSeconds <= 0 {
+		cfg.CompactionLLMTimeoutSeconds = defaults.CompactionLLMTimeoutSeconds
+	}
+}
+
 func applyToolDefaults(cfg *Config, defaults Config) {
 	cfg.ToolsWebSearchProvider = strings.TrimSpace(strings.ToLower(cfg.ToolsWebSearchProvider))
 	if cfg.ToolsWebSearchProvider == "" {
@@ -233,6 +257,24 @@ func applyGatewayDefaults(cfg *Config, defaults Config) {
 	}
 	if cfg.GatewaySubagentsMaxDepth <= 0 {
 		cfg.GatewaySubagentsMaxDepth = defaults.GatewaySubagentsMaxDepth
+	}
+	if cfg.GatewayConsensusMaxFanout <= 0 {
+		cfg.GatewayConsensusMaxFanout = defaults.GatewayConsensusMaxFanout
+	}
+	if cfg.GatewayConsensusBudgetTokens <= 0 {
+		cfg.GatewayConsensusBudgetTokens = defaults.GatewayConsensusBudgetTokens
+	}
+	if cfg.GatewayConsensusBudgetUSD <= 0 {
+		cfg.GatewayConsensusBudgetUSD = defaults.GatewayConsensusBudgetUSD
+	}
+	if cfg.GatewayConsensusTimeoutSeconds <= 0 {
+		cfg.GatewayConsensusTimeoutSeconds = defaults.GatewayConsensusTimeoutSeconds
+	}
+	if cfg.GatewayConsensusAllowedAliases == nil {
+		cfg.GatewayConsensusAllowedAliases = append([]string{}, defaults.GatewayConsensusAllowedAliases...)
+	}
+	if cfg.GatewayConsensusConcurrentRuns <= 0 {
+		cfg.GatewayConsensusConcurrentRuns = defaults.GatewayConsensusConcurrentRuns
 	}
 	if strings.TrimSpace(cfg.GatewayPersistenceDir) == "" {
 		cfg.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway")

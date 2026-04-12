@@ -3,6 +3,7 @@ const chatPrefix = `${consoleBase}/chat`
 
 export type Route =
   | { view: 'chat'; sessionId?: string }
+  | { view: 'gateway'; runId?: string }
   | { view: 'memory' }
   | { view: 'sysprompt' }
   | { view: 'ops' }
@@ -14,7 +15,6 @@ export type Route =
 export function resolveRoute(pathname: string): Route {
   const path = pathname.trim()
 
-  // /console/chat or /console/chat/:sessionId
   if (path.startsWith(chatPrefix)) {
     const rest = path.slice(chatPrefix.length)
     if (rest.startsWith('/') && rest.length > 1) {
@@ -24,13 +24,21 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'chat' }
   }
 
-  // Legacy /console/sessions → redirect to chat
+  if (path.startsWith(`${consoleBase}/gateway/runs/`)) {
+    const runId = decodeURIComponent(path.slice(`${consoleBase}/gateway/runs/`.length).split('/')[0]?.trim() || '')
+    if (runId) return { view: 'gateway', runId }
+  }
+
   if (path.startsWith(`${consoleBase}/sessions`)) {
     return { view: 'chat' }
   }
 
   if (path.startsWith(`${consoleBase}/ops`)) {
     return { view: 'ops' }
+  }
+
+  if (path.startsWith(`${consoleBase}/gateway`)) {
+    return { view: 'gateway' }
   }
 
   if (path.startsWith(`${consoleBase}/memory`) || path.startsWith(`${consoleBase}/knowledge`)) {
@@ -50,7 +58,6 @@ export function resolveRoute(pathname: string): Route {
   }
 
   if (path.startsWith(`${consoleBase}/pulse`) || path.startsWith(`${consoleBase}/heartbeat`)) {
-    // legacy /console/heartbeat URLs redirect to the pulse view
     return { view: 'pulse' }
   }
 
@@ -58,16 +65,5 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'reflection' }
   }
 
-  // Default: /console → chat
   return { view: 'chat' }
-}
-
-export function chatPath(sessionId?: string): string {
-  if (sessionId) return `${chatPrefix}/${encodeURIComponent(sessionId)}`
-  return chatPrefix
-}
-
-export function isConsoleRoot(pathname: string): boolean {
-  const path = pathname.trim()
-  return path === consoleBase || path === `${consoleBase}/`
 }

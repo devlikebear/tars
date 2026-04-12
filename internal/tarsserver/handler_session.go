@@ -561,13 +561,17 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, router llm.
 		if req.KeepRecent <= 0 && req.KeepRecentTokens <= 0 {
 			keepRecentFraction = session.DefaultKeepRecentFraction
 		}
-		result, err := compactWithMemoryFlush(
+		result, _, err := compactWithMemoryFlush(
 			resolvedWorkspaceDir,
 			reqStore.TranscriptPath(sessionID),
 			sessionID,
 			req.KeepRecent,
-			req.KeepRecentTokens,
-			keepRecentFraction,
+			chatCompactionOptions{
+				KeepRecentTokens:   req.KeepRecentTokens,
+				KeepRecentFraction: keepRecentFraction,
+				LLMMode:            "auto",
+				LLMTimeoutSeconds:  defaultChatToolingOptions().Compaction.LLMTimeoutSeconds,
+			},
 			req.Instructions,
 			router,
 			now,

@@ -80,19 +80,33 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	// Emit context info for frontend monitoring
 	stream.contextInfo(map[string]any{
-		"system_prompt_tokens":  promptTokenEstimate(state.llmMessages[0].Content),
-		"history_tokens":        sumHistoryTokens(state.history),
-		"history_messages":      len(state.history),
-		"tool_count":            len(state.injectedSchemas),
-		"tool_names":            toolNamesFromSchemas(state.injectedSchemas),
-		"skill_count":           len(state.availableSkillNames),
-		"skill_names":           state.availableSkillNames,
-		"memory_count":          state.relevantMemoryCount,
-		"memory_tokens":         state.relevantMemoryTokens,
-		"used_tool_names":       []string{},
-		"selected_skill_name":   skillNameOrEmpty(state.invokedSkill),
-		"selected_skill_reason": state.invokedSkillReason,
+		"system_prompt_tokens":            promptTokenEstimate(state.llmMessages[0].Content),
+		"history_tokens":                  sumHistoryTokens(state.history),
+		"history_messages":                len(state.history),
+		"tool_count":                      len(state.injectedSchemas),
+		"tool_names":                      toolNamesFromSchemas(state.injectedSchemas),
+		"skill_count":                     len(state.availableSkillNames),
+		"skill_names":                     state.availableSkillNames,
+		"memory_count":                    state.relevantMemoryCount,
+		"memory_tokens":                   state.relevantMemoryTokens,
+		"compaction_trigger_tokens":       deps.tooling.Compaction.TriggerTokens,
+		"compaction_keep_recent_tokens":   deps.tooling.Compaction.KeepRecentTokens,
+		"compaction_keep_recent_fraction": deps.tooling.Compaction.KeepRecentFraction,
+		"compaction_last_mode":            state.compaction.Mode,
+		"used_tool_names":                 []string{},
+		"selected_skill_name":             skillNameOrEmpty(state.invokedSkill),
+		"selected_skill_reason":           state.invokedSkillReason,
 	})
+	if state.compaction.Applied {
+		stream.compactionApplied(map[string]any{
+			"mode":                    state.compaction.Mode,
+			"original_count":          state.compaction.OriginalCount,
+			"final_count":             state.compaction.FinalCount,
+			"compacted_count":         state.compaction.CompactedCount,
+			"trigger_tokens":          state.compaction.TriggerTokens,
+			"estimated_tokens_before": state.compaction.EstimatedTokensBefore,
+		})
+	}
 
 	baseCtx := usage.WithCallMeta(r.Context(), usage.CallMeta{
 		Source:    "chat",

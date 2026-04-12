@@ -30,6 +30,8 @@ type chatRunState struct {
 	toolChoice           string
 	llmMessages          []llm.ChatMessage
 	injectedSchemas      []llm.ToolSchema
+	blockedTools         map[string]tool.BlockedToolError
+	compaction           chatCompactionInfo
 	relevantMemoryCount  int
 	relevantMemoryTokens int
 	llmClient            llm.Client
@@ -124,14 +126,8 @@ func buildSessionChatRunState(
 	}
 
 	llmMessages := buildLLMMessagesWithBlocks(systemPrompt, history, userMessage, contentBlocks)
-	injectedSchemas := resolveInjectedToolSchemas(
-		registry,
-		deps.tooling.ToolsDefaultSet,
-		nil,
-		authRole,
-		deps.tooling.ToolsAllowHighRiskUser,
-		sessionToolConfigs...,
-	)
+	resolvedTools := resolveInjectedToolPolicy(registry, authRole, deps.tooling.ToolsAllowHighRiskUser, sessionToolConfigs...)
+	injectedSchemas := resolvedTools.Schemas
 	deps.logger.Debug().
 		Str("session_id", sessionID).
 		Int("tool_count_injected", len(injectedSchemas)).
@@ -153,6 +149,7 @@ func buildSessionChatRunState(
 		toolChoice:           toolChoice,
 		llmMessages:          llmMessages,
 		injectedSchemas:      injectedSchemas,
+		blockedTools:         resolvedTools.Blocked,
 		relevantMemoryCount:  contextDetails.RelevantMemoryCount,
 		relevantMemoryTokens: contextDetails.RelevantMemoryTokens,
 		llmClient:            deps.client,
@@ -177,7 +174,8 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 
 	transcriptPath := reqStore.TranscriptPath(sessionID)
 	deps.logger.Debug().Str("session_id", sessionID).Str("transcript_path", transcriptPath).Msg("chat session resolved")
-	if err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, deps.router, deps.logger, deps.tooling.MemorySemanticConfig); err != nil {
+	compactionInfo, err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, deps.router, deps.logger, deps.tooling.Compaction, deps.tooling.MemorySemanticConfig)
+	if err != nil {
 		deps.logger.Error().Err(err).Str("session_id", sessionID).Msg("auto compaction failed")
 		return chatRunState{}, http.StatusInternalServerError, "auto compaction failed", err
 	}
@@ -195,6 +193,12 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	if err != nil {
 		deps.logger.Error().Err(err).Msg("build chat run state failed")
 		return chatRunState{}, http.StatusInternalServerError, "prepare chat context failed", err
+	}
+	state.compaction = compactionInfo
+	if compactionInfo.Applied && strings.TrimSpace(compactionInfo.Mode) != "" {
+		if setErr := reqStore.SetLastCompactionMode(sessionID, compactionInfo.Mode); setErr != nil {
+			deps.logger.Warn().Err(setErr).Str("session_id", sessionID).Msg("persist last compaction mode failed")
+		}
 	}
 
 	userMsg := session.Message{Role: "user", Content: req.Message, Timestamp: time.Now().UTC()}

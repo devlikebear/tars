@@ -44,7 +44,7 @@ func TestMemorySearchTool_QueryAndMetadata(t *testing.T) {
 	_ = os.Chtimes(memPath, time.Date(2026, 2, 13, 0, 0, 0, 0, time.UTC), time.Date(2026, 2, 13, 0, 0, 0, 0, time.UTC))
 	_ = os.Chtimes(dailyPath, time.Date(2026, 2, 14, 0, 0, 0, 0, time.UTC), time.Date(2026, 2, 14, 0, 0, 0, 0, time.UTC))
 
-	tl := NewMemorySearchTool(root, nil)
+	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"coffee","limit":5}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -90,7 +90,7 @@ func TestMemorySearchTool_LimitCap(t *testing.T) {
 		t.Fatalf("write daily file: %v", err)
 	}
 
-	tl := NewMemorySearchTool(root, nil)
+	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"capword","limit":100,"include_memory":false,"include_daily":true}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -119,7 +119,7 @@ func TestMemorySearchTool_IncludeFlags(t *testing.T) {
 		t.Fatalf("write daily: %v", err)
 	}
 
-	tl := NewMemorySearchTool(root, nil)
+	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
 
 	onlyMemory, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"alpha","include_memory":true,"include_daily":false}`))
 	if err != nil {
@@ -176,7 +176,7 @@ func TestMemorySearchTool_UsesSemanticSearchBeforeLexicalFallback(t *testing.T) 
 		t.Fatalf("index experience: %v", err)
 	}
 
-	tl := NewMemorySearchTool(root, semantic)
+	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, semantic))
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"what coffee should I order without caffeine tonight?","limit":5}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -214,7 +214,7 @@ func TestMemorySearchTool_IncludeSessions(t *testing.T) {
 		t.Fatalf("append assistant message: %v", err)
 	}
 
-	tl := NewMemorySearchTool(root, nil)
+	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
 
 	// With include_sessions=true, should find session content
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"pasta","include_sessions":true}`))
@@ -270,7 +270,7 @@ func TestMemorySearchTool_IncludeSessionsSkipsSystemAndTool(t *testing.T) {
 		t.Fatalf("append user message: %v", err)
 	}
 
-	tl := NewMemorySearchTool(root, nil)
+	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"secretword","include_sessions":true}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -307,7 +307,7 @@ func TestMemorySearchTool_SearchesExperienceLogByTerms(t *testing.T) {
 		t.Fatalf("append experience: %v", err)
 	}
 
-	tl := NewMemorySearchTool(root, nil)
+	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"관심있는 주식","include_memory":false,"include_daily":false,"include_sessions":false}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -336,7 +336,7 @@ func TestMemorySearchTool_SearchesKnowledgeBaseNotes(t *testing.T) {
 		t.Fatalf("upsert knowledge note: %v", err)
 	}
 
-	tl := NewMemorySearchTool(root, nil)
+	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"black coffee","include_memory":false,"include_daily":false}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)

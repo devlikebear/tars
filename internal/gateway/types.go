@@ -21,50 +21,132 @@ const (
 )
 
 type Run struct {
-	ID                 string    `json:"run_id"`
-	WorkspaceID        string    `json:"-"`
-	SessionID          string    `json:"session_id,omitempty"`
-	SessionKind        string    `json:"session_kind,omitempty"`
-	Agent              string    `json:"agent,omitempty"`
-	Prompt             string    `json:"prompt,omitempty"`
-	ParentRunID        string    `json:"parent_run_id,omitempty"`
-	RootRunID          string    `json:"root_run_id,omitempty"`
-	ParentSessionID    string    `json:"parent_session_id,omitempty"`
-	Depth              int       `json:"depth,omitempty"`
-	Status             RunStatus `json:"status"`
-	Accepted           bool      `json:"accepted"`
-	Response           string    `json:"response,omitempty"`
-	Error              string    `json:"error,omitempty"`
-	DiagnosticCode     string    `json:"diagnostic_code,omitempty"`
-	DiagnosticReason   string    `json:"diagnostic_reason,omitempty"`
-	PolicyBlockedTool  string    `json:"policy_blocked_tool,omitempty"`
-	PolicyAllowedTools []string  `json:"policy_allowed_tools,omitempty"`
-	PolicyDeniedTools  []string  `json:"policy_denied_tools,omitempty"`
-	PolicyRiskMax      string    `json:"policy_risk_max,omitempty"`
-	FlowID             string    `json:"flow_id,omitempty"`
-	StepID             string    `json:"step_id,omitempty"`
-	Tier               string    `json:"tier,omitempty"`
-	CreatedAt          string    `json:"created_at"`
-	StartedAt          string    `json:"started_at,omitempty"`
-	CompletedAt        string    `json:"completed_at,omitempty"`
-	UpdatedAt          string    `json:"updated_at"`
+	ID                  string                   `json:"run_id"`
+	WorkspaceID         string                   `json:"-"`
+	SessionID           string                   `json:"session_id,omitempty"`
+	SessionKind         string                   `json:"session_kind,omitempty"`
+	Agent               string                   `json:"agent,omitempty"`
+	Prompt              string                   `json:"prompt,omitempty"`
+	ParentRunID         string                   `json:"parent_run_id,omitempty"`
+	RootRunID           string                   `json:"root_run_id,omitempty"`
+	ParentSessionID     string                   `json:"parent_session_id,omitempty"`
+	Depth               int                      `json:"depth,omitempty"`
+	Status              RunStatus                `json:"status"`
+	Accepted            bool                     `json:"accepted"`
+	Response            string                   `json:"response,omitempty"`
+	Error               string                   `json:"error,omitempty"`
+	DiagnosticCode      string                   `json:"diagnostic_code,omitempty"`
+	DiagnosticReason    string                   `json:"diagnostic_reason,omitempty"`
+	PolicyBlockedTool   string                   `json:"policy_blocked_tool,omitempty"`
+	PolicyBlockedRule   string                   `json:"policy_blocked_rule,omitempty"`
+	PolicyBlockedGroup  string                   `json:"policy_blocked_group,omitempty"`
+	PolicyBlockedSource string                   `json:"policy_blocked_source,omitempty"`
+	PolicyAllowedTools  []string                 `json:"policy_allowed_tools,omitempty"`
+	PolicyDeniedTools   []string                 `json:"policy_denied_tools,omitempty"`
+	PolicyRiskMax       string                   `json:"policy_risk_max,omitempty"`
+	FlowID              string                   `json:"flow_id,omitempty"`
+	StepID              string                   `json:"step_id,omitempty"`
+	Tier                string                   `json:"tier,omitempty"`
+	ConsensusMode       string                   `json:"consensus_mode,omitempty"`
+	ConsensusVariants   []ConsensusVariantRecord `json:"consensus_variants,omitempty"`
+	ConsensusCostUSD    float64                  `json:"consensus_cost_usd,omitempty"`
+	ConsensusBudgetUSD  float64                  `json:"consensus_budget_usd,omitempty"`
+	ProviderOverride    *ProviderOverride        `json:"provider_override,omitempty"`
+	ResolvedAlias       string                   `json:"resolved_alias,omitempty"`
+	ResolvedKind        string                   `json:"resolved_kind,omitempty"`
+	ResolvedModel       string                   `json:"resolved_model,omitempty"`
+	OverrideSource      string                   `json:"override_source,omitempty"`
+	CreatedAt           string                   `json:"created_at"`
+	StartedAt           string                   `json:"started_at,omitempty"`
+	CompletedAt         string                   `json:"completed_at,omitempty"`
+	UpdatedAt           string                   `json:"updated_at"`
+}
+
+type ProviderOverride struct {
+	Alias string `json:"alias,omitempty" yaml:"alias,omitempty"`
+	Model string `json:"model,omitempty" yaml:"model,omitempty"`
+}
+
+type ConsensusSpec struct {
+	Strategy   string             `json:"strategy,omitempty"`
+	Variants   []ProviderOverride `json:"variants,omitempty"`
+	Aggregator *ProviderOverride  `json:"aggregator,omitempty"`
+}
+
+type ConsensusVariantRecord struct {
+	VariantIdx int     `json:"variant_idx"`
+	Alias      string  `json:"alias,omitempty"`
+	Kind       string  `json:"kind,omitempty"`
+	Model      string  `json:"model,omitempty"`
+	Status     string  `json:"status,omitempty"`
+	Response   string  `json:"response,omitempty"`
+	Error      string  `json:"error,omitempty"`
+	TokensIn   int     `json:"tokens_in,omitempty"`
+	TokensOut  int     `json:"tokens_out,omitempty"`
+	CostUSD    float64 `json:"cost_usd,omitempty"`
+	StartedAt  string  `json:"started_at,omitempty"`
+	FinishedAt string  `json:"finished_at,omitempty"`
+}
+
+type RunEvent struct {
+	Type            string  `json:"type"`
+	RunID           string  `json:"run_id"`
+	Timestamp       string  `json:"timestamp,omitempty"`
+	Agent           string  `json:"agent,omitempty"`
+	Status          string  `json:"status,omitempty"`
+	Tier            string  `json:"tier,omitempty"`
+	ResolvedAlias   string  `json:"resolved_alias,omitempty"`
+	ResolvedKind    string  `json:"resolved_kind,omitempty"`
+	ResolvedModel   string  `json:"resolved_model,omitempty"`
+	Error           string  `json:"error,omitempty"`
+	Message         string  `json:"message,omitempty"`
+	Response        string  `json:"response,omitempty"`
+	VariantCount    int     `json:"variant_count,omitempty"`
+	VariantIdx      int     `json:"variant_idx,omitempty"`
+	Alias           string  `json:"alias,omitempty"`
+	Kind            string  `json:"kind,omitempty"`
+	Model           string  `json:"model,omitempty"`
+	Strategy        string  `json:"strategy,omitempty"`
+	TokenBudget     int     `json:"token_budget,omitempty"`
+	TokensIn        int     `json:"tokens_in,omitempty"`
+	TokensOut       int     `json:"tokens_out,omitempty"`
+	FinalTokens     int     `json:"final_tokens,omitempty"`
+	CostUSDEstimate float64 `json:"cost_usd_estimate,omitempty"`
+	CostUSDActual   float64 `json:"cost_usd_actual,omitempty"`
+}
+
+type ResolvedProviderOverride struct {
+	Alias string `json:"alias,omitempty"`
+	Kind  string `json:"kind,omitempty"`
+	Model string `json:"model,omitempty"`
+	Tier  string `json:"tier,omitempty"`
+}
+
+type PromptExecutionMetadata struct {
+	ResolvedAlias  string
+	ResolvedKind   string
+	ResolvedModel  string
+	OverrideSource string
 }
 
 type SpawnRequest struct {
-	WorkspaceID     string
-	SessionID       string
-	Title           string
-	Prompt          string
-	Agent           string
-	ParentRunID     string
-	RootRunID       string
-	ParentSessionID string
-	Depth           int
-	SessionKind     string
-	SessionHidden   bool
-	FlowID          string
-	StepID          string
-	Tier            string
+	WorkspaceID      string
+	SessionID        string
+	Title            string
+	Prompt           string
+	Agent            string
+	ParentRunID      string
+	RootRunID        string
+	ParentSessionID  string
+	Depth            int
+	SessionKind      string
+	SessionHidden    bool
+	FlowID           string
+	StepID           string
+	Tier             string
+	Mode             string
+	Consensus        *ConsensusSpec
+	ProviderOverride *ProviderOverride
 }
 
 type ChannelMessage struct {
@@ -156,6 +238,13 @@ type RuntimeOptions struct {
 	GatewayChannelsMaxMessagesPerChannel int
 	GatewaySubagentsMaxThreads           int
 	GatewaySubagentsMaxDepth             int
+	GatewayConsensusEnabled              bool
+	GatewayConsensusMaxFanout            int
+	GatewayConsensusBudgetTokens         int
+	GatewayConsensusBudgetUSD            float64
+	GatewayConsensusTimeoutSeconds       int
+	GatewayConsensusAllowedAliases       []string
+	GatewayConsensusConcurrentRuns       int
 	GatewayPersistenceDir                string
 	GatewayRestoreOnStartup              bool
 	GatewayReportSummaryEnabled          bool
@@ -163,11 +252,14 @@ type RuntimeOptions struct {
 	GatewayArchiveDir                    string
 	GatewayArchiveRetentionDays          int
 	GatewayArchiveMaxFileBytes           int
+	ResolveProviderOverride              func(tier string, override *ProviderOverride) (ResolvedProviderOverride, error)
+	EstimateTokensCost                   func(provider, model string, inputTokens, outputTokens int) (float64, bool)
 	Now                                  func() time.Time
 }
 
 type runState struct {
 	run      Run
+	req      SpawnRequest
 	executor AgentExecutor
 	cancel   context.CancelFunc
 	done     chan struct{}
@@ -195,6 +287,8 @@ type Runtime struct {
 	lastReload          time.Time
 	lastRestart         time.Time
 	runWG               sync.WaitGroup
+	executionSem        *executionSemaphore
+	runEvents           *runEventBroker
 	stateVersion        uint64
 	persistStore        snapshotStore
 	lastPersistAt       time.Time
@@ -202,6 +296,9 @@ type Runtime struct {
 	lastRestoreError    string
 	runsRestored        int
 	channelsRestored    int
+	subagentPool        *weightedSemaphore
+	consensusRuns       *weightedSemaphore
+	consensusPool       *weightedSemaphore
 }
 
 const DefaultWorkspaceID = "default"

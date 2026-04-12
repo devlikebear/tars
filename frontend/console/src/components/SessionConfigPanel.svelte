@@ -18,6 +18,8 @@
 
   let enabledSet: Set<string> = $state(new Set())
   let disabledSet: Set<string> = $state(new Set())
+  let allowGroupsSet: Set<string> = $state(new Set())
+  let denyGroupsSet: Set<string> = $state(new Set())
   let skillsEnabledSet: Set<string> = $state(new Set())
   let useCustomConfig = $state(false)
   let useCustomSkills = $state(false)
@@ -42,6 +44,8 @@
         enabledSet = new Set(tools.map((t) => t.name))
       }
       disabledSet = new Set(config.tools_disabled ?? [])
+      allowGroupsSet = new Set(config.tools_allow_groups ?? [])
+      denyGroupsSet = new Set(config.tools_deny_groups ?? [])
 
       if (config.skills_custom || Array.isArray(config.skills_enabled)) {
         useCustomSkills = true
@@ -84,6 +88,30 @@
   function isSkillEnabled(name: string): boolean {
     if (!useCustomSkills) return true
     return skillsEnabledSet.has(name)
+  }
+
+  function toggleAllowGroup(name: string) {
+    if (allowGroupsSet.has(name)) {
+      allowGroupsSet.delete(name)
+    } else {
+      allowGroupsSet.add(name)
+      denyGroupsSet.delete(name)
+    }
+    allowGroupsSet = new Set(allowGroupsSet)
+    denyGroupsSet = new Set(denyGroupsSet)
+    void saveConfig()
+  }
+
+  function toggleDenyGroup(name: string) {
+    if (denyGroupsSet.has(name)) {
+      denyGroupsSet.delete(name)
+    } else {
+      denyGroupsSet.add(name)
+      allowGroupsSet.delete(name)
+    }
+    allowGroupsSet = new Set(allowGroupsSet)
+    denyGroupsSet = new Set(denyGroupsSet)
+    void saveConfig()
   }
 
   function toggleSkill(name: string) {
@@ -136,6 +164,12 @@
     if (disabledSet.size > 0) {
       newConfig.tools_disabled = [...disabledSet]
     }
+    if (allowGroupsSet.size > 0) {
+      newConfig.tools_allow_groups = [...allowGroupsSet]
+    }
+    if (denyGroupsSet.size > 0) {
+      newConfig.tools_deny_groups = [...denyGroupsSet]
+    }
     if (useCustomSkills) {
       newConfig.skills_custom = true
       newConfig.skills_enabled = [...skillsEnabledSet]
@@ -147,6 +181,9 @@
 
   let filteredTools = $derived(
     tools.filter((t) => !filterText || t.name.toLowerCase().includes(filterText.toLowerCase()))
+  )
+  let toolGroups = $derived(
+    [...new Set(tools.map((t) => t.group).filter((group): group is string => Boolean(group)))].sort()
   )
   let filteredSkills = $derived(
     skills.filter((s) => !filterText || s.toLowerCase().includes(filterText.toLowerCase()))
@@ -182,6 +219,32 @@
     </div>
 
     {#if activeTab === 'tools'}
+      {#if toolGroups.length > 0}
+        <div class="config-groups">
+          <div class="group-section">
+            <div class="group-heading">Allow groups</div>
+            <div class="group-list">
+              {#each toolGroups as group}
+                <label class="group-chip" class:active={allowGroupsSet.has(group)}>
+                  <input type="checkbox" checked={allowGroupsSet.has(group)} onchange={() => toggleAllowGroup(group)} />
+                  <span>{group}</span>
+                </label>
+              {/each}
+            </div>
+          </div>
+          <div class="group-section">
+            <div class="group-heading">Deny groups</div>
+            <div class="group-list">
+              {#each toolGroups as group}
+                <label class="group-chip group-chip-warning" class:active={denyGroupsSet.has(group)}>
+                  <input type="checkbox" checked={denyGroupsSet.has(group)} onchange={() => toggleDenyGroup(group)} />
+                  <span>{group}</span>
+                </label>
+              {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
       <div class="config-actions">
         <label class="config-toggle">
           <input type="checkbox" checked={!useCustomConfig} onchange={toggleAllTools} />
@@ -194,6 +257,9 @@
           <label class="config-item" class:high-risk={t.high_risk}>
             <input type="checkbox" checked={isToolEnabled(t.name)} onchange={() => toggleTool(t.name)} />
             <span class="item-name">{t.name}</span>
+            {#if t.group}
+              <span class="badge badge-neutral" style="font-size:9px;padding:0 4px;">{t.group}</span>
+            {/if}
             {#if t.high_risk}
               <span class="badge badge-warning" style="font-size:9px;padding:0 4px;">risk</span>
             {/if}
@@ -307,6 +373,62 @@
     justify-content: space-between;
     padding: var(--space-1) var(--space-3);
     border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .config-groups {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .group-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .group-heading {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-ghost);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .group-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
+  .group-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    background: var(--bg-base);
+  }
+
+  .group-chip.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .group-chip-warning.active {
+    border-color: rgba(248, 113, 113, 0.7);
+    color: rgb(248, 113, 113);
+  }
+
+  .group-chip input {
+    margin: 0;
   }
 
   .config-toggle {

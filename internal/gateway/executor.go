@@ -11,32 +11,37 @@ import (
 )
 
 type ExecuteRequest struct {
-	RunID        string
-	WorkspaceID  string
-	SessionID    string
-	Prompt       string
-	AllowedTools []string
-	Tier         string
+	RunID            string
+	WorkspaceID      string
+	SessionID        string
+	Prompt           string
+	AllowedTools     []string
+	Tier             string
+	ProviderOverride *ProviderOverride
+	OverrideSource   string
+	Metadata         *PromptExecutionMetadata
 }
 
 type AgentInfo struct {
-	Name               string   `json:"name"`
-	Description        string   `json:"description,omitempty"`
-	Enabled            bool     `json:"enabled"`
-	Kind               string   `json:"kind,omitempty"`
-	Source             string   `json:"source,omitempty"`
-	Entry              string   `json:"entry,omitempty"`
-	PolicyMode         string   `json:"policy_mode"`
-	ToolsAllow         []string `json:"tools_allow,omitempty"`
-	ToolsAllowCount    int      `json:"tools_allow_count"`
-	ToolsDeny          []string `json:"tools_deny,omitempty"`
-	ToolsDenyCount     int      `json:"tools_deny_count"`
-	ToolsRiskMax       string   `json:"tools_risk_max,omitempty"`
-	ToolsAllowGroups   []string `json:"tools_allow_groups,omitempty"`
-	ToolsAllowPatterns []string `json:"tools_allow_patterns,omitempty"`
-	SessionRoutingMode string   `json:"session_routing_mode,omitempty"`
-	SessionFixedID     string   `json:"session_fixed_id,omitempty"`
-	Tier               string   `json:"tier,omitempty"`
+	Name               string            `json:"name"`
+	Description        string            `json:"description,omitempty"`
+	Enabled            bool              `json:"enabled"`
+	Kind               string            `json:"kind,omitempty"`
+	Source             string            `json:"source,omitempty"`
+	Entry              string            `json:"entry,omitempty"`
+	PolicyMode         string            `json:"policy_mode"`
+	ToolsAllow         []string          `json:"tools_allow,omitempty"`
+	ToolsAllowCount    int               `json:"tools_allow_count"`
+	ToolsDeny          []string          `json:"tools_deny,omitempty"`
+	ToolsDenyCount     int               `json:"tools_deny_count"`
+	ToolsRiskMax       string            `json:"tools_risk_max,omitempty"`
+	ToolsAllowGroups   []string          `json:"tools_allow_groups,omitempty"`
+	ToolsDenyGroups    []string          `json:"tools_deny_groups,omitempty"`
+	ToolsAllowPatterns []string          `json:"tools_allow_patterns,omitempty"`
+	SessionRoutingMode string            `json:"session_routing_mode,omitempty"`
+	SessionFixedID     string            `json:"session_fixed_id,omitempty"`
+	Tier               string            `json:"tier,omitempty"`
+	ProviderOverride   *ProviderOverride `json:"provider_override,omitempty"`
 }
 
 type AgentExecutor interface {
@@ -55,11 +60,13 @@ type PromptExecutor struct {
 	toolsDeny          []string
 	toolsRiskMax       string
 	toolsAllowGroups   []string
+	toolsDenyGroups    []string
 	toolsAllowPatterns []string
 	sessionRoutingMode string
 	sessionFixedID     string
 	tier               string
-	runPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string) (string, error)
+	providerOverride   *ProviderOverride
+	runPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *ProviderOverride) (string, error)
 }
 
 type PromptExecutorOptions struct {
@@ -72,11 +79,13 @@ type PromptExecutorOptions struct {
 	ToolsDeny          []string
 	ToolsRiskMax       string
 	ToolsAllowGroups   []string
+	ToolsDenyGroups    []string
 	ToolsAllowPatterns []string
 	SessionRoutingMode string
 	SessionFixedID     string
 	Tier               string
-	RunPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string) (string, error)
+	ProviderOverride   *ProviderOverride
+	RunPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *ProviderOverride) (string, error)
 }
 
 func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, error) {
@@ -100,6 +109,7 @@ func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, 
 	toolsDeny := sanitizeToolsAllow(opts.ToolsDeny)
 	toolsRiskMax := normalizeToolRiskMax(opts.ToolsRiskMax)
 	toolsAllowGroups := sanitizeStringList(opts.ToolsAllowGroups)
+	toolsDenyGroups := sanitizeStringList(opts.ToolsDenyGroups)
 	toolsAllowPatterns := sanitizeStringList(opts.ToolsAllowPatterns)
 	sessionRoutingMode := normalizeSessionRoutingMode(opts.SessionRoutingMode)
 	sessionFixedID := strings.TrimSpace(opts.SessionFixedID)
@@ -120,10 +130,12 @@ func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, 
 		toolsDeny:          toolsDeny,
 		toolsRiskMax:       toolsRiskMax,
 		toolsAllowGroups:   toolsAllowGroups,
+		toolsDenyGroups:    toolsDenyGroups,
 		toolsAllowPatterns: toolsAllowPatterns,
 		sessionRoutingMode: sessionRoutingMode,
 		sessionFixedID:     sessionFixedID,
 		tier:               strings.ToLower(strings.TrimSpace(opts.Tier)),
+		providerOverride:   CloneProviderOverride(opts.ProviderOverride),
 		runPrompt:          opts.RunPrompt,
 	}, nil
 }
@@ -132,7 +144,7 @@ func NewPromptExecutor(name, description string, runPrompt func(ctx context.Cont
 	return NewPromptExecutorWithOptions(PromptExecutorOptions{
 		Name:        name,
 		Description: description,
-		RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string, _ string) (string, error) {
+		RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string, _ string, _ *ProviderOverride) (string, error) {
 			return runPrompt(ctx, runLabel, prompt)
 		},
 	})
@@ -156,10 +168,12 @@ func (e *PromptExecutor) Info() AgentInfo {
 		ToolsDenyCount:     len(e.toolsDeny),
 		ToolsRiskMax:       normalizeToolRiskMax(e.toolsRiskMax),
 		ToolsAllowGroups:   append([]string(nil), e.toolsAllowGroups...),
+		ToolsDenyGroups:    append([]string(nil), e.toolsDenyGroups...),
 		ToolsAllowPatterns: append([]string(nil), e.toolsAllowPatterns...),
 		SessionRoutingMode: normalizeSessionRoutingMode(e.sessionRoutingMode),
 		SessionFixedID:     strings.TrimSpace(e.sessionFixedID),
 		Tier:               strings.TrimSpace(e.tier),
+		ProviderOverride:   CloneProviderOverride(e.providerOverride),
 	}
 }
 
@@ -175,7 +189,33 @@ func (e *PromptExecutor) Execute(ctx context.Context, req ExecuteRequest) (strin
 	if len(allowed) == 0 {
 		allowed = append([]string(nil), e.toolsAllow...)
 	}
-	return e.runPrompt(ctx, runLabel, strings.TrimSpace(req.Prompt), allowed, strings.TrimSpace(req.Tier))
+	override := CloneProviderOverride(req.ProviderOverride)
+	overrideSource := strings.TrimSpace(req.OverrideSource)
+	if override == nil && e.providerOverride != nil {
+		override = CloneProviderOverride(e.providerOverride)
+		overrideSource = "agent"
+	}
+	if override != nil && overrideSource == "" {
+		overrideSource = "task"
+	}
+	if overrideSource == "" {
+		overrideSource = "tier"
+	}
+	ctx = WithPromptExecution(ctx, override, overrideSource, req.Metadata)
+	return e.runPrompt(ctx, runLabel, strings.TrimSpace(req.Prompt), allowed, strings.TrimSpace(req.Tier), override)
+}
+
+func CloneProviderOverride(value *ProviderOverride) *ProviderOverride {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	cloned.Alias = strings.TrimSpace(cloned.Alias)
+	cloned.Model = strings.TrimSpace(cloned.Model)
+	if cloned.Alias == "" && cloned.Model == "" {
+		return nil
+	}
+	return &cloned
 }
 
 type CommandExecutorOptions struct {

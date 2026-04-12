@@ -27,6 +27,7 @@ func buildChatToolingOptions(
 	processManager *tool.ProcessManager,
 	manager *extensions.Manager,
 	gatewayRuntime *gateway.Runtime,
+	compaction chatCompactionOptions,
 	toolsDefaultSet string,
 	toolsAllowHighRiskUser bool,
 	memorySemanticConfig memory.SemanticConfig,
@@ -45,6 +46,7 @@ func buildChatToolingOptions(
 		MemoryCache:            newMemoryCache(defaultMemoryCacheTTL),
 		APIMaxInflightChat:     apiMaxInflightChat,
 		UsageTracker:           usageTracker,
+		Compaction:             compaction,
 	}
 }
 

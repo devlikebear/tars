@@ -65,6 +65,7 @@ type RunOptions struct {
 	MaxIterations  int
 	OnDelta        func(text string)
 	Tools          []llm.ToolSchema
+	BlockedTools   map[string]tool.BlockedToolError
 	ToolChoice     string
 	AutoExpandOnce bool
 }
@@ -122,8 +123,12 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				}
 			}
 			if _, ok := allowedTools[callName]; !ok {
+				blockedErr := blockedToolErrorForName(opts.BlockedTools, call.Name, callName)
 				if !opts.AutoExpandOnce || autoExpanded {
-					err := fmt.Errorf("tool not injected for this request: %s", call.Name)
+					err := blockedErr
+					if err.Tool == "" {
+						err = tool.BlockedToolError{Tool: callNameOrOriginal(callName, call.Name), Rule: "tool_allow", Source: "request"}
+					}
 					l.emit(ctx, Event{
 						Type:       EventLoopError,
 						Iteration:  i + 1,
@@ -135,7 +140,10 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				}
 				extra := l.registry.SchemasForNames([]string{call.Name, callName})
 				if len(extra) == 0 {
-					err := fmt.Errorf("tool not injected for this request: %s", call.Name)
+					err := blockedErr
+					if err.Tool == "" {
+						err = tool.BlockedToolError{Tool: callNameOrOriginal(callName, call.Name), Rule: "tool_allow", Source: "request"}
+					}
 					l.emit(ctx, Event{
 						Type:       EventLoopError,
 						Iteration:  i + 1,
@@ -266,6 +274,26 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	}
 	l.emit(ctx, Event{Type: EventLoopError, Iteration: maxIters, Err: err})
 	return llm.ChatResponse{}, err
+}
+
+func blockedToolErrorForName(blocked map[string]tool.BlockedToolError, rawName, canonical string) tool.BlockedToolError {
+	if len(blocked) == 0 {
+		return tool.BlockedToolError{}
+	}
+	if err, ok := blocked[canonical]; ok {
+		return err
+	}
+	if err, ok := blocked[normalizeToolName(rawName)]; ok {
+		return err
+	}
+	return tool.BlockedToolError{}
+}
+
+func callNameOrOriginal(canonical, raw string) string {
+	if strings.TrimSpace(canonical) != "" {
+		return strings.TrimSpace(canonical)
+	}
+	return strings.TrimSpace(raw)
 }
 
 func (l *Loop) emit(ctx context.Context, evt Event) {

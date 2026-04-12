@@ -41,6 +41,7 @@ type SessionSource interface {
 // to keep nightly runs cheap.
 type MemoryJob struct {
 	WorkspaceDir       string
+	Backend            memory.Backend
 	Sessions           SessionSource
 	Router             llm.Router
 	Lookback           time.Duration
@@ -115,7 +116,7 @@ func (m *MemoryJob) Run(ctx context.Context) (JobResult, error) {
 		for _, t := range turns {
 			turnsProcessed++
 
-			expCount := m.processTurnExperiences(sess.ID, t, now)
+			expCount := m.processTurnExperiences(ctx, sess.ID, t, now)
 			experiencesAdded += expCount
 
 			if m.compileKnowledge(ctx, sess.ID, t, now) {
@@ -184,10 +185,10 @@ func pairTurns(messages []session.Message) []turn {
 	return turns
 }
 
-func (m *MemoryJob) processTurnExperiences(sessionID string, t turn, now time.Time) int {
+func (m *MemoryJob) processTurnExperiences(ctx context.Context, sessionID string, t turn, now time.Time) int {
 	count := 0
 	for _, exp := range deriveTurnExperiences(sessionID, t, now) {
-		if appendExperienceIfNew(m.WorkspaceDir, exp) {
+		if appendExperienceIfNew(ctx, m.backend(), exp) {
 			count++
 		}
 	}
@@ -202,8 +203,8 @@ func (m *MemoryJob) compileKnowledge(ctx context.Context, sessionID string, t tu
 	if err != nil {
 		return false
 	}
-	store := memory.NewKnowledgeStore(m.WorkspaceDir, nil)
-	existing, err := store.List(memory.KnowledgeListOptions{Limit: 12})
+	backend := m.backend()
+	existing, err := backend.ListKnowledgeNotes(ctx, memory.KnowledgeListOptions{Limit: 12})
 	if err != nil {
 		return false
 	}
@@ -259,8 +260,18 @@ func (m *MemoryJob) compileKnowledge(ctx context.Context, sessionID string, t tu
 		}
 		update.Notes[i].UpdatedAt = now.UTC()
 	}
-	if err := store.ApplyUpdate(update, now.UTC()); err != nil {
+	if err := backend.ApplyKnowledgeUpdate(ctx, update, now.UTC()); err != nil {
 		return false
 	}
 	return true
+}
+
+func (m *MemoryJob) backend() memory.Backend {
+	if m != nil && m.Backend != nil {
+		return m.Backend
+	}
+	if m == nil {
+		return nil
+	}
+	return memory.NewFileBackend(m.WorkspaceDir, nil)
 }

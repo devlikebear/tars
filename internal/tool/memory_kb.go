@@ -10,7 +10,7 @@ import (
 	"github.com/devlikebear/tars/internal/memory"
 )
 
-func NewMemoryKBListTool(workspaceDir string) Tool {
+func NewMemoryKBListTool(backend memory.Backend) Tool {
 	return Tool{
 		Name:        "memory_kb_list",
 		Description: "List durable knowledge-base notes compiled into the workspace wiki.",
@@ -34,7 +34,7 @@ func NewMemoryKBListTool(workspaceDir string) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
-			items, err := memory.NewKnowledgeStore(workspaceDir, nil).List(memory.KnowledgeListOptions{
+			items, err := backend.ListKnowledgeNotes(context.Background(), memory.KnowledgeListOptions{
 				Query: strings.TrimSpace(input.Query),
 				Kind:  strings.TrimSpace(input.Kind),
 				Tag:   strings.TrimSpace(input.Tag),
@@ -51,7 +51,7 @@ func NewMemoryKBListTool(workspaceDir string) Tool {
 	}
 }
 
-func NewMemoryKBGetTool(workspaceDir string) Tool {
+func NewMemoryKBGetTool(backend memory.Backend) Tool {
 	return Tool{
 		Name:        "memory_kb_get",
 		Description: "Read one knowledge-base note by slug.",
@@ -68,7 +68,7 @@ func NewMemoryKBGetTool(workspaceDir string) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
-			item, err := memory.NewKnowledgeStore(workspaceDir, nil).Get(strings.TrimSpace(input.Slug))
+			item, err := backend.GetKnowledgeNote(context.Background(), strings.TrimSpace(input.Slug))
 			if err != nil {
 				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
@@ -77,7 +77,7 @@ func NewMemoryKBGetTool(workspaceDir string) Tool {
 	}
 }
 
-func NewMemoryKBUpsertTool(workspaceDir string, semantic *memory.Service) Tool {
+func NewMemoryKBUpsertTool(backend memory.Backend) Tool {
 	return Tool{
 		Name:        "memory_kb_upsert",
 		Description: "Create or update a structured knowledge-base note. Use this for durable wiki-style memory, links, and concept pages.",
@@ -111,7 +111,7 @@ func NewMemoryKBUpsertTool(workspaceDir string, semantic *memory.Service) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
-			item, err := memory.NewKnowledgeStore(workspaceDir, semantic).ApplyPatch(memory.KnowledgeNotePatch{
+			item, err := backend.ApplyKnowledgePatch(context.Background(), memory.KnowledgeNotePatch{
 				Slug:          strings.TrimSpace(input.Slug),
 				Title:         trimStringPtr(input.Title),
 				Kind:          trimStringPtr(input.Kind),
@@ -131,8 +131,7 @@ func NewMemoryKBUpsertTool(workspaceDir string, semantic *memory.Service) Tool {
 	}
 }
 
-func NewMemoryKBDeleteTool(workspaceDir string, semantic *memory.Service) Tool {
-	_ = semantic
+func NewMemoryKBDeleteTool(backend memory.Backend) Tool {
 	return Tool{
 		Name:        "memory_kb_delete",
 		Description: "Delete one knowledge-base note by slug.",
@@ -149,7 +148,7 @@ func NewMemoryKBDeleteTool(workspaceDir string, semantic *memory.Service) Tool {
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
-			if err := memory.NewKnowledgeStore(workspaceDir, nil).Delete(strings.TrimSpace(input.Slug)); err != nil {
+			if err := backend.DeleteKnowledgeNote(context.Background(), strings.TrimSpace(input.Slug)); err != nil {
 				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
 			return JSONTextResult(map[string]any{

@@ -40,6 +40,7 @@ func executeChatLoop(
 	chatResp, err := loop.Run(ctx, state.llmMessages, agent.RunOptions{
 		MaxIterations: deps.maxIters,
 		Tools:         state.injectedSchemas,
+		BlockedTools:  state.blockedTools,
 		ToolChoice:    state.toolChoice,
 		OnDelta: func(text string) {
 			if text == "" {

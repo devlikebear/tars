@@ -10,7 +10,7 @@ import (
 	"github.com/devlikebear/tars/internal/memory"
 )
 
-func NewMemorySaveTool(workspaceDir string, semantic *memory.Service, nowFn func() time.Time) Tool {
+func NewMemorySaveTool(backend memory.Backend, nowFn func() time.Time) Tool {
 	if nowFn == nil {
 		nowFn = time.Now
 	}
@@ -55,15 +55,12 @@ func NewMemorySaveTool(workspaceDir string, semantic *memory.Service, nowFn func
 				Importance:    input.Importance,
 				Auto:          input.Auto,
 			}
-			err := memory.AppendExperience(workspaceDir, exp)
+			err := backend.AppendExperience(context.Background(), exp)
 			if err != nil {
 				return memoryGetErrorResult(err.Error()), nil
 			}
-			if err := memory.AppendMemoryNote(workspaceDir, exp.Timestamp, summary); err != nil {
+			if err := backend.AppendMemoryNote(context.Background(), exp.Timestamp, summary); err != nil {
 				return memoryGetErrorResult(err.Error()), nil
-			}
-			if semantic != nil {
-				_ = semantic.IndexExperience(context.Background(), exp)
 			}
 			out := map[string]any{
 				"saved":   true,

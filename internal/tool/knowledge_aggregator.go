@@ -10,11 +10,11 @@ import (
 // NewKnowledgeTool creates a single "knowledge" tool that dispatches to list,
 // get, upsert, and delete sub-actions for wiki-style knowledge base notes.
 // Replaces the individual memory_kb_list/get/upsert/delete tools.
-func NewKnowledgeTool(workspaceDir string, semantic *memory.Service) Tool {
-	listTool := NewMemoryKBListTool(workspaceDir)
-	getTool := NewMemoryKBGetTool(workspaceDir)
-	upsertTool := NewMemoryKBUpsertTool(workspaceDir, semantic)
-	deleteTool := NewMemoryKBDeleteTool(workspaceDir, semantic)
+func NewKnowledgeTool(backend memory.Backend) Tool {
+	listTool := NewMemoryKBListTool(backend)
+	getTool := NewMemoryKBGetTool(backend)
+	upsertTool := NewMemoryKBUpsertTool(backend)
+	deleteTool := NewMemoryKBDeleteTool(backend)
 	return Tool{
 		Name:        "knowledge",
 		Description: "Manage wiki-style knowledge base notes. Actions: list (browse notes), get (read one note by slug), upsert (create or update a note), delete (remove a note).",

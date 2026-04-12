@@ -33,7 +33,7 @@ func TestMemorySaveTool_AppendsExperience(t *testing.T) {
 			"RETRIEVAL_QUERY|concise Korean responses":                 {0.8, 0.2},
 		}},
 	})
-	tool := NewMemorySaveTool(root, semantic, func() time.Time { return now })
+	tool := NewMemorySaveTool(memory.NewFileBackend(root, semantic), func() time.Time { return now })
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{
 		"category":"preference",
 		"summary":"User prefers concise Korean responses",
@@ -87,7 +87,7 @@ func TestMemorySaveTool_AppendsExperience(t *testing.T) {
 }
 
 func TestMemorySaveTool_RejectsEmptySummary(t *testing.T) {
-	tool := NewMemorySaveTool(t.TempDir(), nil, time.Now)
+	tool := NewMemorySaveTool(memory.NewFileBackend(t.TempDir(), nil), time.Now)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"category":"fact","summary":"   "}`))
 	if err != nil {
 		t.Fatalf("execute memory_save: %v", err)

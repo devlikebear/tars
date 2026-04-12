@@ -136,6 +136,81 @@ export type NotificationMessage = {
   open_path?: string
 }
 
+export type ProviderOverride = {
+  alias?: string
+  model?: string
+}
+
+export type ConsensusVariantRecord = {
+  variant_idx: number
+  alias?: string
+  kind?: string
+  model?: string
+  status?: string
+  response?: string
+  error?: string
+  tokens_in?: number
+  tokens_out?: number
+  cost_usd?: number
+  started_at?: string
+  finished_at?: string
+}
+
+export type GatewayRun = {
+  run_id: string
+  session_id?: string
+  session_kind?: string
+  agent?: string
+  prompt?: string
+  parent_run_id?: string
+  parent_session_id?: string
+  depth?: number
+  status: string
+  accepted?: boolean
+  response?: string
+  error?: string
+  tier?: string
+  resolved_alias?: string
+  resolved_kind?: string
+  resolved_model?: string
+  override_source?: string
+  consensus_mode?: string
+  consensus_variants?: ConsensusVariantRecord[]
+  consensus_cost_usd?: number
+  consensus_budget_usd?: number
+  created_at?: string
+  started_at?: string
+  completed_at?: string
+  updated_at?: string
+}
+
+export type GatewayRunEvent = {
+  type: string
+  run_id: string
+  timestamp?: string
+  agent?: string
+  status?: string
+  tier?: string
+  resolved_alias?: string
+  resolved_kind?: string
+  resolved_model?: string
+  error?: string
+  message?: string
+  response?: string
+  variant_count?: number
+  variant_idx?: number
+  alias?: string
+  kind?: string
+  model?: string
+  strategy?: string
+  token_budget?: number
+  tokens_in?: number
+  tokens_out?: number
+  final_tokens?: number
+  cost_usd_estimate?: number
+  cost_usd_actual?: number
+}
+
 export type EventsHistoryInfo = {
   items: NotificationMessage[]
   unread_count: number
@@ -218,6 +293,7 @@ export type ChatEvent = {
   session_id?: string
   message?: string
   phase?: string
+  mode?: string
   tool_name?: string
   tool_call_id?: string
   tool_args_preview?: string
@@ -234,6 +310,15 @@ export type ChatEvent = {
   skill_names?: string[]
   memory_count?: number
   memory_tokens?: number
+  compaction_trigger_tokens?: number
+  compaction_keep_recent_tokens?: number
+  compaction_keep_recent_fraction?: number
+  compaction_last_mode?: string
+  original_count?: number
+  final_count?: number
+  compacted_count?: number
+  trigger_tokens?: number
+  estimated_tokens_before?: number
   used_tool_names?: string[]
   selected_skill_name?: string
   selected_skill_reason?: string

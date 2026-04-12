@@ -1,9 +1,5 @@
 package tarsserver
 
-import (
-	"github.com/devlikebear/tars/internal/session"
-)
-
 // ServeOptions configures Serve API execution without CLI argument parsing.
 type ServeOptions struct {
 	ConfigPath   string
@@ -36,11 +32,7 @@ const (
 )
 
 const (
-	chatHistoryMaxTokens     = 120000
-	autoCompactTriggerTokens = 100000
-	autoCompactKeepRecent    = 0
-	autoCompactKeepTokens    = session.DefaultKeepRecentTokens
-	autoCompactKeepShare     = session.DefaultKeepRecentFraction
+	chatHistoryMaxTokens = 120000
 )
 
 const memoryToolSystemRule = `

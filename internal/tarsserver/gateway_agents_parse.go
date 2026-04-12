@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/gateway"
 	"gopkg.in/yaml.v3"
 )
 
@@ -69,6 +70,10 @@ func parseWorkspaceGatewayAgentFrontmatter(raw string) (workspaceGatewayAgentFro
 		meta.ToolsAllowGroupsExists = true
 		meta.ToolsAllowGroups = frontmatterStringList(value)
 	}
+	if value, ok := frontmatterValue(parsed, "tools_deny_groups", "tools-deny-groups"); ok {
+		meta.ToolsDenyGroupsExists = true
+		meta.ToolsDenyGroups = frontmatterStringList(value)
+	}
 	if value, ok := frontmatterValue(parsed, "tools_allow_patterns", "tools-allow-patterns"); ok {
 		meta.ToolsAllowPatternsExists = true
 		meta.ToolsAllowPatterns = frontmatterStringList(value)
@@ -81,6 +86,9 @@ func parseWorkspaceGatewayAgentFrontmatter(raw string) (workspaceGatewayAgentFro
 	}
 	if value, ok := frontmatterValue(parsed, "tier"); ok {
 		meta.Tier = frontmatterString(value)
+	}
+	if value, ok := frontmatterValue(parsed, "provider_override", "provider-override"); ok {
+		meta.ProviderOverride = frontmatterProviderOverride(value)
 	}
 	return meta, nil
 }
@@ -163,4 +171,19 @@ func frontmatterStringList(value any) []string {
 		}
 		return []string{trimmed}
 	}
+}
+
+func frontmatterProviderOverride(value any) *gateway.ProviderOverride {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	override := &gateway.ProviderOverride{
+		Alias: strings.TrimSpace(frontmatterString(object["alias"])),
+		Model: strings.TrimSpace(frontmatterString(object["model"])),
+	}
+	if override.Alias == "" && override.Model == "" {
+		return nil
+	}
+	return override
 }

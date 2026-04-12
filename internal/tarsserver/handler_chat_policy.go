@@ -72,63 +72,62 @@ func resolveInjectedToolSchemas(
 	allowHighRiskUser bool,
 	sessionConfig ...session.SessionToolConfig,
 ) []llm.ToolSchema {
+	return resolveInjectedToolPolicy(registry, authRole, allowHighRiskUser, sessionConfig...).Schemas
+}
+
+type injectedToolPolicy struct {
+	Schemas []llm.ToolSchema
+	Blocked map[string]tool.BlockedToolError
+}
+
+func resolveInjectedToolPolicy(
+	registry *tool.Registry,
+	authRole string,
+	allowHighRiskUser bool,
+	sessionConfig ...session.SessionToolConfig,
+) injectedToolPolicy {
 	if registry == nil {
-		return nil
+		return injectedToolPolicy{}
 	}
 
 	names := toolNamesFromSchemas(registry.Schemas())
+	blocked := map[string]tool.BlockedToolError{}
 
 	// Apply session-level tool config (if provided)
 	if len(sessionConfig) > 0 {
-		names = applySessionToolConfig(names, sessionConfig[0])
+		resolved := resolveSessionToolPolicy(names, sessionConfig[0], "session")
+		names = resolved.Allowed
+		mergeBlockedToolErrors(blocked, resolved.Blocked)
 	}
 
-	names = filterHighRiskToolNamesForRole(names, authRole, allowHighRiskUser)
+	var highRiskBlocked map[string]tool.BlockedToolError
+	names, highRiskBlocked = filterHighRiskToolNamesForRoleDetailed(names, authRole, allowHighRiskUser)
+	mergeBlockedToolErrors(blocked, highRiskBlocked)
 	if len(names) == 0 {
-		return nil
+		return injectedToolPolicy{Blocked: blocked}
 	}
-	return registry.SchemasForNames(names)
+	return injectedToolPolicy{
+		Schemas: registry.SchemasForNames(names),
+		Blocked: blocked,
+	}
 }
 
 // applySessionToolConfig filters tool names based on per-session configuration.
 func applySessionToolConfig(names []string, config session.SessionToolConfig) []string {
-	// If ToolsEnabled is set, use it as an allowlist
-	if config.ToolsCustom || len(config.ToolsEnabled) > 0 {
-		allowed := map[string]struct{}{}
-		for _, name := range config.ToolsEnabled {
-			canonical := tool.CanonicalToolName(name)
-			if canonical != "" {
-				allowed[canonical] = struct{}{}
-			}
-		}
-		filtered := make([]string, 0, len(names))
-		for _, name := range names {
-			canonical := tool.CanonicalToolName(name)
-			if _, ok := allowed[canonical]; ok {
-				filtered = append(filtered, name)
-			}
-		}
-		names = filtered
+	return resolveSessionToolPolicy(names, config, "session").Allowed
+}
+
+func resolveSessionToolPolicy(names []string, config session.SessionToolConfig, source string) tool.PolicyResolution {
+	useAllowTools := len(config.ToolsEnabled) > 0 || (config.ToolsCustom && len(config.ToolsAllowGroups) == 0)
+	policy := tool.Policy{
+		AllowTools:     config.ToolsEnabled,
+		DenyTools:      config.ToolsDisabled,
+		AllowGroups:    config.ToolsAllowGroups,
+		DenyGroups:     config.ToolsDenyGroups,
+		UseAllowTools:  useAllowTools,
+		UseAllowGroups: len(config.ToolsAllowGroups) > 0,
 	}
-	// Apply deny list
-	if len(config.ToolsDisabled) > 0 {
-		denied := map[string]struct{}{}
-		for _, name := range config.ToolsDisabled {
-			canonical := tool.CanonicalToolName(name)
-			if canonical != "" {
-				denied[canonical] = struct{}{}
-			}
-		}
-		filtered := make([]string, 0, len(names))
-		for _, name := range names {
-			canonical := tool.CanonicalToolName(name)
-			if _, ok := denied[canonical]; !ok {
-				filtered = append(filtered, name)
-			}
-		}
-		names = filtered
-	}
-	return names
+	return policy.Resolve(names, source)
 }
 
 func applySessionSkillConfig(skills []skill.Definition, config session.SessionToolConfig) []skill.Definition {
@@ -175,17 +174,30 @@ func shouldFilterHighRiskTools(authRole string, allowHighRiskUser bool) bool {
 }
 
 func filterHighRiskToolNamesForRole(names []string, authRole string, allowHighRiskUser bool) []string {
+	filtered, _ := filterHighRiskToolNamesForRoleDetailed(names, authRole, allowHighRiskUser)
+	return filtered
+}
+
+func filterHighRiskToolNamesForRoleDetailed(names []string, authRole string, allowHighRiskUser bool) ([]string, map[string]tool.BlockedToolError) {
 	if !shouldFilterHighRiskTools(authRole, allowHighRiskUser) {
-		return names
+		return names, nil
 	}
 	filtered := make([]string, 0, len(names))
+	blocked := map[string]tool.BlockedToolError{}
 	for _, name := range names {
+		canonical := tool.CanonicalToolName(name)
 		if isHighRiskToolName(name) {
+			blocked[canonical] = tool.BlockedToolError{
+				Tool:   canonical,
+				Rule:   "risk_deny",
+				Group:  tool.ToolGroupForName(canonical),
+				Source: "config_default",
+			}
 			continue
 		}
 		filtered = append(filtered, name)
 	}
-	return filtered
+	return filtered, blocked
 }
 
 func isHighRiskToolName(name string) bool {
@@ -243,5 +255,14 @@ func defaultMinimalToolNames() []string {
 		"research_report",
 		"usage_report",
 		"session",
+	}
+}
+
+func mergeBlockedToolErrors(dst map[string]tool.BlockedToolError, src map[string]tool.BlockedToolError) {
+	if len(src) == 0 {
+		return
+	}
+	for key, value := range src {
+		dst[key] = value
 	}
 }

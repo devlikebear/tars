@@ -274,7 +274,7 @@ func adjustCompactionCutoff(messages []Message, cutoff int, minMessages int) int
 	if cutoff <= 0 {
 		return 0
 	}
-	for i := cutoff; i <= maxCutoff; i++ {
+	for i := cutoff; i < len(messages); i++ {
 		if strings.EqualFold(strings.TrimSpace(messages[i].Role), "user") {
 			return i
 		}

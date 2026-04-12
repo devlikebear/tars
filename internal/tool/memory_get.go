@@ -12,13 +12,13 @@ import (
 	"github.com/devlikebear/tars/internal/memory"
 )
 
-func NewMemoryGetTool(workspaceDir string) Tool {
-	return newMemoryGetTool(workspaceDir, func() time.Time {
+func NewMemoryGetTool(workspaceDir string, backend memory.Backend) Tool {
+	return newMemoryGetTool(workspaceDir, backend, func() time.Time {
 		return time.Now().UTC()
 	})
 }
 
-func newMemoryGetTool(workspaceDir string, nowFn func() time.Time) Tool {
+func newMemoryGetTool(workspaceDir string, backend memory.Backend, nowFn func() time.Time) Tool {
 	return Tool{
 		Name:        "memory_get",
 		Description: "Get daily memory log by date or full long-term MEMORY.md content.",
@@ -65,7 +65,7 @@ func newMemoryGetTool(workspaceDir string, nowFn func() time.Time) Tool {
 				path := filepath.Join(workspaceDir, "MEMORY.md")
 				return readMemoryGetFile(path, "MEMORY.md not found"), nil
 			case "experiences":
-				rows, err := memory.SearchExperiences(workspaceDir, memory.SearchOptions{
+				rows, err := backend.SearchExperiences(context.Background(), memory.SearchOptions{
 					Query:    strings.TrimSpace(input.Query),
 					Category: strings.TrimSpace(input.Category),
 					Limit:    input.Limit,

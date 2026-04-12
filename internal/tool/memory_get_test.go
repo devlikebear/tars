@@ -23,7 +23,7 @@ func TestMemoryGetTool_DailyDefaultDate(t *testing.T) {
 		t.Fatalf("write daily file: %v", err)
 	}
 
-	tl := newMemoryGetTool(root, func() time.Time { return now })
+	tl := newMemoryGetTool(root, memory.NewFileBackend(root, nil), func() time.Time { return now })
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -46,7 +46,7 @@ func TestMemoryGetTool_SpecificDateAndMissingFile(t *testing.T) {
 		t.Fatalf("write daily file: %v", err)
 	}
 
-	tl := NewMemoryGetTool(root)
+	tl := NewMemoryGetTool(root, memory.NewFileBackend(root, nil))
 
 	hit, err := tl.Execute(context.Background(), json.RawMessage(`{"target":"daily","date":"2026-02-13"}`))
 	if err != nil {
@@ -74,7 +74,7 @@ func TestMemoryGetTool_InvalidDateFormat(t *testing.T) {
 		t.Fatalf("ensure workspace: %v", err)
 	}
 
-	tl := NewMemoryGetTool(root)
+	tl := NewMemoryGetTool(root, memory.NewFileBackend(root, nil))
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"target":"daily","date":"2026/02/14"}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -113,7 +113,7 @@ func TestMemoryGetTool_ExperiencesTarget(t *testing.T) {
 		t.Fatalf("append experience: %v", err)
 	}
 
-	tl := NewMemoryGetTool(root)
+	tl := NewMemoryGetTool(root, memory.NewFileBackend(root, nil))
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"target":"experiences","query":"gateway","limit":5}`))
 	if err != nil {
 		t.Fatalf("execute experiences query: %v", err)

@@ -42,11 +42,12 @@ type subagentFlowStepInput struct {
 }
 
 type subagentFlowTaskInput struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title,omitempty"`
-	Prompt    string   `json:"prompt"`
-	Tier      string   `json:"tier,omitempty"`
-	DependsOn []string `json:"depends_on,omitempty"`
+	ID               string                    `json:"id"`
+	Title            string                    `json:"title,omitempty"`
+	Prompt           string                    `json:"prompt"`
+	Tier             string                    `json:"tier,omitempty"`
+	ProviderOverride *gateway.ProviderOverride `json:"provider_override,omitempty"`
+	DependsOn        []string                  `json:"depends_on,omitempty"`
 }
 
 type subagentCompletedTask struct {
@@ -109,9 +110,10 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
                 "id":{"type":"string"},
                 "title":{"type":"string"},
                 "prompt":{"type":"string","description":"Supports placeholders like {{task.backend.summary}} and {{task.backend.response}}."},
-                "tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."},
-                "depends_on":{"type":"array","items":{"type":"string"}}
-              },
+					"tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."},
+					"provider_override":{"type":"object","properties":{"alias":{"type":"string"},"model":{"type":"string"}},"required":["alias"],"additionalProperties":false},
+					"depends_on":{"type":"array","items":{"type":"string"}}
+				  },
               "required":["id","prompt"],
               "additionalProperties":false
             }
@@ -240,20 +242,26 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 						if title == "" {
 							title = "subagent"
 						}
+						providerOverride, overrideErr := normalizeProviderOverride(task.ProviderOverride)
+						if overrideErr != "" {
+							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
+							return JSONTextResult(map[string]any{"message": overrideErr}, true), nil
+						}
 						run, spawnErr := subagentFlowSpawn(runtime, waitCtx, gateway.SpawnRequest{
-							WorkspaceID:     workspaceID,
-							Title:           title,
-							Prompt:          renderedPrompt,
-							Agent:           agentName,
-							ParentRunID:     parentRunID,
-							RootRunID:       rootRunID,
-							ParentSessionID: strings.TrimSpace(meta.SessionID),
-							Depth:           nextDepth,
-							SessionKind:     "subagent",
-							SessionHidden:   true,
-							FlowID:          flowID,
-							StepID:          stepID,
-							Tier:            taskTier,
+							WorkspaceID:      workspaceID,
+							Title:            title,
+							Prompt:           renderedPrompt,
+							Agent:            agentName,
+							ParentRunID:      parentRunID,
+							RootRunID:        rootRunID,
+							ParentSessionID:  strings.TrimSpace(meta.SessionID),
+							Depth:            nextDepth,
+							SessionKind:      "subagent",
+							SessionHidden:    true,
+							FlowID:           flowID,
+							StepID:           stepID,
+							Tier:             taskTier,
+							ProviderOverride: providerOverride,
 						})
 						if spawnErr != nil {
 							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
@@ -311,20 +319,25 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 						if title == "" {
 							title = "subagent"
 						}
+						providerOverride, overrideErr := normalizeProviderOverride(task.ProviderOverride)
+						if overrideErr != "" {
+							return JSONTextResult(map[string]any{"message": overrideErr}, true), nil
+						}
 						run, spawnErr := subagentFlowSpawn(runtime, waitCtx, gateway.SpawnRequest{
-							WorkspaceID:     workspaceID,
-							Title:           title,
-							Prompt:          renderedPrompt,
-							Agent:           agentName,
-							ParentRunID:     parentRunID,
-							RootRunID:       rootRunID,
-							ParentSessionID: strings.TrimSpace(meta.SessionID),
-							Depth:           nextDepth,
-							SessionKind:     "subagent",
-							SessionHidden:   true,
-							FlowID:          flowID,
-							StepID:          stepID,
-							Tier:            taskTier,
+							WorkspaceID:      workspaceID,
+							Title:            title,
+							Prompt:           renderedPrompt,
+							Agent:            agentName,
+							ParentRunID:      parentRunID,
+							RootRunID:        rootRunID,
+							ParentSessionID:  strings.TrimSpace(meta.SessionID),
+							Depth:            nextDepth,
+							SessionKind:      "subagent",
+							SessionHidden:    true,
+							FlowID:           flowID,
+							StepID:           stepID,
+							Tier:             taskTier,
+							ProviderOverride: providerOverride,
 						})
 						if spawnErr != nil {
 							return JSONTextResult(map[string]any{"message": spawnErr.Error()}, true), nil

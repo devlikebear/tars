@@ -100,25 +100,27 @@ func (r *Runtime) newAcceptedRunState(
 	runCtx, cancel := context.WithCancel(context.Background())
 	workspaceID := normalizeWorkspaceID(req.WorkspaceID)
 	run := Run{
-		ID:              runID,
-		WorkspaceID:     workspaceID,
-		SessionID:       sessionID,
-		SessionKind:     strings.TrimSpace(req.SessionKind),
-		Agent:           selectedAgent,
-		Prompt:          prompt,
-		ParentRunID:     strings.TrimSpace(req.ParentRunID),
-		RootRunID:       strings.TrimSpace(req.RootRunID),
-		ParentSessionID: strings.TrimSpace(req.ParentSessionID),
-		Depth:           req.Depth,
-		FlowID:          strings.TrimSpace(req.FlowID),
-		StepID:          strings.TrimSpace(req.StepID),
-		Tier:            strings.TrimSpace(req.Tier),
-		Status:          RunStatusAccepted,
-		Accepted:        true,
-		CreatedAt:       now.Format(time.RFC3339),
-		UpdatedAt:       now.Format(time.RFC3339),
+		ID:               runID,
+		WorkspaceID:      workspaceID,
+		SessionID:        sessionID,
+		SessionKind:      strings.TrimSpace(req.SessionKind),
+		Agent:            selectedAgent,
+		Prompt:           prompt,
+		ParentRunID:      strings.TrimSpace(req.ParentRunID),
+		RootRunID:        strings.TrimSpace(req.RootRunID),
+		ParentSessionID:  strings.TrimSpace(req.ParentSessionID),
+		Depth:            req.Depth,
+		FlowID:           strings.TrimSpace(req.FlowID),
+		StepID:           strings.TrimSpace(req.StepID),
+		Tier:             strings.TrimSpace(req.Tier),
+		ConsensusMode:    strings.TrimSpace(req.Mode),
+		ProviderOverride: CloneProviderOverride(req.ProviderOverride),
+		Status:           RunStatusAccepted,
+		Accepted:         true,
+		CreatedAt:        now.Format(time.RFC3339),
+		UpdatedAt:        now.Format(time.RFC3339),
 	}
-	return runCtx, &runState{run: run, executor: executor, cancel: cancel, done: make(chan struct{})}
+	return runCtx, &runState{run: run, req: req, executor: executor, cancel: cancel, done: make(chan struct{})}
 }
 
 func (r *Runtime) registerAcceptedRunState(state *runState) error {
@@ -133,6 +135,7 @@ func (r *Runtime) registerAcceptedRunState(state *runState) error {
 	r.trimRunHistoryLocked()
 	r.stateVersion++
 	r.mu.Unlock()
+	r.publishRunEvent(state.run.ID, RunEvent{Type: "run_accepted", RunID: state.run.ID, Timestamp: state.run.CreatedAt, Agent: state.run.Agent, Status: string(state.run.Status), Tier: state.run.Tier})
 	r.persistSnapshot()
 	return nil
 }
