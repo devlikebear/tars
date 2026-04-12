@@ -474,6 +474,38 @@ func TestNormalizeSubagentFlowPlan_NilAndEmpty(t *testing.T) {
 	})
 }
 
+func TestEnsurePlannerTargetsInPlan_CaseInsensitive(t *testing.T) {
+	plan := &subagentFlowInput{
+		Steps: []subagentFlowStepInput{
+			{
+				ID:   "step1",
+				Mode: "parallel",
+				Tasks: []subagentFlowTaskInput{
+					{ID: "t1", Prompt: "inspect /Workspace/Config/tars.yaml"},
+				},
+			},
+		},
+	}
+
+	// Target differs only in case — should NOT be injected.
+	injected := ensurePlannerTargetsInPlan(plan, []string{"/workspace/config/tars.yaml"})
+	if injected != 0 {
+		t.Fatalf("expected 0 injections for case-insensitive match, got %d", injected)
+	}
+	if strings.Contains(plan.Steps[0].Tasks[0].Prompt, "Required exact target path") {
+		t.Fatalf("should not append target when prompt already contains it (case-insensitive)")
+	}
+
+	// Truly missing target — should be injected.
+	injected = ensurePlannerTargetsInPlan(plan, []string{"/other/path.go"})
+	if injected != 1 {
+		t.Fatalf("expected 1 injection for missing target, got %d", injected)
+	}
+	if !strings.Contains(plan.Steps[0].Tasks[0].Prompt, "/other/path.go") {
+		t.Fatalf("expected missing target to be appended to prompt")
+	}
+}
+
 func TestSubagentsPlanTool_EnsuresExactTargetsRemainInTaskPrompts(t *testing.T) {
 	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil

@@ -580,7 +580,7 @@ func ensurePlannerTargetsInPlan(plan *subagentFlowInput, targets []string) int {
 		if task == nil {
 			continue
 		}
-		if strings.Contains(task.Prompt, target) {
+		if strings.Contains(strings.ToLower(task.Prompt), strings.ToLower(target)) {
 			continue
 		}
 		task.Prompt = strings.TrimSpace(task.Prompt) + "\n\nRequired exact target path:\n- " + target
