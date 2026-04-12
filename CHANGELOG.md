@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-04-12
+
+### Fixed
+
+- Console no longer hangs when switching chat sessions rapidly; SSE connections are now shared via a singleton EventSource instead of per-component instances that exhausted the browser's HTTP/1.1 connection limit
+- Compaction deadlock resolved: auto-compaction no longer re-acquires the transcript file lock by reusing already-read messages via PreloadedMessages
+- `--verbose` flag now correctly overrides `log_level` from workspace config, fixing missing HTTP debug logs
+- Manual compact via console now uses aggressive thresholds (keepRecent=5, tokens=2000) so it always performs meaningful work
+
+### Added
+
+- HTTP request start logging: "http request started" debug log emitted before handler execution for visibility even when handlers block
+- Compact result feedback: API returns detailed token counts and reason; console shows a feedback banner with message count, percentage saved, or skip reason
+
 ## [0.27.0] - 2026-04-12
 
 ### Changed
