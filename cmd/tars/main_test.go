@@ -63,26 +63,38 @@ func TestRootCommand_ServeSubcommandInvokesRunner(t *testing.T) {
 	}
 }
 
-func TestRootCommand_ServeRunOnceDoesNotForceServeAPI(t *testing.T) {
+func TestRootCommand_ServeDeprecatedFlagsDoNotDisableAPI(t *testing.T) {
 	original := serveRunner
 	defer func() { serveRunner = original }()
 
-	var got serveOptions
-	serveRunner = func(_ context.Context, opts serveOptions, _ io.Writer, _ io.Writer) error {
-		got = opts
-		return nil
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"run-once", []string{"serve", "--run-once"}},
+		{"run-loop", []string{"serve", "--run-loop"}},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got serveOptions
+			serveRunner = func(_ context.Context, opts serveOptions, _ io.Writer, _ io.Writer) error {
+				got = opts
+				return nil
+			}
 
-	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
-	cmd.SetArgs([]string{"serve", "--run-once"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("serve command: %v", err)
-	}
-	if !got.runOnce {
-		t.Fatalf("expected runOnce=true, got %#v", got)
-	}
-	if got.serveAPI {
-		t.Fatalf("did not expect serveAPI=true when run-once is set, got %#v", got)
+			var stderr strings.Builder
+			cmd := newRootCommand(strings.NewReader(""), io.Discard, &stderr)
+			cmd.SetArgs(tc.args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("serve command: %v", err)
+			}
+			if !got.serveAPI {
+				t.Fatalf("deprecated flag must not disable serveAPI, got serveAPI=%v", got.serveAPI)
+			}
+			if !strings.Contains(stderr.String(), "deprecated") {
+				t.Fatalf("expected deprecation warning on stderr, got %q", stderr.String())
+			}
+		})
 	}
 }
 

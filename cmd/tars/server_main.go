@@ -43,7 +43,10 @@ func newServeCommand(stdout, stderr io.Writer) *cobra.Command {
 			if opts.runOnce && opts.runLoop {
 				return fmt.Errorf("--run-once and --run-loop are mutually exclusive")
 			}
-			return serveRunner(cmd.Context(), normalizeServeOptions(opts), stdout, stderr)
+			if opts.runOnce || opts.runLoop {
+				fmt.Fprintln(stderr, "warning: --run-once and --run-loop are deprecated no-ops; pulse runs automatically when the server is up")
+			}
+			return serveRunner(cmd.Context(), opts, stdout, stderr)
 		},
 	}
 	cmd.Flags().StringVar(&opts.configPath, "config", "", "path to config file")
@@ -56,14 +59,6 @@ func newServeCommand(stdout, stderr io.Writer) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.serveAPI, "serve-api", opts.serveAPI, "serve tars http api")
 	cmd.Flags().StringVar(&opts.apiAddr, "api-addr", opts.apiAddr, "http api listen address")
 	return cmd
-}
-
-func normalizeServeOptions(opts serveOptions) serveOptions {
-	normalized := opts
-	if normalized.runOnce || normalized.runLoop {
-		normalized.serveAPI = false
-	}
-	return normalized
 }
 
 func runServeCommand(ctx context.Context, opts serveOptions, stdout, stderr io.Writer) error {

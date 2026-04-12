@@ -99,11 +99,11 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				}
 				return &cli.ExitError{Code: 1, Err: err}
 			}
+			if opts.RunOnce || opts.RunLoop {
+				logger.Warn().Msg("--run-once and --run-loop are deprecated no-ops; pulse runs automatically when the server is up")
+			}
 			if opts.ServeAPI {
 				return runServeAPICommand(parentCtx, opts, deps, nowFn, stdout, stderr, logger)
-			}
-			if err := runHeartbeatModes(parentCtx, opts, deps, nowFn, logger); err != nil {
-				return err
 			}
 
 			logger.Info().
