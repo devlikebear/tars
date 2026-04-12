@@ -506,6 +506,138 @@ func TestEnsurePlannerTargetsInPlan_CaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestPlannerTargetExtractor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  []string // raw regex matches (before normalization)
+	}{
+		{
+			name:  "backtick-quoted path",
+			input: "check `workspace/config/tars.config.yaml` for details",
+			want:  []string{"workspace/config/tars.config.yaml"},
+		},
+		{
+			name:  "absolute path",
+			input: "see /etc/nginx/nginx.conf for details",
+			want:  []string{"/etc/nginx/nginx.conf"},
+		},
+		{
+			name:  "relative path with dot",
+			input: "update ./scripts/security_scan.sh",
+			want:  []string{"./scripts/security_scan.sh"},
+		},
+		{
+			name:  "relative path with double dot",
+			input: "look at ../parent/file.go",
+			want:  []string{"../parent/file.go"},
+		},
+		{
+			name:  "multiple matches",
+			input: "compare /a/b and /c/d",
+			want:  []string{"/a/b", "/c/d"},
+		},
+		{
+			name:  "trailing punctuation in text",
+			input: "see /etc/hosts.",
+			want:  []string{"/etc/hosts."},
+		},
+		{
+			name:  "no path in text",
+			input: "just implement auth",
+			want:  nil,
+		},
+		{
+			name:  "backtick with spaces ignored",
+			input: "use `some command with spaces`",
+			want:  []string{"some command with spaces"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			matches := plannerTargetExtractor.FindAllStringSubmatch(tc.input, -1)
+			var got []string
+			for _, match := range matches {
+				for _, part := range match[1:] {
+					if part != "" {
+						got = append(got, part)
+					}
+				}
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("expected %d matches %v, got %d matches %v", len(tc.want), tc.want, len(got), got)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Errorf("match[%d]: expected %q, got %q", i, tc.want[i], got[i])
+				}
+			}
+		})
+	}
+}
+
+func TestNormalizePlannerTarget(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"absolute path", "/etc/nginx/nginx.conf", "/etc/nginx/nginx.conf"},
+		{"relative path", "./scripts/run.sh", "scripts/run.sh"},
+		{"trailing period stripped", "/etc/hosts.", "/etc/hosts"},
+		{"trailing comma stripped", "/path/to/file,", "/path/to/file"},
+		{"URL filtered out", "https://example.com/path", ""},
+		{"http URL filtered out", "http://example.com/path", ""},
+		{"template placeholder filtered out", "{{task.backend.summary}}", ""},
+		{"no slash filtered out", "just-a-word", ""},
+		{"empty string", "", ""},
+		{"bare slash filtered out", "/", ""},
+		{"bare dot filtered out", ".", ""},
+		{"whitespace-only", "   ", ""},
+		{"quoted path", `"/some/path"`, "/some/path"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizePlannerTarget(tc.input)
+			if got != tc.want {
+				t.Errorf("normalizePlannerTarget(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCollectPlannerTargets(t *testing.T) {
+	targets := collectPlannerTargets(
+		"review /etc/nginx/nginx.conf and `./scripts/deploy.sh`",
+		[]string{"/explicit/target.go"},
+		[]string{"constraint mentioning /some/path.yaml"},
+		nil,
+	)
+
+	expected := map[string]bool{
+		"/explicit/target.go":   false,
+		"/etc/nginx/nginx.conf": false,
+		"scripts/deploy.sh":     false,
+		"/some/path.yaml":       false,
+	}
+	for _, t2 := range targets {
+		if _, ok := expected[t2]; ok {
+			expected[t2] = true
+		}
+	}
+	for path, found := range expected {
+		if !found {
+			t.Errorf("expected target %q not found in collected targets: %v", path, targets)
+		}
+	}
+}
+
 func TestSubagentsPlanTool_EnsuresExactTargetsRemainInTaskPrompts(t *testing.T) {
 	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
