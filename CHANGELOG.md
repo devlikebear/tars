@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-04-12
+
+### Added
+
+- Hierarchical YAML config loading and patching across runtime, automation, gateway, tools, browser, vault, channels, and extensions, including migration-safe reads from existing flat keys
+- Structured `/console/config` metadata and editing support for provider pools, tier bindings, nested object settings, and list-based settings such as allowlists and extra directories
+
+### Changed
+
+- Starter config generation, checked-in standalone defaults, and the shipped example config now use the hierarchical schema as the canonical layout
+- README and Getting Started examples now describe the current console-first flow and nested config model instead of removed flat-key and project-oriented flows
+
+### Fixed
+
+- Settings patches written from the console now preserve the preferred nested YAML layout instead of reintroducing legacy flat keys into updated config files
+
 ## [0.25.0] - 2026-04-12
 
 ### Added
