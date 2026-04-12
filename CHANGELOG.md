@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-04-12
+
+### Fixed
+
+- Console sidebar now displays the server version dynamically from `/v1/status` instead of a hardcoded string
+- Zero-time dates (`0001-01-01T00:00:00Z`) now display as "never" instead of absurd relative times like "739717d ago" across all console components
+- Console static assets are now accessible in all auth modes; previously `external-required` mode blocked the SPA from loading
+- Legacy config key detection no longer false-positives on the valid `llm_role_defaults` key
+
 ## [0.26.0] - 2026-04-12
 
 ### Added

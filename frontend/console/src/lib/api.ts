@@ -77,6 +77,12 @@ function normalizeSessionTasks(data: Partial<SessionTasks> | null | undefined): 
   }
 }
 
+// --- Server status ---
+
+export async function getServerStatus(): Promise<{ version: string }> {
+  return requestJSON<{ version: string }>('/v1/status')
+}
+
 // --- Pulse (system watchdog, replaces heartbeat) ---
 
 export async function getPulseStatus(): Promise<PulseSnapshot> {

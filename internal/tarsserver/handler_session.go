@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/buildinfo"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
@@ -477,6 +478,7 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, mainSessionI
 		}
 
 		body := map[string]any{
+			"version":         buildinfo.Version,
 			"workspace_dir":   resolvedWorkspaceDir,
 			"session_count":   len(sessions),
 			"main_session_id": publicMainSessionLabel(mainSessionID),

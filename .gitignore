@@ -56,3 +56,4 @@ node_modules/
 .analysis/sessions/
 .analysis/RESUME.md
 .mcp.json
+.playwright*

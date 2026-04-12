@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
+  import { getServerStatus } from '../lib/api'
+
   interface NavItem {
     id: string
     label: string
@@ -12,6 +15,16 @@
   }
 
   let { currentPath, onNavigate }: Props = $props()
+  let version = $state('')
+
+  onMount(async () => {
+    try {
+      const status = await getServerStatus()
+      version = status.version ?? ''
+    } catch {
+      version = ''
+    }
+  })
 
   const items: NavItem[] = [
     { id: 'chat', label: 'Chat', path: '/console/chat', icon: '\u25ce' },
@@ -61,7 +74,7 @@
   </div>
 
   <div class="nav-footer">
-    <div class="nav-version">v0.13</div>
+    <div class="nav-version">{version ? `v${version}` : ''}</div>
   </div>
 </nav>
 
