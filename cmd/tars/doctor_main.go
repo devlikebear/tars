@@ -132,6 +132,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 	}
 
 	if cfgLoaded {
+		checkDoctorLegacyKeys(&report, configPath)
 		checkDoctorAPIAuth(&report, cfg)
 		checkDoctorGatewayAgents(&report, cfg)
 		checkDoctorLLMCredentials(&report, cfg, configPath)
@@ -143,6 +144,15 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 		return report, fmt.Errorf("doctor found %d failing checks", report.failureCount())
 	}
 	return report, nil
+}
+
+func checkDoctorLegacyKeys(report *doctorReport, configPath string) {
+	warnings := config.DetectLegacyKeys(configPath)
+	if len(warnings) == 0 {
+		return
+	}
+	report.add("warn", "legacy config keys", config.FormatLegacyKeyWarnings(warnings))
+	report.addHint("update your config to the current schema; see config/standalone.yaml for reference")
 }
 
 func checkDoctorAPIAuth(report *doctorReport, cfg config.Config) {
@@ -296,17 +306,17 @@ func checkDoctorSemanticMemory(report *doctorReport, cfg config.Config, configPa
 func llmCredentialHint(provider, configPath string) string {
 	switch provider {
 	case "openai":
-		return fmt.Sprintf("export OPENAI_API_KEY='your-api-key' or set llm_api_key in %s", configPath)
+		return fmt.Sprintf("export OPENAI_API_KEY='your-api-key' or set api_key in the provider entry under llm_providers in %s", configPath)
 	case "anthropic":
-		return fmt.Sprintf("export ANTHROPIC_API_KEY='your-api-key' or set llm_api_key in %s", configPath)
+		return fmt.Sprintf("export ANTHROPIC_API_KEY='your-api-key' or set api_key in the provider entry under llm_providers in %s", configPath)
 	case "gemini", "gemini-native":
-		return fmt.Sprintf("export GEMINI_API_KEY='your-api-key' or set llm_api_key in %s", configPath)
+		return fmt.Sprintf("export GEMINI_API_KEY='your-api-key' or set api_key in the provider entry under llm_providers in %s", configPath)
 	case "openai-codex":
-		return fmt.Sprintf("set llm_auth_mode: oauth or configure OPENAI_CODEX_OAUTH_TOKEN in %s", configPath)
+		return fmt.Sprintf("set auth_mode: oauth in the provider entry under llm_providers, or configure OPENAI_CODEX_OAUTH_TOKEN in %s", configPath)
 	case "claude-code-cli":
 		return fmt.Sprintf("install Claude Code or set CLAUDE_CODE_CLI_PATH; no api key is required in %s", configPath)
 	default:
-		return fmt.Sprintf("set TARS_LLM_API_KEY or llm_api_key in %s", configPath)
+		return fmt.Sprintf("set api_key in the provider entry under llm_providers in %s", configPath)
 	}
 }
 
