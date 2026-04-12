@@ -64,13 +64,18 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				if cfg.LogRotateMaxBackups > 0 {
 					logCfg.RotateMaxBackups = cfg.LogRotateMaxBackups
 				}
-				if needReconfigure {
-					newLogger, newCleanup := setupRuntimeLogger(logCfg, stderr)
-					// Replace global logger; previous cleanup runs via deferred Serve().
-					zlog.Logger = newLogger
-					logger = newLogger
-					_ = newCleanup // cleanup will be handled by the process lifecycle
-				}
+				// --verbose flag overrides config log_level
+			if opts.Verbose {
+				logCfg.Level = "debug"
+				needReconfigure = true
+			}
+			if needReconfigure {
+				newLogger, newCleanup := setupRuntimeLogger(logCfg, stderr)
+				// Replace global logger; previous cleanup runs via deferred Serve().
+				zlog.Logger = newLogger
+				logger = newLogger
+				_ = newCleanup // cleanup will be handled by the process lifecycle
+			}
 				logger.Info().
 					Str("log_level", logCfg.Level).
 					Str("log_file", logCfg.FilePath).

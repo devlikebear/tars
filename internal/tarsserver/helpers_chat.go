@@ -66,6 +66,7 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, rou
 		"",
 		router,
 		now,
+		messages,
 		buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...)),
 	)
 	if err != nil {
@@ -87,7 +88,7 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, rou
 	return info, nil
 }
 
-func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, compaction chatCompactionOptions, instructions string, router llm.Router, now time.Time, semantic ...*memory.Service) (session.CompactResult, string, error) {
+func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, compaction chatCompactionOptions, instructions string, router llm.Router, now time.Time, preloadedMessages []session.Message, semantic ...*memory.Service) (session.CompactResult, string, error) {
 	memService := firstSemanticService(semantic...)
 	client := compactionClient(router, compaction.LLMMode)
 	summaryMode := "deterministic"
@@ -95,6 +96,7 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 		KeepRecentTokens:    compaction.KeepRecentTokens,
 		KeepRecentFraction:  compaction.KeepRecentFraction,
 		SummaryInstructions: instructions,
+		PreloadedMessages:   preloadedMessages,
 		SummaryBuilder: func(messages []session.Message, previousContext string) (string, error) {
 			if client == nil {
 				summaryMode = "deterministic"

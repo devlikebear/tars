@@ -211,8 +211,19 @@ export function streamGatewayRunEvents(
 	return () => stream.close()
 }
 
-export async function compactSession(sessionId: string): Promise<{ compacted: boolean }> {
-  return requestJSON<{ compacted: boolean }>(
+export interface CompactResult {
+  session_id: string
+  compacted: boolean
+  original_count: number
+  final_count: number
+  compacted_count: number
+  tokens_before: number
+  tokens_after: number
+  reason: string
+}
+
+export async function compactSession(sessionId: string): Promise<CompactResult> {
+  return requestJSON<CompactResult>(
     `/v1/admin/sessions/${encodeURIComponent(sessionId)}/compact`,
     { method: 'POST' },
   )
@@ -554,36 +565,63 @@ export async function reloadExtensions(): Promise<{ reloaded: boolean; skills: n
   return requestJSON<{ reloaded: boolean; skills: number; plugins: number; mcp_count: number }>('/v1/runtime/extensions/reload', { method: 'POST' })
 }
 
-// --- Events ---
+// --- Events (singleton SSE) ---
+//
+// A single EventSource is shared across all components to avoid exhausting the
+// browser's per-origin HTTP/1.1 connection limit (typically 6).  Components
+// call streamEvents() to subscribe and receive a cleanup function that
+// unsubscribes without closing the underlying connection.
+
+type EventListener = {
+  onEvent: (event: NotificationMessage) => void
+  onError?: (message: string) => void
+  onOpen?: () => void
+}
+
+let sharedStream: EventSource | null = null
+let listeners = new Map<number, EventListener>()
+let nextListenerId = 0
+
+function ensureStream() {
+  if (sharedStream && sharedStream.readyState !== EventSource.CLOSED) return
+  sharedStream = new EventSource('/v1/events/stream')
+  sharedStream.onopen = () => {
+    for (const l of listeners.values()) l.onOpen?.()
+  }
+  sharedStream.onmessage = (message) => {
+    if (!message.data) return
+    try {
+      const payload = JSON.parse(message.data) as NotificationMessage
+      if (payload.type === 'keepalive') return
+      for (const l of listeners.values()) l.onEvent(payload)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to parse event stream payload'
+      for (const l of listeners.values()) l.onError?.(msg)
+    }
+  }
+  sharedStream.onerror = () => {
+    for (const l of listeners.values()) l.onError?.('Event stream disconnected')
+  }
+}
+
+function maybeCloseStream() {
+  if (listeners.size === 0 && sharedStream) {
+    sharedStream.close()
+    sharedStream = null
+  }
+}
 
 export function streamEvents(
   onEvent: (event: NotificationMessage) => void,
   onError?: (message: string) => void,
   onOpen?: () => void,
 ): () => void {
-  const stream = new EventSource('/v1/events/stream')
-  stream.onopen = () => {
-    onOpen?.()
-  }
-  stream.onmessage = (message) => {
-    if (!message.data) {
-      return
-    }
-    try {
-      const payload = JSON.parse(message.data) as NotificationMessage
-      if (payload.type === 'keepalive') {
-        return
-      }
-      onEvent(payload)
-    } catch (error) {
-      onError?.(error instanceof Error ? error.message : 'Failed to parse event stream payload')
-    }
-  }
-  stream.onerror = () => {
-    onError?.('Event stream disconnected')
-  }
+  const id = nextListenerId++
+  listeners.set(id, { onEvent, onError, onOpen })
+  ensureStream()
   return () => {
-    stream.close()
+    listeners.delete(id)
+    maybeCloseStream()
   }
 }
 

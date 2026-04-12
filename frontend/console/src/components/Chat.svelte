@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
   import {
-    getEventsHistory, getPulseStatus, streamEvents,
+    getEventsHistory, getPulseStatus,
     getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
   } from '../lib/api'
   import type { PulseSnapshot, NotificationMessage, Session } from '../lib/types'
@@ -77,7 +77,13 @@
   let rightPanel = $state<RightPanel>('none')
 
   let sidebarRef: SessionSidebar | undefined = $state()
-  let stopStream: (() => void) | null = null
+  let actionFeedback = $state('')
+  let feedbackTimer: ReturnType<typeof setTimeout> | null = null
+  function showFeedback(msg: string, ms = 4000) {
+    if (feedbackTimer) clearTimeout(feedbackTimer)
+    actionFeedback = msg
+    feedbackTimer = setTimeout(() => { actionFeedback = '' }, ms)
+  }
 
   function relativeTime(value?: string): string {
     if (!value?.trim()) return 'never'
@@ -193,9 +199,19 @@
     if (!selectedSessionId) return
     actionBusy = true
     try {
-      await compactSession(selectedSessionId)
+      const r = await compactSession(selectedSessionId)
+      if (r.compacted) {
+        const saved = r.tokens_before - r.tokens_after
+        const pct = r.tokens_before > 0 ? Math.round((saved / r.tokens_before) * 100) : 0
+        showFeedback(`Compacted ${r.compacted_count} messages (${r.original_count} → ${r.final_count}), ${pct}% tokens saved`)
+      } else {
+        showFeedback(r.reason || 'Nothing to compact')
+      }
       sidebarRef?.load()
-    } catch { /* ignore */ }
+      chatKey++
+    } catch (e) {
+      showFeedback(e instanceof Error ? e.message : 'Compact failed')
+    }
     actionBusy = false
   }
 
@@ -269,13 +285,6 @@
 
   onMount(() => {
     void loadDashboard()
-    stopStream = streamEvents(
-      () => { unreadCount++ },
-    )
-  })
-
-  onDestroy(() => {
-    stopStream?.()
   })
 </script>
 
@@ -362,6 +371,10 @@
         </div>
       {/if}
 
+      {#if actionFeedback}
+        <div class="action-feedback">{actionFeedback}</div>
+      {/if}
+
       {#key chatKey}
         <ChatPanel
           bind:this={chatPanelRef}
@@ -414,6 +427,14 @@
 </div>
 
 <style>
+  .action-feedback {
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    text-align: center;
+  }
   .chat-page {
     display: flex;
     flex-direction: column;

@@ -46,6 +46,10 @@ type CompactOptions struct {
 	KeepRecentTokens    int
 	KeepRecentFraction  float64
 	SummaryInstructions string
+	// PreloadedMessages supplies already-read messages to avoid a second ReadMessages
+	// call on the same path. When set, ReadMessages is skipped, preventing a
+	// reentrant-lock deadlock when the caller already holds the path lock.
+	PreloadedMessages []Message
 }
 
 type CompactionSummaryOptions struct {
@@ -64,9 +68,15 @@ func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, op
 		keepRecent = MaxKeepRecentMessages
 	}
 
-	messages, err := ReadMessages(path)
-	if err != nil {
-		return CompactResult{}, err
+	var messages []Message
+	if len(opts.PreloadedMessages) > 0 {
+		messages = opts.PreloadedMessages
+	} else {
+		var err error
+		messages, err = ReadMessages(path)
+		if err != nil {
+			return CompactResult{}, err
+		}
 	}
 	if len(messages) == 0 {
 		return CompactResult{Compacted: false}, nil
