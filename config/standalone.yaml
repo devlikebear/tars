@@ -7,11 +7,17 @@ workspace_dir: ./workspace
 # from environment variables. Supported kinds: anthropic, openai,
 # openai-codex, gemini, gemini-native, claude-code-cli.
 llm_providers:
-  default:
+  codex:
+    kind: openai-codex
+    auth_mode: oauth
+    oauth_provider: openai-codex
+    base_url: https://chatgpt.com/backend-api
+    service_tier: priority
+  minimax:
     kind: anthropic
     auth_mode: api-key
-    api_key: ${ANTHROPIC_API_KEY}
-    base_url: https://api.anthropic.com
+    api_key: ${MINIMAX_API_KEY}
+    base_url: https://api.minimax.io/anthropic
 
 # ---- Tier bindings ----
 # Each tier binds to one provider alias + model + optional knobs.
@@ -20,16 +26,16 @@ llm_providers:
 # here — e.g. `provider: codex` for a second alias.
 llm_tiers:
   heavy:
-    provider: default
-    model: claude-opus-4-6
+    provider: codex
+    model: gpt-5.4
     reasoning_effort: high
   standard:
-    provider: default
-    model: claude-sonnet-4-6
+    provider: codex
+    model: gpt-5.4
     reasoning_effort: medium
   light:
-    provider: default
-    model: claude-haiku-4-5-20251001
+    provider: minimax
+    model: MiniMax-M2.7
     reasoning_effort: minimal
 
 llm_default_tier: standard
