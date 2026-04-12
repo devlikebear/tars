@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-04-12
+
+### Changed
+
+- Session compaction now uses rune-based CJK-aware token estimation instead of byte-length heuristic, improving accuracy for Korean/Chinese/Japanese content
+- Deterministic summary restructured from 6 overlapping sections to 4 deduplicated sections (Topic, Key Decisions, Active Identifiers, Current State), reducing summary size by 59%
+- LLM summary input upgraded from fixed 80-message x 240-char limit to 8K token budget with proportional content allocation
+
+### Added
+
+- Pre-compaction tool result pruning: long tool outputs (>200 chars) replaced with placeholder to prevent code dump pollution in summaries
+- Stacking carry-forward: previous compaction summaries are detected and passed as Prior Context, preserving information across re-compactions
+- Exported `EstimateMessageTokenCost` function for external use
+
 ## [0.26.1] - 2026-04-12
 
 ### Fixed
