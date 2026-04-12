@@ -761,7 +761,7 @@ func TestCronRunner_DeliversToSessionAndDailyLog(t *testing.T) {
 	runner := newCronJobRunner(
 		root,
 		store,
-		func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		func(_ context.Context, _ string, prompt string, _ []string, _ string, _ *gateway.ProviderOverride) (string, error) {
 			seenPrompt = prompt
 			return "cron delivered", nil
 		},
@@ -1406,7 +1406,7 @@ func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 	}
 	logger := zerolog.New(io.Discard)
 	store := session.NewStore(root)
-	runPrompt := func(_ context.Context, _ string, prompt string, allowedTools []string, _ string) (string, error) {
+	runPrompt := func(_ context.Context, _ string, prompt string, allowedTools []string, _ string, _ *gateway.ProviderOverride) (string, error) {
 		if len(allowedTools) == 0 {
 			t.Fatalf("expected explorer allowlist to be present")
 		}

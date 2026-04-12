@@ -124,6 +124,7 @@ type LLMTierBinding struct {
 }
 
 type MemoryConfig struct {
+	MemoryBackend         string
 	MemorySemanticEnabled bool
 	MemoryEmbedProvider   string
 	MemoryEmbedBaseURL    string
@@ -187,6 +188,14 @@ type AssistantConfig struct {
 	AssistantTTSBin     string
 }
 
+type CompactionConfig struct {
+	CompactionTriggerTokens      int
+	CompactionKeepRecentTokens   int
+	CompactionKeepRecentFraction float64
+	CompactionLLMMode            string
+	CompactionLLMTimeoutSeconds  int
+}
+
 type ToolConfig struct {
 	ToolsWebSearchEnabled             bool
 	ToolsWebFetchEnabled              bool
@@ -236,6 +245,7 @@ type GatewayConfig struct {
 	GatewayEnabled                       bool
 	GatewayDefaultAgent                  string
 	GatewayAgents                        []GatewayAgent
+	GatewayTaskOverride                  GatewayTaskOverrideConfig
 	GatewayAgentsWatch                   bool
 	GatewayAgentsWatchDebounceMS         int
 	GatewayPersistenceEnabled            bool
@@ -245,6 +255,13 @@ type GatewayConfig struct {
 	GatewayChannelsMaxMessagesPerChannel int
 	GatewaySubagentsMaxThreads           int
 	GatewaySubagentsMaxDepth             int
+	GatewayConsensusEnabled              bool
+	GatewayConsensusMaxFanout            int
+	GatewayConsensusBudgetTokens         int
+	GatewayConsensusBudgetUSD            float64
+	GatewayConsensusTimeoutSeconds       int
+	GatewayConsensusAllowedAliases       []string
+	GatewayConsensusConcurrentRuns       int
 	GatewayPersistenceDir                string
 	GatewayRestoreOnStartup              bool
 	GatewayReportSummaryEnabled          bool
@@ -252,6 +269,12 @@ type GatewayConfig struct {
 	GatewayArchiveDir                    string
 	GatewayArchiveRetentionDays          int
 	GatewayArchiveMaxFileBytes           int
+}
+
+type GatewayTaskOverrideConfig struct {
+	Enabled        bool     `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	AllowedAliases []string `json:"allowed_aliases,omitempty" yaml:"allowed_aliases,omitempty"`
+	AllowedModels  []string `json:"allowed_models,omitempty" yaml:"allowed_models,omitempty"`
 }
 
 type ChannelConfig struct {
@@ -288,6 +311,7 @@ type Config struct {
 	UsageConfig
 	AutomationConfig
 	AssistantConfig
+	CompactionConfig
 	ToolConfig
 	VaultConfig
 	BrowserConfig

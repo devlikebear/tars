@@ -11,10 +11,10 @@ import (
 // NewMemoryTool creates a single "memory" tool that dispatches to save, search,
 // and get sub-actions. Replaces the individual memory_save, memory_search, and
 // memory_get tools.
-func NewMemoryTool(workspaceDir string, semantic *memory.Service, nowFn func() time.Time) Tool {
-	saveTool := NewMemorySaveTool(workspaceDir, semantic, nowFn)
-	searchTool := NewMemorySearchTool(workspaceDir, semantic)
-	getTool := NewMemoryGetTool(workspaceDir)
+func NewMemoryTool(workspaceDir string, backend memory.Backend, nowFn func() time.Time) Tool {
+	saveTool := NewMemorySaveTool(backend, nowFn)
+	searchTool := NewMemorySearchTool(workspaceDir, backend)
+	getTool := NewMemoryGetTool(workspaceDir, backend)
 	return Tool{
 		Name:        "memory",
 		Description: "Manage long-term memory. Actions: save (store experiences/facts), search (find past context across memory and sessions), get (read daily logs, MEMORY.md, or experiences). For user profile info (name, language, preferences), use workspace tool instead.",

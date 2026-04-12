@@ -25,8 +25,10 @@ type managedMemoryAsset struct {
 	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
-func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger zerolog.Logger) http.Handler {
-	store := memory.NewKnowledgeStore(workspaceDir, semantic)
+func newMemoryAPIHandler(workspaceDir string, backend memory.Backend, logger zerolog.Logger) http.Handler {
+	if backend == nil {
+		backend = memory.NewFileBackend(workspaceDir, nil)
+	}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/v1/memory/assets", func(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +127,7 @@ func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger z
 		if !decodeJSONBody(w, r, &raw) {
 			return
 		}
-		result, err := tool.NewMemorySearchTool(workspaceDir, semantic).Execute(context.Background(), raw)
+		result, err := tool.NewMemorySearchTool(workspaceDir, backend).Execute(context.Background(), raw)
 		if err != nil {
 			logger.Error().Err(err).Msg("memory search failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "memory search failed"})
@@ -208,7 +210,7 @@ func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger z
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		graph, err := store.Graph()
+		graph, err := backend.KnowledgeGraph(context.Background())
 		if err != nil {
 			logger.Error().Err(err).Msg("get knowledge graph failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get knowledge graph failed"})
@@ -224,7 +226,7 @@ func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger z
 		switch r.Method {
 		case http.MethodGet:
 			limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
-			items, err := store.List(memory.KnowledgeListOptions{
+			items, err := backend.ListKnowledgeNotes(context.Background(), memory.KnowledgeListOptions{
 				Query: strings.TrimSpace(r.URL.Query().Get("query")),
 				Kind:  strings.TrimSpace(r.URL.Query().Get("kind")),
 				Tag:   strings.TrimSpace(r.URL.Query().Get("tag")),
@@ -245,7 +247,7 @@ func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger z
 				return
 			}
 			patch.UpdatedAt = time.Now().UTC()
-			item, err := store.ApplyPatch(patch)
+			item, err := backend.ApplyKnowledgePatch(context.Background(), patch)
 			if err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "required") || strings.Contains(strings.ToLower(err.Error()), "not found") {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -270,7 +272,7 @@ func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger z
 		}
 		switch r.Method {
 		case http.MethodGet:
-			item, err := store.Get(slug)
+			item, err := backend.GetKnowledgeNote(context.Background(), slug)
 			if err != nil {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "knowledge note not found"})
 				return
@@ -283,7 +285,7 @@ func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger z
 			}
 			patch.Slug = slug
 			patch.UpdatedAt = time.Now().UTC()
-			item, err := store.ApplyPatch(patch)
+			item, err := backend.ApplyKnowledgePatch(context.Background(), patch)
 			if err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "not found") {
 					writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
@@ -299,7 +301,7 @@ func newMemoryAPIHandler(workspaceDir string, semantic *memory.Service, logger z
 			}
 			writeJSON(w, http.StatusOK, item)
 		case http.MethodDelete:
-			if err := store.Delete(slug); err != nil {
+			if err := backend.DeleteKnowledgeNote(context.Background(), slug); err != nil {
 				logger.Error().Err(err).Msg("delete knowledge note failed")
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete knowledge note failed"})
 				return

@@ -217,6 +217,8 @@ tools_allow:
   - read_file
 tools_allow_groups:
   - memory
+tools_deny_groups:
+  - exec
 tools_allow_patterns:
   - "^exec$"
   - "^list_"
@@ -243,11 +245,14 @@ Find evidence first and answer briefly.
 	if agent.PolicyMode != "allowlist" {
 		t.Fatalf("expected allowlist mode, got %+v", agent)
 	}
-	if got, want := strings.Join(agent.ToolsAllow, ","), "exec,knowledge,list_dir,memory,read_file"; got != want {
+	if got, want := strings.Join(agent.ToolsAllow, ","), "knowledge,list_dir,memory,read_file"; got != want {
 		t.Fatalf("unexpected tools allow list: got=%q want=%q", got, want)
 	}
 	if got, want := strings.Join(agent.ToolsAllowGroups, ","), "memory"; got != want {
 		t.Fatalf("unexpected tools allow groups: got=%q want=%q", got, want)
+	}
+	if got, want := strings.Join(agent.ToolsDenyGroups, ","), "shell"; got != want {
+		t.Fatalf("unexpected tools deny groups: got=%q want=%q", got, want)
 	}
 	if got, want := strings.Join(agent.ToolsAllowPatterns, ","), "^exec$,^list_"; got != want {
 		t.Fatalf("unexpected tools allow patterns: got=%q want=%q", got, want)
@@ -298,6 +303,50 @@ Find evidence first and answer briefly.
 	}
 	if !strings.Contains(diagText, "session_routing_mode") {
 		t.Fatalf("expected session_routing_mode diagnostics, got %+v", diagnostics)
+	}
+}
+
+func TestLoadWorkspaceGatewayAgents_ToolsDenyGroupsAliasNormalization(t *testing.T) {
+	workspace := t.TempDir()
+	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
+	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
+		t.Fatalf("mkdir agent dir: %v", err)
+	}
+	raw := `---
+name: researcher
+tools_allow_groups:
+  - file
+  - terminal
+tools_deny_groups:
+  - exec
+---
+Find evidence first and answer briefly.
+`
+	if err := os.WriteFile(agentPath, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write agent: %v", err)
+	}
+
+	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	if err != nil {
+		t.Fatalf("load workspace agents: %v", err)
+	}
+	if len(diagnostics) != 0 {
+		t.Fatalf("expected no diagnostics, got %+v", diagnostics)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("expected one agent, got %+v", loaded)
+	}
+	agent := loaded[0]
+	if got, want := strings.Join(agent.ToolsAllowGroups, ","), "files,shell"; got != want {
+		t.Fatalf("unexpected canonical allow groups: got=%q want=%q", got, want)
+	}
+	if got, want := strings.Join(agent.ToolsDenyGroups, ","), "shell"; got != want {
+		t.Fatalf("unexpected canonical deny groups: got=%q want=%q", got, want)
+	}
+	for _, name := range agent.ToolsAllow {
+		if name == "exec" {
+			t.Fatalf("expected denied shell group to remove exec from allow list, got %+v", agent.ToolsAllow)
+		}
 	}
 }
 

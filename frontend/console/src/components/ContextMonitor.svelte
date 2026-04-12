@@ -13,6 +13,10 @@
       skill_names?: string[]
       memory_count?: number
       memory_tokens?: number
+      compaction_trigger_tokens?: number
+      compaction_keep_recent_tokens?: number
+      compaction_keep_recent_fraction?: number
+      compaction_last_mode?: string
       used_tool_names?: string[]
       selected_skill_name?: string
       selected_skill_reason?: string
@@ -56,9 +60,16 @@
   let usedTools = $derived(listOr(contextInfo?.used_tool_names, fullContext?.used_tool_names))
   let selectedSkillName = $derived(contextInfo?.selected_skill_name ?? fullContext?.selected_skill_name ?? '')
   let selectedSkillReason = $derived(contextInfo?.selected_skill_reason ?? fullContext?.selected_skill_reason ?? '')
+  let compactionTriggerTokens = $derived(contextInfo?.compaction_trigger_tokens ?? fullContext?.compaction_trigger_tokens ?? 0)
+  let keepRecentTokens = $derived(contextInfo?.compaction_keep_recent_tokens ?? fullContext?.compaction_keep_recent_tokens ?? 0)
+  let keepRecentFraction = $derived(contextInfo?.compaction_keep_recent_fraction ?? fullContext?.compaction_keep_recent_fraction ?? 0)
+  let lastCompactionMode = $derived(contextInfo?.compaction_last_mode ?? fullContext?.compaction_last_mode ?? '')
 
   let contextLimit = 200000
   let usagePercent = $derived(Math.min(100, (totalTokens / contextLimit) * 100))
+  let triggerPercent = $derived(Math.min(100, ((compactionTriggerTokens || 0) / contextLimit) * 100))
+  let protectedTokens = $derived(Math.max(keepRecentTokens, Math.ceil(totalTokens * keepRecentFraction)))
+  let protectedPercent = $derived(Math.min(100, (protectedTokens / contextLimit) * 100))
   let usageColor = $derived(
     usagePercent > 80 ? 'var(--error)' : usagePercent > 50 ? 'var(--warning, #f59e0b)' : 'var(--success, #22c55e)'
   )
@@ -78,10 +89,24 @@
   </div>
 
   <div class="monitor-bar-container">
+    {#if triggerPercent > 0}
+      <div class="monitor-threshold" style="left: {triggerPercent}%;"></div>
+    {/if}
+    {#if protectedPercent > 0}
+      <div class="monitor-protected" style="width: {protectedPercent}%;"></div>
+    {/if}
     <div class="monitor-bar" style="width: {usagePercent}%; background: {usageColor};"></div>
   </div>
   <div class="monitor-bar-label">
     {totalTokens.toLocaleString()} / {contextLimit.toLocaleString()} tokens ({usagePercent.toFixed(1)}%)
+  </div>
+
+  <div class="monitor-meta">
+    <span>trigger {compactionTriggerTokens.toLocaleString()}</span>
+    <span>protect max({keepRecentTokens.toLocaleString()}, {(keepRecentFraction * 100).toFixed(0)}%)</span>
+    {#if lastCompactionMode}
+      <span class="mode-badge">{lastCompactionMode === 'llm' ? 'LLM' : 'Deterministic'}</span>
+    {/if}
   </div>
 
   <div class="monitor-grid">
@@ -208,6 +233,7 @@
   .monitor-close:hover { color: var(--text-primary); }
 
   .monitor-bar-container {
+    position: relative;
     height: 4px;
     background: var(--bg-base);
     margin: var(--space-2) var(--space-3) 0;
@@ -216,9 +242,29 @@
   }
 
   .monitor-bar {
+    position: relative;
     height: 100%;
     border-radius: 2px;
     transition: width 0.3s ease, background 0.3s ease;
+  }
+
+  .monitor-threshold {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: rgba(245, 158, 11, 0.9);
+    transform: translateX(-1px);
+    z-index: 3;
+  }
+
+  .monitor-protected {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: rgba(99, 102, 241, 0.16);
+    z-index: 1;
   }
 
   .monitor-bar-label {
@@ -227,6 +273,21 @@
     color: var(--text-ghost);
     text-align: center;
     padding: 2px var(--space-3) var(--space-2);
+  }
+
+  .monitor-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    justify-content: center;
+    padding: 0 var(--space-3) var(--space-2);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-ghost);
+  }
+
+  .mode-badge {
+    color: var(--accent);
   }
 
   .monitor-grid {

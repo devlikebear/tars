@@ -78,7 +78,7 @@ func TestFinalizeRunLocked_PopulatesPolicyFailureMetadata(t *testing.T) {
 	rt.runOrder = append(rt.runOrder, state.run.ID)
 
 	rt.mu.Lock()
-	rt.finalizeRunLocked(state, "", fmt.Errorf("tool not injected for this request: exec"))
+	rt.finalizeRunLocked(state, "", PromptExecutionMetadata{}, fmt.Errorf("tool not injected for this request: exec"))
 	rt.mu.Unlock()
 
 	if state.run.Status != RunStatusFailed {
@@ -148,7 +148,7 @@ func TestFinalizeRunLocked_HiddenWorkerSessionAppendsSummaryToMain(t *testing.T)
 	rt.runOrder = append(rt.runOrder, state.run.ID)
 
 	rt.mu.Lock()
-	rt.finalizeRunLocked(state, "drafted episode 3 outline and updated state", nil)
+	rt.finalizeRunLocked(state, "drafted episode 3 outline and updated state", PromptExecutionMetadata{}, nil)
 	rt.mu.Unlock()
 
 	mainMessages, err := session.ReadMessages(store.TranscriptPath(mainSession.ID))

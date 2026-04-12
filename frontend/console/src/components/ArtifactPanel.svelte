@@ -16,7 +16,8 @@
   let { artifacts, sessionId, onClose }: Props = $props()
 
   type Tab = 'session' | 'workspace'
-  let activeTab: Tab = $state(artifacts.length > 0 ? 'session' : 'workspace')
+  let activeTab: Tab = $state('workspace')
+  let activeTabInitialized = $state(false)
 
   // WorkDirs state
   let workDirs: SessionWorkDirs = $state({ work_dirs: [], current_dir: '' })
@@ -461,6 +462,17 @@
   }
 
   $effect(() => {
+    if (!activeTabInitialized) {
+      activeTab = artifacts.length > 0 ? 'session' : 'workspace'
+      activeTabInitialized = true
+      return
+    }
+    if (artifacts.length === 0 && activeTab === 'session') {
+      activeTab = 'workspace'
+    }
+  })
+
+  $effect(() => {
     if (activeTab === 'workspace') {
       void loadWorkDirs().then(() => browseDir(currentPath))
     }
@@ -695,8 +707,16 @@
 
 <!-- File Preview Modal -->
 {#if previewFile || previewLoading || previewError}
-  <div class="preview-overlay" onclick={closePreview} onkeydown={(e) => e.key === 'Escape' && closePreview()} role="dialog" tabindex="-1">
-    <div class="preview-modal" onclick={(e) => e.stopPropagation()} role="document">
+  <div
+    class="preview-overlay"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) closePreview()
+    }}
+    onkeydown={(e) => e.key === 'Escape' && closePreview()}
+    role="dialog"
+    tabindex="-1"
+  >
+    <div class="preview-modal" role="document">
       <div class="preview-header">
         <div class="preview-title-row">
           <span class="artifact-icon">{previewFile ? fileIcon(previewFile.name) : ''}</span>

@@ -1,6 +1,8 @@
 package tarsserver
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -32,6 +34,19 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger ze
 		handleAgentRunList(w, r, runtime)
 	})
 	mux.HandleFunc("/v1/agent/runs/", func(w http.ResponseWriter, r *http.Request) {
+		handleAgentRunByID(w, r, runtime, logger)
+	})
+	mux.HandleFunc("/v1/gateway/runs", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
+			return
+		}
+		if r.Method == http.MethodPost {
+			handleAgentRunSpawn(w, r, runtime, inflight)
+			return
+		}
+		handleAgentRunList(w, r, runtime)
+	})
+	mux.HandleFunc("/v1/gateway/runs/", func(w http.ResponseWriter, r *http.Request) {
 		handleAgentRunByID(w, r, runtime, logger)
 	})
 	return mux
@@ -157,13 +172,60 @@ func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *gateway
 			return
 		}
 		writeJSON(w, http.StatusOK, run)
+	case "events":
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		handleAgentRunEvents(w, r, runtime, runID)
 	default:
 		http.NotFound(w, r)
 	}
 }
 
+func handleAgentRunEvents(w http.ResponseWriter, r *http.Request, runtime *gateway.Runtime, runID string) {
+	if _, found := runtime.Get(runID); !found {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming is not supported"})
+		return
+	}
+	ch, unsubscribe := runtime.SubscribeRunEvents(runID)
+	defer unsubscribe()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case event, ok := <-ch:
+			if !ok {
+				return
+			}
+			if err := writeSSEData(w, event); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
+func writeSSEData(w http.ResponseWriter, payload any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "data: %s\n\n", data)
+	return err
+}
+
 func parseAgentRunPath(path string) (runID string, action string, ok bool) {
-	trimmed := strings.TrimSpace(strings.TrimPrefix(path, "/v1/agent/runs/"))
+	trimmed := strings.TrimSpace(path)
+	trimmed = strings.TrimPrefix(trimmed, "/v1/agent/runs/")
+	trimmed = strings.TrimPrefix(trimmed, "/v1/gateway/runs/")
 	if trimmed == "" {
 		return "", "", false
 	}

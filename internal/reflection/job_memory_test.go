@@ -338,10 +338,10 @@ func TestAppendExperienceDedupes(t *testing.T) {
 		Importance:    6,
 		Auto:          true,
 	}
-	if !appendExperienceIfNew(workspace, exp) {
+	if !appendExperienceIfNew(context.Background(), memory.NewFileBackend(workspace, nil), exp) {
 		t.Error("first append should succeed")
 	}
-	if appendExperienceIfNew(workspace, exp) {
+	if appendExperienceIfNew(context.Background(), memory.NewFileBackend(workspace, nil), exp) {
 		t.Error("duplicate append should return false")
 	}
 }

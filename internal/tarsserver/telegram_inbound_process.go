@@ -39,7 +39,7 @@ func (h *telegramInboundHandler) processMessage(
 		return "", sessionID, err
 	}
 	transcriptPath := h.store.TranscriptPath(sessionID)
-	if err := maybeAutoCompactSession(h.workspaceDir, transcriptPath, sessionID, h.llmRouter, h.logger, h.tooling.MemorySemanticConfig); err != nil {
+	if _, err := maybeAutoCompactSession(h.workspaceDir, transcriptPath, sessionID, h.llmRouter, h.logger, h.tooling.Compaction, h.tooling.MemorySemanticConfig); err != nil {
 		h.logger.Debug().Err(err).Str("session_id", sessionID).Msg("telegram auto compact skipped")
 	}
 	history, err := loadSessionHistory(transcriptPath, chatHistoryMaxTokens)
@@ -73,13 +73,8 @@ func (h *telegramInboundHandler) processMessage(
 		return "", sessionID, err
 	}
 	llmMessages := buildLLMMessages(systemPrompt, history, text)
-	injectedSchemas := resolveInjectedToolSchemas(
-		registry,
-		h.tooling.ToolsDefaultSet,
-		nil,
-		"user",
-		h.tooling.ToolsAllowHighRiskUser,
-	)
+	resolvedTools := resolveInjectedToolPolicy(registry, "user", h.tooling.ToolsAllowHighRiskUser)
+	injectedSchemas := resolvedTools.Schemas
 
 	now := time.Now().UTC()
 	if err := session.AppendMessage(transcriptPath, session.Message{
@@ -100,6 +95,7 @@ func (h *telegramInboundHandler) processMessage(
 	resp, err := loop.Run(runCtx, llmMessages, agent.RunOptions{
 		MaxIterations: resolveAgentMaxIterations(h.maxIterations),
 		Tools:         injectedSchemas,
+		BlockedTools:  resolvedTools.Blocked,
 		ToolChoice:    toolChoice,
 	})
 	if err != nil {

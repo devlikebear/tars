@@ -182,6 +182,7 @@ func (r *Runtime) cancelRun(runID, workspaceID string) (Run, error) {
 	r.stateVersion++
 	run := state.run
 	r.mu.Unlock()
+	r.publishRunEvent(run.ID, RunEvent{Type: "run_canceled", RunID: run.ID, Timestamp: run.CompletedAt, Status: string(run.Status), Error: run.Error})
 	r.persistSnapshot()
 	return run, nil
 }

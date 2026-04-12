@@ -116,6 +116,9 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 		return runtimeDeps{}, &runtimeDepsError{stage: "init_llm", err: err}
 	}
 	semanticCfg := semanticMemoryConfigFromConfig(cfg)
+	if err := validateMemoryBackend(cfg.MemoryBackend); err != nil {
+		return runtimeDeps{}, &runtimeDepsError{stage: "init_memory_backend", err: err}
+	}
 	if err := memory.ValidateSemanticConfig(semanticCfg); err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "init_semantic_memory", err: err}
 	}
@@ -136,8 +139,8 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 		Str("model", chatResolution.Model).
 		Str("source", chatResolution.Source).
 		Msg("llm router resolved chat_main tier")
-	deps.runPrompt = newAgentPromptRunner(cfg.WorkspaceDir, deps.llmClient, cfg.AgentMaxIterations, logger, semanticCfg)
-	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg.WorkspaceDir, deps.llmClient, deps.llmRouter, cfg.AgentMaxIterations, logger, semanticCfg)
+	deps.runPrompt = newAgentPromptRunner(cfg, cfg.WorkspaceDir, deps.llmClient, deps.usageTracker, cfg.AgentMaxIterations, logger, semanticCfg)
+	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg, cfg.WorkspaceDir, deps.llmClient, deps.llmRouter, deps.usageTracker, cfg.AgentMaxIterations, logger, semanticCfg)
 
 	// Per-tier provider/model context already logged at the chatResolution
 	// site above; no additional top-level LLM log needed with the provider

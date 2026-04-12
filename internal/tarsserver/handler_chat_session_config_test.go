@@ -143,6 +143,173 @@ func TestChatAPIHandler_ContextEndpointReflectsSessionConfig(t *testing.T) {
 	}
 }
 
+func TestChatAPIHandler_ContextEndpointReflectsSessionGroupConfig(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := store.SetToolConfig(sess.ID, &session.SessionToolConfig{
+		ToolsAllowGroups: []string{"files", "web"},
+		ToolsDenyGroups:  []string{"shell"},
+	}); err != nil {
+		t.Fatalf("set tool config: %v", err)
+	}
+
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		&mockLLMClient{},
+		nil,
+		zerolog.Nop(),
+		4,
+		nil,
+		"",
+		defaultChatToolingOptions(),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/context?session_id="+sess.ID, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected context status 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		ToolNames []string `json:"tool_names"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode context payload: %v", err)
+	}
+	for _, expected := range []string{"read_file", "list_dir", "glob"} {
+		if !containsString(payload.ToolNames, expected) {
+			t.Fatalf("expected %s in context preview, got %+v", expected, payload.ToolNames)
+		}
+	}
+	for _, denied := range []string{"exec", "process", "memory", "session"} {
+		if containsString(payload.ToolNames, denied) {
+			t.Fatalf("expected %s to be excluded from context preview, got %+v", denied, payload.ToolNames)
+		}
+	}
+}
+
+func TestChatAPIHandler_ContextEndpointReflectsSessionGroupConfigAfterPatchAPI(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		&mockLLMClient{},
+		nil,
+		zerolog.Nop(),
+		4,
+		nil,
+		"",
+		defaultChatToolingOptions(),
+	)
+	sessionHandler := newSessionAPIHandler(store, zerolog.Nop())
+
+	patchReq := httptest.NewRequest(http.MethodPatch, "/v1/admin/sessions/"+sess.ID+"/config", strings.NewReader(`{"tools_allow_groups":["files","web"],"tools_deny_groups":["shell"],"tools_custom":true}`))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchReq.Header.Set("Tars-Debug-Auth-Role", "admin")
+	patchReq.RemoteAddr = "127.0.0.1:12345"
+	patchRec := httptest.NewRecorder()
+	sessionHandler.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("expected patch status 200, got %d body=%q", patchRec.Code, patchRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/context?session_id="+sess.ID, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected context status 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		ToolNames []string `json:"tool_names"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode context payload: %v", err)
+	}
+	for _, expected := range []string{"read_file", "list_dir", "glob"} {
+		if !containsString(payload.ToolNames, expected) {
+			t.Fatalf("expected %s in context preview after patch API, got %+v", expected, payload.ToolNames)
+		}
+	}
+}
+
+func TestChatAPIHandler_ContextEndpointIncludesLastCompactionMode(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := store.SetLastCompactionMode(sess.ID, "deterministic"); err != nil {
+		t.Fatalf("set last compaction mode: %v", err)
+	}
+
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		&mockLLMClient{},
+		nil,
+		zerolog.Nop(),
+		4,
+		nil,
+		"",
+		defaultChatToolingOptions(),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/context?session_id="+sess.ID, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected context status 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		CompactionLastMode string `json:"compaction_last_mode"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode context payload: %v", err)
+	}
+	if payload.CompactionLastMode != "deterministic" {
+		t.Fatalf("expected deterministic compaction mode, got %q", payload.CompactionLastMode)
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func newSessionConfigTestSkillManager(t *testing.T, workspaceDir string) *extensions.Manager {
 	t.Helper()
 	skillRoot := filepath.Join(workspaceDir, "skills")

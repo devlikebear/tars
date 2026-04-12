@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/agent"
+	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/tool"
 )
@@ -38,13 +39,13 @@ func newCronPromptRunnerWithSessionContext(fallback gatewayPromptRunner, deps ch
 	if fallback == nil && deps.client == nil {
 		return nil
 	}
-	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string) (string, error) {
+	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string, providerOverride *gateway.ProviderOverride) (string, error) {
 		cfg := cronExecutionContextFromContext(ctx)
 		if cfg.SessionID == "" {
 			if fallback == nil {
 				return "", fmt.Errorf("cron runner is not configured")
 			}
-			return fallback(ctx, runLabel, promptText, allowedTools, tier)
+			return fallback(ctx, runLabel, promptText, allowedTools, tier, providerOverride)
 		}
 
 		requestWorkspaceDir := strings.TrimSpace(deps.workspaceDir)
@@ -53,7 +54,7 @@ func newCronPromptRunnerWithSessionContext(fallback gatewayPromptRunner, deps ch
 		}
 
 		transcriptPath := deps.store.TranscriptPath(cfg.SessionID)
-		if err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, cfg.SessionID, deps.router, deps.logger, deps.tooling.MemorySemanticConfig); err != nil {
+		if _, err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, cfg.SessionID, deps.router, deps.logger, deps.tooling.Compaction, deps.tooling.MemorySemanticConfig); err != nil {
 			return "", err
 		}
 

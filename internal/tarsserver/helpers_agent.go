@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agent"
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/prompt"
@@ -46,11 +48,12 @@ func newBaseToolRegistry(workspaceDir string) *tool.Registry {
 
 func newBaseToolRegistryWithProcess(workspaceDir string, policy tool.PathPolicy, processManager *tool.ProcessManager, semanticCfg ...memory.SemanticConfig) *tool.Registry {
 	registry := tool.NewRegistryWithScope(tool.RegistryScopeUser)
-	memService := buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...))
+	semantic := firstSemanticConfig(semanticCfg...)
+	backend := buildMemoryBackend(workspaceDir, semantic, memoryBackendFile)
 
 	// Memory & workspace aggregators
-	registry.Register(tool.NewMemoryTool(workspaceDir, memService, nil))
-	registry.Register(tool.NewKnowledgeTool(workspaceDir, memService))
+	registry.Register(tool.NewMemoryTool(workspaceDir, backend, nil))
+	registry.Register(tool.NewKnowledgeTool(backend))
 	registry.Register(tool.NewWorkspaceTool(workspaceDir))
 
 	// Standalone tools
@@ -77,16 +80,20 @@ func newBaseToolRegistryWithProcess(workspaceDir string, policy tool.PathPolicy,
 }
 
 func newAgentPromptRunner(
+	cfg config.Config,
 	workspaceDir string,
 	client llm.Client,
+	tracker *usage.Tracker,
 	maxIterations int,
 	logger zerolog.Logger,
 	semanticCfg ...memory.SemanticConfig,
 ) func(ctx context.Context, runLabel string, promptText string) (string, error) {
 	runnerWithTools := newAgentPromptRunnerWithToolsAndMemory(
+		cfg,
 		workspaceDir,
 		client,
 		nil,
+		tracker,
 		maxIterations,
 		logger,
 		firstSemanticConfig(semanticCfg...),
@@ -95,24 +102,28 @@ func newAgentPromptRunner(
 		return nil
 	}
 	return func(ctx context.Context, runLabel string, promptText string) (string, error) {
-		return runnerWithTools(ctx, runLabel, promptText, nil, "")
+		return runnerWithTools(ctx, runLabel, promptText, nil, "", nil)
 	}
 }
 
 func newAgentPromptRunnerWithTools(
+	cfg config.Config,
 	workspaceDir string,
 	client llm.Client,
+	tracker *usage.Tracker,
 	maxIterations int,
 	logger zerolog.Logger,
 	extraTools ...tool.Tool,
 ) gatewayPromptRunner {
-	return newAgentPromptRunnerWithToolsAndMemory(workspaceDir, client, nil, maxIterations, logger, memory.SemanticConfig{}, extraTools...)
+	return newAgentPromptRunnerWithToolsAndMemory(cfg, workspaceDir, client, nil, tracker, maxIterations, logger, memory.SemanticConfig{}, extraTools...)
 }
 
 func newAgentPromptRunnerWithToolsAndMemory(
+	cfg config.Config,
 	workspaceDir string,
 	client llm.Client,
 	router llm.Router,
+	tracker *usage.Tracker,
 	maxIterations int,
 	logger zerolog.Logger,
 	semanticCfg memory.SemanticConfig,
@@ -122,7 +133,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		return nil
 	}
 	maxIters := resolveAgentMaxIterations(maxIterations)
-	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string) (string, error) {
+	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string, providerOverride *gateway.ProviderOverride) (string, error) {
 		label := strings.TrimSpace(runLabel)
 		if label == "" {
 			label = "agent"
@@ -137,27 +148,90 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		// the SpawnRequest) AND a router is available, select that tier's
 		// client; otherwise fall back to the default chat client.
 		runClient := client
+		execInfo := gateway.PromptExecutionFromContext(ctx)
+		activeOverride := gateway.CloneProviderOverride(providerOverride)
+		if activeOverride == nil {
+			activeOverride = gateway.CloneProviderOverride(execInfo.ProviderOverride)
+		}
+		overrideSource := strings.TrimSpace(execInfo.OverrideSource)
+		if overrideSource == "" {
+			if activeOverride != nil {
+				overrideSource = "task"
+			} else {
+				overrideSource = "tier"
+			}
+		}
 		selection := llm.SelectionMetadata{}
+		if activeOverride != nil {
+			resolved, err := resolveProviderOverrideClient(cfg, workspaceDir, tracker, tier, activeOverride)
+			if err != nil {
+				return "", err
+			}
+			runClient = resolved.client
+			selection.Tier = llm.ParseTierOrKeep(llm.Tier(resolved.tier))
+			selection.Provider = resolved.provider
+			selection.Model = resolved.model
+			selection.Source = overrideSource
+			if execInfo.Metadata != nil {
+				execInfo.Metadata.ResolvedAlias = strings.TrimSpace(activeOverride.Alias)
+				execInfo.Metadata.ResolvedKind = resolved.provider
+				execInfo.Metadata.ResolvedModel = resolved.model
+				execInfo.Metadata.OverrideSource = overrideSource
+			}
+		}
 		if router != nil {
 			tierNorm := strings.ToLower(strings.TrimSpace(tier))
-			if tierNorm != "" {
-				if parsed, err := llm.ParseTier(tierNorm); err == nil {
-					if c, resolution, err := router.ClientForTier(parsed); err == nil {
-						runClient = c
-						selection.Tier = resolution.Tier
-						selection.Provider = resolution.Provider
-						selection.Model = resolution.Model
-						selection.Source = resolution.Source
+			resolved, execMeta, err := gateway.ResolveOverride(&cfg, tierNorm, activeOverride, overrideSource)
+			if err != nil {
+				return "", err
+			}
+			if execInfo.Metadata != nil {
+				*execInfo.Metadata = execMeta
+			}
+			parsedTier, _ := llm.ParseTier(resolved.Tier)
+			selection.Tier = parsedTier
+			selection.Provider = resolved.Kind
+			selection.Model = resolved.Model
+			selection.Source = execMeta.OverrideSource
+			if execMeta.OverrideSource == "tier" {
+				if tierNorm != "" {
+					if parsed, err := llm.ParseTier(tierNorm); err == nil {
+						if c, resolution, err := router.ClientForTier(parsed); err == nil {
+							runClient = c
+							selection.Tier = resolution.Tier
+							selection.Provider = resolution.Provider
+							selection.Model = resolution.Model
+							selection.Source = resolution.Source
+						}
 					}
-				}
-			} else {
-				if c, resolution, err := router.ClientFor(llm.RoleGatewayDefault); err == nil {
+				} else if c, resolution, err := router.ClientFor(llm.RoleGatewayDefault); err == nil {
 					runClient = c
 					selection.Role = llm.RoleGatewayDefault
 					selection.Tier = resolution.Tier
 					selection.Provider = resolution.Provider
 					selection.Model = resolution.Model
 					selection.Source = resolution.Source
+				}
+			} else {
+				overrideClient, err := llm.NewProvider(llm.ProviderOptions{
+					Provider:        resolved.Kind,
+					AuthMode:        resolved.AuthMode,
+					OAuthProvider:   resolved.OAuthProvider,
+					BaseURL:         resolved.BaseURL,
+					WorkDir:         targetWorkspaceDir,
+					Model:           resolved.Model,
+					APIKey:          resolved.APIKey,
+					ReasoningEffort: resolved.ReasoningEffort,
+					ThinkingBudget:  resolved.ThinkingBudget,
+					ServiceTier:     resolved.ServiceTier,
+				})
+				if err != nil {
+					return "", err
+				}
+				if tracker != nil {
+					runClient = usage.NewTrackedClient(overrideClient, tracker, resolved.Kind, resolved.Model, parsedTier)
+				} else {
+					runClient = overrideClient
 				}
 			}
 		}
@@ -218,6 +292,55 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		}
 		return strings.TrimSpace(resp.Message.Content), nil
 	}
+}
+
+type providerOverrideClient struct {
+	client   llm.Client
+	provider string
+	model    string
+	tier     string
+}
+
+func resolveProviderOverrideClient(cfg config.Config, workspaceDir string, tracker *usage.Tracker, tier string, override *gateway.ProviderOverride) (providerOverrideClient, error) {
+	if override == nil {
+		return providerOverrideClient{}, fmt.Errorf("provider override is required")
+	}
+	alias := strings.TrimSpace(override.Alias)
+	if alias == "" {
+		return providerOverrideClient{}, fmt.Errorf("provider override alias is required")
+	}
+	provider, ok := cfg.LLMProviders[alias]
+	if !ok {
+		return providerOverrideClient{}, fmt.Errorf("unknown provider alias %q", alias)
+	}
+	resolvedTier := strings.ToLower(strings.TrimSpace(tier))
+	if resolvedTier == "" {
+		resolvedTier = strings.ToLower(strings.TrimSpace(cfg.LLMDefaultTier))
+	}
+	model := strings.TrimSpace(override.Model)
+	if model == "" {
+		if binding, ok := cfg.LLMTiers[resolvedTier]; ok {
+			model = strings.TrimSpace(binding.Model)
+		}
+	}
+	if model == "" {
+		return providerOverrideClient{}, fmt.Errorf("provider override model is required")
+	}
+	client, err := llm.NewProvider(llm.ProviderOptions{
+		Provider:      strings.TrimSpace(provider.Kind),
+		AuthMode:      strings.TrimSpace(provider.AuthMode),
+		OAuthProvider: strings.TrimSpace(provider.OAuthProvider),
+		BaseURL:       strings.TrimSpace(provider.BaseURL),
+		WorkDir:       workspaceDir,
+		Model:         model,
+		APIKey:        strings.TrimSpace(provider.APIKey),
+		ServiceTier:   strings.TrimSpace(provider.ServiceTier),
+	})
+	if err != nil {
+		return providerOverrideClient{}, err
+	}
+	tracked := usage.NewTrackedClient(client, tracker, strings.TrimSpace(provider.Kind), model, llm.ParseTierOrKeep(llm.Tier(resolvedTier)))
+	return providerOverrideClient{client: tracked, provider: strings.TrimSpace(provider.Kind), model: model, tier: resolvedTier}, nil
 }
 
 func agentNameFromRunLabel(label string) string {

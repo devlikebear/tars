@@ -18,10 +18,12 @@ type workspaceGatewayAgent struct {
 	ToolsDeny          []string
 	ToolsRiskMax       string
 	ToolsAllowGroups   []string
+	ToolsDenyGroups    []string
 	ToolsAllowPatterns []string
 	SessionRoutingMode string
 	SessionFixedID     string
 	Tier               string
+	ProviderOverride   *gateway.ProviderOverride
 }
 
 type workspaceGatewayAgentFrontmatter struct {
@@ -35,16 +37,19 @@ type workspaceGatewayAgentFrontmatter struct {
 	ToolsRiskMaxExists       bool
 	ToolsAllowGroups         []string
 	ToolsAllowGroupsExists   bool
+	ToolsDenyGroups          []string
+	ToolsDenyGroupsExists    bool
 	ToolsAllowPatterns       []string
 	ToolsAllowPatternsExists bool
 	SessionRoutingMode       string
 	SessionFixedID           string
 	Tier                     string
+	ProviderOverride         *gateway.ProviderOverride
 }
 
 func newWorkspacePromptExecutor(
 	def workspaceGatewayAgent,
-	runPrompt func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string) (string, error),
+	runPrompt func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *gateway.ProviderOverride) (string, error),
 ) (gateway.AgentExecutor, error) {
 	if runPrompt == nil {
 		return nil, fmt.Errorf("run prompt is required")
@@ -65,17 +70,19 @@ func newWorkspacePromptExecutor(
 		ToolsDeny:          append([]string(nil), def.ToolsDeny...),
 		ToolsRiskMax:       strings.TrimSpace(def.ToolsRiskMax),
 		ToolsAllowGroups:   append([]string(nil), def.ToolsAllowGroups...),
+		ToolsDenyGroups:    append([]string(nil), def.ToolsDenyGroups...),
 		ToolsAllowPatterns: append([]string(nil), def.ToolsAllowPatterns...),
 		SessionRoutingMode: normalizeGatewaySessionRoutingMode(def.SessionRoutingMode),
 		SessionFixedID:     strings.TrimSpace(def.SessionFixedID),
 		Tier:               strings.TrimSpace(def.Tier),
-		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string) (string, error) {
+		ProviderOverride:   gateway.CloneProviderOverride(def.ProviderOverride),
+		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *gateway.ProviderOverride) (string, error) {
 			label := strings.TrimSpace(runLabel)
 			if label == "" {
 				label = "spawn"
 			}
 			label += ":" + name
-			return runPrompt(ctx, label, composeWorkspaceAgentPrompt(name, instructions, prompt), allowedTools, tier)
+			return runPrompt(ctx, label, composeWorkspaceAgentPrompt(name, instructions, prompt), allowedTools, tier, providerOverride)
 		},
 	})
 }

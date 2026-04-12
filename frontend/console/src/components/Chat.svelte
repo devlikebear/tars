@@ -64,6 +64,10 @@
     skill_names?: string[]
     memory_count?: number
     memory_tokens?: number
+    compaction_trigger_tokens?: number
+    compaction_keep_recent_tokens?: number
+    compaction_keep_recent_fraction?: number
+    compaction_last_mode?: string
     used_tool_names?: string[]
     selected_skill_name?: string
     selected_skill_reason?: string

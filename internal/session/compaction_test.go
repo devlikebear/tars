@@ -182,3 +182,52 @@ func TestCutoffIndexByRecentTokenShare_PrefersUserBoundary(t *testing.T) {
 		t.Fatalf("expected cutoff at next user boundary 22, got %d", cutoff)
 	}
 }
+
+func TestCompactTranscriptWithOptions_KeepsToolBlocksBehindUserBoundary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tool-block.jsonl")
+	messages := []Message{
+		{Role: "user", Content: "request one", Timestamp: time.Date(2026, 3, 22, 9, 0, 0, 0, time.UTC)},
+		{Role: "assistant", Content: "checking files", Timestamp: time.Date(2026, 3, 22, 9, 0, 1, 0, time.UTC)},
+		{Role: "tool", Content: "file list", ToolName: "list_dir", ToolCallID: "call_1", Timestamp: time.Date(2026, 3, 22, 9, 0, 2, 0, time.UTC)},
+		{Role: "assistant", Content: "here is the summary", Timestamp: time.Date(2026, 3, 22, 9, 0, 3, 0, time.UTC)},
+		{Role: "user", Content: "request two", Timestamp: time.Date(2026, 3, 22, 9, 0, 4, 0, time.UTC)},
+		{Role: "assistant", Content: "final answer", Timestamp: time.Date(2026, 3, 22, 9, 0, 5, 0, time.UTC)},
+		{Role: "user", Content: "request three", Timestamp: time.Date(2026, 3, 22, 9, 0, 6, 0, time.UTC)},
+		{Role: "assistant", Content: "follow-up", Timestamp: time.Date(2026, 3, 22, 9, 0, 7, 0, time.UTC)},
+		{Role: "user", Content: "request four", Timestamp: time.Date(2026, 3, 22, 9, 0, 8, 0, time.UTC)},
+		{Role: "assistant", Content: "done", Timestamp: time.Date(2026, 3, 22, 9, 0, 9, 0, time.UTC)},
+	}
+	for _, msg := range messages {
+		if err := AppendMessage(path, msg); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+
+	result, err := CompactTranscriptWithOptions(path, 5, time.Now().UTC(), CompactOptions{
+		KeepRecentTokens:   5,
+		KeepRecentFraction: 0.20,
+	})
+	if err != nil {
+		t.Fatalf("compact transcript: %v", err)
+	}
+	if !result.Compacted {
+		t.Fatalf("expected compaction to happen")
+	}
+
+	compacted, err := ReadMessages(path)
+	if err != nil {
+		t.Fatalf("read compacted transcript: %v", err)
+	}
+	if len(compacted) < 3 {
+		t.Fatalf("expected summary + latest user turn, got %+v", compacted)
+	}
+	if compacted[1].Role != "user" {
+		t.Fatalf("expected tail to restart at next user boundary, got %+v", compacted)
+	}
+	for _, msg := range compacted[1:] {
+		if msg.Role == "tool" && msg.ToolCallID == "call_1" {
+			t.Fatalf("expected old tool block to be compacted away, got %+v", compacted)
+		}
+	}
+}

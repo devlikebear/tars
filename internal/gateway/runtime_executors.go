@@ -58,7 +58,7 @@ func (r *Runtime) applyExecutorsLocked(executors []AgentExecutor, requestedDefau
 				Description: "Default in-process agent loop",
 				Source:      "in-process",
 				Entry:       "llm-loop",
-				RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string, _ string) (string, error) {
+				RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string, _ string, _ *ProviderOverride) (string, error) {
 					return r.opts.RunPrompt(ctx, runLabel, prompt)
 				},
 			}); err == nil && ex != nil {
@@ -169,9 +169,12 @@ func (r *Runtime) Agents() []map[string]any {
 			"tools_deny_count":     info.ToolsDenyCount,
 			"tools_risk_max":       info.ToolsRiskMax,
 			"tools_allow_groups":   append([]string{}, info.ToolsAllowGroups...),
+			"tools_deny_groups":    append([]string{}, info.ToolsDenyGroups...),
 			"tools_allow_patterns": append([]string{}, info.ToolsAllowPatterns...),
 			"session_routing_mode": normalizeSessionRoutingMode(info.SessionRoutingMode),
 			"session_fixed_id":     strings.TrimSpace(info.SessionFixedID),
+			"tier":                 strings.TrimSpace(info.Tier),
+			"provider_override":    CloneProviderOverride(info.ProviderOverride),
 		})
 	}
 	return out

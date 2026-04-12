@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/rs/zerolog"
@@ -48,11 +49,11 @@ func TestAgentPromptRunnerWithTools_IncludesExtraTools(t *testing.T) {
 			return tool.Result{}, nil
 		},
 	}
-	runner := newAgentPromptRunnerWithTools(t.TempDir(), client, 2, zerolog.New(io.Discard), extra)
+	runner := newAgentPromptRunnerWithTools(config.Config{}, t.TempDir(), client, nil, 2, zerolog.New(io.Discard), extra)
 	if runner == nil {
 		t.Fatalf("expected non-nil runner")
 	}
-	if _, err := runner(context.Background(), "cron:test", "hello", nil, ""); err != nil {
+	if _, err := runner(context.Background(), "cron:test", "hello", nil, "", nil); err != nil {
 		t.Fatalf("runner call failed: %v", err)
 	}
 	found := false
@@ -81,11 +82,11 @@ func TestAgentPromptRunnerWithTools_CronUsesMinimalToolsetAndPrompt(t *testing.T
 	}
 
 	client := &captureRunnerToolsClient{}
-	runner := newAgentPromptRunnerWithTools(root, client, 8, zerolog.New(io.Discard))
+	runner := newAgentPromptRunnerWithTools(config.Config{}, root, client, nil, 8, zerolog.New(io.Discard))
 	if runner == nil {
 		t.Fatalf("expected non-nil runner")
 	}
-	if _, err := runner(context.Background(), "cron:test", "hello", nil, ""); err != nil {
+	if _, err := runner(context.Background(), "cron:test", "hello", nil, "", nil); err != nil {
 		t.Fatalf("runner call failed: %v", err)
 	}
 	if len(client.messages) < 2 {

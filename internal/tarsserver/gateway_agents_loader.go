@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/tool"
 )
 
@@ -114,7 +115,7 @@ func buildWorkspaceGatewayAgent(path, raw string, knownTools map[string]struct{}
 		description = "Workspace markdown sub-agent"
 	}
 
-	policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsAllowPatterns, diagnostics, ok := buildWorkspaceGatewayAgentPolicy(name, meta, knownTools)
+	policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsDenyGroups, toolsAllowPatterns, diagnostics, ok := buildWorkspaceGatewayAgentPolicy(name, meta, knownTools)
 	if !ok {
 		return workspaceGatewayAgent{}, diagnostics, false, nil
 	}
@@ -138,10 +139,12 @@ func buildWorkspaceGatewayAgent(path, raw string, knownTools map[string]struct{}
 		ToolsDeny:          toolsDeny,
 		ToolsRiskMax:       toolsRiskMax,
 		ToolsAllowGroups:   toolsAllowGroups,
+		ToolsDenyGroups:    toolsDenyGroups,
 		ToolsAllowPatterns: toolsAllowPatterns,
 		SessionRoutingMode: sessionRoutingMode,
 		SessionFixedID:     sessionFixedID,
 		Tier:               tier,
+		ProviderOverride:   gateway.CloneProviderOverride(meta.ProviderOverride),
 	}, diagnostics, true, nil
 }
 
@@ -149,22 +152,24 @@ func buildWorkspaceGatewayAgentPolicy(
 	name string,
 	meta workspaceGatewayAgentFrontmatter,
 	knownTools map[string]struct{},
-) (string, []string, []string, string, []string, []string, []string, bool) {
+) (string, []string, []string, string, []string, []string, []string, []string, bool) {
 	policyMode := "full"
 	toolsAllow := []string{}
 	toolsDeny := []string{}
 	toolsRiskMax := ""
 	toolsAllowGroups := []string{}
+	toolsDenyGroups := []string{}
 	toolsAllowPatterns := []string{}
 	diagnostics := make([]string, 0)
 
 	policyRequested := meta.ToolsAllowExists ||
 		meta.ToolsAllowGroupsExists ||
+		meta.ToolsDenyGroupsExists ||
 		meta.ToolsAllowPatternsExists ||
 		meta.ToolsDenyExists ||
 		strings.TrimSpace(meta.ToolsRiskMax) != ""
 	if !policyRequested {
-		return policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsAllowPatterns, diagnostics, true
+		return policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsDenyGroups, toolsAllowPatterns, diagnostics, true
 	}
 
 	policyMode = "allowlist"
@@ -203,6 +208,17 @@ func buildWorkspaceGatewayAgentPolicy(
 		}
 	}
 
+	if meta.ToolsDenyGroupsExists {
+		validGroups, expanded, unknowns := tool.ExpandToolGroups(meta.ToolsDenyGroups, knownTools)
+		toolsDenyGroups = validGroups
+		for _, expandedTool := range expanded {
+			toolsDeny = append(toolsDeny, expandedTool)
+		}
+		for _, u := range unknowns {
+			diagnostics = append(diagnostics, fmt.Sprintf("agent %s tools_deny_groups ignored unknown group: %s", name, u))
+		}
+	}
+
 	// Expand patterns
 	if meta.ToolsAllowPatternsExists {
 		validPatterns, matched, invalids := tool.ExpandToolPatterns(meta.ToolsAllowPatterns, knownTools)
@@ -229,6 +245,9 @@ func buildWorkspaceGatewayAgentPolicy(
 			}
 			toolsDeny = append(toolsDeny, normalized)
 		}
+	}
+	if len(toolsDeny) > 0 {
+		toolsDeny = normalizeToolNames(toolsDeny)
 	}
 	toolsRiskMax = strings.TrimSpace(meta.ToolsRiskMax)
 
@@ -263,9 +282,9 @@ func buildWorkspaceGatewayAgentPolicy(
 
 	if len(toolsAllow) == 0 && (meta.ToolsAllowExists || meta.ToolsAllowGroupsExists || meta.ToolsAllowPatternsExists) {
 		diagnostics = append(diagnostics, fmt.Sprintf("skip agent %s: tools_allow has no valid tools", name))
-		return policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsAllowPatterns, diagnostics, false
+		return policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsDenyGroups, toolsAllowPatterns, diagnostics, false
 	}
-	return policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsAllowPatterns, diagnostics, true
+	return policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsDenyGroups, toolsAllowPatterns, diagnostics, true
 }
 
 func isValidGatewayAgentName(name string) bool {

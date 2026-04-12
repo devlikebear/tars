@@ -65,6 +65,7 @@ func Schema() []FieldMeta {
 		f("llm_service_tier", "LLM", "string", "Service Tier", "Service tier hint for the provider"),
 
 		// ── Memory ───────────────────────────────
+		fsel("memory_backend", "Memory", "Backend", "Memory backend implementation", []string{"file"}),
 		f("memory_semantic_enabled", "Memory", "bool", "Semantic Memory", "Enable semantic memory with vector embeddings"),
 		fsel("memory_embed_provider", "Memory", "Embed Provider", "Embedding provider", memory.SupportedEmbedProviders()),
 		f("memory_embed_base_url", "Memory", "string", "Embed Base URL", "Base URL for embedding API"),
@@ -116,6 +117,13 @@ func Schema() []FieldMeta {
 		f("assistant_ffmpeg_bin", "Assistant", "string", "FFmpeg Binary", "Path to ffmpeg for audio processing"),
 		f("assistant_tts_bin", "Assistant", "string", "TTS Binary", "Path to text-to-speech binary"),
 
+		// ── Compaction ───────────────────────────
+		f("compaction_trigger_tokens", "Compaction", "int", "Trigger Tokens", "Estimated transcript tokens that trigger auto-compaction"),
+		f("compaction_keep_recent_tokens", "Compaction", "int", "Keep Recent Tokens", "Minimum recent transcript tokens to preserve during compaction"),
+		f("compaction_keep_recent_fraction", "Compaction", "float", "Keep Recent Fraction", "Fraction of recent transcript tokens preserved during compaction"),
+		fsel("compaction_llm_mode", "Compaction", "LLM Mode", "Whether compaction may call the LLM or stay deterministic", []string{"auto", "deterministic"}),
+		f("compaction_llm_timeout_seconds", "Compaction", "int", "LLM Timeout (sec)", "Timeout for LLM-assisted compaction before deterministic fallback"),
+
 		// ── Tools ────────────────────────────────
 		f("tools_web_search_enabled", "Tools", "bool", "Web Search", "Enable web search tool"),
 		f("tools_web_fetch_enabled", "Tools", "bool", "Web Fetch", "Enable web fetch tool"),
@@ -162,6 +170,13 @@ func Schema() []FieldMeta {
 		f("gateway_channels_max_messages_per_channel", "Gateway", "int", "Max Messages/Channel", "Maximum messages retained per channel"),
 		f("gateway_subagents_max_threads", "Gateway", "int", "Max Subagent Threads", "Maximum concurrent subagent threads"),
 		f("gateway_subagents_max_depth", "Gateway", "int", "Max Subagent Depth", "Maximum subagent nesting depth"),
+		f("gateway_consensus_enabled", "Gateway", "bool", "Consensus Enabled", "Enable mode=consensus for gateway subagent runs"),
+		f("gateway_consensus_max_fanout", "Gateway", "int", "Consensus Max Fanout", "Maximum variants launched for a single consensus task"),
+		f("gateway_consensus_budget_tokens", "Gateway", "int", "Consensus Token Budget", "Hard token ceiling for one consensus execution"),
+		f("gateway_consensus_budget_usd", "Gateway", "float", "Consensus Budget (USD)", "Reject consensus runs whose estimated USD cost exceeds this amount"),
+		f("gateway_consensus_timeout_seconds", "Gateway", "int", "Consensus Timeout Seconds", "Maximum wall time for a single consensus execution"),
+		f("gateway_consensus_allowed_aliases_json", "Gateway", "string_list", "Consensus Allowed Aliases", "Optional provider alias allowlist for consensus variants"),
+		f("gateway_consensus_concurrent_runs", "Gateway", "int", "Consensus Concurrent Runs", "Maximum number of consensus runs allowed at once"),
 		f("gateway_restore_on_startup", "Gateway", "bool", "Restore on Startup", "Restore persisted runs when server starts"),
 		f("gateway_archive_enabled", "Gateway", "bool", "Archive Enabled", "Enable run archival to disk"),
 		f("gateway_archive_dir", "Gateway", "string", "Archive Dir", "Directory for archived run files"),
@@ -331,6 +346,17 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.AssistantFFmpegBin
 	case "assistant_tts_bin":
 		return cfg.AssistantTTSBin
+	// Compaction
+	case "compaction_trigger_tokens":
+		return cfg.CompactionTriggerTokens
+	case "compaction_keep_recent_tokens":
+		return cfg.CompactionKeepRecentTokens
+	case "compaction_keep_recent_fraction":
+		return cfg.CompactionKeepRecentFraction
+	case "compaction_llm_mode":
+		return cfg.CompactionLLMMode
+	case "compaction_llm_timeout_seconds":
+		return cfg.CompactionLLMTimeoutSeconds
 	// Tools
 	case "tools_web_search_enabled":
 		return cfg.ToolsWebSearchEnabled

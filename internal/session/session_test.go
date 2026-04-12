@@ -284,6 +284,75 @@ func TestStoreSetWorkDirs_PreservesMandatoryArtifactDirFirst(t *testing.T) {
 	}
 }
 
+func TestStoreSetToolConfig_RoundTripsGroupFields(t *testing.T) {
+	store := NewStore(t.TempDir())
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	config := &SessionToolConfig{
+		ToolsCustom:      true,
+		ToolsEnabled:     []string{"read_file", "list_dir"},
+		ToolsDisabled:    []string{"exec"},
+		ToolsAllowGroups: []string{"files", "web"},
+		ToolsDenyGroups:  []string{"shell"},
+	}
+	if err := store.SetToolConfig(sess.ID, config); err != nil {
+		t.Fatalf("set tool config: %v", err)
+	}
+
+	reloaded, err := store.Get(sess.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if !reflect.DeepEqual(reloaded.ToolConfig, config) {
+		t.Fatalf("unexpected tool config: got=%+v want=%+v", reloaded.ToolConfig, config)
+	}
+}
+
+func TestStoreGet_LegacyToolConfigWithoutGroupFieldsStillLoads(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	createdAt := time.Now().UTC().Add(-time.Hour)
+	updatedAt := createdAt.Add(10 * time.Minute)
+	legacyID := "sess_legacy"
+
+	if err := os.MkdirAll(filepath.Join(root, "sessions"), 0o755); err != nil {
+		t.Fatalf("mkdir sessions: %v", err)
+	}
+	data := []byte(`{
+	  "sess_legacy": {
+	    "id": "sess_legacy",
+	    "title": "Legacy",
+	    "tool_config": {
+	      "tools_custom": true,
+	      "tools_enabled": ["read_file"],
+	      "tools_disabled": ["exec"]
+	    },
+	    "created_at": "` + createdAt.Format(time.RFC3339) + `",
+	    "updated_at": "` + updatedAt.Format(time.RFC3339) + `"
+	  }
+	}`)
+	if err := os.WriteFile(filepath.Join(root, "sessions", "sessions.json"), data, 0o644); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+
+	sess, err := store.Get(legacyID)
+	if err != nil {
+		t.Fatalf("get legacy session: %v", err)
+	}
+	if sess.ToolConfig == nil {
+		t.Fatalf("expected tool config to load")
+	}
+	if sess.ToolConfig.ToolsAllowGroups != nil {
+		t.Fatalf("expected missing allow groups to remain nil, got %+v", sess.ToolConfig.ToolsAllowGroups)
+	}
+	if sess.ToolConfig.ToolsDenyGroups != nil {
+		t.Fatalf("expected missing deny groups to remain nil, got %+v", sess.ToolConfig.ToolsDenyGroups)
+	}
+}
+
 func TestStoreGet_MigratesLegacyNestedArtifactDir(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

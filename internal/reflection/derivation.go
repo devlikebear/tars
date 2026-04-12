@@ -1,6 +1,7 @@
 package reflection
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -94,11 +95,11 @@ func shouldCompileKnowledge(t turn) bool {
 // summary+category pair does not already exist. Returns true when a new
 // entry was written. Errors are swallowed — reflection jobs aggregate
 // errors via their JobResult.Details rather than propagating.
-func appendExperienceIfNew(workspaceDir string, exp memory.Experience) bool {
+func appendExperienceIfNew(ctx context.Context, backend memory.Backend, exp memory.Experience) bool {
 	if strings.TrimSpace(exp.Summary) == "" {
 		return false
 	}
-	existing, err := memory.SearchExperiences(workspaceDir, memory.SearchOptions{
+	existing, err := backend.SearchExperiences(ctx, memory.SearchOptions{
 		Query: strings.TrimSpace(exp.Summary),
 		Limit: 6,
 	})
@@ -111,7 +112,7 @@ func appendExperienceIfNew(workspaceDir string, exp memory.Experience) bool {
 			}
 		}
 	}
-	if err := memory.AppendExperience(workspaceDir, exp); err != nil {
+	if err := backend.AppendExperience(ctx, exp); err != nil {
 		return false
 	}
 	return true

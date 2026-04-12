@@ -7,6 +7,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/pulse"
 	"github.com/devlikebear/tars/internal/reflection"
 	"github.com/devlikebear/tars/internal/session"
@@ -69,6 +70,7 @@ func buildReflectionRuntime(in reflectionSetupInputs) reflectionSetup {
 	jobs := []reflection.Job{
 		&reflection.MemoryJob{
 			WorkspaceDir:       in.WorkspaceDir,
+			Backend:            memory.NewFileBackend(in.WorkspaceDir, nil),
 			Sessions:           in.SessionStore,
 			Router:             in.Router,
 			Lookback:           cfg.EffectiveMemoryLookback(),

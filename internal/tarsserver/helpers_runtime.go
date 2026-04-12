@@ -3,6 +3,8 @@ package tarsserver
 import (
 	"context"
 	"sync/atomic"
+
+	"github.com/devlikebear/tars/internal/gateway"
 )
 
 // runtimeActivity tracks lightweight server-wide activity counters used
@@ -13,7 +15,7 @@ type runtimeActivity struct {
 	chatInFlight atomic.Int64
 }
 
-type gatewayPromptRunner func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string) (string, error)
+type gatewayPromptRunner func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string, providerOverride *gateway.ProviderOverride) (string, error)
 
 func (a *runtimeActivity) beginChat() func() {
 	if a == nil {
