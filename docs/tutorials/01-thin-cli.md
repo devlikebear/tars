@@ -85,7 +85,7 @@ func newRootCommand(stdout io.Writer) *cobra.Command {
 
 **포인트:**
 - `newRootCommand()`가 `io.Writer`를 받는 이유 → 테스트할 때 stdout을 바꿔 끼울 수 있음
-- 기본 동작은 `cmd.Help()` — 나중에 클라이언트(TUI)로 교체 예정
+- 기본 동작은 `cmd.Help()` — 이후 웹 콘솔(`/console`)로 발전
 
 ### 1-4. serve 서브커맨드
 
