@@ -171,9 +171,5 @@ func historyTokenCost(messages []Message) int {
 }
 
 func messageTokenCost(msg Message) int {
-	cost := len(msg.Content) / 4
-	if cost < 1 {
-		return 1
-	}
-	return cost
+	return estimateMessageTokenCost(msg)
 }

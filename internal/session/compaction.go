@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const (
@@ -41,7 +42,7 @@ func CompactTranscript(path string, keepRecent int, now time.Time) (CompactResul
 
 type CompactOptions struct {
 	BeforeRewrite       func(summary string, compactedCount int, originalCount int) error
-	SummaryBuilder      func(messages []Message) (string, error)
+	SummaryBuilder      func(messages []Message, previousContext string) (string, error)
 	KeepRecentTokens    int
 	KeepRecentFraction  float64
 	SummaryInstructions string
@@ -49,6 +50,7 @@ type CompactOptions struct {
 
 type CompactionSummaryOptions struct {
 	FocusInstructions string
+	PreviousContext   string
 }
 
 func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, opts CompactOptions) (CompactResult, error) {
@@ -115,17 +117,28 @@ func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, op
 		tail = messages[cutoff:]
 	}
 
+	// Stacking carry-forward: extract previous compaction summary before pruning
+	var previousContext string
+	if len(head) > 0 && head[0].Role == "system" && strings.Contains(head[0].Content, "[COMPACTION SUMMARY]") {
+		previousContext = extractCompactionBody(head[0].Content)
+		head = head[1:]
+	}
+
+	// Pre-compaction: prune long tool results to prevent code dumps in summary
+	prunedHead := pruneToolResults(head, defaultToolPruneMaxLen)
+
 	var summary string
 	if opts.SummaryBuilder != nil {
-		built, err := opts.SummaryBuilder(head)
+		built, err := opts.SummaryBuilder(prunedHead, previousContext)
 		if err != nil {
 			return CompactResult{}, err
 		}
 		summary = strings.TrimSpace(built)
 	}
 	if summary == "" {
-		summary = BuildCompactionSummaryWithOptions(head, CompactionSummaryOptions{
+		summary = BuildCompactionSummaryWithOptions(prunedHead, CompactionSummaryOptions{
 			FocusInstructions: opts.SummaryInstructions,
+			PreviousContext:   previousContext,
 		})
 	}
 	compactionMessage := Message{
@@ -170,20 +183,34 @@ func BuildCompactionSummaryWithOptions(messages []Message, opts CompactionSummar
 		_, _ = fmt.Fprintf(&b, "Span: %s\n", span)
 	}
 
+	// Cross-section deduplication
+	globalSeen := map[string]struct{}{}
+	appendDedup := func(title string, lines []string) {
+		fresh := make([]string, 0, len(lines))
+		for _, line := range uniqueNonEmptyLines(lines) {
+			if _, dup := globalSeen[line]; dup {
+				continue
+			}
+			globalSeen[line] = struct{}{}
+			fresh = append(fresh, line)
+		}
+		appendCompactionSection(&b, title, fresh)
+	}
+
+	// Prior context from previous compaction (populated by stacking carry-forward)
+	if opts.PreviousContext != "" {
+		appendDedup("Prior Context", []string{opts.PreviousContext})
+	}
+
 	if focus := normalizeSummaryLine(opts.FocusInstructions, 240); focus != "" {
-		appendCompactionSection(&b, "Requested Focus", []string{focus})
+		appendDedup("Requested Focus", []string{focus})
 	}
 
-	appendCompactionSection(&b, "Current Goal", currentGoalLines(messages))
-	appendCompactionSection(&b, "Constraints And Preferences", constraintLines(messages))
-	appendCompactionSection(&b, "Key Facts", keyFactLines(messages))
-	appendCompactionSection(&b, "Identifiers To Preserve", identifierLines(messages))
-	appendCompactionSection(&b, "Recent Context", recentContextLines(messages))
-	appendCompactionSection(&b, "Open State", openStateLines(messages))
+	appendDedup("Topic", currentGoalLines(messages))
+	appendDedup("Key Decisions", keyDecisionLines(messages))
+	appendDedup("Active Identifiers", identifierLines(messages))
+	appendDedup("Current State", currentStateLines(messages))
 
-	if strings.Count(b.String(), "\n\n") == 0 {
-		appendCompactionSection(&b, "Recent Context", recentContextLines(messages))
-	}
 	return b.String()
 }
 
@@ -283,11 +310,38 @@ func adjustCompactionCutoff(messages []Message, cutoff int, minMessages int) int
 }
 
 func estimateMessageTokenCost(msg Message) int {
-	cost := len(msg.Content) / 4
+	return estimateStringTokens(msg.Content)
+}
+
+// EstimateMessageTokenCost is the exported wrapper for single-message token estimation.
+func EstimateMessageTokenCost(msg Message) int {
+	return estimateMessageTokenCost(msg)
+}
+
+func estimateStringTokens(s string) int {
+	if len(s) == 0 {
+		return 1
+	}
+	units := 0
+	for _, r := range s {
+		if isCJKRune(r) {
+			units += 6 // CJK rune: ~1.5 tokens → weight as 6 quarter-tokens
+		} else {
+			units += 1 // ASCII/Latin byte: ~0.25 tokens
+		}
+	}
+	cost := units / 4
 	if cost < 1 {
 		cost = 1
 	}
 	return cost
+}
+
+func isCJKRune(r rune) bool {
+	return unicode.Is(unicode.Han, r) ||
+		unicode.Is(unicode.Hangul, r) ||
+		unicode.Is(unicode.Katakana, r) ||
+		unicode.Is(unicode.Hiragana, r)
 }
 
 func EstimateTokens(messages []Message) int {
@@ -322,40 +376,28 @@ func currentGoalLines(messages []Message) []string {
 	return lines
 }
 
-func constraintLines(messages []Message) []string {
+func keyDecisionLines(messages []Message) []string {
 	return keywordLines(messages, []string{
-		"must", "should", "avoid", "do not", "don't", "keep", "use", "only", "never", "always",
-		"required", "rule", "focus", "반드시", "하지 마", "유지", "사용", "규칙", "집중",
+		"decided", "decision", "agreed", "chosen", "approach", "strategy", "plan",
+		"priority", "confirmed", "approved", "rejected",
+		"결정", "합의", "방향", "전략", "우선순위", "확인", "승인",
 	}, 5)
-}
-
-func keyFactLines(messages []Message) []string {
-	lines := keywordLines(messages, []string{
-		"already", "current", "existing", "found", "supports", "because", "error", "failed",
-		"path", "file", "issue", "branch", "현재", "기존", "이미", "발견", "오류", "파일", "브랜치",
-	}, 5)
-	if len(lines) > 0 {
-		return lines
-	}
-	firstAssistant := firstMessageForRole(messages, "assistant")
-	if firstAssistant == nil {
-		firstAssistant = firstMessageForRole(messages, "system")
-	}
-	if firstAssistant == nil {
-		return nil
-	}
-	return []string{normalizeSummaryLine(firstAssistant.Content, 220)}
 }
 
 func identifierLines(messages []Message) []string {
 	lines := make([]string, 0, 12)
 	seen := map[string]struct{}{}
 	for _, msg := range messages {
+		if strings.EqualFold(strings.TrimSpace(msg.Role), "tool") {
+			continue
+		}
 		for _, token := range collectIdentifiers(msg.Content) {
-			if _, ok := seen[token]; ok {
+			// Normalize: strip backticks for dedup comparison
+			normalized := strings.Trim(token, "`")
+			if _, ok := seen[normalized]; ok {
 				continue
 			}
-			seen[token] = struct{}{}
+			seen[normalized] = struct{}{}
 			lines = append(lines, token)
 			if len(lines) == 12 {
 				return lines
@@ -365,19 +407,7 @@ func identifierLines(messages []Message) []string {
 	return lines
 }
 
-func recentContextLines(messages []Message) []string {
-	start := len(messages) - 6
-	if start < 0 {
-		start = 0
-	}
-	lines := make([]string, 0, len(messages)-start)
-	for _, msg := range messages[start:] {
-		lines = append(lines, formatCompactionMessageLine(msg, 180))
-	}
-	return lines
-}
-
-func openStateLines(messages []Message) []string {
+func currentStateLines(messages []Message) []string {
 	lines := make([]string, 0, 2)
 	if lastUser := lastMessageForRole(messages, "user"); lastUser != nil {
 		lines = append(lines, formatCompactionMessageLine(*lastUser, 180))
@@ -395,6 +425,9 @@ func keywordLines(messages []Message, keywords []string, limit int) []string {
 	lines := make([]string, 0, limit)
 	seen := map[string]struct{}{}
 	for _, msg := range messages {
+		if strings.EqualFold(strings.TrimSpace(msg.Role), "tool") {
+			continue
+		}
 		content := strings.ToLower(strings.TrimSpace(msg.Content))
 		if content == "" {
 			continue
@@ -488,12 +521,62 @@ func formatCompactionMessageLine(msg Message, maxLen int) string {
 func normalizeSummaryLine(content string, maxLen int) string {
 	content = strings.Join(strings.Fields(strings.TrimSpace(content)), " ")
 	if content == "" {
-		return "(empty)"
+		return ""
 	}
 	if maxLen > 0 && len(content) > maxLen {
 		return content[:maxLen] + "..."
 	}
 	return content
+}
+
+const defaultToolPruneMaxLen = 200
+
+// pruneToolResults replaces long tool message content with a short placeholder.
+// This prevents code dumps from polluting the compaction summary.
+// Returns a new slice; the input is not mutated.
+func pruneToolResults(messages []Message, maxContentLen int) []Message {
+	out := make([]Message, len(messages))
+	copy(out, messages)
+	for i := range out {
+		if !strings.EqualFold(strings.TrimSpace(out[i].Role), "tool") {
+			continue
+		}
+		if len(out[i].Content) <= maxContentLen {
+			continue
+		}
+		name := out[i].ToolName
+		if name == "" {
+			name = "unknown"
+		}
+		out[i].Content = fmt.Sprintf("[tool:%s] output cleared (%d chars)", name, len(out[i].Content))
+	}
+	return out
+}
+
+// extractCompactionBody strips the [COMPACTION SUMMARY] header and message
+// count line, returning only the body sections for carry-forward.
+func extractCompactionBody(summary string) string {
+	// Skip lines: "[COMPACTION SUMMARY]", "Compacted N messages.", "Span: ..."
+	lines := strings.Split(summary, "\n")
+	bodyStart := 0
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "[COMPACTION SUMMARY]") ||
+			strings.HasPrefix(trimmed, "Compacted ") || strings.HasPrefix(trimmed, "Span:") {
+			bodyStart = i + 1
+			continue
+		}
+		break
+	}
+	if bodyStart >= len(lines) {
+		return ""
+	}
+	body := strings.TrimSpace(strings.Join(lines[bodyStart:], "\n"))
+	// Truncate to keep carry-forward compact
+	if len(body) > 800 {
+		body = body[:800] + "..."
+	}
+	return body
 }
 
 func compactionTimeSpan(messages []Message) string {
