@@ -39,8 +39,18 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 **OpenAI:**
 
 ```yaml
-llm_provider: openai
-llm_model: gpt-4o
+llm:
+  providers:
+    default:
+      kind: openai
+      auth_mode: api-key
+      base_url: https://api.openai.com/v1
+      api_key: ${OPENAI_API_KEY}
+  tiers:
+    heavy: { provider: default, model: gpt-4o, reasoning_effort: high }
+    standard: { provider: default, model: gpt-4o, reasoning_effort: medium }
+    light: { provider: default, model: gpt-4o-mini, reasoning_effort: minimal }
+  default_tier: standard
 ```
 
 ```bash
@@ -50,7 +60,15 @@ export OPENAI_API_KEY="sk-..."
 **Claude Code CLI (no API key needed):**
 
 ```yaml
-llm_provider: claude-code-cli
+llm:
+  providers:
+    default:
+      kind: claude-code-cli
+  tiers:
+    heavy: { provider: default, model: sonnet }
+    standard: { provider: default, model: sonnet }
+    light: { provider: default, model: haiku }
+  default_tier: standard
 ```
 
 Requires Claude Code CLI installed locally.
@@ -58,12 +76,11 @@ Requires Claude Code CLI installed locally.
 **Optional — 3-tier model routing:**
 
 ```yaml
-llm_default_tier: standard
-llm_tier_heavy_model: claude-opus-4-6
-llm_tier_standard_model: claude-sonnet-4-6
-llm_tier_light_model: claude-haiku-4-5-20251001
-llm_role_pulse_decider: light
-llm_role_gateway_planner: heavy
+llm:
+  default_tier: standard
+  role_defaults:
+    pulse_decider: light
+    gateway_planner: heavy
 ```
 
 ## 4. Validate
@@ -83,7 +100,7 @@ tars serve
 Or with a specific config file:
 
 ```bash
-tars serve --config ./workspace/config/tars.config.yaml
+tars serve --config ~/.tars/config/config.yaml
 ```
 
 Or as a macOS background service:
@@ -141,18 +158,16 @@ Create scheduled jobs from chat or the Cron tab in the console:
 매일 아침 9시에 프로젝트 상태 요약해줘
 ```
 
-Or via CLI:
-
-```bash
-tars cron create --expression "0 9 * * *" --prompt "Summarize project status"
-```
+Use `tars cron list`, `tars cron run <job-id>`, and the Ops/Chat surfaces to inspect or trigger existing jobs.
 
 ## 9. Connect Telegram (Optional)
 
 ```yaml
-# tars.config.yaml
-channels_telegram_enabled: true
-telegram_bot_token: "your-bot-token"
+channels:
+  telegram:
+    enabled: true
+    dm_policy: pairing
+    bot_token: "your-bot-token"
 ```
 
 Pair your Telegram account via the `/pair` command in your bot chat.
@@ -195,7 +210,7 @@ tars doctor --fix   # Check and repair common issues
 **LLM calls fail:**
 
 - Check credentials: `echo $ANTHROPIC_API_KEY`
-- Check provider config: `grep llm_ workspace/config/tars.config.yaml`
+- Check provider config: `grep -n "llm:" ~/.tars/config/config.yaml`
 - Check logs: `tail -f logs/tars.log`
 
 **Console shows blank page:**

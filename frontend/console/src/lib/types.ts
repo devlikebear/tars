@@ -525,6 +525,7 @@ export type ConfigFile = {
 
 export type ConfigFieldMeta = {
   key: string
+  path: string
   section: string
   type: string
   label: string

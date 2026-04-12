@@ -4,160 +4,276 @@
 #   tars doctor --fix                 # create starter files and check BYOK readiness
 #   tars service install && tars service start
 #   go run ./cmd/tars serve --config ./config/tars.config.example.yaml --serve-api
-#   cp config/tars.config.example.yaml workspace/config/tars.config.yaml
 # Health check endpoint: GET /v1/healthz
 
-mode: standalone
-workspace_dir: ./workspace
+runtime:
+  mode: standalone
+  workspace_dir: ./workspace
+  session:
+    default_id: ""
+    telegram_scope: main
 
-# Logging
-# log_level: trace | debug | info | warn | error (default: debug)
-log_level: debug
-# log_file: path to write JSON log lines (empty = console only)
-log_file: ""
-# Log rotation (applies when log_file is set)
-log_rotate_max_size_mb: 100  # max size per file before rotation
-log_rotate_max_days: 30      # max days to retain old files
-log_rotate_max_backups: 5    # max number of old files to keep
+log:
+  level: debug
+  file: ""
+  rotate:
+    max_size_mb: 100
+    max_days: 30
+    max_backups: 5
 
-# API auth (no X- prefix headers)
-# off | external-required | required
-api_auth_mode: required
-# legacy single token (backward-compatible). If api_user_token/api_admin_token are set,
-# role-based checks use those tokens.
-api_auth_token: ""
-api_user_token: "" # read/chat/general operations
-api_admin_token: "" # control operations (gateway reload/restart, extensions reload)
-api_allow_insecure_local_auth: false # set true only when explicitly allowing off/external-required
-api_max_inflight_chat: 2
-api_max_inflight_agent_runs: 4
-# Single workspace mode: workspace_id header/routing is removed.
+api:
+  auth_mode: required
+  auth_token: ""
+  user_token: ""
+  admin_token: ""
+  allow_insecure_local_auth: false
+  max_inflight:
+    chat: 2
+    agent_runs: 4
+  dashboard:
+    auth_mode: inherit
 
-# LLM provider
-# provider: openai | openai-codex | anthropic | gemini | gemini-native | claude-code-cli
-llm_provider: anthropic
-llm_auth_mode: api-key # api-key | oauth | cli
-llm_oauth_provider: ""
-llm_base_url: https://api.anthropic.com
-llm_model: claude-3-5-haiku-latest
-llm_api_key: ${ANTHROPIC_API_KEY}
-# Local Claude Code CLI example:
-# llm_provider: claude-code-cli
-# llm_auth_mode: cli
-# llm_model: sonnet
-# llm_api_key: ""
-# Optional reasoning controls
-# effort: none | minimal | low | medium | high
-llm_reasoning_effort: ""
-# Budgeted thinking for providers that support token-based thinking (Anthropic, Gemini native)
-llm_thinking_budget: 0
-# OpenAI latency tier control. Useful as the closest public API knob to "fast mode".
-# auto | default | flex | priority
-llm_service_tier: ""
+llm:
+  providers:
+    default:
+      kind: anthropic
+      auth_mode: api-key
+      base_url: https://api.anthropic.com
+      api_key: ${ANTHROPIC_API_KEY}
+  tiers:
+    heavy:
+      provider: default
+      model: claude-opus-4-6
+      reasoning_effort: high
+    standard:
+      provider: default
+      model: claude-sonnet-4-6
+      reasoning_effort: medium
+    light:
+      provider: default
+      model: claude-haiku-4-5
+      reasoning_effort: minimal
+  default_tier: standard
+  role_defaults:
+    chat_main: standard
+    context_compactor: light
+    reflection_memory: light
+    pulse_decider: light
+    gateway_default: standard
+    gateway_planner: heavy
 
-# Agent loop
-agent_max_iterations: 20
+memory:
+  backend: file
+  semantic:
+    enabled: true
+  embed:
+    provider: gemini
+    base_url: ""
+    api_key: ${GEMINI_API_KEY}
+    model: text-embedding-004
+    dimensions: 768
 
-# Pulse watchdog (1-min tick, system surface)
-pulse_active_hours: "00:00-24:00"
-pulse_timezone: Asia/Seoul
-# Reflection nightly batch (memory + KB cleanup)
-reflection_sleep_window: "02:00-05:00"
-reflection_timezone: Asia/Seoul
+usage:
+  limits:
+    daily_usd: 0
+    weekly_usd: 0
+    monthly_usd: 0
+    mode: soft
+  price_overrides: {}
 
-# Cron
-cron_run_history_limit: 200
+automation:
+  agent:
+    max_iterations: 20
+  pulse:
+    enabled: true
+    interval: 1m
+    timeout: 2m
+    active_hours: "00:00-24:00"
+    timezone: Asia/Seoul
+    min_severity: warn
+    allowed_autofixes:
+      - compress_old_logs
+      - cleanup_stale_tmp
+    notify_telegram: false
+    notify_session_events: true
+    cron_failure_threshold: 2
+    stuck_run_minutes: 15
+    disk_warn_percent: 85
+    disk_critical_percent: 95
+    delivery_failure_threshold: 3
+    delivery_failure_window: 10m
+    reflection_failure_threshold: 2
+  reflection:
+    enabled: true
+    sleep_window: "02:00-05:00"
+    timezone: Asia/Seoul
+    tick_interval: 5m
+    empty_session_age: 24h
+    memory_lookback_hours: 24
+    max_turns_per_session: 40
+  cron:
+    run_history_limit: 200
+  notify:
+    command: ""
+    when_no_clients: false
+  schedule:
+    timezone: Asia/Seoul
 
-# Notification fallback when no SSE clients are connected
-notify_command: ""
-# true/false is controlled via env: NOTIFY_WHEN_NO_CLIENTS
+assistant:
+  enabled: false
+  hotkey: ""
+  whisper_bin: whisper
+  ffmpeg_bin: ffmpeg
+  tts_bin: say
 
-# Optional MCP servers in JSON string form
-mcp_servers_json: '[{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}]'
-# Command allowlist for MCP servers. Default empty blocks command execution until explicitly allowed.
-mcp_command_allowlist_json: '["npx"]'
+compaction:
+  trigger_tokens: 12000
+  keep_recent_tokens: 4000
+  keep_recent_fraction: 0.35
+  llm_mode: auto
+  llm_timeout_seconds: 20
 
-# Skills / Plugins / MCP hot-load extensions
-skills_enabled: true
-skills_watch: true
-skills_watch_debounce_ms: 200
-skills_bundled_dir: ./skills
-# skills_extra_dirs_json: '["/opt/team/skills"]'
+tools:
+  default_set: ""
+  allow_high_risk_user: false
+  web_search:
+    enabled: false
+    provider: brave
+    api_key: ""
+    cache_ttl_seconds: 60
+    perplexity:
+      api_key: ""
+      model: sonar
+      base_url: https://api.perplexity.ai/chat/completions
+  web_fetch:
+    enabled: false
+    allow_private_hosts: false
+    private_host_allowlist:
+      - localhost
+      - 127.0.0.1
+  apply_patch:
+    enabled: false
+  message:
+    enabled: false
+  browser:
+    enabled: false
+  nodes:
+    enabled: false
+  gateway:
+    enabled: false
 
-plugins_enabled: true
-plugins_watch: true
-plugins_watch_debounce_ms: 200
-plugins_bundled_dir: ./plugins
-plugins_allow_mcp_servers: false
-# plugins_extra_dirs_json: '["/opt/team/plugins"]'
+vault:
+  enabled: false
+  addr: http://127.0.0.1:8200
+  auth:
+    mode: token
+  token: ""
+  namespace: ""
+  timeout_ms: 1500
+  kv:
+    mount: secret
+    version: 2
+  approle:
+    mount: approle
+    role_id: ""
+    secret_id: ""
+  secret_path_allowlist:
+    - sites/
 
-# Optional tools (opt-in)
-tools_apply_patch_enabled: false
-tools_web_fetch_enabled: false
-tools_web_search_enabled: false
-tools_allow_high_risk_user: false
-tools_web_search_api_key: "" # brave api key
-tools_web_search_provider: brave # brave | perplexity
-tools_web_search_perplexity_api_key: ""
-tools_web_search_perplexity_model: sonar
-tools_web_search_perplexity_base_url: https://api.perplexity.ai/chat/completions
-tools_web_search_cache_ttl_seconds: 60
-tools_web_fetch_allow_private_hosts: false
-# tools_web_fetch_private_host_allowlist_json: '["localhost","127.0.0.1"]'
+browser:
+  runtime:
+    enabled: true
+  default_profile: managed
+  managed:
+    headless: false
+    executable_path: ""
+    user_data_dir: ./workspace/_shared/browser/managed
+  site_flows_dir: ./workspace/automation/sites
+  auto_login:
+    site_allowlist:
+      - intranet
+      - grafana
 
-# Vault read-only integration (browser auto-login dependency)
-vault_enabled: false
-vault_addr: http://127.0.0.1:8200
-vault_auth_mode: token # token | approle
-vault_token: ""
-vault_namespace: ""
-vault_timeout_ms: 1500
-vault_kv_mount: secret
-vault_kv_version: 2
-vault_approle_mount: approle
-vault_approle_role_id: ""
-vault_approle_secret_id: ""
-# vault_secret_path_allowlist_json: '["sites/"]'
+gateway:
+  enabled: false
+  default_agent: ""
+  agents:
+    list:
+      - name: worker
+        description: external worker
+        command: python3
+        args: ["./path/to/worker_agent.py"]
+        working_dir: .
+        timeout_seconds: 120
+        enabled: true
+    watch: true
+    watch_debounce_ms: 200
+  task_override:
+    enabled: false
+    allowed_aliases: []
+    allowed_models: []
+  persistence:
+    enabled: true
+    dir: ./workspace/_shared/gateway
+  runs:
+    persistence_enabled: true
+    max_records: 2000
+  channels:
+    persistence_enabled: true
+    max_messages_per_channel: 500
+  subagents:
+    max_threads: 4
+    max_depth: 1
+  consensus:
+    enabled: false
+    max_fanout: 3
+    budget_tokens: 12000
+    budget_usd: 2.5
+    timeout_seconds: 120
+    allowed_aliases: []
+    concurrent_runs: 1
+  restore_on_startup: true
+  report:
+    summary_enabled: true
+  archive:
+    enabled: false
+    dir: ./workspace/_shared/gateway/archive
+    retention_days: 30
+    max_file_bytes: 10485760
 
-# Browser runtime / site flows (Playwright)
-browser_runtime_enabled: true
-browser_default_profile: managed
-browser_managed_headless: false
-browser_managed_executable_path: ""
-browser_managed_user_data_dir: ./workspace/_shared/browser/managed
-browser_site_flows_dir: ./workspace/automation/sites
-# browser_auto_login_site_allowlist_json: '["intranet","grafana"]'
+channels:
+  local:
+    enabled: false
+  webhook:
+    enabled: false
+  telegram:
+    enabled: false
+    dm_policy: pairing
+    polling:
+      enabled: false
+    bot_token: ""
 
-# In-process gateway / channels (safe-by-default)
-gateway_enabled: false
-gateway_default_agent: ""
-# Leave gateway_default_agent empty to use the in-process default agent.
-# Only set gateway_agents_json when the referenced command and local paths actually exist.
-# gateway_agents_json: '[{"name":"worker","description":"external worker","command":"python3","args":["./path/to/worker_agent.py"],"working_dir":".","timeout_seconds":120,"enabled":true}]'
-gateway_agents_watch: true
-gateway_agents_watch_debounce_ms: 200
-# Gateway persistence/recovery (additive, safe default)
-gateway_persistence_enabled: true
-gateway_runs_persistence_enabled: true
-gateway_channels_persistence_enabled: true
-gateway_runs_max_records: 2000
-gateway_channels_max_messages_per_channel: 500
-# default: ${workspace_dir}/_shared/gateway
-gateway_persistence_dir: ./workspace/_shared/gateway
-gateway_restore_on_startup: true
-# Gateway reports (lightweight defaults)
-gateway_report_summary_enabled: true
-gateway_archive_enabled: false
-gateway_archive_dir: ./workspace/_shared/gateway/archive
-gateway_archive_retention_days: 30
-gateway_archive_max_file_bytes: 10485760
-# /v1/runtime/extensions/reload also refreshes gateway executors automatically.
-channels_local_enabled: false
-channels_webhook_enabled: false
-channels_telegram_enabled: false
-
-# Additional OpenClaw-style tools (opt-in)
-tools_message_enabled: false
-tools_browser_enabled: false
-tools_nodes_enabled: false
-tools_gateway_enabled: false
+extensions:
+  skills:
+    enabled: true
+    watch: true
+    watch_debounce_ms: 200
+    bundled_dir: ./skills
+    extra_dirs: []
+  plugins:
+    enabled: true
+    watch: true
+    watch_debounce_ms: 200
+    bundled_dir: ./plugins
+    extra_dirs: []
+    allow_mcp_servers: false
+  mcp:
+    command_allowlist:
+      - npx
+    servers:
+      - name: filesystem
+        command: npx
+        args:
+          - -y
+          - '@modelcontextprotocol/server-filesystem'
+          - .

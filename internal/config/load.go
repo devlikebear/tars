@@ -63,9 +63,12 @@ func PatchYAML(path string, updates map[string]any) error {
 
 	// Merge updates (only known keys)
 	for key, value := range updates {
-		if _, ok := configInputFieldByYAMLKey(key); ok {
-			existing[key] = value
+		resolvedKey := normalizeConfigUpdateKey(key, value)
+		if resolvedKey == "" {
+			continue
 		}
+		deleteConfigYAMLRepresentations(existing, resolvedKey)
+		setConfigYAMLValue(existing, resolvedKey, normalizePatchedConfigValue(resolvedKey, value))
 	}
 
 	out, err := yaml.Marshal(existing)

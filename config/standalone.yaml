@@ -1,56 +1,60 @@
-mode: standalone
-workspace_dir: ./workspace
+runtime:
+  mode: standalone
+  workspace_dir: ./workspace
 
-# ---- LLM provider pool ----
-# Each alias defines "where to call + how to authenticate" — no model
-# here. At minimum one provider must be defined. Credentials come
-# from environment variables. Supported kinds: anthropic, openai,
-# openai-codex, gemini, gemini-native, claude-code-cli.
-llm_providers:
-  codex:
-    kind: openai-codex
-    auth_mode: oauth
-    oauth_provider: openai-codex
-    base_url: https://chatgpt.com/backend-api
-    service_tier: priority
-  minimax:
-    kind: anthropic
-    auth_mode: api-key
-    api_key: ${MINIMAX_API_KEY}
-    base_url: https://api.minimax.io/anthropic
+llm:
+  # ---- LLM provider pool ----
+  # Each alias defines "where to call + how to authenticate" — no model
+  # here. At minimum one provider must be defined. Credentials come
+  # from environment variables. Supported kinds: anthropic, openai,
+  # openai-codex, gemini, gemini-native, claude-code-cli.
+  providers:
+    codex:
+      kind: openai-codex
+      auth_mode: oauth
+      oauth_provider: openai-codex
+      base_url: https://chatgpt.com/backend-api
+      service_tier: priority
+    minimax:
+      kind: anthropic
+      auth_mode: api-key
+      api_key: ${MINIMAX_API_KEY}
+      base_url: https://api.minimax.io/anthropic
 
-# ---- Tier bindings ----
-# Each tier binds to one provider alias + model + optional knobs.
-# All three tiers (heavy/standard/light) must be configured. Mix
-# multiple providers by adding entries above and referencing them
-# here — e.g. `provider: codex` for a second alias.
-llm_tiers:
-  heavy:
-    provider: codex
-    model: gpt-5.4
-    reasoning_effort: high
-  standard:
-    provider: codex
-    model: gpt-5.4
-    reasoning_effort: medium
-  light:
-    provider: minimax
-    model: MiniMax-M2.7
-    reasoning_effort: minimal
+  # ---- Tier bindings ----
+  # Each tier binds to one provider alias + model + optional knobs.
+  # All three tiers (heavy/standard/light) must be configured. Mix
+  # multiple providers by adding entries above and referencing them
+  # here — e.g. `provider: codex` for a second alias.
+  tiers:
+    heavy:
+      provider: codex
+      model: gpt-5.4
+      reasoning_effort: high
+    standard:
+      provider: codex
+      model: gpt-5.4
+      reasoning_effort: medium
+    light:
+      provider: minimax
+      model: MiniMax-M2.7
+      reasoning_effort: minimal
 
-llm_default_tier: standard
+  default_tier: standard
 
-# ---- Role → tier mapping (optional) ----
-# Roles absent from this map fall back to llm_default_tier. Role
-# names are validated at router build time — see internal/llm/role.go
-# for the canonical list.
-llm_role_defaults:
-  chat_main: standard
-  context_compactor: light
-  memory_hook: light
-  reflection_memory: light
-  pulse_decider: light
-  gateway_default: standard
-  gateway_planner: heavy
+  # ---- Role → tier mapping (optional) ----
+  # Roles absent from this map fall back to llm.default_tier. Role
+  # names are validated at router build time — see internal/llm/role.go
+  # for the canonical list.
+  role_defaults:
+    chat_main: standard
+    context_compactor: light
+    memory_hook: light
+    reflection_memory: light
+    pulse_decider: light
+    gateway_default: standard
+    gateway_planner: heavy
 
-agent_max_iterations: 8
+automation:
+  agent:
+    max_iterations: 8
