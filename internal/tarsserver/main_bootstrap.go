@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
@@ -106,7 +105,7 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 	}
 	deps.usageTracker = tracker
 
-	needLLM := opts.RunOnce || opts.RunLoop || opts.ServeAPI
+	needLLM := opts.ServeAPI
 	if !needLLM {
 		return deps, nil
 	}
@@ -158,26 +157,6 @@ func validateAPIAuthSecurity(cfg config.Config, serveAPI bool) error {
 		if !cfg.APIAllowInsecureLocalAuth {
 			return fmt.Errorf("api_auth_mode=%s requires api_allow_insecure_local_auth=true for explicit insecure local auth opt-in", mode)
 		}
-	}
-	return nil
-}
-
-// runHeartbeatModes used to execute heartbeat one-shot and loop modes,
-// but heartbeat has been replaced by the pulse surface. The CLI flags
-// that triggered these modes are now deprecated and the server treats
-// them as a request to run the HTTP server instead.
-func runHeartbeatModes(
-	_ context.Context,
-	opts *options,
-	_ runtimeDeps,
-	_ func() time.Time,
-	logger zerolog.Logger,
-) error {
-	if opts == nil {
-		return &cli.ExitError{Code: 1, Err: fmt.Errorf("options are required")}
-	}
-	if opts.RunOnce || opts.RunLoop {
-		logger.Warn().Msg("--run-once and --run-loop are deprecated; pulse runs automatically when the server is up")
 	}
 	return nil
 }
