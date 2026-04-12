@@ -6,6 +6,24 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-04-12
+
+### Added
+
+- Group-based tool policy controls across session config, workspace gateway agents, and the console tool configuration surface, including structured blocked-tool diagnostics and a manual verification guide for the Hermes improvement bundle
+- Gateway provider override metadata, run detail APIs, live run events, consensus execution mode, and a dedicated console run view for inspecting multi-agent executions
+- A file-backed memory backend interface that now powers memory APIs and tools behind a common abstraction
+
+### Changed
+
+- Chat compaction now exposes configurable trigger and retention knobs, supports deterministic mode and timeout-bounded LLM fallback, and reports compaction telemetry to the console context monitor
+- Subagent orchestration can now carry per-task provider override and consensus settings through the gateway runtime and persistence layer
+
+### Fixed
+
+- Session tool group allow/deny rules now remain effective even when custom session tool mode is enabled without an explicit tool allowlist
+- Chat context previews now persist and report the last applied compaction mode, and gateway agent list responses now include tier and provider override metadata
+
 ## [0.24.1] - 2026-04-05
 
 ### Fixed
