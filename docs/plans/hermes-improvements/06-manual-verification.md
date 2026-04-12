@@ -12,7 +12,7 @@
 ## 전제
 
 - 작업 위치:
-  - `/Users/changheonshin/workspace/myworks/tars/.claude/worktrees/feat-hermes-improvements`
+  - `<repo-root>`
 - 예시 서버 주소:
   - `http://127.0.0.1:43180`
 - 예시 명령은 `jq`가 있다고 가정한다. 없으면 JSON 응답에서 값을 수동 확인해도 된다.
@@ -23,7 +23,7 @@
 터미널 1:
 
 ```bash
-cd /Users/changheonshin/workspace/myworks/tars/.claude/worktrees/feat-hermes-improvements
+cd <repo-root>
 TARS_API_AUTH_MODE=off \
 TARS_DASHBOARD_AUTH_MODE=off \
 TARS_API_ALLOW_INSECURE_LOCAL_AUTH=true \
@@ -33,7 +33,7 @@ make dev-serve WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:43180 TARS_CONFIG=./
 터미널 2:
 
 ```bash
-cd /Users/changheonshin/workspace/myworks/tars/.claude/worktrees/feat-hermes-improvements
+cd <repo-root>
 export BASE_URL=http://127.0.0.1:43180
 ```
 
