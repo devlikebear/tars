@@ -64,6 +64,10 @@ func (r *statusRecorder) Flush() {
 func requestDebugMiddleware(logger zerolog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		logger.Debug().
+			Str("method", r.Method).
+			Str("path", r.URL.Path).
+			Msg("http request started")
 		rec := &statusRecorder{ResponseWriter: w}
 		next.ServeHTTP(rec, r)
 		if rec.status == 0 {

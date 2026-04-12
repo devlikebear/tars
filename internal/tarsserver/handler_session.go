@@ -323,16 +323,49 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				return
 			}
 			path := reqStore.TranscriptPath(sessionID)
-			compacted, err := session.CompactTranscriptWithOptions(path, 0, time.Now().UTC(), session.CompactOptions{
-				KeepRecentTokens:   12000,
-				KeepRecentFraction: 0.30,
+			messages, err := session.ReadMessages(path)
+			if err != nil {
+				logger.Error().Err(err).Str("session_id", sessionID).Msg("read transcript for compact failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read transcript failed"})
+				return
+			}
+			tokensBefore := session.EstimateTokens(messages)
+			// Manual compact uses lower thresholds than auto-compact so it
+			// always does meaningful work when the user explicitly requests it.
+			result, err := session.CompactTranscriptWithOptions(path, 5, time.Now().UTC(), session.CompactOptions{
+				KeepRecentTokens:   2000,
+				KeepRecentFraction: 0.20,
+				PreloadedMessages:  messages,
 			})
 			if err != nil {
 				logger.Error().Err(err).Str("session_id", sessionID).Msg("compact session failed")
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "compact session failed"})
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"compacted": compacted, "session_id": sessionID})
+			tokensAfter := tokensBefore
+			reason := ""
+			if result.Compacted {
+				after, _ := session.ReadMessages(path)
+				tokensAfter = session.EstimateTokens(after)
+			} else {
+				if len(messages) <= 5 {
+					reason = "too few messages to compact"
+				} else if tokensBefore <= 2000 {
+					reason = "transcript already within token budget"
+				} else {
+					reason = "no compactable messages found"
+				}
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"session_id":     sessionID,
+				"compacted":      result.Compacted,
+				"original_count": result.OriginalCount,
+				"final_count":    result.FinalCount,
+				"compacted_count": result.CompactedCount,
+				"tokens_before":  tokensBefore,
+				"tokens_after":   tokensAfter,
+				"reason":         reason,
+			})
 		case len(pathParts) == 2 && pathParts[1] == "history":
 			if !requireMethod(w, r, http.MethodGet) {
 				return
@@ -577,6 +610,7 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, router llm.
 			req.Instructions,
 			router,
 			now,
+			nil,
 		)
 		if err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("compact transcript failed")

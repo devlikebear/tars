@@ -148,7 +148,13 @@
     actionBusy = id
     actionError = ''
     try {
-      await compactSession(id)
+      const r = await compactSession(id)
+      if (r.compacted) {
+        const pct = r.tokens_before > 0 ? Math.round(((r.tokens_before - r.tokens_after) / r.tokens_before) * 100) : 0
+        actionError = `Compacted ${r.compacted_count} msgs (${pct}% saved)`
+      } else {
+        actionError = r.reason || 'Nothing to compact'
+      }
       await load()
     } catch (e) {
       actionError = e instanceof Error ? e.message : 'Compact failed'

@@ -112,7 +112,7 @@ func TestCompactWithMemoryFlush_IndexesSummaryAndExtractedMemories(t *testing.T)
 		extract: `{"memories":[{"category":"preference","summary":"User prefers decaf espresso.","importance":8}]}`,
 	}
 
-	if _, _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, chatCompactionOptions{KeepRecentTokens: 20}, "", routerForCompactionClient(t, client), time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC), semantic); err != nil {
+	if _, _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, chatCompactionOptions{KeepRecentTokens: 20}, "", routerForCompactionClient(t, client), time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC), nil, semantic); err != nil {
 		t.Fatalf("compact with memory flush: %v", err)
 	}
 
@@ -149,7 +149,7 @@ func TestCompactWithMemoryFlush_PassesInstructionsToLLMSummary(t *testing.T) {
 	client := &compactionLLMClient{
 		summary: "[COMPACTION SUMMARY]\nFocused summary.",
 	}
-	if _, _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, chatCompactionOptions{KeepRecentTokens: 20}, "focus on decisions and open questions", routerForCompactionClient(t, client), time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC)); err != nil {
+	if _, _, err := compactWithMemoryFlush(root, transcriptPath, sess.ID, 2, chatCompactionOptions{KeepRecentTokens: 20}, "focus on decisions and open questions", routerForCompactionClient(t, client), time.Date(2026, 3, 20, 8, 30, 0, 0, time.UTC), nil); err != nil {
 		t.Fatalf("compact with memory flush: %v", err)
 	}
 
