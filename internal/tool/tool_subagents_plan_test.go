@@ -391,6 +391,89 @@ func TestSubagentsPlanTool_NormalizesDuplicateTaskIDsAndReferences(t *testing.T)
 	}
 }
 
+func TestNormalizeSubagentFlowPlan_ValidTiers(t *testing.T) {
+	plan := &subagentFlowInput{
+		Steps: []subagentFlowStepInput{
+			{
+				ID:   "step1",
+				Mode: "parallel",
+				Tasks: []subagentFlowTaskInput{
+					{ID: "t1", Prompt: "do something", Tier: "heavy"},
+					{ID: "t2", Prompt: "do another", Tier: "STANDARD"},
+					{ID: "t3", Prompt: "quick thing", Tier: "  Light  "},
+					{ID: "t4", Prompt: "no tier"},
+				},
+			},
+		},
+	}
+
+	_, err := normalizeSubagentFlowPlan(plan)
+	if err != nil {
+		t.Fatalf("expected no error for valid tiers, got %v", err)
+	}
+	if plan.Steps[0].Tasks[0].Tier != "heavy" {
+		t.Errorf("expected tier 'heavy', got %q", plan.Steps[0].Tasks[0].Tier)
+	}
+	if plan.Steps[0].Tasks[1].Tier != "standard" {
+		t.Errorf("expected tier 'standard', got %q", plan.Steps[0].Tasks[1].Tier)
+	}
+	if plan.Steps[0].Tasks[2].Tier != "light" {
+		t.Errorf("expected tier 'light', got %q", plan.Steps[0].Tasks[2].Tier)
+	}
+	if plan.Steps[0].Tasks[3].Tier != "" {
+		t.Errorf("expected empty tier to stay empty, got %q", plan.Steps[0].Tasks[3].Tier)
+	}
+}
+
+func TestNormalizeSubagentFlowPlan_InvalidTier(t *testing.T) {
+	cases := []struct {
+		name string
+		tier string
+	}{
+		{"unknown value", "xxl"},
+		{"typo", "heavi"},
+		{"numeric", "1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := &subagentFlowInput{
+				Steps: []subagentFlowStepInput{
+					{
+						ID:   "step1",
+						Mode: "parallel",
+						Tasks: []subagentFlowTaskInput{
+							{ID: "bad_task", Prompt: "do something", Tier: tc.tier},
+						},
+					},
+				},
+			}
+
+			_, err := normalizeSubagentFlowPlan(plan)
+			if err == nil {
+				t.Fatalf("expected error for invalid tier %q, got nil", tc.tier)
+			}
+			if !strings.Contains(err.Error(), "bad_task") || !strings.Contains(err.Error(), tc.tier) {
+				t.Errorf("error should mention task ID and offending tier, got %q", err.Error())
+			}
+		})
+	}
+}
+
+func TestNormalizeSubagentFlowPlan_NilAndEmpty(t *testing.T) {
+	t.Run("nil plan", func(t *testing.T) {
+		_, err := normalizeSubagentFlowPlan(nil)
+		if err != nil {
+			t.Fatalf("expected no error for nil plan, got %v", err)
+		}
+	})
+	t.Run("empty steps", func(t *testing.T) {
+		_, err := normalizeSubagentFlowPlan(&subagentFlowInput{})
+		if err != nil {
+			t.Fatalf("expected no error for empty steps, got %v", err)
+		}
+	})
+}
+
 func TestSubagentsPlanTool_EnsuresExactTargetsRemainInTaskPrompts(t *testing.T) {
 	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil

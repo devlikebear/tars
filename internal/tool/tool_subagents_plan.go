@@ -147,7 +147,10 @@ func NewSubagentsPlanTool(runtime *gateway.Runtime, router llm.Router) Tool {
 			if len(plan.Steps) > maxSteps {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("planner returned %d steps, exceeds max_steps=%d", len(plan.Steps), maxSteps)}, true), nil
 			}
-			normalization := normalizeSubagentFlowPlan(&plan)
+			normalization, normErr := normalizeSubagentFlowPlan(&plan)
+			if normErr != nil {
+				return JSONTextResult(map[string]any{"message": normErr.Error()}, true), nil
+			}
 			targetInjectionCount := ensurePlannerTargetsInPlan(&plan, requiredTargets)
 			if normalization.Changed {
 				zlog.Debug().
@@ -323,9 +326,9 @@ type plannerNormalizationResult struct {
 var plannerIdentifierSanitizer = regexp.MustCompile(`[^a-z0-9]+`)
 var plannerTargetExtractor = regexp.MustCompile("(?i)(?:`([^`]+)`|(/[^\\s,;:()\\[\\]{}]+)|((?:\\.?\\.?(?:/[^\\s,;:()\\[\\]{}]+)+)))")
 
-func normalizeSubagentFlowPlan(plan *subagentFlowInput) plannerNormalizationResult {
+func normalizeSubagentFlowPlan(plan *subagentFlowInput) (plannerNormalizationResult, error) {
 	if plan == nil || len(plan.Steps) == 0 {
-		return plannerNormalizationResult{}
+		return plannerNormalizationResult{}, nil
 	}
 	var result plannerNormalizationResult
 	stepCounts := map[string]int{}
@@ -343,6 +346,15 @@ func normalizeSubagentFlowPlan(plan *subagentFlowInput) plannerNormalizationResu
 
 		for taskIndex := range step.Tasks {
 			task := &step.Tasks[taskIndex]
+
+			if raw := strings.TrimSpace(task.Tier); raw != "" {
+				tier, err := llm.ParseTier(raw)
+				if err != nil {
+					return plannerNormalizationResult{}, fmt.Errorf("task %q: invalid tier %q (must be heavy, standard, or light)", task.ID, raw)
+				}
+				task.Tier = string(tier)
+			}
+
 			rewrittenDependsOn, depChanges := rewritePlannerDependsOn(task.DependsOn, references)
 			task.DependsOn = rewrittenDependsOn
 			result.ReferenceChanges += depChanges
@@ -368,7 +380,7 @@ func normalizeSubagentFlowPlan(plan *subagentFlowInput) plannerNormalizationResu
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 func rewritePlannerDependsOn(dependsOn []string, references map[string]string) ([]string, int) {
