@@ -613,29 +613,63 @@ func TestNormalizePlannerTarget(t *testing.T) {
 }
 
 func TestCollectPlannerTargets(t *testing.T) {
-	targets := collectPlannerTargets(
-		"review /etc/nginx/nginx.conf and `./scripts/deploy.sh`",
-		[]string{"/explicit/target.go"},
-		[]string{"constraint mentioning /some/path.yaml"},
-		nil,
-	)
+	t.Run("auto-extraction enabled", func(t *testing.T) {
+		targets := collectPlannerTargets(
+			"review /etc/nginx/nginx.conf and `./scripts/deploy.sh`",
+			[]string{"/explicit/target.go"},
+			[]string{"constraint mentioning /some/path.yaml"},
+			nil,
+			false,
+		)
 
-	expected := map[string]bool{
-		"/explicit/target.go":   false,
-		"/etc/nginx/nginx.conf": false,
-		"scripts/deploy.sh":     false,
-		"/some/path.yaml":       false,
-	}
-	for _, t2 := range targets {
-		if _, ok := expected[t2]; ok {
-			expected[t2] = true
+		expected := map[string]bool{
+			"/explicit/target.go":   false,
+			"/etc/nginx/nginx.conf": false,
+			"scripts/deploy.sh":     false,
+			"/some/path.yaml":       false,
 		}
-	}
-	for path, found := range expected {
-		if !found {
-			t.Errorf("expected target %q not found in collected targets: %v", path, targets)
+		for _, t2 := range targets {
+			if _, ok := expected[t2]; ok {
+				expected[t2] = true
+			}
 		}
-	}
+		for path, found := range expected {
+			if !found {
+				t.Errorf("expected target %q not found in collected targets: %v", path, targets)
+			}
+		}
+	})
+
+	t.Run("explicit_targets_only suppresses auto-extraction", func(t *testing.T) {
+		targets := collectPlannerTargets(
+			"debug the auth flow, see /etc/passwd for context",
+			[]string{"/explicit/target.go"},
+			[]string{"failure in /opt/tars/workspace"},
+			[]string{"check /var/log/syslog"},
+			true,
+		)
+
+		if len(targets) != 1 {
+			t.Fatalf("expected 1 target with explicit_targets_only, got %d: %v", len(targets), targets)
+		}
+		if targets[0] != "/explicit/target.go" {
+			t.Fatalf("expected only explicit target, got %q", targets[0])
+		}
+	})
+
+	t.Run("explicit_targets_only with no explicit targets", func(t *testing.T) {
+		targets := collectPlannerTargets(
+			"debug /etc/passwd",
+			nil,
+			nil,
+			nil,
+			true,
+		)
+
+		if len(targets) != 0 {
+			t.Fatalf("expected 0 targets with explicit_targets_only and no explicit targets, got %v", targets)
+		}
+	})
 }
 
 func TestSubagentsPlanTool_EnsuresExactTargetsRemainInTaskPrompts(t *testing.T) {
