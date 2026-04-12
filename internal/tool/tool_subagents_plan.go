@@ -30,7 +30,8 @@ func NewSubagentsPlanTool(runtime *gateway.Runtime, router llm.Router) Tool {
     "max_steps":{"type":"integer","minimum":1,"maximum":8,"default":4},
     "max_parallel_tasks":{"type":"integer","minimum":1,"maximum":8},
     "constraints":{"type":"array","items":{"type":"string"}},
-    "hints":{"type":"array","items":{"type":"string"}}
+    "hints":{"type":"array","items":{"type":"string"}},
+    "explicit_targets_only":{"type":"boolean","description":"When true, only paths in the targets array become required target paths. Paths mentioned in goal/constraints/hints are not auto-extracted."}
   },
   "required":["goal"],
   "additionalProperties":false
@@ -44,15 +45,16 @@ func NewSubagentsPlanTool(runtime *gateway.Runtime, router llm.Router) Tool {
 			}
 
 			var input struct {
-				Goal             string   `json:"goal"`
-				Agent            string   `json:"agent,omitempty"`
-				FlowID           string   `json:"flow_id,omitempty"`
-				Targets          []string `json:"targets,omitempty"`
-				TimeoutMS        int      `json:"timeout_ms,omitempty"`
-				MaxSteps         int      `json:"max_steps,omitempty"`
-				MaxParallelTasks int      `json:"max_parallel_tasks,omitempty"`
-				Constraints      []string `json:"constraints,omitempty"`
-				Hints            []string `json:"hints,omitempty"`
+				Goal                string   `json:"goal"`
+				Agent               string   `json:"agent,omitempty"`
+				FlowID              string   `json:"flow_id,omitempty"`
+				Targets             []string `json:"targets,omitempty"`
+				TimeoutMS           int      `json:"timeout_ms,omitempty"`
+				MaxSteps            int      `json:"max_steps,omitempty"`
+				MaxParallelTasks    int      `json:"max_parallel_tasks,omitempty"`
+				Constraints         []string `json:"constraints,omitempty"`
+				Hints               []string `json:"hints,omitempty"`
+				ExplicitTargetsOnly bool     `json:"explicit_targets_only,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
@@ -93,7 +95,7 @@ func NewSubagentsPlanTool(runtime *gateway.Runtime, router llm.Router) Tool {
 			if flowID == "" {
 				flowID = fmt.Sprintf("flow_%d", time.Now().UnixNano())
 			}
-			requiredTargets := collectPlannerTargets(goal, input.Targets, input.Constraints, input.Hints)
+			requiredTargets := collectPlannerTargets(goal, input.Targets, input.Constraints, input.Hints, input.ExplicitTargetsOnly)
 
 			plannerClient, resolution, err := router.ClientFor(llm.RoleGatewayPlanner)
 			if err != nil {
@@ -513,14 +515,8 @@ func nextPlannerUniqueID(base string, counts map[string]int) string {
 	return fmt.Sprintf("%s_%d", sanitizedBase, counts[sanitizedBase])
 }
 
-func collectPlannerTargets(goal string, explicitTargets, constraints, hints []string) []string {
-	candidates := make([]string, 0, len(explicitTargets)+len(constraints)+len(hints)+1)
-	candidates = append(candidates, explicitTargets...)
-	candidates = append(candidates, goal)
-	candidates = append(candidates, constraints...)
-	candidates = append(candidates, hints...)
-
-	out := make([]string, 0, len(candidates))
+func collectPlannerTargets(goal string, explicitTargets, constraints, hints []string, explicitOnly bool) []string {
+	out := make([]string, 0, len(explicitTargets))
 	seen := map[string]struct{}{}
 	add := func(value string) {
 		target := normalizePlannerTarget(value)
@@ -534,7 +530,17 @@ func collectPlannerTargets(goal string, explicitTargets, constraints, hints []st
 		out = append(out, target)
 	}
 
-	for _, candidate := range candidates {
+	// Explicit targets are always included.
+	for _, t := range explicitTargets {
+		add(t)
+	}
+
+	if explicitOnly {
+		return out
+	}
+
+	// Auto-extract paths from goal, constraints, and hints.
+	for _, candidate := range append(append([]string{goal}, constraints...), hints...) {
 		add(candidate)
 		for _, match := range plannerTargetExtractor.FindAllStringSubmatch(candidate, -1) {
 			for _, part := range match[1:] {
