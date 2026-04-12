@@ -1,14 +1,11 @@
 package config
 
-import (
-	"strings"
-
-	"github.com/devlikebear/tars/internal/memory"
-)
+import "github.com/devlikebear/tars/internal/memory"
 
 // FieldMeta describes a single configuration field for UI rendering.
 type FieldMeta struct {
 	Key         string   `json:"key"`
+	Path        string   `json:"path"`
 	Section     string   `json:"section"`
 	Type        string   `json:"type"` // "string", "int", "float", "bool", "json"
 	Label       string   `json:"label"`
@@ -18,15 +15,19 @@ type FieldMeta struct {
 }
 
 func f(key, section, typ, label, desc string) FieldMeta {
-	return FieldMeta{Key: key, Section: section, Type: typ, Label: label, Description: desc}
+	return FieldMeta{Key: key, Path: preferredYAMLPathForKey(key), Section: section, Type: typ, Label: label, Description: desc}
 }
 
 func fs(key, section, label, desc string, sensitive bool) FieldMeta {
-	return FieldMeta{Key: key, Section: section, Type: "string", Label: label, Description: desc, Sensitive: sensitive}
+	return FieldMeta{Key: key, Path: preferredYAMLPathForKey(key), Section: section, Type: "string", Label: label, Description: desc, Sensitive: sensitive}
 }
 
 func fsel(key, section, label, desc string, options []string) FieldMeta {
-	return FieldMeta{Key: key, Section: section, Type: "select", Label: label, Description: desc, Options: options}
+	return FieldMeta{Key: key, Path: preferredYAMLPathForKey(key), Section: section, Type: "select", Label: label, Description: desc, Options: options}
+}
+
+func fjson(key, section, label, desc string) FieldMeta {
+	return FieldMeta{Key: key, Path: preferredYAMLPathForKey(key), Section: section, Type: "json", Label: label, Description: desc}
 }
 
 // Schema returns metadata for all configuration fields, grouped for UI display.
@@ -54,15 +55,10 @@ func Schema() []FieldMeta {
 		f("api_max_inflight_agent_runs", "API", "int", "Max Inflight Agent Runs", "Maximum concurrent agent run requests"),
 
 		// ── LLM ──────────────────────────────────
-		fsel("llm_provider", "LLM", "Provider", "LLM provider backend", []string{"anthropic", "openai", "openai-codex", "gemini"}),
-		fsel("llm_auth_mode", "LLM", "Auth Mode", "LLM authentication mode", []string{"api-key", "oauth"}),
-		fsel("llm_oauth_provider", "LLM", "OAuth Provider", "OAuth provider name when auth_mode is oauth", []string{"", "openai-codex"}),
-		f("llm_base_url", "LLM", "string", "Base URL", "Custom base URL for the LLM API endpoint"),
-		fs("llm_api_key", "LLM", "API Key", "API key for the LLM provider", true),
-		f("llm_model", "LLM", "string", "Model", "Model identifier (e.g. claude-sonnet-4-20250514, gpt-4o)"),
-		fsel("llm_reasoning_effort", "LLM", "Reasoning Effort", "Reasoning effort level", []string{"", "low", "medium", "high"}),
-		f("llm_thinking_budget", "LLM", "int", "Thinking Budget", "Max tokens for extended thinking (0 = disabled)"),
-		f("llm_service_tier", "LLM", "string", "Service Tier", "Service tier hint for the provider"),
+		fjson("llm_providers", "LLM", "Providers", "Named provider pool keyed by alias. Each entry defines kind/auth/base_url/api_key at the provider level."),
+		fjson("llm_tiers", "LLM", "Tiers", "Tier bindings keyed by heavy/standard/light (or custom tiers). Each entry binds provider/model/reasoning settings."),
+		f("llm_default_tier", "LLM", "string", "Default Tier", "Tier used when a role has no explicit override in llm.role_defaults"),
+		fjson("llm_role_defaults", "LLM", "Role Defaults", "Map of runtime role name to tier alias (for example chat_main -> standard)"),
 
 		// ── Memory ───────────────────────────────
 		fsel("memory_backend", "Memory", "Backend", "Memory backend implementation", []string{"file"}),
@@ -78,6 +74,7 @@ func Schema() []FieldMeta {
 		f("usage_limit_weekly_usd", "Usage", "float", "Weekly Limit (USD)", "Maximum weekly LLM spend in USD"),
 		f("usage_limit_monthly_usd", "Usage", "float", "Monthly Limit (USD)", "Maximum monthly LLM spend in USD"),
 		fsel("usage_limit_mode", "Usage", "Limit Mode", "Enforcement mode", []string{"soft", "hard"}),
+		fjson("usage_price_overrides_json", "Usage", "Price Overrides", "Optional per-model usage price override map"),
 
 		// ── Automation ───────────────────────────
 		f("agent_max_iterations", "Automation", "int", "Max Iterations", "Maximum agent loop iterations per request"),
@@ -127,11 +124,16 @@ func Schema() []FieldMeta {
 		// ── Tools ────────────────────────────────
 		f("tools_web_search_enabled", "Tools", "bool", "Web Search", "Enable web search tool"),
 		f("tools_web_fetch_enabled", "Tools", "bool", "Web Fetch", "Enable web fetch tool"),
+		f("tools_default_set", "Tools", "string", "Default Tool Set", "Default tool policy/profile for chat sessions"),
 		f("tools_allow_high_risk_user", "Tools", "bool", "Allow High-Risk Tools", "Allow user-level access to high-risk tools"),
 		fs("tools_web_search_api_key", "Tools", "Search API Key", "API key for web search provider", true),
 		fsel("tools_web_search_provider", "Tools", "Search Provider", "Web search backend", []string{"brave", "perplexity"}),
+		fs("tools_web_search_perplexity_api_key", "Tools", "Perplexity API Key", "API key when the web search provider is perplexity", true),
+		f("tools_web_search_perplexity_model", "Tools", "string", "Perplexity Model", "Model name used for Perplexity-backed search"),
+		f("tools_web_search_perplexity_base_url", "Tools", "string", "Perplexity Base URL", "Override URL for the Perplexity chat completions API"),
 		f("tools_web_search_cache_ttl_seconds", "Tools", "int", "Search Cache TTL", "Cache duration for search results in seconds"),
 		f("tools_web_fetch_allow_private_hosts", "Tools", "bool", "Allow Private Hosts", "Allow fetching from private/internal hosts"),
+		f("tools_web_fetch_private_host_allowlist_json", "Tools", "string_list", "Private Host Allowlist", "Explicit private hosts allowed for web fetch requests"),
 		f("tools_apply_patch_enabled", "Tools", "bool", "Apply Patch", "Enable apply-patch tool"),
 		f("tools_message_enabled", "Tools", "bool", "Message Tool", "Enable message/notification tool"),
 		f("tools_browser_enabled", "Tools", "bool", "Browser Tool", "Enable browser automation tool"),
@@ -139,7 +141,8 @@ func Schema() []FieldMeta {
 		f("tools_gateway_enabled", "Tools", "bool", "Gateway Tool", "Enable gateway dispatch tool"),
 
 		// ── MCP ──────────────────────────────────
-		f("mcp_command_allowlist_json", "MCP", "string", "Command Allowlist", "Comma-separated list of allowed commands for MCP servers (e.g. npx,node,uvx,python3)"),
+		f("mcp_command_allowlist_json", "MCP", "string_list", "Command Allowlist", "Commands that bundled or installed MCP servers may execute"),
+		fjson("mcp_servers_json", "MCP", "Servers", "Optional MCP server catalog entries configured directly in YAML"),
 
 		// ── Vault ────────────────────────────────
 		f("vault_enabled", "Vault", "bool", "Enabled", "Enable HashiCorp Vault integration"),
@@ -150,6 +153,10 @@ func Schema() []FieldMeta {
 		f("vault_timeout_ms", "Vault", "int", "Timeout (ms)", "Vault request timeout in milliseconds"),
 		f("vault_kv_mount", "Vault", "string", "KV Mount", "KV secrets engine mount path"),
 		f("vault_kv_version", "Vault", "int", "KV Version", "KV secrets engine version (1 or 2)"),
+		f("vault_approle_mount", "Vault", "string", "AppRole Mount", "Vault AppRole auth mount path"),
+		fs("vault_approle_role_id", "Vault", "AppRole Role ID", "Role ID used when auth mode is approle", true),
+		fs("vault_approle_secret_id", "Vault", "AppRole Secret ID", "Secret ID used when auth mode is approle", true),
+		f("vault_secret_path_allowlist_json", "Vault", "string_list", "Secret Path Allowlist", "Allowed Vault secret path prefixes for runtime access"),
 
 		// ── Browser ──────────────────────────────
 		f("browser_runtime_enabled", "Browser", "bool", "Runtime Enabled", "Enable browser runtime for automation"),
@@ -158,12 +165,17 @@ func Schema() []FieldMeta {
 		f("browser_managed_executable_path", "Browser", "string", "Executable Path", "Path to browser executable"),
 		f("browser_managed_user_data_dir", "Browser", "string", "User Data Dir", "Browser user data directory"),
 		f("browser_site_flows_dir", "Browser", "string", "Site Flows Dir", "Directory for browser site flow definitions"),
+		f("browser_auto_login_site_allowlist_json", "Browser", "string_list", "Auto-Login Allowlist", "Site IDs allowed to use stored browser auto-login credentials"),
 
 		// ── Gateway ──────────────────────────────
 		f("gateway_enabled", "Gateway", "bool", "Enabled", "Enable agent gateway for multi-agent orchestration"),
 		f("gateway_default_agent", "Gateway", "string", "Default Agent", "Default agent name for dispatched tasks"),
+		fjson("gateway_agents_json", "Gateway", "Agent Catalog", "Gateway agent catalog configured directly in YAML"),
+		fjson("gateway_task_override", "Gateway", "Task Override", "Optional provider/model allowlist for gateway task overrides"),
 		f("gateway_agents_watch", "Gateway", "bool", "Watch Agent Files", "Auto-reload agents when definition files change"),
+		f("gateway_agents_watch_debounce_ms", "Gateway", "int", "Watch Debounce (ms)", "Debounce window for gateway agent catalog reloads"),
 		f("gateway_persistence_enabled", "Gateway", "bool", "Persistence", "Enable gateway state persistence"),
+		f("gateway_persistence_dir", "Gateway", "string", "Persistence Dir", "Directory used for persisted gateway runtime state"),
 		f("gateway_runs_persistence_enabled", "Gateway", "bool", "Runs Persistence", "Persist agent run records"),
 		f("gateway_channels_persistence_enabled", "Gateway", "bool", "Channels Persistence", "Persist channel message history"),
 		f("gateway_runs_max_records", "Gateway", "int", "Max Run Records", "Maximum stored run records"),
@@ -178,9 +190,11 @@ func Schema() []FieldMeta {
 		f("gateway_consensus_allowed_aliases_json", "Gateway", "string_list", "Consensus Allowed Aliases", "Optional provider alias allowlist for consensus variants"),
 		f("gateway_consensus_concurrent_runs", "Gateway", "int", "Consensus Concurrent Runs", "Maximum number of consensus runs allowed at once"),
 		f("gateway_restore_on_startup", "Gateway", "bool", "Restore on Startup", "Restore persisted runs when server starts"),
+		f("gateway_report_summary_enabled", "Gateway", "bool", "Report Summary Enabled", "Emit summarized run reports for gateway tasks"),
 		f("gateway_archive_enabled", "Gateway", "bool", "Archive Enabled", "Enable run archival to disk"),
 		f("gateway_archive_dir", "Gateway", "string", "Archive Dir", "Directory for archived run files"),
 		f("gateway_archive_retention_days", "Gateway", "int", "Archive Retention (days)", "Days to retain archived runs"),
+		f("gateway_archive_max_file_bytes", "Gateway", "int", "Archive Max File Bytes", "Maximum archive file size before rollover"),
 
 		// ── Channels ─────────────────────────────
 		f("channels_local_enabled", "Channels", "bool", "Local Channel", "Enable local channel for CLI dispatch"),
@@ -193,9 +207,13 @@ func Schema() []FieldMeta {
 		// ── Extensions ───────────────────────────
 		f("skills_enabled", "Extensions", "bool", "Skills Enabled", "Load and serve skill definitions"),
 		f("skills_watch", "Extensions", "bool", "Watch Skills", "Auto-reload skills when files change"),
+		f("skills_watch_debounce_ms", "Extensions", "int", "Skills Watch Debounce (ms)", "Debounce window for skill reload events"),
+		f("skills_extra_dirs_json", "Extensions", "string_list", "Skills Extra Dirs", "Additional directories searched for user skill definitions"),
 		f("skills_bundled_dir", "Extensions", "string", "Skills Directory", "Directory for bundled skill files"),
 		f("plugins_enabled", "Extensions", "bool", "Plugins Enabled", "Load and serve plugin definitions"),
 		f("plugins_watch", "Extensions", "bool", "Watch Plugins", "Auto-reload plugins when files change"),
+		f("plugins_watch_debounce_ms", "Extensions", "int", "Plugins Watch Debounce (ms)", "Debounce window for plugin reload events"),
+		f("plugins_extra_dirs_json", "Extensions", "string_list", "Plugins Extra Dirs", "Additional directories searched for user plugin definitions"),
 		f("plugins_bundled_dir", "Extensions", "string", "Plugins Directory", "Directory for bundled plugin files"),
 		f("plugins_allow_mcp_servers", "Extensions", "bool", "Allow MCP in Plugins", "Allow plugins to register MCP servers"),
 	}
@@ -254,9 +272,17 @@ func extractValue(yamlKey string, cfg Config) any {
 	case "api_max_inflight_agent_runs":
 		return cfg.APIMaxInflightAgentRuns
 	// LLM
+	case "llm_providers":
+		return cloneLLMProviders(cfg.LLMProviders)
+	case "llm_tiers":
+		return cloneLLMTiers(cfg.LLMTiers)
 	case "llm_default_tier":
 		return cfg.LLMDefaultTier
+	case "llm_role_defaults":
+		return cloneStringMap(cfg.LLMRoleDefaults)
 	// Memory
+	case "memory_backend":
+		return cfg.MemoryBackend
 	case "memory_semantic_enabled":
 		return cfg.MemorySemanticEnabled
 	case "memory_embed_provider":
@@ -278,6 +304,8 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.UsageLimitMonthlyUSD
 	case "usage_limit_mode":
 		return cfg.UsageLimitMode
+	case "usage_price_overrides_json":
+		return cloneUsagePriceOverrides(cfg.UsagePriceOverrides)
 	// Automation
 	case "agent_max_iterations":
 		return cfg.AgentMaxIterations
@@ -362,14 +390,24 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsWebSearchEnabled
 	case "tools_web_fetch_enabled":
 		return cfg.ToolsWebFetchEnabled
+	case "tools_default_set":
+		return cfg.ToolsDefaultSet
 	case "tools_allow_high_risk_user":
 		return cfg.ToolsAllowHighRiskUser
 	case "tools_web_search_api_key":
 		return cfg.ToolsWebSearchAPIKey
 	case "tools_web_search_provider":
 		return cfg.ToolsWebSearchProvider
+	case "tools_web_search_perplexity_api_key":
+		return cfg.ToolsWebSearchPerplexityAPIKey
+	case "tools_web_search_perplexity_model":
+		return cfg.ToolsWebSearchPerplexityModel
+	case "tools_web_search_perplexity_base_url":
+		return cfg.ToolsWebSearchPerplexityBaseURL
 	case "tools_web_search_cache_ttl_seconds":
 		return cfg.ToolsWebSearchCacheTTLSeconds
+	case "tools_web_fetch_private_host_allowlist_json":
+		return append([]string(nil), cfg.ToolsWebFetchPrivateHostAllowlist...)
 	case "tools_web_fetch_allow_private_hosts":
 		return cfg.ToolsWebFetchAllowPrivateHosts
 	case "tools_apply_patch_enabled":
@@ -384,7 +422,9 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsGatewayEnabled
 	// MCP
 	case "mcp_command_allowlist_json":
-		return strings.Join(cfg.MCPCommandAllowlist, ",")
+		return append([]string(nil), cfg.MCPCommandAllowlist...)
+	case "mcp_servers_json":
+		return append([]MCPServer(nil), cfg.MCPServers...)
 	// Vault
 	case "vault_enabled":
 		return cfg.VaultEnabled
@@ -402,6 +442,14 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.VaultKVMount
 	case "vault_kv_version":
 		return cfg.VaultKVVersion
+	case "vault_approle_mount":
+		return cfg.VaultAppRoleMount
+	case "vault_approle_role_id":
+		return cfg.VaultAppRoleRoleID
+	case "vault_approle_secret_id":
+		return cfg.VaultAppRoleSecretID
+	case "vault_secret_path_allowlist_json":
+		return append([]string(nil), cfg.VaultSecretPathAllowlist...)
 	// Browser
 	case "browser_runtime_enabled":
 		return cfg.BrowserRuntimeEnabled
@@ -415,15 +463,29 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.BrowserManagedUserDataDir
 	case "browser_site_flows_dir":
 		return cfg.BrowserSiteFlowsDir
+	case "browser_auto_login_site_allowlist_json":
+		return append([]string(nil), cfg.BrowserAutoLoginSiteAllowlist...)
 	// Gateway
 	case "gateway_enabled":
 		return cfg.GatewayEnabled
 	case "gateway_default_agent":
 		return cfg.GatewayDefaultAgent
+	case "gateway_agents_json":
+		return append([]GatewayAgent(nil), cfg.GatewayAgents...)
+	case "gateway_task_override":
+		return GatewayTaskOverrideConfig{
+			Enabled:        cfg.GatewayTaskOverride.Enabled,
+			AllowedAliases: append([]string(nil), cfg.GatewayTaskOverride.AllowedAliases...),
+			AllowedModels:  append([]string(nil), cfg.GatewayTaskOverride.AllowedModels...),
+		}
 	case "gateway_agents_watch":
 		return cfg.GatewayAgentsWatch
+	case "gateway_agents_watch_debounce_ms":
+		return cfg.GatewayAgentsWatchDebounceMS
 	case "gateway_persistence_enabled":
 		return cfg.GatewayPersistenceEnabled
+	case "gateway_persistence_dir":
+		return cfg.GatewayPersistenceDir
 	case "gateway_runs_persistence_enabled":
 		return cfg.GatewayRunsPersistenceEnabled
 	case "gateway_channels_persistence_enabled":
@@ -436,14 +498,32 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.GatewaySubagentsMaxThreads
 	case "gateway_subagents_max_depth":
 		return cfg.GatewaySubagentsMaxDepth
+	case "gateway_consensus_enabled":
+		return cfg.GatewayConsensusEnabled
+	case "gateway_consensus_max_fanout":
+		return cfg.GatewayConsensusMaxFanout
+	case "gateway_consensus_budget_tokens":
+		return cfg.GatewayConsensusBudgetTokens
+	case "gateway_consensus_budget_usd":
+		return cfg.GatewayConsensusBudgetUSD
+	case "gateway_consensus_timeout_seconds":
+		return cfg.GatewayConsensusTimeoutSeconds
+	case "gateway_consensus_allowed_aliases_json":
+		return append([]string(nil), cfg.GatewayConsensusAllowedAliases...)
+	case "gateway_consensus_concurrent_runs":
+		return cfg.GatewayConsensusConcurrentRuns
 	case "gateway_restore_on_startup":
 		return cfg.GatewayRestoreOnStartup
+	case "gateway_report_summary_enabled":
+		return cfg.GatewayReportSummaryEnabled
 	case "gateway_archive_enabled":
 		return cfg.GatewayArchiveEnabled
 	case "gateway_archive_dir":
 		return cfg.GatewayArchiveDir
 	case "gateway_archive_retention_days":
 		return cfg.GatewayArchiveRetentionDays
+	case "gateway_archive_max_file_bytes":
+		return cfg.GatewayArchiveMaxFileBytes
 	// Channels
 	case "channels_local_enabled":
 		return cfg.ChannelsLocalEnabled
@@ -462,12 +542,20 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.SkillsEnabled
 	case "skills_watch":
 		return cfg.SkillsWatch
+	case "skills_watch_debounce_ms":
+		return cfg.SkillsWatchDebounceMS
+	case "skills_extra_dirs_json":
+		return append([]string(nil), cfg.SkillsExtraDirs...)
 	case "skills_bundled_dir":
 		return cfg.SkillsBundledDir
 	case "plugins_enabled":
 		return cfg.PluginsEnabled
 	case "plugins_watch":
 		return cfg.PluginsWatch
+	case "plugins_watch_debounce_ms":
+		return cfg.PluginsWatchDebounceMS
+	case "plugins_extra_dirs_json":
+		return append([]string(nil), cfg.PluginsExtraDirs...)
 	case "plugins_bundled_dir":
 		return cfg.PluginsBundledDir
 	case "plugins_allow_mcp_servers":

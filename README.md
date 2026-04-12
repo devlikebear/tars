@@ -75,11 +75,26 @@ Route workloads to different models for cost and quality optimization:
 
 ```yaml
 # tars.config.yaml
-llm_default_tier: standard
-llm_tier_heavy_model: claude-opus-4-6
-llm_tier_light_model: claude-haiku-4-5-20251001
-llm_role_pulse_decider: light
-llm_role_gateway_planner: heavy
+llm:
+  providers:
+    default:
+      kind: anthropic
+      auth_mode: api-key
+      api_key: ${ANTHROPIC_API_KEY}
+  tiers:
+    heavy:
+      provider: default
+      model: claude-opus-4-6
+    standard:
+      provider: default
+      model: claude-sonnet-4-6
+    light:
+      provider: default
+      model: claude-haiku-4-5
+  default_tier: standard
+  role_defaults:
+    pulse_decider: light
+    gateway_planner: heavy
 ```
 
 Each system role (chat, pulse, reflection, compaction, gateway agents) maps to a tier. Background surfaces default to `light`, keeping costs low. `llm_role_gateway_planner` is now exercised by `subagents_plan`, and TARS logs the resolved `role`, `tier`, `provider`, `model`, and `source` for chat and gateway LLM calls so tier selection is traceable in runtime logs.
@@ -118,18 +133,6 @@ Multi-channel I/O beyond the web console:
 - **Skills** — Markdown instruction files with companion scripts and platform requirements
 - **Browser** — Playwright-based automation for web interaction
 
-### Project Autopilot
-
-For complex multi-phase projects, TARS can plan phases, build backlogs, execute tasks autonomously, and escalate for approvals:
-
-```bash
-tars project autopilot start <project-id>
-tars project autopilot advance <project-id>
-tars project autopilot status <project-id>
-```
-
-This is available as one workflow among many — most day-to-day work happens in interactive chat.
-
 ## Install
 
 **Homebrew:**
@@ -151,10 +154,10 @@ curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | 
 # Initialize workspace and config
 tars init
 
-# Set your LLM provider
+# Set your provider credentials
 export ANTHROPIC_API_KEY="your-key"
 # Or: export OPENAI_API_KEY="your-key"
-# Or: set llm_provider: claude-code-cli in config for local Claude Code
+# Then edit ~/.tars/config/config.yaml under llm.providers / llm.tiers if needed
 
 # Validate setup
 tars doctor --fix

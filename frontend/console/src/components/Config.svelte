@@ -35,8 +35,9 @@
       return {
         key,
         label: field?.label || key,
-        oldVal: values[key] !== undefined && values[key] !== null ? String(values[key]) : '\u2014',
-        newVal: newVal !== undefined && newVal !== null ? String(newVal) : '\u2014',
+        path: field?.path || key,
+        oldVal: stringifyConfigValue(values[key]),
+        newVal: stringifyConfigValue(newVal),
       }
     })
   })
@@ -54,6 +55,7 @@
           (f) =>
             f.label.toLowerCase().includes(q) ||
             f.key.toLowerCase().includes(q) ||
+            f.path.toLowerCase().includes(q) ||
             f.description.toLowerCase().includes(q) ||
             f.section.toLowerCase().includes(q)
         ),
@@ -144,6 +146,20 @@
     const current = dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
     if (field.type === 'bool') {
       editBool = !!current
+    } else if (field.type === 'string_list') {
+      if (Array.isArray(current)) {
+        editValue = current.map((item) => String(item)).join('\n')
+      } else {
+        editValue = current !== undefined && current !== null ? String(current) : ''
+      }
+    } else if (field.type === 'json') {
+      if (current === undefined || current === null || current === '') {
+        editValue = '{}'
+      } else if (typeof current === 'string') {
+        editValue = current
+      } else {
+        editValue = JSON.stringify(current, null, 2)
+      }
     } else {
       editValue = current !== undefined && current !== null ? String(current) : ''
     }
@@ -159,6 +175,18 @@
     let parsed: unknown
     if (field.type === 'bool') {
       parsed = editBool
+    } else if (field.type === 'string_list') {
+      parsed = editValue
+        .split(/\r?\n|,/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    } else if (field.type === 'json') {
+      try {
+        parsed = JSON.parse(editValue.trim())
+      } catch {
+        cancelEdit()
+        return
+      }
     } else if (field.type === 'int') {
       parsed = editValue.trim() === '' ? 0 : parseInt(editValue, 10)
       if (isNaN(parsed as number)) { cancelEdit(); return }
@@ -171,7 +199,7 @@
 
     // Check if changed from original
     const original = values[field.key]
-    if (parsed === original || (String(parsed) === String(original))) {
+    if (configValuesEqual(parsed, original)) {
       delete dirtyFields[field.key]
     } else {
       dirtyFields[field.key] = parsed
@@ -183,7 +211,7 @@
 
   function selectField(field: ConfigFieldMeta, value: string) {
     const original = values[field.key]
-    if (value === String(original ?? '')) {
+    if (configValuesEqual(value, original)) {
       delete dirtyFields[field.key]
     } else {
       dirtyFields[field.key] = value
@@ -194,12 +222,18 @@
   function toggleBool(field: ConfigFieldMeta) {
     const current = dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
     const newVal = !current
-    if (newVal === values[field.key]) {
+    if (configValuesEqual(newVal, values[field.key])) {
       delete dirtyFields[field.key]
     } else {
       dirtyFields[field.key] = newVal
     }
     dirtyFields = { ...dirtyFields }
+  }
+
+  function handleSelectChange(field: ConfigFieldMeta, event: Event) {
+    const target = event.currentTarget
+    if (!(target instanceof HTMLSelectElement)) return
+    selectField(field, target.value)
   }
 
   function getDisplayValue(field: ConfigFieldMeta): unknown {
@@ -269,7 +303,8 @@
   }
 
   function handleFieldKeydown(e: KeyboardEvent, field: ConfigFieldMeta) {
-    if (e.key === 'Enter') {
+    const multiline = field.type === 'json' || field.type === 'string_list'
+    if (e.key === 'Enter' && (!multiline || e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       commitEdit(field)
     } else if (e.key === 'Escape') {
@@ -284,9 +319,29 @@
 
   function formatValue(field: ConfigFieldMeta): string {
     const v = getDisplayValue(field)
-    if (v === undefined || v === null || v === '') return '\u2014'
     if (field.sensitive && typeof v === 'string' && v.includes('*')) return v
-    return String(v)
+    return stringifyConfigValue(v)
+  }
+
+  function fieldPath(field: ConfigFieldMeta): string {
+    return field.path || field.key
+  }
+
+  function stringifyConfigValue(value: unknown): string {
+    if (value === undefined || value === null || value === '') return '\u2014'
+    if (Array.isArray(value)) return value.map((item) => String(item)).join(', ')
+    if (typeof value === 'object') return JSON.stringify(value)
+    return String(value)
+  }
+
+  function configValuesEqual(a: unknown, b: unknown): boolean {
+    if (a === b) return true
+    const objectLikeA = typeof a === 'object' && a !== null
+    const objectLikeB = typeof b === 'object' && b !== null
+    if (objectLikeA || objectLikeB) {
+      return JSON.stringify(a) === JSON.stringify(b)
+    }
+    return String(a ?? '') === String(b ?? '')
   }
 
   const sectionIcons: Record<string, string> = {
@@ -348,7 +403,7 @@
             <div class="diff-row">
               <div class="diff-field">
                 <span class="diff-label">{entry.label}</span>
-                <span class="diff-key">{entry.key}</span>
+                <span class="diff-key">{entry.path}</span>
               </div>
               <div class="diff-values">
                 <span class="diff-old">{entry.oldVal}</span>
@@ -392,7 +447,7 @@
                     <div class="field-info">
                       <span class="field-label">{field.label}</span>
                       <span class="field-desc">{field.description}</span>
-                      <span class="field-key">{field.key}</span>
+                      <span class="field-key">{fieldPath(field)}</span>
                     </div>
                     <div class="field-value">
                       {#if field.type === 'bool'}
@@ -412,7 +467,7 @@
                           class="field-select"
                           class:dirty={isDirty(field.key)}
                           value={String(getDisplayValue(field) ?? '')}
-                          onchange={(e) => selectField(field, (e.target as HTMLSelectElement).value)}
+                          onchange={(e) => handleSelectChange(field, e)}
                         >
                           {#each field.options as opt}
                             <option value={opt}>{opt || '(none)'}</option>
@@ -421,14 +476,23 @@
                       {:else if editingKey === field.key}
                         <!-- Editing mode -->
                         <div class="field-edit">
-                          <input
-                            type={field.type === 'int' || field.type === 'float' ? 'number' : 'text'}
-                            step={field.type === 'float' ? '0.01' : undefined}
-                            class="field-input"
-                            bind:value={editValue}
-                            onkeydown={(e) => handleFieldKeydown(e, field)}
-                            onblur={() => commitEdit(field)}
-                          />
+                          {#if field.type === 'json' || field.type === 'string_list'}
+                            <textarea
+                              class="field-textarea"
+                              bind:value={editValue}
+                              onkeydown={(e) => handleFieldKeydown(e, field)}
+                              onblur={() => commitEdit(field)}
+                            ></textarea>
+                          {:else}
+                            <input
+                              type={field.type === 'int' || field.type === 'float' ? 'number' : 'text'}
+                              step={field.type === 'float' ? '0.01' : undefined}
+                              class="field-input"
+                              bind:value={editValue}
+                              onkeydown={(e) => handleFieldKeydown(e, field)}
+                              onblur={() => commitEdit(field)}
+                            />
+                          {/if}
                         </div>
                       {:else if field.sensitive}
                         <!-- Sensitive: show masked, not editable inline -->
@@ -746,6 +810,24 @@
     outline: none;
   }
   .field-input:focus {
+    box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.3);
+  }
+  .field-textarea {
+    width: min(420px, 42vw);
+    min-height: 120px;
+    padding: var(--space-2);
+    background: var(--bg-base);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    white-space: pre;
+  }
+  .field-textarea:focus {
     box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.3);
   }
 
