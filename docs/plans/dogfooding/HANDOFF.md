@@ -52,62 +52,71 @@ TARS 도그푸딩 v1 — TARS를 다중 프로젝트 운영/창작/리서치 자
 ## 현재 상태
 
 - **활성 트랙**: Track 2 — Monitored Ops
-- **활성 페이즈**: Phase A (인프라) — **아키텍처 재설계 반영 중** (docs-only 커밋으로 전환)
+- **활성 페이즈**: Phase A (인프라) — **코드 구현 완료, 수동 검증 대기**
 - **활성 단계**: 
-  1. TARS 본 repo에서 잘못된 빌트인 Go 플러그인 코드 삭제 완료
-  2. 관련 docs(HANDOFF/README/Phase A 계획서) 재작성 진행 중
-  3. PR [#362](https://github.com/devlikebear/tars/pull/362)는 docs-only로 축소하거나 닫고 새 PR 생성 예정
-- **활성 worktree**: `.claude/worktrees/interesting-herschel-a72794` (`claude/interesting-herschel-a72794` branch)
-- **블로커**: 없음 — 아키텍처 재설계 완료 후 일반 작업 재개
-- **마지막 빌드**: 검증 재실행 필요 (코드 revert 후)
-- **deferred**: `tars-examples-foo` repo 시딩은 변함없이 Phase B 시작 전에 처리. 대상 repo: `devlikebear/tars-examples-foo` (빈 repo 생성 완료 2026-04-19).
+  1. TARS core: 아키텍처 pivot docs 커밋 완료 — PR [#362](https://github.com/devlikebear/tars/pull/362) 머지 대기
+  2. `tars-skills`: `log-watcher`, `github-ops` skill+CLI 추가 완료 — PR [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) 머지 대기
+  3. `tars-examples-foo`: Go todo API + Docker + 의도된 버그 3종 + JSON 로그 main에 직접 푸시 완료 (<https://github.com/devlikebear/tars-examples-foo>)
+  4. 다음: 수동 검증 (`tars skill install` → foo `docker compose up` → skill 호출)
+- **활성 worktree**: `.claude/worktrees/interesting-herschel-a72794` (`claude/interesting-herschel-a72794` branch) — 마무리 후 제거 예정
+- **블로커**: 없음
+- **마지막 빌드**:
+  - TARS core: docs-only 변경이라 빌드 영향 없음
+  - `tars-skills`: `bash skills/log-watcher/tests/test_log_watcher.sh` 11/11, `bash skills/github-ops/tests/test_github_ops.sh` 14/14 통과
+  - `tars-examples-foo`: `go build ./...` 클린
 
 ## 미해결 결정 (사용자 확인 대기)
 
 | 결정 사항 | 선택지 | 비고 |
 |---|---|---|
-| `log-watcher` CLI 언어 | (a) shell, (b) Python, (c) TypeScript/Node | 단순 래핑 위주면 shell이 가장 가볍다. 구조화 파싱이 필요하면 Python. daily-briefing이 shell이라 동 스택으로 가는 것도 일관성 있음. |
-| `github-ops` CLI 언어 | (a) shell, (b) Python, (c) TypeScript/Node | 대부분 `gh` CLI 래퍼라 shell이 적합. 단 JSON 가공/에러 분기가 많으면 Python. |
 | `tars-examples-bar` 스택 | (a) Node, (b) Python, (c) 기타 | Phase D 시작 전 결정. foo가 Go라 가정. |
 
 ### 확정된 결정
 
 - **아키텍처**: skill + CLI + `tars-skills` 외부 repo — 2026-04-19 사용자 확정. 빌트인 Go 플러그인 / MCP 서버 경로 모두 기각.
-- **`tars-examples-foo` repo 위치**: `devlikebear/tars-examples-foo` (public) — 2026-04-19 사용자 확인, 빈 repo 생성 완료 (<https://github.com/devlikebear/tars-examples-foo>). Phase A에서 초기 커밋 투입.
+- **`tars-examples-foo` repo 위치**: `devlikebear/tars-examples-foo` (public) — 2026-04-19 사용자 확인, 초기 커밋 투입 완료.
 - **`log-watcher`/`github-ops` 설치 경로**: `devlikebear/tars-skills` repo (skill + 부속 CLI), `tars skill install <name>` 로 설치.
+- **CLI 언어**: **shell** (bash 4+) — 2026-04-19. `daily-briefing` 선례와 일치, docker/gh/git 모두 shell-friendly, 런타임 의존 최소.
+- **log-watcher 스코프**: Phase A에서는 `docker` + `file` 서브커맨드만. Sentry/Loki/OpenSearch/CloudWatch 등 원격 소스는 실제 시나리오가 요구할 때 추가 서브커맨드 또는 별도 skill로 — 선제 추상화 금지. 출력 JSON은 `source` 필드로 forward-compatible.
 
 (Track 1 진행 중 발생한 결정은 [track1-core-slim.md](./track1-core-slim.md) "결정 기록"에 기록)
 
 ## 다음 액션 (구체적)
 
-⏳ **즉시 (이 세션에서 마무리)**:
-1. docs-only 커밋 — HANDOFF/README/Phase A 계획서 업데이트.
-2. PR [#362](https://github.com/devlikebear/tars/pull/362) 처리 결정:
-   - (선택1) 본 워크트리의 docs-only 커밋만 남겨 PR 제목/본문을 `docs(dogfooding): pivot phase A to skill+CLI architecture`로 교체.
-   - (선택2) 현 PR을 닫고 docs-only 신규 PR 생성.
-   - 기본값: (선택1) — 코드 revert + docs 추가가 한 번에 보이는 게 히스토리상 깔끔.
-3. VERSION/CHANGELOG는 코드 변경이 없으므로 범프하지 않음 (docs-only).
+✅ **Phase A 완료 (코드/커밋 분):**
+1. TARS core docs pivot → PR [#362](https://github.com/devlikebear/tars/pull/362)
+2. `tars-skills` feat/phase-a-skills → PR [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) (log-watcher v0.1.0, github-ops v0.1.0, 25개 단위 테스트 통과)
+3. `tars-examples-foo` main에 초기 커밋 완료 — Go todo API + Docker + 의도된 버그 3종 (/bug/panic, /bug/bad, PUT race) + slog JSON 로그
 
-⏳ **다음 세션 첫 과제 (Phase A 본 작업)**:
-1. **CLI 언어 결정** (위 "미해결 결정" 2개).
-2. **`devlikebear/tars-skills` repo에서 작업**:
-   - `skills/log-watcher/` — SKILL.md + CLI (선택된 언어). CLI는 `docker logs` / 파일 tail 기능.
-   - `skills/github-ops/` — SKILL.md + CLI. `gh` 래핑 + git worktree 관리.
-   - `registry.json` 에 두 skill 엔트리 추가 (version, path, tags, user_invocable, files 목록).
-3. **TARS 본 repo (이번 worktree)가 아니라 tars-skills worktree에서 PR 생성**.
-4. **`tars-examples-foo` repo 시딩** — Go net/http 기반 todo CRUD + sqlite, Dockerfile/docker-compose, 의도된 버그 3종 이상, JSON 구조화 로그.
-5. **수동 검증**:
-   - `tars skill install log-watcher` / `tars skill install github-ops` 성공.
-   - TARS 콘솔에서 skill 호출 → bash 툴 통해 CLI 실행 → foo 컨테이너 로그 수신.
-   - `github-ops` skill로 `gh issue list --repo devlikebear/tars-examples-foo` 0건 응답 확인.
-   - git worktree 셋업/정리 round-trip 확인.
-6. 수동 검증 후 **Phase B** (`track2-phase-b-detect-and-issue.md`) 시작.
+⏳ **다음 세션 첫 과제 (수동 검증):**
+1. **PR 머지**:
+   - 먼저 [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) 리뷰·머지 (도그푸딩에서 의존)
+   - TARS core [#362](https://github.com/devlikebear/tars/pull/362) 리뷰·머지
+2. **설치 검증**:
+   - `./bin/tars skill install log-watcher` → 성공, workspace에 파일 배치 확인
+   - `./bin/tars skill install github-ops` → 성공
+3. **foo 기동 검증**:
+   - `tars-examples-foo` clone → `docker compose up --build` → `curl localhost:8080/health` 200
+   - `curl -X POST localhost:8080/bug/panic` → 로그에 "panic recovered" stack trace 출력 확인
+4. **skill 왕복 검증**:
+   - TARS 콘솔에서 "log-watcher로 tars-examples-foo 컨테이너 최근 100줄" → skill 디스패치 → bash로 CLI 실행 → JSON 엔벨로프 수신
+   - "github-ops로 devlikebear/tars-examples-foo 이슈 목록" → 0건 응답
+   - "github-ops로 test-branch 워크트리 만들어" (foo clone 경로 사용) → worktree 생성 → cleanup → 정리 확인
+5. 수동 검증 통과 후 **Phase B** (`track2-phase-b-detect-and-issue.md`) 시작.
+
+⚠️ **검증 중 발견될 가능성 높은 이슈 (사전 점검 포인트)**:
+- `tars skill install`이 `tars-skills` registry.json을 어떻게 페치하는지 (캐시 버전 주의). 필요 시 `tars skill update` 또는 캐시 초기화 확인.
+- skill 프론트매터의 `recommended_tools: [bash]`가 TARS chat 툴 선택에 잘 반영되는지 — daily-briefing 동작 여부로 baseline 확인.
+- `docker logs` 출력이 slog JSON 라인과 `request` INFO 라인 혼합이라 log-watcher의 `level` 필드가 섞여 보일 수 있음. Phase B의 anomaly-detect에서 ERROR만 필터링하면 됨 — Phase A는 수신 여부까지만 검증.
 
 ## 진행 이력 (역시간순)
 
 | 날짜 | 트랙/페이즈 | 작업 | 결과 | PR |
 |---|---|---|---|---|
-| 2026-04-19 | Track 2 / Phase A | **아키텍처 재설계** — 빌트인 Go 플러그인(`internal/logwatcher`, `internal/githubops`) 코드 전체 삭제, VERSION/CHANGELOG 및 `cmd/tars/main.go` blank import 되돌림. 대신 skill + CLI + `tars-skills` 외부 repo 경로 채택. 본 repo는 docs-only 커밋만 남음. | 코드 revert 완료, docs 업데이트 진행 중 | [#362](https://github.com/devlikebear/tars/pull/362) (처리 대기) |
+| 2026-04-19 | Track 2 / Phase A | `tars-examples-foo` 시딩 — Go net/http todo API + modernc.org/sqlite + Dockerfile/docker-compose + 의도된 버그 3종 (/bug/panic, /bug/bad, PUT race) + slog JSON 구조화 로그. 초기 커밋 main 푸시 (PR 없음, 빈 repo 대상). | foo 기동 준비 완료 | 없음 (main 직접 푸시) |
+| 2026-04-19 | Track 2 / Phase A | `tars-skills`에 `log-watcher` + `github-ops` skill 추가. SKILL.md + 부속 shell CLI + 단위 테스트 (11+14) + registry.json 엔트리 (0.1.0). log-watcher 스코프는 docker/file만으로 의도적 축소 — 원격 소스는 시나리오 기반 확장. | 25/25 테스트 통과, PR open | [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) |
+| 2026-04-19 | Track 2 / Phase A | TARS core docs pivot — HANDOFF/README/Phase A 계획서 재작성 + CLAUDE.md "Extension Pattern" 섹션 추가 + README.md Extensibility 재작성. 빌트인 Go 플러그인 시도 코드는 전량 revert. | docs-only diff vs main | [#362](https://github.com/devlikebear/tars/pull/362) |
+| 2026-04-19 | Track 2 / Phase A | (폐기) 빌트인 Go 플러그인 (`internal/logwatcher`, `internal/githubops`) 구현 시도. | 시스템 프롬프트 비대 문제로 전면 폐기 | - |
 | 2026-04-19 | Track 2 / Phase A | (폐기) log-watcher + github-ops builtin plugin 구현 (8개 도구 + 유닛 테스트), `cmd/tars/main.go`에 blank import 등록, VERSION 0.29.0, CHANGELOG Added 작성 | 시스템 프롬프트 비대 문제로 전면 폐기 | - |
 | 2026-04-19 | Track 1 / release | `make test`(pre-existing auth 실패 1건만) + `make vet` 통과, VERSION 0.28.0, CHANGELOG Removed/Migration 작성, PR 생성 | Track 1 종결 | [#361](https://github.com/devlikebear/tars/pull/361) |
 | 2026-04-19 | Track 1 / removal | research + schedule 코드 전부 제거, `go build ./...` 통과. | 빌드 클린 | [#361](https://github.com/devlikebear/tars/pull/361) |
@@ -120,9 +129,9 @@ TARS 도그푸딩 v1 — TARS를 다중 프로젝트 운영/창작/리서치 자
 |---|---|---|---|
 | Planning docs | `docs(dogfooding): planning docs and handoff` | tars | 완료 ([#361](https://github.com/devlikebear/tars/pull/361)) |
 | Track 1 | `chore(dogfooding): slim core (remove research + schedule)` | tars | 완료 ([#361](https://github.com/devlikebear/tars/pull/361)) |
-| Track 2 Phase A (아키텍처 재설계 docs) | `docs(dogfooding): pivot phase A to skill+CLI architecture` | tars | 진행 중 (이 worktree) |
-| Track 2 Phase A (실제 구현) | `feat: add log-watcher + github-ops skills` | **tars-skills** | 미시작 |
-| Track 2 Phase A (foo 시딩) | `chore: seed Go todo API with intentional bugs` | **tars-examples-foo** | 미시작 |
+| Track 2 Phase A (아키텍처 재설계 docs) | `docs(dogfooding): pivot phase A to skill+CLI architecture` | tars | 머지 대기 ([#362](https://github.com/devlikebear/tars/pull/362)) |
+| Track 2 Phase A (실제 구현) | `feat: add log-watcher + github-ops skills` | **tars-skills** | 머지 대기 ([tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3)) |
+| Track 2 Phase A (foo 시딩) | `chore: seed Go todo API with intentional bugs` | **tars-examples-foo** | 완료 (main 직접 푸시) |
 | Track 2 Phase B | `feat: add log-anomaly-detect skill` | **tars-skills** | 미시작 |
 | Track 2 Phase C | `feat: add fix-and-pr skill (AutoResearch loop)` | **tars-skills** | 미시작 |
 | Track 2 Phase D | `feat: add bar validation skill (+ optional knowledge)` | **tars-skills** | 미시작 |
