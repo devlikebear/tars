@@ -162,8 +162,14 @@ TARS 코드베이스 안에서 작업.
 
 | 항목 | 결정 | 사유 | 결정일 |
 |---|---|---|---|
-| foo repo 위치 | TBD | | |
-| foo의 첫 시드 버그 종류 | TBD | | |
-| plugin 위치 (`internal/plugin/builtin/` vs 다른 곳) | TBD | TARS 기존 plugin 패턴 확인 후 | |
-| `gh` CLI 인증 방식 (개인 토큰 vs gh auth) | TBD | | |
-| worktree 격리 위치 | TBD (`workspace/managed-repos/` 추천) | | |
+| foo repo 위치 | `devlikebear/tars-examples-foo` (public) | 사용자 확정, 빈 repo 생성 완료 | 2026-04-19 |
+| foo 시딩 범위 | Phase A PR에서 제외, 다음 세션에서 별도 repo에 push | 서로 다른 repo라 TARS 본 repo PR에 포함하지 않는 편이 깔끔 | 2026-04-19 |
+| plugin 위치 | `internal/logwatcher/`, `internal/githubops/` (top-level, `browserplugin`과 동일 레벨) | 기존 `internal/browserplugin/` 패턴을 그대로 따름 — `cmd/tars/main.go`의 blank import로 `init()` 경유 등록 | 2026-04-19 |
+| plugin 등록 경로 | Go `BuiltinPlugin` + synthetic `Definition()` 반환 (on-disk 매니페스트 없음) | `extensions.Manager.Reload`가 등록된 builtin에 대해 `Definition()`을 합성 주입하는 기존 경로 사용 (manager.go L188-L201) | 2026-04-19 |
+| `gh` CLI 인증 방식 | 사용자 환경의 기존 `gh auth` 세션 사용 (`gh auth status` 전제) | tars 자체 토큰 관리 회피, 사용자 프로세스 단위 인증이 덜 침습적 | 2026-04-19 |
+| worktree 격리 위치 | `workspace/managed-repos/<slug>/<branch>/` (slug는 기본값 repo 폴더명, tool 파라미터로 override 가능) | plan 권장안 수용 + 다중 repo 분기 대응 | 2026-04-19 |
+| 도구 프리픽스 | `docker_logs`, `file_tail`, `gh_*` — 어떤 것도 system-surface 금지 prefix(`pulse_`/`reflection_`/`ops_`) 사용하지 않음 → user-surface 안전 | `tool.RegistryScopeUser` 금지 prefix 회피 | 2026-04-19 |
+| CLI runner 테스트 전략 | `dockerRunner`/`ghRunner`/`gitRunner` 함수 타입으로 추상화 → 테스트에서 fake runner 주입 | 실제 docker/gh/git 없이 로직 단위 테스트 | 2026-04-19 |
+| 기본 tail 상한 | `docker_logs` 200 (max 2000), `file_tail` 200 (max 5000) | LLM 컨텍스트 보호 + 일반적인 디버깅 구간 | 2026-04-19 |
+| input 검증 | 컨테이너명/repo/branch/slug 정규식 화이트리스트로 shell 메타문자 차단 | `exec.Command`는 shell을 거치지 않지만, 잘못된 값이 `gh`/`git`에 전달되어 생기는 혼란 방지 | 2026-04-19 |
+| foo의 첫 시드 버그 종류 | TBD | foo repo 시딩 세션에서 결정 | |

@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-04-19
+
+### Added
+
+- `log-watcher` builtin plugin (`tars-log-watcher`) exposing two user-surface tools for anomaly-detection workflows:
+  - `docker_logs` — fetch recent logs from a named Docker container, parsing JSON-structured lines (slog/zerolog) when possible and reporting truncation
+  - `file_tail` — tail the last N lines of a local log file with optional substring filter
+- `github-ops` builtin plugin (`tars-github-ops`) wrapping the `gh` CLI for monitored-ops automation:
+  - `gh_issue_search` / `gh_issue_create` / `gh_issue_comment` — issue search, creation, commenting on any repo
+  - `gh_pr_create_draft` — create a draft pull request
+  - `gh_worktree_setup` / `gh_worktree_cleanup` — create/remove isolated git worktrees under `workspace/managed-repos/<slug>/<branch>/` for external repos
+- These plugins are the Phase A infrastructure for the dogfooding roadmap ([docs/plans/dogfooding/](docs/plans/dogfooding/)) and lay the groundwork for Phase B log-anomaly detection and Phase C fix-and-PR automation
+
 ## [0.28.0] - 2026-04-19
 
 ### Removed

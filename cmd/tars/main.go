@@ -7,6 +7,8 @@ import (
 
 	_ "github.com/devlikebear/tars/internal/browserplugin" // register browser plugin
 	"github.com/devlikebear/tars/internal/buildinfo"
+	_ "github.com/devlikebear/tars/internal/githubops"  // register github-ops plugin
+	_ "github.com/devlikebear/tars/internal/logwatcher" // register log-watcher plugin
 	"github.com/devlikebear/tars/internal/envloader"
 	"github.com/spf13/cobra"
 )
