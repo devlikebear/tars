@@ -127,11 +127,15 @@ Multi-channel I/O beyond the web console:
 
 ### Extensibility
 
-- **[Skill Hub](https://github.com/devlikebear/tars-skills)** — `tars skill search`, `tars plugin install`, `tars mcp install`
-- **Plugins** — Bundle skills + MCP servers with manifest metadata and runtime gating
-- **MCP** — Local stdio and remote HTTP/WebSocket servers with bearer or OAuth auth
-- **Skills** — Markdown instruction files with companion scripts and platform requirements
-- **Browser** — Playwright-based automation for web interaction
+TARS favors **on-demand extension** over always-resident tool registrations. Domain-specific capabilities are shipped as skills (plus optional companion CLIs) from the [Skill Hub](https://github.com/devlikebear/tars-skills) rather than compiled into the TARS binary — this keeps the chat system prompt small no matter how many capabilities a user installs.
+
+- **[Skill Hub](https://github.com/devlikebear/tars-skills)** — Public registry of skills, plugins, and MCP servers. Install with `tars skill install <name>`, `tars plugin install <name>`, `tars mcp install <name>`. The hub is the first place to look before writing a new capability, and the only place to publish one.
+- **Skills** — Markdown instruction files (YAML frontmatter + body) with optional companion scripts. A skill's frontmatter can set `recommended_tools: [bash]` and instruct the LLM to invoke a co-installed CLI (Python/TypeScript/shell); this keeps the CLI's interface out of the system prompt until the skill itself is picked. See `daily-briefing` in the hub for the canonical pattern.
+- **Plugins** — Bundle skills + MCP servers with manifest metadata and runtime gating.
+- **MCP** — Local stdio and remote HTTP/WebSocket servers with bearer or OAuth auth. Use for third-party integrations that cannot be expressed as a CLI the bash tool can call.
+- **Browser** — Playwright-based automation for web interaction (shipped as a hub plugin).
+
+**When to build a hub skill vs. a core feature**: if the capability is domain-specific (one site's logs, one vendor's API, one workflow), it belongs in `tars-skills` as a skill + CLI. Builtin tools inside this repo are reserved for universal surfaces (file ops, memory, gateway, channels) that every session uses.
 
 ## Install
 
