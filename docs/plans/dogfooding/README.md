@@ -15,10 +15,20 @@ TARS를 **실제 다중 프로젝트 운영/창작/리서치 자동화 호스트
 **원칙:**
 1. **코어 추상화는 현재 뼈대 그대로** — 채팅 세션 + 게이트웨이 + cron + plugin + skill + memory + approval. 새 도메인 개념(예: ProjectRegistry, MonitoredTarget) 도입 금지.
 2. **세션 = 자연스러운 격리 단위** — foo 운영용 세션 1개, bar 운영용 세션 1개. cron이 깨움.
-3. **도메인 종속 기능은 plugin/skill로** — log-watcher / github-ops 등은 별도 plugin. 작업 절차는 skill(.md).
+3. **도메인 기능은 외부 repo의 skill + CLI로만** — 아래 "skill + CLI 원칙" 참조. 빌트인 Go 플러그인과 MCP 서버는 모두 시스템 프롬프트를 비대화시키므로 **도그푸딩에서 기각**.
 4. **오히려 슬림화 우선** — 새 기능 추가 전에 의심 모듈(중복/사용 빈도 낮음) 정리.
 5. **검증 가능한 metric으로 묶음** — Karpathy AutoResearch 패턴(propose→act→verify)을 fix-and-pr skill 내부 절차로 흡수.
 6. **지식 축적은 야간 batch** — Karpathy LLM-wiki 패턴을 `knowledge-compile` skill로. reflection 코드 변경 없음.
+
+### skill + CLI 원칙 (2026-04-19 확정)
+
+- **기능은 외부 CLI로 작성** — Python/TypeScript/shell 자유. `gh`, `docker` 등 기존 CLI 래핑/조합만으로도 충분한 경우가 많다.
+- **skill(.md)이 디스패처** — YAML frontmatter의 `recommended_tools: [bash]`로 TARS 빌트인 `bash` 툴을 통해 CLI 호출. 도구 설명이 시스템 프롬프트에 상주하지 않고, 해당 skill 호출 시점에만 온디맨드로 컨텍스트에 들어간다.
+- **저장소**: skill + CLI는 모두 [`devlikebear/tars-skills`](https://github.com/devlikebear/tars-skills) repo에. **TARS 본 repo에는 추가하지 않는다.**
+- **설치 경로**: `tars skill install <name>` (내부 `internal/skillhub`). `registry.json`에 skill 엔트리 등록.
+- **선례**: `daily-briefing` skill (SKILL.md + `briefing.sh`, `recommended_tools: [bash]`) 패턴을 그대로 따른다.
+
+이 원칙을 따르면 도그푸딩 중 TARS 본 repo를 건드릴 일은 **Track 1(코어 슬림화)과 문서 외에는 없다**. 그 외 이유로 본 repo 코드를 수정하게 된다면 방향 재점검 신호.
 
 ## 두 트랙
 
@@ -38,14 +48,14 @@ TARS를 **실제 다중 프로젝트 운영/창작/리서치 자동화 호스트
 
 ### Track 2 — Monitored Ops (시나리오 구현, 4 페이즈)
 
-목표: foo 가상 사이트 운영 자동화. 코어 변경 거의 0, 모든 기능을 plugin/skill로 구현.
+목표: foo 가상 사이트 운영 자동화. **TARS 본 repo 코어 변경 0**, 모든 기능을 `tars-skills` repo의 skill + CLI로 구현.
 
-| Phase | 산출물 | 주요 검증 |
-|---|---|---|
-| **A. 인프라** | foo Docker 데모 + `log-watcher` plugin + `github-ops` plugin | 두 plugin 단위 테스트, foo 컨테이너 실행 |
-| **B. 감시→이슈** | `log-anomaly-detect` skill + foo 세션 + cron 잡 + memory_search dedup | 2주 운영 후 진짜 버그 비율 ≥50% |
-| **C. fix→PR** | `fix-and-pr` skill (AutoResearch propose/test/verify 루프) + worktree 격리 + approval | draft PR 머지율 추적 |
-| **D. 검증 + 지식** | `tars-examples-bar` 등록(코어 변경 0 검증) + (선택) `knowledge-compile` skill | bar 등록 시 코어 코드 변경 0 라인 |
+| Phase | 산출물 | 대상 repo | 주요 검증 |
+|---|---|---|---|
+| **A. 인프라** | foo Docker 데모 + `log-watcher` skill+CLI + `github-ops` skill+CLI | `tars-examples-foo`, `tars-skills` | CLI 단위 테스트, `tars skill install` 성공, foo 컨테이너 실행 |
+| **B. 감시→이슈** | `log-anomaly-detect` skill (A의 두 skill을 조합) + foo 세션 + cron 잡 + memory_search dedup | `tars-skills` | 2주 운영 후 진짜 버그 비율 ≥50% |
+| **C. fix→PR** | `fix-and-pr` skill (AutoResearch propose/test/verify 루프) + worktree 격리 + approval | `tars-skills` | draft PR 머지율 추적 |
+| **D. 검증 + 지식** | `tars-examples-bar` 등록(코어 변경 0 검증) + (선택) `knowledge-compile` skill | `tars-examples-bar`, `tars-skills` | bar 등록 시 TARS 본 repo 코드 변경 0 라인 |
 
 세부 계획: [track2-monitored-ops-roadmap.md](./track2-monitored-ops-roadmap.md)
 
@@ -75,8 +85,8 @@ TARS를 **실제 다중 프로젝트 운영/창작/리서치 자동화 호스트
 
 ### PR 단위
 
-- Track 1 = 1 PR (`chore: slim core for dogfooding`)
-- Track 2 각 페이즈 = 1 PR (`feat(dogfooding): phase A — infra plugins` 등)
+- Track 1 = 1 PR, **TARS 본 repo** (`chore: slim core for dogfooding`)
+- Track 2 각 페이즈의 실제 구현 PR = **`tars-skills` repo** (또는 foo/bar repo). TARS 본 repo에는 docs 업데이트만 PR.
 - 각 PR description에 HANDOFF.md 링크 + "이 PR 머지 후 다음 PR 예고" 필수.
 
 ### 결정은 메모리에 두지 않는다
