@@ -1,7 +1,7 @@
 # Dogfooding 작업 핸드오프
 
-**Last Updated**: 2026-04-19
-**Updated By**: Phase A 재설계 세션 (worktree: `interesting-herschel-a72794`)
+**Last Updated**: 2026-04-19 (수동 검증 후 업데이트)
+**Updated By**: Phase A 수동 검증 세션
 
 > 이 파일은 매 의사결정/단계 완료/블로커 발생/세션 종료 시 갱신된다. 새 세션은 이 파일부터 읽는다.
 
@@ -52,18 +52,21 @@ TARS 도그푸딩 v1 — TARS를 다중 프로젝트 운영/창작/리서치 자
 ## 현재 상태
 
 - **활성 트랙**: Track 2 — Monitored Ops
-- **활성 페이즈**: Phase A (인프라) — **코드 구현 완료, 수동 검증 대기**
-- **활성 단계**: 
-  1. TARS core: 아키텍처 pivot docs 커밋 완료 — PR [#362](https://github.com/devlikebear/tars/pull/362) 머지 대기
-  2. `tars-skills`: `log-watcher`, `github-ops` skill+CLI 추가 완료 — PR [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) 머지 대기
-  3. `tars-examples-foo`: Go todo API + Docker + 의도된 버그 3종 + JSON 로그 main에 직접 푸시 완료 (<https://github.com/devlikebear/tars-examples-foo>)
-  4. 다음: 수동 검증 (`tars skill install` → foo `docker compose up` → skill 호출)
-- **활성 worktree**: `.claude/worktrees/interesting-herschel-a72794` (`claude/interesting-herschel-a72794` branch) — 마무리 후 제거 예정
+- **활성 페이즈**: Phase A (인프라) — **완료. Phase B 진입 준비됨.**
+- **활성 단계**:
+  1. TARS core: 아키텍처 pivot docs [#362](https://github.com/devlikebear/tars/pull/362) 머지 완료 (`bb09d9c`)
+  2. `tars-skills`: [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) 머지 완료 (`3ec9525`). 수동 검증 중 발견된 2건을 main에 직접 패치로 반영:
+     - `988dc88` fix(registry): 설치기가 요구하는 `SKILL.md` 엔트리 + sha256 체크섬 추가
+     - `e81181a` fix(log-watcher): slog `"time"`/`"timestamp"`/`"@timestamp"` ts 별칭 수용 (v0.1.1)
+  3. `tars-examples-foo`: 초기 시딩 `3b8fd23`, Dockerfile /data 퍼미션 버그 수정 `b21b9c4` (volume 마운트 시 root 소유 → sqlite open 실패 → 재시작 루프)
+- **활성 worktree**: 없음 (정리 완료)
 - **블로커**: 없음
-- **마지막 빌드**:
-  - TARS core: docs-only 변경이라 빌드 영향 없음
-  - `tars-skills`: `bash skills/log-watcher/tests/test_log_watcher.sh` 11/11, `bash skills/github-ops/tests/test_github_ops.sh` 14/14 통과
-  - `tars-examples-foo`: `go build ./...` 클린
+- **마지막 빌드 / 검증**:
+  - TARS core: `make build` 클린 (`bin/tars 0.28.0`)
+  - `tars-skills`: 로컬 테스트 11+14 통과, `tars skill install log-watcher|github-ops` 성공
+  - `tars-examples-foo`: `docker compose up --build` → `/health 200`, todo CRUD 정상, `/bug/panic` + `/bug/bad`가 slog `"panic recovered"` + stack trace로 기록됨. 병렬 PUT `/todos/{id}`는 WAL+busy_timeout(2000) 덕에 에러는 안 나지만 잃어버린 업데이트(lost-update)로 관찰됨 — Phase B anomaly-detect가 탐지할 타겟
+  - Skill → CLI 왕복: `bash $workspace/skills/log-watcher/log_watcher.sh docker --container tars-examples-foo --tail 5` → `{source,target,lines[{ts,level,msg,raw}],...}` 수신. `issue-search`/`worktree-setup`/`worktree-cleanup` 모두 성공
+- **주의**: `tars skill update`는 GitHub raw CDN 캐시 만료 후 v0.1.1 자동 승격 (TTL ≈ 5분)
 
 ## 미해결 결정 (사용자 확인 대기)
 
@@ -83,36 +86,31 @@ TARS 도그푸딩 v1 — TARS를 다중 프로젝트 운영/창작/리서치 자
 
 ## 다음 액션 (구체적)
 
-✅ **Phase A 완료 (코드/커밋 분):**
-1. TARS core docs pivot → PR [#362](https://github.com/devlikebear/tars/pull/362)
-2. `tars-skills` feat/phase-a-skills → PR [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) (log-watcher v0.1.0, github-ops v0.1.0, 25개 단위 테스트 통과)
-3. `tars-examples-foo` main에 초기 커밋 완료 — Go todo API + Docker + 의도된 버그 3종 (/bug/panic, /bug/bad, PUT race) + slog JSON 로그
+✅ **Phase A 완료 (코드/커밋 + 수동 검증):**
+1. TARS core docs pivot — [#362](https://github.com/devlikebear/tars/pull/362) 머지
+2. `tars-skills` log-watcher + github-ops — [#3](https://github.com/devlikebear/tars-skills/pull/3) 머지, 검증 중 발견분 main 직접 패치(`988dc88`, `e81181a`)
+3. `tars-examples-foo` 시딩 + Dockerfile 볼륨 권한 수정(`b21b9c4`)
+4. `tars skill install {log-watcher,github-ops}` 성공, CLI round-trip 확인
 
-⏳ **다음 세션 첫 과제 (수동 검증):**
-1. **PR 머지**:
-   - 먼저 [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) 리뷰·머지 (도그푸딩에서 의존)
-   - TARS core [#362](https://github.com/devlikebear/tars/pull/362) 리뷰·머지
-2. **설치 검증**:
-   - `./bin/tars skill install log-watcher` → 성공, workspace에 파일 배치 확인
-   - `./bin/tars skill install github-ops` → 성공
-3. **foo 기동 검증**:
-   - `tars-examples-foo` clone → `docker compose up --build` → `curl localhost:8080/health` 200
-   - `curl -X POST localhost:8080/bug/panic` → 로그에 "panic recovered" stack trace 출력 확인
-4. **skill 왕복 검증**:
-   - TARS 콘솔에서 "log-watcher로 tars-examples-foo 컨테이너 최근 100줄" → skill 디스패치 → bash로 CLI 실행 → JSON 엔벨로프 수신
-   - "github-ops로 devlikebear/tars-examples-foo 이슈 목록" → 0건 응답
-   - "github-ops로 test-branch 워크트리 만들어" (foo clone 경로 사용) → worktree 생성 → cleanup → 정리 확인
-5. 수동 검증 통과 후 **Phase B** (`track2-phase-b-detect-and-issue.md`) 시작.
+⏭️ **다음 세션 첫 과제 (Phase B 진입):**
+1. `docs/plans/dogfooding/track2-phase-b-detect-and-issue.md` 읽고 스코프 재확인
+2. `tars-skills`에 `log-anomaly-detect` skill 추가 — log-watcher JSON 엔벨로프를 입력으로 받아 ERROR/`panic recovered` 라인을 식별, 이슈 등록 trigger 여부 판단
+3. 같은 repo에 `fix-and-pr` skill 뼈대 — github-ops + gateway agent 조합으로 Phase C 준비
+4. Phase B 동작 검증은 다음 방법으로:
+   - foo를 기동 → `/bug/panic` 호출 → log-watcher → anomaly-detect → github-ops issue-create 체인을 수동으로 호출
+   - TARS 콘솔 `/chat`에서 자연어로 "foo 최근 로그 확인하고 이상 있으면 이슈 등록" 발화 → skill 선택 → 체인 실행 확인
 
-⚠️ **검증 중 발견될 가능성 높은 이슈 (사전 점검 포인트)**:
-- `tars skill install`이 `tars-skills` registry.json을 어떻게 페치하는지 (캐시 버전 주의). 필요 시 `tars skill update` 또는 캐시 초기화 확인.
-- skill 프론트매터의 `recommended_tools: [bash]`가 TARS chat 툴 선택에 잘 반영되는지 — daily-briefing 동작 여부로 baseline 확인.
-- `docker logs` 출력이 slog JSON 라인과 `request` INFO 라인 혼합이라 log-watcher의 `level` 필드가 섞여 보일 수 있음. Phase B의 anomaly-detect에서 ERROR만 필터링하면 됨 — Phase A는 수신 여부까지만 검증.
+⚠️ **Phase A에서 재확인된 사실**:
+- `tars skill install`은 `files` 엔트리 각각에 **sha256 필수** (`SKILL.md` 포함). 레거시 string 배열 형태는 parse는 통과하나 install은 실패 → 신규 skill 추가 시 반드시 sha256 포함
+- `tars skill update`는 raw.githubusercontent.com 캐시(≈5분) 만료 후 반영. 급하면 버전 태그를 올려 명시적 무효화
+- foo의 PUT race는 busy_timeout(2000) 덕에 에러는 거의 안 남. Phase B anomaly-detect는 ERROR/`panic recovered` 라인만 대상으로 충분 — 동시성 회귀 감지는 별도 테스트 하네스가 필요하면 Phase C에서 결정
+- docker `/data` 볼륨 퍼미션 패턴(USER app + named volume)은 foo-bar 템플릿으로 재사용 가능 — `tars-examples-bar` 시드 시 동일 패턴 사용
 
 ## 진행 이력 (역시간순)
 
 | 날짜 | 트랙/페이즈 | 작업 | 결과 | PR |
 |---|---|---|---|---|
+| 2026-04-19 | Track 2 / Phase A | 수동 검증 라운드 — `tars skill install` 실패 원인(sha256 필수) 발견 → tars-skills main `988dc88` 패치. foo `/data` 볼륨 퍼미션 버그 발견(USER app + named volume root-owned) → foo main `b21b9c4` 패치. Go slog `time` 필드 ts 추출 안되는 이슈 → log-watcher v0.1.1 `e81181a`. 최종 검증: CRUD/bug/panic/bug/bad/skill round-trip 모두 통과. | Phase A 종결 | 없음 (main 직접 푸시) |
 | 2026-04-19 | Track 2 / Phase A | `tars-examples-foo` 시딩 — Go net/http todo API + modernc.org/sqlite + Dockerfile/docker-compose + 의도된 버그 3종 (/bug/panic, /bug/bad, PUT race) + slog JSON 구조화 로그. 초기 커밋 main 푸시 (PR 없음, 빈 repo 대상). | foo 기동 준비 완료 | 없음 (main 직접 푸시) |
 | 2026-04-19 | Track 2 / Phase A | `tars-skills`에 `log-watcher` + `github-ops` skill 추가. SKILL.md + 부속 shell CLI + 단위 테스트 (11+14) + registry.json 엔트리 (0.1.0). log-watcher 스코프는 docker/file만으로 의도적 축소 — 원격 소스는 시나리오 기반 확장. | 25/25 테스트 통과, PR open | [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) |
 | 2026-04-19 | Track 2 / Phase A | TARS core docs pivot — HANDOFF/README/Phase A 계획서 재작성 + CLAUDE.md "Extension Pattern" 섹션 추가 + README.md Extensibility 재작성. 빌트인 Go 플러그인 시도 코드는 전량 revert. | docs-only diff vs main | [#362](https://github.com/devlikebear/tars/pull/362) |
