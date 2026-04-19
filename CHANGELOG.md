@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-04-19
+
+### Removed
+
+- `research_report` tool and `internal/research` package — the deep-research workflow is no longer part of the supported surface
+- `internal/schedule` package, `/v1/schedules` HTTP routes, and `tars schedule` CLI subcommand — one-shot scheduling is replaced by cron entries (cron already accepts natural-language `@at` expressions)
+- `schedule_*` tool aliases (e.g. `schedule_create`, `schedule_cancel`) — use cron tools instead
+
+### Migration
+
+- Users who relied on `tars schedule`/`schedule_*` tools should register a one-shot cron job: `cron_create` accepts `@at <natural language time>` expressions via the existing `scheduleexpr` parser (e.g. `@at "tomorrow 9am"`)
+- The `/v1/schedules` endpoints return 404 — update any external client to call `/v1/cron` instead
+
 ## [0.27.1] - 2026-04-12
 
 ### Fixed

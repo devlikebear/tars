@@ -12,7 +12,6 @@ import (
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/prompt"
-	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
@@ -57,7 +56,6 @@ func newBaseToolRegistryWithProcess(workspaceDir string, policy tool.PathPolicy,
 	registry.Register(tool.NewWorkspaceTool(workspaceDir))
 
 	// Standalone tools
-	registry.Register(tool.NewResearchReportTool(research.NewService(workspaceDir, research.Options{})))
 	if usageTracker, err := usage.NewTracker(workspaceDir, usage.TrackerOptions{}); err == nil {
 		registry.Register(tool.NewUsageReportTool(usageTracker))
 	}
@@ -377,7 +375,6 @@ func agentPromptProfileForLabel(label string) agentPromptProfile {
 			includeMemory: false,
 			allowedToolIDs: []string{
 				"read_file", "write_file", "edit_file", "list_dir", "glob",
-				"research_report",
 			},
 			maxIters: 4,
 		}
