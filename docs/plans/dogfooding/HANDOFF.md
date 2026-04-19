@@ -52,7 +52,7 @@ TARS 도그푸딩 v1 — TARS를 다중 프로젝트 운영/창작/리서치 자
 ## 현재 상태
 
 - **활성 트랙**: Track 2 — Monitored Ops
-- **활성 페이즈**: Phase A (인프라) — **완료. Phase B 진입 준비됨.**
+- **활성 페이즈**: Phase B (감시→이슈) — skill 머지 완료, **CLI 체인 검증 통과**, end-to-end 이슈 등록은 사용자 console 세션에서 수동 검증 대기
 - **활성 단계**:
   1. TARS core: 아키텍처 pivot docs [#362](https://github.com/devlikebear/tars/pull/362) 머지 완료 (`bb09d9c`)
   2. `tars-skills`: [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) 머지 완료 (`3ec9525`). 수동 검증 중 발견된 2건을 main에 직접 패치로 반영:
@@ -86,19 +86,29 @@ TARS 도그푸딩 v1 — TARS를 다중 프로젝트 운영/창작/리서치 자
 
 ## 다음 액션 (구체적)
 
-✅ **Phase A 완료 (코드/커밋 + 수동 검증):**
-1. TARS core docs pivot — [#362](https://github.com/devlikebear/tars/pull/362) 머지
-2. `tars-skills` log-watcher + github-ops — [#3](https://github.com/devlikebear/tars-skills/pull/3) 머지, 검증 중 발견분 main 직접 패치(`988dc88`, `e81181a`)
-3. `tars-examples-foo` 시딩 + Dockerfile 볼륨 권한 수정(`b21b9c4`)
-4. `tars skill install {log-watcher,github-ops}` 성공, CLI round-trip 확인
+✅ **Phase A 완료**: core docs pivot [#362](https://github.com/devlikebear/tars/pull/362), log-watcher/github-ops [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3), foo 시딩 + Dockerfile 볼륨 권한 수정(`b21b9c4`). 검증 중 발견분은 main 직접 패치(`988dc88`, `e81181a`).
 
-⏭️ **다음 세션 첫 과제 (Phase B 진입):**
-1. `docs/plans/dogfooding/track2-phase-b-detect-and-issue.md` 읽고 스코프 재확인
-2. `tars-skills`에 `log-anomaly-detect` skill 추가 — log-watcher JSON 엔벨로프를 입력으로 받아 ERROR/`panic recovered` 라인을 식별, 이슈 등록 trigger 여부 판단
-3. 같은 repo에 `fix-and-pr` skill 뼈대 — github-ops + gateway agent 조합으로 Phase C 준비
-4. Phase B 동작 검증은 다음 방법으로:
-   - foo를 기동 → `/bug/panic` 호출 → log-watcher → anomaly-detect → github-ops issue-create 체인을 수동으로 호출
-   - TARS 콘솔 `/chat`에서 자연어로 "foo 최근 로그 확인하고 이상 있으면 이슈 등록" 발화 → skill 선택 → 체인 실행 확인
+✅ **Phase B skill 머지**: [tars-skills#4](https://github.com/devlikebear/tars-skills/pull/4) (`000d5ae`) — `log-anomaly-detect` v0.1.0. procedure-only skill (새 CLI 없음, log-watcher + github-ops + memory_* 체이닝).
+
+✅ **Phase B 부분 검증 (CLI 체인)**: `tars skill install log-anomaly-detect` 성공. foo 기동 → `/bug/panic` + `/bug/bad` 트리거 → log-watcher 수집(`error_count=2 noise_ignored=1 anomaly_groups=2`) → github-ops `issue-search --query "[auto] bugPanic"` 0건 확인(dedup 경로 미사용 시나리오). issue-create 직전까지 정상 동작.
+
+⏭️ **다음 세션 첫 과제 (Phase B end-to-end 검증):**
+1. foo 기동 (`docker compose up --build`) + `/bug/panic` 트리거
+2. TARS 콘솔 chat에서 `log-anomaly-detect` skill 자연어 호출 — 예: "foo-container=tars-examples-foo / repo=devlikebear/tars-examples-foo / since=30m 으로 log-anomaly-detect 돌려줘"
+3. 실행 결과 확인:
+   - `[auto] bugPanic: ...` / `[auto] bugBad: ...` 이슈가 `devlikebear/tars-examples-foo` 에 실제 등록되는지
+   - 이슈 본문이 `templates/issue_body.md` 컨벤션을 따르는지
+   - 같은 버그를 재트리거하고 skill 재실행 시 신규 이슈 X, 기존 이슈 comment 갱신이 일어나는지
+4. end-to-end 검증 후 **Phase C 진입** (`track2-phase-c-auto-fix.md` — `fix-and-pr` skill, AutoResearch propose/test/verify 루프)
+
+⚠️ **Phase B에서 결정된 사실**:
+- skill은 procedure-only: 새 CLI 없이 log-watcher + github-ops + `memory_search`/`memory_save` 체이닝
+- 이슈 제목: `[auto] <component>: <summary>` (dedup 검색 키)
+- 라벨: `auto-detected` + `severity:{critical,warn,info}` + `component:<name>`
+- 한 실행당 신규 이슈 cap: 5, 초과분은 "multi-anomaly 1건"으로 묶음
+- dedup: memory_search AND github-ops issue-search **둘 다** miss일 때만 신규 등록 (보수적)
+- 중단 키워드: `rate limit` / `401` / `403` 발견 시 즉시 전체 중단
+- 세션/cron 자동화는 Phase B 스코프 제외 — TARS 콘솔에서 사용자가 worker 세션 + cron 등록 (기본 `*/30`)
 
 ⚠️ **Phase A에서 재확인된 사실**:
 - `tars skill install`은 `files` 엔트리 각각에 **sha256 필수** (`SKILL.md` 포함). 레거시 string 배열 형태는 parse는 통과하나 install은 실패 → 신규 skill 추가 시 반드시 sha256 포함
@@ -110,6 +120,7 @@ TARS 도그푸딩 v1 — TARS를 다중 프로젝트 운영/창작/리서치 자
 
 | 날짜 | 트랙/페이즈 | 작업 | 결과 | PR |
 |---|---|---|---|---|
+| 2026-04-19 | Track 2 / Phase B | `log-anomaly-detect` skill 작성 — procedure-only (새 CLI 없음). `[auto]` 제목 규칙 + memory_search + github-ops issue-search 이중 dedup, 신규 이슈 cap=5 + multi-anomaly 집계, rate-limit/401/403 중단 키워드. 별도 이슈 본문 템플릿(`templates/issue_body.md`). Registry v0.1.0 + sha256. `tars skill install` 성공, foo 컨테이너 대상 CLI 체인(log-watcher 수집 → 분류 → issue-search dedup)까지 검증. 실제 `issue-create`는 사용자 콘솔 세션에서. | skill 머지, CLI 체인 통과 | [tars-skills#4](https://github.com/devlikebear/tars-skills/pull/4) |
 | 2026-04-19 | Track 2 / Phase A | 수동 검증 라운드 — `tars skill install` 실패 원인(sha256 필수) 발견 → tars-skills main `988dc88` 패치. foo `/data` 볼륨 퍼미션 버그 발견(USER app + named volume root-owned) → foo main `b21b9c4` 패치. Go slog `time` 필드 ts 추출 안되는 이슈 → log-watcher v0.1.1 `e81181a`. 최종 검증: CRUD/bug/panic/bug/bad/skill round-trip 모두 통과. | Phase A 종결 | 없음 (main 직접 푸시) |
 | 2026-04-19 | Track 2 / Phase A | `tars-examples-foo` 시딩 — Go net/http todo API + modernc.org/sqlite + Dockerfile/docker-compose + 의도된 버그 3종 (/bug/panic, /bug/bad, PUT race) + slog JSON 구조화 로그. 초기 커밋 main 푸시 (PR 없음, 빈 repo 대상). | foo 기동 준비 완료 | 없음 (main 직접 푸시) |
 | 2026-04-19 | Track 2 / Phase A | `tars-skills`에 `log-watcher` + `github-ops` skill 추가. SKILL.md + 부속 shell CLI + 단위 테스트 (11+14) + registry.json 엔트리 (0.1.0). log-watcher 스코프는 docker/file만으로 의도적 축소 — 원격 소스는 시나리오 기반 확장. | 25/25 테스트 통과, PR open | [tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3) |
@@ -127,10 +138,10 @@ TARS 도그푸딩 v1 — TARS를 다중 프로젝트 운영/창작/리서치 자
 |---|---|---|---|
 | Planning docs | `docs(dogfooding): planning docs and handoff` | tars | 완료 ([#361](https://github.com/devlikebear/tars/pull/361)) |
 | Track 1 | `chore(dogfooding): slim core (remove research + schedule)` | tars | 완료 ([#361](https://github.com/devlikebear/tars/pull/361)) |
-| Track 2 Phase A (아키텍처 재설계 docs) | `docs(dogfooding): pivot phase A to skill+CLI architecture` | tars | 머지 대기 ([#362](https://github.com/devlikebear/tars/pull/362)) |
-| Track 2 Phase A (실제 구현) | `feat: add log-watcher + github-ops skills` | **tars-skills** | 머지 대기 ([tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3)) |
+| Track 2 Phase A (아키텍처 재설계 docs) | `docs(dogfooding): pivot phase A to skill+CLI architecture` | tars | 완료 ([#362](https://github.com/devlikebear/tars/pull/362)) |
+| Track 2 Phase A (실제 구현) | `feat: add log-watcher + github-ops skills` | **tars-skills** | 완료 ([tars-skills#3](https://github.com/devlikebear/tars-skills/pull/3)) |
 | Track 2 Phase A (foo 시딩) | `chore: seed Go todo API with intentional bugs` | **tars-examples-foo** | 완료 (main 직접 푸시) |
-| Track 2 Phase B | `feat: add log-anomaly-detect skill` | **tars-skills** | 미시작 |
+| Track 2 Phase B | `feat: add log-anomaly-detect skill` | **tars-skills** | 완료 ([tars-skills#4](https://github.com/devlikebear/tars-skills/pull/4)) |
 | Track 2 Phase C | `feat: add fix-and-pr skill (AutoResearch loop)` | **tars-skills** | 미시작 |
 | Track 2 Phase D | `feat: add bar validation skill (+ optional knowledge)` | **tars-skills** | 미시작 |
 

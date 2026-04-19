@@ -1,8 +1,8 @@
 # Track 2 — Phase B: 감시→이슈 흐름
 
-**Status**: Planning
-**Branch (제안)**: `feat/dogfooding-phase-b-detect`
-**Depends on**: Track 2 Phase A
+**Status**: Skill 머지 완료, CLI 체인 검증 통과 / 실제 이슈 등록(end-to-end)은 TARS 콘솔에서 수동 검증 대기
+**실현 위치**: `tars-skills` repo / [tars-skills#4](https://github.com/devlikebear/tars-skills/pull/4) 머지 (`000d5ae`)
+**Depends on**: Track 2 Phase A (완료)
 **Blocks**: Track 2 Phase C
 
 ---
@@ -151,12 +151,16 @@
 
 ---
 
-## 결정 기록 (작업 진행하며 채워짐)
+## 결정 기록
 
 | 항목 | 결정 | 사유 | 결정일 |
 |---|---|---|---|
-| 이슈 제목/라벨 컨벤션 | TBD | | |
-| 한 실행당 신규 이슈 cap | TBD (5 추천) | LLM 폭주 방지 | |
-| dedup memory scope 명명 | TBD (`dogfooding/<repo>` 추천) | | |
-| LLM tier (skill 실행) | TBD (standard 추천) | heavy는 비용, light는 분류 정확도 | |
-| cron 인터벌 | TBD (`*/30` 추천) | rate limit + 비용 균형 | |
+| 이슈 제목 포맷 | `[auto] <component>: <one-line-summary>` | `[auto]` 접두어가 dedup용 제목 검색 키 | 2026-04-19 |
+| 이슈 라벨 컨벤션 | `auto-detected`, `severity:{critical,warn,info}`, `component:<name>` | 트리아지/메트릭 집계 | 2026-04-19 |
+| 이슈 본문 템플릿 | skill 리포의 `templates/issue_body.md` | skill과 같이 버전 관리, 변경 추적 | 2026-04-19 |
+| 한 실행당 신규 이슈 cap | 5, 초과분은 "multi-anomaly 1건"으로 묶음 | LLM 폭주 방지 + 알림 소음 최소화 | 2026-04-19 |
+| dedup 신호 | memory_search AND github-ops issue-search 모두 미매치일 때만 신규 / 하나라도 매치면 재발 | 중복 이슈 회피 우선 | 2026-04-19 |
+| LLM tier (skill 실행) | standard 권장 (운영 중 비용 이슈 시 light 하락 허용) | heavy는 과잉, light는 stack trace 해석 약함 | 2026-04-19 |
+| 아키텍처 | 새 CLI 없음, log-watcher + github-ops + memory_* 체이닝 | skill+CLI 피벗 원칙 일관 | 2026-04-19 |
+| 명시적 중단 키워드 | `rate limit`, `401`, `403` 발견 시 전체 중단 | GitHub/OAuth 장애 조기 종료 | 2026-04-19 |
+| cron 인터벌 | 사용자 console 세션 설정에 위임 (기본 `*/30` 권장) | 세션/cron은 TARS core 영역 | 2026-04-19 |
