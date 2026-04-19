@@ -96,5 +96,5 @@ TARS를 **실제 다중 프로젝트 운영/창작/리서치 자동화 호스트
 - 과거 `project` 시스템 폐기 흐름: 커밋 #291, #300, #301, #347, #348
 - Karpathy AutoResearch: <https://github.com/karpathy/autoresearch>
 - Karpathy LLM-wiki: <https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f>
-- Hermes Agent (참고만): `/Users/changheonshin/workspace/opensources/hermes-agent`
+- Hermes Agent (참고만): 로컬 체크아웃 (`opensources/hermes-agent`)
 - TARS CLAUDE.md (System Surface 원칙)

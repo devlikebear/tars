@@ -34,8 +34,11 @@ TARS 도그푸딩 v1 — TARS를 다중 프로젝트 운영/창작/리서치 자
 
 | 결정 사항 | 선택지 | 비고 |
 |---|---|---|
-| `tars-examples-foo` repo 위치 | (a) `devlikebear/tars-examples-foo` GitHub, (b) 다른 위치 | Phase A 시작 전 결정 필요 |
 | `tars-examples-bar` 스택 | (a) Node, (b) Python, (c) 기타 | Phase D 시작 전 결정. foo가 Go라 가정. |
+
+### 확정된 결정
+
+- **`tars-examples-foo` repo 위치**: `devlikebear/tars-examples-foo` (public) — 2026-04-19 사용자 확인, 빈 repo 생성 완료 (<https://github.com/devlikebear/tars-examples-foo>). Phase A에서 초기 커밋 투입.
 
 (Track 1 진행 중 발생할 결정은 [track1-core-slim.md](./track1-core-slim.md) "결정 기록"에 기록)
 
