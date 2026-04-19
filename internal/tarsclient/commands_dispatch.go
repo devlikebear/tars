@@ -50,7 +50,6 @@ var commandHandlers = map[string]commandHandler{
 	"/telegram":   cmdTelegram,
 	"/usage":      cmdUsage,
 	"/ops":        cmdOps,
-	"/schedule":   cmdSchedule,
 	"/notify":     cmdNotify,
 	"/trace":      cmdTrace,
 }

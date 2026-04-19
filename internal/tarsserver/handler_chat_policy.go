@@ -24,7 +24,6 @@ func buildChatToolRegistry(
 	registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, policy, deps.tooling.ProcessManager, deps.tooling.MemorySemanticConfig)
 
 	// Standalone tools
-	registry.Register(tool.NewResearchReportTool(deps.tooling.ResearchService))
 	if deps.tooling.UsageTracker != nil {
 		registry.Register(tool.NewUsageReportTool(deps.tooling.UsageTracker))
 	}
@@ -252,7 +251,6 @@ func defaultMinimalToolNames() []string {
 		"ops",
 		"cron",
 		"tasks",
-		"research_report",
 		"usage_report",
 		"session",
 	}

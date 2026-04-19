@@ -23,8 +23,6 @@ import (
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/pulse"
 	"github.com/devlikebear/tars/internal/reflection"
-	"github.com/devlikebear/tars/internal/research"
-	"github.com/devlikebear/tars/internal/schedule"
 	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
@@ -61,7 +59,6 @@ type apiRouteHandlers struct {
 	providersModels http.Handler
 	compact         http.Handler
 	cron            http.Handler
-	schedules       http.Handler
 	mcp             http.Handler
 	extensions      http.Handler
 	agentRuns       http.Handler
@@ -132,10 +129,6 @@ func buildAPIMux(
 		RunHistoryLimit: cfg.CronRunHistoryLimit,
 	})
 	opsManager := ops.NewManager(cfg.WorkspaceDir, ops.Options{})
-	scheduleStore := schedule.NewStore(cfg.WorkspaceDir, cronStore, schedule.Options{
-		Timezone: cfg.ScheduleTimezone,
-	})
-	researchService := research.NewService(cfg.WorkspaceDir, research.Options{})
 	cronStoreResolver := newWorkspaceCronStoreResolver(cfg.WorkspaceDir, cfg.CronRunHistoryLimit, cronStore)
 	activity := &runtimeActivity{}
 	broker := newEventBroker()
@@ -377,8 +370,6 @@ func buildAPIMux(
 		deps.usageTracker,
 	)
 	chatTooling.OpsManager = opsManager
-	chatTooling.ScheduleStore = scheduleStore
-	chatTooling.ResearchService = researchService
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
 		resolvedStore, err := cronStoreResolver.Resolve(defaultWorkspaceID)
 		if err != nil {
@@ -503,7 +494,6 @@ func buildAPIMux(
 	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
 	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
-	scheduleHandler := newScheduleAPIHandler(scheduleStore, logger)
 	mcpHandler := newMCPAPIHandler(mcpClient, logger)
 	extensionsHandler := newExtensionsAPIHandler(extensionsManager, logger, func() (bool, int) {
 		if gatewayRuntime == nil {
@@ -580,7 +570,6 @@ func buildAPIMux(
 		providersModels: providersModelsHandler,
 		compact:         compactHandler,
 		cron:            cronHandler,
-		schedules:       scheduleHandler,
 		mcp:             mcpHandler,
 		extensions:      extensionsHandler,
 		agentRuns:       agentRunsHandler,
@@ -671,8 +660,6 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/compact", handlers.compact)
 	mux.Handle("/v1/cron/jobs", handlers.cron)
 	mux.Handle("/v1/cron/jobs/", handlers.cron)
-	mux.Handle("/v1/schedules", handlers.schedules)
-	mux.Handle("/v1/schedules/", handlers.schedules)
 	mux.Handle("/v1/mcp/servers", handlers.mcp)
 	mux.Handle("/v1/mcp/tools", handlers.mcp)
 	mux.Handle("/v1/skills", handlers.extensions)

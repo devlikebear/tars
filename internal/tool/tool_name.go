@@ -32,13 +32,6 @@ var toolNameAliases = map[string]string{
 	"agent_sysprompt_get":     "workspace",
 	"agent_sysprompt_set":     "workspace",
 
-	// schedule aliases → cron aggregator
-	"schedule_create":   "cron",
-	"schedule_list":     "cron",
-	"schedule_update":   "cron",
-	"schedule_delete":   "cron",
-	"schedule_complete": "cron",
-
 	// session aliases → session aggregator
 	"session_list":     "session",
 	"session_history":  "session",

@@ -15,8 +15,6 @@ import (
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/prompt"
-	"github.com/devlikebear/tars/internal/research"
-	"github.com/devlikebear/tars/internal/schedule"
 	"github.com/devlikebear/tars/internal/secrets"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
@@ -522,8 +520,6 @@ type chatToolingOptions struct {
 	APIMaxInflightChat          int
 	UsageTracker                *usage.Tracker
 	OpsManager                  *ops.Manager
-	ScheduleStore               *schedule.Store
-	ResearchService             *research.Service
 	Compaction                  chatCompactionOptions
 }
 

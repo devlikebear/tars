@@ -84,7 +84,7 @@ func buildGatewayExecutors(
 				ToolsAllow: []string{
 					"memory_get", "memory_search",
 					"read", "read_file", "list_dir", "glob",
-					"research_report", "usage_report",
+					"usage_report",
 				},
 				RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, _ string, providerOverride *gateway.ProviderOverride) (string, error) {
 					label := strings.TrimSpace(runLabel)

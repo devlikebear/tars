@@ -346,35 +346,6 @@ type CleanupApplyResult struct {
 	Errors       []string `json:"errors,omitempty"`
 }
 
-type ScheduleItem struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Prompt    string `json:"prompt,omitempty"`
-	Natural   string `json:"natural,omitempty"`
-	Schedule  string `json:"schedule"`
-	Status    string `json:"status"`
-	CronJobID string `json:"cron_job_id,omitempty"`
-	Timezone  string `json:"timezone,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
-}
-
-type ScheduleCreateRequest struct {
-	Natural  string `json:"natural"`
-	Title    string `json:"title,omitempty"`
-	Prompt   string `json:"prompt,omitempty"`
-	Schedule string `json:"schedule,omitempty"`
-	Timezone string `json:"timezone,omitempty"`
-}
-
-type ScheduleUpdateRequest struct {
-	Title    *string `json:"title,omitempty"`
-	Prompt   *string `json:"prompt,omitempty"`
-	Schedule *string `json:"schedule,omitempty"`
-	Status   *string `json:"status,omitempty"`
-	Timezone *string `json:"timezone,omitempty"`
-}
-
 type AgentDescriptor struct {
 	Name               string   `json:"name"`
 	Description        string   `json:"description,omitempty"`

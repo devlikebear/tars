@@ -15,7 +15,6 @@ import (
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/ops"
-	"github.com/devlikebear/tars/internal/research"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -591,7 +590,6 @@ func TestCronPromptRunner_UsesBoundSessionContext(t *testing.T) {
 
 	tooling := buildChatToolingOptions(nil, nil, nil, defaultChatToolingOptions().Compaction, "standard", true, memory.SemanticConfig{}, 1, nil)
 	tooling.OpsManager = ops.NewManager(root, ops.Options{})
-	tooling.ResearchService = research.NewService(root, research.Options{})
 
 	deps := chatHandlerDeps{
 		workspaceDir:  root,

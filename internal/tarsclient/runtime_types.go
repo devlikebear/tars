@@ -44,12 +44,6 @@ type opsStatus = tarsclient.OpsStatus
 
 type cleanupPlan = tarsclient.CleanupPlan
 
-type scheduleItem = tarsclient.ScheduleItem
-
-type scheduleCreateRequest = tarsclient.ScheduleCreateRequest
-
-type scheduleUpdateRequest = tarsclient.ScheduleUpdateRequest
-
 type eventsHistoryInfo = tarsclient.EventsHistoryInfo
 
 type eventsReadInfo = tarsclient.EventsReadInfo
