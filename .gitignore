@@ -57,3 +57,7 @@ node_modules/
 .analysis/RESUME.md
 .mcp.json
 .playwright*
+
+# Local-only working docs (plans, code reviews) — kept on disk, not tracked
+docs/plans/
+docs/code-review/
