@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/devlikebear/tars/internal/atomicwrite"
 )
 
 const (
@@ -88,41 +90,11 @@ func readJSONFile(path string, out any) error {
 }
 
 func writeJSONAtomic(path string, payload any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("mkdir for %q: %w", path, err)
-	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal %q: %w", path, err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return fmt.Errorf("create temp for %q: %w", path, err)
-	}
-	tmpPath := tmp.Name()
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("write temp for %q: %w", path, err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("sync temp for %q: %w", path, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp for %q: %w", path, err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("rename temp for %q: %w", path, err)
-	}
-	cleanup = false
-	return nil
+	return atomicwrite.Write(path, data)
 }
 
 func trimRuns(runs []Run, max int) []Run {

@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.28.4] - 2026-04-26
+
+### Added
+
+- `internal/atomicwrite` 패키지 — TARS state file 의 표준 crash-safe write 헬퍼. tmp 파일 생성 → write → fsync → close → rename. 부모 디렉토리 자동 생성. unit test 5개 (new file / parent dir / overwrite / no temp leftover / read-only dir failure preserves original) (RF-059/068)
+
+### Changed
+
+- `cron.Store.save` (jobs.json 저장) 와 `cron.Store.pruneRunFile` (run history 트리밍) 가 `os.WriteFile` 대신 `atomicwrite.Write` 사용 — partial write 가능성 제거 (RF-068)
+- `session.Store.saveIndex` (sessions.json) 와 `session.Store.SaveTasks` (tasks per session) 가 `atomicwrite.Write` 사용 (RF-059)
+- `memory.KnowledgeStore` 의 노트 마크다운 / `index.md` / `graph.json` 3 write 경로가 `atomicwrite.Write` 사용
+- `memory.saveEntries` (semantic 인덱스 entries.jsonl) 가 weak local `writeAtomicFile` (tmp + rename, no fsync) 대신 `atomicwrite.Write` 사용 — fsync 추가
+- `gateway.writeJSONAtomic` (runs.json + channels.json) 가 `atomicwrite.Write` 로 위임 — gateway 내부 중복 구현 제거
+
+이번 PR 의 가치: persistence anti-pattern 카테고리 정리 (5 사례 누적 → 0). 향후 SQLite 마이그레이션 (RF-017/021/058/067) 결정 시 첫 단계에서 단일 helper 만 교체하면 되도록 사전 정리.
+
 ## [0.28.3] - 2026-04-26
 
 ### Changed

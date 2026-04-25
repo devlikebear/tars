@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/atomicwrite"
 	zlog "github.com/rs/zerolog/log"
 )
 
@@ -474,9 +475,6 @@ func loadEntries(path string) ([]MemoryEntry, error) {
 }
 
 func saveEntries(path string, entries []MemoryEntry) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create semantic index dir: %w", err)
-	}
 	sort.SliceStable(entries, func(i, j int) bool {
 		if entries[i].UpdatedAt.Equal(entries[j].UpdatedAt) {
 			return entries[i].ID < entries[j].ID
@@ -492,15 +490,7 @@ func saveEntries(path string, entries []MemoryEntry) error {
 		b.Write(encoded)
 		b.WriteByte('\n')
 	}
-	return writeAtomicFile(path, []byte(b.String()))
-}
-
-func writeAtomicFile(path string, content []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, content, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicwrite.Write(path, []byte(b.String()))
 }
 
 func normalizeSemanticTerms(query string) []string {

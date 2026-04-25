@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/atomicwrite"
 	"gopkg.in/yaml.v3"
 )
 
@@ -336,7 +337,7 @@ func (s *KnowledgeStore) ApplyPatch(patch KnowledgeNotePatch) (KnowledgeNote, er
 	}
 
 	path := s.notePath(note.Slug)
-	if err := os.WriteFile(path, []byte(buildKnowledgeDocument(note)), 0o644); err != nil {
+	if err := atomicwrite.Write(path, []byte(buildKnowledgeDocument(note))); err != nil {
 		return KnowledgeNote{}, fmt.Errorf("write knowledge note: %w", err)
 	}
 	note.Path = filepath.ToSlash(filepath.Join("memory", "wiki", "notes", filepath.Base(path)))
@@ -513,7 +514,7 @@ func (s *KnowledgeStore) rebuildArtifacts() error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(s.root, "memory", "wiki", "index.md"), []byte(buildKnowledgeIndex(items)), 0o644); err != nil {
+	if err := atomicwrite.Write(filepath.Join(s.root, "memory", "wiki", "index.md"), []byte(buildKnowledgeIndex(items))); err != nil {
 		return fmt.Errorf("write knowledge index: %w", err)
 	}
 	graph := buildKnowledgeGraph(items)
@@ -521,7 +522,7 @@ func (s *KnowledgeStore) rebuildArtifacts() error {
 	if err != nil {
 		return fmt.Errorf("encode knowledge graph: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(s.root, "memory", "wiki", "graph.json"), append(encoded, '\n'), 0o644); err != nil {
+	if err := atomicwrite.Write(filepath.Join(s.root, "memory", "wiki", "graph.json"), append(encoded, '\n')); err != nil {
 		return fmt.Errorf("write knowledge graph: %w", err)
 	}
 	return nil

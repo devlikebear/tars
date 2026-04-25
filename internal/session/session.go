@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/atomicwrite"
 )
 
 // SessionToolConfig holds per-session tool/skill/MCP configuration.
@@ -690,7 +692,7 @@ func (s *Store) saveIndex(index map[string]Session) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.indexPath(), data, 0o644)
+	return atomicwrite.Write(s.indexPath(), data)
 }
 
 func generateID() (string, error) {

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/atomicwrite"
 )
 
 // Plan represents a high-level goal for the current session.
@@ -64,15 +66,11 @@ func (s *Store) GetTasks(sessionID string) (SessionTasks, error) {
 
 // SaveTasks writes the tasks file for a session.
 func (s *Store) SaveTasks(sessionID string, tasks SessionTasks) error {
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
-		return fmt.Errorf("create sessions directory: %w", err)
-	}
 	raw, err := json.MarshalIndent(normalizeSessionTasks(tasks), "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal tasks: %w", err)
 	}
-	path := s.tasksPath(sessionID)
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
+	if err := atomicwrite.Write(s.tasksPath(sessionID), raw); err != nil {
 		return fmt.Errorf("write tasks: %w", err)
 	}
 	return nil
