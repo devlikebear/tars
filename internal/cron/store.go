@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/devlikebear/tars/internal/atomicwrite"
 )
 
 const defaultRunHistoryLimit = 200
@@ -495,14 +497,11 @@ func (s *Store) load() ([]Job, error) {
 }
 
 func (s *Store) save(jobs []Job) error {
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
-		return fmt.Errorf("create cron directory: %w", err)
-	}
 	payload, err := json.MarshalIndent(jobs, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode cron jobs: %w", err)
 	}
-	if err := os.WriteFile(s.path, append(payload, '\n'), 0o644); err != nil {
+	if err := atomicwrite.Write(s.path, append(payload, '\n')); err != nil {
 		return fmt.Errorf("write cron jobs: %w", err)
 	}
 	return nil
@@ -581,7 +580,7 @@ func (s *Store) pruneRunFile(path string, limit int) error {
 	}
 	keep := lines[len(lines)-limit:]
 	rewritten := strings.Join(keep, "\n") + "\n"
-	if err := os.WriteFile(path, []byte(rewritten), 0o644); err != nil {
+	if err := atomicwrite.Write(path, []byte(rewritten)); err != nil {
 		return fmt.Errorf("write pruned cron runs: %w", err)
 	}
 	return nil
