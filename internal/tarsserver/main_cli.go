@@ -5,21 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/cli"
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
-// loggerReplacer reconfigures the global runtime logger and closes any
-// previously-installed log file handle. It is supplied by the caller so the
-// process keeps a single live cleanup at all times.
-type loggerReplacer func(loggerConfig) zerolog.Logger
-
-func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time, replaceLogger loggerReplacer) (*cobra.Command, *options) {
+// newRootCmd builds the cobra command tree. The caller is expected to
+// have already loaded cfg and installed the runtime logger so the RunE
+// hook can focus on wiring the rest of the runtime.
+func newRootCmd(opts *options, cfg config.Config, stdout, stderr io.Writer, nowFn func() time.Time) (*cobra.Command, *options) {
 	if opts == nil {
 		opts = &options{}
 	}
@@ -41,58 +39,11 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time,
 				logger.Debug().Msg("verbose logging enabled")
 			}
 
-			deps, err := buildRuntimeDeps(opts, nowFn, logger)
-			if err == nil {
-				// Reconfigure logger from config values.
-				cfg := deps.cfg
-				needReconfigure := false
-				logCfg := loggerConfig{FilePath: opts.LogFile}
-				// Config log_file takes precedence over CLI default.
-				if strings.TrimSpace(cfg.LogFile) != "" {
-					logCfg.FilePath = cfg.LogFile
-					needReconfigure = true
-				}
-				if strings.TrimSpace(cfg.LogLevel) != "" {
-					logCfg.Level = cfg.LogLevel
-					needReconfigure = true
-				}
-				if cfg.LogRotateMaxSizeMB > 0 {
-					logCfg.RotateMaxSizeMB = cfg.LogRotateMaxSizeMB
-				}
-				if cfg.LogRotateMaxDays > 0 {
-					logCfg.RotateMaxDays = cfg.LogRotateMaxDays
-				}
-				if cfg.LogRotateMaxBackups > 0 {
-					logCfg.RotateMaxBackups = cfg.LogRotateMaxBackups
-				}
-				// --verbose flag overrides config log_level
-				if opts.Verbose {
-					logCfg.Level = "debug"
-					needReconfigure = true
-				}
-				if needReconfigure {
-					if replaceLogger != nil {
-						logger = replaceLogger(logCfg)
-					} else {
-						newLogger, _ := setupRuntimeLogger(logCfg, stderr)
-						zlog.Logger = newLogger
-						logger = newLogger
-					}
-				}
-				logger.Info().
-					Str("log_level", logCfg.Level).
-					Str("log_file", logCfg.FilePath).
-					Int("rotate_max_size_mb", logCfg.RotateMaxSizeMB).
-					Int("rotate_max_days", logCfg.RotateMaxDays).
-					Int("rotate_max_backups", logCfg.RotateMaxBackups).
-					Msg("logger configured")
-			}
+			deps, err := buildRuntimeDeps(opts, cfg, nowFn, logger)
 			if err != nil {
 				var depErr *runtimeDepsError
 				if errors.As(err, &depErr) {
 					switch depErr.stage {
-					case "load_config":
-						logger.Error().Err(depErr.err).Msg("failed to load config")
 					case "ensure_workspace":
 						logger.Error().Err(depErr.err).Msg("failed to initialize workspace")
 					case "init_llm":
@@ -105,6 +56,7 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time,
 				}
 				return &cli.ExitError{Code: 1, Err: err}
 			}
+
 			if opts.ServeAPI {
 				return runServeAPICommand(parentCtx, opts, deps, nowFn, stdout, stderr, logger)
 			}

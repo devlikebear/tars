@@ -10,7 +10,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Changed
 
-- `tarsserver`: `Serve()` 가 logger replace callback 을 `newRootCmd` 에 전달하여 두 번째 logger 셋업 시 첫 번째 lumberjack 핸들을 명시적으로 닫음 (RF-002 — 이전엔 두 번째 cleanup 이 버려져 file handle 누수)
+- `tarsserver`: 부트스트랩 순서 재구성 — config 를 cobra.Execute 이전에 로드, 최종 logger config 를 CLI+config 에서 도출, `setupRuntimeLogger` 를 단 한 번만 호출. config 로드 실패 시 panic. `newRootCmd` 가 pre-loaded `cfg` 를 인자로 받음. `buildRuntimeDeps` 도 cfg 를 인자로 받아 두 번 로드하지 않음. 이전 두 단계 logger 셋업 (CLI-only → config 로드 후 reconfigure) 에서 첫 번째 lumberjack handle 이 누수되던 문제 해소 (RF-002)
 - `plugin.Source` 에 `Priority()` 메서드 추가 + `Load` 가 sources 를 priority 로 자동 정렬. 호출자 슬라이스 순서와 무관하게 일관된 머지 결과 (workspace > user > bundled). 동일 priority 내 stable sort 유지 (RF-013)
 - `reflection.MemoryJob.compileKnowledge` 시그니처 `bool → (bool, []string)`. router/list/chat/json/apply 5 silent failure 경로가 prefix 가 붙은 에러 문자열로 `JobResult.Details["errors"]` 에 누적 (RF-016)
 - `memory.normalizeSemanticTerms` + `prompt.normalizeRelevantTerms` stopwords 에 한국어 조사/대명사/지시어 추가 (`나/내/너/그/이/저`, `는/은/이/가/을/를`, `의/도/와/과`, `이거/저거/그거`, `뭐/뭐였지/뭐지/뭐야`, `선호/취향/좋아/좋아요/좋아함`). KR 쿼리 매칭 점수가 조사로 부풀려지던 문제 해소 (RF-018)
