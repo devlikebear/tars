@@ -71,6 +71,9 @@ recommended_project_files:
   - BRIEF.md
   - STATE.md
 wake_phases: plan, draft
+tags:
+  - notes
+  - helper
 ---
 # Simple
 Use it`)
@@ -95,6 +98,9 @@ Use it`)
 	}
 	if got := strings.Join(snapshot.Skills[0].WakePhases, ","); got != "plan,draft" {
 		t.Fatalf("unexpected wake_phases: %q", got)
+	}
+	if got := strings.Join(snapshot.Skills[0].Tags, ","); got != "notes,helper" {
+		t.Fatalf("unexpected tags: %q", got)
 	}
 }
 
