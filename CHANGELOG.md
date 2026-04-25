@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.28.3] - 2026-04-26
+
+### Changed
+
+- `pulse.Runtime.Start()` 가 `pulse_active_hours` / `pulse_timezone` 를 startup 에 1회 검증. 잘못된 값이면 ERROR 로그 1줄을 남기고 fail-soft (always-active) 로 진행. 운영자가 부팅 직후 로그만 봐도 잘못된 설정을 발견 가능 (RF-014)
+- `pulse.Scanner.scanCron` / `scanDisk` 가 source 호출 (`cron.List` / `ops.Status`) 실패 시 silent 가 아닌 WARN 로그 출력. 동작은 그대로 (해당 tick 의 시그널만 skip) (RF-014)
+- `pulse.Scanner.scanStuckRuns` 의 `parseRunTimestamp` 실패 시 WARN 로그 (run_id 포함). 손상된 timestamp 가 있는 run 을 stuck-run 검사에서 제외하는 동작은 그대로 (RF-014)
+- `memory.FileBackend.AppendExperience` 가 caller 의 context 를 `IndexExperience` 에 그대로 전달 (이전엔 `context.Background()` 를 강제 사용 → caller cancellation 무시). 또한 indexing 실패 시 WARN 로그 (experience 저장은 성공, 검색 인덱싱만 실패) (RF-014)
+- `memory.loadEntries` 가 손상된 JSONL line 을 skip 할 때 WARN 로그 (path/line/error). 누적 skip 수가 있으면 함수 종료 시 요약 로그 — "consider rebuilding" 힌트 (RF-014)
+
 ## [0.28.2] - 2026-04-26
 
 ### Changed

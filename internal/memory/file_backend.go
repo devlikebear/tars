@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	zlog "github.com/rs/zerolog/log"
 )
 
 type FileBackend struct {
@@ -54,12 +56,19 @@ func (b *FileBackend) AppendMemoryNote(_ context.Context, at time.Time, entry st
 	return AppendMemoryNote(b.root, at, entry)
 }
 
-func (b *FileBackend) AppendExperience(_ context.Context, exp Experience) error {
+func (b *FileBackend) AppendExperience(ctx context.Context, exp Experience) error {
 	if err := AppendExperience(b.root, exp); err != nil {
 		return err
 	}
 	if b != nil && b.semantic != nil {
-		_ = b.semantic.IndexExperience(context.Background(), exp)
+		if err := b.semantic.IndexExperience(ctx, exp); err != nil {
+			zlog.Logger.Warn().
+				Err(err).
+				Str("category", exp.Category).
+				Str("source_session", exp.SourceSession).
+				Time("timestamp", exp.Timestamp).
+				Msg("memory: semantic IndexExperience failed; experience saved but not searchable")
+		}
 	}
 	return nil
 }

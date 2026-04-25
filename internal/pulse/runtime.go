@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/pulse/autofix"
+	zlog "github.com/rs/zerolog/log"
 )
 
 // Config is the runtime configuration for pulse. It is populated from
@@ -86,10 +87,38 @@ func (r *Runtime) Start(ctx context.Context) {
 	r.doneCh = make(chan struct{})
 	r.mu.Unlock()
 
+	r.validateConfigOnStart()
+
 	interval := r.cfg.effectiveInterval()
 	stopCh := r.stopCh
 	doneCh := r.doneCh
 	go r.loop(ctx, interval, stopCh, doneCh)
+}
+
+// validateConfigOnStart parses the runtime config fields that have a
+// silent always-on fallback at tick time (ActiveHours, Timezone) and
+// emits a single ERROR log if either is malformed. Behaviour is
+// fail-soft — pulse still starts and runs as if the window were absent.
+// The point is operator visibility: the failure is now in startup logs
+// rather than hidden in a tick that silently always returns "active".
+func (r *Runtime) validateConfigOnStart() {
+	window := strings.TrimSpace(r.cfg.ActiveHours)
+	if window != "" && window != "00:00-24:00" && window != "00:00-00:00" {
+		if _, _, err := parseActiveHours(window); err != nil {
+			zlog.Logger.Error().
+				Err(err).
+				Str("active_hours", r.cfg.ActiveHours).
+				Msg("pulse: invalid pulse_active_hours; window will be ignored (always-active fallback)")
+		}
+	}
+	if tz := strings.TrimSpace(r.cfg.Timezone); tz != "" && tz != "Local" {
+		if _, err := time.LoadLocation(tz); err != nil {
+			zlog.Logger.Error().
+				Err(err).
+				Str("timezone", r.cfg.Timezone).
+				Msg("pulse: invalid pulse_timezone; falling back to time.Local")
+		}
+	}
 }
 
 // Stop signals the tick loop to exit and waits for it to drain. Stop is
