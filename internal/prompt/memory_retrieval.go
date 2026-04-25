@@ -359,10 +359,17 @@ func normalizeRelevantTerms(query string) []string {
 		return nil
 	}
 	stopwords := map[string]struct{}{
+		// English
 		"the": {}, "a": {}, "an": {}, "and": {}, "or": {}, "to": {}, "of": {}, "in": {}, "on": {},
 		"what": {}, "do": {}, "i": {}, "you": {}, "me": {}, "my": {}, "about": {}, "is": {}, "are": {},
 		"did": {}, "was": {}, "were": {}, "that": {}, "this": {}, "it": {}, "remember": {},
 		"prefer": {}, "preference": {}, "like": {}, "likes": {},
+		// Korean particles, pronouns, demonstratives
+		"나": {}, "내": {}, "너": {}, "그": {}, "이": {}, "저": {},
+		"는": {}, "은": {}, "가": {}, "을": {}, "를": {}, "에": {}, "에서": {},
+		"의": {}, "도": {}, "와": {}, "과": {}, "이거": {}, "저거": {}, "그거": {},
+		"뭐": {}, "뭐였지": {}, "뭐지": {}, "뭐야": {},
+		"선호": {}, "취향": {}, "좋아": {}, "좋아요": {}, "좋아함": {},
 	}
 	seen := map[string]struct{}{}
 	terms := make([]string, 0, 8)

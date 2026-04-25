@@ -226,16 +226,12 @@ type KnowledgeUpdate struct {
 type KnowledgeStore struct {
 	root     string
 	semantic *Service
-	nowFn    func() time.Time
 }
 
 func NewKnowledgeStore(root string, semantic *Service) *KnowledgeStore {
 	return &KnowledgeStore{
 		root:     strings.TrimSpace(root),
 		semantic: semantic,
-		nowFn: func() time.Time {
-			return time.Now().UTC()
-		},
 	}
 }
 
@@ -297,7 +293,7 @@ func (s *KnowledgeStore) ApplyPatch(patch KnowledgeNotePatch) (KnowledgeNote, er
 
 	now := patch.UpdatedAt.UTC()
 	if now.IsZero() {
-		now = s.nowFn().UTC()
+		now = time.Now().UTC()
 	}
 
 	note := existing

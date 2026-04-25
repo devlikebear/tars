@@ -14,7 +14,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time) (*cobra.Command, *options) {
+// loggerReplacer reconfigures the global runtime logger and closes any
+// previously-installed log file handle. It is supplied by the caller so the
+// process keeps a single live cleanup at all times.
+type loggerReplacer func(loggerConfig) zerolog.Logger
+
+func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time, replaceLogger loggerReplacer) (*cobra.Command, *options) {
 	if opts == nil {
 		opts = &options{}
 	}
@@ -66,11 +71,13 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					needReconfigure = true
 				}
 				if needReconfigure {
-					newLogger, newCleanup := setupRuntimeLogger(logCfg, stderr)
-					// Replace global logger; previous cleanup runs via deferred Serve().
-					zlog.Logger = newLogger
-					logger = newLogger
-					_ = newCleanup // cleanup will be handled by the process lifecycle
+					if replaceLogger != nil {
+						logger = replaceLogger(logCfg)
+					} else {
+						newLogger, _ := setupRuntimeLogger(logCfg, stderr)
+						zlog.Logger = newLogger
+						logger = newLogger
+					}
 				}
 				logger.Info().
 					Str("log_level", logCfg.Level).

@@ -38,10 +38,20 @@ func Serve(ctx context.Context, serveOpts ServeOptions, stdout, stderr io.Writer
 	logger, cleanup := setupRuntimeLogger(loggerConfig{
 		FilePath: opts.LogFile,
 	}, stderr)
-	defer cleanup()
+	currentCleanup := cleanup
+	defer func() { currentCleanup() }()
 	zlog.Logger = logger
 
-	cmd, _ := newRootCmd(opts, stdout, stderr, time.Now)
+	replaceLogger := func(cfg loggerConfig) zerolog.Logger {
+		newLogger, newCleanup := setupRuntimeLogger(cfg, stderr)
+		prev := currentCleanup
+		currentCleanup = newCleanup
+		prev()
+		zlog.Logger = newLogger
+		return newLogger
+	}
+
+	cmd, _ := newRootCmd(opts, stdout, stderr, time.Now, replaceLogger)
 	cmd.SetContext(ctx)
 	cmd.SetArgs([]string{})
 	if err := cmd.Execute(); err != nil {

@@ -7,9 +7,10 @@ import (
 )
 
 // dispatchAction extracts the "action" field from params and returns the
-// remaining payload and action string. This is the generic version of
-// normalizeAutomationActionInput without cron-specific id aliasing.
-func dispatchAction(params json.RawMessage) (json.RawMessage, string, error) {
+// remaining payload and action string. Optional aliasFns run after the
+// action is removed, letting aggregators rename or fold input fields
+// without each duplicating the JSON-decode boilerplate.
+func dispatchAction(params json.RawMessage, aliasFns ...func(map[string]json.RawMessage)) (json.RawMessage, string, error) {
 	raw := strings.TrimSpace(string(params))
 	if raw == "" || raw == "null" {
 		return nil, "", fmt.Errorf("action is required")
@@ -32,6 +33,11 @@ func dispatchAction(params json.RawMessage) (json.RawMessage, string, error) {
 		return nil, "", fmt.Errorf("action is required")
 	}
 	delete(payload, "action")
+	for _, alias := range aliasFns {
+		if alias != nil {
+			alias(payload)
+		}
+	}
 	normalized, err := json.Marshal(payload)
 	if err != nil {
 		return nil, "", fmt.Errorf("marshal normalized payload: %v", err)

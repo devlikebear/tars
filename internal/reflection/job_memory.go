@@ -119,9 +119,11 @@ func (m *MemoryJob) Run(ctx context.Context) (JobResult, error) {
 			expCount := m.processTurnExperiences(ctx, sess.ID, t, now)
 			experiencesAdded += expCount
 
-			if m.compileKnowledge(ctx, sess.ID, t, now) {
+			updated, kbErrs := m.compileKnowledge(ctx, sess.ID, t, now)
+			if updated {
 				kbUpdates++
 			}
+			errs = append(errs, kbErrs...)
 		}
 	}
 
@@ -195,18 +197,22 @@ func (m *MemoryJob) processTurnExperiences(ctx context.Context, sessionID string
 	return count
 }
 
-func (m *MemoryJob) compileKnowledge(ctx context.Context, sessionID string, t turn, now time.Time) bool {
+// compileKnowledge runs one LLM compilation turn into KnowledgeUpdate. It
+// returns whether a write actually landed and any non-fatal errors that
+// should be surfaced in JobResult.Details["errors"]. The caller decides
+// whether to keep going on errors — they never abort the parent job.
+func (m *MemoryJob) compileKnowledge(ctx context.Context, sessionID string, t turn, now time.Time) (bool, []string) {
 	if m.Router == nil || !shouldCompileKnowledge(t) {
-		return false
+		return false, nil
 	}
 	client, _, err := m.Router.ClientFor(llm.RoleReflectionMemory)
 	if err != nil {
-		return false
+		return false, []string{fmt.Sprintf("compile router %s: %s", sessionID, err.Error())}
 	}
 	backend := m.backend()
 	existing, err := backend.ListKnowledgeNotes(ctx, memory.KnowledgeListOptions{Limit: 12})
 	if err != nil {
-		return false
+		return false, []string{fmt.Sprintf("compile list %s: %s", sessionID, err.Error())}
 	}
 
 	var refs strings.Builder
@@ -236,7 +242,7 @@ func (m *MemoryJob) compileKnowledge(ctx context.Context, sessionID string, t tu
 		{Role: "user", Content: userPrompt},
 	}, llm.ChatOptions{})
 	if err != nil {
-		return false
+		return false, []string{fmt.Sprintf("compile chat %s: %s", sessionID, err.Error())}
 	}
 	raw := strings.TrimSpace(resp.Message.Content)
 	raw = strings.TrimPrefix(raw, "```json")
@@ -244,15 +250,15 @@ func (m *MemoryJob) compileKnowledge(ctx context.Context, sessionID string, t tu
 	raw = strings.TrimSuffix(raw, "```")
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return false
+		return false, nil
 	}
 
 	var update memory.KnowledgeUpdate
 	if err := json.Unmarshal([]byte(raw), &update); err != nil {
-		return false
+		return false, []string{fmt.Sprintf("compile json %s: %s", sessionID, err.Error())}
 	}
 	if len(update.Notes) == 0 && len(update.Edges) == 0 {
-		return false
+		return false, nil
 	}
 	for i := range update.Notes {
 		if strings.TrimSpace(update.Notes[i].SourceSession) == "" {
@@ -261,9 +267,9 @@ func (m *MemoryJob) compileKnowledge(ctx context.Context, sessionID string, t tu
 		update.Notes[i].UpdatedAt = now.UTC()
 	}
 	if err := backend.ApplyKnowledgeUpdate(ctx, update, now.UTC()); err != nil {
-		return false
+		return false, []string{fmt.Sprintf("compile apply %s: %s", sessionID, err.Error())}
 	}
-	return true
+	return true, nil
 }
 
 func (m *MemoryJob) backend() memory.Backend {
