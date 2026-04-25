@@ -99,6 +99,10 @@ type LLMConfig struct {
 // validate Kind against a closed list — llm.NewProvider returns a clear
 // error for unknown kinds, keeping the config package free of an
 // internal/llm import.
+//
+// ServiceTier is the provider-level default applied when a tier binding
+// does not set its own. Tier-level ServiceTier (LLMTierBinding) takes
+// precedence when non-empty; see ResolveLLMTier for the merge order.
 type LLMProviderSettings struct {
 	Kind          string `json:"kind"           yaml:"kind"`
 	AuthMode      string `json:"auth_mode"      yaml:"auth_mode"`

@@ -100,7 +100,7 @@ func collectDirEntriesWithPolicy(policy PathPolicy, absPath string, recursive bo
 		if err != nil {
 			return nil, false, err
 		}
-		out := make([]listDirEntry, 0, minInt(len(dirEntries), maxEntries))
+		out := make([]listDirEntry, 0, min(len(dirEntries), maxEntries))
 		truncated := false
 		for _, item := range dirEntries {
 			if len(out) >= maxEntries {
@@ -167,11 +167,4 @@ func buildListDirEntryWithPolicy(policy PathPolicy, absPath string, mode fs.File
 
 func listDirErrorResult(message string) Result {
 	return JSONTextResult(listDirResponse{Message: message}, true)
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

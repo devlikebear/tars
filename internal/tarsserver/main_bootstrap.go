@@ -76,9 +76,8 @@ func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logg
 	}
 
 	deps := runtimeDeps{
-		cfg:                  cfg,
-		sessionStore:         session.NewStore(cfg.WorkspaceDir),
-		sessionStoreResolver: newWorkspaceSessionStoreResolver(cfg.WorkspaceDir, nil),
+		cfg:          cfg,
+		sessionStore: session.NewStore(cfg.WorkspaceDir),
 	}
 	deps.sessionStoreResolver = newWorkspaceSessionStoreResolver(cfg.WorkspaceDir, deps.sessionStore)
 	priceOverrides := map[string]usage.ModelPrice{}

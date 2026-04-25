@@ -475,29 +475,16 @@ func (s *KnowledgeStore) Graph() (KnowledgeGraph, error) {
 	if s == nil || strings.TrimSpace(s.root) == "" {
 		return KnowledgeGraph{Nodes: []KnowledgeGraphNode{}, Edges: []KnowledgeGraphEdge{}}, nil
 	}
-	raw, err := os.ReadFile(filepath.Join(s.root, "memory", "wiki", "graph.json"))
+	graphPath := filepath.Join(s.root, "memory", "wiki", "graph.json")
+
+	graph, err := readKnowledgeGraphFile(graphPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			if err := s.rebuildArtifacts(); err != nil {
-				return KnowledgeGraph{}, err
-			}
-			raw, err = os.ReadFile(filepath.Join(s.root, "memory", "wiki", "graph.json"))
-		}
-		if err != nil {
-			return KnowledgeGraph{}, fmt.Errorf("read knowledge graph: %w", err)
-		}
-	}
-	var graph KnowledgeGraph
-	if err := json.Unmarshal(raw, &graph); err != nil {
 		if rebuildErr := s.rebuildArtifacts(); rebuildErr != nil {
-			return KnowledgeGraph{}, fmt.Errorf("decode knowledge graph: %w", err)
+			return KnowledgeGraph{}, fmt.Errorf("rebuild knowledge graph: %w", rebuildErr)
 		}
-		raw, err = os.ReadFile(filepath.Join(s.root, "memory", "wiki", "graph.json"))
+		graph, err = readKnowledgeGraphFile(graphPath)
 		if err != nil {
-			return KnowledgeGraph{}, fmt.Errorf("read knowledge graph: %w", err)
-		}
-		if err := json.Unmarshal(raw, &graph); err != nil {
-			return KnowledgeGraph{}, fmt.Errorf("decode knowledge graph: %w", err)
+			return KnowledgeGraph{}, err
 		}
 	}
 	if graph.Nodes == nil {
@@ -506,10 +493,17 @@ func (s *KnowledgeStore) Graph() (KnowledgeGraph, error) {
 	if graph.Edges == nil {
 		graph.Edges = []KnowledgeGraphEdge{}
 	}
-	if strings.Contains(string(raw), `"updated_at": ""`) {
-		if err := s.rebuildArtifacts(); err != nil {
-			return KnowledgeGraph{}, err
-		}
+	return graph, nil
+}
+
+func readKnowledgeGraphFile(path string) (KnowledgeGraph, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return KnowledgeGraph{}, fmt.Errorf("read knowledge graph: %w", err)
+	}
+	var graph KnowledgeGraph
+	if err := json.Unmarshal(raw, &graph); err != nil {
+		return KnowledgeGraph{}, fmt.Errorf("decode knowledge graph: %w", err)
 	}
 	return graph, nil
 }

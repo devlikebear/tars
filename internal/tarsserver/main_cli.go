@@ -36,10 +36,6 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 				logger.Debug().Msg("verbose logging enabled")
 			}
 
-			if opts.RunOnce && opts.RunLoop {
-				return &cli.ExitError{Code: 2, Err: fmt.Errorf("--run-once and --run-loop are mutually exclusive")}
-			}
-
 			deps, err := buildRuntimeDeps(opts, nowFn, logger)
 			if err == nil {
 				// Reconfigure logger from config values.
@@ -65,17 +61,17 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					logCfg.RotateMaxBackups = cfg.LogRotateMaxBackups
 				}
 				// --verbose flag overrides config log_level
-			if opts.Verbose {
-				logCfg.Level = "debug"
-				needReconfigure = true
-			}
-			if needReconfigure {
-				newLogger, newCleanup := setupRuntimeLogger(logCfg, stderr)
-				// Replace global logger; previous cleanup runs via deferred Serve().
-				zlog.Logger = newLogger
-				logger = newLogger
-				_ = newCleanup // cleanup will be handled by the process lifecycle
-			}
+				if opts.Verbose {
+					logCfg.Level = "debug"
+					needReconfigure = true
+				}
+				if needReconfigure {
+					newLogger, newCleanup := setupRuntimeLogger(logCfg, stderr)
+					// Replace global logger; previous cleanup runs via deferred Serve().
+					zlog.Logger = newLogger
+					logger = newLogger
+					_ = newCleanup // cleanup will be handled by the process lifecycle
+				}
 				logger.Info().
 					Str("log_level", logCfg.Level).
 					Str("log_file", logCfg.FilePath).
@@ -92,8 +88,6 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 						logger.Error().Err(depErr.err).Msg("failed to load config")
 					case "ensure_workspace":
 						logger.Error().Err(depErr.err).Msg("failed to initialize workspace")
-					case "daily_log":
-						logger.Error().Err(depErr.err).Msg("failed to write daily log")
 					case "init_llm":
 						logger.Error().Err(depErr.err).Msg("failed to initialize llm provider")
 					default:
@@ -103,9 +97,6 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 					logger.Error().Err(err).Msg("failed to initialize runtime dependencies")
 				}
 				return &cli.ExitError{Code: 1, Err: err}
-			}
-			if opts.RunOnce || opts.RunLoop {
-				logger.Warn().Msg("--run-once and --run-loop are deprecated no-ops; pulse runs automatically when the server is up")
 			}
 			if opts.ServeAPI {
 				return runServeAPICommand(parentCtx, opts, deps, nowFn, stdout, stderr, logger)
@@ -128,8 +119,6 @@ func newRootCmd(opts *options, stdout, stderr io.Writer, nowFn func() time.Time)
 	cmd.Flags().StringVar(&opts.WorkspaceDir, "workspace-dir", opts.WorkspaceDir, "workspace directory override")
 	cmd.Flags().StringVar(&opts.LogFile, "log-file", opts.LogFile, "append json logs to file")
 	cmd.Flags().BoolVar(&opts.Verbose, "verbose", opts.Verbose, "enable verbose debug logging")
-	cmd.Flags().BoolVar(&opts.RunOnce, "run-once", opts.RunOnce, "deprecated — pulse runs automatically; flag retained for backward compat and is a no-op")
-	cmd.Flags().BoolVar(&opts.RunLoop, "run-loop", opts.RunLoop, "deprecated — pulse runs automatically; flag retained for backward compat and is a no-op")
 	cmd.Flags().BoolVar(&opts.ServeAPI, "serve-api", opts.ServeAPI, "serve tars http api")
 	cmd.Flags().StringVar(&opts.APIAddr, "api-addr", opts.APIAddr, "http api listen address")
 

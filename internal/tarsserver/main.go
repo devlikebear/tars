@@ -30,8 +30,6 @@ func Serve(ctx context.Context, serveOpts ServeOptions, stdout, stderr io.Writer
 		WorkspaceDir: strings.TrimSpace(serveOpts.WorkspaceDir),
 		LogFile:      strings.TrimSpace(serveOpts.LogFile),
 		Verbose:      serveOpts.Verbose,
-		RunOnce:      serveOpts.RunOnce,
-		RunLoop:      serveOpts.RunLoop,
 		ServeAPI:     serveOpts.ServeAPI,
 		APIAddr:      strings.TrimSpace(serveOpts.APIAddr),
 	}

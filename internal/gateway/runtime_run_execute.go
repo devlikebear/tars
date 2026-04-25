@@ -156,9 +156,14 @@ func (r *Runtime) finalizeRunLocked(state *runState, resp string, metadata Promp
 				state.run.PolicyRiskMax = strings.TrimSpace(info.ToolsRiskMax)
 			}
 		}
+		r.closeRunDoneLocked(state)
+		r.trimRunHistoryLocked()
+		r.stateVersion++
+		r.appendRunSummaryToMain(state.run, "")
 		r.publishRunEvent(state.run.ID, RunEvent{
 			Type:          "run_failed",
 			RunID:         state.run.ID,
+			Timestamp:     finishedAt,
 			Agent:         state.run.Agent,
 			Status:        string(state.run.Status),
 			ResolvedAlias: state.run.ResolvedAlias,
@@ -166,30 +171,26 @@ func (r *Runtime) finalizeRunLocked(state *runState, resp string, metadata Promp
 			ResolvedModel: state.run.ResolvedModel,
 			Error:         state.run.Error,
 		})
-		r.closeRunDoneLocked(state)
-		r.trimRunHistoryLocked()
-		r.stateVersion++
-		r.appendRunSummaryToMain(state.run, "")
-		r.publishRunEvent(state.run.ID, RunEvent{Type: "run_failed", RunID: state.run.ID, Timestamp: finishedAt, Status: string(state.run.Status), Error: state.run.Error})
 		return
 	}
 	state.run.Status = RunStatusCompleted
 	state.run.Response = strings.TrimSpace(resp)
+	r.appendRunSummaryToMain(state.run, state.run.Response)
+	r.closeRunDoneLocked(state)
+	r.trimRunHistoryLocked()
+	r.stateVersion++
 	r.publishRunEvent(state.run.ID, RunEvent{
 		Type:          "run_finished",
 		RunID:         state.run.ID,
+		Timestamp:     finishedAt,
 		Agent:         state.run.Agent,
 		Status:        string(state.run.Status),
 		ResolvedAlias: state.run.ResolvedAlias,
 		ResolvedKind:  state.run.ResolvedKind,
 		ResolvedModel: state.run.ResolvedModel,
 		Response:      state.run.Response,
+		Message:       trimGatewaySummary(state.run.Response, 220),
 	})
-	r.appendRunSummaryToMain(state.run, state.run.Response)
-	r.publishRunEvent(state.run.ID, RunEvent{Type: "run_finished", RunID: state.run.ID, Timestamp: finishedAt, Status: string(state.run.Status), Message: trimGatewaySummary(state.run.Response, 220)})
-	r.closeRunDoneLocked(state)
-	r.trimRunHistoryLocked()
-	r.stateVersion++
 }
 
 func blockedToolNameFromReason(reason string) string {

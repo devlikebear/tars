@@ -40,6 +40,21 @@ func CompactTranscript(path string, keepRecent int, now time.Time) (CompactResul
 	return CompactTranscriptWithOptions(path, keepRecent, now, CompactOptions{})
 }
 
+// CompactOptions configures CompactTranscriptWithOptions.
+//
+// KeepRecent strategies are tried in priority order — the first non-zero
+// option wins, lower options are ignored:
+//
+//  1. KeepRecentFraction (if > 0): retain the most recent X% of total
+//     transcript tokens (clamped to MinKeepRecentFraction..MaxKeepRecentFraction).
+//  2. KeepRecentTokens (if > 0): retain a specific token budget
+//     (clamped to MinKeepRecentTokens..MaxKeepRecentTokens).
+//  3. keepRecent positional argument: retain a specific message count
+//     (clamped to MinKeepRecentMessages..MaxKeepRecentMessages, default
+//     DefaultKeepRecentMessages = 20).
+//
+// Setting both KeepRecentFraction and KeepRecentTokens is supported but
+// the fraction wins — set only the strategy you want.
 type CompactOptions struct {
 	BeforeRewrite       func(summary string, compactedCount int, originalCount int) error
 	SummaryBuilder      func(messages []Message, previousContext string) (string, error)

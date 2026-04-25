@@ -126,9 +126,6 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 		Str("base_url", strings.TrimSpace(opts.BaseURL)).
 		Msg("llm new provider request")
 
-	if provider == "codex-cli" {
-		return nil, fmt.Errorf("unsupported llm provider: codex-cli (removed)")
-	}
 	if provider == "openai-codex" {
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return newOpenAICodexClientWithAuthConfig(

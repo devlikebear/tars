@@ -6,6 +6,40 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-04-25
+
+### Changed
+
+- `memory_search` 의 `include_sessions` 기본값 `false` → `true` (description 의도와 일치, RF-038)
+- `Compaction.CompactOptions` 에 `keepRecent` 3-strategy 우선순위 docstring 추가 (RF-060)
+- `LLMProviderSettings.ServiceTier` 가 provider-level default 임을 docstring 으로 명시 (tier-level 이 우선) (RF-063)
+- `gateway/runtime_run_execute.go` `finalizeRunLocked` 가 동일 event 를 두 번 publish 하던 동작을 한 번으로 통합 (RF-054)
+- `KnowledgeStore.Graph()` 자기치유 로직 단순화: 누락/손상/legacy 3 경로 → 단일 rebuild fallback (RF-022)
+- `tool.Registry.Register` 가 같은 이름 중복 등록 시 silent overwrite 대신 warn 로그 출력 (RF-026)
+- `cron.computeBackoffDuration` 의 magic number 를 documented const (`backoffBaseDuration`/`backoffMaxMultiplier`/`backoffMaxDuration`) 로 추출 (RF-070)
+
+### Removed
+
+- 사용되지 않는 deprecated 플래그 `--run-once` / `--run-loop` (`tars serve`) 와 관련 ServeOptions 필드, mutually-exclusive 검증, deprecation warning 모두 제거. pulse 는 서버 시작 시 자동 실행됨. 외부 자동화 스크립트가 이 플래그를 넘기면 `unknown flag` 에러가 발생하므로 호출부 수정 필요 (RF-001)
+- `runtimeDepsError` 의 `daily_log` 좀비 case label — 어디서도 생성되지 않는 dead branch (RF-005)
+- `internal/memory/semantic.go` 의 dead code 7 블록 (`indexState` 타입, `loadIndexState`/`saveIndexState`, `readDoc`, `firstMeaningfulParagraph`, 자체 `min`) (RF-019)
+- `internal/prompt/builder.go` 자체 `max`/`min` 함수 (Go 1.25 built-in 사용) (RF-019)
+- `internal/tool/list_dir.go` 자체 `min`/`minInt` 함수 (Go 1.25 built-in 사용) (RF-019)
+- `internal/cron/helpers.go` 자체 `min` 함수 (Go 1.25 built-in 사용) (RF-019/RF-069)
+- `internal/prompt/memory_retrieval.go` 의 죽은 fallback matcher (`collectProjectDocumentMatches`, `collectBriefMatches`, `classifySourceTag` 의 `projects/` + `_shared/` 분기) — project 패키지 제거 후 잔재 (RF-023)
+- `IsExecToolName` 의 이중 정규화 (CanonicalToolName 한 번 호출로 단순화) (RF-027)
+- `exec` tool 의 undocumented `cmd` alias (schema 에 `command` 만 정의됨) (RF-031)
+- `provider="codex-cli"` removed-alias error stub 3 줄 (RF-043)
+- consensus strategy `vote` schema enum (구현 미완 — 사용 시 runtime 에러였음. enum 을 `["synthesize"]` 만으로 축소) (RF-052)
+- `runtimeDeps.sessionStoreResolver` 의 잉여 첫 nil 초기화 (RF-003)
+
+### Follow-ups
+
+이번 PR 은 Tier A (mechanical / silent acceptance / docstring) 만 정리. 사용자 결정이 필요한 큰 작업은 별도 추적:
+
+- ID-001 ~ ID-005 의사결정: GitHub issues #363-#367
+- 70+ RF 우선순위 매트릭스: `docs/code-review/findings/refactor.md`
+
 ## [0.28.0] - 2026-04-19
 
 ### Removed
