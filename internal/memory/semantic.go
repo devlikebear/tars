@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	zlog "github.com/rs/zerolog/log"
 )
 
 const (
@@ -443,16 +445,30 @@ func loadEntries(path string) ([]MemoryEntry, error) {
 	}
 	lines := strings.Split(string(raw), "\n")
 	out := make([]MemoryEntry, 0, len(lines))
-	for _, line := range lines {
+	skipped := 0
+	for i, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 		var entry MemoryEntry
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			skipped++
+			zlog.Logger.Warn().
+				Err(err).
+				Str("path", path).
+				Int("line", i+1).
+				Msg("memory: skipping malformed entry in semantic index; the file may be corrupted")
 			continue
 		}
 		out = append(out, entry)
+	}
+	if skipped > 0 {
+		zlog.Logger.Warn().
+			Str("path", path).
+			Int("skipped", skipped).
+			Int("kept", len(out)).
+			Msg("memory: semantic index has malformed entries; consider rebuilding")
 	}
 	return out, nil
 }

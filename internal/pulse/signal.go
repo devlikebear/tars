@@ -8,6 +8,7 @@ import (
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/ops"
+	zlog "github.com/rs/zerolog/log"
 )
 
 // CronJobLister is the narrow interface pulse requires from a cron store
@@ -174,6 +175,7 @@ func (s *Scanner) scanCron() *Signal {
 	}
 	jobs, err := s.sources.Cron.List()
 	if err != nil {
+		zlog.Logger.Warn().Err(err).Msg("pulse: cron.List() failed; skipping cron scan this tick")
 		return nil
 	}
 	worst := 0
@@ -230,6 +232,10 @@ func (s *Scanner) scanStuckRuns(now time.Time) *Signal {
 		}
 		started, ok := parseRunTimestamp(r.StartedAt)
 		if !ok {
+			zlog.Logger.Warn().
+				Str("run_id", r.ID).
+				Str("started_at", r.StartedAt).
+				Msg("pulse: gateway run StartedAt is malformed; skipping stuck-run check for this run")
 			continue
 		}
 		if started.Before(cutoff) {
@@ -271,6 +277,7 @@ func (s *Scanner) scanDisk(ctx context.Context, now time.Time) *Signal {
 	}
 	status, err := s.sources.Ops.Status(ctx)
 	if err != nil {
+		zlog.Logger.Warn().Err(err).Msg("pulse: ops.Status() failed; skipping disk scan this tick")
 		return nil
 	}
 	pct := status.DiskUsedPercent
