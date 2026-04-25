@@ -6,6 +6,30 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.28.2] - 2026-04-26
+
+### Changed
+
+- `tarsserver`: 부트스트랩 순서 재구성 — config 를 cobra.Execute 이전에 로드, 최종 logger config 를 CLI+config 에서 도출, `setupRuntimeLogger` 를 단 한 번만 호출. config 로드 실패 시 panic. `newRootCmd` 가 pre-loaded `cfg` 를 인자로 받음. `buildRuntimeDeps` 도 cfg 를 인자로 받아 두 번 로드하지 않음. 이전 두 단계 logger 셋업 (CLI-only → config 로드 후 reconfigure) 에서 첫 번째 lumberjack handle 이 누수되던 문제 해소 (RF-002)
+- `plugin.Source` 에 `Priority()` 메서드 추가 + `Load` 가 sources 를 priority 로 자동 정렬. 호출자 슬라이스 순서와 무관하게 일관된 머지 결과 (workspace > user > bundled). 동일 priority 내 stable sort 유지 (RF-013)
+- `reflection.MemoryJob.compileKnowledge` 시그니처 `bool → (bool, []string)`. router/list/chat/json/apply 5 silent failure 경로가 prefix 가 붙은 에러 문자열로 `JobResult.Details["errors"]` 에 누적 (RF-016)
+- `memory.normalizeSemanticTerms` + `prompt.normalizeRelevantTerms` stopwords 에 한국어 조사/대명사/지시어 추가 (`나/내/너/그/이/저`, `는/은/이/가/을/를`, `의/도/와/과`, `이거/저거/그거`, `뭐/뭐였지/뭐지/뭐야`, `선호/취향/좋아/좋아요/좋아함`). KR 쿼리 매칭 점수가 조사로 부풀려지던 문제 해소 (RF-018)
+- `tool.dispatchAction` 가 `aliasFns ...func(map[string]json.RawMessage)` variadic 옵션을 받도록 확장. `automation.normalizeAutomationActionInput` 가 본문 복제 대신 `dispatchAction(params, aliasAutomationJobID)` 한 줄 호출로 단순화 (RF-028)
+- `gateway.Runtime.ReportsRuns/ChannelsByWorkspace` 에 `GatewayArchiveEnabled` 플래그가 *디스크 archive* + *report endpoint 가시성* 두 의미를 겸한다는 docstring 추가. 분리는 ID-005 config 마이그레이션과 결합 (RF-057)
+
+### Removed
+
+- `tarsserver/main_serve_api.go` 의 dead `_ = telegramDeliveryCounter` 라인. pulse wiring 은 helpers_pulse.go 에서 이미 완료된 상태였음 — 잔재 정리 (RF-006)
+- `internal/memory/knowledge.go` 의 `KnowledgeStore.nowFn` 필드 + 초기화. `Upsert` 가 `time.Now().UTC()` 를 직접 호출. 외부 주입 경로가 없는 채 stub 만 있던 의존성 제거 (RF-020)
+- `internal/llm/router.go` 의 `Router.Close()` interface 메서드 + `multiTierRouter.Close()` no-op 구현. 호출자 0건 + Client interface 에 Close 가 없어 cleanup 할 게 없는 reserved-for-future stub (RF-044)
+- `internal/llm/fallback_client.go` + `fallback_client_test.go` 전체. production wiring 0건의 reserved-for-future 구현. 필요 시점에 다시 추가 (RF-044)
+
+### Follow-ups
+
+이번 PR 도 Tier B 의 mechanical/independent 항목만. 결정 의존 항목은 별도:
+- ID-001 ~ ID-005: GitHub issues #363-#367
+- 70+ RF 우선순위: `docs/code-review/findings/refactor.md`
+
 ## [0.28.1] - 2026-04-25
 
 ### Changed

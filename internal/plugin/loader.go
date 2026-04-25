@@ -23,8 +23,18 @@ func Load(opts LoadOptions) (Snapshot, error) {
 		return snapshot, nil
 	}
 
+	// Sort sources by Source.Priority() ascending so that higher-priority
+	// definitions overwrite lower-priority ones during the merge below.
+	// SliceStable preserves caller-provided order within the same priority,
+	// which still matters for intra-source filename rules (e.g. .tars over
+	// .tarsncase manifests within SourceUser).
+	sortedSources := append([]SourceDir(nil), opts.Sources...)
+	sort.SliceStable(sortedSources, func(i, j int) bool {
+		return sortedSources[i].Source.Priority() < sortedSources[j].Source.Priority()
+	})
+
 	merged := map[string]Definition{}
-	for _, source := range opts.Sources {
+	for _, source := range sortedSources {
 		plugins, diagnostics, err := loadSourcePlugins(source.Source, source.Dir)
 		snapshot.Diagnostics = append(snapshot.Diagnostics, diagnostics...)
 		if err != nil {

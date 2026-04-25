@@ -35,16 +35,29 @@ import (
 
 func run(args []string, stdout, stderr io.Writer) int {
 	envloader.Load(".env", ".env.secret")
+	// Mirror the bootstrap order in Serve(): pre-extract enough flags from
+	// args to load config + install the runtime logger before cobra runs
+	// RunE. Cobra parses the same flags again inside Execute(); the values
+	// agree because cmd.Flags().*Var binds back to the same opts pointer.
 	opts := &options{
-		LogFile: flagValueForTest(args, "--log-file"),
+		ConfigPath:   flagValueForTest(args, "--config"),
+		Mode:         flagValueForTest(args, "--mode"),
+		WorkspaceDir: flagValueForTest(args, "--workspace-dir"),
+		LogFile:      flagValueForTest(args, "--log-file"),
+		Verbose:      hasFlagForTest(args, "--verbose"),
 	}
 	applyOptionDefaults(opts)
 
-	logger, cleanup := setupRuntimeLogger(loggerConfig{FilePath: opts.LogFile}, stderr)
+	cfg, err := loadConfigForServe(opts)
+	if err != nil {
+		panic(fmt.Sprintf("tars: load config: %v", err))
+	}
+
+	logger, cleanup := setupRuntimeLogger(buildLoggerConfig(opts, cfg), stderr)
 	defer cleanup()
 	zlog.Logger = logger
 
-	cmd, _ := newRootCmd(opts, stdout, stderr, time.Now)
+	cmd, _ := newRootCmd(opts, cfg, stdout, stderr, time.Now)
 	cmd.SetArgs(args)
 
 	if err := cmd.Execute(); err != nil {
@@ -60,6 +73,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	return 0
+}
+
+func hasFlagForTest(args []string, name string) bool {
+	for _, a := range args {
+		if a == name {
+			return true
+		}
+	}
+	return false
 }
 
 func isolateRunEnv(t *testing.T) {
@@ -253,20 +275,23 @@ func TestRun_FlagOverridesEnvAndYAML(t *testing.T) {
 	}
 }
 
-func TestRun_InvalidConfigPathReturnsError(t *testing.T) {
+func TestRun_InvalidConfigPathPanics(t *testing.T) {
 	isolateRunEnv(t)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	code := run([]string{"--config", "./not-found.yaml", "--workspace-dir", filepath.Join(t.TempDir(), "workspace")}, stdout, stderr)
-	if code == 0 {
-		t.Fatalf("expected non-zero exit code, stdout=%q", stdout.String())
-	}
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatalf("expected panic on invalid config path, stdout=%q", stdout.String())
+		}
+		msg := fmt.Sprintf("%v", r)
+		if !strings.Contains(msg, "load config") {
+			t.Fatalf("unexpected panic message: %q", msg)
+		}
+	}()
 
-	if !strings.Contains(stderr.String(), "failed to load config") {
-		t.Fatalf("unexpected stderr: %q", stderr.String())
-	}
-
+	_ = run([]string{"--config", "./not-found.yaml", "--workspace-dir", filepath.Join(t.TempDir(), "workspace")}, stdout, stderr)
 }
 
 func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {

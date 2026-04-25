@@ -117,6 +117,16 @@ func (r *Runtime) ReportsRuns(limit int) (ReportRuns, error) {
 	return r.ReportsRunsByWorkspace(defaultWorkspaceID, limit)
 }
 
+// ReportsRunsByWorkspace returns recent in-memory run summaries.
+//
+// Despite the name, the gating flag GatewayArchiveEnabled doubles as the
+// "report endpoint visibility" switch — it controls both on-disk archive
+// writes and whether this in-memory report endpoint serves data, even
+// though the data itself is from r.runs (memory) and never touches the
+// archive directory. Operators who want only the report endpoint without
+// disk archives still have to enable archive_enabled. Splitting this
+// into a dedicated GatewayReportEnabled flag is tracked in RF-057 as
+// part of the broader config namespace migration (ID-005).
 func (r *Runtime) ReportsRunsByWorkspace(workspaceID string, limit int) (ReportRuns, error) {
 	if err := r.requireEnabled(); err != nil {
 		return ReportRuns{}, err
@@ -140,6 +150,9 @@ func (r *Runtime) ReportsChannels(limit int) (ReportChannels, error) {
 	return r.ReportsChannelsByWorkspace(defaultWorkspaceID, limit)
 }
 
+// ReportsChannelsByWorkspace returns recent in-memory channel messages.
+// See ReportsRunsByWorkspace for why GatewayArchiveEnabled also gates
+// this endpoint despite reading from in-memory state (RF-057, ID-005).
 func (r *Runtime) ReportsChannelsByWorkspace(workspaceID string, limit int) (ReportChannels, error) {
 	if err := r.requireEnabled(); err != nil {
 		return ReportChannels{}, err

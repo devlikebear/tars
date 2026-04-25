@@ -165,7 +165,6 @@ func buildAPIMux(
 		newTelegramSender(cfg.TelegramBotToken),
 		telegramDeliveryCounter,
 	)
-	_ = telegramDeliveryCounter // retained for pulse wiring in a later commit
 	// The telegram_send tool closure intentionally captures this pointer.
 	// It is assigned after gateway runtime construction and used at runtime
 	// to append outbound Telegram records to gateway channel history.

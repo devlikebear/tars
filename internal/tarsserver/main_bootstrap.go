@@ -47,26 +47,34 @@ func (e *runtimeDepsError) Unwrap() error {
 	return e.err
 }
 
-func buildRuntimeDeps(opts *options, nowFn func() time.Time, logger zerolog.Logger) (runtimeDeps, error) {
+// loadConfigForServe resolves and loads the config file, applies CLI
+// overrides for Mode and WorkspaceDir, and returns the merged config. It
+// performs no further validation or workspace bootstrapping — those are
+// the responsibility of buildRuntimeDeps. Calling this early lets Serve()
+// construct the runtime logger from final config values without a second
+// reconfigure pass.
+func loadConfigForServe(opts *options) (config.Config, error) {
 	if opts == nil {
-		return runtimeDeps{}, fmt.Errorf("options are required")
+		return config.Config{}, fmt.Errorf("options are required")
 	}
-
-	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
-	cfg, err := config.Load(resolvedConfigPath)
+	cfg, err := config.Load(config.ResolveConfigPath(opts.ConfigPath))
 	if err != nil {
-		return runtimeDeps{}, &runtimeDepsError{stage: "load_config", err: err}
+		return config.Config{}, &runtimeDepsError{stage: "load_config", err: err}
 	}
-	if strings.TrimSpace(resolvedConfigPath) != "" {
-		logger.Debug().Str("config_path", resolvedConfigPath).Msg("resolved config file")
-	}
-
 	if strings.TrimSpace(opts.Mode) != "" {
 		cfg.Mode = strings.TrimSpace(opts.Mode)
 	}
 	if strings.TrimSpace(opts.WorkspaceDir) != "" {
 		cfg.WorkspaceDir = strings.TrimSpace(opts.WorkspaceDir)
 	}
+	return cfg, nil
+}
+
+func buildRuntimeDeps(opts *options, cfg config.Config, nowFn func() time.Time, logger zerolog.Logger) (runtimeDeps, error) {
+	if opts == nil {
+		return runtimeDeps{}, fmt.Errorf("options are required")
+	}
+
 	if err := validateAPIAuthSecurity(cfg, opts.ServeAPI); err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "validate_config", err: err}
 	}

@@ -48,10 +48,6 @@ type Router interface {
 	// TierForRole reports which tier the given role resolves to without
 	// fetching the client. Returns DefaultTier when the role is not mapped.
 	TierForRole(role Role) Tier
-
-	// Close releases any resources held by backing clients. Implementations
-	// may be no-ops when the underlying clients have nothing to close.
-	Close() error
 }
 
 // TierEntry is one tier's concrete binding: the client to use and the
@@ -176,9 +172,4 @@ func (r *multiTierRouter) ClientForTier(tier Tier) (Client, TierResolution, erro
 		Model:    entry.Model,
 		Source:   "explicit",
 	}, nil
-}
-
-func (r *multiTierRouter) Close() error {
-	// llm.Client currently has no Close method; reserved for future use.
-	return nil
 }

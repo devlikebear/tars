@@ -40,6 +40,23 @@ const (
 	SourceBundled   Source = "bundled"
 )
 
+// Priority returns the merge priority of a source. Higher wins on conflict
+// when Load merges plugin definitions: workspace > user > bundled. Unknown
+// sources have priority 0 (bundled-or-lower) so adding a new value without
+// updating this method does not silently outrank existing sources.
+func (s Source) Priority() int {
+	switch s {
+	case SourceWorkspace:
+		return 3
+	case SourceUser:
+		return 2
+	case SourceBundled:
+		return 1
+	default:
+		return 0
+	}
+}
+
 type Manifest struct {
 	SchemaVersion         int                `json:"schema_version,omitempty"`
 	ID                    string             `json:"id"`

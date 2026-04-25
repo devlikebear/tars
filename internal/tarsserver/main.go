@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/cli"
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/envloader"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
@@ -18,6 +19,13 @@ import (
 )
 
 // Serve executes tars runtime directly with structured options.
+//
+// Bootstrap order: load config first (panic on failure — there is no
+// recoverable mode without a workspace config), derive the final logger
+// config from CLI overrides + config values, then install the runtime
+// logger exactly once. This avoids the previous two-phase setup where a
+// CLI-only logger handle leaked when config values triggered a second
+// setupRuntimeLogger call.
 func Serve(ctx context.Context, serveOpts ServeOptions, stdout, stderr io.Writer) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -35,13 +43,16 @@ func Serve(ctx context.Context, serveOpts ServeOptions, stdout, stderr io.Writer
 	}
 	applyOptionDefaults(opts)
 
-	logger, cleanup := setupRuntimeLogger(loggerConfig{
-		FilePath: opts.LogFile,
-	}, stderr)
+	cfg, err := loadConfigForServe(opts)
+	if err != nil {
+		panic(fmt.Sprintf("tars: load config: %v", err))
+	}
+
+	logger, cleanup := setupRuntimeLogger(buildLoggerConfig(opts, cfg), stderr)
 	defer cleanup()
 	zlog.Logger = logger
 
-	cmd, _ := newRootCmd(opts, stdout, stderr, time.Now)
+	cmd, _ := newRootCmd(opts, cfg, stdout, stderr, time.Now)
 	cmd.SetContext(ctx)
 	cmd.SetArgs([]string{})
 	if err := cmd.Execute(); err != nil {
@@ -55,6 +66,33 @@ func Serve(ctx context.Context, serveOpts ServeOptions, stdout, stderr io.Writer
 		return err
 	}
 	return nil
+}
+
+// buildLoggerConfig merges CLI flags and config values into the final
+// loggerConfig. Precedence: --verbose forces debug level (highest);
+// otherwise config.LogLevel wins when set; LogFile is config-then-CLI
+// (config takes precedence to match the previous behavior).
+func buildLoggerConfig(opts *options, cfg config.Config) loggerConfig {
+	logCfg := loggerConfig{FilePath: opts.LogFile}
+	if path := strings.TrimSpace(cfg.LogFile); path != "" {
+		logCfg.FilePath = path
+	}
+	if level := strings.TrimSpace(cfg.LogLevel); level != "" {
+		logCfg.Level = level
+	}
+	if cfg.LogRotateMaxSizeMB > 0 {
+		logCfg.RotateMaxSizeMB = cfg.LogRotateMaxSizeMB
+	}
+	if cfg.LogRotateMaxDays > 0 {
+		logCfg.RotateMaxDays = cfg.LogRotateMaxDays
+	}
+	if cfg.LogRotateMaxBackups > 0 {
+		logCfg.RotateMaxBackups = cfg.LogRotateMaxBackups
+	}
+	if opts.Verbose {
+		logCfg.Level = "debug"
+	}
+	return logCfg
 }
 
 func applyOptionDefaults(opts *options) {
