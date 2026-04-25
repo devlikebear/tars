@@ -345,22 +345,6 @@ func TestRun_CreatesWorkspaceAndDailyLog(t *testing.T) {
 	}
 }
 
-// Heartbeat run-once/run-loop CLI tests were removed along with the
-// heartbeat concept. Pulse is started automatically when the server
-// runs; there is no longer a one-shot or loop mode for it.
-
-func TestRun_MutuallyExclusiveRunFlags(t *testing.T) {
-	isolateRunEnv(t)
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	workspaceDir := filepath.Join(t.TempDir(), "workspace")
-
-	code := run([]string{"--workspace-dir", workspaceDir, "--run-once", "--run-loop"}, stdout, stderr)
-	if code != 2 {
-		t.Fatalf("expected exit code 2 for mutually exclusive flags, got %d", code)
-	}
-}
-
 func TestRun_HelpReturnsZero(t *testing.T) {
 	isolateRunEnv(t)
 	stdout := &bytes.Buffer{}

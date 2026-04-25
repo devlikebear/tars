@@ -33,22 +33,29 @@ func resolveDefaultDeleteAfterRun(schedule string, requested bool, explicitlySet
 	return looksOneShotCronSchedule(schedule)
 }
 
+// Cron retry backoff parameters. The backoff doubles per failure starting
+// from backoffBaseDuration, capped at backoffMaxMultiplier doublings (so the
+// largest multiplier is 1<<6 = 64x), and never exceeds backoffMaxDuration.
+// For schedules with a fixed interval larger than backoffBaseDuration, that
+// interval is used as the base instead.
+const (
+	backoffBaseDuration  = 30 * time.Second
+	backoffMaxMultiplier = 6
+	backoffMaxDuration   = 12 * time.Hour
+)
+
 func computeBackoffDuration(schedule string, failures int) time.Duration {
 	if failures <= 0 {
 		return 0
 	}
-	base := 30 * time.Second
+	base := backoffBaseDuration
 	if interval, ok := parseEveryDuration(schedule); ok && interval > base {
 		base = interval
 	}
-	multiplier := failures - 1
-	if multiplier > 6 {
-		multiplier = 6
-	}
+	multiplier := min(failures-1, backoffMaxMultiplier)
 	backoff := base * time.Duration(1<<multiplier)
-	capDur := 12 * time.Hour
-	if backoff > capDur {
-		return capDur
+	if backoff > backoffMaxDuration {
+		return backoffMaxDuration
 	}
 	return backoff
 }
@@ -59,13 +66,6 @@ func newJobID() string {
 		return fmt.Sprintf("job_%d", time.Now().UTC().UnixNano())
 	}
 	return "job_" + hex.EncodeToString(b[:])
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func runPath(runsDir, jobID string) string {

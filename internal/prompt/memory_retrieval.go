@@ -100,8 +100,6 @@ func collectRelevantMemory(opts BuildOptions) []relevantMemoryMatch {
 	}
 
 	matches := make([]relevantMemoryMatch, 0, 16)
-	matches = append(matches, collectProjectDocumentMatches(opts, terms)...)
-	matches = append(matches, collectBriefMatches(opts, terms)...)
 	matches = append(matches, collectExperienceMatches(opts, terms)...)
 	matches = append(matches, collectMemoryFileMatches(opts, terms)...)
 	matches = append(matches, collectDailyLogMatches(opts, terms)...)
@@ -169,16 +167,6 @@ func collectSemanticMatches(opts BuildOptions) []relevantMemoryMatch {
 		})
 	}
 	return matches
-}
-
-func collectProjectDocumentMatches(_ BuildOptions, _ []string) []relevantMemoryMatch {
-	// Project documents are no longer available after project package removal.
-	return nil
-}
-
-func collectBriefMatches(_ BuildOptions, _ []string) []relevantMemoryMatch {
-	// Project briefs are no longer available after project package removal.
-	return nil
 }
 
 func collectExperienceMatches(opts BuildOptions, terms []string) []relevantMemoryMatch {
@@ -442,10 +430,6 @@ func classifySourceTag(source string) string {
 		return "conversation"
 	case strings.HasPrefix(source, "experience"):
 		return "experience"
-	case strings.HasPrefix(source, "projects/"):
-		return "project"
-	case strings.HasPrefix(source, "_shared/"):
-		return "brief"
 	case source == "MEMORY.md":
 		return "memory"
 	case strings.HasPrefix(source, "memory/"):

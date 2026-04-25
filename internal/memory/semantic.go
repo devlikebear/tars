@@ -179,18 +179,6 @@ type SearchHit struct {
 	Date    time.Time
 }
 
-type indexState struct {
-	EmbeddingModel      string                      `json:"embedding_model,omitempty"`
-	EmbeddingDimensions int                         `json:"embedding_dimensions,omitempty"`
-	Sources             map[string]indexedSourceRef `json:"sources,omitempty"`
-}
-
-type indexedSourceRef struct {
-	ContentHash string    `json:"content_hash"`
-	EntryID     string    `json:"entry_id"`
-	UpdatedAt   time.Time `json:"updated_at,omitempty"`
-}
-
 func NewService(root string, opts ServiceOptions) *Service {
 	cfg := opts.Config.normalized()
 	nowFn := opts.Now
@@ -445,10 +433,6 @@ func (s *Service) entriesPath() string {
 	return filepath.Join(s.root, "memory", "index", "entries.jsonl")
 }
 
-func (s *Service) statePath() string {
-	return filepath.Join(s.root, "memory", "index", "state.json")
-}
-
 func loadEntries(path string) ([]MemoryEntry, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -495,54 +479,12 @@ func saveEntries(path string, entries []MemoryEntry) error {
 	return writeAtomicFile(path, []byte(b.String()))
 }
 
-func loadIndexState(path string) (indexState, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return indexState{}, nil
-		}
-		return indexState{}, fmt.Errorf("read semantic state: %w", err)
-	}
-	var state indexState
-	if err := json.Unmarshal(raw, &state); err != nil {
-		return indexState{}, fmt.Errorf("decode semantic state: %w", err)
-	}
-	return state, nil
-}
-
-func saveIndexState(path string, state indexState) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create semantic state dir: %w", err)
-	}
-	encoded, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode semantic state: %w", err)
-	}
-	return writeAtomicFile(path, append(encoded, '\n'))
-}
-
 func writeAtomicFile(path string, content []byte) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, content, 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
-}
-
-func readDoc(path string) (string, os.FileInfo, bool) {
-	stat, err := os.Stat(path)
-	if err != nil {
-		return "", nil, false
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return "", nil, false
-	}
-	body := strings.TrimSpace(string(raw))
-	if body == "" {
-		return "", nil, false
-	}
-	return body, stat, true
 }
 
 func normalizeSemanticTerms(query string) []string {
@@ -685,24 +627,6 @@ func summarizeText(value string, limit int) string {
 	return value
 }
 
-func firstMeaningfulParagraph(value string, limit int) string {
-	for _, block := range strings.Split(value, "\n\n") {
-		candidate := strings.TrimSpace(block)
-		if candidate == "" || strings.HasPrefix(candidate, "#") {
-			continue
-		}
-		return summarizeText(candidate, limit)
-	}
-	return summarizeText(value, limit)
-}
-
 func sameNormalized(left, right string) bool {
 	return strings.EqualFold(strings.TrimSpace(left), strings.TrimSpace(right))
-}
-
-func min(left, right int) int {
-	if left < right {
-		return left
-	}
-	return right
 }

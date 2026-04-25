@@ -53,7 +53,7 @@ func NewMemorySearchTool(workspaceDir string, backend memory.Backend) Tool {
     "include_memory":{"type":"boolean","default":true},
     "include_daily":{"type":"boolean","default":true},
     "include_knowledge":{"type":"boolean","default":false,"description":"Search knowledge-base notes only when explicitly requested."},
-    "include_sessions":{"type":"boolean","default":false,"description":"Search past session transcripts for conversational continuity. Always set to true when called."}
+    "include_sessions":{"type":"boolean","default":true,"description":"Search past session transcripts for conversational continuity."}
   },
   "required":["query"],
   "additionalProperties":false
@@ -90,7 +90,7 @@ func NewMemorySearchTool(workspaceDir string, backend memory.Backend) Tool {
 			if input.IncludeKnowledge != nil {
 				includeKnowledge = *input.IncludeKnowledge
 			}
-			includeSessions := false
+			includeSessions := true
 			if input.IncludeSessions != nil {
 				includeSessions = *input.IncludeSessions
 			}

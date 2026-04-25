@@ -208,10 +208,6 @@ func parseExecInput(params json.RawMessage) (string, int, bool, error) {
 		if err := json.Unmarshal(v, &commandLine); err != nil {
 			return "", 0, false, fmt.Errorf("command must be string")
 		}
-	} else if v, ok := payload["cmd"]; ok {
-		if err := json.Unmarshal(v, &commandLine); err != nil {
-			return "", 0, false, fmt.Errorf("cmd must be string")
-		}
 	}
 	return commandLine, timeoutMS, background, nil
 }

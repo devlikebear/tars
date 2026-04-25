@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/rs/zerolog/log"
 )
 
 // RegistryScope identifies the surface a tool Registry belongs to.
@@ -141,6 +142,9 @@ func (r *Registry) Register(t Tool) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if _, exists := r.tools[t.Name]; exists {
+		log.Warn().Str("tool", t.Name).Str("scope", r.scope.String()).Msg("tool registered with duplicate name; previous registration will be overwritten")
+	}
 	r.tools[t.Name] = t
 }
 

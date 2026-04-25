@@ -357,14 +357,14 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 				}
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
-				"session_id":     sessionID,
-				"compacted":      result.Compacted,
-				"original_count": result.OriginalCount,
-				"final_count":    result.FinalCount,
+				"session_id":      sessionID,
+				"compacted":       result.Compacted,
+				"original_count":  result.OriginalCount,
+				"final_count":     result.FinalCount,
 				"compacted_count": result.CompactedCount,
-				"tokens_before":  tokensBefore,
-				"tokens_after":   tokensAfter,
-				"reason":         reason,
+				"tokens_before":   tokensBefore,
+				"tokens_after":    tokensAfter,
+				"reason":          reason,
 			})
 		case len(pathParts) == 2 && pathParts[1] == "history":
 			if !requireMethod(w, r, http.MethodGet) {

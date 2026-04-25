@@ -73,30 +73,6 @@ func TestExecTool_Timeout(t *testing.T) {
 	}
 }
 
-func TestExecTool_AllowsCmdAlias(t *testing.T) {
-	root := t.TempDir()
-	tl := NewExecTool(root)
-
-	result, err := tl.Execute(context.Background(), json.RawMessage(`{"cmd":"echo alias"}`))
-	if err != nil {
-		t.Fatalf("execute exec tool: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("expected success, got %s", result.Text())
-	}
-
-	var body execResponse
-	if err := json.Unmarshal([]byte(result.Text()), &body); err != nil {
-		t.Fatalf("decode result: %v", err)
-	}
-	if body.ExitCode != 0 {
-		t.Fatalf("expected exit_code 0, got %d", body.ExitCode)
-	}
-	if body.Command != "echo alias" {
-		t.Fatalf("expected canonical command to be preserved, got %q", body.Command)
-	}
-}
-
 func TestExecTool_RejectsNonObjectArguments(t *testing.T) {
 	root := t.TempDir()
 	tl := NewExecTool(root)

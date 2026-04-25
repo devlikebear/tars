@@ -7,8 +7,6 @@ type ServeOptions struct {
 	WorkspaceDir string
 	LogFile      string
 	Verbose      bool
-	RunOnce      bool // deprecated — no longer runs heartbeat; pulse is automatic
-	RunLoop      bool // deprecated — no longer runs heartbeat; pulse is automatic
 	ServeAPI     bool
 	APIAddr      string
 }
@@ -19,8 +17,6 @@ type options struct {
 	WorkspaceDir string
 	LogFile      string
 	Verbose      bool
-	RunOnce      bool
-	RunLoop      bool
 	ServeAPI     bool
 	APIAddr      string
 }

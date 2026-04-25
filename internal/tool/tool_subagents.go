@@ -24,7 +24,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 	    "consensus":{
 	      "type":"object",
 	      "properties":{
-	        "strategy":{"type":"string","enum":["synthesize","vote"]},
+	        "strategy":{"type":"string","enum":["synthesize"]},
 	        "variants":{
 	          "type":"array",
 	          "minItems":1,
