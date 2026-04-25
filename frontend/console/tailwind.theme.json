@@ -1,0 +1,125 @@
+{
+  "theme": {
+    "extend": {
+      "colors": {
+        "primary": "#e09145",
+        "primary-hover": "#cc7e35",
+        "primary-muted": "#372c22",
+        "primary-text": "#f0b878",
+        "surface-base": "#141414",
+        "surface": "#1c1c1c",
+        "surface-elevated": "#242424",
+        "surface-hover": "#2a2a2a",
+        "surface-active": "#303030",
+        "surface-inset": "#111111",
+        "border-subtle": "#282828",
+        "border-default": "#333333",
+        "border-strong": "#444444",
+        "text-primary": "#e8e4df",
+        "text-secondary": "#9a9590",
+        "text-tertiary": "#6b6560",
+        "text-ghost": "#4a4540",
+        "success": "#4ade80",
+        "success-muted": "#223328",
+        "warning": "#fbbf24",
+        "warning-muted": "#37301d",
+        "error": "#f87171",
+        "error-muted": "#322525",
+        "info": "#818cf8",
+        "info-muted": "#262732"
+      },
+      "fontFamily": {
+        "h1": [
+          "Outfit"
+        ],
+        "h2": [
+          "Outfit"
+        ],
+        "h3": [
+          "Outfit"
+        ],
+        "h4": [
+          "Outfit"
+        ],
+        "body-md": [
+          "DM Sans"
+        ],
+        "body-sm": [
+          "DM Sans"
+        ],
+        "label-caps": [
+          "Outfit"
+        ],
+        "code": [
+          "JetBrains Mono"
+        ]
+      },
+      "fontSize": {
+        "h1": [
+          "1.75rem",
+          {
+            "fontWeight": "500"
+          }
+        ],
+        "h2": [
+          "1.375rem",
+          {
+            "fontWeight": "500"
+          }
+        ],
+        "h3": [
+          "1.125rem",
+          {
+            "fontWeight": "500"
+          }
+        ],
+        "h4": [
+          "1rem",
+          {
+            "fontWeight": "500"
+          }
+        ],
+        "body-md": [
+          "0.875rem",
+          {
+            "fontWeight": "400"
+          }
+        ],
+        "body-sm": [
+          "0.8125rem",
+          {
+            "fontWeight": "400"
+          }
+        ],
+        "label-caps": [
+          "0.75rem",
+          {
+            "letterSpacing": "0.04em",
+            "fontWeight": "500"
+          }
+        ],
+        "code": [
+          "0.875rem",
+          {
+            "fontWeight": "400"
+          }
+        ]
+      },
+      "borderRadius": {
+        "sm": "4px",
+        "md": "6px",
+        "lg": "8px"
+      },
+      "spacing": {
+        "xs": "4px",
+        "sm": "8px",
+        "md": "12px",
+        "lg": "16px",
+        "xl": "20px",
+        "2xl": "24px",
+        "3xl": "32px",
+        "4xl": "40px"
+      }
+    }
+  }
+}
