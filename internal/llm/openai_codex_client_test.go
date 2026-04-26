@@ -166,6 +166,129 @@ func TestOpenAICodexClient_RequestBody_IncludesRequiredFields(t *testing.T) {
 	}
 }
 
+// TestOpenAICodexClient_ToolChoice_Specific covers RF-048: when the caller
+// passes ToolChoiceSpecific, the request body must use the object form
+// (Responses API parity with Chat Completions). The previous hardcoded
+// "auto" silently dropped the request.
+func TestOpenAICodexClient_ToolChoice_Specific(t *testing.T) {
+	got := map[string]any{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICodexClientWithConfig(srv.URL, "gpt-5.3-codex", "oauth", "openai-codex", "",
+		DefaultClientConfig(),
+		func() (auth.CodexCredential, error) { return auth.CodexCredential{AccessToken: "t"}, nil },
+		func(context.Context, auth.CodexCredential) (auth.CodexCredential, error) {
+			return auth.CodexCredential{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+		OnDelta:    func(string) {},
+		ToolChoice: ToolChoiceSpecific("exec"),
+		Tools:      []ToolSchema{{Type: "function", Function: ToolFunctionSchema{Name: "exec", Parameters: json.RawMessage(`{"type":"object"}`)}}},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	tc, ok := got["tool_choice"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected tool_choice object, got %#v", got["tool_choice"])
+	}
+	fn, _ := tc["function"].(map[string]any)
+	if tc["type"] != "function" || fn["name"] != "exec" {
+		t.Fatalf("unexpected tool_choice payload: %#v", tc)
+	}
+}
+
+// TestOpenAICodexClient_ResponseFormat_JSONSchema covers RF-048: the
+// Responses API uses text.format (not response_format) for structured
+// outputs. Strict + named schema must serialize at the top of the format
+// envelope.
+func TestOpenAICodexClient_ResponseFormat_JSONSchema(t *testing.T) {
+	got := map[string]any{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICodexClientWithConfig(srv.URL, "gpt-5.3-codex", "oauth", "openai-codex", "",
+		DefaultClientConfig(),
+		func() (auth.CodexCredential, error) { return auth.CodexCredential{AccessToken: "t"}, nil },
+		func(context.Context, auth.CodexCredential) (auth.CodexCredential, error) {
+			return auth.CodexCredential{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	schema := json.RawMessage(`{"type":"object","properties":{"steps":{"type":"array"}}}`)
+	_, err = client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "plan"}}, ChatOptions{
+		OnDelta:        func(string) {},
+		ResponseFormat: &ResponseFormat{Type: ResponseFormatJSONSchema, Name: "plan", Schema: schema, Strict: true},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	text, ok := got["text"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected text envelope, got %#v", got["text"])
+	}
+	format, ok := text["format"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected text.format, got %#v", text["format"])
+	}
+	if format["type"] != "json_schema" || format["name"] != "plan" || format["strict"] != true {
+		t.Fatalf("unexpected text.format: %#v", format)
+	}
+	if _, ok := format["schema"]; !ok {
+		t.Fatalf("schema missing from text.format envelope: %#v", format)
+	}
+}
+
+// TestOpenAICodexClient_PDFUnsupportedError verifies RF-046: codex must
+// surface a structured error rather than silently turning a PDF into
+// throwaway placeholder text.
+func TestOpenAICodexClient_PDFUnsupportedError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICodexClientWithConfig(srv.URL, "gpt-5.3-codex", "oauth", "openai-codex", "",
+		DefaultClientConfig(),
+		func() (auth.CodexCredential, error) { return auth.CodexCredential{AccessToken: "t"}, nil },
+		func(context.Context, auth.CodexCredential) (auth.CodexCredential, error) {
+			return auth.CodexCredential{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", ContentBlocks: []ContentBlock{{Type: "document", MediaType: "application/pdf", Data: "JVBERi0..."}}},
+	}, ChatOptions{})
+	if err == nil {
+		t.Fatalf("expected pdf_unsupported error, got nil")
+	}
+	if !strings.Contains(err.Error(), "pdf_unsupported_by_provider") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestOpenAICodexClient_ToolNames_SanitizeAndRestore(t *testing.T) {
 	var got map[string]any
 	sse := strings.Join([]string{

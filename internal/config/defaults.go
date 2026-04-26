@@ -80,7 +80,7 @@ const (
 	defaultGeminiNativeBaseURL            = "https://generativelanguage.googleapis.com/v1beta"
 	defaultGeminiModel                    = "gemini-2.5-flash"
 	defaultAnthropicBaseURL               = "https://api.anthropic.com"
-	defaultAnthropicModel                 = "claude-3-5-haiku-latest"
+	defaultAnthropicModel                 = "claude-haiku-4-5-20251001"
 	defaultOpenAICodexOAuthProvider       = "openai-codex"
 	defaultClaudeOAuthProvider            = "claude-code"
 	defaultGeminiOAuthProvider            = "google-antigravity"

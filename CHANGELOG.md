@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-04-26
+
+### Changed
+
+- **ID-004 Phase 2 — openai_codex parity + PDF + default model (RF-046 / RF-048 / RF-064)**:
+  - `openai_codex_client.go`: 하드코딩된 `tool_choice="auto"` 제거 → `toOpenAIToolChoice(opts.ToolChoice)` 헬퍼 사용 (Phase 1 와 동일 wire format). Caller 가 nil 을 보내면 `ToolChoiceAuto()` 로 fallback 해 종전 행동 유지.
+  - `openai_codex_client.go`: 신규 `toCodexTextFormat` — Responses API 의 `text.format` 봉투 (Chat Completions 의 `response_format` 과는 다름). `json_schema` 변형은 봉투 최상위에 `name/schema/strict` 펼침.
+  - **PDF placeholder 명시 에러 (RF-046)**: `openai_compat_client.go` / `openai_codex_client.go` 가 메시지에 `ContentBlocks[*].Type == "document"` 가 있으면 build 단계에서 `pdf_unsupported_by_provider` ProviderError 를 반환. 이전엔 `[Attached PDF document]` placeholder 로 조용히 흘려보냈음 — 모델은 그걸 throwaway 노트로 취급해 사용자 의도 손실.
+  - **Default Anthropic 모델 갱신 (RF-064)**: `defaultAnthropicModel` `claude-3-5-haiku-latest` → `claude-haiku-4-5-20251001`. Claude 4.x 가 현재 최신 패밀리. `defaultOpenAIModel` (gpt-4o-mini), `defaultGeminiModel` (gemini-2.5-flash) 는 현재 가용 최신으로 유지.
+
+### Tests
+
+- `TestOpenAICodexClient_ToolChoice_Specific` — 객체 wire format 검증
+- `TestOpenAICodexClient_ResponseFormat_JSONSchema` — `text.format` 봉투 + strict 검증
+- `TestOpenAICodexClient_PDFUnsupportedError` / `TestOpenAICompatibleChat_PDFUnsupportedError` — PDF 차단 에러 검증
+
+### Out of scope (별도 PR)
+
+- Provider capability 매트릭스 문서화 (RF-047)
+- Gemini-native responseSchema / caching (Phase 3+)
+- Codex ChatOptions silent ignore 잔여 (RF-049)
+- Provider registry (RF-066) / yaml_paths DRY (RF-065)
+
 ## [0.31.0] - 2026-04-26
 
 ### Changed (BREAKING)

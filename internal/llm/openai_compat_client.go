@@ -87,6 +87,9 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessag
 }
 
 func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts ChatOptions) (map[string]any, error) {
+	if containsPDFDocumentBlock(messages) {
+		return nil, newPDFUnsupportedError(c.label)
+	}
 	reqBody := map[string]any{
 		"model":    c.model,
 		"messages": toOpenAIWireMessages(messages),
@@ -426,10 +429,9 @@ func toOpenAIContent(msg ChatMessage) any {
 				},
 			})
 		case "document":
-			blocks = append(blocks, map[string]any{
-				"type": "text",
-				"text": "[Attached PDF document]",
-			})
+			// Rejected up-front in buildChatRequest via
+			// containsPDFDocumentBlock — this branch is unreachable in
+			// production but keeps the switch exhaustive.
 		}
 	}
 	if len(blocks) == 0 {
