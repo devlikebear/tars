@@ -96,8 +96,8 @@ func parseJSONStringList(raw string, fallback []string) []string {
 	return out
 }
 
-func parseGatewayAgentsJSON(raw string, fallback []GatewayAgent) []GatewayAgent {
-	type rawGatewayAgent struct {
+func parseAgentRuntimeAgentsJSON(raw string, fallback []AgentRuntimeAgent) []AgentRuntimeAgent {
+	type rawAgentRuntimeAgent struct {
 		Name           string            `json:"name"`
 		Description    string            `json:"description,omitempty"`
 		Command        string            `json:"command"`
@@ -107,18 +107,18 @@ func parseGatewayAgentsJSON(raw string, fallback []GatewayAgent) []GatewayAgent 
 		TimeoutSeconds int               `json:"timeout_seconds,omitempty"`
 		Enabled        *bool             `json:"enabled,omitempty"`
 	}
-	var parsed []rawGatewayAgent
+	var parsed []rawAgentRuntimeAgent
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
 		return fallback
 	}
-	out := make([]GatewayAgent, 0, len(parsed))
+	out := make([]AgentRuntimeAgent, 0, len(parsed))
 	for _, agent := range parsed {
 		name := strings.TrimSpace(agent.Name)
 		command := strings.TrimSpace(agent.Command)
 		if name == "" || command == "" {
 			continue
 		}
-		item := GatewayAgent{
+		item := AgentRuntimeAgent{
 			Name:           name,
 			Description:    strings.TrimSpace(agent.Description),
 			Command:        command,

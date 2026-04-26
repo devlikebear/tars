@@ -12,7 +12,7 @@ import (
 	"github.com/devlikebear/tars/internal/session"
 )
 
-func closeGatewayRuntime(t *testing.T, rt *Runtime) {
+func closeAgentRuntime(t *testing.T, rt *Runtime) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -30,7 +30,7 @@ func TestRuntimeSpawnAndWait(t *testing.T) {
 			return "echo: " + prompt, nil
 		},
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	run, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "hello"})
 	if err != nil {
@@ -71,10 +71,10 @@ func TestRuntimeSpawnAndWait(t *testing.T) {
 func TestRuntimeSpawn_PersistsSubagentLineageMetadata(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	rt := NewRuntime(RuntimeOptions{
-		Enabled:                    true,
-		SessionStore:               store,
-		GatewaySubagentsMaxDepth:   1,
-		GatewaySubagentsMaxThreads: 4,
+		Enabled:                         true,
+		SessionStore:                    store,
+		AgentRuntimeSubagentsMaxDepth:   1,
+		AgentRuntimeSubagentsMaxThreads: 4,
 		Executors: []AgentExecutor{
 			stubExecutor{
 				info: AgentInfo{
@@ -92,7 +92,7 @@ func TestRuntimeSpawn_PersistsSubagentLineageMetadata(t *testing.T) {
 		},
 		DefaultAgent: "explorer",
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	parent, err := store.Create("chat")
 	if err != nil {
@@ -159,7 +159,7 @@ func TestRuntimeSpawn_UnknownAgent(t *testing.T) {
 			return prompt, nil
 		},
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	_, err := rt.Spawn(context.Background(), SpawnRequest{
 		Prompt: "hello",
@@ -182,7 +182,7 @@ func TestRuntimeRunWorkspaceScope(t *testing.T) {
 			return "echo: " + prompt, nil
 		},
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	runA, err := rt.Spawn(context.Background(), SpawnRequest{WorkspaceID: "ws-a", Prompt: "a"})
 	if err != nil {
@@ -225,7 +225,7 @@ func TestRuntimeSpawn_WithCustomExecutor(t *testing.T) {
 		},
 		DefaultAgent: "worker",
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	run, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "hello"})
 	if err != nil {
@@ -313,7 +313,7 @@ func TestRuntimeSpawn_PromptExecutorSessionRoutingModes(t *testing.T) {
 		Executors:    []AgentExecutor{newExecutor, callerExecutor, fixedExecutor},
 		DefaultAgent: "new_agent",
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	newRun, err := rt.Spawn(context.Background(), SpawnRequest{
 		Agent:     "new_agent",
@@ -370,7 +370,7 @@ func TestRuntimeSetExecutors_ReplacesAgentSetForNextSpawn(t *testing.T) {
 		},
 		DefaultAgent: "worker1",
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	rt.SetExecutors([]AgentExecutor{
 		stubExecutor{
@@ -411,7 +411,7 @@ func TestRuntimeCancelRun(t *testing.T) {
 			}
 		},
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	run, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "long"})
 	if err != nil {
@@ -461,7 +461,7 @@ func TestRuntimeRunFailure_SetsPolicyDiagnosticCode(t *testing.T) {
 		},
 		DefaultAgent: "researcher",
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	run, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "hello"})
 	if err != nil {
@@ -502,7 +502,7 @@ func TestRuntimeChannelNodes(t *testing.T) {
 		ChannelsWebhookEnabled:  true,
 		ChannelsTelegramEnabled: true,
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	if _, err := rt.MessageSend("general", "", "hello"); err != nil {
 		t.Fatalf("message send: %v", err)
@@ -525,7 +525,7 @@ func TestRuntime_OutboundTelegramRecordedAsTelegramSource(t *testing.T) {
 		WorkspaceDir:            t.TempDir(),
 		ChannelsTelegramEnabled: true,
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	msg, err := rt.OutboundTelegram("bot-main", "chat-1", "", "hello telegram", map[string]any{"provider": "telegram"})
 	if err != nil {
@@ -581,9 +581,9 @@ func TestRuntimeClose_CancelsRunningAndBlocksNewSpawn(t *testing.T) {
 func TestRuntimeStatus_AgentsTelemetry(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	rt := NewRuntime(RuntimeOptions{
-		Enabled:                   true,
-		SessionStore:              store,
-		GatewayAgentsWatchEnabled: true,
+		Enabled:                        true,
+		SessionStore:                   store,
+		AgentRuntimeAgentsWatchEnabled: true,
 		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
 			return prompt, nil
 		},
@@ -597,7 +597,7 @@ func TestRuntimeStatus_AgentsTelemetry(t *testing.T) {
 		},
 		DefaultAgent: "worker",
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	status := rt.Status()
 	if status.AgentsCount < 1 {
@@ -629,7 +629,7 @@ func TestRuntimeStatus_AgentsTelemetry(t *testing.T) {
 }
 
 func TestRuntimePersistence_RestoreSnapshotAndResumeSequences(t *testing.T) {
-	persistDir := filepath.Join(t.TempDir(), "gateway")
+	persistDir := filepath.Join(t.TempDir(), "agentruntime")
 	store := newSnapshotStore(persistDir)
 	if err := store.writeRuns([]Run{
 		{
@@ -667,20 +667,20 @@ func TestRuntimePersistence_RestoreSnapshotAndResumeSequences(t *testing.T) {
 	}
 
 	rt := NewRuntime(RuntimeOptions{
-		Enabled:                           true,
-		WorkspaceDir:                      t.TempDir(),
-		SessionStore:                      session.NewStore(t.TempDir()),
-		ChannelsLocalEnabled:              true,
-		GatewayPersistenceEnabled:         true,
-		GatewayRunsPersistenceEnabled:     true,
-		GatewayChannelsPersistenceEnabled: true,
-		GatewayPersistenceDir:             persistDir,
-		GatewayRestoreOnStartup:           true,
+		Enabled:                                true,
+		WorkspaceDir:                           t.TempDir(),
+		SessionStore:                           session.NewStore(t.TempDir()),
+		ChannelsLocalEnabled:                   true,
+		AgentRuntimePersistenceEnabled:         true,
+		AgentRuntimeRunsPersistenceEnabled:     true,
+		AgentRuntimeChannelsPersistenceEnabled: true,
+		AgentRuntimePersistenceDir:             persistDir,
+		AgentRuntimeRestoreOnStartup:           true,
 		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
 			return "ok: " + prompt, nil
 		},
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	status := rt.Status()
 	if status.RunsRestored != 2 {
@@ -732,18 +732,18 @@ func TestRuntimePersistence_RestoreSnapshotAndResumeSequences(t *testing.T) {
 }
 
 func TestRuntimePersistence_TrimsRunsAndChannelMessages(t *testing.T) {
-	persistDir := filepath.Join(t.TempDir(), "gateway")
+	persistDir := filepath.Join(t.TempDir(), "agentruntime")
 	rt := NewRuntime(RuntimeOptions{
-		Enabled:                              true,
-		WorkspaceDir:                         t.TempDir(),
-		SessionStore:                         session.NewStore(t.TempDir()),
-		ChannelsLocalEnabled:                 true,
-		GatewayPersistenceEnabled:            true,
-		GatewayRunsPersistenceEnabled:        true,
-		GatewayChannelsPersistenceEnabled:    true,
-		GatewayRunsMaxRecords:                2,
-		GatewayChannelsMaxMessagesPerChannel: 2,
-		GatewayPersistenceDir:                persistDir,
+		Enabled:                                   true,
+		WorkspaceDir:                              t.TempDir(),
+		SessionStore:                              session.NewStore(t.TempDir()),
+		ChannelsLocalEnabled:                      true,
+		AgentRuntimePersistenceEnabled:            true,
+		AgentRuntimeRunsPersistenceEnabled:        true,
+		AgentRuntimeChannelsPersistenceEnabled:    true,
+		AgentRuntimeRunsMaxRecords:                2,
+		AgentRuntimeChannelsMaxMessagesPerChannel: 2,
+		AgentRuntimePersistenceDir:                persistDir,
 		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
 			return "ok: " + prompt, nil
 		},
@@ -763,7 +763,7 @@ func TestRuntimePersistence_TrimsRunsAndChannelMessages(t *testing.T) {
 			t.Fatalf("message send %q: %v", text, err)
 		}
 	}
-	closeGatewayRuntime(t, rt)
+	closeAgentRuntime(t, rt)
 
 	store := newSnapshotStore(persistDir)
 	runs, err := store.readRuns()
@@ -796,7 +796,7 @@ func TestRuntimeArchive_RotateAndRetention(t *testing.T) {
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		t.Fatalf("mkdir archive dir: %v", err)
 	}
-	oldFile := filepath.Join(archiveDir, "gateway-old.jsonl")
+	oldFile := filepath.Join(archiveDir, "agentruntime-old.jsonl")
 	if err := os.WriteFile(oldFile, []byte("{\"old\":true}\n"), 0o644); err != nil {
 		t.Fatalf("write old archive file: %v", err)
 	}
@@ -806,16 +806,16 @@ func TestRuntimeArchive_RotateAndRetention(t *testing.T) {
 	}
 
 	rt := NewRuntime(RuntimeOptions{
-		Enabled:                     true,
-		WorkspaceDir:                workspace,
-		SessionStore:                session.NewStore(t.TempDir()),
-		ChannelsLocalEnabled:        true,
-		GatewayReportSummaryEnabled: true,
-		GatewayPersistenceEnabled:   true,
-		GatewayArchiveEnabled:       true,
-		GatewayArchiveDir:           archiveDir,
-		GatewayArchiveRetentionDays: 1,
-		GatewayArchiveMaxFileBytes:  256,
+		Enabled:                          true,
+		WorkspaceDir:                     workspace,
+		SessionStore:                     session.NewStore(t.TempDir()),
+		ChannelsLocalEnabled:             true,
+		AgentRuntimeReportSummaryEnabled: true,
+		AgentRuntimePersistenceEnabled:   true,
+		AgentRuntimeArchiveEnabled:       true,
+		AgentRuntimeArchiveDir:           archiveDir,
+		AgentRuntimeArchiveRetentionDays: 1,
+		AgentRuntimeArchiveMaxFileBytes:  256,
 		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
 			return "ok: " + prompt, nil
 		},
@@ -832,7 +832,7 @@ func TestRuntimeArchive_RotateAndRetention(t *testing.T) {
 	if _, err := rt.MessageSend("general", "", "archive-message"); err != nil {
 		t.Fatalf("message send: %v", err)
 	}
-	closeGatewayRuntime(t, rt)
+	closeAgentRuntime(t, rt)
 
 	if _, err := os.Stat(oldFile); !os.IsNotExist(err) {
 		t.Fatalf("expected old archive file removed by retention, err=%v", err)
@@ -846,7 +846,7 @@ func TestRuntimeArchive_RotateAndRetention(t *testing.T) {
 		if entry.IsDir() {
 			continue
 		}
-		if strings.HasPrefix(entry.Name(), "gateway-") && strings.HasSuffix(entry.Name(), ".jsonl") {
+		if strings.HasPrefix(entry.Name(), "agentruntime-") && strings.HasSuffix(entry.Name(), ".jsonl") {
 			archiveFiles++
 		}
 	}

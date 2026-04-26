@@ -97,7 +97,7 @@ tools:
     enabled: true
   browser:
     enabled: true
-  gateway:
+  agentruntime:
     enabled: true
 
 browser:
@@ -154,7 +154,7 @@ extensions:
         command: npx
         args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
 
-gateway:
+agentruntime:
   enabled: true
   default_agent: worker
   agents:
@@ -171,7 +171,7 @@ gateway:
     allowed_models: [gpt-5.4]
   persistence:
     enabled: true
-    dir: /tmp/gateway
+    dir: /tmp/agentruntime
   runs:
     persistence_enabled: true
     max_records: 123
@@ -234,8 +234,8 @@ gateway:
 	if !cfg.ToolsWebSearchEnabled || cfg.ToolsWebSearchProvider != "perplexity" || cfg.ToolsWebSearchPerplexityAPIKey != "pplx-key" {
 		t.Fatalf("tool hierarchy not parsed: enabled=%t provider=%q pplx=%q", cfg.ToolsWebSearchEnabled, cfg.ToolsWebSearchProvider, cfg.ToolsWebSearchPerplexityAPIKey)
 	}
-	if !reflect.DeepEqual(cfg.ToolsWebFetchPrivateHostAllowlist, []string{"localhost", "127.0.0.1"}) || !cfg.ToolsApplyPatchEnabled || !cfg.ToolsGatewayEnabled {
-		t.Fatalf("tool leaf collections not parsed: hosts=%+v patch=%t gateway=%t", cfg.ToolsWebFetchPrivateHostAllowlist, cfg.ToolsApplyPatchEnabled, cfg.ToolsGatewayEnabled)
+	if !reflect.DeepEqual(cfg.ToolsWebFetchPrivateHostAllowlist, []string{"localhost", "127.0.0.1"}) || !cfg.ToolsApplyPatchEnabled || !cfg.ToolsAgentRuntimeEnabled {
+		t.Fatalf("tool leaf collections not parsed: hosts=%+v patch=%t agentruntime=%t", cfg.ToolsWebFetchPrivateHostAllowlist, cfg.ToolsApplyPatchEnabled, cfg.ToolsAgentRuntimeEnabled)
 	}
 	if !cfg.ChannelsTelegramEnabled || cfg.TelegramBotToken != "yaml-bot-token" || !cfg.ChannelsTelegramPollingEnabled {
 		t.Fatalf("channel hierarchy not parsed: telegram=%t token=%q polling=%t", cfg.ChannelsTelegramEnabled, cfg.TelegramBotToken, cfg.ChannelsTelegramPollingEnabled)
@@ -246,20 +246,20 @@ gateway:
 	if len(cfg.MCPServers) != 1 || cfg.MCPServers[0].Name != "filesystem" {
 		t.Fatalf("mcp hierarchy not parsed: %+v", cfg.MCPServers)
 	}
-	if !cfg.GatewayEnabled || cfg.GatewayDefaultAgent != "worker" || len(cfg.GatewayAgents) != 1 || cfg.GatewayAgents[0].Name != "worker" {
-		t.Fatalf("gateway agents not parsed: enabled=%t default=%q agents=%+v", cfg.GatewayEnabled, cfg.GatewayDefaultAgent, cfg.GatewayAgents)
+	if !cfg.AgentRuntimeEnabled || cfg.AgentRuntimeDefaultAgent != "worker" || len(cfg.AgentRuntimeAgents) != 1 || cfg.AgentRuntimeAgents[0].Name != "worker" {
+		t.Fatalf("agent runtime agents not parsed: enabled=%t default=%q agents=%+v", cfg.AgentRuntimeEnabled, cfg.AgentRuntimeDefaultAgent, cfg.AgentRuntimeAgents)
 	}
-	if !cfg.GatewayTaskOverride.Enabled || !reflect.DeepEqual(cfg.GatewayTaskOverride.AllowedAliases, []string{"codex"}) {
-		t.Fatalf("gateway task override not parsed: %+v", cfg.GatewayTaskOverride)
+	if !cfg.AgentRuntimeTaskOverride.Enabled || !reflect.DeepEqual(cfg.AgentRuntimeTaskOverride.AllowedAliases, []string{"codex"}) {
+		t.Fatalf("agent runtime task override not parsed: %+v", cfg.AgentRuntimeTaskOverride)
 	}
-	if cfg.GatewayPersistenceDir != "/tmp/gateway" || cfg.GatewayRunsMaxRecords != 123 || cfg.GatewayChannelsMaxMessagesPerChannel != 45 {
-		t.Fatalf("gateway persistence hierarchy not parsed: dir=%q runs=%d channels=%d", cfg.GatewayPersistenceDir, cfg.GatewayRunsMaxRecords, cfg.GatewayChannelsMaxMessagesPerChannel)
+	if cfg.AgentRuntimePersistenceDir != "/tmp/agentruntime" || cfg.AgentRuntimeRunsMaxRecords != 123 || cfg.AgentRuntimeChannelsMaxMessagesPerChannel != 45 {
+		t.Fatalf("agent runtime persistence hierarchy not parsed: dir=%q runs=%d channels=%d", cfg.AgentRuntimePersistenceDir, cfg.AgentRuntimeRunsMaxRecords, cfg.AgentRuntimeChannelsMaxMessagesPerChannel)
 	}
-	if cfg.GatewaySubagentsMaxThreads != 6 || cfg.GatewaySubagentsMaxDepth != 2 || !cfg.GatewayConsensusEnabled || !reflect.DeepEqual(cfg.GatewayConsensusAllowedAliases, []string{"codex", "anthropic"}) {
-		t.Fatalf("gateway nested sections not parsed: threads=%d depth=%d consensus=%t aliases=%+v", cfg.GatewaySubagentsMaxThreads, cfg.GatewaySubagentsMaxDepth, cfg.GatewayConsensusEnabled, cfg.GatewayConsensusAllowedAliases)
+	if cfg.AgentRuntimeSubagentsMaxThreads != 6 || cfg.AgentRuntimeSubagentsMaxDepth != 2 || !cfg.AgentRuntimeConsensusEnabled || !reflect.DeepEqual(cfg.AgentRuntimeConsensusAllowedAliases, []string{"codex", "anthropic"}) {
+		t.Fatalf("agent runtime nested sections not parsed: threads=%d depth=%d consensus=%t aliases=%+v", cfg.AgentRuntimeSubagentsMaxThreads, cfg.AgentRuntimeSubagentsMaxDepth, cfg.AgentRuntimeConsensusEnabled, cfg.AgentRuntimeConsensusAllowedAliases)
 	}
-	if !cfg.GatewayArchiveEnabled || cfg.GatewayArchiveDir != "/tmp/archive" || cfg.GatewayArchiveMaxFileBytes != 4096 {
-		t.Fatalf("gateway archive hierarchy not parsed: enabled=%t dir=%q bytes=%d", cfg.GatewayArchiveEnabled, cfg.GatewayArchiveDir, cfg.GatewayArchiveMaxFileBytes)
+	if !cfg.AgentRuntimeArchiveEnabled || cfg.AgentRuntimeArchiveDir != "/tmp/archive" || cfg.AgentRuntimeArchiveMaxFileBytes != 4096 {
+		t.Fatalf("agent runtime archive hierarchy not parsed: enabled=%t dir=%q bytes=%d", cfg.AgentRuntimeArchiveEnabled, cfg.AgentRuntimeArchiveDir, cfg.AgentRuntimeArchiveMaxFileBytes)
 	}
 }
 
@@ -268,7 +268,7 @@ func TestLoad_HierarchicalYAMLRespectsFlatAndEnvPrecedence(t *testing.T) {
 	raw := []byte(`
 workspace_dir: ./flat-workspace
 tools_web_search_provider: brave
-gateway_persistence_dir: /tmp/flat-gateway
+agentruntime_persistence_dir: /tmp/flat-agentruntime
 
 runtime:
   workspace_dir: ./nested-workspace
@@ -277,15 +277,15 @@ tools:
   web_search:
     provider: perplexity
 
-gateway:
+agentruntime:
   persistence:
-    dir: /tmp/nested-gateway
+    dir: /tmp/nested-agentruntime
 `)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
-	t.Setenv("GATEWAY_PERSISTENCE_DIR", "/tmp/env-gateway")
+	t.Setenv("AGENTRUNTIME_PERSISTENCE_DIR", "/tmp/env-agentruntime")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -298,7 +298,7 @@ gateway:
 	if cfg.ToolsWebSearchProvider != "brave" {
 		t.Fatalf("expected flat tools_web_search_provider to win over nested alias, got %q", cfg.ToolsWebSearchProvider)
 	}
-	if cfg.GatewayPersistenceDir != "/tmp/env-gateway" {
-		t.Fatalf("expected env override to win over file config, got %q", cfg.GatewayPersistenceDir)
+	if cfg.AgentRuntimePersistenceDir != "/tmp/env-agentruntime" {
+		t.Fatalf("expected env override to win over file config, got %q", cfg.AgentRuntimePersistenceDir)
 	}
 }

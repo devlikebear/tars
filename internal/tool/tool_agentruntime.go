@@ -31,7 +31,7 @@ func NewMessageTool(runtime *agentruntime.Runtime, enabled bool) Tool {
 				return JSONTextResult(map[string]any{"message": "message tool is disabled"}, true), nil
 			}
 			if runtime == nil {
-				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "agent runtime is not configured"}, true), nil
 			}
 			var input struct {
 				Action    string `json:"action"`
@@ -70,10 +70,10 @@ func NewMessageTool(runtime *agentruntime.Runtime, enabled bool) Tool {
 	}
 }
 
-func NewGatewayTool(runtime *agentruntime.Runtime, enabled bool) Tool {
+func NewAgentRuntimeTool(runtime *agentruntime.Runtime, enabled bool) Tool {
 	return Tool{
-		Name:        "gateway",
-		Description: "Gateway actions: status, reload, restart.",
+		Name:        "agentruntime",
+		Description: "Agent Runtime actions: status, reload, restart.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
@@ -84,10 +84,10 @@ func NewGatewayTool(runtime *agentruntime.Runtime, enabled bool) Tool {
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
 			if !enabled {
-				return JSONTextResult(map[string]any{"message": "gateway tool is disabled"}, true), nil
+				return JSONTextResult(map[string]any{"message": "agent runtime tool is disabled"}, true), nil
 			}
 			if runtime == nil {
-				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "agent runtime is not configured"}, true), nil
 			}
 			var input struct {
 				Action string `json:"action"`

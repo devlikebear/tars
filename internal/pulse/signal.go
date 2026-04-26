@@ -17,10 +17,10 @@ type CronJobLister interface {
 	List() ([]cron.Job, error)
 }
 
-// GatewayRunLister is the narrow interface pulse requires from the
-// gateway runtime to find stuck runs. The real *agentruntime.Runtime satisfies
+// AgentRuntimeRunLister is the narrow interface pulse requires from the
+// agent runtime to find stuck runs. The real *agentruntime.Runtime satisfies
 // it.
-type GatewayRunLister interface {
+type AgentRuntimeRunLister interface {
 	List(limit int) []agentruntime.Run
 }
 
@@ -52,7 +52,7 @@ type Thresholds struct {
 	// reaches or exceeds this value. 0 = disabled.
 	CronConsecutiveFailures int
 
-	// StuckRunMinutes — emit when any gateway run has been in Running
+	// StuckRunMinutes — emit when any agent runtime run has been in Running
 	// status for at least this many minutes. 0 = disabled.
 	StuckRunMinutes int
 
@@ -82,11 +82,11 @@ type Thresholds struct {
 // ScannerSources bundles the data sources a Scanner reads from. Any field
 // may be nil; nil sources yield no signals for that domain.
 type ScannerSources struct {
-	Cron       CronJobLister
-	Gateway    GatewayRunLister
-	Ops        DiskStatProvider
-	Delivery   DeliveryFailureCounter
-	Reflection ReflectionHealthSource
+	Cron         CronJobLister
+	AgentRuntime AgentRuntimeRunLister
+	Ops          DiskStatProvider
+	Delivery     DeliveryFailureCounter
+	Reflection   ReflectionHealthSource
 }
 
 // Scanner collects Signals from the configured sources. It is stateless
@@ -216,10 +216,10 @@ func (s *Scanner) scanCron() *Signal {
 }
 
 func (s *Scanner) scanStuckRuns(now time.Time) *Signal {
-	if s.sources.Gateway == nil || s.thresholds.StuckRunMinutes <= 0 {
+	if s.sources.AgentRuntime == nil || s.thresholds.StuckRunMinutes <= 0 {
 		return nil
 	}
-	runs := s.sources.Gateway.List(100)
+	runs := s.sources.AgentRuntime.List(100)
 	if len(runs) == 0 {
 		return nil
 	}
@@ -235,7 +235,7 @@ func (s *Scanner) scanStuckRuns(now time.Time) *Signal {
 			zlog.Logger.Warn().
 				Str("run_id", r.ID).
 				Str("started_at", r.StartedAt).
-				Msg("pulse: gateway run StartedAt is malformed; skipping stuck-run check for this run")
+				Msg("pulse: agent runtime run StartedAt is malformed; skipping stuck-run check for this run")
 			continue
 		}
 		if started.Before(cutoff) {
@@ -253,10 +253,10 @@ func (s *Scanner) scanStuckRuns(now time.Time) *Signal {
 		sev = SeverityError
 	}
 	return &Signal{
-		Kind:     SignalKindStuckGatewayRun,
+		Kind:     SignalKindStuckAgentRuntimeRun,
 		Severity: sev,
 		Summary: fmt.Sprintf(
-			"%d gateway run(s) stuck in running for more than %d minute(s)",
+			"%d agent runtime run(s) stuck in running for more than %d minute(s)",
 			len(stuck), s.thresholds.StuckRunMinutes,
 		),
 		Details: map[string]any{

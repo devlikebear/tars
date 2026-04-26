@@ -13,44 +13,44 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 	if nowFn == nil {
 		nowFn = time.Now
 	}
-	if opts.GatewayRunsMaxRecords <= 0 {
-		opts.GatewayRunsMaxRecords = 2000
+	if opts.AgentRuntimeRunsMaxRecords <= 0 {
+		opts.AgentRuntimeRunsMaxRecords = 2000
 	}
-	if opts.GatewayChannelsMaxMessagesPerChannel <= 0 {
-		opts.GatewayChannelsMaxMessagesPerChannel = 500
+	if opts.AgentRuntimeChannelsMaxMessagesPerChannel <= 0 {
+		opts.AgentRuntimeChannelsMaxMessagesPerChannel = 500
 	}
-	if opts.GatewaySubagentsMaxThreads <= 0 {
-		opts.GatewaySubagentsMaxThreads = 4
+	if opts.AgentRuntimeSubagentsMaxThreads <= 0 {
+		opts.AgentRuntimeSubagentsMaxThreads = 4
 	}
-	if opts.GatewaySubagentsMaxDepth <= 0 {
-		opts.GatewaySubagentsMaxDepth = 1
+	if opts.AgentRuntimeSubagentsMaxDepth <= 0 {
+		opts.AgentRuntimeSubagentsMaxDepth = 1
 	}
-	if opts.GatewayConsensusMaxFanout <= 0 {
-		opts.GatewayConsensusMaxFanout = 3
+	if opts.AgentRuntimeConsensusMaxFanout <= 0 {
+		opts.AgentRuntimeConsensusMaxFanout = 3
 	}
-	if opts.GatewayConsensusBudgetTokens <= 0 {
-		opts.GatewayConsensusBudgetTokens = 20000
+	if opts.AgentRuntimeConsensusBudgetTokens <= 0 {
+		opts.AgentRuntimeConsensusBudgetTokens = 20000
 	}
-	if opts.GatewayConsensusBudgetUSD <= 0 {
-		opts.GatewayConsensusBudgetUSD = 0.50
+	if opts.AgentRuntimeConsensusBudgetUSD <= 0 {
+		opts.AgentRuntimeConsensusBudgetUSD = 0.50
 	}
-	if opts.GatewayConsensusTimeoutSeconds <= 0 {
-		opts.GatewayConsensusTimeoutSeconds = 120
+	if opts.AgentRuntimeConsensusTimeoutSeconds <= 0 {
+		opts.AgentRuntimeConsensusTimeoutSeconds = 120
 	}
-	if opts.GatewayConsensusConcurrentRuns <= 0 {
-		opts.GatewayConsensusConcurrentRuns = 1
+	if opts.AgentRuntimeConsensusConcurrentRuns <= 0 {
+		opts.AgentRuntimeConsensusConcurrentRuns = 1
 	}
-	if strings.TrimSpace(opts.GatewayPersistenceDir) == "" {
-		opts.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(opts.WorkspaceDir), "_shared", "gateway")
+	if strings.TrimSpace(opts.AgentRuntimePersistenceDir) == "" {
+		opts.AgentRuntimePersistenceDir = filepath.Join(strings.TrimSpace(opts.WorkspaceDir), "_shared", "agentruntime")
 	}
-	if strings.TrimSpace(opts.GatewayArchiveDir) == "" {
-		opts.GatewayArchiveDir = filepath.Join(strings.TrimSpace(opts.WorkspaceDir), "_shared", "gateway", "archive")
+	if strings.TrimSpace(opts.AgentRuntimeArchiveDir) == "" {
+		opts.AgentRuntimeArchiveDir = filepath.Join(strings.TrimSpace(opts.WorkspaceDir), "_shared", "agentruntime", "archive")
 	}
-	if opts.GatewayArchiveRetentionDays <= 0 {
-		opts.GatewayArchiveRetentionDays = 30
+	if opts.AgentRuntimeArchiveRetentionDays <= 0 {
+		opts.AgentRuntimeArchiveRetentionDays = 30
 	}
-	if opts.GatewayArchiveMaxFileBytes <= 0 {
-		opts.GatewayArchiveMaxFileBytes = 10485760
+	if opts.AgentRuntimeArchiveMaxFileBytes <= 0 {
+		opts.AgentRuntimeArchiveMaxFileBytes = 10485760
 	}
 	rt := &Runtime{
 		opts:               opts,
@@ -58,15 +58,15 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 		runs:               map[string]*runState{},
 		channelMsgs:        map[string][]ChannelMessage{},
 		executors:          map[string]AgentExecutor{},
-		executionSem:       newExecutionSemaphore(opts.GatewaySubagentsMaxThreads),
-		agentsWatchEnabled: opts.GatewayAgentsWatchEnabled,
+		executionSem:       newExecutionSemaphore(opts.AgentRuntimeSubagentsMaxThreads),
+		agentsWatchEnabled: opts.AgentRuntimeAgentsWatchEnabled,
 		version:            1,
-		persistStore:       newSnapshotStore(opts.GatewayPersistenceDir),
+		persistStore:       newSnapshotStore(opts.AgentRuntimePersistenceDir),
 		stateVersion:       1,
 		runEvents:          newRunEventBroker(),
-		subagentPool:       newWeightedSemaphore(opts.GatewaySubagentsMaxThreads),
-		consensusRuns:      newWeightedSemaphore(opts.GatewayConsensusConcurrentRuns),
-		consensusPool:      newWeightedSemaphore(opts.GatewayConsensusMaxFanout * opts.GatewayConsensusConcurrentRuns),
+		subagentPool:       newWeightedSemaphore(opts.AgentRuntimeSubagentsMaxThreads),
+		consensusRuns:      newWeightedSemaphore(opts.AgentRuntimeConsensusConcurrentRuns),
+		consensusPool:      newWeightedSemaphore(opts.AgentRuntimeConsensusMaxFanout * opts.AgentRuntimeConsensusConcurrentRuns),
 	}
 	rt.initExecutors()
 	rt.restoreSnapshotOnStartup()
@@ -79,7 +79,7 @@ func (r *Runtime) Enabled() bool {
 
 func (r *Runtime) requireEnabled() error {
 	if !r.Enabled() {
-		return fmt.Errorf("gateway runtime is disabled")
+		return fmt.Errorf("agent runtime is disabled")
 	}
 	return nil
 }

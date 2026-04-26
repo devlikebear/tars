@@ -161,7 +161,7 @@ type ChannelMessage struct {
 	Timestamp   string         `json:"timestamp"`
 }
 
-type GatewayStatus struct {
+type AgentRuntimeStatus struct {
 	Enabled                    bool   `json:"enabled"`
 	Version                    int64  `json:"version"`
 	RunsTotal                  int    `json:"runs_total"`
@@ -214,41 +214,41 @@ type ReportChannels struct {
 }
 
 type RuntimeOptions struct {
-	Enabled                              bool
-	WorkspaceDir                         string
-	SessionStore                         *session.Store
-	SessionStoreForWorkspace             func(workspaceID string) *session.Store
-	RunPrompt                            func(ctx context.Context, runLabel string, prompt string) (string, error)
-	Executors                            []AgentExecutor
-	DefaultAgent                         string
-	GatewayAgentsWatchEnabled            bool
-	ChannelsLocalEnabled                 bool
-	ChannelsWebhookEnabled               bool
-	ChannelsTelegramEnabled              bool
-	GatewayPersistenceEnabled            bool
-	GatewayRunsPersistenceEnabled        bool
-	GatewayChannelsPersistenceEnabled    bool
-	GatewayRunsMaxRecords                int
-	GatewayChannelsMaxMessagesPerChannel int
-	GatewaySubagentsMaxThreads           int
-	GatewaySubagentsMaxDepth             int
-	GatewayConsensusEnabled              bool
-	GatewayConsensusMaxFanout            int
-	GatewayConsensusBudgetTokens         int
-	GatewayConsensusBudgetUSD            float64
-	GatewayConsensusTimeoutSeconds       int
-	GatewayConsensusAllowedAliases       []string
-	GatewayConsensusConcurrentRuns       int
-	GatewayPersistenceDir                string
-	GatewayRestoreOnStartup              bool
-	GatewayReportSummaryEnabled          bool
-	GatewayArchiveEnabled                bool
-	GatewayArchiveDir                    string
-	GatewayArchiveRetentionDays          int
-	GatewayArchiveMaxFileBytes           int
-	ResolveProviderOverride              func(tier string, override *ProviderOverride) (ResolvedProviderOverride, error)
-	EstimateTokensCost                   func(provider, model string, inputTokens, outputTokens int) (float64, bool)
-	Now                                  func() time.Time
+	Enabled                                   bool
+	WorkspaceDir                              string
+	SessionStore                              *session.Store
+	SessionStoreForWorkspace                  func(workspaceID string) *session.Store
+	RunPrompt                                 func(ctx context.Context, runLabel string, prompt string) (string, error)
+	Executors                                 []AgentExecutor
+	DefaultAgent                              string
+	AgentRuntimeAgentsWatchEnabled            bool
+	ChannelsLocalEnabled                      bool
+	ChannelsWebhookEnabled                    bool
+	ChannelsTelegramEnabled                   bool
+	AgentRuntimePersistenceEnabled            bool
+	AgentRuntimeRunsPersistenceEnabled        bool
+	AgentRuntimeChannelsPersistenceEnabled    bool
+	AgentRuntimeRunsMaxRecords                int
+	AgentRuntimeChannelsMaxMessagesPerChannel int
+	AgentRuntimeSubagentsMaxThreads           int
+	AgentRuntimeSubagentsMaxDepth             int
+	AgentRuntimeConsensusEnabled              bool
+	AgentRuntimeConsensusMaxFanout            int
+	AgentRuntimeConsensusBudgetTokens         int
+	AgentRuntimeConsensusBudgetUSD            float64
+	AgentRuntimeConsensusTimeoutSeconds       int
+	AgentRuntimeConsensusAllowedAliases       []string
+	AgentRuntimeConsensusConcurrentRuns       int
+	AgentRuntimePersistenceDir                string
+	AgentRuntimeRestoreOnStartup              bool
+	AgentRuntimeReportSummaryEnabled          bool
+	AgentRuntimeArchiveEnabled                bool
+	AgentRuntimeArchiveDir                    string
+	AgentRuntimeArchiveRetentionDays          int
+	AgentRuntimeArchiveMaxFileBytes           int
+	ResolveProviderOverride                   func(tier string, override *ProviderOverride) (ResolvedProviderOverride, error)
+	EstimateTokensCost                        func(provider, model string, inputTokens, outputTokens int) (float64, bool)
+	Now                                       func() time.Time
 }
 
 type runState struct {

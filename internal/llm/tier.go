@@ -16,7 +16,7 @@ const (
 	// architectural decisions, long-context synthesis.
 	TierHeavy Tier = "heavy"
 	// TierStandard is the general-purpose default used for chat and most
-	// gateway agent work.
+	// agent runtime work.
 	TierStandard Tier = "standard"
 	// TierLight is for fast, cheap operations: summarization, classification,
 	// memory hooks, pulse deciders, reflection compaction.

@@ -14,14 +14,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestBuildGatewayExecutors_CommandExecutor(t *testing.T) {
+func TestBuildAgentRuntimeExecutors_CommandExecutor(t *testing.T) {
 	workspace := t.TempDir()
 	cfg := config.Config{
 		RuntimeConfig: config.RuntimeConfig{
 			WorkspaceDir: workspace,
 		},
-		GatewayConfig: config.GatewayConfig{
-			GatewayAgents: []config.GatewayAgent{
+		AgentRuntimeConfig: config.AgentRuntimeConfig{
+			AgentRuntimeAgents: []config.AgentRuntimeAgent{
 				{
 					Name:    "worker",
 					Command: "sh",
@@ -32,9 +32,9 @@ func TestBuildGatewayExecutors_CommandExecutor(t *testing.T) {
 		},
 	}
 
-	executors := buildGatewayExecutors(cfg, nil, zerolog.New(io.Discard))
+	executors := buildAgentRuntimeExecutors(cfg, nil, zerolog.New(io.Discard))
 	if len(executors) != 1 {
-		t.Fatalf("expected 1 gateway executor, got %d", len(executors))
+		t.Fatalf("expected 1 agent runtime executor, got %d", len(executors))
 	}
 	if executors[0].Info().Name != "worker" {
 		t.Fatalf("unexpected executor info: %+v", executors[0].Info())
@@ -56,7 +56,7 @@ func TestBuildGatewayExecutors_CommandExecutor(t *testing.T) {
 	}
 }
 
-func TestBuildGatewayExecutors_ResolveRelativeWorkingDir(t *testing.T) {
+func TestBuildAgentRuntimeExecutors_ResolveRelativeWorkingDir(t *testing.T) {
 	workspace := t.TempDir()
 	relativeDir := "nested"
 	if err := os.MkdirAll(filepath.Join(workspace, relativeDir), 0o755); err != nil {
@@ -66,8 +66,8 @@ func TestBuildGatewayExecutors_ResolveRelativeWorkingDir(t *testing.T) {
 		RuntimeConfig: config.RuntimeConfig{
 			WorkspaceDir: workspace,
 		},
-		GatewayConfig: config.GatewayConfig{
-			GatewayAgents: []config.GatewayAgent{
+		AgentRuntimeConfig: config.AgentRuntimeConfig{
+			AgentRuntimeAgents: []config.AgentRuntimeAgent{
 				{
 					Name:       "worker",
 					Command:    "sh",
@@ -79,9 +79,9 @@ func TestBuildGatewayExecutors_ResolveRelativeWorkingDir(t *testing.T) {
 		},
 	}
 
-	executors := buildGatewayExecutors(cfg, nil, zerolog.New(io.Discard))
+	executors := buildAgentRuntimeExecutors(cfg, nil, zerolog.New(io.Discard))
 	if len(executors) != 1 {
-		t.Fatalf("expected 1 gateway executor, got %d", len(executors))
+		t.Fatalf("expected 1 agent runtime executor, got %d", len(executors))
 	}
 	out, err := executors[0].Execute(context.Background(), agentruntime.ExecuteRequest{})
 	if err != nil {
@@ -100,13 +100,13 @@ func TestBuildGatewayExecutors_ResolveRelativeWorkingDir(t *testing.T) {
 	}
 }
 
-func TestBuildGatewayExecutors_SkipDisabledAndInvalid(t *testing.T) {
+func TestBuildAgentRuntimeExecutors_SkipDisabledAndInvalid(t *testing.T) {
 	cfg := config.Config{
 		RuntimeConfig: config.RuntimeConfig{
 			WorkspaceDir: t.TempDir(),
 		},
-		GatewayConfig: config.GatewayConfig{
-			GatewayAgents: []config.GatewayAgent{
+		AgentRuntimeConfig: config.AgentRuntimeConfig{
+			AgentRuntimeAgents: []config.AgentRuntimeAgent{
 				{
 					Name:    "disabled",
 					Command: "sh",
@@ -127,7 +127,7 @@ func TestBuildGatewayExecutors_SkipDisabledAndInvalid(t *testing.T) {
 			},
 		},
 	}
-	executors := buildGatewayExecutors(cfg, nil, zerolog.New(io.Discard))
+	executors := buildAgentRuntimeExecutors(cfg, nil, zerolog.New(io.Discard))
 	if len(executors) != 1 {
 		t.Fatalf("expected only valid enabled executor, got %d", len(executors))
 	}
@@ -136,7 +136,7 @@ func TestBuildGatewayExecutors_SkipDisabledAndInvalid(t *testing.T) {
 	}
 }
 
-func TestBuildGatewayExecutors_AddsBuiltInExplorerExecutor(t *testing.T) {
+func TestBuildAgentRuntimeExecutors_AddsBuiltInExplorerExecutor(t *testing.T) {
 	cfg := config.Config{
 		RuntimeConfig: config.RuntimeConfig{
 			WorkspaceDir: t.TempDir(),
@@ -152,7 +152,7 @@ func TestBuildGatewayExecutors_AddsBuiltInExplorerExecutor(t *testing.T) {
 		return "ok:" + prompt, nil
 	}
 
-	executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
+	executors := buildAgentRuntimeExecutors(cfg, runPrompt, zerolog.New(io.Discard))
 	found := false
 	for _, executor := range executors {
 		info := executor.Info()
@@ -179,7 +179,7 @@ func TestBuildGatewayExecutors_AddsBuiltInExplorerExecutor(t *testing.T) {
 	}
 }
 
-func TestBuildGatewayExecutors_LoadWorkspaceMarkdownAgent(t *testing.T) {
+func TestBuildAgentRuntimeExecutors_LoadWorkspaceMarkdownAgent(t *testing.T) {
 	workspace := t.TempDir()
 	agentFile := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
 	if err := os.MkdirAll(filepath.Dir(agentFile), 0o755); err != nil {
@@ -205,7 +205,7 @@ Find evidence first and answer with concise bullets.
 	}
 	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace}}
 
-	executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
+	executors := buildAgentRuntimeExecutors(cfg, runPrompt, zerolog.New(io.Discard))
 	var researcher agentruntime.AgentExecutor
 	for _, executor := range executors {
 		if executor.Info().Name == "researcher" {
@@ -247,7 +247,7 @@ Find evidence first and answer with concise bullets.
 	}
 }
 
-func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.T) {
+func TestBuildAgentRuntimeExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.T) {
 	workspace := t.TempDir()
 	agentFile := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
 	if err := os.MkdirAll(filepath.Dir(agentFile), 0o755); err != nil {
@@ -266,8 +266,8 @@ func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.
 		RuntimeConfig: config.RuntimeConfig{
 			WorkspaceDir: workspace,
 		},
-		GatewayConfig: config.GatewayConfig{
-			GatewayAgents: []config.GatewayAgent{
+		AgentRuntimeConfig: config.AgentRuntimeConfig{
+			AgentRuntimeAgents: []config.AgentRuntimeAgent{
 				{
 					Name:    "researcher",
 					Command: "sh",
@@ -278,7 +278,7 @@ func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.
 		},
 	}
 
-	executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
+	executors := buildAgentRuntimeExecutors(cfg, runPrompt, zerolog.New(io.Discard))
 	var researcher agentruntime.AgentExecutor
 	for _, executor := range executors {
 		if executor.Info().Name == "researcher" {

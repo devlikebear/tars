@@ -11,7 +11,7 @@ func telegramHelpText() string {
 /providers
 /models
 /cron {list|runs {job_id} [limit]}
-/gateway status
+/agentruntime status
 /channels`)
 }
 

@@ -8,24 +8,24 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func newGatewayAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger, reloadHook func()) http.Handler {
+func newAgentRuntimeAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger, reloadHook func()) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/gateway/status", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/agentruntime/status", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if runtime == nil {
-			writeJSON(w, http.StatusOK, agentruntime.GatewayStatus{Enabled: false})
+			writeJSON(w, http.StatusOK, agentruntime.AgentRuntimeStatus{Enabled: false})
 			return
 		}
 		writeJSON(w, http.StatusOK, runtime.Status())
 	})
-	mux.HandleFunc("/v1/gateway/reload", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/agentruntime/reload", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if runtime == nil {
-			writeUnavailable(w, "gateway runtime is not configured")
+			writeUnavailable(w, "agent runtime is not configured")
 			return
 		}
 		if reloadHook != nil {
@@ -33,46 +33,46 @@ func newGatewayAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger, 
 		}
 		writeJSON(w, http.StatusOK, runtime.Reload())
 	})
-	mux.HandleFunc("/v1/gateway/restart", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/agentruntime/restart", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if runtime == nil {
-			writeUnavailable(w, "gateway runtime is not configured")
+			writeUnavailable(w, "agent runtime is not configured")
 			return
 		}
 		status := runtime.Restart()
-		logger.Info().Msg("gateway runtime restarted")
+		logger.Info().Msg("agent runtime restarted")
 		writeJSON(w, http.StatusOK, status)
 	})
-	mux.HandleFunc("/v1/gateway/reports/summary", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/agentruntime/reports/summary", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		handleGatewaySummaryReport(w, runtime)
+		handleAgentRuntimeSummaryReport(w, runtime)
 	})
-	mux.HandleFunc("/v1/gateway/reports/runs", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/agentruntime/reports/runs", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		handleGatewayDetailedReport(w, r, runtime, func(limit int) (any, error) {
+		handleAgentRuntimeDetailedReport(w, r, runtime, func(limit int) (any, error) {
 			return runtime.ReportsRuns(limit)
 		})
 	})
-	mux.HandleFunc("/v1/gateway/reports/channels", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/agentruntime/reports/channels", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		handleGatewayDetailedReport(w, r, runtime, func(limit int) (any, error) {
+		handleAgentRuntimeDetailedReport(w, r, runtime, func(limit int) (any, error) {
 			return runtime.ReportsChannels(limit)
 		})
 	})
 	return mux
 }
 
-func handleGatewaySummaryReport(w http.ResponseWriter, runtime *agentruntime.Runtime) {
+func handleAgentRuntimeSummaryReport(w http.ResponseWriter, runtime *agentruntime.Runtime) {
 	if runtime == nil {
-		writeUnavailable(w, "gateway runtime is not configured")
+		writeUnavailable(w, "agent runtime is not configured")
 		return
 	}
 	report, err := runtime.ReportsSummary()
@@ -81,20 +81,20 @@ func handleGatewaySummaryReport(w http.ResponseWriter, runtime *agentruntime.Run
 		return
 	}
 	if !report.SummaryEnabled {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "gateway summary report is disabled"})
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "agent runtime summary report is disabled"})
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
 }
 
-func handleGatewayDetailedReport(
+func handleAgentRuntimeDetailedReport(
 	w http.ResponseWriter,
 	r *http.Request,
 	runtime *agentruntime.Runtime,
 	fetch func(limit int) (any, error),
 ) {
 	if runtime == nil {
-		writeUnavailable(w, "gateway runtime is not configured")
+		writeUnavailable(w, "agent runtime is not configured")
 		return
 	}
 	limit, ok := parsePositiveLimit(w, r, 50)
@@ -103,13 +103,13 @@ func handleGatewayDetailedReport(
 	}
 	report, err := fetch(limit)
 	if err != nil {
-		writeJSON(w, gatewayReportErrorStatus(err), map[string]string{"error": err.Error()})
+		writeJSON(w, agentRuntimeReportErrorStatus(err), map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
 }
 
-func gatewayReportErrorStatus(err error) int {
+func agentRuntimeReportErrorStatus(err error) int {
 	if strings.Contains(strings.ToLower(err.Error()), "disabled") {
 		return http.StatusNotFound
 	}

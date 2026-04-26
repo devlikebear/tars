@@ -921,18 +921,18 @@ func TestExtensionsAPI_ListAndReload(t *testing.T) {
 	if err := json.Unmarshal(reloadRec.Body.Bytes(), &reloadPayload); err != nil {
 		t.Fatalf("decode reload payload: %v", err)
 	}
-	if _, ok := reloadPayload["gateway_refreshed"]; !ok {
-		t.Fatalf("expected gateway_refreshed field, payload=%+v", reloadPayload)
+	if _, ok := reloadPayload["agentruntime_refreshed"]; !ok {
+		t.Fatalf("expected agentruntime_refreshed field, payload=%+v", reloadPayload)
 	}
-	if _, ok := reloadPayload["gateway_agents"]; !ok {
-		t.Fatalf("expected gateway_agents field, payload=%+v", reloadPayload)
+	if _, ok := reloadPayload["agentruntime_agents"]; !ok {
+		t.Fatalf("expected agentruntime_agents field, payload=%+v", reloadPayload)
 	}
 	if provider.reloadCount != 1 {
 		t.Fatalf("expected reload count 1, got %d", provider.reloadCount)
 	}
 }
 
-func TestExtensionsAPI_ReloadCallsGatewayRefreshHook(t *testing.T) {
+func TestExtensionsAPI_ReloadCallsAgentRuntimeRefreshHook(t *testing.T) {
 	provider := &mockExtensionsProvider{
 		snapshot: extensions.Snapshot{Version: 7},
 	}
@@ -959,13 +959,13 @@ func TestExtensionsAPI_ReloadCallsGatewayRefreshHook(t *testing.T) {
 	if err := json.Unmarshal(reloadRec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode payload: %v", err)
 	}
-	refreshed, _ := payload["gateway_refreshed"].(bool)
+	refreshed, _ := payload["agentruntime_refreshed"].(bool)
 	if !refreshed {
-		t.Fatalf("expected gateway_refreshed=true, payload=%+v", payload)
+		t.Fatalf("expected agentruntime_refreshed=true, payload=%+v", payload)
 	}
-	agents, _ := payload["gateway_agents"].(float64)
+	agents, _ := payload["agentruntime_agents"].(float64)
 	if int(agents) != 3 {
-		t.Fatalf("expected gateway_agents=3, payload=%+v", payload)
+		t.Fatalf("expected agentruntime_agents=3, payload=%+v", payload)
 	}
 }
 
@@ -1479,18 +1479,18 @@ func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 		t.Fatalf("new explorer executor: %v", err)
 	}
 	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
-		Enabled:                    true,
-		WorkspaceDir:               root,
-		SessionStore:               store,
-		Executors:                  []agentruntime.AgentExecutor{explorer},
-		DefaultAgent:               "explorer",
-		GatewaySubagentsMaxThreads: 4,
+		Enabled:                         true,
+		WorkspaceDir:                    root,
+		SessionStore:                    store,
+		Executors:                       []agentruntime.AgentExecutor{explorer},
+		DefaultAgent:                    "explorer",
+		AgentRuntimeSubagentsMaxThreads: 4,
 	})
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := runtime.Close(ctx); err != nil {
-			t.Fatalf("close gateway runtime: %v", err)
+			t.Fatalf("close agent runtime: %v", err)
 		}
 	})
 
@@ -1529,7 +1529,7 @@ func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 		8,
 		nil,
 		"",
-		chatToolingOptions{Gateway: runtime},
+		chatToolingOptions{AgentRuntime: runtime},
 	)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"parallel inspect this repo"}`))
 	req.Header.Set("Content-Type", "application/json")

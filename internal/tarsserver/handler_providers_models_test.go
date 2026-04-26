@@ -55,14 +55,14 @@ func (f *fakeModelFetcher) FetchModels(_ context.Context, opts llm.ProviderOptio
 	return append([]string(nil), f.models...), nil
 }
 
-func TestModelCache_PathUnderGatewayPersistenceDir_(t *testing.T) {
+func TestModelCache_PathUnderAgentRuntimePersistenceDir_(t *testing.T) {
 	cfg := config.Config{
-		GatewayConfig: config.GatewayConfig{
-			GatewayPersistenceDir: filepath.Join(t.TempDir(), "gateway"),
+		AgentRuntimeConfig: config.AgentRuntimeConfig{
+			AgentRuntimePersistenceDir: filepath.Join(t.TempDir(), "agentruntime"),
 		},
 	}
 	got := providerModelsCachePath(cfg)
-	want := filepath.Join(cfg.GatewayPersistenceDir, providerModelsCacheFile)
+	want := filepath.Join(cfg.AgentRuntimePersistenceDir, providerModelsCacheFile)
 	if got != want {
 		t.Fatalf("expected cache path %q, got %q", want, got)
 	}

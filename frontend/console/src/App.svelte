@@ -9,7 +9,7 @@
   import Extensions from './components/Extensions.svelte'
   import Pulse from './components/Pulse.svelte'
   import Reflection from './components/Reflection.svelte'
-  import GatewayRunView from './components/GatewayRunView.svelte'
+  import AgentRuntimeRunView from './components/AgentRuntimeRunView.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { getEventsHistory, streamEvents } from './lib/api'
 
@@ -82,8 +82,8 @@
     {#key aiPrompt}
       <Chat sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
     {/key}
-  {:else if route.view === 'gateway'}
-    <GatewayRunView runId={route.runId} onNavigate={navigate} />
+  {:else if route.view === 'agentruntime'}
+    <AgentRuntimeRunView runId={route.runId} onNavigate={navigate} />
   {:else if route.view === 'memory'}
     <MemoryCenter onAskAI={navigateWithPrompt} />
   {:else if route.view === 'sysprompt'}

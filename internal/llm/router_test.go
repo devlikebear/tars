@@ -19,9 +19,9 @@ func buildValidRouterConfig(defaultTier Tier, roleDefaults map[Role]Tier) Router
 
 func TestNewRouterValidConfig(t *testing.T) {
 	router, err := NewRouter(buildValidRouterConfig(TierStandard, map[Role]Tier{
-		RolePulseDecider:     TierLight,
-		RoleReflectionMemory: TierLight,
-		RoleGatewayPlanner:   TierHeavy,
+		RolePulseDecider:        TierLight,
+		RoleReflectionMemory:    TierLight,
+		RoleAgentRuntimePlanner: TierHeavy,
 	}))
 	if err != nil {
 		t.Fatalf("NewRouter returned error: %v", err)
@@ -98,9 +98,9 @@ func TestClientForRoleFallbackToDefault(t *testing.T) {
 
 func TestClientForRoleUsesRoleDefault(t *testing.T) {
 	router, _, err := NewFakeRouter(TierStandard, map[Role]Tier{
-		RolePulseDecider:     TierLight,
-		RoleReflectionMemory: TierLight,
-		RoleGatewayPlanner:   TierHeavy,
+		RolePulseDecider:        TierLight,
+		RoleReflectionMemory:    TierLight,
+		RoleAgentRuntimePlanner: TierHeavy,
 	})
 	if err != nil {
 		t.Fatalf("NewFakeRouter: %v", err)
@@ -116,13 +116,13 @@ func TestClientForRoleUsesRoleDefault(t *testing.T) {
 	if res.Source != "role" {
 		t.Errorf("Source = %q, want role", res.Source)
 	}
-	// gateway_planner → heavy
-	_, res, err = router.ClientFor(RoleGatewayPlanner)
+	// agentruntime_planner → heavy
+	_, res, err = router.ClientFor(RoleAgentRuntimePlanner)
 	if err != nil {
 		t.Fatalf("ClientFor: %v", err)
 	}
 	if res.Tier != TierHeavy {
-		t.Errorf("gateway_planner Tier = %q, want heavy", res.Tier)
+		t.Errorf("agentruntime_planner Tier = %q, want heavy", res.Tier)
 	}
 }
 

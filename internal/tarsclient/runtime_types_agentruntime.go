@@ -6,15 +6,15 @@ type agentDescriptor = tarsclient.AgentDescriptor
 
 type agentRun = tarsclient.AgentRun
 
-type gatewayStatus = tarsclient.GatewayStatus
+type agentRuntimeStatus = tarsclient.AgentRuntimeStatus
 
-type gatewayReportSummary = tarsclient.GatewayReportSummary
+type agentRuntimeReportSummary = tarsclient.AgentRuntimeReportSummary
 
-type gatewayReportRuns = tarsclient.GatewayReportRuns
+type agentRuntimeReportRuns = tarsclient.AgentRuntimeReportRuns
 
 type channelReportMessage = tarsclient.ChannelReportMessage
 
-type gatewayReportChannels = tarsclient.GatewayReportChannels
+type agentRuntimeReportChannels = tarsclient.AgentRuntimeReportChannels
 
 type telegramPairingPending = tarsclient.TelegramPairingPending
 

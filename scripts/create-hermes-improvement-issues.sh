@@ -105,7 +105,7 @@ create_issue() {
 # ---------- labels ----------
 ensure_label "enhancement"   "a2eeef" "New feature or improvement"
 ensure_label "area/tool"     "c5def5" "internal/tool package"
-ensure_label "area/gateway"  "c5def5" "internal/gateway package"
+ensure_label "area/agentruntime"  "c5def5" "internal/agentruntime package"
 ensure_label "area/llm"      "c5def5" "internal/llm package"
 ensure_label "area/memory"   "c5def5" "internal/memory package"
 ensure_label "area/config"   "c5def5" "internal/config package"
@@ -175,16 +175,16 @@ create_issue "feat(config): context compression knobs + simple fallback (hermes 
   "enhancement" "area/config"
 
 write_body "${TMP_DIR}/03.md" "03-provider-override.md" \
-  "Add optional per-task \`provider_override\` on \`AgentTask\` with config allowlist. Credentials stay in env/config — never accepted as tool parameters. Record resolved provider in gateway run audit log." \
+  "Add optional per-task \`provider_override\` on \`AgentTask\` with config allowlist. Credentials stay in env/config — never accepted as tool parameters. Record resolved provider in agent runtime run audit log." \
   "S2"
-create_issue "feat(gateway): per-task provider/credential override (hermes #03)" "${TMP_DIR}/03.md" \
-  "enhancement" "area/gateway" "area/llm"
+create_issue "feat(agentruntime): per-task provider/credential override (hermes #03)" "${TMP_DIR}/03.md" \
+  "enhancement" "area/agentruntime" "area/llm"
 
 write_body "${TMP_DIR}/04.md" "04-moa-consensus.md" \
-  "Add opt-in \`mode=consensus\` to the gateway executor. Run a task across N provider/model variants in parallel and synthesize with a light-tier aggregator. Strict budget/fanout/timeout limits enforced deterministically in Go. Console SSE visualizes parallel streams. Depends on #03." \
+  "Add opt-in \`mode=consensus\` to the agent runtime executor. Run a task across N provider/model variants in parallel and synthesize with a light-tier aggregator. Strict budget/fanout/timeout limits enforced deterministically in Go. Console SSE visualizes parallel streams. Depends on #03." \
   "S2"
-create_issue "feat(gateway): MoA consensus executor mode (hermes #04)" "${TMP_DIR}/04.md" \
-  "enhancement" "area/gateway"
+create_issue "feat(agentruntime): MoA consensus executor mode (hermes #04)" "${TMP_DIR}/04.md" \
+  "enhancement" "area/agentruntime"
 
 write_body "${TMP_DIR}/05.md" "05-memory-backend-interface.md" \
   "Refactor \`internal/memory\` to expose a \`Backend\` interface. Wrap the existing file-based implementation as \`FileBackend\`. No behavior change, no external adapters in this PR — interface extraction only." \

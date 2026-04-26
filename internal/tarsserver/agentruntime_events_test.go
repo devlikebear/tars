@@ -14,7 +14,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestAgentRunsAPIHandler_GatewayRunEventsEndpointStreamsRunLifecycle(t *testing.T) {
+func TestAgentRunsAPIHandler_AgentRuntimeRunEventsEndpointStreamsRunLifecycle(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	release := make(chan struct{})
 	executor, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
@@ -40,7 +40,7 @@ func TestAgentRunsAPIHandler_GatewayRunEventsEndpointStreamsRunLifecycle(t *test
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if closeErr := runtime.Close(ctx); closeErr != nil {
-			t.Fatalf("close gateway runtime: %v", closeErr)
+			t.Fatalf("close agent runtime: %v", closeErr)
 		}
 	})
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
@@ -50,7 +50,7 @@ func TestAgentRunsAPIHandler_GatewayRunEventsEndpointStreamsRunLifecycle(t *test
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/runs/"+run.ID+"/events", nil).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/runs/"+run.ID+"/events", nil).WithContext(ctx)
 	rec := httptest.NewRecorder()
 	done := make(chan struct{})
 	go func() {

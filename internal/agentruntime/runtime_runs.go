@@ -40,7 +40,7 @@ func (r *Runtime) closeRunDoneLocked(state *runState) {
 }
 
 func (r *Runtime) trimRunHistoryLocked() {
-	max := r.opts.GatewayRunsMaxRecords
+	max := r.opts.AgentRuntimeRunsMaxRecords
 	if max <= 0 {
 		return
 	}

@@ -105,8 +105,8 @@ func TestMemoryGetTool_ExperiencesTarget(t *testing.T) {
 	if err := memory.AppendExperience(root, memory.Experience{
 		Timestamp:     time.Date(2026, 2, 22, 9, 1, 0, 0, time.UTC),
 		Category:      "task_completed",
-		Summary:       "Completed gateway report review",
-		Tags:          []string{"gateway"},
+		Summary:       "Completed agent runtime report review",
+		Tags:          []string{"agentruntime"},
 		SourceSession: "sess-1",
 		Importance:    8,
 	}); err != nil {
@@ -114,14 +114,14 @@ func TestMemoryGetTool_ExperiencesTarget(t *testing.T) {
 	}
 
 	tl := NewMemoryGetTool(root, memory.NewFileBackend(root, nil))
-	result, err := tl.Execute(context.Background(), json.RawMessage(`{"target":"experiences","query":"gateway","limit":5}`))
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{"target":"experiences","query":"agentruntime","limit":5}`))
 	if err != nil {
 		t.Fatalf("execute experiences query: %v", err)
 	}
 	if result.IsError {
 		t.Fatalf("unexpected error result: %+v", result)
 	}
-	if !strings.Contains(result.Text(), "Completed gateway report review") {
+	if !strings.Contains(result.Text(), "Completed agent runtime report review") {
 		t.Fatalf("expected matched experience in output, got %q", result.Text())
 	}
 }

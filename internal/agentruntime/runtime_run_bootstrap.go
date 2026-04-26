@@ -26,7 +26,7 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 		return Run{}, err
 	}
 
-	sessionID, err := resolveSpawnSessionID(sessionStore, req, gatewayAgentInfo(executor), selectedAgent)
+	sessionID, err := resolveSpawnSessionID(sessionStore, req, agentRuntimeAgentInfo(executor), selectedAgent)
 	if err != nil {
 		return Run{}, err
 	}
@@ -127,7 +127,7 @@ func (r *Runtime) registerAcceptedRunState(state *runState) error {
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
-		return fmt.Errorf("gateway runtime is closed")
+		return fmt.Errorf("agent runtime is closed")
 	}
 	r.runs[state.run.ID] = state
 	r.runOrder = append(r.runOrder, state.run.ID)

@@ -39,7 +39,7 @@ func TestRuntimeRequireEnabled(t *testing.T) {
 			if !tt.wantErr && err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
-			if tt.wantErr && err.Error() != "gateway runtime is disabled" {
+			if tt.wantErr && err.Error() != "agent runtime is disabled" {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})

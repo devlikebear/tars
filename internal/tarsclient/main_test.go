@@ -160,7 +160,7 @@ func TestExecuteCommand_CompactUsesMainSession(t *testing.T) {
 func TestExecuteCommand_CronAndChannels(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/status":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/status":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"enabled":                   true,
 				"version":                   9,
@@ -595,10 +595,10 @@ func TestSendMessage_PrintsToolStatusFeedback(t *testing.T) {
 	}
 }
 
-func TestExecuteCommand_GatewayReports(t *testing.T) {
+func TestExecuteCommand_AgentRuntimeReports(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/summary":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/reports/summary":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"generated_at":       "2026-02-19T00:00:00Z",
 				"summary_enabled":    true,
@@ -610,7 +610,7 @@ func TestExecuteCommand_GatewayReports(t *testing.T) {
 				"messages_total":     4,
 				"messages_by_source": map[string]any{"webhook": 4},
 			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/runs":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/reports/runs":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"generated_at":    "2026-02-19T00:00:01Z",
 				"archive_enabled": false,
@@ -619,7 +619,7 @@ func TestExecuteCommand_GatewayReports(t *testing.T) {
 					{"run_id": "run-1", "status": "completed", "agent": "default"},
 				},
 			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/channels":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/reports/channels":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"generated_at":    "2026-02-19T00:00:02Z",
 				"archive_enabled": false,
@@ -640,34 +640,34 @@ func TestExecuteCommand_GatewayReports(t *testing.T) {
 	stderr := &bytes.Buffer{}
 	runtime := runtimeClient{serverURL: server.URL}
 
-	if _, _, err := executeCommand(context.Background(), runtime, "/gateway summary", "", stdout, stderr); err != nil {
-		t.Fatalf("/gateway summary: %v", err)
+	if _, _, err := executeCommand(context.Background(), runtime, "/agentruntime summary", "", stdout, stderr); err != nil {
+		t.Fatalf("/agentruntime summary: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "runs_total=3") {
 		t.Fatalf("expected summary output, got %q", stdout.String())
 	}
 
 	stdout.Reset()
-	if _, _, err := executeCommand(context.Background(), runtime, "/gateway runs 5", "", stdout, stderr); err != nil {
-		t.Fatalf("/gateway runs: %v", err)
+	if _, _, err := executeCommand(context.Background(), runtime, "/agentruntime runs 5", "", stdout, stderr); err != nil {
+		t.Fatalf("/agentruntime runs: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "run-1") {
 		t.Fatalf("expected runs output, got %q", stdout.String())
 	}
 
 	stdout.Reset()
-	if _, _, err := executeCommand(context.Background(), runtime, "/gateway channels 5", "", stdout, stderr); err != nil {
-		t.Fatalf("/gateway channels: %v", err)
+	if _, _, err := executeCommand(context.Background(), runtime, "/agentruntime channels 5", "", stdout, stderr); err != nil {
+		t.Fatalf("/agentruntime channels: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "general messages=1") {
 		t.Fatalf("expected channels output, got %q", stdout.String())
 	}
 }
 
-func TestExecuteCommand_GatewayStatusTelemetry(t *testing.T) {
+func TestExecuteCommand_AgentRuntimeStatusTelemetry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/status":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/status":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"enabled":                      true,
 				"version":                      11,
@@ -692,8 +692,8 @@ func TestExecuteCommand_GatewayStatusTelemetry(t *testing.T) {
 	stderr := &bytes.Buffer{}
 	runtime := runtimeClient{serverURL: server.URL}
 
-	if _, _, err := executeCommand(context.Background(), runtime, "/gateway status", "", stdout, stderr); err != nil {
-		t.Fatalf("/gateway status: %v", err)
+	if _, _, err := executeCommand(context.Background(), runtime, "/agentruntime status", "", stdout, stderr); err != nil {
+		t.Fatalf("/agentruntime status: %v", err)
 	}
 
 	out := stdout.String()
@@ -707,7 +707,7 @@ func TestExecuteCommand_GatewayStatusTelemetry(t *testing.T) {
 		strings.Contains(out, "restored_runs=3") &&
 		strings.Contains(out, "restored_channels=9")
 	if !containsAll {
-		t.Fatalf("expected gateway telemetry output, got %q", out)
+		t.Fatalf("expected agent runtime telemetry output, got %q", out)
 	}
 }
 
@@ -806,10 +806,10 @@ func TestExecuteCommand_RunsShowsPolicyDiagnosticSummary(t *testing.T) {
 	}
 }
 
-func TestExecuteCommand_GatewayStatusShowsReloadAndRestoreDetails(t *testing.T) {
+func TestExecuteCommand_AgentRuntimeStatusShowsReloadAndRestoreDetails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/status":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/status":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"enabled":                      true,
 				"version":                      15,
@@ -835,8 +835,8 @@ func TestExecuteCommand_GatewayStatusShowsReloadAndRestoreDetails(t *testing.T) 
 	stderr := &bytes.Buffer{}
 	runtime := runtimeClient{serverURL: server.URL}
 
-	if _, _, err := executeCommand(context.Background(), runtime, "/gateway status", "", stdout, stderr); err != nil {
-		t.Fatalf("/gateway status: %v", err)
+	if _, _, err := executeCommand(context.Background(), runtime, "/agentruntime status", "", stdout, stderr); err != nil {
+		t.Fatalf("/agentruntime status: %v", err)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "reload_version=8") {
@@ -923,7 +923,7 @@ func TestFormatRuntimeError_DoesNotIncludeRemovedWorkspaceHint(t *testing.T) {
 func TestFormatRuntimeError_ProvidesAdminHintOnAdminEndpoint(t *testing.T) {
 	err := &apiHTTPError{
 		Method:   http.MethodPost,
-		Endpoint: "http://127.0.0.1:43180/v1/gateway/reload",
+		Endpoint: "http://127.0.0.1:43180/v1/agentruntime/reload",
 		Status:   http.StatusForbidden,
 		Code:     "forbidden",
 		Message:  "forbidden",

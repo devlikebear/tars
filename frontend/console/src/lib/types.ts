@@ -156,7 +156,7 @@ export type ConsensusVariantRecord = {
   finished_at?: string
 }
 
-export type GatewayRun = {
+export type AgentRuntimeRun = {
   run_id: string
   session_id?: string
   session_kind?: string
@@ -184,7 +184,7 @@ export type GatewayRun = {
   updated_at?: string
 }
 
-export type GatewayRunEvent = {
+export type AgentRuntimeRunEvent = {
   type: string
   run_id: string
   timestamp?: string

@@ -359,7 +359,7 @@ func TestTelegramCommand_OutputChunking_SplitsLargeMessage(t *testing.T) {
 	}
 }
 
-func TestTelegramCommand_Allowed_GatewayStatus(t *testing.T) {
+func TestTelegramCommand_Allowed_AgentRuntimeStatus(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(workspace)
 	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
@@ -383,14 +383,14 @@ func TestTelegramCommand_Allowed_GatewayStatus(t *testing.T) {
 		SessionScope: "main",
 		Logger:       zerolog.Nop(),
 	})
-	handled, result, _, err := handler.Execute(context.Background(), "/gateway status", "")
+	handled, result, _, err := handler.Execute(context.Background(), "/agentruntime status", "")
 	if err != nil {
-		t.Fatalf("Execute /gateway status: %v", err)
+		t.Fatalf("Execute /agentruntime status: %v", err)
 	}
 	if !handled {
 		t.Fatalf("expected handled")
 	}
-	if !strings.Contains(result, "gateway enabled=true") {
-		t.Fatalf("unexpected gateway status output: %q", result)
+	if !strings.Contains(result, "agent runtime enabled=true") {
+		t.Fatalf("unexpected agent runtime status output: %q", result)
 	}
 }

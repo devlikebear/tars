@@ -25,11 +25,11 @@ func (f *fakeCronLister) List() ([]cron.Job, error) {
 	return f.jobs, nil
 }
 
-type fakeGatewayLister struct {
+type fakeAgentRuntimeLister struct {
 	runs []agentruntime.Run
 }
 
-func (f *fakeGatewayLister) List(limit int) []agentruntime.Run {
+func (f *fakeAgentRuntimeLister) List(limit int) []agentruntime.Run {
 	return f.runs
 }
 
@@ -142,7 +142,7 @@ func TestScanner_StuckRunsDetectsOldRunning(t *testing.T) {
 	recentStart := now.Add(-5 * time.Minute).Format(time.RFC3339)
 
 	src := ScannerSources{
-		Gateway: &fakeGatewayLister{runs: []agentruntime.Run{
+		AgentRuntime: &fakeAgentRuntimeLister{runs: []agentruntime.Run{
 			{ID: "r1", Status: agentruntime.RunStatusRunning, StartedAt: oldStart},
 			{ID: "r2", Status: agentruntime.RunStatusRunning, StartedAt: recentStart},
 			{ID: "r3", Status: agentruntime.RunStatusCompleted, StartedAt: oldStart}, // not running
@@ -153,7 +153,7 @@ func TestScanner_StuckRunsDetectsOldRunning(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("want 1 signal, got %d", len(got))
 	}
-	if got[0].Kind != SignalKindStuckGatewayRun {
+	if got[0].Kind != SignalKindStuckAgentRuntimeRun {
 		t.Errorf("kind = %v", got[0].Kind)
 	}
 	if got[0].Details["stuck_count"] != 1 {
@@ -169,7 +169,7 @@ func TestScanner_StuckRunsEscalatesAtThreeOrMore(t *testing.T) {
 		{ID: "r2", Status: agentruntime.RunStatusRunning, StartedAt: oldStart},
 		{ID: "r3", Status: agentruntime.RunStatusRunning, StartedAt: oldStart},
 	}
-	sc := buildScanner(ScannerSources{Gateway: &fakeGatewayLister{runs: runs}},
+	sc := buildScanner(ScannerSources{AgentRuntime: &fakeAgentRuntimeLister{runs: runs}},
 		Thresholds{StuckRunMinutes: 60}, now)
 	got := sc.Scan(context.Background())
 	if len(got) != 1 || got[0].Severity != SeverityError {
@@ -182,7 +182,7 @@ func TestScanner_StuckRunsSkipsUnparseableTimestamp(t *testing.T) {
 	runs := []agentruntime.Run{
 		{ID: "r1", Status: agentruntime.RunStatusRunning, StartedAt: "not-a-date"},
 	}
-	sc := buildScanner(ScannerSources{Gateway: &fakeGatewayLister{runs: runs}},
+	sc := buildScanner(ScannerSources{AgentRuntime: &fakeAgentRuntimeLister{runs: runs}},
 		Thresholds{StuckRunMinutes: 60}, now)
 	if got := sc.Scan(context.Background()); len(got) != 0 {
 		t.Errorf("expected skip, got %d signals", len(got))

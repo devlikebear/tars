@@ -136,7 +136,7 @@ func (r *Runtime) appendChannelMessage(workspaceID, channelID, threadID, text, d
 	}
 	r.mu.Lock()
 	r.channelMsgs[internalKey] = append(r.channelMsgs[internalKey], msg)
-	if max := r.opts.GatewayChannelsMaxMessagesPerChannel; max > 0 && len(r.channelMsgs[internalKey]) > max {
+	if max := r.opts.AgentRuntimeChannelsMaxMessagesPerChannel; max > 0 && len(r.channelMsgs[internalKey]) > max {
 		r.channelMsgs[internalKey] = r.channelMsgs[internalKey][len(r.channelMsgs[internalKey])-max:]
 	}
 	r.stateVersion++

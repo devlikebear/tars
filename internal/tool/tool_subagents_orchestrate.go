@@ -129,7 +129,7 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "agent runtime is not configured"}, true), nil
 			}
 
 			var input subagentFlowInput
@@ -162,7 +162,7 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 			}
 			if maxDepth > 0 && nextDepth > maxDepth {
 				return JSONTextResult(map[string]any{
-					"message": fmt.Sprintf("subagent depth %d exceeds gateway_subagents_max_depth=%d", nextDepth, maxDepth),
+					"message": fmt.Sprintf("subagent depth %d exceeds agentruntime_subagents_max_depth=%d", nextDepth, maxDepth),
 				}, true), nil
 			}
 
@@ -429,7 +429,7 @@ func validateSubagentFlow(steps []subagentFlowStepInput, maxThreads int) error {
 			return fmt.Errorf("step %d must contain at least one task", stepIndex+1)
 		}
 		if mode == "parallel" && maxThreads > 0 && len(step.Tasks) > maxThreads {
-			return fmt.Errorf("step %d requested %d tasks exceeds gateway_subagents_max_threads=%d", stepIndex+1, len(step.Tasks), maxThreads)
+			return fmt.Errorf("step %d requested %d tasks exceeds agentruntime_subagents_max_threads=%d", stepIndex+1, len(step.Tasks), maxThreads)
 		}
 		stepSeen := map[string]struct{}{}
 		for taskIndex, task := range step.Tasks {

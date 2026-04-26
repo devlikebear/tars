@@ -12,14 +12,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func buildGatewayExecutors(
+func buildAgentRuntimeExecutors(
 	cfg config.Config,
-	runPrompt gatewayPromptRunner,
+	runPrompt agentRuntimePromptRunner,
 	logger zerolog.Logger,
 ) []agentruntime.AgentExecutor {
-	out := make([]agentruntime.AgentExecutor, 0, len(cfg.GatewayAgents))
+	out := make([]agentruntime.AgentExecutor, 0, len(cfg.AgentRuntimeAgents))
 	registeredNames := map[string]struct{}{}
-	for _, spec := range cfg.GatewayAgents {
+	for _, spec := range cfg.AgentRuntimeAgents {
 		if !spec.Enabled {
 			continue
 		}
@@ -29,7 +29,7 @@ func buildGatewayExecutors(
 			logger.Warn().
 				Str("agent", name).
 				Str("command", command).
-				Msg("skipping invalid gateway agent executor config")
+				Msg("skipping invalid agent runtime executor config")
 			continue
 		}
 
@@ -66,7 +66,7 @@ func buildGatewayExecutors(
 			Timeout:     timeout,
 		})
 		if err != nil {
-			logger.Warn().Err(err).Str("agent", name).Msg("failed to build gateway agent executor")
+			logger.Warn().Err(err).Str("agent", name).Msg("failed to build agent runtime executor")
 			continue
 		}
 		out = append(out, executor)
@@ -108,13 +108,13 @@ func buildGatewayExecutors(
 		return out
 	}
 
-	workspaceAgents, diagnostics, err := loadWorkspaceGatewayAgents(cfg.WorkspaceDir)
+	workspaceAgents, diagnostics, err := loadWorkspaceAgentRuntimeAgents(cfg.WorkspaceDir)
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to load workspace markdown agents")
 		return out
 	}
 	for _, diag := range diagnostics {
-		logger.Warn().Str("diagnostic", strings.TrimSpace(diag)).Msg("workspace gateway agent diagnostic")
+		logger.Warn().Str("diagnostic", strings.TrimSpace(diag)).Msg("workspace agent runtime diagnostic")
 	}
 	for _, def := range workspaceAgents {
 		key := strings.ToLower(strings.TrimSpace(def.Name))

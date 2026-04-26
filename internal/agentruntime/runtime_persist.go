@@ -8,11 +8,11 @@ import (
 )
 
 func (r *Runtime) persistenceEnabled() bool {
-	return r != nil && r.opts.Enabled && r.opts.GatewayPersistenceEnabled
+	return r != nil && r.opts.Enabled && r.opts.AgentRuntimePersistenceEnabled
 }
 
 func (r *Runtime) restoreSnapshotOnStartup() {
-	if r == nil || !r.persistenceEnabled() || !r.opts.GatewayRestoreOnStartup {
+	if r == nil || !r.persistenceEnabled() || !r.opts.AgentRuntimeRestoreOnStartup {
 		return
 	}
 	var (
@@ -20,7 +20,7 @@ func (r *Runtime) restoreSnapshotOnStartup() {
 		channels map[string][]ChannelMessage
 		errText  []string
 	)
-	if r.opts.GatewayRunsPersistenceEnabled {
+	if r.opts.AgentRuntimeRunsPersistenceEnabled {
 		loadedRuns, err := r.persistStore.readRuns()
 		if err != nil {
 			errText = append(errText, err.Error())
@@ -28,7 +28,7 @@ func (r *Runtime) restoreSnapshotOnStartup() {
 			runs = loadedRuns
 		}
 	}
-	if r.opts.GatewayChannelsPersistenceEnabled {
+	if r.opts.AgentRuntimeChannelsPersistenceEnabled {
 		loadedChannels, err := r.persistStore.readChannels()
 		if err != nil {
 			errText = append(errText, err.Error())
@@ -48,7 +48,7 @@ func (r *Runtime) restoreSnapshotOnStartup() {
 			}
 			return runs[i].CreatedAt < runs[j].CreatedAt
 		})
-		runs = trimRuns(runs, r.opts.GatewayRunsMaxRecords)
+		runs = trimRuns(runs, r.opts.AgentRuntimeRunsMaxRecords)
 		r.runs = make(map[string]*runState, len(runs))
 		r.runOrder = make([]string, 0, len(runs))
 		for _, item := range runs {
@@ -98,7 +98,7 @@ func (r *Runtime) restoreSnapshotOnStartup() {
 				normalizedChannels[internalKey] = append(normalizedChannels[internalKey], msg)
 			}
 		}
-		r.channelMsgs = trimChannels(normalizedChannels, r.opts.GatewayChannelsMaxMessagesPerChannel)
+		r.channelMsgs = trimChannels(normalizedChannels, r.opts.AgentRuntimeChannelsMaxMessagesPerChannel)
 		for _, messages := range r.channelMsgs {
 			for _, msg := range messages {
 				if seq := parseIDSequence(msg.ID, "msg_"); seq > 0 {
@@ -165,7 +165,7 @@ func (r *Runtime) snapshotForPersistence() ([]Run, map[string][]ChannelMessage, 
 		run.WorkspaceID = normalizeWorkspaceID(run.WorkspaceID)
 		runs = append(runs, run)
 	}
-	channels := trimChannels(r.channelMsgs, r.opts.GatewayChannelsMaxMessagesPerChannel)
+	channels := trimChannels(r.channelMsgs, r.opts.AgentRuntimeChannelsMaxMessagesPerChannel)
 	return runs, channels, r.stateVersion
 }
 
@@ -175,19 +175,19 @@ func (r *Runtime) persistSnapshot() {
 	}
 	for attempt := 0; attempt < 2; attempt++ {
 		runs, channels, snapshotVersion := r.snapshotForPersistence()
-		runs = trimRuns(runs, r.opts.GatewayRunsMaxRecords)
+		runs = trimRuns(runs, r.opts.AgentRuntimeRunsMaxRecords)
 		writeErr := ""
-		if r.opts.GatewayRunsPersistenceEnabled {
+		if r.opts.AgentRuntimeRunsPersistenceEnabled {
 			if err := r.persistStore.writeRuns(runs); err != nil {
 				writeErr = err.Error()
 			}
 		}
-		if writeErr == "" && r.opts.GatewayChannelsPersistenceEnabled {
+		if writeErr == "" && r.opts.AgentRuntimeChannelsPersistenceEnabled {
 			if err := r.persistStore.writeChannels(channels); err != nil {
 				writeErr = err.Error()
 			}
 		}
-		if writeErr == "" && r.opts.GatewayArchiveEnabled {
+		if writeErr == "" && r.opts.AgentRuntimeArchiveEnabled {
 			_ = r.persistArchiveSnapshot(runs, channels)
 		}
 		r.mu.Lock()

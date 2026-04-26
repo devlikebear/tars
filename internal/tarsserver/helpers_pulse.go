@@ -25,7 +25,7 @@ type pulseSetupInputs struct {
 	WorkspaceDir     string
 	Router           llm.Router
 	CronStore        *cron.Store
-	GatewayRuntime   *agentruntime.Runtime
+	AgentRuntime     *agentruntime.Runtime
 	OpsManager       *ops.Manager
 	DeliveryCounter  *telegramDeliveryCounter
 	ReflectionHealth pulse.ReflectionHealthSource
@@ -70,11 +70,11 @@ func buildPulseRuntime(in pulseSetupInputs) pulseSetup {
 	}
 
 	sources := pulse.ScannerSources{
-		Cron:       in.CronStore,
-		Gateway:    in.GatewayRuntime,
-		Ops:        in.OpsManager,
-		Delivery:   in.DeliveryCounter,
-		Reflection: in.ReflectionHealth,
+		Cron:         in.CronStore,
+		AgentRuntime: in.AgentRuntime,
+		Ops:          in.OpsManager,
+		Delivery:     in.DeliveryCounter,
+		Reflection:   in.ReflectionHealth,
 	}
 	scanner := pulse.NewScanner(sources, thresholds)
 

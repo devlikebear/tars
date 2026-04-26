@@ -12,11 +12,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestGatewayAgentsWatcher_NoAgentsDirIsNoop(t *testing.T) {
+func TestAgentRuntimeAgentsWatcher_NoAgentsDirIsNoop(t *testing.T) {
 	workspace := t.TempDir()
 	var mu sync.Mutex
 	refreshCount := 0
-	watcher := newGatewayAgentsWatcher(gatewayAgentsWatcherOptions{
+	watcher := newAgentRuntimeAgentsWatcher(agentRuntimeAgentsWatcherOptions{
 		WorkspaceDir: workspace,
 		Debounce:     50 * time.Millisecond,
 		Logger:       zerolog.New(io.Discard),
@@ -43,7 +43,7 @@ func TestGatewayAgentsWatcher_NoAgentsDirIsNoop(t *testing.T) {
 	}
 }
 
-func TestGatewayAgentsWatcher_RefreshOnAgentFileChanges(t *testing.T) {
+func TestAgentRuntimeAgentsWatcher_RefreshOnAgentFileChanges(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := filepath.Join(workspace, "agents", "researcher")
 	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
@@ -53,7 +53,7 @@ func TestGatewayAgentsWatcher_RefreshOnAgentFileChanges(t *testing.T) {
 	var mu sync.Mutex
 	refreshCount := 0
 	reasons := []string{}
-	watcher := newGatewayAgentsWatcher(gatewayAgentsWatcherOptions{
+	watcher := newAgentRuntimeAgentsWatcher(agentRuntimeAgentsWatcherOptions{
 		WorkspaceDir: workspace,
 		Debounce:     80 * time.Millisecond,
 		Logger:       zerolog.New(io.Discard),
@@ -108,7 +108,7 @@ func TestGatewayAgentsWatcher_RefreshOnAgentFileChanges(t *testing.T) {
 	}
 }
 
-func TestGatewayAgentsWatcher_DebounceBurstEvents(t *testing.T) {
+func TestAgentRuntimeAgentsWatcher_DebounceBurstEvents(t *testing.T) {
 	workspace := t.TempDir()
 	agentsDir := filepath.Join(workspace, "agents", "researcher")
 	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
@@ -118,7 +118,7 @@ func TestGatewayAgentsWatcher_DebounceBurstEvents(t *testing.T) {
 	var mu sync.Mutex
 	refreshCount := 0
 	debounce := 300 * time.Millisecond
-	watcher := newGatewayAgentsWatcher(gatewayAgentsWatcherOptions{
+	watcher := newAgentRuntimeAgentsWatcher(agentRuntimeAgentsWatcherOptions{
 		WorkspaceDir: workspace,
 		Debounce:     debounce,
 		Logger:       zerolog.New(io.Discard),

@@ -6,7 +6,7 @@ import (
 	"github.com/devlikebear/tars/internal/tool"
 )
 
-func normalizeGatewayPolicyMode(raw string) string {
+func normalizeAgentRuntimePolicyMode(raw string) string {
 	mode := strings.ToLower(strings.TrimSpace(raw))
 	if mode == "allowlist" {
 		return mode
@@ -14,7 +14,7 @@ func normalizeGatewayPolicyMode(raw string) string {
 	return "full"
 }
 
-func normalizeGatewaySessionRoutingMode(raw string) string {
+func normalizeAgentRuntimeSessionRoutingMode(raw string) string {
 	mode := strings.ToLower(strings.TrimSpace(raw))
 	switch mode {
 	case "", "caller":
@@ -26,7 +26,7 @@ func normalizeGatewaySessionRoutingMode(raw string) string {
 	}
 }
 
-func knownGatewayPromptTools(workspaceDir string) map[string]struct{} {
+func knownAgentRuntimePromptTools(workspaceDir string) map[string]struct{} {
 	out := map[string]struct{}{}
 	registry := newBaseToolRegistry(workspaceDir)
 	for _, schema := range registry.Schemas() {

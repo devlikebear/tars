@@ -70,46 +70,46 @@ func (c *Client) CancelRun(ctx context.Context, runID string) (AgentRun, error) 
 	return run, nil
 }
 
-func (c *Client) GatewayStatus(ctx context.Context) (GatewayStatus, error) {
-	var status GatewayStatus
-	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/gateway/status", nil, false, &status); err != nil {
-		return GatewayStatus{}, err
+func (c *Client) AgentRuntimeStatus(ctx context.Context) (AgentRuntimeStatus, error) {
+	var status AgentRuntimeStatus
+	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/agentruntime/status", nil, false, &status); err != nil {
+		return AgentRuntimeStatus{}, err
 	}
 	return status, nil
 }
 
-func (c *Client) GatewayReload(ctx context.Context) (GatewayStatus, error) {
-	var status GatewayStatus
-	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/gateway/reload", nil, true, &status); err != nil {
-		return GatewayStatus{}, err
+func (c *Client) AgentRuntimeReload(ctx context.Context) (AgentRuntimeStatus, error) {
+	var status AgentRuntimeStatus
+	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/agentruntime/reload", nil, true, &status); err != nil {
+		return AgentRuntimeStatus{}, err
 	}
 	return status, nil
 }
 
-func (c *Client) GatewayRestart(ctx context.Context) (GatewayStatus, error) {
-	var status GatewayStatus
-	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/gateway/restart", nil, true, &status); err != nil {
-		return GatewayStatus{}, err
+func (c *Client) AgentRuntimeRestart(ctx context.Context) (AgentRuntimeStatus, error) {
+	var status AgentRuntimeStatus
+	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/agentruntime/restart", nil, true, &status); err != nil {
+		return AgentRuntimeStatus{}, err
 	}
 	return status, nil
 }
 
-func (c *Client) GatewayReportSummary(ctx context.Context) (GatewayReportSummary, error) {
-	var out GatewayReportSummary
-	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/gateway/reports/summary", nil, false, &out); err != nil {
-		return GatewayReportSummary{}, err
+func (c *Client) AgentRuntimeReportSummary(ctx context.Context) (AgentRuntimeReportSummary, error) {
+	var out AgentRuntimeReportSummary
+	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/agentruntime/reports/summary", nil, false, &out); err != nil {
+		return AgentRuntimeReportSummary{}, err
 	}
 	return out, nil
 }
 
-func (c *Client) GatewayReportRuns(ctx context.Context, limit int) (GatewayReportRuns, error) {
+func (c *Client) AgentRuntimeReportRuns(ctx context.Context, limit int) (AgentRuntimeReportRuns, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	var out GatewayReportRuns
-	path := fmt.Sprintf("/v1/gateway/reports/runs?limit=%d", limit)
+	var out AgentRuntimeReportRuns
+	path := fmt.Sprintf("/v1/agentruntime/reports/runs?limit=%d", limit)
 	if _, err := c.doJSON(ctx, http.MethodGet, path, nil, false, &out); err != nil {
-		return GatewayReportRuns{}, err
+		return AgentRuntimeReportRuns{}, err
 	}
 	if out.Runs == nil {
 		out.Runs = []AgentRun{}
@@ -117,14 +117,14 @@ func (c *Client) GatewayReportRuns(ctx context.Context, limit int) (GatewayRepor
 	return out, nil
 }
 
-func (c *Client) GatewayReportChannels(ctx context.Context, limit int) (GatewayReportChannels, error) {
+func (c *Client) AgentRuntimeReportChannels(ctx context.Context, limit int) (AgentRuntimeReportChannels, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	var out GatewayReportChannels
-	path := fmt.Sprintf("/v1/gateway/reports/channels?limit=%d", limit)
+	var out AgentRuntimeReportChannels
+	path := fmt.Sprintf("/v1/agentruntime/reports/channels?limit=%d", limit)
 	if _, err := c.doJSON(ctx, http.MethodGet, path, nil, false, &out); err != nil {
-		return GatewayReportChannels{}, err
+		return AgentRuntimeReportChannels{}, err
 	}
 	if out.Messages == nil {
 		out.Messages = map[string][]ChannelReportMessage{}

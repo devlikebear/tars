@@ -203,10 +203,10 @@ func (r *Runtime) SubagentLimits() (maxThreads int, maxDepth int) {
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.opts.GatewaySubagentsMaxThreads, r.opts.GatewaySubagentsMaxDepth
+	return r.opts.AgentRuntimeSubagentsMaxThreads, r.opts.AgentRuntimeSubagentsMaxDepth
 }
 
-func gatewayAgentInfo(executor AgentExecutor) AgentInfo {
+func agentRuntimeAgentInfo(executor AgentExecutor) AgentInfo {
 	if executor == nil {
 		return AgentInfo{}
 	}

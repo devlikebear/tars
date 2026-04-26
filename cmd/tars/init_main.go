@@ -448,8 +448,8 @@ llm:
 
   default_tier: standard
 
-# Gateway is enabled so agents can dispatch local subagents.
-gateway:
+# Agent Runtime is enabled so agents can dispatch local subagents.
+agentruntime:
   enabled: true
 
 # Optional subagent limits for parallel read-only research in chat.

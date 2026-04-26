@@ -52,8 +52,8 @@ llm:
     memory_hook: light
     reflection_memory: light
     pulse_decider: light
-    gateway_default: standard
-    gateway_planner: heavy
+    agentruntime_default: standard
+    agentruntime_planner: heavy
 
 automation:
   agent:

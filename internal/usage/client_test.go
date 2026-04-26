@@ -21,7 +21,7 @@ func TestTrackedClient_LogsSelectionMetadata(t *testing.T) {
 
 	client := NewTrackedClient(&llm.FakeClient{Label: "standard"}, nil, "openai", "gpt-5.4", llm.TierStandard)
 	ctx := llm.WithSelectionMetadata(context.Background(), llm.SelectionMetadata{
-		Role:      llm.RoleGatewayDefault,
+		Role:      llm.RoleAgentRuntimeDefault,
 		Tier:      llm.TierStandard,
 		Provider:  "openai",
 		Model:     "gpt-5.4",
@@ -43,7 +43,7 @@ func TestTrackedClient_LogsSelectionMetadata(t *testing.T) {
 		`"tier":"standard"`,
 		`"provider":"openai"`,
 		`"model":"gpt-5.4"`,
-		`"role":"gateway_default"`,
+		`"role":"agentruntime_default"`,
 		`"source":"role"`,
 		`"session_id":"sess-1"`,
 		`"run_id":"run-1"`,

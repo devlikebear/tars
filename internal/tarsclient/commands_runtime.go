@@ -114,8 +114,8 @@ func cmdRuntime(c commandContext) (bool, string, error) {
 		if err != nil {
 			return true, c.session, err
 		}
-		fmt.Fprintf(c.stdout, "SYSTEM > reloaded=%t version=%d skills=%d plugins=%d mcp=%d gateway_refreshed=%t gateway_agents=%d\n",
-			result.Reloaded, result.Version, result.Skills, result.Plugins, result.MCPCount, result.GatewayRefreshed, result.GatewayAgents)
+		fmt.Fprintf(c.stdout, "SYSTEM > reloaded=%t version=%d skills=%d plugins=%d mcp=%d agentruntime_refreshed=%t agentruntime_agents=%d\n",
+			result.Reloaded, result.Version, result.Skills, result.Plugins, result.MCPCount, result.AgentRuntimeRefreshed, result.AgentRuntimeAgents)
 		return true, c.session, nil
 	default:
 		return false, c.session, nil

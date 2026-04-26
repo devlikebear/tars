@@ -59,7 +59,7 @@ var subagentsPlanResponseSchema = json.RawMessage(`{
 func NewSubagentsPlanTool(runtime *agentruntime.Runtime, router llm.Router) Tool {
 	return Tool{
 		Name:        "subagents_plan",
-		Description: "Use the gateway planner model to create a staged subagent execution plan before calling subagents_orchestrate.",
+		Description: "Use the agent runtime planner model to create a staged subagent execution plan before calling subagents_orchestrate.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
@@ -79,7 +79,7 @@ func NewSubagentsPlanTool(runtime *agentruntime.Runtime, router llm.Router) Tool
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "agent runtime is not configured"}, true), nil
 			}
 			if router == nil {
 				return JSONTextResult(map[string]any{"message": "llm router is not configured"}, true), nil
@@ -138,14 +138,14 @@ func NewSubagentsPlanTool(runtime *agentruntime.Runtime, router llm.Router) Tool
 			}
 			requiredTargets := collectPlannerTargets(goal, input.Targets, input.Constraints, input.Hints, input.ExplicitTargetsOnly)
 
-			plannerClient, resolution, err := router.ClientFor(llm.RoleGatewayPlanner)
+			plannerClient, resolution, err := router.ClientFor(llm.RoleAgentRuntimePlanner)
 			if err != nil {
 				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
 
 			meta := usage.CallMetaFromContext(ctx)
 			plannerCtx := llm.WithSelectionMetadata(ctx, llm.SelectionMetadata{
-				Role:      llm.RoleGatewayPlanner,
+				Role:      llm.RoleAgentRuntimePlanner,
 				Tier:      resolution.Tier,
 				Provider:  resolution.Provider,
 				Model:     resolution.Model,
@@ -160,7 +160,7 @@ func NewSubagentsPlanTool(runtime *agentruntime.Runtime, router llm.Router) Tool
 			zlog.Debug().
 				Str("flow_id", flowID).
 				Str("agent", agentName).
-				Str("planner_role", llm.RoleGatewayPlanner.String()).
+				Str("planner_role", llm.RoleAgentRuntimePlanner.String()).
 				Str("planner_tier", string(resolution.Tier)).
 				Int("max_steps", maxSteps).
 				Int("max_parallel_tasks", effectiveMaxParallel).
@@ -232,7 +232,7 @@ func NewSubagentsPlanTool(runtime *agentruntime.Runtime, router llm.Router) Tool
 				"flow_id":          plan.FlowID,
 				"agent":            plan.Agent,
 				"steps":            plan.Steps,
-				"planner_role":     llm.RoleGatewayPlanner.String(),
+				"planner_role":     llm.RoleAgentRuntimePlanner.String(),
 				"planner_tier":     string(resolution.Tier),
 				"planner_provider": resolution.Provider,
 				"planner_model":    resolution.Model,
@@ -257,7 +257,7 @@ func buildSubagentsPlannerMessages(
 	targets []string,
 ) []llm.ChatMessage {
 	systemPrompt := strings.TrimSpace(fmt.Sprintf(`
-You are the TARS gateway planner.
+You are the TARS agent runtime planner.
 Return JSON only. Do not use markdown fences. Do not add explanations.
 
 Plan a subagent workflow for the "subagents_orchestrate" tool.

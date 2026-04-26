@@ -185,7 +185,7 @@ llm_tiers:
     provider: default
     model: sonnet
 llm_default_tier: standard
-gateway_enabled: true
+agentruntime_enabled: true
 `
 	if err := os.WriteFile(configPath, []byte(claudeConfig), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -204,7 +204,7 @@ gateway_enabled: true
 	}
 }
 
-func TestRootCommand_DoctorFailsWhenGatewayDefaultAgentUsesMissingWorkspaceCommand(t *testing.T) {
+func TestRootCommand_DoctorFailsWhenAgentRuntimeDefaultAgentUsesMissingWorkspaceCommand(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 	clearDoctorEnv(t)
@@ -231,9 +231,9 @@ func TestRootCommand_DoctorFailsWhenGatewayDefaultAgentUsesMissingWorkspaceComma
 		"api_allow_insecure_local_auth: true",
 		`llm_providers: { default: { kind: openai, auth_mode: api-key, base_url: "https://api.openai.com/v1", api_key: "${OPENAI_API_KEY}" } }`,
 		`llm_tiers: { heavy: { provider: default, model: gpt-4o-mini }, standard: { provider: default, model: gpt-4o-mini }, light: { provider: default, model: gpt-4o-mini } }`,
-		"gateway_enabled: true",
-		"gateway_default_agent: worker",
-		`gateway_agents_json: [{"name":"worker","command":"python3","args":["./worker_agent.py"],"working_dir":".","enabled":true}]`,
+		"agentruntime_enabled: true",
+		"agentruntime_default_agent: worker",
+		`agentruntime_agents_json: [{"name":"worker","command":"python3","args":["./worker_agent.py"],"working_dir":".","enabled":true}]`,
 	}, "\n")) + "\n"
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -244,12 +244,12 @@ func TestRootCommand_DoctorFailsWhenGatewayDefaultAgentUsesMissingWorkspaceComma
 	doctorCmd.SetArgs([]string{"doctor", "--workspace-dir", workspaceDir})
 	err = doctorCmd.Execute()
 	if err == nil {
-		t.Fatal("expected doctor to fail when gateway default agent points to a missing workspace command")
+		t.Fatal("expected doctor to fail when agent runtime default agent points to a missing workspace command")
 	}
 
 	out := doctorStdout.String()
-	if !strings.Contains(out, "gateway agents") {
-		t.Fatalf("expected gateway agents failure, got:\n%s", out)
+	if !strings.Contains(out, "agent runtime agents") {
+		t.Fatalf("expected agent runtime agents failure, got:\n%s", out)
 	}
 	if !strings.Contains(out, "worker_agent.py") {
 		t.Fatalf("expected missing worker agent detail, got:\n%s", out)

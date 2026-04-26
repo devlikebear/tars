@@ -211,7 +211,7 @@ func handleResetWorkspace(w http.ResponseWriter, workspaceDir string, logger zer
 	}
 
 	// Preserve only: config/ directory and top-level .md template files
-	// Remove everything else (sessions, projects, cron, gateway, skills, plugins, etc.)
+	// Remove everything else (sessions, projects, cron, agent runtime, skills, plugins, etc.)
 	preserve := map[string]bool{"config": true}
 	entries, err := os.ReadDir(workspaceDir)
 	if err != nil {

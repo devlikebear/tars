@@ -10,10 +10,10 @@ import (
 )
 
 func (r *Runtime) persistArchiveSnapshot(runs []Run, channels map[string][]ChannelMessage) error {
-	if r == nil || !r.opts.GatewayArchiveEnabled {
+	if r == nil || !r.opts.AgentRuntimeArchiveEnabled {
 		return nil
 	}
-	archiveDir := strings.TrimSpace(r.opts.GatewayArchiveDir)
+	archiveDir := strings.TrimSpace(r.opts.AgentRuntimeArchiveDir)
 	if archiveDir == "" {
 		return nil
 	}
@@ -21,7 +21,7 @@ func (r *Runtime) persistArchiveSnapshot(runs []Run, channels map[string][]Chann
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		return err
 	}
-	_ = cleanupGatewayArchiveFiles(archiveDir, now, r.opts.GatewayArchiveRetentionDays)
+	_ = cleanupAgentRuntimeArchiveFiles(archiveDir, now, r.opts.AgentRuntimeArchiveRetentionDays)
 
 	payload := map[string]any{
 		"time":     now.Format(time.RFC3339),
@@ -32,7 +32,7 @@ func (r *Runtime) persistArchiveSnapshot(runs []Run, channels map[string][]Chann
 	if err != nil {
 		return err
 	}
-	path, err := selectGatewayArchiveFile(archiveDir, now, int64(len(raw)+1), int64(r.opts.GatewayArchiveMaxFileBytes))
+	path, err := selectAgentRuntimeArchiveFile(archiveDir, now, int64(len(raw)+1), int64(r.opts.AgentRuntimeArchiveMaxFileBytes))
 	if err != nil {
 		return err
 	}
@@ -50,15 +50,15 @@ func (r *Runtime) persistArchiveSnapshot(runs []Run, channels map[string][]Chann
 	return nil
 }
 
-func selectGatewayArchiveFile(dir string, now time.Time, nextSize int64, maxBytes int64) (string, error) {
+func selectAgentRuntimeArchiveFile(dir string, now time.Time, nextSize int64, maxBytes int64) (string, error) {
 	if maxBytes <= 0 {
 		maxBytes = 10485760
 	}
 	stamp := now.UTC().Format("20060102")
 	for idx := 0; idx < 1000; idx++ {
-		name := fmt.Sprintf("gateway-%s.jsonl", stamp)
+		name := fmt.Sprintf("agentruntime-%s.jsonl", stamp)
 		if idx > 0 {
-			name = fmt.Sprintf("gateway-%s-%d.jsonl", stamp, idx)
+			name = fmt.Sprintf("agentruntime-%s-%d.jsonl", stamp, idx)
 		}
 		path := filepath.Join(dir, name)
 		info, err := os.Stat(path)
@@ -75,10 +75,10 @@ func selectGatewayArchiveFile(dir string, now time.Time, nextSize int64, maxByte
 			return path, nil
 		}
 	}
-	return "", fmt.Errorf("gateway archive file rotation exhausted")
+	return "", fmt.Errorf("agent runtime archive file rotation exhausted")
 }
 
-func cleanupGatewayArchiveFiles(dir string, now time.Time, retentionDays int) error {
+func cleanupAgentRuntimeArchiveFiles(dir string, now time.Time, retentionDays int) error {
 	if retentionDays <= 0 {
 		return nil
 	}
@@ -92,7 +92,7 @@ func cleanupGatewayArchiveFiles(dir string, now time.Time, retentionDays int) er
 			continue
 		}
 		name := entry.Name()
-		if !strings.HasPrefix(name, "gateway-") || !strings.HasSuffix(name, ".jsonl") {
+		if !strings.HasPrefix(name, "agentruntime-") || !strings.HasSuffix(name, ".jsonl") {
 			continue
 		}
 		info, err := entry.Info()

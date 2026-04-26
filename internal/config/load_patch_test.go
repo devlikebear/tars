@@ -13,7 +13,7 @@ func TestPatchYAML_WritesPreferredHierarchy(t *testing.T) {
 mode: standalone
 workspace_dir: ./old-workspace
 pulse_timezone: UTC
-gateway_persistence_dir: /tmp/flat-gateway
+agentruntime_persistence_dir: /tmp/flat-agentruntime
 tools_web_search_provider: brave
 `))
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
@@ -21,12 +21,12 @@ tools_web_search_provider: brave
 	}
 
 	updates := map[string]any{
-		"workspace_dir":             "./new-workspace",
-		"pulse_timezone":            "Asia/Seoul",
-		"gateway_persistence_dir":   "/tmp/nested-gateway",
-		"tools_web_search_provider": "perplexity",
-		"llm_default_tier":          "heavy",
-		"llm_role_defaults":         map[string]any{"chat_main": "standard", "pulse_decider": "light"},
+		"workspace_dir":                "./new-workspace",
+		"pulse_timezone":               "Asia/Seoul",
+		"agentruntime_persistence_dir": "/tmp/nested-agentruntime",
+		"tools_web_search_provider":    "perplexity",
+		"llm_default_tier":             "heavy",
+		"llm_role_defaults":            map[string]any{"chat_main": "standard", "pulse_decider": "light"},
 	}
 	if err := PatchYAML(path, updates); err != nil {
 		t.Fatalf("patch yaml: %v", err)
@@ -43,13 +43,13 @@ tools_web_search_provider: brave
 	if strings.Contains(text, "\npulse_timezone:") {
 		t.Fatalf("expected pulse_timezone to be rewritten under automation.pulse, got:\n%s", text)
 	}
-	if strings.Contains(text, "\ngateway_persistence_dir:") {
-		t.Fatalf("expected gateway_persistence_dir to be rewritten under agentruntime.persistence, got:\n%s", text)
+	if strings.Contains(text, "\ngateway_persistence_dir:") || strings.Contains(text, "\nagentruntime_persistence_dir:") {
+		t.Fatalf("expected agentruntime_persistence_dir to be rewritten under agentruntime.persistence, got:\n%s", text)
 	}
 	if strings.Contains(text, "\ntools_web_search_provider:") {
 		t.Fatalf("expected tools_web_search_provider to be rewritten under tools.web_search, got:\n%s", text)
 	}
-	for _, expected := range []string{"runtime:", "workspace_dir: ./new-workspace", "automation:", "timezone: Asia/Seoul", "dir: /tmp/nested-gateway", "provider: perplexity", "default_tier: heavy"} {
+	for _, expected := range []string{"runtime:", "workspace_dir: ./new-workspace", "automation:", "timezone: Asia/Seoul", "agentruntime:", "dir: /tmp/nested-agentruntime", "provider: perplexity", "default_tier: heavy"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("expected patched config to contain %q, got:\n%s", expected, text)
 		}
@@ -59,7 +59,7 @@ tools_web_search_provider: brave
 	if err != nil {
 		t.Fatalf("load patched config: %v", err)
 	}
-	if cfg.WorkspaceDir != "./new-workspace" || cfg.PulseTimezone != "Asia/Seoul" || cfg.GatewayPersistenceDir != "/tmp/nested-gateway" || cfg.ToolsWebSearchProvider != "perplexity" {
+	if cfg.WorkspaceDir != "./new-workspace" || cfg.PulseTimezone != "Asia/Seoul" || cfg.AgentRuntimePersistenceDir != "/tmp/nested-agentruntime" || cfg.ToolsWebSearchProvider != "perplexity" {
 		t.Fatalf("patched config values not loaded correctly: %+v", cfg)
 	}
 	if cfg.LLMDefaultTier != "heavy" || cfg.LLMRoleDefaults["pulse_decider"] != "light" {
@@ -74,14 +74,14 @@ func TestSchema_UsesPreferredHierarchicalPaths(t *testing.T) {
 		byKey[field.Key] = field
 	}
 	checks := map[string]string{
-		"workspace_dir":             "runtime.workspace_dir",
-		"llm_providers":             "llm.providers",
-		"agent_max_iterations":      "automation.agent.max_iterations",
-		"pulse_timezone":            "automation.pulse.timezone",
-		"tools_web_search_provider": "tools.web_search.provider",
-		"gateway_persistence_dir":   "gateway.persistence.dir",
-		"telegram_bot_token":        "channels.telegram.bot_token",
-		"skills_extra_dirs_json":    "extensions.skills.extra_dirs",
+		"workspace_dir":                "runtime.workspace_dir",
+		"llm_providers":                "llm.providers",
+		"agent_max_iterations":         "automation.agent.max_iterations",
+		"pulse_timezone":               "automation.pulse.timezone",
+		"tools_web_search_provider":    "tools.web_search.provider",
+		"agentruntime_persistence_dir": "agentruntime.persistence.dir",
+		"telegram_bot_token":           "channels.telegram.bot_token",
+		"skills_extra_dirs_json":       "extensions.skills.extra_dirs",
 	}
 	for key, want := range checks {
 		field, ok := byKey[key]
@@ -112,13 +112,41 @@ func TestLoad_ExampleConfigHierarchicalSchema(t *testing.T) {
 	if cfg.MemoryEmbedAPIKey != "gemini-example" {
 		t.Fatalf("expected memory embed key expansion, got %q", cfg.MemoryEmbedAPIKey)
 	}
-	if cfg.GatewayPersistenceDir != "./workspace/_shared/gateway" {
-		t.Fatalf("unexpected gateway persistence dir: %q", cfg.GatewayPersistenceDir)
+	if cfg.AgentRuntimePersistenceDir != "./workspace/_shared/agentruntime" {
+		t.Fatalf("unexpected agent runtime persistence dir: %q", cfg.AgentRuntimePersistenceDir)
 	}
 	if cfg.ChannelsTelegramDMPolicy != "pairing" {
 		t.Fatalf("unexpected telegram dm policy: %q", cfg.ChannelsTelegramDMPolicy)
 	}
 	if len(cfg.MCPCommandAllowlist) != 1 || cfg.MCPCommandAllowlist[0] != "npx" {
 		t.Fatalf("unexpected mcp command allowlist: %+v", cfg.MCPCommandAllowlist)
+	}
+}
+
+func TestLoad_AgentRuntimeHardCutIgnoresLegacyAgentRuntimeConfigKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	raw := []byte(strings.TrimSpace(`
+gateway_enabled: true
+gateway:
+  default_agent: legacy-worker
+  persistence:
+    dir: /tmp/legacy-gateway
+`))
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.AgentRuntimeEnabled {
+		t.Fatalf("legacy gateway_enabled should not enable agent runtime")
+	}
+	if cfg.AgentRuntimeDefaultAgent == "legacy-worker" {
+		t.Fatalf("legacy gateway.default_agent should not configure agent runtime")
+	}
+	if strings.Contains(cfg.AgentRuntimePersistenceDir, "legacy-gateway") || strings.Contains(cfg.AgentRuntimePersistenceDir, "_shared/gateway") {
+		t.Fatalf("legacy gateway persistence paths should not be used, got %q", cfg.AgentRuntimePersistenceDir)
 	}
 }

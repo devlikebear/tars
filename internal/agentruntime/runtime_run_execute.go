@@ -90,7 +90,7 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 
 	allowedTools := resolveRunAllowedTools(
 		r.opts.WorkspaceDir,
-		gatewayAgentInfo(executor).ToolsAllow,
+		agentRuntimeAgentInfo(executor).ToolsAllow,
 	)
 	execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{
@@ -125,7 +125,7 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 	return resp, metadata, err
 }
 
-// finalizeRunLocked is the single termination path for a gateway run.
+// finalizeRunLocked is the single termination path for a agent runtime run.
 // It writes resolved provider metadata, dispatches to the failure or
 // success branch to populate state.run, and then commits the result via
 // commitRunFinalization (history trim + state version bump + run summary
@@ -159,7 +159,7 @@ func (r *Runtime) applyFailedFinalState(state *runState, err error, finishedAt s
 	state.run.Error = strings.TrimSpace(err.Error())
 	state.run.DiagnosticCode, state.run.DiagnosticReason = classifyRunDiagnostic(err)
 	if state.run.DiagnosticCode == "policy_tool_blocked" {
-		info := gatewayAgentInfo(state.executor)
+		info := agentRuntimeAgentInfo(state.executor)
 		state.run.PolicyBlockedTool = blockedToolNameFromReason(state.run.DiagnosticReason)
 		if blocked, ok := blockedToolErrorFromReason(state.run.DiagnosticReason); ok {
 			state.run.PolicyBlockedTool = blocked.Tool
@@ -206,7 +206,7 @@ func (r *Runtime) applyCompletedFinalState(state *runState, resp string, finishe
 		ResolvedKind:  state.run.ResolvedKind,
 		ResolvedModel: state.run.ResolvedModel,
 		Response:      state.run.Response,
-		Message:       trimGatewaySummary(state.run.Response, 220),
+		Message:       trimAgentRuntimeSummary(state.run.Response, 220),
 	}
 }
 
@@ -363,9 +363,9 @@ func (r *Runtime) appendRunSummaryToMain(run Run, response string) {
 }
 
 func buildRunSummaryMessage(run Run, response string) string {
-	detail := trimGatewaySummary(response, 220)
+	detail := trimAgentRuntimeSummary(response, 220)
 	if strings.TrimSpace(detail) == "" {
-		detail = trimGatewaySummary(run.Error, 220)
+		detail = trimAgentRuntimeSummary(run.Error, 220)
 	}
 	return fmt.Sprintf(
 		"[RUN SUMMARY]\nagent: %s\nstatus: %s\nresult: %s",
@@ -375,7 +375,7 @@ func buildRunSummaryMessage(run Run, response string) string {
 	)
 }
 
-func trimGatewaySummary(text string, max int) string {
+func trimAgentRuntimeSummary(text string, max int) string {
 	value := strings.TrimSpace(text)
 	if max <= 0 || len(value) <= max {
 		return value

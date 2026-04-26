@@ -237,13 +237,13 @@ type MCPToolInfo struct {
 }
 
 type ExtensionsReloadInfo struct {
-	Reloaded         bool  `json:"reloaded"`
-	Version          int64 `json:"version,omitempty"`
-	Skills           int   `json:"skills,omitempty"`
-	Plugins          int   `json:"plugins,omitempty"`
-	MCPCount         int   `json:"mcp_count,omitempty"`
-	GatewayRefreshed bool  `json:"gateway_refreshed,omitempty"`
-	GatewayAgents    int   `json:"gateway_agents,omitempty"`
+	Reloaded              bool  `json:"reloaded"`
+	Version               int64 `json:"version,omitempty"`
+	Skills                int   `json:"skills,omitempty"`
+	Plugins               int   `json:"plugins,omitempty"`
+	MCPCount              int   `json:"mcp_count,omitempty"`
+	AgentRuntimeRefreshed bool  `json:"agentruntime_refreshed,omitempty"`
+	AgentRuntimeAgents    int   `json:"agentruntime_agents,omitempty"`
 }
 
 type CronJob struct {
@@ -385,7 +385,7 @@ type AgentRun struct {
 	CompletedAt        string   `json:"completed_at,omitempty"`
 }
 
-type GatewayStatus struct {
+type AgentRuntimeStatus struct {
 	Enabled                    bool   `json:"enabled"`
 	Version                    int64  `json:"version"`
 	RunsTotal                  int    `json:"runs_total"`
@@ -409,7 +409,7 @@ type GatewayStatus struct {
 	AgentsLastReloadAt         string `json:"agents_last_reload_at,omitempty"`
 }
 
-type GatewayReportSummary struct {
+type AgentRuntimeReportSummary struct {
 	GeneratedAt      string         `json:"generated_at"`
 	SummaryEnabled   bool           `json:"summary_enabled"`
 	ArchiveEnabled   bool           `json:"archive_enabled"`
@@ -421,7 +421,7 @@ type GatewayReportSummary struct {
 	MessagesBySource map[string]int `json:"messages_by_source"`
 }
 
-type GatewayReportRuns struct {
+type AgentRuntimeReportRuns struct {
 	GeneratedAt    string     `json:"generated_at"`
 	ArchiveEnabled bool       `json:"archive_enabled"`
 	Count          int        `json:"count"`
@@ -437,7 +437,7 @@ type ChannelReportMessage struct {
 	Timestamp string `json:"timestamp"`
 }
 
-type GatewayReportChannels struct {
+type AgentRuntimeReportChannels struct {
 	GeneratedAt    string                            `json:"generated_at"`
 	ArchiveEnabled bool                              `json:"archive_enabled"`
 	Count          int                               `json:"count"`

@@ -201,7 +201,7 @@ Phase 7 📦  외부 경계와 배포 (TUI 제거됨 → 웹 콘솔로 대체)
 ## Phase 7 — 외부 경계와 배포 📦
 
 > **Note:** TUI 클라이언트(Step 23)는 제거되었습니다. 웹 콘솔(`/console`)로 대체되었습니다.
-> 인증 미들웨어(Step 21)와 Gateway(Step 22)는 현재 활성 기능입니다.
+> 인증 미들웨어(Step 21)와 Agent Runtime(Step 22)은 현재 활성 기능입니다.
 
 ### Step 21. 인증 미들웨어 ✅ 구현됨
 
@@ -212,16 +212,16 @@ Phase 7 📦  외부 경계와 배포 (TUI 제거됨 → 웹 콘솔로 대체)
 - `internal/auth/middleware.go`
 - `internal/config/config.go` (AuthMode, AuthToken)
 
-### Step 22. Gateway (비동기 실행) ✅ 구현됨
+### Step 22. Agent Runtime (비동기 실행) ✅ 구현됨
 
 - Run lifecycle: `accepted → running → completed/failed/canceled`
 - PromptExecutor (agent.Loop 래핑)
 - 동시 실행 제한, Cancel/Wait, 채널 메시지 (local)
 
 **구현 파일:**
-- `internal/gateway/runtime.go`
-- `internal/gateway/executor.go`
-- `internal/gateway/handler.go`
+- `internal/agentruntime/runtime.go`
+- `internal/agentruntime/executor.go`
+- `internal/tarsserver/handler_agentruntime_status.go`
 
 ### Step 23. TUI 클라이언트 ✅ 구현됨
 

@@ -129,7 +129,7 @@ func (d *Decider) Decide(ctx context.Context, signals []Signal) (Decision, error
 // pulseSystemPrompt is intentionally terse. The LLM here is a classifier,
 // not a general assistant: its only job is to pick one of three actions.
 const pulseSystemPrompt = `You are the pulse watchdog classifier for the TARS system.
-You receive a bundle of signals from cron, gateway, disk, and telegram delivery.
+You receive a bundle of signals from cron, agent runtime, disk, and telegram delivery.
 Your ONLY job is to call the pulse_decide tool with one of three actions:
 
   - "ignore"  : the situation is benign, transient, or already resolving

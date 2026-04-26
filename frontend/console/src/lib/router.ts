@@ -3,7 +3,7 @@ const chatPrefix = `${consoleBase}/chat`
 
 export type Route =
   | { view: 'chat'; sessionId?: string }
-  | { view: 'gateway'; runId?: string }
+  | { view: 'agentruntime'; runId?: string }
   | { view: 'memory' }
   | { view: 'sysprompt' }
   | { view: 'ops' }
@@ -24,9 +24,9 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'chat' }
   }
 
-  if (path.startsWith(`${consoleBase}/gateway/runs/`)) {
-    const runId = decodeURIComponent(path.slice(`${consoleBase}/gateway/runs/`.length).split('/')[0]?.trim() || '')
-    if (runId) return { view: 'gateway', runId }
+  if (path.startsWith(`${consoleBase}/agentruntime/runs/`)) {
+    const runId = decodeURIComponent(path.slice(`${consoleBase}/agentruntime/runs/`.length).split('/')[0]?.trim() || '')
+    if (runId) return { view: 'agentruntime', runId }
   }
 
   if (path.startsWith(`${consoleBase}/sessions`)) {
@@ -37,8 +37,8 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'ops' }
   }
 
-  if (path.startsWith(`${consoleBase}/gateway`)) {
-    return { view: 'gateway' }
+  if (path.startsWith(`${consoleBase}/agentruntime`)) {
+    return { view: 'agentruntime' }
   }
 
   if (path.startsWith(`${consoleBase}/memory`)) {

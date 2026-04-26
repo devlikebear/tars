@@ -23,7 +23,7 @@ func (h *telegramInboundHandler) recordInbound(updateID, userID int64, chatID, t
 	}
 	_, err := h.runtime.InboundTelegram("telegram", strings.TrimSpace(threadID), strings.TrimSpace(text), payload)
 	if err != nil {
-		h.logger.Debug().Err(err).Msg("telegram inbound gateway record failed")
+		h.logger.Debug().Err(err).Msg("telegram inbound agent runtime record failed")
 	}
 }
 
@@ -42,6 +42,6 @@ func (h *telegramInboundHandler) recordOutbound(chatID, threadID, text, sessionI
 	}
 	_, err := h.runtime.OutboundTelegram("telegram", strings.TrimSpace(chatID), strings.TrimSpace(threadID), strings.TrimSpace(text), payload)
 	if err != nil {
-		h.logger.Debug().Err(err).Msg("telegram outbound gateway record failed")
+		h.logger.Debug().Err(err).Msg("telegram outbound agent runtime record failed")
 	}
 }

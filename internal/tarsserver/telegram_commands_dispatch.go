@@ -34,8 +34,8 @@ func (h *telegramCommandHandler) dispatchTelegramCommand(
 	case "/cron":
 		result, err := h.cmdCron(ctx, fields)
 		return telegramCommandResult{handled: true, result: result, err: err}
-	case "/gateway":
-		result, err := h.cmdGateway(fields)
+	case "/agentruntime":
+		result, err := h.cmdAgentRuntime(fields)
 		return telegramCommandResult{handled: true, result: result, err: err}
 	case "/channels":
 		result, err := h.cmdChannels()

@@ -141,13 +141,13 @@ func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger,
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
-			gatewayRefreshed := false
-			gatewayAgents := 0
+			agentRuntimeRefreshed := false
+			agentRuntimeAgents := 0
 			if afterReload != nil {
-				gatewayRefreshed, gatewayAgents = afterReload()
+				agentRuntimeRefreshed, agentRuntimeAgents = afterReload()
 			}
-			_ = gatewayRefreshed
-			_ = gatewayAgents
+			_ = agentRuntimeRefreshed
+			_ = agentRuntimeAgents
 			logger.Info().Str("kind", req.Kind).Str("name", req.Name).Bool("disabled", req.Disabled).Msg("extension disabled state changed")
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "kind": req.Kind, "name": req.Name, "disabled": req.Disabled})
 		default:
@@ -168,20 +168,20 @@ func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger,
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload extensions failed"})
 			return
 		}
-		gatewayRefreshed := false
-		gatewayAgents := 0
+		agentRuntimeRefreshed := false
+		agentRuntimeAgents := 0
 		if afterReload != nil {
-			gatewayRefreshed, gatewayAgents = afterReload()
+			agentRuntimeRefreshed, agentRuntimeAgents = afterReload()
 		}
 		snapshot := provider.Snapshot()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"reloaded":          true,
-			"version":           snapshot.Version,
-			"skills":            len(snapshot.Skills),
-			"plugins":           len(snapshot.Plugins),
-			"mcp_count":         len(snapshot.MCPServers),
-			"gateway_refreshed": gatewayRefreshed,
-			"gateway_agents":    gatewayAgents,
+			"reloaded":               true,
+			"version":                snapshot.Version,
+			"skills":                 len(snapshot.Skills),
+			"plugins":                len(snapshot.Plugins),
+			"mcp_count":              len(snapshot.MCPServers),
+			"agentruntime_refreshed": agentRuntimeRefreshed,
+			"agentruntime_agents":    agentRuntimeAgents,
 		})
 	})
 	return mux

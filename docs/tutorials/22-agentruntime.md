@@ -1,8 +1,8 @@
-# Step 22. Gateway (비동기 실행)
+# Step 22. Agent Runtime (비동기 실행)
 
-> 학습 목표: 비동기 Run 라이프사이클을 관리하는 Gateway 런타임을 구현
+> 학습 목표: 비동기 Run 라이프사이클을 관리하는 Agent Runtime 런타임을 구현
 
-## 왜 Gateway인가
+## 왜 Agent Runtime인가
 
 지금까지 TARS의 채팅(`/v1/chat`)은 **동기 SSE** 방식입니다. 클라이언트가 요청을 보내고, LLM 응답이 끝날 때까지 연결을 유지합니다. 이 방식은:
 
@@ -10,10 +10,10 @@
 - 클라이언트가 연결을 끊으면 작업이 중단됨
 - 여러 작업을 동시에 실행할 수 없음
 
-**Gateway**는 작업을 **비동기 Run**으로 관리합니다:
+**Agent Runtime**는 작업을 **비동기 Run**으로 관리합니다:
 
 ```
-클라이언트                              Gateway
+클라이언트                              Agent Runtime
     │ POST /v1/agent/runs               │
     │ {"prompt":"분석해줘"}              │
     │ ──────────────────────────────────→│
@@ -305,4 +305,4 @@ TARS는 핵심 패턴(비동기 Spawn/Wait, Run 라이프사이클, executor 인
 
 ## 다음 단계
 
-Step 23은 현재 아카이브된 레거시 TUI 구현 기록입니다. 최신 TARS는 Gateway API와 프로젝트 운영 기능을 `/console` 기반 웹 콘솔과 one-shot CLI로 노출합니다.
+Step 23은 현재 아카이브된 레거시 TUI 구현 기록입니다. 최신 TARS는 Agent Runtime API와 프로젝트 운영 기능을 `/console` 기반 웹 콘솔과 one-shot CLI로 노출합니다.

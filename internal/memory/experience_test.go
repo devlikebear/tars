@@ -27,8 +27,8 @@ func TestAppendAndSearchExperiences(t *testing.T) {
 	if err := AppendExperience(root, Experience{
 		Timestamp:     base.Add(2 * time.Minute),
 		Category:      "task_completed",
-		Summary:       "Completed API smoke verification for gateway reports",
-		Tags:          []string{"gateway", "smoke"},
+		Summary:       "Completed API smoke verification for agent runtime reports",
+		Tags:          []string{"agentruntime", "smoke"},
 		SourceSession: "sess-2",
 		Importance:    9,
 	}); err != nil {
@@ -40,7 +40,7 @@ func TestAppendAndSearchExperiences(t *testing.T) {
 		t.Fatalf("expected experiences jsonl to exist: %v", err)
 	}
 
-	hits, err := SearchExperiences(root, SearchOptions{Query: "gateway", Limit: 5})
+	hits, err := SearchExperiences(root, SearchOptions{Query: "agentruntime", Limit: 5})
 	if err != nil {
 		t.Fatalf("search experiences: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestAppendAndSearchExperiences(t *testing.T) {
 	if len(recent) != 1 {
 		t.Fatalf("expected one recent record, got %d", len(recent))
 	}
-	if recent[0].Summary != "Completed API smoke verification for gateway reports" {
+	if recent[0].Summary != "Completed API smoke verification for agent runtime reports" {
 		t.Fatalf("expected latest summary first, got %q", recent[0].Summary)
 	}
 }

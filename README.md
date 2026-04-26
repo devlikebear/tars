@@ -14,12 +14,12 @@ A single Go binary that runs on your machine and gives you: an interactive chat 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
 | **Language** | TypeScript | Python | Go (single binary) |
-| **Sub-agents** | ACP + subagent runtimes, push-based completion, Docker sandbox | ThreadPoolExecutor (max 3), ephemeral prompt, credential override | Gateway executor with per-task model tier, allowlist policy, depth control |
+| **Sub-agents** | ACP + subagent runtimes, push-based completion, Docker sandbox | ThreadPoolExecutor (max 3), ephemeral prompt, credential override | Agent Runtime executor with per-task model tier, allowlist policy, depth control |
 | **Model routing** | Per-agent model override | Per-child provider/model override, MoA (4 frontier models) | 3-tier named bundles (heavy/standard/light) with role→tier config mapping |
 | **Memory** | Session transcripts | Honcho/Holographic plugin hooks | Durable KB + semantic search + experience extraction + nightly compilation |
 | **Background** | None | None | Pulse watchdog (1-min) + Reflection nightly batch |
 | **Scheduling** | None | None | Session-bound cron jobs with audit logs |
-| **Channels** | CLI | CLI + Gateway API | Console + Telegram + webhooks |
+| **Channels** | CLI | CLI + Agent Runtime API | Console + Telegram + webhooks |
 | **Context mgmt** | Per-session | ContextCompressor (50% threshold, protect-last-N) | Structured compaction with identifier preservation + light-tier LLM summary |
 | **Extensibility** | Built-in tools | Toolsets (terminal, file, web, delegation) | Skills + Plugins + MCP servers + Skill Hub registry |
 
@@ -94,10 +94,10 @@ llm:
   default_tier: standard
   role_defaults:
     pulse_decider: light
-    gateway_planner: heavy
+    agentruntime_planner: heavy
 ```
 
-Each system role (chat, pulse, reflection, compaction, gateway agents) maps to a tier. Background surfaces default to `light`, keeping costs low. `llm_role_gateway_planner` is now exercised by `subagents_plan`, and TARS logs the resolved `role`, `tier`, `provider`, `model`, and `source` for chat and gateway LLM calls so tier selection is traceable in runtime logs.
+Each system role (chat, pulse, reflection, compaction, agent runtime agents) maps to a tier. Background surfaces default to `light`, keeping costs low. `llm_role_agentruntime_planner` is now exercised by `subagents_plan`, and TARS logs the resolved `role`, `tier`, `provider`, `model`, and `source` for chat and agent runtime LLM calls so tier selection is traceable in runtime logs.
 
 ### Background Surfaces
 
@@ -135,7 +135,7 @@ TARS favors **on-demand extension** over always-resident tool registrations. Dom
 - **MCP** — Local stdio and remote HTTP/WebSocket servers with bearer or OAuth auth. Use for third-party integrations that cannot be expressed as a CLI the bash tool can call.
 - **Browser** — Playwright-based automation for web interaction (shipped as a hub plugin).
 
-**When to build a hub skill vs. a core feature**: if the capability is domain-specific (one site's logs, one vendor's API, one workflow), it belongs in `tars-skills` as a skill + CLI. Builtin tools inside this repo are reserved for universal surfaces (file ops, memory, gateway, channels) that every session uses.
+**When to build a hub skill vs. a core feature**: if the capability is domain-specific (one site's logs, one vendor's API, one workflow), it belongs in `tars-skills` as a skill + CLI. Builtin tools inside this repo are reserved for universal surfaces (file ops, memory, agent runtime, channels) that every session uses.
 
 ## Install
 

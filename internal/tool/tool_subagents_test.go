@@ -13,7 +13,7 @@ import (
 	"github.com/devlikebear/tars/internal/usage"
 )
 
-func newGatewayRuntimeForSubagentToolTests(
+func newAgentRuntimeForSubagentToolTests(
 	t *testing.T,
 	maxThreads int,
 	maxDepth int,
@@ -35,19 +35,19 @@ func newGatewayRuntimeForSubagentToolTests(
 		t.Fatalf("new prompt executor: %v", err)
 	}
 	rt := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
-		Enabled:                    true,
-		WorkspaceDir:               workspaceDir,
-		SessionStore:               store,
-		Executors:                  []agentruntime.AgentExecutor{explorer},
-		DefaultAgent:               "explorer",
-		GatewaySubagentsMaxThreads: maxThreads,
-		GatewaySubagentsMaxDepth:   maxDepth,
+		Enabled:                         true,
+		WorkspaceDir:                    workspaceDir,
+		SessionStore:                    store,
+		Executors:                       []agentruntime.AgentExecutor{explorer},
+		DefaultAgent:                    "explorer",
+		AgentRuntimeSubagentsMaxThreads: maxThreads,
+		AgentRuntimeSubagentsMaxDepth:   maxDepth,
 	})
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := rt.Close(ctx); err != nil {
-			t.Fatalf("close gateway runtime: %v", err)
+			t.Fatalf("close agent runtime: %v", err)
 		}
 	})
 	return rt, store
@@ -56,7 +56,7 @@ func newGatewayRuntimeForSubagentToolTests(
 func TestSubagentsRunTool_SpawnsParallelExplorerChildrenAndReturnsSummaries(t *testing.T) {
 	startedCh := make(chan string, 2)
 	release := make(chan struct{})
-	rt, store := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, allowedTools []string, _ string) (string, error) {
+	rt, store := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, allowedTools []string, _ string) (string, error) {
 		if len(allowedTools) == 0 {
 			t.Fatalf("expected explorer allowlist to be forwarded")
 		}
@@ -154,7 +154,7 @@ func TestSubagentsRunTool_SpawnsParallelExplorerChildrenAndReturnsSummaries(t *t
 }
 
 func TestSubagentsRunTool_RejectsTaskCountAboveThreadLimit(t *testing.T) {
-	rt, store := newGatewayRuntimeForSubagentToolTests(t, 1, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, store := newAgentRuntimeForSubagentToolTests(t, 1, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	parent, err := store.Create("chat")
@@ -180,13 +180,13 @@ func TestSubagentsRunTool_RejectsTaskCountAboveThreadLimit(t *testing.T) {
 	if !res.IsError {
 		t.Fatalf("expected thread limit error, got %s", res.Text())
 	}
-	if !strings.Contains(res.Text(), "gateway_subagents_max_threads") {
+	if !strings.Contains(res.Text(), "agentruntime_subagents_max_threads") {
 		t.Fatalf("expected thread limit diagnostic, got %s", res.Text())
 	}
 }
 
 func TestSubagentsRunTool_RejectsDepthAboveLimit(t *testing.T) {
-	rt, store := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, store := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	parent, err := store.Create("chat")
@@ -221,7 +221,7 @@ func TestSubagentsRunTool_RejectsDepthAboveLimit(t *testing.T) {
 	if !res.IsError {
 		t.Fatalf("expected depth limit error, got %s", res.Text())
 	}
-	if !strings.Contains(res.Text(), "gateway_subagents_max_depth") {
+	if !strings.Contains(res.Text(), "agentruntime_subagents_max_depth") {
 		t.Fatalf("expected depth limit diagnostic, got %s", res.Text())
 	}
 }

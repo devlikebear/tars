@@ -511,7 +511,7 @@ func sumHistoryTokens(messages []session.Message) int {
 type chatToolingOptions struct {
 	ProcessManager              *tool.ProcessManager
 	Extensions                  *extensions.Manager
-	Gateway                     *agentruntime.Runtime
+	AgentRuntime                *agentruntime.Runtime
 	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
 	ToolsDefaultSet             string
 	ToolsAllowHighRiskUser      bool

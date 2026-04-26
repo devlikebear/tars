@@ -80,7 +80,7 @@ llm:
   default_tier: standard
   role_defaults:
     pulse_decider: light
-    gateway_planner: heavy
+    agentruntime_planner: heavy
 ```
 
 ## 4. Validate
@@ -145,10 +145,10 @@ Read-only codebase explorer for fast parallel searches.
 Use agents via chat:
 
 - `subagents_run` for independent parallel tasks.
-- `subagents_plan` to ask the heavy-tier gateway planner model for a staged execution flow.
+- `subagents_plan` to ask the heavy-tier agent runtime planner model for a staged execution flow.
 - `subagents_orchestrate` for staged flows where later tasks depend on earlier subagent output.
 
-Task tier precedence is `task tier` > `AGENT.md tier` > gateway default role tier.
+Task tier precedence is `task tier` > `AGENT.md tier` > agent runtime default role tier.
 
 ## 8. Set Up Cron Jobs (Optional)
 

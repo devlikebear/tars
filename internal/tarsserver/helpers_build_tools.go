@@ -26,7 +26,7 @@ func buildAutomationTools(
 func buildChatToolingOptions(
 	processManager *tool.ProcessManager,
 	manager *extensions.Manager,
-	gatewayRuntime *agentruntime.Runtime,
+	agentRuntime *agentruntime.Runtime,
 	compaction chatCompactionOptions,
 	toolsDefaultSet string,
 	toolsAllowHighRiskUser bool,
@@ -39,7 +39,7 @@ func buildChatToolingOptions(
 	return chatToolingOptions{
 		ProcessManager:         processManager,
 		Extensions:             extensionManager,
-		Gateway:                gatewayRuntime,
+		AgentRuntime:           agentRuntime,
 		ToolsDefaultSet:        strings.TrimSpace(strings.ToLower(toolsDefaultSet)),
 		ToolsAllowHighRiskUser: toolsAllowHighRiskUser,
 		MemorySemanticConfig:   memorySemanticConfig,
@@ -50,13 +50,13 @@ func buildChatToolingOptions(
 	}
 }
 
-func buildOptionalChatTools(cfg config.Config, gatewayRuntime *agentruntime.Runtime) []tool.Tool {
+func buildOptionalChatTools(cfg config.Config, agentRuntime *agentruntime.Runtime) []tool.Tool {
 	out := []tool.Tool{}
 	if cfg.ToolsMessageEnabled {
-		out = append(out, tool.NewMessageTool(gatewayRuntime, true))
+		out = append(out, tool.NewMessageTool(agentRuntime, true))
 	}
-	if cfg.ToolsGatewayEnabled {
-		out = append(out, tool.NewGatewayTool(gatewayRuntime, true))
+	if cfg.ToolsAgentRuntimeEnabled {
+		out = append(out, tool.NewAgentRuntimeTool(agentRuntime, true))
 	}
 	if cfg.ToolsApplyPatchEnabled {
 		out = append(out, tool.NewApplyPatchTool(cfg.WorkspaceDir, true))

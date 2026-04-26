@@ -11,7 +11,7 @@ import (
 	"github.com/devlikebear/tars/internal/session"
 )
 
-func newGatewayRuntimeForToolTests(t *testing.T) *agentruntime.Runtime {
+func newAgentRuntimeForToolTests(t *testing.T) *agentruntime.Runtime {
 	t.Helper()
 	store := session.NewStore(t.TempDir())
 	rt := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
@@ -29,14 +29,14 @@ func newGatewayRuntimeForToolTests(t *testing.T) *agentruntime.Runtime {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := rt.Close(ctx); err != nil {
-			t.Fatalf("close gateway runtime: %v", err)
+			t.Fatalf("close agent runtime: %v", err)
 		}
 	})
 	return rt
 }
 
 func TestSessionsSpawnAndRunsTools(t *testing.T) {
-	rt := newGatewayRuntimeForToolTests(t)
+	rt := newAgentRuntimeForToolTests(t)
 	spawn := NewSessionsSpawnTool(rt)
 	runs := NewSessionsRunsTool(rt)
 
@@ -79,7 +79,7 @@ func TestSessionsSpawnAndRunsTools(t *testing.T) {
 }
 
 func TestSessionsSendTool(t *testing.T) {
-	rt := newGatewayRuntimeForToolTests(t)
+	rt := newAgentRuntimeForToolTests(t)
 	send := NewSessionsSendTool(rt)
 	res, err := send.Execute(context.Background(), json.RawMessage(`{"message":"hello","timeout_ms":5000}`))
 	if err != nil {
@@ -97,8 +97,8 @@ func TestSessionsSendTool(t *testing.T) {
 	}
 }
 
-func TestMessageNodesGatewayTools(t *testing.T) {
-	rt := newGatewayRuntimeForToolTests(t)
+func TestMessageNodesAgentRuntimeTools(t *testing.T) {
+	rt := newAgentRuntimeForToolTests(t)
 
 	message := NewMessageTool(rt, true)
 	msgRes, err := message.Execute(context.Background(), json.RawMessage(`{"action":"send","channel_id":"general","text":"hello"}`))
@@ -116,13 +116,13 @@ func TestMessageNodesGatewayTools(t *testing.T) {
 		t.Fatalf("message read expected success: %s", readRes.Text())
 	}
 
-	gatewayTool := NewGatewayTool(rt, true)
-	statusRes, err := gatewayTool.Execute(context.Background(), json.RawMessage(`{"action":"status"}`))
+	agentRuntimeTool := NewAgentRuntimeTool(rt, true)
+	statusRes, err := agentRuntimeTool.Execute(context.Background(), json.RawMessage(`{"action":"status"}`))
 	if err != nil {
-		t.Fatalf("gateway status execute: %v", err)
+		t.Fatalf("agent runtime status execute: %v", err)
 	}
 	if statusRes.IsError {
-		t.Fatalf("gateway status expected success: %s", statusRes.Text())
+		t.Fatalf("agent runtime status expected success: %s", statusRes.Text())
 	}
 }
 
@@ -144,7 +144,7 @@ func TestSessionsRunsCancel(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := rt.Close(ctx); err != nil {
-			t.Fatalf("close gateway runtime: %v", err)
+			t.Fatalf("close agent runtime: %v", err)
 		}
 	})
 	spawn := NewSessionsSpawnTool(rt)
@@ -172,7 +172,7 @@ func TestSessionsRunsCancel(t *testing.T) {
 }
 
 func TestSessionsRunsTool_WorkspaceScoped(t *testing.T) {
-	rt := newGatewayRuntimeForToolTests(t)
+	rt := newAgentRuntimeForToolTests(t)
 	spawn := NewSessionsSpawnTool(rt)
 	runs := NewSessionsRunsTool(rt)
 

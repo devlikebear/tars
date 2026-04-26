@@ -14,7 +14,7 @@ func ResolveOverride(cfg *config.Config, tier string, override *ProviderOverride
 	}
 	baseTier := strings.ToLower(strings.TrimSpace(tier))
 	if baseTier == "" {
-		baseTier = strings.ToLower(strings.TrimSpace(cfg.LLMRoleDefaults[string(llm.RoleGatewayDefault)]))
+		baseTier = strings.ToLower(strings.TrimSpace(cfg.LLMRoleDefaults[string(llm.RoleAgentRuntimeDefault)]))
 		if baseTier == "" {
 			baseTier = strings.ToLower(strings.TrimSpace(cfg.LLMDefaultTier))
 		}
@@ -33,15 +33,15 @@ func ResolveOverride(cfg *config.Config, tier string, override *ProviderOverride
 	if effectiveOverride == nil {
 		return resolved, metadata, nil
 	}
-	if !cfg.GatewayTaskOverride.Enabled {
-		return config.ResolvedLLMTier{}, PromptExecutionMetadata{}, fmt.Errorf("task override rejected: gateway_task_override is disabled")
+	if !cfg.AgentRuntimeTaskOverride.Enabled {
+		return config.ResolvedLLMTier{}, PromptExecutionMetadata{}, fmt.Errorf("task override rejected: agentruntime_task_override is disabled")
 	}
 	alias := strings.TrimSpace(effectiveOverride.Alias)
 	if alias == "" {
 		return config.ResolvedLLMTier{}, PromptExecutionMetadata{}, fmt.Errorf("task override rejected: alias is required")
 	}
-	if len(cfg.GatewayTaskOverride.AllowedAliases) > 0 && !containsExactString(cfg.GatewayTaskOverride.AllowedAliases, alias) {
-		return config.ResolvedLLMTier{}, PromptExecutionMetadata{}, fmt.Errorf("task override rejected: alias %q not in gateway_task_override.allowed_aliases", alias)
+	if len(cfg.AgentRuntimeTaskOverride.AllowedAliases) > 0 && !containsExactString(cfg.AgentRuntimeTaskOverride.AllowedAliases, alias) {
+		return config.ResolvedLLMTier{}, PromptExecutionMetadata{}, fmt.Errorf("task override rejected: alias %q not in agentruntime_task_override.allowed_aliases", alias)
 	}
 	provider, ok := cfg.LLMProviders[alias]
 	if !ok {
@@ -51,8 +51,8 @@ func ResolveOverride(cfg *config.Config, tier string, override *ProviderOverride
 	if model == "" {
 		model = resolved.Model
 	}
-	if len(cfg.GatewayTaskOverride.AllowedModels) > 0 && !containsExactString(cfg.GatewayTaskOverride.AllowedModels, model) {
-		return config.ResolvedLLMTier{}, PromptExecutionMetadata{}, fmt.Errorf("task override rejected: model %q not in gateway_task_override.allowed_models", model)
+	if len(cfg.AgentRuntimeTaskOverride.AllowedModels) > 0 && !containsExactString(cfg.AgentRuntimeTaskOverride.AllowedModels, model) {
+		return config.ResolvedLLMTier{}, PromptExecutionMetadata{}, fmt.Errorf("task override rejected: model %q not in agentruntime_task_override.allowed_models", model)
 	}
 	resolved.ProviderAlias = alias
 	resolved.Kind = strings.ToLower(strings.TrimSpace(provider.Kind))

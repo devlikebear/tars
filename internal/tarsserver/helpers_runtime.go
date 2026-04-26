@@ -15,7 +15,7 @@ type runtimeActivity struct {
 	chatInFlight atomic.Int64
 }
 
-type gatewayPromptRunner func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string, providerOverride *agentruntime.ProviderOverride) (string, error)
+type agentRuntimePromptRunner func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string, providerOverride *agentruntime.ProviderOverride) (string, error)
 
 func (a *runtimeActivity) beginChat() func() {
 	if a == nil {

@@ -19,7 +19,7 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 	}
 
 	router, _, err := llm.NewFakeRouter(llm.TierStandard, map[llm.Role]llm.Tier{
-		llm.RoleGatewayPlanner: llm.TierHeavy,
+		llm.RoleAgentRuntimePlanner: llm.TierHeavy,
 	})
 	if err != nil {
 		t.Fatalf("new fake router: %v", err)

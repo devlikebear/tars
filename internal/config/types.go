@@ -21,7 +21,7 @@ type UsagePrice struct {
 	CacheWritePer1MUSD float64 `json:"cache_write_per_1m_usd,omitempty"`
 }
 
-type GatewayAgent struct {
+type AgentRuntimeAgent struct {
 	Name           string            `json:"name"`
 	Description    string            `json:"description,omitempty"`
 	Command        string            `json:"command"`
@@ -215,40 +215,40 @@ type ToolConfig struct {
 	ToolsWebFetchAllowPrivateHosts    bool
 	ToolsApplyPatchEnabled            bool
 	ToolsMessageEnabled               bool
-	ToolsGatewayEnabled               bool
+	ToolsAgentRuntimeEnabled          bool
 }
 
-type GatewayConfig struct {
-	GatewayEnabled                       bool
-	GatewayDefaultAgent                  string
-	GatewayAgents                        []GatewayAgent
-	GatewayTaskOverride                  GatewayTaskOverrideConfig
-	GatewayAgentsWatch                   bool
-	GatewayAgentsWatchDebounceMS         int
-	GatewayPersistenceEnabled            bool
-	GatewayRunsPersistenceEnabled        bool
-	GatewayChannelsPersistenceEnabled    bool
-	GatewayRunsMaxRecords                int
-	GatewayChannelsMaxMessagesPerChannel int
-	GatewaySubagentsMaxThreads           int
-	GatewaySubagentsMaxDepth             int
-	GatewayConsensusEnabled              bool
-	GatewayConsensusMaxFanout            int
-	GatewayConsensusBudgetTokens         int
-	GatewayConsensusBudgetUSD            float64
-	GatewayConsensusTimeoutSeconds       int
-	GatewayConsensusAllowedAliases       []string
-	GatewayConsensusConcurrentRuns       int
-	GatewayPersistenceDir                string
-	GatewayRestoreOnStartup              bool
-	GatewayReportSummaryEnabled          bool
-	GatewayArchiveEnabled                bool
-	GatewayArchiveDir                    string
-	GatewayArchiveRetentionDays          int
-	GatewayArchiveMaxFileBytes           int
+type AgentRuntimeConfig struct {
+	AgentRuntimeEnabled                       bool
+	AgentRuntimeDefaultAgent                  string
+	AgentRuntimeAgents                        []AgentRuntimeAgent
+	AgentRuntimeTaskOverride                  AgentRuntimeTaskOverrideConfig
+	AgentRuntimeAgentsWatch                   bool
+	AgentRuntimeAgentsWatchDebounceMS         int
+	AgentRuntimePersistenceEnabled            bool
+	AgentRuntimeRunsPersistenceEnabled        bool
+	AgentRuntimeChannelsPersistenceEnabled    bool
+	AgentRuntimeRunsMaxRecords                int
+	AgentRuntimeChannelsMaxMessagesPerChannel int
+	AgentRuntimeSubagentsMaxThreads           int
+	AgentRuntimeSubagentsMaxDepth             int
+	AgentRuntimeConsensusEnabled              bool
+	AgentRuntimeConsensusMaxFanout            int
+	AgentRuntimeConsensusBudgetTokens         int
+	AgentRuntimeConsensusBudgetUSD            float64
+	AgentRuntimeConsensusTimeoutSeconds       int
+	AgentRuntimeConsensusAllowedAliases       []string
+	AgentRuntimeConsensusConcurrentRuns       int
+	AgentRuntimePersistenceDir                string
+	AgentRuntimeRestoreOnStartup              bool
+	AgentRuntimeReportSummaryEnabled          bool
+	AgentRuntimeArchiveEnabled                bool
+	AgentRuntimeArchiveDir                    string
+	AgentRuntimeArchiveRetentionDays          int
+	AgentRuntimeArchiveMaxFileBytes           int
 }
 
-type GatewayTaskOverrideConfig struct {
+type AgentRuntimeTaskOverrideConfig struct {
 	Enabled        bool     `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 	AllowedAliases []string `json:"allowed_aliases,omitempty" yaml:"allowed_aliases,omitempty"`
 	AllowedModels  []string `json:"allowed_models,omitempty" yaml:"allowed_models,omitempty"`
@@ -290,7 +290,7 @@ type Config struct {
 	AssistantConfig
 	CompactionConfig
 	ToolConfig
-	GatewayConfig
+	AgentRuntimeConfig
 	ChannelConfig
 	ExtensionConfig
 }

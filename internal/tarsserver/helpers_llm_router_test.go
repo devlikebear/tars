@@ -164,9 +164,9 @@ func TestBuildLLMRouter_RoleDefaultsPropagated(t *testing.T) {
 		},
 		"standard",
 		map[string]string{
-			"chat_main":       "standard",
-			"pulse_decider":   "light",
-			"gateway_planner": "heavy",
+			"chat_main":            "standard",
+			"pulse_decider":        "light",
+			"agentruntime_planner": "heavy",
 		},
 	)
 
@@ -181,7 +181,7 @@ func TestBuildLLMRouter_RoleDefaultsPropagated(t *testing.T) {
 	}{
 		{llm.RoleChatMain, llm.TierStandard},
 		{llm.RolePulseDecider, llm.TierLight},
-		{llm.RoleGatewayPlanner, llm.TierHeavy},
+		{llm.RoleAgentRuntimePlanner, llm.TierHeavy},
 		// Unmapped role → default tier
 		{llm.RoleContextCompactor, llm.TierStandard},
 	} {
