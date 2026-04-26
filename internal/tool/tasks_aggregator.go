@@ -12,23 +12,31 @@ import (
 )
 
 // NewTasksTool creates a "tasks" aggregator tool for managing per-session
-// plan and tasks. Actions: plan_set, plan_get, add, update, remove, list, clear.
+// plan and tasks. The plan follows a small state machine
+// (drafting → proposed → executing ↔ paused, terminal: completed/aborted)
+// so the chat UI can offer review/approve and runtime intervention without
+// extra round-trips.
 func NewTasksTool(store *session.Store, workspaceDir string, getSessionID func() string) Tool {
 	return Tool{
 		Name: "tasks",
 		Description: "Manage session-scoped plan and tasks. Actions: " +
-			"plan_set (set session goal — archives previous plan), " +
-			"plan_get (read current plan), " +
+			"plan_set (set session goal — archives previous plan, status=drafting), " +
+			"plan_get (read current plan + status), " +
 			"add (create a task), " +
-			"update (change task status/title/description), " +
+			"update (change task status/title/description; first in_progress auto-promotes proposed plans to executing; the plan flips to completed once every task is completed/cancelled), " +
 			"remove (delete a task), " +
 			"list (show plan + all tasks with summary), " +
-			"clear (reset plan and tasks). " +
+			"clear (reset plan and tasks), " +
+			"plan_propose (drafting → proposed; signal plan is ready for user review), " +
+			"plan_approve (proposed → executing; user has approved, start running), " +
+			"plan_pause (executing → paused; halt execution), " +
+			"plan_resume (paused → executing; continue execution), " +
+			"plan_abort (any except completed/aborted → aborted). " +
 			"Use for complex tasks with 3+ steps. Only ONE task in_progress at a time.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
-    "action":{"type":"string","enum":["plan_set","plan_get","add","update","remove","list","clear"]}
+    "action":{"type":"string","enum":["plan_set","plan_get","add","update","remove","list","clear","plan_propose","plan_approve","plan_pause","plan_resume","plan_abort"]}
   },
   "required":["action"],
   "additionalProperties":true
@@ -61,8 +69,28 @@ func NewTasksTool(store *session.Store, workspaceDir string, getSessionID func()
 				return tasksList(store, sessionID)
 			case "clear":
 				return tasksClear(store, workspaceDir, sessionID)
+			case "plan_propose":
+				return tasksPlanTransition(store, sessionID, session.PlanStatusProposed,
+					[]string{session.PlanStatusDrafting})
+			case "plan_approve":
+				return tasksPlanTransition(store, sessionID, session.PlanStatusExecuting,
+					[]string{session.PlanStatusProposed})
+			case "plan_pause":
+				return tasksPlanTransition(store, sessionID, session.PlanStatusPaused,
+					[]string{session.PlanStatusExecuting})
+			case "plan_resume":
+				return tasksPlanTransition(store, sessionID, session.PlanStatusExecuting,
+					[]string{session.PlanStatusPaused})
+			case "plan_abort":
+				return tasksPlanTransition(store, sessionID, session.PlanStatusAborted,
+					[]string{
+						session.PlanStatusDrafting,
+						session.PlanStatusProposed,
+						session.PlanStatusExecuting,
+						session.PlanStatusPaused,
+					})
 			default:
-				return aggregatorError("action must be one of: plan_set, plan_get, add, update, remove, list, clear"), nil
+				return aggregatorError("action must be one of: plan_set, plan_get, add, update, remove, list, clear, plan_propose, plan_approve, plan_pause, plan_resume, plan_abort"), nil
 			}
 		},
 	}
@@ -91,11 +119,14 @@ func tasksPlanSet(store *session.Store, workspaceDir string, sessionID string, p
 		}
 	}
 
+	now := session.NowRFC3339()
 	newTasks := session.SessionTasks{
 		Plan: &session.Plan{
 			Goal:        goal,
 			Constraints: strings.TrimSpace(input.Constraints),
-			CreatedAt:   session.NowRFC3339(),
+			CreatedAt:   now,
+			Status:      session.PlanStatusDrafting,
+			UpdatedAt:   now,
 		},
 	}
 	if err := store.SaveTasks(sessionID, newTasks); err != nil {
@@ -105,6 +136,98 @@ func tasksPlanSet(store *session.Store, workspaceDir string, sessionID string, p
 		"plan":     newTasks.Plan,
 		"archived": current.Plan != nil,
 	}, false), nil
+}
+
+// tasksPlanTransition is the shared implementation for plan_propose /
+// plan_approve / plan_pause / plan_resume / plan_abort. allowedFrom lists
+// the statuses from which the transition is valid; anything else returns
+// an error so the LLM (or test) sees an explicit reason rather than a
+// silent no-op.
+func tasksPlanTransition(store *session.Store, sessionID, target string, allowedFrom []string) (Result, error) {
+	st, err := store.GetTasks(sessionID)
+	if err != nil {
+		return aggregatorError(err.Error()), nil
+	}
+	if st.Plan == nil {
+		return aggregatorError("no plan exists; call plan_set first"), nil
+	}
+	current := strings.TrimSpace(st.Plan.Status)
+	if current == "" {
+		current = session.PlanStatusExecuting // legacy default
+	}
+	allowed := false
+	for _, from := range allowedFrom {
+		if current == from {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return aggregatorError(fmt.Sprintf(
+			"cannot transition plan from %q to %q (allowed from: %s)",
+			current, target, strings.Join(allowedFrom, ", "),
+		)), nil
+	}
+	st.Plan.Status = target
+	st.Plan.UpdatedAt = session.NowRFC3339()
+	if err := store.SaveTasks(sessionID, st); err != nil {
+		return aggregatorError(err.Error()), nil
+	}
+	return JSONTextResult(map[string]any{
+		"plan":    st.Plan,
+		"summary": session.TaskSummary(st.Tasks),
+	}, false), nil
+}
+
+// applyAutoTransitions reflects task-driven plan-status changes. Two rules:
+//
+//  1. If the plan is still "proposed" but a task has just become
+//     in_progress, the LLM clearly skipped plan_approve — treat the work
+//     as live and flip the plan to executing.
+//  2. If at least one task exists and every task is either completed or
+//     cancelled, mark the plan completed. (Aborted/completed plans are
+//     terminal and untouched.)
+//
+// Returns true when Status changed so callers can refresh UpdatedAt.
+func applyAutoTransitions(plan *session.Plan, tasks []session.Task) bool {
+	if plan == nil {
+		return false
+	}
+	current := strings.TrimSpace(plan.Status)
+	if current == session.PlanStatusCompleted || current == session.PlanStatusAborted {
+		return false
+	}
+
+	changed := false
+
+	// Rule 1: any task in_progress while plan == proposed → executing.
+	if current == session.PlanStatusProposed {
+		for _, t := range tasks {
+			if t.Status == "in_progress" {
+				plan.Status = session.PlanStatusExecuting
+				current = session.PlanStatusExecuting
+				changed = true
+				break
+			}
+		}
+	}
+
+	// Rule 2: all tasks finished → completed.
+	if len(tasks) > 0 && current != session.PlanStatusCompleted {
+		allDone := true
+		for _, t := range tasks {
+			if t.Status != "completed" && t.Status != "cancelled" {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			plan.Status = session.PlanStatusCompleted
+			changed = true
+		}
+	}
+
+	return changed
 }
 
 func tasksPlanGet(store *session.Store, sessionID string) (Result, error) {
@@ -153,11 +276,15 @@ func tasksAdd(store *session.Store, sessionID string, params json.RawMessage) (R
 		Description: strings.TrimSpace(input.Description),
 	}
 	st.Tasks = append(st.Tasks, task)
+	if applyAutoTransitions(st.Plan, st.Tasks) {
+		st.Plan.UpdatedAt = session.NowRFC3339()
+	}
 	if err := store.SaveTasks(sessionID, st); err != nil {
 		return aggregatorError(err.Error()), nil
 	}
 	return JSONTextResult(map[string]any{
 		"task":    task,
+		"plan":    st.Plan,
 		"summary": session.TaskSummary(st.Tasks),
 	}, false), nil
 }
@@ -204,11 +331,15 @@ func tasksUpdate(store *session.Store, sessionID string, params json.RawMessage)
 	if !found {
 		return aggregatorError(fmt.Sprintf("task %q not found", id)), nil
 	}
+	if applyAutoTransitions(st.Plan, st.Tasks) {
+		st.Plan.UpdatedAt = session.NowRFC3339()
+	}
 	if err := store.SaveTasks(sessionID, st); err != nil {
 		return aggregatorError(err.Error()), nil
 	}
 	return JSONTextResult(map[string]any{
 		"updated": true,
+		"plan":    st.Plan,
 		"summary": session.TaskSummary(st.Tasks),
 	}, false), nil
 }
@@ -242,11 +373,15 @@ func tasksRemove(store *session.Store, sessionID string, params json.RawMessage)
 		return aggregatorError(fmt.Sprintf("task %q not found", id)), nil
 	}
 	st.Tasks = filtered
+	if applyAutoTransitions(st.Plan, st.Tasks) {
+		st.Plan.UpdatedAt = session.NowRFC3339()
+	}
 	if err := store.SaveTasks(sessionID, st); err != nil {
 		return aggregatorError(err.Error()), nil
 	}
 	return JSONTextResult(map[string]any{
 		"removed": true,
+		"plan":    st.Plan,
 		"summary": session.TaskSummary(st.Tasks),
 	}, false), nil
 }

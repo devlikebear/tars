@@ -6,6 +6,35 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.10] - 2026-04-26
+
+### Added
+
+- Plan state machine — `session.Plan` now carries a `Status` field with six states (`drafting`, `proposed`, `executing`, `paused`, `completed`, `aborted`) plus an `UpdatedAt` timestamp. State validation helper `session.ValidPlanStatus`.
+- Five new `tasks` tool actions: `plan_propose` (drafting → proposed), `plan_approve` (proposed → executing), `plan_pause` (executing → paused), `plan_resume` (paused → executing), `plan_abort` (any active state → aborted). Each rejects invalid transitions with an explicit error.
+- Two automatic transitions guard against LLM omissions and surface real progress: a task moving to `in_progress` auto-promotes a `proposed` plan to `executing`, and a plan flips to `completed` once every task is `completed` or `cancelled`.
+- `SessionPlan.status` / `updated_at` exposed in the frontend type for upcoming UI work (CON-053 propose/approve, CON-054 runtime intervention).
+
+### Migration
+
+- Plans saved before this field existed have empty `Status` on disk; on load they default to `executing` so existing sessions keep their prior behavior with zero user action.
+
+### Tests
+
+- `TestValidPlanStatus`, `TestLegacyPlanWithoutStatusDefaultsToExecuting`
+- `TestTasks_PlanSetSetsDraftingStatus`
+- `TestTasks_PlanProposeDraftingToProposed` / `TestTasks_PlanProposeRejectsExecuting`
+- `TestTasks_PlanApproveProposedToExecuting` / `TestTasks_PlanApproveRejectsDrafting`
+- `TestTasks_AutoExecutingOnFirstInProgress`
+- `TestTasks_AutoCompletedWhenAllTasksDone`
+- `TestTasks_PlanPauseAndResume` / `TestTasks_PlanPauseRejectsDrafting`
+- `TestTasks_PlanAbortFromAnyActiveState` / `TestTasks_PlanAbortRejectsTerminal`
+- `TestTasks_PlanTransitionWithoutPlan`
+
+### Closed
+
+- Closes #454.
+
 ## [0.31.9] - 2026-04-26
 
 ### Fixed
