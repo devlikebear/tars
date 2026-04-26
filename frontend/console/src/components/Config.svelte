@@ -629,14 +629,14 @@
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--text-ghost);
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     padding: 2px var(--space-2);
     border-radius: var(--radius-sm);
   }
 
   .view-toggle {
     display: flex;
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     border-radius: var(--radius-md);
     padding: 2px;
     gap: 2px;
@@ -655,12 +655,12 @@
     transition: all var(--duration-fast) var(--ease-out);
   }
   .toggle-btn:hover { color: var(--text-primary); }
-  .toggle-btn.active { background: var(--accent); color: #fff; }
+  .toggle-btn.active { background: var(--primary); color: #fff; }
 
   .loading { color: var(--text-secondary); font-size: var(--text-sm); padding: var(--space-6); }
 
   .empty-state { padding: var(--space-6); text-align: center; color: var(--text-secondary); font-size: var(--text-sm); }
-  .empty-state code { font-family: var(--font-mono); background: var(--bg-elevated); padding: 2px var(--space-1); border-radius: var(--radius-sm); font-size: var(--text-xs); }
+  .empty-state code { font-family: var(--font-mono); background: var(--surface-elevated); padding: 2px var(--space-1); border-radius: var(--radius-sm); font-size: var(--text-xs); }
 
   .message { font-size: var(--text-sm); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }
   .message-error { background: rgba(220, 60, 60, 0.15); color: var(--red); border: 1px solid rgba(220, 60, 60, 0.3); }
@@ -681,10 +681,10 @@
     cursor: pointer;
     transition: background var(--duration-fast) var(--ease-out);
   }
-  .section-header:hover { background: var(--bg-elevated); }
+  .section-header:hover { background: var(--surface-elevated); }
 
   .section-header-left { display: flex; align-items: center; gap: var(--space-3); }
-  .section-icon { font-size: var(--text-md); color: var(--accent); width: 20px; text-align: center; }
+  .section-icon { font-size: var(--text-md); color: var(--primary); width: 20px; text-align: center; }
   .section-title { font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--text-primary); }
   .section-count { font-size: var(--text-xs); color: var(--text-ghost); }
 
@@ -709,7 +709,7 @@
   }
   .field-row:last-child { border-bottom: none; }
   .field-row:hover { background: rgba(255, 255, 255, 0.015); }
-  .field-row.field-dirty { background: rgba(224, 145, 69, 0.06); border-left: 2px solid var(--accent); }
+  .field-row.field-dirty { background: rgba(224, 145, 69, 0.06); border-left: 2px solid var(--primary); }
 
   .field-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
   .field-label { font-family: var(--font-display); font-size: var(--text-sm); font-weight: 500; color: var(--text-primary); }
@@ -739,10 +739,10 @@
   }
   .value-btn:hover {
     border-color: var(--border-default);
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
   }
   .value-btn.dirty .value-text {
-    color: var(--accent);
+    color: var(--primary);
     font-weight: 500;
   }
 
@@ -770,13 +770,13 @@
     transform: scale(1.05);
   }
   .bool-toggle.dirty {
-    box-shadow: 0 0 0 1px var(--accent);
+    box-shadow: 0 0 0 1px var(--primary);
   }
 
   /* ── Field select ─────────────────────────── */
   .field-select {
     padding: 3px var(--space-2);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
@@ -792,16 +792,16 @@
     padding-right: var(--space-5);
   }
   .field-select:hover { border-color: var(--border-default); }
-  .field-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.3); }
-  .field-select.dirty { border-color: var(--accent); color: var(--accent); font-weight: 500; }
+  .field-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.3); }
+  .field-select.dirty { border-color: var(--primary); color: var(--primary); font-weight: 500; }
 
   /* ── Field input ─────────────────────────── */
   .field-edit { display: flex; }
   .field-input {
     width: 200px;
     padding: var(--space-1) var(--space-2);
-    background: var(--bg-base);
-    border: 1px solid var(--accent);
+    background: var(--surface-base);
+    border: 1px solid var(--primary);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
     font-family: var(--font-mono);
@@ -816,8 +816,8 @@
     width: min(420px, 42vw);
     min-height: 120px;
     padding: var(--space-2);
-    background: var(--bg-base);
-    border: 1px solid var(--accent);
+    background: var(--surface-base);
+    border: 1px solid var(--primary);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
     font-family: var(--font-mono);
@@ -839,7 +839,7 @@
     width: 100%;
     min-height: 500px;
     padding: var(--space-3);
-    background: var(--bg-base);
+    background: var(--surface-base);
     color: var(--text-primary);
     border: none;
     border-top: 1px solid var(--border-subtle);
@@ -852,7 +852,7 @@
     white-space: pre;
     overflow-x: auto;
   }
-  .config-editor:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
+  .config-editor:focus { outline: none; box-shadow: inset 0 0 0 1px var(--primary); }
 
   .editor-footer {
     display: flex;
@@ -921,7 +921,7 @@
     width: 100%;
     padding: var(--space-2) var(--space-3);
     padding-right: var(--space-8);
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     color: var(--text-primary);
@@ -930,7 +930,7 @@
   }
   .search-input:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--primary);
     box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.2);
   }
   .search-input::placeholder { color: var(--text-ghost); }

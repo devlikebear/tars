@@ -253,7 +253,7 @@
 
   .pulse-response {
     padding: var(--space-3);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border-radius: var(--radius-md);
     font-size: var(--text-sm);
     line-height: 1.6;
@@ -326,7 +326,7 @@
 
   .pulse-recent li {
     padding: var(--space-2) var(--space-3);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border-radius: var(--radius-sm);
   }
 

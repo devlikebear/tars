@@ -179,7 +179,7 @@
     justify-content: space-between;
     height: var(--header-height);
     padding: 0 var(--space-6);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border-bottom: 1px solid var(--border-subtle);
   }
 
@@ -256,12 +256,12 @@
     transition: all var(--duration-fast) var(--ease-out);
   }
   .header-badge-btn:hover {
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     border-color: var(--border-default);
     color: var(--text-primary);
   }
   .header-badge-btn.has-unread {
-    border-color: var(--accent);
+    border-color: var(--primary);
   }
 
   .badge-icon {
@@ -279,7 +279,7 @@
     height: 16px;
     padding: 0 4px;
     border-radius: 8px;
-    background: var(--accent);
+    background: var(--primary);
     color: #fff;
     font-family: var(--font-display);
     font-size: 10px;
@@ -295,7 +295,7 @@
     max-height: 500px;
     display: flex;
     flex-direction: column;
-    background: var(--bg-surface);
+    background: var(--surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -334,7 +334,7 @@
     gap: 2px;
     padding: var(--space-1) var(--space-3);
     border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
   }
   .notif-filter-tab {
     padding: 3px var(--space-2);
@@ -349,7 +349,7 @@
     transition: all var(--duration-fast) var(--ease-out);
   }
   .notif-filter-tab:hover { color: var(--text-primary); }
-  .notif-filter-tab.active { background: var(--accent); color: #fff; }
+  .notif-filter-tab.active { background: var(--primary); color: #fff; }
 
   .notif-panel-body {
     flex: 1;
@@ -374,12 +374,12 @@
   .notif-item:hover { background: rgba(255, 255, 255, 0.02); }
 
   .notif-unread { background: rgba(224, 145, 69, 0.04); }
-  .notif-unread .notif-title { color: var(--accent-text); }
+  .notif-unread .notif-title { color: var(--primary-text); }
 
   .notif-error { border-left-color: var(--error); }
   .notif-warn { border-left-color: var(--warning); }
   .notif-success { border-left-color: var(--success); }
-  .notif-info { border-left-color: var(--accent); }
+  .notif-info { border-left-color: var(--primary); }
 
   .notif-item-top {
     display: flex;

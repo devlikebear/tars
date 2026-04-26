@@ -182,7 +182,7 @@
   .plan-section {
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-inset);
+    background: var(--surface-inset);
     overflow: hidden;
   }
 
@@ -231,14 +231,14 @@
 
   .progress-bar {
     height: 4px;
-    background: var(--bg-inset);
+    background: var(--surface-inset);
     border-radius: 2px;
     overflow: hidden;
   }
 
   .progress-fill {
     height: 100%;
-    background: var(--accent);
+    background: var(--primary);
     border-radius: 2px;
     transition: width 0.3s var(--ease-out);
   }
@@ -254,10 +254,10 @@
     border-radius: var(--radius-sm);
     font-size: var(--text-xs);
     color: var(--text-secondary);
-    background: var(--bg-inset);
+    background: var(--surface-inset);
   }
 
-  .stat-chip.accent { color: var(--accent-text); background: rgba(224, 145, 69, 0.12); }
+  .stat-chip.accent { color: var(--primary-text); background: rgba(224, 145, 69, 0.12); }
   .stat-chip.success { color: var(--success); background: rgba(74, 222, 128, 0.12); }
   .stat-chip.error { color: var(--error); background: rgba(239, 68, 68, 0.12); }
 
@@ -274,12 +274,12 @@
     padding: var(--space-3);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-inset);
+    background: var(--surface-inset);
     transition: border-color var(--duration-fast) var(--ease-out);
   }
 
   .task-card.active {
-    border-color: var(--accent);
+    border-color: var(--primary);
     background: rgba(224, 145, 69, 0.06);
   }
 
@@ -299,7 +299,7 @@
     line-height: 1.4;
   }
 
-  .task-card.active .task-status-icon { color: var(--accent); }
+  .task-card.active .task-status-icon { color: var(--primary); }
   .task-card.completed .task-status-icon { color: var(--success); }
   .task-card.cancelled .task-status-icon { color: var(--text-tertiary); }
 

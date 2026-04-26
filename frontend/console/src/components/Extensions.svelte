@@ -610,7 +610,7 @@
   .page-subtitle { color: var(--text-tertiary); font-size: var(--text-sm); }
   .page-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
 
-  .view-toggle { display: flex; background: var(--bg-elevated); border-radius: var(--radius-md); padding: 2px; gap: 2px; }
+  .view-toggle { display: flex; background: var(--surface-elevated); border-radius: var(--radius-md); padding: 2px; gap: 2px; }
   .toggle-btn {
     padding: var(--space-1) var(--space-3);
     border: none; border-radius: var(--radius-sm);
@@ -619,7 +619,7 @@
     cursor: pointer; transition: all var(--duration-fast) var(--ease-out);
   }
   .toggle-btn:hover { color: var(--text-primary); }
-  .toggle-btn.active { background: var(--accent); color: #fff; }
+  .toggle-btn.active { background: var(--primary); color: #fff; }
 
   .ext-toolbar { display: flex; gap: var(--space-2); }
   .ext-loading { padding: var(--space-10); text-align: center; color: var(--text-tertiary); }
@@ -683,10 +683,10 @@
   .ext-item-wrapper .ext-item { border-bottom: none; }
   .ext-name-btn { display: flex; align-items: center; gap: var(--space-1); background: none; border: none; cursor: pointer; padding: 0; }
   .ext-name-btn strong { color: var(--text-primary); font-family: var(--font-display); font-size: var(--text-sm); font-weight: 500; }
-  .ext-name-btn:hover strong { color: var(--accent); }
+  .ext-name-btn:hover strong { color: var(--primary); }
   .detail-chevron { font-size: 10px; color: var(--text-ghost); transition: transform var(--duration-fast) var(--ease-out); display: inline-block; }
   .detail-chevron.open { transform: rotate(90deg); }
-  .ext-detail { padding: var(--space-3) var(--space-4); background: var(--bg-base); border-top: 1px solid var(--border-subtle); }
+  .ext-detail { padding: var(--space-3) var(--space-4); background: var(--surface-base); border-top: 1px solid var(--border-subtle); }
   .ext-detail-loading { color: var(--text-tertiary); font-size: var(--text-xs); }
   .ext-detail-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-subtle); font-size: var(--text-xs); color: var(--text-secondary); }
   .ext-detail-meta strong { color: var(--text-tertiary); margin-right: 2px; }
@@ -698,13 +698,13 @@
   .ext-md :global(ul), .ext-md :global(ol) { margin: var(--space-1) 0; padding-left: var(--space-5); }
   .ext-md :global(li) { margin-bottom: var(--space-1); font-size: var(--text-sm); }
   .ext-md :global(code) { font-family: var(--font-mono); font-size: 0.9em; background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px; }
-  .ext-md :global(pre) { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-2); overflow-x: auto; margin: var(--space-2) 0; font-family: var(--font-mono); font-size: var(--text-xs); }
+  .ext-md :global(pre) { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-2); overflow-x: auto; margin: var(--space-2) 0; font-family: var(--font-mono); font-size: var(--text-xs); }
   .ext-md :global(pre code) { background: none; padding: 0; }
   .ext-md :global(strong) { font-weight: 600; color: var(--text-primary); }
 
   .ext-tags { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: 2px; }
   .ext-tag {
     padding: 1px var(--space-1); border-radius: var(--radius-sm);
-    background: var(--bg-elevated); font-size: 10px; color: var(--text-tertiary);
+    background: var(--surface-elevated); font-size: 10px; color: var(--text-tertiary);
   }
 </style>

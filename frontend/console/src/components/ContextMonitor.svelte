@@ -202,7 +202,7 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    background: var(--bg-surface);
+    background: var(--surface);
     border-left: 1px solid var(--border-subtle);
   }
 
@@ -235,7 +235,7 @@
   .monitor-bar-container {
     position: relative;
     height: 4px;
-    background: var(--bg-base);
+    background: var(--surface-base);
     margin: var(--space-2) var(--space-3) 0;
     border-radius: 2px;
     overflow: hidden;
@@ -287,7 +287,7 @@
   }
 
   .mode-badge {
-    color: var(--accent);
+    color: var(--primary);
   }
 
   .monitor-grid {
@@ -302,7 +302,7 @@
     display: flex;
     flex-direction: column;
     padding: var(--space-2);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border-radius: var(--radius-sm);
   }
 
@@ -345,7 +345,7 @@
     width: 100%;
     text-align: left;
   }
-  .section-toggle:hover { color: var(--accent); }
+  .section-toggle:hover { color: var(--primary); }
 
   .tool-chips {
     display: flex;
@@ -357,7 +357,7 @@
     font-family: var(--font-mono);
     font-size: 9px;
     color: var(--text-ghost);
-    background: var(--bg-base);
+    background: var(--surface-base);
     padding: 1px 5px;
     border-radius: 3px;
     border: 1px solid var(--border-subtle);
@@ -367,7 +367,7 @@
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-ghost);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border-radius: var(--radius-sm);
     padding: var(--space-2);
     margin-top: var(--space-1);

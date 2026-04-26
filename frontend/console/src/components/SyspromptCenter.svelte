@@ -279,14 +279,14 @@
     background:
       radial-gradient(circle at top right, rgba(224, 145, 69, 0.12), transparent 34%),
       linear-gradient(135deg, rgba(255, 255, 255, 0.02), transparent),
-      var(--bg-surface);
+      var(--surface);
   }
 
   .eyebrow {
     margin-bottom: var(--space-2);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
-    color: var(--accent-text);
+    color: var(--primary-text);
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }
@@ -349,14 +349,14 @@
     padding: var(--space-3);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-inset);
+    background: var(--surface-inset);
     text-align: left;
     cursor: pointer;
     transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
   }
 
   .file-row:hover, .file-row.active {
-    border-color: var(--accent);
+    border-color: var(--primary);
     background: rgba(224, 145, 69, 0.08);
   }
 
@@ -396,7 +396,7 @@
     padding: var(--space-4);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-inset);
+    background: var(--surface-inset);
   }
 
   .description-card p {
@@ -427,7 +427,7 @@
     padding: var(--space-3);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-inset);
+    background: var(--surface-inset);
   }
 
   .diag-list span {

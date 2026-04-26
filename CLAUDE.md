@@ -105,9 +105,10 @@ cd frontend/console && npm run check   # svelte-check + tsc
 - **Router**: vanilla `window.history.pushState()` in `lib/router.ts`. Top-level routes: chat (default), memory, sysprompt, ops, pulse, reflection, extensions, config. Legacy `/console/heartbeat` URLs redirect to `/console/pulse`.
 - **System surface views**: `Pulse.svelte` and `Reflection.svelte` both poll their respective `/v1/{pulse,reflection}/status` endpoints every 30s, expose "Run … Now" buttons that bypass the normal gate, and share a matching visual language. Home dashboard surfaces both pulse and reflection health in the top-strip so stalled nightly runs are visible without navigating.
 - **API client**: `lib/api.ts` — `requestJSON<T>()` wrapper, SSE streaming via `EventSource` and `fetch` + `ReadableStream`
-- **Design tokens**: `app.css` — dark theme, amber accent (`#e09145`), Outfit/DM Sans/JetBrains Mono fonts
+- **Design tokens**: `app.css` — dark theme, amber accent (`#e09145`), Outfit/DM Sans/JetBrains Mono fonts. CSS variables follow DESIGN.md naming: `--surface-*`, `--primary*`, `--border-*`, `--text-*`.
 - **Badge/button classes**: `.badge-{default,accent,success,warning,error,info}`, `.btn-{primary,ghost,danger,sm}`
 - **Markdown**: custom lightweight renderer in `lib/markdown.ts` (no external deps)
+- **Design system source of truth**: `frontend/console/DESIGN.md` is the normative spec for tokens, components, and visual rules ("Warm Workshop" aesthetic). Consult it before adding/modifying any frontend visual surface — new colors, new component variants, spacing/typography choices. The YAML front matter is canonical; mirror values into `app.css`, `tokens.json`, and `tailwind.theme.json` together. If a change deviates from DESIGN.md (e.g., adding a hover state the spec doesn't cover), update DESIGN.md in the same PR rather than letting code and spec drift.
 
 **SSE Event System:**
 - `/v1/events/stream` — global event stream, optional `?project_id=` filter

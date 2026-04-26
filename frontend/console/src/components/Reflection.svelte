@@ -324,7 +324,7 @@
 
   .r-jobs li {
     padding: var(--space-2) var(--space-3);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border-radius: var(--radius-md);
   }
 
@@ -411,7 +411,7 @@
 
   .r-recent li {
     padding: var(--space-2) var(--space-3);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border-radius: var(--radius-sm);
   }
 

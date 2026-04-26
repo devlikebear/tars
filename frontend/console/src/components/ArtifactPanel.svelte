@@ -853,11 +853,11 @@
     transition: all var(--duration-fast);
   }
   .tab-btn:hover { color: var(--text-primary); border-color: var(--border-default); }
-  .tab-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(224, 145, 69, 0.08); }
+  .tab-btn.active { color: var(--primary); border-color: var(--primary); background: rgba(224, 145, 69, 0.08); }
 
   .tab-count {
     font-size: 9px;
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     padding: 0 4px;
     border-radius: var(--radius-sm);
   }
@@ -892,7 +892,7 @@
 
   .workdir-select {
     flex: 1;
-    background: var(--bg-inset);
+    background: var(--surface-inset);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
@@ -913,8 +913,8 @@
     flex-direction: column;
     flex: 1;
     overflow: hidden;
-    border-top: 1px solid var(--accent);
-    background: var(--bg-surface);
+    border-top: 1px solid var(--primary);
+    background: var(--surface);
   }
 
   .pick-header {
@@ -931,7 +931,7 @@
     font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--accent-text);
+    color: var(--primary-text);
   }
 
   .pick-actions {
@@ -944,7 +944,7 @@
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-secondary);
-    background: var(--bg-inset);
+    background: var(--surface-inset);
     border-bottom: 1px solid var(--border-subtle);
     white-space: nowrap;
     overflow: hidden;
@@ -1007,7 +1007,7 @@
     padding: 6px 8px;
     border: 1px solid var(--border-default);
     border-radius: var(--radius-sm);
-    background: var(--bg-inset);
+    background: var(--surface-inset);
     color: var(--text-primary);
     font-family: var(--font-mono);
     font-size: 11px;
@@ -1034,7 +1034,7 @@
     color: var(--text-primary);
     transition: background var(--duration-fast) var(--ease-out);
   }
-  .artifact-item:hover { background: var(--bg-hover); }
+  .artifact-item:hover { background: var(--surface-hover); }
   .artifact-item.active {
     background: rgba(224, 145, 69, 0.12);
     box-shadow: inset 0 0 0 1px rgba(224, 145, 69, 0.35);
@@ -1078,8 +1078,8 @@
     transition: all var(--duration-fast) var(--ease-out);
   }
   .artifact-row-action:hover:not(:disabled) {
-    color: var(--accent);
-    border-color: var(--accent);
+    color: var(--primary);
+    border-color: var(--primary);
   }
   .artifact-row-action:disabled {
     opacity: 0.45;
@@ -1148,8 +1148,8 @@
     padding: 1px 4px;
     border-radius: var(--radius-sm);
   }
-  .ws-crumb:hover { color: var(--text-primary); background: var(--bg-hover); }
-  .ws-crumb.active { color: var(--accent); }
+  .ws-crumb:hover { color: var(--text-primary); background: var(--surface-hover); }
+  .ws-crumb.active { color: var(--primary); }
   .ws-sep { color: var(--text-ghost); font-size: 10px; }
 
   /* Preview modal */
@@ -1165,7 +1165,7 @@
   }
 
   .preview-modal {
-    background: var(--bg-surface);
+    background: var(--surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     width: 100%;
@@ -1234,8 +1234,8 @@
     cursor: pointer;
   }
   .preview-mode-btn.active {
-    color: var(--accent);
-    border-color: var(--accent);
+    color: var(--primary);
+    border-color: var(--primary);
     background: rgba(224, 145, 69, 0.08);
   }
 
@@ -1250,7 +1250,7 @@
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
-    background: var(--bg-inset);
+    background: var(--surface-inset);
     color: var(--text-secondary);
     font-size: var(--text-xs);
   }

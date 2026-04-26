@@ -108,7 +108,7 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    background: var(--bg-surface);
+    background: var(--surface);
     border-left: 1px solid var(--border-subtle);
   }
 
@@ -162,13 +162,13 @@
     width: 100%;
     text-align: left;
   }
-  .section-toggle:hover { color: var(--accent); }
+  .section-toggle:hover { color: var(--primary); }
 
   .prompt-readonly {
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-ghost);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border-radius: var(--radius-sm);
     padding: var(--space-2);
     margin-top: var(--space-1);
@@ -203,7 +203,7 @@
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--text-primary);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     padding: var(--space-2);
@@ -212,7 +212,7 @@
   }
   .override-textarea:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--primary);
   }
 
   .editor-actions {

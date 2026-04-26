@@ -392,7 +392,7 @@
   .run-item {
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-inset);
+    background: var(--surface-inset);
   }
 
   .scope-card {
@@ -429,7 +429,7 @@
     padding: var(--space-3);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-surface);
+    background: var(--surface);
   }
 
   .cron-list {
@@ -454,7 +454,7 @@
 
   .cron-item-btn.active,
   .cron-item-btn:hover {
-    background: var(--bg-surface);
+    background: var(--surface);
   }
 
   .cron-name {
@@ -483,13 +483,13 @@
   }
 
   .run-error {
-    border-color: color-mix(in srgb, var(--accent-danger) 35%, var(--border-subtle));
+    border-color: color-mix(in srgb, var(--error) 35%, var(--border-subtle));
   }
 
   .run-error-text,
   .form-error,
   .error-banner {
-    color: var(--accent-danger);
+    color: var(--error);
   }
 
   .empty-state {
@@ -500,8 +500,8 @@
   .error-banner {
     font-size: var(--text-sm);
     padding: var(--space-2) var(--space-3);
-    border: 1px solid color-mix(in srgb, var(--accent-danger) 30%, var(--border-subtle));
+    border: 1px solid color-mix(in srgb, var(--error) 30%, var(--border-subtle));
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--accent-danger) 8%, var(--bg-surface));
+    background: color-mix(in srgb, var(--error) 8%, var(--surface));
   }
 </style>

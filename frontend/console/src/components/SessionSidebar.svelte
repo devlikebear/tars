@@ -302,7 +302,7 @@
     transition: color var(--duration-fast);
   }
   .filter-btn:hover { color: var(--text-secondary); }
-  .filter-btn.active { color: var(--accent); }
+  .filter-btn.active { color: var(--primary); }
 
   .sort-btns {
     margin-left: auto;
@@ -332,10 +332,10 @@
     transition: background var(--duration-fast) var(--ease-out);
   }
   .session-item:hover {
-    background: var(--bg-hover);
+    background: var(--surface-hover);
   }
   .session-item.active {
-    background: var(--accent-muted);
+    background: var(--primary-muted);
   }
 
   .session-btn {
@@ -395,15 +395,15 @@
     border-radius: 2px;
     line-height: 1;
   }
-  .act-btn:hover { color: var(--accent); background: rgba(255,255,255,0.04); }
+  .act-btn:hover { color: var(--primary); background: rgba(255,255,255,0.04); }
   .act-btn-danger:hover { color: var(--error); }
 
   .rename-input {
     flex: 1;
     padding: 1px var(--space-1);
     font-size: var(--text-xs);
-    background: var(--bg-base);
-    border: 1px solid var(--accent);
+    background: var(--surface-base);
+    border: 1px solid var(--primary);
     border-radius: 2px;
     color: var(--text-primary);
     outline: none;

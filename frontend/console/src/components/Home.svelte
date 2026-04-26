@@ -248,7 +248,7 @@
     align-items: center;
     gap: var(--space-5);
     padding: var(--space-5) var(--space-6);
-    background: var(--bg-surface);
+    background: var(--surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     margin-bottom: var(--space-6);
@@ -314,7 +314,7 @@
   .list-item {
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-md);
-    background: var(--bg-base);
+    background: var(--surface-base);
   }
 
   .list-item-top {

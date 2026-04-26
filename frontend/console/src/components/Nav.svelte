@@ -87,7 +87,7 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background: var(--bg-surface);
+    background: var(--surface);
     border-right: 1px solid var(--border-subtle);
     z-index: 40;
     overflow-y: auto;
@@ -109,7 +109,7 @@
     transition: background var(--duration-fast) var(--ease-out);
   }
   .nav-logo:hover {
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
   }
 
   .nav-logo-mark {
@@ -119,7 +119,7 @@
     width: 28px;
     height: 28px;
     border-radius: var(--radius-md);
-    background: var(--accent);
+    background: var(--primary);
     color: #fff;
     font-family: var(--font-display);
     font-weight: 600;
@@ -158,13 +158,13 @@
       color var(--duration-fast) var(--ease-out);
   }
   .nav-item:hover {
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     color: var(--text-primary);
     text-decoration: none;
   }
   .nav-item.active {
-    background: var(--accent-muted);
-    color: var(--accent-text);
+    background: var(--primary-muted);
+    color: var(--primary-text);
   }
 
   .nav-icon {

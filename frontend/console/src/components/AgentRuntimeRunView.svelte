@@ -245,7 +245,7 @@
   .agentruntime-title { font-family: var(--font-display); font-size: var(--text-xl); color: var(--text-primary); }
   .agentruntime-subtitle { color: var(--text-ghost); font-size: var(--text-sm); }
   .agentruntime-list, .agentruntime-detail { display: flex; flex-direction: column; gap: var(--space-3); }
-  .agentruntime-row, .detail-card, .detail-panel, .variant-card { text-align: left; border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .agentruntime-row, .detail-card, .detail-panel, .variant-card { text-align: left; border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
   .row-main, .row-meta, .variant-head { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
   .row-id, .detail-title, .event-type { font-family: var(--font-mono); }
   .row-agent, .row-status, .row-mode, .row-meta, .event-body { color: var(--text-secondary); font-size: var(--text-sm); }
@@ -255,10 +255,10 @@
   .label { font-size: 10px; text-transform: uppercase; color: var(--text-ghost); font-family: var(--font-mono); }
   .detail-columns, .variants-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
   .variants-grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-  pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-secondary); background: var(--bg-elevated); padding: var(--space-3); border-radius: var(--radius-md); }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-secondary); background: var(--surface-elevated); padding: var(--space-3); border-radius: var(--radius-md); }
   .event-log { display: flex; flex-direction: column; gap: var(--space-2); }
   .event-row { display: flex; gap: var(--space-3); align-items: flex-start; border-top: 1px solid var(--border-subtle); padding-top: var(--space-2); }
-  .event-type { min-width: 140px; color: var(--accent); font-size: var(--text-xs); }
+  .event-type { min-width: 140px; color: var(--primary); font-size: var(--text-xs); }
   .agentruntime-empty { color: var(--text-ghost); font-size: var(--text-sm); }
   @media (max-width: 900px) { .detail-columns { grid-template-columns: 1fr; } }
   @media (max-width: 768px) { .variants-grid { grid-template-columns: 1fr; } }

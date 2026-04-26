@@ -292,7 +292,7 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    background: var(--bg-surface);
+    background: var(--surface);
     border-left: 1px solid var(--border-subtle);
   }
 
@@ -347,8 +347,8 @@
     transition: all var(--duration-fast);
   }
   .config-tab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
+    color: var(--primary);
+    border-bottom-color: var(--primary);
   }
   .config-tab:hover { color: var(--text-primary); }
 
@@ -359,7 +359,7 @@
   .config-filter-input {
     width: 100%;
     padding: var(--space-1) var(--space-2);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
@@ -414,12 +414,12 @@
     font-size: 10px;
     color: var(--text-secondary);
     cursor: pointer;
-    background: var(--bg-base);
+    background: var(--surface-base);
   }
 
   .group-chip.active {
-    border-color: var(--accent);
-    color: var(--accent);
+    border-color: var(--primary);
+    color: var(--primary);
   }
 
   .group-chip-warning.active {

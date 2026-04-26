@@ -430,9 +430,9 @@
   .action-feedback {
     padding: 6px 14px;
     font-size: 0.82rem;
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    border-bottom: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
     text-align: center;
   }
   .chat-page {
@@ -453,7 +453,7 @@
     align-items: center;
     gap: var(--space-4);
     padding: var(--space-2) var(--space-4);
-    background: var(--bg-surface);
+    background: var(--surface);
     border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
     position: sticky;
@@ -505,8 +505,8 @@
     border-color: var(--border-default);
   }
   .pulse-toggle-btn.active {
-    color: var(--accent);
-    border-color: var(--accent);
+    color: var(--primary);
+    border-color: var(--primary);
     background: rgba(224, 145, 69, 0.08);
   }
 
@@ -523,7 +523,7 @@
 
   .chat-sidebar {
     border-right: 1px solid var(--border-subtle);
-    background: var(--bg-surface);
+    background: var(--surface);
     padding: var(--space-3);
     overflow: hidden;
   }
@@ -578,8 +578,8 @@
     padding: var(--space-1) var(--space-2);
     font-size: var(--text-base);
     font-family: var(--font-display);
-    background: var(--bg-base);
-    border: 1px solid var(--accent);
+    background: var(--surface-base);
+    border: 1px solid var(--primary);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
     outline: none;

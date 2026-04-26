@@ -366,7 +366,7 @@
     padding: var(--space-4);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
-    background: var(--bg-surface);
+    background: var(--surface);
   }
 
   .stat-card {
@@ -398,15 +398,15 @@
     border-radius: var(--radius-pill);
     padding: 8px 12px;
     border: 1px solid var(--border-subtle);
-    background: var(--bg-surface);
+    background: var(--surface);
     color: var(--text-secondary);
     font: inherit;
   }
 
   .tab-btn.active {
-    border-color: var(--accent);
-    background: var(--accent-muted);
-    color: var(--accent-text);
+    border-color: var(--primary);
+    background: var(--primary-muted);
+    color: var(--primary-text);
   }
 
   .memory-layout {
@@ -444,7 +444,7 @@
     text-align: left;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-base);
+    background: var(--surface-base);
     padding: var(--space-3);
     display: flex;
     flex-direction: column;
@@ -459,8 +459,8 @@
 
   .asset-row:hover,
   .asset-row.active {
-    border-color: var(--accent);
-    background: var(--accent-muted);
+    border-color: var(--primary);
+    background: var(--primary-muted);
   }
 
   .editor-meta {
@@ -475,7 +475,7 @@
     width: 100%;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-surface);
+    background: var(--surface);
     color: var(--text-primary);
     padding: 10px 12px;
     font: inherit;
@@ -510,7 +510,7 @@
     align-items: center;
     padding: 8px 10px;
     border-radius: var(--radius-md);
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     color: var(--text-secondary);
   }
 
@@ -532,7 +532,7 @@
   }
 
   .empty-state {
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     color: var(--text-secondary);
   }
 

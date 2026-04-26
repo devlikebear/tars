@@ -626,7 +626,7 @@
     align-items: center;
     gap: var(--space-6);
     padding: var(--space-5) var(--space-6);
-    background: var(--bg-surface);
+    background: var(--surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     margin-bottom: var(--space-6);
@@ -748,7 +748,7 @@
   .approval-item {
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-md);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border: 1px solid transparent;
   }
 
@@ -837,7 +837,7 @@
     gap: var(--space-1);
     margin-top: var(--space-2);
     padding: var(--space-2) var(--space-3);
-    background: var(--bg-surface);
+    background: var(--surface);
     border-radius: var(--radius-sm);
     max-height: 200px;
     overflow-y: auto;
@@ -881,7 +881,7 @@
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-base);
+    background: var(--surface-base);
     text-align: left;
     cursor: pointer;
     transition:
@@ -891,12 +891,12 @@
 
   .cron-item-btn:hover {
     border-color: var(--border-default);
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
   }
 
   .cron-item-btn.active {
-    border-color: var(--accent);
-    background: var(--accent-muted);
+    border-color: var(--primary);
+    background: var(--primary-muted);
   }
 
   .cron-item-top {
@@ -999,7 +999,7 @@
   .inline-form .form-input {
     width: 100%;
     padding: var(--space-2) var(--space-3);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     color: var(--text-primary);
@@ -1007,7 +1007,7 @@
   }
   .inline-form .form-input:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--primary);
   }
   .inline-form .form-textarea {
     font-family: var(--font-mono);
@@ -1039,7 +1039,7 @@
   .run-result {
     padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
   }
   .run-result-header {
     display: flex;
@@ -1057,8 +1057,8 @@
   }
 
   /* ── Ask AI button ────────────────────────────── */
-  .ask-ai-btn { color: var(--accent); }
-  .ask-ai-btn:hover { background: var(--accent-muted); }
+  .ask-ai-btn { color: var(--primary); }
+  .ask-ai-btn:hover { background: var(--primary-muted); }
 
   /* ── Responsive ───────────────────────────────── */
   @media (max-width: 600px) {

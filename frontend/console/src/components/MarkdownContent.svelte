@@ -280,7 +280,7 @@
     border-radius: 3px;
     border-bottom: 1px dashed rgba(224, 145, 69, 0.45);
     background: rgba(224, 145, 69, 0.08);
-    color: var(--accent-text);
+    color: var(--primary-text);
   }
 
   .chat-md :global(a.artifact-inline-link:hover) {

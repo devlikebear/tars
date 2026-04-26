@@ -694,7 +694,7 @@
     inset: 0;
     z-index: 10;
     background: rgba(224, 145, 69, 0.08);
-    border: 2px dashed var(--accent);
+    border: 2px dashed var(--primary);
     border-radius: var(--radius-lg);
     display: flex;
     align-items: center;
@@ -705,7 +705,7 @@
     font-family: var(--font-display);
     font-size: var(--text-lg);
     font-weight: 500;
-    color: var(--accent);
+    color: var(--primary);
   }
 
   .chat-log {
@@ -721,7 +721,7 @@
   .chat-msg {
     padding: var(--space-3);
     border-radius: var(--radius-md);
-    background: var(--bg-base);
+    background: var(--surface-base);
   }
 
   .chat-user {
@@ -730,7 +730,7 @@
   }
 
   .chat-assistant {
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
   }
 
   .chat-system {
@@ -813,7 +813,7 @@
   .chat-msg:hover .chat-msg-footer { opacity: 1; }
 
   .msg-copy-btn {
-    background: var(--bg-base);
+    background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     color: var(--text-ghost);
     font-family: var(--font-mono);
@@ -823,7 +823,7 @@
     border-radius: var(--radius-sm);
     transition: all var(--duration-fast);
   }
-  .msg-copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .msg-copy-btn:hover { color: var(--primary); border-color: var(--primary); }
 
   .chat-text {
     white-space: pre-wrap;
@@ -844,7 +844,7 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-2);
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     font-size: var(--text-xs);
@@ -868,7 +868,7 @@
     font-size: 7px;
     line-height: 1.3;
     color: var(--text-ghost);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border-radius: var(--radius-sm);
     padding: 2px 3px;
     flex-shrink: 0;
@@ -883,7 +883,7 @@
     width: 48px;
     height: 48px;
     font-size: 24px;
-    background: var(--bg-base);
+    background: var(--surface-base);
     border-radius: var(--radius-sm);
     flex-shrink: 0;
   }
@@ -907,7 +907,7 @@
     position: absolute;
     top: 2px;
     right: 2px;
-    background: var(--bg-base);
+    background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: 50%;
     color: var(--text-ghost);
@@ -963,7 +963,7 @@
     transition: all var(--duration-fast) var(--ease-out);
   }
   .toolbar-btn:hover {
-    background: var(--bg-elevated);
+    background: var(--surface-elevated);
     border-color: var(--border-default);
   }
 

@@ -354,7 +354,7 @@
   }
 
   .sessions-toggle input {
-    accent-color: var(--accent);
+    accent-color: var(--primary);
   }
 
   .sessions-toolbar {
@@ -369,7 +369,7 @@
     flex: 1;
     min-width: 160px;
     padding: var(--space-2) var(--space-3);
-    background: var(--bg-base);
+    background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     color: var(--text-primary);
@@ -377,7 +377,7 @@
   }
   .sessions-search:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--primary);
   }
 
   .sessions-filters {
@@ -386,8 +386,8 @@
     flex-shrink: 0;
   }
   .sessions-filters .active {
-    color: var(--accent);
-    border-color: var(--accent);
+    color: var(--primary);
+    border-color: var(--primary);
   }
 
   .sessions-sort {
@@ -396,8 +396,8 @@
     flex-shrink: 0;
   }
   .sessions-sort .active {
-    color: var(--accent);
-    border-color: var(--accent);
+    color: var(--primary);
+    border-color: var(--primary);
   }
 
   .sessions-loading {
@@ -427,7 +427,7 @@
     align-items: stretch;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    background: var(--bg-surface);
+    background: var(--surface);
     overflow: hidden;
     transition: border-color var(--duration-fast) var(--ease-out);
   }
@@ -435,8 +435,8 @@
     border-color: var(--border-default);
   }
   .session-item-wrap.active {
-    border-color: var(--accent);
-    background: var(--accent-muted);
+    border-color: var(--primary);
+    background: var(--primary-muted);
   }
 
   .session-item {
@@ -500,15 +500,15 @@
     border-radius: var(--radius-sm);
     line-height: 1;
   }
-  .btn-icon:hover { color: var(--accent); background: rgba(255,255,255,0.04); }
+  .btn-icon:hover { color: var(--primary); background: rgba(255,255,255,0.04); }
   .btn-icon-danger:hover { color: var(--error); }
 
   .session-rename-input {
     flex: 1;
     padding: 2px var(--space-1);
     font-size: var(--text-sm);
-    background: var(--bg-base);
-    border: 1px solid var(--accent);
+    background: var(--surface-base);
+    border: 1px solid var(--primary);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
     outline: none;
@@ -516,7 +516,7 @@
   }
 
   .session-detail {
-    background: var(--bg-surface);
+    background: var(--surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     padding: var(--space-4);
