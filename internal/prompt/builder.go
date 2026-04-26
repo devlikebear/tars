@@ -61,6 +61,18 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 	b.WriteString("- Prefer visual explanations (diagrams, tables) over long text when possible.\n")
 	b.WriteString("\n")
 
+	// Planning section is for the main agent only — sub-agents are spawned to
+	// execute a single task and should not create their own plans.
+	if !opts.SubAgent {
+		b.WriteString("## Planning\n\n")
+		b.WriteString("For multi-step requests (3+ steps), call the `tasks` tool first:\n")
+		b.WriteString("1. tasks(action=\"plan_set\", goal=...) — record the user's goal\n")
+		b.WriteString("2. tasks(action=\"add\", title=...) — one entry per step\n")
+		b.WriteString("3. tasks(action=\"update\", id=..., status=\"in_progress\") — only ONE in_progress at a time\n")
+		b.WriteString("4. tasks(action=\"update\", id=..., status=\"completed\") — immediately on finish\n")
+		b.WriteString("\n")
+	}
+
 	totalBudgetTokens := opts.TotalBudgetTokens
 	if totalBudgetTokens <= 0 {
 		totalBudgetTokens = defaultTotalBudgetTokens

@@ -125,6 +125,67 @@ func TestBuild_IdentitySection(t *testing.T) {
 	}
 }
 
+func TestBuild_PlanningSectionPresentForMainAgent(t *testing.T) {
+	root := t.TempDir()
+	result := Build(BuildOptions{WorkspaceDir: root})
+
+	if !strings.Contains(result, "## Planning") {
+		t.Error("expected main agent prompt to contain Planning section header")
+	}
+	// Spot-check that the tasks-tool actions are referenced so the LLM knows
+	// the canonical action names (plan_set / add / update with statuses).
+	for _, want := range []string{
+		"tasks(action=\"plan_set\"",
+		"tasks(action=\"add\"",
+		"in_progress",
+		"completed",
+	} {
+		if !strings.Contains(result, want) {
+			t.Errorf("expected Planning section to mention %q", want)
+		}
+	}
+}
+
+func TestBuild_PlanningSectionAbsentForSubAgent(t *testing.T) {
+	root := t.TempDir()
+	result := Build(BuildOptions{WorkspaceDir: root, SubAgent: true})
+
+	if strings.Contains(result, "## Planning") {
+		t.Error("sub-agent prompt should not contain Planning section")
+	}
+	if strings.Contains(result, "tasks(action=\"plan_set\"") {
+		t.Error("sub-agent prompt should not reference tasks tool actions")
+	}
+}
+
+func TestBuild_PlanningSectionWithinBudget(t *testing.T) {
+	// Default budgets must absorb the new Planning section without truncating
+	// the workspace bootstrap content. This guards against a future PR
+	// expanding Planning past its allowance and silently squeezing IDENTITY/USER.
+	root := t.TempDir()
+	files := map[string]string{
+		"USER.md":     "# USER.md\n\nAlice",
+		"IDENTITY.md": "# IDENTITY.md\n\nTARS",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	result := BuildResultFor(BuildOptions{WorkspaceDir: root})
+
+	if result.TotalTokens > defaultTotalBudgetTokens {
+		t.Fatalf("total tokens %d exceeds default budget %d", result.TotalTokens, defaultTotalBudgetTokens)
+	}
+	if !strings.Contains(result.Prompt, "Alice") {
+		t.Error("expected USER.md content to remain after Planning section was added")
+	}
+	if !strings.Contains(result.Prompt, "TARS") {
+		t.Error("expected IDENTITY.md content to remain after Planning section was added")
+	}
+}
+
 func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
