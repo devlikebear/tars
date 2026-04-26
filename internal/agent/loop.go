@@ -66,7 +66,8 @@ type RunOptions struct {
 	OnDelta        func(text string)
 	Tools          []llm.ToolSchema
 	BlockedTools   map[string]tool.BlockedToolError
-	ToolChoice     string
+	ToolChoice     *llm.ToolChoice
+	ResponseFormat *llm.ResponseFormat
 	AutoExpandOnce bool
 }
 
@@ -89,9 +90,10 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	for i := 0; i < maxIters; i++ {
 		l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: i + 1, MessageCount: len(messages)})
 		resp, err := l.client.Chat(ctx, messages, llm.ChatOptions{
-			OnDelta:    opts.OnDelta,
-			Tools:      llmTools,
-			ToolChoice: opts.ToolChoice,
+			OnDelta:        opts.OnDelta,
+			Tools:          llmTools,
+			ToolChoice:     opts.ToolChoice,
+			ResponseFormat: opts.ResponseFormat,
 		})
 		if err != nil {
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})
@@ -257,7 +259,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	finalResp, finalErr := l.client.Chat(ctx, messages, llm.ChatOptions{
 		OnDelta:    opts.OnDelta,
 		Tools:      nil,
-		ToolChoice: "none",
+		ToolChoice: llm.ToolChoiceNone(),
 	})
 	if finalErr == nil {
 		l.emit(ctx, Event{Type: EventAfterLLM, Iteration: finalIter, MessageCount: len(messages)})

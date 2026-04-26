@@ -58,13 +58,13 @@ func createFallbackChatSession(store *session.Store) (string, error) {
 	return sess.ID, nil
 }
 
-func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, toolChoice string, err error) {
+func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, toolChoice *llm.ToolChoice, err error) {
 	return prepareChatContextWithExtensions(workspaceDir, "", userMessage, extensions.Snapshot{}, nil)
 }
 
 type preparedChatContext struct {
 	SystemPrompt         string
-	ToolChoice           string
+	ToolChoice           *llm.ToolChoice
 	SystemPromptTokens   int
 	RelevantMemoryCount  int
 	RelevantMemoryTokens int
@@ -77,10 +77,10 @@ func prepareChatContextWithExtensions(
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
 	semanticCfg ...memory.SemanticConfig,
-) (systemPrompt string, toolChoice string, err error) {
+) (systemPrompt string, toolChoice *llm.ToolChoice, err error) {
 	details, err := prepareChatContextDetailsWithExtensions(workspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, semanticCfg...)
 	if err != nil {
-		return "", "", err
+		return "", nil, err
 	}
 	return details.SystemPrompt, details.ToolChoice, nil
 }
@@ -155,9 +155,9 @@ func buildContextFromResult(
 			strings.TrimSpace(invokedSkill.RuntimePath),
 		)
 	}
-	toolChoice := ""
+	var toolChoice *llm.ToolChoice
 	if forceRelevantMemory {
-		toolChoice = "required"
+		toolChoice = llm.ToolChoiceRequired()
 	}
 	return preparedChatContext{
 		SystemPrompt:         systemPrompt,

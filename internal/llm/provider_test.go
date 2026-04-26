@@ -171,7 +171,7 @@ func TestNewProvider_GeminiToolCall(t *testing.T) {
 				},
 			},
 		},
-		ToolChoice: "required",
+		ToolChoice: ToolChoiceRequired(),
 	})
 	if err != nil {
 		t.Fatalf("chat: %v", err)
@@ -223,7 +223,7 @@ func TestNewProvider_GeminiStreamingToolCall(t *testing.T) {
 				},
 			},
 		},
-		ToolChoice: "required",
+		ToolChoice: ToolChoiceRequired(),
 	})
 	if err != nil {
 		t.Fatalf("chat: %v", err)
@@ -281,7 +281,7 @@ func TestNewProvider_GeminiNativeToolCall(t *testing.T) {
 				},
 			},
 		},
-		ToolChoice: "required",
+		ToolChoice: ToolChoiceRequired(),
 	})
 	if err != nil {
 		t.Fatalf("chat: %v", err)

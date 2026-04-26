@@ -56,7 +56,7 @@ func TestAnthropicChat_IncludesToolsAndParsesToolUse(t *testing.T) {
 	resp, err := client.Chat(context.Background(), []ChatMessage{
 		{Role: "user", Content: "find memory"},
 	}, ChatOptions{
-		ToolChoice:     "required",
+		ToolChoice:     ToolChoiceRequired(),
 		ThinkingBudget: 4096,
 		Tools: []ToolSchema{
 			{

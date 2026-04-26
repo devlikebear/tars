@@ -76,7 +76,7 @@ func TestOpenAICompatibleChat_IncludesToolsAndParsesToolCalls(t *testing.T) {
 	resp, err := client.Chat(context.Background(), []ChatMessage{
 		{Role: "user", Content: "find memory"},
 	}, ChatOptions{
-		ToolChoice:      "required",
+		ToolChoice:      ToolChoiceRequired(),
 		ReasoningEffort: "high",
 		ServiceTier:     "priority",
 		Tools: []ToolSchema{
@@ -114,6 +114,98 @@ func TestOpenAICompatibleChat_IncludesToolsAndParsesToolCalls(t *testing.T) {
 	}
 	if resp.Message.ToolCalls[0].Arguments != `{"query":"coffee"}` {
 		t.Fatalf("unexpected tool args: %q", resp.Message.ToolCalls[0].Arguments)
+	}
+}
+
+// TestOpenAICompatibleChat_SpecificToolChoice asserts that
+// ToolChoiceSpecific marshals to OpenAI's object form
+// {"type":"function","function":{"name":...}} — the bare string form would
+// be rejected by the OpenAI server when a specific tool is required.
+func TestOpenAICompatibleChat_SpecificToolChoice(t *testing.T) {
+	type captured struct {
+		ToolChoice json.RawMessage `json:"tool_choice"`
+	}
+	var got captured
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":""}}]}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewOpenAIClient(srv.URL+"/v1", "k", "m")
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	_, err = client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "x"}}, ChatOptions{
+		ToolChoice: ToolChoiceSpecific("memory_search"),
+		Tools: []ToolSchema{
+			{Type: "function", Function: ToolFunctionSchema{Name: "memory_search", Parameters: json.RawMessage(`{"type":"object"}`)}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	var asObject struct {
+		Type     string `json:"type"`
+		Function struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal(got.ToolChoice, &asObject); err != nil {
+		t.Fatalf("expected object tool_choice, got %s: %v", string(got.ToolChoice), err)
+	}
+	if asObject.Type != "function" || asObject.Function.Name != "memory_search" {
+		t.Fatalf("unexpected tool_choice payload: %+v", asObject)
+	}
+}
+
+// TestOpenAICompatibleChat_ResponseFormatJSONSchema asserts that a
+// json_schema ResponseFormat with Strict=true serializes to OpenAI's
+// nested response_format envelope.
+func TestOpenAICompatibleChat_ResponseFormatJSONSchema(t *testing.T) {
+	type captured struct {
+		ResponseFormat map[string]any `json:"response_format"`
+	}
+	var got captured
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"steps\":[]}"}}]}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewOpenAIClient(srv.URL+"/v1", "k", "m")
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	schema := json.RawMessage(`{"type":"object","properties":{"steps":{"type":"array"}}}`)
+	_, err = client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "plan"}}, ChatOptions{
+		ResponseFormat: &ResponseFormat{Type: ResponseFormatJSONSchema, Name: "subagents_plan", Schema: schema, Strict: true},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if got.ResponseFormat["type"] != "json_schema" {
+		t.Fatalf("expected response_format.type=json_schema, got %v", got.ResponseFormat["type"])
+	}
+	js, ok := got.ResponseFormat["json_schema"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected json_schema sub-object, got %T", got.ResponseFormat["json_schema"])
+	}
+	if js["name"] != "subagents_plan" {
+		t.Fatalf("unexpected schema name: %v", js["name"])
+	}
+	if js["strict"] != true {
+		t.Fatalf("expected strict=true, got %v", js["strict"])
+	}
+	if _, ok := js["schema"]; !ok {
+		t.Fatalf("schema field missing from envelope: %+v", js)
 	}
 }
 

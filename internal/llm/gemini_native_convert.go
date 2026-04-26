@@ -63,7 +63,8 @@ type geminiToolConfig struct {
 }
 
 type geminiFuncCallingConfig struct {
-	Mode string `json:"mode"`
+	Mode                 string   `json:"mode"`
+	AllowedFunctionNames []string `json:"allowedFunctionNames,omitempty"`
 }
 
 type geminiGenConfig struct {
@@ -364,22 +365,29 @@ func toGeminiNativeTools(tools []ToolSchema) []*geminiTool {
 	return []*geminiTool{{FunctionDeclarations: declarations}}
 }
 
-func toGeminiNativeToolConfig(choice string) *geminiToolConfig {
-	var mode string
-	switch strings.ToLower(strings.TrimSpace(choice)) {
-	case "required":
-		mode = "ANY"
-	case "none":
-		mode = "NONE"
-	case "", "auto":
-		mode = "AUTO"
+func toGeminiNativeToolConfig(choice *ToolChoice) *geminiToolConfig {
+	if choice == nil {
+		return nil
+	}
+	cfg := &geminiFuncCallingConfig{}
+	switch choice.Mode {
+	case ToolChoiceModeRequired:
+		cfg.Mode = "ANY"
+	case ToolChoiceModeNone:
+		cfg.Mode = "NONE"
+	case ToolChoiceModeAuto:
+		cfg.Mode = "AUTO"
+	case ToolChoiceModeSpecific:
+		name := strings.TrimSpace(choice.Name)
+		if name == "" {
+			return nil
+		}
+		cfg.Mode = "ANY"
+		cfg.AllowedFunctionNames = []string{name}
 	default:
 		return nil
 	}
-
-	return &geminiToolConfig{
-		FunctionCallingConfig: &geminiFuncCallingConfig{Mode: mode},
-	}
+	return &geminiToolConfig{FunctionCallingConfig: cfg}
 }
 
 func validateGeminiSupportedActions(model *geminiModelInfo) error {

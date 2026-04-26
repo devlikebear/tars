@@ -56,11 +56,75 @@ type Usage struct {
 	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
 }
 
+// ToolChoiceMode enumerates the provider-agnostic tool selection modes.
+type ToolChoiceMode string
+
+const (
+	ToolChoiceModeAuto     ToolChoiceMode = "auto"
+	ToolChoiceModeNone     ToolChoiceMode = "none"
+	ToolChoiceModeRequired ToolChoiceMode = "required"
+	ToolChoiceModeSpecific ToolChoiceMode = "specific"
+)
+
+// ToolChoice expresses how the LLM should pick (or be forced to pick) a tool.
+// nil means "no preference" — equivalent to ToolChoiceAuto for providers that
+// require a value. Mode == ToolChoiceModeSpecific requires Name.
+type ToolChoice struct {
+	Mode ToolChoiceMode
+	Name string
+}
+
+// ToolChoiceAuto returns the default "auto" choice.
+func ToolChoiceAuto() *ToolChoice { return &ToolChoice{Mode: ToolChoiceModeAuto} }
+
+// ToolChoiceNone forbids tool calls.
+func ToolChoiceNone() *ToolChoice { return &ToolChoice{Mode: ToolChoiceModeNone} }
+
+// ToolChoiceRequired forces *some* tool call.
+func ToolChoiceRequired() *ToolChoice { return &ToolChoice{Mode: ToolChoiceModeRequired} }
+
+// ToolChoiceSpecific forces calling a specific tool by name.
+func ToolChoiceSpecific(name string) *ToolChoice {
+	return &ToolChoice{Mode: ToolChoiceModeSpecific, Name: strings.TrimSpace(name)}
+}
+
+// String returns a short label for logging.
+func (tc *ToolChoice) String() string {
+	if tc == nil {
+		return ""
+	}
+	if tc.Mode == ToolChoiceModeSpecific {
+		return string(tc.Mode) + ":" + tc.Name
+	}
+	return string(tc.Mode)
+}
+
+// ResponseFormatType enumerates the supported response shapes.
+type ResponseFormatType string
+
+const (
+	ResponseFormatText       ResponseFormatType = "text"
+	ResponseFormatJSONObject ResponseFormatType = "json_object"
+	ResponseFormatJSONSchema ResponseFormatType = "json_schema"
+)
+
+// ResponseFormat constrains the model output. Schema is required when
+// Type == ResponseFormatJSONSchema. Strict enables provider-side strict
+// validation (currently OpenAI-style only).
+type ResponseFormat struct {
+	Type   ResponseFormatType
+	Name   string
+	Schema json.RawMessage
+	Strict bool
+}
+
 type ChatOptions struct {
 	OnDelta func(text string) // SSE streaming callback (nil = no streaming)
 	Tools   []ToolSchema
-	// ToolChoice follows OpenAI-compatible values like "auto", "none", "required".
-	ToolChoice string
+	// ToolChoice picks how the LLM selects tools. nil = provider default (auto).
+	ToolChoice *ToolChoice
+	// ResponseFormat constrains the response shape. nil = free-form text.
+	ResponseFormat *ResponseFormat
 	// ReasoningEffort is a provider-agnostic hint. Supported values are
 	// none, minimal, low, medium, high.
 	ReasoningEffort string

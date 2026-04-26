@@ -65,7 +65,7 @@ func (c *GeminiNativeClient) Chat(ctx context.Context, messages []ChatMessage, o
 	}
 
 	streaming := opts.OnDelta != nil
-	logChatRequestStart("gemini-native", c.model, c.requestURL(streaming), len(messages), streaming, len(opts.Tools), opts.ToolChoice)
+	logChatRequestStart("gemini-native", c.model, c.requestURL(streaming), len(messages), streaming, len(opts.Tools), opts.ToolChoice.String())
 
 	contents := toGeminiNativeContents(messages)
 	config := c.buildGenerateContentConfig(messages, opts)

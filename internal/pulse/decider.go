@@ -118,7 +118,7 @@ func (d *Decider) Decide(ctx context.Context, signals []Signal) (Decision, error
 	}
 	resp, err := client.Chat(ctx, messages, llm.ChatOptions{
 		Tools:      []llm.ToolSchema{PulseDecideToolSchema()},
-		ToolChoice: "required",
+		ToolChoice: llm.ToolChoiceRequired(),
 	})
 	if err != nil {
 		return Decision{}, fmt.Errorf("pulse llm chat: %w", err)

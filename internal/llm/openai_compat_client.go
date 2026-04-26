@@ -57,7 +57,7 @@ func NewGeminiClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, er
 func (c *OpenAICompatibleClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
 	streaming := opts.OnDelta != nil
 	url := c.baseURL + "/chat/completions"
-	logChatRequestStart(c.label, c.model, url, len(messages), streaming, len(opts.Tools), opts.ToolChoice)
+	logChatRequestStart(c.label, c.model, url, len(messages), streaming, len(opts.Tools), opts.ToolChoice.String())
 
 	reqBody, err := c.buildChatRequest(messages, opts)
 	if err != nil {
@@ -101,14 +101,79 @@ func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts C
 	}
 	if len(opts.Tools) > 0 {
 		reqBody["tools"] = opts.Tools
-		if choice := strings.TrimSpace(opts.ToolChoice); choice != "" {
-			reqBody["tool_choice"] = choice
+		if tc := toOpenAIToolChoice(opts.ToolChoice); tc != nil {
+			reqBody["tool_choice"] = tc
 		}
+	}
+	if rf := toOpenAIResponseFormat(opts.ResponseFormat); rf != nil {
+		reqBody["response_format"] = rf
 	}
 	if opts.OnDelta != nil {
 		reqBody["stream"] = true
 	}
 	return reqBody, nil
+}
+
+// toOpenAIToolChoice converts the provider-agnostic ToolChoice into the
+// OpenAI Chat Completions wire format. Modes auto/none/required serialize as
+// the bare string the API expects; specific tool requires the object form
+// {"type":"function","function":{"name":...}}.
+func toOpenAIToolChoice(choice *ToolChoice) any {
+	if choice == nil {
+		return nil
+	}
+	switch choice.Mode {
+	case ToolChoiceModeAuto:
+		return "auto"
+	case ToolChoiceModeNone:
+		return "none"
+	case ToolChoiceModeRequired:
+		return "required"
+	case ToolChoiceModeSpecific:
+		name := strings.TrimSpace(choice.Name)
+		if name == "" {
+			return nil
+		}
+		return map[string]any{
+			"type":     "function",
+			"function": map[string]any{"name": name},
+		}
+	}
+	return nil
+}
+
+// toOpenAIResponseFormat converts the provider-agnostic ResponseFormat into
+// the OpenAI Chat Completions wire format. json_schema requires Schema to
+// be set; Strict toggles OpenAI strict-mode validation.
+func toOpenAIResponseFormat(rf *ResponseFormat) map[string]any {
+	if rf == nil {
+		return nil
+	}
+	switch rf.Type {
+	case ResponseFormatText:
+		return map[string]any{"type": "text"}
+	case ResponseFormatJSONObject:
+		return map[string]any{"type": "json_object"}
+	case ResponseFormatJSONSchema:
+		if len(rf.Schema) == 0 {
+			return nil
+		}
+		schema := map[string]any{
+			"name":   strings.TrimSpace(rf.Name),
+			"schema": json.RawMessage(rf.Schema),
+		}
+		if schema["name"] == "" {
+			schema["name"] = "response"
+		}
+		if rf.Strict {
+			schema["strict"] = true
+		}
+		return map[string]any{
+			"type":        "json_schema",
+			"json_schema": schema,
+		}
+	}
+	return nil
 }
 
 func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Request, opts ChatOptions) (ChatResponse, error) {

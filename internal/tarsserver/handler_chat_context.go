@@ -27,7 +27,7 @@ type chatRunState struct {
 	transcriptPath       string
 	history              []session.Message
 	registry             *tool.Registry
-	toolChoice           string
+	toolChoice           *llm.ToolChoice
 	llmMessages          []llm.ChatMessage
 	injectedSchemas      []llm.ToolSchema
 	blockedTools         map[string]tool.BlockedToolError
@@ -118,7 +118,7 @@ func buildSessionChatRunState(
 		Int("relevant_memory_tokens", contextDetails.RelevantMemoryTokens).
 		Int("system_prompt_len", len(systemPrompt)).
 		Int("system_prompt_tokens", promptTokenEstimate(systemPrompt)).
-		Str("tool_choice", toolChoice).
+		Str("tool_choice", toolChoice.String()).
 		Msg("chat context assembled")
 
 	if sessErr == nil && strings.TrimSpace(sess.PromptOverride) != "" {

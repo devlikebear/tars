@@ -88,7 +88,7 @@ func TestGeminiNativeClientChat_NonStreamingParsesToolCall(t *testing.T) {
 				},
 			},
 		},
-		ToolChoice: "required",
+		ToolChoice: ToolChoiceRequired(),
 	}
 	resp, err := client.Chat(context.Background(), messages, opts)
 	if err != nil {
@@ -248,7 +248,7 @@ func TestGeminiNativeClientChat_StreamingParsesDeltaAndToolCall(t *testing.T) {
 				},
 			},
 		},
-		ToolChoice: "required",
+		ToolChoice: ToolChoiceRequired(),
 	})
 	if err != nil {
 		t.Fatalf("chat: %v", err)

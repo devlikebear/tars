@@ -31,7 +31,7 @@ func (c *scriptedLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage
 	copyMsgs := append([]llm.ChatMessage(nil), messages...)
 	c.seenInputs = append(c.seenInputs, copyMsgs)
 	c.seenToolCounts = append(c.seenToolCounts, len(opts.Tools))
-	c.seenToolChoice = append(c.seenToolChoice, opts.ToolChoice)
+	c.seenToolChoice = append(c.seenToolChoice, opts.ToolChoice.String())
 	resp := c.responses[c.callIndex]
 	c.callIndex++
 	return resp, nil
@@ -87,7 +87,7 @@ func TestLoop_Run_WithToolCallAndHooks(t *testing.T) {
 		{Role: "system", Content: "sys"},
 		{Role: "user", Content: "status?"},
 	}, RunOptions{
-		ToolChoice: "required",
+		ToolChoice: llm.ToolChoiceRequired(),
 		Tools: []llm.ToolSchema{
 			{
 				Type: "function",
@@ -206,7 +206,7 @@ func TestLoop_Run_StopsOnRepeatedToolCallPattern(t *testing.T) {
 		{Role: "user", Content: "현재 디렉토리 경로 알려줘"},
 	}, RunOptions{
 		MaxIterations: 5,
-		ToolChoice:    "required",
+		ToolChoice:    llm.ToolChoiceRequired(),
 		Tools: []llm.ToolSchema{
 			{
 				Type: "function",
@@ -803,7 +803,7 @@ func TestLoop_Run_FinalizesWithoutToolsWhenMaxIterationsReached(t *testing.T) {
 				},
 			},
 		},
-		ToolChoice: "auto",
+		ToolChoice: llm.ToolChoiceAuto(),
 	})
 	if err != nil {
 		t.Fatalf("expected fallback finalization success, got %v", err)
