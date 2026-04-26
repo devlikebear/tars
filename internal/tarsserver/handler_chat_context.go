@@ -59,6 +59,10 @@ func buildSessionChatRunState(
 	authRole string,
 	deps chatHandlerDeps,
 ) (chatRunState, error) {
+	chatClient, _, err := deps.resolveChatClient()
+	if err != nil {
+		return chatRunState{}, err
+	}
 	transcriptPath := reqStore.TranscriptPath(sessionID)
 	historySnapshot, err := loadSessionHistorySnapshot(transcriptPath, chatHistoryMaxTokens)
 	if err != nil {
@@ -152,7 +156,7 @@ func buildSessionChatRunState(
 		blockedTools:         resolvedTools.Blocked,
 		relevantMemoryCount:  contextDetails.RelevantMemoryCount,
 		relevantMemoryTokens: contextDetails.RelevantMemoryTokens,
-		llmClient:            deps.client,
+		llmClient:            chatClient,
 	}, nil
 }
 

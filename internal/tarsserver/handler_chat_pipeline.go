@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -25,6 +26,16 @@ type chatHandlerDeps struct {
 	tooling        chatToolingOptions
 	extraTools     []tool.Tool
 	cancelRegistry *chatCancelRegistry
+}
+
+func (d chatHandlerDeps) resolveChatClient() (llm.Client, llm.TierResolution, error) {
+	if d.router != nil {
+		return d.router.ClientFor(llm.RoleChatMain)
+	}
+	if d.client != nil {
+		return d.client, llm.TierResolution{Role: llm.RoleChatMain, Source: "legacy"}, nil
+	}
+	return nil, llm.TierResolution{}, fmt.Errorf("llm router is not configured")
 }
 
 type chatAttachment struct {

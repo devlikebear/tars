@@ -150,11 +150,22 @@ func buildAPIMux(
 		logger,
 	)
 	dispatcher.store = notificationStore
-	if tracked, ok := deps.llmClient.(*usage.TrackedClient); ok {
-		tracked.SetNotifier(func(ctx context.Context, message string) {
-			dispatcher.Emit(ctx, newNotificationEvent("usage", "warn", "Usage limit warning", message))
-		})
+	if deps.llmRouter == nil {
+		return nil, fmt.Errorf("llm router is not configured")
 	}
+	_, chatResolution, err := deps.llmRouter.ClientFor(llm.RoleChatMain)
+	if err != nil {
+		return nil, err
+	}
+	logger.Debug().
+		Str("tier", string(chatResolution.Tier)).
+		Str("provider", chatResolution.Provider).
+		Str("model", chatResolution.Model).
+		Str("source", chatResolution.Source).
+		Msg("llm router resolved chat_main tier")
+	attachUsageWarningNotifier(deps.llmRouter, func(ctx context.Context, message string) {
+		dispatcher.Emit(ctx, newNotificationEvent("usage", "warn", "Usage limit warning", message))
+	})
 	telegramPairings, err := newTelegramPairingStore(telegramPairingStorePath(cfg), nowFn)
 	if err != nil {
 		return nil, err
@@ -222,7 +233,7 @@ func buildAPIMux(
 		if runnerWithTelegram := newAgentPromptRunnerWithToolsAndMemory(
 			cfg,
 			cfg.WorkspaceDir,
-			deps.llmClient,
+			nil,
 			deps.llmRouter,
 			deps.usageTracker,
 			cfg.AgentMaxIterations,
@@ -374,7 +385,6 @@ func buildAPIMux(
 	cronPromptDeps := chatHandlerDeps{
 		workspaceDir:  cfg.WorkspaceDir,
 		store:         sessionStore,
-		client:        deps.llmClient,
 		router:        deps.llmRouter,
 		logger:        logger,
 		maxIters:      cfg.AgentMaxIterations,
@@ -461,7 +471,7 @@ func buildAPIMux(
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,
 		sessionStore,
-		deps.llmClient,
+		nil,
 		deps.llmRouter,
 		logger,
 		cfg.AgentMaxIterations,
@@ -497,7 +507,7 @@ func buildAPIMux(
 	telegramInbound := newTelegramInboundHandler(
 		cfg.WorkspaceDir,
 		sessionStore,
-		deps.llmClient,
+		nil,
 		telegramSender,
 		gatewayRuntime,
 		telegramPairings,
@@ -599,6 +609,28 @@ func buildAPIMux(
 		reflectionRuntime:  reflectionSetup.Runtime,
 		telegramPoller:     telegramPoller,
 	}, nil
+}
+
+func attachUsageWarningNotifier(router llm.Router, notifier usage.WarningNotifier) {
+	if router == nil || notifier == nil {
+		return
+	}
+	seen := map[*usage.TrackedClient]struct{}{}
+	for _, tier := range []llm.Tier{llm.TierHeavy, llm.TierStandard, llm.TierLight} {
+		client, _, err := router.ClientForTier(tier)
+		if err != nil {
+			continue
+		}
+		tracked, ok := client.(*usage.TrackedClient)
+		if !ok || tracked == nil {
+			continue
+		}
+		if _, ok := seen[tracked]; ok {
+			continue
+		}
+		seen[tracked] = struct{}{}
+		tracked.SetNotifier(notifier)
+	}
 }
 
 func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {

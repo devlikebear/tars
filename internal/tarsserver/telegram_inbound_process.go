@@ -27,8 +27,9 @@ func (h *telegramInboundHandler) processMessage(
 	if h.store == nil {
 		return "", "", fmt.Errorf("session store is not configured")
 	}
-	if h.llmClient == nil {
-		return "", "", fmt.Errorf("llm client is not configured")
+	chatClient, err := h.resolveChatClient()
+	if err != nil {
+		return "", "", err
 	}
 	sessionID, err := h.resolveSession(userID, username)
 	if err != nil {
@@ -56,7 +57,8 @@ func (h *telegramInboundHandler) processMessage(
 		chatHandlerDeps{
 			workspaceDir: h.workspaceDir,
 			store:        h.store,
-			client:       h.llmClient,
+			client:       chatClient,
+			router:       h.llmRouter,
 			logger:       h.logger,
 			tooling:      h.tooling,
 			extraTools:   h.extraTools,
@@ -91,7 +93,7 @@ func (h *telegramInboundHandler) processMessage(
 	runCtx = tool.WithCurrentSessionInfo(runCtx, sessionID, sess.Kind)
 	runCtx = tool.WithCurrentTelegramTarget(runCtx, chatID, threadID, "telegram")
 
-	loop := agent.NewLoop(h.llmClient, registry)
+	loop := agent.NewLoop(chatClient, registry)
 	resp, err := loop.Run(runCtx, llmMessages, agent.RunOptions{
 		MaxIterations: resolveAgentMaxIterations(h.maxIterations),
 		Tools:         injectedSchemas,
@@ -129,7 +131,7 @@ func (h *telegramInboundHandler) processMessage(
 		UserMessage:      text,
 		AssistantMessage: answer,
 		AssistantTime:    assistantAt,
-		LLMClient:        h.llmClient,
+		LLMClient:        chatClient,
 	}); err != nil {
 		h.logger.Debug().Err(err).Str("session_id", sessionID).Msg("telegram write chat memory failed")
 	}
