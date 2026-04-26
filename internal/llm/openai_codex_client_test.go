@@ -258,6 +258,48 @@ func TestOpenAICodexClient_ResponseFormat_JSONSchema(t *testing.T) {
 	}
 }
 
+// TestOpenAICodexClient_ReasoningEffortAndServiceTier covers RF-049:
+// previously ReasoningEffort and ServiceTier were silently dropped.
+// Responses API expects reasoning.effort (object) and service_tier
+// (string).
+func TestOpenAICodexClient_ReasoningEffortAndServiceTier(t *testing.T) {
+	got := map[string]any{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICodexClientWithConfig(srv.URL, "gpt-5.3-codex", "oauth", "openai-codex", "",
+		DefaultClientConfig(),
+		func() (auth.CodexCredential, error) { return auth.CodexCredential{AccessToken: "t"}, nil },
+		func(context.Context, auth.CodexCredential) (auth.CodexCredential, error) {
+			return auth.CodexCredential{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+		OnDelta:         func(string) {},
+		ReasoningEffort: "high",
+		ServiceTier:     "priority",
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	reasoning, ok := got["reasoning"].(map[string]any)
+	if !ok || reasoning["effort"] != "high" {
+		t.Fatalf("expected reasoning.effort=high, got %#v", got["reasoning"])
+	}
+	if got["service_tier"] != "priority" {
+		t.Fatalf("expected service_tier=priority, got %#v", got["service_tier"])
+	}
+}
+
 // TestOpenAICodexClient_PDFUnsupportedError verifies RF-046: codex must
 // surface a structured error rather than silently turning a PDF into
 // throwaway placeholder text.
