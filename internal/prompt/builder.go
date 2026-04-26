@@ -40,10 +40,17 @@ func Build(opts BuildOptions) string {
 }
 
 // BuildResultFor assembles a system prompt and returns budget usage details.
+//
+// The identity line (\"You are TARS, a personal AI assistant.\") was
+// removed from the hardcoded header in ID-002(a). It now lives in the
+// workspace IDENTITY.md default content, which is loaded as the
+// \"## Identity\" bootstrap section below — that lets users override
+// their assistant’s identity without recompiling. Response Formatting
+// rules and the dynamic \"Current time\" line stay in code: they describe
+// runtime constraints, not user-tunable persona.
 func BuildResultFor(opts BuildOptions) BuildResult {
 	var b strings.Builder
 
-	b.WriteString("You are TARS, a personal AI assistant.\n")
 	b.WriteString(fmt.Sprintf("Current time: %s\n", time.Now().UTC().Format(time.RFC3339)))
 	b.WriteString("\n")
 	b.WriteString("## Response Formatting\n\n")

@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.29.2] - 2026-04-26
+
+### Changed
+
+- **ID-002 (a)**: 시스템 프롬프트의 정체성 헤더 (`You are TARS, a personal AI assistant.`) 가 코드에서 IDENTITY.md 의 default content 로 이동. 사용자가 워크스페이스의 IDENTITY.md 를 편집해 어시스턴트 정체성을 자유롭게 재정의 가능. `Current time` 동적 line 과 `## Response Formatting` 가이드라인은 그대로 builder.go 에 유지 (runtime 제약 + 출력 품질 일관성 보장).
+
 ## [0.29.1] - 2026-04-26
 
 ### Changed

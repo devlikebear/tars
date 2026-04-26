@@ -32,6 +32,8 @@ const defaultUserTemplate = `# USER.md
 
 const defaultIdentityTemplate = `# IDENTITY.md
 
+You are TARS, a personal AI assistant.
+
 ## Agent Identity
 - Name: TARS
 - Role: Personal AI assistant
