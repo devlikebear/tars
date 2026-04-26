@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.9] - 2026-04-26
+
+### Fixed
+
+- Pulse-bar `Tasks` badge now shows `(completed / total)` instead of `(in_progress / total)`. Between turns the in-progress count is almost always 0, so the badge always read `0/N` and looked broken even when work had finished. Matches the TasksPanel header. Hover tooltip surfaces the full breakdown (`N done · N in progress · N pending`).
+
 ## [0.31.8] - 2026-04-26
 
 ### Added
