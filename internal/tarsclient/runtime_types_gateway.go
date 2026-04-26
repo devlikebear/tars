@@ -16,18 +16,6 @@ type channelReportMessage = tarsclient.ChannelReportMessage
 
 type gatewayReportChannels = tarsclient.GatewayReportChannels
 
-type browserState = tarsclient.BrowserState
-
-type browserProfile = tarsclient.BrowserProfile
-
-type browserLoginResult = tarsclient.BrowserLoginResult
-
-type browserCheckResult = tarsclient.BrowserCheckResult
-
-type browserRunResult = tarsclient.BrowserRunResult
-
-type vaultStatusInfo = tarsclient.VaultStatusInfo
-
 type telegramPairingPending = tarsclient.TelegramPairingPending
 
 type telegramPairingAllowed = tarsclient.TelegramPairingAllowed

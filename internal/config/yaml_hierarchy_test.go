@@ -234,14 +234,8 @@ gateway:
 	if !cfg.ToolsWebSearchEnabled || cfg.ToolsWebSearchProvider != "perplexity" || cfg.ToolsWebSearchPerplexityAPIKey != "pplx-key" {
 		t.Fatalf("tool hierarchy not parsed: enabled=%t provider=%q pplx=%q", cfg.ToolsWebSearchEnabled, cfg.ToolsWebSearchProvider, cfg.ToolsWebSearchPerplexityAPIKey)
 	}
-	if !reflect.DeepEqual(cfg.ToolsWebFetchPrivateHostAllowlist, []string{"localhost", "127.0.0.1"}) || !cfg.ToolsApplyPatchEnabled || !cfg.ToolsBrowserEnabled || !cfg.ToolsGatewayEnabled {
-		t.Fatalf("tool leaf collections not parsed: hosts=%+v patch=%t browser=%t gateway=%t", cfg.ToolsWebFetchPrivateHostAllowlist, cfg.ToolsApplyPatchEnabled, cfg.ToolsBrowserEnabled, cfg.ToolsGatewayEnabled)
-	}
-	if !cfg.BrowserRuntimeEnabled || cfg.BrowserDefaultProfile != "managed" || !cfg.BrowserManagedHeadless || !reflect.DeepEqual(cfg.BrowserAutoLoginSiteAllowlist, []string{"intranet", "grafana"}) {
-		t.Fatalf("browser hierarchy not parsed: runtime=%t profile=%q headless=%t allowlist=%+v", cfg.BrowserRuntimeEnabled, cfg.BrowserDefaultProfile, cfg.BrowserManagedHeadless, cfg.BrowserAutoLoginSiteAllowlist)
-	}
-	if !cfg.VaultEnabled || cfg.VaultAuthMode != "approle" || cfg.VaultAppRoleRoleID != "role-yaml" || !reflect.DeepEqual(cfg.VaultSecretPathAllowlist, []string{"ops/", "sites/"}) {
-		t.Fatalf("vault hierarchy not parsed: enabled=%t auth=%q role=%q allowlist=%+v", cfg.VaultEnabled, cfg.VaultAuthMode, cfg.VaultAppRoleRoleID, cfg.VaultSecretPathAllowlist)
+	if !reflect.DeepEqual(cfg.ToolsWebFetchPrivateHostAllowlist, []string{"localhost", "127.0.0.1"}) || !cfg.ToolsApplyPatchEnabled || !cfg.ToolsGatewayEnabled {
+		t.Fatalf("tool leaf collections not parsed: hosts=%+v patch=%t gateway=%t", cfg.ToolsWebFetchPrivateHostAllowlist, cfg.ToolsApplyPatchEnabled, cfg.ToolsGatewayEnabled)
 	}
 	if !cfg.ChannelsTelegramEnabled || cfg.TelegramBotToken != "yaml-bot-token" || !cfg.ChannelsTelegramPollingEnabled {
 		t.Fatalf("channel hierarchy not parsed: telegram=%t token=%q polling=%t", cfg.ChannelsTelegramEnabled, cfg.TelegramBotToken, cfg.ChannelsTelegramPollingEnabled)

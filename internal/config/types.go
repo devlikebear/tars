@@ -215,34 +215,8 @@ type ToolConfig struct {
 	ToolsWebFetchAllowPrivateHosts    bool
 	ToolsApplyPatchEnabled            bool
 	ToolsMessageEnabled               bool
-	ToolsBrowserEnabled               bool
 	ToolsNodesEnabled                 bool
 	ToolsGatewayEnabled               bool
-}
-
-type VaultConfig struct {
-	VaultEnabled             bool
-	VaultAddr                string
-	VaultAuthMode            string
-	VaultToken               string
-	VaultNamespace           string
-	VaultTimeoutMS           int
-	VaultKVMount             string
-	VaultKVVersion           int
-	VaultAppRoleMount        string
-	VaultAppRoleRoleID       string
-	VaultAppRoleSecretID     string
-	VaultSecretPathAllowlist []string
-}
-
-type BrowserConfig struct {
-	BrowserRuntimeEnabled         bool
-	BrowserDefaultProfile         string
-	BrowserManagedHeadless        bool
-	BrowserManagedExecutablePath  string
-	BrowserManagedUserDataDir     string
-	BrowserSiteFlowsDir           string
-	BrowserAutoLoginSiteAllowlist []string
 }
 
 type GatewayConfig struct {
@@ -317,8 +291,6 @@ type Config struct {
 	AssistantConfig
 	CompactionConfig
 	ToolConfig
-	VaultConfig
-	BrowserConfig
 	GatewayConfig
 	ChannelConfig
 	ExtensionConfig

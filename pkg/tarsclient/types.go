@@ -444,62 +444,6 @@ type GatewayReportChannels struct {
 	Messages       map[string][]ChannelReportMessage `json:"messages"`
 }
 
-type BrowserState struct {
-	Running            bool   `json:"running"`
-	Profile            string `json:"profile,omitempty"`
-	Driver             string `json:"driver,omitempty"`
-	CurrentURL         string `json:"current_url,omitempty"`
-	LastSnapshot       string `json:"last_snapshot,omitempty"`
-	LastAction         string `json:"last_action,omitempty"`
-	LastScreenshot     string `json:"last_screenshot,omitempty"`
-	ExtensionConnected bool   `json:"extension_connected,omitempty"`
-	AttachedTabs       int    `json:"attached_tabs,omitempty"`
-	LastError          string `json:"last_error,omitempty"`
-}
-
-type BrowserProfile struct {
-	Name               string `json:"name"`
-	Driver             string `json:"driver,omitempty"`
-	Default            bool   `json:"default,omitempty"`
-	Running            bool   `json:"running,omitempty"`
-	ExtensionConnected bool   `json:"extension_connected,omitempty"`
-}
-
-type BrowserLoginResult struct {
-	SiteID  string `json:"site_id"`
-	Profile string `json:"profile,omitempty"`
-	Mode    string `json:"mode,omitempty"`
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
-}
-
-type BrowserCheckResult struct {
-	SiteID     string `json:"site_id"`
-	Profile    string `json:"profile,omitempty"`
-	CheckCount int    `json:"check_count"`
-	Passed     bool   `json:"passed"`
-	Message    string `json:"message,omitempty"`
-}
-
-type BrowserRunResult struct {
-	SiteID    string `json:"site_id"`
-	Profile   string `json:"profile,omitempty"`
-	Action    string `json:"action,omitempty"`
-	StepCount int    `json:"step_count"`
-	Success   bool   `json:"success"`
-	Message   string `json:"message,omitempty"`
-}
-
-type VaultStatusInfo struct {
-	Enabled        bool   `json:"enabled"`
-	Ready          bool   `json:"ready,omitempty"`
-	AuthMode       string `json:"auth_mode,omitempty"`
-	Addr           string `json:"addr,omitempty"`
-	Namespace      string `json:"namespace,omitempty"`
-	AllowlistCount int    `json:"allowlist_count,omitempty"`
-	LastError      string `json:"last_error,omitempty"`
-}
-
 type TelegramPairingPending struct {
 	Code      string `json:"code"`
 	UserID    int64  `json:"user_id"`

@@ -44,8 +44,6 @@ var commandHandlers = map[string]commandHandler{
 	"/cancel-run": cmdAgents,
 	"/spawn":      cmdAgents,
 	"/gateway":    cmdGateway,
-	"/browser":    cmdBrowser,
-	"/vault":      cmdVault,
 	"/channels":   cmdChannels,
 	"/telegram":   cmdTelegram,
 	"/usage":      cmdUsage,

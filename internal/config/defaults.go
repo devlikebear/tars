@@ -56,13 +56,6 @@ const (
 	defaultPerplexityModel                = "sonar"
 	defaultPerplexityBaseURL              = "https://api.perplexity.ai/chat/completions"
 	defaultToolsWebSearchCacheTTLSeconds  = 60
-	defaultVaultAddr                      = "http://127.0.0.1:8200"
-	defaultVaultAuthMode                  = "token"
-	defaultVaultTimeoutMS                 = 1500
-	defaultVaultKVMount                   = "secret"
-	defaultVaultKVVersion                 = 2
-	defaultVaultAppRoleMount              = "approle"
-	defaultBrowserDefaultProfile          = "managed"
 	defaultGatewayWatchDebounceMS         = 200
 	defaultGatewayRunsMaxRecords          = 2000
 	defaultGatewayChannelsMaxMessages     = 500
@@ -178,19 +171,6 @@ func defaultConfigValues() Config {
 			ToolsWebSearchPerplexityModel:   defaultPerplexityModel,
 			ToolsWebSearchPerplexityBaseURL: defaultPerplexityBaseURL,
 			ToolsWebSearchCacheTTLSeconds:   defaultToolsWebSearchCacheTTLSeconds,
-		},
-		VaultConfig: VaultConfig{
-			VaultEnabled:      false,
-			VaultAddr:         defaultVaultAddr,
-			VaultAuthMode:     defaultVaultAuthMode,
-			VaultTimeoutMS:    defaultVaultTimeoutMS,
-			VaultKVMount:      defaultVaultKVMount,
-			VaultKVVersion:    defaultVaultKVVersion,
-			VaultAppRoleMount: defaultVaultAppRoleMount,
-		},
-		BrowserConfig: BrowserConfig{
-			BrowserRuntimeEnabled: true,
-			BrowserDefaultProfile: defaultBrowserDefaultProfile,
 		},
 		GatewayConfig: GatewayConfig{
 			GatewayAgentsWatch:                   true,

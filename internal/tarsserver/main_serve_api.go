@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/devlikebear/tars/internal/approval"
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
@@ -255,16 +254,7 @@ func buildAPIMux(
 	processManager := tool.NewProcessManager()
 	mcpClient := mcp.NewClient(cfg.MCPServers)
 	mcpClient.SetCommandAllowlist(cfg.MCPCommandAllowlist)
-	vaultReader, vaultStatus, vaultErr := buildVaultReader(cfg)
-	if vaultErr != nil {
-		logger.Warn().Err(vaultErr).Msg("vault client initialization failed; browser auto-login will be unavailable")
-	}
-	otpManager := approval.NewOTPManager(nowFn)
-	browserPluginConfig := buildBrowserPluginConfig(cfg, vaultReader, vaultStatus,
-		newBrowserTelegramOTPRequester(telegramSender, telegramPairings, otpManager))
-	extensionsManager, err := buildExtensionsManager(cfg, mcpClient, map[string]map[string]any{
-		"tars-browser": browserPluginConfig,
-	})
+	extensionsManager, err := buildExtensionsManager(cfg, mcpClient, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -520,7 +510,6 @@ func buildAPIMux(
 	telegramInbound.maxIterations = cfg.AgentMaxIterations
 	telegramInbound.tooling = chatTooling
 	telegramInbound.extraTools = append([]tool.Tool(nil), chatTools...)
-	telegramInbound.otpManager = otpManager
 	telegramInbound.commands = newTelegramCommandHandler(telegramCommandHandlerOptions{
 		Store:          sessionStore,
 		CronResolver:   cronStoreResolver,
@@ -580,11 +569,6 @@ func buildAPIMux(
 		filesystem:      filesystemHandler,
 		workspaceFiles:  workspaceFilesHandler,
 	})
-
-	// Register plugin HTTP handlers
-	for _, entry := range extensionsManager.CollectHTTPHandlers() {
-		mux.Handle(entry.Pattern, entry.Handler)
-	}
 
 	server := &http.Server{
 		Addr:    opts.APIAddr,

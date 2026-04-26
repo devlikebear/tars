@@ -15,8 +15,6 @@ func applyDefaults(cfg *Config) {
 	applyMemoryDefaults(cfg, defaults)
 	applyCompactionDefaults(cfg, defaults)
 	applyToolDefaults(cfg, defaults)
-	applyVaultDefaults(cfg, defaults)
-	applyBrowserDefaults(cfg, defaults)
 	applyGatewayDefaults(cfg, defaults)
 	applyLLMPoolDefaults(cfg)
 }
@@ -204,41 +202,6 @@ func applyToolDefaults(cfg *Config, defaults Config) {
 	}
 	if cfg.ToolsWebSearchCacheTTLSeconds <= 0 {
 		cfg.ToolsWebSearchCacheTTLSeconds = defaults.ToolsWebSearchCacheTTLSeconds
-	}
-}
-
-func applyVaultDefaults(cfg *Config, defaults Config) {
-	cfg.VaultAuthMode = strings.TrimSpace(strings.ToLower(cfg.VaultAuthMode))
-	if cfg.VaultAuthMode == "" {
-		cfg.VaultAuthMode = defaults.VaultAuthMode
-	}
-	if cfg.VaultAddr == "" {
-		cfg.VaultAddr = defaults.VaultAddr
-	}
-	if cfg.VaultTimeoutMS <= 0 {
-		cfg.VaultTimeoutMS = defaults.VaultTimeoutMS
-	}
-	if cfg.VaultKVMount == "" {
-		cfg.VaultKVMount = defaults.VaultKVMount
-	}
-	if cfg.VaultKVVersion <= 0 {
-		cfg.VaultKVVersion = defaults.VaultKVVersion
-	}
-	if cfg.VaultAppRoleMount == "" {
-		cfg.VaultAppRoleMount = defaults.VaultAppRoleMount
-	}
-}
-
-func applyBrowserDefaults(cfg *Config, defaults Config) {
-	cfg.BrowserDefaultProfile = strings.TrimSpace(strings.ToLower(cfg.BrowserDefaultProfile))
-	if cfg.BrowserDefaultProfile == "" {
-		cfg.BrowserDefaultProfile = defaults.BrowserDefaultProfile
-	}
-	if strings.TrimSpace(cfg.BrowserSiteFlowsDir) == "" {
-		cfg.BrowserSiteFlowsDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "automation", "sites")
-	}
-	if strings.TrimSpace(cfg.BrowserManagedUserDataDir) == "" {
-		cfg.BrowserManagedUserDataDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "browser", "managed")
 	}
 }
 

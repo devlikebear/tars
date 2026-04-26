@@ -21,13 +21,12 @@ tools_web_search_provider: brave
 	}
 
 	updates := map[string]any{
-		"workspace_dir":                          "./new-workspace",
-		"pulse_timezone":                         "Asia/Seoul",
-		"gateway_persistence_dir":                "/tmp/nested-gateway",
-		"tools_web_search_provider":              "perplexity",
-		"llm_default_tier":                       "heavy",
-		"llm_role_defaults":                      map[string]any{"chat_main": "standard", "pulse_decider": "light"},
-		"browser_auto_login_site_allowlist_json": []string{"intranet", "grafana"},
+		"workspace_dir":             "./new-workspace",
+		"pulse_timezone":            "Asia/Seoul",
+		"gateway_persistence_dir":   "/tmp/nested-gateway",
+		"tools_web_search_provider": "perplexity",
+		"llm_default_tier":          "heavy",
+		"llm_role_defaults":         map[string]any{"chat_main": "standard", "pulse_decider": "light"},
 	}
 	if err := PatchYAML(path, updates); err != nil {
 		t.Fatalf("patch yaml: %v", err)
@@ -50,7 +49,7 @@ tools_web_search_provider: brave
 	if strings.Contains(text, "\ntools_web_search_provider:") {
 		t.Fatalf("expected tools_web_search_provider to be rewritten under tools.web_search, got:\n%s", text)
 	}
-	for _, expected := range []string{"runtime:", "workspace_dir: ./new-workspace", "automation:", "timezone: Asia/Seoul", "dir: /tmp/nested-gateway", "provider: perplexity", "default_tier: heavy", "site_allowlist:"} {
+	for _, expected := range []string{"runtime:", "workspace_dir: ./new-workspace", "automation:", "timezone: Asia/Seoul", "dir: /tmp/nested-gateway", "provider: perplexity", "default_tier: heavy"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("expected patched config to contain %q, got:\n%s", expected, text)
 		}
@@ -66,9 +65,6 @@ tools_web_search_provider: brave
 	if cfg.LLMDefaultTier != "heavy" || cfg.LLMRoleDefaults["pulse_decider"] != "light" {
 		t.Fatalf("patched llm hierarchy not loaded correctly: default=%q roles=%+v", cfg.LLMDefaultTier, cfg.LLMRoleDefaults)
 	}
-	if len(cfg.BrowserAutoLoginSiteAllowlist) != 2 || cfg.BrowserAutoLoginSiteAllowlist[0] != "intranet" {
-		t.Fatalf("patched browser allowlist not loaded: %+v", cfg.BrowserAutoLoginSiteAllowlist)
-	}
 }
 
 func TestSchema_UsesPreferredHierarchicalPaths(t *testing.T) {
@@ -78,15 +74,14 @@ func TestSchema_UsesPreferredHierarchicalPaths(t *testing.T) {
 		byKey[field.Key] = field
 	}
 	checks := map[string]string{
-		"workspace_dir":                          "runtime.workspace_dir",
-		"llm_providers":                          "llm.providers",
-		"agent_max_iterations":                   "automation.agent.max_iterations",
-		"pulse_timezone":                         "automation.pulse.timezone",
-		"tools_web_search_provider":              "tools.web_search.provider",
-		"browser_auto_login_site_allowlist_json": "browser.auto_login.site_allowlist",
-		"gateway_persistence_dir":                "gateway.persistence.dir",
-		"telegram_bot_token":                     "channels.telegram.bot_token",
-		"skills_extra_dirs_json":                 "extensions.skills.extra_dirs",
+		"workspace_dir":             "runtime.workspace_dir",
+		"llm_providers":             "llm.providers",
+		"agent_max_iterations":      "automation.agent.max_iterations",
+		"pulse_timezone":            "automation.pulse.timezone",
+		"tools_web_search_provider": "tools.web_search.provider",
+		"gateway_persistence_dir":   "gateway.persistence.dir",
+		"telegram_bot_token":        "channels.telegram.bot_token",
+		"skills_extra_dirs_json":    "extensions.skills.extra_dirs",
 	}
 	for key, want := range checks {
 		field, ok := byKey[key]

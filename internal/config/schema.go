@@ -136,36 +136,12 @@ func Schema() []FieldMeta {
 		f("tools_web_fetch_private_host_allowlist_json", "Tools", "string_list", "Private Host Allowlist", "Explicit private hosts allowed for web fetch requests"),
 		f("tools_apply_patch_enabled", "Tools", "bool", "Apply Patch", "Enable apply-patch tool"),
 		f("tools_message_enabled", "Tools", "bool", "Message Tool", "Enable message/notification tool"),
-		f("tools_browser_enabled", "Tools", "bool", "Browser Tool", "Enable browser automation tool"),
 		f("tools_nodes_enabled", "Tools", "bool", "Nodes Tool", "Enable sub-agent nodes tool"),
 		f("tools_gateway_enabled", "Tools", "bool", "Gateway Tool", "Enable gateway dispatch tool"),
 
 		// ── MCP ──────────────────────────────────
 		f("mcp_command_allowlist_json", "MCP", "string_list", "Command Allowlist", "Commands that bundled or installed MCP servers may execute"),
 		fjson("mcp_servers_json", "MCP", "Servers", "Optional MCP server catalog entries configured directly in YAML"),
-
-		// ── Vault ────────────────────────────────
-		f("vault_enabled", "Vault", "bool", "Enabled", "Enable HashiCorp Vault integration"),
-		f("vault_addr", "Vault", "string", "Address", "Vault server address"),
-		fsel("vault_auth_mode", "Vault", "Auth Mode", "Vault auth method", []string{"token", "approle"}),
-		fs("vault_token", "Vault", "Token", "Vault authentication token", true),
-		f("vault_namespace", "Vault", "string", "Namespace", "Vault namespace for enterprise"),
-		f("vault_timeout_ms", "Vault", "int", "Timeout (ms)", "Vault request timeout in milliseconds"),
-		f("vault_kv_mount", "Vault", "string", "KV Mount", "KV secrets engine mount path"),
-		f("vault_kv_version", "Vault", "int", "KV Version", "KV secrets engine version (1 or 2)"),
-		f("vault_approle_mount", "Vault", "string", "AppRole Mount", "Vault AppRole auth mount path"),
-		fs("vault_approle_role_id", "Vault", "AppRole Role ID", "Role ID used when auth mode is approle", true),
-		fs("vault_approle_secret_id", "Vault", "AppRole Secret ID", "Secret ID used when auth mode is approle", true),
-		f("vault_secret_path_allowlist_json", "Vault", "string_list", "Secret Path Allowlist", "Allowed Vault secret path prefixes for runtime access"),
-
-		// ── Browser ──────────────────────────────
-		f("browser_runtime_enabled", "Browser", "bool", "Runtime Enabled", "Enable browser runtime for automation"),
-		fsel("browser_default_profile", "Browser", "Default Profile", "Browser profile mode", []string{"managed", "system"}),
-		f("browser_managed_headless", "Browser", "bool", "Headless Mode", "Run managed browser without GUI"),
-		f("browser_managed_executable_path", "Browser", "string", "Executable Path", "Path to browser executable"),
-		f("browser_managed_user_data_dir", "Browser", "string", "User Data Dir", "Browser user data directory"),
-		f("browser_site_flows_dir", "Browser", "string", "Site Flows Dir", "Directory for browser site flow definitions"),
-		f("browser_auto_login_site_allowlist_json", "Browser", "string_list", "Auto-Login Allowlist", "Site IDs allowed to use stored browser auto-login credentials"),
 
 		// ── Gateway ──────────────────────────────
 		f("gateway_enabled", "Gateway", "bool", "Enabled", "Enable agent gateway for multi-agent orchestration"),
@@ -414,8 +390,6 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsApplyPatchEnabled
 	case "tools_message_enabled":
 		return cfg.ToolsMessageEnabled
-	case "tools_browser_enabled":
-		return cfg.ToolsBrowserEnabled
 	case "tools_nodes_enabled":
 		return cfg.ToolsNodesEnabled
 	case "tools_gateway_enabled":
@@ -425,46 +399,6 @@ func extractValue(yamlKey string, cfg Config) any {
 		return append([]string(nil), cfg.MCPCommandAllowlist...)
 	case "mcp_servers_json":
 		return append([]MCPServer(nil), cfg.MCPServers...)
-	// Vault
-	case "vault_enabled":
-		return cfg.VaultEnabled
-	case "vault_addr":
-		return cfg.VaultAddr
-	case "vault_auth_mode":
-		return cfg.VaultAuthMode
-	case "vault_token":
-		return cfg.VaultToken
-	case "vault_namespace":
-		return cfg.VaultNamespace
-	case "vault_timeout_ms":
-		return cfg.VaultTimeoutMS
-	case "vault_kv_mount":
-		return cfg.VaultKVMount
-	case "vault_kv_version":
-		return cfg.VaultKVVersion
-	case "vault_approle_mount":
-		return cfg.VaultAppRoleMount
-	case "vault_approle_role_id":
-		return cfg.VaultAppRoleRoleID
-	case "vault_approle_secret_id":
-		return cfg.VaultAppRoleSecretID
-	case "vault_secret_path_allowlist_json":
-		return append([]string(nil), cfg.VaultSecretPathAllowlist...)
-	// Browser
-	case "browser_runtime_enabled":
-		return cfg.BrowserRuntimeEnabled
-	case "browser_default_profile":
-		return cfg.BrowserDefaultProfile
-	case "browser_managed_headless":
-		return cfg.BrowserManagedHeadless
-	case "browser_managed_executable_path":
-		return cfg.BrowserManagedExecutablePath
-	case "browser_managed_user_data_dir":
-		return cfg.BrowserManagedUserDataDir
-	case "browser_site_flows_dir":
-		return cfg.BrowserSiteFlowsDir
-	case "browser_auto_login_site_allowlist_json":
-		return append([]string(nil), cfg.BrowserAutoLoginSiteAllowlist...)
 	// Gateway
 	case "gateway_enabled":
 		return cfg.GatewayEnabled
