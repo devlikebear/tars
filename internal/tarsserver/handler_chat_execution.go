@@ -43,7 +43,21 @@ func executeChatLoop(
 		}
 	}
 	ctx = usage.WithCallMeta(ctx, usage.CallMeta{Source: "chat", SessionID: state.sessionID})
-	loop, toolCallRecords := setupAgentLoop(chatClient, state.registry, state.sessionID, len(state.history), deps.tooling.UsageTracker, deps.logger, stream.status)
+	afterToolHook := func(_ context.Context, evt agent.Event) {
+		if evt.ToolName != "tasks" {
+			return
+		}
+		// The console keeps the chat pulse-bar Tasks badge in sync via this
+		// event; failing to read tasks is non-fatal — the panel falls back
+		// to its own poll on toggle.
+		tasks, err := state.store.GetTasks(state.sessionID)
+		if err != nil {
+			deps.logger.Debug().Err(err).Str("session_id", state.sessionID).Msg("tasks_changed: read failed")
+			return
+		}
+		stream.tasksChanged(tasks)
+	}
+	loop, toolCallRecords := setupAgentLoop(chatClient, state.registry, state.sessionID, len(state.history), deps.tooling.UsageTracker, deps.logger, stream.status, afterToolHook)
 	ctx = tool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")

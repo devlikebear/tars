@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.8] - 2026-04-26
+
+### Added
+
+- `tasks_changed` SSE event — emitted after every `tasks` tool call with the live plan-goal + per-status counts so the chat pulse-bar Tasks badge stays in sync without polling.
+- Initial task counts are fetched on session change so the badge reflects state from prior turns, not just the current chat-stream lifetime.
+
+### Changed
+
+- The chat pulse-bar `Tasks` button now displays an `(in_progress / total)` count when a plan exists (e.g. `Tasks (1/3)`) — restores the live counter that PR #291 promised but had since regressed.
+
+### Tests
+
+- `TestChatAPI_TasksToolEmitsTasksChangedEvent`
+
+### Closed
+
+- Closes #391.
+
 ## [0.31.7] - 2026-04-26
 
 ### Added

@@ -413,6 +413,7 @@ func setupAgentLoop(
 	usageTracker *usage.Tracker,
 	logger zerolog.Logger,
 	sendStatus func(string, string, string, string, string, string),
+	afterTool func(ctx context.Context, evt agent.Event),
 ) (*agent.Loop, *[]ToolCallRecord) {
 	toolCalls := &[]ToolCallRecord{}
 	if _, ok := registry.Get("session_status"); !ok {
@@ -466,6 +467,9 @@ func setupAgentLoop(
 				ToolArgs:   statusPreview(evt.ToolArgs, 500),
 				ToolResult: statusPreview(evt.ToolResult, 500),
 			})
+			if afterTool != nil {
+				afterTool(ctx, evt)
+			}
 		case agent.EventLoopEnd:
 			sendStatus("loop_end", "agent loop completed", "", "", "", "")
 			logger.Debug().
