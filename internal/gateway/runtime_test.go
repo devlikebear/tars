@@ -517,17 +517,6 @@ func TestRuntimeChannelNodes(t *testing.T) {
 	if len(messages) != 2 {
 		t.Fatalf("expected 2 channel messages, got %d", len(messages))
 	}
-
-	if _, err := rt.NodeDescribe("echo"); err != nil {
-		t.Fatalf("node describe: %v", err)
-	}
-	resp, err := rt.NodeInvoke("echo", map[string]any{"a": 1})
-	if err != nil {
-		t.Fatalf("node invoke: %v", err)
-	}
-	if resp["node"] != "echo" {
-		t.Fatalf("unexpected node invoke response: %+v", resp)
-	}
 }
 
 func TestRuntime_OutboundTelegramRecordedAsTelegramSource(t *testing.T) {

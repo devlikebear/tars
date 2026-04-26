@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-04-26
+
+### Changed
+
+- **RF-053**: `gateway.Runtime.finalizeRunLocked` (200줄) 분할 — `applyFailedFinalState`(실패 상태 + run_failed 이벤트), `applyCompletedFinalState`(성공 상태 + run_finished 이벤트), `commitRunFinalization`(공통 tail: history trim + state version bump + run summary append + 단일 publish) 3 함수로 분리. 동작 동일, 향후 동시성 invariant 변경이 한 곳에 집중되도록 정리.
+
+### Removed
+
+- **RF-055**: `gateway.Runtime` 의 dead/demo 노드 시스템 전체 제거. `Runtime.Nodes()` / `NodeDescribe` / `NodeInvoke` 메서드 + `defaultNodes()` (`echo`/`clock.now`/`sessions.latest` 데모 노드) + `internal/gateway/runtime_nodes.go` 파일 + `gateway.NodeInfo` 타입 + `GatewayStatus.Nodes` 필드 모두 삭제.
+- **RF-055**: `tool.NewNodesTool` 빌트인 툴 + `cfg.ToolsNodesEnabled` config 필드 + 관련 schema/input/yaml/test 항목 삭제. 데모 외 사용 사례 0건이었음.
+
 ## [0.29.0] - 2026-04-26
 
 ### Removed (BREAKING)

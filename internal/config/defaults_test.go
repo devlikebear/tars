@@ -863,7 +863,7 @@ func TestLoad_ExpandedToolAndGatewayOptionsFromEnv(t *testing.T) {
 	if !cfg.GatewayEnabled || !cfg.ChannelsLocalEnabled || !cfg.ChannelsWebhookEnabled || !cfg.ChannelsTelegramEnabled {
 		t.Fatalf("expected gateway/channel options enabled from env")
 	}
-	if !cfg.ToolsMessageEnabled || !cfg.ToolsNodesEnabled || !cfg.ToolsGatewayEnabled {
+	if !cfg.ToolsMessageEnabled || !cfg.ToolsGatewayEnabled {
 		t.Fatalf("expected tool options enabled from env")
 	}
 	if cfg.ToolsWebSearchProvider != "perplexity" {

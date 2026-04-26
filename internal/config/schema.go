@@ -136,7 +136,6 @@ func Schema() []FieldMeta {
 		f("tools_web_fetch_private_host_allowlist_json", "Tools", "string_list", "Private Host Allowlist", "Explicit private hosts allowed for web fetch requests"),
 		f("tools_apply_patch_enabled", "Tools", "bool", "Apply Patch", "Enable apply-patch tool"),
 		f("tools_message_enabled", "Tools", "bool", "Message Tool", "Enable message/notification tool"),
-		f("tools_nodes_enabled", "Tools", "bool", "Nodes Tool", "Enable sub-agent nodes tool"),
 		f("tools_gateway_enabled", "Tools", "bool", "Gateway Tool", "Enable gateway dispatch tool"),
 
 		// ── MCP ──────────────────────────────────
@@ -390,8 +389,6 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsApplyPatchEnabled
 	case "tools_message_enabled":
 		return cfg.ToolsMessageEnabled
-	case "tools_nodes_enabled":
-		return cfg.ToolsNodesEnabled
 	case "tools_gateway_enabled":
 		return cfg.ToolsGatewayEnabled
 	// MCP
