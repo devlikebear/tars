@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-04-26
+
+### Changed
+
+- **ID-003 (B) — web aggregator**: `web_search` 와 `web_fetch` 분리 툴이 `web` 단일 aggregator (action: search|fetch) 로 통합. process 패턴 적용 — 모든 sub-action 입력 (`query`, `count`, `provider`, `url`, `max_chars`) 이 top-level properties 에 명시되어 strict tool-call schema 검증 가능. 기존 `web_search` / `web_fetch` 이름은 alias 로 유지 (`tool_name.go`).
+- 시스템 프롬프트 절감: 기존 2 tool description (~80자) → 1 tool description (~50자), -30 토큰/turn 추정.
+- Config 필드 (`tools_web_fetch_enabled`, `tools_web_search_enabled`, etc.) 는 그대로 유지 — 내부적으로 `web` aggregator 내 sub-action 별 enable 플래그로 매핑.
+- `tool_groups.go`: web 그룹이 `web` 자체와 alias `web_search`/`web_fetch` 모두 허용.
+
+### Migration
+
+LLM 호출 시 `web_search` / `web_fetch` 이름은 alias 로 동작하지만, 새 코드/스킬은 `web(action=search)` / `web(action=fetch)` 사용 권장.
+
 ## [0.30.0] - 2026-04-26
 
 ### Removed (BREAKING)
