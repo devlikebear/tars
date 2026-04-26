@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agent"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/prompt"
@@ -130,7 +130,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		return nil
 	}
 	maxIters := resolveAgentMaxIterations(maxIterations)
-	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string, providerOverride *gateway.ProviderOverride) (string, error) {
+	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string, providerOverride *agentruntime.ProviderOverride) (string, error) {
 		label := strings.TrimSpace(runLabel)
 		if label == "" {
 			label = "agent"
@@ -145,10 +145,10 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		// the SpawnRequest) AND a router is available, select that tier's
 		// client; otherwise fall back to the default chat client.
 		runClient := client
-		execInfo := gateway.PromptExecutionFromContext(ctx)
-		activeOverride := gateway.CloneProviderOverride(providerOverride)
+		execInfo := agentruntime.PromptExecutionFromContext(ctx)
+		activeOverride := agentruntime.CloneProviderOverride(providerOverride)
 		if activeOverride == nil {
-			activeOverride = gateway.CloneProviderOverride(execInfo.ProviderOverride)
+			activeOverride = agentruntime.CloneProviderOverride(execInfo.ProviderOverride)
 		}
 		overrideSource := strings.TrimSpace(execInfo.OverrideSource)
 		if overrideSource == "" {
@@ -178,7 +178,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		}
 		if router != nil {
 			tierNorm := strings.ToLower(strings.TrimSpace(tier))
-			resolved, execMeta, err := gateway.ResolveOverride(&cfg, tierNorm, activeOverride, overrideSource)
+			resolved, execMeta, err := agentruntime.ResolveOverride(&cfg, tierNorm, activeOverride, overrideSource)
 			if err != nil {
 				return "", err
 			}
@@ -298,7 +298,7 @@ type providerOverrideClient struct {
 	tier     string
 }
 
-func resolveProviderOverrideClient(cfg config.Config, workspaceDir string, tracker *usage.Tracker, tier string, override *gateway.ProviderOverride) (providerOverrideClient, error) {
+func resolveProviderOverrideClient(cfg config.Config, workspaceDir string, tracker *usage.Tracker, tier string, override *agentruntime.ProviderOverride) (providerOverrideClient, error) {
 	if override == nil {
 		return providerOverrideClient{}, fmt.Errorf("provider override is required")
 	}

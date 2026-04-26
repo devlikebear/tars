@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/cron"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/ops"
 	zlog "github.com/rs/zerolog/log"
 )
@@ -18,10 +18,10 @@ type CronJobLister interface {
 }
 
 // GatewayRunLister is the narrow interface pulse requires from the
-// gateway runtime to find stuck runs. The real *gateway.Runtime satisfies
+// gateway runtime to find stuck runs. The real *agentruntime.Runtime satisfies
 // it.
 type GatewayRunLister interface {
-	List(limit int) []gateway.Run
+	List(limit int) []agentruntime.Run
 }
 
 // DiskStatProvider is the narrow interface pulse requires from the ops
@@ -224,10 +224,10 @@ func (s *Scanner) scanStuckRuns(now time.Time) *Signal {
 		return nil
 	}
 	cutoff := now.Add(-time.Duration(s.thresholds.StuckRunMinutes) * time.Minute)
-	var stuck []gateway.Run
+	var stuck []agentruntime.Run
 	var worstStarted time.Time
 	for _, r := range runs {
-		if r.Status != gateway.RunStatusRunning {
+		if r.Status != agentruntime.RunStatusRunning {
 			continue
 		}
 		started, ok := parseRunTimestamp(r.StartedAt)
@@ -340,7 +340,7 @@ func (s *Scanner) scanDelivery(now time.Time) *Signal {
 }
 
 // parseRunTimestamp parses the string-typed StartedAt/CreatedAt fields
-// used by gateway.Run. Returns false for empty or malformed values.
+// used by agentruntime.Run. Returns false for empty or malformed values.
 func parseRunTimestamp(s string) (time.Time, bool) {
 	if s == "" {
 		return time.Time{}, false

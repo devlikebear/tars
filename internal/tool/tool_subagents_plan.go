@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/usage"
 	zlog "github.com/rs/zerolog/log"
@@ -56,7 +56,7 @@ var subagentsPlanResponseSchema = json.RawMessage(`{
   "required": ["steps"]
 }`)
 
-func NewSubagentsPlanTool(runtime *gateway.Runtime, router llm.Router) Tool {
+func NewSubagentsPlanTool(runtime *agentruntime.Runtime, router llm.Router) Tool {
 	return Tool{
 		Name:        "subagents_plan",
 		Description: "Use the gateway planner model to create a staged subagent execution plan before calling subagents_orchestrate.",
@@ -246,7 +246,7 @@ func NewSubagentsPlanTool(runtime *gateway.Runtime, router llm.Router) Tool {
 }
 
 func buildSubagentsPlannerMessages(
-	info gateway.AgentInfo,
+	info agentruntime.AgentInfo,
 	goal string,
 	agentName string,
 	flowID string,

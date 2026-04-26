@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -27,7 +27,7 @@ func (f telegramCommandExecFunc) Execute(ctx context.Context, line, currentSessi
 type telegramCommandHandlerOptions struct {
 	Store          *session.Store
 	CronResolver   *workspaceCronStoreResolver
-	Runtime        *gateway.Runtime
+	Runtime        *agentruntime.Runtime
 	MainSession    string
 	SessionScope   string
 	ProviderModels *providerModelsService
@@ -37,7 +37,7 @@ type telegramCommandHandlerOptions struct {
 type telegramCommandHandler struct {
 	store          *session.Store
 	cronResolver   *workspaceCronStoreResolver
-	runtime        *gateway.Runtime
+	runtime        *agentruntime.Runtime
 	mainSession    string
 	sessionScope   string
 	providerModels *providerModelsService

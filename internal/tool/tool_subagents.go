@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/usage"
 )
 
-func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
+func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 	return Tool{
 		Name:        "subagents_run",
 		Description: "Run multiple independent read-only subagents in parallel and return compact summaries.",
@@ -78,10 +78,10 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				} `json:"consensus,omitempty"`
 				TimeoutMS int `json:"timeout_ms,omitempty"`
 				Tasks     []struct {
-					Title            string                    `json:"title,omitempty"`
-					Prompt           string                    `json:"prompt"`
-					Tier             string                    `json:"tier,omitempty"`
-					ProviderOverride *gateway.ProviderOverride `json:"provider_override,omitempty"`
+					Title            string                         `json:"title,omitempty"`
+					Prompt           string                         `json:"prompt"`
+					Tier             string                         `json:"tier,omitempty"`
+					ProviderOverride *agentruntime.ProviderOverride `json:"provider_override,omitempty"`
 				} `json:"tasks"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
@@ -154,10 +154,10 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 			type subagentRequest struct {
 				title  string
 				prompt string
-				run    gateway.Run
+				run    agentruntime.Run
 			}
 			requests := make([]subagentRequest, 0, len(input.Tasks))
-			spawnedRuns := make([]gateway.Run, 0, len(input.Tasks))
+			spawnedRuns := make([]agentruntime.Run, 0, len(input.Tasks))
 			for _, task := range input.Tasks {
 				prompt := strings.TrimSpace(task.Prompt)
 				if prompt == "" {
@@ -178,7 +178,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				if taskTier == "" {
 					taskTier = strings.ToLower(strings.TrimSpace(info.Tier))
 				}
-				spawnReq := gateway.SpawnRequest{
+				spawnReq := agentruntime.SpawnRequest{
 					WorkspaceID:      workspaceID,
 					Title:            title,
 					Prompt:           prompt,
@@ -194,9 +194,9 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				}
 				if mode == "consensus" {
 					spawnReq.Mode = "consensus"
-					spawnReq.Consensus = &gateway.ConsensusSpec{Strategy: strings.TrimSpace(input.Consensus.Strategy)}
+					spawnReq.Consensus = &agentruntime.ConsensusSpec{Strategy: strings.TrimSpace(input.Consensus.Strategy)}
 					for _, variant := range input.Consensus.Variants {
-						spawnReq.Consensus.Variants = append(spawnReq.Consensus.Variants, gateway.ProviderOverride{Alias: strings.TrimSpace(variant.Alias), Model: strings.TrimSpace(variant.Model)})
+						spawnReq.Consensus.Variants = append(spawnReq.Consensus.Variants, agentruntime.ProviderOverride{Alias: strings.TrimSpace(variant.Alias), Model: strings.TrimSpace(variant.Model)})
 					}
 				}
 				run, err := runtime.Spawn(waitCtx, spawnReq)
@@ -234,7 +234,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 				if summary == "" {
 					summary = trimSubagentSummary(final.Error, 220)
 				}
-				if final.Status != gateway.RunStatusCompleted {
+				if final.Status != agentruntime.RunStatusCompleted {
 					hadFailure = true
 				}
 				results = append(results, subagentResult{
@@ -262,7 +262,7 @@ func NewSubagentsRunTool(runtime *gateway.Runtime) Tool {
 	}
 }
 
-func cancelSubagentRuns(runtime *gateway.Runtime, workspaceID string, runs []gateway.Run) {
+func cancelSubagentRuns(runtime *agentruntime.Runtime, workspaceID string, runs []agentruntime.Run) {
 	if runtime == nil {
 		return
 	}
@@ -271,8 +271,8 @@ func cancelSubagentRuns(runtime *gateway.Runtime, workspaceID string, runs []gat
 	}
 }
 
-func normalizeProviderOverride(value *gateway.ProviderOverride) (*gateway.ProviderOverride, string) {
-	override := gateway.CloneProviderOverride(value)
+func normalizeProviderOverride(value *agentruntime.ProviderOverride) (*agentruntime.ProviderOverride, string) {
+	override := agentruntime.CloneProviderOverride(value)
 	if override == nil {
 		return nil, ""
 	}
@@ -282,7 +282,7 @@ func normalizeProviderOverride(value *gateway.ProviderOverride) (*gateway.Provid
 	return override, ""
 }
 
-func validateSafeSubagent(info gateway.AgentInfo) string {
+func validateSafeSubagent(info agentruntime.AgentInfo) string {
 	if strings.TrimSpace(info.Kind) != "prompt" {
 		return fmt.Sprintf("subagent %q must be a prompt-based agent", strings.TrimSpace(info.Name))
 	}

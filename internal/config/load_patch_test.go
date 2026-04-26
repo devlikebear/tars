@@ -44,7 +44,7 @@ tools_web_search_provider: brave
 		t.Fatalf("expected pulse_timezone to be rewritten under automation.pulse, got:\n%s", text)
 	}
 	if strings.Contains(text, "\ngateway_persistence_dir:") {
-		t.Fatalf("expected gateway_persistence_dir to be rewritten under gateway.persistence, got:\n%s", text)
+		t.Fatalf("expected gateway_persistence_dir to be rewritten under agentruntime.persistence, got:\n%s", text)
 	}
 	if strings.Contains(text, "\ntools_web_search_provider:") {
 		t.Fatalf("expected tools_web_search_provider to be rewritten under tools.web_search, got:\n%s", text)

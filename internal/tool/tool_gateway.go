@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
 )
 
-func NewMessageTool(runtime *gateway.Runtime, enabled bool) Tool {
+func NewMessageTool(runtime *agentruntime.Runtime, enabled bool) Tool {
 	return Tool{
 		Name:        "message",
 		Description: "Messaging actions: send, read, thread_reply.",
@@ -70,7 +70,7 @@ func NewMessageTool(runtime *gateway.Runtime, enabled bool) Tool {
 	}
 }
 
-func NewGatewayTool(runtime *gateway.Runtime, enabled bool) Tool {
+func NewGatewayTool(runtime *agentruntime.Runtime, enabled bool) Tool {
 	return Tool{
 		Name:        "gateway",
 		Description: "Gateway actions: status, reload, restart.",

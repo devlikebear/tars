@@ -11,20 +11,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/rs/zerolog"
 )
 
-func newChannelsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) http.Handler {
+func newChannelsAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger) http.Handler {
 	return newChannelsAPIHandlerWithTelegramSender(runtime, nil, logger)
 }
 
-func newChannelsAPIHandlerWithTelegramSender(runtime *gateway.Runtime, sender telegramSender, logger zerolog.Logger) http.Handler {
+func newChannelsAPIHandlerWithTelegramSender(runtime *agentruntime.Runtime, sender telegramSender, logger zerolog.Logger) http.Handler {
 	return newChannelsAPIHandlerWithTelegramPairings(runtime, sender, nil, "pairing", false, logger)
 }
 
 func newChannelsAPIHandlerWithTelegramPairings(
-	runtime *gateway.Runtime,
+	runtime *agentruntime.Runtime,
 	sender telegramSender,
 	pairings *telegramPairingStore,
 	dmPolicy string,
@@ -50,7 +50,7 @@ func newChannelsAPIHandlerWithTelegramPairings(
 	return mux
 }
 
-func handleWebhookInbound(w http.ResponseWriter, r *http.Request, runtime *gateway.Runtime, logger zerolog.Logger) {
+func handleWebhookInbound(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, logger zerolog.Logger) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
@@ -77,7 +77,7 @@ func handleWebhookInbound(w http.ResponseWriter, r *http.Request, runtime *gatew
 	writeJSON(w, http.StatusOK, msg)
 }
 
-func handleTelegramInbound(w http.ResponseWriter, r *http.Request, runtime *gateway.Runtime, logger zerolog.Logger) {
+func handleTelegramInbound(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, logger zerolog.Logger) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
@@ -107,7 +107,7 @@ func handleTelegramInbound(w http.ResponseWriter, r *http.Request, runtime *gate
 func handleTelegramSend(
 	w http.ResponseWriter,
 	r *http.Request,
-	runtime *gateway.Runtime,
+	runtime *agentruntime.Runtime,
 	sender telegramSender,
 	logger zerolog.Logger,
 ) {

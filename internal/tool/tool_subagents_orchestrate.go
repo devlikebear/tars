@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/usage"
 	zlog "github.com/rs/zerolog/log"
@@ -17,13 +17,13 @@ import (
 var orchestrationTaskPlaceholder = regexp.MustCompile(`\{\{\s*task\.([a-zA-Z0-9._-]+)\.(summary|response|error)\s*\}\}`)
 
 var (
-	subagentFlowSpawn = func(runtime *gateway.Runtime, ctx context.Context, req gateway.SpawnRequest) (gateway.Run, error) {
+	subagentFlowSpawn = func(runtime *agentruntime.Runtime, ctx context.Context, req agentruntime.SpawnRequest) (agentruntime.Run, error) {
 		return runtime.Spawn(ctx, req)
 	}
-	subagentFlowWait = func(runtime *gateway.Runtime, ctx context.Context, runID string) (gateway.Run, error) {
+	subagentFlowWait = func(runtime *agentruntime.Runtime, ctx context.Context, runID string) (agentruntime.Run, error) {
 		return runtime.Wait(ctx, runID)
 	}
-	subagentFlowCancel = func(runtime *gateway.Runtime, workspaceID string, runs []gateway.Run) {
+	subagentFlowCancel = func(runtime *agentruntime.Runtime, workspaceID string, runs []agentruntime.Run) {
 		cancelSubagentRuns(runtime, workspaceID, runs)
 	}
 )
@@ -42,12 +42,12 @@ type subagentFlowStepInput struct {
 }
 
 type subagentFlowTaskInput struct {
-	ID               string                    `json:"id"`
-	Title            string                    `json:"title,omitempty"`
-	Prompt           string                    `json:"prompt"`
-	Tier             string                    `json:"tier,omitempty"`
-	ProviderOverride *gateway.ProviderOverride `json:"provider_override,omitempty"`
-	DependsOn        []string                  `json:"depends_on,omitempty"`
+	ID               string                         `json:"id"`
+	Title            string                         `json:"title,omitempty"`
+	Prompt           string                         `json:"prompt"`
+	Tier             string                         `json:"tier,omitempty"`
+	ProviderOverride *agentruntime.ProviderOverride `json:"provider_override,omitempty"`
+	DependsOn        []string                       `json:"depends_on,omitempty"`
 }
 
 type subagentCompletedTask struct {
@@ -83,7 +83,7 @@ type subagentStepOutput struct {
 	FailedTasks int                  `json:"failed_tasks,omitempty"`
 }
 
-func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
+func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 	return Tool{
 		Name:        "subagents_orchestrate",
 		Description: "Execute a staged subagent flow: use parallel steps for independent work and sequential steps for dependency-aware follow-up tasks.",
@@ -221,10 +221,10 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 						title     string
 						tier      string
 						dependsOn []string
-						run       gateway.Run
+						run       agentruntime.Run
 					}
 					pending := make([]pendingTask, 0, len(step.Tasks))
-					spawnedRuns := make([]gateway.Run, 0, len(step.Tasks))
+					spawnedRuns := make([]agentruntime.Run, 0, len(step.Tasks))
 					for _, task := range step.Tasks {
 						renderedPrompt, renderErr := renderSubagentFlowPrompt(task.Prompt, completed)
 						if renderErr != nil {
@@ -247,7 +247,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
 							return JSONTextResult(map[string]any{"message": overrideErr}, true), nil
 						}
-						run, spawnErr := subagentFlowSpawn(runtime, waitCtx, gateway.SpawnRequest{
+						run, spawnErr := subagentFlowSpawn(runtime, waitCtx, agentruntime.SpawnRequest{
 							WorkspaceID:      workspaceID,
 							Title:            title,
 							Prompt:           renderedPrompt,
@@ -296,7 +296,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 							Summary:  taskOut.Summary,
 							Error:    taskOut.Error,
 						}
-						if final.Status != gateway.RunStatusCompleted {
+						if final.Status != agentruntime.RunStatusCompleted {
 							hadFailure = true
 							out.Status = "failed"
 							out.FailedTasks++
@@ -323,7 +323,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 						if overrideErr != "" {
 							return JSONTextResult(map[string]any{"message": overrideErr}, true), nil
 						}
-						run, spawnErr := subagentFlowSpawn(runtime, waitCtx, gateway.SpawnRequest{
+						run, spawnErr := subagentFlowSpawn(runtime, waitCtx, agentruntime.SpawnRequest{
 							WorkspaceID:      workspaceID,
 							Title:            title,
 							Prompt:           renderedPrompt,
@@ -361,7 +361,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 							Summary:  taskOut.Summary,
 							Error:    taskOut.Error,
 						}
-						if final.Status != gateway.RunStatusCompleted {
+						if final.Status != agentruntime.RunStatusCompleted {
 							hadFailure = true
 							out.Status = "failed"
 							out.FailedTasks++
@@ -399,7 +399,7 @@ func NewSubagentsOrchestrateTool(runtime *gateway.Runtime) Tool {
 	}
 }
 
-func resolveSubagentParentContext(runtime *gateway.Runtime, workspaceID string, parentRunID string) (string, string, int, error) {
+func resolveSubagentParentContext(runtime *agentruntime.Runtime, workspaceID string, parentRunID string) (string, string, int, error) {
 	trimmedParent := strings.TrimSpace(parentRunID)
 	rootRunID := ""
 	nextDepth := 1
@@ -500,7 +500,7 @@ func renderSubagentFlowPrompt(prompt string, completed map[string]subagentComple
 	return strings.TrimSpace(rendered), nil
 }
 
-func buildSubagentTaskOutput(taskID, title string, dependsOn []string, final gateway.Run) subagentTaskOutput {
+func buildSubagentTaskOutput(taskID, title string, dependsOn []string, final agentruntime.Run) subagentTaskOutput {
 	summary := trimSubagentSummary(final.Response, 220)
 	if summary == "" {
 		summary = trimSubagentSummary(final.Error, 220)

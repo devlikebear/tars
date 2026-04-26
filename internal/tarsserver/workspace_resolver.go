@@ -4,16 +4,16 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/cron"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
 )
 
-const defaultWorkspaceID = gateway.DefaultWorkspaceID
+const defaultWorkspaceID = agentruntime.DefaultWorkspaceID
 
 func normalizeWorkspaceID(raw string) string {
-	return gateway.NormalizeWorkspaceID(raw)
+	return agentruntime.NormalizeWorkspaceID(raw)
 }
 
 func workspaceIDFromRequest(_ *http.Request) string {

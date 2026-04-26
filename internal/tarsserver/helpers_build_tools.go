@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/extensions"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
@@ -26,7 +26,7 @@ func buildAutomationTools(
 func buildChatToolingOptions(
 	processManager *tool.ProcessManager,
 	manager *extensions.Manager,
-	gatewayRuntime *gateway.Runtime,
+	gatewayRuntime *agentruntime.Runtime,
 	compaction chatCompactionOptions,
 	toolsDefaultSet string,
 	toolsAllowHighRiskUser bool,
@@ -50,7 +50,7 @@ func buildChatToolingOptions(
 	}
 }
 
-func buildOptionalChatTools(cfg config.Config, gatewayRuntime *gateway.Runtime) []tool.Tool {
+func buildOptionalChatTools(cfg config.Config, gatewayRuntime *agentruntime.Runtime) []tool.Tool {
 	out := []tool.Tool{}
 	if cfg.ToolsMessageEnabled {
 		out = append(out, tool.NewMessageTool(gatewayRuntime, true))
