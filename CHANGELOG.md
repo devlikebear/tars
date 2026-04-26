@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.2] - 2026-04-26
+
+### Changed
+
+- **ID-004 wrap-up — RF-049 codex advanced fields + RF-047 capability docs**:
+  - `openai_codex_client.go`: `buildOpenAICodexRequestBody` 가 이제 `ClientConfig` 를 받아 `effectiveReasoningEffort` / `effectiveServiceTier` 매핑. Responses API 의 `reasoning: {effort: ...}` 객체와 `service_tier` 필드로 직렬화. 이전엔 `ReasoningEffort` / `ServiceTier` 옵션이 silent 무시 (RF-049).
+  - `docs/llm-providers.md` 신규 — ChatOptions × Provider capability 매트릭스 + wire format 디테일 (specific tool / json_schema / reasoning / service_tier 표). 향후 `internal/llm` 의 wire-format converter 변경 시 같은 PR 에서 갱신할 것 (문서에 명시) (RF-047).
+
+### Tests
+
+- `TestOpenAICodexClient_ReasoningEffortAndServiceTier` — `reasoning.effort=high` 객체 + `service_tier=priority` 직렬화 검증.
+
+### Closed (#366 / ID-004 종결)
+
+이 PR 로 ID-004 옵션 (2) Phase 1+2 + 작은 후속 (RF-049/047) 완전 종결. 잔여 항목 (옵션 (3) 의 Gemini-native responseSchema/caching, 옵션 (5) 의 gemini-compat deprecate) 은 별도 RF/issue 로 트래킹하거나 사용자 결정 시 재개.
+
 ## [0.31.1] - 2026-04-26
 
 ### Changed

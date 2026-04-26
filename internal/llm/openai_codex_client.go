@@ -164,7 +164,7 @@ func (c *OpenAICodexClient) chatWithCredential(
 	allowTransientRetry bool,
 ) (ChatResponse, error) {
 	toolNameMap := newOpenAICodexToolNameMap(opts.Tools)
-	body, err := buildOpenAICodexRequestBody(messages, opts, c.model, streaming, toolNameMap)
+	body, err := buildOpenAICodexRequestBody(messages, opts, c.model, streaming, toolNameMap, c.config)
 	if err != nil {
 		return ChatResponse{}, newProviderError(openAICodexProviderLabel, "parse", err)
 	}
@@ -326,7 +326,7 @@ func normalizeOpenAICodexAuthConfig(config auth.ProviderAuthConfig) auth.Provide
 	return config
 }
 
-func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model string, stream bool, nameMap openAICodexToolNameMap) (map[string]any, error) {
+func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model string, stream bool, nameMap openAICodexToolNameMap, config ClientConfig) (map[string]any, error) {
 	if containsPDFDocumentBlock(messages) {
 		return nil, newPDFUnsupportedError(openAICodexProviderLabel)
 	}
@@ -424,6 +424,16 @@ func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model
 	}
 	if textFormat := toCodexTextFormat(opts.ResponseFormat); textFormat != nil {
 		body["text"] = map[string]any{"format": textFormat}
+	}
+	// RF-049: route ReasoningEffort and ServiceTier to the Responses API.
+	// reasoning.effort uses the same vocabulary as openai_compat
+	// (none/minimal/low/medium/high). service_tier is passed through
+	// directly when configured; an explicit "none"/"" disables it.
+	if effort := effectiveReasoningEffort(config, opts); effort != "" && effort != "none" {
+		body["reasoning"] = map[string]any{"effort": effort}
+	}
+	if tier := effectiveServiceTier(config, opts); tier != "" {
+		body["service_tier"] = tier
 	}
 	return body, nil
 }
