@@ -17,6 +17,7 @@ import (
 	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/fsnotify/fsnotify"
+	zlog "github.com/rs/zerolog/log"
 )
 
 type Source = plugin.Source
@@ -50,6 +51,14 @@ type Options struct {
 	WatchPlugins           bool
 	WatchDebounce          time.Duration
 	PluginConfig           map[string]map[string]any // per-plugin config keyed by plugin ID
+
+	// LifecycleToolResolver is consulted by plugin lifecycle hooks to
+	// look up the builtin tool to invoke. May be nil; nil disables
+	// lifecycle hook execution and turns each declared hook into a
+	// single skip diagnostic. Wiring is the caller's responsibility —
+	// extensions/Manager intentionally does not own the user-surface
+	// registry.
+	LifecycleToolResolver LifecycleToolResolver
 }
 
 type Snapshot struct {
@@ -117,7 +126,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.mu.RLock()
 	plugins := append([]plugin.Definition(nil), m.snapshot.Plugins...)
 	m.mu.RUnlock()
-	if diags := runLifecycleHooks(ctx, plugins, "on_start", 0); len(diags) > 0 {
+	if diags := runLifecycleHooks(ctx, plugins, "on_start", 0, m.opts.LifecycleToolResolver); len(diags) > 0 {
 		m.mu.Lock()
 		m.snapshot.Diagnostics = append(m.snapshot.Diagnostics, diags...)
 		m.mu.Unlock()
@@ -153,7 +162,7 @@ func (m *Manager) Close() {
 	m.mu.RLock()
 	plugins := append([]plugin.Definition(nil), m.snapshot.Plugins...)
 	m.mu.RUnlock()
-	_ = runLifecycleHooks(context.Background(), plugins, "on_stop", 0)
+	_ = runLifecycleHooks(context.Background(), plugins, "on_stop", 0, m.opts.LifecycleToolResolver)
 
 	// Close built-in plugins
 	for _, bp := range plugin.BuiltinPlugins() {
@@ -221,6 +230,23 @@ func (m *Manager) Reload(ctx context.Context) error {
 	pluginMCPServers := []config.MCPServer{}
 	if m.opts.PluginsAllowMCPServers {
 		pluginMCPServers = plugins.MCPServers
+		// Surface that an externally-installed plugin's mcp_servers
+		// declarations are now active. The default for this flag is
+		// false; flipping it on lets a plugin manifest spawn external
+		// processes (RF-008 same threat surface as the legacy shell
+		// hook), so the operator should see this in startup logs.
+		if len(pluginMCPServers) > 0 {
+			names := make([]string, 0, len(pluginMCPServers))
+			for _, s := range pluginMCPServers {
+				if name := strings.TrimSpace(s.Name); name != "" {
+					names = append(names, name)
+				}
+			}
+			zlog.Logger.Warn().
+				Bool("plugins_allow_mcp_servers", true).
+				Strs("plugin_mcp_servers", names).
+				Msg("extensions: plugin-declared MCP servers enabled; verify each plugin source is trusted")
+		}
 	}
 	hubMCPServers, hubDiagnostics := skillhub.LoadInstalledMCPServers(m.opts.WorkspaceDir)
 	mcpServers, mcpDiagnostics := mergeMCPServers(
