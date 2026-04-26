@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/pulse"
@@ -25,7 +25,7 @@ type pulseSetupInputs struct {
 	WorkspaceDir     string
 	Router           llm.Router
 	CronStore        *cron.Store
-	GatewayRuntime   *gateway.Runtime
+	GatewayRuntime   *agentruntime.Runtime
 	OpsManager       *ops.Manager
 	DeliveryCounter  *telegramDeliveryCounter
 	ReflectionHealth pulse.ReflectionHealthSource

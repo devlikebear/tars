@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/rs/zerolog"
 )
 
@@ -16,8 +16,8 @@ func buildGatewayExecutors(
 	cfg config.Config,
 	runPrompt gatewayPromptRunner,
 	logger zerolog.Logger,
-) []gateway.AgentExecutor {
-	out := make([]gateway.AgentExecutor, 0, len(cfg.GatewayAgents))
+) []agentruntime.AgentExecutor {
+	out := make([]agentruntime.AgentExecutor, 0, len(cfg.GatewayAgents))
 	registeredNames := map[string]struct{}{}
 	for _, spec := range cfg.GatewayAgents {
 		if !spec.Enabled {
@@ -55,7 +55,7 @@ func buildGatewayExecutors(
 		}
 
 		timeout := time.Duration(spec.TimeoutSeconds) * time.Second
-		executor, err := gateway.NewCommandExecutor(gateway.CommandExecutorOptions{
+		executor, err := agentruntime.NewCommandExecutor(agentruntime.CommandExecutorOptions{
 			Name:        name,
 			Description: strings.TrimSpace(spec.Description),
 			Source:      "config",
@@ -75,7 +75,7 @@ func buildGatewayExecutors(
 
 	if runPrompt != nil {
 		if _, exists := registeredNames["explorer"]; !exists {
-			executor, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+			executor, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
 				Name:        "explorer",
 				Description: "Built-in read-only codebase exploration agent",
 				Source:      "builtin",
@@ -86,7 +86,7 @@ func buildGatewayExecutors(
 					"read", "read_file", "list_dir", "glob",
 					"usage_report",
 				},
-				RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, _ string, providerOverride *gateway.ProviderOverride) (string, error) {
+				RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, _ string, providerOverride *agentruntime.ProviderOverride) (string, error) {
 					label := strings.TrimSpace(runLabel)
 					if label == "" {
 						label = "spawn"

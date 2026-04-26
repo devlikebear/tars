@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/cron"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -362,7 +362,7 @@ func TestTelegramCommand_OutputChunking_SplitsLargeMessage(t *testing.T) {
 func TestTelegramCommand_Allowed_GatewayStatus(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(workspace)
-	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                 true,
 		WorkspaceDir:            workspace,
 		SessionStore:            store,

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/rs/zerolog"
 )
@@ -40,7 +40,7 @@ func TestBuildGatewayExecutors_CommandExecutor(t *testing.T) {
 		t.Fatalf("unexpected executor info: %+v", executors[0].Info())
 	}
 
-	out, err := executors[0].Execute(context.Background(), gateway.ExecuteRequest{Prompt: "ignored"})
+	out, err := executors[0].Execute(context.Background(), agentruntime.ExecuteRequest{Prompt: "ignored"})
 	if err != nil {
 		t.Fatalf("executor execute: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestBuildGatewayExecutors_ResolveRelativeWorkingDir(t *testing.T) {
 	if len(executors) != 1 {
 		t.Fatalf("expected 1 gateway executor, got %d", len(executors))
 	}
-	out, err := executors[0].Execute(context.Background(), gateway.ExecuteRequest{})
+	out, err := executors[0].Execute(context.Background(), agentruntime.ExecuteRequest{})
 	if err != nil {
 		t.Fatalf("executor execute: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestBuildGatewayExecutors_AddsBuiltInExplorerExecutor(t *testing.T) {
 			WorkspaceDir: t.TempDir(),
 		},
 	}
-	runPrompt := func(_ context.Context, runLabel string, prompt string, allowedTools []string, _ string, _ *gateway.ProviderOverride) (string, error) {
+	runPrompt := func(_ context.Context, runLabel string, prompt string, allowedTools []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
 		if len(allowedTools) == 0 {
 			t.Fatalf("expected built-in explorer to forward a read-only allowlist")
 		}
@@ -166,7 +166,7 @@ func TestBuildGatewayExecutors_AddsBuiltInExplorerExecutor(t *testing.T) {
 		if len(info.ToolsAllow) == 0 {
 			t.Fatalf("expected built-in explorer tools allowlist, got %+v", info)
 		}
-		out, err := executor.Execute(context.Background(), gateway.ExecuteRequest{RunID: "run_explorer", Prompt: "inspect repo"})
+		out, err := executor.Execute(context.Background(), agentruntime.ExecuteRequest{RunID: "run_explorer", Prompt: "inspect repo"})
 		if err != nil {
 			t.Fatalf("explorer execute: %v", err)
 		}
@@ -198,7 +198,7 @@ Find evidence first and answer with concise bullets.
 
 	var capturedPrompt string
 	var capturedLabel string
-	runPrompt := func(_ context.Context, runLabel string, prompt string, _ []string, _ string, _ *gateway.ProviderOverride) (string, error) {
+	runPrompt := func(_ context.Context, runLabel string, prompt string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
 		capturedLabel = runLabel
 		capturedPrompt = prompt
 		return "ok", nil
@@ -206,7 +206,7 @@ Find evidence first and answer with concise bullets.
 	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace}}
 
 	executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
-	var researcher gateway.AgentExecutor
+	var researcher agentruntime.AgentExecutor
 	for _, executor := range executors {
 		if executor.Info().Name == "researcher" {
 			researcher = executor
@@ -223,7 +223,7 @@ Find evidence first and answer with concise bullets.
 		t.Fatalf("expected AGENT.md entry path, got %+v", researcher.Info())
 	}
 
-	out, err := researcher.Execute(context.Background(), gateway.ExecuteRequest{
+	out, err := researcher.Execute(context.Background(), agentruntime.ExecuteRequest{
 		RunID:  "run_test",
 		Prompt: "analyze TODO list",
 	})
@@ -258,7 +258,7 @@ func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.
 	}
 
 	runPromptCalls := 0
-	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string, _ *gateway.ProviderOverride) (string, error) {
+	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
 		runPromptCalls++
 		return "prompt", nil
 	}
@@ -279,7 +279,7 @@ func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.
 	}
 
 	executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
-	var researcher gateway.AgentExecutor
+	var researcher agentruntime.AgentExecutor
 	for _, executor := range executors {
 		if executor.Info().Name == "researcher" {
 			researcher = executor
@@ -289,7 +289,7 @@ func TestBuildGatewayExecutors_ConfigAgentOverridesWorkspaceMarkdown(t *testing.
 	if researcher == nil {
 		t.Fatalf("expected configured researcher executor, got %+v", executors)
 	}
-	out, err := researcher.Execute(context.Background(), gateway.ExecuteRequest{Prompt: "hello"})
+	out, err := researcher.Execute(context.Background(), agentruntime.ExecuteRequest{Prompt: "hello"})
 	if err != nil {
 		t.Fatalf("executor execute: %v", err)
 	}

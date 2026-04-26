@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/usage"
 )
@@ -224,10 +224,10 @@ func TestSubagentsOrchestrateTool_CancelsSpawnedRunsWhenParallelSpawnFails(t *te
 
 	var firstRunID string
 	spawnCalls := 0
-	subagentFlowSpawn = func(runtime *gateway.Runtime, ctx context.Context, req gateway.SpawnRequest) (gateway.Run, error) {
+	subagentFlowSpawn = func(runtime *agentruntime.Runtime, ctx context.Context, req agentruntime.SpawnRequest) (agentruntime.Run, error) {
 		spawnCalls++
 		if spawnCalls == 2 {
-			return gateway.Run{}, errors.New("forced spawn failure")
+			return agentruntime.Run{}, errors.New("forced spawn failure")
 		}
 		run, err := origSpawn(runtime, ctx, req)
 		if err == nil {
@@ -237,7 +237,7 @@ func TestSubagentsOrchestrateTool_CancelsSpawnedRunsWhenParallelSpawnFails(t *te
 	}
 
 	canceledRunIDs := []string{}
-	subagentFlowCancel = func(runtime *gateway.Runtime, workspaceID string, runs []gateway.Run) {
+	subagentFlowCancel = func(runtime *agentruntime.Runtime, workspaceID string, runs []agentruntime.Run) {
 		for _, run := range runs {
 			canceledRunIDs = append(canceledRunIDs, run.ID)
 		}
@@ -281,7 +281,7 @@ func TestSubagentsOrchestrateTool_CancelsSpawnedRunsWhenParallelSpawnFails(t *te
 	if !ok {
 		t.Fatalf("expected canceled run %q to remain queryable", firstRunID)
 	}
-	if canceled.Status != gateway.RunStatusCanceled {
+	if canceled.Status != agentruntime.RunStatusCanceled {
 		t.Fatalf("expected canceled run status, got %+v", canceled)
 	}
 }
@@ -347,7 +347,7 @@ func TestSubagentsOrchestrateTool_StopsSequentialStepAfterFailure(t *testing.T) 
 	if len(payload.Steps[0].Tasks) != 1 || payload.Steps[0].Tasks[0].ID != "backend" {
 		t.Fatalf("expected only backend task output, got %+v", payload.Steps[0].Tasks)
 	}
-	if payload.Steps[0].Tasks[0].Status != string(gateway.RunStatusFailed) {
+	if payload.Steps[0].Tasks[0].Status != string(agentruntime.RunStatusFailed) {
 		t.Fatalf("expected backend task to fail, got %+v", payload.Steps[0].Tasks[0])
 	}
 }

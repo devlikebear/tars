@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/agent"
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/tool"
 )
@@ -39,7 +39,7 @@ func newCronPromptRunnerWithSessionContext(fallback gatewayPromptRunner, deps ch
 	if fallback == nil && deps.client == nil {
 		return nil
 	}
-	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string, providerOverride *gateway.ProviderOverride) (string, error) {
+	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string, providerOverride *agentruntime.ProviderOverride) (string, error) {
 		cfg := cronExecutionContextFromContext(ctx)
 		if cfg.SessionID == "" {
 			if fallback == nil {

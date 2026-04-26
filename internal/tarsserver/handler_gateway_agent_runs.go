@@ -6,15 +6,15 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/rs/zerolog"
 )
 
-func newAgentRunsAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger) http.Handler {
+func newAgentRunsAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger) http.Handler {
 	return newAgentRunsAPIHandlerWithInflightLimit(runtime, logger, 4)
 }
 
-func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger zerolog.Logger, maxInflightAgentRuns int) http.Handler {
+func newAgentRunsAPIHandlerWithInflightLimit(runtime *agentruntime.Runtime, logger zerolog.Logger, maxInflightAgentRuns int) http.Handler {
 	inflight := newInflightLimiter(maxInflightAgentRuns, 4)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/agent/agents", func(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +52,7 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *gateway.Runtime, logger ze
 	return mux
 }
 
-func handleAgentList(w http.ResponseWriter, runtime *gateway.Runtime) {
+func handleAgentList(w http.ResponseWriter, runtime *agentruntime.Runtime) {
 	if runtime == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"count": 0, "agents": []map[string]any{}})
 		return
@@ -69,7 +69,7 @@ type agentRunSpawnRequest struct {
 	Agent     string `json:"agent"`
 }
 
-func handleAgentRunSpawn(w http.ResponseWriter, r *http.Request, runtime *gateway.Runtime, inflight *inflightLimiter) {
+func handleAgentRunSpawn(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, inflight *inflightLimiter) {
 	if runtime == nil {
 		writeUnavailable(w, "gateway runtime is not configured")
 		return
@@ -91,7 +91,7 @@ func handleAgentRunSpawn(w http.ResponseWriter, r *http.Request, runtime *gatewa
 		return
 	}
 
-	run, err := runtime.Spawn(r.Context(), gateway.SpawnRequest{
+	run, err := runtime.Spawn(r.Context(), agentruntime.SpawnRequest{
 		WorkspaceID: defaultWorkspaceID,
 		SessionID:   req.SessionID,
 		Title:       req.Title,
@@ -123,9 +123,9 @@ func spawnErrorStatus(err error) int {
 	return http.StatusBadRequest
 }
 
-func handleAgentRunList(w http.ResponseWriter, r *http.Request, runtime *gateway.Runtime) {
+func handleAgentRunList(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime) {
 	if runtime == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"count": 0, "runs": []gateway.Run{}})
+		writeJSON(w, http.StatusOK, map[string]any{"count": 0, "runs": []agentruntime.Run{}})
 		return
 	}
 	limit, ok := parsePositiveLimit(w, r, 50)
@@ -136,7 +136,7 @@ func handleAgentRunList(w http.ResponseWriter, r *http.Request, runtime *gateway
 	writeJSON(w, http.StatusOK, map[string]any{"count": len(runs), "runs": runs})
 }
 
-func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *gateway.Runtime, logger zerolog.Logger) {
+func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, logger zerolog.Logger) {
 	if runtime == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
 		return
@@ -182,7 +182,7 @@ func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *gateway
 	}
 }
 
-func handleAgentRunEvents(w http.ResponseWriter, r *http.Request, runtime *gateway.Runtime, runID string) {
+func handleAgentRunEvents(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, runID string) {
 	if _, found := runtime.Get(runID); !found {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
 		return

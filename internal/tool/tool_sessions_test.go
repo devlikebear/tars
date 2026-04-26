@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 )
 
-func newGatewayRuntimeForToolTests(t *testing.T) *gateway.Runtime {
+func newGatewayRuntimeForToolTests(t *testing.T) *agentruntime.Runtime {
 	t.Helper()
 	store := session.NewStore(t.TempDir())
-	rt := gateway.NewRuntime(gateway.RuntimeOptions{
+	rt := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                 true,
 		WorkspaceDir:            t.TempDir(),
 		SessionStore:            store,
@@ -92,7 +92,7 @@ func TestSessionsSendTool(t *testing.T) {
 	if err := json.Unmarshal([]byte(res.Text()), &payload); err != nil {
 		t.Fatalf("decode send payload: %v", err)
 	}
-	if payload["status"] != string(gateway.RunStatusCompleted) {
+	if payload["status"] != string(agentruntime.RunStatusCompleted) {
 		t.Fatalf("expected completed status, got %+v", payload)
 	}
 }
@@ -128,7 +128,7 @@ func TestMessageNodesGatewayTools(t *testing.T) {
 
 func TestSessionsRunsCancel(t *testing.T) {
 	store := session.NewStore(t.TempDir())
-	rt := gateway.NewRuntime(gateway.RuntimeOptions{
+	rt := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:      true,
 		SessionStore: store,
 		RunPrompt: func(ctx context.Context, _ string, _ string) (string, error) {

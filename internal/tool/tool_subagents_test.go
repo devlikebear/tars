@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
@@ -18,27 +18,27 @@ func newGatewayRuntimeForSubagentToolTests(
 	maxThreads int,
 	maxDepth int,
 	runPrompt func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string) (string, error),
-) (*gateway.Runtime, *session.Store) {
+) (*agentruntime.Runtime, *session.Store) {
 	t.Helper()
 	workspaceDir := t.TempDir()
 	store := session.NewStore(workspaceDir)
-	explorer, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+	explorer, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
 		Name:        "explorer",
 		Description: "Read-only explorer",
 		PolicyMode:  "allowlist",
 		ToolsAllow:  []string{"read_file", "list_dir", "glob", "memory_search"},
-		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, _ *gateway.ProviderOverride) (string, error) {
+		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, _ *agentruntime.ProviderOverride) (string, error) {
 			return runPrompt(ctx, runLabel, prompt, allowedTools, tier)
 		},
 	})
 	if err != nil {
 		t.Fatalf("new prompt executor: %v", err)
 	}
-	rt := gateway.NewRuntime(gateway.RuntimeOptions{
+	rt := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                    true,
 		WorkspaceDir:               workspaceDir,
 		SessionStore:               store,
-		Executors:                  []gateway.AgentExecutor{explorer},
+		Executors:                  []agentruntime.AgentExecutor{explorer},
 		DefaultAgent:               "explorer",
 		GatewaySubagentsMaxThreads: maxThreads,
 		GatewaySubagentsMaxDepth:   maxDepth,
@@ -131,7 +131,7 @@ func TestSubagentsRunTool_SpawnsParallelExplorerChildrenAndReturnsSummaries(t *t
 			if item.Agent != "explorer" {
 				t.Fatalf("expected explorer agent, got %+v", item)
 			}
-			if item.Status != string(gateway.RunStatusCompleted) {
+			if item.Status != string(agentruntime.RunStatusCompleted) {
 				t.Fatalf("expected completed status, got %+v", item)
 			}
 			if item.ParentSessionID != parent.ID {
@@ -194,7 +194,7 @@ func TestSubagentsRunTool_RejectsDepthAboveLimit(t *testing.T) {
 		t.Fatalf("create parent session: %v", err)
 	}
 	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-subagents")
-	rootRun, err := rt.Spawn(ctx, gateway.SpawnRequest{
+	rootRun, err := rt.Spawn(ctx, agentruntime.SpawnRequest{
 		WorkspaceID:     "ws-subagents",
 		Title:           "existing child",
 		Prompt:          "already delegated",

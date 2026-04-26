@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
@@ -22,7 +22,7 @@ type telegramInboundHandler struct {
 	sender        telegramSender
 	commands      telegramCommandExecutor
 	media         telegramMediaDownloader
-	runtime       *gateway.Runtime
+	runtime       *agentruntime.Runtime
 	pairings      *telegramPairingStore
 	dmPolicy      string
 	sessionScope  string
@@ -40,7 +40,7 @@ func newTelegramInboundHandler(
 	store *session.Store,
 	llmClient llm.Client,
 	sender telegramSender,
-	runtime *gateway.Runtime,
+	runtime *agentruntime.Runtime,
 	pairings *telegramPairingStore,
 	dmPolicy string,
 	logger zerolog.Logger,

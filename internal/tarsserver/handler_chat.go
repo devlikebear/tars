@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/agent"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/extensions"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/ops"
@@ -511,7 +511,7 @@ func sumHistoryTokens(messages []session.Message) int {
 type chatToolingOptions struct {
 	ProcessManager              *tool.ProcessManager
 	Extensions                  *extensions.Manager
-	Gateway                     *gateway.Runtime
+	Gateway                     *agentruntime.Runtime
 	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
 	ToolsDefaultSet             string
 	ToolsAllowHighRiskUser      bool

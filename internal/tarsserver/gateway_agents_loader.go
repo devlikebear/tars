@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/tool"
 )
 
@@ -144,7 +144,7 @@ func buildWorkspaceGatewayAgent(path, raw string, knownTools map[string]struct{}
 		SessionRoutingMode: sessionRoutingMode,
 		SessionFixedID:     sessionFixedID,
 		Tier:               tier,
-		ProviderOverride:   gateway.CloneProviderOverride(meta.ProviderOverride),
+		ProviderOverride:   agentruntime.CloneProviderOverride(meta.ProviderOverride),
 	}, diagnostics, true, nil
 }
 

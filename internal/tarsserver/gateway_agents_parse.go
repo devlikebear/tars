@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"gopkg.in/yaml.v3"
 )
 
@@ -173,12 +173,12 @@ func frontmatterStringList(value any) []string {
 	}
 }
 
-func frontmatterProviderOverride(value any) *gateway.ProviderOverride {
+func frontmatterProviderOverride(value any) *agentruntime.ProviderOverride {
 	object, ok := value.(map[string]any)
 	if !ok {
 		return nil
 	}
-	override := &gateway.ProviderOverride{
+	override := &agentruntime.ProviderOverride{
 		Alias: strings.TrimSpace(frontmatterString(object["alias"])),
 		Model: strings.TrimSpace(frontmatterString(object["model"])),
 	}

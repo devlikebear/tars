@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 )
@@ -85,7 +85,7 @@ func NewSessionsHistoryTool(store *session.Store) Tool {
 	}
 }
 
-func NewSessionsSendTool(runtime *gateway.Runtime) Tool {
+func NewSessionsSendTool(runtime *agentruntime.Runtime) Tool {
 	return Tool{
 		Name:        "sessions_send",
 		Description: "Send a prompt to a session and wait for completion.",
@@ -116,7 +116,7 @@ func NewSessionsSendTool(runtime *gateway.Runtime) Tool {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
-			run, err := runtime.Spawn(ctx, gateway.SpawnRequest{
+			run, err := runtime.Spawn(ctx, agentruntime.SpawnRequest{
 				WorkspaceID: workspaceID,
 				SessionID:   input.SessionID,
 				Title:       input.Title,
@@ -142,7 +142,7 @@ func NewSessionsSendTool(runtime *gateway.Runtime) Tool {
 					"message":    fmt.Sprintf("wait run failed: %v", err),
 				}, true), nil
 			}
-			isError := final.Status != gateway.RunStatusCompleted
+			isError := final.Status != agentruntime.RunStatusCompleted
 			return JSONTextResult(map[string]any{
 				"accepted":     true,
 				"run_id":       final.ID,
@@ -156,7 +156,7 @@ func NewSessionsSendTool(runtime *gateway.Runtime) Tool {
 	}
 }
 
-func NewSessionsSpawnTool(runtime *gateway.Runtime) Tool {
+func NewSessionsSpawnTool(runtime *agentruntime.Runtime) Tool {
 	return Tool{
 		Name:        "sessions_spawn",
 		Description: "Spawn an async agent run and return accepted + run_id.",
@@ -185,7 +185,7 @@ func NewSessionsSpawnTool(runtime *gateway.Runtime) Tool {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
 			}
 			workspaceID := serverauth.WorkspaceIDFromContext(ctx)
-			run, err := runtime.Spawn(ctx, gateway.SpawnRequest{
+			run, err := runtime.Spawn(ctx, agentruntime.SpawnRequest{
 				WorkspaceID: workspaceID,
 				SessionID:   input.SessionID,
 				Title:       input.Title,
@@ -205,7 +205,7 @@ func NewSessionsSpawnTool(runtime *gateway.Runtime) Tool {
 	}
 }
 
-func NewSessionsRunsTool(runtime *gateway.Runtime) Tool {
+func NewSessionsRunsTool(runtime *agentruntime.Runtime) Tool {
 	return Tool{
 		Name:        "sessions_runs",
 		Description: "List/get/cancel async runs.",
@@ -263,7 +263,7 @@ func NewSessionsRunsTool(runtime *gateway.Runtime) Tool {
 	}
 }
 
-func NewAgentsListTool(runtime *gateway.Runtime) Tool {
+func NewAgentsListTool(runtime *agentruntime.Runtime) Tool {
 	return Tool{
 		Name:        "agents_list",
 		Description: "List available agents for sessions_spawn/sessions_send.",

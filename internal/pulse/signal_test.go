@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/cron"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/ops"
 )
 
@@ -26,10 +26,10 @@ func (f *fakeCronLister) List() ([]cron.Job, error) {
 }
 
 type fakeGatewayLister struct {
-	runs []gateway.Run
+	runs []agentruntime.Run
 }
 
-func (f *fakeGatewayLister) List(limit int) []gateway.Run {
+func (f *fakeGatewayLister) List(limit int) []agentruntime.Run {
 	return f.runs
 }
 
@@ -142,10 +142,10 @@ func TestScanner_StuckRunsDetectsOldRunning(t *testing.T) {
 	recentStart := now.Add(-5 * time.Minute).Format(time.RFC3339)
 
 	src := ScannerSources{
-		Gateway: &fakeGatewayLister{runs: []gateway.Run{
-			{ID: "r1", Status: gateway.RunStatusRunning, StartedAt: oldStart},
-			{ID: "r2", Status: gateway.RunStatusRunning, StartedAt: recentStart},
-			{ID: "r3", Status: gateway.RunStatusCompleted, StartedAt: oldStart}, // not running
+		Gateway: &fakeGatewayLister{runs: []agentruntime.Run{
+			{ID: "r1", Status: agentruntime.RunStatusRunning, StartedAt: oldStart},
+			{ID: "r2", Status: agentruntime.RunStatusRunning, StartedAt: recentStart},
+			{ID: "r3", Status: agentruntime.RunStatusCompleted, StartedAt: oldStart}, // not running
 		}},
 	}
 	sc := buildScanner(src, Thresholds{StuckRunMinutes: 60}, now)
@@ -164,10 +164,10 @@ func TestScanner_StuckRunsDetectsOldRunning(t *testing.T) {
 func TestScanner_StuckRunsEscalatesAtThreeOrMore(t *testing.T) {
 	now := time.Date(2026, 4, 5, 10, 0, 0, 0, time.UTC)
 	oldStart := now.Add(-90 * time.Minute).Format(time.RFC3339)
-	runs := []gateway.Run{
-		{ID: "r1", Status: gateway.RunStatusRunning, StartedAt: oldStart},
-		{ID: "r2", Status: gateway.RunStatusRunning, StartedAt: oldStart},
-		{ID: "r3", Status: gateway.RunStatusRunning, StartedAt: oldStart},
+	runs := []agentruntime.Run{
+		{ID: "r1", Status: agentruntime.RunStatusRunning, StartedAt: oldStart},
+		{ID: "r2", Status: agentruntime.RunStatusRunning, StartedAt: oldStart},
+		{ID: "r3", Status: agentruntime.RunStatusRunning, StartedAt: oldStart},
 	}
 	sc := buildScanner(ScannerSources{Gateway: &fakeGatewayLister{runs: runs}},
 		Thresholds{StuckRunMinutes: 60}, now)
@@ -179,8 +179,8 @@ func TestScanner_StuckRunsEscalatesAtThreeOrMore(t *testing.T) {
 
 func TestScanner_StuckRunsSkipsUnparseableTimestamp(t *testing.T) {
 	now := time.Now()
-	runs := []gateway.Run{
-		{ID: "r1", Status: gateway.RunStatusRunning, StartedAt: "not-a-date"},
+	runs := []agentruntime.Run{
+		{ID: "r1", Status: agentruntime.RunStatusRunning, StartedAt: "not-a-date"},
 	}
 	sc := buildScanner(ScannerSources{Gateway: &fakeGatewayLister{runs: runs}},
 		Thresholds{StuckRunMinutes: 60}, now)

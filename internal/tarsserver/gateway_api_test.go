@@ -13,16 +13,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 
-func newTestGatewayRuntime(t *testing.T) *gateway.Runtime {
+func newTestGatewayRuntime(t *testing.T) *agentruntime.Runtime {
 	t.Helper()
 	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
-	rt := gateway.NewRuntime(gateway.RuntimeOptions{
+	rt := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                     true,
 		WorkspaceDir:                t.TempDir(),
 		SessionStore:                store,
@@ -46,7 +46,7 @@ func newTestGatewayRuntime(t *testing.T) *gateway.Runtime {
 
 func TestAgentRunsAPIHandler_ListAndGet(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
-	run, err := runtime.Spawn(context.Background(), gateway.SpawnRequest{Prompt: "hello"})
+	run, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "hello"})
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestAgentRunsAPIHandler_AgentsListIncludesSourceEntryDefault(t *testing.T) 
 
 func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.T) {
 	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
-	promptExecutor, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+	promptExecutor, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
 		Name:               "researcher",
 		Description:        "research worker",
 		Source:             "workspace",
@@ -171,18 +171,18 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 		SessionRoutingMode: "fixed",
 		SessionFixedID:     "sess_fixed",
 		Tier:               "light",
-		ProviderOverride:   &gateway.ProviderOverride{Alias: "gemini_fast", Model: "gemini-2.5-flash"},
-		RunPrompt: func(_ context.Context, _ string, _ string, _ []string, _ string, _ *gateway.ProviderOverride) (string, error) {
+		ProviderOverride:   &agentruntime.ProviderOverride{Alias: "gemini_fast", Model: "gemini-2.5-flash"},
+		RunPrompt: func(_ context.Context, _ string, _ string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
 			return "ok", nil
 		},
 	})
 	if err != nil {
 		t.Fatalf("new prompt executor: %v", err)
 	}
-	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:      true,
 		SessionStore: store,
-		Executors:    []gateway.AgentExecutor{promptExecutor},
+		Executors:    []agentruntime.AgentExecutor{promptExecutor},
 		DefaultAgent: "researcher",
 	})
 	t.Cleanup(func() {
@@ -351,7 +351,7 @@ func TestAgentRunsAPIHandler_SpawnUnknownAgentReturnsDiagnosticCode(t *testing.T
 
 func TestAgentRunsAPIHandler_Cancel(t *testing.T) {
 	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
-	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:      true,
 		SessionStore: store,
 		RunPrompt: func(ctx context.Context, _ string, _ string) (string, error) {
@@ -370,7 +370,7 @@ func TestAgentRunsAPIHandler_Cancel(t *testing.T) {
 			t.Fatalf("close gateway runtime: %v", err)
 		}
 	})
-	run, err := runtime.Spawn(context.Background(), gateway.SpawnRequest{Prompt: "hello"})
+	run, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "hello"})
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}
@@ -582,7 +582,7 @@ func TestGatewayAPIHandler_StatusWhenRuntimeMissingHasConsistentDefaults(t *test
 
 func TestGatewayAPIHandler_StatusIncludesPersistenceTelemetryValues(t *testing.T) {
 	workspaceDir := t.TempDir()
-	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                              true,
 		WorkspaceDir:                         workspaceDir,
 		SessionStore:                         session.NewStore(filepath.Join(workspaceDir, "workspace")),
@@ -653,7 +653,7 @@ func TestGatewayAPIHandler_ReloadCallsRefreshHook(t *testing.T) {
 
 func TestGatewayAPIHandler_ReportsSummary(t *testing.T) {
 	runtime := newTestGatewayRuntime(t)
-	run, err := runtime.Spawn(context.Background(), gateway.SpawnRequest{Prompt: "hello"})
+	run, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "hello"})
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}
@@ -754,7 +754,7 @@ func TestGatewayAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) 
 	}
 
 	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
-	archiveRuntime := gateway.NewRuntime(gateway.RuntimeOptions{
+	archiveRuntime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                     true,
 		WorkspaceDir:                t.TempDir(),
 		SessionStore:                store,
@@ -773,7 +773,7 @@ func TestGatewayAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) 
 			t.Fatalf("close archive runtime: %v", err)
 		}
 	})
-	run, err := archiveRuntime.Spawn(context.Background(), gateway.SpawnRequest{Prompt: "hello"})
+	run, err := archiveRuntime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "hello"})
 	if err != nil {
 		t.Fatalf("spawn archive runtime: %v", err)
 	}
@@ -835,10 +835,10 @@ func TestGatewayAPIHandler_ReportsRunsRejectsInvalidLimit(t *testing.T) {
 func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(filepath.Join(workspace, "workspace"))
-	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string, _ *gateway.ProviderOverride) (string, error) {
+	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
 		return "ok", nil
 	}
-	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:      true,
 		WorkspaceDir: workspace,
 		SessionStore: store,
@@ -1063,7 +1063,7 @@ func TestChannelsAPI_TelegramPairingsApproveUnknownCodeReturnsNotFound(t *testin
 	}
 }
 
-func waitForGatewayRun(t *testing.T, runtime *gateway.Runtime, runID string) {
+func waitForGatewayRun(t *testing.T, runtime *agentruntime.Runtime, runID string) {
 	t.Helper()
 	waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

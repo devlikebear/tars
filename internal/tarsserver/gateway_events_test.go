@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -17,12 +17,12 @@ import (
 func TestAgentRunsAPIHandler_GatewayRunEventsEndpointStreamsRunLifecycle(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	release := make(chan struct{})
-	executor, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+	executor, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
 		Name:        "worker",
 		Description: "worker",
 		PolicyMode:  "allowlist",
 		ToolsAllow:  []string{"read_file"},
-		RunPrompt: func(_ context.Context, _ string, _ string, _ []string, _ string, _ *gateway.ProviderOverride) (string, error) {
+		RunPrompt: func(_ context.Context, _ string, _ string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
 			<-release
 			return "done", nil
 		},
@@ -30,10 +30,10 @@ func TestAgentRunsAPIHandler_GatewayRunEventsEndpointStreamsRunLifecycle(t *test
 	if err != nil {
 		t.Fatalf("new prompt executor: %v", err)
 	}
-	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:      true,
 		SessionStore: store,
-		Executors:    []gateway.AgentExecutor{executor},
+		Executors:    []agentruntime.AgentExecutor{executor},
 		DefaultAgent: "worker",
 	})
 	t.Cleanup(func() {
@@ -44,7 +44,7 @@ func TestAgentRunsAPIHandler_GatewayRunEventsEndpointStreamsRunLifecycle(t *test
 		}
 	})
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
-	run, err := runtime.Spawn(context.Background(), gateway.SpawnRequest{Prompt: "hello", Agent: "worker"})
+	run, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "hello", Agent: "worker"})
 	if err != nil {
 		t.Fatalf("spawn run: %v", err)
 	}

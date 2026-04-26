@@ -4,18 +4,18 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/rs/zerolog"
 )
 
-func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloadHook func()) http.Handler {
+func newGatewayAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger, reloadHook func()) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/gateway/status", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if runtime == nil {
-			writeJSON(w, http.StatusOK, gateway.GatewayStatus{Enabled: false})
+			writeJSON(w, http.StatusOK, agentruntime.GatewayStatus{Enabled: false})
 			return
 		}
 		writeJSON(w, http.StatusOK, runtime.Status())
@@ -70,7 +70,7 @@ func newGatewayAPIHandler(runtime *gateway.Runtime, logger zerolog.Logger, reloa
 	return mux
 }
 
-func handleGatewaySummaryReport(w http.ResponseWriter, runtime *gateway.Runtime) {
+func handleGatewaySummaryReport(w http.ResponseWriter, runtime *agentruntime.Runtime) {
 	if runtime == nil {
 		writeUnavailable(w, "gateway runtime is not configured")
 		return
@@ -90,7 +90,7 @@ func handleGatewaySummaryReport(w http.ResponseWriter, runtime *gateway.Runtime)
 func handleGatewayDetailedReport(
 	w http.ResponseWriter,
 	r *http.Request,
-	runtime *gateway.Runtime,
+	runtime *agentruntime.Runtime,
 	fetch func(limit int) (any, error),
 ) {
 	if runtime == nil {

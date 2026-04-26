@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 )
 
 type workspaceGatewayAgent struct {
@@ -23,7 +23,7 @@ type workspaceGatewayAgent struct {
 	SessionRoutingMode string
 	SessionFixedID     string
 	Tier               string
-	ProviderOverride   *gateway.ProviderOverride
+	ProviderOverride   *agentruntime.ProviderOverride
 }
 
 type workspaceGatewayAgentFrontmatter struct {
@@ -44,13 +44,13 @@ type workspaceGatewayAgentFrontmatter struct {
 	SessionRoutingMode       string
 	SessionFixedID           string
 	Tier                     string
-	ProviderOverride         *gateway.ProviderOverride
+	ProviderOverride         *agentruntime.ProviderOverride
 }
 
 func newWorkspacePromptExecutor(
 	def workspaceGatewayAgent,
-	runPrompt func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *gateway.ProviderOverride) (string, error),
-) (gateway.AgentExecutor, error) {
+	runPrompt func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *agentruntime.ProviderOverride) (string, error),
+) (agentruntime.AgentExecutor, error) {
 	if runPrompt == nil {
 		return nil, fmt.Errorf("run prompt is required")
 	}
@@ -60,7 +60,7 @@ func newWorkspacePromptExecutor(
 		description = "Workspace markdown sub-agent"
 	}
 	instructions := strings.TrimSpace(def.Prompt)
-	return gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+	return agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
 		Name:               name,
 		Description:        description,
 		Source:             "workspace",
@@ -75,8 +75,8 @@ func newWorkspacePromptExecutor(
 		SessionRoutingMode: normalizeGatewaySessionRoutingMode(def.SessionRoutingMode),
 		SessionFixedID:     strings.TrimSpace(def.SessionFixedID),
 		Tier:               strings.TrimSpace(def.Tier),
-		ProviderOverride:   gateway.CloneProviderOverride(def.ProviderOverride),
-		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *gateway.ProviderOverride) (string, error) {
+		ProviderOverride:   agentruntime.CloneProviderOverride(def.ProviderOverride),
+		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *agentruntime.ProviderOverride) (string, error) {
 			label := strings.TrimSpace(runLabel)
 			if label == "" {
 				label = "spawn"

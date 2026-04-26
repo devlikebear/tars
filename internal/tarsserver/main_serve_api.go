@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/extensions"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/ops"
@@ -34,7 +34,7 @@ type serveAPIRuntime struct {
 	mainSessionID      string
 	server             *http.Server
 	extensionsManager  *extensions.Manager
-	gatewayRuntime     *gateway.Runtime
+	gatewayRuntime     *agentruntime.Runtime
 	gatewayAgentsWatch *gatewayAgentsWatcher
 	cronManager        *workspaceCronManager
 	watchdogManager    *workspaceWatchdogManager
@@ -167,7 +167,7 @@ func buildAPIMux(
 	// The telegram_send tool closure intentionally captures this pointer.
 	// It is assigned after gateway runtime construction and used at runtime
 	// to append outbound Telegram records to gateway channel history.
-	var gatewayRuntimeForTelegram *gateway.Runtime
+	var gatewayRuntimeForTelegram *agentruntime.Runtime
 	telegramSendTool := tool.NewTelegramSendTool(tool.TelegramSendFunc(func(ctx context.Context, req tool.TelegramSendRequest) (tool.TelegramSendResult, error) {
 		if telegramSender == nil {
 			return tool.TelegramSendResult{}, fmt.Errorf("telegram sender is not configured")
@@ -258,7 +258,7 @@ func buildAPIMux(
 	if err != nil {
 		return nil, err
 	}
-	gatewayRuntime := gateway.NewRuntime(gateway.RuntimeOptions{
+	gatewayRuntime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                              cfg.GatewayEnabled,
 		WorkspaceDir:                         cfg.WorkspaceDir,
 		SessionStore:                         sessionStore,
@@ -291,15 +291,15 @@ func buildAPIMux(
 		GatewayArchiveDir:                    cfg.GatewayArchiveDir,
 		GatewayArchiveRetentionDays:          cfg.GatewayArchiveRetentionDays,
 		GatewayArchiveMaxFileBytes:           cfg.GatewayArchiveMaxFileBytes,
-		ResolveProviderOverride: func(tier string, override *gateway.ProviderOverride) (gateway.ResolvedProviderOverride, error) {
+		ResolveProviderOverride: func(tier string, override *agentruntime.ProviderOverride) (agentruntime.ResolvedProviderOverride, error) {
 			if override == nil {
-				return gateway.ResolvedProviderOverride{}, nil
+				return agentruntime.ResolvedProviderOverride{}, nil
 			}
 			resolved, err := resolveProviderOverrideClient(cfg, cfg.WorkspaceDir, deps.usageTracker, tier, override)
 			if err != nil {
-				return gateway.ResolvedProviderOverride{}, err
+				return agentruntime.ResolvedProviderOverride{}, err
 			}
-			return gateway.ResolvedProviderOverride{Alias: strings.TrimSpace(override.Alias), Kind: resolved.provider, Model: resolved.model, Tier: resolved.tier}, nil
+			return agentruntime.ResolvedProviderOverride{Alias: strings.TrimSpace(override.Alias), Kind: resolved.provider, Model: resolved.model, Tier: resolved.tier}, nil
 		},
 		EstimateTokensCost: func(provider, model string, inputTokens, outputTokens int) (float64, bool) {
 			if deps.usageTracker == nil {

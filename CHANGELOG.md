@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.3] - 2026-04-26
+
+### Changed (BREAKING)
+
+- **ID-005 PR #1 — package rename `internal/gateway` → `internal/agentruntime`**:
+  - `git mv internal/gateway internal/agentruntime`
+  - 모든 import path `github.com/devlikebear/tars/internal/gateway` → `github.com/devlikebear/tars/internal/agentruntime`
+  - 식별자 사용 `gateway.X` → `agentruntime.X` 일괄 변경 (Runtime / SpawnRequest / AgentInfo / Run / RunStatus 등 50+ 위치)
+  - 패키지 선언 `package gateway` → `package agentruntime`
+
+### Migration
+
+- 외부 코드가 `internal/gateway` 를 import 하던 경우 (워크스페이스 외부) `internal/agentruntime` 로 변경 필요. 단 `internal/*` 는 정의상 사용자 외부 import 불가.
+- **변경 안 됨 (이번 PR)**: HTTP URL prefix (`/v1/gateway/*` 그대로), Config 필드 (`gateway_*` 그대로), workspace persistence dir (`workspace/_shared/gateway/` 그대로), 변수명/파일명/콘솔 UI 라벨. 후속 PR (Phase 2-6) 에서 단계적으로 마이그레이션.
+
+### Why split
+
+5 PR 분할 의 첫 단계. 패키지 이름만 먼저 바꿔 외부 호환성 (HTTP/config/persistence) 은 그대로 유지 — 각 단계에서 e2e 검증 가능. ID-005 옵션 결정은 #367 / #378.
+
 ## [0.31.2] - 2026-04-26
 
 ### Changed

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/devlikebear/tars/internal/gateway"
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/session"
 )
 
@@ -13,7 +13,7 @@ import (
 // session_status, sessions_list/history/send/spawn/runs, and agents_list.
 func NewSessionTool(
 	store *session.Store,
-	runtime *gateway.Runtime,
+	runtime *agentruntime.Runtime,
 	getStatus func(ctx context.Context) (SessionStatus, error),
 ) Tool {
 	statusTool := NewSessionStatusTool(getStatus)

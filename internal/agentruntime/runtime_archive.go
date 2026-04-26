@@ -1,4 +1,4 @@
-package gateway
+package agentruntime
 
 import (
 	"encoding/json"

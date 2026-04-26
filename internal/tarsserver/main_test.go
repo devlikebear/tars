@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/envloader"
 	"github.com/devlikebear/tars/internal/extensions"
-	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/memory"
@@ -770,7 +770,7 @@ func TestCronRunner_DeliversToSessionAndDailyLog(t *testing.T) {
 	runner := newCronJobRunner(
 		root,
 		store,
-		func(_ context.Context, _ string, prompt string, _ []string, _ string, _ *gateway.ProviderOverride) (string, error) {
+		func(_ context.Context, _ string, prompt string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
 			seenPrompt = prompt
 			return "cron delivered", nil
 		},
@@ -1415,13 +1415,13 @@ func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 	}
 	logger := zerolog.New(io.Discard)
 	store := session.NewStore(root)
-	runPrompt := func(_ context.Context, _ string, prompt string, allowedTools []string, _ string, _ *gateway.ProviderOverride) (string, error) {
+	runPrompt := func(_ context.Context, _ string, prompt string, allowedTools []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
 		if len(allowedTools) == 0 {
 			t.Fatalf("expected explorer allowlist to be present")
 		}
 		return "summary: " + prompt, nil
 	}
-	explorer, err := gateway.NewPromptExecutorWithOptions(gateway.PromptExecutorOptions{
+	explorer, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
 		Name:        "explorer",
 		Description: "Read-only explorer",
 		PolicyMode:  "allowlist",
@@ -1431,11 +1431,11 @@ func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new explorer executor: %v", err)
 	}
-	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                    true,
 		WorkspaceDir:               root,
 		SessionStore:               store,
-		Executors:                  []gateway.AgentExecutor{explorer},
+		Executors:                  []agentruntime.AgentExecutor{explorer},
 		DefaultAgent:               "explorer",
 		GatewaySubagentsMaxThreads: 4,
 	})
