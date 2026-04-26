@@ -209,6 +209,32 @@ func TestOpenAICompatibleChat_ResponseFormatJSONSchema(t *testing.T) {
 	}
 }
 
+// TestOpenAICompatibleChat_PDFUnsupportedError covers RF-046 — Chat
+// Completions does not accept PDF document blocks, so the build path now
+// returns a structured error instead of silently inserting placeholder
+// text the model would treat as throwaway.
+func TestOpenAICompatibleChat_PDFUnsupportedError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatalf("server should not be reached")
+		_ = w
+	}))
+	defer srv.Close()
+
+	client, err := NewOpenAIClient(srv.URL+"/v1", "k", "m")
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	_, err = client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", ContentBlocks: []ContentBlock{{Type: "document", MediaType: "application/pdf", Data: "JVBERi0..."}}},
+	}, ChatOptions{})
+	if err == nil {
+		t.Fatalf("expected pdf_unsupported error, got nil")
+	}
+	if !strings.Contains(err.Error(), "pdf_unsupported_by_provider") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestOpenAICompatibleChat_StreamParsesToolCalls(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" {

@@ -327,6 +327,9 @@ func normalizeOpenAICodexAuthConfig(config auth.ProviderAuthConfig) auth.Provide
 }
 
 func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model string, stream bool, nameMap openAICodexToolNameMap) (map[string]any, error) {
+	if containsPDFDocumentBlock(messages) {
+		return nil, newPDFUnsupportedError(openAICodexProviderLabel)
+	}
 	instructions := make([]string, 0, len(messages))
 	input := make([]any, 0, len(messages))
 	callSeq := 0
@@ -410,10 +413,52 @@ func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model
 			return nil, err
 		}
 		body["tools"] = tools
-		body["tool_choice"] = "auto"
+		choice := opts.ToolChoice
+		if choice == nil {
+			choice = ToolChoiceAuto()
+		}
+		if tc := toOpenAIToolChoice(choice); tc != nil {
+			body["tool_choice"] = tc
+		}
 		body["parallel_tool_calls"] = true
 	}
+	if textFormat := toCodexTextFormat(opts.ResponseFormat); textFormat != nil {
+		body["text"] = map[string]any{"format": textFormat}
+	}
 	return body, nil
+}
+
+// toCodexTextFormat converts ResponseFormat to the Responses API text.format
+// envelope, which differs from Chat Completions' response_format. The
+// json_schema variant carries name/schema/strict at the top level (no
+// nested "json_schema" wrapper).
+func toCodexTextFormat(rf *ResponseFormat) map[string]any {
+	if rf == nil {
+		return nil
+	}
+	switch rf.Type {
+	case ResponseFormatText:
+		return map[string]any{"type": "text"}
+	case ResponseFormatJSONObject:
+		return map[string]any{"type": "json_object"}
+	case ResponseFormatJSONSchema:
+		if len(rf.Schema) == 0 {
+			return nil
+		}
+		out := map[string]any{
+			"type":   "json_schema",
+			"name":   strings.TrimSpace(rf.Name),
+			"schema": json.RawMessage(rf.Schema),
+		}
+		if out["name"] == "" {
+			out["name"] = "response"
+		}
+		if rf.Strict {
+			out["strict"] = true
+		}
+		return out
+	}
+	return nil
 }
 
 func convertOpenAICodexTools(tools []ToolSchema, nameMap openAICodexToolNameMap) ([]map[string]any, error) {
@@ -844,11 +889,9 @@ func toCodexUserContent(msg ChatMessage) []any {
 				"image_url": dataURL,
 			})
 		case "document":
-			// Responses API doesn't natively support documents; inject as file reference text
-			blocks = append(blocks, map[string]any{
-				"type": "input_text",
-				"text": "[Attached PDF document — content available in base64 format]",
-			})
+			// Rejected up-front in buildOpenAICodexRequestBody via
+			// containsPDFDocumentBlock — this branch is unreachable in
+			// production but keeps the switch exhaustive.
 		}
 	}
 	if len(blocks) == 0 {
