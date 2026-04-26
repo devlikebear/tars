@@ -49,7 +49,7 @@ func Schema() []FieldMeta {
 		fsel("dashboard_auth_mode", "API", "Dashboard Auth Mode", "Dashboard auth mode. 'off' disables dashboard auth while keeping /v1/* protected", []string{"inherit", "off"}),
 		fs("api_auth_token", "API", "Auth Token (Legacy)", "Legacy single bearer token for API authentication", true),
 		fs("api_user_token", "API", "User Token", "User-tier bearer token (read/chat/general operations)", true),
-		fs("api_admin_token", "API", "Admin Token", "Admin-tier bearer token (control operations, gateway, config)", true),
+		fs("api_admin_token", "API", "Admin Token", "Admin-tier bearer token (control operations, agent runtime, config)", true),
 		f("api_allow_insecure_local_auth", "API", "bool", "Allow Insecure Local Auth", "Allow loopback (127.0.0.1) requests without auth token"),
 		f("api_max_inflight_chat", "API", "int", "Max Inflight Chat", "Maximum concurrent chat requests"),
 		f("api_max_inflight_agent_runs", "API", "int", "Max Inflight Agent Runs", "Maximum concurrent agent run requests"),
@@ -90,7 +90,7 @@ func Schema() []FieldMeta {
 		f("pulse_notify_telegram", "Automation", "bool", "Pulse Notify Telegram", "Forward pulse notifications to telegram"),
 		f("pulse_notify_session_events", "Automation", "bool", "Pulse Notify Session Events", "Forward pulse notifications to the session event stream"),
 		f("pulse_cron_failure_threshold", "Automation", "int", "Pulse Cron Failure Threshold", "Consecutive cron failures before pulse reacts"),
-		f("pulse_stuck_run_minutes", "Automation", "int", "Pulse Stuck Run Minutes", "Minutes a gateway run may be running before pulse flags it"),
+		f("pulse_stuck_run_minutes", "Automation", "int", "Pulse Stuck Run Minutes", "Minutes a agent runtime run may be running before pulse flags it"),
 		f("pulse_disk_warn_percent", "Automation", "float", "Pulse Disk Warn %", "Disk usage percent that triggers a warn signal"),
 		f("pulse_disk_critical_percent", "Automation", "float", "Pulse Disk Critical %", "Disk usage percent that triggers a critical signal"),
 		f("pulse_delivery_failure_threshold", "Automation", "int", "Pulse Delivery Failure Threshold", "Telegram delivery failures in window before pulse reacts"),
@@ -136,40 +136,40 @@ func Schema() []FieldMeta {
 		f("tools_web_fetch_private_host_allowlist_json", "Tools", "string_list", "Private Host Allowlist", "Explicit private hosts allowed for web fetch requests"),
 		f("tools_apply_patch_enabled", "Tools", "bool", "Apply Patch", "Enable apply-patch tool"),
 		f("tools_message_enabled", "Tools", "bool", "Message Tool", "Enable message/notification tool"),
-		f("tools_gateway_enabled", "Tools", "bool", "Gateway Tool", "Enable gateway dispatch tool"),
+		f("tools_agentruntime_enabled", "Tools", "bool", "Agent Runtime Tool", "Enable agent runtime dispatch tool"),
 
 		// ── MCP ──────────────────────────────────
 		f("mcp_command_allowlist_json", "MCP", "string_list", "Command Allowlist", "Commands that bundled or installed MCP servers may execute"),
 		fjson("mcp_servers_json", "MCP", "Servers", "Optional MCP server catalog entries configured directly in YAML"),
 
-		// ── Gateway ──────────────────────────────
-		f("gateway_enabled", "Gateway", "bool", "Enabled", "Enable agent gateway for multi-agent orchestration"),
-		f("gateway_default_agent", "Gateway", "string", "Default Agent", "Default agent name for dispatched tasks"),
-		fjson("gateway_agents_json", "Gateway", "Agent Catalog", "Gateway agent catalog configured directly in YAML"),
-		fjson("gateway_task_override", "Gateway", "Task Override", "Optional provider/model allowlist for gateway task overrides"),
-		f("gateway_agents_watch", "Gateway", "bool", "Watch Agent Files", "Auto-reload agents when definition files change"),
-		f("gateway_agents_watch_debounce_ms", "Gateway", "int", "Watch Debounce (ms)", "Debounce window for gateway agent catalog reloads"),
-		f("gateway_persistence_enabled", "Gateway", "bool", "Persistence", "Enable gateway state persistence"),
-		f("gateway_persistence_dir", "Gateway", "string", "Persistence Dir", "Directory used for persisted gateway runtime state"),
-		f("gateway_runs_persistence_enabled", "Gateway", "bool", "Runs Persistence", "Persist agent run records"),
-		f("gateway_channels_persistence_enabled", "Gateway", "bool", "Channels Persistence", "Persist channel message history"),
-		f("gateway_runs_max_records", "Gateway", "int", "Max Run Records", "Maximum stored run records"),
-		f("gateway_channels_max_messages_per_channel", "Gateway", "int", "Max Messages/Channel", "Maximum messages retained per channel"),
-		f("gateway_subagents_max_threads", "Gateway", "int", "Max Subagent Threads", "Maximum concurrent subagent threads"),
-		f("gateway_subagents_max_depth", "Gateway", "int", "Max Subagent Depth", "Maximum subagent nesting depth"),
-		f("gateway_consensus_enabled", "Gateway", "bool", "Consensus Enabled", "Enable mode=consensus for gateway subagent runs"),
-		f("gateway_consensus_max_fanout", "Gateway", "int", "Consensus Max Fanout", "Maximum variants launched for a single consensus task"),
-		f("gateway_consensus_budget_tokens", "Gateway", "int", "Consensus Token Budget", "Hard token ceiling for one consensus execution"),
-		f("gateway_consensus_budget_usd", "Gateway", "float", "Consensus Budget (USD)", "Reject consensus runs whose estimated USD cost exceeds this amount"),
-		f("gateway_consensus_timeout_seconds", "Gateway", "int", "Consensus Timeout Seconds", "Maximum wall time for a single consensus execution"),
-		f("gateway_consensus_allowed_aliases_json", "Gateway", "string_list", "Consensus Allowed Aliases", "Optional provider alias allowlist for consensus variants"),
-		f("gateway_consensus_concurrent_runs", "Gateway", "int", "Consensus Concurrent Runs", "Maximum number of consensus runs allowed at once"),
-		f("gateway_restore_on_startup", "Gateway", "bool", "Restore on Startup", "Restore persisted runs when server starts"),
-		f("gateway_report_summary_enabled", "Gateway", "bool", "Report Summary Enabled", "Emit summarized run reports for gateway tasks"),
-		f("gateway_archive_enabled", "Gateway", "bool", "Archive Enabled", "Enable run archival to disk"),
-		f("gateway_archive_dir", "Gateway", "string", "Archive Dir", "Directory for archived run files"),
-		f("gateway_archive_retention_days", "Gateway", "int", "Archive Retention (days)", "Days to retain archived runs"),
-		f("gateway_archive_max_file_bytes", "Gateway", "int", "Archive Max File Bytes", "Maximum archive file size before rollover"),
+		// ── Agent Runtime ───────────────────────
+		f("agentruntime_enabled", "Agent Runtime", "bool", "Enabled", "Enable agent runtime for multi-agent orchestration"),
+		f("agentruntime_default_agent", "Agent Runtime", "string", "Default Agent", "Default agent name for dispatched tasks"),
+		fjson("agentruntime_agents_json", "Agent Runtime", "Agent Catalog", "Agent runtime agent catalog configured directly in YAML"),
+		fjson("agentruntime_task_override", "Agent Runtime", "Task Override", "Optional provider/model allowlist for agent runtime task overrides"),
+		f("agentruntime_agents_watch", "Agent Runtime", "bool", "Watch Agent Files", "Auto-reload agents when definition files change"),
+		f("agentruntime_agents_watch_debounce_ms", "Agent Runtime", "int", "Watch Debounce (ms)", "Debounce window for agent runtime agent catalog reloads"),
+		f("agentruntime_persistence_enabled", "Agent Runtime", "bool", "Persistence", "Enable agent runtime state persistence"),
+		f("agentruntime_persistence_dir", "Agent Runtime", "string", "Persistence Dir", "Directory used for persisted agent runtime state"),
+		f("agentruntime_runs_persistence_enabled", "Agent Runtime", "bool", "Runs Persistence", "Persist agent run records"),
+		f("agentruntime_channels_persistence_enabled", "Agent Runtime", "bool", "Channels Persistence", "Persist channel message history"),
+		f("agentruntime_runs_max_records", "Agent Runtime", "int", "Max Run Records", "Maximum stored run records"),
+		f("agentruntime_channels_max_messages_per_channel", "Agent Runtime", "int", "Max Messages/Channel", "Maximum messages retained per channel"),
+		f("agentruntime_subagents_max_threads", "Agent Runtime", "int", "Max Subagent Threads", "Maximum concurrent subagent threads"),
+		f("agentruntime_subagents_max_depth", "Agent Runtime", "int", "Max Subagent Depth", "Maximum subagent nesting depth"),
+		f("agentruntime_consensus_enabled", "Agent Runtime", "bool", "Consensus Enabled", "Enable mode=consensus for agent runtime subagent runs"),
+		f("agentruntime_consensus_max_fanout", "Agent Runtime", "int", "Consensus Max Fanout", "Maximum variants launched for a single consensus task"),
+		f("agentruntime_consensus_budget_tokens", "Agent Runtime", "int", "Consensus Token Budget", "Hard token ceiling for one consensus execution"),
+		f("agentruntime_consensus_budget_usd", "Agent Runtime", "float", "Consensus Budget (USD)", "Reject consensus runs whose estimated USD cost exceeds this amount"),
+		f("agentruntime_consensus_timeout_seconds", "Agent Runtime", "int", "Consensus Timeout Seconds", "Maximum wall time for a single consensus execution"),
+		f("agentruntime_consensus_allowed_aliases_json", "Agent Runtime", "string_list", "Consensus Allowed Aliases", "Optional provider alias allowlist for consensus variants"),
+		f("agentruntime_consensus_concurrent_runs", "Agent Runtime", "int", "Consensus Concurrent Runs", "Maximum number of consensus runs allowed at once"),
+		f("agentruntime_restore_on_startup", "Agent Runtime", "bool", "Restore on Startup", "Restore persisted runs when server starts"),
+		f("agentruntime_report_summary_enabled", "Agent Runtime", "bool", "Report Summary Enabled", "Emit summarized run reports for agent runtime tasks"),
+		f("agentruntime_archive_enabled", "Agent Runtime", "bool", "Archive Enabled", "Enable run archival to disk"),
+		f("agentruntime_archive_dir", "Agent Runtime", "string", "Archive Dir", "Directory for archived run files"),
+		f("agentruntime_archive_retention_days", "Agent Runtime", "int", "Archive Retention (days)", "Days to retain archived runs"),
+		f("agentruntime_archive_max_file_bytes", "Agent Runtime", "int", "Archive Max File Bytes", "Maximum archive file size before rollover"),
 
 		// ── Channels ─────────────────────────────
 		f("channels_local_enabled", "Channels", "bool", "Local Channel", "Enable local channel for CLI dispatch"),
@@ -389,72 +389,72 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsApplyPatchEnabled
 	case "tools_message_enabled":
 		return cfg.ToolsMessageEnabled
-	case "tools_gateway_enabled":
-		return cfg.ToolsGatewayEnabled
+	case "tools_agentruntime_enabled":
+		return cfg.ToolsAgentRuntimeEnabled
 	// MCP
 	case "mcp_command_allowlist_json":
 		return append([]string(nil), cfg.MCPCommandAllowlist...)
 	case "mcp_servers_json":
 		return append([]MCPServer(nil), cfg.MCPServers...)
-	// Gateway
-	case "gateway_enabled":
-		return cfg.GatewayEnabled
-	case "gateway_default_agent":
-		return cfg.GatewayDefaultAgent
-	case "gateway_agents_json":
-		return append([]GatewayAgent(nil), cfg.GatewayAgents...)
-	case "gateway_task_override":
-		return GatewayTaskOverrideConfig{
-			Enabled:        cfg.GatewayTaskOverride.Enabled,
-			AllowedAliases: append([]string(nil), cfg.GatewayTaskOverride.AllowedAliases...),
-			AllowedModels:  append([]string(nil), cfg.GatewayTaskOverride.AllowedModels...),
+	// AgentRuntime
+	case "agentruntime_enabled":
+		return cfg.AgentRuntimeEnabled
+	case "agentruntime_default_agent":
+		return cfg.AgentRuntimeDefaultAgent
+	case "agentruntime_agents_json":
+		return append([]AgentRuntimeAgent(nil), cfg.AgentRuntimeAgents...)
+	case "agentruntime_task_override":
+		return AgentRuntimeTaskOverrideConfig{
+			Enabled:        cfg.AgentRuntimeTaskOverride.Enabled,
+			AllowedAliases: append([]string(nil), cfg.AgentRuntimeTaskOverride.AllowedAliases...),
+			AllowedModels:  append([]string(nil), cfg.AgentRuntimeTaskOverride.AllowedModels...),
 		}
-	case "gateway_agents_watch":
-		return cfg.GatewayAgentsWatch
-	case "gateway_agents_watch_debounce_ms":
-		return cfg.GatewayAgentsWatchDebounceMS
-	case "gateway_persistence_enabled":
-		return cfg.GatewayPersistenceEnabled
-	case "gateway_persistence_dir":
-		return cfg.GatewayPersistenceDir
-	case "gateway_runs_persistence_enabled":
-		return cfg.GatewayRunsPersistenceEnabled
-	case "gateway_channels_persistence_enabled":
-		return cfg.GatewayChannelsPersistenceEnabled
-	case "gateway_runs_max_records":
-		return cfg.GatewayRunsMaxRecords
-	case "gateway_channels_max_messages_per_channel":
-		return cfg.GatewayChannelsMaxMessagesPerChannel
-	case "gateway_subagents_max_threads":
-		return cfg.GatewaySubagentsMaxThreads
-	case "gateway_subagents_max_depth":
-		return cfg.GatewaySubagentsMaxDepth
-	case "gateway_consensus_enabled":
-		return cfg.GatewayConsensusEnabled
-	case "gateway_consensus_max_fanout":
-		return cfg.GatewayConsensusMaxFanout
-	case "gateway_consensus_budget_tokens":
-		return cfg.GatewayConsensusBudgetTokens
-	case "gateway_consensus_budget_usd":
-		return cfg.GatewayConsensusBudgetUSD
-	case "gateway_consensus_timeout_seconds":
-		return cfg.GatewayConsensusTimeoutSeconds
-	case "gateway_consensus_allowed_aliases_json":
-		return append([]string(nil), cfg.GatewayConsensusAllowedAliases...)
-	case "gateway_consensus_concurrent_runs":
-		return cfg.GatewayConsensusConcurrentRuns
-	case "gateway_restore_on_startup":
-		return cfg.GatewayRestoreOnStartup
-	case "gateway_report_summary_enabled":
-		return cfg.GatewayReportSummaryEnabled
-	case "gateway_archive_enabled":
-		return cfg.GatewayArchiveEnabled
-	case "gateway_archive_dir":
-		return cfg.GatewayArchiveDir
-	case "gateway_archive_retention_days":
-		return cfg.GatewayArchiveRetentionDays
-	case "gateway_archive_max_file_bytes":
-		return cfg.GatewayArchiveMaxFileBytes
+	case "agentruntime_agents_watch":
+		return cfg.AgentRuntimeAgentsWatch
+	case "agentruntime_agents_watch_debounce_ms":
+		return cfg.AgentRuntimeAgentsWatchDebounceMS
+	case "agentruntime_persistence_enabled":
+		return cfg.AgentRuntimePersistenceEnabled
+	case "agentruntime_persistence_dir":
+		return cfg.AgentRuntimePersistenceDir
+	case "agentruntime_runs_persistence_enabled":
+		return cfg.AgentRuntimeRunsPersistenceEnabled
+	case "agentruntime_channels_persistence_enabled":
+		return cfg.AgentRuntimeChannelsPersistenceEnabled
+	case "agentruntime_runs_max_records":
+		return cfg.AgentRuntimeRunsMaxRecords
+	case "agentruntime_channels_max_messages_per_channel":
+		return cfg.AgentRuntimeChannelsMaxMessagesPerChannel
+	case "agentruntime_subagents_max_threads":
+		return cfg.AgentRuntimeSubagentsMaxThreads
+	case "agentruntime_subagents_max_depth":
+		return cfg.AgentRuntimeSubagentsMaxDepth
+	case "agentruntime_consensus_enabled":
+		return cfg.AgentRuntimeConsensusEnabled
+	case "agentruntime_consensus_max_fanout":
+		return cfg.AgentRuntimeConsensusMaxFanout
+	case "agentruntime_consensus_budget_tokens":
+		return cfg.AgentRuntimeConsensusBudgetTokens
+	case "agentruntime_consensus_budget_usd":
+		return cfg.AgentRuntimeConsensusBudgetUSD
+	case "agentruntime_consensus_timeout_seconds":
+		return cfg.AgentRuntimeConsensusTimeoutSeconds
+	case "agentruntime_consensus_allowed_aliases_json":
+		return append([]string(nil), cfg.AgentRuntimeConsensusAllowedAliases...)
+	case "agentruntime_consensus_concurrent_runs":
+		return cfg.AgentRuntimeConsensusConcurrentRuns
+	case "agentruntime_restore_on_startup":
+		return cfg.AgentRuntimeRestoreOnStartup
+	case "agentruntime_report_summary_enabled":
+		return cfg.AgentRuntimeReportSummaryEnabled
+	case "agentruntime_archive_enabled":
+		return cfg.AgentRuntimeArchiveEnabled
+	case "agentruntime_archive_dir":
+		return cfg.AgentRuntimeArchiveDir
+	case "agentruntime_archive_retention_days":
+		return cfg.AgentRuntimeArchiveRetentionDays
+	case "agentruntime_archive_max_file_bytes":
+		return cfg.AgentRuntimeArchiveMaxFileBytes
 	// Channels
 	case "channels_local_enabled":
 		return cfg.ChannelsLocalEnabled

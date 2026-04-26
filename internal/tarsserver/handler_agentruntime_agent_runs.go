@@ -36,7 +36,7 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *agentruntime.Runtime, logg
 	mux.HandleFunc("/v1/agent/runs/", func(w http.ResponseWriter, r *http.Request) {
 		handleAgentRunByID(w, r, runtime, logger)
 	})
-	mux.HandleFunc("/v1/gateway/runs", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/agentruntime/runs", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
 			return
 		}
@@ -46,7 +46,7 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *agentruntime.Runtime, logg
 		}
 		handleAgentRunList(w, r, runtime)
 	})
-	mux.HandleFunc("/v1/gateway/runs/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/agentruntime/runs/", func(w http.ResponseWriter, r *http.Request) {
 		handleAgentRunByID(w, r, runtime, logger)
 	})
 	return mux
@@ -71,7 +71,7 @@ type agentRunSpawnRequest struct {
 
 func handleAgentRunSpawn(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, inflight *inflightLimiter) {
 	if runtime == nil {
-		writeUnavailable(w, "gateway runtime is not configured")
+		writeUnavailable(w, "agent runtime is not configured")
 		return
 	}
 	release, ok := inflight.tryAcquire()
@@ -138,7 +138,7 @@ func handleAgentRunList(w http.ResponseWriter, r *http.Request, runtime *agentru
 
 func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, logger zerolog.Logger) {
 	if runtime == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent runtime is not configured"})
 		return
 	}
 	runID, action, ok := parseAgentRunPath(r.URL.Path)
@@ -225,7 +225,7 @@ func writeSSEData(w http.ResponseWriter, payload any) error {
 func parseAgentRunPath(path string) (runID string, action string, ok bool) {
 	trimmed := strings.TrimSpace(path)
 	trimmed = strings.TrimPrefix(trimmed, "/v1/agent/runs/")
-	trimmed = strings.TrimPrefix(trimmed, "/v1/gateway/runs/")
+	trimmed = strings.TrimPrefix(trimmed, "/v1/agentruntime/runs/")
 	if trimmed == "" {
 		return "", "", false
 	}

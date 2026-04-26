@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-func (r *Runtime) Status() GatewayStatus {
+func (r *Runtime) Status() AgentRuntimeStatus {
 	if r == nil {
-		return GatewayStatus{}
+		return AgentRuntimeStatus{}
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -18,7 +18,7 @@ func (r *Runtime) Status() GatewayStatus {
 			active++
 		}
 	}
-	status := GatewayStatus{
+	status := AgentRuntimeStatus{
 		Enabled:                    r.opts.Enabled,
 		Version:                    r.version,
 		RunsTotal:                  len(r.runs),
@@ -29,11 +29,11 @@ func (r *Runtime) Status() GatewayStatus {
 		ChannelsLocal:              r.opts.ChannelsLocalEnabled,
 		ChannelsWebhook:            r.opts.ChannelsWebhookEnabled,
 		ChannelsTelegram:           r.opts.ChannelsTelegramEnabled,
-		PersistenceEnabled:         r.opts.GatewayPersistenceEnabled,
-		RunsPersistenceEnabled:     r.opts.GatewayRunsPersistenceEnabled,
-		ChannelsPersistenceEnabled: r.opts.GatewayChannelsPersistenceEnabled,
-		RestoreOnStartup:           r.opts.GatewayRestoreOnStartup,
-		PersistenceDir:             strings.TrimSpace(r.opts.GatewayPersistenceDir),
+		PersistenceEnabled:         r.opts.AgentRuntimePersistenceEnabled,
+		RunsPersistenceEnabled:     r.opts.AgentRuntimeRunsPersistenceEnabled,
+		ChannelsPersistenceEnabled: r.opts.AgentRuntimeChannelsPersistenceEnabled,
+		RestoreOnStartup:           r.opts.AgentRuntimeRestoreOnStartup,
+		PersistenceDir:             strings.TrimSpace(r.opts.AgentRuntimePersistenceDir),
 		RunsRestored:               r.runsRestored,
 		ChannelsRestored:           r.channelsRestored,
 		LastRestoreError:           strings.TrimSpace(r.lastRestoreError),
@@ -69,8 +69,8 @@ func (r *Runtime) ReportsSummaryByWorkspace(workspaceID string) (ReportSummary, 
 	defer r.mu.RUnlock()
 	report := ReportSummary{
 		GeneratedAt:      r.nowFn().UTC().Format(time.RFC3339),
-		SummaryEnabled:   r.opts.GatewayReportSummaryEnabled,
-		ArchiveEnabled:   r.opts.GatewayArchiveEnabled,
+		SummaryEnabled:   r.opts.AgentRuntimeReportSummaryEnabled,
+		ArchiveEnabled:   r.opts.AgentRuntimeArchiveEnabled,
 		RunsByStatus:     map[string]int{},
 		MessagesBySource: map[string]int{},
 	}
@@ -118,20 +118,20 @@ func (r *Runtime) ReportsRuns(limit int) (ReportRuns, error) {
 
 // ReportsRunsByWorkspace returns recent in-memory run summaries.
 //
-// Despite the name, the gating flag GatewayArchiveEnabled doubles as the
+// Despite the name, the gating flag AgentRuntimeArchiveEnabled doubles as the
 // "report endpoint visibility" switch — it controls both on-disk archive
 // writes and whether this in-memory report endpoint serves data, even
 // though the data itself is from r.runs (memory) and never touches the
 // archive directory. Operators who want only the report endpoint without
 // disk archives still have to enable archive_enabled. Splitting this
-// into a dedicated GatewayReportEnabled flag is tracked in RF-057 as
+// into a dedicated AgentRuntimeReportEnabled flag is tracked in RF-057 as
 // part of the broader config namespace migration (ID-005).
 func (r *Runtime) ReportsRunsByWorkspace(workspaceID string, limit int) (ReportRuns, error) {
 	if err := r.requireEnabled(); err != nil {
 		return ReportRuns{}, err
 	}
-	if !r.opts.GatewayArchiveEnabled {
-		return ReportRuns{}, fmt.Errorf("gateway archive report is disabled")
+	if !r.opts.AgentRuntimeArchiveEnabled {
+		return ReportRuns{}, fmt.Errorf("agent runtime archive report is disabled")
 	}
 	if limit <= 0 {
 		limit = 50
@@ -150,14 +150,14 @@ func (r *Runtime) ReportsChannels(limit int) (ReportChannels, error) {
 }
 
 // ReportsChannelsByWorkspace returns recent in-memory channel messages.
-// See ReportsRunsByWorkspace for why GatewayArchiveEnabled also gates
+// See ReportsRunsByWorkspace for why AgentRuntimeArchiveEnabled also gates
 // this endpoint despite reading from in-memory state (RF-057, ID-005).
 func (r *Runtime) ReportsChannelsByWorkspace(workspaceID string, limit int) (ReportChannels, error) {
 	if err := r.requireEnabled(); err != nil {
 		return ReportChannels{}, err
 	}
-	if !r.opts.GatewayArchiveEnabled {
-		return ReportChannels{}, fmt.Errorf("gateway archive report is disabled")
+	if !r.opts.AgentRuntimeArchiveEnabled {
+		return ReportChannels{}, fmt.Errorf("agent runtime archive report is disabled")
 	}
 	if limit <= 0 {
 		limit = 50
@@ -195,9 +195,9 @@ func (r *Runtime) ReportsChannelsByWorkspace(workspaceID string, limit int) (Rep
 	}, nil
 }
 
-func (r *Runtime) Reload() GatewayStatus {
+func (r *Runtime) Reload() AgentRuntimeStatus {
 	if r == nil {
-		return GatewayStatus{}
+		return AgentRuntimeStatus{}
 	}
 	r.mu.Lock()
 	r.version++
@@ -208,9 +208,9 @@ func (r *Runtime) Reload() GatewayStatus {
 	return r.Status()
 }
 
-func (r *Runtime) Restart() GatewayStatus {
+func (r *Runtime) Restart() AgentRuntimeStatus {
 	if r == nil {
-		return GatewayStatus{}
+		return AgentRuntimeStatus{}
 	}
 	r.mu.Lock()
 	for _, state := range r.runs {
@@ -220,7 +220,7 @@ func (r *Runtime) Restart() GatewayStatus {
 			}
 			now := r.nowFn().UTC().Format(time.RFC3339)
 			state.run.Status = RunStatusCanceled
-			state.run.Error = "canceled by gateway restart"
+			state.run.Error = "canceled by agent runtime restart"
 			state.run.CompletedAt = now
 			state.run.UpdatedAt = now
 			r.closeRunDoneLocked(state)

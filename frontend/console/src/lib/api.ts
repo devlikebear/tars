@@ -8,8 +8,8 @@ import type {
   ConfigFile,
   ConfigSchema,
   HubInstalled,
-  GatewayRun,
-  GatewayRunEvent,
+  AgentRuntimeRun,
+  AgentRuntimeRunEvent,
   HubRegistry,
   MCPServerStatus,
   MemoryAsset,
@@ -178,34 +178,34 @@ export async function deleteSession(sessionId: string): Promise<void> {
   })
 }
 
-export async function listGatewayRuns(limit = 30): Promise<GatewayRun[]> {
-	const payload = await requestJSON<{ runs: GatewayRun[] }>(`/v1/gateway/runs?limit=${limit}`)
+export async function listAgentRuntimeRuns(limit = 30): Promise<AgentRuntimeRun[]> {
+	const payload = await requestJSON<{ runs: AgentRuntimeRun[] }>(`/v1/agentruntime/runs?limit=${limit}`)
 	return payload.runs ?? []
 }
 
-export async function getGatewayRun(runId: string): Promise<GatewayRun> {
-	return requestJSON<GatewayRun>(`/v1/gateway/runs/${encodeURIComponent(runId)}`)
+export async function getAgentRuntimeRun(runId: string): Promise<AgentRuntimeRun> {
+	return requestJSON<AgentRuntimeRun>(`/v1/agentruntime/runs/${encodeURIComponent(runId)}`)
 }
 
-export function streamGatewayRunEvents(
+export function streamAgentRuntimeRunEvents(
 	runId: string,
-	onEvent: (event: GatewayRunEvent) => void,
+	onEvent: (event: AgentRuntimeRunEvent) => void,
 	onError?: (message: string) => void,
 	onOpen?: () => void,
 ): () => void {
-	const stream = new EventSource(`/v1/gateway/runs/${encodeURIComponent(runId)}/events`)
+	const stream = new EventSource(`/v1/agentruntime/runs/${encodeURIComponent(runId)}/events`)
 	stream.onopen = () => {
 		onOpen?.()
 	}
 	stream.onmessage = (message) => {
 		if (!message.data) return
 		try {
-			onEvent(JSON.parse(message.data) as GatewayRunEvent)
+			onEvent(JSON.parse(message.data) as AgentRuntimeRunEvent)
 		} catch {
-			onError?.('Failed to parse gateway run event')
+			onError?.('Failed to parse agent runtime run event')
 		}
 	}
-	stream.onerror = () => onError?.('Gateway run event stream disconnected')
+	stream.onerror = () => onError?.('Agent Runtime run event stream disconnected')
 	return () => stream.close()
 }
 

@@ -13,15 +13,15 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type gatewayAgentsWatcherOptions struct {
+type agentRuntimeAgentsWatcherOptions struct {
 	WorkspaceDir string
 	Debounce     time.Duration
 	Logger       zerolog.Logger
 	Refresh      func(reason string)
 }
 
-type gatewayAgentsWatcher struct {
-	opts gatewayAgentsWatcherOptions
+type agentRuntimeAgentsWatcher struct {
+	opts agentRuntimeAgentsWatcherOptions
 
 	mu      sync.Mutex
 	cancel  context.CancelFunc
@@ -30,11 +30,11 @@ type gatewayAgentsWatcher struct {
 	wg      sync.WaitGroup
 }
 
-func newGatewayAgentsWatcher(opts gatewayAgentsWatcherOptions) *gatewayAgentsWatcher {
-	return &gatewayAgentsWatcher{opts: opts}
+func newAgentRuntimeAgentsWatcher(opts agentRuntimeAgentsWatcherOptions) *agentRuntimeAgentsWatcher {
+	return &agentRuntimeAgentsWatcher{opts: opts}
 }
 
-func (w *gatewayAgentsWatcher) Start(ctx context.Context) (bool, error) {
+func (w *agentRuntimeAgentsWatcher) Start(ctx context.Context) (bool, error) {
 	if w == nil {
 		return false, nil
 	}
@@ -55,7 +55,7 @@ func (w *gatewayAgentsWatcher) Start(ctx context.Context) (bool, error) {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
-		return false, fmt.Errorf("stat gateway agents dir %q: %w", agentsDir, err)
+		return false, fmt.Errorf("stat agent runtime agents dir %q: %w", agentsDir, err)
 	}
 	if !info.IsDir() {
 		return false, nil
@@ -63,9 +63,9 @@ func (w *gatewayAgentsWatcher) Start(ctx context.Context) (bool, error) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return false, fmt.Errorf("create gateway agents watcher: %w", err)
+		return false, fmt.Errorf("create agent runtime agents watcher: %w", err)
 	}
-	if err := addGatewayAgentsWatchRecursive(watcher, agentsDir); err != nil {
+	if err := addAgentRuntimeAgentsWatchRecursive(watcher, agentsDir); err != nil {
 		_ = watcher.Close()
 		return false, err
 	}
@@ -85,7 +85,7 @@ func (w *gatewayAgentsWatcher) Start(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (w *gatewayAgentsWatcher) Close() {
+func (w *agentRuntimeAgentsWatcher) Close() {
 	if w == nil {
 		return
 	}
@@ -106,7 +106,7 @@ func (w *gatewayAgentsWatcher) Close() {
 	w.wg.Wait()
 }
 
-func (w *gatewayAgentsWatcher) loop(ctx context.Context, watcher *fsnotify.Watcher) {
+func (w *agentRuntimeAgentsWatcher) loop(ctx context.Context, watcher *fsnotify.Watcher) {
 	debounce := w.opts.Debounce
 	if debounce <= 0 {
 		debounce = 200 * time.Millisecond
@@ -147,12 +147,12 @@ func (w *gatewayAgentsWatcher) loop(ctx context.Context, watcher *fsnotify.Watch
 			if event.Op&fsnotify.Create != 0 {
 				info, err := os.Stat(event.Name)
 				if err == nil && info.IsDir() {
-					if addErr := addGatewayAgentsWatchRecursive(watcher, event.Name); addErr != nil {
-						w.opts.Logger.Warn().Err(addErr).Str("path", event.Name).Msg("gateway agents watcher add dir failed")
+					if addErr := addAgentRuntimeAgentsWatchRecursive(watcher, event.Name); addErr != nil {
+						w.opts.Logger.Warn().Err(addErr).Str("path", event.Name).Msg("agent runtime agents watcher add dir failed")
 					}
 				}
 			}
-			if !shouldRefreshGatewayAgents(event.Name, event.Op) {
+			if !shouldRefreshAgentRuntimeAgents(event.Name, event.Op) {
 				continue
 			}
 			resetTimer()
@@ -165,12 +165,12 @@ func (w *gatewayAgentsWatcher) loop(ctx context.Context, watcher *fsnotify.Watch
 			if !ok {
 				return
 			}
-			w.opts.Logger.Warn().Err(err).Msg("gateway agents watcher error")
+			w.opts.Logger.Warn().Err(err).Msg("agent runtime agents watcher error")
 		}
 	}
 }
 
-func shouldRefreshGatewayAgents(path string, op fsnotify.Op) bool {
+func shouldRefreshAgentRuntimeAgents(path string, op fsnotify.Op) bool {
 	if strings.TrimSpace(path) == "" {
 		return false
 	}
@@ -180,19 +180,19 @@ func shouldRefreshGatewayAgents(path string, op fsnotify.Op) bool {
 	return strings.EqualFold(filepath.Base(path), "AGENT.md")
 }
 
-func addGatewayAgentsWatchRecursive(w *fsnotify.Watcher, root string) error {
+func addAgentRuntimeAgentsWatchRecursive(w *fsnotify.Watcher, root string) error {
 	info, err := os.Stat(root)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("stat gateway watch dir %q: %w", root, err)
+		return fmt.Errorf("stat agent runtime watch dir %q: %w", root, err)
 	}
 	if !info.IsDir() {
 		return nil
 	}
 	if err := w.Add(root); err != nil {
-		return fmt.Errorf("watch gateway dir %q: %w", root, err)
+		return fmt.Errorf("watch agent runtime dir %q: %w", root, err)
 	}
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {

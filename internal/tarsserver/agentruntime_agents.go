@@ -8,7 +8,7 @@ import (
 	"github.com/devlikebear/tars/internal/agentruntime"
 )
 
-type workspaceGatewayAgent struct {
+type workspaceAgentRuntimeAgent struct {
 	Name               string
 	Description        string
 	Prompt             string
@@ -26,7 +26,7 @@ type workspaceGatewayAgent struct {
 	ProviderOverride   *agentruntime.ProviderOverride
 }
 
-type workspaceGatewayAgentFrontmatter struct {
+type workspaceAgentRuntimeAgentFrontmatter struct {
 	Name                     string
 	Description              string
 	ToolsAllow               []string
@@ -48,7 +48,7 @@ type workspaceGatewayAgentFrontmatter struct {
 }
 
 func newWorkspacePromptExecutor(
-	def workspaceGatewayAgent,
+	def workspaceAgentRuntimeAgent,
 	runPrompt func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *agentruntime.ProviderOverride) (string, error),
 ) (agentruntime.AgentExecutor, error) {
 	if runPrompt == nil {
@@ -65,14 +65,14 @@ func newWorkspacePromptExecutor(
 		Description:        description,
 		Source:             "workspace",
 		Entry:              strings.TrimSpace(def.FilePath),
-		PolicyMode:         normalizeGatewayPolicyMode(def.PolicyMode),
+		PolicyMode:         normalizeAgentRuntimePolicyMode(def.PolicyMode),
 		ToolsAllow:         append([]string(nil), def.ToolsAllow...),
 		ToolsDeny:          append([]string(nil), def.ToolsDeny...),
 		ToolsRiskMax:       strings.TrimSpace(def.ToolsRiskMax),
 		ToolsAllowGroups:   append([]string(nil), def.ToolsAllowGroups...),
 		ToolsDenyGroups:    append([]string(nil), def.ToolsDenyGroups...),
 		ToolsAllowPatterns: append([]string(nil), def.ToolsAllowPatterns...),
-		SessionRoutingMode: normalizeGatewaySessionRoutingMode(def.SessionRoutingMode),
+		SessionRoutingMode: normalizeAgentRuntimeSessionRoutingMode(def.SessionRoutingMode),
 		SessionFixedID:     strings.TrimSpace(def.SessionFixedID),
 		Tier:               strings.TrimSpace(def.Tier),
 		ProviderOverride:   agentruntime.CloneProviderOverride(def.ProviderOverride),

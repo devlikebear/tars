@@ -37,13 +37,13 @@ const (
 	// RolePulseDecider is the pulse watchdog classifier. Light by default.
 	RolePulseDecider Role = "pulse_decider"
 
-	// RoleGatewayDefault is the default executor role for gateway agents
+	// RoleAgentRuntimeDefault is the default executor role for agent runtime agents
 	// that do not declare a tier explicitly. Standard by default.
-	RoleGatewayDefault Role = "gateway_default"
+	RoleAgentRuntimeDefault Role = "agentruntime_default"
 
-	// RoleGatewayPlanner is reserved for planner-style agents that benefit
+	// RoleAgentRuntimePlanner is reserved for planner-style agents that benefit
 	// from heavy reasoning.
-	RoleGatewayPlanner Role = "gateway_planner"
+	RoleAgentRuntimePlanner Role = "agentruntime_planner"
 )
 
 // AllRoles returns the exhaustive list of roles in canonical order.
@@ -56,8 +56,8 @@ func AllRoles() []Role {
 		RoleReflectionMemory,
 		RoleReflectionKB,
 		RolePulseDecider,
-		RoleGatewayDefault,
-		RoleGatewayPlanner,
+		RoleAgentRuntimeDefault,
+		RoleAgentRuntimePlanner,
 	}
 }
 

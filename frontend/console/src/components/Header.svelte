@@ -60,7 +60,7 @@
       case 'cron': return '\u23f0'
       case 'ops': return '\u2699'
       case 'usage': return '\u2261'
-      case 'gateway': return '\u29bf'
+      case 'agentruntime': return '\u29bf'
       case 'chat': return '\u2709'
       default: return '\u2022'
     }

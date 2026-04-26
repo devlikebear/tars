@@ -103,7 +103,7 @@ func NewSessionsSendTool(runtime *agentruntime.Runtime) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "agent runtime is not configured"}, true), nil
 			}
 			var input struct {
 				SessionID string `json:"session_id"`
@@ -173,7 +173,7 @@ func NewSessionsSpawnTool(runtime *agentruntime.Runtime) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "agent runtime is not configured"}, true), nil
 			}
 			var input struct {
 				SessionID string `json:"session_id"`
@@ -221,7 +221,7 @@ func NewSessionsRunsTool(runtime *agentruntime.Runtime) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "agent runtime is not configured"}, true), nil
 			}
 			var input struct {
 				Action string `json:"action"`

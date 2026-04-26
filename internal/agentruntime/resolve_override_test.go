@@ -19,10 +19,10 @@ func TestResolveOverride(t *testing.T) {
 				"light":    {Provider: "anthropic_prod", Model: "claude-haiku"},
 			},
 			LLMDefaultTier:  "standard",
-			LLMRoleDefaults: map[string]string{"gateway_default": "light"},
+			LLMRoleDefaults: map[string]string{"agentruntime_default": "light"},
 		},
-		GatewayConfig: config.GatewayConfig{
-			GatewayTaskOverride: config.GatewayTaskOverrideConfig{
+		AgentRuntimeConfig: config.AgentRuntimeConfig{
+			AgentRuntimeTaskOverride: config.AgentRuntimeTaskOverrideConfig{
 				Enabled:        true,
 				AllowedAliases: []string{"anthropic_prod", "anthropic_dev"},
 			},
@@ -75,8 +75,8 @@ func TestResolveOverride_RejectsDisabledAndAllowlistViolations(t *testing.T) {
 	if _, _, err := ResolveOverride(cfg, "standard", &ProviderOverride{Alias: "anthropic_prod"}, "task"); err == nil {
 		t.Fatalf("expected disabled override to fail")
 	}
-	cfg.GatewayTaskOverride.Enabled = true
-	cfg.GatewayTaskOverride.AllowedAliases = []string{"anthropic_other"}
+	cfg.AgentRuntimeTaskOverride.Enabled = true
+	cfg.AgentRuntimeTaskOverride.AllowedAliases = []string{"anthropic_other"}
 	if _, _, err := ResolveOverride(cfg, "standard", &ProviderOverride{Alias: "anthropic_prod"}, "task"); err == nil {
 		t.Fatalf("expected allowlist violation to fail")
 	}

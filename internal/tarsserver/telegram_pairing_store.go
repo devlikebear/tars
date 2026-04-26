@@ -64,7 +64,7 @@ type telegramPairingStore struct {
 }
 
 func telegramPairingStorePath(cfg config.Config) string {
-	return filepath.Join(strings.TrimSpace(cfg.GatewayPersistenceDir), telegramPairingStoreFile)
+	return filepath.Join(strings.TrimSpace(cfg.AgentRuntimePersistenceDir), telegramPairingStoreFile)
 }
 
 func newTelegramPairingStore(path string, nowFn func() time.Time) (*telegramPairingStore, error) {

@@ -6,4 +6,4 @@ package tarsserver
 //   - helpers_chat.go      — compaction, memory writes, keyword detection
 //   - helpers_agent.go     — agent prompt runners, tool registry
 //   - helpers_cron.go      — cron runner, delivery, target resolution
-//   - helpers_build.go     — builder functions (automation, extensions, gateway)
+//   - helpers_build.go     — builder functions (automation, extensions, agent runtime)

@@ -196,7 +196,7 @@ func TestParseLLMRoleDefaultsJSON_ValidInput(t *testing.T) {
 	raw := `{
 		"chat_main": "standard",
 		"pulse_decider": "light",
-		"gateway_planner": "heavy"
+		"agentruntime_planner": "heavy"
 	}`
 	got := parseLLMRoleDefaultsJSON(raw, nil)
 	if len(got) != 3 {
@@ -219,13 +219,13 @@ func TestParseLLMRoleDefaultsJSON_NormalizesKeysAndValues(t *testing.T) {
 }
 
 func TestParseLLMRoleDefaultsJSON_EmptyPairsDropped(t *testing.T) {
-	raw := `{"": "standard", "chat_main": "", "gateway_planner": "heavy"}`
+	raw := `{"": "standard", "chat_main": "", "agentruntime_planner": "heavy"}`
 	got := parseLLMRoleDefaultsJSON(raw, nil)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 entry, got %d: %+v", len(got), got)
 	}
-	if got["gateway_planner"] != "heavy" {
-		t.Error("gateway_planner missing")
+	if got["agentruntime_planner"] != "heavy" {
+		t.Error("agentruntime_planner missing")
 	}
 }
 
@@ -339,7 +339,7 @@ llm_default_tier: standard
 llm_role_defaults:
   chat_main: standard
   pulse_decider: light
-  gateway_planner: heavy
+  agentruntime_planner: heavy
 `
 	if err := os.WriteFile(path, []byte(yamlBody), 0o644); err != nil {
 		t.Fatalf("write yaml: %v", err)
@@ -382,8 +382,8 @@ llm_role_defaults:
 	if cfg.LLMRoleDefaults["chat_main"] != "standard" {
 		t.Errorf("chat_main = %q, want standard", cfg.LLMRoleDefaults["chat_main"])
 	}
-	if cfg.LLMRoleDefaults["gateway_planner"] != "heavy" {
-		t.Errorf("gateway_planner = %q, want heavy", cfg.LLMRoleDefaults["gateway_planner"])
+	if cfg.LLMRoleDefaults["agentruntime_planner"] != "heavy" {
+		t.Errorf("agentruntime_planner = %q, want heavy", cfg.LLMRoleDefaults["agentruntime_planner"])
 	}
 
 	// End-to-end: resolver consumes the loaded config correctly

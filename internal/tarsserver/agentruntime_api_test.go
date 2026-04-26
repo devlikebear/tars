@@ -19,17 +19,17 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func newTestGatewayRuntime(t *testing.T) *agentruntime.Runtime {
+func newTestAgentRuntime(t *testing.T) *agentruntime.Runtime {
 	t.Helper()
 	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
 	rt := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
-		Enabled:                     true,
-		WorkspaceDir:                t.TempDir(),
-		SessionStore:                store,
-		ChannelsLocalEnabled:        true,
-		ChannelsWebhookEnabled:      true,
-		ChannelsTelegramEnabled:     true,
-		GatewayReportSummaryEnabled: true,
+		Enabled:                          true,
+		WorkspaceDir:                     t.TempDir(),
+		SessionStore:                     store,
+		ChannelsLocalEnabled:             true,
+		ChannelsWebhookEnabled:           true,
+		ChannelsTelegramEnabled:          true,
+		AgentRuntimeReportSummaryEnabled: true,
 		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
 			return "ok: " + prompt, nil
 		},
@@ -38,14 +38,14 @@ func newTestGatewayRuntime(t *testing.T) *agentruntime.Runtime {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := rt.Close(ctx); err != nil {
-			t.Fatalf("close gateway runtime: %v", err)
+			t.Fatalf("close agent runtime: %v", err)
 		}
 	})
 	return rt
 }
 
 func TestAgentRunsAPIHandler_ListAndGet(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	run, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "hello"})
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
@@ -67,11 +67,30 @@ func TestAgentRunsAPIHandler_ListAndGet(t *testing.T) {
 		t.Fatalf("expected 200, got %d body=%s", recGet.Code, recGet.Body.String())
 	}
 
-	waitForGatewayRun(t, runtime, run.ID)
+	waitForAgentRuntimeRun(t, runtime, run.ID)
+}
+
+func TestAgentRuntimeAPIHandler_HardCutRoutes(t *testing.T) {
+	runtime := newTestAgentRuntime(t)
+	h := newAgentRuntimeAPIHandler(runtime, zerolog.New(io.Discard), nil)
+
+	recNew := httptest.NewRecorder()
+	reqNew := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/status", nil)
+	h.ServeHTTP(recNew, reqNew)
+	if recNew.Code != http.StatusOK {
+		t.Fatalf("expected agentruntime status route to return 200, got %d body=%s", recNew.Code, recNew.Body.String())
+	}
+
+	recLegacy := httptest.NewRecorder()
+	reqLegacy := httptest.NewRequest(http.MethodGet, "/v1/gateway/status", nil)
+	h.ServeHTTP(recLegacy, reqLegacy)
+	if recLegacy.Code != http.StatusNotFound {
+		t.Fatalf("expected legacy gateway status route to be removed, got %d body=%s", recLegacy.Code, recLegacy.Body.String())
+	}
 }
 
 func TestAgentRunsAPIHandler_AgentsList(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 
 	rec := httptest.NewRecorder()
@@ -97,7 +116,7 @@ func TestAgentRunsAPIHandler_AgentsList(t *testing.T) {
 }
 
 func TestAgentRunsAPIHandler_AgentsListIncludesSourceEntryDefault(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 
 	rec := httptest.NewRecorder()
@@ -189,7 +208,7 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if closeErr := runtime.Close(ctx); closeErr != nil {
-			t.Fatalf("close gateway runtime: %v", closeErr)
+			t.Fatalf("close agent runtime: %v", closeErr)
 		}
 	})
 
@@ -281,7 +300,7 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 }
 
 func TestAgentRunsAPIHandler_Spawn(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 
 	body, _ := json.Marshal(map[string]any{
@@ -307,11 +326,11 @@ func TestAgentRunsAPIHandler_Spawn(t *testing.T) {
 		t.Fatalf("expected accepted=true, payload=%+v", payload)
 	}
 
-	waitForGatewayRun(t, runtime, runID)
+	waitForAgentRuntimeRun(t, runtime, runID)
 }
 
 func TestAgentRunsAPIHandler_SpawnMissingMessage(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 
 	body, _ := json.Marshal(map[string]any{
@@ -326,7 +345,7 @@ func TestAgentRunsAPIHandler_SpawnMissingMessage(t *testing.T) {
 }
 
 func TestAgentRunsAPIHandler_SpawnUnknownAgentReturnsDiagnosticCode(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 
 	body, _ := json.Marshal(map[string]any{
@@ -367,7 +386,7 @@ func TestAgentRunsAPIHandler_Cancel(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := runtime.Close(ctx); err != nil {
-			t.Fatalf("close gateway runtime: %v", err)
+			t.Fatalf("close agent runtime: %v", err)
 		}
 	})
 	run, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "hello"})
@@ -383,11 +402,11 @@ func TestAgentRunsAPIHandler_Cancel(t *testing.T) {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	waitForGatewayRun(t, runtime, run.ID)
+	waitForAgentRuntimeRun(t, runtime, run.ID)
 }
 
 func TestAgentRunsAPIHandler_IgnoresWorkspaceHeaderAndUsesSingleNamespace(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	baseHandler := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 	handler := applyAPIMiddleware(config.Config{
 		APIConfig: config.APIConfig{APIAuthMode: "off"},
@@ -467,17 +486,17 @@ func TestAgentRunsAPIHandler_IgnoresWorkspaceHeaderAndUsesSingleNamespace(t *tes
 	}
 }
 
-func TestGatewayAPIHandler_StatusReloadRestart(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
-	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+func TestAgentRuntimeAPIHandler_StatusReloadRestart(t *testing.T) {
+	runtime := newTestAgentRuntime(t)
+	h := newAgentRuntimeAPIHandler(runtime, zerolog.New(io.Discard), nil)
 
 	for _, tc := range []struct {
 		method string
 		path   string
 	}{
-		{http.MethodGet, "/v1/gateway/status"},
-		{http.MethodPost, "/v1/gateway/reload"},
-		{http.MethodPost, "/v1/gateway/restart"},
+		{http.MethodGet, "/v1/agentruntime/status"},
+		{http.MethodPost, "/v1/agentruntime/reload"},
+		{http.MethodPost, "/v1/agentruntime/restart"},
 	} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(tc.method, tc.path, nil)
@@ -488,13 +507,13 @@ func TestGatewayAPIHandler_StatusReloadRestart(t *testing.T) {
 	}
 }
 
-func TestGatewayAPIHandler_StatusIncludesAgentsTelemetry(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+func TestAgentRuntimeAPIHandler_StatusIncludesAgentsTelemetry(t *testing.T) {
+	runtime := newTestAgentRuntime(t)
 	runtime.SetAgentsWatchEnabled(true)
-	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+	h := newAgentRuntimeAPIHandler(runtime, zerolog.New(io.Discard), nil)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/status", nil)
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -535,10 +554,10 @@ func TestGatewayAPIHandler_StatusIncludesAgentsTelemetry(t *testing.T) {
 	}
 }
 
-func TestGatewayAPIHandler_StatusWhenRuntimeMissingHasConsistentDefaults(t *testing.T) {
-	h := newGatewayAPIHandler(nil, zerolog.New(io.Discard), nil)
+func TestAgentRuntimeAPIHandler_StatusWhenRuntimeMissingHasConsistentDefaults(t *testing.T) {
+	h := newAgentRuntimeAPIHandler(nil, zerolog.New(io.Discard), nil)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/status", nil)
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -580,32 +599,32 @@ func TestGatewayAPIHandler_StatusWhenRuntimeMissingHasConsistentDefaults(t *test
 	}
 }
 
-func TestGatewayAPIHandler_StatusIncludesPersistenceTelemetryValues(t *testing.T) {
+func TestAgentRuntimeAPIHandler_StatusIncludesPersistenceTelemetryValues(t *testing.T) {
 	workspaceDir := t.TempDir()
 	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
-		Enabled:                              true,
-		WorkspaceDir:                         workspaceDir,
-		SessionStore:                         session.NewStore(filepath.Join(workspaceDir, "workspace")),
-		RunPrompt:                            func(_ context.Context, _ string, prompt string) (string, error) { return prompt, nil },
-		GatewayPersistenceEnabled:            true,
-		GatewayRunsPersistenceEnabled:        true,
-		GatewayChannelsPersistenceEnabled:    false,
-		GatewayRunsMaxRecords:                50,
-		GatewayChannelsMaxMessagesPerChannel: 10,
-		GatewayPersistenceDir:                filepath.Join(workspaceDir, "_shared", "gateway"),
-		GatewayRestoreOnStartup:              true,
+		Enabled:                                   true,
+		WorkspaceDir:                              workspaceDir,
+		SessionStore:                              session.NewStore(filepath.Join(workspaceDir, "workspace")),
+		RunPrompt:                                 func(_ context.Context, _ string, prompt string) (string, error) { return prompt, nil },
+		AgentRuntimePersistenceEnabled:            true,
+		AgentRuntimeRunsPersistenceEnabled:        true,
+		AgentRuntimeChannelsPersistenceEnabled:    false,
+		AgentRuntimeRunsMaxRecords:                50,
+		AgentRuntimeChannelsMaxMessagesPerChannel: 10,
+		AgentRuntimePersistenceDir:                filepath.Join(workspaceDir, "_shared", "agentruntime"),
+		AgentRuntimeRestoreOnStartup:              true,
 	})
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := runtime.Close(ctx); err != nil {
-			t.Fatalf("close gateway runtime: %v", err)
+			t.Fatalf("close agent runtime: %v", err)
 		}
 	})
 
-	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+	h := newAgentRuntimeAPIHandler(runtime, zerolog.New(io.Discard), nil)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/status", nil)
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -633,35 +652,35 @@ func TestGatewayAPIHandler_StatusIncludesPersistenceTelemetryValues(t *testing.T
 	}
 }
 
-func TestGatewayAPIHandler_ReloadCallsRefreshHook(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+func TestAgentRuntimeAPIHandler_ReloadCallsRefreshHook(t *testing.T) {
+	runtime := newTestAgentRuntime(t)
 	called := false
-	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), func() {
+	h := newAgentRuntimeAPIHandler(runtime, zerolog.New(io.Discard), func() {
 		called = true
 	})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/reload", nil)
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	if !called {
-		t.Fatal("expected gateway reload hook to be called")
+		t.Fatal("expected agent runtime reload hook to be called")
 	}
 }
 
-func TestGatewayAPIHandler_ReportsSummary(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+func TestAgentRuntimeAPIHandler_ReportsSummary(t *testing.T) {
+	runtime := newTestAgentRuntime(t)
 	run, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "hello"})
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}
-	waitForGatewayRun(t, runtime, run.ID)
+	waitForAgentRuntimeRun(t, runtime, run.ID)
 
-	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+	h := newAgentRuntimeAPIHandler(runtime, zerolog.New(io.Discard), nil)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/summary", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/reports/summary", nil)
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -681,16 +700,16 @@ func TestGatewayAPIHandler_ReportsSummary(t *testing.T) {
 	}
 }
 
-func TestGatewayAPIHandler_ReportsSummarySingleWorkspaceNamespace(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+func TestAgentRuntimeAPIHandler_ReportsSummarySingleWorkspaceNamespace(t *testing.T) {
+	runtime := newTestAgentRuntime(t)
 	baseAgentHandler := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 	agentHandler := applyAPIMiddleware(config.Config{
 		APIConfig: config.APIConfig{APIAuthMode: "off"},
 	}, zerolog.New(io.Discard), baseAgentHandler, io.Discard)
-	baseGatewayHandler := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
-	gatewayHandler := applyAPIMiddleware(config.Config{
+	baseAgentRuntimeHandler := newAgentRuntimeAPIHandler(runtime, zerolog.New(io.Discard), nil)
+	agentRuntimeHandler := applyAPIMiddleware(config.Config{
 		APIConfig: config.APIConfig{APIAuthMode: "off"},
-	}, zerolog.New(io.Discard), baseGatewayHandler, io.Discard)
+	}, zerolog.New(io.Discard), baseAgentRuntimeHandler, io.Discard)
 
 	spawn := func(workspaceID, message string) {
 		t.Helper()
@@ -712,9 +731,9 @@ func TestGatewayAPIHandler_ReportsSummarySingleWorkspaceNamespace(t *testing.T) 
 	summaryFor := func(workspaceID string) map[string]any {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/summary", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/reports/summary", nil)
 		req.Header.Set("Tars-Workspace-Id", workspaceID)
-		gatewayHandler.ServeHTTP(rec, req)
+		agentRuntimeHandler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("summary expected 200, got %d body=%s", rec.Code, rec.Body.String())
 		}
@@ -735,19 +754,19 @@ func TestGatewayAPIHandler_ReportsSummarySingleWorkspaceNamespace(t *testing.T) 
 	}
 }
 
-func TestGatewayAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
-	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+func TestAgentRuntimeAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) {
+	runtime := newTestAgentRuntime(t)
+	h := newAgentRuntimeAPIHandler(runtime, zerolog.New(io.Discard), nil)
 
 	recRuns := httptest.NewRecorder()
-	reqRuns := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/runs", nil)
+	reqRuns := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/reports/runs", nil)
 	h.ServeHTTP(recRuns, reqRuns)
 	if recRuns.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for runs report when archive disabled, got %d body=%s", recRuns.Code, recRuns.Body.String())
 	}
 
 	recChannels := httptest.NewRecorder()
-	reqChannels := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/channels", nil)
+	reqChannels := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/reports/channels", nil)
 	h.ServeHTTP(recChannels, reqChannels)
 	if recChannels.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for channels report when archive disabled, got %d body=%s", recChannels.Code, recChannels.Body.String())
@@ -755,13 +774,13 @@ func TestGatewayAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) 
 
 	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
 	archiveRuntime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
-		Enabled:                     true,
-		WorkspaceDir:                t.TempDir(),
-		SessionStore:                store,
-		ChannelsLocalEnabled:        true,
-		GatewayReportSummaryEnabled: true,
-		GatewayArchiveEnabled:       true,
-		GatewayArchiveDir:           filepath.Join(t.TempDir(), "archive"),
+		Enabled:                          true,
+		WorkspaceDir:                     t.TempDir(),
+		SessionStore:                     store,
+		ChannelsLocalEnabled:             true,
+		AgentRuntimeReportSummaryEnabled: true,
+		AgentRuntimeArchiveEnabled:       true,
+		AgentRuntimeArchiveDir:           filepath.Join(t.TempDir(), "archive"),
 		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
 			return "ok: " + prompt, nil
 		},
@@ -777,14 +796,14 @@ func TestGatewayAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) 
 	if err != nil {
 		t.Fatalf("spawn archive runtime: %v", err)
 	}
-	waitForGatewayRun(t, archiveRuntime, run.ID)
+	waitForAgentRuntimeRun(t, archiveRuntime, run.ID)
 	if _, err := archiveRuntime.MessageSend("general", "", "ping"); err != nil {
 		t.Fatalf("message send: %v", err)
 	}
 
-	archiveHandler := newGatewayAPIHandler(archiveRuntime, zerolog.New(io.Discard), nil)
+	archiveHandler := newAgentRuntimeAPIHandler(archiveRuntime, zerolog.New(io.Discard), nil)
 	recRunsOn := httptest.NewRecorder()
-	reqRunsOn := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/runs?limit=5", nil)
+	reqRunsOn := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/reports/runs?limit=5", nil)
 	archiveHandler.ServeHTTP(recRunsOn, reqRunsOn)
 	if recRunsOn.Code != http.StatusOK {
 		t.Fatalf("expected 200 for runs report when archive enabled, got %d body=%s", recRunsOn.Code, recRunsOn.Body.String())
@@ -798,7 +817,7 @@ func TestGatewayAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) 
 	}
 
 	recChannelsOn := httptest.NewRecorder()
-	reqChannelsOn := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/channels?limit=5", nil)
+	reqChannelsOn := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/reports/channels?limit=5", nil)
 	archiveHandler.ServeHTTP(recChannelsOn, reqChannelsOn)
 	if recChannelsOn.Code != http.StatusOK {
 		t.Fatalf("expected 200 for channels report when archive enabled, got %d body=%s", recChannelsOn.Code, recChannelsOn.Body.String())
@@ -812,12 +831,12 @@ func TestGatewayAPIHandler_ReportDetailEndpointsBehindArchiveFlag(t *testing.T) 
 	}
 }
 
-func TestGatewayAPIHandler_ReportsRunsRejectsInvalidLimit(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
-	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), nil)
+func TestAgentRuntimeAPIHandler_ReportsRunsRejectsInvalidLimit(t *testing.T) {
+	runtime := newTestAgentRuntime(t)
+	h := newAgentRuntimeAPIHandler(runtime, zerolog.New(io.Discard), nil)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/gateway/reports/runs?limit=0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/reports/runs?limit=0", nil)
 	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
@@ -832,7 +851,7 @@ func TestGatewayAPIHandler_ReportsRunsRejectsInvalidLimit(t *testing.T) {
 	}
 }
 
-func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
+func TestAgentRuntimeAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(filepath.Join(workspace, "workspace"))
 	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
@@ -850,16 +869,16 @@ func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := runtime.Close(ctx); err != nil {
-			t.Fatalf("close gateway runtime: %v", err)
+			t.Fatalf("close agent runtime: %v", err)
 		}
 	})
 	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace}}
 	refresh := func() {
-		executors := buildGatewayExecutors(cfg, runPrompt, zerolog.New(io.Discard))
+		executors := buildAgentRuntimeExecutors(cfg, runPrompt, zerolog.New(io.Discard))
 		runtime.SetExecutors(executors, "")
 	}
 
-	h := newGatewayAPIHandler(runtime, zerolog.New(io.Discard), refresh)
+	h := newAgentRuntimeAPIHandler(runtime, zerolog.New(io.Discard), refresh)
 	if len(runtime.Agents()) != 1 {
 		t.Fatalf("expected only default agent before reload, got %+v", runtime.Agents())
 	}
@@ -873,7 +892,7 @@ func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/reload", nil)
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -897,7 +916,7 @@ func TestGatewayAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 }
 
 func TestChannelsAPIHandler_WebhookAndTelegramInbound(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	h := newChannelsAPIHandler(runtime, zerolog.New(io.Discard))
 
 	payload, _ := json.Marshal(map[string]any{"text": "hello"})
@@ -918,7 +937,7 @@ func TestChannelsAPIHandler_WebhookAndTelegramInbound(t *testing.T) {
 }
 
 func TestChannelsAPI_TelegramSend_UserAllowed(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	sender := telegramSendFunc(func(ctx context.Context, req telegramSendRequest) (telegramSendResult, error) {
 		return telegramSendResult{
 			MessageID: 77,
@@ -954,7 +973,7 @@ func TestChannelsAPI_TelegramSend_UserAllowed(t *testing.T) {
 }
 
 func TestChannelsAPI_TelegramSendRejectsInvalidBody(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	sender := telegramSendFunc(func(ctx context.Context, req telegramSendRequest) (telegramSendResult, error) {
 		return telegramSendResult{}, nil
 	})
@@ -976,7 +995,7 @@ func TestChannelsAPI_TelegramSendRejectsInvalidBody(t *testing.T) {
 }
 
 func TestChannelsAPI_TelegramPairings_Approve(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	pairings, err := newTelegramPairingStore(filepath.Join(t.TempDir(), "telegram_pairings.json"), nil)
 	if err != nil {
 		t.Fatalf("newTelegramPairingStore: %v", err)
@@ -1034,7 +1053,7 @@ func TestChannelsAPI_TelegramPairings_Approve(t *testing.T) {
 }
 
 func TestChannelsAPI_TelegramPairingsApproveUnknownCodeReturnsNotFound(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	pairings, err := newTelegramPairingStore(filepath.Join(t.TempDir(), "telegram_pairings.json"), nil)
 	if err != nil {
 		t.Fatalf("newTelegramPairingStore: %v", err)
@@ -1063,7 +1082,7 @@ func TestChannelsAPI_TelegramPairingsApproveUnknownCodeReturnsNotFound(t *testin
 	}
 }
 
-func waitForGatewayRun(t *testing.T, runtime *agentruntime.Runtime, runID string) {
+func waitForAgentRuntimeRun(t *testing.T, runtime *agentruntime.Runtime, runID string) {
 	t.Helper()
 	waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

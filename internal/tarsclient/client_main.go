@@ -94,7 +94,7 @@ Runtime:
   /run {id}
   /cancel-run {id}
   /spawn [--agent ...] [--title ...] [--session ...] [--wait] {message}
-  /gateway {status|reload|restart|summary|runs [limit]|channels [limit]}
+  /agentruntime {status|reload|restart|summary|runs [limit]|channels [limit]}
   /browser {status|profiles|login|check|run}
   /vault {status}
   /channels
@@ -223,9 +223,9 @@ func isAdminEndpointPath(path string) bool {
 	switch {
 	case trimmed == "/v1/runtime/extensions/reload":
 		return true
-	case trimmed == "/v1/gateway/reload":
+	case trimmed == "/v1/agentruntime/reload":
 		return true
-	case trimmed == "/v1/gateway/restart":
+	case trimmed == "/v1/agentruntime/restart":
 		return true
 	case strings.HasPrefix(trimmed, "/v1/channels/webhook/inbound/"):
 		return true

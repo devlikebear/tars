@@ -59,8 +59,8 @@ llm:
     context_compactor: light
     reflection_memory: light
     pulse_decider: light
-    gateway_default: standard
-    gateway_planner: heavy
+    agentruntime_default: standard
+    agentruntime_planner: heavy
 
 memory:
   backend: file
@@ -157,10 +157,10 @@ tools:
     enabled: false
   nodes:
     enabled: false
-  gateway:
+  agentruntime:
     enabled: false
 
-gateway:
+agentruntime:
   enabled: false
   default_agent: ""
   agents:
@@ -180,7 +180,7 @@ gateway:
     allowed_models: []
   persistence:
     enabled: true
-    dir: ./workspace/_shared/gateway
+    dir: ./workspace/_shared/agentruntime
   runs:
     persistence_enabled: true
     max_records: 2000
@@ -203,7 +203,7 @@ gateway:
     summary_enabled: true
   archive:
     enabled: false
-    dir: ./workspace/_shared/gateway/archive
+    dir: ./workspace/_shared/agentruntime/archive
     retention_days: 30
     max_file_bytes: 10485760
 

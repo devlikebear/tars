@@ -55,7 +55,7 @@ func handleWebhookInbound(w http.ResponseWriter, r *http.Request, runtime *agent
 		return
 	}
 	if runtime == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent runtime is not configured"})
 		return
 	}
 	channelID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/channels/webhook/inbound/"))
@@ -82,7 +82,7 @@ func handleTelegramInbound(w http.ResponseWriter, r *http.Request, runtime *agen
 		return
 	}
 	if runtime == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent runtime is not configured"})
 		return
 	}
 	botID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/channels/telegram/webhook/"))
@@ -115,7 +115,7 @@ func handleTelegramSend(
 		return
 	}
 	if runtime == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway runtime is not configured"})
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent runtime is not configured"})
 		return
 	}
 	if sender == nil {

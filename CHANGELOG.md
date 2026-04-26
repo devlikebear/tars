@@ -6,12 +6,35 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.5] - 2026-04-26
+
+### Changed (BREAKING)
+
+- **ID-005 hard cut**: external gateway naming is now canonical `agentruntime` across HTTP routes, console routes, config/env/YAML keys, persistence paths, CLI commands, tool names, and public client types.
+- Runtime persistence now defaults to `workspace/_shared/agentruntime/`, and archive files use the `agentruntime-*.jsonl` prefix.
+- The legacy `/v1/gateway/*` routes and `gateway_*` / `gateway.*` config keys are intentionally not kept as compatibility aliases.
+
+### Migration
+
+- Replace `/v1/gateway/*` calls with `/v1/agentruntime/*` and `/console/gateway` bookmarks with `/console/agentruntime`.
+- Rename `gateway_*` env/config keys and `gateway.*` YAML sections to `agentruntime_*` / `agentruntime.*`.
+- Move retained runtime state from `workspace/_shared/gateway/` to `workspace/_shared/agentruntime/` if old run/channel history must be preserved.
+
+### Tests
+
+- `TestAgentRuntimeAPIHandler_HardCutRoutes`
+- `TestLoad_AgentRuntimeHardCutIgnoresLegacyGatewayConfigKeys`
+
+### Closed
+
+- Closes #384.
+
 ## [0.31.4] - 2026-04-26
 
 ### Changed
 
 - **RF-004**: `runtimeDeps` no longer stores a backward-compat `llmClient`. Server bootstrap keeps only the shared `llmRouter`, and chat/API call sites resolve the chat client through `llm.RoleChatMain` at the boundary where the client is needed.
-- Gateway prompt runners now use the router-backed default gateway role path instead of inheriting the chat-main client fallback from bootstrap. Session-bound cron and Telegram inbound paths use the same resolved chat client as the normal chat handler.
+- Agent Runtime prompt runners now use the router-backed default agent runtime role path instead of inheriting the chat-main client fallback from bootstrap. Session-bound cron and Telegram inbound paths use the same resolved chat client as the normal chat handler.
 
 ### Tests
 
@@ -353,7 +376,7 @@ KB 가 필요해지면 미래 PR 에서 재구현. 현재 사용자 워크스페
 ### Changed
 
 - Chat compaction now exposes configurable trigger and retention knobs, supports deterministic mode and timeout-bounded LLM fallback, and reports compaction telemetry to the console context monitor
-- Subagent orchestration can now carry per-task provider override and consensus settings through the gateway runtime and persistence layer
+- Subagent orchestration can now carry per-task provider override and consensus settings through the agent runtime runtime and persistence layer
 
 ### Fixed
 
@@ -734,7 +757,7 @@ KB 가 필요해지면 미래 PR 에서 재구현. 현재 사용자 워크스페
 - `subagents_run` chat tool for parallel read-only delegation to gateway-backed explorer subagents
 - Built-in `explorer` gateway agent with a read-only allowlist for codebase and project research tasks
 - Gateway run metadata for subagent lineage and hidden subagent sessions
-- Config knobs `gateway_subagents_max_threads` and `gateway_subagents_max_depth`
+- Config knobs `agentruntime_subagents_max_threads` and `agentruntime_subagents_max_depth`
 
 ### Changed
 

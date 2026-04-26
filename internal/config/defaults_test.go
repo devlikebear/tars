@@ -106,23 +106,23 @@ func TestConfigInputFieldByYAMLKey_CoversStructuredFields(t *testing.T) {
 		t.Fatalf("expected merged allowlist to be cloned, got %#v", mergedAllowlist.ToolsWebFetchPrivateHostAllowlist)
 	}
 
-	agentField, ok := configInputFieldByYAMLKey("gateway_agents_json")
+	agentField, ok := configInputFieldByYAMLKey("agentruntime_agents_json")
 	if !ok {
-		t.Fatal("expected gateway_agents_json field metadata")
+		t.Fatal("expected agentruntime_agents_json field metadata")
 	}
 
 	var agentCfg Config
 	agentField.apply(&agentCfg, `[{"name":"ops","command":"run-agent","args":["--fast"],"env":{"MODE":"prod"}}]`)
-	if len(agentCfg.GatewayAgents) != 1 || agentCfg.GatewayAgents[0].Name != "ops" || agentCfg.GatewayAgents[0].Command != "run-agent" {
-		t.Fatalf("expected gateway agents to parse, got %#v", agentCfg.GatewayAgents)
+	if len(agentCfg.AgentRuntimeAgents) != 1 || agentCfg.AgentRuntimeAgents[0].Name != "ops" || agentCfg.AgentRuntimeAgents[0].Command != "run-agent" {
+		t.Fatalf("expected agent runtime agents to parse, got %#v", agentCfg.AgentRuntimeAgents)
 	}
 
-	srcAgents := []GatewayAgent{{Name: "ops", Command: "run-agent"}}
+	srcAgents := []AgentRuntimeAgent{{Name: "ops", Command: "run-agent"}}
 	var mergedAgents Config
-	agentField.merge(&mergedAgents, Config{GatewayConfig: GatewayConfig{GatewayAgents: srcAgents}})
+	agentField.merge(&mergedAgents, Config{AgentRuntimeConfig: AgentRuntimeConfig{AgentRuntimeAgents: srcAgents}})
 	srcAgents[0].Name = "mutated"
-	if len(mergedAgents.GatewayAgents) != 1 || mergedAgents.GatewayAgents[0].Name != "ops" {
-		t.Fatalf("expected merged gateway agents slice to be copied, got %#v", mergedAgents.GatewayAgents)
+	if len(mergedAgents.AgentRuntimeAgents) != 1 || mergedAgents.AgentRuntimeAgents[0].Name != "ops" {
+		t.Fatalf("expected merged agent runtime agents slice to be copied, got %#v", mergedAgents.AgentRuntimeAgents)
 	}
 
 	mcpField, ok := configInputFieldByYAMLKey("mcp_servers_json")
@@ -841,15 +841,15 @@ func TestLoad_OptionalToolsFromEnv(t *testing.T) {
 	}
 }
 
-func TestLoad_ExpandedToolAndGatewayOptionsFromEnv(t *testing.T) {
-	t.Setenv("GATEWAY_ENABLED", "true")
+func TestLoad_ExpandedToolAndAgentRuntimeOptionsFromEnv(t *testing.T) {
+	t.Setenv("AGENTRUNTIME_ENABLED", "true")
 	t.Setenv("CHANNELS_LOCAL_ENABLED", "true")
 	t.Setenv("CHANNELS_WEBHOOK_ENABLED", "true")
 	t.Setenv("CHANNELS_TELEGRAM_ENABLED", "true")
 	t.Setenv("TOOLS_MESSAGE_ENABLED", "true")
 	t.Setenv("TOOLS_BROWSER_ENABLED", "true")
 	t.Setenv("TOOLS_NODES_ENABLED", "true")
-	t.Setenv("TOOLS_GATEWAY_ENABLED", "true")
+	t.Setenv("TOOLS_AGENTRUNTIME_ENABLED", "true")
 	t.Setenv("TOOLS_WEB_SEARCH_PROVIDER", "perplexity")
 	t.Setenv("TOOLS_WEB_SEARCH_PERPLEXITY_API_KEY", "px-key")
 	t.Setenv("TOOLS_WEB_SEARCH_CACHE_TTL_SECONDS", "120")
@@ -860,10 +860,10 @@ func TestLoad_ExpandedToolAndGatewayOptionsFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if !cfg.GatewayEnabled || !cfg.ChannelsLocalEnabled || !cfg.ChannelsWebhookEnabled || !cfg.ChannelsTelegramEnabled {
-		t.Fatalf("expected gateway/channel options enabled from env")
+	if !cfg.AgentRuntimeEnabled || !cfg.ChannelsLocalEnabled || !cfg.ChannelsWebhookEnabled || !cfg.ChannelsTelegramEnabled {
+		t.Fatalf("expected agentruntime/channel options enabled from env")
 	}
-	if !cfg.ToolsMessageEnabled || !cfg.ToolsGatewayEnabled {
+	if !cfg.ToolsMessageEnabled || !cfg.ToolsAgentRuntimeEnabled {
 		t.Fatalf("expected tool options enabled from env")
 	}
 	if cfg.ToolsWebSearchProvider != "perplexity" {
@@ -883,45 +883,45 @@ func TestLoad_ExpandedToolAndGatewayOptionsFromEnv(t *testing.T) {
 	}
 }
 
-func TestLoad_GatewayAgentsFromEnv(t *testing.T) {
-	t.Setenv("GATEWAY_DEFAULT_AGENT", "worker")
-	t.Setenv("GATEWAY_AGENTS_JSON", `[{"name":"worker","description":"external worker","command":"sh","args":["-c","cat"],"env":{"WORKER_MODE":"on"},"enabled":true}]`)
+func TestLoad_AgentRuntimeAgentsFromEnv(t *testing.T) {
+	t.Setenv("AGENTRUNTIME_DEFAULT_AGENT", "worker")
+	t.Setenv("AGENTRUNTIME_AGENTS_JSON", `[{"name":"worker","description":"external worker","command":"sh","args":["-c","cat"],"env":{"WORKER_MODE":"on"},"enabled":true}]`)
 
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if cfg.GatewayDefaultAgent != "worker" {
-		t.Fatalf("expected gateway default agent worker, got %q", cfg.GatewayDefaultAgent)
+	if cfg.AgentRuntimeDefaultAgent != "worker" {
+		t.Fatalf("expected agent runtime default agent worker, got %q", cfg.AgentRuntimeDefaultAgent)
 	}
-	if len(cfg.GatewayAgents) != 1 {
-		t.Fatalf("expected 1 gateway agent, got %d", len(cfg.GatewayAgents))
+	if len(cfg.AgentRuntimeAgents) != 1 {
+		t.Fatalf("expected 1 agent runtime agent, got %d", len(cfg.AgentRuntimeAgents))
 	}
-	agent := cfg.GatewayAgents[0]
+	agent := cfg.AgentRuntimeAgents[0]
 	if agent.Name != "worker" {
-		t.Fatalf("unexpected gateway agent name: %q", agent.Name)
+		t.Fatalf("unexpected agent runtime agent name: %q", agent.Name)
 	}
 	if agent.Command != "sh" {
-		t.Fatalf("unexpected gateway agent command: %q", agent.Command)
+		t.Fatalf("unexpected agent runtime agent command: %q", agent.Command)
 	}
 	if len(agent.Args) != 2 || agent.Args[1] != "cat" {
-		t.Fatalf("unexpected gateway agent args: %+v", agent.Args)
+		t.Fatalf("unexpected agent runtime agent args: %+v", agent.Args)
 	}
 	if agent.Env["WORKER_MODE"] != "on" {
-		t.Fatalf("unexpected gateway agent env: %+v", agent.Env)
+		t.Fatalf("unexpected agent runtime agent env: %+v", agent.Env)
 	}
 	if !agent.Enabled {
-		t.Fatalf("expected gateway agent enabled=true")
+		t.Fatalf("expected agent runtime agent enabled=true")
 	}
 }
 
-func TestLoad_GatewayAgentsFromYAML(t *testing.T) {
+func TestLoad_AgentRuntimeAgentsFromYAML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	content := strings.Join([]string{
-		"gateway_enabled: true",
-		"gateway_default_agent: worker",
-		`gateway_agents_json: [{"name":"worker","command":"sh","args":["-c","cat"],"enabled":true}]`,
+		"agentruntime_enabled: true",
+		"agentruntime_default_agent: worker",
+		`agentruntime_agents_json: [{"name":"worker","command":"sh","args":["-c","cat"],"enabled":true}]`,
 	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -931,238 +931,238 @@ func TestLoad_GatewayAgentsFromYAML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if !cfg.GatewayEnabled {
-		t.Fatalf("expected gateway enabled from yaml")
+	if !cfg.AgentRuntimeEnabled {
+		t.Fatalf("expected agent runtime enabled from yaml")
 	}
-	if cfg.GatewayDefaultAgent != "worker" {
-		t.Fatalf("expected gateway default agent worker, got %q", cfg.GatewayDefaultAgent)
+	if cfg.AgentRuntimeDefaultAgent != "worker" {
+		t.Fatalf("expected agent runtime default agent worker, got %q", cfg.AgentRuntimeDefaultAgent)
 	}
-	if len(cfg.GatewayAgents) != 1 || cfg.GatewayAgents[0].Name != "worker" {
-		t.Fatalf("unexpected gateway agents: %+v", cfg.GatewayAgents)
+	if len(cfg.AgentRuntimeAgents) != 1 || cfg.AgentRuntimeAgents[0].Name != "worker" {
+		t.Fatalf("unexpected agent runtime agents: %+v", cfg.AgentRuntimeAgents)
 	}
 }
 
-func TestLoad_GatewayAgentsWatchDefaults(t *testing.T) {
+func TestLoad_AgentRuntimeAgentsWatchDefaults(t *testing.T) {
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if !cfg.GatewayAgentsWatch {
-		t.Fatalf("expected gateway agents watch enabled by default")
+	if !cfg.AgentRuntimeAgentsWatch {
+		t.Fatalf("expected agent runtime agents watch enabled by default")
 	}
-	if cfg.GatewayAgentsWatchDebounceMS <= 0 {
-		t.Fatalf("expected positive gateway agents watch debounce, got %d", cfg.GatewayAgentsWatchDebounceMS)
+	if cfg.AgentRuntimeAgentsWatchDebounceMS <= 0 {
+		t.Fatalf("expected positive agent runtime agents watch debounce, got %d", cfg.AgentRuntimeAgentsWatchDebounceMS)
 	}
 }
 
-func TestLoad_GatewayAgentsWatchFromYAMLAndEnv(t *testing.T) {
+func TestLoad_AgentRuntimeAgentsWatchFromYAMLAndEnv(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	content := strings.Join([]string{
-		"gateway_agents_watch: true",
-		"gateway_agents_watch_debounce_ms: 450",
+		"agentruntime_agents_watch: true",
+		"agentruntime_agents_watch_debounce_ms: 450",
 	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
-	t.Setenv("GATEWAY_AGENTS_WATCH_DEBOUNCE_MS", "120")
+	t.Setenv("AGENTRUNTIME_AGENTS_WATCH_DEBOUNCE_MS", "120")
 
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if !cfg.GatewayAgentsWatch {
-		t.Fatalf("expected gateway agents watch enabled from yaml")
+	if !cfg.AgentRuntimeAgentsWatch {
+		t.Fatalf("expected agent runtime agents watch enabled from yaml")
 	}
-	if cfg.GatewayAgentsWatchDebounceMS != 120 {
-		t.Fatalf("expected env debounce override 120, got %d", cfg.GatewayAgentsWatchDebounceMS)
+	if cfg.AgentRuntimeAgentsWatchDebounceMS != 120 {
+		t.Fatalf("expected env debounce override 120, got %d", cfg.AgentRuntimeAgentsWatchDebounceMS)
 	}
 }
 
-func TestLoad_GatewayPersistenceDefaults(t *testing.T) {
+func TestLoad_AgentRuntimePersistenceDefaults(t *testing.T) {
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if !cfg.GatewayPersistenceEnabled {
-		t.Fatalf("expected gateway persistence enabled by default")
+	if !cfg.AgentRuntimePersistenceEnabled {
+		t.Fatalf("expected agent runtime persistence enabled by default")
 	}
-	if !cfg.GatewayRunsPersistenceEnabled {
-		t.Fatalf("expected gateway runs persistence enabled by default")
+	if !cfg.AgentRuntimeRunsPersistenceEnabled {
+		t.Fatalf("expected agent runtime runs persistence enabled by default")
 	}
-	if !cfg.GatewayChannelsPersistenceEnabled {
-		t.Fatalf("expected gateway channels persistence enabled by default")
+	if !cfg.AgentRuntimeChannelsPersistenceEnabled {
+		t.Fatalf("expected agent runtime channels persistence enabled by default")
 	}
-	if !cfg.GatewayRestoreOnStartup {
-		t.Fatalf("expected gateway restore on startup enabled by default")
+	if !cfg.AgentRuntimeRestoreOnStartup {
+		t.Fatalf("expected agent runtime restore on startup enabled by default")
 	}
-	if cfg.GatewayRunsMaxRecords != 2000 {
-		t.Fatalf("expected gateway runs max records 2000, got %d", cfg.GatewayRunsMaxRecords)
+	if cfg.AgentRuntimeRunsMaxRecords != 2000 {
+		t.Fatalf("expected agent runtime runs max records 2000, got %d", cfg.AgentRuntimeRunsMaxRecords)
 	}
-	if cfg.GatewayChannelsMaxMessagesPerChannel != 500 {
-		t.Fatalf("expected gateway channel max messages 500, got %d", cfg.GatewayChannelsMaxMessagesPerChannel)
+	if cfg.AgentRuntimeChannelsMaxMessagesPerChannel != 500 {
+		t.Fatalf("expected agent runtime channel max messages 500, got %d", cfg.AgentRuntimeChannelsMaxMessagesPerChannel)
 	}
-	if cfg.GatewaySubagentsMaxThreads != 4 {
-		t.Fatalf("expected gateway subagent max threads 4, got %d", cfg.GatewaySubagentsMaxThreads)
+	if cfg.AgentRuntimeSubagentsMaxThreads != 4 {
+		t.Fatalf("expected agent runtime subagent max threads 4, got %d", cfg.AgentRuntimeSubagentsMaxThreads)
 	}
-	if cfg.GatewaySubagentsMaxDepth != 1 {
-		t.Fatalf("expected gateway subagent max depth 1, got %d", cfg.GatewaySubagentsMaxDepth)
+	if cfg.AgentRuntimeSubagentsMaxDepth != 1 {
+		t.Fatalf("expected agent runtime subagent max depth 1, got %d", cfg.AgentRuntimeSubagentsMaxDepth)
 	}
-	expectedDir := filepath.Join(cfg.WorkspaceDir, "_shared", "gateway")
-	if cfg.GatewayPersistenceDir != expectedDir {
-		t.Fatalf("expected gateway persistence dir %q, got %q", expectedDir, cfg.GatewayPersistenceDir)
-	}
-}
-
-func TestLoad_GatewayPersistenceFromYAMLAndEnv(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	content := strings.Join([]string{
-		"workspace_dir: ./tenant-workspace",
-		"gateway_persistence_enabled: true",
-		"gateway_runs_persistence_enabled: true",
-		"gateway_channels_persistence_enabled: true",
-		"gateway_runs_max_records: 1234",
-		"gateway_channels_max_messages_per_channel: 234",
-		"gateway_subagents_max_threads: 6",
-		"gateway_subagents_max_depth: 2",
-		"gateway_persistence_dir: /tmp/yaml-gateway",
-		"gateway_restore_on_startup: true",
-	}, "\n")
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-
-	t.Setenv("GATEWAY_PERSISTENCE_ENABLED", "false")
-	t.Setenv("GATEWAY_RUNS_PERSISTENCE_ENABLED", "false")
-	t.Setenv("GATEWAY_CHANNELS_PERSISTENCE_ENABLED", "false")
-	t.Setenv("GATEWAY_RUNS_MAX_RECORDS", "345")
-	t.Setenv("GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "67")
-	t.Setenv("GATEWAY_SUBAGENTS_MAX_THREADS", "3")
-	t.Setenv("GATEWAY_SUBAGENTS_MAX_DEPTH", "4")
-	t.Setenv("GATEWAY_PERSISTENCE_DIR", "/tmp/env-gateway")
-	t.Setenv("GATEWAY_RESTORE_ON_STARTUP", "false")
-
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-	if cfg.GatewayPersistenceEnabled {
-		t.Fatalf("expected gateway persistence disabled from env")
-	}
-	if cfg.GatewayRunsPersistenceEnabled {
-		t.Fatalf("expected gateway runs persistence disabled from env")
-	}
-	if cfg.GatewayChannelsPersistenceEnabled {
-		t.Fatalf("expected gateway channels persistence disabled from env")
-	}
-	if cfg.GatewayRunsMaxRecords != 345 {
-		t.Fatalf("expected gateway runs max records 345, got %d", cfg.GatewayRunsMaxRecords)
-	}
-	if cfg.GatewayChannelsMaxMessagesPerChannel != 67 {
-		t.Fatalf("expected gateway channels max messages 67, got %d", cfg.GatewayChannelsMaxMessagesPerChannel)
-	}
-	if cfg.GatewaySubagentsMaxThreads != 3 {
-		t.Fatalf("expected gateway subagent max threads 3, got %d", cfg.GatewaySubagentsMaxThreads)
-	}
-	if cfg.GatewaySubagentsMaxDepth != 4 {
-		t.Fatalf("expected gateway subagent max depth 4, got %d", cfg.GatewaySubagentsMaxDepth)
-	}
-	if cfg.GatewayPersistenceDir != "/tmp/env-gateway" {
-		t.Fatalf("expected gateway persistence dir /tmp/env-gateway, got %q", cfg.GatewayPersistenceDir)
-	}
-	if cfg.GatewayRestoreOnStartup {
-		t.Fatalf("expected gateway restore on startup false from env")
+	expectedDir := filepath.Join(cfg.WorkspaceDir, "_shared", "agentruntime")
+	if cfg.AgentRuntimePersistenceDir != expectedDir {
+		t.Fatalf("expected agent runtime persistence dir %q, got %q", expectedDir, cfg.AgentRuntimePersistenceDir)
 	}
 }
 
-func TestLoad_GatewayPersistenceInvalidIntFallback(t *testing.T) {
-	t.Setenv("GATEWAY_RUNS_MAX_RECORDS", "not-a-number")
-	t.Setenv("GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "-1")
-	t.Setenv("GATEWAY_SUBAGENTS_MAX_THREADS", "0")
-	t.Setenv("GATEWAY_SUBAGENTS_MAX_DEPTH", "-1")
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-	if cfg.GatewayRunsMaxRecords != 2000 {
-		t.Fatalf("expected gateway runs max records fallback 2000, got %d", cfg.GatewayRunsMaxRecords)
-	}
-	if cfg.GatewayChannelsMaxMessagesPerChannel != 500 {
-		t.Fatalf("expected gateway channels max messages fallback 500, got %d", cfg.GatewayChannelsMaxMessagesPerChannel)
-	}
-	if cfg.GatewaySubagentsMaxThreads != 4 {
-		t.Fatalf("expected gateway subagent max threads fallback 4, got %d", cfg.GatewaySubagentsMaxThreads)
-	}
-	if cfg.GatewaySubagentsMaxDepth != 1 {
-		t.Fatalf("expected gateway subagent max depth fallback 1, got %d", cfg.GatewaySubagentsMaxDepth)
-	}
-}
-
-func TestLoad_GatewayReportDefaults(t *testing.T) {
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-	if !cfg.GatewayReportSummaryEnabled {
-		t.Fatalf("expected gateway summary report enabled by default")
-	}
-	if cfg.GatewayArchiveEnabled {
-		t.Fatalf("expected gateway archive disabled by default")
-	}
-	if cfg.GatewayArchiveRetentionDays != 30 {
-		t.Fatalf("expected gateway archive retention days 30, got %d", cfg.GatewayArchiveRetentionDays)
-	}
-	if cfg.GatewayArchiveMaxFileBytes != 10485760 {
-		t.Fatalf("expected gateway archive max file bytes 10485760, got %d", cfg.GatewayArchiveMaxFileBytes)
-	}
-	expectedDir := filepath.Join(cfg.WorkspaceDir, "_shared", "gateway", "archive")
-	if cfg.GatewayArchiveDir != expectedDir {
-		t.Fatalf("expected gateway archive dir %q, got %q", expectedDir, cfg.GatewayArchiveDir)
-	}
-}
-
-func TestLoad_GatewayReportFromYAMLAndEnv(t *testing.T) {
+func TestLoad_AgentRuntimePersistenceFromYAMLAndEnv(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	content := strings.Join([]string{
 		"workspace_dir: ./tenant-workspace",
-		"gateway_report_summary_enabled: true",
-		"gateway_archive_enabled: true",
-		"gateway_archive_dir: /tmp/yaml-gateway-archive",
-		"gateway_archive_retention_days: 9",
-		"gateway_archive_max_file_bytes: 2048",
+		"agentruntime_persistence_enabled: true",
+		"agentruntime_runs_persistence_enabled: true",
+		"agentruntime_channels_persistence_enabled: true",
+		"agentruntime_runs_max_records: 1234",
+		"agentruntime_channels_max_messages_per_channel: 234",
+		"agentruntime_subagents_max_threads: 6",
+		"agentruntime_subagents_max_depth: 2",
+		"agentruntime_persistence_dir: /tmp/yaml-agentruntime",
+		"agentruntime_restore_on_startup: true",
 	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
-	t.Setenv("GATEWAY_REPORT_SUMMARY_ENABLED", "false")
-	t.Setenv("GATEWAY_ARCHIVE_ENABLED", "true")
-	t.Setenv("GATEWAY_ARCHIVE_DIR", "/tmp/env-gateway-archive")
-	t.Setenv("GATEWAY_ARCHIVE_RETENTION_DAYS", "12")
-	t.Setenv("GATEWAY_ARCHIVE_MAX_FILE_BYTES", "4096")
+	t.Setenv("AGENTRUNTIME_PERSISTENCE_ENABLED", "false")
+	t.Setenv("AGENTRUNTIME_RUNS_PERSISTENCE_ENABLED", "false")
+	t.Setenv("AGENTRUNTIME_CHANNELS_PERSISTENCE_ENABLED", "false")
+	t.Setenv("AGENTRUNTIME_RUNS_MAX_RECORDS", "345")
+	t.Setenv("AGENTRUNTIME_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "67")
+	t.Setenv("AGENTRUNTIME_SUBAGENTS_MAX_THREADS", "3")
+	t.Setenv("AGENTRUNTIME_SUBAGENTS_MAX_DEPTH", "4")
+	t.Setenv("AGENTRUNTIME_PERSISTENCE_DIR", "/tmp/env-agentruntime")
+	t.Setenv("AGENTRUNTIME_RESTORE_ON_STARTUP", "false")
 
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if cfg.GatewayReportSummaryEnabled {
-		t.Fatalf("expected gateway summary report disabled from env")
+	if cfg.AgentRuntimePersistenceEnabled {
+		t.Fatalf("expected agent runtime persistence disabled from env")
 	}
-	if !cfg.GatewayArchiveEnabled {
-		t.Fatalf("expected gateway archive enabled from env")
+	if cfg.AgentRuntimeRunsPersistenceEnabled {
+		t.Fatalf("expected agent runtime runs persistence disabled from env")
 	}
-	if cfg.GatewayArchiveDir != "/tmp/env-gateway-archive" {
-		t.Fatalf("expected env archive dir, got %q", cfg.GatewayArchiveDir)
+	if cfg.AgentRuntimeChannelsPersistenceEnabled {
+		t.Fatalf("expected agent runtime channels persistence disabled from env")
 	}
-	if cfg.GatewayArchiveRetentionDays != 12 {
-		t.Fatalf("expected env archive retention 12, got %d", cfg.GatewayArchiveRetentionDays)
+	if cfg.AgentRuntimeRunsMaxRecords != 345 {
+		t.Fatalf("expected agent runtime runs max records 345, got %d", cfg.AgentRuntimeRunsMaxRecords)
 	}
-	if cfg.GatewayArchiveMaxFileBytes != 4096 {
-		t.Fatalf("expected env archive max file bytes 4096, got %d", cfg.GatewayArchiveMaxFileBytes)
+	if cfg.AgentRuntimeChannelsMaxMessagesPerChannel != 67 {
+		t.Fatalf("expected agent runtime channels max messages 67, got %d", cfg.AgentRuntimeChannelsMaxMessagesPerChannel)
+	}
+	if cfg.AgentRuntimeSubagentsMaxThreads != 3 {
+		t.Fatalf("expected agent runtime subagent max threads 3, got %d", cfg.AgentRuntimeSubagentsMaxThreads)
+	}
+	if cfg.AgentRuntimeSubagentsMaxDepth != 4 {
+		t.Fatalf("expected agent runtime subagent max depth 4, got %d", cfg.AgentRuntimeSubagentsMaxDepth)
+	}
+	if cfg.AgentRuntimePersistenceDir != "/tmp/env-agentruntime" {
+		t.Fatalf("expected agent runtime persistence dir /tmp/env-agentruntime, got %q", cfg.AgentRuntimePersistenceDir)
+	}
+	if cfg.AgentRuntimeRestoreOnStartup {
+		t.Fatalf("expected agent runtime restore on startup false from env")
+	}
+}
+
+func TestLoad_AgentRuntimePersistenceInvalidIntFallback(t *testing.T) {
+	t.Setenv("AGENTRUNTIME_RUNS_MAX_RECORDS", "not-a-number")
+	t.Setenv("AGENTRUNTIME_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "-1")
+	t.Setenv("AGENTRUNTIME_SUBAGENTS_MAX_THREADS", "0")
+	t.Setenv("AGENTRUNTIME_SUBAGENTS_MAX_DEPTH", "-1")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.AgentRuntimeRunsMaxRecords != 2000 {
+		t.Fatalf("expected agent runtime runs max records fallback 2000, got %d", cfg.AgentRuntimeRunsMaxRecords)
+	}
+	if cfg.AgentRuntimeChannelsMaxMessagesPerChannel != 500 {
+		t.Fatalf("expected agent runtime channels max messages fallback 500, got %d", cfg.AgentRuntimeChannelsMaxMessagesPerChannel)
+	}
+	if cfg.AgentRuntimeSubagentsMaxThreads != 4 {
+		t.Fatalf("expected agent runtime subagent max threads fallback 4, got %d", cfg.AgentRuntimeSubagentsMaxThreads)
+	}
+	if cfg.AgentRuntimeSubagentsMaxDepth != 1 {
+		t.Fatalf("expected agent runtime subagent max depth fallback 1, got %d", cfg.AgentRuntimeSubagentsMaxDepth)
+	}
+}
+
+func TestLoad_AgentRuntimeReportDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.AgentRuntimeReportSummaryEnabled {
+		t.Fatalf("expected agent runtime summary report enabled by default")
+	}
+	if cfg.AgentRuntimeArchiveEnabled {
+		t.Fatalf("expected agent runtime archive disabled by default")
+	}
+	if cfg.AgentRuntimeArchiveRetentionDays != 30 {
+		t.Fatalf("expected agent runtime archive retention days 30, got %d", cfg.AgentRuntimeArchiveRetentionDays)
+	}
+	if cfg.AgentRuntimeArchiveMaxFileBytes != 10485760 {
+		t.Fatalf("expected agent runtime archive max file bytes 10485760, got %d", cfg.AgentRuntimeArchiveMaxFileBytes)
+	}
+	expectedDir := filepath.Join(cfg.WorkspaceDir, "_shared", "agentruntime", "archive")
+	if cfg.AgentRuntimeArchiveDir != expectedDir {
+		t.Fatalf("expected agent runtime archive dir %q, got %q", expectedDir, cfg.AgentRuntimeArchiveDir)
+	}
+}
+
+func TestLoad_AgentRuntimeReportFromYAMLAndEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := strings.Join([]string{
+		"workspace_dir: ./tenant-workspace",
+		"agentruntime_report_summary_enabled: true",
+		"agentruntime_archive_enabled: true",
+		"agentruntime_archive_dir: /tmp/yaml-agentruntime-archive",
+		"agentruntime_archive_retention_days: 9",
+		"agentruntime_archive_max_file_bytes: 2048",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("AGENTRUNTIME_REPORT_SUMMARY_ENABLED", "false")
+	t.Setenv("AGENTRUNTIME_ARCHIVE_ENABLED", "true")
+	t.Setenv("AGENTRUNTIME_ARCHIVE_DIR", "/tmp/env-agentruntime-archive")
+	t.Setenv("AGENTRUNTIME_ARCHIVE_RETENTION_DAYS", "12")
+	t.Setenv("AGENTRUNTIME_ARCHIVE_MAX_FILE_BYTES", "4096")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.AgentRuntimeReportSummaryEnabled {
+		t.Fatalf("expected agent runtime summary report disabled from env")
+	}
+	if !cfg.AgentRuntimeArchiveEnabled {
+		t.Fatalf("expected agent runtime archive enabled from env")
+	}
+	if cfg.AgentRuntimeArchiveDir != "/tmp/env-agentruntime-archive" {
+		t.Fatalf("expected env archive dir, got %q", cfg.AgentRuntimeArchiveDir)
+	}
+	if cfg.AgentRuntimeArchiveRetentionDays != 12 {
+		t.Fatalf("expected env archive retention 12, got %d", cfg.AgentRuntimeArchiveRetentionDays)
+	}
+	if cfg.AgentRuntimeArchiveMaxFileBytes != 4096 {
+		t.Fatalf("expected env archive max file bytes 4096, got %d", cfg.AgentRuntimeArchiveMaxFileBytes)
 	}
 }
 
@@ -1501,8 +1501,8 @@ func TestApplyDefaults_UsesSharedDefaults(t *testing.T) {
 	if cfg.MemoryEmbedDimensions != 768 {
 		t.Fatalf("expected memory embed dimensions default 768, got %d", cfg.MemoryEmbedDimensions)
 	}
-	if cfg.GatewayRunsMaxRecords != 2000 {
-		t.Fatalf("expected gateway runs max records default 2000, got %d", cfg.GatewayRunsMaxRecords)
+	if cfg.AgentRuntimeRunsMaxRecords != 2000 {
+		t.Fatalf("expected agent runtime runs max records default 2000, got %d", cfg.AgentRuntimeRunsMaxRecords)
 	}
 }
 

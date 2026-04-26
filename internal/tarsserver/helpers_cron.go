@@ -34,7 +34,7 @@ type cronExternalReminderSender func(ctx context.Context, job cron.Job, reminder
 func newCronJobRunner(
 	workspaceDir string,
 	store *session.Store,
-	runPrompt gatewayPromptRunner,
+	runPrompt agentRuntimePromptRunner,
 	logger zerolog.Logger,
 ) func(ctx context.Context, job cron.Job) (string, error) {
 	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil, "", 0, nil, nil)
@@ -43,7 +43,7 @@ func newCronJobRunner(
 func newCronJobRunnerWithNotify(
 	workspaceDir string,
 	store *session.Store,
-	runPrompt gatewayPromptRunner,
+	runPrompt agentRuntimePromptRunner,
 	logger zerolog.Logger,
 	emit func(ctx context.Context, evt notificationEvent),
 	mainSessionID string,

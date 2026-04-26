@@ -30,7 +30,7 @@ type TierResolution struct {
 //
 // The intended usage pattern is: construct exactly one Router at server
 // startup with three pre-wrapped tier clients; hand it to every subsystem
-// (chat, pulse, reflection, gateway, compaction); callers ask for a client
+// (chat, pulse, reflection, agent runtime, compaction); callers ask for a client
 // by Role and remain oblivious to which tier or model actually served them.
 type Router interface {
 	// ClientFor returns the client for the given role, applying the

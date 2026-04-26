@@ -21,7 +21,7 @@ type runtimeDeps struct {
 	llmRouter            llm.Router
 	usageTracker         *usage.Tracker
 	runPrompt            func(ctx context.Context, runLabel string, prompt string) (string, error)
-	runPromptWithTools   gatewayPromptRunner
+	runPromptWithTools   agentRuntimePromptRunner
 }
 
 type runtimeDepsError struct {

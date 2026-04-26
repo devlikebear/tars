@@ -34,8 +34,8 @@ func (r *Runtime) SubscribeRunEvents(runID string) (<-chan RunEvent, func()) {
 }
 
 func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor AgentExecutor) (string, error) {
-	if !r.opts.GatewayConsensusEnabled {
-		return "", fmt.Errorf("consensus is disabled (gateway_consensus_enabled=false)")
+	if !r.opts.AgentRuntimeConsensusEnabled {
+		return "", fmt.Errorf("consensus is disabled (agentruntime_consensus_enabled=false)")
 	}
 	spec := state.req.Consensus
 	if spec == nil {
@@ -45,10 +45,10 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 	if len(variants) == 0 {
 		return "", fmt.Errorf("consensus requires at least one variant")
 	}
-	if len(variants) > r.opts.GatewayConsensusMaxFanout {
-		return "", fmt.Errorf("consensus fanout %d exceeds gateway_consensus_max_fanout=%d", len(variants), r.opts.GatewayConsensusMaxFanout)
+	if len(variants) > r.opts.AgentRuntimeConsensusMaxFanout {
+		return "", fmt.Errorf("consensus fanout %d exceeds agentruntime_consensus_max_fanout=%d", len(variants), r.opts.AgentRuntimeConsensusMaxFanout)
 	}
-	allowedAliases := sanitizeStringList(r.opts.GatewayConsensusAllowedAliases)
+	allowedAliases := sanitizeStringList(r.opts.AgentRuntimeConsensusAllowedAliases)
 	resolved := make([]ResolvedProviderOverride, 0, len(variants))
 	for _, variant := range variants {
 		if err := validateConsensusAlias(variant, allowedAliases); err != nil {
@@ -67,8 +67,8 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 	basePromptTokens := estimateTextTokens(state.run.Prompt)
 	outputBudgetPerVariant := maxConsensusInt(256, minInt(1024, basePromptTokens))
 	estimatedTokens := len(resolved)*(basePromptTokens+outputBudgetPerVariant) + (basePromptTokens + outputBudgetPerVariant)
-	if r.opts.GatewayConsensusBudgetTokens > 0 && estimatedTokens > r.opts.GatewayConsensusBudgetTokens {
-		return "", fmt.Errorf("consensus_budget_exceeded: %d > %d", estimatedTokens, r.opts.GatewayConsensusBudgetTokens)
+	if r.opts.AgentRuntimeConsensusBudgetTokens > 0 && estimatedTokens > r.opts.AgentRuntimeConsensusBudgetTokens {
+		return "", fmt.Errorf("consensus_budget_exceeded: %d > %d", estimatedTokens, r.opts.AgentRuntimeConsensusBudgetTokens)
 	}
 	estimatedUSD := 0.0
 	for _, variant := range resolved {
@@ -77,17 +77,17 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 	if len(resolved) > 0 {
 		estimatedUSD += r.estimateCostUSD(resolved[0].Kind, resolved[0].Model, basePromptTokens, outputBudgetPerVariant)
 	}
-	if r.opts.GatewayConsensusBudgetUSD > 0 && estimatedUSD > r.opts.GatewayConsensusBudgetUSD {
-		return "", fmt.Errorf("consensus_usd_budget_exceeded: %.4f > %.4f", estimatedUSD, r.opts.GatewayConsensusBudgetUSD)
+	if r.opts.AgentRuntimeConsensusBudgetUSD > 0 && estimatedUSD > r.opts.AgentRuntimeConsensusBudgetUSD {
+		return "", fmt.Errorf("consensus_usd_budget_exceeded: %.4f > %.4f", estimatedUSD, r.opts.AgentRuntimeConsensusBudgetUSD)
 	}
 	state.run.ConsensusBudgetUSD = estimatedUSD
-	r.publishRunEvent(state.run.ID, RunEvent{Type: "consensus_planned", RunID: state.run.ID, VariantCount: len(resolved), TokenBudget: r.opts.GatewayConsensusBudgetTokens, CostUSDEstimate: estimatedUSD})
+	r.publishRunEvent(state.run.ID, RunEvent{Type: "consensus_planned", RunID: state.run.ID, VariantCount: len(resolved), TokenBudget: r.opts.AgentRuntimeConsensusBudgetTokens, CostUSDEstimate: estimatedUSD})
 
 	if err := r.consensusRuns.Acquire(ctx); err != nil {
 		return "", err
 	}
 	defer r.consensusRuns.Release()
-	consensusCtx, cancel := context.WithTimeout(ctx, time.Duration(r.opts.GatewayConsensusTimeoutSeconds)*time.Second)
+	consensusCtx, cancel := context.WithTimeout(ctx, time.Duration(r.opts.AgentRuntimeConsensusTimeoutSeconds)*time.Second)
 	defer cancel()
 
 	strategy := strings.TrimSpace(spec.Strategy)
@@ -131,7 +131,7 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 			records[idx] = record
 			mu.Unlock()
 			r.publishRunEvent(state.run.ID, RunEvent{Type: "consensus_variant_finished", RunID: state.run.ID, VariantIdx: idx, Alias: resolvedVariant.Alias, Kind: resolvedVariant.Kind, Model: resolvedVariant.Model, TokensIn: tokensIn, TokensOut: tokensOut, CostUSDActual: record.CostUSD, Error: record.Error, Timestamp: record.FinishedAt})
-			if budget := r.opts.GatewayConsensusBudgetTokens; budget > 0 && int(tokenSum.Load()) > budget {
+			if budget := r.opts.AgentRuntimeConsensusBudgetTokens; budget > 0 && int(tokenSum.Load()) > budget {
 				cancel()
 			}
 		}()
@@ -139,7 +139,7 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 	wg.Wait()
 	state.run.ConsensusVariants = records
 	if err := consensusCtx.Err(); err != nil {
-		if budget := r.opts.GatewayConsensusBudgetTokens; budget > 0 && int(tokenSum.Load()) > budget {
+		if budget := r.opts.AgentRuntimeConsensusBudgetTokens; budget > 0 && int(tokenSum.Load()) > budget {
 			return "", fmt.Errorf("consensus_budget_exceeded: %d > %d", tokenSum.Load(), budget)
 		}
 		return "", err
@@ -174,7 +174,7 @@ func (r *Runtime) executeVariantPrompt(ctx context.Context, state *runState, exe
 	execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{Source: "agent_run", SessionID: state.run.SessionID, RunID: state.run.ID})
 	execCtx = llm.WithSelectionMetadata(execCtx, llm.SelectionMetadata{SessionID: state.run.SessionID, RunID: state.run.ID, AgentName: state.run.Agent, FlowID: state.run.FlowID, StepID: state.run.StepID, Provider: resolved.Kind, Model: resolved.Model, Tier: llm.Tier(resolved.Tier), Source: "task"})
-	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, Prompt: state.run.Prompt, AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, gatewayAgentInfo(executor).ToolsAllow), Tier: resolved.Tier, ProviderOverride: &override})
+	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, Prompt: state.run.Prompt, AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, agentRuntimeAgentInfo(executor).ToolsAllow), Tier: resolved.Tier, ProviderOverride: &override})
 }
 
 func (r *Runtime) aggregateConsensus(ctx context.Context, state *runState, executor AgentExecutor, strategy string, successes []ConsensusVariantRecord) (string, error) {
@@ -195,7 +195,7 @@ func (r *Runtime) aggregateConsensus(ctx context.Context, state *runState, execu
 	execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{Source: "agent_run", SessionID: state.run.SessionID, RunID: state.run.ID})
 	execCtx = llm.WithSelectionMetadata(execCtx, llm.SelectionMetadata{SessionID: state.run.SessionID, RunID: state.run.ID, AgentName: state.run.Agent, FlowID: state.run.FlowID, StepID: state.run.StepID, Tier: llm.Tier("light"), Source: "task"})
-	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, Prompt: b.String(), AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, gatewayAgentInfo(executor).ToolsAllow), Tier: "light"})
+	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, Prompt: b.String(), AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, agentRuntimeAgentInfo(executor).ToolsAllow), Tier: "light"})
 }
 
 func sanitizeConsensusVariants(variants []ProviderOverride) []ProviderOverride {

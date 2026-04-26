@@ -11,21 +11,21 @@ import (
 	"github.com/devlikebear/tars/internal/tool"
 )
 
-func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, []string, error) {
-	files, err := findWorkspaceGatewayAgentFiles(workspaceDir)
+func loadWorkspaceAgentRuntimeAgents(workspaceDir string) ([]workspaceAgentRuntimeAgent, []string, error) {
+	files, err := findWorkspaceAgentRuntimeAgentFiles(workspaceDir)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	knownTools := knownGatewayPromptTools(strings.TrimSpace(workspaceDir))
-	loaded := make([]workspaceGatewayAgent, 0, len(files))
+	knownTools := knownAgentRuntimePromptTools(strings.TrimSpace(workspaceDir))
+	loaded := make([]workspaceAgentRuntimeAgent, 0, len(files))
 	diagnostics := make([]string, 0)
 	for _, path := range files {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
-		agent, agentDiagnostics, ok, err := buildWorkspaceGatewayAgent(path, string(raw), knownTools)
+		agent, agentDiagnostics, ok, err := buildWorkspaceAgentRuntimeAgent(path, string(raw), knownTools)
 		diagnostics = append(diagnostics, agentDiagnostics...)
 		if err != nil {
 			return nil, nil, err
@@ -36,7 +36,7 @@ func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, [
 	}
 
 	seen := map[string]struct{}{}
-	out := make([]workspaceGatewayAgent, 0, len(loaded))
+	out := make([]workspaceAgentRuntimeAgent, 0, len(loaded))
 	for _, item := range loaded {
 		key := strings.ToLower(strings.TrimSpace(item.Name))
 		if key == "" {
@@ -52,7 +52,7 @@ func loadWorkspaceGatewayAgents(workspaceDir string) ([]workspaceGatewayAgent, [
 	return out, diagnostics, nil
 }
 
-func findWorkspaceGatewayAgentFiles(workspaceDir string) ([]string, error) {
+func findWorkspaceAgentRuntimeAgentFiles(workspaceDir string) ([]string, error) {
 	base := strings.TrimSpace(workspaceDir)
 	if base == "" {
 		return []string{}, nil
@@ -88,48 +88,48 @@ func findWorkspaceGatewayAgentFiles(workspaceDir string) ([]string, error) {
 	return files, nil
 }
 
-func buildWorkspaceGatewayAgent(path, raw string, knownTools map[string]struct{}) (workspaceGatewayAgent, []string, bool, error) {
-	meta, body, err := parseWorkspaceGatewayAgentDocument(raw)
+func buildWorkspaceAgentRuntimeAgent(path, raw string, knownTools map[string]struct{}) (workspaceAgentRuntimeAgent, []string, bool, error) {
+	meta, body, err := parseWorkspaceAgentRuntimeAgentDocument(raw)
 	if err != nil {
-		return workspaceGatewayAgent{}, []string{fmt.Sprintf("skip %s: invalid frontmatter: %v", path, err)}, false, nil
+		return workspaceAgentRuntimeAgent{}, []string{fmt.Sprintf("skip %s: invalid frontmatter: %v", path, err)}, false, nil
 	}
 
 	name := strings.TrimSpace(meta.Name)
 	if name == "" {
 		name = strings.TrimSpace(filepath.Base(filepath.Dir(path)))
 	}
-	if !isValidGatewayAgentName(name) {
-		return workspaceGatewayAgent{}, []string{fmt.Sprintf("skip %s: invalid agent name %q", path, name)}, false, nil
+	if !isValidAgentRuntimeAgentName(name) {
+		return workspaceAgentRuntimeAgent{}, []string{fmt.Sprintf("skip %s: invalid agent name %q", path, name)}, false, nil
 	}
 
 	prompt := strings.TrimSpace(body)
 	if prompt == "" {
-		return workspaceGatewayAgent{}, []string{fmt.Sprintf("skip %s: empty prompt body", path)}, false, nil
+		return workspaceAgentRuntimeAgent{}, []string{fmt.Sprintf("skip %s: empty prompt body", path)}, false, nil
 	}
 
 	description := strings.TrimSpace(meta.Description)
 	if description == "" {
-		description = inferGatewayAgentDescription(prompt)
+		description = inferAgentRuntimeAgentDescription(prompt)
 	}
 	if description == "" {
 		description = "Workspace markdown sub-agent"
 	}
 
-	policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsDenyGroups, toolsAllowPatterns, diagnostics, ok := buildWorkspaceGatewayAgentPolicy(name, meta, knownTools)
+	policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsDenyGroups, toolsAllowPatterns, diagnostics, ok := buildWorkspaceAgentRuntimeAgentPolicy(name, meta, knownTools)
 	if !ok {
-		return workspaceGatewayAgent{}, diagnostics, false, nil
+		return workspaceAgentRuntimeAgent{}, diagnostics, false, nil
 	}
 
-	sessionRoutingMode := normalizeGatewaySessionRoutingMode(meta.SessionRoutingMode)
+	sessionRoutingMode := normalizeAgentRuntimeSessionRoutingMode(meta.SessionRoutingMode)
 	sessionFixedID := strings.TrimSpace(meta.SessionFixedID)
 	if sessionRoutingMode == "fixed" && sessionFixedID == "" {
 		diagnostics = append(diagnostics, fmt.Sprintf("skip agent %s: session_routing_mode fixed requires session_fixed_id", name))
-		return workspaceGatewayAgent{}, diagnostics, false, nil
+		return workspaceAgentRuntimeAgent{}, diagnostics, false, nil
 	}
 
 	tier := strings.ToLower(strings.TrimSpace(meta.Tier))
 
-	return workspaceGatewayAgent{
+	return workspaceAgentRuntimeAgent{
 		Name:               name,
 		Description:        description,
 		Prompt:             prompt,
@@ -148,9 +148,9 @@ func buildWorkspaceGatewayAgent(path, raw string, knownTools map[string]struct{}
 	}, diagnostics, true, nil
 }
 
-func buildWorkspaceGatewayAgentPolicy(
+func buildWorkspaceAgentRuntimeAgentPolicy(
 	name string,
-	meta workspaceGatewayAgentFrontmatter,
+	meta workspaceAgentRuntimeAgentFrontmatter,
 	knownTools map[string]struct{},
 ) (string, []string, []string, string, []string, []string, []string, []string, bool) {
 	policyMode := "full"
@@ -287,7 +287,7 @@ func buildWorkspaceGatewayAgentPolicy(
 	return policyMode, toolsAllow, toolsDeny, toolsRiskMax, toolsAllowGroups, toolsDenyGroups, toolsAllowPatterns, diagnostics, true
 }
 
-func isValidGatewayAgentName(name string) bool {
+func isValidAgentRuntimeAgentName(name string) bool {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
 		return false
@@ -306,7 +306,7 @@ func isValidGatewayAgentName(name string) bool {
 	return true
 }
 
-func inferGatewayAgentDescription(prompt string) string {
+func inferAgentRuntimeAgentDescription(prompt string) string {
 	lines := strings.Split(strings.ReplaceAll(prompt, "\r\n", "\n"), "\n")
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)

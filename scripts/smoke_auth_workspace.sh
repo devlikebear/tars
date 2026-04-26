@@ -31,14 +31,14 @@ echo "[3/5] user blocked on admin endpoint"
 user_status="$(curl -sS -o /tmp/tars_smoke_user_reload.json -w '%{http_code}' \
   -X POST \
   -H "Authorization: Bearer ${USER_TOKEN}" \
-  "${SERVER_URL}/v1/gateway/reload")"
+  "${SERVER_URL}/v1/agentruntime/reload")"
 [[ "${user_status}" == "403" ]]
 
 echo "[4/5] admin allowed on admin endpoint"
 admin_status="$(curl -sS -o /tmp/tars_smoke_admin_reload.json -w '%{http_code}' \
   -X POST \
   -H "Authorization: Bearer ${ADMIN_TOKEN}" \
-  "${SERVER_URL}/v1/gateway/reload")"
+  "${SERVER_URL}/v1/agentruntime/reload")"
 [[ "${admin_status}" == "200" ]]
 
 echo "[5/5] status has no workspace_id"

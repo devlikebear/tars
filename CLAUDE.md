@@ -46,15 +46,15 @@ cd frontend/console && npm run check   # svelte-check + tsc
 
 | Package | Purpose |
 |---------|---------|
-| `gateway` | Agent execution platform: runtime state machine, multi-threaded subagents (max 4), run persistence in `workspace/_shared/gateway/` |
+| `agentruntime` | Agent execution platform: runtime state machine, multi-threaded subagents (max 4), run persistence in `workspace/_shared/agentruntime/` |
 | `session` | File-based chat sessions: index + transcripts in `workspace/sessions/`. Kinds: `main` (user-visible), `worker` (hidden) |
 | `cron` | Tick-based scheduler (30s default). Supports `@at` (one-time) and cron expressions. Run history capped at 50/job |
-| `pulse` | System-surface watchdog (1-min tick). Scans cron failures, stuck gateway runs, disk pressure, telegram delivery failures, reflection health. LLM classifies via `pulse_decide` tool → ignore / notify / autofix. See **System Surface** below. |
+| `pulse` | System-surface watchdog (1-min tick). Scans cron failures, stuck agent runtime runs, disk pressure, telegram delivery failures, reflection health. LLM classifies via `pulse_decide` tool → ignore / notify / autofix. See **System Surface** below. |
 | `reflection` | System-surface nightly batch (sleep-window tick, default 02:00-05:00). Runs memory cleanup (experience extraction + knowledge-base compilation, formerly per-turn) and KB cleanup (remove empty sessions). State satisfies `pulse.ReflectionHealthSource`. See **System Surface** below. |
 | `ops` | System health (disk/processes), cleanup planning with approval workflow. Consumed by pulse via narrow Go interfaces — no user-facing LLM tool wrappers (see **System Surface**). |
 | `llm` | Provider abstraction (anthropic, openai, openai-codex, gemini, gemini-native, claude-code-cli) + 3-tier `Router`. Router binds heavy/standard/light via `config.ResolveAllLLMTiers`. See **LLM Provider Pool** below. |
 | `memory` | Semantic memory: Gemini embeddings, cosine similarity search, experience/compaction indexing, JSONL entries |
-| `tool` | Built-in agent tools: file ops, exec, web fetch/search, gateway, telegram, memory. `tool.Registry` now has `RegistryScope` (user/pulse/reflection) — scope-forbidden prefixes panic at Register time. |
+| `tool` | Built-in agent tools: file ops, exec, web fetch/search, agent runtime, telegram, memory. `tool.Registry` now has `RegistryScope` (user/pulse/reflection) — scope-forbidden prefixes panic at Register time. |
 | `serverauth` | Bearer token auth with SHA256, three token tiers (legacy/user/admin), loopback bypass |
 | `config` | YAML → env var override → defaults. 60+ config fields across Runtime/API/LLM/Memory/Usage sections |
 | `mcp` | Model Context Protocol client for external tool servers |
@@ -63,7 +63,7 @@ cd frontend/console && npm run check   # svelte-check + tsc
 **System Surface (pulse + reflection) vs User Surface (chat + agents):**
 - TARS is split into two isolated tool-registry surfaces. User-facing code (chat sessions, agent runs) uses `RegistryScopeUser`; background maintenance (`pulse`, and later `reflection`) uses its own scope.
 - `RegistryScopeUser` forbids tool-name prefixes `ops_`, `pulse_`, `reflection_`. Any attempt to register such a tool on a user registry panics — this is a wiring-time guarantee, not a runtime condition.
-- Pulse does **not** consume user-facing tool wrappers. It reads `internal/ops`, `internal/cron`, `internal/gateway`, and the telegram delivery counter directly through narrow Go interfaces (`CronJobLister`, `GatewayRunLister`, `DiskStatProvider`, `DeliveryFailureCounter`).
+- Pulse does **not** consume user-facing tool wrappers. It reads `internal/ops`, `internal/cron`, `internal/agentruntime`, and the telegram delivery counter directly through narrow Go interfaces (`CronJobLister`, `AgentRuntimeRunLister`, `DiskStatProvider`, `DeliveryFailureCounter`).
 - Pulse's LLM is a classifier only: it may call exactly one tool (`pulse_decide`) to return `{action, severity, title, summary, autofix_name}`. Actions (notify / autofix) execute deterministically in Go.
 - Pulse policy lives in config (`pulse_enabled`, `pulse_interval`, thresholds, autofix allowlist, min severity). There is no `PULSE.md` policy file — "policy is config, mechanism is code".
 - Autofix whitelist (Phase 1): `compress_old_logs`, `cleanup_stale_tmp`. New autofixes require a Go implementation in `internal/pulse/autofix/` AND an entry in `pulse_allowed_autofixes` — the intersection is what the decider can invoke.
@@ -87,7 +87,7 @@ cd frontend/console && npm run check   # svelte-check + tsc
 - **Builtin Go plugins were removed entirely (RF-007/009).** The `BuiltinPlugin` interface, `RegisterBuiltin`/`BuiltinPlugins`, `extensions.Manager.initBuiltinPlugins`, `CollectHTTPHandlers`, and `internal/browserplugin` (the only consumer) were deleted. External plugins **cannot** register HTTP routes — there is no plugin HTTP surface. Plugin manifests can still declare `mcp_servers` but only after the operator opts in via `plugins_allow_mcp_servers=true` (default false).
 - **Default pattern: skill (`.md`) + companion CLI, invoked via the builtin `bash` tool.** The skill's YAML frontmatter declares `recommended_tools: [bash]`; its body tells the LLM to shell out to a co-installed CLI (Python/TypeScript/shell) that wraps the real work. Tool descriptions stay out of the system prompt — the CLI's interface is only loaded into context when the skill itself is invoked.
 - **Where new skills + CLIs live**: the external [`devlikebear/tars-skills`](https://github.com/devlikebear/tars-skills) repo, installed into a TARS workspace via `tars skill install <name>` / `tars plugin install <name>` / `tars mcp install <name>`. Do not add domain skills/plugins/scripts to this (TARS core) repo. The `daily-briefing` skill (`SKILL.md` + `briefing.sh`) is the canonical template.
-- **The current `internal/tool` surface is the only built-in tool surface** (filesystem ops, web search, memory, gateway, telegram delivery, etc.) — infrastructure every session needs regardless of skill choice. Extending that surface should be rare and justified by universal use, not domain-specific need.
+- **The current `internal/tool` surface is the only built-in tool surface** (filesystem ops, web search, memory, agent runtime, telegram delivery, etc.) — infrastructure every session needs regardless of skill choice. Extending that surface should be rare and justified by universal use, not domain-specific need.
 - **Prior incident**: the `internal/project/*` system (#15-#259, removed in #291-#347), the short-lived dogfooding plugins on `claude/interesting-herschel-a72794`, and `internal/browserplugin` (removed in RF-007) all ballooned the prompt before being ripped out. Adopt the skill+CLI path by default.
 
 **Chat Memory System** (`internal/tarsserver` + `internal/memory` + `internal/prompt`):

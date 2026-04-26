@@ -16,7 +16,7 @@ import (
 func TestSubagentsOrchestrateTool_ExecutesParallelThenSequentialSteps(t *testing.T) {
 	started := make(chan string, 3)
 	releaseResearch := make(chan struct{})
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, allowedTools []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, allowedTools []string, _ string) (string, error) {
 		if len(allowedTools) == 0 {
 			t.Fatalf("expected explorer allowlist to be forwarded")
 		}
@@ -143,7 +143,7 @@ func TestSubagentsOrchestrateTool_ExecutesParallelThenSequentialSteps(t *testing
 }
 
 func TestSubagentsOrchestrateTool_RejectsParallelDependencyWithinSameStep(t *testing.T) {
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 
@@ -177,7 +177,7 @@ func TestSubagentsOrchestrateTool_RejectsParallelDependencyWithinSameStep(t *tes
 }
 
 func TestSubagentsOrchestrateTool_RejectsIncompletePlaceholderReference(t *testing.T) {
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 
@@ -210,7 +210,7 @@ func TestSubagentsOrchestrateTool_RejectsIncompletePlaceholderReference(t *testi
 }
 
 func TestSubagentsOrchestrateTool_CancelsSpawnedRunsWhenParallelSpawnFails(t *testing.T) {
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(ctx context.Context, _ string, _ string, _ []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(ctx context.Context, _ string, _ string, _ []string, _ string) (string, error) {
 		<-ctx.Done()
 		return "", ctx.Err()
 	})
@@ -288,7 +288,7 @@ func TestSubagentsOrchestrateTool_CancelsSpawnedRunsWhenParallelSpawnFails(t *te
 
 func TestSubagentsOrchestrateTool_StopsSequentialStepAfterFailure(t *testing.T) {
 	started := []string{}
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		started = append(started, prompt)
 		if prompt == "inspect backend" {
 			return "", errors.New("backend failed")

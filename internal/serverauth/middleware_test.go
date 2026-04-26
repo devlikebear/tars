@@ -174,14 +174,14 @@ func TestMiddleware_AdminPathRejectsUserToken(t *testing.T) {
 		Mode:        ModeRequired,
 		UserToken:   "user-token",
 		AdminToken:  "admin-token",
-		AdminPaths:  []string{"/v1/gateway/reload"},
+		AdminPaths:  []string{"/v1/agentruntime/reload"},
 		BearerToken: "",
 	}, io.Discard)
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/reload", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("Authorization", "Bearer user-token")
 	rec := httptest.NewRecorder()
@@ -204,14 +204,14 @@ func TestMiddleware_AdminPathAllowsAdminToken(t *testing.T) {
 		Mode:        ModeRequired,
 		UserToken:   "user-token",
 		AdminToken:  "admin-token",
-		AdminPaths:  []string{"/v1/gateway/reload"},
+		AdminPaths:  []string{"/v1/agentruntime/reload"},
 		BearerToken: "",
 	}, io.Discard)
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(RoleFromContext(r.Context())))
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/reload", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("Authorization", "Bearer admin-token")
 	rec := httptest.NewRecorder()
@@ -259,13 +259,13 @@ func TestMiddleware_BackwardCompatibleSingleTokenAllowsAdminPath(t *testing.T) {
 	mw := NewMiddleware(Options{
 		Mode:        ModeRequired,
 		BearerToken: "legacy-token",
-		AdminPaths:  []string{"/v1/gateway/reload"},
+		AdminPaths:  []string{"/v1/agentruntime/reload"},
 	}, io.Discard)
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(RoleFromContext(r.Context())))
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/reload", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("Authorization", "Bearer legacy-token")
 	rec := httptest.NewRecorder()

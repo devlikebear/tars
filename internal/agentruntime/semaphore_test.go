@@ -27,13 +27,13 @@ func TestRuntime_ExecutionSemaphoreKeepsSecondRunAcceptedUntilSlotFree(t *testin
 		t.Fatalf("new prompt executor: %v", err)
 	}
 	rt := NewRuntime(RuntimeOptions{
-		Enabled:                    true,
-		SessionStore:               store,
-		Executors:                  []AgentExecutor{executor},
-		DefaultAgent:               "worker",
-		GatewaySubagentsMaxThreads: 1,
+		Enabled:                         true,
+		SessionStore:                    store,
+		Executors:                       []AgentExecutor{executor},
+		DefaultAgent:                    "worker",
+		AgentRuntimeSubagentsMaxThreads: 1,
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	runA, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "first", Agent: "worker"})
 	if err != nil {

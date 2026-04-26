@@ -9,17 +9,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func parseWorkspaceGatewayAgentDocument(raw string) (workspaceGatewayAgentFrontmatter, string, error) {
+func parseWorkspaceAgentRuntimeAgentDocument(raw string) (workspaceAgentRuntimeAgentFrontmatter, string, error) {
 	metaBlock, body, hasFrontmatter, err := splitYAMLFrontmatter(raw)
 	if err != nil {
-		return workspaceGatewayAgentFrontmatter{}, "", err
+		return workspaceAgentRuntimeAgentFrontmatter{}, "", err
 	}
 	if !hasFrontmatter {
-		return workspaceGatewayAgentFrontmatter{}, body, nil
+		return workspaceAgentRuntimeAgentFrontmatter{}, body, nil
 	}
-	meta, err := parseWorkspaceGatewayAgentFrontmatter(metaBlock)
+	meta, err := parseWorkspaceAgentRuntimeAgentFrontmatter(metaBlock)
 	if err != nil {
-		return workspaceGatewayAgentFrontmatter{}, "", err
+		return workspaceAgentRuntimeAgentFrontmatter{}, "", err
 	}
 	return meta, body, nil
 }
@@ -41,11 +41,11 @@ func splitYAMLFrontmatter(raw string) (meta string, body string, hasFrontmatter 
 	return rest[:end], rest[end+len("\n---\n"):], true, nil
 }
 
-func parseWorkspaceGatewayAgentFrontmatter(raw string) (workspaceGatewayAgentFrontmatter, error) {
-	meta := workspaceGatewayAgentFrontmatter{}
+func parseWorkspaceAgentRuntimeAgentFrontmatter(raw string) (workspaceAgentRuntimeAgentFrontmatter, error) {
+	meta := workspaceAgentRuntimeAgentFrontmatter{}
 	parsed := map[string]any{}
 	if err := yaml.Unmarshal([]byte(raw), &parsed); err != nil {
-		return workspaceGatewayAgentFrontmatter{}, err
+		return workspaceAgentRuntimeAgentFrontmatter{}, err
 	}
 
 	if value, ok := frontmatterValue(parsed, "name"); ok {

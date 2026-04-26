@@ -79,7 +79,7 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"server": "fs", "name": "read"}})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/runtime/extensions/reload":
 			adminAuth = r.Header.Get("Authorization")
-			_ = json.NewEncoder(w).Encode(map[string]any{"reloaded": true, "version": 2, "skills": 1, "plugins": 1, "mcp_count": 1, "gateway_refreshed": true, "gateway_agents": 3})
+			_ = json.NewEncoder(w).Encode(map[string]any{"reloaded": true, "version": 2, "skills": 1, "plugins": 1, "mcp_count": 1, "agentruntime_refreshed": true, "agentruntime_agents": 3})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/agent/agents":
 			normalAuth = r.Header.Get("Authorization")
 			_ = json.NewEncoder(w).Encode(map[string]any{"count": 1, "agents": []map[string]any{{"name": "default"}}})
@@ -87,7 +87,7 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"run_id": "r1", "status": "accepted", "accepted": true})
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/agent/runs"):
 			_ = json.NewEncoder(w).Encode(map[string]any{"count": 1, "runs": []map[string]any{{"run_id": "r1", "status": "running", "accepted": true}}})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/status":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/status":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"enabled":                   true,
 				"version":                   1,
@@ -95,10 +95,10 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 				"channels_webhook_enabled":  false,
 				"channels_telegram_enabled": true,
 			})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/gateway/reload":
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agentruntime/reload":
 			adminAuth = r.Header.Get("Authorization")
 			_ = json.NewEncoder(w).Encode(map[string]any{"enabled": true, "version": 2})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/summary":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/reports/summary":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"generated_at":       "2026-02-19T00:00:00Z",
 				"summary_enabled":    true,
@@ -110,7 +110,7 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 				"messages_total":     7,
 				"messages_by_source": map[string]any{"webhook": 5, "telegram": 2},
 			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/runs":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/reports/runs":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"generated_at":    "2026-02-19T00:00:01Z",
 				"archive_enabled": false,
@@ -119,7 +119,7 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 					{"run_id": "r1", "status": "completed"},
 				},
 			})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/gateway/reports/channels":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/reports/channels":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"generated_at":    "2026-02-19T00:00:02Z",
 				"archive_enabled": false,
@@ -223,18 +223,18 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listRuns: %v", err)
 	}
-	_, err = client.gatewayStatus(ctx)
+	_, err = client.agentRuntimeStatus(ctx)
 	if err != nil {
-		t.Fatalf("gatewayStatus: %v", err)
+		t.Fatalf("agentRuntimeStatus: %v", err)
 	}
-	if summary, err := client.gatewayReportSummary(ctx); err != nil || summary.RunsTotal != 4 {
-		t.Fatalf("gatewayReportSummary: summary=%+v err=%v", summary, err)
+	if summary, err := client.agentRuntimeReportSummary(ctx); err != nil || summary.RunsTotal != 4 {
+		t.Fatalf("agentRuntimeReportSummary: summary=%+v err=%v", summary, err)
 	}
-	if runs, err := client.gatewayReportRuns(ctx, 20); err != nil || runs.Count != 1 {
-		t.Fatalf("gatewayReportRuns: runs=%+v err=%v", runs, err)
+	if runs, err := client.agentRuntimeReportRuns(ctx, 20); err != nil || runs.Count != 1 {
+		t.Fatalf("agentRuntimeReportRuns: runs=%+v err=%v", runs, err)
 	}
-	if channels, err := client.gatewayReportChannels(ctx, 20); err != nil || channels.Count != 1 {
-		t.Fatalf("gatewayReportChannels: channels=%+v err=%v", channels, err)
+	if channels, err := client.agentRuntimeReportChannels(ctx, 20); err != nil || channels.Count != 1 {
+		t.Fatalf("agentRuntimeReportChannels: channels=%+v err=%v", channels, err)
 	}
 	if history, err := client.eventHistory(ctx, 20); err != nil || history.LastID != 1 || len(history.Items) != 1 {
 		t.Fatalf("eventHistory: history=%+v err=%v", history, err)
@@ -242,9 +242,9 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	if readInfo, err := client.markEventsRead(ctx, 1); err != nil || !readInfo.Acknowledged || readInfo.UnreadCount != 0 {
 		t.Fatalf("markEventsRead: readInfo=%+v err=%v", readInfo, err)
 	}
-	_, err = client.gatewayReload(ctx)
+	_, err = client.agentRuntimeReload(ctx)
 	if err != nil {
-		t.Fatalf("gatewayReload: %v", err)
+		t.Fatalf("agentRuntimeReload: %v", err)
 	}
 	if normalAuth != "Bearer user-token" {
 		t.Fatalf("expected user auth header, got %q", normalAuth)

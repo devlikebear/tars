@@ -75,7 +75,7 @@ func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}), io.Discard)
 
-	reqUser := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	reqUser := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/reload", nil)
 	reqUser.RemoteAddr = "192.0.2.10:5555"
 	reqUser.Header.Set("Authorization", "Bearer user-token")
 	recUser := httptest.NewRecorder()
@@ -84,7 +84,7 @@ func TestApplyAPIMiddleware_AdminPathRequiresAdminRole(t *testing.T) {
 		t.Fatalf("expected 403 for user token on admin path, got %d body=%q", recUser.Code, recUser.Body.String())
 	}
 
-	reqAdmin := httptest.NewRequest(http.MethodPost, "/v1/gateway/reload", nil)
+	reqAdmin := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/reload", nil)
 	reqAdmin.RemoteAddr = "192.0.2.10:5555"
 	reqAdmin.Header.Set("Authorization", "Bearer admin-token")
 	recAdmin := httptest.NewRecorder()

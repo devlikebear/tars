@@ -35,7 +35,7 @@ type providerModelsCache struct {
 }
 
 func providerModelsCachePath(cfg config.Config) string {
-	return filepath.Join(strings.TrimSpace(cfg.GatewayPersistenceDir), providerModelsCacheFile)
+	return filepath.Join(strings.TrimSpace(cfg.AgentRuntimePersistenceDir), providerModelsCacheFile)
 }
 
 func newProviderModelsCache(path string, ttl time.Duration, nowFn func() time.Time) (*providerModelsCache, error) {

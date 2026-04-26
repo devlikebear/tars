@@ -15,7 +15,7 @@ func applyDefaults(cfg *Config) {
 	applyMemoryDefaults(cfg, defaults)
 	applyCompactionDefaults(cfg, defaults)
 	applyToolDefaults(cfg, defaults)
-	applyGatewayDefaults(cfg, defaults)
+	applyAgentRuntimeDefaults(cfg, defaults)
 	applyLLMPoolDefaults(cfg)
 }
 
@@ -205,51 +205,51 @@ func applyToolDefaults(cfg *Config, defaults Config) {
 	}
 }
 
-func applyGatewayDefaults(cfg *Config, defaults Config) {
-	if cfg.GatewayAgentsWatchDebounceMS <= 0 {
-		cfg.GatewayAgentsWatchDebounceMS = defaults.GatewayAgentsWatchDebounceMS
+func applyAgentRuntimeDefaults(cfg *Config, defaults Config) {
+	if cfg.AgentRuntimeAgentsWatchDebounceMS <= 0 {
+		cfg.AgentRuntimeAgentsWatchDebounceMS = defaults.AgentRuntimeAgentsWatchDebounceMS
 	}
-	if cfg.GatewayRunsMaxRecords <= 0 {
-		cfg.GatewayRunsMaxRecords = defaults.GatewayRunsMaxRecords
+	if cfg.AgentRuntimeRunsMaxRecords <= 0 {
+		cfg.AgentRuntimeRunsMaxRecords = defaults.AgentRuntimeRunsMaxRecords
 	}
-	if cfg.GatewayChannelsMaxMessagesPerChannel <= 0 {
-		cfg.GatewayChannelsMaxMessagesPerChannel = defaults.GatewayChannelsMaxMessagesPerChannel
+	if cfg.AgentRuntimeChannelsMaxMessagesPerChannel <= 0 {
+		cfg.AgentRuntimeChannelsMaxMessagesPerChannel = defaults.AgentRuntimeChannelsMaxMessagesPerChannel
 	}
-	if cfg.GatewaySubagentsMaxThreads <= 0 {
-		cfg.GatewaySubagentsMaxThreads = defaults.GatewaySubagentsMaxThreads
+	if cfg.AgentRuntimeSubagentsMaxThreads <= 0 {
+		cfg.AgentRuntimeSubagentsMaxThreads = defaults.AgentRuntimeSubagentsMaxThreads
 	}
-	if cfg.GatewaySubagentsMaxDepth <= 0 {
-		cfg.GatewaySubagentsMaxDepth = defaults.GatewaySubagentsMaxDepth
+	if cfg.AgentRuntimeSubagentsMaxDepth <= 0 {
+		cfg.AgentRuntimeSubagentsMaxDepth = defaults.AgentRuntimeSubagentsMaxDepth
 	}
-	if cfg.GatewayConsensusMaxFanout <= 0 {
-		cfg.GatewayConsensusMaxFanout = defaults.GatewayConsensusMaxFanout
+	if cfg.AgentRuntimeConsensusMaxFanout <= 0 {
+		cfg.AgentRuntimeConsensusMaxFanout = defaults.AgentRuntimeConsensusMaxFanout
 	}
-	if cfg.GatewayConsensusBudgetTokens <= 0 {
-		cfg.GatewayConsensusBudgetTokens = defaults.GatewayConsensusBudgetTokens
+	if cfg.AgentRuntimeConsensusBudgetTokens <= 0 {
+		cfg.AgentRuntimeConsensusBudgetTokens = defaults.AgentRuntimeConsensusBudgetTokens
 	}
-	if cfg.GatewayConsensusBudgetUSD <= 0 {
-		cfg.GatewayConsensusBudgetUSD = defaults.GatewayConsensusBudgetUSD
+	if cfg.AgentRuntimeConsensusBudgetUSD <= 0 {
+		cfg.AgentRuntimeConsensusBudgetUSD = defaults.AgentRuntimeConsensusBudgetUSD
 	}
-	if cfg.GatewayConsensusTimeoutSeconds <= 0 {
-		cfg.GatewayConsensusTimeoutSeconds = defaults.GatewayConsensusTimeoutSeconds
+	if cfg.AgentRuntimeConsensusTimeoutSeconds <= 0 {
+		cfg.AgentRuntimeConsensusTimeoutSeconds = defaults.AgentRuntimeConsensusTimeoutSeconds
 	}
-	if cfg.GatewayConsensusAllowedAliases == nil {
-		cfg.GatewayConsensusAllowedAliases = append([]string{}, defaults.GatewayConsensusAllowedAliases...)
+	if cfg.AgentRuntimeConsensusAllowedAliases == nil {
+		cfg.AgentRuntimeConsensusAllowedAliases = append([]string{}, defaults.AgentRuntimeConsensusAllowedAliases...)
 	}
-	if cfg.GatewayConsensusConcurrentRuns <= 0 {
-		cfg.GatewayConsensusConcurrentRuns = defaults.GatewayConsensusConcurrentRuns
+	if cfg.AgentRuntimeConsensusConcurrentRuns <= 0 {
+		cfg.AgentRuntimeConsensusConcurrentRuns = defaults.AgentRuntimeConsensusConcurrentRuns
 	}
-	if strings.TrimSpace(cfg.GatewayPersistenceDir) == "" {
-		cfg.GatewayPersistenceDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway")
+	if strings.TrimSpace(cfg.AgentRuntimePersistenceDir) == "" {
+		cfg.AgentRuntimePersistenceDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "agentruntime")
 	}
-	if cfg.GatewayArchiveRetentionDays <= 0 {
-		cfg.GatewayArchiveRetentionDays = defaults.GatewayArchiveRetentionDays
+	if cfg.AgentRuntimeArchiveRetentionDays <= 0 {
+		cfg.AgentRuntimeArchiveRetentionDays = defaults.AgentRuntimeArchiveRetentionDays
 	}
-	if cfg.GatewayArchiveMaxFileBytes <= 0 {
-		cfg.GatewayArchiveMaxFileBytes = defaults.GatewayArchiveMaxFileBytes
+	if cfg.AgentRuntimeArchiveMaxFileBytes <= 0 {
+		cfg.AgentRuntimeArchiveMaxFileBytes = defaults.AgentRuntimeArchiveMaxFileBytes
 	}
-	if strings.TrimSpace(cfg.GatewayArchiveDir) == "" {
-		cfg.GatewayArchiveDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "gateway", "archive")
+	if strings.TrimSpace(cfg.AgentRuntimeArchiveDir) == "" {
+		cfg.AgentRuntimeArchiveDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "agentruntime", "archive")
 	}
 	if cfg.MCPCommandAllowlist == nil {
 		cfg.MCPCommandAllowlist = append([]string{}, defaults.MCPCommandAllowlist...)

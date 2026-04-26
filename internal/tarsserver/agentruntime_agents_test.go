@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestFindWorkspaceGatewayAgentFiles_SortsNestedAgentDocuments(t *testing.T) {
+func TestFindWorkspaceAgentRuntimeAgentFiles_SortsNestedAgentDocuments(t *testing.T) {
 	workspace := t.TempDir()
 	first := filepath.Join(workspace, "agents", "b", "AGENT.md")
 	second := filepath.Join(workspace, "agents", "a", "AGENT.md")
@@ -22,9 +22,9 @@ func TestFindWorkspaceGatewayAgentFiles_SortsNestedAgentDocuments(t *testing.T) 
 		}
 	}
 
-	got, err := findWorkspaceGatewayAgentFiles(workspace)
+	got, err := findWorkspaceAgentRuntimeAgentFiles(workspace)
 	if err != nil {
-		t.Fatalf("find workspace gateway agent files: %v", err)
+		t.Fatalf("find workspace agent runtime agent files: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2 AGENT.md files, got %+v", got)
@@ -34,7 +34,7 @@ func TestFindWorkspaceGatewayAgentFiles_SortsNestedAgentDocuments(t *testing.T) 
 	}
 }
 
-func TestBuildWorkspaceGatewayAgent_InvalidFixedRoutingReturnsDiagnostics(t *testing.T) {
+func TestBuildWorkspaceAgentRuntimeAgent_InvalidFixedRoutingReturnsDiagnostics(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
 	raw := `---
@@ -46,9 +46,9 @@ session_routing_mode: fixed
 Find evidence first and answer briefly.
 `
 
-	agent, diagnostics, ok, err := buildWorkspaceGatewayAgent(path, raw, knownGatewayPromptTools(workspace))
+	agent, diagnostics, ok, err := buildWorkspaceAgentRuntimeAgent(path, raw, knownAgentRuntimePromptTools(workspace))
 	if err != nil {
-		t.Fatalf("build workspace gateway agent: %v", err)
+		t.Fatalf("build workspace agent runtime agent: %v", err)
 	}
 	if ok {
 		t.Fatalf("expected invalid fixed routing to skip agent, got %+v", agent)
@@ -61,7 +61,7 @@ Find evidence first and answer briefly.
 	}
 }
 
-func TestLoadWorkspaceGatewayAgents_FiltersInvalidDuplicateAndEmptyPrompt(t *testing.T) {
+func TestLoadWorkspaceAgentRuntimeAgents_FiltersInvalidDuplicateAndEmptyPrompt(t *testing.T) {
 	workspace := t.TempDir()
 	first := filepath.Join(workspace, "agents", "a", "AGENT.md")
 	second := filepath.Join(workspace, "agents", "b", "AGENT.md")
@@ -111,7 +111,7 @@ description: no body
 		t.Fatalf("write empty prompt: %v", err)
 	}
 
-	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	loaded, diagnostics, err := loadWorkspaceAgentRuntimeAgents(workspace)
 	if err != nil {
 		t.Fatalf("load workspace agents: %v", err)
 	}
@@ -133,7 +133,7 @@ description: no body
 	}
 }
 
-func TestLoadWorkspaceGatewayAgents_ToolsAllowListCanonicalization(t *testing.T) {
+func TestLoadWorkspaceAgentRuntimeAgents_ToolsAllowListCanonicalization(t *testing.T) {
 	workspace := t.TempDir()
 	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
 	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
@@ -154,7 +154,7 @@ Find evidence first and answer briefly.
 		t.Fatalf("write agent: %v", err)
 	}
 
-	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	loaded, diagnostics, err := loadWorkspaceAgentRuntimeAgents(workspace)
 	if err != nil {
 		t.Fatalf("load workspace agents: %v", err)
 	}
@@ -172,7 +172,7 @@ Find evidence first and answer briefly.
 	}
 }
 
-func TestLoadWorkspaceGatewayAgents_ToolsAllowUnknownOnlySkipsAgent(t *testing.T) {
+func TestLoadWorkspaceAgentRuntimeAgents_ToolsAllowUnknownOnlySkipsAgent(t *testing.T) {
 	workspace := t.TempDir()
 	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
 	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
@@ -189,7 +189,7 @@ Find evidence first and answer briefly.
 		t.Fatalf("write agent: %v", err)
 	}
 
-	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	loaded, diagnostics, err := loadWorkspaceAgentRuntimeAgents(workspace)
 	if err != nil {
 		t.Fatalf("load workspace agents: %v", err)
 	}
@@ -204,7 +204,7 @@ Find evidence first and answer briefly.
 	}
 }
 
-func TestLoadWorkspaceGatewayAgents_ToolsAllowGroupsPatternsAndSessionRouting(t *testing.T) {
+func TestLoadWorkspaceAgentRuntimeAgents_ToolsAllowGroupsPatternsAndSessionRouting(t *testing.T) {
 	workspace := t.TempDir()
 	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
 	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
@@ -231,7 +231,7 @@ Find evidence first and answer briefly.
 		t.Fatalf("write agent: %v", err)
 	}
 
-	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	loaded, diagnostics, err := loadWorkspaceAgentRuntimeAgents(workspace)
 	if err != nil {
 		t.Fatalf("load workspace agents: %v", err)
 	}
@@ -265,7 +265,7 @@ Find evidence first and answer briefly.
 	}
 }
 
-func TestLoadWorkspaceGatewayAgents_InvalidGroupsPatternsAndFixedRoutingSkipAgent(t *testing.T) {
+func TestLoadWorkspaceAgentRuntimeAgents_InvalidGroupsPatternsAndFixedRoutingSkipAgent(t *testing.T) {
 	workspace := t.TempDir()
 	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
 	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
@@ -287,7 +287,7 @@ Find evidence first and answer briefly.
 		t.Fatalf("write agent: %v", err)
 	}
 
-	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	loaded, diagnostics, err := loadWorkspaceAgentRuntimeAgents(workspace)
 	if err != nil {
 		t.Fatalf("load workspace agents: %v", err)
 	}
@@ -306,7 +306,7 @@ Find evidence first and answer briefly.
 	}
 }
 
-func TestLoadWorkspaceGatewayAgents_ToolsDenyGroupsAliasNormalization(t *testing.T) {
+func TestLoadWorkspaceAgentRuntimeAgents_ToolsDenyGroupsAliasNormalization(t *testing.T) {
 	workspace := t.TempDir()
 	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
 	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
@@ -326,7 +326,7 @@ Find evidence first and answer briefly.
 		t.Fatalf("write agent: %v", err)
 	}
 
-	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	loaded, diagnostics, err := loadWorkspaceAgentRuntimeAgents(workspace)
 	if err != nil {
 		t.Fatalf("load workspace agents: %v", err)
 	}
@@ -350,7 +350,7 @@ Find evidence first and answer briefly.
 	}
 }
 
-func TestLoadWorkspaceGatewayAgents_ToolsDenyAndRiskMax(t *testing.T) {
+func TestLoadWorkspaceAgentRuntimeAgents_ToolsDenyAndRiskMax(t *testing.T) {
 	workspace := t.TempDir()
 	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
 	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
@@ -372,7 +372,7 @@ Find evidence first and answer briefly.
 		t.Fatalf("write agent: %v", err)
 	}
 
-	loaded, diagnostics, err := loadWorkspaceGatewayAgents(workspace)
+	loaded, diagnostics, err := loadWorkspaceAgentRuntimeAgents(workspace)
 	if err != nil {
 		t.Fatalf("load workspace agents: %v", err)
 	}

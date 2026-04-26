@@ -62,7 +62,7 @@ func newPlannerToolTestRouter(t *testing.T, planner llm.Client) llm.Router {
 		},
 		DefaultTier: llm.TierStandard,
 		RoleDefaults: map[llm.Role]llm.Tier{
-			llm.RoleGatewayPlanner: llm.TierHeavy,
+			llm.RoleAgentRuntimePlanner: llm.TierHeavy,
 		},
 	})
 	if err != nil {
@@ -122,8 +122,8 @@ func TestStripFencedJSON(t *testing.T) {
 	}
 }
 
-func TestSubagentsPlanTool_UsesGatewayPlannerRoleAndReturnsValidatedPlan(t *testing.T) {
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+func TestSubagentsPlanTool_UsesAgentRuntimePlannerRoleAndReturnsValidatedPlan(t *testing.T) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	planner := &plannerToolTestClient{
@@ -175,8 +175,8 @@ func TestSubagentsPlanTool_UsesGatewayPlannerRoleAndReturnsValidatedPlan(t *test
 	if planner.chatCalls != 1 {
 		t.Fatalf("expected one planner llm call, got %d", planner.chatCalls)
 	}
-	if planner.seenMeta.Role != llm.RoleGatewayPlanner {
-		t.Fatalf("expected gateway planner role, got %+v", planner.seenMeta)
+	if planner.seenMeta.Role != llm.RoleAgentRuntimePlanner {
+		t.Fatalf("expected agent runtime planner role, got %+v", planner.seenMeta)
 	}
 	if planner.seenMeta.Tier != llm.TierHeavy {
 		t.Fatalf("expected heavy tier metadata, got %+v", planner.seenMeta)
@@ -210,7 +210,7 @@ func TestSubagentsPlanTool_UsesGatewayPlannerRoleAndReturnsValidatedPlan(t *test
 	if payload.Agent != "explorer" {
 		t.Fatalf("expected explorer agent, got %+v", payload)
 	}
-	if payload.PlannerRole != "gateway_planner" || payload.PlannerTier != "heavy" {
+	if payload.PlannerRole != "agentruntime_planner" || payload.PlannerTier != "heavy" {
 		t.Fatalf("expected planner metadata in payload, got %+v", payload)
 	}
 	if len(payload.Steps) != 2 {
@@ -219,7 +219,7 @@ func TestSubagentsPlanTool_UsesGatewayPlannerRoleAndReturnsValidatedPlan(t *test
 }
 
 func TestSubagentsPlanTool_RejectsInvalidPlannerOutput(t *testing.T) {
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	planner := &plannerToolTestClient{
@@ -255,7 +255,7 @@ func TestSubagentsPlanTool_RejectsInvalidPlannerOutput(t *testing.T) {
 }
 
 func TestSubagentsPlanTool_ReturnsPlannerChatError(t *testing.T) {
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	planner := &plannerToolTestClient{chatErr: errors.New("planner unavailable")}
@@ -275,7 +275,7 @@ func TestSubagentsPlanTool_ReturnsPlannerChatError(t *testing.T) {
 }
 
 func TestSubagentsPlanTool_RejectsPlannerPlanOverMaxSteps(t *testing.T) {
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	planner := &plannerToolTestClient{
@@ -302,7 +302,7 @@ func TestSubagentsPlanTool_RejectsPlannerPlanOverMaxSteps(t *testing.T) {
 }
 
 func TestSubagentsPlanTool_RejectsEmptyPlannerSteps(t *testing.T) {
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	planner := &plannerToolTestClient{response: `{"steps":[]}`}
@@ -322,7 +322,7 @@ func TestSubagentsPlanTool_RejectsEmptyPlannerSteps(t *testing.T) {
 }
 
 func TestSubagentsPlanTool_NormalizesDuplicateTaskIDsAndReferences(t *testing.T) {
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	planner := &plannerToolTestClient{
@@ -673,7 +673,7 @@ func TestCollectPlannerTargets(t *testing.T) {
 }
 
 func TestSubagentsPlanTool_EnsuresExactTargetsRemainInTaskPrompts(t *testing.T) {
-	rt, _ := newGatewayRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil
 	})
 	planner := &plannerToolTestClient{

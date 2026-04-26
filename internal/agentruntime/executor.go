@@ -254,7 +254,7 @@ func NewCommandExecutor(opts CommandExecutorOptions) (*CommandExecutor, error) {
 	}
 	description := strings.TrimSpace(opts.Description)
 	if description == "" {
-		description = "External command-based gateway agent executor"
+		description = "External command-based agent runtime agent executor"
 	}
 	source := strings.TrimSpace(opts.Source)
 	if source == "" {

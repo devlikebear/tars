@@ -64,7 +64,7 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 }`),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
-				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
+				return JSONTextResult(map[string]any{"message": "agent runtime is not configured"}, true), nil
 			}
 			var input struct {
 				Agent     string `json:"agent,omitempty"`
@@ -108,7 +108,7 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 			}
 			if mode != "consensus" && maxThreads > 0 && len(input.Tasks) > maxThreads {
 				return JSONTextResult(map[string]any{
-					"message": fmt.Sprintf("requested %d tasks exceeds gateway_subagents_max_threads=%d", len(input.Tasks), maxThreads),
+					"message": fmt.Sprintf("requested %d tasks exceeds agentruntime_subagents_max_threads=%d", len(input.Tasks), maxThreads),
 				}, true), nil
 			}
 
@@ -140,7 +140,7 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 			}
 			if maxDepth > 0 && nextDepth > maxDepth {
 				return JSONTextResult(map[string]any{
-					"message": fmt.Sprintf("subagent depth %d exceeds gateway_subagents_max_depth=%d", nextDepth, maxDepth),
+					"message": fmt.Sprintf("subagent depth %d exceeds agentruntime_subagents_max_depth=%d", nextDepth, maxDepth),
 				}, true), nil
 			}
 

@@ -29,18 +29,18 @@ import (
 )
 
 type serveAPIRuntime struct {
-	cfg                config.Config
-	configPath         string
-	mainSessionID      string
-	server             *http.Server
-	extensionsManager  *extensions.Manager
-	gatewayRuntime     *agentruntime.Runtime
-	gatewayAgentsWatch *gatewayAgentsWatcher
-	cronManager        *workspaceCronManager
-	watchdogManager    *workspaceWatchdogManager
-	pulseRuntime       *pulse.Runtime
-	reflectionRuntime  *reflection.Runtime
-	telegramPoller     *telegramUpdatePoller
+	cfg                     config.Config
+	configPath              string
+	mainSessionID           string
+	server                  *http.Server
+	extensionsManager       *extensions.Manager
+	agentRuntime            *agentruntime.Runtime
+	agentRuntimeAgentsWatch *agentRuntimeAgentsWatcher
+	cronManager             *workspaceCronManager
+	watchdogManager         *workspaceWatchdogManager
+	pulseRuntime            *pulse.Runtime
+	reflectionRuntime       *reflection.Runtime
+	telegramPoller          *telegramUpdatePoller
 }
 
 type apiRouteHandlers struct {
@@ -61,7 +61,7 @@ type apiRouteHandlers struct {
 	mcp             http.Handler
 	extensions      http.Handler
 	agentRuns       http.Handler
-	gateway         http.Handler
+	agentRuntime    http.Handler
 	channels        http.Handler
 	events          http.Handler
 	config          http.Handler
@@ -132,7 +132,7 @@ func buildAPIMux(
 	activity := &runtimeActivity{}
 	broker := newEventBroker()
 	notificationStore, err := newNotificationStore(
-		filepath.Join(strings.TrimSpace(cfg.GatewayPersistenceDir), "notifications.json"),
+		filepath.Join(strings.TrimSpace(cfg.AgentRuntimePersistenceDir), "notifications.json"),
 		notificationHistoryMax,
 	)
 	if err != nil {
@@ -176,9 +176,9 @@ func buildAPIMux(
 		telegramDeliveryCounter,
 	)
 	// The telegram_send tool closure intentionally captures this pointer.
-	// It is assigned after gateway runtime construction and used at runtime
-	// to append outbound Telegram records to gateway channel history.
-	var gatewayRuntimeForTelegram *agentruntime.Runtime
+	// It is assigned after agent runtime construction and used at runtime
+	// to append outbound Telegram records to agent runtime channel history.
+	var agentRuntimeForTelegram *agentruntime.Runtime
 	telegramSendTool := tool.NewTelegramSendTool(tool.TelegramSendFunc(func(ctx context.Context, req tool.TelegramSendRequest) (tool.TelegramSendResult, error) {
 		if telegramSender == nil {
 			return tool.TelegramSendResult{}, fmt.Errorf("telegram sender is not configured")
@@ -193,7 +193,7 @@ func buildAPIMux(
 		if err != nil {
 			return tool.TelegramSendResult{}, err
 		}
-		if gatewayRuntimeForTelegram != nil {
+		if agentRuntimeForTelegram != nil {
 			recordPayload := map[string]any{
 				"provider": "telegram",
 			}
@@ -212,8 +212,8 @@ func buildAPIMux(
 			if sendResult.Text != "" {
 				recordPayload["provider_text"] = sendResult.Text
 			}
-			if _, recordErr := gatewayRuntimeForTelegram.OutboundTelegram(req.BotID, req.ChatID, req.ThreadID, req.Text, recordPayload); recordErr != nil {
-				logger.Debug().Err(recordErr).Str("chat_id", strings.TrimSpace(req.ChatID)).Msg("telegram_send tool gateway record failed")
+			if _, recordErr := agentRuntimeForTelegram.OutboundTelegram(req.BotID, req.ChatID, req.ThreadID, req.Text, recordPayload); recordErr != nil {
+				logger.Debug().Err(recordErr).Str("chat_id", strings.TrimSpace(req.ChatID)).Msg("telegram_send tool agent runtime record failed")
 			}
 		}
 		return tool.TelegramSendResult{
@@ -269,39 +269,39 @@ func buildAPIMux(
 	if err != nil {
 		return nil, err
 	}
-	gatewayRuntime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
-		Enabled:                              cfg.GatewayEnabled,
-		WorkspaceDir:                         cfg.WorkspaceDir,
-		SessionStore:                         sessionStore,
-		SessionStoreForWorkspace:             sessionStoreResolver,
-		RunPrompt:                            apiRunPrompt,
-		Executors:                            nil,
-		DefaultAgent:                         strings.TrimSpace(cfg.GatewayDefaultAgent),
-		GatewayAgentsWatchEnabled:            false,
-		ChannelsLocalEnabled:                 cfg.ChannelsLocalEnabled,
-		ChannelsWebhookEnabled:               cfg.ChannelsWebhookEnabled,
-		ChannelsTelegramEnabled:              cfg.ChannelsTelegramEnabled,
-		GatewayPersistenceEnabled:            cfg.GatewayPersistenceEnabled,
-		GatewayRunsPersistenceEnabled:        cfg.GatewayRunsPersistenceEnabled,
-		GatewayChannelsPersistenceEnabled:    cfg.GatewayChannelsPersistenceEnabled,
-		GatewayRunsMaxRecords:                cfg.GatewayRunsMaxRecords,
-		GatewayChannelsMaxMessagesPerChannel: cfg.GatewayChannelsMaxMessagesPerChannel,
-		GatewaySubagentsMaxThreads:           cfg.GatewaySubagentsMaxThreads,
-		GatewaySubagentsMaxDepth:             cfg.GatewaySubagentsMaxDepth,
-		GatewayConsensusEnabled:              cfg.GatewayConsensusEnabled,
-		GatewayConsensusMaxFanout:            cfg.GatewayConsensusMaxFanout,
-		GatewayConsensusBudgetTokens:         cfg.GatewayConsensusBudgetTokens,
-		GatewayConsensusBudgetUSD:            cfg.GatewayConsensusBudgetUSD,
-		GatewayConsensusTimeoutSeconds:       cfg.GatewayConsensusTimeoutSeconds,
-		GatewayConsensusAllowedAliases:       append([]string(nil), cfg.GatewayConsensusAllowedAliases...),
-		GatewayConsensusConcurrentRuns:       cfg.GatewayConsensusConcurrentRuns,
-		GatewayPersistenceDir:                cfg.GatewayPersistenceDir,
-		GatewayRestoreOnStartup:              cfg.GatewayRestoreOnStartup,
-		GatewayReportSummaryEnabled:          cfg.GatewayReportSummaryEnabled,
-		GatewayArchiveEnabled:                cfg.GatewayArchiveEnabled,
-		GatewayArchiveDir:                    cfg.GatewayArchiveDir,
-		GatewayArchiveRetentionDays:          cfg.GatewayArchiveRetentionDays,
-		GatewayArchiveMaxFileBytes:           cfg.GatewayArchiveMaxFileBytes,
+	agentRuntime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:                                   cfg.AgentRuntimeEnabled,
+		WorkspaceDir:                              cfg.WorkspaceDir,
+		SessionStore:                              sessionStore,
+		SessionStoreForWorkspace:                  sessionStoreResolver,
+		RunPrompt:                                 apiRunPrompt,
+		Executors:                                 nil,
+		DefaultAgent:                              strings.TrimSpace(cfg.AgentRuntimeDefaultAgent),
+		AgentRuntimeAgentsWatchEnabled:            false,
+		ChannelsLocalEnabled:                      cfg.ChannelsLocalEnabled,
+		ChannelsWebhookEnabled:                    cfg.ChannelsWebhookEnabled,
+		ChannelsTelegramEnabled:                   cfg.ChannelsTelegramEnabled,
+		AgentRuntimePersistenceEnabled:            cfg.AgentRuntimePersistenceEnabled,
+		AgentRuntimeRunsPersistenceEnabled:        cfg.AgentRuntimeRunsPersistenceEnabled,
+		AgentRuntimeChannelsPersistenceEnabled:    cfg.AgentRuntimeChannelsPersistenceEnabled,
+		AgentRuntimeRunsMaxRecords:                cfg.AgentRuntimeRunsMaxRecords,
+		AgentRuntimeChannelsMaxMessagesPerChannel: cfg.AgentRuntimeChannelsMaxMessagesPerChannel,
+		AgentRuntimeSubagentsMaxThreads:           cfg.AgentRuntimeSubagentsMaxThreads,
+		AgentRuntimeSubagentsMaxDepth:             cfg.AgentRuntimeSubagentsMaxDepth,
+		AgentRuntimeConsensusEnabled:              cfg.AgentRuntimeConsensusEnabled,
+		AgentRuntimeConsensusMaxFanout:            cfg.AgentRuntimeConsensusMaxFanout,
+		AgentRuntimeConsensusBudgetTokens:         cfg.AgentRuntimeConsensusBudgetTokens,
+		AgentRuntimeConsensusBudgetUSD:            cfg.AgentRuntimeConsensusBudgetUSD,
+		AgentRuntimeConsensusTimeoutSeconds:       cfg.AgentRuntimeConsensusTimeoutSeconds,
+		AgentRuntimeConsensusAllowedAliases:       append([]string(nil), cfg.AgentRuntimeConsensusAllowedAliases...),
+		AgentRuntimeConsensusConcurrentRuns:       cfg.AgentRuntimeConsensusConcurrentRuns,
+		AgentRuntimePersistenceDir:                cfg.AgentRuntimePersistenceDir,
+		AgentRuntimeRestoreOnStartup:              cfg.AgentRuntimeRestoreOnStartup,
+		AgentRuntimeReportSummaryEnabled:          cfg.AgentRuntimeReportSummaryEnabled,
+		AgentRuntimeArchiveEnabled:                cfg.AgentRuntimeArchiveEnabled,
+		AgentRuntimeArchiveDir:                    cfg.AgentRuntimeArchiveDir,
+		AgentRuntimeArchiveRetentionDays:          cfg.AgentRuntimeArchiveRetentionDays,
+		AgentRuntimeArchiveMaxFileBytes:           cfg.AgentRuntimeArchiveMaxFileBytes,
 		ResolveProviderOverride: func(tier string, override *agentruntime.ProviderOverride) (agentruntime.ResolvedProviderOverride, error) {
 			if override == nil {
 				return agentruntime.ResolvedProviderOverride{}, nil
@@ -320,7 +320,7 @@ func buildAPIMux(
 		},
 		Now: nowFn,
 	})
-	gatewayRuntimeForTelegram = gatewayRuntime
+	agentRuntimeForTelegram = agentRuntime
 
 	reflectionSetup := buildReflectionRuntime(reflectionSetupInputs{
 		Config:       cfg,
@@ -335,7 +335,7 @@ func buildAPIMux(
 		WorkspaceDir:     cfg.WorkspaceDir,
 		Router:           deps.llmRouter,
 		CronStore:        cronStore,
-		GatewayRuntime:   gatewayRuntime,
+		AgentRuntime:     agentRuntime,
 		OpsManager:       opsManager,
 		DeliveryCounter:  telegramDeliveryCounter,
 		ReflectionHealth: reflectionHealthFromSetup(reflectionSetup),
@@ -343,19 +343,19 @@ func buildAPIMux(
 		Logger:           logger,
 	})
 
-	refreshGatewayExecutors := func(reason string) int {
-		executors := buildGatewayExecutors(cfg, apiRunPromptWithTools, logger)
-		gatewayRuntime.SetExecutors(executors, strings.TrimSpace(cfg.GatewayDefaultAgent))
-		agents := len(gatewayRuntime.Agents())
-		logger.Debug().Str("reason", reason).Int("gateway_agents", agents).Msg("gateway executors refreshed")
+	refreshAgentRuntimeExecutors := func(reason string) int {
+		executors := buildAgentRuntimeExecutors(cfg, apiRunPromptWithTools, logger)
+		agentRuntime.SetExecutors(executors, strings.TrimSpace(cfg.AgentRuntimeDefaultAgent))
+		agents := len(agentRuntime.Agents())
+		logger.Debug().Str("reason", reason).Int("agentruntime_agents", agents).Msg("agent runtime executors refreshed")
 		return agents
 	}
-	_ = refreshGatewayExecutors("startup")
+	_ = refreshAgentRuntimeExecutors("startup")
 
 	chatTooling := buildChatToolingOptions(
 		processManager,
 		extensionsManager,
-		gatewayRuntime,
+		agentRuntime,
 		chatCompactionOptions{
 			TriggerTokens:      cfg.CompactionTriggerTokens,
 			KeepRecentTokens:   cfg.CompactionKeepRecentTokens,
@@ -378,7 +378,7 @@ func buildAPIMux(
 		}
 		return buildAutomationTools(resolvedStore, cronRunner)
 	}
-	chatTools := buildOptionalChatTools(cfg, gatewayRuntime)
+	chatTools := buildOptionalChatTools(cfg, agentRuntime)
 	if cfg.ChannelsTelegramEnabled {
 		chatTools = append(chatTools, telegramSendTool)
 	}
@@ -440,7 +440,7 @@ func buildAPIMux(
 			if err != nil {
 				return err
 			}
-			if gatewayRuntime != nil {
+			if agentRuntime != nil {
 				recordPayload := map[string]any{
 					"provider":      "telegram",
 					"cron_job_id":   strings.TrimSpace(job.ID),
@@ -455,7 +455,7 @@ func buildAPIMux(
 				if sendResult.ChatID != "" {
 					recordPayload["provider_chat_id"] = sendResult.ChatID
 				}
-				if _, recordErr := gatewayRuntime.OutboundTelegram(botID, chatID, threadID, reminderText, recordPayload); recordErr != nil {
+				if _, recordErr := agentRuntime.OutboundTelegram(botID, chatID, threadID, reminderText, recordPayload); recordErr != nil {
 					logger.Debug().Err(recordErr).Str("job_id", strings.TrimSpace(job.ID)).Str("chat_id", chatID).Msg("record cron reminder telegram outbound failed")
 				}
 			}
@@ -495,21 +495,21 @@ func buildAPIMux(
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
 	mcpHandler := newMCPAPIHandler(mcpClient, logger)
 	extensionsHandler := newExtensionsAPIHandler(extensionsManager, logger, func() (bool, int) {
-		if gatewayRuntime == nil {
+		if agentRuntime == nil {
 			return false, 0
 		}
-		return true, refreshGatewayExecutors("extensions_reload")
+		return true, refreshAgentRuntimeExecutors("extensions_reload")
 	})
-	agentRunsHandler := newAgentRunsAPIHandlerWithInflightLimit(gatewayRuntime, logger, cfg.APIMaxInflightAgentRuns)
-	gatewayHandler := newGatewayAPIHandler(gatewayRuntime, logger, func() {
-		_ = refreshGatewayExecutors("gateway_reload")
+	agentRunsHandler := newAgentRunsAPIHandlerWithInflightLimit(agentRuntime, logger, cfg.APIMaxInflightAgentRuns)
+	agentRuntimeHandler := newAgentRuntimeAPIHandler(agentRuntime, logger, func() {
+		_ = refreshAgentRuntimeExecutors("agentruntime_reload")
 	})
 	telegramInbound := newTelegramInboundHandler(
 		cfg.WorkspaceDir,
 		sessionStore,
 		nil,
 		telegramSender,
-		gatewayRuntime,
+		agentRuntime,
 		telegramPairings,
 		cfg.ChannelsTelegramDMPolicy,
 		logger,
@@ -523,7 +523,7 @@ func buildAPIMux(
 	telegramInbound.commands = newTelegramCommandHandler(telegramCommandHandlerOptions{
 		Store:          sessionStore,
 		CronResolver:   cronStoreResolver,
-		Runtime:        gatewayRuntime,
+		Runtime:        agentRuntime,
 		MainSession:    mainSessionID,
 		SessionScope:   cfg.SessionTelegramScope,
 		ProviderModels: providerModelsService,
@@ -538,7 +538,7 @@ func buildAPIMux(
 		)
 	}
 	channelsHandler := newChannelsAPIHandlerWithTelegramPairings(
-		gatewayRuntime,
+		agentRuntime,
 		telegramSender,
 		telegramPairings,
 		cfg.ChannelsTelegramDMPolicy,
@@ -571,7 +571,7 @@ func buildAPIMux(
 		mcp:             mcpHandler,
 		extensions:      extensionsHandler,
 		agentRuns:       agentRunsHandler,
-		gateway:         gatewayHandler,
+		agentRuntime:    agentRuntimeHandler,
 		channels:        channelsHandler,
 		events:          eventsHandler,
 		config:          configHandler,
@@ -584,30 +584,30 @@ func buildAPIMux(
 		Addr:    opts.APIAddr,
 		Handler: applyAPIMiddleware(cfg, logger, mux, stderr),
 	}
-	gatewayAgentsWatch := newGatewayAgentsWatcher(gatewayAgentsWatcherOptions{
+	agentRuntimeAgentsWatch := newAgentRuntimeAgentsWatcher(agentRuntimeAgentsWatcherOptions{
 		WorkspaceDir: cfg.WorkspaceDir,
-		Debounce:     time.Duration(cfg.GatewayAgentsWatchDebounceMS) * time.Millisecond,
+		Debounce:     time.Duration(cfg.AgentRuntimeAgentsWatchDebounceMS) * time.Millisecond,
 		Logger:       logger,
 		Refresh: func(reason string) {
-			_ = refreshGatewayExecutors(reason)
+			_ = refreshAgentRuntimeExecutors(reason)
 		},
 	})
 	cronManager := newWorkspaceCronManager(cronStoreResolver, cronRunner, 30*time.Second, nowFn, logger)
 	watchdogManager := newWorkspaceWatchdogManager(watchdogRunner, defaultWatchdogInterval)
 
 	return &serveAPIRuntime{
-		cfg:                cfg,
-		configPath:         resolvedConfigPath,
-		mainSessionID:      mainSessionID,
-		server:             server,
-		extensionsManager:  extensionsManager,
-		gatewayRuntime:     gatewayRuntime,
-		gatewayAgentsWatch: gatewayAgentsWatch,
-		cronManager:        cronManager,
-		watchdogManager:    watchdogManager,
-		pulseRuntime:       pulseSetup.Runtime,
-		reflectionRuntime:  reflectionSetup.Runtime,
-		telegramPoller:     telegramPoller,
+		cfg:                     cfg,
+		configPath:              resolvedConfigPath,
+		mainSessionID:           mainSessionID,
+		server:                  server,
+		extensionsManager:       extensionsManager,
+		agentRuntime:            agentRuntime,
+		agentRuntimeAgentsWatch: agentRuntimeAgentsWatch,
+		cronManager:             cronManager,
+		watchdogManager:         watchdogManager,
+		pulseRuntime:            pulseSetup.Runtime,
+		reflectionRuntime:       reflectionSetup.Runtime,
+		telegramPoller:          telegramPoller,
 	}, nil
 }
 
@@ -685,14 +685,14 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/agent/agents", handlers.agentRuns)
 	mux.Handle("/v1/agent/runs", handlers.agentRuns)
 	mux.Handle("/v1/agent/runs/", handlers.agentRuns)
-	mux.Handle("/v1/gateway/runs", handlers.agentRuns)
-	mux.Handle("/v1/gateway/runs/", handlers.agentRuns)
-	mux.Handle("/v1/gateway/status", handlers.gateway)
-	mux.Handle("/v1/gateway/reload", handlers.gateway)
-	mux.Handle("/v1/gateway/restart", handlers.gateway)
-	mux.Handle("/v1/gateway/reports/summary", handlers.gateway)
-	mux.Handle("/v1/gateway/reports/runs", handlers.gateway)
-	mux.Handle("/v1/gateway/reports/channels", handlers.gateway)
+	mux.Handle("/v1/agentruntime/runs", handlers.agentRuns)
+	mux.Handle("/v1/agentruntime/runs/", handlers.agentRuns)
+	mux.Handle("/v1/agentruntime/status", handlers.agentRuntime)
+	mux.Handle("/v1/agentruntime/reload", handlers.agentRuntime)
+	mux.Handle("/v1/agentruntime/restart", handlers.agentRuntime)
+	mux.Handle("/v1/agentruntime/reports/summary", handlers.agentRuntime)
+	mux.Handle("/v1/agentruntime/reports/runs", handlers.agentRuntime)
+	mux.Handle("/v1/agentruntime/reports/channels", handlers.agentRuntime)
 	// Browser routes are now registered via plugin HTTP handlers
 	mux.Handle("/v1/channels/webhook/inbound/", handlers.channels)
 	mux.Handle("/v1/channels/telegram/webhook/", handlers.channels)
@@ -724,19 +724,19 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 	}
 	cfg := runtime.cfg
 
-	if runtime.gatewayRuntime != nil {
-		runtime.gatewayRuntime.SetAgentsWatchEnabled(false)
+	if runtime.agentRuntime != nil {
+		runtime.agentRuntime.SetAgentsWatchEnabled(false)
 	}
-	if cfg.GatewayEnabled && cfg.GatewayAgentsWatch && runtime.gatewayRuntime != nil && runtime.gatewayAgentsWatch != nil {
-		started, watchErr := runtime.gatewayAgentsWatch.Start(ctx)
+	if cfg.AgentRuntimeEnabled && cfg.AgentRuntimeAgentsWatch && runtime.agentRuntime != nil && runtime.agentRuntimeAgentsWatch != nil {
+		started, watchErr := runtime.agentRuntimeAgentsWatch.Start(ctx)
 		if watchErr != nil {
-			logger.Warn().Err(watchErr).Msg("gateway agents watcher start failed")
+			logger.Warn().Err(watchErr).Msg("agent runtime agents watcher start failed")
 		}
-		runtime.gatewayRuntime.SetAgentsWatchEnabled(started)
+		runtime.agentRuntime.SetAgentsWatchEnabled(started)
 		if started {
-			logger.Info().Int("debounce_ms", cfg.GatewayAgentsWatchDebounceMS).Msg("gateway agents watcher started")
+			logger.Info().Int("debounce_ms", cfg.AgentRuntimeAgentsWatchDebounceMS).Msg("agent runtime agents watcher started")
 		} else {
-			logger.Debug().Msg("gateway agents watcher skipped (workspace agents dir not found)")
+			logger.Debug().Msg("agent runtime agents watcher skipped (workspace agents dir not found)")
 		}
 	}
 
@@ -791,11 +791,11 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	if runtime.extensionsManager != nil {
 		runtime.extensionsManager.Close()
 	}
-	if runtime.gatewayAgentsWatch != nil {
-		runtime.gatewayAgentsWatch.Close()
+	if runtime.agentRuntimeAgentsWatch != nil {
+		runtime.agentRuntimeAgentsWatch.Close()
 	}
-	if runtime.gatewayRuntime != nil {
-		_ = runtime.gatewayRuntime.Close(ctx)
+	if runtime.agentRuntime != nil {
+		_ = runtime.agentRuntime.Close(ctx)
 	}
 	if runtime.server != nil {
 		_ = runtime.server.Shutdown(ctx)

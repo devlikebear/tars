@@ -100,33 +100,33 @@ var configInputFields = []configInputField{
 	stringListField("tools_web_fetch_private_host_allowlist_json", []string{"TOOLS_WEB_FETCH_PRIVATE_HOST_ALLOWLIST_JSON", "TARS_TOOLS_WEB_FETCH_PRIVATE_HOST_ALLOWLIST_JSON"}, func(cfg *Config) *[]string { return &cfg.ToolsWebFetchPrivateHostAllowlist }, parseJSONStringList),
 	boolField("tools_web_fetch_allow_private_hosts", []string{"TOOLS_WEB_FETCH_ALLOW_PRIVATE_HOSTS", "TARS_TOOLS_WEB_FETCH_ALLOW_PRIVATE_HOSTS"}, func(cfg *Config) *bool { return &cfg.ToolsWebFetchAllowPrivateHosts }),
 	boolField("tools_apply_patch_enabled", []string{"TOOLS_APPLY_PATCH_ENABLED", "TARS_TOOLS_APPLY_PATCH_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsApplyPatchEnabled }),
-	boolField("gateway_enabled", []string{"GATEWAY_ENABLED", "TARS_GATEWAY_ENABLED"}, func(cfg *Config) *bool { return &cfg.GatewayEnabled }),
-	stringField("gateway_default_agent", []string{"GATEWAY_DEFAULT_AGENT", "TARS_GATEWAY_DEFAULT_AGENT"}, func(cfg *Config) *string { return &cfg.GatewayDefaultAgent }, strings.TrimSpace),
-	gatewayTaskOverrideField("gateway_task_override", []string{"GATEWAY_TASK_OVERRIDE_JSON", "TARS_GATEWAY_TASK_OVERRIDE_JSON"}),
-	gatewayAgentsField("gateway_agents_json", []string{"GATEWAY_AGENTS_JSON", "TARS_GATEWAY_AGENTS_JSON"}),
-	boolField("gateway_agents_watch", []string{"GATEWAY_AGENTS_WATCH", "TARS_GATEWAY_AGENTS_WATCH"}, func(cfg *Config) *bool { return &cfg.GatewayAgentsWatch }),
-	intField("gateway_agents_watch_debounce_ms", []string{"GATEWAY_AGENTS_WATCH_DEBOUNCE_MS", "TARS_GATEWAY_AGENTS_WATCH_DEBOUNCE_MS"}, func(cfg *Config) *int { return &cfg.GatewayAgentsWatchDebounceMS }, parsePositiveInt),
-	boolField("gateway_persistence_enabled", []string{"GATEWAY_PERSISTENCE_ENABLED", "TARS_GATEWAY_PERSISTENCE_ENABLED"}, func(cfg *Config) *bool { return &cfg.GatewayPersistenceEnabled }),
-	boolField("gateway_runs_persistence_enabled", []string{"GATEWAY_RUNS_PERSISTENCE_ENABLED", "TARS_GATEWAY_RUNS_PERSISTENCE_ENABLED"}, func(cfg *Config) *bool { return &cfg.GatewayRunsPersistenceEnabled }),
-	boolField("gateway_channels_persistence_enabled", []string{"GATEWAY_CHANNELS_PERSISTENCE_ENABLED", "TARS_GATEWAY_CHANNELS_PERSISTENCE_ENABLED"}, func(cfg *Config) *bool { return &cfg.GatewayChannelsPersistenceEnabled }),
-	intField("gateway_runs_max_records", []string{"GATEWAY_RUNS_MAX_RECORDS", "TARS_GATEWAY_RUNS_MAX_RECORDS"}, func(cfg *Config) *int { return &cfg.GatewayRunsMaxRecords }, parsePositiveInt),
-	intField("gateway_channels_max_messages_per_channel", []string{"GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "TARS_GATEWAY_CHANNELS_MAX_MESSAGES_PER_CHANNEL"}, func(cfg *Config) *int { return &cfg.GatewayChannelsMaxMessagesPerChannel }, parsePositiveInt),
-	intField("gateway_subagents_max_threads", []string{"GATEWAY_SUBAGENTS_MAX_THREADS", "TARS_GATEWAY_SUBAGENTS_MAX_THREADS"}, func(cfg *Config) *int { return &cfg.GatewaySubagentsMaxThreads }, parsePositiveInt),
-	intField("gateway_subagents_max_depth", []string{"GATEWAY_SUBAGENTS_MAX_DEPTH", "TARS_GATEWAY_SUBAGENTS_MAX_DEPTH"}, func(cfg *Config) *int { return &cfg.GatewaySubagentsMaxDepth }, parsePositiveInt),
-	boolField("gateway_consensus_enabled", []string{"GATEWAY_CONSENSUS_ENABLED", "TARS_GATEWAY_CONSENSUS_ENABLED"}, func(cfg *Config) *bool { return &cfg.GatewayConsensusEnabled }),
-	intField("gateway_consensus_max_fanout", []string{"GATEWAY_CONSENSUS_MAX_FANOUT", "TARS_GATEWAY_CONSENSUS_MAX_FANOUT"}, func(cfg *Config) *int { return &cfg.GatewayConsensusMaxFanout }, parsePositiveInt),
-	intField("gateway_consensus_budget_tokens", []string{"GATEWAY_CONSENSUS_BUDGET_TOKENS", "TARS_GATEWAY_CONSENSUS_BUDGET_TOKENS"}, func(cfg *Config) *int { return &cfg.GatewayConsensusBudgetTokens }, parsePositiveInt),
-	floatField("gateway_consensus_budget_usd", []string{"GATEWAY_CONSENSUS_BUDGET_USD", "TARS_GATEWAY_CONSENSUS_BUDGET_USD"}, func(cfg *Config) *float64 { return &cfg.GatewayConsensusBudgetUSD }, parsePositiveFloat),
-	intField("gateway_consensus_timeout_seconds", []string{"GATEWAY_CONSENSUS_TIMEOUT_SECONDS", "TARS_GATEWAY_CONSENSUS_TIMEOUT_SECONDS"}, func(cfg *Config) *int { return &cfg.GatewayConsensusTimeoutSeconds }, parsePositiveInt),
-	stringListField("gateway_consensus_allowed_aliases_json", []string{"GATEWAY_CONSENSUS_ALLOWED_ALIASES_JSON", "TARS_GATEWAY_CONSENSUS_ALLOWED_ALIASES_JSON"}, func(cfg *Config) *[]string { return &cfg.GatewayConsensusAllowedAliases }, parseJSONStringList),
-	intField("gateway_consensus_concurrent_runs", []string{"GATEWAY_CONSENSUS_CONCURRENT_RUNS", "TARS_GATEWAY_CONSENSUS_CONCURRENT_RUNS"}, func(cfg *Config) *int { return &cfg.GatewayConsensusConcurrentRuns }, parsePositiveInt),
-	stringField("gateway_persistence_dir", []string{"GATEWAY_PERSISTENCE_DIR", "TARS_GATEWAY_PERSISTENCE_DIR"}, func(cfg *Config) *string { return &cfg.GatewayPersistenceDir }, strings.TrimSpace),
-	boolField("gateway_restore_on_startup", []string{"GATEWAY_RESTORE_ON_STARTUP", "TARS_GATEWAY_RESTORE_ON_STARTUP"}, func(cfg *Config) *bool { return &cfg.GatewayRestoreOnStartup }),
-	boolField("gateway_report_summary_enabled", []string{"GATEWAY_REPORT_SUMMARY_ENABLED", "TARS_GATEWAY_REPORT_SUMMARY_ENABLED"}, func(cfg *Config) *bool { return &cfg.GatewayReportSummaryEnabled }),
-	boolField("gateway_archive_enabled", []string{"GATEWAY_ARCHIVE_ENABLED", "TARS_GATEWAY_ARCHIVE_ENABLED"}, func(cfg *Config) *bool { return &cfg.GatewayArchiveEnabled }),
-	stringField("gateway_archive_dir", []string{"GATEWAY_ARCHIVE_DIR", "TARS_GATEWAY_ARCHIVE_DIR"}, func(cfg *Config) *string { return &cfg.GatewayArchiveDir }, strings.TrimSpace),
-	intField("gateway_archive_retention_days", []string{"GATEWAY_ARCHIVE_RETENTION_DAYS", "TARS_GATEWAY_ARCHIVE_RETENTION_DAYS"}, func(cfg *Config) *int { return &cfg.GatewayArchiveRetentionDays }, parsePositiveInt),
-	intField("gateway_archive_max_file_bytes", []string{"GATEWAY_ARCHIVE_MAX_FILE_BYTES", "TARS_GATEWAY_ARCHIVE_MAX_FILE_BYTES"}, func(cfg *Config) *int { return &cfg.GatewayArchiveMaxFileBytes }, parsePositiveInt),
+	boolField("agentruntime_enabled", []string{"AGENTRUNTIME_ENABLED", "TARS_AGENTRUNTIME_ENABLED"}, func(cfg *Config) *bool { return &cfg.AgentRuntimeEnabled }),
+	stringField("agentruntime_default_agent", []string{"AGENTRUNTIME_DEFAULT_AGENT", "TARS_AGENTRUNTIME_DEFAULT_AGENT"}, func(cfg *Config) *string { return &cfg.AgentRuntimeDefaultAgent }, strings.TrimSpace),
+	agentRuntimeTaskOverrideField("agentruntime_task_override", []string{"AGENTRUNTIME_TASK_OVERRIDE_JSON", "TARS_AGENTRUNTIME_TASK_OVERRIDE_JSON"}),
+	agentRuntimeAgentsField("agentruntime_agents_json", []string{"AGENTRUNTIME_AGENTS_JSON", "TARS_AGENTRUNTIME_AGENTS_JSON"}),
+	boolField("agentruntime_agents_watch", []string{"AGENTRUNTIME_AGENTS_WATCH", "TARS_AGENTRUNTIME_AGENTS_WATCH"}, func(cfg *Config) *bool { return &cfg.AgentRuntimeAgentsWatch }),
+	intField("agentruntime_agents_watch_debounce_ms", []string{"AGENTRUNTIME_AGENTS_WATCH_DEBOUNCE_MS", "TARS_AGENTRUNTIME_AGENTS_WATCH_DEBOUNCE_MS"}, func(cfg *Config) *int { return &cfg.AgentRuntimeAgentsWatchDebounceMS }, parsePositiveInt),
+	boolField("agentruntime_persistence_enabled", []string{"AGENTRUNTIME_PERSISTENCE_ENABLED", "TARS_AGENTRUNTIME_PERSISTENCE_ENABLED"}, func(cfg *Config) *bool { return &cfg.AgentRuntimePersistenceEnabled }),
+	boolField("agentruntime_runs_persistence_enabled", []string{"AGENTRUNTIME_RUNS_PERSISTENCE_ENABLED", "TARS_AGENTRUNTIME_RUNS_PERSISTENCE_ENABLED"}, func(cfg *Config) *bool { return &cfg.AgentRuntimeRunsPersistenceEnabled }),
+	boolField("agentruntime_channels_persistence_enabled", []string{"AGENTRUNTIME_CHANNELS_PERSISTENCE_ENABLED", "TARS_AGENTRUNTIME_CHANNELS_PERSISTENCE_ENABLED"}, func(cfg *Config) *bool { return &cfg.AgentRuntimeChannelsPersistenceEnabled }),
+	intField("agentruntime_runs_max_records", []string{"AGENTRUNTIME_RUNS_MAX_RECORDS", "TARS_AGENTRUNTIME_RUNS_MAX_RECORDS"}, func(cfg *Config) *int { return &cfg.AgentRuntimeRunsMaxRecords }, parsePositiveInt),
+	intField("agentruntime_channels_max_messages_per_channel", []string{"AGENTRUNTIME_CHANNELS_MAX_MESSAGES_PER_CHANNEL", "TARS_AGENTRUNTIME_CHANNELS_MAX_MESSAGES_PER_CHANNEL"}, func(cfg *Config) *int { return &cfg.AgentRuntimeChannelsMaxMessagesPerChannel }, parsePositiveInt),
+	intField("agentruntime_subagents_max_threads", []string{"AGENTRUNTIME_SUBAGENTS_MAX_THREADS", "TARS_AGENTRUNTIME_SUBAGENTS_MAX_THREADS"}, func(cfg *Config) *int { return &cfg.AgentRuntimeSubagentsMaxThreads }, parsePositiveInt),
+	intField("agentruntime_subagents_max_depth", []string{"AGENTRUNTIME_SUBAGENTS_MAX_DEPTH", "TARS_AGENTRUNTIME_SUBAGENTS_MAX_DEPTH"}, func(cfg *Config) *int { return &cfg.AgentRuntimeSubagentsMaxDepth }, parsePositiveInt),
+	boolField("agentruntime_consensus_enabled", []string{"AGENTRUNTIME_CONSENSUS_ENABLED", "TARS_AGENTRUNTIME_CONSENSUS_ENABLED"}, func(cfg *Config) *bool { return &cfg.AgentRuntimeConsensusEnabled }),
+	intField("agentruntime_consensus_max_fanout", []string{"AGENTRUNTIME_CONSENSUS_MAX_FANOUT", "TARS_AGENTRUNTIME_CONSENSUS_MAX_FANOUT"}, func(cfg *Config) *int { return &cfg.AgentRuntimeConsensusMaxFanout }, parsePositiveInt),
+	intField("agentruntime_consensus_budget_tokens", []string{"AGENTRUNTIME_CONSENSUS_BUDGET_TOKENS", "TARS_AGENTRUNTIME_CONSENSUS_BUDGET_TOKENS"}, func(cfg *Config) *int { return &cfg.AgentRuntimeConsensusBudgetTokens }, parsePositiveInt),
+	floatField("agentruntime_consensus_budget_usd", []string{"AGENTRUNTIME_CONSENSUS_BUDGET_USD", "TARS_AGENTRUNTIME_CONSENSUS_BUDGET_USD"}, func(cfg *Config) *float64 { return &cfg.AgentRuntimeConsensusBudgetUSD }, parsePositiveFloat),
+	intField("agentruntime_consensus_timeout_seconds", []string{"AGENTRUNTIME_CONSENSUS_TIMEOUT_SECONDS", "TARS_AGENTRUNTIME_CONSENSUS_TIMEOUT_SECONDS"}, func(cfg *Config) *int { return &cfg.AgentRuntimeConsensusTimeoutSeconds }, parsePositiveInt),
+	stringListField("agentruntime_consensus_allowed_aliases_json", []string{"AGENTRUNTIME_CONSENSUS_ALLOWED_ALIASES_JSON", "TARS_AGENTRUNTIME_CONSENSUS_ALLOWED_ALIASES_JSON"}, func(cfg *Config) *[]string { return &cfg.AgentRuntimeConsensusAllowedAliases }, parseJSONStringList),
+	intField("agentruntime_consensus_concurrent_runs", []string{"AGENTRUNTIME_CONSENSUS_CONCURRENT_RUNS", "TARS_AGENTRUNTIME_CONSENSUS_CONCURRENT_RUNS"}, func(cfg *Config) *int { return &cfg.AgentRuntimeConsensusConcurrentRuns }, parsePositiveInt),
+	stringField("agentruntime_persistence_dir", []string{"AGENTRUNTIME_PERSISTENCE_DIR", "TARS_AGENTRUNTIME_PERSISTENCE_DIR"}, func(cfg *Config) *string { return &cfg.AgentRuntimePersistenceDir }, strings.TrimSpace),
+	boolField("agentruntime_restore_on_startup", []string{"AGENTRUNTIME_RESTORE_ON_STARTUP", "TARS_AGENTRUNTIME_RESTORE_ON_STARTUP"}, func(cfg *Config) *bool { return &cfg.AgentRuntimeRestoreOnStartup }),
+	boolField("agentruntime_report_summary_enabled", []string{"AGENTRUNTIME_REPORT_SUMMARY_ENABLED", "TARS_AGENTRUNTIME_REPORT_SUMMARY_ENABLED"}, func(cfg *Config) *bool { return &cfg.AgentRuntimeReportSummaryEnabled }),
+	boolField("agentruntime_archive_enabled", []string{"AGENTRUNTIME_ARCHIVE_ENABLED", "TARS_AGENTRUNTIME_ARCHIVE_ENABLED"}, func(cfg *Config) *bool { return &cfg.AgentRuntimeArchiveEnabled }),
+	stringField("agentruntime_archive_dir", []string{"AGENTRUNTIME_ARCHIVE_DIR", "TARS_AGENTRUNTIME_ARCHIVE_DIR"}, func(cfg *Config) *string { return &cfg.AgentRuntimeArchiveDir }, strings.TrimSpace),
+	intField("agentruntime_archive_retention_days", []string{"AGENTRUNTIME_ARCHIVE_RETENTION_DAYS", "TARS_AGENTRUNTIME_ARCHIVE_RETENTION_DAYS"}, func(cfg *Config) *int { return &cfg.AgentRuntimeArchiveRetentionDays }, parsePositiveInt),
+	intField("agentruntime_archive_max_file_bytes", []string{"AGENTRUNTIME_ARCHIVE_MAX_FILE_BYTES", "TARS_AGENTRUNTIME_ARCHIVE_MAX_FILE_BYTES"}, func(cfg *Config) *int { return &cfg.AgentRuntimeArchiveMaxFileBytes }, parsePositiveInt),
 	boolField("channels_local_enabled", []string{"CHANNELS_LOCAL_ENABLED", "TARS_CHANNELS_LOCAL_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsLocalEnabled }),
 	boolField("channels_webhook_enabled", []string{"CHANNELS_WEBHOOK_ENABLED", "TARS_CHANNELS_WEBHOOK_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsWebhookEnabled }),
 	boolField("channels_telegram_enabled", []string{"CHANNELS_TELEGRAM_ENABLED", "TARS_CHANNELS_TELEGRAM_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsTelegramEnabled }),
@@ -134,7 +134,7 @@ var configInputFields = []configInputField{
 	boolField("channels_telegram_polling_enabled", []string{"CHANNELS_TELEGRAM_POLLING_ENABLED", "TARS_CHANNELS_TELEGRAM_POLLING_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsTelegramPollingEnabled }),
 	stringField("telegram_bot_token", []string{"TELEGRAM_BOT_TOKEN", "TARS_TELEGRAM_BOT_TOKEN"}, func(cfg *Config) *string { return &cfg.TelegramBotToken }, strings.TrimSpace),
 	boolField("tools_message_enabled", []string{"TOOLS_MESSAGE_ENABLED", "TARS_TOOLS_MESSAGE_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsMessageEnabled }),
-	boolField("tools_gateway_enabled", []string{"TOOLS_GATEWAY_ENABLED", "TARS_TOOLS_GATEWAY_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsGatewayEnabled }),
+	boolField("tools_agentruntime_enabled", []string{"TOOLS_AGENTRUNTIME_ENABLED", "TARS_TOOLS_AGENTRUNTIME_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsAgentRuntimeEnabled }),
 	boolField("skills_enabled", []string{"SKILLS_ENABLED", "TARS_SKILLS_ENABLED"}, func(cfg *Config) *bool { return &cfg.SkillsEnabled }),
 	boolField("skills_watch", []string{"SKILLS_WATCH", "TARS_SKILLS_WATCH"}, func(cfg *Config) *bool { return &cfg.SkillsWatch }),
 	intField("skills_watch_debounce_ms", []string{"SKILLS_WATCH_DEBOUNCE_MS", "TARS_SKILLS_WATCH_DEBOUNCE_MS"}, func(cfg *Config) *int { return &cfg.SkillsWatchDebounceMS }, parsePositiveInt),
@@ -301,18 +301,18 @@ func mcpServersField(yamlKey string, envKeys []string) configInputField {
 	}
 }
 
-func gatewayAgentsField(yamlKey string, envKeys []string) configInputField {
+func agentRuntimeAgentsField(yamlKey string, envKeys []string) configInputField {
 	return configInputField{
 		yamlKey: yamlKey,
 		envKeys: envKeys,
 		apply: func(cfg *Config, raw string) {
-			cfg.GatewayAgents = parseGatewayAgentsJSON(raw, cfg.GatewayAgents)
+			cfg.AgentRuntimeAgents = parseAgentRuntimeAgentsJSON(raw, cfg.AgentRuntimeAgents)
 		},
 		merge: func(dst *Config, src Config) {
-			if len(src.GatewayAgents) == 0 {
+			if len(src.AgentRuntimeAgents) == 0 {
 				return
 			}
-			dst.GatewayAgents = append([]GatewayAgent(nil), src.GatewayAgents...)
+			dst.AgentRuntimeAgents = append([]AgentRuntimeAgent(nil), src.AgentRuntimeAgents...)
 		},
 	}
 }

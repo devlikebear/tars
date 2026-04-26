@@ -9,14 +9,14 @@ import (
 	"github.com/devlikebear/tars/internal/config"
 )
 
-func TestTelegramPairingStore_PathFollowsGatewayPersistenceDir(t *testing.T) {
+func TestTelegramPairingStore_PathFollowsAgentRuntimePersistenceDir(t *testing.T) {
 	cfg := config.Config{
-		GatewayConfig: config.GatewayConfig{
-			GatewayPersistenceDir: filepath.Join(t.TempDir(), "gateway-state"),
+		AgentRuntimeConfig: config.AgentRuntimeConfig{
+			AgentRuntimePersistenceDir: filepath.Join(t.TempDir(), "agentruntime-state"),
 		},
 	}
 	got := telegramPairingStorePath(cfg)
-	want := filepath.Join(cfg.GatewayPersistenceDir, "telegram_pairings.json")
+	want := filepath.Join(cfg.AgentRuntimePersistenceDir, "telegram_pairings.json")
 	if got != want {
 		t.Fatalf("expected pairing store path %q, got %q", want, got)
 	}

@@ -32,16 +32,16 @@ func buildChatToolRegistry(
 	registry.Register(tool.NewTasksTool(reqStore, requestWorkspaceDir, func() string { return sessionID }))
 
 	// Session aggregator + subagents
-	registry.Register(tool.NewSessionTool(reqStore, deps.tooling.Gateway, func(_ context.Context) (tool.SessionStatus, error) {
+	registry.Register(tool.NewSessionTool(reqStore, deps.tooling.AgentRuntime, func(_ context.Context) (tool.SessionStatus, error) {
 		return tool.SessionStatus{
 			SessionID:       sessionID,
 			HistoryMessages: len(history) + 1,
 		}, nil
 	}))
-	registry.Register(tool.NewSubagentsRunTool(deps.tooling.Gateway))
-	registry.Register(tool.NewSubagentsOrchestrateTool(deps.tooling.Gateway))
+	registry.Register(tool.NewSubagentsRunTool(deps.tooling.AgentRuntime))
+	registry.Register(tool.NewSubagentsOrchestrateTool(deps.tooling.AgentRuntime))
 	if deps.router != nil {
-		registry.Register(tool.NewSubagentsPlanTool(deps.tooling.Gateway, deps.router))
+		registry.Register(tool.NewSubagentsPlanTool(deps.tooling.AgentRuntime, deps.router))
 	}
 
 	// Automation (cron aggregator; pulse/reflection live on the system surface)

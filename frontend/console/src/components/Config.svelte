@@ -347,7 +347,7 @@
   const sectionIcons: Record<string, string> = {
     Runtime: '\u2699', API: '\u26bf', LLM: '\u2726', Memory: '\u29bf',
     Usage: '\u2261', Automation: '\u21bb', Assistant: '\u2318', Tools: '\u2692',
-    Vault: '\u26bf', Browser: '\u2317', Gateway: '\u29bf', Channels: '\u2709',
+    Vault: '\u26bf', Browser: '\u2317', 'Agent Runtime': '\u29bf', Channels: '\u2709',
     Extensions: '\u2756',
   }
 
@@ -568,7 +568,7 @@
         <div class="danger-row">
           <div class="danger-info">
             <strong>Reset workspace</strong>
-            <span>Remove sessions, cron state, gateway data, logs, and memory. Config is preserved.</span>
+            <span>Remove sessions, cron state, agent runtime data, logs, and memory. Config is preserved.</span>
           </div>
           <button
             class="btn btn-danger btn-sm"

@@ -26,64 +26,64 @@ func DefaultWorkspaceDir() string {
 }
 
 const (
-	defaultMode                           = "standalone"
-	defaultSessionTelegramScope           = "main"
-	defaultAPIAuthMode                    = "required"
-	defaultDashboardAuthMode              = "inherit"
-	defaultAPIMaxInflightChat             = 2
-	defaultAPIMaxInflightAgentRuns        = 4
-	defaultMemoryEmbedProvider            = "gemini"
-	defaultMemoryEmbedModel               = "gemini-embedding-2-preview"
-	defaultMemoryEmbedDimensions          = 768
-	defaultUsageLimitDailyUSD             = 10.0
-	defaultUsageLimitWeeklyUSD            = 50.0
-	defaultUsageLimitMonthlyUSD           = 150.0
-	defaultUsageLimitMode                 = "soft"
-	defaultAgentMaxIterations             = 8
-	defaultCronRunHistoryLimit            = 200
-	defaultAssistantHotkey                = "Ctrl+Option+Space"
-	defaultAssistantWhisperBin            = "whisper-cli"
-	defaultAssistantFFmpegBin             = "ffmpeg"
-	defaultAssistantTTSBin                = "say"
-	defaultCompactionTriggerTokens        = 100000
-	defaultCompactionKeepRecentTokens     = 12000
-	defaultCompactionKeepRecentFraction   = 0.30
-	defaultCompactionLLMMode              = "auto"
-	defaultCompactionLLMTimeoutSeconds    = 15
-	defaultScheduleTimezone               = "Asia/Seoul"
-	defaultToolsDefaultSet                = "standard"
-	defaultToolsWebSearchProvider         = "brave"
-	defaultPerplexityModel                = "sonar"
-	defaultPerplexityBaseURL              = "https://api.perplexity.ai/chat/completions"
-	defaultToolsWebSearchCacheTTLSeconds  = 60
-	defaultGatewayWatchDebounceMS         = 200
-	defaultGatewayRunsMaxRecords          = 2000
-	defaultGatewayChannelsMaxMessages     = 500
-	defaultGatewaySubagentsMaxThreads     = 4
-	defaultGatewaySubagentsMaxDepth       = 1
-	defaultGatewayConsensusMaxFanout      = 3
-	defaultGatewayConsensusBudgetTokens   = 20000
-	defaultGatewayConsensusBudgetUSD      = 0.50
-	defaultGatewayConsensusTimeoutSecs    = 120
-	defaultGatewayConsensusConcurrentRuns = 1
-	defaultGatewayArchiveRetentionDays    = 30
-	defaultGatewayArchiveMaxFileBytes     = 10485760
-	defaultChannelsTelegramDMPolicy       = "pairing"
-	defaultSkillsBundledDir               = "./skills"
-	defaultPluginsBundledDir              = "./plugins"
-	defaultOpenAIBaseURL                  = "https://api.openai.com/v1"
-	defaultOpenAIModel                    = "gpt-4o-mini"
-	defaultOpenAICodexBaseURL             = "https://chatgpt.com/backend-api"
-	defaultOpenAICodexModel               = "gpt-5.3-codex"
-	defaultClaudeCodeCLIModel             = "sonnet"
-	defaultGeminiBaseURL                  = "https://generativelanguage.googleapis.com/v1beta/openai"
-	defaultGeminiNativeBaseURL            = "https://generativelanguage.googleapis.com/v1beta"
-	defaultGeminiModel                    = "gemini-2.5-flash"
-	defaultAnthropicBaseURL               = "https://api.anthropic.com"
-	defaultAnthropicModel                 = "claude-haiku-4-5-20251001"
-	defaultOpenAICodexOAuthProvider       = "openai-codex"
-	defaultClaudeOAuthProvider            = "claude-code"
-	defaultGeminiOAuthProvider            = "google-antigravity"
+	defaultMode                                = "standalone"
+	defaultSessionTelegramScope                = "main"
+	defaultAPIAuthMode                         = "required"
+	defaultDashboardAuthMode                   = "inherit"
+	defaultAPIMaxInflightChat                  = 2
+	defaultAPIMaxInflightAgentRuns             = 4
+	defaultMemoryEmbedProvider                 = "gemini"
+	defaultMemoryEmbedModel                    = "gemini-embedding-2-preview"
+	defaultMemoryEmbedDimensions               = 768
+	defaultUsageLimitDailyUSD                  = 10.0
+	defaultUsageLimitWeeklyUSD                 = 50.0
+	defaultUsageLimitMonthlyUSD                = 150.0
+	defaultUsageLimitMode                      = "soft"
+	defaultAgentMaxIterations                  = 8
+	defaultCronRunHistoryLimit                 = 200
+	defaultAssistantHotkey                     = "Ctrl+Option+Space"
+	defaultAssistantWhisperBin                 = "whisper-cli"
+	defaultAssistantFFmpegBin                  = "ffmpeg"
+	defaultAssistantTTSBin                     = "say"
+	defaultCompactionTriggerTokens             = 100000
+	defaultCompactionKeepRecentTokens          = 12000
+	defaultCompactionKeepRecentFraction        = 0.30
+	defaultCompactionLLMMode                   = "auto"
+	defaultCompactionLLMTimeoutSeconds         = 15
+	defaultScheduleTimezone                    = "Asia/Seoul"
+	defaultToolsDefaultSet                     = "standard"
+	defaultToolsWebSearchProvider              = "brave"
+	defaultPerplexityModel                     = "sonar"
+	defaultPerplexityBaseURL                   = "https://api.perplexity.ai/chat/completions"
+	defaultToolsWebSearchCacheTTLSeconds       = 60
+	defaultAgentRuntimeWatchDebounceMS         = 200
+	defaultAgentRuntimeRunsMaxRecords          = 2000
+	defaultAgentRuntimeChannelsMaxMessages     = 500
+	defaultAgentRuntimeSubagentsMaxThreads     = 4
+	defaultAgentRuntimeSubagentsMaxDepth       = 1
+	defaultAgentRuntimeConsensusMaxFanout      = 3
+	defaultAgentRuntimeConsensusBudgetTokens   = 20000
+	defaultAgentRuntimeConsensusBudgetUSD      = 0.50
+	defaultAgentRuntimeConsensusTimeoutSecs    = 120
+	defaultAgentRuntimeConsensusConcurrentRuns = 1
+	defaultAgentRuntimeArchiveRetentionDays    = 30
+	defaultAgentRuntimeArchiveMaxFileBytes     = 10485760
+	defaultChannelsTelegramDMPolicy            = "pairing"
+	defaultSkillsBundledDir                    = "./skills"
+	defaultPluginsBundledDir                   = "./plugins"
+	defaultOpenAIBaseURL                       = "https://api.openai.com/v1"
+	defaultOpenAIModel                         = "gpt-4o-mini"
+	defaultOpenAICodexBaseURL                  = "https://chatgpt.com/backend-api"
+	defaultOpenAICodexModel                    = "gpt-5.3-codex"
+	defaultClaudeCodeCLIModel                  = "sonnet"
+	defaultGeminiBaseURL                       = "https://generativelanguage.googleapis.com/v1beta/openai"
+	defaultGeminiNativeBaseURL                 = "https://generativelanguage.googleapis.com/v1beta"
+	defaultGeminiModel                         = "gemini-2.5-flash"
+	defaultAnthropicBaseURL                    = "https://api.anthropic.com"
+	defaultAnthropicModel                      = "claude-haiku-4-5-20251001"
+	defaultOpenAICodexOAuthProvider            = "openai-codex"
+	defaultClaudeOAuthProvider                 = "claude-code"
+	defaultGeminiOAuthProvider                 = "google-antigravity"
 )
 
 func defaultConfigValues() Config {
@@ -172,28 +172,28 @@ func defaultConfigValues() Config {
 			ToolsWebSearchPerplexityBaseURL: defaultPerplexityBaseURL,
 			ToolsWebSearchCacheTTLSeconds:   defaultToolsWebSearchCacheTTLSeconds,
 		},
-		GatewayConfig: GatewayConfig{
-			GatewayAgentsWatch:                   true,
-			GatewayAgentsWatchDebounceMS:         defaultGatewayWatchDebounceMS,
-			GatewayPersistenceEnabled:            true,
-			GatewayRunsPersistenceEnabled:        true,
-			GatewayChannelsPersistenceEnabled:    true,
-			GatewayRunsMaxRecords:                defaultGatewayRunsMaxRecords,
-			GatewayChannelsMaxMessagesPerChannel: defaultGatewayChannelsMaxMessages,
-			GatewaySubagentsMaxThreads:           defaultGatewaySubagentsMaxThreads,
-			GatewaySubagentsMaxDepth:             defaultGatewaySubagentsMaxDepth,
-			GatewayConsensusEnabled:              false,
-			GatewayConsensusMaxFanout:            defaultGatewayConsensusMaxFanout,
-			GatewayConsensusBudgetTokens:         defaultGatewayConsensusBudgetTokens,
-			GatewayConsensusBudgetUSD:            defaultGatewayConsensusBudgetUSD,
-			GatewayConsensusTimeoutSeconds:       defaultGatewayConsensusTimeoutSecs,
-			GatewayConsensusAllowedAliases:       []string{},
-			GatewayConsensusConcurrentRuns:       defaultGatewayConsensusConcurrentRuns,
-			GatewayRestoreOnStartup:              true,
-			GatewayReportSummaryEnabled:          true,
-			GatewayArchiveEnabled:                false,
-			GatewayArchiveRetentionDays:          defaultGatewayArchiveRetentionDays,
-			GatewayArchiveMaxFileBytes:           defaultGatewayArchiveMaxFileBytes,
+		AgentRuntimeConfig: AgentRuntimeConfig{
+			AgentRuntimeAgentsWatch:                   true,
+			AgentRuntimeAgentsWatchDebounceMS:         defaultAgentRuntimeWatchDebounceMS,
+			AgentRuntimePersistenceEnabled:            true,
+			AgentRuntimeRunsPersistenceEnabled:        true,
+			AgentRuntimeChannelsPersistenceEnabled:    true,
+			AgentRuntimeRunsMaxRecords:                defaultAgentRuntimeRunsMaxRecords,
+			AgentRuntimeChannelsMaxMessagesPerChannel: defaultAgentRuntimeChannelsMaxMessages,
+			AgentRuntimeSubagentsMaxThreads:           defaultAgentRuntimeSubagentsMaxThreads,
+			AgentRuntimeSubagentsMaxDepth:             defaultAgentRuntimeSubagentsMaxDepth,
+			AgentRuntimeConsensusEnabled:              false,
+			AgentRuntimeConsensusMaxFanout:            defaultAgentRuntimeConsensusMaxFanout,
+			AgentRuntimeConsensusBudgetTokens:         defaultAgentRuntimeConsensusBudgetTokens,
+			AgentRuntimeConsensusBudgetUSD:            defaultAgentRuntimeConsensusBudgetUSD,
+			AgentRuntimeConsensusTimeoutSeconds:       defaultAgentRuntimeConsensusTimeoutSecs,
+			AgentRuntimeConsensusAllowedAliases:       []string{},
+			AgentRuntimeConsensusConcurrentRuns:       defaultAgentRuntimeConsensusConcurrentRuns,
+			AgentRuntimeRestoreOnStartup:              true,
+			AgentRuntimeReportSummaryEnabled:          true,
+			AgentRuntimeArchiveEnabled:                false,
+			AgentRuntimeArchiveRetentionDays:          defaultAgentRuntimeArchiveRetentionDays,
+			AgentRuntimeArchiveMaxFileBytes:           defaultAgentRuntimeArchiveMaxFileBytes,
 		},
 		ChannelConfig: ChannelConfig{
 			ChannelsTelegramDMPolicy:       defaultChannelsTelegramDMPolicy,
@@ -202,11 +202,11 @@ func defaultConfigValues() Config {
 		ExtensionConfig: ExtensionConfig{
 			SkillsEnabled:          true,
 			SkillsWatch:            true,
-			SkillsWatchDebounceMS:  defaultGatewayWatchDebounceMS,
+			SkillsWatchDebounceMS:  defaultAgentRuntimeWatchDebounceMS,
 			SkillsBundledDir:       defaultSkillsBundledDir,
 			PluginsEnabled:         true,
 			PluginsWatch:           true,
-			PluginsWatchDebounceMS: defaultGatewayWatchDebounceMS,
+			PluginsWatchDebounceMS: defaultAgentRuntimeWatchDebounceMS,
 			PluginsBundledDir:      defaultPluginsBundledDir,
 			MCPCommandAllowlist:    []string{},
 		},

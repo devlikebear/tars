@@ -134,7 +134,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 	if cfgLoaded {
 		checkDoctorLegacyKeys(&report, configPath)
 		checkDoctorAPIAuth(&report, cfg)
-		checkDoctorGatewayAgents(&report, cfg)
+		checkDoctorAgentRuntimeAgents(&report, cfg)
 		checkDoctorLLMCredentials(&report, cfg, configPath)
 		checkDoctorLLMRuntime(&report, cfg)
 		checkDoctorSemanticMemory(&report, cfg, configPath)
@@ -221,18 +221,18 @@ func checkDoctorLLMCredentials(report *doctorReport, cfg config.Config, configPa
 	report.add("ok", "llm credentials", strings.Join(parts, " "))
 }
 
-func checkDoctorGatewayAgents(report *doctorReport, cfg config.Config) {
-	if !cfg.GatewayEnabled {
+func checkDoctorAgentRuntimeAgents(report *doctorReport, cfg config.Config) {
+	if !cfg.AgentRuntimeEnabled {
 		return
 	}
-	defaultAgent := strings.TrimSpace(cfg.GatewayDefaultAgent)
+	defaultAgent := strings.TrimSpace(cfg.AgentRuntimeDefaultAgent)
 	if defaultAgent == "" || strings.EqualFold(defaultAgent, "default") {
-		report.add("ok", "gateway agents", "in-process default gateway agent available")
+		report.add("ok", "agent runtime agents", "in-process default agent runtime agent available")
 		return
 	}
 
-	enabled := map[string]config.GatewayAgent{}
-	for _, agent := range cfg.GatewayAgents {
+	enabled := map[string]config.AgentRuntimeAgent{}
+	for _, agent := range cfg.AgentRuntimeAgents {
 		if !agent.Enabled {
 			continue
 		}
@@ -244,16 +244,16 @@ func checkDoctorGatewayAgents(report *doctorReport, cfg config.Config) {
 	}
 	spec, ok := enabled[strings.ToLower(defaultAgent)]
 	if !ok {
-		report.add("fail", "gateway agents", fmt.Sprintf("gateway_default_agent=%q is not registered as an enabled gateway agent", defaultAgent))
-		report.addHint("clear `gateway_default_agent` to use the in-process default agent, or register the named gateway agent")
+		report.add("fail", "agent runtime agents", fmt.Sprintf("agentruntime_default_agent=%q is not registered as an enabled agent runtime agent", defaultAgent))
+		report.addHint("clear `agentruntime_default_agent` to use the in-process default agent, or register the named agent runtime agent")
 		return
 	}
-	if detail := validateDoctorGatewayAgent(cfg.WorkspaceDir, spec); detail != "" {
-		report.add("fail", "gateway agents", detail)
-		report.addHint("fix the missing gateway command/path, or clear `gateway_default_agent` to fall back to the in-process default agent")
+	if detail := validateDoctorAgentRuntimeAgent(cfg.WorkspaceDir, spec); detail != "" {
+		report.add("fail", "agent runtime agents", detail)
+		report.addHint("fix the missing agent runtime command/path, or clear `agentruntime_default_agent` to fall back to the in-process default agent")
 		return
 	}
-	report.add("ok", "gateway agents", fmt.Sprintf("gateway_default_agent=%s", defaultAgent))
+	report.add("ok", "agent runtime agents", fmt.Sprintf("agentruntime_default_agent=%s", defaultAgent))
 }
 
 func checkDoctorLLMRuntime(report *doctorReport, cfg config.Config) {
@@ -320,11 +320,11 @@ func llmCredentialHint(provider, configPath string) string {
 	}
 }
 
-func validateDoctorGatewayAgent(workspaceDir string, spec config.GatewayAgent) string {
+func validateDoctorAgentRuntimeAgent(workspaceDir string, spec config.AgentRuntimeAgent) string {
 	name := strings.TrimSpace(spec.Name)
 	command := strings.TrimSpace(os.ExpandEnv(spec.Command))
 	if name == "" || command == "" {
-		return fmt.Sprintf("gateway agent %q is missing a command", name)
+		return fmt.Sprintf("agent runtime agent %q is missing a command", name)
 	}
 	workDir := strings.TrimSpace(os.ExpandEnv(spec.WorkingDir))
 	if workDir == "" {
@@ -348,7 +348,7 @@ func validateDoctorGatewayAgent(workspaceDir string, spec config.GatewayAgent) s
 			path = filepath.Join(workDir, path)
 		}
 		if _, err := os.Stat(path); err != nil {
-			return fmt.Sprintf("gateway agent %q references missing path %s", name, path)
+			return fmt.Sprintf("agent runtime agent %q references missing path %s", name, path)
 		}
 	}
 	return ""
@@ -361,12 +361,12 @@ func validateDoctorCommandPath(command, workDir, agentName string) string {
 			path = filepath.Join(workDir, path)
 		}
 		if _, err := os.Stat(path); err != nil {
-			return fmt.Sprintf("gateway agent %q command not found: %s", agentName, path)
+			return fmt.Sprintf("agent runtime agent %q command not found: %s", agentName, path)
 		}
 		return ""
 	}
 	if _, err := exec.LookPath(command); err != nil {
-		return fmt.Sprintf("gateway agent %q command %q is not available on PATH", agentName, command)
+		return fmt.Sprintf("agent runtime agent %q command %q is not available on PATH", agentName, command)
 	}
 	return ""
 }

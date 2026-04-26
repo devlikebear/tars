@@ -146,7 +146,7 @@ func (h *telegramCommandHandler) cmdCron(ctx context.Context, fields []string) (
 	return "", fmt.Errorf("usage: /cron {list|runs {job_id} [limit]}")
 }
 
-func (h *telegramCommandHandler) cmdGateway(fields []string) (string, error) {
+func (h *telegramCommandHandler) cmdAgentRuntime(fields []string) (string, error) {
 	action := "status"
 	if len(fields) > 1 {
 		action = strings.TrimSpace(fields[1])
@@ -154,11 +154,11 @@ func (h *telegramCommandHandler) cmdGateway(fields []string) (string, error) {
 	switch action {
 	case "", "status":
 		if h.runtime == nil {
-			return "", fmt.Errorf("gateway runtime is not configured")
+			return "", fmt.Errorf("agent runtime is not configured")
 		}
 		status := h.runtime.Status()
 		return fmt.Sprintf(
-			"SYSTEM > gateway enabled=%t version=%d runs_total=%d runs_active=%d agents=%d",
+			"SYSTEM > agent runtime enabled=%t version=%d runs_total=%d runs_active=%d agents=%d",
 			status.Enabled,
 			status.Version,
 			status.RunsTotal,
@@ -168,13 +168,13 @@ func (h *telegramCommandHandler) cmdGateway(fields []string) (string, error) {
 	case "reload", "restart":
 		return blockedCommandMessage("admin-only command. use the web console or an admin api token."), nil
 	default:
-		return "", fmt.Errorf("usage: /gateway {status}")
+		return "", fmt.Errorf("usage: /agentruntime {status}")
 	}
 }
 
 func (h *telegramCommandHandler) cmdChannels() (string, error) {
 	if h.runtime == nil {
-		return "", fmt.Errorf("gateway runtime is not configured")
+		return "", fmt.Errorf("agent runtime is not configured")
 	}
 	status := h.runtime.Status()
 	return fmt.Sprintf(

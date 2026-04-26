@@ -111,7 +111,7 @@ func newAgentPromptRunnerWithTools(
 	maxIterations int,
 	logger zerolog.Logger,
 	extraTools ...tool.Tool,
-) gatewayPromptRunner {
+) agentRuntimePromptRunner {
 	return newAgentPromptRunnerWithToolsAndMemory(cfg, workspaceDir, client, nil, tracker, maxIterations, logger, memory.SemanticConfig{}, extraTools...)
 }
 
@@ -125,7 +125,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 	logger zerolog.Logger,
 	semanticCfg memory.SemanticConfig,
 	extraTools ...tool.Tool,
-) gatewayPromptRunner {
+) agentRuntimePromptRunner {
 	if client == nil && router == nil {
 		return nil
 	}
@@ -201,9 +201,9 @@ func newAgentPromptRunnerWithToolsAndMemory(
 							selection.Source = resolution.Source
 						}
 					}
-				} else if c, resolution, err := router.ClientFor(llm.RoleGatewayDefault); err == nil {
+				} else if c, resolution, err := router.ClientFor(llm.RoleAgentRuntimeDefault); err == nil {
 					runClient = c
-					selection.Role = llm.RoleGatewayDefault
+					selection.Role = llm.RoleAgentRuntimeDefault
 					selection.Tier = resolution.Tier
 					selection.Provider = resolution.Provider
 					selection.Model = resolution.Model

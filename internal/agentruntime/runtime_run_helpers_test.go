@@ -47,7 +47,7 @@ func TestFinalizeRunLocked_PopulatesPolicyFailureMetadata(t *testing.T) {
 			return fixedNow
 		},
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	state := &runState{
 		run: Run{
@@ -128,7 +128,7 @@ func TestFinalizeRunLocked_HiddenWorkerSessionAppendsSummaryToMain(t *testing.T)
 			return fixedNow
 		},
 	})
-	t.Cleanup(func() { closeGatewayRuntime(t, rt) })
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
 
 	state := &runState{
 		run: Run{

@@ -2,7 +2,7 @@
 //
 // Pulse is one half of the system surface (the other being reflection).
 // Every tick (1 minute by default) it deterministically collects signals
-// from cron, gateway, ops, and telegram delivery, and — only when some
+// from cron, agent runtime, ops, and telegram delivery, and — only when some
 // threshold is exceeded — asks an LLM to classify the situation into one
 // of three actions: ignore, notify the user, or run a whitelisted autofix.
 //
@@ -77,11 +77,11 @@ func (s Severity) AtLeast(min Severity) bool {
 type SignalKind string
 
 const (
-	SignalKindCronFailures      SignalKind = "cron_failures"
-	SignalKindStuckGatewayRun   SignalKind = "stuck_gateway_run"
-	SignalKindDiskUsage         SignalKind = "disk_usage"
-	SignalKindDeliveryFailures  SignalKind = "delivery_failures"
-	SignalKindReflectionFailure SignalKind = "reflection_failure"
+	SignalKindCronFailures         SignalKind = "cron_failures"
+	SignalKindStuckAgentRuntimeRun SignalKind = "stuck_agentruntime_run"
+	SignalKindDiskUsage            SignalKind = "disk_usage"
+	SignalKindDeliveryFailures     SignalKind = "delivery_failures"
+	SignalKindReflectionFailure    SignalKind = "reflection_failure"
 )
 
 // Signal is a single observation made by the signal scanner. A pulse tick

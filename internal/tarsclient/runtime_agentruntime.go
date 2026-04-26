@@ -22,28 +22,28 @@ func (c runtimeClient) cancelRun(ctx context.Context, runID string) (agentRun, e
 	return c.client().CancelRun(ctx, runID)
 }
 
-func (c runtimeClient) gatewayStatus(ctx context.Context) (gatewayStatus, error) {
-	return c.client().GatewayStatus(ctx)
+func (c runtimeClient) agentRuntimeStatus(ctx context.Context) (agentRuntimeStatus, error) {
+	return c.client().AgentRuntimeStatus(ctx)
 }
 
-func (c runtimeClient) gatewayReload(ctx context.Context) (gatewayStatus, error) {
-	return c.client().GatewayReload(ctx)
+func (c runtimeClient) agentRuntimeReload(ctx context.Context) (agentRuntimeStatus, error) {
+	return c.client().AgentRuntimeReload(ctx)
 }
 
-func (c runtimeClient) gatewayRestart(ctx context.Context) (gatewayStatus, error) {
-	return c.client().GatewayRestart(ctx)
+func (c runtimeClient) agentRuntimeRestart(ctx context.Context) (agentRuntimeStatus, error) {
+	return c.client().AgentRuntimeRestart(ctx)
 }
 
-func (c runtimeClient) gatewayReportSummary(ctx context.Context) (gatewayReportSummary, error) {
-	return c.client().GatewayReportSummary(ctx)
+func (c runtimeClient) agentRuntimeReportSummary(ctx context.Context) (agentRuntimeReportSummary, error) {
+	return c.client().AgentRuntimeReportSummary(ctx)
 }
 
-func (c runtimeClient) gatewayReportRuns(ctx context.Context, limit int) (gatewayReportRuns, error) {
-	return c.client().GatewayReportRuns(ctx, limit)
+func (c runtimeClient) agentRuntimeReportRuns(ctx context.Context, limit int) (agentRuntimeReportRuns, error) {
+	return c.client().AgentRuntimeReportRuns(ctx, limit)
 }
 
-func (c runtimeClient) gatewayReportChannels(ctx context.Context, limit int) (gatewayReportChannels, error) {
-	return c.client().GatewayReportChannels(ctx, limit)
+func (c runtimeClient) agentRuntimeReportChannels(ctx context.Context, limit int) (agentRuntimeReportChannels, error) {
+	return c.client().AgentRuntimeReportChannels(ctx, limit)
 }
 
 func (c runtimeClient) telegramPairings(ctx context.Context) (telegramPairingsInfo, error) {

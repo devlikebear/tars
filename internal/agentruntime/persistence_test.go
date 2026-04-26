@@ -6,7 +6,7 @@ import (
 )
 
 func TestSnapshotStore_ReadWriteRoundTrip(t *testing.T) {
-	store := newSnapshotStore(filepath.Join(t.TempDir(), "gateway"))
+	store := newSnapshotStore(filepath.Join(t.TempDir(), "agentruntime"))
 	runs := []Run{
 		{ID: "run_1", Status: RunStatusCompleted, CreatedAt: "2026-02-17T10:00:00Z", UpdatedAt: "2026-02-17T10:01:00Z"},
 		{ID: "run_2", Status: RunStatusCanceled, CreatedAt: "2026-02-17T10:02:00Z", UpdatedAt: "2026-02-17T10:03:00Z"},
@@ -50,7 +50,7 @@ func TestSnapshotStore_ReadWriteRoundTrip(t *testing.T) {
 }
 
 func TestSnapshotStore_ReadMissingReturnsEmpty(t *testing.T) {
-	store := newSnapshotStore(filepath.Join(t.TempDir(), "gateway"))
+	store := newSnapshotStore(filepath.Join(t.TempDir(), "agentruntime"))
 
 	runs, err := store.readRuns()
 	if err != nil {

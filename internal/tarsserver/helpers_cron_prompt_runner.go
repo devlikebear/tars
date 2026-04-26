@@ -35,7 +35,7 @@ func cronExecutionContextFromContext(ctx context.Context) cronExecutionContext {
 	return cfg
 }
 
-func newCronPromptRunnerWithSessionContext(fallback gatewayPromptRunner, deps chatHandlerDeps) gatewayPromptRunner {
+func newCronPromptRunnerWithSessionContext(fallback agentRuntimePromptRunner, deps chatHandlerDeps) agentRuntimePromptRunner {
 	if fallback == nil && deps.client == nil && deps.router == nil {
 		return nil
 	}

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import { getGatewayRun, listGatewayRuns, streamGatewayRunEvents } from '../lib/api'
-  import type { ConsensusVariantRecord, GatewayRun, GatewayRunEvent } from '../lib/types'
+  import { getAgentRuntimeRun, listAgentRuntimeRuns, streamAgentRuntimeRunEvents } from '../lib/api'
+  import type { ConsensusVariantRecord, AgentRuntimeRun, AgentRuntimeRunEvent } from '../lib/types'
 
   interface Props {
     runId?: string
@@ -10,12 +10,12 @@
 
   let { runId, onNavigate }: Props = $props()
 
-  let runs: GatewayRun[] = $state([])
-  let selectedRun: GatewayRun | null = $state(null)
+  let runs: AgentRuntimeRun[] = $state([])
+  let selectedRun: AgentRuntimeRun | null = $state(null)
   let loading = $state(false)
   let error = $state('')
   let streamError = $state('')
-  let events: GatewayRunEvent[] = $state([])
+  let events: AgentRuntimeRunEvent[] = $state([])
   let estimatedUSD = $state<number | null>(null)
   let actualUSD = $state<number | null>(null)
   let stopStream: (() => void) | null = null
@@ -24,9 +24,9 @@
     loading = true
     error = ''
     try {
-      runs = await listGatewayRuns()
+      runs = await listAgentRuntimeRuns()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load gateway runs'
+      error = e instanceof Error ? e.message : 'Failed to load agent runtime runs'
     } finally {
       loading = false
     }
@@ -36,12 +36,12 @@
     loading = true
     error = ''
     try {
-      selectedRun = await getGatewayRun(id)
+      selectedRun = await getAgentRuntimeRun(id)
       estimatedUSD = selectedRun.consensus_budget_usd ?? null
       actualUSD = selectedRun.consensus_cost_usd ?? null
     } catch (e) {
       selectedRun = null
-      error = e instanceof Error ? e.message : 'Failed to load gateway run'
+      error = e instanceof Error ? e.message : 'Failed to load agent runtime run'
     } finally {
       loading = false
     }
@@ -51,7 +51,7 @@
     stopStream?.()
     streamError = ''
     events = []
-    stopStream = streamGatewayRunEvents(
+    stopStream = streamAgentRuntimeRunEvents(
       id,
       (event) => {
         events = [...events, event]
@@ -90,7 +90,7 @@
     return [...(selectedRun?.consensus_variants ?? [])].sort((a, b) => a.variant_idx - b.variant_idx)
   }
 
-  function variantEvents(idx: number): GatewayRunEvent[] {
+  function variantEvents(idx: number): AgentRuntimeRunEvent[] {
     return events.filter((event) => event.variant_idx === idx)
   }
 
@@ -113,14 +113,14 @@
   onDestroy(() => stopStream?.())
 </script>
 
-<div class="gateway-view">
-  <div class="gateway-header">
+<div class="agentruntime-view">
+  <div class="agentruntime-header">
     <div>
-      <div class="gateway-title">Gateway Runs</div>
-      <div class="gateway-subtitle">Inspect recent subagent executions and live run events.</div>
+      <div class="agentruntime-title">Agent Runtime Runs</div>
+      <div class="agentruntime-subtitle">Inspect recent subagent executions and live run events.</div>
     </div>
     {#if runId}
-      <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/gateway')}>Back</button>
+      <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/agentruntime')}>Back</button>
     {:else}
       <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
     {/if}
@@ -130,12 +130,12 @@
     {#if error}
       <div class="error-banner">{error}</div>
     {/if}
-    <div class="gateway-list">
+    <div class="agentruntime-list">
       {#if runs.length === 0 && !loading}
-        <div class="gateway-empty">No gateway runs yet.</div>
+        <div class="agentruntime-empty">No agent runtime runs yet.</div>
       {:else}
         {#each runs as run}
-          <button class="gateway-row" onclick={() => onNavigate(`/console/gateway/runs/${encodeURIComponent(run.run_id)}`)}>
+          <button class="agentruntime-row" onclick={() => onNavigate(`/console/agentruntime/runs/${encodeURIComponent(run.run_id)}`)}>
             <div class="row-main">
               <span class="row-id">{run.run_id}</span>
               <span class="row-agent">{run.agent || 'default'}</span>
@@ -152,11 +152,11 @@
       {/if}
     </div>
   {:else if loading && !selectedRun}
-    <div class="gateway-empty">Loading gateway run...</div>
+    <div class="agentruntime-empty">Loading agent runtime run...</div>
   {:else if error}
     <div class="error-banner">{error}</div>
   {:else if selectedRun}
-    <div class="gateway-detail">
+    <div class="agentruntime-detail">
       <div class="detail-card">
         <div class="detail-title">{selectedRun.run_id}</div>
         <div class="detail-grid">
@@ -220,10 +220,10 @@
       <section class="detail-panel">
         <h3>Run Events</h3>
         {#if streamError}
-          <div class="gateway-empty">{streamError}</div>
+          <div class="agentruntime-empty">{streamError}</div>
         {/if}
         {#if events.length === 0}
-          <div class="gateway-empty">No live events received.</div>
+          <div class="agentruntime-empty">No live events received.</div>
         {:else}
           <div class="event-log">
             {#each events as event}
@@ -240,12 +240,12 @@
 </div>
 
 <style>
-  .gateway-view { display: flex; flex-direction: column; gap: var(--space-4); }
-  .gateway-header { display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; }
-  .gateway-title { font-family: var(--font-display); font-size: var(--text-xl); color: var(--text-primary); }
-  .gateway-subtitle { color: var(--text-ghost); font-size: var(--text-sm); }
-  .gateway-list, .gateway-detail { display: flex; flex-direction: column; gap: var(--space-3); }
-  .gateway-row, .detail-card, .detail-panel, .variant-card { text-align: left; border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .agentruntime-view { display: flex; flex-direction: column; gap: var(--space-4); }
+  .agentruntime-header { display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; }
+  .agentruntime-title { font-family: var(--font-display); font-size: var(--text-xl); color: var(--text-primary); }
+  .agentruntime-subtitle { color: var(--text-ghost); font-size: var(--text-sm); }
+  .agentruntime-list, .agentruntime-detail { display: flex; flex-direction: column; gap: var(--space-3); }
+  .agentruntime-row, .detail-card, .detail-panel, .variant-card { text-align: left; border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: var(--radius-md); padding: var(--space-3); }
   .row-main, .row-meta, .variant-head { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
   .row-id, .detail-title, .event-type { font-family: var(--font-mono); }
   .row-agent, .row-status, .row-mode, .row-meta, .event-body { color: var(--text-secondary); font-size: var(--text-sm); }
@@ -259,7 +259,7 @@
   .event-log { display: flex; flex-direction: column; gap: var(--space-2); }
   .event-row { display: flex; gap: var(--space-3); align-items: flex-start; border-top: 1px solid var(--border-subtle); padding-top: var(--space-2); }
   .event-type { min-width: 140px; color: var(--accent); font-size: var(--text-xs); }
-  .gateway-empty { color: var(--text-ghost); font-size: var(--text-sm); }
+  .agentruntime-empty { color: var(--text-ghost); font-size: var(--text-sm); }
   @media (max-width: 900px) { .detail-columns { grid-template-columns: 1fr; } }
   @media (max-width: 768px) { .variants-grid { grid-template-columns: 1fr; } }
 </style>

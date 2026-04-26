@@ -45,7 +45,6 @@ var toolNameAliases = map[string]string{
 	"subagent_plan":        "subagents_plan",
 	"subagent_run":         "subagents_run",
 	"subagent_orchestrate": "subagents_orchestrate",
-	"gateway_status":       "gateway",
 }
 
 func CanonicalToolName(name string) string {

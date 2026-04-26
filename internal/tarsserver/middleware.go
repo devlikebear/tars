@@ -38,8 +38,8 @@ func apiAdminPaths() []string {
 	return []string{
 		"/v1/admin/*",
 		"/v1/runtime/extensions/reload",
-		"/v1/gateway/reload",
-		"/v1/gateway/restart",
+		"/v1/agentruntime/reload",
+		"/v1/agentruntime/restart",
 		"/v1/channels/webhook/inbound/*",
 		"/v1/channels/telegram/webhook/*",
 		"/v1/channels/telegram/pairings*",

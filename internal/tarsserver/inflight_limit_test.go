@@ -111,7 +111,7 @@ func TestChatAPIHandler_ReturnsOverloadedWhenInflightLimitExceeded(t *testing.T)
 }
 
 func TestAgentRunsAPIHandler_ReturnsOverloadedWhenInflightLimitExceeded(t *testing.T) {
-	runtime := newTestGatewayRuntime(t)
+	runtime := newTestAgentRuntime(t)
 	handler := newAgentRunsAPIHandlerWithInflightLimit(runtime, zerolog.New(io.Discard), 2)
 
 	blockedA := newBlockingReadCloser(`{"message":"a"}`)
