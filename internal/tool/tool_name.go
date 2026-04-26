@@ -20,10 +20,6 @@ var toolNameAliases = map[string]string{
 	"memory_search": "memory",
 	"memory_get":    "memory",
 
-	// web aliases → web aggregator (ID-003)
-	"web_search": "web",
-	"web_fetch":  "web",
-
 	// sysprompt aliases → workspace aggregator
 	"workspace_sysprompt_get": "workspace",
 	"workspace_sysprompt_set": "workspace",

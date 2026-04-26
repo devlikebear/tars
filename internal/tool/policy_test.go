@@ -6,7 +6,7 @@ import (
 )
 
 func TestPolicyResolve(t *testing.T) {
-	all := []string{"read_file", "write_file", "web", "exec", "memory", "session"}
+	all := []string{"read_file", "write_file", "web_fetch", "exec", "memory", "session"}
 	tests := []struct {
 		name    string
 		policy  Policy
@@ -16,7 +16,7 @@ func TestPolicyResolve(t *testing.T) {
 		{
 			name:   "no constraints keeps all tools",
 			policy: Policy{},
-			want:   []string{"exec", "memory", "read_file", "session", "web", "write_file"},
+			want:   []string{"exec", "memory", "read_file", "session", "web_fetch", "write_file"},
 		},
 		{
 			name: "allow groups restricts to grouped tools only",
@@ -24,7 +24,7 @@ func TestPolicyResolve(t *testing.T) {
 				AllowGroups:    []string{"files", "web"},
 				UseAllowGroups: true,
 			},
-			want: []string{"read_file", "web", "write_file"},
+			want: []string{"read_file", "web_fetch", "write_file"},
 			blocked: map[string]BlockedToolError{
 				"exec":    {Tool: "exec", Rule: "group_allow", Group: "shell", Source: "session"},
 				"memory":  {Tool: "memory", Rule: "group_allow", Group: "memory", Source: "session"},
@@ -44,7 +44,7 @@ func TestPolicyResolve(t *testing.T) {
 				"exec":       {Tool: "exec", Rule: "group_allow", Group: "shell", Source: "session"},
 				"memory":     {Tool: "memory", Rule: "group_allow", Group: "memory", Source: "session"},
 				"session":    {Tool: "session", Rule: "group_allow", Source: "session"},
-				"web":        {Tool: "web", Rule: "group_allow", Group: "web", Source: "session"},
+				"web_fetch":  {Tool: "web_fetch", Rule: "group_allow", Group: "web", Source: "session"},
 				"write_file": {Tool: "write_file", Rule: "tool_allow", Group: "files", Source: "session"},
 			},
 		},
@@ -61,7 +61,7 @@ func TestPolicyResolve(t *testing.T) {
 				"memory":     {Tool: "memory", Rule: "group_allow", Group: "memory", Source: "session"},
 				"read_file":  {Tool: "read_file", Rule: "group_allow", Group: "files", Source: "session"},
 				"session":    {Tool: "session", Rule: "group_allow", Source: "session"},
-				"web":        {Tool: "web", Rule: "group_allow", Group: "web", Source: "session"},
+				"web_fetch":  {Tool: "web_fetch", Rule: "group_allow", Group: "web", Source: "session"},
 				"write_file": {Tool: "write_file", Rule: "group_allow", Group: "files", Source: "session"},
 			},
 		},
@@ -77,7 +77,7 @@ func TestPolicyResolve(t *testing.T) {
 				"exec":       {Tool: "exec", Rule: "tool_allow", Group: "shell", Source: "session"},
 				"memory":     {Tool: "memory", Rule: "tool_allow", Group: "memory", Source: "session"},
 				"session":    {Tool: "session", Rule: "tool_allow", Source: "session"},
-				"web":        {Tool: "web", Rule: "tool_allow", Group: "web", Source: "session"},
+				"web_fetch":  {Tool: "web_fetch", Rule: "tool_allow", Group: "web", Source: "session"},
 				"write_file": {Tool: "write_file", Rule: "tool_deny", Group: "files", Source: "session"},
 			},
 		},

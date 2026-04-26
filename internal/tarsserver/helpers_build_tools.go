@@ -61,22 +61,22 @@ func buildOptionalChatTools(cfg config.Config, gatewayRuntime *gateway.Runtime) 
 	if cfg.ToolsApplyPatchEnabled {
 		out = append(out, tool.NewApplyPatchTool(cfg.WorkspaceDir, true))
 	}
-	if cfg.ToolsWebFetchEnabled || cfg.ToolsWebSearchEnabled {
-		out = append(out, tool.NewWebTool(tool.WebOptions{
-			Search: tool.WebSearchOptions{
-				Provider:          cfg.ToolsWebSearchProvider,
-				BraveAPIKey:       cfg.ToolsWebSearchAPIKey,
-				PerplexityAPIKey:  cfg.ToolsWebSearchPerplexityAPIKey,
-				PerplexityModel:   cfg.ToolsWebSearchPerplexityModel,
-				PerplexityBaseURL: cfg.ToolsWebSearchPerplexityBaseURL,
-				CacheTTL:          time.Duration(cfg.ToolsWebSearchCacheTTLSeconds) * time.Second,
-			},
-			Fetch: tool.WebFetchOptions{
-				AllowPrivateHosts:    cfg.ToolsWebFetchAllowPrivateHosts,
-				PrivateHostAllowlist: cfg.ToolsWebFetchPrivateHostAllowlist,
-			},
-			SearchEnabled: cfg.ToolsWebSearchEnabled,
-			FetchEnabled:  cfg.ToolsWebFetchEnabled,
+	if cfg.ToolsWebFetchEnabled {
+		out = append(out, tool.NewWebFetchToolWithOptions(tool.WebFetchOptions{
+			Enabled:              true,
+			AllowPrivateHosts:    cfg.ToolsWebFetchAllowPrivateHosts,
+			PrivateHostAllowlist: cfg.ToolsWebFetchPrivateHostAllowlist,
+		}))
+	}
+	if cfg.ToolsWebSearchEnabled {
+		out = append(out, tool.NewWebSearchToolWithOptions(tool.WebSearchOptions{
+			Enabled:           true,
+			Provider:          cfg.ToolsWebSearchProvider,
+			BraveAPIKey:       cfg.ToolsWebSearchAPIKey,
+			PerplexityAPIKey:  cfg.ToolsWebSearchPerplexityAPIKey,
+			PerplexityModel:   cfg.ToolsWebSearchPerplexityModel,
+			PerplexityBaseURL: cfg.ToolsWebSearchPerplexityBaseURL,
+			CacheTTL:          time.Duration(cfg.ToolsWebSearchCacheTTLSeconds) * time.Second,
 		}))
 	}
 	return out
