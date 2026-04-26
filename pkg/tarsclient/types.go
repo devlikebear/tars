@@ -307,6 +307,21 @@ type UsageLimitStatus struct {
 	LimitUSD float64 `json:"limit_usd,omitempty"`
 }
 
+type UsageSignalSummary struct {
+	Period     string           `json:"period"`
+	TotalCount int              `json:"total_count"`
+	Rows       []UsageSignalRow `json:"rows"`
+}
+
+type UsageSignalRow struct {
+	Name       string            `json:"name"`
+	Source     string            `json:"source,omitempty"`
+	Count      int               `json:"count"`
+	Dimensions map[string]string `json:"dimensions,omitempty"`
+	FirstAt    string            `json:"first_at,omitempty"`
+	LastAt     string            `json:"last_at,omitempty"`
+}
+
 type OpsStatus struct {
 	Timestamp       string  `json:"timestamp"`
 	DiskTotalBytes  uint64  `json:"disk_total_bytes"`

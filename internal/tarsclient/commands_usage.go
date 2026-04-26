@@ -2,6 +2,7 @@ package tarsclient
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -11,7 +12,7 @@ func cmdUsage(c commandContext) (bool, string, error) {
 		return false, c.session, nil
 	}
 	if len(c.fields) < 2 {
-		return true, c.session, fmt.Errorf("usage: /usage {summary|limits|set-limits}")
+		return true, c.session, fmt.Errorf("usage: /usage {summary|signals|limits|set-limits}")
 	}
 	switch strings.ToLower(strings.TrimSpace(c.fields[1])) {
 	case "summary":
@@ -38,6 +39,27 @@ func cmdUsage(c commandContext) (bool, string, error) {
 		for _, row := range summary.Rows {
 			fmt.Fprintf(c.stdout, "- %s calls=%d cost_usd=%.6f in=%d out=%d\n",
 				strings.TrimSpace(row.Key), row.Calls, row.CostUSD, row.InputTokens, row.OutputTokens)
+		}
+		return true, c.session, nil
+	case "signals":
+		period := "today"
+		if len(c.fields) >= 3 {
+			period = strings.TrimSpace(c.fields[2])
+		}
+		signals, err := c.runtime.usageSignals(c.ctx, period)
+		if err != nil {
+			return true, c.session, err
+		}
+		fmt.Fprintf(c.stdout, "SYSTEM > usage signals period=%s total=%d\n", signals.Period, signals.TotalCount)
+		for _, row := range signals.Rows {
+			fmt.Fprintf(c.stdout, "- %s", strings.TrimSpace(row.Name))
+			if strings.TrimSpace(row.Source) != "" {
+				fmt.Fprintf(c.stdout, " source=%s", strings.TrimSpace(row.Source))
+			}
+			for _, key := range sortedStringKeys(row.Dimensions) {
+				fmt.Fprintf(c.stdout, " %s=%s", key, strings.TrimSpace(row.Dimensions[key]))
+			}
+			fmt.Fprintf(c.stdout, " count=%d\n", row.Count)
 		}
 		return true, c.session, nil
 	case "limits":
@@ -81,6 +103,15 @@ func cmdUsage(c commandContext) (bool, string, error) {
 			updated.DailyUSD, updated.WeeklyUSD, updated.MonthlyUSD, updated.Mode)
 		return true, c.session, nil
 	default:
-		return true, c.session, fmt.Errorf("usage: /usage {summary|limits|set-limits}")
+		return true, c.session, fmt.Errorf("usage: /usage {summary|signals|limits|set-limits}")
 	}
+}
+
+func sortedStringKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

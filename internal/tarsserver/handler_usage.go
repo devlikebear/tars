@@ -84,5 +84,24 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 		}
 	})
 
+	mux.HandleFunc("/v1/usage/signals", func(w http.ResponseWriter, r *http.Request) {
+		if tracker == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
+			return
+		}
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		period := strings.TrimSpace(r.URL.Query().Get("period"))
+		signals, err := tracker.Signals(period)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"signals": signals,
+		})
+	})
+
 	return mux
 }

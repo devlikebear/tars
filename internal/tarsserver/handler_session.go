@@ -11,10 +11,15 @@ import (
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
 
 func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Handler {
+	return newSessionAPIHandlerWithUsage(store, logger, nil)
+}
+
+func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker) http.Handler {
 	mux := http.NewServeMux()
 	baseWorkspaceDir := ""
 	if store != nil {
@@ -411,6 +416,7 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 					return
 				}
+				recordSessionToolConfigSignal(usageTracker, sessionID, config)
 				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 			}
 		case len(pathParts) == 2 && pathParts[1] == "prompt":
@@ -489,6 +495,47 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 	})
 
 	return mux
+}
+
+func recordSessionToolConfigSignal(tracker *usage.Tracker, sessionID string, config session.SessionToolConfig) {
+	if tracker == nil {
+		return
+	}
+	dimensions := map[string]string{
+		"tools_custom":  boolDimension(config.ToolsCustom),
+		"skills_custom": boolDimension(config.SkillsCustom),
+	}
+	if len(config.ToolsEnabled) > 0 {
+		dimensions["tools_enabled_count"] = fmt.Sprintf("%d", len(config.ToolsEnabled))
+	}
+	if len(config.ToolsDisabled) > 0 {
+		dimensions["tools_disabled_count"] = fmt.Sprintf("%d", len(config.ToolsDisabled))
+	}
+	if len(config.ToolsAllowGroups) > 0 {
+		dimensions["tools_allow_groups_count"] = fmt.Sprintf("%d", len(config.ToolsAllowGroups))
+	}
+	if len(config.ToolsDenyGroups) > 0 {
+		dimensions["tools_deny_groups_count"] = fmt.Sprintf("%d", len(config.ToolsDenyGroups))
+	}
+	if len(config.SkillsEnabled) > 0 {
+		dimensions["skills_enabled_count"] = fmt.Sprintf("%d", len(config.SkillsEnabled))
+	}
+	if len(config.MCPEnabled) > 0 {
+		dimensions["mcp_enabled_count"] = fmt.Sprintf("%d", len(config.MCPEnabled))
+	}
+	_ = tracker.RecordSignal(usage.SignalEntry{
+		Name:       "session.tool_config.updated",
+		Source:     "api",
+		SessionID:  sessionID,
+		Dimensions: dimensions,
+	})
+}
+
+func boolDimension(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
 }
 
 func newStatusAPIHandler(workspaceDir string, store *session.Store, mainSessionID string, logger zerolog.Logger) http.Handler {

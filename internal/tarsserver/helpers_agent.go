@@ -276,7 +276,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 			meta.RunID = strings.TrimSpace(label[idx+1:])
 		}
 		ctx = usage.WithCallMeta(ctx, meta)
-		loop, _ := setupAgentLoop(runClient, registry, label, 0, logger, func(string, string, string, string, string, string) {})
+		loop, _ := setupAgentLoop(runClient, registry, label, 0, tracker, logger, func(string, string, string, string, string, string) {})
 		resp, err := loop.Run(ctx, []llm.ChatMessage{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: promptText},

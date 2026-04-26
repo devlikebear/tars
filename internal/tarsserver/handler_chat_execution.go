@@ -9,6 +9,7 @@ import (
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
+	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -41,7 +42,8 @@ func executeChatLoop(
 			return llm.ChatResponse{}, false, nil, err
 		}
 	}
-	loop, toolCallRecords := setupAgentLoop(chatClient, state.registry, state.sessionID, len(state.history), deps.logger, stream.status)
+	ctx = usage.WithCallMeta(ctx, usage.CallMeta{Source: "chat", SessionID: state.sessionID})
+	loop, toolCallRecords := setupAgentLoop(chatClient, state.registry, state.sessionID, len(state.history), deps.tooling.UsageTracker, deps.logger, stream.status)
 	ctx = tool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")

@@ -194,13 +194,25 @@ func (r *Runtime) persistSnapshot() {
 		currentVersion := r.stateVersion
 		if strings.TrimSpace(writeErr) != "" {
 			r.mu.Unlock()
+			r.recordUsageSignal("agentruntime.persist_snapshot.error", Run{}, map[string]string{
+				"attempt": intDimension(attempt + 1),
+			})
 			return
 		}
 		if currentVersion == snapshotVersion || attempt == 1 {
+			finalMismatch := currentVersion != snapshotVersion
 			r.lastPersistAt = r.nowFn().UTC()
 			r.mu.Unlock()
+			if finalMismatch {
+				r.recordUsageSignal("agentruntime.persist_snapshot.mismatch_final", Run{}, map[string]string{
+					"attempt": intDimension(attempt + 1),
+				})
+			}
 			return
 		}
 		r.mu.Unlock()
+		r.recordUsageSignal("agentruntime.persist_snapshot.retry", Run{}, map[string]string{
+			"attempt": intDimension(attempt + 1),
+		})
 	}
 }

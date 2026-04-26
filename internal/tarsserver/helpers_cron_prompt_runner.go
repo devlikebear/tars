@@ -9,6 +9,7 @@ import (
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/tool"
+	"github.com/devlikebear/tars/internal/usage"
 )
 
 type cronExecutionContext struct {
@@ -87,8 +88,9 @@ func newCronPromptRunnerWithSessionContext(fallback agentRuntimePromptRunner, de
 			tools = state.registry.SchemasForNames(filtered)
 		}
 
-		runCtx := tool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
-		loop, _ := setupAgentLoop(state.llmClient, state.registry, state.sessionID, len(state.history), deps.logger, func(string, string, string, string, string, string) {})
+		runCtx := usage.WithCallMeta(ctx, usage.CallMeta{Source: "cron", SessionID: state.sessionID})
+		runCtx = tool.WithCurrentSessionInfo(runCtx, state.sessionID, state.sessionKind)
+		loop, _ := setupAgentLoop(state.llmClient, state.registry, state.sessionID, len(state.history), deps.tooling.UsageTracker, deps.logger, func(string, string, string, string, string, string) {})
 		resp, err := loop.Run(runCtx, state.llmMessages, agent.RunOptions{
 			MaxIterations: deps.maxIters,
 			Tools:         tools,

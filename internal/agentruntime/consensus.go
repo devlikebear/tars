@@ -80,7 +80,15 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 	if r.opts.AgentRuntimeConsensusBudgetUSD > 0 && estimatedUSD > r.opts.AgentRuntimeConsensusBudgetUSD {
 		return "", fmt.Errorf("consensus_usd_budget_exceeded: %.4f > %.4f", estimatedUSD, r.opts.AgentRuntimeConsensusBudgetUSD)
 	}
+	strategy := strings.TrimSpace(spec.Strategy)
+	if strategy == "" {
+		strategy = "synthesize"
+	}
 	state.run.ConsensusBudgetUSD = estimatedUSD
+	r.recordUsageSignal("agentruntime.consensus.started", state.run, map[string]string{
+		"strategy":      strategy,
+		"variant_count": intDimension(len(resolved)),
+	})
 	r.publishRunEvent(state.run.ID, RunEvent{Type: "consensus_planned", RunID: state.run.ID, VariantCount: len(resolved), TokenBudget: r.opts.AgentRuntimeConsensusBudgetTokens, CostUSDEstimate: estimatedUSD})
 
 	if err := r.consensusRuns.Acquire(ctx); err != nil {
@@ -90,10 +98,6 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 	consensusCtx, cancel := context.WithTimeout(ctx, time.Duration(r.opts.AgentRuntimeConsensusTimeoutSeconds)*time.Second)
 	defer cancel()
 
-	strategy := strings.TrimSpace(spec.Strategy)
-	if strategy == "" {
-		strategy = "synthesize"
-	}
 	records := make([]ConsensusVariantRecord, len(resolved))
 	var tokenSum atomic.Int64
 	var mu sync.Mutex
