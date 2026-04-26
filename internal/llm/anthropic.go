@@ -56,7 +56,7 @@ func newAnthropicClientWithConfig(baseURL, apiKey, model string, config ClientCo
 func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error) {
 	streaming := opts.OnDelta != nil
 	url := c.baseURL + "/v1/messages"
-	logChatRequestStart("anthropic", c.model, url, len(messages), streaming, len(opts.Tools), opts.ToolChoice)
+	logChatRequestStart("anthropic", c.model, url, len(messages), streaming, len(opts.Tools), opts.ToolChoice.String())
 
 	reqBody := c.buildChatRequest(messages, opts, streaming)
 	_, resp, err := executeJSONChatRequest(ctx, jsonRequestSpec{
@@ -543,21 +543,23 @@ func toAnthropicTools(tools []ToolSchema) []anthropicWireTool {
 	return out
 }
 
-func toAnthropicToolChoice(choice string) map[string]any {
-	trimmed := strings.TrimSpace(choice)
-	switch trimmed {
-	case "":
+func toAnthropicToolChoice(choice *ToolChoice) map[string]any {
+	if choice == nil {
 		return nil
-	case "required", "any":
-		return map[string]any{"type": "any"}
-	case "auto":
-		return map[string]any{"type": "auto"}
-	case "none":
-		return map[string]any{"type": "none"}
-	default:
-		return map[string]any{
-			"type": "tool",
-			"name": trimmed,
-		}
 	}
+	switch choice.Mode {
+	case ToolChoiceModeRequired:
+		return map[string]any{"type": "any"}
+	case ToolChoiceModeAuto:
+		return map[string]any{"type": "auto"}
+	case ToolChoiceModeNone:
+		return map[string]any{"type": "none"}
+	case ToolChoiceModeSpecific:
+		name := strings.TrimSpace(choice.Name)
+		if name == "" {
+			return nil
+		}
+		return map[string]any{"type": "tool", "name": name}
+	}
+	return nil
 }

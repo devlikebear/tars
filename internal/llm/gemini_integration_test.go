@@ -53,7 +53,7 @@ func TestGeminiLive_OpenAICompatibleToolCall(t *testing.T) {
 				},
 			},
 		},
-		ToolChoice: "required",
+		ToolChoice: ToolChoiceRequired(),
 	})
 	if err != nil {
 		t.Fatalf("chat: %v", err)
@@ -112,7 +112,7 @@ func TestGeminiLive_NativeToolCall(t *testing.T) {
 				},
 			},
 		},
-		ToolChoice: "required",
+		ToolChoice: ToolChoiceRequired(),
 	})
 	if err != nil {
 		t.Fatalf("chat: %v", err)

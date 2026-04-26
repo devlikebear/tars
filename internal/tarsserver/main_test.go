@@ -1855,7 +1855,7 @@ func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 		toolNames = append(toolNames, name)
 	}
 	m.seenTools = append(m.seenTools, toolNames)
-	m.seenToolChoices = append(m.seenToolChoices, strings.TrimSpace(opts.ToolChoice))
+	m.seenToolChoices = append(m.seenToolChoices, opts.ToolChoice.String())
 
 	resp := m.response
 	if len(m.responses) > 0 {

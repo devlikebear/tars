@@ -89,8 +89,8 @@ func TestDecider_SuccessNotify(t *testing.T) {
 		t.Errorf("unexpected decision: %+v", got)
 	}
 	// Verify options were set correctly.
-	if client.lastOpts.ToolChoice != "required" {
-		t.Errorf("ToolChoice = %q, want required", client.lastOpts.ToolChoice)
+	if client.lastOpts.ToolChoice == nil || client.lastOpts.ToolChoice.Mode != llm.ToolChoiceModeRequired {
+		t.Errorf("ToolChoice = %v, want required", client.lastOpts.ToolChoice)
 	}
 	if len(client.lastOpts.Tools) != 1 || client.lastOpts.Tools[0].Function.Name != "pulse_decide" {
 		t.Errorf("tools not wired correctly: %+v", client.lastOpts.Tools)

@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-04-26
+
+### Changed (BREAKING)
+
+- **ID-004 Phase 1 — ChatOptions strict tool & response controls (RF-042 / RF-048 partial)**: `llm.ChatOptions.ToolChoice` 가 `string` → `*llm.ToolChoice` 구조체로 변경. 새 헬퍼 `llm.ToolChoiceAuto/None/Required/Specific(name)` 로 모든 호출자 마이그레이션. `ChatOptions.ResponseFormat *llm.ResponseFormat` 신규 필드 (text / json_object / json_schema, OpenAI-style strict 토글).
+- **OpenAI compat client**: `tool_choice` 가 mode 별로 정확한 wire format 으로 직렬화. specific tool 은 `{"type":"function","function":{"name":"…"}}` 객체. `response_format` 은 `{"type":"json_schema","json_schema":{"name","schema","strict"}}` 봉투. 이전엔 string 만 그대로 forwarding 했고 specific tool 은 사실상 미지원이었음.
+- **Anthropic / Gemini-native**: 새 `*ToolChoice` 받게 변환 함수 시그니처 업데이트. anthropic 은 specific tool 이미 지원 (`tool_choice: {type: tool, name: …}`). gemini-native 는 specific 일 때 `functionCallingConfig.mode=ANY + allowedFunctionNames=[name]` 으로 매핑 (Google Live API 표준).
+- **subagents_plan (RF-042 직접 해소)**: planner Chat 호출에 `ResponseFormat: json_schema` 적용. OpenAI-호환 planner 에서는 markdown 펜스/문장 잡음 없이 schema-검증된 JSON 출력. 기존 정규화 레이어 (id 유일성, 참조 재작성) 는 그대로 유지.
+- `agent.RunOptions` 에 `ResponseFormat *llm.ResponseFormat` 신규 필드 (loop 전 iteration 으로 전달).
+
+### Migration
+
+`ChatOptions.ToolChoice = "required"` 같은 string 호출 코드는 더 이상 컴파일되지 않음. `llm.ToolChoiceRequired()` / `llm.ToolChoiceAuto()` / `llm.ToolChoiceNone()` / `llm.ToolChoiceSpecific("tool_name")` 헬퍼로 교체. ResponseFormat 사용 시: `&llm.ResponseFormat{Type: llm.ResponseFormatJSONSchema, Name: "…", Schema: rawJSON, Strict: true}`.
+
+### Out of scope (Phase 2 — 별도 PR)
+
+- `openai_codex_client.go` 의 `tool_choice="auto"` 하드코딩 제거 (RF-048 잔여)
+- PDF placeholder 명시 에러 (RF-046)
+- Default model 갱신 (RF-064)
+
 ## [0.30.2] - 2026-04-26
 
 ### Reverted

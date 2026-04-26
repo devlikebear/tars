@@ -15,6 +15,47 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
+// subagentsPlanResponseSchema mirrors the planner output and is wired into
+// ChatOptions.ResponseFormat (json_schema). Providers that honor it (currently
+// the OpenAI-compatible client) reject markdown fences, prose, and missing
+// fields server-side — the post-decode normalization layer still handles
+// id uniqueness and reference rewriting, but no longer needs fence stripping
+// or substring extraction. This is the RF-042 follow-through.
+var subagentsPlanResponseSchema = json.RawMessage(`{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string"},
+          "mode": {"type": "string", "enum": ["parallel", "sequential"]},
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {"type": "string"},
+                "title": {"type": "string"},
+                "prompt": {"type": "string"},
+                "tier": {"type": "string", "enum": ["heavy", "standard", "light"]},
+                "depends_on": {"type": "array", "items": {"type": "string"}}
+              },
+              "required": ["id", "prompt"]
+            }
+          }
+        },
+        "required": ["mode", "tasks"]
+      }
+    }
+  },
+  "required": ["steps"]
+}`)
+
 func NewSubagentsPlanTool(runtime *gateway.Runtime, router llm.Router) Tool {
 	return Tool{
 		Name:        "subagents_plan",
@@ -125,7 +166,13 @@ func NewSubagentsPlanTool(runtime *gateway.Runtime, router llm.Router) Tool {
 				Int("max_parallel_tasks", effectiveMaxParallel).
 				Msg("subagent planner started")
 
-			resp, err := plannerClient.Chat(plannerCtx, buildSubagentsPlannerMessages(info, goal, agentName, flowID, maxSteps, effectiveMaxParallel, input.Constraints, input.Hints, requiredTargets), llm.ChatOptions{})
+			resp, err := plannerClient.Chat(plannerCtx, buildSubagentsPlannerMessages(info, goal, agentName, flowID, maxSteps, effectiveMaxParallel, input.Constraints, input.Hints, requiredTargets), llm.ChatOptions{
+				ResponseFormat: &llm.ResponseFormat{
+					Type:   llm.ResponseFormatJSONSchema,
+					Name:   "subagents_plan",
+					Schema: subagentsPlanResponseSchema,
+				},
+			})
 			if err != nil {
 				return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 			}
