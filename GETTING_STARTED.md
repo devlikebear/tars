@@ -120,7 +120,7 @@ Or navigate to `http://127.0.0.1:43180/console` in your browser.
 ### First things to try
 
 - **Chat** — Type a message and watch the agent loop execute tools
-- **Memory** — Visit `/console/memory` to see durable memory and knowledge base
+- **Memory** — Visit `/console/memory` to edit durable memory, inspect experiences, and test semantic search
 - **System Prompt** — Visit `/console/sysprompt` to customize agent identity and rules
 - **Pulse** — Visit `/console/pulse` to see the background watchdog status
 

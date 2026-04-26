@@ -1,172 +1,151 @@
-# Step 19. Human-in-the-loop + 산출물
+# Step 19. Ops Approval
 
-> 학습 목표: planning 승인, blocker, phase 재계획 관점에서 Human-in-the-loop를 정리
+> 학습 목표: 위험한 운영 작업을 계획과 승인 단계로 분리하는 Human-in-the-loop 패턴 이해
 
-## 왜 Human-in-the-loop인가
+## 왜 Approval인가
 
-Step 18에서 Autopilot이 자동으로 계획하고 실행하는 루프를 만들었습니다. 하지만 AI가 만든 계획을 **검토 없이 바로 실행하면 위험**합니다:
+TARS는 로컬 파일, 로그, 임시 디렉터리, cron 실행 기록처럼 실제 사용자 환경에 영향을 줄 수 있는 데이터를 다룹니다. 자동화가 이런 작업을 바로 실행하면:
 
-- 엉뚱한 태스크를 만들 수 있음
-- 의도하지 않은 파일을 생성할 수 있음
-- API 비용이 낭비될 수 있음
+- 의도하지 않은 파일 삭제가 발생할 수 있음
+- cleanup 후보를 사람이 확인할 시간이 없음
+- 운영 작업의 책임 경계가 흐려짐
 
-그래서 사람 개입은 넓게 퍼뜨리지 않고, 최소한 아래 세 지점으로 모읍니다:
+그래서 최신 TARS의 Human-in-the-loop는 project/autopilot phase가 아니라 **ops approval** 흐름으로 모읍니다.
 
-- 첫 phase 계획 승인
-- terminal blocker 해소
-- 다음 phase로 넘어가기 전 재계획 승인
+```
+계획 생성 → approval 저장 → 사용자 승인/거절 → 적용 → 이벤트 기록
+```
 
-## 제어 API / 상태 갱신
+## 핵심 API
 
-지금 구현의 핵심은 별도 approve/reject 전용 phase를 늘리는 것이 아니라, `STATE.md`와 `AUTOPILOT.json`에 **사람의 결정이 필요한 상태를 명시**하는 것입니다.
+| API | 역할 |
+|-----|------|
+| `GET /v1/ops/status` | 디스크/프로세스 상태 조회 |
+| `POST /v1/ops/cleanup/plan` | 삭제 후보와 approval ID 생성 |
+| `GET /v1/ops/approvals` | approval 목록 조회 |
+| `POST /v1/ops/approvals/{id}/approve` | 승인 후 cleanup 적용 |
+| `POST /v1/ops/approvals/{id}/reject` | cleanup 거절 |
+| `POST /v1/ops/cleanup/apply` | 승인된 approval ID로 cleanup 적용 |
 
-대표적인 상태는 다음과 같습니다.
+CLI도 같은 API를 사용합니다.
 
-| 상태 | 의미 |
-|------|------|
-| `planning + active` | 초안 정리 중, 아직 자동 실행 전 |
-| `planning + blocked` | 다음 backlog/phase 승인 필요 |
-| `executing + blocked` | 실행 중 blocker 발생 |
-| `done` | 현재 phase 또는 run 종료 |
+```bash
+tars approve list
+tars approve run <approval_id>
+tars approve reject <approval_id>
+```
 
-### 예시: planning-ready 응답
+## 실습
+
+### 19-1. Cleanup plan 타입
+
+**`internal/ops`**
 
 ```go
-POST /v1/project-briefs/{session_id}/finalize
+type CleanupCandidate struct {
+    Path      string `json:"path"`
+    SizeBytes int64  `json:"size_bytes"`
+    Reason    string `json:"reason,omitempty"`
+}
 
-{
-  "project": {...},
-  "brief": {...},
-  "state": {
-    "phase": "planning",
-    "status": "active",
-    "next_action": "Review project instructions and define the first executable milestone in STATE.md."
-  },
-  "planning_ready": true
+type CleanupPlan struct {
+    ApprovalID string             `json:"approval_id"`
+    CreatedAt  time.Time          `json:"created_at"`
+    TotalBytes int64              `json:"total_bytes"`
+    Candidates []CleanupCandidate `json:"candidates"`
 }
 ```
 
-이 응답의 의미는 “프로젝트는 만들어졌고, 실행 전에 planning 검토가 가능하다”입니다. 예전처럼 `seeded=true`로 즉시 backlog 실행을 암시하지 않습니다.
+`CreateCleanupPlan`은 후보만 찾고 즉시 삭제하지 않습니다. 이 경계가 approval 패턴의 핵심입니다.
 
-## 산출물 (Deliverables)
-
-### 문제: 프로젝트마다 산출물이 다르다
-
-- 소설 프로젝트 → `story.md`, `outline.md`
-- 코딩 프로젝트 → `main.go`, `handler.go`, `README.md`
-- 이미지 프로젝트 → `concept.md`, `prompt.txt`
-
-산출물의 개수, 파일명, 포맷을 하드코딩할 수 없습니다. **LLM이 계획 단계에서 결정**하게 합니다.
-
-### Deliverable 타입
+### 19-2. Approval 상태
 
 ```go
-type Deliverable struct {
-    ID          string `json:"id"`
-    Path        string `json:"path"`        // output/ 기준 상대경로
-    Format      string `json:"format"`      // md, go, py, png, ...
-    Description string `json:"description"` // 설명
-    TaskID      string `json:"task_id"`     // 어떤 태스크가 생성하는지
+type Approval struct {
+    ID          string      `json:"id"`
+    Type        string      `json:"type"`
+    Status      string      `json:"status"`
+    RequestedAt time.Time   `json:"requested_at"`
+    UpdatedAt   time.Time   `json:"updated_at"`
+    ReviewedAt  *time.Time  `json:"reviewed_at,omitempty"`
+    Plan        CleanupPlan `json:"plan"`
+    Note        string      `json:"note,omitempty"`
 }
 ```
 
-### 계획 단계에서 생성
+approval은 `workspace/ops/approvals.json`에 저장됩니다. 서버 재시작 후에도 pending approval을 다시 볼 수 있어야 하기 때문입니다.
 
-PlanGenerator가 태스크와 산출물을 **함께** 생성합니다:
+### 19-3. HTTP handler
 
-```go
-type PlanResult struct {
-    Tasks        []BoardTask   `json:"tasks"`
-    Deliverables []Deliverable `json:"deliverables"`
-}
-```
-
-LLM 프롬프트:
-
-```
-Generate 3-7 actionable tasks AND a list of deliverables.
-Respond in JSON:
-{
-  "tasks": [...],
-  "deliverables": [
-    {"id":"d-1","path":"outline.md","format":"md",
-     "description":"소설 구성 개요","task_id":"task-2"}
-  ]
-}
-```
-
-### 승인 화면에서 확인
-
-사용자는 전용 approve phase보다, dashboard의 `Phase Note`, `Pending Decision`, `Current Blocker`를 통해 현재 어떤 결정을 내려야 하는지 확인합니다:
-
-```
-Phase: planning
-Status: blocked
-Pending Decision: Approve the first phase backlog
-Current Blocker: No backlog items remain for the current phase.
-```
-이 정보를 보고 사용자는 `STATE.md`를 보강하거나, 관련 project tool로 다음 계획을 승인/수정합니다.
-
-### 실행 시 산출물 경로 전달
-
-TaskRunner에 해당 태스크의 산출물 목록을 전달합니다:
+**`internal/tarsserver/handler_ops.go`**
 
 ```go
-// stepExecuting에서
-deliverables, _ := a.store.GetDeliverables(p.ID)
-var taskDeliverables []Deliverable
-for _, d := range deliverables {
-    if d.TaskID == task.ID {
-        taskDeliverables = append(taskDeliverables, d)
+mux.HandleFunc("/v1/ops/cleanup/plan", func(w http.ResponseWriter, r *http.Request) {
+    plan, err := manager.CreateCleanupPlan(r.Context())
+    if err != nil {
+        writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ops cleanup plan failed"})
+        return
     }
+    emit(r.Context(), newNotificationEvent("ops", "warn", "Cleanup approval required", "approval_id="+plan.ApprovalID))
+    writeJSON(w, http.StatusOK, plan)
+})
+```
+
+계획 생성 시 notification event를 함께 발행합니다. 콘솔은 이벤트 스트림/히스토리를 통해 “승인이 필요하다”는 상태를 보여줄 수 있습니다.
+
+### 19-4. 승인과 적용
+
+```go
+case "approve":
+    err = manager.Approve(approvalID)
+    if err == nil {
+        result, applyErr := manager.ApplyCleanup(r.Context(), approvalID)
+        // 성공/실패를 notification event로 남김
+    }
+case "reject":
+    err = manager.Reject(approvalID)
+```
+
+승인 API는 현재 cleanup을 즉시 적용합니다. 실패하면 approval note에 에러를 남기고, event severity를 `error`로 발행합니다.
+
+### 19-5. CLI wrapper
+
+**`cmd/tars/approval_main.go`**
+
+```go
+switch action {
+case "list":
+    items, err := client.ListApprovals(ctx)
+case "run":
+    err := client.ApproveCleanup(ctx, approvalID)
+    result, err := client.ApplyCleanup(ctx, approvalID)
+case "reject":
+    err := client.RejectCleanup(ctx, approvalID)
 }
-a.runner(ctx, p.ID, task, taskDeliverables)
 ```
 
-TaskRunner의 시스템 프롬프트에 산출물 경로가 포함됩니다:
-
-```
-Deliverables to produce:
-- d-2: 소설 구성 개요 (format: md)
-  → write to: .workspace/projects/{id}/output/outline.md
-
-IMPORTANT: Use the write_file tool to save each deliverable.
-```
-
-### 저장 구조
-
-```
-.workspace/projects/{id}/
-├── PROJECT.md
-├── KANBAN.md
-├── ACTIVITY.jsonl
-├── DELIVERABLES.json      ← 산출물 명세
-├── AUTOPILOT.json         ← 실행 상태
-└── output/                ← 산출물 파일
-    ├── outline.md
-    └── story.md
-```
+CLI는 별도 로직을 갖지 않고 protocol client를 통해 서버 API를 호출합니다. cleanup 정책은 서버의 `ops.Manager`에만 둡니다.
 
 ## 전체 흐름
 
 ```
-1. 사용자가 brief를 정리하고 finalize
-2. project는 planning-ready 상태로 생성
-3. 사람과 TARS가 첫 phase 목표와 backlog를 조율
-4. 실행 시작 후 autopilot은 backlog item을 진행
-5. backlog가 비거나 blocker가 생기면 planning / blocked로 복귀
-6. 사람은 승인 또는 필요한 정보만 제공하고, 다시 자율 실행으로 넘김
+사용자/콘솔/펄스
+  → POST /v1/ops/cleanup/plan
+  → approval_id 생성, candidates 저장
+  → event: Cleanup approval required
+  → 사용자 확인
+  → approve 또는 reject
+  → 적용 결과 event + approval note
 ```
 
 ## 체크포인트
 
-- [x] brief finalize 응답이 planning-ready state를 함께 돌려준다
-- [x] dashboard가 pending decision / blocker를 우선 노출한다
-- [x] empty board는 auto-seed가 아니라 planning fallback으로 처리된다
-- [ ] 각 도메인에서 산출물 평가 규칙을 더 명확히 분리한다
-
-> output/ 파일 생성은 LLM이 `write_file` 도구를 올바르게 호출하는지에 의존합니다. 경로를 프롬프트에 명시했지만, 모델에 따라 도구 호출을 건너뛸 수 있습니다.
+- [x] cleanup plan 생성만으로 파일이 삭제되지 않는다
+- [x] approval ID가 저장되고 목록에서 조회된다
+- [x] approve 후 삭제 결과가 반환된다
+- [x] reject 후 cleanup이 실행되지 않는다
+- [x] 결과가 `/v1/events/*` notification pipeline에 남는다
 
 ## 다음 단계
 
-다음 단계는 이 상태 변경을 실시간으로 더 잘 보이게 만드는 것입니다. Step 20에서는 phase, blocker, run 상태를 SSE로 투영하는 흐름을 다룹니다.
+Step 20에서는 이 approval/cron/pulse 결과를 콘솔에 실시간으로 전달하는 runtime event stream을 다룹니다.

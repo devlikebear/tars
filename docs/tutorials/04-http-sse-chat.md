@@ -129,7 +129,7 @@ func (l *Loop) Run(ctx, messages, opts) (ChatResponse, error) {
 
 서버가 클라이언트에게 실시간으로 응답을 보내는 SSE(Server-Sent Events)입니다.
 
-**`internal/server/sse.go`**
+**`internal/tarsserver/sse.go`**
 
 SSE 프로토콜:
 ```
@@ -156,7 +156,7 @@ data: {"session_id":"abc","usage":{"input_tokens":50,"output_tokens":10}}
 
 원본 5개 파일의 핵심을 하나로 합칩니다.
 
-**`internal/server/handler_chat.go`**
+**`internal/tarsserver/handler_chat.go`**
 
 10단계 흐름을 하나의 `ServeHTTP` 메서드에서 처리:
 1. 요청 파싱
@@ -172,7 +172,7 @@ data: {"session_id":"abc","usage":{"input_tokens":50,"output_tokens":10}}
 
 ### 4-5. 서버 부트스트랩
 
-**`internal/server/server.go`** — 모든 조각을 조립:
+**`internal/tarsserver/server.go`** — 모든 조각을 조립:
 
 ```go
 func Serve(ctx context.Context, cfg Config) error {
@@ -228,12 +228,12 @@ func (m *MockClient) Chat(...) {
 go run ./cmd/tars/ serve
 
 # 일반 채팅
-curl -N -X POST http://localhost:8080/v1/chat \
+curl -N -X POST http://127.0.0.1:43180/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"안녕하세요"}'
 
 # tool call 테스트 (current_time 도구 실행됨)
-curl -N -X POST http://localhost:8080/v1/chat \
+curl -N -X POST http://127.0.0.1:43180/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"지금 시간 알려줘"}'
 ```
@@ -275,7 +275,7 @@ data: {"session_id":"...","usage":{"input_tokens":30,"output_tokens":10}}
 tars/
 ├── cmd/tars/
 │   ├── main.go
-│   └── serve.go              ← server.Serve() 호출
+│   └── serve.go              ← tarsserver.Serve() 호출
 ├── internal/
 │   ├── buildinfo/
 │   │   └── buildinfo.go

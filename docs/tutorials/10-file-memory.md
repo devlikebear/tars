@@ -79,7 +79,7 @@ func NewMemorySearchTool(workspaceDir string, semantic *memory.Service) Tool {
 
 ### 10-3. 서버에 등록
 
-**`internal/server/server.go`:**
+**`internal/tarsserver` 조립 지점:**
 
 ```go
 var semanticSvc *memory.Service  // nil — 아직 embedding 미설정
@@ -94,12 +94,12 @@ registry.Register(tool.NewMemorySearchTool(cfg.WorkspaceDir, semanticSvc))
 go run ./cmd/tars/ serve
 
 # 기억 저장 유도
-curl -N -X POST http://localhost:8080/v1/chat \
+curl -N -X POST http://127.0.0.1:43180/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"내가 Go 개발자라는 걸 기억해줘"}'
 
 # 기억 검색 유도
-curl -N -X POST http://localhost:8080/v1/chat \
+curl -N -X POST http://127.0.0.1:43180/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"내가 어떤 언어를 쓰는지 기억나?"}'
 

@@ -1,271 +1,191 @@
 # Step 21. 인증 미들웨어
 
-> 학습 목표: Bearer token 기반 인증 미들웨어를 구현하고, 경로별 접근 제어를 적용
+> 학습 목표: Bearer token 기반 인증 미들웨어를 구현하고, user/admin role과 경로별 접근 제어를 적용
 
 ## 왜 인증이 필요한가
 
-Phase 1-6까지 TARS 서버는 **누구나 접근 가능**했습니다. 로컬 개발에서는 괜찮지만, 운영 환경에서는:
+로컬 개발에서는 인증을 끄고 쓰는 편이 편합니다. 하지만 TARS 서버를 외부에서 접근 가능하게 두면 다음 위험이 생깁니다.
 
-- 외부에서 LLM API 호출을 악용할 수 있음 (비용 발생)
-- `write_file`, `exec` 도구로 서버 파일 시스템을 조작할 수 있음
-- Autopilot을 무단으로 시작/중단할 수 있음
+- 외부에서 LLM API 호출을 악용할 수 있음
+- `write_file`, `exec` 같은 고위험 도구가 서버 파일 시스템을 조작할 수 있음
+- Agent Runtime run, Telegram webhook, config/admin API를 무단으로 조작할 수 있음
 
-**Bearer token 인증**은 가장 단순하면서 효과적인 API 인증 방식입니다.
+TARS는 단순한 Bearer token 인증을 쓰되, token을 user/admin role로 나누고 admin path를 별도로 보호합니다.
 
-## Bearer Token 인증 흐름
+## 인증 모드
 
-```
-클라이언트                             서버
-    │                                   │
-    │ GET /v1/chat                      │
-    │ Authorization: Bearer <token>     │
-    │ ─────────────────────────────────→│
-    │                                   │ token 검증
-    │                     200 OK        │
-    │ ←─────────────────────────────────│
-    │                                   │
-    │ GET /v1/chat (토큰 없음)           │
-    │ ─────────────────────────────────→│
-    │                                   │ 401 Unauthorized
-    │ ←─────────────────────────────────│
-```
+| Mode | 의미 |
+|------|------|
+| `required` | 모든 보호 API에 token 필요 |
+| `external-required` | 외부 요청은 token 필요, loopback 요청은 일부 경로 완화 |
+| `off` | 인증 끔. 내부적으로 admin role을 부여하므로 로컬 개발에서만 사용 |
 
-## 실습
+`api_auth_mode=off` 또는 `external-required`는 명시적으로 `api_allow_insecure_local_auth=true`를 켜야 사용할 수 있습니다.
 
-### 21-1. 보안 원칙: 토큰 비교
+## 보안 원칙
 
-토큰을 비교할 때 두 가지 보안 원칙을 지켜야 합니다:
+### 원문 저장 금지
 
-**1. 원문 저장 금지 — SHA-256 해싱**
+토큰 원문을 비교하지 않고 SHA-256 해시로 비교합니다.
 
 ```go
-tokenHash := sha256.Sum256([]byte(token))
+presentedHash := sha256.Sum256([]byte(presentedToken))
 ```
 
-메모리에 토큰 원문을 들고 있으면 메모리 덤프에 노출될 수 있습니다. 서버 시작 시 해시만 저장합니다.
+### Timing attack 방지
 
-**2. Timing attack 방지 — constant-time 비교**
+일반 문자열 비교 대신 constant-time 비교를 사용합니다.
 
 ```go
-// ❌ 위험: 일반 비교 (앞에서부터 틀린 바이트에서 즉시 반환)
-if providedToken == expectedToken { ... }
-
-// ✅ 안전: constant-time 비교 (항상 전체를 비교)
-providedHash := sha256.Sum256([]byte(provided))
-if subtle.ConstantTimeCompare(providedHash[:], tokenHash[:]) != 1 {
-    // 거부
+if subtle.ConstantTimeCompare(adminHash[:], presentedHash[:]) == 1 {
+    return RoleAdmin
 }
 ```
 
-일반 `==` 비교는 첫 번째 다른 바이트에서 즉시 반환합니다. 공격자가 응답 시간을 측정하면 한 바이트씩 토큰을 추론할 수 있습니다. `crypto/subtle.ConstantTimeCompare`는 입력에 관계없이 항상 동일한 시간이 걸립니다.
+일반 `==` 비교는 앞에서부터 틀린 바이트에서 빠르게 끝날 수 있습니다. `crypto/subtle.ConstantTimeCompare`는 같은 길이 입력에 대해 전체 바이트를 비교합니다.
 
-### 21-2. 미들웨어 구조
+## 미들웨어 구조
 
-**`internal/auth/middleware.go`**
+**`internal/tarsserverauth/middleware.go`**
 
 ```go
 type Options struct {
-    Mode       string   // off, required
-    Token      string   // Bearer token 원문
-    SkipPaths  []string // 인증 건너뛰는 경로 (예: /health)
-    AdminPaths []string // admin 전용 경로 (예: /v1/admin/*)
-}
-
-type middleware struct {
-    mode       string
-    tokenHash  [32]byte   // SHA-256 해시만 저장
-    hasToken   bool
-    skipPaths  pathMatcher
-    adminPaths pathMatcher
+    Mode                          string
+    BearerToken                   string
+    UserToken                     string
+    AdminToken                    string
+    WorkspaceHeader               string
+    RequireWorkspaceForAuthorized bool
+    UserWorkspaceAllowlist        []string
+    AdminWorkspaceAllowlist       []string
+    SkipPaths                     []string
+    LoopbackSkipPaths             []string
+    AdminPaths                    []string
 }
 ```
 
-핵심 설계:
-- `Options`는 외부 설정 (원문 포함)
-- `middleware`는 내부 상태 (해시만 보유)
-- 생성 시점에 해싱하고, 원문은 GC에 의해 회수됨
+핵심:
 
-### 21-3. 인증 체크 로직
+- `BearerToken`: legacy 단일 토큰. 호환성을 위해 admin role로 해석됩니다.
+- `UserToken`: 일반 사용자 API 접근.
+- `AdminToken`: admin/config/reload/webhook 같은 고위험 API 접근.
+- `SkipPaths`: 인증 없이 통과하는 경로.
+- `LoopbackSkipPaths`: loopback 요청일 때만 통과하는 경로.
+- `AdminPaths`: user token으로는 접근할 수 없는 경로.
+
+## 요청 판정
 
 ```go
-func (m *middleware) check(r *http.Request) *authError {
-    path := r.URL.Path
-
-    // 1. skip paths → 무조건 통과
-    if m.skipPaths.match(path) {
-        return nil
+func (c compiledOptions) requirementForRequest(r *http.Request) requestRequirement {
+    if c.skipPaths.match(r.URL.Path) {
+        return requestRequirement{skip: true}
     }
-
-    // 2. mode off → 통과
-    if m.mode == ModeOff {
-        return nil
+    if c.loopbackSkipPaths.match(r.URL.Path) && isLoopbackRemoteAddr(r.RemoteAddr) {
+        return requestRequirement{skip: true}
     }
-
-    // 3. 토큰 미설정 + required → 서버 설정 오류
-    if !m.hasToken {
-        return &authError{Status: 401, Code: "no_token_configured", ...}
+    requireToken := c.mode == ModeRequired
+    if c.mode == ModeExternalRequired && !isLoopbackRemoteAddr(r.RemoteAddr) {
+        requireToken = true
     }
-
-    // 4. Authorization 헤더 파싱
-    provided := parseBearerToken(r.Header.Get("Authorization"))
-    if provided == "" {
-        return &authError{Status: 401, Code: "missing_token", ...}
+    isAdminPath := c.adminPaths.match(r.URL.Path)
+    return requestRequirement{
+        requireToken: requireToken,
+        isAdminPath:  isAdminPath,
+        tokenNeeded:  requireToken || isAdminPath,
     }
-
-    // 5. constant-time 비교
-    providedHash := sha256.Sum256([]byte(provided))
-    if subtle.ConstantTimeCompare(providedHash[:], m.tokenHash[:]) != 1 {
-        return &authError{Status: 401, Code: "invalid_token", ...}
-    }
-
-    return nil
 }
 ```
 
-순서가 중요합니다:
-1. **skip paths 먼저** — `/health` 같은 헬스체크는 인증 없이 통과
-2. **mode 체크** — off면 전체 통과
-3. **토큰 설정 여부** — required인데 토큰이 없으면 서버 설정 문제
-4. **헤더 파싱** — `Bearer ` 접두사 제거, case-insensitive
-5. **비교** — SHA-256 + constant-time
+판정 순서:
 
-### 21-4. 경로 매칭 (Path Matcher)
+1. skip path면 즉시 통과
+2. loopback-only skip path면 loopback 요청만 통과
+3. mode에 따라 token 필요 여부 결정
+4. admin path면 mode와 무관하게 admin token 필요
+
+## Role 결정
 
 ```go
-type pathMatcher struct {
-    exact    map[string]struct{}  // /health → 정확히 일치
-    prefixes []string             // /public/* → 접두사 매칭
-}
-```
-
-`compilePaths`가 경로를 분류합니다:
-- `*`로 끝나면 → prefix 매칭 (`/public/*` → `/public/docs/readme` 매칭)
-- 그 외 → 정확한 일치 (`/health` → `/health`만 매칭)
-
-`strings.CutSuffix`를 사용하면 `HasSuffix` + `TrimSuffix`를 한 번에 처리할 수 있습니다:
-
-```go
-if prefix, ok := strings.CutSuffix(p, "*"); ok {
-    m.prefixes = append(m.prefixes, prefix)
-} else {
-    m.exact[p] = struct{}{}
-}
-```
-
-### 21-5. Bearer 파싱
-
-```go
-func parseBearerToken(header string) string {
-    if len(header) < 7 {
-        return ""
+func resolveTokenRole(presentedToken string, hasLegacyToken, hasUserToken, hasAdminToken bool, legacyHash, userHash, adminHash [32]byte) string {
+    presentedHash := sha256.Sum256([]byte(presentedToken))
+    if hasAdminToken && subtle.ConstantTimeCompare(adminHash[:], presentedHash[:]) == 1 {
+        return RoleAdmin
     }
-    if !strings.EqualFold(header[:7], "bearer ") {
-        return ""
+    if hasUserToken && subtle.ConstantTimeCompare(userHash[:], presentedHash[:]) == 1 {
+        return RoleUser
     }
-    return strings.TrimSpace(header[7:])
+    if hasLegacyToken && subtle.ConstantTimeCompare(legacyHash[:], presentedHash[:]) == 1 {
+        return RoleAdmin
+    }
+    return ""
 }
 ```
 
-`strings.EqualFold`로 case-insensitive 비교합니다. RFC 6750에 따르면 "Bearer"는 case-insensitive입니다.
+admin token을 먼저 검사합니다. legacy token은 기존 사용자 호환을 위해 admin으로 취급됩니다.
 
-### 21-6. 에러 응답
+## TARS 연결
+
+**`internal/tarsserver/middleware.go`**
 
 ```go
-func writeAuthError(w http.ResponseWriter, e *authError) {
-    if e.Status == http.StatusUnauthorized {
-        w.Header().Set("WWW-Authenticate", "Bearer")
-    }
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(e.Status)
-    json.NewEncoder(w).Encode(map[string]string{
-        "error": e.Message,
-        "code":  e.Code,
-    })
-}
+auth := serverauth.NewMiddleware(serverauth.Options{
+    Mode:              cfg.APIAuthMode,
+    BearerToken:       cfg.APIAuthToken,
+    UserToken:         cfg.APIUserToken,
+    AdminToken:        cfg.APIAdminToken,
+    SkipPaths:         apiAuthSkipPaths(cfg),
+    LoopbackSkipPaths: dashboardLoopbackSkipPaths(cfg),
+    AdminPaths:        apiAdminPaths(),
+}, authLog)
 ```
 
-401 응답에는 반드시 `WWW-Authenticate: Bearer` 헤더를 포함해야 합니다 (RFC 6750).
-
-### 21-7. 서버 연결
-
-**설정 (config.go)**
+기본 skip/admin 경로:
 
 ```go
-type Config struct {
-    // ...
-    AuthMode  string `yaml:"auth_mode"`  // off, required (default: off)
-    AuthToken string `yaml:"auth_token"` // Bearer token
+func apiAuthSkipPaths(cfg config.Config) []string {
+    return []string{"/v1/healthz", "/console", "/console/", "/console/*"}
+}
+
+func apiAdminPaths() []string {
+    return []string{
+        "/v1/admin/*",
+        "/v1/runtime/extensions/reload",
+        "/v1/agentruntime/reload",
+        "/v1/agentruntime/restart",
+        "/v1/channels/webhook/inbound/*",
+        "/v1/channels/telegram/webhook/*",
+        "/v1/channels/telegram/pairings*",
+    }
 }
 ```
 
-환경 변수로도 설정 가능:
+`dashboard_auth_mode=off`는 콘솔을 외부에 공개한다는 뜻이 아닙니다. loopback 요청에서만 콘솔 경로를 우회합니다.
+
+## 설정 예시
+
+```yaml
+api_auth_mode: required
+api_user_token: ${TARS_API_USER_TOKEN}
+api_admin_token: ${TARS_API_ADMIN_TOKEN}
+```
 
 ```bash
-MYCLAW_AUTH_MODE=required MYCLAW_AUTH_TOKEN=my-secret-token tars serve
+export TARS_API_USER_TOKEN="user-token"
+export TARS_API_ADMIN_TOKEN="admin-token"
+tars serve
 ```
 
-**미들웨어 적용 (server.go)**
-
-```go
-authOpts := auth.Options{
-    Mode:      cfg.AuthMode,
-    Token:     cfg.AuthToken,
-    SkipPaths: []string{"/health"},
-}
-handler := auth.NewMiddleware(authOpts, mux)
-```
-
-`/health`는 로드밸런서/모니터링이 인증 없이 사용하므로 skip 경로에 등록합니다.
-
-### 21-8. 테스트
-
-```go
-func TestModeOff(t *testing.T) {
-    h := NewMiddleware(Options{Mode: ModeOff}, okHandler())
-    req := httptest.NewRequest("GET", "/v1/chat", nil)
-    rec := httptest.NewRecorder()
-    h.ServeHTTP(rec, req)
-    if rec.Code != 200 { t.Fatalf("expected 200, got %d", rec.Code) }
-}
-
-func TestRequiredWithValidToken(t *testing.T) {
-    h := NewMiddleware(Options{Mode: ModeRequired, Token: "secret"}, okHandler())
-    req := httptest.NewRequest("GET", "/v1/chat", nil)
-    req.Header.Set("Authorization", "Bearer secret")
-    rec := httptest.NewRecorder()
-    h.ServeHTTP(rec, req)
-    if rec.Code != 200 { t.Fatalf("expected 200, got %d", rec.Code) }
-}
-```
-
-테스트할 시나리오:
-1. **mode off** → 모든 요청 통과
-2. **required + 토큰 없음** → 401
-3. **required + 유효 토큰** → 200
-4. **required + 잘못된 토큰** → 401
-5. **skip path** → 인증 없이 통과
-6. **wildcard skip** → 접두사 매칭 통과
-7. **Bearer 대소문자** → case-insensitive
-8. **토큰 미설정 + required** → 401
-
-## TARS 원본과의 차이
-
-| 항목 | TARS | TARS |
-|------|------|--------|
-| 토큰 종류 | Bearer + User + Admin (3종) | Bearer 1종 |
-| 인증 모드 | off, required, external-required | off, required |
-| 로깅 | zerolog | fmt 출력 |
-| loopback 감지 | 127.0.0.1 자동 통과 | 미구현 |
-
-TARS는 최소 버전으로, 단일 토큰만 사용합니다. 향후 user/admin 토큰 분리는 `check()` 메서드의 6번 단계에서 확장할 수 있습니다.
+API client는 `Authorization: Bearer <token>` 헤더를 보냅니다. CLI에서는 `--api-token`, `--admin-api-token`, `TARS_API_TOKEN`, `TARS_ADMIN_API_TOKEN`을 사용합니다.
 
 ## 체크포인트
 
-- [x] `MYCLAW_AUTH_MODE=required` 설정 시 토큰 없는 요청이 401로 거부된다
-- [x] 유효한 Bearer 토큰을 보내면 200으로 통과한다
-- [x] `/health` 경로는 인증 없이 접근 가능하다
-- [x] 8개 테스트 케이스가 모두 통과한다
+- [x] `required` 모드에서 token 없는 보호 API 요청은 401
+- [x] user token은 일반 API에 접근 가능
+- [x] admin path는 admin token 또는 legacy token만 접근 가능
+- [x] `/v1/healthz`와 콘솔 정적 경로는 skip
+- [x] `dashboard_auth_mode=off`는 loopback-only skip으로 제한
+- [x] token 비교는 SHA-256 + constant-time compare
 
 ## 다음 단계
 
-Step 22에서는 Agent Runtime (비동기 실행)를 구현합니다. 장시간 실행되는 작업을 백그라운드에서 처리하고, 실행 상태를 관리하는 시스템입니다.
+Step 22에서는 장시간 작업을 HTTP 요청 생명주기와 분리하는 Agent Runtime을 다룹니다.

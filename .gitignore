@@ -55,6 +55,7 @@ node_modules/
 .docs/
 .analysis/sessions/
 .analysis/RESUME.md
+.analysis/cache/
 .mcp.json
 .playwright*
 

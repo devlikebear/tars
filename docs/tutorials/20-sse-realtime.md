@@ -1,232 +1,159 @@
-# Step 20. SSE 실시간 이벤트
+# Step 20. Runtime Event Stream
 
-> 학습 목표: Server-Sent Events로 서버 상태를 클라이언트에 실시간 푸시
+> 학습 목표: Server-Sent Events로 cron/ops/pulse/usage 알림을 콘솔에 실시간 푸시하는 구조 이해
 
-## 왜 SSE인가
+## 왜 Event Stream인가
 
-Step 18-19에서 Autopilot이 상태를 바꾸고, 사용자가 승인/거절을 합니다. 하지만 대시보드가 이 변화를 **알 방법이 없습니다.** 폴링(5초마다 API 호출)으로 해결할 수 있지만:
+운영 UI는 채팅 응답만 보여주면 부족합니다. 사용자는 다음 일을 실시간으로 알아야 합니다.
 
-- 불필요한 API 호출이 많음
-- 5초 지연이 생김
-- 서버 부하 증가
+- cron job 실패
+- cleanup approval 생성/승인/실패
+- pulse watchdog 알림
+- usage limit 경고
+- background watchdog 실패
 
-**SSE(Server-Sent Events)**는 HTTP 연결을 열어두고 서버가 **이벤트를 푸시**하는 프로토콜입니다. WebSocket보다 단순하고, 단방향(서버→클라이언트) 통신에 적합합니다.
-
-## SSE 프로토콜
+이 이벤트들은 특정 채팅 세션의 SSE와 다릅니다. 그래서 TARS는 별도 runtime notification stream을 둡니다.
 
 ```
-GET /api/stream
-→ 200 OK
-→ Content-Type: text/event-stream
-
-event: phase_changed
-data: {"project_id":"abc","phase":"executing"}
-
-event: board_updated
-data: {"project_id":"abc"}
-
-event: autopilot_status
-data: {"project_id":"abc","status":"running","phase":"executing","message":"Executing: task-1"}
+GET /v1/events/stream
+GET /v1/events/history?limit=N
+POST /v1/events/read
 ```
 
-규칙:
-- `event:` 줄이 이벤트 타입
-- `data:` 줄이 JSON 페이로드
-- 빈 줄이 이벤트 구분자
-- 연결은 클라이언트가 끊을 때까지 유지
+## 이벤트 모델
+
+**`internal/tarsserver/notify.go`**
+
+```go
+type notificationEvent struct {
+    ID        int64  `json:"id,omitempty"`
+    Type      string `json:"type"`
+    Category  string `json:"category"`
+    Severity  string `json:"severity"`
+    Title     string `json:"title"`
+    Message   string `json:"message"`
+    Timestamp string `json:"timestamp"`
+    JobID     string `json:"job_id,omitempty"`
+    SessionID string `json:"session_id,omitempty"`
+    OpenPath  string `json:"open_path,omitempty"`
+}
+```
+
+`Type`은 일반적으로 `notification`이며, keepalive payload는 `keepalive`입니다. `Category`는 이벤트 출처(`cron`, `ops`, `pulse`, `watchdog`, `usage`, `system`)를 나타냅니다.
 
 ## 실습
 
-### 20-1. SSEBroker — Go 서버
-
-**`internal/server/sse_broker.go`**
-
-Pub/Sub 패턴: 클라이언트가 Subscribe, Autopilot이 Broadcast.
+### 20-1. Event broker
 
 ```go
-type SSEEvent struct {
-    Type string `json:"type"`
-    Data any    `json:"data"`
+type eventBroker struct {
+    mu     sync.RWMutex
+    nextID int
+    subs   map[int]eventSubscription
 }
 
-type SSEBroker struct {
-    mu      sync.RWMutex
-    clients map[chan SSEEvent]struct{}
+func (b *eventBroker) subscribe() (int, <-chan notificationEvent, func())
+func (b *eventBroker) publish(evt notificationEvent)
+```
+
+각 구독자는 버퍼 32개짜리 채널을 받습니다. 소비자가 느려 채널이 꽉 차면 이벤트를 버립니다. 실시간 UI 신호는 best-effort여야 서버가 막히지 않습니다.
+
+### 20-2. Dispatcher
+
+```go
+func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent) {
+    evt.Type = "notification"
+    stored, _ := d.store.append(evt)
+    d.broker.publish(stored)
+    d.notifier.Notify(ctx, stored)
 }
 ```
 
-**Subscribe:** HTTP 핸들러가 채널을 등록하고 이벤트를 기다립니다.
+Dispatcher는 세 가지 일을 한 곳에서 처리합니다.
+
+- `notificationStore`에 history 저장
+- `eventBroker`로 SSE subscriber에게 publish
+- 설정에 따라 desktop notifier 실행
+
+### 20-3. SSE handler
 
 ```go
-func (b *SSEBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "text/event-stream")
-    w.Header().Set("Cache-Control", "no-cache")
+func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "text/event-stream")
+        _, ch, unsubscribe := broker.subscribe()
+        defer unsubscribe()
 
-    ch := make(chan SSEEvent, 16)
-    b.subscribe(ch)
-    defer b.unsubscribe(ch)
-
-    for {
-        select {
-        case <-r.Context().Done():
-            return
-        case event := <-ch:
-            data, _ := json.Marshal(event.Data)
-            fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
+        ping := time.NewTicker(10 * time.Second)
+        for {
+            select {
+            case <-ping.C:
+                fmt.Fprintf(w, "data: {\"type\":\"keepalive\"}\n\n")
+            case evt := <-ch:
+                payload, _ := json.Marshal(evt)
+                fmt.Fprintf(w, "data: %s\n\n", payload)
+            }
             flusher.Flush()
         }
-    }
+    })
 }
 ```
 
-**Broadcast:** 모든 클라이언트 채널에 이벤트를 보냅니다.
+TARS의 runtime event stream은 `event:` 줄 없이 `data:` JSON payload만 보냅니다. 채팅 SSE도 같은 `data:` 중심 파서를 공유할 수 있습니다.
+
+### 20-4. History와 read cursor
 
 ```go
-func (b *SSEBroker) Broadcast(event SSEEvent) {
-    b.mu.RLock()
-    defer b.mu.RUnlock()
-    for ch := range b.clients {
-        select {
-        case ch <- event:
-        default: // 채널이 가득 차면 스킵
-        }
-    }
+GET  /v1/events/history?limit=50
+POST /v1/events/read {"last_id": 123}
+```
+
+history 응답은 다음 정보를 포함합니다.
+
+```json
+{
+  "items": [],
+  "unread_count": 3,
+  "read_cursor": 120,
+  "last_id": 123
 }
 ```
 
-채널 버퍼(16)가 가득 차면 이벤트를 버립니다. 느린 클라이언트 때문에 서버가 블록되는 걸 방지합니다.
+read cursor는 role별로 관리됩니다. user/admin이 보는 이벤트 범위가 달라질 수 있기 때문입니다.
 
-### 20-2. Autopilot → SSEBroker 연결
+### 20-5. 이벤트를 발행하는 곳
 
-```go
-autopilot.SetEmitter(func(eventType string, data any) {
-    sseBroker.Broadcast(SSEEvent{Type: eventType, Data: data})
-})
-```
+| Source | 예시 |
+|--------|------|
+| cron | job 실패/완료 notification |
+| ops | cleanup approval required/completed/rejected |
+| pulse | watchdog decision 결과 |
+| usage | 사용량 제한 경고 |
+| watchdog | background runner health 경고 |
 
-Autopilot은 `EventEmitter` 콜백만 호출합니다. SSE 프로토콜을 알 필요가 없습니다.
-
-### 20-3. 이벤트 종류
-
-| 이벤트 | 발생 시점 | 클라이언트 동작 |
-|--------|----------|----------------|
-| `phase_changed` | phase 전이 | 프로젝트 목록 새로고침 |
-| `board_updated` | 태스크 변경 | 보드 새로고침 |
-| `activity` | 태스크 완료 등 | 활동 로그 새로고침 |
-| `autopilot_status` | 상태 변경마다 | Autopilot 상태 업데이트 |
-
-### 20-4. Swift SSE 클라이언트
-
-**`dashboard/Sources/APIClient.swift`**
-
-`URLSession`으로 SSE 스트림을 읽습니다.
-
-```swift
-private let sseSession: URLSession = {
-    let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 3600  // 1시간
-    config.timeoutIntervalForResource = 3600
-    return URLSession(configuration: config)
-}()
-```
-
-**핵심:** `URLSession.shared`의 기본 타임아웃은 60초입니다. SSE처럼 데이터가 간헐적으로 오는 long-lived 연결에서는 타임아웃됩니다. 전용 세션을 만들어 1시간으로 설정합니다.
-
-```swift
-private func listenSSE() async {
-    let (bytes, _) = try await sseSession.bytes(from: url)
-
-    var eventType = ""
-    for try await line in bytes.lines {
-        if line.hasPrefix("event: ") {
-            eventType = String(line.dropFirst(7))
-        } else if line.hasPrefix("data: ") {
-            let data = String(line.dropFirst(6))
-            handleSSEEvent(type: eventType, data: data)
-            eventType = ""
-        }
-    }
-}
-```
-
-SSE 파싱은 Step 15의 터미널 채팅 클라이언트와 **동일한 패턴**입니다. `event:` → `data:` → 처리.
-
-### 20-5. 이벤트 처리 — 데이터 새로고침
-
-```swift
-private func handleSSEEvent(type: String, data: String) {
-    switch type {
-    case "phase_changed", "board_updated", "activity":
-        Task {
-            await fetchProjects()
-            if let board = currentBoard {
-                await fetchBoard(projectID: board.projectID)
-            }
-        }
-    default:
-        break
-    }
-}
-```
-
-이벤트를 받으면 관련 데이터를 다시 fetch합니다. 이벤트 페이로드에 전체 데이터를 넣지 않고 **"변경됐다"는 신호만** 보내는 것이 핵심입니다.
-
-### 20-6. 자동 재연결
-
-```swift
-} catch {
-    if !Task.isCancelled {
-        try? await Task.sleep(for: .seconds(3))
-        if !Task.isCancelled {
-            await listenSSE() // 재귀 호출로 재연결
-        }
-    }
-}
-```
-
-연결이 끊기면 3초 후 자동 재연결합니다.
-
-### 20-7. Stale 데이터 문제와 해결
-
-Phase 5에서 겪은 주요 버그: 대시보드의 프로젝트 상세 화면이 **navigation 시점의 스냅샷**을 보여주고, SSE 이벤트로 데이터가 갱신되어도 화면이 바뀌지 않았습니다.
-
-**원인:**
-```swift
-// App.swift
-case .detail(let project):  // ← project는 navigation 시점의 복사본
-    ProjectDetailView(project: project, ...)
-```
-
-**해결:** project 객체 대신 **ID만 저장**하고, 매번 최신 데이터에서 조회:
-
-```swift
-case .detail(let projectID):
-    if let project = client.projects.first(where: { $0.id == projectID }) {
-        ProjectDetailView(project: project, ...)
-    }
-```
-
-이렇게 하면 SSE 이벤트로 `client.projects`가 갱신될 때 SwiftUI가 자동으로 뷰를 다시 렌더링합니다.
+발행자는 SSE 프로토콜을 알 필요가 없습니다. `newNotificationEvent(...)`를 만들고 dispatcher에 넘기면 됩니다.
 
 ## 전체 데이터 흐름
 
 ```
-Autopilot (상태 변경)
-    → EventEmitter 콜백
-    → SSEBroker.Broadcast()
-    → 연결된 모든 클라이언트 채널
-    → HTTP text/event-stream 응답
-    → Swift URLSession.bytes.lines
-    → handleSSEEvent → fetchProjects/fetchBoard
-    → SwiftUI @Observable → 뷰 갱신
+cron / ops / pulse / usage
+  → newNotificationEvent(...)
+  → notificationDispatcher.Emit(...)
+      ├── notificationStore.append(...)
+      ├── eventBroker.publish(...)
+      └── optional desktop notifier
+  → GET /v1/events/stream subscriber
+  → console notification UI
 ```
 
 ## 체크포인트
 
-- [x] 서버 이벤트가 대시보드에 실시간 반영된다
-- [x] 연결 끊김 시 자동 재연결된다
-- [x] SSE 연결이 60초 이상 안정적으로 유지된다
+- [x] `/v1/events/stream`이 keepalive와 notification payload를 보낸다
+- [x] 느린 subscriber가 서버 publish를 막지 않는다
+- [x] `/v1/events/history`가 unread count와 last_id를 반환한다
+- [x] `/v1/events/read`가 read cursor를 갱신한다
+- [x] ops/cron/pulse가 같은 이벤트 파이프라인을 사용한다
 
 ## 다음 단계
 
-Phase 6이 완성되었습니다. 프로젝트를 생성하고, AI가 자율적으로 계획/실행하며, 사용자가 대시보드에서 실시간으로 감독할 수 있습니다. Phase 7에서는 인증, 비동기 실행, TUI 클라이언트 등 운영 환경에 필요한 기능을 추가합니다.
+Step 21에서는 외부 접근이 가능한 API를 안전하게 보호하기 위한 인증 미들웨어를 다룹니다.

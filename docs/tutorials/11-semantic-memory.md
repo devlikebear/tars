@@ -130,7 +130,7 @@ func (g *GeminiEmbedder) Embed(ctx, text) ([]float64, error) {
 
 ### 11-5. Optional Layer 연결
 
-**`internal/server/server.go`:**
+**`internal/tarsserver` 조립 지점:**
 
 ```go
 var semanticSvc *memory.Service  // nil = embedding 미설정

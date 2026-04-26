@@ -92,7 +92,7 @@ func generateID() (string, error) {
 
 **원본과 비교해서 생략한 것:**
 - `lockPath()` — 동시성 보호 (나중에 추가 가능)
-- `Kind`, `Hidden`, `ProjectID` — 프로젝트 연동 전까지 불필요
+- `Kind`, `Hidden` — worker/subagent 세션을 만들기 전까지 불필요
 - `EnsureMain()`, `EnsureWorker()` — 단일 세션으로 충분
 
 ### 2-3. Transcript (JSONL 읽기/쓰기)

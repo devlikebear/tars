@@ -6,7 +6,7 @@
 
 지금까지 TARS의 채팅(`/v1/chat`)은 **동기 SSE** 방식입니다. 클라이언트가 요청을 보내고, LLM 응답이 끝날 때까지 연결을 유지합니다. 이 방식은:
 
-- 긴 작업(Autopilot 등)에서 HTTP 타임아웃 위험
+- 긴 작업에서 HTTP 타임아웃 위험
 - 클라이언트가 연결을 끊으면 작업이 중단됨
 - 여러 작업을 동시에 실행할 수 없음
 
@@ -14,13 +14,13 @@
 
 ```
 클라이언트                              Agent Runtime
-    │ POST /v1/agent/runs               │
+    │ POST /v1/agentruntime/runs        │
     │ {"prompt":"분석해줘"}              │
     │ ──────────────────────────────────→│
     │                                    │ Run 생성 (accepted)
-    │ ← 202 {"id":"run_1", ...}         │
+    │ ← 202 {"run_id":"run_1", ...}     │
     │                                    │ goroutine에서 실행 (running)
-    │ GET /v1/agent/runs/run_1          │
+    │ GET /v1/agentruntime/runs/run_1   │
     │ ──────────────────────────────────→│
     │ ← 200 {"status":"completed",...}  │
 ```
@@ -55,11 +55,15 @@ AgentExecutor (인터페이스)
     └── PromptExecutor               ← agent.Loop 기반
 
 Handler (HTTP API)
-    ├── POST /v1/agent/runs          ← Spawn
-    ├── GET  /v1/agent/runs          ← List
-    ├── GET  /v1/agent/runs/{id}     ← Get
-    └── POST /v1/agent/runs/{id}/cancel ← Cancel
+    ├── GET  /v1/agent/agents            ← Agent list (현재 legacy-named endpoint)
+    ├── POST /v1/agentruntime/runs       ← Spawn
+    ├── GET  /v1/agentruntime/runs       ← List
+    ├── GET  /v1/agentruntime/runs/{id}  ← Get
+    ├── GET  /v1/agentruntime/runs/{id}/events ← Run event stream
+    └── POST /v1/agentruntime/runs/{id}/cancel ← Cancel
 ```
+
+`/v1/agent/runs`와 `/v1/agent/runs/{id}`는 호환성을 위한 legacy alias입니다. 신규 문서와 외부 클라이언트는 `/v1/agentruntime/runs`를 우선 사용합니다. 단, agent 목록은 현재 `/v1/agent/agents`만 제공합니다.
 
 ## 실습
 
@@ -67,21 +71,27 @@ Handler (HTTP API)
 
 ```go
 type Run struct {
-    ID          string    `json:"id"`
-    Status      RunStatus `json:"status"`
-    SessionID   string    `json:"session_id"`
-    ProjectID   string    `json:"project_id,omitempty"`
-    Agent       string    `json:"agent"`
-    Prompt      string    `json:"prompt"`
-    Response    string    `json:"response,omitempty"`
-    Error       string    `json:"error,omitempty"`
-    CreatedAt   time.Time `json:"created_at"`
-    StartedAt   time.Time `json:"started_at,omitzero"`
-    CompletedAt time.Time `json:"completed_at,omitzero"`
+    ID              string    `json:"run_id"`
+    WorkspaceID     string    `json:"-"`
+    SessionID       string    `json:"session_id,omitempty"`
+    SessionKind     string    `json:"session_kind,omitempty"`
+    Agent           string    `json:"agent,omitempty"`
+    Prompt          string    `json:"prompt,omitempty"`
+    ParentRunID     string    `json:"parent_run_id,omitempty"`
+    ParentSessionID string    `json:"parent_session_id,omitempty"`
+    Depth           int       `json:"depth,omitempty"`
+    Status          RunStatus `json:"status"`
+    Accepted        bool      `json:"accepted"`
+    Response        string    `json:"response,omitempty"`
+    Error           string    `json:"error,omitempty"`
+    CreatedAt       string    `json:"created_at"`
+    StartedAt       string    `json:"started_at,omitempty"`
+    CompletedAt     string    `json:"completed_at,omitempty"`
+    UpdatedAt       string    `json:"updated_at"`
 }
 ```
 
-`omitzero`를 사용합니다. `omitempty`는 `time.Time` 같은 struct 타입에서는 zero value도 포함시키지만, `omitzero`(Go 1.24+)는 zero value를 생략합니다.
+현재 TARS의 run timestamp는 API/영속화 호환성을 위해 RFC3339 문자열로 저장합니다. `WorkspaceID`는 내부 라우팅용이라 JSON에는 노출하지 않습니다.
 
 ### 22-2. 런타임 내부 상태
 
@@ -252,7 +262,7 @@ func (rt *Runtime) MessageSend(channelID, text string) (*ChannelMessage, error) 
 ### 22-8. HTTP 핸들러
 
 ```go
-// POST /v1/agent/runs — 새 Run 생성
+// POST /v1/agentruntime/runs — 새 Run 생성
 func (h *Handler) spawnRun(w http.ResponseWriter, r *http.Request) {
     var req SpawnRequest
     json.NewDecoder(r.Body).Decode(&req)
@@ -284,14 +294,14 @@ func (rt *Runtime) trimRunsLocked() {
 
 ## TARS 원본과의 차이
 
-| 항목 | TARS | TARS |
+| 항목 | TARS 원본 | 최소 구현 |
 |------|------|--------|
-| 실행기 | PromptExecutor + CommandExecutor | PromptExecutor만 |
+| 실행기 | PromptExecutor + CommandExecutor + workspace agent executor | PromptExecutor만 |
 | 채널 | local + webhook + Telegram | local만 |
-| 영속화 | runs.json + channels.json 파일 | 인메모리만 |
+| 영속화 | runs.json + channels.json 파일 (`workspace/_shared/agentruntime/`) | 인메모리만 |
 | 세션 라우팅 | caller/new/fixed 모드 | 미구현 |
 | Sub-agent | 계층 구조 (parent/root/depth) | 미구현 |
-| 도구 정책 | executor + project 정책 병합 | 미구현 |
+| 도구 정책 | executor + agent frontmatter 정책 병합 | 미구현 |
 | 아카이브 | JSONL 일별 로테이션 | 미구현 |
 
 TARS는 핵심 패턴(비동기 Spawn/Wait, Run 라이프사이클, executor 인터페이스)만 구현합니다.
@@ -305,4 +315,4 @@ TARS는 핵심 패턴(비동기 Spawn/Wait, Run 라이프사이클, executor 인
 
 ## 다음 단계
 
-Step 23은 현재 아카이브된 레거시 TUI 구현 기록입니다. 최신 TARS는 Agent Runtime API와 프로젝트 운영 기능을 `/console` 기반 웹 콘솔과 one-shot CLI로 노출합니다.
+Step 23은 더 이상 별도 TUI로 이어지지 않습니다. 최신 TARS는 Agent Runtime API와 운영 기능을 `/console` 기반 웹 콘솔, one-shot CLI, cron/pulse/reflection surface로 노출합니다.

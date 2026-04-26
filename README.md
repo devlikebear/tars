@@ -16,7 +16,7 @@ A single Go binary that runs on your machine and gives you: an interactive chat 
 | **Language** | TypeScript | Python | Go (single binary) |
 | **Sub-agents** | ACP + subagent runtimes, push-based completion, Docker sandbox | ThreadPoolExecutor (max 3), ephemeral prompt, credential override | Agent Runtime executor with per-task model tier, allowlist policy, depth control |
 | **Model routing** | Per-agent model override | Per-child provider/model override, MoA (4 frontier models) | 3-tier named bundles (heavy/standard/light) with role→tier config mapping |
-| **Memory** | Session transcripts | Honcho/Holographic plugin hooks | Durable KB + semantic search + experience extraction + nightly compilation |
+| **Memory** | Session transcripts | Honcho/Holographic plugin hooks | Durable Markdown memory + semantic search + experience extraction + nightly reflection |
 | **Background** | None | None | Pulse watchdog (1-min) + Reflection nightly batch |
 | **Scheduling** | None | None | Session-bound cron jobs with audit logs |
 | **Channels** | CLI | CLI + Agent Runtime API | Console + Telegram + webhooks |
@@ -31,7 +31,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 
 - Multi-session chat with full LLM tool-calling loops
 - Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
-- Obsidian-style knowledge base: wiki notes with graph metadata and KB CRUD tools
+- Editable memory assets and semantic recall through the console/API
 - Structured transcript compaction preserving identifiers and recent context
 - System prompt customization via `USER.md`, `IDENTITY.md`, `AGENTS.md`, `TOOLS.md`
 
@@ -104,7 +104,7 @@ Each system role (chat, pulse, reflection, compaction, agent runtime agents) map
 Two isolated surfaces run independently from user chat:
 
 - **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, disk pressure, Telegram delivery health, and reflection status. LLM classifier picks `ignore` / `notify` / `autofix`. Autofixes are whitelisted in config.
-- **Reflection** — Nightly batch (default 02:00–05:00) running memory cleanup (experience extraction + knowledge-base compilation) and empty-session pruning.
+- **Reflection** — Nightly batch (default 02:00–05:00) running memory reflection (experience extraction) and stale empty-session pruning.
 
 Both use the `light` tier by default and have no access to user-facing tools (enforced at compile time via `RegistryScope`).
 
@@ -180,7 +180,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 | Page | Path | Purpose |
 |------|------|---------|
 | Chat | `/console` | Interactive agent chat with tool calling |
-| Memory | `/console/memory` | Edit durable memory, test semantic search, browse KB |
+| Memory | `/console/memory` | Edit durable memory assets and test semantic search |
 | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md |
 | Ops | `/console/ops` | System health and cleanup operations |
 | Pulse | `/console/pulse` | Watchdog status and run-now trigger |

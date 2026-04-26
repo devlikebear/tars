@@ -90,7 +90,7 @@ func BuildCompactionSummary(messages []Message) string {
 
 ### 9-4. 채팅 핸들러에서 호출
 
-**`internal/server/handler_chat.go`** — assistant 응답 저장 후:
+**`internal/tarsserver/handler_chat.go`** — assistant 응답 저장 후:
 
 ```go
 // 9.5 compaction 체크

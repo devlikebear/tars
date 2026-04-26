@@ -167,10 +167,10 @@ func orderedToolCalls(m map[int]ToolCall) []ToolCall { ... }
 go build ./...
 
 # 실제 OpenAI API로 테스트 (API 키 필요)
-MYCLAW_PROVIDER=openai MYCLAW_API_KEY=sk-... MYCLAW_MODEL=gpt-4o-mini \
+TARS_PROVIDER=openai TARS_API_KEY=sk-... TARS_MODEL=gpt-4o-mini \
   go run ./cmd/tars/ serve
 
-curl -N -X POST http://localhost:8080/v1/chat \
+curl -N -X POST http://127.0.0.1:43180/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"안녕하세요"}'
 ```

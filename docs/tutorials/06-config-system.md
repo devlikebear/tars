@@ -21,7 +21,7 @@ Default()      → port: 8080, provider: "mock"
     ↓
 YAML 파일      → port: 3000  (override)
     ↓
-환경 변수      → MYCLAW_PORT=9000  (최종 override)
+환경 변수      → TARS_PORT=9000  (최종 override)
 ```
 
 가장 구체적인 설정이 우선합니다. 환경 변수는 배포 환경(Docker, CI)에서 코드 변경 없이 설정을 바꿀 때 유용합니다.
@@ -41,7 +41,7 @@ Phase 1의 Session과 같은 패턴 — "없으면 기본값 사용"은 에러�
 
 **3. 환경 변수 네이밍 컨벤션**
 
-접두사 `MYCLAW_` + 대문자 필드명: `MYCLAW_PORT`, `MYCLAW_API_KEY`, `MYCLAW_PROVIDER`
+접두사 `TARS_` + 대문자 필드명: `TARS_PORT`, `TARS_API_KEY`, `TARS_PROVIDER`
 
 접두사가 있어야 다른 애플리케이션의 환경 변수와 충돌하지 않습니다.
 
@@ -91,10 +91,10 @@ func Load(path string) (Config, error) {
 
 ```go
 func applyEnv(cfg *Config) {
-    if v := envStr("MYCLAW_PROVIDER"); v != "" {
+    if v := envStr("TARS_PROVIDER"); v != "" {
         cfg.Provider = v
     }
-    if v := envStr("MYCLAW_PORT"); v != "" {
+    if v := envStr("TARS_PORT"); v != "" {
         if port, err := strconv.Atoi(v); err == nil {
             cfg.Port = port
         }
@@ -143,7 +143,7 @@ func buildLLMClient(cfg config.Config) (llm.Client, error) {
 go run ./cmd/tars/ serve
 
 # 환경 변수로 포트 변경
-MYCLAW_PORT=3000 go run ./cmd/tars/ serve
+TARS_PORT=3000 go run ./cmd/tars/ serve
 
 # YAML 설정 파일
 cat > config.yaml <<'EOF'
@@ -171,12 +171,12 @@ tars/
 │   │   └── config.go           ← Config 구조체 + Load() + Default()
 │   └── ...
 └── cmd/tars/
-    └── serve.go                ← config.Load() → buildLLMClient() → server.Serve()
+    └── serve.go                ← config.Load() → buildLLMClient() → tarsserver.Serve()
 ```
 
 ## 배운 패턴
 
 - **3단계 설정 합성** — defaults < YAML < env, 가장 구체적인 것이 우선
 - **없으면 기본값** — YAML 파일이 없어도 에러가 아님 (graceful degradation)
-- **접두사 환경 변수** — `MYCLAW_` 접두사로 네임스페이스 충돌 방지
+- **접두사 환경 변수** — `TARS_` 접두사로 네임스페이스 충돌 방지
 - **`yaml` 태그** — 구조체 필드를 YAML 키에 자동 매핑

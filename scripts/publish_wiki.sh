@@ -390,6 +390,14 @@ main() {
 
   local wiki_dir="${work_dir}/wiki"
 
+  # Remove the previous generated analysis bundle before copying the new one.
+  # Otherwise renamed/removed modules linger in the wiki and look current.
+  rm -f \
+    "${wiki_dir}"/0[1-7]-*.md \
+    "${wiki_dir}"/module-*.md \
+    "${wiki_dir}"/Home.md \
+    "${wiki_dir}"/_Sidebar.md
+
   # Copy top-level outputs with ordering prefix
   for md_file in "${outputs_dir}"/*.md; do
     [[ -f "${md_file}" ]] || continue

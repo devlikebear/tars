@@ -182,13 +182,13 @@ func buildLLMClient(cfg config.Config) (llm.Client, error) {
 
 ```bash
 # Anthropic API로 테스트
-MYCLAW_PROVIDER=anthropic \
-  MYCLAW_API_KEY=sk-ant-... \
-  MYCLAW_MODEL=claude-sonnet-4-20250514 \
-  MYCLAW_BASE_URL=https://api.anthropic.com \
+TARS_PROVIDER=anthropic \
+  TARS_API_KEY=sk-ant-... \
+  TARS_MODEL=claude-sonnet-4-20250514 \
+  TARS_BASE_URL=https://api.anthropic.com \
   go run ./cmd/tars/ serve
 
-curl -N -X POST http://localhost:8080/v1/chat \
+curl -N -X POST http://127.0.0.1:43180/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"안녕하세요"}'
 ```

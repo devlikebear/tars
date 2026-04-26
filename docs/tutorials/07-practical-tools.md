@@ -124,7 +124,7 @@ out := truncate(stdout.String(), 8192)
 
 ### 7-4. 서버에 도구 등록
 
-**`internal/server/server.go`** 변경:
+**`internal/tarsserver/server.go`** 변경:
 
 ```go
 registry := tool.NewRegistry()
@@ -144,12 +144,12 @@ registry.Register(tool.NewExecTool(cfg.WorkspaceDir))       // 추가
 go run ./cmd/tars/ serve
 
 # 파일 읽기 (도구 실행 확인)
-curl -N -X POST http://localhost:8080/v1/chat \
+curl -N -X POST http://127.0.0.1:43180/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"go.mod 파일 읽어줘"}'
 
 # 명령 실행
-curl -N -X POST http://localhost:8080/v1/chat \
+curl -N -X POST http://127.0.0.1:43180/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"message":"현재 디렉터리의 파일 목록을 보여줘"}'
 ```

@@ -1,27 +1,18 @@
-# Step 15. 터미널 채팅 클라이언트
+# Step 15. One-shot CLI와 웹 콘솔
 
-> 학습 목표: SSE 스트리밍 응답을 파싱하는 대화형 REPL 클라이언트 구현
+> 학습 목표: `/v1/chat` SSE 응답을 CLI에서 한 번 실행하고, 실제 대화 표면은 웹 콘솔로 분리하는 구조 이해
 
-## 왜 채팅 클라이언트가 필요한가
+## 왜 대화형 TUI가 제거되었나
 
-Phase 1~4까지 우리는 서버를 만들었습니다. `/v1/chat` 엔드포인트가 있고, LLM이 연결되어 있고, 도구도 있습니다. 그런데 **대화할 방법이 없습니다.** curl로 POST를 보낼 수는 있지만, SSE 스트리밍 응답을 실시간으로 읽기엔 불편합니다.
+초기 설계에는 `tars chat` 같은 터미널 REPL이 있었습니다. 하지만 최신 TARS는 다음처럼 역할을 나눕니다.
 
-```bash
-# 이렇게 해야 했다
-curl -N -X POST http://localhost:8080/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"안녕"}'
-```
+- `tars` root 명령: 기본 브라우저로 `/console` 열기
+- `tars --message "..."`: 한 번 메시지를 보내고 SSE 응답을 stdout에 출력
+- `/console`: 세션 목록, Chat, Memory, Ops, Pulse, Reflection, Config 등을 다루는 주 UI
 
-터미널 채팅 클라이언트가 있으면:
-- 자연어로 AI와 대화할 수 있다
-- 도구 호출 결과를 바로 확인할 수 있다
-- 세션을 유지하면서 연속 대화가 가능하다
-- 앞으로 "프로젝트 만들어줘"같은 자연어 명령의 기반이 된다
+이렇게 하면 CLI는 자동화와 스크립트에 집중하고, 반복 대화와 운영 UI는 콘솔로 모을 수 있습니다.
 
 ## 서버 API 복습
-
-Step 4에서 구현한 채팅 API:
 
 ```
 POST /v1/chat
@@ -30,211 +21,131 @@ Content-Type: application/json
 {"session_id": "abc123", "message": "안녕하세요"}
 ```
 
-응답은 JSON이 아니라 **SSE(Server-Sent Events)** 스트림:
+응답은 JSON 한 덩어리가 아니라 SSE(Server-Sent Events) 스트림입니다.
 
 ```
-HTTP/1.1 200 OK
-Content-Type: text/event-stream
-X-Session-ID: abc123
-
-event: status
-data: {"session_id":"abc123","status":"stream_open","message":"connected"}
-
-event: delta
-data: {"session_id":"abc123","text":"안녕"}
-
-event: delta
-data: {"session_id":"abc123","text":"하세요!"}
-
-event: done
-data: {"session_id":"abc123","usage":{"input_tokens":15,"output_tokens":8}}
+data: {"type":"status","session_id":"abc123","message":"connected"}
+data: {"type":"delta","session_id":"abc123","text":"안녕"}
+data: {"type":"delta","session_id":"abc123","text":"하세요!"}
+data: {"type":"done","session_id":"abc123","usage":{"input_tokens":15,"output_tokens":8}}
 ```
 
 핵심:
-- `event:` 줄이 이벤트 타입, `data:` 줄이 JSON 페이로드
 - `delta` 이벤트가 토큰 단위로 반복 전송됨
-- `done` 이벤트로 스트림 종료
-- `X-Session-ID` 헤더로 세션 ID 전달
+- `status` 이벤트는 도구 호출 전후 상태를 보여줌
+- `done` 이벤트가 세션 ID와 사용량 정보를 마무리함
 
 ## 실습
 
-### 15-1. Cobra 서브커맨드 등록
+### 15-1. Root command에 client flags 붙이기
 
-**`cmd/tars/main.go`** — `chat` 커맨드 추가:
+**`cmd/tars/main.go`**
 
 ```go
-cmd.AddCommand(newChatCommand(stdout, os.Stderr))
+clientOpts := defaultClientOptions()
+cmd := &cobra.Command{
+    Use: "tars",
+    RunE: func(cmd *cobra.Command, _ []string) error {
+        if clientOpts.message != "" {
+            return runClientCommand(cmd.Context(), stdin, stdout, stderr, clientOpts)
+        }
+        return runConsoleCommand(cmd.Context(), stdout, stderr, clientOpts)
+    },
+}
+bindClientFlags(cmd, &clientOpts)
 ```
 
-실행: `tars chat --server http://localhost:8080`
+root 명령에 `--message`, `--session`, `--server-url`, `--api-token`을 붙이면 별도 `chat` 서브커맨드 없이도 one-shot 채팅을 지원할 수 있습니다.
 
-### 15-2. REPL 루프
+### 15-2. 콘솔 열기
 
-**`cmd/tars/chat.go`**
-
-가장 단순한 대화형 루프: stdin에서 한 줄 읽고 → 서버에 전송 → 응답 출력 → 반복.
+**`cmd/tars/console_main.go`**
 
 ```go
-func runChat(stdout, stderr io.Writer, serverURL, sessionID string) error {
-    scanner := bufio.NewScanner(os.Stdin)
-    scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+func runConsoleCommand(ctx context.Context, stdout, stderr io.Writer, opts clientOptions) error {
+    target := buildConsoleURL(opts.serverURL)
+    _ = openConsoleURL(ctx, target)
+    _, err := fmt.Fprintf(stdout, "Open the console: %s\n", target)
+    return err
+}
+```
 
-    for {
-        fmt.Fprint(stdout, "you> ")
-        if !scanner.Scan() {
-            break
-        }
-        input := strings.TrimSpace(scanner.Text())
-        if input == "" {
-            continue
-        }
+OS별로 `open`, `xdg-open`, `rundll32`를 사용합니다. 브라우저 열기에 실패해도 URL은 stdout에 남기므로 사용자가 직접 열 수 있습니다.
 
-        newSID, err := sendMessage(stdout, serverURL, sessionID, input)
+### 15-3. One-shot 메시지 전송
+
+**`internal/tarsclient/client_main.go`**
+
+```go
+func Run(ctx context.Context, _ io.Reader, stdout, stderr io.Writer, opts Options) error {
+    chat := chatClient{serverURL: opts.ServerURL, apiToken: opts.APIToken}
+    session := strings.TrimSpace(opts.SessionID)
+    if strings.TrimSpace(opts.Message) != "" {
+        res, err := sendMessage(ctx, chat, session, opts.Message, opts.Verbose, opts.Verbose, stdout, stderr)
         if err != nil {
-            fmt.Fprintf(stderr, "error: %v\n", err)
-            continue
+            return err
         }
-        if newSID != "" {
-            sessionID = newSID
+        if res.SessionID != "" {
+            fmt.Fprintf(stderr, "session=%s\n", res.SessionID)
         }
+        return nil
     }
-    return scanner.Err()
+    return fmt.Errorf("interactive terminal UI has been removed; use the web console at /console or one-shot CLI commands")
 }
 ```
 
-**설계 포인트:**
-- `bufio.Scanner` 기본 버퍼는 64KB. 긴 코드를 붙여넣을 수 있도록 1MB로 확장
-- `sessionID`를 루프 밖에서 유지 — 첫 응답의 `X-Session-ID`를 저장하면 이후 대화가 같은 세션에서 이어짐
-- 에러가 나도 루프가 끊기지 않음 — 서버 재시작해도 채팅 계속 가능
+메시지가 있으면 곧바로 `/v1/chat`에 연결합니다. 메시지가 없으면 대화형 TUI를 시작하지 않고 콘솔 사용을 안내합니다.
 
-### 15-3. SSE 스트림 파싱
+### 15-4. SSE 스트림 파싱
 
-서버 응답은 일반 JSON이 아니라 SSE 형식입니다. 별도 라이브러리 없이 줄 단위로 파싱합니다:
+**`pkg/tarsclient.Client.StreamChat`**
 
 ```go
-func sendMessage(stdout io.Writer, serverURL, sessionID, message string) (string, error) {
-    body := map[string]string{"session_id": sessionID, "message": message}
-    payload, _ := json.Marshal(body)
-
-    resp, err := http.Post(serverURL+"/v1/chat", "application/json",
-        strings.NewReader(string(payload)))
-    if err != nil {
-        return "", fmt.Errorf("connection failed: %w", err)
+err := c.StreamSSE(ctx, http.MethodPost, "/v1/chat", req, func(payload []byte) error {
+    var evt ChatEvent
+    if err := json.Unmarshal(payload, &evt); err != nil {
+        return fmt.Errorf("decode sse event: %w", err)
     }
-    defer resp.Body.Close()
-
-    newSessionID := resp.Header.Get("X-Session-ID")
-
-    // SSE 파싱: "event: xxx\ndata: yyy\n\n" 패턴
-    fmt.Fprint(stdout, "ai> ")
-    scanner := bufio.NewScanner(resp.Body)
-    var eventType string
-
-    for scanner.Scan() {
-        line := scanner.Text()
-        if strings.HasPrefix(line, "event: ") {
-            eventType = strings.TrimPrefix(line, "event: ")
-        } else if strings.HasPrefix(line, "data: ") {
-            data := strings.TrimPrefix(line, "data: ")
-            handleEvent(stdout, eventType, data)
-            eventType = ""
-        }
-    }
-    return newSessionID, nil
-}
-```
-
-**SSE 파싱 규칙:**
-1. `event:` 줄 → 이벤트 타입 저장
-2. `data:` 줄 → 저장된 타입과 함께 처리
-3. 빈 줄 → 이벤트 구분자 (무시해도 됨, 이미 data에서 처리했으므로)
-
-### 15-4. 이벤트별 처리
-
-```go
-func handleEvent(stdout io.Writer, eventType, data string) {
-    switch eventType {
-    case "delta":
-        var d struct{ Text string `json:"text"` }
-        if json.Unmarshal([]byte(data), &d) == nil {
-            fmt.Fprint(stdout, d.Text) // 줄바꿈 없이 이어붙임
-        }
-    case "error":
-        var e struct{ Error string `json:"error"` }
-        if json.Unmarshal([]byte(data), &e) == nil {
-            fmt.Fprintf(stdout, "\n[error] %s", e.Error)
-        }
-    case "done":
-        // 토큰 사용량 표시 (선택적)
+    switch evt.Type {
     case "status":
-        // stream_open — 무시
+        onStatus(evt)
+    case "delta":
+        result.Assistant += evt.Text
+        onDelta(evt.Text)
+    case "error":
+        return errors.New(strings.TrimSpace(evt.Error))
+    case "done":
+        result.SessionID = strings.TrimSpace(evt.SessionID)
     }
-}
-```
-
-**핵심:** `delta` 이벤트의 텍스트를 `fmt.Fprint`로 출력합니다. `Println`이 아닙니다.
-토큰이 하나씩 오기 때문에 줄바꿈 없이 이어붙여야 자연스러운 스트리밍 출력이 됩니다:
-
-```
-you> 안녕하세요
-ai> 안녕하세요! 무엇을 도와드릴까요?
-[tokens: in=15 out=12]
-```
-
-### 15-5. 세션 명령어
-
-대화 중 사용할 수 있는 몇 가지 내장 명령어:
-
-```go
-if input == "/quit" || input == "/exit" {
-    fmt.Fprintln(stdout, "bye!")
     return nil
-}
-if input == "/session" {
-    fmt.Fprintf(stdout, "session: %s\n", sessionID)
-    continue
-}
-if input == "/new" {
-    sessionID = ""
-    fmt.Fprintln(stdout, "(new session)")
-    continue
-}
+})
 ```
 
-- `/session` — 현재 세션 ID 확인
-- `/new` — 세션 초기화 (다음 메시지에서 새 세션 생성)
-- `/quit` — 종료
+CLI는 `delta`만 stdout에 이어 붙이고, `--verbose`일 때 status 이벤트를 stderr로 출력합니다.
 
-## 전체 구조
+## 실행
 
-```
-cmd/tars/
-├── main.go          ← newChatCommand 등록
-├── chat.go          ← REPL + SSE 파싱
-├── serve.go
-└── skill_main.go
-```
+```bash
+# 서버
+tars serve
 
-데이터 흐름:
+# 콘솔 열기
+tars
 
-```
-stdin → bufio.Scanner
-    → "you> " 프롬프트
-    → http.Post /v1/chat (JSON body)
-    → SSE 스트림 수신
-        → event: delta → fmt.Fprint (실시간 출력)
-        → event: done  → 토큰 표시, 루프 복귀
-    → "ai> ..." 출력 완료
-    → 다음 "you> " 대기
+# one-shot chat
+tars --message "오늘 작업 요약해줘"
+
+# 기존 세션으로 이어서 보내기
+tars --session <session_id> --message "방금 내용에서 TODO만 뽑아줘"
 ```
 
 ## 체크포인트
 
-- [ ] `tars chat`으로 서버에 연결, 대화가 가능하다
-- [ ] LLM 응답이 스트리밍으로 한 글자씩 출력된다
-- [ ] 도구 호출 결과가 대화에 반영된다
-- [ ] `/session`으로 세션 ID 확인, `/new`로 새 세션 시작
+- [x] `tars`가 `/console` URL을 열고 출력한다
+- [x] `tars --message`가 SSE delta를 stdout에 출력한다
+- [x] `--session`으로 기존 세션을 이어갈 수 있다
+- [x] 메시지 없이 client runner를 호출하면 레거시 TUI 제거 안내를 반환한다
 
 ## 다음 단계
 
-터미널에서 AI와 대화할 수 있게 되었습니다. Step 16에서는 프로젝트 Store를 만들고, 이 채팅 인터페이스를 통해 "프로젝트 만들어줘"같은 자연어 명령으로 프로젝트를 관리하는 기반을 만듭니다.
+다음 단계는 운영 작업을 사람이 승인한 뒤 실행하는 흐름입니다. Step 19에서는 cleanup plan과 approval API를 다룹니다.

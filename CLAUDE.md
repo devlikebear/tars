@@ -11,7 +11,7 @@ make console-build        # Build Svelte frontend assets (includes npm install)
 
 # Test
 make test                 # go test ./...
-make test-one TEST_NAME=TestFoo PKG=./internal/project/  # single test
+make test-one TEST_NAME=TestFoo PKG=./internal/tarsserver/  # single test
 make test-race            # race detector
 make test-cover           # coverage → coverage.out
 
@@ -33,7 +33,7 @@ cd frontend/console && npm run check   # svelte-check + tsc
 
 ## Architecture
 
-**Go CLI** (`cmd/tars`) → Cobra subcommands: `serve`, `project`, `cron`, `skill`, `assistant`, `approval`, `mcp`
+**Go CLI** (`cmd/tars`) → Cobra subcommands: `serve`, `service`, `init`, `doctor`, `status`, `health`, `cron`, `approve`, `assistant`, `skill`, `plugin`, `mcp`, `version`; root `tars` opens `/console`, and `tars --message` sends a one-shot chat message.
 
 **Server** (`internal/tarsserver`) — HTTP API on configurable address (default `127.0.0.1:43180`)
 - Routes registered in `main_serve_api.go` → `registerAPIRoutes()`
@@ -50,7 +50,7 @@ cd frontend/console && npm run check   # svelte-check + tsc
 | `session` | File-based chat sessions: index + transcripts in `workspace/sessions/`. Kinds: `main` (user-visible), `worker` (hidden) |
 | `cron` | Tick-based scheduler (30s default). Supports `@at` (one-time) and cron expressions. Run history capped at 50/job |
 | `pulse` | System-surface watchdog (1-min tick). Scans cron failures, stuck agent runtime runs, disk pressure, telegram delivery failures, reflection health. LLM classifies via `pulse_decide` tool → ignore / notify / autofix. See **System Surface** below. |
-| `reflection` | System-surface nightly batch (sleep-window tick, default 02:00-05:00). Runs memory cleanup (experience extraction + knowledge-base compilation, formerly per-turn) and KB cleanup (remove empty sessions). State satisfies `pulse.ReflectionHealthSource`. See **System Surface** below. |
+| `reflection` | System-surface nightly batch (sleep-window tick, default 02:00-05:00). Runs memory reflection (experience extraction) and a legacy-named `kb_cleanup` job that prunes old empty non-main sessions. State satisfies `pulse.ReflectionHealthSource`. See **System Surface** below. |
 | `ops` | System health (disk/processes), cleanup planning with approval workflow. Consumed by pulse via narrow Go interfaces — no user-facing LLM tool wrappers (see **System Surface**). |
 | `llm` | Provider abstraction (anthropic, openai, openai-codex, gemini, gemini-native, claude-code-cli) + 3-tier `Router`. Router binds heavy/standard/light via `config.ResolveAllLLMTiers`. See **LLM Provider Pool** below. |
 | `memory` | Semantic memory: Gemini embeddings, cosine similarity search, experience/compaction indexing, JSONL entries |
@@ -68,8 +68,8 @@ cd frontend/console && npm run check   # svelte-check + tsc
 - Pulse policy lives in config (`pulse_enabled`, `pulse_interval`, thresholds, autofix allowlist, min severity). There is no `PULSE.md` policy file — "policy is config, mechanism is code".
 - Autofix whitelist (Phase 1): `compress_old_logs`, `cleanup_stale_tmp`. New autofixes require a Go implementation in `internal/pulse/autofix/` AND an entry in `pulse_allowed_autofixes` — the intersection is what the decider can invoke.
 - **Reflection** (nightly batch) is the second system-surface component. It ticks slowly (default every 5 min) but only actually runs jobs when (1) the current local time is inside `reflection_sleep_window` (default 02:00-05:00) AND (2) today's run has not already happened. Wrap-around windows (22:00-02:00) are supported; the "reflection day" is anchored to the start of the window.
-- Reflection Phase 1 ships two jobs, run sequentially: `memory` (batch variant of the old per-turn `chat_memory_hook`: experience derivation from keyword rules + LLM knowledge compilation) and `kb_cleanup` (remove sessions whose transcript is empty and older than `reflection_empty_session_age`). Main sessions are never touched.
-- Reflection has **no LLM tool surface** — its jobs call `llm.Client.Chat` directly for knowledge compilation without exposing tools to the model. Cross-surface leakage is still enforced at registry time for forward compatibility.
+- Reflection Phase 1 ships two jobs, run sequentially: `memory` (batch variant of the old per-turn `chat_memory_hook`: experience derivation from keyword rules) and `kb_cleanup` (legacy name; removes sessions whose transcript is empty and older than `reflection_empty_session_age`). Main sessions are never touched.
+- Reflection has **no LLM tool surface**. The current memory job is deterministic experience derivation; if LLM summarization returns later, keep it behind direct Go wiring rather than exposing reflection tools to user registries. Cross-surface leakage is still enforced at registry time for forward compatibility.
 - The per-turn `chat_memory_hook` has shrunk to the minimum: daily log append + the explicit `remember …` hot path (with inline dedup). All other derivation/compilation runs once nightly.
 - Pulse observes reflection health via the narrow `pulse.ReflectionHealthSource` interface (implemented by `reflection.State`). When `pulse_reflection_failure_threshold` consecutive nightly runs fail, pulse emits `SignalKindReflectionFailure` and the normal decider flow handles notification/autofix.
 - Heartbeat (the previous name) has been removed entirely. Legacy `--run-once` / `--run-loop` CLI flags and `/console/heartbeat` URLs are kept only as no-op redirects for backward compat.
@@ -95,9 +95,9 @@ cd frontend/console && npm run check   # svelte-check + tsc
 - **Proactive search**: System prompt instructs LLM to MUST call `memory_search` for prior context
 - **Session transcript search**: `memory_search` tool supports `include_sessions=true` for cross-session lookup
 - **Async prefetch**: Goroutine warms cache for next turn after each response (`startMemoryPrefetchForNextTurn`)
-- **Prior Context section**: System prompt includes `## Prior Context` with source-tagged matches (`conversation|experience|project|daily`)
+- **Prior Context section**: System prompt includes `## Prior Context` with source-tagged matches (`conversation|experience|daily`)
 - **Continuity detection**: `shouldForceMemoryToolCall` detects 30+ patterns (EN/KR) like "그거", "지난번", "you mentioned"
-- **Post-chat hooks**: Auto-extract experiences, daily log, compaction memories
+- **Post-chat hooks**: Append daily logs and handle the explicit `remember ...` hot path; broader experience derivation runs in nightly reflection.
 
 **Frontend** (`frontend/console/`) — Svelte 5 SPA embedded via `go:embed`
 
@@ -111,7 +111,7 @@ cd frontend/console && npm run check   # svelte-check + tsc
 - **Design system source of truth**: `frontend/console/DESIGN.md` is the normative spec for tokens, components, and visual rules ("Warm Workshop" aesthetic). Consult it before adding/modifying any frontend visual surface — new colors, new component variants, spacing/typography choices. The YAML front matter is canonical; mirror values into `app.css`, `tokens.json`, and `tailwind.theme.json` together. If a change deviates from DESIGN.md (e.g., adding a hover state the spec doesn't cover), update DESIGN.md in the same PR rather than letting code and spec drift.
 
 **SSE Event System:**
-- `/v1/events/stream` — global event stream, optional `?project_id=` filter
+- `/v1/events/stream` — global runtime notification stream
 - Events: `{ type, category, severity, title, message, timestamp }`, keepalive filtered client-side
 - `/v1/events/history?limit=N` — recent events with `unread_count`
 - `memory_recall` event — signals async memory prefetch results to frontend

@@ -1,0 +1,39 @@
+{
+  "cmd/tars": [
+    "internal/tarsserver",
+    "internal/tarsclient"
+  ],
+  "internal/tarsclient": [
+    "pkg/tarsclient"
+  ],
+  "internal/tarsserver": [
+    "internal/config",
+    "internal/llm",
+    "internal/session",
+    "internal/prompt",
+    "internal/tool",
+    "internal/agentruntime",
+    "internal/cron",
+    "internal/pulse",
+    "internal/reflection",
+    "internal/ops",
+    "internal/memory",
+    "internal/extensions"
+  ],
+  "frontend/console": [
+    "pkg/tarsclient"
+  ],
+  "internal/pulse": [
+    "internal/cron",
+    "internal/agentruntime",
+    "internal/ops",
+    "internal/reflection"
+  ],
+  "internal/reflection": [
+    "internal/memory"
+  ],
+  "internal/tool": [
+    "internal/agentruntime",
+    "internal/memory"
+  ]
+}

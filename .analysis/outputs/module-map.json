@@ -1,0 +1,83 @@
+{
+  "cli-client": {
+    "path": "cmd/tars",
+    "responsibility": "Thin Cobra CLI and protocol clients for console open, one-shot chat, cron, approvals, and runtime operations.",
+    "key_files": [
+      "cmd/tars/main.go",
+      "cmd/tars/client_main.go",
+      "cmd/tars/console_main.go",
+      "cmd/tars/approval_main.go",
+      "internal/tarsclient/client_main.go",
+      "pkg/tarsclient/client.go"
+    ]
+  },
+  "tarsserver": {
+    "path": "internal/tarsserver",
+    "responsibility": "HTTP API composition layer for chat, sessions, memory, ops, events, extensions, agent runtime, and console assets.",
+    "key_files": [
+      "internal/tarsserver/main.go",
+      "internal/tarsserver/main_serve_api.go",
+      "internal/tarsserver/middleware.go",
+      "internal/tarsserver/handler_chat.go",
+      "internal/tarsserver/handler_ops.go",
+      "internal/tarsserver/notify.go"
+    ]
+  },
+  "agentruntime": {
+    "path": "internal/agentruntime",
+    "responsibility": "Async run lifecycle, executors, workspace agents, channels, persistence, and run events.",
+    "key_files": [
+      "internal/agentruntime/types.go",
+      "internal/agentruntime/runtime.go",
+      "internal/agentruntime/runtime_runs.go",
+      "internal/agentruntime/runtime_run_execute.go",
+      "internal/agentruntime/executor.go",
+      "internal/agentruntime/events.go"
+    ]
+  },
+  "memory": {
+    "path": "internal/memory",
+    "responsibility": "Durable memory, daily logs, experiences, semantic search, and nightly reflection derivation.",
+    "key_files": [
+      "internal/memory/workspace.go",
+      "internal/memory/semantic.go",
+      "internal/memory/experience.go",
+      "internal/tarsserver/chat_memory_hook.go",
+      "internal/reflection/job_memory.go"
+    ]
+  },
+  "system-surfaces": {
+    "path": "internal/pulse",
+    "responsibility": "Background watchdog, nightly reflection, and approval-gated operations.",
+    "key_files": [
+      "internal/pulse/types.go",
+      "internal/pulse/runtime.go",
+      "internal/reflection/reflection.go",
+      "internal/reflection/job_memory.go",
+      "internal/ops/manager.go",
+      "internal/tarsserver/handler_ops.go"
+    ]
+  },
+  "extensions": {
+    "path": "internal/extensions",
+    "responsibility": "On-demand skill/plugin/MCP loading and Skill Hub install/update surfaces.",
+    "key_files": [
+      "internal/skill/load.go",
+      "internal/plugin/loader.go",
+      "internal/extensions/manager.go",
+      "internal/mcp/client.go",
+      "internal/skillhub/client.go"
+    ]
+  },
+  "frontend-console": {
+    "path": "frontend/console",
+    "responsibility": "Svelte 5 web console and design system.",
+    "key_files": [
+      "frontend/console/src/App.svelte",
+      "frontend/console/src/lib/router.ts",
+      "frontend/console/src/lib/api.ts",
+      "frontend/console/src/lib/types.ts",
+      "frontend/console/DESIGN.md"
+    ]
+  }
+}
