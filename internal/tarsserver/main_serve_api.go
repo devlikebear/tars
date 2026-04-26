@@ -318,7 +318,8 @@ func buildAPIMux(
 			}
 			return deps.usageTracker.EstimateCost(provider, model, llm.Usage{InputTokens: inputTokens, OutputTokens: outputTokens})
 		},
-		Now: nowFn,
+		UsageTracker: deps.usageTracker,
+		Now:          nowFn,
 	})
 	agentRuntimeForTelegram = agentRuntime
 
@@ -480,7 +481,7 @@ func buildAPIMux(
 		chatTooling,
 		chatTools...,
 	)
-	sessionHandler := newSessionAPIHandler(sessionStore, logger)
+	sessionHandler := newSessionAPIHandlerWithUsage(sessionStore, logger, deps.usageTracker)
 	consoleHandler, err := newConsoleHandler(logger)
 	if err != nil {
 		return nil, err

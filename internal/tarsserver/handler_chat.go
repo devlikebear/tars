@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -409,6 +410,7 @@ func setupAgentLoop(
 	registry *tool.Registry,
 	sessionID string,
 	historyLen int,
+	usageTracker *usage.Tracker,
 	logger zerolog.Logger,
 	sendStatus func(string, string, string, string, string, string),
 ) (*agent.Loop, *[]ToolCallRecord) {
@@ -424,7 +426,7 @@ func setupAgentLoop(
 
 	counterHook := agent.NewCounterHook()
 	auditHook := agent.NewAuditHook(64)
-	logHook := agent.HookFunc(func(_ context.Context, evt agent.Event) {
+	logHook := agent.HookFunc(func(ctx context.Context, evt agent.Event) {
 		logger.Debug().
 			Str("event", string(evt.Type)).
 			Int("iteration", evt.Iteration).
@@ -457,6 +459,7 @@ func setupAgentLoop(
 				statusPreview(evt.ToolArgs, 180),
 				statusPreview(evt.ToolResult, 180),
 			)
+			recordToolUsageSignal(ctx, usageTracker, sessionID, evt)
 			*toolCalls = append(*toolCalls, ToolCallRecord{
 				ToolName:   evt.ToolName,
 				ToolCallID: evt.ToolCallID,
@@ -479,6 +482,60 @@ func setupAgentLoop(
 		}
 	})
 	return agent.NewLoop(client, registry, counterHook, auditHook, logHook), toolCalls
+}
+
+func recordToolUsageSignal(ctx context.Context, tracker *usage.Tracker, fallbackSessionID string, evt agent.Event) {
+	if tracker == nil || strings.TrimSpace(evt.ToolName) == "" {
+		return
+	}
+	meta := usage.CallMetaFromContext(ctx)
+	sessionID := strings.TrimSpace(meta.SessionID)
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(fallbackSessionID)
+	}
+	dimensions := toolSignalDimensions(evt.ToolName, evt.ToolArgs)
+	if evt.ToolIsError {
+		dimensions["error"] = "true"
+	}
+	_ = tracker.RecordSignal(usage.SignalEntry{
+		Name:       "tool_call",
+		Source:     meta.Source,
+		SessionID:  sessionID,
+		RunID:      meta.RunID,
+		Dimensions: dimensions,
+	})
+}
+
+func toolSignalDimensions(toolName string, rawArgs string) map[string]string {
+	dimensions := map[string]string{
+		"tool": strings.TrimSpace(toolName),
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(rawArgs)), &args); err != nil {
+		return dimensions
+	}
+	if action, ok := stringValue(args["action"]); ok {
+		dimensions["action"] = action
+	}
+	if mode, ok := stringValue(args["mode"]); ok {
+		dimensions["mode"] = mode
+	}
+	if tasks, ok := args["tasks"].([]any); ok {
+		dimensions["task_count"] = fmt.Sprintf("%d", len(tasks))
+	}
+	if steps, ok := args["steps"].([]any); ok {
+		dimensions["step_count"] = fmt.Sprintf("%d", len(steps))
+	}
+	return dimensions
+}
+
+func stringValue(value any) (string, bool) {
+	text, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+	text = strings.TrimSpace(text)
+	return text, text != ""
 }
 
 func resolveAgentMaxIterations(value int) int {

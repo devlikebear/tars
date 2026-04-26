@@ -40,6 +40,8 @@ type usageSummary = tarsclient.UsageSummary
 
 type usageLimitStatus = tarsclient.UsageLimitStatus
 
+type usageSignalSummary = tarsclient.UsageSignalSummary
+
 type opsStatus = tarsclient.OpsStatus
 
 type cleanupPlan = tarsclient.CleanupPlan

@@ -10,6 +10,10 @@ func (c runtimeClient) usageLimits(ctx context.Context) (usageLimits, error) {
 	return c.client().GetUsageLimits(ctx)
 }
 
+func (c runtimeClient) usageSignals(ctx context.Context, period string) (usageSignalSummary, error) {
+	return c.client().GetUsageSignals(ctx, period)
+}
+
 func (c runtimeClient) updateUsageLimits(ctx context.Context, req usageLimits) (usageLimits, error) {
 	return c.client().UpdateUsageLimits(ctx, req)
 }

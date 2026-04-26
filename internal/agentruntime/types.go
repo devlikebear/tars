@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/usage"
 )
 
 type RunStatus string
@@ -248,6 +249,7 @@ type RuntimeOptions struct {
 	AgentRuntimeArchiveMaxFileBytes           int
 	ResolveProviderOverride                   func(tier string, override *ProviderOverride) (ResolvedProviderOverride, error)
 	EstimateTokensCost                        func(provider, model string, inputTokens, outputTokens int) (float64, bool)
+	UsageTracker                              *usage.Tracker
 	Now                                       func() time.Time
 }
 

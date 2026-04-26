@@ -34,6 +34,7 @@ type Event struct {
 	ToolCallID   string
 	ToolArgs     string
 	ToolResult   string
+	ToolIsError  bool
 	Err          error
 }
 
@@ -202,12 +203,13 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			}
 			redactedResult := secrets.RedactText(result.Text())
 			l.emit(ctx, Event{
-				Type:       EventAfterTool,
-				Iteration:  i + 1,
-				ToolName:   call.Name,
-				ToolCallID: call.ID,
-				ToolArgs:   effectiveArgs,
-				ToolResult: redactedResult,
+				Type:        EventAfterTool,
+				Iteration:   i + 1,
+				ToolName:    call.Name,
+				ToolCallID:  call.ID,
+				ToolArgs:    effectiveArgs,
+				ToolResult:  redactedResult,
+				ToolIsError: result.IsError,
 			})
 
 			if isExecCall && isMissingCommandExecResult(effectiveArgs, redactedResult) {

@@ -39,6 +39,24 @@ func (c *Client) GetUsageLimits(ctx context.Context) (UsageLimits, error) {
 	return out, nil
 }
 
+func (c *Client) GetUsageSignals(ctx context.Context, period string) (UsageSignalSummary, error) {
+	values := url.Values{}
+	if v := strings.TrimSpace(period); v != "" {
+		values.Set("period", v)
+	}
+	path := "/v1/usage/signals"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var out struct {
+		Signals UsageSignalSummary `json:"signals"`
+	}
+	if _, err := c.doJSON(ctx, http.MethodGet, path, nil, false, &out); err != nil {
+		return UsageSignalSummary{}, err
+	}
+	return out.Signals, nil
+}
+
 func (c *Client) UpdateUsageLimits(ctx context.Context, req UsageLimits) (UsageLimits, error) {
 	if v := strings.TrimSpace(strings.ToLower(req.Mode)); v != "" {
 		if v != "soft" && v != "hard" {

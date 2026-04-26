@@ -6,6 +6,24 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.6] - 2026-04-26
+
+### Added
+
+- Workspace-local usage signal counters in `workspace/usage/signals-YYYY-MM-DD.jsonl` for unresolved code-review questions.
+- `GET /v1/usage/signals?period={today|week|month}` and `/usage signals {period}` for operator inspection.
+- Narrow counters for tool calls, session tool-config updates, agent runtime persistence retries/errors, and consensus activation.
+- `docs/usage-signals.md` mapping Q-011 through Q-018 to their runtime evidence source.
+
+### Tests
+
+- `TestTracker_RecordSignalAndSummarize`
+- `TestUsageAPI_Signals`
+
+### Closed
+
+- Closes #386.
+
 ## [0.31.5] - 2026-04-26
 
 ### Changed (BREAKING)

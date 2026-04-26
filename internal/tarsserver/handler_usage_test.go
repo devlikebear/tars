@@ -70,3 +70,39 @@ func TestUsageAPI_SummaryAndLimits(t *testing.T) {
 		t.Fatalf("unexpected limits: %+v", limits)
 	}
 }
+
+func TestUsageAPI_Signals(t *testing.T) {
+	tracker, err := usage.NewTracker(t.TempDir(), usage.TrackerOptions{})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+	if err := tracker.RecordSignal(usage.SignalEntry{
+		Name:   "tool_call",
+		Source: "chat",
+		Dimensions: map[string]string{
+			"tool": "subagents_plan",
+		},
+	}); err != nil {
+		t.Fatalf("record signal: %v", err)
+	}
+
+	handler := newUsageAPIHandler(tracker, "off", zerolog.Nop())
+	req := httptest.NewRequest(http.MethodGet, "/v1/usage/signals?period=today", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Signals usage.SignalSummary `json:"signals"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode signals: %v", err)
+	}
+	if out.Signals.TotalCount != 1 || len(out.Signals.Rows) != 1 {
+		t.Fatalf("unexpected signal summary: %+v", out.Signals)
+	}
+	if out.Signals.Rows[0].Dimensions["tool"] != "subagents_plan" {
+		t.Fatalf("unexpected signal row: %+v", out.Signals.Rows[0])
+	}
+}
