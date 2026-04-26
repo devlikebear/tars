@@ -352,7 +352,7 @@
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'config'} onclick={() => togglePanel('config')} title="Session tool config">Config</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'context'} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prompt'} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
-      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'tasks'} onclick={() => togglePanel('tasks')} title="Session tasks">Tasks{#if tasksSummary.total > 0} ({tasksSummary.in_progress}/{tasksSummary.total}){/if}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'tasks'} onclick={() => togglePanel('tasks')} title={tasksSummary.total > 0 ? `${tasksSummary.completed} done · ${tasksSummary.in_progress} in progress · ${tasksSummary.pending} pending` : 'Session tasks'}>Tasks{#if tasksSummary.total > 0} ({tasksSummary.completed}/{tasksSummary.total}){/if}</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'cron'} onclick={() => togglePanel('cron')} title="Session cron jobs">Cron</button>
     </div>
   </div>
