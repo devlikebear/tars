@@ -24,8 +24,10 @@ const (
 	// explicit "remember ..." hot path). Light by default.
 	RoleMemoryHook Role = "memory_hook"
 
-	// RoleReflectionMemory runs nightly knowledge-base compilation from
-	// session transcripts.
+	// RoleReflectionMemory was the nightly knowledge-base compilation
+	// role. The KB system was removed in ID-001; this role is kept in
+	// the enumeration for backward-compatible config parsing but no
+	// production code resolves it anymore.
 	RoleReflectionMemory Role = "reflection_memory"
 
 	// RoleReflectionKB runs nightly KB cleanup. Currently non-LLM, reserved

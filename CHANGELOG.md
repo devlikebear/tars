@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-04-26
+
+### Removed (BREAKING)
+
+- **ID-001**: Knowledge Base (KB Wiki) 시스템 전체 제거. chat path 통합 0% 정량 증거 + KB note semantic 인덱스 등록 0% + read 통합 ~0% → 사용자 결정 *"완전 제거. 필요할 때 다시 구현하겠음"*.
+  - `internal/memory/knowledge.go` (840 줄) + `internal/memory/knowledge_test.go` (137 줄) 삭제. `KnowledgeStore`, `KnowledgeNote`, `KnowledgeUpdate`, `KnowledgeListOptions`, `KnowledgeNotePatch`, `KnowledgeGraph`, `KnowledgeGraphNode`, `KnowledgeGraphEdge`, `KnowledgeLink` 모두 삭제.
+  - `internal/tool/knowledge_aggregator.go` + `internal/tool/memory_kb.go` + `internal/tool/memory_kb_test.go` 삭제. `knowledge` aggregator 빌트인 툴 + `memory_kb_*` 4 alias 모두 제거.
+  - `internal/tarsserver/handler_memory.go` 의 `/v1/memory/kb/graph` + `/v1/memory/kb/notes` (POST/GET) + `/v1/memory/kb/notes/{slug}` (GET/PATCH/DELETE) HTTP 라우트 + `decodeKnowledgePatchRequest` 헬퍼 모두 제거. tests 도 같이 정리.
+  - `internal/reflection/job_memory.go` 의 `compileKnowledge` 함수 (nightly LLM KB 컴파일) + `derivation.go` 의 `shouldCompileKnowledge` 게이트 제거. nightly memory 작업은 experience derivation 만 남음.
+  - `internal/tool/memory_search.go` 의 `include_knowledge` 파라미터 + `searchKnowledgeNotes` 헬퍼 제거.
+  - `internal/memory/Backend` 인터페이스에서 6 KB 메서드 (`ListKnowledgeNotes`/`GetKnowledgeNote`/`ApplyKnowledgePatch`/`ApplyKnowledgeUpdate`/`DeleteKnowledgeNote`/`KnowledgeGraph`) 제거.
+  - `internal/tool/tool_groups.go` 의 `knowledge` → `memory` group 매핑 제거.
+  - **Frontend**: `MemoryCenter.svelte` 의 Knowledge 탭 + 관련 state/handlers 제거 (909 → 551 줄, **-358 줄**). `lib/api.ts` 의 6 KB 함수 + `KnowledgeGraph`/`KnowledgeNote` import 제거. `lib/types.ts` 의 KB 타입 5종 제거. `lib/router.ts` 의 `/console/knowledge` alias 제거.
+  - `tarsserver/main_options.go` chat 시스템 프롬프트의 `include_knowledge`/`knowledge(action=...)` 가이드 제거.
+
+### Migration
+
+KB 가 필요해지면 미래 PR 에서 재구현. 현재 사용자 워크스페이스의 `workspace/memory/wiki/notes/*.md` 파일은 read-only 자료로 남아있음 (TARS 가 더 이상 read/write 안 함). 사용자가 직접 보존하거나 삭제 가능.
+
+### Net diff
+
+총 ~2.2k 줄 감소 (Go ~1.5k + Svelte 358 + TS ~50 + tests 정리).
+
 ## [0.29.2] - 2026-04-26
 
 ### Changed

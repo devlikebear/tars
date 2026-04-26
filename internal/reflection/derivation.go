@@ -70,27 +70,6 @@ func deriveAssistantExperience(sessionID, assistantMessage string, now time.Time
 	}
 }
 
-// shouldCompileKnowledge decides whether a single turn is worth sending
-// to the LLM for knowledge-base compilation. The gate is intentionally
-// loose — the LLM itself is responsible for returning empty arrays when
-// nothing durable is present.
-func shouldCompileKnowledge(t turn) bool {
-	combined := strings.ToLower(strings.TrimSpace(t.UserMessage + "\n" + t.AssistantMessage))
-	if combined == "" {
-		return false
-	}
-	hints := []string{
-		"prefer", "preference", "habit", "workflow", "policy", "decision", "owns",
-		"선호", "취향", "습관", "워크플로", "규칙", "정책", "결정", "보유",
-	}
-	for _, hint := range hints {
-		if strings.Contains(combined, hint) {
-			return true
-		}
-	}
-	return false
-}
-
 // appendExperienceIfNew persists an experience only if an identical
 // summary+category pair does not already exist. Returns true when a new
 // entry was written. Errors are swallowed — reflection jobs aggregate

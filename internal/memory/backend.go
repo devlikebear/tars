@@ -21,10 +21,4 @@ type Backend interface {
 	AppendMemoryNote(ctx context.Context, at time.Time, entry string) error
 	AppendExperience(ctx context.Context, exp Experience) error
 	SearchExperiences(ctx context.Context, opts SearchOptions) ([]Experience, error)
-	ListKnowledgeNotes(ctx context.Context, opts KnowledgeListOptions) ([]KnowledgeNote, error)
-	GetKnowledgeNote(ctx context.Context, slug string) (KnowledgeNote, error)
-	ApplyKnowledgePatch(ctx context.Context, patch KnowledgeNotePatch) (KnowledgeNote, error)
-	ApplyKnowledgeUpdate(ctx context.Context, update KnowledgeUpdate, now time.Time) error
-	DeleteKnowledgeNote(ctx context.Context, slug string) error
-	KnowledgeGraph(ctx context.Context) (KnowledgeGraph, error)
 }

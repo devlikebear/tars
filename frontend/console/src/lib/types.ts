@@ -344,48 +344,6 @@ export type ChatRequest = {
   attachments?: ChatAttachment[]
 }
 
-export type KnowledgeLink = {
-  target: string
-  relation?: string
-}
-
-export type KnowledgeNote = {
-  slug: string
-  title: string
-  kind?: string
-  summary?: string
-  body?: string
-  tags?: string[]
-  aliases?: string[]
-  links?: KnowledgeLink[]
-  source_session?: string
-  created_at?: string
-  updated_at?: string
-  path?: string
-}
-
-export type KnowledgeGraphNode = {
-  slug: string
-  title: string
-  kind?: string
-  path?: string
-  tags?: string[]
-  updated_at?: string
-}
-
-export type KnowledgeGraphEdge = {
-  source: string
-  target: string
-  relation?: string
-  updated_at?: string
-}
-
-export type KnowledgeGraph = {
-  updated_at?: string
-  nodes: KnowledgeGraphNode[]
-  edges: KnowledgeGraphEdge[]
-}
-
 export type MemoryAsset = {
   path: string
   kind: string

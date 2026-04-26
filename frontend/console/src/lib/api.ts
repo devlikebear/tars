@@ -31,8 +31,6 @@ import type {
   ReflectionSnapshot,
   ReflectionRunSummary,
   ReflectionConfigView,
-  KnowledgeGraph,
-  KnowledgeNote,
   Session,
   SessionMessage,
   UpdateCronJobRequest,
@@ -246,53 +244,6 @@ export async function updateSessionWorkDirs(sessionId: string, data: { work_dirs
   })
 }
 
-// --- Knowledge Base ---
-
-export async function listKnowledgeNotes(params: {
-  query?: string
-  kind?: string
-  tag?: string
-  limit?: number
-} = {}): Promise<{ count: number; items: KnowledgeNote[] }> {
-  const search = new URLSearchParams()
-  if (params.query?.trim()) search.set('query', params.query.trim())
-  if (params.kind?.trim()) search.set('kind', params.kind.trim())
-  if (params.tag?.trim()) search.set('tag', params.tag.trim())
-  if (params.limit && params.limit > 0) search.set('limit', String(params.limit))
-  const qs = search.toString()
-  return requestJSON<{ count: number; items: KnowledgeNote[] }>(`/v1/memory/kb/notes${qs ? `?${qs}` : ''}`)
-}
-
-export async function getKnowledgeNote(slug: string): Promise<KnowledgeNote> {
-  return requestJSON<KnowledgeNote>(`/v1/memory/kb/notes/${encodeURIComponent(slug)}`)
-}
-
-export async function createKnowledgeNote(payload: Partial<KnowledgeNote>): Promise<KnowledgeNote> {
-  return requestJSON<KnowledgeNote>('/v1/memory/kb/notes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function updateKnowledgeNote(slug: string, payload: Partial<KnowledgeNote>): Promise<KnowledgeNote> {
-  return requestJSON<KnowledgeNote>(`/v1/memory/kb/notes/${encodeURIComponent(slug)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function deleteKnowledgeNote(slug: string): Promise<{ deleted: boolean; slug: string }> {
-  return requestJSON<{ deleted: boolean; slug: string }>(`/v1/memory/kb/notes/${encodeURIComponent(slug)}`, {
-    method: 'DELETE',
-  })
-}
-
-export async function getKnowledgeGraph(): Promise<KnowledgeGraph> {
-  return requestJSON<KnowledgeGraph>('/v1/memory/kb/graph')
-}
-
 export async function listMemoryAssets(): Promise<{ count: number; items: MemoryAsset[] }> {
   return requestJSON<{ count: number; items: MemoryAsset[] }>('/v1/memory/assets')
 }
@@ -314,7 +265,6 @@ export async function runMemorySearch(payload: {
   limit?: number
   include_memory?: boolean
   include_daily?: boolean
-  include_knowledge?: boolean
   include_sessions?: boolean
 }): Promise<MemorySearchResult> {
   return requestJSON<MemorySearchResult>('/v1/memory/search', {

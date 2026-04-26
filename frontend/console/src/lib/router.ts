@@ -41,7 +41,7 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'gateway' }
   }
 
-  if (path.startsWith(`${consoleBase}/memory`) || path.startsWith(`${consoleBase}/knowledge`)) {
+  if (path.startsWith(`${consoleBase}/memory`)) {
     return { view: 'memory' }
   }
 

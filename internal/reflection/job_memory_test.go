@@ -252,40 +252,6 @@ func TestMemoryJobSessionListError(t *testing.T) {
 	}
 }
 
-func TestMemoryJobLLMKnowledgeCompile(t *testing.T) {
-	workspace := newTestWorkspace(t)
-	transcriptDir := filepath.Join(workspace, "sessions")
-	writeTranscript(t, transcriptDir, "s", []session.Message{
-		{Role: "user", Content: "Our workflow policy: always use fixtures for tests"},
-		{Role: "assistant", Content: "Understood."},
-	})
-
-	fakeResp := `{"notes":[{"slug":"test-fixtures","title":"Use fixtures for tests","kind":"workflow","summary":"always use fixtures"}],"edges":[]}`
-	fakeClient := &fakeLLM{response: fakeResp}
-
-	src := &fakeSessionSource{
-		dir:      transcriptDir,
-		sessions: []session.Session{{ID: "s", UpdatedAt: time.Now()}},
-	}
-	job := &MemoryJob{
-		WorkspaceDir: workspace,
-		Sessions:     src,
-		Router:       routerForFake(t, fakeClient),
-		Now:          func() time.Time { return time.Now() },
-	}
-	result, err := job.Run(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	if fakeClient.chatCount != 1 {
-		t.Errorf("llm chat called %d times, want 1", fakeClient.chatCount)
-	}
-	kb := result.Details["kb_updates"].(int)
-	if kb != 1 {
-		t.Errorf("kb_updates = %d, want 1", kb)
-	}
-}
-
 // --- derivation unit tests ---
 
 func TestDeriveUserExperiencePreference(t *testing.T) {
@@ -306,15 +272,6 @@ func TestDeriveAssistantExperienceResolved(t *testing.T) {
 	_, ok := deriveAssistantExperience("s1", "Issue resolved", time.Now())
 	if !ok {
 		t.Error("should detect resolution")
-	}
-}
-
-func TestShouldCompileKnowledgeHints(t *testing.T) {
-	if !shouldCompileKnowledge(turn{UserMessage: "Our policy is X", AssistantMessage: "ok"}) {
-		t.Error("policy hint should trigger")
-	}
-	if shouldCompileKnowledge(turn{UserMessage: "random small talk", AssistantMessage: "hi"}) {
-		t.Error("small talk should not trigger")
 	}
 }
 
