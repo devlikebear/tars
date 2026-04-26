@@ -13,10 +13,49 @@ import (
 
 // Plan represents a high-level goal for the current session.
 // At most one plan is active per session; setting a new plan archives the previous one.
+//
+// Status follows a small state machine:
+//
+//	drafting ──plan_propose──► proposed ──plan_approve──► executing
+//	   ▲                                                     │
+//	   │                                                     │ plan_pause
+//	   │                                                     ▼
+//	   │                                                  paused
+//	   │                                                     │
+//	   │ user edit                       plan_resume         │
+//	   └────────────────────                 ◄───────────────┘
+//
+//	executing ─(all tasks completed/cancelled)──► completed
+//	any (except completed/aborted) ──plan_abort──► aborted
+//
+// Empty Status (legacy plans saved before this field existed) is treated as
+// "executing" on load so existing sessions keep their prior behavior.
 type Plan struct {
 	Goal        string `json:"goal"`
 	Constraints string `json:"constraints,omitempty"`
 	CreatedAt   string `json:"created_at"`
+	Status      string `json:"status,omitempty"`
+	UpdatedAt   string `json:"updated_at,omitempty"`
+}
+
+// Plan status constants — enumerate the states a plan can be in.
+const (
+	PlanStatusDrafting  = "drafting"
+	PlanStatusProposed  = "proposed"
+	PlanStatusExecuting = "executing"
+	PlanStatusPaused    = "paused"
+	PlanStatusCompleted = "completed"
+	PlanStatusAborted   = "aborted"
+)
+
+// ValidPlanStatus reports whether s is a recognized plan status.
+func ValidPlanStatus(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case PlanStatusDrafting, PlanStatusProposed, PlanStatusExecuting,
+		PlanStatusPaused, PlanStatusCompleted, PlanStatusAborted:
+		return true
+	}
+	return false
 }
 
 // Task represents a single work item linked to the session plan.
@@ -79,6 +118,12 @@ func (s *Store) SaveTasks(sessionID string, tasks SessionTasks) error {
 func normalizeSessionTasks(tasks SessionTasks) SessionTasks {
 	if tasks.Tasks == nil {
 		tasks.Tasks = []Task{}
+	}
+	// Legacy plans saved before the state machine existed have no Status —
+	// treat them as already executing so their behavior is identical to
+	// what users observed before this field was introduced.
+	if tasks.Plan != nil && strings.TrimSpace(tasks.Plan.Status) == "" {
+		tasks.Plan.Status = PlanStatusExecuting
 	}
 	return tasks
 }

@@ -505,10 +505,20 @@ export type ConfigSchema = {
   values: Record<string, unknown>
 }
 
+export type PlanStatus =
+  | 'drafting'
+  | 'proposed'
+  | 'executing'
+  | 'paused'
+  | 'completed'
+  | 'aborted'
+
 export type SessionPlan = {
   goal: string
   constraints?: string
   created_at: string
+  status?: PlanStatus
+  updated_at?: string
 }
 
 export type SessionTask = {

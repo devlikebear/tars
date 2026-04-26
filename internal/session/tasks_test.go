@@ -92,6 +92,57 @@ func TestNextTaskID(t *testing.T) {
 	}
 }
 
+func TestValidPlanStatus(t *testing.T) {
+	for _, valid := range []string{
+		PlanStatusDrafting, PlanStatusProposed, PlanStatusExecuting,
+		PlanStatusPaused, PlanStatusCompleted, PlanStatusAborted,
+	} {
+		if !ValidPlanStatus(valid) {
+			t.Errorf("expected %q to be valid", valid)
+		}
+	}
+	for _, invalid := range []string{"", "running", "DONE", "queued"} {
+		if invalid == "" {
+			continue // empty is treated as legacy default by callers, not by ValidPlanStatus
+		}
+		if ValidPlanStatus(invalid) {
+			t.Errorf("expected %q to be invalid", invalid)
+		}
+	}
+	if ValidPlanStatus("") {
+		t.Error("empty string should not validate as a plan status")
+	}
+}
+
+func TestLegacyPlanWithoutStatusDefaultsToExecuting(t *testing.T) {
+	store := NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+	// Save a plan with empty Status to simulate a session pre-dating the
+	// state machine (the file format is otherwise unchanged).
+	if err := store.SaveTasks(main.ID, SessionTasks{
+		Plan: &Plan{Goal: "legacy plan", CreatedAt: NowRFC3339()},
+		Tasks: []Task{
+			{ID: "1", Title: "task one", Status: "in_progress"},
+		},
+	}); err != nil {
+		t.Fatalf("save tasks: %v", err)
+	}
+
+	loaded, err := store.GetTasks(main.ID)
+	if err != nil {
+		t.Fatalf("get tasks: %v", err)
+	}
+	if loaded.Plan == nil {
+		t.Fatal("expected plan to be loaded")
+	}
+	if loaded.Plan.Status != PlanStatusExecuting {
+		t.Errorf("expected legacy plan status to default to %q, got %q", PlanStatusExecuting, loaded.Plan.Status)
+	}
+}
+
 func TestValidTaskStatus(t *testing.T) {
 	for _, valid := range []string{"pending", "in_progress", "completed", "cancelled"} {
 		if !ValidTaskStatus(valid) {
