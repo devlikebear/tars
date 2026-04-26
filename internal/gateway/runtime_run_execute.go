@@ -125,6 +125,14 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 	return resp, metadata, err
 }
 
+// finalizeRunLocked is the single termination path for a gateway run.
+// It writes resolved provider metadata, dispatches to the failure or
+// success branch to populate state.run, and then commits the result via
+// commitRunFinalization (history trim + state version bump + run summary
+// append + single publish).
+//
+// The caller must already hold the runtime mutex. The two branch helpers
+// only mutate state.run; they don't touch runtime-wide state.
 func (r *Runtime) finalizeRunLocked(state *runState, resp string, metadata PromptExecutionMetadata, err error) {
 	finishedAt := r.nowFn().UTC().Format(time.RFC3339)
 	state.run.CompletedAt = finishedAt
@@ -133,53 +141,62 @@ func (r *Runtime) finalizeRunLocked(state *runState, resp string, metadata Promp
 	state.run.ResolvedKind = strings.TrimSpace(metadata.ResolvedKind)
 	state.run.ResolvedModel = strings.TrimSpace(metadata.ResolvedModel)
 	state.run.OverrideSource = strings.TrimSpace(metadata.OverrideSource)
+
 	if err != nil {
-		state.run.Status = RunStatusFailed
-		state.run.Error = strings.TrimSpace(err.Error())
-		state.run.DiagnosticCode, state.run.DiagnosticReason = classifyRunDiagnostic(err)
-		if state.run.DiagnosticCode == "policy_tool_blocked" {
-			info := gatewayAgentInfo(state.executor)
-			state.run.PolicyBlockedTool = blockedToolNameFromReason(state.run.DiagnosticReason)
-			if blocked, ok := blockedToolErrorFromReason(state.run.DiagnosticReason); ok {
-				state.run.PolicyBlockedTool = blocked.Tool
-				state.run.PolicyBlockedRule = blocked.Rule
-				state.run.PolicyBlockedGroup = blocked.Group
-				state.run.PolicyBlockedSource = blocked.Source
-			}
-			if len(info.ToolsAllow) > 0 {
-				state.run.PolicyAllowedTools = append([]string(nil), info.ToolsAllow...)
-			}
-			if len(info.ToolsDeny) > 0 {
-				state.run.PolicyDeniedTools = append([]string(nil), info.ToolsDeny...)
-			}
-			if strings.TrimSpace(info.ToolsRiskMax) != "" {
-				state.run.PolicyRiskMax = strings.TrimSpace(info.ToolsRiskMax)
-			}
-		}
-		r.closeRunDoneLocked(state)
-		r.trimRunHistoryLocked()
-		r.stateVersion++
-		r.appendRunSummaryToMain(state.run, "")
-		r.publishRunEvent(state.run.ID, RunEvent{
-			Type:          "run_failed",
-			RunID:         state.run.ID,
-			Timestamp:     finishedAt,
-			Agent:         state.run.Agent,
-			Status:        string(state.run.Status),
-			ResolvedAlias: state.run.ResolvedAlias,
-			ResolvedKind:  state.run.ResolvedKind,
-			ResolvedModel: state.run.ResolvedModel,
-			Error:         state.run.Error,
-		})
+		event := r.applyFailedFinalState(state, err, finishedAt)
+		r.commitRunFinalization(state, "", event)
 		return
 	}
+	event := r.applyCompletedFinalState(state, resp, finishedAt)
+	r.commitRunFinalization(state, state.run.Response, event)
+}
+
+// applyFailedFinalState mutates state.run with failure status, error
+// classification, and (if applicable) policy-blocked tool diagnostics.
+// Returns the run_failed RunEvent the caller will publish.
+func (r *Runtime) applyFailedFinalState(state *runState, err error, finishedAt string) RunEvent {
+	state.run.Status = RunStatusFailed
+	state.run.Error = strings.TrimSpace(err.Error())
+	state.run.DiagnosticCode, state.run.DiagnosticReason = classifyRunDiagnostic(err)
+	if state.run.DiagnosticCode == "policy_tool_blocked" {
+		info := gatewayAgentInfo(state.executor)
+		state.run.PolicyBlockedTool = blockedToolNameFromReason(state.run.DiagnosticReason)
+		if blocked, ok := blockedToolErrorFromReason(state.run.DiagnosticReason); ok {
+			state.run.PolicyBlockedTool = blocked.Tool
+			state.run.PolicyBlockedRule = blocked.Rule
+			state.run.PolicyBlockedGroup = blocked.Group
+			state.run.PolicyBlockedSource = blocked.Source
+		}
+		if len(info.ToolsAllow) > 0 {
+			state.run.PolicyAllowedTools = append([]string(nil), info.ToolsAllow...)
+		}
+		if len(info.ToolsDeny) > 0 {
+			state.run.PolicyDeniedTools = append([]string(nil), info.ToolsDeny...)
+		}
+		if strings.TrimSpace(info.ToolsRiskMax) != "" {
+			state.run.PolicyRiskMax = strings.TrimSpace(info.ToolsRiskMax)
+		}
+	}
+	return RunEvent{
+		Type:          "run_failed",
+		RunID:         state.run.ID,
+		Timestamp:     finishedAt,
+		Agent:         state.run.Agent,
+		Status:        string(state.run.Status),
+		ResolvedAlias: state.run.ResolvedAlias,
+		ResolvedKind:  state.run.ResolvedKind,
+		ResolvedModel: state.run.ResolvedModel,
+		Error:         state.run.Error,
+	}
+}
+
+// applyCompletedFinalState mutates state.run with success status and
+// the trimmed response. Returns the run_finished RunEvent the caller
+// will publish.
+func (r *Runtime) applyCompletedFinalState(state *runState, resp string, finishedAt string) RunEvent {
 	state.run.Status = RunStatusCompleted
 	state.run.Response = strings.TrimSpace(resp)
-	r.appendRunSummaryToMain(state.run, state.run.Response)
-	r.closeRunDoneLocked(state)
-	r.trimRunHistoryLocked()
-	r.stateVersion++
-	r.publishRunEvent(state.run.ID, RunEvent{
+	return RunEvent{
 		Type:          "run_finished",
 		RunID:         state.run.ID,
 		Timestamp:     finishedAt,
@@ -190,7 +207,21 @@ func (r *Runtime) finalizeRunLocked(state *runState, resp string, metadata Promp
 		ResolvedModel: state.run.ResolvedModel,
 		Response:      state.run.Response,
 		Message:       trimGatewaySummary(state.run.Response, 220),
-	})
+	}
+}
+
+// commitRunFinalization is the shared tail of failed and completed
+// runs: drop the running entry, trim run history, bump state version,
+// append a run summary line to the main session transcript, and emit
+// exactly one terminal event. Both branches of finalizeRunLocked go
+// through this so any future concurrency invariant change happens in
+// one place.
+func (r *Runtime) commitRunFinalization(state *runState, summaryBody string, event RunEvent) {
+	r.closeRunDoneLocked(state)
+	r.trimRunHistoryLocked()
+	r.stateVersion++
+	r.appendRunSummaryToMain(state.run, summaryBody)
+	r.publishRunEvent(state.run.ID, event)
 }
 
 func blockedToolNameFromReason(reason string) string {

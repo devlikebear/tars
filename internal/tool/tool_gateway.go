@@ -70,58 +70,6 @@ func NewMessageTool(runtime *gateway.Runtime, enabled bool) Tool {
 	}
 }
 
-func NewNodesTool(runtime *gateway.Runtime, enabled bool) Tool {
-	return Tool{
-		Name:        "nodes",
-		Description: "Nodes actions: status, describe, invoke.",
-		Parameters: json.RawMessage(`{
-  "type":"object",
-  "properties":{
-    "action":{"type":"string","enum":["status","describe","invoke"]},
-    "name":{"type":"string"},
-    "args":{"type":"object"}
-  },
-  "required":["action"],
-  "additionalProperties":false
-}`),
-		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
-			if !enabled {
-				return JSONTextResult(map[string]any{"message": "nodes tool is disabled"}, true), nil
-			}
-			if runtime == nil {
-				return JSONTextResult(map[string]any{"message": "gateway runtime is not configured"}, true), nil
-			}
-			var input struct {
-				Action string         `json:"action"`
-				Name   string         `json:"name,omitempty"`
-				Args   map[string]any `json:"args,omitempty"`
-			}
-			if err := json.Unmarshal(params, &input); err != nil {
-				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
-			}
-			switch strings.TrimSpace(input.Action) {
-			case "status":
-				nodes := runtime.Nodes()
-				return JSONTextResult(map[string]any{"count": len(nodes), "nodes": nodes}, false), nil
-			case "describe":
-				node, err := runtime.NodeDescribe(input.Name)
-				if err != nil {
-					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
-				}
-				return JSONTextResult(node, false), nil
-			case "invoke":
-				resp, err := runtime.NodeInvoke(input.Name, input.Args)
-				if err != nil {
-					return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
-				}
-				return JSONTextResult(resp, false), nil
-			default:
-				return JSONTextResult(map[string]any{"message": "action must be one of: status|describe|invoke"}, true), nil
-			}
-		},
-	}
-}
-
 func NewGatewayTool(runtime *gateway.Runtime, enabled bool) Tool {
 	return Tool{
 		Name:        "gateway",

@@ -116,15 +116,6 @@ func TestMessageNodesGatewayTools(t *testing.T) {
 		t.Fatalf("message read expected success: %s", readRes.Text())
 	}
 
-	nodes := NewNodesTool(rt, true)
-	nodeRes, err := nodes.Execute(context.Background(), json.RawMessage(`{"action":"invoke","name":"clock.now"}`))
-	if err != nil {
-		t.Fatalf("nodes invoke execute: %v", err)
-	}
-	if nodeRes.IsError {
-		t.Fatalf("nodes invoke expected success: %s", nodeRes.Text())
-	}
-
 	gatewayTool := NewGatewayTool(rt, true)
 	statusRes, err := gatewayTool.Execute(context.Background(), json.RawMessage(`{"action":"status"}`))
 	if err != nil {

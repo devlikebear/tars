@@ -215,7 +215,6 @@ type ToolConfig struct {
 	ToolsWebFetchAllowPrivateHosts    bool
 	ToolsApplyPatchEnabled            bool
 	ToolsMessageEnabled               bool
-	ToolsNodesEnabled                 bool
 	ToolsGatewayEnabled               bool
 }
 

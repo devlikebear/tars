@@ -55,9 +55,6 @@ func buildOptionalChatTools(cfg config.Config, gatewayRuntime *gateway.Runtime) 
 	if cfg.ToolsMessageEnabled {
 		out = append(out, tool.NewMessageTool(gatewayRuntime, true))
 	}
-	if cfg.ToolsNodesEnabled {
-		out = append(out, tool.NewNodesTool(gatewayRuntime, true))
-	}
 	if cfg.ToolsGatewayEnabled {
 		out = append(out, tool.NewGatewayTool(gatewayRuntime, true))
 	}

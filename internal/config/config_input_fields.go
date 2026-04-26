@@ -134,7 +134,6 @@ var configInputFields = []configInputField{
 	boolField("channels_telegram_polling_enabled", []string{"CHANNELS_TELEGRAM_POLLING_ENABLED", "TARS_CHANNELS_TELEGRAM_POLLING_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsTelegramPollingEnabled }),
 	stringField("telegram_bot_token", []string{"TELEGRAM_BOT_TOKEN", "TARS_TELEGRAM_BOT_TOKEN"}, func(cfg *Config) *string { return &cfg.TelegramBotToken }, strings.TrimSpace),
 	boolField("tools_message_enabled", []string{"TOOLS_MESSAGE_ENABLED", "TARS_TOOLS_MESSAGE_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsMessageEnabled }),
-	boolField("tools_nodes_enabled", []string{"TOOLS_NODES_ENABLED", "TARS_TOOLS_NODES_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsNodesEnabled }),
 	boolField("tools_gateway_enabled", []string{"TOOLS_GATEWAY_ENABLED", "TARS_TOOLS_GATEWAY_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsGatewayEnabled }),
 	boolField("skills_enabled", []string{"SKILLS_ENABLED", "TARS_SKILLS_ENABLED"}, func(cfg *Config) *bool { return &cfg.SkillsEnabled }),
 	boolField("skills_watch", []string{"SKILLS_WATCH", "TARS_SKILLS_WATCH"}, func(cfg *Config) *bool { return &cfg.SkillsWatch }),

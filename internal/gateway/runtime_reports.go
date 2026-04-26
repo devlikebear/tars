@@ -37,7 +37,6 @@ func (r *Runtime) Status() GatewayStatus {
 		RunsRestored:               r.runsRestored,
 		ChannelsRestored:           r.channelsRestored,
 		LastRestoreError:           strings.TrimSpace(r.lastRestoreError),
-		Nodes:                      defaultNodes(),
 	}
 	if !r.lastPersistAt.IsZero() {
 		status.LastPersistAt = r.lastPersistAt.UTC().Format(time.RFC3339)
