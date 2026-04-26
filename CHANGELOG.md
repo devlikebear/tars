@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.4] - 2026-04-26
+
+### Changed
+
+- **RF-004**: `runtimeDeps` no longer stores a backward-compat `llmClient`. Server bootstrap keeps only the shared `llmRouter`, and chat/API call sites resolve the chat client through `llm.RoleChatMain` at the boundary where the client is needed.
+- Gateway prompt runners now use the router-backed default gateway role path instead of inheriting the chat-main client fallback from bootstrap. Session-bound cron and Telegram inbound paths use the same resolved chat client as the normal chat handler.
+
+### Tests
+
+- `TestRuntimeDepsDoesNotExposeLegacyLLMClient`
+- `TestChatAPI_ResolvesChatClientFromRouter`
+
+### Closed
+
+- Closes #385.
+
 ## [0.31.3] - 2026-04-26
 
 ### Changed (BREAKING)

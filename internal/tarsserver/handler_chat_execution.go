@@ -33,7 +33,15 @@ func executeChatLoop(
 	streamingAnnounced := false
 	deltaSent := false
 	var accumulated strings.Builder
-	loop, toolCallRecords := setupAgentLoop(deps.client, state.registry, state.sessionID, len(state.history), deps.logger, stream.status)
+	chatClient := state.llmClient
+	if chatClient == nil {
+		var err error
+		chatClient, _, err = deps.resolveChatClient()
+		if err != nil {
+			return llm.ChatResponse{}, false, nil, err
+		}
+	}
+	loop, toolCallRecords := setupAgentLoop(chatClient, state.registry, state.sessionID, len(state.history), deps.logger, stream.status)
 	ctx = tool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")

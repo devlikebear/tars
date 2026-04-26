@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -210,6 +211,12 @@ func TestRun_LogFileWritesJSONLines(t *testing.T) {
 
 	if !strings.Contains(stderr.String(), "tars startup complete") {
 		t.Fatalf("expected startup log in stderr, got %q", stderr.String())
+	}
+}
+
+func TestRuntimeDepsDoesNotExposeLegacyLLMClient(t *testing.T) {
+	if _, ok := reflect.TypeOf(runtimeDeps{}).FieldByName("llmClient"); ok {
+		t.Fatal("runtimeDeps should not expose legacy llmClient; resolve clients through llmRouter roles")
 	}
 }
 
@@ -1088,6 +1095,46 @@ func TestChatAPI_WithInjectedExtraTool(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "mcp tool used") {
 		t.Fatalf("expected final text from second llm call, got %q", rec.Body.String())
+	}
+}
+
+func TestChatAPI_ResolvesChatClientFromRouter(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	mockClient := &mockLLMClient{
+		response: llm.ChatResponse{
+			Message: llm.ChatMessage{Role: "assistant", Content: "router selected"},
+		},
+	}
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		nil,
+		testRouterForClient(t, mockClient),
+		logger,
+		8,
+		nil,
+		"",
+		defaultChatToolingOptions(),
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "router selected") {
+		t.Fatalf("expected response from router-selected client, got %q", rec.Body.String())
+	}
+	if mockClient.callCount != 1 {
+		t.Fatalf("expected one llm call through router-selected client, got %d", mockClient.callCount)
 	}
 }
 

@@ -36,7 +36,7 @@ func cronExecutionContextFromContext(ctx context.Context) cronExecutionContext {
 }
 
 func newCronPromptRunnerWithSessionContext(fallback gatewayPromptRunner, deps chatHandlerDeps) gatewayPromptRunner {
-	if fallback == nil && deps.client == nil {
+	if fallback == nil && deps.client == nil && deps.router == nil {
 		return nil
 	}
 	return func(ctx context.Context, runLabel string, promptText string, allowedTools []string, tier string, providerOverride *agentruntime.ProviderOverride) (string, error) {
@@ -88,7 +88,7 @@ func newCronPromptRunnerWithSessionContext(fallback gatewayPromptRunner, deps ch
 		}
 
 		runCtx := tool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
-		loop, _ := setupAgentLoop(deps.client, state.registry, state.sessionID, len(state.history), deps.logger, func(string, string, string, string, string, string) {})
+		loop, _ := setupAgentLoop(state.llmClient, state.registry, state.sessionID, len(state.history), deps.logger, func(string, string, string, string, string, string) {})
 		resp, err := loop.Run(runCtx, state.llmMessages, agent.RunOptions{
 			MaxIterations: deps.maxIters,
 			Tools:         tools,

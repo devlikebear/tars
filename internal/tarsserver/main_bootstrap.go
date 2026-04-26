@@ -18,14 +18,10 @@ type runtimeDeps struct {
 	cfg                  config.Config
 	sessionStore         *session.Store
 	sessionStoreResolver func(workspaceID string) *session.Store
-	// llmClient is the chat-main tier client, kept for backward compat
-	// with call sites that have not yet been migrated to llmRouter. New
-	// code should request a client from llmRouter via a Role.
-	llmClient          llm.Client
-	llmRouter          llm.Router
-	usageTracker       *usage.Tracker
-	runPrompt          func(ctx context.Context, runLabel string, prompt string) (string, error)
-	runPromptWithTools gatewayPromptRunner
+	llmRouter            llm.Router
+	usageTracker         *usage.Tracker
+	runPrompt            func(ctx context.Context, runLabel string, prompt string) (string, error)
+	runPromptWithTools   gatewayPromptRunner
 }
 
 type runtimeDepsError struct {
@@ -128,29 +124,17 @@ func buildRuntimeDeps(opts *options, cfg config.Config, nowFn func() time.Time, 
 	if err := memory.ValidateSemanticConfig(semanticCfg); err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "init_semantic_memory", err: err}
 	}
-	// chatClient is the tier-resolved client for the main chat role. It is
-	// stored on deps.llmClient for backward compatibility with call sites
-	// that have not yet been migrated to the router. Non-chat call sites
-	// (pulse, reflection, compaction) will migrate in follow-up PRs and
-	// start requesting clients from deps.llmRouter directly.
-	chatClient, chatResolution, err := router.ClientFor(llm.RoleChatMain)
-	if err != nil {
-		return runtimeDeps{}, &runtimeDepsError{stage: "init_llm", err: err}
-	}
 	deps.llmRouter = router
-	deps.llmClient = chatClient
-	logger.Debug().
-		Str("tier", string(chatResolution.Tier)).
-		Str("provider", chatResolution.Provider).
-		Str("model", chatResolution.Model).
-		Str("source", chatResolution.Source).
-		Msg("llm router resolved chat_main tier")
-	deps.runPrompt = newAgentPromptRunner(cfg, cfg.WorkspaceDir, deps.llmClient, deps.usageTracker, cfg.AgentMaxIterations, logger, semanticCfg)
-	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg, cfg.WorkspaceDir, deps.llmClient, deps.llmRouter, deps.usageTracker, cfg.AgentMaxIterations, logger, semanticCfg)
+	logger.Debug().Msg("llm router initialized")
+	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg, cfg.WorkspaceDir, nil, deps.llmRouter, deps.usageTracker, cfg.AgentMaxIterations, logger, semanticCfg)
+	if deps.runPromptWithTools != nil {
+		deps.runPrompt = func(ctx context.Context, runLabel string, prompt string) (string, error) {
+			return deps.runPromptWithTools(ctx, runLabel, prompt, nil, "", nil)
+		}
+	}
 
-	// Per-tier provider/model context already logged at the chatResolution
-	// site above; no additional top-level LLM log needed with the provider
-	// pool schema (there is no single "the" provider anymore).
+	// Per-role provider/model context is logged by call sites when they
+	// resolve the router; there is no single top-level provider anymore.
 	return deps, nil
 }
 
