@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.30.2] - 2026-04-26
+
+### Reverted
+
+- **PR #377 (ID-003 B web aggregator)** 전체 revert. `web_search` 와 `web_fetch` 가 다시 분리 툴로 복귀. `web` 단일 aggregator + `web_search`/`web_fetch` alias + tool_groups 변경 모두 되돌림.
+
+### Why
+
+`web_search` 와 `web_fetch` 는 LLM workflow 상 성격이 다른 작업 (snippet 탐색 vs URL 본문 가져오기) 이고, 더 큰 정책상 *위험도가 다른 빌트인 툴은 단일 aggregator 로 묶지 않는다* 는 결정 (file aggregator 검토 중 발견된 권한 모델 한계 — `read_file → file` alias 가 `ToolsEnabled` allowlist 정밀도를 깨뜨림 + high-risk 분류 불가능). 같은 사유로 ID-003 issue 자체 폐기.
+
+### Migration
+
+기존 `web` 호출 LLM 코드/스킬은 다시 `web_search` / `web_fetch` 분리 호출로 돌아가야 함. (PR #377 머지 직후 한 세션 분량이라 외부 영향 거의 없음.)
+
 ## [0.30.0] - 2026-04-26
 
 ### Removed (BREAKING)
