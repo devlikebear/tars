@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.7] - 2026-04-26
+
+### Added
+
+- Hardcoded `## Planning` section in the main-agent system prompt that instructs the LLM to use the `tasks` aggregator (`plan_set` / `add` / `update`) for multi-step requests. Sub-agent prompts skip the section.
+
+### Tests
+
+- `TestBuild_PlanningSectionPresentForMainAgent`
+- `TestBuild_PlanningSectionAbsentForSubAgent`
+- `TestBuild_PlanningSectionWithinBudget`
+
+### Closed
+
+- Closes #390.
+
 ## [0.31.6] - 2026-04-26
 
 ### Added
