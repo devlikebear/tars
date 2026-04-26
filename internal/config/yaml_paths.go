@@ -97,20 +97,6 @@ func preferredYAMLPathForKey(key string) string {
 		return "extensions.mcp.command_allowlist"
 	case "mcp_servers_json":
 		return "extensions.mcp.servers"
-	case "browser_runtime_enabled":
-		return "browser.runtime.enabled"
-	case "browser_default_profile":
-		return "browser.default_profile"
-	case "browser_managed_headless":
-		return "browser.managed.headless"
-	case "browser_managed_executable_path":
-		return "browser.managed.executable_path"
-	case "browser_managed_user_data_dir":
-		return "browser.managed.user_data_dir"
-	case "browser_site_flows_dir":
-		return "browser.site_flows_dir"
-	case "browser_auto_login_site_allowlist_json":
-		return "browser.auto_login.site_allowlist"
 	case "gateway_enabled":
 		return "gateway.enabled"
 	case "gateway_default_agent":
@@ -213,16 +199,6 @@ func preferredYAMLPathForKey(key string) string {
 	case strings.HasPrefix(key, "tools_") && strings.HasSuffix(key, "_enabled"):
 		name := strings.TrimSuffix(strings.TrimPrefix(key, "tools_"), "_enabled")
 		return "tools." + name + ".enabled"
-	case strings.HasPrefix(key, "vault_kv_"):
-		return "vault.kv." + strings.TrimPrefix(key, "vault_kv_")
-	case strings.HasPrefix(key, "vault_approle_"):
-		return "vault.approle." + strings.TrimPrefix(key, "vault_approle_")
-	case key == "vault_auth_mode":
-		return "vault.auth.mode"
-	case key == "vault_secret_path_allowlist_json":
-		return "vault.secret_path_allowlist"
-	case strings.HasPrefix(key, "vault_"):
-		return "vault." + strings.TrimPrefix(key, "vault_")
 	case key == "channels_local_enabled":
 		return "channels.local.enabled"
 	case key == "channels_webhook_enabled":

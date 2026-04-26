@@ -155,44 +155,10 @@ tools:
     enabled: false
   message:
     enabled: false
-  browser:
-    enabled: false
   nodes:
     enabled: false
   gateway:
     enabled: false
-
-vault:
-  enabled: false
-  addr: http://127.0.0.1:8200
-  auth:
-    mode: token
-  token: ""
-  namespace: ""
-  timeout_ms: 1500
-  kv:
-    mount: secret
-    version: 2
-  approle:
-    mount: approle
-    role_id: ""
-    secret_id: ""
-  secret_path_allowlist:
-    - sites/
-
-browser:
-  runtime:
-    enabled: true
-  default_profile: managed
-  managed:
-    headless: false
-    executable_path: ""
-    user_data_dir: ./workspace/_shared/browser/managed
-  site_flows_dir: ./workspace/automation/sites
-  auto_login:
-    site_allowlist:
-      - intranet
-      - grafana
 
 gateway:
   enabled: false

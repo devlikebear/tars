@@ -55,7 +55,6 @@ func buildOptionalChatTools(cfg config.Config, gatewayRuntime *gateway.Runtime) 
 	if cfg.ToolsMessageEnabled {
 		out = append(out, tool.NewMessageTool(gatewayRuntime, true))
 	}
-	// Browser tool is now provided by the browserplugin via extensions manager
 	if cfg.ToolsNodesEnabled {
 		out = append(out, tool.NewNodesTool(gatewayRuntime, true))
 	}

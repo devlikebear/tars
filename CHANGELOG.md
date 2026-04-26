@@ -6,6 +6,23 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-04-26
+
+### Removed (BREAKING)
+
+- **RF-007**: 빌트인 Go 플러그인 시스템 자체 제거. `plugin.BuiltinPlugin` 인터페이스 + `RegisterBuiltin` / `BuiltinPlugins` + `extensions.Manager.initBuiltinPlugins` + `tools_provider: builtin:<id>` 분기 모두 삭제.
+- **RF-007**: `internal/browserplugin` (브라우저 자동화 빌트인 플러그인 — 유일 사용자) 디렉토리 전체 삭제. 의존했던 `internal/browser` (Chrome/CDP/Playwright runtime), `internal/vaultclient` (HashiCorp Vault SDK 클라이언트), `internal/approval` (OTP manager) 패키지도 함께 삭제.
+- **RF-007**: HTTP API `/v1/browser/*` (status/profiles/login/check/run) 6 엔드포인트 + `/v1/vault/status` 제거.
+- **RF-007**: tarsclient 의 `/browser` / `/vault` REPL 명령 + `pkg/tarsclient` 의 `BrowserState` / `BrowserProfile` / `BrowserLoginResult` / `BrowserCheckResult` / `BrowserRunResult` / `VaultStatusInfo` 타입 + `BrowserStatus` / `BrowserProfiles` / `BrowserLogin` / `BrowserCheck` / `BrowserRun` / `VaultStatus` 클라이언트 메서드 모두 삭제.
+- **RF-007**: config 의 `VaultConfig` + `BrowserConfig` 임베디드 그룹 전체 + `ToolsBrowserEnabled` 필드 제거 (총 20+ 필드, env var 매핑, schema 메타, defaults, yaml path 매핑까지). 사용자 워크스페이스의 `tars.config.yaml` 에 `vault:` 또는 `browser:` 블록이 있으면 silently 무시됨.
+- **RF-009**: 외부 플러그인의 HTTP 라우트 등록 경로 폐쇄. `extensions.Manager.CollectHTTPHandlers` 함수 + `plugin.HTTPHandlerEntry` 타입 + 매니페스트 `http_routes` 처리 모두 제거. 외부 플러그인은 더 이상 HTTP 라우트를 노출할 수 없음 — RF-009 옵션 (a) 적용. 라우트가 필요한 도메인 기능은 sidecar 프로세스 + 자체 포트로 운영해야 함.
+
+### Migration
+
+브라우저 자동화 / vault auto-login 기능을 사용하던 사용자는 외부 도구로 마이그레이션 필요:
+- **브라우저 자동화**: Chrome DevTools MCP server, Playwright MCP server, 또는 사용자 정의 skill+CLI (CLAUDE.md 의 *"Default pattern: skill (.md) + companion CLI"*).
+- **OTP / vault**: 별도 secrets manager + skill+CLI 호출. TARS 코어는 더 이상 vault SDK 통합을 제공하지 않음.
+
 ## [0.28.5] - 2026-04-26
 
 ### Security

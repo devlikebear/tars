@@ -111,13 +111,6 @@ func (m *Manager) SetDisabled(ctx context.Context, kind, name string, disabled b
 }
 
 func (m *Manager) Start(ctx context.Context) error {
-	// Initialize built-in plugins before first reload
-	if diags := m.initBuiltinPlugins(ctx); len(diags) > 0 {
-		m.mu.Lock()
-		m.snapshot.Diagnostics = append(m.snapshot.Diagnostics, diags...)
-		m.mu.Unlock()
-	}
-
 	if err := m.Reload(ctx); err != nil {
 		return err
 	}
@@ -164,11 +157,6 @@ func (m *Manager) Close() {
 	m.mu.RUnlock()
 	_ = runLifecycleHooks(context.Background(), plugins, "on_stop", 0, m.opts.LifecycleToolResolver)
 
-	// Close built-in plugins
-	for _, bp := range plugin.BuiltinPlugins() {
-		_ = bp.Close()
-	}
-
 	m.watcherMu.Lock()
 	defer m.watcherMu.Unlock()
 	if m.stopWatch != nil {
@@ -191,21 +179,6 @@ func (m *Manager) Reload(ctx context.Context) error {
 		})
 		if err != nil {
 			return err
-		}
-	}
-
-	// Inject synthetic definitions for built-in plugins
-	for _, bp := range plugin.BuiltinPlugins() {
-		key := strings.ToLower(bp.ID())
-		found := false
-		for _, p := range plugins.Plugins {
-			if strings.ToLower(p.ID) == key {
-				found = true
-				break
-			}
-		}
-		if !found {
-			plugins.Plugins = append(plugins.Plugins, bp.Definition())
 		}
 	}
 
@@ -609,36 +582,13 @@ func formatDiagnostic(path string, message string) string {
 	return fmt.Sprintf("%s: %s", path, message)
 }
 
-// initBuiltinPlugins calls Init on each registered built-in plugin.
-func (m *Manager) initBuiltinPlugins(_ context.Context) []string {
-	var diagnostics []string
-	for _, bp := range plugin.BuiltinPlugins() {
-		cfg := m.opts.PluginConfig[bp.ID()]
-		if cfg == nil {
-			cfg = map[string]any{}
-		}
-		pctx := plugin.PluginContext{
-			Config:       cfg,
-			WorkspaceDir: m.opts.WorkspaceDir,
-		}
-		if err := bp.Init(pctx); err != nil {
-			diagnostics = append(diagnostics, fmt.Sprintf("builtin plugin %q init failed: %v", bp.ID(), err))
-		}
-	}
-	return diagnostics
-}
-
-// collectToolProviderTools collects tools from plugins that declare a tools_provider.
-// mcp_server type is skipped since those tools already flow through MCPRuntime.
+// collectToolProviderTools collects tools from plugins that declare a
+// tools_provider. RF-007 removed the builtin plugin path entirely, so
+// only mcp_server (already routed through MCPRuntime) is recognized;
+// every other tools_provider value yields a diagnostic.
 func (m *Manager) collectToolProviderTools(_ context.Context, plugins []plugin.Definition) ([]tool.Tool, []string) {
 	var tools []tool.Tool
 	var diagnostics []string
-
-	// Index built-in plugins by ID
-	builtinByID := map[string]plugin.BuiltinPlugin{}
-	for _, bp := range plugin.BuiltinPlugins() {
-		builtinByID[bp.ID()] = bp
-	}
 
 	for _, p := range plugins {
 		if p.ToolsProvider == nil {
@@ -646,33 +596,16 @@ func (m *Manager) collectToolProviderTools(_ context.Context, plugins []plugin.D
 		}
 		switch p.ToolsProvider.Type {
 		case "mcp_server":
-			// Already handled by MCPRuntime — skip to avoid double-registration
-		case "go_plugin":
-			entry := strings.TrimSpace(p.ToolsProvider.Entry)
-			if strings.HasPrefix(entry, "builtin:") {
-				builtinID := strings.TrimPrefix(entry, "builtin:")
-				if bp, ok := builtinByID[builtinID]; ok {
-					tools = append(tools, bp.Tools()...)
-				} else {
-					diagnostics = append(diagnostics, fmt.Sprintf("plugin %q: builtin %q not found", p.ID, builtinID))
-				}
-			} else {
-				diagnostics = append(diagnostics, fmt.Sprintf("plugin %q: go_plugin entry %q not supported (use builtin:<id>)", p.ID, entry))
-			}
-		case "script":
-			diagnostics = append(diagnostics, fmt.Sprintf("plugin %q: tools_provider type %q not yet supported", p.ID, p.ToolsProvider.Type))
+			// Already handled by MCPRuntime — skip to avoid double-registration.
+		default:
+			diagnostics = append(diagnostics, fmt.Sprintf(
+				"plugin %q: tools_provider type %q is not supported (use mcp_server; "+
+					"the builtin and script paths were removed in RF-007)",
+				p.ID, p.ToolsProvider.Type,
+			))
 		}
 	}
 	return tools, diagnostics
-}
-
-// CollectHTTPHandlers returns HTTP handler entries from all built-in plugins.
-func (m *Manager) CollectHTTPHandlers() []plugin.HTTPHandlerEntry {
-	var entries []plugin.HTTPHandlerEntry
-	for _, bp := range plugin.BuiltinPlugins() {
-		entries = append(entries, bp.HTTPHandlers()...)
-	}
-	return entries
 }
 
 func uniqueStrings(values []string) []string {

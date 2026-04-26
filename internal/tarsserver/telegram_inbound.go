@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devlikebear/tars/internal/approval"
 	"github.com/devlikebear/tars/internal/gateway"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
@@ -31,7 +30,6 @@ type telegramInboundHandler struct {
 	maxIterations int
 	tooling       chatToolingOptions
 	extraTools    []tool.Tool
-	otpManager    *approval.OTPManager
 	logger        zerolog.Logger
 }
 
@@ -88,14 +86,6 @@ func (h *telegramInboundHandler) HandleUpdate(ctx context.Context, update telegr
 	}
 	username := strings.TrimSpace(msg.From.DisplayName())
 	inboundPayload := map[string]any{}
-
-	if strings.TrimSpace(text) != "" && h.otpManager != nil && h.otpManager.Consume(chatID, text) {
-		ack := "otp code received."
-		_ = h.sendMessageChunks(ctx, chatID, threadID, ack)
-		h.recordInbound(update.UpdateID, userID, chatID, threadID, text, "", "otp", inboundPayload)
-		h.recordOutbound(chatID, threadID, ack, "", inboundPayload)
-		return
-	}
 
 	allowed, replyText, policyTag := h.applyPolicy(userID, chatID, username)
 	if !allowed {
