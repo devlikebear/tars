@@ -319,37 +319,3 @@ func TestMemorySearchTool_SearchesExperienceLogByTerms(t *testing.T) {
 		t.Fatalf("expected experience source in output, got %q", result.Text())
 	}
 }
-
-func TestMemorySearchTool_SearchesKnowledgeBaseNotes(t *testing.T) {
-	root := t.TempDir()
-	if err := memory.EnsureWorkspace(root); err != nil {
-		t.Fatalf("ensure workspace: %v", err)
-	}
-	store := memory.NewKnowledgeStore(root, nil)
-	if _, err := store.Upsert(memory.KnowledgeNote{
-		Slug:    "coffee-preference",
-		Title:   "Coffee Preference",
-		Kind:    "preference",
-		Summary: "User prefers black coffee.",
-		Body:    "Knowledge base note for coffee choices.",
-	}); err != nil {
-		t.Fatalf("upsert knowledge note: %v", err)
-	}
-
-	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
-	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"black coffee","include_memory":false,"include_daily":false}`))
-	if err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-	if strings.Contains(result.Text(), "memory/wiki/notes/coffee-preference.md") {
-		t.Fatalf("did not expect knowledge note source without explicit opt-in, got %q", result.Text())
-	}
-
-	result, err = tl.Execute(context.Background(), json.RawMessage(`{"query":"black coffee","include_memory":false,"include_daily":false,"include_knowledge":true}`))
-	if err != nil {
-		t.Fatalf("execute with knowledge: %v", err)
-	}
-	if !strings.Contains(result.Text(), "memory/wiki/notes/coffee-preference.md") {
-		t.Fatalf("expected knowledge note source in output, got %q", result.Text())
-	}
-}

@@ -77,34 +77,6 @@ func (b *FileBackend) SearchExperiences(_ context.Context, opts SearchOptions) (
 	return SearchExperiences(b.root, opts)
 }
 
-func (b *FileBackend) ListKnowledgeNotes(_ context.Context, opts KnowledgeListOptions) ([]KnowledgeNote, error) {
-	return b.knowledgeStore().List(opts)
-}
-
-func (b *FileBackend) GetKnowledgeNote(_ context.Context, slug string) (KnowledgeNote, error) {
-	return b.knowledgeStore().Get(slug)
-}
-
-func (b *FileBackend) ApplyKnowledgePatch(_ context.Context, patch KnowledgeNotePatch) (KnowledgeNote, error) {
-	return b.knowledgeStore().ApplyPatch(patch)
-}
-
-func (b *FileBackend) ApplyKnowledgeUpdate(_ context.Context, update KnowledgeUpdate, now time.Time) error {
-	return b.knowledgeStore().ApplyUpdate(update, now)
-}
-
-func (b *FileBackend) DeleteKnowledgeNote(_ context.Context, slug string) error {
-	return b.knowledgeStore().Delete(slug)
-}
-
-func (b *FileBackend) KnowledgeGraph(_ context.Context) (KnowledgeGraph, error) {
-	return b.knowledgeStore().Graph()
-}
-
-func (b *FileBackend) knowledgeStore() *KnowledgeStore {
-	return NewKnowledgeStore(b.root, b.semantic)
-}
-
 func (b *FileBackend) durablePath(kind DurableKind, name string) (string, error) {
 	if b == nil || strings.TrimSpace(b.root) == "" {
 		return "", fmt.Errorf("memory backend is not configured")

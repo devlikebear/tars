@@ -20,12 +20,6 @@ var toolNameAliases = map[string]string{
 	"memory_search": "memory",
 	"memory_get":    "memory",
 
-	// knowledge aliases → knowledge aggregator
-	"memory_kb_list":   "knowledge",
-	"memory_kb_get":    "knowledge",
-	"memory_kb_upsert": "knowledge",
-	"memory_kb_delete": "knowledge",
-
 	// sysprompt aliases → workspace aggregator
 	"workspace_sysprompt_get": "workspace",
 	"workspace_sysprompt_set": "workspace",

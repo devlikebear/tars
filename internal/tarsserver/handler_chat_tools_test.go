@@ -65,7 +65,6 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 		"edit_file",
 		"workspace",
 		"memory",
-		"knowledge",
 		"subagents_plan",
 		"subagents_run",
 		"subagents_orchestrate",

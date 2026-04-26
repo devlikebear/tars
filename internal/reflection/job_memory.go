@@ -2,7 +2,6 @@ package reflection
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -82,7 +81,6 @@ func (m *MemoryJob) Run(ctx context.Context) (JobResult, error) {
 		sessionsScanned  int
 		turnsProcessed   int
 		experiencesAdded int
-		kbUpdates        int
 		errs             []string
 	)
 
@@ -118,27 +116,20 @@ func (m *MemoryJob) Run(ctx context.Context) (JobResult, error) {
 
 			expCount := m.processTurnExperiences(ctx, sess.ID, t, now)
 			experiencesAdded += expCount
-
-			updated, kbErrs := m.compileKnowledge(ctx, sess.ID, t, now)
-			if updated {
-				kbUpdates++
-			}
-			errs = append(errs, kbErrs...)
 		}
 	}
 
 	result := JobResult{
 		Name:    "memory",
 		Success: true,
-		Summary: fmt.Sprintf("scanned %d sessions, %d turns, +%d experiences, %d kb updates", sessionsScanned, turnsProcessed, experiencesAdded, kbUpdates),
+		Summary: fmt.Sprintf("scanned %d sessions, %d turns, +%d experiences", sessionsScanned, turnsProcessed, experiencesAdded),
 		Details: map[string]any{
 			"sessions_scanned":  sessionsScanned,
 			"turns_processed":   turnsProcessed,
 			"experiences_added": experiencesAdded,
-			"kb_updates":        kbUpdates,
 			"lookback_seconds":  int64(lookback.Seconds()),
 		},
-		Changed: experiencesAdded > 0 || kbUpdates > 0,
+		Changed: experiencesAdded > 0,
 	}
 	if len(errs) > 0 {
 		result.Details["errors"] = errs
@@ -195,81 +186,6 @@ func (m *MemoryJob) processTurnExperiences(ctx context.Context, sessionID string
 		}
 	}
 	return count
-}
-
-// compileKnowledge runs one LLM compilation turn into KnowledgeUpdate. It
-// returns whether a write actually landed and any non-fatal errors that
-// should be surfaced in JobResult.Details["errors"]. The caller decides
-// whether to keep going on errors — they never abort the parent job.
-func (m *MemoryJob) compileKnowledge(ctx context.Context, sessionID string, t turn, now time.Time) (bool, []string) {
-	if m.Router == nil || !shouldCompileKnowledge(t) {
-		return false, nil
-	}
-	client, _, err := m.Router.ClientFor(llm.RoleReflectionMemory)
-	if err != nil {
-		return false, []string{fmt.Sprintf("compile router %s: %s", sessionID, err.Error())}
-	}
-	backend := m.backend()
-	existing, err := backend.ListKnowledgeNotes(ctx, memory.KnowledgeListOptions{Limit: 12})
-	if err != nil {
-		return false, []string{fmt.Sprintf("compile list %s: %s", sessionID, err.Error())}
-	}
-
-	var refs strings.Builder
-	for _, item := range existing {
-		fmt.Fprintf(&refs, "- slug=%s | title=%s | kind=%s | summary=%s\n",
-			item.Slug, item.Title, item.Kind, trimText(item.Summary, 120))
-	}
-	if refs.Len() == 0 {
-		refs.WriteString("- (none)\n")
-	}
-
-	userPrompt := fmt.Sprintf(
-		"Compile durable knowledge from one chat turn into a wiki-style knowledge base.\n"+
-			"Return strict JSON with shape {\"notes\":[{\"slug\":\"lower-kebab-case\",\"title\":\"...\",\"kind\":\"preference|fact|decision|habit|workflow|topic|project_note|person|note\",\"summary\":\"...\",\"body\":\"...\",\"tags\":[\"...\"],\"aliases\":[\"...\"],\"links\":[{\"target\":\"slug\",\"relation\":\"related_to|depends_on|supports|part_of|contradicts\"}],\"source_session\":\"...\"}],\"edges\":[{\"source\":\"slug\",\"target\":\"slug\",\"relation\":\"...\"}]}.\n"+
-			"Only keep durable knowledge worth reusing after chat/session reset.\n"+
-			"Reuse existing slugs when the note already exists. Return empty arrays when nothing durable should be added.\n\n"+
-			"Current note refs:\n%s\n"+
-			"Session: %s\nUser: %s\nAssistant: %s",
-		refs.String(),
-		strings.TrimSpace(sessionID),
-		strings.TrimSpace(t.UserMessage),
-		strings.TrimSpace(t.AssistantMessage),
-	)
-
-	resp, err := client.Chat(ctx, []llm.ChatMessage{
-		{Role: "system", Content: "You maintain a structured markdown knowledge base. Return strict JSON only."},
-		{Role: "user", Content: userPrompt},
-	}, llm.ChatOptions{})
-	if err != nil {
-		return false, []string{fmt.Sprintf("compile chat %s: %s", sessionID, err.Error())}
-	}
-	raw := strings.TrimSpace(resp.Message.Content)
-	raw = strings.TrimPrefix(raw, "```json")
-	raw = strings.TrimPrefix(raw, "```")
-	raw = strings.TrimSuffix(raw, "```")
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return false, nil
-	}
-
-	var update memory.KnowledgeUpdate
-	if err := json.Unmarshal([]byte(raw), &update); err != nil {
-		return false, []string{fmt.Sprintf("compile json %s: %s", sessionID, err.Error())}
-	}
-	if len(update.Notes) == 0 && len(update.Edges) == 0 {
-		return false, nil
-	}
-	for i := range update.Notes {
-		if strings.TrimSpace(update.Notes[i].SourceSession) == "" {
-			update.Notes[i].SourceSession = strings.TrimSpace(sessionID)
-		}
-		update.Notes[i].UpdatedAt = now.UTC()
-	}
-	if err := backend.ApplyKnowledgeUpdate(ctx, update, now.UTC()); err != nil {
-		return false, []string{fmt.Sprintf("compile apply %s: %s", sessionID, err.Error())}
-	}
-	return true, nil
 }
 
 func (m *MemoryJob) backend() memory.Backend {

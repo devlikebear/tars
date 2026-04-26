@@ -41,7 +41,7 @@ func ToolGroupForName(name string) string {
 		return ""
 	}
 	switch {
-	case canonical == "memory" || canonical == "knowledge" || strings.HasPrefix(canonical, "memory_"):
+	case canonical == "memory" || strings.HasPrefix(canonical, "memory_"):
 		return "memory"
 	case canonical == "exec" || canonical == "process":
 		return "shell"

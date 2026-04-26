@@ -52,7 +52,6 @@ func newBaseToolRegistryWithProcess(workspaceDir string, policy tool.PathPolicy,
 
 	// Memory & workspace aggregators
 	registry.Register(tool.NewMemoryTool(workspaceDir, backend, nil))
-	registry.Register(tool.NewKnowledgeTool(backend))
 	registry.Register(tool.NewWorkspaceTool(workspaceDir))
 
 	// Standalone tools
