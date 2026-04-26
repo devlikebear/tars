@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.28.5] - 2026-04-26
+
+### Security
+
+- **RF-008**: 플러그인 lifecycle 훅의 임의 shell 명령 실행 (`sh -c`) 완전 제거. 이전엔 플러그인 manifest 의 `lifecycle.on_start: "echo ..."` 같은 문자열이 그대로 셸로 실행되어 외부 install 플러그인이 TARS 프로세스 환경 (vault 토큰, `~/.aws`, `~/.kube` 등) 에 임의 접근 가능했음.
+  - `Lifecycle.OnStart` / `OnStop` 타입을 `string` → `*LifecycleHook { Tool string, Args json.RawMessage }` 로 변경. 빌트인 툴 호출 디스크립터 형식만 허용.
+  - `LifecycleDeniedTools` deny-list (`bash` / `exec` / `shell_exec` / `process`) — manifest 파싱 시 + 훅 실행 시 두 번 검증 (defense-in-depth).
+  - 기존 string 형식 manifest 는 명확한 마이그레이션 메시지와 함께 거부 (`"plugin manifest uses removed string form lifecycle.on_start; replace with object {tool, args}"`).
+  - `runLifecycleHooks` 가 `LifecycleToolResolver` 를 통해 빌트인 툴 호출. resolver 가 nil 이면 declared 훅마다 "no tool resolver available" diagnostic 1줄 (현재 wiring 미완 — 향후 PR 에서 user-surface tool registry 연결).
+- **RF-008 보강**: `extensions.Manager.Reload` 가 `plugins_allow_mcp_servers=true` 활성화 + plugin-declared MCP server 가 있을 때 startup WARN 로그. 플러그인 manifest 의 `mcp_servers` 필드도 외부 프로세스 실행 = sh-c 와 같은 카테고리 위험 표면이므로, 활성화 시 운영자에게 *"verify each plugin source is trusted"* 강조.
+
+### Changed
+
+- `extensions.Options` 에 `LifecycleToolResolver` 필드 추가 (현재 caller 는 nil 전달; 빌트인 툴 호출 wiring 은 후속 PR).
+- `internal/plugin/manifest.go` validation 강화 — `rejectLegacyShellLifecycle` + `validateLifecycleHook` 로 양 단계 검증.
+
+### Tests
+
+- `internal/extensions`: lifecycle 훅 6 케이스 (resolved tool 호출 / deny-listed / unknown / tool error / nil resolver / no hooks)
+- `internal/plugin`: 2 신규 케이스 (legacy string form 거부 / deny-listed tool 거부)
+
 ## [0.28.4] - 2026-04-26
 
 ### Added

@@ -175,7 +175,7 @@ func TestLoad_V3PluginFieldsCarried(t *testing.T) {
   "id": "browser",
   "name": "Browser",
   "tools_provider": {"type": "script", "entry": "bin/tools"},
-  "lifecycle": {"on_start": "echo start", "on_stop": "echo stop"},
+  "lifecycle": {"on_start": {"tool": "memory_search"}, "on_stop": {"tool": "memory_search"}},
   "http_routes": [{"path": "/v1/browser/*", "handler": "bh"}]
 }`)
 
@@ -192,7 +192,8 @@ func TestLoad_V3PluginFieldsCarried(t *testing.T) {
 	if p.ToolsProvider == nil || p.ToolsProvider.Type != "script" || p.ToolsProvider.Entry != "bin/tools" {
 		t.Fatalf("tools_provider not carried: %+v", p.ToolsProvider)
 	}
-	if p.Lifecycle == nil || p.Lifecycle.OnStart != "echo start" || p.Lifecycle.OnStop != "echo stop" {
+	if p.Lifecycle == nil || p.Lifecycle.OnStart == nil || p.Lifecycle.OnStop == nil ||
+		p.Lifecycle.OnStart.Tool != "memory_search" || p.Lifecycle.OnStop.Tool != "memory_search" {
 		t.Fatalf("lifecycle not carried: %+v", p.Lifecycle)
 	}
 	if len(p.HTTPRoutes) != 1 || p.HTTPRoutes[0].Path != "/v1/browser/*" {

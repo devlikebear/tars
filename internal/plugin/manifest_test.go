@@ -3,6 +3,7 @@ package plugin
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -154,8 +155,8 @@ func TestParseManifest_V3WithToolsProvider(t *testing.T) {
     "entry": "bin/browser-tools"
   },
   "lifecycle": {
-    "on_start": "echo starting",
-    "on_stop": "echo stopping"
+    "on_start": {"tool": "memory_search", "args": {"query": "warmup"}},
+    "on_stop":  {"tool": "memory_search", "args": {"query": "drain"}}
   },
   "http_routes": [
     {"path": "/v1/browser/*", "handler": "browser_handler"}
@@ -184,11 +185,11 @@ func TestParseManifest_V3WithToolsProvider(t *testing.T) {
 	if manifest.Lifecycle == nil {
 		t.Fatal("expected lifecycle to be set")
 	}
-	if manifest.Lifecycle.OnStart != "echo starting" {
-		t.Fatalf("expected on_start echo starting, got %q", manifest.Lifecycle.OnStart)
+	if manifest.Lifecycle.OnStart == nil || manifest.Lifecycle.OnStart.Tool != "memory_search" {
+		t.Fatalf("expected on_start tool memory_search, got %+v", manifest.Lifecycle.OnStart)
 	}
-	if manifest.Lifecycle.OnStop != "echo stopping" {
-		t.Fatalf("expected on_stop echo stopping, got %q", manifest.Lifecycle.OnStop)
+	if manifest.Lifecycle.OnStop == nil || manifest.Lifecycle.OnStop.Tool != "memory_search" {
+		t.Fatalf("expected on_stop tool memory_search, got %+v", manifest.Lifecycle.OnStop)
 	}
 	if len(manifest.HTTPRoutes) != 1 {
 		t.Fatalf("expected 1 http route, got %d", len(manifest.HTTPRoutes))
@@ -198,6 +199,57 @@ func TestParseManifest_V3WithToolsProvider(t *testing.T) {
 	}
 	if manifest.HTTPRoutes[0].Handler != "browser_handler" {
 		t.Fatalf("expected handler browser_handler, got %q", manifest.HTTPRoutes[0].Handler)
+	}
+}
+
+func TestParseManifest_RejectsLegacyShellLifecycle(t *testing.T) {
+	root := t.TempDir()
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "on_start string",
+			content: `{"schema_version":3,"id":"x","lifecycle":{"on_start":"echo go"}}`,
+		},
+		{
+			name:    "on_stop string",
+			content: `{"schema_version":3,"id":"x","lifecycle":{"on_stop":"echo bye"}}`,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			manifestPath := filepath.Join(root, tt.name, "tars.plugin.json")
+			if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			if err := os.WriteFile(manifestPath, []byte(tt.content), 0o644); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			_, err := parseManifestFile(manifestPath)
+			if err == nil {
+				t.Fatal("expected error for legacy shell lifecycle form")
+			}
+			if !strings.Contains(err.Error(), "string form lifecycle") {
+				t.Fatalf("expected migration message, got %q", err)
+			}
+		})
+	}
+}
+
+func TestParseManifest_RejectsDeniedLifecycleTool(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "tars.plugin.json")
+	content := `{"schema_version":3,"id":"x","lifecycle":{"on_start":{"tool":"bash"}}}`
+	if err := os.WriteFile(manifestPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_, err := parseManifestFile(manifestPath)
+	if err == nil {
+		t.Fatal("expected error for deny-listed tool")
+	}
+	if !strings.Contains(err.Error(), "deny-list") {
+		t.Fatalf("expected deny-list error, got %q", err)
 	}
 }
 

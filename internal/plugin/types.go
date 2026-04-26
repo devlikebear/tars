@@ -1,6 +1,10 @@
 package plugin
 
-import "github.com/devlikebear/tars/internal/config"
+import (
+	"encoding/json"
+
+	"github.com/devlikebear/tars/internal/config"
+)
 
 type ServerConfig = config.MCPServer
 
@@ -20,10 +24,26 @@ type ToolsProvider struct {
 	Entry string `json:"entry,omitempty"` // entrypoint path or command
 }
 
-// Lifecycle declares shell commands to run at server start/stop (v3+).
+// LifecycleHook describes a single builtin-tool invocation to run at
+// server start or stop. Tool must be a non-empty name registered in the
+// user-surface tool registry; it must NOT match the lifecycle deny-list
+// (bash, exec, shell_exec, process — anything that would re-open the
+// arbitrary-shell-command door the legacy string-based format allowed).
+type LifecycleHook struct {
+	Tool string          `json:"tool"`
+	Args json.RawMessage `json:"args,omitempty"`
+}
+
+// Lifecycle declares typed tool invocations to run at server start or
+// stop. The previous string-based "sh -c <cmd>" form was removed
+// (RF-008): a plugin manifest that ships with malicious on_start /
+// on_stop strings could execute any command in the TARS process user's
+// environment, including reading vault tokens, ~/.aws, etc. Manifests
+// that still use the legacy string format are rejected at parse time
+// with a clear diagnostic so operators can migrate.
 type Lifecycle struct {
-	OnStart string `json:"on_start,omitempty"`
-	OnStop  string `json:"on_stop,omitempty"`
+	OnStart *LifecycleHook `json:"on_start,omitempty"`
+	OnStop  *LifecycleHook `json:"on_stop,omitempty"`
 }
 
 // HTTPRoute declares an HTTP endpoint a plugin handles (v3+).
