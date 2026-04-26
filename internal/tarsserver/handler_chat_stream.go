@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 
@@ -99,6 +100,26 @@ func (s *chatStreamWriter) memoryRecall(count int) {
 		"session_id":   s.sessionID,
 		"memory_count": count,
 	})
+}
+
+// tasksChanged broadcasts the current plan/task counts so the console can
+// keep the chat pulse-bar Tasks badge live without re-fetching after every
+// tool call.
+func (s *chatStreamWriter) tasksChanged(st session.SessionTasks) {
+	summary := session.TaskSummary(st.Tasks)
+	payload := map[string]any{
+		"type":             "tasks_changed",
+		"session_id":       s.sessionID,
+		"task_total":       summary["total"],
+		"task_pending":     summary["pending"],
+		"task_in_progress": summary["in_progress"],
+		"task_completed":   summary["completed"],
+		"task_cancelled":   summary["cancelled"],
+	}
+	if st.Plan != nil {
+		payload["plan_goal"] = strings.TrimSpace(st.Plan.Goal)
+	}
+	s.send(payload)
 }
 
 func (s *chatStreamWriter) cancelled() {

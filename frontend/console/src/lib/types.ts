@@ -322,6 +322,13 @@ export type ChatEvent = {
   used_tool_names?: string[]
   selected_skill_name?: string
   selected_skill_reason?: string
+  // tasks_changed event fields (live count for chat pulse-bar Tasks badge)
+  task_total?: number
+  task_pending?: number
+  task_in_progress?: number
+  task_completed?: number
+  task_cancelled?: number
+  plan_goal?: string
   // done event usage
   usage?: {
     input_tokens: number

@@ -3,6 +3,7 @@
   import {
     getEventsHistory, getPulseStatus,
     getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
+    getSessionTasks,
   } from '../lib/api'
   import type { PulseSnapshot, NotificationMessage, Session } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
@@ -236,6 +237,18 @@
   let tasksPanelRef: { load: () => void } | undefined = $state()
   let artifactPanelRef: { refresh: () => void; openArtifactPath: (path: string) => Promise<void> } | undefined = $state()
 
+  type TasksSummary = {
+    total: number
+    pending: number
+    in_progress: number
+    completed: number
+    cancelled: number
+    plan_goal?: string
+  }
+  let tasksSummary: TasksSummary = $state({
+    total: 0, pending: 0, in_progress: 0, completed: 0, cancelled: 0,
+  })
+
   function handleToolComplete(toolName: string) {
     const taskTools = ['tasks']
     const fileTools = ['write_file', 'edit_file', 'exec', 'list_dir', 'read_file']
@@ -247,6 +260,32 @@
       artifactPanelRef?.refresh()
     }
   }
+
+  function handleTasksChanged(summary: TasksSummary) {
+    tasksSummary = summary
+  }
+
+  // Fetch initial task counts when the active session changes so the
+  // pulse-bar badge reflects state from prior turns, not just the current
+  // chat-stream lifetime.
+  $effect(() => {
+    const sid = selectedSessionId
+    if (!sid) {
+      tasksSummary = { total: 0, pending: 0, in_progress: 0, completed: 0, cancelled: 0 }
+      return
+    }
+    getSessionTasks(sid)
+      .then((data) => {
+        const counts = { total: 0, pending: 0, in_progress: 0, completed: 0, cancelled: 0 }
+        for (const task of data.tasks ?? []) {
+          counts.total++
+          const status = (task.status || 'pending') as keyof typeof counts
+          if (status in counts) counts[status]++
+        }
+        tasksSummary = { ...counts, plan_goal: data.plan?.goal }
+      })
+      .catch(() => {})
+  })
 
   async function handleArtifactOpen(path: string) {
     rightPanel = 'artifacts'
@@ -313,7 +352,7 @@
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'config'} onclick={() => togglePanel('config')} title="Session tool config">Config</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'context'} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prompt'} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
-      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'tasks'} onclick={() => togglePanel('tasks')} title="Session tasks">Tasks</button>
+      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'tasks'} onclick={() => togglePanel('tasks')} title="Session tasks">Tasks{#if tasksSummary.total > 0} ({tasksSummary.in_progress}/{tasksSummary.total}){/if}</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'cron'} onclick={() => togglePanel('cron')} title="Session cron jobs">Cron</button>
     </div>
   </div>
@@ -384,6 +423,7 @@
           onArtifactsChange={handleArtifactsChange}
           onContextInfo={(info) => { chatContextInfo = info }}
           onToolComplete={handleToolComplete}
+          onTasksChanged={handleTasksChanged}
           onSessionReady={(id) => {
             if (!selectedSessionId) {
               selectedSessionId = id

@@ -44,9 +44,19 @@
     onToolComplete?: (toolName: string) => void
     onSessionReady?: (sessionId: string) => void
     onArtifactOpen?: (path: string) => void
+    onTasksChanged?: (summary: TasksSummary) => void
   }
 
-  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen }: Props = $props()
+  type TasksSummary = {
+    total: number
+    pending: number
+    in_progress: number
+    completed: number
+    cancelled: number
+    plan_goal?: string
+  }
+
+  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen, onTasksChanged }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -236,6 +246,16 @@
         })
         chatStatusLine = ['compaction', event.mode, `${event.compacted_count ?? 0} compacted`]
           .filter(Boolean).join(' · ')
+        break
+      case 'tasks_changed':
+        onTasksChanged?.({
+          total: event.task_total ?? 0,
+          pending: event.task_pending ?? 0,
+          in_progress: event.task_in_progress ?? 0,
+          completed: event.task_completed ?? 0,
+          cancelled: event.task_cancelled ?? 0,
+          plan_goal: event.plan_goal,
+        })
         break
       case 'done': {
         chatSessionId = event.session_id?.trim() || chatSessionId

@@ -2756,3 +2756,80 @@ func readLatestDailyLog(t *testing.T, root string) (string, []byte) {
 	}
 	return path, data
 }
+
+// TestChatAPI_TasksToolEmitsTasksChangedEvent verifies that calling the
+// tasks aggregator over a chat turn produces a tasks_changed SSE event so
+// the console can keep its pulse-bar Tasks badge live without polling.
+func TestChatAPI_TasksToolEmitsTasksChangedEvent(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_plan",
+							Name:      "tasks",
+							Arguments: `{"action":"plan_set","goal":"ship feature X"}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_add",
+							Name:      "tasks",
+							Arguments: `{"action":"add","title":"step 1"}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "Plan ready.",
+				},
+			},
+		},
+	}
+
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+
+	reqBody := `{"message":"build feature X in 3 steps"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"type":"tasks_changed"`) {
+		t.Fatalf("expected tasks_changed event after tasks tool call, got %q", body)
+	}
+	// After plan_set + add, the latest tasks_changed should report
+	// total=1 with one pending task. Use a substring assertion that's
+	// resilient to other JSON key ordering.
+	if !strings.Contains(body, `"task_total":1`) {
+		t.Fatalf("expected tasks_changed payload with task_total=1, got %q", body)
+	}
+	if !strings.Contains(body, `"task_pending":1`) {
+		t.Fatalf("expected tasks_changed payload with task_pending=1, got %q", body)
+	}
+	if !strings.Contains(body, `"plan_goal":"ship feature X"`) {
+		t.Fatalf("expected tasks_changed payload with plan_goal, got %q", body)
+	}
+}
