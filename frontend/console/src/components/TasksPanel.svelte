@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { getSessionTasks, executeTasksAction } from '../lib/api'
+  import { getSessionTasks, executeTasksAction, cancelChat } from '../lib/api'
   import type { SessionTasks } from '../lib/types'
 
   interface Props {
@@ -73,6 +73,73 @@
   async function handleDiscard() {
     if (!confirm('Discard this plan? All tasks will be cleared.')) return
     await runAction({ action: 'clear' })
+  }
+
+  // Pause cancels any in-flight chat turn first so the LLM stops producing
+  // tokens immediately, then flips the plan status to paused. Resume just
+  // flips status back; the user (or LLM on its next turn) drives forward
+  // progress from here.
+  async function handlePause() {
+    actionBusy = true
+    actionError = ''
+    try {
+      await cancelChat(sessionId)
+    } catch {
+      // best-effort — keep going to set paused state
+    } finally {
+      actionBusy = false
+    }
+    await runAction({ action: 'plan_pause' })
+  }
+
+  async function handleResume() {
+    try {
+      await runAction({ action: 'plan_resume' })
+    } catch {
+      return
+    }
+    if (onSendMessage) {
+      try {
+        await onSendMessage('continue')
+      } catch {
+        // user can type "continue" manually as fallback
+      }
+    }
+    await load()
+  }
+
+  async function handleAbort() {
+    if (!confirm('Abort this plan? Execution stops permanently and the plan is marked aborted.')) return
+    actionBusy = true
+    actionError = ''
+    try {
+      await cancelChat(sessionId)
+    } catch {
+      // best-effort
+    } finally {
+      actionBusy = false
+    }
+    await runAction({ action: 'plan_abort' })
+  }
+
+  // Skipping a single task flips it to cancelled and lets the LLM know
+  // via a short user message. The auto-completion rule (CON-051) will
+  // mark the plan completed automatically if this was the last open
+  // task.
+  async function handleSkipTask(taskId: string, taskTitle: string) {
+    try {
+      await runAction({ action: 'update', id: taskId, status: 'cancelled' })
+    } catch {
+      return
+    }
+    if (onSendMessage) {
+      try {
+        await onSendMessage(`Skip task ${taskId} (${taskTitle.trim()}) and continue with the next pending task.`)
+      } catch {
+        // ignore
+      }
+    }
+    await load()
   }
 
   function startEdit() {
@@ -256,6 +323,29 @@
       </div>
     {/if}
 
+    {#if !editing && (planStatus === 'executing' || planStatus === 'paused')}
+      <div class="runtime-actions">
+        {#if planStatus === 'executing'}
+          <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={handlePause} title="Pause execution: cancels the in-flight LLM turn and waits for instructions.">
+            {'\u23f8'} Pause
+          </button>
+        {:else}
+          <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={handleResume} title="Resume execution: flips status back to executing and sends 'continue' to the chat.">
+            {'\u25b6'} Resume
+          </button>
+        {/if}
+        <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={startEdit} title="Edit plan in place: reorder, retitle, add or remove tasks.">
+          {'\u270e'} Edit Plan
+        </button>
+        <button class="btn btn-danger btn-sm" type="button" disabled={actionBusy} onclick={handleAbort} title="Abort plan: cancels execution and marks the plan aborted permanently.">
+          {'\u2298'} Abort
+        </button>
+        {#if actionError}
+          <p class="error-banner runtime-error">{actionError}</p>
+        {/if}
+      </div>
+    {/if}
+
     {#if summary.total > 0}
       <div class="progress-section">
         <div class="progress-bar">
@@ -326,6 +416,15 @@
               {/if}
             </div>
             <span class="badge {statusClass(task.status)}">{task.status.replace('_', ' ')}</span>
+            {#if (planStatus === 'executing' || planStatus === 'paused') && (task.status === 'pending' || task.status === 'in_progress')}
+              <button
+                class="btn btn-ghost btn-sm task-skip-btn"
+                type="button"
+                disabled={actionBusy}
+                title="Skip this task: marks it cancelled and asks the LLM to move on."
+                onclick={() => handleSkipTask(task.id, task.title)}
+              >{'⏭'}</button>
+            {/if}
           </div>
         {/each}
       </div>
@@ -451,6 +550,27 @@
   .edit-actions {
     display: flex;
     gap: var(--space-2);
+  }
+
+  .runtime-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .runtime-error {
+    flex-basis: 100%;
+    margin: var(--space-1) 0 0;
+  }
+
+  .task-skip-btn {
+    padding: 0 var(--space-2);
+    min-width: 1.75rem;
+    margin-left: var(--space-1);
   }
 
   .plan-section {
