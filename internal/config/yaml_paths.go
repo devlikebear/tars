@@ -5,8 +5,6 @@ import "strings"
 func preferredYAMLPathForKey(key string) string {
 	key = strings.TrimSpace(strings.ToLower(key))
 	switch key {
-	case "mode":
-		return "runtime.mode"
 	case "workspace_dir":
 		return "runtime.workspace_dir"
 	case "session_default_id":

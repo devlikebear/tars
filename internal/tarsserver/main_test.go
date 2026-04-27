@@ -42,7 +42,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// agree because cmd.Flags().*Var binds back to the same opts pointer.
 	opts := &options{
 		ConfigPath:   flagValueForTest(args, "--config"),
-		Mode:         flagValueForTest(args, "--mode"),
 		WorkspaceDir: flagValueForTest(args, "--workspace-dir"),
 		LogFile:      flagValueForTest(args, "--log-file"),
 		Verbose:      hasFlagForTest(args, "--verbose"),
@@ -176,7 +175,7 @@ func TestRun_DefaultConfig(t *testing.T) {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
 
-	if !strings.Contains(stdout.String(), "tars starting in standalone mode") {
+	if !strings.Contains(stdout.String(), "tars startup complete") {
 		t.Fatalf("unexpected stdout: %q", stdout.String())
 	}
 
@@ -259,26 +258,36 @@ func TestSetupRuntimeLogger_CreatesParentDirForLogFile(t *testing.T) {
 }
 
 func TestRun_FlagOverridesEnvAndYAML(t *testing.T) {
+	// Verify the flag → env → yaml precedence chain through --workspace-dir.
+	// The mode flag previously covered this path but was removed once
+	// runtime.mode became cosmetic-only; --workspace-dir is the next
+	// best probe since it touches the same option-resolution code.
 	isolateRunEnv(t)
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
-	content := "mode: service\nworkspace_dir: ./tenant-workspace\n"
+	content := "workspace_dir: ./tenant-workspace\n"
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
-	t.Setenv("TARS_MODE", "service")
+	t.Setenv("TARS_WORKSPACE_DIR", "./env-workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
 
-	code := run([]string{"--config", configPath, "--mode", "standalone", "--workspace-dir", workspaceDir}, stdout, stderr)
+	code := run([]string{"--config", configPath, "--workspace-dir", workspaceDir}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
 
-	if !strings.Contains(stdout.String(), "tars starting in standalone mode") {
-		t.Fatalf("unexpected stdout: %q", stdout.String())
+	// The flag should win: stderr's startup log carries the resolved
+	// workspace_dir, which must match the flag, not the env or yaml.
+	// The console-writer formats key=value, so substring match suffices.
+	if !strings.Contains(stderr.String(), workspaceDir) {
+		t.Fatalf("expected --workspace-dir flag to win, stderr=%q", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "tenant-workspace") || strings.Contains(stderr.String(), "env-workspace") {
+		t.Fatalf("yaml or env workspace leaked past flag, stderr=%q", stderr.String())
 	}
 }
 
@@ -302,6 +311,10 @@ func TestRun_InvalidConfigPathPanics(t *testing.T) {
 }
 
 func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {
+	// Verifies that ResolveConfigPath() picks up ./config/standalone.yaml
+	// when --config and TARS_CONFIG are both empty. The probe is
+	// log.level=warn → expect the "tars startup complete" Info line to
+	// be filtered out of stderr.
 	isolateRunEnv(t)
 	root := t.TempDir()
 	configDir := filepath.Join(root, "config")
@@ -309,7 +322,7 @@ func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
 	configPath := filepath.Join(configDir, "standalone.yaml")
-	if err := os.WriteFile(configPath, []byte("mode: service\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("log:\n  level: warn\n"), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -330,16 +343,18 @@ func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "tars starting in service mode") {
-		t.Fatalf("expected mode from default config file, got %q", stdout.String())
+	if strings.Contains(stderr.String(), "tars startup complete") {
+		t.Fatalf("expected log.level=warn from default config to suppress info-level startup log, got %q", stderr.String())
 	}
 }
 
 func TestRun_UsesEnvConfigPathWhenFlagIsEmpty(t *testing.T) {
+	// Same probe as TestRun_UsesDefaultConfigPathWhenFlagIsEmpty but
+	// resolved via TARS_CONFIG env var.
 	isolateRunEnv(t)
 	root := t.TempDir()
 	configPath := filepath.Join(root, "custom.yaml")
-	if err := os.WriteFile(configPath, []byte("mode: service\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("log:\n  level: warn\n"), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	t.Setenv("TARS_CONFIG", configPath)
@@ -352,8 +367,8 @@ func TestRun_UsesEnvConfigPathWhenFlagIsEmpty(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "tars starting in service mode") {
-		t.Fatalf("expected mode from TARS_CONFIG file, got %q", stdout.String())
+	if strings.Contains(stderr.String(), "tars startup complete") {
+		t.Fatalf("expected log.level=warn from TARS_CONFIG to suppress info-level startup log, got %q", stderr.String())
 	}
 }
 

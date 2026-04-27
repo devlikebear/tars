@@ -3,7 +3,6 @@ package tarsserver
 // ServeOptions configures Serve API execution without CLI argument parsing.
 type ServeOptions struct {
 	ConfigPath   string
-	Mode         string
 	WorkspaceDir string
 	LogFile      string
 	Verbose      bool
@@ -13,7 +12,6 @@ type ServeOptions struct {
 
 type options struct {
 	ConfigPath   string
-	Mode         string
 	WorkspaceDir string
 	LogFile      string
 	Verbose      bool

@@ -1,5 +1,4 @@
 runtime:
-  mode: standalone
   workspace_dir: ./workspace
 
 llm:

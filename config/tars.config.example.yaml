@@ -7,7 +7,6 @@
 # Health check endpoint: GET /v1/healthz
 
 runtime:
-  mode: standalone
   workspace_dir: ./workspace
   session:
     default_id: ""

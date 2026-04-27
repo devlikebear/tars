@@ -34,7 +34,6 @@ func fjson(key, section, label, desc string) FieldMeta {
 func Schema() []FieldMeta {
 	return []FieldMeta{
 		// ── Runtime ──────────────────────────────
-		fsel("mode", "Runtime", "Mode", "Runtime mode", []string{"standalone", "server"}),
 		f("workspace_dir", "Runtime", "string", "Workspace Directory", "Directory for workspace data and sessions"),
 		f("session_default_id", "Runtime", "string", "Default Session ID", "Override the default session identifier"),
 		fsel("session_telegram_scope", "Runtime", "Telegram Session Scope", "Session scoping for Telegram messages", []string{"main", "per-chat"}),
@@ -211,8 +210,6 @@ func ConfigToMap(cfg Config) map[string]any {
 func extractValue(yamlKey string, cfg Config) any {
 	switch yamlKey {
 	// Runtime
-	case "mode":
-		return cfg.Mode
 	case "workspace_dir":
 		return cfg.WorkspaceDir
 	case "session_default_id":

@@ -26,7 +26,6 @@ func DefaultWorkspaceDir() string {
 }
 
 const (
-	defaultMode                                = "standalone"
 	defaultSessionTelegramScope                = "main"
 	defaultAPIAuthMode                         = "required"
 	defaultDashboardAuthMode                   = "inherit"
@@ -89,7 +88,6 @@ const (
 func defaultConfigValues() Config {
 	return Config{
 		RuntimeConfig: RuntimeConfig{
-			Mode:                 defaultMode,
 			WorkspaceDir:         DefaultWorkspaceDir(),
 			SessionTelegramScope: defaultSessionTelegramScope,
 		},

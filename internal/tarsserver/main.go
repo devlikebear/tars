@@ -34,7 +34,6 @@ func Serve(ctx context.Context, serveOpts ServeOptions, stdout, stderr io.Writer
 
 	opts := &options{
 		ConfigPath:   strings.TrimSpace(serveOpts.ConfigPath),
-		Mode:         strings.TrimSpace(serveOpts.Mode),
 		WorkspaceDir: strings.TrimSpace(serveOpts.WorkspaceDir),
 		LogFile:      strings.TrimSpace(serveOpts.LogFile),
 		Verbose:      serveOpts.Verbose,

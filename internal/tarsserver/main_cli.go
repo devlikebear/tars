@@ -62,11 +62,10 @@ func newRootCmd(opts *options, cfg config.Config, stdout, stderr io.Writer, nowF
 			}
 
 			logger.Info().
-				Str("mode", deps.cfg.Mode).
 				Str("workspace_dir", deps.cfg.WorkspaceDir).
 				Msg("tars startup complete")
 
-			fmt.Fprintf(stdout, "tars starting in %s mode\n", deps.cfg.Mode)
+			fmt.Fprintln(stdout, "tars startup complete (no --serve-api flag, exiting)")
 			return nil
 		},
 	}
@@ -74,7 +73,6 @@ func newRootCmd(opts *options, cfg config.Config, stdout, stderr io.Writer, nowF
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	cmd.Flags().StringVar(&opts.ConfigPath, "config", opts.ConfigPath, "path to config file")
-	cmd.Flags().StringVar(&opts.Mode, "mode", opts.Mode, "runtime mode override")
 	cmd.Flags().StringVar(&opts.WorkspaceDir, "workspace-dir", opts.WorkspaceDir, "workspace directory override")
 	cmd.Flags().StringVar(&opts.LogFile, "log-file", opts.LogFile, "append json logs to file")
 	cmd.Flags().BoolVar(&opts.Verbose, "verbose", opts.Verbose, "enable verbose debug logging")

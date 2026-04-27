@@ -20,9 +20,6 @@ func applyDefaults(cfg *Config) {
 }
 
 func applyCoreDefaults(cfg *Config, defaults Config) {
-	if strings.TrimSpace(cfg.Mode) == "" {
-		cfg.Mode = defaults.Mode
-	}
 	if strings.TrimSpace(cfg.WorkspaceDir) == "" {
 		cfg.WorkspaceDir = defaults.WorkspaceDir
 	}
