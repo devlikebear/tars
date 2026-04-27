@@ -163,10 +163,6 @@ func TestLoad_DefaultOnly(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if cfg.Mode != "standalone" {
-		t.Fatalf("expected mode standalone, got %q", cfg.Mode)
-	}
-
 	if cfg.WorkspaceDir != DefaultWorkspaceDir() {
 		t.Fatalf("expected WorkspaceDir %q, got %q", DefaultWorkspaceDir(), cfg.WorkspaceDir)
 	}
@@ -209,7 +205,6 @@ func TestLoad_YAMLOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	content := `
-mode: service
 workspace_dir: ./tenant-workspace
 llm_providers:
   primary:
@@ -238,9 +233,6 @@ llm_default_tier: standard
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if cfg.Mode != "service" {
-		t.Fatalf("expected mode service, got %q", cfg.Mode)
-	}
 	if cfg.WorkspaceDir != "./tenant-workspace" {
 		t.Fatalf("expected WorkspaceDir ./tenant-workspace, got %q", cfg.WorkspaceDir)
 	}
@@ -292,7 +284,6 @@ llm_tiers:
 		t.Fatalf("write config: %v", err)
 	}
 
-	t.Setenv("TARS_MODE", "standalone")
 	t.Setenv("TARS_WORKSPACE_DIR", "./env-workspace")
 	t.Setenv("TARS_LLM_PROVIDERS_JSON", `{"env_prov":{"kind":"openai","auth_mode":"oauth","oauth_provider":"claude-code","base_url":"http://localhost:7000/v1","api_key":"env-key"}}`)
 	t.Setenv("TARS_LLM_TIERS_JSON", `{"heavy":{"provider":"env_prov","model":"env-model","reasoning_effort":"veryhigh","thinking_budget":4096,"service_tier":"priority"},"standard":{"provider":"env_prov","model":"env-model"},"light":{"provider":"env_prov","model":"env-model"}}`)
@@ -302,9 +293,6 @@ llm_tiers:
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if cfg.Mode != "standalone" {
-		t.Fatalf("expected mode standalone from env, got %q", cfg.Mode)
-	}
 	if cfg.WorkspaceDir != "./env-workspace" {
 		t.Fatalf("expected WorkspaceDir ./env-workspace from env, got %q", cfg.WorkspaceDir)
 	}
@@ -1465,9 +1453,6 @@ func TestLoad_APIAuthYAMLInlineComments(t *testing.T) {
 func TestDefaultConfigValues_SharedBaseline(t *testing.T) {
 	defaults := defaultConfigValues()
 
-	if defaults.Mode != "standalone" {
-		t.Fatalf("expected mode standalone, got %q", defaults.Mode)
-	}
 	if defaults.WorkspaceDir != DefaultWorkspaceDir() {
 		t.Fatalf("expected workspace default %q, got %q", DefaultWorkspaceDir(), defaults.WorkspaceDir)
 	}

@@ -33,7 +33,6 @@ type AgentRuntimeAgent struct {
 }
 
 type RuntimeConfig struct {
-	Mode                 string
 	WorkspaceDir         string
 	SessionDefaultID     string
 	SessionTelegramScope string

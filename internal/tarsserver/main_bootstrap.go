@@ -57,9 +57,6 @@ func loadConfigForServe(opts *options) (config.Config, error) {
 	if err != nil {
 		return config.Config{}, &runtimeDepsError{stage: "load_config", err: err}
 	}
-	if strings.TrimSpace(opts.Mode) != "" {
-		cfg.Mode = strings.TrimSpace(opts.Mode)
-	}
 	if strings.TrimSpace(opts.WorkspaceDir) != "" {
 		cfg.WorkspaceDir = strings.TrimSpace(opts.WorkspaceDir)
 	}

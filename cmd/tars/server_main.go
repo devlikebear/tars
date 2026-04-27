@@ -11,7 +11,6 @@ import (
 
 type serveOptions struct {
 	configPath   string
-	mode         string
 	workspaceDir string
 	logFile      string
 	verbose      bool
@@ -41,7 +40,6 @@ func newServeCommand(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.configPath, "config", "", "path to config file")
-	cmd.Flags().StringVar(&opts.mode, "mode", "", "runtime mode override")
 	cmd.Flags().StringVar(&opts.workspaceDir, "workspace-dir", "", "workspace directory override")
 	cmd.Flags().StringVar(&opts.logFile, "log-file", opts.logFile, "append json logs to file")
 	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "enable verbose debug logging")
@@ -53,7 +51,6 @@ func newServeCommand(stdout, stderr io.Writer) *cobra.Command {
 func runServeCommand(ctx context.Context, opts serveOptions, stdout, stderr io.Writer) error {
 	return tarsserver.Serve(ctx, tarsserver.ServeOptions{
 		ConfigPath:   strings.TrimSpace(opts.configPath),
-		Mode:         strings.TrimSpace(opts.mode),
 		WorkspaceDir: strings.TrimSpace(opts.workspaceDir),
 		LogFile:      strings.TrimSpace(opts.logFile),
 		Verbose:      opts.verbose,

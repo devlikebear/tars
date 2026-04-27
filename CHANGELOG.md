@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.11] - 2026-04-27
+
+### Removed (BREAKING)
+
+- `runtime.mode` config field, `TARS_MODE` env var, and `--mode` CLI flag. The field was cosmetic from day one — server execution is decided entirely by the separate `--serve-api` boolean flag, never by Mode. The schema option, the Settings page combobox, and the startup message simply showed the value back to the user without affecting any code path.
+- Settings page no longer offers a "Mode" combobox under Runtime — the field disappears automatically once removed from the schema.
+- Startup stdout message changed from `tars starting in <mode> mode` to `tars startup complete (no --serve-api flag, exiting)` — describes the actual outcome instead of repeating a meaningless config value.
+
+### Migration
+
+- YAML parser ignores unknown keys, so existing `runtime.mode` lines in `workspace/config/tars.config.yaml` are silently dropped on next load. No user action required.
+
 ## [0.31.10] - 2026-04-26
 
 ### Added

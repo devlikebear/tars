@@ -13,7 +13,6 @@ func TestLoadYAML_HierarchicalSections(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	raw := []byte(`
 runtime:
-  mode: standalone
   workspace_dir: ./workspace
   session:
     default_id: main
@@ -207,8 +206,8 @@ agentruntime:
 		t.Fatalf("loadYAML: %v", err)
 	}
 
-	if cfg.Mode != "standalone" || cfg.WorkspaceDir != "./workspace" || cfg.SessionDefaultID != "main" {
-		t.Fatalf("runtime fields not parsed: mode=%q workspace=%q session=%q", cfg.Mode, cfg.WorkspaceDir, cfg.SessionDefaultID)
+	if cfg.WorkspaceDir != "./workspace" || cfg.SessionDefaultID != "main" {
+		t.Fatalf("runtime fields not parsed: workspace=%q session=%q", cfg.WorkspaceDir, cfg.SessionDefaultID)
 	}
 	if cfg.LogLevel != "debug" || cfg.LogFile != "./logs/test.log" {
 		t.Fatalf("log fields not parsed: level=%q file=%q", cfg.LogLevel, cfg.LogFile)
