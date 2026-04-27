@@ -178,7 +178,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 
 	transcriptPath := reqStore.TranscriptPath(sessionID)
 	deps.logger.Debug().Str("session_id", sessionID).Str("transcript_path", transcriptPath).Msg("chat session resolved")
-	compactionInfo, err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, deps.router, deps.logger, deps.tooling.Compaction, deps.tooling.MemorySemanticConfig)
+	compactionInfo, err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, reqStore, deps.router, deps.logger, deps.tooling.Compaction, deps.tooling.MemorySemanticConfig)
 	if err != nil {
 		deps.logger.Error().Err(err).Str("session_id", sessionID).Msg("auto compaction failed")
 		return chatRunState{}, http.StatusInternalServerError, "auto compaction failed", err

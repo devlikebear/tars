@@ -58,6 +58,7 @@ func CompactTranscript(path string, keepRecent int, now time.Time) (CompactResul
 type CompactOptions struct {
 	BeforeRewrite       func(summary string, compactedCount int, originalCount int) error
 	SummaryBuilder      func(messages []Message, previousContext string) (string, error)
+	PostSummaryMessages []Message
 	KeepRecentTokens    int
 	KeepRecentFraction  float64
 	SummaryInstructions string
@@ -148,6 +149,8 @@ func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, op
 		previousContext = extractCompactionBody(head[0].Content)
 		head = head[1:]
 	}
+	head = dropTasksInjectionMessages(head)
+	tail = dropTasksInjectionMessages(tail)
 
 	// Pre-compaction: prune long tool results to prevent code dumps in summary
 	prunedHead := pruneToolResults(head, defaultToolPruneMaxLen)
@@ -177,8 +180,10 @@ func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, op
 		}
 	}
 
-	replaced := make([]Message, 0, 1+len(tail))
+	postSummaryMessages := normalizePostSummaryMessages(opts.PostSummaryMessages, now)
+	replaced := make([]Message, 0, 1+len(postSummaryMessages)+len(tail))
 	replaced = append(replaced, compactionMessage)
+	replaced = append(replaced, postSummaryMessages...)
 	replaced = append(replaced, tail...)
 	if err := RewriteMessages(path, replaced); err != nil {
 		return CompactResult{}, err
@@ -191,6 +196,43 @@ func CompactTranscriptWithOptions(path string, keepRecent int, now time.Time, op
 		CompactedCount: len(head),
 		Summary:        summary,
 	}, nil
+}
+
+func dropTasksInjectionMessages(messages []Message) []Message {
+	if len(messages) == 0 {
+		return messages
+	}
+	filtered := make([]Message, 0, len(messages))
+	for _, msg := range messages {
+		if IsTasksInjectionMessage(msg) {
+			continue
+		}
+		filtered = append(filtered, msg)
+	}
+	return filtered
+}
+
+func normalizePostSummaryMessages(messages []Message, now time.Time) []Message {
+	if len(messages) == 0 {
+		return nil
+	}
+	normalized := make([]Message, 0, len(messages))
+	for _, msg := range messages {
+		msg.Content = strings.TrimSpace(msg.Content)
+		if msg.Content == "" {
+			continue
+		}
+		if strings.TrimSpace(msg.Role) == "" {
+			msg.Role = "system"
+		}
+		if msg.Timestamp.IsZero() {
+			msg.Timestamp = now.UTC()
+		} else {
+			msg.Timestamp = msg.Timestamp.UTC()
+		}
+		normalized = append(normalized, msg)
+	}
+	return normalized
 }
 
 func BuildCompactionSummary(messages []Message) string {

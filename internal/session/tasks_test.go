@@ -194,6 +194,24 @@ func TestFormatTasksForInjection(t *testing.T) {
 	if !contains(result, "Build feature X") {
 		t.Fatal("should include plan goal")
 	}
+	if !contains(result, "## Active Plan (preserved across compression)") {
+		t.Fatal("should identify the block as compression-preserved plan state")
+	}
+}
+
+func TestFormatTasksForInjection_ExcludesInactivePlanWithNoActiveTasks(t *testing.T) {
+	st := SessionTasks{
+		Plan: &Plan{Goal: "Completed cleanup", Status: PlanStatusCompleted},
+		Tasks: []Task{
+			{ID: "1", Title: "Ship cleanup", Status: "completed"},
+			{ID: "2", Title: "Drop old branch", Status: "cancelled"},
+		},
+	}
+
+	result := FormatTasksForInjection(st)
+	if result != "" {
+		t.Fatalf("expected no injection for inactive plan/tasks, got %q", result)
+	}
 }
 
 func contains(s, substr string) bool {

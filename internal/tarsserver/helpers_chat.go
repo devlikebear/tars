@@ -39,7 +39,7 @@ func compactionClient(router llm.Router, mode string) llm.Client {
 	return client
 }
 
-func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, router llm.Router, logger zerolog.Logger, compaction chatCompactionOptions, semanticCfg ...memory.SemanticConfig) (chatCompactionInfo, error) {
+func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, store *session.Store, router llm.Router, logger zerolog.Logger, compaction chatCompactionOptions, semanticCfg ...memory.SemanticConfig) (chatCompactionInfo, error) {
 	compaction = normalizeChatCompactionOptions(compaction)
 	messages, err := session.ReadMessages(transcriptPath)
 	if err != nil {
@@ -57,6 +57,7 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, rou
 	}
 
 	now := time.Now().UTC()
+	taskInjection := compactionTaskInjection(store, sessionID, logger)
 	result, summaryMode, err := compactWithMemoryFlush(
 		workspaceDir,
 		transcriptPath,
@@ -67,6 +68,7 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, rou
 		router,
 		now,
 		messages,
+		taskInjection,
 		buildSemanticMemoryService(workspaceDir, firstSemanticConfig(semanticCfg...)),
 	)
 	if err != nil {
@@ -88,7 +90,7 @@ func maybeAutoCompactSession(workspaceDir, transcriptPath, sessionID string, rou
 	return info, nil
 }
 
-func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, compaction chatCompactionOptions, instructions string, router llm.Router, now time.Time, preloadedMessages []session.Message, semantic ...*memory.Service) (session.CompactResult, string, error) {
+func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keepRecent int, compaction chatCompactionOptions, instructions string, router llm.Router, now time.Time, preloadedMessages []session.Message, taskInjection string, semantic ...*memory.Service) (session.CompactResult, string, error) {
 	memService := firstSemanticService(semantic...)
 	client := compactionClient(router, compaction.LLMMode)
 	summaryMode := "deterministic"
@@ -97,6 +99,7 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 		KeepRecentFraction:  compaction.KeepRecentFraction,
 		SummaryInstructions: instructions,
 		PreloadedMessages:   preloadedMessages,
+		PostSummaryMessages: compactionTaskInjectionMessages(taskInjection, now),
 		SummaryBuilder: func(messages []session.Message, previousContext string) (string, error) {
 			if client == nil {
 				summaryMode = "deterministic"
@@ -155,6 +158,30 @@ func compactWithMemoryFlush(workspaceDir, transcriptPath, sessionID string, keep
 		summaryMode = ""
 	}
 	return result, summaryMode, nil
+}
+
+func compactionTaskInjection(store *session.Store, sessionID string, logger zerolog.Logger) string {
+	if store == nil || strings.TrimSpace(sessionID) == "" {
+		return ""
+	}
+	tasks, err := store.GetTasks(sessionID)
+	if err != nil {
+		logger.Warn().Err(err).Str("session_id", sessionID).Msg("load tasks for compaction injection failed")
+		return ""
+	}
+	return session.FormatTasksForInjection(tasks)
+}
+
+func compactionTaskInjectionMessages(injection string, now time.Time) []session.Message {
+	injection = strings.TrimSpace(injection)
+	if injection == "" {
+		return nil
+	}
+	return []session.Message{{
+		Role:      "system",
+		Content:   injection,
+		Timestamp: now.UTC(),
+	}}
 }
 
 // buildLLMCompactionSummary continues to take a resolved llm.Client

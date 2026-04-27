@@ -55,7 +55,7 @@ func newCronPromptRunnerWithSessionContext(fallback agentRuntimePromptRunner, de
 		}
 
 		transcriptPath := deps.store.TranscriptPath(cfg.SessionID)
-		if _, err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, cfg.SessionID, deps.router, deps.logger, deps.tooling.Compaction, deps.tooling.MemorySemanticConfig); err != nil {
+		if _, err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, cfg.SessionID, deps.store, deps.router, deps.logger, deps.tooling.Compaction, deps.tooling.MemorySemanticConfig); err != nil {
 			return "", err
 		}
 

@@ -11,6 +11,13 @@ import (
 	"github.com/devlikebear/tars/internal/atomicwrite"
 )
 
+const (
+	// TasksInjectionHeader marks task state that was deliberately reinserted
+	// after context compression so later compactions can replace stale copies.
+	TasksInjectionHeader       = "## Active Plan (preserved across compression)"
+	legacyTasksInjectionHeader = "## Active Session Tasks"
+)
+
 // Plan represents a high-level goal for the current session.
 // At most one plan is active per session; setting a new plan archives the previous one.
 //
@@ -171,34 +178,60 @@ func TaskSummary(tasks []Task) map[string]int {
 // FormatTasksForInjection renders active tasks for system prompt injection
 // after context compression. Only includes pending and in_progress tasks.
 func FormatTasksForInjection(st SessionTasks) string {
-	if st.Plan == nil && len(st.Tasks) == 0 {
+	st = normalizeSessionTasks(st)
+	activeTasks := make([]Task, 0, len(st.Tasks))
+	for _, t := range st.Tasks {
+		switch strings.ToLower(strings.TrimSpace(t.Status)) {
+		case "pending", "in_progress":
+			activeTasks = append(activeTasks, t)
+		}
+	}
+	planActive := isActivePlan(st.Plan)
+	if !planActive && len(activeTasks) == 0 {
 		return ""
 	}
+
 	var b strings.Builder
-	b.WriteString("## Active Session Tasks\n\n")
-	if st.Plan != nil {
+	b.WriteString(TasksInjectionHeader + "\n\n")
+	if planActive {
 		b.WriteString("**Plan:** " + strings.TrimSpace(st.Plan.Goal) + "\n")
 		if st.Plan.Constraints != "" {
 			b.WriteString("**Constraints:** " + strings.TrimSpace(st.Plan.Constraints) + "\n")
 		}
 		b.WriteString("\n")
 	}
-	active := false
-	for _, t := range st.Tasks {
-		if t.Status == "completed" || t.Status == "cancelled" {
-			continue
-		}
+	for _, t := range activeTasks {
 		marker := "[ ]"
-		if t.Status == "in_progress" {
+		if strings.EqualFold(strings.TrimSpace(t.Status), "in_progress") {
 			marker = "[>]"
 		}
 		b.WriteString(fmt.Sprintf("- %s %s: %s\n", marker, t.ID, t.Title))
-		active = true
-	}
-	if !active && st.Plan == nil {
-		return ""
 	}
 	return b.String()
+}
+
+// IsTasksInjectionMessage reports whether msg is a previously injected active
+// plan block. Compaction replaces these blocks with fresh task state.
+func IsTasksInjectionMessage(msg Message) bool {
+	if msg.Role != "system" {
+		return false
+	}
+	content := strings.TrimSpace(msg.Content)
+	return strings.Contains(content, TasksInjectionHeader) || strings.Contains(content, legacyTasksInjectionHeader)
+}
+
+func isActivePlan(plan *Plan) bool {
+	if plan == nil || strings.TrimSpace(plan.Goal) == "" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(plan.Status)) {
+	case "", PlanStatusDrafting, PlanStatusProposed, PlanStatusExecuting, PlanStatusPaused:
+		return true
+	case PlanStatusCompleted, PlanStatusAborted:
+		return false
+	default:
+		return true
+	}
 }
 
 // ArchiveSummary returns a human-readable summary of the plan and tasks for memory archival.

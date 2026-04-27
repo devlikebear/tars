@@ -164,6 +164,49 @@ func TestLoadHistory_IncludeCompactionBoundarySummary(t *testing.T) {
 	}
 }
 
+func TestLoadHistory_IncludeCompactionTaskInjectionBoundary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "compacted-with-tasks.jsonl")
+
+	if err := AppendMessage(path, Message{
+		Role:      "system",
+		Content:   "[COMPACTION SUMMARY]\nCompacted 50 messages.",
+		Timestamp: time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("append summary: %v", err)
+	}
+	if err := AppendMessage(path, Message{
+		Role:      "system",
+		Content:   TasksInjectionHeader + "\n\n- [>] 2: Keep going\n",
+		Timestamp: time.Date(2026, 2, 15, 12, 0, 1, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("append task injection: %v", err)
+	}
+	for i := 0; i < 6; i++ {
+		if err := AppendMessage(path, Message{
+			Role:      "user",
+			Content:   fmt.Sprintf("recent message %d %s", i, strings.Repeat("x", 48)),
+			Timestamp: time.Date(2026, 2, 15, 12, 0, i+2, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append recent message %d: %v", i, err)
+		}
+	}
+
+	history, err := LoadHistory(path, 24)
+	if err != nil {
+		t.Fatalf("load compacted history: %v", err)
+	}
+	if len(history) < 3 {
+		t.Fatalf("expected summary + task injection + recent messages, got %d", len(history))
+	}
+	if !strings.Contains(history[0].Content, "[COMPACTION SUMMARY]") {
+		t.Fatalf("expected first message to be compaction summary, got %+v", history[0])
+	}
+	if !IsTasksInjectionMessage(history[1]) {
+		t.Fatalf("expected second message to be task injection, got %+v", history[1])
+	}
+}
+
 func TestLoadHistory_DoesNotDuplicateCompactionBoundary(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "compacted-full.jsonl")

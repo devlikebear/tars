@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.16] - 2026-04-27
+
+### Fixed
+
+- Context compaction now reinjects the session's active plan state immediately after the compaction summary for automatic chat compaction, manual session compaction, `/v1/compact`, cron-bound session runs, and Telegram-bound session runs. The reinjected block includes the active plan plus `pending` / `in_progress` tasks only, so completed or cancelled tasks are not resurfaced to the LLM.
+- History loading now treats the active-plan injection as part of the compaction boundary, so tiny token budgets that force-include the compaction summary also keep the preserved task state visible.
+- Repeated compactions replace older injected task blocks with fresh state instead of carrying stale task snapshots forward.
+
+### Tests
+
+- `TestFormatTasksForInjection_ExcludesInactivePlanWithNoActiveTasks`
+- `TestLoadHistory_IncludeCompactionTaskInjectionBoundary`
+- `TestCompactAPI_ReinjectsActiveTasks`
+- `TestHandleChatRequest_EmitsCompactionAppliedEvent`
+- Browser verification: Playwright opened a local TARS server, created a session/tasks, triggered manual compaction, and confirmed the transcript contains summary + active-plan injection with completed tasks omitted.
+
+### Closed
+
+- Closes #392.
+
 ## [0.31.15] - 2026-04-27
 
 ### Added
