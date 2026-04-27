@@ -94,7 +94,7 @@ func prepareChatContextDetailsWithExtensions(
 	invokedSkill *skill.Definition,
 	semanticCfg ...memory.SemanticConfig,
 ) (preparedChatContext, error) {
-	return prepareChatContextDetailsWithCache(workspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, nil, firstSemanticConfig(semanticCfg...), nil, "")
+	return prepareChatContextDetailsWithCache(workspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, nil, firstSemanticConfig(semanticCfg...), nil, "", "")
 }
 
 func prepareChatContextDetailsWithCache(
@@ -107,6 +107,7 @@ func prepareChatContextDetailsWithCache(
 	semanticCfg memory.SemanticConfig,
 	workDirs []string,
 	currentDir string,
+	planClarifyMode string,
 ) (preparedChatContext, error) {
 	forceRelevantMemory := shouldForceMemoryToolCall(userMessage)
 	extSnapshot = filterSkillSnapshotForProject(extSnapshot, workspaceDir)
@@ -121,6 +122,7 @@ func prepareChatContextDetailsWithCache(
 		WorkspaceDir:        workspaceDir,
 		WorkDirs:            workDirs,
 		CurrentDir:          currentDir,
+		PlanClarifyMode:     planClarifyMode,
 		Query:               userMessage,
 		SessionID:           sessionID,
 		MemorySearcher:      memService,
@@ -582,6 +584,10 @@ type chatToolingOptions struct {
 	UsageTracker                *usage.Tracker
 	OpsManager                  *ops.Manager
 	Compaction                  chatCompactionOptions
+	// PlanClarifyMode forwards config.PlanClarifyMode into the prompt
+	// builder so the Planning section's clarifying-questions stance can
+	// be tuned without forking the prompt source.
+	PlanClarifyMode string
 }
 
 type chatCompactionOptions struct {
@@ -842,7 +848,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 		contextDetails, err := prepareChatContextDetailsWithCache(
 			requestWorkspaceDir, sessionID, "(context preview)",
 			extSnapshot, nil, tooling.MemoryCache, tooling.MemorySemanticConfig,
-			sess.WorkDirs, sess.CurrentDir,
+			sess.WorkDirs, sess.CurrentDir, tooling.PlanClarifyMode,
 		)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "", "prepare context failed")

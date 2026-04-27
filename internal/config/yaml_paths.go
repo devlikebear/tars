@@ -7,6 +7,8 @@ func preferredYAMLPathForKey(key string) string {
 	switch key {
 	case "workspace_dir":
 		return "runtime.workspace_dir"
+	case "plan_clarify_mode":
+		return "runtime.plan_clarify_mode"
 	case "session_default_id":
 		return "runtime.session.default_id"
 	case "session_telegram_scope":

@@ -12,10 +12,14 @@ import (
 
 // BuildOptions configures system prompt generation.
 type BuildOptions struct {
-	WorkspaceDir         string   // path to workspace root
-	WorkDirs             []string // additional working directories the session can access
-	CurrentDir           string   // session's current working directory (overrides WorkspaceDir for relative paths)
-	SubAgent             bool     // if true, only inject AGENTS.md and TOOLS.md
+	WorkspaceDir string   // path to workspace root
+	WorkDirs     []string // additional working directories the session can access
+	CurrentDir   string   // session's current working directory (overrides WorkspaceDir for relative paths)
+	SubAgent     bool     // if true, only inject AGENTS.md and TOOLS.md
+	// PlanClarifyMode is one of "smart" / "auto" / "ask" — controls whether
+	// the LLM asks clarifying questions before drafting a plan. Empty
+	// defaults to "smart". Ignored for sub-agent prompts.
+	PlanClarifyMode      string
 	Query                string
 	SessionID            string
 	MemorySearcher       memory.Searcher
@@ -64,8 +68,30 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 	// Planning section is for the main agent only — sub-agents are spawned to
 	// execute a single task and should not create their own plans.
 	if !opts.SubAgent {
+		mode := strings.ToLower(strings.TrimSpace(opts.PlanClarifyMode))
+		switch mode {
+		case "auto", "ask":
+			// known modes; render below
+		default:
+			mode = "smart"
+		}
 		b.WriteString("## Planning\n\n")
-		b.WriteString("For multi-step requests (3+ steps), use the `tasks` tool to draft a plan, **propose it**, and then execute after the user approves:\n\n")
+
+		// Clarifying-questions stance varies by mode. Smart is the default
+		// (LLM judges); auto skips the question step; ask always front-loads
+		// 1–3 questions before drafting.
+		switch mode {
+		case "auto":
+			b.WriteString("For multi-step requests (3+ steps), draft a plan immediately — do not ask clarifying questions.\n\n")
+		case "ask":
+			b.WriteString("For multi-step requests (3+ steps), ALWAYS ask 1–3 clarifying questions FIRST to disambiguate scope, success criteria, and constraints. Only after the user answers, start drafting the plan.\n\n")
+		default:
+			b.WriteString("For multi-step requests (3+ steps), evaluate ambiguity before drafting:\n")
+			b.WriteString("- If success criteria, scope, or constraints are unclear → ask 1–3 clarifying questions FIRST, then draft after the user answers.\n")
+			b.WriteString("- If clear → draft immediately.\n\n")
+		}
+
+		b.WriteString("Once you start drafting, use the `tasks` tool to propose the plan and then execute after the user approves:\n\n")
 		b.WriteString("1. tasks(action=\"plan_set\", goal=...) — record the user's goal (status=drafting)\n")
 		b.WriteString("2. tasks(action=\"add\", title=...) — one entry per step (still drafting)\n")
 		b.WriteString("3. tasks(action=\"plan_propose\") — signal the plan is ready for the user to review (status=proposed)\n")

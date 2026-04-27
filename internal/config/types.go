@@ -41,6 +41,10 @@ type RuntimeConfig struct {
 	LogRotateMaxSizeMB   int
 	LogRotateMaxDays     int
 	LogRotateMaxBackups  int
+	// PlanClarifyMode controls whether the LLM asks clarifying questions
+	// before drafting a plan. One of "smart" (default), "auto", or "ask".
+	// See internal/prompt/builder.go for behavior per mode.
+	PlanClarifyMode string
 }
 
 type APIConfig struct {

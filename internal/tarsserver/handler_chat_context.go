@@ -107,7 +107,7 @@ func buildSessionChatRunState(
 	extSnapshot = filterExtensionsSnapshotForSession(extSnapshot, sessionToolConfigs...)
 	resolvedSkill := resolveSkillSelection(userMessage, deps.tooling.Extensions, requestWorkspaceDir, sessionID, sessionToolConfigs...)
 	invokedSkill := resolvedSkill.Definition
-	contextDetails, err := prepareChatContextDetailsWithCache(requestWorkspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, deps.tooling.MemoryCache, deps.tooling.MemorySemanticConfig, sessionWorkDirs, sessionCurrentDir)
+	contextDetails, err := prepareChatContextDetailsWithCache(requestWorkspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, deps.tooling.MemoryCache, deps.tooling.MemorySemanticConfig, sessionWorkDirs, sessionCurrentDir, deps.tooling.PlanClarifyMode)
 	if err != nil {
 		return chatRunState{}, err
 	}

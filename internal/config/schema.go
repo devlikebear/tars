@@ -35,6 +35,7 @@ func Schema() []FieldMeta {
 	return []FieldMeta{
 		// ── Runtime ──────────────────────────────
 		f("workspace_dir", "Runtime", "string", "Workspace Directory", "Directory for workspace data and sessions"),
+		fsel("plan_clarify_mode", "Runtime", "Plan Clarify Mode", "How TARS handles ambiguous multi-step requests before drafting a plan: smart = LLM evaluates ambiguity itself; auto = always plan immediately; ask = always ask 1–3 clarifying questions first.", []string{"smart", "auto", "ask"}),
 		f("session_default_id", "Runtime", "string", "Default Session ID", "Override the default session identifier"),
 		fsel("session_telegram_scope", "Runtime", "Telegram Session Scope", "Session scoping for Telegram messages", []string{"main", "per-chat"}),
 		fsel("log_level", "Runtime", "Log Level", "Logging verbosity", []string{"debug", "info", "warn", "error"}),
@@ -212,6 +213,8 @@ func extractValue(yamlKey string, cfg Config) any {
 	// Runtime
 	case "workspace_dir":
 		return cfg.WorkspaceDir
+	case "plan_clarify_mode":
+		return cfg.PlanClarifyMode
 	case "session_default_id":
 		return cfg.SessionDefaultID
 	case "session_telegram_scope":

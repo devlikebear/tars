@@ -25,7 +25,16 @@ func DefaultWorkspaceDir() string {
 	return filepath.Join(TarsHomeDir(), "workspace")
 }
 
+// Plan clarify mode constants — keep in sync with the values rendered by
+// the Settings dropdown and the prompt branches in internal/prompt/builder.go.
 const (
+	PlanClarifyModeSmart = "smart"
+	PlanClarifyModeAuto  = "auto"
+	PlanClarifyModeAsk   = "ask"
+)
+
+const (
+	defaultPlanClarifyMode                     = PlanClarifyModeSmart
 	defaultSessionTelegramScope                = "main"
 	defaultAPIAuthMode                         = "required"
 	defaultDashboardAuthMode                   = "inherit"
@@ -90,6 +99,7 @@ func defaultConfigValues() Config {
 		RuntimeConfig: RuntimeConfig{
 			WorkspaceDir:         DefaultWorkspaceDir(),
 			SessionTelegramScope: defaultSessionTelegramScope,
+			PlanClarifyMode:      defaultPlanClarifyMode,
 		},
 		APIConfig: APIConfig{
 			APIAuthMode:             defaultAPIAuthMode,

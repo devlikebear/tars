@@ -588,7 +588,7 @@ func TestCronPromptRunner_UsesBoundSessionContext(t *testing.T) {
 		disableDelta: true,
 	}
 
-	tooling := buildChatToolingOptions(nil, nil, nil, defaultChatToolingOptions().Compaction, "standard", true, memory.SemanticConfig{}, 1, nil)
+	tooling := buildChatToolingOptions(nil, nil, nil, defaultChatToolingOptions().Compaction, "standard", true, memory.SemanticConfig{}, 1, nil, "smart")
 	tooling.OpsManager = ops.NewManager(root, ops.Options{})
 
 	deps := chatHandlerDeps{

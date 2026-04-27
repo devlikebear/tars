@@ -33,6 +33,7 @@ func startMemoryPrefetch(ctx context.Context, state chatRunState, deps chatHandl
 			WorkspaceDir:        state.requestWorkspaceDir,
 			Query:               query,
 			SessionID:           state.sessionID,
+			PlanClarifyMode:     deps.tooling.PlanClarifyMode,
 			MemorySearcher:      memService,
 			ForceRelevantMemory: shouldForceMemoryToolCall(query),
 		})
@@ -72,6 +73,7 @@ func startMemoryPrefetchForNextTurn(
 	sessionID string,
 	semanticCfg memory.SemanticConfig,
 	cache *memoryCache,
+	planClarifyMode string,
 ) {
 	if cache == nil || strings.TrimSpace(userMessage) == "" {
 		return
@@ -82,6 +84,7 @@ func startMemoryPrefetchForNextTurn(
 			WorkspaceDir:        workspaceDir,
 			Query:               userMessage,
 			SessionID:           sessionID,
+			PlanClarifyMode:     planClarifyMode,
 			MemorySearcher:      memService,
 			ForceRelevantMemory: shouldForceMemoryToolCall(userMessage),
 		})
