@@ -440,6 +440,16 @@
     navigator.clipboard.writeText(text).catch(() => {})
   }
 
+  // Send a message programmatically — used by panels (TasksPanel
+  // Approve & Run) that need to emit a follow-up turn without forcing
+  // the user back into the composer.
+  export async function sendMessageText(text: string): Promise<void> {
+    const trimmed = text.trim()
+    if (!trimmed || chatBusy) return
+    chatInput = trimmed
+    await submitChat()
+  }
+
   export function exportAsMarkdown(): string {
     const lines: string[] = []
     for (const msg of chatMessages) {

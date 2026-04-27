@@ -1,20 +1,28 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { getSessionTasks } from '../lib/api'
+  import { getSessionTasks, executeTasksAction } from '../lib/api'
   import type { SessionTasks } from '../lib/types'
 
   interface Props {
     sessionId: string
     onClose: () => void
+    onSendMessage?: (text: string) => Promise<void>
   }
 
-  let { sessionId, onClose }: Props = $props()
+  let { sessionId, onClose, onSendMessage }: Props = $props()
 
   let data: SessionTasks = $state({ tasks: [] })
   let loading = $state(true)
   let error = $state('')
   let planExpanded = $state(true)
   let taskList = $derived(Array.isArray(data.tasks) ? data.tasks : [])
+  let planStatus = $derived(data.plan?.status ?? '')
+
+  // Edit/CTA state for the propose/approve workflow.
+  let editing = $state(false)
+  let editDrafts: Array<{ id: string; title: string; description: string }> = $state([])
+  let actionBusy = $state(false)
+  let actionError = $state('')
 
   export async function load() {
     loading = true
@@ -25,6 +33,122 @@
       error = err instanceof Error ? err.message : 'Failed to load tasks'
     } finally {
       loading = false
+    }
+  }
+
+  async function runAction(payload: Record<string, unknown>) {
+    actionBusy = true
+    actionError = ''
+    try {
+      await executeTasksAction(sessionId, payload)
+      await load()
+    } catch (err) {
+      actionError = err instanceof Error ? err.message : 'Action failed'
+      throw err
+    } finally {
+      actionBusy = false
+    }
+  }
+
+  async function handleApprove() {
+    try {
+      await runAction({ action: 'plan_approve' })
+    } catch {
+      return
+    }
+    // Auto-send "go" through the host chat panel so the message lands
+    // in the conversation transcript and the LLM picks up the next turn
+    // immediately. The send is best-effort: the plan is already approved
+    // on the backend, so a silent failure is acceptable.
+    if (onSendMessage) {
+      try {
+        await onSendMessage('go')
+      } catch {
+        // ignore — user can type "go" manually as a fallback
+      }
+    }
+    await load()
+  }
+
+  async function handleDiscard() {
+    if (!confirm('Discard this plan? All tasks will be cleared.')) return
+    await runAction({ action: 'clear' })
+  }
+
+  function startEdit() {
+    editDrafts = taskList.map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description ?? '',
+    }))
+    editing = true
+  }
+
+  function cancelEdit() {
+    editing = false
+    editDrafts = []
+    actionError = ''
+  }
+
+  function addDraft() {
+    editDrafts = [
+      ...editDrafts,
+      { id: `__new_${Date.now()}_${editDrafts.length}`, title: '', description: '' },
+    ]
+  }
+
+  function removeDraft(idx: number) {
+    editDrafts = editDrafts.filter((_, i) => i !== idx)
+  }
+
+  async function saveEdits() {
+    actionBusy = true
+    actionError = ''
+    try {
+      const originalById = new Map(taskList.map((t) => [t.id, t]))
+      const draftIds = new Set<string>()
+
+      for (const draft of editDrafts) {
+        const title = draft.title.trim()
+        if (!title) continue
+        const description = draft.description.trim()
+        const existing = originalById.get(draft.id)
+        if (existing) {
+          draftIds.add(draft.id)
+          // Update only if something actually changed — avoids redundant
+          // round-trips on a no-op save.
+          if (existing.title !== title || (existing.description ?? '') !== description) {
+            await executeTasksAction(sessionId, {
+              action: 'update',
+              id: draft.id,
+              title,
+              description,
+            })
+          }
+        } else {
+          // Newly inserted draft — backend assigns the real id.
+          await executeTasksAction(sessionId, {
+            action: 'add',
+            title,
+            description,
+          })
+        }
+      }
+
+      // Remove any tasks the user dropped from the list.
+      for (const original of taskList) {
+        if (!draftIds.has(original.id)) {
+          await executeTasksAction(sessionId, { action: 'remove', id: original.id })
+        }
+      }
+
+      editing = false
+      editDrafts = []
+      await load()
+    } catch (err) {
+      actionError = err instanceof Error ? err.message : 'Save failed'
+    } finally {
+      actionBusy = false
     }
   }
 
@@ -91,11 +215,35 @@
       <p class="hint">Ask TARS to create a plan and tasks for your work.</p>
     </div>
   {:else}
+    {#if planStatus === 'proposed' && !editing}
+      <div class="propose-banner">
+        <p class="propose-title">Plan ready for review</p>
+        <p class="propose-hint">{summary.total} task{summary.total === 1 ? '' : 's'}. Approve to start, edit to adjust, or discard to drop the plan.</p>
+        {#if actionError}
+          <p class="error-banner">{actionError}</p>
+        {/if}
+        <div class="propose-actions">
+          <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={handleApprove}>
+            {actionBusy ? 'Working\u2026' : '\u2713 Approve & Run'}
+          </button>
+          <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={startEdit}>
+            {'\u270e'} Edit Plan
+          </button>
+          <button class="btn btn-danger btn-sm" type="button" disabled={actionBusy} onclick={handleDiscard}>
+            {'\u2717'} Discard
+          </button>
+        </div>
+      </div>
+    {/if}
+
     {#if data.plan}
       <div class="plan-section">
         <button class="plan-header" type="button" onclick={() => planExpanded = !planExpanded}>
           <span class="plan-toggle">{planExpanded ? '\u25be' : '\u25b8'}</span>
           <span class="plan-label">Plan</span>
+          {#if planStatus}
+            <span class="plan-status badge {planStatus === 'proposed' ? 'badge-warning' : planStatus === 'executing' ? 'badge-accent' : planStatus === 'completed' ? 'badge-success' : planStatus === 'aborted' ? 'badge-error' : 'badge-default'}">{planStatus}</span>
+          {/if}
         </button>
         {#if planExpanded}
           <div class="plan-body">
@@ -122,20 +270,66 @@
       </div>
     {/if}
 
-    <div class="tasks-list">
-      {#each taskList as task (task.id)}
-        <div class="task-card" class:completed={task.status === 'completed'} class:cancelled={task.status === 'cancelled'} class:active={task.status === 'in_progress'}>
-          <span class="task-status-icon">{statusIcon(task.status)}</span>
-          <div class="task-content">
-            <span class="task-title">{task.title}</span>
-            {#if task.description}
-              <span class="task-desc">{task.description}</span>
-            {/if}
+    {#if editing}
+      <div class="tasks-list">
+        {#each editDrafts as draft, idx (draft.id)}
+          <div class="task-edit-card">
+            <div class="task-edit-row">
+              <input
+                class="task-edit-title"
+                type="text"
+                placeholder="Task title"
+                bind:value={editDrafts[idx].title}
+                disabled={actionBusy}
+              />
+              <button
+                class="btn btn-ghost btn-sm"
+                type="button"
+                title="Remove task"
+                disabled={actionBusy}
+                onclick={() => removeDraft(idx)}
+              >×</button>
+            </div>
+            <textarea
+              class="task-edit-desc"
+              placeholder="Description (optional)"
+              rows="2"
+              bind:value={editDrafts[idx].description}
+              disabled={actionBusy}
+            ></textarea>
           </div>
-          <span class="badge {statusClass(task.status)}">{task.status.replace('_', ' ')}</span>
-        </div>
-      {/each}
-    </div>
+        {/each}
+        <button class="btn btn-ghost btn-sm task-add-btn" type="button" disabled={actionBusy} onclick={addDraft}>
+          + Add task
+        </button>
+      </div>
+      {#if actionError}
+        <p class="error-banner">{actionError}</p>
+      {/if}
+      <div class="edit-actions">
+        <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={saveEdits}>
+          {actionBusy ? 'Saving…' : '✓ Save Changes'}
+        </button>
+        <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={cancelEdit}>
+          Cancel
+        </button>
+      </div>
+    {:else}
+      <div class="tasks-list">
+        {#each taskList as task (task.id)}
+          <div class="task-card" class:completed={task.status === 'completed'} class:cancelled={task.status === 'cancelled'} class:active={task.status === 'in_progress'}>
+            <span class="task-status-icon">{statusIcon(task.status)}</span>
+            <div class="task-content">
+              <span class="task-title">{task.title}</span>
+              {#if task.description}
+                <span class="task-desc">{task.description}</span>
+              {/if}
+            </div>
+            <span class="badge {statusClass(task.status)}">{task.status.replace('_', ' ')}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -177,6 +371,86 @@
     margin-top: var(--space-2);
     font-size: var(--text-xs);
     color: var(--text-tertiary);
+  }
+
+  .propose-banner {
+    padding: var(--space-3);
+    background: color-mix(in srgb, var(--warning) 8%, var(--surface-elevated));
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border-default));
+    border-radius: var(--radius-md, 0.375rem);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .propose-title {
+    margin: 0;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .propose-hint {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  .propose-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
+  }
+
+  .plan-status {
+    margin-left: auto;
+  }
+
+  .task-edit-card {
+    padding: var(--space-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm, 0.25rem);
+    background: var(--surface-inset);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .task-edit-row {
+    display: flex;
+    gap: var(--space-1);
+    align-items: center;
+  }
+
+  .task-edit-title {
+    flex: 1;
+    padding: var(--space-1) var(--space-2);
+    background: var(--surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm, 0.25rem);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .task-edit-desc {
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm, 0.25rem);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    resize: vertical;
+    font-family: inherit;
+  }
+
+  .task-add-btn {
+    align-self: flex-start;
+  }
+
+  .edit-actions {
+    display: flex;
+    gap: var(--space-2);
   }
 
   .plan-section {

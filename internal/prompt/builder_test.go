@@ -132,13 +132,18 @@ func TestBuild_PlanningSectionPresentForMainAgent(t *testing.T) {
 	if !strings.Contains(result, "## Planning") {
 		t.Error("expected main agent prompt to contain Planning section header")
 	}
-	// Spot-check that the tasks-tool actions are referenced so the LLM knows
-	// the canonical action names (plan_set / add / update with statuses).
+	// Spot-check the canonical action vocabulary including the propose/
+	// approve workflow added in CON-053.
 	for _, want := range []string{
 		"tasks(action=\"plan_set\"",
 		"tasks(action=\"add\"",
+		"tasks(action=\"plan_propose\"",
+		"tasks(action=\"plan_approve\"",
+		"STOP and wait",
 		"in_progress",
 		"completed",
+		"paused",
+		"aborted",
 	} {
 		if !strings.Contains(result, want) {
 			t.Errorf("expected Planning section to mention %q", want)
@@ -153,7 +158,7 @@ func TestBuild_PlanningSectionAbsentForSubAgent(t *testing.T) {
 	if strings.Contains(result, "## Planning") {
 		t.Error("sub-agent prompt should not contain Planning section")
 	}
-	if strings.Contains(result, "tasks(action=\"plan_set\"") {
+	if strings.Contains(result, "tasks(action=\"plan_propose\"") {
 		t.Error("sub-agent prompt should not reference tasks tool actions")
 	}
 }
@@ -222,18 +227,24 @@ func TestBuildResult_ClampsRelevantMemoryToRemainingTotalBudget(t *testing.T) {
 		t.Fatalf("write MEMORY.md: %v", err)
 	}
 
+	// Budget here is a stress test for the clamping logic, not a target
+	// for production. The total floor must accommodate the hardcoded
+	// header (Current time + Response Formatting + Planning ≈ ~280 tokens)
+	// plus the static USER section, otherwise relevant memory has nothing
+	// left to clamp. 700 keeps the assertion meaningful while leaving
+	// headroom for any future hardcoded-header tweaks.
 	result := BuildResultFor(BuildOptions{
 		WorkspaceDir:         root,
 		Query:                "what coffee do i prefer?",
-		StaticBudgetTokens:   260,
+		StaticBudgetTokens:   460,
 		RelevantBudgetTokens: 80,
-		TotalBudgetTokens:    500,
+		TotalBudgetTokens:    700,
 	})
 
-	if result.TotalTokens > 500 {
-		t.Fatalf("expected total tokens <= 500, got %d", result.TotalTokens)
+	if result.TotalTokens > 700 {
+		t.Fatalf("expected total tokens <= 700, got %d", result.TotalTokens)
 	}
-	if result.RelevantTokens > 0 && result.StaticTokens+result.RelevantTokens > 500 {
+	if result.RelevantTokens > 0 && result.StaticTokens+result.RelevantTokens > 700 {
 		t.Fatalf("expected relevant memory to fit remaining budget, got static=%d relevant=%d", result.StaticTokens, result.RelevantTokens)
 	}
 }

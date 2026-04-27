@@ -2848,3 +2848,70 @@ func TestChatAPI_TasksToolEmitsTasksChangedEvent(t *testing.T) {
 		t.Fatalf("expected tasks_changed payload with plan_goal, got %q", body)
 	}
 }
+
+// TestSessionAPI_TasksPOSTInvokesAggregator drives the plan state machine
+// directly through the new POST endpoint — the path the TasksPanel uses
+// when the user clicks Approve / Discard / Save edits. Mirrors what the
+// LLM gets from the registered tool, but bypasses the chat loop.
+func TestSessionAPI_TasksPOSTInvokesAggregator(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	sess, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+	handler := newSessionAPIHandler(store, logger)
+
+	post := func(t *testing.T, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/v1/admin/sessions/"+sess.ID+"/tasks", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Tars-Debug-Auth-Role", "admin")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// 1. plan_set lands the plan in drafting state.
+	rec := post(t, `{"action":"plan_set","goal":"ship feature X"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("plan_set: expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	st, _ := store.GetTasks(sess.ID)
+	if st.Plan == nil || st.Plan.Status != session.PlanStatusDrafting {
+		t.Fatalf("expected drafting after plan_set, got %+v", st.Plan)
+	}
+
+	// 2. propose flips drafting → proposed.
+	rec = post(t, `{"action":"plan_propose"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("plan_propose: expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	st, _ = store.GetTasks(sess.ID)
+	if st.Plan.Status != session.PlanStatusProposed {
+		t.Fatalf("expected proposed, got %q", st.Plan.Status)
+	}
+
+	// 3. approve flips proposed → executing.
+	rec = post(t, `{"action":"plan_approve"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("plan_approve: expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	st, _ = store.GetTasks(sess.ID)
+	if st.Plan.Status != session.PlanStatusExecuting {
+		t.Fatalf("expected executing, got %q", st.Plan.Status)
+	}
+
+	// 4. invalid transitions surface as 400 with the tool's own error text.
+	rec = post(t, `{"action":"plan_propose"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("plan_propose from executing should 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "cannot transition") {
+		t.Fatalf("expected transition error, got %q", rec.Body.String())
+	}
+}
