@@ -71,7 +71,7 @@ func TestCompactWithMemoryFlush_TimeoutFallsBackToDeterministic(t *testing.T) {
 		KeepRecentFraction: 0.20,
 		LLMMode:            "auto",
 		LLMTimeoutSeconds:  1,
-	}, "", router, time.Now().UTC(), nil)
+	}, "", router, time.Now().UTC(), nil, "")
 	if err != nil {
 		t.Fatalf("compactWithMemoryFlush: %v", err)
 	}
@@ -105,6 +105,15 @@ func TestHandleChatRequest_EmitsCompactionAppliedEvent(t *testing.T) {
 	sess, err := store.Create("chat")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
+	}
+	if err := store.SaveTasks(sess.ID, session.SessionTasks{
+		Plan: &session.Plan{Goal: "Keep working after auto compaction", Status: session.PlanStatusExecuting},
+		Tasks: []session.Task{
+			{ID: "1", Title: "Preserve active task state", Status: "in_progress"},
+			{ID: "2", Title: "Ignore finished task", Status: "completed"},
+		},
+	}); err != nil {
+		t.Fatalf("save tasks: %v", err)
 	}
 	if err := appendCompactionTestMessages(store.TranscriptPath(sess.ID), 20); err != nil {
 		t.Fatalf("append messages: %v", err)
@@ -141,6 +150,19 @@ func TestHandleChatRequest_EmitsCompactionAppliedEvent(t *testing.T) {
 	}
 	if !strings.Contains(body, `"mode":"deterministic"`) {
 		t.Fatalf("expected deterministic compaction mode, got %q", body)
+	}
+	msgs, err := session.ReadMessages(store.TranscriptPath(sess.ID))
+	if err != nil {
+		t.Fatalf("read transcript: %v", err)
+	}
+	if len(msgs) < 2 || !session.IsTasksInjectionMessage(msgs[1]) {
+		t.Fatalf("expected task injection after compaction summary, got %+v", msgs)
+	}
+	if !strings.Contains(msgs[1].Content, "Preserve active task state") {
+		t.Fatalf("expected active task in injection, got %q", msgs[1].Content)
+	}
+	if strings.Contains(msgs[1].Content, "Ignore finished task") {
+		t.Fatalf("expected completed task to be omitted, got %q", msgs[1].Content)
 	}
 }
 

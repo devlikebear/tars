@@ -340,10 +340,12 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 			tokensBefore := session.EstimateTokens(messages)
 			// Manual compact uses lower thresholds than auto-compact so it
 			// always does meaningful work when the user explicitly requests it.
-			result, err := session.CompactTranscriptWithOptions(path, 5, time.Now().UTC(), session.CompactOptions{
-				KeepRecentTokens:   2000,
-				KeepRecentFraction: 0.20,
-				PreloadedMessages:  messages,
+			now := time.Now().UTC()
+			result, err := session.CompactTranscriptWithOptions(path, 5, now, session.CompactOptions{
+				KeepRecentTokens:    2000,
+				KeepRecentFraction:  0.20,
+				PreloadedMessages:   messages,
+				PostSummaryMessages: compactionTaskInjectionMessages(compactionTaskInjection(reqStore, sessionID, logger), now),
 			})
 			if err != nil {
 				logger.Error().Err(err).Str("session_id", sessionID).Msg("compact session failed")
@@ -685,6 +687,7 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, router llm.
 			router,
 			now,
 			nil,
+			compactionTaskInjection(reqStore, sessionID, logger),
 		)
 		if err != nil {
 			logger.Error().Err(err).Str("session_id", sessionID).Msg("compact transcript failed")

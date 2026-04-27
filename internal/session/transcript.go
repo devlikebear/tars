@@ -134,7 +134,14 @@ func LoadHistorySnapshot(path string, maxTokens int) (HistorySnapshot, error) {
 		case startIdx > summaryIdx:
 			// Always include the latest compaction boundary summary so model context
 			// keeps the compacted past when only recent messages fit by token budget.
-			history = append([]Message{all[summaryIdx]}, history...)
+			prefix := []Message{all[summaryIdx]}
+			for i := summaryIdx + 1; i < startIdx && i < len(all); i++ {
+				if !IsTasksInjectionMessage(all[i]) {
+					break
+				}
+				prefix = append(prefix, all[i])
+			}
+			history = append(prefix, history...)
 			compactionUsed = true
 		case startIdx < summaryIdx:
 			history = all[summaryIdx:]

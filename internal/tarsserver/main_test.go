@@ -2535,6 +2535,94 @@ func TestCompactAPI(t *testing.T) {
 	}
 }
 
+func TestCompactAPI_ReinjectsActiveTasks(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	sess, err := store.Create("compact target with tasks")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := store.SaveTasks(sess.ID, session.SessionTasks{
+		Plan: &session.Plan{
+			Goal:        "Finish CON-003 compaction task reinjection",
+			Constraints: "Keep completed tasks out of the model context",
+			Status:      session.PlanStatusExecuting,
+		},
+		Tasks: []session.Task{
+			{ID: "1", Title: "Write failing compaction test", Status: "completed"},
+			{ID: "2", Title: "Inject active plan after compaction", Status: "in_progress"},
+			{ID: "3", Title: "Verify browser smoke", Status: "pending"},
+			{ID: "4", Title: "Abandon stale branch", Status: "cancelled"},
+		},
+	}); err != nil {
+		t.Fatalf("save tasks: %v", err)
+	}
+
+	transcriptPath := store.TranscriptPath(sess.ID)
+	for i := 0; i < 12; i++ {
+		if err := session.AppendMessage(transcriptPath, session.Message{
+			Role:      "user",
+			Content:   fmt.Sprintf("compact message %d", i),
+			Timestamp: time.Date(2026, 2, 14, 12, 0, i, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append message %d: %v", i, err)
+		}
+	}
+
+	handler := newCompactAPIHandler(root, store, nil, logger)
+	reqBody, err := json.Marshal(map[string]any{
+		"session_id":  sess.ID,
+		"keep_recent": 5,
+	})
+	if err != nil {
+		t.Fatalf("marshal compact request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/compact", bytes.NewReader(reqBody))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	messages, err := session.ReadMessages(transcriptPath)
+	if err != nil {
+		t.Fatalf("read compacted transcript: %v", err)
+	}
+	if len(messages) != 7 {
+		t.Fatalf("expected summary + task injection + 5 recent messages, got %d", len(messages))
+	}
+	if messages[0].Role != "system" || !strings.Contains(messages[0].Content, "[COMPACTION SUMMARY]") {
+		t.Fatalf("expected compaction summary at first entry, got %+v", messages[0])
+	}
+	if messages[1].Role != "system" {
+		t.Fatalf("expected task injection system message, got %+v", messages[1])
+	}
+	injection := messages[1].Content
+	for _, needle := range []string{
+		"## Active Plan (preserved across compression)",
+		"Finish CON-003 compaction task reinjection",
+		"Keep completed tasks out of the model context",
+		"[>] 2: Inject active plan after compaction",
+		"[ ] 3: Verify browser smoke",
+	} {
+		if !strings.Contains(injection, needle) {
+			t.Fatalf("expected injection to contain %q, got:\n%s", needle, injection)
+		}
+	}
+	for _, stale := range []string{"Write failing compaction test", "Abandon stale branch"} {
+		if strings.Contains(injection, stale) {
+			t.Fatalf("expected injection to exclude %q, got:\n%s", stale, injection)
+		}
+	}
+}
+
 func TestCompactAPI_UsesLLMSummaryWhenAvailable(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
