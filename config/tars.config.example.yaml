@@ -1,10 +1,14 @@
-# tars example configuration
+# tars annotated example configuration
 # Usage:
 #   tars init                         # preferred starter path for packaged installs
 #   tars doctor --fix                 # create starter files and check BYOK readiness
 #   tars service install && tars service start
 #   go run ./cmd/tars serve --config ./config/tars.config.example.yaml --serve-api
 # Health check endpoint: GET /v1/healthz
+#
+# `config/default.yaml` is the minimal active default that ships with TARS.
+# This file mirrors every supported field with the value you would get if
+# you said nothing — use it as a reference, not as the runtime config.
 
 runtime:
   workspace_dir: ./workspace
@@ -13,7 +17,7 @@ runtime:
     telegram_scope: main
 
 log:
-  level: debug
+  level: info
   file: ""
   rotate:
     max_size_mb: 100
@@ -33,6 +37,9 @@ api:
     auth_mode: inherit
 
 llm:
+  # See internal/llm/role.go for the canonical role list. Each tier binds
+  # one provider alias + one model — credentials live at the provider
+  # level so multiple tiers can share the same alias.
   providers:
     default:
       kind: anthropic
@@ -42,7 +49,7 @@ llm:
   tiers:
     heavy:
       provider: default
-      model: claude-opus-4-6
+      model: claude-opus-4-7
       reasoning_effort: high
     standard:
       provider: default
@@ -50,13 +57,15 @@ llm:
       reasoning_effort: medium
     light:
       provider: default
-      model: claude-haiku-4-5
+      model: claude-haiku-4-5-20251001
       reasoning_effort: minimal
   default_tier: standard
   role_defaults:
     chat_main: standard
     context_compactor: light
+    memory_hook: light
     reflection_memory: light
+    reflection_kb: light
     pulse_decider: light
     agentruntime_default: standard
     agentruntime_planner: heavy
@@ -64,76 +73,76 @@ llm:
 memory:
   backend: file
   semantic:
-    enabled: true
+    enabled: false
   embed:
     provider: gemini
-    base_url: ""
+    base_url: https://generativelanguage.googleapis.com/v1beta
     api_key: ${GEMINI_API_KEY}
-    model: text-embedding-004
+    model: gemini-embedding-2-preview
     dimensions: 768
 
 usage:
   limits:
-    daily_usd: 0
-    weekly_usd: 0
-    monthly_usd: 0
+    daily_usd: 10
+    weekly_usd: 50
+    monthly_usd: 150
     mode: soft
   price_overrides: {}
 
 automation:
   agent:
-    max_iterations: 20
+    max_iterations: 8
   pulse:
     enabled: true
     interval: 1m
     timeout: 2m
     active_hours: "00:00-24:00"
-    timezone: Asia/Seoul
+    timezone: Local
     min_severity: warn
     allowed_autofixes:
       - compress_old_logs
       - cleanup_stale_tmp
     notify_telegram: false
     notify_session_events: true
-    cron_failure_threshold: 2
-    stuck_run_minutes: 15
+    cron_failure_threshold: 3
+    stuck_run_minutes: 60
     disk_warn_percent: 85
     disk_critical_percent: 95
     delivery_failure_threshold: 3
     delivery_failure_window: 10m
-    reflection_failure_threshold: 2
+    reflection_failure_threshold: 3
   reflection:
     enabled: true
     sleep_window: "02:00-05:00"
-    timezone: Asia/Seoul
+    timezone: Local
     tick_interval: 5m
     empty_session_age: 24h
     memory_lookback_hours: 24
-    max_turns_per_session: 40
+    max_turns_per_session: 20
   cron:
     run_history_limit: 200
   notify:
     command: ""
-    when_no_clients: false
+    when_no_clients: true
   schedule:
     timezone: Asia/Seoul
 
 assistant:
-  enabled: false
-  hotkey: ""
-  whisper_bin: whisper
+  enabled: true
+  hotkey: "Ctrl+Option+Space"
+  whisper_bin: whisper-cli
   ffmpeg_bin: ffmpeg
   tts_bin: say
 
 compaction:
-  trigger_tokens: 12000
-  keep_recent_tokens: 4000
-  keep_recent_fraction: 0.35
+  trigger_tokens: 100000
+  keep_recent_tokens: 12000
+  keep_recent_fraction: 0.30
   llm_mode: auto
-  llm_timeout_seconds: 20
+  llm_timeout_seconds: 15
 
 tools:
-  default_set: ""
+  default_set: standard
   allow_high_risk_user: false
   web_search:
     enabled: false
@@ -192,8 +201,8 @@ agentruntime:
   consensus:
     enabled: false
     max_fanout: 3
-    budget_tokens: 12000
-    budget_usd: 2.5
+    budget_tokens: 20000
+    budget_usd: 0.50
     timeout_seconds: 120
     allowed_aliases: []
     concurrent_runs: 1
@@ -215,7 +224,7 @@ channels:
     enabled: false
     dm_policy: pairing
     polling:
-      enabled: false
+      enabled: true
     bot_token: ""
 
 extensions:
@@ -225,6 +234,9 @@ extensions:
     watch_debounce_ms: 200
     bundled_dir: ./skills
     extra_dirs: []
+  # External Go plugins are deprecated (RF-007/009). Builtin plugins were
+  # removed entirely; manifests can only declare mcp_servers and require
+  # `allow_mcp_servers: true` to load. Prefer skills + companion CLI.
   plugins:
     enabled: true
     watch: true

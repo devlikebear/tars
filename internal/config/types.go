@@ -294,9 +294,9 @@ type Config struct {
 	ExtensionConfig
 }
 
-const DefaultConfigFilename = "config/standalone.yaml"
+const DefaultConfigFilename = "config/default.yaml"
 
-// Default returns safe baseline settings for local standalone execution.
+// Default returns safe baseline settings for local execution.
 func Default() Config {
 	return defaultConfigValues()
 }

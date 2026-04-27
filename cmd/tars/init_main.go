@@ -112,7 +112,8 @@ func runInitCommand(_ context.Context, opts initOptions, stdout, _ io.Writer) er
 func tryMigrateLegacyConfig(fixedPath string, stdout io.Writer) (bool, string) {
 	legacyCandidates := []string{
 		"workspace/config/tars.config.yaml",
-		"config/standalone.yaml",
+		"config/default.yaml",
+		"config/standalone.yaml", // pre-rename layout, kept for upgrade migrations
 	}
 	for _, candidate := range legacyCandidates {
 		abs, err := filepath.Abs(candidate)
@@ -412,7 +413,6 @@ func renderStarterConfig(workspaceDir string) string {
 # This file is intentionally minimal for a first local setup.
 
 runtime:
-  mode: standalone
   workspace_dir: %s
 
 # Local-only starter auth. Change to "required" before exposing beyond localhost.

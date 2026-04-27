@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.12] - 2026-04-27
+
+### Changed
+
+- Renamed `config/standalone.yaml` → `config/default.yaml`. The "standalone" name was a leftover from the now-removed `runtime.mode` field; "default" matches what the file actually is. `DefaultConfigFilename`, `tars init` legacy candidates, doctor hints, Makefile, CLAUDE.md, and three test fixtures updated. The pre-rename name stays in `tars init`'s legacy candidate list so existing workspaces continue to migrate cleanly.
+- `tars init` starter no longer emits `runtime.mode: standalone` (field removed in 0.31.11).
+- Refreshed `config/tars.config.example.yaml` so every value matches current defaults: `claude-opus-4-7` / `claude-haiku-4-5-20251001` model IDs, `gemini-embedding-2-preview` embed model, `pulse.cron_failure_threshold=3` / `stuck_run_minutes=60` / `reflection_failure_threshold=3`, `compaction.trigger_tokens=100000` / `keep_recent_tokens=12000`, `assistant.enabled=true` / `whisper-cli` / canonical hotkey, `tools.default_set=standard`, `telegram.polling.enabled=true`, `notify.when_no_clients=true`, plus the missing `memory_hook` and `reflection_kb` role mappings. Also notes that external Go plugins are deprecated.
+
 ## [0.31.11] - 2026-04-27
 
 ### Removed (BREAKING)
