@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.14] - 2026-04-27
+
+### Added
+
+- Runtime intervention buttons in TasksPanel during `executing` / `paused` states. Plan-level toolbar offers **⏸ Pause** (cancels the in-flight chat turn first via `cancelChat`, then `plan_pause`), **▶ Resume** (flips back to executing and auto-sends `continue`), **✎ Edit Plan** (reuses CON-053 inline editor for retitle/add/remove), and **⊘ Abort** (confirm + chat cancel + `plan_abort`). Each task card gains a per-row **⏭ Skip** button when the plan is live: marks the task `cancelled` and asks the LLM to move on with a structured follow-up message ("Skip task N (title) and continue with the next pending task").
+- Resume sends `continue` so the LLM picks up the next turn without the user retyping; failure of the auto-send is best-effort.
+
+### Closed
+
+- Closes #457.
+
 ## [0.31.13] - 2026-04-27
 
 ### Added
