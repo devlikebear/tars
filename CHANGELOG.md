@@ -6,6 +6,38 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.18] - 2026-04-27
+
+### Added
+
+- Agent Runtime now has a `Runs | Subagents` tab split in the Console. The new Subagents tab shows the active agent catalog, default/effective LLM tier, resolved provider/model preview, source/entry metadata, tool policy, and recent run links.
+- Workspace `AGENT.md` subagents can now update their default LLM tier from the Subagents detail panel using the configured LLM tier catalog.
+- Added `/v1/agentruntime/subagents` and `/v1/agentruntime/subagents/{name}` endpoints that expose subagent metadata with Settings-defined LLM tier options, clear missing-tier diagnostics, and safe tier updates for editable workspace profiles.
+
+### Fixed
+
+- Agent Runtime runs now use an executor's configured agent tier when the spawn request does not provide a task-level tier, matching the documented priority of task `tier` > agent YAML `tier` > config default.
+- Empty subagent tool-policy arrays are serialized as `[]` instead of `null`, preventing Console detail rendering errors.
+
+### Tests
+
+- `TestRuntimeSpawn_UsesExecutorTierWhenRequestTierEmpty`
+- `TestAgentRuntimeSubagentsAPIHandler_ListIncludesTiersAndRunTelemetry`
+- `TestAgentRuntimeSubagentsAPIHandler_DetailMarksMissingTier`
+- `TestAgentRuntimeSubagentsAPIHandler_PatchWorkspaceTierReloadsExecutor`
+- `TestAgentRuntimeSubagentsAPIHandler_PatchRejectsUnknownTier`
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `make fmt`
+- `make vet`
+- `make test`
+- `make build`
+- Browser verification: Playwright opened `/console/agentruntime/subagents` on a local TARS server, confirmed tier catalog/list/detail rendering, selected the `researcher` subagent, returned to the Runs tab, and verified no horizontal overflow at 390px mobile width.
+
+### Closed
+
+- Closes #471.
+
 ## [0.31.17] - 2026-04-27
 
 ### Added

@@ -211,6 +211,74 @@ export type AgentRuntimeRunEvent = {
   cost_usd_actual?: number
 }
 
+export type AgentRuntimeTierOption = {
+  name: string
+  provider_alias?: string
+  kind?: string
+  model?: string
+  reasoning_effort?: string
+  thinking_budget?: number
+  service_tier?: string
+  error?: string
+}
+
+export type AgentRuntimeSubagentRunSummary = {
+  run_id: string
+  status: string
+  tier?: string
+  created_at?: string
+  updated_at?: string
+  completed_at?: string
+}
+
+export type AgentRuntimeProviderOverride = {
+  alias?: string
+  model?: string
+}
+
+export type AgentRuntimeSubagent = {
+  name: string
+  description?: string
+  enabled: boolean
+  kind?: string
+  source?: string
+  entry?: string
+  default: boolean
+  policy_mode?: string
+  tools_allow: string[]
+  tools_allow_count: number
+  tools_deny: string[]
+  tools_deny_count: number
+  tools_risk_max?: string
+  tools_allow_groups: string[]
+  tools_deny_groups: string[]
+  tools_allow_patterns: string[]
+  session_routing_mode?: string
+  session_fixed_id?: string
+  default_tier?: string
+  effective_tier?: string
+  tier_source?: string
+  tier_missing: boolean
+  tier_error?: string
+  tier_editable: boolean
+  provider_override?: AgentRuntimeProviderOverride
+  resolved_alias?: string
+  resolved_kind?: string
+  resolved_model?: string
+  run_count: number
+  last_run?: AgentRuntimeSubagentRunSummary
+  recent_runs: AgentRuntimeSubagentRunSummary[]
+}
+
+export type AgentRuntimeSubagentsResponse = {
+  count: number
+  agents: AgentRuntimeSubagent[]
+  tiers: AgentRuntimeTierOption[]
+  default_tier?: string
+  agentruntime_default_tier?: string
+  agentruntime_default_tier_source?: string
+}
+
 export type EventsHistoryInfo = {
   items: NotificationMessage[]
   unread_count: number

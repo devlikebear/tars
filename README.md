@@ -63,6 +63,8 @@ Use `subagents_plan` before `subagents_orchestrate` when the main agent needs th
 
 Tier resolution priority: task `tier` > agent YAML `tier` > config default.
 
+The Console Agent Runtime page exposes `Runs | Subagents` tabs. Use `Subagents` to inspect the active catalog, default/effective LLM tier, resolved provider/model, source file or command entry, tool policy, and recent run links. Workspace `AGENT.md` profiles can also update their default tier from this detail view.
+
 ### 3-Tier Model Routing
 
 Route workloads to different models for cost and quality optimization:

@@ -1,23 +1,40 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import { getAgentRuntimeRun, listAgentRuntimeRuns, streamAgentRuntimeRunEvents } from '../lib/api'
-  import type { ConsensusVariantRecord, AgentRuntimeRun, AgentRuntimeRunEvent } from '../lib/types'
+  import {
+    getAgentRuntimeRun,
+    listAgentRuntimeRuns,
+    listAgentRuntimeSubagents,
+    streamAgentRuntimeRunEvents,
+    updateAgentRuntimeSubagentTier,
+  } from '../lib/api'
+  import type {
+    AgentRuntimeSubagent,
+    AgentRuntimeSubagentsResponse,
+    AgentRuntimeTierOption,
+    ConsensusVariantRecord,
+    AgentRuntimeRun,
+    AgentRuntimeRunEvent,
+  } from '../lib/types'
 
   interface Props {
     runId?: string
+    tab?: 'runs' | 'subagents'
     onNavigate: (path: string) => void
   }
 
-  let { runId, onNavigate }: Props = $props()
+  let { runId, tab = 'runs', onNavigate }: Props = $props()
 
   let runs: AgentRuntimeRun[] = $state([])
   let selectedRun: AgentRuntimeRun | null = $state(null)
+  let subagentsData = $state<AgentRuntimeSubagentsResponse | null>(null)
+  let selectedSubagentName = $state('')
   let loading = $state(false)
   let error = $state('')
   let streamError = $state('')
   let events: AgentRuntimeRunEvent[] = $state([])
   let estimatedUSD = $state<number | null>(null)
   let actualUSD = $state<number | null>(null)
+  let updatingTier = $state('')
   let stopStream: (() => void) | null = null
 
   const runtimeTools = [
@@ -31,6 +48,15 @@
     'Use subagents_plan to break this into five steps and run it.',
   ]
 
+  let activeTab = $derived(runId ? 'runs' : tab)
+  let subagents = $derived<AgentRuntimeSubagent[]>(subagentsData?.agents ?? [])
+  let tiers = $derived<AgentRuntimeTierOption[]>(subagentsData?.tiers ?? [])
+  let selectedSubagentValue = $derived.by<AgentRuntimeSubagent | null>(() => {
+    const selected = selectedSubagentName.trim()
+    if (!selected) return subagents[0] ?? null
+    return subagents.find((agent) => agent.name === selected) ?? subagents[0] ?? null
+  })
+
   async function loadRuns() {
     loading = true
     error = ''
@@ -38,6 +64,22 @@
       runs = await listAgentRuntimeRuns()
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load agent runtime runs'
+    } finally {
+      loading = false
+    }
+  }
+
+  async function loadSubagents() {
+    loading = true
+    error = ''
+    try {
+      const data = await listAgentRuntimeSubagents()
+      subagentsData = data
+      if (!selectedSubagentName || !data.agents.some((agent) => agent.name === selectedSubagentName)) {
+        selectedSubagentName = data.agents[0]?.name ?? ''
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to load subagents'
     } finally {
       loading = false
     }
@@ -97,6 +139,62 @@
     return `$${value.toFixed(3)}`
   }
 
+  function tierSummary(tier: AgentRuntimeTierOption): string {
+    if (tier.error?.trim()) return tier.error
+    return [tier.provider_alias, tier.model].filter(Boolean).join(' / ') || 'unresolved'
+  }
+
+  function tierLabel(agent: AgentRuntimeSubagent): string {
+    return agent.effective_tier || agent.default_tier || '—'
+  }
+
+  function tierSourceLabel(agent: AgentRuntimeSubagent): string {
+    if (agent.tier_source === 'agent') return 'agent'
+    if (agent.tier_source === 'role_default') return 'role default'
+    if (agent.tier_source === 'default') return 'default'
+    return 'unset'
+  }
+
+  function lastRunTime(agent: AgentRuntimeSubagent): string {
+    const run = agent.last_run
+    return fmtTime(run?.completed_at || run?.updated_at || run?.created_at)
+  }
+
+  function resolvedPreview(agent: AgentRuntimeSubagent): string {
+    return [agent.resolved_alias, agent.resolved_model].filter(Boolean).join(' / ') || '—'
+  }
+
+  function selectSubagent(agent: AgentRuntimeSubagent) {
+    selectedSubagentName = agent.name
+  }
+
+  async function updateSubagentTier(agent: AgentRuntimeSubagent, defaultTier: string) {
+    const current = (agent.default_tier ?? '').trim()
+    const next = defaultTier.trim()
+    if (next === current) return
+    updatingTier = agent.name
+    error = ''
+    try {
+      const updated = await updateAgentRuntimeSubagentTier(agent.name, next)
+      if (subagentsData) {
+        subagentsData = {
+          ...subagentsData,
+          agents: subagentsData.agents.map((item) => (item.name === updated.name ? updated : item)),
+        }
+      }
+      selectedSubagentName = updated.name
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to update subagent tier'
+    } finally {
+      updatingTier = ''
+    }
+  }
+
+  function handleTierChange(event: Event, agent: AgentRuntimeSubagent) {
+    const select = event.currentTarget as HTMLSelectElement
+    void updateSubagentTier(agent, select.value)
+  }
+
   function variantRecords(): ConsensusVariantRecord[] {
     return [...(selectedRun?.consensus_variants ?? [])].sort((a, b) => a.variant_idx - b.variant_idx)
   }
@@ -110,6 +208,14 @@
     if (id) {
       void loadRun(id)
       startStream(id)
+    } else if (activeTab === 'subagents') {
+      stopStream?.()
+      selectedRun = null
+      streamError = ''
+      events = []
+      estimatedUSD = null
+      actualUSD = null
+      void loadSubagents()
     } else {
       stopStream?.()
       selectedRun = null
@@ -127,17 +233,50 @@
 <div class="agentruntime-view">
   <div class="agentruntime-header">
     <div>
-      <div class="agentruntime-title">Agent Runtime Runs</div>
-      <div class="agentruntime-subtitle">Inspect recent subagent executions and live run events.</div>
+      <div class="agentruntime-title">Agent Runtime</div>
+      <div class="agentruntime-subtitle">
+        {#if runId}
+          Inspect live run events and resolved model metadata.
+        {:else if activeTab === 'subagents'}
+          Manage the active subagent catalog and LLM tier mapping.
+        {:else}
+          Inspect recent subagent executions and live run events.
+        {/if}
+      </div>
     </div>
     {#if runId}
       <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/agentruntime')}>Back</button>
+    {:else if activeTab === 'subagents'}
+      <button class="btn btn-ghost btn-sm" onclick={loadSubagents} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
     {:else}
       <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
     {/if}
   </div>
 
   {#if !runId}
+    <div class="runtime-tabs" role="tablist" aria-label="Agent runtime views">
+      <button
+        type="button"
+        class:active={activeTab === 'runs'}
+        onclick={() => onNavigate('/console/agentruntime')}
+        role="tab"
+        aria-selected={activeTab === 'runs'}
+      >
+        Runs
+      </button>
+      <button
+        type="button"
+        class:active={activeTab === 'subagents'}
+        onclick={() => onNavigate('/console/agentruntime/subagents')}
+        role="tab"
+        aria-selected={activeTab === 'subagents'}
+      >
+        Subagents
+      </button>
+    </div>
+  {/if}
+
+  {#if !runId && activeTab === 'runs'}
     <section class="intro-card" aria-labelledby="agentruntime-intro-title">
       <div class="intro-copy">
         <div class="eyebrow">Background Subagents</div>
@@ -198,6 +337,146 @@
           </button>
         {/each}
       {/if}
+    </div>
+  {:else if !runId && activeTab === 'subagents'}
+    {#if error}
+      <div class="error-banner">{error}</div>
+    {/if}
+
+    <section class="subagents-summary" aria-label="LLM tier catalog">
+      <div>
+        <div class="eyebrow">Tier Catalog</div>
+        <div class="tier-line">
+          {#if tiers.length === 0}
+            <span class="tier-chip missing">No tiers</span>
+          {:else}
+            {#each tiers as tier}
+              <span class="tier-chip" class:missing={!!tier.error} title={tierSummary(tier)}>
+                {tier.name}
+              </span>
+            {/each}
+          {/if}
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/config')}>Manage LLM Tiers</button>
+    </section>
+
+    <div class="subagents-layout">
+      <section class="subagents-list" aria-label="Subagents">
+        {#if subagents.length === 0 && !loading}
+          <div class="agentruntime-empty">No subagents configured.</div>
+        {:else}
+          {#each subagents as agent}
+            <button
+              class="subagent-row"
+              class:selected={selectedSubagentValue?.name === agent.name}
+              onclick={() => selectSubagent(agent)}
+            >
+              <div class="row-main">
+                <span class="row-agent">{agent.name}</span>
+                {#if agent.default}<span class="row-mode">default</span>{/if}
+                <span class="row-status">{agent.enabled ? 'enabled' : 'disabled'}</span>
+              </div>
+              <div class="row-meta">
+                <span class:tier-warning={agent.tier_missing}>{tierLabel(agent)}</span>
+                <span>{resolvedPreview(agent)}</span>
+                <span>{lastRunTime(agent)}</span>
+              </div>
+            </button>
+          {/each}
+        {/if}
+      </section>
+
+      <section class="subagent-detail" aria-label="Subagent detail">
+        {#if !selectedSubagentValue}
+          <div class="agentruntime-empty">Select a subagent.</div>
+        {:else}
+          <div class="detail-head">
+            <div>
+              <div class="detail-title">{selectedSubagentValue.name}</div>
+              <p>{selectedSubagentValue.description || 'No description'}</p>
+            </div>
+            {#if selectedSubagentValue.tier_editable}
+              <label class="tier-editor">
+                <span>LLM Tier</span>
+                <select
+                  value={selectedSubagentValue.default_tier ?? ''}
+                  disabled={updatingTier === selectedSubagentValue.name || tiers.length === 0}
+                  onchange={(event) => handleTierChange(event, selectedSubagentValue)}
+                >
+                  <option value="">Inherit runtime default</option>
+                  {#each tiers as tier}
+                    <option value={tier.name} disabled={!!tier.error}>{tier.name}</option>
+                  {/each}
+                </select>
+              </label>
+            {:else}
+              <span class="tier-chip" class:missing={selectedSubagentValue.tier_missing}>{tierLabel(selectedSubagentValue)}</span>
+            {/if}
+          </div>
+
+          {#if selectedSubagentValue.tier_error}
+            <div class="error-banner">{selectedSubagentValue.tier_error}</div>
+          {/if}
+
+          <div class="detail-grid">
+            <div><span class="label">Source</span><span>{selectedSubagentValue.source || '—'}</span></div>
+            <div><span class="label">Kind</span><span>{selectedSubagentValue.kind || '—'}</span></div>
+            <div><span class="label">Tier Source</span><span>{tierSourceLabel(selectedSubagentValue)}</span></div>
+            <div><span class="label">Provider</span><span>{selectedSubagentValue.resolved_alias || '—'}</span></div>
+            <div><span class="label">Model</span><span>{selectedSubagentValue.resolved_model || '—'}</span></div>
+            <div><span class="label">Runs</span><span>{selectedSubagentValue.run_count}</span></div>
+            <div><span class="label">Policy</span><span>{selectedSubagentValue.policy_mode || 'full'}</span></div>
+            <div><span class="label">Routing</span><span>{selectedSubagentValue.session_routing_mode || 'caller'}</span></div>
+          </div>
+
+          {#if selectedSubagentValue.entry}
+            <section class="detail-panel">
+              <h3>Entry</h3>
+              <pre>{selectedSubagentValue.entry}</pre>
+            </section>
+          {/if}
+
+          <section class="detail-panel">
+            <h3>Tool Policy</h3>
+            <div class="policy-grid">
+              <div>
+                <span class="label">Allow</span>
+                <p>{selectedSubagentValue.tools_allow.length > 0 ? selectedSubagentValue.tools_allow.join(', ') : 'all tools'}</p>
+              </div>
+              <div>
+                <span class="label">Deny</span>
+                <p>{selectedSubagentValue.tools_deny.length > 0 ? selectedSubagentValue.tools_deny.join(', ') : 'none'}</p>
+              </div>
+              <div>
+                <span class="label">Groups</span>
+                <p>{[...selectedSubagentValue.tools_allow_groups, ...selectedSubagentValue.tools_deny_groups].join(', ') || 'none'}</p>
+              </div>
+              <div>
+                <span class="label">Risk Max</span>
+                <p>{selectedSubagentValue.tools_risk_max || '—'}</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="detail-panel">
+            <h3>Recent Runs</h3>
+            {#if selectedSubagentValue.recent_runs.length === 0}
+              <div class="agentruntime-empty">No runs recorded for this subagent.</div>
+            {:else}
+              <div class="recent-runs">
+                {#each selectedSubagentValue.recent_runs as recent}
+                  <button class="recent-run" onclick={() => onNavigate(`/console/agentruntime/runs/${encodeURIComponent(recent.run_id)}`)}>
+                    <span class="row-id">{recent.run_id}</span>
+                    <span>{recent.status}</span>
+                    <span>{fmtTime(recent.completed_at || recent.updated_at || recent.created_at)}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </section>
+        {/if}
+      </section>
     </div>
   {:else if loading && !selectedRun}
     <div class="agentruntime-empty">Loading agent runtime run...</div>
@@ -292,6 +571,9 @@
   .agentruntime-header { display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; }
   .agentruntime-title { font-family: var(--font-display); font-size: var(--text-xl); color: var(--text-primary); }
   .agentruntime-subtitle { color: var(--text-ghost); font-size: var(--text-sm); }
+  .runtime-tabs { display: inline-flex; gap: var(--space-1); align-self: flex-start; border: 1px solid var(--border-subtle); background: var(--surface-inset); border-radius: var(--radius-md); padding: 3px; }
+  .runtime-tabs button { border: 0; background: transparent; color: var(--text-tertiary); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+  .runtime-tabs button.active { background: var(--surface-elevated); color: var(--text-primary); }
   .intro-card, .empty-guide { border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-lg); padding: var(--space-5); }
   .intro-card { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr); gap: var(--space-5); align-items: start; }
   .intro-copy { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -304,6 +586,25 @@
   .tool-chip span { color: var(--text-tertiary); font-size: var(--text-xs); }
   .agentruntime-list, .agentruntime-detail { display: flex; flex-direction: column; gap: var(--space-3); }
   .agentruntime-row, .detail-card, .detail-panel, .variant-card { text-align: left; border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .subagents-summary { display: flex; justify-content: space-between; gap: var(--space-4); align-items: center; border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .tier-line { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+  .tier-chip { display: inline-flex; align-items: center; max-width: 220px; min-height: 24px; border: 1px solid var(--border-subtle); background: var(--primary-muted); color: var(--primary-text); border-radius: var(--radius-sm); padding: 2px var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tier-chip.missing { background: var(--warning-muted); color: var(--warning); }
+  .tier-warning { color: var(--warning); }
+  .tier-editor { display: flex; flex-direction: column; gap: var(--space-1); min-width: min(220px, 100%); color: var(--text-ghost); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; }
+  .tier-editor select { width: 100%; min-height: 32px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); color: var(--text-primary); padding: 0 var(--space-2); font: inherit; font-size: var(--text-xs); text-transform: none; }
+  .subagents-layout { display: grid; grid-template-columns: minmax(260px, 0.45fr) minmax(0, 1fr); gap: var(--space-3); align-items: start; }
+  .subagents-list, .subagent-detail { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+  .subagents-list { border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-2); }
+  .subagent-row, .recent-run { width: 100%; text-align: left; border: 1px solid transparent; background: transparent; color: inherit; border-radius: var(--radius-sm); padding: var(--space-3); cursor: pointer; }
+  .subagent-row:hover, .recent-run:hover { background: var(--surface-elevated); }
+  .subagent-row.selected { border-color: var(--border-default); background: var(--surface-elevated); }
+  .detail-head { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .detail-head p { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--text-sm); }
+  .policy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .policy-grid p { margin: 0; color: var(--text-secondary); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .recent-runs { display: flex; flex-direction: column; gap: var(--space-2); }
+  .recent-run { display: grid; grid-template-columns: minmax(120px, 1fr) auto auto; gap: var(--space-3); align-items: center; color: var(--text-secondary); font-size: var(--text-sm); }
   .empty-guide { display: flex; flex-direction: column; gap: var(--space-4); }
   .prompt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
   blockquote { margin: 0; border-left: 2px solid var(--primary); background: var(--surface-inset); border-radius: var(--radius-md); padding: var(--space-3); color: var(--text-secondary); font-size: var(--text-sm); }
@@ -323,6 +624,7 @@
   .event-type { min-width: 140px; color: var(--primary); font-size: var(--text-xs); }
   .agentruntime-empty { color: var(--text-ghost); font-size: var(--text-sm); }
   @media (max-width: 960px) { .intro-card { grid-template-columns: 1fr; } }
+  @media (max-width: 960px) { .subagents-layout { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .detail-columns { grid-template-columns: 1fr; } }
-  @media (max-width: 768px) { .variants-grid, .prompt-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run { grid-template-columns: 1fr; } .subagents-summary, .detail-head { align-items: stretch; flex-direction: column; } }
 </style>

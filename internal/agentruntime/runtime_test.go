@@ -150,6 +150,44 @@ func (s stubExecutor) Execute(ctx context.Context, req ExecuteRequest) (string, 
 	return s.exec(ctx, req)
 }
 
+func TestRuntimeSpawn_UsesExecutorTierWhenRequestTierEmpty(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	var seenTier string
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors: []AgentExecutor{
+			stubExecutor{
+				info: AgentInfo{Name: "researcher", Enabled: true, Tier: "deep"},
+				exec: func(_ context.Context, req ExecuteRequest) (string, error) {
+					seenTier = req.Tier
+					return "ok", nil
+				},
+			},
+		},
+		DefaultAgent: "researcher",
+	})
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
+
+	run, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "inspect"})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	if run.Tier != "deep" {
+		t.Fatalf("expected accepted run tier to use executor tier, got %+v", run)
+	}
+	final, err := rt.Wait(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	if final.Tier != "deep" {
+		t.Fatalf("expected final run tier to use executor tier, got %+v", final)
+	}
+	if seenTier != "deep" {
+		t.Fatalf("expected executor request tier deep, got %q", seenTier)
+	}
+}
+
 func TestRuntimeSpawn_UnknownAgent(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	rt := NewRuntime(RuntimeOptions{

@@ -112,7 +112,7 @@ func (r *Runtime) newAcceptedRunState(
 		Depth:            req.Depth,
 		FlowID:           strings.TrimSpace(req.FlowID),
 		StepID:           strings.TrimSpace(req.StepID),
-		Tier:             strings.TrimSpace(req.Tier),
+		Tier:             resolveRunTier(req.Tier, agentRuntimeAgentInfo(executor).Tier),
 		ConsensusMode:    strings.TrimSpace(req.Mode),
 		ProviderOverride: CloneProviderOverride(req.ProviderOverride),
 		Status:           RunStatusAccepted,
@@ -121,6 +121,13 @@ func (r *Runtime) newAcceptedRunState(
 		UpdatedAt:        now.Format(time.RFC3339),
 	}
 	return runCtx, &runState{run: run, req: req, executor: executor, cancel: cancel, done: make(chan struct{})}
+}
+
+func resolveRunTier(requestTier string, executorTier string) string {
+	if tier := strings.ToLower(strings.TrimSpace(requestTier)); tier != "" {
+		return tier
+	}
+	return strings.ToLower(strings.TrimSpace(executorTier))
 }
 
 func (r *Runtime) registerAcceptedRunState(state *runState) error {
