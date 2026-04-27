@@ -37,7 +37,7 @@ func TestRootCommand_ServeSubcommandInvokesRunner(t *testing.T) {
 	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
 	cmd.SetArgs([]string{
 		"serve",
-		"--config", "config/standalone.yaml",
+		"--config", "config/default.yaml",
 		"--workspace-dir", "./workspace",
 		"--api-addr", tarsserver.DefaultAPIAddr,
 		"--verbose",
@@ -49,7 +49,7 @@ func TestRootCommand_ServeSubcommandInvokesRunner(t *testing.T) {
 	if !got.serveAPI {
 		t.Fatalf("expected serveAPI=true, got %#v", got)
 	}
-	if got.configPath != "config/standalone.yaml" {
+	if got.configPath != "config/default.yaml" {
 		t.Fatalf("unexpected configPath: %#v", got)
 	}
 	if got.workspaceDir != "./workspace" {

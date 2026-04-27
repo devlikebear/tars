@@ -311,7 +311,7 @@ func TestRun_InvalidConfigPathPanics(t *testing.T) {
 }
 
 func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {
-	// Verifies that ResolveConfigPath() picks up ./config/standalone.yaml
+	// Verifies that ResolveConfigPath() picks up ./config/default.yaml
 	// when --config and TARS_CONFIG are both empty. The probe is
 	// log.level=warn → expect the "tars startup complete" Info line to
 	// be filtered out of stderr.
@@ -321,7 +321,7 @@ func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
-	configPath := filepath.Join(configDir, "standalone.yaml")
+	configPath := filepath.Join(configDir, "default.yaml")
 	if err := os.WriteFile(configPath, []byte("log:\n  level: warn\n"), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}

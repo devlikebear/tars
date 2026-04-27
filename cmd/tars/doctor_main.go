@@ -152,7 +152,7 @@ func checkDoctorLegacyKeys(report *doctorReport, configPath string) {
 		return
 	}
 	report.add("warn", "legacy config keys", config.FormatLegacyKeyWarnings(warnings))
-	report.addHint("update your config to the current schema; see config/standalone.yaml for reference")
+	report.addHint("update your config to the current schema; see config/default.yaml for reference")
 }
 
 func checkDoctorAPIAuth(report *doctorReport, cfg config.Config) {
@@ -179,7 +179,7 @@ func checkDoctorLLMCredentials(report *doctorReport, cfg config.Config, configPa
 	}
 	if len(resolved) == 0 {
 		report.add("fail", "llm credentials", "no tiers configured in llm_tiers")
-		report.addHint("add heavy/standard/light entries under llm_tiers — see config/standalone.yaml for a template")
+		report.addHint("add heavy/standard/light entries under llm_tiers — see config/default.yaml for a template")
 		return
 	}
 

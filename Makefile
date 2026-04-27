@@ -72,7 +72,7 @@ help:
 	@echo "Common vars:"
 	@echo "  PKG=./... TEST_NAME=TestRun_ChatMessage CHAT_MSG='hello'"
 	@echo "  WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:43180 SERVER_URL=http://127.0.0.1:43180"
-	@echo "  TARS_CONFIG=./config/standalone.yaml ASSISTANT_API_TOKEN=... LAUNCH_PATH=$(LAUNCH_PATH)"
+	@echo "  TARS_CONFIG=./config/default.yaml ASSISTANT_API_TOKEN=... LAUNCH_PATH=$(LAUNCH_PATH)"
 	@echo "  ASSISTANT_WHISPER_LANGUAGE=$(ASSISTANT_WHISPER_LANGUAGE) (derived from locale; override with VAR=value)"
 	@echo ""
 	@echo "Test targets:"

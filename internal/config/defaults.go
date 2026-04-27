@@ -99,7 +99,7 @@ func defaultConfigValues() Config {
 		},
 		// LLMConfig: left empty here. Defaults live in applyLLMPoolDefaults
 		// (base_url / api_key / auth_mode auto-fill per Kind) and the
-		// checked-in config/standalone.yaml provides a minimal pool +
+		// checked-in config/default.yaml provides a minimal pool +
 		// tiers so first-run works without any local config.
 		LLMConfig: LLMConfig{},
 		MemoryConfig: MemoryConfig{

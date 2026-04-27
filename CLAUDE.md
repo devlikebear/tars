@@ -80,7 +80,7 @@ cd frontend/console && npm run check   # svelte-check + tsc
 - Supported `kind` values match `llm.NewProvider`: `anthropic`, `openai`, `openai-codex`, `gemini`, `gemini-native`, `claude-code-cli`. The `config` package does NOT validate `kind` or role names against a closed list — that validation lives in `internal/llm` so `config` stays import-free of `llm`.
 - `config.ResolveLLMTier(cfg, tier)` merges a pool entry + tier binding into a flat `ResolvedLLMTier{Kind, AuthMode, OAuthProvider, BaseURL, APIKey, Model, ReasoningEffort, ThinkingBudget, ServiceTier, ProviderAlias}`. Single resolution path, loud errors on missing alias/tier/model/kind — no silent fallback. `buildLLMRouter` calls `ResolveAllLLMTiers` once at startup and hands each `ResolvedLLMTier` to `llm.NewProvider`.
 - Parser supports nested YAML (`llm_providers: { codex: { kind: openai-codex, ... } }`) and single-JSON env override (`TARS_LLM_PROVIDERS_JSON`, `TARS_LLM_TIERS_JSON`, `TARS_LLM_ROLE_DEFAULTS_JSON`). Nested string fields get `os.ExpandEnv` at parse time so `api_key: ${ANTHROPIC_API_KEY}` resolves inside nested maps (the shared YAML loader only expands top-level scalars).
-- `applyLLMPoolDefaults` fills base_url/api_key/auth_mode per `kind` (e.g. `kind: anthropic` with empty base_url gets `https://api.anthropic.com`), promotes openai-codex to oauth when api-key mode has no key, and normalizes `reasoning_effort`/`service_tier` per tier. Schema lives in `config/standalone.yaml`; local overrides in `workspace/config/tars.config.yaml` (gitignored). See `docs/plans/llm-provider-pool.md`.
+- `applyLLMPoolDefaults` fills base_url/api_key/auth_mode per `kind` (e.g. `kind: anthropic` with empty base_url gets `https://api.anthropic.com`), promotes openai-codex to oauth when api-key mode has no key, and normalizes `reasoning_effort`/`service_tier` per tier. Schema lives in `config/default.yaml`; local overrides in `workspace/config/tars.config.yaml` (gitignored). See `docs/plans/llm-provider-pool.md`.
 
 **Extension Pattern — skill + CLI only:**
 - **Do not add domain features as builtin Go code or MCP servers.** Every tool registered in `tool.Registry` emits its description into the chat system prompt at startup — each new tool inflates prompt tokens, slows first-turn latency, and raises cost for every chat turn regardless of whether the tool is used. MCP tools have the same system-prompt cost.
@@ -161,7 +161,7 @@ git fetch origin && git switch main && git pull --rebase
 
 ## Config
 
-- `config/standalone.yaml` — checked-in default config. Ships a minimal anthropic provider pool + 3 tier bindings; new users get a working baseline after setting `ANTHROPIC_API_KEY`.
+- `config/default.yaml` — checked-in default config. Ships a minimal provider pool + 3 tier bindings; new users get a working baseline after setting their provider API key. `config/tars.config.example.yaml` is the annotated reference covering every field.
 - `workspace/config/tars.config.yaml` — local override (gitignored). Must define at least one entry under `llm_providers` and the three `llm_tiers` bindings (heavy/standard/light) or startup errors.
 - Environment variables override YAML: `TARS_API_AUTH_MODE`, `TARS_LLM_PROVIDERS_JSON`, `TARS_LLM_TIERS_JSON`, etc. Nested pool/tier maps are overridden as a single JSON blob.
 - Config field mapping: `internal/config/config_input_fields.go`. LLM pool parsers: `internal/config/llm_providers_field.go`. Resolver: `internal/config/llm_resolve.go`.

@@ -624,8 +624,8 @@ func TestResolveConfigPath_DefaultCandidate(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
-	configPath := filepath.Join(configDir, "standalone.yaml")
-	if err := os.WriteFile(configPath, []byte("mode: standalone\n"), 0o644); err != nil {
+	configPath := filepath.Join(configDir, "default.yaml")
+	if err := os.WriteFile(configPath, []byte("workspace_dir: ./resolved-default\n"), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -647,7 +647,7 @@ func TestResolveConfigPath_FixedPathFallback(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 
-	// No config/standalone.yaml in CWD, create fixed config.
+	// No config/default.yaml in CWD, create fixed config.
 	emptyDir := t.TempDir()
 	wd, err := os.Getwd()
 	if err != nil {
@@ -662,7 +662,7 @@ func TestResolveConfigPath_FixedPathFallback(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(fixedPath), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(fixedPath, []byte("mode: standalone\n"), 0o644); err != nil {
+	if err := os.WriteFile(fixedPath, []byte("workspace_dir: ./resolved-fixed\n"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
