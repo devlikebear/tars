@@ -10,6 +10,8 @@ import type {
   HubInstalled,
   AgentRuntimeRun,
   AgentRuntimeRunEvent,
+  AgentRuntimeSubagent,
+  AgentRuntimeSubagentsResponse,
   HubRegistry,
   MCPServerStatus,
   MemoryAsset,
@@ -185,6 +187,22 @@ export async function listAgentRuntimeRuns(limit = 30): Promise<AgentRuntimeRun[
 
 export async function getAgentRuntimeRun(runId: string): Promise<AgentRuntimeRun> {
 	return requestJSON<AgentRuntimeRun>(`/v1/agentruntime/runs/${encodeURIComponent(runId)}`)
+}
+
+export async function listAgentRuntimeSubagents(): Promise<AgentRuntimeSubagentsResponse> {
+	return requestJSON<AgentRuntimeSubagentsResponse>('/v1/agentruntime/subagents')
+}
+
+export async function getAgentRuntimeSubagent(name: string): Promise<AgentRuntimeSubagent> {
+	return requestJSON<AgentRuntimeSubagent>(`/v1/agentruntime/subagents/${encodeURIComponent(name)}`)
+}
+
+export async function updateAgentRuntimeSubagentTier(name: string, defaultTier: string): Promise<AgentRuntimeSubagent> {
+	return requestJSON<AgentRuntimeSubagent>(`/v1/agentruntime/subagents/${encodeURIComponent(name)}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ default_tier: defaultTier }),
+	})
 }
 
 export function streamAgentRuntimeRunEvents(

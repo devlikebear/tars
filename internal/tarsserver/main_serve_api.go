@@ -61,6 +61,7 @@ type apiRouteHandlers struct {
 	mcp             http.Handler
 	extensions      http.Handler
 	agentRuns       http.Handler
+	agentSubagents  http.Handler
 	agentRuntime    http.Handler
 	channels        http.Handler
 	events          http.Handler
@@ -503,6 +504,9 @@ func buildAPIMux(
 		return true, refreshAgentRuntimeExecutors("extensions_reload")
 	})
 	agentRunsHandler := newAgentRunsAPIHandlerWithInflightLimit(agentRuntime, logger, cfg.APIMaxInflightAgentRuns)
+	agentSubagentsHandler := newAgentRuntimeSubagentsAPIHandler(agentRuntime, cfg, func() {
+		_ = refreshAgentRuntimeExecutors("agentruntime_subagents_update")
+	})
 	agentRuntimeHandler := newAgentRuntimeAPIHandler(agentRuntime, logger, func() {
 		_ = refreshAgentRuntimeExecutors("agentruntime_reload")
 	})
@@ -573,6 +577,7 @@ func buildAPIMux(
 		mcp:             mcpHandler,
 		extensions:      extensionsHandler,
 		agentRuns:       agentRunsHandler,
+		agentSubagents:  agentSubagentsHandler,
 		agentRuntime:    agentRuntimeHandler,
 		channels:        channelsHandler,
 		events:          eventsHandler,
@@ -689,6 +694,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/agent/runs/", handlers.agentRuns)
 	mux.Handle("/v1/agentruntime/runs", handlers.agentRuns)
 	mux.Handle("/v1/agentruntime/runs/", handlers.agentRuns)
+	mux.Handle("/v1/agentruntime/subagents", handlers.agentSubagents)
+	mux.Handle("/v1/agentruntime/subagents/", handlers.agentSubagents)
 	mux.Handle("/v1/agentruntime/status", handlers.agentRuntime)
 	mux.Handle("/v1/agentruntime/reload", handlers.agentRuntime)
 	mux.Handle("/v1/agentruntime/restart", handlers.agentRuntime)

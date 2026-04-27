@@ -83,7 +83,7 @@
       <Chat sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
     {/key}
   {:else if route.view === 'agentruntime'}
-    <AgentRuntimeRunView runId={route.runId} onNavigate={navigate} />
+    <AgentRuntimeRunView runId={route.runId} tab={route.tab} onNavigate={navigate} />
   {:else if route.view === 'memory'}
     <MemoryCenter onAskAI={navigateWithPrompt} />
   {:else if route.view === 'sysprompt'}

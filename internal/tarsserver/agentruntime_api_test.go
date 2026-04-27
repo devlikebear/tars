@@ -299,6 +299,340 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 	}
 }
 
+func TestAgentRuntimeSubagentsAPIHandler_ListIncludesTiersAndRunTelemetry(t *testing.T) {
+	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
+	promptExecutor, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
+		Name:        "researcher",
+		Description: "research worker",
+		Source:      "workspace",
+		Entry:       "workspace/agents/researcher/AGENT.md",
+		PolicyMode:  "allowlist",
+		ToolsAllow:  []string{"read_file", "list_dir"},
+		Tier:        "deep",
+		RunPrompt: func(_ context.Context, _ string, _ string, _ []string, tier string, _ *agentruntime.ProviderOverride) (string, error) {
+			if tier != "deep" {
+				t.Fatalf("expected run prompt tier deep, got %q", tier)
+			}
+			return "ok", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("new prompt executor: %v", err)
+	}
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors:    []agentruntime.AgentExecutor{promptExecutor},
+		DefaultAgent: "researcher",
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if closeErr := runtime.Close(ctx); closeErr != nil {
+			t.Fatalf("close agent runtime: %v", closeErr)
+		}
+	})
+
+	run, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Agent: "researcher", Prompt: "map code"})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	waitForAgentRuntimeRun(t, runtime, run.ID)
+
+	cfg := config.Config{
+		LLMConfig: config.LLMConfig{
+			LLMProviders: map[string]config.LLMProviderSettings{
+				"codex": {Kind: "openai-codex", AuthMode: "oauth"},
+			},
+			LLMTiers: map[string]config.LLMTierBinding{
+				"deep":  {Provider: "codex", Model: "gpt-5.5", ReasoningEffort: "high"},
+				"swift": {Provider: "codex", Model: "gpt-5.4", ReasoningEffort: "low"},
+			},
+			LLMDefaultTier: "swift",
+			LLMRoleDefaults: map[string]string{
+				"agentruntime_default": "deep",
+			},
+		},
+	}
+	h := newAgentRuntimeSubagentsAPIHandler(runtime, cfg, nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/subagents", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Count int `json:"count"`
+		Tiers []struct {
+			Name          string `json:"name"`
+			ProviderAlias string `json:"provider_alias"`
+			Kind          string `json:"kind"`
+			Model         string `json:"model"`
+		} `json:"tiers"`
+		Agents []struct {
+			Name            string   `json:"name"`
+			DefaultTier     string   `json:"default_tier"`
+			EffectiveTier   string   `json:"effective_tier"`
+			TierSource      string   `json:"tier_source"`
+			TierMissing     bool     `json:"tier_missing"`
+			ResolvedAlias   string   `json:"resolved_alias"`
+			ResolvedKind    string   `json:"resolved_kind"`
+			ResolvedModel   string   `json:"resolved_model"`
+			ToolsAllow      []string `json:"tools_allow"`
+			ToolsAllowCount int      `json:"tools_allow_count"`
+			RunCount        int      `json:"run_count"`
+			LastRun         *struct {
+				RunID  string `json:"run_id"`
+				Status string `json:"status"`
+				Tier   string `json:"tier"`
+			} `json:"last_run"`
+			RecentRuns []struct {
+				RunID string `json:"run_id"`
+			} `json:"recent_runs"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Count != 1 || len(payload.Agents) != 1 {
+		t.Fatalf("unexpected agents payload: %+v", payload)
+	}
+	if len(payload.Tiers) != 2 || payload.Tiers[0].Name != "deep" || payload.Tiers[0].Model != "gpt-5.5" {
+		t.Fatalf("expected sorted tier options with resolved model, got %+v", payload.Tiers)
+	}
+	agent := payload.Agents[0]
+	if agent.Name != "researcher" || agent.DefaultTier != "deep" || agent.EffectiveTier != "deep" || agent.TierSource != "agent" {
+		t.Fatalf("unexpected tier fields: %+v", agent)
+	}
+	if agent.TierMissing {
+		t.Fatalf("did not expect tier_missing for configured tier: %+v", agent)
+	}
+	if agent.ResolvedAlias != "codex" || agent.ResolvedKind != "openai-codex" || agent.ResolvedModel != "gpt-5.5" {
+		t.Fatalf("unexpected resolved preview: %+v", agent)
+	}
+	if agent.ToolsAllowCount != 2 || len(agent.ToolsAllow) != 2 {
+		t.Fatalf("expected policy values in subagent payload: %+v", agent)
+	}
+	if agent.RunCount != 1 || agent.LastRun == nil || agent.LastRun.RunID != run.ID || agent.LastRun.Status != string(agentruntime.RunStatusCompleted) || agent.LastRun.Tier != "deep" {
+		t.Fatalf("expected last run summary for researcher, got %+v", agent)
+	}
+	if len(agent.RecentRuns) != 1 || agent.RecentRuns[0].RunID != run.ID {
+		t.Fatalf("expected recent run link data, got %+v", agent.RecentRuns)
+	}
+}
+
+func TestAgentRuntimeSubagentsAPIHandler_DetailMarksMissingTier(t *testing.T) {
+	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
+	promptExecutor, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
+		Name:        "researcher",
+		Description: "research worker",
+		Tier:        "removed-tier",
+		RunPrompt: func(_ context.Context, _ string, _ string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
+			return "ok", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("new prompt executor: %v", err)
+	}
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors:    []agentruntime.AgentExecutor{promptExecutor},
+		DefaultAgent: "researcher",
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if closeErr := runtime.Close(ctx); closeErr != nil {
+			t.Fatalf("close agent runtime: %v", closeErr)
+		}
+	})
+
+	cfg := config.Config{
+		LLMConfig: config.LLMConfig{
+			LLMProviders: map[string]config.LLMProviderSettings{
+				"codex": {Kind: "openai-codex", AuthMode: "oauth"},
+			},
+			LLMTiers: map[string]config.LLMTierBinding{
+				"deep": {Provider: "codex", Model: "gpt-5.5"},
+			},
+			LLMDefaultTier: "deep",
+		},
+	}
+	h := newAgentRuntimeSubagentsAPIHandler(runtime, cfg, nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/subagents/researcher", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Name          string `json:"name"`
+		DefaultTier   string `json:"default_tier"`
+		EffectiveTier string `json:"effective_tier"`
+		TierMissing   bool   `json:"tier_missing"`
+		TierError     string `json:"tier_error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Name != "researcher" || payload.DefaultTier != "removed-tier" || payload.EffectiveTier != "removed-tier" {
+		t.Fatalf("unexpected detail payload: %+v", payload)
+	}
+	if !payload.TierMissing || !strings.Contains(payload.TierError, "removed-tier") {
+		t.Fatalf("expected missing tier diagnostic, got %+v", payload)
+	}
+}
+
+func TestAgentRuntimeSubagentsAPIHandler_PatchWorkspaceTierReloadsExecutor(t *testing.T) {
+	workspaceDir := t.TempDir()
+	agentDir := filepath.Join(workspaceDir, "agents", "researcher")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("mkdir agent dir: %v", err)
+	}
+	agentPath := filepath.Join(agentDir, "AGENT.md")
+	if err := os.WriteFile(agentPath, []byte("---\nname: researcher\ndescription: Research worker\ntier: light\n---\nResearch the codebase.\n"), 0o644); err != nil {
+		t.Fatalf("write agent: %v", err)
+	}
+
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspaceDir},
+		LLMConfig: config.LLMConfig{
+			LLMProviders: map[string]config.LLMProviderSettings{
+				"codex": {Kind: "openai-codex", AuthMode: "oauth"},
+			},
+			LLMTiers: map[string]config.LLMTierBinding{
+				"deep":  {Provider: "codex", Model: "gpt-5.5"},
+				"light": {Provider: "codex", Model: "gpt-5.4"},
+			},
+			LLMDefaultTier: "light",
+		},
+		AgentRuntimeConfig: config.AgentRuntimeConfig{
+			AgentRuntimeDefaultAgent: "researcher",
+		},
+	}
+	store := session.NewStore(filepath.Join(workspaceDir, "sessions"))
+	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
+		return "ok", nil
+	}
+	executors := buildAgentRuntimeExecutors(cfg, runPrompt, zerolog.New(io.Discard))
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors:    executors,
+		DefaultAgent: "researcher",
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if closeErr := runtime.Close(ctx); closeErr != nil {
+			t.Fatalf("close agent runtime: %v", closeErr)
+		}
+	})
+
+	reloaded := 0
+	h := newAgentRuntimeSubagentsAPIHandler(runtime, cfg, func() {
+		reloaded++
+		runtime.SetExecutors(buildAgentRuntimeExecutors(cfg, runPrompt, zerolog.New(io.Discard)), cfg.AgentRuntimeDefaultAgent)
+	})
+
+	body := bytes.NewBufferString(`{"default_tier":"deep"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/v1/agentruntime/subagents/researcher", body)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if reloaded != 1 {
+		t.Fatalf("expected one executor reload, got %d", reloaded)
+	}
+
+	var payload struct {
+		Name          string `json:"name"`
+		DefaultTier   string `json:"default_tier"`
+		EffectiveTier string `json:"effective_tier"`
+		TierEditable  bool   `json:"tier_editable"`
+		ResolvedModel string `json:"resolved_model"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Name != "researcher" || payload.DefaultTier != "deep" || payload.EffectiveTier != "deep" || !payload.TierEditable || payload.ResolvedModel != "gpt-5.5" {
+		t.Fatalf("unexpected patch payload: %+v", payload)
+	}
+	raw, err := os.ReadFile(agentPath)
+	if err != nil {
+		t.Fatalf("read updated agent: %v", err)
+	}
+	if !strings.Contains(string(raw), "tier: deep") {
+		t.Fatalf("expected AGENT.md tier update, got:\n%s", string(raw))
+	}
+
+	if info, ok := runtime.LookupAgent("researcher"); !ok || info.Tier != "deep" {
+		t.Fatalf("expected runtime executor tier deep after reload, ok=%t info=%+v", ok, info)
+	}
+}
+
+func TestAgentRuntimeSubagentsAPIHandler_PatchRejectsUnknownTier(t *testing.T) {
+	workspaceDir := t.TempDir()
+	agentDir := filepath.Join(workspaceDir, "agents", "researcher")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("mkdir agent dir: %v", err)
+	}
+	agentPath := filepath.Join(agentDir, "AGENT.md")
+	if err := os.WriteFile(agentPath, []byte("---\nname: researcher\ntier: light\n---\nResearch the codebase.\n"), 0o644); err != nil {
+		t.Fatalf("write agent: %v", err)
+	}
+
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspaceDir},
+		LLMConfig: config.LLMConfig{
+			LLMProviders: map[string]config.LLMProviderSettings{
+				"codex": {Kind: "openai-codex", AuthMode: "oauth"},
+			},
+			LLMTiers: map[string]config.LLMTierBinding{
+				"light": {Provider: "codex", Model: "gpt-5.4"},
+			},
+			LLMDefaultTier: "light",
+		},
+	}
+	store := session.NewStore(filepath.Join(workspaceDir, "sessions"))
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors: buildAgentRuntimeExecutors(cfg, func(_ context.Context, _ string, _ string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
+			return "ok", nil
+		}, zerolog.New(io.Discard)),
+		DefaultAgent: "researcher",
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if closeErr := runtime.Close(ctx); closeErr != nil {
+			t.Fatalf("close agent runtime: %v", closeErr)
+		}
+	})
+
+	h := newAgentRuntimeSubagentsAPIHandler(runtime, cfg, nil)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/v1/agentruntime/subagents/researcher", bytes.NewBufferString(`{"default_tier":"missing"}`))
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	raw, err := os.ReadFile(agentPath)
+	if err != nil {
+		t.Fatalf("read agent: %v", err)
+	}
+	if strings.Contains(string(raw), "tier: missing") {
+		t.Fatalf("unexpected invalid tier write:\n%s", string(raw))
+	}
+}
+
 func TestAgentRunsAPIHandler_Spawn(t *testing.T) {
 	runtime := newTestAgentRuntime(t)
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
