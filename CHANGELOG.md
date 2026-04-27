@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.17] - 2026-04-27
+
+### Added
+
+- Agent Runtime page onboarding card explaining that the page records subagent work launched from chat, including the prompt, model tier, status, response, live events, and consensus cost data when available.
+- Agent Runtime empty state guide with starter chat prompts for `subagents_run` / `subagents_orchestrate` / `subagents_plan` workflows plus a direct "Open Chat" action.
+
+### Tests
+
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `make build`
+- `make test`
+- Browser verification: Playwright opened `/console/agentruntime` on a local TARS server, confirmed the onboarding/empty-state text on desktop and mobile widths, and verified no horizontal overflow at 390px.
+
+### Closed
+
+- Closes #419.
+
 ## [0.31.16] - 2026-04-27
 
 ### Fixed
