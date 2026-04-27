@@ -23,6 +23,12 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	if strings.TrimSpace(cfg.WorkspaceDir) == "" {
 		cfg.WorkspaceDir = defaults.WorkspaceDir
 	}
+	cfg.PlanClarifyMode = strings.TrimSpace(strings.ToLower(cfg.PlanClarifyMode))
+	switch cfg.PlanClarifyMode {
+	case PlanClarifyModeSmart, PlanClarifyModeAuto, PlanClarifyModeAsk:
+	default:
+		cfg.PlanClarifyMode = defaults.PlanClarifyMode
+	}
 	cfg.APIAuthMode = strings.TrimSpace(strings.ToLower(cfg.APIAuthMode))
 	switch cfg.APIAuthMode {
 	case "off", "external-required", "required":

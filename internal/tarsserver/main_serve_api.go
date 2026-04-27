@@ -369,6 +369,7 @@ func buildAPIMux(
 		semanticMemoryConfigFromConfig(cfg),
 		cfg.APIMaxInflightChat,
 		deps.usageTracker,
+		cfg.PlanClarifyMode,
 	)
 	chatTooling.OpsManager = opsManager
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {

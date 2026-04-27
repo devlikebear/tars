@@ -33,6 +33,7 @@ func buildChatToolingOptions(
 	memorySemanticConfig memory.SemanticConfig,
 	apiMaxInflightChat int,
 	usageTracker *usage.Tracker,
+	planClarifyMode string,
 ) chatToolingOptions {
 	var extensionManager *extensions.Manager
 	extensionManager = manager
@@ -47,6 +48,7 @@ func buildChatToolingOptions(
 		APIMaxInflightChat:     apiMaxInflightChat,
 		UsageTracker:           usageTracker,
 		Compaction:             compaction,
+		PlanClarifyMode:        strings.TrimSpace(strings.ToLower(planClarifyMode)),
 	}
 }
 

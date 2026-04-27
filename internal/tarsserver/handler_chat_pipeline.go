@@ -160,6 +160,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		state.sessionID,
 		deps.tooling.MemorySemanticConfig,
 		deps.tooling.MemoryCache,
+		deps.tooling.PlanClarifyMode,
 	)
 
 	stream.done(chatResp.Usage)

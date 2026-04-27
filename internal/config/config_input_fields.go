@@ -14,6 +14,7 @@ type configInputField struct {
 
 var configInputFields = []configInputField{
 	stringField("workspace_dir", []string{"TARS_WORKSPACE_DIR"}, func(cfg *Config) *string { return &cfg.WorkspaceDir }, identityString),
+	stringField("plan_clarify_mode", []string{"PLAN_CLARIFY_MODE", "TARS_PLAN_CLARIFY_MODE"}, func(cfg *Config) *string { return &cfg.PlanClarifyMode }, lowerTrimmedString),
 	stringField("session_default_id", []string{"SESSION_DEFAULT_ID", "TARS_SESSION_DEFAULT_ID"}, func(cfg *Config) *string { return &cfg.SessionDefaultID }, strings.TrimSpace),
 	stringField("session_telegram_scope", []string{"SESSION_TELEGRAM_SCOPE", "TARS_SESSION_TELEGRAM_SCOPE"}, func(cfg *Config) *string { return &cfg.SessionTelegramScope }, lowerTrimmedString),
 	stringField("log_level", []string{"LOG_LEVEL", "TARS_LOG_LEVEL"}, func(cfg *Config) *string { return &cfg.LogLevel }, lowerTrimmedString),

@@ -6,6 +6,24 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.15] - 2026-04-27
+
+### Added
+
+- `runtime.plan_clarify_mode` config (env: `TARS_PLAN_CLARIFY_MODE`, schema dropdown in Settings → Runtime). Three values:
+  - `smart` (default) — LLM evaluates ambiguity itself: asks 1–3 clarifying questions when scope/success/constraints are unclear, drafts immediately when clear.
+  - `auto` — never ask, always draft immediately.
+  - `ask` — always front-load 1–3 clarifying questions before drafting.
+- The Planning section in the system prompt now branches on the mode. Unknown / empty values fall back to `smart` so a typo can't silently flip planning into the noisier `ask` stance. The downstream propose/approve guidance (CON-053) and runtime intervention vocabulary (CON-054) remain identical across all three modes.
+
+### Tests
+
+- `TestBuild_PlanningSectionClarifyModes` — locks the per-mode prompt content and verifies unknown values fall back to smart.
+
+### Closed
+
+- Closes #455.
+
 ## [0.31.14] - 2026-04-27
 
 ### Added

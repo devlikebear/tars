@@ -163,6 +163,73 @@ func TestBuild_PlanningSectionAbsentForSubAgent(t *testing.T) {
 	}
 }
 
+// TestBuild_PlanningSectionClarifyModes locks the user-visible behavior
+// of CON-052: each mode value must produce a Planning section that
+// matches the documented stance, and unknown / empty values fall back to
+// "smart" so a typo can't silently flip planning into "always ask".
+func TestBuild_PlanningSectionClarifyModes(t *testing.T) {
+	root := t.TempDir()
+	cases := []struct {
+		mode     string
+		mustHave []string
+		mustMiss []string
+		desc     string
+	}{
+		{
+			mode:     "smart",
+			mustHave: []string{"evaluate ambiguity", "If clear → draft immediately"},
+			mustMiss: []string{"draft a plan immediately — do not ask", "ALWAYS ask 1–3 clarifying questions FIRST"},
+			desc:     "smart",
+		},
+		{
+			mode:     "auto",
+			mustHave: []string{"draft a plan immediately — do not ask"},
+			mustMiss: []string{"evaluate ambiguity", "ALWAYS ask 1–3"},
+			desc:     "auto",
+		},
+		{
+			mode:     "ask",
+			mustHave: []string{"ALWAYS ask 1–3 clarifying questions FIRST"},
+			mustMiss: []string{"evaluate ambiguity", "draft a plan immediately — do not ask"},
+			desc:     "ask",
+		},
+		{
+			// Unknown / empty modes must fall back to smart — never silently
+			// flip into the noisier "ask" or the more aggressive "auto".
+			mode:     "garbage",
+			mustHave: []string{"evaluate ambiguity"},
+			mustMiss: []string{"draft a plan immediately — do not ask", "ALWAYS ask 1–3"},
+			desc:     "unknown→smart",
+		},
+		{
+			mode:     "",
+			mustHave: []string{"evaluate ambiguity"},
+			mustMiss: []string{"draft a plan immediately — do not ask", "ALWAYS ask 1–3"},
+			desc:     "empty→smart",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			result := Build(BuildOptions{WorkspaceDir: root, PlanClarifyMode: tc.mode})
+			for _, want := range tc.mustHave {
+				if !strings.Contains(result, want) {
+					t.Errorf("mode %q: expected prompt to contain %q", tc.mode, want)
+				}
+			}
+			for _, miss := range tc.mustMiss {
+				if strings.Contains(result, miss) {
+					t.Errorf("mode %q: expected prompt to NOT contain %q", tc.mode, miss)
+				}
+			}
+			// Every mode still leads into the same propose/approve guidance.
+			if !strings.Contains(result, "tasks(action=\"plan_propose\"") {
+				t.Errorf("mode %q: expected propose/approve guidance regardless of clarify stance", tc.mode)
+			}
+		})
+	}
+}
+
 func TestBuild_PlanningSectionWithinBudget(t *testing.T) {
 	// Default budgets must absorb the new Planning section without truncating
 	// the workspace bootstrap content. This guards against a future PR
@@ -204,17 +271,24 @@ func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 		}
 	}
 
+	// Floor must stay above the hardcoded header (Current time + Response
+	// Formatting + Planning). The Planning section grew with CON-052 +
+	// CON-053 + CON-054 to ~340 tokens, so the older 460-token cap no
+	// longer leaves room for any workspace bootstrap content. 700 keeps
+	// the prioritization assertion meaningful (USER fits, IDENTITY/TOOLS
+	// get clamped) without the test doubling as an upper-bound on the
+	// header itself.
 	result := BuildResultFor(BuildOptions{
 		WorkspaceDir:       root,
-		StaticBudgetTokens: 460,
-		TotalBudgetTokens:  460,
+		StaticBudgetTokens: 700,
+		TotalBudgetTokens:  700,
 	})
 
 	if !strings.Contains(result.Prompt, files["USER.md"][:120]) {
 		t.Fatalf("expected user section to survive tight budget, got %q", result.Prompt)
 	}
-	if result.TotalTokens > 460 {
-		t.Fatalf("expected total tokens <= 460, got %d", result.TotalTokens)
+	if result.TotalTokens > 700 {
+		t.Fatalf("expected total tokens <= 700, got %d", result.TotalTokens)
 	}
 }
 
