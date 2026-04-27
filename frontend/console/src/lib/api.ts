@@ -232,6 +232,20 @@ export async function getSessionTasks(sessionId: string): Promise<SessionTasks> 
   return normalizeSessionTasks(data)
 }
 
+// executeTasksAction drives the plan state machine directly from the
+// console — used by the TasksPanel CTA buttons (Approve / Discard / Save
+// edits). The body shape mirrors the chat-side `tasks` tool action.
+export async function executeTasksAction(
+  sessionId: string,
+  payload: Record<string, unknown>,
+): Promise<unknown> {
+  return requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function getSessionWorkDirs(sessionId: string): Promise<SessionWorkDirs> {
   return requestJSON<SessionWorkDirs>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/workdirs`)
 }

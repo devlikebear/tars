@@ -1,6 +1,8 @@
 package tarsserver
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
@@ -447,15 +450,39 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 			}
 		case len(pathParts) == 2 && pathParts[1] == "tasks":
-			if !requireMethod(w, r, http.MethodGet) {
+			if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
 				return
 			}
-			tasks, err := reqStore.GetTasks(sessionID)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			if r.Method == http.MethodGet {
+				tasks, err := reqStore.GetTasks(sessionID)
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					return
+				}
+				writeJSON(w, http.StatusOK, tasks)
 				return
 			}
-			writeJSON(w, http.StatusOK, tasks)
+			// POST: invoke the tasks aggregator with arbitrary action+params
+			// so the console can drive the plan state machine without going
+			// through the LLM (e.g. user clicks Approve/Discard/Edit in the
+			// TasksPanel). Body shape mirrors the tool's own JSON contract:
+			// {"action":"plan_approve"} / {"action":"add","title":"..."} etc.
+			var raw json.RawMessage
+			if !decodeJSONBody(w, r, &raw) {
+				return
+			}
+			tasksTool := tool.NewTasksTool(reqStore, reqStore.WorkspaceDir(), func() string { return sessionID })
+			result, execErr := tasksTool.Execute(context.Background(), raw)
+			if execErr != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": execErr.Error()})
+				return
+			}
+			if result.IsError {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": strings.TrimSpace(result.Text())})
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(result.Text()))
 		case len(pathParts) == 2 && pathParts[1] == "workdirs":
 			if !requireMethod(w, r, http.MethodGet, http.MethodPut) {
 				return

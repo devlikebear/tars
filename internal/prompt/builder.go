@@ -65,11 +65,17 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 	// execute a single task and should not create their own plans.
 	if !opts.SubAgent {
 		b.WriteString("## Planning\n\n")
-		b.WriteString("For multi-step requests (3+ steps), call the `tasks` tool first:\n")
-		b.WriteString("1. tasks(action=\"plan_set\", goal=...) — record the user's goal\n")
-		b.WriteString("2. tasks(action=\"add\", title=...) — one entry per step\n")
-		b.WriteString("3. tasks(action=\"update\", id=..., status=\"in_progress\") — only ONE in_progress at a time\n")
-		b.WriteString("4. tasks(action=\"update\", id=..., status=\"completed\") — immediately on finish\n")
+		b.WriteString("For multi-step requests (3+ steps), use the `tasks` tool to draft a plan, **propose it**, and then execute after the user approves:\n\n")
+		b.WriteString("1. tasks(action=\"plan_set\", goal=...) — record the user's goal (status=drafting)\n")
+		b.WriteString("2. tasks(action=\"add\", title=...) — one entry per step (still drafting)\n")
+		b.WriteString("3. tasks(action=\"plan_propose\") — signal the plan is ready for the user to review (status=proposed)\n")
+		b.WriteString("4. **STOP and wait** — say \"Plan ready (N tasks). Reply 'go' to start, or describe changes.\" Do not start work yet.\n")
+		b.WriteString("5. After user types `go` (or equivalent), tasks(action=\"plan_approve\") then tasks(action=\"update\", id=..., status=\"in_progress\") — only ONE in_progress at a time\n")
+		b.WriteString("6. tasks(action=\"update\", id=..., status=\"completed\") — immediately on finish\n\n")
+		b.WriteString("Mid-execution intervention:\n")
+		b.WriteString("- If the user pauses, status flips to `paused` — stop and wait for instructions.\n")
+		b.WriteString("- If the user edits tasks (different titles/order/added/removed), call tasks(action=\"list\") to re-read the plan before continuing.\n")
+		b.WriteString("- If the user aborts, status flips to `aborted` — stop entirely.\n")
 		b.WriteString("\n")
 	}
 

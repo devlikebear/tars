@@ -6,6 +6,24 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.13] - 2026-04-27
+
+### Added
+
+- Propose/approve UI in the chat TasksPanel. When the LLM moves the plan to `proposed`, the panel surfaces a "Plan ready for review" banner with three CTAs: **✓ Approve & Run** (calls `plan_approve` and auto-sends `go` so the LLM picks the next turn), **✎ Edit Plan** (per-task title/description inputs, add/remove rows, save in one batch), and **✗ Discard** (confirm + `clear`). The plan card itself now shows a colored status badge (`drafting` / `proposed` / `executing` / `paused` / `completed` / `aborted`).
+- `POST /v1/admin/sessions/{id}/tasks` — drives the tasks aggregator from the console without going through the chat loop. Body shape mirrors the LLM-side tool call (`{"action":"plan_approve"}`, `{"action":"add","title":"…"}`, etc.). Backed by the same `NewTasksTool` instance the chat path uses, so state-machine guarantees (CON-051) hold uniformly across both surfaces.
+- `ChatPanel.sendMessageText(text)` — programmatic submit that lets sibling panels (TasksPanel) emit follow-up turns without forcing the user back to the composer.
+- Planning section in the system prompt expanded to teach the propose/approve flow (`plan_propose` → STOP → user `go` → `plan_approve`) and explain the runtime intervention vocabulary (`paused` / `aborted`).
+
+### Tests
+
+- `TestSessionAPI_TasksPOSTInvokesAggregator` — drives plan_set → propose → approve → invalid-transition rejection through the new endpoint.
+- Browser verification: open Tasks panel, click Approve & Run, observe the chat send `go` and the LLM resume work with task 1 marked in_progress.
+
+### Closed
+
+- Closes #456.
+
 ## [0.31.12] - 2026-04-27
 
 ### Changed

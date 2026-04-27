@@ -457,7 +457,12 @@
         {:else if rightPanel === 'prompt'}
           <PromptEditor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'tasks' && selectedSessionId}
-          <TasksPanel bind:this={tasksPanelRef} sessionId={selectedSessionId} onClose={() => rightPanel = 'none'} />
+          <TasksPanel
+            bind:this={tasksPanelRef}
+            sessionId={selectedSessionId}
+            onClose={() => rightPanel = 'none'}
+            onSendMessage={async (text) => { await chatPanelRef?.sendMessageText(text) }}
+          />
         {:else if rightPanel === 'cron' && selectedSessionId}
           <SessionCronPanel sessionId={selectedSessionId} sessionKind={selectedSession?.kind ?? ''} onClose={() => rightPanel = 'none'} />
         {/if}
