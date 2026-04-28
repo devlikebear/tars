@@ -419,11 +419,36 @@ export type ChatContextInfo = {
   used_tool_names?: string[]
   selected_skill_name?: string
   selected_skill_reason?: string
+  mentioned_path_count?: number
+  mentioned_paths?: string[]
   prompt_override: string
 }
 
 export async function getChatContext(sessionId: string): Promise<ChatContextInfo> {
   return requestJSON<ChatContextInfo>(`/v1/chat/context?session_id=${encodeURIComponent(sessionId)}`)
+}
+
+export type ChatFileMentionCandidate = {
+  kind: 'file' | 'directory'
+  name: string
+  path: string
+  root: string
+  root_label: string
+  token: string
+  size?: number
+  updated_at?: string
+}
+
+export async function listChatFileMentions(
+  sessionId: string | undefined,
+  query: string,
+  limit = 30,
+): Promise<{ candidates: ChatFileMentionCandidate[] }> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) })
+  if (sessionId?.trim()) params.set('session_id', sessionId.trim())
+  return requestJSON<{ candidates: ChatFileMentionCandidate[] }>(
+    `/v1/chat/mentions/files?${params}`,
+  )
 }
 
 export async function getSessionPrompt(sessionId: string): Promise<{ prompt_override: string }> {

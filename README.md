@@ -30,6 +30,7 @@ A single Go binary that runs on your machine and gives you: an interactive chat 
 The primary interface. Browser-based console at `http://127.0.0.1:43180/console`.
 
 - Multi-session chat with full LLM tool-calling loops
+- `@` file and directory mentions from the session Files roots for explicit context injection
 - Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
 - Editable memory assets and semantic recall through the console/API
 - Structured transcript compaction preserving identifiers and recent context
@@ -181,7 +182,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 
 | Page | Path | Purpose |
 |------|------|---------|
-| Chat | `/console` | Interactive agent chat with tool calling |
+| Chat | `/console` | Interactive agent chat with tool calling and `@` file/directory mentions |
 | Memory | `/console/memory` | Edit durable memory assets and test semantic search |
 | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md |
 | Ops | `/console/ops` | System health and cleanup operations |

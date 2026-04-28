@@ -1,8 +1,16 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
-  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents } from '../lib/api'
+  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions } from '../lib/api'
   import type { ChatAttachment, ChatEvent, SessionMessage } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
+  import {
+    applyMentionCandidate,
+    filterSelectedMentionsForMessage,
+    findActiveMentionTrigger,
+    type ActiveMentionTrigger,
+    type ChatMentionCandidate,
+    type SelectedChatMention,
+  } from '../lib/chatMentions'
   import MarkdownContent from './MarkdownContent.svelte'
 
   type ChatMessage = {
@@ -40,6 +48,8 @@
       used_tool_names?: string[]
       selected_skill_name?: string
       selected_skill_reason?: string
+      mentioned_path_count?: number
+      mentioned_paths?: string[]
     }) => void
     onToolComplete?: (toolName: string) => void
     onSessionReady?: (sessionId: string) => void
@@ -86,6 +96,8 @@
     used_tool_names?: string[]
     selected_skill_name?: string
     selected_skill_reason?: string
+    mentioned_path_count?: number
+    mentioned_paths?: string[]
   } = $state({})
 
   function publishContextInfo(next: typeof contextInfo) {
@@ -236,6 +248,8 @@
           used_tool_names: event.used_tool_names ?? contextInfo.used_tool_names ?? [],
           selected_skill_name: event.selected_skill_name ?? contextInfo.selected_skill_name,
           selected_skill_reason: event.selected_skill_reason ?? contextInfo.selected_skill_reason,
+          mentioned_path_count: event.mentioned_path_count ?? contextInfo.mentioned_path_count,
+          mentioned_paths: event.mentioned_paths ?? contextInfo.mentioned_paths,
         })
         break
       case 'compaction_applied':
@@ -290,6 +304,73 @@
     }
   }
 
+  let mentionOpen = $state(false)
+  let mentionLoading = $state(false)
+  let mentionCandidates: ChatMentionCandidate[] = $state([])
+  let mentionActiveIndex = $state(0)
+  let activeMentionTrigger: ActiveMentionTrigger | null = $state(null)
+  let selectedMentions: SelectedChatMention[] = $state([])
+  let mentionRequestSeq = 0
+  let activeSelectedMentions = $derived(filterSelectedMentionsForMessage(selectedMentions, chatInput))
+
+  function closeMentionMenu() {
+    mentionOpen = false
+    mentionLoading = false
+    mentionCandidates = []
+    mentionActiveIndex = 0
+    activeMentionTrigger = null
+  }
+
+  async function refreshMentionCandidates() {
+    const caret = textareaEl?.selectionStart ?? chatInput.length
+    const trigger = findActiveMentionTrigger(chatInput, caret)
+    activeMentionTrigger = trigger
+    if (!trigger) {
+      closeMentionMenu()
+      return
+    }
+
+    const seq = ++mentionRequestSeq
+    mentionOpen = true
+    mentionLoading = true
+    try {
+      const result = await listChatFileMentions(chatSessionId || sessionId, trigger.query, 30)
+      if (seq !== mentionRequestSeq) return
+      mentionCandidates = result.candidates
+      mentionActiveIndex = 0
+    } catch {
+      if (seq !== mentionRequestSeq) return
+      mentionCandidates = []
+    } finally {
+      if (seq === mentionRequestSeq) mentionLoading = false
+    }
+  }
+
+  function selectMention(candidate: ChatMentionCandidate) {
+    if (!activeMentionTrigger) return
+    const applied = applyMentionCandidate(chatInput, activeMentionTrigger, candidate)
+    chatInput = applied.value
+    selectedMentions = [
+      ...filterSelectedMentionsForMessage(selectedMentions, chatInput).filter((mention) =>
+        mention.kind !== applied.mention.kind ||
+        mention.root !== applied.mention.root ||
+        mention.path !== applied.mention.path,
+      ),
+      applied.mention,
+    ]
+    closeMentionMenu()
+    tick().then(() => {
+      textareaEl?.focus()
+      textareaEl?.setSelectionRange(applied.caret, applied.caret)
+    })
+  }
+
+  function removeSelectedMention(index: number) {
+    const active = filterSelectedMentionsForMessage(selectedMentions, chatInput)
+    active.splice(index, 1)
+    selectedMentions = active
+  }
+
   async function submitChat() {
     const message = chatInput.trim()
     if (!message || chatBusy) return
@@ -301,7 +382,10 @@
     publishContextInfo({})
 
     const currentFiles = [...attachedFiles]
+    const currentMentions = filterSelectedMentionsForMessage(selectedMentions, message)
     attachedFiles = []
+    selectedMentions = []
+    closeMentionMenu()
 
     const fileLabel = currentFiles.length > 0
       ? ` [${currentFiles.map((f) => f.name).join(', ')}]`
@@ -323,6 +407,11 @@
           message,
           session_id: chatSessionId || 'new',
           attachments: chatAttachments,
+          mentions: currentMentions.map((mention) => ({
+            kind: mention.kind,
+            root: mention.root,
+            path: mention.path,
+          })),
         },
         (event) => handleChatEvent(event, assistantId),
         ac.signal,
@@ -477,9 +566,45 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    if (mentionOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        mentionActiveIndex = Math.min(Math.max(0, mentionCandidates.length - 1), mentionActiveIndex + 1)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        mentionActiveIndex = Math.max(0, mentionActiveIndex - 1)
+        return
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && mentionCandidates[mentionActiveIndex]) {
+        e.preventDefault()
+        selectMention(mentionCandidates[mentionActiveIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeMentionMenu()
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault()
       void submitChat()
+    }
+  }
+
+  function handleChatInput() {
+    void refreshMentionCandidates()
+  }
+
+  function handleTextareaCursorChange() {
+    void refreshMentionCandidates()
+  }
+
+  function handleTextareaKeyup(e: KeyboardEvent) {
+    if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+      void refreshMentionCandidates()
     }
   }
 
@@ -670,6 +795,17 @@
       {/each}
     </div>
   {/if}
+  {#if activeSelectedMentions.length > 0}
+    <div class="chat-mentions">
+      {#each activeSelectedMentions as mention, i}
+        <button type="button" class="mention-chip" title={mention.root} onclick={() => removeSelectedMention(i)}>
+          <span class="mention-kind">{mention.kind === 'directory' ? 'DIR' : 'FILE'}</span>
+          <span class="mention-label">{mention.token}</span>
+          <span class="mention-remove">&times;</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
   <form class="chat-form" onsubmit={(e) => { e.preventDefault(); void submitChat() }}>
     <div class="chat-input-row">
       <div class="chat-toolbar">
@@ -688,14 +824,42 @@
           <span class="toolbar-icon">{'\ud83d\uddbc'}</span>
         </button>
       </div>
-      <textarea
-        bind:this={textareaEl}
-        bind:value={chatInput}
-        rows="2"
-        placeholder={sessionId ? 'Continue this session...' : 'Ask TARS anything... (paste images with Ctrl+V)'}
-        onkeydown={handleKeydown}
-        onpaste={handlePaste}
-      ></textarea>
+      <div class="chat-input-wrap">
+        <textarea
+          bind:this={textareaEl}
+          bind:value={chatInput}
+          rows="2"
+          placeholder={sessionId ? 'Continue this session...' : 'Ask TARS anything... (paste images with Ctrl+V)'}
+          oninput={handleChatInput}
+          onclick={handleTextareaCursorChange}
+          onkeyup={handleTextareaKeyup}
+          onkeydown={handleKeydown}
+          onpaste={handlePaste}
+        ></textarea>
+        {#if mentionOpen}
+          <div class="mention-menu">
+            {#if mentionLoading}
+              <div class="mention-empty">Loading...</div>
+            {:else if mentionCandidates.length === 0}
+              <div class="mention-empty">No matches</div>
+            {:else}
+              {#each mentionCandidates as candidate, i}
+                <button
+                  type="button"
+                  class:active={i === mentionActiveIndex}
+                  class="mention-option"
+                  onmousedown={(e) => e.preventDefault()}
+                  onclick={() => selectMention(candidate)}
+                >
+                  <span class="mention-option-kind">{candidate.kind === 'directory' ? 'DIR' : 'FILE'}</span>
+                  <span class="mention-option-main">{candidate.path}</span>
+                  <span class="mention-option-root">{candidate.root_label}</span>
+                </button>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </div>
     </div>
     <div class="chat-form-actions">
       {#if chatBusy}
@@ -956,6 +1120,46 @@
   .attachment-card:hover .attachment-remove { opacity: 1; }
   .attachment-remove:hover { color: var(--error); border-color: var(--error); }
 
+  .chat-mentions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
+
+  .mention-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 260px;
+    min-height: 26px;
+    padding: 3px 8px;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    border-radius: var(--radius-sm);
+    background: rgba(96, 165, 250, 0.08);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: var(--text-xs);
+  }
+
+  .mention-kind,
+  .mention-option-kind {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-ghost);
+  }
+
+  .mention-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+  }
+
+  .mention-remove {
+    color: var(--text-ghost);
+  }
+
   /* ── Form ───────────────────────────────────── */
   .chat-form {
     display: grid;
@@ -970,6 +1174,72 @@
 
   .chat-input-row textarea {
     flex: 1;
+  }
+
+  .chat-input-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .chat-input-wrap textarea {
+    width: 100%;
+  }
+
+  .mention-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 6px);
+    z-index: 20;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--surface-elevated);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .mention-option {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: 30px;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .mention-option:hover,
+  .mention-option.active {
+    background: rgba(224, 145, 69, 0.12);
+    color: var(--text-primary);
+  }
+
+  .mention-option-main {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .mention-option-root,
+  .mention-empty {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-ghost);
+  }
+
+  .mention-empty {
+    padding: 8px;
   }
 
   .chat-toolbar {

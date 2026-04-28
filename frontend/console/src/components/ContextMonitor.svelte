@@ -20,6 +20,8 @@
       used_tool_names?: string[]
       selected_skill_name?: string
       selected_skill_reason?: string
+      mentioned_path_count?: number
+      mentioned_paths?: string[]
     }
     refreshVersion?: number
     onClose?: () => void
@@ -60,6 +62,7 @@
   let usedTools = $derived(listOr(contextInfo?.used_tool_names, fullContext?.used_tool_names))
   let selectedSkillName = $derived(contextInfo?.selected_skill_name ?? fullContext?.selected_skill_name ?? '')
   let selectedSkillReason = $derived(contextInfo?.selected_skill_reason ?? fullContext?.selected_skill_reason ?? '')
+  let mentionedPaths = $derived(listOr(contextInfo?.mentioned_paths, fullContext?.mentioned_paths))
   let compactionTriggerTokens = $derived(contextInfo?.compaction_trigger_tokens ?? fullContext?.compaction_trigger_tokens ?? 0)
   let keepRecentTokens = $derived(contextInfo?.compaction_keep_recent_tokens ?? fullContext?.compaction_keep_recent_tokens ?? 0)
   let keepRecentFraction = $derived(contextInfo?.compaction_keep_recent_fraction ?? fullContext?.compaction_keep_recent_fraction ?? 0)
@@ -141,6 +144,17 @@
       <span class="section-title">Selected Skill</span>
       <div class="tool-chips">
         <span class="tool-chip">{selectedSkillName}{#if selectedSkillReason} · {selectedSkillReason}{/if}</span>
+      </div>
+    </div>
+  {/if}
+
+  {#if mentionedPaths.length > 0}
+    <div class="monitor-section">
+      <span class="section-title">Mentioned Context</span>
+      <div class="tool-chips">
+        {#each mentionedPaths as path}
+          <span class="tool-chip">{path}</span>
+        {/each}
       </div>
     </div>
   {/if}

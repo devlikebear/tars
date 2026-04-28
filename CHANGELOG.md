@@ -6,6 +6,36 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.23] - 2026-04-28
+
+### Added
+
+- Chat composer now supports `@` file and directory mentions sourced from the session Files roots.
+- Mention autocomplete resolves against the session current directory and registered Files paths, then injects selected file content or directory listings into the next LLM request.
+- Mentioned context is reported in the Context HUD for turn-level visibility.
+
+### Security
+
+- File mention resolution is revalidated server-side and rejects parent traversal, missing paths, and roots outside the session Files paths.
+
+### Tests
+
+- `go test ./internal/tarsserver -run 'TestChat(FileMention|APIInjects|APIRejects)'`
+- `go test ./internal/tarsserver`
+- `go test ./...`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make fmt`
+- `make vet`
+- `make test`
+- `make console-build`
+- `make build`
+- Browser verification: Playwright opened `/console/chat/<session>`, confirmed typing `@rea` shows the `README.md` autocomplete candidate from the session current Files root, selected it with Enter, and verified the composer shows an active `@README.md` mention chip.
+
+### Closed
+
+- Closes #468.
+
 ## [0.31.22] - 2026-04-28
 
 ### Added

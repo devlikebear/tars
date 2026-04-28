@@ -418,6 +418,8 @@ export type ChatEvent = {
   used_tool_names?: string[]
   selected_skill_name?: string
   selected_skill_reason?: string
+  mentioned_path_count?: number
+  mentioned_paths?: string[]
   // tasks_changed event fields (live count for chat pulse-bar Tasks badge)
   task_total?: number
   task_pending?: number
@@ -441,10 +443,17 @@ export type ChatAttachment = {
   data: string // base64
 }
 
+export type ChatFileMention = {
+  kind: 'file' | 'directory'
+  root: string
+  path: string
+}
+
 export type ChatRequest = {
   message: string
   session_id?: string
   attachments?: ChatAttachment[]
+  mentions?: ChatFileMention[]
 }
 
 export type MemoryAsset = {
