@@ -2,12 +2,18 @@
   import { onMount } from 'svelte'
   import { getConfig, getConfigSchema, saveConfig, patchConfigValues, resetWorkspace, restartServer } from '../lib/api'
   import {
+    buildLLMTiersFromDrafts,
     configValuesEqual,
+    extractLLMProviderAliases,
     formatConfigDisplayValue,
+    makeLLMTierDrafts,
     parseStructuredJSONEdit,
     prettyConfigJSON,
     stringifyConfigValue,
     type ConfigDisplaySummary,
+    type LLMTierDraft,
+    type LLMTierDraftErrors,
+    type LLMTierDraftField,
   } from '../lib/configStructured'
   import type { ConfigFieldMeta, ConfigSchema } from '../lib/types'
 
@@ -34,6 +40,11 @@
   let jsonEditorField: ConfigFieldMeta | null = $state(null)
   let jsonEditorText = $state('')
   let jsonEditorError = $state('')
+  let tierEditorField: ConfigFieldMeta | null = $state(null)
+  let tierDrafts: LLMTierDraft[] = $state([])
+  let tierEditorErrors: LLMTierDraftErrors = $state({})
+  let tierProviderOptions: string[] = $state([])
+  let tierDraftSeq = 0
 
   let hasDirtyFields = $derived(Object.keys(dirtyFields).length > 0)
 
@@ -164,7 +175,7 @@
         editValue = current !== undefined && current !== null ? String(current) : ''
       }
     } else if (field.type === 'json') {
-      openJSONEditor(field)
+      openStructuredEditor(field)
     } else {
       editValue = current !== undefined && current !== null ? String(current) : ''
     }
@@ -277,6 +288,7 @@
   function handleDiscardFields() {
     dirtyFields = {}
     closeJSONEditor()
+    closeTierEditor()
     success = ''
     error = ''
   }
@@ -343,6 +355,7 @@
     if (field.sensitive) return
     editingKey = null
     editValue = ''
+    closeTierEditor()
     jsonEditorField = field
     jsonEditorText = prettyConfigJSON(getDisplayValue(field))
     jsonEditorError = ''
@@ -375,6 +388,136 @@
     }
     dirtyFields = { ...dirtyFields }
     closeJSONEditor()
+  }
+
+  function openStructuredEditor(field: ConfigFieldMeta) {
+    if (field.key === 'llm_tiers') {
+      openTierEditor(field)
+      return
+    }
+    openJSONEditor(field)
+  }
+
+  function openTierEditor(field: ConfigFieldMeta) {
+    if (field.sensitive) return
+    editingKey = null
+    editValue = ''
+    closeJSONEditor()
+    tierProviderOptions = extractLLMProviderAliases(getValueByKey('llm_providers'))
+    const drafts = makeLLMTierDrafts(getDisplayValue(field))
+    tierDrafts = drafts.length > 0 ? drafts : [createTierDraft('standard')]
+    tierEditorField = field
+    tierEditorErrors = {}
+  }
+
+  function closeTierEditor() {
+    tierEditorField = null
+    tierDrafts = []
+    tierEditorErrors = {}
+    tierProviderOptions = []
+  }
+
+  function resetTierEditor() {
+    if (!tierEditorField) return
+    const drafts = makeLLMTierDrafts(values[tierEditorField.key])
+    tierDrafts = drafts.length > 0 ? drafts : [createTierDraft('standard')]
+    tierEditorErrors = {}
+  }
+
+  function addTierDraft() {
+    tierDrafts = [...tierDrafts, createTierDraft(nextTierName())]
+  }
+
+  function removeTierDraft(id: string) {
+    if (tierDrafts.length <= 1) return
+    tierDrafts = tierDrafts.filter((draft) => draft.id !== id)
+    const { [id]: _removed, ...remaining } = tierEditorErrors
+    tierEditorErrors = remaining
+  }
+
+  function updateTierDraft(id: string, field: LLMTierDraftField, value: string) {
+    tierDrafts = tierDrafts.map((draft) => draft.id === id ? { ...draft, [field]: value } : draft)
+    const rowErrors = tierEditorErrors[id]
+    if (!rowErrors?.[field]) return
+    const nextRowErrors = { ...rowErrors }
+    delete nextRowErrors[field]
+    const nextErrors = { ...tierEditorErrors }
+    if (Object.keys(nextRowErrors).length === 0) {
+      delete nextErrors[id]
+    } else {
+      nextErrors[id] = nextRowErrors
+    }
+    tierEditorErrors = nextErrors
+  }
+
+  function applyTierEditor() {
+    if (!tierEditorField) return
+    const result = buildLLMTiersFromDrafts(tierDrafts, tierProviderOptions)
+    if (!result.ok) {
+      tierEditorErrors = result.errors
+      return
+    }
+    const original = values[tierEditorField.key]
+    if (configValuesEqual(result.value, original)) {
+      delete dirtyFields[tierEditorField.key]
+    } else {
+      dirtyFields[tierEditorField.key] = result.value
+    }
+    dirtyFields = { ...dirtyFields }
+    closeTierEditor()
+  }
+
+  function createTierDraft(name: string): LLMTierDraft {
+    tierDraftSeq += 1
+    return {
+      id: `new-tier-${tierDraftSeq}`,
+      originalName: '',
+      name,
+      provider: tierProviderOptions[0] || '',
+      model: '',
+      reasoning_effort: '',
+      thinking_budget: '',
+      service_tier: '',
+    }
+  }
+
+  function nextTierName(): string {
+    const names = new Set(tierDrafts.map((draft) => draft.name.trim()).filter(Boolean))
+    let idx = tierDrafts.length + 1
+    let candidate = `tier${idx}`
+    while (names.has(candidate)) {
+      idx += 1
+      candidate = `tier${idx}`
+    }
+    return candidate
+  }
+
+  function getValueByKey(key: string): unknown {
+    return dirtyFields[key] !== undefined ? dirtyFields[key] : values[key]
+  }
+
+  function inputValue(event: Event): string {
+    const target = event.currentTarget
+    if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) return target.value
+    return ''
+  }
+
+  function tierError(id: string, field: LLMTierDraftField): string {
+    return tierEditorErrors[id]?.[field] || ''
+  }
+
+  function tierProviderChoices(current: string): string[] {
+    const choices = new Set(tierProviderOptions)
+    const value = current.trim()
+    if (value) choices.add(value)
+    return [...choices].sort()
+  }
+
+  function tierReasoningChoices(current: string): string[] {
+    const defaults = ['', 'minimal', 'low', 'medium', 'high']
+    const value = current.trim()
+    if (value && !defaults.includes(value)) return [...defaults, value]
+    return defaults
   }
 
   const sectionIcons: Record<string, string> = {
@@ -536,7 +679,7 @@
                           class:value-btn={field.type !== 'json'}
                           class:structured-value-btn={field.type === 'json'}
                           class:dirty={isDirty(field.key)}
-                          onclick={() => field.type === 'json' ? openJSONEditor(field) : startEdit(field)}
+                          onclick={() => field.type === 'json' ? openStructuredEditor(field) : startEdit(field)}
                           title="Click to edit"
                         >
                           {#if field.type === 'json'}
@@ -586,6 +729,110 @@
             <span class="badge badge-default">No changes</span>
           {/if}
           <span class="hint">Ctrl+S / Cmd+S to save</span>
+        </div>
+      </div>
+    {/if}
+
+    {#if tierEditorField}
+      <div class="modal-backdrop" role="presentation">
+        <div class="json-editor-modal tier-editor-modal" role="dialog" aria-modal="true" aria-labelledby="tier-editor-title">
+          <div class="json-editor-header">
+            <div>
+              <div id="tier-editor-title" class="json-editor-title">{tierEditorField.label}</div>
+              <div class="json-editor-path">{fieldPath(tierEditorField)}</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick={closeTierEditor}>Cancel</button>
+          </div>
+          {#if tierProviderOptions.length === 0}
+            <div class="message message-error">Configure llm.providers before assigning tier providers.</div>
+          {/if}
+          <div class="tier-editor-toolbar">
+            <button class="btn btn-ghost btn-sm" onclick={addTierDraft}>Add Tier</button>
+          </div>
+          <div class="tier-editor-list">
+            {#each tierDrafts as draft (draft.id)}
+              <div class="tier-row">
+                <label class="tier-field tier-field-name">
+                  <span>Tier</span>
+                  <input
+                    class:error={!!tierError(draft.id, 'name')}
+                    value={draft.name}
+                    oninput={(event) => updateTierDraft(draft.id, 'name', inputValue(event))}
+                  />
+                  {#if tierError(draft.id, 'name')}
+                    <small>{tierError(draft.id, 'name')}</small>
+                  {/if}
+                </label>
+                <label class="tier-field tier-field-provider">
+                  <span>Provider</span>
+                  <select
+                    class:error={!!tierError(draft.id, 'provider')}
+                    value={draft.provider}
+                    onchange={(event) => updateTierDraft(draft.id, 'provider', inputValue(event))}
+                  >
+                    <option value="">Select</option>
+                    {#each tierProviderChoices(draft.provider) as provider}
+                      <option value={provider}>{provider}</option>
+                    {/each}
+                  </select>
+                  {#if tierError(draft.id, 'provider')}
+                    <small>{tierError(draft.id, 'provider')}</small>
+                  {/if}
+                </label>
+                <label class="tier-field tier-field-model">
+                  <span>Model</span>
+                  <input
+                    class:error={!!tierError(draft.id, 'model')}
+                    value={draft.model}
+                    oninput={(event) => updateTierDraft(draft.id, 'model', inputValue(event))}
+                  />
+                  {#if tierError(draft.id, 'model')}
+                    <small>{tierError(draft.id, 'model')}</small>
+                  {/if}
+                </label>
+                <label class="tier-field tier-field-effort">
+                  <span>Effort</span>
+                  <select
+                    value={draft.reasoning_effort}
+                    onchange={(event) => updateTierDraft(draft.id, 'reasoning_effort', inputValue(event))}
+                  >
+                    {#each tierReasoningChoices(draft.reasoning_effort) as effort}
+                      <option value={effort}>{effort || 'default'}</option>
+                    {/each}
+                  </select>
+                </label>
+                <label class="tier-field tier-field-budget">
+                  <span>Budget</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    class:error={!!tierError(draft.id, 'thinking_budget')}
+                    value={draft.thinking_budget}
+                    oninput={(event) => updateTierDraft(draft.id, 'thinking_budget', inputValue(event))}
+                  />
+                  {#if tierError(draft.id, 'thinking_budget')}
+                    <small>{tierError(draft.id, 'thinking_budget')}</small>
+                  {/if}
+                </label>
+                <label class="tier-field tier-field-service">
+                  <span>Service Tier</span>
+                  <input
+                    value={draft.service_tier}
+                    oninput={(event) => updateTierDraft(draft.id, 'service_tier', inputValue(event))}
+                  />
+                </label>
+                <button class="btn btn-ghost btn-sm tier-remove" disabled={tierDrafts.length <= 1} onclick={() => removeTierDraft(draft.id)}>Remove</button>
+              </div>
+            {/each}
+          </div>
+          <div class="json-editor-footer">
+            <button class="btn btn-ghost btn-sm" onclick={resetTierEditor}>Reset</button>
+            <div class="json-editor-actions">
+              <button class="btn btn-ghost btn-sm" onclick={closeTierEditor}>Cancel</button>
+              <button class="btn btn-primary btn-sm" onclick={applyTierEditor}>Apply</button>
+            </div>
+          </div>
         </div>
       </div>
     {/if}
@@ -1109,6 +1356,119 @@
   .json-editor-actions {
     display: flex;
     gap: var(--space-2);
+  }
+
+  .tier-editor-modal {
+    width: min(1040px, calc(100vw - var(--nav-width) - 32px));
+  }
+  .tier-editor-toolbar {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .tier-editor-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-height: 0;
+    overflow: auto;
+    padding-right: 2px;
+  }
+  .tier-row {
+    display: grid;
+    grid-template-columns: minmax(90px, 1fr) minmax(120px, 1fr) minmax(180px, 1.4fr) minmax(110px, 0.9fr) minmax(96px, 0.8fr) minmax(130px, 1fr) auto;
+    gap: var(--space-2);
+    align-items: start;
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-base);
+  }
+  .tier-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .tier-field span {
+    font-family: var(--font-display);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-ghost);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .tier-field input,
+  .tier-field select {
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-primary);
+    padding: 0 var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+  .tier-field input:focus,
+  .tier-field select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.22);
+  }
+  .tier-field input.error,
+  .tier-field select.error {
+    border-color: var(--red);
+    box-shadow: 0 0 0 1px rgba(220, 60, 60, 0.25);
+  }
+  .tier-field small {
+    color: var(--red);
+    font-size: 10px;
+    line-height: 1.25;
+  }
+  .tier-remove {
+    align-self: end;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 960px) {
+    .tier-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .tier-field-model,
+    .tier-field-service {
+      grid-column: span 2;
+    }
+    .tier-remove {
+      justify-self: end;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .modal-backdrop {
+      left: 0;
+      padding: var(--space-2);
+    }
+    .json-editor-modal,
+    .tier-editor-modal {
+      width: calc(100vw - 16px);
+      max-height: calc(100vh - 16px);
+    }
+    .tier-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .tier-field-model,
+    .tier-field-service {
+      grid-column: auto;
+    }
+    .json-editor-header,
+    .json-editor-footer {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .json-editor-actions {
+      justify-content: flex-end;
+    }
   }
 
   /* ── Search bar ──────────────────────────── */

@@ -99,7 +99,7 @@ llm:
     agentruntime_planner: heavy
 ```
 
-Each system role (chat, pulse, reflection, compaction, agent runtime agents) maps to a tier. Background surfaces default to `light`, keeping costs low. `llm_role_agentruntime_planner` is now exercised by `subagents_plan`, and TARS logs the resolved `role`, `tier`, `provider`, `model`, and `source` for chat and agent runtime LLM calls so tier selection is traceable in runtime logs.
+Each system role (chat, pulse, reflection, compaction, agent runtime agents) maps to a tier. Background surfaces default to `light`, keeping costs low. `llm_role_agentruntime_planner` is now exercised by `subagents_plan`, and TARS logs the resolved `role`, `tier`, `provider`, `model`, and `source` for chat and agent runtime LLM calls so tier selection is traceable in runtime logs. The Console Settings page includes a typed `llm.tiers` editor for adding, renaming, editing, and removing tier bindings without hand-editing JSON.
 
 ### Background Surfaces
 
@@ -188,7 +188,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 | Pulse | `/console/pulse` | Watchdog status and run-now trigger |
 | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
 | Extensions | `/console/extensions` | Skills, plugins, MCP servers |
-| Config | `/console/config` | Workspace configuration with structured object/array editing |
+| Config | `/console/config` | Workspace configuration with structured object/array editing and typed LLM tier editing |
 
 ## Requirements
 

@@ -2,7 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildLLMTiersFromDrafts,
+  extractLLMProviderAliases,
   formatConfigDisplayValue,
+  makeLLMTierDrafts,
   parseStructuredJSONEdit,
   prettyConfigJSON,
 } from '../src/lib/configStructured.ts'
@@ -43,5 +46,52 @@ test('parseStructuredJSONEdit validates JSON before applying edits', () => {
   assert.equal(invalid.ok, false)
   if (!invalid.ok) {
     assert.match(invalid.error, /JSON/)
+  }
+})
+
+test('makeLLMTierDrafts converts tier bindings into editable rows', () => {
+  const drafts = makeLLMTierDrafts({
+    heavy: { provider: 'codex', model: 'gpt-5.5', reasoning_effort: 'high', thinking_budget: 1024, service_tier: 'priority' },
+    turbo: { provider: 'codex', model: 'gpt-5.4' },
+  })
+
+  assert.deepEqual(drafts.map((draft) => draft.name), ['heavy', 'turbo'])
+  assert.equal(drafts[0].thinking_budget, '1024')
+  assert.equal(drafts[0].service_tier, 'priority')
+  assert.equal(drafts[1].reasoning_effort, '')
+})
+
+test('extractLLMProviderAliases returns sorted provider keys', () => {
+  assert.deepEqual(extractLLMProviderAliases({
+    minimax: { kind: 'anthropic' },
+    codex: { kind: 'openai-codex' },
+  }), ['codex', 'minimax'])
+})
+
+test('buildLLMTiersFromDrafts validates and serializes tier rows', () => {
+  const invalid = buildLLMTiersFromDrafts([
+    { id: 'a', originalName: 'heavy', name: 'heavy', provider: 'codex', model: '', reasoning_effort: 'high', thinking_budget: '0', service_tier: '' },
+    { id: 'b', originalName: 'dupe', name: 'heavy', provider: 'missing', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: '-1', service_tier: '' },
+  ], ['codex'])
+
+  assert.equal(invalid.ok, false)
+  if (!invalid.ok) {
+    assert.match(invalid.errors.a.model, /required/)
+    assert.match(invalid.errors.b.name, /unique/)
+    assert.match(invalid.errors.b.provider, /configured provider/)
+    assert.match(invalid.errors.b.thinking_budget, /0 or greater/)
+  }
+
+  const valid = buildLLMTiersFromDrafts([
+    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: 'high', thinking_budget: '2048', service_tier: 'priority' },
+    { id: 'turbo', originalName: '', name: 'turbo', provider: 'codex', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: '', service_tier: '' },
+  ], ['codex'])
+
+  assert.equal(valid.ok, true)
+  if (valid.ok) {
+    assert.deepEqual(valid.value, {
+      heavy: { provider: 'codex', model: 'gpt-5.5', reasoning_effort: 'high', thinking_budget: 2048, service_tier: 'priority' },
+      turbo: { provider: 'codex', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: 0, service_tier: '' },
+    })
   }
 })
