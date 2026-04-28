@@ -6,6 +6,34 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.24] - 2026-04-28
+
+### Added
+
+- Files > Workspace now includes a Terminal action that opens the macOS Terminal app at the current session work directory or browsed subdirectory.
+- `/v1/terminal/open` launches an external terminal for a session after resolving the requested cwd against the session's registered Files roots.
+
+### Security
+
+- Terminal launch requests require admin access and reject paths outside the session work directories, missing directories, files, and relative traversal outside the selected root.
+
+### Tests
+
+- `go test ./internal/tarsserver -run 'TestTerminalAPI|TestRegisterAPIRoutes_RegistersCoreRoutes'`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make fmt`
+- `make vet`
+- `make test`
+- `make console-build`
+- `make build`
+- `make security-scan`
+- Browser verification: Playwright opened `/console/chat/<session>`, confirmed Files > Workspace shows an enabled Terminal action for the selected session workdir, clicked it, verified `/v1/terminal/open` returned 200, and checked zero browser console warnings.
+
+### Closed
+
+- Closes #482.
+
 ## [0.31.23] - 2026-04-28
 
 ### Added

@@ -309,6 +309,21 @@ export async function updateSessionWorkDirs(sessionId: string, data: { work_dirs
   })
 }
 
+export type OpenTerminalResult = {
+  ok: boolean
+  cwd: string
+  app: string
+  message?: string
+}
+
+export async function openTerminalHere(sessionId: string, cwd?: string): Promise<OpenTerminalResult> {
+  return requestJSON<OpenTerminalResult>('/v1/terminal/open', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, cwd: cwd || '' }),
+  })
+}
+
 export async function listMemoryAssets(): Promise<{ count: number; items: MemoryAsset[] }> {
   return requestJSON<{ count: number; items: MemoryAsset[] }>('/v1/memory/assets')
 }

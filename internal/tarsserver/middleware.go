@@ -40,6 +40,7 @@ func apiAdminPaths() []string {
 		"/v1/runtime/extensions/reload",
 		"/v1/agentruntime/reload",
 		"/v1/agentruntime/restart",
+		"/v1/terminal/*",
 		"/v1/channels/webhook/inbound/*",
 		"/v1/channels/telegram/webhook/*",
 		"/v1/channels/telegram/pairings*",
