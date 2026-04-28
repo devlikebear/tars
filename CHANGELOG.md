@@ -6,6 +6,30 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.21] - 2026-04-28
+
+### Added
+
+- Settings now opens `llm.tiers` in a typed tier editor instead of the generic JSON editor.
+- The typed tier editor can add, rename, edit, and remove custom tier bindings with separate controls for provider, model, reasoning effort, thinking budget, and service tier.
+- Tier provider choices are populated from configured `llm.providers`, and invalid tier rows show inline errors before changes can be staged or saved.
+
+### Tests
+
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make fmt`
+- `make vet`
+- `make test`
+- `make console-build`
+- `make build`
+- `make security-scan`
+- Browser verification: Playwright opened `/console/config`, confirmed `llm.tiers` uses the typed editor, verified missing model validation stays inline, added a `turbo` tier, changed `heavy` to `gpt-5.5`, removed `light`, saved via Settings, confirmed the refreshed schema API and config file include the saved tiers, checked zero browser console warnings, and verified no horizontal overflow at 390px mobile width.
+
+### Closed
+
+- Closes #475.
+
 ## [0.31.20] - 2026-04-28
 
 ### Fixed
