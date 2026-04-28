@@ -324,6 +324,17 @@ export async function openTerminalHere(sessionId: string, cwd?: string): Promise
   })
 }
 
+export function terminalWebSocketURL(sessionId: string, cwd?: string, cols = 80, rows = 24): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const params = new URLSearchParams({
+    session_id: sessionId,
+    cols: String(cols),
+    rows: String(rows),
+  })
+  if (cwd) params.set('cwd', cwd)
+  return `${protocol}//${window.location.host}/v1/terminal/ws?${params}`
+}
+
 export async function listMemoryAssets(): Promise<{ count: number; items: MemoryAsset[] }> {
   return requestJSON<{ count: number; items: MemoryAsset[] }>('/v1/memory/assets')
 }

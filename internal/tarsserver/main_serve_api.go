@@ -729,6 +729,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/workspace/files", handlers.workspaceFiles)
 	mux.Handle("/v1/workspace/files/", handlers.workspaceFiles)
 	mux.Handle("/v1/terminal/open", handlers.terminal)
+	mux.Handle("/v1/terminal/ws", handlers.terminal)
 }
 
 func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zerolog.Logger) error {

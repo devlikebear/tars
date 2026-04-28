@@ -8,11 +8,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 )
 
@@ -60,6 +62,56 @@ func TestApplyAPIMiddleware_AllowsExternalWithTokenAndBindsDefaultWorkspace(t *t
 	}
 	if got := strings.TrimSpace(rec.Body.String()); got != defaultWorkspaceID {
 		t.Fatalf("expected workspace id %q, got %q", defaultWorkspaceID, got)
+	}
+}
+
+func TestRequestDebugMiddlewareSupportsWebSocketHijack(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	handlerErr := make(chan error, 1)
+	handler := requestDebugMiddleware(zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			handlerErr <- err
+			return
+		}
+		defer conn.Close()
+
+		var msg map[string]string
+		if err := conn.ReadJSON(&msg); err != nil {
+			handlerErr <- err
+			return
+		}
+		if err := conn.WriteJSON(map[string]string{"echo": msg["input"]}); err != nil {
+			handlerErr <- err
+			return
+		}
+		handlerErr <- nil
+	}))
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatalf("dial websocket through requestDebugMiddleware: %v", err)
+	}
+	defer conn.Close()
+	if err := conn.WriteJSON(map[string]string{"input": "ping"}); err != nil {
+		t.Fatalf("write websocket message: %v", err)
+	}
+	var response map[string]string
+	if err := conn.ReadJSON(&response); err != nil {
+		t.Fatalf("read websocket message: %v", err)
+	}
+	if got := response["echo"]; got != "ping" {
+		t.Fatalf("expected echo ping, got %q", got)
+	}
+	select {
+	case err := <-handlerErr:
+		if err != nil {
+			t.Fatalf("handler returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for websocket handler")
 	}
 }
 
