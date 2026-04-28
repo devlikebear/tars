@@ -122,6 +122,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/filesystem/browse",
 		"/v1/workspace/files",
 		"/v1/terminal/open",
+		"/v1/terminal/ws",
 	}
 	for _, path := range paths {
 		rec := httptest.NewRecorder()

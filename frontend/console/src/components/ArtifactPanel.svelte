@@ -5,6 +5,7 @@
   import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, openTerminalHere, browseFilesystem, createFilesystemDirectory, createWorkspaceDirectory, renameWorkspaceDirectory, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
   import { renderHighlightedCodeBlock } from '../lib/markdown'
   import type { SessionWorkDirs } from '../lib/types'
+  import IntegratedTerminal from './IntegratedTerminal.svelte'
   import MarkdownContent from './MarkdownContent.svelte'
 
   interface Props {
@@ -45,6 +46,8 @@
   let terminalBusy = $state(false)
   let terminalStatus = $state('')
   let terminalError = $state('')
+  let integratedTerminalOpen = $state(false)
+  let integratedTerminalKey = $state('')
 
   // File preview state
   let previewFile: WorkspaceFileContent | null = $state(null)
@@ -71,6 +74,7 @@
 
   async function switchDir(dir: string) {
     if (!sessionId) return
+    integratedTerminalOpen = false
     await updateSessionWorkDirs(sessionId, { ...workDirs, current_dir: dir })
     workDirs.current_dir = dir
     currentPath = '.'
@@ -80,6 +84,7 @@
   async function removeDir(dir: string) {
     if (!sessionId) return
     if (dir === mandatoryWorkDir) return
+    integratedTerminalOpen = false
     const dirs = workDirs.work_dirs.filter(d => d !== dir)
     const cd = dir === workDirs.current_dir ? (dirs[0] || '') : workDirs.current_dir
     await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: cd })
@@ -167,6 +172,7 @@
   }
 
   async function browseDir(path: string) {
+    integratedTerminalOpen = false
     wsLoading = true
     wsError = ''
     terminalError = ''
@@ -258,6 +264,18 @@
     } finally {
       terminalBusy = false
     }
+  }
+
+  function openIntegratedTerminal() {
+    if (!sessionId) return
+    terminalError = ''
+    terminalStatus = ''
+    integratedTerminalKey = `${sessionId}:${effectiveRoot || ''}:${currentPath}:${Date.now()}`
+    integratedTerminalOpen = true
+  }
+
+  function closeIntegratedTerminal() {
+    integratedTerminalOpen = false
   }
 
   async function openFile(path: string, rootOverride?: string) {
@@ -377,6 +395,10 @@
     const root = effectiveRoot ? workDirLabel(effectiveRoot) : defaultWorkDirLabel()
     if (currentPath === '.') return root
     return `${root}/${currentPath}`
+  }
+
+  function terminalCWDPath(): string {
+    return currentPath === '.' ? '' : currentPath
   }
 
   const codeExtensions = new Set([
@@ -670,11 +692,18 @@
           <button type="button" class="btn btn-ghost btn-sm" disabled={wsLoading || wsActionBusy} onclick={beginCreateFolder}>New Folder</button>
           <button
             type="button"
+            class="btn btn-primary btn-sm"
+            disabled={wsLoading || wsActionBusy || !sessionId}
+            title={`Open integrated terminal at ${terminalTargetLabel()}`}
+            onclick={openIntegratedTerminal}
+          >Shell</button>
+          <button
+            type="button"
             class="btn btn-ghost btn-sm"
             disabled={wsLoading || wsActionBusy || terminalBusy || !sessionId}
-            title={`Open Terminal at ${terminalTargetLabel()}`}
+            title={`Open macOS Terminal at ${terminalTargetLabel()}`}
             onclick={openTerminalAtCurrentPath}
-          >{terminalBusy ? 'Opening...' : 'Terminal'}</button>
+          >{terminalBusy ? 'Opening...' : 'Open App'}</button>
         </div>
       {/if}
     </div>
@@ -688,6 +717,16 @@
       <div class="ws-inline-success">{terminalStatus}</div>
     {/if}
 
+    {#if integratedTerminalOpen}
+      {#key integratedTerminalKey}
+        <IntegratedTerminal
+          sessionId={sessionId}
+          cwd={terminalCWDPath()}
+          label={terminalTargetLabel()}
+          onClose={closeIntegratedTerminal}
+        />
+      {/key}
+    {:else}
     <div class="artifact-list">
       {#if wsLoading}
         <div class="artifact-empty">Loading...</div>
@@ -746,6 +785,7 @@
         {/each}
       {/if}
     </div>
+    {/if}
   {/if}
 </div>
 

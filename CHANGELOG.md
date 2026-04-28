@@ -6,6 +6,40 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.25] - 2026-04-28
+
+### Added
+
+- Files > Workspace now includes an embedded Shell view powered by xterm, WebSocket streaming, and a PTY-backed server process.
+- Integrated terminals start in the selected session work directory or browsed subdirectory and support keyboard input, command output, resizing, and explicit close.
+- The existing macOS external Terminal action remains available as an Open App fallback.
+
+### Security
+
+- Integrated terminal WebSocket requests require admin access and reuse the session Files root validation before any PTY process starts.
+- Requests outside session work directories, missing directories, files, and relative traversal outside the selected root are rejected.
+
+### Fixed
+
+- Request logging middleware now preserves HTTP hijacking so WebSocket upgrades can pass through the shared API middleware stack.
+
+### Tests
+
+- `go test ./internal/tarsserver -run 'TestRequestDebugMiddlewareSupportsWebSocketHijack|TestTerminalAPI_WebSocket|TestRegisterAPIRoutes_RegistersCoreRoutes'`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make fmt`
+- `make vet`
+- `make test`
+- `make console-build`
+- `make build`
+- `make security-scan`
+- Browser verification: Playwright opened `/console`, selected the main session, opened Files > Shell, verified terminal input/output by running `echo TARS_TERMINAL_OK` and `pwd`, and checked zero browser console errors or warnings.
+
+### Closed
+
+- Closes #484.
+
 ## [0.31.24] - 2026-04-28
 
 ### Added

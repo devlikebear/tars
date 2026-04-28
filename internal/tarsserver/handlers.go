@@ -1,7 +1,10 @@
 package tarsserver
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -59,6 +62,16 @@ func (r *statusRecorder) Flush() {
 	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
+}
+
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hijacker, ok := r.ResponseWriter.(http.Hijacker); ok {
+		if r.status == 0 {
+			r.status = http.StatusSwitchingProtocols
+		}
+		return hijacker.Hijack()
+	}
+	return nil, nil, errors.New("response writer does not support hijacking")
 }
 
 func requestDebugMiddleware(logger zerolog.Logger, next http.Handler) http.Handler {
