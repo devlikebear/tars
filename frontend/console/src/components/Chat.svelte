@@ -72,6 +72,8 @@
     used_tool_names?: string[]
     selected_skill_name?: string
     selected_skill_reason?: string
+    mentioned_path_count?: number
+    mentioned_paths?: string[]
   } = $state({})
   let contextRefreshVersion = $state(0)
   type RightPanel = 'none' | 'artifacts' | 'config' | 'context' | 'prompt' | 'tasks' | 'cron'

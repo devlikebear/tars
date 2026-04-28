@@ -749,6 +749,17 @@ func newChatAPIHandlerWithRuntimeConfig(
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active chat for session"})
 		}
 	})
+	mux.HandleFunc("/v1/chat/mentions/files", func(w http.ResponseWriter, r *http.Request) {
+		handleChatFileMentionCandidates(w, r, chatHandlerDeps{
+			workspaceDir:  workspaceDir,
+			store:         store,
+			client:        client,
+			router:        router,
+			logger:        logger,
+			tooling:       tooling,
+			mainSessionID: strings.TrimSpace(mainSessionID),
+		})
+	})
 	mux.HandleFunc("/v1/chat/tools", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeMethodNotAllowed(w)

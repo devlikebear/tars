@@ -45,9 +45,10 @@ type chatAttachment struct {
 }
 
 type chatRequestPayload struct {
-	SessionID   string           `json:"session_id"`
-	Message     string           `json:"message"`
-	Attachments []chatAttachment `json:"attachments,omitempty"`
+	SessionID   string                   `json:"session_id"`
+	Message     string                   `json:"message"`
+	Attachments []chatAttachment         `json:"attachments,omitempty"`
+	Mentions    []chatFileMentionRequest `json:"mentions,omitempty"`
 }
 
 func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerDeps) {
@@ -107,6 +108,8 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		"used_tool_names":                 []string{},
 		"selected_skill_name":             skillNameOrEmpty(state.invokedSkill),
 		"selected_skill_reason":           state.invokedSkillReason,
+		"mentioned_path_count":            len(state.mentionedPaths),
+		"mentioned_paths":                 state.mentionedPaths,
 	})
 	if state.compaction.Applied {
 		stream.compactionApplied(map[string]any{

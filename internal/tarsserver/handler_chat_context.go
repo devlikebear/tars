@@ -32,6 +32,7 @@ type chatRunState struct {
 	injectedSchemas      []llm.ToolSchema
 	blockedTools         map[string]tool.BlockedToolError
 	compaction           chatCompactionInfo
+	mentionedPaths       []string
 	relevantMemoryCount  int
 	relevantMemoryTokens int
 	llmClient            llm.Client
@@ -183,6 +184,12 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		deps.logger.Error().Err(err).Str("session_id", sessionID).Msg("auto compaction failed")
 		return chatRunState{}, http.StatusInternalServerError, "auto compaction failed", err
 	}
+	contentBlocks := attachmentsToContentBlocks(req.Attachments)
+	mentionBlocks, mentionedPaths, err := chatMentionsToContentBlocks(reqStore, requestWorkspaceDir, sessionID, req.Mentions)
+	if err != nil {
+		return chatRunState{}, http.StatusBadRequest, err.Error(), err
+	}
+	contentBlocks = append(contentBlocks, mentionBlocks...)
 	authRole := strings.TrimSpace(serverauth.RoleFromRequest(r))
 	state, err := buildSessionChatRunState(
 		requestWorkspaceDir,
@@ -190,7 +197,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		reqStore,
 		sessionID,
 		req.Message,
-		attachmentsToContentBlocks(req.Attachments),
+		contentBlocks,
 		authRole,
 		deps,
 	)
@@ -199,6 +206,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusInternalServerError, "prepare chat context failed", err
 	}
 	state.compaction = compactionInfo
+	state.mentionedPaths = mentionedPaths
 	if compactionInfo.Applied && strings.TrimSpace(compactionInfo.Mode) != "" {
 		if setErr := reqStore.SetLastCompactionMode(sessionID, compactionInfo.Mode); setErr != nil {
 			deps.logger.Warn().Err(setErr).Str("session_id", sessionID).Msg("persist last compaction mode failed")
