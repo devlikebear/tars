@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.19] - 2026-04-28
+
+### Added
+
+- Settings now summarizes object and array values with compact counts and key previews instead of rendering hard-to-read one-line JSON blobs.
+- Object and array config fields now open a focused JSON editor modal with pretty-printed content, reset/cancel/apply actions, and inline parse errors before changes are staged.
+- `/v1/admin/config/schema` now refreshes values from the config file after Settings saves, while preserving the runtime workspace override shown in the Console.
+
+### Tests
+
+- `TestConfigAPI_SchemaReflectsPatchedValues`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make fmt`
+- `make vet`
+- `make test`
+- `make build`
+- `make console-build`
+- `make security-scan`
+- Browser verification: Playwright opened `/console/config`, confirmed structured summaries for `llm.tiers`, verified invalid JSON stays in the editor with an inline parse error, saved a new `turbo` tier, confirmed the refreshed schema API and config file include the tier, checked no browser console warnings, and verified no horizontal overflow at 390px mobile width.
+
+### Closed
+
+- Closes #473.
+
 ## [0.31.18] - 2026-04-27
 
 ### Added

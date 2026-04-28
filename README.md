@@ -188,7 +188,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 | Pulse | `/console/pulse` | Watchdog status and run-now trigger |
 | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
 | Extensions | `/console/extensions` | Skills, plugins, MCP servers |
-| Config | `/console/config` | Workspace configuration |
+| Config | `/console/config` | Workspace configuration with structured object/array editing |
 
 ## Requirements
 
