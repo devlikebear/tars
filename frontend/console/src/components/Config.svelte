@@ -1044,17 +1044,20 @@
   /* ── JSON editor modal ───────────────────── */
   .modal-backdrop {
     position: fixed;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--nav-width);
     z-index: 30;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-5);
+    padding: var(--space-4);
     background: rgba(0, 0, 0, 0.62);
   }
   .json-editor-modal {
-    width: min(880px, calc(100vw - 32px));
-    max-height: calc(100vh - 48px);
+    width: min(880px, calc(100vw - var(--nav-width) - 32px));
+    max-height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
@@ -1063,6 +1066,7 @@
     background: var(--surface);
     box-shadow: var(--shadow-lg);
     padding: var(--space-4);
+    overflow: hidden;
   }
   .json-editor-header, .json-editor-footer {
     display: flex;
@@ -1083,7 +1087,7 @@
   }
   .json-editor-textarea {
     width: 100%;
-    min-height: min(520px, 58vh);
+    min-height: clamp(280px, 54vh, 520px);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     background: var(--surface-base);

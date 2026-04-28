@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.20] - 2026-04-28
+
+### Fixed
+
+- Settings JSON editor modals now center within the content area beside the fixed navigation instead of rendering underneath the sidebar.
+- The JSON editor now keeps consistent viewport margins and a bounded editor height on desktop and mobile.
+
+### Tests
+
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make fmt`
+- `make vet`
+- `make test`
+- `make console-build`
+- `make build`
+- `make security-scan`
+- Browser verification: Playwright opened `/console/config`, opened `llm.tiers`, confirmed the modal and backdrop clear the fixed sidebar on a 1175px desktop viewport, verified the modal fits within the viewport, confirmed no horizontal overflow at 390px mobile width, and checked zero browser console warnings.
+
+### Closed
+
+- Closes #477.
+
 ## [0.31.19] - 2026-04-28
 
 ### Added
