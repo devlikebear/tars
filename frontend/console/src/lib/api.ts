@@ -11,6 +11,9 @@ import type {
   AgentRuntimeRun,
   AgentRuntimeRunEvent,
   AgentRuntimeSubagent,
+  AgentRuntimeSubagentArchiveResponse,
+  AgentRuntimeSubagentDraft,
+  AgentRuntimeSubagentDraftResponse,
   AgentRuntimeSubagentsResponse,
   HubRegistry,
   MCPServerStatus,
@@ -202,6 +205,36 @@ export async function updateAgentRuntimeSubagentTier(name: string, defaultTier: 
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ default_tier: defaultTier }),
+	})
+}
+
+export async function draftAgentRuntimeSubagent(payload: {
+	mode: 'create' | 'edit'
+	request: string
+	base_name?: string
+	default_tier?: string
+	use_llm?: boolean
+}): Promise<AgentRuntimeSubagentDraftResponse> {
+	return requestJSON<AgentRuntimeSubagentDraftResponse>('/v1/agentruntime/subagents/builder/draft', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload),
+	})
+}
+
+export async function applyAgentRuntimeSubagentDraft(draft: AgentRuntimeSubagentDraft): Promise<AgentRuntimeSubagent> {
+	return requestJSON<AgentRuntimeSubagent>('/v1/agentruntime/subagents/builder/apply', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ draft }),
+	})
+}
+
+export async function archiveAgentRuntimeSubagent(name: string, confirm: boolean): Promise<AgentRuntimeSubagentArchiveResponse> {
+	return requestJSON<AgentRuntimeSubagentArchiveResponse>(`/v1/agentruntime/subagents/${encodeURIComponent(name)}/archive`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ confirm }),
 	})
 }
 
