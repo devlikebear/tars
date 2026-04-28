@@ -1,6 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { getConfig, getConfigSchema, saveConfig, patchConfigValues, resetWorkspace, restartServer } from '../lib/api'
+  import {
+    configValuesEqual,
+    formatConfigDisplayValue,
+    parseStructuredJSONEdit,
+    prettyConfigJSON,
+    stringifyConfigValue,
+    type ConfigDisplaySummary,
+  } from '../lib/configStructured'
   import type { ConfigFieldMeta, ConfigSchema } from '../lib/types'
 
   type ViewMode = 'form' | 'yaml'
@@ -23,6 +31,9 @@
   let editBool: boolean = $state(false)
   let fieldSaving = $state(false)
   let dirtyFields: Record<string, unknown> = $state({})
+  let jsonEditorField: ConfigFieldMeta | null = $state(null)
+  let jsonEditorText = $state('')
+  let jsonEditorError = $state('')
 
   let hasDirtyFields = $derived(Object.keys(dirtyFields).length > 0)
 
@@ -153,13 +164,7 @@
         editValue = current !== undefined && current !== null ? String(current) : ''
       }
     } else if (field.type === 'json') {
-      if (current === undefined || current === null || current === '') {
-        editValue = '{}'
-      } else if (typeof current === 'string') {
-        editValue = current
-      } else {
-        editValue = JSON.stringify(current, null, 2)
-      }
+      openJSONEditor(field)
     } else {
       editValue = current !== undefined && current !== null ? String(current) : ''
     }
@@ -181,12 +186,12 @@
         .map((item) => item.trim())
         .filter(Boolean)
     } else if (field.type === 'json') {
-      try {
-        parsed = JSON.parse(editValue.trim())
-      } catch {
-        cancelEdit()
+      const result = parseStructuredJSONEdit(editValue)
+      if (!result.ok) {
+        error = result.error
         return
       }
+      parsed = result.value
     } else if (field.type === 'int') {
       parsed = editValue.trim() === '' ? 0 : parseInt(editValue, 10)
       if (isNaN(parsed as number)) { cancelEdit(); return }
@@ -240,6 +245,10 @@
     return dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
   }
 
+  function structuredSummary(field: ConfigFieldMeta): ConfigDisplaySummary {
+    return formatConfigDisplayValue(getDisplayValue(field))
+  }
+
   function isDirty(key: string): boolean {
     return dirtyFields[key] !== undefined
   }
@@ -267,6 +276,7 @@
 
   function handleDiscardFields() {
     dirtyFields = {}
+    closeJSONEditor()
     success = ''
     error = ''
   }
@@ -320,28 +330,51 @@
   function formatValue(field: ConfigFieldMeta): string {
     const v = getDisplayValue(field)
     if (field.sensitive && typeof v === 'string' && v.includes('*')) return v
-    return stringifyConfigValue(v)
+    const summary = formatConfigDisplayValue(v)
+    if (field.type === 'json' || summary.kind === 'array' || summary.kind === 'object') return summary.text
+    return summary.raw
   }
 
   function fieldPath(field: ConfigFieldMeta): string {
     return field.path || field.key
   }
 
-  function stringifyConfigValue(value: unknown): string {
-    if (value === undefined || value === null || value === '') return '\u2014'
-    if (Array.isArray(value)) return value.map((item) => String(item)).join(', ')
-    if (typeof value === 'object') return JSON.stringify(value)
-    return String(value)
+  function openJSONEditor(field: ConfigFieldMeta) {
+    if (field.sensitive) return
+    editingKey = null
+    editValue = ''
+    jsonEditorField = field
+    jsonEditorText = prettyConfigJSON(getDisplayValue(field))
+    jsonEditorError = ''
   }
 
-  function configValuesEqual(a: unknown, b: unknown): boolean {
-    if (a === b) return true
-    const objectLikeA = typeof a === 'object' && a !== null
-    const objectLikeB = typeof b === 'object' && b !== null
-    if (objectLikeA || objectLikeB) {
-      return JSON.stringify(a) === JSON.stringify(b)
+  function closeJSONEditor() {
+    jsonEditorField = null
+    jsonEditorText = ''
+    jsonEditorError = ''
+  }
+
+  function resetJSONEditor() {
+    if (!jsonEditorField) return
+    jsonEditorText = prettyConfigJSON(values[jsonEditorField.key])
+    jsonEditorError = ''
+  }
+
+  function applyJSONEditor() {
+    if (!jsonEditorField) return
+    const result = parseStructuredJSONEdit(jsonEditorText)
+    if (!result.ok) {
+      jsonEditorError = result.error
+      return
     }
-    return String(a ?? '') === String(b ?? '')
+    const original = values[jsonEditorField.key]
+    if (configValuesEqual(result.value, original)) {
+      delete dirtyFields[jsonEditorField.key]
+    } else {
+      dirtyFields[jsonEditorField.key] = result.value
+    }
+    dirtyFields = { ...dirtyFields }
+    closeJSONEditor()
   }
 
   const sectionIcons: Record<string, string> = {
@@ -476,7 +509,7 @@
                       {:else if editingKey === field.key}
                         <!-- Editing mode -->
                         <div class="field-edit">
-                          {#if field.type === 'json' || field.type === 'string_list'}
+                          {#if field.type === 'string_list'}
                             <textarea
                               class="field-textarea"
                               bind:value={editValue}
@@ -499,8 +532,26 @@
                         <span class="value-text sensitive" title="Edit in YAML tab">{formatValue(field)}</span>
                       {:else}
                         <!-- Clickable value -->
-                        <button class="value-btn" class:dirty={isDirty(field.key)} onclick={() => startEdit(field)} title="Click to edit">
-                          <span class="value-text">{formatValue(field)}</span>
+                        <button
+                          class:value-btn={field.type !== 'json'}
+                          class:structured-value-btn={field.type === 'json'}
+                          class:dirty={isDirty(field.key)}
+                          onclick={() => field.type === 'json' ? openJSONEditor(field) : startEdit(field)}
+                          title="Click to edit"
+                        >
+                          {#if field.type === 'json'}
+                            {@const summary = structuredSummary(field)}
+                            <span class="structured-main">{summary.text}</span>
+                            {#if summary.preview.length > 0}
+                              <span class="structured-preview">
+                                {#each summary.preview as item}
+                                  <span>{item}</span>
+                                {/each}
+                              </span>
+                            {/if}
+                          {:else}
+                            <span class="value-text">{formatValue(field)}</span>
+                          {/if}
                         </button>
                       {/if}
                     </div>
@@ -535,6 +586,35 @@
             <span class="badge badge-default">No changes</span>
           {/if}
           <span class="hint">Ctrl+S / Cmd+S to save</span>
+        </div>
+      </div>
+    {/if}
+
+    {#if jsonEditorField}
+      <div class="modal-backdrop" role="presentation">
+        <div class="json-editor-modal" role="dialog" aria-modal="true" aria-labelledby="json-editor-title">
+          <div class="json-editor-header">
+            <div>
+              <div id="json-editor-title" class="json-editor-title">{jsonEditorField.label}</div>
+              <div class="json-editor-path">{fieldPath(jsonEditorField)}</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick={closeJSONEditor}>Cancel</button>
+          </div>
+          <textarea
+            class="json-editor-textarea"
+            bind:value={jsonEditorText}
+            spellcheck={false}
+          ></textarea>
+          {#if jsonEditorError}
+            <div class="message message-error">{jsonEditorError}</div>
+          {/if}
+          <div class="json-editor-footer">
+            <button class="btn btn-ghost btn-sm" onclick={resetJSONEditor}>Reset</button>
+            <div class="json-editor-actions">
+              <button class="btn btn-ghost btn-sm" onclick={closeJSONEditor}>Cancel</button>
+              <button class="btn btn-primary btn-sm" onclick={applyJSONEditor}>Apply</button>
+            </div>
+          </div>
         </div>
       </div>
     {/if}
@@ -746,6 +826,57 @@
     font-weight: 500;
   }
 
+  .structured-value-btn {
+    display: grid;
+    gap: var(--space-1);
+    justify-items: end;
+    max-width: 300px;
+    min-width: 150px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    padding: var(--space-1) var(--space-2);
+    color: inherit;
+    cursor: pointer;
+    text-align: right;
+    transition: all var(--duration-fast) var(--ease-out);
+  }
+  .structured-value-btn:hover {
+    border-color: var(--border-default);
+    background: var(--surface-elevated);
+  }
+  .structured-value-btn.dirty {
+    border-color: rgba(224, 145, 69, 0.4);
+    background: rgba(224, 145, 69, 0.08);
+  }
+  .structured-main {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-primary);
+  }
+  .structured-value-btn.dirty .structured-main { color: var(--primary); }
+  .structured-preview {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+    max-width: 100%;
+  }
+  .structured-preview span {
+    max-width: 88px;
+    min-height: 18px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    color: var(--text-tertiary);
+    padding: 1px 5px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* ── Bool toggle ─────────────────────────── */
   .bool-toggle {
     display: inline-block;
@@ -909,6 +1040,72 @@
   .diff-old { color: var(--red); text-decoration: line-through; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .diff-arrow { color: var(--text-ghost); }
   .diff-new { color: var(--green); font-weight: 600; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── JSON editor modal ───────────────────── */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-5);
+    background: rgba(0, 0, 0, 0.62);
+  }
+  .json-editor-modal {
+    width: min(880px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-4);
+  }
+  .json-editor-header, .json-editor-footer {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .json-editor-title {
+    font-family: var(--font-display);
+    font-size: var(--text-md);
+    color: var(--text-primary);
+  }
+  .json-editor-path {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-ghost);
+  }
+  .json-editor-textarea {
+    width: 100%;
+    min-height: min(520px, 58vh);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    padding: var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+    resize: vertical;
+    tab-size: 2;
+    white-space: pre;
+    overflow: auto;
+  }
+  .json-editor-textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.22);
+  }
+  .json-editor-actions {
+    display: flex;
+    gap: var(--space-2);
+  }
 
   /* ── Search bar ──────────────────────────── */
   .search-bar {

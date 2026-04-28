@@ -57,7 +57,7 @@ func newConfigAPIHandler(configPath string, cfg config.Config, workspaceDir stri
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		handleGetConfigSchema(w, configPath, cfg)
+		handleGetConfigSchema(w, configPath, cfg, workspaceDir)
 	})
 
 	return mux
@@ -69,8 +69,20 @@ type configSchemaResponse struct {
 	Values map[string]any     `json:"values"`
 }
 
-func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.Config) {
-	values := config.ConfigToMap(cfg)
+func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.Config, workspaceDir string) {
+	activeCfg := cfg
+	if strings.TrimSpace(configPath) != "" {
+		loaded, err := config.Load(configPath)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		activeCfg = loaded
+		if strings.TrimSpace(workspaceDir) != "" {
+			activeCfg.WorkspaceDir = workspaceDir
+		}
+	}
+	values := config.ConfigToMap(activeCfg)
 
 	// Mask sensitive values
 	schema := config.Schema()
