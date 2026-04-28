@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import {
+    applyAgentRuntimeSubagentDraft,
+    archiveAgentRuntimeSubagent,
+    draftAgentRuntimeSubagent,
     getAgentRuntimeRun,
     listAgentRuntimeRuns,
     listAgentRuntimeSubagents,
@@ -9,6 +12,8 @@
   } from '../lib/api'
   import type {
     AgentRuntimeSubagent,
+    AgentRuntimeSubagentDraft,
+    AgentRuntimeSubagentDraftResponse,
     AgentRuntimeSubagentsResponse,
     AgentRuntimeTierOption,
     ConsensusVariantRecord,
@@ -35,6 +40,16 @@
   let estimatedUSD = $state<number | null>(null)
   let actualUSD = $state<number | null>(null)
   let updatingTier = $state('')
+  let builderMode: 'create' | 'edit' = $state('create')
+  let builderOpen = $state(false)
+  let builderRequest = $state('')
+  let builderBaseName = $state('')
+  let builderTier = $state('')
+  let builderBusy = $state(false)
+  let builderApplying = $state(false)
+  let builderResponse: AgentRuntimeSubagentDraftResponse | null = $state(null)
+  let archiveConfirmName = $state('')
+  let archiveBusy = $state(false)
   let stopStream: (() => void) | null = null
 
   const runtimeTools = [
@@ -195,6 +210,115 @@
     void updateSubagentTier(agent, select.value)
   }
 
+  function defaultBuilderTier(): string {
+    return selectedSubagentValue?.default_tier || subagentsData?.agentruntime_default_tier || subagentsData?.default_tier || tiers[0]?.name || ''
+  }
+
+  function openCreateBuilder() {
+    builderOpen = true
+    builderMode = 'create'
+    builderBaseName = ''
+    builderRequest = ''
+    builderTier = defaultBuilderTier()
+    builderResponse = null
+    archiveConfirmName = ''
+  }
+
+  function openEditBuilder(agent: AgentRuntimeSubagent) {
+    builderOpen = true
+    builderMode = 'edit'
+    builderBaseName = agent.name
+    builderRequest = ''
+    builderTier = agent.default_tier || defaultBuilderTier()
+    builderResponse = null
+    archiveConfirmName = ''
+  }
+
+  function closeBuilder() {
+    builderOpen = false
+    builderMode = 'create'
+    builderBaseName = ''
+    builderRequest = ''
+    builderTier = ''
+    builderResponse = null
+  }
+
+  async function requestSubagentDraft() {
+    const request = builderRequest.trim()
+    if (!request) {
+      error = 'Describe what the subagent should do.'
+      return
+    }
+    builderBusy = true
+    error = ''
+    try {
+      builderResponse = await draftAgentRuntimeSubagent({
+        mode: builderMode,
+        request,
+        base_name: builderMode === 'edit' ? builderBaseName : undefined,
+        default_tier: builderTier || defaultBuilderTier(),
+      })
+      builderTier = builderResponse.draft.default_tier || builderTier
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to draft subagent'
+    } finally {
+      builderBusy = false
+    }
+  }
+
+  function updateDraftField(field: keyof AgentRuntimeSubagentDraft, value: string) {
+    if (!builderResponse) return
+    builderResponse = {
+      ...builderResponse,
+      draft: { ...builderResponse.draft, [field]: value },
+    }
+  }
+
+  function updateDraftList(field: 'tools_allow' | 'tools_deny', value: string) {
+    if (!builderResponse) return
+    builderResponse = {
+      ...builderResponse,
+      draft: {
+        ...builderResponse.draft,
+        [field]: value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean),
+      },
+    }
+  }
+
+  async function applyDraft() {
+    if (!builderResponse) return
+    builderApplying = true
+    error = ''
+    try {
+      const updated = await applyAgentRuntimeSubagentDraft(builderResponse.draft)
+      await loadSubagents()
+      selectedSubagentName = updated.name
+      closeBuilder()
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to apply subagent draft'
+    } finally {
+      builderApplying = false
+    }
+  }
+
+  async function archiveSubagent(agent: AgentRuntimeSubagent) {
+    if (archiveConfirmName !== agent.name) {
+      archiveConfirmName = agent.name
+      return
+    }
+    archiveBusy = true
+    error = ''
+    try {
+      await archiveAgentRuntimeSubagent(agent.name, true)
+      archiveConfirmName = ''
+      await loadSubagents()
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to archive subagent'
+    } finally {
+      archiveBusy = false
+    }
+  }
+
   function variantRecords(): ConsensusVariantRecord[] {
     return [...(selectedRun?.consensus_variants ?? [])].sort((a, b) => a.variant_idx - b.variant_idx)
   }
@@ -247,7 +371,10 @@
     {#if runId}
       <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/agentruntime')}>Back</button>
     {:else if activeTab === 'subagents'}
-      <button class="btn btn-ghost btn-sm" onclick={loadSubagents} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
+      <div class="header-actions">
+        <button class="btn btn-primary btn-sm" onclick={openCreateBuilder}>New Subagent</button>
+        <button class="btn btn-ghost btn-sm" onclick={loadSubagents} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
+      </div>
     {:else}
       <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
     {/if}
@@ -361,6 +488,104 @@
       <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/config')}>Manage LLM Tiers</button>
     </section>
 
+    {#if builderOpen}
+      <section class="builder-panel" aria-label="Subagent builder">
+        <div class="builder-head">
+          <div>
+            <div class="eyebrow">{builderMode === 'edit' ? 'Edit with LLM' : 'Create with LLM'}</div>
+            <h3>{builderMode === 'edit' ? builderBaseName : 'New subagent'}</h3>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick={closeBuilder}>Close</button>
+        </div>
+        <div class="builder-form">
+          <label>
+            <span>Request</span>
+            <textarea
+              bind:value={builderRequest}
+              placeholder={builderMode === 'edit' ? 'Make this subagent focus on frontend accessibility.' : 'Create a frontend reviewer agent.'}
+            ></textarea>
+          </label>
+          <label>
+            <span>Default Tier</span>
+            <select bind:value={builderTier}>
+              {#each tiers as tier}
+                <option value={tier.name} disabled={!!tier.error}>{tier.name}</option>
+              {/each}
+            </select>
+          </label>
+        </div>
+        <div class="builder-actions">
+          <button class="btn btn-primary btn-sm" onclick={requestSubagentDraft} disabled={builderBusy || tiers.length === 0}>
+            {builderBusy ? 'Drafting...' : 'Draft'}
+          </button>
+        </div>
+
+        {#if builderResponse}
+          <div class="draft-preview">
+            <div class="draft-status">
+              <span class="badge badge-info">{builderResponse.draft_source}</span>
+              {#if builderResponse.resolved_tier}
+                <span class="tier-chip" title={tierSummary(builderResponse.resolved_tier)}>
+                  {builderResponse.draft.default_tier}
+                </span>
+              {/if}
+            </div>
+            {#if builderResponse.warnings?.length}
+              <div class="warning-list">
+                {#each builderResponse.warnings as warning}
+                  <span>{warning}</span>
+                {/each}
+              </div>
+            {/if}
+            <div class="draft-grid">
+              <label>
+                <span>Name</span>
+                <input value={builderResponse.draft.name} disabled={builderResponse.draft.action === 'update'} oninput={(event) => updateDraftField('name', (event.currentTarget as HTMLInputElement).value)} />
+              </label>
+              <label>
+                <span>Description</span>
+                <input value={builderResponse.draft.description} oninput={(event) => updateDraftField('description', (event.currentTarget as HTMLInputElement).value)} />
+              </label>
+              <label>
+                <span>Tier</span>
+                <select value={builderResponse.draft.default_tier} onchange={(event) => updateDraftField('default_tier', (event.currentTarget as HTMLSelectElement).value)}>
+                  {#each tiers as tier}
+                    <option value={tier.name} disabled={!!tier.error}>{tier.name}</option>
+                  {/each}
+                </select>
+              </label>
+              <label>
+                <span>Risk Max</span>
+                <select value={builderResponse.draft.tools_risk_max ?? ''} onchange={(event) => updateDraftField('tools_risk_max', (event.currentTarget as HTMLSelectElement).value)}>
+                  <option value="">default</option>
+                  <option value="low">low</option>
+                </select>
+              </label>
+            </div>
+            <label class="draft-textarea">
+              <span>Prompt</span>
+              <textarea value={builderResponse.draft.prompt} oninput={(event) => updateDraftField('prompt', (event.currentTarget as HTMLTextAreaElement).value)}></textarea>
+            </label>
+            <div class="draft-grid">
+              <label>
+                <span>Allow Tools</span>
+                <textarea value={builderResponse.draft.tools_allow.join('\n')} oninput={(event) => updateDraftList('tools_allow', (event.currentTarget as HTMLTextAreaElement).value)}></textarea>
+              </label>
+              <label>
+                <span>Deny Tools</span>
+                <textarea value={builderResponse.draft.tools_deny.join('\n')} oninput={(event) => updateDraftList('tools_deny', (event.currentTarget as HTMLTextAreaElement).value)}></textarea>
+              </label>
+            </div>
+            <div class="builder-actions">
+              <button class="btn btn-primary btn-sm" onclick={applyDraft} disabled={builderApplying}>
+                {builderApplying ? 'Applying...' : 'Approve & Save'}
+              </button>
+            </div>
+          </div>
+        {/if}
+      </section>
+    {/if}
+
     <div class="subagents-layout">
       <section class="subagents-list" aria-label="Subagents">
         {#if subagents.length === 0 && !loading}
@@ -397,23 +622,35 @@
               <p>{selectedSubagentValue.description || 'No description'}</p>
             </div>
             {#if selectedSubagentValue.tier_editable}
-              <label class="tier-editor">
-                <span>LLM Tier</span>
-                <select
-                  value={selectedSubagentValue.default_tier ?? ''}
-                  disabled={updatingTier === selectedSubagentValue.name || tiers.length === 0}
-                  onchange={(event) => handleTierChange(event, selectedSubagentValue)}
-                >
-                  <option value="">Inherit runtime default</option>
-                  {#each tiers as tier}
-                    <option value={tier.name} disabled={!!tier.error}>{tier.name}</option>
-                  {/each}
-                </select>
-              </label>
+              <div class="detail-actions">
+                <label class="tier-editor">
+                  <span>LLM Tier</span>
+                  <select
+                    value={selectedSubagentValue.default_tier ?? ''}
+                    disabled={updatingTier === selectedSubagentValue.name || tiers.length === 0}
+                    onchange={(event) => handleTierChange(event, selectedSubagentValue)}
+                  >
+                    <option value="">Inherit runtime default</option>
+                    {#each tiers as tier}
+                      <option value={tier.name} disabled={!!tier.error}>{tier.name}</option>
+                    {/each}
+                  </select>
+                </label>
+                <button class="btn btn-ghost btn-sm" onclick={() => openEditBuilder(selectedSubagentValue)}>Edit with LLM</button>
+                <button class="btn btn-danger btn-sm" disabled={archiveBusy} onclick={() => archiveSubagent(selectedSubagentValue)}>
+                  {archiveConfirmName === selectedSubagentValue.name ? 'Confirm Archive' : 'Archive'}
+                </button>
+              </div>
             {:else}
               <span class="tier-chip" class:missing={selectedSubagentValue.tier_missing}>{tierLabel(selectedSubagentValue)}</span>
             {/if}
           </div>
+
+          {#if archiveConfirmName === selectedSubagentValue.name}
+            <div class="warning-list">
+              <span>Archiving removes this profile from the active catalog. Recent run history stays visible in Runs. Recorded runs: {selectedSubagentValue.run_count}.</span>
+            </div>
+          {/if}
 
           {#if selectedSubagentValue.tier_error}
             <div class="error-banner">{selectedSubagentValue.tier_error}</div>
@@ -569,6 +806,7 @@
 <style>
   .agentruntime-view { display: flex; flex-direction: column; gap: var(--space-4); }
   .agentruntime-header { display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; }
+  .header-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
   .agentruntime-title { font-family: var(--font-display); font-size: var(--text-xl); color: var(--text-primary); }
   .agentruntime-subtitle { color: var(--text-ghost); font-size: var(--text-sm); }
   .runtime-tabs { display: inline-flex; gap: var(--space-1); align-self: flex-start; border: 1px solid var(--border-subtle); background: var(--surface-inset); border-radius: var(--radius-md); padding: 3px; }
@@ -593,6 +831,34 @@
   .tier-warning { color: var(--warning); }
   .tier-editor { display: flex; flex-direction: column; gap: var(--space-1); min-width: min(220px, 100%); color: var(--text-ghost); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; }
   .tier-editor select { width: 100%; min-height: 32px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); color: var(--text-primary); padding: 0 var(--space-2); font: inherit; font-size: var(--text-xs); text-transform: none; }
+  .builder-panel { display: flex; flex-direction: column; gap: var(--space-3); border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .builder-head, .builder-actions, .draft-status { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+  .builder-head h3 { margin: 0; color: var(--text-primary); font-family: var(--font-display); font-size: var(--text-lg); }
+  .builder-form, .draft-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 0.28fr); gap: var(--space-3); align-items: start; }
+  .builder-form label, .draft-grid label, .draft-textarea { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; color: var(--text-ghost); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; }
+  .builder-form select, .builder-form textarea,
+  .draft-grid input, .draft-grid select, .draft-grid textarea,
+  .draft-textarea textarea {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    color: var(--text-primary);
+    padding: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-transform: none;
+  }
+  .builder-form textarea { min-height: 84px; resize: vertical; }
+  .draft-grid textarea { min-height: 72px; resize: vertical; }
+  .draft-textarea textarea { min-height: 180px; resize: vertical; line-height: 1.5; }
+  .builder-form select:focus, .builder-form textarea:focus,
+  .draft-grid input:focus, .draft-grid select:focus, .draft-grid textarea:focus,
+  .draft-textarea textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.22); }
+  .draft-preview { display: flex; flex-direction: column; gap: var(--space-3); border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
+  .warning-list { display: flex; flex-direction: column; gap: var(--space-1); border: 1px solid rgba(224, 145, 69, 0.3); background: rgba(224, 145, 69, 0.08); border-radius: var(--radius-sm); padding: var(--space-2); color: var(--warning); font-size: var(--text-xs); }
+  .detail-actions { display: flex; align-items: flex-end; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
   .subagents-layout { display: grid; grid-template-columns: minmax(260px, 0.45fr) minmax(0, 1fr); gap: var(--space-3); align-items: start; }
   .subagents-list, .subagent-detail { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
   .subagents-list { border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-2); }
@@ -626,5 +892,5 @@
   @media (max-width: 960px) { .intro-card { grid-template-columns: 1fr; } }
   @media (max-width: 960px) { .subagents-layout { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .detail-columns { grid-template-columns: 1fr; } }
-  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run { grid-template-columns: 1fr; } .subagents-summary, .detail-head { align-items: stretch; flex-direction: column; } }
+  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid { grid-template-columns: 1fr; } .subagents-summary, .detail-head, .agentruntime-header { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions { justify-content: flex-start; } }
 </style>

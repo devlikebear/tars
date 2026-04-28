@@ -270,6 +270,34 @@ export type AgentRuntimeSubagent = {
   recent_runs: AgentRuntimeSubagentRunSummary[]
 }
 
+export type AgentRuntimeSubagentDraft = {
+  action: 'create' | 'update'
+  name: string
+  description: string
+  default_tier: string
+  prompt: string
+  tools_allow: string[]
+  tools_deny: string[]
+  tools_risk_max?: string
+  session_routing_mode?: string
+  session_fixed_id?: string
+}
+
+export type AgentRuntimeSubagentDraftResponse = {
+  draft: AgentRuntimeSubagentDraft
+  draft_source: string
+  warnings?: string[]
+  tiers: AgentRuntimeTierOption[]
+  resolved_tier?: AgentRuntimeTierOption
+}
+
+export type AgentRuntimeSubagentArchiveResponse = {
+  archived: boolean
+  name: string
+  archived_path?: string
+  run_count: number
+}
+
 export type AgentRuntimeSubagentsResponse = {
   count: number
   agents: AgentRuntimeSubagent[]

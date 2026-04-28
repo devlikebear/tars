@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.22] - 2026-04-28
+
+### Added
+
+- Agent Runtime Subagents now includes an LLM-assisted builder for drafting new workspace `AGENT.md` profiles from a natural-language request.
+- Workspace subagents can be edited with the builder, previewed, approved, and saved back to their source profile.
+- Editable workspace subagents can be archived with confirmation; archived `AGENT.md` files are renamed out of the active catalog and the runtime executor list is refreshed.
+- Builder drafts use configured LLM tiers, expose safe tool allow/deny lists, and normalize common LLM action aliases such as `edit` into the persisted update workflow.
+
+### Tests
+
+- `go test ./internal/tarsserver -run 'TestAgentRuntimeSubagentsAPIHandler_(Builder|Patch|List|Detail)|TestAgentRuntimeSubagentBuilderLLMPromptMentionsJSON|TestNormalizeAgentRuntimeSubagentDraftMapsLLMEditAction'`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make fmt`
+- `make vet`
+- `make test`
+- `make console-build`
+- `make build`
+- `make security-scan`
+- Browser verification: Playwright opened `/console/agentruntime/subagents`, generated a new `frontend-reviewer` workspace subagent with the LLM builder on the `heavy` tier, approved and saved it, edited `researcher` with an accessibility-focused LLM draft, approved and saved the edit, archived `researcher`, confirmed the API catalog and workspace files reflected the changes, checked zero browser console warnings, and verified no horizontal overflow at 390px mobile width.
+
+### Closed
+
+- Closes #472.
+
 ## [0.31.21] - 2026-04-28
 
 ### Added

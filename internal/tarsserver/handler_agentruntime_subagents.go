@@ -78,8 +78,24 @@ type agentRuntimeSubagentsResponse struct {
 	AgentRuntimeTierSource string                     `json:"agentruntime_default_tier_source,omitempty"`
 }
 
-func newAgentRuntimeSubagentsAPIHandler(runtime *agentruntime.Runtime, cfg config.Config, reloadHook func()) http.Handler {
+func newAgentRuntimeSubagentsAPIHandler(runtime *agentruntime.Runtime, cfg config.Config, reloadHook func(), routers ...llm.Router) http.Handler {
+	var router llm.Router
+	if len(routers) > 0 {
+		router = routers[0]
+	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/agentruntime/subagents/builder/draft", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		handleAgentRuntimeSubagentBuilderDraft(w, r, runtime, cfg, router)
+	})
+	mux.HandleFunc("/v1/agentruntime/subagents/builder/apply", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		handleAgentRuntimeSubagentBuilderApply(w, r, runtime, cfg, reloadHook)
+	})
 	mux.HandleFunc("/v1/agentruntime/subagents", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
@@ -88,6 +104,13 @@ func newAgentRuntimeSubagentsAPIHandler(runtime *agentruntime.Runtime, cfg confi
 		writeJSON(w, http.StatusOK, resp)
 	})
 	mux.HandleFunc("/v1/agentruntime/subagents/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(strings.TrimSpace(r.URL.Path), "/archive") {
+			if !requireMethod(w, r, http.MethodPost) {
+				return
+			}
+			handleAgentRuntimeSubagentArchive(w, r, runtime, cfg, reloadHook)
+			return
+		}
 		if !requireMethod(w, r, http.MethodGet, http.MethodPatch) {
 			return
 		}

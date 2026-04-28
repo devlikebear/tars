@@ -633,6 +633,234 @@ func TestAgentRuntimeSubagentsAPIHandler_PatchRejectsUnknownTier(t *testing.T) {
 	}
 }
 
+func TestAgentRuntimeSubagentsAPIHandler_BuilderCreateDraftAndApply(t *testing.T) {
+	workspaceDir := t.TempDir()
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspaceDir},
+		LLMConfig: config.LLMConfig{
+			LLMProviders: map[string]config.LLMProviderSettings{
+				"codex": {Kind: "openai-codex", AuthMode: "oauth"},
+			},
+			LLMTiers: map[string]config.LLMTierBinding{
+				"standard": {Provider: "codex", Model: "gpt-5.4"},
+				"heavy":    {Provider: "codex", Model: "gpt-5.5"},
+			},
+			LLMDefaultTier: "standard",
+		},
+		AgentRuntimeConfig: config.AgentRuntimeConfig{
+			AgentRuntimeDefaultAgent: "frontend-reviewer",
+		},
+	}
+	store := session.NewStore(filepath.Join(workspaceDir, "sessions"))
+	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
+		return "ok", nil
+	}
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors:    buildAgentRuntimeExecutors(cfg, runPrompt, zerolog.New(io.Discard)),
+		DefaultAgent: "frontend-reviewer",
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if closeErr := runtime.Close(ctx); closeErr != nil {
+			t.Fatalf("close agent runtime: %v", closeErr)
+		}
+	})
+
+	reloaded := 0
+	h := newAgentRuntimeSubagentsAPIHandler(runtime, cfg, func() {
+		reloaded++
+		runtime.SetExecutors(buildAgentRuntimeExecutors(cfg, runPrompt, zerolog.New(io.Discard)), cfg.AgentRuntimeDefaultAgent)
+	})
+
+	draftBody := bytes.NewBufferString(`{"mode":"create","request":"Create a frontend reviewer agent","default_tier":"heavy"}`)
+	draftRec := httptest.NewRecorder()
+	draftReq := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/subagents/builder/draft", draftBody)
+	h.ServeHTTP(draftRec, draftReq)
+	if draftRec.Code != http.StatusOK {
+		t.Fatalf("expected draft 200, got %d body=%s", draftRec.Code, draftRec.Body.String())
+	}
+
+	var draftPayload struct {
+		Draft struct {
+			Action      string   `json:"action"`
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			DefaultTier string   `json:"default_tier"`
+			Prompt      string   `json:"prompt"`
+			ToolsAllow  []string `json:"tools_allow"`
+		} `json:"draft"`
+		DraftSource string `json:"draft_source"`
+	}
+	if err := json.Unmarshal(draftRec.Body.Bytes(), &draftPayload); err != nil {
+		t.Fatalf("decode draft response: %v", err)
+	}
+	if draftPayload.Draft.Name != "frontend-reviewer" || draftPayload.Draft.DefaultTier != "heavy" || !strings.Contains(draftPayload.Draft.Prompt, "frontend reviewer") {
+		t.Fatalf("unexpected draft payload: %+v", draftPayload)
+	}
+	if got := strings.Join(draftPayload.Draft.ToolsAllow, ","); got != "glob,list_dir,read_file" {
+		t.Fatalf("expected safe read-only allowlist, got %q", got)
+	}
+
+	applyBody := bytes.NewBuffer(draftRec.Body.Bytes())
+	applyRec := httptest.NewRecorder()
+	applyReq := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/subagents/builder/apply", applyBody)
+	h.ServeHTTP(applyRec, applyReq)
+	if applyRec.Code != http.StatusOK {
+		t.Fatalf("expected apply 200, got %d body=%s", applyRec.Code, applyRec.Body.String())
+	}
+	if reloaded != 1 {
+		t.Fatalf("expected one reload after apply, got %d", reloaded)
+	}
+
+	agentPath := filepath.Join(workspaceDir, "agents", "frontend-reviewer", "AGENT.md")
+	raw, err := os.ReadFile(agentPath)
+	if err != nil {
+		t.Fatalf("read created agent: %v", err)
+	}
+	text := string(raw)
+	for _, want := range []string{"name: frontend-reviewer", "description:", "tier: heavy", "tools_allow:", "read_file", "Create a frontend reviewer agent"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("created AGENT.md missing %q:\n%s", want, text)
+		}
+	}
+	if info, ok := runtime.LookupAgent("frontend-reviewer"); !ok || info.Tier != "heavy" {
+		t.Fatalf("expected runtime executor after apply, ok=%t info=%+v", ok, info)
+	}
+}
+
+func TestAgentRuntimeSubagentsAPIHandler_BuilderEditAndArchiveRequiresConfirm(t *testing.T) {
+	workspaceDir := t.TempDir()
+	agentDir := filepath.Join(workspaceDir, "agents", "researcher")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("mkdir agent dir: %v", err)
+	}
+	agentPath := filepath.Join(agentDir, "AGENT.md")
+	if err := os.WriteFile(agentPath, []byte("---\nname: researcher\ndescription: Research worker\ntier: standard\ntools_allow:\n  - read_file\n---\nResearch the codebase.\n"), 0o644); err != nil {
+		t.Fatalf("write agent: %v", err)
+	}
+
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspaceDir},
+		LLMConfig: config.LLMConfig{
+			LLMProviders: map[string]config.LLMProviderSettings{
+				"codex": {Kind: "openai-codex", AuthMode: "oauth"},
+			},
+			LLMTiers: map[string]config.LLMTierBinding{
+				"standard": {Provider: "codex", Model: "gpt-5.4"},
+				"heavy":    {Provider: "codex", Model: "gpt-5.5"},
+			},
+			LLMDefaultTier: "standard",
+		},
+		AgentRuntimeConfig: config.AgentRuntimeConfig{
+			AgentRuntimeDefaultAgent: "researcher",
+		},
+	}
+	store := session.NewStore(filepath.Join(workspaceDir, "sessions"))
+	runPrompt := func(_ context.Context, _ string, _ string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
+		return "ok", nil
+	}
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors:    buildAgentRuntimeExecutors(cfg, runPrompt, zerolog.New(io.Discard)),
+		DefaultAgent: "researcher",
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if closeErr := runtime.Close(ctx); closeErr != nil {
+			t.Fatalf("close agent runtime: %v", closeErr)
+		}
+	})
+
+	h := newAgentRuntimeSubagentsAPIHandler(runtime, cfg, func() {
+		runtime.SetExecutors(buildAgentRuntimeExecutors(cfg, runPrompt, zerolog.New(io.Discard)), cfg.AgentRuntimeDefaultAgent)
+	})
+
+	editBody := bytes.NewBufferString(`{"mode":"edit","base_name":"researcher","request":"Make it focus on frontend accessibility","default_tier":"heavy"}`)
+	editRec := httptest.NewRecorder()
+	editReq := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/subagents/builder/draft", editBody)
+	h.ServeHTTP(editRec, editReq)
+	if editRec.Code != http.StatusOK {
+		t.Fatalf("expected edit draft 200, got %d body=%s", editRec.Code, editRec.Body.String())
+	}
+	var editPayload struct {
+		Draft agentRuntimeSubagentDraft `json:"draft"`
+	}
+	if err := json.Unmarshal(editRec.Body.Bytes(), &editPayload); err != nil {
+		t.Fatalf("decode edit draft: %v", err)
+	}
+	if editPayload.Draft.Action != "update" || editPayload.Draft.Name != "researcher" || editPayload.Draft.DefaultTier != "heavy" || !strings.Contains(editPayload.Draft.Prompt, "frontend accessibility") {
+		t.Fatalf("unexpected edit draft: %+v", editPayload.Draft)
+	}
+
+	applyBody, _ := json.Marshal(map[string]any{"draft": editPayload.Draft})
+	applyRec := httptest.NewRecorder()
+	applyReq := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/subagents/builder/apply", bytes.NewReader(applyBody))
+	h.ServeHTTP(applyRec, applyReq)
+	if applyRec.Code != http.StatusOK {
+		t.Fatalf("expected edit apply 200, got %d body=%s", applyRec.Code, applyRec.Body.String())
+	}
+	raw, err := os.ReadFile(agentPath)
+	if err != nil {
+		t.Fatalf("read edited agent: %v", err)
+	}
+	if !strings.Contains(string(raw), "frontend accessibility") || !strings.Contains(string(raw), "tier: heavy") {
+		t.Fatalf("expected edited profile content, got:\n%s", string(raw))
+	}
+
+	noConfirmRec := httptest.NewRecorder()
+	noConfirmReq := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/subagents/researcher/archive", bytes.NewBufferString(`{"confirm":false}`))
+	h.ServeHTTP(noConfirmRec, noConfirmReq)
+	if noConfirmRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected archive confirmation 400, got %d body=%s", noConfirmRec.Code, noConfirmRec.Body.String())
+	}
+	if _, err := os.Stat(agentPath); err != nil {
+		t.Fatalf("agent should still exist before confirm: %v", err)
+	}
+
+	confirmRec := httptest.NewRecorder()
+	confirmReq := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/subagents/researcher/archive", bytes.NewBufferString(`{"confirm":true}`))
+	h.ServeHTTP(confirmRec, confirmReq)
+	if confirmRec.Code != http.StatusOK {
+		t.Fatalf("expected archive 200, got %d body=%s", confirmRec.Code, confirmRec.Body.String())
+	}
+	if _, err := os.Stat(agentPath); !os.IsNotExist(err) {
+		t.Fatalf("expected AGENT.md archived away, stat err=%v", err)
+	}
+	if _, ok := runtime.LookupAgent("researcher"); ok {
+		t.Fatalf("expected runtime executor removed after archive")
+	}
+	matches, err := filepath.Glob(filepath.Join(agentDir, "AGENT.archived.*.md"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("expected archived file, matches=%+v err=%v", matches, err)
+	}
+}
+
+func TestAgentRuntimeSubagentBuilderLLMPromptMentionsJSON(t *testing.T) {
+	if !strings.Contains(agentRuntimeSubagentBuilderLLMSystemPrompt, "json") {
+		t.Fatalf("OpenAI JSON object response format requires a prompt message that mentions json")
+	}
+	if agentRuntimeSubagentBuilderLLMResponseHint != "json" {
+		t.Fatalf("OpenAI JSON object response format requires the input message to mention json")
+	}
+}
+
+func TestNormalizeAgentRuntimeSubagentDraftMapsLLMEditAction(t *testing.T) {
+	draft := normalizeAgentRuntimeSubagentDraft(agentRuntimeSubagentDraft{
+		Action:      "edit",
+		Name:        "researcher",
+		DefaultTier: "standard",
+		Prompt:      "Focus on frontend accessibility.",
+	}, config.Config{}, &agentRuntimeSubagentView{Name: "researcher"})
+	if draft.Action != "update" {
+		t.Fatalf("expected edit action to normalize to update, got %q", draft.Action)
+	}
+}
+
 func TestAgentRunsAPIHandler_Spawn(t *testing.T) {
 	runtime := newTestAgentRuntime(t)
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))

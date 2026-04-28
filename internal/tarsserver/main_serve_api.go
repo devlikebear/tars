@@ -506,7 +506,7 @@ func buildAPIMux(
 	agentRunsHandler := newAgentRunsAPIHandlerWithInflightLimit(agentRuntime, logger, cfg.APIMaxInflightAgentRuns)
 	agentSubagentsHandler := newAgentRuntimeSubagentsAPIHandler(agentRuntime, cfg, func() {
 		_ = refreshAgentRuntimeExecutors("agentruntime_subagents_update")
-	})
+	}, deps.llmRouter)
 	agentRuntimeHandler := newAgentRuntimeAPIHandler(agentRuntime, logger, func() {
 		_ = refreshAgentRuntimeExecutors("agentruntime_reload")
 	})
