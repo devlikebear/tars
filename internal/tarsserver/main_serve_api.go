@@ -69,6 +69,7 @@ type apiRouteHandlers struct {
 	skillhub        http.Handler
 	filesystem      http.Handler
 	workspaceFiles  http.Handler
+	terminal        http.Handler
 }
 
 func runServeAPICommand(
@@ -558,6 +559,7 @@ func buildAPIMux(
 	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
 	filesystemHandler := newFilesystemBrowseHandler(logger)
 	workspaceFilesHandler := newWorkspaceFilesHandler(cfg.WorkspaceDir, logger)
+	terminalHandler := newTerminalAPIHandler(cfg.WorkspaceDir, sessionStore, logger)
 	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg), cfg.MemoryBackend), logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           pulseSetup.Handler,
@@ -585,6 +587,7 @@ func buildAPIMux(
 		skillhub:        skillhubHandler,
 		filesystem:      filesystemHandler,
 		workspaceFiles:  workspaceFilesHandler,
+		terminal:        terminalHandler,
 	})
 
 	server := &http.Server{
@@ -725,6 +728,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/filesystem/browse", handlers.filesystem)
 	mux.Handle("/v1/workspace/files", handlers.workspaceFiles)
 	mux.Handle("/v1/workspace/files/", handlers.workspaceFiles)
+	mux.Handle("/v1/terminal/open", handlers.terminal)
 }
 
 func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zerolog.Logger) error {

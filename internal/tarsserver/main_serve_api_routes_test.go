@@ -41,6 +41,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		skillhub:        handler,
 		filesystem:      handler,
 		workspaceFiles:  handler,
+		terminal:        handler,
 	})
 
 	paths := []string{
@@ -120,6 +121,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/hub/skill-content",
 		"/v1/filesystem/browse",
 		"/v1/workspace/files",
+		"/v1/terminal/open",
 	}
 	for _, path := range paths {
 		rec := httptest.NewRecorder()

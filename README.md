@@ -31,6 +31,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 
 - Multi-session chat with full LLM tool-calling loops
 - `@` file and directory mentions from the session Files roots for explicit context injection
+- Files workspaces can open the host macOS Terminal at the selected root or browsed subdirectory
 - Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
 - Editable memory assets and semantic recall through the console/API
 - Structured transcript compaction preserving identifiers and recent context
@@ -182,7 +183,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 
 | Page | Path | Purpose |
 |------|------|---------|
-| Chat | `/console` | Interactive agent chat with tool calling and `@` file/directory mentions |
+| Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory mentions, and Files workspace terminal launch |
 | Memory | `/console/memory` | Edit durable memory assets and test semantic search |
 | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md |
 | Ops | `/console/ops` | System health and cleanup operations |

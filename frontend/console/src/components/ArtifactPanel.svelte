@@ -2,7 +2,7 @@
   import { tick } from 'svelte'
   import type { Artifact } from '../lib/artifacts'
   import { fileIcon } from '../lib/artifacts'
-  import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, browseFilesystem, createFilesystemDirectory, createWorkspaceDirectory, renameWorkspaceDirectory, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
+  import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, openTerminalHere, browseFilesystem, createFilesystemDirectory, createWorkspaceDirectory, renameWorkspaceDirectory, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
   import { renderHighlightedCodeBlock } from '../lib/markdown'
   import type { SessionWorkDirs } from '../lib/types'
   import MarkdownContent from './MarkdownContent.svelte'
@@ -42,6 +42,9 @@
   let newFolderName = $state('')
   let renamingDirPath = $state('')
   let renameDirName = $state('')
+  let terminalBusy = $state(false)
+  let terminalStatus = $state('')
+  let terminalError = $state('')
 
   // File preview state
   let previewFile: WorkspaceFileContent | null = $state(null)
@@ -166,6 +169,7 @@
   async function browseDir(path: string) {
     wsLoading = true
     wsError = ''
+    terminalError = ''
     try {
       const result = await listWorkspaceFiles(path, effectiveRoot)
       wsFiles = result.files || []
@@ -234,6 +238,25 @@
       wsActionError = err instanceof Error ? err.message : 'Failed to rename folder'
     } finally {
       wsActionBusy = false
+    }
+  }
+
+  async function openTerminalAtCurrentPath() {
+    if (!sessionId || terminalBusy) return
+    terminalBusy = true
+    terminalStatus = ''
+    terminalError = ''
+    try {
+      const targetPath = currentPath === '.' ? '' : currentPath
+      const result = await openTerminalHere(sessionId, targetPath)
+      terminalStatus = `${result.app || 'Terminal'} opened at ${terminalTargetLabel()}`
+      setTimeout(() => {
+        terminalStatus = ''
+      }, 2500)
+    } catch (err) {
+      terminalError = err instanceof Error ? err.message : 'Failed to open terminal'
+    } finally {
+      terminalBusy = false
     }
   }
 
@@ -348,6 +371,12 @@
       return `artifacts/${sessionId}`
     }
     return basename(dir)
+  }
+
+  function terminalTargetLabel(): string {
+    const root = effectiveRoot ? workDirLabel(effectiveRoot) : defaultWorkDirLabel()
+    if (currentPath === '.') return root
+    return `${root}/${currentPath}`
   }
 
   const codeExtensions = new Set([
@@ -637,12 +666,26 @@
           <button type="button" class="btn btn-ghost btn-sm" disabled={wsActionBusy} onclick={cancelCreateFolder}>Cancel</button>
         </div>
       {:else}
-        <button type="button" class="btn btn-ghost btn-sm" disabled={wsLoading || wsActionBusy} onclick={beginCreateFolder}>New Folder</button>
+        <div class="ws-toolbar-actions">
+          <button type="button" class="btn btn-ghost btn-sm" disabled={wsLoading || wsActionBusy} onclick={beginCreateFolder}>New Folder</button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            disabled={wsLoading || wsActionBusy || terminalBusy || !sessionId}
+            title={`Open Terminal at ${terminalTargetLabel()}`}
+            onclick={openTerminalAtCurrentPath}
+          >{terminalBusy ? 'Opening...' : 'Terminal'}</button>
+        </div>
       {/if}
     </div>
 
     {#if wsActionError}
       <div class="ws-inline-error">{wsActionError}</div>
+    {/if}
+    {#if terminalError}
+      <div class="ws-inline-error">{terminalError}</div>
+    {:else if terminalStatus}
+      <div class="ws-inline-success">{terminalStatus}</div>
     {/if}
 
     <div class="artifact-list">
@@ -995,6 +1038,13 @@
     flex-shrink: 0;
   }
 
+  .ws-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+  }
+
   .ws-inline-form {
     display: flex;
     align-items: center;
@@ -1016,6 +1066,13 @@
   .ws-inline-error {
     padding: 0 var(--space-3) var(--space-2);
     color: var(--error);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  .ws-inline-success {
+    padding: 0 var(--space-3) var(--space-2);
+    color: var(--success);
     font-size: 10px;
     flex-shrink: 0;
   }
