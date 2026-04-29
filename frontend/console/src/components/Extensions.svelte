@@ -66,6 +66,10 @@
     return registryVersions.get(type + ':' + name) || ''
   }
 
+  function skillSlashLabel(skill: SkillDef): string {
+    return '/' + (skill.slash || skill.name).replace(/^\/+/, '')
+  }
+
   let updateCount = $derived.by(() => {
     let count = 0
     for (const [key] of installedVersions) {
@@ -338,7 +342,7 @@
                     <span class="ext-desc">{s.description || '\u2014'}</span>
                     <div class="ext-meta">
                       {#if s.source}<span class="badge badge-default">{s.source}</span>{/if}
-                      {#if s.user_invocable}<span class="badge badge-accent" title="User can invoke via /skill-name in chat">/{s.name}</span>{/if}
+                      {#if s.user_invocable}<span class="badge badge-accent" title="User can invoke this skill from chat">{skillSlashLabel(s)}</span>{/if}
                     </div>
                   </div>
                   <div class="ext-item-actions">

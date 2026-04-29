@@ -6,6 +6,35 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.26] - 2026-04-29
+
+### Added
+
+- Chat composer now supports leading `/` command autocomplete with built-in console actions and user-invocable skills.
+- Skills can declare `slash` and `aliases` frontmatter metadata, and explicit `/skill` or `/alias` chat messages select that skill before the LLM turn starts.
+- Extensions displays each user-invocable skill's slash command so installed skill entrypoints are easier to discover.
+
+### Fixed
+
+- Skill runtime paths injected into chat prompts now remain readable even when the active session current directory is not the workspace root.
+
+### Tests
+
+- `go test ./internal/skill ./internal/tarsserver -run 'TestParseFrontmatter|TestLoad_DefaultUserInvocableTrue|TestResolveSkillForMessage_UsesSkillSlashAlias|TestPrepareChatContextWithExtensions_InvokedSkillHint|TestSkillRuntimeReadPathForPrompt'`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make fmt`
+- `make vet`
+- `make test`
+- `make console-build`
+- `make build`
+- `make security-scan`
+- Browser verification: Playwright opened `/console`, confirmed `/` lists built-in commands and skill entries, selected `/qa-check` from `/qa` autocomplete, sent `/qa-check smoke`, verified `skill selected: qa-check`, and confirmed the LLM successfully read `workspace/_shared/skills_runtime/qa_check/SKILL.md`.
+
+### Closed
+
+- Closes #469.
+
 ## [0.31.25] - 2026-04-28
 
 ### Added

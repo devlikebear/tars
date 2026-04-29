@@ -295,6 +295,47 @@
     await artifactPanelRef?.openArtifactPath(path)
   }
 
+  async function handleSlashCommand(command: string, _args: string) {
+    switch (command) {
+      case 'compact':
+        if (!selectedSessionId) {
+          showFeedback('Select a session first')
+          return
+        }
+        await handleCompact()
+        return
+      case 'tasks':
+        if (!selectedSessionId) {
+          showFeedback('Select a session first')
+          return
+        }
+        rightPanel = 'tasks'
+        return
+      case 'config':
+        rightPanel = 'config'
+        return
+      case 'context':
+        rightPanel = 'context'
+        return
+      case 'prompt':
+        rightPanel = 'prompt'
+        return
+      case 'files':
+        rightPanel = 'artifacts'
+        return
+      case 'cron':
+        if (!selectedSessionId) {
+          showFeedback('Select a session first')
+          return
+        }
+        rightPanel = 'cron'
+        return
+      case 'memory':
+        onNavigate('/console/memory')
+        return
+    }
+  }
+
   function handleCopyChat() {
     const md = chatPanelRef?.exportAsMarkdown()
     if (md) navigator.clipboard.writeText(md).catch(() => {})
@@ -426,6 +467,7 @@
           onContextInfo={(info) => { chatContextInfo = info }}
           onToolComplete={handleToolComplete}
           onTasksChanged={handleTasksChanged}
+          onSlashCommand={handleSlashCommand}
           onSessionReady={(id) => {
             if (!selectedSessionId) {
               selectedSessionId = id

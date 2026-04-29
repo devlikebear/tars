@@ -11,6 +11,8 @@ const (
 type Definition struct {
 	Name                    string   `json:"name"`
 	Description             string   `json:"description"`
+	Slash                   string   `json:"slash,omitempty"`
+	Aliases                 []string `json:"aliases,omitempty"`
 	UserInvocable           bool     `json:"user_invocable"`
 	Source                  Source   `json:"source"`
 	FilePath                string   `json:"file_path"`

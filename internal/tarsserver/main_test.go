@@ -1005,7 +1005,7 @@ func TestExtensionsAPI_ListReturnsJSONArrayWhenEmpty(t *testing.T) {
 }
 
 func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
-	root := t.TempDir()
+	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
 	}
@@ -1015,6 +1015,7 @@ func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
 		UserInvocable: true,
 	}
 	snapshot := extensions.Snapshot{
+		Skills:      []skill.Definition{def},
 		SkillPrompt: skill.FormatAvailableSkills([]skill.Definition{def}),
 	}
 
@@ -1025,8 +1026,25 @@ func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
 	if !strings.Contains(systemPrompt, "<available_skills>") {
 		t.Fatalf("expected available skills block in prompt, got %q", systemPrompt)
 	}
-	if !strings.Contains(systemPrompt, `_shared/skills_runtime/deploy/SKILL.md`) {
-		t.Fatalf("expected invoked skill path in prompt, got %q", systemPrompt)
+	readPath := filepath.ToSlash(filepath.Join(filepath.Base(root), "_shared", "skills_runtime", "deploy", "SKILL.md"))
+	if !strings.Contains(systemPrompt, readPath) {
+		t.Fatalf("expected workspace-root-prefixed skill path %q in prompt, got %q", readPath, systemPrompt)
+	}
+}
+
+func TestSkillRuntimeReadPathForPrompt(t *testing.T) {
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	got := skillRuntimeReadPathForPrompt(workspaceDir, "_shared/skills_runtime/deploy/SKILL.md")
+	want := "workspace/_shared/skills_runtime/deploy/SKILL.md"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+	if got := skillRuntimeReadPathForPrompt(workspaceDir, want); got != want {
+		t.Fatalf("expected already-prefixed path to remain %q, got %q", want, got)
+	}
+	abs := filepath.ToSlash(filepath.Join(workspaceDir, "_shared", "skills_runtime", "deploy", "SKILL.md"))
+	if got := skillRuntimeReadPathForPrompt(workspaceDir, abs); got != abs {
+		t.Fatalf("expected absolute path to remain %q, got %q", abs, got)
 	}
 }
 

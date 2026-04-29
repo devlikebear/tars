@@ -567,6 +567,8 @@ export type HubInstalled = {
 export type SkillDef = {
   name: string
   description: string
+  slash?: string
+  aliases?: string[]
   source?: string
   user_invocable?: boolean
   available?: boolean
