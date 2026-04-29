@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/agent"
@@ -114,7 +115,7 @@ func prepareChatContextDetailsWithCache(
 
 	// Cache-first strategy: check cache before expensive memory search
 	if cached, ok := cache.Get(userMessage, sessionID); ok {
-		return buildContextFromResult(cached, extSnapshot, invokedSkill, forceRelevantMemory), nil
+		return buildContextFromResult(workspaceDir, cached, extSnapshot, invokedSkill, forceRelevantMemory), nil
 	}
 
 	memService := buildSemanticMemoryService(workspaceDir, semanticCfg)
@@ -132,10 +133,11 @@ func prepareChatContextDetailsWithCache(
 	// Populate cache with search result
 	cache.Put(userMessage, sessionID, buildResult)
 
-	return buildContextFromResult(buildResult, extSnapshot, invokedSkill, forceRelevantMemory), nil
+	return buildContextFromResult(workspaceDir, buildResult, extSnapshot, invokedSkill, forceRelevantMemory), nil
 }
 
 func buildContextFromResult(
+	workspaceDir string,
 	buildResult prompt.BuildResult,
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
@@ -143,19 +145,21 @@ func buildContextFromResult(
 ) preparedChatContext {
 	systemPrompt := buildResult.Prompt
 	systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
-	if strings.TrimSpace(extSnapshot.SkillPrompt) != "" {
+	skillPrompt := skillPromptForChatContext(workspaceDir, extSnapshot)
+	if strings.TrimSpace(skillPrompt) != "" {
 		systemPrompt += "\n## Skills\n"
-		systemPrompt += strings.TrimSpace(extSnapshot.SkillPrompt) + "\n"
+		systemPrompt += strings.TrimSpace(skillPrompt) + "\n"
 		systemPrompt += "\n## Skill Usage Policy\n"
 		systemPrompt += "- Skill body content is not preloaded in the prompt.\n"
 		systemPrompt += "- If you need a skill, call read_file with the listed skill path first.\n"
 	}
 	if invokedSkill != nil {
+		readPath := skillRuntimeReadPathForPrompt(workspaceDir, invokedSkill.RuntimePath)
 		systemPrompt += "\n## Invoked Skill\n"
 		systemPrompt += fmt.Sprintf(
 			"User invoked /%s.\nBefore responding, call read_file on path %q to load this skill.\n",
 			strings.TrimSpace(invokedSkill.Name),
-			strings.TrimSpace(invokedSkill.RuntimePath),
+			readPath,
 		)
 	}
 	var toolChoice *llm.ToolChoice
@@ -169,6 +173,37 @@ func buildContextFromResult(
 		RelevantMemoryCount:  buildResult.RelevantMemoryCount,
 		RelevantMemoryTokens: buildResult.RelevantTokens,
 	}
+}
+
+func skillPromptForChatContext(workspaceDir string, extSnapshot extensions.Snapshot) string {
+	if len(extSnapshot.Skills) == 0 {
+		return strings.TrimSpace(extSnapshot.SkillPrompt)
+	}
+	skills := append([]skill.Definition(nil), extSnapshot.Skills...)
+	for i := range skills {
+		skills[i].RuntimePath = skillRuntimeReadPathForPrompt(workspaceDir, skills[i].RuntimePath)
+	}
+	return skill.FormatAvailableSkills(skills)
+}
+
+func skillRuntimeReadPathForPrompt(workspaceDir, runtimePath string) string {
+	path := strings.TrimSpace(runtimePath)
+	if path == "" {
+		return ""
+	}
+	cleaned := filepath.ToSlash(filepath.Clean(path))
+	if filepath.IsAbs(path) {
+		return cleaned
+	}
+	workspaceBase := filepath.Base(filepath.Clean(strings.TrimSpace(workspaceDir)))
+	if workspaceBase == "" || workspaceBase == "." || workspaceBase == string(filepath.Separator) {
+		return cleaned
+	}
+	firstSegment := strings.SplitN(cleaned, "/", 2)[0]
+	if firstSegment == workspaceBase {
+		return cleaned
+	}
+	return filepath.ToSlash(filepath.Join(workspaceBase, filepath.FromSlash(cleaned)))
 }
 
 func filterSkillSnapshotForProject(snapshot extensions.Snapshot, _ string) extensions.Snapshot {

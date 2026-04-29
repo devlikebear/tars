@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
-  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions } from '../lib/api'
-  import type { ChatAttachment, ChatEvent, SessionMessage } from '../lib/types'
+  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listSkills } from '../lib/api'
+  import type { ChatAttachment, ChatEvent, SessionMessage, SkillDef } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import {
     applyMentionCandidate,
@@ -11,6 +11,15 @@
     type ChatMentionCandidate,
     type SelectedChatMention,
   } from '../lib/chatMentions'
+  import {
+    applySlashCandidate,
+    buildSlashCandidates,
+    builtinSlashCommandId,
+    findActiveSlashTrigger,
+    parseLeadingSlashCommand,
+    type ActiveSlashTrigger,
+    type SlashCommandCandidate,
+  } from '../lib/slash'
   import MarkdownContent from './MarkdownContent.svelte'
 
   type ChatMessage = {
@@ -55,6 +64,7 @@
     onSessionReady?: (sessionId: string) => void
     onArtifactOpen?: (path: string) => void
     onTasksChanged?: (summary: TasksSummary) => void
+    onSlashCommand?: (command: string, args: string) => void | Promise<void>
   }
 
   type TasksSummary = {
@@ -66,7 +76,7 @@
     plan_goal?: string
   }
 
-  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen, onTasksChanged }: Props = $props()
+  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen, onTasksChanged, onSlashCommand }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -312,6 +322,12 @@
   let selectedMentions: SelectedChatMention[] = $state([])
   let mentionRequestSeq = 0
   let activeSelectedMentions = $derived(filterSelectedMentionsForMessage(selectedMentions, chatInput))
+  let slashSkills: SkillDef[] = $state([])
+  let slashOpen = $state(false)
+  let slashCandidates: SlashCommandCandidate[] = $state([])
+  let slashActiveIndex = $state(0)
+  let activeSlashTrigger: ActiveSlashTrigger | null = $state(null)
+  let slashRequestSeq = 0
 
   function closeMentionMenu() {
     mentionOpen = false
@@ -319,6 +335,37 @@
     mentionCandidates = []
     mentionActiveIndex = 0
     activeMentionTrigger = null
+  }
+
+  function closeSlashMenu() {
+    slashOpen = false
+    slashCandidates = []
+    slashActiveIndex = 0
+    activeSlashTrigger = null
+  }
+
+  async function loadSlashSkills() {
+    try {
+      slashSkills = await listSkills()
+    } catch {
+      slashSkills = []
+    }
+  }
+
+  async function refreshSlashCandidates() {
+    const caret = textareaEl?.selectionStart ?? chatInput.length
+    const trigger = findActiveSlashTrigger(chatInput, caret)
+    activeSlashTrigger = trigger
+    if (!trigger) {
+      closeSlashMenu()
+      return
+    }
+    const seq = ++slashRequestSeq
+    const candidates = buildSlashCandidates(trigger.query, slashSkills)
+    if (seq !== slashRequestSeq) return
+    slashCandidates = candidates
+    slashActiveIndex = 0
+    slashOpen = candidates.length > 0
   }
 
   async function refreshMentionCandidates() {
@@ -365,6 +412,34 @@
     })
   }
 
+  function selectSlashCandidate(candidate: SlashCommandCandidate) {
+    if (!activeSlashTrigger) return
+    const applied = applySlashCandidate(chatInput, activeSlashTrigger, candidate)
+    chatInput = applied.value
+    closeSlashMenu()
+    tick().then(() => {
+      textareaEl?.focus()
+      textareaEl?.setSelectionRange(applied.caret, applied.caret)
+    })
+  }
+
+  async function executeBuiltinSlashCommand(command: string, args: string): Promise<boolean> {
+    const id = builtinSlashCommandId(command)
+    if (!id || !onSlashCommand) return false
+    chatInput = ''
+    closeMentionMenu()
+    closeSlashMenu()
+    chatError = ''
+    chatStatusLine = `/${command}`
+    await onSlashCommand(id, args)
+    return true
+  }
+
+  async function executeSlashCandidate(candidate: SlashCommandCandidate): Promise<boolean> {
+    if (candidate.kind !== 'builtin') return false
+    return executeBuiltinSlashCommand(candidate.command, '')
+  }
+
   function removeSelectedMention(index: number) {
     const active = filterSelectedMentionsForMessage(selectedMentions, chatInput)
     active.splice(index, 1)
@@ -374,6 +449,10 @@
   async function submitChat() {
     const message = chatInput.trim()
     if (!message || chatBusy) return
+    const parsedSlash = parseLeadingSlashCommand(message)
+    if (parsedSlash && await executeBuiltinSlashCommand(parsedSlash.command, parsedSlash.args)) {
+      return
+    }
     chatBusy = true
     chatError = ''
     chatStatusLine = 'connecting'
@@ -386,6 +465,7 @@
     attachedFiles = []
     selectedMentions = []
     closeMentionMenu()
+    closeSlashMenu()
 
     const fileLabel = currentFiles.length > 0
       ? ` [${currentFiles.map((f) => f.name).join(', ')}]`
@@ -566,6 +646,33 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    if (slashOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        slashActiveIndex = Math.min(Math.max(0, slashCandidates.length - 1), slashActiveIndex + 1)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        slashActiveIndex = Math.max(0, slashActiveIndex - 1)
+        return
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && slashCandidates[slashActiveIndex]) {
+        e.preventDefault()
+        const candidate = slashCandidates[slashActiveIndex]
+        if (e.key === 'Enter' && candidate.kind === 'builtin') {
+          void executeSlashCandidate(candidate)
+        } else {
+          selectSlashCandidate(candidate)
+        }
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeSlashMenu()
+        return
+      }
+    }
     if (mentionOpen) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -596,15 +703,18 @@
 
   function handleChatInput() {
     void refreshMentionCandidates()
+    void refreshSlashCandidates()
   }
 
   function handleTextareaCursorChange() {
     void refreshMentionCandidates()
+    void refreshSlashCandidates()
   }
 
   function handleTextareaKeyup(e: KeyboardEvent) {
     if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
       void refreshMentionCandidates()
+      void refreshSlashCandidates()
     }
   }
 
@@ -680,6 +790,7 @@
   }
 
   onMount(async () => {
+    void loadSlashSkills()
     if (sessionId) {
       chatSessionId = sessionId
       chatMessages = [{ id: 'system-init', role: 'system', text: `Session: ${sessionId.slice(0, 8)}...` }]
@@ -836,6 +947,30 @@
           onkeydown={handleKeydown}
           onpaste={handlePaste}
         ></textarea>
+        {#if slashOpen}
+          <div class="mention-menu slash-menu">
+            {#each slashCandidates as candidate, i}
+              {#if i === 0 || slashCandidates[i - 1]?.kind !== candidate.kind}
+                <div class="slash-section">{candidate.kind === 'builtin' ? 'Built-in' : 'Skills'}</div>
+              {/if}
+              <button
+                type="button"
+                class:active={i === slashActiveIndex}
+                class="mention-option slash-option"
+                onmousedown={(e) => e.preventDefault()}
+                onclick={() => { candidate.kind === 'builtin' ? void executeSlashCandidate(candidate) : selectSlashCandidate(candidate) }}
+              >
+                <span class="mention-option-kind">{candidate.kind === 'skill' ? 'SKILL' : 'CMD'}</span>
+                <span class="mention-option-main">
+                  /{candidate.command}
+                  {#if candidate.aliasOf}<span class="slash-alias">/{candidate.aliasOf}</span>{/if}
+                </span>
+                <span class="mention-option-root">{candidate.kind === 'skill' ? (candidate.source || 'skill') : 'built-in'}</span>
+                <span class="slash-description">{candidate.description}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
         {#if mentionOpen}
           <div class="mention-menu">
             {#if mentionLoading}
@@ -1201,6 +1336,18 @@
     box-shadow: var(--shadow-lg);
   }
 
+  .slash-menu {
+    max-height: 300px;
+  }
+
+  .slash-section {
+    padding: 5px 8px 3px;
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+
   .mention-option {
     display: grid;
     grid-template-columns: 44px minmax(0, 1fr) auto;
@@ -1217,6 +1364,11 @@
     text-align: left;
   }
 
+  .slash-option {
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+  }
+
   .mention-option:hover,
   .mention-option.active {
     background: rgba(224, 145, 69, 0.12);
@@ -1229,6 +1381,22 @@
     white-space: nowrap;
     font-family: var(--font-mono);
     font-size: var(--text-xs);
+  }
+
+  .slash-alias {
+    margin-left: var(--space-2);
+    color: var(--text-ghost);
+    font-size: 10px;
+  }
+
+  .slash-description {
+    grid-column: 2 / 4;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-ghost);
+    font-size: 10px;
   }
 
   .mention-option-root,

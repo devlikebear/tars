@@ -31,6 +31,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 
 - Multi-session chat with full LLM tool-calling loops
 - `@` file and directory mentions from the session Files roots for explicit context injection
+- `/` command autocomplete for built-in chat actions and explicit user-invocable skill selection
 - Files workspaces include an embedded shell at the selected root or browsed subdirectory, plus a macOS Terminal fallback
 - Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
 - Editable memory assets and semantic recall through the console/API
@@ -134,7 +135,7 @@ Multi-channel I/O beyond the web console:
 TARS favors **on-demand extension** over always-resident tool registrations. Domain-specific capabilities are shipped as skills (plus optional companion CLIs) from the [Skill Hub](https://github.com/devlikebear/tars-skills) rather than compiled into the TARS binary — this keeps the chat system prompt small no matter how many capabilities a user installs.
 
 - **[Skill Hub](https://github.com/devlikebear/tars-skills)** — Public registry of skills, plugins, and MCP servers. Install with `tars skill install <name>`, `tars plugin install <name>`, `tars mcp install <name>`. The hub is the first place to look before writing a new capability, and the only place to publish one.
-- **Skills** — Markdown instruction files (YAML frontmatter + body) with optional companion scripts. A skill's frontmatter can set `recommended_tools: [bash]` and instruct the LLM to invoke a co-installed CLI (Python/TypeScript/shell); this keeps the CLI's interface out of the system prompt until the skill itself is picked. See `daily-briefing` in the hub for the canonical pattern.
+- **Skills** — Markdown instruction files (YAML frontmatter + body) with optional companion scripts. A skill's frontmatter can set `recommended_tools: [bash]`, `slash: /name`, and `aliases: [...]`; users can invoke eligible skills directly from chat via `/name` autocomplete. Companion CLIs keep their interface out of the system prompt until the skill itself is picked. See `daily-briefing` in the hub for the canonical pattern.
 - **Plugins** — Bundle skills + MCP servers with manifest metadata and runtime gating.
 - **MCP** — Local stdio and remote HTTP/WebSocket servers with bearer or OAuth auth. Use for third-party integrations that cannot be expressed as a CLI the bash tool can call.
 - **Browser** — Playwright-based automation for web interaction (shipped as a hub plugin).
@@ -183,7 +184,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 
 | Page | Path | Purpose |
 |------|------|---------|
-| Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory mentions, and Files workspace shell |
+| Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory mentions, `/` skill commands, and Files workspace shell |
 | Memory | `/console/memory` | Edit durable memory assets and test semantic search |
 | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md |
 | Ops | `/console/ops` | System health and cleanup operations |

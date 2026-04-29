@@ -9,6 +9,8 @@ import (
 type Frontmatter struct {
 	Name                    string
 	Description             string
+	Slash                   string
+	Aliases                 []string
 	UserInvocable           *bool
 	RequiresPlugin          string
 	RequiresBins            []string
@@ -61,6 +63,8 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 			return
 		}
 		switch currentListKey {
+		case "aliases":
+			meta.Aliases = normalizeFrontmatterSlashList(currentList)
 		case "requires_bins":
 			meta.RequiresBins = normalizeFrontmatterList(currentList)
 		case "requires_env":
@@ -110,6 +114,10 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 			meta.Name = v
 		case "description":
 			meta.Description = v
+		case "slash":
+			meta.Slash = normalizeFrontmatterSlash(v)
+		case "alias", "aliases":
+			meta.Aliases = parseFrontmatterSlashListValue(v)
 		case "user_invocable":
 			parsed, err := strconv.ParseBool(v)
 			if err != nil {
@@ -142,7 +150,7 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 
 func isFrontmatterListKey(key string) bool {
 	switch key {
-	case "requires_bins", "requires_env", "os", "arch", "recommended_tools", "recommended_project_files", "wake_phases", "tags":
+	case "aliases", "requires_bins", "requires_env", "os", "arch", "recommended_tools", "recommended_project_files", "wake_phases", "tags":
 		return true
 	default:
 		return false
@@ -189,4 +197,38 @@ func normalizeFrontmatterList(values []string) []string {
 		return nil
 	}
 	return out
+}
+
+func parseFrontmatterSlashListValue(raw string) []string {
+	return normalizeFrontmatterSlashList(parseFrontmatterListValue(raw))
+}
+
+func normalizeFrontmatterSlashList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		normalized := normalizeFrontmatterSlash(value)
+		if normalized == "" {
+			continue
+		}
+		key := strings.ToLower(normalized)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, normalized)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeFrontmatterSlash(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "/")
+	return strings.TrimSpace(value)
 }

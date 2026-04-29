@@ -1,6 +1,9 @@
 package skill
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseFrontmatter(t *testing.T) {
 	raw := `---
@@ -20,6 +23,8 @@ recommended_tools:
   - write_file
 recommended_project_files: [BRIEF.md, STATE.md]
 wake_phases: plan, draft
+slash: /quick
+aliases: [qn, notes]
 ---
 # Quick Notes
 Use this skill for short capture.
@@ -60,6 +65,12 @@ Use this skill for short capture.
 	}
 	if got := len(meta.WakePhases); got != 2 {
 		t.Fatalf("expected 2 wake phases, got %+v", meta.WakePhases)
+	}
+	if meta.Slash != "quick" {
+		t.Fatalf("expected slash quick, got %q", meta.Slash)
+	}
+	if got := strings.Join(meta.Aliases, ","); got != "qn,notes" {
+		t.Fatalf("unexpected aliases: %q", got)
 	}
 	if body == "" || body[0] != '#' {
 		t.Fatalf("expected markdown body without frontmatter, got %q", body)

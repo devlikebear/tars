@@ -66,6 +66,10 @@ func TestLoad_DefaultUserInvocableTrue(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace", "skills")
 	writeSkillFile(t, filepath.Join(workspaceDir, "simple", "SKILL.md"), `---
+slash: /simple-run
+aliases:
+  - sim
+  - helper
 recommended_tools: [read_file, write_file]
 recommended_project_files:
   - BRIEF.md
@@ -101,6 +105,12 @@ Use it`)
 	}
 	if got := strings.Join(snapshot.Skills[0].Tags, ","); got != "notes,helper" {
 		t.Fatalf("unexpected tags: %q", got)
+	}
+	if snapshot.Skills[0].Slash != "simple-run" {
+		t.Fatalf("expected slash command simple-run, got %q", snapshot.Skills[0].Slash)
+	}
+	if got := strings.Join(snapshot.Skills[0].Aliases, ","); got != "sim,helper" {
+		t.Fatalf("unexpected aliases: %q", got)
 	}
 }
 

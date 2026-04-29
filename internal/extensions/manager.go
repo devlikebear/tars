@@ -336,18 +336,42 @@ func (m *Manager) ChatTools() []tool.Tool {
 }
 
 func (m *Manager) FindSkill(name string) (skill.Definition, bool) {
-	key := strings.ToLower(strings.TrimSpace(name))
+	key := normalizeSkillLookupKey(name)
 	if key == "" {
 		return skill.Definition{}, false
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, def := range m.snapshot.Skills {
-		if strings.ToLower(strings.TrimSpace(def.Name)) == key {
+		if skillDefinitionMatchesLookup(def, key) {
 			return def, true
 		}
 	}
 	return skill.Definition{}, false
+}
+
+func normalizeSkillLookupKey(name string) string {
+	key := strings.TrimSpace(name)
+	key = strings.TrimPrefix(key, "/")
+	return strings.ToLower(strings.TrimSpace(key))
+}
+
+func skillDefinitionMatchesLookup(def skill.Definition, key string) bool {
+	if key == "" {
+		return false
+	}
+	if normalizeSkillLookupKey(def.Name) == key {
+		return true
+	}
+	if normalizeSkillLookupKey(def.Slash) == key {
+		return true
+	}
+	for _, alias := range def.Aliases {
+		if normalizeSkillLookupKey(alias) == key {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Manager) watchLoop(ctx context.Context, watcher *fsnotify.Watcher) {

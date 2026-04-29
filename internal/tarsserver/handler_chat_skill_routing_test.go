@@ -53,6 +53,23 @@ func TestResolveSkillForMessage_UsesExplicitProjectStartCommand(t *testing.T) {
 	}
 }
 
+func TestResolveSkillForMessage_UsesSkillSlashAlias(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	manager := newTestSkillManager(t, root, workspaceDir)
+
+	resolved := resolveSkillSelection("/plan-app build a habit tracker", manager, workspaceDir, "sess-1")
+	if resolved.Definition == nil {
+		t.Fatal("expected explicit slash alias to resolve")
+	}
+	if resolved.Definition.Name != "project-start" {
+		t.Fatalf("expected canonical project-start skill, got %+v", resolved.Definition)
+	}
+	if resolved.Reason != "explicit_command" {
+		t.Fatalf("expected explicit_command reason, got %q", resolved.Reason)
+	}
+}
+
 func TestResolveSkillForMessage_RespectsExplicitEmptySkillAllowlist(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace")
@@ -73,6 +90,8 @@ func newTestSkillManager(t *testing.T, root, workspaceDir string) *extensions.Ma
 name: project-start
 description: start projects
 user-invocable: true
+slash: /plan-app
+aliases: [project]
 ---
 # Project Start
 `)

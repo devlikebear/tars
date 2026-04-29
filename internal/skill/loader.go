@@ -120,6 +120,8 @@ func loadSourceSkills(source Source, dir string) ([]Definition, []Diagnostic, er
 		defs = append(defs, Definition{
 			Name:                    name,
 			Description:             description,
+			Slash:                   normalizeSkillSlash(meta.Slash),
+			Aliases:                 normalizeSkillAliases(meta.Aliases),
 			UserInvocable:           userInvocable,
 			Source:                  source,
 			FilePath:                path,
@@ -141,6 +143,36 @@ func loadSourceSkills(source Source, dir string) ([]Definition, []Diagnostic, er
 	}
 
 	return defs, diagnostics, nil
+}
+
+func normalizeSkillSlash(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "/")
+	return strings.TrimSpace(value)
+}
+
+func normalizeSkillAliases(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		normalized := normalizeSkillSlash(value)
+		if normalized == "" {
+			continue
+		}
+		key := strings.ToLower(normalized)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, normalized)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func inferDescription(content string) string {
