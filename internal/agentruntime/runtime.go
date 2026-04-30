@@ -77,6 +77,10 @@ func (r *Runtime) Enabled() bool {
 	return r != nil && r.opts.Enabled
 }
 
+func (r *Runtime) ConsensusEnabled() bool {
+	return r != nil && r.opts.AgentRuntimeConsensusEnabled
+}
+
 func (r *Runtime) requireEnabled() error {
 	if !r.Enabled() {
 		return fmt.Errorf("agent runtime is disabled")

@@ -16,52 +16,7 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 	return Tool{
 		Name:        "subagents_run",
 		Description: "Run multiple independent read-only subagents in parallel and return compact summaries.",
-		Parameters: json.RawMessage(`{
-  "type":"object",
-  "properties":{
-	    "agent":{"type":"string","description":"Optional safe prompt agent. Defaults to explorer."},
-	    "mode":{"type":"string","enum":["parallel","consensus"],"description":"Execution mode. Defaults to parallel."},
-	    "consensus":{
-	      "type":"object",
-	      "properties":{
-	        "strategy":{"type":"string","enum":["synthesize"]},
-	        "variants":{
-	          "type":"array",
-	          "minItems":1,
-	          "items":{
-	            "type":"object",
-	            "properties":{
-	              "alias":{"type":"string"},
-	              "model":{"type":"string"}
-	            },
-	            "required":["alias"],
-	            "additionalProperties":false
-	          }
-	        }
-	      },
-	      "additionalProperties":false
-	    },
-    "timeout_ms":{"type":"integer","minimum":1000,"maximum":300000,"default":60000},
-    "tasks":{
-      "type":"array",
-      "minItems":1,
-      "maxItems":8,
-		"items":{
-			"type":"object",
-			"properties":{
-			  "title":{"type":"string"},
-			  "prompt":{"type":"string"},
-			  "tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."},
-			  "provider_override":{"type":"object","properties":{"alias":{"type":"string"},"model":{"type":"string"}},"required":["alias"],"additionalProperties":false}
-			},
-        "required":["prompt"],
-        "additionalProperties":false
-      }
-    }
-  },
-  "required":["tasks"],
-  "additionalProperties":false
-}`),
+		Parameters:  subagentsRunToolParameters(runtime),
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			if runtime == nil {
 				return JSONTextResult(map[string]any{"message": "agent runtime is not configured"}, true), nil
@@ -99,6 +54,9 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 				mode = "parallel"
 			}
 			if mode == "consensus" {
+				if !runtime.ConsensusEnabled() {
+					return JSONTextResult(map[string]any{"message": "consensus mode is disabled (agentruntime_consensus_enabled=false)"}, true), nil
+				}
 				if len(input.Tasks) != 1 {
 					return JSONTextResult(map[string]any{"message": "consensus mode requires exactly one task"}, true), nil
 				}
@@ -260,6 +218,83 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 			}, hadFailure), nil
 		},
 	}
+}
+
+func subagentsRunToolParameters(runtime *agentruntime.Runtime) json.RawMessage {
+	if runtime.ConsensusEnabled() {
+		return json.RawMessage(`{
+  "type":"object",
+  "properties":{
+	    "agent":{"type":"string","description":"Optional safe prompt agent. Defaults to explorer."},
+	    "mode":{"type":"string","enum":["parallel","consensus"],"description":"Execution mode. Defaults to parallel."},
+	    "consensus":{
+	      "type":"object",
+	      "properties":{
+	        "strategy":{"type":"string","enum":["synthesize"]},
+	        "variants":{
+	          "type":"array",
+	          "minItems":1,
+	          "items":{
+	            "type":"object",
+	            "properties":{
+	              "alias":{"type":"string"},
+	              "model":{"type":"string"}
+	            },
+	            "required":["alias"],
+	            "additionalProperties":false
+	          }
+	        }
+	      },
+	      "additionalProperties":false
+	    },
+    "timeout_ms":{"type":"integer","minimum":1000,"maximum":300000,"default":60000},
+    "tasks":{
+      "type":"array",
+      "minItems":1,
+      "maxItems":8,
+		"items":{
+			"type":"object",
+			"properties":{
+			  "title":{"type":"string"},
+			  "prompt":{"type":"string"},
+			  "tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."},
+			  "provider_override":{"type":"object","properties":{"alias":{"type":"string"},"model":{"type":"string"}},"required":["alias"],"additionalProperties":false}
+			},
+        "required":["prompt"],
+        "additionalProperties":false
+      }
+    }
+  },
+  "required":["tasks"],
+  "additionalProperties":false
+}`)
+	}
+	return json.RawMessage(`{
+  "type":"object",
+  "properties":{
+	    "agent":{"type":"string","description":"Optional safe prompt agent. Defaults to explorer."},
+	    "mode":{"type":"string","enum":["parallel"],"description":"Execution mode. Defaults to parallel."},
+    "timeout_ms":{"type":"integer","minimum":1000,"maximum":300000,"default":60000},
+    "tasks":{
+      "type":"array",
+      "minItems":1,
+      "maxItems":8,
+		"items":{
+			"type":"object",
+			"properties":{
+			  "title":{"type":"string"},
+			  "prompt":{"type":"string"},
+			  "tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."},
+			  "provider_override":{"type":"object","properties":{"alias":{"type":"string"},"model":{"type":"string"}},"required":["alias"],"additionalProperties":false}
+			},
+        "required":["prompt"],
+        "additionalProperties":false
+      }
+    }
+  },
+  "required":["tasks"],
+  "additionalProperties":false
+}`)
 }
 
 func cancelSubagentRuns(runtime *agentruntime.Runtime, workspaceID string, runs []agentruntime.Run) {

@@ -92,6 +92,13 @@ func TestSchema_UsesPreferredHierarchicalPaths(t *testing.T) {
 			t.Fatalf("field %q path=%q want %q", key, field.Path, want)
 		}
 	}
+	consensusField, ok := byKey["agentruntime_consensus_enabled"]
+	if !ok {
+		t.Fatal("schema missing agentruntime_consensus_enabled")
+	}
+	if !strings.Contains(consensusField.Description, "Advanced opt-in") || !strings.Contains(consensusField.Description, "subagents_run") {
+		t.Fatalf("expected consensus schema to document advanced opt-in lifecycle, got %q", consensusField.Description)
+	}
 }
 
 func TestLoad_ExampleConfigHierarchicalSchema(t *testing.T) {

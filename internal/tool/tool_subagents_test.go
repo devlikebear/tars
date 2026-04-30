@@ -153,6 +153,70 @@ func TestSubagentsRunTool_SpawnsParallelExplorerChildrenAndReturnsSummaries(t *t
 	}
 }
 
+func TestSubagentsRunTool_HidesConsensusSchemaWhenRuntimeGateDisabled(t *testing.T) {
+	runTool := NewSubagentsRunTool(nil)
+	params := string(runTool.Parameters)
+	if strings.Contains(params, `"consensus"`) {
+		t.Fatalf("expected default subagents_run schema to hide consensus, got %s", params)
+	}
+}
+
+func TestSubagentsRunTool_ExposesConsensusSchemaWhenRuntimeGateEnabled(t *testing.T) {
+	rt := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:                        true,
+		WorkspaceDir:                   t.TempDir(),
+		AgentRuntimeConsensusEnabled:   true,
+		AgentRuntimeConsensusMaxFanout: 2,
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := rt.Close(ctx); err != nil {
+			t.Fatalf("close agent runtime: %v", err)
+		}
+	})
+
+	runTool := NewSubagentsRunTool(rt)
+	params := string(runTool.Parameters)
+	if !strings.Contains(params, `"consensus"`) {
+		t.Fatalf("expected consensus-enabled schema to expose consensus, got %s", params)
+	}
+	if !strings.Contains(params, `"enum":["parallel","consensus"]`) {
+		t.Fatalf("expected consensus-enabled schema to advertise consensus mode, got %s", params)
+	}
+}
+
+func TestSubagentsRunTool_RejectsConsensusBeforeSpawnWhenRuntimeGateDisabled(t *testing.T) {
+	rt, store := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		return "summary for " + prompt, nil
+	})
+	parent, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create parent session: %v", err)
+	}
+
+	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-subagents")
+	ctx = usage.WithCallMeta(ctx, usage.CallMeta{
+		Source:    "chat",
+		SessionID: parent.ID,
+	})
+	runTool := NewSubagentsRunTool(rt)
+	res, err := runTool.Execute(ctx, json.RawMessage(`{
+		"mode":"consensus",
+		"consensus":{"variants":[{"alias":"codex"}]},
+		"tasks":[{"prompt":"inspect backend"}]
+	}`))
+	if err != nil {
+		t.Fatalf("subagents_run execute: %v", err)
+	}
+	if !res.IsError || !strings.Contains(res.Text(), "agentruntime_consensus_enabled=false") {
+		t.Fatalf("expected disabled consensus diagnostic, got error=%t text=%s", res.IsError, res.Text())
+	}
+	if got := rt.ListByWorkspace("ws-subagents", 10); len(got) != 0 {
+		t.Fatalf("expected disabled consensus call to avoid spawning runs, got %+v", got)
+	}
+}
+
 func TestSubagentsRunTool_RejectsTaskCountAboveThreadLimit(t *testing.T) {
 	rt, store := newAgentRuntimeForSubagentToolTests(t, 1, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
 		return "summary for " + prompt, nil

@@ -537,7 +537,7 @@
         <h2 id="agentruntime-intro-title">Agent Runtime</h2>
         <p>
           Runs appear here when chat starts delegated work in the agent runtime.
-          Each record keeps the prompt, model tier, status, response, live events, and consensus cost data when available.
+          Each record keeps the prompt, model tier, status, response, live events, and advanced cost data when available.
         </p>
       </div>
       <div class="tool-strip" aria-label="Agent runtime tool families">
@@ -608,7 +608,7 @@
       <div class="cost-summary-card plan-summary">
         <span>Plan totals</span>
         {#if planCostRows.length === 0}
-          <small>No consensus cost data yet</small>
+          <small>No advanced cost data yet</small>
         {:else}
           <div class="plan-cost-list">
             {#each planCostRows as row}

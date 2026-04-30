@@ -63,6 +63,8 @@ Use `subagents_run` when tasks are independent and can fan out in parallel:
 
 Advanced staged-flow tools are available only when explicitly allowed for a session: `subagents_orchestrate` runs dependency-aware `parallel` / `sequential` steps, and `subagents_plan` uses the heavy-tier planner model to draft such a flow.
 
+Experimental consensus mode remains hidden from the default `subagents_run` schema unless `agentruntime.consensus.enabled` is explicitly set.
+
 Tier resolution priority: task `tier` > agent YAML `tier` > config default.
 
 The Console Agent Runtime page exposes `Runs | Subagents` tabs. Use `Runs` to filter execution history by status, time range, and prompt text, jump back to the originating chat session, and scan today/7d/plan cost totals. Use `Subagents` to inspect the active catalog, default/effective LLM tier, resolved provider/model, source file or command entry, tool policy, and recent run links. Workspace `AGENT.md` profiles can update their default tier, draft new subagents with an LLM-assisted builder, preview and approve LLM edits, and archive inactive workspace profiles from this detail view.
