@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.48] - 2026-05-01
+
+### Changed
+
+- Q-011 follow-up: the low-use `process` tool is no longer injected into the default chat tool schema, while explicit session tool allowlists can still opt into it and background `exec` keeps its shared process manager.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'TestResolveInjectedToolSchemas_(AllowAdminHighRiskTools|AllowHighRiskUserOverride|AllowsDeprecatedProcessWhenExplicitlyEnabled)'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tool ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #510.
+
 ## [0.31.47] - 2026-05-01
 
 ### Changed
