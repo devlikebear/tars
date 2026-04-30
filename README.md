@@ -197,6 +197,8 @@ When TARS is exposed behind a reverse proxy path, pass that base path in `--serv
 
 The sidebar keeps Home on the TARS logo and groups the working pages into Work, Operate, and Setup.
 
+The sidebar footer keeps server, Pulse, Reflection, and active session status visible with 30-second refreshes and direct jumps to each detail page.
+
 Frontend API response types are maintained in the console source with the current contract policy documented in `docs/frontend-api-types.md`.
 
 The console header includes an EN/KO language toggle. The selected locale is stored in browser localStorage as `tars_console_locale`; first load falls back to `navigator.language` and then English.
