@@ -4,6 +4,17 @@ import { readFileSync } from 'node:fs'
 
 const source = readFileSync(new URL('../src/components/Reflection.svelte', import.meta.url), 'utf8')
 
+test('Reflection page introduces nightly maintenance before status readouts', () => {
+  assert.match(source, /Reflection - Nightly Maintenance/)
+  assert.match(source, /runs once per day during the configured sleep window/)
+  assert.match(source, /moves slower maintenance out of chat turns/)
+  assert.match(source, /memory: extracts experiences and compiles durable knowledge/)
+  assert.match(source, /kb_cleanup: removes old empty sessions/)
+  assert.match(source, /Run Reflection Now bypasses the sleep-window gate/)
+  assert.match(source, /Pulse sends a signal after repeated failures/)
+  assert.match(source, /class="card r-intro-card"/)
+})
+
 test('Reflection empty state previews the Run Now output shape', () => {
   assert.match(source, /Expected output/)
   assert.match(source, /experiences extracted/)

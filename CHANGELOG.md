@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.34] - 2026-04-30
+
+### Added
+
+- Reflection now starts with a Nightly Maintenance introduction card explaining the sleep window, memory job, cleanup job, manual run behavior, and Pulse failure signal.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Reflection page introduces"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #432.
+
 ## [0.31.33] - 2026-04-30
 
 ### Added
