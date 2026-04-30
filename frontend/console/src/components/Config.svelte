@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { getConfig, getConfigSchema, saveConfig, patchConfigValues, resetWorkspace, restartServer } from '../lib/api'
+  import { buildConfigImpactPreview } from '../lib/configImpact'
   import {
     buildLLMTiersFromDrafts,
     configValuesEqual,
@@ -60,6 +61,7 @@
         path: field?.path || key,
         oldVal: stringifyConfigValue(values[key]),
         newVal: stringifyConfigValue(newVal),
+        impact: buildConfigImpactPreview(field, values[key], newVal).items,
       }
     })
   })
@@ -586,6 +588,16 @@
                 <span class="diff-arrow">&rarr;</span>
                 <span class="diff-new">{entry.newVal}</span>
               </div>
+              {#if entry.impact.length > 0}
+                <div class="diff-impact" aria-label={`${entry.label} Impact`}>
+                  <span class="diff-impact-title">Impact</span>
+                  <ul>
+                    {#each entry.impact as item}
+                      <li>{item}</li>
+                    {/each}
+                  </ul>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -1270,8 +1282,9 @@
 
   .diff-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: var(--space-4);
     padding: var(--space-2) var(--space-4);
     border-bottom: 1px solid var(--border-subtle);
@@ -1287,6 +1300,26 @@
   .diff-old { color: var(--red); text-decoration: line-through; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .diff-arrow { color: var(--text-ghost); }
   .diff-new { color: var(--green); font-weight: 600; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .diff-impact {
+    flex-basis: 100%;
+    margin-top: var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--surface-base);
+  }
+  .diff-impact-title {
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-weight: 600;
+  }
+  .diff-impact ul {
+    margin: 0;
+    padding-left: var(--space-4);
+    color: var(--text-secondary);
+  }
+  .diff-impact li + li { margin-top: 2px; }
 
   /* ── JSON editor modal ───────────────────── */
   .modal-backdrop {
