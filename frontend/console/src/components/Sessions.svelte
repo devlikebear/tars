@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { locale, t } from '../i18n'
   import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory } from '../lib/api'
   import type { Session } from '../lib/types'
   import ChatPanel from './ChatPanel.svelte'
@@ -24,13 +25,14 @@
   // Action state
   let actionBusy = $state('')
   let actionError = $state('')
+  const sessionFilters = ['all', 'session', 'main', 'worker'] as const
 
   function fmt(value?: string): string {
     const text = value?.trim()
     if (!text) return '\u2014'
     const date = new Date(text)
     if (Number.isNaN(date.getTime())) return text
-    return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+    return new Intl.DateTimeFormat($locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
   }
 
   function sessionKind(session: Session): string {
@@ -202,12 +204,12 @@
 <div class="sessions">
   <div class="sessions-header">
     <div>
-      <h2>Sessions</h2>
-      <p class="sessions-subtitle">Chat sessions and transcripts.</p>
+      <h2>{$t.sessions.title}</h2>
+      <p class="sessions-subtitle">{$t.sessions.subtitle}</p>
     </div>
     <label class="sessions-toggle">
       <input type="checkbox" checked={showHidden} onchange={toggleHidden} />
-      <span>Show worker sessions</span>
+      <span>{$t.sessions.showWorkers}</span>
     </label>
   </div>
 
@@ -217,15 +219,15 @@
 
   <!-- Toolbar: search + kind filter + sort -->
   <div class="sessions-toolbar">
-    <input type="text" class="sessions-search" placeholder="Search sessions..." bind:value={searchQuery} />
+    <input type="text" class="sessions-search" placeholder={$t.sessions.searchPlaceholder} bind:value={searchQuery} />
     <div class="sessions-filters">
-      {#each ['all', 'session', 'main', 'worker'] as kind}
-        <button class="btn btn-ghost btn-sm" class:active={filterKind === kind} onclick={() => { filterKind = kind as typeof filterKind }}>{kind}</button>
+      {#each sessionFilters as kind}
+        <button class="btn btn-ghost btn-sm" class:active={filterKind === kind} onclick={() => { filterKind = kind }}>{$t.sessions.filters[kind]}</button>
       {/each}
     </div>
     <div class="sessions-sort">
-      <button class="btn btn-ghost btn-sm" class:active={sortBy === 'updated'} onclick={() => { sortBy = 'updated' }}>Recent</button>
-      <button class="btn btn-ghost btn-sm" class:active={sortBy === 'name'} onclick={() => { sortBy = 'name' }}>Name</button>
+      <button class="btn btn-ghost btn-sm" class:active={sortBy === 'updated'} onclick={() => { sortBy = 'updated' }}>{$t.sessions.sort.recent}</button>
+      <button class="btn btn-ghost btn-sm" class:active={sortBy === 'name'} onclick={() => { sortBy = 'name' }}>{$t.sessions.sort.name}</button>
     </div>
   </div>
 
@@ -234,9 +236,9 @@
   {/if}
 
   {#if loading}
-    <div class="sessions-loading">Loading sessions...</div>
+    <div class="sessions-loading">{$t.sessions.loading}</div>
   {:else if filteredSessions().length === 0}
-    <div class="empty-state"><p>{searchQuery || filterKind !== 'all' ? 'No matching sessions.' : 'No sessions found.'}</p></div>
+    <div class="empty-state"><p>{searchQuery || filterKind !== 'all' ? $t.sessions.noMatches : $t.sessions.empty}</p></div>
   {:else}
     <div class="sessions-layout">
       <div class="sessions-list">
@@ -269,14 +271,14 @@
             </button>
             <div class="session-item-actions">
               {#if !isMainSession(session)}
-                <button class="btn-icon" title="Rename" onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
-                <button class="btn-icon" title="Auto title" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>&#9733;</button>
+                <button class="btn-icon" title={$t.common.actions.rename} onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
+                <button class="btn-icon" title={$t.sessions.autoTitle} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>&#9733;</button>
               {/if}
-              <button class="btn-icon" title="Compact" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
+              <button class="btn-icon" title={$t.common.actions.compact} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
               {#if !isMainSession(session)}
                 <button
                   class="btn-icon btn-icon-danger"
-                  title={deleteConfirmId === session.id ? 'Click again to confirm' : 'Delete'}
+                  title={deleteConfirmId === session.id ? $t.sessions.clickAgainToConfirm : $t.common.actions.delete}
                   disabled={actionBusy === session.id}
                   onclick={(e) => { e.stopPropagation(); requestDelete(session.id) }}
                 >{deleteConfirmId === session.id ? '!!' : '\u00d7'}</button>
@@ -293,13 +295,13 @@
             <div class="session-detail-actions">
               <span class="badge {kindBadge(selectedSession)}">{sessionKind(selectedSession)}</span>
               {#if !isMainSession(selectedSession)}
-                <button class="btn btn-ghost btn-sm" disabled={actionBusy === selectedSession.id} onclick={() => { if (selectedSession) startRename(selectedSession) }}>Rename</button>
-                <button class="btn btn-ghost btn-sm" disabled={actionBusy === selectedSession.id} onclick={() => { if (selectedSession) handleGenerateTitle(selectedSession) }}>Auto Title</button>
+                <button class="btn btn-ghost btn-sm" disabled={actionBusy === selectedSession.id} onclick={() => { if (selectedSession) startRename(selectedSession) }}>{$t.common.actions.rename}</button>
+                <button class="btn btn-ghost btn-sm" disabled={actionBusy === selectedSession.id} onclick={() => { if (selectedSession) handleGenerateTitle(selectedSession) }}>{$t.sessions.autoTitle}</button>
               {/if}
-              <button class="btn btn-ghost btn-sm" disabled={actionBusy === selectedSession?.id} onclick={() => { if (selectedSession) handleCompact(selectedSession.id) }}>Compact</button>
+              <button class="btn btn-ghost btn-sm" disabled={actionBusy === selectedSession?.id} onclick={() => { if (selectedSession) handleCompact(selectedSession.id) }}>{$t.common.actions.compact}</button>
               {#if !isMainSession(selectedSession)}
                 <button class="btn btn-danger btn-sm" disabled={actionBusy === selectedSession.id} onclick={() => { if (selectedSession) requestDelete(selectedSession.id) }}>
-                  {deleteConfirmId === selectedSession.id ? 'Confirm Delete?' : 'Delete'}
+                  {deleteConfirmId === selectedSession.id ? $t.sessions.confirmDelete : $t.common.actions.delete}
                 </button>
               {/if}
             </div>

@@ -1,17 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { t } from '../i18n'
+  import type { Translations } from '../i18n'
   import { getServerStatus } from '../lib/api'
 
+  type NavGroupId = keyof Translations['nav']['groups']
+  type NavItemId = keyof Translations['nav']['items']
+
   interface NavItem {
-    id: string
-    label: string
+    id: NavItemId
     path: string
     icon: string
   }
 
   interface NavGroup {
-    id: string
-    label: string
+    id: NavGroupId
     items: NavItem[]
   }
 
@@ -35,29 +38,26 @@
   const groups: NavGroup[] = [
     {
       id: 'work',
-      label: 'Work',
       items: [
-        { id: 'chat', label: 'Chat', path: '/console/chat', icon: '\u25ce' },
-        { id: 'memory', label: 'Memory', path: '/console/memory', icon: '\u22c8' },
-        { id: 'sysprompt', label: 'System Prompt', path: '/console/sysprompt', icon: '\u2691' },
-        { id: 'extensions', label: 'Extensions', path: '/console/extensions', icon: '\u2756' },
+        { id: 'chat', path: '/console/chat', icon: '\u25ce' },
+        { id: 'memory', path: '/console/memory', icon: '\u22c8' },
+        { id: 'sysprompt', path: '/console/sysprompt', icon: '\u2691' },
+        { id: 'extensions', path: '/console/extensions', icon: '\u2756' },
       ],
     },
     {
       id: 'operate',
-      label: 'Operate',
       items: [
-        { id: 'agentruntime', label: 'Agent Runtime', path: '/console/agentruntime', icon: '\u25c8' },
-        { id: 'ops', label: 'Approvals', path: '/console/approvals', icon: '\u2699' },
-        { id: 'pulse', label: 'Pulse', path: '/console/pulse', icon: '\u2661' },
-        { id: 'reflection', label: 'Reflection', path: '/console/reflection', icon: '\u263e' },
+        { id: 'agentruntime', path: '/console/agentruntime', icon: '\u25c8' },
+        { id: 'ops', path: '/console/approvals', icon: '\u2699' },
+        { id: 'pulse', path: '/console/pulse', icon: '\u2661' },
+        { id: 'reflection', path: '/console/reflection', icon: '\u263e' },
       ],
     },
     {
       id: 'setup',
-      label: 'Setup',
       items: [
-        { id: 'config', label: 'Settings', path: '/console/config', icon: '\u2638' },
+        { id: 'config', path: '/console/config', icon: '\u2638' },
       ],
     },
   ]
@@ -76,9 +76,17 @@
     event.preventDefault()
     onNavigate(path)
   }
+
+  function groupLabel(id: NavGroupId): string {
+    return $t.nav.groups[id]
+  }
+
+  function itemLabel(id: NavItemId): string {
+    return $t.nav.items[id]
+  }
 </script>
 
-<nav class="nav" aria-label="Main navigation">
+<nav class="nav" aria-label={$t.nav.mainNavigation}>
   <div class="nav-brand">
     <button type="button" class="nav-logo" onclick={(e: MouseEvent) => handleClick(e, '/console')}>
       <span class="nav-logo-mark">T</span>
@@ -88,8 +96,8 @@
 
   <div class="nav-items">
     {#each groups as group}
-      <section class="nav-group" aria-label={`${group.label} navigation`}>
-        <div class="nav-group-label">{group.label}</div>
+      <section class="nav-group" aria-label={`${groupLabel(group.id)} ${$t.nav.navigationSuffix}`}>
+        <div class="nav-group-label">{groupLabel(group.id)}</div>
         {#each group.items as item}
           <a
             href={item.path}
@@ -98,7 +106,7 @@
             onclick={(e: MouseEvent) => handleClick(e, item.path)}
           >
             <span class="nav-icon">{item.icon}</span>
-            <span class="nav-label">{item.label}</span>
+            <span class="nav-label">{itemLabel(item.id)}</span>
           </a>
         {/each}
       </section>

@@ -6,6 +6,7 @@ import { buildConfigImpactPreview, parseDurationSeconds } from '../src/lib/confi
 import type { ConfigFieldMeta } from '../src/lib/types.ts'
 
 const configSource = readFileSync(new URL('../src/components/Config.svelte', import.meta.url), 'utf8')
+const pendingChangesSource = readFileSync(new URL('../src/components/ConfigPendingChanges.svelte', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 
 test('config impact preview estimates pulse interval effects', () => {
@@ -30,6 +31,6 @@ test('config impact preview estimates pulse interval effects', () => {
 test('Settings diff panel renders impact preview metadata', () => {
   assert.match(typesSource, /impact\?: string\[\]/)
   assert.match(configSource, /buildConfigImpactPreview/)
-  assert.match(configSource, /diff-impact/)
-  assert.match(configSource, /Impact/)
+  assert.match(pendingChangesSource, /diff-impact/)
+  assert.match(pendingChangesSource, /Impact/)
 })
