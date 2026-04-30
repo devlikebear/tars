@@ -7,6 +7,7 @@ import type {
   CleanupPlan,
   ConfigFile,
   ConfigSchema,
+  ProviderModelsInfo,
   HubInstalled,
   AgentRuntimeRun,
   AgentRuntimeRunEvent,
@@ -608,6 +609,10 @@ export async function getConfig(): Promise<ConfigFile> {
 
 export async function getConfigSchema(): Promise<ConfigSchema> {
   return requestJSON<ConfigSchema>('/v1/admin/config/schema')
+}
+
+export async function getProviderModels(): Promise<ProviderModelsInfo> {
+  return requestJSON<ProviderModelsInfo>('/v1/models')
 }
 
 export async function saveConfig(content: string): Promise<void> {

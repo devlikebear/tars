@@ -805,6 +805,17 @@ export type ConfigSchema = {
   values: Record<string, unknown>
 }
 
+export type ProviderModelsInfo = {
+  provider: string
+  current_model: string
+  source: string
+  stale: boolean
+  fetched_at?: string
+  expires_at?: string
+  models: string[]
+  warning?: string
+}
+
 export type PlanStatus =
   | 'drafting'
   | 'proposed'
