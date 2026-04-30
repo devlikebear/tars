@@ -17,8 +17,9 @@ type hubResourceSpec struct {
 	// Use and Short for the parent cobra command.
 	Use   string
 	Short string
-	// Singular noun for messages (e.g. "skill", "plugin", "MCP server").
-	Noun string
+	// Singular and plural nouns for messages (e.g. "skill" / "skills").
+	Noun       string
+	PluralNoun string
 
 	// Operation callbacks. Each receives the standard context/writer/args.
 	Search    func(ctx context.Context, stdout io.Writer, query string) error
@@ -36,6 +37,7 @@ func newHubResourceCommand(spec hubResourceSpec, stdout, stderr io.Writer) *cobr
 		Use:   spec.Use,
 		Short: spec.Short,
 	}
+	pluralNoun := spec.plural()
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "search [query]",
@@ -84,7 +86,7 @@ func newHubResourceCommand(spec hubResourceSpec, stdout, stderr io.Writer) *cobr
 
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: fmt.Sprintf("List installed hub %ss", spec.Noun),
+		Short: fmt.Sprintf("List installed hub %s", pluralNoun),
 	}
 	var listWorkspaceDir string
 	listCmd.Flags().StringVar(&listWorkspaceDir, "workspace-dir", defaultWorkspaceDir(), "workspace directory")
@@ -99,7 +101,7 @@ func newHubResourceCommand(spec hubResourceSpec, stdout, stderr io.Writer) *cobr
 
 	updateCmd := &cobra.Command{
 		Use:   "update",
-		Short: fmt.Sprintf("Update all installed hub %ss to latest", spec.Noun),
+		Short: fmt.Sprintf("Update all installed hub %s to latest", pluralNoun),
 	}
 	var updateWorkspaceDir string
 	updateCmd.Flags().StringVar(&updateWorkspaceDir, "workspace-dir", defaultWorkspaceDir(), "workspace directory")
@@ -122,6 +124,13 @@ func newHubResourceCommand(spec hubResourceSpec, stdout, stderr io.Writer) *cobr
 	})
 
 	return cmd
+}
+
+func (spec hubResourceSpec) plural() string {
+	if plural := strings.TrimSpace(spec.PluralNoun); plural != "" {
+		return plural
+	}
+	return strings.TrimSpace(spec.Noun) + "s"
 }
 
 func printHubUpdateResult(stdout io.Writer, noun string, result skillhub.UpdateResult) {

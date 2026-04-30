@@ -12,9 +12,10 @@ import (
 
 func newPluginCommand(stdout, stderr io.Writer) *cobra.Command {
 	return newHubResourceCommand(hubResourceSpec{
-		Use:   "plugin",
-		Short: "Manage plugins from the TARS Hub",
-		Noun:  "plugin",
+		Use:        "plugin",
+		Short:      "Manage plugins from the TARS Hub",
+		Noun:       "plugin",
+		PluralNoun: "plugins",
 
 		Search: func(ctx context.Context, stdout io.Writer, query string) error {
 			reg := skillhub.NewRegistry()
