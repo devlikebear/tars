@@ -67,7 +67,7 @@ Experimental consensus mode remains hidden from the default `subagents_run` sche
 
 Tier resolution priority: task `tier` > agent YAML `tier` > config default.
 
-The Console Agent Runtime page exposes `Runs | Subagents` tabs. Use `Runs` to filter execution history by status, time range, and prompt text, jump back to the originating chat session, scan today/7d/plan cost totals, inspect each run's cost/token flow, and review file attention for frequently read or edited workspace paths. Use `Subagents` to inspect the active catalog, default/effective LLM tier, resolved provider/model, source file or command entry, tool policy, and recent run links. Workspace `AGENT.md` profiles can update their default tier, draft new subagents with an LLM-assisted builder, preview and approve LLM edits, and archive inactive workspace profiles from this detail view.
+The Console Agent Runtime page exposes `Runs | Subagents` tabs. Use `Runs` to filter execution history by status, time range, and prompt text, jump back to the originating chat session, scan today/7d/plan cost totals, scrub timestamped run events with Replay, inspect each run's cost/token flow, and review file attention for frequently read or edited workspace paths. Use `Subagents` to inspect the active catalog, default/effective LLM tier, resolved provider/model, source file or command entry, tool policy, and recent run links. Workspace `AGENT.md` profiles can update their default tier, draft new subagents with an LLM-assisted builder, preview and approve LLM edits, and archive inactive workspace profiles from this detail view.
 
 ### 3-Tier Model Routing
 
@@ -186,7 +186,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 | Page | Path | Purpose |
 |------|------|---------|
 | Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` skill commands, Files workspace shell, and advanced `/config` session policy overrides |
-| Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, originating session links, cost summaries, per-run cost/token flow, file attention, and subagent tier management |
+| Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, and subagent tier management |
 | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and try semantic recall searches |
 | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
 | Approvals | `/console/approvals` | Review risky cleanup plans before TARS applies them |

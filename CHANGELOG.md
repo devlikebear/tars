@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.54] - 2026-05-01
+
+### Added
+
+- CON-048: Console Agent Runtime run details now include a Replay scrubber that reconstructs run state from timestamped live events up to the selected cursor time.
+- Replay supports Live lock, Play/Pause, 1x/2x/5x playback speed, first/last event timestamps, event progress, status, last event, message, and replayed file path chips.
+
+### Tests
+
+- `npm test -- --test-name-pattern "replay"` in `frontend/console`
+- `npm test -- --test-name-pattern "Agent Runtime"` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #450.
+
 ## [0.31.53] - 2026-05-01
 
 ### Added

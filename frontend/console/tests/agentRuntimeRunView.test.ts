@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 const source = readFileSync(new URL('../src/components/AgentRuntimeRunView.svelte', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
 const costFlowSource = readFileSync(new URL('../src/components/AgentRuntimeCostFlow.svelte', import.meta.url), 'utf8')
+const replaySource = readFileSync(new URL('../src/components/AgentRuntimeReplay.svelte', import.meta.url), 'utf8')
 
 test('Agent Runtime runs page exposes filters, session links, and cost summaries', () => {
   assert.match(source, /runStatusFilter/)
@@ -46,4 +47,12 @@ test('Agent Runtime run detail exposes token and cost flow visualization', () =>
   assert.match(costFlowSource, /Actual cost/)
   assert.match(costFlowSource, /Tokens/)
   assert.match(costFlowSource, /Token and cost Sankey diagram/)
+})
+
+test('Agent Runtime run detail exposes replay scrubber controls', () => {
+  assert.match(source, /AgentRuntimeReplay/)
+  assert.match(source, /replayEvents/)
+  assert.match(replaySource, /replay-scrubber/)
+  assert.match(replaySource, /Live/)
+  assert.match(replaySource, /5x/)
 })

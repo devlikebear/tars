@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import AgentRuntimeCostFlow from './AgentRuntimeCostFlow.svelte'
+  import AgentRuntimeReplay from './AgentRuntimeReplay.svelte'
   import {
     applyAgentRuntimeSubagentDraft,
     archiveAgentRuntimeSubagent,
@@ -119,6 +120,7 @@
     return Math.max(1, ...fileAttentionRows.map((row) => row.total ?? 0))
   })
   let costFlowRuns = $derived.by<AgentRuntimeRun[]>(() => selectedRun ? [selectedRun] : [])
+  let replayEvents = $derived.by<AgentRuntimeRunEvent[]>(() => events)
 
   async function loadRuns() {
     loading = true
@@ -1051,6 +1053,8 @@
           <AgentRuntimeCostFlow run={costFlowRuns[0]} />
         </div>
       {/if}
+
+      <AgentRuntimeReplay events={replayEvents} runStatus={selectedRun.status} />
 
       <div class="detail-columns">
         <section class="detail-panel">
