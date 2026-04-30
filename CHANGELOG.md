@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.37] - 2026-04-30
+
+### Added
+
+- Pulse now opens with a System Watchdog introduction card that explains monitored signals, LLM classifier actions, and the Settings `pulse_*` policy source before status readouts.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Pulse introduces"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #429.
+
 ## [0.31.36] - 2026-04-30
 
 ### Added
