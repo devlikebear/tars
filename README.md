@@ -29,7 +29,7 @@ A single Go binary that runs on your machine and gives you: an interactive chat 
 
 The primary interface. Browser-based console at `http://127.0.0.1:43180/console`.
 
-- Multi-session chat with full LLM tool-calling loops
+- Multi-session chat with full LLM tool-calling loops and transcript snippet matches in session search
 - Tool calls render as collapsible rows with live elapsed time, compact argument previews, and automatic error expansion
 - `@` file and directory mentions from the session Files roots for explicit context injection
 - `/` command autocomplete for built-in chat actions and explicit user-invocable skill selection
@@ -208,7 +208,7 @@ Set `usage.limits.daily_tokens` (or `usage_daily_token_budget`) to show a daily 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
 | Home | Dashboard | `/console` | Pulse, Reflection, disk pressure, active sessions, recent notifications, recommended setup actions, and plan resume |
-| Work | Chat | `/console/chat` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
+| Work | Chat | `/console/chat` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
 | Work | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
 | Work | Extensions | `/console/extensions` | Skills, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |

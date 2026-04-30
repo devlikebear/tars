@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.83] - 2026-05-01
+
+### Added
+
+- Chat session search now reuses session-inclusive memory search to surface matching transcript snippets in the session sidebar.
+- Session search snippets highlight OR-matched query terms safely after escaping transcript text.
+
+### Changed
+
+- The standalone Sessions component uses the same transcript snippet grouping and highlight behavior as the active chat sidebar.
+
+### Documentation
+
+- README now notes transcript snippet matches in chat session search.
+
+### Tests
+
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm run build`
+- Browser smoke: searched `meridian launch` in the chat session sidebar and verified transcript snippets plus highlighted terms.
+
+### Closed
+
+- Closes #400.
+
 ## [0.31.82] - 2026-05-01
 
 ### Added
