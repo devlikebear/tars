@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/pkg/tarsclient"
 )
 
@@ -89,9 +90,7 @@ func Start(ctx context.Context, opts StartOptions) error {
 	}
 
 	workspaceDir := strings.TrimSpace(opts.WorkspaceDir)
-	if workspaceDir == "" {
-		workspaceDir = "./workspace"
-	}
+	workspaceDir = resolveAssistantWorkspaceDir(workspaceDir)
 	voiceDir := filepath.Join(workspaceDir, "_shared", "voice", "inbox")
 	if err := os.MkdirAll(voiceDir, 0o755); err != nil {
 		return fmt.Errorf("create voice inbox: %w", err)
@@ -137,6 +136,14 @@ func Start(ctx context.Context, opts StartOptions) error {
 		fmt.Fprintln(stdout, "press ENTER to start recording, ENTER again to stop, type /quit to exit")
 		return runFallbackInputMode(ctx, stdin, deps, voiceDir, defaultIfEmpty(opts.FFmpegBin, "ffmpeg"), audioInput, stdout, stderr)
 	}
+}
+
+func resolveAssistantWorkspaceDir(raw string) string {
+	workspaceDir := strings.TrimSpace(raw)
+	if workspaceDir == "" {
+		return config.DefaultWorkspaceDir()
+	}
+	return workspaceDir
 }
 
 func tryCreateHotkeyListener(raw string) (hotkeyListener, string) {

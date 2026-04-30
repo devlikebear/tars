@@ -47,7 +47,7 @@ func defaultAssistantOptions() assistantOptions {
 		serverURL: serverURL,
 		sessionID: strings.TrimSpace(os.Getenv("TARS_SESSION_ID")),
 		apiToken:  strings.TrimSpace(os.Getenv("TARS_API_TOKEN")),
-		workspace: strings.TrimSpace(firstNonEmpty(os.Getenv("TARS_WORKSPACE_DIR"), "./workspace")),
+		workspace: defaultWorkspaceDir(),
 		hotkey:    assistant.DefaultHotkey,
 		audioInput: strings.TrimSpace(firstNonEmpty(
 			os.Getenv("TARS_ASSISTANT_AUDIO_INPUT"),
