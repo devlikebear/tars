@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.32] - 2026-04-30
+
+### Added
+
+- Extensions now explains Skills, Plugins, and MCP Servers inline in both Installed and Hub views so each extension surface has a concise definition near its controls.
+
+### Tests
+
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #434.
+
 ## [0.31.31] - 2026-04-30
 
 ### Added
