@@ -80,12 +80,12 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/runtime/extensions/reload":
 			adminAuth = r.Header.Get("Authorization")
 			_ = json.NewEncoder(w).Encode(map[string]any{"reloaded": true, "version": 2, "skills": 1, "plugins": 1, "mcp_count": 1, "agentruntime_refreshed": true, "agentruntime_agents": 3})
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/agent/agents":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/agents":
 			normalAuth = r.Header.Get("Authorization")
 			_ = json.NewEncoder(w).Encode(map[string]any{"count": 1, "agents": []map[string]any{{"name": "default"}}})
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/agent/runs":
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/agentruntime/runs":
 			_ = json.NewEncoder(w).Encode(map[string]any{"run_id": "r1", "status": "accepted", "accepted": true})
-		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/agent/runs"):
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/agentruntime/runs"):
 			_ = json.NewEncoder(w).Encode(map[string]any{"count": 1, "runs": []map[string]any{{"run_id": "r1", "status": "running", "accepted": true}}})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/status":
 			_ = json.NewEncoder(w).Encode(map[string]any{

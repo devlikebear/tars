@@ -12,7 +12,7 @@ func (c *Client) ListAgents(ctx context.Context) ([]AgentDescriptor, error) {
 	var payload struct {
 		Agents []AgentDescriptor `json:"agents"`
 	}
-	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/agent/agents", nil, false, &payload); err != nil {
+	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/agentruntime/agents", nil, false, &payload); err != nil {
 		return nil, err
 	}
 	if payload.Agents == nil {
@@ -23,7 +23,7 @@ func (c *Client) ListAgents(ctx context.Context) ([]AgentDescriptor, error) {
 
 func (c *Client) SpawnRun(ctx context.Context, req SpawnRequest) (AgentRun, error) {
 	var run AgentRun
-	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/agent/runs", req, false, &run); err != nil {
+	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/agentruntime/runs", req, false, &run); err != nil {
 		return AgentRun{}, err
 	}
 	return run, nil
@@ -36,7 +36,7 @@ func (c *Client) ListRuns(ctx context.Context, limit int) ([]AgentRun, error) {
 	var payload struct {
 		Runs []AgentRun `json:"runs"`
 	}
-	path := fmt.Sprintf("/v1/agent/runs?limit=%d", limit)
+	path := fmt.Sprintf("/v1/agentruntime/runs?limit=%d", limit)
 	if _, err := c.doJSON(ctx, http.MethodGet, path, nil, false, &payload); err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (c *Client) GetRun(ctx context.Context, runID string) (AgentRun, error) {
 		return AgentRun{}, fmt.Errorf("run id is required")
 	}
 	var run AgentRun
-	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/agent/runs/"+url.PathEscape(id), nil, false, &run); err != nil {
+	if _, err := c.doJSON(ctx, http.MethodGet, "/v1/agentruntime/runs/"+url.PathEscape(id), nil, false, &run); err != nil {
 		return AgentRun{}, err
 	}
 	return run, nil
@@ -64,7 +64,7 @@ func (c *Client) CancelRun(ctx context.Context, runID string) (AgentRun, error) 
 		return AgentRun{}, fmt.Errorf("run id is required")
 	}
 	var run AgentRun
-	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/agent/runs/"+url.PathEscape(id)+"/cancel", nil, false, &run); err != nil {
+	if _, err := c.doJSON(ctx, http.MethodPost, "/v1/agentruntime/runs/"+url.PathEscape(id)+"/cancel", nil, false, &run); err != nil {
 		return AgentRun{}, err
 	}
 	return run, nil

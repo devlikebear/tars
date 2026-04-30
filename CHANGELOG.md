@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.69] - 2026-05-01
+
+### Changed
+
+- Canonicalized Agent Runtime run and agent-list API calls under `/v1/agentruntime/*`.
+- `pkg/tarsclient` and internal client tests now use `/v1/agentruntime/agents` and `/v1/agentruntime/runs` by default.
+- Kept `/v1/agent/agents` and `/v1/agent/runs` as explicit legacy aliases for compatibility.
+
+### Documentation
+
+- Updated Agent Runtime tutorial and roadmap notes to label `/v1/agent/*` as legacy-only.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver ./internal/tarsclient ./pkg/tarsclient -run 'AgentRunsAPIHandler_AgentsList|RegisterAPIRoutes|RuntimeClientEndpoints|RunShowsPolicy|RunsShowsPolicy|ResolveURL'`
+
+### Closed
+
+- Closes #414.
+
 ## [0.31.68] - 2026-05-01
 
 ### Changed

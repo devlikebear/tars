@@ -55,7 +55,7 @@ AgentExecutor (인터페이스)
     └── PromptExecutor               ← agent.Loop 기반
 
 Handler (HTTP API)
-    ├── GET  /v1/agent/agents            ← Agent list (현재 legacy-named endpoint)
+    ├── GET  /v1/agentruntime/agents     ← Agent list
     ├── POST /v1/agentruntime/runs       ← Spawn
     ├── GET  /v1/agentruntime/runs       ← List
     ├── GET  /v1/agentruntime/runs/{id}  ← Get
@@ -63,7 +63,7 @@ Handler (HTTP API)
     └── POST /v1/agentruntime/runs/{id}/cancel ← Cancel
 ```
 
-`/v1/agent/runs`와 `/v1/agent/runs/{id}`는 호환성을 위한 legacy alias입니다. 신규 문서와 외부 클라이언트는 `/v1/agentruntime/runs`를 우선 사용합니다. 단, agent 목록은 현재 `/v1/agent/agents`만 제공합니다.
+`/v1/agent/agents`, `/v1/agent/runs`, `/v1/agent/runs/{id}`는 호환성을 위한 legacy alias입니다. 신규 문서와 외부 클라이언트는 `/v1/agentruntime/*`를 우선 사용합니다.
 
 ## 실습
 
