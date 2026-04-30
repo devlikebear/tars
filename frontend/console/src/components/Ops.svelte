@@ -25,7 +25,48 @@
     onAskAI?: (prompt: string) => void
   }
 
+  type ApprovalGuideStep = {
+    title: string
+    detail: string
+  }
+
+  type ApprovalTriggerGuide = {
+    title: string
+    detail: string
+    state: string
+  }
+
   let { onAskAI }: Props = $props()
+
+  const cleanupPlanTooltip = 'Scans unused temporary files and empty sessions from the last 30 days. Actual deletion waits for approval.'
+
+  const approvalTriggerGuide: ApprovalTriggerGuide[] = [
+    {
+      title: 'New cleanup plan',
+      detail: 'Scans unused temporary files, stale workspace scratch data, and empty sessions so you can review cleanup candidates first.',
+      state: 'available',
+    },
+    {
+      title: 'future Pulse signals',
+      detail: 'Pulse findings that are not safe to autofix can later land here for human review.',
+      state: 'planned',
+    },
+  ]
+
+  const approvalGuideSteps: ApprovalGuideStep[] = [
+    {
+      title: 'Review the candidate list',
+      detail: 'Each request shows file paths, size, and reason before anything changes.',
+    },
+    {
+      title: 'Choose Approve or Reject',
+      detail: 'Approve applies the plan; Reject discards it without touching the workspace.',
+    },
+    {
+      title: 'Read the result log',
+      detail: 'Applied approvals keep a result log so you can see what changed after the action runs.',
+    },
+  ]
 
   let status: OpsStatus | null = $state(null)
   let approvals: Approval[] = $state([])
@@ -356,6 +397,7 @@
             <button
               type="button"
               class="btn btn-ghost btn-sm"
+              title={cleanupPlanTooltip}
               disabled={planCreating}
               onclick={handleCreatePlan}
             >
@@ -365,7 +407,44 @@
         </div>
 
         {#if approvals.length === 0}
-          <div class="empty-state"><p>No approvals found.</p></div>
+          <div class="approval-empty-guide">
+            <div class="approval-empty-intro">
+              <span class="approval-empty-kicker">Approvals</span>
+              <h3>Approvals review queue</h3>
+              <p>
+                Approvals are where riskier workspace changes wait for your review before TARS applies them.
+              </p>
+            </div>
+
+            <div class="approval-empty-grid">
+              <div>
+                <div class="approval-empty-label">Current triggers</div>
+                <ul class="approval-empty-list">
+                  {#each approvalTriggerGuide as trigger}
+                    <li>
+                      <div>
+                        <strong>{trigger.title}</strong>
+                        <span class="badge badge-default">{trigger.state}</span>
+                      </div>
+                      <span>{trigger.detail}</span>
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+
+              <div>
+                <div class="approval-empty-label">How each approval works</div>
+                <ol class="approval-step-list">
+                  {#each approvalGuideSteps as step}
+                    <li>
+                      <strong>{step.title}</strong>
+                      <span>{step.detail}</span>
+                    </li>
+                  {/each}
+                </ol>
+              </div>
+            </div>
+          </div>
         {:else}
           <div class="approval-list">
             {#each approvals as approval}
@@ -740,6 +819,100 @@
   }
 
   /* ── Approvals ────────────────────────────────── */
+  .approval-empty-guide {
+    display: grid;
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .approval-empty-intro {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .approval-empty-kicker,
+  .approval-empty-label {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .approval-empty-intro h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .approval-empty-intro p {
+    max-width: 720px;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+  }
+
+  .approval-empty-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .approval-empty-list,
+  .approval-step-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: var(--space-2) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .approval-empty-list li,
+  .approval-step-list li {
+    display: grid;
+    gap: var(--space-1);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .approval-empty-list li:first-child,
+  .approval-step-list li:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .approval-empty-list li > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .approval-empty-list strong,
+  .approval-step-list strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .approval-empty-list span:not(.badge),
+  .approval-step-list span {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  @media (max-width: 760px) {
+    .approval-empty-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
   .approval-list {
     display: grid;
     gap: var(--space-2);
