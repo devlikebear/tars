@@ -82,4 +82,7 @@ llm:
 	if got := payload.Values["workspace_dir"]; got != workspaceDir {
 		t.Fatalf("expected runtime workspace override %q, got %#v", workspaceDir, got)
 	}
+	if payload.UpdatedAt == "" {
+		t.Fatalf("expected schema response to include config file updated_at")
+	}
 }

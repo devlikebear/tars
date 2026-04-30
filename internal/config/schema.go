@@ -4,15 +4,17 @@ import "github.com/devlikebear/tars/internal/memory"
 
 // FieldMeta describes a single configuration field for UI rendering.
 type FieldMeta struct {
-	Key         string   `json:"key"`
-	Path        string   `json:"path"`
-	Section     string   `json:"section"`
-	Type        string   `json:"type"` // "string", "int", "float", "bool", "json"
-	Label       string   `json:"label"`
-	Description string   `json:"description"`
-	Impact      []string `json:"impact,omitempty"`
-	Sensitive   bool     `json:"sensitive,omitempty"`
-	Options     []string `json:"options,omitempty"`
+	Key             string   `json:"key"`
+	Path            string   `json:"path"`
+	Section         string   `json:"section"`
+	Type            string   `json:"type"` // "string", "int", "float", "bool", "json"
+	Label           string   `json:"label"`
+	Description     string   `json:"description"`
+	Impact          []string `json:"impact,omitempty"`
+	DefaultValue    any      `json:"default_value,omitempty"`
+	RequiresRestart bool     `json:"requires_restart"`
+	Sensitive       bool     `json:"sensitive,omitempty"`
+	Options         []string `json:"options,omitempty"`
 }
 
 func f(key, section, typ, label, desc string) FieldMeta {
@@ -33,7 +35,7 @@ func fjson(key, section, label, desc string) FieldMeta {
 
 // Schema returns metadata for all configuration fields, grouped for UI display.
 func Schema() []FieldMeta {
-	return withConfigImpactHints([]FieldMeta{
+	return withConfigFieldMeta(withConfigImpactHints([]FieldMeta{
 		// ── Runtime ──────────────────────────────
 		f("workspace_dir", "Runtime", "string", "Workspace Directory", "Directory for workspace data and sessions"),
 		fsel("plan_clarify_mode", "Runtime", "Plan Clarify Mode", "How TARS handles ambiguous multi-step requests before drafting a plan: smart = LLM evaluates ambiguity itself; auto = always plan immediately; ask = always ask 1–3 clarifying questions first.", []string{"smart", "auto", "ask"}),
@@ -192,7 +194,7 @@ func Schema() []FieldMeta {
 		f("plugins_extra_dirs_json", "Extensions", "string_list", "Plugins Extra Dirs", "Additional directories searched for user plugin definitions"),
 		f("plugins_bundled_dir", "Extensions", "string", "Plugins Directory", "Directory for bundled plugin files"),
 		f("plugins_allow_mcp_servers", "Extensions", "bool", "Allow MCP in Plugins", "Allow plugins to register MCP servers"),
-	})
+	}))
 }
 
 // ConfigToMap converts a Config to a flat map keyed by YAML keys.

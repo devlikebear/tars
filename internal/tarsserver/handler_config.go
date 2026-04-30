@@ -64,9 +64,10 @@ func newConfigAPIHandler(configPath string, cfg config.Config, workspaceDir stri
 }
 
 type configSchemaResponse struct {
-	Path   string             `json:"path"`
-	Fields []config.FieldMeta `json:"fields"`
-	Values map[string]any     `json:"values"`
+	Path      string             `json:"path"`
+	UpdatedAt string             `json:"updated_at,omitempty"`
+	Fields    []config.FieldMeta `json:"fields"`
+	Values    map[string]any     `json:"values"`
 }
 
 func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.Config, workspaceDir string) {
@@ -100,10 +101,16 @@ func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.
 		}
 	}
 
+	updatedAt := ""
+	if info, err := os.Stat(configPath); err == nil {
+		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
+	}
+
 	writeJSON(w, http.StatusOK, configSchemaResponse{
-		Path:   configPath,
-		Fields: schema,
-		Values: values,
+		Path:      configPath,
+		UpdatedAt: updatedAt,
+		Fields:    schema,
+		Values:    values,
 	})
 }
 

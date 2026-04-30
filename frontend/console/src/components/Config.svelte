@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { getConfig, getConfigSchema, saveConfig, patchConfigValues, resetWorkspace, restartServer } from '../lib/api'
   import { buildConfigImpactPreview } from '../lib/configImpact'
+  import { buildConfigMetaBadges } from '../lib/configMetaBadges'
   import {
     buildLLMTiersFromDrafts,
     configValuesEqual,
@@ -21,6 +22,7 @@
   type ViewMode = 'form' | 'yaml'
 
   let configPath = $state('')
+  let schemaUpdatedAt = $state('')
   let schema: ConfigFieldMeta[] = $state([])
   let values: Record<string, unknown> = $state({})
   let yamlContent = $state('')
@@ -148,6 +150,7 @@
     try {
       const [schemaResp, rawResp] = await Promise.all([getConfigSchema(), getConfig()])
       configPath = schemaResp.path
+      schemaUpdatedAt = schemaResp.updated_at || ''
       schema = schemaResp.fields
       values = schemaResp.values
       yamlContent = rawResp.content
@@ -277,6 +280,7 @@
       dirtyFields = {}
       // Reload to get fresh values and YAML
       const [schemaResp, rawResp] = await Promise.all([getConfigSchema(), getConfig()])
+      schemaUpdatedAt = schemaResp.updated_at || ''
       values = schemaResp.values
       yamlContent = rawResp.content
       originalYaml = rawResp.content
@@ -304,6 +308,7 @@
       originalYaml = yamlContent
       success = 'Config saved. Restart TARS to apply changes.'
       const schemaResp = await getConfigSchema()
+      schemaUpdatedAt = schemaResp.updated_at || ''
       values = schemaResp.values
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to save config'
@@ -631,11 +636,19 @@
             {#if expandedSections[section.name] || searchQuery.trim()}
               <div class="section-body">
                 {#each section.fields as field}
+                  {@const metaBadges = buildConfigMetaBadges(field, getDisplayValue(field), isDirty(field.key), schemaUpdatedAt)}
                   <div class="field-row" class:field-dirty={isDirty(field.key)}>
                     <div class="field-info">
                       <span class="field-label">{field.label}</span>
                       <span class="field-desc">{field.description}</span>
                       <span class="field-key">{fieldPath(field)}</span>
+                      {#if metaBadges.length > 0}
+                        <div class="field-meta-badges" aria-label={`${field.label} metadata`}>
+                          {#each metaBadges as badge}
+                            <span class={`field-meta-badge badge-${badge.tone}`} title={badge.title}>{badge.label}</span>
+                          {/each}
+                        </div>
+                      {/if}
                     </div>
                     <div class="field-value">
                       {#if field.type === 'bool'}
@@ -1054,6 +1067,49 @@
   .field-label { font-family: var(--font-display); font-size: var(--text-sm); font-weight: 500; color: var(--text-primary); }
   .field-desc { font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.4; }
   .field-key { font-family: var(--font-mono); font-size: 10px; color: var(--text-ghost); }
+  .field-meta-badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+  }
+  .field-meta-badge {
+    min-height: 18px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+    font-family: var(--font-display);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--text-tertiary);
+    background: var(--surface-inset);
+    white-space: nowrap;
+  }
+  .field-meta-badge.badge-default {
+    color: var(--text-ghost);
+  }
+  .field-meta-badge.badge-modified {
+    border-color: rgba(224, 145, 69, 0.35);
+    color: var(--primary);
+    background: rgba(224, 145, 69, 0.08);
+  }
+  .field-meta-badge.badge-restart {
+    border-color: rgba(220, 60, 60, 0.28);
+    color: var(--red);
+    background: rgba(220, 60, 60, 0.08);
+  }
+  .field-meta-badge.badge-live {
+    border-color: rgba(60, 180, 100, 0.28);
+    color: var(--green);
+    background: rgba(60, 180, 100, 0.08);
+  }
+  .field-meta-badge.badge-secret {
+    border-color: rgba(120, 120, 160, 0.28);
+    color: var(--text-secondary);
+    background: rgba(120, 120, 160, 0.08);
+  }
 
   .field-value { flex-shrink: 0; max-width: 300px; text-align: right; display: flex; align-items: center; }
 
