@@ -20,6 +20,58 @@
     autofixCount: number
   }
 
+  type PulseWatchItem = {
+    label: string
+    detail: string
+  }
+
+  type PulseDecisionIntroRow = {
+    action: string
+    detail: string
+    badgeClass: string
+  }
+
+  const pulseWatchItems: PulseWatchItem[] = [
+    {
+      label: 'Cron job failures',
+      detail: 'Detects consecutive scheduled job failures before they pile up silently.',
+    },
+    {
+      label: 'Agent runtime stuck runs',
+      detail: 'Finds long-running agent jobs that appear to have stopped making progress.',
+    },
+    {
+      label: 'Disk pressure',
+      detail: 'Watches free-space thresholds so local workspaces do not fail late.',
+    },
+    {
+      label: 'Telegram delivery failures',
+      detail: 'Surfaces notification delivery failures inside the recent failure window.',
+    },
+    {
+      label: 'Reflection nightly failures',
+      detail: 'Tracks consecutive nightly maintenance failures until a clean run resets the count.',
+    },
+  ]
+
+  const pulseDecisionRows: PulseDecisionIntroRow[] = [
+    {
+      action: 'ignore',
+      detail: 'Low-value noise is recorded without interrupting you.',
+      badgeClass: 'badge-default',
+    },
+    {
+      action: 'notify',
+      detail: 'Important findings are sent through the configured notification path.',
+      badgeClass: 'badge-info',
+    },
+    {
+      action: 'autofix',
+      detail: 'Approved safe actions can run automatically, such as compress_old_logs.',
+      badgeClass: 'badge-success',
+    },
+  ]
+
   let snapshot: PulseSnapshot | null = $state(null)
   let config: PulseConfigView | null = $state(null)
   let loading = $state(true)
@@ -243,6 +295,48 @@
       <div class="error-banner" style="margin-bottom:var(--space-4)">{error}</div>
     {/if}
 
+    <section class="pulse-intro card">
+      <div class="pulse-intro-header">
+        <div>
+          <span class="pulse-intro-kicker">System Watchdog</span>
+          <h2>Pulse - System Watchdog</h2>
+          <p>
+            TARS checks system health every {config ? `${config.interval_seconds}s` : 'configured interval'} and turns threshold crossings into actionable signals.
+          </p>
+        </div>
+        <div class="pulse-intro-policy">
+          <span>Policy source</span>
+          <code>Settings -> pulse_*</code>
+        </div>
+      </div>
+
+      <div class="pulse-intro-grid">
+        <div>
+          <div class="pulse-intro-label">Watch targets</div>
+          <ul class="pulse-intro-list">
+            {#each pulseWatchItems as item}
+              <li>
+                <strong>{item.label}</strong>
+                <span>{item.detail}</span>
+              </li>
+            {/each}
+          </ul>
+        </div>
+        <div>
+          <div class="pulse-intro-label">When signals appear</div>
+          <p class="pulse-intro-copy">An LLM classifier classifies each tick and chooses the lowest-noise action that fits.</p>
+          <div class="pulse-intro-decisions">
+            {#each pulseDecisionRows as row}
+              <div>
+                <span class="badge {row.badgeClass}">{row.action}</span>
+                <span>{row.detail}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Status summary -->
     <section class="card">
       <div class="card-header">
@@ -457,6 +551,146 @@
     padding: var(--space-10);
     text-align: center;
     color: var(--text-tertiary);
+  }
+
+  .pulse-intro {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .pulse-intro-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .pulse-intro-kicker {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .pulse-intro h2 {
+    margin: var(--space-1) 0 var(--space-2);
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .pulse-intro p {
+    max-width: 720px;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+  }
+
+  .pulse-intro-policy {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 170px;
+    padding-top: var(--space-1);
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    text-align: right;
+  }
+
+  .pulse-intro-policy code {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .pulse-intro-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+    gap: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .pulse-intro-label {
+    margin-bottom: var(--space-2);
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .pulse-intro-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .pulse-intro-list li {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.46fr) minmax(0, 1fr);
+    gap: var(--space-3);
+    align-items: start;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .pulse-intro-list li:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .pulse-intro-list strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .pulse-intro-list span,
+  .pulse-intro-decisions span:not(.badge) {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .pulse-intro p.pulse-intro-copy {
+    margin-bottom: var(--space-3);
+  }
+
+  .pulse-intro-decisions {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .pulse-intro-decisions div {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr);
+    gap: var(--space-2);
+    align-items: start;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  @media (max-width: 760px) {
+    .pulse-intro-header,
+    .pulse-intro-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .pulse-intro-policy {
+      min-width: 0;
+      text-align: left;
+    }
+
+    .pulse-intro-list li,
+    .pulse-intro-decisions div {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-1);
+    }
   }
 
   .pulse-facts {
