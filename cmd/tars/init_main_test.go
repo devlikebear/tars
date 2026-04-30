@@ -134,6 +134,13 @@ func TestRootCommand_InitMigratesLegacyConfig(t *testing.T) {
 	// Fixed config should exist with migrated content.
 	fixedPath := config.FixedConfigPath()
 	assertPathExists(t, fixedPath)
+	cfg, err := config.Load(fixedPath)
+	if err != nil {
+		t.Fatalf("load migrated config: %v", err)
+	}
+	if !filepath.IsAbs(cfg.WorkspaceDir) {
+		t.Fatalf("expected migrated workspace_dir to be absolute, got %q", cfg.WorkspaceDir)
+	}
 
 	out := stdout.String()
 	if !strings.Contains(out, "migrated legacy config") {
@@ -142,6 +149,24 @@ func TestRootCommand_InitMigratesLegacyConfig(t *testing.T) {
 
 	// Original should still exist.
 	assertPathExists(t, legacyConfig)
+}
+
+func TestUpdateMigratedWorkspaceDirReportsWriteFailure(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("permission-based write failure is not reliable as root")
+	}
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte("workspace_dir: ./workspace\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := os.Chmod(configPath, 0o400); err != nil {
+		t.Fatalf("chmod config: %v", err)
+	}
+	defer func() { _ = os.Chmod(configPath, 0o600) }()
+
+	if err := updateMigratedWorkspaceDir(configPath, "/tmp/tars-workspace"); err == nil {
+		t.Fatal("expected workspace_dir update write failure")
+	}
 }
 
 func TestRootCommand_InitMoveWorkspace(t *testing.T) {
