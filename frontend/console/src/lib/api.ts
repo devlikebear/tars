@@ -184,9 +184,22 @@ export async function deleteSession(sessionId: string): Promise<void> {
   })
 }
 
-export async function listAgentRuntimeRuns(limit = 30): Promise<AgentRuntimeRun[]> {
-	const payload = await requestJSON<{ runs: AgentRuntimeRun[] }>(`/v1/agentruntime/runs?limit=${limit}`)
-	return payload.runs ?? []
+export type AgentRuntimeRunsOptions = {
+  limit?: number
+  status?: string
+  since?: string
+  search?: string
+}
+
+export async function listAgentRuntimeRuns(options: number | AgentRuntimeRunsOptions = 30): Promise<AgentRuntimeRun[]> {
+  const params = new URLSearchParams()
+  const opts = typeof options === 'number' ? { limit: options } : options
+  params.set('limit', String(opts.limit ?? 30))
+  if (opts.status?.trim() && opts.status !== 'all') params.set('status', opts.status.trim())
+  if (opts.since?.trim() && opts.since !== 'all') params.set('since', opts.since.trim())
+  if (opts.search?.trim()) params.set('search', opts.search.trim())
+  const payload = await requestJSON<{ runs: AgentRuntimeRun[] }>(`/v1/agentruntime/runs?${params.toString()}`)
+  return payload.runs ?? []
 }
 
 export async function getAgentRuntimeRun(runId: string): Promise<AgentRuntimeRun> {

@@ -21,6 +21,12 @@ import (
 
 func newTestAgentRuntime(t *testing.T) *agentruntime.Runtime {
 	t.Helper()
+	rt, _ := newTestAgentRuntimeWithStore(t)
+	return rt
+}
+
+func newTestAgentRuntimeWithStore(t *testing.T) (*agentruntime.Runtime, *session.Store) {
+	t.Helper()
 	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
 	rt := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                          true,
@@ -41,7 +47,7 @@ func newTestAgentRuntime(t *testing.T) *agentruntime.Runtime {
 			t.Fatalf("close agent runtime: %v", err)
 		}
 	})
-	return rt
+	return rt, store
 }
 
 func TestAgentRunsAPIHandler_ListAndGet(t *testing.T) {
@@ -68,6 +74,82 @@ func TestAgentRunsAPIHandler_ListAndGet(t *testing.T) {
 	}
 
 	waitForAgentRuntimeRun(t, runtime, run.ID)
+}
+
+func TestAgentRunsAPIHandler_ListFiltersStatusSinceAndSearch(t *testing.T) {
+	runtime, store := newTestAgentRuntimeWithStore(t)
+	alphaSession, err := store.Create("Alpha chat")
+	if err != nil {
+		t.Fatalf("create alpha session: %v", err)
+	}
+	betaSession, err := store.Create("Beta chat")
+	if err != nil {
+		t.Fatalf("create beta session: %v", err)
+	}
+	first, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{
+		SessionID: alphaSession.ID,
+		Prompt:    "alpha budget review",
+		Agent:     "default",
+	})
+	if err != nil {
+		t.Fatalf("spawn first: %v", err)
+	}
+	second, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{
+		SessionID: betaSession.ID,
+		Prompt:    "beta cleanup",
+		Agent:     "default",
+	})
+	if err != nil {
+		t.Fatalf("spawn second: %v", err)
+	}
+	waitForAgentRuntimeRun(t, runtime, first.ID)
+	waitForAgentRuntimeRun(t, runtime, second.ID)
+
+	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/runs?status=done&since=24h&search=budget&limit=10", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		Count int                `json:"count"`
+		Runs  []agentruntime.Run `json:"runs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Count != 1 || len(payload.Runs) != 1 {
+		t.Fatalf("expected one filtered run, payload=%+v", payload)
+	}
+	if payload.Runs[0].ID != first.ID || payload.Runs[0].SessionID != alphaSession.ID {
+		t.Fatalf("expected first run with session id, payload=%+v", payload)
+	}
+
+	recRunning := httptest.NewRecorder()
+	reqRunning := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/runs?status=running&limit=10", nil)
+	h.ServeHTTP(recRunning, reqRunning)
+	if recRunning.Code != http.StatusOK {
+		t.Fatalf("expected 200 for running filter, got %d body=%s", recRunning.Code, recRunning.Body.String())
+	}
+	var runningPayload struct {
+		Count int                `json:"count"`
+		Runs  []agentruntime.Run `json:"runs"`
+	}
+	if err := json.Unmarshal(recRunning.Body.Bytes(), &runningPayload); err != nil {
+		t.Fatalf("decode running response: %v", err)
+	}
+	if runningPayload.Count != 0 || len(runningPayload.Runs) != 0 {
+		t.Fatalf("expected no running runs after completion, payload=%+v", runningPayload)
+	}
+
+	recInvalid := httptest.NewRecorder()
+	reqInvalid := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/runs?since=not-a-range", nil)
+	h.ServeHTTP(recInvalid, reqInvalid)
+	if recInvalid.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid since, got %d body=%s", recInvalid.Code, recInvalid.Body.String())
+	}
 }
 
 func TestAgentRuntimeAPIHandler_HardCutRoutes(t *testing.T) {

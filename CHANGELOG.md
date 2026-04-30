@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.46] - 2026-05-01
+
+### Added
+
+- Agent Runtime runs now support status chips, 24h/7d/all time ranges, prompt search, originating chat session links, and top-level cost summaries for today, seven days, and grouped plan totals.
+- `/v1/agentruntime/runs` now accepts `status`, `since`, and `search` query parameters for filtered run lists.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run TestAgentRunsAPIHandler_ListFiltersStatusSinceAndSearch`
+- `npm test -- --test-name-pattern "Agent Runtime runs page|Agent Runtime run API client"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #420.
+
 ## [0.31.45] - 2026-04-30
 
 ### Added
