@@ -29,10 +29,13 @@ func TestResolveInjectedToolSchemas_AllowAdminHighRiskTools(t *testing.T) {
 
 	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "admin", false)
 	names := toolNamesFromSchemas(schemas)
-	for _, expected := range []string{"exec", "process", "write_file", "edit_file", "apply_patch"} {
+	for _, expected := range []string{"exec", "write_file", "edit_file", "apply_patch"} {
 		if !hasToolName(names, expected) {
 			t.Fatalf("expected %s for admin role, got %+v", expected, names)
 		}
+	}
+	if hasToolName(names, "process") {
+		t.Fatalf("expected process to be deprecated from default admin injection, got %+v", names)
 	}
 }
 
@@ -41,10 +44,26 @@ func TestResolveInjectedToolSchemas_AllowHighRiskUserOverride(t *testing.T) {
 
 	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "user", true)
 	names := toolNamesFromSchemas(schemas)
-	for _, expected := range []string{"exec", "process", "write_file", "edit_file"} {
+	for _, expected := range []string{"exec", "write_file", "edit_file"} {
 		if !hasToolName(names, expected) {
 			t.Fatalf("expected %s when tools_allow_high_risk_user=true, got %+v", expected, names)
 		}
+	}
+	if hasToolName(names, "process") {
+		t.Fatalf("expected process to remain deprecated even with high-risk user override, got %+v", names)
+	}
+}
+
+func TestResolveInjectedToolSchemas_AllowsDeprecatedProcessWhenExplicitlyEnabled(t *testing.T) {
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
+
+	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "admin", true, session.SessionToolConfig{
+		ToolsCustom:  true,
+		ToolsEnabled: []string{"process"},
+	})
+	names := toolNamesFromSchemas(schemas)
+	if len(names) != 1 || !hasToolName(names, "process") {
+		t.Fatalf("expected explicit session allowlist to opt into process, got %+v", names)
 	}
 }
 

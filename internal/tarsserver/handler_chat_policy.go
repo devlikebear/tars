@@ -91,13 +91,19 @@ func resolveInjectedToolPolicy(
 
 	names := toolNamesFromSchemas(registry.Schemas())
 	blocked := map[string]tool.BlockedToolError{}
+	var activeSessionConfig *session.SessionToolConfig
 
 	// Apply session-level tool config (if provided)
 	if len(sessionConfig) > 0 {
-		resolved := resolveSessionToolPolicy(names, sessionConfig[0], "session")
+		activeSessionConfig = &sessionConfig[0]
+		resolved := resolveSessionToolPolicy(names, *activeSessionConfig, "session")
 		names = resolved.Allowed
 		mergeBlockedToolErrors(blocked, resolved.Blocked)
 	}
+
+	var deprecatedBlocked map[string]tool.BlockedToolError
+	names, deprecatedBlocked = filterDefaultDeprecatedToolNames(names, activeSessionConfig)
+	mergeBlockedToolErrors(blocked, deprecatedBlocked)
 
 	var highRiskBlocked map[string]tool.BlockedToolError
 	names, highRiskBlocked = filterHighRiskToolNamesForRoleDetailed(names, authRole, allowHighRiskUser)
@@ -209,6 +215,57 @@ func isHighRiskToolName(name string) bool {
 		return true
 	}
 	return strings.HasPrefix(canonical, "write_") || strings.HasPrefix(canonical, "edit_")
+}
+
+func filterDefaultDeprecatedToolNames(names []string, sessionConfig *session.SessionToolConfig) ([]string, map[string]tool.BlockedToolError) {
+	filtered := make([]string, 0, len(names))
+	blocked := map[string]tool.BlockedToolError{}
+	for _, name := range names {
+		canonical := tool.CanonicalToolName(name)
+		if !isDefaultDeprecatedToolName(canonical) || sessionExplicitlyAllowsTool(sessionConfig, canonical) {
+			filtered = append(filtered, name)
+			continue
+		}
+		blocked[canonical] = tool.BlockedToolError{
+			Tool:   canonical,
+			Rule:   "deprecated_default",
+			Group:  tool.ToolGroupForName(canonical),
+			Source: "config_default",
+		}
+	}
+	if len(blocked) == 0 {
+		return filtered, nil
+	}
+	return filtered, blocked
+}
+
+func isDefaultDeprecatedToolName(name string) bool {
+	return tool.CanonicalToolName(name) == "process"
+}
+
+func sessionExplicitlyAllowsTool(config *session.SessionToolConfig, name string) bool {
+	if config == nil {
+		return false
+	}
+	canonical := tool.CanonicalToolName(name)
+	if canonical == "" {
+		return false
+	}
+	for _, item := range config.ToolsEnabled {
+		if tool.CanonicalToolName(item) == canonical {
+			return true
+		}
+	}
+	group := tool.ToolGroupForName(canonical)
+	if group == "" {
+		return false
+	}
+	for _, item := range config.ToolsAllowGroups {
+		if tool.NormalizeToolGroupName(item) == group {
+			return true
+		}
+	}
+	return false
 }
 
 func knownToolsFromRegistry(registry *tool.Registry) map[string]struct{} {
