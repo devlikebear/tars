@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -84,5 +85,45 @@ llm:
 	}
 	if payload.UpdatedAt == "" {
 		t.Fatalf("expected schema response to include config file updated_at")
+	}
+}
+
+func TestConfigAPI_ResetWorkspaceReportsPartialFailures(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("permission-based removal failure is not reliable as root")
+	}
+	dir := t.TempDir()
+	workspaceDir := filepath.Join(dir, "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(workspaceDir, "config"), 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceDir, "sessions.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write session file: %v", err)
+	}
+	if err := os.Chmod(workspaceDir, 0o500); err != nil {
+		t.Fatalf("chmod workspace: %v", err)
+	}
+	defer func() { _ = os.Chmod(workspaceDir, 0o700) }()
+
+	h := newConfigAPIHandler("", config.Config{}, workspaceDir, zerolog.New(io.Discard))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/admin/reset/workspace", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Error       string                `json:"error"`
+		FailedItems []workspaceResetError `json:"failed_items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Error == "" || len(payload.FailedItems) == 0 {
+		t.Fatalf("expected reset failure details, payload=%+v", payload)
 	}
 }

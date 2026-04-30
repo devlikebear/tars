@@ -181,6 +181,78 @@ func TestWorkspaceFilesHandler_ReadsAbsolutePathWithRelativeRoot(t *testing.T) {
 	}
 }
 
+func TestWorkspaceFilesHandler_AllowsExplicitFilesystemRootPreview(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(workspace); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	externalRoot := filepath.Join(t.TempDir(), "selected-root")
+	if err := os.MkdirAll(externalRoot, 0o755); err != nil {
+		t.Fatalf("mkdir external root: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(externalRoot, "note.md"), []byte("# External\n"), 0o644); err != nil {
+		t.Fatalf("write external note: %v", err)
+	}
+
+	handler := newWorkspaceFilesHandler(workspace, zerolog.New(io.Discard))
+	req := httptest.NewRequest(http.MethodGet, "/?path=note.md&root="+url.QueryEscape(externalRoot), nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var got workspaceFilePreviewResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Kind != "markdown" || !strings.Contains(got.Content, "# External") {
+		t.Fatalf("expected external markdown preview, got %+v", got)
+	}
+}
+
+func TestWorkspaceFilesHandler_RejectsTraversalOutsideRoot(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(workspace); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	artifactsRoot := filepath.Join(workspace, "artifacts")
+	if err := os.WriteFile(filepath.Join(workspace, "secret.md"), []byte("secret"), 0o644); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+
+	handler := newWorkspaceFilesHandler(workspace, zerolog.New(io.Discard))
+	req := httptest.NewRequest(http.MethodGet, "/?path=../secret.md&root="+url.QueryEscape(artifactsRoot), nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkspaceFilesHandler_RejectsSymlinkOutsideRoot(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(workspace); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	artifactsRoot := filepath.Join(workspace, "artifacts")
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(artifactsRoot, "outside.md")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	handler := newWorkspaceFilesHandler(workspace, zerolog.New(io.Discard))
+	req := httptest.NewRequest(http.MethodGet, "/?path=outside.md&root="+url.QueryEscape(artifactsRoot), nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestWorkspaceFilesHandler_CreatesDirectory(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {

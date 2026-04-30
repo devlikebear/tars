@@ -743,6 +743,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/mcp-servers/test", handlers.mcpCreator)
 	mux.Handle("/v1/admin/mcp-servers/submit-pr", handlers.mcpCreator)
 	mux.Handle("/v1/filesystem/browse", handlers.filesystem)
+	mux.Handle("/v1/filesystem/files", handlers.workspaceFiles)
 	mux.Handle("/v1/workspace/files", handlers.workspaceFiles)
 	mux.Handle("/v1/workspace/files/", handlers.workspaceFiles)
 	mux.Handle("/v1/terminal/open", handlers.terminal)

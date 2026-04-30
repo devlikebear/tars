@@ -136,6 +136,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/admin/mcp-servers/test",
 		"/v1/admin/mcp-servers/submit-pr",
 		"/v1/filesystem/browse",
+		"/v1/filesystem/files",
 		"/v1/workspace/files",
 		"/v1/terminal/open",
 		"/v1/terminal/ws",
