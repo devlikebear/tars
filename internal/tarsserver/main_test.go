@@ -45,6 +45,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		WorkspaceDir: flagValueForTest(args, "--workspace-dir"),
 		LogFile:      flagValueForTest(args, "--log-file"),
 		Verbose:      hasFlagForTest(args, "--verbose"),
+		ConfigCheck:  hasFlagForTest(args, "--config-check"),
 	}
 	applyOptionDefaults(opts)
 
@@ -164,34 +165,71 @@ func flagValueForTest(args []string, name string) string {
 	return value
 }
 
+func writeConfigCheckConfig(t *testing.T, path string, extra string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	content := strings.TrimSpace(`
+llm:
+  providers:
+    test:
+      kind: openai
+      auth_mode: api-key
+      api_key: test-api-key
+      base_url: https://example.test/v1
+  tiers:
+    heavy:
+      provider: test
+      model: test-model
+    standard:
+      provider: test
+      model: test-model
+    light:
+      provider: test
+      model: test-model
+  default_tier: standard
+`) + "\n"
+	if strings.TrimSpace(extra) != "" {
+		content += "\n" + strings.TrimSpace(extra) + "\n"
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+}
+
 func TestRun_DefaultConfig(t *testing.T) {
 	isolateRunEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfigCheckConfig(t, configPath, "")
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	code := run([]string{"--workspace-dir", workspaceDir}, stdout, stderr)
+	code := run([]string{"--config", configPath, "--workspace-dir", workspaceDir, "--config-check"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
 
-	if !strings.Contains(stdout.String(), "tars startup complete") {
+	if !strings.Contains(stdout.String(), "tars config check passed") {
 		t.Fatalf("unexpected stdout: %q", stdout.String())
 	}
 
-	if !strings.Contains(stderr.String(), "tars startup complete") {
+	if !strings.Contains(stderr.String(), "tars config check passed") {
 		t.Fatalf("expected startup log in stderr, got %q", stderr.String())
 	}
 }
 
 func TestRun_LogFileWritesJSONLines(t *testing.T) {
 	isolateRunEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfigCheckConfig(t, configPath, "")
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
 	logPath := filepath.Join(t.TempDir(), "tars.log")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	code := run([]string{"--workspace-dir", workspaceDir, "--log-file", logPath}, stdout, stderr)
+	code := run([]string{"--config", configPath, "--workspace-dir", workspaceDir, "--log-file", logPath, "--config-check"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
@@ -204,11 +242,11 @@ func TestRun_LogFileWritesJSONLines(t *testing.T) {
 	if !strings.Contains(content, `"level":"info"`) {
 		t.Fatalf("expected json info log in file, got %q", content)
 	}
-	if !strings.Contains(content, `"message":"tars startup complete"`) {
+	if !strings.Contains(content, `"message":"tars config check passed"`) {
 		t.Fatalf("expected startup message in file, got %q", content)
 	}
 
-	if !strings.Contains(stderr.String(), "tars startup complete") {
+	if !strings.Contains(stderr.String(), "tars config check passed") {
 		t.Fatalf("expected startup log in stderr, got %q", stderr.String())
 	}
 }
@@ -221,6 +259,8 @@ func TestRuntimeDepsDoesNotExposeLegacyLLMClient(t *testing.T) {
 
 func TestRun_LogFileOpenFailureFallsBackToConsole(t *testing.T) {
 	isolateRunEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfigCheckConfig(t, configPath, "")
 	// With lumberjack, write errors are deferred until first log write.
 	// When the path is a directory, lumberjack silently fails and console
 	// output still works.
@@ -229,13 +269,13 @@ func TestRun_LogFileOpenFailureFallsBackToConsole(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	code := run([]string{"--workspace-dir", workspaceDir, "--log-file", badLogPath}, stdout, stderr)
+	code := run([]string{"--config", configPath, "--workspace-dir", workspaceDir, "--log-file", badLogPath, "--config-check"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
 
 	// Console output should still work even if log file fails.
-	if !strings.Contains(stderr.String(), "tars startup complete") {
+	if !strings.Contains(stderr.String(), "tars config check passed") {
 		t.Fatalf("expected startup log in stderr, got %q", stderr.String())
 	}
 }
@@ -265,17 +305,14 @@ func TestRun_FlagOverridesEnvAndYAML(t *testing.T) {
 	isolateRunEnv(t)
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
-	content := "workspace_dir: ./tenant-workspace\n"
-	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeConfigCheckConfig(t, configPath, "workspace_dir: ./tenant-workspace")
 
 	t.Setenv("TARS_WORKSPACE_DIR", "./env-workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
 
-	code := run([]string{"--config", configPath, "--workspace-dir", workspaceDir}, stdout, stderr)
+	code := run([]string{"--config", configPath, "--workspace-dir", workspaceDir, "--config-check"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
@@ -313,18 +350,12 @@ func TestRun_InvalidConfigPathPanics(t *testing.T) {
 func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {
 	// Verifies that ResolveConfigPath() picks up ./config/default.yaml
 	// when --config and TARS_CONFIG are both empty. The probe is
-	// log.level=warn → expect the "tars startup complete" Info line to
+	// log.level=warn → expect the "tars config check passed" Info line to
 	// be filtered out of stderr.
 	isolateRunEnv(t)
 	root := t.TempDir()
-	configDir := filepath.Join(root, "config")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir config dir: %v", err)
-	}
-	configPath := filepath.Join(configDir, "default.yaml")
-	if err := os.WriteFile(configPath, []byte("log:\n  level: warn\n"), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	configPath := filepath.Join(root, "config", "default.yaml")
+	writeConfigCheckConfig(t, configPath, "log:\n  level: warn")
 
 	workspaceDir := filepath.Join(root, "workspace")
 	stdout := &bytes.Buffer{}
@@ -339,11 +370,11 @@ func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {
 	}
 	defer func() { _ = os.Chdir(wd) }()
 
-	code := run([]string{"--workspace-dir", workspaceDir}, stdout, stderr)
+	code := run([]string{"--workspace-dir", workspaceDir, "--config-check"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
-	if strings.Contains(stderr.String(), "tars startup complete") {
+	if strings.Contains(stderr.String(), "tars config check passed") {
 		t.Fatalf("expected log.level=warn from default config to suppress info-level startup log, got %q", stderr.String())
 	}
 }
@@ -354,31 +385,31 @@ func TestRun_UsesEnvConfigPathWhenFlagIsEmpty(t *testing.T) {
 	isolateRunEnv(t)
 	root := t.TempDir()
 	configPath := filepath.Join(root, "custom.yaml")
-	if err := os.WriteFile(configPath, []byte("log:\n  level: warn\n"), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeConfigCheckConfig(t, configPath, "log:\n  level: warn")
 	t.Setenv("TARS_CONFIG", configPath)
 
 	workspaceDir := filepath.Join(root, "workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	code := run([]string{"--workspace-dir", workspaceDir}, stdout, stderr)
+	code := run([]string{"--workspace-dir", workspaceDir, "--config-check"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}
-	if strings.Contains(stderr.String(), "tars startup complete") {
+	if strings.Contains(stderr.String(), "tars config check passed") {
 		t.Fatalf("expected log.level=warn from TARS_CONFIG to suppress info-level startup log, got %q", stderr.String())
 	}
 }
 
 func TestRun_CreatesWorkspaceAndDailyLog(t *testing.T) {
 	isolateRunEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfigCheckConfig(t, configPath, "")
 	root := filepath.Join(t.TempDir(), "workspace")
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	code := run([]string{"--workspace-dir", root}, stdout, stderr)
+	code := run([]string{"--config", configPath, "--workspace-dir", root, "--config-check"}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
 	}

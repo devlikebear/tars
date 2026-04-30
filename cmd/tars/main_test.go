@@ -40,14 +40,15 @@ func TestRootCommand_ServeSubcommandInvokesRunner(t *testing.T) {
 		"--config", "config/default.yaml",
 		"--workspace-dir", "./workspace",
 		"--api-addr", tarsserver.DefaultAPIAddr,
+		"--config-check",
 		"--verbose",
 	})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("serve command: %v", err)
 	}
 
-	if !got.serveAPI {
-		t.Fatalf("expected serveAPI=true, got %#v", got)
+	if !got.configCheck {
+		t.Fatalf("expected configCheck=true, got %#v", got)
 	}
 	if got.configPath != "config/default.yaml" {
 		t.Fatalf("unexpected configPath: %#v", got)
@@ -60,6 +61,24 @@ func TestRootCommand_ServeSubcommandInvokesRunner(t *testing.T) {
 	}
 	if got.logFile != ".logs/tars-debug.log" {
 		t.Fatalf("unexpected logFile default: %#v", got)
+	}
+}
+
+func TestRootCommand_ServeSubcommandRejectsServeAPIFlag(t *testing.T) {
+	original := serveRunner
+	defer func() { serveRunner = original }()
+	serveRunner = func(_ context.Context, _ serveOptions, _ io.Writer, _ io.Writer) error {
+		return nil
+	}
+
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	cmd.SetArgs([]string{"serve", "--serve-api=false"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected --serve-api to be rejected")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "unknown flag") {
+		t.Fatalf("expected unknown flag error, got %v", err)
 	}
 }
 

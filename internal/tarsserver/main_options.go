@@ -6,7 +6,7 @@ type ServeOptions struct {
 	WorkspaceDir string
 	LogFile      string
 	Verbose      bool
-	ServeAPI     bool
+	ConfigCheck  bool
 	APIAddr      string
 }
 
@@ -15,7 +15,7 @@ type options struct {
 	WorkspaceDir string
 	LogFile      string
 	Verbose      bool
-	ServeAPI     bool
+	ConfigCheck  bool
 	APIAddr      string
 }
 
