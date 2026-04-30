@@ -6,6 +6,24 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.66] - 2026-05-01
+
+### Added
+
+- CON-035: Settings field rows now show metadata badges for default values, modified values, restart-required changes, live-apply fields, and masked secrets.
+- Config schema metadata now includes per-field `default_value` and `requires_restart` information, plus config schema responses include the config file `updated_at` timestamp for modified badges.
+- Field badges reuse the existing schema metadata flow so future live-apply fields can opt into the `live` badge without UI rewiring.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/config -run TestSchemaIncludesFieldMetaBadges`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run TestConfigAPI_SchemaReflectsPatchedValues`
+- `npm test -- --test-name-pattern "config meta badges"` in `frontend/console`
+
+### Closed
+
+- Closes #437.
+
 ## [0.31.65] - 2026-05-01
 
 ### Added

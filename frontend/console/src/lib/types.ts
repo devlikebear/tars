@@ -792,12 +792,15 @@ export type ConfigFieldMeta = {
   label: string
   description: string
   impact?: string[]
+  default_value?: unknown
+  requires_restart?: boolean
   sensitive?: boolean
   options?: string[]
 }
 
 export type ConfigSchema = {
   path: string
+  updated_at?: string
   fields: ConfigFieldMeta[]
   values: Record<string, unknown>
 }
