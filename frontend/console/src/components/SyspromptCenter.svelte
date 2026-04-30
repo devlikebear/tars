@@ -7,6 +7,10 @@
     saveSyspromptFile,
     type ChatToolInfo,
   } from '../lib/api'
+  import {
+    getSyspromptTemplates,
+    isSyspromptTemplateEligible,
+  } from '../lib/syspromptTemplates'
   import type { SyspromptFile, SyspromptScope } from '../lib/types'
 
   let loading = $state(true)
@@ -20,6 +24,7 @@
   let selectedFile: SyspromptFile | null = $state(null)
   let editorContent = $state('')
   let tools: ChatToolInfo[] = $state([])
+  let selectedTemplateId = $state('')
 
   const relevantToolNames = ['workspace']
 
@@ -28,6 +33,16 @@
   let relevantTools = $derived(
     tools.filter((tool) => relevantToolNames.includes(tool.name))
   )
+  let starterTemplates = $derived(getSyspromptTemplates(selectedPath))
+  let selectedTemplate = $derived(starterTemplates.find((template) => template.id === selectedTemplateId))
+  let canInsertTemplate = $derived.by(() => {
+    const file = selectedFile
+    return Boolean(
+      file
+      && starterTemplates.length > 0
+      && isSyspromptTemplateEligible(editorContent, file.starter_content),
+    )
+  })
 
   function fmt(value?: string): string {
     const text = value?.trim()
@@ -80,6 +95,7 @@
       selectedPath = file.path
       selectedFile = file
       editorContent = file.content?.length ? file.content : (file.starter_content || '')
+      selectedTemplateId = ''
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load file'
     }
@@ -101,6 +117,15 @@
     } finally {
       saving = false
     }
+  }
+
+  function handleTemplateInsert() {
+    const template = selectedTemplate
+    if (!template) return
+    editorContent = template.content
+    selectedTemplateId = ''
+    error = ''
+    success = `${template.label} template inserted. Review and Save to apply.`
   }
 
   function roleCopy(path: string): string {
@@ -223,6 +248,25 @@
           <strong>{selectedFile.title}</strong>
           <p>{selectedFile.description || roleCopy(selectedFile.path)}</p>
         </div>
+        {#if canInsertTemplate}
+          <div class="starter-template-bar">
+            <div>
+              <strong>Insert template</strong>
+              <p>{selectedTemplate?.description || 'Choose a starter template, then review it before saving.'}</p>
+            </div>
+            <div class="starter-template-actions">
+              <select class="template-select" bind:value={selectedTemplateId} aria-label="Starter template">
+                <option value="" disabled>Choose template...</option>
+                {#each starterTemplates as template}
+                  <option value={template.id}>{template.label}</option>
+                {/each}
+              </select>
+              <button class="btn btn-ghost btn-sm" type="button" disabled={!selectedTemplate} onclick={handleTemplateInsert}>
+                Insert
+              </button>
+            </div>
+          </div>
+        {/if}
         <textarea class="sysprompt-editor" bind:value={editorContent}></textarea>
       {:else}
         <div class="empty-state">Select a system prompt file to inspect or edit.</div>
@@ -403,6 +447,52 @@
     margin-top: var(--space-2);
   }
 
+  .starter-template-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid rgba(224, 145, 69, 0.24);
+    border-radius: var(--radius-md);
+    background: rgba(224, 145, 69, 0.08);
+  }
+
+  .starter-template-bar strong {
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .starter-template-bar p {
+    margin-top: var(--space-1);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .starter-template-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+
+  .template-select {
+    min-width: 190px;
+    padding: 7px var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .template-select:focus {
+    outline: none;
+    border-color: var(--primary);
+  }
+
   .sysprompt-editor {
     min-height: 420px;
     flex: 1;
@@ -462,6 +552,12 @@
     .hero-stats,
     .layout {
       grid-template-columns: 1fr;
+    }
+
+    .starter-template-bar,
+    .starter-template-actions {
+      align-items: stretch;
+      flex-direction: column;
     }
   }
 </style>
