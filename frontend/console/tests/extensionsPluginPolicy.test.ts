@@ -17,3 +17,10 @@ test('Plugins sections are collapsed by default as advanced legacy surfaces', ()
   assert.match(source, /aria-expanded={installedPluginsOpen}/)
   assert.match(source, /aria-expanded={hubPluginsOpen}/)
 })
+
+test('Extensions sections define Skills, Plugins, and MCP Servers inline', () => {
+  assert.match(source, /Skills use \.md instructions and companion CLIs/)
+  assert.match(source, /Plugins are legacy Go extension packages/)
+  assert.match(source, /MCP Servers expose external tool servers through Model Context Protocol/)
+  assert.ok((source.match(/class="section-definition"/g) ?? []).length >= 6)
+})

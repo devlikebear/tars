@@ -326,7 +326,10 @@
       <!-- Skills -->
       <section class="card ext-section">
         <div class="card-header">
-          <span class="card-title">Skills</span>
+          <div class="section-heading">
+            <span class="card-title">Skills</span>
+            <span class="section-definition">Skills use .md instructions and companion CLIs for chat workflows.</span>
+          </div>
           <span class="badge badge-default">{skills.length}</span>
         </div>
         {#if skills.length === 0}
@@ -387,10 +390,13 @@
             onclick={() => { installedPluginsOpen = !installedPluginsOpen }}
           >
             <span class="detail-chevron" class:open={installedPluginsOpen}>{'\u25b8'}</span>
-            <span class="card-title-group">
-              <span class="card-title">Plugins</span>
-              <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
-              <span class="badge badge-default" title="Advanced legacy extension surface">Advanced legacy</span>
+            <span class="section-heading">
+              <span class="card-title-group">
+                <span class="card-title">Plugins</span>
+                <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
+                <span class="badge badge-default" title="Advanced legacy extension surface">Advanced legacy</span>
+              </span>
+              <span class="section-definition">Plugins are legacy Go extension packages; prefer Skills for new work.</span>
             </span>
           </button>
           <span class="badge badge-default">{plugins.length}</span>
@@ -441,7 +447,10 @@
       <!-- MCP Servers -->
       <section class="card ext-section">
         <div class="card-header">
-          <span class="card-title">MCP Servers</span>
+          <div class="section-heading">
+            <span class="card-title">MCP Servers</span>
+            <span class="section-definition">MCP Servers expose external tool servers through Model Context Protocol.</span>
+          </div>
           <span class="badge badge-default">{mcpServers.length}</span>
         </div>
         {#if mcpServers.length === 0}
@@ -494,7 +503,10 @@
       <!-- Hub Skills -->
       <section class="card ext-section">
         <div class="card-header">
-          <span class="card-title">Skills</span>
+          <div class="section-heading">
+            <span class="card-title">Skills</span>
+            <span class="section-definition">Skills use .md instructions and companion CLIs for chat workflows.</span>
+          </div>
           <span class="badge badge-default">{registry.skills.length} available</span>
         </div>
         <div class="ext-list">
@@ -547,10 +559,13 @@
             onclick={() => { hubPluginsOpen = !hubPluginsOpen }}
           >
             <span class="detail-chevron" class:open={hubPluginsOpen}>{'\u25b8'}</span>
-            <span class="card-title-group">
-              <span class="card-title">Plugins</span>
-              <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
-              <span class="badge badge-default" title="Advanced legacy extension surface">Advanced legacy</span>
+            <span class="section-heading">
+              <span class="card-title-group">
+                <span class="card-title">Plugins</span>
+                <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
+                <span class="badge badge-default" title="Advanced legacy extension surface">Advanced legacy</span>
+              </span>
+              <span class="section-definition">Plugins are legacy Go extension packages; prefer Skills for new work.</span>
             </span>
           </button>
           <span class="badge badge-default">{registry.plugins.length} available</span>
@@ -594,7 +609,10 @@
       <!-- Hub MCP Servers -->
       <section class="card ext-section">
         <div class="card-header">
-          <span class="card-title">MCP Servers</span>
+          <div class="section-heading">
+            <span class="card-title">MCP Servers</span>
+            <span class="section-definition">MCP Servers expose external tool servers through Model Context Protocol.</span>
+          </div>
           <span class="badge badge-default">{registry.mcp_servers.length} available</span>
         </div>
         <div class="ext-list">
@@ -674,7 +692,7 @@
 
   .section-toggle {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--space-2);
     min-width: 0;
     padding: 0;
@@ -684,6 +702,9 @@
     cursor: pointer;
   }
   .section-toggle:hover .card-title { color: var(--primary); }
+  .section-toggle .detail-chevron { margin-top: 2px; }
+  .section-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+  .section-definition { color: var(--text-secondary); font-size: var(--text-xs); font-weight: 400; line-height: 1.4; }
   .card-title-group { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex-wrap: wrap; }
   .ext-section { margin-bottom: var(--space-2); }
   .plugin-policy-note {
