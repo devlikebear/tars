@@ -21,3 +21,11 @@ test('System Prompt page surfaces prompt impact metadata and reloadable preview'
   assert.match(syspromptSource, /preview-modal/)
   assert.match(syspromptSource, /preview\.prompt/)
 })
+
+test('System Prompt diagnostics are hidden behind a technical details toggle', () => {
+  assert.match(syspromptSource, /showTechnicalDetails = \$state\(false\)/)
+  assert.match(syspromptSource, /Show technical details/)
+  assert.match(syspromptSource, /Hide technical details/)
+  assert.match(syspromptSource, /#if showTechnicalDetails/)
+  assert.match(syspromptSource, /diagnostics-toggle/)
+})

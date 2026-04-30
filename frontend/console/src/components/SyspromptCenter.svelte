@@ -30,6 +30,7 @@
   let previewLoading = $state(false)
   let previewError = $state('')
   let preview = $state<Awaited<ReturnType<typeof getSyspromptPreview>> | null>(null)
+  let showTechnicalDetails = $state(false)
 
   const relevantToolNames = ['workspace']
 
@@ -219,7 +220,7 @@
     <div class="success-banner">{success}</div>
   {/if}
 
-  <div class="layout">
+  <div class="layout" class:technical-open={showTechnicalDetails}>
     <aside class="card file-panel">
       <div class="panel-header">
         <span class="card-title">Workspace Prompt</span>
@@ -282,6 +283,14 @@
           <button class="btn btn-ghost btn-sm" type="button" disabled={!selectedFile || previewLoading} onclick={loadPreview}>
             {previewLoading ? 'Loading...' : 'Reload preview'}
           </button>
+          <button
+            class="btn btn-ghost btn-sm diagnostics-toggle"
+            type="button"
+            aria-pressed={showTechnicalDetails}
+            onclick={() => { showTechnicalDetails = !showTechnicalDetails }}
+          >
+            {showTechnicalDetails ? 'Hide technical details' : 'Show technical details'}
+          </button>
           <button class="btn btn-primary btn-sm" type="button" disabled={!selectedFile || saving} onclick={save}>
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -331,38 +340,40 @@
       {/if}
     </section>
 
-    <aside class="card diagnostics-panel">
-      <div class="panel-header">
-        <span class="card-title">Diagnostics</span>
-      </div>
-
-      <div class="diag-block">
-        <div class="group-label">Role Semantics</div>
-        <div class="diag-list">
-          <div><strong>USER.md</strong><span>User identity — name, language, preferences.</span></div>
-          <div><strong>IDENTITY.md</strong><span>TARS persona, voice, and behavioral style.</span></div>
-          <div><strong>PROJECT.md</strong><span>Workspace-level project execution policy.</span></div>
-          <div><strong>AGENTS.md</strong><span>Sub-agent execution rules and autonomy.</span></div>
-          <div><strong>TOOLS.md</strong><span>Tool constraints and usage patterns.</span></div>
+    {#if showTechnicalDetails}
+      <aside class="card diagnostics-panel">
+        <div class="panel-header">
+          <span class="card-title">Diagnostics</span>
         </div>
-      </div>
 
-      <div class="diag-block">
-        <div class="group-label">Relevant Built-in Tools</div>
-        {#if relevantTools.length === 0}
-          <div class="empty-state">No sysprompt tools detected.</div>
-        {:else}
-          <div class="tool-list">
-            {#each relevantTools as tool}
-              <div class="tool-row">
-                <strong>{tool.name}</strong>
-                <p>{tool.description}</p>
-              </div>
-            {/each}
+        <div class="diag-block">
+          <div class="group-label">Role Semantics</div>
+          <div class="diag-list">
+            <div><strong>USER.md</strong><span>User identity - name, language, preferences.</span></div>
+            <div><strong>IDENTITY.md</strong><span>TARS persona, voice, and behavioral style.</span></div>
+            <div><strong>PROJECT.md</strong><span>Workspace-level project execution policy.</span></div>
+            <div><strong>AGENTS.md</strong><span>Sub-agent execution rules and autonomy.</span></div>
+            <div><strong>TOOLS.md</strong><span>Tool constraints and usage patterns.</span></div>
           </div>
-        {/if}
-      </div>
-    </aside>
+        </div>
+
+        <div class="diag-block">
+          <div class="group-label">Relevant Built-in Tools</div>
+          {#if relevantTools.length === 0}
+            <div class="empty-state">No sysprompt tools detected.</div>
+          {:else}
+            <div class="tool-list">
+              {#each relevantTools as tool}
+                <div class="tool-row">
+                  <strong>{tool.name}</strong>
+                  <p>{tool.description}</p>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </aside>
+    {/if}
   </div>
 
   {#if previewOpen}
@@ -461,9 +472,13 @@
 
   .layout {
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr) 320px;
+    grid-template-columns: 280px minmax(0, 1fr);
     gap: var(--space-4);
     min-height: 620px;
+  }
+
+  .layout.technical-open {
+    grid-template-columns: 280px minmax(0, 1fr) 320px;
   }
 
   .file-panel, .editor-panel, .diagnostics-panel {
@@ -541,7 +556,9 @@
 
   .editor-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
+    justify-content: flex-end;
   }
 
   .meta-row {
@@ -717,6 +734,10 @@
 
   @media (max-width: 1200px) {
     .layout {
+      grid-template-columns: 240px minmax(0, 1fr);
+    }
+
+    .layout.technical-open {
       grid-template-columns: 240px minmax(0, 1fr);
     }
 
