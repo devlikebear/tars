@@ -190,6 +190,8 @@ On macOS, `tars service install && tars service start` manages `tars serve` as a
 
 Open `http://127.0.0.1:43180/console` and start chatting.
 
+When TARS is exposed behind a reverse proxy path, pass that base path in `--server-url`; CLI API calls and the console opener resolve `/v1/*` and `/console` from the same base.
+
 ## Console Pages
 
 The sidebar keeps Home on the TARS logo and groups the working pages into Work, Operate, and Setup.
