@@ -22,15 +22,23 @@ function asset(partial: Partial<MemoryAsset>): MemoryAsset {
 
 test('memory asset metadata explains who fills and reads each durable asset', () => {
   const memory = getMemoryAssetMetadata(asset({ path: 'MEMORY.md', kind: 'long_term_memory' }))
+  assert.match(memory.description, /Core user facts/)
   assert.match(memory.filledBy.join(' '), /Manual edits/)
   assert.match(memory.filledBy.join(' '), /remember/)
   assert.match(memory.readBy.join(' '), /Prior Context prefetch/)
   assert.match(memory.readBy.join(' '), /memory_search/)
 
   const experiences = getMemoryAssetMetadata(asset({ path: 'experiences.jsonl', kind: 'experience_log' }))
+  assert.match(experiences.description, /Automatically extracted experience log/)
   assert.match(experiences.filledBy.join(' '), /Reflection nightly memory job/)
   assert.match(experiences.readBy.join(' '), /semantic prefetch/)
   assert.equal(experiences.staleAfterDays, 7)
+
+  const daily = getMemoryAssetMetadata(asset({ path: 'daily.jsonl', kind: 'daily_memory' }))
+  assert.match(daily.description, /Daily activity log/)
+
+  const semantic = getMemoryAssetMetadata(asset({ path: 'semantic.json', kind: 'semantic_index' }))
+  assert.match(semantic.description, /Embedding index/)
 })
 
 test('experience logs become stale after seven quiet days', () => {
@@ -55,4 +63,13 @@ test('Memory page renders filled/read metadata and stale badges on asset cards',
   assert.match(memorySource, /Filled by:/)
   assert.match(memorySource, /Read by:/)
   assert.match(memorySource, /Stale/)
+})
+
+test('Memory page uses friendly tab labels and asset descriptions', () => {
+  assert.match(memorySource, /Stored Knowledge/)
+  assert.match(memorySource, /Try a Search/)
+  assert.doesNotMatch(memorySource, />Durable Memory</)
+  assert.doesNotMatch(memorySource, />Search Test</)
+  assert.match(memorySource, /asset-description/)
+  assert.match(memorySource, /title=\{metadata\.description\}/)
 })
