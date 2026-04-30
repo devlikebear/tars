@@ -286,6 +286,17 @@ func TestRootCommand_MessageFlagUsesClientRunner(t *testing.T) {
 	}
 }
 
+func TestBuildConsoleURL_UsesSharedResolver(t *testing.T) {
+	got, err := buildConsoleURL("http://127.0.0.1:43180/proxy?debug=1#old")
+	if err != nil {
+		t.Fatalf("buildConsoleURL: %v", err)
+	}
+	want := "http://127.0.0.1:43180/proxy/console"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
 func TestRootCommand_StatusSubcommandUsesRunner(t *testing.T) {
 	original := statusCommandRunner
 	defer func() { statusCommandRunner = original }()

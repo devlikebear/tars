@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -252,7 +251,7 @@ func (c *Client) doText(ctx context.Context, method, path string, body any, admi
 }
 
 func (c *Client) resolve(path string) (string, error) {
-	return resolveURL(c.serverURL, path)
+	return ResolveURL(c.serverURL, path)
 }
 
 func (c *Client) httpClientOrDefault() *http.Client {
@@ -260,31 +259,6 @@ func (c *Client) httpClientOrDefault() *http.Client {
 		return c.httpClient
 	}
 	return http.DefaultClient
-}
-
-func resolveURL(baseURL, path string) (string, error) {
-	base := strings.TrimSpace(baseURL)
-	if base == "" {
-		base = DefaultServerURL
-	}
-	u, err := url.Parse(base)
-	if err != nil {
-		return "", fmt.Errorf("invalid server url: %w", err)
-	}
-	rawPath := strings.TrimSpace(path)
-	if rawPath == "" {
-		rawPath = "/"
-	}
-	if !strings.HasPrefix(rawPath, "/") {
-		rawPath = "/" + rawPath
-	}
-	ref, err := url.Parse(rawPath)
-	if err != nil {
-		return "", fmt.Errorf("invalid path: %w", err)
-	}
-	u.Path = strings.TrimRight(u.Path, "/") + ref.Path
-	u.RawQuery = ref.RawQuery
-	return u.String(), nil
 }
 
 func parseAPIErrorPayload(payload []byte) (code, message string, ok bool) {

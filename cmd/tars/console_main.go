@@ -6,7 +6,6 @@ import (
 	"io"
 	"os/exec"
 	"runtime"
-	"strings"
 
 	protocol "github.com/devlikebear/tars/pkg/tarsclient"
 )
@@ -18,22 +17,21 @@ var (
 )
 
 func runConsoleCommand(ctx context.Context, stdout, stderr io.Writer, opts clientOptions) error {
-	target := buildConsoleURL(opts.serverURL)
+	target, err := buildConsoleURL(opts.serverURL)
+	if err != nil {
+		return err
+	}
 	if err := consoleURLOpener(ctx, target); err != nil {
 		if _, writeErr := fmt.Fprintf(stderr, "browser open failed: %v\n", err); writeErr != nil {
 			return writeErr
 		}
 	}
-	_, err := fmt.Fprintf(stdout, "Open the console: %s\n", target)
+	_, err = fmt.Fprintf(stdout, "Open the console: %s\n", target)
 	return err
 }
 
-func buildConsoleURL(serverURL string) string {
-	base := strings.TrimRight(strings.TrimSpace(serverURL), "/")
-	if base == "" {
-		base = protocol.DefaultServerURL
-	}
-	return base + "/console"
+func buildConsoleURL(serverURL string) (string, error) {
+	return protocol.ConsoleURL(serverURL)
 }
 
 func openConsoleURL(ctx context.Context, target string) error {
