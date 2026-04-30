@@ -32,6 +32,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 - Multi-session chat with full LLM tool-calling loops
 - `@` file and directory mentions from the session Files roots for explicit context injection
 - `/` command autocomplete for built-in chat actions and explicit user-invocable skill selection
+- `/config` opens advanced per-session tool and skill policy controls when a selected session needs explicit overrides
 - Files workspaces include an embedded shell at the selected root or browsed subdirectory, plus a macOS Terminal fallback
 - Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
 - Editable memory assets and semantic recall through the console/API
@@ -182,7 +183,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 
 | Page | Path | Purpose |
 |------|------|---------|
-| Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` skill commands, and Files workspace shell |
+| Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` skill commands, Files workspace shell, and advanced `/config` session policy overrides |
 | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, originating session links, cost summaries, and subagent tier management |
 | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and try semantic recall searches |
 | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
