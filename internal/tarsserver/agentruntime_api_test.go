@@ -60,14 +60,14 @@ func TestAgentRunsAPIHandler_ListAndGet(t *testing.T) {
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 
 	recList := httptest.NewRecorder()
-	reqList := httptest.NewRequest(http.MethodGet, "/v1/agent/runs", nil)
+	reqList := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/runs", nil)
 	h.ServeHTTP(recList, reqList)
 	if recList.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", recList.Code, recList.Body.String())
 	}
 
 	recGet := httptest.NewRecorder()
-	reqGet := httptest.NewRequest(http.MethodGet, "/v1/agent/runs/"+run.ID, nil)
+	reqGet := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/runs/"+run.ID, nil)
 	h.ServeHTTP(recGet, reqGet)
 	if recGet.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", recGet.Code, recGet.Body.String())
@@ -176,7 +176,7 @@ func TestAgentRunsAPIHandler_AgentsList(t *testing.T) {
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/agent/agents", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/agents", nil)
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -197,12 +197,32 @@ func TestAgentRunsAPIHandler_AgentsList(t *testing.T) {
 	}
 }
 
+func TestAgentRunsAPIHandler_LegacyAgentRoutesRemainAliases(t *testing.T) {
+	runtime := newTestAgentRuntime(t)
+	run, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "legacy alias"})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
+
+	for _, path := range []string{"/v1/agent/agents", "/v1/agent/runs", "/v1/agent/runs/" + run.ID} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected legacy route %s to return 200, got %d body=%s", path, rec.Code, rec.Body.String())
+		}
+	}
+
+	waitForAgentRuntimeRun(t, runtime, run.ID)
+}
+
 func TestAgentRunsAPIHandler_AgentsListIncludesSourceEntryDefault(t *testing.T) {
 	runtime := newTestAgentRuntime(t)
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/agent/agents", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/agents", nil)
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -296,7 +316,7 @@ func TestAgentRunsAPIHandler_AgentsListIncludesAllowlistPolicyValues(t *testing.
 
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/agent/agents", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/agents", nil)
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -952,7 +972,7 @@ func TestAgentRunsAPIHandler_Spawn(t *testing.T) {
 		"agent":   "default",
 	})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/agent/runs", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs", bytes.NewReader(body))
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d body=%s", rec.Code, rec.Body.String())
@@ -981,7 +1001,7 @@ func TestAgentRunsAPIHandler_SpawnMissingMessage(t *testing.T) {
 		"agent": "default",
 	})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/agent/runs", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs", bytes.NewReader(body))
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
@@ -997,7 +1017,7 @@ func TestAgentRunsAPIHandler_SpawnUnknownAgentReturnsDiagnosticCode(t *testing.T
 		"agent":   "unknown-agent",
 	})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/agent/runs", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs", bytes.NewReader(body))
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
@@ -1040,7 +1060,7 @@ func TestAgentRunsAPIHandler_Cancel(t *testing.T) {
 
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/agent/runs/"+run.ID+"/cancel", nil)
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs/"+run.ID+"/cancel", nil)
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -1063,7 +1083,7 @@ func TestAgentRunsAPIHandler_IgnoresWorkspaceHeaderAndUsesSingleNamespace(t *tes
 			"agent":   "default",
 		})
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/v1/agent/runs", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs", bytes.NewReader(body))
 		req.Header.Set("Tars-Workspace-Id", workspaceID)
 		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusAccepted {
@@ -1085,7 +1105,7 @@ func TestAgentRunsAPIHandler_IgnoresWorkspaceHeaderAndUsesSingleNamespace(t *tes
 	}
 
 	recListA := httptest.NewRecorder()
-	reqListA := httptest.NewRequest(http.MethodGet, "/v1/agent/runs", nil)
+	reqListA := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/runs", nil)
 	reqListA.Header.Set("Tars-Workspace-Id", "ws-a")
 	handler.ServeHTTP(recListA, reqListA)
 	if recListA.Code != http.StatusOK {
@@ -1114,7 +1134,7 @@ func TestAgentRunsAPIHandler_IgnoresWorkspaceHeaderAndUsesSingleNamespace(t *tes
 	}
 
 	recGet := httptest.NewRecorder()
-	reqGet := httptest.NewRequest(http.MethodGet, "/v1/agent/runs/"+runIDA, nil)
+	reqGet := httptest.NewRequest(http.MethodGet, "/v1/agentruntime/runs/"+runIDA, nil)
 	reqGet.Header.Set("Tars-Workspace-Id", "ws-b")
 	handler.ServeHTTP(recGet, reqGet)
 	if recGet.Code != http.StatusOK {
@@ -1122,7 +1142,7 @@ func TestAgentRunsAPIHandler_IgnoresWorkspaceHeaderAndUsesSingleNamespace(t *tes
 	}
 
 	recCancel := httptest.NewRecorder()
-	reqCancel := httptest.NewRequest(http.MethodPost, "/v1/agent/runs/"+runIDA+"/cancel", nil)
+	reqCancel := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs/"+runIDA+"/cancel", nil)
 	reqCancel.Header.Set("Tars-Workspace-Id", "ws-b")
 	handler.ServeHTTP(recCancel, reqCancel)
 	if recCancel.Code != http.StatusOK {
@@ -1362,7 +1382,7 @@ func TestAgentRuntimeAPIHandler_ReportsSummarySingleWorkspaceNamespace(t *testin
 			"agent":   "default",
 		})
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/v1/agent/runs", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs", bytes.NewReader(body))
 		req.Header.Set("Tars-Workspace-Id", workspaceID)
 		agentHandler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusAccepted {

@@ -118,7 +118,7 @@ func TestAgentRunsAPIHandler_ReturnsOverloadedWhenInflightLimitExceeded(t *testi
 	blockedB := newBlockingReadCloser(`{"message":"b"}`)
 	done := make(chan *httptest.ResponseRecorder, 2)
 	runBlocked := func(body *blockingReadCloser) {
-		req := httptest.NewRequest(http.MethodPost, "/v1/agent/runs", nil)
+		req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs", nil)
 		req.Header.Set("Content-Type", "application/json")
 		req.Body = body
 		rec := httptest.NewRecorder()
@@ -131,7 +131,7 @@ func TestAgentRunsAPIHandler_ReturnsOverloadedWhenInflightLimitExceeded(t *testi
 	waitForChannel(t, blockedA.started, "agent blocked request A")
 	waitForChannel(t, blockedB.started, "agent blocked request B")
 
-	overflowReq := httptest.NewRequest(http.MethodPost, "/v1/agent/runs", bytes.NewReader([]byte(`{"message":"overflow"}`)))
+	overflowReq := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs", bytes.NewReader([]byte(`{"message":"overflow"}`)))
 	overflowReq.Header.Set("Content-Type", "application/json")
 	overflowRec := httptest.NewRecorder()
 	handler.ServeHTTP(overflowRec, overflowReq)

@@ -482,7 +482,7 @@ type TelegramPairingsInfo struct {
 	Allowed        []TelegramPairingAllowed `json:"allowed"`
 }
 
-// SpawnRequest is the API payload for POST /v1/agent/runs.
+// SpawnRequest is the API payload for POST /v1/agentruntime/runs.
 // CLI parsing types (for example, spawnCommand) stay in internal/tarsclient.
 type SpawnRequest struct {
 	SessionID string `json:"session_id,omitempty"`

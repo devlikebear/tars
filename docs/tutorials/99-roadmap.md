@@ -131,8 +131,8 @@ CON-041은 Approvals를 유지하는 것으로 결정했으며, Pulse의 안전�
 - Run lifecycle: `accepted → running → completed/failed/canceled`
 - PromptExecutor + CommandExecutor + workspace agent executor
 - run/channel persistence under `workspace/_shared/agentruntime/`
-- `/v1/agentruntime/runs` API와 `/v1/agentruntime/status|reload|restart|reports/*`
-- `/v1/agent/runs`는 legacy alias, `/v1/agent/agents`는 현재 agent list endpoint
+- `/v1/agentruntime/agents|runs` API와 `/v1/agentruntime/status|reload|restart|reports/*`
+- `/v1/agent/agents|runs`는 호환성을 위한 legacy alias
 
 ## 페이즈별 난이도와 예상 학습 시간
 

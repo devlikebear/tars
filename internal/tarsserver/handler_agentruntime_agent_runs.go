@@ -18,6 +18,12 @@ func newAgentRunsAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger
 func newAgentRunsAPIHandlerWithInflightLimit(runtime *agentruntime.Runtime, logger zerolog.Logger, maxInflightAgentRuns int) http.Handler {
 	inflight := newInflightLimiter(maxInflightAgentRuns, 4)
 	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/agentruntime/agents", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		handleAgentList(w, runtime)
+	})
 	mux.HandleFunc("/v1/agent/agents", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return

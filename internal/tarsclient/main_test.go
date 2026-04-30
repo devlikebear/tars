@@ -271,7 +271,7 @@ func TestExecuteCommand_TelegramPairingsAndApprove(t *testing.T) {
 func TestExecuteCommand_UnsupportedSessionCommandsAndAgentsDetail(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/agent/agents":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/agents":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"agents": []map[string]any{
 					{
@@ -714,7 +714,7 @@ func TestExecuteCommand_AgentRuntimeStatusTelemetry(t *testing.T) {
 func TestExecuteCommand_RunShowsPolicyDiagnosticDetails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/agent/runs/run_1":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/runs/run_1":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"run_id":               "run_1",
 				"status":               "failed",
@@ -762,7 +762,7 @@ func TestExecuteCommand_RunShowsPolicyDiagnosticDetails(t *testing.T) {
 func TestExecuteCommand_RunsShowsPolicyDiagnosticSummary(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/agent/runs":
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/agentruntime/runs":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"runs": []map[string]any{
 					{
