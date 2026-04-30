@@ -198,6 +198,8 @@ The sidebar keeps Home on the TARS logo and groups the working pages into Work, 
 
 Frontend API response types are maintained in the console source with the current contract policy documented in `docs/frontend-api-types.md`.
 
+The console header includes an EN/KO language toggle. The selected locale is stored in browser localStorage as `tars_console_locale`; first load falls back to `navigator.language` and then English.
+
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
 | Home | Dashboard | `/console` | Pulse, Reflection, disk pressure, active sessions, recent notifications, recommended setup actions, and plan resume |

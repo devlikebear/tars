@@ -6,6 +6,7 @@ import {
   getMemoryAssetMetadata,
   isMemoryAssetStale,
 } from '../src/lib/memoryAssetMetadata.ts'
+import { en } from '../src/i18n/en.ts'
 import type { MemoryAsset } from '../src/lib/types.ts'
 
 const memorySource = readFileSync(new URL('../src/components/MemoryCenter.svelte', import.meta.url), 'utf8')
@@ -62,14 +63,16 @@ test('experience logs become stale after seven quiet days', () => {
 test('Memory page renders filled/read metadata and stale badges on asset cards', () => {
   assert.match(memorySource, /getMemoryAssetMetadata/)
   assert.match(memorySource, /asset-flow-line/)
-  assert.match(memorySource, /Filled by:/)
-  assert.match(memorySource, /Read by:/)
-  assert.match(memorySource, /Stale/)
+  assert.match(memorySource, /\$t\.memory\.filledBy/)
+  assert.match(memorySource, /\$t\.memory\.readBy/)
+  assert.match(memorySource, /\$t\.memory\.stale/)
 })
 
 test('Memory page uses friendly tab labels and asset descriptions', () => {
-  assert.match(memorySource, /Stored Knowledge/)
-  assert.match(memorySource, /Try a Search/)
+  assert.equal(en.memory.tabs.storedKnowledge, 'Stored Knowledge')
+  assert.equal(en.memory.tabs.trySearch, 'Try a Search')
+  assert.match(memorySource, /\$t\.memory\.tabs\.storedKnowledge/)
+  assert.match(memorySource, /\$t\.memory\.tabs\.trySearch/)
   assert.doesNotMatch(memorySource, />Durable Memory</)
   assert.doesNotMatch(memorySource, />Search Test</)
   assert.match(memorySource, /asset-description/)
@@ -79,20 +82,19 @@ test('Memory page uses friendly tab labels and asset descriptions', () => {
 test('Memory page introduces memory assets before editing', () => {
   assert.match(memorySource, /memoryIntroDismissed/)
   assert.match(memorySource, /memory-intro-card/)
-  assert.match(memorySource, /Dismiss memory intro/)
-  assert.match(memorySource, /Review and edit what TARS remembers/)
-  assert.match(memorySource, /MEMORY\.md/)
-  assert.match(memorySource, /Experiences/)
-  assert.match(memorySource, /Daily Logs/)
-  assert.match(memorySource, /Semantic Index/)
-  assert.match(memorySource, /Try a Search/)
+  assert.match(memorySource, /\$t\.common\.actions\.dismiss/)
+  assert.match(memorySource, /\$t\.memory\.introTitle/)
+  assert.equal(en.memory.introHeadings.memory, 'MEMORY.md')
+  assert.equal(en.memory.introHeadings.experiences, 'Experiences')
+  assert.equal(en.memory.introHeadings.dailyLogs, 'Daily Logs')
+  assert.equal(en.memory.introHeadings.semanticIndex, 'Semantic Index')
 })
 
 test('Memory search offers Tool path and Prefetch path debug modes', () => {
   assert.match(memorySource, /type MemorySearchMode = 'tool' \| 'prefetch'/)
   assert.match(memorySource, /searchMode = \$state<MemorySearchMode>\('tool'\)/)
-  assert.match(memorySource, />Tool path</)
-  assert.match(memorySource, />Prefetch path</)
+  assert.match(memorySource, /\$t\.memory\.search\.toolPath/)
+  assert.match(memorySource, /\$t\.memory\.search\.prefetchPath/)
   assert.match(memorySource, /runMemoryPrefetch/)
   assert.match(memorySource, /prefetchResult/)
   assert.match(memorySource, /prefetch-section/)

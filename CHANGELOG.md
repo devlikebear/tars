@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.78] - 2026-05-01
+
+### Added
+
+- Console i18n now supports English and Korean locale maps with browser-language detection and `tars_console_locale` localStorage persistence.
+- The console header includes a compact EN/KO language toggle.
+
+### Changed
+
+- Console navigation, header notifications, Sessions, Memory, and Tasks first-pass static labels now read from the shared translation store.
+
+### Documentation
+
+- README now notes the console EN/KO language toggle and persisted locale key.
+
+### Tests
+
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm run build`
+
+### Closed
+
+- Closes #405.
+
 ## [0.31.77] - 2026-05-01
 
 ### Changed

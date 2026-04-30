@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { t } from '../i18n'
   import { getSessionTasks, executeTasksAction, cancelChat } from '../lib/api'
   import type { SessionTasks } from '../lib/types'
 
@@ -71,7 +72,7 @@
   }
 
   async function handleDiscard() {
-    if (!confirm('Discard this plan? All tasks will be cleared.')) return
+    if (!confirm($t.tasks.confirm.discard)) return
     await runAction({ action: 'clear' })
   }
 
@@ -109,7 +110,7 @@
   }
 
   async function handleAbort() {
-    if (!confirm('Abort this plan? Execution stops permanently and the plan is marked aborted.')) return
+    if (!confirm($t.tasks.confirm.abort)) return
     actionBusy = true
     actionError = ''
     try {
@@ -261,43 +262,43 @@
 <div class="tasks-panel">
   <div class="panel-header">
     <div class="panel-title-row">
-      <span class="card-title">Tasks</span>
+      <span class="card-title">{$t.tasks.title}</span>
       {#if summary.total > 0}
         <span class="badge badge-accent">{summary.completed}/{summary.total}</span>
       {/if}
     </div>
     <div class="panel-actions">
-      <button class="btn btn-ghost btn-sm" type="button" onclick={load} title="Refresh">&#x21bb;</button>
-      <button class="btn btn-ghost btn-sm" type="button" onclick={onClose} title="Close">&times;</button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick={load} title={$t.common.actions.refresh}>&#x21bb;</button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick={onClose} title={$t.common.actions.close}>&times;</button>
     </div>
   </div>
 
   {#if loading}
-    <div class="empty-state">Loading tasks...</div>
+    <div class="empty-state">{$t.tasks.loading}</div>
   {:else if error}
     <div class="error-banner">{error}</div>
   {:else if !data.plan && taskList.length === 0}
     <div class="empty-state">
-      <p>No tasks yet.</p>
-      <p class="hint">Ask TARS to create a plan and tasks for your work.</p>
+      <p>{$t.tasks.empty}</p>
+      <p class="hint">{$t.tasks.emptyHint}</p>
     </div>
   {:else}
     {#if planStatus === 'proposed' && !editing}
       <div class="propose-banner">
-        <p class="propose-title">Plan ready for review</p>
-        <p class="propose-hint">{summary.total} task{summary.total === 1 ? '' : 's'}. Approve to start, edit to adjust, or discard to drop the plan.</p>
+        <p class="propose-title">{$t.tasks.planReady}</p>
+        <p class="propose-hint">{$t.tasks.planReadyHint(summary.total)}</p>
         {#if actionError}
           <p class="error-banner">{actionError}</p>
         {/if}
         <div class="propose-actions">
           <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={handleApprove}>
-            {actionBusy ? 'Working\u2026' : '\u2713 Approve & Run'}
+            {actionBusy ? $t.common.actions.working : `\u2713 ${$t.tasks.approveRun}`}
           </button>
           <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={startEdit}>
-            {'\u270e'} Edit Plan
+            {'\u270e'} {$t.tasks.editPlan}
           </button>
           <button class="btn btn-danger btn-sm" type="button" disabled={actionBusy} onclick={handleDiscard}>
-            {'\u2717'} Discard
+            {'\u2717'} {$t.tasks.discard}
           </button>
         </div>
       </div>
@@ -307,7 +308,7 @@
       <div class="plan-section">
         <button class="plan-header" type="button" onclick={() => planExpanded = !planExpanded}>
           <span class="plan-toggle">{planExpanded ? '\u25be' : '\u25b8'}</span>
-          <span class="plan-label">Plan</span>
+          <span class="plan-label">{$t.tasks.plan}</span>
           {#if planStatus}
             <span class="plan-status badge {planStatus === 'proposed' ? 'badge-warning' : planStatus === 'executing' ? 'badge-accent' : planStatus === 'completed' ? 'badge-success' : planStatus === 'aborted' ? 'badge-error' : 'badge-default'}">{planStatus}</span>
           {/if}
@@ -327,18 +328,18 @@
       <div class="runtime-actions">
         {#if planStatus === 'executing'}
           <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={handlePause} title="Pause execution: cancels the in-flight LLM turn and waits for instructions.">
-            {'\u23f8'} Pause
+            {'\u23f8'} {$t.tasks.pause}
           </button>
         {:else}
           <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={handleResume} title="Resume execution: flips status back to executing and sends 'continue' to the chat.">
-            {'\u25b6'} Resume
+            {'\u25b6'} {$t.tasks.resume}
           </button>
         {/if}
         <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={startEdit} title="Edit plan in place: reorder, retitle, add or remove tasks.">
-          {'\u270e'} Edit Plan
+          {'\u270e'} {$t.tasks.editPlan}
         </button>
         <button class="btn btn-danger btn-sm" type="button" disabled={actionBusy} onclick={handleAbort} title="Abort plan: cancels execution and marks the plan aborted permanently.">
-          {'\u2298'} Abort
+          {'\u2298'} {$t.tasks.abort}
         </button>
         {#if actionError}
           <p class="error-banner runtime-error">{actionError}</p>
@@ -352,10 +353,10 @@
           <div class="progress-fill" style="width: {progress}%"></div>
         </div>
         <div class="progress-stats">
-          {#if summary.in_progress > 0}<span class="stat-chip accent">{summary.in_progress} active</span>{/if}
-          {#if summary.pending > 0}<span class="stat-chip">{summary.pending} pending</span>{/if}
-          {#if summary.completed > 0}<span class="stat-chip success">{summary.completed} done</span>{/if}
-          {#if summary.cancelled > 0}<span class="stat-chip error">{summary.cancelled} skipped</span>{/if}
+          {#if summary.in_progress > 0}<span class="stat-chip accent">{summary.in_progress} {$t.tasks.stats.active}</span>{/if}
+          {#if summary.pending > 0}<span class="stat-chip">{summary.pending} {$t.tasks.stats.pending}</span>{/if}
+          {#if summary.completed > 0}<span class="stat-chip success">{summary.completed} {$t.tasks.stats.done}</span>{/if}
+          {#if summary.cancelled > 0}<span class="stat-chip error">{summary.cancelled} {$t.tasks.stats.skipped}</span>{/if}
         </div>
       </div>
     {/if}
@@ -368,21 +369,21 @@
               <input
                 class="task-edit-title"
                 type="text"
-                placeholder="Task title"
+                placeholder={$t.tasks.taskTitle}
                 bind:value={editDrafts[idx].title}
                 disabled={actionBusy}
               />
               <button
                 class="btn btn-ghost btn-sm"
                 type="button"
-                title="Remove task"
+                title={$t.tasks.removeTask}
                 disabled={actionBusy}
                 onclick={() => removeDraft(idx)}
               >×</button>
             </div>
             <textarea
               class="task-edit-desc"
-              placeholder="Description (optional)"
+              placeholder={$t.tasks.descriptionOptional}
               rows="2"
               bind:value={editDrafts[idx].description}
               disabled={actionBusy}
@@ -390,7 +391,7 @@
           </div>
         {/each}
         <button class="btn btn-ghost btn-sm task-add-btn" type="button" disabled={actionBusy} onclick={addDraft}>
-          + Add task
+          + {$t.tasks.addTask}
         </button>
       </div>
       {#if actionError}
@@ -398,10 +399,10 @@
       {/if}
       <div class="edit-actions">
         <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={saveEdits}>
-          {actionBusy ? 'Saving…' : '✓ Save Changes'}
+          {actionBusy ? $t.common.actions.saving : `\u2713 ${$t.tasks.saveChanges}`}
         </button>
         <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={cancelEdit}>
-          Cancel
+          {$t.common.actions.cancel}
         </button>
       </div>
     {:else}
@@ -421,7 +422,7 @@
                 class="btn btn-ghost btn-sm task-skip-btn"
                 type="button"
                 disabled={actionBusy}
-                title="Skip this task: marks it cancelled and asks the LLM to move on."
+                title={$t.tasks.skipTask}
                 onclick={() => handleSkipTask(task.id, task.title)}
               >{'⏭'}</button>
             {/if}

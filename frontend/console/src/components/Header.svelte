@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { locale, locales, setLocale, t } from '../i18n'
   import { getEventsHistory, markEventsRead } from '../lib/api'
   import type { NotificationMessage } from '../lib/types'
 
@@ -40,10 +41,10 @@
     if (Number.isNaN(date.getTime())) return text
     const now = new Date()
     const diff = now.getTime() - date.getTime()
-    if (diff < 60_000) return 'just now'
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
-    return new Intl.DateTimeFormat('en', { dateStyle: 'short', timeStyle: 'short' }).format(date)
+    if (diff < 60_000) return $t.header.time.justNow
+    if (diff < 3_600_000) return $t.header.time.minutesAgo(Math.floor(diff / 60_000))
+    if (diff < 86_400_000) return $t.header.time.hoursAgo(Math.floor(diff / 3_600_000))
+    return new Intl.DateTimeFormat($locale, { dateStyle: 'short', timeStyle: 'short' }).format(date)
   }
 
   function severityClass(severity: string): string {
@@ -107,18 +108,32 @@
 
 <header class="header">
   <div class="header-left">
-    <h1 class="header-title">Console</h1>
+    <h1 class="header-title">{$t.header.title}</h1>
   </div>
 
   <div class="header-right">
+    <div class="locale-toggle" role="group" aria-label={$t.header.locale.label}>
+      {#each locales as option}
+        <button
+          type="button"
+          class="locale-btn"
+          class:active={$locale === option}
+          aria-pressed={$locale === option}
+          onclick={() => setLocale(option)}
+        >
+          {option === 'ko' ? $t.header.locale.ko : $t.header.locale.en}
+        </button>
+      {/each}
+    </div>
+
     <div class="header-indicator" class:healthy={serverHealth === 'ok'}>
       <span class="header-dot"></span>
-      <span class="header-indicator-label">{serverHealth === 'ok' ? 'Connected' : 'Disconnected'}</span>
+      <span class="header-indicator-label">{serverHealth === 'ok' ? $t.common.states.connected : $t.common.states.disconnected}</span>
     </div>
 
     <!-- Notification badge + panel -->
     <div class="header-notif-wrapper">
-      <button class="header-badge-btn" class:has-unread={unreadCount > 0} onclick={togglePanel} title="Notifications">
+      <button class="header-badge-btn" class:has-unread={unreadCount > 0} onclick={togglePanel} title={$t.header.notifications}>
         <span class="badge-icon">{'\u266a'}</span>
         {#if unreadCount > 0}
           <span class="badge-count">{unreadCount}</span>
@@ -128,25 +143,25 @@
       {#if panelOpen}
         <div class="notif-panel">
           <div class="notif-panel-header">
-            <span class="notif-panel-title">Notifications</span>
+            <span class="notif-panel-title">{$t.header.notifications}</span>
             <div class="notif-panel-actions">
               {#if unreadCount > 0}
-                <button class="btn btn-ghost btn-sm" onclick={handleMarkAllRead}>Mark all read</button>
+                <button class="btn btn-ghost btn-sm" onclick={handleMarkAllRead}>{$t.header.markAllRead}</button>
               {/if}
             </div>
           </div>
 
           <div class="notif-filter-bar">
-            <button class="notif-filter-tab" class:active={notifFilter === 'all'} onclick={() => { notifFilter = 'all' }}>All</button>
-            <button class="notif-filter-tab" class:active={notifFilter === 'unread'} onclick={() => { notifFilter = 'unread' }}>Unread</button>
-            <button class="notif-filter-tab" class:active={notifFilter === 'read'} onclick={() => { notifFilter = 'read' }}>Read</button>
+            <button class="notif-filter-tab" class:active={notifFilter === 'all'} onclick={() => { notifFilter = 'all' }}>{$t.header.filters.all}</button>
+            <button class="notif-filter-tab" class:active={notifFilter === 'unread'} onclick={() => { notifFilter = 'unread' }}>{$t.header.filters.unread}</button>
+            <button class="notif-filter-tab" class:active={notifFilter === 'read'} onclick={() => { notifFilter = 'read' }}>{$t.header.filters.read}</button>
           </div>
 
           <div class="notif-panel-body">
             {#if panelLoading}
-              <div class="notif-empty">Loading...</div>
+              <div class="notif-empty">{$t.common.actions.loading}</div>
             {:else if filteredNotifs.length === 0}
-              <div class="notif-empty">{notifFilter === 'unread' ? 'No unread notifications' : notifFilter === 'read' ? 'No read notifications' : 'No notifications'}</div>
+              <div class="notif-empty">{notifFilter === 'unread' ? $t.header.empty.unread : notifFilter === 'read' ? $t.header.empty.read : $t.header.empty.all}</div>
             {:else}
               {#each filteredNotifs as item}
                 <div class="notif-item {severityClass(item.severity)}" class:notif-unread={(item.id ?? 0) > readCursor}>
@@ -198,7 +213,35 @@
   .header-right {
     display: flex;
     align-items: center;
-    gap: var(--space-5);
+    gap: var(--space-3);
+  }
+
+  .locale-toggle {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+  }
+
+  .locale-btn {
+    min-width: 30px;
+    height: 24px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .locale-btn:hover,
+  .locale-btn.active {
+    background: var(--surface);
+    color: var(--text-primary);
   }
 
   .header-meta {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import { locale, t } from '../i18n'
   import {
     getMemoryFile,
     listMemoryAssets,
@@ -58,7 +59,7 @@
     if (!text) return '-'
     const date = new Date(text)
     if (Number.isNaN(date.getTime())) return text
-    return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+    return new Intl.DateTimeFormat($locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
   }
 
   function formatBytes(size = 0): string {
@@ -73,15 +74,15 @@
       case 'long_term_memory':
         return 'MEMORY.md'
       case 'experience_log':
-        return 'Experiences'
+        return $t.memory.introHeadings.experiences
       case 'daily_memory':
-        return 'Daily Memory'
+        return $t.memory.introHeadings.dailyLogs
       case 'semantic_index':
-        return 'Semantic Index'
+        return $t.memory.introHeadings.semanticIndex
       case 'semantic_raw':
         return 'Semantic Raw'
       default:
-        return kind || 'Memory'
+        return kind || $t.memory.title
     }
   }
 
@@ -98,10 +99,10 @@
 
   function currentSearchMeta(): string {
     if (searchMode === 'prefetch') {
-      if (!prefetchResult) return 'Run a prefetch query to inspect Prior Context.'
+      if (!prefetchResult) return $t.memory.search.prefetchEmpty
       return `${prefetchResult.relevant_tokens.toLocaleString()} / ${prefetchResult.relevant_budget_tokens.toLocaleString()} tokens (${prefetchResult.budget_percent}%)`
     }
-    return searchResult?.message || 'Run a query to validate recall.'
+    return searchResult?.message || $t.memory.search.defaultToolMeta
   }
 
   async function loadMemory(path?: string) {
@@ -229,16 +230,16 @@
 <div class="memory-page">
   <div class="page-header">
     <div>
-      <h2>Memory</h2>
-      <p class="page-subtitle">{memoryAssets.length} stored knowledge assets</p>
+      <h2>{$t.memory.title}</h2>
+      <p class="page-subtitle">{$t.memory.assetCount(memoryAssets.length)}</p>
     </div>
     <div class="page-actions">
       {#if onAskAI}
         <button class="btn btn-ghost btn-sm" type="button" onclick={() => onAskAI(askAIPrompt())}>
-          Ask AI
+          {$t.common.actions.askAI}
         </button>
       {/if}
-      <button class="btn btn-ghost btn-sm" type="button" onclick={loadAll}>Refresh</button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick={loadAll}>{$t.common.actions.refresh}</button>
     </div>
   </div>
 
@@ -250,65 +251,65 @@
   {/if}
 
   {#if !memoryIntroDismissed}
-    <section class="memory-intro-card" aria-label="Memory introduction">
+    <section class="memory-intro-card" aria-label={$t.memory.introTitle}>
       <div class="intro-main">
         <div>
-          <p class="intro-eyebrow">Memory</p>
-          <h3>Review and edit what TARS remembers</h3>
-          <p>Every chat turn can receive matching stored knowledge through Prior Context, so this page shows the files that feed recall.</p>
+          <p class="intro-eyebrow">{$t.memory.introLabel}</p>
+          <h3>{$t.memory.introTitle}</h3>
+          <p>{$t.memory.introBody}</p>
         </div>
-        <button class="btn btn-ghost btn-sm intro-dismiss" type="button" aria-label="Dismiss memory intro" title="Dismiss memory intro" onclick={dismissMemoryIntro}>Dismiss</button>
+        <button class="btn btn-ghost btn-sm intro-dismiss" type="button" aria-label={$t.common.actions.dismiss} title={$t.common.actions.dismiss} onclick={dismissMemoryIntro}>{$t.common.actions.dismiss}</button>
       </div>
       <div class="intro-grid">
         <div class="intro-item">
-          <strong>MEMORY.md</strong>
-          <span>Editable long-term notes for user facts, preferences, and rules.</span>
+          <strong>{$t.memory.introHeadings.memory}</strong>
+          <span>{$t.memory.introItems.memory}</span>
         </div>
         <div class="intro-item">
-          <strong>Experiences</strong>
-          <span>Facts automatically extracted from previous chats by reflection.</span>
+          <strong>{$t.memory.introHeadings.experiences}</strong>
+          <span>{$t.memory.introItems.experiences}</span>
         </div>
         <div class="intro-item">
-          <strong>Daily Logs</strong>
-          <span>Per-day activity captured from recent chat turns.</span>
+          <strong>{$t.memory.introHeadings.dailyLogs}</strong>
+          <span>{$t.memory.introItems.dailyLogs}</span>
         </div>
         <div class="intro-item">
-          <strong>Semantic Index</strong>
-          <span>Embedding index TARS manages for memory prefetch and ranking.</span>
+          <strong>{$t.memory.introHeadings.semanticIndex}</strong>
+          <span>{$t.memory.introItems.semanticIndex}</span>
         </div>
       </div>
-      <p class="intro-footer">Use Try a Search to inspect recall before changing prompts or storage behavior.</p>
+      <p class="intro-footer">{$t.memory.introFooter}</p>
     </section>
   {/if}
 
   <div class="memory-stats">
     <div class="stat-card">
-      <span class="stat-label">Selected Asset</span>
+      <span class="stat-label">{$t.memory.stats.selectedAsset}</span>
       <strong class="stat-value">{selectedMemoryPath || 'MEMORY.md'}</strong>
       <span class="stat-meta">{assetKindLabel(selectedMemoryKind)}</span>
     </div>
     <div class="stat-card">
-      <span class="stat-label">Memory Search</span>
-      <strong class="stat-value">{currentSearchHitCount()} hits</strong>
+      <span class="stat-label">{$t.memory.stats.search}</span>
+      <strong class="stat-value">{$t.memory.stats.hits(currentSearchHitCount())}</strong>
       <span class="stat-meta">{currentSearchMeta()}</span>
     </div>
   </div>
 
   <div class="tab-row">
-    <button class="tab-btn" class:active={activeTab === 'durable'} type="button" onclick={() => { activeTab = 'durable' }}>Stored Knowledge</button>
-    <button class="tab-btn" class:active={activeTab === 'search'} type="button" onclick={() => { activeTab = 'search' }}>Try a Search</button>
+    <button class="tab-btn" class:active={activeTab === 'durable'} type="button" onclick={() => { activeTab = 'durable' }}>{$t.memory.tabs.storedKnowledge}</button>
+    <button class="tab-btn" class:active={activeTab === 'search'} type="button" onclick={() => { activeTab = 'search' }}>{$t.memory.tabs.trySearch}</button>
   </div>
 
   {#if activeTab === 'durable'}
     <div class="memory-layout">
       <aside class="assets-panel card">
         <div class="panel-header">
-          <span class="card-title">Assets</span>
+          <span class="card-title">{$t.memory.assets}</span>
         </div>
         {#if loadingMemory}
-          <div class="empty-state">Loading stored knowledge assets...</div>
+          <div class="empty-state">{$t.memory.loadingAssets}</div>
         {:else if memoryAssets.length === 0}
-          <div class="empty-state">No stored knowledge assets found.</div>
+          <div class="empty-state">{$t.memory.emptyAssets}</div>
         {:else}
           <div class="asset-list">
             {#each memoryAssets as asset}
@@ -320,7 +321,7 @@
                   <div class="asset-badges">
                     <span class="note-kind">{assetKindLabel(asset.kind)}</span>
                     {#if stale}
-                      <span class="stale-badge">Stale</span>
+                      <span class="stale-badge">{$t.memory.stale}</span>
                     {/if}
                   </div>
                 </div>
@@ -331,11 +332,11 @@
                 <p class="asset-description">{metadata.description}</p>
                 <div class="asset-flow">
                   <div class="asset-flow-line">
-                    <strong>Filled by:</strong>
+                    <strong>{$t.memory.filledBy}</strong>
                     <span>{metadata.filledBy.join(', ')}</span>
                   </div>
                   <div class="asset-flow-line">
-                    <strong>Read by:</strong>
+                    <strong>{$t.memory.readBy}</strong>
                     <span>{metadata.readBy.join(', ')}</span>
                   </div>
                 </div>
@@ -348,13 +349,13 @@
       <section class="editor-panel card">
         <div class="panel-header">
           <div>
-            <span class="card-title">Editor</span>
-            <div class="panel-subtitle">{selectedMemoryPath || 'Select a memory file'}</div>
+            <span class="card-title">{$t.memory.editor}</span>
+            <div class="panel-subtitle">{selectedMemoryPath || $t.memory.selectFile}</div>
           </div>
           <div class="editor-actions">
-            <button class="btn btn-ghost btn-sm" type="button" onclick={() => selectedMemoryPath && selectMemoryAsset(selectedMemoryPath)}>Reload</button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick={() => selectedMemoryPath && selectMemoryAsset(selectedMemoryPath)}>{$t.common.actions.reload}</button>
             <button class="btn btn-primary btn-sm" type="button" disabled={!selectedMemoryPath || savingMemory} onclick={saveSelectedMemoryAsset}>
-              {savingMemory ? 'Saving...' : 'Save'}
+              {savingMemory ? $t.common.actions.saving : $t.common.actions.save}
             </button>
           </div>
         </div>
@@ -363,60 +364,60 @@
           <span>{formatBytes(memorySizeBytes)}</span>
           <span>{fmt(memoryUpdatedAt)}</span>
         </div>
-        <textarea class="memory-editor" bind:value={memoryEditorContent} placeholder="Select a stored knowledge file to inspect or edit."></textarea>
+        <textarea class="memory-editor" bind:value={memoryEditorContent} placeholder={$t.memory.placeholders.editor}></textarea>
       </section>
     </div>
   {:else if activeTab === 'search'}
     <div class="search-layout">
       <section class="card search-panel">
         <div class="panel-header">
-          <span class="card-title">Try a Search</span>
+          <span class="card-title">{$t.memory.search.title}</span>
           <button class="btn btn-primary btn-sm" type="button" disabled={!searchQueryInput.trim() || searching} onclick={runSearchTest}>
-            {searching ? 'Running...' : searchMode === 'prefetch' ? 'Run Prefetch' : 'Run Search'}
+            {searching ? $t.memory.search.running : searchMode === 'prefetch' ? $t.memory.search.runPrefetch : $t.memory.search.runSearch}
           </button>
         </div>
-        <div class="mode-toggle" role="group" aria-label="Memory search mode">
-          <button class="mode-btn" class:active={searchMode === 'tool'} type="button" onclick={() => { searchMode = 'tool' }}>Tool path</button>
-          <button class="mode-btn" class:active={searchMode === 'prefetch'} type="button" onclick={() => { searchMode = 'prefetch' }}>Prefetch path</button>
+        <div class="mode-toggle" role="group" aria-label={$t.memory.search.modeLabel}>
+          <button class="mode-btn" class:active={searchMode === 'tool'} type="button" onclick={() => { searchMode = 'tool' }}>{$t.memory.search.toolPath}</button>
+          <button class="mode-btn" class:active={searchMode === 'prefetch'} type="button" onclick={() => { searchMode = 'prefetch' }}>{$t.memory.search.prefetchPath}</button>
         </div>
         <div class="form-grid">
           <label class="form-field form-span-2">
-            <span>Query</span>
-            <input class="form-input" bind:value={searchQueryInput} placeholder="예: 관심있는 주식, coffee preference, previous decision" />
+            <span>{$t.memory.search.query}</span>
+            <input class="form-input" bind:value={searchQueryInput} placeholder={$t.memory.placeholders.query} />
           </label>
           {#if searchMode === 'tool'}
             <label class="form-field">
-              <span>Limit</span>
+              <span>{$t.memory.search.limit}</span>
               <input class="form-input" type="number" min="1" max="30" bind:value={searchLimit} />
             </label>
           {:else}
             <label class="form-field">
-              <span>Session ID</span>
-              <input class="form-input" bind:value={prefetchSessionId} placeholder="optional" />
+              <span>{$t.memory.search.sessionId}</span>
+              <input class="form-input" bind:value={prefetchSessionId} placeholder={$t.memory.placeholders.sessionId} />
             </label>
           {/if}
         </div>
         {#if searchMode === 'tool'}
           <div class="search-flags">
             <label><input type="checkbox" bind:checked={searchIncludeMemory} /> MEMORY.md</label>
-            <label><input type="checkbox" bind:checked={searchIncludeDaily} /> Daily logs</label>
-            <label><input type="checkbox" bind:checked={searchIncludeSessions} /> Session history</label>
+            <label><input type="checkbox" bind:checked={searchIncludeDaily} /> {$t.memory.search.dailyLogs}</label>
+            <label><input type="checkbox" bind:checked={searchIncludeSessions} /> {$t.memory.search.sessionHistory}</label>
           </div>
         {/if}
       </section>
 
       <section class="card results-panel">
         <div class="panel-header">
-          <span class="card-title">Results</span>
+          <span class="card-title">{$t.memory.search.results}</span>
           {#if searchMode === 'prefetch' && prefetchResult}
-            <span class="note-meta">{prefetchResult.items?.length ?? 0} matches</span>
+            <span class="note-meta">{$t.memory.search.matches(prefetchResult.items?.length ?? 0)}</span>
           {:else if searchResult}
-            <span class="note-meta">{searchResult.results?.length ?? 0} matches</span>
+            <span class="note-meta">{$t.memory.search.matches(searchResult.results?.length ?? 0)}</span>
           {/if}
         </div>
         {#if searchMode === 'prefetch'}
           {#if !prefetchResult}
-            <div class="empty-state">Run a prefetch query to inspect the Prior Context section.</div>
+            <div class="empty-state">{$t.memory.search.prefetchEmpty}</div>
           {:else}
             <div class="prefetch-summary">
               <span>{prefetchResult.relevant_tokens.toLocaleString()} / {prefetchResult.relevant_budget_tokens.toLocaleString()} tokens</span>
@@ -426,7 +427,7 @@
               {/if}
             </div>
             {#if prefetchResult.items.length === 0}
-              <div class="empty-state">{prefetchResult.message || 'No Prior Context matches.'}</div>
+              <div class="empty-state">{prefetchResult.message || $t.memory.search.noPriorMatches}</div>
             {:else}
               <div class="result-list">
                 {#each prefetchResult.items as item}
@@ -441,14 +442,14 @@
               </div>
             {/if}
             <details class="prefetch-section" open>
-              <summary>Prior Context section</summary>
+              <summary>{$t.memory.search.priorContext}</summary>
               <pre>{prefetchResult.section || '## Prior Context\n\n'}</pre>
             </details>
           {/if}
         {:else if !searchResult}
-          <div class="empty-state">Run a query here to inspect memory recall before changing prompts or storage behavior.</div>
+          <div class="empty-state">{$t.memory.search.searchEmpty}</div>
         {:else if !searchResult.results || searchResult.results.length === 0}
-          <div class="empty-state">{searchResult.message || 'No matches found.'}</div>
+          <div class="empty-state">{searchResult.message || $t.memory.search.noMatches}</div>
         {:else}
           <div class="result-list">
             {#each searchResult.results as item}
