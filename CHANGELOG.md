@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.27] - 2026-04-30
+
+### Added
+
+- Chat `@` mention autocomplete now includes AgentRuntime subagents alongside Files context.
+- Selected subagent mentions are sent as explicit `subagent_mentions` chat hints and injected into the LLM system prompt so `subagents_run`, `subagents_orchestrate`, and `subagents_plan` can target the named agent.
+- Context HUD now reports mentioned subagents for the current turn.
+
+### Tests
+
+- `go test ./internal/tarsserver -run 'TestChatAPI(InjectsSubagentMentionHints|RejectsUnknownSubagentMention|ToolCallSubagentsRun)'`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `make fmt`
+- `make vet`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `make build`
+- Playwright browser verification at `http://127.0.0.1:43195/console`
+
 ## [0.31.26] - 2026-04-29
 
 ### Added

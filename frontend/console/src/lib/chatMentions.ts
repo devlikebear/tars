@@ -1,4 +1,4 @@
-export type ChatMentionKind = 'file' | 'directory'
+export type ChatMentionKind = 'file' | 'directory' | 'subagent'
 
 export type ChatMentionCandidate = {
   kind: ChatMentionKind
@@ -9,6 +9,9 @@ export type ChatMentionCandidate = {
   token: string
   size?: number
   updated_at?: string
+  description?: string
+  tier?: string
+  model?: string
 }
 
 export type SelectedChatMention = {
@@ -23,6 +26,18 @@ export type ActiveMentionTrigger = {
   start: number
   end: number
   query: string
+}
+
+export type ChatMentionSubagentSource = {
+  name: string
+  description?: string
+  enabled?: boolean
+  default_tier?: string
+  effective_tier?: string
+  resolved_model?: string
+  provider_override?: {
+    model?: string
+  }
 }
 
 export function findActiveMentionTrigger(value: string, caret: number): ActiveMentionTrigger | null {
@@ -40,6 +55,52 @@ export function findActiveMentionTrigger(value: string, caret: number): ActiveMe
   const next = afterCaret.match(/^\S*/)
   const tokenEnd = safeCaret + (next?.[0]?.length ?? 0)
   return { start: at, end: tokenEnd, query: token }
+}
+
+export function buildSubagentMentionCandidates(
+  rawQuery: string,
+  subagents: ChatMentionSubagentSource[],
+  limit = 12,
+): ChatMentionCandidate[] {
+  const query = rawQuery.trim().replace(/^@/, '').toLowerCase()
+  if (query.includes('/')) return []
+
+  return subagents
+    .filter((agent) => agent.enabled !== false)
+    .map((agent) => {
+      const name = agent.name.trim()
+      const description = agent.description?.trim() || undefined
+      const tier = agent.effective_tier?.trim() || agent.default_tier?.trim() || undefined
+      const model = agent.resolved_model?.trim() || agent.provider_override?.model?.trim() || undefined
+      return { name, description, tier, model }
+    })
+    .filter((agent) => agent.name)
+    .filter((agent) => {
+      if (!query) return true
+      return agent.name.toLowerCase().includes(query) || (agent.description?.toLowerCase().includes(query) ?? false)
+    })
+    .sort((a, b) => {
+      const aName = a.name.toLowerCase()
+      const bName = b.name.toLowerCase()
+      if (query) {
+        const aPrefix = aName.startsWith(query)
+        const bPrefix = bName.startsWith(query)
+        if (aPrefix !== bPrefix) return aPrefix ? -1 : 1
+      }
+      return aName.localeCompare(bName)
+    })
+    .slice(0, Math.max(0, limit))
+    .map((agent) => ({
+      kind: 'subagent',
+      name: agent.name,
+      path: agent.name,
+      root: 'agentruntime',
+      root_label: 'subagent',
+      token: `@${agent.name}`,
+      description: agent.description,
+      tier: agent.tier,
+      model: agent.model,
+    }))
 }
 
 export function applyMentionCandidate(

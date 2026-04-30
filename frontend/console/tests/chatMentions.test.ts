@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   applyMentionCandidate,
+  buildSubagentMentionCandidates,
   filterSelectedMentionsForMessage,
   findActiveMentionTrigger,
   type ChatMentionCandidate,
@@ -16,6 +17,18 @@ const readmeCandidate: ChatMentionCandidate = {
   root: '/workspace/project',
   root_label: 'current',
   token: '@README.md',
+}
+
+const researcherCandidate: ChatMentionCandidate = {
+  kind: 'subagent',
+  name: 'researcher',
+  path: 'researcher',
+  root: 'agentruntime',
+  root_label: 'subagent',
+  token: '@researcher',
+  description: 'Deep research subagent',
+  tier: 'heavy',
+  model: 'gpt-5.5',
 }
 
 test('findActiveMentionTrigger detects @ token at the caret', () => {
@@ -53,11 +66,60 @@ test('applyMentionCandidate replaces the active token with an insert token', () 
   })
 })
 
+test('applyMentionCandidate supports subagent mentions', () => {
+  const trigger = findActiveMentionTrigger('ask @rese to inspect', 9)
+  assert.ok(trigger)
+
+  const applied = applyMentionCandidate('ask @rese to inspect', trigger, researcherCandidate)
+
+  assert.equal(applied.value, 'ask @researcher to inspect')
+  assert.equal(applied.caret, 'ask @researcher'.length)
+  assert.deepEqual(applied.mention, {
+    kind: 'subagent',
+    root: 'agentruntime',
+    path: 'researcher',
+    label: 'researcher',
+    token: '@researcher',
+  })
+})
+
 test('filterSelectedMentionsForMessage keeps only mentions still present in text', () => {
   const selected: SelectedChatMention[] = [
     { kind: 'file', root: '/workspace/project', path: 'README.md', label: 'README.md', token: '@README.md' },
     { kind: 'directory', root: '/workspace/project', path: 'docs', label: 'docs', token: '@docs/' },
+    { kind: 'subagent', root: 'agentruntime', path: 'researcher', label: 'researcher', token: '@researcher' },
   ]
 
-  assert.deepEqual(filterSelectedMentionsForMessage(selected, 'read @README.md'), [selected[0]])
+  assert.deepEqual(filterSelectedMentionsForMessage(selected, 'ask @researcher to read @README.md'), [selected[0], selected[2]])
+})
+
+test('buildSubagentMentionCandidates filters enabled subagents by query', () => {
+  const candidates = buildSubagentMentionCandidates('res', [
+    {
+      name: 'researcher',
+      description: 'Deep research subagent',
+      enabled: true,
+      effective_tier: 'heavy',
+      resolved_model: 'gpt-5.5',
+      source: 'config',
+    },
+    {
+      name: 'writer',
+      description: 'Drafting helper',
+      enabled: true,
+      effective_tier: 'standard',
+      resolved_model: 'gpt-5.4',
+      source: 'config',
+    },
+    {
+      name: 'disabled-researcher',
+      description: 'Hidden helper',
+      enabled: false,
+      effective_tier: 'light',
+      resolved_model: 'gpt-5.4-mini',
+      source: 'config',
+    },
+  ])
+
+  assert.deepEqual(candidates, [researcherCandidate])
 })

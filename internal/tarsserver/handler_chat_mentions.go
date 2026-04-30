@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
 )
@@ -25,6 +26,18 @@ type chatFileMentionRequest struct {
 	Kind string `json:"kind"`
 	Root string `json:"root,omitempty"`
 	Path string `json:"path"`
+}
+
+type chatSubagentMentionRequest struct {
+	Name  string `json:"name"`
+	Token string `json:"token,omitempty"`
+}
+
+type chatSubagentMention struct {
+	Name        string
+	Token       string
+	Description string
+	Tier        string
 }
 
 type chatFileMentionCandidate struct {
@@ -248,6 +261,92 @@ func chatMentionsToContentBlocks(store *session.Store, workspaceDir string, sess
 		paths = append(paths, displayPath)
 	}
 	return blocks, paths, nil
+}
+
+func normalizeChatSubagentMentions(runtime *agentruntime.Runtime, mentions []chatSubagentMentionRequest) ([]chatSubagentMention, error) {
+	if len(mentions) == 0 {
+		return nil, nil
+	}
+	if runtime == nil || !runtime.Enabled() {
+		return nil, fmt.Errorf("agent runtime is not configured")
+	}
+	seen := make(map[string]struct{}, len(mentions))
+	out := make([]chatSubagentMention, 0, len(mentions))
+	for _, mention := range mentions {
+		name := normalizeChatSubagentMentionName(mention.Name)
+		if name == "" {
+			name = normalizeChatSubagentMentionName(mention.Token)
+		}
+		if name == "" {
+			return nil, fmt.Errorf("subagent mention name is required")
+		}
+		info, ok := runtime.LookupAgent(name)
+		if !ok {
+			return nil, fmt.Errorf("subagent mention not found: %s", name)
+		}
+		if !info.Enabled {
+			return nil, fmt.Errorf("subagent mention is disabled: %s", name)
+		}
+		canonical := strings.TrimSpace(info.Name)
+		if canonical == "" {
+			canonical = name
+		}
+		if _, exists := seen[canonical]; exists {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		out = append(out, chatSubagentMention{
+			Name:        canonical,
+			Token:       firstNonEmpty(strings.TrimSpace(mention.Token), "@"+canonical),
+			Description: strings.TrimSpace(info.Description),
+			Tier:        strings.TrimSpace(info.Tier),
+		})
+	}
+	return out, nil
+}
+
+func normalizeChatSubagentMentionName(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	trimmed = strings.TrimPrefix(trimmed, "@")
+	trimmed = strings.TrimRight(trimmed, ",.;:")
+	return strings.TrimSpace(trimmed)
+}
+
+func formatChatSubagentMentionHint(mentions []chatSubagentMention) string {
+	if len(mentions) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\n## Mentioned Subagents\n")
+	b.WriteString("The user explicitly mentioned these AgentRuntime subagent targets in the current chat message.\n")
+	b.WriteString("- Prefer `subagents_run` for a single direct target, `subagents_orchestrate` for multiple coordinated targets, or `subagents_plan` when a plan is needed first.\n")
+	b.WriteString("- When calling a subagent tool for a listed target, set the top-level `agent` field to the exact name below.\n")
+	for _, mention := range mentions {
+		b.WriteString("- `")
+		b.WriteString(mention.Name)
+		b.WriteString("`")
+		if mention.Tier != "" {
+			b.WriteString(" tier=")
+			b.WriteString(mention.Tier)
+		}
+		if mention.Description != "" {
+			b.WriteString(" - ")
+			b.WriteString(mention.Description)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func chatSubagentMentionNames(mentions []chatSubagentMention) []string {
+	names := make([]string, 0, len(mentions))
+	for _, mention := range mentions {
+		if strings.TrimSpace(mention.Name) == "" {
+			continue
+		}
+		names = append(names, strings.TrimSpace(mention.Name))
+	}
+	return names
 }
 
 func chatMentionToContentBlock(roots []chatFileMentionRoot, mention chatFileMentionRequest) (llm.ContentBlock, string, error) {

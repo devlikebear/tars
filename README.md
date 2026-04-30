@@ -184,7 +184,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 
 | Page | Path | Purpose |
 |------|------|---------|
-| Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory mentions, `/` skill commands, and Files workspace shell |
+| Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` skill commands, and Files workspace shell |
 | Memory | `/console/memory` | Edit durable memory assets and test semantic search |
 | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md |
 | Ops | `/console/ops` | System health and cleanup operations |

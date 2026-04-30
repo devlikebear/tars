@@ -420,6 +420,8 @@ export type ChatEvent = {
   selected_skill_reason?: string
   mentioned_path_count?: number
   mentioned_paths?: string[]
+  mentioned_subagent_count?: number
+  mentioned_subagents?: string[]
   // tasks_changed event fields (live count for chat pulse-bar Tasks badge)
   task_total?: number
   task_pending?: number
@@ -449,11 +451,17 @@ export type ChatFileMention = {
   path: string
 }
 
+export type ChatSubagentMention = {
+  name: string
+  token?: string
+}
+
 export type ChatRequest = {
   message: string
   session_id?: string
   attachments?: ChatAttachment[]
   mentions?: ChatFileMention[]
+  subagent_mentions?: ChatSubagentMention[]
 }
 
 export type MemoryAsset = {

@@ -447,6 +447,8 @@ export type ChatContextInfo = {
   selected_skill_reason?: string
   mentioned_path_count?: number
   mentioned_paths?: string[]
+  mentioned_subagent_count?: number
+  mentioned_subagents?: string[]
   prompt_override: string
 }
 

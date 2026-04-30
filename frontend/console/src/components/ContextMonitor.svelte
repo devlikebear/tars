@@ -22,6 +22,8 @@
       selected_skill_reason?: string
       mentioned_path_count?: number
       mentioned_paths?: string[]
+      mentioned_subagent_count?: number
+      mentioned_subagents?: string[]
     }
     refreshVersion?: number
     onClose?: () => void
@@ -63,6 +65,7 @@
   let selectedSkillName = $derived(contextInfo?.selected_skill_name ?? fullContext?.selected_skill_name ?? '')
   let selectedSkillReason = $derived(contextInfo?.selected_skill_reason ?? fullContext?.selected_skill_reason ?? '')
   let mentionedPaths = $derived(listOr(contextInfo?.mentioned_paths, fullContext?.mentioned_paths))
+  let mentionedSubagents = $derived(listOr(contextInfo?.mentioned_subagents, fullContext?.mentioned_subagents))
   let compactionTriggerTokens = $derived(contextInfo?.compaction_trigger_tokens ?? fullContext?.compaction_trigger_tokens ?? 0)
   let keepRecentTokens = $derived(contextInfo?.compaction_keep_recent_tokens ?? fullContext?.compaction_keep_recent_tokens ?? 0)
   let keepRecentFraction = $derived(contextInfo?.compaction_keep_recent_fraction ?? fullContext?.compaction_keep_recent_fraction ?? 0)
@@ -154,6 +157,17 @@
       <div class="tool-chips">
         {#each mentionedPaths as path}
           <span class="tool-chip">{path}</span>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if mentionedSubagents.length > 0}
+    <div class="monitor-section">
+      <span class="section-title">Mentioned Subagents</span>
+      <div class="tool-chips">
+        {#each mentionedSubagents as name}
+          <span class="tool-chip">{name}</span>
         {/each}
       </div>
     </div>
