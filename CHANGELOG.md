@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.36] - 2026-04-30
+
+### Added
+
+- Pulse now compresses all-clear Recent Ticks into a summary timeline and highlights only signal-bearing ticks with warning, error, and autofix counts.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Pulse compresses"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #430.
+
 ## [0.31.35] - 2026-04-30
 
 ### Added
