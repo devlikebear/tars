@@ -3,12 +3,14 @@
   import {
     getMemoryFile,
     listMemoryAssets,
+    runMemoryPrefetch,
     runMemorySearch,
     saveMemoryFile,
     streamEvents,
   } from '../lib/api'
   import type {
     MemoryAsset,
+    MemoryPrefetchResult,
     MemorySearchResult,
   } from '../lib/types'
   import {
@@ -23,6 +25,7 @@
   let { onAskAI }: Props = $props()
 
   const MEMORY_INTRO_STORAGE_KEY = 'tars.memory.intro.dismissed'
+  type MemorySearchMode = 'tool' | 'prefetch'
 
   let activeTab = $state<'durable' | 'search'>('durable')
   let error = $state('')
@@ -40,12 +43,15 @@
   let memorySizeBytes = $state(0)
 
   let searchQueryInput = $state('')
+  let searchMode = $state<MemorySearchMode>('tool')
+  let prefetchSessionId = $state('')
   let searchLimit = $state(8)
   let searchIncludeMemory = $state(true)
   let searchIncludeDaily = $state(true)
   let searchIncludeSessions = $state(true)
   let searching = $state(false)
   let searchResult: MemorySearchResult | null = $state(null)
+  let prefetchResult: MemoryPrefetchResult | null = $state(null)
 
   function fmt(value?: string): string {
     const text = value?.trim()
@@ -77,6 +83,25 @@
       default:
         return kind || 'Memory'
     }
+  }
+
+  function sourceClass(source_tag: string): string {
+    return source_tag.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-') || 'context'
+  }
+
+  function currentSearchHitCount(): number {
+    if (searchMode === 'prefetch') {
+      return prefetchResult?.items?.length ?? 0
+    }
+    return searchResult?.results?.length ?? 0
+  }
+
+  function currentSearchMeta(): string {
+    if (searchMode === 'prefetch') {
+      if (!prefetchResult) return 'Run a prefetch query to inspect Prior Context.'
+      return `${prefetchResult.relevant_tokens.toLocaleString()} / ${prefetchResult.relevant_budget_tokens.toLocaleString()} tokens (${prefetchResult.budget_percent}%)`
+    }
+    return searchResult?.message || 'Run a query to validate recall.'
   }
 
   async function loadMemory(path?: string) {
@@ -128,13 +153,20 @@
     error = ''
     success = ''
     try {
-      searchResult = await runMemorySearch({
-        query: searchQueryInput.trim(),
-        limit: searchLimit,
-        include_memory: searchIncludeMemory,
-        include_daily: searchIncludeDaily,
-        include_sessions: searchIncludeSessions,
-      })
+      if (searchMode === 'prefetch') {
+        prefetchResult = await runMemoryPrefetch({
+          query: searchQueryInput.trim(),
+          session_id: prefetchSessionId.trim() || undefined,
+        })
+      } else {
+        searchResult = await runMemorySearch({
+          query: searchQueryInput.trim(),
+          limit: searchLimit,
+          include_memory: searchIncludeMemory,
+          include_daily: searchIncludeDaily,
+          include_sessions: searchIncludeSessions,
+        })
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to run memory search'
     } finally {
@@ -257,8 +289,8 @@
     </div>
     <div class="stat-card">
       <span class="stat-label">Memory Search</span>
-      <strong class="stat-value">{searchResult?.results?.length ?? 0} hits</strong>
-      <span class="stat-meta">{searchResult?.message || 'Run a query to validate recall.'}</span>
+      <strong class="stat-value">{currentSearchHitCount()} hits</strong>
+      <span class="stat-meta">{currentSearchMeta()}</span>
     </div>
   </div>
 
@@ -340,34 +372,80 @@
         <div class="panel-header">
           <span class="card-title">Try a Search</span>
           <button class="btn btn-primary btn-sm" type="button" disabled={!searchQueryInput.trim() || searching} onclick={runSearchTest}>
-            {searching ? 'Running...' : 'Run Search'}
+            {searching ? 'Running...' : searchMode === 'prefetch' ? 'Run Prefetch' : 'Run Search'}
           </button>
+        </div>
+        <div class="mode-toggle" role="group" aria-label="Memory search mode">
+          <button class="mode-btn" class:active={searchMode === 'tool'} type="button" onclick={() => { searchMode = 'tool' }}>Tool path</button>
+          <button class="mode-btn" class:active={searchMode === 'prefetch'} type="button" onclick={() => { searchMode = 'prefetch' }}>Prefetch path</button>
         </div>
         <div class="form-grid">
           <label class="form-field form-span-2">
             <span>Query</span>
             <input class="form-input" bind:value={searchQueryInput} placeholder="예: 관심있는 주식, coffee preference, previous decision" />
           </label>
-          <label class="form-field">
-            <span>Limit</span>
-            <input class="form-input" type="number" min="1" max="30" bind:value={searchLimit} />
-          </label>
+          {#if searchMode === 'tool'}
+            <label class="form-field">
+              <span>Limit</span>
+              <input class="form-input" type="number" min="1" max="30" bind:value={searchLimit} />
+            </label>
+          {:else}
+            <label class="form-field">
+              <span>Session ID</span>
+              <input class="form-input" bind:value={prefetchSessionId} placeholder="optional" />
+            </label>
+          {/if}
         </div>
-        <div class="search-flags">
-          <label><input type="checkbox" bind:checked={searchIncludeMemory} /> MEMORY.md</label>
-          <label><input type="checkbox" bind:checked={searchIncludeDaily} /> Daily logs</label>
-          <label><input type="checkbox" bind:checked={searchIncludeSessions} /> Session history</label>
-        </div>
+        {#if searchMode === 'tool'}
+          <div class="search-flags">
+            <label><input type="checkbox" bind:checked={searchIncludeMemory} /> MEMORY.md</label>
+            <label><input type="checkbox" bind:checked={searchIncludeDaily} /> Daily logs</label>
+            <label><input type="checkbox" bind:checked={searchIncludeSessions} /> Session history</label>
+          </div>
+        {/if}
       </section>
 
       <section class="card results-panel">
         <div class="panel-header">
           <span class="card-title">Results</span>
-          {#if searchResult}
+          {#if searchMode === 'prefetch' && prefetchResult}
+            <span class="note-meta">{prefetchResult.items?.length ?? 0} matches</span>
+          {:else if searchResult}
             <span class="note-meta">{searchResult.results?.length ?? 0} matches</span>
           {/if}
         </div>
-        {#if !searchResult}
+        {#if searchMode === 'prefetch'}
+          {#if !prefetchResult}
+            <div class="empty-state">Run a prefetch query to inspect the Prior Context section.</div>
+          {:else}
+            <div class="prefetch-summary">
+              <span>{prefetchResult.relevant_tokens.toLocaleString()} / {prefetchResult.relevant_budget_tokens.toLocaleString()} tokens</span>
+              <span>{prefetchResult.budget_percent}% budget</span>
+              {#if prefetchResult.session_id}
+                <span>{prefetchResult.session_id}</span>
+              {/if}
+            </div>
+            {#if prefetchResult.items.length === 0}
+              <div class="empty-state">{prefetchResult.message || 'No Prior Context matches.'}</div>
+            {:else}
+              <div class="result-list">
+                {#each prefetchResult.items as item}
+                  <article class="result-row">
+                    <div class="result-meta">
+                      <strong><span class="source-badge tag-{sourceClass(item.source_tag)}">{item.source_tag}</span> {item.source}</strong>
+                      <span>{item.tokens.toLocaleString()} tokens</span>
+                    </div>
+                    <p>{item.snippet}</p>
+                  </article>
+                {/each}
+              </div>
+            {/if}
+            <details class="prefetch-section" open>
+              <summary>Prior Context section</summary>
+              <pre>{prefetchResult.section || '## Prior Context\n\n'}</pre>
+            </details>
+          {/if}
+        {:else if !searchResult}
           <div class="empty-state">Run a query here to inspect memory recall before changing prompts or storage behavior.</div>
         {:else if !searchResult.results || searchResult.results.length === 0}
           <div class="empty-state">{searchResult.message || 'No matches found.'}</div>
@@ -421,6 +499,7 @@
 
   .page-actions,
   .tab-row,
+  .mode-toggle,
   .search-flags {
     display: flex;
     gap: var(--space-2);
@@ -560,6 +639,28 @@
     color: var(--primary-text);
   }
 
+  .mode-toggle {
+    padding: 4px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-base);
+  }
+
+  .mode-btn {
+    border: 0;
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .mode-btn.active {
+    background: var(--primary-muted);
+    color: var(--primary-text);
+  }
+
   .memory-layout {
     display: grid;
     grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
@@ -603,7 +704,8 @@
   }
 
   .asset-row,
-  .tab-btn {
+  .tab-btn,
+  .mode-btn {
     cursor: pointer;
     transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
   }
@@ -694,6 +796,76 @@
     border-radius: var(--radius-md);
     background: var(--surface-elevated);
     color: var(--text-secondary);
+  }
+
+  .prefetch-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .source-badge {
+    display: inline-block;
+    border-radius: var(--radius-sm);
+    padding: 2px 6px;
+    margin-right: var(--space-1);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    color: var(--text-primary);
+    background: rgba(99, 102, 241, 0.14);
+    border: 1px solid rgba(99, 102, 241, 0.24);
+  }
+
+  .tag-experience {
+    background: rgba(34, 197, 94, 0.14);
+    border-color: rgba(34, 197, 94, 0.24);
+  }
+
+  .tag-project {
+    background: rgba(14, 165, 233, 0.14);
+    border-color: rgba(14, 165, 233, 0.24);
+  }
+
+  .tag-daily {
+    background: rgba(245, 158, 11, 0.14);
+    border-color: rgba(245, 158, 11, 0.24);
+  }
+
+  .tag-conversation {
+    background: rgba(168, 85, 247, 0.14);
+    border-color: rgba(168, 85, 247, 0.24);
+  }
+
+  .prefetch-section {
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--space-2);
+  }
+
+  .prefetch-section summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .prefetch-section pre {
+    max-height: 300px;
+    overflow: auto;
+    margin: var(--space-2) 0 0;
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .error-banner,

@@ -551,6 +551,26 @@ export type MemorySearchResult = {
   message?: string
 }
 
+export type MemoryPrefetchItem = {
+  source: string
+  source_tag: string
+  snippet: string
+  tokens: number
+}
+
+export type MemoryPrefetchResult = {
+  session_id: string
+  query: string
+  section: string
+  items: MemoryPrefetchItem[]
+  relevant_tokens: number
+  relevant_memory_count: number
+  relevant_budget_tokens: number
+  budget_percent: number
+  message?: string
+  generated_at: string
+}
+
 export type CreateCronJobRequest = {
   name?: string
   prompt: string

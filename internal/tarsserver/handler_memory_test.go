@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -83,6 +84,64 @@ func TestMemoryAPIHandler_ListsEditsFilesAndRunsSearch(t *testing.T) {
 	handler.ServeHTTP(searchRec, searchReq)
 	if searchRec.Code != http.StatusOK || !strings.Contains(searchRec.Body.String(), "삼성전자 주식을 보유하고 있어") {
 		t.Fatalf("unexpected memory search response: code=%d body=%q", searchRec.Code, searchRec.Body.String())
+	}
+}
+
+func TestMemoryAPIHandler_PrefetchBuildsPriorContextPreview(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("Project atlas launch prefers risk-first release notes.\n"), 0o644); err != nil {
+		t.Fatalf("write memory file: %v", err)
+	}
+
+	handler := newMemoryAPIHandler(root, nil, zerolog.Nop())
+	req := httptest.NewRequest(http.MethodPost, "/v1/memory/prefetch?session_id=sess-alpha&query=atlas%20launch%20release", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected prefetch 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		SessionID            string `json:"session_id"`
+		Query                string `json:"query"`
+		Section              string `json:"section"`
+		RelevantTokens       int    `json:"relevant_tokens"`
+		RelevantBudgetTokens int    `json:"relevant_budget_tokens"`
+		BudgetPercent        int    `json:"budget_percent"`
+		Items                []struct {
+			Source    string `json:"source"`
+			SourceTag string `json:"source_tag"`
+			Snippet   string `json:"snippet"`
+			Tokens    int    `json:"tokens"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode prefetch response: %v", err)
+	}
+
+	if payload.SessionID != "sess-alpha" {
+		t.Fatalf("expected session id echo, got %q", payload.SessionID)
+	}
+	if payload.Query != "atlas launch release" {
+		t.Fatalf("expected query echo, got %q", payload.Query)
+	}
+	if !strings.Contains(payload.Section, "## Prior Context") ||
+		!strings.Contains(payload.Section, "Project atlas launch prefers risk-first release notes.") {
+		t.Fatalf("expected exact prior context section, got %q", payload.Section)
+	}
+	if payload.RelevantTokens <= 0 || payload.RelevantBudgetTokens <= 0 || payload.BudgetPercent <= 0 {
+		t.Fatalf("expected token budget metadata, got %+v", payload)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one prefetch item, got %+v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.Source != "MEMORY.md" || item.SourceTag != "project" || item.Tokens <= 0 {
+		t.Fatalf("expected structured project memory item, got %+v", item)
 	}
 }
 
