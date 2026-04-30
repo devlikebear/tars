@@ -50,6 +50,8 @@
   let reloading = $state(false)
   let updating = $state(false)
   let togglingItem = $state('')
+  let installedPluginsOpen = $state(false)
+  let hubPluginsOpen = $state(false)
 
   // Version tracking for update detection
   let installedVersions: Map<string, string> = $state(new Map())
@@ -377,47 +379,61 @@
       <!-- Plugins -->
       <section class="card ext-section">
         <div class="card-header">
-          <div class="card-title-group">
-            <span class="card-title">Plugins</span>
-            <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
-          </div>
+          <button
+            class="section-toggle"
+            type="button"
+            aria-expanded={installedPluginsOpen}
+            aria-controls="installed-plugins-panel"
+            onclick={() => { installedPluginsOpen = !installedPluginsOpen }}
+          >
+            <span class="detail-chevron" class:open={installedPluginsOpen}>{'\u25b8'}</span>
+            <span class="card-title-group">
+              <span class="card-title">Plugins</span>
+              <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
+              <span class="badge badge-default" title="Advanced legacy extension surface">Advanced legacy</span>
+            </span>
+          </button>
           <span class="badge badge-default">{plugins.length}</span>
         </div>
         <div class="plugin-policy-note">
           Use Skills (.md + CLI) for new extension work. Legacy plugin installs remain available for existing workflows.
         </div>
-        {#if plugins.length === 0}
-          <div class="empty-state"><p>No plugins loaded.</p></div>
-        {:else}
-          <div class="ext-list">
-            {#each plugins as p}
-              <div class="ext-item">
-                <div class="ext-item-info">
-                  <strong>{p.name || p.id}</strong>
-                  <span class="ext-desc">{p.description || '\u2014'}</span>
-                  {#if p.version}<span class="ext-meta-tag">v{p.version}</span>{/if}
-                </div>
-                <div class="ext-item-actions">
-                  <button
-                    class="toggle-switch"
-                    class:on={!isDisabledExt('plugin', p.id || p.name)}
-                    disabled={togglingItem === 'plugin:' + (p.id || p.name)}
-                    title={isDisabledExt('plugin', p.id || p.name) ? 'Enable' : 'Disable'}
-                    onclick={() => handleToggle('plugin', p.id || p.name)}
-                  >{isDisabledExt('plugin', p.id || p.name) ? 'OFF' : 'ON'}</button>
-                  {#if hasUpdate('plugin', p.id || p.name)}
-                    <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleInstall('plugin', p.id || p.name)} title="Update to v{registryVersion('plugin', p.id || p.name)}">
-                      {busyItem === 'plugin:' + (p.id || p.name) ? '...' : 'Update'}
-                    </button>
-                  {/if}
-                  {#if isHubInstalled('plugin', p.id || p.name)}
-                    <button class="btn btn-danger btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleUninstall('plugin', p.id || p.name)}>
-                      {busyItem === 'plugin:' + (p.id || p.name) ? '...' : 'Uninstall'}
-                    </button>
-                  {/if}
-                </div>
+        {#if installedPluginsOpen}
+          <div id="installed-plugins-panel">
+            {#if plugins.length === 0}
+              <div class="empty-state"><p>No plugins loaded.</p></div>
+            {:else}
+              <div class="ext-list">
+                {#each plugins as p}
+                  <div class="ext-item">
+                    <div class="ext-item-info">
+                      <strong>{p.name || p.id}</strong>
+                      <span class="ext-desc">{p.description || '\u2014'}</span>
+                      {#if p.version}<span class="ext-meta-tag">v{p.version}</span>{/if}
+                    </div>
+                    <div class="ext-item-actions">
+                      <button
+                        class="toggle-switch"
+                        class:on={!isDisabledExt('plugin', p.id || p.name)}
+                        disabled={togglingItem === 'plugin:' + (p.id || p.name)}
+                        title={isDisabledExt('plugin', p.id || p.name) ? 'Enable' : 'Disable'}
+                        onclick={() => handleToggle('plugin', p.id || p.name)}
+                      >{isDisabledExt('plugin', p.id || p.name) ? 'OFF' : 'ON'}</button>
+                      {#if hasUpdate('plugin', p.id || p.name)}
+                        <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleInstall('plugin', p.id || p.name)} title="Update to v{registryVersion('plugin', p.id || p.name)}">
+                          {busyItem === 'plugin:' + (p.id || p.name) ? '...' : 'Update'}
+                        </button>
+                      {/if}
+                      {#if isHubInstalled('plugin', p.id || p.name)}
+                        <button class="btn btn-danger btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleUninstall('plugin', p.id || p.name)}>
+                          {busyItem === 'plugin:' + (p.id || p.name) ? '...' : 'Uninstall'}
+                        </button>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
               </div>
-            {/each}
+            {/if}
           </div>
         {/if}
       </section>
@@ -523,44 +539,56 @@
       <!-- Hub Plugins -->
       <section class="card ext-section">
         <div class="card-header">
-          <div class="card-title-group">
-            <span class="card-title">Plugins</span>
-            <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
-          </div>
+          <button
+            class="section-toggle"
+            type="button"
+            aria-expanded={hubPluginsOpen}
+            aria-controls="hub-plugins-panel"
+            onclick={() => { hubPluginsOpen = !hubPluginsOpen }}
+          >
+            <span class="detail-chevron" class:open={hubPluginsOpen}>{'\u25b8'}</span>
+            <span class="card-title-group">
+              <span class="card-title">Plugins</span>
+              <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
+              <span class="badge badge-default" title="Advanced legacy extension surface">Advanced legacy</span>
+            </span>
+          </button>
           <span class="badge badge-default">{registry.plugins.length} available</span>
         </div>
         <div class="plugin-policy-note">
           Use Skills (.md + CLI) for new extension work. Legacy plugin installs remain available for existing workflows.
         </div>
-        <div class="ext-list">
-          {#each registry.plugins as entry}
-            <div class="ext-item">
-              <div class="ext-item-info">
-                <div class="ext-item-top">
-                  <strong>{entry.name}</strong>
-                  <span class="ext-version">v{entry.version}</span>
-                </div>
-                <span class="ext-desc">{entry.description}</span>
-                {#if entry.tags?.length}
-                  <div class="ext-tags">
-                    {#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}
+        {#if hubPluginsOpen}
+          <div id="hub-plugins-panel" class="ext-list">
+            {#each registry.plugins as entry}
+              <div class="ext-item">
+                <div class="ext-item-info">
+                  <div class="ext-item-top">
+                    <strong>{entry.name}</strong>
+                    <span class="ext-version">v{entry.version}</span>
                   </div>
+                  <span class="ext-desc">{entry.description}</span>
+                  {#if entry.tags?.length}
+                    <div class="ext-tags">
+                      {#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}
+                    </div>
+                  {/if}
+                </div>
+                {#if hasUpdate('plugin', entry.name)}
+                  <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
+                    {busyItem === 'plugin:' + entry.name ? 'Updating...' : 'Update'}
+                  </button>
+                {:else if isInstalled('plugin', entry.name)}
+                  <span class="badge badge-success">Installed</span>
+                {:else}
+                  <button class="btn btn-primary btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
+                    {busyItem === 'plugin:' + entry.name ? 'Installing...' : 'Install'}
+                  </button>
                 {/if}
               </div>
-              {#if hasUpdate('plugin', entry.name)}
-                <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
-                  {busyItem === 'plugin:' + entry.name ? 'Updating...' : 'Update'}
-                </button>
-              {:else if isInstalled('plugin', entry.name)}
-                <span class="badge badge-success">Installed</span>
-              {:else}
-                <button class="btn btn-primary btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
-                  {busyItem === 'plugin:' + entry.name ? 'Installing...' : 'Install'}
-                </button>
-              {/if}
-            </div>
-          {/each}
-        </div>
+            {/each}
+          </div>
+        {/if}
       </section>
 
       <!-- Hub MCP Servers -->
@@ -644,7 +672,19 @@
   .message-error { background: rgba(220, 60, 60, 0.15); color: var(--red); border: 1px solid rgba(220, 60, 60, 0.3); }
   .message-success { background: rgba(60, 180, 100, 0.15); color: var(--green); border: 1px solid rgba(60, 180, 100, 0.3); }
 
-  .card-title-group { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+  .section-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  .section-toggle:hover .card-title { color: var(--primary); }
+  .card-title-group { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex-wrap: wrap; }
   .ext-section { margin-bottom: var(--space-2); }
   .plugin-policy-note {
     margin: calc(-1 * var(--space-2)) 0 var(--space-3);
