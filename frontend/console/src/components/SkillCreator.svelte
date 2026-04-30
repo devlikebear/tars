@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { draftSkill, saveLocalSkill, submitSkillDraftPR } from '../lib/api'
+  import { draftSkill, saveLocalSkill, submitSkillDraftPR, testSkillDraft } from '../lib/api'
   import type {
     SkillCreatorDraftResponse,
     SkillCreatorFile,
     SkillCreatorSaveResponse,
+    SkillCreatorTestResponse,
   } from '../lib/types'
 
   type Language = 'python' | 'typescript' | 'shell'
@@ -27,9 +28,11 @@
   let selectedFilePath = $state('SKILL.md')
   let busy = $state(false)
   let saving = $state(false)
+  let testing = $state(false)
   let submitting = $state(false)
   let error = $state('')
   let message = $state('')
+  let testResult: SkillCreatorTestResponse | null = $state(null)
 
   const languages: { value: Language; label: string }[] = [
     { value: 'python', label: 'Python' },
@@ -72,6 +75,7 @@
       })
       selectedFilePath = draft.files[0]?.path ?? 'SKILL.md'
       toolText = draft.recommended_tools.join(', ')
+      testResult = null
       message = 'Draft ready.'
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to draft skill'
@@ -103,6 +107,22 @@
       error = e instanceof Error ? e.message : 'Failed to save skill'
     } finally {
       saving = false
+    }
+  }
+
+  async function runSandboxTest() {
+    if (!draft) return
+    testing = true
+    error = ''
+    message = ''
+    testResult = null
+    try {
+      testResult = await testSkillDraft(draft)
+      message = testResult.success ? 'Sandbox test passed.' : 'Sandbox test failed.'
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to test skill'
+    } finally {
+      testing = false
     }
   }
 
@@ -197,6 +217,9 @@
           <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || saving} onclick={saveDraft}>
             {saving ? 'Saving...' : 'Save Local'}
           </button>
+          <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || testing} onclick={runSandboxTest}>
+            {testing ? 'Testing...' : 'Test'}
+          </button>
           <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || submitting} onclick={submitDraft}>
             {submitting ? 'Preparing...' : 'Submit Draft PR'}
           </button>
@@ -224,6 +247,32 @@
           ></textarea>
         {:else}
           <div class="preview-placeholder">Draft output appears here.</div>
+        {/if}
+        {#if testResult}
+          <div class="test-result" class:failed={!testResult.success}>
+            <div class="test-summary">
+              <span class="badge {testResult.success ? 'badge-success' : 'badge-error'}">{testResult.success ? 'pass' : 'fail'}</span>
+              <span>exit {testResult.exit_code}</span>
+              <span>{testResult.duration_ms}ms</span>
+              <span>{testResult.session_kind}{testResult.hidden ? ' hidden' : ''}</span>
+            </div>
+            <div class="test-output-grid">
+              <div class="test-output">
+                <span>stdout</span>
+                <pre>{testResult.stdout || '(empty)'}</pre>
+              </div>
+              <div class="test-output">
+                <span>stderr</span>
+                <pre>{testResult.stderr || '(empty)'}</pre>
+              </div>
+            </div>
+            <div class="tool-trail">
+              <span class="trail-title">Tool Trail</span>
+              {#each testResult.tool_trail as item}
+                <code>{item.tool}: {item.command}</code>
+              {/each}
+            </div>
+          </div>
         {/if}
       </div>
     </div>
@@ -391,7 +440,7 @@
 
   .preview-editor,
   .preview-placeholder {
-    min-height: 440px;
+    min-height: 320px;
     flex: 1;
   }
 
@@ -410,6 +459,59 @@
     border-radius: var(--radius-md);
   }
 
+  .test-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .test-result.failed { border-color: rgba(220, 60, 60, 0.4); }
+  .test-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+  .test-output-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+  }
+  .test-output-grid pre {
+    min-height: 72px;
+    max-height: 160px;
+    margin: 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+  .tool-trail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+  .trail-title { color: var(--text-primary); font-weight: 600; }
+  .tool-trail code {
+    overflow-wrap: anywhere;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+    background: var(--surface);
+  }
+
   .message {
     font-size: var(--text-sm);
     padding: var(--space-2) var(--space-3);
@@ -422,6 +524,7 @@
     .creator-backdrop { padding: var(--space-3); }
     .creator-modal { max-height: none; }
     .creator-grid { grid-template-columns: 1fr; overflow: visible; }
+    .test-output-grid { grid-template-columns: 1fr; }
     .preview-editor,
     .preview-placeholder { min-height: 300px; }
   }

@@ -100,6 +100,46 @@ func TestSkillCreatorAPI_RejectsUnsafeNamesAndPaths(t *testing.T) {
 	}
 }
 
+func TestSkillCreatorAPI_TestRunsCompanionCLIInSandbox(t *testing.T) {
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil)
+
+	draft := skillCreatorDraftResponse{
+		Name:        "probe-skill",
+		Description: "Probe generated skill.",
+		Language:    "shell",
+		Layout:      "single_file",
+		UseCase:     "hello sandbox",
+		Files: []skillCreatorFile{
+			{Path: "SKILL.md", Content: "---\nname: probe-skill\nrecommended_tools: [bash]\n---\n# Probe\n"},
+			{Path: "probe-skill.sh", Content: "#!/usr/bin/env bash\nset -euo pipefail\necho \"skill-test:$*\"\n"},
+		},
+	}
+	rec := postJSON(t, handler, "/v1/admin/skills/test", draft)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected test 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var result skillCreatorTestResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode test response: %v", err)
+	}
+	if !result.Success || result.ExitCode != 0 {
+		t.Fatalf("expected successful test result, got %+v", result)
+	}
+	if !strings.Contains(result.Stdout, "skill-test:hello sandbox") {
+		t.Fatalf("expected CLI stdout to include use case, got %q", result.Stdout)
+	}
+	if result.SessionKind != "worker" || !result.Hidden {
+		t.Fatalf("expected hidden worker sandbox metadata, got %+v", result)
+	}
+	if len(result.ToolTrail) == 0 || result.ToolTrail[0].Tool != "bash" {
+		t.Fatalf("expected bash tool trail, got %+v", result.ToolTrail)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceDir, "skills", "probe-skill")); !os.IsNotExist(err) {
+		t.Fatalf("sandbox test should not write into workspace/skills, err=%v", err)
+	}
+}
+
 func postJSON(t *testing.T, handler http.Handler, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	data, err := json.Marshal(body)

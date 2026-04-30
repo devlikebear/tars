@@ -731,6 +731,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/hub/skill-content", handlers.skillhub)
 	mux.Handle("/v1/admin/skills/draft", handlers.skillCreator)
 	mux.Handle("/v1/admin/skills/save-local", handlers.skillCreator)
+	mux.Handle("/v1/admin/skills/test", handlers.skillCreator)
 	mux.Handle("/v1/admin/skills/submit-pr", handlers.skillCreator)
 	mux.Handle("/v1/filesystem/browse", handlers.filesystem)
 	mux.Handle("/v1/workspace/files", handlers.workspaceFiles)

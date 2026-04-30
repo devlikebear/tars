@@ -42,6 +42,7 @@ import type {
   SkillCreatorDraftRequest,
   SkillCreatorDraftResponse,
   SkillCreatorSaveResponse,
+  SkillCreatorTestResponse,
   SkillCreatorSubmitResponse,
   UpdateCronJobRequest,
   SessionTasks,
@@ -665,6 +666,14 @@ export async function draftSkill(payload: SkillCreatorDraftRequest): Promise<Ski
 
 export async function saveLocalSkill(draft: SkillCreatorDraftResponse): Promise<SkillCreatorSaveResponse> {
   return requestJSON<SkillCreatorSaveResponse>('/v1/admin/skills/save-local', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  })
+}
+
+export async function testSkillDraft(draft: SkillCreatorDraftResponse): Promise<SkillCreatorTestResponse> {
+  return requestJSON<SkillCreatorTestResponse>('/v1/admin/skills/test', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(draft),

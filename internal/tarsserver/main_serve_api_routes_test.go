@@ -123,6 +123,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/hub/skill-content",
 		"/v1/admin/skills/draft",
 		"/v1/admin/skills/save-local",
+		"/v1/admin/skills/test",
 		"/v1/admin/skills/submit-pr",
 		"/v1/filesystem/browse",
 		"/v1/workspace/files",
