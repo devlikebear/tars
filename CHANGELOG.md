@@ -6,6 +6,30 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.65] - 2026-05-01
+
+### Added
+
+- CON-036: Settings pending-change review now includes impact previews for high-signal fields.
+- Config schema metadata now carries maintained `impact` hints for fields such as pulse interval, log level, usage limits, semantic memory, reflection cadence, and agent runtime concurrency.
+- Pulse interval previews add dynamic latency and tick-volume hints based on the old and new durations.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/config -run TestSchemaIncludesImpactHintsForHighSignalFields`
+- `npm test -- --test-name-pattern "impact preview"` in `frontend/console`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #438.
+
 ## [0.31.64] - 2026-05-01
 
 ### Added

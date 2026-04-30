@@ -197,7 +197,7 @@ The sidebar keeps Home on the TARS logo and groups the working pages into Work, 
 | Operate | Approvals | `/console/approvals` | Review risky cleanup plans before TARS applies them |
 | Operate | Pulse | `/console/pulse` | Watchdog status and run-now trigger |
 | Operate | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
-| Setup | Settings | `/console/config` | Workspace configuration with structured object/array editing and typed LLM tier editing |
+| Setup | Settings | `/console/config` | Workspace configuration with structured object/array editing, typed LLM tier editing, and pending-change impact previews |
 
 ## Requirements
 

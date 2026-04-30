@@ -791,6 +791,7 @@ export type ConfigFieldMeta = {
   type: string
   label: string
   description: string
+  impact?: string[]
   sensitive?: boolean
   options?: string[]
 }
