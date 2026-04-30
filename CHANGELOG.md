@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.81] - 2026-05-01
+
+### Added
+
+- Console sidebar now includes a persistent status strip for server, Pulse, Reflection, and active session state.
+- Status strip rows refresh every 30 seconds, stop polling when the sidebar is destroyed, and navigate to their related console detail pages.
+
+### Documentation
+
+- README now notes the persistent console sidebar status strip.
+
+### Tests
+
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm run build`
+
+### Closed
+
+- Closes #402.
+
 ## [0.31.80] - 2026-05-01
 
 ### Added
