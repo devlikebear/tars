@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import AgentRuntimeCostFlow from './AgentRuntimeCostFlow.svelte'
+  import AgentRuntimeGantt from './AgentRuntimeGantt.svelte'
   import AgentRuntimeReplay from './AgentRuntimeReplay.svelte'
+  import AgentRuntimeTree from './AgentRuntimeTree.svelte'
   import {
     applyAgentRuntimeSubagentDraft,
     archiveAgentRuntimeSubagent,
@@ -32,6 +34,7 @@
 
   type RunStatusFilter = 'all' | 'running' | 'done' | 'failed'
   type RunTimeRange = '24h' | '7d' | 'all'
+  type RunViewMode = 'list' | 'tree' | 'gantt'
   type PlanCostRow = {
     key: string
     label: string
@@ -49,6 +52,7 @@
   let selectedSubagentName = $state('')
   let runStatusFilter: RunStatusFilter = $state('all')
   let runTimeRange: RunTimeRange = $state('all')
+  let runViewMode: RunViewMode = $state('list')
   let runSearchInput = $state('')
   let loading = $state(false)
   let error = $state('')
@@ -91,6 +95,12 @@
     { value: '24h', label: '24h' },
     { value: '7d', label: '7d' },
     { value: 'all', label: 'All' },
+  ]
+
+  const runViewModeOptions: { value: RunViewMode; label: string }[] = [
+    { value: 'list', label: 'List' },
+    { value: 'tree', label: 'Tree' },
+    { value: 'gantt', label: 'Gantt' },
   ]
 
   let activeTab = $derived(runId ? 'runs' : tab)
@@ -345,6 +355,14 @@
   function setRunTimeRange(range: RunTimeRange) {
     runTimeRange = range
     void loadRuns()
+  }
+
+  function setRunViewMode(mode: RunViewMode) {
+    runViewMode = mode
+  }
+
+  function openRunDetail(id: string) {
+    onNavigate(`/console/agentruntime/runs/${encodeURIComponent(id)}`)
   }
 
   function handleRunSearchKeydown(event: KeyboardEvent) {
@@ -666,6 +684,18 @@
       </button>
     </section>
 
+    <section class="run-view-mode" aria-label="Agent Runtime visualization mode">
+      {#each runViewModeOptions as option}
+        <button
+          type="button"
+          class:active={runViewMode === option.value}
+          onclick={() => setRunViewMode(option.value)}
+        >
+          {option.label}
+        </button>
+      {/each}
+    </section>
+
     <section class="cost-summary-grid" aria-label="Agent Runtime cost summary">
       <div class="cost-summary-card">
         <span>Today</span>
@@ -697,6 +727,11 @@
     {#if error}
       <div class="error-banner">{error}</div>
     {/if}
+    {#if runViewMode === 'tree' && runs.length > 0}
+      <AgentRuntimeTree {runs} onSelectRun={openRunDetail} />
+    {:else if runViewMode === 'gantt' && runs.length > 0}
+      <AgentRuntimeGantt {runs} onSelectRun={openRunDetail} />
+    {:else}
     <div class="agentruntime-list">
       {#if runs.length === 0 && !loading}
         {#if runFiltersActive()}
@@ -745,7 +780,7 @@
       {:else}
         {#each runs as run}
           <article class="agentruntime-row">
-            <button class="run-open-button" type="button" onclick={() => onNavigate(`/console/agentruntime/runs/${encodeURIComponent(run.run_id)}`)}>
+            <button class="run-open-button" type="button" onclick={() => openRunDetail(run.run_id)}>
               <div class="row-main">
                 <span class="row-id">{run.run_id}</span>
                 <span class="row-agent">{run.agent || 'default'}</span>
@@ -776,6 +811,7 @@
         {/each}
       {/if}
     </div>
+    {/if}
   {:else if !runId && activeTab === 'subagents'}
     {#if error}
       <div class="error-banner">{error}</div>
@@ -1180,6 +1216,9 @@
   .agentruntime-list, .agentruntime-detail { display: flex; flex-direction: column; gap: var(--space-3); }
   .agentruntime-row, .detail-card, .detail-panel, .variant-card { text-align: left; border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
   .run-controls { display: grid; grid-template-columns: auto auto minmax(220px, 1fr) auto; gap: var(--space-3); align-items: end; border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .run-view-mode { display: inline-flex; gap: var(--space-1); align-self: flex-start; border: 1px solid var(--border-subtle); background: var(--surface-inset); border-radius: var(--radius-md); padding: 3px; }
+  .run-view-mode button { border: 0; background: transparent; color: var(--text-tertiary); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+  .run-view-mode button.active { background: var(--surface-elevated); color: var(--text-primary); }
   .filter-group, .run-search-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
   .filter-label, .run-search-field span, .cost-summary-card > span { color: var(--text-ghost); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; }
   .filter-chip-row { display: flex; flex-wrap: wrap; gap: var(--space-1); }
