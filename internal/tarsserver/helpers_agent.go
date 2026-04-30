@@ -277,7 +277,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 			meta.RunID = strings.TrimSpace(label[idx+1:])
 		}
 		ctx = usage.WithCallMeta(ctx, meta)
-		loop, _ := setupAgentLoop(runClient, registry, label, 0, tracker, logger, func(string, string, string, string, string, string) {}, func(_ context.Context, evt agent.Event) {
+		loop, _ := setupAgentLoop(runClient, registry, label, 0, tracker, logger, func(string, string, string, string, string, string, ...bool) {}, func(_ context.Context, evt agent.Event) {
 			if runtimeToolRecorder == nil {
 				return
 			}

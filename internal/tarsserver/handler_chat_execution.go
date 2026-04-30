@@ -106,12 +106,13 @@ func persistChatResult(state chatRunState, userMessage string, chatResp llm.Chat
 	// Persist tool call messages before the assistant response
 	for _, tc := range toolCalls {
 		toolMsg := session.Message{
-			Role:       "tool",
-			Content:    tc.ToolResult,
-			Timestamp:  now,
-			ToolName:   tc.ToolName,
-			ToolCallID: tc.ToolCallID,
-			ToolArgs:   tc.ToolArgs,
+			Role:        "tool",
+			Content:     tc.ToolResult,
+			Timestamp:   now,
+			ToolName:    tc.ToolName,
+			ToolCallID:  tc.ToolCallID,
+			ToolArgs:    tc.ToolArgs,
+			ToolIsError: tc.ToolIsError,
 		}
 		if err := session.AppendMessage(state.transcriptPath, toolMsg); err != nil {
 			logger.Error().Err(err).Str("tool", tc.ToolName).Msg("append tool message failed")

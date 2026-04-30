@@ -1519,6 +1519,76 @@ func TestChatAPI_ToolCallReadFile(t *testing.T) {
 	}
 }
 
+func TestChatAPI_ToolCallStatusMarksToolErrors(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	mockClient := &mockLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_missing_read",
+							Name:      "read_file",
+							Arguments: `{"path":"workspace/DOES_NOT_EXIST.txt"}`,
+						},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "read failed as expected",
+				},
+			},
+		},
+	}
+
+	handler := newChatAPIHandler(root, store, mockClient, logger)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"read missing file"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"phase":"after_tool_call"`) || !strings.Contains(body, `"tool_is_error":true`) {
+		t.Fatalf("expected after_tool_call tool error metadata, got %q", body)
+	}
+
+	sessions, err := store.List()
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected one chat session, got %+v", sessions)
+	}
+	messages, err := session.ReadMessages(store.TranscriptPath(sessions[0].ID))
+	if err != nil {
+		t.Fatalf("read transcript: %v", err)
+	}
+	var found bool
+	for _, msg := range messages {
+		if msg.Role == "tool" && msg.ToolCallID == "call_missing_read" {
+			found = true
+			if !msg.ToolIsError {
+				t.Fatalf("expected persisted tool message to mark error: %+v", msg)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected persisted missing read tool message, got %+v", messages)
+	}
+}
+
 func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {

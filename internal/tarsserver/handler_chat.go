@@ -443,10 +443,11 @@ func latestTurnUsedTools(messages []session.Message) []string {
 
 // ToolCallRecord holds a tool invocation for transcript persistence.
 type ToolCallRecord struct {
-	ToolName   string
-	ToolCallID string
-	ToolArgs   string
-	ToolResult string
+	ToolName    string
+	ToolCallID  string
+	ToolArgs    string
+	ToolResult  string
+	ToolIsError bool
 }
 
 func setupAgentLoop(
@@ -456,7 +457,7 @@ func setupAgentLoop(
 	historyLen int,
 	usageTracker *usage.Tracker,
 	logger zerolog.Logger,
-	sendStatus func(string, string, string, string, string, string),
+	sendStatus func(string, string, string, string, string, string, ...bool),
 	afterTool func(ctx context.Context, evt agent.Event),
 ) (*agent.Loop, *[]ToolCallRecord) {
 	toolCalls := &[]ToolCallRecord{}
@@ -503,13 +504,15 @@ func setupAgentLoop(
 				evt.ToolCallID,
 				statusPreview(evt.ToolArgs, 180),
 				statusPreview(evt.ToolResult, 180),
+				evt.ToolIsError,
 			)
 			recordToolUsageSignal(ctx, usageTracker, sessionID, evt)
 			*toolCalls = append(*toolCalls, ToolCallRecord{
-				ToolName:   evt.ToolName,
-				ToolCallID: evt.ToolCallID,
-				ToolArgs:   statusPreview(evt.ToolArgs, 500),
-				ToolResult: statusPreview(evt.ToolResult, 500),
+				ToolName:    evt.ToolName,
+				ToolCallID:  evt.ToolCallID,
+				ToolArgs:    statusPreview(evt.ToolArgs, 500),
+				ToolResult:  statusPreview(evt.ToolResult, 500),
+				ToolIsError: evt.ToolIsError,
 			})
 			if afterTool != nil {
 				afterTool(ctx, evt)

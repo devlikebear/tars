@@ -30,6 +30,7 @@ A single Go binary that runs on your machine and gives you: an interactive chat 
 The primary interface. Browser-based console at `http://127.0.0.1:43180/console`.
 
 - Multi-session chat with full LLM tool-calling loops
+- Tool calls render as collapsible rows with live elapsed time, compact argument previews, and automatic error expansion
 - `@` file and directory mentions from the session Files roots for explicit context injection
 - `/` command autocomplete for built-in chat actions and explicit user-invocable skill selection
 - `/config` opens advanced per-session tool and skill policy controls when a selected session needs explicit overrides

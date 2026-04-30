@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { Artifact } from '../lib/artifacts'
   import type { ChatMessage } from '../lib/chatMessages'
+  import {
+    formatElapsedSeconds,
+    formatToolInvocationPreview,
+    formatToolJSON,
+    toolCallTone,
+  } from '../lib/toolCalls'
   import MarkdownContent from './MarkdownContent.svelte'
 
   interface Props {
@@ -11,32 +17,51 @@
   }
 
   let { message, artifacts, onArtifactOpen, onCopy }: Props = $props()
+
+  let nowMs = $state(Date.now())
+
+  $effect(() => {
+    if (message.role !== 'tool' || message.toolDone) return
+    nowMs = Date.now()
+    const timer = setInterval(() => {
+      nowMs = Date.now()
+    }, 500)
+    return () => clearInterval(timer)
+  })
+
+  let tone = $derived(message.role === 'tool' ? toolCallTone(message) : 'done')
+  let elapsedLabel = $derived(formatElapsedSeconds(message.toolStartedAt, message.toolFinishedAt, nowMs))
+  let invocationPreview = $derived(formatToolInvocationPreview(message.toolName, message.toolArgs))
+  let argsJSON = $derived(formatToolJSON(message.toolArgs))
+  let resultJSON = $derived(formatToolJSON(message.toolResult))
+  let toolBadgeClass = $derived(tone === 'error' ? 'badge-error' : tone === 'running' ? 'badge-accent' : 'badge-default')
 </script>
 
 {#if message.role === 'tool'}
-  <div class="chat-msg chat-tool">
-    <div class="tool-header">
-      <span class="tool-icon">{message.toolDone ? '\u2713' : '\u27F3'}</span>
-      <span class="tool-name">{message.toolName}</span>
-      {#if message.toolDone}
-        <span class="badge badge-success tool-badge">done</span>
-      {:else}
-        <span class="badge badge-accent tool-badge">running</span>
+  <details class="chat-msg chat-tool chat-tool-{tone}" open={message.toolIsError || !message.toolDone}>
+    <summary class="tool-header">
+      <span class="tool-icon">{tone === 'error' ? '!' : message.toolDone ? '\u2713' : '\u27F3'}</span>
+      <span class="tool-name">{invocationPreview}</span>
+      {#if elapsedLabel}
+        <span class="tool-elapsed">{elapsedLabel}</span>
+      {/if}
+      <span class="badge {toolBadgeClass} tool-badge">{tone}</span>
+    </summary>
+    <div class="tool-detail-grid">
+      {#if argsJSON}
+        <div class="tool-detail">
+          <span class="tool-detail-label">args</span>
+          <pre class="tool-detail-value"><code>{argsJSON}</code></pre>
+        </div>
+      {/if}
+      {#if resultJSON}
+        <div class="tool-detail">
+          <span class="tool-detail-label">result</span>
+          <pre class="tool-detail-value"><code>{resultJSON}</code></pre>
+        </div>
       {/if}
     </div>
-    {#if message.toolArgs}
-      <div class="tool-detail">
-        <span class="tool-detail-label">args</span>
-        <code class="tool-detail-value">{message.toolArgs}</code>
-      </div>
-    {/if}
-    {#if message.toolResult}
-      <div class="tool-detail">
-        <span class="tool-detail-label">result</span>
-        <code class="tool-detail-value">{message.toolResult}</code>
-      </div>
-    {/if}
-  </div>
+  </details>
 {:else}
   <div class="chat-msg chat-{message.role}">
     <span class="chat-role">{message.role}</span>
@@ -84,31 +109,84 @@
   }
 
   .chat-tool {
-    background: rgba(139, 92, 246, 0.06);
-    border: 1px solid rgba(139, 92, 246, 0.12);
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
     padding: var(--space-2) var(--space-3);
     font-size: var(--text-xs);
+  }
+
+  .chat-tool-running {
+    background: var(--primary-muted);
+    border-color: color-mix(in srgb, var(--primary) 35%, var(--border-subtle));
+  }
+
+  .chat-tool-error {
+    background: var(--error-muted);
+    border-color: color-mix(in srgb, var(--error) 35%, var(--border-subtle));
   }
 
   .tool-header {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    cursor: pointer;
+    list-style: none;
   }
 
-  .tool-icon { font-size: var(--text-sm); }
+  .tool-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .tool-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--surface-elevated);
+    color: var(--text-secondary);
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  .chat-tool-running .tool-icon {
+    background: var(--primary-muted);
+    color: var(--primary-text);
+  }
+
+  .chat-tool-error .tool-icon {
+    background: var(--error-muted);
+    color: var(--error);
+  }
 
   .tool-name {
     font-family: var(--font-mono);
     font-weight: 600;
     color: var(--text-primary);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tool-elapsed {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    color: var(--text-tertiary);
   }
 
   .tool-badge { font-size: 10px; padding: 1px 6px; }
 
+  .tool-detail-grid {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
   .tool-detail {
-    margin-top: var(--space-1);
-    display: flex;
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
     gap: var(--space-2);
     align-items: flex-start;
   }
@@ -121,15 +199,17 @@
   }
 
   .tool-detail-value {
+    margin: 0;
     font-family: var(--font-mono);
     color: var(--text-secondary);
     white-space: pre-wrap;
     word-break: break-all;
     font-size: var(--text-xs);
-    background: rgba(255, 255, 255, 0.04);
-    padding: 2px 6px;
-    border-radius: 3px;
-    max-height: 120px;
+    line-height: 1.55;
+    background: var(--surface-inset);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    max-height: 160px;
     overflow-y: auto;
   }
 
