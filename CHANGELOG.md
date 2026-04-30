@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.40] - 2026-04-30
+
+### Added
+
+- System Prompt now offers starter templates for empty or placeholder `IDENTITY.md`, `AGENTS.md`, and `TOOLS.md` files so users can insert opinionated defaults before saving.
+
+### Tests
+
+- `npm test -- --test-name-pattern "sysprompt"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #426.
+
 ## [0.31.39] - 2026-04-30
 
 ### Changed
