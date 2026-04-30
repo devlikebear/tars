@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.67] - 2026-05-01
+
+### Added
+
+- CON-034: Settings now opens on a Quick Start tab that curates the core onboarding fields before the full Fields and YAML views.
+- Quick Start cards validate provider credentials, LLM tier coverage, workspace path, auth mode, Pulse, Reflection, log level, and Telegram session scope while keeping Telegram bot token optional.
+- Added a Settings LLM connection action that reuses `/v1/models` to check the currently configured default provider.
+
+### Tests
+
+- `npm test -- --test-name-pattern "quick start"` in `frontend/console`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #436.
+
 ## [0.31.66] - 2026-05-01
 
 ### Added
