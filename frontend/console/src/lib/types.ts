@@ -692,6 +692,73 @@ export type SkillCreatorSubmitResponse = {
   commands?: string[]
 }
 
+export type MCPServerCreatorToolSpec = {
+  name: string
+  description: string
+  input_schema?: Record<string, unknown>
+  output_schema?: Record<string, unknown>
+}
+
+export type MCPServerCreatorFile = {
+  path: string
+  content: string
+}
+
+export type MCPServerCreatorDraftRequest = {
+  name: string
+  description: string
+  language: 'python' | 'node'
+  use_case: string
+  tools?: MCPServerCreatorToolSpec[]
+}
+
+export type MCPServerCreatorDraftResponse = {
+  name: string
+  description: string
+  language: 'python' | 'node'
+  use_case: string
+  tools: MCPServerCreatorToolSpec[]
+  files: MCPServerCreatorFile[]
+  warnings?: string[]
+}
+
+export type MCPServerCreatorSaveResponse = {
+  saved: boolean
+  path: string
+  files: string[]
+}
+
+export type MCPServerCreatorToolTrail = {
+  tool: string
+  command: string
+  cwd: string
+  status: string
+  exit_code: number
+  duration_ms: number
+}
+
+export type MCPServerCreatorTestResponse = {
+  success: boolean
+  exit_code: number
+  stdout?: string
+  stderr?: string
+  tools: string[]
+  call_result?: string
+  protocol_steps: string[]
+  sandbox_path: string
+  session_kind: string
+  hidden: boolean
+  duration_ms: number
+  tool_trail: MCPServerCreatorToolTrail[]
+}
+
+export type MCPServerCreatorSubmitResponse = {
+  submitted: boolean
+  ready: boolean
+  message: string
+  commands?: string[]
+}
+
 export type ConfigFile = {
   path: string
   content: string

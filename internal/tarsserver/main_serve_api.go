@@ -68,6 +68,7 @@ type apiRouteHandlers struct {
 	config          http.Handler
 	skillhub        http.Handler
 	skillCreator    http.Handler
+	mcpCreator      http.Handler
 	filesystem      http.Handler
 	workspaceFiles  http.Handler
 	terminal        http.Handler
@@ -556,6 +557,7 @@ func buildAPIMux(
 	hubInstaller := skillhub.NewInstaller(cfg.WorkspaceDir)
 	skillhubHandler := newSkillhubAPIHandler(hubInstaller, extensionsManager, logger)
 	skillCreatorHandler := newSkillCreatorAPIHandler(cfg.WorkspaceDir, logger, nil)
+	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
 	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
@@ -588,6 +590,7 @@ func buildAPIMux(
 		config:          configHandler,
 		skillhub:        skillhubHandler,
 		skillCreator:    skillCreatorHandler,
+		mcpCreator:      mcpCreatorHandler,
 		filesystem:      filesystemHandler,
 		workspaceFiles:  workspaceFilesHandler,
 		terminal:        terminalHandler,
@@ -733,6 +736,10 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/skills/save-local", handlers.skillCreator)
 	mux.Handle("/v1/admin/skills/test", handlers.skillCreator)
 	mux.Handle("/v1/admin/skills/submit-pr", handlers.skillCreator)
+	mux.Handle("/v1/admin/mcp-servers/draft", handlers.mcpCreator)
+	mux.Handle("/v1/admin/mcp-servers/save-local", handlers.mcpCreator)
+	mux.Handle("/v1/admin/mcp-servers/test", handlers.mcpCreator)
+	mux.Handle("/v1/admin/mcp-servers/submit-pr", handlers.mcpCreator)
 	mux.Handle("/v1/filesystem/browse", handlers.filesystem)
 	mux.Handle("/v1/workspace/files", handlers.workspaceFiles)
 	mux.Handle("/v1/workspace/files/", handlers.workspaceFiles)

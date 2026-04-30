@@ -17,6 +17,7 @@
   } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
   import SkillCreator from './SkillCreator.svelte'
+  import MCPServerCreator from './MCPServerCreator.svelte'
   import type {
     HubRegistry,
     HubRegistryEntry,
@@ -25,6 +26,7 @@
     PluginDef,
     MCPServerStatus,
     SkillCreatorSaveResponse,
+    MCPServerCreatorSaveResponse,
   } from '../lib/types'
 
   type Tab = 'hub' | 'installed'
@@ -55,6 +57,7 @@
   let installedPluginsOpen = $state(false)
   let hubPluginsOpen = $state(false)
   let skillCreatorOpen = $state(false)
+  let mcpCreatorOpen = $state(false)
 
   // Version tracking for update detection
   let installedVersions: Map<string, string> = $state(new Map())
@@ -267,6 +270,12 @@
     await loadInstalled()
   }
 
+  async function handleMCPServerCreated(result: MCPServerCreatorSaveResponse) {
+    success = `Saved MCP server draft to ${result.path}`
+    mcpCreatorOpen = false
+    await loadInstalled()
+  }
+
   async function handleUpdateAll() {
     updating = true
     error = ''
@@ -320,6 +329,9 @@
     <div class="ext-toolbar">
       <button class="btn btn-primary btn-sm" onclick={() => { skillCreatorOpen = true }}>
         + Create Skill
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick={() => { mcpCreatorOpen = true }}>
+        + Create MCP Server
       </button>
       <button class="btn btn-ghost btn-sm" disabled={reloading} onclick={handleReload}>
         {reloading ? 'Reloading...' : 'Reload'}
@@ -662,6 +674,9 @@
 
   {#if skillCreatorOpen}
     <SkillCreator onclose={() => { skillCreatorOpen = false }} onsaved={handleSkillCreated} />
+  {/if}
+  {#if mcpCreatorOpen}
+    <MCPServerCreator onclose={() => { mcpCreatorOpen = false }} onsaved={handleMCPServerCreated} />
   {/if}
 </div>
 
