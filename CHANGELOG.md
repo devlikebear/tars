@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.50] - 2026-05-01
+
+### Changed
+
+- Q-017 follow-up: the per-session tool/skill configuration panel is no longer an always-visible Chat toolbar button after a fresh signal window again showed 0 `session.tool_config.updated` rows.
+- The advanced `/config` command still opens session-scoped policy controls for an existing selected session, and backend `SessionToolConfig` filtering plus usage telemetry remain intact for explicit opt-in and diagnostics.
+
+### Tests
+
+- `npm test -- --test-name-pattern "session config"` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'Test(ChatAPIHandler_ContextEndpointReflectsSessionGroupConfigAfterPatchAPI|SessionAPIHandler_ConfigPatchRecordsUsageSignal)'`
+
+### Closed
+
+- Closes #508.
+
 ## [0.31.49] - 2026-05-01
 
 ### Changed
