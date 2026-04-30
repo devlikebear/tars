@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { getConfig, getConfigSchema, saveConfig, patchConfigValues, resetWorkspace, restartServer } from '../lib/api'
+  import { getConfig, getConfigSchema, getProviderModels, saveConfig, patchConfigValues, resetWorkspace, restartServer } from '../lib/api'
   import { buildConfigImpactPreview } from '../lib/configImpact'
   import { buildConfigMetaBadges } from '../lib/configMetaBadges'
+  import { buildQuickStartItems, quickStartProgress } from '../lib/quickStartFields'
   import {
     buildLLMTiersFromDrafts,
     configValuesEqual,
@@ -19,7 +20,7 @@
   } from '../lib/configStructured'
   import type { ConfigFieldMeta, ConfigSchema } from '../lib/types'
 
-  type ViewMode = 'form' | 'yaml'
+  type ViewMode = 'quick' | 'form' | 'yaml'
 
   let configPath = $state('')
   let schemaUpdatedAt = $state('')
@@ -31,7 +32,7 @@
   let saving = $state(false)
   let error = $state('')
   let success = $state('')
-  let viewMode: ViewMode = $state('form')
+  let viewMode: ViewMode = $state('quick')
   let expandedSections: Record<string, boolean> = $state({})
 
   // -- Field editing --
@@ -48,8 +49,13 @@
   let tierEditorErrors: LLMTierDraftErrors = $state({})
   let tierProviderOptions: string[] = $state([])
   let tierDraftSeq = 0
+  let llmTestBusy = $state(false)
+  let llmTestResult = $state('')
+  let llmTestKind: 'success' | 'error' | '' = $state('')
 
   let hasDirtyFields = $derived(Object.keys(dirtyFields).length > 0)
+  let quickStartItems = $derived(buildQuickStartItems(schema, values, dirtyFields))
+  let quickStartStats = $derived(quickStartProgress(quickStartItems))
 
   // -- Diff popup --
   let showDiff = $state(false)
@@ -267,6 +273,29 @@
 
   function isDirty(key: string): boolean {
     return dirtyFields[key] !== undefined
+  }
+
+  function defaultValueSummary(field: ConfigFieldMeta): string {
+    if (!Object.prototype.hasOwnProperty.call(field, 'default_value')) return ''
+    return stringifyConfigValue(field.default_value)
+  }
+
+  async function testLLMConnection() {
+    llmTestBusy = true
+    llmTestResult = ''
+    llmTestKind = ''
+    try {
+      const result = await getProviderModels()
+      const count = Array.isArray(result.models) ? result.models.length : 0
+      const provider = result.provider || 'provider'
+      llmTestResult = count > 0 ? `${provider}: ${count} models available` : `${provider}: connection returned no model list`
+      llmTestKind = result.warning ? 'error' : 'success'
+    } catch (e) {
+      llmTestResult = e instanceof Error ? e.message : 'Connection test failed'
+      llmTestKind = 'error'
+    } finally {
+      llmTestBusy = false
+    }
   }
 
   async function handleSaveFields() {
@@ -555,6 +584,7 @@
         </button>
       {/if}
       <div class="view-toggle">
+        <button class="toggle-btn" class:active={viewMode === 'quick'} onclick={() => { viewMode = 'quick' }}>Quick Start</button>
         <button class="toggle-btn" class:active={viewMode === 'form'} onclick={() => { viewMode = 'form' }}>Fields</button>
         <button class="toggle-btn" class:active={viewMode === 'yaml'} onclick={() => { viewMode = 'yaml' }}>YAML</button>
       </div>
@@ -609,7 +639,119 @@
       </div>
     {/if}
 
-    {#if viewMode === 'form'}
+    {#if viewMode === 'quick'}
+      <div class="quick-start-panel">
+        <div class="quick-start-header">
+          <div>
+            <span class="quick-start-kicker">Essential setup</span>
+            <h3>Quick Start</h3>
+          </div>
+          <span class="quick-start-progress">{quickStartStats.ready}/{quickStartStats.total} ready</span>
+        </div>
+        <div class="quick-start-grid">
+          {#each quickStartItems as item}
+            {@const field = item.field}
+            {@const metaBadges = buildConfigMetaBadges(field, item.value, item.dirty, schemaUpdatedAt)}
+            <div class="quick-start-card" class:quick-attention={item.status.kind === 'attention'}>
+              <div class="quick-start-card-main">
+                <div class="quick-start-title-row">
+                  <span class="quick-start-title">{item.title}</span>
+                  <span class={`quick-status status-${item.status.kind}`} title={item.status.message}>{item.status.label}</span>
+                </div>
+                <p>{item.description}</p>
+                <span class="quick-status-message">{item.status.message}</span>
+                {#if defaultValueSummary(field)}
+                  <span class="quick-default">Default {defaultValueSummary(field)}</span>
+                {/if}
+                {#if metaBadges.length > 0}
+                  <div class="field-meta-badges" aria-label={`${field.label} metadata`}>
+                    {#each metaBadges as badge}
+                      <span class={`field-meta-badge badge-${badge.tone}`} title={badge.title}>{badge.label}</span>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+              <div class="quick-start-control">
+                {#if field.type === 'bool'}
+                  <button
+                    class="bool-toggle"
+                    class:bool-on={!!getDisplayValue(field)}
+                    class:dirty={isDirty(field.key)}
+                    onclick={() => toggleBool(field)}
+                    title="Click to toggle"
+                  >
+                    {getDisplayValue(field) ? 'ON' : 'OFF'}
+                  </button>
+                {:else if field.type === 'select' && field.options}
+                  <select
+                    class="field-select"
+                    class:dirty={isDirty(field.key)}
+                    value={String(getDisplayValue(field) ?? '')}
+                    onchange={(e) => handleSelectChange(field, e)}
+                  >
+                    {#each field.options as opt}
+                      <option value={opt}>{opt || '(none)'}</option>
+                    {/each}
+                  </select>
+                {:else if editingKey === field.key}
+                  <div class="field-edit">
+                    {#if field.type === 'string_list'}
+                      <textarea
+                        class="field-textarea"
+                        bind:value={editValue}
+                        onkeydown={(e) => handleFieldKeydown(e, field)}
+                        onblur={() => commitEdit(field)}
+                      ></textarea>
+                    {:else}
+                      <input
+                        type={field.type === 'int' || field.type === 'float' ? 'number' : 'text'}
+                        step={field.type === 'float' ? '0.01' : undefined}
+                        class="field-input"
+                        bind:value={editValue}
+                        onkeydown={(e) => handleFieldKeydown(e, field)}
+                        onblur={() => commitEdit(field)}
+                      />
+                    {/if}
+                  </div>
+                {:else if field.sensitive}
+                  <span class="value-text sensitive" title="Edit in YAML tab">{formatValue(field)}</span>
+                {:else}
+                  <button
+                    class:value-btn={field.type !== 'json'}
+                    class:structured-value-btn={field.type === 'json'}
+                    class:dirty={isDirty(field.key)}
+                    onclick={() => field.type === 'json' ? openStructuredEditor(field) : startEdit(field)}
+                    title="Click to edit"
+                  >
+                    {#if field.type === 'json'}
+                      {@const summary = structuredSummary(field)}
+                      <span class="structured-main">{summary.text}</span>
+                      {#if summary.preview.length > 0}
+                        <span class="structured-preview">
+                          {#each summary.preview as preview}
+                            <span>{preview}</span>
+                          {/each}
+                        </span>
+                      {/if}
+                    {:else}
+                      <span class="value-text">{formatValue(field)}</span>
+                    {/if}
+                  </button>
+                {/if}
+                {#if item.key === 'llm_providers'}
+                  <button class="btn btn-ghost btn-sm" disabled={llmTestBusy} onclick={testLLMConnection}>
+                    {llmTestBusy ? 'Testing...' : 'Test connection'}
+                  </button>
+                  {#if llmTestResult}
+                    <span class={`quick-test-result test-${llmTestKind}`}>{llmTestResult}</span>
+                  {/if}
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {:else if viewMode === 'form'}
       <div class="search-bar">
         <input
           type="text"
@@ -1017,6 +1159,152 @@
   .message { font-size: var(--text-sm); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }
   .message-error { background: rgba(220, 60, 60, 0.15); color: var(--red); border: 1px solid rgba(220, 60, 60, 0.3); }
   .message-success { background: rgba(60, 180, 100, 0.15); color: var(--green); border: 1px solid rgba(60, 180, 100, 0.3); }
+
+  /* ── Quick Start ─────────────────────────── */
+  .quick-start-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .quick-start-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+  }
+  .quick-start-header h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+  .quick-start-kicker {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--text-ghost);
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+  .quick-start-progress {
+    min-height: 24px;
+    border: 1px solid rgba(60, 180, 100, 0.28);
+    border-radius: var(--radius-sm);
+    padding: 3px var(--space-2);
+    color: var(--green);
+    background: rgba(60, 180, 100, 0.08);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+  }
+  .quick-start-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-3);
+  }
+  .quick-start-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-3);
+    align-items: start;
+    min-height: 132px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    background: var(--surface-elevated);
+  }
+  .quick-start-card.quick-attention {
+    border-color: rgba(224, 145, 69, 0.3);
+    background: rgba(224, 145, 69, 0.04);
+  }
+  .quick-start-card-main {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .quick-start-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .quick-start-title {
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+  .quick-start-card p {
+    margin: 0;
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+  }
+  .quick-status,
+  .quick-default,
+  .quick-test-result {
+    width: fit-content;
+    max-width: 100%;
+    min-height: 18px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+    font-family: var(--font-display);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .quick-status.status-ready {
+    border-color: rgba(60, 180, 100, 0.28);
+    color: var(--green);
+    background: rgba(60, 180, 100, 0.08);
+  }
+  .quick-status.status-attention {
+    border-color: rgba(224, 145, 69, 0.35);
+    color: var(--primary);
+    background: rgba(224, 145, 69, 0.08);
+  }
+  .quick-status.status-optional {
+    color: var(--text-ghost);
+    background: var(--surface-inset);
+  }
+  .quick-status-message {
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+  }
+  .quick-default {
+    color: var(--text-ghost);
+    background: var(--surface-inset);
+    font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .quick-start-control {
+    display: flex;
+    align-items: flex-end;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-width: 260px;
+  }
+  .quick-test-result {
+    text-align: right;
+    word-break: break-word;
+  }
+  .quick-test-result.test-success {
+    border-color: rgba(60, 180, 100, 0.28);
+    color: var(--green);
+    background: rgba(60, 180, 100, 0.08);
+  }
+  .quick-test-result.test-error {
+    border-color: rgba(220, 60, 60, 0.28);
+    color: var(--red);
+    background: rgba(220, 60, 60, 0.08);
+  }
 
   /* ── Sections ────────────────────────────── */
   .sections { display: flex; flex-direction: column; gap: var(--space-3); }
