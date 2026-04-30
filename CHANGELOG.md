@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.42] - 2026-04-30
+
+### Changed
+
+- System Prompt diagnostics are now hidden behind a default-closed technical details toggle so role semantics and built-in tool descriptions stay available without adding first-view noise.
+
+### Tests
+
+- `npm test -- --test-name-pattern "System Prompt diagnostics"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #424.
+
 ## [0.31.41] - 2026-04-30
 
 ### Added
