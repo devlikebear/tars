@@ -34,7 +34,7 @@
   }
 
   function syncFromBrowser() {
-    currentPath = window.location.pathname
+    currentPath = window.location.pathname + window.location.search
     route = resolveRoute(currentPath)
   }
 

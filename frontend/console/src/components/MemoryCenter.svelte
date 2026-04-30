@@ -184,6 +184,17 @@
     }
   }
 
+  function applyRouteSearchParams() {
+    const params = new URLSearchParams(window.location.search)
+    const query = (params.get('q') || params.get('query') || '').trim()
+    if (params.get('tab') === 'search' || query) {
+      activeTab = 'search'
+    }
+    if (query) {
+      searchQueryInput = query
+    }
+  }
+
   function askAIPrompt(): string {
     switch (activeTab) {
       case 'search':
@@ -212,6 +223,7 @@
 
   onMount(() => {
     loadMemoryIntroPreference()
+    applyRouteSearchParams()
     void loadAll()
     stopStream = streamEvents(
       (event) => {

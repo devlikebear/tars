@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.82] - 2026-05-01
+
+### Added
+
+- Chat composer slash commands now render through a dedicated `SlashPopover` component with built-in and skill sections.
+- Added client-side `/clear`, `/memory search <query>`, and `/skill <name>` handling without sending those commands to the LLM.
+
+### Changed
+
+- Memory search links can prefill the search tab from query parameters, enabling `/memory search ...` routing from chat.
+
+### Documentation
+
+- README now notes the chat composer slash-command popover and first-pass client commands.
+
+### Tests
+
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm run build`
+
+### Closed
+
+- Closes #401.
+
 ## [0.31.81] - 2026-05-01
 
 ### Added

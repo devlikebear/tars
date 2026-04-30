@@ -3,7 +3,8 @@
   import {
     getEventsHistory, getPulseStatus,
     getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
-    getSessionTasks,
+    getSessionTasks, listChatTools, getSessionConfig, updateSessionConfig,
+    type SessionToolConfig,
   } from '../lib/api'
   import type { PulseSnapshot, NotificationMessage, Session } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
@@ -303,7 +304,12 @@
   }
 
   async function handleSlashCommand(command: string, _args: string) {
+    const args = _args.trim()
     switch (command) {
+      case 'clear':
+        chatPanelRef?.clearThread()
+        showFeedback('Chat view cleared')
+        return
       case 'compact':
         if (!selectedSessionId) {
           showFeedback('Select a session first')
@@ -345,8 +351,68 @@
         rightPanel = 'cron'
         return
       case 'memory':
-        onNavigate('/console/memory')
+        {
+          const query = memorySearchQueryFromSlashArgs(args)
+          if (query) {
+            onNavigate(`/console/memory?tab=search&q=${encodeURIComponent(query)}`)
+            return
+          }
+          onNavigate('/console/memory')
+        }
         return
+      case 'skill':
+        await toggleSessionSkill(args)
+        return
+    }
+  }
+
+  function memorySearchQueryFromSlashArgs(args: string): string {
+    const trimmed = args.trim()
+    if (!trimmed) return ''
+    const searchPrefix = trimmed.match(/^search\s+([\s\S]+)$/i)
+    return (searchPrefix?.[1] ?? trimmed).trim()
+  }
+
+  async function toggleSessionSkill(args: string) {
+    if (!selectedSessionId) {
+      showFeedback('Select a session first')
+      return
+    }
+    const requested = args.trim()
+    if (!requested) {
+      rightPanel = 'config'
+      showFeedback('Usage: /skill <name>')
+      return
+    }
+    try {
+      const [toolsResp, config] = await Promise.all([
+        listChatTools(),
+        getSessionConfig(selectedSessionId),
+      ])
+      const skills = toolsResp.skills ?? []
+      const match = skills.find((skill) => skill.toLowerCase() === requested.toLowerCase())
+      if (!match) {
+        showFeedback(`Skill not found: ${requested}`)
+        return
+      }
+      const useCustomSkills = config.skills_custom || Array.isArray(config.skills_enabled)
+      const enabledSkills = new Set(useCustomSkills ? (config.skills_enabled ?? []) : skills)
+      const wasEnabled = enabledSkills.has(match)
+      if (wasEnabled) {
+        enabledSkills.delete(match)
+      } else {
+        enabledSkills.add(match)
+      }
+      const nextConfig: SessionToolConfig = {
+        ...config,
+        skills_custom: true,
+        skills_enabled: [...enabledSkills],
+      }
+      await updateSessionConfig(selectedSessionId, nextConfig)
+      showFeedback(`Skill ${match} ${wasEnabled ? 'disabled' : 'enabled'}`)
+      rightPanel = 'config'
+    } catch (err) {
+      showFeedback(err instanceof Error ? err.message : 'Skill toggle failed')
     }
   }
 

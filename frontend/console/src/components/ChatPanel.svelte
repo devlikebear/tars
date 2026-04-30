@@ -23,6 +23,7 @@
   } from '../lib/slash'
   import type { ChatMessage } from '../lib/chatMessages'
   import ChatMessageItem from './ChatMessageItem.svelte'
+  import SlashPopover from './SlashPopover.svelte'
 
   interface Props {
     sessionId?: string
@@ -676,6 +677,18 @@
     await submitChat()
   }
 
+  export function clearThread() {
+    chatInput = ''
+    chatError = ''
+    chatStatusLine = ''
+    chatMessages = []
+    attachedFiles = []
+    selectedMentions = []
+    publishContextInfo({})
+    closeMentionMenu()
+    closeSlashMenu()
+  }
+
   export function exportAsMarkdown(): string {
     const lines: string[] = []
     for (const msg of chatMessages) {
@@ -966,28 +979,12 @@
           onpaste={handlePaste}
         ></textarea>
         {#if slashOpen}
-          <div class="mention-menu slash-menu">
-            {#each slashCandidates as candidate, i}
-              {#if i === 0 || slashCandidates[i - 1]?.kind !== candidate.kind}
-                <div class="slash-section">{candidate.kind === 'builtin' ? 'Built-in' : 'Skills'}</div>
-              {/if}
-              <button
-                type="button"
-                class:active={i === slashActiveIndex}
-                class="mention-option slash-option"
-                onmousedown={(e) => e.preventDefault()}
-                onclick={() => { candidate.kind === 'builtin' ? void executeSlashCandidate(candidate) : selectSlashCandidate(candidate) }}
-              >
-                <span class="mention-option-kind">{candidate.kind === 'skill' ? 'SKILL' : 'CMD'}</span>
-                <span class="mention-option-main">
-                  /{candidate.command}
-                  {#if candidate.aliasOf}<span class="slash-alias">/{candidate.aliasOf}</span>{/if}
-                </span>
-                <span class="mention-option-root">{candidate.kind === 'skill' ? (candidate.source || 'skill') : 'built-in'}</span>
-                <span class="slash-description">{candidate.description}</span>
-              </button>
-            {/each}
-          </div>
+          <SlashPopover
+            candidates={slashCandidates}
+            activeIndex={slashActiveIndex}
+            onSelect={selectSlashCandidate}
+            onExecute={(candidate) => void executeSlashCandidate(candidate)}
+          />
         {/if}
         {#if mentionOpen}
           <div class="mention-menu">
@@ -1244,11 +1241,6 @@
     box-shadow: var(--shadow-lg);
   }
 
-  .slash-menu {
-    max-height: 300px;
-  }
-
-  .slash-section,
   .mention-section {
     padding: 5px 8px 3px;
     color: var(--text-ghost);
@@ -1273,11 +1265,6 @@
     text-align: left;
   }
 
-  .slash-option {
-    grid-template-columns: 52px minmax(0, 1fr) auto;
-    grid-template-rows: auto auto;
-  }
-
   .mention-option:hover,
   .mention-option.active {
     background: rgba(224, 145, 69, 0.12);
@@ -1290,22 +1277,6 @@
     white-space: nowrap;
     font-family: var(--font-mono);
     font-size: var(--text-xs);
-  }
-
-  .slash-alias {
-    margin-left: var(--space-2);
-    color: var(--text-ghost);
-    font-size: 10px;
-  }
-
-  .slash-description {
-    grid-column: 2 / 4;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-ghost);
-    font-size: 10px;
   }
 
   .mention-option-root,

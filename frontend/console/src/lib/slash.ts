@@ -27,6 +27,13 @@ export type ParsedSlashCommand = {
 const BUILTIN_SLASH_COMMANDS: SlashCommandCandidate[] = [
   {
     kind: 'builtin',
+    id: 'clear',
+    command: 'clear',
+    title: 'Clear',
+    description: 'Clear the current chat view without deleting the session.',
+  },
+  {
+    kind: 'builtin',
     id: 'compact',
     command: 'compact',
     title: 'Compact',
@@ -93,8 +100,15 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandCandidate[] = [
     kind: 'builtin',
     id: 'memory',
     command: 'memory',
-    title: 'Memory',
-    description: 'Open Memory search and assets.',
+    title: 'Memory Search',
+    description: 'Open Memory search; pass "search <query>" to prefill the query.',
+  },
+  {
+    kind: 'builtin',
+    id: 'skill',
+    command: 'skill',
+    title: 'Skill',
+    description: 'Toggle a skill for the current session: /skill <name>.',
   },
 ]
 
