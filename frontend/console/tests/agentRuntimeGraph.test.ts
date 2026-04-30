@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildAgentRuntimeFlowGraph,
   buildAgentRuntimeGanttRows,
   buildAgentRuntimeTreeRows,
 } from '../src/lib/agentruntime-graph.ts'
@@ -67,4 +68,30 @@ test('buildAgentRuntimeGanttRows scales runs and consensus variants onto one tim
   assert.equal(result.rows[1].variants[1].tokens, 70)
   assert.ok(result.rows[1].leftPercent > result.rows[0].leftPercent)
   assert.ok(result.rows[1].widthPercent > 0)
+})
+
+test('buildAgentRuntimeFlowGraph projects runs into tier-shaped nodes and spawn/variant edges', () => {
+  const graph = buildAgentRuntimeFlowGraph(runs)
+
+  assert.equal(graph.nodes.length, 5)
+  assert.equal(graph.edges.length, 4)
+  assert.equal(graph.nodes.find((node) => node.id === 'run_parent')?.data.tierShape, 'heavy')
+  assert.equal(graph.nodes.find((node) => node.id === 'run_child_a')?.data.tokens, 100)
+  assert.ok(graph.edges.some((edge) => edge.id === 'spawn-run_parent-run_child_a' && edge.animated))
+  assert.ok(graph.edges.some((edge) => edge.id === 'variant-run_child_a-1' && edge.data?.kind === 'variant'))
+})
+
+test('buildAgentRuntimeFlowGraph filters by tier, status, and session', () => {
+  const graph = buildAgentRuntimeFlowGraph([
+    { ...runs[0], session_id: 's1' },
+    { ...runs[1], session_id: 's2' },
+    { ...runs[2], session_id: 's1' },
+  ], {
+    tier: 'light',
+    status: 'running',
+    session: 's1',
+  })
+
+  assert.deepEqual(graph.nodes.map((node) => node.id), ['run_child_a', 'run_child_a-variant-0', 'run_child_a-variant-1'])
+  assert.deepEqual(graph.edges.map((edge) => edge.data?.kind), ['variant', 'variant'])
 })

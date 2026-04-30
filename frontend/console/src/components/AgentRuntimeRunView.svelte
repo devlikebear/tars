@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import AgentRuntimeCostFlow from './AgentRuntimeCostFlow.svelte'
+  import AgentRuntimeFlowGraph from './AgentRuntimeFlowGraph.svelte'
   import AgentRuntimeGantt from './AgentRuntimeGantt.svelte'
   import AgentRuntimeReplay from './AgentRuntimeReplay.svelte'
   import AgentRuntimeTree from './AgentRuntimeTree.svelte'
@@ -34,7 +35,7 @@
 
   type RunStatusFilter = 'all' | 'running' | 'done' | 'failed'
   type RunTimeRange = '24h' | '7d' | 'all'
-  type RunViewMode = 'list' | 'tree' | 'gantt'
+  type RunViewMode = 'list' | 'tree' | 'gantt' | 'flow'
   type PlanCostRow = {
     key: string
     label: string
@@ -101,6 +102,7 @@
     { value: 'list', label: 'List' },
     { value: 'tree', label: 'Tree' },
     { value: 'gantt', label: 'Gantt' },
+    { value: 'flow', label: 'Flow' },
   ]
 
   let activeTab = $derived(runId ? 'runs' : tab)
@@ -727,7 +729,9 @@
     {#if error}
       <div class="error-banner">{error}</div>
     {/if}
-    {#if runViewMode === 'tree' && runs.length > 0}
+    {#if runViewMode === 'flow' && runs.length > 0}
+      <AgentRuntimeFlowGraph {runs} onSelectRun={openRunDetail} />
+    {:else if runViewMode === 'tree' && runs.length > 0}
       <AgentRuntimeTree {runs} onSelectRun={openRunDetail} />
     {:else if runViewMode === 'gantt' && runs.length > 0}
       <AgentRuntimeGantt {runs} onSelectRun={openRunDetail} />
