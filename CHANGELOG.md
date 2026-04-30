@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.73] - 2026-05-01
+
+### Removed
+
+- Fresh workspace bootstrap no longer creates legacy `memory/wiki`, `memory/wiki/notes`, `index.md`, or `graph.json` KB Wiki artifacts.
+- Doctor required workspace checks no longer require legacy KB Wiki paths.
+- Removed dead `/v1/memory/kb/*` route registrations from the API mux.
+
+### Fixed
+
+- Existing legacy `memory/wiki` files are preserved when `EnsureWorkspace` runs; they are no longer created or deleted automatically.
+
+### Documentation
+
+- README now clarifies that fresh workspace bootstrap omits legacy KB Wiki scaffolding.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./cmd/tars ./internal/memory ./internal/tarsserver`
+- Fresh workspace smoke confirming `memory/wiki` is not created.
+
+### Closed
+
+- Closes #410.
+
 ## [0.31.72] - 2026-05-01
 
 ### Changed
