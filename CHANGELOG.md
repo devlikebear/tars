@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.57] - 2026-05-01
+
+### Added
+
+- CON-042: Extensions now includes a Skill Creator wizard that drafts `SKILL.md` frontmatter/body plus Python, TypeScript, or Shell companion CLI boilerplate from a natural-language use case.
+- New admin Skill Creator endpoints generate local drafts, save edited files into `workspace/skills/<name>/`, and expose a safe draft-PR readiness response for the external `tars-skills` publishing flow.
+- The wizard supports language/layout selection, recommended tool inference and editing, file preview/editing, local save, and reloads the installed skills list after save.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'TestSkillCreator|TestRegisterAPIRoutes'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver`
+- `npm test -- --test-name-pattern "Skill Creator"` in `frontend/console`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make console-build`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #444.
+
 ## [0.31.56] - 2026-05-01
 
 ### Added
