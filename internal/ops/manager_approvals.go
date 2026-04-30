@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/atomicwrite"
 )
 
 func (m *Manager) updateApprovalStatus(approvalID string, next string) error {
@@ -93,7 +95,10 @@ func (m *Manager) saveApprovalsLocked(items []Approval) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(m.approvalsPath, payload, 0o644)
+	if err := atomicwrite.Write(m.approvalsPath, payload); err != nil {
+		return err
+	}
+	return os.Chmod(m.approvalsPath, 0o644)
 }
 
 func (m *Manager) appendEventLocked(eventType string, payload map[string]any) error {

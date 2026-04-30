@@ -3,6 +3,7 @@ package usage
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -192,5 +193,49 @@ func TestTracker_CheckLimitStatusPrefersWeekWhenDailyDisabled(t *testing.T) {
 	}
 	if status.LimitUSD != 0.005 {
 		t.Fatalf("expected weekly limit 0.005, got %v", status.LimitUSD)
+	}
+}
+
+func TestTracker_UpdateLimitsPreservesExistingFileAndMemoryWhenAtomicTempCannotBeCreated(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses permission checks")
+	}
+	tracker, err := NewTracker(t.TempDir(), TrackerOptions{
+		InitialLimits: Limits{
+			DailyUSD:  1,
+			WeeklyUSD: 2,
+			Mode:      "soft",
+		},
+	})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+	original := []byte("{\n  \"daily_usd\": 1,\n  \"weekly_usd\": 2,\n  \"monthly_usd\": 0,\n  \"mode\": \"soft\"\n}\n")
+	if err := os.WriteFile(tracker.limitsPath, original, 0o644); err != nil {
+		t.Fatalf("seed limits: %v", err)
+	}
+	if err := os.Chmod(filepath.Dir(tracker.limitsPath), 0o500); err != nil {
+		t.Fatalf("chmod limits dir: %v", err)
+	}
+	defer os.Chmod(filepath.Dir(tracker.limitsPath), 0o755)
+
+	_, err = tracker.UpdateLimits(Limits{
+		DailyUSD:  9,
+		WeeklyUSD: 9,
+		Mode:      "hard",
+	})
+	if err == nil {
+		t.Fatalf("expected update limits to fail when temp file cannot be created")
+	}
+	got, readErr := os.ReadFile(tracker.limitsPath)
+	if readErr != nil {
+		t.Fatalf("read limits: %v", readErr)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("expected original limits file to be preserved, got %q", got)
+	}
+	limits := tracker.Limits()
+	if limits.DailyUSD != 1 || limits.WeeklyUSD != 2 || limits.Mode != "soft" {
+		t.Fatalf("expected in-memory limits to remain unchanged, got %+v", limits)
 	}
 }

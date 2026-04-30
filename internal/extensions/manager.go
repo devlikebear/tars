@@ -239,7 +239,10 @@ func (m *Manager) Reload(ctx context.Context) error {
 	}
 
 	// Filter out user-disabled extensions
-	disabled, _ := m.disabledStore.Load()
+	disabled, err := m.disabledStore.Load()
+	if err != nil {
+		return err
+	}
 	{
 		filtered := make([]skill.Definition, 0, len(skills.Skills))
 		for _, s := range skills.Skills {
