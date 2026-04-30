@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.71] - 2026-05-01
+
+### Changed
+
+- Hub update commands now report updated, skipped, and failed entries separately for skills, plugins, and MCP servers.
+- `/v1/hub/update` now returns structured skill/plugin update results while preserving the existing `updated_skills` and `updated_plugins` arrays.
+
+### Fixed
+
+- Skill, plugin, and MCP updates now return final `skillhub.json` save errors instead of dropping them after package files were updated.
+- MCP update failures now surface as per-entry diagnostics and aggregate errors instead of being silently skipped.
+- macOS assistant popup result messages now build raw preview text first and AppleScript-escape it once, including quotes, backslashes, newlines, and CJK text.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test -count=1 ./internal/skillhub ./cmd/tars ./internal/assistant ./internal/tarsserver`
+
+### Closed
+
+- Closes #412.
+
 ## [0.31.70] - 2026-05-01
 
 ### Changed
