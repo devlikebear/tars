@@ -21,19 +21,8 @@
     type ActiveSlashTrigger,
     type SlashCommandCandidate,
   } from '../lib/slash'
-  import MarkdownContent from './MarkdownContent.svelte'
-
-  type ChatMessage = {
-    id: string
-    role: 'user' | 'assistant' | 'system' | 'error' | 'tool'
-    text: string
-    toolName?: string
-    toolCallId?: string
-    toolArgs?: string
-    toolResult?: string
-    toolDone?: boolean
-    usage?: { input_tokens: number; output_tokens: number; cached_tokens: number; cache_read_tokens: number; cache_write_tokens: number }
-  }
+  import type { ChatMessage } from '../lib/chatMessages'
+  import ChatMessageItem from './ChatMessageItem.svelte'
 
   interface Props {
     sessionId?: string
@@ -904,48 +893,7 @@
   {/if}
   <div class="chat-log" bind:this={chatLogEl} onscroll={handleScroll}>
     {#each chatMessages as msg}
-      {#if msg.role === 'tool'}
-        <div class="chat-msg chat-tool">
-          <div class="tool-header">
-            <span class="tool-icon">{msg.toolDone ? '\u2713' : '\u27F3'}</span>
-            <span class="tool-name">{msg.toolName}</span>
-            {#if msg.toolDone}
-              <span class="badge badge-success tool-badge">done</span>
-            {:else}
-              <span class="badge badge-accent tool-badge">running</span>
-            {/if}
-          </div>
-          {#if msg.toolArgs}
-            <div class="tool-detail">
-              <span class="tool-detail-label">args</span>
-              <code class="tool-detail-value">{msg.toolArgs}</code>
-            </div>
-          {/if}
-          {#if msg.toolResult}
-            <div class="tool-detail">
-              <span class="tool-detail-label">result</span>
-              <code class="tool-detail-value">{msg.toolResult}</code>
-            </div>
-          {/if}
-        </div>
-      {:else}
-        <div class="chat-msg chat-{msg.role}">
-          <span class="chat-role">{msg.role}</span>
-          {#if msg.role === 'assistant'}
-            <div class="chat-text"><MarkdownContent text={msg.text} {artifacts} {onArtifactOpen} /></div>
-          {:else}
-            <div class="chat-text">{msg.text || '\u2026'}</div>
-          {/if}
-          {#if (msg.role === 'assistant' || msg.role === 'user') && msg.text}
-            <div class="chat-msg-footer">
-              {#if msg.usage}
-                <span class="usage-badge" title="Token usage">In: {msg.usage.input_tokens.toLocaleString()} &middot; Out: {msg.usage.output_tokens.toLocaleString()}{msg.usage.cache_read_tokens ? ` \u00b7 Cached: ${msg.usage.cache_read_tokens.toLocaleString()}` : ''}</span>
-              {/if}
-              <button type="button" class="msg-copy-btn" title="Copy message" onclick={() => copyMessageText(msg.text)}>Copy</button>
-            </div>
-          {/if}
-        </div>
-      {/if}
+      <ChatMessageItem message={msg} {artifacts} {onArtifactOpen} onCopy={copyMessageText} />
     {/each}
   </div>
   {#if chatError}
@@ -1114,119 +1062,6 @@
     margin-bottom: var(--space-3);
     scroll-behavior: smooth;
     min-height: 0;
-  }
-
-  .chat-msg {
-    padding: var(--space-3);
-    border-radius: var(--radius-md);
-    background: var(--surface-base);
-  }
-
-  .chat-user {
-    background: rgba(224, 145, 69, 0.08);
-    border: 1px solid rgba(224, 145, 69, 0.12);
-  }
-
-  .chat-assistant {
-    background: var(--surface-elevated);
-  }
-
-  .chat-system {
-    background: transparent;
-    padding: var(--space-2) var(--space-3);
-    opacity: 0.6;
-  }
-
-  .chat-error {
-    background: var(--error-muted);
-    border: 1px solid rgba(248, 113, 113, 0.15);
-  }
-
-  .chat-tool {
-    background: rgba(139, 92, 246, 0.06);
-    border: 1px solid rgba(139, 92, 246, 0.12);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-xs);
-  }
-
-  .tool-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .tool-icon { font-size: var(--text-sm); }
-
-  .tool-name {
-    font-family: var(--font-mono);
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .tool-badge { font-size: 10px; padding: 1px 6px; }
-
-  .tool-detail {
-    margin-top: var(--space-1);
-    display: flex;
-    gap: var(--space-2);
-    align-items: flex-start;
-  }
-
-  .tool-detail-label {
-    font-family: var(--font-mono);
-    color: var(--text-ghost);
-    flex-shrink: 0;
-    min-width: 36px;
-  }
-
-  .tool-detail-value {
-    font-family: var(--font-mono);
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-all;
-    font-size: var(--text-xs);
-    background: rgba(255, 255, 255, 0.04);
-    padding: 2px 6px;
-    border-radius: 3px;
-    max-height: 120px;
-    overflow-y: auto;
-  }
-
-  .chat-role {
-    font-family: var(--font-display);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--text-tertiary);
-    margin-bottom: var(--space-1);
-    display: block;
-  }
-
-  .chat-msg-footer {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: var(--space-2);
-    opacity: 0;
-    transition: opacity var(--duration-fast);
-  }
-  .chat-msg:hover .chat-msg-footer { opacity: 1; }
-
-  .msg-copy-btn {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    color: var(--text-ghost);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    cursor: pointer;
-    padding: 2px 10px;
-    border-radius: var(--radius-sm);
-    transition: all var(--duration-fast);
-  }
-  .msg-copy-btn:hover { color: var(--primary); border-color: var(--primary); }
-
-  .chat-text {
-    white-space: pre-wrap;
-    font-size: var(--text-sm);
-    line-height: 1.55;
   }
 
   /* ── Attachments ─────────────────────────────── */
@@ -1527,16 +1362,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .usage-badge {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-ghost);
-    background: rgba(255, 255, 255, 0.04);
-    padding: 1px 6px;
-    border-radius: var(--radius-sm);
-    margin-right: auto;
   }
 
   .file-input-hidden {

@@ -1,0 +1,17 @@
+export type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant' | 'system' | 'error' | 'tool'
+  text: string
+  toolName?: string
+  toolCallId?: string
+  toolArgs?: string
+  toolResult?: string
+  toolDone?: boolean
+  usage?: {
+    input_tokens: number
+    output_tokens: number
+    cached_tokens: number
+    cache_read_tokens: number
+    cache_write_tokens: number
+  }
+}

@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.76] - 2026-05-01
+
+### Changed
+
+- Split Chat message rendering, Artifact panel header rendering, and Config pending-change rendering into focused Svelte subcomponents.
+- Moved the console-only chat message shape into a dedicated frontend type module.
+
+### Documentation
+
+- Added a frontend API type contract note explaining why `types.ts` remains hand-curated until a smaller shared schema source exists.
+
+### Tests
+
+- `cd frontend/console && npm run check`
+
+### Closed
+
+- Closes #407.
+
 ## [0.31.75] - 2026-05-01
 
 ### Changed
