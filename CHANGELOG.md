@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.58] - 2026-05-01
+
+### Added
+
+- CON-043: Skill Creator drafts can now run a sandbox Test before local save or draft PR preparation.
+- The new `/v1/admin/skills/test` endpoint writes the edited draft into an isolated `workspace/tmp/skill-tests/` sandbox, executes the generated companion CLI with a timeout, and returns stdout, stderr, exit code, worker/hidden sandbox metadata, and a tool trail.
+- The Extensions Skill Creator wizard now includes a Test action and inline pass/fail output so broken CLI stubs or missing runtime dependencies are visible before publishing.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'TestSkillCreatorAPI_Test|TestRegisterAPIRoutes'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver`
+- `npm test -- --test-name-pattern "Skill Creator"` in `frontend/console`
+- `npm run check` in `frontend/console`
+
+### Closed
+
+- Closes #445.
+
 ## [0.31.57] - 2026-05-01
 
 ### Added
