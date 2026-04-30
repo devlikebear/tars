@@ -330,8 +330,8 @@ func TestUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if len(updated) != 1 || updated[0] != "project-start" {
-		t.Fatalf("expected [project-start] updated, got %v", updated)
+	if len(updated.Updated) != 1 || updated.Updated[0] != "project-start" {
+		t.Fatalf("expected [project-start] updated, got %v", updated.Updated)
 	}
 
 	// Verify version was updated.
@@ -383,8 +383,11 @@ func TestUpdateRejectsTamperedSkillAndKeepsExistingInstall(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected checksum mismatch update error")
 	}
-	if len(updated) != 0 {
-		t.Fatalf("expected no updated skills, got %v", updated)
+	if len(updated.Updated) != 0 {
+		t.Fatalf("expected no updated skills, got %v", updated.Updated)
+	}
+	if len(updated.Failed) != 1 || updated.Failed[0].Name != "project-start" {
+		t.Fatalf("expected project-start failure diagnostic, got %+v", updated.Failed)
 	}
 
 	currentContent, readErr := os.ReadFile(skillPath)
@@ -470,8 +473,8 @@ func TestUpdatePlugins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdatePlugins: %v", err)
 	}
-	if len(updated) != 1 || updated[0] != "project-swarm" {
-		t.Fatalf("expected [project-swarm] updated, got %v", updated)
+	if len(updated.Updated) != 1 || updated.Updated[0] != "project-swarm" {
+		t.Fatalf("expected [project-swarm] updated, got %v", updated.Updated)
 	}
 
 	db, _ = inst.loadDB()
@@ -536,8 +539,11 @@ func TestUpdatePluginsRollsBackOnActivationFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected activation failure")
 	}
-	if len(updated) != 0 {
-		t.Fatalf("expected no updated plugins, got %v", updated)
+	if len(updated.Updated) != 0 {
+		t.Fatalf("expected no updated plugins, got %v", updated.Updated)
+	}
+	if len(updated.Failed) != 1 || updated.Failed[0].Name != "project-swarm" {
+		t.Fatalf("expected project-swarm failure diagnostic, got %+v", updated.Failed)
 	}
 
 	currentContent, readErr := os.ReadFile(pluginPath)
@@ -556,6 +562,84 @@ func TestUpdatePluginsRollsBackOnActivationFailure(t *testing.T) {
 	}
 	if _, statErr := os.Stat(pluginDir + ".bak"); !os.IsNotExist(statErr) {
 		t.Fatalf("expected backup dir cleanup, got %v", statErr)
+	}
+}
+
+func TestUpdateReturnsFinalSaveDBError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("permission-based save failure is not reliable as root")
+	}
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+	if _, err := inst.Install(context.Background(), "project-start"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	db, _ := inst.loadDB()
+	db.Skills[0].Version = "0.1.0"
+	if err := inst.saveDB(db); err != nil {
+		t.Fatalf("save downgraded db: %v", err)
+	}
+	dbPath := inst.dbPath()
+	if err := os.Chmod(dbPath, 0o400); err != nil {
+		t.Fatalf("chmod db: %v", err)
+	}
+	defer func() { _ = os.Chmod(dbPath, 0o600) }()
+
+	updated, err := inst.Update(context.Background())
+	if err == nil {
+		t.Fatal("expected final saveDB error")
+	}
+	if len(updated.Updated) != 1 || updated.Updated[0] != "project-start" {
+		t.Fatalf("expected project-start to be reported updated before save failure, got %+v", updated)
+	}
+}
+
+func TestUpdatePluginsReturnsFinalSaveDBError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("permission-based save failure is not reliable as root")
+	}
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+		t.Fatalf("InstallPlugin: %v", err)
+	}
+	db, _ := inst.loadDB()
+	db.Plugins[0].Version = "0.1.0"
+	if err := inst.saveDB(db); err != nil {
+		t.Fatalf("save downgraded db: %v", err)
+	}
+	dbPath := inst.dbPath()
+	if err := os.Chmod(dbPath, 0o400); err != nil {
+		t.Fatalf("chmod db: %v", err)
+	}
+	defer func() { _ = os.Chmod(dbPath, 0o600) }()
+
+	updated, err := inst.UpdatePlugins(context.Background())
+	if err == nil {
+		t.Fatal("expected final saveDB error")
+	}
+	if len(updated.Updated) != 1 || updated.Updated[0] != "project-swarm" {
+		t.Fatalf("expected project-swarm to be reported updated before save failure, got %+v", updated)
 	}
 }
 
@@ -652,5 +736,75 @@ func TestUninstallMCP(t *testing.T) {
 	}
 	if len(mcps) != 0 {
 		t.Fatalf("expected empty list, got %v", mcps)
+	}
+}
+
+func TestUpdateMCPsReportsPerEntryFailures(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+	if err := inst.saveDB(&InstalledDB{MCPs: []InstalledMCP{
+		{Name: "broken-checksum", Version: "0.0.1", Source: "tars-hub", Dir: filepath.Join(tmpDir, "mcp-servers", "broken-checksum"), Manifest: "tars.mcp.json"},
+	}}); err != nil {
+		t.Fatalf("save db: %v", err)
+	}
+
+	updated, err := inst.UpdateMCPs(context.Background())
+	if err == nil {
+		t.Fatal("expected MCP update failure")
+	}
+	if len(updated.Updated) != 0 {
+		t.Fatalf("expected no updated MCP servers, got %+v", updated.Updated)
+	}
+	if len(updated.Failed) != 1 || updated.Failed[0].Name != "broken-checksum" {
+		t.Fatalf("expected broken-checksum failure diagnostic, got %+v", updated.Failed)
+	}
+}
+
+func TestUpdateMCPsReturnsFinalSaveDBError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("permission-based save failure is not reliable as root")
+	}
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+	if err := inst.InstallMCP(context.Background(), "filesystem"); err != nil {
+		t.Fatalf("InstallMCP: %v", err)
+	}
+	db, _ := inst.loadDB()
+	db.MCPs[0].Version = "0.0.1"
+	if err := inst.saveDB(db); err != nil {
+		t.Fatalf("save downgraded db: %v", err)
+	}
+	dbPath := inst.dbPath()
+	if err := os.Chmod(dbPath, 0o400); err != nil {
+		t.Fatalf("chmod db: %v", err)
+	}
+	defer func() { _ = os.Chmod(dbPath, 0o600) }()
+
+	updated, err := inst.UpdateMCPs(context.Background())
+	if err == nil {
+		t.Fatal("expected final saveDB error")
+	}
+	if len(updated.Updated) != 1 || updated.Updated[0] != "filesystem" {
+		t.Fatalf("expected filesystem to be reported updated before save failure, got %+v", updated)
 	}
 }

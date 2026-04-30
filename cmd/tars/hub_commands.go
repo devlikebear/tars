@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
+	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/spf13/cobra"
 )
 
@@ -120,4 +122,33 @@ func newHubResourceCommand(spec hubResourceSpec, stdout, stderr io.Writer) *cobr
 	})
 
 	return cmd
+}
+
+func printHubUpdateResult(stdout io.Writer, noun string, result skillhub.UpdateResult) {
+	if hubUpdateResultEmpty(result) {
+		fmt.Fprintf(stdout, "All %ss are up to date.\n", noun)
+		return
+	}
+	for _, name := range result.Updated {
+		fmt.Fprintf(stdout, "  Updated: %s\n", name)
+	}
+	for _, item := range result.Skipped {
+		fmt.Fprintf(stdout, "  Skipped: %s%s\n", item.Name, formatUpdateDetail(item.Detail()))
+	}
+	for _, item := range result.Failed {
+		fmt.Fprintf(stdout, "  Failed: %s%s\n", item.Name, formatUpdateDetail(item.Detail()))
+	}
+	fmt.Fprintf(stdout, "\n%d %s(s) updated, %d skipped, %d failed.\n", len(result.Updated), noun, len(result.Skipped), len(result.Failed))
+}
+
+func hubUpdateResultEmpty(result skillhub.UpdateResult) bool {
+	return len(result.Updated) == 0 && len(result.Skipped) == 0 && len(result.Failed) == 0
+}
+
+func formatUpdateDetail(detail string) string {
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		return ""
+	}
+	return " (" + detail + ")"
 }
