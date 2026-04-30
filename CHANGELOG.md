@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.39] - 2026-04-30
+
+### Changed
+
+- Operations is now an Approvals-focused console page with Disk/Process/Cron readouts removed, the nav renamed to Approvals, and `/console/approvals` routed alongside the legacy `/console/ops` path.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Operations becomes"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #427.
+
 ## [0.31.38] - 2026-04-30
 
 ### Added
