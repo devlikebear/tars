@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.35] - 2026-04-30
+
+### Added
+
+- Pulse now explains the Min Severity notification floor, signal-kind severity mappings, threshold sources, and last-seen times inline on the status card.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Pulse explains"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #431.
+
 ## [0.31.34] - 2026-04-30
 
 ### Added
