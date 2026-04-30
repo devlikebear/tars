@@ -224,6 +224,32 @@
       <div class="error-banner" style="margin-bottom:var(--space-4)">{error}</div>
     {/if}
 
+    <section class="card r-intro-card">
+      <div class="card-header">
+        <span class="card-title">Reflection - Nightly Maintenance</span>
+        <span class="badge badge-accent">system surface</span>
+      </div>
+      <p class="r-intro-lead">
+        TARS runs once per day during the configured sleep window ({config?.sleep_window || '02:00-05:00'})
+        and moves slower maintenance out of chat turns into a background batch.
+      </p>
+      <div class="r-intro-grid" aria-label="Reflection maintenance jobs">
+        <div class="r-intro-job">
+          <span class="r-job-name">memory</span>
+          <span>memory: extracts experiences and compiles durable knowledge from the recent {config ? `${config.memory_lookback_hours}h` : '24h'} lookback.</span>
+        </div>
+        <div class="r-intro-job">
+          <span class="r-job-name">kb_cleanup</span>
+          <span>kb_cleanup: removes old empty sessions after {config ? hoursFromSeconds(config.empty_session_age_seconds) : '24h'} while leaving main sessions alone.</span>
+        </div>
+      </div>
+      <ul class="r-intro-actions">
+        <li>Review the last run result and recent run history here.</li>
+        <li>Run Reflection Now bypasses the sleep-window gate and starts the batch immediately.</li>
+        <li>Pulse sends a signal after repeated failures so nightly maintenance does not fail silently.</li>
+      </ul>
+    </section>
+
     <!-- Status summary -->
     <section class="card">
       <div class="card-header">
@@ -441,6 +467,45 @@
     padding: var(--space-10);
     text-align: center;
     color: var(--text-tertiary);
+  }
+
+  .r-intro-card {
+    border-color: rgba(224, 145, 69, 0.18);
+  }
+
+  .r-intro-lead {
+    margin: var(--space-3) 0 0;
+    max-width: 780px;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+  }
+
+  .r-intro-grid {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+  }
+
+  .r-intro-job {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: var(--space-3);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+  }
+
+  .r-intro-actions {
+    display: grid;
+    gap: var(--space-1);
+    margin: var(--space-4) 0 0;
+    padding-left: var(--space-4);
+    color: var(--text-tertiary);
+    font-size: var(--text-sm);
+    line-height: 1.55;
   }
 
   .r-facts {
