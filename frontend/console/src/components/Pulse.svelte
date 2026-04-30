@@ -3,6 +3,14 @@
   import { getPulseStatus, runPulseOnce, getPulseConfig } from '../lib/api'
   import type { PulseSnapshot, PulseTickOutcome, PulseConfigView } from '../lib/types'
 
+  type SeverityGuideRow = {
+    kind: string
+    label: string
+    info: string
+    warn: string
+    error: string
+  }
+
   let snapshot: PulseSnapshot | null = $state(null)
   let config: PulseConfigView | null = $state(null)
   let loading = $state(true)
@@ -69,6 +77,66 @@
     return `${Math.floor(seconds / 86400)}d ago`
   }
 
+  function fmtPercent(value?: number): string {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return 'configured'
+    return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`
+  }
+
+  function severityGuideRows(cfg: PulseConfigView | null): SeverityGuideRow[] {
+    const cronThreshold = cfg?.cron_failure_threshold || 3
+    const stuckMinutes = cfg?.stuck_run_minutes || 60
+    const diskWarn = fmtPercent(cfg?.disk_warn_percent)
+    const diskCritical = fmtPercent(cfg?.disk_critical_percent)
+
+    return [
+      {
+        kind: 'cron_failures',
+        label: 'Cron failures',
+        info: 'Individual failures are counted on cron jobs.',
+        warn: `${cronThreshold}+ consecutive failures on any job.`,
+        error: `${cronThreshold * 2}+ consecutive failures on the worst job.`,
+      },
+      {
+        kind: 'disk_usage',
+        label: 'Disk pressure',
+        info: 'Below the warn threshold no signal is emitted.',
+        warn: `Disk usage reaches ${diskWarn}.`,
+        error: `Disk usage reaches ${diskCritical}.`,
+      },
+      {
+        kind: 'stuck_agentruntime_run',
+        label: 'AgentRuntime stuck run',
+        info: 'Running jobs younger than the stuck window are ignored.',
+        warn: `Any run stays running for ${stuckMinutes}m+.`,
+        error: 'Three or more runs are stuck at once.',
+      },
+      {
+        kind: 'delivery_failures',
+        label: 'Telegram delivery',
+        info: 'Recent delivery failures are counted in the configured window.',
+        warn: 'Failures reach the delivery threshold.',
+        error: 'Failures reach 2x the delivery threshold.',
+      },
+      {
+        kind: 'reflection_failure',
+        label: 'Reflection health',
+        info: 'Successful nightly runs reset the consecutive-failure count.',
+        warn: 'Consecutive nightly failures reach the reflection threshold.',
+        error: 'Failures reach 2x the reflection threshold.',
+      },
+    ]
+  }
+
+  function lastSignalSeen(kind: string): string {
+    const recent = snapshot?.recent ?? []
+    for (let i = recent.length - 1; i >= 0; i -= 1) {
+      const tick = recent[i]
+      const signal = tick.signals?.find((item) => item.kind === kind)
+      if (signal) return relativeTime(signal.at || tick.at)
+    }
+    return 'never'
+  }
+
   onMount(() => {
     void loadAll()
     refreshInterval = setInterval(loadStatus, 30000)
@@ -101,13 +169,49 @@
         <div><dt>Interval</dt><dd>{config ? `${config.interval_seconds}s` : '—'}</dd></div>
         <div><dt>Active Hours</dt><dd>{config?.active_hours || 'always'}</dd></div>
         <div><dt>Timezone</dt><dd>{config?.timezone || 'system'}</dd></div>
-        <div><dt>Min Severity</dt><dd>{config?.min_severity || '—'}</dd></div>
+        <div>
+          <dt>Min Severity</dt>
+          <dd>
+            <span class="badge badge-warning">{config?.min_severity || '—'}</span>
+            <span class="pulse-min-note">Notifications below this floor are dropped after the decider classifies a tick.</span>
+          </dd>
+        </div>
         <div><dt>Last Tick</dt><dd>{relativeTime(snapshot?.last_tick_at)}</dd></div>
         <div><dt>Total Ticks</dt><dd>{snapshot?.total_ticks ?? 0}</dd></div>
         <div><dt>Decisions</dt><dd>{snapshot?.total_decisions ?? 0}</dd></div>
         <div><dt>Notifies</dt><dd>{snapshot?.total_notifies ?? 0}</dd></div>
         <div><dt>Autofixes</dt><dd>{snapshot?.total_autofixes ?? 0}</dd></div>
       </dl>
+
+      <div class="pulse-severity-guide">
+        <div class="pulse-guide-header">
+          <strong>Min Severity guide</strong>
+          <span>Signal thresholds use pulse_* config fields.</span>
+        </div>
+        <div class="pulse-guide-grid">
+          {#each severityGuideRows(config) as row}
+            <div class="pulse-guide-row">
+              <div>
+                <span class="pulse-guide-label">{row.label}</span>
+                <code>{row.kind}</code>
+              </div>
+              <dl>
+                <div><dt>info</dt><dd>{row.info}</dd></div>
+                <div><dt>warn</dt><dd>{row.warn}</dd></div>
+                <div><dt>error</dt><dd>{row.error}</dd></div>
+              </dl>
+            </div>
+          {/each}
+        </div>
+        <div class="pulse-last-seen">
+          <span class="pulse-last-seen-title">Last seen by signal</span>
+          <div>
+            {#each severityGuideRows(config) as row}
+              <span><code>{row.kind}</code> {lastSignalSeen(row.kind)}</span>
+            {/each}
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Last Decision + Run Action -->
@@ -238,6 +342,129 @@
   .pulse-facts dd {
     margin: 0;
     font-size: var(--text-sm);
+  }
+
+  .pulse-facts dd .badge {
+    margin-right: var(--space-2);
+  }
+
+  .pulse-min-note {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .pulse-severity-guide {
+    display: grid;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .pulse-guide-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    color: var(--text-secondary);
+  }
+
+  .pulse-guide-header strong {
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .pulse-guide-header span {
+    color: var(--text-ghost);
+    font-size: var(--text-xs);
+  }
+
+  .pulse-guide-grid {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .pulse-guide-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.7fr) minmax(0, 1.3fr);
+    gap: var(--space-3);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .pulse-guide-label {
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .pulse-guide-row code,
+  .pulse-last-seen code {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .pulse-guide-row dl {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+  }
+
+  .pulse-guide-row dl div {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  .pulse-guide-row dt {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .pulse-guide-row dd {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
+
+  .pulse-last-seen {
+    display: grid;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .pulse-last-seen-title {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .pulse-last-seen div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .pulse-last-seen span:not(.pulse-last-seen-title) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    color: var(--text-secondary);
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
   }
 
   .pulse-badges {
