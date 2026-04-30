@@ -1,14 +1,17 @@
 package tarsserver
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -48,6 +51,27 @@ type skillCreatorSaveResponse struct {
 	Saved bool     `json:"saved"`
 	Path  string   `json:"path"`
 	Files []string `json:"files"`
+}
+
+type skillCreatorTestResponse struct {
+	Success     bool                    `json:"success"`
+	ExitCode    int                     `json:"exit_code"`
+	Stdout      string                  `json:"stdout"`
+	Stderr      string                  `json:"stderr"`
+	SandboxPath string                  `json:"sandbox_path"`
+	SessionKind string                  `json:"session_kind"`
+	Hidden      bool                    `json:"hidden"`
+	DurationMS  int64                   `json:"duration_ms"`
+	ToolTrail   []skillCreatorToolTrail `json:"tool_trail"`
+}
+
+type skillCreatorToolTrail struct {
+	Tool       string `json:"tool"`
+	Command    string `json:"command"`
+	Cwd        string `json:"cwd"`
+	Status     string `json:"status"`
+	ExitCode   int    `json:"exit_code"`
+	DurationMS int64  `json:"duration_ms"`
 }
 
 type skillCreatorSubmitRequest struct {
@@ -96,6 +120,22 @@ func newSkillCreatorAPIHandler(workspaceDir string, logger zerolog.Logger, submi
 			return
 		}
 		writeJSON(w, http.StatusOK, saved)
+	})
+	mux.HandleFunc("/v1/admin/skills/test", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		var draft skillCreatorDraftResponse
+		if !decodeJSONBody(w, r, &draft) {
+			return
+		}
+		result, err := testSkillCreatorDraft(r.Context(), workspaceDir, draft)
+		if err != nil {
+			logger.Error().Err(err).Str("skill", draft.Name).Msg("test skill creator draft failed")
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
 	})
 	mux.HandleFunc("/v1/admin/skills/submit-pr", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {
@@ -171,18 +211,103 @@ func saveSkillCreatorDraft(workspaceDir string, draft skillCreatorDraftResponse)
 	if strings.TrimSpace(workspaceDir) == "" {
 		return skillCreatorSaveResponse{}, fmt.Errorf("workspace directory is required")
 	}
-	if err := validateSkillCreatorName(draft.Name); err != nil {
+	cleanFiles, err := cleanSkillCreatorDraftFiles(draft)
+	if err != nil {
 		return skillCreatorSaveResponse{}, err
 	}
+	targetDir := filepath.Join(workspaceDir, "skills", draft.Name)
+	saved, err := writeSkillCreatorDraftFiles(targetDir, cleanFiles)
+	if err != nil {
+		return skillCreatorSaveResponse{}, err
+	}
+	return skillCreatorSaveResponse{Saved: true, Path: targetDir, Files: saved}, nil
+}
+
+func testSkillCreatorDraft(ctx context.Context, workspaceDir string, draft skillCreatorDraftResponse) (skillCreatorTestResponse, error) {
+	if strings.TrimSpace(workspaceDir) == "" {
+		return skillCreatorTestResponse{}, fmt.Errorf("workspace directory is required")
+	}
+	cleanFiles, err := cleanSkillCreatorDraftFiles(draft)
+	if err != nil {
+		return skillCreatorTestResponse{}, err
+	}
+	baseDir := filepath.Join(workspaceDir, "tmp", "skill-tests")
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		return skillCreatorTestResponse{}, fmt.Errorf("create skill test directory: %w", err)
+	}
+	sandboxPath, err := os.MkdirTemp(baseDir, draft.Name+"-")
+	if err != nil {
+		return skillCreatorTestResponse{}, fmt.Errorf("create skill test sandbox: %w", err)
+	}
+	targetDir := filepath.Join(sandboxPath, "skills", draft.Name)
+	if _, err := writeSkillCreatorDraftFiles(targetDir, cleanFiles); err != nil {
+		return skillCreatorTestResponse{}, err
+	}
+	cliPath, err := findSkillCreatorCLIPath(cleanFiles)
+	if err != nil {
+		return skillCreatorTestResponse{}, err
+	}
+	runCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	command := "." + "/" + cliPath
+	cmd := exec.CommandContext(runCtx, command, strings.TrimSpace(draft.UseCase))
+	cmd.Dir = targetDir
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	start := time.Now()
+	err = cmd.Run()
+	duration := time.Since(start)
+	exitCode := 0
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	} else if err != nil {
+		exitCode = -1
+	}
+	status := "pass"
+	if err != nil {
+		status = "fail"
+		if runCtx.Err() == context.DeadlineExceeded {
+			status = "timeout"
+		}
+	}
+	return skillCreatorTestResponse{
+		Success:     err == nil,
+		ExitCode:    exitCode,
+		Stdout:      stdout.String(),
+		Stderr:      stderr.String(),
+		SandboxPath: sandboxPath,
+		SessionKind: "worker",
+		Hidden:      true,
+		DurationMS:  duration.Milliseconds(),
+		ToolTrail: []skillCreatorToolTrail{
+			{
+				Tool:       "bash",
+				Command:    shellQuote(command) + " " + shellQuote(strings.TrimSpace(draft.UseCase)),
+				Cwd:        targetDir,
+				Status:     status,
+				ExitCode:   exitCode,
+				DurationMS: duration.Milliseconds(),
+			},
+		},
+	}, nil
+}
+
+func cleanSkillCreatorDraftFiles(draft skillCreatorDraftResponse) ([]skillCreatorFile, error) {
+	if err := validateSkillCreatorName(draft.Name); err != nil {
+		return nil, err
+	}
 	if len(draft.Files) == 0 {
-		return skillCreatorSaveResponse{}, fmt.Errorf("at least one file is required")
+		return nil, fmt.Errorf("at least one file is required")
 	}
 	cleanFiles := make([]skillCreatorFile, 0, len(draft.Files))
 	hasSkill := false
 	for _, file := range draft.Files {
 		rel, err := cleanSkillCreatorFilePath(file.Path)
 		if err != nil {
-			return skillCreatorSaveResponse{}, err
+			return nil, err
 		}
 		if rel == "SKILL.md" {
 			hasSkill = true
@@ -190,30 +315,45 @@ func saveSkillCreatorDraft(workspaceDir string, draft skillCreatorDraftResponse)
 		cleanFiles = append(cleanFiles, skillCreatorFile{Path: rel, Content: file.Content})
 	}
 	if !hasSkill {
-		return skillCreatorSaveResponse{}, fmt.Errorf("SKILL.md is required")
+		return nil, fmt.Errorf("SKILL.md is required")
 	}
-	targetDir := filepath.Join(workspaceDir, "skills", draft.Name)
+	return cleanFiles, nil
+}
+
+func writeSkillCreatorDraftFiles(targetDir string, cleanFiles []skillCreatorFile) ([]string, error) {
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return skillCreatorSaveResponse{}, fmt.Errorf("create skill directory: %w", err)
+		return nil, fmt.Errorf("create skill directory: %w", err)
 	}
 	saved := make([]string, 0, len(cleanFiles))
 	for _, file := range cleanFiles {
 		rel := file.Path
 		target := filepath.Join(targetDir, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return skillCreatorSaveResponse{}, fmt.Errorf("create parent directory for %s: %w", rel, err)
+			return nil, fmt.Errorf("create parent directory for %s: %w", rel, err)
 		}
 		mode := os.FileMode(0o644)
 		if isSkillCreatorExecutable(rel) {
 			mode = 0o755
 		}
 		if err := os.WriteFile(target, []byte(file.Content), mode); err != nil {
-			return skillCreatorSaveResponse{}, fmt.Errorf("write %s: %w", rel, err)
+			return nil, fmt.Errorf("write %s: %w", rel, err)
 		}
 		saved = append(saved, rel)
 	}
 	sort.Strings(saved)
-	return skillCreatorSaveResponse{Saved: true, Path: targetDir, Files: saved}, nil
+	return saved, nil
+}
+
+func findSkillCreatorCLIPath(files []skillCreatorFile) (string, error) {
+	for _, file := range files {
+		if file.Path == "SKILL.md" {
+			continue
+		}
+		if isSkillCreatorExecutable(file.Path) {
+			return file.Path, nil
+		}
+	}
+	return "", fmt.Errorf("no executable companion CLI file found")
 }
 
 func validateSkillCreatorName(name string) error {

@@ -664,6 +664,27 @@ export type SkillCreatorSaveResponse = {
   files: string[]
 }
 
+export type SkillCreatorToolTrail = {
+  tool: string
+  command: string
+  cwd: string
+  status: string
+  exit_code: number
+  duration_ms: number
+}
+
+export type SkillCreatorTestResponse = {
+  success: boolean
+  exit_code: number
+  stdout: string
+  stderr: string
+  sandbox_path: string
+  session_kind: string
+  hidden: boolean
+  duration_ms: number
+  tool_trail: SkillCreatorToolTrail[]
+}
+
 export type SkillCreatorSubmitResponse = {
   submitted: boolean
   ready: boolean
