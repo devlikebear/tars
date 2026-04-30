@@ -60,9 +60,7 @@ Use `subagents_run` when tasks are independent and can fan out in parallel:
 ]}
 ```
 
-Use `subagents_orchestrate` when later tasks depend on earlier subagent results. It executes staged `parallel` and `sequential` steps and supports placeholders such as `{{task.backend.summary}}`.
-
-Use `subagents_plan` before `subagents_orchestrate` when the main agent needs the heavy-tier planner model to decide which tasks should run in parallel versus sequence. The planner returns a validated staged flow that can be executed directly.
+Advanced staged-flow tools are available only when explicitly allowed for a session: `subagents_orchestrate` runs dependency-aware `parallel` / `sequential` steps, and `subagents_plan` uses the heavy-tier planner model to draft such a flow.
 
 Tier resolution priority: task `tier` > agent YAML `tier` > config default.
 
@@ -102,7 +100,7 @@ llm:
     agentruntime_planner: heavy
 ```
 
-Each system role (chat, pulse, reflection, compaction, agent runtime agents) maps to a tier. Background surfaces default to `light`, keeping costs low. `llm_role_agentruntime_planner` is now exercised by `subagents_plan`, and TARS logs the resolved `role`, `tier`, `provider`, `model`, and `source` for chat and agent runtime LLM calls so tier selection is traceable in runtime logs. The Console Settings page includes a typed `llm.tiers` editor for adding, renaming, editing, and removing tier bindings without hand-editing JSON.
+Each system role (chat, pulse, reflection, compaction, agent runtime agents) maps to a tier. Background surfaces default to `light`, keeping costs low. If advanced staged subagent planning is explicitly enabled for a session, `llm_role_agentruntime_planner` is exercised by `subagents_plan`; TARS logs the resolved `role`, `tier`, `provider`, `model`, and `source` for chat and agent runtime LLM calls so tier selection is traceable in runtime logs. The Console Settings page includes a typed `llm.tiers` editor for adding, renaming, editing, and removing tier bindings without hand-editing JSON.
 
 ### Background Surfaces
 

@@ -6,6 +6,30 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.49] - 2026-05-01
+
+### Changed
+
+- Q-012 follow-up: `subagents_plan` and `subagents_orchestrate` are now advanced opt-in tools rather than default chat schema surfaces, while `subagents_run` remains the default path for parallel delegated work.
+- README, chat runtime guidance, subagent mention hints, and Console Agent Runtime copy now steer users toward `subagents_run` by default.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'TestResolveInjectedToolSchemas_(HidesSubagentFlowToolsByDefault|AllowsSubagentFlowToolsWhenExplicitlyEnabled|AllowAdminHighRiskTools|AllowHighRiskUserOverride)|TestChatAPI_SubagentsToolCall'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tool ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `npm test -- --test-name-pattern "Agent Runtime"` in `frontend/console`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #509.
+
 ## [0.31.48] - 2026-05-01
 
 ### Changed

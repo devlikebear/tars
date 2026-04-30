@@ -67,6 +67,37 @@ func TestResolveInjectedToolSchemas_AllowsDeprecatedProcessWhenExplicitlyEnabled
 	}
 }
 
+func TestResolveInjectedToolSchemas_HidesSubagentFlowToolsByDefault(t *testing.T) {
+	registry := newBaseToolRegistryWithSubagentTools(t)
+
+	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "admin", true)
+	names := toolNamesFromSchemas(schemas)
+	if !hasToolName(names, "subagents_run") {
+		t.Fatalf("expected subagents_run to remain injected by default, got %+v", names)
+	}
+	for _, denied := range []string{"subagents_plan", "subagents_orchestrate"} {
+		if hasToolName(names, denied) {
+			t.Fatalf("expected %s to be hidden from default injection, got %+v", denied, names)
+		}
+	}
+}
+
+func TestResolveInjectedToolSchemas_AllowsSubagentFlowToolsWhenExplicitlyEnabled(t *testing.T) {
+	registry := newBaseToolRegistryWithSubagentTools(t)
+
+	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "admin", true, session.SessionToolConfig{
+		ToolsCustom: true,
+		ToolsEnabled: []string{
+			"subagents_plan",
+			"subagents_orchestrate",
+		},
+	})
+	names := toolNamesFromSchemas(schemas)
+	if len(names) != 2 || !hasToolName(names, "subagents_plan") || !hasToolName(names, "subagents_orchestrate") {
+		t.Fatalf("expected explicit session allowlist to opt into subagent flow tools, got %+v", names)
+	}
+}
+
 func TestResolveInjectedToolSchemas_PassesThroughWithoutProjectPolicy(t *testing.T) {
 	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
 
@@ -150,4 +181,13 @@ func hasToolName(names []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func newBaseToolRegistryWithSubagentTools(t *testing.T) *tool.Registry {
+	t.Helper()
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
+	registry.Register(tool.NewSubagentsRunTool(nil))
+	registry.Register(tool.NewSubagentsPlanTool(nil, nil))
+	registry.Register(tool.NewSubagentsOrchestrateTool(nil))
+	return registry
 }

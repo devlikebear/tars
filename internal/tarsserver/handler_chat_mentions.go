@@ -319,7 +319,7 @@ func formatChatSubagentMentionHint(mentions []chatSubagentMention) string {
 	var b strings.Builder
 	b.WriteString("\n\n## Mentioned Subagents\n")
 	b.WriteString("The user explicitly mentioned these AgentRuntime subagent targets in the current chat message.\n")
-	b.WriteString("- Prefer `subagents_run` for a single direct target, `subagents_orchestrate` for multiple coordinated targets, or `subagents_plan` when a plan is needed first.\n")
+	b.WriteString("- Prefer `subagents_run` for direct delegated work. Use staged-flow tools such as `subagents_plan` or `subagents_orchestrate` only when they are explicitly available in this session's tool schema.\n")
 	b.WriteString("- When calling a subagent tool for a listed target, set the top-level `agent` field to the exact name below.\n")
 	for _, mention := range mentions {
 		b.WriteString("- `")

@@ -240,7 +240,12 @@ func filterDefaultDeprecatedToolNames(names []string, sessionConfig *session.Ses
 }
 
 func isDefaultDeprecatedToolName(name string) bool {
-	return tool.CanonicalToolName(name) == "process"
+	switch tool.CanonicalToolName(name) {
+	case "process", "subagents_plan", "subagents_orchestrate":
+		return true
+	default:
+		return false
+	}
 }
 
 func sessionExplicitlyAllowsTool(config *session.SessionToolConfig, name string) bool {
