@@ -47,3 +47,4 @@ The review window contains 428 sanitized signal rows across 15 sessions. It does
 ## Follow-up Notes
 
 - 2026-05-01 Q-011 / [#510](https://github.com/devlikebear/tars/issues/510): a fresh check of the available `workspace/usage/signals-*.jsonl` files still showed 0 `tool_call` rows with `tool=process`. TARS now gates `process` out of the default chat tool schema; explicit session tool allowlists can still opt in, and background `exec` keeps using the shared process manager.
+- 2026-05-01 Q-012 / [#509](https://github.com/devlikebear/tars/issues/509): a fresh check still showed 0 `subagents_plan`, 0 `subagents_orchestrate`, and 4 `subagents_run` calls, all `mode=parallel`. TARS now keeps `subagents_run` as the default delegated-work tool and gates `subagents_plan` / `subagents_orchestrate` behind explicit session tool opt-in.

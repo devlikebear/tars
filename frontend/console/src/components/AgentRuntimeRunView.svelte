@@ -67,13 +67,13 @@
 
   const runtimeTools = [
     { name: 'subagents_run', detail: 'Single delegated task on a selected model tier.' },
-    { name: 'subagents_orchestrate', detail: 'Parallel steps split across multiple subagents.' },
-    { name: 'subagents_plan', detail: 'Plan first, then launch the selected steps.' },
+    { name: 'subagents_orchestrate', detail: 'Advanced opt-in staged flow for dependent steps.' },
+    { name: 'subagents_plan', detail: 'Advanced opt-in planner for staged flows.' },
   ]
 
   const starterPrompts = [
     'Analyze this codebase in parallel with three subagents.',
-    'Use subagents_plan to break this into five steps and run it.',
+    'Ask two subagents to inspect the frontend and backend separately.',
   ]
 
   const runStatusOptions: { value: RunStatusFilter; label: string }[] = [
