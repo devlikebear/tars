@@ -12,6 +12,8 @@ TARS는 로컬 파일, 로그, 임시 디렉터리, cron 실행 기록처럼 실
 
 그래서 최신 TARS의 Human-in-the-loop는 project/autopilot phase가 아니라 **ops approval** 흐름으로 모읍니다.
 
+CON-041의 결정에 따라 이 표면은 제거하지 않습니다. 수동 cleanup plan은 현재 seed workflow이고, Pulse는 안전한 allowlist autofix를 계속 직접 실행하되 향후 더 위험하거나 넓은 mutation은 approval queue로 라우팅합니다. 결정 근거와 라우팅 기준은 `docs/decisions/approvals-workflow.md`에 있습니다.
+
 ```
 계획 생성 → approval 저장 → 사용자 승인/거절 → 적용 → 이벤트 기록
 ```
@@ -129,7 +131,7 @@ CLI는 별도 로직을 갖지 않고 protocol client를 통해 서버 API를 �
 ## 전체 흐름
 
 ```
-사용자/콘솔/펄스
+사용자/콘솔/향후 Pulse risky routing
   → POST /v1/ops/cleanup/plan
   → approval_id 생성, candidates 저장
   → event: Cleanup approval required

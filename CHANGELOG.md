@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.60] - 2026-05-01
+
+### Added
+
+- CON-041: Recorded the accepted decision to keep the Approvals workflow as TARS' human review queue for risky operational mutations.
+- Added `docs/decisions/approvals-workflow.md` with the routing policy for manual cleanup plans, Pulse autofix, and future approval queue item types.
+- Updated the ops approval tutorial and roadmap notes so CON-025/CON-026 follow-up work strengthens Approvals instead of removing it.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Approvals workflow RFC"` in `frontend/console`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+
+### Closed
+
+- Closes #443.
+
 ## [0.31.59] - 2026-05-01
 
 ### Added
