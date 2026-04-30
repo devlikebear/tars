@@ -3,6 +3,7 @@
   import { t } from '../i18n'
   import type { Translations } from '../i18n'
   import { getServerStatus } from '../lib/api'
+  import StatusStrip from './StatusStrip.svelte'
 
   type NavGroupId = keyof Translations['nav']['groups']
   type NavItemId = keyof Translations['nav']['items']
@@ -114,6 +115,7 @@
   </div>
 
   <div class="nav-footer">
+    <StatusStrip {onNavigate} />
     <div class="nav-version">{version ? `v${version}` : ''}</div>
   </div>
 </nav>
@@ -235,6 +237,9 @@
   }
 
   .nav-footer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
     padding: var(--space-4);
     border-top: 1px solid var(--border-subtle);
   }
