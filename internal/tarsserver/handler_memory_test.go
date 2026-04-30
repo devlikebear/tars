@@ -108,7 +108,12 @@ func TestMemoryAPIHandler_ListsAndEditsSyspromptFiles(t *testing.T) {
 	}
 	if !strings.Contains(listRec.Body.String(), `"path":"USER.md"`) ||
 		!strings.Contains(listRec.Body.String(), `"exists":false`) ||
+		!strings.Contains(listRec.Body.String(), `"prompt_impact"`) ||
+		!strings.Contains(listRec.Body.String(), `"section":"User"`) ||
+		!strings.Contains(listRec.Body.String(), `"max_chars":6000`) ||
+		!strings.Contains(listRec.Body.String(), `"estimated_tokens"`) ||
 		!strings.Contains(listRec.Body.String(), `"path":"AGENTS.md"`) ||
+		!strings.Contains(listRec.Body.String(), `"section":"Agent Guidelines"`) ||
 		!strings.Contains(listRec.Body.String(), `"prompt_targets":["sub_agent"]`) ||
 		!strings.Contains(listRec.Body.String(), `"path":"IDENTITY.md"`) ||
 		!strings.Contains(listRec.Body.String(), `"prompt_targets":["main_agent"]`) {
@@ -143,5 +148,46 @@ func TestMemoryAPIHandler_ListsAndEditsSyspromptFiles(t *testing.T) {
 	}
 	if !strings.Contains(string(updatedRaw), "prefers concise Korean answers") {
 		t.Fatalf("expected USER.md to be created, got %q", string(updatedRaw))
+	}
+}
+
+func TestMemoryAPIHandler_SyspromptPreviewBuildsPrompt(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "USER.md"), []byte("# USER.md\n\n- prefers concise Korean answers\n"), 0o644); err != nil {
+		t.Fatalf("write USER.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("# AGENTS.md\n\n- follow repo rules\n"), 0o644); err != nil {
+		t.Fatalf("write AGENTS.md: %v", err)
+	}
+
+	handler := newMemoryAPIHandler(root, nil, zerolog.Nop())
+
+	mainReq := httptest.NewRequest(http.MethodGet, "/v1/admin/sysprompt/preview?target=main_agent", nil)
+	mainRec := httptest.NewRecorder()
+	handler.ServeHTTP(mainRec, mainReq)
+	if mainRec.Code != http.StatusOK {
+		t.Fatalf("expected main preview 200, got %d body=%q", mainRec.Code, mainRec.Body.String())
+	}
+	if !strings.Contains(mainRec.Body.String(), `"prompt"`) ||
+		!strings.Contains(mainRec.Body.String(), `"target":"main_agent"`) ||
+		!strings.Contains(mainRec.Body.String(), `"total_tokens"`) ||
+		!strings.Contains(mainRec.Body.String(), "prefers concise Korean answers") ||
+		strings.Contains(mainRec.Body.String(), "follow repo rules") {
+		t.Fatalf("unexpected main preview response: %q", mainRec.Body.String())
+	}
+
+	agentReq := httptest.NewRequest(http.MethodGet, "/v1/admin/sysprompt/preview?target=sub_agent", nil)
+	agentRec := httptest.NewRecorder()
+	handler.ServeHTTP(agentRec, agentReq)
+	if agentRec.Code != http.StatusOK {
+		t.Fatalf("expected sub-agent preview 200, got %d body=%q", agentRec.Code, agentRec.Body.String())
+	}
+	if !strings.Contains(agentRec.Body.String(), `"target":"sub_agent"`) ||
+		!strings.Contains(agentRec.Body.String(), "follow repo rules") ||
+		strings.Contains(agentRec.Body.String(), "prefers concise Korean answers") {
+		t.Fatalf("unexpected sub-agent preview response: %q", agentRec.Body.String())
 	}
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import {
+    getSyspromptPreview,
     getSyspromptFile,
     listChatTools,
     listSyspromptFiles,
@@ -25,6 +26,10 @@
   let editorContent = $state('')
   let tools: ChatToolInfo[] = $state([])
   let selectedTemplateId = $state('')
+  let previewOpen = $state(false)
+  let previewLoading = $state(false)
+  let previewError = $state('')
+  let preview = $state<Awaited<ReturnType<typeof getSyspromptPreview>> | null>(null)
 
   const relevantToolNames = ['workspace']
 
@@ -57,6 +62,22 @@
     if (size < 1024) return `${size} B`
     if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
     return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  function previewTargetFor(file: SyspromptFile | null): 'main_agent' | 'sub_agent' {
+    return file?.scope === 'agent' ? 'sub_agent' : 'main_agent'
+  }
+
+  function promptImpactLine(file: SyspromptFile): string {
+    const impact = file.prompt_impact
+    if (!impact) return ''
+    return `${formatBytes(file.size_bytes || 0)} · ~${impact.estimated_tokens} tokens · ${impact.chars} / ${impact.max_chars} chars · -> ## ${impact.section} (${impact.role})`
+  }
+
+  function promptImpactWarning(file: SyspromptFile): string {
+    const impact = file.prompt_impact
+    if (!impact?.will_truncate) return ''
+    return `${impact.chars} / ${impact.max_chars} chars - will be truncated to ${impact.max_chars}`
   }
 
   async function load(targetScope?: SyspromptScope, targetPath?: string) {
@@ -116,6 +137,21 @@
       error = err instanceof Error ? err.message : 'Failed to save file'
     } finally {
       saving = false
+    }
+  }
+
+  async function loadPreview() {
+    if (!selectedFile) return
+    previewOpen = true
+    previewLoading = true
+    previewError = ''
+    preview = null
+    try {
+      preview = await getSyspromptPreview(previewTargetFor(selectedFile))
+    } catch (err) {
+      previewError = err instanceof Error ? err.message : 'Failed to load system prompt preview'
+    } finally {
+      previewLoading = false
     }
   }
 
@@ -202,6 +238,12 @@
                 </span>
               </div>
               <p>{roleCopy(file.path)}</p>
+              {#if file.prompt_impact}
+                <div class="file-impact-line">{promptImpactLine(file)}</div>
+                {#if file.prompt_impact.will_truncate}
+                  <div class="file-impact-warning">{promptImpactWarning(file)}</div>
+                {/if}
+              {/if}
             </button>
           {/each}
         </div>
@@ -217,6 +259,12 @@
                 </span>
               </div>
               <p>{roleCopy(file.path)}</p>
+              {#if file.prompt_impact}
+                <div class="file-impact-line">{promptImpactLine(file)}</div>
+                {#if file.prompt_impact.will_truncate}
+                  <div class="file-impact-warning">{promptImpactWarning(file)}</div>
+                {/if}
+              {/if}
             </button>
           {/each}
         </div>
@@ -231,6 +279,9 @@
         </div>
         <div class="editor-actions">
           <button class="btn btn-ghost btn-sm" type="button" disabled={!selectedFile} onclick={() => selectedFile && selectFile(selectedFile.scope, selectedFile.path)}>Reload</button>
+          <button class="btn btn-ghost btn-sm" type="button" disabled={!selectedFile || previewLoading} onclick={loadPreview}>
+            {previewLoading ? 'Loading...' : 'Reload preview'}
+          </button>
           <button class="btn btn-primary btn-sm" type="button" disabled={!selectedFile || saving} onclick={save}>
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -243,7 +294,14 @@
           <span>{selectedFile.exists ? 'Existing file' : 'Missing file, starter template loaded'}</span>
           <span>{formatBytes(selectedFile.size_bytes || 0)}</span>
           <span>{fmt(selectedFile.updated_at)}</span>
+          {#if selectedFile.prompt_impact}
+            <span>~{selectedFile.prompt_impact.estimated_tokens} tokens</span>
+            <span>## {selectedFile.prompt_impact.section} ({selectedFile.prompt_impact.role})</span>
+          {/if}
         </div>
+        {#if selectedFile.prompt_impact?.will_truncate}
+          <div class="impact-warning">{promptImpactWarning(selectedFile)}</div>
+        {/if}
         <div class="description-card">
           <strong>{selectedFile.title}</strong>
           <p>{selectedFile.description || roleCopy(selectedFile.path)}</p>
@@ -306,6 +364,38 @@
       </div>
     </aside>
   </div>
+
+  {#if previewOpen}
+    <div class="preview-backdrop" role="presentation">
+      <div class="preview-modal" role="dialog" aria-modal="true" aria-label="System prompt preview" tabindex="0">
+        <div class="preview-header">
+          <div>
+            <div class="group-label">System Prompt Preview</div>
+            <h2>{preview?.target === 'sub_agent' ? 'Sub-agent prompt' : 'Main agent prompt'}</h2>
+          </div>
+          <div class="preview-actions">
+            <button class="btn btn-ghost btn-sm" type="button" disabled={previewLoading} onclick={loadPreview}>
+              {previewLoading ? 'Loading...' : 'Reload preview'}
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick={() => { previewOpen = false }}>Close</button>
+          </div>
+        </div>
+        {#if previewError}
+          <div class="error-banner">{previewError}</div>
+        {:else if previewLoading && !preview}
+          <div class="empty-state">Loading system prompt preview...</div>
+        {:else if preview}
+          <div class="preview-meta">
+            <span class="badge badge-accent">{preview.target}</span>
+            <span>{preview.total_tokens} total tokens</span>
+            <span>{preview.static_tokens} static</span>
+            <span>{preview.relevant_tokens} memory</span>
+          </div>
+          <pre class="preview-body">{preview.prompt}</pre>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -415,6 +505,32 @@
   .file-row p, .description-card p, .tool-row p, .diag-list span {
     color: var(--text-secondary);
     font-size: var(--text-sm);
+  }
+
+  .file-impact-line {
+    margin-top: var(--space-2);
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+  }
+
+  .file-impact-warning,
+  .impact-warning {
+    color: var(--warning);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+  }
+
+  .file-impact-warning {
+    margin-top: var(--space-1);
+  }
+
+  .impact-warning {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid rgba(251, 191, 36, 0.24);
+    border-radius: var(--radius-md);
+    background: rgba(251, 191, 36, 0.08);
   }
 
   .panel-subtitle {
@@ -534,6 +650,71 @@
     font-size: var(--text-sm);
   }
 
+  .preview-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-6);
+    background: rgba(0, 0, 0, 0.58);
+  }
+
+  .preview-modal {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: min(980px, 100%);
+    max-height: min(760px, calc(100vh - 48px));
+    padding: var(--space-5);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .preview-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .preview-header h2 {
+    margin-top: var(--space-1);
+    font-size: var(--text-xl);
+  }
+
+  .preview-actions,
+  .preview-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .preview-meta {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .preview-body {
+    flex: 1;
+    min-height: 320px;
+    margin: 0;
+    padding: var(--space-4);
+    overflow: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+
   @media (max-width: 1200px) {
     .layout {
       grid-template-columns: 240px minmax(0, 1fr);
@@ -555,7 +736,9 @@
     }
 
     .starter-template-bar,
-    .starter-template-actions {
+    .starter-template-actions,
+    .preview-header,
+    .preview-actions {
       align-items: stretch;
       flex-direction: column;
     }

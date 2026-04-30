@@ -65,6 +65,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/memory/search",
 		"/v1/workspace/sysprompt/files",
 		"/v1/workspace/sysprompt/file",
+		"/v1/admin/sysprompt/preview",
 		"/console",
 		"/console/",
 		"/v1/usage/summary",
