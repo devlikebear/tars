@@ -262,7 +262,7 @@
   {:else if scopedJobs.length === 0}
     <div class="empty-state">
       <p>No cron jobs in this scope yet.</p>
-      <p class="hint">Create one here or manage all jobs from Operations.</p>
+      <p class="hint">Create one here for this session.</p>
     </div>
   {:else}
     <div class="cron-list">

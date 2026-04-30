@@ -37,7 +37,7 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'chat' }
   }
 
-  if (path.startsWith(`${consoleBase}/ops`)) {
+  if (path.startsWith(`${consoleBase}/approvals`) || path.startsWith(`${consoleBase}/ops`)) {
     return { view: 'ops' }
   }
 
