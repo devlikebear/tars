@@ -19,6 +19,7 @@ import type {
   MCPServerStatus,
   MemoryAsset,
   MemoryFile,
+  MemoryPrefetchResult,
   MemorySearchResult,
   SyspromptFile,
   SyspromptPreview,
@@ -386,6 +387,17 @@ export async function runMemorySearch(payload: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  })
+}
+
+export async function runMemoryPrefetch(payload: {
+  query: string
+  session_id?: string
+}): Promise<MemoryPrefetchResult> {
+  const params = new URLSearchParams({ query: payload.query })
+  if (payload.session_id?.trim()) params.set('session_id', payload.session_id.trim())
+  return requestJSON<MemoryPrefetchResult>(`/v1/memory/prefetch?${params.toString()}`, {
+    method: 'POST',
   })
 }
 

@@ -36,7 +36,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 - Prior Context preview panel showing the exact memory section, source badges, and token budget for the current draft
 - Files workspaces include an embedded shell at the selected root or browsed subdirectory, plus a macOS Terminal fallback
 - Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
-- Editable memory assets and semantic recall through the console/API
+- Editable memory assets plus Tool path and Prefetch path recall tests through the console/API
 - Structured transcript compaction preserving identifiers and recent context
 - System prompt customization via `USER.md`, `IDENTITY.md`, `AGENTS.md`, `TOOLS.md`
 
@@ -188,7 +188,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 |------|------|---------|
 | Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` skill commands, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
 | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, and subagent tier management |
-| Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and try semantic recall searches |
+| Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
 | Approvals | `/console/approvals` | Review risky cleanup plans before TARS applies them |
 | Pulse | `/console/pulse` | Watchdog status and run-now trigger |

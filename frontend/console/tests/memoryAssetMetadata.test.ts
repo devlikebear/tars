@@ -9,6 +9,8 @@ import {
 import type { MemoryAsset } from '../src/lib/types.ts'
 
 const memorySource = readFileSync(new URL('../src/components/MemoryCenter.svelte', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 
 function asset(partial: Partial<MemoryAsset>): MemoryAsset {
   return {
@@ -84,4 +86,19 @@ test('Memory page introduces memory assets before editing', () => {
   assert.match(memorySource, /Daily Logs/)
   assert.match(memorySource, /Semantic Index/)
   assert.match(memorySource, /Try a Search/)
+})
+
+test('Memory search offers Tool path and Prefetch path debug modes', () => {
+  assert.match(memorySource, /type MemorySearchMode = 'tool' \| 'prefetch'/)
+  assert.match(memorySource, /searchMode = \$state<MemorySearchMode>\('tool'\)/)
+  assert.match(memorySource, />Tool path</)
+  assert.match(memorySource, />Prefetch path</)
+  assert.match(memorySource, /runMemoryPrefetch/)
+  assert.match(memorySource, /prefetchResult/)
+  assert.match(memorySource, /prefetch-section/)
+  assert.match(apiSource, /runMemoryPrefetch/)
+  assert.match(apiSource, /\/v1\/memory\/prefetch/)
+  assert.match(typesSource, /export type MemoryPrefetchResult/)
+  assert.match(typesSource, /source_tag/)
+  assert.match(typesSource, /budget_percent/)
 })

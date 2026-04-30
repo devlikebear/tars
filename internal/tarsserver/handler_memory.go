@@ -141,6 +141,52 @@ func newMemoryAPIHandler(workspaceDir string, backend memory.Backend, logger zer
 		_, _ = w.Write([]byte(result.Text()))
 	})
 
+	mux.HandleFunc("/v1/memory/prefetch", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		query := strings.TrimSpace(r.URL.Query().Get("query"))
+		if query == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "query is required"})
+			return
+		}
+		sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
+		result := prompt.BuildResultFor(prompt.BuildOptions{
+			WorkspaceDir:        workspaceDir,
+			Query:               query,
+			SessionID:           sessionID,
+			MemorySearcher:      backend,
+			ForceRelevantMemory: shouldForceMemoryToolCall(query),
+		})
+		items := result.RelevantMemoryItems
+		if items == nil {
+			items = []prompt.RelevantMemoryItem{}
+		}
+		budgetPercent := 0
+		if result.RelevantBudgetTokens > 0 && result.RelevantTokens > 0 {
+			budgetPercent = int((float64(result.RelevantTokens) / float64(result.RelevantBudgetTokens)) * 100)
+			if budgetPercent == 0 {
+				budgetPercent = 1
+			}
+		}
+		message := ""
+		if len(items) == 0 {
+			message = "No Prior Context matches."
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"session_id":             sessionID,
+			"query":                  query,
+			"section":                result.RelevantSection,
+			"items":                  items,
+			"relevant_tokens":        result.RelevantTokens,
+			"relevant_memory_count":  result.RelevantMemoryCount,
+			"relevant_budget_tokens": result.RelevantBudgetTokens,
+			"budget_percent":         budgetPercent,
+			"message":                message,
+			"generated_at":           time.Now().UTC().Format(time.RFC3339),
+		})
+	})
+
 	mux.HandleFunc("/v1/workspace/sysprompt/files", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
