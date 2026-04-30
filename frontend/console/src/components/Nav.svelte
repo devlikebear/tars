@@ -9,6 +9,12 @@
     icon: string
   }
 
+  interface NavGroup {
+    id: string
+    label: string
+    items: NavItem[]
+  }
+
   interface Props {
     currentPath: string
     onNavigate: (path: string) => void
@@ -26,16 +32,34 @@
     }
   })
 
-  const items: NavItem[] = [
-    { id: 'chat', label: 'Chat', path: '/console/chat', icon: '\u25ce' },
-    { id: 'agentruntime', label: 'Agent Runtime', path: '/console/agentruntime', icon: '\u25c8' },
-    { id: 'memory', label: 'Memory', path: '/console/memory', icon: '\u22c8' },
-    { id: 'sysprompt', label: 'System Prompt', path: '/console/sysprompt', icon: '\u2691' },
-    { id: 'ops', label: 'Approvals', path: '/console/approvals', icon: '\u2699' },
-    { id: 'pulse', label: 'Pulse', path: '/console/pulse', icon: '\u2661' },
-    { id: 'reflection', label: 'Reflection', path: '/console/reflection', icon: '\u263e' },
-    { id: 'extensions', label: 'Extensions', path: '/console/extensions', icon: '\u2756' },
-    { id: 'config', label: 'Settings', path: '/console/config', icon: '\u2638' },
+  const groups: NavGroup[] = [
+    {
+      id: 'work',
+      label: 'Work',
+      items: [
+        { id: 'chat', label: 'Chat', path: '/console/chat', icon: '\u25ce' },
+        { id: 'memory', label: 'Memory', path: '/console/memory', icon: '\u22c8' },
+        { id: 'sysprompt', label: 'System Prompt', path: '/console/sysprompt', icon: '\u2691' },
+        { id: 'extensions', label: 'Extensions', path: '/console/extensions', icon: '\u2756' },
+      ],
+    },
+    {
+      id: 'operate',
+      label: 'Operate',
+      items: [
+        { id: 'agentruntime', label: 'Agent Runtime', path: '/console/agentruntime', icon: '\u25c8' },
+        { id: 'ops', label: 'Approvals', path: '/console/approvals', icon: '\u2699' },
+        { id: 'pulse', label: 'Pulse', path: '/console/pulse', icon: '\u2661' },
+        { id: 'reflection', label: 'Reflection', path: '/console/reflection', icon: '\u263e' },
+      ],
+    },
+    {
+      id: 'setup',
+      label: 'Setup',
+      items: [
+        { id: 'config', label: 'Settings', path: '/console/config', icon: '\u2638' },
+      ],
+    },
   ]
 
   function isActive(itemPath: string, current: string): boolean {
@@ -63,16 +87,21 @@
   </div>
 
   <div class="nav-items">
-    {#each items as item}
-      <a
-        href={item.path}
-        class="nav-item"
-        class:active={isActive(item.path, currentPath)}
-        onclick={(e: MouseEvent) => handleClick(e, item.path)}
-      >
-        <span class="nav-icon">{item.icon}</span>
-        <span class="nav-label">{item.label}</span>
-      </a>
+    {#each groups as group}
+      <section class="nav-group" aria-label={`${group.label} navigation`}>
+        <div class="nav-group-label">{group.label}</div>
+        {#each group.items as item}
+          <a
+            href={item.path}
+            class="nav-item"
+            class:active={isActive(item.path, currentPath)}
+            onclick={(e: MouseEvent) => handleClick(e, item.path)}
+          >
+            <span class="nav-icon">{item.icon}</span>
+            <span class="nav-label">{item.label}</span>
+          </a>
+        {/each}
+      </section>
     {/each}
   </div>
 
@@ -142,7 +171,23 @@
     padding: var(--space-2) var(--space-3);
     display: flex;
     flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .nav-group {
+    display: flex;
+    flex-direction: column;
     gap: 2px;
+  }
+
+  .nav-group-label {
+    padding: 0 var(--space-3) var(--space-1);
+    color: var(--text-ghost);
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0;
   }
 
   .nav-item {

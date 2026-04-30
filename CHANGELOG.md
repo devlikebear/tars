@@ -6,6 +6,28 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.63] - 2026-05-01
+
+### Added
+
+- CON-038: The console sidebar now groups navigation into Work, Operate, and Setup sections, with Home remaining on the TARS logo.
+- Settings now appears under Setup while the existing `/console/config` route remains intact.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Console nav groups"` in `frontend/console`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #440.
+
 ## [0.31.62] - 2026-05-01
 
 ### Added
