@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/auth"
+	"github.com/devlikebear/tars/internal/llmdefaults"
 	zlog "github.com/rs/zerolog/log"
 )
 
@@ -193,8 +194,8 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	if provider == "openai-codex" {
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return newOpenAICodexClientWithAuthConfig(
-			firstNonEmptyTrimmed(opts.BaseURL, "https://chatgpt.com/backend-api"),
-			firstNonEmptyTrimmed(opts.Model, "gpt-5.3-codex"),
+			firstNonEmptyTrimmed(opts.BaseURL, llmdefaults.OpenAICodexBaseURL),
+			firstNonEmptyTrimmed(opts.Model, llmdefaults.OpenAICodexModel),
 			authConfig,
 			DefaultClientConfig(),
 			nil,
@@ -220,17 +221,17 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return newOpenAICompatibleClientWithConfig(
 			"gemini",
-			firstNonEmptyTrimmed(opts.BaseURL, "https://generativelanguage.googleapis.com/v1beta/openai"),
+			firstNonEmptyTrimmed(opts.BaseURL, llmdefaults.GeminiBaseURL),
 			token,
-			firstNonEmptyTrimmed(opts.Model, "gemini-2.5-flash"),
+			firstNonEmptyTrimmed(opts.Model, llmdefaults.GeminiModel),
 			providerClientConfig(opts),
 		)
 	case "gemini-native":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return newGeminiNativeClientWithConfig(
-			firstNonEmptyTrimmed(opts.BaseURL, "https://generativelanguage.googleapis.com/v1beta"),
+			firstNonEmptyTrimmed(opts.BaseURL, llmdefaults.GeminiNativeBaseURL),
 			token,
-			firstNonEmptyTrimmed(opts.Model, "gemini-2.5-flash"),
+			firstNonEmptyTrimmed(opts.Model, llmdefaults.GeminiModel),
 			providerClientConfig(opts),
 		)
 	case "anthropic":
@@ -273,13 +274,12 @@ func providerAuthConfig(opts ProviderOptions) auth.ProviderAuthConfig {
 		config.APIKey = strings.TrimSpace(opts.APIKey)
 	}
 
-	switch normalizeLowerTrimmed(config.Provider) {
-	case "openai-codex":
+	if defaults, ok := llmdefaults.ForKind(config.Provider); ok {
 		if strings.TrimSpace(config.AuthMode) == "" {
-			config.AuthMode = "oauth"
+			config.AuthMode = defaults.AuthMode
 		}
-		if strings.TrimSpace(config.OAuthProvider) == "" {
-			config.OAuthProvider = "openai-codex"
+		if normalizeLowerTrimmed(config.AuthMode) == "oauth" && strings.TrimSpace(config.OAuthProvider) == "" {
+			config.OAuthProvider = defaults.OAuthProvider
 		}
 	}
 

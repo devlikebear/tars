@@ -1,9 +1,10 @@
 package config
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/devlikebear/tars/internal/llmdefaults"
 )
 
 func applyDefaults(cfg *Config) {
@@ -290,73 +291,32 @@ func applyLLMPoolDefaults(cfg *Config) {
 		p.APIKey = strings.TrimSpace(p.APIKey)
 		p.ServiceTier = normalizeLLMServiceTier(p.ServiceTier)
 
+		defaults, ok := llmdefaults.ForKind(p.Kind)
 		if p.AuthMode == "" {
-			switch p.Kind {
-			case "openai-codex":
-				p.AuthMode = "oauth"
-			case "claude-code-cli":
-				p.AuthMode = "cli"
-			default:
+			if ok && defaults.AuthMode != "" {
+				p.AuthMode = defaults.AuthMode
+			} else {
 				p.AuthMode = "api-key"
 			}
 		}
-
-		switch p.Kind {
-		case "openai":
+		if ok {
 			if p.BaseURL == "" {
-				p.BaseURL = defaultOpenAIBaseURL
+				p.BaseURL = defaults.BaseURL
 			}
 			if p.APIKey == "" {
-				p.APIKey = os.Getenv("OPENAI_API_KEY")
+				p.APIKey = llmdefaults.APIKeyFromEnv(defaults)
 			}
-		case "openai-codex":
-			if p.BaseURL == "" {
-				p.BaseURL = defaultOpenAICodexBaseURL
+			if p.AuthMode == "oauth" && p.OAuthProvider == "" {
+				p.OAuthProvider = defaults.OAuthProvider
 			}
-			if p.APIKey == "" {
-				p.APIKey = firstNonEmpty(os.Getenv("OPENAI_CODEX_OAUTH_TOKEN"), os.Getenv("TARS_OPENAI_CODEX_OAUTH_TOKEN"))
+			// Preserve the existing behavior for providers that cannot satisfy
+			// explicit api-key mode without a key.
+			if p.AuthMode == "api-key" && p.APIKey == "" && defaults.AuthModeWhenAPIKeyAbsent != "" {
+				p.AuthMode = defaults.AuthModeWhenAPIKeyAbsent
+				if p.AuthMode == "oauth" && p.OAuthProvider == "" {
+					p.OAuthProvider = defaults.OAuthProvider
+				}
 			}
-		case "claude-code-cli":
-			// claude-code-cli resolves credentials through the local CLI,
-			// nothing to inject here.
-		case "gemini":
-			if p.BaseURL == "" {
-				p.BaseURL = defaultGeminiBaseURL
-			}
-			if p.APIKey == "" {
-				p.APIKey = os.Getenv("GEMINI_API_KEY")
-			}
-		case "gemini-native":
-			if p.BaseURL == "" {
-				p.BaseURL = defaultGeminiNativeBaseURL
-			}
-			if p.APIKey == "" {
-				p.APIKey = os.Getenv("GEMINI_API_KEY")
-			}
-		case "anthropic":
-			if p.BaseURL == "" {
-				p.BaseURL = defaultAnthropicBaseURL
-			}
-			if p.APIKey == "" {
-				p.APIKey = os.Getenv("ANTHROPIC_API_KEY")
-			}
-		}
-
-		if p.AuthMode == "oauth" && p.OAuthProvider == "" {
-			if provider := defaultOAuthProvider(p.Kind); provider != "" {
-				p.OAuthProvider = provider
-			}
-		}
-		// openai-codex falling back when api-key is requested but no key
-		// is present — preserve the old behavior of promoting to oauth.
-		if p.Kind == "openai-codex" && p.AuthMode == "api-key" && p.APIKey == "" {
-			p.AuthMode = "oauth"
-			if p.OAuthProvider == "" {
-				p.OAuthProvider = defaultOpenAICodexOAuthProvider
-			}
-		}
-		if p.Kind == "claude-code-cli" && p.AuthMode == "api-key" && p.APIKey == "" {
-			p.AuthMode = "cli"
 		}
 
 		cfg.LLMProviders[alias] = p
@@ -399,17 +359,4 @@ func normalizeLLMRoleDefaults(src map[string]string) map[string]string {
 		out[role] = tier
 	}
 	return out
-}
-
-func defaultOAuthProvider(provider string) string {
-	switch strings.TrimSpace(strings.ToLower(provider)) {
-	case "anthropic":
-		return defaultClaudeOAuthProvider
-	case "gemini", "gemini-native":
-		return defaultGeminiOAuthProvider
-	case "openai-codex":
-		return defaultOpenAICodexOAuthProvider
-	default:
-		return ""
-	}
 }

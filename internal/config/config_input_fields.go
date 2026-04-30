@@ -6,10 +6,11 @@ import (
 )
 
 type configInputField struct {
-	yamlKey string
-	envKeys []string
-	apply   func(*Config, string)
-	merge   func(*Config, Config)
+	yamlKey  string
+	yamlPath string
+	envKeys  []string
+	apply    func(*Config, string)
+	merge    func(*Config, Config)
 }
 
 var configInputFields = []configInputField{
@@ -28,14 +29,14 @@ var configInputFields = []configInputField{
 	stringField("api_user_token", []string{"API_USER_TOKEN", "TARS_API_USER_TOKEN"}, func(cfg *Config) *string { return &cfg.APIUserToken }, strings.TrimSpace),
 	stringField("api_admin_token", []string{"API_ADMIN_TOKEN", "TARS_API_ADMIN_TOKEN"}, func(cfg *Config) *string { return &cfg.APIAdminToken }, strings.TrimSpace),
 	boolField("api_allow_insecure_local_auth", []string{"API_ALLOW_INSECURE_LOCAL_AUTH", "TARS_API_ALLOW_INSECURE_LOCAL_AUTH"}, func(cfg *Config) *bool { return &cfg.APIAllowInsecureLocalAuth }),
-	intField("api_max_inflight_chat", []string{"API_MAX_INFLIGHT_CHAT", "TARS_API_MAX_INFLIGHT_CHAT"}, func(cfg *Config) *int { return &cfg.APIMaxInflightChat }, parsePositiveInt),
-	intField("api_max_inflight_agent_runs", []string{"API_MAX_INFLIGHT_AGENT_RUNS", "TARS_API_MAX_INFLIGHT_AGENT_RUNS"}, func(cfg *Config) *int { return &cfg.APIMaxInflightAgentRuns }, parsePositiveInt),
+	withYAMLPath(intField("api_max_inflight_chat", []string{"API_MAX_INFLIGHT_CHAT", "TARS_API_MAX_INFLIGHT_CHAT"}, func(cfg *Config) *int { return &cfg.APIMaxInflightChat }, parsePositiveInt), "api.max_inflight.chat"),
+	withYAMLPath(intField("api_max_inflight_agent_runs", []string{"API_MAX_INFLIGHT_AGENT_RUNS", "TARS_API_MAX_INFLIGHT_AGENT_RUNS"}, func(cfg *Config) *int { return &cfg.APIMaxInflightAgentRuns }, parsePositiveInt), "api.max_inflight.agent_runs"),
 	// Named provider pool + tier bindings. See docs/plans/llm-provider-pool.md
 	// and internal/config/llm_resolve.go.
-	llmProvidersField("llm_providers", []string{"LLM_PROVIDERS_JSON", "TARS_LLM_PROVIDERS_JSON"}),
-	llmTiersField("llm_tiers", []string{"LLM_TIERS_JSON", "TARS_LLM_TIERS_JSON"}),
-	stringField("llm_default_tier", []string{"LLM_DEFAULT_TIER", "TARS_LLM_DEFAULT_TIER"}, func(cfg *Config) *string { return &cfg.LLMDefaultTier }, lowerTrimmedString),
-	llmRoleDefaultsField("llm_role_defaults", []string{"LLM_ROLE_DEFAULTS_JSON", "TARS_LLM_ROLE_DEFAULTS_JSON"}),
+	withYAMLPath(llmProvidersField("llm_providers", []string{"LLM_PROVIDERS_JSON", "TARS_LLM_PROVIDERS_JSON"}), "llm.providers"),
+	withYAMLPath(llmTiersField("llm_tiers", []string{"LLM_TIERS_JSON", "TARS_LLM_TIERS_JSON"}), "llm.tiers"),
+	withYAMLPath(stringField("llm_default_tier", []string{"LLM_DEFAULT_TIER", "TARS_LLM_DEFAULT_TIER"}, func(cfg *Config) *string { return &cfg.LLMDefaultTier }, lowerTrimmedString), "llm.default_tier"),
+	withYAMLPath(llmRoleDefaultsField("llm_role_defaults", []string{"LLM_ROLE_DEFAULTS_JSON", "TARS_LLM_ROLE_DEFAULTS_JSON"}), "llm.role_defaults"),
 	stringField("memory_backend", []string{"MEMORY_BACKEND", "TARS_MEMORY_BACKEND"}, func(cfg *Config) *string { return &cfg.MemoryBackend }, lowerTrimmedString),
 	boolField("memory_semantic_enabled", []string{"MEMORY_SEMANTIC_ENABLED", "TARS_MEMORY_SEMANTIC_ENABLED"}, func(cfg *Config) *bool { return &cfg.MemorySemanticEnabled }),
 	stringField("memory_embed_provider", []string{"MEMORY_EMBED_PROVIDER", "TARS_MEMORY_EMBED_PROVIDER"}, func(cfg *Config) *string { return &cfg.MemoryEmbedProvider }, lowerTrimmedString),
@@ -55,7 +56,7 @@ var configInputFields = []configInputField{
 	stringField("pulse_active_hours", []string{"PULSE_ACTIVE_HOURS", "TARS_PULSE_ACTIVE_HOURS"}, func(cfg *Config) *string { return &cfg.PulseActiveHours }, strings.TrimSpace),
 	stringField("pulse_timezone", []string{"PULSE_TIMEZONE", "TARS_PULSE_TIMEZONE"}, func(cfg *Config) *string { return &cfg.PulseTimezone }, strings.TrimSpace),
 	stringField("pulse_min_severity", []string{"PULSE_MIN_SEVERITY", "TARS_PULSE_MIN_SEVERITY"}, func(cfg *Config) *string { return &cfg.PulseMinSeverity }, lowerTrimmedString),
-	stringListField("pulse_allowed_autofixes_json", []string{"PULSE_ALLOWED_AUTOFIXES_JSON", "TARS_PULSE_ALLOWED_AUTOFIXES_JSON"}, func(cfg *Config) *[]string { return &cfg.PulseAllowedAutofixes }, parseJSONStringList),
+	withYAMLPath(stringListField("pulse_allowed_autofixes_json", []string{"PULSE_ALLOWED_AUTOFIXES_JSON", "TARS_PULSE_ALLOWED_AUTOFIXES_JSON"}, func(cfg *Config) *[]string { return &cfg.PulseAllowedAutofixes }, parseJSONStringList), "automation.pulse.allowed_autofixes"),
 	boolField("pulse_notify_telegram", []string{"PULSE_NOTIFY_TELEGRAM", "TARS_PULSE_NOTIFY_TELEGRAM"}, func(cfg *Config) *bool { return &cfg.PulseNotifyTelegram }),
 	boolField("pulse_notify_session_events", []string{"PULSE_NOTIFY_SESSION_EVENTS", "TARS_PULSE_NOTIFY_SESSION_EVENTS"}, func(cfg *Config) *bool { return &cfg.PulseNotifySessionEvents }),
 	intField("pulse_cron_failure_threshold", []string{"PULSE_CRON_FAILURE_THRESHOLD", "TARS_PULSE_CRON_FAILURE_THRESHOLD"}, func(cfg *Config) *int { return &cfg.PulseCronFailureThreshold }, parsePositiveInt),
@@ -152,6 +153,9 @@ var configInputFields = []configInputField{
 var configInputFieldsByYAMLKey = func() map[string]configInputField {
 	index := make(map[string]configInputField, len(configInputFields))
 	for _, field := range configInputFields {
+		if strings.TrimSpace(field.yamlPath) == "" {
+			field.yamlPath = inferPreferredYAMLPathForKey(field.yamlKey)
+		}
 		index[field.yamlKey] = field
 	}
 	return index
@@ -174,6 +178,11 @@ func mergeConfigInputFields(dst *Config, src Config, fields []configInputField) 
 func configInputFieldByYAMLKey(key string) (configInputField, bool) {
 	field, ok := configInputFieldsByYAMLKey[strings.TrimSpace(strings.ToLower(key))]
 	return field, ok
+}
+
+func withYAMLPath(field configInputField, path string) configInputField {
+	field.yamlPath = strings.TrimSpace(path)
+	return field
 }
 
 func firstDefinedEnv(keys []string) string {
