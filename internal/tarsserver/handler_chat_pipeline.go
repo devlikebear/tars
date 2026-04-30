@@ -45,10 +45,11 @@ type chatAttachment struct {
 }
 
 type chatRequestPayload struct {
-	SessionID   string                   `json:"session_id"`
-	Message     string                   `json:"message"`
-	Attachments []chatAttachment         `json:"attachments,omitempty"`
-	Mentions    []chatFileMentionRequest `json:"mentions,omitempty"`
+	SessionID        string                       `json:"session_id"`
+	Message          string                       `json:"message"`
+	Attachments      []chatAttachment             `json:"attachments,omitempty"`
+	Mentions         []chatFileMentionRequest     `json:"mentions,omitempty"`
+	SubagentMentions []chatSubagentMentionRequest `json:"subagent_mentions,omitempty"`
 }
 
 func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerDeps) {
@@ -110,6 +111,8 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		"selected_skill_reason":           state.invokedSkillReason,
 		"mentioned_path_count":            len(state.mentionedPaths),
 		"mentioned_paths":                 state.mentionedPaths,
+		"mentioned_subagent_count":        len(state.mentionedSubagents),
+		"mentioned_subagents":             chatSubagentMentionNames(state.mentionedSubagents),
 	})
 	if state.compaction.Applied {
 		stream.compactionApplied(map[string]any{

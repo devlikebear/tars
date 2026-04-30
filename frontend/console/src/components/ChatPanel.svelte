@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
-  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listSkills } from '../lib/api'
-  import type { ChatAttachment, ChatEvent, SessionMessage, SkillDef } from '../lib/types'
+  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills } from '../lib/api'
+  import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, SessionMessage, SkillDef } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import {
     applyMentionCandidate,
+    buildSubagentMentionCandidates,
     filterSelectedMentionsForMessage,
     findActiveMentionTrigger,
     type ActiveMentionTrigger,
@@ -59,6 +60,8 @@
       selected_skill_reason?: string
       mentioned_path_count?: number
       mentioned_paths?: string[]
+      mentioned_subagent_count?: number
+      mentioned_subagents?: string[]
     }) => void
     onToolComplete?: (toolName: string) => void
     onSessionReady?: (sessionId: string) => void
@@ -108,6 +111,8 @@
     selected_skill_reason?: string
     mentioned_path_count?: number
     mentioned_paths?: string[]
+    mentioned_subagent_count?: number
+    mentioned_subagents?: string[]
   } = $state({})
 
   function publishContextInfo(next: typeof contextInfo) {
@@ -260,6 +265,8 @@
           selected_skill_reason: event.selected_skill_reason ?? contextInfo.selected_skill_reason,
           mentioned_path_count: event.mentioned_path_count ?? contextInfo.mentioned_path_count,
           mentioned_paths: event.mentioned_paths ?? contextInfo.mentioned_paths,
+          mentioned_subagent_count: event.mentioned_subagent_count ?? contextInfo.mentioned_subagent_count,
+          mentioned_subagents: event.mentioned_subagents ?? contextInfo.mentioned_subagents,
         })
         break
       case 'compaction_applied':
@@ -321,6 +328,7 @@
   let activeMentionTrigger: ActiveMentionTrigger | null = $state(null)
   let selectedMentions: SelectedChatMention[] = $state([])
   let mentionRequestSeq = 0
+  let mentionSubagents: AgentRuntimeSubagent[] = $state([])
   let activeSelectedMentions = $derived(filterSelectedMentionsForMessage(selectedMentions, chatInput))
   let slashSkills: SkillDef[] = $state([])
   let slashOpen = $state(false)
@@ -349,6 +357,15 @@
       slashSkills = await listSkills()
     } catch {
       slashSkills = []
+    }
+  }
+
+  async function loadMentionSubagents() {
+    try {
+      const result = await listAgentRuntimeSubagents()
+      mentionSubagents = (result.agents ?? []).filter((agent) => agent.enabled !== false)
+    } catch {
+      mentionSubagents = []
     }
   }
 
@@ -381,9 +398,16 @@
     mentionOpen = true
     mentionLoading = true
     try {
-      const result = await listChatFileMentions(chatSessionId || sessionId, trigger.query, 30)
+      const [result, subagentResult] = await Promise.all([
+        listChatFileMentions(chatSessionId || sessionId, trigger.query, 30),
+        mentionSubagents.length > 0
+          ? Promise.resolve({ agents: mentionSubagents })
+          : listAgentRuntimeSubagents().catch(() => ({ agents: [] as AgentRuntimeSubagent[] })),
+      ])
       if (seq !== mentionRequestSeq) return
-      mentionCandidates = result.candidates
+      mentionSubagents = (subagentResult.agents ?? []).filter((agent) => agent.enabled !== false)
+      const subagentCandidates = buildSubagentMentionCandidates(trigger.query, mentionSubagents, 12)
+      mentionCandidates = [...result.candidates, ...subagentCandidates].sort(compareMentionCandidates)
       mentionActiveIndex = 0
     } catch {
       if (seq !== mentionRequestSeq) return
@@ -410,6 +434,36 @@
       textareaEl?.focus()
       textareaEl?.setSelectionRange(applied.caret, applied.caret)
     })
+  }
+
+  function compareMentionCandidates(a: ChatMentionCandidate, b: ChatMentionCandidate): number {
+    const rank = (kind: ChatMentionCandidate['kind']) => kind === 'directory' ? 0 : kind === 'file' ? 1 : 2
+    const diff = rank(a.kind) - rank(b.kind)
+    if (diff !== 0) return diff
+    return a.path.toLowerCase().localeCompare(b.path.toLowerCase())
+  }
+
+  function mentionKindLabel(kind: ChatMentionCandidate['kind'] | SelectedChatMention['kind']): string {
+    if (kind === 'directory') return 'DIR'
+    if (kind === 'subagent') return 'AGENT'
+    return 'FILE'
+  }
+
+  function mentionSectionLabel(kind: ChatMentionCandidate['kind']): string {
+    if (kind === 'directory') return 'Directories'
+    if (kind === 'subagent') return 'Subagents'
+    return 'Files'
+  }
+
+  function mentionOptionMeta(candidate: ChatMentionCandidate): string {
+    if (candidate.kind === 'subagent') {
+      return [candidate.tier, candidate.model, candidate.description].filter(Boolean).join(' · ') || 'subagent'
+    }
+    return candidate.root_label
+  }
+
+  function isFileOrDirectoryMention(mention: SelectedChatMention): mention is SelectedChatMention & { kind: 'file' | 'directory' } {
+    return mention.kind === 'file' || mention.kind === 'directory'
   }
 
   function selectSlashCandidate(candidate: SlashCommandCandidate) {
@@ -462,6 +516,8 @@
 
     const currentFiles = [...attachedFiles]
     const currentMentions = filterSelectedMentionsForMessage(selectedMentions, message)
+    const fileMentions = currentMentions.filter(isFileOrDirectoryMention)
+    const subagentMentions = currentMentions.filter((mention) => mention.kind === 'subagent')
     attachedFiles = []
     selectedMentions = []
     closeMentionMenu()
@@ -487,10 +543,14 @@
           message,
           session_id: chatSessionId || 'new',
           attachments: chatAttachments,
-          mentions: currentMentions.map((mention) => ({
+          mentions: fileMentions.map((mention) => ({
             kind: mention.kind,
             root: mention.root,
             path: mention.path,
+          })),
+          subagent_mentions: subagentMentions.map((mention) => ({
+            name: mention.path,
+            token: mention.token,
           })),
         },
         (event) => handleChatEvent(event, assistantId),
@@ -791,6 +851,7 @@
 
   onMount(async () => {
     void loadSlashSkills()
+    void loadMentionSubagents()
     if (sessionId) {
       chatSessionId = sessionId
       chatMessages = [{ id: 'system-init', role: 'system', text: `Session: ${sessionId.slice(0, 8)}...` }]
@@ -910,7 +971,7 @@
     <div class="chat-mentions">
       {#each activeSelectedMentions as mention, i}
         <button type="button" class="mention-chip" title={mention.root} onclick={() => removeSelectedMention(i)}>
-          <span class="mention-kind">{mention.kind === 'directory' ? 'DIR' : 'FILE'}</span>
+          <span class="mention-kind">{mentionKindLabel(mention.kind)}</span>
           <span class="mention-label">{mention.token}</span>
           <span class="mention-remove">&times;</span>
         </button>
@@ -979,6 +1040,9 @@
               <div class="mention-empty">No matches</div>
             {:else}
               {#each mentionCandidates as candidate, i}
+                {#if i === 0 || mentionCandidates[i - 1]?.kind !== candidate.kind}
+                  <div class="mention-section">{mentionSectionLabel(candidate.kind)}</div>
+                {/if}
                 <button
                   type="button"
                   class:active={i === mentionActiveIndex}
@@ -986,9 +1050,9 @@
                   onmousedown={(e) => e.preventDefault()}
                   onclick={() => selectMention(candidate)}
                 >
-                  <span class="mention-option-kind">{candidate.kind === 'directory' ? 'DIR' : 'FILE'}</span>
+                  <span class="mention-option-kind">{mentionKindLabel(candidate.kind)}</span>
                   <span class="mention-option-main">{candidate.path}</span>
-                  <span class="mention-option-root">{candidate.root_label}</span>
+                  <span class="mention-option-root">{mentionOptionMeta(candidate)}</span>
                 </button>
               {/each}
             {/if}
@@ -1340,7 +1404,8 @@
     max-height: 300px;
   }
 
-  .slash-section {
+  .slash-section,
+  .mention-section {
     padding: 5px 8px 3px;
     color: var(--text-ghost);
     font-family: var(--font-mono);
@@ -1404,6 +1469,13 @@
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-ghost);
+  }
+
+  .mention-option-root {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .mention-empty {

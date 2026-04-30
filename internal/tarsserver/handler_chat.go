@@ -941,6 +941,8 @@ func newChatAPIHandlerWithRuntimeConfig(
 			"compaction_keep_recent_fraction": tooling.Compaction.KeepRecentFraction,
 			"compaction_last_mode":            strings.TrimSpace(sess.LastCompactionMode),
 			"used_tool_names":                 latestTurnUsedTools(historySnapshot.Messages),
+			"mentioned_subagent_count":        0,
+			"mentioned_subagents":             []string{},
 			"prompt_override":                 sess.PromptOverride,
 		})
 	})

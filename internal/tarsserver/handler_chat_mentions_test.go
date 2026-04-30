@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,7 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
@@ -208,6 +211,168 @@ func TestChatAPIRejectsMentionOutsideSessionWorkDirs(t *testing.T) {
 	if client.callCount != 0 {
 		t.Fatalf("expected invalid mention to stop before LLM call, got %d calls", client.callCount)
 	}
+}
+
+func TestChatAPIInjectsSubagentMentionHints(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	sess, err := store.Create("subagent mention")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	runtime := newChatMentionTestRuntime(t, root, store)
+	client := &mockLLMClient{
+		response: llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "ok"}},
+	}
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		client,
+		nil,
+		logger,
+		8,
+		nil,
+		"",
+		chatToolingOptions{AgentRuntime: runtime},
+	)
+
+	body := map[string]any{
+		"session_id": sess.ID,
+		"message":    "ask @researcher to inspect the auth flow",
+		"subagent_mentions": []chatSubagentMentionRequest{
+			{Name: "researcher", Token: "@researcher"},
+		},
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if len(client.seenMessages) == 0 || len(client.seenMessages[0]) == 0 {
+		t.Fatalf("expected LLM messages")
+	}
+	systemPrompt := client.seenMessages[0][0].Content
+	for _, want := range []string{
+		"## Mentioned Subagents",
+		"researcher",
+		"Deep research subagent",
+		"subagents_run",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Fatalf("expected system prompt to contain %q, got %q", want, systemPrompt)
+		}
+	}
+	responseBody := rec.Body.String()
+	for _, want := range []string{
+		`"mentioned_subagent_count":1`,
+		`"mentioned_subagents":["researcher"]`,
+	} {
+		if !strings.Contains(responseBody, want) {
+			t.Fatalf("expected SSE context info to contain %q, got %q", want, responseBody)
+		}
+	}
+}
+
+func TestChatAPIRejectsUnknownSubagentMention(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	sess, err := store.Create("missing subagent mention")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	runtime := newChatMentionTestRuntime(t, root, store)
+	client := &mockLLMClient{
+		response: llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "should not run"}},
+	}
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		client,
+		nil,
+		logger,
+		8,
+		nil,
+		"",
+		chatToolingOptions{AgentRuntime: runtime},
+	)
+
+	body := map[string]any{
+		"session_id": sess.ID,
+		"message":    "ask @missing to inspect the auth flow",
+		"subagent_mentions": []chatSubagentMentionRequest{
+			{Name: "missing", Token: "@missing"},
+		},
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "subagent mention not found") {
+		t.Fatalf("expected missing subagent error, got %q", rec.Body.String())
+	}
+	if client.callCount != 0 {
+		t.Fatalf("expected invalid mention to stop before LLM call, got %d calls", client.callCount)
+	}
+}
+
+func newChatMentionTestRuntime(t *testing.T, root string, store *session.Store) *agentruntime.Runtime {
+	t.Helper()
+	runPrompt := func(_ context.Context, _ string, prompt string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
+		return "summary: " + prompt, nil
+	}
+	explorer, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
+		Name:        "explorer",
+		Description: "Read-only explorer",
+		RunPrompt:   runPrompt,
+	})
+	if err != nil {
+		t.Fatalf("new explorer executor: %v", err)
+	}
+	researcher, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
+		Name:        "researcher",
+		Description: "Deep research subagent",
+		Tier:        "heavy",
+		RunPrompt:   runPrompt,
+	})
+	if err != nil {
+		t.Fatalf("new researcher executor: %v", err)
+	}
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:      true,
+		WorkspaceDir: root,
+		SessionStore: store,
+		Executors:    []agentruntime.AgentExecutor{explorer, researcher},
+		DefaultAgent: "explorer",
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := runtime.Close(ctx); err != nil {
+			t.Fatalf("close agent runtime: %v", err)
+		}
+	})
+	return runtime
 }
 
 func contentBlockText(blocks []llm.ContentBlock) string {

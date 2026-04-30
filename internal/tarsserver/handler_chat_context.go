@@ -33,6 +33,7 @@ type chatRunState struct {
 	blockedTools         map[string]tool.BlockedToolError
 	compaction           chatCompactionInfo
 	mentionedPaths       []string
+	mentionedSubagents   []chatSubagentMention
 	relevantMemoryCount  int
 	relevantMemoryTokens int
 	llmClient            llm.Client
@@ -57,6 +58,7 @@ func buildSessionChatRunState(
 	sessionID string,
 	userMessage string,
 	contentBlocks []llm.ContentBlock,
+	subagentMentions []chatSubagentMention,
 	authRole string,
 	deps chatHandlerDeps,
 ) (chatRunState, error) {
@@ -129,6 +131,9 @@ func buildSessionChatRunState(
 	if sessErr == nil && strings.TrimSpace(sess.PromptOverride) != "" {
 		systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(sess.PromptOverride) + "\n"
 	}
+	if hint := formatChatSubagentMentionHint(subagentMentions); hint != "" {
+		systemPrompt += hint
+	}
 
 	llmMessages := buildLLMMessagesWithBlocks(systemPrompt, history, userMessage, contentBlocks)
 	resolvedTools := resolveInjectedToolPolicy(registry, authRole, deps.tooling.ToolsAllowHighRiskUser, sessionToolConfigs...)
@@ -155,6 +160,7 @@ func buildSessionChatRunState(
 		llmMessages:          llmMessages,
 		injectedSchemas:      injectedSchemas,
 		blockedTools:         resolvedTools.Blocked,
+		mentionedSubagents:   subagentMentions,
 		relevantMemoryCount:  contextDetails.RelevantMemoryCount,
 		relevantMemoryTokens: contextDetails.RelevantMemoryTokens,
 		llmClient:            chatClient,
@@ -190,6 +196,10 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusBadRequest, err.Error(), err
 	}
 	contentBlocks = append(contentBlocks, mentionBlocks...)
+	subagentMentions, err := normalizeChatSubagentMentions(deps.tooling.AgentRuntime, req.SubagentMentions)
+	if err != nil {
+		return chatRunState{}, http.StatusBadRequest, err.Error(), err
+	}
 	authRole := strings.TrimSpace(serverauth.RoleFromRequest(r))
 	state, err := buildSessionChatRunState(
 		requestWorkspaceDir,
@@ -198,6 +208,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		sessionID,
 		req.Message,
 		contentBlocks,
+		subagentMentions,
 		authRole,
 		deps,
 	)
@@ -207,6 +218,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 	state.compaction = compactionInfo
 	state.mentionedPaths = mentionedPaths
+	state.mentionedSubagents = subagentMentions
 	if compactionInfo.Applied && strings.TrimSpace(compactionInfo.Mode) != "" {
 		if setErr := reqStore.SetLastCompactionMode(sessionID, compactionInfo.Mode); setErr != nil {
 			deps.logger.Warn().Err(setErr).Str("session_id", sessionID).Msg("persist last compaction mode failed")
