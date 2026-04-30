@@ -3,7 +3,8 @@
 #   tars init                         # preferred starter path for packaged installs
 #   tars doctor --fix                 # create starter files and check BYOK readiness
 #   tars service install && tars service start
-#   go run ./cmd/tars serve --config ./config/tars.config.example.yaml --serve-api
+#   go run ./cmd/tars serve --config ./config/tars.config.example.yaml --config-check
+#   go run ./cmd/tars serve --config ./config/tars.config.example.yaml
 # Health check endpoint: GET /v1/healthz
 #
 # `config/default.yaml` is the minimal active default that ships with TARS.

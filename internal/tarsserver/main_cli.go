@@ -57,16 +57,16 @@ func newRootCmd(opts *options, cfg config.Config, stdout, stderr io.Writer, nowF
 				return &cli.ExitError{Code: 1, Err: err}
 			}
 
-			if opts.ServeAPI {
-				return runServeAPICommand(parentCtx, opts, deps, nowFn, stdout, stderr, logger)
+			if opts.ConfigCheck {
+				logger.Info().
+					Str("workspace_dir", deps.cfg.WorkspaceDir).
+					Msg("tars config check passed")
+
+				fmt.Fprintln(stdout, "tars config check passed")
+				return nil
 			}
 
-			logger.Info().
-				Str("workspace_dir", deps.cfg.WorkspaceDir).
-				Msg("tars startup complete")
-
-			fmt.Fprintln(stdout, "tars startup complete (no --serve-api flag, exiting)")
-			return nil
+			return runServeAPICommand(parentCtx, opts, deps, nowFn, stdout, stderr, logger)
 		},
 	}
 
@@ -76,7 +76,7 @@ func newRootCmd(opts *options, cfg config.Config, stdout, stderr io.Writer, nowF
 	cmd.Flags().StringVar(&opts.WorkspaceDir, "workspace-dir", opts.WorkspaceDir, "workspace directory override")
 	cmd.Flags().StringVar(&opts.LogFile, "log-file", opts.LogFile, "append json logs to file")
 	cmd.Flags().BoolVar(&opts.Verbose, "verbose", opts.Verbose, "enable verbose debug logging")
-	cmd.Flags().BoolVar(&opts.ServeAPI, "serve-api", opts.ServeAPI, "serve tars http api")
+	cmd.Flags().BoolVar(&opts.ConfigCheck, "config-check", opts.ConfigCheck, "validate config and runtime dependencies, then exit without starting the http api")
 	cmd.Flags().StringVar(&opts.APIAddr, "api-addr", opts.APIAddr, "http api listen address")
 
 	return cmd, opts

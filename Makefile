@@ -278,7 +278,7 @@ logs-assistant-err:
 	@tail -f "$(ASSISTANT_STDERR_LOG)"
 
 dev-serve:
-	$(GO) run ./cmd/tars serve --verbose --serve-api $(if $(TARS_CONFIG),--config $(TARS_CONFIG),) --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
+	$(GO) run ./cmd/tars serve --verbose $(if $(TARS_CONFIG),--config $(TARS_CONFIG),) --workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
 
 dev-serve-once:
 	$(GO) run ./cmd/tars serve --verbose --run-once $(if $(TARS_CONFIG),--config $(TARS_CONFIG),) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
@@ -303,7 +303,7 @@ dev-console: console-install
 	TARS_API_AUTH_MODE=off \
 	TARS_DASHBOARD_AUTH_MODE=off \
 	TARS_API_ALLOW_INSECURE_LOCAL_AUTH=true \
-	$(GO) run ./cmd/tars serve --verbose --serve-api \
+	$(GO) run ./cmd/tars serve --verbose \
 		$(if $(TARS_CONFIG),--config $(TARS_CONFIG),) \
 		--workspace-dir $(WORKSPACE_DIR) --api-addr $(API_ADDR) $(ARGS)
 

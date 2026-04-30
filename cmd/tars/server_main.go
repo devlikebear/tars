@@ -14,7 +14,7 @@ type serveOptions struct {
 	workspaceDir string
 	logFile      string
 	verbose      bool
-	serveAPI     bool
+	configCheck  bool
 	apiAddr      string
 }
 
@@ -24,9 +24,8 @@ const defaultServeLogFile = ".logs/tars-debug.log"
 
 func defaultServeOptions() serveOptions {
 	return serveOptions{
-		logFile:  defaultServeLogFile,
-		serveAPI: true,
-		apiAddr:  tarsserver.DefaultAPIAddr,
+		logFile: defaultServeLogFile,
+		apiAddr: tarsserver.DefaultAPIAddr,
 	}
 }
 
@@ -43,7 +42,7 @@ func newServeCommand(stdout, stderr io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&opts.workspaceDir, "workspace-dir", "", "workspace directory override")
 	cmd.Flags().StringVar(&opts.logFile, "log-file", opts.logFile, "append json logs to file")
 	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "enable verbose debug logging")
-	cmd.Flags().BoolVar(&opts.serveAPI, "serve-api", opts.serveAPI, "serve tars http api")
+	cmd.Flags().BoolVar(&opts.configCheck, "config-check", opts.configCheck, "validate config and runtime dependencies, then exit without starting the http api")
 	cmd.Flags().StringVar(&opts.apiAddr, "api-addr", opts.apiAddr, "http api listen address")
 	return cmd
 }
@@ -54,7 +53,7 @@ func runServeCommand(ctx context.Context, opts serveOptions, stdout, stderr io.W
 		WorkspaceDir: strings.TrimSpace(opts.workspaceDir),
 		LogFile:      strings.TrimSpace(opts.logFile),
 		Verbose:      opts.verbose,
-		ServeAPI:     opts.serveAPI,
+		ConfigCheck:  opts.configCheck,
 		APIAddr:      strings.TrimSpace(opts.apiAddr),
 	}, stdout, stderr)
 }

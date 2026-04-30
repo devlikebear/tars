@@ -37,7 +37,7 @@ func Serve(ctx context.Context, serveOpts ServeOptions, stdout, stderr io.Writer
 		WorkspaceDir: strings.TrimSpace(serveOpts.WorkspaceDir),
 		LogFile:      strings.TrimSpace(serveOpts.LogFile),
 		Verbose:      serveOpts.Verbose,
-		ServeAPI:     serveOpts.ServeAPI,
+		ConfigCheck:  serveOpts.ConfigCheck,
 		APIAddr:      strings.TrimSpace(serveOpts.APIAddr),
 	}
 	applyOptionDefaults(opts)

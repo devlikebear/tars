@@ -173,6 +173,9 @@ export ANTHROPIC_API_KEY="your-key"
 # Validate setup
 tars doctor --fix
 
+# Validate server bootstrap without binding the API
+tars serve --config-check
+
 # Start the server
 tars serve
 

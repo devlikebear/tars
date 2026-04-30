@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.68] - 2026-05-01
+
+### Changed
+
+- Replaced the ambiguous `tars serve --serve-api=false` opt-out path with explicit `tars serve --config-check`.
+- `tars serve --config-check` now validates server config, workspace setup, auth safety, usage tracking, LLM routing, and semantic memory configuration before exiting without binding the HTTP API.
+- Development serve targets now start the API directly instead of passing the removed `--serve-api` flag.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./cmd/tars ./internal/tarsserver -run 'ServeSubcommand|TestRun_|ValidateAPIAuthSecurity'`
+
+### Closed
+
+- Closes #417.
+
 ## [0.31.67] - 2026-05-01
 
 ### Added

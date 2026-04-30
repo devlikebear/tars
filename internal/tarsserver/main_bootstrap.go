@@ -68,7 +68,7 @@ func buildRuntimeDeps(opts *options, cfg config.Config, nowFn func() time.Time, 
 		return runtimeDeps{}, fmt.Errorf("options are required")
 	}
 
-	if err := validateAPIAuthSecurity(cfg, opts.ServeAPI); err != nil {
+	if err := validateAPIAuthSecurity(cfg); err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "validate_config", err: err}
 	}
 
@@ -105,11 +105,6 @@ func buildRuntimeDeps(opts *options, cfg config.Config, nowFn func() time.Time, 
 	}
 	deps.usageTracker = tracker
 
-	needLLM := opts.ServeAPI
-	if !needLLM {
-		return deps, nil
-	}
-
 	router, err := buildLLMRouter(cfg, tracker)
 	if err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "init_llm", err: err}
@@ -135,10 +130,7 @@ func buildRuntimeDeps(opts *options, cfg config.Config, nowFn func() time.Time, 
 	return deps, nil
 }
 
-func validateAPIAuthSecurity(cfg config.Config, serveAPI bool) error {
-	if !serveAPI {
-		return nil
-	}
+func validateAPIAuthSecurity(cfg config.Config) error {
 	mode := strings.TrimSpace(strings.ToLower(cfg.APIAuthMode))
 	switch mode {
 	case "off", "external-required":
