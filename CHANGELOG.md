@@ -6,6 +6,28 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.70] - 2026-05-01
+
+### Changed
+
+- Clarified arbitrary root file previews by routing selected filesystem roots through `/v1/filesystem/files` while keeping `/v1/workspace/files` as the workspace-artifacts alias.
+- Filesystem previews now have traversal, symlink, and explicit-root coverage around the selected root boundary.
+- Workspace reset responses now report partial deletion/reinitialization failures and return an error when reset is incomplete.
+
+### Fixed
+
+- Settings reset messaging now uses the server's `removed` count instead of the stale `removed_dirs` field.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'WorkspaceFilesHandler_(Allows|Rejects)|ResetWorkspaceReports|RegisterAPIRoutes'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver`
+- `npm run check` in `frontend/console`
+
+### Closed
+
+- Closes #413.
+
 ## [0.31.69] - 2026-05-01
 
 ### Changed
