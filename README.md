@@ -211,6 +211,8 @@ Frontend API response types are maintained in the console source with the curren
 | Operate | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
 | Setup | Settings | `/console/config` | Quick Start onboarding plus structured object/array editing, typed LLM tier editing, pending-change impact previews, and field metadata badges |
 
+Settings field metadata, preferred YAML patch paths, and compatible nested YAML parsing are kept together in the config field registry so console schema and config file updates stay aligned.
+
 ## Requirements
 
 - Go 1.25.6+ (for building from source)

@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/devlikebear/tars/internal/llmdefaults"
 )
 
 func TestConfigInputFields_ApplyFromEnvUsesConfiguredAliases(t *testing.T) {
@@ -413,7 +415,11 @@ func TestLoad_LLMPoolKindDefaults_GeminiNative(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	p := cfg.LLMProviders["p"]
-	if p.BaseURL != "https://generativelanguage.googleapis.com/v1beta" {
+	defaults, ok := llmdefaults.ForKind("gemini-native")
+	if !ok {
+		t.Fatal("expected shared gemini-native provider defaults")
+	}
+	if p.BaseURL != defaults.BaseURL {
 		t.Errorf("expected gemini-native base url, got %q", p.BaseURL)
 	}
 	if p.APIKey != "gemini-key" {

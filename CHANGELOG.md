@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.77] - 2026-05-01
+
+### Changed
+
+- Config YAML path metadata is now materialized from the config input-field registry instead of a large separate key switch.
+- LLM provider-kind defaults now live in a shared defaults table used by config normalization and provider construction.
+
+### Documentation
+
+- README now notes that console Settings and YAML patch paths share the config field registry.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/config ./internal/llm ./internal/tarsserver`
+
+### Closed
+
+- Closes #406.
+
 ## [0.31.76] - 2026-05-01
 
 ### Changed

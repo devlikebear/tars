@@ -4,39 +4,21 @@ import "strings"
 
 func preferredYAMLPathForKey(key string) string {
 	key = strings.TrimSpace(strings.ToLower(key))
+	if field, ok := configInputFieldByYAMLKey(key); ok && strings.TrimSpace(field.yamlPath) != "" {
+		return field.yamlPath
+	}
+	return inferPreferredYAMLPathForKey(key)
+}
+
+func inferPreferredYAMLPathForKey(key string) string {
+	key = strings.TrimSpace(strings.ToLower(key))
 	switch key {
 	case "workspace_dir":
 		return "runtime.workspace_dir"
 	case "plan_clarify_mode":
 		return "runtime.plan_clarify_mode"
-	case "session_default_id":
-		return "runtime.session.default_id"
-	case "session_telegram_scope":
-		return "runtime.session.telegram_scope"
-	case "log_level":
-		return "log.level"
-	case "log_file":
-		return "log.file"
-	case "log_rotate_max_size_mb":
-		return "log.rotate.max_size_mb"
-	case "log_rotate_max_days":
-		return "log.rotate.max_days"
-	case "log_rotate_max_backups":
-		return "log.rotate.max_backups"
 	case "dashboard_auth_mode":
 		return "api.dashboard.auth_mode"
-	case "api_max_inflight_chat":
-		return "api.max_inflight.chat"
-	case "api_max_inflight_agent_runs":
-		return "api.max_inflight.agent_runs"
-	case "llm_providers":
-		return "llm.providers"
-	case "llm_tiers":
-		return "llm.tiers"
-	case "llm_default_tier":
-		return "llm.default_tier"
-	case "llm_role_defaults":
-		return "llm.role_defaults"
 	case "agent_max_iterations":
 		return "automation.agent.max_iterations"
 	case "cron_run_history_limit":
@@ -49,141 +31,45 @@ func preferredYAMLPathForKey(key string) string {
 		return "automation.notify.when_no_clients"
 	case "schedule_timezone":
 		return "automation.schedule.timezone"
-	case "usage_limit_daily_usd":
-		return "usage.limits.daily_usd"
-	case "usage_limit_weekly_usd":
-		return "usage.limits.weekly_usd"
-	case "usage_limit_monthly_usd":
-		return "usage.limits.monthly_usd"
-	case "usage_limit_mode":
-		return "usage.limits.mode"
 	case "usage_price_overrides_json":
 		return "usage.price_overrides"
-	case "memory_backend":
-		return "memory.backend"
-	case "memory_semantic_enabled":
-		return "memory.semantic.enabled"
-	case "memory_embed_provider":
-		return "memory.embed.provider"
-	case "memory_embed_base_url":
-		return "memory.embed.base_url"
-	case "memory_embed_api_key":
-		return "memory.embed.api_key"
-	case "memory_embed_model":
-		return "memory.embed.model"
-	case "memory_embed_dimensions":
-		return "memory.embed.dimensions"
-	case "assistant_enabled":
-		return "assistant.enabled"
-	case "assistant_hotkey":
-		return "assistant.hotkey"
-	case "assistant_whisper_bin":
-		return "assistant.whisper_bin"
-	case "assistant_ffmpeg_bin":
-		return "assistant.ffmpeg_bin"
-	case "assistant_tts_bin":
-		return "assistant.tts_bin"
-	case "compaction_trigger_tokens":
-		return "compaction.trigger_tokens"
-	case "compaction_keep_recent_tokens":
-		return "compaction.keep_recent_tokens"
-	case "compaction_keep_recent_fraction":
-		return "compaction.keep_recent_fraction"
-	case "compaction_llm_mode":
-		return "compaction.llm_mode"
-	case "compaction_llm_timeout_seconds":
-		return "compaction.llm_timeout_seconds"
 	case "mcp_command_allowlist_json":
 		return "extensions.mcp.command_allowlist"
 	case "mcp_servers_json":
 		return "extensions.mcp.servers"
-	case "agentruntime_enabled":
-		return "agentruntime.enabled"
-	case "agentruntime_default_agent":
-		return "agentruntime.default_agent"
-	case "agentruntime_task_override":
-		return "agentruntime.task_override"
-	case "agentruntime_agents_json":
-		return "agentruntime.agents.list"
-	case "agentruntime_agents_watch":
-		return "agentruntime.agents.watch"
-	case "agentruntime_agents_watch_debounce_ms":
-		return "agentruntime.agents.watch_debounce_ms"
-	case "agentruntime_persistence_enabled":
-		return "agentruntime.persistence.enabled"
-	case "agentruntime_persistence_dir":
-		return "agentruntime.persistence.dir"
-	case "agentruntime_runs_persistence_enabled":
-		return "agentruntime.runs.persistence_enabled"
-	case "agentruntime_runs_max_records":
-		return "agentruntime.runs.max_records"
-	case "agentruntime_channels_persistence_enabled":
-		return "agentruntime.channels.persistence_enabled"
-	case "agentruntime_channels_max_messages_per_channel":
-		return "agentruntime.channels.max_messages_per_channel"
-	case "agentruntime_subagents_max_threads":
-		return "agentruntime.subagents.max_threads"
-	case "agentruntime_subagents_max_depth":
-		return "agentruntime.subagents.max_depth"
-	case "agentruntime_consensus_enabled":
-		return "agentruntime.consensus.enabled"
-	case "agentruntime_consensus_max_fanout":
-		return "agentruntime.consensus.max_fanout"
-	case "agentruntime_consensus_budget_tokens":
-		return "agentruntime.consensus.budget_tokens"
-	case "agentruntime_consensus_budget_usd":
-		return "agentruntime.consensus.budget_usd"
-	case "agentruntime_consensus_timeout_seconds":
-		return "agentruntime.consensus.timeout_seconds"
-	case "agentruntime_consensus_allowed_aliases_json":
-		return "agentruntime.consensus.allowed_aliases"
-	case "agentruntime_consensus_concurrent_runs":
-		return "agentruntime.consensus.concurrent_runs"
-	case "agentruntime_restore_on_startup":
-		return "agentruntime.restore_on_startup"
-	case "agentruntime_report_summary_enabled":
-		return "agentruntime.report.summary_enabled"
-	case "agentruntime_archive_enabled":
-		return "agentruntime.archive.enabled"
-	case "agentruntime_archive_dir":
-		return "agentruntime.archive.dir"
-	case "agentruntime_archive_retention_days":
-		return "agentruntime.archive.retention_days"
-	case "agentruntime_archive_max_file_bytes":
-		return "agentruntime.archive.max_file_bytes"
 	case "telegram_bot_token":
 		return "channels.telegram.bot_token"
-	case "skills_enabled":
-		return "extensions.skills.enabled"
-	case "skills_watch":
-		return "extensions.skills.watch"
-	case "skills_watch_debounce_ms":
-		return "extensions.skills.watch_debounce_ms"
-	case "skills_extra_dirs_json":
-		return "extensions.skills.extra_dirs"
-	case "skills_bundled_dir":
-		return "extensions.skills.bundled_dir"
-	case "plugins_enabled":
-		return "extensions.plugins.enabled"
-	case "plugins_watch":
-		return "extensions.plugins.watch"
-	case "plugins_watch_debounce_ms":
-		return "extensions.plugins.watch_debounce_ms"
-	case "plugins_extra_dirs_json":
-		return "extensions.plugins.extra_dirs"
-	case "plugins_bundled_dir":
-		return "extensions.plugins.bundled_dir"
-	case "plugins_allow_mcp_servers":
-		return "extensions.plugins.allow_mcp_servers"
 	}
 
 	switch {
+	case strings.HasPrefix(key, "session_"):
+		return "runtime.session." + strings.TrimPrefix(key, "session_")
+	case strings.HasPrefix(key, "log_rotate_"):
+		return "log.rotate." + strings.TrimPrefix(key, "log_rotate_")
+	case strings.HasPrefix(key, "log_"):
+		return "log." + strings.TrimPrefix(key, "log_")
+	case strings.HasPrefix(key, "api_max_inflight_"):
+		return "api.max_inflight." + strings.TrimPrefix(key, "api_max_inflight_")
 	case strings.HasPrefix(key, "api_"):
 		return "api." + strings.TrimPrefix(key, "api_")
+	case strings.HasPrefix(key, "llm_"):
+		return "llm." + strings.TrimPrefix(key, "llm_")
+	case strings.HasPrefix(key, "usage_limit_"):
+		return "usage.limits." + strings.TrimPrefix(key, "usage_limit_")
+	case strings.HasPrefix(key, "memory_semantic_"):
+		return "memory.semantic." + strings.TrimPrefix(key, "memory_semantic_")
+	case strings.HasPrefix(key, "memory_embed_"):
+		return "memory.embed." + strings.TrimPrefix(key, "memory_embed_")
+	case strings.HasPrefix(key, "memory_"):
+		return "memory." + strings.TrimPrefix(key, "memory_")
 	case strings.HasPrefix(key, "pulse_"):
 		return "automation.pulse." + strings.TrimPrefix(key, "pulse_")
 	case strings.HasPrefix(key, "reflection_"):
 		return "automation.reflection." + strings.TrimPrefix(key, "reflection_")
+	case strings.HasPrefix(key, "assistant_"):
+		return "assistant." + strings.TrimPrefix(key, "assistant_")
+	case strings.HasPrefix(key, "compaction_"):
+		return "compaction." + strings.TrimPrefix(key, "compaction_")
 	case strings.HasPrefix(key, "tools_web_search_perplexity_"):
 		return "tools.web_search.perplexity." + strings.TrimPrefix(key, "tools_web_search_perplexity_")
 	case strings.HasPrefix(key, "tools_web_search_"):
@@ -199,6 +85,29 @@ func preferredYAMLPathForKey(key string) string {
 	case strings.HasPrefix(key, "tools_") && strings.HasSuffix(key, "_enabled"):
 		name := strings.TrimSuffix(strings.TrimPrefix(key, "tools_"), "_enabled")
 		return "tools." + name + ".enabled"
+	case strings.HasPrefix(key, "agentruntime_agents_"):
+		trimmed := strings.TrimPrefix(key, "agentruntime_agents_")
+		if trimmed == "json" {
+			return "agentruntime.agents.list"
+		}
+		return "agentruntime.agents." + strings.TrimSuffix(trimmed, "_json")
+	case strings.HasPrefix(key, "agentruntime_persistence_"):
+		return "agentruntime.persistence." + strings.TrimPrefix(key, "agentruntime_persistence_")
+	case strings.HasPrefix(key, "agentruntime_runs_"):
+		return "agentruntime.runs." + strings.TrimPrefix(key, "agentruntime_runs_")
+	case strings.HasPrefix(key, "agentruntime_channels_"):
+		return "agentruntime.channels." + strings.TrimPrefix(key, "agentruntime_channels_")
+	case strings.HasPrefix(key, "agentruntime_subagents_"):
+		return "agentruntime.subagents." + strings.TrimPrefix(key, "agentruntime_subagents_")
+	case strings.HasPrefix(key, "agentruntime_consensus_"):
+		trimmed := strings.TrimPrefix(key, "agentruntime_consensus_")
+		return "agentruntime.consensus." + strings.TrimSuffix(trimmed, "_json")
+	case strings.HasPrefix(key, "agentruntime_report_"):
+		return "agentruntime.report." + strings.TrimPrefix(key, "agentruntime_report_")
+	case strings.HasPrefix(key, "agentruntime_archive_"):
+		return "agentruntime.archive." + strings.TrimPrefix(key, "agentruntime_archive_")
+	case strings.HasPrefix(key, "agentruntime_"):
+		return "agentruntime." + strings.TrimPrefix(key, "agentruntime_")
 	case key == "channels_local_enabled":
 		return "channels.local.enabled"
 	case key == "channels_webhook_enabled":
@@ -209,6 +118,12 @@ func preferredYAMLPathForKey(key string) string {
 		return "channels.telegram." + trimmed
 	case strings.HasPrefix(key, "channels_"):
 		return "channels." + strings.TrimPrefix(key, "channels_")
+	case strings.HasPrefix(key, "skills_"):
+		trimmed := strings.TrimPrefix(key, "skills_")
+		return "extensions.skills." + strings.TrimSuffix(trimmed, "_json")
+	case strings.HasPrefix(key, "plugins_"):
+		trimmed := strings.TrimPrefix(key, "plugins_")
+		return "extensions.plugins." + strings.TrimSuffix(trimmed, "_json")
 	}
 
 	return key

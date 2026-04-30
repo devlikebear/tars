@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/devlikebear/tars/internal/llmdefaults"
 )
 
 // TarsHomeDir returns the base directory for TARS data (~/.tars).
@@ -79,19 +81,6 @@ const (
 	defaultChannelsTelegramDMPolicy            = "pairing"
 	defaultSkillsBundledDir                    = "./skills"
 	defaultPluginsBundledDir                   = "./plugins"
-	defaultOpenAIBaseURL                       = "https://api.openai.com/v1"
-	defaultOpenAIModel                         = "gpt-4o-mini"
-	defaultOpenAICodexBaseURL                  = "https://chatgpt.com/backend-api"
-	defaultOpenAICodexModel                    = "gpt-5.3-codex"
-	defaultClaudeCodeCLIModel                  = "sonnet"
-	defaultGeminiBaseURL                       = "https://generativelanguage.googleapis.com/v1beta/openai"
-	defaultGeminiNativeBaseURL                 = "https://generativelanguage.googleapis.com/v1beta"
-	defaultGeminiModel                         = "gemini-2.5-flash"
-	defaultAnthropicBaseURL                    = "https://api.anthropic.com"
-	defaultAnthropicModel                      = "claude-haiku-4-5-20251001"
-	defaultOpenAICodexOAuthProvider            = "openai-codex"
-	defaultClaudeOAuthProvider                 = "claude-code"
-	defaultGeminiOAuthProvider                 = "google-antigravity"
 )
 
 func defaultConfigValues() Config {
@@ -116,7 +105,7 @@ func defaultConfigValues() Config {
 			MemoryBackend:         "file",
 			MemorySemanticEnabled: false,
 			MemoryEmbedProvider:   defaultMemoryEmbedProvider,
-			MemoryEmbedBaseURL:    defaultGeminiNativeBaseURL,
+			MemoryEmbedBaseURL:    llmdefaults.GeminiNativeBaseURL,
 			MemoryEmbedModel:      defaultMemoryEmbedModel,
 			MemoryEmbedDimensions: defaultMemoryEmbedDimensions,
 		},
