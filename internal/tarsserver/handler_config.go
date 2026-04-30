@@ -223,6 +223,22 @@ func detectRunMode() string {
 	return "direct"
 }
 
+type workspaceResetError struct {
+	Name  string `json:"name,omitempty"`
+	Path  string `json:"path,omitempty"`
+	Stage string `json:"stage,omitempty"`
+	Error string `json:"error"`
+}
+
+type workspaceResetResponse struct {
+	Removed       int                   `json:"removed"`
+	RemovedDirs   int                   `json:"removed_dirs,omitempty"`
+	RemovedItems  []string              `json:"removed_items"`
+	FailedItems   []workspaceResetError `json:"failed_items,omitempty"`
+	Reinitialized bool                  `json:"reinitialized"`
+	Error         string                `json:"error,omitempty"`
+}
+
 func handleResetWorkspace(w http.ResponseWriter, workspaceDir string, logger zerolog.Logger) {
 	if workspaceDir == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workspace directory not configured"})
@@ -240,6 +256,7 @@ func handleResetWorkspace(w http.ResponseWriter, workspaceDir string, logger zer
 
 	removed := 0
 	var removedItems []string
+	var failedItems []workspaceResetError
 	for _, entry := range entries {
 		name := entry.Name()
 		if preserve[name] {
@@ -252,6 +269,12 @@ func handleResetWorkspace(w http.ResponseWriter, workspaceDir string, logger zer
 		target := filepath.Join(workspaceDir, name)
 		if err := os.RemoveAll(target); err != nil {
 			logger.Error().Err(err).Str("path", target).Msg("failed to remove workspace item")
+			failedItems = append(failedItems, workspaceResetError{
+				Name:  name,
+				Path:  target,
+				Stage: "remove",
+				Error: err.Error(),
+			})
 			continue
 		}
 		removed++
@@ -259,15 +282,38 @@ func handleResetWorkspace(w http.ResponseWriter, workspaceDir string, logger zer
 	}
 
 	// Re-initialize workspace to pristine state (recreate dirs + template files)
+	reinitialized := true
 	if err := memory.EnsureWorkspace(workspaceDir); err != nil {
 		logger.Error().Err(err).Msg("re-initialize workspace failed")
+		reinitialized = false
+		failedItems = append(failedItems, workspaceResetError{
+			Path:  workspaceDir,
+			Stage: "reinitialize",
+			Error: err.Error(),
+		})
+	}
+
+	response := workspaceResetResponse{
+		Removed:       removed,
+		RemovedDirs:   removed,
+		RemovedItems:  removedItems,
+		FailedItems:   failedItems,
+		Reinitialized: reinitialized,
+	}
+	if len(failedItems) > 0 {
+		response.Error = "workspace reset incomplete"
+		logger.Error().
+			Int("removed", removed).
+			Int("failed", len(failedItems)).
+			Strs("items", removedItems).
+			Str("workspace", workspaceDir).
+			Msg("workspace reset incomplete")
+		writeJSON(w, http.StatusInternalServerError, response)
+		return
 	}
 
 	logger.Info().Int("removed", removed).Strs("items", removedItems).Str("workspace", workspaceDir).Msg("workspace reset to initial state")
-	writeJSON(w, http.StatusOK, map[string]any{
-		"removed":       removed,
-		"removed_items": removedItems,
-	})
+	writeJSON(w, http.StatusOK, response)
 }
 
 func handleGetConfig(w http.ResponseWriter, configPath string, logger zerolog.Logger) {

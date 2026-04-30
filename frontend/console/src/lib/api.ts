@@ -627,8 +627,16 @@ export async function restartServer(): Promise<{ ok: string; mode: string; info:
   return requestJSON<{ ok: string; mode: string; info: string }>('/v1/admin/restart', { method: 'POST' })
 }
 
-export async function resetWorkspace(): Promise<{ removed_dirs: number }> {
-  return requestJSON<{ removed_dirs: number }>('/v1/admin/reset/workspace', { method: 'POST' })
+export type WorkspaceResetResponse = {
+  removed: number
+  removed_items: string[]
+  failed_items?: { name?: string; path?: string; stage?: string; error: string }[]
+  reinitialized: boolean
+  error?: string
+}
+
+export async function resetWorkspace(): Promise<WorkspaceResetResponse> {
+  return requestJSON<WorkspaceResetResponse>('/v1/admin/reset/workspace', { method: 'POST' })
 }
 
 export async function patchConfigValues(updates: Record<string, unknown>): Promise<void> {
@@ -926,11 +934,15 @@ export type WorkspaceFileContent = {
   message?: string
 }
 
+function workspaceFilesEndpoint(root?: string): string {
+  return root ? '/v1/filesystem/files' : '/v1/workspace/files'
+}
+
 export async function listWorkspaceFiles(path = '.', root?: string): Promise<{ path: string; files: WorkspaceFileEntry[] }> {
   const params = new URLSearchParams({ path })
   if (root) params.set('root', root)
   return requestJSON<{ path: string; files: WorkspaceFileEntry[] }>(
-    `/v1/workspace/files?${params}`
+    `${workspaceFilesEndpoint(root)}?${params}`
   )
 }
 
@@ -938,7 +950,7 @@ export async function readWorkspaceFile(path: string, root?: string): Promise<Wo
   const params = new URLSearchParams({ path })
   if (root) params.set('root', root)
   return requestJSON<WorkspaceFileContent>(
-    `/v1/workspace/files?${params}`
+    `${workspaceFilesEndpoint(root)}?${params}`
   )
 }
 
@@ -946,7 +958,7 @@ export async function createWorkspaceDirectory(parentPath: string, name: string,
   const params = new URLSearchParams()
   if (root) params.set('root', root)
   return requestJSON<{ path: string; name: string; is_dir: boolean }>(
-    `/v1/workspace/files?${params}`,
+    `${workspaceFilesEndpoint(root)}?${params}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -959,7 +971,7 @@ export async function renameWorkspaceDirectory(path: string, newName: string, ro
   const params = new URLSearchParams()
   if (root) params.set('root', root)
   return requestJSON<{ path: string; name: string; is_dir: boolean }>(
-    `/v1/workspace/files?${params}`,
+    `${workspaceFilesEndpoint(root)}?${params}`,
     {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

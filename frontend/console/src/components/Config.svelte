@@ -126,7 +126,7 @@
     success = ''
     try {
       const result = await resetWorkspace()
-      success = `Workspace reset: ${result.removed_dirs} directories removed. Restart TARS to reinitialize.`
+      success = `Workspace reset: ${result.removed} items removed. Restart TARS to reinitialize.`
       resetWsConfirm = false
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to reset workspace'
