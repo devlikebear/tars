@@ -1,7 +1,13 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory } from '../lib/api'
-  import type { Session } from '../lib/types'
+  import { onDestroy, onMount } from 'svelte'
+  import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory, runMemorySearch } from '../lib/api'
+  import { highlightTerms } from '../lib/markdown'
+  import type { MemorySearchMatch, Session } from '../lib/types'
+
+  type SessionSearchSnippet = {
+    date: string
+    snippet: string
+  }
 
   interface Props {
     selectedSessionId: string | null
@@ -24,6 +30,12 @@
   let deleteConfirmId: string | null = $state(null)
   let actionBusy = $state('')
   let actionError = $state('')
+  let transcriptSearchLoading = $state(false)
+  let transcriptSearchError = $state('')
+  let sessionSearchSnippets: Record<string, SessionSearchSnippet[]> = $state({})
+  const maxSnippetsPerSession = 3
+  let transcriptSearchTimer: ReturnType<typeof setTimeout> | null = null
+  let transcriptSearchToken = 0
 
   function relativeTime(value?: string): string {
     if (!value?.trim()) return ''
@@ -64,7 +76,8 @@
     if (q) {
       result = result.filter((s) =>
         (s.title || '').toLowerCase().includes(q) ||
-        s.id.toLowerCase().includes(q)
+        s.id.toLowerCase().includes(q) ||
+        (sessionSearchSnippets[s.id]?.length ?? 0) > 0
       )
     }
     if (sortBy === 'name') {
@@ -73,6 +86,95 @@
       result = [...result].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     }
     return result
+  }
+
+  function sessionIdFromSearchSource(source: string): string {
+    const prefix = 'session:'
+    const value = source.trim()
+    if (!value.startsWith(prefix)) return ''
+    return value.slice(prefix.length).trim()
+  }
+
+  function groupSessionSearchMatches(matches: MemorySearchMatch[]): Record<string, SessionSearchSnippet[]> {
+    const grouped: Record<string, SessionSearchSnippet[]> = {}
+    for (const match of matches) {
+      if (!match.source.startsWith('session:')) continue
+      const id = sessionIdFromSearchSource(match.source)
+      const snippet = match.snippet.trim()
+      if (!id || !snippet) continue
+      const list = grouped[id] ?? []
+      if (list.length >= maxSnippetsPerSession || list.some((item) => item.snippet === snippet)) {
+        grouped[id] = list
+        continue
+      }
+      list.push({ date: match.date, snippet })
+      grouped[id] = list
+    }
+    return grouped
+  }
+
+  function searchHighlightTerms(): string[] {
+    return searchQuery.trim().split(/\s+/).filter((term) => term.length > 0)
+  }
+
+  function highlightSearchSnippet(snippet: string): string {
+    return highlightTerms(snippet, searchHighlightTerms())
+  }
+
+  function snippetsForSession(sessionID: string): SessionSearchSnippet[] {
+    return sessionSearchSnippets[sessionID] ?? []
+  }
+
+  function resetTranscriptSearch() {
+    transcriptSearchToken += 1
+    transcriptSearchLoading = false
+    transcriptSearchError = ''
+    sessionSearchSnippets = {}
+    if (transcriptSearchTimer) {
+      clearTimeout(transcriptSearchTimer)
+      transcriptSearchTimer = null
+    }
+  }
+
+  function scheduleTranscriptSearch(query: string) {
+    if (transcriptSearchTimer) {
+      clearTimeout(transcriptSearchTimer)
+      transcriptSearchTimer = null
+    }
+    const trimmed = query.trim()
+    if (!trimmed) {
+      resetTranscriptSearch()
+      return
+    }
+    const token = ++transcriptSearchToken
+    transcriptSearchLoading = true
+    transcriptSearchError = ''
+    transcriptSearchTimer = setTimeout(() => {
+      transcriptSearchTimer = null
+      void runTranscriptSearch(trimmed, token)
+    }, 250)
+  }
+
+  async function runTranscriptSearch(query: string, token: number) {
+    try {
+      const result = await runMemorySearch({
+        query,
+        limit: 30,
+        include_memory: false,
+        include_daily: false,
+        include_sessions: true,
+      })
+      if (token !== transcriptSearchToken) return
+      sessionSearchSnippets = groupSessionSearchMatches(result.results ?? [])
+    } catch (err) {
+      if (token !== transcriptSearchToken) return
+      transcriptSearchError = err instanceof Error ? err.message : 'Transcript search failed'
+      sessionSearchSnippets = {}
+    } finally {
+      if (token === transcriptSearchToken) {
+        transcriptSearchLoading = false
+      }
+    }
   }
 
   export async function load() {
@@ -173,6 +275,17 @@
   }
 
   onMount(() => { void load() })
+
+  onDestroy(() => {
+    transcriptSearchToken += 1
+    if (transcriptSearchTimer) {
+      clearTimeout(transcriptSearchTimer)
+    }
+  })
+
+  $effect(() => {
+    scheduleTranscriptSearch(searchQuery)
+  })
 </script>
 
 <div class="sidebar">
@@ -204,10 +317,15 @@
   {#if actionError}
     <div class="error-banner" style="margin:var(--space-2);font-size:var(--text-xs)">{actionError}</div>
   {/if}
+  {#if transcriptSearchError}
+    <div class="error-banner" style="margin:var(--space-2);font-size:var(--text-xs)">{transcriptSearchError}</div>
+  {/if}
 
   <div class="session-list">
     {#if loading}
       <div class="sidebar-loading">Loading...</div>
+    {:else if transcriptSearchLoading && filteredSessions().length === 0}
+      <div class="sidebar-loading">Searching transcripts...</div>
     {:else if filteredSessions().length === 0}
       <div class="sidebar-empty">{searchQuery || filterKind !== 'all' ? 'No matches.' : 'No sessions.'}</div>
     {:else}
@@ -235,6 +353,16 @@
               <span class="badge {kindBadge(session)}" style="font-size:9px;padding:1px 5px">{sessionKind(session)}</span>
               <span class="session-time">{relativeTime(session.updated_at)}</span>
             </div>
+            {#if snippetsForSession(session.id).length > 0}
+              <div class="sidebar-snippet-list" aria-label="Transcript matches">
+                {#each snippetsForSession(session.id) as match}
+                  <div class="sidebar-snippet">
+                    <span class="sidebar-snippet-date">{match.date || 'session'}</span>
+                    <span class="sidebar-snippet-text">{@html highlightSearchSnippet(match.snippet)}</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
           </button>
           <div class="session-actions">
             {#if !isMainSession(session)}
@@ -370,6 +498,46 @@
   .session-time {
     font-size: 10px;
     color: var(--text-ghost);
+  }
+
+  .sidebar-snippet-list {
+    display: grid;
+    gap: 3px;
+    margin-top: var(--space-1);
+  }
+
+  .sidebar-snippet {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-1);
+    align-items: start;
+    min-width: 0;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    line-height: 1.3;
+  }
+
+  .sidebar-snippet-date {
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+  }
+
+  .sidebar-snippet-text {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    word-break: break-word;
+  }
+
+  .sidebar-snippet-text :global(mark) {
+    padding: 0 2px;
+    border-radius: 3px;
+    background: rgba(224, 145, 69, 0.24);
+    color: var(--text-primary);
   }
 
   .session-actions {

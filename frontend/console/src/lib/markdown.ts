@@ -70,6 +70,46 @@ function escapeAttr(text: string): string {
     .replace(/>/g, '&gt;')
 }
 
+export function highlightTerms(text: string, terms: string[]): string {
+  if (!text) return ''
+  const normalizedTerms = terms
+    .map((term) => term.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+  if (normalizedTerms.length === 0) {
+    return escapeAttr(text)
+  }
+
+  const lowered = text.toLowerCase()
+  const ranges: Array<[number, number]> = []
+  for (const rawTerm of normalizedTerms) {
+    const term = rawTerm.toLowerCase()
+    if (!term) continue
+    let index = lowered.indexOf(term)
+    while (index !== -1) {
+      const end = index + term.length
+      if (!ranges.some(([start, stop]) => index < stop && end > start)) {
+        ranges.push([index, end])
+      }
+      index = lowered.indexOf(term, end)
+    }
+  }
+  if (ranges.length === 0) {
+    return escapeAttr(text)
+  }
+  ranges.sort((a, b) => a[0] - b[0])
+
+  let cursor = 0
+  let out = ''
+  for (const [start, end] of ranges) {
+    out += escapeAttr(text.slice(cursor, start))
+    out += `<mark>${escapeAttr(text.slice(start, end))}</mark>`
+    cursor = end
+  }
+  out += escapeAttr(text.slice(cursor))
+  return out
+}
+
 function normalizeLanguage(lang?: string): string {
   return lang?.trim().toLowerCase() || ''
 }
