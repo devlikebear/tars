@@ -184,17 +184,19 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 
 ## Console Pages
 
-| Page | Path | Purpose |
-|------|------|---------|
-| Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` skill commands, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
-| Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, and subagent tier management |
-| Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
-| System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
-| Approvals | `/console/approvals` | Review risky cleanup plans before TARS applies them |
-| Pulse | `/console/pulse` | Watchdog status and run-now trigger |
-| Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
-| Extensions | `/console/extensions` | Skills, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |
-| Config | `/console/config` | Workspace configuration with structured object/array editing and typed LLM tier editing |
+The sidebar keeps Home on the TARS logo and groups the working pages into Work, Operate, and Setup.
+
+| Group | Page | Path | Purpose |
+|-------|------|------|---------|
+| Work | Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` skill commands, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
+| Work | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
+| Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
+| Work | Extensions | `/console/extensions` | Skills, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |
+| Operate | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, and subagent tier management |
+| Operate | Approvals | `/console/approvals` | Review risky cleanup plans before TARS applies them |
+| Operate | Pulse | `/console/pulse` | Watchdog status and run-now trigger |
+| Operate | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
+| Setup | Settings | `/console/config` | Workspace configuration with structured object/array editing and typed LLM tier editing |
 
 ## Requirements
 
