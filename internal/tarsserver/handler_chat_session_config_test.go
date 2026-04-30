@@ -9,11 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
+	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
 
@@ -251,6 +253,68 @@ func TestChatAPIHandler_ContextEndpointReflectsSessionGroupConfigAfterPatchAPI(t
 	for _, expected := range []string{"read_file", "list_dir", "glob"} {
 		if !containsString(payload.ToolNames, expected) {
 			t.Fatalf("expected %s in context preview after patch API, got %+v", expected, payload.ToolNames)
+		}
+	}
+}
+
+func TestSessionAPIHandler_ConfigPatchRecordsUsageSignal(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	now := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
+	tracker, err := usage.NewTracker(t.TempDir(), usage.TrackerOptions{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("new usage tracker: %v", err)
+	}
+	handler := newSessionAPIHandlerWithUsage(store, zerolog.Nop(), tracker)
+
+	patchReq := httptest.NewRequest(http.MethodPatch, "/v1/admin/sessions/"+sess.ID+"/config", strings.NewReader(`{
+		"tools_custom": true,
+		"tools_enabled": ["read_file", "list_dir"],
+		"tools_disabled": ["exec"],
+		"tools_allow_groups": ["files"],
+		"skills_custom": true,
+		"skills_enabled": ["notes"],
+		"mcp_enabled": ["local-fs"]
+	}`))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchReq.Header.Set("Tars-Debug-Auth-Role", "admin")
+	patchReq.RemoteAddr = "127.0.0.1:12345"
+	patchRec := httptest.NewRecorder()
+	handler.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("expected patch status 200, got %d body=%q", patchRec.Code, patchRec.Body.String())
+	}
+
+	summary, err := tracker.Signals("today")
+	if err != nil {
+		t.Fatalf("signals: %v", err)
+	}
+	if len(summary.Rows) != 1 {
+		t.Fatalf("expected one signal row, got %+v", summary.Rows)
+	}
+	row := summary.Rows[0]
+	if row.Name != "session.tool_config.updated" || row.Source != "api" || row.Count != 1 {
+		t.Fatalf("unexpected signal row: %+v", row)
+	}
+	for key, want := range map[string]string{
+		"tools_custom":             "true",
+		"skills_custom":            "true",
+		"tools_enabled_count":      "2",
+		"tools_disabled_count":     "1",
+		"tools_allow_groups_count": "1",
+		"skills_enabled_count":     "1",
+		"mcp_enabled_count":        "1",
+	} {
+		if got := row.Dimensions[key]; got != want {
+			t.Fatalf("expected signal dimension %s=%q, got %q in %+v", key, want, got, row.Dimensions)
 		}
 	}
 }

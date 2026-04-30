@@ -314,6 +314,10 @@
         rightPanel = 'tasks'
         return
       case 'config':
+        if (!selectedSessionId) {
+          showFeedback('Select a session first')
+          return
+        }
         rightPanel = 'config'
         return
       case 'context':
@@ -394,7 +398,6 @@
     <div class="pulse-sep"></div>
     <div class="pulse-panel-toggles">
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'artifacts'} onclick={() => togglePanel('artifacts')} title="Files browser">Files{#if chatArtifacts.length > 0} ({chatArtifacts.length}){/if}</button>
-      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'config'} onclick={() => togglePanel('config')} title="Session tool config">Config</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'context'} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prompt'} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'tasks'} onclick={() => togglePanel('tasks')} title={tasksSummary.total > 0 ? `${tasksSummary.completed} done · ${tasksSummary.in_progress} in progress · ${tasksSummary.pending} pending` : 'Session tasks'}>Tasks{#if tasksSummary.total > 0} ({tasksSummary.completed}/{tasksSummary.total}){/if}</button>
@@ -487,7 +490,7 @@
       <aside class="chat-right-panel">
         {#if rightPanel === 'artifacts'}
           <ArtifactPanel bind:this={artifactPanelRef} artifacts={chatArtifacts} sessionId={selectedSessionId || ''} onClose={() => { rightPanel = 'none' }} />
-        {:else if rightPanel === 'config' && (selectedSessionId || true)}
+        {:else if rightPanel === 'config' && selectedSessionId}
           <SessionConfigPanel
             sessionId={selectedSessionId ?? ''}
             onClose={() => { rightPanel = 'none' }}
