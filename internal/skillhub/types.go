@@ -106,3 +106,25 @@ type InstalledMCP struct {
 	Dir      string `json:"dir"`
 	Manifest string `json:"manifest"`
 }
+
+// UpdateDiagnostic captures a per-entry update outcome that is not a success.
+type UpdateDiagnostic struct {
+	Name   string
+	Reason string
+	Err    error
+}
+
+// Detail returns the human-readable reason for a skipped or failed update.
+func (d UpdateDiagnostic) Detail() string {
+	if d.Err != nil {
+		return d.Err.Error()
+	}
+	return d.Reason
+}
+
+// UpdateResult reports updated, skipped, and failed entries from a hub update.
+type UpdateResult struct {
+	Updated []string
+	Skipped []UpdateDiagnostic
+	Failed  []UpdateDiagnostic
+}

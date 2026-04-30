@@ -74,19 +74,12 @@ func newPluginCommand(stdout, stderr io.Writer) *cobra.Command {
 
 		Update: func(ctx context.Context, stdout, _ io.Writer, workspaceDir string) error {
 			inst := skillhub.NewInstaller(workspaceDir)
-			updated, err := inst.UpdatePlugins(ctx)
-			if err != nil {
+			result, err := inst.UpdatePlugins(ctx)
+			if err != nil && hubUpdateResultEmpty(result) {
 				return err
 			}
-			if len(updated) == 0 {
-				fmt.Fprintln(stdout, "All plugins are up to date.")
-				return nil
-			}
-			for _, name := range updated {
-				fmt.Fprintf(stdout, "  Updated: %s\n", name)
-			}
-			fmt.Fprintf(stdout, "\n%d plugin(s) updated.\n", len(updated))
-			return nil
+			printHubUpdateResult(stdout, "plugin", result)
+			return err
 		},
 
 		Info: func(ctx context.Context, stdout io.Writer, name string) error {

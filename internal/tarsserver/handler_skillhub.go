@@ -1,12 +1,52 @@
 package tarsserver
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/rs/zerolog"
 )
+
+type hubUpdateDiagnosticPayload struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+type hubUpdateResultPayloadBody struct {
+	Updated []string                     `json:"updated"`
+	Skipped []hubUpdateDiagnosticPayload `json:"skipped"`
+	Failed  []hubUpdateDiagnosticPayload `json:"failed"`
+}
+
+func hubUpdateResultPayload(result skillhub.UpdateResult) hubUpdateResultPayloadBody {
+	return hubUpdateResultPayloadBody{
+		Updated: result.Updated,
+		Skipped: hubUpdateDiagnosticsPayload(result.Skipped),
+		Failed:  hubUpdateDiagnosticsPayload(result.Failed),
+	}
+}
+
+func hubUpdateDiagnosticsPayload(items []skillhub.UpdateDiagnostic) []hubUpdateDiagnosticPayload {
+	out := make([]hubUpdateDiagnosticPayload, 0, len(items))
+	for _, item := range items {
+		payload := hubUpdateDiagnosticPayload{Name: item.Name, Reason: strings.TrimSpace(item.Reason)}
+		if item.Err != nil {
+			payload.Error = item.Err.Error()
+		}
+		out = append(out, payload)
+	}
+	return out
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
 
 func newSkillhubAPIHandler(
 	installer *skillhub.Installer,
@@ -167,17 +207,25 @@ func newSkillhubAPIHandler(
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "hub is not configured"})
 			return
 		}
-		updatedSkills, _ := installer.Update(r.Context())
-		updatedPlugins, _ := installer.UpdatePlugins(r.Context())
+		updatedSkills, skillErr := installer.Update(r.Context())
+		updatedPlugins, pluginErr := installer.UpdatePlugins(r.Context())
+		updateErr := errors.Join(skillErr, pluginErr)
 
-		if extensions != nil && (len(updatedSkills) > 0 || len(updatedPlugins) > 0) {
+		if extensions != nil && (len(updatedSkills.Updated) > 0 || len(updatedPlugins.Updated) > 0) {
 			_ = extensions.Reload(r.Context())
 		}
 
-		logger.Info().Int("skills", len(updatedSkills)).Int("plugins", len(updatedPlugins)).Msg("hub packages updated")
-		writeJSON(w, http.StatusOK, map[string]any{
-			"updated_skills":  updatedSkills,
-			"updated_plugins": updatedPlugins,
+		logger.Info().Int("skills", len(updatedSkills.Updated)).Int("plugins", len(updatedPlugins.Updated)).Err(updateErr).Msg("hub packages updated")
+		status := http.StatusOK
+		if updateErr != nil {
+			status = http.StatusInternalServerError
+		}
+		writeJSON(w, status, map[string]any{
+			"updated_skills":       updatedSkills.Updated,
+			"updated_plugins":      updatedPlugins.Updated,
+			"skill_update_result":  hubUpdateResultPayload(updatedSkills),
+			"plugin_update_result": hubUpdateResultPayload(updatedPlugins),
+			"error":                errorString(updateErr),
 		})
 	})
 

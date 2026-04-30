@@ -3,6 +3,7 @@ package skillhub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -116,47 +117,40 @@ func (inst *Installer) List() ([]InstalledSkill, error) {
 }
 
 // Update re-installs all installed skills with the latest version.
-func (inst *Installer) Update(ctx context.Context) ([]string, error) {
+func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 	db, err := inst.loadDB()
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return UpdateResult{}, nil
 		}
-		return nil, err
+		return UpdateResult{}, err
 	}
-	var updated []string
+	var result UpdateResult
 	for i, skill := range db.Skills {
 		entry, err := inst.Registry.FindByName(ctx, skill.Name)
 		if err != nil {
+			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: skill.Name, Err: err})
 			continue
 		}
 		if entry.Version == skill.Version {
+			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: skill.Name, Reason: "up to date"})
 			continue
 		}
 		files, err := inst.downloadSkillFiles(ctx, entry)
 		if err != nil {
-			if len(updated) > 0 {
-				if saveErr := inst.saveDB(db); saveErr != nil {
-					return updated, saveErr
-				}
-			}
-			return updated, err
+			updateErr := fmt.Errorf("update skill %q: %w", skill.Name, err)
+			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})
+			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "skills"))
 		}
 		if err := materializePackageFiles(skill.Dir, files); err != nil {
-			if len(updated) > 0 {
-				if saveErr := inst.saveDB(db); saveErr != nil {
-					return updated, saveErr
-				}
-			}
-			return updated, fmt.Errorf("update skill %q: %w", skill.Name, err)
+			updateErr := fmt.Errorf("update skill %q: %w", skill.Name, err)
+			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})
+			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "skills"))
 		}
 		db.Skills[i].Version = entry.Version
-		updated = append(updated, skill.Name)
+		result.Updated = append(result.Updated, skill.Name)
 	}
-	if len(updated) > 0 {
-		_ = inst.saveDB(db)
-	}
-	return updated, nil
+	return result, inst.saveUpdatedDB(db, result, "skills")
 }
 
 func (inst *Installer) skillDir(name string) string {
@@ -185,6 +179,31 @@ func (inst *Installer) saveDB(db *InstalledDB) error {
 		return err
 	}
 	return os.WriteFile(inst.dbPath(), append(data, '\n'), 0o644)
+}
+
+func (inst *Installer) saveUpdatedDB(db *InstalledDB, result UpdateResult, resource string) error {
+	if len(result.Updated) == 0 {
+		return nil
+	}
+	if err := inst.saveDB(db); err != nil {
+		return fmt.Errorf("save installed %s after update: %w", resource, err)
+	}
+	return nil
+}
+
+func updateFailuresError(resource string, failed []UpdateDiagnostic) error {
+	if len(failed) == 0 {
+		return nil
+	}
+	parts := make([]string, 0, len(failed))
+	for _, failure := range failed {
+		detail := strings.TrimSpace(failure.Detail())
+		if detail == "" {
+			detail = "unknown error"
+		}
+		parts = append(parts, fmt.Sprintf("%s: %s", failure.Name, detail))
+	}
+	return fmt.Errorf("update %s incomplete: %s", resource, strings.Join(parts, "; "))
 }
 
 func (inst *Installer) addToDB(skill InstalledSkill) error {
@@ -270,47 +289,40 @@ func (inst *Installer) ListPlugins() ([]InstalledPlugin, error) {
 }
 
 // UpdatePlugins re-installs all installed plugins with the latest version.
-func (inst *Installer) UpdatePlugins(ctx context.Context) ([]string, error) {
+func (inst *Installer) UpdatePlugins(ctx context.Context) (UpdateResult, error) {
 	db, err := inst.loadDB()
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return UpdateResult{}, nil
 		}
-		return nil, err
+		return UpdateResult{}, err
 	}
-	var updated []string
+	var result UpdateResult
 	for i, plugin := range db.Plugins {
 		entry, err := inst.Registry.FindPluginByName(ctx, plugin.Name)
 		if err != nil {
+			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: plugin.Name, Err: err})
 			continue
 		}
 		if entry.Version == plugin.Version {
+			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: plugin.Name, Reason: "up to date"})
 			continue
 		}
 		files, err := inst.downloadPluginFiles(ctx, entry)
 		if err != nil {
-			if len(updated) > 0 {
-				if saveErr := inst.saveDB(db); saveErr != nil {
-					return updated, saveErr
-				}
-			}
-			return updated, err
+			updateErr := fmt.Errorf("update plugin %q: %w", plugin.Name, err)
+			result.Failed = append(result.Failed, UpdateDiagnostic{Name: plugin.Name, Err: err})
+			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "plugins"))
 		}
 		if err := materializePackageFiles(plugin.Dir, files); err != nil {
-			if len(updated) > 0 {
-				if saveErr := inst.saveDB(db); saveErr != nil {
-					return updated, saveErr
-				}
-			}
-			return updated, fmt.Errorf("update plugin %q: %w", plugin.Name, err)
+			updateErr := fmt.Errorf("update plugin %q: %w", plugin.Name, err)
+			result.Failed = append(result.Failed, UpdateDiagnostic{Name: plugin.Name, Err: err})
+			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "plugins"))
 		}
 		db.Plugins[i].Version = entry.Version
-		updated = append(updated, plugin.Name)
+		result.Updated = append(result.Updated, plugin.Name)
 	}
-	if len(updated) > 0 {
-		_ = inst.saveDB(db)
-	}
-	return updated, nil
+	return result, inst.saveUpdatedDB(db, result, "plugins")
 }
 
 func (inst *Installer) pluginDir(name string) string {
@@ -462,34 +474,34 @@ func (inst *Installer) ListMCPs() ([]InstalledMCP, error) {
 }
 
 // UpdateMCPs re-installs all installed MCP packages with the latest version.
-func (inst *Installer) UpdateMCPs(ctx context.Context) ([]string, error) {
+func (inst *Installer) UpdateMCPs(ctx context.Context) (UpdateResult, error) {
 	db, err := inst.loadDB()
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return UpdateResult{}, nil
 		}
-		return nil, err
+		return UpdateResult{}, err
 	}
-	var updated []string
+	var result UpdateResult
 	for i, installed := range db.MCPs {
 		entry, err := inst.Registry.FindMCPByName(ctx, installed.Name)
 		if err != nil {
+			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: installed.Name, Err: err})
 			continue
 		}
 		if entry.Version == installed.Version {
+			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: installed.Name, Reason: "up to date"})
 			continue
 		}
 		nextInstalled, err := inst.installMCPEntry(ctx, entry)
 		if err != nil {
+			result.Failed = append(result.Failed, UpdateDiagnostic{Name: installed.Name, Err: err})
 			continue
 		}
 		db.MCPs[i] = nextInstalled
-		updated = append(updated, installed.Name)
+		result.Updated = append(result.Updated, installed.Name)
 	}
-	if len(updated) > 0 {
-		_ = inst.saveDB(db)
-	}
-	return updated, nil
+	return result, errors.Join(updateFailuresError("MCP servers", result.Failed), inst.saveUpdatedDB(db, result, "MCP servers"))
 }
 
 func (inst *Installer) installMCPEntry(ctx context.Context, entry *MCPEntry) (InstalledMCP, error) {

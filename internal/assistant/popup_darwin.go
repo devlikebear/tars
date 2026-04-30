@@ -40,17 +40,19 @@ end tell`)
 }
 
 func (p appleScriptPopup) ShowResult(ctx context.Context, result VoiceTurnResult) error {
-	title := quoteAppleScript("TARS replied")
-	reply := quoteAppleScript(popupPreviewText(result.AssistantReply, 500))
-	transcript := quoteAppleScript(popupPreviewText(result.Transcript, 180))
-	raw, err := p.run(ctx, fmt.Sprintf(`tell application "System Events"
-display dialog %s with title %s buttons {"OK"} default button "OK"
-end tell`, quoteAppleScript("You: "+transcript+"\n\nTARS: "+reply), title))
+	raw, err := p.run(ctx, buildResultDialogScript(result))
 	if err != nil {
 		return err
 	}
 	_ = raw
 	return nil
+}
+
+func buildResultDialogScript(result VoiceTurnResult) string {
+	message := "You: " + popupPreviewText(result.Transcript, 180) + "\n\nTARS: " + popupPreviewText(result.AssistantReply, 500)
+	return fmt.Sprintf(`tell application "System Events"
+display dialog %s with title %s buttons {"OK"} default button "OK"
+end tell`, quoteAppleScript(message), quoteAppleScript("TARS replied"))
 }
 
 func (p appleScriptPopup) ShowError(ctx context.Context, message string) error {
@@ -74,5 +76,7 @@ func runAppleScript(ctx context.Context, script string) (string, error) {
 }
 
 func quoteAppleScript(raw string) string {
-	return `"` + strings.ReplaceAll(raw, `"`, `\"`) + `"`
+	raw = strings.ReplaceAll(raw, `\`, `\\`)
+	raw = strings.ReplaceAll(raw, `"`, `\"`)
+	return `"` + raw + `"`
 }
