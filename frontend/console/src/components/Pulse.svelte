@@ -11,6 +11,15 @@
     error: string
   }
 
+  type RecentTickSummary = {
+    total: number
+    allClear: number
+    signalTicks: PulseTickOutcome[]
+    warningCount: number
+    errorCount: number
+    autofixCount: number
+  }
+
   let snapshot: PulseSnapshot | null = $state(null)
   let config: PulseConfigView | null = $state(null)
   let loading = $state(true)
@@ -135,6 +144,85 @@
       if (signal) return relativeTime(signal.at || tick.at)
     }
     return 'never'
+  }
+
+  function isWarningSeverity(severity?: string): boolean {
+    return severity === 'warn'
+  }
+
+  function isErrorSeverity(severity?: string): boolean {
+    return severity === 'error' || severity === 'critical'
+  }
+
+  function signalCount(tick: PulseTickOutcome): number {
+    return tick.signals?.length ?? 0
+  }
+
+  function tickHasSignal(tick: PulseTickOutcome): boolean {
+    return signalCount(tick) > 0 ||
+      Boolean(tick.decision || tick.err || tick.autofix_attempt || tick.autofix_ok || tick.autofix_err || tick.notify_delivered)
+  }
+
+  function tickHasWarning(tick: PulseTickOutcome): boolean {
+    return isWarningSeverity(tick.decision?.severity) || Boolean(tick.signals?.some((signal) => isWarningSeverity(signal.severity)))
+  }
+
+  function tickHasError(tick: PulseTickOutcome): boolean {
+    return Boolean(tick.err || tick.autofix_err) ||
+      isErrorSeverity(tick.decision?.severity) ||
+      Boolean(tick.signals?.some((signal) => isErrorSeverity(signal.severity)))
+  }
+
+  function tickBadgeLabel(tick: PulseTickOutcome): string {
+    if (tick.err) return 'error'
+    if (tick.autofix_attempt || tick.autofix_ok || tick.autofix_err || tick.decision?.action === 'autofix') return 'autofix'
+    if (tick.notify_delivered) return 'notified'
+    if (tick.decision) return tick.decision.action
+    if (signalCount(tick) > 0) return `${signalCount(tick)} signal${signalCount(tick) > 1 ? 's' : ''}`
+    if (tick.skipped) return 'skipped'
+    return 'no signals'
+  }
+
+  function severityBadgeClass(severity?: string): string {
+    if (isErrorSeverity(severity)) return 'badge-error'
+    if (isWarningSeverity(severity)) return 'badge-warning'
+    return 'badge-info'
+  }
+
+  function tickBadgeClass(tick: PulseTickOutcome): string {
+    if (tickHasError(tick)) return 'badge-error'
+    if (tickHasWarning(tick)) return 'badge-warning'
+    if (tickHasSignal(tick)) return 'badge-info'
+    return 'badge-default'
+  }
+
+  function recentTickSummary(ticks: PulseTickOutcome[] = []): RecentTickSummary {
+    const summary: RecentTickSummary = {
+      total: ticks.length,
+      allClear: 0,
+      signalTicks: [],
+      warningCount: 0,
+      errorCount: 0,
+      autofixCount: 0,
+    }
+
+    for (const tick of [...ticks].reverse()) {
+      if (tickHasSignal(tick)) {
+        summary.signalTicks.push(tick)
+      }
+      if (tickHasWarning(tick)) {
+        summary.warningCount += 1
+      }
+      if (tickHasError(tick)) {
+        summary.errorCount += 1
+      }
+      if (tick.autofix_attempt || tick.autofix_ok || tick.autofix_err || tick.decision?.action === 'autofix') {
+        summary.autofixCount += 1
+      }
+    }
+
+    summary.allClear = summary.total - summary.signalTicks.length
+    return summary
   }
 
   onMount(() => {
@@ -273,32 +361,81 @@
 
     <!-- Recent ticks -->
     {#if snapshot?.recent && snapshot.recent.length > 0}
+      {@const recentSummary = recentTickSummary(snapshot.recent)}
       <section class="card">
         <div class="card-header">
           <span class="card-title">Recent Ticks</span>
           <span class="badge badge-default">{snapshot.recent.length}</span>
         </div>
-        <ul class="pulse-recent">
+
+        <div class="pulse-recent-summary">
+          <div>
+            <strong>Last {recentSummary.total} ticks</strong>
+            <span>
+              {recentSummary.signalTicks.length === 0
+                ? 'all clear (no signals)'
+                : `${recentSummary.signalTicks.length} signal tick${recentSummary.signalTicks.length > 1 ? 's' : ''}, ${recentSummary.allClear} all-clear`}
+            </span>
+          </div>
+          <div class="pulse-recent-counters">
+            <span class="badge badge-warning">{recentSummary.warningCount} warning{recentSummary.warningCount === 1 ? '' : 's'}</span>
+            <span class="badge badge-error">{recentSummary.errorCount} error{recentSummary.errorCount === 1 ? '' : 's'}</span>
+            <span class="badge badge-success">{recentSummary.autofixCount} autofix{recentSummary.autofixCount === 1 ? '' : 'es'}</span>
+          </div>
+        </div>
+
+        <div class="pulse-recent-dots" aria-label="Recent tick timeline">
           {#each [...snapshot.recent].reverse() as tick}
-            <li>
-              <div class="pulse-recent-row">
-                <span class="pulse-recent-time">{fmtTime(tick.at)}</span>
-                {#if tick.skipped}
-                  <span class="badge badge-default">skipped</span>
-                {:else if tick.decision}
-                  <span class="badge badge-info">{tick.decision.action}</span>
-                {:else if tick.err}
-                  <span class="badge badge-error">error</span>
-                {:else}
-                  <span class="badge badge-default">no signals</span>
-                {/if}
-              </div>
-              {#if tick.decision?.title}
-                <div class="pulse-recent-title">{tick.decision.title}</div>
-              {/if}
-            </li>
+            <span
+              class:has-signal={tickHasSignal(tick)}
+              class:has-warning={tickHasWarning(tick)}
+              class:has-error={tickHasError(tick)}
+              title={`${fmtTime(tick.at)} - ${tickBadgeLabel(tick)}`}
+              aria-label={`${fmtTime(tick.at)} ${tickBadgeLabel(tick)}`}
+            ></span>
           {/each}
-        </ul>
+        </div>
+
+        {#if recentSummary.signalTicks.length > 0}
+          <div class="pulse-signal-ticks">
+            <div class="pulse-signal-heading">Signal ticks</div>
+            <ul class="pulse-recent">
+              {#each recentSummary.signalTicks as tick}
+                <li>
+                  <div class="pulse-recent-row">
+                    <span class="pulse-recent-time">{fmtTime(tick.at)}</span>
+                    <span class="badge {tickBadgeClass(tick)}">{tickBadgeLabel(tick)}</span>
+                    {#if signalCount(tick) > 0}
+                      <span class="badge badge-default">{signalCount(tick)} signal{signalCount(tick) > 1 ? 's' : ''}</span>
+                    {/if}
+                    {#if tick.notify_delivered}
+                      <span class="badge badge-success">notified</span>
+                    {/if}
+                  </div>
+                  {#if tick.decision?.title}
+                    <div class="pulse-recent-title">{tick.decision.title}</div>
+                  {:else if tick.err}
+                    <div class="pulse-recent-title">{tick.err}</div>
+                  {/if}
+                  {#if tick.decision?.summary}
+                    <div class="pulse-recent-detail">{tick.decision.summary}</div>
+                  {/if}
+                  {#if tick.signals?.length}
+                    <ul class="pulse-signal-list">
+                      {#each tick.signals as signal}
+                        <li>
+                          <span class="pulse-signal-kind">{signal.kind}</span>
+                          <span class="badge {severityBadgeClass(signal.severity)}">{signal.severity}</span>
+                          <span class="pulse-signal-summary">{signal.summary}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
       </section>
     {/if}
   {/if}
@@ -551,6 +688,80 @@
     gap: var(--space-2);
   }
 
+  .pulse-recent-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .pulse-recent-summary > div:first-child {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .pulse-recent-summary strong,
+  .pulse-signal-heading {
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .pulse-recent-summary span:not(.badge) {
+    color: var(--text-tertiary);
+    font-size: var(--text-sm);
+  }
+
+  .pulse-recent-counters {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-1);
+  }
+
+  .pulse-recent-dots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-top: var(--space-3);
+    padding: var(--space-2) 0;
+  }
+
+  .pulse-recent-dots span {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--border-default);
+    opacity: 0.7;
+    transform: scale(0.75);
+  }
+
+  .pulse-recent-dots span.has-signal {
+    background: var(--accent);
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .pulse-recent-dots span.has-warning {
+    background: var(--warning);
+  }
+
+  .pulse-recent-dots span.has-error {
+    background: var(--error);
+  }
+
+  .pulse-signal-ticks {
+    display: grid;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+  }
+
   .pulse-recent li {
     padding: var(--space-2) var(--space-3);
     background: var(--surface-base);
@@ -573,5 +784,43 @@
     margin-top: var(--space-1);
     font-size: var(--text-sm);
     color: var(--text-secondary);
+  }
+
+  .pulse-recent-detail {
+    margin-top: var(--space-1);
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+  }
+
+  .pulse-signal-list {
+    display: grid;
+    gap: var(--space-1);
+    margin: var(--space-2) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .pulse-signal-list li {
+    display: grid;
+    grid-template-columns: minmax(130px, 0.5fr) auto minmax(0, 1fr);
+    gap: var(--space-2);
+    align-items: center;
+    padding: var(--space-1) 0 0;
+    background: transparent;
+    border-top: 1px solid var(--border-subtle);
+    border-radius: 0;
+  }
+
+  .pulse-signal-kind {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .pulse-signal-summary {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    line-height: 1.45;
   }
 </style>
