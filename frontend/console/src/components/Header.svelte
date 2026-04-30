@@ -1,18 +1,21 @@
 <script lang="ts">
+  import { onDestroy, onMount } from 'svelte'
   import { locale, locales, setLocale, t } from '../i18n'
-  import { getEventsHistory, markEventsRead } from '../lib/api'
-  import type { NotificationMessage } from '../lib/types'
+  import { getEventsHistory, getTodayUsage, markEventsRead } from '../lib/api'
+  import type { NotificationMessage, UsageToday } from '../lib/types'
 
   interface Props {
     serverHealth?: string
     unreadCount?: number
     onUnreadChange?: (count: number) => void
+    onNavigate?: (path: string) => void
   }
 
   let {
     serverHealth = 'ok',
     unreadCount = 0,
     onUnreadChange,
+    onNavigate,
   }: Props = $props()
 
   let panelOpen = $state(false)
@@ -21,6 +24,8 @@
   let lastId = $state(0)
   let readCursor = $state(0)
   let notifFilter: 'all' | 'unread' | 'read' = $state('all')
+  let usageToday = $state<UsageToday | null>(null)
+  let budgetTimer: ReturnType<typeof setInterval> | null = null
 
   let filteredNotifs = $derived.by(() => {
     // Sort newest first
@@ -33,6 +38,8 @@
     if (notifFilter === 'read') return sorted.filter((n) => (n.id ?? 0) <= readCursor)
     return sorted
   })
+  let budgetVisible = $derived(Boolean(usageToday?.budget_enabled && usageToday.budget_tokens > 0))
+  let budgetPercent = $derived(Math.max(0, Math.round(usageToday?.usage_percent ?? 0)))
 
   function fmt(value?: string): string {
     const text = value?.trim()
@@ -54,6 +61,30 @@
       case 'success': return 'notif-success'
       default: return 'notif-info'
     }
+  }
+
+  function formatTokenCount(value?: number): string {
+    const n = Math.max(0, Math.round(value ?? 0))
+    if (n >= 1_000_000) return `${trimNumber(n / 1_000_000)}M`
+    if (n >= 1_000) return `${trimNumber(n / 1_000)}K`
+    return String(n)
+  }
+
+  function trimNumber(value: number): string {
+    return value >= 100 ? String(Math.round(value)) : value.toFixed(1).replace(/\.0$/, '')
+  }
+
+  async function loadUsageToday() {
+    try {
+      usageToday = await getTodayUsage()
+    } catch {
+      usageToday = null
+    }
+  }
+
+  function handleBudgetClick() {
+    if (usageToday?.level !== 'error') return
+    onNavigate?.('/console/analytics?focus=today')
   }
 
   function categoryIcon(category: string): string {
@@ -102,6 +133,15 @@
       panelOpen = false
     }
   }
+
+  onMount(() => {
+    void loadUsageToday()
+    budgetTimer = setInterval(() => { void loadUsageToday() }, 60_000)
+  })
+
+  onDestroy(() => {
+    if (budgetTimer) clearInterval(budgetTimer)
+  })
 </script>
 
 <svelte:document onclick={handleClickOutside} />
@@ -125,6 +165,23 @@
         </button>
       {/each}
     </div>
+
+    {#if budgetVisible && usageToday}
+      {@const usedTokens = formatTokenCount(usageToday.total_tokens)}
+      {@const budgetTokens = formatTokenCount(usageToday.budget_tokens)}
+      <button
+        type="button"
+        class="budget-chip {usageToday.level}"
+        class:clickable={usageToday.level === 'error'}
+        aria-label={$t.header.budget.label}
+        aria-disabled={usageToday.level !== 'error'}
+        title={$t.header.budget.title(usedTokens, budgetTokens, budgetPercent)}
+        onclick={handleBudgetClick}
+      >
+        <span class="budget-chip-label">{usedTokens} / {budgetTokens}</span>
+        <span class="budget-chip-percent">{budgetPercent}%</span>
+      </button>
+    {/if}
 
     <div class="header-indicator" class:healthy={serverHealth === 'ok'}>
       <span class="header-dot"></span>
@@ -242,6 +299,43 @@
   .locale-btn.active {
     background: var(--surface);
     color: var(--text-primary);
+  }
+
+  .budget-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: 30px;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: default;
+  }
+
+  .budget-chip.warning {
+    border-color: color-mix(in srgb, var(--warning) 45%, var(--border-default));
+    color: var(--warning);
+  }
+
+  .budget-chip.error {
+    border-color: color-mix(in srgb, var(--error) 55%, var(--border-default));
+    color: var(--error);
+  }
+
+  .budget-chip.clickable {
+    cursor: pointer;
+  }
+
+  .budget-chip.clickable:hover {
+    background: var(--surface-elevated);
+  }
+
+  .budget-chip-percent {
+    color: var(--text-tertiary);
   }
 
   .header-meta {

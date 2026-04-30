@@ -48,6 +48,7 @@ const (
 	defaultUsageLimitDailyUSD                  = 10.0
 	defaultUsageLimitWeeklyUSD                 = 50.0
 	defaultUsageLimitMonthlyUSD                = 150.0
+	defaultUsageDailyTokenBudget               = 0
 	defaultUsageLimitMode                      = "soft"
 	defaultAgentMaxIterations                  = 8
 	defaultCronRunHistoryLimit                 = 200
@@ -110,10 +111,11 @@ func defaultConfigValues() Config {
 			MemoryEmbedDimensions: defaultMemoryEmbedDimensions,
 		},
 		UsageConfig: UsageConfig{
-			UsageLimitDailyUSD:   defaultUsageLimitDailyUSD,
-			UsageLimitWeeklyUSD:  defaultUsageLimitWeeklyUSD,
-			UsageLimitMonthlyUSD: defaultUsageLimitMonthlyUSD,
-			UsageLimitMode:       defaultUsageLimitMode,
+			UsageLimitDailyUSD:    defaultUsageLimitDailyUSD,
+			UsageLimitWeeklyUSD:   defaultUsageLimitWeeklyUSD,
+			UsageLimitMonthlyUSD:  defaultUsageLimitMonthlyUSD,
+			UsageDailyTokenBudget: defaultUsageDailyTokenBudget,
+			UsageLimitMode:        defaultUsageLimitMode,
 		},
 		AutomationConfig: AutomationConfig{
 			AgentMaxIterations:  defaultAgentMaxIterations,

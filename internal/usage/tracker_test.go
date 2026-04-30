@@ -102,6 +102,41 @@ func TestTracker_CheckLimitStatus(t *testing.T) {
 	}
 }
 
+func TestTracker_TodayTokensSummarizesUTCUsageAndBudgetLevel(t *testing.T) {
+	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
+	tracker, err := NewTracker(t.TempDir(), TrackerOptions{
+		Now: func() time.Time { return now },
+		InitialLimits: Limits{
+			DailyTokens: 2000,
+		},
+	})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+	for _, entry := range []Entry{
+		{Timestamp: now.Add(-time.Hour), InputTokens: 800, OutputTokens: 600, Provider: "openai", Model: "gpt-4o-mini", Source: "chat"},
+		{Timestamp: now.AddDate(0, 0, -1), InputTokens: 400, OutputTokens: 300, Provider: "openai", Model: "gpt-4o-mini", Source: "chat"},
+	} {
+		if err := tracker.Record(entry); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+
+	today, err := tracker.TodayTokens()
+	if err != nil {
+		t.Fatalf("today tokens: %v", err)
+	}
+	if today.InputTokens != 800 || today.OutputTokens != 600 || today.TotalTokens != 1400 {
+		t.Fatalf("unexpected today token totals: %+v", today)
+	}
+	if !today.BudgetEnabled || today.BudgetTokens != 2000 || today.UsagePercent != 70 || today.Level != "warning" {
+		t.Fatalf("unexpected budget status: %+v", today)
+	}
+	if today.Date != "2026-02-22" || today.ResetAt != "2026-02-23T00:00:00Z" {
+		t.Fatalf("unexpected UTC date boundary: %+v", today)
+	}
+}
+
 func TestTracker_RecordNormalizesFieldsAndSummaryUsesProjectFallback(t *testing.T) {
 	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
 	tracker, err := NewTracker(t.TempDir(), TrackerOptions{

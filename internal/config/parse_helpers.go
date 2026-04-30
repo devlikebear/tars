@@ -23,6 +23,14 @@ func parsePositiveInt(value string, fallback int) int {
 	return parsed
 }
 
+func parseNonNegativeInt(value string, fallback int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < 0 {
+		return fallback
+	}
+	return parsed
+}
+
 func parsePositiveFloat(value string, fallback float64) float64 {
 	parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 	if err != nil || parsed < 0 {

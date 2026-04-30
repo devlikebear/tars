@@ -677,6 +677,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	}
 	mux.Handle("/v1/usage/summary", handlers.usage)
 	mux.Handle("/v1/usage/limits", handlers.usage)
+	mux.Handle("/v1/admin/usage/today", handlers.usage)
 	mux.Handle("/v1/ops/status", handlers.ops)
 	mux.Handle("/v1/ops/cleanup/plan", handlers.ops)
 	mux.Handle("/v1/ops/cleanup/apply", handlers.ops)

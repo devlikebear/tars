@@ -76,6 +76,7 @@ func Schema() []FieldMeta {
 		f("usage_limit_daily_usd", "Usage", "float", "Daily Limit (USD)", "Maximum daily LLM spend in USD"),
 		f("usage_limit_weekly_usd", "Usage", "float", "Weekly Limit (USD)", "Maximum weekly LLM spend in USD"),
 		f("usage_limit_monthly_usd", "Usage", "float", "Monthly Limit (USD)", "Maximum monthly LLM spend in USD"),
+		f("usage_daily_token_budget", "Usage", "int", "Daily Token Budget", "Daily input+output token budget for the console usage indicator; 0 disables the chip"),
 		fsel("usage_limit_mode", "Usage", "Limit Mode", "Enforcement mode", []string{"soft", "hard"}),
 		fjson("usage_price_overrides_json", "Usage", "Price Overrides", "Optional per-model usage price override map"),
 
@@ -280,6 +281,8 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.UsageLimitWeeklyUSD
 	case "usage_limit_monthly_usd":
 		return cfg.UsageLimitMonthlyUSD
+	case "usage_daily_token_budget":
+		return cfg.UsageDailyTokenBudget
 	case "usage_limit_mode":
 		return cfg.UsageLimitMode
 	case "usage_price_overrides_json":

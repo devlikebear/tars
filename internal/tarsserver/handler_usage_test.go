@@ -71,6 +71,44 @@ func TestUsageAPI_SummaryAndLimits(t *testing.T) {
 	}
 }
 
+func TestUsageAPI_TodayTokens(t *testing.T) {
+	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
+	tracker, err := usage.NewTracker(t.TempDir(), usage.TrackerOptions{
+		Now: func() time.Time { return now },
+		InitialLimits: usage.Limits{
+			DailyTokens: 1000,
+		},
+	})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+	if err := tracker.Record(usage.Entry{
+		Timestamp:    now,
+		Provider:     "openai",
+		Model:        "gpt-4o-mini",
+		InputTokens:  850,
+		OutputTokens: 25,
+		Source:       "chat",
+	}); err != nil {
+		t.Fatalf("record usage: %v", err)
+	}
+	handler := newUsageAPIHandler(tracker, "off", zerolog.Nop())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/usage/today", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("today status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var today usage.DailyTokenSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &today); err != nil {
+		t.Fatalf("decode today body: %v", err)
+	}
+	if today.TotalTokens != 875 || today.BudgetTokens != 1000 || today.Level != "error" {
+		t.Fatalf("unexpected today usage: %+v", today)
+	}
+}
+
 func TestUsageAPI_Signals(t *testing.T) {
 	tracker, err := usage.NewTracker(t.TempDir(), usage.TrackerOptions{})
 	if err != nil {

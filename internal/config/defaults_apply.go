@@ -77,6 +77,9 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	if cfg.UsageLimitMonthlyUSD <= 0 {
 		cfg.UsageLimitMonthlyUSD = defaults.UsageLimitMonthlyUSD
 	}
+	if cfg.UsageDailyTokenBudget < 0 {
+		cfg.UsageDailyTokenBudget = defaults.UsageDailyTokenBudget
+	}
 	cfg.UsageLimitMode = strings.TrimSpace(strings.ToLower(cfg.UsageLimitMode))
 	switch cfg.UsageLimitMode {
 	case "soft", "hard":

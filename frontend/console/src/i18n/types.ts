@@ -63,6 +63,10 @@ export type Translations = {
       en: string
       ko: string
     }
+    budget: {
+      label: string
+      title: (used: string, budget: string, percent: number) => string
+    }
     time: {
       justNow: string
       minutesAgo: (count: number) => string

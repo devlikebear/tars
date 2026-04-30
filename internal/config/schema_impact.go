@@ -17,6 +17,9 @@ var configFieldImpactHints = map[string][]string{
 	"usage_limit_daily_usd": {
 		"Lower daily spend limits can stop or degrade LLM calls sooner.",
 	},
+	"usage_daily_token_budget": {
+		"Enabling a token budget shows today's token consumption in the console header.",
+	},
 	"usage_limit_mode": {
 		"Hard mode can block requests when usage limits are reached.",
 	},

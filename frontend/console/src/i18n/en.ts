@@ -63,6 +63,10 @@ export const en = {
       en: 'EN',
       ko: 'KO',
     },
+    budget: {
+      label: 'Daily token budget',
+      title: (used, budget, percent) => `${used} of ${budget} daily tokens used (${percent}%)`,
+    },
     time: {
       justNow: 'just now',
       minutesAgo: (count) => `${count}m ago`,

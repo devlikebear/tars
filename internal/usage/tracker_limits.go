@@ -20,6 +20,9 @@ func normalizeLimits(in Limits) Limits {
 	if out.MonthlyUSD < 0 {
 		out.MonthlyUSD = 0
 	}
+	if out.DailyTokens < 0 {
+		out.DailyTokens = 0
+	}
 	mode := strings.TrimSpace(strings.ToLower(out.Mode))
 	switch mode {
 	case "hard", "soft":

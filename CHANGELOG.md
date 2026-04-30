@@ -6,6 +6,33 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.79] - 2026-05-01
+
+### Added
+
+- Added `usage_daily_token_budget` / `usage.limits.daily_tokens` config metadata for a daily input+output token budget; `0` disables the console chip.
+- Added `/v1/admin/usage/today` to summarize today's input, output, total tokens, configured budget, UTC reset boundary, percent used, and indicator level.
+- The console header now shows a compact daily token budget chip when a budget is configured, with warning/error states and an error-state jump to today's analytics focus.
+
+### Changed
+
+- Usage limit PATCH requests can now update `daily_tokens` alongside the existing USD limits.
+
+### Documentation
+
+- README and the example config now document the daily token budget indicator setting.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test -count=1 ./internal/usage ./internal/tarsserver ./internal/config`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm run build`
+
+### Closed
+
+- Closes #404.
+
 ## [0.31.78] - 2026-05-01
 
 ### Added

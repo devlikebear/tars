@@ -87,6 +87,7 @@ usage:
     daily_usd: 10
     weekly_usd: 50
     monthly_usd: 150
+    daily_tokens: 0
     mode: soft
   price_overrides: {}
 
