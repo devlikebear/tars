@@ -6,6 +6,24 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.47] - 2026-05-01
+
+### Changed
+
+- Usage signal docs now include the 2026-04-26 to 2026-04-30 decision snapshot for Q-011, Q-012, Q-014, Q-015, Q-017, and Q-018, with focused follow-up issue links for the low-use surfaces.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/usage ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #418.
+
 ## [0.31.46] - 2026-05-01
 
 ### Added
