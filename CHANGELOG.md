@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.29] - 2026-04-30
+
+### Fixed
+
+- Extension disabled-state updates now preserve corrupt state files and return load errors instead of silently replacing them with empty state.
+- Ops approvals and usage limits now use atomic writes so failed state writes preserve the previous file contents.
+- Ops manager empty-workspace defaults now use the same core default workspace path as runtime config.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/extensions ./internal/ops ./internal/usage ./internal/tarsserver`
+
+### Closed
+
+- Closes #415.
+
 ## [0.31.28] - 2026-04-30
 
 ### Fixed
