@@ -19,10 +19,6 @@ func TestEnsureWorkspace(t *testing.T) {
 		root,
 		filepath.Join(root, "memory"),
 		filepath.Join(root, "memory", "raw"),
-		filepath.Join(root, "memory", "wiki"),
-		filepath.Join(root, "memory", "wiki", "notes"),
-		filepath.Join(root, "memory", "wiki", "index.md"),
-		filepath.Join(root, "memory", "wiki", "graph.json"),
 		filepath.Join(root, "_shared"),
 		filepath.Join(root, "MEMORY.md"),
 		filepath.Join(root, "AGENTS.md"),
@@ -39,6 +35,9 @@ func TestEnsureWorkspace(t *testing.T) {
 	// HEARTBEAT.md is no longer created — pulse policy lives in config.
 	if _, err := os.Stat(filepath.Join(root, "HEARTBEAT.md")); !os.IsNotExist(err) {
 		t.Fatalf("HEARTBEAT.md should not be created: err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "memory", "wiki")); !os.IsNotExist(err) {
+		t.Fatalf("memory/wiki should not be created: err=%v", err)
 	}
 
 	memoryFile, err := os.ReadFile(filepath.Join(root, "MEMORY.md"))
@@ -84,13 +83,6 @@ func TestEnsureWorkspace(t *testing.T) {
 		t.Fatalf("expected default TOOLS template, got %q", string(toolsFile))
 	}
 
-	graphFile, err := os.ReadFile(filepath.Join(root, "memory", "wiki", "graph.json"))
-	if err != nil {
-		t.Fatalf("read graph.json: %v", err)
-	}
-	if strings.Contains(string(graphFile), `"updated_at": ""`) {
-		t.Fatalf("expected default graph template without blank updated_at, got %q", string(graphFile))
-	}
 }
 
 func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
@@ -161,6 +153,29 @@ func TestEnsureWorkspace_DoesNotOverwriteExistingFiles(t *testing.T) {
 	}
 	if string(toolsFile) != customTools {
 		t.Fatalf("expected existing TOOLS.md to remain unchanged, got %q", string(toolsFile))
+	}
+}
+
+func TestEnsureWorkspace_PreservesExistingLegacyWikiFiles(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	legacyNote := filepath.Join(root, "memory", "wiki", "notes", "legacy.md")
+	if err := os.MkdirAll(filepath.Dir(legacyNote), 0o755); err != nil {
+		t.Fatalf("mkdir legacy wiki dir: %v", err)
+	}
+	if err := os.WriteFile(legacyNote, []byte("legacy kb note"), 0o644); err != nil {
+		t.Fatalf("write legacy note: %v", err)
+	}
+
+	if err := EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	got, err := os.ReadFile(legacyNote)
+	if err != nil {
+		t.Fatalf("expected legacy wiki note to be preserved: %v", err)
+	}
+	if string(got) != "legacy kb note" {
+		t.Fatalf("expected legacy note content to be preserved, got %q", string(got))
 	}
 }
 

@@ -92,19 +92,6 @@ var workspaceBootstrapFileSpecs = []WorkspaceBootstrapFileSpec{
 	},
 }
 
-const defaultKnowledgeIndexTemplate = `# Knowledge Base Index
-
-## Purpose
-- Durable wiki-style notes compiled from conversations and explicit memory operations.
-- Keep note files in memory/wiki/notes and let the agent maintain them.
-`
-
-const defaultKnowledgeGraphTemplate = `{
-  "nodes": [],
-  "edges": []
-}
-`
-
 // EnsureWorkspace creates the minimum workspace layout used by tars.
 func EnsureWorkspace(root string) error {
 	if err := os.MkdirAll(filepath.Join(root, "memory"), 0o755); err != nil {
@@ -115,12 +102,6 @@ func EnsureWorkspace(root string) error {
 	}
 	if err := os.MkdirAll(filepath.Join(root, "memory", "index"), 0o755); err != nil {
 		return fmt.Errorf("create memory index dir: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, "memory", "wiki"), 0o755); err != nil {
-		return fmt.Errorf("create memory wiki dir: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, "memory", "wiki", "notes"), 0o755); err != nil {
-		return fmt.Errorf("create memory wiki notes dir: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "_shared"), 0o755); err != nil {
 		return fmt.Errorf("create shared dir: %w", err)
@@ -138,12 +119,6 @@ func EnsureWorkspace(root string) error {
 		if err := ensureFile(filepath.Join(root, spec.Path), spec.DefaultContent); err != nil {
 			return err
 		}
-	}
-	if err := ensureFile(filepath.Join(root, "memory", "wiki", "index.md"), defaultKnowledgeIndexTemplate); err != nil {
-		return err
-	}
-	if err := ensureFile(filepath.Join(root, "memory", "wiki", "graph.json"), defaultKnowledgeGraphTemplate); err != nil {
-		return err
 	}
 	return nil
 }

@@ -65,10 +65,7 @@ func TestRootCommand_DoctorFixCreatesStarterWorkspaceButStillRequiresBYOK(t *tes
 	assertPathExists(t, configPath)
 	assertPathExists(t, filepath.Join(workspaceAbs, "memory"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "raw"))
-	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "wiki"))
-	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "wiki", "notes"))
-	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "wiki", "index.md"))
-	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "wiki", "graph.json"))
+	assertPathNotExists(t, filepath.Join(workspaceAbs, "memory", "wiki"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "MEMORY.md"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "plugins", "ops-service", "tars.plugin.json"))
 
