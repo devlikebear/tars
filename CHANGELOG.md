@@ -6,6 +6,28 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.53] - 2026-05-01
+
+### Added
+
+- CON-049: Console Agent Runtime run details now include a pure-SVG Cost Flow panel that visualizes parent/run → agent → variant flow by actual cost or token volume.
+- Cost Flow includes tier-colored links, exact variant cost/token rows, and a budget summary when `consensus_budget_usd` is available.
+
+### Tests
+
+- `npm test -- --test-name-pattern "cost flow"` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #451.
+
 ## [0.31.52] - 2026-05-01
 
 ### Added

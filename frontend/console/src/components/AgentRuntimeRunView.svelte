@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import AgentRuntimeCostFlow from './AgentRuntimeCostFlow.svelte'
   import {
     applyAgentRuntimeSubagentDraft,
     archiveAgentRuntimeSubagent,
@@ -117,6 +118,7 @@
   let fileAttentionMax = $derived.by<number>(() => {
     return Math.max(1, ...fileAttentionRows.map((row) => row.total ?? 0))
   })
+  let costFlowRuns = $derived.by<AgentRuntimeRun[]>(() => selectedRun ? [selectedRun] : [])
 
   async function loadRuns() {
     loading = true
@@ -1043,6 +1045,12 @@
           <div><span class="label">Actual Cost</span><span>{fmtUSD(actualUSD)}</span></div>
         </div>
       </div>
+
+      {#if costFlowRuns.length > 0}
+        <div class="cost-flow-panel">
+          <AgentRuntimeCostFlow run={costFlowRuns[0]} />
+        </div>
+      {/if}
 
       <div class="detail-columns">
         <section class="detail-panel">
