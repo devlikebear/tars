@@ -8,9 +8,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/launchagent"
 	"github.com/rs/zerolog"
 )
 
@@ -125,5 +127,43 @@ func TestConfigAPI_ResetWorkspaceReportsPartialFailures(t *testing.T) {
 	}
 	if payload.Error == "" || len(payload.FailedItems) == 0 {
 		t.Fatalf("expected reset failure details, payload=%+v", payload)
+	}
+}
+
+func TestDetectRunModeUsesLaunchdIdentityFromEnvironment(t *testing.T) {
+	t.Setenv(launchagent.ServiceLabelEnv, "io.custom.tars")
+	t.Setenv(launchagent.ServiceDomainEnv, "gui/777")
+
+	restore := overrideRestartTestHooks(t)
+	defer restore()
+
+	restartRuntimeGOOS = "darwin"
+	restartGetpid = func() int { return 4242 }
+
+	var gotArgs []string
+	restartLaunchctlRun = func(args ...string) (string, error) {
+		gotArgs = append([]string{}, args...)
+		return "state = running\npid = 4242\n", nil
+	}
+
+	if got := detectRunMode(); got != "launchd" {
+		t.Fatalf("expected launchd mode, got %q", got)
+	}
+	if strings.Join(gotArgs, " ") != "print gui/777/io.custom.tars" {
+		t.Fatalf("expected custom launchctl identity, got %#v", gotArgs)
+	}
+}
+
+func overrideRestartTestHooks(t *testing.T) func() {
+	t.Helper()
+	originalGOOS := restartRuntimeGOOS
+	originalGetuid := restartGetuid
+	originalGetpid := restartGetpid
+	originalLaunchctl := restartLaunchctlRun
+	return func() {
+		restartRuntimeGOOS = originalGOOS
+		restartGetuid = originalGetuid
+		restartGetpid = originalGetpid
+		restartLaunchctlRun = originalLaunchctl
 	}
 }

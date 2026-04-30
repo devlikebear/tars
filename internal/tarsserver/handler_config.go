@@ -14,8 +14,16 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/launchagent"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/rs/zerolog"
+)
+
+var (
+	restartRuntimeGOOS  = runtime.GOOS
+	restartGetuid       = os.Getuid
+	restartGetpid       = os.Getpid
+	restartLaunchctlRun = runRestartLaunchctl
 )
 
 func newConfigAPIHandler(configPath string, cfg config.Config, workspaceDir string, logger zerolog.Logger) http.Handler {
@@ -159,8 +167,7 @@ func handleRestart(w http.ResponseWriter, logger zerolog.Logger) {
 
 	switch mode {
 	case "launchd":
-		label := "io.tars.server"
-		domain := fmt.Sprintf("gui/%d", os.Getuid())
+		label, domain := launchdServiceIdentity()
 		writeJSON(w, http.StatusOK, map[string]string{
 			"ok":   "true",
 			"mode": "launchd",
@@ -169,9 +176,9 @@ func handleRestart(w http.ResponseWriter, logger zerolog.Logger) {
 
 		go func() {
 			time.Sleep(500 * time.Millisecond)
-			out, err := exec.Command("launchctl", "kickstart", "-k", domain+"/"+label).CombinedOutput()
+			out, err := restartLaunchctlRun("kickstart", "-k", domain+"/"+label)
 			if err != nil {
-				logger.Error().Err(err).Str("output", string(out)).Msg("launchctl kickstart failed")
+				logger.Error().Err(err).Str("output", out).Msg("launchctl kickstart failed")
 			}
 		}()
 
@@ -198,16 +205,15 @@ func handleRestart(w http.ResponseWriter, logger zerolog.Logger) {
 }
 
 func detectRunMode() string {
-	if runtime.GOOS != "darwin" {
+	if restartRuntimeGOOS != "darwin" {
 		return "direct"
 	}
-	label := "io.tars.server"
-	domain := fmt.Sprintf("gui/%d", os.Getuid())
-	out, err := exec.Command("launchctl", "print", domain+"/"+label).CombinedOutput()
-	if err == nil && strings.Contains(string(out), "state =") {
+	label, domain := launchdServiceIdentity()
+	out, err := restartLaunchctlRun("print", domain+"/"+label)
+	if err == nil && strings.Contains(out, "state =") {
 		// Check if our PID matches the launchd-managed PID
 		pidStr := ""
-		for _, line := range strings.Split(string(out), "\n") {
+		for _, line := range strings.Split(out, "\n") {
 			line = strings.TrimSpace(line)
 			if strings.HasPrefix(line, "pid = ") {
 				pidStr = strings.TrimSpace(strings.TrimPrefix(line, "pid = "))
@@ -215,12 +221,24 @@ func detectRunMode() string {
 			}
 		}
 		if pidStr != "" {
-			if managedPID, convErr := strconv.Atoi(pidStr); convErr == nil && managedPID == os.Getpid() {
+			if managedPID, convErr := strconv.Atoi(pidStr); convErr == nil && managedPID == restartGetpid() {
 				return "launchd"
 			}
 		}
 	}
 	return "direct"
+}
+
+func launchdServiceIdentity() (string, string) {
+	return launchagent.ResolveServiceIdentity(
+		launchagent.DefaultServerLabel,
+		fmt.Sprintf("gui/%d", restartGetuid()),
+	)
+}
+
+func runRestartLaunchctl(args ...string) (string, error) {
+	out, err := exec.Command("launchctl", args...).CombinedOutput()
+	return strings.TrimSpace(string(out)), err
 }
 
 type workspaceResetError struct {
