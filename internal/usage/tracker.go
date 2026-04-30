@@ -17,10 +17,11 @@ type ModelPrice struct {
 }
 
 type Limits struct {
-	DailyUSD   float64 `json:"daily_usd"`
-	WeeklyUSD  float64 `json:"weekly_usd"`
-	MonthlyUSD float64 `json:"monthly_usd"`
-	Mode       string  `json:"mode"`
+	DailyUSD    float64 `json:"daily_usd"`
+	WeeklyUSD   float64 `json:"weekly_usd"`
+	MonthlyUSD  float64 `json:"monthly_usd"`
+	DailyTokens int     `json:"daily_tokens"`
+	Mode        string  `json:"mode"`
 }
 
 type Entry struct {
@@ -61,6 +62,18 @@ type SummaryRow struct {
 	CachedTokens     int     `json:"cached_tokens"`
 	CacheReadTokens  int     `json:"cache_read_tokens"`
 	CacheWriteTokens int     `json:"cache_write_tokens"`
+}
+
+type DailyTokenSummary struct {
+	Date          string  `json:"date"`
+	ResetAt       string  `json:"reset_at"`
+	InputTokens   int     `json:"input_tokens"`
+	OutputTokens  int     `json:"output_tokens"`
+	TotalTokens   int     `json:"total_tokens"`
+	BudgetTokens  int     `json:"budget_tokens"`
+	BudgetEnabled bool    `json:"budget_enabled"`
+	UsagePercent  float64 `json:"usage_percent"`
+	Level         string  `json:"level"`
 }
 
 type TrackerOptions struct {

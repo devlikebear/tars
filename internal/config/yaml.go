@@ -24,6 +24,7 @@ var configYAMLPathAliases = map[string]string{
 	"agentruntime.agents.list":    "agentruntime_agents_json",
 	"telegram.bot_token":          "telegram_bot_token",
 	"usage.limits.daily_usd":      "usage_limit_daily_usd",
+	"usage.limits.daily_tokens":   "usage_daily_token_budget",
 	"usage.limits.mode":           "usage_limit_mode",
 	"usage.limits.monthly_usd":    "usage_limit_monthly_usd",
 	"usage.limits.weekly_usd":     "usage_limit_weekly_usd",

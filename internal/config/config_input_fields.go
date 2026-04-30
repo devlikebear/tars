@@ -47,6 +47,7 @@ var configInputFields = []configInputField{
 	floatField("usage_limit_daily_usd", []string{"USAGE_LIMIT_DAILY_USD", "TARS_USAGE_LIMIT_DAILY_USD"}, func(cfg *Config) *float64 { return &cfg.UsageLimitDailyUSD }, parsePositiveFloat),
 	floatField("usage_limit_weekly_usd", []string{"USAGE_LIMIT_WEEKLY_USD", "TARS_USAGE_LIMIT_WEEKLY_USD"}, func(cfg *Config) *float64 { return &cfg.UsageLimitWeeklyUSD }, parsePositiveFloat),
 	floatField("usage_limit_monthly_usd", []string{"USAGE_LIMIT_MONTHLY_USD", "TARS_USAGE_LIMIT_MONTHLY_USD"}, func(cfg *Config) *float64 { return &cfg.UsageLimitMonthlyUSD }, parsePositiveFloat),
+	withYAMLPath(intField("usage_daily_token_budget", []string{"USAGE_DAILY_TOKEN_BUDGET", "TARS_USAGE_DAILY_TOKEN_BUDGET"}, func(cfg *Config) *int { return &cfg.UsageDailyTokenBudget }, parseNonNegativeInt), "usage.limits.daily_tokens"),
 	stringField("usage_limit_mode", []string{"USAGE_LIMIT_MODE", "TARS_USAGE_LIMIT_MODE"}, func(cfg *Config) *string { return &cfg.UsageLimitMode }, lowerTrimmedString),
 	usagePriceOverridesField("usage_price_overrides_json", []string{"USAGE_PRICE_OVERRIDES_JSON", "TARS_USAGE_PRICE_OVERRIDES_JSON"}),
 	intField("agent_max_iterations", []string{"AGENT_MAX_ITERATIONS", "TARS_AGENT_MAX_ITERATIONS"}, func(cfg *Config) *int { return &cfg.AgentMaxIterations }, parsePositiveInt),

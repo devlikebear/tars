@@ -93,10 +93,11 @@ func buildRuntimeDeps(opts *options, cfg config.Config, nowFn func() time.Time, 
 	tracker, err := usage.NewTracker(cfg.WorkspaceDir, usage.TrackerOptions{
 		Now: nowFn,
 		InitialLimits: usage.Limits{
-			DailyUSD:   cfg.UsageLimitDailyUSD,
-			WeeklyUSD:  cfg.UsageLimitWeeklyUSD,
-			MonthlyUSD: cfg.UsageLimitMonthlyUSD,
-			Mode:       cfg.UsageLimitMode,
+			DailyUSD:    cfg.UsageLimitDailyUSD,
+			WeeklyUSD:   cfg.UsageLimitWeeklyUSD,
+			MonthlyUSD:  cfg.UsageLimitMonthlyUSD,
+			DailyTokens: cfg.UsageDailyTokenBudget,
+			Mode:        cfg.UsageLimitMode,
 		},
 		PriceOverrides: priceOverrides,
 	})

@@ -225,6 +225,9 @@ llm_tiers:
     provider: primary
     model: llm-yaml-model
 llm_default_tier: standard
+usage:
+  limits:
+    daily_tokens: 200000
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -253,6 +256,9 @@ llm_default_tier: standard
 	}
 	if cfg.LLMDefaultTier != "standard" {
 		t.Fatalf("expected llm_default_tier standard, got %q", cfg.LLMDefaultTier)
+	}
+	if cfg.UsageDailyTokenBudget != 200000 {
+		t.Fatalf("expected usage daily token budget 200000, got %d", cfg.UsageDailyTokenBudget)
 	}
 	if cfg.LLMTiers["heavy"].Model != "llm-yaml-model" {
 		t.Fatalf("expected heavy Model from yaml, got %q", cfg.LLMTiers["heavy"].Model)

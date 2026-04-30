@@ -54,6 +54,7 @@ import type {
   UpdateCronJobRequest,
   SessionTasks,
   SessionWorkDirs,
+  UsageToday,
 } from './types'
 
 async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
@@ -97,6 +98,10 @@ function normalizeSessionTasks(data: Partial<SessionTasks> | null | undefined): 
 
 export async function getServerStatus(): Promise<{ version: string }> {
   return requestJSON<{ version: string }>('/v1/status')
+}
+
+export async function getTodayUsage(): Promise<UsageToday> {
+  return requestJSON<UsageToday>('/v1/admin/usage/today')
 }
 
 // --- Pulse (system watchdog, replaces heartbeat) ---

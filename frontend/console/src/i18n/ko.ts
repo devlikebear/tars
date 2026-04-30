@@ -63,6 +63,10 @@ export const ko = {
       en: 'EN',
       ko: 'KO',
     },
+    budget: {
+      label: '오늘 토큰 예산',
+      title: (used, budget, percent) => `오늘 토큰 ${budget} 중 ${used} 사용 (${percent}%)`,
+    },
     time: {
       justNow: '방금 전',
       minutesAgo: (count) => `${count}분 전`,

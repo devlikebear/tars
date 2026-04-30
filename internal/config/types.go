@@ -141,11 +141,12 @@ type MemoryConfig struct {
 }
 
 type UsageConfig struct {
-	UsageLimitDailyUSD   float64
-	UsageLimitWeeklyUSD  float64
-	UsageLimitMonthlyUSD float64
-	UsageLimitMode       string
-	UsagePriceOverrides  map[string]UsagePrice
+	UsageLimitDailyUSD    float64
+	UsageLimitWeeklyUSD   float64
+	UsageLimitMonthlyUSD  float64
+	UsageDailyTokenBudget int
+	UsageLimitMode        string
+	UsagePriceOverrides   map[string]UsagePrice
 }
 
 type AutomationConfig struct {

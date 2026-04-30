@@ -25,7 +25,7 @@
 <div class="shell">
   <Nav {currentPath} {onNavigate} />
   <div class="shell-main">
-    <Header {serverHealth} {unreadCount} {onUnreadChange} />
+    <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} />
     <main class="shell-content">
       {@render children()}
     </main>

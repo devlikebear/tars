@@ -11,6 +11,7 @@ func TestConfigInputFieldsCarryPreferredYAMLPaths(t *testing.T) {
 		{key: "llm_providers", path: "llm.providers"},
 		{key: "log_rotate_max_size_mb", path: "log.rotate.max_size_mb"},
 		{key: "memory_embed_base_url", path: "memory.embed.base_url"},
+		{key: "usage_daily_token_budget", path: "usage.limits.daily_tokens"},
 		{key: "pulse_allowed_autofixes_json", path: "automation.pulse.allowed_autofixes"},
 	}
 

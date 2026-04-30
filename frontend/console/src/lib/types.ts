@@ -59,6 +59,18 @@ export type PulseConfigView = {
   disk_critical_percent: number
 }
 
+export type UsageToday = {
+  date: string
+  reset_at: string
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  budget_tokens: number
+  budget_enabled: boolean
+  usage_percent: number
+  level: 'disabled' | 'default' | 'warning' | 'error'
+}
+
 // --- Reflection (nightly batch runner) ---
 
 export type ReflectionJobResult = {

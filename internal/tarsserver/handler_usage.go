@@ -53,10 +53,11 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 				return
 			}
 			var req struct {
-				DailyUSD   *float64 `json:"daily_usd,omitempty"`
-				WeeklyUSD  *float64 `json:"weekly_usd,omitempty"`
-				MonthlyUSD *float64 `json:"monthly_usd,omitempty"`
-				Mode       *string  `json:"mode,omitempty"`
+				DailyUSD    *float64 `json:"daily_usd,omitempty"`
+				WeeklyUSD   *float64 `json:"weekly_usd,omitempty"`
+				MonthlyUSD  *float64 `json:"monthly_usd,omitempty"`
+				DailyTokens *int     `json:"daily_tokens,omitempty"`
+				Mode        *string  `json:"mode,omitempty"`
 			}
 			if !decodeJSONBody(w, r, &req) {
 				return
@@ -71,6 +72,9 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 			if req.MonthlyUSD != nil {
 				next.MonthlyUSD = *req.MonthlyUSD
 			}
+			if req.DailyTokens != nil {
+				next.DailyTokens = *req.DailyTokens
+			}
 			if req.Mode != nil {
 				next.Mode = strings.TrimSpace(strings.ToLower(*req.Mode))
 			}
@@ -82,6 +86,22 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 			}
 			writeJSON(w, http.StatusOK, updated)
 		}
+	})
+
+	mux.HandleFunc("/v1/admin/usage/today", func(w http.ResponseWriter, r *http.Request) {
+		if tracker == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
+			return
+		}
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		today, err := tracker.TodayTokens()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage today failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, today)
 	})
 
 	mux.HandleFunc("/v1/usage/signals", func(w http.ResponseWriter, r *http.Request) {
