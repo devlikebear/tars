@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/devlikebear/tars/internal/agent"
 	"github.com/devlikebear/tars/internal/agentruntime"
@@ -65,11 +66,14 @@ func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, 
 }
 
 type preparedChatContext struct {
-	SystemPrompt         string
-	ToolChoice           *llm.ToolChoice
-	SystemPromptTokens   int
-	RelevantMemoryCount  int
-	RelevantMemoryTokens int
+	SystemPrompt               string
+	ToolChoice                 *llm.ToolChoice
+	SystemPromptTokens         int
+	RelevantMemoryCount        int
+	RelevantMemoryTokens       int
+	RelevantMemorySection      string
+	RelevantMemoryItems        []prompt.RelevantMemoryItem
+	RelevantMemoryBudgetTokens int
 }
 
 func prepareChatContextWithExtensions(
@@ -167,11 +171,14 @@ func buildContextFromResult(
 		toolChoice = llm.ToolChoiceRequired()
 	}
 	return preparedChatContext{
-		SystemPrompt:         systemPrompt,
-		ToolChoice:           toolChoice,
-		SystemPromptTokens:   promptTokenEstimate(systemPrompt),
-		RelevantMemoryCount:  buildResult.RelevantMemoryCount,
-		RelevantMemoryTokens: buildResult.RelevantTokens,
+		SystemPrompt:               systemPrompt,
+		ToolChoice:                 toolChoice,
+		SystemPromptTokens:         promptTokenEstimate(systemPrompt),
+		RelevantMemoryCount:        buildResult.RelevantMemoryCount,
+		RelevantMemoryTokens:       buildResult.RelevantTokens,
+		RelevantMemorySection:      buildResult.RelevantSection,
+		RelevantMemoryItems:        append([]prompt.RelevantMemoryItem(nil), buildResult.RelevantMemoryItems...),
+		RelevantMemoryBudgetTokens: buildResult.RelevantBudgetTokens,
 	}
 }
 
@@ -848,6 +855,68 @@ func newChatAPIHandlerWithRuntimeConfig(
 			}
 		}
 		writeJSON(w, http.StatusOK, resp)
+	})
+	mux.HandleFunc("/v1/chat/prior-context/preview", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w)
+			return
+		}
+		var req struct {
+			SessionID string `json:"session_id"`
+			Query     string `json:"query"`
+		}
+		if !decodeJSONBody(w, r, &req) {
+			return
+		}
+		sessionID := strings.TrimSpace(req.SessionID)
+		if sessionID == "" {
+			writeError(w, http.StatusBadRequest, "", "session_id is required")
+			return
+		}
+		reqStore, requestWorkspaceDir, _, err := resolveSessionStoreForRequest(workspaceDir, store, r)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "", "resolve workspace failed")
+			return
+		}
+		sess, err := reqStore.Get(sessionID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+			return
+		}
+		details, err := prepareChatContextDetailsWithCache(
+			requestWorkspaceDir,
+			sessionID,
+			strings.TrimSpace(req.Query),
+			extensions.Snapshot{},
+			nil,
+			tooling.MemoryCache,
+			tooling.MemorySemanticConfig,
+			sess.WorkDirs,
+			sess.CurrentDir,
+			tooling.PlanClarifyMode,
+		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "", "prepare prior context failed")
+			return
+		}
+		budgetPercent := 0
+		if details.RelevantMemoryBudgetTokens > 0 && details.RelevantMemoryTokens > 0 {
+			budgetPercent = int((float64(details.RelevantMemoryTokens) / float64(details.RelevantMemoryBudgetTokens)) * 100)
+			if budgetPercent == 0 {
+				budgetPercent = 1
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"session_id":             sessionID,
+			"query":                  strings.TrimSpace(req.Query),
+			"section":                details.RelevantMemorySection,
+			"items":                  details.RelevantMemoryItems,
+			"relevant_tokens":        details.RelevantMemoryTokens,
+			"relevant_memory_count":  details.RelevantMemoryCount,
+			"relevant_budget_tokens": details.RelevantMemoryBudgetTokens,
+			"budget_percent":         budgetPercent,
+			"generated_at":           time.Now().UTC().Format(time.RFC3339),
+		})
 	})
 	mux.HandleFunc("/v1/chat/context", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

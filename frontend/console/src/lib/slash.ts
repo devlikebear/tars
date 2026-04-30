@@ -55,6 +55,13 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandCandidate[] = [
   },
   {
     kind: 'builtin',
+    id: 'prior',
+    command: 'prior',
+    title: 'Prior',
+    description: 'Open the Prior Context preview.',
+  },
+  {
+    kind: 'builtin',
     id: 'prompt',
     command: 'prompt',
     title: 'Prompt',

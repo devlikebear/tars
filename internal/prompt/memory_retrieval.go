@@ -29,14 +29,14 @@ type relevantMemoryMatch struct {
 	Timestamp time.Time
 }
 
-func buildRelevantMemorySection(opts BuildOptions, budgetTokens int) (string, int, int) {
+func buildRelevantMemorySection(opts BuildOptions, budgetTokens int) (string, []RelevantMemoryItem, int) {
 	query := strings.TrimSpace(opts.Query)
 	if query == "" {
-		return "", 0, 0
+		return "", nil, 0
 	}
 	matches := collectRelevantMemory(opts)
 	if len(matches) == 0 {
-		return "", 0, 0
+		return "", nil, 0
 	}
 
 	remainingTokens := budgetTokens
@@ -44,14 +44,14 @@ func buildRelevantMemorySection(opts BuildOptions, budgetTokens int) (string, in
 		remainingTokens = defaultRelevantBudgetTokens
 	}
 	if remainingTokens <= sectionHeaderTokenCost {
-		return "", 0, 0
+		return "", nil, 0
 	}
 
 	var section strings.Builder
 	section.WriteString("## Prior Context\n\n")
 	usedTokens := sectionHeaderTokenCost
 	remainingTokens -= sectionHeaderTokenCost
-	added := 0
+	items := make([]RelevantMemoryItem, 0, min(len(matches), defaultRelevantResultLimit))
 	for _, match := range matches {
 		if remainingTokens <= 0 {
 			break
@@ -81,13 +81,18 @@ func buildRelevantMemorySection(opts BuildOptions, budgetTokens int) (string, in
 		section.WriteString(line)
 		remainingTokens -= lineTokens
 		usedTokens += lineTokens
-		added++
+		items = append(items, RelevantMemoryItem{
+			Source:    source,
+			SourceTag: tag,
+			Snippet:   snippet,
+			Tokens:    lineTokens,
+		})
 	}
-	if added == 0 {
-		return "", 0, 0
+	if len(items) == 0 {
+		return "", nil, 0
 	}
 	section.WriteString("\n")
-	return section.String(), added, usedTokens
+	return section.String(), items, usedTokens
 }
 
 func collectRelevantMemory(opts BuildOptions) []relevantMemoryMatch {
@@ -438,7 +443,7 @@ func classifySourceTag(source string) string {
 	case strings.HasPrefix(source, "experience"):
 		return "experience"
 	case source == "MEMORY.md":
-		return "memory"
+		return "project"
 	case strings.HasPrefix(source, "memory/"):
 		return "daily"
 	default:

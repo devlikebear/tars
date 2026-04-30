@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.61] - 2026-05-01
+
+### Added
+
+- CON-040: Chat now includes a `Prior` side panel that previews the exact `## Prior Context` section the next draft message would add to the system prompt.
+- Added `POST /v1/chat/prior-context/preview`, returning structured source badges, snippets, relevant token usage, budget percentage, and the rendered prompt section.
+- The prompt builder now preserves structured Prior Context item metadata for conversation, experience, project, and daily sources while keeping the injected prompt text in sync.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/prompt -run TestBuildResultFor_ExposesPriorContextPreviewItems`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run TestChatAPIHandler_PriorContextPreviewEndpointReturnsExactSectionAndItems`
+- `npm test -- --test-name-pattern "Prior Context"` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/prompt ./internal/tarsserver`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #442.
+
 ## [0.31.60] - 2026-05-01
 
 ### Added

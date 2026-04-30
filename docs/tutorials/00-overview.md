@@ -62,6 +62,10 @@ POST /v1/chat { session_id, message }
   → daily log / remember hook
 ```
 
+`POST /v1/chat/prior-context/preview`는 같은 prior context builder 경로를 사용해
+다음 draft message가 system prompt에 넣을 `## Prior Context` 섹션과 source/token
+메타데이터를 Chat 우측 `Prior` 패널에 제공한다.
+
 ### Agent Runtime
 
 ```

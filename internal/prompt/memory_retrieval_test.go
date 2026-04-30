@@ -190,3 +190,69 @@ func TestBuild_UsesSemanticMemoryForParaphraseQueries(t *testing.T) {
 		t.Fatalf("expected semantic memory hit in prompt, got %q", result)
 	}
 }
+
+func TestBuildResultFor_ExposesPriorContextPreviewItems(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("Project atlas prefers compact status updates.\n"), 0o644); err != nil {
+		t.Fatalf("write MEMORY.md: %v", err)
+	}
+	if err := memory.AppendExperience(root, memory.Experience{
+		Timestamp:     time.Date(2026, 3, 7, 1, 0, 0, 0, time.UTC),
+		Category:      "preference",
+		Summary:       "Experience says atlas updates should include release risk.",
+		SourceSession: "sess-alpha",
+		Importance:    9,
+	}); err != nil {
+		t.Fatalf("append experience: %v", err)
+	}
+	if err := memory.AppendDailyLog(root, time.Date(2026, 3, 6, 9, 0, 0, 0, time.UTC), "daily atlas note: mention validation evidence"); err != nil {
+		t.Fatalf("append daily log: %v", err)
+	}
+
+	result := BuildResultFor(BuildOptions{
+		WorkspaceDir: root,
+		Query:        "atlas updates",
+		SessionID:    "sess-alpha",
+	})
+
+	if result.RelevantSection == "" {
+		t.Fatalf("expected prior context section")
+	}
+	if !strings.Contains(result.Prompt, result.RelevantSection) {
+		t.Fatalf("expected prompt to include exact prior context section")
+	}
+	if result.RelevantBudgetTokens <= 0 {
+		t.Fatalf("expected relevant budget tokens to be reported")
+	}
+	if result.RelevantTokens <= 0 {
+		t.Fatalf("expected relevant tokens to be reported")
+	}
+	if len(result.RelevantMemoryItems) < 3 {
+		t.Fatalf("expected structured prior context items, got %+v", result.RelevantMemoryItems)
+	}
+
+	tags := map[string]bool{}
+	for _, item := range result.RelevantMemoryItems {
+		tags[item.SourceTag] = true
+		if strings.TrimSpace(item.Source) == "" {
+			t.Fatalf("expected item source, got %+v", item)
+		}
+		if strings.TrimSpace(item.Snippet) == "" {
+			t.Fatalf("expected item snippet, got %+v", item)
+		}
+		if item.Tokens <= 0 {
+			t.Fatalf("expected item token estimate, got %+v", item)
+		}
+		if !strings.Contains(result.RelevantSection, item.Snippet) {
+			t.Fatalf("expected section to include item snippet %q in %q", item.Snippet, result.RelevantSection)
+		}
+	}
+	for _, tag := range []string{"experience", "project", "daily"} {
+		if !tags[tag] {
+			t.Fatalf("expected source tag %q in %+v", tag, result.RelevantMemoryItems)
+		}
+	}
+}

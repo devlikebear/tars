@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -142,6 +143,88 @@ func TestChatAPIHandler_ContextEndpointReflectsSessionConfig(t *testing.T) {
 	}
 	if strings.Contains(payload.SystemPrompt, "<name>project-start</name>") {
 		t.Fatalf("expected disabled project-start skill to be excluded from preview prompt, got %q", payload.SystemPrompt)
+	}
+}
+
+func TestChatAPIHandler_PriorContextPreviewEndpointReturnsExactSectionAndItems(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("Project atlas launch prefers risk-first release notes.\n"), 0o644); err != nil {
+		t.Fatalf("write MEMORY.md: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		&mockLLMClient{},
+		nil,
+		zerolog.Nop(),
+		4,
+		nil,
+		"",
+		chatToolingOptions{MemoryCache: newMemoryCache(time.Minute)},
+	)
+
+	body := bytes.NewBufferString(`{"session_id":"` + sess.ID + `","query":"atlas launch release notes"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/prior-context/preview", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected prior context status 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		SessionID            string `json:"session_id"`
+		Query                string `json:"query"`
+		Section              string `json:"section"`
+		RelevantTokens       int    `json:"relevant_tokens"`
+		RelevantBudgetTokens int    `json:"relevant_budget_tokens"`
+		BudgetPercent        int    `json:"budget_percent"`
+		Items                []struct {
+			Source    string `json:"source"`
+			SourceTag string `json:"source_tag"`
+			Snippet   string `json:"snippet"`
+			Tokens    int    `json:"tokens"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode prior context payload: %v", err)
+	}
+
+	if payload.SessionID != sess.ID {
+		t.Fatalf("expected session id %q, got %q", sess.ID, payload.SessionID)
+	}
+	if payload.Query != "atlas launch release notes" {
+		t.Fatalf("expected query echo, got %q", payload.Query)
+	}
+	if !strings.Contains(payload.Section, "## Prior Context") {
+		t.Fatalf("expected exact prior context section, got %q", payload.Section)
+	}
+	if !strings.Contains(payload.Section, "Project atlas launch prefers risk-first release notes.") {
+		t.Fatalf("expected section text from memory, got %q", payload.Section)
+	}
+	if payload.RelevantTokens <= 0 || payload.RelevantBudgetTokens <= 0 || payload.BudgetPercent <= 0 {
+		t.Fatalf("expected token budget metadata, got %+v", payload)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one prior context item, got %+v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.Source != "MEMORY.md" || item.SourceTag != "project" {
+		t.Fatalf("expected project source badge for MEMORY.md, got %+v", item)
+	}
+	if item.Tokens <= 0 || !strings.Contains(item.Snippet, "atlas launch") {
+		t.Fatalf("expected item token estimate and snippet, got %+v", item)
 	}
 }
 
