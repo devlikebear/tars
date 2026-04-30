@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.30] - 2026-04-30
+
+### Added
+
+- Extensions now marks Plugins as deprecated in both Installed and Hub views and points new extension work toward Skills (`.md + CLI`) while keeping legacy plugin installs available.
+
+### Tests
+
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #447.
+
 ## [0.31.29] - 2026-04-30
 
 ### Fixed

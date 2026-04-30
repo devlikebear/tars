@@ -377,8 +377,14 @@
       <!-- Plugins -->
       <section class="card ext-section">
         <div class="card-header">
-          <span class="card-title">Plugins</span>
+          <div class="card-title-group">
+            <span class="card-title">Plugins</span>
+            <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
+          </div>
           <span class="badge badge-default">{plugins.length}</span>
+        </div>
+        <div class="plugin-policy-note">
+          Use Skills (.md + CLI) for new extension work. Legacy plugin installs remain available for existing workflows.
         </div>
         {#if plugins.length === 0}
           <div class="empty-state"><p>No plugins loaded.</p></div>
@@ -517,8 +523,14 @@
       <!-- Hub Plugins -->
       <section class="card ext-section">
         <div class="card-header">
-          <span class="card-title">Plugins</span>
+          <div class="card-title-group">
+            <span class="card-title">Plugins</span>
+            <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
+          </div>
           <span class="badge badge-default">{registry.plugins.length} available</span>
+        </div>
+        <div class="plugin-policy-note">
+          Use Skills (.md + CLI) for new extension work. Legacy plugin installs remain available for existing workflows.
         </div>
         <div class="ext-list">
           {#each registry.plugins as entry}
@@ -632,7 +644,18 @@
   .message-error { background: rgba(220, 60, 60, 0.15); color: var(--red); border: 1px solid rgba(220, 60, 60, 0.3); }
   .message-success { background: rgba(60, 180, 100, 0.15); color: var(--green); border: 1px solid rgba(60, 180, 100, 0.3); }
 
+  .card-title-group { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
   .ext-section { margin-bottom: var(--space-2); }
+  .plugin-policy-note {
+    margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--warning-muted);
+    border-radius: var(--radius-md);
+    background: rgba(224, 145, 69, 0.08);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+  }
   .ext-list { display: flex; flex-direction: column; }
 
   .ext-item {
