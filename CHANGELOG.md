@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.74] - 2026-05-01
+
+### Changed
+
+- `tars service start`, `stop`, and `status` now operate from LaunchAgent plist and `launchctl` state without requiring a readable runtime config.
+- `tars service install --label/--domain` now records the launchd identity in the LaunchAgent environment so server restart detection uses the installed custom label/domain.
+- Server and assistant LaunchAgent plist serialization now share the same internal helper.
+
+### Documentation
+
+- README now notes that macOS service inspection/control remains available even when config repair is needed.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./cmd/tars ./internal/assistant ./internal/tarsserver ./internal/launchagent`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make build`
+- Manual macOS smoke: temp LaunchAgent install, then `service status` with intentionally broken config.
+
+### Closed
+
+- Closes #409.
+
 ## [0.31.73] - 2026-05-01
 
 ### Removed
