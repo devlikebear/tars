@@ -73,3 +73,15 @@ test('Memory page uses friendly tab labels and asset descriptions', () => {
   assert.match(memorySource, /asset-description/)
   assert.match(memorySource, /title=\{metadata\.description\}/)
 })
+
+test('Memory page introduces memory assets before editing', () => {
+  assert.match(memorySource, /memoryIntroDismissed/)
+  assert.match(memorySource, /memory-intro-card/)
+  assert.match(memorySource, /Dismiss memory intro/)
+  assert.match(memorySource, /Review and edit what TARS remembers/)
+  assert.match(memorySource, /MEMORY\.md/)
+  assert.match(memorySource, /Experiences/)
+  assert.match(memorySource, /Daily Logs/)
+  assert.match(memorySource, /Semantic Index/)
+  assert.match(memorySource, /Try a Search/)
+})

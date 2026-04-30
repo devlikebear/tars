@@ -22,10 +22,13 @@
 
   let { onAskAI }: Props = $props()
 
+  const MEMORY_INTRO_STORAGE_KEY = 'tars.memory.intro.dismissed'
+
   let activeTab = $state<'durable' | 'search'>('durable')
   let error = $state('')
   let success = $state('')
   let stopStream: (() => void) | null = null
+  let memoryIntroDismissed = $state(false)
 
   let memoryAssets: MemoryAsset[] = $state([])
   let loadingMemory = $state(true)
@@ -157,7 +160,25 @@
     }
   }
 
+  function loadMemoryIntroPreference() {
+    try {
+      memoryIntroDismissed = window.localStorage.getItem(MEMORY_INTRO_STORAGE_KEY) === 'true'
+    } catch {
+      memoryIntroDismissed = false
+    }
+  }
+
+  function dismissMemoryIntro() {
+    memoryIntroDismissed = true
+    try {
+      window.localStorage.setItem(MEMORY_INTRO_STORAGE_KEY, 'true')
+    } catch {
+      // Ignore storage failures; the current session still hides the intro.
+    }
+  }
+
   onMount(() => {
+    loadMemoryIntroPreference()
     void loadAll()
     stopStream = streamEvents(
       (event) => {
@@ -194,6 +215,38 @@
   {/if}
   {#if success}
     <div class="success-banner">{success}</div>
+  {/if}
+
+  {#if !memoryIntroDismissed}
+    <section class="memory-intro-card" aria-label="Memory introduction">
+      <div class="intro-main">
+        <div>
+          <p class="intro-eyebrow">Memory</p>
+          <h3>Review and edit what TARS remembers</h3>
+          <p>Every chat turn can receive matching stored knowledge through Prior Context, so this page shows the files that feed recall.</p>
+        </div>
+        <button class="btn btn-ghost btn-sm intro-dismiss" type="button" aria-label="Dismiss memory intro" title="Dismiss memory intro" onclick={dismissMemoryIntro}>Dismiss</button>
+      </div>
+      <div class="intro-grid">
+        <div class="intro-item">
+          <strong>MEMORY.md</strong>
+          <span>Editable long-term notes for user facts, preferences, and rules.</span>
+        </div>
+        <div class="intro-item">
+          <strong>Experiences</strong>
+          <span>Facts automatically extracted from previous chats by reflection.</span>
+        </div>
+        <div class="intro-item">
+          <strong>Daily Logs</strong>
+          <span>Per-day activity captured from recent chat turns.</span>
+        </div>
+        <div class="intro-item">
+          <strong>Semantic Index</strong>
+          <span>Embedding index TARS manages for memory prefetch and ranking.</span>
+        </div>
+      </div>
+      <p class="intro-footer">Use Try a Search to inspect recall before changing prompts or storage behavior.</p>
+    </section>
   {/if}
 
   <div class="memory-stats">
@@ -372,6 +425,76 @@
     display: flex;
     gap: var(--space-2);
     flex-wrap: wrap;
+  }
+
+  .memory-intro-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+  }
+
+  .intro-main {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    align-items: flex-start;
+  }
+
+  .intro-main h3 {
+    margin: 0;
+    font-size: var(--text-lg);
+  }
+
+  .intro-main p,
+  .intro-footer,
+  .intro-item span {
+    color: var(--text-secondary);
+  }
+
+  .intro-eyebrow {
+    margin: 0 0 var(--space-1);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0;
+    color: var(--text-ghost);
+  }
+
+  .intro-main p:not(.intro-eyebrow),
+  .intro-footer {
+    margin: var(--space-2) 0 0;
+    line-height: 1.55;
+  }
+
+  .intro-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  .intro-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding-left: var(--space-3);
+    border-left: 2px solid var(--border-subtle);
+    min-width: 0;
+  }
+
+  .intro-item strong {
+    color: var(--text-primary);
+  }
+
+  .intro-item span {
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
+
+  .intro-dismiss {
+    flex: 0 0 auto;
   }
 
   .memory-stats {
@@ -599,12 +722,17 @@
     .memory-stats,
     .memory-layout,
     .search-layout,
-    .form-grid {
+    .form-grid,
+    .intro-grid {
       grid-template-columns: 1fr;
     }
 
     .form-span-2 {
       grid-column: span 1;
+    }
+
+    .intro-main {
+      flex-direction: column;
     }
   }
 </style>

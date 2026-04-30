@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.45] - 2026-04-30
+
+### Added
+
+- Memory now opens with a dismissible introduction card that explains MEMORY.md, Experiences, Daily Logs, Semantic Index, Prior Context recall, and the Try a Search workflow before editing.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Memory page introduces|Memory page uses friendly|memory asset metadata explains"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #421.
+
 ## [0.31.44] - 2026-04-30
 
 ### Changed
