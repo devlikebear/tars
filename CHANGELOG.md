@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.52] - 2026-05-01
+
+### Added
+
+- CON-050: Agent Runtime now captures file-oriented tool calls (`read_file`, `list_dir`, `write_file`, `edit_file`) as `tool.call` run events and accumulates a per-run file attention summary.
+- The Console Agent Runtime run detail now includes a File Attention panel with frequency-ranked files, read/edit counts, intensity cells, and mini sparklines.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/agentruntime -run TestRuntimeCapturesFileToolCallSummaryAndEvent`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run TestNewAgentPromptRunnerWithTools_ForwardsFileToolCallsToRuntimeRecorder`
+- `npm test -- --test-name-pattern "file attention"` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/agentruntime ./internal/tarsserver`
+- `npm test -- --test-name-pattern "Agent Runtime"` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #452.
+
 ## [0.31.51] - 2026-05-01
 
 ### Changed
