@@ -1,7 +1,13 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { getReflectionStatus, runReflectionOnce, getReflectionConfig } from '../lib/api'
-  import type { ReflectionSnapshot, ReflectionRunSummary, ReflectionConfigView } from '../lib/types'
+  import type { ReflectionSnapshot, ReflectionRunSummary, ReflectionConfigView, ReflectionJobResult } from '../lib/types'
+
+  type RunMetric = {
+    label: string
+    value: string
+    delta: string
+  }
 
   let snapshot: ReflectionSnapshot | null = $state(null)
   let config: ReflectionConfigView | null = $state(null)
@@ -10,6 +16,7 @@
 
   let running = $state(false)
   let runResult: ReflectionRunSummary | null = $state(null)
+  let lastRunBeforeManualRun: ReflectionRunSummary | null = $state(null)
 
   let refreshInterval: ReturnType<typeof setInterval> | null = null
 
@@ -40,6 +47,7 @@
   async function handleRun() {
     running = true
     runResult = null
+    lastRunBeforeManualRun = snapshot?.last_run_summary ?? null
     try {
       runResult = await runReflectionOnce()
       await loadStatus()
@@ -75,12 +83,120 @@
     return `${Math.floor(seconds / 86400)}d ago`
   }
 
-  function fmtDuration(ms: number): string {
-    if (!ms || ms < 0) return '\u2014'
-    if (ms < 1000) return `${Math.round(ms / 1e6)}ms`
-    const seconds = ms / 1e9
+  function fmtDuration(durationNs: number): string {
+    if (!durationNs || durationNs < 0) return '\u2014'
+    if (durationNs < 1000) return `${Math.round(durationNs / 1e6)}ms`
+    const seconds = durationNs / 1e9
     if (seconds < 60) return `${seconds.toFixed(1)}s`
     return `${(seconds / 60).toFixed(1)}m`
+  }
+
+  function summaryDuration(summary: ReflectionRunSummary): string {
+    const started = Date.parse(summary.started_at)
+    const finished = Date.parse(summary.finished_at)
+    if (Number.isNaN(started) || Number.isNaN(finished) || finished <= started) return '\u2014'
+    return fmtDuration((finished - started) * 1e6)
+  }
+
+  function findJob(summary: ReflectionRunSummary | null, name: string): ReflectionJobResult | null {
+    return summary?.results?.find((job) => job.name === name) ?? null
+  }
+
+  function detailNumber(job: ReflectionJobResult | null, key: string): number | null {
+    const value = job?.details?.[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string') {
+      const parsed = Number(value)
+      if (Number.isFinite(parsed)) return parsed
+    }
+    return null
+  }
+
+  function firstDetailNumber(job: ReflectionJobResult | null, keys: string[]): number | null {
+    for (const key of keys) {
+      const value = detailNumber(job, key)
+      if (value !== null) return value
+    }
+    return null
+  }
+
+  function kbEntriesCompiled(job: ReflectionJobResult | null): number | null {
+    if (!job) return null
+    return firstDetailNumber(job, ['kb_entries_compiled', 'knowledge_entries_compiled', 'entries_compiled'])
+  }
+
+  function metricValue(value: number | null, plus = false): string {
+    if (value === null) return 'not reported'
+    if (plus && value > 0) return `+${value}`
+    return `${value}`
+  }
+
+  function metricDelta(current: number | null, previous: number | null, hasPrevious: boolean): string {
+    if (current === null) return 'not reported'
+    if (!hasPrevious) return 'first run'
+    if (previous === null) return 'no previous value'
+    const delta = current - previous
+    if (delta === 0) return 'same as last run'
+    return `${delta > 0 ? '+' : ''}${delta} vs last run`
+  }
+
+  function runMetrics(summary: ReflectionRunSummary, previous: ReflectionRunSummary | null): RunMetric[] {
+    const memoryJob = findJob(summary, 'memory')
+    const previousMemoryJob = findJob(previous, 'memory')
+    const cleanupJob = findJob(summary, 'kb_cleanup')
+    const previousCleanupJob = findJob(previous, 'kb_cleanup')
+    const hasPrevious = Boolean(previous)
+
+    const experiences = detailNumber(memoryJob, 'experiences_added')
+    const previousExperiences = detailNumber(previousMemoryJob, 'experiences_added')
+    const removed = detailNumber(cleanupJob, 'removed_count')
+    const previousRemoved = detailNumber(previousCleanupJob, 'removed_count')
+    const compiled = kbEntriesCompiled(memoryJob)
+    const previousCompiled = kbEntriesCompiled(previousMemoryJob)
+
+    return [
+      {
+        label: 'Experiences extracted',
+        value: metricValue(experiences, true),
+        delta: metricDelta(experiences, previousExperiences, hasPrevious),
+      },
+      {
+        label: 'Empty sessions removed',
+        value: metricValue(removed),
+        delta: metricDelta(removed, previousRemoved, hasPrevious),
+      },
+      {
+        label: 'KB entries compiled',
+        value: metricValue(compiled),
+        delta: metricDelta(compiled, previousCompiled, hasPrevious),
+      },
+    ]
+  }
+
+  function jobDetailLine(job: ReflectionJobResult): string {
+    if (job.name === 'memory') {
+      const sessions = detailNumber(job, 'sessions_scanned')
+      const turns = detailNumber(job, 'turns_processed')
+      const experiences = detailNumber(job, 'experiences_added')
+      const compiled = kbEntriesCompiled(job)
+      const parts = [
+        sessions !== null ? `${sessions} sessions scanned` : '',
+        turns !== null ? `${turns} turns processed` : '',
+        experiences !== null ? `${experiences} experiences extracted` : '',
+        compiled !== null ? `${compiled} KB entries compiled` : '',
+      ].filter(Boolean)
+      return parts.join(' · ')
+    }
+    if (job.name === 'kb_cleanup') {
+      const removed = detailNumber(job, 'removed_count')
+      const skipped = detailNumber(job, 'skipped_count')
+      const parts = [
+        removed !== null ? `${removed} empty sessions removed` : '',
+        skipped !== null ? `${skipped} skipped` : '',
+      ].filter(Boolean)
+      return parts.join(' · ')
+    }
+    return ''
   }
 
   function hoursFromSeconds(seconds?: number): string {
@@ -174,6 +290,9 @@
                 {#if job.summary}
                   <div class="r-job-summary">{job.summary}</div>
                 {/if}
+                {#if jobDetailLine(job)}
+                  <div class="r-job-detail">{jobDetailLine(job)}</div>
+                {/if}
                 {#if job.err}
                   <div class="r-error">{job.err}</div>
                 {/if}
@@ -182,7 +301,26 @@
           </ul>
         {/if}
       {:else}
-        <div class="r-empty">No reflection runs yet.</div>
+        <div class="r-empty-state">
+          <div class="r-empty">No reflection runs yet.</div>
+          <div class="r-run-preview">
+            <div class="r-preview-title">Expected output</div>
+            <ul>
+              <li>
+                <span class="badge badge-success">memory</span>
+                <span>Recent turns scanned, experiences extracted, and KB compilation totals shown when reported.</span>
+              </li>
+              <li>
+                <span class="badge badge-success">kb_cleanup</span>
+                <span>Old empty sessions removed or skipped with duration and counts.</span>
+              </li>
+              <li>
+                <span class="badge badge-info">failure</span>
+                <span>Error detail stays in this card; Pulse will surface repeated failures.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
       {/if}
 
       <div class="r-actions">
@@ -206,9 +344,24 @@
               <span class="badge badge-error">failed</span>
             {/if}
           </div>
+          <div class="r-run-meta">
+            <span>Started: {fmtTime(runResult.started_at)}</span>
+            <span>Finished: {fmtTime(runResult.finished_at)}</span>
+            <span>Duration: {summaryDuration(runResult)}</span>
+          </div>
           {#if runResult.err}
             <div class="r-error">{runResult.err}</div>
           {/if}
+          <div class="r-run-stats" aria-label="Run totals">
+            <div class="r-run-stats-title">Run totals</div>
+            {#each runMetrics(runResult, lastRunBeforeManualRun) as metric}
+              <div class="r-run-stat">
+                <span>{metric.label}</span>
+                <strong>{metric.value}</strong>
+                <small>{metric.delta}</small>
+              </div>
+            {/each}
+          </div>
           {#if runResult.results && runResult.results.length > 0}
             <ul class="r-jobs">
               {#each runResult.results as job}
@@ -227,6 +380,12 @@
                   </div>
                   {#if job.summary}
                     <div class="r-job-summary">{job.summary}</div>
+                  {/if}
+                  {#if jobDetailLine(job)}
+                    <div class="r-job-detail">{jobDetailLine(job)}</div>
+                  {/if}
+                  {#if job.err}
+                    <div class="r-error">{job.err}</div>
                   {/if}
                 </li>
               {/each}
@@ -353,6 +512,12 @@
     color: var(--text-secondary);
   }
 
+  .r-job-detail {
+    margin-top: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+
   .r-error {
     padding: var(--space-2) var(--space-3);
     background: var(--error-muted);
@@ -368,9 +533,47 @@
     font-size: var(--text-sm);
   }
 
+  .r-empty-state {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .r-run-preview {
+    padding: var(--space-3);
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .r-preview-title {
+    margin-bottom: var(--space-2);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .r-run-preview ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .r-run-preview li {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
   .r-actions {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--space-3);
     margin-top: var(--space-3);
   }
@@ -399,6 +602,48 @@
     font-family: var(--font-display);
     font-size: var(--text-sm);
     font-weight: 500;
+  }
+
+  .r-run-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+
+  .r-run-stats-title {
+    grid-column: 1 / -1;
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .r-run-stat {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--space-2);
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+  }
+
+  .r-run-stat span {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .r-run-stat strong {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .r-run-stat small {
+    color: var(--text-ghost);
+    font-size: var(--text-xs);
   }
 
   .r-recent {
