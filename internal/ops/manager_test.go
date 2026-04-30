@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/devlikebear/tars/internal/config"
 )
 
 func TestManager_CleanupRequiresApprovalThenApplies(t *testing.T) {
@@ -126,6 +128,60 @@ func TestManager_UpdateApprovalStatus_SetsReviewedAtAndPersists(t *testing.T) {
 	}
 	if !items[0].UpdatedAt.Equal(fixedNow) {
 		t.Fatalf("expected updated_at %s, got %s", fixedNow, items[0].UpdatedAt)
+	}
+}
+
+func TestNewManager_EmptyWorkspaceUsesCoreDefault(t *testing.T) {
+	mgr := NewManager("", Options{})
+
+	if mgr.workspaceDir != config.DefaultWorkspaceDir() {
+		t.Fatalf("expected workspace default %q, got %q", config.DefaultWorkspaceDir(), mgr.workspaceDir)
+	}
+	if mgr.approvalsPath != filepath.Join(config.DefaultWorkspaceDir(), "ops", "approvals.json") {
+		t.Fatalf("expected approvals path under default workspace, got %q", mgr.approvalsPath)
+	}
+}
+
+func TestManager_SaveApprovalsPreservesExistingFileWhenAtomicTempCannotBeCreated(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses permission checks")
+	}
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	mgr := NewManager(workspace, Options{HomeDir: filepath.Join(t.TempDir(), "home")})
+	if err := os.MkdirAll(filepath.Dir(mgr.approvalsPath), 0o755); err != nil {
+		t.Fatalf("mkdir approvals dir: %v", err)
+	}
+	original := []byte(`[{"id":"apr_1","type":"cleanup","status":"pending","requested_at":"2026-03-07T11:00:00Z","updated_at":"2026-03-07T11:00:00Z","plan":{"approval_id":"apr_1","created_at":"2026-03-07T11:00:00Z","candidates":null}}]`)
+	if err := os.WriteFile(mgr.approvalsPath, original, 0o644); err != nil {
+		t.Fatalf("seed approvals: %v", err)
+	}
+	if err := os.Chmod(filepath.Dir(mgr.approvalsPath), 0o500); err != nil {
+		t.Fatalf("chmod approvals dir: %v", err)
+	}
+	defer os.Chmod(filepath.Dir(mgr.approvalsPath), 0o755)
+
+	err := mgr.saveApprovalsLocked([]Approval{
+		{
+			ID:          "apr_2",
+			Type:        "cleanup",
+			Status:      "approved",
+			RequestedAt: time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC),
+			Plan: CleanupPlan{
+				ApprovalID: "apr_2",
+				CreatedAt:  time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected save approvals to fail when temp file cannot be created")
+	}
+	got, readErr := os.ReadFile(mgr.approvalsPath)
+	if readErr != nil {
+		t.Fatalf("read approvals: %v", readErr)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("expected original approvals to be preserved, got %q", got)
 	}
 }
 

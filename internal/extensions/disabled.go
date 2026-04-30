@@ -32,6 +32,10 @@ func (s *disabledStore) Load() (DisabledSet, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	return s.loadLocked()
+}
+
+func (s *disabledStore) loadLocked() (DisabledSet, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -50,6 +54,10 @@ func (s *disabledStore) Save(ds DisabledSet) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	return s.saveLocked(ds)
+}
+
+func (s *disabledStore) saveLocked(ds DisabledSet) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
@@ -62,9 +70,12 @@ func (s *disabledStore) Save(ds DisabledSet) error {
 
 // SetDisabled enables or disables a specific extension.
 func (s *disabledStore) SetDisabled(kind, name string, disabled bool) error {
-	ds, err := s.Load()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ds, err := s.loadLocked()
 	if err != nil {
-		ds = DisabledSet{}
+		return err
 	}
 	key := strings.TrimSpace(strings.ToLower(name))
 
@@ -99,7 +110,7 @@ func (s *disabledStore) SetDisabled(kind, name string, disabled bool) error {
 		*list = filtered
 	}
 
-	return s.Save(ds)
+	return s.saveLocked(ds)
 }
 
 func (ds DisabledSet) isSkillDisabled(name string) bool {

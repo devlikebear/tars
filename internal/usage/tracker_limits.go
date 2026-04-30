@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/devlikebear/tars/internal/atomicwrite"
 )
 
 func normalizeLimits(in Limits) Limits {
@@ -54,17 +56,21 @@ func (t *Tracker) UpdateLimits(next Limits) (Limits, error) {
 	}
 
 	normalized := normalizeLimits(next)
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	t.limits = normalized
 	payload, err := json.MarshalIndent(normalized, "", "  ")
 	if err != nil {
 		return Limits{}, err
 	}
-	if err := os.WriteFile(t.limitsPath, append(payload, '\n'), 0o644); err != nil {
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if err := atomicwrite.Write(t.limitsPath, append(payload, '\n')); err != nil {
 		return Limits{}, err
 	}
+	if err := os.Chmod(t.limitsPath, 0o644); err != nil {
+		return Limits{}, err
+	}
+	t.limits = normalized
 	return normalized, nil
 }
 

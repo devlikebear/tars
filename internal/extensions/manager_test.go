@@ -274,6 +274,32 @@ name: copy-fail
 	}
 }
 
+func TestManagerReload_ReturnsDisabledStateLoadError(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	writeFile(t, filepath.Join(workspaceDir, "skills", "notes", "SKILL.md"), `---
+name: notes
+---
+# Notes`)
+	writeFile(t, filepath.Join(workspaceDir, disabledFileName), `{"skills": [`)
+
+	manager, err := NewManager(Options{
+		WorkspaceDir:   workspaceDir,
+		SkillsEnabled:  true,
+		PluginsEnabled: false,
+		SkillSources: []skill.SourceDir{
+			{Source: skill.SourceWorkspace, Dir: filepath.Join(workspaceDir, "skills")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	if err := manager.Reload(context.Background()); err == nil {
+		t.Fatalf("expected corrupt disabled state to fail reload")
+	}
+}
+
 func TestManagerReload_SkipsUnavailablePluginsAndAnnotatesMCPSource(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace")

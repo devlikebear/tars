@@ -9,6 +9,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/devlikebear/tars/internal/config"
 )
 
 type Options struct {
@@ -77,7 +79,7 @@ func NewManager(workspaceDir string, opts Options) *Manager {
 	}
 	root := strings.TrimSpace(workspaceDir)
 	if root == "" {
-		root = "./workspace"
+		root = config.DefaultWorkspaceDir()
 	}
 	return &Manager{
 		workspaceDir:  root,
