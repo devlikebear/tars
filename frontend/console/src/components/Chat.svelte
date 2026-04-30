@@ -13,6 +13,7 @@
   import SessionConfigPanel from './SessionConfigPanel.svelte'
   import ContextMonitor from './ContextMonitor.svelte'
   import PromptEditor from './PromptEditor.svelte'
+  import PriorContextPanel from './PriorContextPanel.svelte'
   import TasksPanel from './TasksPanel.svelte'
   import SessionCronPanel from './SessionCronPanel.svelte'
 
@@ -42,6 +43,7 @@
       selectedSessionId = sid || null
       selectedSession = null
       chatKey++
+      chatDraft = ''
       chatContextInfo = {}
       if (sid) loadSelectedSession(sid)
     }
@@ -55,6 +57,7 @@
 
   // Right panel state
   let chatArtifacts: Artifact[] = $state([])
+  let chatDraft = $state('')
   let chatContextInfo: {
     system_prompt_tokens?: number
     history_tokens?: number
@@ -78,7 +81,7 @@
     mentioned_subagents?: string[]
   } = $state({})
   let contextRefreshVersion = $state(0)
-  type RightPanel = 'none' | 'artifacts' | 'config' | 'context' | 'prompt' | 'tasks' | 'cron'
+  type RightPanel = 'none' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'tasks' | 'cron'
   let rightPanel = $state<RightPanel>('none')
 
   let sidebarRef: SessionSidebar | undefined = $state()
@@ -113,6 +116,7 @@
     selectedSession = session
     chatKey++
     chatArtifacts = []
+    chatDraft = ''
     chatContextInfo = {}
     rightPanel = 'none'
     renaming = false
@@ -131,6 +135,7 @@
     }
     chatKey++
     chatArtifacts = []
+    chatDraft = ''
     chatContextInfo = {}
     rightPanel = 'none'
     renaming = false
@@ -323,6 +328,9 @@
       case 'context':
         rightPanel = 'context'
         return
+      case 'prior':
+        rightPanel = 'prior'
+        return
       case 'prompt':
         rightPanel = 'prompt'
         return
@@ -400,6 +408,7 @@
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'artifacts'} onclick={() => togglePanel('artifacts')} title="Files browser">Files{#if chatArtifacts.length > 0} ({chatArtifacts.length}){/if}</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'context'} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prompt'} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
+      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prior'} onclick={() => togglePanel('prior')} title="Prior Context preview">Prior</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'tasks'} onclick={() => togglePanel('tasks')} title={tasksSummary.total > 0 ? `${tasksSummary.completed} done · ${tasksSummary.in_progress} in progress · ${tasksSummary.pending} pending` : 'Session tasks'}>Tasks{#if tasksSummary.total > 0} ({tasksSummary.completed}/{tasksSummary.total}){/if}</button>
       <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'cron'} onclick={() => togglePanel('cron')} title="Session cron jobs">Cron</button>
     </div>
@@ -473,6 +482,7 @@
           onToolComplete={handleToolComplete}
           onTasksChanged={handleTasksChanged}
           onSlashCommand={handleSlashCommand}
+          onDraftChange={(draft) => { chatDraft = draft }}
           onSessionReady={(id) => {
             if (!selectedSessionId) {
               selectedSessionId = id
@@ -505,6 +515,8 @@
           />
         {:else if rightPanel === 'prompt'}
           <PromptEditor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
+        {:else if rightPanel === 'prior'}
+          <PriorContextPanel sessionId={selectedSessionId ?? ''} draftQuery={chatDraft} onClose={() => { rightPanel = 'none' }} />
         {:else if rightPanel === 'tasks' && selectedSessionId}
           <TasksPanel
             bind:this={tasksPanelRef}

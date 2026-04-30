@@ -29,13 +29,25 @@ type BuildOptions struct {
 	TotalBudgetTokens    int
 }
 
+// RelevantMemoryItem is the structured form of one line injected into the
+// "## Prior Context" prompt section.
+type RelevantMemoryItem struct {
+	Source    string `json:"source"`
+	SourceTag string `json:"source_tag"`
+	Snippet   string `json:"snippet"`
+	Tokens    int    `json:"tokens"`
+}
+
 // BuildResult captures prompt assembly output and budget usage.
 type BuildResult struct {
-	Prompt              string
-	StaticTokens        int
-	RelevantTokens      int
-	RelevantMemoryCount int
-	TotalTokens         int
+	Prompt               string
+	StaticTokens         int
+	RelevantTokens       int
+	RelevantMemoryCount  int
+	RelevantSection      string
+	RelevantMemoryItems  []RelevantMemoryItem
+	RelevantBudgetTokens int
+	TotalTokens          int
 }
 
 // Build assembles a system prompt by reading workspace bootstrap files.
@@ -178,27 +190,34 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 
 	relevantTokens := 0
 	relevantCount := 0
+	relevantBudgetTokens := 0
+	relevantSection := ""
+	var relevantItems []RelevantMemoryItem
+	usedTokens := 0
 	if !opts.SubAgent {
-		relevantBudgetTokens := opts.RelevantBudgetTokens
+		relevantBudgetTokens = opts.RelevantBudgetTokens
 		if relevantBudgetTokens <= 0 {
 			relevantBudgetTokens = defaultRelevantBudgetTokens
 		}
 		relevantBudgetTokens = min(relevantBudgetTokens, remainingTotalTokens)
-		section, count, usedTokens := buildRelevantMemorySection(opts, relevantBudgetTokens)
-		if section != "" {
-			b.WriteString(section)
+		relevantSection, relevantItems, usedTokens = buildRelevantMemorySection(opts, relevantBudgetTokens)
+		if relevantSection != "" {
+			b.WriteString(relevantSection)
 			relevantTokens = usedTokens
-			relevantCount = count
+			relevantCount = len(relevantItems)
 			totalTokens += usedTokens
 		}
 	}
 
 	return BuildResult{
-		Prompt:              b.String(),
-		StaticTokens:        staticTokens,
-		RelevantTokens:      relevantTokens,
-		RelevantMemoryCount: relevantCount,
-		TotalTokens:         totalTokens,
+		Prompt:               b.String(),
+		StaticTokens:         staticTokens,
+		RelevantTokens:       relevantTokens,
+		RelevantMemoryCount:  relevantCount,
+		RelevantSection:      relevantSection,
+		RelevantMemoryItems:  relevantItems,
+		RelevantBudgetTokens: relevantBudgetTokens,
+		TotalTokens:          totalTokens,
 	}
 }
 

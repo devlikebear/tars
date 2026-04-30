@@ -68,6 +68,7 @@
     onArtifactOpen?: (path: string) => void
     onTasksChanged?: (summary: TasksSummary) => void
     onSlashCommand?: (command: string, args: string) => void | Promise<void>
+    onDraftChange?: (draft: string) => void
   }
 
   type TasksSummary = {
@@ -79,7 +80,7 @@
     plan_goal?: string
   }
 
-  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen, onTasksChanged, onSlashCommand }: Props = $props()
+  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen, onTasksChanged, onSlashCommand, onDraftChange }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -138,6 +139,10 @@
       chatInput = initialPrompt
       tick().then(() => submitChat())
     }
+  })
+
+  $effect(() => {
+    onDraftChange?.(chatInput)
   })
 
   let chatLogEl: HTMLDivElement | undefined = $state()

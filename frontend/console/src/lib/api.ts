@@ -484,6 +484,33 @@ export async function getChatContext(sessionId: string): Promise<ChatContextInfo
   return requestJSON<ChatContextInfo>(`/v1/chat/context?session_id=${encodeURIComponent(sessionId)}`)
 }
 
+export type PriorContextPreviewItem = {
+  source: string
+  source_tag: string
+  snippet: string
+  tokens: number
+}
+
+export type PriorContextPreview = {
+  session_id: string
+  query: string
+  section: string
+  items: PriorContextPreviewItem[]
+  relevant_tokens: number
+  relevant_memory_count: number
+  relevant_budget_tokens: number
+  budget_percent: number
+  generated_at: string
+}
+
+export async function getPriorContextPreview(sessionId: string, query: string): Promise<PriorContextPreview> {
+  return requestJSON<PriorContextPreview>('/v1/chat/prior-context/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, query }),
+  })
+}
+
 export type ChatFileMentionCandidate = {
   kind: 'file' | 'directory'
   name: string
