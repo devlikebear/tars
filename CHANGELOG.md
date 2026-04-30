@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.75] - 2026-05-01
+
+### Changed
+
+- CLI console opening, internal CLI API calls, and public `pkg/tarsclient` requests now share the same URL resolver.
+- Server URLs with proxy base paths now resolve consistently for both API paths and `/console`.
+
+### Fixed
+
+- Base URL query strings and fragments no longer leak into resolved API or console URLs.
+
+### Documentation
+
+- README now notes that `--server-url` may include a proxy base path.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./pkg/tarsclient ./internal/tarsclient ./cmd/tars`
+
+### Closed
+
+- Closes #408.
+
 ## [0.31.74] - 2026-05-01
 
 ### Changed
