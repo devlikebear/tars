@@ -27,12 +27,25 @@
     onNavigate: (path: string) => void
   }
 
+  type RunStatusFilter = 'all' | 'running' | 'done' | 'failed'
+  type RunTimeRange = '24h' | '7d' | 'all'
+  type PlanCostRow = {
+    key: string
+    label: string
+    total: number
+    runs: number
+  }
+
   let { runId, tab = 'runs', onNavigate }: Props = $props()
 
   let runs: AgentRuntimeRun[] = $state([])
+  let summaryRuns: AgentRuntimeRun[] = $state([])
   let selectedRun: AgentRuntimeRun | null = $state(null)
   let subagentsData = $state<AgentRuntimeSubagentsResponse | null>(null)
   let selectedSubagentName = $state('')
+  let runStatusFilter: RunStatusFilter = $state('all')
+  let runTimeRange: RunTimeRange = $state('all')
+  let runSearchInput = $state('')
   let loading = $state(false)
   let error = $state('')
   let streamError = $state('')
@@ -63,6 +76,19 @@
     'Use subagents_plan to break this into five steps and run it.',
   ]
 
+  const runStatusOptions: { value: RunStatusFilter; label: string }[] = [
+    { value: 'all', label: 'All' },
+    { value: 'running', label: 'Running' },
+    { value: 'done', label: 'Done' },
+    { value: 'failed', label: 'Failed' },
+  ]
+
+  const runTimeRangeOptions: { value: RunTimeRange; label: string }[] = [
+    { value: '24h', label: '24h' },
+    { value: '7d', label: '7d' },
+    { value: 'all', label: 'All' },
+  ]
+
   let activeTab = $derived(runId ? 'runs' : tab)
   let subagents = $derived<AgentRuntimeSubagent[]>(subagentsData?.agents ?? [])
   let tiers = $derived<AgentRuntimeTierOption[]>(subagentsData?.tiers ?? [])
@@ -71,12 +97,38 @@
     if (!selected) return subagents[0] ?? null
     return subagents.find((agent) => agent.name === selected) ?? subagents[0] ?? null
   })
+  let todayCostUSD = $derived.by<number | null>(() => {
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    return sumRunCosts(summaryRuns.filter((run) => runTimestamp(run) >= start.getTime()))
+  })
+  let sevenDayCostUSD = $derived.by<number | null>(() => {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000
+    return sumRunCosts(summaryRuns.filter((run) => runTimestamp(run) >= cutoff))
+  })
+  let planCostRows = $derived.by<PlanCostRow[]>(() => groupedPlanCosts(summaryRuns))
 
   async function loadRuns() {
     loading = true
     error = ''
     try {
-      runs = await listAgentRuntimeRuns()
+      const search = runSearchInput.trim()
+      const [visibleRuns, costRuns] = await Promise.all([
+        listAgentRuntimeRuns({
+          limit: 100,
+          status: runStatusFilter,
+          since: runTimeRange,
+          search,
+        }),
+        listAgentRuntimeRuns({
+          limit: 200,
+          status: runStatusFilter,
+          since: 'all',
+          search,
+        }),
+      ])
+      runs = visibleRuns
+      summaryRuns = costRuns
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load agent runtime runs'
     } finally {
@@ -152,6 +204,81 @@
   function fmtUSD(value: number | null): string {
     if (value == null) return '—'
     return `$${value.toFixed(3)}`
+  }
+
+  function runTimestamp(run: AgentRuntimeRun): number {
+    for (const value of [run.created_at, run.started_at, run.updated_at, run.completed_at]) {
+      if (!value?.trim()) continue
+      const parsed = new Date(value).getTime()
+      if (!Number.isNaN(parsed)) return parsed
+    }
+    return 0
+  }
+
+  function shortID(value?: string): string {
+    const text = value?.trim()
+    if (!text) return '—'
+    return text.length > 12 ? `${text.slice(0, 12)}…` : text
+  }
+
+  function runCostUSD(run: AgentRuntimeRun): number | null {
+    if (run.consensus_cost_usd != null) return run.consensus_cost_usd
+    const variantCosts = (run.consensus_variants ?? [])
+      .map((variant) => variant.cost_usd)
+      .filter((cost): cost is number => cost != null)
+    if (variantCosts.length === 0) return null
+    return variantCosts.reduce((total, cost) => total + cost, 0)
+  }
+
+  function sumRunCosts(sourceRuns: AgentRuntimeRun[]): number | null {
+    let total = 0
+    let found = false
+    for (const run of sourceRuns) {
+      const cost = runCostUSD(run)
+      if (cost == null) continue
+      total += cost
+      found = true
+    }
+    return found ? total : null
+  }
+
+  function groupedPlanCosts(sourceRuns: AgentRuntimeRun[]): PlanCostRow[] {
+    const groups = new Map<string, PlanCostRow>()
+    for (const run of sourceRuns) {
+      const cost = runCostUSD(run)
+      if (cost == null) continue
+      const key = run.root_run_id || run.parent_run_id || run.run_id
+      const label = run.root_run_id || run.parent_run_id
+        ? `Plan ${shortID(key)}`
+        : run.prompt?.trim() || `Run ${shortID(run.run_id)}`
+      const existing = groups.get(key) ?? { key, label, total: 0, runs: 0 }
+      existing.total += cost
+      existing.runs += 1
+      groups.set(key, existing)
+    }
+    return [...groups.values()]
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 3)
+  }
+
+  function runFiltersActive(): boolean {
+    return runStatusFilter !== 'all' || runTimeRange !== 'all' || runSearchInput.trim() !== ''
+  }
+
+  function setRunStatusFilter(status: RunStatusFilter) {
+    runStatusFilter = status
+    void loadRuns()
+  }
+
+  function setRunTimeRange(range: RunTimeRange) {
+    runTimeRange = range
+    void loadRuns()
+  }
+
+  function handleRunSearchKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      void loadRuns()
+    }
   }
 
   function tierSummary(tier: AgentRuntimeTierOption): string {
@@ -423,45 +550,157 @@
       </div>
     </section>
 
+    <section class="run-controls" aria-label="Agent Runtime run filters">
+      <div class="filter-group">
+        <span class="filter-label">Status</span>
+        <div class="filter-chip-row">
+          {#each runStatusOptions as option}
+            <button
+              type="button"
+              class="filter-chip"
+              class:active={runStatusFilter === option.value}
+              onclick={() => setRunStatusFilter(option.value)}
+            >
+              {option.label}
+            </button>
+          {/each}
+        </div>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Time range</span>
+        <div class="filter-chip-row">
+          {#each runTimeRangeOptions as option}
+            <button
+              type="button"
+              class="filter-chip"
+              class:active={runTimeRange === option.value}
+              onclick={() => setRunTimeRange(option.value)}
+            >
+              {option.label}
+            </button>
+          {/each}
+        </div>
+      </div>
+      <label class="run-search-field">
+        <span>Search prompt</span>
+        <input
+          bind:value={runSearchInput}
+          onkeydown={handleRunSearchKeydown}
+          placeholder="Prompt, run id, agent, session"
+        />
+      </label>
+      <button class="btn btn-primary btn-sm" type="button" onclick={loadRuns} disabled={loading}>
+        {loading ? 'Loading...' : 'Apply'}
+      </button>
+    </section>
+
+    <section class="cost-summary-grid" aria-label="Agent Runtime cost summary">
+      <div class="cost-summary-card">
+        <span>Today</span>
+        <strong>{fmtUSD(todayCostUSD)}</strong>
+        <small>Loaded run costs</small>
+      </div>
+      <div class="cost-summary-card">
+        <span>7d</span>
+        <strong>{fmtUSD(sevenDayCostUSD)}</strong>
+        <small>Loaded run costs</small>
+      </div>
+      <div class="cost-summary-card plan-summary">
+        <span>Plan totals</span>
+        {#if planCostRows.length === 0}
+          <small>No consensus cost data yet</small>
+        {:else}
+          <div class="plan-cost-list">
+            {#each planCostRows as row}
+              <div class="plan-cost-row">
+                <strong title={row.key}>{row.label}</strong>
+                <span>{fmtUSD(row.total)} · {row.runs} {row.runs === 1 ? 'run' : 'runs'}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </section>
+
     {#if error}
       <div class="error-banner">{error}</div>
     {/if}
     <div class="agentruntime-list">
       {#if runs.length === 0 && !loading}
-        <section class="empty-guide" aria-labelledby="agentruntime-empty-title">
-          <div>
-            <div class="eyebrow">No Runs Yet</div>
-            <h3 id="agentruntime-empty-title">Start from Chat</h3>
-            <p>
-              Agent Runtime only records work launched by the subagent tools.
-              Try one of these prompts in a chat session, then return here to inspect the run history.
-            </p>
-          </div>
-          <div class="prompt-grid">
-            {#each starterPrompts as prompt}
-              <blockquote>{prompt}</blockquote>
-            {/each}
-          </div>
-          <div class="empty-actions">
-            <button class="btn btn-secondary btn-sm" onclick={() => onNavigate('/console/chat')}>Open Chat</button>
-            <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
-          </div>
-        </section>
+        {#if runFiltersActive()}
+          <section class="empty-guide" aria-labelledby="agentruntime-empty-title">
+            <div>
+              <div class="eyebrow">No Matching Runs</div>
+              <h3 id="agentruntime-empty-title">Adjust filters</h3>
+              <p>No Agent Runtime runs match the current status, time range, and search query.</p>
+            </div>
+            <div class="empty-actions">
+              <button
+                class="btn btn-secondary btn-sm"
+                onclick={() => {
+                  runStatusFilter = 'all'
+                  runTimeRange = 'all'
+                  runSearchInput = ''
+                  void loadRuns()
+                }}
+              >
+                Clear Filters
+              </button>
+              <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
+            </div>
+          </section>
+        {:else}
+          <section class="empty-guide" aria-labelledby="agentruntime-empty-title">
+            <div>
+              <div class="eyebrow">No Runs Yet</div>
+              <h3 id="agentruntime-empty-title">Start from Chat</h3>
+              <p>
+                Agent Runtime only records work launched by the subagent tools.
+                Try one of these prompts in a chat session, then return here to inspect the run history.
+              </p>
+            </div>
+            <div class="prompt-grid">
+              {#each starterPrompts as prompt}
+                <blockquote>{prompt}</blockquote>
+              {/each}
+            </div>
+            <div class="empty-actions">
+              <button class="btn btn-secondary btn-sm" onclick={() => onNavigate('/console/chat')}>Open Chat</button>
+              <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
+            </div>
+          </section>
+        {/if}
       {:else}
         {#each runs as run}
-          <button class="agentruntime-row" onclick={() => onNavigate(`/console/agentruntime/runs/${encodeURIComponent(run.run_id)}`)}>
-            <div class="row-main">
-              <span class="row-id">{run.run_id}</span>
-              <span class="row-agent">{run.agent || 'default'}</span>
-              <span class="row-status">{run.status}</span>
-              {#if run.consensus_mode}<span class="row-mode">{run.consensus_mode}</span>{/if}
-            </div>
-            <div class="row-meta">
-              {#if run.tier}<span>{run.tier}</span>{/if}
-              {#if run.resolved_alias}<span>{run.resolved_alias}</span>{/if}
-              {#if run.created_at}<span>{fmtTime(run.created_at)}</span>{/if}
-            </div>
-          </button>
+          <article class="agentruntime-row">
+            <button class="run-open-button" type="button" onclick={() => onNavigate(`/console/agentruntime/runs/${encodeURIComponent(run.run_id)}`)}>
+              <div class="row-main">
+                <span class="row-id">{run.run_id}</span>
+                <span class="row-agent">{run.agent || 'default'}</span>
+                <span class="row-status">{run.status}</span>
+                {#if run.consensus_mode}<span class="row-mode">{run.consensus_mode}</span>{/if}
+              </div>
+              <div class="row-meta">
+                {#if run.tier}<span>{run.tier}</span>{/if}
+                {#if run.resolved_alias}<span>{run.resolved_alias}</span>{/if}
+                {#if run.created_at}<span>{fmtTime(run.created_at)}</span>{/if}
+                {#if runCostUSD(run) != null}<span>{fmtUSD(runCostUSD(run))}</span>{/if}
+              </div>
+              {#if run.prompt}
+                <p class="row-prompt">{run.prompt}</p>
+              {/if}
+            </button>
+            {#if run.session_id}
+              <button
+                class="session-link"
+                type="button"
+                title={`Open chat session ${run.session_id}`}
+                onclick={() => onNavigate(`/console/chat/${encodeURIComponent(run.session_id || '')}`)}
+              >
+                Started from session: {shortID(run.session_id)}
+              </button>
+            {/if}
+          </article>
         {/each}
       {/if}
     </div>
@@ -824,6 +1063,27 @@
   .tool-chip span { color: var(--text-tertiary); font-size: var(--text-xs); }
   .agentruntime-list, .agentruntime-detail { display: flex; flex-direction: column; gap: var(--space-3); }
   .agentruntime-row, .detail-card, .detail-panel, .variant-card { text-align: left; border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .run-controls { display: grid; grid-template-columns: auto auto minmax(220px, 1fr) auto; gap: var(--space-3); align-items: end; border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .filter-group, .run-search-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+  .filter-label, .run-search-field span, .cost-summary-card > span { color: var(--text-ghost); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; }
+  .filter-chip-row { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+  .filter-chip { min-height: 32px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); color: var(--text-secondary); padding: 0 var(--space-2); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+  .filter-chip.active { border-color: var(--primary); background: var(--primary-muted); color: var(--primary-text); }
+  .run-search-field input { width: 100%; min-height: 32px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); color: var(--text-primary); padding: 0 var(--space-2); font: inherit; font-size: var(--text-xs); }
+  .cost-summary-grid { display: grid; grid-template-columns: minmax(160px, 0.24fr) minmax(160px, 0.24fr) minmax(280px, 1fr); gap: var(--space-3); }
+  .cost-summary-card { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .cost-summary-card strong { color: var(--text-primary); font-family: var(--font-display); font-size: var(--text-lg); }
+  .cost-summary-card small { color: var(--text-tertiary); font-size: var(--text-xs); }
+  .plan-summary { gap: var(--space-2); }
+  .plan-cost-list { display: flex; flex-direction: column; gap: var(--space-2); }
+  .plan-cost-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-xs); }
+  .plan-cost-row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--text-xs); }
+  .agentruntime-row { display: flex; flex-direction: column; gap: var(--space-2); }
+  .run-open-button { width: 100%; display: flex; flex-direction: column; gap: var(--space-2); text-align: left; border: 0; background: transparent; color: inherit; padding: 0; font: inherit; cursor: pointer; }
+  .run-open-button:hover .row-id { color: var(--primary-text); }
+  .row-prompt { margin: 0; color: var(--text-tertiary); font-size: var(--text-sm); line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+  .session-link { align-self: flex-start; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); color: var(--text-secondary); padding: 4px var(--space-2); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+  .session-link:hover { border-color: var(--primary); color: var(--primary-text); }
   .subagents-summary { display: flex; justify-content: space-between; gap: var(--space-4); align-items: center; border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
   .tier-line { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
   .tier-chip { display: inline-flex; align-items: center; max-width: 220px; min-height: 24px; border: 1px solid var(--border-subtle); background: var(--primary-muted); color: var(--primary-text); border-radius: var(--radius-sm); padding: 2px var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -889,8 +1149,8 @@
   .event-row { display: flex; gap: var(--space-3); align-items: flex-start; border-top: 1px solid var(--border-subtle); padding-top: var(--space-2); }
   .event-type { min-width: 140px; color: var(--primary); font-size: var(--text-xs); }
   .agentruntime-empty { color: var(--text-ghost); font-size: var(--text-sm); }
-  @media (max-width: 960px) { .intro-card { grid-template-columns: 1fr; } }
+  @media (max-width: 960px) { .intro-card, .run-controls, .cost-summary-grid { grid-template-columns: 1fr; } }
   @media (max-width: 960px) { .subagents-layout { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .detail-columns { grid-template-columns: 1fr; } }
-  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid { grid-template-columns: 1fr; } .subagents-summary, .detail-head, .agentruntime-header { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions { justify-content: flex-start; } }
+  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid, .plan-cost-row { grid-template-columns: 1fr; } .subagents-summary, .detail-head, .agentruntime-header { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions { justify-content: flex-start; } }
 </style>

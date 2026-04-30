@@ -1,0 +1,30 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+const source = readFileSync(new URL('../src/components/AgentRuntimeRunView.svelte', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+
+test('Agent Runtime runs page exposes filters, session links, and cost summaries', () => {
+  assert.match(source, /runStatusFilter/)
+  assert.match(source, /runTimeRange/)
+  assert.match(source, /runSearchInput/)
+  assert.match(source, /Status/)
+  assert.match(source, /24h/)
+  assert.match(source, /7d/)
+  assert.match(source, /Search prompt/)
+  assert.match(source, /Started from session/)
+  assert.match(source, /\/console\/chat\/\$\{encodeURIComponent/)
+  assert.match(source, /run\.session_id/)
+  assert.match(source, /cost-summary-card/)
+  assert.match(source, /Today/)
+  assert.match(source, /Plan totals/)
+})
+
+test('Agent Runtime run API client forwards filter query params', () => {
+  assert.match(apiSource, /AgentRuntimeRunsOptions/)
+  assert.match(apiSource, /status/)
+  assert.match(apiSource, /since/)
+  assert.match(apiSource, /search/)
+  assert.match(apiSource, /URLSearchParams/)
+})

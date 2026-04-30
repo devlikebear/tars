@@ -163,6 +163,7 @@ export type AgentRuntimeRun = {
   agent?: string
   prompt?: string
   parent_run_id?: string
+  root_run_id?: string
   parent_session_id?: string
   depth?: number
   status: string

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/rs/zerolog"
@@ -132,8 +133,134 @@ func handleAgentRunList(w http.ResponseWriter, r *http.Request, runtime *agentru
 	if !ok {
 		return
 	}
-	runs := runtime.List(limit)
+	filters, ok := parseAgentRunListFilters(w, r)
+	if !ok {
+		return
+	}
+	fetchLimit := limit
+	if filters.active() {
+		fetchLimit = max(fetchLimit, 1000)
+	}
+	runs := filterAgentRuntimeRuns(runtime.List(fetchLimit), filters)
+	if len(runs) > limit {
+		runs = runs[:limit]
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"count": len(runs), "runs": runs})
+}
+
+type agentRunListFilters struct {
+	status string
+	search string
+	since  *time.Time
+}
+
+func (f agentRunListFilters) active() bool {
+	return f.status != "" || f.search != "" || f.since != nil
+}
+
+func parseAgentRunListFilters(w http.ResponseWriter, r *http.Request) (agentRunListFilters, bool) {
+	query := r.URL.Query()
+	filters := agentRunListFilters{
+		status: strings.ToLower(strings.TrimSpace(query.Get("status"))),
+		search: strings.ToLower(strings.TrimSpace(query.Get("search"))),
+	}
+	if filters.status == "all" {
+		filters.status = ""
+	}
+
+	since, ok := parseAgentRunSinceFilter(w, strings.TrimSpace(query.Get("since")))
+	if !ok {
+		return agentRunListFilters{}, false
+	}
+	filters.since = since
+	return filters, true
+}
+
+func parseAgentRunSinceFilter(w http.ResponseWriter, raw string) (*time.Time, bool) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" || value == "all" {
+		return nil, true
+	}
+	now := time.Now().UTC()
+	var cutoff time.Time
+	switch value {
+	case "24h":
+		cutoff = now.Add(-24 * time.Hour)
+	case "7d":
+		cutoff = now.Add(-7 * 24 * time.Hour)
+	default:
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "since must be 24h, 7d, all, or RFC3339"})
+			return nil, false
+		}
+		cutoff = parsed.UTC()
+	}
+	return &cutoff, true
+}
+
+func filterAgentRuntimeRuns(runs []agentruntime.Run, filters agentRunListFilters) []agentruntime.Run {
+	if !filters.active() {
+		return runs
+	}
+	out := make([]agentruntime.Run, 0, len(runs))
+	for _, run := range runs {
+		if !agentRunMatchesStatus(run, filters.status) {
+			continue
+		}
+		if filters.since != nil && agentRunTime(run).Before(*filters.since) {
+			continue
+		}
+		if filters.search != "" && !agentRunMatchesSearch(run, filters.search) {
+			continue
+		}
+		out = append(out, run)
+	}
+	return out
+}
+
+func agentRunMatchesStatus(run agentruntime.Run, status string) bool {
+	if status == "" {
+		return true
+	}
+	actual := strings.ToLower(strings.TrimSpace(string(run.Status)))
+	switch status {
+	case "running":
+		return actual == string(agentruntime.RunStatusAccepted) || actual == string(agentruntime.RunStatusRunning)
+	case "done", "completed":
+		return actual == string(agentruntime.RunStatusCompleted)
+	case "failed":
+		return actual == string(agentruntime.RunStatusFailed) || actual == string(agentruntime.RunStatusCanceled)
+	default:
+		return actual == status
+	}
+}
+
+func agentRunMatchesSearch(run agentruntime.Run, search string) bool {
+	haystack := strings.ToLower(strings.Join([]string{
+		run.ID,
+		run.SessionID,
+		run.Agent,
+		run.Prompt,
+		run.Response,
+		run.Error,
+		run.Tier,
+		run.ResolvedAlias,
+		run.ResolvedModel,
+	}, "\n"))
+	return strings.Contains(haystack, search)
+}
+
+func agentRunTime(run agentruntime.Run) time.Time {
+	for _, value := range []string{run.CreatedAt, run.StartedAt, run.UpdatedAt, run.CompletedAt} {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+			return parsed.UTC()
+		}
+	}
+	return time.Time{}
 }
 
 func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, logger zerolog.Logger) {
