@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.43] - 2026-04-30
+
+### Added
+
+- Memory asset cards now explain who fills each durable asset, who reads it, and when experience logs become stale after seven quiet days.
+
+### Tests
+
+- `npm test -- --test-name-pattern "memory asset metadata"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #423.
+
 ## [0.31.42] - 2026-04-30
 
 ### Changed
