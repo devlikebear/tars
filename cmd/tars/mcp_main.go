@@ -12,9 +12,10 @@ import (
 
 func newMCPCommand(stdout, stderr io.Writer) *cobra.Command {
 	return newHubResourceCommand(hubResourceSpec{
-		Use:   "mcp",
-		Short: "Manage MCP servers from the TARS Hub",
-		Noun:  "MCP server",
+		Use:        "mcp",
+		Short:      "Manage MCP servers from the TARS Hub",
+		Noun:       "MCP server",
+		PluralNoun: "MCP servers",
 
 		Search: func(ctx context.Context, stdout io.Writer, query string) error {
 			reg := skillhub.NewRegistry()

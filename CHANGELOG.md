@@ -6,6 +6,30 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.72] - 2026-05-01
+
+### Changed
+
+- Assistant CLI defaults now use the core `~/.tars/workspace` location instead of falling back to `./workspace`.
+- Hub command metadata now uses explicit plural nouns so help text renders `skills`, `plugins`, and `MCP servers` correctly.
+
+### Fixed
+
+- Legacy `tars init` config migration now returns an error when `workspace_dir` correction cannot be read, parsed, resolved, marshaled, or written.
+
+### Documentation
+
+- README now notes that assistant helpers share the core workspace default unless overridden.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./cmd/tars ./internal/assistant`
+- Manual help checks for `tars skill update --help`, `tars plugin update --help`, and `tars mcp update --help`.
+
+### Closed
+
+- Closes #411.
+
 ## [0.31.71] - 2026-05-01
 
 ### Changed

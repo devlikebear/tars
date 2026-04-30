@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -32,5 +33,24 @@ func TestPrintHubUpdateResultDistinguishesStatuses(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected output to contain %q, got:\n%s", want, got)
 		}
+	}
+}
+
+func TestHubResourceCommandUsesPluralNounInHelp(t *testing.T) {
+	var out bytes.Buffer
+	cmd := newMCPCommand(&out, io.Discard)
+	cmd.SetOut(&out)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"update", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("mcp update help: %v", err)
+	}
+	got := out.String()
+	if strings.Contains(got, "MCP serverss") {
+		t.Fatalf("help used double plural:\n%s", got)
+	}
+	if !strings.Contains(got, "Update all installed hub MCP servers to latest") {
+		t.Fatalf("expected pluralized update help, got:\n%s", got)
 	}
 }

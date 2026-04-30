@@ -82,7 +82,9 @@ func runInitCommand(_ context.Context, opts initOptions, stdout, _ io.Writer) er
 	// Try to migrate legacy config if found.
 	if migrated, legacyPath := tryMigrateLegacyConfig(configPath, stdout); migrated {
 		// Update workspace_dir in migrated config if it was relative.
-		updateMigratedWorkspaceDir(configPath, workspaceAbs)
+		if err := updateMigratedWorkspaceDir(configPath, workspaceAbs); err != nil {
+			return fmt.Errorf("update migrated workspace_dir: %w", err)
+		}
 		_, _ = fmt.Fprintf(stdout, "migrated legacy config\n  from: %s\n  to:   %s\n\n", legacyPath, configPath)
 		_, _ = fmt.Fprintf(stdout, "the original file has been kept. you can remove it manually:\n  rm %s\n\n", legacyPath)
 		return nil
@@ -142,30 +144,39 @@ func tryMigrateLegacyConfig(fixedPath string, stdout io.Writer) (bool, string) {
 
 // updateMigratedWorkspaceDir reads the migrated config and converts a relative
 // workspace_dir to an absolute path.
-func updateMigratedWorkspaceDir(configPath, defaultWorkspace string) {
+func updateMigratedWorkspaceDir(configPath, defaultWorkspace string) error {
 	raw, err := os.ReadFile(configPath)
 	if err != nil {
-		return
+		return fmt.Errorf("read config: %w", err)
 	}
 	parsed := map[string]any{}
 	if err := yaml.Unmarshal(raw, &parsed); err != nil {
-		return
+		return fmt.Errorf("parse config: %w", err)
 	}
 	wsRaw, ok := parsed["workspace_dir"]
+	changed := false
 	if !ok {
 		parsed["workspace_dir"] = defaultWorkspace
+		changed = true
 	} else if ws, ok := wsRaw.(string); ok && !filepath.IsAbs(ws) {
 		abs, err := filepath.Abs(ws)
 		if err != nil {
-			return
+			return fmt.Errorf("resolve workspace_dir: %w", err)
 		}
 		parsed["workspace_dir"] = abs
+		changed = true
+	}
+	if !changed {
+		return nil
 	}
 	out, err := yaml.Marshal(parsed)
 	if err != nil {
-		return
+		return fmt.Errorf("marshal config: %w", err)
 	}
-	_ = os.WriteFile(configPath, out, 0o644)
+	if err := os.WriteFile(configPath, out, 0o644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
 }
 
 func runInitMoveCommand(_ context.Context, opts initMoveOptions, stdout, _ io.Writer) error {

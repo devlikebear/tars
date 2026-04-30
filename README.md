@@ -131,6 +131,7 @@ Multi-channel I/O beyond the web console:
 
 - **Telegram** — Bidirectional messaging with pairing-based access control
 - **Webhooks** — Inbound HTTP triggers for external integrations
+- **Assistant** — macOS popup and voice helpers that share the core `~/.tars/workspace` default unless overridden
 - **Local** — Direct API calls for scripts and automation
 
 ### Extensibility

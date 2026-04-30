@@ -12,9 +12,10 @@ import (
 
 func newSkillCommand(stdout, stderr io.Writer) *cobra.Command {
 	return newHubResourceCommand(hubResourceSpec{
-		Use:   "skill",
-		Short: "Manage skills from the TARS Hub",
-		Noun:  "skill",
+		Use:        "skill",
+		Short:      "Manage skills from the TARS Hub",
+		Noun:       "skill",
+		PluralNoun: "skills",
 
 		Search: func(ctx context.Context, stdout io.Writer, query string) error {
 			reg := skillhub.NewRegistry()

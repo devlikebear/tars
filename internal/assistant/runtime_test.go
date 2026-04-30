@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/devlikebear/tars/internal/config"
 )
 
 func TestResolveAVFoundationAudioInput_Default(t *testing.T) {
@@ -30,6 +32,13 @@ func TestResolveAVFoundationAudioInput_Custom(t *testing.T) {
 		if got := resolveAVFoundationAudioInput(tc.input); got != tc.want {
 			t.Fatalf("input=%q expected %q, got %q", tc.input, tc.want, got)
 		}
+	}
+}
+
+func TestResolveAssistantWorkspaceDirUsesCoreDefault(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if got := resolveAssistantWorkspaceDir(""); got != config.DefaultWorkspaceDir() {
+		t.Fatalf("expected assistant workspace default %q, got %q", config.DefaultWorkspaceDir(), got)
 	}
 }
 
