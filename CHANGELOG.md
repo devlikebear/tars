@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.44] - 2026-04-30
+
+### Changed
+
+- Memory now uses friendlier Stored Knowledge and Try a Search tab labels, with asset cards showing human-readable descriptions and hover hints for common memory files.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Memory page uses friendly|memory asset metadata explains"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #422.
+
 ## [0.31.43] - 2026-04-30
 
 ### Added

@@ -151,9 +151,9 @@
   function askAIPrompt(): string {
     switch (activeTab) {
       case 'search':
-        return 'Help me debug this memory search query and improve recall: '
+        return 'Help me review this memory search query and improve recall: '
       default:
-        return 'Review these durable memory files and suggest improvements: '
+        return 'Review these stored knowledge assets and suggest improvements: '
     }
   }
 
@@ -177,7 +177,7 @@
   <div class="page-header">
     <div>
       <h2>Memory</h2>
-      <p class="page-subtitle">{memoryAssets.length} durable assets</p>
+      <p class="page-subtitle">{memoryAssets.length} stored knowledge assets</p>
     </div>
     <div class="page-actions">
       {#if onAskAI}
@@ -210,8 +210,8 @@
   </div>
 
   <div class="tab-row">
-    <button class="tab-btn" class:active={activeTab === 'durable'} type="button" onclick={() => { activeTab = 'durable' }}>Durable Memory</button>
-    <button class="tab-btn" class:active={activeTab === 'search'} type="button" onclick={() => { activeTab = 'search' }}>Search Test</button>
+    <button class="tab-btn" class:active={activeTab === 'durable'} type="button" onclick={() => { activeTab = 'durable' }}>Stored Knowledge</button>
+    <button class="tab-btn" class:active={activeTab === 'search'} type="button" onclick={() => { activeTab = 'search' }}>Try a Search</button>
   </div>
 
   {#if activeTab === 'durable'}
@@ -221,15 +221,15 @@
           <span class="card-title">Assets</span>
         </div>
         {#if loadingMemory}
-          <div class="empty-state">Loading durable memory assets...</div>
+          <div class="empty-state">Loading stored knowledge assets...</div>
         {:else if memoryAssets.length === 0}
-          <div class="empty-state">No durable memory assets found.</div>
+          <div class="empty-state">No stored knowledge assets found.</div>
         {:else}
           <div class="asset-list">
             {#each memoryAssets as asset}
               {@const metadata = getMemoryAssetMetadata(asset)}
               {@const stale = isMemoryAssetStale(asset)}
-              <button class="asset-row" class:active={selectedMemoryPath === asset.path} type="button" onclick={() => selectMemoryAsset(asset.path)}>
+              <button class="asset-row" class:active={selectedMemoryPath === asset.path} type="button" title={metadata.description} onclick={() => selectMemoryAsset(asset.path)}>
                 <div class="asset-row-top">
                   <strong>{asset.path}</strong>
                   <div class="asset-badges">
@@ -243,6 +243,7 @@
                   <span>{formatBytes(asset.size_bytes)}</span>
                   <span>{fmt(asset.updated_at)}</span>
                 </div>
+                <p class="asset-description">{metadata.description}</p>
                 <div class="asset-flow">
                   <div class="asset-flow-line">
                     <strong>Filled by:</strong>
@@ -277,14 +278,14 @@
           <span>{formatBytes(memorySizeBytes)}</span>
           <span>{fmt(memoryUpdatedAt)}</span>
         </div>
-        <textarea class="memory-editor" bind:value={memoryEditorContent} placeholder="Select a durable memory file to inspect or edit."></textarea>
+        <textarea class="memory-editor" bind:value={memoryEditorContent} placeholder="Select a stored knowledge file to inspect or edit."></textarea>
       </section>
     </div>
   {:else if activeTab === 'search'}
     <div class="search-layout">
       <section class="card search-panel">
         <div class="panel-header">
-          <span class="card-title">Memory Search Test</span>
+          <span class="card-title">Try a Search</span>
           <button class="btn btn-primary btn-sm" type="button" disabled={!searchQueryInput.trim() || searching} onclick={runSearchTest}>
             {searching ? 'Running...' : 'Run Search'}
           </button>
@@ -314,7 +315,7 @@
           {/if}
         </div>
         {#if !searchResult}
-          <div class="empty-state">Run a query here to test durable memory recall before changing prompts or storage behavior.</div>
+          <div class="empty-state">Run a query here to inspect memory recall before changing prompts or storage behavior.</div>
         {:else if !searchResult.results || searchResult.results.length === 0}
           <div class="empty-state">{searchResult.message || 'No matches found.'}</div>
         {:else}
@@ -411,9 +412,14 @@
   .stat-meta,
   .note-kind,
   .note-meta,
+  .asset-description,
   .asset-flow-line {
     font-size: var(--text-xs);
     color: var(--text-secondary);
+  }
+
+  .asset-description {
+    line-height: 1.45;
   }
 
   .tab-btn {
