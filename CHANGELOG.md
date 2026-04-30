@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.38] - 2026-04-30
+
+### Added
+
+- Approvals now shows an empty-state guide explaining the review queue, cleanup-plan trigger, future Pulse-triggered approvals, approval decisions, and result logs.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Ops explains"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #428.
+
 ## [0.31.37] - 2026-04-30
 
 ### Added
