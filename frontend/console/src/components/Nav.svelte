@@ -31,7 +31,7 @@
     { id: 'agentruntime', label: 'Agent Runtime', path: '/console/agentruntime', icon: '\u25c8' },
     { id: 'memory', label: 'Memory', path: '/console/memory', icon: '\u22c8' },
     { id: 'sysprompt', label: 'System Prompt', path: '/console/sysprompt', icon: '\u2691' },
-    { id: 'ops', label: 'Operations', path: '/console/ops', icon: '\u2699' },
+    { id: 'ops', label: 'Approvals', path: '/console/approvals', icon: '\u2699' },
     { id: 'pulse', label: 'Pulse', path: '/console/pulse', icon: '\u2661' },
     { id: 'reflection', label: 'Reflection', path: '/console/reflection', icon: '\u263e' },
     { id: 'extensions', label: 'Extensions', path: '/console/extensions', icon: '\u2756' },
@@ -41,6 +41,9 @@
   function isActive(itemPath: string, current: string): boolean {
     if (itemPath === '/console/chat') {
       return current === '/console' || current === '/console/' || current.startsWith('/console/chat') || current.startsWith('/console/sessions')
+    }
+    if (itemPath === '/console/approvals') {
+      return current.startsWith('/console/approvals') || current.startsWith('/console/ops')
     }
     return current.startsWith(itemPath)
   }

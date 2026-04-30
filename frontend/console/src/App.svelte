@@ -89,7 +89,7 @@
   {:else if route.view === 'sysprompt'}
     <SyspromptCenter />
   {:else if route.view === 'ops'}
-    <Ops onAskAI={navigateWithPrompt} />
+    <Ops />
   {:else if route.view === 'config'}
     <Config />
   {:else if route.view === 'pulse'}
