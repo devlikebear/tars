@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.31] - 2026-04-30
+
+### Added
+
+- Extensions now keeps Plugins collapsed by default in both Installed and Hub views and labels them as an advanced legacy surface while preserving existing plugin controls behind expansion.
+
+### Tests
+
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #435.
+
 ## [0.31.30] - 2026-04-30
 
 ### Added
