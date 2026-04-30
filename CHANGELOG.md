@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.56] - 2026-05-01
+
+### Added
+
+- CON-047: Console Agent Runtime runs now include a Svelte Flow live graph mode with pan/zoom navigation, MiniMap, Controls, and Background.
+- The Flow graph projects runs into tier-shaped/status-colored nodes, spawn edges, and consensus variant fan-out nodes with running animations.
+- Flow filters support tier, status, and session, with a Replay control placeholder for the run-detail replay surface.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Svelte Flow|buildAgentRuntimeFlowGraph"` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make console-build`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #449.
+
 ## [0.31.55] - 2026-05-01
 
 ### Added

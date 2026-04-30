@@ -6,6 +6,7 @@ const source = readFileSync(new URL('../src/components/AgentRuntimeRunView.svelt
 const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
 const costFlowSource = readFileSync(new URL('../src/components/AgentRuntimeCostFlow.svelte', import.meta.url), 'utf8')
 const replaySource = readFileSync(new URL('../src/components/AgentRuntimeReplay.svelte', import.meta.url), 'utf8')
+const flowGraphSource = readFileSync(new URL('../src/components/AgentRuntimeFlowGraph.svelte', import.meta.url), 'utf8')
 const treeSource = readFileSync(new URL('../src/components/AgentRuntimeTree.svelte', import.meta.url), 'utf8')
 const ganttSource = readFileSync(new URL('../src/components/AgentRuntimeGantt.svelte', import.meta.url), 'utf8')
 
@@ -69,4 +70,17 @@ test('Agent Runtime runs page exposes static tree and Gantt visualization modes'
   assert.match(treeSource, /Mini Tree/)
   assert.match(ganttSource, /agent-runtime-gantt/)
   assert.match(ganttSource, /Gantt Strip/)
+})
+
+test('Agent Runtime runs page exposes Svelte Flow live graph mode', () => {
+  assert.match(source, /AgentRuntimeFlowGraph/)
+  assert.match(source, /flow/)
+  assert.match(flowGraphSource, /SvelteFlow/)
+  assert.match(flowGraphSource, /MiniMap/)
+  assert.match(flowGraphSource, /Controls/)
+  assert.match(flowGraphSource, /Background/)
+  assert.match(flowGraphSource, /flowTierFilter/)
+  assert.match(flowGraphSource, /flowStatusFilter/)
+  assert.match(flowGraphSource, /flowSessionFilter/)
+  assert.match(flowGraphSource, /Replay/)
 })

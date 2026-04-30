@@ -1,3 +1,4 @@
+import type { Edge, Node } from '@xyflow/svelte'
 import type { AgentRuntimeRun, AgentRuntimeRunEvent, ConsensusVariantRecord } from './types'
 
 export type AgentRuntimeReplayBounds = {
@@ -67,6 +68,37 @@ export type AgentRuntimeGanttModel = {
   durationMs: number
   hasTimeline: boolean
   rows: AgentRuntimeGanttRow[]
+}
+
+export type AgentRuntimeFlowFilters = {
+  tier?: string
+  status?: AgentRuntimeStatusKind
+  session?: string
+}
+
+export type AgentRuntimeFlowNodeData = Record<string, unknown> & {
+  label: string
+  runId: string
+  agent: string
+  model: string
+  status: string
+  statusKind: AgentRuntimeStatusKind
+  tier: string
+  tierShape: AgentRuntimeTierShape
+  tokens: number
+  kind: 'run' | 'variant'
+}
+
+export type AgentRuntimeFlowEdgeData = Record<string, unknown> & {
+  kind: 'spawn' | 'variant'
+}
+
+export type AgentRuntimeFlowNode = Node<AgentRuntimeFlowNodeData>
+export type AgentRuntimeFlowEdge = Edge<AgentRuntimeFlowEdgeData, 'smoothstep'>
+
+export type AgentRuntimeFlowGraph = {
+  nodes: AgentRuntimeFlowNode[]
+  edges: AgentRuntimeFlowEdge[]
 }
 
 export function deriveAgentRuntimeReplayBounds(events: AgentRuntimeRunEvent[]): AgentRuntimeReplayBounds {
@@ -176,6 +208,85 @@ export function buildAgentRuntimeGanttRows(runs: AgentRuntimeRun[]): AgentRuntim
   })
 
   return { startMs, endMs, durationMs, hasTimeline: true, rows }
+}
+
+export function buildAgentRuntimeFlowGraph(runs: AgentRuntimeRun[], filters: AgentRuntimeFlowFilters = {}): AgentRuntimeFlowGraph {
+  const filteredRuns = runs.filter((run) => matchesFlowFilters(run, filters))
+  const rows = buildAgentRuntimeTreeRows(filteredRuns)
+  const included = new Set(rows.map((row) => row.runId))
+  const nodes: AgentRuntimeFlowNode[] = []
+  const edges: AgentRuntimeFlowEdge[] = []
+
+  for (const row of rows) {
+    const tokens = runTokens(row.run)
+    nodes.push({
+      id: row.runId,
+      type: row.depth === 0 ? 'input' : 'default',
+      position: { x: row.depth * 280, y: nodes.length * 112 },
+      data: {
+        label: flowRunLabel(row.run, tokens),
+        runId: row.runId,
+        agent: row.agent,
+        model: row.run.resolved_model || row.run.resolved_alias || 'unresolved',
+        status: row.status,
+        statusKind: row.statusKind,
+        tier: row.tier,
+        tierShape: row.tierShape,
+        tokens,
+        kind: 'run',
+      },
+      class: `agent-flow-node flow-node-${row.tierShape} flow-status-${row.statusKind}`,
+      draggable: false,
+    })
+
+    if (row.parentRunId && included.has(row.parentRunId)) {
+      edges.push({
+        id: `spawn-${row.parentRunId}-${row.runId}`,
+        source: row.parentRunId,
+        target: row.runId,
+        type: 'smoothstep',
+        animated: row.statusKind === 'running',
+        class: `agent-flow-edge flow-edge-spawn flow-status-${row.statusKind}`,
+        data: { kind: 'spawn' },
+      })
+    }
+
+    for (const variant of [...(row.run.consensus_variants ?? [])].sort((a, b) => a.variant_idx - b.variant_idx)) {
+      const variantID = `${row.runId}-variant-${variant.variant_idx}`
+      const variantStatus = statusKindFromStatus(variant.status)
+      const variantTokens = (variant.tokens_in ?? 0) + (variant.tokens_out ?? 0)
+      nodes.push({
+        id: variantID,
+        type: 'output',
+        position: { x: row.depth * 280 + 260, y: (nodes.length - 1) * 112 + 54 },
+        data: {
+          label: flowVariantLabel(variant, variantTokens),
+          runId: row.runId,
+          agent: variant.alias || `Variant ${variant.variant_idx + 1}`,
+          model: variant.model || variant.kind || 'variant',
+          status: variant.status || 'pending',
+          statusKind: variantStatus,
+          tier: row.tier,
+          tierShape: 'standard',
+          tokens: variantTokens,
+          kind: 'variant',
+        },
+        class: `agent-flow-node flow-node-variant flow-status-${variantStatus}`,
+        draggable: false,
+      })
+      edges.push({
+        id: `variant-${row.runId}-${variant.variant_idx}`,
+        source: row.runId,
+        target: variantID,
+        type: 'smoothstep',
+        animated: variantStatus === 'running',
+        class: `agent-flow-edge flow-edge-variant flow-status-${variantStatus}`,
+        data: { kind: 'variant' },
+      })
+    }
+  }
+
+  return { nodes, edges }
 }
 
 function timestampedEvents(events: AgentRuntimeRunEvent[]): TimestampedEvent[] {
@@ -299,6 +410,32 @@ function statusKindFromStatus(status?: string): AgentRuntimeStatusKind {
   if (normalized.includes('complete') || normalized.includes('done') || normalized.includes('success')) return 'done'
   if (normalized.includes('run') || normalized.includes('progress') || normalized.includes('start')) return 'running'
   return 'pending'
+}
+
+function matchesFlowFilters(run: AgentRuntimeRun, filters: AgentRuntimeFlowFilters): boolean {
+  if (filters.tier?.trim() && (run.tier || 'default') !== filters.tier) return false
+  if (filters.session?.trim() && (run.session_id || '') !== filters.session) return false
+  if (filters.status && statusKindFromStatus(run.status) !== filters.status) return false
+  return true
+}
+
+function runTokens(run: AgentRuntimeRun): number {
+  return (run.consensus_variants ?? []).reduce((total, variant) => {
+    return total + (variant.tokens_in ?? 0) + (variant.tokens_out ?? 0)
+  }, 0)
+}
+
+function flowRunLabel(run: AgentRuntimeRun, tokens: number): string {
+  const agent = run.agent || 'default'
+  const model = run.resolved_model || run.resolved_alias || 'unresolved'
+  const status = run.status || 'pending'
+  return `${agent}\n${model}\n${status}${tokens > 0 ? ` / ${tokens} tokens` : ''}`
+}
+
+function flowVariantLabel(variant: ConsensusVariantRecord, tokens: number): string {
+  const label = variant.alias || `Variant ${variant.variant_idx + 1}`
+  const model = variant.model || variant.kind || 'variant'
+  return `${label}\n${model}${tokens > 0 ? ` / ${tokens} tokens` : ''}`
 }
 
 function statusFromEvent(event: AgentRuntimeRunEvent, fallback: string): string {
