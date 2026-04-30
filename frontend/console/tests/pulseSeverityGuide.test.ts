@@ -17,3 +17,14 @@ test('Pulse explains Min Severity and signal severity mappings inline', () => {
   assert.match(source, /lastSignalSeen/)
   assert.match(source, /class="pulse-severity-guide"/)
 })
+
+test('Pulse compresses all-clear recent ticks and highlights signal ticks', () => {
+  assert.match(source, /recentTickSummary/)
+  assert.match(source, /all clear \(no signals\)/)
+  assert.match(source, /warningCount/)
+  assert.match(source, /errorCount/)
+  assert.match(source, /autofixCount/)
+  assert.match(source, /Signal ticks/)
+  assert.match(source, /pulse-recent-dots/)
+  assert.match(source, /pulse-signal-ticks/)
+})
