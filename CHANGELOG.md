@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.64] - 2026-05-01
+
+### Added
+
+- CON-037: `/console` now resolves to a Home dashboard instead of redirecting into Chat.
+- Home surfaces Pulse, Reflection, disk pressure, active main sessions, recent notifications, recommended setup actions, and the latest session plan to continue.
+- Chat remains available at the explicit `/console/chat` route, and the sidebar keeps Home on the TARS logo.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Home"` in `frontend/console`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #439.
+
 ## [0.31.63] - 2026-05-01
 
 ### Added

@@ -188,7 +188,8 @@ The sidebar keeps Home on the TARS logo and groups the working pages into Work, 
 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
-| Work | Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` skill commands, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
+| Home | Dashboard | `/console` | Pulse, Reflection, disk pressure, active sessions, recent notifications, recommended setup actions, and plan resume |
+| Work | Chat | `/console/chat` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` skill commands, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
 | Work | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
 | Work | Extensions | `/console/extensions` | Skills, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |
