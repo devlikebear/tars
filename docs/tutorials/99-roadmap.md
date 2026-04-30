@@ -90,6 +90,7 @@ Phase 7 ✅  인증과 비동기 Agent Runtime
 ### Step 19. Ops Approval
 
 위험하거나 파괴적인 운영 작업은 계획을 먼저 만들고, approval ID를 통해 명시적으로 승인합니다.
+CON-041은 Approvals를 유지하는 것으로 결정했으며, Pulse의 안전한 allowlist autofix와 더 위험한 approval queue 라우팅을 구분합니다. 자세한 결정 기록은 `docs/decisions/approvals-workflow.md`를 참조하세요.
 
 - `POST /v1/ops/cleanup/plan`: 삭제 후보와 approval ID 생성
 - `GET /v1/ops/approvals`: pending approval 목록
