@@ -16,6 +16,7 @@
     reloadExtensions,
   } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
+  import SkillCreator from './SkillCreator.svelte'
   import type {
     HubRegistry,
     HubRegistryEntry,
@@ -23,6 +24,7 @@
     SkillDef,
     PluginDef,
     MCPServerStatus,
+    SkillCreatorSaveResponse,
   } from '../lib/types'
 
   type Tab = 'hub' | 'installed'
@@ -52,6 +54,7 @@
   let togglingItem = $state('')
   let installedPluginsOpen = $state(false)
   let hubPluginsOpen = $state(false)
+  let skillCreatorOpen = $state(false)
 
   // Version tracking for update detection
   let installedVersions: Map<string, string> = $state(new Map())
@@ -258,6 +261,12 @@
     }
   }
 
+  async function handleSkillCreated(result: SkillCreatorSaveResponse) {
+    success = `Saved skill draft to ${result.path}`
+    skillCreatorOpen = false
+    await loadInstalled()
+  }
+
   async function handleUpdateAll() {
     updating = true
     error = ''
@@ -309,6 +318,9 @@
   {#if tab === 'installed'}
     <!-- Installed Extensions -->
     <div class="ext-toolbar">
+      <button class="btn btn-primary btn-sm" onclick={() => { skillCreatorOpen = true }}>
+        + Create Skill
+      </button>
       <button class="btn btn-ghost btn-sm" disabled={reloading} onclick={handleReload}>
         {reloading ? 'Reloading...' : 'Reload'}
       </button>
@@ -646,6 +658,10 @@
         </div>
       </section>
     {/if}
+  {/if}
+
+  {#if skillCreatorOpen}
+    <SkillCreator onclose={() => { skillCreatorOpen = false }} onsaved={handleSkillCreated} />
   {/if}
 </div>
 

@@ -39,6 +39,10 @@ import type {
   ReflectionConfigView,
   Session,
   SessionMessage,
+  SkillCreatorDraftRequest,
+  SkillCreatorDraftResponse,
+  SkillCreatorSaveResponse,
+  SkillCreatorSubmitResponse,
   UpdateCronJobRequest,
   SessionTasks,
   SessionWorkDirs,
@@ -649,6 +653,30 @@ export async function getHubSkillContent(name: string): Promise<{ name: string; 
 
 export async function reloadExtensions(): Promise<{ reloaded: boolean; skills: number; plugins: number; mcp_count: number }> {
   return requestJSON<{ reloaded: boolean; skills: number; plugins: number; mcp_count: number }>('/v1/runtime/extensions/reload', { method: 'POST' })
+}
+
+export async function draftSkill(payload: SkillCreatorDraftRequest): Promise<SkillCreatorDraftResponse> {
+  return requestJSON<SkillCreatorDraftResponse>('/v1/admin/skills/draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function saveLocalSkill(draft: SkillCreatorDraftResponse): Promise<SkillCreatorSaveResponse> {
+  return requestJSON<SkillCreatorSaveResponse>('/v1/admin/skills/save-local', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  })
+}
+
+export async function submitSkillDraftPR(name: string): Promise<SkillCreatorSubmitResponse> {
+  return requestJSON<SkillCreatorSubmitResponse>('/v1/admin/skills/submit-pr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
 }
 
 // --- Events (singleton SSE) ---

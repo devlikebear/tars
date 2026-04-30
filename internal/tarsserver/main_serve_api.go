@@ -67,6 +67,7 @@ type apiRouteHandlers struct {
 	events          http.Handler
 	config          http.Handler
 	skillhub        http.Handler
+	skillCreator    http.Handler
 	filesystem      http.Handler
 	workspaceFiles  http.Handler
 	terminal        http.Handler
@@ -554,6 +555,7 @@ func buildAPIMux(
 	)
 	hubInstaller := skillhub.NewInstaller(cfg.WorkspaceDir)
 	skillhubHandler := newSkillhubAPIHandler(hubInstaller, extensionsManager, logger)
+	skillCreatorHandler := newSkillCreatorAPIHandler(cfg.WorkspaceDir, logger, nil)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
 	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
@@ -585,6 +587,7 @@ func buildAPIMux(
 		events:          eventsHandler,
 		config:          configHandler,
 		skillhub:        skillhubHandler,
+		skillCreator:    skillCreatorHandler,
 		filesystem:      filesystemHandler,
 		workspaceFiles:  workspaceFilesHandler,
 		terminal:        terminalHandler,
@@ -726,6 +729,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/hub/uninstall", handlers.skillhub)
 	mux.Handle("/v1/hub/update", handlers.skillhub)
 	mux.Handle("/v1/hub/skill-content", handlers.skillhub)
+	mux.Handle("/v1/admin/skills/draft", handlers.skillCreator)
+	mux.Handle("/v1/admin/skills/save-local", handlers.skillCreator)
+	mux.Handle("/v1/admin/skills/submit-pr", handlers.skillCreator)
 	mux.Handle("/v1/filesystem/browse", handlers.filesystem)
 	mux.Handle("/v1/workspace/files", handlers.workspaceFiles)
 	mux.Handle("/v1/workspace/files/", handlers.workspaceFiles)

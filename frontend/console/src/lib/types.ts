@@ -638,6 +638,39 @@ export type MCPServerStatus = {
   tools_count?: number
 }
 
+export type SkillCreatorFile = {
+  path: string
+  content: string
+}
+
+export type SkillCreatorDraftRequest = {
+  name: string
+  description: string
+  category?: string
+  language: 'python' | 'typescript' | 'shell'
+  layout: 'single_file' | 'directory'
+  use_case: string
+  recommended_tools: string[]
+}
+
+export type SkillCreatorDraftResponse = SkillCreatorDraftRequest & {
+  files: SkillCreatorFile[]
+  warnings?: string[]
+}
+
+export type SkillCreatorSaveResponse = {
+  saved: boolean
+  path: string
+  files: string[]
+}
+
+export type SkillCreatorSubmitResponse = {
+  submitted: boolean
+  ready: boolean
+  message: string
+  commands?: string[]
+}
+
 export type ConfigFile = {
   path: string
   content: string
