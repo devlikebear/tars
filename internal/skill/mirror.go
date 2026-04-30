@@ -19,25 +19,25 @@ func MirrorToWorkspace(workspaceDir string, snapshot Snapshot) (Snapshot, error)
 	keep := map[string]struct{}{}
 	next := Snapshot{
 		Version:     snapshot.Version,
-		Skills:      append([]Definition(nil), snapshot.Skills...),
+		Skills:      make([]Definition, 0, len(snapshot.Skills)),
 		Diagnostics: append([]Diagnostic(nil), snapshot.Diagnostics...),
 	}
 
-	for i := range next.Skills {
-		slug := sanitizeSkillName(next.Skills[i].Name)
+	for i := range snapshot.Skills {
+		def := snapshot.Skills[i]
+		slug := sanitizeSkillName(def.Name)
 		if slug == "" {
 			slug = "unknown_skill"
 		}
-		keep[slug] = struct{}{}
 		dstDir := filepath.Join(root, slug)
 		if err := os.MkdirAll(dstDir, 0o755); err != nil {
 			return Snapshot{}, fmt.Errorf("create mirrored skill dir: %w", err)
 		}
-		content := next.Skills[i].Content
-		if strings.TrimSpace(content) == "" && strings.TrimSpace(next.Skills[i].FilePath) != "" {
-			data, err := os.ReadFile(next.Skills[i].FilePath)
+		content := def.Content
+		if strings.TrimSpace(content) == "" && strings.TrimSpace(def.FilePath) != "" {
+			data, err := os.ReadFile(def.FilePath)
 			if err != nil {
-				return Snapshot{}, fmt.Errorf("read source skill file %q: %w", next.Skills[i].FilePath, err)
+				return Snapshot{}, fmt.Errorf("read source skill file %q: %w", def.FilePath, err)
 			}
 			content = string(data)
 		}
@@ -47,12 +47,26 @@ func MirrorToWorkspace(workspaceDir string, snapshot Snapshot) (Snapshot, error)
 		}
 
 		// Copy companion files (scripts, configs, etc.) from the source directory.
-		srcDir := filepath.Dir(next.Skills[i].FilePath)
+		srcDir := filepath.Dir(def.FilePath)
 		if strings.TrimSpace(srcDir) != "" && srcDir != "." {
-			_ = copyCompanionFiles(srcDir, dstDir)
+			if err := copyCompanionFiles(srcDir, dstDir); err != nil {
+				next.Diagnostics = append(next.Diagnostics, Diagnostic{
+					Path:    def.FilePath,
+					Message: fmt.Sprintf("mirror companion files: %v", err),
+				})
+				if removeErr := os.RemoveAll(dstDir); removeErr != nil {
+					next.Diagnostics = append(next.Diagnostics, Diagnostic{
+						Path:    target,
+						Message: fmt.Sprintf("remove failed mirrored skill dir: %v", removeErr),
+					})
+				}
+				continue
+			}
 		}
 
-		next.Skills[i].RuntimePath = filepath.ToSlash(filepath.Join(runtimeMirrorRoot, slug, "SKILL.md"))
+		def.RuntimePath = filepath.ToSlash(filepath.Join(runtimeMirrorRoot, slug, "SKILL.md"))
+		next.Skills = append(next.Skills, def)
+		keep[slug] = struct{}{}
 	}
 
 	if err := cleanupMirroredSkills(root, keep); err != nil {
@@ -67,20 +81,29 @@ func MirrorToWorkspace(workspaceDir string, snapshot Snapshot) (Snapshot, error)
 func copyCompanionFiles(srcDir, dstDir string) error {
 	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil
+			return fmt.Errorf("walk companion path %q: %w", path, walkErr)
 		}
 		rel, err := filepath.Rel(srcDir, path)
-		if err != nil || rel == "." {
+		if err != nil {
+			return fmt.Errorf("resolve companion path %q: %w", path, err)
+		}
+		if rel == "." {
 			return nil
 		}
 		dst := filepath.Join(dstDir, rel)
 		if d.IsDir() {
-			return os.MkdirAll(dst, 0o755)
+			if err := os.MkdirAll(dst, 0o755); err != nil {
+				return fmt.Errorf("create companion directory %q from %q: %w", dst, path, err)
+			}
+			return nil
 		}
 		if strings.EqualFold(filepath.Base(path), "SKILL.md") {
 			return nil // already written above
 		}
-		return copyFile(path, dst)
+		if err := copyFile(path, dst); err != nil {
+			return fmt.Errorf("copy companion file %q to %q: %w", path, dst, err)
+		}
+		return nil
 	})
 }
 

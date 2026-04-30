@@ -230,6 +230,50 @@ name: notes
 	}
 }
 
+func TestManagerReload_SurfacesSkillRuntimeMirrorCompanionFailure(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	skillDir := filepath.Join(workspaceDir, "skills", "copy-fail")
+	writeFile(t, filepath.Join(skillDir, "SKILL.md"), `---
+name: copy-fail
+---
+# Copy Fail`)
+	writeFile(t, filepath.Join(skillDir, "scripts", "run.sh"), "echo hello")
+
+	runtimeDir := filepath.Join(workspaceDir, "_shared", "skills_runtime", "copy_fail")
+	writeFile(t, filepath.Join(runtimeDir, "scripts"), "not a directory")
+
+	manager, err := NewManager(Options{
+		WorkspaceDir:   workspaceDir,
+		SkillsEnabled:  true,
+		PluginsEnabled: false,
+		SkillSources: []skill.SourceDir{
+			{Source: skill.SourceWorkspace, Dir: filepath.Join(workspaceDir, "skills")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	if err := manager.Reload(context.Background()); err != nil {
+		t.Fatalf("reload manager: %v", err)
+	}
+	snapshot := manager.Snapshot()
+	if len(snapshot.Skills) != 0 {
+		t.Fatalf("expected failed mirrored skill to be absent from snapshot, got %+v", snapshot.Skills)
+	}
+	if strings.Contains(snapshot.SkillPrompt, "<name>copy-fail</name>") {
+		t.Fatalf("expected failed mirrored skill to be removed from prompt, got %q", snapshot.SkillPrompt)
+	}
+	if _, ok := manager.FindSkill("copy-fail"); ok {
+		t.Fatalf("expected failed mirrored skill to be absent from manager lookup")
+	}
+	joined := strings.Join(snapshot.Diagnostics, "\n")
+	if !strings.Contains(joined, "mirror companion files") || !strings.Contains(joined, "scripts") {
+		t.Fatalf("expected diagnostics to mention companion copy failure, got %+v", snapshot.Diagnostics)
+	}
+}
+
 func TestManagerReload_SkipsUnavailablePluginsAndAnnotatesMCPSource(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace")

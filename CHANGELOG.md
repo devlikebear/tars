@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.28] - 2026-04-30
+
+### Fixed
+
+- Skill runtime mirroring now surfaces companion file copy failures and removes affected skills from the runtime snapshot instead of leaving partially mirrored skills available.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/skill ./internal/extensions`
+
+### Closed
+
+- Closes #416.
+
 ## [0.31.27] - 2026-04-30
 
 ### Added
