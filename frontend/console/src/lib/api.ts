@@ -21,6 +21,7 @@ import type {
   MemoryFile,
   MemorySearchResult,
   SyspromptFile,
+  SyspromptPreview,
   PluginDef,
   SkillDef,
   CreateCronJobRequest,
@@ -380,6 +381,10 @@ export async function saveSyspromptFile(scope: 'workspace' | 'agent', path: stri
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scope, path, content }),
   })
+}
+
+export async function getSyspromptPreview(target: 'main_agent' | 'sub_agent' = 'main_agent'): Promise<SyspromptPreview> {
+  return requestJSON<SyspromptPreview>(`/v1/admin/sysprompt/preview?target=${encodeURIComponent(target)}`)
 }
 
 // --- Session Config ---

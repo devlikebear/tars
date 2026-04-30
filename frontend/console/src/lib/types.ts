@@ -483,6 +483,16 @@ export type MemoryFile = {
 
 export type SyspromptScope = 'workspace' | 'agent'
 
+export type SyspromptPromptImpact = {
+  section: string
+  role: string
+  max_chars: number
+  chars: number
+  estimated_tokens: number
+  will_truncate: boolean
+  truncated_chars?: number
+}
+
 export type SyspromptFile = {
   scope: SyspromptScope
   path: string
@@ -495,6 +505,16 @@ export type SyspromptFile = {
   content?: string
   starter_content?: string
   prompt_targets?: string[]
+  prompt_impact?: SyspromptPromptImpact
+}
+
+export type SyspromptPreview = {
+  target: 'main_agent' | 'sub_agent'
+  prompt: string
+  static_tokens: number
+  relevant_tokens: number
+  relevant_memory_count: number
+  total_tokens: number
 }
 
 export type MemorySearchMatch = {

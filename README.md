@@ -186,7 +186,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 |------|------|---------|
 | Chat | `/console` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` skill commands, and Files workspace shell |
 | Memory | `/console/memory` | Edit durable memory assets and test semantic search |
-| System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates for empty prompt files |
+| System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, and preview |
 | Approvals | `/console/approvals` | Review risky cleanup plans before TARS applies them |
 | Pulse | `/console/pulse` | Watchdog status and run-now trigger |
 | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |

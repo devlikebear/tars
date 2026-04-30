@@ -663,6 +663,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/memory/kb/graph", handlers.memory)
 	mux.Handle("/v1/workspace/sysprompt/files", handlers.memory)
 	mux.Handle("/v1/workspace/sysprompt/file", handlers.memory)
+	mux.Handle("/v1/admin/sysprompt/preview", handlers.memory)
 	mux.Handle("/console", handlers.console)
 	mux.Handle("/console/", handlers.console)
 	if viteProxy := newConsoleDevViteHandler(); viteProxy != nil {

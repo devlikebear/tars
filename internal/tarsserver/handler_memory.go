@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/prompt"
 	"github.com/devlikebear/tars/internal/sysprompt"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/rs/zerolog"
@@ -203,6 +204,36 @@ func newMemoryAPIHandler(workspaceDir string, backend memory.Backend, logger zer
 			}
 			writeJSON(w, http.StatusOK, item)
 		}
+	})
+
+	mux.HandleFunc("/v1/admin/sysprompt/preview", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		target := strings.TrimSpace(r.URL.Query().Get("target"))
+		subAgent := false
+		switch target {
+		case "", "main_agent":
+			target = "main_agent"
+		case "sub_agent":
+			subAgent = true
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown sysprompt preview target"})
+			return
+		}
+
+		result := prompt.BuildResultFor(prompt.BuildOptions{
+			WorkspaceDir: workspaceDir,
+			SubAgent:     subAgent,
+		})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"target":                target,
+			"prompt":                result.Prompt,
+			"static_tokens":         result.StaticTokens,
+			"relevant_tokens":       result.RelevantTokens,
+			"relevant_memory_count": result.RelevantMemoryCount,
+			"total_tokens":          result.TotalTokens,
+		})
 	})
 
 	return mux

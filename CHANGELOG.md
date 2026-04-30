@@ -6,6 +6,28 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.41] - 2026-04-30
+
+### Added
+
+- System Prompt now shows per-file prompt impact metadata with estimated tokens, section mapping, section character limits, truncation warnings, and a reloadable main/sub-agent system prompt preview.
+
+### Tests
+
+- `npm test -- --test-name-pattern "System Prompt page surfaces"` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `npm test` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/prompt ./internal/sysprompt ./internal/tarsserver`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #425.
+
 ## [0.31.40] - 2026-04-30
 
 ### Added

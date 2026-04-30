@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/prompt"
 )
 
 type Scope string
@@ -26,17 +27,18 @@ type FileSpec struct {
 }
 
 type FileState struct {
-	Scope          Scope    `json:"scope"`
-	Path           string   `json:"path"`
-	Title          string   `json:"title"`
-	Description    string   `json:"description"`
-	Exists         bool     `json:"exists"`
-	Editable       bool     `json:"editable"`
-	SizeBytes      int64    `json:"size_bytes,omitempty"`
-	UpdatedAt      string   `json:"updated_at,omitempty"`
-	Content        string   `json:"content,omitempty"`
-	StarterContent string   `json:"starter_content,omitempty"`
-	PromptTargets  []string `json:"prompt_targets,omitempty"`
+	Scope          Scope              `json:"scope"`
+	Path           string             `json:"path"`
+	Title          string             `json:"title"`
+	Description    string             `json:"description"`
+	Exists         bool               `json:"exists"`
+	Editable       bool               `json:"editable"`
+	SizeBytes      int64              `json:"size_bytes,omitempty"`
+	UpdatedAt      string             `json:"updated_at,omitempty"`
+	Content        string             `json:"content,omitempty"`
+	StarterContent string             `json:"starter_content,omitempty"`
+	PromptTargets  []string           `json:"prompt_targets,omitempty"`
+	PromptImpact   *prompt.FileImpact `json:"prompt_impact,omitempty"`
 }
 
 func specs() []FileSpec {
@@ -156,6 +158,9 @@ func inspect(root string, spec FileSpec, includeContent bool) (FileState, error)
 		if !os.IsNotExist(err) {
 			return FileState{}, err
 		}
+		if impact, ok := prompt.FileImpactFor(spec.Path, spec.DefaultContent); ok {
+			state.PromptImpact = &impact
+		}
 		if includeContent {
 			state.Content = ""
 		}
@@ -164,11 +169,14 @@ func inspect(root string, spec FileSpec, includeContent bool) (FileState, error)
 	state.Exists = true
 	state.SizeBytes = info.Size()
 	state.UpdatedAt = info.ModTime().UTC().Format(time.RFC3339)
+	raw, readErr := os.ReadFile(absPath)
+	if readErr != nil {
+		return FileState{}, readErr
+	}
+	if impact, ok := prompt.FileImpactFor(spec.Path, string(raw)); ok {
+		state.PromptImpact = &impact
+	}
 	if includeContent {
-		raw, readErr := os.ReadFile(absPath)
-		if readErr != nil {
-			return FileState{}, readErr
-		}
 		state.Content = string(raw)
 	}
 	return state, nil
