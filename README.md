@@ -196,6 +196,8 @@ When TARS is exposed behind a reverse proxy path, pass that base path in `--serv
 
 The sidebar keeps Home on the TARS logo and groups the working pages into Work, Operate, and Setup.
 
+Frontend API response types are maintained in the console source with the current contract policy documented in `docs/frontend-api-types.md`.
+
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
 | Home | Dashboard | `/console` | Pulse, Reflection, disk pressure, active sessions, recent notifications, recommended setup actions, and plan resume |

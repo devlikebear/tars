@@ -5,6 +5,7 @@
   import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, openTerminalHere, browseFilesystem, createFilesystemDirectory, createWorkspaceDirectory, renameWorkspaceDirectory, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
   import { renderHighlightedCodeBlock } from '../lib/markdown'
   import type { SessionWorkDirs } from '../lib/types'
+  import ArtifactPanelHeader from './ArtifactPanelHeader.svelte'
   import IntegratedTerminal from './IntegratedTerminal.svelte'
   import MarkdownContent from './MarkdownContent.svelte'
 
@@ -532,18 +533,12 @@
 </script>
 
 <div class="artifact-panel">
-  <div class="artifact-header">
-    <span class="artifact-title">Files</span>
-    <div class="artifact-tabs">
-      <button type="button" class="tab-btn" class:active={activeTab === 'session'} onclick={() => { activeTab = 'session' }}>
-        Session{#if artifacts.length > 0} <span class="tab-count">{artifacts.length}</span>{/if}
-      </button>
-      <button type="button" class="tab-btn" class:active={activeTab === 'workspace'} onclick={() => { activeTab = 'workspace' }}>
-        Workspace
-      </button>
-    </div>
-    <button type="button" class="artifact-close" onclick={onClose}>&times;</button>
-  </div>
+  <ArtifactPanelHeader
+    {activeTab}
+    artifactCount={artifacts.length}
+    onSelectTab={(tab) => { activeTab = tab }}
+    {onClose}
+  />
 
   {#if activeTab === 'session'}
     <div class="artifact-list" bind:this={sessionArtifactListEl}>
@@ -901,61 +896,6 @@
     height: 100%;
     overflow: hidden;
   }
-
-  .artifact-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border-subtle);
-    flex-shrink: 0;
-  }
-
-  .artifact-title {
-    font-family: var(--font-display);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-
-  .artifact-tabs {
-    display: flex;
-    gap: 1px;
-    margin-left: var(--space-2);
-  }
-
-  .tab-btn {
-    background: none;
-    border: 1px solid var(--border-subtle);
-    color: var(--text-ghost);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    cursor: pointer;
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    transition: all var(--duration-fast);
-  }
-  .tab-btn:hover { color: var(--text-primary); border-color: var(--border-default); }
-  .tab-btn.active { color: var(--primary); border-color: var(--primary); background: rgba(224, 145, 69, 0.08); }
-
-  .tab-count {
-    font-size: 9px;
-    background: var(--surface-elevated);
-    padding: 0 4px;
-    border-radius: var(--radius-sm);
-  }
-
-  .artifact-close {
-    margin-left: auto;
-    background: none;
-    border: none;
-    color: var(--text-ghost);
-    cursor: pointer;
-    font-size: var(--text-md);
-    padding: 0 2px;
-    line-height: 1;
-  }
-  .artifact-close:hover { color: var(--text-primary); }
 
   /* WorkDir bar */
   .workdir-bar {
