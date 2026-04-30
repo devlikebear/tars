@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.51] - 2026-05-01
+
+### Changed
+
+- Q-015 follow-up: `subagents_run` no longer advertises `mode=consensus` or the `consensus` argument object while `agentruntime_consensus_enabled=false`.
+- Consensus remains available as an advanced config opt-in; when enabled, the `subagents_run` schema exposes the consensus mode and runtime behavior is unchanged.
+- Disabled consensus calls now return an immediate diagnostic before spawning an Agent Runtime run.
+- Config schema, example config, README, usage-signal notes, and Console copy now describe consensus as advanced opt-in rather than routine run data.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tool -run 'TestSubagentsRunTool_(HidesConsensusSchemaWhenRuntimeGateDisabled|ExposesConsensusSchemaWhenRuntimeGateEnabled|RejectsConsensusBeforeSpawnWhenRuntimeGateDisabled|SpawnsParallelExplorerChildrenAndReturnsSummaries)'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/config -run 'TestSchema_UsesPreferredHierarchicalPaths|TestLoad_ExampleConfigHierarchicalSchema'`
+- `npm test -- --test-name-pattern "Agent Runtime"` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #507.
+
 ## [0.31.50] - 2026-05-01
 
 ### Changed

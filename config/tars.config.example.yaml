@@ -198,6 +198,7 @@ agentruntime:
   subagents:
     max_threads: 4
     max_depth: 1
+  # Advanced opt-in. When false, mode=consensus is hidden from the default subagents_run tool schema.
   consensus:
     enabled: false
     max_fanout: 3
