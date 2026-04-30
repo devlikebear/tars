@@ -89,8 +89,10 @@ export type Translations = {
       name: string
     }
     loading: string
+    searchingTranscripts: string
     empty: string
     noMatches: string
+    transcriptMatches: string
     autoTitle: string
     confirmDelete: string
     clickAgainToConfirm: string
