@@ -382,6 +382,7 @@ export type SessionMessage = {
   tool_name?: string
   tool_call_id?: string
   tool_args?: string
+  tool_is_error?: boolean
 }
 
 export type OpsStatus = {
@@ -426,6 +427,7 @@ export type ChatEvent = {
   tool_call_id?: string
   tool_args_preview?: string
   tool_result_preview?: string
+  tool_is_error?: boolean
   skill_name?: string
   skill_reason?: string
   // context_info fields

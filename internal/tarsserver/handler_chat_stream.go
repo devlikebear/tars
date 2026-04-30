@@ -38,16 +38,21 @@ func (s *chatStreamWriter) send(data any) {
 	}
 	jsonData, _ := json.Marshal(data)
 	_, _ = fmt.Fprintf(s.w, "data: %s\n\n", jsonData)
-	if evt, ok := data.(map[string]string); ok {
+	switch evt := data.(type) {
+	case map[string]string:
 		s.logger.Debug().Str("event_type", evt["type"]).Msg("chat sse event")
+	case map[string]any:
+		if eventType, ok := evt["type"].(string); ok {
+			s.logger.Debug().Str("event_type", eventType).Msg("chat sse event")
+		}
 	}
 	if s.flusher != nil {
 		s.flusher.Flush()
 	}
 }
 
-func (s *chatStreamWriter) status(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview string) {
-	payload := map[string]string{
+func (s *chatStreamWriter) status(phase, message, toolName, toolCallID, toolArgsPreview, toolResultPreview string, toolIsError ...bool) {
+	payload := map[string]any{
 		"type":       "status",
 		"phase":      phase,
 		"message":    message,
@@ -64,6 +69,9 @@ func (s *chatStreamWriter) status(phase, message, toolName, toolCallID, toolArgs
 	}
 	if strings.TrimSpace(toolResultPreview) != "" {
 		payload["tool_result_preview"] = strings.TrimSpace(toolResultPreview)
+	}
+	if len(toolIsError) > 0 && toolIsError[0] {
+		payload["tool_is_error"] = true
 	}
 	s.send(payload)
 }

@@ -171,6 +171,7 @@
             toolCallId: event.tool_call_id,
             toolArgs: event.tool_args_preview,
             toolDone: false,
+            toolStartedAt: Date.now(),
           }
           const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
           if (aIdx >= 0) {
@@ -188,6 +189,8 @@
               toolArgs,
               toolResult: event.tool_result_preview,
               toolDone: true,
+              toolIsError: event.tool_is_error,
+              toolFinishedAt: Date.now(),
             }
             chatMessages = [...chatMessages]
             void scrollToBottom()
@@ -829,6 +832,7 @@
           toolArgs: msg.tool_args,
           toolResult: msg.content,
           toolDone: true,
+          toolIsError: msg.tool_is_error,
         })
       } else {
         rebuilt.push({

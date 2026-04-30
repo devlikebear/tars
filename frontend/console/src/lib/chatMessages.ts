@@ -7,6 +7,9 @@ export type ChatMessage = {
   toolArgs?: string
   toolResult?: string
   toolDone?: boolean
+  toolIsError?: boolean
+  toolStartedAt?: number
+  toolFinishedAt?: number
   usage?: {
     input_tokens: number
     output_tokens: number
