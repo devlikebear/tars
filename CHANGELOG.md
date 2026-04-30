@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.55] - 2026-05-01
+
+### Added
+
+- CON-046: Console Agent Runtime runs now include dependency-free Tree and Gantt visualization modes alongside the existing list view.
+- The Tree mode renders parent/child run structure with depth, tier shape, status color, and direct run-detail navigation.
+- The Gantt mode renders run duration bars and consensus variant sub-bars on a shared timeline for quick parallelism scanning.
+
+### Tests
+
+- `npm test -- --test-name-pattern "Agent Runtime.*(tree|Gantt)|buildAgentRuntime"` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make console-build`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #448.
+
 ## [0.31.54] - 2026-05-01
 
 ### Added

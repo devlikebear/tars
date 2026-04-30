@@ -6,6 +6,8 @@ const source = readFileSync(new URL('../src/components/AgentRuntimeRunView.svelt
 const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
 const costFlowSource = readFileSync(new URL('../src/components/AgentRuntimeCostFlow.svelte', import.meta.url), 'utf8')
 const replaySource = readFileSync(new URL('../src/components/AgentRuntimeReplay.svelte', import.meta.url), 'utf8')
+const treeSource = readFileSync(new URL('../src/components/AgentRuntimeTree.svelte', import.meta.url), 'utf8')
+const ganttSource = readFileSync(new URL('../src/components/AgentRuntimeGantt.svelte', import.meta.url), 'utf8')
 
 test('Agent Runtime runs page exposes filters, session links, and cost summaries', () => {
   assert.match(source, /runStatusFilter/)
@@ -55,4 +57,16 @@ test('Agent Runtime run detail exposes replay scrubber controls', () => {
   assert.match(replaySource, /replay-scrubber/)
   assert.match(replaySource, /Live/)
   assert.match(replaySource, /5x/)
+})
+
+test('Agent Runtime runs page exposes static tree and Gantt visualization modes', () => {
+  assert.match(source, /AgentRuntimeTree/)
+  assert.match(source, /AgentRuntimeGantt/)
+  assert.match(source, /runViewMode/)
+  assert.match(source, /Tree/)
+  assert.match(source, /Gantt/)
+  assert.match(treeSource, /agent-runtime-tree/)
+  assert.match(treeSource, /Mini Tree/)
+  assert.match(ganttSource, /agent-runtime-gantt/)
+  assert.match(ganttSource, /Gantt Strip/)
 })
