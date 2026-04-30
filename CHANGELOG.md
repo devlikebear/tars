@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.62] - 2026-05-01
+
+### Added
+
+- CON-039: Memory's `Try a Search` panel now has `Tool path` and `Prefetch path` modes so explicit `memory_search` results can be compared with automatic Prior Context recall.
+- Added `POST /v1/memory/prefetch`, returning the rendered `## Prior Context` section, source-tagged snippets, token usage, and budget percentage.
+- Prefetch mode supports an optional session id and renders source badges plus the exact prompt section used by the automatic memory path.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'TestMemoryAPIHandler_PrefetchBuildsPriorContextPreview|TestRegisterAPIRoutes'`
+- `npm test -- --test-name-pattern "Prefetch path"` in `frontend/console`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `GOCACHE=/tmp/tars-go-cache make vet`
+- `make security-scan`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make build`
+
+### Closed
+
+- Closes #441.
+
 ## [0.31.61] - 2026-05-01
 
 ### Added

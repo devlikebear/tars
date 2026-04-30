@@ -66,6 +66,10 @@ POST /v1/chat { session_id, message }
 다음 draft message가 system prompt에 넣을 `## Prior Context` 섹션과 source/token
 메타데이터를 Chat 우측 `Prior` 패널에 제공한다.
 
+`POST /v1/memory/prefetch?query=...&session_id=...`도 같은 builder 경로를 사용해
+Memory 화면의 `Prefetch path` 검색 모드에 Prior Context 섹션과 source/token
+메타데이터를 제공한다. 기존 `Tool path` 모드는 `memory_search` tool 결과를 유지한다.
+
 ### Agent Runtime
 
 ```
