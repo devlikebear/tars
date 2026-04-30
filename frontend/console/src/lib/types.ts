@@ -156,6 +156,18 @@ export type ConsensusVariantRecord = {
   finished_at?: string
 }
 
+export type FileAttentionSummary = {
+  path: string
+  total: number
+  reads?: number
+  edits?: number
+  lists?: number
+  writes?: number
+  first_at?: string
+  last_at?: string
+  sparkline?: number[]
+}
+
 export type AgentRuntimeRun = {
   run_id: string
   session_id?: string
@@ -179,6 +191,8 @@ export type AgentRuntimeRun = {
   consensus_variants?: ConsensusVariantRecord[]
   consensus_cost_usd?: number
   consensus_budget_usd?: number
+  file_attention?: FileAttentionSummary[]
+  file_ops_total?: number
   created_at?: string
   started_at?: string
   completed_at?: string
@@ -210,6 +224,11 @@ export type AgentRuntimeRunEvent = {
   final_tokens?: number
   cost_usd_estimate?: number
   cost_usd_actual?: number
+  tool_name?: string
+  tool_call_id?: string
+  path?: string
+  action?: string
+  tool_is_error?: boolean
 }
 
 export type AgentRuntimeTierOption = {

@@ -105,6 +105,9 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 		FlowID:    state.run.FlowID,
 		StepID:    state.run.StepID,
 	})
+	execCtx = WithRuntimeToolCallRecorder(execCtx, func(call RuntimeToolCall) {
+		r.recordRuntimeToolCall(state.run.ID, call)
+	})
 	metadata := PromptExecutionMetadata{}
 	resp, err := executor.Execute(execCtx, ExecuteRequest{
 		RunID:            state.run.ID,

@@ -68,6 +68,81 @@ func TestRuntimeSpawnAndWait(t *testing.T) {
 	}
 }
 
+func TestRuntimeCapturesFileToolCallSummaryAndEvent(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		RunPrompt: func(ctx context.Context, _ string, _ string) (string, error) {
+			close(entered)
+			<-release
+			recorder := RuntimeToolCallRecorderFromContext(ctx)
+			if recorder == nil {
+				t.Fatal("expected runtime tool call recorder in context")
+			}
+			recorder(RuntimeToolCall{
+				ToolName:   "read_file",
+				ToolCallID: "call_read_1",
+				ToolArgs:   `{"path":"internal/agentruntime/types.go"}`,
+			})
+			return "done", nil
+		},
+	})
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
+
+	run, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "inspect files"})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for run prompt")
+	}
+	events, unsubscribe := rt.SubscribeRunEvents(run.ID)
+	defer unsubscribe()
+	close(release)
+
+	var sawToolCall bool
+	deadline := time.After(2 * time.Second)
+	for !sawToolCall {
+		select {
+		case evt := <-events:
+			if evt.Type == "tool.call" {
+				sawToolCall = true
+				if evt.ToolName != "read_file" || evt.ToolCallID != "call_read_1" {
+					t.Fatalf("unexpected tool call event: %+v", evt)
+				}
+				if evt.Path != "internal/agentruntime/types.go" || evt.Action != "read" {
+					t.Fatalf("unexpected file event path/action: %+v", evt)
+				}
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for tool.call event")
+		}
+	}
+
+	final, err := rt.Wait(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	if len(final.FileAttention) != 1 {
+		t.Fatalf("expected one file attention summary, got %+v", final.FileAttention)
+	}
+	summary := final.FileAttention[0]
+	if summary.Path != "internal/agentruntime/types.go" || summary.Reads != 1 || summary.Total != 1 {
+		t.Fatalf("unexpected file attention summary: %+v", summary)
+	}
+	if len(summary.Sparkline) == 0 || summary.Sparkline[0] != 1 {
+		t.Fatalf("expected non-empty sparkline with first access, got %+v", summary.Sparkline)
+	}
+	if final.FileOpsTotal != 1 {
+		t.Fatalf("expected file ops total 1, got %d", final.FileOpsTotal)
+	}
+}
+
 func TestRuntimeSpawn_PersistsSubagentLineageMetadata(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	rt := NewRuntime(RuntimeOptions{
