@@ -1,0 +1,58 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+import {
+  getMemoryAssetMetadata,
+  isMemoryAssetStale,
+} from '../src/lib/memoryAssetMetadata.ts'
+import type { MemoryAsset } from '../src/lib/types.ts'
+
+const memorySource = readFileSync(new URL('../src/components/MemoryCenter.svelte', import.meta.url), 'utf8')
+
+function asset(partial: Partial<MemoryAsset>): MemoryAsset {
+  return {
+    path: partial.path || 'MEMORY.md',
+    kind: partial.kind || 'long_term_memory',
+    editable: partial.editable ?? true,
+    size_bytes: partial.size_bytes ?? 0,
+    updated_at: partial.updated_at,
+  }
+}
+
+test('memory asset metadata explains who fills and reads each durable asset', () => {
+  const memory = getMemoryAssetMetadata(asset({ path: 'MEMORY.md', kind: 'long_term_memory' }))
+  assert.match(memory.filledBy.join(' '), /Manual edits/)
+  assert.match(memory.filledBy.join(' '), /remember/)
+  assert.match(memory.readBy.join(' '), /Prior Context prefetch/)
+  assert.match(memory.readBy.join(' '), /memory_search/)
+
+  const experiences = getMemoryAssetMetadata(asset({ path: 'experiences.jsonl', kind: 'experience_log' }))
+  assert.match(experiences.filledBy.join(' '), /Reflection nightly memory job/)
+  assert.match(experiences.readBy.join(' '), /semantic prefetch/)
+  assert.equal(experiences.staleAfterDays, 7)
+})
+
+test('experience logs become stale after seven quiet days', () => {
+  const now = new Date('2026-04-30T00:00:00Z')
+  assert.equal(
+    isMemoryAssetStale(asset({ path: 'experiences.jsonl', kind: 'experience_log', updated_at: '2026-04-20T00:00:00Z' }), now),
+    true,
+  )
+  assert.equal(
+    isMemoryAssetStale(asset({ path: 'experiences.jsonl', kind: 'experience_log', updated_at: '2026-04-29T00:00:00Z' }), now),
+    false,
+  )
+  assert.equal(
+    isMemoryAssetStale(asset({ path: 'MEMORY.md', kind: 'long_term_memory', updated_at: '2026-04-01T00:00:00Z' }), now),
+    false,
+  )
+})
+
+test('Memory page renders filled/read metadata and stale badges on asset cards', () => {
+  assert.match(memorySource, /getMemoryAssetMetadata/)
+  assert.match(memorySource, /asset-flow-line/)
+  assert.match(memorySource, /Filled by:/)
+  assert.match(memorySource, /Read by:/)
+  assert.match(memorySource, /Stale/)
+})

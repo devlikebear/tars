@@ -11,6 +11,10 @@
     MemoryAsset,
     MemorySearchResult,
   } from '../lib/types'
+  import {
+    getMemoryAssetMetadata,
+    isMemoryAssetStale,
+  } from '../lib/memoryAssetMetadata'
 
   interface Props {
     onAskAI?: (prompt: string) => void
@@ -223,14 +227,31 @@
         {:else}
           <div class="asset-list">
             {#each memoryAssets as asset}
+              {@const metadata = getMemoryAssetMetadata(asset)}
+              {@const stale = isMemoryAssetStale(asset)}
               <button class="asset-row" class:active={selectedMemoryPath === asset.path} type="button" onclick={() => selectMemoryAsset(asset.path)}>
                 <div class="asset-row-top">
                   <strong>{asset.path}</strong>
-                  <span class="note-kind">{assetKindLabel(asset.kind)}</span>
+                  <div class="asset-badges">
+                    <span class="note-kind">{assetKindLabel(asset.kind)}</span>
+                    {#if stale}
+                      <span class="stale-badge">Stale</span>
+                    {/if}
+                  </div>
                 </div>
                 <div class="note-meta">
                   <span>{formatBytes(asset.size_bytes)}</span>
                   <span>{fmt(asset.updated_at)}</span>
+                </div>
+                <div class="asset-flow">
+                  <div class="asset-flow-line">
+                    <strong>Filled by:</strong>
+                    <span>{metadata.filledBy.join(', ')}</span>
+                  </div>
+                  <div class="asset-flow-line">
+                    <strong>Read by:</strong>
+                    <span>{metadata.readBy.join(', ')}</span>
+                  </div>
                 </div>
               </button>
             {/each}
@@ -389,7 +410,8 @@
 
   .stat-meta,
   .note-kind,
-  .note-meta {
+  .note-meta,
+  .asset-flow-line {
     font-size: var(--text-xs);
     color: var(--text-secondary);
   }
@@ -461,6 +483,37 @@
   .asset-row.active {
     border-color: var(--primary);
     background: var(--primary-muted);
+  }
+
+  .asset-badges,
+  .asset-flow-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .asset-badges {
+    justify-content: flex-end;
+  }
+
+  .asset-flow {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .asset-flow-line strong {
+    color: var(--text-primary);
+  }
+
+  .stale-badge {
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    background: var(--warning-muted);
+    color: var(--warning);
+    font-size: var(--text-xs);
+    font-weight: 600;
   }
 
   .editor-meta {
