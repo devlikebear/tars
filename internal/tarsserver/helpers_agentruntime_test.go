@@ -363,6 +363,53 @@ func TestNewAgentPromptRunnerWithTools_HardBlocksDisallowedToolCall(t *testing.T
 	}
 }
 
+func TestNewAgentPromptRunnerWithTools_ForwardsFileToolCallsToRuntimeRecorder(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "README.md"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	client := &captureToolsLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_read_1", Name: "read_file", Arguments: `{"path":"README.md"}`},
+					},
+				},
+			},
+			{
+				Message: llm.ChatMessage{
+					Role:    "assistant",
+					Content: "done",
+				},
+			},
+		},
+	}
+	runner := newAgentPromptRunnerWithTools(config.Config{}, workspace, client, nil, 4, zerolog.New(io.Discard))
+	if runner == nil {
+		t.Fatal("expected prompt runner")
+	}
+
+	var captured []agentruntime.RuntimeToolCall
+	ctx := agentruntime.WithRuntimeToolCallRecorder(context.Background(), func(call agentruntime.RuntimeToolCall) {
+		captured = append(captured, call)
+	})
+	resp, err := runner(ctx, "spawn:run_1", "inspect", []string{"read_file"}, "", nil)
+	if err != nil {
+		t.Fatalf("run prompt: %v", err)
+	}
+	if strings.TrimSpace(resp) != "done" {
+		t.Fatalf("unexpected response: %q", resp)
+	}
+	if len(captured) != 1 {
+		t.Fatalf("expected one captured file tool call, got %+v", captured)
+	}
+	if captured[0].ToolName != "read_file" || captured[0].ToolCallID != "call_read_1" || captured[0].ToolArgs != `{"path":"README.md"}` {
+		t.Fatalf("unexpected captured call: %+v", captured[0])
+	}
+}
+
 type captureToolsLLMClient struct {
 	responses []llm.ChatResponse
 	seenTools [][]string

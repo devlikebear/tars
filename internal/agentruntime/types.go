@@ -52,6 +52,8 @@ type Run struct {
 	ConsensusVariants   []ConsensusVariantRecord `json:"consensus_variants,omitempty"`
 	ConsensusCostUSD    float64                  `json:"consensus_cost_usd,omitempty"`
 	ConsensusBudgetUSD  float64                  `json:"consensus_budget_usd,omitempty"`
+	FileAttention       []FileAttentionSummary   `json:"file_attention,omitempty"`
+	FileOpsTotal        int                      `json:"file_ops_total,omitempty"`
 	ProviderOverride    *ProviderOverride        `json:"provider_override,omitempty"`
 	ResolvedAlias       string                   `json:"resolved_alias,omitempty"`
 	ResolvedKind        string                   `json:"resolved_kind,omitempty"`
@@ -114,6 +116,23 @@ type RunEvent struct {
 	FinalTokens     int     `json:"final_tokens,omitempty"`
 	CostUSDEstimate float64 `json:"cost_usd_estimate,omitempty"`
 	CostUSDActual   float64 `json:"cost_usd_actual,omitempty"`
+	ToolName        string  `json:"tool_name,omitempty"`
+	ToolCallID      string  `json:"tool_call_id,omitempty"`
+	Path            string  `json:"path,omitempty"`
+	Action          string  `json:"action,omitempty"`
+	ToolIsError     bool    `json:"tool_is_error,omitempty"`
+}
+
+type FileAttentionSummary struct {
+	Path      string `json:"path"`
+	Total     int    `json:"total"`
+	Reads     int    `json:"reads,omitempty"`
+	Edits     int    `json:"edits,omitempty"`
+	Lists     int    `json:"lists,omitempty"`
+	Writes    int    `json:"writes,omitempty"`
+	FirstAt   string `json:"first_at,omitempty"`
+	LastAt    string `json:"last_at,omitempty"`
+	Sparkline []int  `json:"sparkline,omitempty"`
 }
 
 type ResolvedProviderOverride struct {

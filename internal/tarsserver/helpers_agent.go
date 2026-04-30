@@ -267,6 +267,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 			telemetry.UserPromptTokens = promptTokenEstimate(promptText)
 			telemetry.ToolCount = len(tools)
 		}
+		runtimeToolRecorder := agentruntime.RuntimeToolCallRecorderFromContext(ctx)
 		meta := usage.CallMeta{Source: "agent_run"}
 		lowerLabel := strings.ToLower(label)
 		if strings.HasPrefix(lowerLabel, "cron") {
@@ -276,7 +277,17 @@ func newAgentPromptRunnerWithToolsAndMemory(
 			meta.RunID = strings.TrimSpace(label[idx+1:])
 		}
 		ctx = usage.WithCallMeta(ctx, meta)
-		loop, _ := setupAgentLoop(runClient, registry, label, 0, tracker, logger, func(string, string, string, string, string, string) {}, nil)
+		loop, _ := setupAgentLoop(runClient, registry, label, 0, tracker, logger, func(string, string, string, string, string, string) {}, func(_ context.Context, evt agent.Event) {
+			if runtimeToolRecorder == nil {
+				return
+			}
+			runtimeToolRecorder(agentruntime.RuntimeToolCall{
+				ToolName:    evt.ToolName,
+				ToolCallID:  evt.ToolCallID,
+				ToolArgs:    evt.ToolArgs,
+				ToolIsError: evt.ToolIsError,
+			})
+		})
 		resp, err := loop.Run(ctx, []llm.ChatMessage{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: promptText},

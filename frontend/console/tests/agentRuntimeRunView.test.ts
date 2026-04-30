@@ -28,3 +28,12 @@ test('Agent Runtime run API client forwards filter query params', () => {
   assert.match(apiSource, /search/)
   assert.match(apiSource, /URLSearchParams/)
 })
+
+test('Agent Runtime run detail exposes file attention heatmap data', () => {
+  assert.match(source, /fileAttentionRows/)
+  assert.match(source, /File Attention/)
+  assert.match(source, /file-heatmap/)
+  assert.match(source, /sparkline/)
+  assert.match(source, /file_attention/)
+  assert.match(source, /tool\.call/)
+})

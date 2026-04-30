@@ -17,6 +17,7 @@
     AgentRuntimeSubagentsResponse,
     AgentRuntimeTierOption,
     ConsensusVariantRecord,
+    FileAttentionSummary,
     AgentRuntimeRun,
     AgentRuntimeRunEvent,
   } from '../lib/types'
@@ -35,6 +36,7 @@
     total: number
     runs: number
   }
+  type FileAttentionAction = 'read' | 'edit' | 'both'
 
   let { runId, tab = 'runs', onNavigate }: Props = $props()
 
@@ -107,6 +109,14 @@
     return sumRunCosts(summaryRuns.filter((run) => runTimestamp(run) >= cutoff))
   })
   let planCostRows = $derived.by<PlanCostRow[]>(() => groupedPlanCosts(summaryRuns))
+  let fileAttentionRows = $derived.by<FileAttentionSummary[]>(() => {
+    return [...(selectedRun?.file_attention ?? [])]
+      .sort((a, b) => (b.total ?? 0) - (a.total ?? 0) || a.path.localeCompare(b.path))
+      .slice(0, 24)
+  })
+  let fileAttentionMax = $derived.by<number>(() => {
+    return Math.max(1, ...fileAttentionRows.map((row) => row.total ?? 0))
+  })
 
   async function loadRuns() {
     loading = true
@@ -178,7 +188,7 @@
         if (event.type === 'consensus_planned' && event.cost_usd_estimate != null) estimatedUSD = event.cost_usd_estimate
         if (event.type === 'consensus_finished' && event.cost_usd_actual != null) actualUSD = event.cost_usd_actual
         if (!selectedRun) return
-        selectedRun = {
+        const nextRun = {
           ...selectedRun,
           status: event.status ?? selectedRun.status,
           response: event.response ?? selectedRun.response,
@@ -187,6 +197,7 @@
           resolved_kind: event.resolved_kind ?? selectedRun.resolved_kind,
           resolved_model: event.resolved_model ?? selectedRun.resolved_model,
         }
+        selectedRun = event.type === 'tool.call' ? applyFileAttentionEvent(nextRun, event) : nextRun
       },
       (message) => {
         streamError = message
@@ -259,6 +270,63 @@
     return [...groups.values()]
       .sort((a, b) => b.total - a.total)
       .slice(0, 3)
+  }
+
+  function fileAttentionAction(row: FileAttentionSummary): FileAttentionAction {
+    const reads = row.reads ?? 0
+    const edits = row.edits ?? 0
+    if (reads > 0 && edits > 0) return 'both'
+    if (edits > 0) return 'edit'
+    return 'read'
+  }
+
+  function fileAttentionIntensity(row: FileAttentionSummary): number {
+    return Math.max(8, Math.round(((row.total ?? 0) / fileAttentionMax) * 100))
+  }
+
+  function fileAttentionOpsTotal(): number {
+    return selectedRun?.file_ops_total ?? fileAttentionRows.reduce((total, row) => total + (row.total ?? 0), 0)
+  }
+
+  function normalizedSparkline(values?: number[]): number[] {
+    if (!values?.length) return [0]
+    return values
+  }
+
+  function sparklineHeight(value: number, values?: number[]): number {
+    const max = Math.max(1, ...(values ?? [0]))
+    return Math.max(10, Math.round((value / max) * 100))
+  }
+
+  function applyFileAttentionEvent(run: AgentRuntimeRun, event: AgentRuntimeRunEvent): AgentRuntimeRun {
+    const path = event.path?.trim()
+    if (!path) return run
+    const rows = [...(run.file_attention ?? [])].map((row) => ({ ...row, sparkline: [...(row.sparkline ?? [])] }))
+    let row = rows.find((item) => item.path === path)
+    if (!row) {
+      row = { path, total: 0, sparkline: [] }
+      rows.push(row)
+    }
+    row.total = (row.total ?? 0) + 1
+    if (event.action === 'edit') {
+      row.edits = (row.edits ?? 0) + 1
+    } else {
+      row.reads = (row.reads ?? 0) + 1
+      if (event.tool_name === 'list_dir') row.lists = (row.lists ?? 0) + 1
+    }
+    if (event.tool_name === 'write_file' || event.tool_name === 'write') row.writes = (row.writes ?? 0) + 1
+    row.last_at = event.timestamp ?? row.last_at
+    if (!row.first_at) row.first_at = row.last_at
+    const sparkline = row.sparkline ?? []
+    if (sparkline.length < 12) sparkline.push(1)
+    else sparkline[sparkline.length - 1] = (sparkline[sparkline.length - 1] ?? 0) + 1
+    row.sparkline = sparkline
+    rows.sort((a, b) => (b.total ?? 0) - (a.total ?? 0) || a.path.localeCompare(b.path))
+    return {
+      ...run,
+      file_attention: rows,
+      file_ops_total: (run.file_ops_total ?? 0) + 1,
+    }
   }
 
   function runFiltersActive(): boolean {
@@ -987,6 +1055,42 @@
         </section>
       </div>
 
+      <section class="detail-panel file-heatmap" aria-label="File Attention Heatmap">
+        <div class="panel-title-row">
+          <h3>File Attention</h3>
+          <span>{fileAttentionOpsTotal()} ops</span>
+        </div>
+        {#if fileAttentionRows.length === 0}
+          <div class="agentruntime-empty">No file tool calls captured yet.</div>
+        {:else}
+          <div class="file-attention-list">
+            {#each fileAttentionRows as row}
+              <article class="file-attention-row" class:read={fileAttentionAction(row) === 'read'} class:edit={fileAttentionAction(row) === 'edit'} class:both={fileAttentionAction(row) === 'both'}>
+                <div class="file-attention-main">
+                  <span class="file-path" title={row.path}>{row.path}</span>
+                  <span class="file-count">{row.total} ops</span>
+                </div>
+                <div class="file-attention-meter">
+                  <span class="heat-cell" style={`--heat: ${fileAttentionIntensity(row)}%`}></span>
+                  <div class="sparkline" aria-label={`Access pattern for ${row.path}`}>
+                    {#each normalizedSparkline(row.sparkline) as value}
+                      <span style={`height: ${sparklineHeight(value, row.sparkline)}%`}></span>
+                    {/each}
+                  </div>
+                </div>
+                <div class="row-meta file-meta">
+                  {#if row.reads}<span>{row.reads} read</span>{/if}
+                  {#if row.edits}<span>{row.edits} edit</span>{/if}
+                  {#if row.lists}<span>{row.lists} list</span>{/if}
+                  {#if row.writes}<span>{row.writes} write</span>{/if}
+                  {#if row.last_at}<span>{fmtTime(row.last_at)}</span>{/if}
+                </div>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
       {#if variantRecords().length > 0}
         <section class="detail-panel">
           <h3>Consensus Variants</h3>
@@ -1144,6 +1248,28 @@
   .label { font-size: 10px; text-transform: uppercase; color: var(--text-ghost); font-family: var(--font-mono); }
   .detail-columns, .variants-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
   .variants-grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .panel-title-row { display: flex; justify-content: space-between; gap: var(--space-3); align-items: center; margin-bottom: var(--space-3); }
+  .panel-title-row h3 { margin: 0; }
+  .panel-title-row span { color: var(--text-ghost); font-family: var(--font-mono); font-size: var(--text-xs); }
+  .file-heatmap { overflow: hidden; }
+  .file-attention-list { display: flex; flex-direction: column; gap: 0; }
+  .file-attention-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 0.42fr) minmax(160px, 0.34fr); gap: var(--space-3); align-items: center; border-top: 1px solid var(--border-subtle); padding: var(--space-3) 0; }
+  .file-attention-row:first-child { border-top: 0; padding-top: 0; }
+  .file-attention-row:last-child { padding-bottom: 0; }
+  .file-attention-main { min-width: 0; display: grid; gap: 3px; }
+  .file-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-family: var(--font-mono); font-size: var(--text-xs); }
+  .file-count { color: var(--text-ghost); font-size: var(--text-xs); }
+  .file-attention-meter { min-width: 0; display: grid; grid-template-columns: 56px minmax(72px, 1fr); gap: var(--space-2); align-items: center; }
+  .heat-cell { display: block; width: 56px; height: 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: linear-gradient(90deg, var(--primary) var(--heat), var(--surface-inset) var(--heat)); opacity: 0.92; }
+  .file-attention-row.edit .heat-cell { background: linear-gradient(90deg, var(--warning) var(--heat), var(--surface-inset) var(--heat)); }
+  .file-attention-row.both .heat-cell { background: linear-gradient(90deg, var(--info) var(--heat), var(--surface-inset) var(--heat)); }
+  .sparkline { display: flex; align-items: end; gap: 2px; height: 22px; min-width: 0; }
+  .sparkline span { flex: 1 1 4px; min-width: 3px; max-width: 12px; border-radius: 2px 2px 0 0; background: var(--text-tertiary); opacity: 0.75; }
+  .file-attention-row.read .sparkline span { background: var(--primary); }
+  .file-attention-row.edit .sparkline span { background: var(--warning); }
+  .file-attention-row.both .sparkline span { background: var(--info); }
+  .file-meta { justify-content: flex-end; gap: var(--space-2); min-width: 0; }
+  .file-meta span { white-space: nowrap; }
   pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-secondary); background: var(--surface-elevated); padding: var(--space-3); border-radius: var(--radius-md); }
   .event-log { display: flex; flex-direction: column; gap: var(--space-2); }
   .event-row { display: flex; gap: var(--space-3); align-items: flex-start; border-top: 1px solid var(--border-subtle); padding-top: var(--space-2); }
@@ -1152,5 +1278,5 @@
   @media (max-width: 960px) { .intro-card, .run-controls, .cost-summary-grid { grid-template-columns: 1fr; } }
   @media (max-width: 960px) { .subagents-layout { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .detail-columns { grid-template-columns: 1fr; } }
-  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid, .plan-cost-row { grid-template-columns: 1fr; } .subagents-summary, .detail-head, .agentruntime-header { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions { justify-content: flex-start; } }
+  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid, .plan-cost-row, .file-attention-row { grid-template-columns: 1fr; } .file-meta { justify-content: flex-start; } .subagents-summary, .detail-head, .agentruntime-header { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions { justify-content: flex-start; } }
 </style>
