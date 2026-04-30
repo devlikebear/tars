@@ -37,6 +37,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 - Files workspaces include an embedded shell at the selected root or browsed subdirectory, plus a macOS Terminal fallback
 - Workspace file previews use workspace storage by default, while selected filesystem roots are served through the explicit filesystem files API boundary
 - Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
+- Fresh workspaces omit legacy KB Wiki scaffolding while preserving any existing `memory/wiki` files
 - Editable memory assets plus Tool path and Prefetch path recall tests through the console/API
 - Structured transcript compaction preserving identifiers and recent context
 - System prompt customization via `USER.md`, `IDENTITY.md`, `AGENTS.md`, `TOOLS.md`

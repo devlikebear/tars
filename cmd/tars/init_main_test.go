@@ -34,10 +34,7 @@ func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
 	assertPathExists(t, configPath)
 	assertPathExists(t, filepath.Join(workspaceAbs, "memory"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "raw"))
-	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "wiki"))
-	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "wiki", "notes"))
-	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "wiki", "index.md"))
-	assertPathExists(t, filepath.Join(workspaceAbs, "memory", "wiki", "graph.json"))
+	assertPathNotExists(t, filepath.Join(workspaceAbs, "memory", "wiki"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "MEMORY.md"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "AGENTS.md"))
 	assertPathExists(t, filepath.Join(workspaceAbs, "plugins", "ops-service", "tars.plugin.json"))
@@ -223,6 +220,13 @@ func assertPathExists(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected path %q to exist: %v", path, err)
+	}
+}
+
+func assertPathNotExists(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected path %q not to exist, got err=%v", path, err)
 	}
 }
 

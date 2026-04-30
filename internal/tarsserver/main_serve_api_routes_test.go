@@ -15,36 +15,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	registerAPIRoutes(mux, apiRouteHandlers{
-		pulse:           handler,
-		reflection:      handler,
-		chat:            handler,
-		sessions:        handler,
-		memory:          handler,
-		console:         consoleHandler,
-		usage:           handler,
-		ops:             handler,
-		status:          handler,
-		auth:            handler,
-		healthz:         handler,
-		providersModels: handler,
-		compact:         handler,
-		cron:            handler,
-		mcp:             handler,
-		extensions:      handler,
-		agentRuns:       handler,
-		agentSubagents:  handler,
-		agentRuntime:    handler,
-		channels:        handler,
-		events:          handler,
-		config:          handler,
-		skillhub:        handler,
-		skillCreator:    handler,
-		mcpCreator:      handler,
-		filesystem:      handler,
-		workspaceFiles:  handler,
-		terminal:        handler,
-	})
+	registerAPIRoutes(mux, testAPIRouteHandlers(handler, consoleHandler))
 
 	paths := []string{
 		"/v1/pulse/status",
@@ -60,9 +31,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/sessions/main",
 		"/v1/admin/sessions",
 		"/v1/admin/sessions/main",
-		"/v1/memory/kb/notes",
-		"/v1/memory/kb/notes/coffee-preference",
-		"/v1/memory/kb/graph",
 		"/v1/memory/assets",
 		"/v1/memory/file",
 		"/v1/memory/search",
@@ -147,6 +115,60 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		mux.ServeHTTP(rec, req)
 		if rec.Code == http.StatusNotFound {
 			t.Fatalf("expected registered route, got 404 for %s", path)
+		}
+	}
+}
+
+func testAPIRouteHandlers(handler, consoleHandler http.Handler) apiRouteHandlers {
+	return apiRouteHandlers{
+		pulse:           handler,
+		reflection:      handler,
+		chat:            handler,
+		sessions:        handler,
+		memory:          handler,
+		console:         consoleHandler,
+		usage:           handler,
+		ops:             handler,
+		status:          handler,
+		auth:            handler,
+		healthz:         handler,
+		providersModels: handler,
+		compact:         handler,
+		cron:            handler,
+		mcp:             handler,
+		extensions:      handler,
+		agentRuns:       handler,
+		agentSubagents:  handler,
+		agentRuntime:    handler,
+		channels:        handler,
+		events:          handler,
+		config:          handler,
+		skillhub:        handler,
+		skillCreator:    handler,
+		mcpCreator:      handler,
+		filesystem:      handler,
+		workspaceFiles:  handler,
+		terminal:        handler,
+	}
+}
+
+func TestRegisterAPIRoutes_DoesNotRegisterLegacyKBRoutes(t *testing.T) {
+	mux := http.NewServeMux()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	registerAPIRoutes(mux, testAPIRouteHandlers(handler, handler))
+
+	for _, path := range []string{
+		"/v1/memory/kb/notes",
+		"/v1/memory/kb/notes/coffee-preference",
+		"/v1/memory/kb/graph",
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected legacy KB route %s to be unregistered, got %d", path, rec.Code)
 		}
 	}
 }
