@@ -8,7 +8,7 @@
 
 - `tars` root 명령: 기본 브라우저로 `/console` 열기
 - `tars --message "..."`: 한 번 메시지를 보내고 SSE 응답을 stdout에 출력
-- `/console`: 세션 목록, Chat, Memory, Ops, Pulse, Reflection, Config 등을 다루는 주 UI
+- `/console`: Home 대시보드. Chat은 `/console/chat`, 나머지는 Work/Operate/Setup 그룹으로 이동
 
 이렇게 하면 CLI는 자동화와 스크립트에 집중하고, 반복 대화와 운영 UI는 콘솔로 모을 수 있습니다.
 

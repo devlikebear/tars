@@ -2,6 +2,7 @@ const consoleBase = '/console'
 const chatPrefix = `${consoleBase}/chat`
 
 export type Route =
+  | { view: 'home' }
   | { view: 'chat'; sessionId?: string }
   | { view: 'agentruntime'; runId?: string; tab?: 'runs' | 'subagents' }
   | { view: 'memory' }
@@ -14,6 +15,10 @@ export type Route =
 
 export function resolveRoute(pathname: string): Route {
   const path = pathname.trim()
+
+  if (path === consoleBase || path === `${consoleBase}/`) {
+    return { view: 'home' }
+  }
 
   if (path.startsWith(chatPrefix)) {
     const rest = path.slice(chatPrefix.length)
@@ -69,5 +74,5 @@ export function resolveRoute(pathname: string): Route {
     return { view: 'reflection' }
   }
 
-  return { view: 'chat' }
+  return { view: 'home' }
 }

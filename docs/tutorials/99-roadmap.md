@@ -76,7 +76,7 @@ Phase 7 ✅  인증과 비동기 Agent Runtime
 
 - `tars` root 명령: 기본 브라우저로 `/console` 열기
 - `tars --message "..."`: 한 번 메시지를 보내고 SSE 응답 출력
-- `/console`: Work(Chat, Memory, System Prompt, Extensions), Operate(Agent Runtime, Approvals, Pulse, Reflection), Setup(Settings)
+- `/console`: Home dashboard. Work(Chat at `/console/chat`, Memory, System Prompt, Extensions), Operate(Agent Runtime, Approvals, Pulse, Reflection), Setup(Settings)
 
 **체크포인트:**
 - [x] `tars`가 콘솔 URL을 열고 출력한다

@@ -64,7 +64,7 @@
 
   function isActive(itemPath: string, current: string): boolean {
     if (itemPath === '/console/chat') {
-      return current === '/console' || current === '/console/' || current.startsWith('/console/chat') || current.startsWith('/console/sessions')
+      return current.startsWith('/console/chat') || current.startsWith('/console/sessions')
     }
     if (itemPath === '/console/approvals') {
       return current.startsWith('/console/approvals') || current.startsWith('/console/ops')

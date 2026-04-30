@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import Shell from './components/Shell.svelte'
+  import Home from './components/Home.svelte'
   import Chat from './components/Chat.svelte'
   import MemoryCenter from './components/MemoryCenter.svelte'
   import SyspromptCenter from './components/SyspromptCenter.svelte'
@@ -14,7 +15,7 @@
   import { getEventsHistory, streamEvents } from './lib/api'
 
   let currentPath = $state('/console')
-  let route = $state<Route>({ view: 'chat' })
+  let route = $state<Route>({ view: 'home' })
   let serverHealth = $state('connecting')
   let unreadCount = $state(0)
   let aiPrompt = $state('')
@@ -78,7 +79,9 @@
   onNavigate={navigate}
   onUnreadChange={(count) => { unreadCount = count }}
 >
-  {#if route.view === 'chat'}
+  {#if route.view === 'home'}
+    <Home onNavigate={navigate} />
+  {:else if route.view === 'chat'}
     {#key aiPrompt}
       <Chat sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
     {/key}
