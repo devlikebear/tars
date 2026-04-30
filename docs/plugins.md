@@ -228,6 +228,8 @@ Each MCP package contains a `tars.mcp.json` manifest:
 
 `"${MCP_DIR}"` expands to the installed package directory at runtime. All declared package files are checksum-verified during install. Runtime launch still honors `mcp_command_allowlist_json`, so the command in the manifest must be explicitly allowlisted.
 
+The Extensions console can draft local MCP server packages before publishing. Use `+ Create MCP Server` to generate Python FastMCP or Node MCP SDK stdio boilerplate, edit the manifest and server files, run the isolated `tools/list` / `tools/call` stdio validation, then save the draft into `workspace/mcp-servers/<name>/`.
+
 ## Skills vs Plugins
 
 | | Skill | Plugin |

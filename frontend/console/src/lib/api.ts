@@ -44,6 +44,11 @@ import type {
   SkillCreatorSaveResponse,
   SkillCreatorTestResponse,
   SkillCreatorSubmitResponse,
+  MCPServerCreatorDraftRequest,
+  MCPServerCreatorDraftResponse,
+  MCPServerCreatorSaveResponse,
+  MCPServerCreatorTestResponse,
+  MCPServerCreatorSubmitResponse,
   UpdateCronJobRequest,
   SessionTasks,
   SessionWorkDirs,
@@ -682,6 +687,38 @@ export async function testSkillDraft(draft: SkillCreatorDraftResponse): Promise<
 
 export async function submitSkillDraftPR(name: string): Promise<SkillCreatorSubmitResponse> {
   return requestJSON<SkillCreatorSubmitResponse>('/v1/admin/skills/submit-pr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+export async function draftMCPServer(payload: MCPServerCreatorDraftRequest): Promise<MCPServerCreatorDraftResponse> {
+  return requestJSON<MCPServerCreatorDraftResponse>('/v1/admin/mcp-servers/draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function saveLocalMCPServer(draft: MCPServerCreatorDraftResponse): Promise<MCPServerCreatorSaveResponse> {
+  return requestJSON<MCPServerCreatorSaveResponse>('/v1/admin/mcp-servers/save-local', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  })
+}
+
+export async function testMCPServerDraft(draft: MCPServerCreatorDraftResponse): Promise<MCPServerCreatorTestResponse> {
+  return requestJSON<MCPServerCreatorTestResponse>('/v1/admin/mcp-servers/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  })
+}
+
+export async function submitMCPServerDraftPR(name: string): Promise<MCPServerCreatorSubmitResponse> {
+  return requestJSON<MCPServerCreatorSubmitResponse>('/v1/admin/mcp-servers/submit-pr', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),

@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.59] - 2026-05-01
+
+### Added
+
+- CON-044: Extensions now includes an MCP Server Creator wizard for Python FastMCP and Node MCP SDK stdio boilerplate.
+- New admin MCP Server Creator endpoints draft `tars.mcp.json` packages, save edited files into `workspace/mcp-servers/<name>/`, and prepare tars-skills draft PR handoff commands.
+- The creator can run an isolated stdio validation sandbox that probes `tools/list` and `tools/call`, returning tool names, call output, worker/hidden sandbox metadata, and a tool trail.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'TestMCPServerCreator|TestRegisterAPIRoutes'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver`
+- `npm test -- --test-name-pattern "MCP Server Creator"` in `frontend/console`
+- `npm test` in `frontend/console`
+- `npm run check` in `frontend/console`
+
+### Closed
+
+- Closes #446.
+
 ## [0.31.58] - 2026-05-01
 
 ### Added

@@ -138,7 +138,7 @@ TARS favors **on-demand extension** over always-resident tool registrations. Dom
 - **[Skill Hub](https://github.com/devlikebear/tars-skills)** — Public registry of skills, plugins, and MCP servers. Install with `tars skill install <name>`, `tars plugin install <name>`, `tars mcp install <name>`. The hub is the first place to look before writing a new capability, and the only place to publish one.
 - **Skills** — Markdown instruction files (YAML frontmatter + body) with optional companion scripts. A skill's frontmatter can set `recommended_tools: [bash]`, `slash: /name`, and `aliases: [...]`; users can invoke eligible skills directly from chat via `/name` autocomplete. Companion CLIs keep their interface out of the system prompt until the skill itself is picked. The Extensions console can draft, sandbox-test, and save local `workspace/skills/<name>/` skills before you publish them to the hub. See `daily-briefing` in the hub for the canonical pattern.
 - **Plugins** — Bundle skills + MCP servers with manifest metadata and runtime gating.
-- **MCP** — Local stdio and remote HTTP/WebSocket servers with bearer or OAuth auth. Use for third-party integrations that cannot be expressed as a CLI the bash tool can call.
+- **MCP** — Local stdio and remote HTTP/WebSocket servers with bearer or OAuth auth. Use for third-party integrations that cannot be expressed as a CLI the bash tool can call. The Extensions console can draft, stdio-test, and save local `workspace/mcp-servers/<name>/` MCP packages before you publish them to the hub.
 - **Browser** — Playwright-based automation for web interaction (shipped as a hub plugin).
 
 **When to build a hub skill vs. a core feature**: if the capability is domain-specific (one site's logs, one vendor's API, one workflow), it belongs in `tars-skills` as a skill + CLI. Builtin tools inside this repo are reserved for universal surfaces (file ops, memory, agent runtime, channels) that every session uses.
@@ -192,7 +192,7 @@ Open `http://127.0.0.1:43180/console` and start chatting.
 | Approvals | `/console/approvals` | Review risky cleanup plans before TARS applies them |
 | Pulse | `/console/pulse` | Watchdog status and run-now trigger |
 | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
-| Extensions | `/console/extensions` | Skills, local Skill Creator drafts/tests, plugins, MCP servers |
+| Extensions | `/console/extensions` | Skills, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |
 | Config | `/console/config` | Workspace configuration with structured object/array editing and typed LLM tier editing |
 
 ## Requirements
