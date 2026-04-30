@@ -186,6 +186,8 @@ tars serve
 tars
 ```
 
+On macOS, `tars service install && tars service start` manages `tars serve` as a LaunchAgent. Once a plist exists, `tars service start`, `stop`, and `status` keep working from the plist and `launchctl` state even if the config needs repair.
+
 Open `http://127.0.0.1:43180/console` and start chatting.
 
 ## Console Pages

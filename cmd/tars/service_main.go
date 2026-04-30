@@ -12,11 +12,11 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/launchagent"
 	"github.com/spf13/cobra"
 )
 
 const (
-	defaultServiceLabel      = "io.tars.server"
 	defaultServiceLaunchPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 )
 
@@ -50,7 +50,7 @@ var (
 
 func defaultServiceOptions() serviceOptions {
 	return serviceOptions{
-		label:           defaultServiceLabel,
+		label:           launchagent.DefaultServerLabel,
 		launchctlDomain: "gui/" + strconv.Itoa(serviceGetuid()),
 		launchPath:      defaultServiceLaunchPath,
 		keepAlive:       true,
@@ -133,16 +133,7 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 		return fmt.Errorf("service commands are only supported on macOS")
 	}
 
-	configPath := config.FixedConfigPath()
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		return fmt.Errorf("load config %s: %w", configPath, err)
-	}
-	workspaceAbs, err := resolveWorkspaceDir(cfg.WorkspaceDir)
-	if err != nil {
-		return fmt.Errorf("resolve workspace dir: %w", err)
-	}
-	label := strings.TrimSpace(firstNonEmpty(opts.label, defaultServiceLabel))
+	label := strings.TrimSpace(firstNonEmpty(opts.label, launchagent.DefaultServerLabel))
 	plistPath, err := defaultedServicePlistPath(opts.plistPath, label)
 	if err != nil {
 		return err
@@ -153,6 +144,15 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 
 	switch strings.TrimSpace(opts.action) {
 	case "install":
+		configPath := config.FixedConfigPath()
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			return fmt.Errorf("load config %s: %w", configPath, err)
+		}
+		workspaceAbs, err := resolveWorkspaceDir(cfg.WorkspaceDir)
+		if err != nil {
+			return fmt.Errorf("resolve workspace dir: %w", err)
+		}
 		report, reportErr := buildDoctorReport(doctorOptions{
 			workspaceDir: workspaceAbs,
 			configPath:   configPath,
@@ -172,20 +172,22 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 		if err := os.MkdirAll(filepath.Dir(stderrLog), 0o755); err != nil {
 			return fmt.Errorf("create stderr log dir: %w", err)
 		}
-		content := buildServiceLaunchAgentPlist(serviceLaunchAgentConfig{
+		content := launchagent.BuildPlist(launchagent.Config{
 			Label:            label,
+			DefaultLabel:     launchagent.DefaultServerLabel,
 			ProgramArguments: []string{exe, "serve", "--config", configPath},
 			WorkingDirectory: workspaceAbs,
 			StdoutPath:       stdoutLog,
 			StderrPath:       stderrLog,
 			KeepAlive:        opts.keepAlive,
 			RunAtLoad:        opts.runAtLoad,
-			LaunchPath:       strings.TrimSpace(firstNonEmpty(opts.launchPath, defaultServiceLaunchPath)),
+			Environment: map[string]string{
+				"PATH":                       strings.TrimSpace(firstNonEmpty(opts.launchPath, defaultServiceLaunchPath)),
+				launchagent.ServiceLabelEnv:  label,
+				launchagent.ServiceDomainEnv: domain,
+			},
 		})
-		if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
-			return fmt.Errorf("create launchagent dir: %w", err)
-		}
-		if err := os.WriteFile(plistPath, []byte(content), 0o644); err != nil {
+		if err := launchagent.Install(plistPath, content); err != nil {
 			return fmt.Errorf("write launchagent plist: %w", err)
 		}
 		_, _ = fmt.Fprintf(stdout, "service installed\nlabel: %s\nplist: %s\nconfig: %s\nworkspace: %s\nstdout log: %s\nstderr log: %s\nnext: tars service start\n", label, plistPath, configPath, workspaceAbs, stdoutLog, stderrLog)
@@ -224,67 +226,6 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 	}
 }
 
-type serviceLaunchAgentConfig struct {
-	Label            string
-	ProgramArguments []string
-	WorkingDirectory string
-	StdoutPath       string
-	StderrPath       string
-	KeepAlive        bool
-	RunAtLoad        bool
-	LaunchPath       string
-}
-
-func buildServiceLaunchAgentPlist(cfg serviceLaunchAgentConfig) string {
-	var b strings.Builder
-	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-	b.WriteString("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n")
-	b.WriteString("<plist version=\"1.0\">\n")
-	b.WriteString("<dict>\n")
-	b.WriteString("  <key>Label</key>\n")
-	_, _ = fmt.Fprintf(&b, "  <string>%s</string>\n", xmlEscape(strings.TrimSpace(cfg.Label)))
-	b.WriteString("  <key>ProgramArguments</key>\n")
-	b.WriteString("  <array>\n")
-	for _, arg := range cfg.ProgramArguments {
-		_, _ = fmt.Fprintf(&b, "    <string>%s</string>\n", xmlEscape(strings.TrimSpace(arg)))
-	}
-	b.WriteString("  </array>\n")
-	if v := strings.TrimSpace(cfg.WorkingDirectory); v != "" {
-		b.WriteString("  <key>WorkingDirectory</key>\n")
-		_, _ = fmt.Fprintf(&b, "  <string>%s</string>\n", xmlEscape(v))
-	}
-	if v := strings.TrimSpace(cfg.StdoutPath); v != "" {
-		b.WriteString("  <key>StandardOutPath</key>\n")
-		_, _ = fmt.Fprintf(&b, "  <string>%s</string>\n", xmlEscape(v))
-	}
-	if v := strings.TrimSpace(cfg.StderrPath); v != "" {
-		b.WriteString("  <key>StandardErrorPath</key>\n")
-		_, _ = fmt.Fprintf(&b, "  <string>%s</string>\n", xmlEscape(v))
-	}
-	if v := strings.TrimSpace(cfg.LaunchPath); v != "" {
-		b.WriteString("  <key>EnvironmentVariables</key>\n")
-		b.WriteString("  <dict>\n")
-		b.WriteString("    <key>PATH</key>\n")
-		_, _ = fmt.Fprintf(&b, "    <string>%s</string>\n", xmlEscape(v))
-		b.WriteString("  </dict>\n")
-	}
-	b.WriteString("  <key>RunAtLoad</key>\n")
-	if cfg.RunAtLoad {
-		b.WriteString("  <true/>\n")
-	} else {
-		b.WriteString("  <false/>\n")
-	}
-	b.WriteString("  <key>KeepAlive</key>\n")
-	if cfg.KeepAlive {
-		b.WriteString("  <true/>\n")
-	} else {
-		b.WriteString("  <false/>\n")
-	}
-	b.WriteString("</dict>\n")
-	b.WriteString("</plist>\n")
-	return b.String()
-}
-
 func defaultedServicePlistPath(raw, label string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed != "" {
@@ -294,7 +235,7 @@ func defaultedServicePlistPath(raw, label string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, "Library", "LaunchAgents", strings.TrimSpace(label)+".plist"), nil
+	return launchagent.PathForHome(home, label, launchagent.DefaultServerLabel), nil
 }
 
 func defaultedServiceLogPath(raw, fallback string) string {
@@ -384,14 +325,4 @@ func runLaunchctl(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "launchctl", args...)
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
-}
-
-func xmlEscape(v string) string {
-	out := strings.TrimSpace(v)
-	out = strings.ReplaceAll(out, "&", "&amp;")
-	out = strings.ReplaceAll(out, "<", "&lt;")
-	out = strings.ReplaceAll(out, ">", "&gt;")
-	out = strings.ReplaceAll(out, `"`, "&quot;")
-	out = strings.ReplaceAll(out, "'", "&apos;")
-	return out
 }
