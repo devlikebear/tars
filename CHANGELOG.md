@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.80] - 2026-05-01
+
+### Added
+
+- Console tool calls now render as collapsible rows with compact invocation previews, pretty-printed args/results, and live elapsed time while running.
+- Chat SSE and persisted session transcripts now carry `tool_is_error` metadata so failed tool calls reopen with destructive styling after reload.
+
+### Changed
+
+- Tool-call state colors now use the console design tokens: primary for running, default for done, and error for failed calls.
+
+### Documentation
+
+- README now notes the console's live, collapsible tool-call rows.
+
+### Tests
+
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test -count=1 ./internal/tarsserver ./internal/session`
+
+### Closed
+
+- Closes #403.
+
 ## [0.31.79] - 2026-05-01
 
 ### Added
