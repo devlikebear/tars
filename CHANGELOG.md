@@ -6,6 +6,28 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.119] - 2026-05-01
+
+### Added
+
+- Added first-turn cost/quality tier recommendations for Console Chat so TARS can suggest heavy, standard, or light before the first expensive LLM call.
+- Added chat request support for accepted or overridden tier recommendations, explicit tier routing for the selected chat turn, and usage signal records with recommendation, chosen tier, provider/model, outcome, token usage, and estimated cost.
+- Added Context HUD visibility for the chosen LLM tier and accepted/overridden recommendation path.
+
+### Documentation
+
+- README and the HTTP/SSE chat tutorial now describe first-turn tier recommendation and traceable selected-tier metadata.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/llm -run TestRecommendTierForTaskClassifiesCommonWork`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'TestResolveChatTierRecommendationFallsBackOnFirstTurn|TestResolveChatTierRecommendationCanDisableFallback|TestResolveChatClientForTierUsesExplicitTier'`
+- `cd frontend/console && node --experimental-strip-types --test tests/tierRecommendation.test.ts`
+
+### Closed
+
+- Closes #590.
+
 ## [0.31.118] - 2026-05-01
 
 ### Added

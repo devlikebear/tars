@@ -37,6 +37,8 @@ type chatRunState struct {
 	relevantMemoryCount  int
 	relevantMemoryTokens int
 	llmClient            llm.Client
+	llmResolution        llm.TierResolution
+	tierRecommendation   chatTierRecommendationState
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -59,19 +61,29 @@ func buildSessionChatRunState(
 	userMessage string,
 	contentBlocks []llm.ContentBlock,
 	subagentMentions []chatSubagentMention,
+	tierInput *chatTierRecommendationPayload,
+	autoRecommendTier bool,
 	authRole string,
 	deps chatHandlerDeps,
 ) (chatRunState, error) {
-	chatClient, _, err := deps.resolveChatClient()
-	if err != nil {
-		return chatRunState{}, err
-	}
 	transcriptPath := reqStore.TranscriptPath(sessionID)
 	historySnapshot, err := loadSessionHistorySnapshot(transcriptPath, chatHistoryMaxTokens)
 	if err != nil {
 		return chatRunState{}, err
 	}
 	history := historySnapshot.Messages
+	tierRecommendation, err := resolveChatTierRecommendation(tierInput, userMessage, len(history) == 0 && autoRecommendTier)
+	if err != nil {
+		return chatRunState{}, err
+	}
+	requestedTier := ""
+	if tierRecommendation.enabled() {
+		requestedTier = tierRecommendation.ChosenTier.String()
+	}
+	chatClient, llmResolution, err := deps.resolveChatClientForTier(requestedTier)
+	if err != nil {
+		return chatRunState{}, err
+	}
 
 	// Fetch session early for WorkDirs
 	sess, sessErr := reqStore.Get(sessionID)
@@ -164,6 +176,8 @@ func buildSessionChatRunState(
 		relevantMemoryCount:  contextDetails.RelevantMemoryCount,
 		relevantMemoryTokens: contextDetails.RelevantMemoryTokens,
 		llmClient:            chatClient,
+		llmResolution:        llmResolution,
+		tierRecommendation:   tierRecommendation,
 	}, nil
 }
 
@@ -209,6 +223,8 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		req.Message,
 		contentBlocks,
 		subagentMentions,
+		req.TierRecommendation,
+		true,
 		authRole,
 		deps,
 	)

@@ -8,7 +8,7 @@
   } from '../lib/api'
   import { emptyTaskProgressSummary, planProgressPercent, summarizeTasks, type TaskProgressSummary } from '../lib/tasks'
   import { buildSessionHealthReport, emptySessionHealthReport, type SessionHealthAction, type SessionHealthInput, type SessionHealthReport } from '../lib/sessionHealth'
-  import type { PulseSnapshot, NotificationMessage, Session, SessionMessage, SessionTasks } from '../lib/types'
+  import type { ChatTierRecommendationRequest, PulseSnapshot, NotificationMessage, Session, SessionMessage, SessionTasks } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
   import SessionSidebar from './SessionSidebar.svelte'
   import ChatPanel from './ChatPanel.svelte'
@@ -101,6 +101,8 @@
     mentioned_paths?: string[]
     mentioned_subagent_count?: number
     mentioned_subagents?: string[]
+    llm_tier?: string
+    tier_recommendation?: ChatTierRecommendationRequest
   } = $state({})
   let contextRefreshVersion = $state(0)
   type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'contract' | 'tasks' | 'git' | 'skillExtraction' | 'cron' | 'health' | 'terminal'

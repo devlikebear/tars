@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getChatContext, type ChatContextInfo } from '../lib/api'
+  import type { ChatTierRecommendationRequest } from '../lib/types'
 
   interface Props {
     sessionId: string
@@ -24,6 +25,8 @@
       mentioned_paths?: string[]
       mentioned_subagent_count?: number
       mentioned_subagents?: string[]
+      llm_tier?: string
+      tier_recommendation?: ChatTierRecommendationRequest
     }
     refreshVersion?: number
     onClose?: () => void
@@ -66,6 +69,8 @@
   let selectedSkillReason = $derived(contextInfo?.selected_skill_reason ?? fullContext?.selected_skill_reason ?? '')
   let mentionedPaths = $derived(listOr(contextInfo?.mentioned_paths, fullContext?.mentioned_paths))
   let mentionedSubagents = $derived(listOr(contextInfo?.mentioned_subagents, fullContext?.mentioned_subagents))
+  let llmTier = $derived(contextInfo?.llm_tier ?? '')
+  let tierRecommendation = $derived(contextInfo?.tier_recommendation)
   let compactionTriggerTokens = $derived(contextInfo?.compaction_trigger_tokens ?? fullContext?.compaction_trigger_tokens ?? 0)
   let keepRecentTokens = $derived(contextInfo?.compaction_keep_recent_tokens ?? fullContext?.compaction_keep_recent_tokens ?? 0)
   let keepRecentFraction = $derived(contextInfo?.compaction_keep_recent_fraction ?? fullContext?.compaction_keep_recent_fraction ?? 0)
@@ -140,7 +145,23 @@
       <span class="stat-label">Used This Turn</span>
       <span class="stat-value">{usedTools.length}</span>
     </div>
+    <div class="monitor-stat">
+      <span class="stat-label">LLM Tier</span>
+      <span class="stat-value">{llmTier || 'pending'}</span>
+    </div>
   </div>
+
+  {#if tierRecommendation}
+    <div class="monitor-section">
+      <span class="section-title">Tier Recommendation</span>
+      <div class="tool-chips">
+        <span class="tool-chip">
+          {tierRecommendation.recommended_tier} → {tierRecommendation.chosen_tier}
+          {#if tierRecommendation.accepted} · accepted{:else} · override{/if}
+        </span>
+      </div>
+    </div>
+  {/if}
 
   {#if selectedSkillName}
     <div class="monitor-section">

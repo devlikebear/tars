@@ -29,7 +29,18 @@ type chatHandlerDeps struct {
 }
 
 func (d chatHandlerDeps) resolveChatClient() (llm.Client, llm.TierResolution, error) {
+	return d.resolveChatClientForTier("")
+}
+
+func (d chatHandlerDeps) resolveChatClientForTier(rawTier string) (llm.Client, llm.TierResolution, error) {
 	if d.router != nil {
+		if strings.TrimSpace(rawTier) != "" {
+			tier, err := llm.ParseTier(rawTier)
+			if err != nil {
+				return nil, llm.TierResolution{}, err
+			}
+			return d.router.ClientForTier(tier)
+		}
 		return d.router.ClientFor(llm.RoleChatMain)
 	}
 	if d.client != nil {
@@ -45,11 +56,12 @@ type chatAttachment struct {
 }
 
 type chatRequestPayload struct {
-	SessionID        string                       `json:"session_id"`
-	Message          string                       `json:"message"`
-	Attachments      []chatAttachment             `json:"attachments,omitempty"`
-	Mentions         []chatFileMentionRequest     `json:"mentions,omitempty"`
-	SubagentMentions []chatSubagentMentionRequest `json:"subagent_mentions,omitempty"`
+	SessionID          string                         `json:"session_id"`
+	Message            string                         `json:"message"`
+	Attachments        []chatAttachment               `json:"attachments,omitempty"`
+	Mentions           []chatFileMentionRequest       `json:"mentions,omitempty"`
+	SubagentMentions   []chatSubagentMentionRequest   `json:"subagent_mentions,omitempty"`
+	TierRecommendation *chatTierRecommendationPayload `json:"tier_recommendation,omitempty"`
 }
 
 func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerDeps) {
@@ -113,6 +125,11 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		"mentioned_paths":                 state.mentionedPaths,
 		"mentioned_subagent_count":        len(state.mentionedSubagents),
 		"mentioned_subagents":             chatSubagentMentionNames(state.mentionedSubagents),
+		"llm_tier":                        state.llmResolution.Tier.String(),
+		"llm_provider":                    state.llmResolution.Provider,
+		"llm_model":                       state.llmResolution.Model,
+		"llm_tier_source":                 state.llmResolution.Source,
+		"tier_recommendation":             state.tierRecommendation.contextPayload(),
 	})
 	if state.compaction.Applied {
 		stream.compactionApplied(map[string]any{
@@ -136,6 +153,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		defer deps.cancelRegistry.Unregister(state.sessionID)
 	}
 
+	recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "requested", llm.Usage{})
 	chatResp, deltaSent, toolCalls, err := executeChatLoop(chatCtx, deps, state, stream)
 	if err != nil {
 		if chatCtx.Err() == context.Canceled {
@@ -143,10 +161,12 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 			if chatResp.Message.Content != "" {
 				persistChatResult(state, req.Message, chatResp, toolCalls, deps.logger)
 			}
+			recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "cancelled", chatResp.Usage)
 			deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request cancelled")
 			return
 		}
 		stream.error(err)
+		recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "error", llm.Usage{})
 		return
 	}
 	if !deltaSent && chatResp.Message.Content != "" {
@@ -158,6 +178,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	}
 
 	persistChatResult(state, req.Message, chatResp, toolCalls, deps.logger)
+	recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "completed", chatResp.Usage)
 
 	// Fire-and-forget: warm cache for next turn based on current user message
 	startMemoryPrefetchForNextTurn(
