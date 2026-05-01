@@ -92,6 +92,46 @@
     return report.package_type ? `${report.package_type} ${name}` : name
   }
 
+  type QualitySignal = { label: string; value: string; title?: string }
+
+  function qualityScoreLabel(entry: HubRegistryEntry): string {
+    if (!entry.quality) return ''
+    const score = Math.max(0, Math.min(100, Math.round(entry.quality.score)))
+    return `Quality ${score}`
+  }
+
+  function qualityScoreClass(entry: HubRegistryEntry): string {
+    const score = entry.quality?.score ?? 0
+    if (score >= 85) return 'quality-score strong'
+    if (score >= 65) return 'quality-score steady'
+    return 'quality-score watch'
+  }
+
+  function qualitySignals(entry: HubRegistryEntry): QualitySignal[] {
+    const quality = entry.quality
+    if (!quality) return []
+    const signals: QualitySignal[] = []
+    if (quality.last_updated) {
+      signals.push({ label: 'Last updated', value: quality.last_updated })
+    }
+    if (quality.tests_passing !== undefined) {
+      signals.push({ label: 'Tests passing', value: quality.tests_passing ? 'Yes' : 'No' })
+    }
+    if (quality.required_tools?.length) {
+      signals.push({ label: 'Required tools', value: quality.required_tools.join(', ') })
+    }
+    if (quality.permissions?.length) {
+      signals.push({ label: 'Permissions', value: quality.permissions.join(', ') })
+    }
+    if (quality.companion_cli !== undefined) {
+      signals.push({ label: 'Companion CLI', value: quality.companion_cli ? 'Yes' : 'No' })
+    }
+    if (quality.install_count !== undefined) {
+      signals.push({ label: 'Installs', value: quality.install_count.toLocaleString() })
+    }
+    return signals
+  }
+
   let updateCount = $derived.by(() => {
     let count = 0
     for (const [key] of installedVersions) {
@@ -323,6 +363,24 @@
     void loadHub() // fetch registry for version comparison
   })
 </script>
+
+{#snippet renderQuality(entry: HubRegistryEntry)}
+  {#if entry.quality}
+    <div class="quality-row">
+      <span class={qualityScoreClass(entry)}>{qualityScoreLabel(entry)}</span>
+      {#if qualitySignals(entry).length}
+        <div class="quality-signals">
+          {#each qualitySignals(entry) as signal}
+            <span class="quality-signal" title={signal.title || `${signal.label}: ${signal.value}`}>
+              <strong>{signal.label}</strong>
+              <span>{signal.value}</span>
+            </span>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
 
 <div class="ext-page">
   <div class="page-header">
@@ -598,6 +656,7 @@
                   {#if entry.tags?.length}
                     <div class="ext-tags">{#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}</div>
                   {/if}
+                  {@render renderQuality(entry)}
                 </div>
                 {#if hasUpdate('skill', entry.name)}
                   <button class="btn btn-warning btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => handleInstall('skill', entry.name)}>
@@ -660,6 +719,7 @@
                       {#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}
                     </div>
                   {/if}
+                  {@render renderQuality(entry)}
                 </div>
                 {#if hasUpdate('plugin', entry.name)}
                   <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
@@ -701,6 +761,7 @@
                     {#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}
                   </div>
                 {/if}
+                {@render renderQuality(entry)}
               </div>
               {#if hasUpdate('mcp', entry.name)}
                 <button class="btn btn-warning btn-sm" disabled={busyItem === 'mcp:' + entry.name} onclick={() => handleInstall('mcp', entry.name)}>
@@ -937,5 +998,73 @@
   .ext-tag {
     padding: 1px var(--space-1); border-radius: var(--radius-sm);
     background: var(--surface-elevated); font-size: 10px; color: var(--text-tertiary);
+  }
+
+  .quality-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin-top: var(--space-1);
+  }
+  .quality-score {
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .quality-score.strong {
+    color: var(--green);
+    border-color: rgba(60, 180, 100, 0.28);
+    background: rgba(60, 180, 100, 0.1);
+  }
+  .quality-score.steady {
+    color: var(--primary);
+    border-color: rgba(224, 145, 69, 0.28);
+    background: rgba(224, 145, 69, 0.1);
+  }
+  .quality-score.watch {
+    color: var(--text-tertiary);
+    border-color: var(--border-subtle);
+  }
+  .quality-signals {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .quality-signal {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 260px;
+    min-height: 20px;
+    padding: 2px var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.025);
+    font-size: 10px;
+  }
+  .quality-signal strong {
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+    font-family: var(--font-display);
+    font-size: 10px;
+  }
+  .quality-signal span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
   }
 </style>

@@ -185,6 +185,71 @@ func TestFetchIndex(t *testing.T) {
 	}
 }
 
+func TestFetchIndexParsesQualityMetadata(t *testing.T) {
+	passing := true
+	companionCLI := true
+	index := testIndex()
+	index.Skills[0].Quality = &QualityMetadata{
+		Score:         92,
+		LastUpdated:   "2026-05-01",
+		TestsPassing:  &passing,
+		RequiredTools: []string{"bash", "git"},
+		Permissions:   []string{"filesystem"},
+		CompanionCLI:  &companionCLI,
+		InstallCount:  42,
+	}
+	index.Plugins[0].Quality = &QualityMetadata{
+		Score:         74,
+		LastUpdated:   "2026-05-01",
+		RequiredTools: []string{"npx"},
+		Permissions:   []string{"browser"},
+		CompanionCLI:  &companionCLI,
+	}
+	index.MCPServers[0].Quality = &QualityMetadata{
+		Score:         82,
+		LastUpdated:   "2026-05-01",
+		TestsPassing:  &passing,
+		RequiredTools: []string{"node"},
+		Permissions:   []string{"network", "mcp"},
+	}
+	srv := newRegistryServer(t, index, testHubFiles())
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL: srv.URL + "/registry.json",
+		HTTPClient:  srv.Client(),
+	}
+	got, err := reg.FetchIndex(context.Background())
+	if err != nil {
+		t.Fatalf("FetchIndex: %v", err)
+	}
+	quality := got.Skills[0].Quality
+	if quality == nil {
+		t.Fatal("expected quality metadata")
+	}
+	if quality.Score != 92 || quality.LastUpdated != "2026-05-01" || quality.InstallCount != 42 {
+		t.Fatalf("unexpected quality metadata: %+v", quality)
+	}
+	if quality.TestsPassing == nil || !*quality.TestsPassing {
+		t.Fatalf("expected tests_passing true, got %+v", quality.TestsPassing)
+	}
+	if quality.CompanionCLI == nil || !*quality.CompanionCLI {
+		t.Fatalf("expected companion_cli true, got %+v", quality.CompanionCLI)
+	}
+	if len(quality.RequiredTools) != 2 || quality.RequiredTools[0] != "bash" || quality.RequiredTools[1] != "git" {
+		t.Fatalf("unexpected required tools: %+v", quality.RequiredTools)
+	}
+	if len(quality.Permissions) != 1 || quality.Permissions[0] != "filesystem" {
+		t.Fatalf("unexpected permissions: %+v", quality.Permissions)
+	}
+	if got.Plugins[0].Quality == nil || got.Plugins[0].Quality.Score != 74 {
+		t.Fatalf("expected plugin quality metadata, got %+v", got.Plugins[0].Quality)
+	}
+	if got.MCPServers[0].Quality == nil || got.MCPServers[0].Quality.Score != 82 {
+		t.Fatalf("expected mcp quality metadata, got %+v", got.MCPServers[0].Quality)
+	}
+}
+
 func TestFetchIndexRejectsUnsupportedVersion(t *testing.T) {
 	index := testIndex()
 	index.Version = 99
