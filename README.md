@@ -33,7 +33,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 
 - Multi-session chat with full LLM tool-calling loops and transcript snippet matches in session search
 - Session lineage metadata and stable transcript message IDs power message-level chat forks: hover a persisted user or assistant message, choose "Fork from here", and continue in a child session that reuses setup, plan state, tool policy, prompt override, and workspace roots through that point
-- The Console Lineage page renders root and forked sessions as a git-log-style tree with fork point previews and click-through navigation back into chat
+- The Console Lineage page renders root and forked sessions as a git-log-style tree with fork point previews, click-through navigation back into chat, and reviewable fork insight promotion into Memory Inbox without mutating the parent transcript
 - Tool calls render as collapsible rows with live elapsed time, compact argument previews, and automatic error expansion
 - `@` file and directory mentions from the session Files roots for explicit context injection
 - `/` command autocomplete for built-in chat actions and explicit user-invocable skill selection
@@ -224,7 +224,7 @@ The Chat header shows the active plan goal and completed/total task count withou
 |-------|------|------|---------|
 | Home | Mission Control | `/console` | Live overview for Pulse, Reflection, active plans, Agent Runtime runs, Cron jobs, disk pressure, active sessions, recent notifications, recommended setup actions, and release/PR shortcuts |
 | Work | Chat | `/console/chat` | Interactive agent chat with tool calling, dockable Sessions and tool panels, task contract review/approval, task evidence attachments, read-only Git Inspector, message-level session forking, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, parallel subagent progress cards, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
-| Work | Lineage | `/console/sessions/graph` | Git-log-style session tree showing root sessions, forked children, fork point previews, and direct navigation back into the selected chat |
+| Work | Lineage | `/console/sessions/graph` | Git-log-style session tree showing root sessions, forked children, fork point previews, direct navigation back into the selected chat, and fork insight promotion into Memory Inbox |
 | Work | Plans | `/console/tasks` | Review active plans across sessions with progress cards and jump directly into the owning chat session |
 | Work | Memory | `/console/memory` | Review extracted memory candidates before storage, edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |

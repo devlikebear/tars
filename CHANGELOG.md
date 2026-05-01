@@ -6,6 +6,37 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.107] - 2026-05-01
+
+### Added
+
+- Added fork insight promotion APIs at `/v1/admin/sessions/{session_id}/promotions`.
+- Added deterministic post-fork insight extraction for reviewable decision, preference, and procedure candidates.
+- Added Lineage page controls for reviewing fork insights and queueing selected items into Memory Inbox.
+
+### Changed
+
+- Fork insight promotion preserves parent transcripts and routes reusable fork findings through the existing Memory Inbox approval flow.
+
+### Documentation
+
+- README now documents fork insight review and Memory Inbox promotion from the Lineage page.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/session ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/sessions/graph` fork insight review, Memory Inbox queueing, and Inbox navigation with a mock API
+
+### Closed
+
+- Closes #570.
+
 ## [0.31.106] - 2026-05-01
 
 ### Added
