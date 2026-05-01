@@ -39,9 +39,14 @@ func buildChatToolRegistry(
 		}, nil
 	}))
 	registry.Register(tool.NewSubagentsRunTool(deps.tooling.AgentRuntime))
-	registry.Register(tool.NewSubagentsOrchestrateTool(deps.tooling.AgentRuntime))
+	subagentsTaskMirror := tool.SubagentsTaskMirrorConfig{
+		Store:        reqStore,
+		WorkspaceDir: requestWorkspaceDir,
+		GetSessionID: func() string { return sessionID },
+	}
+	registry.Register(tool.NewSubagentsOrchestrateTool(deps.tooling.AgentRuntime, subagentsTaskMirror))
 	if deps.router != nil {
-		registry.Register(tool.NewSubagentsPlanTool(deps.tooling.AgentRuntime, deps.router))
+		registry.Register(tool.NewSubagentsPlanTool(deps.tooling.AgentRuntime, deps.router, subagentsTaskMirror))
 	}
 
 	// Automation (cron aggregator; pulse/reflection live on the system surface)

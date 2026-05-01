@@ -10,6 +10,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
 )
 
@@ -139,6 +140,105 @@ func TestSubagentsOrchestrateTool_ExecutesParallelThenSequentialSteps(t *testing
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for orchestration result")
+	}
+}
+
+func TestSubagentsOrchestrateTool_MirrorsTaskLifecycleToSessionTasks(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		if prompt != "inspect backend" {
+			t.Fatalf("unexpected prompt: %s", prompt)
+		}
+		close(started)
+		<-release
+		return "backend findings", nil
+	})
+
+	mirrorConfig, sid, store := newSubagentTaskMirrorConfigForTest(t)
+	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-orchestrate")
+	ctx = usage.WithCallMeta(ctx, usage.CallMeta{
+		Source:    "chat",
+		SessionID: sid,
+	})
+	runTool := NewSubagentsOrchestrateTool(rt, mirrorConfig)
+
+	type execResult struct {
+		res Result
+		err error
+	}
+	done := make(chan execResult, 1)
+	go func() {
+		res, execErr := runTool.Execute(ctx, json.RawMessage(`{
+			"flow_id":"flow-live",
+			"steps":[
+				{
+					"id":"research",
+					"mode":"sequential",
+					"tasks":[
+						{"id":"backend","title":"Inspect backend","prompt":"inspect backend"}
+					]
+				}
+			]
+		}`))
+		done <- execResult{res: res, err: execErr}
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected subagent task to start")
+	}
+
+	tasks := waitForMirroredTaskStatus(t, store, sid, "in_progress")
+	if !strings.Contains(tasks.Tasks[0].Description, "Run: ") {
+		t.Fatalf("expected mirrored task description to include run id, got %q", tasks.Tasks[0].Description)
+	}
+
+	close(release)
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatalf("subagents_orchestrate execute: %v", result.err)
+		}
+		if result.res.IsError {
+			t.Fatalf("expected success payload, got %s", result.res.Text())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for orchestration result")
+	}
+
+	tasks, err := store.GetTasks(sid)
+	if err != nil {
+		t.Fatalf("get completed mirrored tasks: %v", err)
+	}
+	if tasks.Plan == nil || tasks.Plan.Status != session.PlanStatusCompleted {
+		t.Fatalf("expected completed mirrored plan, got %+v", tasks.Plan)
+	}
+	if len(tasks.Tasks) != 1 || tasks.Tasks[0].Status != "completed" {
+		t.Fatalf("expected mirrored task to be completed, got %+v", tasks.Tasks)
+	}
+	if !strings.Contains(tasks.Tasks[0].Description, "backend findings") {
+		t.Fatalf("expected mirrored task description to include summary, got %q", tasks.Tasks[0].Description)
+	}
+}
+
+func waitForMirroredTaskStatus(t *testing.T, store *session.Store, sid, status string) session.SessionTasks {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		tasks, err := store.GetTasks(sid)
+		if err != nil {
+			t.Fatalf("get mirrored tasks: %v", err)
+		}
+		if tasks.Plan != nil && tasks.Plan.Status == session.PlanStatusExecuting &&
+			len(tasks.Tasks) == 1 && tasks.Tasks[0].Status == status {
+			return tasks
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for mirrored task status %q, got plan=%+v tasks=%+v", status, tasks.Plan, tasks.Tasks)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -349,5 +449,54 @@ func TestSubagentsOrchestrateTool_StopsSequentialStepAfterFailure(t *testing.T) 
 	}
 	if payload.Steps[0].Tasks[0].Status != string(agentruntime.RunStatusFailed) {
 		t.Fatalf("expected backend task to fail, got %+v", payload.Steps[0].Tasks[0])
+	}
+}
+
+func TestSubagentsOrchestrateTool_MirrorsFailedTaskAsCancelled(t *testing.T) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		if prompt == "inspect backend" {
+			return "", errors.New("backend failed")
+		}
+		return "summary for " + prompt, nil
+	})
+
+	mirrorConfig, sid, store := newSubagentTaskMirrorConfigForTest(t)
+	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-orchestrate")
+	ctx = usage.WithCallMeta(ctx, usage.CallMeta{
+		Source:    "chat",
+		SessionID: sid,
+	})
+	runTool := NewSubagentsOrchestrateTool(rt, mirrorConfig)
+	res, err := runTool.Execute(ctx, json.RawMessage(`{
+		"flow_id":"flow-fail",
+		"steps":[
+			{
+				"id":"research",
+				"mode":"sequential",
+				"tasks":[
+					{"id":"backend","title":"Inspect backend","prompt":"inspect backend"}
+				]
+			}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("subagents_orchestrate execute: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected failure payload, got %s", res.Text())
+	}
+
+	tasks, err := store.GetTasks(sid)
+	if err != nil {
+		t.Fatalf("get failed mirrored tasks: %v", err)
+	}
+	if tasks.Plan == nil || tasks.Plan.Status != session.PlanStatusCompleted {
+		t.Fatalf("expected terminal mirrored plan, got %+v", tasks.Plan)
+	}
+	if len(tasks.Tasks) != 1 || tasks.Tasks[0].Status != "cancelled" {
+		t.Fatalf("expected mirrored task to be cancelled, got %+v", tasks.Tasks)
+	}
+	if !strings.Contains(tasks.Tasks[0].Description, "backend failed") {
+		t.Fatalf("expected mirrored task description to include error, got %q", tasks.Tasks[0].Description)
 	}
 }

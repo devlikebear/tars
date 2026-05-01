@@ -83,7 +83,8 @@ type subagentStepOutput struct {
 	FailedTasks int                  `json:"failed_tasks,omitempty"`
 }
 
-func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
+func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime, mirrorConfig ...SubagentsTaskMirrorConfig) Tool {
+	taskMirror := newSubagentsTaskMirror(mirrorConfig)
 	return Tool{
 		Name:        "subagents_orchestrate",
 		Description: "Execute a staged subagent flow: use parallel steps for independent work and sequential steps for dependency-aware follow-up tasks.",
@@ -181,6 +182,13 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 			if flowID == "" {
 				flowID = fmt.Sprintf("flow_%d", time.Now().UnixNano())
 			}
+			if err := taskMirror.ensurePlan(flowID, input.Steps); err != nil {
+				zlog.Warn().
+					Err(err).
+					Str("flow_id", flowID).
+					Str("agent", agentName).
+					Msg("subagent orchestration failed to initialize session tasks mirror")
+			}
 
 			zlog.Debug().
 				Str("flow_id", flowID).
@@ -229,6 +237,7 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 						renderedPrompt, renderErr := renderSubagentFlowPrompt(task.Prompt, completed)
 						if renderErr != nil {
 							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
+							taskMirror.markUnfinishedTasksCancelled(flowID, renderErr.Error())
 							return JSONTextResult(map[string]any{"message": renderErr.Error()}, true), nil
 						}
 						taskTier := strings.ToLower(strings.TrimSpace(task.Tier))
@@ -245,6 +254,7 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 						providerOverride, overrideErr := normalizeProviderOverride(task.ProviderOverride)
 						if overrideErr != "" {
 							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
+							taskMirror.markUnfinishedTasksCancelled(flowID, overrideErr)
 							return JSONTextResult(map[string]any{"message": overrideErr}, true), nil
 						}
 						run, spawnErr := subagentFlowSpawn(runtime, waitCtx, agentruntime.SpawnRequest{
@@ -265,7 +275,20 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 						})
 						if spawnErr != nil {
 							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
+							_ = taskMirror.markTaskCancelled(flowID, stepID, strings.TrimSpace(task.ID), title, spawnErr.Error())
+							for _, pendingTask := range pending {
+								_ = taskMirror.markTaskCancelled(flowID, stepID, pendingTask.id, pendingTask.title, "cancelled after parallel subagent spawn failure")
+							}
+							taskMirror.markUnfinishedTasksCancelled(flowID, spawnErr.Error())
 							return JSONTextResult(map[string]any{"message": spawnErr.Error()}, true), nil
+						}
+						if err := taskMirror.markTaskInProgress(flowID, stepID, strings.TrimSpace(task.ID), title, run); err != nil {
+							zlog.Warn().
+								Err(err).
+								Str("flow_id", flowID).
+								Str("step_id", stepID).
+								Str("task_id", strings.TrimSpace(task.ID)).
+								Msg("subagent orchestration failed to mark mirrored task in progress")
 						}
 						zlog.Debug().
 							Str("flow_id", flowID).
@@ -287,9 +310,25 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 						final, waitErr := subagentFlowWait(runtime, waitCtx, task.run.ID)
 						if waitErr != nil {
 							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
+							_ = taskMirror.markTaskCancelled(flowID, stepID, task.id, task.title, waitErr.Error())
+							for _, pendingTask := range pending {
+								if pendingTask.id == task.id {
+									continue
+								}
+								_ = taskMirror.markTaskCancelled(flowID, stepID, pendingTask.id, pendingTask.title, "cancelled after parallel subagent wait failure")
+							}
+							taskMirror.markUnfinishedTasksCancelled(flowID, waitErr.Error())
 							return JSONTextResult(map[string]any{"message": fmt.Sprintf("wait subagent %s failed: %v", task.run.ID, waitErr)}, true), nil
 						}
 						taskOut := buildSubagentTaskOutput(task.id, task.title, task.dependsOn, final)
+						if err := taskMirror.markTaskFinal(flowID, stepID, task.id, task.title, final); err != nil {
+							zlog.Warn().
+								Err(err).
+								Str("flow_id", flowID).
+								Str("step_id", stepID).
+								Str("task_id", task.id).
+								Msg("subagent orchestration failed to finalize mirrored task")
+						}
 						out.Tasks = append(out.Tasks, taskOut)
 						completed[task.id] = subagentCompletedTask{
 							Response: taskOut.Response,
@@ -303,9 +342,11 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 						}
 					}
 				} else {
-					for _, task := range step.Tasks {
+					for taskIndex, task := range step.Tasks {
 						renderedPrompt, renderErr := renderSubagentFlowPrompt(task.Prompt, completed)
 						if renderErr != nil {
+							_ = taskMirror.markTaskCancelled(flowID, stepID, strings.TrimSpace(task.ID), task.Title, renderErr.Error())
+							taskMirror.markUnfinishedTasksCancelled(flowID, renderErr.Error())
 							return JSONTextResult(map[string]any{"message": renderErr.Error()}, true), nil
 						}
 						taskTier := strings.ToLower(strings.TrimSpace(task.Tier))
@@ -321,6 +362,8 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 						}
 						providerOverride, overrideErr := normalizeProviderOverride(task.ProviderOverride)
 						if overrideErr != "" {
+							_ = taskMirror.markTaskCancelled(flowID, stepID, strings.TrimSpace(task.ID), title, overrideErr)
+							taskMirror.markUnfinishedTasksCancelled(flowID, overrideErr)
 							return JSONTextResult(map[string]any{"message": overrideErr}, true), nil
 						}
 						run, spawnErr := subagentFlowSpawn(runtime, waitCtx, agentruntime.SpawnRequest{
@@ -340,7 +383,17 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 							ProviderOverride: providerOverride,
 						})
 						if spawnErr != nil {
+							_ = taskMirror.markTaskCancelled(flowID, stepID, strings.TrimSpace(task.ID), title, spawnErr.Error())
+							taskMirror.markUnfinishedTasksCancelled(flowID, spawnErr.Error())
 							return JSONTextResult(map[string]any{"message": spawnErr.Error()}, true), nil
+						}
+						if err := taskMirror.markTaskInProgress(flowID, stepID, strings.TrimSpace(task.ID), title, run); err != nil {
+							zlog.Warn().
+								Err(err).
+								Str("flow_id", flowID).
+								Str("step_id", stepID).
+								Str("task_id", strings.TrimSpace(task.ID)).
+								Msg("subagent orchestration failed to mark mirrored task in progress")
 						}
 						zlog.Debug().
 							Str("flow_id", flowID).
@@ -352,9 +405,19 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 						final, waitErr := subagentFlowWait(runtime, waitCtx, run.ID)
 						if waitErr != nil {
 							_, _ = runtime.CancelByWorkspace(workspaceID, run.ID)
+							_ = taskMirror.markTaskCancelled(flowID, stepID, strings.TrimSpace(task.ID), title, waitErr.Error())
+							taskMirror.markUnfinishedTasksCancelled(flowID, waitErr.Error())
 							return JSONTextResult(map[string]any{"message": fmt.Sprintf("wait subagent %s failed: %v", run.ID, waitErr)}, true), nil
 						}
 						taskOut := buildSubagentTaskOutput(strings.TrimSpace(task.ID), title, task.DependsOn, final)
+						if err := taskMirror.markTaskFinal(flowID, stepID, strings.TrimSpace(task.ID), title, final); err != nil {
+							zlog.Warn().
+								Err(err).
+								Str("flow_id", flowID).
+								Str("step_id", stepID).
+								Str("task_id", strings.TrimSpace(task.ID)).
+								Msg("subagent orchestration failed to finalize mirrored task")
+						}
 						out.Tasks = append(out.Tasks, taskOut)
 						completed[strings.TrimSpace(task.ID)] = subagentCompletedTask{
 							Response: taskOut.Response,
@@ -365,6 +428,9 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime) Tool {
 							hadFailure = true
 							out.Status = "failed"
 							out.FailedTasks++
+							if taskIndex+1 < len(step.Tasks) {
+								taskMirror.markStepTasksCancelled(flowID, stepID, step.Tasks[taskIndex+1:], "skipped after previous subagent task failed")
+							}
 							break
 						}
 					}

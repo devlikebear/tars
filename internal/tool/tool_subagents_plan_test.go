@@ -9,6 +9,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
 )
 
@@ -69,6 +70,21 @@ func newPlannerToolTestRouter(t *testing.T, planner llm.Client) llm.Router {
 		t.Fatalf("new router: %v", err)
 	}
 	return router
+}
+
+func newSubagentTaskMirrorConfigForTest(t *testing.T) (SubagentsTaskMirrorConfig, string, *session.Store) {
+	t.Helper()
+	dir := t.TempDir()
+	store := session.NewStore(dir)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+	return SubagentsTaskMirrorConfig{
+		Store:        store,
+		WorkspaceDir: dir,
+		GetSessionID: func() string { return main.ID },
+	}, main.ID, store
 }
 
 func TestStripFencedJSON(t *testing.T) {
@@ -215,6 +231,92 @@ func TestSubagentsPlanTool_UsesAgentRuntimePlannerRoleAndReturnsValidatedPlan(t 
 	}
 	if len(payload.Steps) != 2 {
 		t.Fatalf("expected 2 planned steps, got %+v", payload)
+	}
+}
+
+func TestSubagentsPlanTool_MirrorsPlanToSessionTasks(t *testing.T) {
+	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, _ []string, _ string) (string, error) {
+		return "summary for " + prompt, nil
+	})
+	planner := &plannerToolTestClient{
+		response: `{
+  "steps":[
+    {
+      "id":"research",
+      "mode":"parallel",
+      "tasks":[
+        {"id":"backend","title":"Inspect backend","prompt":"inspect backend auth"},
+        {"id":"docs","title":"Inspect docs","prompt":"inspect docs auth"}
+      ]
+    },
+    {
+      "id":"combine",
+      "mode":"sequential",
+      "tasks":[
+        {"id":"report","title":"Write report","prompt":"compare {{task.backend.summary}} with {{task.docs.summary}}","depends_on":["backend","docs"]}
+      ]
+    }
+  ]
+}`,
+	}
+	mirrorConfig, sid, store := newSubagentTaskMirrorConfigForTest(t)
+	if err := store.SaveTasks(sid, session.SessionTasks{
+		Plan: &session.Plan{
+			Goal:      "manual plan",
+			CreatedAt: session.NowRFC3339(),
+			Status:    session.PlanStatusExecuting,
+			UpdatedAt: session.NowRFC3339(),
+		},
+		Tasks: []session.Task{{ID: "1", Title: "manual task", Status: "pending"}},
+	}); err != nil {
+		t.Fatalf("seed tasks: %v", err)
+	}
+
+	runTool := NewSubagentsPlanTool(rt, newPlannerToolTestRouter(t, planner), mirrorConfig)
+	ctx := serverauth.WithWorkspaceID(context.Background(), "ws-plan")
+	ctx = usage.WithCallMeta(ctx, usage.CallMeta{
+		Source:    "chat",
+		SessionID: sid,
+		RunID:     "run-main",
+	})
+	res, err := runTool.Execute(ctx, json.RawMessage(`{
+		"goal":"analyze auth flow changes",
+		"agent":"explorer",
+		"flow_id":"flow-auth"
+	}`))
+	if err != nil {
+		t.Fatalf("subagents_plan execute: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected success payload, got %s", res.Text())
+	}
+
+	tasks, err := store.GetTasks(sid)
+	if err != nil {
+		t.Fatalf("get mirrored tasks: %v", err)
+	}
+	if tasks.Plan == nil || tasks.Plan.Goal != "analyze auth flow changes" {
+		t.Fatalf("expected mirrored plan goal, got %+v", tasks.Plan)
+	}
+	if tasks.Plan.Status != session.PlanStatusDrafting {
+		t.Fatalf("expected mirrored plan to start drafting, got %+v", tasks.Plan)
+	}
+	if len(tasks.Tasks) != 3 {
+		t.Fatalf("expected three mirrored tasks, got %+v", tasks.Tasks)
+	}
+	wantTitles := []string{"Inspect backend", "Inspect docs", "Write report"}
+	wantIDs := []string{"1", "2", "3"}
+	wantMarkers := []string{"task=backend", "task=docs", "task=report"}
+	for i, task := range tasks.Tasks {
+		if task.ID != wantIDs[i] {
+			t.Fatalf("expected generated numeric task id at index %d, got %+v", i, task)
+		}
+		if task.Title != wantTitles[i] || task.Status != "pending" {
+			t.Fatalf("unexpected mirrored task at index %d: %+v", i, task)
+		}
+		if !strings.Contains(task.Description, "flow=flow-auth") || !strings.Contains(task.Description, wantMarkers[i]) {
+			t.Fatalf("expected subagent marker in task description, got %q", task.Description)
+		}
 	}
 }
 
