@@ -38,7 +38,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 - `/config` opens advanced per-session tool and skill policy controls when a selected session needs explicit overrides
 - Prior Context preview panel showing the exact memory section, source badges, and token budget for the current draft
 - Chat panels share a Dock Manager: Sessions and tool panels can move between left, right, bottom, and fullscreen zones, with drag-resized dimensions persisted in the browser
-- Files workspaces include an embedded shell at the selected root or browsed subdirectory, plus a macOS Terminal fallback
+- Files workspaces launch the integrated shell in the bottom dock at the selected root or browsed subdirectory, while keeping a macOS Terminal fallback available
 - Workspace file previews use workspace storage by default, while selected filesystem roots are served through the explicit filesystem files API boundary
 - Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
 - Fresh workspaces omit legacy KB Wiki scaffolding while preserving any existing `memory/wiki` files

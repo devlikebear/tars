@@ -19,6 +19,7 @@
   import TasksPanel from './TasksPanel.svelte'
   import SessionCronPanel from './SessionCronPanel.svelte'
   import DockPanelFrame from './DockPanelFrame.svelte'
+  import IntegratedTerminal from './IntegratedTerminal.svelte'
   import {
     closeDockPanel,
     createDockLayout,
@@ -97,7 +98,7 @@
     mentioned_subagents?: string[]
   } = $state({})
   let contextRefreshVersion = $state(0)
-  type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'tasks' | 'cron'
+  type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'tasks' | 'cron' | 'terminal'
   type ToolDockPanelID = Exclude<ChatDockPanelID, 'sessions'>
   type DockSizeZone = 'left' | 'right' | 'bottom'
   const dockStorageKey = 'tars.console.chat.dockLayout.v1'
@@ -110,9 +111,14 @@
     { id: 'prior', title: 'Prior Context', defaultZone: 'right' },
     { id: 'tasks', title: 'Tasks', defaultZone: 'right' },
     { id: 'cron', title: 'Cron', defaultZone: 'right' },
+    { id: 'terminal', title: 'Terminal', defaultZone: 'bottom' },
   ]
   let dockLayout: DockLayoutState = $state(createDockLayout(dockPanels))
   let dockLayoutLoaded = $state(false)
+  let terminalDockSessionId = $state('')
+  let terminalDockCwd = $state('')
+  let terminalDockLabel = $state('')
+  let terminalDockKey = $state('')
 
   let activeLeftPanel = $derived(dockLayout.active.left as ChatDockPanelID | undefined)
   let activeRightPanel = $derived(dockLayout.active.right as ChatDockPanelID | undefined)
@@ -157,7 +163,7 @@
   }
 
   function closeToolPanels() {
-    for (const panelID of ['artifacts', 'config', 'context', 'prompt', 'prior', 'tasks', 'cron'] as ToolDockPanelID[]) {
+    for (const panelID of ['artifacts', 'config', 'context', 'prompt', 'prior', 'tasks', 'cron', 'terminal'] as ToolDockPanelID[]) {
       dockLayout = closeDockPanel(dockLayout, panelID)
     }
   }
@@ -176,6 +182,18 @@
       `--dock-right-size:${activeRightPanel ? dockLayout.sizes.right : 0}px`,
       `--dock-bottom-size:${activeBottomPanel ? dockLayout.sizes.bottom : 0}px`,
     ].join(';')
+  }
+
+  function openIntegratedTerminalDock(target: { cwd: string; label: string }) {
+    if (!selectedSessionId) {
+      showFeedback('Select a session first')
+      return
+    }
+    terminalDockSessionId = selectedSessionId
+    terminalDockCwd = target.cwd
+    terminalDockLabel = target.label
+    terminalDockKey = `${selectedSessionId}:${target.cwd}:${Date.now()}`
+    openPanel('terminal')
   }
 
   function startDockResize(zone: DockSizeZone, event: PointerEvent) {
@@ -611,7 +629,13 @@
           onNewSession={handleNewSession}
         />
       {:else if panelID === 'artifacts'}
-        <ArtifactPanel bind:this={artifactPanelRef} artifacts={chatArtifacts} sessionId={selectedSessionId || ''} onClose={() => closePanel(panelID)} />
+        <ArtifactPanel
+          bind:this={artifactPanelRef}
+          artifacts={chatArtifacts}
+          sessionId={selectedSessionId || ''}
+          onClose={() => closePanel(panelID)}
+          onOpenIntegratedTerminal={openIntegratedTerminalDock}
+        />
       {:else if panelID === 'config' && selectedSessionId}
         <SessionConfigPanel
           sessionId={selectedSessionId ?? ''}
@@ -638,6 +662,15 @@
         />
       {:else if panelID === 'cron' && selectedSessionId}
         <SessionCronPanel sessionId={selectedSessionId} sessionKind={selectedSession?.kind ?? ''} onClose={() => closePanel(panelID)} />
+      {:else if panelID === 'terminal' && terminalDockSessionId}
+        {#key terminalDockKey}
+          <IntegratedTerminal
+            sessionId={terminalDockSessionId}
+            cwd={terminalDockCwd}
+            label={terminalDockLabel}
+            onClose={() => closePanel(panelID)}
+          />
+        {/key}
       {:else}
         <div class="dock-empty">Select a session to use this panel.</div>
       {/if}
