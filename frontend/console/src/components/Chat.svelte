@@ -6,6 +6,7 @@
     getSessionTasks, listChatTools, getSessionConfig, updateSessionConfig,
     type SessionToolConfig,
   } from '../lib/api'
+  import { emptyTaskProgressSummary, planProgressPercent, summarizeTasks, type TaskProgressSummary } from '../lib/tasks'
   import type { PulseSnapshot, NotificationMessage, Session } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
   import SessionSidebar from './SessionSidebar.svelte'
@@ -247,17 +248,12 @@
   let tasksPanelRef: { load: () => void } | undefined = $state()
   let artifactPanelRef: { refresh: () => void; openArtifactPath: (path: string) => Promise<void> } | undefined = $state()
 
-  type TasksSummary = {
-    total: number
-    pending: number
-    in_progress: number
-    completed: number
-    cancelled: number
+  type TasksSummary = TaskProgressSummary & {
     plan_goal?: string
   }
-  let tasksSummary: TasksSummary = $state({
-    total: 0, pending: 0, in_progress: 0, completed: 0, cancelled: 0,
-  })
+  let tasksSummary: TasksSummary = $state(emptyTaskProgressSummary())
+  let planStripProgress = $derived(planProgressPercent(tasksSummary))
+  let hasPlanStrip = $derived(!!tasksSummary.plan_goal?.trim())
 
   function handleToolComplete(toolName: string) {
     const taskTools = ['tasks']
@@ -281,17 +277,12 @@
   $effect(() => {
     const sid = selectedSessionId
     if (!sid) {
-      tasksSummary = { total: 0, pending: 0, in_progress: 0, completed: 0, cancelled: 0 }
+      tasksSummary = emptyTaskProgressSummary()
       return
     }
     getSessionTasks(sid)
       .then((data) => {
-        const counts = { total: 0, pending: 0, in_progress: 0, completed: 0, cancelled: 0 }
-        for (const task of data.tasks ?? []) {
-          counts.total++
-          const status = (task.status || 'pending') as keyof typeof counts
-          if (status in counts) counts[status]++
-        }
+        const counts = summarizeTasks(data.tasks)
         tasksSummary = { ...counts, plan_goal: data.plan?.goal }
       })
       .catch(() => {})
@@ -537,6 +528,27 @@
         <div class="action-feedback">{actionFeedback}</div>
       {/if}
 
+      {#if hasPlanStrip}
+        <button
+          type="button"
+          class="plan-progress-strip"
+          class:active={rightPanel === 'tasks'}
+          onclick={() => togglePanel('tasks')}
+          title="Open session tasks"
+        >
+          <span class="plan-strip-goal">
+            <span class="plan-strip-label">Plan</span>
+            <strong>{tasksSummary.plan_goal}</strong>
+          </span>
+          <span class="plan-strip-progress">
+            <span class="plan-strip-bar" aria-label={`${planStripProgress}% complete`}>
+              <span class="plan-strip-fill" style={`width: ${planStripProgress}%`}></span>
+            </span>
+            <span class="plan-strip-count">{tasksSummary.completed}/{tasksSummary.total} tasks</span>
+          </span>
+        </button>
+      {/if}
+
       {#key chatKey}
         <ChatPanel
           bind:this={chatPanelRef}
@@ -771,6 +783,93 @@
     margin: 0 var(--space-1);
   }
 
+  .plan-progress-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    width: calc(100% - var(--space-8));
+    min-height: 42px;
+    margin: 0 var(--space-4) var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    transition:
+      background var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .plan-progress-strip:hover,
+  .plan-progress-strip.active {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  }
+
+  .plan-strip-goal {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .plan-strip-label {
+    flex-shrink: 0;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--primary-muted);
+    color: var(--primary-text);
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+
+  .plan-strip-goal strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .plan-strip-progress {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .plan-strip-bar {
+    display: block;
+    width: 86px;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--surface-inset);
+  }
+
+  .plan-strip-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--primary);
+    transition: width 0.3s var(--ease-out);
+  }
+
+  .plan-strip-count {
+    min-width: 56px;
+    font-family: var(--font-mono);
+    text-align: right;
+  }
+
   @media (max-width: 768px) {
     .chat-layout, .chat-layout.has-right-panel {
       grid-template-columns: 1fr;
@@ -785,6 +884,17 @@
     .pulse-sep { display: none; }
     .session-actions {
       flex-wrap: wrap;
+    }
+    .plan-progress-strip {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .plan-strip-progress {
+      width: 100%;
+    }
+    .plan-strip-bar {
+      flex: 1;
+      width: auto;
     }
   }
 </style>

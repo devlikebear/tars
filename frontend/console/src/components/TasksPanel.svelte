@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { t } from '../i18n'
   import { getSessionPlanArchive, getSessionTasks, executeTasksAction, cancelChat } from '../lib/api'
+  import { planProgressPercent, summarizeTasks } from '../lib/tasks'
   import type { PlanArchiveItem, SessionTasks } from '../lib/types'
 
   interface Props {
@@ -261,17 +262,9 @@
     }).format(date)
   }
 
-  let summary = $derived({
-    total: taskList.length,
-    pending: taskList.filter(t => t.status === 'pending').length,
-    in_progress: taskList.filter(t => t.status === 'in_progress').length,
-    completed: taskList.filter(t => t.status === 'completed').length,
-    cancelled: taskList.filter(t => t.status === 'cancelled').length,
-  })
+  let summary = $derived(summarizeTasks(taskList))
 
-  let progress = $derived(
-    summary.total > 0 ? Math.round((summary.completed / summary.total) * 100) : 0
-  )
+  let progress = $derived(planProgressPercent(summary))
 
   onMount(() => { void load() })
 
