@@ -184,7 +184,8 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 	resp := req.Context().Value(openAICompatibleResponseContextKey{}).(*http.Response)
 
 	var (
-		builder          strings.Builder
+		contentBuilder   strings.Builder
+		reasoningBuilder strings.Builder
 		stopReason       string
 		toolCallsByIndex = map[int]ToolCall{}
 	)
@@ -207,8 +208,9 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 		var parsed struct {
 			Choices []struct {
 				Delta struct {
-					Content   string `json:"content"`
-					ToolCalls []struct {
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"`
+					ToolCalls        []struct {
 						Index    int    `json:"index"`
 						ID       string `json:"id"`
 						Function struct {
@@ -229,7 +231,9 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 
 		choice := parsed.Choices[0]
 		content := choice.Delta.Content
-		builder.WriteString(content)
+		reasoning := choice.Delta.ReasoningContent
+		contentBuilder.WriteString(content)
+		reasoningBuilder.WriteString(reasoning)
 		if choice.FinishReason != "" {
 			stopReason = choice.FinishReason
 		}
@@ -257,16 +261,17 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 	toolCalls := orderedToolCalls(toolCallsByIndex)
 	zlog.Debug().
 		Str("provider", c.label).
-		Int("assistant_len", len(builder.String())).
+		Int("assistant_len", len(contentBuilder.String())).
 		Int("tool_call_count", len(toolCalls)).
 		Str("stop_reason", stopReason).
 		Msg("llm stream complete")
 
 	return ChatResponse{
 		Message: ChatMessage{
-			Role:      "assistant",
-			Content:   builder.String(),
-			ToolCalls: toolCalls,
+			Role:             "assistant",
+			Content:          contentBuilder.String(),
+			ReasoningContent: reasoningBuilder.String(),
+			ToolCalls:        toolCalls,
 		},
 		StopReason: stopReason,
 	}, nil
@@ -285,8 +290,9 @@ func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http
 	var parsed struct {
 		Choices []struct {
 			Message struct {
-				Content   string `json:"content"`
-				ToolCalls []struct {
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
+				ToolCalls        []struct {
 					ID       string `json:"id"`
 					Function struct {
 						Name      string `json:"name"`
@@ -323,9 +329,10 @@ func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http
 
 	return ChatResponse{
 		Message: ChatMessage{
-			Role:      "assistant",
-			Content:   parsed.Choices[0].Message.Content,
-			ToolCalls: nonStreamingToolCalls(parsed.Choices[0].Message.ToolCalls),
+			Role:             "assistant",
+			Content:          parsed.Choices[0].Message.Content,
+			ReasoningContent: parsed.Choices[0].Message.ReasoningContent,
+			ToolCalls:        nonStreamingToolCalls(parsed.Choices[0].Message.ToolCalls),
 		},
 		Usage: Usage{
 			InputTokens:      parsed.Usage.PromptTokens,
@@ -397,10 +404,11 @@ type openAIWireToolCall struct {
 }
 
 type openAIWireMessage struct {
-	Role       string               `json:"role"`
-	Content    any                  `json:"content,omitempty"`
-	ToolCalls  []openAIWireToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string               `json:"tool_call_id,omitempty"`
+	Role             string               `json:"role"`
+	Content          any                  `json:"content,omitempty"`
+	ToolCalls        []openAIWireToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string               `json:"tool_call_id,omitempty"`
+	ReasoningContent string               `json:"reasoning_content,omitempty"`
 }
 
 // toOpenAIContent converts a ChatMessage to OpenAI Chat Completions content format.
@@ -447,9 +455,10 @@ func toOpenAIWireMessages(messages []ChatMessage) []openAIWireMessage {
 	out := make([]openAIWireMessage, 0, len(messages))
 	for _, m := range messages {
 		wire := openAIWireMessage{
-			Role:       m.Role,
-			Content:    toOpenAIContent(m),
-			ToolCallID: m.ToolCallID,
+			Role:             m.Role,
+			Content:          toOpenAIContent(m),
+			ToolCallID:       m.ToolCallID,
+			ReasoningContent: m.ReasoningContent,
 		}
 		if len(m.ToolCalls) > 0 {
 			wire.ToolCalls = make([]openAIWireToolCall, 0, len(m.ToolCalls))

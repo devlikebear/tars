@@ -22,11 +22,12 @@ type ContentBlock struct {
 }
 
 type ChatMessage struct {
-	Role          string         `json:"role"` // system, user, assistant, tool
-	Content       string         `json:"content"`
-	ContentBlocks []ContentBlock `json:"content_blocks,omitempty"` // multimodal content (takes priority over Content when non-empty)
-	ToolCalls     []ToolCall     `json:"tool_calls,omitempty"`
-	ToolCallID    string         `json:"tool_call_id,omitempty"`
+	Role             string         `json:"role"` // system, user, assistant, tool
+	Content          string         `json:"content"`
+	ContentBlocks    []ContentBlock `json:"content_blocks,omitempty"` // multimodal content (takes priority over Content when non-empty)
+	ToolCalls        []ToolCall     `json:"tool_calls,omitempty"`
+	ToolCallID       string         `json:"tool_call_id,omitempty"`
+	ReasoningContent string         `json:"reasoning_content,omitempty"`
 }
 
 type ToolCall struct {
