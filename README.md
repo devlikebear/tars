@@ -206,7 +206,7 @@ The console header includes an EN/KO language toggle. The selected locale is sto
 
 Set `usage.limits.daily_tokens` (or `usage_daily_token_budget`) to show a daily token budget chip in the console header. The chip uses UTC day boundaries, counts input plus output tokens, hides when set to `0`, and links to today's analytics focus once usage reaches the error threshold.
 
-The Chat Tasks panel keeps current plan progress visible and includes a collapsible past-plan archive for the active session. The global Plans page lists active plans across sessions, while global archive data is available through `/v1/admin/plans/archive` for future planning views.
+The Chat header shows the active plan goal and completed/total task count without opening the Tasks panel. The Chat Tasks panel keeps full plan progress visible and includes a collapsible past-plan archive for the active session. The global Plans page lists active plans across sessions, while global archive data is available through `/v1/admin/plans/archive` for future planning views.
 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|

@@ -6,6 +6,33 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.91] - 2026-05-01
+
+### Added
+
+- Added an always-visible Chat plan progress strip that shows the active plan goal, completed/total task count, and progress bar when a session has a plan.
+- Added a shared Console task-progress helper so the Chat strip and Tasks panel use the same completed-over-total calculation.
+
+### Documentation
+
+- README now documents the Chat header plan progress strip.
+
+### Tests
+
+- `cd frontend/console && node --experimental-strip-types --test tests/taskProgress.test.ts tests/i18n.test.ts`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm run build`
+- `make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+- `make console-build`
+
+### Closed
+
+- Closes #393.
+
 ## [0.31.90] - 2026-05-01
 
 ### Added
