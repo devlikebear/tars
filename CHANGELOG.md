@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.117] - 2026-05-01
+
+### Added
+
+- Added a Chat session health badge and dockable Health panel with deterministic recommendations for long context, stale plans, broad high-risk permissions, noisy prior memory, and idle sessions.
+- Added actionable health recommendations that jump to Compact, Tasks, Config, Prior Context, Skill Inbox, or the chat transcript review path.
+
+### Documentation
+
+- README and console tutorial docs now describe session health recommendations in the Chat workspace surface.
+
+### Tests
+
+- `cd frontend/console && node --experimental-strip-types --test tests/sessionHealth.test.ts`
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/chat/{session}` Session Health critical badge, Health recommendation panel, Open Tasks action, and zero console errors
+
+### Closed
+
+- Closes #588.
+
 ## [0.31.116] - 2026-05-01
 
 ### Added
