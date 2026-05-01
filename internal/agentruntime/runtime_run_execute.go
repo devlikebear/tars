@@ -76,8 +76,13 @@ func (r *Runtime) startRunExecution(state *runState) (AgentExecutor, bool) {
 	state.run.Status = RunStatusRunning
 	state.run.StartedAt = now
 	state.run.UpdatedAt = now
+	checkpoint := r.appendRunCheckpointLocked(state, "prompt", "Prompt dispatch", "", resolveRunAllowedTools(
+		r.opts.WorkspaceDir,
+		agentRuntimeAgentInfo(executor).ToolsAllow,
+	))
 	r.stateVersion++
 	r.publishRunEvent(state.run.ID, RunEvent{Type: "run_started", RunID: state.run.ID, Timestamp: now, Agent: state.run.Agent, Status: string(state.run.Status), Tier: state.run.Tier})
+	r.publishRunEvent(state.run.ID, RunEvent{Type: "run_checkpoint", RunID: state.run.ID, Timestamp: checkpoint.CreatedAt, Agent: state.run.Agent, Status: string(state.run.Status), CheckpointID: checkpoint.ID, CheckpointKind: checkpoint.Kind})
 	return executor, true
 }
 
@@ -168,6 +173,10 @@ func (r *Runtime) finalizeRunLocked(state *runState, resp string, metadata Promp
 func (r *Runtime) applyFailedFinalState(state *runState, err error, finishedAt string) RunEvent {
 	state.run.Status = RunStatusFailed
 	state.run.Error = strings.TrimSpace(err.Error())
+	checkpoint := r.appendRunCheckpointLocked(state, "failure", "Failure snapshot", state.run.Error, resolveRunAllowedTools(
+		r.opts.WorkspaceDir,
+		agentRuntimeAgentInfo(state.executor).ToolsAllow,
+	))
 	state.run.DiagnosticCode, state.run.DiagnosticReason = classifyRunDiagnostic(err)
 	if state.run.DiagnosticCode == "policy_tool_blocked" {
 		info := agentRuntimeAgentInfo(state.executor)
@@ -189,15 +198,17 @@ func (r *Runtime) applyFailedFinalState(state *runState, err error, finishedAt s
 		}
 	}
 	return RunEvent{
-		Type:          "run_failed",
-		RunID:         state.run.ID,
-		Timestamp:     finishedAt,
-		Agent:         state.run.Agent,
-		Status:        string(state.run.Status),
-		ResolvedAlias: state.run.ResolvedAlias,
-		ResolvedKind:  state.run.ResolvedKind,
-		ResolvedModel: state.run.ResolvedModel,
-		Error:         state.run.Error,
+		Type:           "run_failed",
+		RunID:          state.run.ID,
+		Timestamp:      finishedAt,
+		Agent:          state.run.Agent,
+		Status:         string(state.run.Status),
+		ResolvedAlias:  state.run.ResolvedAlias,
+		ResolvedKind:   state.run.ResolvedKind,
+		ResolvedModel:  state.run.ResolvedModel,
+		Error:          state.run.Error,
+		CheckpointID:   checkpoint.ID,
+		CheckpointKind: checkpoint.Kind,
 	}
 }
 

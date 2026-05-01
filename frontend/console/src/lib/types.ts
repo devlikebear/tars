@@ -299,6 +299,10 @@ export type AgentRuntimeRun = {
   root_run_id?: string
   parent_session_id?: string
   depth?: number
+  restarted_from_run_id?: string
+  restarted_from_checkpoint_id?: string
+  restart_attempt?: number
+  restart_reason?: string
   status: string
   accepted?: boolean
   response?: string
@@ -308,6 +312,7 @@ export type AgentRuntimeRun = {
   resolved_kind?: string
   resolved_model?: string
   override_source?: string
+  provider_override?: AgentRuntimeProviderOverride
   consensus_mode?: string
   consensus_variants?: ConsensusVariantRecord[]
   consensus_cost_usd?: number
@@ -315,10 +320,26 @@ export type AgentRuntimeRun = {
   file_attention?: FileAttentionSummary[]
   file_ops_total?: number
   diff_timeline?: AgentRuntimeDiffTimelineEntry[]
+  checkpoints?: AgentRuntimeRunCheckpoint[]
   created_at?: string
   started_at?: string
   completed_at?: string
   updated_at?: string
+}
+
+export type AgentRuntimeRunCheckpoint = {
+  checkpoint_id: string
+  run_id?: string
+  kind: string
+  label?: string
+  status?: string
+  agent?: string
+  prompt?: string
+  tier?: string
+  provider_override?: AgentRuntimeProviderOverride
+  allowed_tools?: string[]
+  error?: string
+  created_at?: string
 }
 
 export type AgentRuntimeRunEvent = {
@@ -351,6 +372,8 @@ export type AgentRuntimeRunEvent = {
   path?: string
   action?: string
   tool_is_error?: boolean
+  checkpoint_id?: string
+  checkpoint_kind?: string
 }
 
 export type AgentRuntimeTierOption = {

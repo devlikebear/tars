@@ -14,6 +14,7 @@ import type {
   HubInstalled,
   AgentRuntimeRun,
   AgentRuntimeRunEvent,
+  AgentRuntimeProviderOverride,
   AgentRuntimeSubagent,
   AgentRuntimeSubagentArchiveResponse,
   AgentRuntimeSubagentDraft,
@@ -360,6 +361,23 @@ export async function listAgentRuntimeRuns(options: number | AgentRuntimeRunsOpt
 
 export async function getAgentRuntimeRun(runId: string): Promise<AgentRuntimeRun> {
 	return requestJSON<AgentRuntimeRun>(`/v1/agentruntime/runs/${encodeURIComponent(runId)}`)
+}
+
+export type AgentRuntimeRestartRequest = {
+	checkpoint_id?: string
+	agent?: string
+	tier?: string
+	provider_override?: AgentRuntimeProviderOverride
+	prompt_adjustment?: string
+	title?: string
+}
+
+export async function restartAgentRuntimeRun(runId: string, payload: AgentRuntimeRestartRequest): Promise<AgentRuntimeRun> {
+	return requestJSON<AgentRuntimeRun>(`/v1/agentruntime/runs/${encodeURIComponent(runId)}/restart`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload),
+	})
 }
 
 export async function listAgentRuntimeSubagents(): Promise<AgentRuntimeSubagentsResponse> {

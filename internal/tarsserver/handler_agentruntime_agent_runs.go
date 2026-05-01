@@ -76,6 +76,15 @@ type agentRunSpawnRequest struct {
 	Agent     string `json:"agent"`
 }
 
+type agentRunRestartRequest struct {
+	CheckpointID     string                         `json:"checkpoint_id"`
+	Agent            string                         `json:"agent"`
+	Tier             string                         `json:"tier"`
+	ProviderOverride *agentruntime.ProviderOverride `json:"provider_override"`
+	PromptAdjustment string                         `json:"prompt_adjustment"`
+	Title            string                         `json:"title"`
+}
+
 func handleAgentRunSpawn(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, inflight *inflightLimiter) {
 	if runtime == nil {
 		writeUnavailable(w, "agent runtime is not configured")
@@ -305,6 +314,30 @@ func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentru
 			return
 		}
 		writeJSON(w, http.StatusOK, run)
+	case "restart":
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		var req agentRunRestartRequest
+		if !decodeOptionalJSONBody(w, r, &req) {
+			return
+		}
+		run, err := runtime.RestartFromCheckpoint(r.Context(), agentruntime.RestartRequest{
+			WorkspaceID:      defaultWorkspaceID,
+			RunID:            runID,
+			CheckpointID:     req.CheckpointID,
+			Agent:            req.Agent,
+			Tier:             req.Tier,
+			ProviderOverride: req.ProviderOverride,
+			PromptAdjustment: req.PromptAdjustment,
+			Title:            req.Title,
+		})
+		if err != nil {
+			logger.Error().Err(err).Str("run_id", runID).Msg("restart run failed")
+			writeJSON(w, restartErrorStatus(err), map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusAccepted, run)
 	case "events":
 		if !requireMethod(w, r, http.MethodGet) {
 			return
@@ -390,4 +423,15 @@ func classifySpawnErrorCode(err error) string {
 	default:
 		return "spawn_failed"
 	}
+}
+
+func restartErrorStatus(err error) int {
+	if err == nil {
+		return http.StatusAccepted
+	}
+	lower := strings.ToLower(strings.TrimSpace(err.Error()))
+	if strings.Contains(lower, "not found") {
+		return http.StatusNotFound
+	}
+	return http.StatusBadRequest
 }

@@ -313,6 +313,26 @@ func (rt *Runtime) trimRunsLocked() {
 
 Console Chat은 이 payload를 progress card로 렌더링하고 각 개별 run을 `/console/agentruntime/runs/{run_id}`로 연결합니다. 그래서 설계 검토나 root-cause analysis에서 "공통 결론", "충돌 후보", "근거", "원문"을 한 화면에서 비교할 수 있습니다.
 
+### 22-11. Failed run checkpoint restart
+
+Agent Runtime은 run 실행 중 재시작에 필요한 최소 snapshot을 `checkpoints`에 저장합니다. 현재 checkpoint는 prompt dispatch 시점과 failure 시점에 남으며, 실패한 run은 다음 API로 checkpoint에서 파생 retry run을 만들 수 있습니다.
+
+```http
+POST /v1/agentruntime/runs/{run_id}/restart
+```
+
+```json
+{
+  "checkpoint_id": "run_7_cp_2",
+  "agent": "reviewer",
+  "tier": "heavy",
+  "provider_override": {"alias": "codex", "model": "gpt-5.5"},
+  "prompt_adjustment": "Use the cached migration result and skip the slow path."
+}
+```
+
+새 run은 원본 run을 `parent_run_id`, `restarted_from_run_id`, `restarted_from_checkpoint_id`, `restart_attempt`로 보존합니다. 따라서 Console Agent Runtime 상세 화면에서 실패 run → checkpoint restart → 파생 retry run 관계를 추적할 수 있고, retry 시 agent를 바꿔 permission set을 바꾸거나 tier/model/prompt adjustment를 함께 적용할 수 있습니다.
+
 ## TARS 원본과의 차이
 
 | 항목 | TARS 원본 | 최소 구현 |

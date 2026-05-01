@@ -22,48 +22,68 @@ const (
 )
 
 type Run struct {
-	ID                  string                   `json:"run_id"`
-	WorkspaceID         string                   `json:"-"`
-	SessionID           string                   `json:"session_id,omitempty"`
-	SessionKind         string                   `json:"session_kind,omitempty"`
-	Agent               string                   `json:"agent,omitempty"`
-	Prompt              string                   `json:"prompt,omitempty"`
-	ParentRunID         string                   `json:"parent_run_id,omitempty"`
-	RootRunID           string                   `json:"root_run_id,omitempty"`
-	ParentSessionID     string                   `json:"parent_session_id,omitempty"`
-	Depth               int                      `json:"depth,omitempty"`
-	Status              RunStatus                `json:"status"`
-	Accepted            bool                     `json:"accepted"`
-	Response            string                   `json:"response,omitempty"`
-	Error               string                   `json:"error,omitempty"`
-	DiagnosticCode      string                   `json:"diagnostic_code,omitempty"`
-	DiagnosticReason    string                   `json:"diagnostic_reason,omitempty"`
-	PolicyBlockedTool   string                   `json:"policy_blocked_tool,omitempty"`
-	PolicyBlockedRule   string                   `json:"policy_blocked_rule,omitempty"`
-	PolicyBlockedGroup  string                   `json:"policy_blocked_group,omitempty"`
-	PolicyBlockedSource string                   `json:"policy_blocked_source,omitempty"`
-	PolicyAllowedTools  []string                 `json:"policy_allowed_tools,omitempty"`
-	PolicyDeniedTools   []string                 `json:"policy_denied_tools,omitempty"`
-	PolicyRiskMax       string                   `json:"policy_risk_max,omitempty"`
-	FlowID              string                   `json:"flow_id,omitempty"`
-	StepID              string                   `json:"step_id,omitempty"`
-	Tier                string                   `json:"tier,omitempty"`
-	ConsensusMode       string                   `json:"consensus_mode,omitempty"`
-	ConsensusVariants   []ConsensusVariantRecord `json:"consensus_variants,omitempty"`
-	ConsensusCostUSD    float64                  `json:"consensus_cost_usd,omitempty"`
-	ConsensusBudgetUSD  float64                  `json:"consensus_budget_usd,omitempty"`
-	FileAttention       []FileAttentionSummary   `json:"file_attention,omitempty"`
-	FileOpsTotal        int                      `json:"file_ops_total,omitempty"`
-	DiffTimeline        []DiffTimelineEntry      `json:"diff_timeline,omitempty"`
-	ProviderOverride    *ProviderOverride        `json:"provider_override,omitempty"`
-	ResolvedAlias       string                   `json:"resolved_alias,omitempty"`
-	ResolvedKind        string                   `json:"resolved_kind,omitempty"`
-	ResolvedModel       string                   `json:"resolved_model,omitempty"`
-	OverrideSource      string                   `json:"override_source,omitempty"`
-	CreatedAt           string                   `json:"created_at"`
-	StartedAt           string                   `json:"started_at,omitempty"`
-	CompletedAt         string                   `json:"completed_at,omitempty"`
-	UpdatedAt           string                   `json:"updated_at"`
+	ID                        string                   `json:"run_id"`
+	WorkspaceID               string                   `json:"-"`
+	SessionID                 string                   `json:"session_id,omitempty"`
+	SessionKind               string                   `json:"session_kind,omitempty"`
+	Agent                     string                   `json:"agent,omitempty"`
+	Prompt                    string                   `json:"prompt,omitempty"`
+	ParentRunID               string                   `json:"parent_run_id,omitempty"`
+	RootRunID                 string                   `json:"root_run_id,omitempty"`
+	ParentSessionID           string                   `json:"parent_session_id,omitempty"`
+	Depth                     int                      `json:"depth,omitempty"`
+	RestartedFromRunID        string                   `json:"restarted_from_run_id,omitempty"`
+	RestartedFromCheckpointID string                   `json:"restarted_from_checkpoint_id,omitempty"`
+	RestartAttempt            int                      `json:"restart_attempt,omitempty"`
+	RestartReason             string                   `json:"restart_reason,omitempty"`
+	Status                    RunStatus                `json:"status"`
+	Accepted                  bool                     `json:"accepted"`
+	Response                  string                   `json:"response,omitempty"`
+	Error                     string                   `json:"error,omitempty"`
+	DiagnosticCode            string                   `json:"diagnostic_code,omitempty"`
+	DiagnosticReason          string                   `json:"diagnostic_reason,omitempty"`
+	PolicyBlockedTool         string                   `json:"policy_blocked_tool,omitempty"`
+	PolicyBlockedRule         string                   `json:"policy_blocked_rule,omitempty"`
+	PolicyBlockedGroup        string                   `json:"policy_blocked_group,omitempty"`
+	PolicyBlockedSource       string                   `json:"policy_blocked_source,omitempty"`
+	PolicyAllowedTools        []string                 `json:"policy_allowed_tools,omitempty"`
+	PolicyDeniedTools         []string                 `json:"policy_denied_tools,omitempty"`
+	PolicyRiskMax             string                   `json:"policy_risk_max,omitempty"`
+	FlowID                    string                   `json:"flow_id,omitempty"`
+	StepID                    string                   `json:"step_id,omitempty"`
+	Tier                      string                   `json:"tier,omitempty"`
+	ConsensusMode             string                   `json:"consensus_mode,omitempty"`
+	ConsensusVariants         []ConsensusVariantRecord `json:"consensus_variants,omitempty"`
+	ConsensusCostUSD          float64                  `json:"consensus_cost_usd,omitempty"`
+	ConsensusBudgetUSD        float64                  `json:"consensus_budget_usd,omitempty"`
+	FileAttention             []FileAttentionSummary   `json:"file_attention,omitempty"`
+	FileOpsTotal              int                      `json:"file_ops_total,omitempty"`
+	DiffTimeline              []DiffTimelineEntry      `json:"diff_timeline,omitempty"`
+	Checkpoints               []RunCheckpoint          `json:"checkpoints,omitempty"`
+	ProviderOverride          *ProviderOverride        `json:"provider_override,omitempty"`
+	ResolvedAlias             string                   `json:"resolved_alias,omitempty"`
+	ResolvedKind              string                   `json:"resolved_kind,omitempty"`
+	ResolvedModel             string                   `json:"resolved_model,omitempty"`
+	OverrideSource            string                   `json:"override_source,omitempty"`
+	CreatedAt                 string                   `json:"created_at"`
+	StartedAt                 string                   `json:"started_at,omitempty"`
+	CompletedAt               string                   `json:"completed_at,omitempty"`
+	UpdatedAt                 string                   `json:"updated_at"`
+}
+
+type RunCheckpoint struct {
+	ID               string            `json:"checkpoint_id"`
+	RunID            string            `json:"run_id,omitempty"`
+	Kind             string            `json:"kind"`
+	Label            string            `json:"label,omitempty"`
+	Status           RunStatus         `json:"status,omitempty"`
+	Agent            string            `json:"agent,omitempty"`
+	Prompt           string            `json:"prompt,omitempty"`
+	Tier             string            `json:"tier,omitempty"`
+	ProviderOverride *ProviderOverride `json:"provider_override,omitempty"`
+	AllowedTools     []string          `json:"allowed_tools,omitempty"`
+	Error            string            `json:"error,omitempty"`
+	CreatedAt        string            `json:"created_at"`
 }
 
 type ProviderOverride struct {
@@ -122,6 +142,8 @@ type RunEvent struct {
 	Path            string  `json:"path,omitempty"`
 	Action          string  `json:"action,omitempty"`
 	ToolIsError     bool    `json:"tool_is_error,omitempty"`
+	CheckpointID    string  `json:"checkpoint_id,omitempty"`
+	CheckpointKind  string  `json:"checkpoint_kind,omitempty"`
 }
 
 type FileAttentionSummary struct {
@@ -185,23 +207,38 @@ type PromptExecutionMetadata struct {
 }
 
 type SpawnRequest struct {
+	WorkspaceID               string
+	SessionID                 string
+	Title                     string
+	Prompt                    string
+	Agent                     string
+	ParentRunID               string
+	RootRunID                 string
+	ParentSessionID           string
+	Depth                     int
+	SessionKind               string
+	SessionHidden             bool
+	FlowID                    string
+	StepID                    string
+	Tier                      string
+	Mode                      string
+	Consensus                 *ConsensusSpec
+	ProviderOverride          *ProviderOverride
+	RestartedFromRunID        string
+	RestartedFromCheckpointID string
+	RestartAttempt            int
+	RestartReason             string
+}
+
+type RestartRequest struct {
 	WorkspaceID      string
-	SessionID        string
-	Title            string
-	Prompt           string
+	RunID            string
+	CheckpointID     string
 	Agent            string
-	ParentRunID      string
-	RootRunID        string
-	ParentSessionID  string
-	Depth            int
-	SessionKind      string
-	SessionHidden    bool
-	FlowID           string
-	StepID           string
 	Tier             string
-	Mode             string
-	Consensus        *ConsensusSpec
 	ProviderOverride *ProviderOverride
+	PromptAdjustment string
+	Title            string
 }
 
 type ChannelMessage struct {
