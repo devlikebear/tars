@@ -30,6 +30,8 @@ This creates `~/.tars/` with default config and workspace directories.
 
 Edit `~/.tars/config/config.yaml` or set environment variables:
 
+TARS uses a provider pool: credentials live under `llm.providers`, while concrete model choices live under `llm.tiers`. One provider can back multiple tiers, and roles such as chat, pulse, reflection, compaction, and agent-runtime planning choose a tier through `llm.role_defaults`.
+
 **Anthropic (default):**
 
 ```bash
@@ -122,7 +124,9 @@ Or navigate to `http://127.0.0.1:43180/console` in your browser.
 - **Chat** — Type a message and watch the agent loop execute tools
 - **Memory** — Visit `/console/memory` to edit durable memory, inspect experiences, and test semantic search
 - **System Prompt** — Visit `/console/sysprompt` to customize agent identity and rules
+- **Agent Runtime** — Visit `/console/agentruntime` to inspect subagent runs, costs, events, and available subagent profiles
 - **Pulse** — Visit `/console/pulse` to see the background watchdog status
+- **Reflection** — Visit `/console/reflection` to check the nightly memory/session hygiene batch
 
 ## 7. Set Up Agents (Optional)
 
@@ -175,14 +179,18 @@ Pair your Telegram account via the `/pair` command in your bot chat.
 ## 10. Install Extensions (Optional)
 
 ```bash
-# Browse available skills and plugins
+# Browse available skills, plugins, and MCP packages
 tars skill search
 tars plugin search
+tars mcp search
 
 # Install from the hub
-tars mcp install safe-time
-tars plugin install code-workflow
+tars skill install <name>
+tars mcp install <name>
+tars plugin install <name>
 ```
+
+Prefer a skill plus companion CLI for domain-specific workflows. Plugins are still supported for packaging skills and optional MCP server declarations, but plugin-declared MCP servers only activate when `extensions.plugins.allow_mcp_servers` is explicitly enabled.
 
 ## Development Setup
 

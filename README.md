@@ -9,6 +9,8 @@
 
 A single Go binary that runs on your machine and gives you: an interactive chat with durable memory, parallel sub-agents with model tier routing, background watchdog and nightly maintenance, scheduled jobs, and multi-channel I/O (console, Telegram, webhooks) — all configurable via YAML and extensible via skills, plugins, and MCP servers.
 
+The name is an homage to TARS from *Interstellar*: practical, direct, and built to work beside a human operator under pressure. This project is not affiliated with the film; it borrows the name as a north star for the kind of local agent runtime it wants to be.
+
 ## Comparison
 
 | | OpenClaw | Hermes Agent | TARS |
@@ -21,7 +23,7 @@ A single Go binary that runs on your machine and gives you: an interactive chat 
 | **Scheduling** | None | None | Session-bound cron jobs with audit logs |
 | **Channels** | CLI | CLI + Agent Runtime API | Console + Telegram + webhooks |
 | **Context mgmt** | Per-session | ContextCompressor (50% threshold, protect-last-N) | Structured compaction with identifier preservation + light-tier LLM summary |
-| **Extensibility** | Built-in tools | Toolsets (terminal, file, web, delegation) | Skills + Plugins + MCP servers + Skill Hub registry |
+| **Extensibility** | Built-in tools | Toolsets (terminal, file, web, delegation) | Skills + companion CLIs first, plus gated plugins/MCP from Skill Hub |
 
 ## Key Features
 
@@ -143,8 +145,8 @@ TARS favors **on-demand extension** over always-resident tool registrations. Dom
 
 - **[Skill Hub](https://github.com/devlikebear/tars-skills)** — Public registry of skills, plugins, and MCP servers. Install with `tars skill install <name>`, `tars plugin install <name>`, `tars mcp install <name>`. Update commands report updated, skipped, and failed entries so failed package refreshes are visible. The hub is the first place to look before writing a new capability, and the only place to publish one.
 - **Skills** — Markdown instruction files (YAML frontmatter + body) with optional companion scripts. A skill's frontmatter can set `recommended_tools: [bash]`, `slash: /name`, and `aliases: [...]`; users can invoke eligible skills directly from chat via `/name` autocomplete. Companion CLIs keep their interface out of the system prompt until the skill itself is picked. The Extensions console can draft, sandbox-test, and save local `workspace/skills/<name>/` skills before you publish them to the hub. See `daily-briefing` in the hub for the canonical pattern.
-- **Plugins** — Bundle skills + MCP servers with manifest metadata and runtime gating.
-- **MCP** — Local stdio and remote HTTP/WebSocket servers with bearer or OAuth auth. Use for third-party integrations that cannot be expressed as a CLI the bash tool can call. The Extensions console can draft, stdio-test, and save local `workspace/mcp-servers/<name>/` MCP packages before you publish them to the hub.
+- **Plugins** — Advanced packages that bundle skill directories and optional MCP server declarations with manifest metadata and runtime gating. Plugin-declared MCP servers are disabled by default and require `extensions.plugins.allow_mcp_servers: true` before they can launch. Built-in Go plugins and plugin HTTP routes are not an active extension surface.
+- **MCP** — Configured, hub-installed, or plugin-declared local stdio and remote HTTP/SSE/WebSocket servers with bearer or OAuth auth. Use MCP for third-party integrations that cannot be expressed as a CLI the bash tool can call. The Extensions console can draft, stdio-test, and save local `workspace/mcp-servers/<name>/` MCP packages before you publish them to the hub.
 - **Browser** — Playwright-based automation for web interaction (shipped as a hub plugin).
 
 The Extensions console validates MCP draft names before requesting generated files, so incomplete drafts stay local to the form instead of sending avoidable server requests.

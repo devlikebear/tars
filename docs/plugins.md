@@ -1,27 +1,43 @@
-# TARS Plugin Guide
+# TARS Plugin and MCP Packaging Guide
 
-A plugin is an installable package that provides infrastructure to the TARS runtime: MCP servers, tool definitions, and skill directories. Skills are LLM instruction files; plugins are the machinery that powers them.
+TARS extensions are deliberately on-demand. Use a **skill plus companion CLI** for most domain-specific workflows, use a **hub MCP package** when an external tool server is the right boundary, and use a **plugin** only when you need to bundle skills and optional MCP declarations together with runtime gating metadata.
 
-## Manifest Schema
+Plugins do not provide a built-in Go extension surface. Built-in Go plugins and plugin HTTP routes were removed; manifests may still carry compatibility fields, but the active runtime path is skills plus MCP.
 
-Every plugin is a directory containing a `tars.plugin.json` manifest:
+## Extension Model
+
+| Package | Primary use | Runtime prompt impact |
+|---------|-------------|-----------------------|
+| Skill | Markdown instructions, optional companion files/CLIs | Loaded only when the skill is available or invoked |
+| Hub MCP package | Standalone local/remote MCP server package | Tools are registered when the MCP server is enabled |
+| Plugin | Bundle skill directories and optional MCP server declarations | Skill dirs join the skill loader; plugin MCP is opt-in |
+
+The recommended pattern is:
+
+1. Put workflow instructions in `SKILL.md`.
+2. Put real integration logic in a companion CLI/script.
+3. Tell the model to call that CLI through the existing `bash` tool.
+4. Reach for MCP only when a long-running server protocol is genuinely useful.
+
+## Plugin Manifest
+
+Every plugin is a directory containing a `tars.plugin.json` manifest. Current parser support spans schema versions 1-3; omitted `schema_version` is treated as `2`.
 
 ```json
 {
   "schema_version": 2,
-  "id": "project-swarm",
-  "name": "Project Swarm",
-  "description": "Project kickoff and autonomous execution skills.",
+  "id": "release-helper",
+  "name": "Release Helper",
+  "description": "Skills for release preparation and validation.",
   "version": "0.1.0",
-  "default_project_profile": "swarm",
   "requires": {
-    "bins": ["git"],
+    "bins": ["git", "gh"],
     "env": ["GITHUB_TOKEN"]
   },
   "supported_os": ["darwin", "linux"],
   "supported_arch": ["arm64", "amd64"],
   "policies": {
-    "tools_allow": ["read_file", "grep"],
+    "tools_allow": ["read_file", "bash"],
     "tools_deny": ["write_file"]
   },
   "skills": ["skills"],
@@ -29,63 +45,57 @@ Every plugin is a directory containing a `tars.plugin.json` manifest:
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `schema_version` | int | no | Manifest schema version; current version is `2` |
-| `id` | string | yes | Unique identifier, used as directory name |
-| `name` | string | no | Human-readable display name |
+| Field | Type | Required | Active behavior |
+|-------|------|----------|-----------------|
+| `schema_version` | int | no | Defaults to `2`; versions `1`, `2`, and `3` parse |
+| `id` | string | yes | Unique plugin identifier |
+| `name` | string | no | Display name |
 | `description` | string | no | Short summary |
-| `version` | string | no | SemVer version |
-| `default_project_profile` | string | no | Suggested project profile when this plugin is active |
-| `requires` | object | no | Runtime prerequisites for the plugin itself |
-| `supported_os` | string[] | no | Restrict plugin loading to matching `GOOS` values |
-| `supported_arch` | string[] | no | Restrict plugin loading to matching `GOARCH` values |
-| `policies` | object | no | Declared tool policy metadata bundled with the plugin |
-| `skills` | string[] | no | Relative paths to skill directories within the plugin |
-| `mcp_servers` | object[] | no | MCP server definitions (see below) |
+| `version` | string | no | Display/package version |
+| `requires` | object | no | Gates plugin availability by binaries/env vars |
+| `supported_os` | string[] | no | Gates by `GOOS` |
+| `supported_arch` | string[] | no | Gates by `GOARCH` |
+| `policies` | object | no | Declared policy metadata for operators/UI |
+| `skills` | string[] | no | Relative skill directories inside the plugin root |
+| `mcp_servers` | object[] | no | MCP servers collected only when plugin MCP is allowed |
+| `default_project_profile` | string | no | Legacy metadata only; project runtime is removed |
 
-`requires` currently supports:
+Schema v3 also accepts `tools_provider`, `lifecycle`, and `http_routes`:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `bins` | string[] | Each executable must be present on `PATH` |
-| `env` | string[] | Each environment variable must exist and be non-empty |
-
-`policies` currently supports:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `tools_allow` | string[] | Declared tools the plugin expects to use |
-| `tools_deny` | string[] | Declared tools the plugin wants withheld |
+- `tools_provider.type: "mcp_server"` is recognized as already handled by MCP runtime.
+- `tools_provider.type: "go_plugin"` or `"script"` parses but is reported as unsupported; use MCP or a skill companion CLI instead.
+- `lifecycle.on_start` / `on_stop` can call a non-shell built-in tool by object form, for example `{"tool":"memory_search","args":{...}}`. Legacy string shell hooks are rejected.
+- `http_routes` is not an active route registration surface.
 
 ## Skill Directories
 
-The `skills` array lists relative directory paths. Each path is scanned for `SKILL.md` files. These skill directories are merged into the runtime's skill loader pipeline alongside workspace-level and user-level skills.
+The `skills` array lists relative directories. Each directory is scanned for `SKILL.md` files and merged with bundled, user, extra, and workspace skill sources.
 
 Example layout:
 
-```
-plugins/project-swarm/
+```text
+plugins/release-helper/
 ├── tars.plugin.json
 └── skills/
-    ├── project-start/
-    │   └── SKILL.md
-    └── project-autopilot/
-        └── SKILL.md
+    └── release-check/
+        ├── SKILL.md
+        └── release-check.sh
 ```
 
-With `"skills": ["skills"]`, both `project-start` and `project-autopilot` are discovered.
+With `"skills": ["skills"]`, `release-check` is discovered and mirrored into `workspace/_shared/skills_runtime/` for stable prompt-time reads.
 
 ## Skill Frontmatter
 
-`SKILL.md` files use YAML frontmatter plus Markdown body content. TARS supports the shared `name`, `description`, and `user-invocable` fields, plus runtime gating fields that control whether a skill is exposed in the current environment.
+`SKILL.md` files use YAML frontmatter plus Markdown body content. TARS supports shared fields such as `name`, `description`, `slash`, `aliases`, and `user-invocable`, plus runtime gating fields.
 
 ```yaml
 ---
-name: deploy
-description: Ship the current branch through GitHub Flow
+name: release-check
+description: Validate release metadata before publishing
 user-invocable: true
-requires_plugin: project-swarm
+slash: /release-check
+recommended_tools: [bash]
+requires_plugin: release-helper
 requires_bins: [git, gh]
 requires_env: [GITHUB_TOKEN]
 os: [darwin, linux]
@@ -93,127 +103,104 @@ arch: [arm64, amd64]
 ---
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | no | Display name; defaults to the directory name |
-| `description` | string | no | Short summary shown in the skill prompt |
-| `user-invocable` | bool | no | Exposes the skill as `/skill-name` |
-| `requires_plugin` | string | no | Requires an installed plugin with the same `id` |
-| `requires_bins` | string[] | no | Requires each named executable to be present on `PATH` |
-| `requires_env` | string[] | no | Requires each environment variable to exist and be non-empty |
-| `os` | string[] | no | Restricts loading to matching `GOOS` values |
-| `arch` | string[] | no | Restricts loading to matching `GOARCH` values |
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Display name; defaults to directory name |
+| `description` | string | Short summary shown in the skill prompt |
+| `user-invocable` | bool | Exposes the skill through slash-command selection |
+| `slash` | string | Explicit slash command name |
+| `aliases` | string[] | Alternate invocation names |
+| `recommended_tools` | string[] | Tools the skill expects to use, commonly `[bash]` |
+| `recommended_project_files` | string[] | Project files useful for the skill |
+| `requires_plugin` | string | Requires an installed plugin with this `id` |
+| `requires_bins` | string[] | Requires executables on `PATH` |
+| `requires_env` | string[] | Requires non-empty environment variables |
+| `os` | string[] | Restricts loading to matching `GOOS` values |
+| `arch` | string[] | Restricts loading to matching `GOARCH` values |
 
-The loader resolves source priority first and then evaluates these requirements. If the winning definition is unavailable, TARS skips it and emits an extension diagnostic instead of silently falling back to a lower-priority copy.
-
-## Plugin Availability
-
-Plugin manifests can gate themselves before any bundled skills or MCP servers are activated:
-
-```json
-{
-  "schema_version": 2,
-  "id": "remote-ops",
-  "requires": {
-    "bins": ["uv"],
-    "env": ["OPENAI_API_KEY"]
-  },
-  "supported_os": ["darwin", "linux"],
-  "supported_arch": ["arm64"]
-}
-```
-
-If the selected plugin copy is unavailable, TARS omits that plugin from the runtime snapshot, does not load its skill directories, does not merge its MCP servers, and emits extension diagnostics describing the missing requirements.
+The loader resolves source priority first and then evaluates availability. If the winning definition is unavailable, TARS skips it and emits an extension diagnostic instead of silently falling back to a lower-priority copy.
 
 ## MCP Servers
 
-Plugins can declare MCP servers that the runtime starts alongside the main process:
+MCP servers can come from three places:
+
+1. Configured servers under `extensions.mcp.servers`.
+2. Hub-installed MCP packages in `workspace/mcp-servers/`.
+3. Plugin-declared `mcp_servers`, only when `extensions.plugins.allow_mcp_servers: true`.
+
+When names collide, later groups override earlier groups in this order: config, plugin, hub. The runtime records each server's source label.
+
+Plugin MCP declarations use the same server shape as config:
 
 ```json
 {
-  "id": "my-plugin",
+  "id": "release-helper",
   "mcp_servers": [
     {
-      "name": "local-tools",
+      "name": "release-tools",
       "transport": "stdio",
       "command": "node",
       "args": ["server.js"],
-      "env": {"PORT": "9100"}
+      "env": {"LOG_LEVEL": "info"}
     },
     {
-      "name": "remote-tools",
+      "name": "remote-release-tools",
       "transport": "streamable_http",
       "url": "https://mcp.example.com/mcp",
-      "headers": {"X-Team": "core"},
+      "headers": {"X-Team": "release"},
       "auth_mode": "bearer",
-      "auth_token_env": "MCP_REMOTE_TOKEN"
+      "auth_token_env": "MCP_RELEASE_TOKEN"
     }
   ]
 }
 ```
 
-Supported MCP server fields:
+| Field | Required | Notes |
+|-------|----------|-------|
+| `name` | yes | Server identifier; tools are named `mcp.<server>.<tool>` |
+| `transport` | no | `stdio` default, or `streamable_http`, `sse`, `websocket` |
+| `command` | yes for `stdio` | Local executable |
+| `args` | no | Local command arguments |
+| `env` | no | Extra environment for local command |
+| `url` | yes for remote | Remote MCP endpoint |
+| `headers` | no | Extra HTTP/WebSocket headers |
+| `auth_mode` | no | `bearer` or `oauth` for remote transports |
+| `auth_token_env` | no | Env var for bearer token |
+| `oauth_provider` | no | OAuth token source such as `claude-code` or `google-antigravity` |
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Server identifier used in tool naming and status APIs |
-| `transport` | string | no | `stdio` (default), `streamable_http`, `sse`, or `websocket` |
-| `command` | string | yes for `stdio` | Executable to launch for local stdio servers |
-| `args` | string[] | no | Command arguments for `stdio` servers |
-| `env` | object | no | Extra environment variables for `stdio` servers |
-| `url` | string | yes for remote transports | Remote MCP endpoint URL |
-| `headers` | object | no | Static extra HTTP/WebSocket headers |
-| `auth_mode` | string | no | `bearer` or `oauth` for remote transports |
-| `auth_token_env` | string | no | Env var used when `auth_mode` is `bearer` |
-| `oauth_provider` | string | no | OAuth token source such as `claude-code` or `google-antigravity` |
-
-The runtime manages the lifecycle of declared MCP servers and injects their tools into the agent loop. `mcp_command_allowlist_json` still applies to local `stdio` servers. Remote transports are not command-launched, so they are not subject to the local command allowlist.
+Local stdio servers still honor `extensions.mcp.command_allowlist`; remote transports are not command-launched.
 
 ## Plugin Sources
 
-The runtime loads plugins from multiple sources, in priority order:
+Runtime plugin sources are merged by priority:
 
-1. **Workspace plugins** — `workspace/plugins/` (highest priority, user-managed)
-2. **User plugins** — `~/.tars/plugins/` (user-global)
-3. **Bundled plugins** — `share/tars/plugins/` (shipped with the binary)
+1. **Workspace**: `workspace/plugins/`
+2. **User**: `~/.tars/plugins/` and legacy `~/.tarsncase/plugins/`
+3. **Bundled**: configured `extensions.plugins.bundled_dir` (default `./plugins`)
 
-When plugins with the same `id` exist in multiple sources, the highest-priority source wins.
+When plugins with the same `id` exist in multiple sources, the higher-priority source wins. Within a source, `tars.plugin.json` wins over the legacy `tarsncase.plugin.json`.
 
-## Installing Plugins
-
-### From the Hub
+## Installing From The Hub
 
 ```bash
+tars skill search
+tars skill install <name>
+tars skill update
+
 tars plugin search
-tars plugin install project-swarm
-tars plugin list
+tars plugin install <name>
 tars plugin update
-```
 
-Hub-installed plugins go into `workspace/plugins/`.
-
-### Bundled via `tars init`
-
-`tars init` copies bundled plugins (like `project-swarm`) from `share/tars/plugins/` into `workspace/plugins/`. `tars doctor --fix` restores missing bundled plugins.
-
-### Manual
-
-Drop a directory with a valid `tars.plugin.json` into any plugin source directory.
-
-## Trusted Hub MCP Packages
-
-TARS also supports MCP packages that are hosted directly in the trusted [`tars-skills`](https://github.com/devlikebear/tars-skills) registry instead of being embedded in a plugin.
-
-```bash
 tars mcp search
-tars mcp install safe-time
-tars mcp list
+tars mcp install <name>
 tars mcp update
 ```
 
-These packages install into `workspace/mcp-servers/` and are tracked in `workspace/skillhub.json`.
+Hub-installed skills go into `workspace/skills/`, plugins into `workspace/plugins/`, and MCP packages into `workspace/mcp-servers/`. Install and update commands track state in `workspace/skillhub.json` and report updated, skipped, and failed entries separately.
 
-Each MCP package contains a `tars.mcp.json` manifest:
+## Hub MCP Package Manifest
+
+Standalone MCP packages use `tars.mcp.json`:
 
 ```json
 {
@@ -226,29 +213,12 @@ Each MCP package contains a `tars.mcp.json` manifest:
 }
 ```
 
-`"${MCP_DIR}"` expands to the installed package directory at runtime. All declared package files are checksum-verified during install. Runtime launch still honors `mcp_command_allowlist_json`, so the command in the manifest must be explicitly allowlisted.
+`${MCP_DIR}` expands to the installed package directory at runtime. Package files can be checksum-verified by the hub registry. The Extensions console can draft local MCP packages, validate `tools/list` and `tools/call`, and save them into `workspace/mcp-servers/<name>/`.
 
-The Extensions console can draft local MCP server packages before publishing. Use `+ Create MCP Server` to generate Python FastMCP or Node MCP SDK stdio boilerplate, edit the manifest and server files, run the isolated `tools/list` / `tools/call` stdio validation, then save the draft into `workspace/mcp-servers/<name>/`.
+## Operational Notes
 
-## Skills vs Plugins
-
-| | Skill | Plugin |
-|---|---|---|
-| What it is | LLM instruction file (`SKILL.md`) | Infrastructure package (`tars.plugin.json`) |
-| Provides | Prompts, recommended tools, workflows | MCP servers, tools, skill directories |
-| Standalone | Yes | Yes |
-| Relationship | Can require a plugin via `requires_plugin` | Can bundle skills via `skills` directories |
-
-A skill can work independently if it only needs built-in tools. When a skill requires tools provided by a plugin, its registry entry declares `requires_plugin`, and `tars skill install` warns if the dependency is missing.
-
-At runtime, skill availability is also gated by `requires_plugin`, `requires_bins`, `requires_env`, `os`, and `arch`, so only usable skills appear in the active prompt and manager snapshot.
-
-## Reference Implementation
-
-The bundled [`project-swarm`](../plugins/project-swarm) plugin is the reference:
-
-- **Manifest**: schema v2 `tars.plugin.json` with `"default_project_profile": "swarm"` and `"skills": ["skills"]`
-- **Skills**: `project-start` (user-invocable planning kickoff) and `project-autopilot` (phase-aware supervisor loop)
-- **Runtime tools**: Project board, activity log, task dispatch, one-step autopilot advance, and autopilot start are built into the runtime and activated when the plugin is loaded
-
-The plugin is also published to the [TARS Hub registry](https://github.com/devlikebear/tars-skills) for `tars plugin install`.
+- Do not add domain features as always-registered Go tools. Tool schemas are injected into chat context and increase prompt size for every session.
+- Prefer skills with companion CLIs for workflows that can be run on demand.
+- Enable plugin-declared MCP servers only after reviewing the plugin source; they can launch local processes.
+- Plugin HTTP routes are not registered by the runtime. Use a sidecar service with its own port if an integration needs HTTP callbacks.
+- Update this guide alongside changes in `internal/plugin`, `internal/extensions`, `internal/mcp`, or `internal/skillhub`.

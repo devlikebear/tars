@@ -6,6 +6,8 @@
 
 TARS의 `internal/llm/anthropic.go`는 Anthropic `/v1/messages` API 전용 adapter입니다. OpenAI adapter와 **같은 `Client` 인터페이스**를 구현하지만, wire format이 크게 다릅니다.
 
+현재 TARS에서 provider는 단일 `provider/model/api_key` flat field가 아니라 Step 6의 LLM provider pool로 선택된다. 이 Step은 Anthropic wire format adapter 자체를 이해하기 위한 구간이다.
+
 ### OpenAI vs Anthropic 주요 차이
 
 | 항목 | OpenAI | Anthropic |
@@ -163,30 +165,41 @@ data: {"delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":15}}
 5. `message_start` — input_tokens 기록
 6. `message_delta` — output_tokens, stop_reason 기록
 
-### 8-5. serve.go에 provider 추가
+### 8-5. provider pool에 Anthropic 연결
 
 ```go
-func buildLLMClient(cfg config.Config) (llm.Client, error) {
-    switch strings.ToLower(cfg.Provider) {
-    case "openai":
-        return llm.NewOpenAIClient(cfg.BaseURL, cfg.APIKey, cfg.Model)
-    case "anthropic":
-        return llm.NewAnthropicClient(cfg.BaseURL, cfg.APIKey, cfg.Model)  // 추가
-    case "mock", "":
-        return llm.NewMockClient(), nil
-    }
+client, err := llm.NewProvider(llm.ProviderOptions{
+    Provider: "anthropic",
+    BaseURL:  "https://api.anthropic.com",
+    APIKey:   os.Getenv("ANTHROPIC_API_KEY"),
+    Model:    "claude-sonnet-4-6",
+})
+if err != nil {
+    return err
 }
 ```
+
+실제 서버에서는 이 생성이 `config.ResolveAllLLMTiers`로 해석된 tier별 provider 설정을 통해 일어난다.
 
 ## 테스트
 
 ```bash
 # Anthropic API로 테스트
-TARS_PROVIDER=anthropic \
-  TARS_API_KEY=sk-ant-... \
-  TARS_MODEL=claude-sonnet-4-20250514 \
-  TARS_BASE_URL=https://api.anthropic.com \
-  go run ./cmd/tars/ serve
+cat > config.yaml <<'EOF'
+llm:
+  providers:
+    default:
+      kind: anthropic
+      auth_mode: api-key
+      api_key: ${ANTHROPIC_API_KEY}
+  tiers:
+    heavy: { provider: default, model: claude-opus-4-6 }
+    standard: { provider: default, model: claude-sonnet-4-6 }
+    light: { provider: default, model: claude-haiku-4-5 }
+  default_tier: standard
+EOF
+
+ANTHROPIC_API_KEY=sk-ant-... go run ./cmd/tars/ serve --config config.yaml
 
 curl -N -X POST http://127.0.0.1:43180/v1/chat \
   -H "Content-Type: application/json" \
@@ -205,41 +218,37 @@ curl -N -X POST http://127.0.0.1:43180/v1/chat \
 tars/
 ├── cmd/tars/
 │   ├── main.go
-│   └── serve.go                ← config.Load() + buildLLMClient()
+│   └── server_main.go          ← config.Load() + tarsserver.Serve()
 ├── internal/
 │   ├── buildinfo/
 │   │   └── buildinfo.go
 │   ├── config/
-│   │   └── config.go           ← Config + Load() + Default()
+│   │   ├── defaults.go
+│   │   ├── load.go
+│   │   └── llm_resolve.go      ← provider pool/tier 해석
 │   ├── llm/
-│   │   ├── types.go            ← Client interface, ChatMessage, ...
-│   │   ├── mock.go             ← 테스트용 Mock
-│   │   ├── openai.go           ← OpenAI /chat/completions adapter
+│   │   ├── provider.go         ← Client interface, ChatMessage, ...
+│   │   ├── router.go           ← heavy/standard/light tier routing
+│   │   ├── openai_compat_client.go
+│   │   ├── openai_codex_client.go
 │   │   └── anthropic.go        ← Anthropic /v1/messages adapter
-│   ├── agent/
-│   │   └── loop.go
+│   ├── agent/                  ← LLM call + tool call loop
 │   ├── prompt/
-│   │   ├── builder.go
-│   │   └── builder_test.go
+│   │   └── builder.go
 │   ├── session/
-│   │   ├── message.go
 │   │   ├── session.go
-│   │   ├── transcript.go
-│   │   └── session_test.go
-│   ├── server/
-│   │   ├── server.go           ← 도구 5개 등록
+│   │   └── transcript.go
+│   ├── tarsserver/
 │   │   ├── handler_chat.go
-│   │   └── sse.go
+│   │   ├── helpers_llm_router.go
+│   │   └── main_serve_api.go
 │   └── tool/
 │       ├── tool.go
-│       ├── echo.go
-│       ├── current_time.go
-│       ├── read_file.go        ← 파일 읽기 (8KB 제한)
-│       ├── write_file.go       ← 파일 쓰기 (디렉터리 자동 생성)
-│       ├── exec.go             ← 명령 실행 (차단 목록, 타임아웃)
-│       └── tool_test.go
+│       ├── read_file.go
+│       ├── write_file.go
+│       └── exec.go
 ├── docs/
-│   └── lessons/
+│   └── tutorials/
 │       ├── 00-overview.md
 │       ├── 01-thin-cli.md
 │       ├── 02-session-transcript.md
