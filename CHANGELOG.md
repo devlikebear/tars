@@ -6,6 +6,39 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.89] - 2026-05-01
+
+### Added
+
+- Added archived-plan listing from `MEMORY.md` notes prefixed with `[archived plan]`, including multiline note grouping and newest-first sorting.
+- Added `GET /v1/admin/plans/archive` and `GET /v1/admin/sessions/:id/plans/archive` for global and session-scoped plan archive reads.
+- Added a collapsible Past plans section to the Console Chat Tasks panel with read-only archived plan summaries.
+
+### Changed
+
+- Newly archived plan memory notes now include session ID metadata so session-scoped archive views can avoid mixing unrelated plans.
+
+### Documentation
+
+- README now documents the Tasks panel archive and global archive API surface.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/memory ./internal/tarsserver -run 'ListMemoryNotesByPrefix|PlanArchiveAPI|RegisterAPIRoutes'`
+- `cd frontend/console && node --experimental-strip-types --test tests/tasksArchive.test.ts tests/i18n.test.ts`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run build`
+- `make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+- `make console-build`
+
+### Closed
+
+- Closes #395.
+
 ## [0.31.88] - 2026-05-01
 
 ### Added
