@@ -237,9 +237,9 @@ The Chat header shows the active plan goal, completed/total task count, and a Se
 | Operate | Analytics | `/console/analytics` | Visualize usage totals, daily token bars, model cost rows, and tool or skill call counts |
 | Operate | Pulse | `/console/pulse` | Watchdog status, incident cards, and run-now trigger |
 | Operate | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
-| Setup | Settings | `/console/config` | Quick Start onboarding plus structured object/array editing, typed LLM tier editing, pending-change impact previews, and field metadata badges |
+| Setup | Settings | `/console/config` | Quick Start onboarding plus structured object/array editing, typed LLM tier editing, subsystem-aware pending-change impact previews, and field metadata badges |
 
-Settings field metadata, preferred YAML patch paths, and compatible nested YAML parsing are kept together in the config field registry so console schema and config file updates stay aligned.
+Settings field metadata, subsystem impact hints, preferred YAML patch paths, and compatible nested YAML parsing are kept together in the config field registry so console schema and config file updates stay aligned. Pending changes also get a frontend fallback classifier so new fields still show the affected subsystem before save.
 
 ## Requirements
 

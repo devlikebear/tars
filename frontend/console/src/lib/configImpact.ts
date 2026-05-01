@@ -10,7 +10,10 @@ export function buildConfigImpactPreview(
   newValue: unknown,
 ): ConfigImpactPreview {
   if (!field) return { items: [] }
-  const items = [...(field.impact ?? [])]
+  const items = [
+    ...subsystemImpactHints(field),
+    ...(field.impact ?? []),
+  ]
 
   if (field.key === 'pulse_interval') {
     items.push(...pulseIntervalImpact(oldValue, newValue))
@@ -26,6 +29,56 @@ export function buildConfigImpactPreview(
   }
 
   return { items: uniqueItems(items) }
+}
+
+function subsystemImpactHints(field: ConfigFieldMeta): string[] {
+  const key = field.key.toLowerCase()
+  if (key.startsWith('llm_')) {
+    return ['Affected subsystem: LLM routing. Changes can alter model/provider selection, cost, latency, and quality.']
+  }
+  if (key.startsWith('api_') || key.startsWith('dashboard_')) {
+    return ['Affected subsystem: Auth/API. Changes can affect console access, API clients, and admin operations.']
+  }
+  if (key.startsWith('pulse_')) {
+    return ['Affected subsystem: Pulse watchdog. Changes can alter incident detection, notifications, and autofix behavior.']
+  }
+  if (key.startsWith('reflection_')) {
+    return ['Affected subsystem: Reflection. Changes can alter nightly memory extraction and cleanup timing.']
+  }
+  if (key.startsWith('cron_') || key.startsWith('schedule_')) {
+    return ['Affected subsystem: Cron scheduling. Changes can alter job timing, history retention, or timezone interpretation.']
+  }
+  if (key.startsWith('memory_')) {
+    return ['Affected subsystem: Memory. Changes can alter recall, embedding compatibility, and indexing behavior.']
+  }
+  if (key.startsWith('agentruntime_') || key.startsWith('agent_')) {
+    return ['Affected subsystem: Agent Runtime. Changes can alter subagent execution, persistence, routing, and cost.']
+  }
+  if (key.startsWith('skills_') || key.startsWith('plugins_') || key.startsWith('mcp_')) {
+    return ['Affected subsystem: Extensions. Changes can alter skill, plugin, or MCP discovery and runtime tool inventory.']
+  }
+  if (key.startsWith('tools_')) {
+    return ['Affected subsystem: Tools. Changes can alter chat tool availability, network reach, and high-risk capabilities.']
+  }
+  if (key.startsWith('channels_') || key.startsWith('telegram_')) {
+    return ['Affected subsystem: Channels. Changes can alter Telegram, webhook, or local dispatch behavior.']
+  }
+  if (key.startsWith('usage_')) {
+    return ['Affected subsystem: Usage. Changes can alter budget enforcement and cost reporting.']
+  }
+  if (key.startsWith('compaction_')) {
+    return ['Affected subsystem: Compaction. Changes can alter when and how long transcripts are compressed.']
+  }
+  if (key.startsWith('assistant_')) {
+    return ['Affected subsystem: Assistant. Changes can alter voice activation and audio processing.']
+  }
+  if (key.startsWith('log_')) {
+    return ['Affected subsystem: Logging. Changes can alter observability, retention, and troubleshooting detail.']
+  }
+  if (key.startsWith('session_') || key.startsWith('workspace_') || key.startsWith('plan_')) {
+    return ['Affected subsystem: Runtime. Changes can alter session defaults, workspace state, or planning behavior.']
+  }
+  return []
 }
 
 export function parseDurationSeconds(value: unknown): number | null {

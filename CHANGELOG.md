@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.118] - 2026-05-01
+
+### Added
+
+- Expanded Settings config impact analysis with subsystem-level hints for LLM routing, Auth/API, Pulse, Reflection, Cron, Memory, Agent Runtime, Extensions, Tools, Channels, Usage, Compaction, Assistant, Logging, and Runtime fields.
+- Added frontend fallback impact classification so pending config edits still show an affected subsystem even when a future field lacks explicit schema metadata.
+
+### Documentation
+
+- README and config-system tutorial docs now describe Settings impact previews as subsystem-aware before-save guidance.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/config -run 'TestSchemaIncludesImpactHintsForHighSignalFields|TestSchemaImpactHintsCoverCoreSubsystems'`
+- `cd frontend/console && node --experimental-strip-types --test tests/configImpactPreview.test.ts`
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- Browser smoke for `/console/config` pending-change subsystem impact preview and zero console errors
+
+### Closed
+
+- Closes #589.
+
 ## [0.31.117] - 2026-05-01
 
 ### Added

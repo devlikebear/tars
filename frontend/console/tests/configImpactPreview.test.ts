@@ -28,6 +28,50 @@ test('config impact preview estimates pulse interval effects', () => {
   assert.ok(preview.items.some((item) => item.includes('Pulse tick volume changes by about 2x.')))
 })
 
+test('config impact preview derives subsystem fallback hints', () => {
+  const fields: ConfigFieldMeta[] = [
+    {
+      key: 'llm_tiers',
+      path: 'llm.tiers',
+      section: 'LLM',
+      type: 'json',
+      label: 'Tiers',
+      description: 'LLM tier bindings',
+    },
+    {
+      key: 'api_admin_token',
+      path: 'api.admin_token',
+      section: 'API',
+      type: 'string',
+      label: 'Admin Token',
+      description: 'Admin token',
+    },
+    {
+      key: 'reflection_sleep_window',
+      path: 'reflection.sleep_window',
+      section: 'Automation',
+      type: 'string',
+      label: 'Reflection Sleep Window',
+      description: 'Reflection window',
+    },
+    {
+      key: 'skills_enabled',
+      path: 'skills.enabled',
+      section: 'Extensions',
+      type: 'bool',
+      label: 'Skills Enabled',
+      description: 'Load skills',
+    },
+  ]
+
+  const impacts = fields.flatMap((field) => buildConfigImpactPreview(field, '', 'changed').items)
+
+  assert.ok(impacts.some((item) => item.includes('LLM routing')))
+  assert.ok(impacts.some((item) => item.includes('Auth/API')))
+  assert.ok(impacts.some((item) => item.includes('Reflection')))
+  assert.ok(impacts.some((item) => item.includes('Extensions')))
+})
+
 test('Settings diff panel renders impact preview metadata', () => {
   assert.match(typesSource, /impact\?: string\[\]/)
   assert.match(configSource, /buildConfigImpactPreview/)
