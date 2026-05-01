@@ -7,7 +7,8 @@
     type SessionToolConfig,
   } from '../lib/api'
   import { emptyTaskProgressSummary, planProgressPercent, summarizeTasks, type TaskProgressSummary } from '../lib/tasks'
-  import type { PulseSnapshot, NotificationMessage, Session } from '../lib/types'
+  import { buildSessionHealthReport, emptySessionHealthReport, type SessionHealthAction, type SessionHealthInput, type SessionHealthReport } from '../lib/sessionHealth'
+  import type { PulseSnapshot, NotificationMessage, Session, SessionMessage, SessionTasks } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
   import SessionSidebar from './SessionSidebar.svelte'
   import ChatPanel from './ChatPanel.svelte'
@@ -21,6 +22,7 @@
   import GitInspector from './GitInspector.svelte'
   import SkillExtractionPanel from './SkillExtractionPanel.svelte'
   import SessionCronPanel from './SessionCronPanel.svelte'
+  import SessionHealthPanel from './SessionHealthPanel.svelte'
   import DockPanelFrame from './DockPanelFrame.svelte'
   import IntegratedTerminal from './IntegratedTerminal.svelte'
   import {
@@ -101,7 +103,7 @@
     mentioned_subagents?: string[]
   } = $state({})
   let contextRefreshVersion = $state(0)
-  type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'contract' | 'tasks' | 'git' | 'skillExtraction' | 'cron' | 'terminal'
+  type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'contract' | 'tasks' | 'git' | 'skillExtraction' | 'cron' | 'health' | 'terminal'
   type ToolDockPanelID = Exclude<ChatDockPanelID, 'sessions'>
   type DockSizeZone = 'left' | 'right' | 'bottom'
   const dockStorageKey = 'tars.console.chat.dockLayout.v1'
@@ -117,6 +119,7 @@
     { id: 'git', title: 'Git', defaultZone: 'right' },
     { id: 'skillExtraction', title: 'Skill Inbox', defaultZone: 'right' },
     { id: 'cron', title: 'Cron', defaultZone: 'right' },
+    { id: 'health', title: 'Health', defaultZone: 'right' },
     { id: 'terminal', title: 'Terminal', defaultZone: 'bottom' },
   ]
   let dockLayout: DockLayoutState = $state(createDockLayout(dockPanels))
@@ -140,7 +143,8 @@
     panelIsOpen(dockLayout, 'tasks') ||
     panelIsOpen(dockLayout, 'git') ||
     panelIsOpen(dockLayout, 'skillExtraction') ||
-    panelIsOpen(dockLayout, 'cron'),
+    panelIsOpen(dockLayout, 'cron') ||
+    panelIsOpen(dockLayout, 'health'),
   )
 
   let sidebarRef: SessionSidebar | undefined = $state()
@@ -172,7 +176,7 @@
   }
 
   function closeToolPanels() {
-    for (const panelID of ['artifacts', 'config', 'context', 'prompt', 'prior', 'tasks', 'git', 'skillExtraction', 'cron', 'terminal'] as ToolDockPanelID[]) {
+    for (const panelID of ['artifacts', 'config', 'context', 'prompt', 'prior', 'tasks', 'git', 'skillExtraction', 'cron', 'health', 'terminal'] as ToolDockPanelID[]) {
       dockLayout = closeDockPanel(dockLayout, panelID)
     }
   }
@@ -288,6 +292,7 @@
     sidebarRef?.load()
     // Refresh selected session title (may have been auto-titled)
     if (selectedSessionId) loadSelectedSession(selectedSessionId)
+    void refreshSessionHealth()
   }
 
   function handleSessionForked(session: Session) {
@@ -369,6 +374,7 @@
       }
       sidebarRef?.load()
       chatKey++
+      await refreshSessionHealth()
     } catch (e) {
       showFeedback(e instanceof Error ? e.message : 'Compact failed')
     }
@@ -402,6 +408,11 @@
   let tasksSummary: TasksSummary = $state(emptyTaskProgressSummary())
   let planStripProgress = $derived(planProgressPercent(tasksSummary))
   let hasPlanStrip = $derived(!!tasksSummary.plan_goal?.trim())
+  let sessionHealth: SessionHealthReport = $state(emptySessionHealthReport())
+  let sessionHealthLoading = $state(false)
+  let sessionHealthRequest = 0
+  let sessionHealthInputs: Omit<SessionHealthInput, 'contextInfo' | 'now'> | null = $state(null)
+  let healthIssueCount = $derived(sessionHealth.recommendations.length)
 
   function handleToolComplete(toolName: string) {
     const taskTools = ['tasks']
@@ -417,6 +428,82 @@
 
   function handleTasksChanged(summary: TasksSummary) {
     tasksSummary = summary
+    void refreshSessionHealth()
+  }
+
+  function rebuildSessionHealth(contextInfo = chatContextInfo) {
+    if (!sessionHealthInputs) {
+      sessionHealth = emptySessionHealthReport()
+      return
+    }
+    sessionHealth = buildSessionHealthReport({
+      ...sessionHealthInputs,
+      contextInfo,
+    })
+  }
+
+  async function refreshSessionHealth() {
+    const sid = selectedSessionId
+    if (!sid) {
+      sessionHealthInputs = null
+      sessionHealth = emptySessionHealthReport()
+      return
+    }
+    const requestID = ++sessionHealthRequest
+    sessionHealthLoading = true
+    try {
+      const [session, history, taskState, config, toolsResp] = await Promise.all([
+        getSession(sid),
+        getSessionHistory(sid),
+        getSessionTasks(sid),
+        getSessionConfig(sid),
+        listChatTools(),
+      ])
+      if (requestID !== sessionHealthRequest || selectedSessionId !== sid) return
+      selectedSession = session
+      sessionHealthInputs = {
+        session,
+        messages: history as SessionMessage[],
+        tasks: taskState as SessionTasks,
+        config,
+        tools: toolsResp.tools,
+      }
+      const counts = summarizeTasks(taskState.tasks)
+      tasksSummary = { ...counts, plan_goal: taskState.plan?.goal }
+      rebuildSessionHealth()
+    } catch {
+      if (requestID === sessionHealthRequest) {
+        sessionHealthInputs = null
+        sessionHealth = emptySessionHealthReport()
+      }
+    } finally {
+      if (requestID === sessionHealthRequest) {
+        sessionHealthLoading = false
+      }
+    }
+  }
+
+  async function handleHealthAction(action: SessionHealthAction) {
+    switch (action) {
+      case 'compact':
+        await handleCompact()
+        return
+      case 'open_tasks':
+        openPanel('tasks')
+        return
+      case 'open_config':
+        openPanel('config')
+        return
+      case 'open_prior':
+        openPanel('prior')
+        return
+      case 'open_skill_extraction':
+        openPanel('skillExtraction')
+        return
+      case 'review_fork_points':
+        closePanel('health')
+        return
+    }
   }
 
   // Fetch initial task counts when the active session changes so the
@@ -426,14 +513,11 @@
     const sid = selectedSessionId
     if (!sid) {
       tasksSummary = emptyTaskProgressSummary()
+      sessionHealthInputs = null
+      sessionHealth = emptySessionHealthReport()
       return
     }
-    getSessionTasks(sid)
-      .then((data) => {
-        const counts = summarizeTasks(data.tasks)
-        tasksSummary = { ...counts, plan_goal: data.plan?.goal }
-      })
-      .catch(() => {})
+    void refreshSessionHealth()
   })
 
   async function handleArtifactOpen(path: string) {
@@ -557,6 +641,7 @@
       await updateSessionConfig(selectedSessionId, nextConfig)
       showFeedback(`Skill ${match} ${wasEnabled ? 'disabled' : 'enabled'}`)
       openPanel('config')
+      await refreshSessionHealth()
     } catch (err) {
       showFeedback(err instanceof Error ? err.message : 'Skill toggle failed')
     }
@@ -642,6 +727,7 @@
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('git')} onclick={() => togglePanel('git')} title="Git Inspector">Git</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('skillExtraction')} onclick={() => togglePanel('skillExtraction')} title="Skill Extraction Inbox">Skills</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('cron')} onclick={() => togglePanel('cron')} title="Session cron jobs">Cron</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('health')} onclick={() => togglePanel('health')} title={sessionHealth.summary}>Health{#if healthIssueCount > 0} ({healthIssueCount}){/if}</button>
     </div>
   </div>
 
@@ -672,7 +758,10 @@
         <SessionConfigPanel
           sessionId={selectedSessionId ?? ''}
           onClose={() => closePanel(panelID)}
-          onChange={() => { contextRefreshVersion += 1 }}
+          onChange={() => {
+            contextRefreshVersion += 1
+            void refreshSessionHealth()
+          }}
         />
       {:else if panelID === 'context'}
         <ContextMonitor
@@ -707,6 +796,13 @@
         />
       {:else if panelID === 'cron' && selectedSessionId}
         <SessionCronPanel sessionId={selectedSessionId} sessionKind={selectedSession?.kind ?? ''} onClose={() => closePanel(panelID)} />
+      {:else if panelID === 'health' && selectedSessionId}
+        <SessionHealthPanel
+          report={sessionHealth}
+          loading={sessionHealthLoading}
+          onRefresh={() => { void refreshSessionHealth() }}
+          onAction={(action) => { void handleHealthAction(action) }}
+        />
       {:else if panelID === 'terminal' && terminalDockSessionId}
         {#key terminalDockKey}
           <IntegratedTerminal
@@ -754,6 +850,15 @@
             {:else}
               <h3 class="session-title">{selectedSession.title || selectedSession.id.slice(0, 12)}</h3>
             {/if}
+            <button
+              type="button"
+              class={`session-health-badge health-${sessionHealth.status}`}
+              onclick={() => openPanel('health')}
+              title={sessionHealth.summary}
+            >
+              <span>Health</span>
+              <strong>{sessionHealth.badgeLabel}</strong>
+            </button>
           </div>
           <div class="session-actions">
             {#if !isMainSession()}
@@ -811,7 +916,10 @@
           {initialPrompt}
           onSessionChange={handleSessionChange}
           onArtifactsChange={handleArtifactsChange}
-          onContextInfo={(info) => { chatContextInfo = info }}
+          onContextInfo={(info) => {
+            chatContextInfo = info
+            rebuildSessionHealth(info)
+          }}
           onToolComplete={handleToolComplete}
           onTasksChanged={handleTasksChanged}
           onSlashCommand={handleSlashCommand}
@@ -1046,11 +1154,16 @@
   }
 
   .session-title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
     flex: 1;
     min-width: 0;
   }
 
   .session-title {
+    flex: 1;
+    min-width: 0;
     font-family: var(--font-display);
     font-size: var(--text-base);
     font-weight: 500;
@@ -1059,6 +1172,54 @@
     overflow: hidden;
     text-overflow: ellipsis;
     margin: 0;
+  }
+
+  .session-health-badge {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-1);
+    max-width: 190px;
+    padding: 3px var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: var(--text-xs);
+    transition:
+      background var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .session-health-badge:hover {
+    border-color: var(--border-default);
+    background: var(--surface-elevated);
+  }
+
+  .session-health-badge span {
+    color: var(--text-tertiary);
+  }
+
+  .session-health-badge strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .session-health-badge.health-watch {
+    border-color: color-mix(in srgb, var(--warning) 45%, var(--border-subtle));
+    color: var(--warning);
+  }
+
+  .session-health-badge.health-attention,
+  .session-health-badge.health-critical {
+    border-color: color-mix(in srgb, var(--error) 50%, var(--border-subtle));
+    color: var(--error);
   }
 
   .new-chat-title {
