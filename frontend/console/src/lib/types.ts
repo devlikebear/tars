@@ -941,6 +941,19 @@ export type SessionTasks = {
   tasks: SessionTask[]
 }
 
+export type GlobalPlanItem = {
+  session: Session
+  plan: SessionPlan
+  tasks: SessionTask[]
+  summary: Record<string, number>
+  updated_at: string
+}
+
+export type GlobalPlansResponse = {
+  items: GlobalPlanItem[]
+  count: number
+}
+
 export type PlanArchiveItem = {
   id: string
   session_id?: string

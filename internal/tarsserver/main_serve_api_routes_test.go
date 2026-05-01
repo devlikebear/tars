@@ -29,6 +29,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/chat/prior-context/preview",
 		"/v1/sessions",
 		"/v1/sessions/main",
+		"/v1/admin/tasks",
 		"/v1/admin/sessions",
 		"/v1/admin/sessions/main",
 		"/v1/admin/sessions/main/plans/archive",

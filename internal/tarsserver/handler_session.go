@@ -264,6 +264,33 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 		}
 	})
 
+	mux.HandleFunc("/v1/admin/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if !requireAdmin(w, r) {
+			return
+		}
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		reqStore, err := resolveStore(r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace session store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
+		includeHidden := isTruthyQuery(r.URL.Query().Get("hidden"))
+		activeOnly := !isFalsyQuery(r.URL.Query().Get("active"))
+		items, err := listGlobalPlanTaskItems(reqStore, includeHidden, activeOnly)
+		if err != nil {
+			logger.Error().Err(err).Msg("list global tasks failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list tasks failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items": items,
+			"count": len(items),
+		})
+	})
+
 	mux.HandleFunc("/v1/admin/plans/archive", func(w http.ResponseWriter, r *http.Request) {
 		if !requireAdmin(w, r) {
 			return
@@ -622,6 +649,45 @@ func boolDimension(value bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+type globalPlanTaskItem struct {
+	Session   session.Session `json:"session"`
+	Plan      *session.Plan   `json:"plan"`
+	Tasks     []session.Task  `json:"tasks"`
+	Summary   map[string]int  `json:"summary"`
+	UpdatedAt string          `json:"updated_at"`
+}
+
+func isTruthyQuery(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return value == "1" || value == "true" || value == "yes"
+}
+
+func isFalsyQuery(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return value == "0" || value == "false" || value == "no"
+}
+
+func listGlobalPlanTaskItems(store *session.Store, includeHidden bool, activeOnly bool) ([]globalPlanTaskItem, error) {
+	plans, err := store.ListSessionsWithPlans(includeHidden, activeOnly)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]globalPlanTaskItem, 0, len(plans))
+	for _, plan := range plans {
+		items = append(items, globalPlanTaskItem{
+			Session:   plan.Session,
+			Plan:      plan.Plan,
+			Tasks:     plan.Tasks,
+			Summary:   plan.Summary,
+			UpdatedAt: plan.UpdatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	if items == nil {
+		return []globalPlanTaskItem{}, nil
+	}
+	return items, nil
 }
 
 const archivedPlanPrefix = "[archived plan]"

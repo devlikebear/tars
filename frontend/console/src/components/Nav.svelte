@@ -41,6 +41,7 @@
       id: 'work',
       items: [
         { id: 'chat', path: '/console/chat', icon: '\u25ce' },
+        { id: 'plans', path: '/console/tasks', icon: '\u2637' },
         { id: 'memory', path: '/console/memory', icon: '\u22c8' },
         { id: 'sysprompt', path: '/console/sysprompt', icon: '\u2691' },
         { id: 'extensions', path: '/console/extensions', icon: '\u2756' },

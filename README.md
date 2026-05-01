@@ -206,12 +206,13 @@ The console header includes an EN/KO language toggle. The selected locale is sto
 
 Set `usage.limits.daily_tokens` (or `usage_daily_token_budget`) to show a daily token budget chip in the console header. The chip uses UTC day boundaries, counts input plus output tokens, hides when set to `0`, and links to today's analytics focus once usage reaches the error threshold.
 
-The Chat Tasks panel keeps current plan progress visible and includes a collapsible past-plan archive for the active session. Global archive data is also available through `/v1/admin/plans/archive` for future planning views.
+The Chat Tasks panel keeps current plan progress visible and includes a collapsible past-plan archive for the active session. The global Plans page lists active plans across sessions, while global archive data is available through `/v1/admin/plans/archive` for future planning views.
 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
 | Home | Dashboard | `/console` | Pulse, Reflection, disk pressure, active sessions, recent notifications, recommended setup actions, and plan resume |
 | Work | Chat | `/console/chat` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
+| Work | Plans | `/console/tasks` | Review active plans across sessions with progress cards and jump directly into the owning chat session |
 | Work | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
 | Work | Extensions | `/console/extensions` | Skills, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |

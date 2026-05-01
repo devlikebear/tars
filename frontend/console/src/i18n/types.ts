@@ -34,6 +34,7 @@ export type Translations = {
     }
     items: {
       chat: string
+      plans: string
       memory: string
       sysprompt: string
       extensions: string

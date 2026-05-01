@@ -41,6 +41,7 @@ import type {
   ReflectionConfigView,
   Session,
   SessionMessage,
+  GlobalPlansResponse,
   PlanArchiveResponse,
   SkillCreatorDraftRequest,
   SkillCreatorDraftResponse,
@@ -98,6 +99,13 @@ function normalizeSessionTasks(data: Partial<SessionTasks> | null | undefined): 
 }
 
 function normalizePlanArchive(data: Partial<PlanArchiveResponse> | null | undefined): PlanArchiveResponse {
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    count: typeof data?.count === 'number' ? data.count : Array.isArray(data?.items) ? data.items.length : 0,
+  }
+}
+
+function normalizeGlobalPlans(data: Partial<GlobalPlansResponse> | null | undefined): GlobalPlansResponse {
   return {
     items: Array.isArray(data?.items) ? data.items : [],
     count: typeof data?.count === 'number' ? data.count : Array.isArray(data?.items) ? data.items.length : 0,
@@ -343,6 +351,12 @@ export async function compactSession(sessionId: string): Promise<CompactResult> 
 export async function getSessionTasks(sessionId: string): Promise<SessionTasks> {
   const data = await requestJSON<Partial<SessionTasks>>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks`)
   return normalizeSessionTasks(data)
+}
+
+export async function getGlobalPlans(active = true): Promise<GlobalPlansResponse> {
+  const endpoint = active ? '/v1/admin/tasks?active=true' : '/v1/admin/tasks?active=false'
+  const data = await requestJSON<Partial<GlobalPlansResponse>>(endpoint)
+  return normalizeGlobalPlans(data)
 }
 
 export async function getPlanArchive(limit = 50): Promise<PlanArchiveResponse> {
