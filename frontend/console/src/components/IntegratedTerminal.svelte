@@ -233,7 +233,7 @@
 
   .terminal-frame {
     flex: 1;
-    min-height: 260px;
+    min-height: 0;
     padding: var(--space-2);
     overflow: hidden;
   }

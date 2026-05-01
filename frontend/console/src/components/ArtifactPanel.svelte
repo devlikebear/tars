@@ -6,16 +6,16 @@
   import { renderHighlightedCodeBlock } from '../lib/markdown'
   import type { SessionWorkDirs } from '../lib/types'
   import ArtifactPanelHeader from './ArtifactPanelHeader.svelte'
-  import IntegratedTerminal from './IntegratedTerminal.svelte'
   import MarkdownContent from './MarkdownContent.svelte'
 
   interface Props {
     artifacts: Artifact[]
     sessionId: string
     onClose: () => void
+    onOpenIntegratedTerminal: (target: { cwd: string; label: string }) => void
   }
 
-  let { artifacts, sessionId, onClose }: Props = $props()
+  let { artifacts, sessionId, onClose, onOpenIntegratedTerminal }: Props = $props()
 
   type Tab = 'session' | 'workspace'
   let activeTab: Tab = $state('workspace')
@@ -47,8 +47,6 @@
   let terminalBusy = $state(false)
   let terminalStatus = $state('')
   let terminalError = $state('')
-  let integratedTerminalOpen = $state(false)
-  let integratedTerminalKey = $state('')
 
   // File preview state
   let previewFile: WorkspaceFileContent | null = $state(null)
@@ -75,7 +73,6 @@
 
   async function switchDir(dir: string) {
     if (!sessionId) return
-    integratedTerminalOpen = false
     await updateSessionWorkDirs(sessionId, { ...workDirs, current_dir: dir })
     workDirs.current_dir = dir
     currentPath = '.'
@@ -85,7 +82,6 @@
   async function removeDir(dir: string) {
     if (!sessionId) return
     if (dir === mandatoryWorkDir) return
-    integratedTerminalOpen = false
     const dirs = workDirs.work_dirs.filter(d => d !== dir)
     const cd = dir === workDirs.current_dir ? (dirs[0] || '') : workDirs.current_dir
     await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: cd })
@@ -173,7 +169,6 @@
   }
 
   async function browseDir(path: string) {
-    integratedTerminalOpen = false
     wsLoading = true
     wsError = ''
     terminalError = ''
@@ -271,12 +266,7 @@
     if (!sessionId) return
     terminalError = ''
     terminalStatus = ''
-    integratedTerminalKey = `${sessionId}:${effectiveRoot || ''}:${currentPath}:${Date.now()}`
-    integratedTerminalOpen = true
-  }
-
-  function closeIntegratedTerminal() {
-    integratedTerminalOpen = false
+    onOpenIntegratedTerminal({ cwd: terminalCWDPath(), label: terminalTargetLabel() })
   }
 
   async function openFile(path: string, rootOverride?: string) {
@@ -712,16 +702,6 @@
       <div class="ws-inline-success">{terminalStatus}</div>
     {/if}
 
-    {#if integratedTerminalOpen}
-      {#key integratedTerminalKey}
-        <IntegratedTerminal
-          sessionId={sessionId}
-          cwd={terminalCWDPath()}
-          label={terminalTargetLabel()}
-          onClose={closeIntegratedTerminal}
-        />
-      {/key}
-    {:else}
     <div class="artifact-list">
       {#if wsLoading}
         <div class="artifact-empty">Loading...</div>
@@ -780,7 +760,6 @@
         {/each}
       {/if}
     </div>
-    {/if}
   {/if}
 </div>
 

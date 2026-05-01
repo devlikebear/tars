@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.95] - 2026-05-01
+
+### Changed
+
+- Moved the integrated Console terminal out of the Files panel and into the Chat bottom dock.
+- Files can now stay visible while the bottom-docked terminal remains open at the selected session workspace path.
+- The integrated terminal now shrinks with dock split resize events instead of enforcing a fixed minimum frame height.
+
+### Documentation
+
+- README now documents that the Files shell opens in the bottom dock while the macOS Terminal fallback remains available.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke: `http://127.0.0.1:43216/console/chat` opened Files, selected the active session, clicked Shell, and verified Files stayed visible while Terminal opened in the bottom dock with cwd label and input focus.
+
+### Closed
+
+- Closes #566.
+
 ## [0.31.94] - 2026-05-01
 
 ### Added
