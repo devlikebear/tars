@@ -172,6 +172,40 @@ Find evidence first and answer briefly.
 	}
 }
 
+func TestLoadWorkspaceAgentRuntimeAgents_LegacyKnowledgeToolAliasesToMemory(t *testing.T) {
+	workspace := t.TempDir()
+	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")
+	if err := os.MkdirAll(filepath.Dir(agentPath), 0o755); err != nil {
+		t.Fatalf("mkdir agent dir: %v", err)
+	}
+	raw := `---
+name: researcher
+description: Research worker
+tools_allow:
+  - knowledge
+  - read_file
+---
+Find evidence first and answer briefly.
+`
+	if err := os.WriteFile(agentPath, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write agent: %v", err)
+	}
+
+	loaded, diagnostics, err := loadWorkspaceAgentRuntimeAgents(workspace)
+	if err != nil {
+		t.Fatalf("load workspace agents: %v", err)
+	}
+	if len(diagnostics) != 0 {
+		t.Fatalf("expected no diagnostics for legacy knowledge alias, got %+v", diagnostics)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("expected one agent, got %+v", loaded)
+	}
+	if got, want := strings.Join(loaded[0].ToolsAllow, ","), "memory,read_file"; got != want {
+		t.Fatalf("unexpected tools allow list: got=%q want=%q", got, want)
+	}
+}
+
 func TestLoadWorkspaceAgentRuntimeAgents_ToolsAllowUnknownOnlySkipsAgent(t *testing.T) {
 	workspace := t.TempDir()
 	agentPath := filepath.Join(workspace, "agents", "researcher", "AGENT.md")

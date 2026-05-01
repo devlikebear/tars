@@ -53,6 +53,7 @@ func TestConsoleHandler_ServesBuiltAssetsForConsoleRoutes(t *testing.T) {
 	handler := newConsoleStaticHandler(zerolog.New(io.Discard), fstest.MapFS{
 		"index.html":    &fstest.MapFile{Data: []byte("<!doctype html><div id=\"app\">console</div>")},
 		"assets/app.js": &fstest.MapFile{Data: []byte("console.log('ok')")},
+		"favicon.svg":   &fstest.MapFile{Data: []byte("<svg></svg>")},
 	}, true)
 
 	for _, route := range []string{"/console", "/console/", "/console/projects/demo"} {
@@ -82,6 +83,13 @@ func TestConsoleHandler_ServesBuiltAssetsForConsoleRoutes(t *testing.T) {
 	if body := rec.Body.String(); !strings.Contains(body, "console.log") {
 		t.Fatalf("expected js asset body, got %q", body)
 	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/console/favicon.svg", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for console favicon, got %d body=%q", rec.Code, rec.Body.String())
+	}
 }
 
 func TestConsoleHandler_ProxiesDevServerWhenConfigured(t *testing.T) {
@@ -104,8 +112,8 @@ func TestConsoleHandler_ProxiesDevServerWhenConfigured(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
 	}
-	if body := rec.Body.String(); body != "proxied /projects/demo" {
-		t.Fatalf("expected stripped proxied path, got %q", body)
+	if body := rec.Body.String(); body != "proxied /console/projects/demo" {
+		t.Fatalf("expected console-mounted proxied path, got %q", body)
 	}
 }
 

@@ -16,6 +16,7 @@ var toolNameAliases = map[string]string{
 	"edit":  "edit_file",
 
 	// memory aliases → memory aggregator
+	"knowledge":     "memory",
 	"memory_save":   "memory",
 	"memory_search": "memory",
 	"memory_get":    "memory",

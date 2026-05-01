@@ -36,11 +36,22 @@
     { value: 'python', label: 'Python FastMCP' },
     { value: 'node', label: 'Node MCP SDK' },
   ]
+  const draftNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
   const stdioProbeSteps = ['tools/list', 'tools/call']
   const toolPlaceholder = '[{"name":"get_time","description":"Return current time"}]'
 
   let files: MCPServerCreatorFile[] = $derived.by(() => draft ? draft.files : [])
   let selectedFile: MCPServerCreatorFile | undefined = $derived.by(() => files.find((file: MCPServerCreatorFile) => file.path === selectedFilePath) ?? files[0])
+  let draftBlockedReason: string = $derived(validateDraftInput())
+
+  function validateDraftInput(): string {
+    const trimmedName = name.trim()
+    if (!trimmedName) return 'Name is required.'
+    if (!draftNamePattern.test(trimmedName)) {
+      return 'Name must be kebab-case using lowercase letters, numbers, and dashes.'
+    }
+    return ''
+  }
 
   function parseToolSpecs(): MCPServerCreatorToolSpec[] {
     const raw = toolsJSON.trim()
@@ -56,6 +67,12 @@
   }
 
   async function generateDraft() {
+    const blockReason = validateDraftInput()
+    if (blockReason) {
+      error = blockReason
+      message = ''
+      return
+    }
     busy = true
     error = ''
     message = ''
@@ -158,7 +175,16 @@
       <form class="creator-form" onsubmit={(event) => { event.preventDefault(); void generateDraft() }}>
         <label>
           <span>Name</span>
-          <input bind:value={name} placeholder="safe-time" autocomplete="off" />
+          <input
+            bind:value={name}
+            placeholder="safe-time"
+            autocomplete="off"
+            aria-invalid={draftBlockedReason ? 'true' : 'false'}
+            aria-describedby="mcp-creator-name-hint"
+          />
+          {#if draftBlockedReason}
+            <small id="mcp-creator-name-hint" class="field-hint">{draftBlockedReason}</small>
+          {/if}
         </label>
         <label>
           <span>Description</span>
@@ -190,7 +216,7 @@
         </label>
 
         <div class="creator-actions">
-          <button class="btn btn-primary btn-sm" type="submit" disabled={busy}>
+          <button class="btn btn-primary btn-sm" type="submit" disabled={busy || draftBlockedReason.length > 0} title={draftBlockedReason || undefined}>
             {busy ? 'Drafting...' : 'Draft'}
           </button>
           <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || saving} onclick={saveDraft}>
@@ -358,6 +384,12 @@
   textarea {
     resize: vertical;
     line-height: 1.45;
+  }
+
+  .field-hint {
+    color: var(--error);
+    font-size: var(--text-xs);
+    line-height: 1.35;
   }
 
   .segmented {

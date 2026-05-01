@@ -11,6 +11,8 @@ import {
 
 const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
 const stripSource = readFileSync(new URL('../src/components/StatusStrip.svelte', import.meta.url), 'utf8')
+const shellSource = readFileSync(new URL('../src/components/Shell.svelte', import.meta.url), 'utf8')
+const appCssSource = readFileSync(new URL('../src/app.css', import.meta.url), 'utf8')
 
 test('Nav mounts the persistent sidebar status strip', () => {
   assert.match(navSource, /import StatusStrip from '\.\/StatusStrip\.svelte'/)
@@ -37,6 +39,13 @@ test('StatusStrip rows navigate to their detail surfaces', () => {
   assert.match(stripSource, /navigate\('\/console\/pulse'\)/)
   assert.match(stripSource, /navigate\('\/console\/reflection'\)/)
   assert.match(stripSource, /navigate\('\/console\/chat'\)/)
+})
+
+test('sidebar status strip collapses before narrow desktop content can overlap', () => {
+  assert.match(navSource, /@media \(max-width: 900px\)/)
+  assert.match(shellSource, /@media \(max-width: 900px\)/)
+  assert.match(appCssSource, /@media \(max-width: 900px\)/)
+  assert.match(appCssSource, /--nav-width:\s*0px/)
 })
 
 test('status strip helpers format health and activity summaries', () => {

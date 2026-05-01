@@ -52,7 +52,7 @@
     width: 100%;
   }
 
-  @media (max-width: 768px) {
+  @media (max-width: 900px) {
     .shell-main {
       margin-left: 0;
     }

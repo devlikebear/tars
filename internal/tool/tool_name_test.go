@@ -6,6 +6,9 @@ func TestCanonicalToolName(t *testing.T) {
 	if got := CanonicalToolName("shell_execute"); got != "exec" {
 		t.Fatalf("expected shell_execute -> exec, got %q", got)
 	}
+	if got := CanonicalToolName("knowledge"); got != "memory" {
+		t.Fatalf("expected legacy knowledge -> memory, got %q", got)
+	}
 	if got := CanonicalToolName("  EXEC "); got != "exec" {
 		t.Fatalf("expected exec normalization, got %q", got)
 	}
