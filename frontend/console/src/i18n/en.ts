@@ -34,6 +34,7 @@ export const en = {
     },
     items: {
       chat: 'Chat',
+      lineage: 'Lineage',
       plans: 'Plans',
       memory: 'Memory',
       sysprompt: 'System Prompt',

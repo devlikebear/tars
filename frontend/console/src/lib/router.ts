@@ -4,6 +4,7 @@ const chatPrefix = `${consoleBase}/chat`
 export type Route =
   | { view: 'home' }
   | { view: 'chat'; sessionId?: string }
+  | { view: 'session-lineage' }
   | { view: 'tasks' }
   | { view: 'agentruntime'; runId?: string; tab?: 'runs' | 'subagents' }
   | { view: 'memory' }
@@ -53,6 +54,10 @@ export function resolveRoute(pathname: string): Route {
 
   if (path.startsWith(`${consoleBase}/agentruntime/subagents`)) {
     return { view: 'agentruntime', tab: 'subagents' }
+  }
+
+  if (path.startsWith(`${consoleBase}/sessions/graph`)) {
+    return { view: 'session-lineage' }
   }
 
   if (path.startsWith(`${consoleBase}/sessions`)) {

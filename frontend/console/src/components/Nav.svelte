@@ -41,6 +41,7 @@
       id: 'work',
       items: [
         { id: 'chat', path: '/console/chat', icon: '\u25ce' },
+        { id: 'lineage', path: '/console/sessions/graph', icon: '\u257f' },
         { id: 'plans', path: '/console/tasks', icon: '\u2637' },
         { id: 'memory', path: '/console/memory', icon: '\u22c8' },
         { id: 'sysprompt', path: '/console/sysprompt', icon: '\u2691' },
@@ -69,7 +70,7 @@
 
   function isActive(itemPath: string, current: string): boolean {
     if (itemPath === '/console/chat') {
-      return current.startsWith('/console/chat') || current.startsWith('/console/sessions')
+      return current.startsWith('/console/chat') || (current.startsWith('/console/sessions') && !current.startsWith('/console/sessions/graph'))
     }
     if (itemPath === '/console/approvals') {
       return current.startsWith('/console/approvals') || current.startsWith('/console/ops')

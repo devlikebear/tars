@@ -34,6 +34,7 @@ export const ko = {
     },
     items: {
       chat: '채팅',
+      lineage: '분기',
       plans: '계획',
       memory: '메모리',
       sysprompt: '시스템 프롬프트',

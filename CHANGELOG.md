@@ -6,6 +6,36 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.106] - 2026-05-01
+
+### Added
+
+- Added a Console session lineage graph at `/console/sessions/graph`.
+- Added a session lineage row builder that renders root sessions before forked children with depth and fork metadata.
+- Added fork point previews by resolving child `forked_from_message_id` values against the parent transcript history.
+
+### Changed
+
+- Console navigation now includes a dedicated Lineage entry for the session graph.
+
+### Documentation
+
+- README now documents the session lineage graph view alongside message-level session forking.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/sessions/graph` rendering and graph-node chat navigation with a mock API
+
+### Closed
+
+- Closes #569.
+
 ## [0.31.105] - 2026-05-01
 
 ### Added
