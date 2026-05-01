@@ -69,6 +69,7 @@ type apiRouteHandlers struct {
 	config          http.Handler
 	skillhub        http.Handler
 	skillCreator    http.Handler
+	skillExtraction http.Handler
 	mcpCreator      http.Handler
 	git             http.Handler
 	filesystem      http.Handler
@@ -560,6 +561,7 @@ func buildAPIMux(
 	hubInstaller := skillhub.NewInstaller(cfg.WorkspaceDir)
 	skillhubHandler := newSkillhubAPIHandler(hubInstaller, extensionsManager, logger)
 	skillCreatorHandler := newSkillCreatorAPIHandler(cfg.WorkspaceDir, logger, nil)
+	skillExtractionHandler := newSkillExtractionAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
 	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil)
 	gitHandler := newGitAPIHandler(cfg.WorkspaceDir, sessionStore, opsManager, logger)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
@@ -595,6 +597,7 @@ func buildAPIMux(
 		config:          configHandler,
 		skillhub:        skillhubHandler,
 		skillCreator:    skillCreatorHandler,
+		skillExtraction: skillExtractionHandler,
 		mcpCreator:      mcpCreatorHandler,
 		git:             gitHandler,
 		filesystem:      filesystemHandler,
@@ -749,6 +752,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/skills/save-local", handlers.skillCreator)
 	mux.Handle("/v1/admin/skills/test", handlers.skillCreator)
 	mux.Handle("/v1/admin/skills/submit-pr", handlers.skillCreator)
+	mux.Handle("/v1/admin/skills/extractions", handlers.skillExtraction)
+	mux.Handle("/v1/admin/skills/extractions/extract", handlers.skillExtraction)
+	mux.Handle("/v1/admin/skills/extractions/review", handlers.skillExtraction)
 	mux.Handle("/v1/admin/mcp-servers/draft", handlers.mcpCreator)
 	mux.Handle("/v1/admin/mcp-servers/save-local", handlers.mcpCreator)
 	mux.Handle("/v1/admin/mcp-servers/test", handlers.mcpCreator)

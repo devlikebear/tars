@@ -6,6 +6,35 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.110] - 2026-05-01
+
+### Added
+
+- Added Skill Extraction Inbox APIs for extracting reusable skill candidates from chat sessions.
+- Added session transcript skill candidate detection with light-tier LLM extraction and deterministic fallback.
+- Added reviewable skill extraction candidates with provenance, message range, repeated evidence, approve, and reject states.
+- Added approval flow that saves accepted candidates as local `workspace/skills/<name>/` drafts using the existing Skill Creator scaffold.
+- Added a dockable Chat Skill Inbox panel plus `/extract-skill` slash command for extracting from the active session.
+
+### Documentation
+
+- README now documents session-based skill extraction and local skill draft approval.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/skill ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/chat/{session}` Skill Inbox extract, candidate review, approval, and local skill draft path rendering with a mock API
+
+### Closed
+
+- Closes #579.
+
 ## [0.31.109] - 2026-05-01
 
 ### Added
