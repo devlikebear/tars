@@ -96,6 +96,12 @@ func newAgentRuntimeSubagentsAPIHandler(runtime *agentruntime.Runtime, cfg confi
 		}
 		handleAgentRuntimeSubagentBuilderApply(w, r, runtime, cfg, reloadHook)
 	})
+	mux.HandleFunc("/v1/agentruntime/subagents/recommendations", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		handleAgentRuntimeSubagentRecommendations(w, r, runtime, cfg)
+	})
 	mux.HandleFunc("/v1/agentruntime/subagents", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return

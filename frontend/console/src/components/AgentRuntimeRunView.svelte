@@ -12,6 +12,7 @@
     getAgentRuntimeRun,
     listAgentRuntimeRuns,
     listAgentRuntimeSubagents,
+    recommendAgentRuntimeSubagents,
     restartAgentRuntimeRun,
     streamAgentRuntimeRunEvents,
     updateAgentRuntimeSubagentTier,
@@ -20,6 +21,8 @@
     AgentRuntimeSubagent,
     AgentRuntimeSubagentDraft,
     AgentRuntimeSubagentDraftResponse,
+    AgentRuntimeSubagentRecommendation,
+    AgentRuntimeSubagentRecommendationsResponse,
     AgentRuntimeSubagentsResponse,
     AgentRuntimeTierOption,
     ConsensusVariantRecord,
@@ -74,6 +77,8 @@
   let builderBusy = $state(false)
   let builderApplying = $state(false)
   let builderResponse: AgentRuntimeSubagentDraftResponse | null = $state(null)
+  let recommendationBusy = $state(false)
+  let recommendationResponse: AgentRuntimeSubagentRecommendationsResponse | null = $state(null)
   let archiveConfirmName = $state('')
   let archiveBusy = $state(false)
   let restartCheckpointID = $state('')
@@ -560,6 +565,39 @@
     builderResponse = null
   }
 
+  async function requestSubagentRecommendations() {
+    recommendationBusy = true
+    error = ''
+    try {
+      recommendationResponse = await recommendAgentRuntimeSubagents({ limit: 120, min_runs: 2 })
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to recommend subagents'
+    } finally {
+      recommendationBusy = false
+    }
+  }
+
+  function reviewRecommendation(recommendation: AgentRuntimeSubagentRecommendation) {
+    builderOpen = true
+    builderMode = recommendation.draft.action === 'update' ? 'edit' : 'create'
+    builderBaseName = recommendation.draft.action === 'update' ? recommendation.draft.name : ''
+    builderRequest = recommendation.reason
+    builderTier = recommendation.draft.default_tier || defaultBuilderTier()
+    builderResponse = {
+      draft: recommendation.draft,
+      draft_source: 'recommendation',
+      warnings: [],
+      tiers: recommendationResponse?.tiers?.length ? recommendationResponse.tiers : tiers,
+      resolved_tier: recommendation.resolved_tier,
+    }
+    archiveConfirmName = ''
+  }
+
+  function confidenceLabel(value: number): string {
+    if (!Number.isFinite(value)) return '—'
+    return `${Math.round(value * 100)}%`
+  }
+
   async function requestSubagentDraft() {
     const request = builderRequest.trim()
     if (!request) {
@@ -604,12 +642,22 @@
 
   async function applyDraft() {
     if (!builderResponse) return
+    const appliedName = builderResponse.draft.name
+    const appliedSource = builderResponse.draft_source
     builderApplying = true
     error = ''
     try {
       const updated = await applyAgentRuntimeSubagentDraft(builderResponse.draft)
       await loadSubagents()
       selectedSubagentName = updated.name
+      if (appliedSource === 'recommendation' && recommendationResponse) {
+        const remaining = recommendationResponse.recommendations.filter((item) => item.draft.name !== appliedName)
+        recommendationResponse = {
+          ...recommendationResponse,
+          count: remaining.length,
+          recommendations: remaining,
+        }
+      }
       closeBuilder()
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to apply subagent draft'
@@ -689,6 +737,9 @@
       <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/agentruntime')}>Back</button>
     {:else if activeTab === 'subagents'}
       <div class="header-actions">
+        <button class="btn btn-secondary btn-sm" onclick={requestSubagentRecommendations} disabled={recommendationBusy}>
+          {recommendationBusy ? 'Analyzing...' : 'Recommend from Runs'}
+        </button>
         <button class="btn btn-primary btn-sm" onclick={openCreateBuilder}>New Subagent</button>
         <button class="btn btn-ghost btn-sm" onclick={loadSubagents} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
       </div>
@@ -936,6 +987,63 @@
       </div>
       <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/config')}>Manage LLM Tiers</button>
     </section>
+
+    {#if recommendationResponse}
+      <section class="recommendation-panel" aria-label="Recommended subagent profiles">
+        <div class="recommendation-head">
+          <div>
+            <div class="eyebrow">Run Patterns</div>
+            <h3>Recommended Profiles</h3>
+          </div>
+          <span>{recommendationResponse.count} of {recommendationResponse.analyzed_run_count} analyzed</span>
+        </div>
+        {#if recommendationResponse.warnings?.length}
+          <div class="warning-list">
+            {#each recommendationResponse.warnings as warning}
+              <span>{warning}</span>
+            {/each}
+          </div>
+        {/if}
+        {#if recommendationResponse.recommendations.length === 0}
+          <div class="agentruntime-empty">No repeated run pattern is ready to save as a profile.</div>
+        {:else}
+          <div class="recommendation-grid">
+            {#each recommendationResponse.recommendations as recommendation}
+              <article class="recommendation-card">
+                <div class="recommendation-card-head">
+                  <div>
+                    <strong>{recommendation.draft.name}</strong>
+                    <p>{recommendation.title}</p>
+                  </div>
+                  <span class="tier-chip">{confidenceLabel(recommendation.confidence)}</span>
+                </div>
+                <p>{recommendation.reason}</p>
+                <div class="recommendation-meta">
+                  <span>{recommendation.run_count} runs</span>
+                  {#if recommendation.draft.default_tier}<span>{recommendation.draft.default_tier}</span>{/if}
+                  {#if recommendation.keywords.length}<span>{recommendation.keywords.slice(0, 4).join(', ')}</span>{/if}
+                </div>
+                <div class="recommendation-meta">
+                  <span>{recommendation.draft.tools_allow.join(', ')}</span>
+                </div>
+                <div class="recommendation-run-list">
+                  {#each recommendation.recent_run_ids as runID}
+                    <button type="button" class="run-inline-link" onclick={() => openRunDetail(runID)}>
+                      Run {shortID(runID)}
+                    </button>
+                  {/each}
+                </div>
+                <div class="builder-actions">
+                  <button class="btn btn-primary btn-sm" onclick={() => reviewRecommendation(recommendation)}>
+                    Review Draft
+                  </button>
+                </div>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {/if}
 
     {#if builderOpen}
       <section class="builder-panel" aria-label="Subagent builder">
@@ -1459,6 +1567,16 @@
   .tier-warning { color: var(--warning); }
   .tier-editor { display: flex; flex-direction: column; gap: var(--space-1); min-width: min(220px, 100%); color: var(--text-ghost); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; }
   .tier-editor select { width: 100%; min-height: 32px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-inset); color: var(--text-primary); padding: 0 var(--space-2); font: inherit; font-size: var(--text-xs); text-transform: none; }
+  .recommendation-panel { display: flex; flex-direction: column; gap: var(--space-3); border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
+  .recommendation-head, .recommendation-card-head { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; }
+  .recommendation-head h3 { margin: 0; color: var(--text-primary); font-family: var(--font-display); font-size: var(--text-lg); }
+  .recommendation-head > span { color: var(--text-ghost); font-family: var(--font-mono); font-size: var(--text-xs); }
+  .recommendation-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-3); }
+  .recommendation-card { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; border: 1px solid var(--border-subtle); background: var(--surface-inset); border-radius: var(--radius-sm); padding: var(--space-3); }
+  .recommendation-card strong { display: block; color: var(--text-primary); font-family: var(--font-mono); font-size: var(--text-sm); }
+  .recommendation-card p { margin: 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.45; }
+  .recommendation-meta, .recommendation-run-list { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; color: var(--text-tertiary); font-size: var(--text-xs); }
+  .recommendation-meta span { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .builder-panel { display: flex; flex-direction: column; gap: var(--space-3); border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-3); }
   .builder-head, .builder-actions, .draft-status { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
   .builder-head h3 { margin: 0; color: var(--text-primary); font-family: var(--font-display); font-size: var(--text-lg); }
@@ -1561,5 +1679,5 @@
   @media (max-width: 960px) { .intro-card, .run-controls, .cost-summary-grid { grid-template-columns: 1fr; } }
   @media (max-width: 960px) { .subagents-layout { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .detail-columns { grid-template-columns: 1fr; } }
-  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid, .restart-grid, .plan-cost-row, .file-attention-row { grid-template-columns: 1fr; } .file-meta { justify-content: flex-start; } .subagents-summary, .detail-head, .agentruntime-header, .diff-entry-head { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions, .diff-summary { justify-content: flex-start; justify-items: start; } }
+  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid, .restart-grid, .plan-cost-row, .file-attention-row { grid-template-columns: 1fr; } .file-meta { justify-content: flex-start; } .subagents-summary, .detail-head, .agentruntime-header, .diff-entry-head, .recommendation-head, .recommendation-card-head { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions, .diff-summary { justify-content: flex-start; justify-items: start; } }
 </style>

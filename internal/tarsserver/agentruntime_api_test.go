@@ -896,6 +896,106 @@ func TestAgentRuntimeSubagentsAPIHandler_BuilderCreateDraftAndApply(t *testing.T
 	}
 }
 
+func TestAgentRuntimeSubagentsAPIHandler_RecommendsProfilesFromRecentRuns(t *testing.T) {
+	workspaceDir := t.TempDir()
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspaceDir},
+		LLMConfig: config.LLMConfig{
+			LLMProviders: map[string]config.LLMProviderSettings{
+				"codex": {Kind: "openai-codex", AuthMode: "oauth"},
+			},
+			LLMTiers: map[string]config.LLMTierBinding{
+				"standard": {Provider: "codex", Model: "gpt-5.4"},
+				"heavy":    {Provider: "codex", Model: "gpt-5.5"},
+			},
+			LLMDefaultTier: "standard",
+		},
+	}
+	runtime := newTestAgentRuntime(t)
+	first, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{
+		Prompt: "Review frontend console Svelte accessibility issues",
+		Tier:   "heavy",
+	})
+	if err != nil {
+		t.Fatalf("spawn first: %v", err)
+	}
+	second, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{
+		Prompt: "Check frontend console CSS responsiveness",
+		Tier:   "heavy",
+	})
+	if err != nil {
+		t.Fatalf("spawn second: %v", err)
+	}
+	waitForAgentRuntimeRun(t, runtime, first.ID)
+	waitForAgentRuntimeRun(t, runtime, second.ID)
+
+	reloaded := 0
+	h := newAgentRuntimeSubagentsAPIHandler(runtime, cfg, func() { reloaded++ })
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/subagents/recommendations", bytes.NewBufferString(`{"min_runs":2}`))
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected recommendations 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Count            int `json:"count"`
+		AnalyzedRunCount int `json:"analyzed_run_count"`
+		Recommendations  []struct {
+			ID           string                    `json:"id"`
+			RunCount     int                       `json:"run_count"`
+			RecentRunIDs []string                  `json:"recent_run_ids"`
+			Reason       string                    `json:"reason"`
+			Draft        agentRuntimeSubagentDraft `json:"draft"`
+		} `json:"recommendations"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode recommendations: %v", err)
+	}
+	if payload.AnalyzedRunCount != 2 || payload.Count != 1 || len(payload.Recommendations) != 1 {
+		t.Fatalf("unexpected recommendation payload: %+v", payload)
+	}
+	recommendation := payload.Recommendations[0]
+	if recommendation.ID == "" || recommendation.RunCount != 2 || len(recommendation.RecentRunIDs) != 2 {
+		t.Fatalf("expected recommendation provenance counts, got %+v", recommendation)
+	}
+	if recommendation.Draft.Action != "create" || recommendation.Draft.Name != "frontend-checker" || recommendation.Draft.DefaultTier != "heavy" {
+		t.Fatalf("unexpected recommended draft: %+v", recommendation.Draft)
+	}
+	if !strings.Contains(recommendation.Draft.Prompt, first.ID) || !strings.Contains(recommendation.Draft.Prompt, second.ID) {
+		t.Fatalf("expected prompt to preserve run provenance, got:\n%s", recommendation.Draft.Prompt)
+	}
+	if len(recommendation.Draft.Provenance) != 2 {
+		t.Fatalf("expected draft provenance entries, got %+v", recommendation.Draft.Provenance)
+	}
+	if got := strings.Join(recommendation.Draft.ToolsAllow, ","); !strings.Contains(got, "read_file") || !strings.Contains(got, "glob") {
+		t.Fatalf("expected safe frontend tools in recommendation, got %q", got)
+	}
+
+	applyBody, _ := json.Marshal(map[string]any{"draft": recommendation.Draft})
+	applyRec := httptest.NewRecorder()
+	applyReq := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/subagents/builder/apply", bytes.NewReader(applyBody))
+	h.ServeHTTP(applyRec, applyReq)
+	if applyRec.Code != http.StatusOK {
+		t.Fatalf("expected apply 200, got %d body=%s", applyRec.Code, applyRec.Body.String())
+	}
+	if reloaded != 1 {
+		t.Fatalf("expected one reload after applying recommendation, got %d", reloaded)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(workspaceDir, "agents", "frontend-checker", "AGENT.md"))
+	if err != nil {
+		t.Fatalf("read recommended AGENT.md: %v", err)
+	}
+	text := string(raw)
+	for _, want := range []string{"name: frontend-checker", "provenance:", first.ID, second.ID} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("recommended AGENT.md missing %q:\n%s", want, text)
+		}
+	}
+}
+
 func TestAgentRuntimeSubagentsAPIHandler_BuilderEditAndArchiveRequiresConfirm(t *testing.T) {
 	workspaceDir := t.TempDir()
 	agentDir := filepath.Join(workspaceDir, "agents", "researcher")

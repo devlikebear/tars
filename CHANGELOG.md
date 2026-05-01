@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.123] - 2026-05-01
+
+### Added
+
+- Added `POST /v1/agentruntime/subagents/recommendations` to analyze recent completed Agent Runtime runs and suggest reusable workspace `AGENT.md` profile drafts.
+- Added recommendation provenance on subagent drafts so approved profiles preserve source run IDs, run metadata, and observed prompt context.
+- Added Console Subagents controls for generating profile recommendations from recent runs, reviewing each recommended draft, and saving it through the existing approval flow.
+
+### Documentation
+
+- README and the Agent Runtime tutorial now describe run-derived subagent profile recommendations.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run TestAgentRuntimeSubagentsAPIHandler_RecommendsProfilesFromRecentRuns`
+
+### Closed
+
+- Closes #594.
+
 ## [0.31.122] - 2026-05-01
 
 ### Added

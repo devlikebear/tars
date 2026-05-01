@@ -333,6 +333,34 @@ POST /v1/agentruntime/runs/{run_id}/restart
 
 새 run은 원본 run을 `parent_run_id`, `restarted_from_run_id`, `restarted_from_checkpoint_id`, `restart_attempt`로 보존합니다. 따라서 Console Agent Runtime 상세 화면에서 실패 run → checkpoint restart → 파생 retry run 관계를 추적할 수 있고, retry 시 agent를 바꿔 permission set을 바꾸거나 tier/model/prompt adjustment를 함께 적용할 수 있습니다.
 
+### 22-12. Run-derived profile recommendations
+
+Agent Runtime은 최근 완료 run의 prompt, tier, agent, file attention 신호를 분석해 반복되는 작업 패턴을 workspace `AGENT.md` 초안으로 추천할 수 있습니다. 이 기능은 자동 저장하지 않고, Console Subagents 탭에서 사용자가 추천 후보를 검토한 뒤 기존 Builder 승인 흐름으로 저장합니다.
+
+```http
+POST /v1/agentruntime/subagents/recommendations
+```
+
+```json
+{
+  "limit": 120,
+  "min_runs": 2
+}
+```
+
+응답의 각 recommendation은 `draft`, `run_count`, `recent_run_ids`, `keywords`, `confidence`를 포함합니다. 승인 저장된 `AGENT.md`에는 다음처럼 추천 출처가 frontmatter provenance로 남습니다.
+
+```yaml
+provenance:
+  source: agentruntime_recommendation
+  runs:
+    - run_id: run_12
+      agent: default
+      tier: heavy
+```
+
+이 흐름은 반복되는 frontend verification, release delivery, docs maintenance, code review 같은 작업을 별도 subagent profile로 승격할 때 유용합니다. 추천은 안전한 초안 생성 단계에 머물고, 실제 저장은 사용자가 `Review Draft` 후 `Approve & Save`를 눌렀을 때만 수행됩니다.
+
 ## TARS 원본과의 차이
 
 | 항목 | TARS 원본 | 최소 구현 |
