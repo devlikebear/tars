@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/serverauth"
@@ -104,6 +105,26 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 		writeJSON(w, http.StatusOK, today)
 	})
 
+	mux.HandleFunc("/v1/admin/analytics", func(w http.ResponseWriter, r *http.Request) {
+		if tracker == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
+			return
+		}
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		days, ok := parseAnalyticsDays(w, r)
+		if !ok {
+			return
+		}
+		analytics, err := tracker.Analytics(days)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "analytics failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, analytics)
+	})
+
 	mux.HandleFunc("/v1/usage/signals", func(w http.ResponseWriter, r *http.Request) {
 		if tracker == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
@@ -124,4 +145,23 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 	})
 
 	return mux
+}
+
+func parseAnalyticsDays(w http.ResponseWriter, r *http.Request) (int, bool) {
+	raw := strings.TrimSpace(r.URL.Query().Get("days"))
+	if raw == "" {
+		return 7, true
+	}
+	days, err := strconv.Atoi(raw)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "days must be one of 7, 30, or 90"})
+		return 0, false
+	}
+	switch days {
+	case 7, 30, 90:
+		return days, true
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "days must be one of 7, 30, or 90"})
+		return 0, false
+	}
 }
