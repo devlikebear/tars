@@ -134,6 +134,7 @@ func loadSourceSkills(source Source, dir string) ([]Definition, []Diagnostic, er
 			RecommendedProjectFiles: append([]string(nil), meta.RecommendedProjectFiles...),
 			WakePhases:              append([]string(nil), meta.WakePhases...),
 			Tags:                    append([]string(nil), meta.Tags...),
+			SmokeTests:              append([]string(nil), meta.SmokeTests...),
 			Content:                 content,
 		})
 		return nil

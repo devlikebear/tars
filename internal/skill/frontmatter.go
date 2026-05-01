@@ -21,6 +21,7 @@ type Frontmatter struct {
 	RecommendedProjectFiles []string
 	WakePhases              []string
 	Tags                    []string
+	SmokeTests              []string
 }
 
 func ParseFrontmatter(raw string) (Frontmatter, string, error) {
@@ -81,6 +82,8 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 			meta.WakePhases = normalizeFrontmatterList(currentList)
 		case "tags":
 			meta.Tags = normalizeFrontmatterList(currentList)
+		case "smoke_tests":
+			meta.SmokeTests = normalizeFrontmatterList(currentList)
 		}
 		currentListKey = ""
 		currentList = nil
@@ -142,6 +145,8 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 			meta.WakePhases = parseFrontmatterListValue(v)
 		case "tags":
 			meta.Tags = parseFrontmatterListValue(v)
+		case "smoke_tests":
+			meta.SmokeTests = parseFrontmatterListValue(v)
 		}
 	}
 	flushList()
@@ -150,7 +155,7 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 
 func isFrontmatterListKey(key string) bool {
 	switch key {
-	case "aliases", "requires_bins", "requires_env", "os", "arch", "recommended_tools", "recommended_project_files", "wake_phases", "tags":
+	case "aliases", "requires_bins", "requires_env", "os", "arch", "recommended_tools", "recommended_project_files", "wake_phases", "tags", "smoke_tests":
 		return true
 	default:
 		return false

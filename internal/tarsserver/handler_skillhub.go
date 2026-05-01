@@ -124,9 +124,10 @@ func newSkillhubAPIHandler(
 		}
 
 		var installErr error
+		var skillInstallResult *skillhub.InstallResult
 		switch strings.TrimSpace(req.Type) {
 		case "skill":
-			_, installErr = installer.Install(r.Context(), name)
+			skillInstallResult, installErr = installer.Install(r.Context(), name)
 		case "plugin":
 			installErr = installer.InstallPlugin(r.Context(), name)
 		case "mcp":
@@ -137,7 +138,12 @@ func newSkillhubAPIHandler(
 		}
 		if installErr != nil {
 			logger.Error().Err(installErr).Str("type", req.Type).Str("name", name).Msg("hub install failed")
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": installErr.Error()})
+			payload := map[string]any{"error": installErr.Error()}
+			var sandboxErr *skillhub.SandboxError
+			if errors.As(installErr, &sandboxErr) {
+				payload["sandbox_report"] = sandboxErr.Report
+			}
+			writeJSON(w, http.StatusBadRequest, payload)
 			return
 		}
 
@@ -147,7 +153,14 @@ func newSkillhubAPIHandler(
 		}
 
 		logger.Info().Str("type", req.Type).Str("name", name).Msg("hub package installed")
-		writeJSON(w, http.StatusOK, map[string]string{"ok": "true", "type": req.Type, "name": name})
+		payload := map[string]any{"ok": "true", "type": req.Type, "name": name}
+		if skillInstallResult != nil {
+			payload["sandbox_report"] = skillInstallResult.Sandbox
+			if skillInstallResult.RequiresPlugin != "" {
+				payload["requires_plugin"] = skillInstallResult.RequiresPlugin
+			}
+		}
+		writeJSON(w, http.StatusOK, payload)
 	})
 
 	// POST /v1/hub/uninstall — remove an installed package

@@ -7,6 +7,7 @@
     getSkillDetail,
     getDisabledExtensions,
     setExtensionDisabled,
+    APIRequestError,
     hubInstall,
     hubUninstall,
     hubUpdate,
@@ -27,6 +28,7 @@
     MCPServerStatus,
     SkillCreatorSaveResponse,
     MCPServerCreatorSaveResponse,
+    SkillSandboxReport,
   } from '../lib/types'
 
   type Tab = 'hub' | 'installed'
@@ -35,6 +37,7 @@
   let loading = $state(true)
   let error = $state('')
   let success = $state('')
+  let skillSandboxReport: SkillSandboxReport | null = $state(null)
 
   // Hub tab
   let registry: HubRegistry | null = $state(null)
@@ -76,6 +79,12 @@
 
   function skillSlashLabel(skill: SkillDef): string {
     return '/' + (skill.slash || skill.name).replace(/^\/+/, '')
+  }
+
+  function sandboxSummary(report: SkillSandboxReport): string {
+    const total = report.checks?.length ?? 0
+    const passed = report.checks?.filter((check) => check.status === 'passed').length ?? 0
+    return `${passed}/${total} checks`
   }
 
   let updateCount = $derived.by(() => {
@@ -195,12 +204,19 @@
     busyItem = type + ':' + name
     error = ''
     success = ''
+    skillSandboxReport = null
     try {
-      await hubInstall(type, name)
+      const result = await hubInstall(type, name)
+      skillSandboxReport = result.sandbox_report ?? null
       installedNames = new Set([...installedNames, type + ':' + name])
-      success = `Installed ${type} "${name}"`
+      const sandboxText = result.sandbox_report ? ` - sandbox ${sandboxSummary(result.sandbox_report)}` : ''
+      const pluginText = result.requires_plugin ? ` - requires plugin "${result.requires_plugin}"` : ''
+      success = `Installed ${type} "${name}"${sandboxText}${pluginText}`
       await loadInstalled()
     } catch (e) {
+      if (e instanceof APIRequestError && e.payload?.sandbox_report) {
+        skillSandboxReport = e.payload.sandbox_report
+      }
       error = e instanceof Error ? e.message : 'Install failed'
     } finally {
       busyItem = ''
@@ -322,6 +338,33 @@
   {/if}
   {#if success}
     <div class="message message-success">{success}</div>
+  {/if}
+  {#if skillSandboxReport}
+    <div class="sandbox-report" class:failed={!skillSandboxReport.passed}>
+      <div class="sandbox-report-header">
+        <strong>{skillSandboxReport.skill_name}</strong>
+        <span class={skillSandboxReport.passed ? 'badge badge-success' : 'badge badge-error'}>
+          {skillSandboxReport.passed ? 'Sandbox passed' : 'Sandbox failed'}
+        </span>
+        <span class="sandbox-summary">{sandboxSummary(skillSandboxReport)}</span>
+      </div>
+      <div class="sandbox-checks">
+        {#each skillSandboxReport.checks as check}
+          <div class="sandbox-check" class:failed={check.status === 'failed'}>
+            <span class={check.status === 'passed' ? 'badge badge-success' : 'badge badge-error'}>{check.status}</span>
+            <div class="sandbox-check-body">
+              <div class="sandbox-check-title">
+                <strong>{check.name}</strong>
+                {#if check.duration_ms !== undefined}<span>{check.duration_ms}ms</span>{/if}
+              </div>
+              {#if check.command}<code>{check.command}</code>{/if}
+              {#if check.error}<span class="sandbox-error">{check.error}</span>{/if}
+              {#if check.output}<pre>{check.output}</pre>{/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
   {/if}
 
   {#if tab === 'installed'}
@@ -720,6 +763,70 @@
   .message { font-size: var(--text-sm); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }
   .message-error { background: rgba(220, 60, 60, 0.15); color: var(--red); border: 1px solid rgba(220, 60, 60, 0.3); }
   .message-success { background: rgba(60, 180, 100, 0.15); color: var(--green); border: 1px solid rgba(60, 180, 100, 0.3); }
+
+  .sandbox-report {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid rgba(60, 180, 100, 0.3);
+    border-radius: var(--radius-md);
+    background: rgba(60, 180, 100, 0.08);
+  }
+  .sandbox-report.failed {
+    border-color: rgba(220, 60, 60, 0.32);
+    background: rgba(220, 60, 60, 0.08);
+  }
+  .sandbox-report-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .sandbox-report-header strong {
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+  }
+  .sandbox-summary { color: var(--text-secondary); font-size: var(--text-xs); }
+  .sandbox-checks { display: flex; flex-direction: column; gap: var(--space-2); }
+  .sandbox-check {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.025);
+  }
+  .sandbox-check.failed { border-color: rgba(220, 60, 60, 0.28); }
+  .sandbox-check-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .sandbox-check-title { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+  .sandbox-check-title strong { color: var(--text-primary); font-size: var(--text-xs); }
+  .sandbox-check-title span { color: var(--text-tertiary); font-size: 10px; font-family: var(--font-mono); }
+  .sandbox-check code {
+    width: fit-content;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 5px;
+    border-radius: var(--radius-sm);
+  }
+  .sandbox-error { color: var(--red); font-size: var(--text-xs); }
+  .sandbox-check pre {
+    max-height: 120px;
+    margin: 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
 
   .section-toggle {
     display: flex;

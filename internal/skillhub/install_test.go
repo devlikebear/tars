@@ -179,6 +179,210 @@ func TestInstallRejectsMissingSkillChecksum(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsSkillWhenSandboxSmokeFails(t *testing.T) {
+	files := map[string][]byte{
+		"/skills/broken-smoke/SKILL.md": []byte("---\nname: broken-smoke\nsmoke_tests:\n  - test -f SKILL.md\n  - exit 7\n---\n# Broken Smoke\n"),
+	}
+	index := RegistryIndex{
+		Version: 4,
+		Skills: []RegistryEntry{
+			{
+				Name:          "broken-smoke",
+				Description:   "Smoke failure fixture",
+				Version:       "0.1.0",
+				Author:        "devlikebear",
+				Path:          "skills/broken-smoke",
+				UserInvocable: true,
+				Files: RegistryFiles{
+					{Path: "SKILL.md", SHA256: sha256Hex(files["/skills/broken-smoke/SKILL.md"])},
+				},
+			},
+		},
+	}
+	srv := newRegistryServer(t, index, files)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	result, err := inst.Install(context.Background(), "broken-smoke")
+	if err == nil {
+		t.Fatal("expected sandbox smoke failure")
+	}
+	if result != nil {
+		t.Fatalf("expected no install result on failure, got %+v", result)
+	}
+	var sandboxErr *SandboxError
+	if !errors.As(err, &sandboxErr) {
+		t.Fatalf("expected SandboxError, got %T %v", err, err)
+	}
+	if sandboxErr.Report.Passed {
+		t.Fatalf("expected failed sandbox report: %+v", sandboxErr.Report)
+	}
+	if len(sandboxErr.Report.Checks) != 3 {
+		t.Fatalf("expected three sandbox checks, got %+v", sandboxErr.Report.Checks)
+	}
+	if sandboxErr.Report.Checks[0].Status != SandboxCheckPassed || sandboxErr.Report.Checks[1].Status != SandboxCheckPassed || sandboxErr.Report.Checks[2].Status != SandboxCheckFailed {
+		t.Fatalf("unexpected sandbox check statuses: %+v", sandboxErr.Report.Checks)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "skills", "broken-smoke")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no real skill install after sandbox failure, got stat err %v", statErr)
+	}
+	skills, listErr := inst.List()
+	if listErr != nil && !os.IsNotExist(listErr) {
+		t.Fatalf("List: %v", listErr)
+	}
+	if len(skills) != 0 {
+		t.Fatalf("expected no installed skills after sandbox failure, got %+v", skills)
+	}
+}
+
+func TestInstallReturnsSandboxReportWhenSmokePasses(t *testing.T) {
+	files := map[string][]byte{
+		"/skills/good-smoke/SKILL.md":       []byte("---\nname: good-smoke\nsmoke_tests:\n  - test -f SKILL.md\n---\n# Good Smoke\n"),
+		"/skills/good-smoke/scripts/run.sh": []byte("#!/usr/bin/env bash\nprintf ok\n"),
+	}
+	index := RegistryIndex{
+		Version: 4,
+		Skills: []RegistryEntry{
+			{
+				Name:          "good-smoke",
+				Description:   "Smoke pass fixture",
+				Version:       "0.1.0",
+				Author:        "devlikebear",
+				Path:          "skills/good-smoke",
+				UserInvocable: true,
+				Files: RegistryFiles{
+					{Path: "SKILL.md", SHA256: sha256Hex(files["/skills/good-smoke/SKILL.md"])},
+					{Path: "scripts/run.sh", SHA256: sha256Hex(files["/skills/good-smoke/scripts/run.sh"])},
+				},
+			},
+		},
+	}
+	srv := newRegistryServer(t, index, files)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	result, err := inst.Install(context.Background(), "good-smoke")
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if result == nil || !result.Sandbox.Passed {
+		t.Fatalf("expected passed sandbox report, got %+v", result)
+	}
+	if len(result.Sandbox.Checks) != 2 {
+		t.Fatalf("expected default manifest check plus smoke command, got %+v", result.Sandbox.Checks)
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "skills", "good-smoke", "SKILL.md")); err != nil {
+		t.Fatalf("expected real skill install after sandbox pass: %v", err)
+	}
+}
+
+func TestUpdateKeepsExistingSkillWhenSandboxSmokeFails(t *testing.T) {
+	v1Files := map[string][]byte{
+		"/skills/steady/SKILL.md": []byte("---\nname: steady\n---\n# Steady v1\n"),
+	}
+	v1Index := RegistryIndex{
+		Version: 4,
+		Skills: []RegistryEntry{
+			{
+				Name:          "steady",
+				Description:   "Existing skill fixture",
+				Version:       "0.1.0",
+				Author:        "devlikebear",
+				Path:          "skills/steady",
+				UserInvocable: true,
+				Files: RegistryFiles{
+					{Path: "SKILL.md", SHA256: sha256Hex(v1Files["/skills/steady/SKILL.md"])},
+				},
+			},
+		},
+	}
+	srv := newRegistryServer(t, v1Index, v1Files)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+	if _, err := inst.Install(context.Background(), "steady"); err != nil {
+		t.Fatalf("initial Install: %v", err)
+	}
+	skillFile := filepath.Join(tmpDir, "skills", "steady", "SKILL.md")
+	before, err := os.ReadFile(skillFile)
+	if err != nil {
+		t.Fatalf("read installed skill: %v", err)
+	}
+
+	v2Files := map[string][]byte{
+		"/skills/steady/SKILL.md": []byte("---\nname: steady\nsmoke_tests:\n  - exit 9\n---\n# Steady v2\n"),
+	}
+	v2Index := RegistryIndex{
+		Version: 4,
+		Skills: []RegistryEntry{
+			{
+				Name:          "steady",
+				Description:   "Existing skill fixture",
+				Version:       "0.2.0",
+				Author:        "devlikebear",
+				Path:          "skills/steady",
+				UserInvocable: true,
+				Files: RegistryFiles{
+					{Path: "SKILL.md", SHA256: sha256Hex(v2Files["/skills/steady/SKILL.md"])},
+				},
+			},
+		},
+	}
+	srv2 := newRegistryServer(t, v2Index, v2Files)
+	defer srv2.Close()
+	inst.Registry.RegistryURL = srv2.URL + "/registry.json"
+	inst.Registry.SkillBaseURL = srv2.URL
+	inst.Registry.HTTPClient = srv2.Client()
+
+	result, err := inst.Update(context.Background())
+	if err == nil {
+		t.Fatal("expected update sandbox failure")
+	}
+	if len(result.Failed) != 1 || result.Failed[0].Name != "steady" {
+		t.Fatalf("expected failed steady update, got %+v", result)
+	}
+	after, err := os.ReadFile(skillFile)
+	if err != nil {
+		t.Fatalf("read installed skill after failed update: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("expected existing skill to remain unchanged after sandbox failure\nbefore=%q\nafter=%q", before, after)
+	}
+	db, err := inst.loadDB()
+	if err != nil {
+		t.Fatalf("load DB: %v", err)
+	}
+	if len(db.Skills) != 1 || db.Skills[0].Version != "0.1.0" {
+		t.Fatalf("expected DB to retain v0.1.0, got %+v", db.Skills)
+	}
+}
+
 func TestInstallNoPluginWarningWhenInstalled(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()

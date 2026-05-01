@@ -23,6 +23,9 @@ recommended_tools:
   - write_file
 recommended_project_files: [BRIEF.md, STATE.md]
 wake_phases: plan, draft
+smoke_tests:
+  - test -f SKILL.md
+  - sh scripts/check.sh
 slash: /quick
 aliases: [qn, notes]
 ---
@@ -65,6 +68,9 @@ Use this skill for short capture.
 	}
 	if got := len(meta.WakePhases); got != 2 {
 		t.Fatalf("expected 2 wake phases, got %+v", meta.WakePhases)
+	}
+	if got := strings.Join(meta.SmokeTests, ","); got != "test -f SKILL.md,sh scripts/check.sh" {
+		t.Fatalf("unexpected smoke tests: %q", got)
 	}
 	if meta.Slash != "quick" {
 		t.Fatalf("expected slash quick, got %q", meta.Slash)
