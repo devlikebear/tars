@@ -12,7 +12,7 @@
 
   let doneCount = $derived(progress.completed + progress.failed)
   let progressPct = $derived(progress.count > 0 ? Math.min(100, Math.max(0, (doneCount / progress.count) * 100)) : 0)
-  let title = $derived(progress.mode === 'consensus' ? 'Consensus subagents' : 'Parallel subagents')
+  let title = $derived(progress.mode === 'consensus' ? 'Consensus subagents' : progress.mode === 'compare' ? 'Compare subagents' : 'Parallel subagents')
   let badgeClass = $derived(tone === 'error' || progress.failed > 0 ? 'badge-error' : tone === 'running' ? 'badge-accent' : 'badge-default')
   let summaryLabel = $derived(`${progress.completed}/${progress.count} done${progress.failed > 0 ? `, ${progress.failed} failed` : ''}`)
 
@@ -57,6 +57,70 @@
       </div>
     {/each}
   </div>
+
+  {#if progress.comparison}
+    <div class="compare-summary">
+      <section>
+        <h4>Common</h4>
+        {#if progress.comparison.commonFindings.length > 0}
+          <ul>
+            {#each progress.comparison.commonFindings as finding}
+              <li>{finding}</li>
+            {/each}
+          </ul>
+        {:else}
+          <p>No shared findings detected.</p>
+        {/if}
+      </section>
+      <section>
+        <h4>Conflicts</h4>
+        {#if progress.comparison.conflicts.length > 0}
+          <ul>
+            {#each progress.comparison.conflicts as conflict}
+              <li>{conflict}</li>
+            {/each}
+          </ul>
+        {:else}
+          <p>No obvious conflicts detected.</p>
+        {/if}
+      </section>
+      <section>
+        <h4>Evidence</h4>
+        {#if progress.comparison.evidence.length > 0}
+          <ul>
+            {#each progress.comparison.evidence as item}
+              <li>
+                {#if item.href && item.runId}
+                  <a href={item.href}>{item.title || item.agent || shortRunID(item.runId)}</a>
+                {:else}
+                  <span>{item.title || item.agent || 'source'}</span>
+                {/if}
+                <span>{item.text}</span>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p>No evidence snippets available.</p>
+        {/if}
+      </section>
+    </div>
+
+    {#if progress.comparison.sideBySide.length > 0}
+      <div class="compare-side-by-side">
+        {#each progress.comparison.sideBySide as item}
+          <article>
+            <div class="compare-output-head">
+              <strong>{item.title || item.agent || 'Subagent'}</strong>
+              {#if item.href && item.runId}
+                <a href={item.href}>Run {shortRunID(item.runId)}</a>
+              {/if}
+            </div>
+            <pre>{item.response || item.error || '(waiting)'}</pre>
+          </article>
+        {/each}
+      </div>
+    {/if}
+  {/if}
 </details>
 
 <style>
@@ -224,6 +288,100 @@
     text-decoration: underline;
   }
 
+  .compare-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .compare-summary section,
+  .compare-side-by-side article {
+    min-width: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    padding: var(--space-2);
+  }
+
+  .compare-summary h4 {
+    margin: 0 0 var(--space-1);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+  }
+
+  .compare-summary ul {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+    padding-left: var(--space-3);
+    color: var(--text-secondary);
+  }
+
+  .compare-summary li {
+    overflow-wrap: anywhere;
+  }
+
+  .compare-summary li a,
+  .compare-output-head a {
+    color: var(--primary);
+    text-decoration: none;
+  }
+
+  .compare-summary li a:hover,
+  .compare-output-head a:hover {
+    text-decoration: underline;
+  }
+
+  .compare-summary li span + span {
+    display: block;
+    margin-top: 2px;
+  }
+
+  .compare-summary p {
+    margin: 0;
+    color: var(--text-tertiary);
+  }
+
+  .compare-side-by-side {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .compare-output-head {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+    margin-bottom: var(--space-1);
+  }
+
+  .compare-output-head strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .compare-output-head a {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .compare-side-by-side pre {
+    max-height: 220px;
+    margin: 0;
+    overflow: auto;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
   @media (max-width: 720px) {
     .subagent-header {
       flex-wrap: wrap;
@@ -236,6 +394,10 @@
     .subagent-row {
       grid-template-columns: 1fr;
       align-items: start;
+    }
+
+    .compare-summary {
+      grid-template-columns: 1fr;
     }
   }
 </style>

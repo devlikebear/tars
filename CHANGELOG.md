@@ -6,6 +6,27 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.121] - 2026-05-01
+
+### Added
+
+- Added `subagents_run` compare mode for 2-3 read-only subagents inspecting the same prompt independently.
+- Added task-level `agent` selection for `subagents_run`, while preserving top-level agent fallback and existing safety validation.
+- Added compare-mode results with side-by-side outputs, common findings, conflict candidates, sourced evidence snippets, and direct run links in Console Chat.
+
+### Documentation
+
+- README and the Agent Runtime tutorial now describe compare-mode subagent workflows.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tool -run 'TestSubagentsRunTool_CompareMode|TestSubagentsRunTool_.*ConsensusSchema'`
+- `cd frontend/console && node --experimental-strip-types --test tests/subagentProgress.test.ts`
+
+### Closed
+
+- Closes #592.
+
 ## [0.31.120] - 2026-05-01
 
 ### Added

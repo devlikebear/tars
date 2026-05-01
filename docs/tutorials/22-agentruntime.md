@@ -292,6 +292,27 @@ func (rt *Runtime) trimRunsLocked() {
 
 메모리에만 상태를 유지하므로, maxRuns(200)을 초과하면 완료된 오래된 Run부터 제거합니다. 활성(accepted/running) Run은 절대 제거하지 않습니다.
 
+### 22-10. Subagent compare mode
+
+최신 TARS의 `subagents_run`은 기본 병렬 실행 외에 `mode: "compare"`를 지원합니다. 이 모드는 2-3개의 read-only subagent task가 같은 prompt를 독립적으로 실행하도록 강제하고, 도구 결과에 다음 비교 섹션을 함께 반환합니다.
+
+- `common_findings`: 둘 이상의 subagent 출력에 함께 등장한 핵심 문장
+- `conflicts`: 부정/긍정 문장이 같은 주제를 다르게 말하는 후보
+- `evidence`: 각 subagent 출력에서 뽑은 run-id가 붙은 근거 조각
+- `side_by_side`: 콘솔이 나란히 렌더링할 원문 출력
+
+```json
+{
+  "mode": "compare",
+  "tasks": [
+    {"agent": "explorer", "title": "Explorer pass", "prompt": "원인 분석"},
+    {"agent": "reviewer", "title": "Reviewer pass", "prompt": "원인 분석"}
+  ]
+}
+```
+
+Console Chat은 이 payload를 progress card로 렌더링하고 각 개별 run을 `/console/agentruntime/runs/{run_id}`로 연결합니다. 그래서 설계 검토나 root-cause analysis에서 "공통 결론", "충돌 후보", "근거", "원문"을 한 화면에서 비교할 수 있습니다.
+
 ## TARS 원본과의 차이
 
 | 항목 | TARS 원본 | 최소 구현 |

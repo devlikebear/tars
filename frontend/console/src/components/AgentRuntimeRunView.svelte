@@ -77,7 +77,7 @@
   let stopStream: (() => void) | null = null
 
   const runtimeTools = [
-    { name: 'subagents_run', detail: 'Single delegated task on a selected model tier.' },
+    { name: 'subagents_run', detail: 'Parallel or compare-mode delegated tasks on selected agents and tiers.' },
     { name: 'subagents_orchestrate', detail: 'Advanced opt-in staged flow for dependent steps.' },
     { name: 'subagents_plan', detail: 'Advanced opt-in planner for staged flows.' },
   ]
