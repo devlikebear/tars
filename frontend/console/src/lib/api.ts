@@ -56,6 +56,7 @@ import type {
   UpdateCronJobRequest,
   SessionTasks,
   TaskContract,
+  TaskEvidence,
   SessionWorkDirs,
   UsageToday,
   LogsResponse,
@@ -96,7 +97,26 @@ function normalizeSessionTasks(data: Partial<SessionTasks> | null | undefined): 
   return {
     ...(data?.plan ? { plan: data.plan } : {}),
     ...(data?.contract ? { contract: normalizeTaskContract(data.contract) } : {}),
-    tasks: Array.isArray(data?.tasks) ? data.tasks : [],
+    tasks: Array.isArray(data?.tasks)
+      ? data.tasks.map((task) => ({
+        ...task,
+        evidence: Array.isArray(task.evidence) ? task.evidence.map(normalizeTaskEvidence) : [],
+      }))
+      : [],
+  }
+}
+
+function normalizeTaskEvidence(data: Partial<TaskEvidence> | null | undefined): TaskEvidence {
+  return {
+    id: data?.id ?? '',
+    type: data?.type ?? 'command_output_summary',
+    ...(data?.title ? { title: data.title } : {}),
+    ...(data?.summary ? { summary: data.summary } : {}),
+    ...(data?.url ? { url: data.url } : {}),
+    ...(data?.command ? { command: data.command } : {}),
+    ...(data?.path ? { path: data.path } : {}),
+    ...(data?.status ? { status: data.status } : {}),
+    ...(data?.created_at ? { created_at: data.created_at } : {}),
   }
 }
 

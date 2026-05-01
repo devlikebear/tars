@@ -977,11 +977,32 @@ export type TaskContract = {
   updated_at?: string
 }
 
+export type TaskEvidenceType =
+  | 'test_result'
+  | 'image'
+  | 'log_excerpt'
+  | 'pr_link'
+  | 'release_tag'
+  | 'command_output_summary'
+
+export type TaskEvidence = {
+  id: string
+  type: TaskEvidenceType | string
+  title?: string
+  summary?: string
+  url?: string
+  command?: string
+  path?: string
+  status?: string
+  created_at?: string
+}
+
 export type SessionTask = {
   id: string
   title: string
   status: string
   description?: string
+  evidence?: TaskEvidence[]
 }
 
 export type SessionTasks = {

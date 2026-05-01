@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { executeTasksAction, getSessionTasks } from '../lib/api'
-  import type { SessionTasks, TaskContract } from '../lib/types'
+  import type { SessionTasks, TaskContract, TaskEvidence } from '../lib/types'
 
   interface Props {
     sessionId: string
@@ -24,6 +24,14 @@
   let contract = $derived(data.contract)
   let status = $derived(contract?.status ?? 'draft')
   let hasDraft = $derived(Boolean(contract || data.plan))
+  let contractEvidence = $derived.by<Array<TaskEvidence & { task_title: string }>>(() => {
+    return (data.tasks ?? []).flatMap((task) =>
+      (task.evidence ?? []).map((evidence) => ({
+        ...evidence,
+        task_title: task.title,
+      })),
+    )
+  })
 
   function lines(value?: string[]): string {
     return (value ?? []).join('\n')
@@ -34,6 +42,10 @@
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)
+  }
+
+  function evidenceLabel(evidence: TaskEvidence): string {
+    return evidence.title?.trim() || evidence.type.replaceAll('_', ' ')
   }
 
   function loadDraft(next: SessionTasks) {
@@ -144,6 +156,36 @@
       <div class="success-banner">{saved}</div>
     {/if}
 
+    <section class="contract-evidence" aria-label="Evidence">
+      <div class="panel-title-row">
+        <span class="card-title">Evidence</span>
+        <span class="badge badge-default">{contractEvidence.length}</span>
+      </div>
+      {#if contractEvidence.length === 0}
+        <p class="hint">No verification evidence attached yet.</p>
+      {:else}
+        <div class="contract-evidence-list">
+          {#each contractEvidence as evidence (evidence.id)}
+            <article class="contract-evidence-card">
+              <div>
+                <strong>{evidenceLabel(evidence)}</strong>
+                <small>{evidence.task_title}</small>
+              </div>
+              {#if evidence.summary}
+                <p>{evidence.summary}</p>
+              {/if}
+              {#if evidence.command}
+                <code>{evidence.command}</code>
+              {/if}
+              {#if evidence.url}
+                <a href={evidence.url} target="_blank" rel="noreferrer">{evidence.url}</a>
+              {/if}
+            </article>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
     <div class="contract-actions">
       <button class="btn btn-primary btn-sm" type="button" disabled={saving} onclick={() => saveContract(false)}>
         {saving ? 'Saving...' : 'Save'}
@@ -209,6 +251,52 @@
 
   .contract-actions {
     flex-wrap: wrap;
+  }
+
+  .contract-evidence,
+  .contract-evidence-list,
+  .contract-evidence-card {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .contract-evidence {
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--space-3);
+  }
+
+  .contract-evidence-card {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: var(--space-2);
+  }
+
+  .contract-evidence-card div {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .contract-evidence-card strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .contract-evidence-card small,
+  .contract-evidence-card p,
+  .contract-evidence-card a,
+  .contract-evidence-card code {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .contract-evidence-card code {
+    font-family: var(--font-mono);
+    color: var(--text-tertiary);
   }
 
   .empty-state {

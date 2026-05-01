@@ -118,6 +118,67 @@ func TestTasks_ContractUpdateAndApprove(t *testing.T) {
 	}
 }
 
+func TestTasks_EvidenceAddAndRemove(t *testing.T) {
+	tool, sid, store := newTasksToolForTest(t)
+	runTasksAction(t, tool, `{"action":"plan_set","goal":"ship feature X"}`)
+	runTasksAction(t, tool, `{"action":"add","title":"Run verification"}`)
+
+	add := runTasksAction(t, tool, `{
+		"action":"evidence_add",
+		"task_id":"1",
+		"type":"test_result",
+		"title":"Go tests",
+		"summary":"internal/tool passed",
+		"command":"go test ./internal/tool",
+		"status":"passed"
+	}`)
+	if add.IsError {
+		t.Fatalf("evidence_add unexpectedly errored: %s", add.Content[0].Text)
+	}
+	st, err := store.GetTasks(sid)
+	if err != nil {
+		t.Fatalf("get tasks: %v", err)
+	}
+	if len(st.Tasks) != 1 || len(st.Tasks[0].Evidence) != 1 {
+		t.Fatalf("expected evidence on task 1, got %+v", st.Tasks)
+	}
+	ev := st.Tasks[0].Evidence[0]
+	if ev.ID == "" || ev.Type != session.EvidenceTypeTestResult || ev.Command != "go test ./internal/tool" {
+		t.Fatalf("unexpected evidence: %+v", ev)
+	}
+
+	remove := runTasksAction(t, tool, `{"action":"evidence_remove","task_id":"1","evidence_id":"`+ev.ID+`"}`)
+	if remove.IsError {
+		t.Fatalf("evidence_remove unexpectedly errored: %s", remove.Content[0].Text)
+	}
+	st, err = store.GetTasks(sid)
+	if err != nil {
+		t.Fatalf("get tasks after remove: %v", err)
+	}
+	if len(st.Tasks[0].Evidence) != 0 {
+		t.Fatalf("expected evidence removed, got %+v", st.Tasks[0].Evidence)
+	}
+}
+
+func TestTasks_EvidenceAddRejectsInvalidType(t *testing.T) {
+	tool, _, _ := newTasksToolForTest(t)
+	runTasksAction(t, tool, `{"action":"plan_set","goal":"ship feature X"}`)
+	runTasksAction(t, tool, `{"action":"add","title":"Run verification"}`)
+
+	res := runTasksAction(t, tool, `{
+		"action":"evidence_add",
+		"task_id":"1",
+		"type":"mystery",
+		"summary":"unknown"
+	}`)
+	if !res.IsError {
+		t.Fatalf("expected invalid evidence type to error, got %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, "evidence type") {
+		t.Fatalf("expected evidence type error, got %s", res.Content[0].Text)
+	}
+}
+
 func TestTasks_PlanProposeDraftingToProposed(t *testing.T) {
 	tool, sid, store := newTasksToolForTest(t)
 	runTasksAction(t, tool, `{"action":"plan_set","goal":"X"}`)
