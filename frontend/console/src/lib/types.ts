@@ -255,6 +255,40 @@ export type FileAttentionSummary = {
   sparkline?: number[]
 }
 
+export type AgentRuntimeDiffSummary = {
+  files: number
+  additions: number
+  deletions: number
+}
+
+export type AgentRuntimeDiffFileChange = {
+  path: string
+  status: string
+  additions?: number
+  deletions?: number
+  patch?: string
+  git_inspector_url?: string
+}
+
+export type AgentRuntimeDiffTimelineEntry = {
+  id: string
+  run_id: string
+  session_id?: string
+  session_kind?: string
+  agent?: string
+  prompt?: string
+  parent_run_id?: string
+  root_run_id?: string
+  flow_id?: string
+  step_id?: string
+  started_at?: string
+  completed_at?: string
+  repo_root?: string
+  git_inspector_url?: string
+  summary: AgentRuntimeDiffSummary
+  files?: AgentRuntimeDiffFileChange[]
+}
+
 export type AgentRuntimeRun = {
   run_id: string
   session_id?: string
@@ -280,6 +314,7 @@ export type AgentRuntimeRun = {
   consensus_budget_usd?: number
   file_attention?: FileAttentionSummary[]
   file_ops_total?: number
+  diff_timeline?: AgentRuntimeDiffTimelineEntry[]
   created_at?: string
   started_at?: string
   completed_at?: string

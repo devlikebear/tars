@@ -27,7 +27,7 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	if err := r.acquireExecutionSlot(ctx); err != nil {
 		r.mu.Lock()
 		if state.run.Status != RunStatusCanceled {
-			r.finalizeRunLocked(state, "", PromptExecutionMetadata{}, err)
+			r.finalizeRunLocked(state, "", PromptExecutionMetadata{}, err, nil)
 		}
 		r.mu.Unlock()
 		r.persistSnapshot()
@@ -40,10 +40,17 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 		return
 	}
 
+	diffBefore, diffBeforeOK := captureGitDiffSnapshot(r.opts.WorkspaceDir)
 	resp, metadata, err := r.executeRunPrompt(ctx, state, executor)
+	diffAfter, diffAfterOK := captureGitDiffSnapshot(r.opts.WorkspaceDir)
 
 	r.mu.Lock()
+	var diffEntry *DiffTimelineEntry
+	if diffBeforeOK && diffAfterOK {
+		diffEntry = buildDiffTimelineEntry(diffBefore, diffAfter, state.run)
+	}
 	if state.run.Status == RunStatusCanceled {
+		r.appendDiffTimelineEntryLocked(state, diffEntry)
 		r.closeRunDoneLocked(state)
 		r.trimRunHistoryLocked()
 		r.stateVersion++
@@ -52,7 +59,7 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 		r.persistSnapshot()
 		return
 	}
-	r.finalizeRunLocked(state, resp, metadata, err)
+	r.finalizeRunLocked(state, resp, metadata, err, diffEntry)
 	r.mu.Unlock()
 	r.persistSnapshot()
 }
@@ -136,7 +143,7 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 //
 // The caller must already hold the runtime mutex. The two branch helpers
 // only mutate state.run; they don't touch runtime-wide state.
-func (r *Runtime) finalizeRunLocked(state *runState, resp string, metadata PromptExecutionMetadata, err error) {
+func (r *Runtime) finalizeRunLocked(state *runState, resp string, metadata PromptExecutionMetadata, err error, diffEntry *DiffTimelineEntry) {
 	finishedAt := r.nowFn().UTC().Format(time.RFC3339)
 	state.run.CompletedAt = finishedAt
 	state.run.UpdatedAt = finishedAt
@@ -144,6 +151,7 @@ func (r *Runtime) finalizeRunLocked(state *runState, resp string, metadata Promp
 	state.run.ResolvedKind = strings.TrimSpace(metadata.ResolvedKind)
 	state.run.ResolvedModel = strings.TrimSpace(metadata.ResolvedModel)
 	state.run.OverrideSource = strings.TrimSpace(metadata.OverrideSource)
+	r.appendDiffTimelineEntryLocked(state, diffEntry)
 
 	if err != nil {
 		event := r.applyFailedFinalState(state, err, finishedAt)
@@ -225,6 +233,19 @@ func (r *Runtime) commitRunFinalization(state *runState, summaryBody string, eve
 	r.stateVersion++
 	r.appendRunSummaryToMain(state.run, summaryBody)
 	r.publishRunEvent(state.run.ID, event)
+}
+
+func (r *Runtime) appendDiffTimelineEntryLocked(state *runState, diffEntry *DiffTimelineEntry) {
+	if state == nil || diffEntry == nil || len(diffEntry.Files) == 0 {
+		return
+	}
+	if strings.TrimSpace(diffEntry.StartedAt) == "" {
+		diffEntry.StartedAt = state.run.StartedAt
+	}
+	if strings.TrimSpace(diffEntry.CompletedAt) == "" {
+		diffEntry.CompletedAt = state.run.CompletedAt
+	}
+	state.run.DiffTimeline = append(state.run.DiffTimeline, *diffEntry)
 }
 
 func blockedToolNameFromReason(reason string) string {

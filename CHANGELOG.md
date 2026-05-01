@@ -6,6 +6,34 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.99] - 2026-05-01
+
+### Added
+
+- Added Agent Runtime git diff timeline snapshots so completed runs can show which workspace files changed, including changes made through shell commands rather than file tools.
+- Added per-run diff metadata with session, agent, plan flow/step, repo root, file status, additions, deletions, patch previews, and future Git Inspector targets.
+- Added a Console Agent Runtime detail panel that groups captured file changes by run and links back to the owning Agent Runtime run.
+
+### Documentation
+
+- README now documents Agent Runtime diff timeline visibility for coding workflows.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/agentruntime -run 'TestRuntimeCapturesGitDiffTimelineForShellStyleChanges|TestRuntimeSpawnAndWait|TestRuntimeCapturesFileToolCallSummaryAndEvent'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/agentruntime`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/agentruntime/runs/:id` Diff Timeline rendering with a mock run payload
+
+### Closed
+
+- Closes #576.
+
 ## [0.31.98] - 2026-05-01
 
 ### Added

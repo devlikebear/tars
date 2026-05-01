@@ -54,6 +54,7 @@ type Run struct {
 	ConsensusBudgetUSD  float64                  `json:"consensus_budget_usd,omitempty"`
 	FileAttention       []FileAttentionSummary   `json:"file_attention,omitempty"`
 	FileOpsTotal        int                      `json:"file_ops_total,omitempty"`
+	DiffTimeline        []DiffTimelineEntry      `json:"diff_timeline,omitempty"`
 	ProviderOverride    *ProviderOverride        `json:"provider_override,omitempty"`
 	ResolvedAlias       string                   `json:"resolved_alias,omitempty"`
 	ResolvedKind        string                   `json:"resolved_kind,omitempty"`
@@ -133,6 +134,40 @@ type FileAttentionSummary struct {
 	FirstAt   string `json:"first_at,omitempty"`
 	LastAt    string `json:"last_at,omitempty"`
 	Sparkline []int  `json:"sparkline,omitempty"`
+}
+
+type DiffTimelineSummary struct {
+	Files     int `json:"files"`
+	Additions int `json:"additions"`
+	Deletions int `json:"deletions"`
+}
+
+type DiffFileChange struct {
+	Path            string `json:"path"`
+	Status          string `json:"status"`
+	Additions       int    `json:"additions,omitempty"`
+	Deletions       int    `json:"deletions,omitempty"`
+	Patch           string `json:"patch,omitempty"`
+	GitInspectorURL string `json:"git_inspector_url,omitempty"`
+}
+
+type DiffTimelineEntry struct {
+	ID              string              `json:"id"`
+	RunID           string              `json:"run_id"`
+	SessionID       string              `json:"session_id,omitempty"`
+	SessionKind     string              `json:"session_kind,omitempty"`
+	Agent           string              `json:"agent,omitempty"`
+	Prompt          string              `json:"prompt,omitempty"`
+	ParentRunID     string              `json:"parent_run_id,omitempty"`
+	RootRunID       string              `json:"root_run_id,omitempty"`
+	FlowID          string              `json:"flow_id,omitempty"`
+	StepID          string              `json:"step_id,omitempty"`
+	StartedAt       string              `json:"started_at,omitempty"`
+	CompletedAt     string              `json:"completed_at,omitempty"`
+	RepoRoot        string              `json:"repo_root,omitempty"`
+	GitInspectorURL string              `json:"git_inspector_url,omitempty"`
+	Summary         DiffTimelineSummary `json:"summary"`
+	Files           []DiffFileChange    `json:"files,omitempty"`
 }
 
 type ResolvedProviderOverride struct {
