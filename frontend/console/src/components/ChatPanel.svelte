@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
-  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills } from '../lib/api'
-  import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, SessionMessage, SkillDef } from '../lib/types'
+  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, forkSessionFromMessage } from '../lib/api'
+  import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, Session, SessionMessage, SkillDef } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import {
     applyMentionCandidate,
@@ -59,6 +59,7 @@
     onTasksChanged?: (summary: TasksSummary) => void
     onSlashCommand?: (command: string, args: string) => void | Promise<void>
     onDraftChange?: (draft: string) => void
+    onSessionForked?: (session: Session) => void
   }
 
   type TasksSummary = {
@@ -70,7 +71,7 @@
     plan_goal?: string
   }
 
-  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen, onTasksChanged, onSlashCommand, onDraftChange }: Props = $props()
+  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen, onTasksChanged, onSlashCommand, onDraftChange, onSessionForked }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -849,7 +850,8 @@
         })
       } else {
         rebuilt.push({
-          id: `hist-${rebuilt.length}`,
+          id: msg.id || `hist-${rebuilt.length}`,
+          sourceMessageId: msg.id,
           role: msg.role as ChatMessage['role'],
           text: msg.content,
         })
@@ -858,6 +860,27 @@
     chatMessages = rebuilt
     artifacts = extractArtifactsFromHistory(chatMessages, targetSessionId)
     if (artifacts.length > 0) onArtifactsChange?.(artifacts)
+  }
+
+  async function handleForkMessage(message: ChatMessage) {
+    const targetSessionId = (chatSessionId || sessionId || '').trim()
+    const sourceMessageId = message.sourceMessageId?.trim()
+    if (!targetSessionId || !sourceMessageId) return
+    if (chatBusy) {
+      chatError = 'Wait for the current response to finish before forking this session.'
+      return
+    }
+    chatError = ''
+    chatStatusLine = 'Forking session...'
+    try {
+      const child = await forkSessionFromMessage(targetSessionId, sourceMessageId, `Forked from ${message.role} message`)
+      onSessionForked?.(child)
+      onSessionChange?.()
+    } catch (err) {
+      chatError = err instanceof Error ? err.message : 'Failed to fork session'
+    } finally {
+      chatStatusLine = ''
+    }
   }
 
   onMount(async () => {
@@ -910,7 +933,7 @@
   {/if}
   <div class="chat-log" bind:this={chatLogEl} onscroll={handleScroll}>
     {#each chatMessages as msg}
-      <ChatMessageItem message={msg} {artifacts} {onArtifactOpen} onCopy={copyMessageText} />
+      <ChatMessageItem message={msg} {artifacts} {onArtifactOpen} onCopy={copyMessageText} onForkMessage={handleForkMessage} />
     {/each}
   </div>
   {#if chatError}

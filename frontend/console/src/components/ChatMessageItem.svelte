@@ -16,9 +16,10 @@
     artifacts: Artifact[]
     onArtifactOpen?: (path: string) => void
     onCopy: (text: string) => void
+    onForkMessage?: (message: ChatMessage) => void
   }
 
-  let { message, artifacts, onArtifactOpen, onCopy }: Props = $props()
+  let { message, artifacts, onArtifactOpen, onCopy, onForkMessage }: Props = $props()
 
   let nowMs = $state(Date.now())
 
@@ -87,6 +88,9 @@
       <div class="chat-msg-footer">
         {#if message.usage}
           <span class="usage-badge" title="Token usage">In: {message.usage.input_tokens.toLocaleString()} &middot; Out: {message.usage.output_tokens.toLocaleString()}{message.usage.cache_read_tokens ? ` \u00b7 Cached: ${message.usage.cache_read_tokens.toLocaleString()}` : ''}</span>
+        {/if}
+        {#if message.sourceMessageId && onForkMessage}
+          <button type="button" class="msg-copy-btn" title="Fork from here" onclick={() => onForkMessage?.(message)}>Fork from here</button>
         {/if}
         <button type="button" class="msg-copy-btn" title="Copy message" onclick={() => onCopy(message.text)}>Copy</button>
       </div>
@@ -238,6 +242,7 @@
   .chat-msg-footer {
     display: flex;
     justify-content: flex-end;
+    gap: var(--space-2);
     margin-top: var(--space-2);
     opacity: 0;
     transition: opacity var(--duration-fast);

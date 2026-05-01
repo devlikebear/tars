@@ -286,6 +286,14 @@ export async function getSessionHistory(sessionId: string): Promise<SessionMessa
   return requestJSON<SessionMessage[]>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/history`)
 }
 
+export async function forkSessionFromMessage(sessionId: string, messageId: string, forkReason?: string): Promise<Session> {
+  return requestJSON<Session>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/fork`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message_id: messageId, fork_reason: forkReason || 'Forked from chat transcript' }),
+  })
+}
+
 export async function renameSession(sessionId: string, title: string): Promise<void> {
   await requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}`, {
     method: 'PATCH',

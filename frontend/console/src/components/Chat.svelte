@@ -287,6 +287,19 @@
     if (selectedSessionId) loadSelectedSession(selectedSessionId)
   }
 
+  function handleSessionForked(session: Session) {
+    selectedSessionId = session.id
+    selectedSession = session
+    chatKey++
+    chatArtifacts = []
+    chatDraft = ''
+    chatContextInfo = {}
+    closeToolPanels()
+    sidebarRef?.load()
+    showFeedback(`Forked session: ${session.title || session.id.slice(0, 12)}`)
+    onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
+  }
+
   function handleArtifactsChange(arts: Artifact[]) {
     chatArtifacts = arts
     if (arts.length > 0 && !anyToolPanelOpen) {
@@ -782,6 +795,7 @@
           onTasksChanged={handleTasksChanged}
           onSlashCommand={handleSlashCommand}
           onDraftChange={(draft) => { chatDraft = draft }}
+          onSessionForked={handleSessionForked}
           onSessionReady={(id) => {
             if (!selectedSessionId) {
               selectedSessionId = id

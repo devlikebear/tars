@@ -372,6 +372,45 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 				"items": items,
 				"count": len(items),
 			})
+		case len(pathParts) == 2 && pathParts[1] == "fork":
+			if !requireMethod(w, r, http.MethodPost) {
+				return
+			}
+			actualID := sessionID
+			if strings.EqualFold(sessionID, "main") {
+				resolvedMainID, err := resolveInternalMainID(reqStore)
+				if err != nil {
+					logger.Error().Err(err).Msg("resolve main session failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve main session failed"})
+					return
+				}
+				actualID = resolvedMainID
+			}
+			var req struct {
+				MessageID  string `json:"message_id"`
+				Title      string `json:"title,omitempty"`
+				ForkReason string `json:"fork_reason,omitempty"`
+			}
+			if !decodeJSONBody(w, r, &req) {
+				return
+			}
+			child, err := reqStore.ForkFromMessage(actualID, req.MessageID, session.ForkOptions{
+				Title:  req.Title,
+				Reason: req.ForkReason,
+			})
+			if err != nil {
+				switch {
+				case strings.Contains(err.Error(), "is required"):
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				case strings.Contains(err.Error(), "not found"):
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+				default:
+					logger.Error().Err(err).Str("session_id", actualID).Msg("fork session failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "fork session failed"})
+				}
+				return
+			}
+			writeJSON(w, http.StatusCreated, child)
 		case len(pathParts) == 1:
 			if !requireMethod(w, r, http.MethodGet, http.MethodPatch, http.MethodDelete) {
 				return

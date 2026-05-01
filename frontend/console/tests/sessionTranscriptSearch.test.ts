@@ -7,6 +7,10 @@ import { highlightTerms } from '../src/lib/markdown.ts'
 const sessionsSource = readFileSync(new URL('../src/components/Sessions.svelte', import.meta.url), 'utf8')
 const sessionSidebarSource = readFileSync(new URL('../src/components/SessionSidebar.svelte', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const chatMessagesSource = readFileSync(new URL('../src/lib/chatMessages.ts', import.meta.url), 'utf8')
+const chatPanelSource = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
+const chatMessageItemSource = readFileSync(new URL('../src/components/ChatMessageItem.svelte', import.meta.url), 'utf8')
 
 test('Sessions search reuses memory session search for transcript snippets', () => {
   assert.match(sessionsSource, /runMemorySearch/)
@@ -43,4 +47,15 @@ test('Session and transcript message types expose lineage identifiers', () => {
   assert.match(typesSource, /forked_from_index\?: number/)
   assert.match(typesSource, /fork_reason\?: string/)
   assert.match(typesSource, /export type SessionMessage = \{[\s\S]*id: string/)
+})
+
+test('Chat transcript messages can fork a new session from their persisted message id', () => {
+  assert.match(chatMessagesSource, /sourceMessageId\?: string/)
+  assert.match(apiSource, /forkSessionFromMessage/)
+  assert.match(apiSource, /\/v1\/admin\/sessions\/.*\/fork/)
+  assert.match(chatPanelSource, /forkSessionFromMessage/)
+  assert.match(chatPanelSource, /handleForkMessage/)
+  assert.match(chatPanelSource, /sourceMessageId:\s*msg\.id/)
+  assert.match(chatMessageItemSource, /onForkMessage/)
+  assert.match(chatMessageItemSource, /Fork from here/)
 })
