@@ -1011,6 +1011,69 @@ export type SessionTasks = {
   tasks: SessionTask[]
 }
 
+export type GitRemote = {
+  name: string
+  fetch_url?: string
+  push_url?: string
+}
+
+export type GitStatusFile = {
+  path: string
+  old_path?: string
+  index?: string
+  worktree?: string
+  status: string
+  staged: boolean
+  unstaged: boolean
+  untracked?: boolean
+}
+
+export type GitStatus = {
+  is_git: boolean
+  root: string
+  branch?: string
+  head?: string
+  upstream?: string
+  remotes?: GitRemote[]
+  files?: GitStatusFile[]
+}
+
+export type GitDiff = {
+  is_git: boolean
+  root: string
+  path?: string
+  staged: boolean
+  patch: string
+}
+
+export type GitCommit = {
+  hash: string
+  short_hash: string
+  author?: string
+  date?: string
+  subject: string
+}
+
+export type GitLogResponse = {
+  is_git: boolean
+  root: string
+  commits: GitCommit[]
+}
+
+export type GitBranch = {
+  name: string
+  current?: boolean
+  upstream?: string
+  remote?: boolean
+  head?: string
+}
+
+export type GitBranchesResponse = {
+  is_git: boolean
+  root: string
+  branches: GitBranch[]
+}
+
 export type GlobalPlanItem = {
   session: Session
   plan: SessionPlan

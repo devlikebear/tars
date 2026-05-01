@@ -57,6 +57,10 @@ import type {
   SessionTasks,
   TaskContract,
   TaskEvidence,
+  GitBranchesResponse,
+  GitDiff,
+  GitLogResponse,
+  GitStatus,
   SessionWorkDirs,
   UsageToday,
   LogsResponse,
@@ -419,6 +423,49 @@ export async function executeTasksAction(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
+}
+
+// --- Git Inspector ---
+
+type GitQuery = {
+  sessionId?: string
+  root?: string
+}
+
+function gitQueryParams(query: GitQuery = {}): URLSearchParams {
+  const params = new URLSearchParams()
+  if (query.sessionId?.trim()) params.set('session_id', query.sessionId.trim())
+  if (query.root?.trim()) params.set('root', query.root.trim())
+  return params
+}
+
+function gitEndpoint(path: string, query: GitQuery = {}): string {
+  const params = gitQueryParams(query)
+  const suffix = params.toString()
+  return `/v1/git/${path}${suffix ? `?${suffix}` : ''}`
+}
+
+export function getGitStatus(query: GitQuery = {}): Promise<GitStatus> {
+  return requestJSON<GitStatus>(gitEndpoint('status', query))
+}
+
+export function getGitDiff(query: GitQuery & { path?: string; staged?: boolean } = {}): Promise<GitDiff> {
+  const params = gitQueryParams(query)
+  if (query.path?.trim()) params.set('path', query.path.trim())
+  if (query.staged) params.set('staged', '1')
+  const suffix = params.toString()
+  return requestJSON<GitDiff>(`/v1/git/diff${suffix ? `?${suffix}` : ''}`)
+}
+
+export function getGitLog(query: GitQuery & { limit?: number } = {}): Promise<GitLogResponse> {
+  const params = gitQueryParams(query)
+  if (query.limit) params.set('limit', String(query.limit))
+  const suffix = params.toString()
+  return requestJSON<GitLogResponse>(`/v1/git/log${suffix ? `?${suffix}` : ''}`)
+}
+
+export function getGitBranches(query: GitQuery = {}): Promise<GitBranchesResponse> {
+  return requestJSON<GitBranchesResponse>(gitEndpoint('branches', query))
 }
 
 export async function getSessionWorkDirs(sessionId: string): Promise<SessionWorkDirs> {
