@@ -56,7 +56,8 @@ var subagentsPlanResponseSchema = json.RawMessage(`{
   "required": ["steps"]
 }`)
 
-func NewSubagentsPlanTool(runtime *agentruntime.Runtime, router llm.Router) Tool {
+func NewSubagentsPlanTool(runtime *agentruntime.Runtime, router llm.Router, mirrorConfig ...SubagentsTaskMirrorConfig) Tool {
+	taskMirror := newSubagentsTaskMirror(mirrorConfig)
 	return Tool{
 		Name:        "subagents_plan",
 		Description: "Use the agent runtime planner model to create a staged subagent execution plan before calling subagents_orchestrate.",
@@ -227,6 +228,13 @@ func NewSubagentsPlanTool(runtime *agentruntime.Runtime, router llm.Router) Tool
 				Str("planner_tier", string(resolution.Tier)).
 				Int("step_count", len(plan.Steps)).
 				Msg("subagent planner completed")
+			if err := taskMirror.mirrorPlan(goal, flowID, plan.Steps); err != nil {
+				zlog.Warn().
+					Err(err).
+					Str("flow_id", flowID).
+					Str("agent", agentName).
+					Msg("subagent planner failed to mirror plan to session tasks")
+			}
 
 			payload := map[string]any{
 				"flow_id":          plan.FlowID,
