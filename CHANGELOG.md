@@ -6,6 +6,36 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.88] - 2026-05-01
+
+### Added
+
+- Mirrored `subagents_plan` output into the active session plan/tasks so staged subagent work appears in the Console Tasks panel.
+- Mirrored `subagents_orchestrate` task lifecycle updates into session tasks, including `in_progress`, `completed`, and `cancelled` states with run summaries or error descriptions.
+
+### Changed
+
+- Chat tool registration now injects the active session store into staged subagent tools without changing existing standalone constructor call sites.
+
+### Documentation
+
+- README now documents that staged subagent tools update the session Tasks panel while they run.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tool`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'ChatPipelineTools|ChatTool|SessionTasks|Tasks|Subagents'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tool ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+- `make console-build`
+
+### Closed
+
+- Closes #396.
+
 ## [0.31.87] - 2026-05-01
 
 ### Added
