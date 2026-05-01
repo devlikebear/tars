@@ -36,6 +36,7 @@ func TestSchemaImpactHintsCoverCoreSubsystems(t *testing.T) {
 	checks := map[string][]string{
 		"llm_tiers":                    {"LLM routing"},
 		"api_admin_token":              {"admin"},
+		"style_autonomy_default":       {"consent"},
 		"pulse_allowed_autofixes_json": {"autofix"},
 		"reflection_sleep_window":      {"nightly"},
 		"cron_run_history_limit":       {"cron"},

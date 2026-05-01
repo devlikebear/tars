@@ -50,6 +50,8 @@ import type {
   ReflectionConfigView,
   Session,
   SessionAutomationConsent,
+  SessionStyleControl,
+  SessionStyleResponse,
   SessionMessage,
   GlobalPlansResponse,
   PlanArchiveResponse,
@@ -703,6 +705,21 @@ export async function updateSessionAutomationConsent(
   })
 }
 
+export async function getSessionStyle(sessionId: string): Promise<SessionStyleResponse> {
+  return requestJSON<SessionStyleResponse>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/style`)
+}
+
+export async function updateSessionStyle(
+  sessionId: string,
+  style: SessionStyleControl,
+): Promise<SessionStyleResponse> {
+  return requestJSON<SessionStyleResponse>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/style`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(style),
+  })
+}
+
 export type ChatToolInfo = {
   name: string
   description: string
@@ -747,6 +764,7 @@ export type ChatContextInfo = {
   mentioned_subagents?: string[]
   llm_tier?: string
   tier_recommendation?: ChatTierRecommendationRequest
+  style_effective?: SessionStyleResponse['effective']
   prompt_override: string
 }
 

@@ -780,6 +780,7 @@ type chatToolingOptions struct {
 	// builder so the Planning section's clarifying-questions stance can
 	// be tuned without forking the prompt source.
 	PlanClarifyMode string
+	StyleDefaults   sessionStyleValues
 }
 
 type chatCompactionOptions struct {
@@ -793,6 +794,7 @@ type chatCompactionOptions struct {
 func defaultChatToolingOptions() chatToolingOptions {
 	defaults := config.Default()
 	return chatToolingOptions{
+		StyleDefaults: sessionStyleDefaultsFromConfig(defaults),
 		Compaction: chatCompactionOptions{
 			TriggerTokens:      defaults.CompactionTriggerTokens,
 			KeepRecentTokens:   defaults.CompactionKeepRecentTokens,
@@ -1123,6 +1125,8 @@ func newChatAPIHandlerWithRuntimeConfig(
 		if strings.TrimSpace(sess.PromptOverride) != "" {
 			systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(sess.PromptOverride) + "\n"
 		}
+		style := effectiveSessionStyle(tooling.StyleDefaults, sess.StyleControl)
+		systemPrompt += formatSessionStylePrompt(style, sess.AutomationConsent)
 		registry := buildChatToolRegistry(
 			reqStore, "", sessionID, requestWorkspaceDir, previewPolicy, historySnapshot.Messages, chatHandlerDeps{
 				workspaceDir:  workspaceDir,
@@ -1163,6 +1167,8 @@ func newChatAPIHandlerWithRuntimeConfig(
 			"mentioned_subagent_count":        0,
 			"mentioned_subagents":             []string{},
 			"prompt_override":                 sess.PromptOverride,
+			"style_control":                   sess.StyleControl,
+			"style_effective":                 style,
 		})
 	})
 	return mux

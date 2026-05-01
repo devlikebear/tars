@@ -366,6 +366,7 @@ func buildAPIMux(
 		cfg.APIMaxInflightChat,
 		deps.usageTracker,
 		cfg.PlanClarifyMode,
+		sessionStyleDefaultsFromConfig(cfg),
 	)
 	chatTooling.OpsManager = opsManager
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
@@ -492,7 +493,7 @@ func buildAPIMux(
 		chatTooling,
 		chatTools...,
 	)
-	sessionHandler := newSessionAPIHandlerWithUsage(sessionStore, logger, deps.usageTracker)
+	sessionHandler := newSessionAPIHandlerWithUsageAndStyleDefaults(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg))
 	consoleHandler, err := newConsoleHandler(logger)
 	if err != nil {
 		return nil, err

@@ -39,6 +39,7 @@ type chatRunState struct {
 	llmClient            llm.Client
 	llmResolution        llm.TierResolution
 	tierRecommendation   chatTierRecommendationState
+	sessionStyle         sessionStyleValues
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -143,6 +144,11 @@ func buildSessionChatRunState(
 	if sessErr == nil && strings.TrimSpace(sess.PromptOverride) != "" {
 		systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(sess.PromptOverride) + "\n"
 	}
+	sessionStyle := effectiveSessionStyle(deps.tooling.StyleDefaults, nil)
+	if sessErr == nil {
+		sessionStyle = effectiveSessionStyle(deps.tooling.StyleDefaults, sess.StyleControl)
+		systemPrompt += formatSessionStylePrompt(sessionStyle, sess.AutomationConsent)
+	}
 	if hint := formatChatSubagentMentionHint(subagentMentions); hint != "" {
 		systemPrompt += hint
 	}
@@ -178,6 +184,7 @@ func buildSessionChatRunState(
 		llmClient:            chatClient,
 		llmResolution:        llmResolution,
 		tierRecommendation:   tierRecommendation,
+		sessionStyle:         sessionStyle,
 	}, nil
 }
 

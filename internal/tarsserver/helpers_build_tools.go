@@ -34,6 +34,7 @@ func buildChatToolingOptions(
 	apiMaxInflightChat int,
 	usageTracker *usage.Tracker,
 	planClarifyMode string,
+	styleDefaults sessionStyleValues,
 ) chatToolingOptions {
 	var extensionManager *extensions.Manager
 	extensionManager = manager
@@ -49,6 +50,7 @@ func buildChatToolingOptions(
 		UsageTracker:           usageTracker,
 		Compaction:             compaction,
 		PlanClarifyMode:        strings.TrimSpace(strings.ToLower(planClarifyMode)),
+		StyleDefaults:          effectiveSessionStyle(styleDefaults, nil),
 	}
 }
 

@@ -38,6 +38,10 @@ const (
 const (
 	defaultPlanClarifyMode                     = PlanClarifyModeSmart
 	defaultSessionTelegramScope                = "main"
+	defaultStyleDirectness                     = 70
+	defaultStyleHumor                          = 20
+	defaultStyleCaution                        = 60
+	defaultStyleAutonomy                       = 40
 	defaultAPIAuthMode                         = "required"
 	defaultDashboardAuthMode                   = "inherit"
 	defaultAPIMaxInflightChat                  = 2
@@ -87,9 +91,13 @@ const (
 func defaultConfigValues() Config {
 	return Config{
 		RuntimeConfig: RuntimeConfig{
-			WorkspaceDir:         DefaultWorkspaceDir(),
-			SessionTelegramScope: defaultSessionTelegramScope,
-			PlanClarifyMode:      defaultPlanClarifyMode,
+			WorkspaceDir:           DefaultWorkspaceDir(),
+			SessionTelegramScope:   defaultSessionTelegramScope,
+			StyleDirectnessDefault: defaultStyleDirectness,
+			StyleHumorDefault:      defaultStyleHumor,
+			StyleCautionDefault:    defaultStyleCaution,
+			StyleAutonomyDefault:   defaultStyleAutonomy,
+			PlanClarifyMode:        defaultPlanClarifyMode,
 		},
 		APIConfig: APIConfig{
 			APIAuthMode:             defaultAPIAuthMode,

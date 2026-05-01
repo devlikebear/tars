@@ -504,6 +504,24 @@ export type SessionAutomationConsent = {
   updated_at?: string
 }
 
+export type SessionStyleValues = {
+  directness: number
+  humor: number
+  caution: number
+  autonomy: number
+}
+
+export type SessionStyleControl = Partial<SessionStyleValues> & {
+  updated_at?: string
+}
+
+export type SessionStyleResponse = {
+  style_control?: SessionStyleControl
+  effective: SessionStyleValues
+  defaults: SessionStyleValues
+  preview: string[]
+}
+
 export type Session = {
   id: string
   title: string
@@ -515,6 +533,7 @@ export type Session = {
   forked_from_index?: number
   fork_reason?: string
   automation_consent?: SessionAutomationConsent
+  style_control?: SessionStyleControl
   created_at: string
   updated_at: string
 }
@@ -632,6 +651,7 @@ export type ChatEvent = {
   mentioned_subagents?: string[]
   llm_tier?: string
   tier_recommendation?: ChatTierRecommendationRequest
+  style_effective?: SessionStyleValues
   // tasks_changed event fields (live count for chat pulse-bar Tasks badge)
   task_total?: number
   task_pending?: number

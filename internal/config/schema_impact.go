@@ -14,6 +14,18 @@ var configFieldImpactHints = map[string][]string{
 	"session_telegram_scope": {
 		"Changing this affects how Telegram messages are mapped to chat sessions.",
 	},
+	"style_directness_default": {
+		"Changing this affects the default TARS prompt style for directness in sessions without overrides.",
+	},
+	"style_humor_default": {
+		"Changing this affects the default TARS prompt style for humor in sessions without overrides.",
+	},
+	"style_caution_default": {
+		"Changing this affects the default TARS prompt style for risk checks and clarification behavior.",
+	},
+	"style_autonomy_default": {
+		"Changing this affects the default TARS prompt style for autonomous follow-through, bounded by session consent.",
+	},
 	"log_level": {
 		"Debug logging can increase log volume and expose more operational detail.",
 	},
