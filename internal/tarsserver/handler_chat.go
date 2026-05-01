@@ -327,6 +327,153 @@ func statusPreview(value string, maxLen int) string {
 	return secrets.RedactPreview(value, maxLen)
 }
 
+func statusPreviewForTool(toolName string, value string, maxLen int) string {
+	if strings.EqualFold(strings.TrimSpace(toolName), "subagents_run") {
+		if compact, ok := compactSubagentsRunPreview(value); ok {
+			return secrets.RedactPreview(compact, 4000)
+		}
+	}
+	return statusPreview(value, maxLen)
+}
+
+func compactSubagentsRunPreview(value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", false
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return "", false
+	}
+	if tasks, ok := payload["tasks"].([]any); ok {
+		return compactSubagentsRunArgs(payload, tasks)
+	}
+	if subagents, ok := payload["subagents"].([]any); ok {
+		return compactSubagentsRunResult(payload, subagents)
+	}
+	return "", false
+}
+
+func compactSubagentsRunArgs(payload map[string]any, tasks []any) (string, bool) {
+	out := map[string]any{
+		"count": len(tasks),
+		"tasks": compactSubagentTaskArgs(tasks),
+	}
+	if count := compactPreviewCount(payload["count"]); count > 0 {
+		out["count"] = count
+	}
+	if agent := compactPreviewString(payload["agent"], 80); agent != "" {
+		out["agent"] = agent
+	}
+	if mode := compactPreviewString(payload["mode"], 40); mode != "" {
+		out["mode"] = mode
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
+}
+
+func compactSubagentTaskArgs(tasks []any) []map[string]any {
+	out := make([]map[string]any, 0, len(tasks))
+	for _, item := range tasks {
+		record, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		task := map[string]any{}
+		if title := compactPreviewString(record["title"], 120); title != "" {
+			task["title"] = title
+		} else {
+			task["title"] = "subagent"
+		}
+		if tier := compactPreviewString(record["tier"], 40); tier != "" {
+			task["tier"] = tier
+		}
+		out = append(out, task)
+	}
+	return out
+}
+
+func compactSubagentsRunResult(payload map[string]any, subagents []any) (string, bool) {
+	out := map[string]any{
+		"count":     len(subagents),
+		"subagents": compactSubagentResults(subagents),
+	}
+	if count := compactPreviewCount(payload["count"]); count > 0 {
+		out["count"] = count
+	}
+	if agent := compactPreviewString(payload["agent"], 80); agent != "" {
+		out["agent"] = agent
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
+}
+
+func compactSubagentResults(subagents []any) []map[string]any {
+	out := make([]map[string]any, 0, len(subagents))
+	for _, item := range subagents {
+		record, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		run := map[string]any{}
+		for _, key := range []string{"run_id", "session_id", "agent", "title", "status", "tier", "consensus_mode"} {
+			if value := compactPreviewString(record[key], 120); value != "" {
+				run[key] = value
+			}
+		}
+		if summary := compactPreviewString(record["summary"], 160); summary != "" {
+			run["summary"] = summary
+		}
+		if errMsg := compactPreviewString(record["error"], 160); errMsg != "" {
+			run["error"] = errMsg
+		}
+		out = append(out, run)
+	}
+	return out
+}
+
+func compactPreviewString(value any, maxLen int) string {
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if maxLen <= 0 || len(text) <= maxLen {
+		return text
+	}
+	runes := []rune(text)
+	if len(runes) <= maxLen {
+		return text
+	}
+	if maxLen <= 3 {
+		return string(runes[:maxLen])
+	}
+	return string(runes[:maxLen-3]) + "..."
+}
+
+func compactPreviewCount(value any) int {
+	switch typed := value.(type) {
+	case float64:
+		if typed > 0 {
+			return int(typed)
+		}
+	case int:
+		if typed > 0 {
+			return typed
+		}
+	}
+	return 0
+}
+
 func resolveInvokedSkill(message string, manager *extensions.Manager) *skill.Definition {
 	if manager == nil {
 		return nil
@@ -493,7 +640,7 @@ func setupAgentLoop(
 				"executing tool",
 				evt.ToolName,
 				evt.ToolCallID,
-				statusPreview(evt.ToolArgs, 180),
+				statusPreviewForTool(evt.ToolName, evt.ToolArgs, 180),
 				"",
 			)
 		case agent.EventAfterTool:
@@ -502,16 +649,16 @@ func setupAgentLoop(
 				"tool completed",
 				evt.ToolName,
 				evt.ToolCallID,
-				statusPreview(evt.ToolArgs, 180),
-				statusPreview(evt.ToolResult, 180),
+				statusPreviewForTool(evt.ToolName, evt.ToolArgs, 180),
+				statusPreviewForTool(evt.ToolName, evt.ToolResult, 180),
 				evt.ToolIsError,
 			)
 			recordToolUsageSignal(ctx, usageTracker, sessionID, evt)
 			*toolCalls = append(*toolCalls, ToolCallRecord{
 				ToolName:    evt.ToolName,
 				ToolCallID:  evt.ToolCallID,
-				ToolArgs:    statusPreview(evt.ToolArgs, 500),
-				ToolResult:  statusPreview(evt.ToolResult, 500),
+				ToolArgs:    statusPreviewForTool(evt.ToolName, evt.ToolArgs, 500),
+				ToolResult:  statusPreviewForTool(evt.ToolName, evt.ToolResult, 500),
 				ToolIsError: evt.ToolIsError,
 			})
 			if afterTool != nil {

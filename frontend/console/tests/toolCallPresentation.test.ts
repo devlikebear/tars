@@ -43,6 +43,8 @@ test('ChatMessageItem renders collapsible live tool call details', () => {
   assert.match(itemSource, /formatToolJSON/)
   assert.match(itemSource, /chat-tool-\{tone\}/)
   assert.match(itemSource, /badge-error/)
+  assert.match(itemSource, /SubagentProgressCard/)
+  assert.match(itemSource, /buildSubagentProgress/)
 })
 
 test('ChatPanel records tool timing and error metadata from stream and history', () => {
