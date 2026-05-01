@@ -23,6 +23,8 @@
     AgentRuntimeTierOption,
     ConsensusVariantRecord,
     FileAttentionSummary,
+    AgentRuntimeDiffFileChange,
+    AgentRuntimeDiffTimelineEntry,
     AgentRuntimeRun,
     AgentRuntimeRunEvent,
   } from '../lib/types'
@@ -130,6 +132,10 @@
   })
   let fileAttentionMax = $derived.by<number>(() => {
     return Math.max(1, ...fileAttentionRows.map((row) => row.total ?? 0))
+  })
+  let diffTimelineEntries = $derived.by<AgentRuntimeDiffTimelineEntry[]>(() => {
+    return [...(selectedRun?.diff_timeline ?? [])]
+      .sort((a, b) => runTimelineTimestamp(a) - runTimelineTimestamp(b))
   })
   let costFlowRuns = $derived.by<AgentRuntimeRun[]>(() => selectedRun ? [selectedRun] : [])
   let replayEvents = $derived.by<AgentRuntimeRunEvent[]>(() => events)
@@ -242,6 +248,15 @@
     return 0
   }
 
+  function runTimelineTimestamp(entry: AgentRuntimeDiffTimelineEntry): number {
+    for (const value of [entry.started_at, entry.completed_at]) {
+      if (!value?.trim()) continue
+      const parsed = new Date(value).getTime()
+      if (!Number.isNaN(parsed)) return parsed
+    }
+    return 0
+  }
+
   function shortID(value?: string): string {
     const text = value?.trim()
     if (!text) return '—'
@@ -302,6 +317,22 @@
 
   function fileAttentionOpsTotal(): number {
     return selectedRun?.file_ops_total ?? fileAttentionRows.reduce((total, row) => total + (row.total ?? 0), 0)
+  }
+
+  function diffTimelineSummary(entry: AgentRuntimeDiffTimelineEntry): string {
+    const files = entry.summary?.files ?? entry.files?.length ?? 0
+    const additions = entry.summary?.additions ?? 0
+    const deletions = entry.summary?.deletions ?? 0
+    return `${files} ${files === 1 ? 'file' : 'files'} · +${additions} -${deletions}`
+  }
+
+  function diffFileStats(file: AgentRuntimeDiffFileChange): string {
+    return `+${file.additions ?? 0} -${file.deletions ?? 0}`
+  }
+
+  function diffFileInspectorTitle(file: AgentRuntimeDiffFileChange): string {
+    const target = file.git_inspector_url?.trim()
+    return target ? `Git Inspector target: ${target}` : 'Git Inspector target unavailable'
   }
 
   function normalizedSparkline(values?: number[]): number[] {
@@ -1096,6 +1127,66 @@
 
       <AgentRuntimeReplay events={replayEvents} runStatus={selectedRun.status} />
 
+      <section class="detail-panel diff-timeline" aria-label="Diff Timeline">
+        <div class="panel-title-row">
+          <h3>Diff Timeline</h3>
+          <span>{diffTimelineEntries.length} entries</span>
+        </div>
+        {#if diffTimelineEntries.length === 0}
+          <div class="agentruntime-empty">No git diff snapshots captured for this run.</div>
+        {:else}
+          <div class="diff-timeline-list">
+            {#each diffTimelineEntries as entry}
+              <article class="diff-entry">
+                <div class="diff-entry-head">
+                  <div>
+                    <button class="run-inline-link" type="button" onclick={() => openRunDetail(entry.run_id)}>
+                      Run {shortID(entry.run_id)}
+                    </button>
+                    <div class="row-meta">
+                      {#if entry.agent}<span>{entry.agent}</span>{/if}
+                      {#if entry.session_id}<span>session {shortID(entry.session_id)}</span>{/if}
+                      {#if entry.step_id}<span>step {entry.step_id}</span>{/if}
+                      {#if entry.completed_at}<span>{fmtTime(entry.completed_at)}</span>{/if}
+                    </div>
+                  </div>
+                  <div class="diff-summary">
+                    <span>{diffTimelineSummary(entry)}</span>
+                    {#if entry.repo_root}<small title={entry.repo_root}>{entry.repo_root}</small>{/if}
+                  </div>
+                </div>
+                {#if entry.prompt}
+                  <p class="row-prompt">{entry.prompt}</p>
+                {/if}
+                <div class="diff-file-list">
+                  {#each entry.files ?? [] as file}
+                    <article class="diff-file-row">
+                      <div class="diff-file-head">
+                        <span class="file-path" title={file.path}>{file.path}</span>
+                        <span class="diff-status">{file.status}</span>
+                        <span class="diff-stats">{diffFileStats(file)}</span>
+                        <button
+                          class="git-inspector-chip"
+                          type="button"
+                          disabled
+                          title={diffFileInspectorTitle(file)}
+                        >
+                          Git Inspector
+                        </button>
+                      </div>
+                      <details class="diff-preview" open={entry.files?.length === 1}>
+                        <summary>Diff preview</summary>
+                        <pre>{file.patch || 'No patch preview available for this change.'}</pre>
+                      </details>
+                    </article>
+                  {/each}
+                </div>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
       <div class="detail-columns">
         <section class="detail-panel">
           <h3>Prompt</h3>
@@ -1307,6 +1398,19 @@
   .panel-title-row h3 { margin: 0; }
   .panel-title-row span { color: var(--text-ghost); font-family: var(--font-mono); font-size: var(--text-xs); }
   .file-heatmap { overflow: hidden; }
+  .diff-timeline-list, .diff-file-list { display: flex; flex-direction: column; gap: var(--space-3); }
+  .diff-entry { display: flex; flex-direction: column; gap: var(--space-3); border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
+  .diff-entry:first-child { border-top: 0; padding-top: 0; }
+  .diff-entry-head, .diff-file-head { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; flex-wrap: wrap; }
+  .run-inline-link { border: 0; background: transparent; color: var(--primary-text); padding: 0; font: inherit; font-family: var(--font-mono); font-size: var(--text-xs); cursor: pointer; }
+  .run-inline-link:hover { text-decoration: underline; }
+  .diff-summary { display: grid; justify-items: end; gap: 2px; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--text-xs); }
+  .diff-summary small { max-width: min(480px, 60vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-ghost); }
+  .diff-file-row { display: flex; flex-direction: column; gap: var(--space-2); border: 1px solid var(--border-subtle); background: var(--surface-inset); border-radius: var(--radius-sm); padding: var(--space-3); }
+  .diff-status, .diff-stats, .git-inspector-chip { border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-secondary); padding: 2px var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); }
+  .diff-stats { color: var(--primary-text); }
+  .git-inspector-chip:disabled { opacity: 0.66; cursor: default; }
+  .diff-preview summary { color: var(--text-secondary); cursor: pointer; font-size: var(--text-xs); margin-bottom: var(--space-2); }
   .file-attention-list { display: flex; flex-direction: column; gap: 0; }
   .file-attention-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 0.42fr) minmax(160px, 0.34fr); gap: var(--space-3); align-items: center; border-top: 1px solid var(--border-subtle); padding: var(--space-3) 0; }
   .file-attention-row:first-child { border-top: 0; padding-top: 0; }
@@ -1333,5 +1437,5 @@
   @media (max-width: 960px) { .intro-card, .run-controls, .cost-summary-grid { grid-template-columns: 1fr; } }
   @media (max-width: 960px) { .subagents-layout { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .detail-columns { grid-template-columns: 1fr; } }
-  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid, .plan-cost-row, .file-attention-row { grid-template-columns: 1fr; } .file-meta { justify-content: flex-start; } .subagents-summary, .detail-head, .agentruntime-header { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions { justify-content: flex-start; } }
+  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid, .plan-cost-row, .file-attention-row { grid-template-columns: 1fr; } .file-meta { justify-content: flex-start; } .subagents-summary, .detail-head, .agentruntime-header, .diff-entry-head { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions, .diff-summary { justify-content: flex-start; justify-items: start; } }
 </style>
