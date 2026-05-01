@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/plugin"
 	"github.com/devlikebear/tars/internal/skill"
 )
 
@@ -33,9 +35,13 @@ type SandboxCheck struct {
 
 // SandboxReport describes the isolated workspace validation performed before install.
 type SandboxReport struct {
+	PackageType  string         `json:"package_type,omitempty"`
+	PackageName  string         `json:"package_name,omitempty"`
 	SkillName    string         `json:"skill_name"`
 	WorkspaceDir string         `json:"workspace_dir,omitempty"`
 	SkillDir     string         `json:"skill_dir,omitempty"`
+	PluginDir    string         `json:"plugin_dir,omitempty"`
+	MCPDir       string         `json:"mcp_dir,omitempty"`
 	Passed       bool           `json:"passed"`
 	Checks       []SandboxCheck `json:"checks"`
 }
@@ -49,6 +55,14 @@ func (e *SandboxError) Error() string {
 	if e == nil {
 		return ""
 	}
+	packageType := strings.TrimSpace(e.Report.PackageType)
+	if packageType == "" {
+		packageType = "skill"
+	}
+	packageName := strings.TrimSpace(e.Report.PackageName)
+	if packageName == "" {
+		packageName = strings.TrimSpace(e.Report.SkillName)
+	}
 	for _, check := range e.Report.Checks {
 		if check.Status == SandboxCheckFailed {
 			detail := strings.TrimSpace(check.Error)
@@ -58,10 +72,10 @@ func (e *SandboxError) Error() string {
 			if detail == "" {
 				detail = "unknown failure"
 			}
-			return fmt.Sprintf("skill %q failed sandbox check %q: %s", e.Report.SkillName, check.Name, detail)
+			return fmt.Sprintf("%s %q failed sandbox check %q: %s", packageType, packageName, check.Name, detail)
 		}
 	}
-	return fmt.Sprintf("skill %q failed sandbox checks", e.Report.SkillName)
+	return fmt.Sprintf("%s %q failed sandbox checks", packageType, packageName)
 }
 
 func (inst *Installer) runSkillInstallSandbox(ctx context.Context, entry *RegistryEntry, files map[string][]byte) (SandboxReport, error) {
@@ -70,6 +84,8 @@ func (inst *Installer) runSkillInstallSandbox(ctx context.Context, entry *Regist
 		return SandboxReport{}, fmt.Errorf("create skill install sandbox: %w", err)
 	}
 	report := SandboxReport{
+		PackageType:  "skill",
+		PackageName:  entry.Name,
 		SkillName:    entry.Name,
 		WorkspaceDir: sandboxWorkspace,
 		SkillDir:     filepath.Join(sandboxWorkspace, hubSkillsDir, entry.Name),
@@ -100,6 +116,180 @@ func (inst *Installer) runSkillInstallSandbox(ctx context.Context, entry *Regist
 	}
 
 	return report, nil
+}
+
+func (inst *Installer) runPluginInstallSandbox(ctx context.Context, entry *PluginEntry, files map[string][]byte) (SandboxReport, error) {
+	sandboxWorkspace, err := os.MkdirTemp("", "tars-plugin-install-*")
+	if err != nil {
+		return SandboxReport{}, fmt.Errorf("create plugin install sandbox: %w", err)
+	}
+	report := SandboxReport{
+		PackageType:  "plugin",
+		PackageName:  entry.Name,
+		WorkspaceDir: sandboxWorkspace,
+		PluginDir:    filepath.Join(sandboxWorkspace, hubPluginsDir, entry.Name),
+		Passed:       true,
+	}
+	defer func() {
+		_ = os.RemoveAll(sandboxWorkspace)
+	}()
+
+	if err := materializePackageFiles(report.PluginDir, files); err != nil {
+		return report, fmt.Errorf("materialize plugin sandbox: %w", err)
+	}
+
+	definition, check := validatePluginSandboxManifest(entry.Name, filepath.Join(sandboxWorkspace, hubPluginsDir))
+	report.Checks = append(report.Checks, check)
+	if check.Status == SandboxCheckFailed {
+		report.Passed = false
+		return report, &SandboxError{Report: report}
+	}
+
+	report.Checks = append(report.Checks, SandboxCheck{
+		Name:   "plugin_mcp_gating",
+		Status: SandboxCheckPassed,
+		Output: fmt.Sprintf("%d plugin-declared MCP servers remain subject to runtime gating", len(definition.MCPServers)),
+	})
+	return report, nil
+}
+
+func validatePluginSandboxManifest(entryName string, pluginsRoot string) (plugin.Definition, SandboxCheck) {
+	snapshot, err := plugin.Load(plugin.LoadOptions{
+		Sources: []plugin.SourceDir{{Source: plugin.SourceWorkspace, Dir: pluginsRoot}},
+	})
+	if err != nil {
+		return plugin.Definition{}, SandboxCheck{
+			Name:   "plugin_manifest",
+			Status: SandboxCheckFailed,
+			Error:  err.Error(),
+		}
+	}
+	if len(snapshot.Diagnostics) > 0 {
+		messages := make([]string, 0, len(snapshot.Diagnostics))
+		for _, diagnostic := range snapshot.Diagnostics {
+			if strings.TrimSpace(diagnostic.Path) != "" {
+				messages = append(messages, diagnostic.Path+": "+diagnostic.Message)
+			} else {
+				messages = append(messages, diagnostic.Message)
+			}
+		}
+		return plugin.Definition{}, SandboxCheck{
+			Name:   "plugin_manifest",
+			Status: SandboxCheckFailed,
+			Error:  strings.Join(messages, "; "),
+		}
+	}
+	for _, definition := range snapshot.Plugins {
+		if strings.EqualFold(definition.ID, entryName) {
+			return definition, SandboxCheck{
+				Name:   "plugin_manifest",
+				Status: SandboxCheckPassed,
+				Output: fmt.Sprintf("%s parsed", pluginManifest),
+			}
+		}
+	}
+	return plugin.Definition{}, SandboxCheck{
+		Name:   "plugin_manifest",
+		Status: SandboxCheckFailed,
+		Error:  fmt.Sprintf("plugin manifest id does not match registry name %q", entryName),
+	}
+}
+
+func (inst *Installer) runMCPInstallSandbox(ctx context.Context, entry *MCPEntry, files map[string][]byte, manifestPath string) (SandboxReport, error) {
+	sandboxWorkspace, err := os.MkdirTemp("", "tars-mcp-install-*")
+	if err != nil {
+		return SandboxReport{}, fmt.Errorf("create mcp install sandbox: %w", err)
+	}
+	report := SandboxReport{
+		PackageType:  "mcp",
+		PackageName:  entry.Name,
+		WorkspaceDir: sandboxWorkspace,
+		MCPDir:       filepath.Join(sandboxWorkspace, hubMCPDir, entry.Name),
+		Passed:       true,
+	}
+	defer func() {
+		_ = os.RemoveAll(sandboxWorkspace)
+	}()
+
+	if err := materializePackageFiles(report.MCPDir, files); err != nil {
+		return report, fmt.Errorf("materialize mcp sandbox: %w", err)
+	}
+	manifest, check := validateMCPSandboxManifest(entry.Name, files, manifestPath)
+	report.Checks = append(report.Checks, check)
+	if check.Status == SandboxCheckFailed {
+		report.Passed = false
+		return report, &SandboxError{Report: report}
+	}
+	server := expandMCPServer(manifest.Server, report.MCPDir)
+	check = validateMCPSandboxServer(server)
+	report.Checks = append(report.Checks, check)
+	if check.Status == SandboxCheckFailed {
+		report.Passed = false
+		return report, &SandboxError{Report: report}
+	}
+	return report, nil
+}
+
+func validateMCPSandboxManifest(entryName string, files map[string][]byte, manifestPath string) (MCPManifest, SandboxCheck) {
+	data, ok := files[manifestPath]
+	if !ok {
+		return MCPManifest{}, SandboxCheck{
+			Name:   "mcp_manifest",
+			Status: SandboxCheckFailed,
+			Error:  fmt.Sprintf("%s is missing", manifestPath),
+		}
+	}
+	manifest, err := parseMCPManifest(data, entryName)
+	if err != nil {
+		return MCPManifest{}, SandboxCheck{
+			Name:   "mcp_manifest",
+			Status: SandboxCheckFailed,
+			Error:  err.Error(),
+		}
+	}
+	if !strings.EqualFold(manifest.Server.Name, entryName) {
+		return manifest, SandboxCheck{
+			Name:   "mcp_manifest",
+			Status: SandboxCheckFailed,
+			Error:  fmt.Sprintf("mcp server name %q does not match registry name %q", manifest.Server.Name, entryName),
+		}
+	}
+	return manifest, SandboxCheck{
+		Name:   "mcp_manifest",
+		Status: SandboxCheckPassed,
+		Output: fmt.Sprintf("%s parsed", manifestPath),
+	}
+}
+
+func validateMCPSandboxServer(server config.MCPServer) SandboxCheck {
+	if config.MCPServerIsRemote(server) {
+		return SandboxCheck{
+			Name:   "mcp_remote_smoke",
+			Status: SandboxCheckPassed,
+			Output: "remote endpoint declared; network dial skipped during install sandbox",
+		}
+	}
+	if strings.TrimSpace(server.Command) == "" {
+		return SandboxCheck{
+			Name:   "mcp_stdio_smoke",
+			Status: SandboxCheckFailed,
+			Error:  "mcp server command is required",
+		}
+	}
+	if _, err := exec.LookPath(server.Command); err != nil {
+		return SandboxCheck{
+			Name:    "mcp_stdio_smoke",
+			Command: server.Command,
+			Status:  SandboxCheckFailed,
+			Error:   err.Error(),
+		}
+	}
+	return SandboxCheck{
+		Name:    "mcp_stdio_smoke",
+		Command: server.Command,
+		Status:  SandboxCheckPassed,
+		Output:  "stdio command is available",
+	}
 }
 
 func validateSkillSandboxManifest(entryName string, files map[string][]byte) (skill.Frontmatter, SandboxCheck) {

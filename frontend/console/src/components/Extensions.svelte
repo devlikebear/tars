@@ -87,6 +87,11 @@
     return `${passed}/${total} checks`
   }
 
+  function sandboxTitle(report: SkillSandboxReport): string {
+    const name = report.package_name || report.skill_name || 'package'
+    return report.package_type ? `${report.package_type} ${name}` : name
+  }
+
   let updateCount = $derived.by(() => {
     let count = 0
     for (const [key] of installedVersions) {
@@ -342,7 +347,7 @@
   {#if skillSandboxReport}
     <div class="sandbox-report" class:failed={!skillSandboxReport.passed}>
       <div class="sandbox-report-header">
-        <strong>{skillSandboxReport.skill_name}</strong>
+        <strong>{sandboxTitle(skillSandboxReport)}</strong>
         <span class={skillSandboxReport.passed ? 'badge badge-success' : 'badge badge-error'}>
           {skillSandboxReport.passed ? 'Sandbox passed' : 'Sandbox failed'}
         </span>

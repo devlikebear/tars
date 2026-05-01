@@ -42,7 +42,10 @@ func parseMCPManifest(data []byte, fallbackName string) (MCPManifest, error) {
 	if strings.TrimSpace(manifest.Server.Name) == "" {
 		return MCPManifest{}, fmt.Errorf("mcp server name is required")
 	}
-	if strings.TrimSpace(manifest.Server.Command) == "" {
+	if !config.MCPServerEnabled(manifest.Server) {
+		if config.MCPServerIsRemote(manifest.Server) {
+			return MCPManifest{}, fmt.Errorf("mcp server url is required")
+		}
 		return MCPManifest{}, fmt.Errorf("mcp server command is required")
 	}
 	return manifest, nil

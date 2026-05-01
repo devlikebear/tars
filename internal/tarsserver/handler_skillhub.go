@@ -124,14 +124,14 @@ func newSkillhubAPIHandler(
 		}
 
 		var installErr error
-		var skillInstallResult *skillhub.InstallResult
+		var installResult *skillhub.InstallResult
 		switch strings.TrimSpace(req.Type) {
 		case "skill":
-			skillInstallResult, installErr = installer.Install(r.Context(), name)
+			installResult, installErr = installer.Install(r.Context(), name)
 		case "plugin":
-			installErr = installer.InstallPlugin(r.Context(), name)
+			installResult, installErr = installer.InstallPlugin(r.Context(), name)
 		case "mcp":
-			installErr = installer.InstallMCP(r.Context(), name)
+			installResult, installErr = installer.InstallMCP(r.Context(), name)
 		default:
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill, plugin, or mcp"})
 			return
@@ -154,10 +154,10 @@ func newSkillhubAPIHandler(
 
 		logger.Info().Str("type", req.Type).Str("name", name).Msg("hub package installed")
 		payload := map[string]any{"ok": "true", "type": req.Type, "name": name}
-		if skillInstallResult != nil {
-			payload["sandbox_report"] = skillInstallResult.Sandbox
-			if skillInstallResult.RequiresPlugin != "" {
-				payload["requires_plugin"] = skillInstallResult.RequiresPlugin
+		if installResult != nil {
+			payload["sandbox_report"] = installResult.Sandbox
+			if installResult.RequiresPlugin != "" {
+				payload["requires_plugin"] = installResult.RequiresPlugin
 			}
 		}
 		writeJSON(w, http.StatusOK, payload)
