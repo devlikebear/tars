@@ -12,6 +12,7 @@ const (
 	ProviderGemini        = "gemini"
 	ProviderGeminiNative  = "gemini-native"
 	ProviderAnthropic     = "anthropic"
+	ProviderKimi          = "kimi"
 
 	OpenAIBaseURL       = "https://api.openai.com/v1"
 	OpenAIModel         = "gpt-4o-mini"
@@ -23,6 +24,7 @@ const (
 	GeminiModel         = "gemini-2.5-flash"
 	AnthropicBaseURL    = "https://api.anthropic.com"
 	AnthropicModel      = "claude-haiku-4-5-20251001"
+	KimiBaseURL         = "https://api.moonshot.cn/v1"
 
 	OpenAICodexOAuthProvider = "openai-codex"
 	ClaudeOAuthProvider      = "claude-code"
@@ -71,6 +73,11 @@ var kindDefaults = map[string]KindDefaults{
 		BaseURL:       GeminiNativeBaseURL,
 		Model:         GeminiModel,
 		APIKeyEnv:     []string{"GEMINI_API_KEY"},
+	},
+	ProviderKimi: {
+		AuthMode:  "api-key",
+		BaseURL:   KimiBaseURL,
+		APIKeyEnv: []string{"KIMI_API_KEY"},
 	},
 	ProviderAnthropic: {
 		AuthMode:      "api-key",

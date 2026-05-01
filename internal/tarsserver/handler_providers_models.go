@@ -17,6 +17,7 @@ import (
 var supportedLiveModelProviders = []string{
 	"openai",
 	"openai-codex",
+	"kimi",
 	"claude-code-cli",
 	"gemini",
 	"gemini-native",

@@ -10,6 +10,7 @@ How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller
 |-------------------|----------------------------|-------------------------------------|
 | `anthropic`       | Anthropic Messages         | `anthropic.go`                      |
 | `openai`          | OpenAI Chat Completions    | `openai_compat_client.go`           |
+| `kimi`            | OpenAI Chat Completions    | `openai_compat_client.go` (label)   |
 | `openai-codex`    | OpenAI Responses           | `openai_codex_client.go`            |
 | `gemini`          | Gemini OpenAI-compat       | `openai_compat_client.go` (label)   |
 | `gemini-native`   | Google Gemini REST         | `gemini_native*.go`                 |
@@ -17,21 +18,21 @@ How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller
 
 ## ChatOptions × Provider
 
-| Field                        | anthropic | openai | openai-codex | gemini (compat) | gemini-native | claude-code-cli |
-|------------------------------|-----------|--------|--------------|-----------------|---------------|-----------------|
-| `OnDelta` (streaming)        | ✅        | ✅     | ✅           | ✅              | ✅            | ✅              |
-| `Tools`                      | ✅        | ✅     | ✅           | ✅              | ✅            | ❌ (silent)     |
-| `ToolChoice` auto/none/required | ✅     | ✅     | ✅           | ✅              | ✅            | ❌ (silent)     |
-| `ToolChoice` specific        | ✅        | ✅     | ✅           | ✅              | ✅            | ❌ (silent)     |
-| `ResponseFormat` text        | ✅ (default) | ✅  | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     |
-| `ResponseFormat` json_object | ❌ (silent) | ✅  | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     |
-| `ResponseFormat` json_schema | ❌ (silent) | ✅  | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     |
-| `ReasoningEffort`            | ❌ (silent) | ✅  | ✅           | ❌ (skipped)    | partial¹      | ❌ (silent)     |
-| `ThinkingBudget`             | ✅        | ❌     | ❌           | ❌              | ✅            | ❌ (silent)     |
-| `ServiceTier`                | ❌ (silent) | ✅  | ✅           | ❌ (skipped)    | ❌ (silent)   | ❌ (silent)     |
-| `ContentBlocks` text         | ✅        | ✅     | ✅           | ✅              | ✅            | ❌               |
-| `ContentBlocks` image        | ✅        | ✅     | ✅           | ✅              | ✅            | ❌               |
-| `ContentBlocks` document/PDF | ✅        | ⛔ error² | ⛔ error²  | ⛔ error²       | partial³      | ❌ (silent)     |
+| Field                        | anthropic | openai | kimi  | openai-codex | gemini (compat) | gemini-native | claude-code-cli |
+|------------------------------|-----------|--------|------|--------------|-----------------|---------------|-----------------|
+| `OnDelta` (streaming)        | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ✅              |
+| `Tools`                      | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌ (silent)     |
+| `ToolChoice` auto/none/required | ✅     | ✅     | ✅   | ✅           | ✅              | ✅            | ❌ (silent)     |
+| `ToolChoice` specific        | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌ (silent)     |
+| `ResponseFormat` text        | ✅ (default) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     |
+| `ResponseFormat` json_object | ❌ (silent) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     |
+| `ResponseFormat` json_schema | ❌ (silent) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     |
+| `ReasoningEffort`            | ❌ (silent) | ✅  | ✅   | ✅           | ❌ (skipped)    | partial¹      | ❌ (silent)     |
+| `ThinkingBudget`             | ✅        | ❌     | ❌   | ❌           | ❌              | ✅            | ❌ (silent)     |
+| `ServiceTier`                | ❌ (silent) | ✅  | ✅   | ✅           | ❌ (skipped)    | ❌ (silent)   | ❌ (silent)     |
+| `ContentBlocks` text         | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌               |
+| `ContentBlocks` image        | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌               |
+| `ContentBlocks` document/PDF | ✅        | ⛔ error² | ⛔ error² | ⛔ error²  | ⛔ error²       | partial³      | ❌ (silent)     |
 
 ¹ Gemini-native maps `ReasoningEffort` to `thinkingBudget` heuristically; explicit `ThinkingBudget` overrides.
 ² Returns a `pdf_unsupported_by_provider` ProviderError at build time (RF-046). Convert PDFs to text/images before sending.
@@ -45,6 +46,7 @@ How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller
 |--------------|-----------------------------------------------------------------|
 | anthropic    | `{"type":"tool","name":"<n>"}`                                  |
 | openai (Chat)| `{"type":"function","function":{"name":"<n>"}}`                 |
+| kimi (Chat)  | `{"type":"function","function":{"name":"<n>"}}`                 |
 | openai-codex | `{"type":"function","function":{"name":"<n>"}}` (Responses API) |
 | gemini-native| `functionCallingConfig.{mode:"ANY", allowedFunctionNames:["<n>"]}` |
 
@@ -53,6 +55,7 @@ How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller
 | Provider     | Wire shape                                                      |
 |--------------|-----------------------------------------------------------------|
 | openai (Chat)| `response_format: {type:"json_schema", json_schema:{name,schema,strict}}` |
+| kimi (Chat)  | `response_format: {type:"json_schema", json_schema:{name,schema,strict}}` |
 | openai-codex | `text.format: {type:"json_schema", name, schema, strict}` (Responses API flattens) |
 
 The two OpenAI surfaces use different envelopes — `internal/llm` exposes a single `ResponseFormat` struct and each client serializes accordingly.
@@ -64,6 +67,7 @@ Both Chat Completions and Responses API surface these:
 | Provider     | Reasoning wire shape                | Service tier wire shape |
 |--------------|-------------------------------------|--------------------------|
 | openai (Chat)| `reasoning_effort: "<value>"` (top-level) | `service_tier: "<value>"` |
+| kimi (Chat)  | `reasoning_effort: "<value>"` (top-level) | `service_tier: "<value>"` |
 | openai-codex | `reasoning: {effort: "<value>"}` (object) | `service_tier: "<value>"` |
 | gemini compat| skipped (label-gated in openai_compat) | skipped |
 

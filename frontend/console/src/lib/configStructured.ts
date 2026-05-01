@@ -82,6 +82,7 @@ export const LLM_PROVIDER_KINDS = [
   'anthropic',
   'openai',
   'openai-codex',
+  'kimi',
   'gemini',
   'gemini-native',
   'claude-code-cli',

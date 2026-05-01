@@ -125,6 +125,50 @@ func TestNewProvider_OpenAICodex_PassesExplicitAuthConfig(t *testing.T) {
 	}
 }
 
+func TestNewProvider_Kimi_UsesOpenAICompatibleClient(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path: %q", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"choices":[{
+				"message":{"content":"ok"},
+				"finish_reason":"stop"
+			}]
+		}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewProvider(ProviderOptions{
+		Provider: "kimi",
+		AuthMode: "api-key",
+		BaseURL:  srv.URL + "/v1",
+		APIKey:   "kimi-key",
+		Model:    "moonshot-v1-8k",
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	if _, ok := client.(*OpenAICompatibleClient); !ok {
+		t.Fatalf("expected OpenAICompatibleClient, got %T", client)
+	}
+
+	_, err = client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "ping"},
+	}, ChatOptions{})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if captured["model"] != "moonshot-v1-8k" {
+		t.Fatalf("expected Kimi model, got %+v", captured["model"])
+	}
+}
+
 func TestNewProvider_GeminiToolCall(t *testing.T) {
 	var captured map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

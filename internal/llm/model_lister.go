@@ -69,6 +69,8 @@ func (f *modelFetcher) FetchModels(ctx context.Context, opts ProviderOptions) ([
 	switch provider {
 	case "openai":
 		return f.fetchOpenAICompatibleModels(ctx, opts)
+	case "kimi":
+		return f.fetchOpenAICompatibleModels(ctx, opts)
 	case "anthropic":
 		return f.fetchAnthropicModels(ctx, opts)
 	case "gemini", "gemini-native":

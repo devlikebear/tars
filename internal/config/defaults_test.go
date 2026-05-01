@@ -407,6 +407,31 @@ func TestLoad_LLMPoolKindDefaults_Gemini(t *testing.T) {
 	}
 }
 
+func TestLoad_LLMPoolKindDefaults_Kimi(t *testing.T) {
+	t.Setenv("KIMI_API_KEY", "kimi-key")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := "llm_providers:\n  p: {kind: kimi}\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	p := cfg.LLMProviders["p"]
+	if p.BaseURL != llmdefaults.KimiBaseURL {
+		t.Errorf("expected kimi default base url, got %q", p.BaseURL)
+	}
+	if p.APIKey != "kimi-key" {
+		t.Errorf("expected KIMI_API_KEY fallback, got %q", p.APIKey)
+	}
+	if p.AuthMode != "api-key" {
+		t.Errorf("expected default AuthMode api-key, got %q", p.AuthMode)
+	}
+}
+
 func TestLoad_LLMPoolKindDefaults_GeminiNative(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "gemini-key")
 	dir := t.TempDir()

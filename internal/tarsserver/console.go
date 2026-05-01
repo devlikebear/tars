@@ -55,6 +55,9 @@ func newConsoleStaticHandler(logger zerolog.Logger, distFS fs.FS, builtAssets bo
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if redirectBareConsolePath(w, r) {
+			return
+		}
 		if !isConsolePath(r.URL.Path) {
 			http.NotFound(w, r)
 			return
@@ -80,7 +83,21 @@ func newConsoleStaticHandler(logger zerolog.Logger, distFS fs.FS, builtAssets bo
 }
 
 func newConsoleDevProxy(target *url.URL) http.Handler {
-	return httputil.NewSingleHostReverseProxy(target)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if redirectBareConsolePath(w, r) {
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	})
+}
+
+func redirectBareConsolePath(w http.ResponseWriter, r *http.Request) bool {
+	if r != nil && r.URL != nil && strings.TrimSpace(r.URL.Path) == "/console" {
+		http.Redirect(w, r, "/console/", http.StatusFound)
+		return true
+	}
+	return false
 }
 
 func isConsolePath(requestPath string) bool {

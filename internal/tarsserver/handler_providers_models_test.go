@@ -264,6 +264,44 @@ func TestProvidersAPI_ClaudeCodeCLIListedWithoutLiveModels(t *testing.T) {
 	}
 }
 
+func TestProvidersAPI_KimiListedWithLiveModels(t *testing.T) {
+	cfg := makePoolTestCfg("kimi", "moonshot-v1-auto", "api-key", "https://api.moonshot.cn/v1")
+	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, time.Now)
+	if err != nil {
+		t.Fatalf("newProviderModelsCache: %v", err)
+	}
+	service := newProviderModelsService(cfg, cache, &fakeModelFetcher{}, time.Now)
+	handler := newProvidersModelsAPIHandler(service, zerolog.New(io.Discard))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/providers", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var out providersAPIInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode providers response: %v", err)
+	}
+	if out.CurrentProvider != "kimi" || out.CurrentModel != "moonshot-v1-auto" || out.AuthMode != "api-key" {
+		t.Fatalf("unexpected providers payload: %+v", out)
+	}
+	found := false
+	for _, item := range out.Providers {
+		if item.ID != "kimi" {
+			continue
+		}
+		found = true
+		if !item.SupportsLiveModels {
+			t.Fatalf("expected kimi live_models=true, got %+v", item)
+		}
+	}
+	if !found {
+		t.Fatalf("expected kimi in providers list, got %+v", out.Providers)
+	}
+}
+
 func TestModelsAPI_ClaudeCodeCLIUnsupported_(t *testing.T) {
 	now := time.Date(2026, 3, 14, 12, 0, 0, 0, time.UTC)
 	cfg := makePoolTestCfg("claude-code-cli", "sonnet", "cli", "")

@@ -687,6 +687,13 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/sysprompt/preview", handlers.memory)
 	mux.Handle("/console", handlers.console)
 	mux.Handle("/console/", handlers.console)
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/console/", http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	}))
 	if viteProxy := newConsoleDevViteHandler(); viteProxy != nil {
 		for _, prefix := range []string{"/@vite/", "/@fs/", "/src/", "/node_modules/"} {
 			mux.Handle(prefix, viteProxy)
