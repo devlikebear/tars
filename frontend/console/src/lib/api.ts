@@ -55,6 +55,7 @@ import type {
   SessionTasks,
   SessionWorkDirs,
   UsageToday,
+  LogsResponse,
 } from './types'
 
 async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
@@ -102,6 +103,23 @@ export async function getServerStatus(): Promise<{ version: string }> {
 
 export async function getTodayUsage(): Promise<UsageToday> {
   return requestJSON<UsageToday>('/v1/admin/usage/today')
+}
+
+export type LogsQuery = {
+  file?: string
+  level?: string
+  component?: string
+  lines?: number
+}
+
+export async function getLogs(query: LogsQuery = {}): Promise<LogsResponse> {
+  const params = new URLSearchParams()
+  if (query.file?.trim()) params.set('file', query.file.trim())
+  if (query.level?.trim()) params.set('level', query.level.trim())
+  if (query.component?.trim()) params.set('component', query.component.trim())
+  if (query.lines && Number.isFinite(query.lines)) params.set('lines', String(query.lines))
+  const suffix = params.toString()
+  return requestJSON<LogsResponse>(`/v1/admin/logs${suffix ? `?${suffix}` : ''}`)
 }
 
 // --- Pulse (system watchdog, replaces heartbeat) ---

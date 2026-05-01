@@ -6,6 +6,38 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.86] - 2026-05-01
+
+### Added
+
+- Added a Console Logs page at `/console/logs` with file, level, component, and line-count filters, manual refresh, 5-second auto-refresh, and level highlighting.
+- Added `GET /v1/admin/logs` for safe logical log-file selection and tailing parsed JSON log lines from the configured runtime log sink.
+
+### Changed
+
+- The Console navigation now includes Logs in the Operate group.
+
+### Documentation
+
+- README now documents the global Logs page alongside the other console pages.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'TestLogsAPI|TestRegisterAPIRoutes'`
+- `cd frontend/console && npm test -- tests/logsPage.test.ts`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm run build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make vet`
+- `make security-scan`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make build`
+- Browser smoke: opened `/console/logs`, filtered to `ERROR` plus `component=runtime`, verified the Agent Runtime error line, and toggled 5-second auto-refresh.
+
+### Closed
+
+- Closes #398.
+
 ## [0.31.85] - 2026-05-01
 
 ### Fixed

@@ -215,6 +215,7 @@ Set `usage.limits.daily_tokens` (or `usage_daily_token_budget`) to show a daily 
 | Operate | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, and subagent tier management |
 | Operate | Approvals | `/console/approvals` | Review risky cleanup plans before TARS applies them |
 | Operate | Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
+| Operate | Logs | `/console/logs` | Tail configured runtime logs with file, level, component, line-count, refresh, and auto-refresh controls |
 | Operate | Pulse | `/console/pulse` | Watchdog status and run-now trigger |
 | Operate | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
 | Setup | Settings | `/console/config` | Quick Start onboarding plus structured object/array editing, typed LLM tier editing, pending-change impact previews, and field metadata badges |
