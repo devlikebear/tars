@@ -41,7 +41,8 @@ func NewInstaller(workspaceDir string) *Installer {
 
 // InstallResult contains the result of a skill installation.
 type InstallResult struct {
-	RequiresPlugin string // non-empty if the skill depends on a plugin
+	RequiresPlugin string        `json:"requires_plugin,omitempty"` // non-empty if the skill depends on a plugin
+	Sandbox        SandboxReport `json:"sandbox_report"`
 }
 
 // Install downloads and installs a skill from the registry.
@@ -52,6 +53,11 @@ func (inst *Installer) Install(ctx context.Context, name string) (*InstallResult
 	}
 
 	files, err := inst.downloadSkillFiles(ctx, entry)
+	if err != nil {
+		return nil, err
+	}
+
+	sandboxReport, err := inst.runSkillInstallSandbox(ctx, entry, files)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +76,7 @@ func (inst *Installer) Install(ctx context.Context, name string) (*InstallResult
 		return nil, err
 	}
 
-	result := &InstallResult{}
+	result := &InstallResult{Sandbox: sandboxReport}
 	if entry.RequiresPlugin != "" {
 		// Check if the required plugin is already installed.
 		if !inst.isPluginInstalled(entry.RequiresPlugin) {
@@ -138,6 +144,11 @@ func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 		}
 		files, err := inst.downloadSkillFiles(ctx, entry)
 		if err != nil {
+			updateErr := fmt.Errorf("update skill %q: %w", skill.Name, err)
+			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})
+			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "skills"))
+		}
+		if _, err := inst.runSkillInstallSandbox(ctx, entry, files); err != nil {
 			updateErr := fmt.Errorf("update skill %q: %w", skill.Name, err)
 			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})
 			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "skills"))

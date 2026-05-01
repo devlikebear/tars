@@ -6,6 +6,33 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.102] - 2026-05-01
+
+### Added
+
+- Added skill install sandboxing so Skill Hub skill installs and skill updates materialize into a temporary workspace and run manifest/default smoke checks before touching the real workspace.
+- Added `smoke_tests` skill frontmatter support for package-defined smoke commands.
+- Hub install responses now include a readable skill sandbox report, and the Extensions console renders the latest sandbox pass/fail checks.
+
+### Fixed
+
+- Failed skill smoke tests no longer replace existing installed skill files or update `skillhub.json`.
+
+### Documentation
+
+- README now documents sandbox-smoke-tested Skill Hub installs in the Extensions workflow.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/skillhub ./internal/skill ./internal/tarsserver`
+
+### Closed
+
+- Closes #580.
+
 ## [0.31.101] - 2026-05-01
 
 ### Added

@@ -8,6 +8,7 @@ import type {
   ConfigFile,
   ConfigSchema,
   ProviderModelsInfo,
+  HubInstallResponse,
   HubInstalled,
   AgentRuntimeRun,
   AgentRuntimeRunEvent,
@@ -67,6 +68,20 @@ import type {
   AnalyticsResponse,
 } from './types'
 
+export class APIRequestError extends Error {
+  payload?: APIErrorPayload
+
+  constructor(message: string, payload?: APIErrorPayload) {
+    super(message)
+    this.name = 'APIRequestError'
+    this.payload = payload
+  }
+
+  get sandboxReport() {
+    return this.payload?.sandbox_report
+  }
+}
+
 async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     credentials: 'same-origin',
@@ -79,15 +94,16 @@ async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`.trim()
+    let payload: APIErrorPayload | undefined
     try {
-      const payload = (await response.json()) as APIErrorPayload
+      payload = (await response.json()) as APIErrorPayload
       if (payload?.error?.trim()) {
         message = payload.error.trim()
       }
     } catch {
       // ignore non-JSON error bodies
     }
-    throw new Error(message)
+    throw new APIRequestError(message, payload)
   }
 
   if (response.status === 204) {
@@ -802,8 +818,8 @@ export async function getHubInstalled(): Promise<HubInstalled> {
   return requestJSON<HubInstalled>('/v1/hub/installed')
 }
 
-export async function hubInstall(type: string, name: string): Promise<void> {
-  await requestJSON<{ ok: string }>('/v1/hub/install', {
+export async function hubInstall(type: string, name: string): Promise<HubInstallResponse> {
+  return requestJSON<HubInstallResponse>('/v1/hub/install', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type, name }),

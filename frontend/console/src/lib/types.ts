@@ -523,6 +523,7 @@ export type CleanupApplyResult = {
 
 export type APIErrorPayload = {
   error?: string
+  sandbox_report?: SkillSandboxReport
 }
 
 export type ChatEvent = {
@@ -748,6 +749,31 @@ export type HubRegistry = {
   skills: HubRegistryEntry[]
   plugins: HubRegistryEntry[]
   mcp_servers: HubRegistryEntry[]
+}
+
+export type SkillSandboxCheck = {
+  name: string
+  command?: string
+  status: 'passed' | 'failed'
+  output?: string
+  error?: string
+  duration_ms?: number
+}
+
+export type SkillSandboxReport = {
+  skill_name: string
+  workspace_dir?: string
+  skill_dir?: string
+  passed: boolean
+  checks: SkillSandboxCheck[]
+}
+
+export type HubInstallResponse = {
+  ok: string
+  type: string
+  name: string
+  requires_plugin?: string
+  sandbox_report?: SkillSandboxReport
 }
 
 export type HubInstalledItem = {

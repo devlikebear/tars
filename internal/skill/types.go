@@ -26,6 +26,7 @@ type Definition struct {
 	RecommendedProjectFiles []string `json:"recommended_project_files,omitempty"`
 	WakePhases              []string `json:"wake_phases,omitempty"`
 	Tags                    []string `json:"tags,omitempty"`
+	SmokeTests              []string `json:"smoke_tests,omitempty"`
 	Content                 string   `json:"content,omitempty"`
 }
 
