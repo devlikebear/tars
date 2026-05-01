@@ -73,7 +73,16 @@ Use `subagents_run` when tasks are independent and can fan out in parallel:
 ]}
 ```
 
-In Console Chat, `subagents_run` renders as a parallel progress card with running/completed/failed counts, elapsed time, compact task titles, and direct links to each Agent Runtime run once they are available.
+Use compare mode when 2-3 safe subagents should inspect the same prompt independently and TARS should keep their outputs side-by-side:
+
+```json
+{"mode":"compare","tasks": [
+  {"agent": "explorer", "title": "Explorer pass", "prompt": "find the root cause"},
+  {"agent": "reviewer", "title": "Reviewer pass", "prompt": "find the root cause"}
+]}
+```
+
+In Console Chat, `subagents_run` renders as a progress card with running/completed/failed counts, elapsed time, compact task titles, and direct links to each Agent Runtime run once they are available. Compare-mode results add common findings, conflict candidates, sourced evidence snippets, and side-by-side output panes.
 
 Advanced staged-flow tools are available only when explicitly allowed for a session: `subagents_orchestrate` runs dependency-aware `parallel` / `sequential` steps, and `subagents_plan` uses the heavy-tier planner model to draft such a flow.
 When staged-flow tools run from chat, TARS mirrors the generated plan and live step lifecycle into the session Tasks panel so the right rail shows pending, in-progress, completed, and cancelled subagent work.
@@ -225,13 +234,13 @@ The Chat header shows the active plan goal, completed/total task count, and a Se
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
 | Home | Mission Control | `/console` | Live overview for Pulse, Reflection, active plans, Agent Runtime runs, Cron jobs, disk pressure, active sessions, recent notifications, recommended setup actions, and release/PR shortcuts |
-| Work | Chat | `/console/chat` | Interactive agent chat with first-turn cost/quality tier recommendation, tool calling, dockable Sessions and tool panels, session health recommendations, task contract review/approval, task evidence attachments, Git Inspector with approved mutation queueing, Skill Inbox extraction from the active transcript, message-level session forking, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, parallel subagent progress cards, Files workspace shell, Prior Context preview, and advanced `/config` session policy, style, and automation consent overrides |
+| Work | Chat | `/console/chat` | Interactive agent chat with first-turn cost/quality tier recommendation, tool calling, dockable Sessions and tool panels, session health recommendations, task contract review/approval, task evidence attachments, Git Inspector with approved mutation queueing, Skill Inbox extraction from the active transcript, message-level session forking, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, parallel/compare subagent progress cards, Files workspace shell, Prior Context preview, and advanced `/config` session policy, style, and automation consent overrides |
 | Work | Lineage | `/console/sessions/graph` | Git-log-style session tree showing root sessions, forked children, fork point previews, direct navigation back into the selected chat, and fork insight promotion into Memory Inbox |
 | Work | Plans | `/console/tasks` | Review active plans across sessions with progress cards and jump directly into the owning chat session |
 | Work | Memory | `/console/memory` | Review extracted memory candidates before storage, edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
 | Work | Extensions | `/console/extensions` | Skills, hub quality score/trust signals, sandbox-tested hub installs for skills/plugins/MCP packages, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |
-| Operate | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, git diff timeline, and subagent tier management |
+| Operate | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, git diff timeline, compare-mode run links, and subagent tier management |
 | Operate | Approvals | `/console/approvals` | Review risky cleanup plans and approved Git mutations before TARS applies them, then inspect the Automation Audit log |
 | Operate | Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
 | Operate | Logs | `/console/logs` | Tail configured runtime logs with file, level, component, line-count, refresh, and auto-refresh controls |

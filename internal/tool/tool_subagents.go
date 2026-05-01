@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
@@ -31,13 +32,8 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 						Model string `json:"model,omitempty"`
 					} `json:"variants,omitempty"`
 				} `json:"consensus,omitempty"`
-				TimeoutMS int `json:"timeout_ms,omitempty"`
-				Tasks     []struct {
-					Title            string                         `json:"title,omitempty"`
-					Prompt           string                         `json:"prompt"`
-					Tier             string                         `json:"tier,omitempty"`
-					ProviderOverride *agentruntime.ProviderOverride `json:"provider_override,omitempty"`
-				} `json:"tasks"`
+				TimeoutMS int                     `json:"timeout_ms,omitempty"`
+				Tasks     []subagentsRunTaskInput `json:"tasks"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(map[string]any{"message": fmt.Sprintf("invalid arguments: %v", err)}, true), nil
@@ -53,6 +49,11 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 			if mode == "" {
 				mode = "parallel"
 			}
+			switch mode {
+			case "parallel", "consensus", "compare":
+			default:
+				return JSONTextResult(map[string]any{"message": fmt.Sprintf("unsupported subagent mode %q", mode)}, true), nil
+			}
 			if mode == "consensus" {
 				if !runtime.ConsensusEnabled() {
 					return JSONTextResult(map[string]any{"message": "consensus mode is disabled (agentruntime_consensus_enabled=false)"}, true), nil
@@ -64,6 +65,14 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 					return JSONTextResult(map[string]any{"message": "consensus variants are required"}, true), nil
 				}
 			}
+			if mode == "compare" {
+				if len(input.Tasks) < 2 || len(input.Tasks) > 3 {
+					return JSONTextResult(map[string]any{"message": "compare mode requires 2-3 tasks"}, true), nil
+				}
+				if !subagentComparePromptsMatch(input.Tasks) {
+					return JSONTextResult(map[string]any{"message": "compare mode requires all task prompts to match"}, true), nil
+				}
+			}
 			if mode != "consensus" && maxThreads > 0 && len(input.Tasks) > maxThreads {
 				return JSONTextResult(map[string]any{
 					"message": fmt.Sprintf("requested %d tasks exceeds agentruntime_subagents_max_threads=%d", len(input.Tasks), maxThreads),
@@ -73,13 +82,6 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 			agentName := strings.TrimSpace(input.Agent)
 			if agentName == "" {
 				agentName = "explorer"
-			}
-			info, ok := runtime.LookupAgent(agentName)
-			if !ok {
-				return JSONTextResult(map[string]any{"message": fmt.Sprintf("subagent %q is not available", agentName)}, true), nil
-			}
-			if msg := validateSafeSubagent(info); msg != "" {
-				return JSONTextResult(map[string]any{"message": msg}, true), nil
 			}
 
 			parentRunID := strings.TrimSpace(meta.RunID)
@@ -126,6 +128,19 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 				if title == "" {
 					title = "subagent"
 				}
+				taskAgent := strings.TrimSpace(task.Agent)
+				if taskAgent == "" {
+					taskAgent = agentName
+				}
+				info, ok := runtime.LookupAgent(taskAgent)
+				if !ok {
+					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
+					return JSONTextResult(map[string]any{"message": fmt.Sprintf("subagent %q is not available", taskAgent)}, true), nil
+				}
+				if msg := validateSafeSubagent(info); msg != "" {
+					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
+					return JSONTextResult(map[string]any{"message": msg}, true), nil
+				}
 				providerOverride, overrideErr := normalizeProviderOverride(task.ProviderOverride)
 				if overrideErr != "" {
 					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
@@ -140,7 +155,7 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 					WorkspaceID:      workspaceID,
 					Title:            title,
 					Prompt:           prompt,
-					Agent:            agentName,
+					Agent:            taskAgent,
 					ParentRunID:      parentRunID,
 					RootRunID:        rootRunID,
 					ParentSessionID:  strings.TrimSpace(meta.SessionID),
@@ -166,21 +181,7 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 				requests = append(requests, subagentRequest{title: title, prompt: prompt, run: run})
 			}
 
-			type subagentResult struct {
-				RunID           string `json:"run_id"`
-				SessionID       string `json:"session_id"`
-				Agent           string `json:"agent"`
-				Title           string `json:"title"`
-				Status          string `json:"status"`
-				Tier            string `json:"tier,omitempty"`
-				ConsensusMode   string `json:"consensus_mode,omitempty"`
-				ParentRunID     string `json:"parent_run_id,omitempty"`
-				ParentSessionID string `json:"parent_session_id,omitempty"`
-				Depth           int    `json:"depth,omitempty"`
-				Summary         string `json:"summary,omitempty"`
-				Error           string `json:"error,omitempty"`
-			}
-			results := make([]subagentResult, 0, len(requests))
+			results := make([]subagentsRunResult, 0, len(requests))
 			hadFailure := false
 			for _, item := range requests {
 				final, err := runtime.Wait(waitCtx, item.run.ID)
@@ -195,7 +196,7 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 				if final.Status != agentruntime.RunStatusCompleted {
 					hadFailure = true
 				}
-				results = append(results, subagentResult{
+				results = append(results, subagentsRunResult{
 					RunID:           final.ID,
 					SessionID:       final.SessionID,
 					Agent:           final.Agent,
@@ -208,16 +209,69 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 					Depth:           final.Depth,
 					Summary:         summary,
 					Error:           strings.TrimSpace(final.Error),
+					Response:        strings.TrimSpace(final.Response),
 				})
 			}
 
-			return JSONTextResult(map[string]any{
+			payload := map[string]any{
 				"count":     len(results),
-				"agent":     agentName,
+				"agent":     subagentsRunAgentLabel(results, agentName),
+				"mode":      mode,
 				"subagents": results,
-			}, hadFailure), nil
+			}
+			if mode == "compare" {
+				payload["comparison"] = buildSubagentsRunComparison(results)
+			}
+			return JSONTextResult(payload, hadFailure), nil
 		},
 	}
+}
+
+type subagentsRunTaskInput struct {
+	Title            string                         `json:"title,omitempty"`
+	Agent            string                         `json:"agent,omitempty"`
+	Prompt           string                         `json:"prompt"`
+	Tier             string                         `json:"tier,omitempty"`
+	ProviderOverride *agentruntime.ProviderOverride `json:"provider_override,omitempty"`
+}
+
+type subagentsRunResult struct {
+	RunID           string `json:"run_id"`
+	SessionID       string `json:"session_id"`
+	Agent           string `json:"agent"`
+	Title           string `json:"title"`
+	Status          string `json:"status"`
+	Tier            string `json:"tier,omitempty"`
+	ConsensusMode   string `json:"consensus_mode,omitempty"`
+	ParentRunID     string `json:"parent_run_id,omitempty"`
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	Depth           int    `json:"depth,omitempty"`
+	Summary         string `json:"summary,omitempty"`
+	Error           string `json:"error,omitempty"`
+	Response        string `json:"-"`
+}
+
+type subagentsRunComparison struct {
+	CommonFindings []string                      `json:"common_findings"`
+	Conflicts      []string                      `json:"conflicts"`
+	Evidence       []subagentsRunCompareEvidence `json:"evidence"`
+	SideBySide     []subagentsRunCompareOutput   `json:"side_by_side"`
+}
+
+type subagentsRunCompareEvidence struct {
+	RunID string `json:"run_id"`
+	Title string `json:"title,omitempty"`
+	Agent string `json:"agent,omitempty"`
+	Text  string `json:"text"`
+}
+
+type subagentsRunCompareOutput struct {
+	RunID    string `json:"run_id"`
+	Title    string `json:"title,omitempty"`
+	Agent    string `json:"agent,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Response string `json:"response,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 func subagentsRunToolParameters(runtime *agentruntime.Runtime) json.RawMessage {
@@ -226,7 +280,7 @@ func subagentsRunToolParameters(runtime *agentruntime.Runtime) json.RawMessage {
   "type":"object",
   "properties":{
 	    "agent":{"type":"string","description":"Optional safe prompt agent. Defaults to explorer."},
-	    "mode":{"type":"string","enum":["parallel","consensus"],"description":"Execution mode. Defaults to parallel."},
+	    "mode":{"type":"string","enum":["parallel","consensus","compare"],"description":"Execution mode. Defaults to parallel. Compare mode requires 2-3 tasks with matching prompts."},
 	    "consensus":{
 	      "type":"object",
 	      "properties":{
@@ -256,6 +310,7 @@ func subagentsRunToolParameters(runtime *agentruntime.Runtime) json.RawMessage {
 			"type":"object",
 			"properties":{
 			  "title":{"type":"string"},
+			  "agent":{"type":"string","description":"Optional task-specific safe prompt agent. Falls back to top-level agent."},
 			  "prompt":{"type":"string"},
 			  "tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."},
 			  "provider_override":{"type":"object","properties":{"alias":{"type":"string"},"model":{"type":"string"}},"required":["alias"],"additionalProperties":false}
@@ -273,7 +328,7 @@ func subagentsRunToolParameters(runtime *agentruntime.Runtime) json.RawMessage {
   "type":"object",
   "properties":{
 	    "agent":{"type":"string","description":"Optional safe prompt agent. Defaults to explorer."},
-	    "mode":{"type":"string","enum":["parallel"],"description":"Execution mode. Defaults to parallel."},
+	    "mode":{"type":"string","enum":["parallel","compare"],"description":"Execution mode. Defaults to parallel. Compare mode requires 2-3 tasks with matching prompts."},
     "timeout_ms":{"type":"integer","minimum":1000,"maximum":300000,"default":60000},
     "tasks":{
       "type":"array",
@@ -283,6 +338,7 @@ func subagentsRunToolParameters(runtime *agentruntime.Runtime) json.RawMessage {
 			"type":"object",
 			"properties":{
 			  "title":{"type":"string"},
+			  "agent":{"type":"string","description":"Optional task-specific safe prompt agent. Falls back to top-level agent."},
 			  "prompt":{"type":"string"},
 			  "tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."},
 			  "provider_override":{"type":"object","properties":{"alias":{"type":"string"},"model":{"type":"string"}},"required":["alias"],"additionalProperties":false}
@@ -295,6 +351,249 @@ func subagentsRunToolParameters(runtime *agentruntime.Runtime) json.RawMessage {
   "required":["tasks"],
   "additionalProperties":false
 }`)
+}
+
+func subagentComparePromptsMatch(tasks []subagentsRunTaskInput) bool {
+	if len(tasks) == 0 {
+		return false
+	}
+	first := normalizeSubagentComparePrompt(tasks[0].Prompt)
+	if first == "" {
+		return false
+	}
+	for _, task := range tasks[1:] {
+		if normalizeSubagentComparePrompt(task.Prompt) != first {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeSubagentComparePrompt(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
+}
+
+func subagentsRunAgentLabel(results []subagentsRunResult, fallback string) string {
+	seen := map[string]struct{}{}
+	for _, result := range results {
+		agent := strings.TrimSpace(result.Agent)
+		if agent == "" {
+			continue
+		}
+		seen[agent] = struct{}{}
+	}
+	if len(seen) == 1 {
+		for agent := range seen {
+			return agent
+		}
+	}
+	if len(seen) > 1 {
+		return "mixed"
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func buildSubagentsRunComparison(results []subagentsRunResult) subagentsRunComparison {
+	comparison := subagentsRunComparison{
+		CommonFindings: []string{},
+		Conflicts:      []string{},
+		Evidence:       []subagentsRunCompareEvidence{},
+		SideBySide:     make([]subagentsRunCompareOutput, 0, len(results)),
+	}
+	allStatements := make([]compareStatement, 0, len(results)*4)
+	seenCommon := map[string]int{}
+	commonText := map[string]string{}
+	for _, result := range results {
+		output := strings.TrimSpace(result.Response)
+		if output == "" {
+			output = strings.TrimSpace(result.Error)
+		}
+		comparison.SideBySide = append(comparison.SideBySide, subagentsRunCompareOutput{
+			RunID:    result.RunID,
+			Title:    result.Title,
+			Agent:    result.Agent,
+			Status:   result.Status,
+			Response: trimSubagentSummary(output, 2400),
+			Error:    result.Error,
+		})
+		statements := extractCompareStatements(output)
+		resultSeen := map[string]struct{}{}
+		for index, statement := range statements {
+			normalized := normalizeCompareStatement(statement)
+			if normalized == "" {
+				continue
+			}
+			allStatements = append(allStatements, compareStatement{
+				RunID:      result.RunID,
+				Title:      result.Title,
+				Agent:      result.Agent,
+				Text:       statement,
+				Normalized: normalized,
+			})
+			if _, exists := resultSeen[normalized]; !exists {
+				seenCommon[normalized]++
+				resultSeen[normalized] = struct{}{}
+			}
+			if _, exists := commonText[normalized]; !exists {
+				commonText[normalized] = statement
+			}
+			if index < 2 && result.Status == string(agentruntime.RunStatusCompleted) {
+				comparison.Evidence = append(comparison.Evidence, subagentsRunCompareEvidence{
+					RunID: result.RunID,
+					Title: result.Title,
+					Agent: result.Agent,
+					Text:  statement,
+				})
+			}
+		}
+	}
+	for _, statement := range allStatements {
+		if len(comparison.CommonFindings) >= 6 {
+			break
+		}
+		if seenCommon[statement.Normalized] < 2 {
+			continue
+		}
+		text := commonText[statement.Normalized]
+		if containsString(comparison.CommonFindings, text) {
+			continue
+		}
+		comparison.CommonFindings = append(comparison.CommonFindings, text)
+	}
+	comparison.Conflicts = findCompareConflicts(allStatements)
+	if len(comparison.Evidence) > 8 {
+		comparison.Evidence = comparison.Evidence[:8]
+	}
+	return comparison
+}
+
+type compareStatement struct {
+	RunID      string
+	Title      string
+	Agent      string
+	Text       string
+	Normalized string
+}
+
+func extractCompareStatements(text string) []string {
+	value := strings.TrimSpace(text)
+	if value == "" {
+		return nil
+	}
+	lines := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '\n' || r == '\r'
+	})
+	if len(lines) == 1 {
+		lines = strings.Split(value, ". ")
+	}
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		cleaned := cleanCompareStatement(line)
+		if len([]rune(cleaned)) < 8 {
+			continue
+		}
+		out = append(out, cleaned)
+	}
+	return out
+}
+
+func cleanCompareStatement(value string) string {
+	cleaned := strings.TrimSpace(value)
+	cleaned = strings.TrimLeft(cleaned, "-* \t")
+	cleaned = strings.TrimSpace(cleaned)
+	cleaned = strings.TrimLeftFunc(cleaned, func(r rune) bool {
+		return unicode.IsDigit(r) || r == '.' || r == ')' || r == ' '
+	})
+	return strings.TrimSpace(cleaned)
+}
+
+func normalizeCompareStatement(value string) string {
+	cleaned := strings.ToLower(cleanCompareStatement(value))
+	cleaned = strings.Trim(cleaned, ".:;!?")
+	return strings.Join(strings.Fields(cleaned), " ")
+}
+
+func findCompareConflicts(statements []compareStatement) []string {
+	conflicts := []string{}
+	for i := range statements {
+		for j := i + 1; j < len(statements); j++ {
+			if statements[i].RunID == statements[j].RunID {
+				continue
+			}
+			leftNegated := compareStatementNegated(statements[i].Normalized)
+			rightNegated := compareStatementNegated(statements[j].Normalized)
+			if leftNegated == rightNegated {
+				continue
+			}
+			if compareTokenOverlap(statements[i].Normalized, statements[j].Normalized) < 2 {
+				continue
+			}
+			conflict := fmt.Sprintf("%s: %s <-> %s: %s", compareStatementLabel(statements[i]), statements[i].Text, compareStatementLabel(statements[j]), statements[j].Text)
+			if containsString(conflicts, conflict) {
+				continue
+			}
+			conflicts = append(conflicts, conflict)
+			if len(conflicts) >= 4 {
+				return conflicts
+			}
+		}
+	}
+	return conflicts
+}
+
+func compareStatementNegated(value string) bool {
+	negativeMarkers := []string{" no ", " not ", " never ", " cannot ", " can't ", " without ", "none "}
+	padded := " " + strings.ToLower(value) + " "
+	for _, marker := range negativeMarkers {
+		if strings.Contains(padded, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func compareTokenOverlap(left string, right string) int {
+	leftTokens := compareTokenSet(left)
+	count := 0
+	for token := range compareTokenSet(right) {
+		if _, ok := leftTokens[token]; ok {
+			count++
+		}
+	}
+	return count
+}
+
+func compareTokenSet(value string) map[string]struct{} {
+	tokens := map[string]struct{}{}
+	for _, token := range strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		token = strings.TrimSpace(token)
+		if len([]rune(token)) < 3 {
+			continue
+		}
+		tokens[token] = struct{}{}
+	}
+	return tokens
+}
+
+func compareStatementLabel(statement compareStatement) string {
+	if title := strings.TrimSpace(statement.Title); title != "" {
+		return title
+	}
+	if agent := strings.TrimSpace(statement.Agent); agent != "" {
+		return agent
+	}
+	return statement.RunID
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func cancelSubagentRuns(runtime *agentruntime.Runtime, workspaceID string, runs []agentruntime.Run) {

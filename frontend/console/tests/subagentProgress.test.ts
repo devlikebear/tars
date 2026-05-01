@@ -75,6 +75,43 @@ test('subagent progress builds completed counts and run links from compact resul
   assert.equal(shortRunID('run_1234567890abcdef'), 'run_123456...')
 })
 
+test('subagent progress parses compare-mode comparison payloads', () => {
+  const progress = buildSubagentProgress({
+    toolName: 'subagents_run',
+    toolArgs: JSON.stringify({
+      mode: 'compare',
+      tasks: [
+        { agent: 'explorer', title: 'Explorer pass', prompt: 'Why does auth fail?' },
+        { agent: 'reviewer', title: 'Reviewer pass', prompt: 'Why does auth fail?' },
+      ],
+    }),
+    toolResult: JSON.stringify({
+      mode: 'compare',
+      count: 2,
+      subagents: [
+        { run_id: 'run_a', agent: 'explorer', title: 'Explorer pass', status: 'completed', summary: 'API handler validates token.' },
+        { run_id: 'run_b', agent: 'reviewer', title: 'Reviewer pass', status: 'completed', summary: 'API handler validates token.' },
+      ],
+      comparison: {
+        common_findings: ['API handler validates token.'],
+        conflicts: ['No conflicts detected.'],
+        evidence: [{ run_id: 'run_a', title: 'Explorer pass', text: 'API handler validates token.' }],
+        side_by_side: [
+          { run_id: 'run_a', agent: 'explorer', title: 'Explorer pass', response: 'API handler validates token.' },
+          { run_id: 'run_b', agent: 'reviewer', title: 'Reviewer pass', response: 'API handler validates token.' },
+        ],
+      },
+    }),
+    toolDone: true,
+  })
+
+  assert.ok(progress)
+  assert.equal(progress.mode, 'compare')
+  assert.equal(progress.comparison?.commonFindings[0], 'API handler validates token.')
+  assert.equal(progress.comparison?.evidence[0].href, '/console/agentruntime/runs/run_a')
+  assert.equal(progress.comparison?.sideBySide[1].agent, 'reviewer')
+})
+
 test('subagent progress ignores non-subagent tools and malformed previews', () => {
   assert.equal(buildSubagentProgress({ toolName: 'read_file', toolDone: false }), null)
   assert.equal(buildSubagentProgress({ toolName: 'subagents_run', toolArgs: '{"tasks":' }), null)

@@ -22,6 +22,32 @@ export type SubagentProgress = {
   running: number
   pending: number
   tasks: SubagentProgressTask[]
+  comparison?: SubagentComparison
+}
+
+export type SubagentComparisonEvidence = {
+  runId?: string
+  title?: string
+  agent?: string
+  text: string
+  href?: string
+}
+
+export type SubagentComparisonOutput = {
+  runId?: string
+  title?: string
+  agent?: string
+  status?: string
+  response?: string
+  error?: string
+  href?: string
+}
+
+export type SubagentComparison = {
+  commonFindings: string[]
+  conflicts: string[]
+  evidence: SubagentComparisonEvidence[]
+  sideBySide: SubagentComparisonOutput[]
 }
 
 export type SubagentProgressInput = {
@@ -49,7 +75,7 @@ export function buildSubagentProgress(input: SubagentProgressInput): SubagentPro
   const count = numericField(result?.count) || numericField(args?.count) || tasks.length
   return {
     agent: stringField(result?.agent) || stringField(args?.agent),
-    mode: stringField(args?.mode) || 'parallel',
+    mode: stringField(result?.mode) || stringField(args?.mode) || 'parallel',
     count,
     complete,
     completed: tasks.filter((task) => task.status === 'completed').length,
@@ -57,6 +83,7 @@ export function buildSubagentProgress(input: SubagentProgressInput): SubagentPro
     running: tasks.filter((task) => task.status === 'running').length,
     pending: tasks.filter((task) => task.status === 'pending').length,
     tasks,
+    comparison: result ? subagentComparison(result) : undefined,
   }
 }
 
@@ -119,6 +146,49 @@ function subagentResultTasks(result: JSONRecord): SubagentProgressTask[] {
   return out
 }
 
+function subagentComparison(result: JSONRecord): SubagentComparison | undefined {
+  const comparison = objectField(result.comparison)
+  if (!comparison) return undefined
+  const sideBySide = arrayField(comparison.side_by_side)
+    .map((item): SubagentComparisonOutput | null => {
+      const record = objectField(item)
+      if (!record) return null
+      const runId = stringField(record.run_id)
+      return {
+        runId,
+        title: stringField(record.title),
+        agent: stringField(record.agent),
+        status: stringField(record.status),
+        response: stringField(record.response),
+        error: stringField(record.error),
+        href: runId ? agentRuntimeRunHref(runId) : undefined,
+      }
+    })
+    .filter((item): item is SubagentComparisonOutput => item != null)
+  const evidence = arrayField(comparison.evidence)
+    .map((item): SubagentComparisonEvidence | null => {
+      const record = objectField(item)
+      if (!record) return null
+      const text = stringField(record.text)
+      if (!text) return null
+      const runId = stringField(record.run_id)
+      return {
+        runId,
+        title: stringField(record.title),
+        agent: stringField(record.agent),
+        text,
+        href: runId ? agentRuntimeRunHref(runId) : undefined,
+      }
+    })
+    .filter((item): item is SubagentComparisonEvidence => item != null)
+  return {
+    commonFindings: stringArrayField(comparison.common_findings),
+    conflicts: stringArrayField(comparison.conflicts),
+    evidence,
+    sideBySide,
+  }
+}
+
 function normalizeStatus(status?: string): SubagentProgressStatus {
   switch (status?.trim().toLowerCase()) {
     case 'completed':
@@ -154,6 +224,10 @@ function stringField(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
   return trimmed || undefined
+}
+
+function stringArrayField(value: unknown): string[] {
+  return arrayField(value).map((item) => stringField(item)).filter((item): item is string => !!item)
 }
 
 function numericField(value: unknown): number {
