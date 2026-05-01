@@ -219,7 +219,7 @@ The Chat header shows the active plan goal and completed/total task count withou
 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
-| Home | Dashboard | `/console` | Pulse, Reflection, disk pressure, active sessions, recent notifications, recommended setup actions, and plan resume |
+| Home | Mission Control | `/console` | Live overview for Pulse, Reflection, active plans, Agent Runtime runs, Cron jobs, disk pressure, active sessions, recent notifications, recommended setup actions, and release/PR shortcuts |
 | Work | Chat | `/console/chat` | Interactive agent chat with tool calling, dockable Sessions and tool panels, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, parallel subagent progress cards, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
 | Work | Plans | `/console/tasks` | Review active plans across sessions with progress cards and jump directly into the owning chat session |
 | Work | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |

@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.97] - 2026-05-01
+
+### Added
+
+- Revamped Console Home into Mission Control with live active plan, cron job, Agent Runtime run, Pulse, Reflection, session, notification, and delivery overview cards.
+- Added 30-second Mission Control polling so the home overview refreshes without opening individual console pages.
+- Added deep links from Mission Control cards to Plans, Agent Runtime, Cron, Pulse, Reflection, Chat, Approvals, GitHub releases, and pull requests.
+
+### Documentation
+
+- README now describes `/console` as Mission Control for active work, automation, runtime health, and delivery status.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+
+### Closed
+
+- Closes #577.
+
 ## [0.31.96] - 2026-05-01
 
 ### Added

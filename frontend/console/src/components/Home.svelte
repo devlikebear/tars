@@ -3,16 +3,23 @@
   import {
     getConfig,
     getEventsHistory,
+    getGlobalPlans,
     getOpsStatus,
     getPulseStatus,
     getReflectionStatus,
+    getServerStatus,
     getSessionTasks,
     getSyspromptFile,
+    listAgentRuntimeRuns,
+    listCronJobs,
     listSessions,
     streamEvents,
   } from '../lib/api'
   import type {
+    AgentRuntimeRun,
     ConfigFile,
+    CronJob,
+    GlobalPlanItem,
     NotificationMessage,
     OpsStatus,
     PulseSnapshot,
@@ -41,6 +48,10 @@
   let ops: OpsStatus | null = $state(null)
   let notifications: NotificationMessage[] = $state([])
   let sessions: Session[] = $state([])
+  let plans: GlobalPlanItem[] = $state([])
+  let cronJobs: CronJob[] = $state([])
+  let agentRuns: AgentRuntimeRun[] = $state([])
+  let serverVersion = $state('')
   let userFile: SyspromptFile | null = $state(null)
   let config: ConfigFile | null = $state(null)
   let continueSession: { session: Session; tasks: SessionTasks } | null = $state(null)
@@ -48,6 +59,7 @@
   let loading = $state(true)
   let error = $state('')
   let stopStream: (() => void) | null = null
+  let pollTimer: ReturnType<typeof setInterval> | null = null
 
   let mainSessions = $derived(
     sessions
@@ -56,6 +68,16 @@
   )
   let recentMainSessions = $derived(mainSessions.slice(0, 6))
   let todaySessions = $derived(mainSessions.filter((session) => isToday(session.updated_at)))
+  let recentPlans = $derived(plans.slice(0, 4))
+  let activeCronJobs = $derived(cronJobs.filter((job) => job.enabled && !isCronCompleted(job)))
+  let failedCronJobs = $derived(cronJobs.filter((job) => !!job.last_run_error))
+  let recentAgentRuns = $derived(agentRuns.slice(0, 5))
+  let activeAgentRuns = $derived(agentRuns.filter((run) => isAgentRunActive(run)))
+  let releaseHref = $derived.by(() => {
+    const version = serverVersion.trim().replace(/^v/, '')
+    if (!/^\d+\.\d+\.\d+/.test(version)) return ''
+    return `https://github.com/devlikebear/tars/releases/tag/v${version}`
+  })
   let recommendedActions = $derived.by<Recommendation[]>(() => {
     const actions: Recommendation[] = []
     if (isUserFileBlank(userFile)) {
@@ -124,6 +146,12 @@
       && date.getDate() === now.getDate()
   }
 
+  function hasRealTimestamp(value?: string): boolean {
+    if (!value?.trim()) return false
+    const date = new Date(value)
+    return !Number.isNaN(date.getTime()) && date.getFullYear() > 1
+  }
+
   function isUserFileBlank(file: SyspromptFile | null): boolean {
     if (!file?.exists) return true
     const content = file.content?.trim() ?? ''
@@ -157,8 +185,55 @@
 
   function reflectionLabel(): string {
     if ((reflection?.consecutive_failures ?? 0) > 0) return 'failing'
-    if (reflection?.last_successful_run_at) return 'healthy'
+    if (hasRealTimestamp(reflection?.last_successful_run_at)) return 'healthy'
     return 'idle'
+  }
+
+  function planProgressPercent(item: GlobalPlanItem): number {
+    const total = Math.max(0, item.summary?.total ?? item.tasks.length)
+    if (total === 0) return 0
+    return Math.max(0, Math.min(100, Math.round((planFinishedCount(item) / total) * 100)))
+  }
+
+  function planFinishedCount(item: GlobalPlanItem): number {
+    return (item.summary?.completed ?? 0) + (item.summary?.cancelled ?? 0)
+  }
+
+  function isCronCompleted(job: CronJob): boolean {
+    return isOneShotCron(job) && Boolean(job.last_run_at)
+  }
+
+  function isOneShotCron(job: CronJob): boolean {
+    const schedule = job.schedule.trim().toLowerCase()
+    return job.delete_after_run === true || schedule.startsWith('at:')
+  }
+
+  function cronStatusLabel(job: CronJob): string {
+    if (job.last_run_error) return 'failed'
+    if (isCronCompleted(job)) return 'done'
+    return job.enabled ? 'active' : 'paused'
+  }
+
+  function nextCronRunLabel(job: CronJob): string {
+    if (isCronCompleted(job)) return 'Completed'
+    if (!job.enabled) return 'Paused'
+    const schedule = job.schedule.trim()
+    if (schedule.toLowerCase().startsWith('at:')) return fmt(schedule.slice(3))
+    if (schedule.toLowerCase().startsWith('every:')) return job.last_run_at ? `After ${relativeTime(job.last_run_at)}` : 'Next tick'
+    return 'Cron schedule'
+  }
+
+  function isAgentRunActive(run: AgentRuntimeRun): boolean {
+    const status = run.status.trim().toLowerCase()
+    return status === 'running' || status === 'queued' || status === 'pending' || status === 'in_progress'
+  }
+
+  function agentRunTime(run: AgentRuntimeRun): string {
+    return run.updated_at || run.completed_at || run.started_at || run.created_at || ''
+  }
+
+  function agentRunTitle(run: AgentRuntimeRun): string {
+    return run.prompt?.trim() || run.agent?.trim() || run.run_id
   }
 
   function planSummary(tasks: SessionTasks): string {
@@ -170,6 +245,10 @@
   function openContinueSession() {
     if (!continueSession) return
     onNavigate(`/console/chat/${encodeURIComponent(continueSession.session.id)}`)
+  }
+
+  function openPlanSession(sessionId: string) {
+    onNavigate(`/console/chat?session=${encodeURIComponent(sessionId)}`)
   }
 
   async function loadContinueSession(candidates: Session[]) {
@@ -185,20 +264,37 @@
       .find((item) => !!item.tasks.plan || item.tasks.tasks.length > 0) ?? null
   }
 
-  async function load() {
-    loading = true
+  async function load(showLoading = true) {
+    if (showLoading) loading = true
     error = ''
     try {
-      const [pulseResult, reflectionResult, opsResult, eventsResult, sessionsResult, userResult, configResult] = await Promise.allSettled([
+      const [
+        statusResult,
+        pulseResult,
+        reflectionResult,
+        opsResult,
+        eventsResult,
+        sessionsResult,
+        plansResult,
+        cronResult,
+        runsResult,
+        userResult,
+        configResult,
+      ] = await Promise.allSettled([
+        getServerStatus(),
         getPulseStatus(),
         getReflectionStatus(),
         getOpsStatus(),
         getEventsHistory(10),
         listSessions(false),
+        getGlobalPlans(true),
+        listCronJobs(),
+        listAgentRuntimeRuns({ limit: 8 }),
         getSyspromptFile('workspace', 'USER.md'),
         getConfig(),
       ])
 
+      serverVersion = statusResult.status === 'fulfilled' ? statusResult.value.version : ''
       pulse = pulseResult.status === 'fulfilled' ? pulseResult.value : null
       reflection = reflectionResult.status === 'fulfilled' ? reflectionResult.value : null
       ops = opsResult.status === 'fulfilled' ? opsResult.value : null
@@ -207,6 +303,9 @@
         unreadCount = eventsResult.value.unread_count ?? 0
       }
       sessions = sessionsResult.status === 'fulfilled' ? sessionsResult.value : []
+      plans = plansResult.status === 'fulfilled' ? plansResult.value.items : []
+      cronJobs = cronResult.status === 'fulfilled' ? cronResult.value : []
+      agentRuns = runsResult.status === 'fulfilled' ? runsResult.value : []
       userFile = userResult.status === 'fulfilled' ? userResult.value : null
       config = configResult.status === 'fulfilled' ? configResult.value : null
       await loadContinueSession(
@@ -217,7 +316,7 @@
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load home dashboard'
     } finally {
-      loading = false
+      if (showLoading) loading = false
     }
   }
 
@@ -235,19 +334,23 @@
 
   onMount(() => {
     void load()
+    pollTimer = setInterval(() => {
+      void load(false)
+    }, 30_000)
     startEventStream()
   })
 
   onDestroy(() => {
     stopStream?.()
+    if (pollTimer) clearInterval(pollTimer)
   })
 </script>
 
 <div class="home">
   <div class="home-header">
     <div>
-      <h2>Home</h2>
-      <p class="home-subtitle">System pulse, open work, and the next useful move.</p>
+      <h2>Mission Control</h2>
+      <p class="home-subtitle">Live work, automation, health, and delivery state.</p>
     </div>
     <button type="button" class="btn btn-primary" onclick={() => onNavigate('/console/chat')}>New Chat</button>
   </div>
@@ -257,32 +360,124 @@
   {/if}
 
   {#if loading}
-    <div class="home-loading">Loading overview...</div>
+    <div class="home-loading">Loading Mission Control...</div>
   {:else}
     <section class="status-strip" aria-label="Home status strip">
-      <div class="status-tile">
+      <button type="button" class="status-tile" onclick={() => onNavigate('/console/pulse')}>
         <span class="status-label">Pulse</span>
         <strong class:status-ok={pulseLabel() === 'active'} class:status-danger={pulseLabel() === 'error'}>{pulseLabel()}</strong>
         <span>{pulse?.last_tick_at ? relativeTime(pulse.last_tick_at) : 'never'}</span>
-      </div>
-      <div class="status-tile">
+      </button>
+      <button type="button" class="status-tile" onclick={() => onNavigate('/console/reflection')}>
         <span class="status-label">Reflection</span>
         <strong class:status-ok={reflectionLabel() === 'healthy'} class:status-danger={reflectionLabel() === 'failing'}>{reflectionLabel()}</strong>
         <span>{reflection?.last_successful_run_at ? relativeTime(reflection.last_successful_run_at) : 'never'}</span>
-      </div>
-      <div class="status-tile">
+      </button>
+      <button type="button" class="status-tile" onclick={() => onNavigate('/console/tasks')}>
+        <span class="status-label">Active plans</span>
+        <strong>{plans.length}</strong>
+        <span>{plans.reduce((total, item) => total + (item.summary?.in_progress ?? 0), 0)} task active</span>
+      </button>
+      <button type="button" class="status-tile" onclick={() => onNavigate('/console/agentruntime')}>
+        <span class="status-label">Agent runs</span>
+        <strong>{activeAgentRuns.length}</strong>
+        <span>{agentRuns.length} recent</span>
+      </button>
+      <button type="button" class="status-tile" onclick={() => onNavigate('/console/cron')}>
+        <span class="status-label">Cron jobs</span>
+        <strong class:status-danger={failedCronJobs.length > 0}>{activeCronJobs.length}</strong>
+        <span>{failedCronJobs.length > 0 ? `${failedCronJobs.length} failed` : `${cronJobs.length} total`}</span>
+      </button>
+      <button type="button" class="status-tile" onclick={() => onNavigate('/console/approvals')}>
         <span class="status-label">Disk pressure</span>
         <strong class:status-ok={diskClass() === 'ok'} class:status-warn={diskClass() === 'warn'} class:status-danger={diskClass() === 'danger'}>{diskUsedLabel()}</strong>
         <span>{ops ? `${Math.round(ops.disk_free_bytes / 1024 / 1024 / 1024)} GB free` : 'ops unavailable'}</span>
-      </div>
-      <div class="status-tile">
+      </button>
+      <button type="button" class="status-tile" onclick={() => onNavigate('/console/chat')}>
         <span class="status-label">Active sessions</span>
         <strong>{mainSessions.length}</strong>
         <span>{todaySessions.length} touched today</span>
-      </div>
+      </button>
     </section>
 
     <div class="dashboard-grid">
+      <section class="dashboard-section plans-section">
+        <div class="section-heading">
+          <div>
+            <h3>Active plans</h3>
+            <p>Current task contracts across sessions.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/tasks')}>Open Plans</button>
+        </div>
+        {#if recentPlans.length === 0}
+          <div class="empty-state"><p>No active plans.</p></div>
+        {:else}
+          <div class="work-list">
+            {#each recentPlans as item}
+              {@const percent = planProgressPercent(item)}
+              <button type="button" class="work-row" onclick={() => openPlanSession(item.session.id)}>
+                <span class="work-topline">
+                  <strong>{compact(item.plan.goal, 120)}</strong>
+                  <span class="badge badge-default">{item.plan.status ?? 'executing'}</span>
+                </span>
+                <span class="mini-progress" aria-label={`${percent}% complete`}><span style={`width: ${percent}%`}></span></span>
+                <span class="work-meta">{planFinishedCount(item)}/{item.summary?.total ?? item.tasks.length} done · {item.summary?.in_progress ?? 0} active · updated {relativeTime(item.updated_at)}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <section class="dashboard-section">
+        <div class="section-heading">
+          <div>
+            <h3>Agent runs</h3>
+            <p>Latest runtime work and active delegated agents.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/agentruntime')}>Open Runtime</button>
+        </div>
+        {#if recentAgentRuns.length === 0}
+          <div class="empty-state"><p>No agent runs recorded.</p></div>
+        {:else}
+          <div class="work-list">
+            {#each recentAgentRuns as run}
+              <button type="button" class="work-row" onclick={() => onNavigate(`/console/agentruntime/runs/${encodeURIComponent(run.run_id)}`)}>
+                <span class="work-topline">
+                  <strong>{compact(agentRunTitle(run), 120)}</strong>
+                  <span class="badge" class:badge-accent={isAgentRunActive(run)} class:badge-default={!isAgentRunActive(run)}>{run.status}</span>
+                </span>
+                <span class="work-meta">{run.agent || 'agent'} · {run.tier || 'tier'} · {relativeTime(agentRunTime(run))}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <section class="dashboard-section">
+        <div class="section-heading">
+          <div>
+            <h3>Cron jobs</h3>
+            <p>Scheduled automation, paused jobs, and recent failures.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/cron')}>Open Cron</button>
+        </div>
+        {#if cronJobs.length === 0}
+          <div class="empty-state"><p>No cron jobs configured.</p></div>
+        {:else}
+          <div class="work-list">
+            {#each cronJobs.slice(0, 5) as job}
+              <button type="button" class="work-row" onclick={() => onNavigate('/console/cron')}>
+                <span class="work-topline">
+                  <strong>{job.name || compact(job.prompt, 80)}</strong>
+                  <span class="badge" class:badge-error={!!job.last_run_error} class:badge-success={job.enabled && !job.last_run_error} class:badge-default={!job.enabled && !job.last_run_error}>{cronStatusLabel(job)}</span>
+                </span>
+                <span class="work-meta">{job.schedule} · {nextCronRunLabel(job)}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
       <section class="dashboard-section sessions-section">
         <div class="section-heading">
           <div>
@@ -376,6 +571,35 @@
           </div>
         {/if}
       </section>
+
+      <section class="dashboard-section">
+        <div class="section-heading">
+          <div>
+            <h3>Delivery</h3>
+            <p>Current installed version and release shortcuts.</p>
+          </div>
+        </div>
+        <div class="action-grid">
+          {#if releaseHref}
+            <a class="action-card" href={releaseHref} target="_blank" rel="noreferrer">
+              <strong>{serverVersion}</strong>
+              <span>Latest known release for this running server.</span>
+              <em>Open Release</em>
+            </a>
+          {:else}
+            <div class="action-card action-card-static">
+              <strong>{serverVersion || 'dev'}</strong>
+              <span>Development build or unreleased local server.</span>
+              <em>Local build</em>
+            </div>
+          {/if}
+          <a class="action-card" href="https://github.com/devlikebear/tars/pulls" target="_blank" rel="noreferrer">
+            <strong>Pull requests</strong>
+            <span>Review recent delivery activity on GitHub.</span>
+            <em>Open PRs</em>
+          </a>
+        </div>
+      </section>
     </div>
   {/if}
 </div>
@@ -428,7 +652,7 @@
 
   .status-strip {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: var(--space-3);
     margin-bottom: var(--space-6);
   }
@@ -437,6 +661,7 @@
   .session-card,
   .focus-card,
   .notification-row,
+  .work-row,
   .action-card {
     background: var(--surface);
     border: 1px solid var(--border-subtle);
@@ -449,12 +674,24 @@
     gap: 3px;
     padding: var(--space-4);
     min-width: 0;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      border-color var(--duration-fast) var(--ease-out),
+      background var(--duration-fast) var(--ease-out);
+  }
+
+  .status-tile:hover {
+    background: var(--surface-elevated);
+    border-color: var(--border-strong);
   }
 
   .status-label,
   .session-meta,
   .session-id,
   .notification-message,
+  .work-meta,
   .action-card span,
   .focus-card span {
     color: var(--text-tertiary);
@@ -489,9 +726,14 @@
     grid-row: span 2;
   }
 
+  .plans-section {
+    grid-column: 1 / -1;
+  }
+
   .session-grid,
   .action-grid,
-  .notification-list {
+  .notification-list,
+  .work-list {
     display: grid;
     gap: var(--space-3);
   }
@@ -503,6 +745,7 @@
   .session-card,
   .focus-card,
   .notification-row,
+  .work-row,
   .action-card {
     display: flex;
     flex-direction: column;
@@ -520,6 +763,7 @@
   .session-card:hover,
   .focus-card:hover,
   .notification-row:hover:not(:disabled),
+  .work-row:hover,
   .action-card:hover {
     background: var(--surface-elevated);
     border-color: var(--border-strong);
@@ -532,6 +776,7 @@
   .session-title,
   .focus-card strong,
   .notification-top strong,
+  .work-topline strong,
   .action-card strong {
     color: var(--text-primary);
     font-family: var(--font-display);
@@ -559,6 +804,53 @@
     font-style: normal;
     font-size: var(--text-xs);
     font-weight: 600;
+  }
+
+  .work-topline {
+    display: flex;
+    width: 100%;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .work-topline strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .work-meta {
+    line-height: 1.45;
+  }
+
+  .mini-progress {
+    display: block;
+    width: 100%;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--surface-inset);
+  }
+
+  .mini-progress span {
+    display: block;
+    height: 100%;
+    background: var(--primary);
+  }
+
+  .action-card {
+    text-decoration: none;
+  }
+
+  .action-card-static {
+    cursor: default;
+  }
+
+  .action-card-static:hover {
+    background: var(--surface);
+    border-color: var(--border-subtle);
   }
 
   .empty-state {
