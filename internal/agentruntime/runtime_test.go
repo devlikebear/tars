@@ -903,6 +903,57 @@ func TestRuntimePersistence_TrimsRunsAndChannelMessages(t *testing.T) {
 	}
 }
 
+func TestRuntimePersistence_ConcurrentSnapshotsKeepLatestChannels(t *testing.T) {
+	persistDir := filepath.Join(t.TempDir(), "agentruntime")
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:                                   true,
+		WorkspaceDir:                              t.TempDir(),
+		SessionStore:                              session.NewStore(t.TempDir()),
+		ChannelsLocalEnabled:                      true,
+		AgentRuntimePersistenceEnabled:            true,
+		AgentRuntimeRunsPersistenceEnabled:        true,
+		AgentRuntimeChannelsPersistenceEnabled:    true,
+		AgentRuntimeChannelsMaxMessagesPerChannel: 5,
+		AgentRuntimePersistenceDir:                persistDir,
+	})
+
+	const totalMessages = 150
+	errCh := make(chan error, totalMessages)
+	for i := 0; i < totalMessages; i++ {
+		i := i
+		go func() {
+			_, err := rt.MessageSend("general", "", fmt.Sprintf("m%03d", i))
+			errCh <- err
+		}()
+	}
+	for i := 0; i < totalMessages; i++ {
+		if err := <-errCh; err != nil {
+			t.Fatalf("message send %d: %v", i, err)
+		}
+	}
+
+	want, err := rt.MessageRead("general", 5)
+	if err != nil {
+		t.Fatalf("read in-memory messages: %v", err)
+	}
+	closeAgentRuntime(t, rt)
+
+	store := newSnapshotStore(persistDir)
+	channels, err := store.readChannels()
+	if err != nil {
+		t.Fatalf("read channels snapshot: %v", err)
+	}
+	got := channels[workspaceChannelKey(defaultWorkspaceID, "general")]
+	if len(got) != len(want) {
+		t.Fatalf("expected %d persisted channel messages, got %d: %+v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i].ID != want[i].ID {
+			t.Fatalf("persisted channel messages diverged from memory: want %+v got %+v", want, got)
+		}
+	}
+}
+
 func TestRuntimeArchive_RotateAndRetention(t *testing.T) {
 	workspace := t.TempDir()
 	archiveDir := filepath.Join(workspace, "archive")

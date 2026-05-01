@@ -305,6 +305,7 @@ type Runtime struct {
 	executionSem        *executionSemaphore
 	runEvents           *runEventBroker
 	stateVersion        uint64
+	persistMu           sync.Mutex
 	persistStore        snapshotStore
 	lastPersistAt       time.Time
 	lastRestoreAt       time.Time

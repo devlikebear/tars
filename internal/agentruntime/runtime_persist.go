@@ -173,6 +173,8 @@ func (r *Runtime) persistSnapshot() {
 	if r == nil || !r.persistenceEnabled() {
 		return
 	}
+	r.persistMu.Lock()
+	defer r.persistMu.Unlock()
 	for attempt := 0; attempt < 2; attempt++ {
 		runs, channels, snapshotVersion := r.snapshotForPersistence()
 		runs = trimRuns(runs, r.opts.AgentRuntimeRunsMaxRecords)
