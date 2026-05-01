@@ -626,6 +626,54 @@ export type MemoryFile = {
   updated_at?: string
 }
 
+export type MemoryCandidateStatus = 'pending' | 'approved' | 'rejected' | 'merged'
+
+export type MemoryCandidateAction = 'approve' | 'reject' | 'merge'
+
+export type MemoryCandidateProvenance = {
+  source?: string
+  session_id?: string
+  message_range?: string
+  source_summary?: string
+  extracted_at?: string
+}
+
+export type MemoryCandidateHint = {
+  kind: 'similar' | 'conflict' | string
+  category: string
+  summary: string
+  source_session?: string
+  score?: number
+  reason?: string
+}
+
+export type MemoryCandidate = {
+  id: string
+  status: MemoryCandidateStatus
+  category: string
+  summary: string
+  tags?: string[]
+  source_session?: string
+  importance?: number
+  auto?: boolean
+  created_at: string
+  updated_at: string
+  reviewed_at?: string
+  merged_into?: string
+  provenance?: MemoryCandidateProvenance
+  similar?: MemoryCandidateHint[]
+  conflicts?: MemoryCandidateHint[]
+}
+
+export type MemoryCandidateListResponse = {
+  count: number
+  items: MemoryCandidate[]
+}
+
+export type MemoryCandidateReviewResponse = {
+  candidate: MemoryCandidate
+}
+
 export type SyspromptScope = 'workspace' | 'agent'
 
 export type SyspromptPromptImpact = {

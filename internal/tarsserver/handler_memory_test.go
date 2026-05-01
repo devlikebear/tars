@@ -87,6 +87,77 @@ func TestMemoryAPIHandler_ListsEditsFilesAndRunsSearch(t *testing.T) {
 	}
 }
 
+func TestMemoryAPIHandler_ReviewsMemoryInboxCandidates(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	backend := memory.NewFileBackend(root, nil)
+	candidate, added, err := memory.AppendInboxCandidateIfNew(
+		t.Context(),
+		root,
+		backend,
+		memory.MemoryCandidate{
+			Category:      "preference",
+			Summary:       "I prefer concise Korean answers",
+			Tags:          []string{"auto"},
+			SourceSession: "sess-1",
+			Auto:          true,
+			Provenance: memory.MemoryCandidateProvenance{
+				Source:       "reflection",
+				SessionID:    "sess-1",
+				MessageRange: "messages:0-1",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("append candidate: %v", err)
+	}
+	if !added {
+		t.Fatal("expected new candidate")
+	}
+
+	handler := newMemoryAPIHandler(root, backend, zerolog.Nop())
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/memory/inbox?status=pending", nil)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected inbox 200, got %d body=%q", listRec.Code, listRec.Body.String())
+	}
+	var listPayload struct {
+		Count int                      `json:"count"`
+		Items []memory.MemoryCandidate `json:"items"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listPayload); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if listPayload.Count != 1 || len(listPayload.Items) != 1 || listPayload.Items[0].ID != candidate.ID {
+		t.Fatalf("unexpected inbox list: %+v", listPayload)
+	}
+
+	reviewReq := httptest.NewRequest(http.MethodPost, "/v1/memory/inbox/review", strings.NewReader(`{
+		"id":"`+candidate.ID+`",
+		"action":"approve"
+	}`))
+	reviewReq.Header.Set("Content-Type", "application/json")
+	reviewRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviewRec, reviewReq)
+	if reviewRec.Code != http.StatusOK {
+		t.Fatalf("expected review 200, got %d body=%q", reviewRec.Code, reviewRec.Body.String())
+	}
+	if !strings.Contains(reviewRec.Body.String(), `"status":"approved"`) {
+		t.Fatalf("expected approved candidate, got %q", reviewRec.Body.String())
+	}
+	hits, err := memory.SearchExperiences(root, memory.SearchOptions{Query: "concise Korean", Limit: 5})
+	if err != nil {
+		t.Fatalf("search experiences: %v", err)
+	}
+	if len(hits) != 1 || hits[0].Summary != candidate.Summary {
+		t.Fatalf("expected approved experience, got %+v", hits)
+	}
+}
+
 func TestMemoryAPIHandler_PrefetchBuildsPriorContextPreview(t *testing.T) {
 	root := t.TempDir()
 	if err := memory.EnsureWorkspace(root); err != nil {

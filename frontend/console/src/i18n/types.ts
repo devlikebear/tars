@@ -124,10 +124,30 @@ export type Translations = {
       selectedAsset: string
       search: string
       hits: (count: number) => string
+      inbox: string
+      pending: (count: number) => string
     }
     tabs: {
+      inbox: string
       storedKnowledge: string
       trySearch: string
+    }
+    inbox: {
+      title: string
+      subtitle: string
+      loading: string
+      empty: string
+      approve: string
+      reject: string
+      merge: string
+      reviewing: string
+      provenance: string
+      similar: string
+      conflicts: string
+      mergedInto: (target: string) => string
+      approved: string
+      rejected: string
+      merged: string
     }
     assets: string
     editor: string

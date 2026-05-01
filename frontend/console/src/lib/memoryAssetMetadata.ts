@@ -14,10 +14,17 @@ const memoryMetadata: MemoryAssetMetadata = {
 }
 
 const experienceMetadata: MemoryAssetMetadata = {
-  description: 'Automatically extracted experience log filled by reflection.',
-  filledBy: ['Reflection nightly memory job (02:00-05:00)', 'Experience extraction from conversations'],
+  description: 'Approved experience log used by memory recall.',
+  filledBy: ['Approved Memory Inbox candidates', 'Explicit memory tools'],
   readBy: ['memory_search tool', 'semantic prefetch'],
   staleAfterDays: 7,
+}
+
+const inboxMetadata: MemoryAssetMetadata = {
+  description: 'Review queue for memories extracted from previous chats.',
+  filledBy: ['Reflection nightly memory job (02:00-05:00)', 'Experience extraction from conversations'],
+  readBy: ['Memory Inbox review workflow'],
+  staleAfterDays: 14,
 }
 
 const dailyMetadata: MemoryAssetMetadata = {
@@ -43,6 +50,8 @@ export function getMemoryAssetMetadata(asset: Pick<MemoryAsset, 'kind' | 'path'>
   switch (asset.kind) {
     case 'long_term_memory':
       return memoryMetadata
+    case 'memory_inbox':
+      return inboxMetadata
     case 'experience_log':
       return experienceMetadata
     case 'daily_memory':
@@ -52,6 +61,7 @@ export function getMemoryAssetMetadata(asset: Pick<MemoryAsset, 'kind' | 'path'>
       return semanticIndexMetadata
     default:
       if (path.endsWith('memory.md')) return memoryMetadata
+      if (path.includes('inbox')) return inboxMetadata
       if (path.includes('experience')) return experienceMetadata
       if (path.includes('daily')) return dailyMetadata
       if (path.includes('semantic') || path.includes('embedding')) return semanticIndexMetadata

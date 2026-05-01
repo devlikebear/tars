@@ -20,6 +20,10 @@ import type {
   HubRegistry,
   MCPServerStatus,
   MemoryAsset,
+  MemoryCandidateAction,
+  MemoryCandidateListResponse,
+  MemoryCandidateReviewResponse,
+  MemoryCandidateStatus,
   MemoryFile,
   MemoryPrefetchResult,
   MemorySearchResult,
@@ -535,6 +539,25 @@ export async function saveMemoryFile(path: string, content: string): Promise<Mem
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, content }),
+  })
+}
+
+export async function listMemoryInbox(status: MemoryCandidateStatus | 'all' = 'pending'): Promise<MemoryCandidateListResponse> {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  const qs = params.toString()
+  return requestJSON<MemoryCandidateListResponse>(`/v1/memory/inbox${qs ? `?${qs}` : ''}`)
+}
+
+export async function reviewMemoryCandidate(
+  id: string,
+  action: MemoryCandidateAction,
+  mergeTarget?: string,
+): Promise<MemoryCandidateReviewResponse> {
+  return requestJSON<MemoryCandidateReviewResponse>('/v1/memory/inbox/review', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, action, merge_target: mergeTarget || '' }),
   })
 }
 
