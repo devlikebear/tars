@@ -144,3 +144,38 @@ func TestUsageAPI_Signals(t *testing.T) {
 		t.Fatalf("unexpected signal row: %+v", out.Signals.Rows[0])
 	}
 }
+
+func TestUsageAPI_Analytics(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	tracker, err := usage.NewTracker(t.TempDir(), usage.TrackerOptions{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+	if err := tracker.Record(usage.Entry{
+		Timestamp:        now.Add(-time.Hour),
+		Provider:         "openai",
+		Model:            "gpt-5.4",
+		InputTokens:      120,
+		OutputTokens:     80,
+		EstimatedCostUSD: 0.010,
+		Source:           "chat",
+		SessionID:        "sess-a",
+	}); err != nil {
+		t.Fatalf("record usage: %v", err)
+	}
+
+	handler := newUsageAPIHandler(tracker, "off", zerolog.Nop())
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/analytics?days=7", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var out usage.Analytics
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode analytics: %v", err)
+	}
+	if out.Days != 7 || out.Totals.TotalTokens != 200 || len(out.Daily) != 7 || len(out.Models) != 1 {
+		t.Fatalf("unexpected analytics response: %+v", out)
+	}
+}

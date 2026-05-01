@@ -41,6 +41,7 @@ export const en = {
       ops: 'Approvals',
       cron: 'Cron',
       logs: 'Logs',
+      analytics: 'Analytics',
       pulse: 'Pulse',
       reflection: 'Reflection',
       config: 'Settings',

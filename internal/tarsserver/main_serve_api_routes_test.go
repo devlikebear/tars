@@ -43,6 +43,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/usage/summary",
 		"/v1/usage/limits",
 		"/v1/admin/usage/today",
+		"/v1/admin/analytics",
 		"/v1/admin/logs",
 		"/v1/ops/status",
 		"/v1/ops/cleanup/plan",

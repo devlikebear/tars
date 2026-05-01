@@ -41,6 +41,7 @@ export type Translations = {
       ops: string
       cron: string
       logs: string
+      analytics: string
       pulse: string
       reflection: string
       config: string

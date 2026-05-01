@@ -10,6 +10,7 @@ export type Route =
   | { view: 'ops' }
   | { view: 'cron' }
   | { view: 'logs' }
+  | { view: 'analytics' }
   | { view: 'config' }
   | { view: 'extensions' }
   | { view: 'pulse' }
@@ -54,6 +55,10 @@ export function resolveRoute(pathname: string): Route {
 
   if (path.startsWith(`${consoleBase}/logs`)) {
     return { view: 'logs' }
+  }
+
+  if (path.startsWith(`${consoleBase}/analytics`)) {
+    return { view: 'analytics' }
   }
 
   if (path.startsWith(`${consoleBase}/agentruntime`)) {

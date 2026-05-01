@@ -56,6 +56,7 @@ import type {
   SessionWorkDirs,
   UsageToday,
   LogsResponse,
+  AnalyticsResponse,
 } from './types'
 
 async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
@@ -120,6 +121,10 @@ export async function getLogs(query: LogsQuery = {}): Promise<LogsResponse> {
   if (query.lines && Number.isFinite(query.lines)) params.set('lines', String(query.lines))
   const suffix = params.toString()
   return requestJSON<LogsResponse>(`/v1/admin/logs${suffix ? `?${suffix}` : ''}`)
+}
+
+export async function getAnalytics(days = 7): Promise<AnalyticsResponse> {
+  return requestJSON<AnalyticsResponse>(`/v1/admin/analytics?days=${days}`)
 }
 
 // --- Pulse (system watchdog, replaces heartbeat) ---

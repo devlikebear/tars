@@ -99,6 +99,53 @@ export type LogsResponse = {
   component: string
 }
 
+export type AnalyticsTotals = {
+  calls: number
+  sessions: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cost_usd: number
+  avg_tokens_per_session: number
+}
+
+export type AnalyticsDailyRow = {
+  day: string
+  calls: number
+  sessions: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cost_usd: number
+}
+
+export type AnalyticsModelRow = {
+  provider: string
+  model: string
+  calls: number
+  sessions: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cost_usd: number
+}
+
+export type AnalyticsSkillRow = {
+  name: string
+  source?: string
+  calls: number
+  first_at?: string
+  last_at?: string
+}
+
+export type AnalyticsResponse = {
+  days: number
+  totals: AnalyticsTotals
+  daily: AnalyticsDailyRow[]
+  models: AnalyticsModelRow[]
+  skills: AnalyticsSkillRow[]
+}
+
 // --- Reflection (nightly batch runner) ---
 
 export type ReflectionJobResult = {

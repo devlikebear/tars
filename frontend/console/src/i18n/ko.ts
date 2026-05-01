@@ -41,6 +41,7 @@ export const ko = {
       ops: '승인',
       cron: '크론',
       logs: '로그',
+      analytics: '분석',
       pulse: '펄스',
       reflection: '리플렉션',
       config: '설정',
