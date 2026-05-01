@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.112] - 2026-05-01
+
+### Added
+
+- Added Skill Hub quality metadata parsing for skills, plugins, and MCP packages.
+- Added Extensions Hub quality score badges and install-time trust signals for last update, tests, required tools, permissions, companion CLI presence, and install count.
+
+### Documentation
+
+- README and Skill Hub tutorial now document registry quality metadata and Extensions Hub trust signals.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/skillhub ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/extensions` Hub quality score and trust signal rendering with a mock API
+
+### Closed
+
+- Closes #582.
+
 ## [0.31.111] - 2026-05-01
 
 ### Added

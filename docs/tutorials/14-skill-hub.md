@@ -52,7 +52,7 @@ Local Workspace
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "skills": [
     {
       "name": "daily-briefing",
@@ -65,7 +65,15 @@ Local Workspace
       "files": [
         {"path": "SKILL.md", "sha256": "..."},
         {"path": "briefing.sh", "sha256": "..."}
-      ]
+      ],
+      "quality": {
+        "score": 88,
+        "last_updated": "2026-05-01",
+        "tests_passing": true,
+        "required_tools": ["bash"],
+        "permissions": ["filesystem", "shell"],
+        "companion_cli": true
+      }
     }
   ],
   "plugins": [],
@@ -73,7 +81,7 @@ Local Workspace
 }
 ```
 
-`files`는 legacy string 배열과 checksum-bearing object 배열을 모두 받아들인다. 최신 package는 companion file까지 함께 설치할 수 있도록 object form을 권장한다.
+`files`는 legacy string 배열과 checksum-bearing object 배열을 모두 받아들인다. 최신 package는 companion file까지 함께 설치할 수 있도록 object form을 권장한다. `quality`는 설치 전 신뢰 신호다. `score`는 0-100 정수이고, last updated, tests passing, required tools, permissions, companion CLI, install count 같은 선택 필드를 함께 둘 수 있다. Console Extensions Hub는 이 값을 패키지 카드에 표시한다.
 
 핵심 API:
 

@@ -42,13 +42,14 @@ func (files RegistryFiles) Paths() []string {
 
 // PluginEntry describes a plugin in the registry.
 type PluginEntry struct {
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Version     string        `json:"version"`
-	Author      string        `json:"author"`
-	Tags        []string      `json:"tags"`
-	Path        string        `json:"path"`
-	Files       RegistryFiles `json:"files"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Version     string           `json:"version"`
+	Author      string           `json:"author"`
+	Tags        []string         `json:"tags"`
+	Path        string           `json:"path"`
+	Files       RegistryFiles    `json:"files"`
+	Quality     *QualityMetadata `json:"quality,omitempty"`
 }
 
 // RegistryFile describes a downloadable file and its checksum.
@@ -59,27 +60,40 @@ type RegistryFile struct {
 
 // RegistryEntry describes a single skill in the registry.
 type RegistryEntry struct {
-	Name           string        `json:"name"`
-	Description    string        `json:"description"`
-	Version        string        `json:"version"`
-	Author         string        `json:"author"`
-	Tags           []string      `json:"tags"`
-	Path           string        `json:"path"`
-	UserInvocable  bool          `json:"user_invocable"`
-	RequiresPlugin string        `json:"requires_plugin,omitempty"`
-	Files          RegistryFiles `json:"files,omitempty"`
+	Name           string           `json:"name"`
+	Description    string           `json:"description"`
+	Version        string           `json:"version"`
+	Author         string           `json:"author"`
+	Tags           []string         `json:"tags"`
+	Path           string           `json:"path"`
+	UserInvocable  bool             `json:"user_invocable"`
+	RequiresPlugin string           `json:"requires_plugin,omitempty"`
+	Files          RegistryFiles    `json:"files,omitempty"`
+	Quality        *QualityMetadata `json:"quality,omitempty"`
 }
 
 // MCPEntry describes a managed MCP package in the registry.
 type MCPEntry struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Version     string         `json:"version"`
-	Author      string         `json:"author"`
-	Tags        []string       `json:"tags"`
-	Path        string         `json:"path"`
-	Manifest    string         `json:"manifest,omitempty"`
-	Files       []RegistryFile `json:"files"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Version     string           `json:"version"`
+	Author      string           `json:"author"`
+	Tags        []string         `json:"tags"`
+	Path        string           `json:"path"`
+	Manifest    string           `json:"manifest,omitempty"`
+	Files       []RegistryFile   `json:"files"`
+	Quality     *QualityMetadata `json:"quality,omitempty"`
+}
+
+// QualityMetadata carries install-time trust signals published by the hub registry.
+type QualityMetadata struct {
+	Score         int      `json:"score"`
+	LastUpdated   string   `json:"last_updated,omitempty"`
+	TestsPassing  *bool    `json:"tests_passing,omitempty"`
+	RequiredTools []string `json:"required_tools,omitempty"`
+	Permissions   []string `json:"permissions,omitempty"`
+	CompanionCLI  *bool    `json:"companion_cli,omitempty"`
+	InstallCount  int      `json:"install_count,omitempty"`
 }
 
 // InstalledSkill tracks a skill that has been installed locally.

@@ -839,6 +839,16 @@ export type CronRunResult = {
 
 // --- Hub / Extensions ---
 
+export type HubQualityMetadata = {
+  score: number
+  last_updated?: string
+  tests_passing?: boolean
+  required_tools?: string[]
+  permissions?: string[]
+  companion_cli?: boolean
+  install_count?: number
+}
+
 export type HubRegistryEntry = {
   name: string
   description: string
@@ -850,6 +860,7 @@ export type HubRegistryEntry = {
   requires_plugin?: string
   files?: string[] | { path: string; sha256: string }[]
   manifest?: string
+  quality?: HubQualityMetadata
 }
 
 export type HubRegistry = {
