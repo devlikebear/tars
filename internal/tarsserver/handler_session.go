@@ -50,9 +50,16 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 		if err != nil {
 			return session.Session{}, err
 		}
+		internalID := strings.TrimSpace(mainSession.ID)
 		mainSession.ID = "main"
 		mainSession.Kind = "main"
 		mainSession.Hidden = false
+		if strings.TrimSpace(mainSession.RootSessionID) == "" || strings.TrimSpace(mainSession.RootSessionID) == internalID {
+			mainSession.RootSessionID = "main"
+		}
+		if strings.TrimSpace(mainSession.ParentSessionID) == internalID {
+			mainSession.ParentSessionID = "main"
+		}
 		return mainSession, nil
 	}
 	resolveInternalMainID := func(reqStore *session.Store) (string, error) {

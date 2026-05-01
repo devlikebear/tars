@@ -6,6 +6,36 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.104] - 2026-05-01
+
+### Added
+
+- Added first-class session lineage fields: `parent_session_id`, `root_session_id`, `forked_from_message_id`, `forked_from_index`, and `fork_reason`.
+- Added stable transcript message IDs for newly appended or rewritten messages.
+- Added deterministic read-time virtual IDs for legacy transcript messages that do not yet have persisted IDs.
+
+### Changed
+
+- Session API responses and Console session types now expose lineage and message ID fields.
+
+### Documentation
+
+- README now documents the session lineage and transcript message ID foundation for future fork and graph workflows.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/session ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+
+### Closed
+
+- Closes #567.
+
 ## [0.31.103] - 2026-05-01
 
 ### Added

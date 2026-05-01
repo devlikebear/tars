@@ -32,6 +32,7 @@ The name is an homage to TARS from *Interstellar*: practical, direct, and built 
 The primary interface. Browser-based console at `http://127.0.0.1:43180/console`.
 
 - Multi-session chat with full LLM tool-calling loops and transcript snippet matches in session search
+- Session lineage metadata and stable transcript message IDs provide the storage foundation for future chat fork and lineage graph workflows
 - Tool calls render as collapsible rows with live elapsed time, compact argument previews, and automatic error expansion
 - `@` file and directory mentions from the session Files roots for explicit context injection
 - `/` command autocomplete for built-in chat actions and explicit user-invocable skill selection
@@ -44,7 +45,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 - Memory Inbox review queue for approving, rejecting, or merging reflection-derived memory candidates before they enter durable recall
 - Fresh workspaces omit legacy KB Wiki scaffolding while preserving any existing `memory/wiki` files
 - Editable memory assets plus Tool path and Prefetch path recall tests through the console/API
-- Structured transcript compaction preserving identifiers and recent context
+- Structured transcript compaction preserving message identifiers and recent context
 - System prompt customization via `USER.md`, `IDENTITY.md`, `AGENTS.md`, `TOOLS.md`
 
 ### Sub-Agent Orchestration
@@ -221,7 +222,7 @@ The Chat header shows the active plan goal and completed/total task count withou
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
 | Home | Mission Control | `/console` | Live overview for Pulse, Reflection, active plans, Agent Runtime runs, Cron jobs, disk pressure, active sessions, recent notifications, recommended setup actions, and release/PR shortcuts |
-| Work | Chat | `/console/chat` | Interactive agent chat with tool calling, dockable Sessions and tool panels, task contract review/approval, task evidence attachments, read-only Git Inspector, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, parallel subagent progress cards, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
+| Work | Chat | `/console/chat` | Interactive agent chat with tool calling, dockable Sessions and tool panels, task contract review/approval, task evidence attachments, read-only Git Inspector, session lineage-ready transcripts, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, parallel subagent progress cards, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
 | Work | Plans | `/console/tasks` | Review active plans across sessions with progress cards and jump directly into the owning chat session |
 | Work | Memory | `/console/memory` | Review extracted memory candidates before storage, edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |

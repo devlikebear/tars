@@ -2124,6 +2124,9 @@ func TestSessionAPIs(t *testing.T) {
 	if len(sessions) != 1 || sessions[0].ID != "main" {
 		t.Fatalf("expected main-only sessions list, got %+v", sessions)
 	}
+	if sessions[0].RootSessionID != "main" {
+		t.Fatalf("expected main session root lineage in list, got %+v", sessions[0])
+	}
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"title":"test session"}`))
 	createReq.Header.Set("Content-Type", "application/json")
@@ -2149,6 +2152,9 @@ func TestSessionAPIs(t *testing.T) {
 	}
 	if fetched.Title != mainSession.Title {
 		t.Fatalf("expected title %q, got %q", mainSession.Title, fetched.Title)
+	}
+	if fetched.RootSessionID != "main" {
+		t.Fatalf("expected main session root lineage in get response, got %+v", fetched)
 	}
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/sessions/main", nil)
@@ -2218,6 +2224,9 @@ func TestSessionAPI_History(t *testing.T) {
 	}
 	if history[1].Role != "assistant" || history[1].Content != "hi there" {
 		t.Fatalf("unexpected second history message: %+v", history[1])
+	}
+	if history[0].ID == "" || history[1].ID == "" {
+		t.Fatalf("expected history message IDs, got %+v", history)
 	}
 }
 

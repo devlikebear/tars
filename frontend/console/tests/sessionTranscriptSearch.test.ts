@@ -6,6 +6,7 @@ import { highlightTerms } from '../src/lib/markdown.ts'
 
 const sessionsSource = readFileSync(new URL('../src/components/Sessions.svelte', import.meta.url), 'utf8')
 const sessionSidebarSource = readFileSync(new URL('../src/components/SessionSidebar.svelte', import.meta.url), 'utf8')
+const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 
 test('Sessions search reuses memory session search for transcript snippets', () => {
   assert.match(sessionsSource, /runMemorySearch/)
@@ -33,4 +34,13 @@ test('highlightTerms escapes HTML before marking OR query terms', () => {
     html,
     '[user] <mark>Alpha</mark> &lt;script&gt;alert(1)&lt;/script&gt; <mark>beta</mark>',
   )
+})
+
+test('Session and transcript message types expose lineage identifiers', () => {
+  assert.match(typesSource, /parent_session_id\?: string/)
+  assert.match(typesSource, /root_session_id\?: string/)
+  assert.match(typesSource, /forked_from_message_id\?: string/)
+  assert.match(typesSource, /forked_from_index\?: number/)
+  assert.match(typesSource, /fork_reason\?: string/)
+  assert.match(typesSource, /export type SessionMessage = \{[\s\S]*id: string/)
 })

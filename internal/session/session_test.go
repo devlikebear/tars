@@ -22,6 +22,9 @@ func TestStoreCreateAndList(t *testing.T) {
 	if s1.ID == "" {
 		t.Fatal("expected non-empty session ID")
 	}
+	if s1.RootSessionID != s1.ID {
+		t.Fatalf("expected root_session_id to default to self, got %q want %q", s1.RootSessionID, s1.ID)
+	}
 
 	s2, err := store.Create("second session")
 	if err != nil {
@@ -43,8 +46,46 @@ func TestStoreCreateAndList(t *testing.T) {
 	if got.ID != s1.ID || got.Title != s1.Title {
 		t.Fatalf("unexpected session: %+v", got)
 	}
+	if got.RootSessionID != got.ID {
+		t.Fatalf("expected fetched session root to default to self, got %+v", got)
+	}
 
 	_ = s2 // use s2
+}
+
+func TestStoreBackfillsLegacySessionLineageOnRead(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	if err := os.MkdirAll(filepath.Join(dir, "sessions"), 0o755); err != nil {
+		t.Fatalf("mkdir sessions: %v", err)
+	}
+	raw := `{
+  "legacy": {
+    "id": "legacy",
+    "title": "Legacy",
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+}`
+	if err := os.WriteFile(filepath.Join(dir, "sessions", "sessions.json"), []byte(raw), 0o644); err != nil {
+		t.Fatalf("write legacy index: %v", err)
+	}
+
+	got, err := store.Get("legacy")
+	if err != nil {
+		t.Fatalf("get legacy: %v", err)
+	}
+	if got.RootSessionID != "legacy" {
+		t.Fatalf("expected root_session_id backfill, got %+v", got)
+	}
+
+	listed, err := store.ListAll()
+	if err != nil {
+		t.Fatalf("list all: %v", err)
+	}
+	if len(listed) != 1 || listed[0].RootSessionID != "legacy" {
+		t.Fatalf("expected listed legacy root backfill, got %+v", listed)
+	}
 }
 
 func TestStoreDelete(t *testing.T) {
