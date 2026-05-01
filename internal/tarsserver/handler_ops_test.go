@@ -24,7 +24,7 @@ func TestOpsAPI_StatusAndApprovalFlow(t *testing.T) {
 		t.Fatalf("write cleanup file: %v", err)
 	}
 	mgr := ops.NewManager(workspace, ops.Options{HomeDir: home})
-	handler := newOpsAPIHandler(mgr, zerolog.New(io.Discard), nil)
+	handler := newOpsAPIHandler(mgr, zerolog.New(io.Discard), nil, nil)
 
 	statusReq := httptest.NewRequest(http.MethodGet, "/v1/ops/status", nil)
 	statusRec := httptest.NewRecorder()
@@ -62,7 +62,7 @@ func TestOpsAPI_CleanupApplyRejectsOversizedBody(t *testing.T) {
 		t.Fatalf("mkdir downloads: %v", err)
 	}
 	mgr := ops.NewManager(workspace, ops.Options{HomeDir: home})
-	handler := newOpsAPIHandler(mgr, zerolog.New(io.Discard), nil)
+	handler := newOpsAPIHandler(mgr, zerolog.New(io.Discard), nil, nil)
 
 	body := `{"approval_id":"` + strings.Repeat("a", int(defaultJSONBodyLimitBytes+1)) + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/ops/cleanup/apply", strings.NewReader(body))
@@ -97,7 +97,7 @@ func TestOpsAPI_AutomationAuditList(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record automation audit: %v", err)
 	}
-	handler := newOpsAPIHandler(mgr, zerolog.New(io.Discard), nil)
+	handler := newOpsAPIHandler(mgr, zerolog.New(io.Discard), nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/ops/automation-audit?limit=10", nil)
 	rec := httptest.NewRecorder()

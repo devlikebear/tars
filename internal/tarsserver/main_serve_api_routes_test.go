@@ -119,6 +119,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/git/diff",
 		"/v1/git/log",
 		"/v1/git/branches",
+		"/v1/git/mutations",
 		"/v1/filesystem/browse",
 		"/v1/filesystem/files",
 		"/v1/workspace/files",

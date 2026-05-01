@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,6 +126,83 @@ func TestManager_RecordAutomationAuditListsNewestFirst(t *testing.T) {
 	}
 }
 
+func TestManager_GitMutationRequiresApprovalAndAudits(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	repo := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	runOpsGit(t, repo, "init", "-b", "main")
+	runOpsGit(t, repo, "config", "user.email", "tars@example.test")
+	runOpsGit(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write readme: %v", err)
+	}
+	runOpsGit(t, repo, "add", "README.md")
+	runOpsGit(t, repo, "commit", "-m", "initial")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\nchanged\n"), 0o644); err != nil {
+		t.Fatalf("modify readme: %v", err)
+	}
+
+	mgr := NewManager(workspace, Options{HomeDir: filepath.Join(t.TempDir(), "home")})
+	plan, err := mgr.CreateGitMutationApproval(context.Background(), GitMutationPlan{
+		SessionID: "sess_1",
+		Root:      repo,
+		Action:    GitMutationStage,
+		Path:      "README.md",
+		Reason:    "stage selected file",
+	})
+	if err != nil {
+		t.Fatalf("create git mutation approval: %v", err)
+	}
+	if plan.ApprovalID == "" || plan.Type != "git_mutation" || plan.Destructive {
+		t.Fatalf("unexpected git mutation plan: %+v", plan)
+	}
+	if _, err := mgr.ApplyGitMutation(context.Background(), plan.ApprovalID); err == nil {
+		t.Fatalf("expected apply to fail before approval")
+	}
+	if err := mgr.Approve(plan.ApprovalID); err != nil {
+		t.Fatalf("approve git mutation: %v", err)
+	}
+	result, err := mgr.ApplyGitMutation(context.Background(), plan.ApprovalID)
+	if err != nil {
+		t.Fatalf("apply git mutation: %v", err)
+	}
+	if result.Action != GitMutationStage || result.Result != "success" {
+		t.Fatalf("unexpected git mutation result: %+v", result)
+	}
+	cached := runOpsGitOutput(t, repo, "diff", "--cached", "--", "README.md")
+	if !strings.Contains(cached, "+changed") {
+		t.Fatalf("expected staged README diff, got %q", cached)
+	}
+	audit, err := mgr.ListAutomationAudit(AutomationAuditListOptions{SessionID: "sess_1"})
+	if err != nil {
+		t.Fatalf("list audit: %v", err)
+	}
+	if len(audit) != 1 || audit[0].Action != "git.stage" || audit[0].Result != "success" {
+		t.Fatalf("expected successful git audit entry, got %+v", audit)
+	}
+}
+
+func TestManager_GitMutationRejectsUnsafePath(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	repo := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	runOpsGit(t, repo, "init", "-b", "main")
+
+	mgr := NewManager(workspace, Options{HomeDir: filepath.Join(t.TempDir(), "home")})
+	if _, err := mgr.CreateGitMutationApproval(context.Background(), GitMutationPlan{
+		SessionID: "sess_1",
+		Root:      repo,
+		Action:    GitMutationStage,
+		Path:      "../outside.txt",
+	}); err == nil {
+		t.Fatalf("expected unsafe path to be rejected")
+	}
+}
+
 func TestManager_UpdateApprovalStatus_SetsReviewedAtAndPersists(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	fixedNow := time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC)
@@ -178,6 +257,22 @@ func TestManager_UpdateApprovalStatus_SetsReviewedAtAndPersists(t *testing.T) {
 	if !items[0].UpdatedAt.Equal(fixedNow) {
 		t.Fatalf("expected updated_at %s, got %s", fixedNow, items[0].UpdatedAt)
 	}
+}
+
+func runOpsGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	_ = runOpsGitOutput(t, dir, args...)
+}
+
+func runOpsGitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return string(out)
 }
 
 func TestNewManager_EmptyWorkspaceUsesCoreDefault(t *testing.T) {

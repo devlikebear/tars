@@ -41,14 +41,15 @@ type CleanupPlan struct {
 }
 
 type Approval struct {
-	ID          string      `json:"id"`
-	Type        string      `json:"type"`
-	Status      string      `json:"status"`
-	RequestedAt time.Time   `json:"requested_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
-	ReviewedAt  *time.Time  `json:"reviewed_at,omitempty"`
-	Plan        CleanupPlan `json:"plan"`
-	Note        string      `json:"note,omitempty"`
+	ID          string           `json:"id"`
+	Type        string           `json:"type"`
+	Status      string           `json:"status"`
+	RequestedAt time.Time        `json:"requested_at"`
+	UpdatedAt   time.Time        `json:"updated_at"`
+	ReviewedAt  *time.Time       `json:"reviewed_at,omitempty"`
+	Plan        CleanupPlan      `json:"plan"`
+	GitMutation *GitMutationPlan `json:"git_mutation,omitempty"`
+	Note        string           `json:"note,omitempty"`
 }
 
 type CleanupApplyResult struct {

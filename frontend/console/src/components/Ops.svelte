@@ -90,6 +90,15 @@
     }
   }
 
+  function cleanupCandidates(approval: Approval): NonNullable<Approval['plan']>['candidates'] {
+    return approval.plan?.candidates ?? []
+  }
+
+  function approvalPrimaryCount(approval: Approval): string {
+    if (approval.type === 'git_mutation') return approval.git_mutation?.destructive ? 'destructive git action' : 'git action'
+    return `${cleanupCandidates(approval).length} candidates`
+  }
+
   async function load() {
     loading = true
     error = ''
@@ -252,14 +261,24 @@
               </div>
 
               <div class="approval-detail">
-                <span>{approval.plan.candidates.length} candidates</span>
+                <span>{approvalPrimaryCount(approval)}</span>
                 <span class="approval-dot"></span>
-                <span>{fmtBytes(approval.plan.total_bytes)}</span>
+                <span>{approval.type === 'git_mutation' ? approval.git_mutation?.action : fmtBytes(approval.plan?.total_bytes ?? 0)}</span>
                 {#if approval.note}
                   <span class="approval-dot"></span>
                   <span class="approval-note" class:approval-result={approval.status === 'applied'}>{compact(approval.note, 120)}</span>
                 {/if}
               </div>
+
+              {#if approval.type === 'git_mutation' && approval.git_mutation}
+                <div class="git-approval-detail">
+                  <span class="mono">{approval.git_mutation.command}</span>
+                  {#if approval.git_mutation.destructive}
+                    <span class="badge badge-error">destructive</span>
+                  {/if}
+                  <span>{compact(approval.git_mutation.root, 100)}</span>
+                </div>
+              {/if}
 
               {#if approval.status === 'pending'}
                 <div class="approval-actions">
@@ -282,11 +301,11 @@
                 </div>
               {/if}
 
-              {#if approval.plan.candidates.length > 0}
+              {#if cleanupCandidates(approval).length > 0}
                 <details class="approval-candidates">
-                  <summary>{approval.plan.candidates.length} cleanup candidates</summary>
+                  <summary>{cleanupCandidates(approval).length} cleanup candidates</summary>
                   <div class="candidate-list">
-                    {#each approval.plan.candidates as candidate}
+                    {#each cleanupCandidates(approval) as candidate}
                       <div class="candidate-row">
                         <span class="mono candidate-path">{candidate.path}</span>
                         <span class="candidate-size">{fmtBytes(candidate.size_bytes)}</span>
@@ -557,6 +576,20 @@
     display: flex;
     gap: var(--space-2);
     margin-bottom: var(--space-2);
+  }
+
+  .git-approval-detail {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin-top: var(--space-2);
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .git-approval-detail .mono {
+    color: var(--text-secondary);
   }
 
   .approval-candidates {

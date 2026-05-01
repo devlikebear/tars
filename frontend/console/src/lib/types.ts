@@ -464,7 +464,7 @@ export type Approval = {
   updated_at: string
   reviewed_at?: string
   note?: string
-  plan: {
+  plan?: {
     approval_id: string
     created_at: string
     total_bytes: number
@@ -474,6 +474,7 @@ export type Approval = {
       reason?: string
     }>
   }
+  git_mutation?: GitMutationPlan
 }
 
 export type AutomationAuditEntry = {
@@ -1205,6 +1206,21 @@ export type GitBranchesResponse = {
   is_git: boolean
   root: string
   branches: GitBranch[]
+}
+
+export type GitMutationPlan = {
+  approval_id: string
+  type: string
+  created_at: string
+  session_id?: string
+  root: string
+  action: string
+  path?: string
+  branch?: string
+  message?: string
+  reason?: string
+  command: string
+  destructive?: boolean
 }
 
 export type GlobalPlanItem = {

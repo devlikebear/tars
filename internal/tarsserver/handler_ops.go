@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/ops"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 
@@ -24,7 +25,7 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f GB", float64(bytes)/(1024*1024*1024))
 }
 
-func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(context.Context, notificationEvent)) http.Handler {
+func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(context.Context, notificationEvent), store *session.Store) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/v1/ops/status", func(w http.ResponseWriter, r *http.Request) {
@@ -147,8 +148,29 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 		var err error
 		switch action {
 		case "approve":
+			approval, approvalErr := manager.GetApproval(approvalID)
+			if approvalErr != nil {
+				err = approvalErr
+				break
+			}
+			if approval.Type == "git_mutation" && approval.GitMutation != nil && !sessionAllowsApprovedGitMutation(store, approval.GitMutation.SessionID) {
+				_, _ = manager.RecordAutomationAudit(ops.AutomationAuditEntry{
+					Actor:     "git",
+					Action:    "git." + approval.GitMutation.Action,
+					Reason:    "session has not enabled approved git mutations",
+					SessionID: approval.GitMutation.SessionID,
+					CWD:       approval.GitMutation.Root,
+					Result:    "blocked",
+					Details: map[string]any{
+						"approval_id": approvalID,
+						"command":     approval.GitMutation.Command,
+					},
+				})
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "session has not enabled approved git mutations"})
+				return
+			}
 			err = manager.Approve(approvalID)
-			if err == nil {
+			if err == nil && approval.Type == "cleanup" {
 				result, applyErr := manager.ApplyCleanup(r.Context(), approvalID)
 				if applyErr != nil {
 					logger.Error().Err(applyErr).Str("approval_id", approvalID).Msg("auto-apply after approve failed")
@@ -165,6 +187,17 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 					if emit != nil {
 						emit(r.Context(), newNotificationEvent("ops", "success", "Cleanup completed", note))
 					}
+				}
+			} else if err == nil && approval.Type == "git_mutation" {
+				result, applyErr := manager.ApplyGitMutation(r.Context(), approvalID)
+				if applyErr != nil {
+					logger.Error().Err(applyErr).Str("approval_id", approvalID).Msg("git mutation apply after approve failed")
+					_ = manager.SetNote(approvalID, fmt.Sprintf("Apply failed: %s", applyErr.Error()))
+					if emit != nil {
+						emit(r.Context(), newNotificationEvent("ops", "error", "Git mutation failed", "approval_id="+approvalID+" error="+applyErr.Error()))
+					}
+				} else if emit != nil {
+					emit(r.Context(), newNotificationEvent("ops", "success", "Git mutation completed", result.Action+" "+result.Path+result.Branch))
 				}
 			}
 		case "reject":
