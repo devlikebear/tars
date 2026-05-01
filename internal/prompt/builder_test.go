@@ -136,6 +136,9 @@ func TestBuild_PlanningSectionPresentForMainAgent(t *testing.T) {
 	// approve workflow added in CON-053.
 	for _, want := range []string{
 		"tasks(action=\"plan_set\"",
+		"done_criteria",
+		"tasks(action=\"contract_update\"",
+		"tasks(action=\"contract_approve\"",
 		"tasks(action=\"add\"",
 		"tasks(action=\"plan_propose\"",
 		"tasks(action=\"plan_approve\"",

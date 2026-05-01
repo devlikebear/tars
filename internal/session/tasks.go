@@ -56,6 +56,25 @@ const (
 	PlanStatusAborted   = "aborted"
 )
 
+// TaskContract makes the implicit work agreement explicit for a session plan.
+// It is stored next to the active plan/tasks so reload, compaction, and archive
+// flows can keep success criteria attached to the work rather than only in chat.
+type TaskContract struct {
+	Goal                 string   `json:"goal,omitempty"`
+	Scope                string   `json:"scope,omitempty"`
+	DoneCriteria         []string `json:"done_criteria,omitempty"`
+	VerificationCommands []string `json:"verification_commands,omitempty"`
+	Artifacts            []string `json:"artifacts,omitempty"`
+	Status               string   `json:"status,omitempty"`
+	CreatedAt            string   `json:"created_at,omitempty"`
+	UpdatedAt            string   `json:"updated_at,omitempty"`
+}
+
+const (
+	ContractStatusDraft    = "draft"
+	ContractStatusApproved = "approved"
+)
+
 // ValidPlanStatus reports whether s is a recognized plan status.
 func ValidPlanStatus(s string) bool {
 	switch strings.ToLower(strings.TrimSpace(s)) {
@@ -76,13 +95,15 @@ type Task struct {
 
 // SessionTasks holds the current plan and its associated tasks for a session.
 type SessionTasks struct {
-	Plan  *Plan  `json:"plan,omitempty"`
-	Tasks []Task `json:"tasks"`
+	Plan     *Plan         `json:"plan,omitempty"`
+	Contract *TaskContract `json:"contract,omitempty"`
+	Tasks    []Task        `json:"tasks"`
 }
 
 type SessionWithPlanTasks struct {
 	Session   Session        `json:"session"`
 	Plan      *Plan          `json:"plan,omitempty"`
+	Contract  *TaskContract  `json:"contract,omitempty"`
 	Tasks     []Task         `json:"tasks"`
 	Summary   map[string]int `json:"summary"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -91,14 +112,16 @@ type SessionWithPlanTasks struct {
 // MarshalJSON keeps the API contract stable by always emitting tasks as an array.
 func (st SessionTasks) MarshalJSON() ([]byte, error) {
 	type sessionTasksJSON struct {
-		Plan  *Plan  `json:"plan,omitempty"`
-		Tasks []Task `json:"tasks"`
+		Plan     *Plan         `json:"plan,omitempty"`
+		Contract *TaskContract `json:"contract,omitempty"`
+		Tasks    []Task        `json:"tasks"`
 	}
 
 	normalized := normalizeSessionTasks(st)
 	return json.Marshal(sessionTasksJSON{
-		Plan:  normalized.Plan,
-		Tasks: normalized.Tasks,
+		Plan:     normalized.Plan,
+		Contract: normalized.Contract,
+		Tasks:    normalized.Tasks,
 	})
 }
 
@@ -151,6 +174,7 @@ func (s *Store) ListSessionsWithPlans(includeHidden bool, activeOnly bool) ([]Se
 		items = append(items, SessionWithPlanTasks{
 			Session:   sess,
 			Plan:      tasks.Plan,
+			Contract:  tasks.Contract,
 			Tasks:     tasks.Tasks,
 			Summary:   TaskSummary(tasks.Tasks),
 			UpdatedAt: planTasksUpdatedAt(sess, tasks),
@@ -198,7 +222,42 @@ func normalizeSessionTasks(tasks SessionTasks) SessionTasks {
 	if tasks.Plan != nil && strings.TrimSpace(tasks.Plan.Status) == "" {
 		tasks.Plan.Status = PlanStatusExecuting
 	}
+	if tasks.Contract != nil {
+		tasks.Contract = normalizeTaskContract(tasks.Contract)
+	}
 	return tasks
+}
+
+func normalizeTaskContract(contract *TaskContract) *TaskContract {
+	if contract == nil {
+		return nil
+	}
+	contract.Goal = strings.TrimSpace(contract.Goal)
+	contract.Scope = strings.TrimSpace(contract.Scope)
+	contract.DoneCriteria = cleanStringSlice(contract.DoneCriteria)
+	contract.VerificationCommands = cleanStringSlice(contract.VerificationCommands)
+	contract.Artifacts = cleanStringSlice(contract.Artifacts)
+	contract.Status = strings.ToLower(strings.TrimSpace(contract.Status))
+	if contract.Status == "" {
+		contract.Status = ContractStatusDraft
+	}
+	return contract
+}
+
+func cleanStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if text := strings.TrimSpace(value); text != "" {
+			out = append(out, text)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func (s *Store) tasksPath(sessionID string) string {
@@ -266,6 +325,9 @@ func FormatTasksForInjection(st SessionTasks) string {
 		}
 		b.WriteString("\n")
 	}
+	if st.Contract != nil {
+		writeContractForInjection(&b, st.Contract)
+	}
 	for _, t := range activeTasks {
 		marker := "[ ]"
 		if strings.EqualFold(strings.TrimSpace(t.Status), "in_progress") {
@@ -274,6 +336,37 @@ func FormatTasksForInjection(st SessionTasks) string {
 		b.WriteString(fmt.Sprintf("- %s %s: %s\n", marker, t.ID, t.Title))
 	}
 	return b.String()
+}
+
+func writeContractForInjection(b *strings.Builder, contract *TaskContract) {
+	if contract == nil {
+		return
+	}
+	if strings.TrimSpace(contract.Goal) != "" {
+		b.WriteString("**Contract Goal:** " + strings.TrimSpace(contract.Goal) + "\n")
+	}
+	if strings.TrimSpace(contract.Scope) != "" {
+		b.WriteString("**Contract Scope:** " + strings.TrimSpace(contract.Scope) + "\n")
+	}
+	if len(contract.DoneCriteria) > 0 {
+		b.WriteString("**Done Criteria:**\n")
+		for _, item := range contract.DoneCriteria {
+			b.WriteString("- " + item + "\n")
+		}
+	}
+	if len(contract.VerificationCommands) > 0 {
+		b.WriteString("**Verification Commands:**\n")
+		for _, cmd := range contract.VerificationCommands {
+			b.WriteString("- `" + cmd + "`\n")
+		}
+	}
+	if len(contract.Artifacts) > 0 {
+		b.WriteString("**Expected Artifacts:**\n")
+		for _, item := range contract.Artifacts {
+			b.WriteString("- " + item + "\n")
+		}
+	}
+	b.WriteString("\n")
 }
 
 // IsTasksInjectionMessage reports whether msg is a previously injected active
@@ -312,6 +405,24 @@ func ArchiveSummary(st SessionTasks) string {
 			b.WriteString(" (created: " + st.Plan.CreatedAt + ")")
 		}
 		b.WriteString("\n")
+	}
+	if st.Contract != nil {
+		b.WriteString("Contract: " + strings.TrimSpace(st.Contract.Goal) + " (" + st.Contract.Status + ")\n")
+		if st.Contract.Scope != "" {
+			b.WriteString("Scope: " + st.Contract.Scope + "\n")
+		}
+		if len(st.Contract.DoneCriteria) > 0 {
+			b.WriteString("Done criteria:\n")
+			for _, item := range st.Contract.DoneCriteria {
+				b.WriteString("  - " + item + "\n")
+			}
+		}
+		if len(st.Contract.VerificationCommands) > 0 {
+			b.WriteString("Verification:\n")
+			for _, cmd := range st.Contract.VerificationCommands {
+				b.WriteString("  - " + cmd + "\n")
+			}
+		}
 	}
 	summary := TaskSummary(st.Tasks)
 	b.WriteString(fmt.Sprintf("Tasks: %d total, %d completed, %d cancelled, %d pending\n",

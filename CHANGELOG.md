@@ -6,6 +6,34 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.98] - 2026-05-01
+
+### Added
+
+- Added session task contracts with explicit goal, scope, done criteria, verification commands, expected artifacts, and draft/approved status stored alongside active plan tasks.
+- Added a dockable Console Chat Contract panel for reviewing, editing, saving, and approving the active session contract.
+- Extended the `tasks` tool with `contract_update` and `contract_approve`, and taught `plan_set` to seed a task contract draft from the initial request.
+- Included task contract details in compaction reinjection, archive summaries, and global active plan responses.
+
+### Documentation
+
+- README now documents the Chat Contract panel and task contract workflow.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/prompt ./internal/tool ./internal/session ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/chat` Contract dock edit/approve flow
+
+### Closed
+
+- Closes #574.
+
 ## [0.31.97] - 2026-05-01
 
 ### Added

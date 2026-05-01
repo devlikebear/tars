@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -73,6 +74,55 @@ func TestSessionTasks_JSONIncludesEmptyTasksArray(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatalf("expected empty tasks array, got %+v", items)
+	}
+}
+
+func TestSessionTasks_ContractPersistsAndInjects(t *testing.T) {
+	store := NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+
+	now := NowRFC3339()
+	if err := store.SaveTasks(main.ID, SessionTasks{
+		Plan: &Plan{Goal: "Ship contract mode", CreatedAt: now, Status: PlanStatusProposed},
+		Contract: &TaskContract{
+			Goal:                 "Ship contract mode",
+			Scope:                "Console and session task state only",
+			DoneCriteria:         []string{"Contract survives reload", "Contract survives compaction"},
+			VerificationCommands: []string{"make test"},
+			Artifacts:            []string{"PR link"},
+			Status:               ContractStatusDraft,
+			CreatedAt:            now,
+			UpdatedAt:            now,
+		},
+		Tasks: []Task{{ID: "1", Title: "Add model", Status: "pending"}},
+	}); err != nil {
+		t.Fatalf("save tasks: %v", err)
+	}
+
+	loaded, err := store.GetTasks(main.ID)
+	if err != nil {
+		t.Fatalf("get tasks: %v", err)
+	}
+	if loaded.Contract == nil {
+		t.Fatal("expected contract to persist")
+	}
+	if loaded.Contract.Status != ContractStatusDraft {
+		t.Fatalf("expected draft contract, got %+v", loaded.Contract)
+	}
+
+	injection := FormatTasksForInjection(loaded)
+	for _, want := range []string{
+		"**Contract Scope:** Console and session task state only",
+		"- Contract survives reload",
+		"`make test`",
+		"PR link",
+	} {
+		if !strings.Contains(injection, want) {
+			t.Fatalf("expected injection to contain %q, got:\n%s", want, injection)
+		}
 	}
 }
 

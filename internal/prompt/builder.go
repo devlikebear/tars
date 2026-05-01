@@ -104,11 +104,11 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 		}
 
 		b.WriteString("Once you start drafting, use the `tasks` tool to propose the plan and then execute after the user approves:\n\n")
-		b.WriteString("1. tasks(action=\"plan_set\", goal=...) — record the user's goal (status=drafting)\n")
+		b.WriteString("1. tasks(action=\"plan_set\", goal=..., scope=..., done_criteria=[...], verification_commands=[...], artifacts=[...]) — draft plan+contract\n")
 		b.WriteString("2. tasks(action=\"add\", title=...) — one entry per step (still drafting)\n")
 		b.WriteString("3. tasks(action=\"plan_propose\") — signal the plan is ready for the user to review (status=proposed)\n")
-		b.WriteString("4. **STOP and wait** — say \"Plan ready (N tasks). Reply 'go' to start, or describe changes.\" Do not start work yet.\n")
-		b.WriteString("5. After user types `go` (or equivalent), tasks(action=\"plan_approve\") then tasks(action=\"update\", id=..., status=\"in_progress\") — only ONE in_progress at a time\n")
+		b.WriteString("4. **STOP and wait** — say \"Plan and contract ready (N tasks). Reply 'go' to start, or describe changes.\"\n")
+		b.WriteString("5. On changed criteria, tasks(action=\"contract_update\", ...). On `go`, tasks(action=\"contract_approve\"), tasks(action=\"plan_approve\"), then update one task to in_progress\n")
 		b.WriteString("6. tasks(action=\"update\", id=..., status=\"completed\") — immediately on finish\n\n")
 		b.WriteString("Mid-execution intervention:\n")
 		b.WriteString("- If the user pauses, status flips to `paused` — stop and wait for instructions.\n")

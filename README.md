@@ -215,12 +215,12 @@ The console header includes an EN/KO language toggle. The selected locale is sto
 
 Set `usage.limits.daily_tokens` (or `usage_daily_token_budget`) to show a daily token budget chip in the console header. The chip uses UTC day boundaries, counts input plus output tokens, hides when set to `0`, and links to today's analytics focus once usage reaches the error threshold.
 
-The Chat header shows the active plan goal and completed/total task count without opening the Tasks panel. The Chat Tasks panel keeps full plan progress visible and includes a collapsible past-plan archive for the active session. The global Plans page lists active plans across sessions, while global archive data is available through `/v1/admin/plans/archive` for future planning views.
+The Chat header shows the active plan goal and completed/total task count without opening the Tasks panel. The dockable Chat Contract panel keeps the active work contract explicit with goal, scope, done criteria, verification commands, expected artifacts, and approval status. The Chat Tasks panel keeps full plan progress visible and includes a collapsible past-plan archive for the active session. The global Plans page lists active plans across sessions, while global archive data is available through `/v1/admin/plans/archive` for future planning views.
 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
 | Home | Mission Control | `/console` | Live overview for Pulse, Reflection, active plans, Agent Runtime runs, Cron jobs, disk pressure, active sessions, recent notifications, recommended setup actions, and release/PR shortcuts |
-| Work | Chat | `/console/chat` | Interactive agent chat with tool calling, dockable Sessions and tool panels, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, parallel subagent progress cards, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
+| Work | Chat | `/console/chat` | Interactive agent chat with tool calling, dockable Sessions and tool panels, task contract review/approval, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, parallel subagent progress cards, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
 | Work | Plans | `/console/tasks` | Review active plans across sessions with progress cards and jump directly into the owning chat session |
 | Work | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |

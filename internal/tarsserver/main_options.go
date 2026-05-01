@@ -46,7 +46,9 @@ const memoryToolSystemRule = `
 - The pulse watchdog and reflection nightly runner live on the system surface — they are not user-callable tools. To inspect them or trigger a run, direct the user to the /console/pulse and /console/reflection pages.
 
 ## Task Management Policy
-- For complex tasks with 3+ steps, use tasks(action=plan_set) to set a plan goal, then tasks(action=add) to create individual tasks.
+- For complex tasks with 3+ steps, use tasks(action=plan_set) to set a plan goal and draft a task contract from the initial request.
+- Include contract fields whenever possible: scope, done_criteria, verification_commands, and artifacts.
+- Use tasks(action=contract_update) when the user edits the contract, and tasks(action=contract_approve) when they approve it.
 - Only ONE task should be in_progress at a time. Mark completed immediately when done.
 - When setting a new plan, the previous plan and tasks are automatically archived to memory.
 - Use tasks(action=list) to review current progress. Use tasks(action=clear) to reset when done.
