@@ -126,6 +126,63 @@ func TestSessionTasks_ContractPersistsAndInjects(t *testing.T) {
 	}
 }
 
+func TestSessionTasks_EvidencePersistsAndInjects(t *testing.T) {
+	store := NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+
+	now := NowRFC3339()
+	if err := store.SaveTasks(main.ID, SessionTasks{
+		Plan: &Plan{Goal: "Ship evidence panel", CreatedAt: now, Status: PlanStatusExecuting},
+		Tasks: []Task{
+			{
+				ID:     "1",
+				Title:  "Run tests",
+				Status: "in_progress",
+				Evidence: []TaskEvidence{
+					{
+						ID:        "ev_1",
+						Type:      EvidenceTypeTestResult,
+						Title:     "Go tests",
+						Summary:   "internal/session passed",
+						Command:   "go test ./internal/session",
+						Status:    "passed",
+						CreatedAt: now,
+					},
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("save tasks: %v", err)
+	}
+
+	loaded, err := store.GetTasks(main.ID)
+	if err != nil {
+		t.Fatalf("get tasks: %v", err)
+	}
+	if len(loaded.Tasks) != 1 || len(loaded.Tasks[0].Evidence) != 1 {
+		t.Fatalf("expected evidence to persist, got %+v", loaded.Tasks)
+	}
+	ev := loaded.Tasks[0].Evidence[0]
+	if ev.Type != EvidenceTypeTestResult || ev.Command != "go test ./internal/session" || ev.Status != "passed" {
+		t.Fatalf("unexpected evidence after reload: %+v", ev)
+	}
+
+	injection := FormatTasksForInjection(loaded)
+	for _, want := range []string{
+		"Evidence:",
+		"Go tests",
+		"internal/session passed",
+		"`go test ./internal/session`",
+	} {
+		if !strings.Contains(injection, want) {
+			t.Fatalf("expected injection to contain %q, got:\n%s", want, injection)
+		}
+	}
+}
+
 func TestListSessionsWithPlansFiltersAndSortsActivePlans(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

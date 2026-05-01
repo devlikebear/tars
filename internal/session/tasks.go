@@ -75,6 +75,15 @@ const (
 	ContractStatusApproved = "approved"
 )
 
+const (
+	EvidenceTypeTestResult           = "test_result"
+	EvidenceTypeImage                = "image"
+	EvidenceTypeLogExcerpt           = "log_excerpt"
+	EvidenceTypePRLink               = "pr_link"
+	EvidenceTypeReleaseTag           = "release_tag"
+	EvidenceTypeCommandOutputSummary = "command_output_summary"
+)
+
 // ValidPlanStatus reports whether s is a recognized plan status.
 func ValidPlanStatus(s string) bool {
 	switch strings.ToLower(strings.TrimSpace(s)) {
@@ -85,12 +94,25 @@ func ValidPlanStatus(s string) bool {
 	return false
 }
 
+type TaskEvidence struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Title     string `json:"title,omitempty"`
+	Summary   string `json:"summary,omitempty"`
+	URL       string `json:"url,omitempty"`
+	Command   string `json:"command,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Status    string `json:"status,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+}
+
 // Task represents a single work item linked to the session plan.
 type Task struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Status      string `json:"status"` // pending, in_progress, completed, cancelled
-	Description string `json:"description,omitempty"`
+	ID          string         `json:"id"`
+	Title       string         `json:"title"`
+	Status      string         `json:"status"` // pending, in_progress, completed, cancelled
+	Description string         `json:"description,omitempty"`
+	Evidence    []TaskEvidence `json:"evidence,omitempty"`
 }
 
 // SessionTasks holds the current plan and its associated tasks for a session.
@@ -225,6 +247,9 @@ func normalizeSessionTasks(tasks SessionTasks) SessionTasks {
 	if tasks.Contract != nil {
 		tasks.Contract = normalizeTaskContract(tasks.Contract)
 	}
+	for i := range tasks.Tasks {
+		tasks.Tasks[i].Evidence = normalizeTaskEvidenceList(tasks.Tasks[i].Evidence)
+	}
 	return tasks
 }
 
@@ -260,6 +285,36 @@ func cleanStringSlice(values []string) []string {
 	return out
 }
 
+func normalizeTaskEvidenceList(items []TaskEvidence) []TaskEvidence {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]TaskEvidence, 0, len(items))
+	for _, item := range items {
+		out = append(out, normalizeTaskEvidence(item))
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeTaskEvidence(ev TaskEvidence) TaskEvidence {
+	ev.ID = strings.TrimSpace(ev.ID)
+	ev.Type = strings.ToLower(strings.TrimSpace(ev.Type))
+	if ev.Type == "" {
+		ev.Type = EvidenceTypeCommandOutputSummary
+	}
+	ev.Title = strings.TrimSpace(ev.Title)
+	ev.Summary = strings.TrimSpace(ev.Summary)
+	ev.URL = strings.TrimSpace(ev.URL)
+	ev.Command = strings.TrimSpace(ev.Command)
+	ev.Path = strings.TrimSpace(ev.Path)
+	ev.Status = strings.ToLower(strings.TrimSpace(ev.Status))
+	ev.CreatedAt = strings.TrimSpace(ev.CreatedAt)
+	return ev
+}
+
 func (s *Store) tasksPath(sessionID string) string {
 	return filepath.Join(s.dir, sessionID+".tasks.json")
 }
@@ -276,6 +331,19 @@ func NextTaskID(tasks []Task) string {
 	return fmt.Sprintf("%d", max+1)
 }
 
+func NextEvidenceID(tasks []Task) string {
+	maxID := 0
+	for _, task := range tasks {
+		for _, ev := range task.Evidence {
+			var n int
+			if _, err := fmt.Sscanf(ev.ID, "ev_%d", &n); err == nil && n > maxID {
+				maxID = n
+			}
+		}
+	}
+	return fmt.Sprintf("ev_%d", maxID+1)
+}
+
 // ValidTaskStatus checks if a status string is valid.
 func ValidTaskStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
@@ -283,6 +351,38 @@ func ValidTaskStatus(status string) bool {
 		return true
 	}
 	return false
+}
+
+func ValidEvidenceType(kind string) bool {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case EvidenceTypeTestResult,
+		EvidenceTypeImage,
+		EvidenceTypeLogExcerpt,
+		EvidenceTypePRLink,
+		EvidenceTypeReleaseTag,
+		EvidenceTypeCommandOutputSummary:
+		return true
+	}
+	return false
+}
+
+func EvidenceTypeLabel(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case EvidenceTypeTestResult:
+		return "Test result"
+	case EvidenceTypeImage:
+		return "Image"
+	case EvidenceTypeLogExcerpt:
+		return "Log excerpt"
+	case EvidenceTypePRLink:
+		return "PR link"
+	case EvidenceTypeReleaseTag:
+		return "Release tag"
+	case EvidenceTypeCommandOutputSummary:
+		return "Command output"
+	default:
+		return "Evidence"
+	}
 }
 
 // TaskSummary returns a compact summary of task statuses.
@@ -334,8 +434,39 @@ func FormatTasksForInjection(st SessionTasks) string {
 			marker = "[>]"
 		}
 		b.WriteString(fmt.Sprintf("- %s %s: %s\n", marker, t.ID, t.Title))
+		writeEvidenceForInjection(&b, t.Evidence)
 	}
 	return b.String()
+}
+
+func writeEvidenceForInjection(b *strings.Builder, evidence []TaskEvidence) {
+	if len(evidence) == 0 {
+		return
+	}
+	b.WriteString("  Evidence:\n")
+	for _, ev := range evidence {
+		label := strings.TrimSpace(ev.Title)
+		if label == "" {
+			label = EvidenceTypeLabel(ev.Type)
+		}
+		parts := []string{label}
+		if ev.Status != "" {
+			parts = append(parts, "status="+ev.Status)
+		}
+		if ev.Summary != "" {
+			parts = append(parts, ev.Summary)
+		}
+		if ev.Command != "" {
+			parts = append(parts, "`"+ev.Command+"`")
+		}
+		if ev.URL != "" {
+			parts = append(parts, ev.URL)
+		}
+		if ev.Path != "" {
+			parts = append(parts, ev.Path)
+		}
+		b.WriteString("  - " + strings.Join(parts, " — ") + "\n")
+	}
 }
 
 func writeContractForInjection(b *strings.Builder, contract *TaskContract) {
@@ -438,8 +569,32 @@ func ArchiveSummary(st SessionTasks) string {
 			marker = "[~]"
 		}
 		b.WriteString(fmt.Sprintf("  %s %s: %s\n", marker, t.ID, t.Title))
+		for _, ev := range t.Evidence {
+			label := strings.TrimSpace(ev.Title)
+			if label == "" {
+				label = EvidenceTypeLabel(ev.Type)
+			}
+			detail := strings.TrimSpace(ev.Summary)
+			if detail == "" {
+				detail = strings.TrimSpace(firstNonEmpty(ev.URL, ev.Path, ev.Command))
+			}
+			if detail == "" {
+				b.WriteString(fmt.Sprintf("    evidence: %s\n", label))
+			} else {
+				b.WriteString(fmt.Sprintf("    evidence: %s — %s\n", label, detail))
+			}
+		}
 	}
 	return b.String()
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // NowRFC3339 returns current time in RFC3339 format.

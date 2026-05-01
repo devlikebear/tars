@@ -3,7 +3,7 @@
   import { t } from '../i18n'
   import { getSessionPlanArchive, getSessionTasks, executeTasksAction, cancelChat } from '../lib/api'
   import { planProgressPercent, summarizeTasks } from '../lib/tasks'
-  import type { PlanArchiveItem, SessionTasks } from '../lib/types'
+  import type { PlanArchiveItem, SessionTask, SessionTasks, TaskEvidence } from '../lib/types'
 
   interface Props {
     sessionId: string
@@ -29,6 +29,21 @@
   let editDrafts: Array<{ id: string; title: string; description: string }> = $state([])
   let actionBusy = $state(false)
   let actionError = $state('')
+  let evidenceDraftTaskId = $state('')
+  let evidenceType = $state('test_result')
+  let evidenceTitle = $state('')
+  let evidenceSummary = $state('')
+  let evidenceURL = $state('')
+  let evidenceCommand = $state('')
+
+  const evidenceTypeOptions = [
+    { value: 'test_result', label: 'Test result' },
+    { value: 'image', label: 'Image' },
+    { value: 'log_excerpt', label: 'Log excerpt' },
+    { value: 'pr_link', label: 'PR link' },
+    { value: 'release_tag', label: 'Release tag' },
+    { value: 'command_output_summary', label: 'Command output' },
+  ]
 
   export async function load() {
     loading = true
@@ -175,6 +190,65 @@
       ...editDrafts,
       { id: `__new_${Date.now()}_${editDrafts.length}`, title: '', description: '' },
     ]
+  }
+
+  function evidenceForTask(task: SessionTask): TaskEvidence[] {
+    return Array.isArray(task.evidence) ? task.evidence : []
+  }
+
+  function evidenceTypeLabel(type: string): string {
+    return evidenceTypeOptions.find((option) => option.value === type)?.label ?? 'Evidence'
+  }
+
+  function evidenceLabel(evidence: TaskEvidence): string {
+    return evidence.title?.trim() || evidenceTypeLabel(evidence.type)
+  }
+
+  function evidenceMeta(evidence: TaskEvidence): string {
+    return [evidence.status, evidence.command, evidence.path].filter(Boolean).join(' · ')
+  }
+
+  function startEvidence(taskId: string) {
+    evidenceDraftTaskId = taskId
+    evidenceType = 'test_result'
+    evidenceTitle = ''
+    evidenceSummary = ''
+    evidenceURL = ''
+    evidenceCommand = ''
+    actionError = ''
+  }
+
+  function cancelEvidence() {
+    evidenceDraftTaskId = ''
+    evidenceTitle = ''
+    evidenceSummary = ''
+    evidenceURL = ''
+    evidenceCommand = ''
+  }
+
+  async function saveEvidence(taskId: string) {
+    try {
+      await runAction({
+        action: 'evidence_add',
+        task_id: taskId,
+        type: evidenceType,
+        title: evidenceTitle,
+        summary: evidenceSummary,
+        url: evidenceURL,
+        command: evidenceCommand,
+      })
+      cancelEvidence()
+    } catch {
+      return
+    }
+  }
+
+  async function removeEvidence(taskId: string, evidenceId: string) {
+    try {
+      await runAction({ action: 'evidence_remove', task_id: taskId, evidence_id: evidenceId })
+    } catch {
+      return
+    }
   }
 
   function removeDraft(idx: number) {
@@ -431,8 +505,64 @@
               {#if task.description}
                 <span class="task-desc">{task.description}</span>
               {/if}
+              {#if evidenceForTask(task).length > 0}
+                <div class="task-evidence-list" aria-label={`Evidence for ${task.title}`}>
+                  {#each evidenceForTask(task) as evidence (evidence.id)}
+                    <article class="task-evidence-card">
+                      <div class="task-evidence-head">
+                        <span>{evidenceLabel(evidence)}</span>
+                        <span class="evidence-type">{evidenceTypeLabel(evidence.type)}</span>
+                      </div>
+                      {#if evidence.summary}
+                        <p>{evidence.summary}</p>
+                      {/if}
+                      {#if evidenceMeta(evidence)}
+                        <small>{evidenceMeta(evidence)}</small>
+                      {/if}
+                      {#if evidence.url}
+                        <a href={evidence.url} target="_blank" rel="noreferrer">{evidence.url}</a>
+                      {/if}
+                      <button
+                        class="btn btn-ghost btn-sm evidence-remove-btn"
+                        type="button"
+                        disabled={actionBusy}
+                        onclick={() => removeEvidence(task.id, evidence.id)}
+                      >
+                        Remove Evidence
+                      </button>
+                    </article>
+                  {/each}
+                </div>
+              {/if}
+              {#if evidenceDraftTaskId === task.id}
+                <div class="evidence-form">
+                  <select bind:value={evidenceType} disabled={actionBusy} aria-label="Evidence type">
+                    {#each evidenceTypeOptions as option}
+                      <option value={option.value}>{option.label}</option>
+                    {/each}
+                  </select>
+                  <input bind:value={evidenceTitle} disabled={actionBusy} placeholder="Evidence title" />
+                  <textarea bind:value={evidenceSummary} disabled={actionBusy} rows="2" placeholder="Short summary"></textarea>
+                  <input bind:value={evidenceCommand} disabled={actionBusy} placeholder="Command or release tag" />
+                  <input bind:value={evidenceURL} disabled={actionBusy} placeholder="URL or image path" />
+                  <div class="evidence-actions">
+                    <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={() => saveEvidence(task.id)}>
+                      {actionBusy ? 'Saving...' : 'Attach Evidence'}
+                    </button>
+                    <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={cancelEvidence}>Cancel</button>
+                  </div>
+                </div>
+              {/if}
             </div>
             <span class="badge {statusClass(task.status)}">{task.status.replace('_', ' ')}</span>
+            <button
+              class="btn btn-ghost btn-sm evidence-add-btn"
+              type="button"
+              disabled={actionBusy}
+              onclick={() => startEvidence(task.id)}
+            >
+              + Evidence
+            </button>
             {#if (planStatus === 'executing' || planStatus === 'paused') && (task.status === 'pending' || task.status === 'in_progress')}
               <button
                 class="btn btn-ghost btn-sm task-skip-btn"
@@ -846,5 +976,83 @@
     font-size: var(--text-xs);
     color: var(--text-secondary);
     line-height: 1.4;
+  }
+
+  .task-evidence-list {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .task-evidence-card,
+  .evidence-form {
+    display: grid;
+    gap: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: var(--space-2);
+  }
+
+  .task-evidence-head,
+  .evidence-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .task-evidence-head span:first-child {
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+
+  .evidence-type {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    background: var(--surface-inset);
+    padding: 2px var(--space-2);
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+
+  .task-evidence-card p,
+  .task-evidence-card small,
+  .task-evidence-card a {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .task-evidence-card small {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+  }
+
+  .evidence-form input,
+  .evidence-form select,
+  .evidence-form textarea {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    color: var(--text-primary);
+    padding: var(--space-2);
+    font: inherit;
+    font-size: var(--text-xs);
+  }
+
+  .evidence-form textarea {
+    resize: vertical;
+  }
+
+  .evidence-add-btn,
+  .evidence-remove-btn {
+    white-space: nowrap;
   }
 </style>

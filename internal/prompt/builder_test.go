@@ -140,6 +140,7 @@ func TestBuild_PlanningSectionPresentForMainAgent(t *testing.T) {
 		"tasks(action=\"contract_update\"",
 		"tasks(action=\"contract_approve\"",
 		"tasks(action=\"add\"",
+		"tasks(action=\"evidence_add\"",
 		"tasks(action=\"plan_propose\"",
 		"tasks(action=\"plan_approve\"",
 		"STOP and wait",
