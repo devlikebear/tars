@@ -446,6 +446,17 @@ export type AgentRuntimeSubagentDraft = {
   tools_risk_max?: string
   session_routing_mode?: string
   session_fixed_id?: string
+  provenance?: AgentRuntimeSubagentDraftProvenance[]
+}
+
+export type AgentRuntimeSubagentDraftProvenance = {
+  run_id: string
+  agent?: string
+  status?: string
+  tier?: string
+  prompt?: string
+  created_at?: string
+  completed_at?: string
 }
 
 export type AgentRuntimeSubagentDraftResponse = {
@@ -470,6 +481,26 @@ export type AgentRuntimeSubagentsResponse = {
   default_tier?: string
   agentruntime_default_tier?: string
   agentruntime_default_tier_source?: string
+}
+
+export type AgentRuntimeSubagentRecommendation = {
+  id: string
+  title: string
+  reason: string
+  confidence: number
+  run_count: number
+  recent_run_ids: string[]
+  keywords: string[]
+  draft: AgentRuntimeSubagentDraft
+  resolved_tier?: AgentRuntimeTierOption
+}
+
+export type AgentRuntimeSubagentRecommendationsResponse = {
+  count: number
+  analyzed_run_count: number
+  recommendations: AgentRuntimeSubagentRecommendation[]
+  tiers: AgentRuntimeTierOption[]
+  warnings?: string[]
 }
 
 export type EventsHistoryInfo = {

@@ -19,6 +19,7 @@ import type {
   AgentRuntimeSubagentArchiveResponse,
   AgentRuntimeSubagentDraft,
   AgentRuntimeSubagentDraftResponse,
+  AgentRuntimeSubagentRecommendationsResponse,
   AgentRuntimeSubagentsResponse,
   HubRegistry,
   MCPServerStatus,
@@ -423,6 +424,18 @@ export async function archiveAgentRuntimeSubagent(name: string, confirm: boolean
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ confirm }),
+	})
+}
+
+export async function recommendAgentRuntimeSubagents(payload: {
+	limit?: number
+	min_runs?: number
+	include_failed?: boolean
+} = {}): Promise<AgentRuntimeSubagentRecommendationsResponse> {
+	return requestJSON<AgentRuntimeSubagentRecommendationsResponse>('/v1/agentruntime/subagents/recommendations', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload),
 	})
 }
 

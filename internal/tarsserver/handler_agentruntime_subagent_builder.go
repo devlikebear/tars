@@ -33,16 +33,27 @@ type agentRuntimeSubagentBuilderDraftRequest struct {
 }
 
 type agentRuntimeSubagentDraft struct {
-	Action             string   `json:"action"`
-	Name               string   `json:"name"`
-	Description        string   `json:"description"`
-	DefaultTier        string   `json:"default_tier"`
-	Prompt             string   `json:"prompt"`
-	ToolsAllow         []string `json:"tools_allow"`
-	ToolsDeny          []string `json:"tools_deny"`
-	ToolsRiskMax       string   `json:"tools_risk_max,omitempty"`
-	SessionRoutingMode string   `json:"session_routing_mode,omitempty"`
-	SessionFixedID     string   `json:"session_fixed_id,omitempty"`
+	Action             string                                `json:"action"`
+	Name               string                                `json:"name"`
+	Description        string                                `json:"description"`
+	DefaultTier        string                                `json:"default_tier"`
+	Prompt             string                                `json:"prompt"`
+	ToolsAllow         []string                              `json:"tools_allow"`
+	ToolsDeny          []string                              `json:"tools_deny"`
+	ToolsRiskMax       string                                `json:"tools_risk_max,omitempty"`
+	SessionRoutingMode string                                `json:"session_routing_mode,omitempty"`
+	SessionFixedID     string                                `json:"session_fixed_id,omitempty"`
+	Provenance         []agentRuntimeSubagentDraftProvenance `json:"provenance,omitempty"`
+}
+
+type agentRuntimeSubagentDraftProvenance struct {
+	RunID       string `json:"run_id"`
+	Agent       string `json:"agent,omitempty"`
+	Status      string `json:"status,omitempty"`
+	Tier        string `json:"tier,omitempty"`
+	Prompt      string `json:"prompt,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+	CompletedAt string `json:"completed_at,omitempty"`
 }
 
 type agentRuntimeSubagentBuilderDraftResponse struct {
@@ -357,10 +368,42 @@ func normalizeAgentRuntimeSubagentDraft(draft agentRuntimeSubagentDraft, cfg con
 	draft.ToolsRiskMax = strings.TrimSpace(draft.ToolsRiskMax)
 	draft.SessionRoutingMode = normalizeAgentRuntimeSessionRoutingMode(draft.SessionRoutingMode)
 	draft.SessionFixedID = strings.TrimSpace(draft.SessionFixedID)
+	draft.Provenance = normalizeAgentRuntimeSubagentDraftProvenance(draft.Provenance)
 	if len(draft.ToolsAllow) == 0 {
 		draft.ToolsAllow = []string{"glob", "list_dir", "read_file"}
 	}
 	return draft
+}
+
+func normalizeAgentRuntimeSubagentDraftProvenance(entries []agentRuntimeSubagentDraftProvenance) []agentRuntimeSubagentDraftProvenance {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]agentRuntimeSubagentDraftProvenance, 0, min(len(entries), 8))
+	seen := map[string]struct{}{}
+	for _, entry := range entries {
+		runID := strings.TrimSpace(entry.RunID)
+		if runID == "" {
+			continue
+		}
+		if _, exists := seen[runID]; exists {
+			continue
+		}
+		seen[runID] = struct{}{}
+		out = append(out, agentRuntimeSubagentDraftProvenance{
+			RunID:       runID,
+			Agent:       strings.TrimSpace(entry.Agent),
+			Status:      strings.TrimSpace(entry.Status),
+			Tier:        strings.TrimSpace(entry.Tier),
+			Prompt:      trimAgentRuntimeRecommendationText(entry.Prompt, 240),
+			CreatedAt:   strings.TrimSpace(entry.CreatedAt),
+			CompletedAt: strings.TrimSpace(entry.CompletedAt),
+		})
+		if len(out) >= 8 {
+			break
+		}
+	}
+	return out
 }
 
 func validateAgentRuntimeSubagentDraft(cfg config.Config, runtime *agentruntime.Runtime, draft agentRuntimeSubagentDraft) string {
@@ -454,6 +497,9 @@ func renderAgentRuntimeSubagentDraftDocument(draft agentRuntimeSubagentDraft) (s
 	if strings.TrimSpace(draft.SessionFixedID) != "" {
 		meta["session_fixed_id"] = strings.TrimSpace(draft.SessionFixedID)
 	}
+	if len(draft.Provenance) > 0 {
+		meta["provenance"] = agentRuntimeSubagentDraftProvenanceMeta(draft.Provenance)
+	}
 	encoded, err := yaml.Marshal(meta)
 	if err != nil {
 		return "", fmt.Errorf("encode agent profile: %w", err)
@@ -465,6 +511,33 @@ func renderAgentRuntimeSubagentDraftDocument(draft agentRuntimeSubagentDraft) (s
 	out.WriteString(strings.TrimSpace(draft.Prompt))
 	out.WriteString("\n")
 	return out.String(), nil
+}
+
+func agentRuntimeSubagentDraftProvenanceMeta(entries []agentRuntimeSubagentDraftProvenance) map[string]any {
+	runs := make([]map[string]string, 0, len(entries))
+	for _, entry := range entries {
+		row := map[string]string{"run_id": strings.TrimSpace(entry.RunID)}
+		if strings.TrimSpace(entry.Agent) != "" {
+			row["agent"] = strings.TrimSpace(entry.Agent)
+		}
+		if strings.TrimSpace(entry.Status) != "" {
+			row["status"] = strings.TrimSpace(entry.Status)
+		}
+		if strings.TrimSpace(entry.Tier) != "" {
+			row["tier"] = strings.TrimSpace(entry.Tier)
+		}
+		if strings.TrimSpace(entry.CreatedAt) != "" {
+			row["created_at"] = strings.TrimSpace(entry.CreatedAt)
+		}
+		if strings.TrimSpace(entry.CompletedAt) != "" {
+			row["completed_at"] = strings.TrimSpace(entry.CompletedAt)
+		}
+		runs = append(runs, row)
+	}
+	return map[string]any{
+		"source": "agentruntime_recommendation",
+		"runs":   runs,
+	}
 }
 
 func preferredAgentRuntimeBuilderTier(raw string, cfg config.Config) string {
