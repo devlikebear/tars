@@ -108,6 +108,15 @@ func TestStoreForkFromMessageCopiesTranscriptPrefixAndState(t *testing.T) {
 	if err := store.SetPromptOverride(parent.ID, "Keep answers terse."); err != nil {
 		t.Fatalf("set prompt override: %v", err)
 	}
+	style := &SessionStyleControl{
+		Directness: intPtr(88),
+		Humor:      intPtr(12),
+		Caution:    intPtr(72),
+		Autonomy:   intPtr(64),
+	}
+	if err := store.SetStyleControl(parent.ID, style); err != nil {
+		t.Fatalf("set style control: %v", err)
+	}
 	projectDir := filepath.Join(dir, "project")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatalf("mkdir project: %v", err)
@@ -170,6 +179,9 @@ func TestStoreForkFromMessageCopiesTranscriptPrefixAndState(t *testing.T) {
 	}
 	if child.PromptOverride != "Keep answers terse." {
 		t.Fatalf("expected prompt override copy, got %q", child.PromptOverride)
+	}
+	if child.StyleControl == nil || *child.StyleControl.Directness != 88 || *child.StyleControl.Autonomy != 64 {
+		t.Fatalf("expected style control copy, got %+v", child.StyleControl)
 	}
 	if child.CurrentDir != parent.CurrentDir {
 		t.Fatalf("expected current dir copy %q, got %q", parent.CurrentDir, child.CurrentDir)
@@ -593,6 +605,39 @@ func TestStoreSetAutomationConsent_NormalizesAutoResumePolicy(t *testing.T) {
 	wantModes := []string{AutoResumeModeMoveToNextTask, AutoResumeModeRecordAssumptionAndProceed}
 	if !reflect.DeepEqual(got.AllowedResumeModes, wantModes) {
 		t.Fatalf("allowed modes = %+v, want %+v", got.AllowedResumeModes, wantModes)
+	}
+}
+
+func TestStoreSetStyleControl_NormalizesSliderScores(t *testing.T) {
+	store := NewStore(t.TempDir())
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	style := &SessionStyleControl{
+		Directness: intPtr(125),
+		Humor:      intPtr(-20),
+		Caution:    intPtr(45),
+		Autonomy:   intPtr(99),
+	}
+	if err := store.SetStyleControl(sess.ID, style); err != nil {
+		t.Fatalf("set style control: %v", err)
+	}
+
+	reloaded, err := store.Get(sess.ID)
+	if err != nil {
+		t.Fatalf("reload session: %v", err)
+	}
+	got := reloaded.StyleControl
+	if got == nil {
+		t.Fatalf("expected style control")
+	}
+	if *got.Directness != 100 || *got.Humor != 0 || *got.Caution != 45 || *got.Autonomy != 99 {
+		t.Fatalf("unexpected normalized style control: %+v", got)
+	}
+	if got.UpdatedAt == nil || got.UpdatedAt.IsZero() {
+		t.Fatalf("expected updated_at to be set")
 	}
 }
 

@@ -6,6 +6,30 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.120] - 2026-05-01
+
+### Added
+
+- Added global and per-session TARS style controls for directness, humor, caution, and autonomy.
+- Added `/v1/admin/sessions/{id}/style` for reading effective style defaults and saving normalized session overrides.
+- Added chat prompt wiring so style controls affect response tone, verification posture, and follow-through while autonomy remains bounded by explicit session consent and approval policy.
+- Added a Console Session Config Style tab with sliders, default-value context, and concise behavior previews.
+
+### Documentation
+
+- README, config examples, and chat/config tutorials now describe session style controls and `runtime.style.*_default` settings.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/session -run 'TestStoreForkFromMessageCopiesTranscriptPrefixAndState|TestStoreSetStyleControl_NormalizesSliderScores'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/config -run 'TestLoad_SessionStyleDefaultFields|TestApplyDefaults_ClampsSessionStyleDefaultFields'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'TestSessionStylePromptLimitsAutonomyByConsent|TestEffectiveSessionStyleUsesSessionOverrides|TestSessionAPI_StyleControlRoundTrip'`
+- `cd frontend/console && node --experimental-strip-types --test tests/sessionStyleControl.test.ts`
+
+### Closed
+
+- Closes #591.
+
 ## [0.31.119] - 2026-05-01
 
 ### Added

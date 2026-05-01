@@ -1,5 +1,10 @@
 runtime:
   workspace_dir: ./workspace
+  style:
+    directness_default: 70
+    humor_default: 20
+    caution_default: 60
+    autonomy_default: 40
 
 llm:
   # ---- LLM provider pool ----

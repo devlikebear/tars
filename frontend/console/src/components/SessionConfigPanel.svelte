@@ -1,15 +1,18 @@
 <script lang="ts">
   import {
     getSessionAutomationConsent,
+    getSessionStyle,
     listChatTools,
     getSessionConfig,
     updateSessionAutomationConsent,
     updateSessionConfig,
+    updateSessionStyle,
     type ChatToolInfo,
     type SessionToolConfig,
   } from '../lib/api'
   import { buildSessionPermissionPreview, type SessionPermissionPreview } from '../lib/sessionPermissionPreview'
-  import type { SessionAutomationConsent } from '../lib/types'
+  import { buildSessionStylePreview, sessionStylePayload } from '../lib/sessionStyle'
+  import type { SessionAutomationConsent, SessionStyleResponse, SessionStyleValues } from '../lib/types'
 
   interface Props {
     sessionId: string
@@ -26,10 +29,17 @@
   let pendingConfig: SessionToolConfig | null = $state(null)
   let pendingPreview: SessionPermissionPreview | null = $state(null)
   let automationConsent: SessionAutomationConsent = $state({})
+  let styleResponse: SessionStyleResponse = $state({
+    effective: { directness: 70, humor: 20, caution: 60, autonomy: 40 },
+    defaults: { directness: 70, humor: 20, caution: 60, autonomy: 40 },
+    preview: [],
+  })
+  let styleDraft: SessionStyleValues = $state({ directness: 70, humor: 20, caution: 60, autonomy: 40 })
   let loading = $state(true)
   let filterText = $state('')
-  let activeTab: 'tools' | 'skills' | 'automation' = $state('tools')
+  let activeTab: 'tools' | 'skills' | 'automation' | 'style' = $state('tools')
   let automationSaving = $state(false)
+  let styleSaving = $state(false)
 
   let enabledSet: Set<string> = $state(new Set())
   let disabledSet: Set<string> = $state(new Set())
@@ -46,6 +56,12 @@
     { id: 'proceed_with_assumption', label: 'Proceed' },
     { id: 'move_to_next_task', label: 'Next task' },
   ]
+  const styleAxes: Array<{ key: keyof SessionStyleValues; label: string }> = [
+    { key: 'directness', label: 'Directness' },
+    { key: 'humor', label: 'Humor' },
+    { key: 'caution', label: 'Caution' },
+    { key: 'autonomy', label: 'Autonomy' },
+  ]
   const previewRiskLabel: Record<SessionPermissionPreview['risk'], string> = {
     low: 'Low risk',
     medium: 'Medium risk',
@@ -55,16 +71,25 @@
   async function load() {
     loading = true
     try {
-      const [toolsResp, configResp, automationResp] = await Promise.all([
+      const [toolsResp, configResp, automationResp, styleResp] = await Promise.all([
         listChatTools(),
         sessionId ? getSessionConfig(sessionId) : Promise.resolve({} as SessionToolConfig),
         sessionId ? getSessionAutomationConsent(sessionId) : Promise.resolve({} as SessionAutomationConsent),
+        sessionId
+          ? getSessionStyle(sessionId)
+          : Promise.resolve({
+              effective: { directness: 70, humor: 20, caution: 60, autonomy: 40 },
+              defaults: { directness: 70, humor: 20, caution: 60, autonomy: 40 },
+              preview: [],
+            } as SessionStyleResponse),
       ])
       tools = toolsResp.tools
       skills = toolsResp.skills ?? []
       mcpServers = toolsResp.mcp_servers ?? []
       config = configResp
       automationConsent = automationResp
+      styleResponse = styleResp
+      styleDraft = { ...styleResp.effective }
 
       applyConfigState(config, tools, skills)
       pendingConfig = null
@@ -347,6 +372,31 @@
     })
   }
 
+  async function setStyleAxis(key: keyof SessionStyleValues, rawValue: string) {
+    if (!sessionId || styleSaving) return
+    const parsed = Number.parseInt(rawValue, 10)
+    const next = sessionStylePayload({
+      ...styleDraft,
+      [key]: Number.isFinite(parsed) ? parsed : styleDraft[key],
+    })
+    styleDraft = {
+      directness: next.directness ?? styleDraft.directness,
+      humor: next.humor ?? styleDraft.humor,
+      caution: next.caution ?? styleDraft.caution,
+      autonomy: next.autonomy ?? styleDraft.autonomy,
+    }
+    styleSaving = true
+    try {
+      styleResponse = await updateSessionStyle(sessionId, next)
+      styleDraft = { ...styleResponse.effective }
+      onChange?.()
+    } catch {
+      void load()
+    } finally {
+      styleSaving = false
+    }
+  }
+
   let filteredTools = $derived(
     tools.filter((t) => !filterText || t.name.toLowerCase().includes(filterText.toLowerCase()))
   )
@@ -356,6 +406,7 @@
   let filteredSkills = $derived(
     skills.filter((s) => !filterText || s.toLowerCase().includes(filterText.toLowerCase()))
   )
+  let stylePreview = $derived(buildSessionStylePreview({ ...styleResponse, effective: styleDraft }))
 
   $effect(() => {
     if (sessionId) void load()
@@ -383,9 +434,12 @@
       <button class="config-tab" class:active={activeTab === 'automation'} onclick={() => activeTab = 'automation'}>
         Automation
       </button>
+      <button class="config-tab" class:active={activeTab === 'style'} onclick={() => activeTab = 'style'}>
+        Style
+      </button>
     </div>
 
-    {#if activeTab !== 'automation'}
+    {#if activeTab === 'tools' || activeTab === 'skills'}
       <div class="config-filter">
         <input type="text" bind:value={filterText} placeholder="Filter..." class="config-filter-input" />
       </div>
@@ -561,6 +615,40 @@
         </label>
         {#if automationConsent.updated_at}
           <div class="automation-updated">Updated {new Date(automationConsent.updated_at).toLocaleString()}</div>
+        {/if}
+      </div>
+    {:else if activeTab === 'style'}
+      <div class="style-list">
+        {#each styleAxes as axis}
+          <label class="style-slider">
+            <span class="style-slider-head">
+              <strong>{axis.label}</strong>
+              <small>{styleDraft[axis.key]} / 100 · default {styleResponse.defaults[axis.key]}</small>
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={styleDraft[axis.key]}
+              disabled={styleSaving}
+              onchange={(event) => { void setStyleAxis(axis.key, (event.currentTarget as HTMLInputElement).value) }}
+            />
+          </label>
+        {/each}
+        <div class="style-preview">
+          {#each stylePreview as line}
+            <p>{line}</p>
+          {/each}
+          <span>
+            {automationConsent.auto_resume || automationConsent.auto_resume_enabled
+              ? `Auto-resume ${automationConsent.auto_resume_after_minutes ?? defaultAutoResumeMinutes}m`
+              : 'Auto-resume off'}
+            · {automationConsent.autonomous_mutations ? 'autonomous mutations allowed' : 'mutations consent off'}
+          </span>
+        </div>
+        {#if styleResponse.style_control?.updated_at}
+          <div class="automation-updated">Updated {new Date(styleResponse.style_control.updated_at).toLocaleString()}</div>
         {/if}
       </div>
     {/if}
@@ -970,6 +1058,69 @@
   }
 
   .automation-updated {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .style-list {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .style-slider {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+  }
+
+  .style-slider-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .style-slider-head strong {
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+  }
+
+  .style-slider-head small {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-align: right;
+  }
+
+  .style-slider input[type='range'] {
+    width: 100%;
+    accent-color: var(--primary);
+  }
+
+  .style-preview {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: 1px solid rgba(224, 145, 69, 0.28);
+    border-radius: var(--radius-sm);
+    background: rgba(224, 145, 69, 0.08);
+  }
+
+  .style-preview p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .style-preview span {
     color: var(--text-tertiary);
     font-family: var(--font-mono);
     font-size: 10px;

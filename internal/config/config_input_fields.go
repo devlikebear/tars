@@ -18,6 +18,10 @@ var configInputFields = []configInputField{
 	stringField("plan_clarify_mode", []string{"PLAN_CLARIFY_MODE", "TARS_PLAN_CLARIFY_MODE"}, func(cfg *Config) *string { return &cfg.PlanClarifyMode }, lowerTrimmedString),
 	stringField("session_default_id", []string{"SESSION_DEFAULT_ID", "TARS_SESSION_DEFAULT_ID"}, func(cfg *Config) *string { return &cfg.SessionDefaultID }, strings.TrimSpace),
 	stringField("session_telegram_scope", []string{"SESSION_TELEGRAM_SCOPE", "TARS_SESSION_TELEGRAM_SCOPE"}, func(cfg *Config) *string { return &cfg.SessionTelegramScope }, lowerTrimmedString),
+	withYAMLPath(styleDefaultField("style_directness_default", []string{"STYLE_DIRECTNESS_DEFAULT", "TARS_STYLE_DIRECTNESS_DEFAULT"}, func(cfg *Config) *int { return &cfg.StyleDirectnessDefault }), "runtime.style.directness_default"),
+	withYAMLPath(styleDefaultField("style_humor_default", []string{"STYLE_HUMOR_DEFAULT", "TARS_STYLE_HUMOR_DEFAULT"}, func(cfg *Config) *int { return &cfg.StyleHumorDefault }), "runtime.style.humor_default"),
+	withYAMLPath(styleDefaultField("style_caution_default", []string{"STYLE_CAUTION_DEFAULT", "TARS_STYLE_CAUTION_DEFAULT"}, func(cfg *Config) *int { return &cfg.StyleCautionDefault }), "runtime.style.caution_default"),
+	withYAMLPath(styleDefaultField("style_autonomy_default", []string{"STYLE_AUTONOMY_DEFAULT", "TARS_STYLE_AUTONOMY_DEFAULT"}, func(cfg *Config) *int { return &cfg.StyleAutonomyDefault }), "runtime.style.autonomy_default"),
 	stringField("log_level", []string{"LOG_LEVEL", "TARS_LOG_LEVEL"}, func(cfg *Config) *string { return &cfg.LogLevel }, lowerTrimmedString),
 	stringField("log_file", []string{"LOG_FILE", "TARS_LOG_FILE"}, func(cfg *Config) *string { return &cfg.LogFile }, strings.TrimSpace),
 	intField("log_rotate_max_size_mb", []string{"LOG_ROTATE_MAX_SIZE_MB", "TARS_LOG_ROTATE_MAX_SIZE_MB"}, func(cfg *Config) *int { return &cfg.LogRotateMaxSizeMB }, parsePositiveInt),
@@ -238,6 +242,23 @@ func intField(yamlKey string, envKeys []string, accessor func(*Config) *int, par
 		merge: func(dst *Config, src Config) {
 			value := *accessor(&src)
 			if value > 0 {
+				*accessor(dst) = value
+			}
+		},
+	}
+}
+
+func styleDefaultField(yamlKey string, envKeys []string, accessor func(*Config) *int) configInputField {
+	return configInputField{
+		yamlKey: yamlKey,
+		envKeys: envKeys,
+		apply: func(cfg *Config, raw string) {
+			ptr := accessor(cfg)
+			*ptr = parseNonNegativeInt(raw, *ptr)
+		},
+		merge: func(dst *Config, src Config) {
+			value := *accessor(&src)
+			if value >= 0 {
 				*accessor(dst) = value
 			}
 		},

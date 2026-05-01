@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/buildinfo"
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/serverauth"
@@ -24,7 +25,12 @@ func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Hand
 }
 
 func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker) http.Handler {
+	return newSessionAPIHandlerWithUsageAndStyleDefaults(store, logger, usageTracker, sessionStyleDefaultsFromConfig(config.Default()))
+}
+
+func newSessionAPIHandlerWithUsageAndStyleDefaults(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues) http.Handler {
 	mux := http.NewServeMux()
+	styleDefaults = effectiveSessionStyle(styleDefaults, nil)
 	baseWorkspaceDir := ""
 	if store != nil {
 		baseWorkspaceDir = store.WorkspaceDir()
@@ -587,6 +593,34 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 					return
 				}
 				writeJSON(w, http.StatusOK, updated.AutomationConsent)
+			}
+		case len(pathParts) == 2 && pathParts[1] == "style":
+			if !requireMethod(w, r, http.MethodGet, http.MethodPatch) {
+				return
+			}
+			sess, err := reqStore.Get(sessionID)
+			if err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+				return
+			}
+			switch r.Method {
+			case http.MethodGet:
+				writeJSON(w, http.StatusOK, buildSessionStyleResponse(styleDefaults, sess))
+			case http.MethodPatch:
+				var style session.SessionStyleControl
+				if !decodeJSONBody(w, r, &style) {
+					return
+				}
+				if err := reqStore.SetStyleControl(sessionID, &style); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					return
+				}
+				updated, err := reqStore.Get(sessionID)
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get updated session failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, buildSessionStyleResponse(styleDefaults, updated))
 			}
 		case len(pathParts) == 2 && pathParts[1] == "prompt":
 			if !requireMethod(w, r, http.MethodGet, http.MethodPut) {

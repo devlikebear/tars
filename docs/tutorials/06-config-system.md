@@ -72,6 +72,8 @@ Provider는 "어디에 어떻게 인증해서 호출할지"를, tier는 "어떤 
 
 `internal/config/schema.go`는 Console Settings가 렌더링할 field metadata를 제공합니다. 여기에 preferred YAML path, restart/sensitive/default metadata뿐 아니라 subsystem impact hints도 함께 둡니다. 사용자가 Settings에서 저장 전 diff를 열면 LLM routing, Auth/API, Pulse, Reflection, Cron, Memory, Agent Runtime, Extensions 같은 영향 범위가 표시되어 어떤 런타임 영역이 바뀌는지 먼저 확인할 수 있습니다.
 
+`runtime.style.*_default` 값은 세션별 TARS 스타일 슬라이더의 기준값입니다. directness, humor, caution, autonomy는 채팅 프롬프트에 반영되지만 autonomy는 항상 세션 자동화 consent와 approval 정책 안에서만 동작합니다.
+
 ## 실습
 
 ### 6-1. Config 구조체와 기본값

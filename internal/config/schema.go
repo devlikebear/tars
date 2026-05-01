@@ -41,6 +41,10 @@ func Schema() []FieldMeta {
 		fsel("plan_clarify_mode", "Runtime", "Plan Clarify Mode", "How TARS handles ambiguous multi-step requests before drafting a plan: smart = LLM evaluates ambiguity itself; auto = always plan immediately; ask = always ask 1–3 clarifying questions first.", []string{"smart", "auto", "ask"}),
 		f("session_default_id", "Runtime", "string", "Default Session ID", "Override the default session identifier"),
 		fsel("session_telegram_scope", "Runtime", "Telegram Session Scope", "Session scoping for Telegram messages", []string{"main", "per-chat"}),
+		f("style_directness_default", "Runtime", "int", "Style Directness Default", "Global default for the directness slider used in session style controls"),
+		f("style_humor_default", "Runtime", "int", "Style Humor Default", "Global default for the humor slider used in session style controls"),
+		f("style_caution_default", "Runtime", "int", "Style Caution Default", "Global default for the caution slider used in session style controls"),
+		f("style_autonomy_default", "Runtime", "int", "Style Autonomy Default", "Global default for the autonomy slider used in session style controls"),
 		fsel("log_level", "Runtime", "Log Level", "Logging verbosity", []string{"debug", "info", "warn", "error"}),
 		f("log_file", "Runtime", "string", "Log File", "Path to log file (empty for stderr)"),
 		f("log_rotate_max_size_mb", "Runtime", "int", "Log Rotate Max Size (MB)", "Max log file size before rotation"),
@@ -223,6 +227,14 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.SessionDefaultID
 	case "session_telegram_scope":
 		return cfg.SessionTelegramScope
+	case "style_directness_default":
+		return cfg.StyleDirectnessDefault
+	case "style_humor_default":
+		return cfg.StyleHumorDefault
+	case "style_caution_default":
+		return cfg.StyleCautionDefault
+	case "style_autonomy_default":
+		return cfg.StyleAutonomyDefault
 	case "log_level":
 		return cfg.LogLevel
 	case "log_file":

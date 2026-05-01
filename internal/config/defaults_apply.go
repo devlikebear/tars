@@ -58,6 +58,10 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	default:
 		cfg.SessionTelegramScope = defaults.SessionTelegramScope
 	}
+	cfg.StyleDirectnessDefault = normalizeStyleDefault(cfg.StyleDirectnessDefault, defaults.StyleDirectnessDefault)
+	cfg.StyleHumorDefault = normalizeStyleDefault(cfg.StyleHumorDefault, defaults.StyleHumorDefault)
+	cfg.StyleCautionDefault = normalizeStyleDefault(cfg.StyleCautionDefault, defaults.StyleCautionDefault)
+	cfg.StyleAutonomyDefault = normalizeStyleDefault(cfg.StyleAutonomyDefault, defaults.StyleAutonomyDefault)
 	cfg.ChannelsTelegramDMPolicy = strings.TrimSpace(strings.ToLower(cfg.ChannelsTelegramDMPolicy))
 	switch cfg.ChannelsTelegramDMPolicy {
 	case "pairing", "allowlist", "open", "disabled":
@@ -112,6 +116,16 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	if cfg.ScheduleTimezone == "" {
 		cfg.ScheduleTimezone = defaults.ScheduleTimezone
 	}
+}
+
+func normalizeStyleDefault(value int, fallback int) int {
+	if value < 0 {
+		return fallback
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
 }
 
 func normalizeLLMReasoningEffort(raw string) string {

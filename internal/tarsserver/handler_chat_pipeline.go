@@ -130,6 +130,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		"llm_model":                       state.llmResolution.Model,
 		"llm_tier_source":                 state.llmResolution.Source,
 		"tier_recommendation":             state.tierRecommendation.contextPayload(),
+		"style_effective":                 state.sessionStyle,
 	})
 	if state.compaction.Applied {
 		stream.compactionApplied(map[string]any{

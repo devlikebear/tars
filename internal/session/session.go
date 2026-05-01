@@ -36,6 +36,14 @@ type SessionAutomationConsent struct {
 	UpdatedAt              *time.Time `json:"updated_at,omitempty"`
 }
 
+type SessionStyleControl struct {
+	Directness *int       `json:"directness,omitempty"`
+	Humor      *int       `json:"humor,omitempty"`
+	Caution    *int       `json:"caution,omitempty"`
+	Autonomy   *int       `json:"autonomy,omitempty"`
+	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
+}
+
 func (c *SessionAutomationConsent) AllowsAutonomousMutation() bool {
 	return c != nil && c.AutonomousMutations
 }
@@ -117,6 +125,35 @@ func normalizeAutomationConsent(consent *SessionAutomationConsent) *SessionAutom
 	return &next
 }
 
+func NormalizeStyleControl(style *SessionStyleControl) *SessionStyleControl {
+	if style == nil {
+		return nil
+	}
+	next := *style
+	normalizeScore := func(value **int) {
+		if *value == nil {
+			return
+		}
+		clamped := clampStyleScore(**value)
+		*value = &clamped
+	}
+	normalizeScore(&next.Directness)
+	normalizeScore(&next.Humor)
+	normalizeScore(&next.Caution)
+	normalizeScore(&next.Autonomy)
+	return &next
+}
+
+func clampStyleScore(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
+}
+
 type Session struct {
 	ID                  string                    `json:"id"`
 	Title               string                    `json:"title"`
@@ -129,6 +166,7 @@ type Session struct {
 	ForkReason          string                    `json:"fork_reason,omitempty"`
 	ToolConfig          *SessionToolConfig        `json:"tool_config,omitempty"`
 	AutomationConsent   *SessionAutomationConsent `json:"automation_consent,omitempty"`
+	StyleControl        *SessionStyleControl      `json:"style_control,omitempty"`
 	LastCompactionMode  string                    `json:"last_compaction_mode,omitempty"`
 	PromptOverride      string                    `json:"prompt_override,omitempty"`
 	WorkDirs            []string                  `json:"work_dirs,omitempty"`
@@ -329,6 +367,20 @@ func applySessionLineageDefaults(sess Session) (Session, bool) {
 			}
 		}
 	}
+	if sess.StyleControl != nil {
+		normalized := NormalizeStyleControl(sess.StyleControl)
+		if !styleControlEqual(sess.StyleControl, normalized) {
+			sess.StyleControl = normalized
+			changed = true
+		}
+		if sess.StyleControl.UpdatedAt != nil {
+			updatedAt := sess.StyleControl.UpdatedAt.UTC()
+			if !updatedAt.Equal(*sess.StyleControl.UpdatedAt) {
+				sess.StyleControl.UpdatedAt = &updatedAt
+				changed = true
+			}
+		}
+	}
 	return sess, changed
 }
 
@@ -344,6 +396,25 @@ func automationConsentEqual(a, b *SessionAutomationConsent) bool {
 		a.AutonomousMutations == b.AutonomousMutations &&
 		((a.UpdatedAt == nil && b.UpdatedAt == nil) ||
 			(a.UpdatedAt != nil && b.UpdatedAt != nil && a.UpdatedAt.Equal(*b.UpdatedAt)))
+}
+
+func styleControlEqual(a, b *SessionStyleControl) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return intPtrEqual(a.Directness, b.Directness) &&
+		intPtrEqual(a.Humor, b.Humor) &&
+		intPtrEqual(a.Caution, b.Caution) &&
+		intPtrEqual(a.Autonomy, b.Autonomy) &&
+		((a.UpdatedAt == nil && b.UpdatedAt == nil) ||
+			(a.UpdatedAt != nil && b.UpdatedAt != nil && a.UpdatedAt.Equal(*b.UpdatedAt)))
+}
+
+func intPtrEqual(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func (s *Store) migrateLegacyArtifactDir(id string, artifactDir string) error {
@@ -495,6 +566,7 @@ func (s *Store) ForkFromMessage(parentID string, messageID string, opts ForkOpti
 		ForkedFromIndex:     intPtr(forkIndex),
 		ForkReason:          strings.TrimSpace(opts.Reason),
 		ToolConfig:          cloneSessionToolConfig(parent.ToolConfig),
+		StyleControl:        cloneSessionStyleControl(parent.StyleControl),
 		LastCompactionMode:  parent.LastCompactionMode,
 		PromptOverride:      parent.PromptOverride,
 		WorkDirs:            forkWorkDirs(parent, s.sessionArtifactDir(parent.ID)),
@@ -801,6 +873,31 @@ func (s *Store) SetAutomationConsent(id string, consent *SessionAutomationConsen
 	return s.saveIndex(index)
 }
 
+// SetStyleControl updates the per-session behavioral style override.
+func (s *Store) SetStyleControl(id string, style *SessionStyleControl) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	now := time.Now().UTC()
+	if style == nil {
+		sess.StyleControl = nil
+	} else {
+		next := *style
+		next.UpdatedAt = &now
+		sess.StyleControl = NormalizeStyleControl(&next)
+	}
+	sess.UpdatedAt = now
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
 // SetPromptOverride updates the per-session prompt override.
 func (s *Store) SetPromptOverride(id string, override string) error {
 	unlock := lockPath(s.indexPath())
@@ -1017,6 +1114,29 @@ func cloneSessionToolConfig(config *SessionToolConfig) *SessionToolConfig {
 		SkillsCustom:     config.SkillsCustom,
 		MCPEnabled:       append([]string(nil), config.MCPEnabled...),
 	}
+}
+
+func cloneSessionStyleControl(style *SessionStyleControl) *SessionStyleControl {
+	if style == nil {
+		return nil
+	}
+	next := *style
+	cloneInt := func(value *int) *int {
+		if value == nil {
+			return nil
+		}
+		cloned := *value
+		return &cloned
+	}
+	next.Directness = cloneInt(style.Directness)
+	next.Humor = cloneInt(style.Humor)
+	next.Caution = cloneInt(style.Caution)
+	next.Autonomy = cloneInt(style.Autonomy)
+	if style.UpdatedAt != nil {
+		updatedAt := *style.UpdatedAt
+		next.UpdatedAt = &updatedAt
+	}
+	return &next
 }
 
 func forkWorkDirs(parent Session, parentArtifactDir string) []string {

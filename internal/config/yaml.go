@@ -43,7 +43,7 @@ func loadYAML(path string) (Config, error) {
 	}
 
 	flattened := flattenConfigYAML(parsed)
-	var cfg Config
+	cfg := newYAMLConfigScratch()
 	for _, key := range sortedConfigYAMLKeys(flattened) {
 		value := yamlValueString(flattened[key])
 		if field, ok := configInputFieldByYAMLKey(key); ok {
@@ -51,6 +51,17 @@ func loadYAML(path string) (Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func newYAMLConfigScratch() Config {
+	return Config{
+		RuntimeConfig: RuntimeConfig{
+			StyleDirectnessDefault: -1,
+			StyleHumorDefault:      -1,
+			StyleCautionDefault:    -1,
+			StyleAutonomyDefault:   -1,
+		},
+	}
 }
 
 func flattenConfigYAML(parsed map[string]any) map[string]any {
