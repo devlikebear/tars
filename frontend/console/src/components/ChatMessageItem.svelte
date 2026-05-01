@@ -8,6 +8,8 @@
     toolCallTone,
   } from '../lib/toolCalls'
   import MarkdownContent from './MarkdownContent.svelte'
+  import SubagentProgressCard from './SubagentProgressCard.svelte'
+  import { buildSubagentProgress } from '../lib/subagentProgress'
 
   interface Props {
     message: ChatMessage
@@ -35,33 +37,44 @@
   let argsJSON = $derived(formatToolJSON(message.toolArgs))
   let resultJSON = $derived(formatToolJSON(message.toolResult))
   let toolBadgeClass = $derived(tone === 'error' ? 'badge-error' : tone === 'running' ? 'badge-accent' : 'badge-default')
+  let subagentProgress = $derived(message.role === 'tool' ? buildSubagentProgress({
+    toolName: message.toolName,
+    toolArgs: message.toolArgs,
+    toolResult: message.toolResult,
+    toolDone: message.toolDone,
+    toolIsError: message.toolIsError,
+  }) : null)
 </script>
 
 {#if message.role === 'tool'}
-  <details class="chat-msg chat-tool chat-tool-{tone}" open={message.toolIsError || !message.toolDone}>
-    <summary class="tool-header">
-      <span class="tool-icon">{tone === 'error' ? '!' : message.toolDone ? '\u2713' : '\u27F3'}</span>
-      <span class="tool-name">{invocationPreview}</span>
-      {#if elapsedLabel}
-        <span class="tool-elapsed">{elapsedLabel}</span>
-      {/if}
-      <span class="badge {toolBadgeClass} tool-badge">{tone}</span>
-    </summary>
-    <div class="tool-detail-grid">
-      {#if argsJSON}
-        <div class="tool-detail">
-          <span class="tool-detail-label">args</span>
-          <pre class="tool-detail-value"><code>{argsJSON}</code></pre>
-        </div>
-      {/if}
-      {#if resultJSON}
-        <div class="tool-detail">
-          <span class="tool-detail-label">result</span>
-          <pre class="tool-detail-value"><code>{resultJSON}</code></pre>
-        </div>
-      {/if}
-    </div>
-  </details>
+  {#if subagentProgress}
+    <SubagentProgressCard progress={subagentProgress} {tone} {elapsedLabel} />
+  {:else}
+    <details class="chat-msg chat-tool chat-tool-{tone}" open={message.toolIsError || !message.toolDone}>
+      <summary class="tool-header">
+        <span class="tool-icon">{tone === 'error' ? '!' : message.toolDone ? '\u2713' : '\u27F3'}</span>
+        <span class="tool-name">{invocationPreview}</span>
+        {#if elapsedLabel}
+          <span class="tool-elapsed">{elapsedLabel}</span>
+        {/if}
+        <span class="badge {toolBadgeClass} tool-badge">{tone}</span>
+      </summary>
+      <div class="tool-detail-grid">
+        {#if argsJSON}
+          <div class="tool-detail">
+            <span class="tool-detail-label">args</span>
+            <pre class="tool-detail-value"><code>{argsJSON}</code></pre>
+          </div>
+        {/if}
+        {#if resultJSON}
+          <div class="tool-detail">
+            <span class="tool-detail-label">result</span>
+            <pre class="tool-detail-value"><code>{resultJSON}</code></pre>
+          </div>
+        {/if}
+      </div>
+    </details>
+  {/if}
 {:else}
   <div class="chat-msg chat-{message.role}">
     <span class="chat-role">{message.role}</span>
