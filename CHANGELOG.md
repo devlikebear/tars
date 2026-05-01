@@ -6,6 +6,36 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.114] - 2026-05-01
+
+### Added
+
+- Added Pulse `stalled_chat` detection for active sessions whose latest assistant turn is waiting on user input.
+- Added the `auto_continue_chat` Pulse autofix, gated by session-scoped auto-resume consent, allowed resume modes, high-risk question blocking, and a 3-resumes-per-30-minutes escalation cap.
+- Added session automation consent fields for `auto_resume_enabled`, `auto_resume_after_minutes`, and `allowed_resume_modes`.
+- Added Console controls for auto-resume delay and allowed continuation modes.
+
+### Documentation
+
+- README and human-in-the-loop docs now describe session-scoped stalled-chat auto-resume and the `auto_continue_chat` allowlist entry.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/session`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/pulse ./internal/pulse/autofix`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run 'TestSessionAutoResumeController'`
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/chat/{session}` session automation settings with auto-resume delay and mode controls
+
+### Closed
+
+- Closes #585.
+
 ## [0.31.113] - 2026-05-01
 
 ### Added

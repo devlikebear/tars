@@ -14,6 +14,7 @@ import (
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/pulse"
 	"github.com/devlikebear/tars/internal/pulse/autofix"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 
@@ -25,10 +26,12 @@ type pulseSetupInputs struct {
 	WorkspaceDir     string
 	Router           llm.Router
 	CronStore        *cron.Store
+	SessionStore     *session.Store
 	AgentRuntime     *agentruntime.Runtime
 	OpsManager       *ops.Manager
 	DeliveryCounter  *telegramDeliveryCounter
 	ReflectionHealth pulse.ReflectionHealthSource
+	ChatDeps         chatHandlerDeps
 	NotifyEmit       func(ctx context.Context, evt notificationEvent)
 	Logger           zerolog.Logger
 }
@@ -75,6 +78,7 @@ func buildPulseRuntime(in pulseSetupInputs) pulseSetup {
 		Ops:          in.OpsManager,
 		Delivery:     in.DeliveryCounter,
 		Reflection:   in.ReflectionHealth,
+		ChatSessions: in.SessionStore,
 	}
 	scanner := pulse.NewScanner(sources, thresholds)
 
@@ -88,6 +92,16 @@ func buildPulseRuntime(in pulseSetupInputs) pulseSetup {
 		Dirs: []string{
 			filepath.Join(in.WorkspaceDir, "tmp"),
 			filepath.Join(in.WorkspaceDir, "_shared", "tmp"),
+		},
+	})
+	reg.Register(&autofix.AutoContinueChat{
+		Continuer: &sessionAutoResumeController{
+			workspaceDir: in.WorkspaceDir,
+			store:        in.SessionStore,
+			manager:      in.OpsManager,
+			chatDeps:     in.ChatDeps,
+			emit:         in.NotifyEmit,
+			logger:       in.Logger,
 		},
 	})
 	allowedAutofixes := reg.AllowedIntersection(in.Config.PulseAllowedAutofixes)

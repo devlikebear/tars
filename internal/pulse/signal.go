@@ -3,11 +3,14 @@ package pulse
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/ops"
+	"github.com/devlikebear/tars/internal/pulse/autofix"
+	"github.com/devlikebear/tars/internal/session"
 	zlog "github.com/rs/zerolog/log"
 )
 
@@ -43,6 +46,29 @@ type DeliveryFailureCounter interface {
 type ReflectionHealthSource interface {
 	ConsecutiveFailures() int
 	LastRunAt() time.Time
+}
+
+// ChatSessionSource is the narrow session-store surface pulse needs to
+// detect chats that appear to be waiting on a user answer while work is active.
+type ChatSessionSource interface {
+	List() ([]session.Session, error)
+	GetTasks(sessionID string) (session.SessionTasks, error)
+	TranscriptPath(sessionID string) string
+}
+
+type StalledChatCandidate struct {
+	SessionID              string    `json:"session_id"`
+	Title                  string    `json:"title,omitempty"`
+	LastMessageID          string    `json:"last_message_id,omitempty"`
+	LastAssistantAt        time.Time `json:"last_assistant_at"`
+	AgeMinutes             int       `json:"age_minutes"`
+	AutoResumeEnabled      bool      `json:"auto_resume_enabled"`
+	AutoResumeAfterMinutes int       `json:"auto_resume_after_minutes"`
+	AllowedResumeModes     []string  `json:"allowed_resume_modes,omitempty"`
+	ResumeMode             string    `json:"resume_mode,omitempty"`
+	CanAutoResume          bool      `json:"can_auto_resume"`
+	BlockReason            string    `json:"block_reason,omitempty"`
+	QuestionPreview        string    `json:"question_preview,omitempty"`
 }
 
 // Thresholds controls when signals are emitted. Zero values mean
@@ -87,6 +113,7 @@ type ScannerSources struct {
 	Ops          DiskStatProvider
 	Delivery     DeliveryFailureCounter
 	Reflection   ReflectionHealthSource
+	ChatSessions ChatSessionSource
 }
 
 // Scanner collects Signals from the configured sources. It is stateless
@@ -134,7 +161,234 @@ func (s *Scanner) Scan(ctx context.Context) []Signal {
 	if sig := s.scanReflection(now); sig != nil {
 		signals = append(signals, *sig)
 	}
+	if sig := s.scanStalledChats(ctx, now); sig != nil {
+		signals = append(signals, *sig)
+	}
 	return signals
+}
+
+func (s *Scanner) scanStalledChats(ctx context.Context, now time.Time) *Signal {
+	if s.sources.ChatSessions == nil {
+		return nil
+	}
+	candidates, err := DetectStalledChatCandidates(ctx, s.sources.ChatSessions, now)
+	if err != nil {
+		zlog.Logger.Warn().Err(err).Msg("pulse: session stalled-chat scan failed; skipping this tick")
+		return nil
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	primary := candidates[0]
+	canAutoResume := false
+	for _, candidate := range candidates {
+		if candidate.CanAutoResume {
+			canAutoResume = true
+			break
+		}
+	}
+	details := map[string]any{
+		"stalled_count":       len(candidates),
+		"session_id":          primary.SessionID,
+		"session_title":       primary.Title,
+		"last_message_id":     primary.LastMessageID,
+		"age_minutes":         primary.AgeMinutes,
+		"can_auto_resume":     primary.CanAutoResume,
+		"auto_resume_enabled": primary.AutoResumeEnabled,
+		"resume_mode":         primary.ResumeMode,
+		"block_reason":        primary.BlockReason,
+		"autofix_candidate":   autofix.AutoContinueChatName,
+		"sessions":            candidates,
+	}
+	if canAutoResume {
+		details["has_auto_resume_candidate"] = true
+	}
+	return &Signal{
+		Kind:     SignalKindStalledChat,
+		Severity: SeverityWarn,
+		Summary: fmt.Sprintf(
+			"%d chat session(s) appear stalled waiting for user input",
+			len(candidates),
+		),
+		Details: details,
+		At:      now,
+	}
+}
+
+func DetectStalledChatCandidates(ctx context.Context, source ChatSessionSource, now time.Time) ([]StalledChatCandidate, error) {
+	if source == nil {
+		return nil, nil
+	}
+	sessions, err := source.List()
+	if err != nil {
+		return nil, err
+	}
+	var candidates []StalledChatCandidate
+	for _, sess := range sessions {
+		if err := ctx.Err(); err != nil {
+			return candidates, err
+		}
+		tasks, err := source.GetTasks(sess.ID)
+		if err != nil {
+			zlog.Logger.Debug().Err(err).Str("session_id", sess.ID).Msg("pulse: skip stalled-chat task read failure")
+			continue
+		}
+		if !hasActiveSessionWork(tasks) {
+			continue
+		}
+		messages, err := session.ReadMessages(source.TranscriptPath(sess.ID))
+		if err != nil {
+			zlog.Logger.Debug().Err(err).Str("session_id", sess.ID).Msg("pulse: skip stalled-chat transcript read failure")
+			continue
+		}
+		msg, ok := latestConversationalMessage(messages)
+		if !ok || msg.Role != "assistant" {
+			continue
+		}
+		content := strings.TrimSpace(msg.Content)
+		if !looksLikeWaitingQuestion(content) {
+			continue
+		}
+		lastAt := msg.Timestamp.UTC()
+		if lastAt.IsZero() {
+			lastAt = sess.UpdatedAt.UTC()
+		}
+		consent := sess.AutomationConsent
+		afterMinutes := session.DefaultAutoResumeAfterMinutes
+		autoResumeEnabled := false
+		modes := []string{session.AutoResumeModeRecordAssumptionAndProceed}
+		if consent != nil {
+			afterMinutes = consent.EffectiveAutoResumeAfterMinutes()
+			autoResumeEnabled = consent.AllowsAutoResume()
+			modes = consent.EffectiveAllowedResumeModes()
+		}
+		if now.Sub(lastAt) < time.Duration(afterMinutes)*time.Minute {
+			continue
+		}
+		blockReason := ""
+		if isHighRiskQuestion(content) {
+			blockReason = "high_risk_question"
+		}
+		resumeMode := ""
+		if len(modes) > 0 {
+			resumeMode = modes[0]
+		}
+		canAutoResume := autoResumeEnabled && blockReason == "" && resumeMode != ""
+		candidates = append(candidates, StalledChatCandidate{
+			SessionID:              sess.ID,
+			Title:                  sess.Title,
+			LastMessageID:          msg.ID,
+			LastAssistantAt:        lastAt,
+			AgeMinutes:             int(now.Sub(lastAt).Minutes()),
+			AutoResumeEnabled:      autoResumeEnabled,
+			AutoResumeAfterMinutes: afterMinutes,
+			AllowedResumeModes:     modes,
+			ResumeMode:             resumeMode,
+			CanAutoResume:          canAutoResume,
+			BlockReason:            blockReason,
+			QuestionPreview:        trimPulsePreview(content, 180),
+		})
+	}
+	return candidates, nil
+}
+
+func hasActiveSessionWork(tasks session.SessionTasks) bool {
+	if tasks.Plan != nil {
+		switch strings.TrimSpace(tasks.Plan.Status) {
+		case "", session.PlanStatusDrafting, session.PlanStatusProposed, session.PlanStatusExecuting, session.PlanStatusPaused:
+			return true
+		}
+	}
+	for _, task := range tasks.Tasks {
+		switch strings.TrimSpace(task.Status) {
+		case "pending", "in_progress":
+			return true
+		}
+	}
+	return false
+}
+
+func latestConversationalMessage(messages []session.Message) (session.Message, bool) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		switch strings.TrimSpace(messages[i].Role) {
+		case "user", "assistant":
+			return messages[i], true
+		}
+	}
+	return session.Message{}, false
+}
+
+func looksLikeWaitingQuestion(content string) bool {
+	lower := strings.ToLower(strings.TrimSpace(content))
+	if lower == "" {
+		return false
+	}
+	if strings.Contains(lower, "?") {
+		return true
+	}
+	cues := []string{
+		"please confirm",
+		"should i",
+		"would you like",
+		"which option",
+		"what would you",
+		"can you confirm",
+		"확인해",
+		"진행할까요",
+		"어떻게 할까요",
+		"선택해",
+		"응답",
+		"입력해",
+	}
+	for _, cue := range cues {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+func isHighRiskQuestion(content string) bool {
+	lower := strings.ToLower(strings.TrimSpace(content))
+	risky := []string{
+		"password",
+		"credential",
+		"secret",
+		"api key",
+		"token",
+		"otp",
+		"2fa",
+		"production",
+		"delete",
+		"discard",
+		"reset --hard",
+		"payment",
+		"비밀번호",
+		"토큰",
+		"시크릿",
+		"운영",
+		"삭제",
+		"폐기",
+		"결제",
+	}
+	for _, term := range risky {
+		if strings.Contains(lower, term) {
+			return true
+		}
+	}
+	return false
+}
+
+func trimPulsePreview(content string, limit int) string {
+	content = strings.Join(strings.Fields(strings.TrimSpace(content)), " ")
+	if limit <= 0 {
+		return content
+	}
+	runes := []rune(content)
+	if len(runes) <= limit {
+		return content
+	}
+	return strings.TrimSpace(string(runes[:limit]))
 }
 
 // scanReflection emits a signal when the reflection runtime has

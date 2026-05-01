@@ -82,6 +82,7 @@ const (
 	SignalKindDiskUsage            SignalKind = "disk_usage"
 	SignalKindDeliveryFailures     SignalKind = "delivery_failures"
 	SignalKindReflectionFailure    SignalKind = "reflection_failure"
+	SignalKindStalledChat          SignalKind = "stalled_chat"
 )
 
 // Signal is a single observation made by the signal scanner. A pulse tick

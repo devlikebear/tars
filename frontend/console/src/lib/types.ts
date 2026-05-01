@@ -496,6 +496,9 @@ export type AutomationAuditListResponse = {
 
 export type SessionAutomationConsent = {
   auto_resume?: boolean
+  auto_resume_enabled?: boolean
+  auto_resume_after_minutes?: number
+  allowed_resume_modes?: string[]
   git_mutations?: boolean
   autonomous_mutations?: boolean
   updated_at?: string

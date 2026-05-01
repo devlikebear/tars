@@ -130,7 +130,7 @@ func defaultConfigValues() Config {
 			PulseActiveHours:                "00:00-24:00",
 			PulseTimezone:                   "Local",
 			PulseMinSeverity:                "warn",
-			PulseAllowedAutofixes:           []string{"compress_old_logs", "cleanup_stale_tmp"},
+			PulseAllowedAutofixes:           []string{"compress_old_logs", "cleanup_stale_tmp", "auto_continue_chat"},
 			PulseNotifyTelegram:             false,
 			PulseNotifySessionEvents:        true,
 			PulseCronFailureThreshold:       3,

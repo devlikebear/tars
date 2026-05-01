@@ -555,6 +555,47 @@ func TestStoreSetAutomationConsent_RoundTripsConservativeDefaults(t *testing.T) 
 	}
 }
 
+func TestStoreSetAutomationConsent_NormalizesAutoResumePolicy(t *testing.T) {
+	store := NewStore(t.TempDir())
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	consent := &SessionAutomationConsent{
+		AutoResumeEnabled:      true,
+		AutoResumeAfterMinutes: -5,
+		AllowedResumeModes: []string{
+			"bad-mode",
+			AutoResumeModeMoveToNextTask,
+			AutoResumeModeMoveToNextTask,
+			AutoResumeModeRecordAssumptionAndProceed,
+		},
+	}
+	if err := store.SetAutomationConsent(sess.ID, consent); err != nil {
+		t.Fatalf("set automation consent: %v", err)
+	}
+
+	reloaded, err := store.Get(sess.ID)
+	if err != nil {
+		t.Fatalf("reload session: %v", err)
+	}
+	got := reloaded.AutomationConsent
+	if got == nil {
+		t.Fatalf("expected automation consent")
+	}
+	if !got.AutoResume || !got.AutoResumeEnabled {
+		t.Fatalf("expected legacy and explicit auto-resume flags to be synchronized, got %+v", got)
+	}
+	if got.AutoResumeAfterMinutes != DefaultAutoResumeAfterMinutes {
+		t.Fatalf("after minutes = %d, want %d", got.AutoResumeAfterMinutes, DefaultAutoResumeAfterMinutes)
+	}
+	wantModes := []string{AutoResumeModeMoveToNextTask, AutoResumeModeRecordAssumptionAndProceed}
+	if !reflect.DeepEqual(got.AllowedResumeModes, wantModes) {
+		t.Fatalf("allowed modes = %+v, want %+v", got.AllowedResumeModes, wantModes)
+	}
+}
+
 func TestStoreGet_LegacyToolConfigWithoutGroupFieldsStillLoads(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

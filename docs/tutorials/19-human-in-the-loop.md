@@ -14,6 +14,8 @@ TARS는 로컬 파일, 로그, 임시 디렉터리, cron 실행 기록처럼 실
 
 CON-041의 결정에 따라 이 표면은 제거하지 않습니다. 수동 cleanup plan은 현재 seed workflow이고, Pulse는 안전한 allowlist autofix를 계속 직접 실행하되 향후 더 위험하거나 넓은 mutation은 approval queue로 라우팅합니다. 결정 근거와 라우팅 기준은 `docs/decisions/approvals-workflow.md`에 있습니다.
 
+Pulse의 `auto_continue_chat`도 같은 경계를 따릅니다. 전역 allowlist에 있어도 세션에서 auto-resume을 켠 경우에만 실행되며, `proceed_with_assumption`, `move_to_next_task`, `record_assumption_and_proceed` 중 허용된 모드로만 재개합니다. 비밀번호, 토큰, 운영 승인처럼 사용자 고유 답변이나 높은 위험 판단이 필요한 질문은 자동 재개하지 않고, 30분 안에 3회를 넘으면 사용자 확인으로 에스컬레이션합니다.
+
 ```
 계획 생성 → approval 저장 → 사용자 승인/거절 → 적용 → 이벤트 기록
 ```
