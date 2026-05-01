@@ -6,6 +6,29 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.96] - 2026-05-01
+
+### Added
+
+- Added a Console Chat progress card for `subagents_run` so parallel subagent work shows running/completed/failed counts while the tool call is active.
+- Added per-subagent run links in completed progress cards so users can jump directly into Agent Runtime run details.
+- Added compact `subagents_run` status previews that omit prompt bodies while preserving titles, statuses, run IDs, summaries, and errors for chat rendering.
+
+### Documentation
+
+- README now documents the chat-visible parallel subagent progress card and Agent Runtime run links.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+
+### Closed
+
+- Closes #573.
+
 ## [0.31.95] - 2026-05-01
 
 ### Changed
