@@ -187,6 +187,54 @@ func newMemoryAPIHandler(workspaceDir string, backend memory.Backend, logger zer
 		})
 	})
 
+	mux.HandleFunc("/v1/memory/inbox", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		status, ok := parseMemoryCandidateStatus(r.URL.Query().Get("status"))
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown memory candidate status"})
+			return
+		}
+		items, err := memory.ListMemoryCandidates(workspaceDir, memory.MemoryCandidateListOptions{Status: status})
+		if err != nil {
+			logger.Error().Err(err).Msg("list memory inbox failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list memory inbox failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count": len(items),
+			"items": items,
+		})
+	})
+
+	mux.HandleFunc("/v1/memory/inbox/review", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		var req struct {
+			ID          string                       `json:"id"`
+			Action      memory.MemoryCandidateAction `json:"action"`
+			MergeTarget string                       `json:"merge_target,omitempty"`
+			Note        string                       `json:"note,omitempty"`
+		}
+		if !decodeJSONBody(w, r, &req) {
+			return
+		}
+		candidate, err := memory.ReviewMemoryCandidate(r.Context(), workspaceDir, backend, strings.TrimSpace(req.ID), memory.MemoryCandidateReview{
+			Action:      req.Action,
+			MergeTarget: req.MergeTarget,
+			Note:        req.Note,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"candidate": candidate,
+		})
+	})
+
 	mux.HandleFunc("/v1/workspace/sysprompt/files", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
@@ -285,8 +333,29 @@ func newMemoryAPIHandler(workspaceDir string, backend memory.Backend, logger zer
 	return mux
 }
 
+func parseMemoryCandidateStatus(raw string) (memory.MemoryCandidateStatus, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", string(memory.MemoryCandidateStatusPending):
+		return memory.MemoryCandidateStatusPending, true
+	case "all":
+		return "", true
+	case string(memory.MemoryCandidateStatusApproved):
+		return memory.MemoryCandidateStatusApproved, true
+	case string(memory.MemoryCandidateStatusRejected):
+		return memory.MemoryCandidateStatusRejected, true
+	case string(memory.MemoryCandidateStatusMerged):
+		return memory.MemoryCandidateStatusMerged, true
+	default:
+		return "", false
+	}
+}
+
 func listManagedMemoryAssets(workspaceDir string) ([]managedMemoryAsset, error) {
-	paths := []string{"MEMORY.md", filepath.ToSlash(filepath.Join("memory", "experiences.jsonl"))}
+	paths := []string{
+		"MEMORY.md",
+		filepath.ToSlash(filepath.Join("memory", "experiences.jsonl")),
+		filepath.ToSlash(filepath.Join("memory", "inbox.jsonl")),
+	}
 
 	dailyPaths, err := filepath.Glob(filepath.Join(workspaceDir, "memory", "*.md"))
 	if err != nil {
@@ -370,6 +439,8 @@ func resolveManagedMemoryPath(workspaceDir, relPath string) (string, string, err
 		return filepath.Join(workspaceDir, "MEMORY.md"), "long_term_memory", nil
 	case relPath == "memory/experiences.jsonl":
 		return filepath.Join(workspaceDir, filepath.FromSlash(relPath)), "experience_log", nil
+	case relPath == "memory/inbox.jsonl":
+		return filepath.Join(workspaceDir, filepath.FromSlash(relPath)), "memory_inbox", nil
 	case strings.HasPrefix(relPath, "memory/wiki/"):
 		return "", "", os.ErrPermission
 	case strings.HasPrefix(relPath, "memory/index/"):

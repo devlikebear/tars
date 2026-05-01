@@ -28,12 +28,12 @@ type SessionSource interface {
 //
 //  1. Reads the last MaxTurnsPerSession transcript messages;
 //  2. Pairs consecutive user/assistant messages into turns;
-//  3. For each turn, derives 0..N auto experiences via keyword rules;
+//  3. For each turn, derives 0..N auto memory candidates via keyword rules;
 //  4. For each turn that clears the knowledge-base gate, calls the LLM
 //     to compile structured knowledge and applies the diff.
 //
-// The job is idempotent at the experience level: appendExperienceIfNew
-// dedupes against existing entries by summary+category match.
+// The job is idempotent at the candidate level: memory inbox appends
+// dedupe against existing candidates by stable ID and summary.
 //
 // The knowledge-compilation call uses the llm.RoleReflectionMemory role,
 // which operators can map to the light tier via llm_role_reflection_memory
@@ -78,10 +78,10 @@ func (m *MemoryJob) Run(ctx context.Context) (JobResult, error) {
 
 	cutoff := now.Add(-lookback)
 	var (
-		sessionsScanned  int
-		turnsProcessed   int
-		experiencesAdded int
-		errs             []string
+		sessionsScanned int
+		turnsProcessed  int
+		candidatesAdded int
+		errs            []string
 	)
 
 	for _, sess := range sessions {
@@ -114,22 +114,23 @@ func (m *MemoryJob) Run(ctx context.Context) (JobResult, error) {
 		for _, t := range turns {
 			turnsProcessed++
 
-			expCount := m.processTurnExperiences(ctx, sess.ID, t, now)
-			experiencesAdded += expCount
+			candidateCount := m.processTurnMemoryCandidates(ctx, sess.ID, t, now)
+			candidatesAdded += candidateCount
 		}
 	}
 
 	result := JobResult{
 		Name:    "memory",
 		Success: true,
-		Summary: fmt.Sprintf("scanned %d sessions, %d turns, +%d experiences", sessionsScanned, turnsProcessed, experiencesAdded),
+		Summary: fmt.Sprintf("scanned %d sessions, %d turns, +%d memory candidates", sessionsScanned, turnsProcessed, candidatesAdded),
 		Details: map[string]any{
 			"sessions_scanned":  sessionsScanned,
 			"turns_processed":   turnsProcessed,
-			"experiences_added": experiencesAdded,
+			"candidates_added":  candidatesAdded,
+			"experiences_added": 0,
 			"lookback_seconds":  int64(lookback.Seconds()),
 		},
-		Changed: experiencesAdded > 0,
+		Changed: candidatesAdded > 0,
 	}
 	if len(errs) > 0 {
 		result.Details["errors"] = errs
@@ -150,12 +151,14 @@ type turn struct {
 	UserMessage      string
 	AssistantMessage string
 	At               time.Time
+	UserIndex        int
+	AssistantIndex   int
 }
 
 func pairTurns(messages []session.Message) []turn {
 	var turns []turn
 	var pending *turn
-	for _, msg := range messages {
+	for idx, msg := range messages {
 		role := strings.ToLower(strings.TrimSpace(msg.Role))
 		switch role {
 		case "user":
@@ -163,10 +166,11 @@ func pairTurns(messages []session.Message) []turn {
 				// Previous user message had no assistant reply; drop it.
 				pending = nil
 			}
-			pending = &turn{UserMessage: msg.Content, At: msg.Timestamp}
+			pending = &turn{UserMessage: msg.Content, At: msg.Timestamp, UserIndex: idx}
 		case "assistant":
 			if pending != nil {
 				pending.AssistantMessage = msg.Content
+				pending.AssistantIndex = idx
 				if pending.At.IsZero() {
 					pending.At = msg.Timestamp
 				}
@@ -178,10 +182,10 @@ func pairTurns(messages []session.Message) []turn {
 	return turns
 }
 
-func (m *MemoryJob) processTurnExperiences(ctx context.Context, sessionID string, t turn, now time.Time) int {
+func (m *MemoryJob) processTurnMemoryCandidates(ctx context.Context, sessionID string, t turn, now time.Time) int {
 	count := 0
 	for _, exp := range deriveTurnExperiences(sessionID, t, now) {
-		if appendExperienceIfNew(ctx, m.backend(), exp) {
+		if enqueueMemoryCandidateIfNew(ctx, m.WorkspaceDir, m.backend(), exp, t, now) {
 			count++
 		}
 	}
@@ -196,4 +200,43 @@ func (m *MemoryJob) backend() memory.Backend {
 		return nil
 	}
 	return memory.NewFileBackend(m.WorkspaceDir, nil)
+}
+
+func enqueueMemoryCandidateIfNew(
+	ctx context.Context,
+	workspaceDir string,
+	backend memory.Backend,
+	exp memory.Experience,
+	t turn,
+	now time.Time,
+) bool {
+	if strings.TrimSpace(workspaceDir) == "" || strings.TrimSpace(exp.Summary) == "" {
+		return false
+	}
+	candidate := memory.MemoryCandidate{
+		Category:      exp.Category,
+		Summary:       exp.Summary,
+		Tags:          exp.Tags,
+		SourceSession: exp.SourceSession,
+		Importance:    exp.Importance,
+		Auto:          exp.Auto,
+		CreatedAt:     now.UTC(),
+		UpdatedAt:     now.UTC(),
+		Provenance: memory.MemoryCandidateProvenance{
+			Source:        "reflection",
+			SessionID:     strings.TrimSpace(exp.SourceSession),
+			MessageRange:  t.messageRange(),
+			SourceSummary: trimText(t.UserMessage+" "+t.AssistantMessage, 220),
+			ExtractedAt:   now.UTC(),
+		},
+	}
+	_, added, err := memory.AppendInboxCandidateIfNew(ctx, workspaceDir, backend, candidate)
+	return err == nil && added
+}
+
+func (t turn) messageRange() string {
+	if t.UserIndex < 0 || t.AssistantIndex < 0 {
+		return ""
+	}
+	return fmt.Sprintf("messages:%d-%d", t.UserIndex, t.AssistantIndex)
 }

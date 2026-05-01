@@ -18,7 +18,7 @@ The name is an homage to TARS from *Interstellar*: practical, direct, and built 
 | **Language** | TypeScript | Python | Go (single binary) |
 | **Sub-agents** | ACP + subagent runtimes, push-based completion, Docker sandbox | ThreadPoolExecutor (max 3), ephemeral prompt, credential override | Agent Runtime executor with per-task model tier, allowlist policy, depth control |
 | **Model routing** | Per-agent model override | Per-child provider/model override, MoA (4 frontier models) | 3-tier named bundles (heavy/standard/light) with role→tier config mapping |
-| **Memory** | Session transcripts | Honcho/Holographic plugin hooks | Durable Markdown memory + semantic search + experience extraction + nightly reflection |
+| **Memory** | Session transcripts | Honcho/Holographic plugin hooks | Durable Markdown memory + semantic search + review-before-store extraction + nightly reflection |
 | **Background** | None | None | Pulse watchdog (1-min) + Reflection nightly batch |
 | **Scheduling** | None | None | Session-bound cron jobs with audit logs |
 | **Channels** | CLI | CLI + Agent Runtime API | Console + Telegram + webhooks |
@@ -40,7 +40,8 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 - Chat panels share a Dock Manager: Sessions and tool panels, including the read-only Git Inspector, can move between left, right, bottom, and fullscreen zones, with drag-resized dimensions persisted in the browser
 - Files workspaces launch the integrated shell in the bottom dock at the selected root or browsed subdirectory, while keeping a macOS Terminal fallback available
 - Workspace file previews use workspace storage by default, while selected filesystem roots are served through the explicit filesystem files API boundary
-- Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
+- Durable memory: `MEMORY.md`, reviewed experiences, daily logs, semantic embeddings
+- Memory Inbox review queue for approving, rejecting, or merging reflection-derived memory candidates before they enter durable recall
 - Fresh workspaces omit legacy KB Wiki scaffolding while preserving any existing `memory/wiki` files
 - Editable memory assets plus Tool path and Prefetch path recall tests through the console/API
 - Structured transcript compaction preserving identifiers and recent context
@@ -120,7 +121,7 @@ Each system role (chat, pulse, reflection, compaction, agent runtime agents) map
 Two isolated surfaces run independently from user chat:
 
 - **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, disk pressure, Telegram delivery health, and reflection status. LLM classifier picks `ignore` / `notify` / `autofix`. Autofixes are whitelisted in config.
-- **Reflection** — Nightly batch (default 02:00–05:00) running memory reflection (experience extraction) and stale empty-session pruning.
+- **Reflection** — Nightly batch (default 02:00–05:00) running memory reflection (Memory Inbox candidate extraction) and stale empty-session pruning.
 
 Both use the `light` tier by default and have no access to user-facing tools (enforced at compile time via `RegistryScope`).
 
@@ -222,7 +223,7 @@ The Chat header shows the active plan goal and completed/total task count withou
 | Home | Mission Control | `/console` | Live overview for Pulse, Reflection, active plans, Agent Runtime runs, Cron jobs, disk pressure, active sessions, recent notifications, recommended setup actions, and release/PR shortcuts |
 | Work | Chat | `/console/chat` | Interactive agent chat with tool calling, dockable Sessions and tool panels, task contract review/approval, task evidence attachments, read-only Git Inspector, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, parallel subagent progress cards, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
 | Work | Plans | `/console/tasks` | Review active plans across sessions with progress cards and jump directly into the owning chat session |
-| Work | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
+| Work | Memory | `/console/memory` | Review extracted memory candidates before storage, edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
 | Work | Extensions | `/console/extensions` | Skills, sandbox-tested hub skill installs, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |
 | Operate | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, git diff timeline, and subagent tier management |

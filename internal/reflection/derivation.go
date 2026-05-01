@@ -14,8 +14,8 @@ import (
 // ran per-turn; reflection now runs it in a nightly batch.
 //
 // The function is cheap (string matching only) and does not touch the
-// filesystem or the LLM. Persistence happens in the caller via
-// appendExperienceIfNew.
+// filesystem or the LLM. Persistence happens in the caller via the
+// memory inbox review queue.
 func deriveTurnExperiences(sessionID string, t turn, now time.Time) []memory.Experience {
 	out := make([]memory.Experience, 0, 2)
 	if exp, ok := deriveUserExperience(sessionID, t.UserMessage, now); ok {

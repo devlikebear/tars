@@ -3,7 +3,9 @@
   import { locale, t } from '../i18n'
   import {
     getMemoryFile,
+    listMemoryInbox,
     listMemoryAssets,
+    reviewMemoryCandidate,
     runMemoryPrefetch,
     runMemorySearch,
     saveMemoryFile,
@@ -11,6 +13,9 @@
   } from '../lib/api'
   import type {
     MemoryAsset,
+    MemoryCandidate,
+    MemoryCandidateAction,
+    MemoryCandidateHint,
     MemoryPrefetchResult,
     MemorySearchResult,
   } from '../lib/types'
@@ -27,12 +32,17 @@
 
   const MEMORY_INTRO_STORAGE_KEY = 'tars.memory.intro.dismissed'
   type MemorySearchMode = 'tool' | 'prefetch'
+  type MemoryTab = 'inbox' | 'durable' | 'search'
 
-  let activeTab = $state<'durable' | 'search'>('durable')
+  let activeTab = $state<MemoryTab>('inbox')
   let error = $state('')
   let success = $state('')
   let stopStream: (() => void) | null = null
   let memoryIntroDismissed = $state(false)
+
+  let memoryCandidates: MemoryCandidate[] = $state([])
+  let loadingInbox = $state(true)
+  let reviewingCandidate = $state('')
 
   let memoryAssets: MemoryAsset[] = $state([])
   let loadingMemory = $state(true)
@@ -75,6 +85,8 @@
         return 'MEMORY.md'
       case 'experience_log':
         return $t.memory.introHeadings.experiences
+      case 'memory_inbox':
+        return $t.memory.tabs.inbox
       case 'daily_memory':
         return $t.memory.introHeadings.dailyLogs
       case 'semantic_index':
@@ -97,12 +109,45 @@
     return searchResult?.results?.length ?? 0
   }
 
+  function pendingCandidateCount(): number {
+    return memoryCandidates.filter((candidate) => candidate.status === 'pending').length
+  }
+
   function currentSearchMeta(): string {
     if (searchMode === 'prefetch') {
       if (!prefetchResult) return $t.memory.search.prefetchEmpty
       return `${prefetchResult.relevant_tokens.toLocaleString()} / ${prefetchResult.relevant_budget_tokens.toLocaleString()} tokens (${prefetchResult.budget_percent}%)`
     }
     return searchResult?.message || $t.memory.search.defaultToolMeta
+  }
+
+  function candidateProvenance(candidate: MemoryCandidate): string {
+    const provenance = candidate.provenance
+    const parts = [
+      provenance?.source || 'memory',
+      provenance?.session_id || candidate.source_session || '',
+      provenance?.message_range || '',
+    ].filter(Boolean)
+    return parts.join(' · ') || '-'
+  }
+
+  function bestMergeTarget(candidate: MemoryCandidate): string {
+    return candidate.similar?.[0]?.summary || ''
+  }
+
+  function formatHintScore(hint: MemoryCandidateHint): string {
+    if (typeof hint.score !== 'number' || Number.isNaN(hint.score)) return ''
+    return `${Math.round(hint.score * 100)}%`
+  }
+
+  async function loadMemoryInbox() {
+    loadingInbox = true
+    try {
+      const res = await listMemoryInbox('pending')
+      memoryCandidates = res.items || []
+    } finally {
+      loadingInbox = false
+    }
   }
 
   async function loadMemory(path?: string) {
@@ -126,6 +171,25 @@
     memoryEditorContent = file.content
     memoryUpdatedAt = file.updated_at || ''
     memorySizeBytes = file.size_bytes || 0
+  }
+
+  async function reviewCandidate(candidate: MemoryCandidate, action: MemoryCandidateAction) {
+    if (!candidate.id || reviewingCandidate) return
+    reviewingCandidate = candidate.id
+    error = ''
+    success = ''
+    try {
+      const mergeTarget = action === 'merge' ? bestMergeTarget(candidate) : ''
+      await reviewMemoryCandidate(candidate.id, action, mergeTarget)
+      await Promise.all([loadMemoryInbox(), loadMemory(selectedMemoryPath)])
+      if (action === 'approve') success = $t.memory.inbox.approved
+      if (action === 'reject') success = $t.memory.inbox.rejected
+      if (action === 'merge') success = $t.memory.inbox.merged
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to review memory candidate'
+    } finally {
+      reviewingCandidate = ''
+    }
   }
 
   async function saveSelectedMemoryAsset() {
@@ -178,7 +242,7 @@
   async function loadAll() {
     error = ''
     try {
-      await loadMemory(selectedMemoryPath)
+      await Promise.all([loadMemory(selectedMemoryPath), loadMemoryInbox()])
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load memory console'
     }
@@ -187,7 +251,11 @@
   function applyRouteSearchParams() {
     const params = new URLSearchParams(window.location.search)
     const query = (params.get('q') || params.get('query') || '').trim()
-    if (params.get('tab') === 'search' || query) {
+    const tab = params.get('tab')
+    if (tab === 'durable' || tab === 'inbox') {
+      activeTab = tab
+    }
+    if (tab === 'search' || query) {
       activeTab = 'search'
     }
     if (query) {
@@ -197,6 +265,8 @@
 
   function askAIPrompt(): string {
     switch (activeTab) {
+      case 'inbox':
+        return 'Help me review these memory candidates and decide what should be approved: '
       case 'search':
         return 'Help me review this memory search query and improve recall: '
       default:
@@ -296,6 +366,11 @@
 
   <div class="memory-stats">
     <div class="stat-card">
+      <span class="stat-label">{$t.memory.stats.inbox}</span>
+      <strong class="stat-value">{$t.memory.stats.pending(pendingCandidateCount())}</strong>
+      <span class="stat-meta">{$t.memory.inbox.subtitle}</span>
+    </div>
+    <div class="stat-card">
       <span class="stat-label">{$t.memory.stats.selectedAsset}</span>
       <strong class="stat-value">{selectedMemoryPath || 'MEMORY.md'}</strong>
       <span class="stat-meta">{assetKindLabel(selectedMemoryKind)}</span>
@@ -308,11 +383,86 @@
   </div>
 
   <div class="tab-row">
+    <button class="tab-btn" class:active={activeTab === 'inbox'} type="button" onclick={() => { activeTab = 'inbox' }}>{$t.memory.tabs.inbox}</button>
     <button class="tab-btn" class:active={activeTab === 'durable'} type="button" onclick={() => { activeTab = 'durable' }}>{$t.memory.tabs.storedKnowledge}</button>
     <button class="tab-btn" class:active={activeTab === 'search'} type="button" onclick={() => { activeTab = 'search' }}>{$t.memory.tabs.trySearch}</button>
   </div>
 
-  {#if activeTab === 'durable'}
+  {#if activeTab === 'inbox'}
+    <section class="inbox-panel">
+      <div class="panel-header">
+        <div>
+          <span class="card-title">{$t.memory.inbox.title}</span>
+          <div class="panel-subtitle">{$t.memory.inbox.subtitle}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button" onclick={loadMemoryInbox}>{$t.common.actions.reload}</button>
+      </div>
+      {#if loadingInbox}
+        <div class="empty-state">{$t.memory.inbox.loading}</div>
+      {:else if memoryCandidates.length === 0}
+        <div class="empty-state">{$t.memory.inbox.empty}</div>
+      {:else}
+        <div class="candidate-list">
+          {#each memoryCandidates as candidate}
+            <article class="candidate-row">
+              <div class="candidate-main">
+                <div>
+                  <div class="candidate-meta">
+                    <span class="note-kind">{candidate.category}</span>
+                    <span>{fmt(candidate.created_at)}</span>
+                    {#if candidate.importance}
+                      <span>importance {candidate.importance}</span>
+                    {/if}
+                  </div>
+                  <p class="candidate-summary">{candidate.summary}</p>
+                </div>
+                <div class="candidate-actions">
+                  <button class="btn btn-primary btn-sm" type="button" disabled={reviewingCandidate === candidate.id} onclick={() => reviewCandidate(candidate, 'approve')}>
+                    {reviewingCandidate === candidate.id ? $t.memory.inbox.reviewing : $t.memory.inbox.approve}
+                  </button>
+                  <button class="btn btn-ghost btn-sm" type="button" disabled={reviewingCandidate === candidate.id} onclick={() => reviewCandidate(candidate, 'reject')}>{$t.memory.inbox.reject}</button>
+                  <button class="btn btn-ghost btn-sm" type="button" disabled={reviewingCandidate === candidate.id || !bestMergeTarget(candidate)} title={bestMergeTarget(candidate) ? $t.memory.inbox.mergedInto(bestMergeTarget(candidate)) : $t.memory.inbox.similar} onclick={() => reviewCandidate(candidate, 'merge')}>{$t.memory.inbox.merge}</button>
+                </div>
+              </div>
+              <div class="candidate-source">
+                <strong>{$t.memory.inbox.provenance}</strong>
+                <span>{candidateProvenance(candidate)}</span>
+              </div>
+              {#if candidate.provenance?.source_summary}
+                <p class="candidate-source-summary">{candidate.provenance.source_summary}</p>
+              {/if}
+              {#if candidate.similar?.length || candidate.conflicts?.length}
+                <div class="hint-grid">
+                  {#if candidate.similar?.length}
+                    <div class="hint-group">
+                      <strong>{$t.memory.inbox.similar}</strong>
+                      {#each candidate.similar as hint}
+                        <div class="hint-row">
+                          <span>{hint.summary}</span>
+                          <em>{formatHintScore(hint)}</em>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if candidate.conflicts?.length}
+                    <div class="hint-group conflict">
+                      <strong>{$t.memory.inbox.conflicts}</strong>
+                      {#each candidate.conflicts as hint}
+                        <div class="hint-row">
+                          <span>{hint.summary}</span>
+                          <em>{hint.reason || formatHintScore(hint)}</em>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </article>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  {:else if activeTab === 'durable'}
     <div class="memory-layout">
       <aside class="assets-panel card">
         <div class="panel-header">
@@ -591,11 +741,12 @@
 
   .memory-stats {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-4);
   }
 
   .stat-card,
+  .inbox-panel,
   .editor-panel,
   .assets-panel,
   .search-panel,
@@ -689,6 +840,7 @@
 
   .editor-panel,
   .assets-panel,
+  .inbox-panel,
   .search-panel,
   .results-panel {
     display: flex;
@@ -697,6 +849,7 @@
   }
 
   .asset-list,
+  .candidate-list,
   .result-list {
     display: flex;
     flex-direction: column;
@@ -705,6 +858,7 @@
   }
 
   .asset-row,
+  .candidate-row,
   .result-row {
     text-align: left;
     border: 1px solid var(--border-subtle);
@@ -749,6 +903,97 @@
 
   .asset-flow-line strong {
     color: var(--text-primary);
+  }
+
+  .candidate-main,
+  .candidate-source,
+  .candidate-meta,
+  .candidate-actions,
+  .hint-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .candidate-main {
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .candidate-main > div:first-child {
+    min-width: 0;
+  }
+
+  .candidate-actions {
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .candidate-meta,
+  .candidate-source,
+  .hint-row {
+    flex-wrap: wrap;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+
+  .candidate-summary,
+  .candidate-source-summary {
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .candidate-summary {
+    margin-top: var(--space-2);
+    color: var(--text-primary);
+    font-weight: 600;
+    word-break: break-word;
+  }
+
+  .candidate-source strong,
+  .hint-group strong {
+    color: var(--text-primary);
+  }
+
+  .candidate-source-summary {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .hint-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  .hint-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .hint-group.conflict {
+    color: var(--warning);
+  }
+
+  .hint-row {
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .hint-row span {
+    min-width: 0;
+    color: var(--text-secondary);
+  }
+
+  .hint-row em {
+    flex: 0 0 auto;
+    color: var(--text-ghost);
+    font-style: normal;
   }
 
   .stale-badge {
@@ -907,9 +1152,18 @@
     .memory-stats,
     .memory-layout,
     .search-layout,
+    .hint-grid,
     .form-grid,
     .intro-grid {
       grid-template-columns: 1fr;
+    }
+
+    .candidate-main {
+      flex-direction: column;
+    }
+
+    .candidate-actions {
+      justify-content: flex-start;
     }
 
     .form-span-2 {

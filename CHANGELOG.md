@@ -6,6 +6,37 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.103] - 2026-05-01
+
+### Added
+
+- Added a Memory Inbox review queue so reflection-derived memory candidates are stored for approve/reject/merge review before entering durable recall.
+- Added `/v1/memory/inbox` and `/v1/memory/inbox/review` APIs with provenance, similarity hints, and conflict hints.
+- Added a Console Memory Inbox tab with candidate provenance, similar/conflicting memory hints, and review actions.
+
+### Changed
+
+- Nightly reflection now enqueues memory candidates instead of directly appending auto-derived experiences.
+
+### Documentation
+
+- README now documents review-before-store memory extraction in the Chat + Memory and Console Memory workflows.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/memory ./internal/reflection ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/memory` Memory Inbox rendering and approve flow with a mock API
+
+### Closed
+
+- Closes #578.
+
 ## [0.31.102] - 2026-05-01
 
 ### Added

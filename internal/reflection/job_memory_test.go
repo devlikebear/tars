@@ -139,7 +139,7 @@ func TestPairTurnsDropsOrphanUser(t *testing.T) {
 
 // --- MemoryJob end-to-end ---
 
-func TestMemoryJobExtractsExperiences(t *testing.T) {
+func TestMemoryJobQueuesMemoryCandidates(t *testing.T) {
 	workspace := newTestWorkspace(t)
 	transcriptDir := filepath.Join(workspace, "sessions")
 	writeTranscript(t, transcriptDir, "sess1", []session.Message{
@@ -170,9 +170,33 @@ func TestMemoryJobExtractsExperiences(t *testing.T) {
 	if !result.Changed {
 		t.Errorf("expected Changed=true")
 	}
-	expAdded := result.Details["experiences_added"].(int)
-	if expAdded < 2 {
-		t.Errorf("experiences_added = %d, want >= 2", expAdded)
+	candidatesAdded := result.Details["candidates_added"].(int)
+	if candidatesAdded < 2 {
+		t.Errorf("candidates_added = %d, want >= 2", candidatesAdded)
+	}
+	candidates, err := memory.ListMemoryCandidates(workspace, memory.MemoryCandidateListOptions{
+		Status: memory.MemoryCandidateStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("list candidates: %v", err)
+	}
+	if len(candidates) < 2 {
+		t.Fatalf("pending candidates = %d, want >= 2", len(candidates))
+	}
+	for _, candidate := range candidates {
+		if candidate.Provenance.SessionID != "sess1" {
+			t.Errorf("candidate provenance session = %q, want sess1", candidate.Provenance.SessionID)
+		}
+		if candidate.Provenance.MessageRange == "" {
+			t.Errorf("candidate missing message range: %+v", candidate)
+		}
+	}
+	experiences, err := memory.SearchExperiences(workspace, memory.SearchOptions{Limit: 5})
+	if err != nil {
+		t.Fatalf("search experiences: %v", err)
+	}
+	if len(experiences) != 0 {
+		t.Fatalf("experiences should stay empty before review, got %d", len(experiences))
 	}
 }
 
