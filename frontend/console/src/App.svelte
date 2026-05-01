@@ -111,7 +111,7 @@
   {:else if route.view === 'config'}
     <Config />
   {:else if route.view === 'pulse'}
-    <Pulse />
+    <Pulse onNavigate={navigate} />
   {:else if route.view === 'reflection'}
     <Reflection />
   {:else if route.view === 'extensions'}

@@ -146,6 +146,8 @@ cron / ops / pulse / usage
   → console notification UI
 ```
 
+최신 Console의 `/console/pulse`는 raw tick 목록만 보여주지 않고 incident card를 함께 렌더링합니다. 각 card는 signal kind별 likely cause, relevant details/log snippets, severity, recommended action, affected page link, safe re-check button을 보여주므로 사용자는 raw log를 먼저 뒤지지 않고 Cron, Agent Runtime, Approvals, Settings, Reflection, Chat 중 어디로 가야 하는지 바로 판단할 수 있습니다.
+
 ## 체크포인트
 
 - [x] `/v1/events/stream`이 keepalive와 notification payload를 보낸다

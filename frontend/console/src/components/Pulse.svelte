@@ -1,7 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { getPulseStatus, runPulseOnce, getPulseConfig } from '../lib/api'
+  import { buildPulseIncidentCards } from '../lib/pulseIncidentCards'
   import type { PulseSnapshot, PulseTickOutcome, PulseConfigView } from '../lib/types'
+
+  interface Props {
+    onNavigate?: (path: string) => void
+  }
 
   type SeverityGuideRow = {
     kind: string
@@ -30,6 +35,8 @@
     detail: string
     badgeClass: string
   }
+
+  let { onNavigate }: Props = $props()
 
   const pulseWatchItems: PulseWatchItem[] = [
     {
@@ -491,6 +498,60 @@
         </div>
 
         {#if recentSummary.signalTicks.length > 0}
+          {@const incidentCards = buildPulseIncidentCards(recentSummary.signalTicks)}
+          {#if incidentCards.length > 0}
+            <div class="pulse-incident-cards">
+              <div class="pulse-signal-heading">Incident cards</div>
+              <div class="pulse-incident-grid">
+                {#each incidentCards as card}
+                  <article class="pulse-incident-card">
+                    <div class="pulse-incident-head">
+                      <div>
+                        <span class="pulse-incident-kind">{card.kind}</span>
+                        <strong>{card.title}</strong>
+                      </div>
+                      <span class="badge {severityBadgeClass(card.severity)}">{card.severity}</span>
+                    </div>
+                    <dl class="pulse-incident-body">
+                      <div>
+                        <dt>Likely cause</dt>
+                        <dd>{card.cause}</dd>
+                      </div>
+                      <div>
+                        <dt>Evidence</dt>
+                        <dd>
+                          <ul>
+                            {#each card.evidence as item}
+                              <li>{item}</li>
+                            {/each}
+                          </ul>
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Recommended action</dt>
+                        <dd>{card.recommendedAction}</dd>
+                      </div>
+                    </dl>
+                    <div class="pulse-incident-actions">
+                      <button
+                        type="button"
+                        class="btn btn-ghost btn-sm"
+                        title={card.primaryAction.label}
+                        onclick={() => onNavigate?.(card.primaryAction.path)}
+                      >
+                        Open affected page
+                      </button>
+                      <button type="button" class="btn btn-ghost btn-sm" disabled={running || !config?.enabled} onclick={handleRun}>
+                        Re-check
+                      </button>
+                      <span>{fmtTime(card.checkedAt)}</span>
+                    </div>
+                  </article>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
           <div class="pulse-signal-ticks">
             <div class="pulse-signal-heading">Signal ticks</div>
             <ul class="pulse-recent">
@@ -994,6 +1055,107 @@
     margin-top: var(--space-2);
     padding-top: var(--space-2);
     border-top: 1px solid var(--border-subtle);
+  }
+
+  .pulse-incident-cards {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .pulse-incident-grid {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .pulse-incident-card {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+  }
+
+  .pulse-incident-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .pulse-incident-head > div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .pulse-incident-head strong {
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .pulse-incident-kind {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .pulse-incident-body {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+  }
+
+  .pulse-incident-body > div {
+    display: grid;
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .pulse-incident-body dt {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .pulse-incident-body dd {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .pulse-incident-body ul {
+    display: grid;
+    gap: 3px;
+    margin: 0;
+    padding-left: var(--space-4);
+  }
+
+  .pulse-incident-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .pulse-incident-actions span {
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  @media (max-width: 760px) {
+    .pulse-incident-body > div {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-1);
+    }
   }
 
   .pulse-recent li {

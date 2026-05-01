@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.116] - 2026-05-01
+
+### Added
+
+- Added Pulse incident cards that turn recent watchdog signals into actionable summaries with likely cause, evidence, severity, recommended action, and safe navigation/re-check buttons.
+- Added deterministic incident-card mapping for cron failures, stuck Agent Runtime runs, disk pressure, Telegram delivery failures, reflection failures, stalled chats, and Pulse tick errors.
+
+### Documentation
+
+- README and realtime tutorial docs now describe Pulse incident cards as the actionable layer on top of raw watchdog signals.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/pulse` incident cards with mocked Pulse status, affected-page navigation, and zero console errors
+
+### Closed
+
+- Closes #587.
+
 ## [0.31.115] - 2026-05-01
 
 ### Added
