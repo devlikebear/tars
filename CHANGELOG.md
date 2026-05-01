@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.85] - 2026-05-01
+
+### Fixed
+
+- Serialized Agent Runtime persistence snapshots so older overlapping snapshot writes cannot overwrite newer run/channel state.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test -coverprofile=/tmp/agentruntime.cover ./internal/agentruntime -run 'TestRuntimePersistence_(TrimsRunsAndChannelMessages|ConcurrentSnapshotsKeepLatestChannels)' -count=20`
+
+### Closed
+
+- Closes #549.
+
 ## [0.31.84] - 2026-05-01
 
 ### Added
