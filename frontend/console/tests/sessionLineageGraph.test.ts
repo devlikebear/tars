@@ -83,3 +83,14 @@ test('session lineage graph page loads sessions, parent history previews, and ch
   assert.match(graphSource, /class="lineage-graph"/)
   assert.match(graphSource, /Fork point/)
 })
+
+test('session lineage graph exposes fork insight promotion controls', () => {
+  const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+
+  assert.match(apiSource, /getForkPromotions\(sessionId: string\)/)
+  assert.match(apiSource, /promoteForkInsights\(sessionId: string, candidateIds: string\[\]\)/)
+  assert.match(apiSource, /\/v1\/admin\/sessions\/\$\{encodeURIComponent\(sessionId\)\}\/promotions/)
+  assert.match(graphSource, /Review insights/)
+  assert.match(graphSource, /Queue selected/)
+  assert.match(graphSource, /Open Memory Inbox/)
+})

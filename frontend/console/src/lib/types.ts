@@ -490,6 +490,34 @@ export type Session = {
   updated_at: string
 }
 
+export type ForkPromotionCandidate = {
+  id: string
+  session_id: string
+  parent_session_id: string
+  root_session_id?: string
+  forked_from_message_id?: string
+  forked_from_index?: number
+  message_id: string
+  message_index: number
+  role: string
+  category: string
+  summary: string
+  created_at: string
+}
+
+export type ForkPromotionListResponse = {
+  session: Session
+  parent: Session
+  candidates: ForkPromotionCandidate[]
+  count: number
+}
+
+export type ForkPromotionResult = {
+  promoted_count: number
+  skipped_count: number
+  candidates: MemoryCandidate[]
+}
+
 export type SessionMessage = {
   id: string
   role: string

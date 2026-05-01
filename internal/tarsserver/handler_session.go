@@ -411,6 +411,8 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 				return
 			}
 			writeJSON(w, http.StatusCreated, child)
+		case len(pathParts) == 2 && pathParts[1] == "promotions":
+			handleForkPromotions(w, r, reqStore, sessionID, logger)
 		case len(pathParts) == 1:
 			if !requireMethod(w, r, http.MethodGet, http.MethodPatch, http.MethodDelete) {
 				return

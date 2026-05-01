@@ -205,6 +205,50 @@ func TestStoreForkFromMessageCopiesTranscriptPrefixAndState(t *testing.T) {
 	}
 }
 
+func TestDetectForkPromotionCandidatesUsesPostForkMessages(t *testing.T) {
+	forkIndex := 1
+	child := Session{
+		ID:                  "child",
+		ParentSessionID:     "parent",
+		RootSessionID:       "parent",
+		ForkedFromMessageID: "m2",
+		ForkedFromIndex:     &forkIndex,
+	}
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	messages := []Message{
+		{ID: "m1", Role: "user", Content: "setup context"},
+		{ID: "m2", Role: "assistant", Content: "context ready"},
+		{ID: "m3", Role: "assistant", Content: "Decision: keep the git inspector read-only until approval flow lands."},
+		{ID: "m4", Role: "tool", Content: "tool output should not become reusable memory"},
+		{ID: "m5", Role: "user", Content: "I prefer concise release summaries with exact PR and tag links."},
+		{ID: "m6", Role: "assistant", Content: "결정: 부모 transcript는 직접 수정하지 않고 Memory Inbox로 승격한다."},
+	}
+
+	candidates := DetectForkPromotionCandidates(child, messages, ForkPromotionOptions{Now: now})
+
+	if len(candidates) != 3 {
+		t.Fatalf("expected 3 promotion candidates, got %+v", candidates)
+	}
+	if candidates[0].MessageID != "m3" || candidates[0].MessageIndex != 2 {
+		t.Fatalf("expected first candidate from post-fork assistant message, got %+v", candidates[0])
+	}
+	if candidates[0].Category != "decision" {
+		t.Fatalf("expected decision category, got %+v", candidates[0])
+	}
+	if candidates[1].MessageID != "m5" || candidates[1].Category != "preference" {
+		t.Fatalf("expected preference candidate from user message, got %+v", candidates[1])
+	}
+	if candidates[2].MessageID != "m6" || candidates[2].Category != "decision" {
+		t.Fatalf("expected korean decision candidate, got %+v", candidates[2])
+	}
+	if candidates[0].ID == "" || candidates[0].ID == candidates[1].ID {
+		t.Fatalf("expected stable distinct candidate ids, got %+v", candidates)
+	}
+	if !candidates[0].CreatedAt.Equal(now) {
+		t.Fatalf("expected deterministic created_at, got %s", candidates[0].CreatedAt)
+	}
+}
+
 func TestStoreDelete(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
