@@ -664,6 +664,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/sessions/", handlers.sessions)
 	mux.Handle("/v1/admin/sessions", handlers.sessions)
 	mux.Handle("/v1/admin/sessions/", handlers.sessions)
+	mux.Handle("/v1/admin/plans/archive", handlers.sessions)
 	mux.Handle("/v1/memory/assets", handlers.memory)
 	mux.Handle("/v1/memory/file", handlers.memory)
 	mux.Handle("/v1/memory/search", handlers.memory)

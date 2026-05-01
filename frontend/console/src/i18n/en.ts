@@ -184,6 +184,13 @@ export const en = {
     addTask: 'Add task',
     saveChanges: 'Save Changes',
     skipTask: 'Skip this task: marks it cancelled and asks the LLM to move on.',
+    archive: {
+      pastPlans: (count) => `Past plans for this session (${count})`,
+      loading: 'Loading archive...',
+      empty: 'No archived plans yet.',
+      archivedAt: 'Archived',
+      createdAt: (value) => `Created ${value}`,
+    },
     stats: {
       active: 'active',
       pending: 'pending',

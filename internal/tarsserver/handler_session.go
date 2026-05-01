@@ -11,6 +11,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/buildinfo"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
@@ -263,6 +264,31 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 		}
 	})
 
+	mux.HandleFunc("/v1/admin/plans/archive", func(w http.ResponseWriter, r *http.Request) {
+		if !requireAdmin(w, r) {
+			return
+		}
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		reqStore, err := resolveStore(r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace session store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
+		items, err := listPlanArchiveItems(reqStore.WorkspaceDir(), "", parseArchiveLimit(r))
+		if err != nil {
+			logger.Error().Err(err).Msg("list plan archive failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list plan archive failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items": items,
+			"count": len(items),
+		})
+	})
+
 	mux.HandleFunc("/v1/admin/sessions/", func(w http.ResponseWriter, r *http.Request) {
 		if !requireAdmin(w, r) {
 			return
@@ -281,6 +307,37 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 			return
 		}
 		switch {
+		case len(pathParts) == 3 && pathParts[1] == "plans" && pathParts[2] == "archive":
+			if !requireMethod(w, r, http.MethodGet) {
+				return
+			}
+			if strings.EqualFold(sessionID, "main") {
+				resolvedMainID, err := resolveInternalMainID(reqStore)
+				if err != nil {
+					logger.Error().Err(err).Msg("resolve main session failed")
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve main session failed"})
+					return
+				}
+				sessionID = resolvedMainID
+			}
+			if _, err := reqStore.Get(sessionID); err != nil {
+				if strings.Contains(err.Error(), "session not found") {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+					return
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get session failed"})
+				return
+			}
+			items, err := listPlanArchiveItems(reqStore.WorkspaceDir(), sessionID, parseArchiveLimit(r))
+			if err != nil {
+				logger.Error().Err(err).Str("session_id", sessionID).Msg("list session plan archive failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list plan archive failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"items": items,
+				"count": len(items),
+			})
 		case len(pathParts) == 1:
 			if !requireMethod(w, r, http.MethodGet, http.MethodPatch, http.MethodDelete) {
 				return
@@ -565,6 +622,116 @@ func boolDimension(value bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+const archivedPlanPrefix = "[archived plan]"
+
+type planArchiveItem struct {
+	ID         string `json:"id"`
+	SessionID  string `json:"session_id,omitempty"`
+	Goal       string `json:"goal"`
+	ArchivedAt string `json:"archived_at"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	Summary    string `json:"summary"`
+}
+
+func parseArchiveLimit(r *http.Request) int {
+	if r == nil {
+		return 50
+	}
+	raw := strings.TrimSpace(r.URL.Query().Get("limit"))
+	if raw == "" {
+		return 50
+	}
+	var limit int
+	if _, err := fmt.Sscanf(raw, "%d", &limit); err != nil || limit <= 0 {
+		return 50
+	}
+	if limit > 200 {
+		return 200
+	}
+	return limit
+}
+
+func listPlanArchiveItems(workspaceDir, sessionFilter string, limit int) ([]planArchiveItem, error) {
+	noteLimit := limit
+	if strings.TrimSpace(sessionFilter) != "" {
+		noteLimit = 500
+	}
+	notes, err := memory.ListMemoryNotesByPrefix(workspaceDir, archivedPlanPrefix, noteLimit)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]planArchiveItem, 0, len(notes))
+	for idx, note := range notes {
+		item, ok := parsePlanArchiveNote(note, idx)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(sessionFilter) != "" && item.SessionID != strings.TrimSpace(sessionFilter) {
+			continue
+		}
+		items = append(items, item)
+		if len(items) >= limit {
+			break
+		}
+	}
+	if items == nil {
+		return []planArchiveItem{}, nil
+	}
+	return items, nil
+}
+
+func parsePlanArchiveNote(note memory.MemoryNote, idx int) (planArchiveItem, bool) {
+	text := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(note.Text), archivedPlanPrefix))
+	sessionID := ""
+	if firstLine, rest, ok := strings.Cut(text, "\n"); ok {
+		fields := strings.Fields(strings.TrimSpace(firstLine))
+		metadataOnly := len(fields) > 0
+		for _, field := range fields {
+			if strings.HasPrefix(field, "session=") {
+				sessionID = strings.TrimSpace(strings.TrimPrefix(field, "session="))
+				continue
+			}
+			metadataOnly = false
+		}
+		if metadataOnly {
+			text = strings.TrimSpace(rest)
+		}
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return planArchiveItem{}, false
+	}
+	goal, createdAt := parseArchivedPlanGoal(text)
+	if goal == "" {
+		goal = "Archived plan"
+	}
+	return planArchiveItem{
+		ID:         fmt.Sprintf("%s-%d", note.Timestamp.UTC().Format(time.RFC3339Nano), idx),
+		SessionID:  sessionID,
+		Goal:       goal,
+		ArchivedAt: note.Timestamp.UTC().Format(time.RFC3339),
+		CreatedAt:  createdAt,
+		Summary:    text,
+	}, true
+}
+
+func parseArchivedPlanGoal(summary string) (string, string) {
+	for _, line := range strings.Split(summary, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "Plan:") {
+			continue
+		}
+		goal := strings.TrimSpace(strings.TrimPrefix(line, "Plan:"))
+		createdAt := ""
+		if before, after, ok := strings.Cut(goal, " (created: "); ok {
+			goal = strings.TrimSpace(before)
+			createdAt = strings.TrimSuffix(strings.TrimSpace(after), ")")
+		}
+		return goal, createdAt
+	}
+	return "", ""
 }
 
 func newStatusAPIHandler(workspaceDir string, store *session.Store, mainSessionID string, logger zerolog.Logger) http.Handler {

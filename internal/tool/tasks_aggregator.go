@@ -115,7 +115,7 @@ func tasksPlanSet(store *session.Store, workspaceDir string, sessionID string, p
 	if current.Plan != nil || len(current.Tasks) > 0 {
 		summary := session.ArchiveSummary(current)
 		if summary != "" && workspaceDir != "" {
-			_ = memory.AppendMemoryNote(workspaceDir, parseTimeOrNow(current.Plan), "[archived plan] "+summary)
+			_ = memory.AppendMemoryNote(workspaceDir, parseTimeOrNow(current.Plan), archivedPlanMemoryEntry(sessionID, summary))
 		}
 	}
 
@@ -405,7 +405,7 @@ func tasksClear(store *session.Store, workspaceDir string, sessionID string) (Re
 	if current.Plan != nil || len(current.Tasks) > 0 {
 		summary := session.ArchiveSummary(current)
 		if summary != "" && workspaceDir != "" {
-			_ = memory.AppendMemoryNote(workspaceDir, parseTimeOrNow(current.Plan), "[archived plan] "+summary)
+			_ = memory.AppendMemoryNote(workspaceDir, parseTimeOrNow(current.Plan), archivedPlanMemoryEntry(sessionID, summary))
 		}
 	}
 
@@ -424,4 +424,16 @@ func parseTimeOrNow(plan *session.Plan) time.Time {
 		}
 	}
 	return time.Now().UTC()
+}
+
+func archivedPlanMemoryEntry(sessionID, summary string) string {
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return ""
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "[archived plan] " + summary
+	}
+	return "[archived plan] session=" + sessionID + "\n" + summary
 }

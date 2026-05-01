@@ -41,6 +41,7 @@ import type {
   ReflectionConfigView,
   Session,
   SessionMessage,
+  PlanArchiveResponse,
   SkillCreatorDraftRequest,
   SkillCreatorDraftResponse,
   SkillCreatorSaveResponse,
@@ -93,6 +94,13 @@ function normalizeSessionTasks(data: Partial<SessionTasks> | null | undefined): 
   return {
     ...(data?.plan ? { plan: data.plan } : {}),
     tasks: Array.isArray(data?.tasks) ? data.tasks : [],
+  }
+}
+
+function normalizePlanArchive(data: Partial<PlanArchiveResponse> | null | undefined): PlanArchiveResponse {
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    count: typeof data?.count === 'number' ? data.count : Array.isArray(data?.items) ? data.items.length : 0,
   }
 }
 
@@ -335,6 +343,18 @@ export async function compactSession(sessionId: string): Promise<CompactResult> 
 export async function getSessionTasks(sessionId: string): Promise<SessionTasks> {
   const data = await requestJSON<Partial<SessionTasks>>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks`)
   return normalizeSessionTasks(data)
+}
+
+export async function getPlanArchive(limit = 50): Promise<PlanArchiveResponse> {
+  const data = await requestJSON<Partial<PlanArchiveResponse>>(`/v1/admin/plans/archive?limit=${limit}`)
+  return normalizePlanArchive(data)
+}
+
+export async function getSessionPlanArchive(sessionId: string, limit = 20): Promise<PlanArchiveResponse> {
+  const data = await requestJSON<Partial<PlanArchiveResponse>>(
+    `/v1/admin/sessions/${encodeURIComponent(sessionId)}/plans/archive?limit=${limit}`,
+  )
+  return normalizePlanArchive(data)
 }
 
 // executeTasksAction drives the plan state machine directly from the

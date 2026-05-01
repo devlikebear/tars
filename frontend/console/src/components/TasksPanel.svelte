@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { t } from '../i18n'
-  import { getSessionTasks, executeTasksAction, cancelChat } from '../lib/api'
-  import type { SessionTasks } from '../lib/types'
+  import { getSessionPlanArchive, getSessionTasks, executeTasksAction, cancelChat } from '../lib/api'
+  import type { PlanArchiveItem, SessionTasks } from '../lib/types'
 
   interface Props {
     sessionId: string
@@ -16,6 +16,10 @@
   let loading = $state(true)
   let error = $state('')
   let planExpanded = $state(true)
+  let archiveItems: PlanArchiveItem[] = $state([])
+  let archiveExpanded = $state(false)
+  let archiveError = $state('')
+  let expandedArchiveId = $state('')
   let taskList = $derived(Array.isArray(data.tasks) ? data.tasks : [])
   let planStatus = $derived(data.plan?.status ?? '')
 
@@ -28,8 +32,15 @@
   export async function load() {
     loading = true
     error = ''
+    archiveError = ''
     try {
       data = await getSessionTasks(sessionId)
+      try {
+        archiveItems = (await getSessionPlanArchive(sessionId)).items
+      } catch (err) {
+        archiveItems = []
+        archiveError = err instanceof Error ? err.message : 'Failed to load archived plans'
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load tasks'
     } finally {
@@ -238,6 +249,18 @@
     }
   }
 
+  function formatArchiveDate(value?: string): string {
+    if (!value) return ''
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date)
+  }
+
   let summary = $derived({
     total: taskList.length,
     pending: taskList.filter(t => t.status === 'pending').length,
@@ -431,6 +454,42 @@
       </div>
     {/if}
   {/if}
+
+  {#if !loading && !error}
+    <section class="archive-section">
+      <button class="archive-header" type="button" onclick={() => archiveExpanded = !archiveExpanded}>
+        <span class="plan-toggle">{archiveExpanded ? '\u25be' : '\u25b8'}</span>
+        <span>{$t.tasks.archive.pastPlans(archiveItems.length)}</span>
+      </button>
+      {#if archiveExpanded}
+        {#if archiveError}
+          <p class="error-banner archive-error">{archiveError}</p>
+        {:else if archiveItems.length === 0}
+          <div class="empty-state archive-empty">{$t.tasks.archive.empty}</div>
+        {:else}
+          <div class="archive-items">
+            {#each archiveItems as item (item.id)}
+              <article class="archive-card">
+                <button class="archive-card-header" type="button" onclick={() => expandedArchiveId = expandedArchiveId === item.id ? '' : item.id}>
+                  <span>
+                    <strong>{item.goal}</strong>
+                    <small>{$t.tasks.archive.archivedAt} {formatArchiveDate(item.archived_at)}</small>
+                    {#if item.created_at}
+                      <small>{$t.tasks.archive.createdAt(formatArchiveDate(item.created_at))}</small>
+                    {/if}
+                  </span>
+                  <span class="plan-toggle">{expandedArchiveId === item.id ? '\u25be' : '\u25b8'}</span>
+                </button>
+                {#if expandedArchiveId === item.id}
+                  <pre>{item.summary}</pre>
+                {/if}
+              </article>
+            {/each}
+          </div>
+        {/if}
+      {/if}
+    </section>
+  {/if}
 </div>
 
 <style>
@@ -579,6 +638,84 @@
     border-radius: var(--radius-md);
     background: var(--surface-inset);
     overflow: hidden;
+  }
+
+  .archive-section {
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--space-3);
+  }
+
+  .archive-header,
+  .archive-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .archive-header {
+    padding: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+  }
+
+  .archive-items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .archive-card {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+  }
+
+  .archive-card-header {
+    justify-content: space-between;
+    padding: var(--space-3);
+  }
+
+  .archive-card-header > span:first-child {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .archive-card strong {
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .archive-card small {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .archive-card pre {
+    margin: 0;
+    padding: 0 var(--space-3) var(--space-3);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+
+  .archive-error,
+  .archive-empty {
+    margin-top: var(--space-2);
   }
 
   .plan-header {
