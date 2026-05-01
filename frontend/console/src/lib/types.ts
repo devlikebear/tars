@@ -978,6 +978,57 @@ export type SkillCreatorSubmitResponse = {
   commands?: string[]
 }
 
+export type SkillExtractionCandidateStatus = 'pending' | 'approved' | 'rejected'
+
+export type SkillExtractionCandidateAction = 'approve' | 'reject'
+
+export type SkillExtractionEvidence = {
+  message_id?: string
+  index: number
+  role: string
+  snippet: string
+}
+
+export type SkillExtractionProvenance = {
+  source?: string
+  session_id?: string
+  message_range?: string
+  source_summary?: string
+  extracted_at?: string
+}
+
+export type SkillExtractionCandidate = {
+  id: string
+  status: SkillExtractionCandidateStatus
+  name: string
+  title: string
+  trigger: string
+  summary: string
+  use_case: string
+  recommended_tools?: string[]
+  source_session?: string
+  message_range?: string
+  repeated_count?: number
+  evidence?: SkillExtractionEvidence[]
+  provenance?: SkillExtractionProvenance
+  created_at: string
+  updated_at: string
+  reviewed_at?: string
+  draft_path?: string
+  draft_name?: string
+}
+
+export type SkillExtractionListResponse = {
+  count: number
+  candidates: SkillExtractionCandidate[]
+}
+
+export type SkillExtractionReviewResponse = {
+  candidate: SkillExtractionCandidate
+  draft?: SkillCreatorDraftResponse
+  saved?: SkillCreatorSaveResponse
+}
+
 export type MCPServerCreatorToolSpec = {
   name: string
   description: string

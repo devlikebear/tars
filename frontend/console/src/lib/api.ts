@@ -57,6 +57,10 @@ import type {
   SkillCreatorSaveResponse,
   SkillCreatorTestResponse,
   SkillCreatorSubmitResponse,
+  SkillExtractionCandidateAction,
+  SkillExtractionCandidateStatus,
+  SkillExtractionListResponse,
+  SkillExtractionReviewResponse,
   MCPServerCreatorDraftRequest,
   MCPServerCreatorDraftResponse,
   MCPServerCreatorSaveResponse,
@@ -992,6 +996,28 @@ export async function submitSkillDraftPR(name: string): Promise<SkillCreatorSubm
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
+  })
+}
+
+export async function listSkillExtractions(status: SkillExtractionCandidateStatus | 'all' = 'pending'): Promise<SkillExtractionListResponse> {
+  const qs = new URLSearchParams()
+  if (status) qs.set('status', status)
+  return requestJSON<SkillExtractionListResponse>(`/v1/admin/skills/extractions?${qs}`)
+}
+
+export async function extractSkillsFromSession(sessionId: string, maxCandidates = 5): Promise<SkillExtractionListResponse> {
+  return requestJSON<SkillExtractionListResponse>('/v1/admin/skills/extractions/extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, max_candidates: maxCandidates }),
+  })
+}
+
+export async function reviewSkillExtractionCandidate(id: string, action: SkillExtractionCandidateAction): Promise<SkillExtractionReviewResponse> {
+  return requestJSON<SkillExtractionReviewResponse>('/v1/admin/skills/extractions/review', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, action }),
   })
 }
 

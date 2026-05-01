@@ -110,6 +110,13 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandCandidate[] = [
     title: 'Skill',
     description: 'Toggle a skill for the current session: /skill <name>.',
   },
+  {
+    kind: 'builtin',
+    id: 'extract-skill',
+    command: 'extract-skill',
+    title: 'Extract Skill',
+    description: 'Open reusable skill candidates for the current session.',
+  },
 ]
 
 export function builtinSlashCommandId(command: string): string {
