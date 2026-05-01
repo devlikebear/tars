@@ -27,17 +27,22 @@ type SessionToolConfig struct {
 }
 
 type Session struct {
-	ID                 string             `json:"id"`
-	Title              string             `json:"title"`
-	Kind               string             `json:"kind,omitempty"`
-	Hidden             bool               `json:"hidden,omitempty"`
-	ToolConfig         *SessionToolConfig `json:"tool_config,omitempty"`
-	LastCompactionMode string             `json:"last_compaction_mode,omitempty"`
-	PromptOverride     string             `json:"prompt_override,omitempty"`
-	WorkDirs           []string           `json:"work_dirs,omitempty"`
-	CurrentDir         string             `json:"current_dir,omitempty"`
-	CreatedAt          time.Time          `json:"created_at"`
-	UpdatedAt          time.Time          `json:"updated_at"`
+	ID                  string             `json:"id"`
+	Title               string             `json:"title"`
+	Kind                string             `json:"kind,omitempty"`
+	Hidden              bool               `json:"hidden,omitempty"`
+	ParentSessionID     string             `json:"parent_session_id,omitempty"`
+	RootSessionID       string             `json:"root_session_id,omitempty"`
+	ForkedFromMessageID string             `json:"forked_from_message_id,omitempty"`
+	ForkedFromIndex     *int               `json:"forked_from_index,omitempty"`
+	ForkReason          string             `json:"fork_reason,omitempty"`
+	ToolConfig          *SessionToolConfig `json:"tool_config,omitempty"`
+	LastCompactionMode  string             `json:"last_compaction_mode,omitempty"`
+	PromptOverride      string             `json:"prompt_override,omitempty"`
+	WorkDirs            []string           `json:"work_dirs,omitempty"`
+	CurrentDir          string             `json:"current_dir,omitempty"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
 }
 
 type Store struct {
@@ -168,9 +173,12 @@ func (s *Store) sessionArtifactDir(id string) string {
 }
 
 func (s *Store) applySessionDefaults(sess Session) (Session, bool, error) {
+	var changed bool
+	sess, changed = applySessionLineageDefaults(sess)
+
 	artifactDir := s.sessionArtifactDir(sess.ID)
 	if artifactDir == "" {
-		return sess, false, nil
+		return sess, changed, nil
 	}
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
 		return sess, false, fmt.Errorf("create session artifact dir: %w", err)
@@ -180,7 +188,6 @@ func (s *Store) applySessionDefaults(sess Session) (Session, bool, error) {
 	}
 
 	workDirs, currentDir := normalizeSessionWorkDirs(artifactDir, sess.WorkDirs, sess.CurrentDir)
-	changed := false
 	if !sameStringSlice(sess.WorkDirs, workDirs) {
 		sess.WorkDirs = workDirs
 		changed = true
@@ -190,6 +197,26 @@ func (s *Store) applySessionDefaults(sess Session) (Session, bool, error) {
 		changed = true
 	}
 	return sess, changed, nil
+}
+
+func applySessionLineageDefaults(sess Session) (Session, bool) {
+	changed := false
+	trimString := func(value *string) {
+		trimmed := strings.TrimSpace(*value)
+		if *value != trimmed {
+			*value = trimmed
+			changed = true
+		}
+	}
+	trimString(&sess.ParentSessionID)
+	trimString(&sess.RootSessionID)
+	trimString(&sess.ForkedFromMessageID)
+	trimString(&sess.ForkReason)
+	if sess.ID != "" && sess.RootSessionID == "" {
+		sess.RootSessionID = sess.ID
+		changed = true
+	}
+	return sess, changed
 }
 
 func (s *Store) migrateLegacyArtifactDir(id string, artifactDir string) error {
@@ -435,11 +462,23 @@ func (s *Store) list(includeHidden bool) ([]Session, error) {
 	}
 
 	sessions := make([]Session, 0, len(index))
-	for _, session := range index {
+	changed := false
+	for id, session := range index {
+		var sessionChanged bool
+		session, sessionChanged = applySessionLineageDefaults(session)
+		if sessionChanged {
+			index[id] = session
+			changed = true
+		}
 		if session.Hidden && !includeHidden {
 			continue
 		}
 		sessions = append(sessions, session)
+	}
+	if changed {
+		if err := s.saveIndex(index); err != nil {
+			return nil, err
+		}
 	}
 
 	return sessions, nil

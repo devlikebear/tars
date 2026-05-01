@@ -481,11 +481,17 @@ export type Session = {
   title: string
   kind?: string
   hidden?: boolean
+  parent_session_id?: string
+  root_session_id?: string
+  forked_from_message_id?: string
+  forked_from_index?: number
+  fork_reason?: string
   created_at: string
   updated_at: string
 }
 
 export type SessionMessage = {
+  id: string
   role: string
   content: string
   timestamp: string

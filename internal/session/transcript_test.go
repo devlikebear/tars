@@ -44,6 +44,84 @@ func TestAppendAndReadMessages(t *testing.T) {
 	if messages[1].Role != "assistant" || messages[1].Content != "hi there" {
 		t.Fatalf("unexpected second message: %+v", messages[1])
 	}
+	if messages[0].ID == "" || messages[1].ID == "" {
+		t.Fatalf("expected persisted message IDs, got %+v", messages)
+	}
+	if messages[0].ID == messages[1].ID {
+		t.Fatalf("expected unique message IDs, got %+v", messages)
+	}
+	if len(messages[0].ID) != 36 || messages[0].ID[14] != '7' {
+		t.Fatalf("expected UUIDv7-style message ID, got %q", messages[0].ID)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read raw transcript: %v", err)
+	}
+	if !strings.Contains(string(raw), `"id":`) {
+		t.Fatalf("expected appended transcript to persist message IDs, got %q", string(raw))
+	}
+}
+
+func TestReadMessagesAssignsDeterministicVirtualIDsForLegacyTranscript(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy.jsonl")
+	raw := `{"role":"user","content":"legacy question","timestamp":"2026-02-14T10:00:00Z"}` + "\n" +
+		`{"role":"assistant","content":"legacy answer","timestamp":"2026-02-14T10:00:01Z"}` + "\n"
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write legacy transcript: %v", err)
+	}
+
+	first, err := ReadMessages(path)
+	if err != nil {
+		t.Fatalf("first read: %v", err)
+	}
+	second, err := ReadMessages(path)
+	if err != nil {
+		t.Fatalf("second read: %v", err)
+	}
+	if len(first) != 2 || len(second) != 2 {
+		t.Fatalf("expected 2 messages, got %d and %d", len(first), len(second))
+	}
+	for i := range first {
+		if first[i].ID == "" {
+			t.Fatalf("message %d missing virtual ID: %+v", i, first[i])
+		}
+		if first[i].ID != second[i].ID {
+			t.Fatalf("message %d virtual ID not deterministic: %q vs %q", i, first[i].ID, second[i].ID)
+		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read legacy transcript after virtual IDs: %v", err)
+	}
+	if strings.Contains(string(after), `"id":`) {
+		t.Fatalf("read-time virtual IDs should not rewrite legacy transcript, got %q", string(after))
+	}
+}
+
+func TestRewriteMessagesBackfillsMissingMessageIDs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rewrite.jsonl")
+
+	if err := RewriteMessages(path, []Message{
+		{Role: "user", Content: "legacy rewrite", Timestamp: time.Date(2026, 2, 14, 10, 0, 0, 0, time.UTC)},
+	}); err != nil {
+		t.Fatalf("rewrite messages: %v", err)
+	}
+	messages, err := ReadMessages(path)
+	if err != nil {
+		t.Fatalf("read rewritten messages: %v", err)
+	}
+	if len(messages) != 1 || messages[0].ID == "" {
+		t.Fatalf("expected rewritten message ID, got %+v", messages)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read raw rewritten transcript: %v", err)
+	}
+	if !strings.Contains(string(raw), `"id":`) {
+		t.Fatalf("expected rewrite to persist message IDs, got %q", string(raw))
+	}
 }
 
 func TestReadMessages_EmptyOrMissing(t *testing.T) {
