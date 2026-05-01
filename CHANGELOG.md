@@ -6,6 +6,39 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.87] - 2026-05-01
+
+### Added
+
+- Added a Console Analytics page at `/console/analytics` with 7d/30d/90d usage period controls, summary cards, pure-SVG daily stacked token bars, model rows, and tool/skill call rows.
+- Added `GET /v1/admin/analytics?days=7|30|90` backed by the existing usage tracker JSONL data, including zero-filled daily rows and unique session counts.
+
+### Changed
+
+- The Console navigation now includes Analytics in the Operate group.
+
+### Documentation
+
+- README now documents the global Analytics page alongside the other console pages.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/usage ./internal/tarsserver -run 'Analytics|RegisterAPIRoutes'`
+- `cd frontend/console && node --experimental-strip-types --test tests/analyticsPage.test.ts tests/navGroups.test.ts tests/i18n.test.ts`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm test -- tests/analyticsPage.test.ts`
+- `cd frontend/console && npm run build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make vet`
+- `make security-scan`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make build`
+- Browser smoke: opened `/console/analytics`, verified seeded usage totals, model rows, tool/skill rows, and switched 30d/90d periods.
+
+### Closed
+
+- Closes #397.
+
 ## [0.31.86] - 2026-05-01
 
 ### Added
