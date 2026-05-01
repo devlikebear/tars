@@ -122,7 +122,7 @@ Each system role (chat, pulse, reflection, compaction, agent runtime agents) map
 
 Two isolated surfaces run independently from user chat:
 
-- **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, stalled chats, disk pressure, Telegram delivery health, and reflection status. LLM classifier picks `ignore` / `notify` / `autofix`. Autofixes are whitelisted in config, and stalled-chat continuation requires per-session auto-resume consent.
+- **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, stalled chats, disk pressure, Telegram delivery health, and reflection status. LLM classifier picks `ignore` / `notify` / `autofix`. The Console renders recent signals as incident cards with likely cause, evidence, recommended action, safe navigation, and re-check controls. Autofixes are whitelisted in config, and stalled-chat continuation requires per-session auto-resume consent.
 - **Reflection** — Nightly batch (default 02:00–05:00) running memory reflection (Memory Inbox candidate extraction) and stale empty-session pruning.
 
 Both use the `light` tier by default and have no access to user-facing tools (enforced at compile time via `RegistryScope`).
@@ -234,7 +234,7 @@ The Chat header shows the active plan goal and completed/total task count withou
 | Operate | Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
 | Operate | Logs | `/console/logs` | Tail configured runtime logs with file, level, component, line-count, refresh, and auto-refresh controls |
 | Operate | Analytics | `/console/analytics` | Visualize usage totals, daily token bars, model cost rows, and tool or skill call counts |
-| Operate | Pulse | `/console/pulse` | Watchdog status and run-now trigger |
+| Operate | Pulse | `/console/pulse` | Watchdog status, incident cards, and run-now trigger |
 | Operate | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
 | Setup | Settings | `/console/config` | Quick Start onboarding plus structured object/array editing, typed LLM tier editing, pending-change impact previews, and field metadata badges |
 
