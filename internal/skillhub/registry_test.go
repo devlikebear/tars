@@ -82,6 +82,18 @@ func testIndex() RegistryIndex {
 				},
 			},
 		},
+		Packs: []PackEntry{
+			{
+				Name:        "github-maintainer-pack",
+				Description: "GitHub maintainer workflow bundle",
+				Version:     "0.1.0",
+				Author:      "devlikebear",
+				Tags:        []string{"github", "maintenance"},
+				Skills:      []string{"project-start"},
+				Plugins:     []string{"project-swarm"},
+				MCPServers:  []string{"filesystem"},
+			},
+		},
 	}
 }
 
@@ -314,6 +326,30 @@ func TestSearchEmpty(t *testing.T) {
 	}
 	if len(results) != 2 {
 		t.Fatalf("expected all 2 skills, got %d", len(results))
+	}
+}
+
+func TestSearchPacksAndFindByName(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	reg := &Registry{
+		RegistryURL: srv.URL + "/registry.json",
+		HTTPClient:  srv.Client(),
+	}
+	results, err := reg.SearchPacks(context.Background(), "github")
+	if err != nil {
+		t.Fatalf("SearchPacks: %v", err)
+	}
+	if len(results) != 1 || results[0].Name != "github-maintainer-pack" {
+		t.Fatalf("expected github-maintainer-pack, got %+v", results)
+	}
+	pack, err := reg.FindPackByName(context.Background(), "github-maintainer-pack")
+	if err != nil {
+		t.Fatalf("FindPackByName: %v", err)
+	}
+	if len(pack.Skills) != 1 || len(pack.Plugins) != 1 || len(pack.MCPServers) != 1 {
+		t.Fatalf("unexpected pack dependencies: %+v", pack)
 	}
 }
 

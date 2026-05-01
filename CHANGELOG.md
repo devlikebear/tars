@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.113] - 2026-05-01
+
+### Added
+
+- Added Skill Hub domain pack registry metadata with skill, plugin, and MCP dependencies.
+- Added pack install planning that shows package contents and install/update/skip actions before applying.
+- Added `tars pack search`, `tars pack info`, and reviewed `tars pack install <name>` with `--yes` for non-interactive approval.
+- Added pack install execution that reuses the existing sandbox-validated skill, plugin, and MCP installers for each pack member.
+
+### Documentation
+
+- README and Skill Hub tutorial now document domain packs and `tars pack install`.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./cmd/tars ./internal/skillhub`
+- `GOCACHE=/tmp/tars-go-cache go run ./cmd/tars pack info github-maintainer-pack`
+- `GOCACHE=/tmp/tars-go-cache go run ./cmd/tars pack install github-maintainer-pack --workspace-dir <tmp> --yes`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+
+### Closed
+
+- Closes #583.
+
 ## [0.31.112] - 2026-05-01
 
 ### Added
