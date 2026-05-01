@@ -2,11 +2,12 @@
   import { onMount, onDestroy } from 'svelte'
   import {
     createCleanupPlan,
+    listAutomationAudit,
     listApprovals,
     reviewApproval,
     streamEvents,
   } from '../lib/api'
-  import type { Approval } from '../lib/types'
+  import type { Approval, AutomationAuditEntry } from '../lib/types'
 
   type ApprovalGuideStep = {
     title: string
@@ -54,6 +55,8 @@
   let error = $state('')
   let reviewingId = $state('')
   let planCreating = $state(false)
+  let auditEntries: AutomationAuditEntry[] = $state([])
+  let auditLoading = $state(false)
   let stopStream: (() => void) | null = null
 
   function fmt(value?: string): string {
@@ -91,7 +94,12 @@
     loading = true
     error = ''
     try {
-      approvals = await listApprovals()
+      const [approvalList, auditList] = await Promise.all([
+        listApprovals(),
+        listAutomationAudit(25),
+      ])
+      approvals = approvalList
+      auditEntries = auditList.items ?? []
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load approvals'
     } finally {
@@ -103,11 +111,25 @@
     reviewingId = approvalId
     try {
       await reviewApproval(approvalId, action)
-      approvals = await listApprovals()
+      const [approvalList, auditList] = await Promise.all([listApprovals(), listAutomationAudit(25)])
+      approvals = approvalList
+      auditEntries = auditList.items ?? []
     } catch (err) {
       error = err instanceof Error ? err.message : 'Review failed'
     } finally {
       reviewingId = ''
+    }
+  }
+
+  async function refreshAudit() {
+    auditLoading = true
+    try {
+      const res = await listAutomationAudit(25)
+      auditEntries = res.items ?? []
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to load automation audit'
+    } finally {
+      auditLoading = false
     }
   }
 
@@ -130,6 +152,7 @@
       (event) => {
         if (event.category === 'ops') {
           void listApprovals().then((list) => { approvals = list })
+          void refreshAudit()
         }
       },
     )
@@ -280,6 +303,46 @@
         </div>
       {/if}
     </section>
+    <section class="card audit-section">
+      <div class="card-header">
+        <span class="card-title">Automation Audit</span>
+        <div class="card-header-actions">
+          <span class="badge badge-default">{auditEntries.length} events</span>
+          <button type="button" class="btn btn-ghost btn-sm" disabled={auditLoading} onclick={() => { void refreshAudit() }}>
+            {auditLoading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+      </div>
+      {#if auditEntries.length === 0}
+        <div class="ops-loading">No automation events yet.</div>
+      {:else}
+        <div class="audit-list">
+          {#each auditEntries as entry}
+            <div class="audit-item">
+              <div class="audit-top">
+                <strong>{entry.action}</strong>
+                <span class="badge {entry.result === 'success' ? 'badge-success' : entry.result === 'blocked' ? 'badge-warning' : 'badge-default'}">{entry.result}</span>
+                <span class="audit-time">{fmt(entry.timestamp)}</span>
+              </div>
+              <div class="audit-detail">
+                <span>{entry.actor}</span>
+                {#if entry.session_id}
+                  <span class="approval-dot"></span>
+                  <span>{entry.session_id}</span>
+                {/if}
+                {#if entry.cwd}
+                  <span class="approval-dot"></span>
+                  <span class="mono audit-cwd">{compact(entry.cwd, 90)}</span>
+                {/if}
+              </div>
+              {#if entry.reason}
+                <div class="audit-reason">{entry.reason}</div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
   {/if}
 </div>
 
@@ -318,6 +381,10 @@
 
   .approvals-section {
     min-height: 200px;
+  }
+
+  .audit-section {
+    margin-top: var(--space-4);
   }
 
   .card-header-actions {
@@ -544,11 +611,53 @@
     flex-shrink: 0;
   }
 
+  .audit-list {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .audit-item {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+  }
+
+  .audit-top,
+  .audit-detail {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .audit-top strong {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .audit-time,
+  .audit-detail,
+  .audit-reason {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .audit-cwd {
+    color: var(--text-secondary);
+  }
+
   @media (max-width: 760px) {
     .ops-header,
     .card-header-actions,
     .approval-top,
     .approval-detail,
+    .audit-top,
+    .audit-detail,
     .candidate-row {
       align-items: flex-start;
       flex-direction: column;

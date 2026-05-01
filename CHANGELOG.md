@@ -6,6 +6,38 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.108] - 2026-05-01
+
+### Added
+
+- Added session-scoped automation consent settings for auto-resume, approved git mutations, and autonomous workspace mutations.
+- Added durable automation audit entries with actor, action, reason, session, cwd, result, and timestamp metadata.
+- Added `/v1/admin/sessions/{session_id}/automation-consent` and `/v1/ops/automation-audit` APIs.
+- Added Console controls for session automation consent and an Automation Audit section on the Approvals page.
+
+### Changed
+
+- Session automation defaults remain conservative: no autonomous workspace mutation is allowed unless explicitly enabled for that session.
+
+### Documentation
+
+- README now documents session automation consent and the Automation Audit console surface.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/session ./internal/ops ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/chat/{session}` session automation consent and `/console/approvals` Automation Audit with a mock API
+
+### Closed
+
+- Closes #584.
+
 ## [0.31.107] - 2026-05-01
 
 ### Added

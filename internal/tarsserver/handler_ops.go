@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/ops"
@@ -102,6 +103,29 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 			return
 		}
 		writeJSON(w, http.StatusOK, items)
+	})
+
+	mux.HandleFunc("/v1/ops/automation-audit", func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ops manager is not configured"})
+			return
+		}
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+		items, err := manager.ListAutomationAudit(ops.AutomationAuditListOptions{
+			Limit:     limit,
+			SessionID: r.URL.Query().Get("session_id"),
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list automation audit failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items": items,
+			"count": len(items),
+		})
 	})
 
 	mux.HandleFunc("/v1/ops/approvals/", func(w http.ResponseWriter, r *http.Request) {

@@ -476,6 +476,30 @@ export type Approval = {
   }
 }
 
+export type AutomationAuditEntry = {
+  id: string
+  timestamp: string
+  actor: string
+  action: string
+  reason?: string
+  session_id?: string
+  cwd?: string
+  result: string
+  details?: Record<string, unknown>
+}
+
+export type AutomationAuditListResponse = {
+  count: number
+  items: AutomationAuditEntry[]
+}
+
+export type SessionAutomationConsent = {
+  auto_resume?: boolean
+  git_mutations?: boolean
+  autonomous_mutations?: boolean
+  updated_at?: string
+}
+
 export type Session = {
   id: string
   title: string
@@ -486,6 +510,7 @@ export type Session = {
   forked_from_message_id?: string
   forked_from_index?: number
   fork_reason?: string
+  automation_consent?: SessionAutomationConsent
   created_at: string
   updated_at: string
 }

@@ -26,23 +26,35 @@ type SessionToolConfig struct {
 	MCPEnabled       []string `json:"mcp_enabled,omitempty"`
 }
 
+type SessionAutomationConsent struct {
+	AutoResume          bool       `json:"auto_resume,omitempty"`
+	GitMutations        bool       `json:"git_mutations,omitempty"`
+	AutonomousMutations bool       `json:"autonomous_mutations,omitempty"`
+	UpdatedAt           *time.Time `json:"updated_at,omitempty"`
+}
+
+func (c *SessionAutomationConsent) AllowsAutonomousMutation() bool {
+	return c != nil && c.AutonomousMutations
+}
+
 type Session struct {
-	ID                  string             `json:"id"`
-	Title               string             `json:"title"`
-	Kind                string             `json:"kind,omitempty"`
-	Hidden              bool               `json:"hidden,omitempty"`
-	ParentSessionID     string             `json:"parent_session_id,omitempty"`
-	RootSessionID       string             `json:"root_session_id,omitempty"`
-	ForkedFromMessageID string             `json:"forked_from_message_id,omitempty"`
-	ForkedFromIndex     *int               `json:"forked_from_index,omitempty"`
-	ForkReason          string             `json:"fork_reason,omitempty"`
-	ToolConfig          *SessionToolConfig `json:"tool_config,omitempty"`
-	LastCompactionMode  string             `json:"last_compaction_mode,omitempty"`
-	PromptOverride      string             `json:"prompt_override,omitempty"`
-	WorkDirs            []string           `json:"work_dirs,omitempty"`
-	CurrentDir          string             `json:"current_dir,omitempty"`
-	CreatedAt           time.Time          `json:"created_at"`
-	UpdatedAt           time.Time          `json:"updated_at"`
+	ID                  string                    `json:"id"`
+	Title               string                    `json:"title"`
+	Kind                string                    `json:"kind,omitempty"`
+	Hidden              bool                      `json:"hidden,omitempty"`
+	ParentSessionID     string                    `json:"parent_session_id,omitempty"`
+	RootSessionID       string                    `json:"root_session_id,omitempty"`
+	ForkedFromMessageID string                    `json:"forked_from_message_id,omitempty"`
+	ForkedFromIndex     *int                      `json:"forked_from_index,omitempty"`
+	ForkReason          string                    `json:"fork_reason,omitempty"`
+	ToolConfig          *SessionToolConfig        `json:"tool_config,omitempty"`
+	AutomationConsent   *SessionAutomationConsent `json:"automation_consent,omitempty"`
+	LastCompactionMode  string                    `json:"last_compaction_mode,omitempty"`
+	PromptOverride      string                    `json:"prompt_override,omitempty"`
+	WorkDirs            []string                  `json:"work_dirs,omitempty"`
+	CurrentDir          string                    `json:"current_dir,omitempty"`
+	CreatedAt           time.Time                 `json:"created_at"`
+	UpdatedAt           time.Time                 `json:"updated_at"`
 }
 
 type Store struct {
@@ -222,6 +234,13 @@ func applySessionLineageDefaults(sess Session) (Session, bool) {
 	if sess.ID != "" && sess.RootSessionID == "" {
 		sess.RootSessionID = sess.ID
 		changed = true
+	}
+	if sess.AutomationConsent != nil && sess.AutomationConsent.UpdatedAt != nil {
+		updatedAt := sess.AutomationConsent.UpdatedAt.UTC()
+		if !updatedAt.Equal(*sess.AutomationConsent.UpdatedAt) {
+			sess.AutomationConsent.UpdatedAt = &updatedAt
+			changed = true
+		}
 	}
 	return sess, changed
 }
@@ -652,6 +671,31 @@ func (s *Store) SetToolConfig(id string, config *SessionToolConfig) error {
 	}
 	sess.ToolConfig = config
 	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+// SetAutomationConsent updates the per-session automation consent policy.
+func (s *Store) SetAutomationConsent(id string, consent *SessionAutomationConsent) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	now := time.Now().UTC()
+	if consent == nil {
+		sess.AutomationConsent = nil
+	} else {
+		next := *consent
+		next.UpdatedAt = &now
+		sess.AutomationConsent = &next
+	}
+	sess.UpdatedAt = now
 	index[id] = sess
 	return s.saveIndex(index)
 }
