@@ -9,8 +9,9 @@ const panelSource = readFileSync(new URL('../src/components/PriorContextPanel.sv
 
 test('Chat surface exposes a Prior Context side panel wired to the draft message', () => {
   assert.match(chatSource, /import PriorContextPanel from '\.\/PriorContextPanel\.svelte'/)
-  assert.match(chatSource, /type RightPanel = [^\n]*'prior'/)
-  assert.match(chatSource, /rightPanel === 'prior'/)
+  assert.match(chatSource, /type ChatDockPanelID = [^\n]*'prior'/)
+  assert.match(chatSource, /panelID === 'prior'/)
+  assert.match(chatSource, /isPanelOpen\('prior'\)/)
   assert.match(chatSource, />Prior</)
   assert.match(chatSource, /<PriorContextPanel[\s\S]*draftQuery={chatDraft}/)
   assert.match(chatPanelSource, /onDraftChange\?: \(draft: string\) => void/)

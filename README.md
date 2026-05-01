@@ -37,6 +37,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 - `/` command autocomplete for built-in chat actions and explicit user-invocable skill selection
 - `/config` opens advanced per-session tool and skill policy controls when a selected session needs explicit overrides
 - Prior Context preview panel showing the exact memory section, source badges, and token budget for the current draft
+- Chat panels share a Dock Manager: Sessions and tool panels can move between left, right, bottom, and fullscreen zones, with drag-resized dimensions persisted in the browser
 - Files workspaces include an embedded shell at the selected root or browsed subdirectory, plus a macOS Terminal fallback
 - Workspace file previews use workspace storage by default, while selected filesystem roots are served through the explicit filesystem files API boundary
 - Durable memory: `MEMORY.md`, experiences, daily logs, semantic embeddings
@@ -217,7 +218,7 @@ The Chat header shows the active plan goal and completed/total task count withou
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
 | Home | Dashboard | `/console` | Pulse, Reflection, disk pressure, active sessions, recent notifications, recommended setup actions, and plan resume |
-| Work | Chat | `/console/chat` | Interactive agent chat with tool calling, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
+| Work | Chat | `/console/chat` | Interactive agent chat with tool calling, dockable Sessions and tool panels, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, Files workspace shell, Prior Context preview, and advanced `/config` session policy overrides |
 | Work | Plans | `/console/tasks` | Review active plans across sessions with progress cards and jump directly into the owning chat session |
 | Work | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |

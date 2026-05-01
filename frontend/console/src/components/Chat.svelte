@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import {
     getEventsHistory, getPulseStatus,
     getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
@@ -18,6 +18,20 @@
   import PriorContextPanel from './PriorContextPanel.svelte'
   import TasksPanel from './TasksPanel.svelte'
   import SessionCronPanel from './SessionCronPanel.svelte'
+  import DockPanelFrame from './DockPanelFrame.svelte'
+  import {
+    closeDockPanel,
+    createDockLayout,
+    moveDockPanel,
+    normalizeDockLayout,
+    openDockPanel,
+    panelIsOpen,
+    resizeDock,
+    serializeDockLayout,
+    type DockLayoutState,
+    type DockPanelDefinition,
+    type DockZone,
+  } from '../lib/dock/layout'
 
   interface Props {
     sessionId?: string
@@ -57,7 +71,7 @@
   let actionBusy = $state(false)
   let deleteConfirm = $state(false)
 
-  // Right panel state
+  // Docked panel state
   let chatArtifacts: Artifact[] = $state([])
   let chatDraft = $state('')
   let chatContextInfo: {
@@ -83,12 +97,110 @@
     mentioned_subagents?: string[]
   } = $state({})
   let contextRefreshVersion = $state(0)
-  type RightPanel = 'none' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'tasks' | 'cron'
-  let rightPanel = $state<RightPanel>('none')
+  type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'tasks' | 'cron'
+  type ToolDockPanelID = Exclude<ChatDockPanelID, 'sessions'>
+  type DockSizeZone = 'left' | 'right' | 'bottom'
+  const dockStorageKey = 'tars.console.chat.dockLayout.v1'
+  const dockPanels: DockPanelDefinition[] = [
+    { id: 'sessions', title: 'Sessions', defaultZone: 'left', closeable: false },
+    { id: 'artifacts', title: 'Files', defaultZone: 'right' },
+    { id: 'config', title: 'Config', defaultZone: 'right' },
+    { id: 'context', title: 'Context', defaultZone: 'right' },
+    { id: 'prompt', title: 'Prompt', defaultZone: 'right' },
+    { id: 'prior', title: 'Prior Context', defaultZone: 'right' },
+    { id: 'tasks', title: 'Tasks', defaultZone: 'right' },
+    { id: 'cron', title: 'Cron', defaultZone: 'right' },
+  ]
+  let dockLayout: DockLayoutState = $state(createDockLayout(dockPanels))
+  let dockLayoutLoaded = $state(false)
+
+  let activeLeftPanel = $derived(dockLayout.active.left as ChatDockPanelID | undefined)
+  let activeRightPanel = $derived(dockLayout.active.right as ChatDockPanelID | undefined)
+  let activeBottomPanel = $derived(dockLayout.active.bottom as ChatDockPanelID | undefined)
+  let activeFullscreenPanel = $derived(dockLayout.active.fullscreen as ChatDockPanelID | undefined)
+  let anyToolPanelOpen = $derived(
+    panelIsOpen(dockLayout, 'artifacts') ||
+    panelIsOpen(dockLayout, 'config') ||
+    panelIsOpen(dockLayout, 'context') ||
+    panelIsOpen(dockLayout, 'prompt') ||
+    panelIsOpen(dockLayout, 'prior') ||
+    panelIsOpen(dockLayout, 'tasks') ||
+    panelIsOpen(dockLayout, 'cron'),
+  )
 
   let sidebarRef: SessionSidebar | undefined = $state()
   let actionFeedback = $state('')
   let feedbackTimer: ReturnType<typeof setTimeout> | null = null
+
+  function panelTitle(panelID: ChatDockPanelID): string {
+    return dockPanels.find((panel) => panel.id === panelID)?.title ?? panelID
+  }
+
+  function panelCloseable(panelID: ChatDockPanelID): boolean {
+    return dockPanels.find((panel) => panel.id === panelID)?.closeable !== false
+  }
+
+  function isPanelOpen(panelID: ChatDockPanelID): boolean {
+    return panelIsOpen(dockLayout, panelID)
+  }
+
+  function openPanel(panelID: ChatDockPanelID) {
+    dockLayout = openDockPanel(dockLayout, dockPanels, panelID)
+  }
+
+  function closePanel(panelID: ChatDockPanelID) {
+    dockLayout = closeDockPanel(dockLayout, panelID)
+  }
+
+  function dockPanel(panelID: ChatDockPanelID, zone: DockZone) {
+    dockLayout = moveDockPanel(dockLayout, dockPanels, panelID, zone)
+  }
+
+  function closeToolPanels() {
+    for (const panelID of ['artifacts', 'config', 'context', 'prompt', 'prior', 'tasks', 'cron'] as ToolDockPanelID[]) {
+      dockLayout = closeDockPanel(dockLayout, panelID)
+    }
+  }
+
+  function togglePanel(panelID: ToolDockPanelID) {
+    if (isPanelOpen(panelID)) {
+      closePanel(panelID)
+    } else {
+      openPanel(panelID)
+    }
+  }
+
+  function dockStyle(): string {
+    return [
+      `--dock-left-size:${activeLeftPanel ? dockLayout.sizes.left : 0}px`,
+      `--dock-right-size:${activeRightPanel ? dockLayout.sizes.right : 0}px`,
+      `--dock-bottom-size:${activeBottomPanel ? dockLayout.sizes.bottom : 0}px`,
+    ].join(';')
+  }
+
+  function startDockResize(zone: DockSizeZone, event: PointerEvent) {
+    event.preventDefault()
+    const startX = event.clientX
+    const startY = event.clientY
+    const startSize = dockLayout.sizes[zone]
+    const move = (next: PointerEvent) => {
+      const delta = zone === 'left'
+        ? next.clientX - startX
+        : zone === 'right'
+          ? startX - next.clientX
+          : startY - next.clientY
+      dockLayout = resizeDock(dockLayout, zone, startSize + delta)
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+  }
+
   function showFeedback(msg: string, ms = 4000) {
     if (feedbackTimer) clearTimeout(feedbackTimer)
     actionFeedback = msg
@@ -120,7 +232,7 @@
     chatArtifacts = []
     chatDraft = ''
     chatContextInfo = {}
-    rightPanel = 'none'
+    closeToolPanels()
     renaming = false
     deleteConfirm = false
     onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
@@ -139,7 +251,7 @@
     chatArtifacts = []
     chatDraft = ''
     chatContextInfo = {}
-    rightPanel = 'none'
+    closeToolPanels()
     renaming = false
     deleteConfirm = false
     onNavigate(selectedSessionId ? `/console/chat/${encodeURIComponent(selectedSessionId)}` : '/console/chat')
@@ -153,13 +265,9 @@
 
   function handleArtifactsChange(arts: Artifact[]) {
     chatArtifacts = arts
-    if (arts.length > 0 && rightPanel === 'none') {
-      rightPanel = 'artifacts'
+    if (arts.length > 0 && !anyToolPanelOpen) {
+      openPanel('artifacts')
     }
-  }
-
-  function togglePanel(panel: RightPanel) {
-    rightPanel = rightPanel === panel ? 'none' : panel
   }
 
   // Session actions
@@ -262,7 +370,7 @@
     if (taskTools.includes(toolName)) {
       tasksPanelRef?.load()
     }
-    if (fileTools.includes(toolName) && rightPanel === 'artifacts') {
+    if (fileTools.includes(toolName) && isPanelOpen('artifacts')) {
       artifactPanelRef?.refresh()
     }
   }
@@ -289,7 +397,7 @@
   })
 
   async function handleArtifactOpen(path: string) {
-    rightPanel = 'artifacts'
+    openPanel('artifacts')
     await tick()
     await artifactPanelRef?.openArtifactPath(path)
   }
@@ -313,33 +421,33 @@
           showFeedback('Select a session first')
           return
         }
-        rightPanel = 'tasks'
+        openPanel('tasks')
         return
       case 'config':
         if (!selectedSessionId) {
           showFeedback('Select a session first')
           return
         }
-        rightPanel = 'config'
+        openPanel('config')
         return
       case 'context':
-        rightPanel = 'context'
+        openPanel('context')
         return
       case 'prior':
-        rightPanel = 'prior'
+        openPanel('prior')
         return
       case 'prompt':
-        rightPanel = 'prompt'
+        openPanel('prompt')
         return
       case 'files':
-        rightPanel = 'artifacts'
+        openPanel('artifacts')
         return
       case 'cron':
         if (!selectedSessionId) {
           showFeedback('Select a session first')
           return
         }
-        rightPanel = 'cron'
+        openPanel('cron')
         return
       case 'memory':
         {
@@ -371,7 +479,7 @@
     }
     const requested = args.trim()
     if (!requested) {
-      rightPanel = 'config'
+      openPanel('config')
       showFeedback('Usage: /skill <name>')
       return
     }
@@ -401,7 +509,7 @@
       }
       await updateSessionConfig(selectedSessionId, nextConfig)
       showFeedback(`Skill ${match} ${wasEnabled ? 'disabled' : 'enabled'}`)
-      rightPanel = 'config'
+      openPanel('config')
     } catch (err) {
       showFeedback(err instanceof Error ? err.message : 'Skill toggle failed')
     }
@@ -437,7 +545,22 @@
   }
 
   onMount(() => {
+    try {
+      const stored = window.localStorage.getItem(dockStorageKey)
+      if (stored) {
+        dockLayout = normalizeDockLayout(JSON.parse(stored), dockPanels)
+      }
+    } catch {
+      dockLayout = createDockLayout(dockPanels)
+    } finally {
+      dockLayoutLoaded = true
+    }
     void loadDashboard()
+  })
+
+  $effect(() => {
+    if (!dockLayoutLoaded) return
+    window.localStorage.setItem(dockStorageKey, JSON.stringify(serializeDockLayout(dockLayout)))
   })
 </script>
 
@@ -462,25 +585,78 @@
     </div>
     <div class="pulse-sep"></div>
     <div class="pulse-panel-toggles">
-      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'artifacts'} onclick={() => togglePanel('artifacts')} title="Files browser">Files{#if chatArtifacts.length > 0} ({chatArtifacts.length}){/if}</button>
-      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'context'} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
-      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prompt'} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
-      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'prior'} onclick={() => togglePanel('prior')} title="Prior Context preview">Prior</button>
-      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'tasks'} onclick={() => togglePanel('tasks')} title={tasksSummary.total > 0 ? `${tasksSummary.completed} done · ${tasksSummary.in_progress} in progress · ${tasksSummary.pending} pending` : 'Session tasks'}>Tasks{#if tasksSummary.total > 0} ({tasksSummary.completed}/{tasksSummary.total}){/if}</button>
-      <button type="button" class="pulse-toggle-btn" class:active={rightPanel === 'cron'} onclick={() => togglePanel('cron')} title="Session cron jobs">Cron</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('sessions')} onclick={() => openPanel('sessions')} title="Session list">Sessions</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('artifacts')} onclick={() => togglePanel('artifacts')} title="Files browser">Files{#if chatArtifacts.length > 0} ({chatArtifacts.length}){/if}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('context')} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prompt')} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prior')} onclick={() => togglePanel('prior')} title="Prior Context preview">Prior</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('tasks')} onclick={() => togglePanel('tasks')} title={tasksSummary.total > 0 ? `${tasksSummary.completed} done · ${tasksSummary.in_progress} in progress · ${tasksSummary.pending} pending` : 'Session tasks'}>Tasks{#if tasksSummary.total > 0} ({tasksSummary.completed}/{tasksSummary.total}){/if}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('cron')} onclick={() => togglePanel('cron')} title="Session cron jobs">Cron</button>
     </div>
   </div>
 
-  <div class="chat-layout" class:has-right-panel={rightPanel !== 'none'}>
-    <!-- Session sidebar -->
-    <aside class="chat-sidebar">
-      <SessionSidebar
-        bind:this={sidebarRef}
-        selectedSessionId={selectedSessionId}
-        onSelect={handleSelectSession}
-        onNewSession={handleNewSession}
-      />
-    </aside>
+  {#snippet renderDockPanel(panelID: ChatDockPanelID, zone: DockZone)}
+    <DockPanelFrame
+      title={panelTitle(panelID)}
+      {zone}
+      closeable={panelCloseable(panelID)}
+      onDock={(nextZone) => dockPanel(panelID, nextZone)}
+      onClose={() => closePanel(panelID)}
+    >
+      {#if panelID === 'sessions'}
+        <SessionSidebar
+          bind:this={sidebarRef}
+          selectedSessionId={selectedSessionId}
+          onSelect={handleSelectSession}
+          onNewSession={handleNewSession}
+        />
+      {:else if panelID === 'artifacts'}
+        <ArtifactPanel bind:this={artifactPanelRef} artifacts={chatArtifacts} sessionId={selectedSessionId || ''} onClose={() => closePanel(panelID)} />
+      {:else if panelID === 'config' && selectedSessionId}
+        <SessionConfigPanel
+          sessionId={selectedSessionId ?? ''}
+          onClose={() => closePanel(panelID)}
+          onChange={() => { contextRefreshVersion += 1 }}
+        />
+      {:else if panelID === 'context'}
+        <ContextMonitor
+          sessionId={selectedSessionId ?? ''}
+          contextInfo={chatContextInfo}
+          refreshVersion={contextRefreshVersion}
+          onClose={() => closePanel(panelID)}
+        />
+      {:else if panelID === 'prompt'}
+        <PromptEditor sessionId={selectedSessionId ?? ''} onClose={() => closePanel(panelID)} />
+      {:else if panelID === 'prior'}
+        <PriorContextPanel sessionId={selectedSessionId ?? ''} draftQuery={chatDraft} onClose={() => closePanel(panelID)} />
+      {:else if panelID === 'tasks' && selectedSessionId}
+        <TasksPanel
+          bind:this={tasksPanelRef}
+          sessionId={selectedSessionId}
+          onClose={() => closePanel(panelID)}
+          onSendMessage={async (text) => { await chatPanelRef?.sendMessageText(text) }}
+        />
+      {:else if panelID === 'cron' && selectedSessionId}
+        <SessionCronPanel sessionId={selectedSessionId} sessionKind={selectedSession?.kind ?? ''} onClose={() => closePanel(panelID)} />
+      {:else}
+        <div class="dock-empty">Select a session to use this panel.</div>
+      {/if}
+    </DockPanelFrame>
+  {/snippet}
+
+  <div
+    class="chat-layout dock-layout"
+    style={dockStyle()}
+    class:has-left-panel={!!activeLeftPanel}
+    class:has-right-panel={!!activeRightPanel}
+    class:has-bottom-panel={!!activeBottomPanel}
+  >
+    {#if activeLeftPanel}
+      <aside class="dock-pane dock-left">
+        {@render renderDockPanel(activeLeftPanel, 'left')}
+      </aside>
+      <button type="button" class="dock-resizer dock-resizer-left" aria-label="Resize left dock" onpointerdown={(event) => startDockResize('left', event)}></button>
+    {/if}
 
     <!-- Chat area -->
     <main class="chat-main">
@@ -532,7 +708,7 @@
         <button
           type="button"
           class="plan-progress-strip"
-          class:active={rightPanel === 'tasks'}
+          class:active={isPanelOpen('tasks')}
           onclick={() => togglePanel('tasks')}
           title="Open session tasks"
         >
@@ -573,39 +749,24 @@
       {/key}
     </main>
 
-    <!-- Right panel -->
-    {#if rightPanel !== 'none'}
-      <aside class="chat-right-panel">
-        {#if rightPanel === 'artifacts'}
-          <ArtifactPanel bind:this={artifactPanelRef} artifacts={chatArtifacts} sessionId={selectedSessionId || ''} onClose={() => { rightPanel = 'none' }} />
-        {:else if rightPanel === 'config' && selectedSessionId}
-          <SessionConfigPanel
-            sessionId={selectedSessionId ?? ''}
-            onClose={() => { rightPanel = 'none' }}
-            onChange={() => { contextRefreshVersion += 1 }}
-          />
-        {:else if rightPanel === 'context'}
-          <ContextMonitor
-            sessionId={selectedSessionId ?? ''}
-            contextInfo={chatContextInfo}
-            refreshVersion={contextRefreshVersion}
-            onClose={() => { rightPanel = 'none' }}
-          />
-        {:else if rightPanel === 'prompt'}
-          <PromptEditor sessionId={selectedSessionId ?? ''} onClose={() => { rightPanel = 'none' }} />
-        {:else if rightPanel === 'prior'}
-          <PriorContextPanel sessionId={selectedSessionId ?? ''} draftQuery={chatDraft} onClose={() => { rightPanel = 'none' }} />
-        {:else if rightPanel === 'tasks' && selectedSessionId}
-          <TasksPanel
-            bind:this={tasksPanelRef}
-            sessionId={selectedSessionId}
-            onClose={() => rightPanel = 'none'}
-            onSendMessage={async (text) => { await chatPanelRef?.sendMessageText(text) }}
-          />
-        {:else if rightPanel === 'cron' && selectedSessionId}
-          <SessionCronPanel sessionId={selectedSessionId} sessionKind={selectedSession?.kind ?? ''} onClose={() => rightPanel = 'none'} />
-        {/if}
+    {#if activeRightPanel}
+      <aside class="dock-pane dock-right">
+        {@render renderDockPanel(activeRightPanel, 'right')}
       </aside>
+      <button type="button" class="dock-resizer dock-resizer-right" aria-label="Resize right dock" onpointerdown={(event) => startDockResize('right', event)}></button>
+    {/if}
+
+    {#if activeBottomPanel}
+      <section class="dock-pane dock-bottom">
+        {@render renderDockPanel(activeBottomPanel, 'bottom')}
+      </section>
+      <button type="button" class="dock-resizer dock-resizer-bottom" aria-label="Resize bottom dock" onpointerdown={(event) => startDockResize('bottom', event)}></button>
+    {/if}
+
+    {#if activeFullscreenPanel}
+      <section class="dock-pane dock-fullscreen">
+        {@render renderDockPanel(activeFullscreenPanel, 'fullscreen')}
+      </section>
     {/if}
   </div>
 </div>
@@ -698,32 +859,99 @@
   .chat-layout {
     flex: 1;
     display: grid;
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: var(--dock-left-size, 0px) minmax(0, 1fr) var(--dock-right-size, 0px);
+    grid-template-rows: minmax(0, 1fr) var(--dock-bottom-size, 0px);
+    grid-template-areas:
+      "left main right"
+      "bottom bottom bottom";
     min-height: 0;
-  }
-  .chat-layout.has-right-panel {
-    grid-template-columns: 280px 1fr 300px;
+    position: relative;
   }
 
-  .chat-sidebar {
-    border-right: 1px solid var(--border-subtle);
+  .dock-pane {
     background: var(--surface);
-    padding: var(--space-3);
     overflow: hidden;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .dock-left {
+    grid-area: left;
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .dock-right {
+    grid-area: right;
+    border-left: 1px solid var(--border-subtle);
+  }
+
+  .dock-bottom {
+    grid-area: bottom;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .dock-fullscreen {
+    position: absolute;
+    inset: var(--space-3);
+    z-index: 30;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  }
+
+  .dock-resizer {
+    position: absolute;
+    z-index: 20;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .dock-resizer:hover,
+  .dock-resizer:focus-visible {
+    background: color-mix(in srgb, var(--primary) 35%, transparent);
+    outline: none;
+  }
+
+  .dock-resizer-left {
+    top: 0;
+    bottom: var(--dock-bottom-size, 0px);
+    left: calc(var(--dock-left-size, 0px) - 3px);
+    width: 6px;
+    cursor: col-resize;
+  }
+
+  .dock-resizer-right {
+    top: 0;
+    right: calc(var(--dock-right-size, 0px) - 3px);
+    bottom: var(--dock-bottom-size, 0px);
+    width: 6px;
+    cursor: col-resize;
+  }
+
+  .dock-resizer-bottom {
+    right: 0;
+    bottom: calc(var(--dock-bottom-size, 0px) - 3px);
+    left: 0;
+    height: 6px;
+    cursor: row-resize;
+  }
+
+  .dock-empty {
+    padding: var(--space-4);
+    color: var(--text-tertiary);
+    font-size: var(--text-sm);
   }
 
   .chat-main {
+    grid-area: main;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0;
     padding: var(--space-4);
     padding-top: 0;
     overflow: hidden;
-  }
-
-  .chat-right-panel {
-    overflow: hidden;
-    min-height: 0;
   }
 
   /* Session header */
@@ -871,11 +1099,19 @@
   }
 
   @media (max-width: 768px) {
-    .chat-layout, .chat-layout.has-right-panel {
+    .chat-layout {
       grid-template-columns: 1fr;
+      grid-template-rows: minmax(0, 1fr);
+      grid-template-areas: "main";
     }
-    .chat-sidebar, .chat-right-panel {
+    .dock-left,
+    .dock-right,
+    .dock-bottom,
+    .dock-resizer {
       display: none;
+    }
+    .dock-fullscreen {
+      inset: var(--space-2);
     }
     .chat-pulse {
       flex-wrap: wrap;

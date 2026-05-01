@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.94] - 2026-05-01
+
+### Added
+
+- Added a Console Chat Dock Manager foundation with left, right, bottom, and fullscreen zones for Sessions and Chat tool panels.
+- Added drag resize support for side and bottom docks, plus localStorage persistence for panel placement and dock sizes.
+- Added focused dock layout tests covering default placement, panel moves, invalid stored layouts, resize clamping, and serialization.
+
+### Documentation
+
+- README now documents Chat dock placement, resizing, fullscreen mode, and persisted layout behavior.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- Browser smoke: `http://127.0.0.1:43215/console/chat` opened Files in the right dock, moved it to the bottom dock, switched it to fullscreen, and verified persistence after reload.
+
+### Closed
+
+- Closes #565.
+
 ## [0.31.93] - 2026-05-01
 
 ### Documentation

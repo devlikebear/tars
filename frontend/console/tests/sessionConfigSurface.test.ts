@@ -10,6 +10,6 @@ test('Chat keeps session config off the always-visible panel toggle row', () => 
 })
 
 test('Chat opens advanced session config only for an existing selected session', () => {
-  assert.match(chatSource, /case 'config':[\s\S]*Select a session first[\s\S]*rightPanel = 'config'/)
-  assert.match(chatSource, /rightPanel === 'config' && selectedSessionId/)
+  assert.match(chatSource, /case 'config':[\s\S]*Select a session first[\s\S]*openPanel\('config'\)/)
+  assert.match(chatSource, /panelID === 'config' && selectedSessionId/)
 })
