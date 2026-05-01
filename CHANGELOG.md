@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.125] - 2026-05-02
+
+### Added
+
+- Added `kimi` as a first-class LLM provider kind for OpenAI-compatible usage, including `KIMI_API_KEY`-based environment fallback and default Moonshot base URL wiring.
+- Added Kimi provider coverage to provider selection docs and live-provider API metadata so `/v1/providers` reports `kimi` with model-listing support.
+
 ## [0.31.124] - 2026-05-02
 
 ### Added
