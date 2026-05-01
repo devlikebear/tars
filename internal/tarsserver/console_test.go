@@ -18,7 +18,7 @@ func TestConsoleHandler_ServesPlaceholderGuidanceWhenBuiltAssetsMissing(t *testi
 	logger := zerolog.New(&logBuffer)
 	handler := newConsoleStaticHandler(logger, fstest.MapFS{}, false)
 
-	for _, route := range []string{"/console", "/console/", "/console/projects/demo"} {
+	for _, route := range []string{"/console/", "/console/projects/demo"} {
 		t.Run(route, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, route, nil)
@@ -56,7 +56,7 @@ func TestConsoleHandler_ServesBuiltAssetsForConsoleRoutes(t *testing.T) {
 		"favicon.svg":   &fstest.MapFile{Data: []byte("<svg></svg>")},
 	}, true)
 
-	for _, route := range []string{"/console", "/console/", "/console/projects/demo"} {
+	for _, route := range []string{"/console/", "/console/projects/demo"} {
 		t.Run(route, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, route, nil)
@@ -92,6 +92,23 @@ func TestConsoleHandler_ServesBuiltAssetsForConsoleRoutes(t *testing.T) {
 	}
 }
 
+func TestConsoleHandler_RedirectsBareConsolePath(t *testing.T) {
+	handler := newConsoleStaticHandler(zerolog.New(io.Discard), fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><div id=\"app\">console</div>")},
+	}, true)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/console", nil)
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Location"); got != "/console/" {
+		t.Fatalf("expected redirect location /console/, got %q", got)
+	}
+}
+
 func TestConsoleHandler_ProxiesDevServerWhenConfigured(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -114,6 +131,30 @@ func TestConsoleHandler_ProxiesDevServerWhenConfigured(t *testing.T) {
 	}
 	if body := rec.Body.String(); body != "proxied /console/projects/demo" {
 		t.Fatalf("expected console-mounted proxied path, got %q", body)
+	}
+}
+
+func TestConsoleHandler_RedirectsBareConsolePathBeforeDevProxy(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	t.Cleanup(target.Close)
+	t.Setenv(consoleDevProxyEnv, target.URL)
+
+	handler, err := newConsoleHandler(zerolog.New(io.Discard))
+	if err != nil {
+		t.Fatalf("new console handler: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/console", nil)
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Location"); got != "/console/" {
+		t.Fatalf("expected redirect location /console/, got %q", got)
 	}
 }
 

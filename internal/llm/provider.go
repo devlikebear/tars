@@ -217,6 +217,15 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	case "openai":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return newOpenAICompatibleClientWithConfig("openai", opts.BaseURL, token, opts.Model, providerClientConfig(opts))
+	case "kimi":
+		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
+		return newOpenAICompatibleClientWithConfig(
+			"kimi",
+			firstNonEmptyTrimmed(opts.BaseURL, llmdefaults.KimiBaseURL),
+			token,
+			firstNonEmptyTrimmed(opts.Model, llmdefaults.OpenAIModel),
+			providerClientConfig(opts),
+		)
 	case "gemini":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return newOpenAICompatibleClientWithConfig(

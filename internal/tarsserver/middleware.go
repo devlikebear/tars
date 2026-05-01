@@ -31,7 +31,7 @@ func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Hand
 }
 
 func apiAuthSkipPaths(cfg config.Config) []string {
-	return []string{"/v1/healthz", "/console", "/console/", "/console/*"}
+	return []string{"/v1/healthz", "/", "/console", "/console/", "/console/*"}
 }
 
 func apiAdminPaths() []string {
@@ -66,7 +66,7 @@ func dashboardLoopbackSkipPaths(cfg config.Config) []string {
 	if !dashboardAuthIsLoopbackOnly(cfg) {
 		return nil
 	}
-	return []string{"/console", "/console/", "/console/*"}
+	return []string{"/", "/console", "/console/", "/console/*"}
 }
 
 func dashboardAuthHealthzStatus(cfg config.Config) map[string]any {

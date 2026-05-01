@@ -139,6 +139,41 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 	}
 }
 
+func TestRegisterAPIRoutes_RedirectsRootToConsole(t *testing.T) {
+	mux := http.NewServeMux()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	registerAPIRoutes(mux, testAPIRouteHandlers(handler, handler))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Location"); got != "/console/" {
+		t.Fatalf("expected redirect location /console/, got %q", got)
+	}
+}
+
+func TestRegisterAPIRoutes_RootFallbackKeepsUnknownPathsNotFound(t *testing.T) {
+	mux := http.NewServeMux()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	registerAPIRoutes(mux, testAPIRouteHandlers(handler, handler))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func testAPIRouteHandlers(handler, consoleHandler http.Handler) apiRouteHandlers {
 	return apiRouteHandlers{
 		pulse:           handler,

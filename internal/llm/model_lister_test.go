@@ -100,6 +100,48 @@ func TestModelFetcher_Anthropic_Parses(t *testing.T) {
 	}
 }
 
+func TestModelFetcher_Kimi_UsesOpenAIStylePathAndAuth(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer kimi-token" {
+			t.Fatalf("expected Bearer token header, got %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{"id": "moonshot-v1-auto"},
+				{"id": "moonshot-v1-8k"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	fetcher := newModelFetcherWithDeps(modelFetcherDeps{
+		httpClient: server.Client(),
+		resolveCredential: func(config auth.ProviderAuthConfig) (auth.ProviderCredential, error) {
+			if config.Provider != "kimi" {
+				t.Fatalf("expected kimi provider, got %+v", config)
+			}
+			return auth.ProviderCredential{AccessToken: "kimi-token"}, nil
+		},
+	})
+
+	models, err := fetcher.FetchModels(context.Background(), ProviderOptions{
+		Provider: "kimi",
+		BaseURL:  server.URL + "/v1",
+	})
+	if err != nil {
+		t.Fatalf("FetchModels: %v", err)
+	}
+	want := []string{"moonshot-v1-8k", "moonshot-v1-auto"}
+	if !slices.Equal(models, want) {
+		t.Fatalf("unexpected models: want=%v got=%v", want, models)
+	}
+}
+
 func TestModelFetcher_GeminiNativeSinglePath_Parses(t *testing.T) {
 	t.Helper()
 

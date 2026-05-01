@@ -102,7 +102,7 @@ func runInitCommand(_ context.Context, opts initOptions, stdout, _ io.Writer) er
 	_, _ = fmt.Fprintf(stdout, "  default starter provider: openai\n")
 	_, _ = fmt.Fprintf(stdout, "  export OPENAI_API_KEY='your-api-key'\n")
 	_, _ = fmt.Fprintf(stdout, "  or set llm_providers.default.kind: claude-code-cli in %s to use the local Claude Code CLI\n", configPath)
-	_, _ = fmt.Fprintf(stdout, "  or edit llm_providers in %s for anthropic or gemini\n\n", configPath)
+	_, _ = fmt.Fprintf(stdout, "  or edit llm_providers in %s for anthropic, gemini, kimi, or openai-codex\n\n", configPath)
 	_, _ = fmt.Fprintf(stdout, "Next:\n")
 	_, _ = fmt.Fprintf(stdout, "  tars serve\n")
 	_, _ = fmt.Fprintf(stdout, "  tars service install && tars service start\n")
@@ -433,8 +433,8 @@ api:
 
 llm:
   # BYOK starter provider pool. Each alias is one credential + endpoint.
-  # Other common kinds: anthropic, gemini, gemini-native, openai-codex,
-  # claude-code-cli.
+  # Other common kinds: anthropic, gemini, gemini-native, kimi,
+  # openai-codex, claude-code-cli.
   providers:
     default:
       kind: openai
