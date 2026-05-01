@@ -147,6 +147,8 @@ TARS favors **on-demand extension** over always-resident tool registrations. Dom
 - **MCP** — Local stdio and remote HTTP/WebSocket servers with bearer or OAuth auth. Use for third-party integrations that cannot be expressed as a CLI the bash tool can call. The Extensions console can draft, stdio-test, and save local `workspace/mcp-servers/<name>/` MCP packages before you publish them to the hub.
 - **Browser** — Playwright-based automation for web interaction (shipped as a hub plugin).
 
+The Extensions console validates MCP draft names before requesting generated files, so incomplete drafts stay local to the form instead of sending avoidable server requests.
+
 **When to build a hub skill vs. a core feature**: if the capability is domain-specific (one site's logs, one vendor's API, one workflow), it belongs in `tars-skills` as a skill + CLI. Builtin tools inside this repo are reserved for universal surfaces (file ops, memory, agent runtime, channels) that every session uses.
 
 ## Install
@@ -193,6 +195,8 @@ On macOS, `tars service install && tars service start` manages `tars serve` as a
 Open `http://127.0.0.1:43180/console` and start chatting.
 
 When TARS is exposed behind a reverse proxy path, pass that base path in `--server-url`; CLI API calls and the console opener resolve `/v1/*` and `/console` from the same base.
+
+For local console development, set `TARS_CONSOLE_DEV_URL=http://127.0.0.1:5173` while Vite is running. The dev proxy keeps Vite assets, HMR, and favicon requests mounted under `/console`.
 
 ## Console Pages
 
