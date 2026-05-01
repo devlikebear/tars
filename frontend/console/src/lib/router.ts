@@ -8,6 +8,7 @@ export type Route =
   | { view: 'memory' }
   | { view: 'sysprompt' }
   | { view: 'ops' }
+  | { view: 'cron' }
   | { view: 'config' }
   | { view: 'extensions' }
   | { view: 'pulse' }
@@ -44,6 +45,10 @@ export function resolveRoute(pathname: string): Route {
 
   if (path.startsWith(`${consoleBase}/approvals`) || path.startsWith(`${consoleBase}/ops`)) {
     return { view: 'ops' }
+  }
+
+  if (path.startsWith(`${consoleBase}/cron`)) {
+    return { view: 'cron' }
   }
 
   if (path.startsWith(`${consoleBase}/agentruntime`)) {

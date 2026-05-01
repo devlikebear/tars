@@ -592,6 +592,10 @@ export type CreateCronJobRequest = {
   enabled?: boolean
   session_id?: string
   session_target?: string
+  wake_mode?: string
+  delivery_mode?: string
+  payload?: Record<string, unknown>
+  delete_after_run?: boolean
 }
 
 export type UpdateCronJobRequest = {
@@ -601,6 +605,10 @@ export type UpdateCronJobRequest = {
   enabled?: boolean
   session_id?: string
   session_target?: string
+  wake_mode?: string
+  delivery_mode?: string
+  payload?: Record<string, unknown>
+  delete_after_run?: boolean
 }
 
 export type CronRunResult = {

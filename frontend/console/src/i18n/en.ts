@@ -39,6 +39,7 @@ export const en = {
       extensions: 'Extensions',
       agentruntime: 'Agent Runtime',
       ops: 'Approvals',
+      cron: 'Cron',
       pulse: 'Pulse',
       reflection: 'Reflection',
       config: 'Settings',
