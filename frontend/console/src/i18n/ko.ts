@@ -39,6 +39,7 @@ export const ko = {
       extensions: '확장',
       agentruntime: '에이전트 런타임',
       ops: '승인',
+      cron: '크론',
       pulse: '펄스',
       reflection: '리플렉션',
       config: '설정',

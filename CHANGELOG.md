@@ -6,6 +6,39 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.84] - 2026-05-01
+
+### Added
+
+- Added a global Console Cron page at `/console/cron` for creating, monitoring, pausing, resuming, manually running, and deleting scheduled jobs.
+- Cron jobs now show delivery target, status buckets, next-run context, and expandable run history from the existing cron API.
+
+### Changed
+
+- The Console navigation now includes Cron in the Operate group.
+- Frontend cron API types now include delivery, wake, payload, and delete-after-run fields already supported by the backend.
+
+### Documentation
+
+- README now documents the global Cron page alongside the per-session cron panel.
+
+### Tests
+
+- `cd frontend/console && npm test -- tests/cronPage.test.ts`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm run build`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make vet`
+- `make security-scan`
+- `make console-build`
+- `GOCACHE=/tmp/tars-go-cache make build`
+- Browser smoke: created a global cron job on `/console/cron`, expanded run history, paused/resumed it, and deleted it.
+
+### Closed
+
+- Closes #399.
+
 ## [0.31.83] - 2026-05-01
 
 ### Added

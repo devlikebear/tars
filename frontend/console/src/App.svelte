@@ -6,6 +6,7 @@
   import MemoryCenter from './components/MemoryCenter.svelte'
   import SyspromptCenter from './components/SyspromptCenter.svelte'
   import Ops from './components/Ops.svelte'
+  import Cron from './components/Cron.svelte'
   import Config from './components/Config.svelte'
   import Extensions from './components/Extensions.svelte'
   import Pulse from './components/Pulse.svelte'
@@ -93,6 +94,8 @@
     <SyspromptCenter />
   {:else if route.view === 'ops'}
     <Ops />
+  {:else if route.view === 'cron'}
+    <Cron />
   {:else if route.view === 'config'}
     <Config />
   {:else if route.view === 'pulse'}

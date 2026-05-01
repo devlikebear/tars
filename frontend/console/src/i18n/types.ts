@@ -39,6 +39,7 @@ export type Translations = {
       extensions: string
       agentruntime: string
       ops: string
+      cron: string
       pulse: string
       reflection: string
       config: string
