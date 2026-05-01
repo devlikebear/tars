@@ -6,6 +6,37 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.100] - 2026-05-01
+
+### Added
+
+- Added task evidence records so plan steps can keep durable verification proof such as test results, screenshots or images, log excerpts, PR links, release tags, and command output summaries.
+- Added `tasks(action="evidence_add")` and `tasks(action="evidence_remove")` so agents and users can attach or remove evidence directly from session tasks.
+- Added Console Chat task evidence cards and a read-only Contract evidence summary so verification proof remains visible after session reloads.
+- Included task evidence in active task prompt injection and archived plan summaries so future turns can see what was already verified.
+
+### Documentation
+
+- README now documents evidence-backed Chat Tasks and Contract panels for active plan verification.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/session -run TestSessionTasks_EvidencePersistsAndInjects`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tool -run 'TestTasks_EvidenceAddAndRemove|TestTasks_EvidenceAddRejectsInvalidType'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/prompt`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/session ./internal/tool ./internal/prompt ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/chat/:session` Tasks and Contract evidence rendering with a mock session payload
+
+### Closed
+
+- Closes #575.
+
 ## [0.31.99] - 2026-05-01
 
 ### Added
