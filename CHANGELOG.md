@@ -6,6 +6,39 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.111] - 2026-05-01
+
+### Added
+
+- Added sandbox validation for Skill Hub plugin installs and updates before writing to `workspace/plugins/<name>`.
+- Added sandbox validation for Skill Hub MCP installs and updates before writing to `workspace/mcp-servers/<name>`.
+- Added plugin manifest diagnostics, plugin-declared MCP gating checks, MCP manifest validation, and stdio/remote MCP smoke checks to install sandbox reports.
+- Added generic extension sandbox report metadata so the Extensions console can render skill, plugin, and MCP install reports.
+
+### Changed
+
+- Hub install API responses now include sandbox reports for successful plugin and MCP installs, matching skill install behavior.
+- Plugin and MCP install failures caused by sandbox validation return structured sandbox reports and leave the real workspace package directories untouched.
+
+### Documentation
+
+- README now documents sandbox-tested Skill Hub installs for skills, plugins, and MCP packages.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./cmd/tars ./internal/skillhub ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/extensions` Hub plugin and MCP installs rendering sandbox reports with a mock API
+
+### Closed
+
+- Closes #581.
+
 ## [0.31.110] - 2026-05-01
 
 ### Added

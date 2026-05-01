@@ -40,7 +40,7 @@ func newMCPCommand(stdout, stderr io.Writer) *cobra.Command {
 
 		Install: func(ctx context.Context, stdout, _ io.Writer, workspaceDir, name string) error {
 			inst := skillhub.NewInstaller(workspaceDir)
-			if err := inst.InstallMCP(ctx, name); err != nil {
+			if _, err := inst.InstallMCP(ctx, name); err != nil {
 				return fmt.Errorf("install mcp server %q: %w", name, err)
 			}
 			fmt.Fprintf(stdout, "Installed MCP server %q to %s/mcp-servers/%s\n", name, workspaceDir, name)

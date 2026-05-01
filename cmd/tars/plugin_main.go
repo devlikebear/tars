@@ -40,7 +40,7 @@ func newPluginCommand(stdout, stderr io.Writer) *cobra.Command {
 
 		Install: func(ctx context.Context, stdout, _ io.Writer, workspaceDir, name string) error {
 			inst := skillhub.NewInstaller(workspaceDir)
-			if err := inst.InstallPlugin(ctx, name); err != nil {
+			if _, err := inst.InstallPlugin(ctx, name); err != nil {
 				return fmt.Errorf("install plugin %q: %w", name, err)
 			}
 			fmt.Fprintf(stdout, "Installed plugin %q to %s/plugins/%s\n", name, workspaceDir, name)

@@ -398,7 +398,7 @@ func TestInstallNoPluginWarningWhenInstalled(t *testing.T) {
 	}
 
 	// Install the plugin first.
-	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+	if _, err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
 		t.Fatalf("InstallPlugin: %v", err)
 	}
 
@@ -425,7 +425,7 @@ func TestInstallPluginAndList(t *testing.T) {
 		},
 	}
 
-	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+	if _, err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
 		t.Fatalf("InstallPlugin: %v", err)
 	}
 
@@ -445,6 +445,90 @@ func TestInstallPluginAndList(t *testing.T) {
 	}
 }
 
+func TestInstallPluginReturnsSandboxReport(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	result, err := inst.InstallPlugin(context.Background(), "project-swarm")
+	if err != nil {
+		t.Fatalf("InstallPlugin: %v", err)
+	}
+	if result == nil || !result.Sandbox.Passed || result.Sandbox.PackageType != "plugin" || result.Sandbox.PackageName != "project-swarm" {
+		t.Fatalf("expected plugin sandbox report, got %+v", result)
+	}
+	if len(result.Sandbox.Checks) == 0 || result.Sandbox.Checks[0].Name != "plugin_manifest" {
+		t.Fatalf("expected plugin manifest check, got %+v", result.Sandbox.Checks)
+	}
+}
+
+func TestInstallPluginRejectsInvalidManifestInSandbox(t *testing.T) {
+	files := map[string][]byte{
+		"/plugins/broken-plugin/tars.plugin.json": []byte(`{"name":"Broken Plugin"}`),
+	}
+	index := RegistryIndex{
+		Version: 4,
+		Plugins: []PluginEntry{
+			{
+				Name:        "broken-plugin",
+				Description: "Invalid plugin manifest fixture",
+				Version:     "0.1.0",
+				Author:      "devlikebear",
+				Path:        "plugins/broken-plugin",
+				Files: RegistryFiles{
+					{Path: "tars.plugin.json", SHA256: sha256Hex(files["/plugins/broken-plugin/tars.plugin.json"])},
+				},
+			},
+		},
+	}
+	srv := newRegistryServer(t, index, files)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	result, err := inst.InstallPlugin(context.Background(), "broken-plugin")
+	if err == nil {
+		t.Fatal("expected plugin sandbox failure")
+	}
+	if result != nil {
+		t.Fatalf("expected no install result on failure, got %+v", result)
+	}
+	var sandboxErr *SandboxError
+	if !errors.As(err, &sandboxErr) {
+		t.Fatalf("expected SandboxError, got %T %v", err, err)
+	}
+	if sandboxErr.Report.Passed || sandboxErr.Report.PackageType != "plugin" {
+		t.Fatalf("expected failed plugin sandbox report, got %+v", sandboxErr.Report)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "plugins", "broken-plugin")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no real plugin install after sandbox failure, got stat err %v", statErr)
+	}
+	plugins, listErr := inst.ListPlugins()
+	if listErr != nil && !os.IsNotExist(listErr) {
+		t.Fatalf("ListPlugins: %v", listErr)
+	}
+	if len(plugins) != 0 {
+		t.Fatalf("expected no installed plugins after sandbox failure, got %+v", plugins)
+	}
+}
+
 func TestInstallPluginRejectsTamperedPayload(t *testing.T) {
 	srv := newRegistryServer(t, testIntegrityIndex(), testHubFiles())
 	defer srv.Close()
@@ -459,7 +543,7 @@ func TestInstallPluginRejectsTamperedPayload(t *testing.T) {
 		},
 	}
 
-	err := inst.InstallPlugin(context.Background(), "tampered-plugin")
+	_, err := inst.InstallPlugin(context.Background(), "tampered-plugin")
 	if err == nil {
 		t.Fatal("expected checksum mismatch error")
 	}
@@ -485,7 +569,7 @@ func TestUninstallPlugin(t *testing.T) {
 		},
 	}
 
-	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+	if _, err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
 		t.Fatalf("InstallPlugin: %v", err)
 	}
 	if err := inst.UninstallPlugin("project-swarm"); err != nil {
@@ -665,7 +749,7 @@ func TestUpdatePlugins(t *testing.T) {
 		},
 	}
 
-	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+	if _, err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
 		t.Fatalf("InstallPlugin: %v", err)
 	}
 
@@ -701,7 +785,7 @@ func TestUpdatePluginsRollsBackOnActivationFailure(t *testing.T) {
 		},
 	}
 
-	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+	if _, err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
 		t.Fatalf("InstallPlugin: %v", err)
 	}
 	pluginPath := filepath.Join(tmpDir, "plugins", "project-swarm", "tars.plugin.json")
@@ -824,7 +908,7 @@ func TestUpdatePluginsReturnsFinalSaveDBError(t *testing.T) {
 			HTTPClient:   srv.Client(),
 		},
 	}
-	if err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
+	if _, err := inst.InstallPlugin(context.Background(), "project-swarm"); err != nil {
 		t.Fatalf("InstallPlugin: %v", err)
 	}
 	db, _ := inst.loadDB()
@@ -861,7 +945,7 @@ func TestInstallMCPAndList(t *testing.T) {
 		},
 	}
 
-	if err := inst.InstallMCP(context.Background(), "filesystem"); err != nil {
+	if _, err := inst.InstallMCP(context.Background(), "filesystem"); err != nil {
 		t.Fatalf("InstallMCP: %v", err)
 	}
 
@@ -890,6 +974,155 @@ func TestInstallMCPAndList(t *testing.T) {
 	}
 }
 
+func TestInstallMCPReturnsSandboxReport(t *testing.T) {
+	files := map[string][]byte{
+		"/mcp-servers/local-echo/tars.mcp.json": []byte(`{"schema_version":1,"server":{"name":"local-echo","command":"sh","args":["-c","cat"]}}`),
+	}
+	index := RegistryIndex{
+		Version: 4,
+		MCPServers: []MCPEntry{
+			{
+				Name:        "local-echo",
+				Description: "Local MCP fixture",
+				Version:     "0.1.0",
+				Author:      "devlikebear",
+				Path:        "mcp-servers/local-echo",
+				Manifest:    "tars.mcp.json",
+				Files: RegistryFiles{
+					{Path: "tars.mcp.json", SHA256: sha256Hex(files["/mcp-servers/local-echo/tars.mcp.json"])},
+				},
+			},
+		},
+	}
+	srv := newRegistryServer(t, index, files)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	result, err := inst.InstallMCP(context.Background(), "local-echo")
+	if err != nil {
+		t.Fatalf("InstallMCP: %v", err)
+	}
+	if result == nil || !result.Sandbox.Passed || result.Sandbox.PackageType != "mcp" || result.Sandbox.PackageName != "local-echo" {
+		t.Fatalf("expected mcp sandbox report, got %+v", result)
+	}
+	if len(result.Sandbox.Checks) < 2 || result.Sandbox.Checks[0].Name != "mcp_manifest" {
+		t.Fatalf("expected mcp manifest checks, got %+v", result.Sandbox.Checks)
+	}
+}
+
+func TestInstallRemoteMCPReturnsRemoteSandboxReport(t *testing.T) {
+	files := map[string][]byte{
+		"/mcp-servers/remote-http/tars.mcp.json": []byte(`{"schema_version":1,"server":{"name":"remote-http","transport":"streamable_http","url":"https://mcp.example.com"}}`),
+	}
+	index := RegistryIndex{
+		Version: 4,
+		MCPServers: []MCPEntry{
+			{
+				Name:        "remote-http",
+				Description: "Remote MCP fixture",
+				Version:     "0.1.0",
+				Author:      "devlikebear",
+				Path:        "mcp-servers/remote-http",
+				Manifest:    "tars.mcp.json",
+				Files: RegistryFiles{
+					{Path: "tars.mcp.json", SHA256: sha256Hex(files["/mcp-servers/remote-http/tars.mcp.json"])},
+				},
+			},
+		},
+	}
+	srv := newRegistryServer(t, index, files)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	result, err := inst.InstallMCP(context.Background(), "remote-http")
+	if err != nil {
+		t.Fatalf("InstallMCP: %v", err)
+	}
+	if result == nil || !result.Sandbox.Passed {
+		t.Fatalf("expected passed remote MCP sandbox report, got %+v", result)
+	}
+	if len(result.Sandbox.Checks) < 2 || result.Sandbox.Checks[1].Name != "mcp_remote_smoke" {
+		t.Fatalf("expected remote MCP smoke check, got %+v", result.Sandbox.Checks)
+	}
+}
+
+func TestInstallMCPRejectsInvalidManifestInSandbox(t *testing.T) {
+	files := map[string][]byte{
+		"/mcp-servers/broken-mcp/tars.mcp.json": []byte(`{"schema_version":1,"server":{"name":"broken-mcp"}}`),
+	}
+	index := RegistryIndex{
+		Version: 4,
+		MCPServers: []MCPEntry{
+			{
+				Name:        "broken-mcp",
+				Description: "Invalid MCP manifest fixture",
+				Version:     "0.1.0",
+				Author:      "devlikebear",
+				Path:        "mcp-servers/broken-mcp",
+				Manifest:    "tars.mcp.json",
+				Files: RegistryFiles{
+					{Path: "tars.mcp.json", SHA256: sha256Hex(files["/mcp-servers/broken-mcp/tars.mcp.json"])},
+				},
+			},
+		},
+	}
+	srv := newRegistryServer(t, index, files)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	result, err := inst.InstallMCP(context.Background(), "broken-mcp")
+	if err == nil {
+		t.Fatal("expected mcp sandbox failure")
+	}
+	if result != nil {
+		t.Fatalf("expected no install result on failure, got %+v", result)
+	}
+	var sandboxErr *SandboxError
+	if !errors.As(err, &sandboxErr) {
+		t.Fatalf("expected SandboxError, got %T %v", err, err)
+	}
+	if sandboxErr.Report.Passed || sandboxErr.Report.PackageType != "mcp" {
+		t.Fatalf("expected failed mcp sandbox report, got %+v", sandboxErr.Report)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "mcp-servers", "broken-mcp")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no real mcp install after sandbox failure, got stat err %v", statErr)
+	}
+	mcps, listErr := inst.ListMCPs()
+	if listErr != nil && !os.IsNotExist(listErr) {
+		t.Fatalf("ListMCPs: %v", listErr)
+	}
+	if len(mcps) != 0 {
+		t.Fatalf("expected no installed MCP servers after sandbox failure, got %+v", mcps)
+	}
+}
+
 func TestInstallMCPChecksumMismatch(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
@@ -904,7 +1137,7 @@ func TestInstallMCPChecksumMismatch(t *testing.T) {
 		},
 	}
 
-	err := inst.InstallMCP(context.Background(), "broken-checksum")
+	_, err := inst.InstallMCP(context.Background(), "broken-checksum")
 	if err == nil {
 		t.Fatal("expected checksum mismatch error")
 	}
@@ -927,7 +1160,7 @@ func TestUninstallMCP(t *testing.T) {
 		},
 	}
 
-	if err := inst.InstallMCP(context.Background(), "filesystem"); err != nil {
+	if _, err := inst.InstallMCP(context.Background(), "filesystem"); err != nil {
 		t.Fatalf("InstallMCP: %v", err)
 	}
 	if err := inst.UninstallMCP("filesystem"); err != nil {
@@ -990,7 +1223,7 @@ func TestUpdateMCPsReturnsFinalSaveDBError(t *testing.T) {
 			HTTPClient:   srv.Client(),
 		},
 	}
-	if err := inst.InstallMCP(context.Background(), "filesystem"); err != nil {
+	if _, err := inst.InstallMCP(context.Background(), "filesystem"); err != nil {
 		t.Fatalf("InstallMCP: %v", err)
 	}
 	db, _ := inst.loadDB()

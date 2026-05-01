@@ -18,7 +18,7 @@ const (
 	pluginManifest  = "tars.plugin.json"
 )
 
-// InstalledDB tracks installed hub skills and plugins.
+// InstalledDB tracks installed hub skills, plugins, and MCP packages.
 type InstalledDB struct {
 	Skills  []InstalledSkill  `json:"skills"`
 	Plugins []InstalledPlugin `json:"plugins,omitempty"`
@@ -39,7 +39,7 @@ func NewInstaller(workspaceDir string) *Installer {
 	}
 }
 
-// InstallResult contains the result of a skill installation.
+// InstallResult contains the sandboxed result of a hub package installation.
 type InstallResult struct {
 	RequiresPlugin string        `json:"requires_plugin,omitempty"` // non-empty if the skill depends on a plugin
 	Sandbox        SandboxReport `json:"sandbox_report"`
@@ -240,27 +240,34 @@ func (inst *Installer) addToDB(skill InstalledSkill) error {
 // --- Plugin operations ---
 
 // InstallPlugin downloads and installs a plugin from the registry.
-func (inst *Installer) InstallPlugin(ctx context.Context, name string) error {
+func (inst *Installer) InstallPlugin(ctx context.Context, name string) (*InstallResult, error) {
 	entry, err := inst.Registry.FindPluginByName(ctx, name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	files, err := inst.downloadPluginFiles(ctx, entry)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	sandboxReport, err := inst.runPluginInstallSandbox(ctx, entry, files)
+	if err != nil {
+		return nil, err
 	}
 	pluginDir := inst.pluginDir(entry.Name)
 	if err := materializePackageFiles(pluginDir, files); err != nil {
-		return err
+		return nil, err
 	}
 
-	return inst.addPluginToDB(InstalledPlugin{
+	if err := inst.addPluginToDB(InstalledPlugin{
 		Name:    entry.Name,
 		Version: entry.Version,
 		Source:  "tars-hub",
 		Dir:     pluginDir,
-	})
+	}); err != nil {
+		return nil, err
+	}
+	return &InstallResult{Sandbox: sandboxReport}, nil
 }
 
 // UninstallPlugin removes an installed plugin.
@@ -321,6 +328,11 @@ func (inst *Installer) UpdatePlugins(ctx context.Context) (UpdateResult, error) 
 		}
 		files, err := inst.downloadPluginFiles(ctx, entry)
 		if err != nil {
+			updateErr := fmt.Errorf("update plugin %q: %w", plugin.Name, err)
+			result.Failed = append(result.Failed, UpdateDiagnostic{Name: plugin.Name, Err: err})
+			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "plugins"))
+		}
+		if _, err := inst.runPluginInstallSandbox(ctx, entry, files); err != nil {
 			updateErr := fmt.Errorf("update plugin %q: %w", plugin.Name, err)
 			result.Failed = append(result.Failed, UpdateDiagnostic{Name: plugin.Name, Err: err})
 			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "plugins"))
@@ -436,16 +448,19 @@ func (inst *Installer) downloadVerifiedHubFiles(
 // --- MCP operations ---
 
 // InstallMCP downloads and installs an MCP package from the registry.
-func (inst *Installer) InstallMCP(ctx context.Context, name string) error {
+func (inst *Installer) InstallMCP(ctx context.Context, name string) (*InstallResult, error) {
 	entry, err := inst.Registry.FindMCPByName(ctx, name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	installed, err := inst.installMCPEntry(ctx, entry)
+	installed, sandboxReport, err := inst.installMCPEntry(ctx, entry)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return inst.addMCPToDB(installed)
+	if err := inst.addMCPToDB(installed); err != nil {
+		return nil, err
+	}
+	return &InstallResult{Sandbox: sandboxReport}, nil
 }
 
 // UninstallMCP removes an installed MCP package.
@@ -504,7 +519,7 @@ func (inst *Installer) UpdateMCPs(ctx context.Context) (UpdateResult, error) {
 			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: installed.Name, Reason: "up to date"})
 			continue
 		}
-		nextInstalled, err := inst.installMCPEntry(ctx, entry)
+		nextInstalled, _, err := inst.installMCPEntry(ctx, entry)
 		if err != nil {
 			result.Failed = append(result.Failed, UpdateDiagnostic{Name: installed.Name, Err: err})
 			continue
@@ -515,30 +530,30 @@ func (inst *Installer) UpdateMCPs(ctx context.Context) (UpdateResult, error) {
 	return result, errors.Join(updateFailuresError("MCP servers", result.Failed), inst.saveUpdatedDB(db, result, "MCP servers"))
 }
 
-func (inst *Installer) installMCPEntry(ctx context.Context, entry *MCPEntry) (InstalledMCP, error) {
+func (inst *Installer) installMCPEntry(ctx context.Context, entry *MCPEntry) (InstalledMCP, SandboxReport, error) {
 	manifestPath := strings.TrimSpace(entry.Manifest)
 	if manifestPath == "" {
 		manifestPath = defaultMCPManifest
 	}
 	cleanManifestPath, err := cleanRegistryRelativePath(manifestPath)
 	if err != nil {
-		return InstalledMCP{}, fmt.Errorf("invalid manifest path for mcp server %q: %w", entry.Name, err)
+		return InstalledMCP{}, SandboxReport{}, fmt.Errorf("invalid manifest path for mcp server %q: %w", entry.Name, err)
 	}
 	files, err := inst.downloadMCPFiles(ctx, entry, cleanManifestPath)
 	if err != nil {
-		return InstalledMCP{}, err
+		return InstalledMCP{}, SandboxReport{}, err
 	}
-	manifestData, ok := files[cleanManifestPath]
-	if !ok {
-		return InstalledMCP{}, fmt.Errorf("mcp server %q manifest %q is missing", entry.Name, cleanManifestPath)
+	if _, ok := files[cleanManifestPath]; !ok {
+		return InstalledMCP{}, SandboxReport{}, fmt.Errorf("mcp server %q manifest %q is missing", entry.Name, cleanManifestPath)
 	}
-	if _, err := parseMCPManifest(manifestData, entry.Name); err != nil {
-		return InstalledMCP{}, err
+	sandboxReport, err := inst.runMCPInstallSandbox(ctx, entry, files, cleanManifestPath)
+	if err != nil {
+		return InstalledMCP{}, SandboxReport{}, err
 	}
 
 	mcpDir := inst.mcpDir(entry.Name)
 	if err := materializePackageFiles(mcpDir, files); err != nil {
-		return InstalledMCP{}, err
+		return InstalledMCP{}, SandboxReport{}, err
 	}
 	return InstalledMCP{
 		Name:     entry.Name,
@@ -546,7 +561,7 @@ func (inst *Installer) installMCPEntry(ctx context.Context, entry *MCPEntry) (In
 		Source:   "tars-hub",
 		Dir:      mcpDir,
 		Manifest: cleanManifestPath,
-	}, nil
+	}, sandboxReport, nil
 }
 
 func (inst *Installer) downloadMCPFiles(ctx context.Context, entry *MCPEntry, manifestPath string) (map[string][]byte, error) {

@@ -869,9 +869,13 @@ export type SkillSandboxCheck = {
 }
 
 export type SkillSandboxReport = {
+  package_type?: 'skill' | 'plugin' | 'mcp'
+  package_name?: string
   skill_name: string
   workspace_dir?: string
   skill_dir?: string
+  plugin_dir?: string
+  mcp_dir?: string
   passed: boolean
   checks: SkillSandboxCheck[]
 }
