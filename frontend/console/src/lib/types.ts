@@ -630,6 +630,8 @@ export type ChatEvent = {
   mentioned_paths?: string[]
   mentioned_subagent_count?: number
   mentioned_subagents?: string[]
+  llm_tier?: string
+  tier_recommendation?: ChatTierRecommendationRequest
   // tasks_changed event fields (live count for chat pulse-bar Tasks badge)
   task_total?: number
   task_pending?: number
@@ -664,12 +666,25 @@ export type ChatSubagentMention = {
   token?: string
 }
 
+export type ChatTier = 'heavy' | 'standard' | 'light'
+
+export type ChatTierRecommendationRequest = {
+  task_type: string
+  recommended_tier: ChatTier
+  chosen_tier: ChatTier
+  reason: string
+  confidence: number
+  accepted: boolean
+  source?: string
+}
+
 export type ChatRequest = {
   message: string
   session_id?: string
   attachments?: ChatAttachment[]
   mentions?: ChatFileMention[]
   subagent_mentions?: ChatSubagentMention[]
+  tier_recommendation?: ChatTierRecommendationRequest
 }
 
 export type MemoryAsset = {

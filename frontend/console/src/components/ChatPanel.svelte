@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
   import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, forkSessionFromMessage } from '../lib/api'
-  import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, Session, SessionMessage, SkillDef } from '../lib/types'
+  import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, ChatTier, ChatTierRecommendationRequest, Session, SessionMessage, SkillDef } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
+  import { buildTierRecommendation, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
   import {
     applyMentionCandidate,
     buildSubagentMentionCandidates,
@@ -52,6 +53,8 @@
       mentioned_paths?: string[]
       mentioned_subagent_count?: number
       mentioned_subagents?: string[]
+      llm_tier?: string
+      tier_recommendation?: ChatTierRecommendationRequest
     }) => void
     onToolComplete?: (toolName: string) => void
     onSessionReady?: (sessionId: string) => void
@@ -105,7 +108,11 @@
     mentioned_paths?: string[]
     mentioned_subagent_count?: number
     mentioned_subagents?: string[]
+    llm_tier?: string
+    tier_recommendation?: ChatTierRecommendationRequest
   } = $state({})
+  let pendingTierRecommendation: TierRecommendation | null = $state(null)
+  let pendingTierMessage = $state('')
 
   function publishContextInfo(next: typeof contextInfo) {
     contextInfo = next
@@ -128,7 +135,7 @@
     if (autoSend && initialPrompt && !autoSendDone && !chatBusy) {
       autoSendDone = true
       chatInput = initialPrompt
-      tick().then(() => submitChat())
+      tick().then(() => submitChat({ allowPrompt: false }))
     }
   })
 
@@ -266,6 +273,8 @@
           mentioned_paths: event.mentioned_paths ?? contextInfo.mentioned_paths,
           mentioned_subagent_count: event.mentioned_subagent_count ?? contextInfo.mentioned_subagent_count,
           mentioned_subagents: event.mentioned_subagents ?? contextInfo.mentioned_subagents,
+          llm_tier: event.llm_tier ?? contextInfo.llm_tier,
+          tier_recommendation: event.tier_recommendation ?? contextInfo.tier_recommendation,
         })
         break
       case 'compaction_applied':
@@ -499,17 +508,59 @@
     selectedMentions = active
   }
 
-  async function submitChat() {
+  type SubmitChatOptions = {
+    recommendation?: ChatTierRecommendationRequest
+    allowPrompt?: boolean
+  }
+
+  function isFirstUserTurn(): boolean {
+    return !chatMessages.some((msg) => msg.role === 'user' || (msg.role === 'assistant' && msg.text.trim()))
+  }
+
+  function tierLabel(tier: ChatTier): string {
+    if (tier === 'heavy') return 'Heavy'
+    if (tier === 'light') return 'Light'
+    return 'Standard'
+  }
+
+  function tierClass(tier: ChatTier): string {
+    return `tier-pill ${tier}`
+  }
+
+  async function continueWithTier(tier: ChatTier) {
+    if (!pendingTierRecommendation) return
+    const recommendation = tierRecommendationPayload(pendingTierRecommendation, tier)
+    pendingTierRecommendation = null
+    pendingTierMessage = ''
+    await submitChat({ recommendation, allowPrompt: false })
+  }
+
+  async function submitChat(options: SubmitChatOptions = {}) {
     const message = chatInput.trim()
     if (!message || chatBusy) return
     const parsedSlash = parseLeadingSlashCommand(message)
     if (parsedSlash && await executeBuiltinSlashCommand(parsedSlash.command, parsedSlash.args)) {
       return
     }
+
+    let tierRecommendation = options.recommendation
+    if (!tierRecommendation && isFirstUserTurn()) {
+      const recommendation = buildTierRecommendation(message)
+      if (recommendation.should_prompt && options.allowPrompt !== false) {
+        pendingTierRecommendation = recommendation
+        pendingTierMessage = message
+        chatStatusLine = ''
+        return
+      }
+      tierRecommendation = tierRecommendationPayload(recommendation, recommendation.recommended_tier)
+    }
+
     chatBusy = true
     chatError = ''
     chatStatusLine = 'connecting'
     chatInput = ''
+    pendingTierRecommendation = null
+    pendingTierMessage = ''
     autoScroll = true
     publishContextInfo({})
 
@@ -551,6 +602,7 @@
             name: mention.path,
             token: mention.token,
           })),
+          tier_recommendation: tierRecommendation,
         },
         (event) => handleChatEvent(event, assistantId),
         ac.signal,
@@ -773,6 +825,10 @@
   }
 
   function handleChatInput() {
+    if (pendingTierRecommendation && chatInput.trim() !== pendingTierMessage) {
+      pendingTierRecommendation = null
+      pendingTierMessage = ''
+    }
     void refreshMentionCandidates()
     void refreshSlashCandidates()
   }
@@ -971,6 +1027,22 @@
       {/each}
     </div>
   {/if}
+  {#if pendingTierRecommendation}
+    <div class="tier-recommendation-card" aria-label="Tier recommendation">
+      <div class="tier-recommendation-copy">
+        <span class={tierClass(pendingTierRecommendation.recommended_tier)}>{tierLabel(pendingTierRecommendation.recommended_tier)}</span>
+        <div>
+          <strong>{tierLabel(pendingTierRecommendation.recommended_tier)} tier recommended</strong>
+          <p>{pendingTierRecommendation.reason}</p>
+        </div>
+      </div>
+      <div class="tier-recommendation-actions" aria-label="Choose LLM tier">
+        <button type="button" class="btn btn-ghost btn-sm" onclick={() => continueWithTier('light')}>Light</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={() => continueWithTier('standard')}>Standard</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick={() => continueWithTier('heavy')}>Heavy</button>
+      </div>
+    </div>
+  {/if}
   <form class="chat-form" onsubmit={(e) => { e.preventDefault(); void submitChat() }}>
     <div class="chat-input-row">
       <div class="chat-toolbar">
@@ -1086,6 +1158,73 @@
     margin-bottom: var(--space-3);
     scroll-behavior: smooth;
     min-height: 0;
+  }
+
+  .tier-recommendation-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-elevated);
+  }
+
+  .tier-recommendation-copy {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .tier-recommendation-copy strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .tier-recommendation-copy p {
+    margin: 2px 0 0;
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .tier-recommendation-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+
+  .tier-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 68px;
+    min-height: 28px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+  }
+
+  .tier-pill.heavy {
+    color: var(--error);
+    background: var(--error-muted);
+  }
+
+  .tier-pill.standard {
+    color: var(--info);
+    background: var(--info-muted);
+  }
+
+  .tier-pill.light {
+    color: var(--success);
+    background: var(--success-muted);
   }
 
   /* ── Attachments ─────────────────────────────── */

@@ -22,13 +22,14 @@ POST /v1/chat { session_id, message }
   ├─ 1. 요청 파싱 + 검증
   ├─ 2. 세션 resolve (없으면 생성)
   ├─ 3. transcript에서 이전 대화 읽기
-  ├─ 4. 프롬프트 조립 (시스템 프롬프트 + 워크스페이스 파일)
-  ├─ 5. LLM 메시지 구성 (system + history + user)
-  ├─ 6. 유저 메시지를 transcript에 저장
-  ├─ 7. SSE 스트림 시작
-  ├─ 8. Agent loop 실행 (LLM 호출 → tool call → 반복)
-  ├─ 9. assistant 응답을 transcript에 저장
-  └─ 10. SSE done 이벤트
+  ├─ 4. 첫 턴이면 cost/quality tier 추천 또는 선택값 적용
+  ├─ 5. 프롬프트 조립 (시스템 프롬프트 + 워크스페이스 파일)
+  ├─ 6. LLM 메시지 구성 (system + history + user)
+  ├─ 7. 유저 메시지를 transcript에 저장
+  ├─ 8. SSE 스트림 시작 + 선택된 tier metadata 전송
+  ├─ 9. Agent loop 실행 (LLM 호출 → tool call → 반복)
+  ├─ 10. assistant 응답과 tier recommendation outcome 기록
+  └─ 11. SSE done 이벤트
 ```
 
 ### 핵심 타입 (원본 `internal/llm/provider.go`)

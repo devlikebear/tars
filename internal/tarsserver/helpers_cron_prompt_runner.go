@@ -67,6 +67,8 @@ func newCronPromptRunnerWithSessionContext(fallback agentRuntimePromptRunner, de
 			promptText,
 			nil,
 			nil,
+			nil,
+			false,
 			serverauth.RoleAdmin,
 			deps,
 		)

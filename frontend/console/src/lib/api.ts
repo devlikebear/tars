@@ -4,6 +4,7 @@ import type {
   AutomationAuditListResponse,
   ChatEvent,
   ChatRequest,
+  ChatTierRecommendationRequest,
   CleanupApplyResult,
   CleanupPlan,
   ConfigFile,
@@ -744,6 +745,8 @@ export type ChatContextInfo = {
   mentioned_paths?: string[]
   mentioned_subagent_count?: number
   mentioned_subagents?: string[]
+  llm_tier?: string
+  tier_recommendation?: ChatTierRecommendationRequest
   prompt_override: string
 }
 

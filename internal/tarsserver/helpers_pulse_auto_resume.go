@@ -109,6 +109,8 @@ func (c *sessionAutoResumeController) runAutoResumeTurn(ctx context.Context, can
 		prompt,
 		nil,
 		nil,
+		nil,
+		false,
 		serverauth.RoleUser,
 		c.chatDeps,
 	)
