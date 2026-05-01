@@ -652,11 +652,12 @@ func boolDimension(value bool) string {
 }
 
 type globalPlanTaskItem struct {
-	Session   session.Session `json:"session"`
-	Plan      *session.Plan   `json:"plan"`
-	Tasks     []session.Task  `json:"tasks"`
-	Summary   map[string]int  `json:"summary"`
-	UpdatedAt string          `json:"updated_at"`
+	Session   session.Session       `json:"session"`
+	Plan      *session.Plan         `json:"plan"`
+	Contract  *session.TaskContract `json:"contract,omitempty"`
+	Tasks     []session.Task        `json:"tasks"`
+	Summary   map[string]int        `json:"summary"`
+	UpdatedAt string                `json:"updated_at"`
 }
 
 func isTruthyQuery(value string) bool {
@@ -679,6 +680,7 @@ func listGlobalPlanTaskItems(store *session.Store, includeHidden bool, activeOnl
 		items = append(items, globalPlanTaskItem{
 			Session:   plan.Session,
 			Plan:      plan.Plan,
+			Contract:  plan.Contract,
 			Tasks:     plan.Tasks,
 			Summary:   plan.Summary,
 			UpdatedAt: plan.UpdatedAt.UTC().Format(time.RFC3339),

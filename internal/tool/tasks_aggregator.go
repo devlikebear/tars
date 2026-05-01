@@ -21,6 +21,8 @@ func NewTasksTool(store *session.Store, workspaceDir string, getSessionID func()
 		Name: "tasks",
 		Description: "Manage session-scoped plan and tasks. Actions: " +
 			"plan_set (set session goal — archives previous plan, status=drafting), " +
+			"contract_update (edit explicit goal/scope/done criteria/verification/artifacts), " +
+			"contract_approve (mark the contract approved), " +
 			"plan_get (read current plan + status), " +
 			"add (create a task), " +
 			"update (change task status/title/description; first in_progress auto-promotes proposed plans to executing; the plan flips to completed once every task is completed/cancelled), " +
@@ -36,7 +38,7 @@ func NewTasksTool(store *session.Store, workspaceDir string, getSessionID func()
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
-    "action":{"type":"string","enum":["plan_set","plan_get","add","update","remove","list","clear","plan_propose","plan_approve","plan_pause","plan_resume","plan_abort"]}
+    "action":{"type":"string","enum":["plan_set","contract_update","contract_approve","plan_get","add","update","remove","list","clear","plan_propose","plan_approve","plan_pause","plan_resume","plan_abort"]}
   },
   "required":["action"],
   "additionalProperties":true
@@ -57,6 +59,10 @@ func NewTasksTool(store *session.Store, workspaceDir string, getSessionID func()
 			switch action {
 			case "plan_set":
 				return tasksPlanSet(store, workspaceDir, sessionID, payload)
+			case "contract_update":
+				return tasksContractUpdate(store, sessionID, payload)
+			case "contract_approve":
+				return tasksContractApprove(store, sessionID)
 			case "plan_get":
 				return tasksPlanGet(store, sessionID)
 			case "add":
@@ -90,16 +96,26 @@ func NewTasksTool(store *session.Store, workspaceDir string, getSessionID func()
 						session.PlanStatusPaused,
 					})
 			default:
-				return aggregatorError("action must be one of: plan_set, plan_get, add, update, remove, list, clear, plan_propose, plan_approve, plan_pause, plan_resume, plan_abort"), nil
+				return aggregatorError("action must be one of: plan_set, contract_update, contract_approve, plan_get, add, update, remove, list, clear, plan_propose, plan_approve, plan_pause, plan_resume, plan_abort"), nil
 			}
 		},
 	}
+}
+
+type taskContractPayload struct {
+	Goal                 string                `json:"goal,omitempty"`
+	Scope                string                `json:"scope,omitempty"`
+	DoneCriteria         []string              `json:"done_criteria,omitempty"`
+	VerificationCommands []string              `json:"verification_commands,omitempty"`
+	Artifacts            []string              `json:"artifacts,omitempty"`
+	Contract             *session.TaskContract `json:"contract,omitempty"`
 }
 
 func tasksPlanSet(store *session.Store, workspaceDir string, sessionID string, params json.RawMessage) (Result, error) {
 	var input struct {
 		Goal        string `json:"goal"`
 		Constraints string `json:"constraints,omitempty"`
+		taskContractPayload
 	}
 	if err := json.Unmarshal(params, &input); err != nil {
 		return aggregatorError(fmt.Sprintf("invalid arguments: %v", err)), nil
@@ -128,13 +144,113 @@ func tasksPlanSet(store *session.Store, workspaceDir string, sessionID string, p
 			Status:      session.PlanStatusDrafting,
 			UpdatedAt:   now,
 		},
+		Contract: contractFromPayload(taskContractPayload(input.taskContractPayload), goal, input.Constraints, now),
 	}
 	if err := store.SaveTasks(sessionID, newTasks); err != nil {
 		return aggregatorError(err.Error()), nil
 	}
 	return JSONTextResult(map[string]any{
 		"plan":     newTasks.Plan,
+		"contract": newTasks.Contract,
 		"archived": current.Plan != nil,
+	}, false), nil
+}
+
+func contractFromPayload(input taskContractPayload, fallbackGoal string, fallbackScope string, now string) *session.TaskContract {
+	if input.Contract != nil {
+		contract := *input.Contract
+		if strings.TrimSpace(contract.Goal) == "" {
+			contract.Goal = fallbackGoal
+		}
+		if strings.TrimSpace(contract.Scope) == "" {
+			contract.Scope = fallbackScope
+		}
+		if strings.TrimSpace(contract.Status) == "" {
+			contract.Status = session.ContractStatusDraft
+		}
+		if strings.TrimSpace(contract.CreatedAt) == "" {
+			contract.CreatedAt = now
+		}
+		contract.UpdatedAt = now
+		return &contract
+	}
+	scope := strings.TrimSpace(input.Scope)
+	if scope == "" {
+		scope = strings.TrimSpace(fallbackScope)
+	}
+	doneCriteria := input.DoneCriteria
+	if len(doneCriteria) == 0 {
+		doneCriteria = []string{"Planned tasks are completed or intentionally cancelled"}
+	}
+	return &session.TaskContract{
+		Goal:                 strings.TrimSpace(firstNonEmpty(input.Goal, fallbackGoal)),
+		Scope:                scope,
+		DoneCriteria:         doneCriteria,
+		VerificationCommands: input.VerificationCommands,
+		Artifacts:            input.Artifacts,
+		Status:               session.ContractStatusDraft,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func tasksContractUpdate(store *session.Store, sessionID string, params json.RawMessage) (Result, error) {
+	var input taskContractPayload
+	if err := json.Unmarshal(params, &input); err != nil {
+		return aggregatorError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+	st, err := store.GetTasks(sessionID)
+	if err != nil {
+		return aggregatorError(err.Error()), nil
+	}
+	fallbackGoal := ""
+	fallbackScope := ""
+	if st.Plan != nil {
+		fallbackGoal = st.Plan.Goal
+		fallbackScope = st.Plan.Constraints
+	}
+	now := session.NowRFC3339()
+	st.Contract = contractFromPayload(input, fallbackGoal, fallbackScope, now)
+	if err := store.SaveTasks(sessionID, st); err != nil {
+		return aggregatorError(err.Error()), nil
+	}
+	return JSONTextResult(map[string]any{
+		"contract": st.Contract,
+	}, false), nil
+}
+
+func tasksContractApprove(store *session.Store, sessionID string) (Result, error) {
+	st, err := store.GetTasks(sessionID)
+	if err != nil {
+		return aggregatorError(err.Error()), nil
+	}
+	if st.Contract == nil {
+		fallbackGoal := ""
+		fallbackScope := ""
+		if st.Plan != nil {
+			fallbackGoal = st.Plan.Goal
+			fallbackScope = st.Plan.Constraints
+		}
+		st.Contract = contractFromPayload(taskContractPayload{}, fallbackGoal, fallbackScope, session.NowRFC3339())
+	}
+	st.Contract.Status = session.ContractStatusApproved
+	st.Contract.UpdatedAt = session.NowRFC3339()
+	if err := store.SaveTasks(sessionID, st); err != nil {
+		return aggregatorError(err.Error()), nil
+	}
+	return JSONTextResult(map[string]any{
+		"contract": st.Contract,
+		"plan":     st.Plan,
+		"summary":  session.TaskSummary(st.Tasks),
 	}, false), nil
 }
 
@@ -170,12 +286,17 @@ func tasksPlanTransition(store *session.Store, sessionID, target string, allowed
 	}
 	st.Plan.Status = target
 	st.Plan.UpdatedAt = session.NowRFC3339()
+	if target == session.PlanStatusExecuting && st.Contract != nil && st.Contract.Status != session.ContractStatusApproved {
+		st.Contract.Status = session.ContractStatusApproved
+		st.Contract.UpdatedAt = st.Plan.UpdatedAt
+	}
 	if err := store.SaveTasks(sessionID, st); err != nil {
 		return aggregatorError(err.Error()), nil
 	}
 	return JSONTextResult(map[string]any{
-		"plan":    st.Plan,
-		"summary": session.TaskSummary(st.Tasks),
+		"plan":     st.Plan,
+		"contract": st.Contract,
+		"summary":  session.TaskSummary(st.Tasks),
 	}, false), nil
 }
 
@@ -239,8 +360,9 @@ func tasksPlanGet(store *session.Store, sessionID string) (Result, error) {
 		return JSONTextResult(map[string]any{"message": "no plan set for this session"}, false), nil
 	}
 	return JSONTextResult(map[string]any{
-		"plan":    st.Plan,
-		"summary": session.TaskSummary(st.Tasks),
+		"plan":     st.Plan,
+		"contract": st.Contract,
+		"summary":  session.TaskSummary(st.Tasks),
 	}, false), nil
 }
 
@@ -283,9 +405,10 @@ func tasksAdd(store *session.Store, sessionID string, params json.RawMessage) (R
 		return aggregatorError(err.Error()), nil
 	}
 	return JSONTextResult(map[string]any{
-		"task":    task,
-		"plan":    st.Plan,
-		"summary": session.TaskSummary(st.Tasks),
+		"task":     task,
+		"plan":     st.Plan,
+		"contract": st.Contract,
+		"summary":  session.TaskSummary(st.Tasks),
 	}, false), nil
 }
 
@@ -338,9 +461,10 @@ func tasksUpdate(store *session.Store, sessionID string, params json.RawMessage)
 		return aggregatorError(err.Error()), nil
 	}
 	return JSONTextResult(map[string]any{
-		"updated": true,
-		"plan":    st.Plan,
-		"summary": session.TaskSummary(st.Tasks),
+		"updated":  true,
+		"plan":     st.Plan,
+		"contract": st.Contract,
+		"summary":  session.TaskSummary(st.Tasks),
 	}, false), nil
 }
 
@@ -380,9 +504,10 @@ func tasksRemove(store *session.Store, sessionID string, params json.RawMessage)
 		return aggregatorError(err.Error()), nil
 	}
 	return JSONTextResult(map[string]any{
-		"removed": true,
-		"plan":    st.Plan,
-		"summary": session.TaskSummary(st.Tasks),
+		"removed":  true,
+		"plan":     st.Plan,
+		"contract": st.Contract,
+		"summary":  session.TaskSummary(st.Tasks),
 	}, false), nil
 }
 
@@ -392,9 +517,10 @@ func tasksList(store *session.Store, sessionID string) (Result, error) {
 		return aggregatorError(err.Error()), nil
 	}
 	return JSONTextResult(map[string]any{
-		"plan":    st.Plan,
-		"tasks":   st.Tasks,
-		"summary": session.TaskSummary(st.Tasks),
+		"plan":     st.Plan,
+		"contract": st.Contract,
+		"tasks":    st.Tasks,
+		"summary":  session.TaskSummary(st.Tasks),
 	}, false), nil
 }
 

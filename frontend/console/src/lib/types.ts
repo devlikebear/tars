@@ -929,6 +929,19 @@ export type SessionPlan = {
   updated_at?: string
 }
 
+export type ContractStatus = 'draft' | 'approved'
+
+export type TaskContract = {
+  goal?: string
+  scope?: string
+  done_criteria?: string[]
+  verification_commands?: string[]
+  artifacts?: string[]
+  status?: ContractStatus
+  created_at?: string
+  updated_at?: string
+}
+
 export type SessionTask = {
   id: string
   title: string
@@ -938,12 +951,14 @@ export type SessionTask = {
 
 export type SessionTasks = {
   plan?: SessionPlan
+  contract?: TaskContract
   tasks: SessionTask[]
 }
 
 export type GlobalPlanItem = {
   session: Session
   plan: SessionPlan
+  contract?: TaskContract
   tasks: SessionTask[]
   summary: Record<string, number>
   updated_at: string

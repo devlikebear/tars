@@ -38,8 +38,9 @@ func TestGlobalTasksAPIListsActivePlans(t *testing.T) {
 		t.Fatalf("save older tasks: %v", err)
 	}
 	if err := store.SaveTasks(newer.ID, session.SessionTasks{
-		Plan:  &session.Plan{Goal: "Newer goal", Status: session.PlanStatusPaused, CreatedAt: base.Format(time.RFC3339), UpdatedAt: base.Add(time.Hour).Format(time.RFC3339)},
-		Tasks: []session.Task{{ID: "1", Title: "Active", Status: "in_progress"}},
+		Plan:     &session.Plan{Goal: "Newer goal", Status: session.PlanStatusPaused, CreatedAt: base.Format(time.RFC3339), UpdatedAt: base.Add(time.Hour).Format(time.RFC3339)},
+		Contract: &session.TaskContract{Goal: "Newer goal", DoneCriteria: []string{"criteria"}, Status: session.ContractStatusDraft},
+		Tasks:    []session.Task{{ID: "1", Title: "Active", Status: "in_progress"}},
 	}); err != nil {
 		t.Fatalf("save newer tasks: %v", err)
 	}
@@ -61,11 +62,12 @@ func TestGlobalTasksAPIListsActivePlans(t *testing.T) {
 	var payload struct {
 		Count int `json:"count"`
 		Items []struct {
-			Session   session.Session `json:"session"`
-			Plan      *session.Plan   `json:"plan"`
-			Tasks     []session.Task  `json:"tasks"`
-			Summary   map[string]int  `json:"summary"`
-			UpdatedAt string          `json:"updated_at"`
+			Session   session.Session       `json:"session"`
+			Plan      *session.Plan         `json:"plan"`
+			Contract  *session.TaskContract `json:"contract"`
+			Tasks     []session.Task        `json:"tasks"`
+			Summary   map[string]int        `json:"summary"`
+			UpdatedAt string                `json:"updated_at"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
@@ -76,6 +78,9 @@ func TestGlobalTasksAPIListsActivePlans(t *testing.T) {
 	}
 	if payload.Items[0].Session.ID != newer.ID || payload.Items[0].Plan.Goal != "Newer goal" {
 		t.Fatalf("expected newest active plan first, got %+v", payload.Items)
+	}
+	if payload.Items[0].Contract == nil || payload.Items[0].Contract.DoneCriteria[0] != "criteria" {
+		t.Fatalf("expected contract in global task item, got %+v", payload.Items[0].Contract)
 	}
 	if payload.Items[1].Summary["pending"] != 1 || payload.Items[1].Summary["completed"] != 1 {
 		t.Fatalf("expected task summary counts, got %+v", payload.Items[1])

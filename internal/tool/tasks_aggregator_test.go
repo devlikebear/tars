@@ -64,6 +64,60 @@ func TestTasks_PlanSetSetsDraftingStatus(t *testing.T) {
 	}
 }
 
+func TestTasks_PlanSetCreatesTaskContractDraft(t *testing.T) {
+	tool, sid, store := newTasksToolForTest(t)
+	runTasksAction(t, tool, `{
+		"action":"plan_set",
+		"goal":"ship feature X",
+		"scope":"console only",
+		"done_criteria":["tests pass","contract visible"],
+		"verification_commands":["make test"],
+		"artifacts":["PR"]
+	}`)
+
+	st, err := store.GetTasks(sid)
+	if err != nil {
+		t.Fatalf("get tasks: %v", err)
+	}
+	if st.Contract == nil {
+		t.Fatal("expected contract draft after plan_set")
+	}
+	if st.Contract.Status != session.ContractStatusDraft {
+		t.Fatalf("expected draft contract, got %+v", st.Contract)
+	}
+	if st.Contract.Scope != "console only" || len(st.Contract.DoneCriteria) != 2 {
+		t.Fatalf("unexpected contract: %+v", st.Contract)
+	}
+}
+
+func TestTasks_ContractUpdateAndApprove(t *testing.T) {
+	tool, sid, store := newTasksToolForTest(t)
+	runTasksAction(t, tool, `{"action":"plan_set","goal":"ship feature X"}`)
+	runTasksAction(t, tool, `{
+		"action":"contract_update",
+		"goal":"ship feature X safely",
+		"scope":"backend and console",
+		"done_criteria":["reload survives"],
+		"verification_commands":["go test ./internal/session"],
+		"artifacts":["release notes"]
+	}`)
+	res := runTasksAction(t, tool, `{"action":"contract_approve"}`)
+	if res.IsError {
+		t.Fatalf("contract_approve unexpectedly errored: %s", res.Content[0].Text)
+	}
+
+	st, err := store.GetTasks(sid)
+	if err != nil {
+		t.Fatalf("get tasks: %v", err)
+	}
+	if st.Contract == nil || st.Contract.Status != session.ContractStatusApproved {
+		t.Fatalf("expected approved contract, got %+v", st.Contract)
+	}
+	if st.Contract.Goal != "ship feature X safely" || st.Contract.Artifacts[0] != "release notes" {
+		t.Fatalf("unexpected contract after update: %+v", st.Contract)
+	}
+}
+
 func TestTasks_PlanProposeDraftingToProposed(t *testing.T) {
 	tool, sid, store := newTasksToolForTest(t)
 	runTasksAction(t, tool, `{"action":"plan_set","goal":"X"}`)

@@ -55,6 +55,7 @@ import type {
   MCPServerCreatorSubmitResponse,
   UpdateCronJobRequest,
   SessionTasks,
+  TaskContract,
   SessionWorkDirs,
   UsageToday,
   LogsResponse,
@@ -94,7 +95,17 @@ async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
 function normalizeSessionTasks(data: Partial<SessionTasks> | null | undefined): SessionTasks {
   return {
     ...(data?.plan ? { plan: data.plan } : {}),
+    ...(data?.contract ? { contract: normalizeTaskContract(data.contract) } : {}),
     tasks: Array.isArray(data?.tasks) ? data.tasks : [],
+  }
+}
+
+function normalizeTaskContract(data: Partial<TaskContract> | null | undefined): TaskContract {
+  return {
+    ...data,
+    done_criteria: Array.isArray(data?.done_criteria) ? data.done_criteria : [],
+    verification_commands: Array.isArray(data?.verification_commands) ? data.verification_commands : [],
+    artifacts: Array.isArray(data?.artifacts) ? data.artifacts : [],
   }
 }
 
@@ -107,7 +118,12 @@ function normalizePlanArchive(data: Partial<PlanArchiveResponse> | null | undefi
 
 function normalizeGlobalPlans(data: Partial<GlobalPlansResponse> | null | undefined): GlobalPlansResponse {
   return {
-    items: Array.isArray(data?.items) ? data.items : [],
+    items: Array.isArray(data?.items)
+      ? data.items.map((item) => ({
+        ...item,
+        ...(item.contract ? { contract: normalizeTaskContract(item.contract) } : {}),
+      }))
+      : [],
     count: typeof data?.count === 'number' ? data.count : Array.isArray(data?.items) ? data.items.length : 0,
   }
 }
