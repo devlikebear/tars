@@ -122,10 +122,10 @@ Both use the `light` tier by default and have no access to user-facing tools (en
 
 Native cron with session binding:
 
-- Cron expressions and one-shot `@at` schedules
+- Cron expressions and one-shot `at:` schedules
 - Session-bound jobs inherit the session's tool policy, work dirs, and prompt override
 - Audit logs: `artifacts/<session_id>/cronjob-log.jsonl`
-- Console Cron tab for per-session job management
+- Console Cron page for global job management plus per-session Cron tabs in chat context
 
 ### Channels
 
@@ -214,6 +214,7 @@ Set `usage.limits.daily_tokens` (or `usage_daily_token_budget`) to show a daily 
 | Work | Extensions | `/console/extensions` | Skills, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |
 | Operate | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, and subagent tier management |
 | Operate | Approvals | `/console/approvals` | Review risky cleanup plans before TARS applies them |
+| Operate | Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
 | Operate | Pulse | `/console/pulse` | Watchdog status and run-now trigger |
 | Operate | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
 | Setup | Settings | `/console/config` | Quick Start onboarding plus structured object/array editing, typed LLM tier editing, pending-change impact previews, and field metadata badges |
