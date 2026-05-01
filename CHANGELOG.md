@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.124] - 2026-05-02
+
+### Added
+
+- Added a structured Console Settings editor for `llm.providers` so each provider can be edited as a card with alias, kind, auth mode, OAuth provider, base URL, API key, and service tier inputs instead of raw JSON.
+- Added per-provider API key reveal toggle and Add/Remove provider controls in the new editor, mirroring the existing LLM tier editor flow.
+
+### Tests
+
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+
 ## [0.31.123] - 2026-05-01
 
 ### Added

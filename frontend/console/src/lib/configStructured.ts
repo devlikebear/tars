@@ -42,6 +42,62 @@ export type LLMTiersBuildResult =
   | { ok: true; value: Record<string, LLMTierBindingValue> }
   | { ok: false; errors: LLMTierDraftErrors }
 
+export type LLMProviderDraft = {
+  id: string
+  originalAlias: string
+  alias: string
+  kind: string
+  auth_mode: string
+  oauth_provider: string
+  base_url: string
+  api_key: string
+  service_tier: string
+}
+
+export type LLMProviderDraftField =
+  | 'alias'
+  | 'kind'
+  | 'auth_mode'
+  | 'oauth_provider'
+  | 'base_url'
+  | 'api_key'
+  | 'service_tier'
+
+export type LLMProviderDraftErrors = Record<string, Partial<Record<LLMProviderDraftField, string>>>
+
+export type LLMProviderSettingsValue = {
+  kind: string
+  auth_mode: string
+  oauth_provider: string
+  base_url: string
+  api_key: string
+  service_tier: string
+}
+
+export type LLMProvidersBuildResult =
+  | { ok: true; value: Record<string, LLMProviderSettingsValue> }
+  | { ok: false; errors: LLMProviderDraftErrors }
+
+export const LLM_PROVIDER_KINDS = [
+  'anthropic',
+  'openai',
+  'openai-codex',
+  'gemini',
+  'gemini-native',
+  'claude-code-cli',
+] as const
+
+export const LLM_PROVIDER_AUTH_MODES = ['api-key', 'oauth', 'cli'] as const
+
+export const LLM_PROVIDER_SERVICE_TIERS = ['', 'auto', 'default', 'flex', 'priority'] as const
+
+const API_KEY_MASK_PATTERNS = [/^\*+$/, /^[*•]+$/, /\*{3,}/]
+
+export function isMaskedAPIKey(value: string): boolean {
+  if (!value) return false
+  return API_KEY_MASK_PATTERNS.some((pattern) => pattern.test(value))
+}
+
 export function formatConfigDisplayValue(value: unknown): ConfigDisplaySummary {
   if (value === undefined || value === null || value === '') {
     return { kind: 'empty', text: '-', preview: [], raw: '-' }
@@ -194,6 +250,79 @@ export function buildLLMTiersFromDrafts(drafts: LLMTierDraft[], providerAliases:
       model,
       reasoning_effort: reasoningEffort,
       thinking_budget: thinkingBudget,
+      service_tier: serviceTier,
+    }
+  })
+
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, errors }
+  }
+  return { ok: true, value }
+}
+
+export function makeLLMProviderDrafts(value: unknown): LLMProviderDraft[] {
+  const record = asRecord(value)
+  if (!record) return []
+  return Object.keys(record)
+    .sort()
+    .map((alias, index) => {
+      const provider = asRecord(record[alias]) || {}
+      return {
+        id: `provider-${index}-${alias}`,
+        originalAlias: alias,
+        alias,
+        kind: readString(provider, 'kind'),
+        auth_mode: readString(provider, 'auth_mode', 'authMode'),
+        oauth_provider: readString(provider, 'oauth_provider', 'oauthProvider'),
+        base_url: readString(provider, 'base_url', 'baseURL'),
+        api_key: readString(provider, 'api_key', 'apiKey'),
+        service_tier: readString(provider, 'service_tier', 'serviceTier'),
+      }
+    })
+}
+
+export function buildLLMProvidersFromDrafts(drafts: LLMProviderDraft[]): LLMProvidersBuildResult {
+  const trimmedAliases = drafts.map((draft) => draft.alias.trim())
+  const aliasCounts = new Map<string, number>()
+  for (const alias of trimmedAliases) {
+    if (!alias) continue
+    aliasCounts.set(alias, (aliasCounts.get(alias) || 0) + 1)
+  }
+
+  const errors: LLMProviderDraftErrors = {}
+  const value: Record<string, LLMProviderSettingsValue> = {}
+
+  drafts.forEach((draft, index) => {
+    const rowErrors: Partial<Record<LLMProviderDraftField, string>> = {}
+    const id = draft.id || `provider-${index}`
+    const alias = draft.alias.trim()
+    const kind = draft.kind.trim()
+    const authMode = draft.auth_mode.trim()
+    const oauthProvider = draft.oauth_provider.trim()
+    const baseURL = draft.base_url.trim()
+    const apiKey = draft.api_key
+    const serviceTier = draft.service_tier.trim()
+
+    if (!alias) {
+      rowErrors.alias = 'Provider alias is required.'
+    } else if ((aliasCounts.get(alias) || 0) > 1) {
+      rowErrors.alias = 'Provider alias must be unique.'
+    }
+    if (!kind) {
+      rowErrors.kind = 'Kind is required.'
+    }
+
+    if (Object.keys(rowErrors).length > 0) {
+      errors[id] = rowErrors
+      return
+    }
+
+    value[alias] = {
+      kind,
+      auth_mode: authMode,
+      oauth_provider: oauthProvider,
+      base_url: baseURL,
+      api_key: apiKey,
       service_tier: serviceTier,
     }
   })

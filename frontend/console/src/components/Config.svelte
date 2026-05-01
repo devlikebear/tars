@@ -5,15 +5,23 @@
   import { buildConfigMetaBadges } from '../lib/configMetaBadges'
   import { buildQuickStartItems, quickStartProgress } from '../lib/quickStartFields'
   import {
+    LLM_PROVIDER_AUTH_MODES,
+    LLM_PROVIDER_KINDS,
+    LLM_PROVIDER_SERVICE_TIERS,
+    buildLLMProvidersFromDrafts,
     buildLLMTiersFromDrafts,
     configValuesEqual,
     extractLLMProviderAliases,
     formatConfigDisplayValue,
+    makeLLMProviderDrafts,
     makeLLMTierDrafts,
     parseStructuredJSONEdit,
     prettyConfigJSON,
     stringifyConfigValue,
     type ConfigDisplaySummary,
+    type LLMProviderDraft,
+    type LLMProviderDraftErrors,
+    type LLMProviderDraftField,
     type LLMTierDraft,
     type LLMTierDraftErrors,
     type LLMTierDraftField,
@@ -50,6 +58,11 @@
   let tierEditorErrors: LLMTierDraftErrors = $state({})
   let tierProviderOptions: string[] = $state([])
   let tierDraftSeq = 0
+  let providerEditorField: ConfigFieldMeta | null = $state(null)
+  let providerDrafts: LLMProviderDraft[] = $state([])
+  let providerEditorErrors: LLMProviderDraftErrors = $state({})
+  let providerDraftSeq = 0
+  let providerSecretReveal: Record<string, boolean> = $state({})
   let llmTestBusy = $state(false)
   let llmTestResult = $state('')
   let llmTestKind: 'success' | 'error' | '' = $state('')
@@ -325,6 +338,7 @@
     dirtyFields = {}
     closeJSONEditor()
     closeTierEditor()
+    closeProviderEditor()
     success = ''
     error = ''
   }
@@ -393,6 +407,7 @@
     editingKey = null
     editValue = ''
     closeTierEditor()
+    closeProviderEditor()
     jsonEditorField = field
     jsonEditorText = prettyConfigJSON(getDisplayValue(field))
     jsonEditorError = ''
@@ -432,6 +447,10 @@
       openTierEditor(field)
       return
     }
+    if (field.key === 'llm_providers') {
+      openProviderEditor(field)
+      return
+    }
     openJSONEditor(field)
   }
 
@@ -440,11 +459,139 @@
     editingKey = null
     editValue = ''
     closeJSONEditor()
+    closeProviderEditor()
     tierProviderOptions = extractLLMProviderAliases(getValueByKey('llm_providers'))
     const drafts = makeLLMTierDrafts(getDisplayValue(field))
     tierDrafts = drafts.length > 0 ? drafts : [createTierDraft('standard')]
     tierEditorField = field
     tierEditorErrors = {}
+  }
+
+  function openProviderEditor(field: ConfigFieldMeta) {
+    if (field.sensitive) return
+    editingKey = null
+    editValue = ''
+    closeJSONEditor()
+    closeTierEditor()
+    const drafts = makeLLMProviderDrafts(getDisplayValue(field))
+    providerDrafts = drafts.length > 0 ? drafts : [createProviderDraft('default')]
+    providerEditorField = field
+    providerEditorErrors = {}
+    providerSecretReveal = {}
+  }
+
+  function closeProviderEditor() {
+    providerEditorField = null
+    providerDrafts = []
+    providerEditorErrors = {}
+    providerSecretReveal = {}
+  }
+
+  function resetProviderEditor() {
+    if (!providerEditorField) return
+    const drafts = makeLLMProviderDrafts(values[providerEditorField.key])
+    providerDrafts = drafts.length > 0 ? drafts : [createProviderDraft('default')]
+    providerEditorErrors = {}
+  }
+
+  function addProviderDraft() {
+    providerDrafts = [...providerDrafts, createProviderDraft(nextProviderAlias())]
+  }
+
+  function removeProviderDraft(id: string) {
+    if (providerDrafts.length <= 1) return
+    providerDrafts = providerDrafts.filter((draft) => draft.id !== id)
+    const { [id]: _removed, ...remaining } = providerEditorErrors
+    providerEditorErrors = remaining
+    const { [id]: _r2, ...remainReveal } = providerSecretReveal
+    providerSecretReveal = remainReveal
+  }
+
+  function updateProviderDraft(id: string, field: LLMProviderDraftField, value: string) {
+    providerDrafts = providerDrafts.map((draft) => draft.id === id ? { ...draft, [field]: value } : draft)
+    const rowErrors = providerEditorErrors[id]
+    if (!rowErrors?.[field]) return
+    const nextRowErrors = { ...rowErrors }
+    delete nextRowErrors[field]
+    const nextErrors = { ...providerEditorErrors }
+    if (Object.keys(nextRowErrors).length === 0) {
+      delete nextErrors[id]
+    } else {
+      nextErrors[id] = nextRowErrors
+    }
+    providerEditorErrors = nextErrors
+  }
+
+  function applyProviderEditor() {
+    if (!providerEditorField) return
+    const result = buildLLMProvidersFromDrafts(providerDrafts)
+    if (!result.ok) {
+      providerEditorErrors = result.errors
+      return
+    }
+    const original = values[providerEditorField.key]
+    if (configValuesEqual(result.value, original)) {
+      delete dirtyFields[providerEditorField.key]
+    } else {
+      dirtyFields[providerEditorField.key] = result.value
+    }
+    dirtyFields = { ...dirtyFields }
+    closeProviderEditor()
+  }
+
+  function createProviderDraft(alias: string): LLMProviderDraft {
+    providerDraftSeq += 1
+    return {
+      id: `new-provider-${providerDraftSeq}`,
+      originalAlias: '',
+      alias,
+      kind: '',
+      auth_mode: '',
+      oauth_provider: '',
+      base_url: '',
+      api_key: '',
+      service_tier: '',
+    }
+  }
+
+  function nextProviderAlias(): string {
+    const aliases = new Set(providerDrafts.map((draft) => draft.alias.trim()).filter(Boolean))
+    let idx = providerDrafts.length + 1
+    let candidate = `provider${idx}`
+    while (aliases.has(candidate)) {
+      idx += 1
+      candidate = `provider${idx}`
+    }
+    return candidate
+  }
+
+  function providerError(id: string, field: LLMProviderDraftField): string {
+    return providerEditorErrors[id]?.[field] || ''
+  }
+
+  function providerKindChoices(current: string): string[] {
+    const choices = new Set<string>(LLM_PROVIDER_KINDS)
+    const value = current.trim()
+    if (value) choices.add(value)
+    return [...choices].sort()
+  }
+
+  function providerAuthModeChoices(current: string): string[] {
+    const choices = new Set<string>(LLM_PROVIDER_AUTH_MODES)
+    const value = current.trim()
+    if (value) choices.add(value)
+    return ['', ...[...choices].sort()]
+  }
+
+  function providerServiceTierChoices(current: string): string[] {
+    const choices = new Set<string>(LLM_PROVIDER_SERVICE_TIERS.filter(Boolean) as string[])
+    const value = current.trim()
+    if (value) choices.add(value)
+    return ['', ...[...choices].sort()]
+  }
+
+  function toggleProviderSecret(id: string) {
+    providerSecretReveal = { ...providerSecretReveal, [id]: !providerSecretReveal[id] }
   }
 
   function closeTierEditor() {
@@ -867,6 +1014,124 @@
             <span class="badge badge-default">No changes</span>
           {/if}
           <span class="hint">Ctrl+S / Cmd+S to save</span>
+        </div>
+      </div>
+    {/if}
+
+    {#if providerEditorField}
+      <div class="modal-backdrop" role="presentation">
+        <div class="json-editor-modal provider-editor-modal" role="dialog" aria-modal="true" aria-labelledby="provider-editor-title">
+          <div class="json-editor-header">
+            <div>
+              <div id="provider-editor-title" class="json-editor-title">{providerEditorField.label}</div>
+              <div class="json-editor-path">{fieldPath(providerEditorField)}</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick={closeProviderEditor}>Cancel</button>
+          </div>
+          <div class="tier-editor-toolbar">
+            <button class="btn btn-ghost btn-sm" onclick={addProviderDraft}>Add Provider</button>
+          </div>
+          <div class="tier-editor-list">
+            {#each providerDrafts as draft (draft.id)}
+              <div class="provider-card">
+                <div class="provider-card-header">
+                  <label class="tier-field tier-field-name">
+                    <span>Alias</span>
+                    <input
+                      class:error={!!providerError(draft.id, 'alias')}
+                      value={draft.alias}
+                      oninput={(event) => updateProviderDraft(draft.id, 'alias', inputValue(event))}
+                    />
+                    {#if providerError(draft.id, 'alias')}
+                      <small>{providerError(draft.id, 'alias')}</small>
+                    {/if}
+                  </label>
+                  <button
+                    class="btn btn-ghost btn-sm tier-remove"
+                    disabled={providerDrafts.length <= 1}
+                    onclick={() => removeProviderDraft(draft.id)}
+                  >Remove</button>
+                </div>
+                <div class="provider-grid">
+                  <label class="tier-field">
+                    <span>Kind</span>
+                    <select
+                      class:error={!!providerError(draft.id, 'kind')}
+                      value={draft.kind}
+                      onchange={(event) => updateProviderDraft(draft.id, 'kind', inputValue(event))}
+                    >
+                      <option value="">Select</option>
+                      {#each providerKindChoices(draft.kind) as kind}
+                        <option value={kind}>{kind}</option>
+                      {/each}
+                    </select>
+                    {#if providerError(draft.id, 'kind')}
+                      <small>{providerError(draft.id, 'kind')}</small>
+                    {/if}
+                  </label>
+                  <label class="tier-field">
+                    <span>Auth Mode</span>
+                    <select
+                      value={draft.auth_mode}
+                      onchange={(event) => updateProviderDraft(draft.id, 'auth_mode', inputValue(event))}
+                    >
+                      {#each providerAuthModeChoices(draft.auth_mode) as mode}
+                        <option value={mode}>{mode || 'default'}</option>
+                      {/each}
+                    </select>
+                  </label>
+                  <label class="tier-field">
+                    <span>OAuth Provider</span>
+                    <input
+                      value={draft.oauth_provider}
+                      oninput={(event) => updateProviderDraft(draft.id, 'oauth_provider', inputValue(event))}
+                    />
+                  </label>
+                  <label class="tier-field">
+                    <span>Service Tier</span>
+                    <select
+                      value={draft.service_tier}
+                      onchange={(event) => updateProviderDraft(draft.id, 'service_tier', inputValue(event))}
+                    >
+                      {#each providerServiceTierChoices(draft.service_tier) as tier}
+                        <option value={tier}>{tier || 'default'}</option>
+                      {/each}
+                    </select>
+                  </label>
+                  <label class="tier-field provider-field-wide">
+                    <span>Base URL</span>
+                    <input
+                      value={draft.base_url}
+                      oninput={(event) => updateProviderDraft(draft.id, 'base_url', inputValue(event))}
+                    />
+                  </label>
+                  <label class="tier-field provider-field-wide">
+                    <span>API Key</span>
+                    <div class="provider-secret">
+                      <input
+                        type={providerSecretReveal[draft.id] ? 'text' : 'password'}
+                        autocomplete="off"
+                        value={draft.api_key}
+                        oninput={(event) => updateProviderDraft(draft.id, 'api_key', inputValue(event))}
+                      />
+                      <button
+                        type="button"
+                        class="btn btn-ghost btn-sm provider-secret-toggle"
+                        onclick={() => toggleProviderSecret(draft.id)}
+                      >{providerSecretReveal[draft.id] ? 'Hide' : 'Show'}</button>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            {/each}
+          </div>
+          <div class="json-editor-footer">
+            <button class="btn btn-ghost btn-sm" onclick={resetProviderEditor}>Reset</button>
+            <div class="json-editor-actions">
+              <button class="btn btn-ghost btn-sm" onclick={closeProviderEditor}>Cancel</button>
+              <button class="btn btn-primary btn-sm" onclick={applyProviderEditor}>Apply</button>
+            </div>
+          </div>
         </div>
       </div>
     {/if}
@@ -1733,6 +1998,56 @@
   .tier-remove {
     align-self: end;
     white-space: nowrap;
+  }
+
+  /* ── Provider editor ─────────────────────── */
+  .provider-editor-modal {
+    width: min(880px, calc(100vw - var(--nav-width) - 32px));
+  }
+  .provider-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-base);
+  }
+  .provider-card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-3);
+    align-items: end;
+  }
+  .provider-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+  .provider-field-wide {
+    grid-column: span 2;
+  }
+  .provider-secret {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
+    align-items: stretch;
+  }
+  .provider-secret input {
+    width: 100%;
+  }
+  .provider-secret-toggle {
+    align-self: stretch;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 640px) {
+    .provider-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .provider-field-wide {
+      grid-column: auto;
+    }
   }
 
   @media (max-width: 960px) {

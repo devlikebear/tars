@@ -2,9 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildLLMProvidersFromDrafts,
   buildLLMTiersFromDrafts,
   extractLLMProviderAliases,
   formatConfigDisplayValue,
+  makeLLMProviderDrafts,
   makeLLMTierDrafts,
   parseStructuredJSONEdit,
   prettyConfigJSON,
@@ -92,6 +94,92 @@ test('buildLLMTiersFromDrafts validates and serializes tier rows', () => {
     assert.deepEqual(valid.value, {
       heavy: { provider: 'codex', model: 'gpt-5.5', reasoning_effort: 'high', thinking_budget: 2048, service_tier: 'priority' },
       turbo: { provider: 'codex', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: 0, service_tier: '' },
+    })
+  }
+})
+
+test('makeLLMProviderDrafts converts provider settings into editable rows', () => {
+  const drafts = makeLLMProviderDrafts({
+    codex: {
+      kind: 'openai-codex',
+      auth_mode: 'oauth',
+      oauth_provider: 'openai-codex',
+      base_url: 'https://chatgpt.com/backend-api',
+      api_key: '',
+      service_tier: 'priority',
+    },
+    anthropic: { kind: 'anthropic', api_key: 'sk-abc' },
+  })
+
+  assert.deepEqual(drafts.map((draft) => draft.alias), ['anthropic', 'codex'])
+  assert.equal(drafts[0].kind, 'anthropic')
+  assert.equal(drafts[0].api_key, 'sk-abc')
+  assert.equal(drafts[1].auth_mode, 'oauth')
+  assert.equal(drafts[1].service_tier, 'priority')
+  assert.equal(drafts[1].oauth_provider, 'openai-codex')
+})
+
+test('buildLLMProvidersFromDrafts validates required fields and uniqueness', () => {
+  const invalid = buildLLMProvidersFromDrafts([
+    { id: 'a', originalAlias: 'codex', alias: '', kind: 'openai-codex', auth_mode: 'oauth', oauth_provider: '', base_url: '', api_key: '', service_tier: '' },
+    { id: 'b', originalAlias: 'dup', alias: 'shared', kind: '', auth_mode: '', oauth_provider: '', base_url: '', api_key: '', service_tier: '' },
+    { id: 'c', originalAlias: 'dup2', alias: 'shared', kind: 'anthropic', auth_mode: '', oauth_provider: '', base_url: '', api_key: '', service_tier: '' },
+  ])
+
+  assert.equal(invalid.ok, false)
+  if (!invalid.ok) {
+    assert.match(invalid.errors.a.alias, /required/)
+    assert.match(invalid.errors.b.alias, /unique/)
+    assert.match(invalid.errors.b.kind, /required/)
+    assert.match(invalid.errors.c.alias, /unique/)
+  }
+})
+
+test('buildLLMProvidersFromDrafts serializes provider drafts into settings map', () => {
+  const result = buildLLMProvidersFromDrafts([
+    {
+      id: 'codex',
+      originalAlias: 'codex',
+      alias: ' codex ',
+      kind: ' openai-codex ',
+      auth_mode: 'oauth',
+      oauth_provider: 'openai-codex',
+      base_url: 'https://chatgpt.com/backend-api',
+      api_key: 'cx-token',
+      service_tier: 'priority',
+    },
+    {
+      id: 'anth',
+      originalAlias: '',
+      alias: 'anthropic',
+      kind: 'anthropic',
+      auth_mode: 'api-key',
+      oauth_provider: '',
+      base_url: '',
+      api_key: '',
+      service_tier: '',
+    },
+  ])
+
+  assert.equal(result.ok, true)
+  if (result.ok) {
+    assert.deepEqual(result.value, {
+      codex: {
+        kind: 'openai-codex',
+        auth_mode: 'oauth',
+        oauth_provider: 'openai-codex',
+        base_url: 'https://chatgpt.com/backend-api',
+        api_key: 'cx-token',
+        service_tier: 'priority',
+      },
+      anthropic: {
+        kind: 'anthropic',
+        auth_mode: 'api-key',
+        oauth_provider: '',
+        base_url: '',
+        api_key: '',
+        service_tier: '',
+      },
     })
   }
 })
