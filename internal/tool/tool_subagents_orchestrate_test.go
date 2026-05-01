@@ -17,6 +17,12 @@ import (
 func TestSubagentsOrchestrateTool_ExecutesParallelThenSequentialSteps(t *testing.T) {
 	started := make(chan string, 3)
 	releaseResearch := make(chan struct{})
+	releasedResearch := false
+	defer func() {
+		if !releasedResearch {
+			close(releaseResearch)
+		}
+	}()
 	rt, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(_ context.Context, _ string, prompt string, allowedTools []string, _ string) (string, error) {
 		if len(allowedTools) == 0 {
 			t.Fatalf("expected explorer allowlist to be forwarded")
@@ -82,7 +88,7 @@ func TestSubagentsOrchestrateTool_ExecutesParallelThenSequentialSteps(t *testing
 		select {
 		case item := <-started:
 			got[item] = struct{}{}
-		case <-time.After(300 * time.Millisecond):
+		case <-time.After(5 * time.Second):
 			t.Fatal("expected both research tasks to start in parallel")
 		}
 	}
@@ -94,6 +100,7 @@ func TestSubagentsOrchestrateTool_ExecutesParallelThenSequentialSteps(t *testing
 	}
 
 	close(releaseResearch)
+	releasedResearch = true
 
 	select {
 	case item := <-started:

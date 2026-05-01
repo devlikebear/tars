@@ -184,6 +184,13 @@ export const ko = {
     addTask: '작업 추가',
     saveChanges: '변경 저장',
     skipTask: '이 작업을 건너뛰고 취소됨으로 표시한 뒤 LLM에게 다음 작업으로 넘어가라고 요청합니다.',
+    archive: {
+      pastPlans: (count) => `이 세션의 지난 계획 (${count})`,
+      loading: '아카이브를 불러오는 중...',
+      empty: '아직 보관된 계획이 없습니다.',
+      archivedAt: '보관됨',
+      createdAt: (value) => `${value} 생성`,
+    },
     stats: {
       active: '진행 중',
       pending: '대기',

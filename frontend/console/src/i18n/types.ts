@@ -184,6 +184,13 @@ export type Translations = {
     addTask: string
     saveChanges: string
     skipTask: string
+    archive: {
+      pastPlans: (count: number) => string
+      loading: string
+      empty: string
+      archivedAt: string
+      createdAt: (value: string) => string
+    }
     stats: {
       active: string
       pending: string

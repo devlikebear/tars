@@ -55,7 +55,7 @@ func (m subagentsTaskMirror) mirrorPlan(goal, flowID string, steps []subagentFlo
 	if current.Plan != nil || len(current.Tasks) > 0 {
 		summary := session.ArchiveSummary(current)
 		if summary != "" && m.workspaceDir != "" {
-			_ = memory.AppendMemoryNote(m.workspaceDir, parseTimeOrNow(current.Plan), "[archived plan] "+summary)
+			_ = memory.AppendMemoryNote(m.workspaceDir, parseTimeOrNow(current.Plan), archivedPlanMemoryEntry(sessionID, summary))
 		}
 	}
 

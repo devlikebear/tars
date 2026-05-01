@@ -941,6 +941,20 @@ export type SessionTasks = {
   tasks: SessionTask[]
 }
 
+export type PlanArchiveItem = {
+  id: string
+  session_id?: string
+  goal: string
+  archived_at: string
+  created_at?: string
+  summary: string
+}
+
+export type PlanArchiveResponse = {
+  items: PlanArchiveItem[]
+  count: number
+}
+
 export type SessionWorkDirs = {
   work_dirs: string[]
   current_dir: string
