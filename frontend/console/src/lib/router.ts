@@ -4,6 +4,7 @@ const chatPrefix = `${consoleBase}/chat`
 export type Route =
   | { view: 'home' }
   | { view: 'chat'; sessionId?: string }
+  | { view: 'tasks' }
   | { view: 'agentruntime'; runId?: string; tab?: 'runs' | 'subagents' }
   | { view: 'memory' }
   | { view: 'sysprompt' }
@@ -17,7 +18,15 @@ export type Route =
   | { view: 'reflection' }
 
 export function resolveRoute(pathname: string): Route {
-  const path = pathname.trim()
+  let path = pathname.trim()
+  let sessionQuery = ''
+  try {
+    const url = new URL(path, 'http://tars.local')
+    path = url.pathname
+    sessionQuery = url.searchParams.get('session')?.trim() ?? ''
+  } catch {
+    path = pathname.trim()
+  }
 
   if (path === consoleBase || path === `${consoleBase}/`) {
     return { view: 'home' }
@@ -29,7 +38,12 @@ export function resolveRoute(pathname: string): Route {
       const sessionId = decodeURIComponent(rest.slice(1).split('/')[0]?.trim() || '')
       if (sessionId) return { view: 'chat', sessionId }
     }
+    if (sessionQuery) return { view: 'chat', sessionId: sessionQuery }
     return { view: 'chat' }
+  }
+
+  if (path.startsWith(`${consoleBase}/tasks`)) {
+    return { view: 'tasks' }
   }
 
   if (path.startsWith(`${consoleBase}/agentruntime/runs/`)) {

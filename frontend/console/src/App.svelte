@@ -3,6 +3,7 @@
   import Shell from './components/Shell.svelte'
   import Home from './components/Home.svelte'
   import Chat from './components/Chat.svelte'
+  import Plans from './components/Plans.svelte'
   import MemoryCenter from './components/MemoryCenter.svelte'
   import SyspromptCenter from './components/SyspromptCenter.svelte'
   import Ops from './components/Ops.svelte'
@@ -88,6 +89,8 @@
     {#key aiPrompt}
       <Chat sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
     {/key}
+  {:else if route.view === 'tasks'}
+    <Plans onNavigate={navigate} />
   {:else if route.view === 'agentruntime'}
     <AgentRuntimeRunView runId={route.runId} tab={route.tab} onNavigate={navigate} />
   {:else if route.view === 'memory'}

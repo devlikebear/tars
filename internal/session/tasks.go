@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -79,6 +80,14 @@ type SessionTasks struct {
 	Tasks []Task `json:"tasks"`
 }
 
+type SessionWithPlanTasks struct {
+	Session   Session        `json:"session"`
+	Plan      *Plan          `json:"plan,omitempty"`
+	Tasks     []Task         `json:"tasks"`
+	Summary   map[string]int `json:"summary"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
 // MarshalJSON keeps the API contract stable by always emitting tasks as an array.
 func (st SessionTasks) MarshalJSON() ([]byte, error) {
 	type sessionTasksJSON struct {
@@ -120,6 +129,63 @@ func (s *Store) SaveTasks(sessionID string, tasks SessionTasks) error {
 		return fmt.Errorf("write tasks: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) ListSessionsWithPlans(includeHidden bool, activeOnly bool) ([]SessionWithPlanTasks, error) {
+	sessions, err := s.list(includeHidden)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]SessionWithPlanTasks, 0, len(sessions))
+	for _, sess := range sessions {
+		tasks, err := s.GetTasks(sess.ID)
+		if err != nil {
+			return nil, err
+		}
+		if tasks.Plan == nil || strings.TrimSpace(tasks.Plan.Goal) == "" {
+			continue
+		}
+		if activeOnly && !isActivePlan(tasks.Plan) {
+			continue
+		}
+		items = append(items, SessionWithPlanTasks{
+			Session:   sess,
+			Plan:      tasks.Plan,
+			Tasks:     tasks.Tasks,
+			Summary:   TaskSummary(tasks.Tasks),
+			UpdatedAt: planTasksUpdatedAt(sess, tasks),
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if !items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+			return items[i].UpdatedAt.After(items[j].UpdatedAt)
+		}
+		if !items[i].Session.CreatedAt.Equal(items[j].Session.CreatedAt) {
+			return items[i].Session.CreatedAt.After(items[j].Session.CreatedAt)
+		}
+		return items[i].Session.ID < items[j].Session.ID
+	})
+	if items == nil {
+		return []SessionWithPlanTasks{}, nil
+	}
+	return items, nil
+}
+
+func planTasksUpdatedAt(sess Session, tasks SessionTasks) time.Time {
+	if tasks.Plan != nil {
+		for _, raw := range []string{tasks.Plan.UpdatedAt, tasks.Plan.CreatedAt} {
+			if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(raw)); err == nil {
+				return parsed.UTC()
+			}
+		}
+	}
+	if !sess.UpdatedAt.IsZero() {
+		return sess.UpdatedAt.UTC()
+	}
+	if !sess.CreatedAt.IsZero() {
+		return sess.CreatedAt.UTC()
+	}
+	return time.Time{}
 }
 
 func normalizeSessionTasks(tasks SessionTasks) SessionTasks {

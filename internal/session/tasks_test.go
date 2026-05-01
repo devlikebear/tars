@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestSessionTasks_CRUD(t *testing.T) {
@@ -72,6 +73,87 @@ func TestSessionTasks_JSONIncludesEmptyTasksArray(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatalf("expected empty tasks array, got %+v", items)
+	}
+}
+
+func TestListSessionsWithPlansFiltersAndSortsActivePlans(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	older, err := store.Create("Older plan")
+	if err != nil {
+		t.Fatalf("create older session: %v", err)
+	}
+	newer, err := store.Create("Newer plan")
+	if err != nil {
+		t.Fatalf("create newer session: %v", err)
+	}
+	completed, err := store.Create("Completed plan")
+	if err != nil {
+		t.Fatalf("create completed session: %v", err)
+	}
+	hidden, err := store.CreateWithOptions("Hidden plan", "worker", true)
+	if err != nil {
+		t.Fatalf("create hidden session: %v", err)
+	}
+
+	olderUpdated := time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)
+	newerUpdated := olderUpdated.Add(2 * time.Hour)
+	if err := store.SaveTasks(older.ID, SessionTasks{
+		Plan: &Plan{Goal: "Older goal", Status: PlanStatusExecuting, CreatedAt: olderUpdated.Add(-time.Hour).Format(time.RFC3339), UpdatedAt: olderUpdated.Format(time.RFC3339)},
+		Tasks: []Task{
+			{ID: "1", Title: "Done", Status: "completed"},
+			{ID: "2", Title: "Next", Status: "pending"},
+		},
+	}); err != nil {
+		t.Fatalf("save older tasks: %v", err)
+	}
+	if err := store.SaveTasks(newer.ID, SessionTasks{
+		Plan:  &Plan{Goal: "Newer goal", Status: PlanStatusPaused, CreatedAt: newerUpdated.Add(-time.Hour).Format(time.RFC3339), UpdatedAt: newerUpdated.Format(time.RFC3339)},
+		Tasks: []Task{{ID: "1", Title: "Active", Status: "in_progress"}},
+	}); err != nil {
+		t.Fatalf("save newer tasks: %v", err)
+	}
+	if err := store.SaveTasks(completed.ID, SessionTasks{
+		Plan:  &Plan{Goal: "Finished goal", Status: PlanStatusCompleted, CreatedAt: newerUpdated.Format(time.RFC3339), UpdatedAt: newerUpdated.Add(time.Hour).Format(time.RFC3339)},
+		Tasks: []Task{{ID: "1", Title: "Done", Status: "completed"}},
+	}); err != nil {
+		t.Fatalf("save completed tasks: %v", err)
+	}
+	if err := store.SaveTasks(hidden.ID, SessionTasks{
+		Plan:  &Plan{Goal: "Hidden goal", Status: PlanStatusExecuting, CreatedAt: newerUpdated.Format(time.RFC3339), UpdatedAt: newerUpdated.Add(2 * time.Hour).Format(time.RFC3339)},
+		Tasks: []Task{{ID: "1", Title: "Hidden", Status: "pending"}},
+	}); err != nil {
+		t.Fatalf("save hidden tasks: %v", err)
+	}
+
+	active, err := store.ListSessionsWithPlans(false, true)
+	if err != nil {
+		t.Fatalf("list active plans: %v", err)
+	}
+	if len(active) != 2 {
+		t.Fatalf("expected visible active plans only, got %+v", active)
+	}
+	if active[0].Session.ID != newer.ID || active[1].Session.ID != older.ID {
+		t.Fatalf("expected newest active plans first, got %+v", active)
+	}
+	if active[0].Summary["in_progress"] != 1 || active[1].Summary["pending"] != 1 || active[1].Summary["completed"] != 1 {
+		t.Fatalf("expected task summaries, got %+v", active)
+	}
+
+	withHidden, err := store.ListSessionsWithPlans(true, true)
+	if err != nil {
+		t.Fatalf("list active plans with hidden: %v", err)
+	}
+	if len(withHidden) != 3 || withHidden[0].Session.ID != hidden.ID {
+		t.Fatalf("expected hidden plans included and sorted when requested, got %+v", withHidden)
+	}
+
+	allPlans, err := store.ListSessionsWithPlans(false, false)
+	if err != nil {
+		t.Fatalf("list all plans: %v", err)
+	}
+	if len(allPlans) != 3 || allPlans[0].Session.ID != completed.ID {
+		t.Fatalf("expected inactive plans included when activeOnly=false, got %+v", allPlans)
 	}
 }
 
