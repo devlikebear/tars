@@ -6,6 +6,34 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.101] - 2026-05-01
+
+### Added
+
+- Added a read-only Git Inspector dock panel in Console Chat for coding sessions.
+- Added `/v1/git/status`, `/v1/git/diff`, `/v1/git/log`, and `/v1/git/branches` APIs backed by a thin read-only `internal/git` wrapper.
+- Git Inspector now detects the active session git workspace, shows branch, HEAD, remotes, staged and unstaged files, and renders selected file diffs with a side-by-side summary plus unified patch.
+
+### Documentation
+
+- README now documents the Chat Git Inspector panel and read-only git workspace inspection.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/git ./internal/tarsserver -run 'TestClientStatusAndDiffAreReadOnly|TestGitAPIStatusAndDiffUseSessionCurrentDir|TestRegisterAPIRoutes_RegistersCoreRoutes'`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/git ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/chat/:session` Git Inspector rendering with a mock git workspace payload
+
+### Closed
+
+- Closes #571.
+
 ## [0.31.100] - 2026-05-01
 
 ### Added
