@@ -33,3 +33,12 @@ test('MCP Server Creator component exposes stdio validation results', () => {
   assert.match(source, /tools\/call/)
   assert.match(source, /Call Result/)
 })
+
+test('MCP Server Creator validates draft input before calling the server', () => {
+  const source = readFileSync(new URL('../src/components/MCPServerCreator.svelte', import.meta.url), 'utf8')
+  assert.match(source, /function validateDraftInput/)
+  assert.match(source, /name must be kebab-case/i)
+  assert.match(source, /const blockReason = validateDraftInput\(\)/)
+  assert.match(source, /if \(blockReason\) \{/)
+  assert.match(source, /disabled=\{busy \|\| draftBlockedReason/)
+})

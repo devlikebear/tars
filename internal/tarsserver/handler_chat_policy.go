@@ -313,7 +313,6 @@ func normalizeToolNames(names []string) []string {
 func defaultMinimalToolNames() []string {
 	return []string{
 		"memory",
-		"knowledge",
 		"workspace",
 		"ops",
 		"cron",

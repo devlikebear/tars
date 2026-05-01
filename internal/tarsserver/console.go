@@ -80,19 +80,7 @@ func newConsoleStaticHandler(logger zerolog.Logger, distFS fs.FS, builtAssets bo
 }
 
 func newConsoleDevProxy(target *url.URL) http.Handler {
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
-		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/console")
-		if req.URL.Path == "" {
-			req.URL.Path = "/"
-		}
-		if !strings.HasPrefix(req.URL.Path, "/") {
-			req.URL.Path = "/" + req.URL.Path
-		}
-	}
-	return proxy
+	return httputil.NewSingleHostReverseProxy(target)
 }
 
 func isConsolePath(requestPath string) bool {

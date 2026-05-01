@@ -553,6 +553,6 @@ textarea { resize: vertical; min-height: 80px; }
 .chat-md .hljs-addition { color: #c3e88d; background: rgba(195, 232, 141, 0.08); }
 .chat-md .hljs-deletion { color: #f07178; background: rgba(240, 113, 120, 0.08); }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   :root { --nav-width: 0px; }
 }

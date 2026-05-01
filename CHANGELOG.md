@@ -6,6 +6,36 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.92] - 2026-05-01
+
+### Fixed
+
+- Fixed the Console Vite dev proxy so `/console` assets and HMR load from the mounted path without redirect loops or WebSocket 404s.
+- Fixed the Console favicon reference so browsers request `/console/favicon.svg` instead of the unauthenticated root path.
+- Fixed the MCP Server Creator draft action so invalid empty names are blocked client-side before a 400 API request is sent.
+- Fixed narrow Console layouts so the sidebar status strip collapses before it can overlap main content.
+- Fixed legacy workspace agent `tools_allow: [knowledge]` entries by aliasing them to the current `memory` tool and removing `knowledge` from the minimal default tool list.
+
+### Documentation
+
+- README now documents the Console dev proxy mount and the MCP Server Creator's client-side draft-name validation.
+
+### Tests
+
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm run build`
+- `GOCACHE=/tmp/tars-go-cache go test ./...`
+- Browser smoke: dev proxy at `http://127.0.0.1:43180/console/` with Vite HMR, `/console/favicon.svg`, MCP Creator disabled Draft state, and 496px/800px sidebar collapse verified.
+
+### Closed
+
+- Closes #557.
+- Closes #558.
+- Closes #559.
+- Closes #560.
+- Closes #561.
+
 ## [0.31.91] - 2026-05-01
 
 ### Added

@@ -254,7 +254,7 @@
     color: var(--text-ghost);
   }
 
-  @media (max-width: 768px) {
+  @media (max-width: 900px) {
     .nav { display: none; }
   }
 </style>
