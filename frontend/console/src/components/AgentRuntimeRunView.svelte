@@ -12,6 +12,7 @@
     getAgentRuntimeRun,
     listAgentRuntimeRuns,
     listAgentRuntimeSubagents,
+    restartAgentRuntimeRun,
     streamAgentRuntimeRunEvents,
     updateAgentRuntimeSubagentTier,
   } from '../lib/api'
@@ -26,6 +27,7 @@
     AgentRuntimeDiffFileChange,
     AgentRuntimeDiffTimelineEntry,
     AgentRuntimeRun,
+    AgentRuntimeRunCheckpoint,
     AgentRuntimeRunEvent,
   } from '../lib/types'
 
@@ -74,6 +76,14 @@
   let builderResponse: AgentRuntimeSubagentDraftResponse | null = $state(null)
   let archiveConfirmName = $state('')
   let archiveBusy = $state(false)
+  let restartCheckpointID = $state('')
+  let restartAgent = $state('')
+  let restartTier = $state('')
+  let restartAlias = $state('')
+  let restartModel = $state('')
+  let restartPromptAdjustment = $state('')
+  let restartBusy = $state(false)
+  let restartMessage = $state('')
   let stopStream: (() => void) | null = null
 
   const runtimeTools = [
@@ -139,6 +149,7 @@
   })
   let costFlowRuns = $derived.by<AgentRuntimeRun[]>(() => selectedRun ? [selectedRun] : [])
   let replayEvents = $derived.by<AgentRuntimeRunEvent[]>(() => events)
+  let selectedRunCheckpoints = $derived.by<AgentRuntimeRunCheckpoint[]>(() => selectedRun?.checkpoints ?? [])
 
   async function loadRuns() {
     loading = true
@@ -191,6 +202,7 @@
       selectedRun = await getAgentRuntimeRun(id)
       estimatedUSD = selectedRun.consensus_budget_usd ?? null
       actualUSD = selectedRun.consensus_cost_usd ?? null
+      prepareRestartForm(selectedRun)
     } catch (e) {
       selectedRun = null
       error = e instanceof Error ? e.message : 'Failed to load agent runtime run'
@@ -396,6 +408,61 @@
 
   function openRunDetail(id: string) {
     onNavigate(`/console/agentruntime/runs/${encodeURIComponent(id)}`)
+  }
+
+  function isRestartable(run: AgentRuntimeRun | null): boolean {
+    return run?.status === 'failed' && (run.checkpoints?.length ?? 0) > 0
+  }
+
+  function prepareRestartForm(run: AgentRuntimeRun | null) {
+    restartMessage = ''
+    if (!isRestartable(run)) {
+      restartCheckpointID = ''
+      restartAgent = ''
+      restartTier = ''
+      restartAlias = ''
+      restartModel = ''
+      restartPromptAdjustment = ''
+      return
+    }
+    const checkpoints = run?.checkpoints ?? []
+    const latest = checkpoints[checkpoints.length - 1]
+    restartCheckpointID = latest?.checkpoint_id ?? ''
+    restartAgent = run?.agent ?? ''
+    restartTier = run?.tier ?? ''
+    restartAlias = run?.provider_override?.alias ?? ''
+    restartModel = run?.provider_override?.model ?? ''
+    restartPromptAdjustment = ''
+  }
+
+  function checkpointLabel(checkpoint: AgentRuntimeRunCheckpoint): string {
+    return [checkpoint.label || checkpoint.kind || checkpoint.checkpoint_id, fmtTime(checkpoint.created_at)]
+      .filter((item) => item && item !== '—')
+      .join(' · ')
+  }
+
+  async function restartSelectedRun() {
+    if (!selectedRun || restartBusy) return
+    restartBusy = true
+    restartMessage = ''
+    error = ''
+    try {
+      const alias = restartAlias.trim()
+      const model = restartModel.trim()
+      const retry = await restartAgentRuntimeRun(selectedRun.run_id, {
+        checkpoint_id: restartCheckpointID || undefined,
+        agent: restartAgent.trim() || undefined,
+        tier: restartTier.trim() || undefined,
+        provider_override: alias || model ? { alias, model } : undefined,
+        prompt_adjustment: restartPromptAdjustment.trim() || undefined,
+      })
+      restartMessage = `Started ${retry.run_id}`
+      openRunDetail(retry.run_id)
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to restart run'
+    } finally {
+      restartBusy = false
+    }
   }
 
   function handleRunSearchKeydown(event: KeyboardEvent) {
@@ -1116,8 +1183,59 @@
           <div><span class="label">Completed</span><span>{fmtTime(selectedRun.completed_at)}</span></div>
           <div><span class="label">Est Cost</span><span>{fmtUSD(estimatedUSD)}</span></div>
           <div><span class="label">Actual Cost</span><span>{fmtUSD(actualUSD)}</span></div>
+          {#if selectedRun.restarted_from_run_id}
+            <div><span class="label">Restarted From</span><button class="run-inline-link" type="button" onclick={() => openRunDetail(selectedRun?.restarted_from_run_id ?? '')}>{shortID(selectedRun.restarted_from_run_id)}</button></div>
+          {/if}
+          {#if selectedRun.restart_attempt}
+            <div><span class="label">Attempt</span><span>#{selectedRun.restart_attempt}</span></div>
+          {/if}
         </div>
       </div>
+
+      {#if isRestartable(selectedRun)}
+        <section class="detail-panel restart-panel" aria-label="Restart Run">
+          <div class="panel-title-row">
+            <h3>Restart</h3>
+            <span>{selectedRunCheckpoints.length} checkpoints</span>
+          </div>
+          <div class="restart-grid">
+            <label>
+              <span>Checkpoint</span>
+              <select bind:value={restartCheckpointID}>
+                {#each selectedRunCheckpoints as checkpoint}
+                  <option value={checkpoint.checkpoint_id}>{checkpointLabel(checkpoint)}</option>
+                {/each}
+              </select>
+            </label>
+            <label>
+              <span>Agent</span>
+              <input bind:value={restartAgent} placeholder="default" />
+            </label>
+            <label>
+              <span>Tier</span>
+              <input bind:value={restartTier} placeholder="standard" />
+            </label>
+            <label>
+              <span>Provider Alias</span>
+              <input bind:value={restartAlias} placeholder="alias" />
+            </label>
+            <label>
+              <span>Model</span>
+              <input bind:value={restartModel} placeholder="model" />
+            </label>
+            <label class="restart-adjustment">
+              <span>Prompt Adjustment</span>
+              <textarea bind:value={restartPromptAdjustment} rows="3" placeholder="Retry with a narrower assumption or alternate permission set."></textarea>
+            </label>
+          </div>
+          <div class="detail-actions">
+            <button class="btn btn-primary btn-sm" type="button" disabled={restartBusy} onclick={restartSelectedRun}>
+              {restartBusy ? 'Starting...' : 'Restart from Checkpoint'}
+            </button>
+            {#if restartMessage}<span class="row-meta">{restartMessage}</span>{/if}
+          </div>
+        </section>
+      {/if}
 
       {#if costFlowRuns.length > 0}
         <div class="cost-flow-panel">
@@ -1345,10 +1463,11 @@
   .builder-head, .builder-actions, .draft-status { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
   .builder-head h3 { margin: 0; color: var(--text-primary); font-family: var(--font-display); font-size: var(--text-lg); }
   .builder-form, .draft-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 0.28fr); gap: var(--space-3); align-items: start; }
-  .builder-form label, .draft-grid label, .draft-textarea { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; color: var(--text-ghost); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; }
+  .builder-form label, .draft-grid label, .draft-textarea, .restart-grid label { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; color: var(--text-ghost); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; }
   .builder-form select, .builder-form textarea,
   .draft-grid input, .draft-grid select, .draft-grid textarea,
-  .draft-textarea textarea {
+  .draft-textarea textarea,
+  .restart-grid input, .restart-grid select, .restart-grid textarea {
     width: 100%;
     min-width: 0;
     border: 1px solid var(--border-subtle);
@@ -1362,13 +1481,18 @@
   }
   .builder-form textarea { min-height: 84px; resize: vertical; }
   .draft-grid textarea { min-height: 72px; resize: vertical; }
+  .restart-grid textarea { min-height: 72px; resize: vertical; }
   .draft-textarea textarea { min-height: 180px; resize: vertical; line-height: 1.5; }
   .builder-form select:focus, .builder-form textarea:focus,
   .draft-grid input:focus, .draft-grid select:focus, .draft-grid textarea:focus,
-  .draft-textarea textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.22); }
+  .draft-textarea textarea:focus,
+  .restart-grid input:focus, .restart-grid select:focus, .restart-grid textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.22); }
   .draft-preview { display: flex; flex-direction: column; gap: var(--space-3); border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
   .warning-list { display: flex; flex-direction: column; gap: var(--space-1); border: 1px solid rgba(224, 145, 69, 0.3); background: rgba(224, 145, 69, 0.08); border-radius: var(--radius-sm); padding: var(--space-2); color: var(--warning); font-size: var(--text-xs); }
   .detail-actions { display: flex; align-items: flex-end; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+  .restart-panel { display: flex; flex-direction: column; gap: var(--space-3); }
+  .restart-grid { display: grid; grid-template-columns: minmax(180px, 1.2fr) repeat(4, minmax(120px, 0.7fr)); gap: var(--space-3); align-items: start; }
+  .restart-adjustment { grid-column: 1 / -1; }
   .subagents-layout { display: grid; grid-template-columns: minmax(260px, 0.45fr) minmax(0, 1fr); gap: var(--space-3); align-items: start; }
   .subagents-list, .subagent-detail { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
   .subagents-list { border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-2); }
@@ -1437,5 +1561,5 @@
   @media (max-width: 960px) { .intro-card, .run-controls, .cost-summary-grid { grid-template-columns: 1fr; } }
   @media (max-width: 960px) { .subagents-layout { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .detail-columns { grid-template-columns: 1fr; } }
-  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid, .plan-cost-row, .file-attention-row { grid-template-columns: 1fr; } .file-meta { justify-content: flex-start; } .subagents-summary, .detail-head, .agentruntime-header, .diff-entry-head { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions, .diff-summary { justify-content: flex-start; justify-items: start; } }
+  @media (max-width: 768px) { .variants-grid, .prompt-grid, .policy-grid, .recent-run, .builder-form, .draft-grid, .restart-grid, .plan-cost-row, .file-attention-row { grid-template-columns: 1fr; } .file-meta { justify-content: flex-start; } .subagents-summary, .detail-head, .agentruntime-header, .diff-entry-head { align-items: stretch; flex-direction: column; } .detail-actions, .header-actions, .diff-summary { justify-content: flex-start; justify-items: start; } }
 </style>

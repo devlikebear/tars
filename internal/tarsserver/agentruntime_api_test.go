@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -74,6 +75,68 @@ func TestAgentRunsAPIHandler_ListAndGet(t *testing.T) {
 	}
 
 	waitForAgentRuntimeRun(t, runtime, run.ID)
+}
+
+func TestAgentRunsAPIHandler_RestartFromCheckpoint(t *testing.T) {
+	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
+	callCount := 0
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
+			callCount++
+			if callCount == 1 {
+				return "", fmt.Errorf("boom")
+			}
+			if !strings.Contains(prompt, "retry with smaller batch") {
+				t.Fatalf("expected prompt adjustment in retry prompt, got %q", prompt)
+			}
+			return "retry ok", nil
+		},
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := runtime.Close(ctx); err != nil {
+			t.Fatalf("close agent runtime: %v", err)
+		}
+	})
+	first, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "import backlog"})
+	if err != nil {
+		t.Fatalf("spawn first: %v", err)
+	}
+	waitForAgentRuntimeRun(t, runtime, first.ID)
+	failed, ok := runtime.Get(first.ID)
+	if !ok {
+		t.Fatalf("get failed run %s", first.ID)
+	}
+	if failed.Status != agentruntime.RunStatusFailed || len(failed.Checkpoints) == 0 {
+		t.Fatalf("expected failed run with checkpoints, got %+v", failed)
+	}
+
+	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
+	body := bytes.NewBufferString(`{"checkpoint_id":"` + failed.Checkpoints[0].ID + `","prompt_adjustment":"retry with smaller batch"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs/"+failed.ID+"/restart", body)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var retry agentruntime.Run
+	if err := json.Unmarshal(rec.Body.Bytes(), &retry); err != nil {
+		t.Fatalf("decode retry response: %v", err)
+	}
+	if retry.ParentRunID != failed.ID || retry.RestartedFromRunID != failed.ID || retry.RestartedFromCheckpointID != failed.Checkpoints[0].ID {
+		t.Fatalf("expected restart provenance, got %+v", retry)
+	}
+	waitForAgentRuntimeRun(t, runtime, retry.ID)
+	final, ok := runtime.Get(retry.ID)
+	if !ok {
+		t.Fatalf("get retry run %s", retry.ID)
+	}
+	if final.Status != agentruntime.RunStatusCompleted || final.Response != "retry ok" {
+		t.Fatalf("expected completed retry, got %+v", final)
+	}
 }
 
 func TestAgentRunsAPIHandler_ListFiltersStatusSinceAndSearch(t *testing.T) {

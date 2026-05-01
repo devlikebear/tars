@@ -68,6 +68,107 @@ func TestRuntimeSpawnAndWait(t *testing.T) {
 	}
 }
 
+func TestRuntimeRestartFromCheckpointSpawnsDerivedRunWithOverrides(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	var callCount int
+	var retryAllowedTools []string
+	var retryTier string
+	var retryOverride *ProviderOverride
+	runPrompt := func(_ context.Context, _ string, prompt string, allowedTools []string, tier string, providerOverride *ProviderOverride) (string, error) {
+		callCount++
+		if callCount == 1 {
+			return "", fmt.Errorf("first attempt failed")
+		}
+		retryAllowedTools = append([]string(nil), allowedTools...)
+		retryTier = tier
+		retryOverride = CloneProviderOverride(providerOverride)
+		if !strings.Contains(prompt, "Use the cached migration result") {
+			t.Fatalf("expected prompt adjustment in retry prompt, got %q", prompt)
+		}
+		return "retry ok", nil
+	}
+	defaultExecutor, err := NewPromptExecutorWithOptions(PromptExecutorOptions{
+		Name:       "default",
+		ToolsAllow: []string{"read_file"},
+		Tier:       "standard",
+		RunPrompt:  runPrompt,
+	})
+	if err != nil {
+		t.Fatalf("new default executor: %v", err)
+	}
+	reviewerExecutor, err := NewPromptExecutorWithOptions(PromptExecutorOptions{
+		Name:       "reviewer",
+		ToolsAllow: []string{"read_file", "list_dir"},
+		Tier:       "heavy",
+		RunPrompt:  runPrompt,
+	})
+	if err != nil {
+		t.Fatalf("new reviewer executor: %v", err)
+	}
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		Executors:    []AgentExecutor{defaultExecutor, reviewerExecutor},
+		DefaultAgent: "default",
+	})
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
+
+	first, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "fix failed migration"})
+	if err != nil {
+		t.Fatalf("spawn first: %v", err)
+	}
+	waitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	failed, err := rt.Wait(waitCtx, first.ID)
+	if err != nil {
+		t.Fatalf("wait first: %v", err)
+	}
+	if failed.Status != RunStatusFailed {
+		t.Fatalf("expected failed first run, got %+v", failed)
+	}
+	if len(failed.Checkpoints) == 0 {
+		t.Fatalf("expected failed run checkpoints, got %+v", failed)
+	}
+
+	retry, err := rt.RestartFromCheckpoint(context.Background(), RestartRequest{
+		RunID:            failed.ID,
+		CheckpointID:     failed.Checkpoints[0].ID,
+		Agent:            "reviewer",
+		Tier:             "heavy",
+		ProviderOverride: &ProviderOverride{Alias: "codex", Model: "gpt-5.5"},
+		PromptAdjustment: "Use the cached migration result",
+	})
+	if err != nil {
+		t.Fatalf("restart from checkpoint: %v", err)
+	}
+	if retry.ParentRunID != failed.ID || retry.RootRunID != failed.ID {
+		t.Fatalf("expected retry provenance parent/root, got %+v", retry)
+	}
+	if retry.RestartedFromRunID != failed.ID || retry.RestartedFromCheckpointID != failed.Checkpoints[0].ID || retry.RestartAttempt != 1 {
+		t.Fatalf("expected restart provenance, got %+v", retry)
+	}
+	if retry.Agent != "reviewer" {
+		t.Fatalf("expected reviewer retry agent, got %q", retry.Agent)
+	}
+
+	final, err := rt.Wait(waitCtx, retry.ID)
+	if err != nil {
+		t.Fatalf("wait retry: %v", err)
+	}
+	if final.Status != RunStatusCompleted || final.Response != "retry ok" {
+		t.Fatalf("expected completed retry, got %+v", final)
+	}
+	if retryTier != "heavy" {
+		t.Fatalf("expected heavy retry tier, got %q", retryTier)
+	}
+	if retryOverride == nil || retryOverride.Alias != "codex" || retryOverride.Model != "gpt-5.5" {
+		t.Fatalf("expected retry provider override, got %+v", retryOverride)
+	}
+	if strings.Join(retryAllowedTools, ",") != "read_file,list_dir" {
+		t.Fatalf("expected reviewer permissions, got %+v", retryAllowedTools)
+	}
+}
+
 func TestRuntimeCapturesFileToolCallSummaryAndEvent(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	entered := make(chan struct{})

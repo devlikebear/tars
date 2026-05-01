@@ -6,6 +6,28 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.122] - 2026-05-01
+
+### Added
+
+- Added Agent Runtime run checkpoints for prompt dispatch and failure snapshots so failed runs keep restartable state.
+- Added `POST /v1/agentruntime/runs/{run_id}/restart` to start a derived retry from a checkpoint with optional agent, tier, provider/model, and prompt adjustment overrides.
+- Added restart provenance fields on runs, including source run, source checkpoint, attempt number, and restart reason.
+- Added Console Agent Runtime controls for restarting failed runs from checkpoints and navigating to the derived retry run.
+
+### Documentation
+
+- README and the Agent Runtime tutorial now describe failed-run checkpoint restart workflows.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/agentruntime -run TestRuntimeRestartFromCheckpointSpawnsDerivedRunWithOverrides`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/tarsserver -run TestAgentRunsAPIHandler_RestartFromCheckpoint`
+
+### Closed
+
+- Closes #593.
+
 ## [0.31.121] - 2026-05-01
 
 ### Added
