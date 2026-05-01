@@ -88,6 +88,123 @@ func TestStoreBackfillsLegacySessionLineageOnRead(t *testing.T) {
 	}
 }
 
+func TestStoreForkFromMessageCopiesTranscriptPrefixAndState(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	parent, err := store.Create("Parent session")
+	if err != nil {
+		t.Fatalf("create parent: %v", err)
+	}
+	if err := store.SetToolConfig(parent.ID, &SessionToolConfig{
+		ToolsCustom:   true,
+		ToolsEnabled:  []string{"bash"},
+		SkillsCustom:  true,
+		SkillsEnabled: []string{"planner"},
+		MCPEnabled:    []string{"filesystem"},
+	}); err != nil {
+		t.Fatalf("set tool config: %v", err)
+	}
+	if err := store.SetPromptOverride(parent.ID, "Keep answers terse."); err != nil {
+		t.Fatalf("set prompt override: %v", err)
+	}
+	projectDir := filepath.Join(dir, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+	if err := store.SetWorkDirs(parent.ID, []string{projectDir}, projectDir); err != nil {
+		t.Fatalf("set work dirs: %v", err)
+	}
+	parent, err = store.Get(parent.ID)
+	if err != nil {
+		t.Fatalf("reload parent: %v", err)
+	}
+	if err := store.SaveTasks(parent.ID, SessionTasks{
+		Plan:  &Plan{Goal: "Ship fork support", Status: PlanStatusExecuting},
+		Tasks: []Task{{ID: "1", Title: "Add endpoint", Status: "pending"}},
+	}); err != nil {
+		t.Fatalf("save tasks: %v", err)
+	}
+
+	messages := []Message{
+		{Role: "user", Content: "prepare workspace", Timestamp: time.Now().UTC()},
+		{Role: "assistant", Content: "workspace ready", Timestamp: time.Now().UTC().Add(time.Second)},
+		{Role: "user", Content: "branch from here", Timestamp: time.Now().UTC().Add(2 * time.Second)},
+		{Role: "assistant", Content: "do not copy me", Timestamp: time.Now().UTC().Add(3 * time.Second)},
+	}
+	for _, msg := range messages {
+		if err := AppendMessage(store.TranscriptPath(parent.ID), msg); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+	parentHistory, err := ReadMessages(store.TranscriptPath(parent.ID))
+	if err != nil {
+		t.Fatalf("read parent history: %v", err)
+	}
+
+	child, err := store.ForkFromMessage(parent.ID, parentHistory[2].ID, ForkOptions{Reason: "try alternative implementation"})
+	if err != nil {
+		t.Fatalf("fork from message: %v", err)
+	}
+
+	if child.ID == "" || child.ID == parent.ID {
+		t.Fatalf("expected distinct child session id, got parent=%q child=%q", parent.ID, child.ID)
+	}
+	if child.ParentSessionID != parent.ID {
+		t.Fatalf("expected parent lineage %q, got %+v", parent.ID, child)
+	}
+	if child.RootSessionID != parent.ID {
+		t.Fatalf("expected root lineage %q, got %+v", parent.ID, child)
+	}
+	if child.ForkedFromMessageID != parentHistory[2].ID {
+		t.Fatalf("expected fork message id %q, got %+v", parentHistory[2].ID, child)
+	}
+	if child.ForkedFromIndex == nil || *child.ForkedFromIndex != 2 {
+		t.Fatalf("expected fork index 2, got %+v", child.ForkedFromIndex)
+	}
+	if child.ForkReason != "try alternative implementation" {
+		t.Fatalf("expected fork reason to persist, got %q", child.ForkReason)
+	}
+	if child.ToolConfig == nil || !child.ToolConfig.ToolsCustom || child.ToolConfig.ToolsEnabled[0] != "bash" {
+		t.Fatalf("expected tool config copy, got %+v", child.ToolConfig)
+	}
+	if child.PromptOverride != "Keep answers terse." {
+		t.Fatalf("expected prompt override copy, got %q", child.PromptOverride)
+	}
+	if child.CurrentDir != parent.CurrentDir {
+		t.Fatalf("expected current dir copy %q, got %q", parent.CurrentDir, child.CurrentDir)
+	}
+
+	childHistory, err := ReadMessages(store.TranscriptPath(child.ID))
+	if err != nil {
+		t.Fatalf("read child history: %v", err)
+	}
+	if len(childHistory) != 3 {
+		t.Fatalf("expected transcript prefix through selected message, got %d messages", len(childHistory))
+	}
+	for i := range childHistory {
+		if childHistory[i].ID != parentHistory[i].ID || childHistory[i].Content != parentHistory[i].Content {
+			t.Fatalf("unexpected child prefix at %d: got %+v want %+v", i, childHistory[i], parentHistory[i])
+		}
+	}
+
+	childTasks, err := store.GetTasks(child.ID)
+	if err != nil {
+		t.Fatalf("read child tasks: %v", err)
+	}
+	if childTasks.Plan == nil || childTasks.Plan.Goal != "Ship fork support" || len(childTasks.Tasks) != 1 {
+		t.Fatalf("expected copied tasks, got %+v", childTasks)
+	}
+
+	parentAfter, err := ReadMessages(store.TranscriptPath(parent.ID))
+	if err != nil {
+		t.Fatalf("read parent after fork: %v", err)
+	}
+	if len(parentAfter) != len(parentHistory) {
+		t.Fatalf("expected original session unchanged, got %d messages", len(parentAfter))
+	}
+}
+
 func TestStoreDelete(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)

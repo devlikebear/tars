@@ -49,6 +49,13 @@ type Store struct {
 	dir string
 }
 
+// ForkOptions controls how a child session is created from an existing
+// transcript message.
+type ForkOptions struct {
+	Title  string
+	Reason string
+}
+
 func NewStore(dir string) *Store {
 	return &Store{
 		dir: filepath.Join(dir, "sessions"),
@@ -300,6 +307,119 @@ func (s *Store) CreateWithOptions(title string, kind string, hidden bool) (Sessi
 	}
 
 	return session, nil
+}
+
+// ForkFromMessage creates a new visible session whose transcript contains the
+// parent transcript prefix through the selected message.
+func (s *Store) ForkFromMessage(parentID string, messageID string, opts ForkOptions) (Session, error) {
+	parentID = strings.TrimSpace(parentID)
+	messageID = strings.TrimSpace(messageID)
+	if parentID == "" {
+		return Session{}, fmt.Errorf("parent session id is required")
+	}
+	if messageID == "" {
+		return Session{}, fmt.Errorf("message id is required")
+	}
+	if err := os.MkdirAll(s.dir, 0o755); err != nil {
+		return Session{}, fmt.Errorf("create sessions directory: %w", err)
+	}
+
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return Session{}, err
+	}
+	parent, ok := index[parentID]
+	if !ok {
+		return Session{}, fmt.Errorf("session not found")
+	}
+	parent, changed, err := s.applySessionDefaults(parent)
+	if err != nil {
+		return Session{}, err
+	}
+	if changed {
+		index[parentID] = parent
+	}
+
+	messages, err := ReadMessages(s.TranscriptPath(parentID))
+	if err != nil {
+		return Session{}, fmt.Errorf("read parent transcript: %w", err)
+	}
+	forkIndex := -1
+	for i, msg := range messages {
+		if strings.TrimSpace(msg.ID) == messageID {
+			forkIndex = i
+			break
+		}
+	}
+	if forkIndex < 0 {
+		return Session{}, fmt.Errorf("message not found")
+	}
+	prefix := append([]Message(nil), messages[:forkIndex+1]...)
+
+	now := time.Now().UTC()
+	rootID := strings.TrimSpace(parent.RootSessionID)
+	if rootID == "" {
+		rootID = parent.ID
+	}
+	title := strings.TrimSpace(opts.Title)
+	if title == "" {
+		title = suggestedForkTitle(parent.Title, messages[forkIndex])
+	}
+	child := Session{
+		Title:               title,
+		ParentSessionID:     parent.ID,
+		RootSessionID:       rootID,
+		ForkedFromMessageID: messageID,
+		ForkedFromIndex:     intPtr(forkIndex),
+		ForkReason:          strings.TrimSpace(opts.Reason),
+		ToolConfig:          cloneSessionToolConfig(parent.ToolConfig),
+		LastCompactionMode:  parent.LastCompactionMode,
+		PromptOverride:      parent.PromptOverride,
+		WorkDirs:            forkWorkDirs(parent, s.sessionArtifactDir(parent.ID)),
+		CurrentDir:          forkCurrentDir(parent, s.sessionArtifactDir(parent.ID)),
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	for {
+		id, err := generateID()
+		if err != nil {
+			return Session{}, err
+		}
+		if _, exists := index[id]; exists {
+			continue
+		}
+		child.ID = id
+		break
+	}
+	child, _, err = s.applySessionDefaults(child)
+	if err != nil {
+		return Session{}, err
+	}
+
+	if err := RewriteMessages(s.TranscriptPath(child.ID), prefix); err != nil {
+		return Session{}, fmt.Errorf("write child transcript: %w", err)
+	}
+	parentTasks, err := s.GetTasks(parent.ID)
+	if err != nil {
+		_ = os.Remove(s.TranscriptPath(child.ID))
+		return Session{}, fmt.Errorf("read parent tasks: %w", err)
+	}
+	if hasSessionTaskState(parentTasks) {
+		if err := s.SaveTasks(child.ID, parentTasks); err != nil {
+			_ = os.Remove(s.TranscriptPath(child.ID))
+			return Session{}, fmt.Errorf("write child tasks: %w", err)
+		}
+	}
+
+	index[child.ID] = child
+	if err := s.saveIndex(index); err != nil {
+		_ = os.Remove(s.TranscriptPath(child.ID))
+		_ = os.Remove(s.tasksPath(child.ID))
+		return Session{}, err
+	}
+	return child, nil
 }
 
 func (s *Store) EnsureMain() (Session, error) {
@@ -732,6 +852,66 @@ func (s *Store) saveIndex(index map[string]Session) error {
 		return err
 	}
 	return atomicwrite.Write(s.indexPath(), data)
+}
+
+func intPtr(value int) *int {
+	return &value
+}
+
+func cloneSessionToolConfig(config *SessionToolConfig) *SessionToolConfig {
+	if config == nil {
+		return nil
+	}
+	return &SessionToolConfig{
+		ToolsEnabled:     append([]string(nil), config.ToolsEnabled...),
+		ToolsCustom:      config.ToolsCustom,
+		ToolsDisabled:    append([]string(nil), config.ToolsDisabled...),
+		ToolsAllowGroups: append([]string(nil), config.ToolsAllowGroups...),
+		ToolsDenyGroups:  append([]string(nil), config.ToolsDenyGroups...),
+		SkillsEnabled:    append([]string(nil), config.SkillsEnabled...),
+		SkillsCustom:     config.SkillsCustom,
+		MCPEnabled:       append([]string(nil), config.MCPEnabled...),
+	}
+}
+
+func forkWorkDirs(parent Session, parentArtifactDir string) []string {
+	parentArtifactDir = canonicalSessionPath(parentArtifactDir)
+	dirs := make([]string, 0, len(parent.WorkDirs))
+	for _, dir := range parent.WorkDirs {
+		if parentArtifactDir != "" && canonicalSessionPath(dir) == parentArtifactDir {
+			continue
+		}
+		dirs = append(dirs, dir)
+	}
+	return dirs
+}
+
+func forkCurrentDir(parent Session, parentArtifactDir string) string {
+	parentArtifactDir = canonicalSessionPath(parentArtifactDir)
+	if parentArtifactDir != "" && canonicalSessionPath(parent.CurrentDir) == parentArtifactDir {
+		return ""
+	}
+	return parent.CurrentDir
+}
+
+func hasSessionTaskState(tasks SessionTasks) bool {
+	return tasks.Plan != nil || tasks.Contract != nil || len(tasks.Tasks) > 0
+}
+
+func suggestedForkTitle(parentTitle string, msg Message) string {
+	text := strings.TrimSpace(msg.Content)
+	if text == "" {
+		text = strings.TrimSpace(parentTitle)
+	}
+	if text == "" {
+		text = "session"
+	}
+	text = strings.Join(strings.Fields(text), " ")
+	const maxLen = 56
+	if len(text) > maxLen {
+		text = strings.TrimSpace(text[:maxLen-1]) + "..."
+	}
+	return "Fork: " + text
 }
 
 func generateID() (string, error) {

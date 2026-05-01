@@ -2230,6 +2230,75 @@ func TestSessionAPI_History(t *testing.T) {
 	}
 }
 
+func TestSessionAPI_ForkFromMessage(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	logger := zerolog.New(io.Discard)
+	store := session.NewStore(root)
+	parent, err := store.Create("Parent session")
+	if err != nil {
+		t.Fatalf("create parent: %v", err)
+	}
+	if err := store.SetPromptOverride(parent.ID, "Use concise replies."); err != nil {
+		t.Fatalf("set prompt override: %v", err)
+	}
+	transcriptPath := store.TranscriptPath(parent.ID)
+	for _, msg := range []session.Message{
+		{Role: "user", Content: "setup context", Timestamp: time.Now().UTC()},
+		{Role: "assistant", Content: "context ready", Timestamp: time.Now().UTC().Add(time.Second)},
+		{Role: "user", Content: "fork here please", Timestamp: time.Now().UTC().Add(2 * time.Second)},
+		{Role: "assistant", Content: "not copied", Timestamp: time.Now().UTC().Add(3 * time.Second)},
+	} {
+		if err := session.AppendMessage(transcriptPath, msg); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+	parentHistory, err := session.ReadMessages(transcriptPath)
+	if err != nil {
+		t.Fatalf("read parent history: %v", err)
+	}
+	handler := newSessionAPIHandler(store, logger)
+
+	body := fmt.Sprintf(`{"message_id":%q,"fork_reason":"explore another path"}`, parentHistory[2].ID)
+	req := httptest.NewRequest(http.MethodPost, "/v1/admin/sessions/"+parent.ID+"/fork", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Tars-Debug-Auth-Role", "admin")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var child session.Session
+	if err := json.Unmarshal(rec.Body.Bytes(), &child); err != nil {
+		t.Fatalf("decode child session: %v", err)
+	}
+	if child.ParentSessionID != parent.ID || child.RootSessionID != parent.ID {
+		t.Fatalf("expected lineage back to parent, got %+v", child)
+	}
+	if child.ForkedFromMessageID != parentHistory[2].ID {
+		t.Fatalf("expected fork message id %q, got %+v", parentHistory[2].ID, child)
+	}
+	if child.PromptOverride != "Use concise replies." {
+		t.Fatalf("expected prompt override copy, got %q", child.PromptOverride)
+	}
+
+	childHistory, err := session.ReadMessages(store.TranscriptPath(child.ID))
+	if err != nil {
+		t.Fatalf("read child history: %v", err)
+	}
+	if len(childHistory) != 3 {
+		t.Fatalf("expected copied prefix through fork point, got %+v", childHistory)
+	}
+	if childHistory[2].ID != parentHistory[2].ID || childHistory[2].Content != "fork here please" {
+		t.Fatalf("unexpected fork point message: %+v", childHistory[2])
+	}
+}
+
 func TestSessionAPI_Export(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {

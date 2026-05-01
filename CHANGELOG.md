@@ -6,6 +6,37 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.105] - 2026-05-01
+
+### Added
+
+- Added session forking from a transcript message, creating a child session with transcript history copied through the selected message.
+- Added `/v1/admin/sessions/{session_id}/fork` to create forked sessions with lineage metadata.
+- Added a Console chat message action for forking from a persisted transcript message and jumping into the new session.
+
+### Changed
+
+- Forked sessions now copy session state that should carry forward: tasks, tool/skill/MCP config, prompt override, work dirs, current dir, and compaction mode.
+
+### Documentation
+
+- README now documents message-level session forking as part of the Chat workflow.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/session ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/chat/{session}` message fork action with a mock API
+
+### Closed
+
+- Closes #568.
+
 ## [0.31.104] - 2026-05-01
 
 ### Added
