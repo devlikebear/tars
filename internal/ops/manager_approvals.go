@@ -38,6 +38,27 @@ func (m *Manager) updateApprovalStatus(approvalID string, next string) error {
 	return nil
 }
 
+func (m *Manager) GetApproval(approvalID string) (Approval, error) {
+	if m == nil {
+		return Approval{}, fmt.Errorf("ops manager is nil")
+	}
+	id := strings.TrimSpace(approvalID)
+	if id == "" {
+		return Approval{}, fmt.Errorf("approval_id is required")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	items, err := m.loadApprovalsLocked()
+	if err != nil {
+		return Approval{}, err
+	}
+	index, err := approvalIndexByID(items, id)
+	if err != nil {
+		return Approval{}, err
+	}
+	return items[index], nil
+}
+
 func approvalIndexByID(items []Approval, id string) (int, error) {
 	for i := range items {
 		if strings.TrimSpace(items[i].ID) == strings.TrimSpace(id) {

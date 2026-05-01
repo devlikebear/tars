@@ -6,6 +6,38 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.109] - 2026-05-01
+
+### Added
+
+- Added approved Git mutation approvals for stage, unstage, discard, commit, and branch switch actions.
+- Added `/v1/git/mutations` to queue Git mutation approval cards instead of mutating the workspace directly.
+- Added Git Inspector controls for queueing approved mutations and Approvals page rendering for Git mutation cards.
+- Added Git mutation automation audit records for success, failure, and blocked consent states.
+
+### Changed
+
+- Destructive Git discard actions are highlighted and cannot run silently; they require session Git mutation consent plus approval.
+
+### Documentation
+
+- README now documents approved Git mutations from Git Inspector through Approvals and Automation Audit.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/git ./internal/ops ./internal/tarsserver`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/chat/{session}` Git Inspector mutation approval and `/console/approvals` Git mutation apply/audit with a mock API
+
+### Closed
+
+- Closes #572.
+
 ## [0.31.108] - 2026-05-01
 
 ### Added

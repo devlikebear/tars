@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { getGitBranches, getGitDiff, getGitLog, getGitStatus } from '../lib/api'
+  import { createGitMutationApproval, getGitBranches, getGitDiff, getGitLog, getGitStatus, type CreateGitMutationApprovalRequest } from '../lib/api'
   import type { GitBranch, GitBranchesResponse, GitCommit, GitDiff, GitStatus, GitStatusFile } from '../lib/types'
 
   interface Props {
@@ -19,6 +19,9 @@
   let loading = $state(false)
   let diffLoading = $state(false)
   let error = $state('')
+  let mutationBusy = $state('')
+  let mutationFeedback = $state('')
+  let commitMessage = $state('')
 
   let files = $derived.by<GitStatusFile[]>(() => status?.files ?? [])
   let remotes = $derived.by(() => status?.remotes ?? [])
@@ -100,6 +103,36 @@
     }
   }
 
+  async function requestMutation(action: CreateGitMutationApprovalRequest['action'], options: Partial<CreateGitMutationApprovalRequest> = {}) {
+    if (!status?.is_git || mutationBusy) return
+    error = ''
+    mutationFeedback = ''
+    const key = `${action}:${options.path ?? options.branch ?? ''}`
+    mutationBusy = key
+    try {
+      const plan = await createGitMutationApproval({
+        session_id: sessionId,
+        root: status.root,
+        action,
+        ...options,
+      })
+      mutationFeedback = `${plan.approval_id} queued for approval`
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to queue git mutation approval'
+    } finally {
+      mutationBusy = ''
+    }
+  }
+
+  async function requestCommit() {
+    const message = commitMessage.trim()
+    if (!message) {
+      error = 'Commit message is required'
+      return
+    }
+    await requestMutation('commit', { message, reason: 'Commit staged changes from Git Inspector' })
+  }
+
   function sideBySideLines(patch?: string): { left: string[]; right: string[] } {
     const left: string[] = []
     const right: string[] = []
@@ -143,6 +176,9 @@
 
   {#if error}
     <div class="error-banner">{error}</div>
+  {/if}
+  {#if mutationFeedback}
+    <div class="success-banner">{mutationFeedback}</div>
   {/if}
 
   {#if loading && !status}
@@ -203,9 +239,18 @@
               <div class="file-actions">
                 {#if file.unstaged}
                   <button class="btn btn-ghost btn-sm" type="button" class:active={selectedPath === file.path && !selectedStaged} onclick={() => loadDiff(file, false)}>Worktree</button>
+                  <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('stage', { path: file.path, reason: 'Stage selected file from Git Inspector' })}>
+                    {mutationBusy === `stage:${file.path}` ? 'Queueing...' : 'Stage'}
+                  </button>
+                  <button class="btn btn-danger btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('discard', { path: file.path, reason: 'Discard selected worktree changes from Git Inspector' })}>
+                    {mutationBusy === `discard:${file.path}` ? 'Queueing...' : 'Discard'}
+                  </button>
                 {/if}
                 {#if file.staged}
                   <button class="btn btn-ghost btn-sm" type="button" class:active={selectedPath === file.path && selectedStaged} onclick={() => loadDiff(file, true)}>Staged</button>
+                  <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('unstage', { path: file.path, reason: 'Unstage selected file from Git Inspector' })}>
+                    {mutationBusy === `unstage:${file.path}` ? 'Queueing...' : 'Unstage'}
+                  </button>
                 {/if}
               </div>
             </article>
@@ -243,12 +288,26 @@
           {#each branches as branch (branch.name)}
             <div class="branch-row">
               <span>{branch.current ? '*' : ''}{branch.name}</span>
-              {#if branch.remote}<small>remote</small>{/if}
+              <div class="branch-actions">
+                {#if branch.remote}<small>remote</small>{/if}
+                {#if !branch.current && !branch.remote}
+                  <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('switch_branch', { branch: branch.name, reason: 'Switch branch from Git Inspector' })}>
+                    {mutationBusy === `switch_branch:${branch.name}` ? 'Queueing...' : 'Switch'}
+                  </button>
+                {/if}
+              </div>
             </div>
           {/each}
         </div>
       </div>
       <div>
+        <div class="section-title">Commit</div>
+        <div class="commit-box">
+          <input type="text" bind:value={commitMessage} placeholder="Commit message" />
+          <button class="btn btn-primary btn-sm" type="button" disabled={stagedCount === 0 || !commitMessage.trim() || !!mutationBusy} onclick={requestCommit}>
+            {mutationBusy === 'commit:' ? 'Queueing...' : 'Commit staged'}
+          </button>
+        </div>
         <div class="section-title">Log</div>
         <div class="log-list">
           {#each log as commit (commit.hash)}
@@ -336,6 +395,15 @@
     gap: var(--space-2);
   }
 
+  .success-banner {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    border-radius: var(--radius-sm);
+    background: rgba(34, 197, 94, 0.08);
+    color: var(--green);
+    font-size: var(--text-xs);
+  }
+
   .remote-row strong,
   .log-row strong {
     color: var(--text-primary);
@@ -419,8 +487,33 @@
   .branch-row {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     gap: var(--space-2);
     color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+
+  .branch-actions,
+  .commit-box {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .commit-box {
+    margin-bottom: var(--space-3);
+  }
+
+  .commit-box input {
+    min-width: 0;
+    flex: 1;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    color: var(--text-primary);
+    font: inherit;
     font-size: var(--text-xs);
   }
 

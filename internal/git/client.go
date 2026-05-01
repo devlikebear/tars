@@ -84,6 +84,35 @@ type Branches struct {
 	Branches []Branch `json:"branches"`
 }
 
+type MutationAction string
+
+const (
+	MutationStage        MutationAction = "stage"
+	MutationUnstage      MutationAction = "unstage"
+	MutationDiscard      MutationAction = "discard"
+	MutationCommit       MutationAction = "commit"
+	MutationSwitchBranch MutationAction = "switch_branch"
+)
+
+type MutationOptions struct {
+	StartDir string
+	Action   MutationAction
+	Path     string
+	Branch   string
+	Message  string
+}
+
+type MutationResult struct {
+	IsGit       bool           `json:"is_git"`
+	Root        string         `json:"root"`
+	Action      MutationAction `json:"action"`
+	Path        string         `json:"path,omitempty"`
+	Branch      string         `json:"branch,omitempty"`
+	Message     string         `json:"message,omitempty"`
+	Destructive bool           `json:"destructive,omitempty"`
+	Output      string         `json:"output,omitempty"`
+}
+
 func NewClient() *Client {
 	return &Client{}
 }
@@ -176,6 +205,84 @@ func (c *Client) Branches(ctx context.Context, startDir string) (Branches, error
 	return Branches{IsGit: true, Root: root, Branches: parseBranches(string(out))}, nil
 }
 
+func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResult, error) {
+	root, err := c.RepositoryRoot(ctx, opts.StartDir)
+	if err != nil {
+		return MutationResult{}, err
+	}
+	action := opts.Action
+	result := MutationResult{IsGit: true, Root: root, Action: action}
+	switch action {
+	case MutationStage:
+		path, err := normalizeMutationPath(opts.Path)
+		if err != nil {
+			return MutationResult{}, err
+		}
+		if _, err := runGit(ctx, root, "add", "--", path); err != nil {
+			return MutationResult{}, err
+		}
+		result.Path = path
+		result.Output = "staged " + path
+	case MutationUnstage:
+		path, err := normalizeMutationPath(opts.Path)
+		if err != nil {
+			return MutationResult{}, err
+		}
+		if _, err := runGit(ctx, root, "restore", "--staged", "--", path); err != nil {
+			return MutationResult{}, err
+		}
+		result.Path = path
+		result.Output = "unstaged " + path
+	case MutationDiscard:
+		path, err := normalizeMutationPath(opts.Path)
+		if err != nil {
+			return MutationResult{}, err
+		}
+		if isUntrackedPath(ctx, root, path) {
+			if _, err := runGit(ctx, root, "clean", "-f", "--", path); err != nil {
+				return MutationResult{}, err
+			}
+		} else if _, err := runGit(ctx, root, "restore", "--worktree", "--", path); err != nil {
+			return MutationResult{}, err
+		}
+		result.Path = path
+		result.Destructive = true
+		result.Output = "discarded " + path
+	case MutationCommit:
+		message := strings.TrimSpace(opts.Message)
+		if message == "" {
+			return MutationResult{}, fmt.Errorf("commit message is required")
+		}
+		out, err := runGit(ctx, root, "commit", "-m", message)
+		if err != nil {
+			return MutationResult{}, err
+		}
+		result.Message = message
+		result.Output = strings.TrimSpace(string(out))
+	case MutationSwitchBranch:
+		branch := strings.TrimSpace(opts.Branch)
+		if branch == "" {
+			return MutationResult{}, fmt.Errorf("branch is required")
+		}
+		if _, err := runGit(ctx, root, "check-ref-format", "--branch", branch); err != nil {
+			return MutationResult{}, err
+		}
+		out, err := runGit(ctx, root, "switch", "--", branch)
+		if err != nil {
+			return MutationResult{}, err
+		}
+		result.Branch = branch
+		output := strings.TrimSpace(string(out))
+		if output == "" {
+			output = "switched to " + branch
+		}
+		result.Output = output
+	default:
+		return MutationResult{}, fmt.Errorf("unsupported git mutation action: %s", action)
+	}
+	return result, nil
+}
+
 func normalizeStartDir(startDir string) (string, error) {
 	startDir = strings.TrimSpace(startDir)
 	if startDir == "" {
@@ -186,6 +293,35 @@ func normalizeStartDir(startDir string) (string, error) {
 		return "", err
 	}
 	return filepath.Clean(abs), nil
+}
+
+func normalizeMutationPath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("path is required")
+	}
+	if filepath.IsAbs(path) {
+		return "", fmt.Errorf("path must be repository-relative")
+	}
+	clean := filepath.ToSlash(filepath.Clean(path))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", fmt.Errorf("path must stay inside the repository")
+	}
+	return clean, nil
+}
+
+func isUntrackedPath(ctx context.Context, root string, path string) bool {
+	out, err := runGit(ctx, root, "status", "--porcelain=v1", "-z", "--", path)
+	if err != nil {
+		return false
+	}
+	records := strings.Split(string(out), "\x00")
+	for _, rec := range records {
+		if len(rec) >= 4 && rec[0:2] == "??" {
+			return true
+		}
+	}
+	return false
 }
 
 func runGit(ctx context.Context, startDir string, args ...string) ([]byte, error) {

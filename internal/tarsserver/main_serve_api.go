@@ -495,7 +495,7 @@ func buildAPIMux(
 	}
 	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
 	logsHandler := newLogsAPIHandler(cfg.WorkspaceDir, normalizeRuntimeLogFilePath(buildLoggerConfig(opts, cfg).FilePath), logger)
-	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit)
+	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit, sessionStore)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
 	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg))
@@ -561,7 +561,7 @@ func buildAPIMux(
 	skillhubHandler := newSkillhubAPIHandler(hubInstaller, extensionsManager, logger)
 	skillCreatorHandler := newSkillCreatorAPIHandler(cfg.WorkspaceDir, logger, nil)
 	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil)
-	gitHandler := newGitAPIHandler(cfg.WorkspaceDir, sessionStore, logger)
+	gitHandler := newGitAPIHandler(cfg.WorkspaceDir, sessionStore, opsManager, logger)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
 	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)

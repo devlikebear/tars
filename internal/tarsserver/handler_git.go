@@ -10,11 +10,14 @@ import (
 	"strings"
 
 	gitrepo "github.com/devlikebear/tars/internal/git"
+	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
 
-func newGitAPIHandler(workspaceDir string, store *session.Store, logger zerolog.Logger) http.Handler {
+var errGitMutationRootOutsideSession = errors.New("git mutation root is outside the session workspace")
+
+func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Manager, logger zerolog.Logger) http.Handler {
 	client := gitrepo.NewClient()
 	mux := http.NewServeMux()
 
@@ -66,6 +69,65 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, logger zerolog.
 			return
 		}
 		writeJSON(w, http.StatusOK, branches)
+	})
+
+	mux.HandleFunc("/mutations", func(w http.ResponseWriter, r *http.Request) {
+		if manager == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ops manager is not configured"})
+			return
+		}
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		var req struct {
+			SessionID string `json:"session_id"`
+			Root      string `json:"root"`
+			Action    string `json:"action"`
+			Path      string `json:"path"`
+			Branch    string `json:"branch"`
+			Message   string `json:"message"`
+			Reason    string `json:"reason"`
+		}
+		if !decodeJSONBody(w, r, &req) {
+			return
+		}
+		sessionID := strings.TrimSpace(req.SessionID)
+		if !sessionAllowsApprovedGitMutation(store, sessionID) {
+			root := strings.TrimSpace(req.Root)
+			_, _ = manager.RecordAutomationAudit(ops.AutomationAuditEntry{
+				Actor:     "git",
+				Action:    "git." + strings.TrimSpace(req.Action),
+				Reason:    "session has not enabled approved git mutations",
+				SessionID: sessionID,
+				CWD:       root,
+				Result:    "blocked",
+			})
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "session has not enabled approved git mutations"})
+			return
+		}
+		root, err := gitMutationRootForRequest(r.Context(), client, workspaceDir, store, sessionID, req.Root)
+		if err != nil {
+			if errors.Is(err, errGitMutationRootOutsideSession) {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+				return
+			}
+			writeGitAPIError(w, err)
+			return
+		}
+		plan, err := manager.CreateGitMutationApproval(r.Context(), ops.GitMutationPlan{
+			SessionID: sessionID,
+			Root:      root,
+			Action:    strings.TrimSpace(req.Action),
+			Path:      strings.TrimSpace(req.Path),
+			Branch:    strings.TrimSpace(req.Branch),
+			Message:   strings.TrimSpace(req.Message),
+			Reason:    strings.TrimSpace(req.Reason),
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, plan)
 	})
 
 	return http.StripPrefix("/v1/git", mux)
@@ -145,6 +207,81 @@ func gitBranchesForRequest(ctx context.Context, client *gitrepo.Client, workspac
 	return gitrepo.Branches{}, lastErr
 }
 
+func gitMutationRootForRequest(ctx context.Context, client *gitrepo.Client, workspaceDir string, store *session.Store, sessionID string, root string) (string, error) {
+	targets := make([]string, 0, 4)
+	requested := strings.TrimSpace(root)
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if abs, err := filepath.Abs(value); err == nil {
+			value = abs
+		}
+		value = filepath.Clean(value)
+		for _, existing := range targets {
+			if existing == value {
+				return
+			}
+		}
+		targets = append(targets, value)
+	}
+	if store != nil && strings.TrimSpace(sessionID) != "" {
+		if sess, err := store.Get(strings.TrimSpace(sessionID)); err == nil {
+			add(sess.CurrentDir)
+			for _, dir := range sess.WorkDirs {
+				add(dir)
+			}
+		}
+	}
+	add(workspaceDir)
+
+	var lastErr error = gitrepo.ErrNotRepository
+	allowedRoots := make([]string, 0, len(targets))
+	for _, target := range targets {
+		candidateRoot, err := client.RepositoryRoot(ctx, target)
+		if err == nil {
+			allowedRoots = appendUniquePath(allowedRoots, candidateRoot)
+			continue
+		}
+		lastErr = err
+		if !errors.Is(err, gitrepo.ErrNotRepository) {
+			return "", err
+		}
+	}
+
+	if requested != "" {
+		requestedRoot, err := client.RepositoryRoot(ctx, requested)
+		if err != nil {
+			return "", err
+		}
+		for _, allowed := range allowedRoots {
+			if filepath.Clean(requestedRoot) == filepath.Clean(allowed) {
+				return requestedRoot, nil
+			}
+		}
+		return "", errGitMutationRootOutsideSession
+	}
+
+	if len(allowedRoots) > 0 {
+		return allowedRoots[0], nil
+	}
+	return "", lastErr
+}
+
+func appendUniquePath(items []string, value string) []string {
+	value = filepath.Clean(strings.TrimSpace(value))
+	if value == "" {
+		return items
+	}
+	for _, existing := range items {
+		if filepath.Clean(existing) == value {
+			return items
+		}
+	}
+	return append(items, value)
+}
+
 func gitTargetDirs(workspaceDir string, store *session.Store, r *http.Request) []string {
 	query := r.URL.Query()
 	targets := make([]string, 0, 4)
@@ -187,6 +324,21 @@ func gitTargetDirs(workspaceDir string, store *session.Store, r *http.Request) [
 	}
 	add(workspaceDir)
 	return targets
+}
+
+func sessionAllowsApprovedGitMutation(store *session.Store, sessionID string) bool {
+	if store == nil {
+		return false
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false
+	}
+	sess, err := store.Get(sessionID)
+	if err != nil || sess.AutomationConsent == nil {
+		return false
+	}
+	return sess.AutomationConsent.GitMutations
 }
 
 func firstGitTarget(targets []string) string {

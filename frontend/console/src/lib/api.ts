@@ -69,6 +69,7 @@ import type {
   GitBranchesResponse,
   GitDiff,
   GitLogResponse,
+  GitMutationPlan,
   GitStatus,
   SessionWorkDirs,
   UsageToday,
@@ -518,6 +519,24 @@ export function getGitLog(query: GitQuery & { limit?: number } = {}): Promise<Gi
 
 export function getGitBranches(query: GitQuery = {}): Promise<GitBranchesResponse> {
   return requestJSON<GitBranchesResponse>(gitEndpoint('branches', query))
+}
+
+export type CreateGitMutationApprovalRequest = {
+  session_id: string
+  root?: string
+  action: 'stage' | 'unstage' | 'discard' | 'commit' | 'switch_branch'
+  path?: string
+  branch?: string
+  message?: string
+  reason?: string
+}
+
+export function createGitMutationApproval(payload: CreateGitMutationApprovalRequest): Promise<GitMutationPlan> {
+  return requestJSON<GitMutationPlan>('/v1/git/mutations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }
 
 export async function getSessionWorkDirs(sessionId: string): Promise<SessionWorkDirs> {

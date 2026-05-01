@@ -80,6 +80,108 @@ func TestClientStatusAndDiffAreReadOnly(t *testing.T) {
 	}
 }
 
+func TestClientMutationsStageCommitAndSwitch(t *testing.T) {
+	repo := t.TempDir()
+	runGitCmd(t, repo, "init", "-b", "main")
+	runGitCmd(t, repo, "config", "user.email", "tars@example.test")
+	runGitCmd(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write readme: %v", err)
+	}
+	runGitCmd(t, repo, "add", "README.md")
+	runGitCmd(t, repo, "commit", "-m", "initial")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\nchanged\n"), 0o644); err != nil {
+		t.Fatalf("modify readme: %v", err)
+	}
+
+	client := NewClient()
+	stage, err := client.Mutate(context.Background(), MutationOptions{
+		StartDir: repo,
+		Action:   MutationStage,
+		Path:     "README.md",
+	})
+	if err != nil {
+		t.Fatalf("stage mutation: %v", err)
+	}
+	if stage.Action != MutationStage || !strings.Contains(stage.Output, "staged README.md") {
+		t.Fatalf("unexpected stage result: %+v", stage)
+	}
+	status, err := client.Status(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("status after stage: %v", err)
+	}
+	if got := fileByPath(status.Files, "README.md"); got == nil || !got.Staged || got.Unstaged {
+		t.Fatalf("expected staged README.md after mutation, got %+v", got)
+	}
+
+	commit, err := client.Mutate(context.Background(), MutationOptions{
+		StartDir: repo,
+		Action:   MutationCommit,
+		Message:  "update readme",
+	})
+	if err != nil {
+		t.Fatalf("commit mutation: %v", err)
+	}
+	if commit.Action != MutationCommit || !strings.Contains(commit.Output, "update readme") {
+		t.Fatalf("unexpected commit result: %+v", commit)
+	}
+
+	runGitCmd(t, repo, "branch", "feature/demo")
+	switched, err := client.Mutate(context.Background(), MutationOptions{
+		StartDir: repo,
+		Action:   MutationSwitchBranch,
+		Branch:   "feature/demo",
+	})
+	if err != nil {
+		t.Fatalf("switch mutation: %v", err)
+	}
+	if switched.Action != MutationSwitchBranch || !strings.Contains(switched.Output, "feature/demo") {
+		t.Fatalf("unexpected switch result: %+v", switched)
+	}
+	status, err = client.Status(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("status after switch: %v", err)
+	}
+	if status.Branch != "feature/demo" {
+		t.Fatalf("expected feature/demo branch, got %+v", status)
+	}
+}
+
+func TestClientDiscardMutationRestoresWorktree(t *testing.T) {
+	repo := t.TempDir()
+	runGitCmd(t, repo, "init", "-b", "main")
+	runGitCmd(t, repo, "config", "user.email", "tars@example.test")
+	runGitCmd(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write readme: %v", err)
+	}
+	runGitCmd(t, repo, "add", "README.md")
+	runGitCmd(t, repo, "commit", "-m", "initial")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("oops\n"), 0o644); err != nil {
+		t.Fatalf("modify readme: %v", err)
+	}
+
+	client := NewClient()
+	result, err := client.Mutate(context.Background(), MutationOptions{
+		StartDir: repo,
+		Action:   MutationDiscard,
+		Path:     "README.md",
+	})
+	if err != nil {
+		t.Fatalf("discard mutation: %v", err)
+	}
+	if result.Action != MutationDiscard || !result.Destructive {
+		t.Fatalf("expected destructive discard result, got %+v", result)
+	}
+	raw, err := os.ReadFile(filepath.Join(repo, "README.md"))
+	if err != nil {
+		t.Fatalf("read readme: %v", err)
+	}
+	if string(raw) != "hello\n" {
+		t.Fatalf("expected discard to restore file, got %q", raw)
+	}
+}
+
 func fileByPath(files []StatusFile, path string) *StatusFile {
 	for i := range files {
 		if files[i].Path == path {
