@@ -6,6 +6,25 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.93] - 2026-05-01
+
+### Documentation
+
+- README now documents that the TARS name is an homage to TARS from *Interstellar*.
+- Refreshed the public extension docs around the current skill-first model, plugin-declared MCP server opt-in, hub MCP packages, and removed built-in Go plugin/HTTP-route surfaces.
+- Updated Getting Started, Contributing, and tutorials for the current provider pool, auth middleware admin paths, default console/API address, and Skill Hub package flow.
+
+### Tests
+
+- `git diff --check`
+- stale docs token scan for removed extension/provider/KB/gateway references
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+
+### Closed
+
+- Closes #563.
+
 ## [0.31.92] - 2026-05-01
 
 ### Fixed

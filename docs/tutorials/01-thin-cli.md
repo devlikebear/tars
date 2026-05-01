@@ -99,7 +99,7 @@ type serveOptions struct {
 }
 
 func newServeCommand(stdout, stderr io.Writer) *cobra.Command {
-    opts := serveOptions{port: 8080}
+    opts := serveOptions{port: 43180}
     cmd := &cobra.Command{
         Use:   "serve",
         Short: "Run tars server",
@@ -118,7 +118,7 @@ func newServeCommand(stdout, stderr io.Writer) *cobra.Command {
 ```bash
 go run ./cmd/tars/              # help 출력
 go run ./cmd/tars/ version      # tars dev (unknown, unknown)
-go run ./cmd/tars/ serve        # starting tars server on :8080
+go run ./cmd/tars/ serve        # starting tars server on :43180
 go run ./cmd/tars/ serve --port 3000  # starting tars server on :3000
 ```
 

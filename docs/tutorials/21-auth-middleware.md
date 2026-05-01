@@ -20,7 +20,7 @@ TARS는 단순한 Bearer token 인증을 쓰되, token을 user/admin role로 나
 | `external-required` | 외부 요청은 token 필요, loopback 요청은 일부 경로 완화 |
 | `off` | 인증 끔. 내부적으로 admin role을 부여하므로 로컬 개발에서만 사용 |
 
-`api_auth_mode=off` 또는 `external-required`는 명시적으로 `api_allow_insecure_local_auth=true`를 켜야 사용할 수 있습니다.
+`api_auth_mode=off` 또는 `external-required`는 명시적으로 `api_allow_insecure_local_auth=true`를 켜야 사용할 수 있습니다. 이 opt-in은 로컬 개발 편의를 의도한 장치이며, 외부 공개 서버의 보안 완화로 쓰면 안 됩니다.
 
 ## 보안 원칙
 
@@ -143,7 +143,7 @@ auth := serverauth.NewMiddleware(serverauth.Options{
 
 ```go
 func apiAuthSkipPaths(cfg config.Config) []string {
-    return []string{"/v1/healthz", "/console", "/console/", "/console/*"}
+    return []string{"/v1/healthz", "/", "/console", "/console/", "/console/*"}
 }
 
 func apiAdminPaths() []string {
@@ -152,6 +152,7 @@ func apiAdminPaths() []string {
         "/v1/runtime/extensions/reload",
         "/v1/agentruntime/reload",
         "/v1/agentruntime/restart",
+        "/v1/terminal/*",
         "/v1/channels/webhook/inbound/*",
         "/v1/channels/telegram/webhook/*",
         "/v1/channels/telegram/pairings*",
@@ -159,7 +160,7 @@ func apiAdminPaths() []string {
 }
 ```
 
-`dashboard_auth_mode=off`는 콘솔을 외부에 공개한다는 뜻이 아닙니다. loopback 요청에서만 콘솔 경로를 우회합니다.
+`dashboard_auth_mode`는 이름이 남아 있는 legacy config field이지만, 현재 의미는 `/console` shell의 loopback-only 완화입니다. `dashboard_auth_mode=off`는 콘솔을 외부에 공개한다는 뜻이 아니며, loopback 요청에서만 `/`와 `/console/*` 경로를 우회합니다.
 
 ## 설정 예시
 
@@ -177,13 +178,21 @@ tars serve
 
 API client는 `Authorization: Bearer <token>` 헤더를 보냅니다. CLI에서는 `--api-token`, `--admin-api-token`, `TARS_API_TOKEN`, `TARS_ADMIN_API_TOKEN`을 사용합니다.
 
+로컬 개발에서만 인증 완화를 쓰려면 두 값을 함께 설정합니다.
+
+```yaml
+api_auth_mode: external-required
+api_allow_insecure_local_auth: true
+```
+
 ## 체크포인트
 
 - [x] `required` 모드에서 token 없는 보호 API 요청은 401
 - [x] user token은 일반 API에 접근 가능
 - [x] admin path는 admin token 또는 legacy token만 접근 가능
 - [x] `/v1/healthz`와 콘솔 정적 경로는 skip
-- [x] `dashboard_auth_mode=off`는 loopback-only skip으로 제한
+- [x] `dashboard_auth_mode=off`는 `/`와 `/console/*`의 loopback-only skip으로 제한
+- [x] `/v1/terminal/*`, extension reload, agent runtime reload/restart, webhook/pairing 경로는 admin path로 보호
 - [x] token 비교는 SHA-256 + constant-time compare
 
 ## 다음 단계

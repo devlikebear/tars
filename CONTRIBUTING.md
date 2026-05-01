@@ -63,8 +63,10 @@ make security-scan
 ## Compatibility Notes
 
 - The primary plugin manifest filename is `tars.plugin.json`
-- The primary user extension directories are `~/.tars/skills` and `~/.tars/plugins`
-- One release of fallback compatibility is kept for legacy pre-publication extension paths and manifest names
+- Extension source priority is workspace > user > bundled. Workspace installs live under `workspace/skills`, `workspace/plugins`, and `workspace/mcp-servers`.
+- User-level extension directories are `~/.tars/skills` and `~/.tars/plugins`; legacy `~/.tarsncase/*` paths remain fallback compatibility only.
+- Plugin-declared MCP servers are disabled by default and require `extensions.plugins.allow_mcp_servers: true`.
+- One release of fallback compatibility is kept for legacy pre-publication extension paths and manifest names when practical.
 
 ## Release Automation Notes
 

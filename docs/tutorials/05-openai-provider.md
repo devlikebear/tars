@@ -12,6 +12,8 @@ transport.go              ← 공통 HTTP 유틸
 http_utils.go             ← 에러 처리 헬퍼
 ```
 
+현재 TARS에는 OpenAI Chat Completions 호환 adapter(`openai`)와 OpenAI Responses API adapter(`openai-codex`)가 모두 있다. 이 Step은 `/chat/completions` 계열 wire format을 먼저 학습하는 구간이고, provider 선택은 Step 6의 LLM provider pool에서 tier별로 이뤄진다.
+
 ### 핵심 설계 포인트
 
 **1. Wire Format 변환**
@@ -53,7 +55,7 @@ chunk 3: tool_calls[0] = { index: 0, function: { arguments: 'sage":"hi"}' } }
 
 ### 5-1. OpenAI 클라이언트 구조체
 
-**`internal/llm/openai.go`**
+**학습용 최소 구조 (`internal/llm/openai_compat_client.go`에서 핵심만 축약)**
 
 ```go
 type OpenAIClient struct {
@@ -164,11 +166,24 @@ func orderedToolCalls(m map[int]ToolCall) []ToolCall { ... }
 
 ```bash
 # 컴파일 확인
-go build ./...
+make build
 
 # 실제 OpenAI API로 테스트 (API 키 필요)
-TARS_PROVIDER=openai TARS_API_KEY=sk-... TARS_MODEL=gpt-4o-mini \
-  go run ./cmd/tars/ serve
+cat > config.yaml <<'EOF'
+llm:
+  providers:
+    default:
+      kind: openai
+      auth_mode: api-key
+      api_key: ${OPENAI_API_KEY}
+  tiers:
+    heavy: { provider: default, model: gpt-5.4, reasoning_effort: high }
+    standard: { provider: default, model: gpt-5.4, reasoning_effort: medium }
+    light: { provider: default, model: gpt-5.4, reasoning_effort: minimal }
+  default_tier: standard
+EOF
+
+OPENAI_API_KEY=sk-... go run ./cmd/tars/ serve --config config.yaml
 
 curl -N -X POST http://127.0.0.1:43180/v1/chat \
   -H "Content-Type: application/json" \
