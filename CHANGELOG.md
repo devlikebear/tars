@@ -6,6 +6,35 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.90] - 2026-05-01
+
+### Added
+
+- Added `GET /v1/admin/tasks?active=true` for recently updated active plans across sessions.
+- Added `/console/tasks` as a global Plans page with session plan progress cards and direct chat-session navigation.
+- Added Console sidebar navigation for Plans.
+
+### Documentation
+
+- README now documents the global Plans page and active-plan API surface.
+
+### Tests
+
+- `GOCACHE=/tmp/tars-go-cache go test ./internal/session ./internal/tarsserver -run 'ListSessionsWithPlans|GlobalTasksAPI|RegisterAPIRoutes'`
+- `cd frontend/console && node --experimental-strip-types --test tests/plansPage.test.ts tests/navGroups.test.ts tests/i18n.test.ts`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `cd frontend/console && npm run build`
+- `make vet`
+- `make security-scan`
+- `GOCACHE=/tmp/tars-go-cache make build`
+- `make console-build`
+
+### Closed
+
+- Closes #394.
+
 ## [0.31.89] - 2026-05-01
 
 ### Added
