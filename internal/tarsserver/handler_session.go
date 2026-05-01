@@ -556,6 +556,38 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 				recordSessionToolConfigSignal(usageTracker, sessionID, config)
 				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 			}
+		case len(pathParts) == 2 && pathParts[1] == "automation-consent":
+			if !requireMethod(w, r, http.MethodGet, http.MethodPatch) {
+				return
+			}
+			sess, err := reqStore.Get(sessionID)
+			if err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+				return
+			}
+			switch r.Method {
+			case http.MethodGet:
+				consent := sess.AutomationConsent
+				if consent == nil {
+					consent = &session.SessionAutomationConsent{}
+				}
+				writeJSON(w, http.StatusOK, consent)
+			case http.MethodPatch:
+				var consent session.SessionAutomationConsent
+				if !decodeJSONBody(w, r, &consent) {
+					return
+				}
+				if err := reqStore.SetAutomationConsent(sessionID, &consent); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					return
+				}
+				updated, err := reqStore.Get(sessionID)
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "get updated session failed"})
+					return
+				}
+				writeJSON(w, http.StatusOK, updated.AutomationConsent)
+			}
 		case len(pathParts) == 2 && pathParts[1] == "prompt":
 			if !requireMethod(w, r, http.MethodGet, http.MethodPut) {
 				return

@@ -63,6 +63,7 @@ type Manager struct {
 	workspaceDir  string
 	homeDir       string
 	approvalsPath string
+	auditPath     string
 	eventsDir     string
 	nowFn         func() time.Time
 	minFileAge    time.Duration
@@ -85,6 +86,7 @@ func NewManager(workspaceDir string, opts Options) *Manager {
 		workspaceDir:  root,
 		homeDir:       home,
 		approvalsPath: filepath.Join(root, "ops", "approvals.json"),
+		auditPath:     filepath.Join(root, "ops", "automation-audit.jsonl"),
 		eventsDir:     filepath.Join(root, "ops", "events"),
 		nowFn:         nowFn,
 		minFileAge:    opts.MinFileAge,

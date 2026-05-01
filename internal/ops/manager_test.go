@@ -75,6 +75,55 @@ func TestManager_ListApprovals(t *testing.T) {
 	}
 }
 
+func TestManager_RecordAutomationAuditListsNewestFirst(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	first := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	current := first
+	mgr := NewManager(workspace, Options{
+		HomeDir: filepath.Join(t.TempDir(), "home"),
+		Now: func() time.Time {
+			return current
+		},
+	})
+
+	if _, err := mgr.RecordAutomationAudit(AutomationAuditEntry{
+		Actor:     "pulse",
+		Action:    "auto_resume_chat",
+		Reason:    "stalled chat nudge",
+		SessionID: "sess_1",
+		CWD:       "/tmp/workspace",
+		Result:    "blocked",
+	}); err != nil {
+		t.Fatalf("record first audit: %v", err)
+	}
+	current = first.Add(time.Minute)
+	latest, err := mgr.RecordAutomationAudit(AutomationAuditEntry{
+		Actor:     "git",
+		Action:    "git_commit",
+		Reason:    "user approved commit",
+		SessionID: "sess_1",
+		CWD:       "/tmp/workspace",
+		Result:    "success",
+	})
+	if err != nil {
+		t.Fatalf("record second audit: %v", err)
+	}
+
+	items, err := mgr.ListAutomationAudit(AutomationAuditListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("list automation audit: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected two audit entries, got %+v", items)
+	}
+	if items[0].ID != latest.ID || items[0].Action != "git_commit" {
+		t.Fatalf("expected newest audit first, got %+v", items)
+	}
+	if items[1].Actor != "pulse" || items[1].Result != "blocked" {
+		t.Fatalf("unexpected first audit entry: %+v", items[1])
+	}
+}
+
 func TestManager_UpdateApprovalStatus_SetsReviewedAtAndPersists(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	fixedNow := time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC)

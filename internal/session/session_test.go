@@ -513,6 +513,48 @@ func TestStoreSetToolConfig_RoundTripsGroupFields(t *testing.T) {
 	}
 }
 
+func TestStoreSetAutomationConsent_RoundTripsConservativeDefaults(t *testing.T) {
+	store := NewStore(t.TempDir())
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	initial, err := store.Get(sess.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if initial.AutomationConsent != nil && initial.AutomationConsent.AllowsAutonomousMutation() {
+		t.Fatalf("expected conservative automation consent defaults, got %+v", initial.AutomationConsent)
+	}
+
+	consent := &SessionAutomationConsent{
+		AutoResume:          true,
+		GitMutations:        true,
+		AutonomousMutations: false,
+	}
+	if err := store.SetAutomationConsent(sess.ID, consent); err != nil {
+		t.Fatalf("set automation consent: %v", err)
+	}
+
+	reloaded, err := store.Get(sess.ID)
+	if err != nil {
+		t.Fatalf("reload session: %v", err)
+	}
+	if reloaded.AutomationConsent == nil {
+		t.Fatalf("expected automation consent to persist")
+	}
+	if !reloaded.AutomationConsent.AutoResume || !reloaded.AutomationConsent.GitMutations {
+		t.Fatalf("expected consent toggles to persist, got %+v", reloaded.AutomationConsent)
+	}
+	if reloaded.AutomationConsent.AutonomousMutations {
+		t.Fatalf("expected autonomous mutations to remain disabled, got %+v", reloaded.AutomationConsent)
+	}
+	if reloaded.AutomationConsent.UpdatedAt.IsZero() {
+		t.Fatalf("expected updated_at to be set")
+	}
+}
+
 func TestStoreGet_LegacyToolConfigWithoutGroupFieldsStillLoads(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

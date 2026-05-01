@@ -1,6 +1,7 @@
 import type {
   APIErrorPayload,
   Approval,
+  AutomationAuditListResponse,
   ChatEvent,
   ChatRequest,
   CleanupApplyResult,
@@ -47,6 +48,7 @@ import type {
   ReflectionRunSummary,
   ReflectionConfigView,
   Session,
+  SessionAutomationConsent,
   SessionMessage,
   GlobalPlansResponse,
   PlanArchiveResponse,
@@ -265,6 +267,14 @@ export async function reviewApproval(approvalId: string, action: 'approve' | 're
   await requestJSON<{ ok: boolean }>(`/v1/ops/approvals/${encodeURIComponent(approvalId)}/${action}`, {
     method: 'POST',
   })
+}
+
+export async function listAutomationAudit(limit = 50, sessionId = ''): Promise<AutomationAuditListResponse> {
+  const params = new URLSearchParams()
+  if (limit > 0) params.set('limit', String(limit))
+  if (sessionId.trim()) params.set('session_id', sessionId.trim())
+  const suffix = params.toString()
+  return requestJSON<AutomationAuditListResponse>(`/v1/ops/automation-audit${suffix ? `?${suffix}` : ''}`)
 }
 
 export async function listSessions(includeHidden = false): Promise<Session[]> {
@@ -651,6 +661,21 @@ export async function updateSessionConfig(sessionId: string, config: SessionTool
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
+  })
+}
+
+export async function getSessionAutomationConsent(sessionId: string): Promise<SessionAutomationConsent> {
+  return requestJSON<SessionAutomationConsent>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/automation-consent`)
+}
+
+export async function updateSessionAutomationConsent(
+  sessionId: string,
+  consent: SessionAutomationConsent,
+): Promise<SessionAutomationConsent> {
+  return requestJSON<SessionAutomationConsent>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/automation-consent`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(consent),
   })
 }
 

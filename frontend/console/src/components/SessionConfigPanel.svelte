@@ -1,5 +1,14 @@
 <script lang="ts">
-  import { listChatTools, getSessionConfig, updateSessionConfig, type ChatToolInfo, type SessionToolConfig } from '../lib/api'
+  import {
+    getSessionAutomationConsent,
+    listChatTools,
+    getSessionConfig,
+    updateSessionAutomationConsent,
+    updateSessionConfig,
+    type ChatToolInfo,
+    type SessionToolConfig,
+  } from '../lib/api'
+  import type { SessionAutomationConsent } from '../lib/types'
 
   interface Props {
     sessionId: string
@@ -12,9 +21,11 @@
   let tools: ChatToolInfo[] = $state([])
   let skills: string[] = $state([])
   let config: SessionToolConfig = $state({})
+  let automationConsent: SessionAutomationConsent = $state({})
   let loading = $state(true)
   let filterText = $state('')
-  let activeTab: 'tools' | 'skills' | 'mcp' = $state('tools')
+  let activeTab: 'tools' | 'skills' | 'automation' = $state('tools')
+  let automationSaving = $state(false)
 
   let enabledSet: Set<string> = $state(new Set())
   let disabledSet: Set<string> = $state(new Set())
@@ -27,13 +38,15 @@
   async function load() {
     loading = true
     try {
-      const [toolsResp, configResp] = await Promise.all([
+      const [toolsResp, configResp, automationResp] = await Promise.all([
         listChatTools(),
         sessionId ? getSessionConfig(sessionId) : Promise.resolve({} as SessionToolConfig),
+        sessionId ? getSessionAutomationConsent(sessionId) : Promise.resolve({} as SessionAutomationConsent),
       ])
       tools = toolsResp.tools
       skills = toolsResp.skills ?? []
       config = configResp
+      automationConsent = automationResp
 
       // Initialize sets from config
       if (config.tools_custom || Array.isArray(config.tools_enabled)) {
@@ -179,6 +192,24 @@
       .catch(() => {})
   }
 
+  async function toggleAutomationConsent(key: keyof SessionAutomationConsent) {
+    if (!sessionId || key === 'updated_at' || automationSaving) return
+    const next: SessionAutomationConsent = {
+      ...automationConsent,
+      [key]: !automationConsent[key],
+    }
+    automationConsent = next
+    automationSaving = true
+    try {
+      automationConsent = await updateSessionAutomationConsent(sessionId, next)
+      onChange?.()
+    } catch {
+      void load()
+    } finally {
+      automationSaving = false
+    }
+  }
+
   let filteredTools = $derived(
     tools.filter((t) => !filterText || t.name.toLowerCase().includes(filterText.toLowerCase()))
   )
@@ -212,11 +243,16 @@
       <button class="config-tab" class:active={activeTab === 'skills'} onclick={() => activeTab = 'skills'}>
         Skills ({skills.length})
       </button>
+      <button class="config-tab" class:active={activeTab === 'automation'} onclick={() => activeTab = 'automation'}>
+        Automation
+      </button>
     </div>
 
-    <div class="config-filter">
-      <input type="text" bind:value={filterText} placeholder="Filter..." class="config-filter-input" />
-    </div>
+    {#if activeTab !== 'automation'}
+      <div class="config-filter">
+        <input type="text" bind:value={filterText} placeholder="Filter..." class="config-filter-input" />
+      </div>
+    {/if}
 
     {#if activeTab === 'tools'}
       {#if toolGroups.length > 0}
@@ -281,6 +317,48 @@
             <span class="item-name">{s}</span>
           </label>
         {/each}
+      </div>
+    {:else if activeTab === 'automation'}
+      <div class="automation-list">
+        <label class="automation-item">
+          <input
+            type="checkbox"
+            checked={!!automationConsent.auto_resume}
+            disabled={automationSaving}
+            onchange={() => { void toggleAutomationConsent('auto_resume') }}
+          />
+          <span>
+            <strong>Auto-resume stalled chats</strong>
+            <small>Pulse</small>
+          </span>
+        </label>
+        <label class="automation-item">
+          <input
+            type="checkbox"
+            checked={!!automationConsent.git_mutations}
+            disabled={automationSaving}
+            onchange={() => { void toggleAutomationConsent('git_mutations') }}
+          />
+          <span>
+            <strong>Approved git mutations</strong>
+            <small>Git</small>
+          </span>
+        </label>
+        <label class="automation-item automation-item-danger">
+          <input
+            type="checkbox"
+            checked={!!automationConsent.autonomous_mutations}
+            disabled={automationSaving}
+            onchange={() => { void toggleAutomationConsent('autonomous_mutations') }}
+          />
+          <span>
+            <strong>Autonomous workspace mutations</strong>
+            <small>High autonomy</small>
+          </span>
+        </label>
+        {#if automationConsent.updated_at}
+          <div class="automation-updated">Updated {new Date(automationConsent.updated_at).toLocaleString()}</div>
+        {/if}
       </div>
     {/if}
   {/if}
@@ -471,5 +549,54 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .automation-list {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .automation-item {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: var(--space-2);
+    align-items: flex-start;
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+    cursor: pointer;
+  }
+
+  .automation-item input {
+    margin-top: 3px;
+  }
+
+  .automation-item span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .automation-item strong {
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+  }
+
+  .automation-item small {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .automation-item-danger {
+    border-left: 2px solid rgba(248, 113, 113, 0.35);
+  }
+
+  .automation-updated {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 10px;
   }
 </style>

@@ -82,3 +82,41 @@ func TestOpsAPI_CleanupApplyRejectsOversizedBody(t *testing.T) {
 		t.Fatalf("unexpected body: %+v", payload)
 	}
 }
+
+func TestOpsAPI_AutomationAuditList(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	home := filepath.Join(t.TempDir(), "home")
+	mgr := ops.NewManager(workspace, ops.Options{HomeDir: home})
+	if _, err := mgr.RecordAutomationAudit(ops.AutomationAuditEntry{
+		Actor:     "git",
+		Action:    "git_stage",
+		Reason:    "user approved staging",
+		SessionID: "sess_1",
+		CWD:       "/tmp/workspace",
+		Result:    "success",
+	}); err != nil {
+		t.Fatalf("record automation audit: %v", err)
+	}
+	handler := newOpsAPIHandler(mgr, zerolog.New(io.Discard), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/ops/automation-audit?limit=10", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for automation audit, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		Items []ops.AutomationAuditEntry `json:"items"`
+		Count int                        `json:"count"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode automation audit payload: %v", err)
+	}
+	if payload.Count != 1 || len(payload.Items) != 1 {
+		t.Fatalf("expected one audit entry, got %+v", payload)
+	}
+	if payload.Items[0].Action != "git_stage" || payload.Items[0].Result != "success" {
+		t.Fatalf("unexpected audit entry: %+v", payload.Items[0])
+	}
+}
