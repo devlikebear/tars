@@ -77,7 +77,7 @@ Experimental consensus mode remains hidden from the default `subagents_run` sche
 
 Tier resolution priority: task `tier` > agent YAML `tier` > config default.
 
-The Console Agent Runtime page exposes `Runs | Subagents` tabs. Use `Runs` to filter execution history by status, time range, and prompt text, switch between list/tree/Gantt/Flow run views, pan and zoom an interactive Svelte Flow graph, jump back to the originating chat session, scan today/7d/plan cost totals, scrub timestamped run events with Replay, inspect each run's cost/token flow, and review file attention for frequently read or edited workspace paths. Use `Subagents` to inspect the active catalog, default/effective LLM tier, resolved provider/model, source file or command entry, tool policy, and recent run links. Workspace `AGENT.md` profiles can update their default tier, draft new subagents with an LLM-assisted builder, preview and approve LLM edits, and archive inactive workspace profiles from this detail view.
+The Console Agent Runtime page exposes `Runs | Subagents` tabs. Use `Runs` to filter execution history by status, time range, and prompt text, switch between list/tree/Gantt/Flow run views, pan and zoom an interactive Svelte Flow graph, jump back to the originating chat session, scan today/7d/plan cost totals, scrub timestamped run events with Replay, inspect each run's cost/token flow, review file attention for frequently read or edited workspace paths, and open the git diff timeline that attributes workspace file changes to the run, session, agent, and plan step that produced them. Use `Subagents` to inspect the active catalog, default/effective LLM tier, resolved provider/model, source file or command entry, tool policy, and recent run links. Workspace `AGENT.md` profiles can update their default tier, draft new subagents with an LLM-assisted builder, preview and approve LLM edits, and archive inactive workspace profiles from this detail view.
 
 ### 3-Tier Model Routing
 
@@ -225,7 +225,7 @@ The Chat header shows the active plan goal and completed/total task count withou
 | Work | Memory | `/console/memory` | Edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
 | Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
 | Work | Extensions | `/console/extensions` | Skills, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |
-| Operate | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, and subagent tier management |
+| Operate | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, git diff timeline, and subagent tier management |
 | Operate | Approvals | `/console/approvals` | Review risky cleanup plans before TARS applies them |
 | Operate | Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
 | Operate | Logs | `/console/logs` | Tail configured runtime logs with file, level, component, line-count, refresh, and auto-refresh controls |
