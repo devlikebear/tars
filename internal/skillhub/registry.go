@@ -187,6 +187,40 @@ func (r *Registry) FindMCPByName(ctx context.Context, name string) (*MCPEntry, e
 	return nil, fmt.Errorf("mcp server %q not found in registry", name)
 }
 
+// SearchPacks returns pack entries matching the query.
+func (r *Registry) SearchPacks(ctx context.Context, query string) ([]PackEntry, error) {
+	index, err := r.FetchIndex(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if query == "" {
+		return index.Packs, nil
+	}
+	q := strings.ToLower(query)
+	var results []PackEntry
+	for _, entry := range index.Packs {
+		if matchesPackQuery(entry, q) {
+			results = append(results, entry)
+		}
+	}
+	return results, nil
+}
+
+// FindPackByName returns the exact-match pack entry.
+func (r *Registry) FindPackByName(ctx context.Context, name string) (*PackEntry, error) {
+	index, err := r.FetchIndex(ctx)
+	if err != nil {
+		return nil, err
+	}
+	key := strings.ToLower(strings.TrimSpace(name))
+	for _, entry := range index.Packs {
+		if strings.ToLower(entry.Name) == key {
+			return &entry, nil
+		}
+	}
+	return nil, fmt.Errorf("pack %q not found in registry", name)
+}
+
 // FetchMCPFile downloads a file relative to the MCP package path.
 func (r *Registry) FetchMCPFile(ctx context.Context, entry *MCPEntry, relPath string) ([]byte, error) {
 	return r.fetchHubFile(ctx, entry.Path, relPath, "mcp file")
@@ -242,6 +276,30 @@ func matchesMCPQuery(entry MCPEntry, q string) bool {
 	}
 	for _, tag := range entry.Tags {
 		if strings.Contains(strings.ToLower(tag), q) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesPackQuery(entry PackEntry, q string) bool {
+	if strings.Contains(strings.ToLower(entry.Name), q) {
+		return true
+	}
+	if strings.Contains(strings.ToLower(entry.Description), q) {
+		return true
+	}
+	for _, tag := range entry.Tags {
+		if strings.Contains(strings.ToLower(tag), q) {
+			return true
+		}
+	}
+	return matchesAnyDependency(entry.Skills, q) || matchesAnyDependency(entry.Plugins, q) || matchesAnyDependency(entry.MCPServers, q)
+}
+
+func matchesAnyDependency(deps []string, q string) bool {
+	for _, dep := range deps {
+		if strings.Contains(strings.ToLower(dep), q) {
 			return true
 		}
 	}

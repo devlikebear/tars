@@ -217,6 +217,13 @@ func TestRootCommand_IncludesMCPSubcommand(t *testing.T) {
 	}
 }
 
+func TestRootCommand_IncludesPackSubcommand(t *testing.T) {
+	cmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	if subcmd, _, err := cmd.Find([]string{"pack"}); err != nil || subcmd == nil || subcmd.Name() != "pack" {
+		t.Fatalf("expected pack subcommand, got subcmd=%v err=%v", subcmd, err)
+	}
+}
+
 func TestRootCommand_NoArgsOpensConsole(t *testing.T) {
 	originalConsoleRunner := consoleCommandRunner
 	originalClientRunner := clientCommandRunner

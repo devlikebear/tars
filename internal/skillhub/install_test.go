@@ -974,6 +974,50 @@ func TestInstallMCPAndList(t *testing.T) {
 	}
 }
 
+func TestInstallPackInstallsMembersWithSandboxReports(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	plan, err := inst.PlanPackInstall(context.Background(), "github-maintainer-pack")
+	if err != nil {
+		t.Fatalf("PlanPackInstall: %v", err)
+	}
+	if len(plan.Items) != 3 {
+		t.Fatalf("expected three planned items, got %+v", plan.Items)
+	}
+	if plan.Items[0].Type != "plugin" || plan.Items[1].Type != "mcp" || plan.Items[2].Type != "skill" {
+		t.Fatalf("expected plugin, mcp, skill install order, got %+v", plan.Items)
+	}
+
+	result, err := inst.InstallPack(context.Background(), "github-maintainer-pack")
+	if err != nil {
+		t.Fatalf("InstallPack: %v", err)
+	}
+	if len(result.Installed) != 3 || len(result.SandboxReports) != 3 {
+		t.Fatalf("expected three installs and sandbox reports, got %+v", result)
+	}
+
+	if _, err := os.Stat(filepath.Join(tmpDir, "plugins", "project-swarm", "tars.plugin.json")); err != nil {
+		t.Fatalf("expected plugin installed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "mcp-servers", "filesystem", "tars.mcp.json")); err != nil {
+		t.Fatalf("expected mcp installed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "skills", "project-start", "SKILL.md")); err != nil {
+		t.Fatalf("expected skill installed: %v", err)
+	}
+}
+
 func TestInstallMCPReturnsSandboxReport(t *testing.T) {
 	files := map[string][]byte{
 		"/mcp-servers/local-echo/tars.mcp.json": []byte(`{"schema_version":1,"server":{"name":"local-echo","command":"sh","args":["-c","cat"]}}`),

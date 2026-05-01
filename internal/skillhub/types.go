@@ -8,6 +8,7 @@ type RegistryIndex struct {
 	Skills     []RegistryEntry `json:"skills"`
 	Plugins    []PluginEntry   `json:"plugins,omitempty"`
 	MCPServers []MCPEntry      `json:"mcp_servers,omitempty"`
+	Packs      []PackEntry     `json:"packs,omitempty"`
 }
 
 // RegistryFiles accepts both legacy path arrays and checksum-bearing file objects.
@@ -85,6 +86,19 @@ type MCPEntry struct {
 	Quality     *QualityMetadata `json:"quality,omitempty"`
 }
 
+// PackEntry describes a domain pack that installs multiple hub packages.
+type PackEntry struct {
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Version     string           `json:"version"`
+	Author      string           `json:"author"`
+	Tags        []string         `json:"tags,omitempty"`
+	Skills      []string         `json:"skills,omitempty"`
+	Plugins     []string         `json:"plugins,omitempty"`
+	MCPServers  []string         `json:"mcp_servers,omitempty"`
+	Quality     *QualityMetadata `json:"quality,omitempty"`
+}
+
 // QualityMetadata carries install-time trust signals published by the hub registry.
 type QualityMetadata struct {
 	Score         int      `json:"score"`
@@ -141,4 +155,27 @@ type UpdateResult struct {
 	Updated []string
 	Skipped []UpdateDiagnostic
 	Failed  []UpdateDiagnostic
+}
+
+// PackInstallPlan previews which hub packages a pack will install or update.
+type PackInstallPlan struct {
+	Pack  PackEntry         `json:"pack"`
+	Items []PackInstallItem `json:"items"`
+}
+
+// PackInstallItem captures one package in a pack install plan.
+type PackInstallItem struct {
+	Type        string `json:"type"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description,omitempty"`
+	Action      string `json:"action"`
+}
+
+// PackInstallResult reports the outcome of installing a pack.
+type PackInstallResult struct {
+	Plan           PackInstallPlan   `json:"plan"`
+	Installed      []PackInstallItem `json:"installed,omitempty"`
+	Skipped        []PackInstallItem `json:"skipped,omitempty"`
+	SandboxReports []SandboxReport   `json:"sandbox_reports,omitempty"`
 }

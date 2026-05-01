@@ -48,7 +48,7 @@ Local Workspace
 
 ### 14-1. Registry index
 
-`registry.json`은 skills, plugins, mcp_servers를 함께 담는다.
+`registry.json`은 skills, plugins, mcp_servers, packs를 함께 담는다.
 
 ```json
 {
@@ -77,11 +77,25 @@ Local Workspace
     }
   ],
   "plugins": [],
-  "mcp_servers": []
+  "mcp_servers": [],
+  "packs": [
+    {
+      "name": "github-maintainer-pack",
+      "description": "GitHub maintainer workflow bundle",
+      "version": "0.1.0",
+      "author": "devlikebear",
+      "tags": ["github", "maintenance"],
+      "plugins": ["browser-devtools"],
+      "mcp_servers": ["safe-time"],
+      "skills": ["github-ops"]
+    }
+  ]
 }
 ```
 
 `files`는 legacy string 배열과 checksum-bearing object 배열을 모두 받아들인다. 최신 package는 companion file까지 함께 설치할 수 있도록 object form을 권장한다. `quality`는 설치 전 신뢰 신호다. `score`는 0-100 정수이고, last updated, tests passing, required tools, permissions, companion CLI, install count 같은 선택 필드를 함께 둘 수 있다. Console Extensions Hub는 이 값을 패키지 카드에 표시한다.
+
+`packs`는 여러 package를 한 번에 설치하는 manifest다. Pack install plan은 plugins → MCP servers → skills 순서로 정렬되어 skill이 요구하는 plugin을 먼저 준비한다. `tars pack install <name>`은 계획을 출력하고 확인을 받은 뒤 각 member의 기존 sandbox install 경로를 재사용한다.
 
 핵심 API:
 
@@ -90,6 +104,7 @@ func (r *Registry) FetchIndex(ctx context.Context) (*RegistryIndex, error)
 func (r *Registry) Search(ctx context.Context, query string) ([]RegistryEntry, error)
 func (r *Registry) SearchPlugins(ctx context.Context, query string) ([]PluginEntry, error)
 func (r *Registry) SearchMCPServers(ctx context.Context, query string) ([]MCPEntry, error)
+func (r *Registry) SearchPacks(ctx context.Context, query string) ([]PackEntry, error)
 func (r *Registry) FetchSkillFile(ctx context.Context, entry *RegistryEntry, relPath string) ([]byte, error)
 ```
 
@@ -103,9 +118,11 @@ type Installer struct {
     Registry     *Registry
 }
 
-func (inst *Installer) Install(ctx, name) (InstallResult, error)
-func (inst *Installer) InstallPlugin(ctx, name) error
-func (inst *Installer) InstallMCP(ctx, name) error
+func (inst *Installer) Install(ctx, name) (*InstallResult, error)
+func (inst *Installer) InstallPlugin(ctx, name) (*InstallResult, error)
+func (inst *Installer) InstallMCP(ctx, name) (*InstallResult, error)
+func (inst *Installer) PlanPackInstall(ctx, name) (PackInstallPlan, error)
+func (inst *Installer) InstallPack(ctx, name) (*PackInstallResult, error)
 func (inst *Installer) Update(ctx) (UpdateResult, error)
 func (inst *Installer) UpdatePlugins(ctx) (UpdateResult, error)
 func (inst *Installer) UpdateMCPs(ctx) (UpdateResult, error)
@@ -168,6 +185,11 @@ tars mcp uninstall <name>
 tars mcp list
 tars mcp update
 tars mcp info <name>
+
+tars pack search [query]
+tars pack info <name>
+tars pack install <name>
+tars pack install <name> --yes
 ```
 
 서버가 떠 있는 상태에서 콘솔/API로 설치하면 extension manager reload를 호출해 새 skill/MCP 상태를 바로 반영한다.
