@@ -18,6 +18,7 @@
   import PriorContextPanel from './PriorContextPanel.svelte'
   import ContractPanel from './ContractPanel.svelte'
   import TasksPanel from './TasksPanel.svelte'
+  import GitInspector from './GitInspector.svelte'
   import SessionCronPanel from './SessionCronPanel.svelte'
   import DockPanelFrame from './DockPanelFrame.svelte'
   import IntegratedTerminal from './IntegratedTerminal.svelte'
@@ -99,7 +100,7 @@
     mentioned_subagents?: string[]
   } = $state({})
   let contextRefreshVersion = $state(0)
-  type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'contract' | 'tasks' | 'cron' | 'terminal'
+  type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'contract' | 'tasks' | 'git' | 'cron' | 'terminal'
   type ToolDockPanelID = Exclude<ChatDockPanelID, 'sessions'>
   type DockSizeZone = 'left' | 'right' | 'bottom'
   const dockStorageKey = 'tars.console.chat.dockLayout.v1'
@@ -112,6 +113,7 @@
     { id: 'prior', title: 'Prior Context', defaultZone: 'right' },
     { id: 'contract', title: 'Contract', defaultZone: 'right' },
     { id: 'tasks', title: 'Tasks', defaultZone: 'right' },
+    { id: 'git', title: 'Git', defaultZone: 'right' },
     { id: 'cron', title: 'Cron', defaultZone: 'right' },
     { id: 'terminal', title: 'Terminal', defaultZone: 'bottom' },
   ]
@@ -134,6 +136,7 @@
     panelIsOpen(dockLayout, 'prior') ||
     panelIsOpen(dockLayout, 'contract') ||
     panelIsOpen(dockLayout, 'tasks') ||
+    panelIsOpen(dockLayout, 'git') ||
     panelIsOpen(dockLayout, 'cron'),
   )
 
@@ -166,7 +169,7 @@
   }
 
   function closeToolPanels() {
-    for (const panelID of ['artifacts', 'config', 'context', 'prompt', 'prior', 'tasks', 'cron', 'terminal'] as ToolDockPanelID[]) {
+    for (const panelID of ['artifacts', 'config', 'context', 'prompt', 'prior', 'tasks', 'git', 'cron', 'terminal'] as ToolDockPanelID[]) {
       dockLayout = closeDockPanel(dockLayout, panelID)
     }
   }
@@ -613,6 +616,7 @@
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prior')} onclick={() => togglePanel('prior')} title="Prior Context preview">Prior</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('contract')} onclick={() => togglePanel('contract')} title="Task contract">Contract</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('tasks')} onclick={() => togglePanel('tasks')} title={tasksSummary.total > 0 ? `${tasksSummary.completed} done · ${tasksSummary.in_progress} in progress · ${tasksSummary.pending} pending` : 'Session tasks'}>Tasks{#if tasksSummary.total > 0} ({tasksSummary.completed}/{tasksSummary.total}){/if}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('git')} onclick={() => togglePanel('git')} title="Git Inspector">Git</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('cron')} onclick={() => togglePanel('cron')} title="Session cron jobs">Cron</button>
     </div>
   </div>
@@ -666,6 +670,8 @@
           onClose={() => closePanel(panelID)}
           onSendMessage={async (text) => { await chatPanelRef?.sendMessageText(text) }}
         />
+      {:else if panelID === 'git' && selectedSessionId}
+        <GitInspector sessionId={selectedSessionId} onClose={() => closePanel(panelID)} />
       {:else if panelID === 'cron' && selectedSessionId}
         <SessionCronPanel sessionId={selectedSessionId} sessionKind={selectedSession?.kind ?? ''} onClose={() => closePanel(panelID)} />
       {:else if panelID === 'terminal' && terminalDockSessionId}
