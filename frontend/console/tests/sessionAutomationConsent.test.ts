@@ -21,3 +21,10 @@ test('Session config exposes automation consent controls', () => {
   assert.match(panelSource, /Approved git mutations/)
   assert.match(panelSource, /Autonomous workspace mutations/)
 })
+
+test('Session config gates permission toggles behind a preview', () => {
+  assert.match(panelSource, /Permission change preview/)
+  assert.match(panelSource, /applyPendingConfig/)
+  assert.match(panelSource, /cancelPendingConfig/)
+  assert.match(panelSource, /buildSessionPermissionPreview/)
+})

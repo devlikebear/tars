@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.115] - 2026-05-01
+
+### Added
+
+- Added a Console permission change preview for per-session tool, group, skill, and MCP policy changes.
+- Added deterministic permission impact summaries with low/medium/high risk labels, affected tool groups, high-risk tool detection, and shell/files/git/network capability chips before saving session overrides.
+
+### Documentation
+
+- README and human-in-the-loop docs now describe session policy previews as the review step before applying tool and skill permission changes.
+
+### Tests
+
+- `make console-build`
+- `cd frontend/console && npm test`
+- `cd frontend/console && npm run check`
+- `GOCACHE=/tmp/tars-go-cache make test`
+- `make security-scan`
+- `git diff --check`
+- Browser smoke for `/console/chat/{session}` Session Config permission previews, high-risk shell capability display, Apply persistence, and zero console errors
+
+### Closed
+
+- Closes #586.
+
 ## [0.31.114] - 2026-05-01
 
 ### Added

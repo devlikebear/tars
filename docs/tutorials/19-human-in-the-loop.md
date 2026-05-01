@@ -16,6 +16,8 @@ CON-041의 결정에 따라 이 표면은 제거하지 않습니다. 수동 clea
 
 Pulse의 `auto_continue_chat`도 같은 경계를 따릅니다. 전역 allowlist에 있어도 세션에서 auto-resume을 켠 경우에만 실행되며, `proceed_with_assumption`, `move_to_next_task`, `record_assumption_and_proceed` 중 허용된 모드로만 재개합니다. 비밀번호, 토큰, 운영 승인처럼 사용자 고유 답변이나 높은 위험 판단이 필요한 질문은 자동 재개하지 않고, 30분 안에 3회를 넘으면 사용자 확인으로 에스컬레이션합니다.
 
+세션별 tool/skill/MCP 정책 변경도 즉시 저장하지 않습니다. Console Session Config에서 권한 토글을 바꾸면 저장 전에 permission preview가 열리고, tool/group/skill/MCP 영향 범위, low/medium/high 위험도, shell/files/git/network capability를 먼저 보여준 뒤 사용자가 Apply를 눌러야 반영합니다.
+
 ```
 계획 생성 → approval 저장 → 사용자 승인/거절 → 적용 → 이벤트 기록
 ```

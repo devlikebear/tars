@@ -8,6 +8,7 @@
     type ChatToolInfo,
     type SessionToolConfig,
   } from '../lib/api'
+  import { buildSessionPermissionPreview, type SessionPermissionPreview } from '../lib/sessionPermissionPreview'
   import type { SessionAutomationConsent } from '../lib/types'
 
   interface Props {
@@ -20,7 +21,10 @@
 
   let tools: ChatToolInfo[] = $state([])
   let skills: string[] = $state([])
+  let mcpServers: string[] = $state([])
   let config: SessionToolConfig = $state({})
+  let pendingConfig: SessionToolConfig | null = $state(null)
+  let pendingPreview: SessionPermissionPreview | null = $state(null)
   let automationConsent: SessionAutomationConsent = $state({})
   let loading = $state(true)
   let filterText = $state('')
@@ -42,6 +46,11 @@
     { id: 'proceed_with_assumption', label: 'Proceed' },
     { id: 'move_to_next_task', label: 'Next task' },
   ]
+  const previewRiskLabel: Record<SessionPermissionPreview['risk'], string> = {
+    low: 'Low risk',
+    medium: 'Medium risk',
+    high: 'High risk',
+  }
 
   async function load() {
     loading = true
@@ -53,32 +62,38 @@
       ])
       tools = toolsResp.tools
       skills = toolsResp.skills ?? []
+      mcpServers = toolsResp.mcp_servers ?? []
       config = configResp
       automationConsent = automationResp
 
-      // Initialize sets from config
-      if (config.tools_custom || Array.isArray(config.tools_enabled)) {
-        useCustomConfig = true
-        enabledSet = new Set(config.tools_enabled ?? [])
-      } else {
-        useCustomConfig = false
-        enabledSet = new Set(tools.map((t) => t.name))
-      }
-      disabledSet = new Set(config.tools_disabled ?? [])
-      allowGroupsSet = new Set(config.tools_allow_groups ?? [])
-      denyGroupsSet = new Set(config.tools_deny_groups ?? [])
-
-      if (config.skills_custom || Array.isArray(config.skills_enabled)) {
-        useCustomSkills = true
-        skillsEnabledSet = new Set(config.skills_enabled ?? [])
-      } else {
-        useCustomSkills = false
-        skillsEnabledSet = new Set(skills)
-      }
+      applyConfigState(config, tools, skills)
+      pendingConfig = null
+      pendingPreview = null
     } catch {
       // ignore
     }
     loading = false
+  }
+
+  function applyConfigState(nextConfig: SessionToolConfig, availableTools = tools, availableSkills = skills) {
+    if (nextConfig.tools_custom || Array.isArray(nextConfig.tools_enabled)) {
+      useCustomConfig = true
+      enabledSet = new Set(nextConfig.tools_enabled ?? [])
+    } else {
+      useCustomConfig = false
+      enabledSet = new Set(availableTools.map((t) => t.name))
+    }
+    disabledSet = new Set(nextConfig.tools_disabled ?? [])
+    allowGroupsSet = new Set(nextConfig.tools_allow_groups ?? [])
+    denyGroupsSet = new Set(nextConfig.tools_deny_groups ?? [])
+
+    if (nextConfig.skills_custom || Array.isArray(nextConfig.skills_enabled)) {
+      useCustomSkills = true
+      skillsEnabledSet = new Set(nextConfig.skills_enabled ?? [])
+    } else {
+      useCustomSkills = false
+      skillsEnabledSet = new Set(availableSkills)
+    }
   }
 
   function isToolEnabled(name: string): boolean {
@@ -103,7 +118,7 @@
       disabledSet.delete(name)
       disabledSet = new Set(disabledSet)
     }
-    void saveConfig()
+    queueConfigPreview()
   }
 
   function isSkillEnabled(name: string): boolean {
@@ -120,7 +135,7 @@
     }
     allowGroupsSet = new Set(allowGroupsSet)
     denyGroupsSet = new Set(denyGroupsSet)
-    void saveConfig()
+    queueConfigPreview()
   }
 
   function toggleDenyGroup(name: string) {
@@ -132,7 +147,7 @@
     }
     allowGroupsSet = new Set(allowGroupsSet)
     denyGroupsSet = new Set(denyGroupsSet)
-    void saveConfig()
+    queueConfigPreview()
   }
 
   function toggleSkill(name: string) {
@@ -148,7 +163,7 @@
       skillsEnabledSet.add(name)
       skillsEnabledSet = new Set(skillsEnabledSet)
     }
-    void saveConfig()
+    queueConfigPreview()
   }
 
   function toggleAllTools() {
@@ -161,7 +176,7 @@
       enabledSet = new Set()
       disabledSet = new Set()
     }
-    void saveConfig()
+    queueConfigPreview()
   }
 
   function toggleAllSkills() {
@@ -172,11 +187,10 @@
       useCustomSkills = true
       skillsEnabledSet = new Set()
     }
-    void saveConfig()
+    queueConfigPreview()
   }
 
-  async function saveConfig() {
-    if (!sessionId) return
+  function draftConfigFromState(): SessionToolConfig {
     const newConfig: SessionToolConfig = {}
     if (useCustomConfig) {
       newConfig.tools_custom = true
@@ -195,9 +209,73 @@
       newConfig.skills_custom = true
       newConfig.skills_enabled = [...skillsEnabledSet]
     }
-    await updateSessionConfig(sessionId, newConfig)
-      .then(() => onChange?.())
-      .catch(() => {})
+    if (Array.isArray(config.mcp_enabled)) {
+      newConfig.mcp_enabled = [...config.mcp_enabled]
+    }
+    return newConfig
+  }
+
+  function queueConfigPreview() {
+    if (!sessionId) return
+    const nextConfig = draftConfigFromState()
+    const preview = buildSessionPermissionPreview(config, nextConfig, {
+      tools,
+      skills,
+      mcpServers,
+    })
+    if (!hasPermissionPreviewChanges(preview)) {
+      pendingConfig = null
+      pendingPreview = null
+      return
+    }
+    pendingConfig = nextConfig
+    pendingPreview = preview
+  }
+
+  async function applyPendingConfig() {
+    if (!sessionId || !pendingConfig) return
+    const nextConfig = pendingConfig
+    try {
+      await updateSessionConfig(sessionId, nextConfig)
+      config = nextConfig
+      pendingConfig = null
+      pendingPreview = null
+      onChange?.()
+    } catch {
+      void load()
+    }
+  }
+
+  function cancelPendingConfig() {
+    pendingConfig = null
+    pendingPreview = null
+    applyConfigState(config)
+  }
+
+  function hasPermissionPreviewChanges(preview: SessionPermissionPreview): boolean {
+    return [
+      preview.gainedTools,
+      preview.lostTools,
+      preview.gainedGroups,
+      preview.lostGroups,
+      preview.gainedSkills,
+      preview.lostSkills,
+      preview.gainedMCPServers,
+      preview.lostMCPServers,
+    ].some((items) => items.length > 0)
+  }
+
+  function previewRows(preview: SessionPermissionPreview) {
+    return [
+      { label: 'Tools enabled', items: preview.gainedTools },
+      { label: 'Tools disabled', items: preview.lostTools },
+      { label: 'Groups enabled', items: preview.gainedGroups },
+      { label: 'Groups disabled', items: preview.lostGroups },
+      { label: 'Skills enabled', items: preview.gainedSkills },
+      { label: 'Skills disabled', items: preview.lostSkills },
+      { label: 'MCP enabled', items: preview.gainedMCPServers },
+      { label: 'MCP disabled', items: preview.lostMCPServers },
+    ].filter((row) => row.items.length > 0)
   }
 
   async function saveAutomationConsent(next: SessionAutomationConsent) {
@@ -310,6 +388,43 @@
     {#if activeTab !== 'automation'}
       <div class="config-filter">
         <input type="text" bind:value={filterText} placeholder="Filter..." class="config-filter-input" />
+      </div>
+    {/if}
+
+    {#if pendingPreview}
+      <div
+        class="permission-preview"
+        class:risk-medium={pendingPreview.risk === 'medium'}
+        class:risk-high={pendingPreview.risk === 'high'}
+      >
+        <div class="permission-preview-head">
+          <strong>Permission change preview</strong>
+          <span>{previewRiskLabel[pendingPreview.risk]}</span>
+        </div>
+        <p>{pendingPreview.summary}</p>
+        {#if pendingPreview.capabilities.length > 0}
+          <div class="permission-preview-chips" aria-label="Affected capabilities">
+            {#each pendingPreview.capabilities as capability}
+              <span class="permission-preview-chip">{capability}</span>
+            {/each}
+          </div>
+        {/if}
+        <div class="permission-preview-list">
+          {#each previewRows(pendingPreview) as row}
+            <div class="permission-preview-row">
+              <span>{row.label}</span>
+              <em>{row.items.slice(0, 4).join(', ')}{row.items.length > 4 ? ` +${row.items.length - 4}` : ''}</em>
+            </div>
+          {/each}
+        </div>
+        <div class="permission-preview-actions">
+          <button type="button" class="preview-apply" onclick={() => { void applyPendingConfig() }}>
+            Apply
+          </button>
+          <button type="button" class="preview-cancel" onclick={cancelPendingConfig}>
+            Cancel
+          </button>
+        </div>
       </div>
     {/if}
 
@@ -531,6 +646,125 @@
     color: var(--text-primary);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
+  }
+
+  .permission-preview {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0 var(--space-3) var(--space-2);
+    padding: var(--space-2);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    border-left: 2px solid rgba(245, 158, 11, 0.8);
+    border-radius: var(--radius-sm);
+    background: rgba(245, 158, 11, 0.08);
+  }
+
+  .permission-preview.risk-medium {
+    border-color: rgba(245, 158, 11, 0.45);
+    border-left-color: rgba(245, 158, 11, 0.9);
+  }
+
+  .permission-preview.risk-high {
+    border-color: rgba(248, 113, 113, 0.45);
+    border-left-color: rgba(248, 113, 113, 0.9);
+    background: rgba(248, 113, 113, 0.08);
+  }
+
+  .permission-preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .permission-preview-head strong {
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+  }
+
+  .permission-preview-head span {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .permission-preview p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .permission-preview-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
+  .permission-preview-chip {
+    padding: 2px 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    background: var(--surface-base);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .permission-preview-list {
+    display: grid;
+    gap: 3px;
+  }
+
+  .permission-preview-row {
+    display: grid;
+    grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
+    gap: var(--space-2);
+    align-items: baseline;
+    min-width: 0;
+  }
+
+  .permission-preview-row span {
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .permission-preview-row em {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-style: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .permission-preview-actions {
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  .permission-preview-actions button {
+    padding: 3px 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .preview-apply {
+    color: var(--surface);
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+
+  .preview-cancel {
+    color: var(--text-secondary);
+    background: var(--surface-base);
   }
 
   .config-actions {
