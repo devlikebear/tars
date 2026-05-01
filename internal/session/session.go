@@ -27,14 +27,94 @@ type SessionToolConfig struct {
 }
 
 type SessionAutomationConsent struct {
-	AutoResume          bool       `json:"auto_resume,omitempty"`
-	GitMutations        bool       `json:"git_mutations,omitempty"`
-	AutonomousMutations bool       `json:"autonomous_mutations,omitempty"`
-	UpdatedAt           *time.Time `json:"updated_at,omitempty"`
+	AutoResume             bool       `json:"auto_resume,omitempty"`
+	AutoResumeEnabled      bool       `json:"auto_resume_enabled,omitempty"`
+	AutoResumeAfterMinutes int        `json:"auto_resume_after_minutes,omitempty"`
+	AllowedResumeModes     []string   `json:"allowed_resume_modes,omitempty"`
+	GitMutations           bool       `json:"git_mutations,omitempty"`
+	AutonomousMutations    bool       `json:"autonomous_mutations,omitempty"`
+	UpdatedAt              *time.Time `json:"updated_at,omitempty"`
 }
 
 func (c *SessionAutomationConsent) AllowsAutonomousMutation() bool {
 	return c != nil && c.AutonomousMutations
+}
+
+const (
+	DefaultAutoResumeAfterMinutes = 30
+
+	AutoResumeModeProceedWithAssumption      = "proceed_with_assumption"
+	AutoResumeModeMoveToNextTask             = "move_to_next_task"
+	AutoResumeModeRecordAssumptionAndProceed = "record_assumption_and_proceed"
+)
+
+func (c *SessionAutomationConsent) AllowsAutoResume() bool {
+	return c != nil && (c.AutoResume || c.AutoResumeEnabled)
+}
+
+func (c *SessionAutomationConsent) EffectiveAutoResumeAfterMinutes() int {
+	if c == nil || c.AutoResumeAfterMinutes <= 0 {
+		return DefaultAutoResumeAfterMinutes
+	}
+	return c.AutoResumeAfterMinutes
+}
+
+func (c *SessionAutomationConsent) EffectiveAllowedResumeModes() []string {
+	modes := NormalizeAutoResumeModes(nil)
+	if c == nil {
+		return modes
+	}
+	if normalized := NormalizeAutoResumeModes(c.AllowedResumeModes); len(normalized) > 0 {
+		return normalized
+	}
+	return modes
+}
+
+func NormalizeAutoResumeModes(values []string) []string {
+	allowed := map[string]struct{}{
+		AutoResumeModeProceedWithAssumption:      {},
+		AutoResumeModeMoveToNextTask:             {},
+		AutoResumeModeRecordAssumptionAndProceed: {},
+	}
+	if len(values) == 0 {
+		return []string{AutoResumeModeRecordAssumptionAndProceed}
+	}
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if _, ok := allowed[value]; !ok {
+			continue
+		}
+		if _, dup := seen[value]; dup {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func normalizeAutomationConsent(consent *SessionAutomationConsent) *SessionAutomationConsent {
+	if consent == nil {
+		return nil
+	}
+	next := *consent
+	resumePolicyConfigured := next.AutoResume ||
+		next.AutoResumeEnabled ||
+		next.AutoResumeAfterMinutes != 0 ||
+		len(next.AllowedResumeModes) > 0
+	if next.AutoResume || next.AutoResumeEnabled {
+		next.AutoResume = true
+		next.AutoResumeEnabled = true
+	}
+	if resumePolicyConfigured {
+		if next.AutoResumeAfterMinutes <= 0 {
+			next.AutoResumeAfterMinutes = DefaultAutoResumeAfterMinutes
+		}
+		next.AllowedResumeModes = NormalizeAutoResumeModes(next.AllowedResumeModes)
+	}
+	return &next
 }
 
 type Session struct {
@@ -235,14 +315,35 @@ func applySessionLineageDefaults(sess Session) (Session, bool) {
 		sess.RootSessionID = sess.ID
 		changed = true
 	}
-	if sess.AutomationConsent != nil && sess.AutomationConsent.UpdatedAt != nil {
-		updatedAt := sess.AutomationConsent.UpdatedAt.UTC()
-		if !updatedAt.Equal(*sess.AutomationConsent.UpdatedAt) {
-			sess.AutomationConsent.UpdatedAt = &updatedAt
+	if sess.AutomationConsent != nil {
+		normalized := normalizeAutomationConsent(sess.AutomationConsent)
+		if !automationConsentEqual(sess.AutomationConsent, normalized) {
+			sess.AutomationConsent = normalized
 			changed = true
+		}
+		if sess.AutomationConsent.UpdatedAt != nil {
+			updatedAt := sess.AutomationConsent.UpdatedAt.UTC()
+			if !updatedAt.Equal(*sess.AutomationConsent.UpdatedAt) {
+				sess.AutomationConsent.UpdatedAt = &updatedAt
+				changed = true
+			}
 		}
 	}
 	return sess, changed
+}
+
+func automationConsentEqual(a, b *SessionAutomationConsent) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.AutoResume == b.AutoResume &&
+		a.AutoResumeEnabled == b.AutoResumeEnabled &&
+		a.AutoResumeAfterMinutes == b.AutoResumeAfterMinutes &&
+		sameStringSlice(a.AllowedResumeModes, b.AllowedResumeModes) &&
+		a.GitMutations == b.GitMutations &&
+		a.AutonomousMutations == b.AutonomousMutations &&
+		((a.UpdatedAt == nil && b.UpdatedAt == nil) ||
+			(a.UpdatedAt != nil && b.UpdatedAt != nil && a.UpdatedAt.Equal(*b.UpdatedAt)))
 }
 
 func (s *Store) migrateLegacyArtifactDir(id string, artifactDir string) error {
@@ -693,7 +794,7 @@ func (s *Store) SetAutomationConsent(id string, consent *SessionAutomationConsen
 	} else {
 		next := *consent
 		next.UpdatedAt = &now
-		sess.AutomationConsent = &next
+		sess.AutomationConsent = normalizeAutomationConsent(&next)
 	}
 	sess.UpdatedAt = now
 	index[id] = sess

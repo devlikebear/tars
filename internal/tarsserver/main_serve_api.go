@@ -338,18 +338,7 @@ func buildAPIMux(
 		Logger:       logger,
 	})
 
-	pulseSetup := buildPulseRuntime(pulseSetupInputs{
-		Config:           cfg,
-		WorkspaceDir:     cfg.WorkspaceDir,
-		Router:           deps.llmRouter,
-		CronStore:        cronStore,
-		AgentRuntime:     agentRuntime,
-		OpsManager:       opsManager,
-		DeliveryCounter:  telegramDeliveryCounter,
-		ReflectionHealth: reflectionHealthFromSetup(reflectionSetup),
-		NotifyEmit:       dispatcher.Emit,
-		Logger:           logger,
-	})
+	var pulseSetup pulseSetup
 
 	refreshAgentRuntimeExecutors := func(reason string) int {
 		executors := buildAgentRuntimeExecutors(cfg, apiRunPromptWithTools, logger)
@@ -477,6 +466,20 @@ func buildAPIMux(
 		}
 		return "", fmt.Errorf("cron runner not configured")
 	}
+	pulseSetup = buildPulseRuntime(pulseSetupInputs{
+		Config:           cfg,
+		WorkspaceDir:     cfg.WorkspaceDir,
+		Router:           deps.llmRouter,
+		CronStore:        cronStore,
+		SessionStore:     sessionStore,
+		AgentRuntime:     agentRuntime,
+		OpsManager:       opsManager,
+		DeliveryCounter:  telegramDeliveryCounter,
+		ReflectionHealth: reflectionHealthFromSetup(reflectionSetup),
+		ChatDeps:         cronPromptDeps,
+		NotifyEmit:       dispatcher.Emit,
+		Logger:           logger,
+	})
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,
 		sessionStore,

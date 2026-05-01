@@ -3,12 +3,14 @@ package pulse
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/ops"
+	"github.com/devlikebear/tars/internal/session"
 )
 
 // --- test doubles ---
@@ -53,6 +55,28 @@ type fakeDeliveryCounter struct {
 func (f *fakeDeliveryCounter) FailuresWithin(w time.Duration) int {
 	f.window = w
 	return f.failures
+}
+
+type fakeChatSessionSource struct {
+	sessions []session.Session
+	tasks    map[string]session.SessionTasks
+	root     string
+	err      error
+}
+
+func (f *fakeChatSessionSource) List() ([]session.Session, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.sessions, nil
+}
+
+func (f *fakeChatSessionSource) GetTasks(sessionID string) (session.SessionTasks, error) {
+	return f.tasks[sessionID], nil
+}
+
+func (f *fakeChatSessionSource) TranscriptPath(sessionID string) string {
+	return filepath.Join(f.root, sessionID+".jsonl")
 }
 
 // --- helpers ---
@@ -186,6 +210,106 @@ func TestScanner_StuckRunsSkipsUnparseableTimestamp(t *testing.T) {
 		Thresholds{StuckRunMinutes: 60}, now)
 	if got := sc.Scan(context.Background()); len(got) != 0 {
 		t.Errorf("expected skip, got %d signals", len(got))
+	}
+}
+
+// --- stalled chats ---
+
+func TestScanner_StalledChatDetectsOptedInQuestion(t *testing.T) {
+	now := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	root := t.TempDir()
+	src := &fakeChatSessionSource{
+		root: root,
+		sessions: []session.Session{{
+			ID:        "sess_1",
+			Title:     "Feature work",
+			UpdatedAt: now.Add(-45 * time.Minute),
+			AutomationConsent: &session.SessionAutomationConsent{
+				AutoResumeEnabled:      true,
+				AutoResumeAfterMinutes: 30,
+				AllowedResumeModes:     []string{session.AutoResumeModeRecordAssumptionAndProceed},
+			},
+		}},
+		tasks: map[string]session.SessionTasks{
+			"sess_1": {
+				Plan: &session.Plan{Goal: "ship feature", Status: session.PlanStatusExecuting},
+				Tasks: []session.Task{{
+					ID:     "t1",
+					Title:  "finish",
+					Status: "in_progress",
+				}},
+			},
+		},
+	}
+	if err := session.AppendMessage(src.TranscriptPath("sess_1"), session.Message{
+		ID:        "msg_assistant",
+		Role:      "assistant",
+		Content:   "Should I proceed with a documented assumption?",
+		Timestamp: now.Add(-45 * time.Minute),
+	}); err != nil {
+		t.Fatalf("append transcript: %v", err)
+	}
+
+	sc := buildScanner(ScannerSources{ChatSessions: src}, Thresholds{}, now)
+	got := sc.Scan(context.Background())
+	if len(got) != 1 {
+		t.Fatalf("want 1 signal, got %d", len(got))
+	}
+	sig := got[0]
+	if sig.Kind != SignalKindStalledChat {
+		t.Fatalf("kind = %s, want %s", sig.Kind, SignalKindStalledChat)
+	}
+	if sig.Details["autofix_candidate"] != "auto_continue_chat" {
+		t.Fatalf("autofix candidate = %+v", sig.Details["autofix_candidate"])
+	}
+	if sig.Details["can_auto_resume"] != true {
+		t.Fatalf("can_auto_resume = %+v", sig.Details["can_auto_resume"])
+	}
+	if sig.Details["session_id"] != "sess_1" {
+		t.Fatalf("session_id = %+v", sig.Details["session_id"])
+	}
+}
+
+func TestScanner_StalledChatHighRiskQuestionOnlyNotifies(t *testing.T) {
+	now := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	root := t.TempDir()
+	src := &fakeChatSessionSource{
+		root: root,
+		sessions: []session.Session{{
+			ID:        "sess_1",
+			Title:     "Deploy",
+			UpdatedAt: now.Add(-45 * time.Minute),
+			AutomationConsent: &session.SessionAutomationConsent{
+				AutoResumeEnabled:      true,
+				AutoResumeAfterMinutes: 30,
+				AllowedResumeModes:     []string{session.AutoResumeModeRecordAssumptionAndProceed},
+			},
+		}},
+		tasks: map[string]session.SessionTasks{
+			"sess_1": {
+				Plan:  &session.Plan{Goal: "deploy", Status: session.PlanStatusExecuting},
+				Tasks: []session.Task{{ID: "t1", Title: "deploy", Status: "in_progress"}},
+			},
+		},
+	}
+	if err := session.AppendMessage(src.TranscriptPath("sess_1"), session.Message{
+		Role:      "assistant",
+		Content:   "Please paste the production API token so I can continue?",
+		Timestamp: now.Add(-45 * time.Minute),
+	}); err != nil {
+		t.Fatalf("append transcript: %v", err)
+	}
+
+	sc := buildScanner(ScannerSources{ChatSessions: src}, Thresholds{}, now)
+	got := sc.Scan(context.Background())
+	if len(got) != 1 {
+		t.Fatalf("want 1 signal, got %d", len(got))
+	}
+	if got[0].Details["can_auto_resume"] != false {
+		t.Fatalf("high-risk stalled chat must not auto-resume, details=%+v", got[0].Details)
+	}
+	if got[0].Details["block_reason"] != "high_risk_question" {
+		t.Fatalf("block_reason = %+v", got[0].Details["block_reason"])
 	}
 }
 

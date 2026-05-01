@@ -46,6 +46,8 @@ func TestSessionAPI_AutomationConsentRoundTrip(t *testing.T) {
 
 	patchReq := httptest.NewRequest(http.MethodPatch, "/v1/admin/sessions/"+sess.ID+"/automation-consent", strings.NewReader(`{
 		"auto_resume": true,
+		"auto_resume_after_minutes": 12,
+		"allowed_resume_modes": ["move_to_next_task"],
 		"git_mutations": true,
 		"autonomous_mutations": false
 	}`))
@@ -62,6 +64,12 @@ func TestSessionAPI_AutomationConsentRoundTrip(t *testing.T) {
 	}
 	if !updated.AutoResume || !updated.GitMutations || updated.AutonomousMutations {
 		t.Fatalf("unexpected updated consent: %+v", updated)
+	}
+	if !updated.AutoResumeEnabled || updated.AutoResumeAfterMinutes != 12 {
+		t.Fatalf("expected explicit auto-resume policy to round trip, got %+v", updated)
+	}
+	if len(updated.AllowedResumeModes) != 1 || updated.AllowedResumeModes[0] != session.AutoResumeModeMoveToNextTask {
+		t.Fatalf("expected allowed resume mode to round trip, got %+v", updated.AllowedResumeModes)
 	}
 	if updated.UpdatedAt == nil || updated.UpdatedAt.IsZero() {
 		t.Fatalf("expected updated_at")

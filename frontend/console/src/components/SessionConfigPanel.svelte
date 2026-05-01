@@ -35,6 +35,14 @@
   let useCustomConfig = $state(false)
   let useCustomSkills = $state(false)
 
+  type AutomationToggleKey = 'auto_resume' | 'git_mutations' | 'autonomous_mutations'
+  const defaultAutoResumeMinutes = 30
+  const autoResumeModes = [
+    { id: 'record_assumption_and_proceed', label: 'Assume + proceed' },
+    { id: 'proceed_with_assumption', label: 'Proceed' },
+    { id: 'move_to_next_task', label: 'Next task' },
+  ]
+
   async function load() {
     loading = true
     try {
@@ -192,12 +200,8 @@
       .catch(() => {})
   }
 
-  async function toggleAutomationConsent(key: keyof SessionAutomationConsent) {
-    if (!sessionId || key === 'updated_at' || automationSaving) return
-    const next: SessionAutomationConsent = {
-      ...automationConsent,
-      [key]: !automationConsent[key],
-    }
+  async function saveAutomationConsent(next: SessionAutomationConsent) {
+    if (!sessionId || automationSaving) return
     automationConsent = next
     automationSaving = true
     try {
@@ -208,6 +212,61 @@
     } finally {
       automationSaving = false
     }
+  }
+
+  async function toggleAutomationConsent(key: AutomationToggleKey) {
+    if (!sessionId || automationSaving) return
+    const next: SessionAutomationConsent = {
+      ...automationConsent,
+      [key]: !automationConsent[key],
+    }
+    if (key === 'auto_resume') {
+      next.auto_resume_enabled = !!next.auto_resume
+      if (next.auto_resume && !next.auto_resume_after_minutes) {
+        next.auto_resume_after_minutes = defaultAutoResumeMinutes
+      }
+      if (next.auto_resume && (!next.allowed_resume_modes || next.allowed_resume_modes.length === 0)) {
+        next.allowed_resume_modes = ['record_assumption_and_proceed']
+      }
+    }
+    await saveAutomationConsent(next)
+  }
+
+  async function setAutoResumeAfterMinutes(value: string) {
+    const parsed = Number.parseInt(value, 10)
+    const minutes = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 1440) : defaultAutoResumeMinutes
+    await saveAutomationConsent({
+      ...automationConsent,
+      auto_resume: true,
+      auto_resume_enabled: true,
+      auto_resume_after_minutes: minutes,
+    })
+  }
+
+  function effectiveAutoResumeModes(): string[] {
+    return automationConsent.allowed_resume_modes?.length
+      ? automationConsent.allowed_resume_modes
+      : ['record_assumption_and_proceed']
+  }
+
+  function isAutoResumeModeEnabled(mode: string): boolean {
+    return effectiveAutoResumeModes().includes(mode)
+  }
+
+  async function toggleAutoResumeMode(mode: string) {
+    const modes = new Set(effectiveAutoResumeModes())
+    if (modes.has(mode)) {
+      modes.delete(mode)
+    } else {
+      modes.add(mode)
+    }
+    if (modes.size === 0) modes.add('record_assumption_and_proceed')
+    await saveAutomationConsent({
+      ...automationConsent,
+      auto_resume: true,
+      auto_resume_enabled: true,
+      allowed_resume_modes: [...modes],
+    })
   }
 
   let filteredTools = $derived(
@@ -323,7 +382,7 @@
         <label class="automation-item">
           <input
             type="checkbox"
-            checked={!!automationConsent.auto_resume}
+            checked={!!(automationConsent.auto_resume || automationConsent.auto_resume_enabled)}
             disabled={automationSaving}
             onchange={() => { void toggleAutomationConsent('auto_resume') }}
           />
@@ -332,6 +391,35 @@
             <small>Pulse</small>
           </span>
         </label>
+        {#if automationConsent.auto_resume || automationConsent.auto_resume_enabled}
+          <div class="automation-subgrid">
+            <label class="automation-field">
+              <span>After</span>
+              <input
+                type="number"
+                min="1"
+                max="1440"
+                value={automationConsent.auto_resume_after_minutes ?? defaultAutoResumeMinutes}
+                disabled={automationSaving}
+                onchange={(event) => { void setAutoResumeAfterMinutes((event.currentTarget as HTMLInputElement).value) }}
+              />
+              <small>minutes</small>
+            </label>
+            <div class="automation-modes">
+              {#each autoResumeModes as mode}
+                <label class="automation-mode">
+                  <input
+                    type="checkbox"
+                    checked={isAutoResumeModeEnabled(mode.id)}
+                    disabled={automationSaving}
+                    onchange={() => { void toggleAutoResumeMode(mode.id) }}
+                  />
+                  <span>{mode.label}</span>
+                </label>
+              {/each}
+            </div>
+          </div>
+        {/if}
         <label class="automation-item">
           <input
             type="checkbox"
@@ -592,6 +680,59 @@
 
   .automation-item-danger {
     border-left: 2px solid rgba(248, 113, 113, 0.35);
+  }
+
+  .automation-subgrid {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .automation-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 76px auto;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .automation-field input {
+    min-width: 0;
+    padding: 3px 6px;
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .automation-modes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
+  .automation-mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    background: var(--surface-base);
+  }
+
+  .automation-mode input {
+    margin: 0;
   }
 
   .automation-updated {

@@ -6,7 +6,7 @@ Date: 2026-05-01
 
 ## Context
 
-The current Approvals surface is intentionally narrow. A manual cleanup plan can be created from the console or CLI, reviewed by a human, and then applied through the same ops API. Pulse autofix currently bypasses this queue for the small set of deterministic low-risk actions in its allowlist.
+The current Approvals surface is intentionally narrow. A manual cleanup plan can be created from the console or CLI, reviewed by a human, and then applied through the same ops API. Pulse autofix currently bypasses this queue for the small set of deterministic low-risk actions in its allowlist. Session-scoped `auto_continue_chat` is also allowlisted, but only after explicit session consent and only for bounded stalled-chat resume modes.
 
 That makes Approvals look quiet today, but it is still the right boundary for destructive or high-blast-radius operations that should not run as fully automatic autofix.
 
@@ -24,6 +24,7 @@ Do not remove the following surfaces:
 ## Routing Policy
 
 - Safe deterministic maintenance stays in Pulse autofix when the operation is explicitly allowlisted and bounded.
+- Session auto-resume stays in Pulse autofix only while consent, high-risk-question blocking, and repeated-resume escalation gates pass.
 - Risky or broad mutations should create an approval queue item instead of running as autofix.
 - Manual cleanup plan remains the seed workflow and the compatibility baseline.
 - Future approval item types should reuse the queue semantics instead of creating one-off confirmation stores.

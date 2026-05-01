@@ -139,6 +139,7 @@ Your ONLY job is to call the pulse_decide tool with one of three actions:
 Rules:
   - Always choose the least invasive action that addresses the signals.
   - Only select "autofix" when the named autofix is in the allowed list.
+  - For stalled_chat signals, select "autofix" only when signal details include can_auto_resume=true.
   - Set severity conservatively; prefer "warn" unless signals clearly exceed it.
   - Do not call any other tools. Do not include freeform commentary.`
 
