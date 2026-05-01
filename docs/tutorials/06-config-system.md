@@ -68,6 +68,10 @@ llm:
 
 Provider는 "어디에 어떻게 인증해서 호출할지"를, tier는 "어떤 provider alias와 model을 쓸지"를 맡습니다.
 
+**5. Console 설정 메타데이터와 영향도**
+
+`internal/config/schema.go`는 Console Settings가 렌더링할 field metadata를 제공합니다. 여기에 preferred YAML path, restart/sensitive/default metadata뿐 아니라 subsystem impact hints도 함께 둡니다. 사용자가 Settings에서 저장 전 diff를 열면 LLM routing, Auth/API, Pulse, Reflection, Cron, Memory, Agent Runtime, Extensions 같은 영향 범위가 표시되어 어떤 런타임 영역이 바뀌는지 먼저 확인할 수 있습니다.
+
 ## 실습
 
 ### 6-1. Config 구조체와 기본값
