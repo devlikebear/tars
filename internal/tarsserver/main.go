@@ -119,11 +119,7 @@ func setupRuntimeLogger(cfg loggerConfig, stderr io.Writer) (zerolog.Logger, fun
 	}
 	logWriter := io.Writer(consoleWriter)
 
-	trimmedLogPath := strings.TrimSpace(cfg.FilePath)
-	// If the path looks like a directory (ends with /), append default filename.
-	if trimmedLogPath != "" && strings.HasSuffix(trimmedLogPath, "/") {
-		trimmedLogPath = trimmedLogPath + "tars.log"
-	}
+	trimmedLogPath := normalizeRuntimeLogFilePath(cfg.FilePath)
 
 	var closers []func()
 	if trimmedLogPath != "" {
@@ -164,6 +160,14 @@ func setupRuntimeLogger(cfg loggerConfig, stderr io.Writer) (zerolog.Logger, fun
 		}
 	}
 	return logger, cleanup
+}
+
+func normalizeRuntimeLogFilePath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed != "" && strings.HasSuffix(trimmed, "/") {
+		return trimmed + "tars.log"
+	}
+	return trimmed
 }
 
 func parseLogLevel(s string) zerolog.Level {

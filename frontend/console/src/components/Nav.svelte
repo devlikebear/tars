@@ -52,6 +52,7 @@
         { id: 'agentruntime', path: '/console/agentruntime', icon: '\u25c8' },
         { id: 'ops', path: '/console/approvals', icon: '\u2699' },
         { id: 'cron', path: '/console/cron', icon: '\u23f2' },
+        { id: 'logs', path: '/console/logs', icon: '\u2261' },
         { id: 'pulse', path: '/console/pulse', icon: '\u2661' },
         { id: 'reflection', path: '/console/reflection', icon: '\u263e' },
       ],

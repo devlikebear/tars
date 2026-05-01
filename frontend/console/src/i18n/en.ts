@@ -40,6 +40,7 @@ export const en = {
       agentruntime: 'Agent Runtime',
       ops: 'Approvals',
       cron: 'Cron',
+      logs: 'Logs',
       pulse: 'Pulse',
       reflection: 'Reflection',
       config: 'Settings',

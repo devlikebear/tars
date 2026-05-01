@@ -51,6 +51,7 @@ type apiRouteHandlers struct {
 	memory          http.Handler
 	console         http.Handler
 	usage           http.Handler
+	logs            http.Handler
 	ops             http.Handler
 	status          http.Handler
 	auth            http.Handler
@@ -492,6 +493,7 @@ func buildAPIMux(
 		return nil, err
 	}
 	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
+	logsHandler := newLogsAPIHandler(cfg.WorkspaceDir, normalizeRuntimeLogFilePath(buildLoggerConfig(opts, cfg).FilePath), logger)
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
@@ -573,6 +575,7 @@ func buildAPIMux(
 		memory:          memoryHandler,
 		console:         consoleHandler,
 		usage:           usageHandler,
+		logs:            logsHandler,
 		ops:             opsHandler,
 		status:          statusHandler,
 		auth:            authHandler,
@@ -678,6 +681,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/usage/summary", handlers.usage)
 	mux.Handle("/v1/usage/limits", handlers.usage)
 	mux.Handle("/v1/admin/usage/today", handlers.usage)
+	mux.Handle("/v1/admin/logs", handlers.logs)
 	mux.Handle("/v1/ops/status", handlers.ops)
 	mux.Handle("/v1/ops/cleanup/plan", handlers.ops)
 	mux.Handle("/v1/ops/cleanup/apply", handlers.ops)

@@ -71,6 +71,34 @@ export type UsageToday = {
   level: 'disabled' | 'default' | 'warning' | 'error'
 }
 
+export type LogFileOption = {
+  id: string
+  label: string
+  path: string
+  exists: boolean
+  size_bytes: number
+  updated_at?: string
+}
+
+export type LogLineView = {
+  raw: string
+  level?: string
+  component?: string
+  message?: string
+  time?: string
+  fields?: Record<string, unknown>
+}
+
+export type LogsResponse = {
+  files: LogFileOption[]
+  selected_file: string
+  lines: LogLineView[]
+  count: number
+  lines_requested: number
+  level: string
+  component: string
+}
+
 // --- Reflection (nightly batch runner) ---
 
 export type ReflectionJobResult = {

@@ -40,6 +40,7 @@ export type Translations = {
       agentruntime: string
       ops: string
       cron: string
+      logs: string
       pulse: string
       reflection: string
       config: string
