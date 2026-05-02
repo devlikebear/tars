@@ -118,6 +118,11 @@ func runServeAPICommand(
 		if _, err := fmt.Fprintf(stdout, "    open http://%s/console to complete setup\n", opts.APIAddr); err != nil {
 			return &cli.ExitError{Code: 1, Err: err}
 		}
+		if apiRuntime.configPath != "" {
+			if _, err := fmt.Fprintf(stdout, "    config will be saved to %s\n", apiRuntime.configPath); err != nil {
+				return &cli.ExitError{Code: 1, Err: err}
+			}
+		}
 	} else {
 		if _, err := fmt.Fprintf(stdout, "tars api serving on %s\n", opts.APIAddr); err != nil {
 			return &cli.ExitError{Code: 1, Err: err}
