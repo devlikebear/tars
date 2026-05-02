@@ -5,6 +5,7 @@ import {
   buildConfigPayload,
   defaultBaseURLForKind,
   emptyOnboardingForm,
+  formFromConfigValues,
   suggestedAuthModeForKind,
   validateForm,
   validateProviderStep,
@@ -151,4 +152,80 @@ test('suggestedAuthModeForKind defaults oauth for codex/claude-code-cli, api-key
   assert.equal(suggestedAuthModeForKind('claude-code-cli'), 'oauth')
   assert.equal(suggestedAuthModeForKind('openai'), 'api-key')
   assert.equal(suggestedAuthModeForKind('anthropic'), 'api-key')
+})
+
+test('formFromConfigValues prefills the first provider and 3 tiers', () => {
+  const values = {
+    llm_providers: {
+      openai: {
+        kind: 'openai',
+        auth_mode: 'api-key',
+        api_key: 'sk-t****ast4',
+        base_url: 'https://api.openai.com/v1',
+      },
+    },
+    llm_tiers: {
+      heavy: { provider: 'openai', model: 'gpt-5.4', reasoning_effort: 'high' },
+      standard: { provider: 'openai', model: 'gpt-5.4' },
+      light: { provider: 'openai', model: 'gpt-5.4-mini' },
+    },
+  }
+  const form = formFromConfigValues(values)
+  assert.equal(form.provider.alias, 'openai')
+  assert.equal(form.provider.kind, 'openai')
+  assert.equal(form.provider.auth_mode, 'api-key')
+  assert.equal(form.provider.base_url, 'https://api.openai.com/v1')
+  assert.equal(form.provider.keepExistingApiKey, true, 'masked api_key should set keepExisting=true')
+  assert.equal(form.tiers.heavy.model, 'gpt-5.4')
+  assert.equal(form.tiers.heavy.reasoning_effort, 'high')
+  assert.equal(form.tiers.standard.provider, 'openai')
+  assert.equal(form.tiers.light.model, 'gpt-5.4-mini')
+})
+
+test('formFromConfigValues handles empty values gracefully', () => {
+  const form = formFromConfigValues({})
+  assert.equal(form.provider.alias, '')
+  assert.equal(form.tiers.heavy.provider, '')
+})
+
+test('buildConfigPayload omits api_key when keepExistingApiKey is set', () => {
+  const form = emptyOnboardingForm()
+  form.provider.alias = 'openai'
+  form.provider.kind = 'openai'
+  form.provider.api_key = '****abcd'
+  form.provider.keepExistingApiKey = true
+  for (const tier of ['heavy', 'standard', 'light'] as const) {
+    form.tiers[tier].provider = 'openai'
+    form.tiers[tier].model = 'gpt-5.4'
+  }
+  const payload = buildConfigPayload(form) as {
+    llm_providers: { openai: Record<string, unknown> }
+  }
+  assert.equal('api_key' in payload.llm_providers.openai, false, 'masked key must not be patched back')
+})
+
+test('buildConfigPayload includes api_key when user supplies a fresh value', () => {
+  const form = emptyOnboardingForm()
+  form.provider.alias = 'openai'
+  form.provider.kind = 'openai'
+  form.provider.api_key = 'sk-fresh-replacement'
+  form.provider.keepExistingApiKey = false
+  for (const tier of ['heavy', 'standard', 'light'] as const) {
+    form.tiers[tier].provider = 'openai'
+    form.tiers[tier].model = 'gpt-5.4'
+  }
+  const payload = buildConfigPayload(form) as {
+    llm_providers: { openai: Record<string, unknown> }
+  }
+  assert.equal(payload.llm_providers.openai.api_key, 'sk-fresh-replacement')
+})
+
+test('validateProviderStep accepts api-key mode without typed key when keepExisting=true', () => {
+  const form = emptyOnboardingForm()
+  form.provider.alias = 'openai'
+  form.provider.kind = 'openai'
+  form.provider.auth_mode = 'api-key'
+  form.provider.api_key = '' // user did not type anything
+  form.provider.keepExistingApiKey = true
+  assert.equal(validateProviderStep(form).length, 0)
 })
