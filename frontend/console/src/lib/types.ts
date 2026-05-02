@@ -1240,6 +1240,40 @@ export type ProviderModelsInfo = {
   warning?: string
 }
 
+// --- Onboarding (Phase 1+2 backend, Phase 3 wizard) ---
+
+export type HealthzResponse = {
+  ok: boolean
+  component: string
+  time: string
+  needs_setup: boolean
+  dashboard_auth?: Record<string, unknown>
+}
+
+export type SetupTierStatus = {
+  configured: boolean
+  provider?: string
+  model?: string
+}
+
+export type SetupCheck = {
+  id: string
+  ok: boolean
+  message: string
+}
+
+export type SetupStatusResponse = {
+  needs_setup: boolean
+  config_path?: string
+  config_exists: boolean
+  providers: {
+    configured: string[]
+    missing: boolean
+  }
+  tiers: Record<string, SetupTierStatus>
+  checks: SetupCheck[]
+}
+
 export type PlanStatus =
   | 'drafting'
   | 'proposed'

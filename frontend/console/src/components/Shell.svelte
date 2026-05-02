@@ -7,6 +7,7 @@
     currentPath: string
     serverHealth?: string
     unreadCount?: number
+    needsSetup?: boolean
     onNavigate: (path: string) => void
     onUnreadChange?: (count: number) => void
     children: Snippet
@@ -16,16 +17,25 @@
     currentPath,
     serverHealth = 'ok',
     unreadCount = 0,
+    needsSetup = false,
     onNavigate,
     onUnreadChange,
     children,
   }: Props = $props()
 </script>
 
-<div class="shell">
-  <Nav {currentPath} {onNavigate} />
-  <div class="shell-main">
+<div class="shell" class:setup-only={needsSetup}>
+  {#if !needsSetup}
+    <Nav {currentPath} {onNavigate} />
+  {/if}
+  <div class="shell-main" class:no-nav={needsSetup}>
     <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} />
+    {#if needsSetup}
+      <div class="setup-only-banner" role="alert">
+        <strong>Setup-only mode</strong>
+        <span>LLM 설정이 완료되지 않아 콘솔 기능이 제한됩니다. 마법사를 완료하면 정상 모드로 전환됩니다.</span>
+      </div>
+    {/if}
     <main class="shell-content">
       {@render children()}
     </main>
@@ -44,6 +54,27 @@
     display: flex;
     flex-direction: column;
     margin-left: var(--nav-width);
+  }
+
+  .shell-main.no-nav {
+    margin-left: 0;
+  }
+
+  .setup-only-banner {
+    background: rgba(224, 145, 69, 0.12);
+    border-bottom: 1px solid var(--primary);
+    color: var(--text-primary);
+    padding: var(--space-2) var(--space-4);
+    font-size: 13px;
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+  }
+  .setup-only-banner strong {
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 11px;
   }
 
   .shell-content {
