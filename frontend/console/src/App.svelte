@@ -134,7 +134,7 @@
   {:else if route.view === 'analytics'}
     <Analytics />
   {:else if route.view === 'config'}
-    <Config />
+    <Config onNavigate={navigate} />
   {:else if route.view === 'pulse'}
     <Pulse onNavigate={navigate} />
   {:else if route.view === 'reflection'}
