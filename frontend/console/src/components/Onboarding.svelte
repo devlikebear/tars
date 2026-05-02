@@ -8,6 +8,7 @@
     restartServer,
   } from '../lib/api'
   import {
+    availableAuthModesForKind,
     buildConfigPayload,
     defaultBaseURLForKind,
     emptyOnboardingForm,
@@ -33,6 +34,7 @@
 
   let step = $state<StepId>('provider')
   let form = $state<OnboardingFormState>(emptyOnboardingForm())
+  let availableAuthModes = $derived(availableAuthModesForKind(form.provider.kind))
   let setupStatus = $state<SetupStatusResponse | null>(null)
   let stepErrors = $state<string[]>([])
   let saveError = $state<string>('')
@@ -85,7 +87,14 @@
     if (form.provider.base_url.trim() === '') {
       form.provider.base_url = defaultBaseURLForKind(kind)
     }
-    form.provider.auth_mode = suggestedAuthModeForKind(kind) as AuthMode
+    // Reset auth_mode to a value valid for the picked kind. If the
+    // user had selected api-key for an api-key kind and switches to
+    // claude-code-cli (cli-only), keeping the stale value would let
+    // them advance with an invalid combo.
+    const valid = availableAuthModesForKind(kind)
+    if (!valid.includes(form.provider.auth_mode)) {
+      form.provider.auth_mode = suggestedAuthModeForKind(kind)
+    }
     if (form.provider.alias.trim() === '' && kind !== '') {
       form.provider.alias = kind
     }
@@ -255,9 +264,10 @@
 
         <label class="onboarding-field">
           <span>인증 모드 <em>auth_mode</em></span>
-          <select bind:value={form.provider.auth_mode}>
-            <option value="api-key">api-key</option>
-            <option value="oauth">oauth</option>
+          <select bind:value={form.provider.auth_mode} disabled={availableAuthModes.length <= 1 && form.provider.kind !== ''}>
+            {#each availableAuthModes as mode}
+              <option value={mode}>{mode}</option>
+            {/each}
           </select>
         </label>
 
@@ -278,14 +288,17 @@
           <span>Base URL <em>비우면 kind 기본값 사용</em></span>
           <input type="url" bind:value={form.provider.base_url} placeholder={defaultBaseURLForKind(form.provider.kind)} />
         </label>
-
-        {#if form.provider.auth_mode === 'oauth'}
-          <label class="onboarding-field">
-            <span>OAuth Provider <em>선택</em></span>
-            <input type="text" bind:value={form.provider.oauth_provider} placeholder="openai-codex" />
-          </label>
-        {/if}
       </div>
+
+      {#if form.provider.auth_mode === 'oauth'}
+        <p class="onboarding-hint">
+          <strong>OAuth 인증</strong> · 환경변수 또는 OAuth 핸드셰이크에서 자동으로 토큰을 받습니다. 선택한 kind에 맞는 OAuth provider가 자동 적용됩니다 (별도 입력 불필요).
+        </p>
+      {:else if form.provider.auth_mode === 'cli'}
+        <p class="onboarding-hint">
+          <strong>CLI 인증</strong> · 로컬에 설치된 <code>claude-code</code> CLI를 통해 인증합니다. 추가 키 입력 없이도 동작합니다 (CLI 자체 로그인 상태가 사용됩니다).
+        </p>
+      {/if}
 
       <div class="onboarding-actions">
         <span class="onboarding-spacer"></span>
@@ -582,6 +595,27 @@
     margin-top: var(--space-4);
   }
   .onboarding-spacer { flex: 1; }
+  .onboarding-hint {
+    margin: var(--space-4) 0 0;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--primary);
+    border-radius: 6px;
+    background: var(--surface-1);
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .onboarding-hint strong {
+    color: var(--text-primary);
+    margin-right: 4px;
+  }
+  .onboarding-hint code {
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
   .onboarding-review {
     display: flex;
     flex-direction: column;

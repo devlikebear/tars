@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  availableAuthModesForKind,
   buildConfigPayload,
   defaultBaseURLForKind,
   emptyOnboardingForm,
@@ -147,11 +148,48 @@ test('defaultBaseURLForKind returns canonical URLs and empty for local', () => {
   assert.equal(defaultBaseURLForKind(''), '')
 })
 
-test('suggestedAuthModeForKind defaults oauth for codex/claude-code-cli, api-key elsewhere', () => {
+test('availableAuthModesForKind narrows the auth_mode select per kind', () => {
+  assert.deepEqual(availableAuthModesForKind('openai-codex'), ['oauth'])
+  assert.deepEqual(availableAuthModesForKind('claude-code-cli'), ['cli'])
+  assert.deepEqual(availableAuthModesForKind('anthropic'), ['api-key', 'oauth'])
+  assert.deepEqual(availableAuthModesForKind('openai'), ['api-key'])
+  assert.deepEqual(availableAuthModesForKind('kimi'), ['api-key'])
+  assert.deepEqual(availableAuthModesForKind('gemini'), ['api-key'])
+  assert.deepEqual(availableAuthModesForKind('gemini-native'), ['api-key'])
+  // Empty kind: every mode is offered until the user picks one.
+  assert.deepEqual(availableAuthModesForKind(''), ['api-key', 'oauth', 'cli'])
+})
+
+test('suggestedAuthModeForKind matches the head of availableAuthModesForKind', () => {
   assert.equal(suggestedAuthModeForKind('openai-codex'), 'oauth')
-  assert.equal(suggestedAuthModeForKind('claude-code-cli'), 'oauth')
+  assert.equal(suggestedAuthModeForKind('claude-code-cli'), 'cli', 'cli kinds must default to cli, not oauth')
   assert.equal(suggestedAuthModeForKind('openai'), 'api-key')
   assert.equal(suggestedAuthModeForKind('anthropic'), 'api-key')
+})
+
+test('buildConfigPayload never emits oauth_provider — backend infers from kind', () => {
+  const form = emptyOnboardingForm()
+  form.provider.alias = 'codex'
+  form.provider.kind = 'openai-codex'
+  form.provider.auth_mode = 'oauth'
+  form.provider.oauth_provider = 'should-be-ignored-by-payload'
+  for (const tier of ['heavy', 'standard', 'light'] as const) {
+    form.tiers[tier].provider = 'codex'
+    form.tiers[tier].model = 'gpt-5.4'
+  }
+  const payload = buildConfigPayload(form) as {
+    llm_providers: { codex: Record<string, unknown> }
+  }
+  assert.equal('oauth_provider' in payload.llm_providers.codex, false)
+})
+
+test('validateProviderStep accepts cli auth_mode without api_key', () => {
+  const form = emptyOnboardingForm()
+  form.provider.alias = 'claude'
+  form.provider.kind = 'claude-code-cli'
+  form.provider.auth_mode = 'cli'
+  form.provider.api_key = ''
+  assert.equal(validateProviderStep(form).length, 0)
 })
 
 test('formFromConfigValues prefills the first provider and 3 tiers', () => {
