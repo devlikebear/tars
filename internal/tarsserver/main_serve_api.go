@@ -106,9 +106,22 @@ func runServeAPICommand(
 		shutdownRuntime(shutdownCtx, apiRuntime)
 	}()
 
-	logger.Info().Str("addr", opts.APIAddr).Msg("tars api server started")
-	if _, err := fmt.Fprintf(stdout, "tars api serving on %s\n", opts.APIAddr); err != nil {
-		return &cli.ExitError{Code: 1, Err: err}
+	mode := "ready"
+	if !deps.LLMReady {
+		mode = "setup-only"
+	}
+	logger.Info().Str("addr", opts.APIAddr).Str("mode", mode).Msg("tars api server started")
+	if !deps.LLMReady {
+		if _, err := fmt.Fprintf(stdout, "tars api serving on %s (setup-only mode)\n", opts.APIAddr); err != nil {
+			return &cli.ExitError{Code: 1, Err: err}
+		}
+		if _, err := fmt.Fprintf(stdout, "    open http://%s/console to complete setup\n", opts.APIAddr); err != nil {
+			return &cli.ExitError{Code: 1, Err: err}
+		}
+	} else {
+		if _, err := fmt.Fprintf(stdout, "tars api serving on %s\n", opts.APIAddr); err != nil {
+			return &cli.ExitError{Code: 1, Err: err}
+		}
 	}
 	if err := apiRuntime.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error().Err(err).Msg("failed to serve api")
