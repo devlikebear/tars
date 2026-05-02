@@ -38,6 +38,7 @@ func buildLLMDeps(base runtimeDeps, cfg config.Config, logger zerolog.Logger) (r
 
 	deps := base
 	deps.llmRouter = router
+	deps.LLMReady = true
 	logger.Debug().Msg("llm router initialized")
 	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg, cfg.WorkspaceDir, nil, deps.llmRouter, deps.usageTracker, cfg.AgentMaxIterations, logger, semanticCfg)
 	if deps.runPromptWithTools != nil {

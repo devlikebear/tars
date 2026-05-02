@@ -21,6 +21,12 @@ type runtimeDeps struct {
 	usageTracker         *usage.Tracker
 	runPrompt            func(ctx context.Context, runLabel string, prompt string) (string, error)
 	runPromptWithTools   agentRuntimePromptRunner
+	// LLMReady is true when buildLLMDeps populated the LLM-bound fields.
+	// When false the server runs in setup-only mode (Phase 2 onboarding):
+	// only the wizard endpoints + console + healthz are wired and chat /
+	// agent / cron / pulse / reflection are inactive. The CLI's RunE is
+	// the single setter; downstream code reads this to branch routes.
+	LLMReady bool
 }
 
 type runtimeDepsError struct {

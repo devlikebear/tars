@@ -14,6 +14,41 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// recoverableLLMInitStages enumerate the buildLLMDeps failure stages
+// that the CLI may downgrade to setup-only mode on, instead of exiting.
+// Anything outside this set (e.g. workspace creation failures) remains
+// fatal — onboarding cannot heal it from the wizard.
+var recoverableLLMInitStages = map[string]struct{}{
+	"init_llm":             {},
+	"init_memory_backend":  {},
+	"init_semantic_memory": {},
+}
+
+func isRecoverableLLMInitError(err error) bool {
+	var depErr *runtimeDepsError
+	if !errors.As(err, &depErr) {
+		return false
+	}
+	_, ok := recoverableLLMInitStages[depErr.stage]
+	return ok
+}
+
+func logBootstrapError(logger zerolog.Logger, err error) {
+	var depErr *runtimeDepsError
+	if errors.As(err, &depErr) {
+		switch depErr.stage {
+		case "ensure_workspace":
+			logger.Error().Err(depErr.err).Msg("failed to initialize workspace")
+		case "init_llm":
+			logger.Error().Err(depErr.err).Msg("failed to initialize llm provider")
+		default:
+			logger.Error().Err(depErr.err).Str("stage", depErr.stage).Msg("failed to initialize runtime dependencies")
+		}
+		return
+	}
+	logger.Error().Err(err).Msg("failed to initialize runtime dependencies")
+}
+
 // newRootCmd builds the cobra command tree. The caller is expected to
 // have already loaded cfg and installed the runtime logger so the RunE
 // hook can focus on wiring the rest of the runtime.
@@ -39,25 +74,33 @@ func newRootCmd(opts *options, cfg config.Config, stdout, stderr io.Writer, nowF
 				logger.Debug().Msg("verbose logging enabled")
 			}
 
-			deps, err := buildRuntimeDeps(opts, cfg, nowFn, logger)
+			base, err := buildBaseDeps(opts, cfg, nowFn, logger)
 			if err != nil {
-				var depErr *runtimeDepsError
-				if errors.As(err, &depErr) {
-					switch depErr.stage {
-					case "ensure_workspace":
-						logger.Error().Err(depErr.err).Msg("failed to initialize workspace")
-					case "init_llm":
-						logger.Error().Err(depErr.err).Msg("failed to initialize llm provider")
-					default:
-						logger.Error().Err(depErr.err).Msg("failed to initialize runtime dependencies")
-					}
-				} else {
-					logger.Error().Err(err).Msg("failed to initialize runtime dependencies")
-				}
+				logBootstrapError(logger, err)
 				return &cli.ExitError{Code: 1, Err: err}
 			}
 
+			deps, err := buildLLMDeps(base, cfg, logger)
+			if err != nil {
+				if isRecoverableLLMInitError(err) {
+					logger.Warn().
+						Err(err).
+						Msg("llm init failed — entering setup-only mode (visit /console to complete setup)")
+					deps = base
+					deps.LLMReady = false
+				} else {
+					logBootstrapError(logger, err)
+					return &cli.ExitError{Code: 1, Err: err}
+				}
+			}
+
 			if opts.ConfigCheck {
+				if !deps.LLMReady {
+					msg := "tars config check requires setup — run tars serve and visit /console"
+					logger.Error().Str("workspace_dir", deps.cfg.WorkspaceDir).Msg(msg)
+					fmt.Fprintln(stdout, msg)
+					return &cli.ExitError{Code: 1, Err: fmt.Errorf("%s", msg)}
+				}
 				logger.Info().
 					Str("workspace_dir", deps.cfg.WorkspaceDir).
 					Msg("tars config check passed")
