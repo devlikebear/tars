@@ -39,6 +39,28 @@ func TestApplyAPIMiddleware_RejectsExternalWithoutToken(t *testing.T) {
 	}
 }
 
+func TestApplyAPIMiddleware_AllowsSetupStatusWithoutToken(t *testing.T) {
+	cfg := config.Config{
+		APIConfig: config.APIConfig{
+			APIAuthMode:  "external-required",
+			APIAuthToken: "dev-token",
+		},
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	for _, path := range []string{"/v1/healthz", "/v1/setup/status"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.RemoteAddr = "192.0.2.10:5555"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("expected 204 for %s without token, got %d body=%q", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestApplyAPIMiddleware_AllowsExternalWithTokenAndBindsDefaultWorkspace(t *testing.T) {
 	cfg := config.Config{
 		APIConfig: config.APIConfig{

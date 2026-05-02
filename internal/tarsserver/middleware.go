@@ -31,7 +31,7 @@ func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Hand
 }
 
 func apiAuthSkipPaths(cfg config.Config) []string {
-	return []string{"/v1/healthz", "/", "/console", "/console/", "/console/*"}
+	return []string{"/v1/healthz", "/v1/setup/status", "/", "/console", "/console/", "/console/*"}
 }
 
 func apiAdminPaths() []string {

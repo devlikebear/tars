@@ -948,7 +948,7 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, mainSessionI
 	})
 }
 
-func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string]any) http.Handler {
+func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string]any, needsSetupFn func() bool) http.Handler {
 	if nowFn == nil {
 		nowFn = time.Now
 	}
@@ -956,10 +956,15 @@ func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
+		needsSetup := false
+		if needsSetupFn != nil {
+			needsSetup = needsSetupFn()
+		}
 		body := map[string]any{
-			"ok":        true,
-			"component": "tars",
-			"time":      nowFn().UTC().Format(time.RFC3339),
+			"ok":          true,
+			"component":   "tars",
+			"time":        nowFn().UTC().Format(time.RFC3339),
+			"needs_setup": needsSetup,
 		}
 		if dashboardAuthStatus != nil {
 			body["dashboard_auth"] = dashboardAuthStatus

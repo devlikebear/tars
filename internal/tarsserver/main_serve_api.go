@@ -56,6 +56,7 @@ type apiRouteHandlers struct {
 	status          http.Handler
 	auth            http.Handler
 	healthz         http.Handler
+	setup           http.Handler
 	providersModels http.Handler
 	compact         http.Handler
 	cron            http.Handler
@@ -503,7 +504,8 @@ func buildAPIMux(
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit, sessionStore)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
-	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg))
+	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) })
+	setupHandler := newSetupAPIHandler(opts.ConfigPath, cfg, logger)
 	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
 	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
@@ -588,6 +590,7 @@ func buildAPIMux(
 		status:          statusHandler,
 		auth:            authHandler,
 		healthz:         healthzHandler,
+		setup:           setupHandler,
 		providersModels: providersModelsHandler,
 		compact:         compactHandler,
 		cron:            cronHandler,
@@ -713,6 +716,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/status", handlers.status)
 	mux.Handle("/v1/auth/whoami", handlers.auth)
 	mux.Handle("/v1/healthz", handlers.healthz)
+	mux.Handle("/v1/setup/status", handlers.setup)
 	mux.Handle("/v1/providers", handlers.providersModels)
 	mux.Handle("/v1/models", handlers.providersModels)
 	mux.Handle("/v1/compact", handlers.compact)
