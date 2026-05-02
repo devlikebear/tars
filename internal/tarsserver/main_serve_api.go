@@ -503,7 +503,7 @@ func buildAPIMux(
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit, sessionStore)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
-	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg))
+	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) })
 	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
 	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)

@@ -2707,7 +2707,7 @@ func TestStatusAPI(t *testing.T) {
 
 func TestHealthzAPI(t *testing.T) {
 	now := time.Date(2026, 2, 18, 8, 0, 0, 0, time.UTC)
-	handler := newHealthzAPIHandler(func() time.Time { return now }, nil)
+	handler := newHealthzAPIHandler(func() time.Time { return now }, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
@@ -2717,9 +2717,10 @@ func TestHealthzAPI(t *testing.T) {
 	}
 
 	var payload struct {
-		OK        bool   `json:"ok"`
-		Component string `json:"component"`
-		Time      string `json:"time"`
+		OK         bool   `json:"ok"`
+		Component  string `json:"component"`
+		Time       string `json:"time"`
+		NeedsSetup bool   `json:"needs_setup"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode healthz response: %v", err)
@@ -2733,6 +2734,9 @@ func TestHealthzAPI(t *testing.T) {
 	if payload.Time != now.Format(time.RFC3339) {
 		t.Fatalf("expected time=%q, got %q", now.Format(time.RFC3339), payload.Time)
 	}
+	if payload.NeedsSetup {
+		t.Fatalf("expected needs_setup=false when needsSetupFn is nil, payload=%+v", payload)
+	}
 
 	methodRec := httptest.NewRecorder()
 	methodReq := httptest.NewRequest(http.MethodPost, "/v1/healthz", nil)
@@ -2742,13 +2746,45 @@ func TestHealthzAPI(t *testing.T) {
 	}
 }
 
+func TestHealthzAPI_ReflectsNeedsSetup(t *testing.T) {
+	now := time.Date(2026, 2, 18, 8, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name string
+		fn   func() bool
+		want bool
+	}{
+		{name: "needs_setup true", fn: func() bool { return true }, want: true},
+		{name: "needs_setup false", fn: func() bool { return false }, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := newHealthzAPIHandler(func() time.Time { return now }, nil, tc.fn)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
+			handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+			}
+			var payload struct {
+				NeedsSetup bool `json:"needs_setup"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+				t.Fatalf("decode healthz response: %v", err)
+			}
+			if payload.NeedsSetup != tc.want {
+				t.Fatalf("expected needs_setup=%v, got %v", tc.want, payload.NeedsSetup)
+			}
+		})
+	}
+}
+
 func TestHealthzAPI_IncludesDashboardAuthWarning(t *testing.T) {
 	now := time.Date(2026, 2, 18, 8, 0, 0, 0, time.UTC)
 	handler := newHealthzAPIHandler(func() time.Time { return now }, map[string]any{
 		"mode":          "off",
 		"public_access": "loopback-only",
 		"warning":       "dashboard auth off is restricted to loopback requests",
-	})
+	}, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
