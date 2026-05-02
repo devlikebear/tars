@@ -157,3 +157,30 @@ gateway:
 		t.Fatalf("legacy gateway persistence paths should not be used, got %q", cfg.AgentRuntimePersistenceDir)
 	}
 }
+
+
+func TestPatchYAML_CreatesParentDirectory(t *testing.T) {
+	root := t.TempDir()
+	// Use a path whose parent does NOT exist yet — simulates the
+	// wizard's first save against ~/.tars/config/ on a brand-new
+	// install.
+	path := filepath.Join(root, "fresh", "nested", "config.yaml")
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Fatalf("expected parent dir to be missing before PatchYAML; stat err=%v", err)
+	}
+
+	updates := map[string]any{
+		"workspace_dir": filepath.Join(root, "ws"),
+	}
+	if err := PatchYAML(path, updates); err != nil {
+		t.Fatalf("patch yaml on missing parent dir: %v", err)
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected config file to be created at %s, got err=%v", path, err)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); err != nil {
+		t.Fatalf("expected parent dir to exist after PatchYAML, got err=%v", err)
+	}
+}
+

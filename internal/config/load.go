@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -74,6 +75,14 @@ func PatchYAML(path string, updates map[string]any) error {
 	out, err := yaml.Marshal(existing)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
+	}
+	// Ensure the parent directory exists so the wizard's first PATCH
+	// can land at a brand-new location (e.g. ~/.tars/config/) without
+	// the operator running tars init first.
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create config dir %s: %w", dir, err)
+		}
 	}
 	return os.WriteFile(path, out, 0644)
 }

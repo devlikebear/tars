@@ -328,23 +328,29 @@ func TestRun_FlagOverridesEnvAndYAML(t *testing.T) {
 	}
 }
 
-func TestRun_InvalidConfigPathPanics(t *testing.T) {
+func TestRun_MissingConfigEntersSetupOnlyMode(t *testing.T) {
+	// Pre-Phase-2 this test asserted a panic: load_config was the
+	// fail-loud boundary. After #644 fixed the first-install gap,
+	// missing config files are tolerated — the wizard takes over.
+	// --config-check stays exit 1 in setup-only so external scripts
+	// gated on its exit code keep their semantics.
 	isolateRunEnv(t)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatalf("expected panic on invalid config path, stdout=%q", stdout.String())
-		}
-		msg := fmt.Sprintf("%v", r)
-		if !strings.Contains(msg, "load config") {
-			t.Fatalf("unexpected panic message: %q", msg)
-		}
-	}()
+	missing := filepath.Join(t.TempDir(), "definitely-not-there.yaml")
+	code := run([]string{
+		"--config", missing,
+		"--config-check",
+		"--workspace-dir", filepath.Join(t.TempDir(), "workspace"),
+	}, stdout, stderr)
 
-	_ = run([]string{"--config", "./not-found.yaml", "--workspace-dir", filepath.Join(t.TempDir(), "workspace")}, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("expected exit code 1 from --config-check in setup-only mode, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(strings.ToLower(stdout.String()), "setup") {
+		t.Fatalf("expected stdout to mention setup, got %q", stdout.String())
+	}
 }
 
 func TestRun_UsesDefaultConfigPathWhenFlagIsEmpty(t *testing.T) {

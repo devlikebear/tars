@@ -171,3 +171,104 @@ func TestSetupOnlyE2E_WizardSaveCycle(t *testing.T) {
 		t.Fatalf("after wizard save expected needs_setup=false providers.missing=false, body=%s", rec.Body.String())
 	}
 }
+
+// TestSetupOnlyE2E_MissingConfigFile_FirstInstall mirrors the first-
+// install scenario: the operator never ran tars init, so neither the
+// config file nor its parent directory exist. Booting must NOT panic
+// and the wizard's first PATCH must succeed (creating the parent dir
+// + writing the file in place).
+func TestSetupOnlyE2E_MissingConfigFile_FirstInstall(t *testing.T) {
+	dir := t.TempDir()
+	workspaceDir := filepath.Join(dir, "workspace")
+	// Path's parent does NOT exist — simulates ~/.tars/config/ on a
+	// brand-new install. PatchYAML must mkdir it.
+	configPath := filepath.Join(dir, "fresh-install", "tars", "config.yaml")
+	if _, err := os.Stat(filepath.Dir(configPath)); !os.IsNotExist(err) {
+		t.Fatalf("expected parent dir to be missing before boot, stat err=%v", err)
+	}
+
+	opts := &options{ConfigPath: configPath, APIAddr: "127.0.0.1:0", WorkspaceDir: workspaceDir}
+	cfg, err := loadConfigForServe(opts)
+	if err != nil {
+		t.Fatalf("loadConfigForServe with missing file: %v", err)
+	}
+	cfg.APIAuthMode = "off"
+	cfg.APIAllowInsecureLocalAuth = true
+
+	logger := zerolog.New(io.Discard)
+	base, err := buildBaseDeps(opts, cfg, time.Now, logger)
+	if err != nil {
+		t.Fatalf("buildBaseDeps: %v", err)
+	}
+
+	// LLM init fails recoverably on the empty cfg — exactly the
+	// downgrade path the CLI's RunE follows.
+	if _, llmErr := buildLLMDeps(base, cfg, logger); llmErr == nil {
+		t.Fatalf("expected buildLLMDeps to fail on empty cfg")
+	} else if !isRecoverableLLMInitError(llmErr) {
+		t.Fatalf("expected recoverable error, got %v", llmErr)
+	}
+
+	deps := base
+	deps.LLMReady = false
+
+	apiRuntime, err := buildAPIMux(opts, deps, time.Now, logger, io.Discard)
+	if err != nil {
+		t.Fatalf("buildAPIMux setup-only: %v", err)
+	}
+	srv := apiRuntime.server.Handler
+
+	// Wizard PATCH lands at the missing-parent path.
+	patch := map[string]any{
+		"updates": map[string]any{
+			"llm_providers": map[string]any{
+				"openai": map[string]any{
+					"kind":      "openai",
+					"auth_mode": "api-key",
+					"api_key":   "sk-test-fake-key",
+					"base_url":  "https://api.openai.com/v1",
+				},
+			},
+			"llm_tiers": map[string]any{
+				"heavy":    map[string]any{"provider": "openai", "model": "gpt-5.4"},
+				"standard": map[string]any{"provider": "openai", "model": "gpt-5.4"},
+				"light":    map[string]any{"provider": "openai", "model": "gpt-5.4-mini"},
+			},
+		},
+	}
+	body, err := json.Marshal(patch)
+	if err != nil {
+		t.Fatalf("marshal patch: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/v1/admin/config/values", bytes.NewReader(body))
+	req.RemoteAddr = "127.0.0.1:5555"
+	req.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("config/values PATCH on missing parent expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	// File + parent dir now exist.
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatalf("expected config file created at %s, got err=%v", configPath, err)
+	}
+
+	// Reload reflects the persisted bindings.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/setup/status", nil)
+	req.RemoteAddr = "127.0.0.1:5555"
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post-patch setup/status expected 200, got %d", rec.Code)
+	}
+	var status struct {
+		NeedsSetup bool `json:"needs_setup"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode setup/status: %v", err)
+	}
+	if status.NeedsSetup {
+		t.Fatalf("after wizard save on missing-file path, expected needs_setup=false, got body=%s", rec.Body.String())
+	}
+}
