@@ -238,7 +238,15 @@ func buildLLMMessagesWithBlocks(systemPrompt string, history []session.Message, 
 	llmMessages := make([]llm.ChatMessage, 0, len(history)+2)
 	llmMessages = append(llmMessages, llm.ChatMessage{Role: "system", Content: systemPrompt})
 	for _, m := range history {
-		llmMessages = append(llmMessages, llm.ChatMessage{Role: m.Role, Content: m.Content})
+		role := strings.TrimSpace(m.Role)
+		if role == "tool" && strings.TrimSpace(m.ToolCallID) == "" {
+			continue
+		}
+		llmMessages = append(llmMessages, llm.ChatMessage{
+			Role:       role,
+			Content:    m.Content,
+			ToolCallID: m.ToolCallID,
+		})
 	}
 	msg := llm.ChatMessage{Role: "user", Content: userMessage, ContentBlocks: contentBlocks}
 	llmMessages = append(llmMessages, msg)

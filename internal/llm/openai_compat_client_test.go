@@ -117,6 +117,334 @@ func TestOpenAICompatibleChat_IncludesToolsAndParsesToolCalls(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleChat_KimiSkipsReasoningAndServiceTierWithTools(t *testing.T) {
+	type captured struct {
+		ReasoningEffort string `json:"reasoning_effort"`
+		ServiceTier     string `json:"service_tier"`
+		Tools           []any  `json:"tools"`
+	}
+
+	var got captured
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+
+	client := &OpenAICompatibleClient{
+		label:      "kimi",
+		baseURL:    srv.URL + "/v1",
+		apiKey:     "kimi-key",
+		model:      "moonshot-v1-auto",
+		config:     DefaultClientConfig(),
+		httpClient: http.DefaultClient,
+	}
+
+	_, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "check"}}, ChatOptions{
+		ReasoningEffort: "high",
+		ServiceTier:     "priority",
+		Tools: []ToolSchema{
+			{Type: "function", Function: ToolFunctionSchema{Name: "current_time", Parameters: json.RawMessage(`{"type":"object","properties":{"noop":{"type":"string"}}}`)}},
+		},
+		ToolChoice: ToolChoiceRequired(),
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	if got.ReasoningEffort != "" {
+		t.Fatalf("expected reasoning_effort to be omitted for kimi tool call, got %q", got.ReasoningEffort)
+	}
+	if got.ServiceTier != "" {
+		t.Fatalf("expected service_tier to be omitted for kimi tool call, got %q", got.ServiceTier)
+	}
+	if len(got.Tools) != 1 {
+		t.Fatalf("expected tool definition to be sent, got %+v", got.Tools)
+	}
+}
+
+func TestOpenAICompatibleChat_KimiRequestIncludesReasoningContentForAssistantToolCallMessage(t *testing.T) {
+	var captured struct {
+		Messages []struct {
+			Role             string `json:"role"`
+			ReasoningContent string `json:"reasoning_content"`
+			ToolCalls        []struct {
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"messages"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+
+	client := &OpenAICompatibleClient{
+		label:      "kimi",
+		baseURL:    srv.URL + "/v1",
+		apiKey:     "kimi-key",
+		model:      "moonshot-v1-auto",
+		config:     DefaultClientConfig(),
+		httpClient: http.DefaultClient,
+	}
+
+	_, err := client.Chat(context.Background(), []ChatMessage{
+		{
+			Role:             "assistant",
+			ReasoningContent: "preparing tool call",
+			ToolCalls: []ToolCall{
+				{ID: "call_1", Name: "memory_search", Arguments: `{"query":"coffee"}`},
+			},
+		},
+	}, ChatOptions{})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	if len(captured.Messages) == 0 {
+		t.Fatalf("expected messages in request, got none")
+	}
+	if captured.Messages[0].Role != "assistant" {
+		t.Fatalf("unexpected first role: %q", captured.Messages[0].Role)
+	}
+	if captured.Messages[0].ReasoningContent != "preparing tool call" {
+		t.Fatalf("expected reasoning_content to be forwarded, got %q", captured.Messages[0].ReasoningContent)
+	}
+	if len(captured.Messages[0].ToolCalls) != 1 {
+		t.Fatalf("expected one tool_call in request, got %+v", captured.Messages[0].ToolCalls)
+	}
+	if captured.Messages[0].ToolCalls[0].Function.Name != "memory_search" {
+		t.Fatalf("unexpected tool name in request: %q", captured.Messages[0].ToolCalls[0].Function.Name)
+	}
+}
+
+func TestOpenAICompatibleChat_KimiFiltersToolMessagesWithoutMatchingAssistantToolCalls(t *testing.T) {
+	var captured struct {
+		Messages []struct {
+			Role       string `json:"role"`
+			ToolCallID string `json:"tool_call_id"`
+			Reasoning  string `json:"reasoning_content"`
+			Content    string `json:"content"`
+			ToolCalls  []struct {
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"messages"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+
+	client := &OpenAICompatibleClient{
+		label:      "kimi",
+		baseURL:    srv.URL + "/v1",
+		apiKey:     "kimi-key",
+		model:      "kimi-k2.6",
+		config:     DefaultClientConfig(),
+		httpClient: http.DefaultClient,
+	}
+
+	_, err := client.Chat(context.Background(), []ChatMessage{
+		{
+			Role:    "assistant",
+			Content: "already finished previously",
+		},
+		{
+			Role:       "tool",
+			ToolCallID: "session:0",
+			Content:    `{"result":"ok"}`,
+		},
+		{
+			Role:    "user",
+			Content: "다시 확인해줘",
+		},
+	}, ChatOptions{})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	if len(captured.Messages) != 2 {
+		t.Fatalf("expected orphan tool message to be filtered, got %d messages", len(captured.Messages))
+	}
+	if captured.Messages[0].Role != "assistant" {
+		t.Fatalf("unexpected first role: %q", captured.Messages[0].Role)
+	}
+	if captured.Messages[1].Role != "user" {
+		t.Fatalf("unexpected second role: %q", captured.Messages[1].Role)
+	}
+}
+
+func TestOpenAICompatibleChat_KimiFiltersStaleToolMessagesAndKeepsLatestForDuplicatedToolCallID(t *testing.T) {
+	var captured struct {
+		Messages []struct {
+			Role       string `json:"role"`
+			ToolCallID string `json:"tool_call_id"`
+			Content    string `json:"content"`
+			ToolCalls  []struct {
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"messages"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+
+	client := &OpenAICompatibleClient{
+		label:      "kimi",
+		baseURL:    srv.URL + "/v1",
+		apiKey:     "kimi-key",
+		model:      "kimi-k2.6",
+		config:     DefaultClientConfig(),
+		httpClient: http.DefaultClient,
+	}
+
+	_, err := client.Chat(context.Background(), []ChatMessage{
+		{
+			Role:    "assistant",
+			Content: "old assistant message",
+			ToolCalls: []ToolCall{
+				{ID: "cron:1", Name: "cron", Arguments: `{"action":"list"}`},
+			},
+		},
+		{
+			Role:       "tool",
+			ToolCallID: "cron:1",
+			Content:    `{"old":"result"}`,
+		},
+		{
+			Role:    "assistant",
+			Content: "intermediate",
+			ToolCalls: []ToolCall{
+				{ID: "cron:1", Name: "cron", Arguments: `{"action":"list"}`},
+			},
+		},
+		{
+			Role:       "tool",
+			ToolCallID: "cron:1",
+			Content:    `{"new":"result"}`,
+		},
+	}, ChatOptions{})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	if len(captured.Messages) != 4 {
+		t.Fatalf("expected 4 messages in request, got %d", len(captured.Messages))
+	}
+	if captured.Messages[0].Role != "assistant" || captured.Messages[0].Content != "old assistant message" {
+		t.Fatalf("unexpected first message: %+v", captured.Messages[0])
+	}
+	if captured.Messages[1].Role != "tool" || captured.Messages[1].ToolCallID != "cron:1" {
+		t.Fatalf("expected old cron tool message to be dropped, got %+v", captured.Messages[1])
+	}
+	if captured.Messages[1].Content != `{"new":"result"}` {
+		t.Fatalf("expected only latest cron tool result to remain, got content %q", captured.Messages[1].Content)
+	}
+	if captured.Messages[2].Role != "assistant" || captured.Messages[2].ToolCalls[0].ID != "cron:1" {
+		t.Fatalf("expected second assistant tool call message, got %+v", captured.Messages[2])
+	}
+	if captured.Messages[3].Role != "tool" || captured.Messages[3].ToolCallID != "cron:1" {
+		t.Fatalf("expected latest tool message to be present, got %+v", captured.Messages[3])
+	}
+}
+
+func TestOpenAICompatibleChat_KimiTrimsToolCallIDsForWirePayload(t *testing.T) {
+	var captured struct {
+		Messages []struct {
+			Role       string `json:"role"`
+			ToolCallID string `json:"tool_call_id"`
+			ToolCalls  []struct {
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"messages"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+
+	client := &OpenAICompatibleClient{
+		label:      "kimi",
+		baseURL:    srv.URL + "/v1",
+		apiKey:     "kimi-key",
+		model:      "kimi-k2.6",
+		config:     DefaultClientConfig(),
+		httpClient: http.DefaultClient,
+	}
+
+	_, err := client.Chat(context.Background(), []ChatMessage{
+		{
+			Role: "assistant",
+			ToolCalls: []ToolCall{
+				{ID: " cron:1 ", Name: "cron", Arguments: `{"action":"list"}`},
+			},
+		},
+		{
+			Role:       "tool",
+			ToolCallID: " cron:1 ",
+			Content:    `{"result":"ok"}`,
+		},
+	}, ChatOptions{})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	if len(captured.Messages) != 2 {
+		t.Fatalf("expected 2 messages in request, got %d", len(captured.Messages))
+	}
+	if captured.Messages[0].Role != "assistant" || len(captured.Messages[0].ToolCalls) != 1 {
+		t.Fatalf("expected assistant toolcall message, got %+v", captured.Messages[0])
+	}
+	if captured.Messages[0].ToolCalls[0].ID != "cron:1" {
+		t.Fatalf("expected trimmed toolcall id, got %q", captured.Messages[0].ToolCalls[0].ID)
+	}
+	if captured.Messages[1].Role != "tool" || captured.Messages[1].ToolCallID != "cron:1" {
+		t.Fatalf("expected trimmed tool_call_id, got %+v", captured.Messages[1])
+	}
+}
+
 // TestOpenAICompatibleChat_SpecificToolChoice asserts that
 // ToolChoiceSpecific marshals to OpenAI's object form
 // {"type":"function","function":{"name":...}} — the bare string form would

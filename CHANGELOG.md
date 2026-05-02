@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.126] - 2026-05-02
+
+### Fixed
+
+- Fixed Kimi tool-calling payload handling for `openai_compat_client` so stale or orphaned `tool` role messages are dropped and only the matched latest tool result for each call is sent.
+- Added tighter validation/sanitation for Kimi tool message IDs and tool-call metadata in request conversion.
+- Added regression tests covering omitted `service_tier`/`reasoning_effort`, `reasoning_content` propagation, orphan/stale tool filtering, and trimmed tool-call IDs.
+
 ## [0.31.125] - 2026-05-02
 
 ### Added
