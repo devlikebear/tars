@@ -9,7 +9,9 @@ import type {
   CleanupPlan,
   ConfigFile,
   ConfigSchema,
+  HealthzResponse,
   ProviderModelsInfo,
+  SetupStatusResponse,
   HubInstallResponse,
   HubInstalled,
   AgentRuntimeRun,
@@ -189,6 +191,16 @@ function normalizeGlobalPlans(data: Partial<GlobalPlansResponse> | null | undefi
 }
 
 // --- Server status ---
+
+// --- Onboarding signals ---
+
+export async function getHealthz(): Promise<HealthzResponse> {
+  return requestJSON<HealthzResponse>('/v1/healthz')
+}
+
+export async function getSetupStatus(): Promise<SetupStatusResponse> {
+  return requestJSON<SetupStatusResponse>('/v1/setup/status')
+}
 
 export async function getServerStatus(): Promise<{ version: string }> {
   return requestJSON<{ version: string }>('/v1/status')
