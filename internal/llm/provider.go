@@ -27,6 +27,9 @@ type ChatMessage struct {
 	ContentBlocks []ContentBlock `json:"content_blocks,omitempty"` // multimodal content (takes priority over Content when non-empty)
 	ToolCalls     []ToolCall     `json:"tool_calls,omitempty"`
 	ToolCallID    string         `json:"tool_call_id,omitempty"`
+	// ReasoningContent is provider-specific payload metadata for tool-calling
+	// requests. Kimi requires it on assistant messages that include tool calls.
+	ReasoningContent string `json:"reasoning_content,omitempty"`
 }
 
 type ToolCall struct {

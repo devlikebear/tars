@@ -3,7 +3,53 @@ package tarsserver
 import (
 	"strings"
 	"testing"
+
+	"github.com/devlikebear/tars/internal/session"
 )
+
+func TestBuildLLMMessagesWithBlocks_PropagatesToolCallIDFromHistory(t *testing.T) {
+	msgs := buildLLMMessagesWithBlocks("system prompt", []session.Message{
+		{
+			Role:       "assistant",
+			Content:    "I need to check files",
+			ToolCallID: "",
+		},
+		{
+			Role:       "tool",
+			Content:    `{"count":1}`,
+			ToolCallID: "call_123",
+		},
+	}, "what now", nil)
+
+	if len(msgs) != 4 {
+		t.Fatalf("expected 4 messages, got %d", len(msgs))
+	}
+	if msgs[1].Role != "assistant" {
+		t.Fatalf("expected assistant at index 1, got %q", msgs[1].Role)
+	}
+	if msgs[2].Role != "tool" {
+		t.Fatalf("expected tool at index 2, got %q", msgs[2].Role)
+	}
+	if msgs[2].ToolCallID != "call_123" {
+		t.Fatalf("expected tool_call_id call_123, got %q", msgs[2].ToolCallID)
+	}
+}
+
+func TestBuildLLMMessagesWithBlocks_SkipsToolMessagesWithoutToolCallID(t *testing.T) {
+	msgs := buildLLMMessagesWithBlocks("system prompt", []session.Message{
+		{
+			Role:    "tool",
+			Content: `{"count":1}`,
+		},
+	}, "what now", nil)
+
+	if len(msgs) != 2 { // system + current user
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	if msgs[1].Role != "user" {
+		t.Fatalf("expected user message to be second, got %q", msgs[1].Role)
+	}
+}
 
 func TestStatusPreview_RedactsSensitiveFields(t *testing.T) {
 	input := `{"password":"p@ss","token":"abc123","path":"README.md"}`

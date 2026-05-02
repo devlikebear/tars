@@ -92,9 +92,9 @@ func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts C
 	}
 	reqBody := map[string]any{
 		"model":    c.model,
-		"messages": toOpenAIWireMessages(messages),
+		"messages": toOpenAIWireMessages(messages, c.label == "kimi"),
 	}
-	if c.label != "gemini" {
+	if c.label != "gemini" && !(c.label == "kimi" && len(opts.Tools) > 0) {
 		if effort := effectiveReasoningEffort(c.config, opts); effort != "" && effort != "none" {
 			reqBody["reasoning_effort"] = effort
 		}
@@ -184,9 +184,10 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 	resp := req.Context().Value(openAICompatibleResponseContextKey{}).(*http.Response)
 
 	var (
-		builder          strings.Builder
-		stopReason       string
-		toolCallsByIndex = map[int]ToolCall{}
+		builder             strings.Builder
+		reasoningContentBuf strings.Builder
+		stopReason          string
+		toolCallsByIndex    = map[int]ToolCall{}
 	)
 	scanner := createSSEScanner(resp.Body)
 	for scanner.Scan() {
@@ -207,8 +208,9 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 		var parsed struct {
 			Choices []struct {
 				Delta struct {
-					Content   string `json:"content"`
-					ToolCalls []struct {
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"`
+					ToolCalls        []struct {
 						Index    int    `json:"index"`
 						ID       string `json:"id"`
 						Function struct {
@@ -229,7 +231,11 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 
 		choice := parsed.Choices[0]
 		content := choice.Delta.Content
+		reasoningContent := choice.Delta.ReasoningContent
 		builder.WriteString(content)
+		if reasoningContent != "" {
+			reasoningContentBuf.WriteString(reasoningContent)
+		}
 		if choice.FinishReason != "" {
 			stopReason = choice.FinishReason
 		}
@@ -264,9 +270,10 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 
 	return ChatResponse{
 		Message: ChatMessage{
-			Role:      "assistant",
-			Content:   builder.String(),
-			ToolCalls: toolCalls,
+			Role:             "assistant",
+			Content:          builder.String(),
+			ToolCalls:        toolCalls,
+			ReasoningContent: reasoningContentBuf.String(),
 		},
 		StopReason: stopReason,
 	}, nil
@@ -285,8 +292,9 @@ func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http
 	var parsed struct {
 		Choices []struct {
 			Message struct {
-				Content   string `json:"content"`
-				ToolCalls []struct {
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
+				ToolCalls        []struct {
 					ID       string `json:"id"`
 					Function struct {
 						Name      string `json:"name"`
@@ -323,9 +331,10 @@ func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http
 
 	return ChatResponse{
 		Message: ChatMessage{
-			Role:      "assistant",
-			Content:   parsed.Choices[0].Message.Content,
-			ToolCalls: nonStreamingToolCalls(parsed.Choices[0].Message.ToolCalls),
+			Role:             "assistant",
+			Content:          parsed.Choices[0].Message.Content,
+			ToolCalls:        nonStreamingToolCalls(parsed.Choices[0].Message.ToolCalls),
+			ReasoningContent: parsed.Choices[0].Message.ReasoningContent,
 		},
 		Usage: Usage{
 			InputTokens:      parsed.Usage.PromptTokens,
@@ -397,10 +406,11 @@ type openAIWireToolCall struct {
 }
 
 type openAIWireMessage struct {
-	Role       string               `json:"role"`
-	Content    any                  `json:"content,omitempty"`
-	ToolCalls  []openAIWireToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string               `json:"tool_call_id,omitempty"`
+	Role             string               `json:"role"`
+	Content          any                  `json:"content,omitempty"`
+	ToolCalls        []openAIWireToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string               `json:"tool_call_id,omitempty"`
+	ReasoningContent string               `json:"reasoning_content,omitempty"`
 }
 
 // toOpenAIContent converts a ChatMessage to OpenAI Chat Completions content format.
@@ -440,25 +450,104 @@ func toOpenAIContent(msg ChatMessage) any {
 	return blocks
 }
 
-func toOpenAIWireMessages(messages []ChatMessage) []openAIWireMessage {
+func toOpenAIWireMessages(messages []ChatMessage, includeKimiReasoningContent bool) []openAIWireMessage {
 	if len(messages) == 0 {
 		return nil
 	}
-	out := make([]openAIWireMessage, 0, len(messages))
+	assistantToolCalls := map[string]struct{}{}
 	for _, m := range messages {
+		if strings.TrimSpace(m.Role) != "assistant" {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			if id := strings.TrimSpace(tc.ID); id != "" {
+				if strings.TrimSpace(tc.Name) == "" {
+					continue
+				}
+				assistantToolCalls[id] = struct{}{}
+			}
+		}
+	}
+
+	latestAssistantIndex := map[string]int{}
+	for i, m := range messages {
+		if strings.TrimSpace(m.Role) != "assistant" {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			id := strings.TrimSpace(tc.ID)
+			if id == "" {
+				continue
+			}
+			if strings.TrimSpace(tc.Name) == "" {
+				continue
+			}
+			latestAssistantIndex[id] = i
+		}
+	}
+
+	toolMessageIndexes := map[int]struct{}{}
+	seenToolID := map[string]bool{}
+	for i := len(messages) - 1; i >= 0; i-- {
+		m := messages[i]
+		if strings.TrimSpace(m.Role) != "tool" {
+			continue
+		}
+		id := strings.TrimSpace(m.ToolCallID)
+		if id == "" {
+			continue
+		}
+		assistantIdx, ok := latestAssistantIndex[id]
+		if !ok {
+			continue
+		}
+		if i <= assistantIdx {
+			continue
+		}
+		if seenToolID[id] {
+			continue
+		}
+		seenToolID[id] = true
+		toolMessageIndexes[i] = struct{}{}
+	}
+
+	out := make([]openAIWireMessage, 0, len(messages))
+	for i, m := range messages {
+		if strings.TrimSpace(m.Role) == "tool" {
+			if len(assistantToolCalls) == 0 {
+				continue
+			}
+			id := strings.TrimSpace(m.ToolCallID)
+			if _, ok := assistantToolCalls[id]; !ok {
+				continue
+			}
+			if _, ok := toolMessageIndexes[i]; !ok {
+				continue
+			}
+		}
 		wire := openAIWireMessage{
-			Role:       m.Role,
-			Content:    toOpenAIContent(m),
-			ToolCallID: m.ToolCallID,
+			Role:    m.Role,
+			Content: toOpenAIContent(m),
+		}
+		if strings.TrimSpace(m.Role) == "tool" {
+			wire.ToolCallID = strings.TrimSpace(m.ToolCallID)
+		}
+		if includeKimiReasoningContent && m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			wire.ReasoningContent = m.ReasoningContent
 		}
 		if len(m.ToolCalls) > 0 {
 			wire.ToolCalls = make([]openAIWireToolCall, 0, len(m.ToolCalls))
 			for _, tc := range m.ToolCalls {
+				id := strings.TrimSpace(tc.ID)
+				name := strings.TrimSpace(tc.Name)
+				if id == "" || name == "" {
+					continue
+				}
 				wc := openAIWireToolCall{
-					ID:   tc.ID,
+					ID:   id,
 					Type: "function",
 				}
-				wc.Function.Name = tc.Name
+				wc.Function.Name = name
 				wc.Function.Arguments = sanitizeToolArgumentsJSON(tc.Arguments)
 				wire.ToolCalls = append(wire.ToolCalls, wc)
 			}
