@@ -40,6 +40,7 @@ export const ko = {
       sysprompt: '시스템 프롬프트',
       extensions: '확장',
       agentruntime: '에이전트 런타임',
+      channels: '채널',
       ops: '승인',
       cron: '크론',
       logs: '로그',

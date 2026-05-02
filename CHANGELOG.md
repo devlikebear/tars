@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.127] - 2026-05-02
+
+### Added
+
+- Added Channels page (`/console/channels`) for Telegram pairing management: approve pairing codes, view pending/allowed users, and revoke access.
+- Added `channels` navigation item to the Operate group in the console sidebar with i18n support (EN/KO).
+
+### Fixed
+
+- Fixed Config sensitive-field editing bug where fields like `telegram_bot_token` could not be edited in Fields or Quick Start views. Sensitive fields now render as password inputs and are always masked in display.
+
 ## [0.31.126] - 2026-05-02
 
 ### Fixed

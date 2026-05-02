@@ -1413,3 +1413,26 @@ export type SessionWorkDirs = {
   work_dirs: string[]
   current_dir: string
 }
+
+export type TelegramPairingEntry = {
+  code: string
+  user_id: number
+  chat_id: string
+  username?: string
+  created_at: string
+  expires_at: string
+}
+
+export type TelegramAllowedUser = {
+  user_id: number
+  chat_id: string
+  username?: string
+  approved_at: string
+}
+
+export type TelegramPairingsResponse = {
+  dm_policy: string
+  polling_enabled: boolean
+  pending: TelegramPairingEntry[]
+  allowed: TelegramAllowedUser[]
+}

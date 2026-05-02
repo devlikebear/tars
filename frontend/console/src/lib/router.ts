@@ -17,6 +17,7 @@ export type Route =
   | { view: 'extensions' }
   | { view: 'pulse' }
   | { view: 'reflection' }
+  | { view: 'channels' }
 
 export function resolveRoute(pathname: string): Route {
   let path = pathname.trim()
@@ -106,6 +107,10 @@ export function resolveRoute(pathname: string): Route {
 
   if (path.startsWith(`${consoleBase}/reflection`)) {
     return { view: 'reflection' }
+  }
+
+  if (path.startsWith(`${consoleBase}/channels`)) {
+    return { view: 'channels' }
   }
 
   return { view: 'home' }

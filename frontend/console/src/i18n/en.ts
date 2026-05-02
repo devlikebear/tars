@@ -40,6 +40,7 @@ export const en = {
       sysprompt: 'System Prompt',
       extensions: 'Extensions',
       agentruntime: 'Agent Runtime',
+      channels: 'Channels',
       ops: 'Approvals',
       cron: 'Cron',
       logs: 'Logs',

@@ -164,6 +164,20 @@ func (s *telegramPairingStore) isAllowed(userID int64) bool {
 	return ok
 }
 
+func (s *telegramPairingStore) revoke(userID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if userID <= 0 {
+		return fmt.Errorf("user_id is required")
+	}
+	if _, ok := s.allowedByUser[userID]; !ok {
+		return fmt.Errorf("user not found")
+	}
+	delete(s.allowedByUser, userID)
+	delete(s.sessionByUser, userID)
+	return s.persistLocked()
+}
+
 func (s *telegramPairingStore) bindSession(userID int64, sessionID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

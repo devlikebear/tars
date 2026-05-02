@@ -15,6 +15,7 @@
   import Extensions from './components/Extensions.svelte'
   import Pulse from './components/Pulse.svelte'
   import Reflection from './components/Reflection.svelte'
+  import Channels from './components/Channels.svelte'
   import AgentRuntimeRunView from './components/AgentRuntimeRunView.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { getEventsHistory, streamEvents } from './lib/api'
@@ -116,5 +117,7 @@
     <Reflection />
   {:else if route.view === 'extensions'}
     <Extensions />
+  {:else if route.view === 'channels'}
+    <Channels />
   {/if}
 </Shell>
