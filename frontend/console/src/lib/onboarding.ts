@@ -24,7 +24,7 @@ export const providerKinds: ProviderKind[] = [
   'claude-code-cli',
 ]
 
-export type AuthMode = 'api-key' | 'oauth'
+export type AuthMode = 'api-key' | 'oauth' | 'cli'
 
 export type OnboardingProvider = {
   alias: string
@@ -147,10 +147,12 @@ export function buildConfigPayload(form: OnboardingFormState): Record<string, un
   if (form.provider.base_url.trim() !== '') {
     provider.base_url = form.provider.base_url.trim()
   }
-  if (form.provider.auth_mode === 'oauth' && form.provider.oauth_provider) {
-    const op = form.provider.oauth_provider.trim()
-    if (op !== '') provider.oauth_provider = op
-  }
+  // oauth_provider is intentionally omitted from the payload. The
+  // backend's providerAuthConfig (internal/llm/provider.go) auto-fills
+  // it from the per-kind defaults in internal/llmdefaults/. Asking the
+  // user a second time made the kind selection feel redundant; if a
+  // pre-existing oauth_provider value is on disk PatchYAML preserves
+  // it because we never write the key.
 
   const tiers: Record<string, Record<string, unknown>> = {}
   for (const tier of requiredTiers) {
@@ -197,17 +199,35 @@ export function defaultBaseURLForKind(kind: ProviderKind | ''): string {
   }
 }
 
-// suggestedAuthModeForKind picks the natural default auth mode per
-// provider kind. The wizard calls this when the user changes kind so
-// the form switches between api-key and oauth flows automatically.
-export function suggestedAuthModeForKind(kind: ProviderKind | ''): AuthMode {
+// availableAuthModesForKind returns the closed set of auth_mode
+// values that are valid for a given provider kind. Mirrors the
+// per-kind defaults in internal/llmdefaults/defaults.go: most kinds
+// authenticate with an API key, openai-codex uses an OAuth handshake,
+// and claude-code-cli delegates to the local `claude-code` CLI.
+//
+// The wizard uses this to populate the auth_mode select with only
+// the modes that make sense for the picked kind, instead of letting
+// the user pick a structurally-invalid combination like
+// claude-code-cli + api-key.
+export function availableAuthModesForKind(kind: ProviderKind | ''): AuthMode[] {
   switch (kind) {
     case 'openai-codex':
+      return ['oauth']
     case 'claude-code-cli':
-      return 'oauth'
+      return ['cli']
+    case 'anthropic':
+      return ['api-key', 'oauth']
+    case '':
+      return ['api-key', 'oauth', 'cli']
     default:
-      return 'api-key'
+      return ['api-key']
   }
+}
+
+// suggestedAuthModeForKind picks the natural default auth mode per
+// provider kind — the first entry of availableAuthModesForKind.
+export function suggestedAuthModeForKind(kind: ProviderKind | ''): AuthMode {
+  return availableAuthModesForKind(kind)[0]
 }
 
 // formFromConfigValues maps a config schema's values map into the
