@@ -417,7 +417,7 @@ func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model
 		if choice == nil {
 			choice = ToolChoiceAuto()
 		}
-		if tc := toOpenAIToolChoice(choice); tc != nil {
+		if tc := toOpenAICompatibleToolChoice(choice, openAICodexProviderLabel, opts.Tools); tc != nil {
 			body["tool_choice"] = tc
 		}
 		body["parallel_tool_calls"] = true
