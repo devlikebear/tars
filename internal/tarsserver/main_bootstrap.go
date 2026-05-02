@@ -2,7 +2,9 @@ package tarsserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 	"time"
 
@@ -54,16 +56,47 @@ func (e *runtimeDepsError) Unwrap() error {
 // the responsibility of buildRuntimeDeps. Calling this early lets Serve()
 // construct the runtime logger from final config values without a second
 // reconfigure pass.
+//
+// Missing config files are tolerated: a brand-new install has no
+// ~/.tars/config/config.yaml yet, and the wizard's job (setup-only
+// boot mode) is precisely to create it. When the resolved path does
+// not exist, loadConfigForServe falls through with the default
+// config; downstream buildLLMDeps then fails recoverably and the
+// CLI's existing setup-only branch takes over.
+//
+// As a side effect, opts.ConfigPath is filled in with the path the
+// wizard should write to (FixedConfigPath fallback when nothing was
+// resolved) so handlers downstream — handler_setup, handler_config —
+// can advertise / save to a concrete location.
 func loadConfigForServe(opts *options) (config.Config, error) {
 	if opts == nil {
 		return config.Config{}, fmt.Errorf("options are required")
 	}
-	cfg, err := config.Load(config.ResolveConfigPath(opts.ConfigPath))
+	resolvedPath := config.ResolveConfigPath(opts.ConfigPath)
+	cfg, err := config.Load(resolvedPath)
 	if err != nil {
-		return config.Config{}, &runtimeDepsError{stage: "load_config", err: err}
+		if errors.Is(err, fs.ErrNotExist) {
+			// First-run case: the operator (or `tars init`) hasn't
+			// written a file yet. Boot with defaults; the wizard will
+			// land its PATCH at resolvedPath (or the fixed default if
+			// none was given).
+			cfg = config.Default()
+		} else {
+			return config.Config{}, &runtimeDepsError{stage: "load_config", err: err}
+		}
 	}
 	if strings.TrimSpace(opts.WorkspaceDir) != "" {
 		cfg.WorkspaceDir = strings.TrimSpace(opts.WorkspaceDir)
+	}
+	// Decide where the wizard should save. Honor an explicit
+	// --config / TARS_CONFIG override; otherwise fall back to the
+	// fixed default so the rest of the runtime has a concrete path.
+	if strings.TrimSpace(opts.ConfigPath) == "" {
+		if resolvedPath != "" {
+			opts.ConfigPath = resolvedPath
+		} else {
+			opts.ConfigPath = config.FixedConfigPath()
+		}
 	}
 	return cfg, nil
 }
