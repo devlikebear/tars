@@ -16,13 +16,15 @@
   import Pulse from './components/Pulse.svelte'
   import Reflection from './components/Reflection.svelte'
   import Channels from './components/Channels.svelte'
+  import Onboarding from './components/Onboarding.svelte'
   import AgentRuntimeRunView from './components/AgentRuntimeRunView.svelte'
   import { resolveRoute, type Route } from './lib/router'
-  import { getEventsHistory, streamEvents } from './lib/api'
+  import { getEventsHistory, getHealthz, streamEvents } from './lib/api'
 
   let currentPath = $state('/console')
   let route = $state<Route>({ view: 'home' })
   let serverHealth = $state('connecting')
+  let needsSetup = $state(false)
   let unreadCount = $state(0)
   let aiPrompt = $state('')
   let stopGlobalStream: (() => void) | null = null
@@ -59,10 +61,29 @@
     )
   }
 
+  async function checkSetupAndMaybeRedirect() {
+    try {
+      const health = await getHealthz()
+      needsSetup = !!health.needs_setup
+      if (needsSetup && route.view !== 'onboarding') {
+        navigate('/console/onboarding')
+      }
+    } catch {
+      // healthz fetch failed — let the SSE stream surface the disconnect
+    }
+  }
+
+  function handleOnboardingComplete() {
+    needsSetup = false
+    navigate('/console')
+  }
+
   onMount(() => {
     syncFromBrowser()
     const onPopState = () => syncFromBrowser()
     window.addEventListener('popstate', onPopState)
+
+    void checkSetupAndMaybeRedirect()
 
     getEventsHistory(1)
       .then((h) => { unreadCount = h.unread_count ?? 0 })
@@ -82,10 +103,13 @@
   {currentPath}
   {serverHealth}
   {unreadCount}
+  {needsSetup}
   onNavigate={navigate}
   onUnreadChange={(count) => { unreadCount = count }}
 >
-  {#if route.view === 'home'}
+  {#if route.view === 'onboarding'}
+    <Onboarding onComplete={handleOnboardingComplete} />
+  {:else if route.view === 'home'}
     <Home onNavigate={navigate} />
   {:else if route.view === 'chat'}
     {#key aiPrompt}
