@@ -108,7 +108,7 @@
   onUnreadChange={(count) => { unreadCount = count }}
 >
   {#if route.view === 'onboarding'}
-    <Onboarding onComplete={handleOnboardingComplete} />
+    <Onboarding onComplete={handleOnboardingComplete} reentry={route.reentry === true} />
   {:else if route.view === 'home'}
     <Home onNavigate={navigate} />
   {:else if route.view === 'chat'}
