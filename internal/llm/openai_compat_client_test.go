@@ -119,9 +119,10 @@ func TestOpenAICompatibleChat_IncludesToolsAndParsesToolCalls(t *testing.T) {
 
 func TestOpenAICompatibleChat_KimiSkipsReasoningAndServiceTierWithTools(t *testing.T) {
 	type captured struct {
-		ReasoningEffort string `json:"reasoning_effort"`
-		ServiceTier     string `json:"service_tier"`
-		Tools           []any  `json:"tools"`
+		ReasoningEffort string          `json:"reasoning_effort"`
+		ServiceTier     string          `json:"service_tier"`
+		ToolChoice      json.RawMessage `json:"tool_choice"`
+		Tools           []any           `json:"tools"`
 	}
 
 	var got captured
@@ -164,8 +165,61 @@ func TestOpenAICompatibleChat_KimiSkipsReasoningAndServiceTierWithTools(t *testi
 	if got.ServiceTier != "" {
 		t.Fatalf("expected service_tier to be omitted for kimi tool call, got %q", got.ServiceTier)
 	}
+	var asObject struct {
+		Type     string `json:"type"`
+		Function struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal(got.ToolChoice, &asObject); err != nil {
+		t.Fatalf("expected object tool_choice for kimi single tool call, got %s: %v", string(got.ToolChoice), err)
+	}
+	if asObject.Type != "function" || asObject.Function.Name != "current_time" {
+		t.Fatalf("unexpected tool_choice payload: %s", string(got.ToolChoice))
+	}
 	if len(got.Tools) != 1 {
 		t.Fatalf("expected tool definition to be sent, got %+v", got.Tools)
+	}
+}
+
+func TestOpenAICompatibleChat_KimiToolChoiceRequiredWithMultipleToolsFallsBackToAuto(t *testing.T) {
+	var captured struct {
+		ToolChoice any `json:"tool_choice"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+
+	client := &OpenAICompatibleClient{
+		label:      "kimi",
+		baseURL:    srv.URL + "/v1",
+		apiKey:     "kimi-key",
+		model:      "kimi-k2.6",
+		config:     DefaultClientConfig(),
+		httpClient: http.DefaultClient,
+	}
+
+	_, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "check"}}, ChatOptions{
+		Tools: []ToolSchema{
+			{Type: "function", Function: ToolFunctionSchema{Name: "memory_search", Parameters: json.RawMessage(`{"type":"object"}`)}},
+			{Type: "function", Function: ToolFunctionSchema{Name: "cron", Parameters: json.RawMessage(`{"type":"object"}`)}},
+		},
+		ToolChoice: ToolChoiceRequired(),
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	if captured.ToolChoice != "auto" {
+		t.Fatalf("expected tool_choice=auto for multiple tools, got %#v", captured.ToolChoice)
 	}
 }
 

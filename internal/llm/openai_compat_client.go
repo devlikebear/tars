@@ -104,7 +104,7 @@ func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts C
 	}
 	if len(opts.Tools) > 0 {
 		reqBody["tools"] = opts.Tools
-		if tc := toOpenAIToolChoice(opts.ToolChoice); tc != nil {
+		if tc := toOpenAICompatibleToolChoice(opts.ToolChoice, c.label, opts.Tools); tc != nil {
 			reqBody["tool_choice"] = tc
 		}
 	}
@@ -117,11 +117,17 @@ func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts C
 	return reqBody, nil
 }
 
-// toOpenAIToolChoice converts the provider-agnostic ToolChoice into the
+// toOpenAICompatibleToolChoice converts the provider-agnostic ToolChoice into the
 // OpenAI Chat Completions wire format. Modes auto/none/required serialize as
 // the bare string the API expects; specific tool requires the object form
 // {"type":"function","function":{"name":...}}.
-func toOpenAIToolChoice(choice *ToolChoice) any {
+//
+// Kimi has a strict constraint when tool calling is used with thinking-enabled
+// requests: `"required"` is rejected. For compatibility we map
+// ToolChoiceModeRequired to:
+//   - a specific function choice when exactly one tool is available;
+//   - `"auto"` when multiple tools are available and one cannot be singled out.
+func toOpenAICompatibleToolChoice(choice *ToolChoice, provider string, tools []ToolSchema) any {
 	if choice == nil {
 		return nil
 	}
@@ -131,6 +137,18 @@ func toOpenAIToolChoice(choice *ToolChoice) any {
 	case ToolChoiceModeNone:
 		return "none"
 	case ToolChoiceModeRequired:
+		if strings.EqualFold(strings.TrimSpace(provider), "kimi") && len(tools) > 0 {
+			if len(tools) == 1 {
+				name := strings.TrimSpace(tools[0].Function.Name)
+				if name != "" {
+					return map[string]any{
+						"type":     "function",
+						"function": map[string]any{"name": name},
+					}
+				}
+			}
+			return "auto"
+		}
 		return "required"
 	case ToolChoiceModeSpecific:
 		name := strings.TrimSpace(choice.Name)
