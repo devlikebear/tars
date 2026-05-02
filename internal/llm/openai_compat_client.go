@@ -487,24 +487,11 @@ func toOpenAIWireMessages(messages []ChatMessage, includeKimiReasoningContent bo
 		}
 	}
 
-	latestAssistantIndex := map[string]int{}
-	for i, m := range messages {
-		if strings.TrimSpace(m.Role) != "assistant" {
-			continue
-		}
-		for _, tc := range m.ToolCalls {
-			id := strings.TrimSpace(tc.ID)
-			if id == "" {
-				continue
-			}
-			if strings.TrimSpace(tc.Name) == "" {
-				continue
-			}
-			latestAssistantIndex[id] = i
-		}
-	}
-
-	toolMessageIndexes := map[int]struct{}{}
+	// Collect the latest tool message for each tool_call_id so we can keep
+	// every tool slot in the original assistant→tool sequence (kimi's API
+	// rejects orphan assistant tool_calls) while ensuring all duplicates
+	// surface the most recent result content.
+	latestToolMessageByID := map[string]ChatMessage{}
 	seenToolID := map[string]bool{}
 	for i := len(messages) - 1; i >= 0; i-- {
 		m := messages[i]
@@ -515,22 +502,15 @@ func toOpenAIWireMessages(messages []ChatMessage, includeKimiReasoningContent bo
 		if id == "" {
 			continue
 		}
-		assistantIdx, ok := latestAssistantIndex[id]
-		if !ok {
-			continue
-		}
-		if i <= assistantIdx {
-			continue
-		}
 		if seenToolID[id] {
 			continue
 		}
 		seenToolID[id] = true
-		toolMessageIndexes[i] = struct{}{}
+		latestToolMessageByID[id] = m
 	}
 
 	out := make([]openAIWireMessage, 0, len(messages))
-	for i, m := range messages {
+	for _, m := range messages {
 		if strings.TrimSpace(m.Role) == "tool" {
 			if len(assistantToolCalls) == 0 {
 				continue
@@ -539,8 +519,9 @@ func toOpenAIWireMessages(messages []ChatMessage, includeKimiReasoningContent bo
 			if _, ok := assistantToolCalls[id]; !ok {
 				continue
 			}
-			if _, ok := toolMessageIndexes[i]; !ok {
-				continue
+			if latest, ok := latestToolMessageByID[id]; ok {
+				m = latest
+				m.ToolCallID = id
 			}
 		}
 		wire := openAIWireMessage{
