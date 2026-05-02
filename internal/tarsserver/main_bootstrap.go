@@ -8,7 +8,6 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
-	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
@@ -22,6 +21,12 @@ type runtimeDeps struct {
 	usageTracker         *usage.Tracker
 	runPrompt            func(ctx context.Context, runLabel string, prompt string) (string, error)
 	runPromptWithTools   agentRuntimePromptRunner
+	// LLMReady is true when buildLLMDeps populated the LLM-bound fields.
+	// When false the server runs in setup-only mode (Phase 2 onboarding):
+	// only the wizard endpoints + console + healthz are wired and chat /
+	// agent / cron / pulse / reflection are inactive. The CLI's RunE is
+	// the single setter; downstream code reads this to branch routes.
+	LLMReady bool
 }
 
 type runtimeDepsError struct {
@@ -63,72 +68,17 @@ func loadConfigForServe(opts *options) (config.Config, error) {
 	return cfg, nil
 }
 
+// buildRuntimeDeps composes buildBaseDeps + buildLLMDeps. It exists as
+// the single entry point used by callers that want full runtime
+// dependencies (production boot, helpers_llm_router_test). The
+// onboarding setup-only path (Phase 2) calls the two pieces directly
+// so it can downgrade on init_llm failure instead of bailing.
 func buildRuntimeDeps(opts *options, cfg config.Config, nowFn func() time.Time, logger zerolog.Logger) (runtimeDeps, error) {
-	if opts == nil {
-		return runtimeDeps{}, fmt.Errorf("options are required")
-	}
-
-	if err := validateAPIAuthSecurity(cfg); err != nil {
-		return runtimeDeps{}, &runtimeDepsError{stage: "validate_config", err: err}
-	}
-
-	if err := memory.EnsureWorkspace(cfg.WorkspaceDir); err != nil {
-		return runtimeDeps{}, &runtimeDepsError{stage: "ensure_workspace", err: err}
-	}
-
-	deps := runtimeDeps{
-		cfg:          cfg,
-		sessionStore: session.NewStore(cfg.WorkspaceDir),
-	}
-	deps.sessionStoreResolver = newWorkspaceSessionStoreResolver(cfg.WorkspaceDir, deps.sessionStore)
-	priceOverrides := map[string]usage.ModelPrice{}
-	for key, value := range cfg.UsagePriceOverrides {
-		priceOverrides[strings.TrimSpace(strings.ToLower(key))] = usage.ModelPrice{
-			InputPer1MUSD:      value.InputPer1MUSD,
-			OutputPer1MUSD:     value.OutputPer1MUSD,
-			CacheReadPer1MUSD:  value.CacheReadPer1MUSD,
-			CacheWritePer1MUSD: value.CacheWritePer1MUSD,
-		}
-	}
-	tracker, err := usage.NewTracker(cfg.WorkspaceDir, usage.TrackerOptions{
-		Now: nowFn,
-		InitialLimits: usage.Limits{
-			DailyUSD:    cfg.UsageLimitDailyUSD,
-			WeeklyUSD:   cfg.UsageLimitWeeklyUSD,
-			MonthlyUSD:  cfg.UsageLimitMonthlyUSD,
-			DailyTokens: cfg.UsageDailyTokenBudget,
-			Mode:        cfg.UsageLimitMode,
-		},
-		PriceOverrides: priceOverrides,
-	})
+	base, err := buildBaseDeps(opts, cfg, nowFn, logger)
 	if err != nil {
-		return runtimeDeps{}, &runtimeDepsError{stage: "init_usage", err: err}
+		return runtimeDeps{}, err
 	}
-	deps.usageTracker = tracker
-
-	router, err := buildLLMRouter(cfg, tracker)
-	if err != nil {
-		return runtimeDeps{}, &runtimeDepsError{stage: "init_llm", err: err}
-	}
-	semanticCfg := semanticMemoryConfigFromConfig(cfg)
-	if err := validateMemoryBackend(cfg.MemoryBackend); err != nil {
-		return runtimeDeps{}, &runtimeDepsError{stage: "init_memory_backend", err: err}
-	}
-	if err := memory.ValidateSemanticConfig(semanticCfg); err != nil {
-		return runtimeDeps{}, &runtimeDepsError{stage: "init_semantic_memory", err: err}
-	}
-	deps.llmRouter = router
-	logger.Debug().Msg("llm router initialized")
-	deps.runPromptWithTools = newAgentPromptRunnerWithToolsAndMemory(cfg, cfg.WorkspaceDir, nil, deps.llmRouter, deps.usageTracker, cfg.AgentMaxIterations, logger, semanticCfg)
-	if deps.runPromptWithTools != nil {
-		deps.runPrompt = func(ctx context.Context, runLabel string, prompt string) (string, error) {
-			return deps.runPromptWithTools(ctx, runLabel, prompt, nil, "", nil)
-		}
-	}
-
-	// Per-role provider/model context is logged by call sites when they
-	// resolve the router; there is no single top-level provider anymore.
-	return deps, nil
+	return buildLLMDeps(base, cfg, logger)
 }
 
 func validateAPIAuthSecurity(cfg config.Config) error {
