@@ -18,15 +18,18 @@ export type Route =
   | { view: 'pulse' }
   | { view: 'reflection' }
   | { view: 'channels' }
-  | { view: 'onboarding' }
+  | { view: 'onboarding'; reentry?: boolean }
 
 export function resolveRoute(pathname: string): Route {
   let path = pathname.trim()
   let sessionQuery = ''
+  let reentryQuery = false
   try {
     const url = new URL(path, 'http://tars.local')
     path = url.pathname
     sessionQuery = url.searchParams.get('session')?.trim() ?? ''
+    const reentryRaw = url.searchParams.get('reentry')?.trim().toLowerCase() ?? ''
+    reentryQuery = reentryRaw === '1' || reentryRaw === 'true' || reentryRaw === 'yes'
   } catch {
     path = pathname.trim()
   }
@@ -115,7 +118,7 @@ export function resolveRoute(pathname: string): Route {
   }
 
   if (path.startsWith(`${consoleBase}/onboarding`)) {
-    return { view: 'onboarding' }
+    return reentryQuery ? { view: 'onboarding', reentry: true } : { view: 'onboarding' }
   }
 
   return { view: 'home' }

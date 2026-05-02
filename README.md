@@ -191,27 +191,25 @@ curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | 
 # Initialize workspace and config
 tars init
 
-# Set your provider credentials
-export ANTHROPIC_API_KEY="your-key"
-# Or: export OPENAI_API_KEY="your-key"
-# Then edit ~/.tars/config/config.yaml under llm.providers / llm.tiers if needed
-
-# Validate setup
-tars doctor --fix
-
-# Validate server bootstrap without binding the API
-tars serve --config-check
-
-# Start the server
+# Start the server (it boots in setup-only mode if no LLM is configured yet)
 tars serve
 
-# Open the web console
+# Open the web console — the onboarding wizard runs automatically when needed
 tars
 ```
 
-On macOS, `tars service install && tars service start` manages `tars serve` as a LaunchAgent. Once a plist exists, `tars service start`, `stop`, and `status` keep working from the plist and `launchctl` state even if the config needs repair.
+On first run, if `~/.tars/config/config.yaml` has no `llm_providers` / `llm_tiers`, the server boots in **setup-only mode**: only the wizard endpoints + `/console` are active and `tars api serving on … (setup-only mode)` is printed to stdout. Open `http://127.0.0.1:43180/console`, the SPA detects `needs_setup=true` from `/v1/healthz`, and walks you through three steps: pick a provider (kind + alias + api_key), bind heavy/standard/light tiers to a model, then save & restart. The wizard is also re-runnable later from the Settings page (`/console/config` → "설정 마법사 다시 실행 →") if you need to swap providers or tweak tier bindings.
 
-Open `http://127.0.0.1:43180/console` and start chatting.
+To skip the wizard and edit by hand, set credentials directly and validate:
+
+```bash
+export ANTHROPIC_API_KEY="your-key"   # or OPENAI_API_KEY, etc.
+# Edit ~/.tars/config/config.yaml under llm.providers / llm.tiers
+tars doctor --fix
+tars serve --config-check              # exits 1 in setup-only mode
+```
+
+On macOS, `tars service install && tars service start` manages `tars serve` as a LaunchAgent. Once a plist exists, `tars service start`, `stop`, and `status` keep working from the plist and `launchctl` state even if the config needs repair.
 
 When TARS is exposed behind a reverse proxy path, pass that base path in `--server-url`; CLI API calls and the console opener resolve `/v1/*` and `/console` from the same base.
 

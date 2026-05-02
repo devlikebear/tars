@@ -162,9 +162,17 @@ git fetch origin && git switch main && git pull --rebase
 ## Config
 
 - `config/default.yaml` — checked-in default config. Ships a minimal provider pool + 3 tier bindings; new users get a working baseline after setting their provider API key. `config/tars.config.example.yaml` is the annotated reference covering every field.
-- `workspace/config/tars.config.yaml` — local override (gitignored). Must define at least one entry under `llm_providers` and the three `llm_tiers` bindings (heavy/standard/light) or startup errors.
+- `workspace/config/tars.config.yaml` — local override (gitignored). Should define at least one entry under `llm_providers` and the three `llm_tiers` bindings (heavy/standard/light); when missing or invalid, the server boots in **setup-only mode** so the wizard can repair it (see Onboarding below).
 - Environment variables override YAML: `TARS_API_AUTH_MODE`, `TARS_LLM_PROVIDERS_JSON`, `TARS_LLM_TIERS_JSON`, etc. Nested pool/tier maps are overridden as a single JSON blob.
 - Config field mapping: `internal/config/config_input_fields.go`. LLM pool parsers: `internal/config/llm_providers_field.go`. Resolver: `internal/config/llm_resolve.go`.
+
+## Onboarding (degraded mode + console wizard)
+
+When `llm_providers` or any of `llm_tiers.{heavy,standard,light}` is missing/empty, `tars serve` boots in **setup-only mode** instead of panicking. Detection lives in `config.NeedsSetup` (single source of truth shared by `/v1/healthz`, `/v1/setup/status`, and the boot path). The CLI's RunE downgrades on the recoverable stages `init_llm` / `init_memory_backend` / `init_semantic_memory` (see `isRecoverableLLMInitError`); other failures stay fatal.
+
+Setup-only mux (`buildSetupOnlyAPIMux` in `internal/tarsserver/main_serve_api_setup.go`) only registers the wizard surface — `/v1/healthz`, `/v1/setup/status`, `/v1/admin/config{,/values,/schema}`, `/v1/admin/restart`, `/v1/auth/whoami`, and `/console/*`. Every other `/v1/*` returns a JSON 503 with a "complete setup at /console" hint. Background runtimes (chat, agent runtime, cron, pulse, reflection, telegram, extensions, watchdog) stay nil so `startBackgrounds` skips them.
+
+Frontend wizard (`frontend/console/src/components/Onboarding.svelte`, `lib/onboarding.ts`) is a 4-step Svelte 5 component: Provider → Tiers → Review → Restarting. `App.svelte` calls `/v1/healthz` on mount and force-pushes `/console/onboarding` when `needs_setup=true`. Saving runs PATCH `/v1/admin/config/values` → POST `/v1/admin/restart` → polls healthz for up to 30 s. Re-entry from the Settings page (`?reentry=1`) prefills the form via `formFromConfigValues`, masks the api_key with a "Keep existing" pin, and exposes [Save only] alongside [Save & Restart] so users in normal mode can defer the restart. `--config-check` returns exit 1 in setup-only mode so external scripts that gate on it still detect a misconfigured server.
 
 ## CI
 

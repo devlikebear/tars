@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import {
+    getConfigSchema,
     getHealthz,
     getSetupStatus,
     patchConfigValues,
@@ -10,6 +11,7 @@
     buildConfigPayload,
     defaultBaseURLForKind,
     emptyOnboardingForm,
+    formFromConfigValues,
     providerKinds,
     suggestedAuthModeForKind,
     validateForm,
@@ -23,10 +25,11 @@
 
   interface Props {
     onComplete?: () => void
+    reentry?: boolean
   }
-  let { onComplete }: Props = $props()
+  let { onComplete, reentry = false }: Props = $props()
 
-  type StepId = 'provider' | 'tiers' | 'review' | 'restarting'
+  type StepId = 'provider' | 'tiers' | 'review' | 'restarting' | 'saved'
 
   let step = $state<StepId>('provider')
   let form = $state<OnboardingFormState>(emptyOnboardingForm())
@@ -43,6 +46,14 @@
       // status fetch is optional — wizard still works on empty fields
       console.warn('setup status fetch failed', err)
     }
+    if (reentry) {
+      try {
+        const schema = await getConfigSchema()
+        form = formFromConfigValues(schema.values || {})
+      } catch (err) {
+        console.warn('reentry prefill failed', err)
+      }
+    }
   })
 
   const stepOrder: StepId[] = ['provider', 'tiers', 'review', 'restarting']
@@ -51,10 +62,21 @@
     tiers: 'Tiers',
     review: 'Review',
     restarting: 'Restart',
+    saved: 'Saved',
   }
 
   function progressIndex(current: StepId): number {
+    if (current === 'saved') return stepOrder.length - 1
     return stepOrder.indexOf(current)
+  }
+
+  function handleApiKeyInput(value: string) {
+    form.provider.api_key = value
+    if (value.trim() !== '') {
+      // user typed a fresh value — drop the keep-existing pin so the
+      // payload includes the new key
+      form.provider.keepExistingApiKey = false
+    }
   }
 
   function handleKindChange(value: string) {
@@ -100,7 +122,7 @@
     step = target
   }
 
-  async function handleSave() {
+  async function handleSave(restart: boolean) {
     const formErrors = validateForm(form)
     if (formErrors.length > 0) {
       stepErrors = formErrors
@@ -118,6 +140,11 @@
       step = 'review'
       return
     }
+    if (!restart) {
+      restartPhase = 'idle'
+      step = 'saved'
+      return
+    }
     restartPhase = 'restarting'
     try {
       await restartServer()
@@ -125,6 +152,23 @@
       saveError = (err as Error).message || 'failed to trigger restart'
       restartPhase = 'idle'
       step = 'review'
+      return
+    }
+    restartPhase = 'polling'
+    pollDeadline = Date.now() + 30_000
+    pollUntilReady()
+  }
+
+  async function handleManualRestart() {
+    saveError = ''
+    step = 'restarting'
+    restartPhase = 'restarting'
+    try {
+      await restartServer()
+    } catch (err) {
+      saveError = (err as Error).message || 'failed to trigger restart'
+      restartPhase = 'idle'
+      step = 'saved'
       return
     }
     restartPhase = 'polling'
@@ -159,9 +203,13 @@
 
 <section class="onboarding">
   <header class="onboarding-header">
-    <span class="onboarding-kicker">First-run setup</span>
+    <span class="onboarding-kicker">{reentry ? 'Reconfigure' : 'First-run setup'}</span>
     <h1>TARS 설정 마법사</h1>
-    <p>최소 LLM provider 1개와 3개 tier(heavy/standard/light) 바인딩만 입력하면 콘솔이 활성화됩니다.</p>
+    {#if reentry}
+      <p>이미 설정된 값이 prefill되어 있습니다. 변경하지 않은 항목은 그대로 유지됩니다.</p>
+    {:else}
+      <p>최소 LLM provider 1개와 3개 tier(heavy/standard/light) 바인딩만 입력하면 콘솔이 활성화됩니다.</p>
+    {/if}
   </header>
 
   <ol class="onboarding-progress">
@@ -215,8 +263,14 @@
 
         {#if form.provider.auth_mode === 'api-key'}
           <label class="onboarding-field">
-            <span>API Key</span>
-            <input type="password" bind:value={form.provider.api_key} autocomplete="new-password" placeholder="sk-…" />
+            <span>API Key {#if form.provider.keepExistingApiKey}<em>변경하지 않으면 기존 값 유지</em>{/if}</span>
+            <input
+              type="password"
+              value={form.provider.keepExistingApiKey ? '' : form.provider.api_key}
+              oninput={(e) => handleApiKeyInput((e.currentTarget as HTMLInputElement).value)}
+              autocomplete="new-password"
+              placeholder={form.provider.keepExistingApiKey ? '••••••• (현재 값 유지)' : 'sk-…'}
+            />
           </label>
         {/if}
 
@@ -296,7 +350,16 @@
             <div><dt>Kind</dt><dd>{form.provider.kind}</dd></div>
             <div><dt>Auth mode</dt><dd>{form.provider.auth_mode}</dd></div>
             {#if form.provider.auth_mode === 'api-key'}
-              <div><dt>API Key</dt><dd><code>{maskedKey(form.provider.api_key)}</code></dd></div>
+              <div>
+                <dt>API Key</dt>
+                <dd>
+                  {#if form.provider.keepExistingApiKey}
+                    <code>(현재 값 유지)</code>
+                  {:else}
+                    <code>{maskedKey(form.provider.api_key)}</code>
+                  {/if}
+                </dd>
+              </div>
             {/if}
             <div><dt>Base URL</dt><dd>{form.provider.base_url || defaultBaseURLForKind(form.provider.kind) || '(none)'}</dd></div>
           </dl>
@@ -322,7 +385,24 @@
 
       <div class="onboarding-actions">
         <button class="btn btn-ghost" type="button" onclick={() => goBack('tiers')}>← 이전</button>
-        <button class="btn btn-primary" type="button" onclick={handleSave}>저장하고 재시작</button>
+        {#if reentry}
+          <button class="btn btn-ghost" type="button" onclick={() => handleSave(false)}>저장만 (재시작 없이)</button>
+          <button class="btn btn-primary" type="button" onclick={() => handleSave(true)}>저장하고 재시작</button>
+        {:else}
+          <button class="btn btn-primary" type="button" onclick={() => handleSave(true)}>저장하고 재시작</button>
+        {/if}
+      </div>
+    </section>
+  {:else if step === 'saved'}
+    <section class="card onboarding-restart">
+      <h2>저장 완료</h2>
+      <p>변경사항이 config 파일에 기록되었습니다. 적용하려면 서버를 재시작해주세요.</p>
+      {#if saveError}
+        <div class="onboarding-errors"><strong>재시작 실패</strong><div>{saveError}</div></div>
+      {/if}
+      <div class="onboarding-actions onboarding-saved-actions">
+        <button class="btn btn-ghost" type="button" onclick={() => onComplete && onComplete()}>나중에 (콘솔로 이동)</button>
+        <button class="btn btn-primary" type="button" onclick={handleManualRestart}>지금 재시작</button>
       </div>
     </section>
   {:else}
@@ -550,6 +630,10 @@
   .onboarding-restart {
     text-align: center;
     padding: var(--space-6);
+  }
+  .onboarding-saved-actions {
+    justify-content: center;
+    margin-top: var(--space-5);
   }
   .onboarding-spinner {
     width: 40px;

@@ -31,6 +31,11 @@
 
   type ViewMode = 'quick' | 'form' | 'yaml'
 
+  interface Props {
+    onNavigate?: (path: string) => void
+  }
+  let { onNavigate }: Props = $props()
+
   let configPath = $state('')
   let schemaUpdatedAt = $state('')
   let schema: ConfigFieldMeta[] = $state([])
@@ -742,6 +747,20 @@
     </div>
   </div>
 
+  {#if onNavigate}
+    <div class="wizard-entry-card" role="region" aria-label="Onboarding wizard entry">
+      <div>
+        <span class="wizard-entry-kicker">Setup wizard</span>
+        <p class="wizard-entry-text">Provider 또는 tier 바인딩을 빠르게 재구성하려면 마법사를 다시 실행하세요. 기존 값이 prefill됩니다.</p>
+      </div>
+      <button
+        type="button"
+        class="btn btn-primary btn-sm"
+        onclick={() => onNavigate?.('/console/onboarding?reentry=1')}
+      >설정 마법사 다시 실행 →</button>
+    </div>
+  {/if}
+
   {#if loading}
     <div class="loading">Loading configuration...</div>
   {:else if !configPath}
@@ -1342,6 +1361,33 @@
     justify-content: space-between;
     gap: var(--space-3);
     flex-wrap: wrap;
+  }
+
+  .wizard-entry-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: var(--surface-2);
+  }
+  .wizard-entry-kicker {
+    display: inline-block;
+    padding: 2px 8px;
+    background: rgba(224, 145, 69, 0.12);
+    border: 1px solid var(--primary);
+    color: var(--primary);
+    border-radius: 999px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .wizard-entry-text {
+    margin: var(--space-2) 0 0;
+    color: var(--text-muted);
+    font-size: 13px;
   }
 
   .page-header-left {

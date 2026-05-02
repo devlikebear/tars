@@ -33,6 +33,11 @@ export type OnboardingProvider = {
   api_key: string
   base_url: string
   oauth_provider?: string
+  // keepExistingApiKey is true on the re-entry path when the wizard
+  // has prefilled a masked api_key from the server. Saving with this
+  // flag set drops api_key from the patch payload so the existing
+  // value on disk is preserved.
+  keepExistingApiKey?: boolean
 }
 
 export type OnboardingTierBinding = {
@@ -87,7 +92,7 @@ export function validateProviderStep(form: OnboardingFormState): string[] {
   if (form.provider.kind === '') {
     errs.push('Pick a provider kind.')
   }
-  if (form.provider.auth_mode === 'api-key' && form.provider.api_key.trim() === '') {
+  if (form.provider.auth_mode === 'api-key' && !form.provider.keepExistingApiKey && form.provider.api_key.trim() === '') {
     errs.push('API key is required for api-key auth mode.')
   }
   return errs
@@ -133,7 +138,10 @@ export function buildConfigPayload(form: OnboardingFormState): Record<string, un
     kind: form.provider.kind,
     auth_mode: form.provider.auth_mode,
   }
-  if (form.provider.api_key.trim() !== '') {
+  // Skip api_key when the user opted to keep the existing value on
+  // disk (re-entry path with masked prefill). PatchYAML preserves the
+  // original key when the field is absent from the updates map.
+  if (!form.provider.keepExistingApiKey && form.provider.api_key.trim() !== '') {
     provider.api_key = form.provider.api_key.trim()
   }
   if (form.provider.base_url.trim() !== '') {
@@ -200,4 +208,49 @@ export function suggestedAuthModeForKind(kind: ProviderKind | ''): AuthMode {
     default:
       return 'api-key'
   }
+}
+
+// formFromConfigValues maps a config schema's values map into the
+// wizard's form shape. Used by the re-entry path so the wizard opens
+// with the existing provider + tier bindings prefilled.
+//
+// Picks the FIRST provider alias as the active edit target. The
+// wizard does not yet support editing multiple providers from the
+// same screen — that lands as a separate enhancement.
+//
+// API keys arrive masked from the schema endpoint; the form sets
+// keepExistingApiKey=true so saving without typing a new value
+// leaves the on-disk credential untouched.
+export function formFromConfigValues(values: Record<string, unknown>): OnboardingFormState {
+  const form = emptyOnboardingForm()
+  const providers = (values?.llm_providers ?? {}) as Record<string, Record<string, unknown>>
+  const aliases = Object.keys(providers).sort()
+  if (aliases.length > 0) {
+    const alias = aliases[0]
+    const entry = providers[alias] || {}
+    const kind = String(entry.kind ?? '') as ProviderKind | ''
+    form.provider.alias = alias
+    form.provider.kind = kind
+    form.provider.auth_mode = (String(entry.auth_mode ?? 'api-key') as AuthMode) || 'api-key'
+    form.provider.api_key = String(entry.api_key ?? '')
+    form.provider.base_url = String(entry.base_url ?? '')
+    if (entry.oauth_provider) {
+      form.provider.oauth_provider = String(entry.oauth_provider)
+    }
+    // The schema endpoint masks api_key; treat any non-empty masked
+    // value as "keep existing" until the user types a new key.
+    if (form.provider.api_key.trim() !== '') {
+      form.provider.keepExistingApiKey = true
+    }
+  }
+
+  const tiers = (values?.llm_tiers ?? {}) as Record<string, Record<string, unknown>>
+  for (const tier of requiredTiers) {
+    const binding = tiers[tier] || {}
+    if (binding.provider) form.tiers[tier].provider = String(binding.provider)
+    if (binding.model) form.tiers[tier].model = String(binding.model)
+    if (binding.reasoning_effort) form.tiers[tier].reasoning_effort = String(binding.reasoning_effort)
+  }
+
+  return form
 }
