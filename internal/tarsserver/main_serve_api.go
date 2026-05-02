@@ -124,6 +124,9 @@ func buildAPIMux(
 	logger zerolog.Logger,
 	stderr io.Writer,
 ) (*serveAPIRuntime, error) {
+	if !deps.LLMReady {
+		return buildSetupOnlyAPIMux(opts, deps, nowFn, logger, stderr)
+	}
 	cfg := deps.cfg
 	sessionStore := deps.sessionStore
 	sessionStoreResolver := deps.sessionStoreResolver
@@ -158,9 +161,7 @@ func buildAPIMux(
 		logger,
 	)
 	dispatcher.store = notificationStore
-	if deps.llmRouter == nil {
-		return nil, fmt.Errorf("llm router is not configured")
-	}
+	// deps.LLMReady is true here — the setup-only branch returned earlier.
 	_, chatResolution, err := deps.llmRouter.ClientFor(llm.RoleChatMain)
 	if err != nil {
 		return nil, err

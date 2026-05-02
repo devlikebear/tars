@@ -2,9 +2,15 @@ package tarsserver
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/rs/zerolog"
 )
 
 func TestRegisterSetupOnlyRoutes_ServesAllowedEndpoints(t *testing.T) {
@@ -144,4 +150,80 @@ func noContentHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+func TestBuildAPIMux_RoutesToSetupOnlyWhenLLMNotReady(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: filepath.Join(dir, "workspace")},
+		APIConfig: config.APIConfig{
+			APIAuthMode:               "off",
+			APIAllowInsecureLocalAuth: true,
+		},
+	}
+	logger := zerolog.New(io.Discard)
+	base, err := buildBaseDeps(&options{}, cfg, time.Now, logger)
+	if err != nil {
+		t.Fatalf("buildBaseDeps: %v", err)
+	}
+	// LLMReady=false (default) — no llm router populated.
+
+	opts := &options{APIAddr: "127.0.0.1:0", ConfigPath: ""}
+	apiRuntime, err := buildAPIMux(opts, base, time.Now, logger, io.Discard)
+	if err != nil {
+		t.Fatalf("buildAPIMux setup-only: %v", err)
+	}
+	if apiRuntime.server == nil {
+		t.Fatalf("expected server constructed")
+	}
+	if apiRuntime.agentRuntime != nil {
+		t.Fatalf("expected agentRuntime nil in setup-only mode")
+	}
+	if apiRuntime.cronManager != nil {
+		t.Fatalf("expected cronManager nil in setup-only mode")
+	}
+	if apiRuntime.pulseRuntime != nil {
+		t.Fatalf("expected pulseRuntime nil in setup-only mode")
+	}
+	if apiRuntime.reflectionRuntime != nil {
+		t.Fatalf("expected reflectionRuntime nil in setup-only mode")
+	}
+
+	// Probe routes through the actual server handler (so middleware runs too).
+	for _, tc := range []struct {
+		name       string
+		path       string
+		wantStatus int
+	}{
+		{"healthz allowed", "/v1/healthz", http.StatusOK},
+		{"setup status allowed", "/v1/setup/status", http.StatusOK},
+		{"chat blocked with 503", "/v1/chat", http.StatusServiceUnavailable},
+		{"agentruntime blocked with 503", "/v1/agentruntime/runs", http.StatusServiceUnavailable},
+		{"pulse blocked with 503", "/v1/pulse/status", http.StatusServiceUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req.RemoteAddr = "127.0.0.1:5555"
+			apiRuntime.server.Handler.ServeHTTP(rec, req)
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("expected %d for %s, got %d body=%q", tc.wantStatus, tc.path, rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	// healthz body should expose needs_setup=true since cfg has no providers.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
+	req.RemoteAddr = "127.0.0.1:5555"
+	apiRuntime.server.Handler.ServeHTTP(rec, req)
+	var body struct {
+		NeedsSetup bool `json:"needs_setup"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode healthz: %v", err)
+	}
+	if !body.NeedsSetup {
+		t.Fatalf("expected needs_setup=true in setup-only mode, got body %s", rec.Body.String())
+	}
 }

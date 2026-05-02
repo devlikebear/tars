@@ -1,8 +1,57 @@
 package tarsserver
 
 import (
+	"io"
 	"net/http"
+	"time"
+
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/rs/zerolog"
 )
+
+// buildSetupOnlyAPIMux constructs the *serveAPIRuntime that powers the
+// degraded boot mode: an HTTP server with the wizard surface only.
+// Background fields (agentRuntime, cronManager, pulseRuntime,
+// reflectionRuntime, extensionsManager, telegramPoller,
+// agentRuntimeAgentsWatch, watchdogManager) stay nil so the existing
+// nil-checks in startBackgrounds and shutdownRuntime skip them.
+//
+// deps.LLMReady must be false; the caller (buildAPIMux) is responsible
+// for the branch.
+func buildSetupOnlyAPIMux(opts *options, deps runtimeDeps, nowFn func() time.Time, logger zerolog.Logger, _ io.Writer) (*serveAPIRuntime, error) {
+	cfg := deps.cfg
+	consoleHandler, err := newConsoleHandler(logger)
+	if err != nil {
+		return nil, err
+	}
+	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) })
+	setupHandler := newSetupAPIHandler(opts.ConfigPath, cfg, logger)
+	configHandler := newConfigAPIHandler(opts.ConfigPath, cfg, cfg.WorkspaceDir, logger)
+	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
+
+	mux := http.NewServeMux()
+	registerSetupOnlyRoutes(mux, setupOnlyHandlers{
+		healthz: healthzHandler,
+		setup:   setupHandler,
+		config:  configHandler,
+		auth:    authHandler,
+		console: consoleHandler,
+		// events handler intentionally omitted for now — the SPA falls back
+		// to polling healthz when the SSE stream is unavailable, and adding
+		// the broker here would pull in unused background goroutines.
+	})
+	rootHandler := applyAPIMiddleware(cfg, logger, mux, io.Discard)
+
+	server := &http.Server{
+		Addr:    opts.APIAddr,
+		Handler: rootHandler,
+	}
+	return &serveAPIRuntime{
+		cfg:        cfg,
+		configPath: opts.ConfigPath,
+		server:     server,
+	}, nil
+}
 
 // setupOnlyHandlers groups the small set of HTTP handlers that the
 // degraded boot mode (Phase 2 of the onboarding plan) wires into a
