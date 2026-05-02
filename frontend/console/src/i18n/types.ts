@@ -40,6 +40,7 @@ export type Translations = {
       sysprompt: string
       extensions: string
       agentruntime: string
+      channels: string
       ops: string
       cron: string
       logs: string

@@ -188,7 +188,6 @@
   }
 
   function startEdit(field: ConfigFieldMeta) {
-    if (field.sensitive) return // Don't edit masked fields in form view
     editingKey = field.key
     const current = dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
     if (field.type === 'bool') {
@@ -200,9 +199,11 @@
         editValue = current !== undefined && current !== null ? String(current) : ''
       }
     } else if (field.type === 'json') {
+      if (field.sensitive) return // Don't expose full structured sensitive data
       openStructuredEditor(field)
     } else {
-      editValue = current !== undefined && current !== null ? String(current) : ''
+      // Sensitive fields start empty so the masked value is not exposed
+      editValue = field.sensitive ? '' : (current !== undefined && current !== null ? String(current) : '')
     }
   }
 
@@ -392,7 +393,9 @@
 
   function formatValue(field: ConfigFieldMeta): string {
     const v = getDisplayValue(field)
-    if (field.sensitive && typeof v === 'string' && v.includes('*')) return v
+    if (field.sensitive && typeof v === 'string' && v.length > 0) {
+      return v.includes('*') ? v : '••••••••'
+    }
     const summary = formatConfigDisplayValue(v)
     if (field.type === 'json' || summary.kind === 'array' || summary.kind === 'object') return summary.text
     return summary.raw
@@ -822,7 +825,7 @@
                       ></textarea>
                     {:else}
                       <input
-                        type={field.type === 'int' || field.type === 'float' ? 'number' : 'text'}
+                        type={field.sensitive ? 'password' : (field.type === 'int' || field.type === 'float' ? 'number' : 'text')}
                         step={field.type === 'float' ? '0.01' : undefined}
                         class="field-input"
                         bind:value={editValue}
@@ -832,7 +835,14 @@
                     {/if}
                   </div>
                 {:else if field.sensitive}
-                  <span class="value-text sensitive" title="Edit in YAML tab">{formatValue(field)}</span>
+                  <button
+                    class="value-btn"
+                    class:dirty={isDirty(field.key)}
+                    onclick={() => startEdit(field)}
+                    title="Click to edit"
+                  >
+                    <span class="value-text sensitive">{formatValue(field)}</span>
+                  </button>
                 {:else}
                   <button
                     class:value-btn={field.type !== 'json'}

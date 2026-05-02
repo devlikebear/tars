@@ -199,7 +199,7 @@ func handleTelegramPairingsList(
 
 func handleTelegramPairingsAction(w http.ResponseWriter, r *http.Request, pairings *telegramPairingStore) {
 	path := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/channels/telegram/pairings/"))
-	if path == "" || path != "approve" {
+	if path == "" || (path != "approve" && path != "revoke") {
 		http.NotFound(w, r)
 		return
 	}
@@ -210,14 +210,33 @@ func handleTelegramPairingsAction(w http.ResponseWriter, r *http.Request, pairin
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "telegram pairing store is not configured"})
 		return
 	}
+	if path == "approve" {
+		var req struct {
+			Code string `json:"code"`
+		}
+		if !decodeJSONBody(w, r, &req) {
+			return
+		}
+		allowed, err := pairings.approve(req.Code)
+		if err != nil {
+			status := http.StatusBadRequest
+			if strings.Contains(strings.ToLower(err.Error()), "not found") {
+				status = http.StatusNotFound
+			}
+			writeJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"approved": allowed})
+		return
+	}
+	// revoke
 	var req struct {
-		Code string `json:"code"`
+		UserID int64 `json:"user_id"`
 	}
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
-	allowed, err := pairings.approve(req.Code)
-	if err != nil {
+	if err := pairings.revoke(req.UserID); err != nil {
 		status := http.StatusBadRequest
 		if strings.Contains(strings.ToLower(err.Error()), "not found") {
 			status = http.StatusNotFound
@@ -225,7 +244,7 @@ func handleTelegramPairingsAction(w http.ResponseWriter, r *http.Request, pairin
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"approved": allowed})
+	writeJSON(w, http.StatusOK, map[string]any{"revoked": true})
 }
 
 func decodeMapBody(w http.ResponseWriter, r *http.Request, useNumber bool) (map[string]any, bool) {

@@ -52,6 +52,7 @@
       id: 'operate',
       items: [
         { id: 'agentruntime', path: '/console/agentruntime', icon: '\u25c8' },
+        { id: 'channels', path: '/console/channels', icon: '\u2709' },
         { id: 'ops', path: '/console/approvals', icon: '\u2699' },
         { id: 'cron', path: '/console/cron', icon: '\u23f2' },
         { id: 'logs', path: '/console/logs', icon: '\u2261' },
