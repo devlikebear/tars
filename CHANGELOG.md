@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.128] - 2026-05-02
+
+### Fixed
+
+- Fixed Kimi-compatible tool-calling request generation for thinking-enabled calls by avoiding `tool_choice=required` in OpenAI-compatible compatibility mode. `required` now maps to a direct tool choice when only one tool is available, and falls back to `auto` when multiple tools are passed.
+
 ## [0.31.127] - 2026-05-02
 
 ### Added
