@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte'
   import Nav from './Nav.svelte'
   import Header from './Header.svelte'
+  import { t } from '../i18n'
 
   interface Props {
     currentPath: string
@@ -32,8 +33,8 @@
     <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} />
     {#if needsSetup}
       <div class="setup-only-banner" role="alert">
-        <strong>Setup-only mode</strong>
-        <span>LLM 설정이 완료되지 않아 콘솔 기능이 제한됩니다. 마법사를 완료하면 정상 모드로 전환됩니다.</span>
+        <strong>{$t.shell.setupOnlyKicker}</strong>
+        <span>{$t.shell.setupOnlyBody}</span>
       </div>
     {/if}
     <main class="shell-content">
