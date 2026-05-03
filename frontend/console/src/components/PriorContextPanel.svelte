@@ -17,6 +17,7 @@
 
   let trimmedDraft = $derived((draftQuery ?? '').trim())
   let isStale = $derived(preview !== null && trimmedDraft !== lastPreviewedQuery)
+  let previewItems = $derived(Array.isArray(preview?.items) ? preview.items : [])
   let budgetText = $derived(preview
     ? `${preview.relevant_tokens.toLocaleString()} / ${preview.relevant_budget_tokens.toLocaleString()} tokens (${preview.budget_percent}%)`
     : '0 / 0 tokens (0%)'
@@ -82,9 +83,9 @@
         <div class="prior-meter-fill" style="width: {Math.min(100, Math.max(0, preview.budget_percent))}%;"></div>
       </div>
 
-      {#if preview.items.length > 0}
+      {#if previewItems.length > 0}
         <div class="prior-items">
-          {#each preview.items as item}
+          {#each previewItems as item}
             <article class="prior-item">
               <div class="prior-item-meta">
                 <span class="source-badge tag-{sourceClass(item.source_tag)}">{item.source_tag}</span>
