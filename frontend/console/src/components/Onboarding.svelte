@@ -3,10 +3,15 @@
   import {
     getConfigSchema,
     getHealthz,
+    getProviderModels,
     getSetupStatus,
     patchConfigValues,
     restartServer,
   } from '../lib/api'
+  import {
+    SNAPSHOT_DATE,
+    popularModelsForKind,
+  } from '../lib/llm-catalog'
   import {
     availableAuthModesForKind,
     buildConfigPayload,
@@ -35,6 +40,15 @@
   let step = $state<StepId>('provider')
   let form = $state<OnboardingFormState>(emptyOnboardingForm())
   let availableAuthModes = $derived(availableAuthModesForKind(form.provider.kind))
+  // Live model list pulled from /v1/models when the user clicks Refresh
+  // (reentry / normal mode only — the setup-only path has no on-disk
+  // credentials yet so /v1/models has nothing to call).
+  let liveModels = $state<string[]>([])
+  let liveRefreshError = $state<string>('')
+  let liveRefreshing = $state<boolean>(false)
+  let modelSuggestions = $derived(
+    liveModels.length > 0 ? liveModels : popularModelsForKind(form.provider.kind),
+  )
   let setupStatus = $state<SetupStatusResponse | null>(null)
   let stepErrors = $state<string[]>([])
   let saveError = $state<string>('')
@@ -129,6 +143,24 @@
     stepErrors = []
     saveError = ''
     step = target
+  }
+
+  async function refreshLiveModels() {
+    liveRefreshError = ''
+    liveRefreshing = true
+    try {
+      const info = await getProviderModels()
+      const models = Array.isArray(info?.models) ? info.models.filter((m) => typeof m === 'string' && m.trim() !== '') : []
+      if (models.length === 0) {
+        liveRefreshError = '응답에 모델이 없습니다 (provider가 live model listing을 지원하지 않거나 인증 실패).'
+        return
+      }
+      liveModels = models
+    } catch (err) {
+      liveRefreshError = (err as Error).message || 'failed to fetch models'
+    } finally {
+      liveRefreshing = false
+    }
   }
 
   async function handleSave(restart: boolean) {
@@ -311,6 +343,31 @@
         <span class="card-title">Step 2 · Tier 바인딩</span>
         <span class="card-meta">heavy / standard / light 모두 모델을 지정해야 합니다.</span>
       </div>
+
+      <div class="onboarding-models-source">
+        <div class="onboarding-models-source-text">
+          {#if liveModels.length > 0}
+            <strong>Live</strong> · provider에서 받은 최신 모델 목록을 사용 중 ({liveModels.length}개)
+          {:else}
+            <strong>정적 카탈로그</strong> · OpenRouter 스냅샷 기준 ({SNAPSHOT_DATE}) {modelSuggestions.length > 0 ? `· ${modelSuggestions.length}개 추천` : '· 추천 없음'}
+          {/if}
+        </div>
+        {#if reentry}
+          <button class="btn btn-ghost btn-sm" type="button" onclick={refreshLiveModels} disabled={liveRefreshing}>
+            {liveRefreshing ? '가져오는 중…' : 'Provider에서 최신 가져오기'}
+          </button>
+        {/if}
+      </div>
+      {#if liveRefreshError}
+        <div class="onboarding-errors"><strong>Refresh 실패</strong><div>{liveRefreshError}</div></div>
+      {/if}
+
+      <datalist id="onboarding-model-suggestions">
+        {#each modelSuggestions as model}
+          <option value={model}></option>
+        {/each}
+      </datalist>
+
       <div class="onboarding-tier-grid">
         {#each ['heavy', 'standard', 'light'] as const as tier}
           <fieldset class="onboarding-tier">
@@ -321,7 +378,13 @@
             </label>
             <label class="onboarding-field">
               <span>Model</span>
-              <input type="text" bind:value={form.tiers[tier].model} placeholder={tier === 'light' ? 'e.g. gpt-5.4-mini' : 'e.g. gpt-5.4'} />
+              <input
+                type="text"
+                bind:value={form.tiers[tier].model}
+                placeholder={tier === 'light' ? 'e.g. gpt-5.4-mini' : 'e.g. gpt-5.4'}
+                list="onboarding-model-suggestions"
+                autocomplete="off"
+              />
             </label>
             <label class="onboarding-field">
               <span>Reasoning effort <em>선택</em></span>
@@ -595,6 +658,26 @@
     margin-top: var(--space-4);
   }
   .onboarding-spacer { flex: 1; }
+  .onboarding-models-source {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px dashed var(--border-soft);
+    border-radius: 6px;
+    background: var(--surface-1);
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .onboarding-models-source-text strong {
+    color: var(--primary);
+    margin-right: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 11px;
+  }
   .onboarding-hint {
     margin: var(--space-4) 0 0;
     padding: var(--space-3) var(--space-4);
