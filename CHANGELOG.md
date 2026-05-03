@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.136] - 2026-05-03
+
+### Fixed
+
+- **Integrated terminal tabs** — first tab rendered as a single black row because the inactive `.tab-pane` panes used `position: absolute` and the resulting layout collapsed the active pane's measured height. Replaced the absolute-stacking with `display: none` / `display: flex` toggling; the existing `visible` `$effect` already refits the terminal when a tab is reactivated.
+- **Integrated terminal tabs** — the `+` button on the tab strip silently re-activated the existing tab instead of opening a new shell because `addTerminalTab` routed through the same path that de-duplicates by `cwd`+`label`. Split the handler so `+` always appends a fresh tab.
+
 ## [0.31.135] - 2026-05-03
 
 ### Fixed

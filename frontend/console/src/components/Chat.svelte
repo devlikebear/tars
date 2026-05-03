@@ -243,7 +243,18 @@
   }
 
   function addTerminalTab(cwd: string, label: string) {
-    openIntegratedTerminalDock({ cwd, label })
+    if (!selectedSessionId) {
+      showFeedback('Select a session first')
+      return
+    }
+    if (terminalDockSessionId !== selectedSessionId) {
+      terminalDockSessionId = selectedSessionId
+      terminalDockTabs = []
+    }
+    const id = `${cwd}:${label}:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`
+    terminalDockTabs = [...terminalDockTabs, { id, cwd, label }]
+    terminalDockActiveId = id
+    openPanel('terminal')
   }
 
   function startDockResize(zone: DockSizeZone, event: PointerEvent) {

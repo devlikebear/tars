@@ -238,22 +238,20 @@
   }
 
   .tab-panes {
-    position: relative;
+    display: flex;
+    flex-direction: column;
     flex: 1;
     min-height: 0;
   }
 
   .tab-pane {
-    position: absolute;
-    inset: 0;
-    display: flex;
+    display: none;
+    flex: 1;
     flex-direction: column;
-    visibility: hidden;
-    pointer-events: none;
+    min-height: 0;
   }
 
   .tab-pane.active {
-    visibility: visible;
-    pointer-events: auto;
+    display: flex;
   }
 </style>
