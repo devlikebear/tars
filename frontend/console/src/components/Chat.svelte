@@ -701,6 +701,7 @@
 <div class="chat-page">
   <!-- Mini dashboard pulse -->
   <div class="chat-pulse">
+    <div class="chat-pulse-stats">
     <div class="pulse-item">
       <span class="pulse-val" class:warn={!!pulse?.last_err}>
         {pulse?.total_ticks ?? 0}
@@ -718,6 +719,7 @@
       <span class="pulse-lbl">Unread</span>
     </div>
     <div class="pulse-sep"></div>
+    </div>
     <div class="pulse-panel-toggles">
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('sessions')} onclick={() => openPanel('sessions')} title="Session list">Sessions</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('artifacts')} onclick={() => togglePanel('artifacts')} title="Files browser">Files{#if chatArtifacts.length > 0} ({chatArtifacts.length}){/if}</button>
@@ -994,6 +996,12 @@
     position: sticky;
     top: 0;
     z-index: 10;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .chat-pulse-stats {
+    display: contents;
   }
 
   .pulse-item {
@@ -1022,6 +1030,7 @@
   .pulse-panel-toggles {
     display: flex;
     gap: 2px;
+    flex-shrink: 0;
   }
 
   .pulse-toggle-btn {
@@ -1341,7 +1350,7 @@
     text-align: right;
   }
 
-  @media (max-width: 768px) {
+  @media (max-width: 900px) {
     .chat-layout {
       grid-template-columns: 1fr;
       grid-template-rows: minmax(0, 1fr);
@@ -1357,10 +1366,30 @@
       inset: var(--space-2);
     }
     .chat-pulse {
-      flex-wrap: wrap;
-      gap: var(--space-2);
+      flex-wrap: nowrap;
+      gap: 0;
+      padding: 0;
+      flex-direction: column;
+      align-items: stretch;
+      overflow: visible;
+    }
+    .chat-pulse-stats {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-1) var(--space-3);
+      overflow-x: auto;
     }
     .pulse-sep { display: none; }
+    .pulse-panel-toggles {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: var(--space-1) var(--space-3);
+      border-top: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+      scrollbar-width: none;
+    }
+    .pulse-panel-toggles::-webkit-scrollbar { display: none; }
     .session-actions {
       flex-wrap: wrap;
     }
