@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { getAnalytics } from '../lib/api'
   import type { AnalyticsDailyRow, AnalyticsModelRow, AnalyticsResponse, AnalyticsSkillRow } from '../lib/types'
+  import { t } from '../i18n'
 
   const dayOptions = [7, 30, 90]
   const chartWidth = 720
@@ -87,17 +88,17 @@
 <div class="analytics-page">
   <section class="analytics-header">
     <div>
-      <span class="analytics-kicker">Usage</span>
-      <h2>Analytics</h2>
+      <span class="analytics-kicker">{$t.analytics.kicker}</span>
+      <h2>{$t.analytics.title}</h2>
     </div>
-    <div class="period-toggle" aria-label="Analytics period">
+    <div class="period-toggle" aria-label={$t.analytics.periodAriaLabel}>
       {#each dayOptions as days}
         <button
           type="button"
           class:active={selectedDays === days}
           onclick={() => selectDays(days)}
         >
-          {days}d
+          {days}{$t.analytics.periodSuffix}
         </button>
       {/each}
     </div>
@@ -109,45 +110,45 @@
 
   <section class="summary-grid">
     <div class="summary-card card">
-      <span>Total tokens</span>
+      <span>{$t.analytics.summary.totalTokens}</span>
       <strong>{fmtInt(analytics?.totals.total_tokens)}</strong>
-      <small>{fmtInt(analytics?.totals.input_tokens)} in / {fmtInt(analytics?.totals.output_tokens)} out</small>
+      <small>{$t.analytics.summary.tokensInOut(fmtInt(analytics?.totals.input_tokens), fmtInt(analytics?.totals.output_tokens))}</small>
     </div>
     <div class="summary-card card">
-      <span>Sessions</span>
+      <span>{$t.analytics.summary.sessions}</span>
       <strong>{fmtInt(analytics?.totals.sessions)}</strong>
-      <small>{fmtInt(analytics?.totals.calls)} calls</small>
+      <small>{$t.analytics.summary.callsSuffix(fmtInt(analytics?.totals.calls))}</small>
     </div>
     <div class="summary-card card">
-      <span>Avg / session</span>
+      <span>{$t.analytics.summary.avgPerSession}</span>
       <strong>{fmtAvg(analytics?.totals.avg_tokens_per_session)}</strong>
-      <small>tokens</small>
+      <small>{$t.analytics.summary.tokensSuffix}</small>
     </div>
     <div class="summary-card card">
-      <span>Estimated cost</span>
+      <span>{$t.analytics.summary.estimatedCost}</span>
       <strong>{fmtCost(analytics?.totals.cost_usd)}</strong>
-      <small>{selectedDays} days</small>
+      <small>{$t.analytics.summary.daysSuffix(selectedDays)}</small>
     </div>
   </section>
 
   <section class="analytics-chart card">
     <div class="card-header">
-      <span class="card-title">Daily Tokens</span>
+      <span class="card-title">{$t.analytics.chart.title}</span>
       <div class="chart-legend">
-        <span><i class="legend-input"></i>Input</span>
-        <span><i class="legend-output"></i>Output</span>
+        <span><i class="legend-input"></i>{$t.analytics.chart.legendInput}</span>
+        <span><i class="legend-output"></i>{$t.analytics.chart.legendOutput}</span>
       </div>
     </div>
 
     {#if loading && !analytics}
-      <div class="empty-state">Loading analytics...</div>
+      <div class="empty-state">{$t.analytics.chart.loading}</div>
     {:else if !hasUsage}
       <div class="empty-state">
-        <strong>No usage yet</strong>
-        <p>Usage rows will appear after the first tracked LLM call.</p>
+        <strong>{$t.analytics.chart.emptyTitle}</strong>
+        <p>{$t.analytics.chart.emptyBody}</p>
       </div>
     {:else}
-      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label="Daily input and output token chart">
+      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label={$t.analytics.chart.ariaLabel}>
         <line x1="24" y1={chartBase} x2={chartWidth - 24} y2={chartBase} class="axis" />
         {#each daily as row, index}
           {@const totalHeight = barHeight(row.total_tokens)}
@@ -156,7 +157,7 @@
           {@const x = barX(index)}
           {@const w = barWidth()}
           <g>
-            <title>{row.day}: {fmtInt(row.input_tokens)} input, {fmtInt(row.output_tokens)} output</title>
+            <title>{$t.analytics.chart.barTitle(row.day, fmtInt(row.input_tokens), fmtInt(row.output_tokens))}</title>
             <rect
               class="input-bar"
               x={x}
@@ -185,21 +186,21 @@
   <div class="analytics-tables">
     <section class="card">
       <div class="card-header">
-        <span class="card-title">Models</span>
+        <span class="card-title">{$t.analytics.models.title}</span>
         <span class="badge badge-default">{models.length}</span>
       </div>
       {#if models.length === 0}
-        <div class="empty-state">No model usage yet.</div>
+        <div class="empty-state">{$t.analytics.models.empty}</div>
       {:else}
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Model</th>
-                <th>Sessions</th>
-                <th>Input</th>
-                <th>Output</th>
-                <th>Cost</th>
+                <th>{$t.analytics.models.thModel}</th>
+                <th>{$t.analytics.models.thSessions}</th>
+                <th>{$t.analytics.models.thInput}</th>
+                <th>{$t.analytics.models.thOutput}</th>
+                <th>{$t.analytics.models.thCost}</th>
               </tr>
             </thead>
             <tbody>
@@ -223,11 +224,11 @@
 
     <section class="card">
       <div class="card-header">
-        <span class="card-title">Tools / Skills</span>
+        <span class="card-title">{$t.analytics.skills.title}</span>
         <span class="badge badge-default">{skills.length}</span>
       </div>
       {#if skills.length === 0}
-        <div class="empty-state">No tool or skill calls yet.</div>
+        <div class="empty-state">{$t.analytics.skills.empty}</div>
       {:else}
         <div class="skill-list">
           {#each skills as row}
@@ -236,7 +237,7 @@
                 <strong>{row.name}</strong>
                 {#if row.source}<small>{row.source}</small>{/if}
               </span>
-              <span class="badge badge-info">{fmtInt(row.calls)} calls</span>
+              <span class="badge badge-info">{$t.analytics.skills.callsSuffix(fmtInt(row.calls))}</span>
             </div>
           {/each}
         </div>

@@ -28,6 +28,7 @@
     type ProviderKind,
   } from '../lib/onboarding'
   import type { SetupStatusResponse } from '../lib/types'
+  import { t } from '../i18n'
 
   interface Props {
     onComplete?: () => void
@@ -73,13 +74,13 @@
   })
 
   const stepOrder: StepId[] = ['provider', 'tiers', 'review', 'restarting']
-  const stepLabels: Record<StepId, string> = {
-    provider: 'Provider',
-    tiers: 'Tiers',
-    review: 'Review',
-    restarting: 'Restart',
-    saved: 'Saved',
-  }
+  let stepLabels = $derived<Record<StepId, string>>({
+    provider: $t.onboarding.steps.provider,
+    tiers: $t.onboarding.steps.tiers,
+    review: $t.onboarding.steps.review,
+    restarting: $t.onboarding.steps.restart,
+    saved: $t.onboarding.steps.saved,
+  })
 
   function progressIndex(current: StepId): number {
     if (current === 'saved') return stepOrder.length - 1
@@ -152,7 +153,7 @@
       const info = await getProviderModels()
       const models = Array.isArray(info?.models) ? info.models.filter((m) => typeof m === 'string' && m.trim() !== '') : []
       if (models.length === 0) {
-        liveRefreshError = '응답에 모델이 없습니다 (provider가 live model listing을 지원하지 않거나 인증 실패).'
+        liveRefreshError = $t.onboarding.step2.refreshErrorEmpty
         return
       }
       liveModels = models
@@ -244,13 +245,9 @@
 
 <section class="onboarding">
   <header class="onboarding-header">
-    <span class="onboarding-kicker">{reentry ? 'Reconfigure' : 'First-run setup'}</span>
-    <h1>TARS 설정 마법사</h1>
-    {#if reentry}
-      <p>이미 설정된 값이 prefill되어 있습니다. 변경하지 않은 항목은 그대로 유지됩니다.</p>
-    {:else}
-      <p>최소 LLM provider 1개와 3개 tier(heavy/standard/light) 바인딩만 입력하면 콘솔이 활성화됩니다.</p>
-    {/if}
+    <span class="onboarding-kicker">{reentry ? $t.onboarding.kicker.reentry : $t.onboarding.kicker.firstRun}</span>
+    <h1>{$t.onboarding.title}</h1>
+    <p>{reentry ? $t.onboarding.subtitleReentry : $t.onboarding.subtitleFirstRun}</p>
   </header>
 
   <ol class="onboarding-progress">
@@ -264,7 +261,7 @@
 
   {#if stepErrors.length > 0 && step !== 'restarting'}
     <div class="onboarding-errors">
-      <strong>입력을 확인해주세요</strong>
+      <strong>{$t.onboarding.errors.inputCheck}</strong>
       <ul>
         {#each stepErrors as err}
           <li>{err}</li>
@@ -276,13 +273,13 @@
   {#if step === 'provider'}
     <section class="card">
       <div class="card-header">
-        <span class="card-title">Step 1 · Provider 등록</span>
+        <span class="card-title">{$t.onboarding.step1.cardTitle}</span>
       </div>
       <div class="onboarding-grid">
         <label class="onboarding-field">
-          <span>Provider 종류 <em>Kind</em></span>
+          <span>{$t.onboarding.step1.kindLabel} <em>{$t.onboarding.step1.kindHint}</em></span>
           <select value={form.provider.kind} onchange={(e) => handleKindChange((e.currentTarget as HTMLSelectElement).value)}>
-            <option value="">선택하세요…</option>
+            <option value="">{$t.onboarding.step1.kindPlaceholder}</option>
             {#each providerKinds as kind}
               <option value={kind}>{kind}</option>
             {/each}
@@ -290,12 +287,12 @@
         </label>
 
         <label class="onboarding-field">
-          <span>Alias <em>llm_providers의 키</em></span>
-          <input type="text" bind:value={form.provider.alias} placeholder="openai, codex, kimi 등" />
+          <span>{$t.onboarding.step1.aliasLabel} <em>{$t.onboarding.step1.aliasHint}</em></span>
+          <input type="text" bind:value={form.provider.alias} placeholder={$t.onboarding.step1.aliasPlaceholder} />
         </label>
 
         <label class="onboarding-field">
-          <span>인증 모드 <em>auth_mode</em></span>
+          <span>{$t.onboarding.step1.authModeLabel} <em>{$t.onboarding.step1.authModeHint}</em></span>
           <select bind:value={form.provider.auth_mode} disabled={availableAuthModes.length <= 1 && form.provider.kind !== ''}>
             {#each availableAuthModes as mode}
               <option value={mode}>{mode}</option>
@@ -305,61 +302,63 @@
 
         {#if form.provider.auth_mode === 'api-key'}
           <label class="onboarding-field">
-            <span>API Key {#if form.provider.keepExistingApiKey}<em>변경하지 않으면 기존 값 유지</em>{/if}</span>
+            <span>{$t.onboarding.step1.apiKeyLabel} {#if form.provider.keepExistingApiKey}<em>{$t.onboarding.step1.apiKeyKeepHint}</em>{/if}</span>
             <input
               type="password"
               value={form.provider.keepExistingApiKey ? '' : form.provider.api_key}
               oninput={(e) => handleApiKeyInput((e.currentTarget as HTMLInputElement).value)}
               autocomplete="new-password"
-              placeholder={form.provider.keepExistingApiKey ? '••••••• (현재 값 유지)' : 'sk-…'}
+              placeholder={form.provider.keepExistingApiKey ? $t.onboarding.step1.apiKeyPlaceholderKeep : $t.onboarding.step1.apiKeyPlaceholderNew}
             />
           </label>
         {/if}
 
         <label class="onboarding-field">
-          <span>Base URL <em>비우면 kind 기본값 사용</em></span>
+          <span>{$t.onboarding.step1.baseUrlLabel} <em>{$t.onboarding.step1.baseUrlHint}</em></span>
           <input type="url" bind:value={form.provider.base_url} placeholder={defaultBaseURLForKind(form.provider.kind)} />
         </label>
       </div>
 
       {#if form.provider.auth_mode === 'oauth'}
         <p class="onboarding-hint">
-          <strong>OAuth 인증</strong> · 환경변수 또는 OAuth 핸드셰이크에서 자동으로 토큰을 받습니다. 선택한 kind에 맞는 OAuth provider가 자동 적용됩니다 (별도 입력 불필요).
+          <strong>{$t.onboarding.step1.hintOauthTitle}</strong> · {$t.onboarding.step1.hintOauthBody}
         </p>
       {:else if form.provider.auth_mode === 'cli'}
         <p class="onboarding-hint">
-          <strong>CLI 인증</strong> · 로컬에 설치된 <code>claude-code</code> CLI를 통해 인증합니다. 추가 키 입력 없이도 동작합니다 (CLI 자체 로그인 상태가 사용됩니다).
+          <strong>{$t.onboarding.step1.hintCliTitle}</strong> · {$t.onboarding.step1.hintCliBody}
         </p>
       {/if}
 
       <div class="onboarding-actions">
         <span class="onboarding-spacer"></span>
-        <button class="btn btn-primary" type="button" onclick={goToTiers}>다음: Tier 설정 →</button>
+        <button class="btn btn-primary" type="button" onclick={goToTiers}>{$t.onboarding.step1.nextButton}</button>
       </div>
     </section>
   {:else if step === 'tiers'}
     <section class="card">
       <div class="card-header">
-        <span class="card-title">Step 2 · Tier 바인딩</span>
-        <span class="card-meta">heavy / standard / light 모두 모델을 지정해야 합니다.</span>
+        <span class="card-title">{$t.onboarding.step2.cardTitle}</span>
+        <span class="card-meta">{$t.onboarding.step2.cardMeta}</span>
       </div>
 
       <div class="onboarding-models-source">
         <div class="onboarding-models-source-text">
           {#if liveModels.length > 0}
-            <strong>Live</strong> · provider에서 받은 최신 모델 목록을 사용 중 ({liveModels.length}개)
+            {$t.onboarding.step2.modelsSourceLive(liveModels.length)}
+          {:else if modelSuggestions.length > 0}
+            {$t.onboarding.step2.modelsSourceStatic(SNAPSHOT_DATE, modelSuggestions.length)}
           {:else}
-            <strong>정적 카탈로그</strong> · OpenRouter 스냅샷 기준 ({SNAPSHOT_DATE}) {modelSuggestions.length > 0 ? `· ${modelSuggestions.length}개 추천` : '· 추천 없음'}
+            {$t.onboarding.step2.modelsSourceStaticEmpty(SNAPSHOT_DATE)}
           {/if}
         </div>
         {#if reentry}
           <button class="btn btn-ghost btn-sm" type="button" onclick={refreshLiveModels} disabled={liveRefreshing}>
-            {liveRefreshing ? '가져오는 중…' : 'Provider에서 최신 가져오기'}
+            {liveRefreshing ? $t.onboarding.step2.refreshing : $t.onboarding.step2.refreshButton}
           </button>
         {/if}
       </div>
       {#if liveRefreshError}
-        <div class="onboarding-errors"><strong>Refresh 실패</strong><div>{liveRefreshError}</div></div>
+        <div class="onboarding-errors"><strong>{$t.onboarding.errors.refreshFailed}</strong><div>{liveRefreshError}</div></div>
       {/if}
 
       <datalist id="onboarding-model-suggestions">
@@ -373,11 +372,11 @@
           <fieldset class="onboarding-tier">
             <legend>{tier}</legend>
             <label class="onboarding-field">
-              <span>Provider alias</span>
+              <span>{$t.onboarding.step2.providerAliasLabel}</span>
               <input type="text" bind:value={form.tiers[tier].provider} />
             </label>
             <label class="onboarding-field">
-              <span>Model</span>
+              <span>{$t.onboarding.step2.modelLabel}</span>
               <input
                 type="text"
                 bind:value={form.tiers[tier].model}
@@ -387,9 +386,9 @@
               />
             </label>
             <label class="onboarding-field">
-              <span>Reasoning effort <em>선택</em></span>
+              <span>{$t.onboarding.step2.reasoningLabel} <em>{$t.onboarding.step2.reasoningHint}</em></span>
               <select bind:value={form.tiers[tier].reasoning_effort}>
-                <option value="">기본값</option>
+                <option value="">{$t.onboarding.step2.reasoningDefault}</option>
                 <option value="minimal">minimal</option>
                 <option value="low">low</option>
                 <option value="medium">medium</option>
@@ -401,57 +400,57 @@
       </div>
 
       <div class="onboarding-actions">
-        <button class="btn btn-ghost" type="button" onclick={() => goBack('provider')}>← 이전</button>
-        <button class="btn btn-primary" type="button" onclick={goToReview}>다음: 검토 →</button>
+        <button class="btn btn-ghost" type="button" onclick={() => goBack('provider')}>{$t.onboarding.step2.backButton}</button>
+        <button class="btn btn-primary" type="button" onclick={goToReview}>{$t.onboarding.step2.nextButton}</button>
       </div>
     </section>
   {:else if step === 'review'}
     <section class="card">
       <div class="card-header">
-        <span class="card-title">Step 3 · 검토 및 저장</span>
+        <span class="card-title">{$t.onboarding.step3.cardTitle}</span>
         {#if setupStatus?.config_path}
-          <span class="card-meta">저장 위치: <code>{setupStatus.config_path}</code></span>
+          <span class="card-meta">{$t.onboarding.step3.saveLocation}: <code>{setupStatus.config_path}</code></span>
         {/if}
       </div>
 
       {#if saveError}
-        <div class="onboarding-errors"><strong>저장 실패</strong><div>{saveError}</div></div>
+        <div class="onboarding-errors"><strong>{$t.onboarding.errors.saveFailed}</strong><div>{saveError}</div></div>
       {/if}
 
       <div class="onboarding-review">
         <div class="onboarding-review-section">
-          <h3>Provider</h3>
+          <h3>{$t.onboarding.step3.providerHeading}</h3>
           <dl>
-            <div><dt>Alias</dt><dd>{form.provider.alias}</dd></div>
-            <div><dt>Kind</dt><dd>{form.provider.kind}</dd></div>
-            <div><dt>Auth mode</dt><dd>{form.provider.auth_mode}</dd></div>
+            <div><dt>{$t.onboarding.step3.aliasField}</dt><dd>{form.provider.alias}</dd></div>
+            <div><dt>{$t.onboarding.step3.kindField}</dt><dd>{form.provider.kind}</dd></div>
+            <div><dt>{$t.onboarding.step3.authModeField}</dt><dd>{form.provider.auth_mode}</dd></div>
             {#if form.provider.auth_mode === 'api-key'}
               <div>
-                <dt>API Key</dt>
+                <dt>{$t.onboarding.step3.apiKeyField}</dt>
                 <dd>
                   {#if form.provider.keepExistingApiKey}
-                    <code>(현재 값 유지)</code>
+                    <code>{$t.onboarding.step3.apiKeyKept}</code>
                   {:else}
                     <code>{maskedKey(form.provider.api_key)}</code>
                   {/if}
                 </dd>
               </div>
             {/if}
-            <div><dt>Base URL</dt><dd>{form.provider.base_url || defaultBaseURLForKind(form.provider.kind) || '(none)'}</dd></div>
+            <div><dt>{$t.onboarding.step3.baseUrlField}</dt><dd>{form.provider.base_url || defaultBaseURLForKind(form.provider.kind) || $t.onboarding.step3.none}</dd></div>
           </dl>
         </div>
 
         <div class="onboarding-review-section">
-          <h3>Tier 바인딩</h3>
+          <h3>{$t.onboarding.step3.tiersHeading}</h3>
           <table>
-            <thead><tr><th>Tier</th><th>Provider</th><th>Model</th><th>Reasoning</th></tr></thead>
+            <thead><tr><th>{$t.onboarding.step3.tierField}</th><th>{$t.onboarding.step3.providerField}</th><th>{$t.onboarding.step3.modelField}</th><th>{$t.onboarding.step3.reasoningField}</th></tr></thead>
             <tbody>
               {#each ['heavy', 'standard', 'light'] as const as tier}
                 <tr>
                   <td><strong>{tier}</strong></td>
                   <td>{form.tiers[tier].provider}</td>
                   <td>{form.tiers[tier].model}</td>
-                  <td>{form.tiers[tier].reasoning_effort || '(default)'}</td>
+                  <td>{form.tiers[tier].reasoning_effort || $t.onboarding.step3.defaultLabel}</td>
                 </tr>
               {/each}
             </tbody>
@@ -460,46 +459,46 @@
       </div>
 
       <div class="onboarding-actions">
-        <button class="btn btn-ghost" type="button" onclick={() => goBack('tiers')}>← 이전</button>
+        <button class="btn btn-ghost" type="button" onclick={() => goBack('tiers')}>{$t.onboarding.step3.backButton}</button>
         {#if reentry}
-          <button class="btn btn-ghost" type="button" onclick={() => handleSave(false)}>저장만 (재시작 없이)</button>
-          <button class="btn btn-primary" type="button" onclick={() => handleSave(true)}>저장하고 재시작</button>
+          <button class="btn btn-ghost" type="button" onclick={() => handleSave(false)}>{$t.onboarding.step3.saveOnlyButton}</button>
+          <button class="btn btn-primary" type="button" onclick={() => handleSave(true)}>{$t.onboarding.step3.saveAndRestartButton}</button>
         {:else}
-          <button class="btn btn-primary" type="button" onclick={() => handleSave(true)}>저장하고 재시작</button>
+          <button class="btn btn-primary" type="button" onclick={() => handleSave(true)}>{$t.onboarding.step3.saveAndRestartButton}</button>
         {/if}
       </div>
     </section>
   {:else if step === 'saved'}
     <section class="card onboarding-restart">
-      <h2>저장 완료</h2>
-      <p>변경사항이 config 파일에 기록되었습니다. 적용하려면 서버를 재시작해주세요.</p>
+      <h2>{$t.onboarding.saved.title}</h2>
+      <p>{$t.onboarding.saved.body}</p>
       {#if saveError}
-        <div class="onboarding-errors"><strong>재시작 실패</strong><div>{saveError}</div></div>
+        <div class="onboarding-errors"><strong>{$t.onboarding.errors.restartFailed}</strong><div>{saveError}</div></div>
       {/if}
       <div class="onboarding-actions onboarding-saved-actions">
-        <button class="btn btn-ghost" type="button" onclick={() => onComplete && onComplete()}>나중에 (콘솔로 이동)</button>
-        <button class="btn btn-primary" type="button" onclick={handleManualRestart}>지금 재시작</button>
+        <button class="btn btn-ghost" type="button" onclick={() => onComplete && onComplete()}>{$t.onboarding.saved.laterButton}</button>
+        <button class="btn btn-primary" type="button" onclick={handleManualRestart}>{$t.onboarding.saved.restartNowButton}</button>
       </div>
     </section>
   {:else}
     <section class="card onboarding-restart">
       {#if restartPhase === 'patching'}
-        <h2>설정 저장 중…</h2>
-        <p>입력한 provider와 tier 바인딩을 config 파일에 기록하고 있습니다.</p>
+        <h2>{$t.onboarding.restart.patchingTitle}</h2>
+        <p>{$t.onboarding.restart.patchingBody}</p>
       {:else if restartPhase === 'restarting'}
-        <h2>서버 재시작 요청…</h2>
-        <p>잠시 후 healthz를 확인합니다.</p>
+        <h2>{$t.onboarding.restart.restartingTitle}</h2>
+        <p>{$t.onboarding.restart.restartingBody}</p>
       {:else if restartPhase === 'polling'}
-        <h2>서버 응답 대기 중…</h2>
-        <p>최대 30초까지 healthz를 폴링합니다. 정상 모드 진입이 확인되면 자동으로 콘솔 홈으로 이동합니다.</p>
+        <h2>{$t.onboarding.restart.pollingTitle}</h2>
+        <p>{$t.onboarding.restart.pollingBody}</p>
         <div class="onboarding-spinner" aria-hidden="true"></div>
       {:else if restartPhase === 'ready'}
-        <h2>완료</h2>
-        <p>정상 모드로 진입했습니다. 잠시 후 콘솔 홈으로 이동합니다.</p>
+        <h2>{$t.onboarding.restart.readyTitle}</h2>
+        <p>{$t.onboarding.restart.readyBody}</p>
       {:else if restartPhase === 'timeout'}
-        <h2>응답 지연</h2>
-        <p>30초 이내에 정상 모드 진입을 확인하지 못했습니다. 페이지를 새로고침해 상태를 다시 확인해주세요.</p>
-        <button class="btn btn-primary" type="button" onclick={() => window.location.reload()}>새로고침</button>
+        <h2>{$t.onboarding.restart.timeoutTitle}</h2>
+        <p>{$t.onboarding.restart.timeoutBody}</p>
+        <button class="btn btn-primary" type="button" onclick={() => window.location.reload()}>{$t.onboarding.restart.refreshButton}</button>
       {/if}
     </section>
   {/if}
@@ -671,13 +670,6 @@
     font-size: 13px;
     color: var(--text-muted);
   }
-  .onboarding-models-source-text strong {
-    color: var(--primary);
-    margin-right: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-size: 11px;
-  }
   .onboarding-hint {
     margin: var(--space-4) 0 0;
     padding: var(--space-3) var(--space-4);
@@ -692,12 +684,6 @@
   .onboarding-hint strong {
     color: var(--text-primary);
     margin-right: 4px;
-  }
-  .onboarding-hint code {
-    background: var(--surface-2);
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-size: 12px;
   }
   .onboarding-review {
     display: flex;

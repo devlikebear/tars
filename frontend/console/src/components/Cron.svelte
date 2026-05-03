@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { createCronJob, deleteCronJob, listCronJobs, listCronRuns, runCronJob, streamEvents, updateCronJob } from '../lib/api'
   import type { CronJob, CronRunRecord } from '../lib/types'
+  import { t } from '../i18n'
 
   type DeliveryTarget = 'daily_log' | 'main' | 'both'
   type JobBucket = 'active' | 'paused' | 'done'
@@ -58,16 +59,16 @@
 
   function deliveryLabel(job: CronJob): string {
     const mode = job.delivery_mode || ''
-    if (mode === 'both') return 'Main + daily log'
-    if (mode === 'session' || job.session_target === 'main' || job.session_id) return job.session_id ? 'Bound session' : 'Main session'
-    if (mode === 'none') return 'No delivery'
-    return 'Daily log'
+    if (mode === 'both') return $t.cron.deliveryBoth
+    if (mode === 'session' || job.session_target === 'main' || job.session_id) return job.session_id ? $t.cron.deliveryBound : $t.cron.deliveryMain
+    if (mode === 'none') return $t.cron.deliveryNone
+    return $t.cron.deliveryDailyLog
   }
 
   function statusLabel(job: CronJob): string {
-    if (job.last_run_error) return 'failed'
-    if (isCompleted(job)) return 'done'
-    return job.enabled ? 'active' : 'paused'
+    if (job.last_run_error) return $t.cron.statusFailed
+    if (isCompleted(job)) return $t.cron.statusDone
+    return job.enabled ? $t.cron.statusActive : $t.cron.statusPaused
   }
 
   function statusClass(job: CronJob): string {
@@ -95,15 +96,15 @@
 
   function relativeTime(value?: string): string {
     const text = value?.trim()
-    if (!text) return 'never'
+    if (!text) return $t.cron.never
     const date = new Date(text)
     if (Number.isNaN(date.getTime())) return text
-    if (date.getFullYear() <= 1) return 'never'
+    if (date.getFullYear() <= 1) return $t.cron.never
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
-    if (seconds < 60) return `${seconds}s ago`
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-    return `${Math.floor(seconds / 86400)}d ago`
+    if (seconds < 60) return $t.cron.secondsAgo(seconds)
+    if (seconds < 3600) return $t.cron.minutesAgo(Math.floor(seconds / 60))
+    if (seconds < 86400) return $t.cron.hoursAgo(Math.floor(seconds / 3600))
+    return $t.cron.daysAgo(Math.floor(seconds / 86400))
   }
 
   function compact(value?: string, max = 140): string {
@@ -113,22 +114,22 @@
   }
 
   function nextRunLabel(job: CronJob): string {
-    if (isCompleted(job)) return 'Completed'
-    if (!job.enabled) return 'Paused'
+    if (isCompleted(job)) return $t.cron.nextCompleted
+    if (!job.enabled) return $t.cron.nextPaused
     const schedule = job.schedule.trim()
     if (schedule.toLowerCase().startsWith('at:')) return fmt(schedule.slice(3))
-    if (schedule.toLowerCase().startsWith('every:')) return job.last_run_at ? `After ${relativeTime(job.last_run_at)}` : 'Next tick'
-    return 'Cron schedule'
+    if (schedule.toLowerCase().startsWith('every:')) return job.last_run_at ? $t.cron.nextAfter(relativeTime(job.last_run_at)) : $t.cron.nextTick
+    return $t.cron.nextSchedule
   }
 
   function bucketLabel(bucket: JobBucket): string {
     switch (bucket) {
       case 'paused':
-        return 'Paused'
+        return $t.cron.bucketPaused
       case 'done':
-        return 'Done'
+        return $t.cron.bucketDone
       default:
-        return 'Active'
+        return $t.cron.bucketActive
     }
   }
 
@@ -259,29 +260,29 @@
 <div class="cron-page">
   <section class="cron-header">
     <div>
-      <p class="eyebrow">Operate</p>
-      <h1>Cron</h1>
+      <p class="eyebrow">{$t.cron.eyebrow}</p>
+      <h1>{$t.cron.title}</h1>
     </div>
-    <button class="btn btn-ghost btn-sm" type="button" onclick={load} disabled={loading} title="Refresh">
-      Refresh
+    <button class="btn btn-ghost btn-sm" type="button" onclick={load} disabled={loading} title={$t.cron.refresh}>
+      {$t.cron.refresh}
     </button>
   </section>
 
-  <section class="cron-metrics" aria-label="Cron summary">
+  <section class="cron-metrics" aria-label={$t.cron.summaryAriaLabel}>
     <div class="metric">
-      <span>Active</span>
+      <span>{$t.cron.metricActive}</span>
       <strong>{activeJobs.length}</strong>
     </div>
     <div class="metric">
-      <span>Paused</span>
+      <span>{$t.cron.metricPaused}</span>
       <strong>{pausedJobs.length}</strong>
     </div>
     <div class="metric">
-      <span>Done</span>
+      <span>{$t.cron.metricDone}</span>
       <strong>{completedJobs.length}</strong>
     </div>
     <div class="metric">
-      <span>Loaded runs</span>
+      <span>{$t.cron.metricLoadedRuns}</span>
       <strong>{totalRuns}</strong>
     </div>
   </section>
@@ -290,10 +291,10 @@
     <div class="error-banner">{error}</div>
   {/if}
 
-  <section class="create-panel" aria-label="Create cron job">
+  <section class="create-panel" aria-label={$t.cron.createPanelAriaLabel}>
     <div class="section-heading">
-      <h2>New Job</h2>
-      <span>{deliveryTarget === 'daily_log' ? 'Daily log' : deliveryTarget === 'both' ? 'Main + daily log' : 'Main session'}</span>
+      <h2>{$t.cron.newJob}</h2>
+      <span>{deliveryTarget === 'daily_log' ? $t.cron.deliveryDailyLog : deliveryTarget === 'both' ? $t.cron.deliveryBoth : $t.cron.deliveryMain}</span>
     </div>
 
     {#if newJobError}
@@ -302,45 +303,45 @@
 
     <div class="form-grid">
       <label>
-        <span>Name</span>
-        <input type="text" placeholder="Morning check" bind:value={newJobName} class="form-input" />
+        <span>{$t.cron.nameLabel}</span>
+        <input type="text" placeholder={$t.cron.namePlaceholder} bind:value={newJobName} class="form-input" />
       </label>
       <label>
-        <span>Schedule</span>
-        <input type="text" placeholder="every:1h, 0 9 * * *, at:2026-05-01T09:00:00Z" bind:value={newJobSchedule} class="form-input" />
+        <span>{$t.cron.scheduleLabel}</span>
+        <input type="text" placeholder={$t.cron.schedulePlaceholder} bind:value={newJobSchedule} class="form-input" />
       </label>
       <label>
-        <span>Delivery</span>
+        <span>{$t.cron.deliveryLabel}</span>
         <select bind:value={deliveryTarget} class="form-input">
-          <option value="daily_log">Daily log</option>
-          <option value="main">Main session</option>
-          <option value="both">Main + daily log</option>
+          <option value="daily_log">{$t.cron.deliveryDailyLog}</option>
+          <option value="main">{$t.cron.deliveryMain}</option>
+          <option value="both">{$t.cron.deliveryBoth}</option>
         </select>
       </label>
     </div>
 
     <label class="prompt-field">
-      <span>Prompt</span>
-      <textarea placeholder="Ask TARS what to run on this schedule" bind:value={newJobPrompt} class="form-input form-textarea" rows="4"></textarea>
+      <span>{$t.cron.promptLabel}</span>
+      <textarea placeholder={$t.cron.promptPlaceholder} bind:value={newJobPrompt} class="form-input form-textarea" rows="4"></textarea>
     </label>
 
     <div class="create-actions">
       <button class="btn btn-primary btn-sm" type="button" disabled={!newJobPrompt.trim() || newJobSaving} onclick={handleCreateJob}>
-        {newJobSaving ? 'Creating...' : 'Create Job'}
+        {newJobSaving ? $t.cron.creating : $t.cron.createButton}
       </button>
     </div>
   </section>
 
-  <section class="jobs-panel" aria-label="Cron jobs">
+  <section class="jobs-panel" aria-label={$t.cron.jobsAriaLabel}>
     <div class="section-heading">
-      <h2>Jobs</h2>
-      <span>{jobs.length} total</span>
+      <h2>{$t.cron.jobsTitle}</h2>
+      <span>{$t.cron.totalSuffix(jobs.length)}</span>
     </div>
 
     {#if loading}
-      <div class="empty-state">Loading cron jobs...</div>
+      <div class="empty-state">{$t.cron.loadingJobs}</div>
     {:else if !hasJobs}
-      <div class="empty-state">No cron jobs yet.</div>
+      <div class="empty-state">{$t.cron.noJobs}</div>
     {:else}
       {#each ['active', 'paused', 'done'] as bucket}
         {@const bucketList = bucketJobs(bucket as JobBucket)}
@@ -357,7 +358,7 @@
                   <button type="button" class="job-summary" class:open={expandedJob === job.id} onclick={() => { void toggleRunHistory(job.id) }}>
                     <span class={`badge ${statusClass(job)}`}>{statusLabel(job)}</span>
                     <span class="job-main">
-                      <strong>{job.name || 'Untitled job'}</strong>
+                      <strong>{job.name || $t.cron.untitled}</strong>
                       <small>{compact(job.prompt)}</small>
                     </span>
                     <span class="job-meta">
@@ -369,34 +370,34 @@
 
                   <div class="job-actions">
                     <button class="btn btn-ghost btn-sm" type="button" disabled={isCompleted(job) || togglingJobId === job.id} onclick={() => { void handleToggleJob(job) }}>
-                      {job.enabled ? 'Pause' : 'Resume'}
+                      {job.enabled ? $t.cron.pause : $t.cron.resume}
                     </button>
                     <button class="btn btn-ghost btn-sm" type="button" disabled={runningJobId === job.id} onclick={() => { void handleRunJob(job.id) }}>
-                      {runningJobId === job.id ? 'Running...' : 'Run now'}
+                      {runningJobId === job.id ? $t.cron.running : $t.cron.runNow}
                     </button>
                     <button class="btn btn-danger btn-sm" type="button" disabled={deletingJobId === job.id} onclick={() => { void handleDeleteJob(job.id) }}>
-                      {deleteConfirmId === job.id ? 'Confirm' : 'Delete'}
+                      {deleteConfirmId === job.id ? $t.cron.confirm : $t.cron.delete}
                     </button>
                   </div>
 
                   {#if expandedJob === job.id}
                     <div class="run-history">
                       <div class="run-history-head">
-                        <span>Run history</span>
+                        <span>{$t.cron.runHistory}</span>
                         {#if job.last_run_at}
-                          <span>Last run {relativeTime(job.last_run_at)}</span>
+                          <span>{$t.cron.lastRun(relativeTime(job.last_run_at))}</span>
                         {/if}
                       </div>
                       {#if runsLoading === job.id}
-                        <div class="runs-empty">Loading runs...</div>
+                        <div class="runs-empty">{$t.cron.loadingRuns}</div>
                       {:else if !cronRuns[job.id] || cronRuns[job.id].length === 0}
-                        <div class="runs-empty">No runs recorded.</div>
+                        <div class="runs-empty">{$t.cron.noRuns}</div>
                       {:else}
                         <div class="run-list">
                           {#each cronRuns[job.id] as run}
                             <div class="run-item" class:run-error={!!run.error}>
                               <span class="run-time">{fmt(run.ran_at)}</span>
-                              <span class={`badge ${run.error ? 'badge-error' : 'badge-success'}`}>{run.error ? 'error' : 'ok'}</span>
+                              <span class={`badge ${run.error ? 'badge-error' : 'badge-success'}`}>{run.error ? $t.cron.runError : $t.cron.runOk}</span>
                               <p>{compact(run.error || run.response, 220)}</p>
                             </div>
                           {/each}

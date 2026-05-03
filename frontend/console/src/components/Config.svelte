@@ -28,6 +28,7 @@
   } from '../lib/configStructured'
   import type { ConfigFieldMeta, ConfigSchema } from '../lib/types'
   import ConfigPendingChanges from './ConfigPendingChanges.svelte'
+  import { t } from '../i18n'
 
   type ViewMode = 'quick' | 'form' | 'yaml'
 
@@ -750,14 +751,14 @@
   {#if onNavigate}
     <div class="wizard-entry-card" role="region" aria-label="Onboarding wizard entry">
       <div>
-        <span class="wizard-entry-kicker">Setup wizard</span>
-        <p class="wizard-entry-text">Provider 또는 tier 바인딩을 빠르게 재구성하려면 마법사를 다시 실행하세요. 기존 값이 prefill됩니다.</p>
+        <span class="wizard-entry-kicker">{$t.configWizardCard.kicker}</span>
+        <p class="wizard-entry-text">{$t.configWizardCard.body}</p>
       </div>
       <button
         type="button"
         class="btn btn-primary btn-sm"
         onclick={() => onNavigate?.('/console/onboarding?reentry=1')}
-      >설정 마법사 다시 실행 →</button>
+      >{$t.configWizardCard.button}</button>
     </div>
   {/if}
 

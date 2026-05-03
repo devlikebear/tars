@@ -8,6 +8,7 @@
     streamEvents,
   } from '../lib/api'
   import type { Approval, AutomationAuditEntry } from '../lib/types'
+  import { t } from '../i18n'
 
   type ApprovalGuideStep = {
     title: string
@@ -20,35 +21,16 @@
     state: string
   }
 
-  const cleanupPlanTooltip = 'Scans unused temporary files and empty sessions from the last 30 days. Actual deletion waits for approval.'
+  let approvalTriggerGuide = $derived<ApprovalTriggerGuide[]>([
+    { title: $t.ops.triggers.cleanupTitle, detail: $t.ops.triggers.cleanupDetail, state: $t.ops.triggers.cleanupState },
+    { title: $t.ops.triggers.pulseTitle, detail: $t.ops.triggers.pulseDetail, state: $t.ops.triggers.pulseState },
+  ])
 
-  const approvalTriggerGuide: ApprovalTriggerGuide[] = [
-    {
-      title: 'New cleanup plan',
-      detail: 'Scans unused temporary files, stale workspace scratch data, and empty sessions so you can review cleanup candidates first.',
-      state: 'available',
-    },
-    {
-      title: 'future Pulse signals',
-      detail: 'Pulse findings that are not safe to autofix can later land here for human review.',
-      state: 'planned',
-    },
-  ]
-
-  const approvalGuideSteps: ApprovalGuideStep[] = [
-    {
-      title: 'Review the candidate list',
-      detail: 'Each request shows file paths, size, and reason before anything changes.',
-    },
-    {
-      title: 'Choose Approve or Reject',
-      detail: 'Approve applies the plan; Reject discards it without touching the workspace.',
-    },
-    {
-      title: 'Read the result log',
-      detail: 'Applied approvals keep a result log so you can see what changed after the action runs.',
-    },
-  ]
+  let approvalGuideSteps = $derived<ApprovalGuideStep[]>([
+    { title: $t.ops.steps.reviewTitle, detail: $t.ops.steps.reviewDetail },
+    { title: $t.ops.steps.chooseTitle, detail: $t.ops.steps.chooseDetail },
+    { title: $t.ops.steps.resultTitle, detail: $t.ops.steps.resultDetail },
+  ])
 
   let approvals: Approval[] = $state([])
   let loading = $state(true)
@@ -95,8 +77,8 @@
   }
 
   function approvalPrimaryCount(approval: Approval): string {
-    if (approval.type === 'git_mutation') return approval.git_mutation?.destructive ? 'destructive git action' : 'git action'
-    return `${cleanupCandidates(approval).length} candidates`
+    if (approval.type === 'git_mutation') return approval.git_mutation?.destructive ? $t.ops.gitDestructive : $t.ops.gitAction
+    return $t.ops.candidatesSuffix(cleanupCandidates(approval).length)
   }
 
   async function load() {
@@ -124,7 +106,7 @@
       approvals = approvalList
       auditEntries = auditList.items ?? []
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Review failed'
+      error = err instanceof Error ? err.message : $t.ops.errorReview
     } finally {
       reviewingId = ''
     }
@@ -136,7 +118,7 @@
       const res = await listAutomationAudit(25)
       auditEntries = res.items ?? []
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load automation audit'
+      error = err instanceof Error ? err.message : $t.ops.errorAudit
     } finally {
       auditLoading = false
     }
@@ -149,7 +131,7 @@
       await createCleanupPlan()
       approvals = await listApprovals()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to create cleanup plan'
+      error = err instanceof Error ? err.message : $t.ops.errorCreate
     } finally {
       planCreating = false
     }
@@ -175,11 +157,11 @@
 <div class="ops">
   <div class="ops-header">
     <div>
-      <h2>Approvals</h2>
-      <p class="ops-subtitle">Review risky cleanup plans before TARS applies them.</p>
+      <h2>{$t.ops.title}</h2>
+      <p class="ops-subtitle">{$t.ops.subtitle}</p>
     </div>
     <button type="button" class="btn btn-ghost btn-sm" onclick={() => { void load() }}>
-      Refresh
+      {$t.ops.refresh}
     </button>
   </div>
 
@@ -188,23 +170,23 @@
   {/if}
 
   {#if loading}
-    <div class="ops-loading">Loading approvals...</div>
+    <div class="ops-loading">{$t.ops.loading}</div>
   {:else}
     <section class="card approvals-section">
       <div class="card-header">
-        <span class="card-title">Approvals</span>
+        <span class="card-title">{$t.ops.approvalsCard}</span>
         <div class="card-header-actions">
           {#if approvals.filter((a) => a.status === 'pending').length > 0}
-            <span class="badge badge-warning">{approvals.filter((a) => a.status === 'pending').length} pending</span>
+            <span class="badge badge-warning">{$t.ops.pendingBadge(approvals.filter((a) => a.status === 'pending').length)}</span>
           {/if}
           <button
             type="button"
             class="btn btn-ghost btn-sm"
-            title={cleanupPlanTooltip}
+            title={$t.ops.cleanupPlanTooltip}
             disabled={planCreating}
             onclick={handleCreatePlan}
           >
-            {planCreating ? 'Creating...' : 'New cleanup plan'}
+            {planCreating ? $t.ops.creating : $t.ops.newCleanupPlan}
           </button>
         </div>
       </div>
@@ -212,16 +194,16 @@
       {#if approvals.length === 0}
         <div class="approval-empty-guide">
           <div class="approval-empty-intro">
-            <span class="approval-empty-kicker">Approvals</span>
-            <h3>Approvals review queue</h3>
+            <span class="approval-empty-kicker">{$t.ops.emptyKicker}</span>
+            <h3>{$t.ops.emptyTitle}</h3>
             <p>
-              Approvals are where riskier workspace changes wait for your review before TARS applies them.
+              {$t.ops.emptyBody}
             </p>
           </div>
 
           <div class="approval-empty-grid">
             <div>
-              <div class="approval-empty-label">Current triggers</div>
+              <div class="approval-empty-label">{$t.ops.triggersLabel}</div>
               <ul class="approval-empty-list">
                 {#each approvalTriggerGuide as trigger}
                   <li>
@@ -236,7 +218,7 @@
             </div>
 
             <div>
-              <div class="approval-empty-label">How each approval works</div>
+              <div class="approval-empty-label">{$t.ops.stepsLabel}</div>
               <ol class="approval-step-list">
                 {#each approvalGuideSteps as step}
                   <li>
@@ -274,7 +256,7 @@
                 <div class="git-approval-detail">
                   <span class="mono">{approval.git_mutation.command}</span>
                   {#if approval.git_mutation.destructive}
-                    <span class="badge badge-error">destructive</span>
+                    <span class="badge badge-error">{$t.ops.destructiveBadge}</span>
                   {/if}
                   <span>{compact(approval.git_mutation.root, 100)}</span>
                 </div>
@@ -288,7 +270,7 @@
                     disabled={reviewingId === approval.id}
                     onclick={() => { void handleReview(approval.id, 'approve') }}
                   >
-                    Approve
+                    {$t.ops.approve}
                   </button>
                   <button
                     type="button"
@@ -296,14 +278,14 @@
                     disabled={reviewingId === approval.id}
                     onclick={() => { void handleReview(approval.id, 'reject') }}
                   >
-                    Reject
+                    {$t.ops.reject}
                   </button>
                 </div>
               {/if}
 
               {#if cleanupCandidates(approval).length > 0}
                 <details class="approval-candidates">
-                  <summary>{cleanupCandidates(approval).length} cleanup candidates</summary>
+                  <summary>{$t.ops.candidatesSuffix(cleanupCandidates(approval).length)}</summary>
                   <div class="candidate-list">
                     {#each cleanupCandidates(approval) as candidate}
                       <div class="candidate-row">
@@ -324,16 +306,16 @@
     </section>
     <section class="card audit-section">
       <div class="card-header">
-        <span class="card-title">Automation Audit</span>
+        <span class="card-title">{$t.ops.auditTitle}</span>
         <div class="card-header-actions">
-          <span class="badge badge-default">{auditEntries.length} events</span>
+          <span class="badge badge-default">{$t.ops.auditEventsSuffix(auditEntries.length)}</span>
           <button type="button" class="btn btn-ghost btn-sm" disabled={auditLoading} onclick={() => { void refreshAudit() }}>
-            {auditLoading ? 'Refreshing...' : 'Refresh'}
+            {auditLoading ? $t.ops.refreshing : $t.ops.refresh}
           </button>
         </div>
       </div>
       {#if auditEntries.length === 0}
-        <div class="ops-loading">No automation events yet.</div>
+        <div class="ops-loading">{$t.ops.noEvents}</div>
       {:else}
         <div class="audit-list">
           {#each auditEntries as entry}
