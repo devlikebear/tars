@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.131] - 2026-05-03
+
+### Added
+
+- **Prior Context panel** — debounced auto-refresh as the user types (700ms after typing stops), so the preview always reflects the current draft without a manual click.
+- **Prior Context panel** — empty-query fallback that surfaces recent experience entries / `MEMORY.md` lines / daily logs when no draft is present, with a banner explaining the live LLM prompt does not actually carry these.
+- **Prior Context panel** — "Below threshold" collapsible section that shows score-filtered candidates (1..99) so users can understand why a query did not recall anything.
+
+### Changed
+
+- **Tasks panel** — introduced a Tasks / Contract / Evidence tab structure. The Contract tab inherits the form/approval flow that previously lived in a separate top-bar panel; the Evidence tab aggregates verification artifacts across all tasks.
+- **Top toolbar** — removed the standalone Contract toggle. Contract editing now lives inside the Tasks panel, which already holds the plan it scopes.
+
 ## [0.31.130] - 2026-05-03
 
 ### Added

@@ -17,7 +17,6 @@
   import ContextMonitor from './ContextMonitor.svelte'
   import PromptEditor from './PromptEditor.svelte'
   import PriorContextPanel from './PriorContextPanel.svelte'
-  import ContractPanel from './ContractPanel.svelte'
   import TasksPanel from './TasksPanel.svelte'
   import GitInspector from './GitInspector.svelte'
   import SkillExtractionPanel from './SkillExtractionPanel.svelte'
@@ -105,7 +104,7 @@
     tier_recommendation?: ChatTierRecommendationRequest
   } = $state({})
   let contextRefreshVersion = $state(0)
-  type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'contract' | 'tasks' | 'git' | 'skillExtraction' | 'cron' | 'health' | 'terminal'
+  type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'tasks' | 'git' | 'skillExtraction' | 'cron' | 'health' | 'terminal'
   type ToolDockPanelID = Exclude<ChatDockPanelID, 'sessions'>
 
   // Below this width the chat layout collapses; dock panels render as fullscreen overlays.
@@ -122,7 +121,6 @@
     { id: 'context', title: 'Context', defaultZone: 'right' },
     { id: 'prompt', title: 'Prompt', defaultZone: 'right' },
     { id: 'prior', title: 'Prior Context', defaultZone: 'right' },
-    { id: 'contract', title: 'Contract', defaultZone: 'right' },
     { id: 'tasks', title: 'Tasks', defaultZone: 'right' },
     { id: 'git', title: 'Git', defaultZone: 'right' },
     { id: 'skillExtraction', title: 'Skill Inbox', defaultZone: 'right' },
@@ -147,7 +145,6 @@
     panelIsOpen(dockLayout, 'context') ||
     panelIsOpen(dockLayout, 'prompt') ||
     panelIsOpen(dockLayout, 'prior') ||
-    panelIsOpen(dockLayout, 'contract') ||
     panelIsOpen(dockLayout, 'tasks') ||
     panelIsOpen(dockLayout, 'git') ||
     panelIsOpen(dockLayout, 'skillExtraction') ||
@@ -738,7 +735,6 @@
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('context')} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prompt')} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prior')} onclick={() => togglePanel('prior')} title="Prior Context preview">Prior</button>
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('contract')} onclick={() => togglePanel('contract')} title="Task contract">Contract</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('tasks')} onclick={() => togglePanel('tasks')} title={tasksSummary.total > 0 ? `${tasksSummary.completed} done · ${tasksSummary.in_progress} in progress · ${tasksSummary.pending} pending` : 'Session tasks'}>Tasks{#if tasksSummary.total > 0} ({tasksSummary.completed}/{tasksSummary.total}){/if}</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('git')} onclick={() => togglePanel('git')} title="Git Inspector">Git</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('skillExtraction')} onclick={() => togglePanel('skillExtraction')} title="Skill Extraction Inbox">Skills</button>
@@ -790,8 +786,6 @@
         <PromptEditor sessionId={selectedSessionId ?? ''} onClose={() => closePanel(panelID)} />
       {:else if panelID === 'prior'}
         <PriorContextPanel sessionId={selectedSessionId ?? ''} draftQuery={chatDraft} onClose={() => closePanel(panelID)} />
-      {:else if panelID === 'contract' && selectedSessionId}
-        <ContractPanel sessionId={selectedSessionId} onClose={() => closePanel(panelID)} />
       {:else if panelID === 'tasks' && selectedSessionId}
         <TasksPanel
           bind:this={tasksPanelRef}

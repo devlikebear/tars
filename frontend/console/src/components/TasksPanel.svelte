@@ -3,7 +3,9 @@
   import { t } from '../i18n'
   import { getSessionPlanArchive, getSessionTasks, executeTasksAction, cancelChat } from '../lib/api'
   import { planProgressPercent, summarizeTasks } from '../lib/tasks'
-  import type { PlanArchiveItem, SessionTask, SessionTasks, TaskEvidence } from '../lib/types'
+  import type { PlanArchiveItem, SessionTask, SessionTasks, TaskContract, TaskEvidence } from '../lib/types'
+
+  type TabId = 'tasks' | 'contract' | 'evidence'
 
   interface Props {
     sessionId: string
@@ -17,6 +19,80 @@
   let loading = $state(true)
   let error = $state('')
   let planExpanded = $state(true)
+  let activeTab = $state<TabId>('tasks')
+
+  // Contract draft state — surfaced under the Contract tab. Mirrors what the
+  // legacy standalone ContractPanel used to manage; the legacy panel was
+  // removed once Contract moved into TasksPanel as a tab so users have a
+  // single place to inspect plan + contract + evidence.
+  let contract = $derived<TaskContract | undefined>(data.contract)
+  let contractStatus = $derived(contract?.status ?? 'draft')
+  let hasContractDraft = $derived(Boolean(contract || data.plan))
+  let contractGoal = $state('')
+  let contractScope = $state('')
+  let contractDoneCriteria = $state('')
+  let contractVerificationCommands = $state('')
+  let contractArtifacts = $state('')
+  let contractSaving = $state(false)
+  let contractSaved = $state('')
+  let contractError = $state('')
+
+  // Aggregated evidence across all tasks — surfaced under the Evidence tab.
+  let aggregatedEvidence = $derived<Array<TaskEvidence & { task_title: string; task_id: string }>>(
+    (data.tasks ?? []).flatMap((task) =>
+      (task.evidence ?? []).map((evidence) => ({
+        ...evidence,
+        task_id: task.id,
+        task_title: task.title,
+      })),
+    ),
+  )
+
+  function joinLines(value?: string[]): string {
+    return (value ?? []).join('\n')
+  }
+
+  function splitLines(value: string): string[] {
+    return value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+  }
+
+  function loadContractDraft(next: SessionTasks) {
+    const next_contract = next.contract
+    contractGoal = next_contract?.goal ?? next.plan?.goal ?? ''
+    contractScope = next_contract?.scope ?? next.plan?.constraints ?? ''
+    contractDoneCriteria = joinLines(next_contract?.done_criteria)
+    contractVerificationCommands = joinLines(next_contract?.verification_commands)
+    contractArtifacts = joinLines(next_contract?.artifacts)
+  }
+
+  async function saveContract(markApproved = false) {
+    contractSaving = true
+    contractError = ''
+    contractSaved = ''
+    try {
+      await executeTasksAction(sessionId, {
+        action: 'contract_update',
+        goal: contractGoal,
+        scope: contractScope,
+        done_criteria: splitLines(contractDoneCriteria),
+        verification_commands: splitLines(contractVerificationCommands),
+        artifacts: splitLines(contractArtifacts),
+      })
+      if (markApproved) {
+        await executeTasksAction(sessionId, { action: 'contract_approve' })
+      }
+      data = await getSessionTasks(sessionId)
+      loadContractDraft(data)
+      contractSaved = markApproved ? 'Approved' : 'Saved'
+    } catch (err) {
+      contractError = err instanceof Error ? err.message : 'Save failed'
+    } finally {
+      contractSaving = false
+    }
+  }
   let archiveItems: PlanArchiveItem[] = $state([])
   let archiveExpanded = $state(false)
   let archiveError = $state('')
@@ -51,6 +127,7 @@
     archiveError = ''
     try {
       data = await getSessionTasks(sessionId)
+      loadContractDraft(data)
       try {
         archiveItems = (await getSessionPlanArchive(sessionId)).items
       } catch (err) {
@@ -363,6 +440,44 @@
     </div>
   </div>
 
+  <div class="tab-nav" role="tablist" aria-label="Tasks panel sections">
+    <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'tasks'}
+      class="tab-btn"
+      class:active={activeTab === 'tasks'}
+      onclick={() => activeTab = 'tasks'}
+    >Tasks</button>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'contract'}
+      class="tab-btn"
+      class:active={activeTab === 'contract'}
+      onclick={() => activeTab = 'contract'}
+    >
+      Contract
+      {#if hasContractDraft}
+        <span class="tab-badge badge {contractStatus === 'approved' ? 'badge-success' : 'badge-warning'}">{contractStatus}</span>
+      {/if}
+    </button>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'evidence'}
+      class="tab-btn"
+      class:active={activeTab === 'evidence'}
+      onclick={() => activeTab = 'evidence'}
+    >
+      Evidence
+      {#if aggregatedEvidence.length > 0}
+        <span class="tab-badge badge badge-default">{aggregatedEvidence.length}</span>
+      {/if}
+    </button>
+  </div>
+
+  {#if activeTab === 'tasks'}
   {#if loading}
     <div class="empty-state">{$t.tasks.loading}</div>
   {:else if error}
@@ -579,7 +694,7 @@
   {/if}
 
   {#if !loading && !error}
-    <section class="archive-section">
+    <section class="archive-section tab-tasks-archive">
       <button class="archive-header" type="button" onclick={() => archiveExpanded = !archiveExpanded}>
         <span class="plan-toggle">{archiveExpanded ? '\u25be' : '\u25b8'}</span>
         <span>{$t.tasks.archive.pastPlans(archiveItems.length)}</span>
@@ -613,6 +728,85 @@
       {/if}
     </section>
   {/if}
+  {:else if activeTab === 'contract'}
+    {#if loading}
+      <div class="empty-state">{$t.tasks.loading}</div>
+    {:else if !hasContractDraft}
+      <div class="empty-state">
+        <p>No task contract yet.</p>
+        <p class="hint">Start a multi-step plan to draft one.</p>
+      </div>
+    {:else}
+      <div class="contract-form">
+        <label>
+          <span>Goal</span>
+          <textarea bind:value={contractGoal} rows="3" disabled={contractSaving}></textarea>
+        </label>
+        <label>
+          <span>Scope</span>
+          <textarea bind:value={contractScope} rows="4" disabled={contractSaving}></textarea>
+        </label>
+        <label>
+          <span>Done criteria (one per line)</span>
+          <textarea bind:value={contractDoneCriteria} rows="5" disabled={contractSaving}></textarea>
+        </label>
+        <label>
+          <span>Verification commands (one per line)</span>
+          <textarea bind:value={contractVerificationCommands} rows="4" disabled={contractSaving}></textarea>
+        </label>
+        <label>
+          <span>Artifacts (one per line)</span>
+          <textarea bind:value={contractArtifacts} rows="4" disabled={contractSaving}></textarea>
+        </label>
+      </div>
+
+      {#if contractError}
+        <div class="error-banner">{contractError}</div>
+      {/if}
+      {#if contractSaved}
+        <div class="success-banner">{contractSaved}</div>
+      {/if}
+
+      <div class="contract-actions">
+        <button class="btn btn-primary btn-sm" type="button" disabled={contractSaving} onclick={() => saveContract(false)}>
+          {contractSaving ? 'Saving...' : 'Save'}
+        </button>
+        <button class="btn btn-ghost btn-sm" type="button" disabled={contractSaving || contractStatus === 'approved'} onclick={() => saveContract(true)}>
+          {contractStatus === 'approved' ? 'Approved' : 'Approve Contract'}
+        </button>
+      </div>
+    {/if}
+  {:else if activeTab === 'evidence'}
+    {#if loading}
+      <div class="empty-state">{$t.tasks.loading}</div>
+    {:else if aggregatedEvidence.length === 0}
+      <div class="empty-state">
+        <p>No verification evidence attached yet.</p>
+        <p class="hint">Use "+ Evidence" on each task to attach test results, logs, PR links, etc.</p>
+      </div>
+    {:else}
+      <div class="evidence-aggregate-list">
+        {#each aggregatedEvidence as evidence (evidence.id)}
+          <article class="evidence-aggregate-card">
+            <div class="evidence-aggregate-head">
+              <strong>{evidenceLabel(evidence)}</strong>
+              <span class="evidence-type">{evidenceTypeLabel(evidence.type)}</span>
+            </div>
+            <small class="evidence-aggregate-task">{evidence.task_title}</small>
+            {#if evidence.summary}
+              <p>{evidence.summary}</p>
+            {/if}
+            {#if evidenceMeta(evidence)}
+              <small>{evidenceMeta(evidence)}</small>
+            {/if}
+            {#if evidence.url}
+              <a href={evidence.url} target="_blank" rel="noreferrer">{evidence.url}</a>
+            {/if}
+          </article>
+        {/each}
+      </div>
+    {/if}
+  {/if}
 </div>
 
 <style>
@@ -640,6 +834,129 @@
   .panel-actions {
     display: flex;
     gap: var(--space-1);
+  }
+
+  .tab-nav {
+    display: flex;
+    gap: var(--space-1);
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: var(--space-1);
+  }
+
+  .tab-btn {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm, 0.25rem);
+    padding: var(--space-1) var(--space-2);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: var(--text-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .tab-btn:hover {
+    color: var(--text-primary);
+    background: var(--surface-muted);
+  }
+
+  .tab-btn.active {
+    color: var(--text-primary);
+    background: var(--surface-elevated, var(--surface-muted));
+    border-color: var(--border-default, var(--border-subtle));
+  }
+
+  .tab-badge {
+    font-size: var(--text-xs);
+    padding: 1px 5px;
+  }
+
+  .contract-form {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .contract-form label {
+    display: grid;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  .contract-form textarea {
+    width: 100%;
+    resize: vertical;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    background: var(--surface);
+    color: var(--text-primary);
+    padding: var(--space-2);
+    font: inherit;
+    line-height: 1.45;
+  }
+
+  .contract-form textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+  }
+
+  .contract-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .success-banner {
+    border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--success) 10%, transparent);
+    color: var(--text-primary);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+  }
+
+  .evidence-aggregate-list {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .evidence-aggregate-card {
+    display: grid;
+    gap: var(--space-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+    padding: var(--space-2);
+  }
+
+  .evidence-aggregate-head {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2);
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .evidence-aggregate-head strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .evidence-aggregate-task {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .evidence-aggregate-card p,
+  .evidence-aggregate-card small,
+  .evidence-aggregate-card a {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
   }
 
   .empty-state {

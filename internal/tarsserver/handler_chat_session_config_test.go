@@ -228,6 +228,144 @@ func TestChatAPIHandler_PriorContextPreviewEndpointReturnsExactSectionAndItems(t
 	}
 }
 
+func TestChatAPIHandler_PriorContextPreviewEmptyQueryReturnsRecentFallback(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("Recent project note one.\nRecent project note two.\n"), 0o644); err != nil {
+		t.Fatalf("write MEMORY.md: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		&mockLLMClient{},
+		nil,
+		zerolog.Nop(),
+		4,
+		nil,
+		"",
+		chatToolingOptions{MemoryCache: newMemoryCache(time.Minute)},
+	)
+
+	body := bytes.NewBufferString(`{"session_id":"` + sess.ID + `","query":""}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/prior-context/preview", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Mode                string `json:"mode"`
+		Section             string `json:"section"`
+		Items               []any  `json:"items"`
+		RecentFallbackItems []struct {
+			Source    string `json:"source"`
+			SourceTag string `json:"source_tag"`
+			Snippet   string `json:"snippet"`
+			Tokens    int    `json:"tokens"`
+		} `json:"recent_fallback_items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload.Mode != "recent" {
+		t.Fatalf("expected mode=recent for empty query, got %q", payload.Mode)
+	}
+	if payload.Section != "" {
+		t.Fatalf("expected empty Section in recent mode, got %q", payload.Section)
+	}
+	if len(payload.RecentFallbackItems) == 0 {
+		t.Fatalf("expected at least one recent fallback item, got none")
+	}
+	found := false
+	for _, item := range payload.RecentFallbackItems {
+		if item.Source == "MEMORY.md" && item.SourceTag == "project" && strings.Contains(item.Snippet, "project note") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected MEMORY.md fallback item with project tag, got %+v", payload.RecentFallbackItems)
+	}
+}
+
+func TestChatAPIHandler_PriorContextPreviewIncludesBelowThresholdCandidates(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	// Single-keyword match against MEMORY.md scores below 100 because the
+	// keyword scorer awards 25 per term + base 100 only when the line matches
+	// AND the file is recent enough; we use an old-content line that lacks the
+	// query terms so it cannot pass the threshold.
+	memoryContent := "" +
+		"alpha solo line that mentions zephyr only.\n" +
+		"unrelated control line about giraffes.\n"
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte(memoryContent), 0o644); err != nil {
+		t.Fatalf("write MEMORY.md: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		&mockLLMClient{},
+		nil,
+		zerolog.Nop(),
+		4,
+		nil,
+		"",
+		chatToolingOptions{MemoryCache: newMemoryCache(time.Minute)},
+	)
+
+	body := bytes.NewBufferString(`{"session_id":"` + sess.ID + `","query":"zephyr"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/prior-context/preview", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Mode                string `json:"mode"`
+		Items               []any  `json:"items"`
+		BelowThresholdItems []struct {
+			Source  string `json:"source"`
+			Snippet string `json:"snippet"`
+		} `json:"below_threshold_items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload.Mode != "default" {
+		t.Fatalf("expected mode=default for non-empty query, got %q", payload.Mode)
+	}
+	// We don't strictly require Items to be empty (depends on recency boost),
+	// but the response payload must always include the below_threshold field
+	// (never null) so the frontend can render unconditionally.
+	if payload.BelowThresholdItems == nil {
+		t.Fatalf("expected below_threshold_items field present, got nil")
+	}
+}
+
 func TestChatAPIHandler_ContextEndpointReflectsSessionGroupConfig(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {

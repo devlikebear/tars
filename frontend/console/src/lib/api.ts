@@ -825,11 +825,16 @@ export type PriorContextPreviewItem = {
   tokens: number
 }
 
+export type PriorContextPreviewMode = 'default' | 'recent'
+
 export type PriorContextPreview = {
   session_id: string
   query: string
+  mode: PriorContextPreviewMode
   section: string
   items: PriorContextPreviewItem[]
+  below_threshold_items: PriorContextPreviewItem[]
+  recent_fallback_items: PriorContextPreviewItem[]
   relevant_tokens: number
   relevant_memory_count: number
   relevant_budget_tokens: number

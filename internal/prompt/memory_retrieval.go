@@ -38,7 +38,16 @@ func buildRelevantMemorySection(opts BuildOptions, budgetTokens int) (string, []
 	if len(matches) == 0 {
 		return "", nil, 0
 	}
+	return renderRelevantMemorySection(matches, budgetTokens)
+}
 
+// renderRelevantMemorySection turns ranked matches into the "## Prior Context"
+// markdown block plus a structured items slice, respecting the token budget.
+// Extracted from buildRelevantMemorySection so the preview path can reuse it.
+func renderRelevantMemorySection(matches []relevantMemoryMatch, budgetTokens int) (string, []RelevantMemoryItem, int) {
+	if len(matches) == 0 {
+		return "", nil, 0
+	}
 	remainingTokens := budgetTokens
 	if remainingTokens <= 0 {
 		remainingTokens = defaultRelevantBudgetTokens
@@ -96,12 +105,25 @@ func buildRelevantMemorySection(opts BuildOptions, budgetTokens int) (string, []
 }
 
 func collectRelevantMemory(opts BuildOptions) []relevantMemoryMatch {
+	above, _ := collectRelevantMemoryWithSplit(opts)
+	return above
+}
+
+// collectRelevantMemoryWithSplit returns the same above-threshold matches as
+// collectRelevantMemory plus a separate slice of below-threshold candidates
+// (score 1..99) for the preview UI. Below-threshold candidates are not used
+// in the live LLM prompt; they exist so users can see why their query did not
+// recall anything.
+func collectRelevantMemoryWithSplit(opts BuildOptions) (above, below []relevantMemoryMatch) {
 	terms := normalizeRelevantTerms(opts.Query)
 	if len(terms) == 0 && !opts.ForceRelevantMemory {
-		return nil
+		return nil, nil
 	}
 	if semantic := collectSemanticMatches(opts); len(semantic) > 0 {
-		return semantic
+		// Semantic matches already pass thresholding inside the searcher;
+		// we surface them as-is and have no notion of "below threshold" for
+		// this path.
+		return semantic, nil
 	}
 
 	matches := make([]relevantMemoryMatch, 0, 16)
@@ -110,7 +132,7 @@ func collectRelevantMemory(opts BuildOptions) []relevantMemoryMatch {
 	matches = append(matches, collectDailyLogMatches(opts, terms)...)
 	matches = append(matches, collectSessionMatches(opts, terms)...)
 	if len(matches) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	sort.SliceStable(matches, func(i, j int) bool {
@@ -124,7 +146,8 @@ func collectRelevantMemory(opts BuildOptions) []relevantMemoryMatch {
 	})
 
 	seen := map[string]struct{}{}
-	filtered := make([]relevantMemoryMatch, 0, defaultRelevantResultLimit)
+	above = make([]relevantMemoryMatch, 0, defaultRelevantResultLimit)
+	below = make([]relevantMemoryMatch, 0, defaultRelevantResultLimit)
 	for _, match := range matches {
 		key := strings.ToLower(strings.TrimSpace(match.Snippet))
 		if key == "" {
@@ -135,14 +158,16 @@ func collectRelevantMemory(opts BuildOptions) []relevantMemoryMatch {
 		}
 		seen[key] = struct{}{}
 		if match.Score < 100 && !opts.ForceRelevantMemory {
+			if len(below) < defaultRelevantResultLimit {
+				below = append(below, match)
+			}
 			continue
 		}
-		filtered = append(filtered, match)
-		if len(filtered) >= defaultRelevantResultLimit {
-			break
+		if len(above) < defaultRelevantResultLimit {
+			above = append(above, match)
 		}
 	}
-	return filtered
+	return above, below
 }
 
 func collectSemanticMatches(opts BuildOptions) []relevantMemoryMatch {
