@@ -1154,37 +1154,33 @@ func newChatAPIHandlerWithRuntimeConfig(
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 			return
 		}
-		details, err := prepareChatContextDetailsWithCache(
-			requestWorkspaceDir,
-			sessionID,
-			strings.TrimSpace(req.Query),
-			extensions.Snapshot{},
-			nil,
-			tooling.MemoryCache,
-			tooling.MemorySemanticConfig,
-			sess.WorkDirs,
-			sess.CurrentDir,
-			tooling.PlanClarifyMode,
-		)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "", "prepare prior context failed")
-			return
-		}
+		query := strings.TrimSpace(req.Query)
+		preview := prompt.BuildPriorContextPreview(prompt.BuildOptions{
+			WorkspaceDir:   requestWorkspaceDir,
+			WorkDirs:       sess.WorkDirs,
+			CurrentDir:     sess.CurrentDir,
+			Query:          query,
+			SessionID:      sessionID,
+			MemorySearcher: buildSemanticMemoryService(requestWorkspaceDir, tooling.MemorySemanticConfig),
+		}, 0)
 		budgetPercent := 0
-		if details.RelevantMemoryBudgetTokens > 0 && details.RelevantMemoryTokens > 0 {
-			budgetPercent = int((float64(details.RelevantMemoryTokens) / float64(details.RelevantMemoryBudgetTokens)) * 100)
+		if preview.RelevantBudgetTokens > 0 && preview.RelevantTokens > 0 {
+			budgetPercent = int((float64(preview.RelevantTokens) / float64(preview.RelevantBudgetTokens)) * 100)
 			if budgetPercent == 0 {
 				budgetPercent = 1
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"session_id":             sessionID,
-			"query":                  strings.TrimSpace(req.Query),
-			"section":                details.RelevantMemorySection,
-			"items":                  details.RelevantMemoryItems,
-			"relevant_tokens":        details.RelevantMemoryTokens,
-			"relevant_memory_count":  details.RelevantMemoryCount,
-			"relevant_budget_tokens": details.RelevantMemoryBudgetTokens,
+			"query":                  query,
+			"mode":                   preview.Mode,
+			"section":                preview.Section,
+			"items":                  preview.Items,
+			"below_threshold_items":  preview.BelowThreshold,
+			"recent_fallback_items":  preview.RecentFallback,
+			"relevant_tokens":        preview.RelevantTokens,
+			"relevant_memory_count":  len(preview.Items),
+			"relevant_budget_tokens": preview.RelevantBudgetTokens,
 			"budget_percent":         budgetPercent,
 			"generated_at":           time.Now().UTC().Format(time.RFC3339),
 		})

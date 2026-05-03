@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { getPriorContextPreview, type PriorContextPreview } from '../lib/api'
+  import { onDestroy } from 'svelte'
+  import { getPriorContextPreview, type PriorContextPreview, type PriorContextPreviewItem } from '../lib/api'
 
   interface Props {
     sessionId: string
@@ -9,18 +10,31 @@
 
   let { sessionId, draftQuery = '', onClose }: Props = $props()
 
+  // Debounce window after typing stops before we re-fetch the preview. Long
+  // enough to avoid hammering the embedding/keyword search on every keystroke,
+  // short enough to feel live. The 5-min MemoryCache absorbs repeats.
+  const DEBOUNCE_MS = 700
+
   let preview = $state<PriorContextPreview | null>(null)
   let loading = $state(false)
   let error = $state('')
   let loadedSessionId = $state('')
   let lastPreviewedQuery = $state('')
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null
 
   let trimmedDraft = $derived((draftQuery ?? '').trim())
-  let isStale = $derived(preview !== null && trimmedDraft !== lastPreviewedQuery)
-  let previewItems = $derived(Array.isArray(preview?.items) ? preview.items : [])
-  let budgetText = $derived(preview
+  let isStale = $derived(preview !== null && trimmedDraft !== lastPreviewedQuery && !loading)
+  let mode = $derived(preview?.mode ?? 'default')
+  let isRecentMode = $derived(mode === 'recent')
+  let displayItems = $derived<PriorContextPreviewItem[]>(
+    isRecentMode ? (preview?.recent_fallback_items ?? []) : (preview?.items ?? []),
+  )
+  let belowThreshold = $derived<PriorContextPreviewItem[]>(preview?.below_threshold_items ?? [])
+  let budgetText = $derived(preview && !isRecentMode
     ? `${preview.relevant_tokens.toLocaleString()} / ${preview.relevant_budget_tokens.toLocaleString()} tokens (${preview.budget_percent}%)`
-    : '0 / 0 tokens (0%)'
+    : isRecentMode
+      ? 'Recent fallback (no active query)'
+      : '0 / 0 tokens (0%)'
   )
 
   function sourceClass(source_tag: string): string {
@@ -40,6 +54,21 @@
     loading = false
   }
 
+  function scheduleAutoRefresh() {
+    if (pendingTimer) clearTimeout(pendingTimer)
+    pendingTimer = setTimeout(() => {
+      pendingTimer = null
+      void load(trimmedDraft)
+    }, DEBOUNCE_MS)
+  }
+
+  onDestroy(() => {
+    if (pendingTimer) {
+      clearTimeout(pendingTimer)
+      pendingTimer = null
+    }
+  })
+
   $effect(() => {
     const sid = sessionId
     if (sid && sid !== loadedSessionId) {
@@ -48,6 +77,16 @@
       lastPreviewedQuery = ''
       void load(trimmedDraft)
     }
+  })
+
+  // Auto-refresh on draft change (debounced). The first load for a session is
+  // handled by the session-change effect above; subsequent draft edits flow
+  // through here.
+  $effect(() => {
+    const draft = trimmedDraft
+    if (!loadedSessionId) return
+    if (draft === lastPreviewedQuery) return
+    scheduleAutoRefresh()
   })
 </script>
 
@@ -67,7 +106,7 @@
       {loading ? 'Loading...' : 'Refresh preview'}
     </button>
     {#if isStale}
-      <span class="stale-badge">Draft changed</span>
+      <span class="stale-badge">Updating…</span>
     {/if}
   </div>
 
@@ -79,13 +118,19 @@
     {#if !preview && loading}
       <div class="prior-empty">Loading...</div>
     {:else if preview}
-      <div class="prior-meter" aria-label="Prior Context token budget">
-        <div class="prior-meter-fill" style="width: {Math.min(100, Math.max(0, preview.budget_percent))}%;"></div>
-      </div>
+      {#if isRecentMode}
+        <div class="prior-banner" role="status">
+          <strong>No active query.</strong> Showing recent memory the assistant could reach. Type in the chat box to preview the actual recall.
+        </div>
+      {:else}
+        <div class="prior-meter" aria-label="Prior Context token budget">
+          <div class="prior-meter-fill" style="width: {Math.min(100, Math.max(0, preview.budget_percent))}%;"></div>
+        </div>
+      {/if}
 
-      {#if previewItems.length > 0}
+      {#if displayItems.length > 0}
         <div class="prior-items">
-          {#each previewItems as item}
+          {#each displayItems as item}
             <article class="prior-item">
               <div class="prior-item-meta">
                 <span class="source-badge tag-{sourceClass(item.source_tag)}">{item.source_tag}</span>
@@ -97,13 +142,35 @@
           {/each}
         </div>
       {:else}
-        <div class="prior-empty">No Prior Context</div>
+        <div class="prior-empty">
+          {isRecentMode ? 'No recent memory available yet.' : 'No matches for this query.'}
+        </div>
       {/if}
 
-      <details class="prior-section" open>
-        <summary>Prompt Section</summary>
-        <pre>{preview.section || '## Prior Context\n\n'}</pre>
-      </details>
+      {#if belowThreshold.length > 0}
+        <details class="prior-section prior-below">
+          <summary>Below threshold ({belowThreshold.length}) — not sent to LLM</summary>
+          <div class="prior-items prior-items-dim">
+            {#each belowThreshold as item}
+              <article class="prior-item">
+                <div class="prior-item-meta">
+                  <span class="source-badge tag-{sourceClass(item.source_tag)}">{item.source_tag}</span>
+                  <span class="source-path">{item.source}</span>
+                  <span class="item-tokens">{item.tokens.toLocaleString()} tokens</span>
+                </div>
+                <p>{item.snippet}</p>
+              </article>
+            {/each}
+          </div>
+        </details>
+      {/if}
+
+      {#if !isRecentMode}
+        <details class="prior-section">
+          <summary>Prompt Section</summary>
+          <pre>{preview.section || '## Prior Context\n\n'}</pre>
+        </details>
+      {/if}
     {:else}
       <div class="prior-empty">No session selected</div>
     {/if}
@@ -193,6 +260,20 @@
     padding: var(--space-3);
   }
 
+  .prior-banner {
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: var(--radius-sm);
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--text-secondary);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
+
+  .prior-banner strong {
+    color: var(--text-primary);
+  }
+
   .prior-meter {
     height: 8px;
     overflow: hidden;
@@ -210,6 +291,10 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+  }
+
+  .prior-items-dim {
+    opacity: 0.55;
   }
 
   .prior-item {
@@ -292,6 +377,10 @@
     color: var(--text-secondary);
     font-size: var(--text-sm);
     font-weight: 600;
+  }
+
+  .prior-below summary {
+    color: var(--text-ghost);
   }
 
   .prior-section pre {
