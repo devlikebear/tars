@@ -7,31 +7,45 @@ import (
 	"github.com/devlikebear/tars/internal/session"
 )
 
-func TestBuildLLMMessagesWithBlocks_PropagatesToolCallIDFromHistory(t *testing.T) {
+func TestBuildLLMMessagesWithBlocks_PropagatesToolCallMetadataFromHistory(t *testing.T) {
 	msgs := buildLLMMessagesWithBlocks("system prompt", []session.Message{
 		{
-			Role:       "assistant",
-			Content:    "I need to check files",
-			ToolCallID: "",
+			Role:    "user",
+			Content: "read the file",
 		},
 		{
 			Role:       "tool",
 			Content:    `{"count":1}`,
 			ToolCallID: "call_123",
+			ToolName:   "read_file",
+			ToolArgs:   `{"path":"README.md"}`,
+		},
+		{
+			Role:    "assistant",
+			Content: "I reviewed that file",
 		},
 	}, "what now", nil)
 
-	if len(msgs) != 4 {
-		t.Fatalf("expected 4 messages, got %d", len(msgs))
+	if len(msgs) != 5 {
+		t.Fatalf("expected 5 messages, got %d", len(msgs))
 	}
-	if msgs[1].Role != "assistant" {
-		t.Fatalf("expected assistant at index 1, got %q", msgs[1].Role)
+	if msgs[2].Role != "assistant" {
+		t.Fatalf("expected assistant at index 2, got %q", msgs[2].Role)
 	}
-	if msgs[2].Role != "tool" {
-		t.Fatalf("expected tool at index 2, got %q", msgs[2].Role)
+	if len(msgs[2].ToolCalls) != 1 {
+		t.Fatalf("expected one tool call, got %+v", msgs[2].ToolCalls)
 	}
-	if msgs[2].ToolCallID != "call_123" {
-		t.Fatalf("expected tool_call_id call_123, got %q", msgs[2].ToolCallID)
+	if msgs[2].ToolCalls[0].ID != "call_123" {
+		t.Fatalf("expected tool call id call_123, got %q", msgs[2].ToolCalls[0].ID)
+	}
+	if msgs[2].ToolCalls[0].Name != "read_file" {
+		t.Fatalf("expected tool name read_file, got %q", msgs[2].ToolCalls[0].Name)
+	}
+	if msgs[3].Role != "tool" {
+		t.Fatalf("expected tool at index 3, got %q", msgs[3].Role)
+	}
+	if msgs[3].ToolCallID != "call_123" {
+		t.Fatalf("expected tool_call_id call_123, got %q", msgs[3].ToolCallID)
 	}
 }
 
@@ -40,6 +54,25 @@ func TestBuildLLMMessagesWithBlocks_SkipsToolMessagesWithoutToolCallID(t *testin
 		{
 			Role:    "tool",
 			Content: `{"count":1}`,
+		},
+	}, "what now", nil)
+
+	if len(msgs) != 2 { // system + current user
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	if msgs[1].Role != "user" {
+		t.Fatalf("expected user message to be second, got %q", msgs[1].Role)
+	}
+}
+
+func TestBuildLLMMessagesWithBlocks_DropsTrailingToolWithoutMatchingAssistant(t *testing.T) {
+	msgs := buildLLMMessagesWithBlocks("system prompt", []session.Message{
+		{
+			Role:      "tool",
+			Content:   `{"count":1}`,
+			ToolName:  "read_file",
+			ToolArgs:  `{"path":"README.md"}`,
+			ToolCallID: "call_123",
 		},
 	}, "what now", nil)
 

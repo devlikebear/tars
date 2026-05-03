@@ -237,19 +237,130 @@ func buildLLMMessages(systemPrompt string, history []session.Message, userMessag
 func buildLLMMessagesWithBlocks(systemPrompt string, history []session.Message, userMessage string, contentBlocks []llm.ContentBlock) []llm.ChatMessage {
 	llmMessages := make([]llm.ChatMessage, 0, len(history)+2)
 	llmMessages = append(llmMessages, llm.ChatMessage{Role: "system", Content: systemPrompt})
+	llmMessages = append(llmMessages, buildLLMMessageHistory(history)...)
+	msg := llm.ChatMessage{Role: "user", Content: userMessage, ContentBlocks: contentBlocks}
+	llmMessages = append(llmMessages, msg)
+	return llmMessages
+}
+
+type toolReplayRecord struct {
+	id      string
+	name    string
+	args    string
+	content string
+}
+
+func buildLLMMessageHistory(history []session.Message) []llm.ChatMessage {
+	llmMessages := make([]llm.ChatMessage, 0, len(history)+1)
+	pendingByID := map[string]toolReplayRecord{}
+	pendingOrder := make([]string, 0, 4)
+
+	appendToolOutput := func(toolCallIDs []string) {
+		if len(toolCallIDs) == 0 {
+			return
+		}
+		for _, id := range toolCallIDs {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			record := pendingByID[id]
+			if strings.TrimSpace(record.id) == "" {
+				continue
+			}
+			llmMessages = append(llmMessages, llm.ChatMessage{
+				Role:       "tool",
+				Content:    record.content,
+				ToolCallID: record.id,
+			})
+		}
+		pendingByID = map[string]toolReplayRecord{}
+		pendingOrder = pendingOrder[:0]
+	}
+
+	discardToolOutput := func() {
+		pendingByID = map[string]toolReplayRecord{}
+		pendingOrder = pendingOrder[:0]
+	}
+
+	appendAssistantWithPendingTools := func(m session.Message) {
+		if len(pendingOrder) == 0 {
+			llmMessages = append(llmMessages, llm.ChatMessage{
+				Role:       strings.TrimSpace(m.Role),
+				Content:    m.Content,
+				ToolCallID: strings.TrimSpace(m.ToolCallID),
+			})
+			return
+		}
+
+		toolCalls := make([]llm.ToolCall, 0, len(pendingOrder))
+		outputOrder := make([]string, 0, len(pendingOrder))
+		for _, id := range pendingOrder {
+			record := pendingByID[id]
+			name := strings.TrimSpace(record.name)
+			if name == "" {
+				continue
+			}
+			toolCalls = append(toolCalls, llm.ToolCall{
+				ID:        id,
+				Name:      name,
+				Arguments: strings.TrimSpace(record.args),
+			})
+			outputOrder = append(outputOrder, id)
+		}
+		if len(toolCalls) == 0 {
+			llmMessages = append(llmMessages, llm.ChatMessage{
+				Role:       "assistant",
+				Content:    m.Content,
+				ToolCallID: strings.TrimSpace(m.ToolCallID),
+			})
+			discardToolOutput()
+			return
+		}
+
+		llmMessages = append(llmMessages, llm.ChatMessage{
+			Role:       "assistant",
+			Content:    m.Content,
+			ToolCalls:  toolCalls,
+			ToolCallID: strings.TrimSpace(m.ToolCallID),
+		})
+		appendToolOutput(outputOrder)
+	}
+
 	for _, m := range history {
 		role := strings.TrimSpace(m.Role)
-		if role == "tool" && strings.TrimSpace(m.ToolCallID) == "" {
+		if role == "" {
 			continue
 		}
+		if role == "tool" {
+			callID := strings.TrimSpace(m.ToolCallID)
+			if callID == "" {
+				continue
+			}
+			if _, ok := pendingByID[callID]; !ok {
+				pendingOrder = append(pendingOrder, callID)
+			}
+			pendingByID[callID] = toolReplayRecord{
+				id:      callID,
+				name:    m.ToolName,
+				args:    m.ToolArgs,
+				content: m.Content,
+			}
+			continue
+		}
+		if role == "assistant" {
+			appendAssistantWithPendingTools(m)
+			continue
+		}
+
+		discardToolOutput()
 		llmMessages = append(llmMessages, llm.ChatMessage{
 			Role:       role,
 			Content:    m.Content,
-			ToolCallID: m.ToolCallID,
+			ToolCallID: strings.TrimSpace(m.ToolCallID),
 		})
 	}
-	msg := llm.ChatMessage{Role: "user", Content: userMessage, ContentBlocks: contentBlocks}
-	llmMessages = append(llmMessages, msg)
+	discardToolOutput()
+
 	return llmMessages
 }
 
