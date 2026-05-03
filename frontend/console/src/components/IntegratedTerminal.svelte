@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from 'svelte'
+  import { onDestroy, onMount, tick, untrack } from 'svelte'
   import { Terminal } from '@xterm/xterm'
   import { FitAddon } from '@xterm/addon-fit'
   import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -449,7 +449,11 @@
   })
 
   $effect(() => {
-    onStatusChange?.({ connected, status, error })
+    // Track only the data fields. Read the callback inside untrack so a parent
+    // re-rendering an inline arrow (new reference each time) doesn't reschedule
+    // this effect and create a write→render→re-run loop.
+    const snapshot = { connected, status, error }
+    untrack(() => onStatusChange?.(snapshot))
   })
 
   onDestroy(() => {

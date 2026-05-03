@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.135] - 2026-05-03
+
+### Fixed
+
+- **Integrated terminal** — `effect_update_depth_exceeded` crash when a terminal tab opened inside `TerminalTabs`. The status-emitting `$effect` in `IntegratedTerminal` was tracking the parent's `onStatusChange` callback as a dependency; each `statuses` write recreated the inline arrow, retriggering the effect. Now the callback is invoked through `untrack` so only the data fields drive re-runs.
+
 ## [0.31.134] - 2026-05-03
 
 ### Added
