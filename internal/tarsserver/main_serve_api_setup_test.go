@@ -19,12 +19,13 @@ func TestRegisterSetupOnlyRoutes_ServesAllowedEndpoints(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	registerSetupOnlyRoutes(mux, setupOnlyHandlers{
-		healthz: stub,
-		setup:   stub,
-		config:  stub,
-		auth:    stub,
-		events:  stub,
-		console: stub,
+		healthz:         stub,
+		setup:           stub,
+		config:          stub,
+		auth:            stub,
+		events:          stub,
+		console:         stub,
+		providersModels: stub,
 	})
 
 	allowed := []string{
@@ -35,6 +36,8 @@ func TestRegisterSetupOnlyRoutes_ServesAllowedEndpoints(t *testing.T) {
 		"/v1/admin/config/schema",
 		"/v1/admin/restart",
 		"/v1/auth/whoami",
+		"/v1/providers",
+		"/v1/models",
 		"/v1/events/stream",
 		"/console",
 		"/console/",
@@ -129,18 +132,21 @@ func TestRegisterSetupOnlyRoutes_OmitsEventsAndConsoleWhenNil(t *testing.T) {
 		// events and console intentionally nil
 	})
 
-	for _, path := range []string{"/v1/events/stream", "/console", "/console/x"} {
+	for _, path := range []string{"/v1/events/stream", "/v1/providers", "/v1/models", "/console", "/console/x"} {
 		t.Run(path, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			mux.ServeHTTP(rec, req)
-			// /v1/events/stream falls into the /v1/ catch-all → 503
-			// /console paths fall into the / catch-all → 404
-			if path == "/v1/events/stream" && rec.Code != http.StatusServiceUnavailable {
-				t.Fatalf("expected 503 for events when nil, got %d", rec.Code)
+			// /v1/* paths fall into the /v1/ catch-all → 503 setup-only fallback.
+			// /console paths fall into the / catch-all → 404.
+			if path == "/console" || path == "/console/x" {
+				if rec.Code != http.StatusNotFound {
+					t.Fatalf("expected 404 for %s when console nil, got %d", path, rec.Code)
+				}
+				return
 			}
-			if path != "/v1/events/stream" && rec.Code != http.StatusNotFound {
-				t.Fatalf("expected 404 for %s when console nil, got %d", path, rec.Code)
+			if rec.Code != http.StatusServiceUnavailable {
+				t.Fatalf("expected 503 for %s when handler nil, got %d", path, rec.Code)
 			}
 		})
 	}
