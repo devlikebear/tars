@@ -25,12 +25,21 @@
   }: Props = $props()
 
   let navOpen = $state(false)
+  let navOpenedAt = 0
 
-  function toggleNav() { navOpen = !navOpen }
-  function closeNav() { navOpen = false }
+  function toggleNav() {
+    navOpen = !navOpen
+    if (navOpen) navOpenedAt = Date.now()
+  }
+
+  function closeNav() {
+    // Guard against ghost clicks that fire immediately after opening on touch devices
+    if (Date.now() - navOpenedAt < 350) return
+    navOpen = false
+  }
 
   function handleNavigate(path: string) {
-    closeNav()
+    navOpen = false
     onNavigate(path)
   }
 </script>

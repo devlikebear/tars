@@ -100,7 +100,7 @@
   }
 </script>
 
-<nav class="nav" class:nav-open={navOpen} aria-label={$t.nav.mainNavigation}>
+<nav class="nav" style={navOpen ? 'transform: translateX(0)' : undefined} aria-label={$t.nav.mainNavigation}>
   <div class="nav-brand">
     <button type="button" class="nav-logo" onclick={(e: MouseEvent) => handleClick(e, '/console')}>
       <span class="nav-logo-mark">T</span>
@@ -271,11 +271,9 @@
   @media (max-width: 900px) {
     .nav {
       transform: translateX(-100%);
-      transition: transform var(--duration-normal) var(--ease-out);
-      box-shadow: none;
+      transition: transform var(--duration-normal) var(--ease-out), box-shadow var(--duration-normal) var(--ease-out);
     }
-    .nav.nav-open {
-      transform: translateX(0);
+    .nav[style*='translateX(0)'] {
       box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
     }
     .nav-brand {
