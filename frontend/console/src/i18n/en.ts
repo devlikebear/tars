@@ -512,6 +512,152 @@ export const en = {
     errorAudit: 'Failed to load automation audit',
     errorCreate: 'Failed to create cleanup plan',
   },
+  pulse: {
+    loading: 'Loading pulse...',
+    kicker: 'System Watchdog',
+    title: 'Pulse - System Watchdog',
+    introBody: (interval) =>
+      `TARS checks system health every ${interval} and turns threshold crossings into actionable signals.`,
+    policySource: 'Policy source',
+    watchTargets: 'Watch targets',
+    whenSignalsAppear: 'When signals appear',
+    whenSignalsBody:
+      'An LLM classifier classifies each tick and chooses the lowest-noise action that fits.',
+    watchItems: {
+      cronFailures: {
+        label: 'Cron job failures',
+        detail: 'Detects consecutive scheduled job failures before they pile up silently.',
+      },
+      stuckRuns: {
+        label: 'Agent runtime stuck runs',
+        detail: 'Finds long-running agent jobs that appear to have stopped making progress.',
+      },
+      diskPressure: {
+        label: 'Disk pressure',
+        detail: 'Watches free-space thresholds so local workspaces do not fail late.',
+      },
+      telegramFailures: {
+        label: 'Telegram delivery failures',
+        detail: 'Surfaces notification delivery failures inside the recent failure window.',
+      },
+      reflectionFailures: {
+        label: 'Reflection nightly failures',
+        detail:
+          'Tracks consecutive nightly maintenance failures until a clean run resets the count.',
+      },
+    },
+    decisions: {
+      ignore: {
+        action: 'ignore',
+        detail: 'Low-value noise is recorded without interrupting you.',
+      },
+      notify: {
+        action: 'notify',
+        detail: 'Important findings are sent through the configured notification path.',
+      },
+      autofix: {
+        action: 'autofix',
+        detail: 'Approved safe actions can run automatically, such as compress_old_logs.',
+      },
+    },
+    statusTitle: 'Pulse Status',
+    enabled: 'enabled',
+    disabled: 'disabled',
+    facts: {
+      interval: 'Interval',
+      activeHours: 'Active Hours',
+      timezone: 'Timezone',
+      minSeverity: 'Min Severity',
+      minSeverityNote:
+        'Notifications below this floor are dropped after the decider classifies a tick.',
+      lastTick: 'Last Tick',
+      totalTicks: 'Total Ticks',
+      decisions: 'Decisions',
+      notifies: 'Notifies',
+      autofixes: 'Autofixes',
+    },
+    severityGuideTitle: 'Min Severity guide',
+    severityGuideNote: 'Signal thresholds use pulse_* config fields.',
+    severityGuide: {
+      cronFailures: {
+        label: 'Cron failures',
+        info: 'Individual failures are counted on cron jobs.',
+      },
+      diskPressure: {
+        label: 'Disk pressure',
+        info: 'Below the warn threshold no signal is emitted.',
+      },
+      stuckRun: {
+        label: 'AgentRuntime stuck run',
+        info: 'Running jobs younger than the stuck window are ignored.',
+      },
+      telegramDelivery: {
+        label: 'Telegram delivery',
+        info: 'Recent delivery failures are counted in the configured window.',
+      },
+      reflectionHealth: {
+        label: 'Reflection health',
+        info: 'Successful nightly runs reset the consecutive-failure count.',
+      },
+    },
+    severityWarn: {
+      cronFailures: (threshold) => `${threshold}+ consecutive failures on any job.`,
+      diskPressure: (percent) => `Disk usage reaches ${percent}.`,
+      stuckRun: (minutes) => `Any run stays running for ${minutes}m+.`,
+      telegramDelivery: 'Failures reach the delivery threshold.',
+      reflectionHealth: 'Consecutive nightly failures reach the reflection threshold.',
+    },
+    severityError: {
+      cronFailures: (threshold) => `${threshold * 2}+ consecutive failures on the worst job.`,
+      diskPressure: (percent) => `Disk usage reaches ${percent}.`,
+      stuckRun: 'Three or more runs are stuck at once.',
+      telegramDelivery: 'Failures reach 2x the delivery threshold.',
+      reflectionHealth: 'Failures reach 2x the reflection threshold.',
+    },
+    lastSeenTitle: 'Last seen by signal',
+    lastDecisionTitle: 'Last Decision',
+    noDecisionsYet: 'No pulse decisions yet.',
+    runTickNow: 'Run Tick Now',
+    running: 'Running...',
+    disabledHint: 'Pulse is disabled in config',
+    tickResultTitle: 'Tick result',
+    tickBadge: {
+      skipped: 'skipped',
+      deciderRan: 'decider ran',
+      notified: 'notified',
+      autofixOk: 'autofix ok',
+      error: 'error',
+      noSignals: 'no signals',
+      signalCount: (count) => `${count} signal${count > 1 ? 's' : ''}`,
+    },
+    recentTicksTitle: 'Recent Ticks',
+    recentSummary: {
+      lastTicks: (count) => `Last ${count} ticks`,
+      allClear: 'all clear (no signals)',
+      signalTicks: (count, allClear) =>
+        `${count} signal tick${count > 1 ? 's' : ''}, ${allClear} all-clear`,
+      warnings: (count) => `${count} warning${count === 1 ? '' : 's'}`,
+      errors: (count) => `${count} error${count === 1 ? '' : 's'}`,
+      autofixes: (count) => `${count} autofix${count === 1 ? '' : 'es'}`,
+    },
+    incidentCardsTitle: 'Incident cards',
+    likelyCause: 'Likely cause',
+    evidence: 'Evidence',
+    recommendedAction: 'Recommended action',
+    openAffectedPage: 'Open affected page',
+    recheck: 'Re-check',
+    signalTicksTitle: 'Signal ticks',
+    relativeTime: {
+      never: 'never',
+      secondsAgo: (n) => `${n}s ago`,
+      minutesAgo: (n) => `${n}m ago`,
+      hoursAgo: (n) => `${n}h ago`,
+      daysAgo: (n) => `${n}d ago`,
+    },
+    errorLoadStatus: 'Failed to load status',
+    errorRunFailed: 'Run failed',
+    configuredFallback: 'configured',
+  },
   reflection: {
     loading: 'Loading reflection...',
     introTitle: 'Reflection - Nightly Maintenance',

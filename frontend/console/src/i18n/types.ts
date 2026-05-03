@@ -591,6 +591,108 @@ export type Translations = {
     errorLoadStatus: string
     errorRunFailed: string
   }
+  pulse: {
+    loading: string
+    kicker: string
+    title: string
+    introBody: (interval: string) => string
+    policySource: string
+    watchTargets: string
+    whenSignalsAppear: string
+    whenSignalsBody: string
+    watchItems: {
+      cronFailures: { label: string; detail: string }
+      stuckRuns: { label: string; detail: string }
+      diskPressure: { label: string; detail: string }
+      telegramFailures: { label: string; detail: string }
+      reflectionFailures: { label: string; detail: string }
+    }
+    decisions: {
+      ignore: { action: string; detail: string }
+      notify: { action: string; detail: string }
+      autofix: { action: string; detail: string }
+    }
+    statusTitle: string
+    enabled: string
+    disabled: string
+    facts: {
+      interval: string
+      activeHours: string
+      timezone: string
+      minSeverity: string
+      minSeverityNote: string
+      lastTick: string
+      totalTicks: string
+      decisions: string
+      notifies: string
+      autofixes: string
+    }
+    severityGuideTitle: string
+    severityGuideNote: string
+    severityGuide: {
+      cronFailures: { label: string; info: string }
+      diskPressure: { label: string; info: string }
+      stuckRun: { label: string; info: string }
+      telegramDelivery: { label: string; info: string }
+      reflectionHealth: { label: string; info: string }
+    }
+    severityWarn: {
+      cronFailures: (threshold: number) => string
+      diskPressure: (percent: string) => string
+      stuckRun: (minutes: number) => string
+      telegramDelivery: string
+      reflectionHealth: string
+    }
+    severityError: {
+      cronFailures: (threshold: number) => string
+      diskPressure: (percent: string) => string
+      stuckRun: string
+      telegramDelivery: string
+      reflectionHealth: string
+    }
+    lastSeenTitle: string
+    lastDecisionTitle: string
+    noDecisionsYet: string
+    runTickNow: string
+    running: string
+    disabledHint: string
+    tickResultTitle: string
+    tickBadge: {
+      skipped: string
+      deciderRan: string
+      notified: string
+      autofixOk: string
+      error: string
+      noSignals: string
+      signalCount: (count: number) => string
+    }
+    recentTicksTitle: string
+    recentSummary: {
+      lastTicks: (count: number) => string
+      allClear: string
+      signalTicks: (count: number, allClear: number) => string
+      warnings: (count: number) => string
+      errors: (count: number) => string
+      autofixes: (count: number) => string
+    }
+    incidentCardsTitle: string
+    likelyCause: string
+    evidence: string
+    recommendedAction: string
+    openAffectedPage: string
+    recheck: string
+    signalTicksTitle: string
+    relativeTime: {
+      never: string
+      secondsAgo: (n: number) => string
+      minutesAgo: (n: number) => string
+      hoursAgo: (n: number) => string
+      daysAgo: (n: number) => string
+    }
+    errorLoadStatus: string
+    errorRunFailed: string
+    configuredFallback: string
+  }
   home: {
     title: string
     subtitle: string

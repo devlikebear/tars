@@ -3,6 +3,7 @@
   import { getPulseStatus, runPulseOnce, getPulseConfig } from '../lib/api'
   import { buildPulseIncidentCards } from '../lib/pulseIncidentCards'
   import type { PulseSnapshot, PulseTickOutcome, PulseConfigView } from '../lib/types'
+  import { t } from '../i18n'
 
   interface Props {
     onNavigate?: (path: string) => void
@@ -38,46 +39,46 @@
 
   let { onNavigate }: Props = $props()
 
-  const pulseWatchItems: PulseWatchItem[] = [
+  const pulseWatchItems: PulseWatchItem[] = $derived([
     {
-      label: 'Cron job failures',
-      detail: 'Detects consecutive scheduled job failures before they pile up silently.',
+      label: $t.pulse.watchItems.cronFailures.label,
+      detail: $t.pulse.watchItems.cronFailures.detail,
     },
     {
-      label: 'Agent runtime stuck runs',
-      detail: 'Finds long-running agent jobs that appear to have stopped making progress.',
+      label: $t.pulse.watchItems.stuckRuns.label,
+      detail: $t.pulse.watchItems.stuckRuns.detail,
     },
     {
-      label: 'Disk pressure',
-      detail: 'Watches free-space thresholds so local workspaces do not fail late.',
+      label: $t.pulse.watchItems.diskPressure.label,
+      detail: $t.pulse.watchItems.diskPressure.detail,
     },
     {
-      label: 'Telegram delivery failures',
-      detail: 'Surfaces notification delivery failures inside the recent failure window.',
+      label: $t.pulse.watchItems.telegramFailures.label,
+      detail: $t.pulse.watchItems.telegramFailures.detail,
     },
     {
-      label: 'Reflection nightly failures',
-      detail: 'Tracks consecutive nightly maintenance failures until a clean run resets the count.',
+      label: $t.pulse.watchItems.reflectionFailures.label,
+      detail: $t.pulse.watchItems.reflectionFailures.detail,
     },
-  ]
+  ])
 
-  const pulseDecisionRows: PulseDecisionIntroRow[] = [
+  const pulseDecisionRows: PulseDecisionIntroRow[] = $derived([
     {
-      action: 'ignore',
-      detail: 'Low-value noise is recorded without interrupting you.',
+      action: $t.pulse.decisions.ignore.action,
+      detail: $t.pulse.decisions.ignore.detail,
       badgeClass: 'badge-default',
     },
     {
-      action: 'notify',
-      detail: 'Important findings are sent through the configured notification path.',
+      action: $t.pulse.decisions.notify.action,
+      detail: $t.pulse.decisions.notify.detail,
       badgeClass: 'badge-info',
     },
     {
-      action: 'autofix',
-      detail: 'Approved safe actions can run automatically, such as compress_old_logs.',
+      action: $t.pulse.decisions.autofix.action,
+      detail: $t.pulse.decisions.autofix.detail,
       badgeClass: 'badge-success',
     },
-  ]
+  ])
 
   let snapshot: PulseSnapshot | null = $state(null)
   let config: PulseConfigView | null = $state(null)
@@ -93,7 +94,7 @@
     try {
       snapshot = await getPulseStatus()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load status'
+      error = e instanceof Error ? e.message : $t.pulse.errorLoadStatus
     }
   }
 
@@ -120,7 +121,7 @@
       runResult = await runPulseOnce()
       await loadStatus()
     } catch (e) {
-      runResult = { at: '', err: e instanceof Error ? e.message : 'Run failed' }
+      runResult = { at: '', err: e instanceof Error ? e.message : $t.pulse.errorRunFailed }
     } finally {
       running = false
     }
@@ -134,19 +135,19 @@
   }
 
   function relativeTime(value?: string): string {
-    if (!value?.trim()) return 'never'
+    if (!value?.trim()) return $t.pulse.relativeTime.never
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
-    if (date.getFullYear() <= 1) return 'never'
+    if (date.getFullYear() <= 1) return $t.pulse.relativeTime.never
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
-    if (seconds < 60) return `${seconds}s ago`
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-    return `${Math.floor(seconds / 86400)}d ago`
+    if (seconds < 60) return $t.pulse.relativeTime.secondsAgo(seconds)
+    if (seconds < 3600) return $t.pulse.relativeTime.minutesAgo(Math.floor(seconds / 60))
+    if (seconds < 86400) return $t.pulse.relativeTime.hoursAgo(Math.floor(seconds / 3600))
+    return $t.pulse.relativeTime.daysAgo(Math.floor(seconds / 86400))
   }
 
   function fmtPercent(value?: number): string {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return 'configured'
+    if (typeof value !== 'number' || !Number.isFinite(value)) return $t.pulse.configuredFallback
     return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`
   }
 
@@ -159,38 +160,38 @@
     return [
       {
         kind: 'cron_failures',
-        label: 'Cron failures',
-        info: 'Individual failures are counted on cron jobs.',
-        warn: `${cronThreshold}+ consecutive failures on any job.`,
-        error: `${cronThreshold * 2}+ consecutive failures on the worst job.`,
+        label: $t.pulse.severityGuide.cronFailures.label,
+        info: $t.pulse.severityGuide.cronFailures.info,
+        warn: $t.pulse.severityWarn.cronFailures(cronThreshold),
+        error: $t.pulse.severityError.cronFailures(cronThreshold),
       },
       {
         kind: 'disk_usage',
-        label: 'Disk pressure',
-        info: 'Below the warn threshold no signal is emitted.',
-        warn: `Disk usage reaches ${diskWarn}.`,
-        error: `Disk usage reaches ${diskCritical}.`,
+        label: $t.pulse.severityGuide.diskPressure.label,
+        info: $t.pulse.severityGuide.diskPressure.info,
+        warn: $t.pulse.severityWarn.diskPressure(diskWarn),
+        error: $t.pulse.severityError.diskPressure(diskCritical),
       },
       {
         kind: 'stuck_agentruntime_run',
-        label: 'AgentRuntime stuck run',
-        info: 'Running jobs younger than the stuck window are ignored.',
-        warn: `Any run stays running for ${stuckMinutes}m+.`,
-        error: 'Three or more runs are stuck at once.',
+        label: $t.pulse.severityGuide.stuckRun.label,
+        info: $t.pulse.severityGuide.stuckRun.info,
+        warn: $t.pulse.severityWarn.stuckRun(stuckMinutes),
+        error: $t.pulse.severityError.stuckRun,
       },
       {
         kind: 'delivery_failures',
-        label: 'Telegram delivery',
-        info: 'Recent delivery failures are counted in the configured window.',
-        warn: 'Failures reach the delivery threshold.',
-        error: 'Failures reach 2x the delivery threshold.',
+        label: $t.pulse.severityGuide.telegramDelivery.label,
+        info: $t.pulse.severityGuide.telegramDelivery.info,
+        warn: $t.pulse.severityWarn.telegramDelivery,
+        error: $t.pulse.severityError.telegramDelivery,
       },
       {
         kind: 'reflection_failure',
-        label: 'Reflection health',
-        info: 'Successful nightly runs reset the consecutive-failure count.',
-        warn: 'Consecutive nightly failures reach the reflection threshold.',
-        error: 'Failures reach 2x the reflection threshold.',
+        label: $t.pulse.severityGuide.reflectionHealth.label,
+        info: $t.pulse.severityGuide.reflectionHealth.info,
+        warn: $t.pulse.severityWarn.reflectionHealth,
+        error: $t.pulse.severityError.reflectionHealth,
       },
     ]
   }
@@ -202,7 +203,7 @@
       const signal = tick.signals?.find((item) => item.kind === kind)
       if (signal) return relativeTime(signal.at || tick.at)
     }
-    return 'never'
+    return $t.pulse.relativeTime.never
   }
 
   function isWarningSeverity(severity?: string): boolean {
@@ -233,13 +234,13 @@
   }
 
   function tickBadgeLabel(tick: PulseTickOutcome): string {
-    if (tick.err) return 'error'
-    if (tick.autofix_attempt || tick.autofix_ok || tick.autofix_err || tick.decision?.action === 'autofix') return 'autofix'
-    if (tick.notify_delivered) return 'notified'
+    if (tick.err) return $t.pulse.tickBadge.error
+    if (tick.autofix_attempt || tick.autofix_ok || tick.autofix_err || tick.decision?.action === 'autofix') return $t.pulse.tickBadge.autofixOk
+    if (tick.notify_delivered) return $t.pulse.tickBadge.notified
     if (tick.decision) return tick.decision.action
-    if (signalCount(tick) > 0) return `${signalCount(tick)} signal${signalCount(tick) > 1 ? 's' : ''}`
-    if (tick.skipped) return 'skipped'
-    return 'no signals'
+    if (signalCount(tick) > 0) return $t.pulse.tickBadge.signalCount(signalCount(tick))
+    if (tick.skipped) return $t.pulse.tickBadge.skipped
+    return $t.pulse.tickBadge.noSignals
   }
 
   function severityBadgeClass(severity?: string): string {
@@ -296,7 +297,7 @@
 
 <div class="pulse">
   {#if loading}
-    <div class="pulse-loading">Loading pulse...</div>
+    <div class="pulse-loading">{$t.pulse.loading}</div>
   {:else}
     {#if error}
       <div class="error-banner" style="margin-bottom:var(--space-4)">{error}</div>
@@ -305,21 +306,21 @@
     <section class="pulse-intro card">
       <div class="pulse-intro-header">
         <div>
-          <span class="pulse-intro-kicker">System Watchdog</span>
-          <h2>Pulse - System Watchdog</h2>
+          <span class="pulse-intro-kicker">{$t.pulse.kicker}</span>
+          <h2>{$t.pulse.title}</h2>
           <p>
-            TARS checks system health every {config ? `${config.interval_seconds}s` : 'configured interval'} and turns threshold crossings into actionable signals.
+            {$t.pulse.introBody(config ? `${config.interval_seconds}s` : $t.pulse.configuredFallback)}
           </p>
         </div>
         <div class="pulse-intro-policy">
-          <span>Policy source</span>
+          <span>{$t.pulse.policySource}</span>
           <code>Settings -> pulse_*</code>
         </div>
       </div>
 
       <div class="pulse-intro-grid">
         <div>
-          <div class="pulse-intro-label">Watch targets</div>
+          <div class="pulse-intro-label">{$t.pulse.watchTargets}</div>
           <ul class="pulse-intro-list">
             {#each pulseWatchItems as item}
               <li>
@@ -330,8 +331,8 @@
           </ul>
         </div>
         <div>
-          <div class="pulse-intro-label">When signals appear</div>
-          <p class="pulse-intro-copy">An LLM classifier classifies each tick and chooses the lowest-noise action that fits.</p>
+          <div class="pulse-intro-label">{$t.pulse.whenSignalsAppear}</div>
+          <p class="pulse-intro-copy">{$t.pulse.whenSignalsBody}</p>
           <div class="pulse-intro-decisions">
             {#each pulseDecisionRows as row}
               <div>
@@ -347,35 +348,35 @@
     <!-- Status summary -->
     <section class="card">
       <div class="card-header">
-        <span class="card-title">Pulse Status</span>
+        <span class="card-title">{$t.pulse.statusTitle}</span>
         {#if config?.enabled}
-          <span class="badge badge-success">enabled</span>
+          <span class="badge badge-success">{$t.pulse.enabled}</span>
         {:else}
-          <span class="badge badge-default">disabled</span>
+          <span class="badge badge-default">{$t.pulse.disabled}</span>
         {/if}
       </div>
       <dl class="pulse-facts">
-        <div><dt>Interval</dt><dd>{config ? `${config.interval_seconds}s` : '—'}</dd></div>
-        <div><dt>Active Hours</dt><dd>{config?.active_hours || 'always'}</dd></div>
-        <div><dt>Timezone</dt><dd>{config?.timezone || 'system'}</dd></div>
+        <div><dt>{$t.pulse.facts.interval}</dt><dd>{config ? `${config.interval_seconds}s` : '—'}</dd></div>
+        <div><dt>{$t.pulse.facts.activeHours}</dt><dd>{config?.active_hours || 'always'}</dd></div>
+        <div><dt>{$t.pulse.facts.timezone}</dt><dd>{config?.timezone || 'system'}</dd></div>
         <div>
-          <dt>Min Severity</dt>
+          <dt>{$t.pulse.facts.minSeverity}</dt>
           <dd>
             <span class="badge badge-warning">{config?.min_severity || '—'}</span>
-            <span class="pulse-min-note">Notifications below this floor are dropped after the decider classifies a tick.</span>
+            <span class="pulse-min-note">{$t.pulse.facts.minSeverityNote}</span>
           </dd>
         </div>
-        <div><dt>Last Tick</dt><dd>{relativeTime(snapshot?.last_tick_at)}</dd></div>
-        <div><dt>Total Ticks</dt><dd>{snapshot?.total_ticks ?? 0}</dd></div>
-        <div><dt>Decisions</dt><dd>{snapshot?.total_decisions ?? 0}</dd></div>
-        <div><dt>Notifies</dt><dd>{snapshot?.total_notifies ?? 0}</dd></div>
-        <div><dt>Autofixes</dt><dd>{snapshot?.total_autofixes ?? 0}</dd></div>
+        <div><dt>{$t.pulse.facts.lastTick}</dt><dd>{relativeTime(snapshot?.last_tick_at)}</dd></div>
+        <div><dt>{$t.pulse.facts.totalTicks}</dt><dd>{snapshot?.total_ticks ?? 0}</dd></div>
+        <div><dt>{$t.pulse.facts.decisions}</dt><dd>{snapshot?.total_decisions ?? 0}</dd></div>
+        <div><dt>{$t.pulse.facts.notifies}</dt><dd>{snapshot?.total_notifies ?? 0}</dd></div>
+        <div><dt>{$t.pulse.facts.autofixes}</dt><dd>{snapshot?.total_autofixes ?? 0}</dd></div>
       </dl>
 
       <div class="pulse-severity-guide">
         <div class="pulse-guide-header">
-          <strong>Min Severity guide</strong>
-          <span>Signal thresholds use pulse_* config fields.</span>
+          <strong>{$t.pulse.severityGuideTitle}</strong>
+          <span>{$t.pulse.severityGuideNote}</span>
         </div>
         <div class="pulse-guide-grid">
           {#each severityGuideRows(config) as row}
@@ -393,7 +394,7 @@
           {/each}
         </div>
         <div class="pulse-last-seen">
-          <span class="pulse-last-seen-title">Last seen by signal</span>
+          <span class="pulse-last-seen-title">{$t.pulse.lastSeenTitle}</span>
           <div>
             {#each severityGuideRows(config) as row}
               <span><code>{row.kind}</code> {lastSignalSeen(row.kind)}</span>
@@ -406,7 +407,7 @@
     <!-- Last Decision + Run Action -->
     <section class="card">
       <div class="card-header">
-        <span class="card-title">Last Decision</span>
+        <span class="card-title">{$t.pulse.lastDecisionTitle}</span>
         {#if snapshot?.last_decision}
           <span class="badge badge-info">{snapshot.last_decision.action}</span>
           <span class="badge badge-default">{snapshot.last_decision.severity}</span>
@@ -423,28 +424,28 @@
           <div class="pulse-response">{snapshot.last_decision.summary}</div>
         {/if}
       {:else}
-        <div class="pulse-empty">No pulse decisions yet.</div>
+        <div class="pulse-empty">{$t.pulse.noDecisionsYet}</div>
       {/if}
 
       <div class="pulse-actions">
         <button class="btn btn-primary btn-sm" disabled={running || !config?.enabled} onclick={handleRun}>
-          {running ? 'Running...' : 'Run Tick Now'}
+          {running ? $t.pulse.running : $t.pulse.runTickNow}
         </button>
         {#if !config?.enabled}
-          <span class="pulse-hint">Pulse is disabled in config</span>
+          <span class="pulse-hint">{$t.pulse.disabledHint}</span>
         {/if}
       </div>
 
       {#if runResult}
         <div class="pulse-run-result">
           <div class="pulse-run-result-header">
-            <strong>Tick result</strong>
+            <strong>{$t.pulse.tickResultTitle}</strong>
             <div class="pulse-badges">
-              {#if runResult.skipped}<span class="badge badge-warning">skipped</span>{/if}
-              {#if runResult.decider_invoked}<span class="badge badge-info">decider ran</span>{/if}
-              {#if runResult.notify_delivered}<span class="badge badge-success">notified</span>{/if}
-              {#if runResult.autofix_ok}<span class="badge badge-success">autofix ok</span>{/if}
-              {#if runResult.err}<span class="badge badge-error">error</span>{/if}
+              {#if runResult.skipped}<span class="badge badge-warning">{$t.pulse.tickBadge.skipped}</span>{/if}
+              {#if runResult.decider_invoked}<span class="badge badge-info">{$t.pulse.tickBadge.deciderRan}</span>{/if}
+              {#if runResult.notify_delivered}<span class="badge badge-success">{$t.pulse.tickBadge.notified}</span>{/if}
+              {#if runResult.autofix_ok}<span class="badge badge-success">{$t.pulse.tickBadge.autofixOk}</span>{/if}
+              {#if runResult.err}<span class="badge badge-error">{$t.pulse.tickBadge.error}</span>{/if}
             </div>
           </div>
           {#if runResult.skip_reason}
@@ -465,23 +466,23 @@
       {@const recentSummary = recentTickSummary(snapshot.recent)}
       <section class="card">
         <div class="card-header">
-          <span class="card-title">Recent Ticks</span>
+          <span class="card-title">{$t.pulse.recentTicksTitle}</span>
           <span class="badge badge-default">{snapshot.recent.length}</span>
         </div>
 
         <div class="pulse-recent-summary">
           <div>
-            <strong>Last {recentSummary.total} ticks</strong>
+            <strong>{$t.pulse.recentSummary.lastTicks(recentSummary.total)}</strong>
             <span>
               {recentSummary.signalTicks.length === 0
-                ? 'all clear (no signals)'
-                : `${recentSummary.signalTicks.length} signal tick${recentSummary.signalTicks.length > 1 ? 's' : ''}, ${recentSummary.allClear} all-clear`}
+                ? $t.pulse.recentSummary.allClear
+                : $t.pulse.recentSummary.signalTicks(recentSummary.signalTicks.length, recentSummary.allClear)}
             </span>
           </div>
           <div class="pulse-recent-counters">
-            <span class="badge badge-warning">{recentSummary.warningCount} warning{recentSummary.warningCount === 1 ? '' : 's'}</span>
-            <span class="badge badge-error">{recentSummary.errorCount} error{recentSummary.errorCount === 1 ? '' : 's'}</span>
-            <span class="badge badge-success">{recentSummary.autofixCount} autofix{recentSummary.autofixCount === 1 ? '' : 'es'}</span>
+            <span class="badge badge-warning">{$t.pulse.recentSummary.warnings(recentSummary.warningCount)}</span>
+            <span class="badge badge-error">{$t.pulse.recentSummary.errors(recentSummary.errorCount)}</span>
+            <span class="badge badge-success">{$t.pulse.recentSummary.autofixes(recentSummary.autofixCount)}</span>
           </div>
         </div>
 
@@ -501,7 +502,7 @@
           {@const incidentCards = buildPulseIncidentCards(recentSummary.signalTicks)}
           {#if incidentCards.length > 0}
             <div class="pulse-incident-cards">
-              <div class="pulse-signal-heading">Incident cards</div>
+              <div class="pulse-signal-heading">{$t.pulse.incidentCardsTitle}</div>
               <div class="pulse-incident-grid">
                 {#each incidentCards as card}
                   <article class="pulse-incident-card">
@@ -514,11 +515,11 @@
                     </div>
                     <dl class="pulse-incident-body">
                       <div>
-                        <dt>Likely cause</dt>
+                        <dt>{$t.pulse.likelyCause}</dt>
                         <dd>{card.cause}</dd>
                       </div>
                       <div>
-                        <dt>Evidence</dt>
+                        <dt>{$t.pulse.evidence}</dt>
                         <dd>
                           <ul>
                             {#each card.evidence as item}
@@ -528,7 +529,7 @@
                         </dd>
                       </div>
                       <div>
-                        <dt>Recommended action</dt>
+                        <dt>{$t.pulse.recommendedAction}</dt>
                         <dd>{card.recommendedAction}</dd>
                       </div>
                     </dl>
@@ -539,10 +540,10 @@
                         title={card.primaryAction.label}
                         onclick={() => onNavigate?.(card.primaryAction.path)}
                       >
-                        Open affected page
+                        {$t.pulse.openAffectedPage}
                       </button>
                       <button type="button" class="btn btn-ghost btn-sm" disabled={running || !config?.enabled} onclick={handleRun}>
-                        Re-check
+                        {$t.pulse.recheck}
                       </button>
                       <span>{fmtTime(card.checkedAt)}</span>
                     </div>
@@ -553,7 +554,7 @@
           {/if}
 
           <div class="pulse-signal-ticks">
-            <div class="pulse-signal-heading">Signal ticks</div>
+            <div class="pulse-signal-heading">{$t.pulse.signalTicksTitle}</div>
             <ul class="pulse-recent">
               {#each recentSummary.signalTicks as tick}
                 <li>
@@ -561,10 +562,10 @@
                     <span class="pulse-recent-time">{fmtTime(tick.at)}</span>
                     <span class="badge {tickBadgeClass(tick)}">{tickBadgeLabel(tick)}</span>
                     {#if signalCount(tick) > 0}
-                      <span class="badge badge-default">{signalCount(tick)} signal{signalCount(tick) > 1 ? 's' : ''}</span>
+                      <span class="badge badge-default">{$t.pulse.tickBadge.signalCount(signalCount(tick))}</span>
                     {/if}
                     {#if tick.notify_delivered}
-                      <span class="badge badge-success">notified</span>
+                      <span class="badge badge-success">{$t.pulse.tickBadge.notified}</span>
                     {/if}
                   </div>
                   {#if tick.decision?.title}
