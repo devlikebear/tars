@@ -83,6 +83,20 @@
   let chatError = $state('')
   let chatSessionId = $state('')
   let chatStatusLine = $state('')
+  let chatStatusPhase = $state('')
+  let chatStatusMessage = $state('')
+  let chatStatusTool = $state('')
+  let chatStatusSkill = $state('')
+  let chatStatusPhaseStartAt = $state(0)
+  let chatStatusElapsedMs = $state(0)
+  let chatStatusTicker: ReturnType<typeof setInterval> | null = $state(null)
+  const CHAT_STATUS_PROGRESS_STEPS = ['connecting', 'loop_start', 'before_llm', 'tool', 'after_llm', 'done'] as const
+  type ChatStatusLocale = 'ko' | 'en'
+  function getDefaultChatStatusLocale(): ChatStatusLocale {
+    if (typeof navigator === 'undefined') return 'ko'
+    return navigator.language.toLowerCase().startsWith('en') ? 'en' : 'ko'
+  }
+  let chatStatusLocale: ChatStatusLocale = $state(getDefaultChatStatusLocale())
   let chatMessages: ChatMessage[] = $state([])
   let autoTitled = $state(false)
   let autoSendDone = false
@@ -117,6 +131,149 @@
   function publishContextInfo(next: typeof contextInfo) {
     contextInfo = next
     onContextInfo?.(next)
+  }
+
+  function stopChatStatusTicker() {
+    if (chatStatusTicker) {
+      clearInterval(chatStatusTicker)
+      chatStatusTicker = null
+    }
+    chatStatusElapsedMs = 0
+    chatStatusPhaseStartAt = 0
+  }
+
+  function startChatStatusTicker() {
+    stopChatStatusTicker()
+    chatStatusPhaseStartAt = Date.now()
+    chatStatusElapsedMs = 0
+    chatStatusTicker = setInterval(() => {
+      if (!chatBusy) {
+        stopChatStatusTicker()
+        return
+      }
+      chatStatusElapsedMs = Date.now() - chatStatusPhaseStartAt
+    }, 300)
+  }
+
+  function getStatusStepPhase(phase: string): (typeof CHAT_STATUS_PROGRESS_STEPS)[number] | '' {
+    if (!phase) return ''
+    if (phase === 'before_tool_call' || phase === 'after_tool_call') return 'tool'
+    if (phase === 'connecting' || phase === 'loop_start' || phase === 'before_llm' || phase === 'after_llm' || phase === 'done') {
+      return phase
+    }
+    return ''
+  }
+
+  function getCurrentStatusStepIndex(): number {
+    const step = getStatusStepPhase(chatStatusPhase)
+    if (!step) return -1
+    return CHAT_STATUS_PROGRESS_STEPS.indexOf(step)
+  }
+
+  function getStatusStepLabel(step: (typeof CHAT_STATUS_PROGRESS_STEPS)[number], toolName: string, isEn: boolean): string {
+    const t = (ko: string, en: string) => (isEn ? en : ko)
+    switch (step) {
+      case 'connecting':
+        return t('요청 전송', 'Connecting')
+      case 'loop_start':
+        return t('추론 시작', 'Starting')
+      case 'before_llm':
+        return t('LLM 추론', 'LLM Thinking')
+      case 'tool':
+        return toolName ? toolName : t('도구 호출', 'Tool Call')
+      case 'after_llm':
+        return t('응답 정리', 'Assembling')
+      case 'done':
+        return t('완료', 'Done')
+    }
+  }
+
+  function formatStatusElapsed(ms: number): string {
+    const totalSec = Math.max(0, Math.floor(ms / 1000))
+    const m = Math.floor(totalSec / 60)
+    const s = totalSec % 60
+    if (m > 0) {
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    }
+    return `${String(s).padStart(2, '0')}s`
+  }
+
+  function applyChatStatus(opts: {
+    phase?: string
+    message?: string
+    toolName?: string
+    skillName?: string
+  }) {
+    const phase = opts.phase?.trim() ?? ''
+    const previousPhase = chatStatusPhase
+    chatStatusPhase = phase
+    chatStatusMessage = opts.message?.trim() ?? ''
+    chatStatusTool = opts.toolName?.trim() ?? ''
+    chatStatusSkill = opts.skillName?.trim() ?? ''
+    chatStatusLine = [phase, chatStatusMessage, chatStatusTool, chatStatusSkill].filter(Boolean).join(' · ')
+
+    if (!phase) {
+      stopChatStatusTicker()
+      return
+    }
+    if (phase !== previousPhase) {
+      if (chatBusy) {
+        startChatStatusTicker()
+      } else if (['connecting', 'loop_start', 'before_llm', 'before_tool_call', 'after_tool_call', 'after_llm', 'done', 'cancelled'].includes(phase)) {
+        chatStatusElapsedMs = 0
+        chatStatusPhaseStartAt = Date.now()
+      }
+    }
+  }
+
+  function getChatStatusLabel(): string {
+    const phase = chatStatusPhase
+    const msg = chatStatusMessage
+    const toolName = chatStatusTool
+    const skillName = chatStatusSkill
+    const isEn = chatStatusLocale === 'en'
+    const t = (ko: string, en: string) => (isEn ? en : ko)
+
+    if (!phase) return msg || chatStatusLine
+
+    switch (phase) {
+      case 'connecting':
+        return t('요청 전송 중', 'Sending request')
+      case 'loop_start':
+        return t('추론 시작 중', 'Starting reasoning')
+      case 'before_llm':
+        return t('LLM 응답 생성 중', 'Generating LLM response')
+      case 'after_llm':
+        return t('응답 정리 중', 'Preparing final response')
+      case 'before_tool_call':
+        return toolName
+          ? isEn
+            ? `${toolName} running`
+            : `${toolName} 도구 실행 중`
+          : t('도구 실행 중', 'Running tool')
+      case 'after_tool_call':
+        return toolName
+          ? isEn
+            ? `${toolName} applying result`
+            : `${toolName} 도구 결과 반영 중`
+          : t('도구 결과 반영 중', 'Applying tool result')
+      case 'skill_selected':
+        return skillName ? (isEn ? `${skillName} skill selected` : `${skillName} skill 선택`) : (msg || t('skill 선택', 'Skill selected'))
+      case 'compaction':
+        return `${t('대화 압축 중', 'Compacting conversation')}${msg ? ` · ${msg}` : ''}`
+      case 'slash':
+        return chatStatusLine || msg || t('명령 실행 중', 'Running command')
+      case 'done':
+        return t('응답 완료', 'Response complete')
+      case 'cancelled':
+        return t('요청 취소됨', 'Request cancelled')
+      default:
+        return msg || phase
+    }
+  }
+
+  function toggleChatStatusLocale() {
+    chatStatusLocale = chatStatusLocale === 'ko' ? 'en' : 'ko'
   }
 
   function addUsedToolName(toolName?: string) {
@@ -236,8 +393,12 @@
             chatMessages = [...chatMessages]
           }
         }
-        chatStatusLine = [event.phase, event.message, event.tool_name, event.skill_name]
-          .filter(Boolean).join(' \u00b7 ')
+        applyChatStatus({
+          phase: event.phase,
+          message: event.message,
+          toolName: event.tool_name,
+          skillName: event.skill_name,
+        })
         break
       case 'delta': {
         const chunk = event.text ?? ''
@@ -283,8 +444,12 @@
           compaction_last_mode: event.compaction_last_mode ?? event.mode ?? contextInfo.compaction_last_mode,
           compaction_trigger_tokens: event.trigger_tokens ?? contextInfo.compaction_trigger_tokens,
         })
-        chatStatusLine = ['compaction', event.mode, `${event.compacted_count ?? 0} compacted`]
-          .filter(Boolean).join(' · ')
+        applyChatStatus({
+          phase: 'compaction',
+          message: chatStatusLocale === 'en'
+            ? `${event.mode ? `${event.mode} mode` : ''} ${event.compacted_count ?? 0} tokens compacted`.trim()
+            : `${event.mode ? `${event.mode} 모드` : ''} ${event.compacted_count ?? 0}개 토큰 압축`.trim(),
+        })
         break
       case 'tasks_changed':
         onTasksChanged?.({
@@ -298,7 +463,8 @@
         break
       case 'done': {
         chatSessionId = event.session_id?.trim() || chatSessionId
-        chatStatusLine = 'done'
+        applyChatStatus({ phase: 'done' })
+        stopChatStatusTicker()
         // Attach usage to assistant message
         if (event.usage) {
           const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
@@ -320,7 +486,8 @@
         break
       }
       case 'cancelled':
-        chatStatusLine = 'cancelled'
+        applyChatStatus({ phase: 'cancelled' })
+        stopChatStatusTicker()
         onSessionChange?.()
         break
       case 'error':
@@ -492,7 +659,7 @@
     closeMentionMenu()
     closeSlashMenu()
     chatError = ''
-    chatStatusLine = `/${command}`
+    applyChatStatus({ phase: 'slash', message: `/${command}` })
     await onSlashCommand(id, args)
     return true
   }
@@ -549,7 +716,7 @@
       if (recommendation.should_prompt && options.allowPrompt !== false) {
         pendingTierRecommendation = recommendation
         pendingTierMessage = message
-        chatStatusLine = ''
+        applyChatStatus({ phase: '', message: '' })
         return
       }
       tierRecommendation = tierRecommendationPayload(recommendation, recommendation.recommended_tier)
@@ -557,7 +724,7 @@
 
     chatBusy = true
     chatError = ''
-    chatStatusLine = 'connecting'
+    applyChatStatus({ phase: 'connecting' })
     chatInput = ''
     pendingTierRecommendation = null
     pendingTierMessage = ''
@@ -617,6 +784,7 @@
     } finally {
       abortController = null
       chatBusy = false
+      stopChatStatusTicker()
       void scrollToBottom()
     }
   }
@@ -733,7 +901,7 @@
   export function clearThread() {
     chatInput = ''
     chatError = ''
-    chatStatusLine = ''
+    applyChatStatus({ phase: '', message: '' })
     chatMessages = []
     attachedFiles = []
     selectedMentions = []
@@ -927,7 +1095,10 @@
       return
     }
     chatError = ''
-    chatStatusLine = 'Forking session...'
+    applyChatStatus({
+      phase: 'slash',
+      message: chatStatusLocale === 'en' ? 'Duplicating session...' : '세션 복사 중',
+    })
     try {
       const child = await forkSessionFromMessage(targetSessionId, sourceMessageId, `Forked from ${message.role} message`)
       onSessionForked?.(child)
@@ -935,7 +1106,7 @@
     } catch (err) {
       chatError = err instanceof Error ? err.message : 'Failed to fork session'
     } finally {
-      chatStatusLine = ''
+      applyChatStatus({ phase: '', message: '' })
     }
   }
 
@@ -977,6 +1148,7 @@
 
   onDestroy(() => {
     stopEventStream?.()
+    stopChatStatusTicker()
   })
 </script>
 
@@ -1116,7 +1288,38 @@
         <button type="submit" class="btn btn-primary" disabled={!chatInput.trim()}>Send</button>
       {/if}
       {#if chatStatusLine && chatBusy}
-        <span class="chat-status-line">{chatStatusLine}</span>
+        <span class="chat-status-line">
+          {getChatStatusLabel()}
+          <span class="chat-status-elapsed">({formatStatusElapsed(chatStatusElapsedMs)})</span>
+          <span class="chat-status-dots" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+        </span>
+        {#if getCurrentStatusStepIndex() >= 0}
+          <div class="chat-status-progress" aria-label="Status progress">
+            {#each CHAT_STATUS_PROGRESS_STEPS as step, stepIdx}
+              <span
+                class={`chat-status-progress-step ${stepIdx < getCurrentStatusStepIndex() ? 'completed' : ''} ${stepIdx === getCurrentStatusStepIndex() ? 'active' : ''}`}
+                title={getStatusStepLabel(step, chatStatusTool, chatStatusLocale === 'en')}
+              >
+                {getStatusStepLabel(step, chatStatusTool, chatStatusLocale === 'en')}
+              </span>
+              {#if stepIdx < CHAT_STATUS_PROGRESS_STEPS.length - 1}
+                <span class="chat-status-progress-connector" aria-hidden="true" />
+              {/if}
+            {/each}
+          </div>
+        {/if}
+        <button
+          type="button"
+          class="chat-status-locale-toggle"
+          title={chatStatusLocale === 'ko' ? 'Switch to English status labels' : '상태 라벨을 한국어로 전환'}
+          onclick={toggleChatStatusLocale}
+        >
+          {chatStatusLocale === 'ko' ? 'EN' : 'KR'}
+        </button>
       {/if}
     </div>
   </form>
@@ -1496,9 +1699,112 @@
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--text-ghost);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .chat-status-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .chat-status-dots span {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: currentColor;
+    display: inline-block;
+    opacity: 0.25;
+    animation: chat-status-dot 0.8s infinite ease-in-out;
+  }
+
+  .chat-status-dots span:nth-child(2) {
+    animation-delay: 0.1s;
+  }
+
+  .chat-status-dots span:nth-child(3) {
+    animation-delay: 0.2s;
+  }
+
+  .chat-status-elapsed {
+    font-size: 10px;
+    color: var(--text-ghost);
+    opacity: 0.9;
+    margin-left: 2px;
+  }
+
+  .chat-status-progress {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+  }
+
+  .chat-status-progress-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-subtle);
+    border-radius: 9999px;
+    color: var(--text-ghost);
+    font-size: 10px;
+    padding: 1px 7px;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .chat-status-progress-step.completed {
+    color: var(--text-secondary);
+    border-color: var(--border-default);
+    background: color-mix(in srgb, var(--surface-elevated) 80%, var(--text-secondary) 20%);
+  }
+
+  .chat-status-progress-step.active {
+    color: var(--text-primary);
+    border-color: var(--primary);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--surface-elevated) 70%, var(--primary) 30%);
+  }
+
+  .chat-status-progress-connector {
+    width: 6px;
+    height: 1px;
+    background: var(--border-subtle);
+  }
+
+  .chat-status-locale-toggle {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-elevated);
+    color: var(--text-ghost);
+    font-size: 10px;
+    padding: 1px 6px;
+    cursor: pointer;
+    line-height: 1;
+    min-height: 18px;
+  }
+
+  .chat-status-locale-toggle:hover {
+    color: var(--text-secondary);
+    border-color: var(--border-default);
+  }
+
+  @keyframes chat-status-dot {
+    0%,
+    80%,
+    100% {
+      transform: scale(1);
+      opacity: 0.25;
+    }
+    40% {
+      transform: scale(1.4);
+      opacity: 1;
+    }
   }
 
   .file-input-hidden {
