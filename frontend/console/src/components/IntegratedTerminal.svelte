@@ -6,8 +6,22 @@
   import { SearchAddon, type ISearchOptions } from '@xterm/addon-search'
   import { Unicode11Addon } from '@xterm/addon-unicode11'
   import { WebglAddon } from '@xterm/addon-webgl'
+  import { SerializeAddon } from '@xterm/addon-serialize'
   import '@xterm/xterm/css/xterm.css'
   import { terminalWebSocketURL } from '../lib/api'
+
+  const FONT_SIZE_KEY = 'tars.terminal.fontSize'
+  const DEFAULT_FONT_SIZE = 12
+  const MIN_FONT_SIZE = 8
+  const MAX_FONT_SIZE = 24
+
+  function loadFontSize(): number {
+    if (typeof localStorage === 'undefined') return DEFAULT_FONT_SIZE
+    const raw = localStorage.getItem(FONT_SIZE_KEY)
+    const parsed = raw ? parseInt(raw, 10) : NaN
+    if (!Number.isFinite(parsed)) return DEFAULT_FONT_SIZE
+    return Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, parsed))
+  }
 
   interface Props {
     sessionId: string
@@ -27,13 +41,20 @@
   let searchQuery = $state('')
   let searchCaseSensitive = $state(false)
   let searchRegex = $state(false)
+  let bellFlash = $state(false)
+  let menuOpen = $state(false)
+  let menuX = $state(0)
+  let menuY = $state(0)
+  let menuHasSelection = $state(false)
 
   let terminal: Terminal | null = null
   let fitAddon: FitAddon | null = null
   let searchAddon: SearchAddon | null = null
+  let serializeAddon: SerializeAddon | null = null
   let webglAddon: WebglAddon | null = null
   let socket: WebSocket | null = null
   let resizeObserver: ResizeObserver | null = null
+  let bellTimer: ReturnType<typeof setTimeout> | null = null
 
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform)
 
@@ -176,6 +197,115 @@
     }
   }
 
+  function applyFontSize(size: number) {
+    if (!terminal) return
+    const clamped = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, Math.round(size)))
+    if (terminal.options.fontSize === clamped) return
+    terminal.options.fontSize = clamped
+    try {
+      localStorage.setItem(FONT_SIZE_KEY, String(clamped))
+    } catch {
+      // localStorage may be disabled — non-fatal.
+    }
+    fitAndResize()
+  }
+
+  function zoomIn() {
+    if (!terminal) return
+    applyFontSize((terminal.options.fontSize ?? DEFAULT_FONT_SIZE) + 1)
+  }
+
+  function zoomOut() {
+    if (!terminal) return
+    applyFontSize((terminal.options.fontSize ?? DEFAULT_FONT_SIZE) - 1)
+  }
+
+  function zoomReset() {
+    applyFontSize(DEFAULT_FONT_SIZE)
+  }
+
+  function clearTerminal() {
+    terminal?.clear()
+    terminal?.scrollToBottom()
+  }
+
+  function copySelection() {
+    const sel = terminal?.getSelection() ?? ''
+    if (!sel) return
+    navigator.clipboard?.writeText(sel).catch(() => {})
+  }
+
+  function pasteFromClipboard() {
+    navigator.clipboard
+      ?.readText()
+      .then((text) => {
+        if (text) send({ type: 'input', data: encodeBase64(text) })
+      })
+      .catch(() => {})
+  }
+
+  function saveBuffer() {
+    if (!serializeAddon) return
+    let payload: string
+    try {
+      payload = serializeAddon.serialize()
+    } catch {
+      // Fallback to plain text iteration if serialize fails.
+      const buf = terminal?.buffer.active
+      if (!buf) return
+      const lines: string[] = []
+      for (let i = 0; i < buf.length; i++) {
+        lines.push(buf.getLine(i)?.translateToString(true) ?? '')
+      }
+      payload = lines.join('\n')
+    }
+    const blob = new Blob([payload], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const safeLabel = (label || 'terminal').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40) || 'terminal'
+    a.href = url
+    a.download = `${safeLabel}-${stamp}.log`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  function openMenu(e: MouseEvent) {
+    e.preventDefault()
+    menuHasSelection = !!terminal?.getSelection()
+    const rect = container?.getBoundingClientRect()
+    if (rect) {
+      menuX = e.clientX - rect.left
+      menuY = e.clientY - rect.top
+    } else {
+      menuX = e.clientX
+      menuY = e.clientY
+    }
+    menuOpen = true
+  }
+
+  function closeMenu() {
+    menuOpen = false
+  }
+
+  function onMenuItem(action: 'copy' | 'paste' | 'clear' | 'save') {
+    closeMenu()
+    if (action === 'copy') copySelection()
+    else if (action === 'paste') pasteFromClipboard()
+    else if (action === 'clear') clearTerminal()
+    else if (action === 'save') saveBuffer()
+    if (action !== 'save') terminal?.focus()
+  }
+
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (menuOpen && e.key === 'Escape') {
+      e.preventDefault()
+      closeMenu()
+    }
+  }
+
   function customKeyHandler(e: KeyboardEvent): boolean {
     if (e.type !== 'keydown') return true
     const key = e.key.toLowerCase()
@@ -193,18 +323,36 @@
       return true
     }
     if (modPaste && key === 'v') {
-      navigator.clipboard
-        ?.readText()
-        .then((text) => {
-          if (text) send({ type: 'input', data: encodeBase64(text) })
-        })
-        .catch(() => {})
+      pasteFromClipboard()
       return false
     }
     if (modFind && key === 'f') {
       void openSearch()
       return false
     }
+
+    // Cmd+K (mac) / Ctrl+Shift+K (others): clear + scroll to bottom.
+    if (modCopy && key === 'k') {
+      clearTerminal()
+      return false
+    }
+
+    // Font-size shortcuts: Cmd+= / Cmd+- / Cmd+0 (mac) and Ctrl+= / Ctrl+- / Ctrl+0 (others).
+    // Use plain Ctrl on Linux/Win for zoom (no Shift) since this is a common terminal emulator convention.
+    const modZoom = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.shiftKey && !e.altKey
+    if (modZoom && (key === '=' || key === '+')) {
+      zoomIn()
+      return false
+    }
+    if (modZoom && key === '-') {
+      zoomOut()
+      return false
+    }
+    if (modZoom && key === '0') {
+      zoomReset()
+      return false
+    }
+
     return true
   }
 
@@ -213,7 +361,7 @@
     terminal = new Terminal({
       cursorBlink: true,
       fontFamily: "var(--font-mono), Menlo, Consolas, 'Liberation Mono', monospace",
-      fontSize: 12,
+      fontSize: loadFontSize(),
       lineHeight: 1.2,
       scrollback: 2000,
       convertEol: true,
@@ -245,6 +393,8 @@
     terminal.loadAddon(new WebLinksAddon())
     searchAddon = new SearchAddon()
     terminal.loadAddon(searchAddon)
+    serializeAddon = new SerializeAddon()
+    terminal.loadAddon(serializeAddon)
     terminal.loadAddon(new Unicode11Addon())
     terminal.unicode.activeVersion = '11'
 
@@ -264,6 +414,17 @@
     terminal.onData((data) => {
       send({ type: 'input', data: encodeBase64(data) })
     })
+    terminal.onBell(() => {
+      bellFlash = true
+      if (bellTimer) clearTimeout(bellTimer)
+      bellTimer = setTimeout(() => {
+        bellFlash = false
+        bellTimer = null
+      }, 600)
+    })
+
+    container.addEventListener('contextmenu', openMenu)
+    window.addEventListener('keydown', onWindowKeydown)
 
     resizeObserver = new ResizeObserver(() => fitAndResize())
     resizeObserver.observe(container)
@@ -276,23 +437,29 @@
 
   onDestroy(() => {
     resizeObserver?.disconnect()
+    if (bellTimer) clearTimeout(bellTimer)
+    if (container) container.removeEventListener('contextmenu', openMenu)
+    window.removeEventListener('keydown', onWindowKeydown)
     send({ type: 'close' })
     socket?.close()
     webglAddon?.dispose()
     searchAddon?.dispose()
+    serializeAddon?.dispose()
     terminal?.dispose()
     socket = null
     terminal = null
     fitAddon = null
     searchAddon = null
+    serializeAddon = null
     webglAddon = null
+    bellTimer = null
   })
 </script>
 
 <div class="integrated-terminal">
   <div class="terminal-header">
     <div class="terminal-title">
-      <span class="terminal-dot" class:connected></span>
+      <span class="terminal-dot" class:connected class:bell={bellFlash}></span>
       <span class="terminal-label">{label}</span>
       <button
         type="button"
@@ -332,7 +499,42 @@
       <button type="button" class="btn btn-ghost btn-sm" onclick={closeSearch} title="Close (Esc)">✕</button>
     </div>
   {/if}
-  <div class="terminal-frame" bind:this={container}></div>
+  <div class="terminal-frame-wrap">
+    <div class="terminal-frame" bind:this={container}></div>
+    {#if menuOpen}
+      <div
+        class="terminal-menu-overlay"
+        role="presentation"
+        onclick={closeMenu}
+        oncontextmenu={(e) => {
+          e.preventDefault()
+          closeMenu()
+        }}
+      ></div>
+      <div
+        class="terminal-menu"
+        role="menu"
+        style="left: {menuX}px; top: {menuY}px"
+      >
+        <button type="button" role="menuitem" disabled={!menuHasSelection} onclick={() => onMenuItem('copy')}>
+          <span>Copy</span>
+          <kbd>{isMac ? '⌘C' : 'Ctrl+Shift+C'}</kbd>
+        </button>
+        <button type="button" role="menuitem" onclick={() => onMenuItem('paste')}>
+          <span>Paste</span>
+          <kbd>{isMac ? '⌘V' : 'Ctrl+Shift+V'}</kbd>
+        </button>
+        <div class="terminal-menu-sep" role="separator"></div>
+        <button type="button" role="menuitem" onclick={() => onMenuItem('clear')}>
+          <span>Clear</span>
+          <kbd>{isMac ? '⌘K' : 'Ctrl+Shift+K'}</kbd>
+        </button>
+        <button type="button" role="menuitem" onclick={() => onMenuItem('save')}>
+          <span>Save buffer…</span>
+        </button>
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -380,6 +582,22 @@
 
   .terminal-dot.connected {
     background: var(--success);
+  }
+
+  .terminal-dot.bell {
+    background: var(--accent, #e09145);
+    animation: terminal-bell-flash 0.6s ease-out;
+  }
+
+  @keyframes terminal-bell-flash {
+    0% {
+      box-shadow: 0 0 0 0 var(--accent, #e09145);
+      transform: scale(1.4);
+    }
+    100% {
+      box-shadow: 0 0 0 6px transparent;
+      transform: scale(1);
+    }
   }
 
   .terminal-label {
@@ -464,12 +682,78 @@
     display: none;
   }
 
+  .terminal-frame-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
   .terminal-frame {
     flex: 1;
     min-height: 0;
     padding: var(--space-2);
     overflow: hidden;
     user-select: text;
+  }
+
+  .terminal-menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+  }
+
+  .terminal-menu {
+    position: absolute;
+    z-index: 41;
+    min-width: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .terminal-menu button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    text-align: left;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+
+  .terminal-menu button:hover:not(:disabled) {
+    background: var(--surface-inset);
+    color: var(--accent, #e09145);
+  }
+
+  .terminal-menu button:disabled {
+    color: var(--text-ghost);
+    cursor: not-allowed;
+  }
+
+  .terminal-menu kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-ghost);
+    background: transparent;
+    padding: 0;
+  }
+
+  .terminal-menu-sep {
+    height: 1px;
+    background: var(--border-subtle);
+    margin: 4px 0;
   }
 
   :global(.xterm) {

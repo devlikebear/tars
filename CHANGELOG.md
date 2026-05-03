@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.133] - 2026-05-03
+
+### Added
+
+- **Integrated terminal** — right-click context menu with Copy / Paste / Clear / Save buffer (`@xterm/addon-serialize`); the saved file is timestamped per-session and preserves ANSI codes (#663 Phase 3).
+- **Integrated terminal** — font-size shortcuts (`⌘=` / `⌘-` / `⌘0`, or `Ctrl+=` / `Ctrl+-` / `Ctrl+0`) clamped to 8–24 px, persisted in `localStorage` under `tars.terminal.fontSize`.
+- **Integrated terminal** — `⌘K` / `Ctrl+Shift+K` clears the buffer and scrolls to bottom.
+- **Integrated terminal** — bell flash animation on the connection-status dot when the shell rings the BEL character.
+
 ## [0.31.132] - 2026-05-03
 
 ### Added
