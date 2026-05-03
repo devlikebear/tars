@@ -33,7 +33,7 @@ func (h *telegramCommandHandler) cmdModels(ctx context.Context) (string, error) 
 	if h.providerModels == nil {
 		return "SYSTEM > models unavailable: service is not configured", nil
 	}
-	info, err := h.providerModels.models(ctx)
+	info, err := h.providerModels.models(ctx, "")
 	if err != nil {
 		return "", err
 	}

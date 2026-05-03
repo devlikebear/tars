@@ -1240,6 +1240,24 @@ export type ProviderModelsInfo = {
   warning?: string
 }
 
+export type ProviderAPIStatus = {
+  id: string
+  supports_live_models: boolean
+}
+
+export type ProviderPoolEntry = {
+  alias: string
+  kind: string
+}
+
+export type ProvidersAPIInfo = {
+  current_provider: string
+  current_model: string
+  auth_mode: string
+  providers: ProviderAPIStatus[]
+  pool: ProviderPoolEntry[]
+}
+
 // --- Onboarding (Phase 1+2 backend, Phase 3 wizard) ---
 
 export type HealthzResponse = {

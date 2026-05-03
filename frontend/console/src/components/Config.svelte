@@ -1,6 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { getConfig, getConfigSchema, getProviderModels, saveConfig, patchConfigValues, resetWorkspace, restartServer } from '../lib/api'
+  import {
+    getConfig,
+    getConfigSchema,
+    getProviderModels,
+    getProviders,
+    saveConfig,
+    patchConfigValues,
+    resetWorkspace,
+    restartServer,
+  } from '../lib/api'
   import { buildConfigImpactPreview } from '../lib/configImpact'
   import { buildConfigMetaBadges } from '../lib/configMetaBadges'
   import { buildQuickStartItems, quickStartProgress } from '../lib/quickStartFields'
@@ -26,7 +35,7 @@
     type LLMTierDraftErrors,
     type LLMTierDraftField,
   } from '../lib/configStructured'
-  import type { ConfigFieldMeta, ConfigSchema } from '../lib/types'
+  import type { ConfigFieldMeta, ConfigSchema, ProvidersAPIInfo } from '../lib/types'
   import ConfigPendingChanges from './ConfigPendingChanges.svelte'
   import { t } from '../i18n'
 
@@ -69,6 +78,11 @@
   let providerEditorErrors: LLMProviderDraftErrors = $state({})
   let providerDraftSeq = 0
   let providerSecretReveal: Record<string, boolean> = $state({})
+  let tierModelOptionsByProvider: Record<string, string[]> = $state({})
+  let tierModelLoadingByProvider: Record<string, boolean> = $state({})
+  let tierModelLoadErrorByProvider: Record<string, string> = $state({})
+  let tierModelSupportsByAlias: Record<string, boolean> = $state({})
+  let providersMetadataRequest: Promise<ProvidersAPIInfo | null> | null = $state(null)
   let llmTestBusy = $state(false)
   let llmTestResult = $state('')
   let llmTestKind: 'success' | 'error' | '' = $state('')
@@ -76,6 +90,7 @@
   let hasDirtyFields = $derived(Object.keys(dirtyFields).length > 0)
   let quickStartItems = $derived(buildQuickStartItems(schema, values, dirtyFields))
   let quickStartStats = $derived(quickStartProgress(quickStartItems))
+  let shouldShowFieldActions = $derived(viewMode === 'quick' || viewMode === 'form')
 
   // -- Diff popup --
   let showDiff = $state(false)
@@ -378,7 +393,7 @@
     if ((e.metaKey || e.ctrlKey) && e.key === 's') {
       e.preventDefault()
       if (viewMode === 'yaml' && isYamlDirty && !saving) handleSaveYaml()
-      if (viewMode === 'form' && hasDirtyFields && !fieldSaving) handleSaveFields()
+      if ((viewMode === 'form' || viewMode === 'quick') && hasDirtyFields && !fieldSaving) handleSaveFields()
     }
   }
 
@@ -474,6 +489,10 @@
     tierDrafts = drafts.length > 0 ? drafts : [createTierDraft('standard')]
     tierEditorField = field
     tierEditorErrors = {}
+    tierModelOptionsByProvider = {}
+    tierModelLoadingByProvider = {}
+    tierModelLoadErrorByProvider = {}
+    void preloadTierModelOptions(drafts)
   }
 
   function openProviderEditor(field: ConfigFieldMeta) {
@@ -608,6 +627,9 @@
     tierDrafts = []
     tierEditorErrors = {}
     tierProviderOptions = []
+    tierModelOptionsByProvider = {}
+    tierModelLoadingByProvider = {}
+    tierModelLoadErrorByProvider = {}
   }
 
   function resetTierEditor() {
@@ -615,10 +637,18 @@
     const drafts = makeLLMTierDrafts(values[tierEditorField.key])
     tierDrafts = drafts.length > 0 ? drafts : [createTierDraft('standard')]
     tierEditorErrors = {}
+    tierModelOptionsByProvider = {}
+    tierModelLoadingByProvider = {}
+    tierModelLoadErrorByProvider = {}
+    void preloadTierModelOptions(drafts)
   }
 
   function addTierDraft() {
-    tierDrafts = [...tierDrafts, createTierDraft(nextTierName())]
+    const draft = createTierDraft(nextTierName())
+    tierDrafts = [...tierDrafts, draft]
+    if (draft?.provider.trim()) {
+      void ensureTierModelOptionsForProvider(draft.provider)
+    }
   }
 
   function removeTierDraft(id: string) {
@@ -628,8 +658,150 @@
     tierEditorErrors = remaining
   }
 
+  function normalizeProviderAlias(alias: string): string {
+    return alias.trim()
+  }
+
+  function setTierProviderModelSupport(providerAlias: string, supportsLiveModels: boolean) {
+    const alias = normalizeProviderAlias(providerAlias)
+    if (!alias) return
+    tierModelSupportsByAlias = { ...tierModelSupportsByAlias, [alias]: supportsLiveModels }
+  }
+
+  function getTierProviderSupportsLiveModels(alias: string): boolean | undefined {
+    const providerAlias = normalizeProviderAlias(alias)
+    if (!providerAlias || !Object.prototype.hasOwnProperty.call(tierModelSupportsByAlias, providerAlias)) return undefined
+    return tierModelSupportsByAlias[providerAlias]
+  }
+
+  function getProviderKindFromPool(metadata: Pick<ProvidersAPIInfo, 'pool'>, alias: string): string | null {
+    const target = normalizeProviderAlias(alias).toLowerCase()
+    const entry = metadata.pool.find((item) => normalizeProviderAlias(item.alias).toLowerCase() === target)
+    return entry?.kind?.trim().toLowerCase() || null
+  }
+
+  async function preloadProviderModelsMetadata(): Promise<ProvidersAPIInfo | null> {
+    if (providersMetadataRequest) {
+      try {
+        return await providersMetadataRequest
+      } catch {
+        providersMetadataRequest = null
+        return null
+      }
+    }
+
+    providersMetadataRequest = getProviders()
+    try {
+      return await providersMetadataRequest
+    } catch {
+      providersMetadataRequest = null
+      return null
+    }
+  }
+
+  async function providerSupportsLiveModels(alias: string): Promise<boolean> {
+    const normalizedAlias = normalizeProviderAlias(alias)
+    if (!normalizedAlias) return false
+    const cached = getTierProviderSupportsLiveModels(normalizedAlias)
+    if (cached !== undefined) return cached
+
+    const metadata = await preloadProviderModelsMetadata()
+    if (!metadata) {
+      setTierProviderModelSupport(normalizedAlias, true)
+      return true
+    }
+
+    const kind = getProviderKindFromPool(metadata, normalizedAlias)
+    if (!kind) {
+      setTierProviderModelSupport(normalizedAlias, true)
+      return true
+    }
+
+    const provider = metadata.providers.find((entry) => entry.id.toLowerCase() === kind)
+    const supports = provider ? provider.supports_live_models : true
+    setTierProviderModelSupport(normalizedAlias, supports)
+    return supports
+  }
+
+  function preloadTierModelOptions(drafts: LLMTierDraft[]) {
+    const providers = new Set<string>()
+    for (const draft of drafts) {
+      const provider = normalizeProviderAlias(draft.provider)
+      if (provider) providers.add(provider)
+    }
+    providers.forEach((provider) => {
+      void ensureTierModelOptionsForProvider(provider)
+    })
+  }
+
+  async function ensureTierModelOptionsForProvider(providerAlias: string) {
+    const alias = normalizeProviderAlias(providerAlias)
+    if (!alias) return
+    if (tierModelLoadingByProvider[alias] || Object.prototype.hasOwnProperty.call(tierModelOptionsByProvider, alias)) {
+      return
+    }
+    tierModelLoadingByProvider = { ...tierModelLoadingByProvider, [alias]: true }
+    tierModelLoadErrorByProvider = { ...tierModelLoadErrorByProvider, [alias]: '' }
+
+    try {
+      const supportsLiveModels = await providerSupportsLiveModels(alias)
+      if (!supportsLiveModels) {
+        tierModelOptionsByProvider = { ...tierModelOptionsByProvider, [alias]: [] }
+        tierModelLoadErrorByProvider = { ...tierModelLoadErrorByProvider, [alias]: 'Live model listing is unavailable for this provider' }
+        return
+      }
+
+      const info = await getProviderModels(alias)
+      const warning = typeof info.warning === 'string' ? info.warning.trim() : ''
+      const models = Array.isArray(info.models) ? info.models : []
+      const deduped = [...new Set(models.map((model) => String(model).trim()).filter(Boolean))].sort()
+      tierModelOptionsByProvider = { ...tierModelOptionsByProvider, [alias]: deduped }
+      tierModelLoadErrorByProvider = { ...tierModelLoadErrorByProvider, [alias]: warning }
+    } catch (error) {
+      tierModelLoadErrorByProvider = { ...tierModelLoadErrorByProvider, [alias]: error instanceof Error ? error.message : 'Failed to load models' }
+      tierModelOptionsByProvider = { ...tierModelOptionsByProvider, [alias]: [] }
+    } finally {
+      tierModelLoadingByProvider = { ...tierModelLoadingByProvider, [alias]: false }
+    }
+  }
+
+  function tierModelOptionsForProvider(alias: string): string[] {
+    const provider = normalizeProviderAlias(alias)
+    return provider && tierModelOptionsByProvider[provider] ? tierModelOptionsByProvider[provider] : []
+  }
+
+  function tierModelLoadingForProvider(alias: string): boolean {
+    const provider = normalizeProviderAlias(alias)
+    return !!tierModelLoadingByProvider[provider]
+  }
+
+  function tierModelLoadErrorForProvider(alias: string): string {
+    const provider = normalizeProviderAlias(alias)
+    return tierModelLoadErrorByProvider[provider] || ''
+  }
+
+  function tierModelOptionsForDraft(draft: LLMTierDraft): string[] {
+    const provider = normalizeProviderAlias(draft.provider)
+    if (!provider) return []
+    const options = tierModelOptionsForProvider(provider)
+    const current = normalizeProviderAlias(draft.model)
+    if (!current) return options
+    if (options.includes(current)) return options
+    return [current, ...options]
+  }
+
   function updateTierDraft(id: string, field: LLMTierDraftField, value: string) {
-    tierDrafts = tierDrafts.map((draft) => draft.id === id ? { ...draft, [field]: value } : draft)
+    tierDrafts = tierDrafts.map((draft) => {
+      if (draft.id !== id) return draft
+      const updated = { ...draft, [field]: value }
+      if (field === 'provider') {
+        updated.model = ''
+        if (normalizeProviderAlias(value)) {
+          void ensureTierModelOptionsForProvider(value)
+        }
+      }
+      return updated
+    })
     const rowErrors = tierEditorErrors[id]
     if (!rowErrors?.[field]) return
     const nextRowErrors = { ...rowErrors }
@@ -733,7 +905,7 @@
       {/if}
     </div>
     <div class="page-header-right">
-      {#if viewMode === 'form' && hasDirtyFields}
+      {#if shouldShowFieldActions && hasDirtyFields}
         <button class="badge badge-warning diff-badge" onclick={() => { showDiff = !showDiff }} title="View changes">{Object.keys(dirtyFields).length} changed</button>
         <button class="btn btn-ghost btn-sm" onclick={handleDiscardFields}>Discard</button>
         <button class="btn btn-primary btn-sm" disabled={fieldSaving} onclick={handleSaveFields}>
@@ -1214,11 +1386,32 @@
                 </label>
                 <label class="tier-field tier-field-model">
                   <span>Model</span>
-                  <input
-                    class:error={!!tierError(draft.id, 'model')}
-                    value={draft.model}
-                    oninput={(event) => updateTierDraft(draft.id, 'model', inputValue(event))}
-                  />
+                  {#if tierModelLoadingForProvider(draft.provider.trim())}
+                    <select class="tier-model-loading" disabled>
+                      <option value="">Loading models...</option>
+                    </select>
+                  {:else if tierModelOptionsForDraft(draft).length > 0}
+                      <select
+                        class:error={!!tierError(draft.id, 'model')}
+                        value={draft.model}
+                        onchange={(event) => updateTierDraft(draft.id, 'model', inputValue(event))}
+                      >
+                      <option value="">Select</option>
+                      {#each tierModelOptionsForDraft(draft) as model}
+                        <option value={model}>{model}</option>
+                      {/each}
+                    </select>
+                  {:else}
+                    <input
+                      class:error={!!tierError(draft.id, 'model')}
+                      value={draft.model}
+                      oninput={(event) => updateTierDraft(draft.id, 'model', inputValue(event))}
+                      placeholder="No model list available"
+                    />
+                  {/if}
+                  {#if tierModelLoadErrorForProvider(draft.provider.trim())}
+                    <small>{tierModelLoadErrorForProvider(draft.provider.trim())}</small>
+                  {/if}
                   {#if tierError(draft.id, 'model')}
                     <small>{tierError(draft.id, 'model')}</small>
                   {/if}

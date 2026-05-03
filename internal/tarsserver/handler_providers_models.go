@@ -14,6 +14,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
+func providerModelsWarnMessage(err error) string {
+	msg := strings.TrimSpace(err.Error())
+	if msg == "" {
+		return ""
+	}
+	return msg
+}
+
 var supportedLiveModelProviders = []string{
 	"openai",
 	"openai-codex",
@@ -135,16 +143,16 @@ func (s *providerModelsService) providers() providersAPIInfo {
 	}
 }
 
-func (s *providerModelsService) models(ctx context.Context) (modelsAPIInfo, error) {
+func (s *providerModelsService) models(ctx context.Context, providerAlias string) (modelsAPIInfo, error) {
 	if s == nil {
 		return modelsAPIInfo{}, fmt.Errorf("provider models service is not configured")
 	}
 	if s.cache == nil {
 		return modelsAPIInfo{}, fmt.Errorf("provider models cache is not configured")
 	}
-	resolved, ok := s.defaultResolved()
-	if !ok {
-		return modelsAPIInfo{}, fmt.Errorf("default tier not resolvable — check llm_providers and llm_tiers config")
+	resolved, err := s.resolveProvider(providerAlias)
+	if err != nil {
+		return modelsAPIInfo{}, err
 	}
 	provider := normalizeProviderValue(resolved.Kind)
 	if !s.supportsProvider(provider) {
@@ -188,6 +196,24 @@ func (s *providerModelsService) models(ctx context.Context) (modelsAPIInfo, erro
 		}, nil
 	}
 
+	if providerErr, ok := err.(*llm.ProviderError); ok && (providerErr.StatusCode == http.StatusUnauthorized || providerErr.StatusCode == http.StatusForbidden) {
+		warn := providerModelsWarnMessage(err)
+		if warn == "" {
+			warn = fmt.Sprintf("provider models unavailable for %s", provider)
+		}
+		if hasCached {
+			return s.responseFromCacheEntry(cached, currentModel, true, warn, now), nil
+		}
+		return modelsAPIInfo{
+			Provider:     provider,
+			CurrentModel: "",
+			Source:       "provider_models_unavailable",
+			Stale:        false,
+			Models:       []string{},
+			Warning:      warn,
+		}, nil
+	}
+
 	if hasCached {
 		return s.responseFromCacheEntry(cached, currentModel, true, err.Error(), now), nil
 	}
@@ -213,13 +239,67 @@ func (s *providerModelsService) responseFromCacheEntry(entry providerModelsCache
 	}
 }
 
+func (s *providerModelsService) resolveProvider(providerAlias string) (config.ResolvedLLMTier, error) {
+	alias := strings.TrimSpace(providerAlias)
+	if alias == "" {
+		resolved, ok := s.defaultResolved()
+		if !ok {
+			return config.ResolvedLLMTier{}, fmt.Errorf("default tier not resolvable — check llm_providers and llm_tiers config")
+		}
+		return resolved, nil
+	}
+
+	provider, ok := s.cfg.LLMProviders[alias]
+	if !ok {
+		return config.ResolvedLLMTier{}, fmt.Errorf("provider alias %q not found", alias)
+	}
+	kind := strings.ToLower(strings.TrimSpace(provider.Kind))
+	if kind == "" {
+		return config.ResolvedLLMTier{}, fmt.Errorf("provider %q has empty kind", alias)
+	}
+
+	return config.ResolvedLLMTier{
+		Kind:          kind,
+		AuthMode:      normalizeAuthMode(provider.AuthMode),
+		OAuthProvider: strings.TrimSpace(provider.OAuthProvider),
+		BaseURL:       normalizeBaseURL(provider.BaseURL),
+		APIKey:        strings.TrimSpace(provider.APIKey),
+		Model:         strings.TrimSpace(s.currentModelForProviderAlias(alias)),
+		ServiceTier:   strings.TrimSpace(provider.ServiceTier),
+		ProviderAlias: alias,
+	}, nil
+}
+
+func (s *providerModelsService) currentModelForProviderAlias(providerAlias string) string {
+	alias := strings.TrimSpace(providerAlias)
+	for _, tier := range sortedTierKeys(s.cfg.LLMTiers) {
+		binding := s.cfg.LLMTiers[tier]
+		if strings.TrimSpace(binding.Provider) != alias {
+			continue
+		}
+		if model := strings.TrimSpace(binding.Model); model != "" {
+			return model
+		}
+	}
+	return ""
+}
+
+func sortedTierKeys(tiers map[string]config.LLMTierBinding) []string {
+	keys := make([]string, 0, len(tiers))
+	for name := range tiers {
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func (s *providerModelsService) supportsProvider(provider string) bool {
 	return slices.Contains(supportedLiveModelProviders, normalizeProviderValue(provider))
 }
 
 func providerSupportsLiveModels(provider string) bool {
 	switch normalizeProviderValue(provider) {
-	case "openai-codex", "claude-code-cli":
+	case "claude-code-cli":
 		return false
 	default:
 		return true
@@ -273,9 +353,14 @@ func newProvidersModelsAPIHandler(service *providerModelsService, logger zerolog
 			writeError(w, http.StatusInternalServerError, "models_unavailable", "provider models service is not configured")
 			return
 		}
-		models, err := service.models(r.Context())
+		providerAlias := strings.TrimSpace(r.URL.Query().Get("provider_alias"))
+		if providerAlias == "" {
+			providerAlias = strings.TrimSpace(r.URL.Query().Get("provider"))
+		}
+
+		models, err := service.models(r.Context(), providerAlias)
 		if err != nil {
-			if strings.Contains(strings.ToLower(err.Error()), "unsupported for llm provider") {
+			if strings.Contains(strings.ToLower(err.Error()), "unsupported for llm provider") || strings.Contains(strings.ToLower(err.Error()), "provider alias") {
 				writeError(w, http.StatusBadRequest, "models_unsupported", err.Error())
 				return
 			}
