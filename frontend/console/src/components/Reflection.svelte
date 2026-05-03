@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { getReflectionStatus, runReflectionOnce, getReflectionConfig } from '../lib/api'
   import type { ReflectionSnapshot, ReflectionRunSummary, ReflectionConfigView, ReflectionJobResult } from '../lib/types'
+  import { t } from '../i18n'
 
   type RunMetric = {
     label: string
@@ -24,7 +25,7 @@
     try {
       snapshot = await getReflectionStatus()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load status'
+      error = e instanceof Error ? e.message : $t.reflection.errorLoadStatus
     }
   }
 
@@ -57,7 +58,7 @@
         finished_at: '',
         results: [],
         success: false,
-        err: e instanceof Error ? e.message : 'Run failed',
+        err: e instanceof Error ? e.message : $t.reflection.errorRunFailed,
       }
     } finally {
       running = false
@@ -72,15 +73,15 @@
   }
 
   function relativeTime(value?: string): string {
-    if (!value?.trim()) return 'never'
+    if (!value?.trim()) return $t.reflection.relativeTime.never
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
-    if (date.getFullYear() <= 1) return 'never'
+    if (date.getFullYear() <= 1) return $t.reflection.relativeTime.never
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
-    if (seconds < 60) return `${seconds}s ago`
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-    return `${Math.floor(seconds / 86400)}d ago`
+    if (seconds < 60) return $t.reflection.relativeTime.secondsAgo(seconds)
+    if (seconds < 3600) return $t.reflection.relativeTime.minutesAgo(Math.floor(seconds / 60))
+    if (seconds < 86400) return $t.reflection.relativeTime.hoursAgo(Math.floor(seconds / 3600))
+    return $t.reflection.relativeTime.daysAgo(Math.floor(seconds / 86400))
   }
 
   function fmtDuration(durationNs: number): string {
@@ -126,17 +127,17 @@
   }
 
   function metricValue(value: number | null, plus = false): string {
-    if (value === null) return 'not reported'
+    if (value === null) return $t.reflection.metrics.notReported
     if (plus && value > 0) return `+${value}`
     return `${value}`
   }
 
   function metricDelta(current: number | null, previous: number | null, hasPrevious: boolean): string {
-    if (current === null) return 'not reported'
-    if (!hasPrevious) return 'first run'
-    if (previous === null) return 'no previous value'
+    if (current === null) return $t.reflection.metrics.notReported
+    if (!hasPrevious) return $t.reflection.metrics.firstRun
+    if (previous === null) return $t.reflection.metrics.noPreviousValue
     const delta = current - previous
-    if (delta === 0) return 'same as last run'
+    if (delta === 0) return $t.reflection.metrics.sameAsLastRun
     return `${delta > 0 ? '+' : ''}${delta} vs last run`
   }
 
@@ -156,17 +157,17 @@
 
     return [
       {
-        label: 'Experiences extracted',
+        label: $t.reflection.metrics.experiencesLabel,
         value: metricValue(experiences, true),
         delta: metricDelta(experiences, previousExperiences, hasPrevious),
       },
       {
-        label: 'Empty sessions removed',
+        label: $t.reflection.metrics.removedLabel,
         value: metricValue(removed),
         delta: metricDelta(removed, previousRemoved, hasPrevious),
       },
       {
-        label: 'KB entries compiled',
+        label: $t.reflection.metrics.compiledLabel,
         value: metricValue(compiled),
         delta: metricDelta(compiled, previousCompiled, hasPrevious),
       },
@@ -180,10 +181,10 @@
       const experiences = detailNumber(job, 'experiences_added')
       const compiled = kbEntriesCompiled(job)
       const parts = [
-        sessions !== null ? `${sessions} sessions scanned` : '',
-        turns !== null ? `${turns} turns processed` : '',
-        experiences !== null ? `${experiences} experiences extracted` : '',
-        compiled !== null ? `${compiled} KB entries compiled` : '',
+        sessions !== null ? $t.reflection.jobDetails.sessionsScanned(sessions) : '',
+        turns !== null ? $t.reflection.jobDetails.turnsProcessed(turns) : '',
+        experiences !== null ? $t.reflection.jobDetails.experiencesExtracted(experiences) : '',
+        compiled !== null ? $t.reflection.jobDetails.kbEntriesCompiled(compiled) : '',
       ].filter(Boolean)
       return parts.join(' · ')
     }
@@ -191,8 +192,8 @@
       const removed = detailNumber(job, 'removed_count')
       const skipped = detailNumber(job, 'skipped_count')
       const parts = [
-        removed !== null ? `${removed} empty sessions removed` : '',
-        skipped !== null ? `${skipped} skipped` : '',
+        removed !== null ? $t.reflection.jobDetails.emptySessionsRemoved(removed) : '',
+        skipped !== null ? $t.reflection.jobDetails.skipped(skipped) : '',
       ].filter(Boolean)
       return parts.join(' · ')
     }
@@ -218,7 +219,7 @@
 
 <div class="reflection">
   {#if loading}
-    <div class="r-loading">Loading reflection...</div>
+    <div class="r-loading">{$t.reflection.loading}</div>
   {:else}
     {#if error}
       <div class="error-banner" style="margin-bottom:var(--space-4)">{error}</div>
@@ -226,73 +227,72 @@
 
     <section class="card r-intro-card">
       <div class="card-header">
-        <span class="card-title">Reflection - Nightly Maintenance</span>
-        <span class="badge badge-accent">system surface</span>
+        <span class="card-title">{$t.reflection.introTitle}</span>
+        <span class="badge badge-accent">{$t.reflection.systemSurfaceBadge}</span>
       </div>
       <p class="r-intro-lead">
-        TARS runs once per day during the configured sleep window ({config?.sleep_window || '02:00-05:00'})
-        and moves slower maintenance out of chat turns into a background batch.
+        {$t.reflection.introLead(config?.sleep_window || '02:00-05:00')}
       </p>
       <div class="r-intro-grid" aria-label="Reflection maintenance jobs">
         <div class="r-intro-job">
-          <span class="r-job-name">memory</span>
-          <span>memory: extracts experiences and compiles durable knowledge from the recent {config ? `${config.memory_lookback_hours}h` : '24h'} lookback.</span>
+          <span class="r-job-name">{$t.reflection.jobs.memoryLabel}</span>
+          <span>{$t.reflection.jobs.memoryDesc(config ? `${config.memory_lookback_hours}h` : '24h')}</span>
         </div>
         <div class="r-intro-job">
-          <span class="r-job-name">kb_cleanup</span>
-          <span>kb_cleanup: removes old empty sessions after {config ? hoursFromSeconds(config.empty_session_age_seconds) : '24h'} while leaving main sessions alone.</span>
+          <span class="r-job-name">{$t.reflection.jobs.cleanupLabel}</span>
+          <span>{$t.reflection.jobs.cleanupDesc(config ? hoursFromSeconds(config.empty_session_age_seconds) : '24h')}</span>
         </div>
       </div>
       <ul class="r-intro-actions">
-        <li>Review the last run result and recent run history here.</li>
-        <li>Run Reflection Now bypasses the sleep-window gate and starts the batch immediately.</li>
-        <li>Pulse sends a signal after repeated failures so nightly maintenance does not fail silently.</li>
+        <li>{$t.reflection.introAction1}</li>
+        <li>{$t.reflection.introAction2}</li>
+        <li>{$t.reflection.introAction3}</li>
       </ul>
     </section>
 
     <!-- Status summary -->
     <section class="card">
       <div class="card-header">
-        <span class="card-title">Reflection Status</span>
+        <span class="card-title">{$t.reflection.statusTitle}</span>
         {#if config?.enabled}
-          <span class="badge badge-success">enabled</span>
+          <span class="badge badge-success">{$t.reflection.enabled}</span>
         {:else}
-          <span class="badge badge-default">disabled</span>
+          <span class="badge badge-default">{$t.reflection.disabled}</span>
         {/if}
         {#if snapshot && snapshot.consecutive_failures > 0}
-          <span class="badge badge-error">{snapshot.consecutive_failures} consecutive failure{snapshot.consecutive_failures > 1 ? 's' : ''}</span>
+          <span class="badge badge-error">{$t.reflection.consecutiveFailures(snapshot.consecutive_failures)}</span>
         {/if}
       </div>
       <dl class="r-facts">
-        <div><dt>Sleep Window</dt><dd>{config?.sleep_window || '—'}</dd></div>
-        <div><dt>Timezone</dt><dd>{config?.timezone || 'system'}</dd></div>
-        <div><dt>Tick Interval</dt><dd>{config ? `${config.tick_interval_seconds}s` : '—'}</dd></div>
-        <div><dt>Empty Session Age</dt><dd>{config ? hoursFromSeconds(config.empty_session_age_seconds) : '—'}</dd></div>
-        <div><dt>Memory Lookback</dt><dd>{config ? `${config.memory_lookback_hours}h` : '—'}</dd></div>
-        <div><dt>Last Run</dt><dd>{relativeTime(snapshot?.last_run_at)}</dd></div>
-        <div><dt>Last Success</dt><dd>{relativeTime(snapshot?.last_successful_run_at)}</dd></div>
-        <div><dt>Total Runs</dt><dd>{snapshot?.total_runs ?? 0}</dd></div>
-        <div><dt>Successes</dt><dd>{snapshot?.total_successes ?? 0}</dd></div>
-        <div><dt>Failures</dt><dd>{snapshot?.total_failures ?? 0}</dd></div>
+        <div><dt>{$t.reflection.facts.sleepWindow}</dt><dd>{config?.sleep_window || '—'}</dd></div>
+        <div><dt>{$t.reflection.facts.timezone}</dt><dd>{config?.timezone || 'system'}</dd></div>
+        <div><dt>{$t.reflection.facts.tickInterval}</dt><dd>{config ? `${config.tick_interval_seconds}s` : '—'}</dd></div>
+        <div><dt>{$t.reflection.facts.emptySessionAge}</dt><dd>{config ? hoursFromSeconds(config.empty_session_age_seconds) : '—'}</dd></div>
+        <div><dt>{$t.reflection.facts.memoryLookback}</dt><dd>{config ? `${config.memory_lookback_hours}h` : '—'}</dd></div>
+        <div><dt>{$t.reflection.facts.lastRun}</dt><dd>{relativeTime(snapshot?.last_run_at)}</dd></div>
+        <div><dt>{$t.reflection.facts.lastSuccess}</dt><dd>{relativeTime(snapshot?.last_successful_run_at)}</dd></div>
+        <div><dt>{$t.reflection.facts.totalRuns}</dt><dd>{snapshot?.total_runs ?? 0}</dd></div>
+        <div><dt>{$t.reflection.facts.successes}</dt><dd>{snapshot?.total_successes ?? 0}</dd></div>
+        <div><dt>{$t.reflection.facts.failures}</dt><dd>{snapshot?.total_failures ?? 0}</dd></div>
       </dl>
     </section>
 
     <!-- Last Run + Run Action -->
     <section class="card">
       <div class="card-header">
-        <span class="card-title">Last Run</span>
+        <span class="card-title">{$t.reflection.lastRunTitle}</span>
         {#if snapshot?.last_run_summary}
           {#if snapshot.last_run_summary.success}
-            <span class="badge badge-success">success</span>
+            <span class="badge badge-success">{$t.reflection.successBadge}</span>
           {:else}
-            <span class="badge badge-error">failed</span>
+            <span class="badge badge-error">{$t.reflection.failedBadge}</span>
           {/if}
         {/if}
       </div>
       {#if snapshot?.last_run_summary}
         <div class="r-run-meta">
-          <span>Started: {fmtTime(snapshot.last_run_summary.started_at)}</span>
-          <span>Finished: {fmtTime(snapshot.last_run_summary.finished_at)}</span>
+          <span>{$t.reflection.startedLabel} {fmtTime(snapshot.last_run_summary.started_at)}</span>
+          <span>{$t.reflection.finishedLabel} {fmtTime(snapshot.last_run_summary.finished_at)}</span>
         </div>
         {#if snapshot.last_run_summary.err}
           <div class="r-error">{snapshot.last_run_summary.err}</div>
@@ -304,12 +304,12 @@
                 <div class="r-job-row">
                   <span class="r-job-name">{job.name}</span>
                   {#if job.success}
-                    <span class="badge badge-success">ok</span>
+                    <span class="badge badge-success">{$t.reflection.jobOk}</span>
                   {:else}
-                    <span class="badge badge-error">fail</span>
+                    <span class="badge badge-error">{$t.reflection.jobFail}</span>
                   {/if}
                   {#if job.changed}
-                    <span class="badge badge-info">changed</span>
+                    <span class="badge badge-info">{$t.reflection.jobChanged}</span>
                   {/if}
                   <span class="r-job-duration">{fmtDuration(job.duration_ms)}</span>
                 </div>
@@ -328,21 +328,21 @@
         {/if}
       {:else}
         <div class="r-empty-state">
-          <div class="r-empty">No reflection runs yet.</div>
+          <div class="r-empty">{$t.reflection.noRunsYet}</div>
           <div class="r-run-preview">
-            <div class="r-preview-title">Expected output</div>
+            <div class="r-preview-title">{$t.reflection.expectedOutput}</div>
             <ul>
               <li>
-                <span class="badge badge-success">memory</span>
-                <span>Recent turns scanned, experiences extracted, and KB compilation totals shown when reported.</span>
+                <span class="badge badge-success">{$t.reflection.jobs.memoryLabel}</span>
+                <span>{$t.reflection.previewMemory}</span>
               </li>
               <li>
-                <span class="badge badge-success">kb_cleanup</span>
-                <span>Old empty sessions removed or skipped with duration and counts.</span>
+                <span class="badge badge-success">{$t.reflection.jobs.cleanupLabel}</span>
+                <span>{$t.reflection.previewCleanup}</span>
               </li>
               <li>
-                <span class="badge badge-info">failure</span>
-                <span>Error detail stays in this card; Pulse will surface repeated failures.</span>
+                <span class="badge badge-info">{$t.reflection.failedBadge}</span>
+                <span>{$t.reflection.previewFailure}</span>
               </li>
             </ul>
           </div>
@@ -351,35 +351,35 @@
 
       <div class="r-actions">
         <button class="btn btn-primary btn-sm" disabled={running || !config?.enabled} onclick={handleRun}>
-          {running ? 'Running...' : 'Run Reflection Now'}
+          {running ? $t.reflection.runningButton : $t.reflection.runNowButton}
         </button>
         {#if !config?.enabled}
-          <span class="r-hint">Reflection is disabled in config</span>
+          <span class="r-hint">{$t.reflection.disabledHint}</span>
         {:else}
-          <span class="r-hint">Bypasses the sleep-window gate</span>
+          <span class="r-hint">{$t.reflection.bypassHint}</span>
         {/if}
       </div>
 
       {#if runResult}
         <div class="r-run-result">
           <div class="r-run-result-header">
-            <strong>Run result</strong>
+            <strong>{$t.reflection.runResultTitle}</strong>
             {#if runResult.success}
-              <span class="badge badge-success">success</span>
+              <span class="badge badge-success">{$t.reflection.successBadge}</span>
             {:else}
-              <span class="badge badge-error">failed</span>
+              <span class="badge badge-error">{$t.reflection.failedBadge}</span>
             {/if}
           </div>
           <div class="r-run-meta">
-            <span>Started: {fmtTime(runResult.started_at)}</span>
-            <span>Finished: {fmtTime(runResult.finished_at)}</span>
-            <span>Duration: {summaryDuration(runResult)}</span>
+            <span>{$t.reflection.startedLabel} {fmtTime(runResult.started_at)}</span>
+            <span>{$t.reflection.finishedLabel} {fmtTime(runResult.finished_at)}</span>
+            <span>{$t.reflection.durationLabel} {summaryDuration(runResult)}</span>
           </div>
           {#if runResult.err}
             <div class="r-error">{runResult.err}</div>
           {/if}
           <div class="r-run-stats" aria-label="Run totals">
-            <div class="r-run-stats-title">Run totals</div>
+            <div class="r-run-stats-title">{$t.reflection.runTotalsTitle}</div>
             {#each runMetrics(runResult, lastRunBeforeManualRun) as metric}
               <div class="r-run-stat">
                 <span>{metric.label}</span>
@@ -395,12 +395,12 @@
                   <div class="r-job-row">
                     <span class="r-job-name">{job.name}</span>
                     {#if job.success}
-                      <span class="badge badge-success">ok</span>
+                      <span class="badge badge-success">{$t.reflection.jobOk}</span>
                     {:else}
-                      <span class="badge badge-error">fail</span>
+                      <span class="badge badge-error">{$t.reflection.jobFail}</span>
                     {/if}
                     {#if job.changed}
-                      <span class="badge badge-info">changed</span>
+                      <span class="badge badge-info">{$t.reflection.jobChanged}</span>
                     {/if}
                     <span class="r-job-duration">{fmtDuration(job.duration_ms)}</span>
                   </div>
@@ -425,7 +425,7 @@
     {#if snapshot?.recent && snapshot.recent.length > 0}
       <section class="card">
         <div class="card-header">
-          <span class="card-title">Recent Runs</span>
+          <span class="card-title">{$t.reflection.recentRunsTitle}</span>
           <span class="badge badge-default">{snapshot.recent.length}</span>
         </div>
         <ul class="r-recent">
@@ -434,11 +434,11 @@
               <div class="r-recent-row">
                 <span class="r-recent-time">{fmtTime(run.started_at)}</span>
                 {#if run.success}
-                  <span class="badge badge-success">success</span>
+                  <span class="badge badge-success">{$t.reflection.successBadge}</span>
                 {:else}
-                  <span class="badge badge-error">failed</span>
+                  <span class="badge badge-error">{$t.reflection.failedBadge}</span>
                 {/if}
-                <span class="r-recent-count">{run.results?.length ?? 0} job{(run.results?.length ?? 0) === 1 ? '' : 's'}</span>
+                <span class="r-recent-count">{$t.reflection.jobsCount(run.results?.length ?? 0)}</span>
               </div>
               {#if run.err}
                 <div class="r-recent-err">{run.err}</div>

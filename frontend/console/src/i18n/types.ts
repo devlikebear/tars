@@ -512,4 +512,83 @@ export type Translations = {
     errorAudit: string
     errorCreate: string
   }
+  reflection: {
+    loading: string
+    introTitle: string
+    systemSurfaceBadge: string
+    introLead: (window: string) => string
+    jobs: {
+      memoryLabel: string
+      memoryDesc: (hours: string) => string
+      cleanupLabel: string
+      cleanupDesc: (age: string) => string
+    }
+    introAction1: string
+    introAction2: string
+    introAction3: string
+    statusTitle: string
+    enabled: string
+    disabled: string
+    consecutiveFailures: (count: number) => string
+    facts: {
+      sleepWindow: string
+      timezone: string
+      tickInterval: string
+      emptySessionAge: string
+      memoryLookback: string
+      lastRun: string
+      lastSuccess: string
+      totalRuns: string
+      successes: string
+      failures: string
+    }
+    lastRunTitle: string
+    successBadge: string
+    failedBadge: string
+    startedLabel: string
+    finishedLabel: string
+    jobOk: string
+    jobFail: string
+    jobChanged: string
+    noRunsYet: string
+    expectedOutput: string
+    previewMemory: string
+    previewCleanup: string
+    previewFailure: string
+    runNowButton: string
+    runningButton: string
+    disabledHint: string
+    bypassHint: string
+    runResultTitle: string
+    durationLabel: string
+    runTotalsTitle: string
+    metrics: {
+      experiencesLabel: string
+      removedLabel: string
+      compiledLabel: string
+      notReported: string
+      firstRun: string
+      noPreviousValue: string
+      sameAsLastRun: string
+    }
+    jobDetails: {
+      sessionsScanned: (count: number) => string
+      turnsProcessed: (count: number) => string
+      experiencesExtracted: (count: number) => string
+      kbEntriesCompiled: (count: number) => string
+      emptySessionsRemoved: (count: number) => string
+      skipped: (count: number) => string
+    }
+    relativeTime: {
+      never: string
+      secondsAgo: (n: number) => string
+      minutesAgo: (n: number) => string
+      hoursAgo: (n: number) => string
+      daysAgo: (n: number) => string
+    }
+    recentRunsTitle: string
+    jobsCount: (count: number) => string
+    errorLoadStatus: string
+    errorRunFailed: string
+  }
 }
