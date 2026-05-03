@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.130] - 2026-05-03
+
+### Added
+
+- Added localized, phase-aware live chat status feedback in the Chat panel while streaming: status labels, elapsed timer, tool-aware progress steps, and animated activity dots.
+
+### Fixed
+
+- Replaced static "..." streaming status text with explicit phase-aware messaging and consistent status state updates.
+
 ## [0.31.129] - 2026-05-03
 
 ### Added
