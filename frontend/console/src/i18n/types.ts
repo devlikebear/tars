@@ -467,4 +467,49 @@ export type Translations = {
       abort: string
     }
   }
+  ops: {
+    title: string
+    subtitle: string
+    refresh: string
+    loading: string
+    approvalsCard: string
+    pendingBadge: (count: number) => string
+    creating: string
+    newCleanupPlan: string
+    cleanupPlanTooltip: string
+    emptyKicker: string
+    emptyTitle: string
+    emptyBody: string
+    triggersLabel: string
+    stepsLabel: string
+    triggers: {
+      cleanupTitle: string
+      cleanupDetail: string
+      cleanupState: string
+      pulseTitle: string
+      pulseDetail: string
+      pulseState: string
+    }
+    steps: {
+      reviewTitle: string
+      reviewDetail: string
+      chooseTitle: string
+      chooseDetail: string
+      resultTitle: string
+      resultDetail: string
+    }
+    gitDestructive: string
+    gitAction: string
+    candidatesSuffix: (count: number) => string
+    approve: string
+    reject: string
+    auditTitle: string
+    auditEventsSuffix: (count: number) => string
+    refreshing: string
+    noEvents: string
+    destructiveBadge: string
+    errorReview: string
+    errorAudit: string
+    errorCreate: string
+  }
 }
