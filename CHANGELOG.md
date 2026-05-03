@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.137] - 2026-05-03
+
+### Fixed
+
+- **Integrated terminal tabs** — terminal area collapsed to a single row or grew to ~24,000 px (depending on layout phase), making the shell unusable. The dock panel body uses `display: block`, so `flex: 1` on `.terminal-tabs` had no effect and the WebGL canvas was sized against an unbounded container. Added `height: 100%` so the tabs container resolves against the dock body's flex-derived height.
+- **Integrated terminal** — moved the WebGL renderer addon load to after the first `fit()` and call `terminal.refresh()` once the renderer is attached, so the canvas adopts the correct dimensions even when a tab mounts via a `display: none → flex` transition. Also refresh on `visible` change so a re-activated tab always repaints from the latest buffer state.
+
 ## [0.31.136] - 2026-05-03
 
 ### Fixed

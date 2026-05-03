@@ -126,6 +126,10 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    /* dock-panel-body uses display:block, so flex:1 alone won't bound us.
+       Fall back to height:100% which works because the body has a resolved
+       height from its own flex parent (the dock frame). */
+    height: 100%;
     background: var(--surface-inset);
   }
 

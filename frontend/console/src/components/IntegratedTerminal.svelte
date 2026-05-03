@@ -401,18 +401,6 @@
     terminal.loadAddon(new Unicode11Addon())
     terminal.unicode.activeVersion = '11'
 
-    try {
-      const addon = new WebglAddon()
-      addon.onContextLoss(() => {
-        addon.dispose()
-        webglAddon = null
-      })
-      terminal.loadAddon(addon)
-      webglAddon = addon
-    } catch {
-      // WebGL unavailable — fall back to default DOM renderer.
-    }
-
     terminal.attachCustomKeyEventHandler(customKeyHandler)
     terminal.onData((data) => {
       send({ type: 'input', data: encodeBase64(data) })
@@ -433,6 +421,24 @@
     resizeObserver.observe(container)
     requestAnimationFrame(() => {
       fitAndResize()
+      // Load WebGL renderer AFTER the first fit so the canvas is created
+      // at the correct dimensions. Initializing it before fit (when the
+      // pane may have just transitioned from display:none → flex) leaves
+      // the canvas with stale size and produces a blank terminal even
+      // though the buffer is being written to.
+      try {
+        const addon = new WebglAddon()
+        addon.onContextLoss(() => {
+          addon.dispose()
+          webglAddon = null
+        })
+        terminal?.loadAddon(addon)
+        webglAddon = addon
+      } catch {
+        // WebGL unavailable — fall back to default DOM renderer.
+      }
+      // Force a redraw so any output already buffered actually paints.
+      if (terminal) terminal.refresh(0, terminal.rows - 1)
       connect()
       terminal?.focus()
     })
@@ -440,9 +446,12 @@
 
   $effect(() => {
     if (visible && terminal) {
-      // Refit + focus after the browser applies the now-visible layout.
+      // Refit + redraw + focus after the browser applies the now-visible
+      // layout. The refresh() call repaints the canvas so a tab returning
+      // from display:none doesn't show a stale (often blank) frame.
       requestAnimationFrame(() => {
         fitAndResize()
+        if (terminal) terminal.refresh(0, terminal.rows - 1)
         terminal?.focus()
       })
     }
