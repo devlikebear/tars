@@ -187,6 +187,119 @@ export type Translations = {
       defaultToolMeta: string
     }
   }
+  onboarding: {
+    kicker: {
+      firstRun: string
+      reentry: string
+    }
+    title: string
+    subtitleFirstRun: string
+    subtitleReentry: string
+    steps: {
+      provider: string
+      tiers: string
+      review: string
+      restart: string
+      saved: string
+    }
+    errors: {
+      inputCheck: string
+      saveFailed: string
+      restartFailed: string
+      refreshFailed: string
+    }
+    step1: {
+      cardTitle: string
+      kindLabel: string
+      kindHint: string
+      kindPlaceholder: string
+      aliasLabel: string
+      aliasHint: string
+      aliasPlaceholder: string
+      authModeLabel: string
+      authModeHint: string
+      apiKeyLabel: string
+      apiKeyKeepHint: string
+      apiKeyPlaceholderKeep: string
+      apiKeyPlaceholderNew: string
+      baseUrlLabel: string
+      baseUrlHint: string
+      hintOauthTitle: string
+      hintOauthBody: string
+      hintCliTitle: string
+      hintCliBody: string
+      nextButton: string
+    }
+    step2: {
+      cardTitle: string
+      cardMeta: string
+      modelsSourceLive: (count: number) => string
+      modelsSourceStatic: (date: string, count: number) => string
+      modelsSourceStaticEmpty: (date: string) => string
+      refreshButton: string
+      refreshing: string
+      providerAliasLabel: string
+      modelLabel: string
+      reasoningLabel: string
+      reasoningHint: string
+      reasoningDefault: string
+      backButton: string
+      nextButton: string
+      refreshErrorEmpty: string
+    }
+    step3: {
+      cardTitle: string
+      saveLocation: string
+      providerHeading: string
+      tiersHeading: string
+      aliasField: string
+      kindField: string
+      authModeField: string
+      apiKeyField: string
+      baseUrlField: string
+      tierField: string
+      providerField: string
+      modelField: string
+      reasoningField: string
+      apiKeyKept: string
+      none: string
+      defaultLabel: string
+      backButton: string
+      saveOnlyButton: string
+      saveAndRestartButton: string
+    }
+    saved: {
+      title: string
+      body: string
+      laterButton: string
+      restartNowButton: string
+    }
+    restart: {
+      patchingTitle: string
+      patchingBody: string
+      restartingTitle: string
+      restartingBody: string
+      pollingTitle: string
+      pollingBody: string
+      readyTitle: string
+      readyBody: string
+      timeoutTitle: string
+      timeoutBody: string
+      refreshButton: string
+    }
+  }
+  shell: {
+    setupOnlyKicker: string
+    setupOnlyBody: string
+  }
+  chat: {
+    pinned: string
+  }
+  configWizardCard: {
+    kicker: string
+    body: string
+    button: string
+  }
   tasks: {
     title: string
     loading: string
