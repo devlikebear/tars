@@ -229,6 +229,8 @@ export type Translations = {
       hintCliTitle: string
       hintCliBody: string
       nextButton: string
+      selectProviderLabel: string
+      addNewProviderOption: string
     }
     step2: {
       cardTitle: string

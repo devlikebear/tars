@@ -100,13 +100,19 @@ export function validateProviderStep(form: OnboardingFormState): string[] {
 
 // validateTiersStep returns user-facing error messages for the tier
 // bindings step. All three tiers must point at a non-empty provider
-// alias and a non-empty model. The provider alias should match the
-// one configured on the previous step (or another tier's provider).
-export function validateTiersStep(form: OnboardingFormState): string[] {
+// alias and a non-empty model. The provider alias must match one of
+// the aliases known to the wizard (step-1 alias + any existing providers).
+export function validateTiersStep(form: OnboardingFormState, allKnownAliases?: string[]): string[] {
   const errs: string[] = []
   const knownAliases = new Set<string>()
   if (form.provider.alias.trim() !== '') {
     knownAliases.add(form.provider.alias.trim())
+  }
+  if (allKnownAliases) {
+    for (const a of allKnownAliases) {
+      const trimmed = a.trim()
+      if (trimmed !== '') knownAliases.add(trimmed)
+    }
   }
   for (const tier of requiredTiers) {
     const binding = form.tiers[tier]
@@ -126,8 +132,8 @@ export function validateTiersStep(form: OnboardingFormState): string[] {
 
 // validateForm returns the union of provider + tier errors. The
 // review step uses this to gate the Save button.
-export function validateForm(form: OnboardingFormState): string[] {
-  return [...validateProviderStep(form), ...validateTiersStep(form)]
+export function validateForm(form: OnboardingFormState, allKnownAliases?: string[]): string[] {
+  return [...validateProviderStep(form), ...validateTiersStep(form, allKnownAliases)]
 }
 
 // buildConfigPayload converts the form into the `updates` map shape
@@ -230,38 +236,49 @@ export function suggestedAuthModeForKind(kind: ProviderKind | ''): AuthMode {
   return availableAuthModesForKind(kind)[0]
 }
 
+// allAliasesFromConfigValues returns all provider aliases from the config
+// values map, sorted alphabetically. Used to populate the provider selector
+// in re-entry mode and the tier provider dropdowns.
+export function allAliasesFromConfigValues(values: Record<string, unknown>): string[] {
+  const providers = (values?.llm_providers ?? {}) as Record<string, unknown>
+  return Object.keys(providers).sort()
+}
+
+// providerFromConfigValues extracts the OnboardingProvider fields for a
+// specific alias from the config values map.
+export function providerFromConfigValues(
+  values: Record<string, unknown>,
+  alias: string,
+): OnboardingProvider {
+  const providers = (values?.llm_providers ?? {}) as Record<string, Record<string, unknown>>
+  const entry = providers[alias] || {}
+  const kind = String(entry.kind ?? '') as ProviderKind | ''
+  const apiKey = String(entry.api_key ?? '')
+  return {
+    alias,
+    kind,
+    auth_mode: (String(entry.auth_mode ?? 'api-key') as AuthMode) || 'api-key',
+    api_key: apiKey,
+    base_url: String(entry.base_url ?? ''),
+    oauth_provider: entry.oauth_provider ? String(entry.oauth_provider) : undefined,
+    keepExistingApiKey: apiKey.trim() !== '',
+  }
+}
+
 // formFromConfigValues maps a config schema's values map into the
 // wizard's form shape. Used by the re-entry path so the wizard opens
 // with the existing provider + tier bindings prefilled.
 //
-// Picks the FIRST provider alias as the active edit target. The
-// wizard does not yet support editing multiple providers from the
-// same screen — that lands as a separate enhancement.
+// Picks the FIRST provider alias as the active edit target. Call
+// providerFromConfigValues to switch to a different alias.
 //
-// API keys arrive masked from the schema endpoint; the form sets
-// keepExistingApiKey=true so saving without typing a new value
-// leaves the on-disk credential untouched.
+// Non-empty api_key values in the returned form have keepExistingApiKey=true
+// so saving without typing a new value leaves the on-disk credential untouched.
 export function formFromConfigValues(values: Record<string, unknown>): OnboardingFormState {
   const form = emptyOnboardingForm()
-  const providers = (values?.llm_providers ?? {}) as Record<string, Record<string, unknown>>
-  const aliases = Object.keys(providers).sort()
+  const aliases = allAliasesFromConfigValues(values)
   if (aliases.length > 0) {
-    const alias = aliases[0]
-    const entry = providers[alias] || {}
-    const kind = String(entry.kind ?? '') as ProviderKind | ''
-    form.provider.alias = alias
-    form.provider.kind = kind
-    form.provider.auth_mode = (String(entry.auth_mode ?? 'api-key') as AuthMode) || 'api-key'
-    form.provider.api_key = String(entry.api_key ?? '')
-    form.provider.base_url = String(entry.base_url ?? '')
-    if (entry.oauth_provider) {
-      form.provider.oauth_provider = String(entry.oauth_provider)
-    }
-    // The schema endpoint masks api_key; treat any non-empty masked
-    // value as "keep existing" until the user types a new key.
-    if (form.provider.api_key.trim() !== '') {
-      form.provider.keepExistingApiKey = true
-    }
+    form.provider = providerFromConfigValues(values, aliases[0])
   }
 
   const tiers = (values?.llm_tiers ?? {}) as Record<string, Record<string, unknown>>

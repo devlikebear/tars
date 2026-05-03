@@ -68,8 +68,19 @@ func PatchYAML(path string, updates map[string]any) error {
 		if resolvedKey == "" {
 			continue
 		}
+		patchedValue := normalizePatchedConfigValue(resolvedKey, value)
+		// For two-level map values (e.g. llm_providers: alias → fields),
+		// merge the patch into the existing value BEFORE deleting it so
+		// that unpatched entries (other provider aliases, existing api_key)
+		// are preserved across wizard saves.
+		if newMap := anyToStringMap(patchedValue); newMap != nil {
+			if existingMap := readConfigYAMLMap(existing, resolvedKey); existingMap != nil {
+				nestedMapMerge(existingMap, newMap)
+				patchedValue = existingMap
+			}
+		}
 		deleteConfigYAMLRepresentations(existing, resolvedKey)
-		setConfigYAMLValue(existing, resolvedKey, normalizePatchedConfigValue(resolvedKey, value))
+		setConfigYAMLValue(existing, resolvedKey, patchedValue)
 	}
 
 	out, err := yaml.Marshal(existing)
