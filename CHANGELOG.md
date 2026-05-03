@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.129] - 2026-05-03
+
+### Added
+
+- Added provider-aware model loading for LLM tier editing so the model field can be selected from that provider's model list.
+- Added quick-start/view-mode parity so the field action buttons (Save/Discard) stay visible in quick start mode when there are pending changes.
+
+### Fixed
+
+- Fixed `/v1/models` provider lookup behavior to support `provider_alias` scoped queries and fall back to a warninged empty response on permission errors, instead of returning a 500.
+- Fixed LLM history reconstruction so trailing unmatched tool outputs and stale tool-call metadata are no longer included in outbound chat payloads.
+
 ## [0.31.128] - 2026-05-02
 
 ### Fixed
