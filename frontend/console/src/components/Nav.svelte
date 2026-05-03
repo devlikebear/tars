@@ -22,9 +22,11 @@
   interface Props {
     currentPath: string
     onNavigate: (path: string) => void
+    navOpen?: boolean
+    onClose?: () => void
   }
 
-  let { currentPath, onNavigate }: Props = $props()
+  let { currentPath, onNavigate, navOpen = false, onClose }: Props = $props()
   let version = $state('')
 
   onMount(async () => {
@@ -84,6 +86,11 @@
     onNavigate(path)
   }
 
+  function handleClose(event: MouseEvent) {
+    event.preventDefault()
+    onClose?.()
+  }
+
   function groupLabel(id: NavGroupId): string {
     return $t.nav.groups[id]
   }
@@ -93,12 +100,13 @@
   }
 </script>
 
-<nav class="nav" aria-label={$t.nav.mainNavigation}>
+<nav class="nav" class:nav-open={navOpen} aria-label={$t.nav.mainNavigation}>
   <div class="nav-brand">
     <button type="button" class="nav-logo" onclick={(e: MouseEvent) => handleClick(e, '/console')}>
       <span class="nav-logo-mark">T</span>
       <span class="nav-logo-text">TARS</span>
     </button>
+    <button type="button" class="nav-close-btn" aria-label="Close navigation" onclick={handleClose}>✕</button>
   </div>
 
   <div class="nav-items">
@@ -256,7 +264,43 @@
     color: var(--text-ghost);
   }
 
+  .nav-close-btn {
+    display: none;
+  }
+
   @media (max-width: 900px) {
-    .nav { display: none; }
+    .nav {
+      transform: translateX(-100%);
+      transition: transform var(--duration-normal) var(--ease-out);
+      box-shadow: none;
+    }
+    .nav.nav-open {
+      transform: translateX(0);
+      box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
+    }
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-close-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: var(--radius-md);
+      background: transparent;
+      color: var(--text-tertiary);
+      font-size: var(--text-base);
+      cursor: pointer;
+      transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+      flex-shrink: 0;
+    }
+    .nav-close-btn:hover {
+      background: var(--surface-elevated);
+      color: var(--text-primary);
+    }
   }
 </style>
