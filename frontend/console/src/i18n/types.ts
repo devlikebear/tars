@@ -300,6 +300,46 @@ export type Translations = {
     body: string
     button: string
   }
+  analytics: {
+    kicker: string
+    title: string
+    periodAriaLabel: string
+    periodSuffix: string
+    summary: {
+      totalTokens: string
+      tokensInOut: (input: string, output: string) => string
+      sessions: string
+      callsSuffix: (calls: string) => string
+      avgPerSession: string
+      tokensSuffix: string
+      estimatedCost: string
+      daysSuffix: (days: number) => string
+    }
+    chart: {
+      title: string
+      legendInput: string
+      legendOutput: string
+      ariaLabel: string
+      loading: string
+      emptyTitle: string
+      emptyBody: string
+      barTitle: (day: string, input: string, output: string) => string
+    }
+    models: {
+      title: string
+      empty: string
+      thModel: string
+      thSessions: string
+      thInput: string
+      thOutput: string
+      thCost: string
+    }
+    skills: {
+      title: string
+      empty: string
+      callsSuffix: (count: string) => string
+    }
+  }
   tasks: {
     title: string
     loading: string
