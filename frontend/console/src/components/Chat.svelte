@@ -1403,16 +1403,24 @@
     }
     .pulse-sep { display: none; }
     .pulse-panel-toggles {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      padding: var(--space-1) var(--space-3);
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: var(--space-1) var(--space-3) var(--space-2);
       border-top: 1px solid var(--border-subtle);
       flex-shrink: 0;
-      scrollbar-width: none;
     }
-    .pulse-panel-toggles::-webkit-scrollbar { display: none; }
+    .session-header {
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+    .session-title-row {
+      flex-basis: 100%;
+      min-width: 0;
+    }
     .session-actions {
       flex-wrap: wrap;
+      flex-basis: 100%;
+      justify-content: flex-start;
     }
     .plan-progress-strip {
       align-items: flex-start;
