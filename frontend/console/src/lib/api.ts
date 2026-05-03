@@ -10,6 +10,7 @@ import type {
   ConfigFile,
   ConfigSchema,
   HealthzResponse,
+  ProvidersAPIInfo,
   ProviderModelsInfo,
   SetupStatusResponse,
   HubInstallResponse,
@@ -931,8 +932,17 @@ export async function getConfigSchema(): Promise<ConfigSchema> {
   return requestJSON<ConfigSchema>('/v1/admin/config/schema')
 }
 
-export async function getProviderModels(): Promise<ProviderModelsInfo> {
-  return requestJSON<ProviderModelsInfo>('/v1/models')
+export async function getProviderModels(providerAlias = ''): Promise<ProviderModelsInfo> {
+  const params = new URLSearchParams()
+  if (providerAlias.trim()) {
+    params.set('provider_alias', providerAlias.trim())
+  }
+  const suffix = params.toString()
+  return requestJSON<ProviderModelsInfo>(`/v1/models${suffix ? `?${suffix}` : ''}`)
+}
+
+export async function getProviders(): Promise<ProvidersAPIInfo> {
+  return requestJSON<ProvidersAPIInfo>('/v1/providers')
 }
 
 export async function saveConfig(content: string): Promise<void> {

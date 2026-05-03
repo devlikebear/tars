@@ -91,29 +91,129 @@ func TestProvidersAPI_ReturnsCurrentAndSupportedProviders(t *testing.T) {
 	if out.CurrentProvider != "openai-codex" || out.CurrentModel != "gpt-5.3-codex" || out.AuthMode != "oauth" {
 		t.Fatalf("unexpected providers payload: %+v", out)
 	}
-	if len(out.Providers) != len(supportedLiveModelProviders) {
-		t.Fatalf("expected %d providers, got %d", len(supportedLiveModelProviders), len(out.Providers))
-	}
-	for _, item := range out.Providers {
-		if item.ID == "openai-codex" && item.SupportsLiveModels {
-			t.Fatalf("expected openai-codex live_models=false, got %+v", item)
+		if len(out.Providers) != len(supportedLiveModelProviders) {
+			t.Fatalf("expected %d providers, got %d", len(supportedLiveModelProviders), len(out.Providers))
+		}
+		for _, item := range out.Providers {
+			if item.ID == "openai-codex" && !item.SupportsLiveModels {
+				t.Fatalf("expected openai-codex live_models=true, got %+v", item)
+			}
 		}
 	}
-}
 
-func TestModelsAPI_OpenAICodexUnsupported_(t *testing.T) {
+func TestModelsAPI_OpenAICodexLiveModelsSupported_(t *testing.T) {
 	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
 	cfg := makePoolTestCfg("openai-codex", "gpt-5.3-codex", "oauth", "https://chatgpt.com/backend-api")
 	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("newProviderModelsCache: %v", err)
 	}
-	fetcher := &fakeModelFetcher{models: []string{"should-not-be-used"}}
+	fetcher := &fakeModelFetcher{models: []string{"gpt-5.3-codex", "gpt-4.1-codex"}}
 	service := newProviderModelsService(cfg, cache, fetcher, func() time.Time { return now })
 	handler := newProvidersModelsAPIHandler(service, zerolog.New(io.Discard))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+		}
+	if fetcher.calls != 1 {
+		t.Fatalf("expected one fetch attempt, got %d", fetcher.calls)
+	}
+	if !strings.Contains(rec.Body.String(), `"provider":"openai-codex"`) {
+		t.Fatalf("expected provider in response, got %q", rec.Body.String())
+	}
+	var out modelsAPIInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode models response: %v", err)
+	}
+	if out.Provider != "openai-codex" {
+		t.Fatalf("unexpected provider in response: %+v", out.Provider)
+	}
+	if len(out.Models) != 2 {
+		t.Fatalf("expected 2 models, got %v", out.Models)
+	}
+}
+
+func TestModelsAPI_UsesProviderAliasQueryParam_(t *testing.T) {
+	now := time.Date(2026, 4, 2, 12, 0, 0, 0, time.UTC)
+	cfg := config.Config{
+		LLMConfig: config.LLMConfig{
+			LLMProviders: map[string]config.LLMProviderSettings{
+				"default": {
+					Kind:     "openai",
+					AuthMode: "api-key",
+					BaseURL:  "https://api.openai.com/v1",
+				},
+				"secondary": {
+					Kind:     "anthropic",
+					AuthMode: "api-key",
+					BaseURL:  "https://api.anthropic.com",
+				},
+			},
+			LLMTiers: map[string]config.LLMTierBinding{
+				"standard": {Provider: "default", Model: "gpt-4o-mini"},
+				"heavy":    {Provider: "secondary", Model: "claude-3-5-sonnet"},
+			},
+			LLMDefaultTier: "standard",
+		},
+	}
+	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("newProviderModelsCache: %v", err)
+	}
+	fetcher := &fakeModelFetcher{models: []string{"claude-3-opus", "claude-3-haiku"}}
+	service := newProviderModelsService(cfg, cache, fetcher, func() time.Time { return now })
+	handler := newProvidersModelsAPIHandler(service, zerolog.New(io.Discard))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/models?provider_alias=secondary", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if fetcher.calls != 1 {
+		t.Fatalf("expected one fetch attempt, got %d", fetcher.calls)
+	}
+	if fetcher.lastOps.Provider != "anthropic" {
+		t.Fatalf("expected anthropic provider, got %+v", fetcher.lastOps.Provider)
+	}
+	if fetcher.lastOps.BaseURL != "https://api.anthropic.com" {
+		t.Fatalf("expected anthropic base URL, got %q", fetcher.lastOps.BaseURL)
+	}
+
+	var out modelsAPIInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode models response: %v", err)
+	}
+	if out.Provider != "anthropic" {
+		t.Fatalf("unexpected provider in response: %+v", out.Provider)
+	}
+	if out.CurrentModel != "claude-3-5-sonnet" {
+		t.Fatalf("unexpected current model, got %q", out.CurrentModel)
+	}
+	if out.Source != "live" {
+		t.Fatalf("expected live source, got %q", out.Source)
+	}
+	if len(out.Models) != 3 {
+		t.Fatalf("expected 3 models including current model, got %+v", out.Models)
+	}
+}
+
+func TestModelsAPI_UnknownProviderAlias_(t *testing.T) {
+	now := time.Date(2026, 4, 2, 12, 0, 0, 0, time.UTC)
+	cfg := makePoolTestCfg("openai", "gpt-4o-mini", "api-key", "https://api.openai.com/v1")
+	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("newProviderModelsCache: %v", err)
+	}
+	fetcher := &fakeModelFetcher{models: []string{"gpt-4o-mini"}}
+	service := newProviderModelsService(cfg, cache, fetcher, func() time.Time { return now })
+	handler := newProvidersModelsAPIHandler(service, zerolog.New(io.Discard))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/models?provider_alias=missing", nil)
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
@@ -121,11 +221,8 @@ func TestModelsAPI_OpenAICodexUnsupported_(t *testing.T) {
 	if fetcher.calls != 0 {
 		t.Fatalf("expected no fetch attempt, got %d", fetcher.calls)
 	}
-	if !strings.Contains(rec.Body.String(), "models_unsupported") {
-		t.Fatalf("expected models_unsupported code, got %q", rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), "openai-codex") {
-		t.Fatalf("expected openai-codex message, got %q", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "provider alias") {
+		t.Fatalf("expected provider alias message, got %q", rec.Body.String())
 	}
 }
 
@@ -223,6 +320,52 @@ func TestModelsAPI_NoCacheLiveFail_(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "models_unavailable") {
 		t.Fatalf("expected models_unavailable code, got %q", rec.Body.String())
+	}
+}
+
+func TestModelsAPI_NoCachePermissionFail_(t *testing.T) {
+	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
+	cfg := makePoolTestCfg("openai-codex", "gpt-5.3-codex", "oauth", "")
+	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("newProviderModelsCache: %v", err)
+	}
+	fetcher := &fakeModelFetcher{
+		err: &llm.ProviderError{
+			Provider:   "openai-codex",
+			Operation:  "request",
+			StatusCode: http.StatusForbidden,
+			Message:    `{"error":"You have insufficient permissions for this operation. Missing scopes: api.model.read."}`,
+		},
+	}
+	service := newProviderModelsService(cfg, cache, fetcher, func() time.Time { return now })
+	handler := newProvidersModelsAPIHandler(service, zerolog.New(io.Discard))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if fetcher.calls != 1 {
+		t.Fatalf("expected one fetch attempt, got %d", fetcher.calls)
+	}
+
+	var out modelsAPIInfo
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode models response: %v", err)
+	}
+	if out.Provider != "openai-codex" {
+		t.Fatalf("unexpected provider: %+v", out)
+	}
+	if out.Source != "provider_models_unavailable" {
+		t.Fatalf("expected provider_models_unavailable source, got %q", out.Source)
+	}
+	if len(out.Models) != 0 {
+		t.Fatalf("expected no models, got %+v", out.Models)
+	}
+	if !strings.Contains(out.Warning, "api.model.read") {
+		t.Fatalf("expected warning, got %q", out.Warning)
 	}
 }
 
