@@ -300,6 +300,68 @@ export type Translations = {
     body: string
     button: string
   }
+  cron: {
+    eyebrow: string
+    title: string
+    refresh: string
+    summaryAriaLabel: string
+    metricActive: string
+    metricPaused: string
+    metricDone: string
+    metricLoadedRuns: string
+    createPanelAriaLabel: string
+    newJob: string
+    deliveryDailyLog: string
+    deliveryMain: string
+    deliveryBoth: string
+    deliveryNone: string
+    deliveryBound: string
+    nameLabel: string
+    namePlaceholder: string
+    scheduleLabel: string
+    schedulePlaceholder: string
+    deliveryLabel: string
+    promptLabel: string
+    promptPlaceholder: string
+    creating: string
+    createButton: string
+    jobsAriaLabel: string
+    jobsTitle: string
+    totalSuffix: (count: number) => string
+    loadingJobs: string
+    noJobs: string
+    bucketActive: string
+    bucketPaused: string
+    bucketDone: string
+    statusFailed: string
+    statusDone: string
+    statusActive: string
+    statusPaused: string
+    untitled: string
+    nextCompleted: string
+    nextPaused: string
+    nextSchedule: string
+    nextAt: (time: string) => string
+    nextAfter: (relative: string) => string
+    nextTick: string
+    pause: string
+    resume: string
+    runNow: string
+    running: string
+    confirm: string
+    delete: string
+    runHistory: string
+    lastRun: (relative: string) => string
+    loadingRuns: string
+    noRuns: string
+    runOk: string
+    runError: string
+    never: string
+    secondsAgo: (n: number) => string
+    minutesAgo: (n: number) => string
+    hoursAgo: (n: number) => string
+    daysAgo: (n: number) => string
+  }
   logs: {
     kicker: string
     title: string
