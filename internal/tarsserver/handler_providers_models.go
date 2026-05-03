@@ -19,6 +19,10 @@ func providerModelsWarnMessage(err error) string {
 	if msg == "" {
 		return ""
 	}
+	lower := strings.ToLower(msg)
+	if strings.Contains(lower, "scope") || strings.Contains(lower, "permission") || strings.Contains(lower, "insufficient") {
+		return "Model listing is unavailable: API key lacks model list permissions. Enter the model ID manually."
+	}
 	return msg
 }
 

@@ -784,6 +784,7 @@
     const provider = normalizeProviderAlias(draft.provider)
     if (!provider) return []
     const options = tierModelOptionsForProvider(provider)
+    if (options.length === 0) return []
     const current = normalizeProviderAlias(draft.model)
     if (!current) return options
     if (options.includes(current)) return options
@@ -1406,11 +1407,11 @@
                       class:error={!!tierError(draft.id, 'model')}
                       value={draft.model}
                       oninput={(event) => updateTierDraft(draft.id, 'model', inputValue(event))}
-                      placeholder="No model list available"
+                      placeholder="Enter model ID..."
                     />
                   {/if}
                   {#if tierModelLoadErrorForProvider(draft.provider.trim())}
-                    <small>{tierModelLoadErrorForProvider(draft.provider.trim())}</small>
+                    <small class="tier-model-warn">{tierModelLoadErrorForProvider(draft.provider.trim())}</small>
                   {/if}
                   {#if tierError(draft.id, 'model')}
                     <small>{tierError(draft.id, 'model')}</small>
@@ -2244,6 +2245,9 @@
     color: var(--red);
     font-size: 10px;
     line-height: 1.25;
+  }
+  .tier-field small.tier-model-warn {
+    color: var(--amber, #e09145);
   }
   .tier-remove {
     align-self: end;

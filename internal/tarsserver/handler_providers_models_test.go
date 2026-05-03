@@ -364,8 +364,8 @@ func TestModelsAPI_NoCachePermissionFail_(t *testing.T) {
 	if len(out.Models) != 0 {
 		t.Fatalf("expected no models, got %+v", out.Models)
 	}
-	if !strings.Contains(out.Warning, "api.model.read") {
-		t.Fatalf("expected warning, got %q", out.Warning)
+	if !strings.Contains(out.Warning, "model list permissions") {
+		t.Fatalf("expected user-friendly permission warning, got %q", out.Warning)
 	}
 }
 
