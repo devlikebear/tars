@@ -591,4 +591,114 @@ export type Translations = {
     errorLoadStatus: string
     errorRunFailed: string
   }
+  home: {
+    title: string
+    subtitle: string
+    newChat: string
+    loading: string
+    statusStrip: {
+      pulse: string
+      reflection: string
+      activePlans: string
+      agentRuns: string
+      cronJobs: string
+      diskPressure: string
+      activeSessions: string
+      never: string
+      taskActive: (count: number) => string
+      recent: string
+      failed: (count: number) => string
+      total: (count: number) => string
+      gbFree: (gb: number) => string
+      opsUnavailable: string
+      touchedToday: (count: number) => string
+    }
+    pulseStates: { error: string; active: string; idle: string }
+    reflectionStates: { failing: string; healthy: string; idle: string }
+    plans: {
+      title: string
+      subtitle: string
+      open: string
+      empty: string
+      executing: string
+      doneSuffix: string
+      activeSuffix: string
+      updated: string
+    }
+    agentRuns: {
+      title: string
+      subtitle: string
+      open: string
+      empty: string
+      agent: string
+      tier: string
+    }
+    cron: {
+      title: string
+      subtitle: string
+      open: string
+      empty: string
+      status: { failed: string; done: string; active: string; paused: string }
+      nextRun: {
+        completed: string
+        paused: string
+        nextTick: string
+        cronSchedule: string
+        after: (relative: string) => string
+      }
+    }
+    sessions: {
+      title: string
+      subtitle: string
+      open: string
+      empty: string
+      untitled: string
+    }
+    continue: {
+      title: string
+      subtitle: string
+      untitled: string
+      tasksTracked: (count: number) => string
+      empty: string
+    }
+    notifications: {
+      title: string
+      unreadSuffix: (count: number) => string
+      empty: string
+    }
+    recommendations: {
+      title: string
+      subtitle: string
+      empty: string
+      userMdTitle: string
+      userMdDetail: string
+      userMdAction: string
+      anthropicKeyTitle: string
+      anthropicKeyDetail: string
+      anthropicKeyAction: string
+      newChatTitle: string
+      newChatDetail: string
+      newChatAction: string
+    }
+    delivery: {
+      title: string
+      subtitle: string
+      release: string
+      devBuild: string
+      localBuild: string
+      pullRequests: string
+      prsDetail: string
+      openPRs: string
+    }
+    relativeTime: {
+      never: string
+      secondsAgo: (n: number) => string
+      minutesAgo: (n: number) => string
+      hoursAgo: (n: number) => string
+      daysAgo: (n: number) => string
+    }
+    disk: { unknown: string; usedSuffix: string }
+    errorLoad: string
+    openSessionPlan: string
+  }
 }

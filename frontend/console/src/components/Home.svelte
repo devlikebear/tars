@@ -28,6 +28,7 @@
     SessionTasks,
     SyspromptFile,
   } from '../lib/types'
+  import { t } from '../i18n'
 
   interface Props {
     onNavigate: (path: string) => void
@@ -83,28 +84,28 @@
     if (isUserFileBlank(userFile)) {
       actions.push({
         id: 'user-md',
-        title: 'USER.md is empty',
-        detail: 'Add your identity and preferences.',
+        title: $t.home.recommendations.userMdTitle,
+        detail: $t.home.recommendations.userMdDetail,
         path: '/console/sysprompt',
-        action: 'Open System Prompt',
+        action: $t.home.recommendations.userMdAction,
       })
     }
     if (needsAnthropicSetup(config)) {
       actions.push({
         id: 'anthropic-key',
-        title: 'ANTHROPIC_API_KEY is not configured',
-        detail: 'Add provider credentials before model calls.',
+        title: $t.home.recommendations.anthropicKeyTitle,
+        detail: $t.home.recommendations.anthropicKeyDetail,
         path: '/console/config',
-        action: 'Open Settings',
+        action: $t.home.recommendations.anthropicKeyAction,
       })
     }
     if (todaySessions.length === 0) {
       actions.push({
         id: 'new-chat',
-        title: 'No activity today',
-        detail: 'Start a fresh main chat.',
+        title: $t.home.recommendations.newChatTitle,
+        detail: $t.home.recommendations.newChatDetail,
         path: '/console/chat',
-        action: 'New Chat',
+        action: $t.home.recommendations.newChatAction,
       })
     }
     return actions.slice(0, 3)
@@ -125,15 +126,15 @@
   }
 
   function relativeTime(value?: string): string {
-    if (!value?.trim()) return 'never'
+    if (!value?.trim()) return $t.home.relativeTime.never
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
-    if (date.getFullYear() <= 1) return 'never'
+    if (date.getFullYear() <= 1) return $t.home.relativeTime.never
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
-    if (seconds < 60) return `${seconds}s ago`
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-    return `${Math.floor(seconds / 86400)}d ago`
+    if (seconds < 60) return $t.home.relativeTime.secondsAgo(seconds)
+    if (seconds < 3600) return $t.home.relativeTime.minutesAgo(Math.floor(seconds / 60))
+    if (seconds < 86400) return $t.home.relativeTime.hoursAgo(Math.floor(seconds / 3600))
+    return $t.home.relativeTime.daysAgo(Math.floor(seconds / 86400))
   }
 
   function isToday(value?: string): boolean {
@@ -166,8 +167,8 @@
   }
 
   function diskUsedLabel(): string {
-    if (!ops) return 'unknown'
-    return `${Math.round(ops.disk_used_percent)}% used`
+    if (!ops) return $t.home.disk.unknown
+    return `${Math.round(ops.disk_used_percent)}% ${$t.home.disk.usedSuffix}`
   }
 
   function diskClass(): string {
@@ -178,15 +179,15 @@
   }
 
   function pulseLabel(): string {
-    if (pulse?.last_err) return 'error'
-    if ((pulse?.total_ticks ?? 0) > 0) return 'active'
-    return 'idle'
+    if (pulse?.last_err) return $t.home.pulseStates.error
+    if ((pulse?.total_ticks ?? 0) > 0) return $t.home.pulseStates.active
+    return $t.home.pulseStates.idle
   }
 
   function reflectionLabel(): string {
-    if ((reflection?.consecutive_failures ?? 0) > 0) return 'failing'
-    if (hasRealTimestamp(reflection?.last_successful_run_at)) return 'healthy'
-    return 'idle'
+    if ((reflection?.consecutive_failures ?? 0) > 0) return $t.home.reflectionStates.failing
+    if (hasRealTimestamp(reflection?.last_successful_run_at)) return $t.home.reflectionStates.healthy
+    return $t.home.reflectionStates.idle
   }
 
   function planProgressPercent(item: GlobalPlanItem): number {
@@ -209,18 +210,18 @@
   }
 
   function cronStatusLabel(job: CronJob): string {
-    if (job.last_run_error) return 'failed'
-    if (isCronCompleted(job)) return 'done'
-    return job.enabled ? 'active' : 'paused'
+    if (job.last_run_error) return $t.home.cron.status.failed
+    if (isCronCompleted(job)) return $t.home.cron.status.done
+    return job.enabled ? $t.home.cron.status.active : $t.home.cron.status.paused
   }
 
   function nextCronRunLabel(job: CronJob): string {
-    if (isCronCompleted(job)) return 'Completed'
-    if (!job.enabled) return 'Paused'
+    if (isCronCompleted(job)) return $t.home.cron.nextRun.completed
+    if (!job.enabled) return $t.home.cron.nextRun.paused
     const schedule = job.schedule.trim()
     if (schedule.toLowerCase().startsWith('at:')) return fmt(schedule.slice(3))
-    if (schedule.toLowerCase().startsWith('every:')) return job.last_run_at ? `After ${relativeTime(job.last_run_at)}` : 'Next tick'
-    return 'Cron schedule'
+    if (schedule.toLowerCase().startsWith('every:')) return job.last_run_at ? $t.home.cron.nextRun.after(relativeTime(job.last_run_at)) : $t.home.cron.nextRun.nextTick
+    return $t.home.cron.nextRun.cronSchedule
   }
 
   function isAgentRunActive(run: AgentRuntimeRun): boolean {
@@ -239,7 +240,7 @@
   function planSummary(tasks: SessionTasks): string {
     if (tasks.plan?.goal?.trim()) return tasks.plan.goal.trim()
     const active = tasks.tasks.find((task) => task.status === 'in_progress') ?? tasks.tasks[0]
-    return active?.title?.trim() || 'Open session plan'
+    return active?.title?.trim() || $t.home.openSessionPlan
   }
 
   function openContinueSession() {
@@ -314,7 +315,7 @@
           .sort((a, b) => Date.parse(b.updated_at || '') - Date.parse(a.updated_at || '')),
       )
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load home dashboard'
+      error = err instanceof Error ? err.message : $t.home.errorLoad
     } finally {
       if (showLoading) loading = false
     }
@@ -349,10 +350,10 @@
 <div class="home">
   <div class="home-header">
     <div>
-      <h2>Mission Control</h2>
-      <p class="home-subtitle">Live work, automation, health, and delivery state.</p>
+      <h2>{$t.home.title}</h2>
+      <p class="home-subtitle">{$t.home.subtitle}</p>
     </div>
-    <button type="button" class="btn btn-primary" onclick={() => onNavigate('/console/chat')}>New Chat</button>
+    <button type="button" class="btn btn-primary" onclick={() => onNavigate('/console/chat')}>{$t.home.newChat}</button>
   </div>
 
   {#if error}
@@ -360,43 +361,43 @@
   {/if}
 
   {#if loading}
-    <div class="home-loading">Loading Mission Control...</div>
+    <div class="home-loading">{$t.home.loading}</div>
   {:else}
     <section class="status-strip" aria-label="Home status strip">
       <button type="button" class="status-tile" onclick={() => onNavigate('/console/pulse')}>
-        <span class="status-label">Pulse</span>
-        <strong class:status-ok={pulseLabel() === 'active'} class:status-danger={pulseLabel() === 'error'}>{pulseLabel()}</strong>
-        <span>{pulse?.last_tick_at ? relativeTime(pulse.last_tick_at) : 'never'}</span>
+        <span class="status-label">{$t.home.statusStrip.pulse}</span>
+        <strong class:status-ok={pulseLabel() === $t.home.pulseStates.active} class:status-danger={pulseLabel() === $t.home.pulseStates.error}>{pulseLabel()}</strong>
+        <span>{pulse?.last_tick_at ? relativeTime(pulse.last_tick_at) : $t.home.statusStrip.never}</span>
       </button>
       <button type="button" class="status-tile" onclick={() => onNavigate('/console/reflection')}>
-        <span class="status-label">Reflection</span>
-        <strong class:status-ok={reflectionLabel() === 'healthy'} class:status-danger={reflectionLabel() === 'failing'}>{reflectionLabel()}</strong>
-        <span>{reflection?.last_successful_run_at ? relativeTime(reflection.last_successful_run_at) : 'never'}</span>
+        <span class="status-label">{$t.home.statusStrip.reflection}</span>
+        <strong class:status-ok={reflectionLabel() === $t.home.reflectionStates.healthy} class:status-danger={reflectionLabel() === $t.home.reflectionStates.failing}>{reflectionLabel()}</strong>
+        <span>{reflection?.last_successful_run_at ? relativeTime(reflection.last_successful_run_at) : $t.home.statusStrip.never}</span>
       </button>
       <button type="button" class="status-tile" onclick={() => onNavigate('/console/tasks')}>
-        <span class="status-label">Active plans</span>
+        <span class="status-label">{$t.home.statusStrip.activePlans}</span>
         <strong>{plans.length}</strong>
-        <span>{plans.reduce((total, item) => total + (item.summary?.in_progress ?? 0), 0)} task active</span>
+        <span>{$t.home.statusStrip.taskActive(plans.reduce((total, item) => total + (item.summary?.in_progress ?? 0), 0))}</span>
       </button>
       <button type="button" class="status-tile" onclick={() => onNavigate('/console/agentruntime')}>
-        <span class="status-label">Agent runs</span>
+        <span class="status-label">{$t.home.statusStrip.agentRuns}</span>
         <strong>{activeAgentRuns.length}</strong>
-        <span>{agentRuns.length} recent</span>
+        <span>{agentRuns.length} {$t.home.statusStrip.recent}</span>
       </button>
       <button type="button" class="status-tile" onclick={() => onNavigate('/console/cron')}>
-        <span class="status-label">Cron jobs</span>
+        <span class="status-label">{$t.home.statusStrip.cronJobs}</span>
         <strong class:status-danger={failedCronJobs.length > 0}>{activeCronJobs.length}</strong>
-        <span>{failedCronJobs.length > 0 ? `${failedCronJobs.length} failed` : `${cronJobs.length} total`}</span>
+        <span>{failedCronJobs.length > 0 ? $t.home.statusStrip.failed(failedCronJobs.length) : $t.home.statusStrip.total(cronJobs.length)}</span>
       </button>
       <button type="button" class="status-tile" onclick={() => onNavigate('/console/approvals')}>
-        <span class="status-label">Disk pressure</span>
+        <span class="status-label">{$t.home.statusStrip.diskPressure}</span>
         <strong class:status-ok={diskClass() === 'ok'} class:status-warn={diskClass() === 'warn'} class:status-danger={diskClass() === 'danger'}>{diskUsedLabel()}</strong>
-        <span>{ops ? `${Math.round(ops.disk_free_bytes / 1024 / 1024 / 1024)} GB free` : 'ops unavailable'}</span>
+        <span>{ops ? $t.home.statusStrip.gbFree(Math.round(ops.disk_free_bytes / 1024 / 1024 / 1024)) : $t.home.statusStrip.opsUnavailable}</span>
       </button>
       <button type="button" class="status-tile" onclick={() => onNavigate('/console/chat')}>
-        <span class="status-label">Active sessions</span>
+        <span class="status-label">{$t.home.statusStrip.activeSessions}</span>
         <strong>{mainSessions.length}</strong>
-        <span>{todaySessions.length} touched today</span>
+        <span>{$t.home.statusStrip.touchedToday(todaySessions.length)}</span>
       </button>
     </section>
 
@@ -404,13 +405,13 @@
       <section class="dashboard-section plans-section">
         <div class="section-heading">
           <div>
-            <h3>Active plans</h3>
-            <p>Current task contracts across sessions.</p>
+            <h3>{$t.home.plans.title}</h3>
+            <p>{$t.home.plans.subtitle}</p>
           </div>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/tasks')}>Open Plans</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/tasks')}>{$t.home.plans.open}</button>
         </div>
         {#if recentPlans.length === 0}
-          <div class="empty-state"><p>No active plans.</p></div>
+          <div class="empty-state"><p>{$t.home.plans.empty}</p></div>
         {:else}
           <div class="work-list">
             {#each recentPlans as item}
@@ -418,10 +419,10 @@
               <button type="button" class="work-row" onclick={() => openPlanSession(item.session.id)}>
                 <span class="work-topline">
                   <strong>{compact(item.plan.goal, 120)}</strong>
-                  <span class="badge badge-default">{item.plan.status ?? 'executing'}</span>
+                  <span class="badge badge-default">{item.plan.status ?? $t.home.plans.executing}</span>
                 </span>
                 <span class="mini-progress" aria-label={`${percent}% complete`}><span style={`width: ${percent}%`}></span></span>
-                <span class="work-meta">{planFinishedCount(item)}/{item.summary?.total ?? item.tasks.length} done · {item.summary?.in_progress ?? 0} active · updated {relativeTime(item.updated_at)}</span>
+                <span class="work-meta">{planFinishedCount(item)}/{item.summary?.total ?? item.tasks.length} {$t.home.plans.doneSuffix} · {item.summary?.in_progress ?? 0} {$t.home.plans.activeSuffix} · {$t.home.plans.updated} {relativeTime(item.updated_at)}</span>
               </button>
             {/each}
           </div>
@@ -431,13 +432,13 @@
       <section class="dashboard-section">
         <div class="section-heading">
           <div>
-            <h3>Agent runs</h3>
-            <p>Latest runtime work and active delegated agents.</p>
+            <h3>{$t.home.agentRuns.title}</h3>
+            <p>{$t.home.agentRuns.subtitle}</p>
           </div>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/agentruntime')}>Open Runtime</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/agentruntime')}>{$t.home.agentRuns.open}</button>
         </div>
         {#if recentAgentRuns.length === 0}
-          <div class="empty-state"><p>No agent runs recorded.</p></div>
+          <div class="empty-state"><p>{$t.home.agentRuns.empty}</p></div>
         {:else}
           <div class="work-list">
             {#each recentAgentRuns as run}
@@ -446,7 +447,7 @@
                   <strong>{compact(agentRunTitle(run), 120)}</strong>
                   <span class="badge" class:badge-accent={isAgentRunActive(run)} class:badge-default={!isAgentRunActive(run)}>{run.status}</span>
                 </span>
-                <span class="work-meta">{run.agent || 'agent'} · {run.tier || 'tier'} · {relativeTime(agentRunTime(run))}</span>
+                <span class="work-meta">{run.agent || $t.home.agentRuns.agent} · {run.tier || $t.home.agentRuns.tier} · {relativeTime(agentRunTime(run))}</span>
               </button>
             {/each}
           </div>
@@ -456,13 +457,13 @@
       <section class="dashboard-section">
         <div class="section-heading">
           <div>
-            <h3>Cron jobs</h3>
-            <p>Scheduled automation, paused jobs, and recent failures.</p>
+            <h3>{$t.home.cron.title}</h3>
+            <p>{$t.home.cron.subtitle}</p>
           </div>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/cron')}>Open Cron</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/cron')}>{$t.home.cron.open}</button>
         </div>
         {#if cronJobs.length === 0}
-          <div class="empty-state"><p>No cron jobs configured.</p></div>
+          <div class="empty-state"><p>{$t.home.cron.empty}</p></div>
         {:else}
           <div class="work-list">
             {#each cronJobs.slice(0, 5) as job}
@@ -481,19 +482,19 @@
       <section class="dashboard-section sessions-section">
         <div class="section-heading">
           <div>
-            <h3>Active sessions</h3>
-            <p>Main sessions, most recently updated first.</p>
+            <h3>{$t.home.sessions.title}</h3>
+            <p>{$t.home.sessions.subtitle}</p>
           </div>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/chat')}>Open Chat</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/chat')}>{$t.home.sessions.open}</button>
         </div>
 
         {#if recentMainSessions.length === 0}
-          <div class="empty-state"><p>No main sessions yet.</p></div>
+          <div class="empty-state"><p>{$t.home.sessions.empty}</p></div>
         {:else}
           <div class="session-grid">
             {#each recentMainSessions as session}
               <button type="button" class="session-card" onclick={() => onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)}>
-                <span class="session-title">{session.title || 'Untitled session'}</span>
+                <span class="session-title">{session.title || $t.home.sessions.untitled}</span>
                 <span class="session-meta">{relativeTime(session.updated_at)}</span>
                 <span class="session-id">{session.id}</span>
               </button>
@@ -505,30 +506,30 @@
       <section class="dashboard-section continue-section">
         <div class="section-heading">
           <div>
-            <h3>Continue working on...</h3>
-            <p>Most recent session with a plan or task list.</p>
+            <h3>{$t.home.continue.title}</h3>
+            <p>{$t.home.continue.subtitle}</p>
           </div>
         </div>
         {#if continueSession}
           <button type="button" class="focus-card" onclick={openContinueSession}>
-            <span class="focus-kicker">{continueSession.session.title || 'Untitled session'}</span>
+            <span class="focus-kicker">{continueSession.session.title || $t.home.continue.untitled}</span>
             <strong>{compact(planSummary(continueSession.tasks), 180)}</strong>
-            <span>{continueSession.tasks.tasks.length} tasks tracked</span>
+            <span>{$t.home.continue.tasksTracked(continueSession.tasks.tasks.length)}</span>
           </button>
         {:else}
-          <div class="empty-state"><p>No active plan found.</p></div>
+          <div class="empty-state"><p>{$t.home.continue.empty}</p></div>
         {/if}
       </section>
 
       <section class="dashboard-section">
         <div class="section-heading">
           <div>
-            <h3>Recent notifications</h3>
-            <p>{unreadCount} unread in the event stream.</p>
+            <h3>{$t.home.notifications.title}</h3>
+            <p>{$t.home.notifications.unreadSuffix(unreadCount)}</p>
           </div>
         </div>
         {#if notifications.length === 0}
-          <div class="empty-state"><p>No recent notifications.</p></div>
+          <div class="empty-state"><p>{$t.home.notifications.empty}</p></div>
         {:else}
           <div class="notification-list">
             {#each notifications.slice(0, 10) as item}
@@ -553,12 +554,12 @@
       <section class="dashboard-section">
         <div class="section-heading">
           <div>
-            <h3>Recommended actions</h3>
-            <p>Small checks that reduce setup friction.</p>
+            <h3>{$t.home.recommendations.title}</h3>
+            <p>{$t.home.recommendations.subtitle}</p>
           </div>
         </div>
         {#if recommendedActions.length === 0}
-          <div class="empty-state"><p>No recommendations right now.</p></div>
+          <div class="empty-state"><p>{$t.home.recommendations.empty}</p></div>
         {:else}
           <div class="action-grid">
             {#each recommendedActions as action}
@@ -575,28 +576,28 @@
       <section class="dashboard-section">
         <div class="section-heading">
           <div>
-            <h3>Delivery</h3>
-            <p>Current installed version and release shortcuts.</p>
+            <h3>{$t.home.delivery.title}</h3>
+            <p>{$t.home.delivery.subtitle}</p>
           </div>
         </div>
         <div class="action-grid">
           {#if releaseHref}
             <a class="action-card" href={releaseHref} target="_blank" rel="noreferrer">
               <strong>{serverVersion}</strong>
-              <span>Latest known release for this running server.</span>
+              <span>{$t.home.delivery.release}</span>
               <em>Open Release</em>
             </a>
           {:else}
             <div class="action-card action-card-static">
               <strong>{serverVersion || 'dev'}</strong>
-              <span>Development build or unreleased local server.</span>
-              <em>Local build</em>
+              <span>{$t.home.delivery.devBuild}</span>
+              <em>{$t.home.delivery.localBuild}</em>
             </div>
           {/if}
           <a class="action-card" href="https://github.com/devlikebear/tars/pulls" target="_blank" rel="noreferrer">
-            <strong>Pull requests</strong>
-            <span>Review recent delivery activity on GitHub.</span>
-            <em>Open PRs</em>
+            <strong>{$t.home.delivery.pullRequests}</strong>
+            <span>{$t.home.delivery.prsDetail}</span>
+            <em>{$t.home.delivery.openPRs}</em>
           </a>
         </div>
       </section>
