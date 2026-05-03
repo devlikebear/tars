@@ -69,3 +69,31 @@ func TestLoadConfigForServe_WorkspaceDirOverrideAppliesEvenWhenFileMissing(t *te
 		t.Fatalf("expected workspace_dir override %q, got %q", override, cfg.WorkspaceDir)
 	}
 }
+
+func TestLoadConfigForServe_MissingFileAppliesEnvOverrides(t *testing.T) {
+	// Regression for #650: when the config file does not exist yet,
+	// the fall-through must still run applyEnv so TARS_API_AUTH_MODE
+	// (and friends) reach the cfg the middleware sees. Without this
+	// the wizard's first PATCH /v1/admin/config/values returns 401.
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "does-not-exist.yaml")
+
+	t.Setenv("TARS_API_AUTH_MODE", "off")
+	t.Setenv("TARS_API_ALLOW_INSECURE_LOCAL_AUTH", "true")
+	t.Setenv("TARS_DASHBOARD_AUTH_MODE", "off")
+
+	opts := &options{ConfigPath: missing}
+	cfg, err := loadConfigForServe(opts)
+	if err != nil {
+		t.Fatalf("loadConfigForServe with envs: %v", err)
+	}
+	if cfg.APIAuthMode != "off" {
+		t.Fatalf("expected APIAuthMode=off from env, got %q", cfg.APIAuthMode)
+	}
+	if !cfg.APIAllowInsecureLocalAuth {
+		t.Fatalf("expected APIAllowInsecureLocalAuth=true from env, got false")
+	}
+	if cfg.DashboardAuthMode != "off" {
+		t.Fatalf("expected DashboardAuthMode=off from env, got %q", cfg.DashboardAuthMode)
+	}
+}

@@ -77,10 +77,15 @@ func loadConfigForServe(opts *options) (config.Config, error) {
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			// First-run case: the operator (or `tars init`) hasn't
-			// written a file yet. Boot with defaults; the wizard will
-			// land its PATCH at resolvedPath (or the fixed default if
-			// none was given).
-			cfg = config.Default()
+			// written a file yet. Boot with defaults but route through
+			// config.Load("") so env-var overrides (TARS_API_AUTH_MODE
+			// etc.) and the schema defaults still apply — otherwise
+			// admin paths reject the wizard's first PATCH because the
+			// loopback / off-mode posture only arrives via env vars.
+			cfg, err = config.Load("")
+			if err != nil {
+				return config.Config{}, &runtimeDepsError{stage: "load_config", err: err}
+			}
 		} else {
 			return config.Config{}, &runtimeDepsError{stage: "load_config", err: err}
 		}
