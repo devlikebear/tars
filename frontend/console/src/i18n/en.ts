@@ -229,6 +229,8 @@ export const en = {
       hintCliTitle: 'CLI auth',
       hintCliBody: 'Authentication is delegated to the locally installed claude-code CLI. No extra key needed (the CLI’s own login state is used).',
       nextButton: 'Next: tiers →',
+      selectProviderLabel: 'Select provider to configure',
+      addNewProviderOption: '+ Add new provider',
     },
     step2: {
       cardTitle: 'Step 2 · Tier bindings',

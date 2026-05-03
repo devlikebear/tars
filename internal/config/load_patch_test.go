@@ -159,6 +159,76 @@ gateway:
 }
 
 
+func TestPatchYAML_PreservesOtherProviders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	raw := []byte(strings.TrimSpace(`
+llm:
+  providers:
+    kimi:
+      kind: kimi
+      auth_mode: api-key
+      base_url: https://api.moonshot.ai/v1
+      api_key: real-kimi-key
+    anthropic:
+      kind: anthropic
+      auth_mode: api-key
+      base_url: https://api.anthropic.com
+      api_key: real-ant-key
+  tiers:
+    heavy:
+      provider: anthropic
+      model: claude-opus-4-5
+    standard:
+      provider: kimi
+      model: kimi-k2.6
+    light:
+      provider: kimi
+      model: kimi-k2.6
+`))
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	// Simulate wizard saving: edits kimi's base_url only, no api_key sent.
+	updates := map[string]any{
+		"llm_providers": map[string]any{
+			"kimi": map[string]any{
+				"kind":      "kimi",
+				"auth_mode": "api-key",
+				"base_url":  "https://api.moonshot.ai/v2",
+			},
+		},
+	}
+	if err := PatchYAML(path, updates); err != nil {
+		t.Fatalf("patch yaml: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load patched config: %v", err)
+	}
+
+	// kimi's api_key must be preserved (not cleared by the patch).
+	if cfg.LLMProviders["kimi"].APIKey != "real-kimi-key" {
+		t.Fatalf("kimi api_key lost after patch: got %q want %q", cfg.LLMProviders["kimi"].APIKey, "real-kimi-key")
+	}
+	// kimi's base_url must be updated.
+	if cfg.LLMProviders["kimi"].BaseURL != "https://api.moonshot.ai/v2" {
+		t.Fatalf("kimi base_url not updated: got %q", cfg.LLMProviders["kimi"].BaseURL)
+	}
+	// anthropic must be preserved.
+	if cfg.LLMProviders["anthropic"].APIKey != "real-ant-key" {
+		t.Fatalf("anthropic lost after kimi-only patch: got api_key=%q", cfg.LLMProviders["anthropic"].APIKey)
+	}
+	if cfg.LLMProviders["anthropic"].Kind != "anthropic" {
+		t.Fatalf("anthropic entry corrupted: %+v", cfg.LLMProviders["anthropic"])
+	}
+	// tiers must be unchanged.
+	if cfg.LLMTiers["heavy"].Provider != "anthropic" {
+		t.Fatalf("heavy tier provider changed unexpectedly: %q", cfg.LLMTiers["heavy"].Provider)
+	}
+}
+
 func TestPatchYAML_CreatesParentDirectory(t *testing.T) {
 	root := t.TempDir()
 	// Use a path whose parent does NOT exist yet — simulates the

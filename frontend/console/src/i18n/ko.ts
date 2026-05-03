@@ -229,6 +229,8 @@ export const ko = {
       hintCliTitle: 'CLI 인증',
       hintCliBody: '로컬에 설치된 claude-code CLI를 통해 인증합니다. 추가 키 입력 없이도 동작합니다 (CLI 자체 로그인 상태가 사용됩니다).',
       nextButton: '다음: Tier 설정 →',
+      selectProviderLabel: '설정할 프로바이더 선택',
+      addNewProviderOption: '+ 새 프로바이더 추가',
     },
     step2: {
       cardTitle: 'Step 2 · Tier 바인딩',

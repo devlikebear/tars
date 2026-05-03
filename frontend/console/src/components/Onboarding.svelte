@@ -13,11 +13,13 @@
     popularModelsForKind,
   } from '../lib/llm-catalog'
   import {
+    allAliasesFromConfigValues,
     availableAuthModesForKind,
     buildConfigPayload,
     defaultBaseURLForKind,
     emptyOnboardingForm,
     formFromConfigValues,
+    providerFromConfigValues,
     providerKinds,
     suggestedAuthModeForKind,
     validateForm,
@@ -41,6 +43,14 @@
   let step = $state<StepId>('provider')
   let form = $state<OnboardingFormState>(emptyOnboardingForm())
   let availableAuthModes = $derived(availableAuthModesForKind(form.provider.kind))
+  // All provider aliases loaded from config on re-entry. Used to populate
+  // the provider selector in step 1 and the alias dropdown in step 2.
+  let configValues = $state<Record<string, unknown>>({})
+  let existingAliases = $derived(allAliasesFromConfigValues(configValues))
+  // Union of existing aliases + the alias being configured in step 1.
+  let allKnownAliases = $derived(
+    [...new Set([...existingAliases, form.provider.alias.trim()].filter(Boolean))].sort()
+  )
   // Live model list pulled from /v1/models when the user clicks Refresh
   // (reentry / normal mode only — the setup-only path has no on-disk
   // credentials yet so /v1/models has nothing to call).
@@ -66,7 +76,8 @@
     if (reentry) {
       try {
         const schema = await getConfigSchema()
-        form = formFromConfigValues(schema.values || {})
+        configValues = schema.values || {}
+        form = formFromConfigValues(configValues)
       } catch (err) {
         console.warn('reentry prefill failed', err)
       }
@@ -133,8 +144,16 @@
     }
   }
 
+  function handleSelectProviderForEdit(alias: string) {
+    if (alias === '__new__') {
+      form.provider = emptyOnboardingForm().provider
+    } else {
+      form.provider = providerFromConfigValues(configValues, alias)
+    }
+  }
+
   function goToReview() {
-    stepErrors = validateTiersStep(form)
+    stepErrors = validateTiersStep(form, allKnownAliases)
     if (stepErrors.length === 0) {
       step = 'review'
     }
@@ -165,7 +184,7 @@
   }
 
   async function handleSave(restart: boolean) {
-    const formErrors = validateForm(form)
+    const formErrors = validateForm(form, allKnownAliases)
     if (formErrors.length > 0) {
       stepErrors = formErrors
       return
@@ -275,6 +294,22 @@
       <div class="card-header">
         <span class="card-title">{$t.onboarding.step1.cardTitle}</span>
       </div>
+      {#if reentry && existingAliases.length > 0}
+        <div class="onboarding-provider-selector">
+          <label class="onboarding-field">
+            <span>{$t.onboarding.step1.selectProviderLabel}</span>
+            <select
+              value={form.provider.alias}
+              onchange={(e) => handleSelectProviderForEdit((e.currentTarget as HTMLSelectElement).value)}
+            >
+              {#each existingAliases as alias}
+                <option value={alias}>{alias}</option>
+              {/each}
+              <option value="__new__">{$t.onboarding.step1.addNewProviderOption}</option>
+            </select>
+          </label>
+        </div>
+      {/if}
       <div class="onboarding-grid">
         <label class="onboarding-field">
           <span>{$t.onboarding.step1.kindLabel} <em>{$t.onboarding.step1.kindHint}</em></span>
@@ -373,7 +408,15 @@
             <legend>{tier}</legend>
             <label class="onboarding-field">
               <span>{$t.onboarding.step2.providerAliasLabel}</span>
-              <input type="text" bind:value={form.tiers[tier].provider} />
+              {#if allKnownAliases.length > 1}
+                <select bind:value={form.tiers[tier].provider}>
+                  {#each allKnownAliases as alias}
+                    <option value={alias}>{alias}</option>
+                  {/each}
+                </select>
+              {:else}
+                <input type="text" bind:value={form.tiers[tier].provider} />
+              {/if}
             </label>
             <label class="onboarding-field">
               <span>{$t.onboarding.step2.modelLabel}</span>
@@ -589,6 +632,14 @@
   .onboarding-errors ul {
     margin: 0;
     padding-left: 1.2em;
+  }
+  .onboarding-provider-selector {
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .onboarding-provider-selector .onboarding-field {
+    max-width: 340px;
   }
   .onboarding-grid {
     display: grid;

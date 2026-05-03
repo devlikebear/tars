@@ -264,7 +264,7 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.APIMaxInflightAgentRuns
 	// LLM
 	case "llm_providers":
-		return cloneLLMProviders(cfg.LLMProviders)
+		return sparseProvidersMap(cfg.LLMProviders)
 	case "llm_tiers":
 		return cloneLLMTiers(cfg.LLMTiers)
 	case "llm_default_tier":
@@ -512,4 +512,35 @@ func extractValue(yamlKey string, cfg Config) any {
 	default:
 		return nil
 	}
+}
+
+// sparseProvidersMap converts an LLMProviders map to a two-level
+// map[string]map[string]any that only includes non-empty string fields.
+// This is used by extractValue so that PatchYAML's nested-map merge can
+// preserve existing fields (especially api_key) that the patch omits.
+func sparseProvidersMap(providers map[string]LLMProviderSettings) map[string]map[string]any {
+	out := make(map[string]map[string]any, len(providers))
+	for alias, p := range providers {
+		m := make(map[string]any)
+		if p.Kind != "" {
+			m["kind"] = p.Kind
+		}
+		if p.AuthMode != "" {
+			m["auth_mode"] = p.AuthMode
+		}
+		if p.OAuthProvider != "" {
+			m["oauth_provider"] = p.OAuthProvider
+		}
+		if p.BaseURL != "" {
+			m["base_url"] = p.BaseURL
+		}
+		if p.APIKey != "" {
+			m["api_key"] = p.APIKey
+		}
+		if p.ServiceTier != "" {
+			m["service_tier"] = p.ServiceTier
+		}
+		out[alias] = m
+	}
+	return out
 }

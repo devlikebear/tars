@@ -1,6 +1,9 @@
 package config
 
-import "strings"
+import (
+	"maps"
+	"strings"
+)
 
 func preferredYAMLPathForKey(key string) string {
 	key = strings.TrimSpace(strings.ToLower(key))
@@ -182,6 +185,70 @@ func setConfigYAMLValue(dst map[string]any, key string, value any) {
 			current[part] = next
 		}
 		current = next
+	}
+}
+
+// readConfigYAMLMap navigates the existing YAML map to find the current
+// value at the given config key's preferred path and returns it as a
+// map[string]any. Returns nil if absent or not a map.
+func readConfigYAMLMap(src map[string]any, key string) map[string]any {
+	parts := preferredYAMLPathSegmentsForKey(key)
+	if len(parts) == 0 {
+		return nil
+	}
+	current := src
+	for i, part := range parts {
+		if i == len(parts)-1 {
+			m, ok := current[part].(map[string]any)
+			if !ok {
+				return nil
+			}
+			return m
+		}
+		next, ok := current[part].(map[string]any)
+		if !ok {
+			return nil
+		}
+		current = next
+	}
+	return nil
+}
+
+// anyToStringMap converts a value to map[string]any when possible.
+// Handles map[string]any and map[string]map[string]any.
+func anyToStringMap(v any) map[string]any {
+	switch m := v.(type) {
+	case map[string]any:
+		return m
+	case map[string]map[string]any:
+		out := make(map[string]any, len(m))
+		for k, v := range m {
+			out[k] = v
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// nestedMapMerge updates dst in-place with entries from src.
+// Existing entries in dst not present in src are preserved.
+// For entries present in both where both values are maps, inner keys
+// from src are merged into dst (existing inner keys not in src kept).
+func nestedMapMerge(dst, src map[string]any) {
+	for k, srcVal := range src {
+		dstVal, exists := dst[k]
+		if !exists {
+			dst[k] = srcVal
+			continue
+		}
+		srcInner, srcIsMap := srcVal.(map[string]any)
+		dstInner, dstIsMap := dstVal.(map[string]any)
+		if srcIsMap && dstIsMap {
+			maps.Copy(dstInner, srcInner)
+		} else {
+			dst[k] = srcVal
+		}
 	}
 }
 
