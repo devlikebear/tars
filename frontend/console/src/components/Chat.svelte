@@ -107,6 +107,12 @@
   let contextRefreshVersion = $state(0)
   type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'contract' | 'tasks' | 'git' | 'skillExtraction' | 'cron' | 'health' | 'terminal'
   type ToolDockPanelID = Exclude<ChatDockPanelID, 'sessions'>
+
+  // Below this width the chat layout collapses; dock panels render as fullscreen overlays.
+  const MOBILE_LAYOUT_MAX_WIDTH = 900
+  function isMobileLayout(): boolean {
+    return typeof window !== 'undefined' && window.matchMedia(`(max-width: ${MOBILE_LAYOUT_MAX_WIDTH}px)`).matches
+  }
   type DockSizeZone = 'left' | 'right' | 'bottom'
   const dockStorageKey = 'tars.console.chat.dockLayout.v1'
   const dockPanels: DockPanelDefinition[] = [
@@ -183,7 +189,7 @@
     }
   }
 
-  function togglePanel(panelID: ToolDockPanelID) {
+  function togglePanel(panelID: ChatDockPanelID) {
     if (isPanelOpen(panelID)) {
       closePanel(panelID)
     } else {
@@ -266,6 +272,9 @@
     chatDraft = ''
     chatContextInfo = {}
     closeToolPanels()
+    if (isMobileLayout()) {
+      closePanel('sessions')
+    }
     renaming = false
     deleteConfirm = false
     onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
@@ -285,6 +294,9 @@
     chatDraft = ''
     chatContextInfo = {}
     closeToolPanels()
+    if (isMobileLayout()) {
+      closePanel('sessions')
+    }
     renaming = false
     deleteConfirm = false
     onNavigate(selectedSessionId ? `/console/chat/${encodeURIComponent(selectedSessionId)}` : '/console/chat')
@@ -721,7 +733,7 @@
     <div class="pulse-sep"></div>
     </div>
     <div class="pulse-panel-toggles">
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('sessions')} onclick={() => openPanel('sessions')} title="Session list">Sessions</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('sessions')} onclick={() => togglePanel('sessions')} title="Session list">Sessions</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('artifacts')} onclick={() => togglePanel('artifacts')} title="Files browser">Files{#if chatArtifacts.length > 0} ({chatArtifacts.length}){/if}</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('context')} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prompt')} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
@@ -1356,14 +1368,23 @@
       grid-template-rows: minmax(0, 1fr);
       grid-template-areas: "main";
     }
-    .dock-left,
-    .dock-right,
-    .dock-bottom,
     .dock-resizer {
       display: none;
     }
+    /* On mobile, the grid collapses to a single column; render any active
+       dock panel as a fullscreen overlay over the chat area so the user can
+       still see/use it (otherwise the panel toggles would do nothing
+       visible). */
+    .dock-left,
+    .dock-right,
+    .dock-bottom,
     .dock-fullscreen {
+      position: absolute;
       inset: var(--space-2);
+      z-index: 30;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
     }
     .chat-pulse {
       flex-wrap: nowrap;
