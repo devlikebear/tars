@@ -300,6 +300,33 @@ export type Translations = {
     body: string
     button: string
   }
+  logs: {
+    kicker: string
+    title: string
+    autoToggle: string
+    refresh: string
+    refreshing: string
+    file: string
+    runtimeLog: string
+    level: string
+    levelOptions: {
+      all: string
+      debug: string
+      info: string
+      warn: string
+      error: string
+    }
+    component: string
+    componentPlaceholder: string
+    lines: string
+    streamTitle: string
+    linesSuffix: (count: number) => string
+    fileMissing: string
+    loadingLogs: string
+    noLines: string
+    rawSummary: string
+    filesTitle: string
+  }
   analytics: {
     kicker: string
     title: string

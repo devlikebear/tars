@@ -2,16 +2,17 @@
   import { onDestroy, onMount } from 'svelte'
   import { getLogs } from '../lib/api'
   import type { LogFileOption, LogLineView, LogsResponse } from '../lib/types'
+  import { t } from '../i18n'
 
   type LevelFilter = 'all' | 'debug' | 'info' | 'warn' | 'error'
 
-  const levelOptions: { value: LevelFilter; label: string }[] = [
-    { value: 'all', label: 'ALL' },
-    { value: 'debug', label: 'DEBUG' },
-    { value: 'info', label: 'INFO' },
-    { value: 'warn', label: 'WARN' },
-    { value: 'error', label: 'ERROR' },
-  ]
+  let levelOptions = $derived<{ value: LevelFilter; label: string }[]>([
+    { value: 'all', label: $t.logs.levelOptions.all },
+    { value: 'debug', label: $t.logs.levelOptions.debug },
+    { value: 'info', label: $t.logs.levelOptions.info },
+    { value: 'warn', label: $t.logs.levelOptions.warn },
+    { value: 'error', label: $t.logs.levelOptions.error },
+  ])
   const lineOptions = [50, 100, 200, 500]
 
   let snapshot = $state<LogsResponse | null>(null)
@@ -140,7 +141,7 @@
   }
 
   function fileStatus(file: LogFileOption): string {
-    return file.exists ? fmtSize(file.size_bytes) : 'missing'
+    return file.exists ? fmtSize(file.size_bytes) : $t.logs.fileMissing
   }
 
   onMount(() => {
@@ -155,26 +156,26 @@
 <div class="logs-page">
   <section class="logs-header">
     <div>
-      <span class="logs-kicker">Runtime</span>
-      <h2>Logs</h2>
+      <span class="logs-kicker">{$t.logs.kicker}</span>
+      <h2>{$t.logs.title}</h2>
     </div>
     <div class="logs-actions">
       <label class="auto-toggle">
         <input type="checkbox" checked={autoRefresh} onchange={handleAutoRefreshChange} />
-        <span>Auto 5s</span>
+        <span>{$t.logs.autoToggle}</span>
       </label>
       <button class="btn btn-primary btn-sm" type="button" disabled={loading} onclick={() => void loadLogs()}>
-        {loading ? 'Loading...' : 'Refresh'}
+        {loading ? $t.logs.refreshing : $t.logs.refresh}
       </button>
     </div>
   </section>
 
   <section class="logs-toolbar card">
     <label>
-      <span>File</span>
+      <span>{$t.logs.file}</span>
       <select bind:value={selectedFile} onchange={() => void loadLogs()}>
         {#if files.length === 0}
-          <option value="runtime">Runtime log</option>
+          <option value="runtime">{$t.logs.runtimeLog}</option>
         {:else}
           {#each files as file}
             <option value={file.id}>{file.label}</option>
@@ -184,7 +185,7 @@
     </label>
 
     <label>
-      <span>Level</span>
+      <span>{$t.logs.level}</span>
       <select bind:value={selectedLevel} onchange={() => void loadLogs()}>
         {#each levelOptions as option}
           <option value={option.value}>{option.label}</option>
@@ -193,17 +194,17 @@
     </label>
 
     <label>
-      <span>Component</span>
+      <span>{$t.logs.component}</span>
       <input
         type="search"
-        placeholder="component"
+        placeholder={$t.logs.componentPlaceholder}
         bind:value={selectedComponent}
         onkeydown={handleComponentKeydown}
       />
     </label>
 
     <label>
-      <span>Lines</span>
+      <span>{$t.logs.lines}</span>
       <select bind:value={lineCount} onchange={() => void loadLogs()}>
         {#each lineOptions as count}
           <option value={count}>{count}</option>
@@ -219,9 +220,9 @@
   <div class="logs-layout">
     <section class="logs-stream card">
       <div class="card-header">
-        <span class="card-title">Log Stream</span>
+        <span class="card-title">{$t.logs.streamTitle}</span>
         <div class="logs-meta">
-          <span class="badge badge-default">{snapshot?.count ?? 0} lines</span>
+          <span class="badge badge-default">{$t.logs.linesSuffix(snapshot?.count ?? 0)}</span>
           {#if selectedOption}
             <span class="badge" class:badge-success={selectedOption.exists} class:badge-warning={!selectedOption.exists}>
               {fileStatus(selectedOption)}
@@ -231,9 +232,9 @@
       </div>
 
       {#if loading && !snapshot}
-        <div class="empty-state">Loading logs...</div>
+        <div class="empty-state">{$t.logs.loadingLogs}</div>
       {:else if logLines.length === 0}
-        <div class="empty-state">No log lines match the current filters.</div>
+        <div class="empty-state">{$t.logs.noLines}</div>
       {:else}
         <ol class="log-lines">
           {#each logLines as line}
@@ -250,7 +251,7 @@
               <pre>{lineText(line)}</pre>
               {#if line.message && line.raw}
                 <details>
-                  <summary>raw</summary>
+                  <summary>{$t.logs.rawSummary}</summary>
                   <code>{line.raw}</code>
                 </details>
               {/if}
@@ -262,7 +263,7 @@
 
     <aside class="logs-files card">
       <div class="card-header">
-        <span class="card-title">Files</span>
+        <span class="card-title">{$t.logs.filesTitle}</span>
         <span class="badge badge-default">{files.length}</span>
       </div>
       <div class="file-list">
