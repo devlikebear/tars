@@ -270,6 +270,8 @@
 
   @media (max-width: 900px) {
     .nav {
+      /* Mobile drawer: use explicit width because :root overrides --nav-width to 0 on mobile */
+      width: min(280px, 80vw);
       transform: translateX(-100%);
       transition: transform var(--duration-normal) var(--ease-out), box-shadow var(--duration-normal) var(--ease-out);
     }
