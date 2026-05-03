@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.132] - 2026-05-03
+
+### Added
+
+- **Integrated terminal** — clickable URLs (`@xterm/addon-web-links`), in-terminal search bar with case/regex toggles (`@xterm/addon-search`), WebGL renderer with DOM fallback, and Unicode 11 width handling for CJK/emoji glyphs (#663 Phase 1+2).
+- **Integrated terminal** — explicit clipboard shortcuts: `⌘C` / `Ctrl+Shift+C` to copy selection, `⌘V` / `Ctrl+Shift+V` to paste, `⌘F` / `Ctrl+Shift+F` to open search; right-click selects word.
+- **Integrated terminal** — clickable status indicator that reconnects the WebSocket when the session is `Disconnected` or `Exited`.
+
+### Changed
+
+- **Integrated terminal** — brighter selection background (`#a45a1f`) and stronger mono font fallback chain so dragged text is visibly highlighted across platforms.
+
 ## [0.31.131] - 2026-05-03
 
 ### Added

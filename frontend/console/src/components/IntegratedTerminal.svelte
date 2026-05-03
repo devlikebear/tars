@@ -1,7 +1,11 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { Terminal } from '@xterm/xterm'
   import { FitAddon } from '@xterm/addon-fit'
+  import { WebLinksAddon } from '@xterm/addon-web-links'
+  import { SearchAddon, type ISearchOptions } from '@xterm/addon-search'
+  import { Unicode11Addon } from '@xterm/addon-unicode11'
+  import { WebglAddon } from '@xterm/addon-webgl'
   import '@xterm/xterm/css/xterm.css'
   import { terminalWebSocketURL } from '../lib/api'
 
@@ -15,14 +19,23 @@
   let { sessionId, cwd, label, onClose }: Props = $props()
 
   let container: HTMLDivElement | undefined = $state()
+  let searchInputEl: HTMLInputElement | undefined = $state()
   let status = $state('Connecting')
   let error = $state('')
   let connected = $state(false)
+  let searchOpen = $state(false)
+  let searchQuery = $state('')
+  let searchCaseSensitive = $state(false)
+  let searchRegex = $state(false)
 
   let terminal: Terminal | null = null
   let fitAddon: FitAddon | null = null
+  let searchAddon: SearchAddon | null = null
+  let webglAddon: WebglAddon | null = null
   let socket: WebSocket | null = null
   let resizeObserver: ResizeObserver | null = null
+
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform)
 
   function encodeBase64(value: string): string {
     const bytes = new TextEncoder().encode(value)
@@ -64,6 +77,7 @@
 
     socket.onopen = () => {
       connected = true
+      error = ''
       status = 'Connected'
       fitAndResize()
     }
@@ -104,20 +118,113 @@
     }
   }
 
+  function reconnect() {
+    if (socket && socket.readyState !== WebSocket.CLOSED) {
+      socket.close()
+    }
+    error = ''
+    status = 'Connecting'
+    connect()
+  }
+
+  async function openSearch() {
+    searchOpen = true
+    await tick()
+    searchInputEl?.focus()
+    searchInputEl?.select()
+  }
+
+  function closeSearch() {
+    searchOpen = false
+    searchAddon?.clearDecorations()
+    terminal?.focus()
+  }
+
+  function searchOptions(): ISearchOptions {
+    return {
+      caseSensitive: searchCaseSensitive,
+      regex: searchRegex,
+      decorations: {
+        matchBackground: '#a45a1f',
+        matchBorder: '#e09145',
+        matchOverviewRuler: '#e09145',
+        activeMatchBackground: '#e09145',
+        activeMatchBorder: '#ffffff',
+        activeMatchColorOverviewRuler: '#ffffff',
+      },
+    }
+  }
+
+  function findNext() {
+    if (!searchAddon || !searchQuery) return
+    searchAddon.findNext(searchQuery, searchOptions())
+  }
+
+  function findPrevious() {
+    if (!searchAddon || !searchQuery) return
+    searchAddon.findPrevious(searchQuery, searchOptions())
+  }
+
+  function onSearchKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeSearch()
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (e.shiftKey) findPrevious()
+      else findNext()
+    }
+  }
+
+  function customKeyHandler(e: KeyboardEvent): boolean {
+    if (e.type !== 'keydown') return true
+    const key = e.key.toLowerCase()
+    const modCopy = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && e.shiftKey
+    const modPaste = modCopy
+    const modFind = modCopy
+
+    if (modCopy && key === 'c') {
+      const sel = terminal?.getSelection() ?? ''
+      if (sel) {
+        navigator.clipboard?.writeText(sel).catch(() => {})
+        return false
+      }
+      // No selection: fall through (Ctrl+C → SIGINT on Linux/Win; Cmd+C is no-op)
+      return true
+    }
+    if (modPaste && key === 'v') {
+      navigator.clipboard
+        ?.readText()
+        .then((text) => {
+          if (text) send({ type: 'input', data: encodeBase64(text) })
+        })
+        .catch(() => {})
+      return false
+    }
+    if (modFind && key === 'f') {
+      void openSearch()
+      return false
+    }
+    return true
+  }
+
   onMount(() => {
     if (!container) return
     terminal = new Terminal({
       cursorBlink: true,
-      fontFamily: 'var(--font-mono)',
+      fontFamily: "var(--font-mono), Menlo, Consolas, 'Liberation Mono', monospace",
       fontSize: 12,
       lineHeight: 1.2,
       scrollback: 2000,
       convertEol: true,
+      rightClickSelectsWord: true,
+      allowProposedApi: true,
       theme: {
         background: '#0d0d0d',
         foreground: '#e8e3da',
         cursor: '#f0a04b',
-        selectionBackground: '#704622',
+        selectionBackground: '#a45a1f',
+        selectionForeground: '#ffffff',
         black: '#121212',
         red: '#e06c75',
         green: '#98c379',
@@ -130,12 +237,34 @@
         brightWhite: '#ffffff',
       },
     })
+
+    terminal.open(container)
+
     fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
-    terminal.open(container)
+    terminal.loadAddon(new WebLinksAddon())
+    searchAddon = new SearchAddon()
+    terminal.loadAddon(searchAddon)
+    terminal.loadAddon(new Unicode11Addon())
+    terminal.unicode.activeVersion = '11'
+
+    try {
+      const addon = new WebglAddon()
+      addon.onContextLoss(() => {
+        addon.dispose()
+        webglAddon = null
+      })
+      terminal.loadAddon(addon)
+      webglAddon = addon
+    } catch {
+      // WebGL unavailable — fall back to default DOM renderer.
+    }
+
+    terminal.attachCustomKeyEventHandler(customKeyHandler)
     terminal.onData((data) => {
       send({ type: 'input', data: encodeBase64(data) })
     })
+
     resizeObserver = new ResizeObserver(() => fitAndResize())
     resizeObserver.observe(container)
     requestAnimationFrame(() => {
@@ -149,10 +278,14 @@
     resizeObserver?.disconnect()
     send({ type: 'close' })
     socket?.close()
+    webglAddon?.dispose()
+    searchAddon?.dispose()
     terminal?.dispose()
     socket = null
     terminal = null
     fitAddon = null
+    searchAddon = null
+    webglAddon = null
   })
 </script>
 
@@ -161,10 +294,44 @@
     <div class="terminal-title">
       <span class="terminal-dot" class:connected></span>
       <span class="terminal-label">{label}</span>
-      <span class="terminal-status">{error || status}</span>
+      <button
+        type="button"
+        class="terminal-status"
+        class:reconnect={!connected}
+        onclick={reconnect}
+        title={connected ? 'Reconnect' : 'Click to reconnect'}
+      >
+        {error || status}
+      </button>
     </div>
-    <button type="button" class="btn btn-ghost btn-sm" onclick={onClose}>Close</button>
+    <div class="terminal-actions">
+      <button type="button" class="btn btn-ghost btn-sm" onclick={openSearch} title="Find ({isMac ? '⌘F' : 'Ctrl+Shift+F'})">Find</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={onClose}>Close</button>
+    </div>
   </div>
+  {#if searchOpen}
+    <div class="terminal-search">
+      <input
+        bind:this={searchInputEl}
+        bind:value={searchQuery}
+        onkeydown={onSearchKeydown}
+        placeholder="Find in terminal…"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      <label class:active={searchCaseSensitive} title="Case sensitive">
+        <input type="checkbox" bind:checked={searchCaseSensitive} />
+        <span>Aa</span>
+      </label>
+      <label class:active={searchRegex} title="Regex">
+        <input type="checkbox" bind:checked={searchRegex} />
+        <span>.*</span>
+      </label>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={findPrevious} title="Previous (Shift+Enter)">↑</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={findNext} title="Next (Enter)">↓</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={closeSearch} title="Close (Esc)">✕</button>
+    </div>
+  {/if}
   <div class="terminal-frame" bind:this={container}></div>
 </div>
 
@@ -194,6 +361,13 @@
     gap: var(--space-2);
     flex: 1;
     min-width: 0;
+  }
+
+  .terminal-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
   }
 
   .terminal-dot {
@@ -229,6 +403,65 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .terminal-status.reconnect {
+    color: var(--accent, #e09145);
+    text-decoration: underline dotted;
+  }
+
+  .terminal-search {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .terminal-search input:not([type='checkbox']) {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+  }
+
+  .terminal-search input:not([type='checkbox']):focus {
+    outline: none;
+    border-color: var(--accent, #e09145);
+  }
+
+  .terminal-search label {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    user-select: none;
+  }
+
+  .terminal-search label.active {
+    color: var(--accent, #e09145);
+    border-color: var(--accent, #e09145);
+  }
+
+  .terminal-search label input {
+    display: none;
   }
 
   .terminal-frame {
@@ -236,6 +469,7 @@
     min-height: 0;
     padding: var(--space-2);
     overflow: hidden;
+    user-select: text;
   }
 
   :global(.xterm) {
@@ -244,5 +478,10 @@
 
   :global(.xterm-viewport) {
     border-radius: var(--radius-sm);
+  }
+
+  :global(.xterm .xterm-screen),
+  :global(.xterm .xterm-viewport) {
+    user-select: text;
   }
 </style>
