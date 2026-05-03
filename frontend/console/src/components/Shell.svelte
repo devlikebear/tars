@@ -23,14 +23,27 @@
     onUnreadChange,
     children,
   }: Props = $props()
+
+  let navOpen = $state(false)
+
+  function toggleNav() { navOpen = !navOpen }
+  function closeNav() { navOpen = false }
+
+  function handleNavigate(path: string) {
+    closeNav()
+    onNavigate(path)
+  }
 </script>
 
 <div class="shell" class:setup-only={needsSetup}>
   {#if !needsSetup}
-    <Nav {currentPath} {onNavigate} />
+    <Nav {currentPath} onNavigate={handleNavigate} {navOpen} onClose={closeNav} />
+    {#if navOpen}
+      <div class="nav-overlay" role="presentation" onclick={closeNav}></div>
+    {/if}
   {/if}
   <div class="shell-main" class:no-nav={needsSetup}>
-    <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} />
+    <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} {navOpen} onToggleNav={toggleNav} />
     {#if needsSetup}
       <div class="setup-only-banner" role="alert">
         <strong>{$t.shell.setupOnlyKicker}</strong>
@@ -84,6 +97,10 @@
     width: 100%;
   }
 
+  .nav-overlay {
+    display: none;
+  }
+
   @media (max-width: 900px) {
     .shell-main {
       margin-left: 0;
@@ -91,5 +108,18 @@
     .shell-content {
       padding: var(--space-4);
     }
+    .nav-overlay {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 39;
+      animation: overlayIn var(--duration-normal) var(--ease-out);
+    }
+  }
+
+  @keyframes overlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 </style>

@@ -9,6 +9,8 @@
     unreadCount?: number
     onUnreadChange?: (count: number) => void
     onNavigate?: (path: string) => void
+    navOpen?: boolean
+    onToggleNav?: () => void
   }
 
   let {
@@ -16,6 +18,8 @@
     unreadCount = 0,
     onUnreadChange,
     onNavigate,
+    navOpen = false,
+    onToggleNav,
   }: Props = $props()
 
   let panelOpen = $state(false)
@@ -148,6 +152,18 @@
 
 <header class="header">
   <div class="header-left">
+    <button
+      type="button"
+      class="hamburger-btn"
+      class:active={navOpen}
+      aria-label="Toggle navigation"
+      aria-expanded={navOpen}
+      onclick={onToggleNav}
+    >
+      <span class="hamburger-line"></span>
+      <span class="hamburger-line"></span>
+      <span class="hamburger-line"></span>
+    </button>
     <h1 class="header-title">{$t.header.title}</h1>
   </div>
 
@@ -570,6 +586,50 @@
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-ghost);
+  }
+
+  .hamburger-btn {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    cursor: pointer;
+    padding: var(--space-1);
+    transition: background var(--duration-fast) var(--ease-out);
+    flex-shrink: 0;
+  }
+  .hamburger-btn:hover {
+    background: var(--surface-elevated);
+  }
+  .hamburger-line {
+    display: block;
+    width: 16px;
+    height: 1.5px;
+    background: var(--text-secondary);
+    border-radius: 1px;
+    transition: transform var(--duration-normal) var(--ease-out), opacity var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+    transform-origin: center;
+  }
+  .hamburger-btn.active .hamburger-line:nth-child(1) {
+    transform: translateY(5.5px) rotate(45deg);
+    background: var(--primary);
+  }
+  .hamburger-btn.active .hamburger-line:nth-child(2) {
+    opacity: 0;
+  }
+  .hamburger-btn.active .hamburger-line:nth-child(3) {
+    transform: translateY(-5.5px) rotate(-45deg);
+    background: var(--primary);
+  }
+
+  @media (max-width: 900px) {
+    .hamburger-btn { display: flex; }
   }
 
   @media (max-width: 768px) {
