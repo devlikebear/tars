@@ -23,7 +23,7 @@
   import SessionCronPanel from './SessionCronPanel.svelte'
   import SessionHealthPanel from './SessionHealthPanel.svelte'
   import DockPanelFrame from './DockPanelFrame.svelte'
-  import IntegratedTerminal from './IntegratedTerminal.svelte'
+  import TerminalTabs from './TerminalTabs.svelte'
   import {
     closeDockPanel,
     createDockLayout,
@@ -130,10 +130,14 @@
   ]
   let dockLayout: DockLayoutState = $state(createDockLayout(dockPanels))
   let dockLayoutLoaded = $state(false)
+  interface TerminalDockTab {
+    id: string
+    cwd: string
+    label: string
+  }
   let terminalDockSessionId = $state('')
-  let terminalDockCwd = $state('')
-  let terminalDockLabel = $state('')
-  let terminalDockKey = $state('')
+  let terminalDockTabs = $state<TerminalDockTab[]>([])
+  let terminalDockActiveId = $state<string | null>(null)
 
   let activeLeftPanel = $derived(dockLayout.active.left as ChatDockPanelID | undefined)
   let activeRightPanel = $derived(dockLayout.active.right as ChatDockPanelID | undefined)
@@ -207,11 +211,39 @@
       showFeedback('Select a session first')
       return
     }
-    terminalDockSessionId = selectedSessionId
-    terminalDockCwd = target.cwd
-    terminalDockLabel = target.label
-    terminalDockKey = `${selectedSessionId}:${target.cwd}:${Date.now()}`
+    if (terminalDockSessionId !== selectedSessionId) {
+      terminalDockSessionId = selectedSessionId
+      terminalDockTabs = []
+      terminalDockActiveId = null
+    }
+    const existing = terminalDockTabs.find((t) => t.cwd === target.cwd && t.label === target.label)
+    if (existing) {
+      terminalDockActiveId = existing.id
+    } else {
+      const id = `${target.cwd}:${target.label}:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`
+      terminalDockTabs = [...terminalDockTabs, { id, cwd: target.cwd, label: target.label }]
+      terminalDockActiveId = id
+    }
     openPanel('terminal')
+  }
+
+  function closeTerminalTab(id: string) {
+    const idx = terminalDockTabs.findIndex((t) => t.id === id)
+    if (idx === -1) return
+    const next = terminalDockTabs.filter((t) => t.id !== id)
+    terminalDockTabs = next
+    if (terminalDockActiveId === id) {
+      terminalDockActiveId = next.length === 0
+        ? null
+        : (next[Math.min(idx, next.length - 1)]?.id ?? null)
+    }
+    if (next.length === 0) {
+      closePanel('terminal')
+    }
+  }
+
+  function addTerminalTab(cwd: string, label: string) {
+    openIntegratedTerminalDock({ cwd, label })
   }
 
   function startDockResize(zone: DockSizeZone, event: PointerEvent) {
@@ -813,15 +845,15 @@
           onRefresh={() => { void refreshSessionHealth() }}
           onAction={(action) => { void handleHealthAction(action) }}
         />
-      {:else if panelID === 'terminal' && terminalDockSessionId}
-        {#key terminalDockKey}
-          <IntegratedTerminal
-            sessionId={terminalDockSessionId}
-            cwd={terminalDockCwd}
-            label={terminalDockLabel}
-            onClose={() => closePanel(panelID)}
-          />
-        {/key}
+      {:else if panelID === 'terminal' && terminalDockSessionId && terminalDockTabs.length > 0}
+        <TerminalTabs
+          sessionId={terminalDockSessionId}
+          tabs={terminalDockTabs}
+          activeId={terminalDockActiveId}
+          onActivate={(id) => { terminalDockActiveId = id }}
+          onCloseTab={closeTerminalTab}
+          onAddTab={addTerminalTab}
+        />
       {:else}
         <div class="dock-empty">Select a session to use this panel.</div>
       {/if}

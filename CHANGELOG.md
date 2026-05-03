@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.134] - 2026-05-03
+
+### Added
+
+- **Integrated terminal** — multi-tab dock (#663 Phase 4, closes the epic). The terminal panel now renders a tab strip; each "Open shell" adds a new tab (or activates an existing one for the same `cwd`/label combination). Tabs run independent `xterm` + WebSocket sessions in parallel without losing scrollback. A `+` button on the strip opens another shell in the active tab's directory; closing the last tab closes the panel.
+
+### Changed
+
+- **Integrated terminal** — when embedded in the tab strip, the per-terminal header is compact (label/dot/Close hidden — the tab pill owns those). The Find button stays so search is one click away from any active tab.
+
 ## [0.31.133] - 2026-05-03
 
 ### Added

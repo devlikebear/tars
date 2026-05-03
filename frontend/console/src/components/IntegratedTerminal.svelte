@@ -28,9 +28,12 @@
     cwd: string
     label: string
     onClose: () => void
+    visible?: boolean
+    hideLabel?: boolean
+    onStatusChange?: (state: { connected: boolean; status: string; error: string }) => void
   }
 
-  let { sessionId, cwd, label, onClose }: Props = $props()
+  let { sessionId, cwd, label, onClose, visible = true, hideLabel = false, onStatusChange }: Props = $props()
 
   let container: HTMLDivElement | undefined = $state()
   let searchInputEl: HTMLInputElement | undefined = $state()
@@ -435,6 +438,20 @@
     })
   })
 
+  $effect(() => {
+    if (visible && terminal) {
+      // Refit + focus after the browser applies the now-visible layout.
+      requestAnimationFrame(() => {
+        fitAndResize()
+        terminal?.focus()
+      })
+    }
+  })
+
+  $effect(() => {
+    onStatusChange?.({ connected, status, error })
+  })
+
   onDestroy(() => {
     resizeObserver?.disconnect()
     if (bellTimer) clearTimeout(bellTimer)
@@ -457,10 +474,12 @@
 </script>
 
 <div class="integrated-terminal">
-  <div class="terminal-header">
+  <div class="terminal-header" class:compact={hideLabel}>
     <div class="terminal-title">
-      <span class="terminal-dot" class:connected class:bell={bellFlash}></span>
-      <span class="terminal-label">{label}</span>
+      {#if !hideLabel}
+        <span class="terminal-dot" class:connected class:bell={bellFlash}></span>
+        <span class="terminal-label">{label}</span>
+      {/if}
       <button
         type="button"
         class="terminal-status"
@@ -473,7 +492,9 @@
     </div>
     <div class="terminal-actions">
       <button type="button" class="btn btn-ghost btn-sm" onclick={openSearch} title="Find ({isMac ? '⌘F' : 'Ctrl+Shift+F'})">Find</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={onClose}>Close</button>
+      {#if !hideLabel}
+        <button type="button" class="btn btn-ghost btn-sm" onclick={onClose}>Close</button>
+      {/if}
     </div>
   </div>
   {#if searchOpen}
