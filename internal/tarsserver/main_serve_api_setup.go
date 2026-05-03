@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/rs/zerolog"
 )
 
@@ -28,14 +29,25 @@ func buildSetupOnlyAPIMux(opts *options, deps runtimeDeps, nowFn func() time.Tim
 	setupHandler := newSetupAPIHandler(opts.ConfigPath, cfg, logger)
 	configHandler := newConfigAPIHandler(opts.ConfigPath, cfg, cfg.WorkspaceDir, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
+	// providers/models picker — wired even in setup-only so the Step 2
+	// "Refresh from provider" button can call /v1/models with the user's
+	// just-typed credentials. The cache lives in the workspace dir; the
+	// user-supplied workspace dir is created by buildBaseDeps already.
+	providerModelsCache, err := newProviderModelsCache(providerModelsCachePath(cfg), providerModelsCacheTTL, nowFn)
+	if err != nil {
+		return nil, err
+	}
+	providerModelsService := newProviderModelsService(cfg, providerModelsCache, llm.NewModelFetcher(), nowFn)
+	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
 
 	mux := http.NewServeMux()
 	registerSetupOnlyRoutes(mux, setupOnlyHandlers{
-		healthz: healthzHandler,
-		setup:   setupHandler,
-		config:  configHandler,
-		auth:    authHandler,
-		console: consoleHandler,
+		healthz:         healthzHandler,
+		setup:           setupHandler,
+		config:          configHandler,
+		auth:            authHandler,
+		console:         consoleHandler,
+		providersModels: providersModelsHandler,
 		// events handler intentionally omitted for now — the SPA falls back
 		// to polling healthz when the SSE stream is unavailable, and adding
 		// the broker here would pull in unused background goroutines.
@@ -60,12 +72,13 @@ func buildSetupOnlyAPIMux(opts *options, deps runtimeDeps, nowFn func() time.Tim
 // have no useful response without an LLM router and the catch-all
 // 503 fallback steers the wizard toward the supported surface.
 type setupOnlyHandlers struct {
-	healthz http.Handler
-	setup   http.Handler
-	config  http.Handler // serves /v1/admin/config{,/values,/schema} and /v1/admin/restart
-	auth    http.Handler
-	events  http.Handler // optional — SSE keepalive so the SPA stays connected
-	console http.Handler
+	healthz         http.Handler
+	setup           http.Handler
+	config          http.Handler // serves /v1/admin/config{,/values,/schema} and /v1/admin/restart
+	auth            http.Handler
+	events          http.Handler // optional — SSE keepalive so the SPA stays connected
+	console         http.Handler
+	providersModels http.Handler // optional — /v1/providers + /v1/models for the wizard model picker
 }
 
 // registerSetupOnlyRoutes wires the minimal set of endpoints the
@@ -80,6 +93,10 @@ func registerSetupOnlyRoutes(mux *http.ServeMux, handlers setupOnlyHandlers) {
 	mux.Handle("/v1/admin/config/schema", handlers.config)
 	mux.Handle("/v1/admin/restart", handlers.config)
 	mux.Handle("/v1/auth/whoami", handlers.auth)
+	if handlers.providersModels != nil {
+		mux.Handle("/v1/providers", handlers.providersModels)
+		mux.Handle("/v1/models", handlers.providersModels)
+	}
 	if handlers.events != nil {
 		mux.Handle("/v1/events/stream", handlers.events)
 	}
