@@ -147,6 +147,24 @@
   let activeRightPanel = $derived(dockLayout.active.right as ChatDockPanelID | undefined)
   let activeBottomPanel = $derived(dockLayout.active.bottom as ChatDockPanelID | undefined)
   let activeFullscreenPanel = $derived(dockLayout.active.fullscreen as ChatDockPanelID | undefined)
+
+  // Which zone the terminal panel currently lives in. Tracked separately
+  // so the terminal can render from a single, stable parent — moving it
+  // between zones via CSS instead of unmounting/remounting the dock-pane
+  // wrapper, which would tear down xterm + the WebSocket every time the
+  // user dragged the panel (#667).
+  type TerminalZone = 'left' | 'right' | 'bottom' | 'fullscreen' | null
+  let terminalActiveZone: TerminalZone = $derived(
+    activeFullscreenPanel === 'terminal'
+      ? 'fullscreen'
+      : activeBottomPanel === 'terminal'
+        ? 'bottom'
+        : activeLeftPanel === 'terminal'
+          ? 'left'
+          : activeRightPanel === 'terminal'
+            ? 'right'
+            : null,
+  )
   let anyToolPanelOpen = $derived(
     panelIsOpen(dockLayout, 'artifacts') ||
     panelIsOpen(dockLayout, 'config') ||
@@ -861,15 +879,6 @@
           onRefresh={() => { void refreshSessionHealth() }}
           onAction={(action) => { void handleHealthAction(action) }}
         />
-      {:else if panelID === 'terminal' && terminalDockSessionId && terminalDockTabs.length > 0}
-        <TerminalTabs
-          sessionId={terminalDockSessionId}
-          tabs={terminalDockTabs}
-          activeId={terminalDockActiveId}
-          onActivate={(id) => { terminalDockActiveId = id }}
-          onCloseTab={closeTerminalTab}
-          onAddTab={addTerminalTab}
-        />
       {:else}
         <div class="dock-empty">{$t.chat.panels.dockEmpty}</div>
       {/if}
@@ -884,9 +893,11 @@
     class:has-bottom-panel={!!activeBottomPanel}
   >
     {#if activeLeftPanel}
-      <aside class="dock-pane dock-left">
-        {@render renderDockPanel(activeLeftPanel, 'left')}
-      </aside>
+      {#if activeLeftPanel !== 'terminal'}
+        <aside class="dock-pane dock-left">
+          {@render renderDockPanel(activeLeftPanel, 'left')}
+        </aside>
+      {/if}
       <button type="button" class="dock-resizer dock-resizer-left" aria-label="Resize left dock" onpointerdown={(event) => startDockResize('left', event)}></button>
     {/if}
 
@@ -1002,22 +1013,50 @@
     </main>
 
     {#if activeRightPanel}
-      <aside class="dock-pane dock-right">
-        {@render renderDockPanel(activeRightPanel, 'right')}
-      </aside>
+      {#if activeRightPanel !== 'terminal'}
+        <aside class="dock-pane dock-right">
+          {@render renderDockPanel(activeRightPanel, 'right')}
+        </aside>
+      {/if}
       <button type="button" class="dock-resizer dock-resizer-right" aria-label="Resize right dock" onpointerdown={(event) => startDockResize('right', event)}></button>
     {/if}
 
     {#if activeBottomPanel}
-      <section class="dock-pane dock-bottom">
-        {@render renderDockPanel(activeBottomPanel, 'bottom')}
-      </section>
+      {#if activeBottomPanel !== 'terminal'}
+        <section class="dock-pane dock-bottom">
+          {@render renderDockPanel(activeBottomPanel, 'bottom')}
+        </section>
+      {/if}
       <button type="button" class="dock-resizer dock-resizer-bottom" aria-label="Resize bottom dock" onpointerdown={(event) => startDockResize('bottom', event)}></button>
     {/if}
 
-    {#if activeFullscreenPanel}
+    {#if activeFullscreenPanel && activeFullscreenPanel !== 'terminal'}
       <section class="dock-pane dock-fullscreen">
         {@render renderDockPanel(activeFullscreenPanel, 'fullscreen')}
+      </section>
+    {/if}
+
+    <!-- Terminal panel rendered from a single, stable parent so its xterm
+         instance + WebSocket survive zone changes. data-zone selects the
+         grid area / fullscreen positioning via CSS (#667). -->
+    {#if terminalActiveZone && terminalDockSessionId && terminalDockTabs.length > 0}
+      <section class="dock-pane dock-terminal" data-zone={terminalActiveZone}>
+        <DockPanelFrame
+          title={panelTitle('terminal')}
+          zone={terminalActiveZone}
+          closeable={panelCloseable('terminal')}
+          onDock={(nextZone) => dockPanel('terminal', nextZone)}
+          onClose={() => closePanel('terminal')}
+        >
+          <TerminalTabs
+            sessionId={terminalDockSessionId}
+            tabs={terminalDockTabs}
+            activeId={terminalDockActiveId}
+            onActivate={(id) => { terminalDockActiveId = id }}
+            onCloseTab={closeTerminalTab}
+            onAddTab={addTerminalTab}
+          />
+        </DockPanelFrame>
       </section>
     {/if}
   </div>
@@ -1150,6 +1189,33 @@
   }
 
   .dock-fullscreen {
+    position: absolute;
+    inset: var(--space-3);
+    z-index: 30;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  }
+
+  /* Terminal pane is rendered once and re-positioned via data-zone so the
+     xterm instance + PTY survive zone moves. Mirrors the styling of the
+     regular dock-left/right/bottom/fullscreen panes per zone. */
+  .dock-terminal[data-zone='left'] {
+    grid-area: left;
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .dock-terminal[data-zone='right'] {
+    grid-area: right;
+    border-left: 1px solid var(--border-subtle);
+  }
+
+  .dock-terminal[data-zone='bottom'] {
+    grid-area: bottom;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .dock-terminal[data-zone='fullscreen'] {
     position: absolute;
     inset: var(--space-3);
     z-index: 30;
@@ -1454,7 +1520,8 @@
     .dock-left,
     .dock-right,
     .dock-bottom,
-    .dock-fullscreen {
+    .dock-fullscreen,
+    .dock-terminal {
       position: absolute;
       inset: var(--space-2);
       z-index: 30;
