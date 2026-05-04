@@ -71,11 +71,24 @@ func PatchYAML(path string, updates map[string]any) error {
 		patchedValue := normalizePatchedConfigValue(resolvedKey, value)
 		// For two-level map values (e.g. llm_providers: alias → fields),
 		// merge the patch into the existing value BEFORE deleting it so
-		// that unpatched entries (other provider aliases, existing api_key)
-		// are preserved across wizard saves.
+		// that fields the patch omits (notably api_key, which the wizard
+		// drops when the user opts to keep the existing credential) are
+		// preserved on disk.
+		//
+		// Alias-keyed fields (llm_providers) authoritatively replace the
+		// top-level alias set: aliases present on disk but not in the
+		// patch are removed. This keeps rename and delete operations
+		// from the editor consistent with what the user sees. Inner
+		// fields still merge so api_key omission still preserves the
+		// on-disk credential. Other map-shaped fields keep the additive
+		// merge.
 		if newMap := anyToStringMap(patchedValue); newMap != nil {
 			if existingMap := readConfigYAMLMap(existing, resolvedKey); existingMap != nil {
-				nestedMapMerge(existingMap, newMap)
+				if isAliasKeyedConfigField(resolvedKey) {
+					replaceTopMergeInner(existingMap, newMap)
+				} else {
+					nestedMapMerge(existingMap, newMap)
+				}
 				patchedValue = existingMap
 			}
 		}

@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.139] - 2026-05-04
+
+### Fixed
+
+- **Config wizard / provider editor** — provider rename and delete in the onboarding wizard or the Settings provider editor now actually take effect on disk. `PatchYAML` previously preserved any `llm_providers` alias not in the patch, so `kimi → moonshot` rename left both aliases on disk and provider deletion was a no-op. The merge is now alias-replace (drop aliases missing from the patch) with per-field merge inside each alias (api_key omission still preserved). The wizard now sends the full provider map on save instead of only the edited alias, so non-edited providers flow through the alias-replace cleanly.
+- **Config wizard step 1 → step 2** — switching provider kind (e.g. `kimi → anthropic`) now clears tier model entries because the previous IDs (`kimi-k2.6` vs `claude-haiku-4-5`) are kind-specific. `base_url` is also re-seeded to the new kind's canonical default when it matched the previous kind's default; user-customized URLs are preserved.
+- **Config wizard alias rename** — renaming a provider alias in step 1 now propagates to tier bindings that referenced the old alias (instead of only filling empty entries), and the review step shows a notice that the old alias will be dropped when saved.
+- **Settings provider editor** — switching a provider's kind now re-seeds `auth_mode` (to a kind-valid option), `base_url` (to the new kind's default when the previous URL was the old default), and clears `oauth_provider`. Renaming an alias also rebinds any tier currently pointing at the old alias, so saving doesn't leave orphan tier references.
+
 ## [0.31.138] - 2026-05-04
 
 ### Changed

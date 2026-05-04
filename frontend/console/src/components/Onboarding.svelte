@@ -19,8 +19,10 @@
     defaultBaseURLForKind,
     emptyOnboardingForm,
     formFromConfigValues,
+    propagateAliasToTiers,
     providerFromConfigValues,
     providerKinds,
+    resetTierModelsForKindChange,
     suggestedAuthModeForKind,
     validateForm,
     validateProviderStep,
@@ -109,8 +111,14 @@
 
   function handleKindChange(value: string) {
     const kind = value as ProviderKind | ''
+    const previousKind = form.provider.kind
     form.provider.kind = kind
-    if (form.provider.base_url.trim() === '') {
+    // Replace base_url when it's empty OR matches the previous kind's
+    // canonical default. The user may have customized base_url; only
+    // the boilerplate default gets swapped.
+    const previousDefault = defaultBaseURLForKind(previousKind)
+    const currentBaseURL = form.provider.base_url.trim()
+    if (currentBaseURL === '' || currentBaseURL === previousDefault) {
       form.provider.base_url = defaultBaseURLForKind(kind)
     }
     // Reset auth_mode to a value valid for the picked kind. If the
@@ -124,16 +132,20 @@
     if (form.provider.alias.trim() === '' && kind !== '') {
       form.provider.alias = kind
     }
+    // Models are kind-specific (gpt-5.4 makes no sense once kind flips
+    // to anthropic). Clear any previous selection so step 2 prompts
+    // the user with the new per-kind suggestion list.
+    if (previousKind !== '' && previousKind !== kind) {
+      resetTierModelsForKindChange(form)
+    }
   }
 
   function syncTiersToWizardAlias() {
-    const alias = form.provider.alias.trim()
-    if (alias === '') return
-    for (const tier of ['heavy', 'standard', 'light'] as const) {
-      if (form.tiers[tier].provider.trim() === '') {
-        form.tiers[tier].provider = alias
-      }
-    }
+    propagateAliasToTiers(
+      form,
+      form.provider.previousAlias || '',
+      form.provider.alias,
+    )
   }
 
   function goToTiers() {
@@ -194,7 +206,9 @@
     step = 'restarting'
     restartPhase = 'patching'
     try {
-      await patchConfigValues(buildConfigPayload(form))
+      const existingProviders =
+        (configValues.llm_providers as Record<string, unknown>) || {}
+      await patchConfigValues(buildConfigPayload(form, existingProviders))
     } catch (err) {
       saveError = (err as Error).message || 'failed to save config'
       restartPhase = 'idle'
@@ -458,6 +472,12 @@
 
       {#if saveError}
         <div class="onboarding-errors"><strong>{$t.onboarding.errors.saveFailed}</strong><div>{saveError}</div></div>
+      {/if}
+
+      {#if reentry && form.provider.previousAlias && form.provider.previousAlias !== form.provider.alias.trim() && form.provider.alias.trim() !== ''}
+        <p class="onboarding-hint">
+          {$t.onboarding.step3.renameNotice(form.provider.previousAlias, form.provider.alias.trim())}
+        </p>
       {/if}
 
       <div class="onboarding-review">

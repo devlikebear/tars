@@ -158,8 +158,11 @@ gateway:
 	}
 }
 
-
-func TestPatchYAML_PreservesOtherProviders(t *testing.T) {
+func TestPatchYAML_PreservesAPIKeyWhenOmitted(t *testing.T) {
+	// The editor sends the full provider alias set as the authoritative
+	// state, but omits api_key for entries the user opted to keep on
+	// disk. The patch must preserve those credentials per-field while
+	// honoring the alias-level set the editor sent.
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	raw := []byte(strings.TrimSpace(`
 llm:
@@ -189,13 +192,19 @@ llm:
 		t.Fatalf("write config: %v", err)
 	}
 
-	// Simulate wizard saving: edits kimi's base_url only, no api_key sent.
 	updates := map[string]any{
 		"llm_providers": map[string]any{
 			"kimi": map[string]any{
 				"kind":      "kimi",
 				"auth_mode": "api-key",
 				"base_url":  "https://api.moonshot.ai/v2",
+				// api_key intentionally omitted — keep existing
+			},
+			"anthropic": map[string]any{
+				"kind":      "anthropic",
+				"auth_mode": "api-key",
+				"base_url":  "https://api.anthropic.com",
+				// api_key intentionally omitted — keep existing
 			},
 		},
 	}
@@ -207,25 +216,104 @@ llm:
 	if err != nil {
 		t.Fatalf("load patched config: %v", err)
 	}
-
-	// kimi's api_key must be preserved (not cleared by the patch).
 	if cfg.LLMProviders["kimi"].APIKey != "real-kimi-key" {
 		t.Fatalf("kimi api_key lost after patch: got %q want %q", cfg.LLMProviders["kimi"].APIKey, "real-kimi-key")
 	}
-	// kimi's base_url must be updated.
 	if cfg.LLMProviders["kimi"].BaseURL != "https://api.moonshot.ai/v2" {
 		t.Fatalf("kimi base_url not updated: got %q", cfg.LLMProviders["kimi"].BaseURL)
 	}
-	// anthropic must be preserved.
 	if cfg.LLMProviders["anthropic"].APIKey != "real-ant-key" {
-		t.Fatalf("anthropic lost after kimi-only patch: got api_key=%q", cfg.LLMProviders["anthropic"].APIKey)
+		t.Fatalf("anthropic api_key lost: got %q", cfg.LLMProviders["anthropic"].APIKey)
 	}
-	if cfg.LLMProviders["anthropic"].Kind != "anthropic" {
-		t.Fatalf("anthropic entry corrupted: %+v", cfg.LLMProviders["anthropic"])
-	}
-	// tiers must be unchanged.
 	if cfg.LLMTiers["heavy"].Provider != "anthropic" {
 		t.Fatalf("heavy tier provider changed unexpectedly: %q", cfg.LLMTiers["heavy"].Provider)
+	}
+}
+
+func TestPatchYAML_RenamesProviderAlias(t *testing.T) {
+	// Renaming an alias in the editor sends the new alias and drops
+	// the old one from the patch payload. The on-disk provider map
+	// must mirror the editor's authoritative state — the old alias is
+	// removed, not retained alongside the new one.
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	raw := []byte(strings.TrimSpace(`
+llm:
+  providers:
+    kimi:
+      kind: kimi
+      auth_mode: api-key
+      base_url: https://api.moonshot.ai/v1
+      api_key: real-kimi-key
+`))
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	updates := map[string]any{
+		"llm_providers": map[string]any{
+			"moonshot": map[string]any{
+				"kind":      "kimi",
+				"auth_mode": "api-key",
+				"base_url":  "https://api.moonshot.ai/v1",
+				"api_key":   "fresh-key",
+			},
+		},
+	}
+	if err := PatchYAML(path, updates); err != nil {
+		t.Fatalf("patch yaml: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load patched config: %v", err)
+	}
+	if _, exists := cfg.LLMProviders["kimi"]; exists {
+		t.Fatalf("renamed provider 'kimi' still present after rename to 'moonshot'")
+	}
+	if cfg.LLMProviders["moonshot"].APIKey != "fresh-key" {
+		t.Fatalf("renamed provider api_key not stored: %+v", cfg.LLMProviders["moonshot"])
+	}
+}
+
+func TestPatchYAML_RemovesAliasMissingFromPatch(t *testing.T) {
+	// Removing a provider in the editor sends a payload without that
+	// alias. The on-disk map must drop it.
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	raw := []byte(strings.TrimSpace(`
+llm:
+  providers:
+    kimi:
+      kind: kimi
+      api_key: kimi-key
+    anthropic:
+      kind: anthropic
+      api_key: ant-key
+`))
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	updates := map[string]any{
+		"llm_providers": map[string]any{
+			"kimi": map[string]any{
+				"kind":    "kimi",
+				"api_key": "kimi-key",
+			},
+		},
+	}
+	if err := PatchYAML(path, updates); err != nil {
+		t.Fatalf("patch yaml: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load patched config: %v", err)
+	}
+	if _, exists := cfg.LLMProviders["anthropic"]; exists {
+		t.Fatalf("anthropic should have been removed by alias-replace patch")
+	}
+	if cfg.LLMProviders["kimi"].APIKey != "kimi-key" {
+		t.Fatalf("kimi entry corrupted: %+v", cfg.LLMProviders["kimi"])
 	}
 }
 
@@ -253,4 +341,3 @@ func TestPatchYAML_CreatesParentDirectory(t *testing.T) {
 		t.Fatalf("expected parent dir to exist after PatchYAML, got err=%v", err)
 	}
 }
-

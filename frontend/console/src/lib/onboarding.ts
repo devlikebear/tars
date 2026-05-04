@@ -38,6 +38,11 @@ export type OnboardingProvider = {
   // flag set drops api_key from the patch payload so the existing
   // value on disk is preserved.
   keepExistingApiKey?: boolean
+  // previousAlias is the alias the wizard loaded into this provider
+  // form on entry / when switching edit targets. Used by save to drop
+  // the renamed entry from the on-disk provider map and to propagate
+  // the rename to tier bindings that referenced the old alias.
+  previousAlias?: string
 }
 
 export type OnboardingTierBinding = {
@@ -139,7 +144,18 @@ export function validateForm(form: OnboardingFormState, allKnownAliases?: string
 // buildConfigPayload converts the form into the `updates` map shape
 // that PATCH /v1/admin/config/values expects. Empty optional fields
 // are omitted so the resulting YAML stays clean.
-export function buildConfigPayload(form: OnboardingFormState): Record<string, unknown> {
+//
+// existingProviders is the full provider map already on disk (e.g.
+// values.llm_providers from the schema endpoint). The wizard edits a
+// single alias at a time, but the backend's alias-keyed PATCH replaces
+// the on-disk alias set with what the patch sends — so we must include
+// every existing alias here, then overlay the wizard's currently
+// edited alias on top. previousAlias (when the user renamed) is
+// removed so the rename actually takes effect on disk.
+export function buildConfigPayload(
+  form: OnboardingFormState,
+  existingProviders: Record<string, unknown> = {},
+): Record<string, unknown> {
   const provider: Record<string, unknown> = {
     kind: form.provider.kind,
     auth_mode: form.provider.auth_mode,
@@ -173,9 +189,51 @@ export function buildConfigPayload(form: OnboardingFormState): Record<string, un
     tiers[tier] = entry
   }
 
+  const alias = form.provider.alias.trim()
+  const previousAlias = (form.provider.previousAlias || '').trim()
+  const providers: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(existingProviders)) {
+    if (key === previousAlias && previousAlias !== alias) continue
+    providers[key] = value
+  }
+  if (alias) providers[alias] = provider
+
   return {
-    llm_providers: { [form.provider.alias.trim()]: provider },
+    llm_providers: providers,
     llm_tiers: tiers,
+  }
+}
+
+// propagateAliasToTiers rewrites tier bindings so the wizard's tier
+// step stays in sync with step 1's alias. Tiers that referenced the
+// previous alias are rebound to the new one; tiers with an empty
+// provider are filled with the new alias. Tiers already pointing at a
+// different existing alias are left alone (the user may be
+// intentionally mixing providers across tiers).
+export function propagateAliasToTiers(
+  form: OnboardingFormState,
+  previousAlias: string,
+  nextAlias: string,
+): void {
+  const prev = previousAlias.trim()
+  const next = nextAlias.trim()
+  if (next === '') return
+  for (const tier of requiredTiers) {
+    const current = form.tiers[tier].provider.trim()
+    if (current === '' || (prev !== '' && current === prev)) {
+      form.tiers[tier].provider = next
+    }
+  }
+}
+
+// resetTierModelsForKindChange clears the model field of every tier
+// binding when the wizard's provider kind changes. Models are
+// kind-specific (e.g. gpt-5.4 makes no sense once kind flips to
+// anthropic) so any previous value is almost certainly invalid; the
+// user must re-pick from the per-kind suggestion list.
+export function resetTierModelsForKindChange(form: OnboardingFormState): void {
+  for (const tier of requiredTiers) {
+    form.tiers[tier].model = ''
   }
 }
 
@@ -262,6 +320,7 @@ export function providerFromConfigValues(
     base_url: String(entry.base_url ?? ''),
     oauth_provider: entry.oauth_provider ? String(entry.oauth_provider) : undefined,
     keepExistingApiKey: apiKey.trim() !== '',
+    previousAlias: alias,
   }
 }
 
