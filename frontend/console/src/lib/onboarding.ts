@@ -51,6 +51,45 @@ export type OnboardingTierBinding = {
   reasoning_effort?: string
 }
 
+// OnboardingTools is the wizard-side state for the Tools & Permissions
+// section. Only the fields the wizard exposes — the broader ToolConfig
+// surface stays out of the wizard.
+//
+// keepWebSearchKey mirrors keepExistingApiKey on the provider form: when
+// true the wizard treats the loaded api_key as a masked placeholder and
+// will NOT include it in the section's PATCH payload, preserving the
+// on-disk value.
+export type OnboardingTools = {
+  web_search_enabled: boolean
+  web_search_provider: string
+  web_search_api_key: string
+  keepWebSearchKey: boolean
+  web_fetch_enabled: boolean
+  web_fetch_allow_private_hosts: boolean
+  web_fetch_private_host_allowlist: string[]
+  allow_high_risk_user: boolean
+}
+
+export type OnboardingIntegrations = {
+  memory_embed_provider: string
+  memory_embed_api_key: string
+  keepMemoryEmbedKey: boolean
+  memory_embed_model: string
+  memory_embed_base_url: string
+  // null distinguishes "not set" from 0 so the wizard can omit the
+  // dimensions key entirely from the patch (defaulting to the provider
+  // baseline) rather than asserting dimensions=0.
+  memory_embed_dimensions: number | null
+}
+
+export type OnboardingChannels = {
+  telegram_enabled: boolean
+  telegram_bot_token: string
+  keepTelegramToken: boolean
+  telegram_polling_enabled: boolean
+  webhook_enabled: boolean
+}
+
 export type OnboardingFormState = {
   provider: OnboardingProvider
   tiers: {
@@ -58,7 +97,20 @@ export type OnboardingFormState = {
     standard: OnboardingTierBinding
     light: OnboardingTierBinding
   }
+  tools: OnboardingTools
+  integrations: OnboardingIntegrations
+  channels: OnboardingChannels
 }
+
+// optionalSections lists the wizard sections that are skippable in
+// Quick mode and saved one-at-a-time via buildSectionPayload.
+export const optionalSections = ['tools', 'integrations', 'channels'] as const
+export type OptionalSection = (typeof optionalSections)[number]
+
+// WizardMode controls which sections the wizard walks through. Quick
+// limits the flow to provider+tiers (LLM only); Full adds the optional
+// sections after tiers.
+export type WizardMode = 'quick' | 'full'
 
 export const requiredTiers = ['heavy', 'standard', 'light'] as const
 export type RequiredTier = (typeof requiredTiers)[number]
@@ -77,6 +129,43 @@ export function emptyOnboardingForm(): OnboardingFormState {
       standard: { provider: '', model: '' },
       light: { provider: '', model: '' },
     },
+    tools: emptyOnboardingTools(),
+    integrations: emptyOnboardingIntegrations(),
+    channels: emptyOnboardingChannels(),
+  }
+}
+
+export function emptyOnboardingTools(): OnboardingTools {
+  return {
+    web_search_enabled: false,
+    web_search_provider: '',
+    web_search_api_key: '',
+    keepWebSearchKey: false,
+    web_fetch_enabled: false,
+    web_fetch_allow_private_hosts: false,
+    web_fetch_private_host_allowlist: [],
+    allow_high_risk_user: false,
+  }
+}
+
+export function emptyOnboardingIntegrations(): OnboardingIntegrations {
+  return {
+    memory_embed_provider: '',
+    memory_embed_api_key: '',
+    keepMemoryEmbedKey: false,
+    memory_embed_model: '',
+    memory_embed_base_url: '',
+    memory_embed_dimensions: null,
+  }
+}
+
+export function emptyOnboardingChannels(): OnboardingChannels {
+  return {
+    telegram_enabled: false,
+    telegram_bot_token: '',
+    keepTelegramToken: false,
+    telegram_polling_enabled: false,
+    webhook_enabled: false,
   }
 }
 
@@ -333,6 +422,10 @@ export function providerFromConfigValues(
 //
 // Non-empty api_key values in the returned form have keepExistingApiKey=true
 // so saving without typing a new value leaves the on-disk credential untouched.
+//
+// Tools / Integrations / Channels are populated from flat-keyed values
+// (tools_*, memory_embed_*, channels_*) and follow the same masked-secret
+// pattern via keep*Key flags.
 export function formFromConfigValues(values: Record<string, unknown>): OnboardingFormState {
   const form = emptyOnboardingForm()
   const aliases = allAliasesFromConfigValues(values)
@@ -348,5 +441,235 @@ export function formFromConfigValues(values: Record<string, unknown>): Onboardin
     if (binding.reasoning_effort) form.tiers[tier].reasoning_effort = String(binding.reasoning_effort)
   }
 
+  form.tools = toolsFromConfigValues(values)
+  form.integrations = integrationsFromConfigValues(values)
+  form.channels = channelsFromConfigValues(values)
+
   return form
+}
+
+// readBool / readString / readStringList parse loosely-typed values from
+// the schema map. The schema endpoint may emit booleans as JSON booleans
+// or as strings (depending on YAML round-tripping); these helpers normalize
+// to the wizard's typed shape.
+function readBool(values: Record<string, unknown>, key: string): boolean {
+  const v = values?.[key]
+  if (typeof v === 'boolean') return v
+  if (typeof v === 'string') return v.toLowerCase() === 'true'
+  return false
+}
+
+function readString(values: Record<string, unknown>, key: string): string {
+  const v = values?.[key]
+  return v == null ? '' : String(v)
+}
+
+function readStringList(values: Record<string, unknown>, key: string): string[] {
+  const v = values?.[key]
+  if (Array.isArray(v)) return v.map((item) => String(item))
+  if (typeof v === 'string' && v.trim() !== '') {
+    try {
+      const parsed = JSON.parse(v)
+      if (Array.isArray(parsed)) return parsed.map((item) => String(item))
+    } catch {
+      // not JSON — treat as a single entry
+      return [v]
+    }
+  }
+  return []
+}
+
+function readNumberOrNull(values: Record<string, unknown>, key: string): number | null {
+  const v = values?.[key]
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v
+  if (typeof v === 'string') {
+    const n = Number(v)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
+export function toolsFromConfigValues(values: Record<string, unknown>): OnboardingTools {
+  const apiKey = readString(values, 'tools_web_search_api_key')
+  return {
+    web_search_enabled: readBool(values, 'tools_web_search_enabled'),
+    web_search_provider: readString(values, 'tools_web_search_provider'),
+    web_search_api_key: apiKey,
+    keepWebSearchKey: apiKey.trim() !== '',
+    web_fetch_enabled: readBool(values, 'tools_web_fetch_enabled'),
+    web_fetch_allow_private_hosts: readBool(values, 'tools_web_fetch_allow_private_hosts'),
+    web_fetch_private_host_allowlist: readStringList(values, 'tools_web_fetch_private_host_allowlist_json'),
+    allow_high_risk_user: readBool(values, 'tools_allow_high_risk_user'),
+  }
+}
+
+export function integrationsFromConfigValues(values: Record<string, unknown>): OnboardingIntegrations {
+  const apiKey = readString(values, 'memory_embed_api_key')
+  return {
+    memory_embed_provider: readString(values, 'memory_embed_provider'),
+    memory_embed_api_key: apiKey,
+    keepMemoryEmbedKey: apiKey.trim() !== '',
+    memory_embed_model: readString(values, 'memory_embed_model'),
+    memory_embed_base_url: readString(values, 'memory_embed_base_url'),
+    memory_embed_dimensions: readNumberOrNull(values, 'memory_embed_dimensions'),
+  }
+}
+
+export function channelsFromConfigValues(values: Record<string, unknown>): OnboardingChannels {
+  const token = readString(values, 'telegram_bot_token')
+  return {
+    telegram_enabled: readBool(values, 'channels_telegram_enabled'),
+    telegram_bot_token: token,
+    keepTelegramToken: token.trim() !== '',
+    telegram_polling_enabled: readBool(values, 'channels_telegram_polling_enabled'),
+    webhook_enabled: readBool(values, 'channels_webhook_enabled'),
+  }
+}
+
+// validateToolsStep flags configurations the user almost certainly
+// doesn't want persisted. Enabling web_search without an api_key (and
+// without the keep-existing flag) would write a useless config — the
+// next chat turn would call the search tool and fail. Block save here
+// rather than waiting for runtime errors.
+export function validateToolsStep(form: OnboardingFormState): string[] {
+  const errs: string[] = []
+  const t = form.tools
+  if (t.web_search_enabled && !t.keepWebSearchKey && t.web_search_api_key.trim() === '') {
+    errs.push('Web search is enabled but no API key was provided.')
+  }
+  return errs
+}
+
+// validateIntegrationsStep treats memory_embed as opt-in — only flag a
+// missing api_key when the user explicitly picked a provider, since an
+// empty provider means "use defaults / disable".
+export function validateIntegrationsStep(form: OnboardingFormState): string[] {
+  const errs: string[] = []
+  const i = form.integrations
+  if (
+    i.memory_embed_provider.trim() !== '' &&
+    !i.keepMemoryEmbedKey &&
+    i.memory_embed_api_key.trim() === ''
+  ) {
+    errs.push('Memory embeddings provider is set but no API key was provided.')
+  }
+  return errs
+}
+
+// validateChannelsStep enforces the telegram preconditions: enabling
+// the channel requires a bot token, and polling requires the channel
+// itself to be enabled (the runtime ignores polling on disabled channels).
+export function validateChannelsStep(form: OnboardingFormState): string[] {
+  const errs: string[] = []
+  const c = form.channels
+  if (c.telegram_enabled && !c.keepTelegramToken && c.telegram_bot_token.trim() === '') {
+    errs.push('Telegram is enabled but no bot token was provided.')
+  }
+  if (c.telegram_polling_enabled && !c.telegram_enabled) {
+    errs.push('Telegram polling requires the Telegram channel to be enabled.')
+  }
+  if (
+    c.telegram_polling_enabled &&
+    c.telegram_enabled &&
+    !c.keepTelegramToken &&
+    c.telegram_bot_token.trim() === ''
+  ) {
+    errs.push('Telegram polling requires a bot token.')
+  }
+  return errs
+}
+
+// buildToolsPayload returns ONLY the tools_* keys this section owns, so
+// a per-section save does not touch unrelated config. JSON-encoded list
+// fields use the *_json key shape that the backend's stringListField
+// handler expects.
+export function buildToolsPayload(form: OnboardingFormState): Record<string, unknown> {
+  const t = form.tools
+  const out: Record<string, unknown> = {
+    tools_web_search_enabled: t.web_search_enabled,
+    tools_web_fetch_enabled: t.web_fetch_enabled,
+    tools_web_fetch_allow_private_hosts: t.web_fetch_allow_private_hosts,
+    tools_allow_high_risk_user: t.allow_high_risk_user,
+    tools_web_fetch_private_host_allowlist_json: JSON.stringify(t.web_fetch_private_host_allowlist),
+  }
+  const provider = t.web_search_provider.trim()
+  if (provider !== '') out.tools_web_search_provider = provider
+  if (!t.keepWebSearchKey && t.web_search_api_key.trim() !== '') {
+    out.tools_web_search_api_key = t.web_search_api_key.trim()
+  }
+  return out
+}
+
+export function buildIntegrationsPayload(form: OnboardingFormState): Record<string, unknown> {
+  const i = form.integrations
+  const out: Record<string, unknown> = {}
+  const provider = i.memory_embed_provider.trim()
+  if (provider !== '') out.memory_embed_provider = provider
+  if (i.memory_embed_model.trim() !== '') out.memory_embed_model = i.memory_embed_model.trim()
+  if (i.memory_embed_base_url.trim() !== '') out.memory_embed_base_url = i.memory_embed_base_url.trim()
+  if (i.memory_embed_dimensions !== null && i.memory_embed_dimensions > 0) {
+    out.memory_embed_dimensions = i.memory_embed_dimensions
+  }
+  if (!i.keepMemoryEmbedKey && i.memory_embed_api_key.trim() !== '') {
+    out.memory_embed_api_key = i.memory_embed_api_key.trim()
+  }
+  return out
+}
+
+export function buildChannelsPayload(form: OnboardingFormState): Record<string, unknown> {
+  const c = form.channels
+  const out: Record<string, unknown> = {
+    channels_telegram_enabled: c.telegram_enabled,
+    channels_telegram_polling_enabled: c.telegram_polling_enabled,
+    channels_webhook_enabled: c.webhook_enabled,
+  }
+  if (!c.keepTelegramToken && c.telegram_bot_token.trim() !== '') {
+    out.telegram_bot_token = c.telegram_bot_token.trim()
+  }
+  return out
+}
+
+// buildSectionPayload returns the partial PATCH payload for a single
+// optional section. The wizard saves sections one at a time so users
+// can edit Channels without touching Tools, etc.
+export function buildSectionPayload(
+  section: OptionalSection,
+  form: OnboardingFormState,
+): Record<string, unknown> {
+  switch (section) {
+    case 'tools':
+      return buildToolsPayload(form)
+    case 'integrations':
+      return buildIntegrationsPayload(form)
+    case 'channels':
+      return buildChannelsPayload(form)
+  }
+}
+
+// validateSectionStep dispatches to the right validator for a given
+// optional section.
+export function validateSectionStep(section: OptionalSection, form: OnboardingFormState): string[] {
+  switch (section) {
+    case 'tools':
+      return validateToolsStep(form)
+    case 'integrations':
+      return validateIntegrationsStep(form)
+    case 'channels':
+      return validateChannelsStep(form)
+  }
+}
+
+// parsePrivateHostAllowlistInput maps a free-form textarea value (one
+// host per line, with optional comments / blank lines) into the typed
+// list the wizard stores. Mirrors the YAML allowlist semantics — order
+// preserved, duplicates allowed (caller can dedupe if needed).
+export function parsePrivateHostAllowlistInput(input: string): string[] {
+  return input
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'))
+}
+
+export function formatPrivateHostAllowlistInput(hosts: string[]): string {
+  return hosts.join('\n')
 }

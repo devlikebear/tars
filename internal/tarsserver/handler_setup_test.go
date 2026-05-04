@@ -199,6 +199,148 @@ func TestSetupStatus_ConfigPathReports(t *testing.T) {
 	}
 }
 
+func TestSetupStatus_Capabilities(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  config.Config
+		want setupCapabilityStatus
+	}{
+		{
+			name: "empty",
+			cfg:  config.Config{},
+			want: setupCapabilityStatus{},
+		},
+		{
+			name: "tools enabled but secrets missing",
+			cfg: config.Config{
+				ToolConfig: config.ToolConfig{
+					ToolsWebSearchEnabled: true,
+					ToolsWebFetchEnabled:  true,
+				},
+			},
+			want: setupCapabilityStatus{
+				WebSearchEnabled: true,
+				WebFetchEnabled:  true,
+				ToolsConfigured:  true,
+			},
+		},
+		{
+			name: "integrations only",
+			cfg: config.Config{
+				ToolConfig:   config.ToolConfig{ToolsWebSearchAPIKey: "ws-key"},
+				MemoryConfig: config.MemoryConfig{MemoryEmbedAPIKey: "embed-key"},
+			},
+			want: setupCapabilityStatus{
+				WebSearchAPIKeySet:     true,
+				MemoryEmbedAPIKeySet:   true,
+				IntegrationsConfigured: true,
+			},
+		},
+		{
+			name: "telegram requires both enabled and token",
+			cfg: config.Config{
+				ChannelConfig: config.ChannelConfig{
+					ChannelsTelegramEnabled: true,
+				},
+			},
+			want: setupCapabilityStatus{
+				TelegramEnabled: true,
+				// Token missing, so channel not yet configured.
+			},
+		},
+		{
+			name: "telegram complete",
+			cfg: config.Config{
+				ChannelConfig: config.ChannelConfig{
+					ChannelsTelegramEnabled: true,
+					TelegramBotToken:        "abc:DEF",
+				},
+			},
+			want: setupCapabilityStatus{
+				TelegramEnabled:     true,
+				TelegramBotTokenSet: true,
+				ChannelsConfigured:  true,
+			},
+		},
+		{
+			name: "webhook alone counts as channels configured",
+			cfg: config.Config{
+				ChannelConfig: config.ChannelConfig{ChannelsWebhookEnabled: true},
+			},
+			want: setupCapabilityStatus{
+				WebhookEnabled:     true,
+				ChannelsConfigured: true,
+			},
+		},
+		{
+			name: "all on",
+			cfg: config.Config{
+				ToolConfig: config.ToolConfig{
+					ToolsWebSearchEnabled: true,
+					ToolsWebFetchEnabled:  true,
+					ToolsWebSearchAPIKey:  "ws-key",
+				},
+				MemoryConfig: config.MemoryConfig{MemoryEmbedAPIKey: "embed-key"},
+				ChannelConfig: config.ChannelConfig{
+					ChannelsTelegramEnabled: true,
+					TelegramBotToken:        "abc:DEF",
+					ChannelsWebhookEnabled:  true,
+				},
+			},
+			want: setupCapabilityStatus{
+				WebSearchEnabled:       true,
+				WebSearchAPIKeySet:     true,
+				WebFetchEnabled:        true,
+				MemoryEmbedAPIKeySet:   true,
+				TelegramEnabled:        true,
+				TelegramBotTokenSet:    true,
+				WebhookEnabled:         true,
+				ToolsConfigured:        true,
+				IntegrationsConfigured: true,
+				ChannelsConfigured:     true,
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := buildCapabilityStatus(tc.cfg)
+			if got != tc.want {
+				t.Fatalf("capability mismatch\n got: %+v\nwant: %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSetupStatus_CapabilitiesInResponse(t *testing.T) {
+	cfg := config.Config{
+		ToolConfig: config.ToolConfig{
+			ToolsWebSearchEnabled: true,
+			ToolsWebSearchAPIKey:  "ws-key",
+		},
+	}
+	handler := newTestSetupHandler(t, "", cfg)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/setup/status", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body setupStatusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.Capabilities.WebSearchEnabled || !body.Capabilities.WebSearchAPIKeySet || !body.Capabilities.ToolsConfigured {
+		t.Fatalf("expected capability flags surfaced, got %+v", body.Capabilities)
+	}
+	if !body.Capabilities.IntegrationsConfigured {
+		t.Fatalf("expected integrations_configured=true when web_search api_key set, got %+v", body.Capabilities)
+	}
+	// Sanity: response must not leak the api_key.
+	if strings.Contains(rec.Body.String(), "ws-key") {
+		t.Fatalf("response leaked tools.web_search.api_key: %s", rec.Body.String())
+	}
+}
+
 func findCheck(t *testing.T, checks []setupCheck, id string) setupCheck {
 	t.Helper()
 	for _, c := range checks {

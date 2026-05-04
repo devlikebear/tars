@@ -1280,6 +1280,19 @@ export type SetupCheck = {
   message: string
 }
 
+export type SetupCapabilityStatus = {
+  web_search_enabled: boolean
+  web_search_api_key_set: boolean
+  web_fetch_enabled: boolean
+  memory_embed_api_key_set: boolean
+  telegram_enabled: boolean
+  telegram_bot_token_set: boolean
+  webhook_enabled: boolean
+  tools_configured: boolean
+  integrations_configured: boolean
+  channels_configured: boolean
+}
+
 export type SetupStatusResponse = {
   needs_setup: boolean
   config_path?: string
@@ -1289,6 +1302,7 @@ export type SetupStatusResponse = {
     missing: boolean
   }
   tiers: Record<string, SetupTierStatus>
+  capabilities?: SetupCapabilityStatus
   checks: SetupCheck[]
 }
 

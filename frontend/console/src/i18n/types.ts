@@ -195,9 +195,20 @@ export type Translations = {
     title: string
     subtitleFirstRun: string
     subtitleReentry: string
+    mode: {
+      quick: string
+      full: string
+      switchToFull: string
+      switchToQuick: string
+      quickHint: string
+      fullHint: string
+    }
     steps: {
       provider: string
       tiers: string
+      tools: string
+      integrations: string
+      channels: string
       review: string
       restart: string
       saved: string
@@ -270,6 +281,99 @@ export type Translations = {
       saveOnlyButton: string
       saveAndRestartButton: string
       renameNotice: (prev: string, next: string) => string
+    }
+    tools: {
+      cardTitle: string
+      cardMeta: string
+      webSearchHeading: string
+      webSearchEnableLabel: string
+      webSearchEnableHint: string
+      webSearchProviderLabel: string
+      webSearchProviderPlaceholder: string
+      webSearchApiKeyLabel: string
+      webSearchApiKeyHint: string
+      webSearchApiKeyPlaceholderKeep: string
+      webSearchApiKeyPlaceholderNew: string
+      webFetchHeading: string
+      webFetchEnableLabel: string
+      webFetchEnableHint: string
+      webFetchPrivateHostsLabel: string
+      webFetchPrivateHostsHint: string
+      webFetchAllowlistLabel: string
+      webFetchAllowlistPlaceholder: string
+      webFetchAllowlistHint: string
+      permissionsHeading: string
+      highRiskUserLabel: string
+      highRiskUserWarning: string
+      backButton: string
+      nextButton: string
+      skipButton: string
+    }
+    integrations: {
+      cardTitle: string
+      cardMeta: string
+      memoryHeading: string
+      memoryProviderLabel: string
+      memoryProviderHint: string
+      memoryProviderPlaceholder: string
+      memoryApiKeyLabel: string
+      memoryApiKeyHint: string
+      memoryApiKeyPlaceholderKeep: string
+      memoryApiKeyPlaceholderNew: string
+      memoryModelLabel: string
+      memoryModelPlaceholder: string
+      memoryBaseUrlLabel: string
+      memoryBaseUrlPlaceholder: string
+      memoryDimensionsLabel: string
+      memoryDimensionsHint: string
+      backButton: string
+      nextButton: string
+      skipButton: string
+    }
+    channels: {
+      cardTitle: string
+      cardMeta: string
+      telegramHeading: string
+      telegramEnableLabel: string
+      telegramEnableHint: string
+      telegramTokenLabel: string
+      telegramTokenHint: string
+      telegramTokenPlaceholderKeep: string
+      telegramTokenPlaceholderNew: string
+      telegramPollingLabel: string
+      telegramPollingHint: string
+      webhookHeading: string
+      webhookEnableLabel: string
+      webhookEnableHint: string
+      restartHint: string
+      backButton: string
+      nextButton: string
+      skipButton: string
+    }
+    complete: {
+      title: string
+      bodyQuick: string
+      bodyFull: string
+      configureMoreButton: string
+      restartNowButton: string
+      backToConsoleButton: string
+      matrixHeading: string
+      restartRequiredNotice: string
+      rows: {
+        provider: string
+        tiers: string
+        webSearch: string
+        webFetch: string
+        memoryEmbed: string
+        telegram: string
+        webhook: string
+      }
+      status: {
+        ok: string
+        missing: string
+        skipped: string
+      }
+      jumpTo: (section: string) => string
     }
     saved: {
       title: string

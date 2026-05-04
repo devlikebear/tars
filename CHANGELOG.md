@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.140] - 2026-05-04
+
+### Added
+
+- **Onboarding wizard expansion** — the setup wizard is now a section-router shell with **Quick** vs **Full** modes. Quick keeps the original LLM-only path (Provider → Tiers → Review → Complete); Full adds three new optional sections between Tiers and Review:
+  - **Tools & Permissions** — toggle `web_search` / `web_fetch`, edit the private-host allowlist (newline-separated textarea), and gate the high-risk-user permission with a strong warning.
+  - **Integrations** — API keys for external augmentations (web search provider key + memory embedding provider/key/model/base URL/dimensions).
+  - **Channels** — Telegram (enable + bot token + polling) and webhook toggle, with client-side guards (polling requires bot token + channel enable).
+- **Per-section save** — each optional section patches only its own keys via `buildSectionPayload`, so editing Channels never disturbs Tools. Sections can be skipped without writing.
+- **Deep-link reentry** — `/console/onboarding?section=<id>` opens the wizard directly on a given section. Optional-section deep-links fall back to the Provider step when no provider is configured.
+- **Completion matrix** — the new `OnboardingComplete.svelte` shows ✓/✗/— per capability (LLM provider, tier bindings, web_search, web_fetch, memory embeddings, telegram, webhook) with jump-back links to each section, and surfaces a "restart required to activate Telegram/Webhook" notice when those workers were saved.
+- **Setup status capability flags** — `GET /v1/setup/status` now returns a `capabilities` block (`tools_configured`, `integrations_configured`, `channels_configured`, plus per-capability booleans) so the wizard's matrix avoids refetching the schema. Sensitive values are not exposed (only "set" / "not set" booleans).
+
 ## [0.31.139] - 2026-05-04
 
 ### Fixed

@@ -325,6 +325,33 @@ A centered `text-tertiary` block with `body-sm` typography, padded `3xl`. Always
 
 `error-muted` background, `error` text, full-width inline. Use for synchronous form validation errors and API failure surfacing. Do not use a banner for confirmation messages — that's what `success`-tinted toasts/badges are for.
 
+## Onboarding wizard
+
+The wizard (`src/components/Onboarding.svelte`) is a section-router shell that delegates each section to a child component under `src/components/onboarding/`. The shell owns the form state and the cross-section orchestration; each child owns its own UI and emits navigation callbacks (`onNext`, `onBack`, `onSkip`).
+
+### Modes
+
+- **Quick** — first-run default. Sections: Provider → Tiers → Review → Complete. Fastest path to a working console.
+- **Full** — reentry default and the path users opt into via the "Configure more" CTA on the completion screen. Adds **Tools & Permissions**, **Integrations**, and **Channels** between Tiers and Review. Each new section can be skipped without writing.
+
+The mode badge appears in the header. Switching from Quick to Full only adds sections after Tiers; previously-saved provider+tier values are kept.
+
+### Deep links
+
+`/console/onboarding?section=<id>` deep-links into a section on reentry. Supported ids: `provider`, `tiers`, `tools`, `integrations`, `channels`, `review`. The shell rejects an optional-section deep-link when no provider is configured (would write a useless partial config) and falls back to the Provider step.
+
+### Section save semantics
+
+Provider/Tiers/Review save the LLM block via the existing alias-replace `buildConfigPayload`, which preserves untouched providers. Tools/Integrations/Channels each save their own keys via `buildSectionPayload(section, form)` — a partial PATCH that does not touch other sections. This makes per-section reentry safe (editing Channels never disturbs Tools).
+
+Secrets follow the existing `keepExistingApiKey` pattern: when the schema endpoint returns a masked value, the wizard sets a `keep*Key` flag and drops the field from the patch payload, preserving the on-disk credential.
+
+### Completion matrix
+
+`OnboardingComplete.svelte` renders a row per capability — LLM provider, tier bindings, web_search, web_fetch, memory embeddings, telegram, webhook — with a ✓ / ✗ / — glyph and a contextual "Edit <section>" jump-back link. Status derives from in-memory form state first (so it reflects what the user just edited) with `setupStatus.capabilities` as a fallback for refresh-after-save scenarios.
+
+The matrix surfaces a "restart required to activate Telegram/Webhook" notice when those workers were saved during the current run — they only start after a server restart per the setup-only-mode constraints in `internal/tarsserver/main_serve_api_setup.go`.
+
 ## Do's and Don'ts
 
 - **Do** use `primary` (amber) only once per screen, for the single most consequential action.
