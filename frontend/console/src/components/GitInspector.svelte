@@ -1001,9 +1001,12 @@
   }
 
   .diff-section {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: var(--space-2);
     min-width: 0;
+    min-height: 240px;
+    flex: 1 1 auto;
   }
 
   .diff-head {
@@ -1047,11 +1050,12 @@
     border-radius: var(--radius-sm);
     background: var(--surface-inset);
     overflow: auto;
-    max-height: 480px;
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     line-height: 1.5;
     min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
   }
 
   .diff-unified {
