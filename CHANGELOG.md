@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.153] - 2026-05-04
+
+### Changed
+
+- **Console Git Inspector — layout & UX refactor (P1 of #692)** — the chat Git panel was a single long-scrolling column where every section (status / files / diff / branches / log) rendered at once, and the 5-column repo-summary grid forced the ROOT path to wrap one character per line in a narrow dock. The panel is now reorganized into a tab strip — `Status` / `Files` / `Branches` / `Log` — with a compact header that inlines branch · HEAD · Δ/S/U counts, dropping the bulky summary cards. The Files tab keeps the file list + diff together (most common pairing) and adds a Unified / Split toggle for the diff view (Unified by default; Split collapses to a single column under 600px). Status meta uses `repeat(auto-fit, minmax(140px, 1fr))` so cards reflow instead of stretching. No backend or API changes — read-only commit details, worktree listing, checkout, and worktree mutations land in P2/P3.
+
 ## [0.31.152] - 2026-05-04
 
 ### Fixed
