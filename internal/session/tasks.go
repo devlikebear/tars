@@ -152,6 +152,11 @@ type Task struct {
 	Status      string         `json:"status"` // pending, in_progress, completed, cancelled
 	Description string         `json:"description,omitempty"`
 	Evidence    []TaskEvidence `json:"evidence,omitempty"`
+	// RunID, when set, names the agentruntime run that is (or was) executing
+	// this task. Set when the run is spawned with a task_id; read-only
+	// metadata for UI consumers that want to navigate from a task to the
+	// run that worked on it.
+	RunID string `json:"run_id,omitempty"`
 }
 
 // SessionTasks holds the current plan and its associated tasks for a session.

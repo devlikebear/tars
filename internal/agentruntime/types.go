@@ -22,9 +22,14 @@ const (
 )
 
 type Run struct {
-	ID                        string                   `json:"run_id"`
-	WorkspaceID               string                   `json:"-"`
-	SessionID                 string                   `json:"session_id,omitempty"`
+	ID          string `json:"run_id"`
+	WorkspaceID string `json:"-"`
+	SessionID   string `json:"session_id,omitempty"`
+	// TaskID, when set, names the session.Task this run was spawned to work
+	// on. Read-only metadata that lets UI consumers correlate live run state
+	// with the task that triggered it. Forwarded from SpawnRequest.TaskID at
+	// spawn time and never mutated thereafter.
+	TaskID                    string                   `json:"task_id,omitempty"`
 	SessionKind               string                   `json:"session_kind,omitempty"`
 	Agent                     string                   `json:"agent,omitempty"`
 	Prompt                    string                   `json:"prompt,omitempty"`
@@ -209,6 +214,7 @@ type PromptExecutionMetadata struct {
 type SpawnRequest struct {
 	WorkspaceID               string
 	SessionID                 string
+	TaskID                    string
 	Title                     string
 	Prompt                    string
 	Agent                     string

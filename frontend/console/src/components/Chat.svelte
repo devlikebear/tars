@@ -952,6 +952,12 @@
           <span class="plan-strip-goal">
             <span class="plan-strip-label">Plan</span>
             <strong>{tasksSummary.plan_goal}</strong>
+            {#if tasksSummary.active_task_title}
+              <span class="plan-strip-active" title={`Currently in progress: ${tasksSummary.active_task_title}`}>
+                <span class="plan-strip-active-dot" aria-hidden="true"></span>
+                {tasksSummary.active_task_title}
+              </span>
+            {/if}
           </span>
           <span class="plan-strip-progress">
             <span class="plan-strip-bar" aria-label={`${planStripProgress}% complete`}>
@@ -1365,6 +1371,34 @@
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .plan-strip-active {
+    display: inline-flex;
+    flex-shrink: 1;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .plan-strip-active-dot {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: plan-strip-active-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes plan-strip-active-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
   }
 
   .plan-strip-progress {

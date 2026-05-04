@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.146] - 2026-05-04
+
+### Added
+
+- **Run ↔ Task linkage + live "currently working on" indicator** (#679) — when an agentruntime run is spawned with a `task_id`, that ID is now preserved on the resulting `Run` record (`Run.TaskID`) so external clients can correlate run state with the task that triggered it. The session-side `Task.RunID` field complements the link in the other direction. Wired through `SpawnRequest.TaskID` → `Runtime.Spawn()` → `Run.TaskID` and exposed on the `POST /v1/agentruntime/runs` body.
+- **Chat plan strip — active task title** — `summarizeTasks()` now surfaces the title of the first in-progress task as `active_task_title`. The chat plan strip renders it next to the goal with a small pulsing dot so the user can see at a glance which task the session is actively working on.
+
 ## [0.31.145] - 2026-05-04
 
 ### Added
