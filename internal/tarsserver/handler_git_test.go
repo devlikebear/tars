@@ -123,6 +123,59 @@ func TestGitAPIStatusAndDiffUseSessionCurrentDir(t *testing.T) {
 	if len(branches.Branches) == 0 || branches.Branches[0].Name != "main" || !branches.Branches[0].Current {
 		t.Fatalf("unexpected branches payload: %+v", branches)
 	}
+
+	headOut, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").CombinedOutput()
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v\n%s", err, headOut)
+	}
+	hash := strings.TrimSpace(string(headOut))
+	commitReq := httptest.NewRequest(http.MethodGet, "/v1/git/commit?session_id="+sess.ID+"&hash="+hash, nil)
+	commitRec := httptest.NewRecorder()
+	handler.ServeHTTP(commitRec, commitReq)
+	if commitRec.Code != http.StatusOK {
+		t.Fatalf("expected commit 200, got %d body=%q", commitRec.Code, commitRec.Body.String())
+	}
+	var commit struct {
+		Hash    string `json:"hash"`
+		Subject string `json:"subject"`
+		Files   []struct {
+			Path   string `json:"path"`
+			Status string `json:"status"`
+		} `json:"files"`
+	}
+	if err := json.Unmarshal(commitRec.Body.Bytes(), &commit); err != nil {
+		t.Fatalf("decode commit: %v", err)
+	}
+	if commit.Hash != hash || commit.Subject != "initial" || len(commit.Files) == 0 {
+		t.Fatalf("unexpected commit payload: %+v", commit)
+	}
+
+	missingHashReq := httptest.NewRequest(http.MethodGet, "/v1/git/commit?session_id="+sess.ID, nil)
+	missingHashRec := httptest.NewRecorder()
+	handler.ServeHTTP(missingHashRec, missingHashReq)
+	if missingHashRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected commit without hash to be 400, got %d", missingHashRec.Code)
+	}
+
+	worktreeReq := httptest.NewRequest(http.MethodGet, "/v1/git/worktrees?session_id="+sess.ID, nil)
+	worktreeRec := httptest.NewRecorder()
+	handler.ServeHTTP(worktreeRec, worktreeReq)
+	if worktreeRec.Code != http.StatusOK {
+		t.Fatalf("expected worktrees 200, got %d body=%q", worktreeRec.Code, worktreeRec.Body.String())
+	}
+	var trees struct {
+		Worktrees []struct {
+			Path    string `json:"path"`
+			Branch  string `json:"branch"`
+			Current bool   `json:"current"`
+		} `json:"worktrees"`
+	}
+	if err := json.Unmarshal(worktreeRec.Body.Bytes(), &trees); err != nil {
+		t.Fatalf("decode worktrees: %v", err)
+	}
+	if len(trees.Worktrees) != 1 || trees.Worktrees[0].Branch != "main" || !trees.Worktrees[0].Current {
+		t.Fatalf("unexpected worktrees payload: %+v", trees)
+	}
 }
 
 func TestGitAPIMutationApprovalRequiresConsentAndApproval(t *testing.T) {
