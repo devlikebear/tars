@@ -8,11 +8,11 @@
 
 > **Homepage:** https://tars.marvin-42.com — project overview, features, and quickstart.
 
-**TARS is a local AI agent runtime — with a console worth opening.**
+**TARS is a local AI agent runtime that runs on your machine, under your control.**
 
-A single Go binary that runs on your machine and opens a full browser console as its primary interface — chat with dockable Git Inspector and tool panels, message-level session forks, an Agent Runtime page with list/tree/Gantt/Flow views, Memory Inbox review, scheduled jobs, a background watchdog, and nightly reflection. Everything configurable via YAML and extensible via skills, plugins, and MCP servers. Telegram and webhook channels are available for when you're away from the browser.
+TARS runs as a single Go binary on your machine. From the browser console you can directly inspect and control its work — chat with dockable Git Inspector and tool panels, message-level session forks, an Agent Runtime page with list/tree/Gantt/Flow views, Memory Inbox review, scheduled jobs, a background watchdog, and nightly reflection. Everything is configurable via YAML and extensible via skills, plugins, and MCP servers. Telegram and webhook channels are available when you're away from the browser.
 
-The name is an homage to TARS from *Interstellar*: practical, direct, and built to work beside a human operator under pressure. This project is not affiliated with the film; it borrows the name as a north star for the kind of local agent runtime it wants to be.
+The name comes from the TARS in *Interstellar* — practical, direct, dependable when things get complicated. TARS aims for that. Not affiliated with the film; the name is borrowed.
 
 ## Comparison
 
