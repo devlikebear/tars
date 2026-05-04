@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { createGitMutationApproval, getGitBranches, getGitDiff, getGitLog, getGitStatus, type CreateGitMutationApprovalRequest } from '../lib/api'
-  import type { GitBranch, GitBranchesResponse, GitCommit, GitDiff, GitStatus, GitStatusFile } from '../lib/types'
+  import { createGitMutationApproval, getGitBranches, getGitCommit, getGitDiff, getGitLog, getGitStatus, getGitWorktrees, type CreateGitMutationApprovalRequest } from '../lib/api'
+  import type { GitBranch, GitBranchesResponse, GitCommit, GitCommitDetail, GitCommitFile, GitDiff, GitStatus, GitStatusFile, GitWorktree } from '../lib/types'
 
   interface Props {
     sessionId: string
@@ -10,15 +10,23 @@
 
   let { sessionId, onClose }: Props = $props()
 
-  type TabId = 'status' | 'files' | 'branches' | 'log'
+  type TabId = 'status' | 'files' | 'branches' | 'log' | 'worktrees'
   type DiffMode = 'unified' | 'split'
+  type DiffSource =
+    | { kind: 'workdir'; path: string; staged: boolean }
+    | { kind: 'commit'; hash: string; path: string }
 
   let status = $state<GitStatus | null>(null)
   let diff = $state<GitDiff | null>(null)
   let log = $state<GitCommit[]>([])
   let branches = $state<GitBranch[]>([])
-  let selectedPath = $state('')
-  let selectedStaged = $state(false)
+  let worktrees = $state<GitWorktree[]>([])
+  let worktreesLoaded = $state(false)
+  let worktreesLoading = $state(false)
+  let commitDetails = $state<Record<string, GitCommitDetail>>({})
+  let commitLoading = $state<Record<string, boolean>>({})
+  let expandedCommit = $state('')
+  let diffSource = $state<DiffSource | null>(null)
   let loading = $state(false)
   let diffLoading = $state(false)
   let error = $state('')
@@ -35,6 +43,10 @@
   let unstagedCount = $derived(files.filter((file) => file.unstaged).length)
   let currentBranch = $derived.by<GitBranch | undefined>(() => branches.find((branch) => branch.current))
   let sideBySide = $derived.by(() => sideBySideLines(diff?.patch))
+  let selectedPath = $derived(diffSource?.path ?? '')
+  let selectedStaged = $derived(diffSource?.kind === 'workdir' && diffSource.staged === true)
+  let activeWorkdirPath = $derived(diffSource?.kind === 'workdir' ? diffSource.path : '')
+  let activeCommitFile = $derived(diffSource?.kind === 'commit' ? `${diffSource.hash}:${diffSource.path}` : '')
 
   function shortPath(path: string, max = 40): string {
     if (path.length <= max) return path
@@ -64,13 +76,17 @@
     loading = true
     error = ''
     diff = null
+    diffSource = null
+    commitDetails = {}
+    expandedCommit = ''
+    worktreesLoaded = false
     try {
       const nextStatus = await getGitStatus({ sessionId })
       status = nextStatus
       if (!nextStatus.is_git) {
         log = []
         branches = []
-        selectedPath = ''
+        worktrees = []
         return
       }
       const query = { sessionId, root: nextStatus.root }
@@ -83,8 +99,9 @@
       const first = nextStatus.files?.[0]
       if (first) {
         await loadDiff(first, first.staged && !first.unstaged)
-      } else {
-        selectedPath = ''
+      }
+      if (activeTab === 'worktrees') {
+        await loadWorktrees(nextStatus.root)
       }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load git status'
@@ -95,8 +112,7 @@
 
   async function loadDiff(file: GitStatusFile, staged: boolean) {
     if (!status?.is_git) return
-    selectedPath = file.path
-    selectedStaged = staged
+    diffSource = { kind: 'workdir', path: file.path, staged }
     diffLoading = true
     error = ''
     try {
@@ -106,6 +122,63 @@
       diff = null
     } finally {
       diffLoading = false
+    }
+  }
+
+  async function loadCommitDiff(hash: string, path: string) {
+    if (!status?.is_git) return
+    diffSource = { kind: 'commit', hash, path }
+    activeTab = 'files'
+    diffLoading = true
+    error = ''
+    try {
+      diff = await getGitDiff({ sessionId, root: status.root, path, hash })
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to load commit diff'
+      diff = null
+    } finally {
+      diffLoading = false
+    }
+  }
+
+  async function toggleCommit(hash: string) {
+    if (!status?.is_git) return
+    if (expandedCommit === hash) {
+      expandedCommit = ''
+      return
+    }
+    expandedCommit = hash
+    if (commitDetails[hash] || commitLoading[hash]) return
+    commitLoading = { ...commitLoading, [hash]: true }
+    try {
+      const detail = await getGitCommit({ sessionId, root: status.root, hash })
+      commitDetails = { ...commitDetails, [hash]: detail }
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to load commit detail'
+    } finally {
+      commitLoading = { ...commitLoading, [hash]: false }
+    }
+  }
+
+  async function loadWorktrees(root?: string) {
+    if (!status?.is_git && !root) return
+    worktreesLoading = true
+    error = ''
+    try {
+      const res = await getGitWorktrees({ sessionId, root: root ?? status?.root })
+      worktrees = res.worktrees ?? []
+      worktreesLoaded = true
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to load worktrees'
+    } finally {
+      worktreesLoading = false
+    }
+  }
+
+  function selectTab(tab: TabId) {
+    activeTab = tab
+    if (tab === 'worktrees' && !worktreesLoaded && !worktreesLoading) {
+      void loadWorktrees()
     }
   }
 
@@ -171,6 +244,8 @@
         return 'Branches'
       case 'log':
         return 'Log'
+      case 'worktrees':
+        return 'Worktrees'
     }
   }
 
@@ -182,8 +257,24 @@
         return branches.length > 0 ? String(branches.filter((b) => !b.remote).length) : ''
       case 'log':
         return log.length > 0 ? String(log.length) : ''
+      case 'worktrees':
+        return worktrees.length > 1 ? String(worktrees.length) : ''
       default:
         return ''
+    }
+  }
+
+  function commitFileTone(file: GitCommitFile): string {
+    switch (file.status) {
+      case 'added':
+        return 'success'
+      case 'deleted':
+        return 'error'
+      case 'renamed':
+      case 'copied':
+        return 'info'
+      default:
+        return 'warning'
     }
   }
 
@@ -230,14 +321,14 @@
     <div class="empty-state">No git repository detected for this session.</div>
   {:else if status}
     <div class="tab-nav" role="tablist" aria-label="Git Inspector sections">
-      {#each ['status', 'files', 'branches', 'log'] as const as tab (tab)}
+      {#each ['status', 'files', 'branches', 'log', 'worktrees'] as const as tab (tab)}
         <button
           type="button"
           role="tab"
           aria-selected={activeTab === tab}
           class="tab-btn"
           class:active={activeTab === tab}
-          onclick={() => (activeTab = tab)}
+          onclick={() => selectTab(tab)}
         >
           <span>{tabLabel(tab)}</span>
           {#if tabBadge(tab)}
@@ -301,7 +392,7 @@
         {:else}
           <div class="file-list" role="list">
             {#each files as file (file.path)}
-              <article class="file-row" class:active={selectedPath === file.path} role="listitem">
+              <article class="file-row" class:active={activeWorkdirPath === file.path} role="listitem">
                 <button type="button" class="file-main" onclick={() => loadDiff(file, file.staged && !file.unstaged)}>
                   <span class="file-path" title={file.path}>{shortPath(file.path)}</span>
                   <small>{file.old_path ? `${file.old_path} → ${file.path}` : file.status}</small>
@@ -309,7 +400,7 @@
                 <span class="badge badge-{fileTone(file)}">{file.status}</span>
                 <div class="file-actions">
                   {#if file.unstaged}
-                    <button class="btn btn-ghost btn-sm" type="button" class:active={selectedPath === file.path && !selectedStaged} onclick={() => loadDiff(file, false)}>Worktree</button>
+                    <button class="btn btn-ghost btn-sm" type="button" class:active={activeWorkdirPath === file.path && !selectedStaged} onclick={() => loadDiff(file, false)}>Worktree</button>
                     <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('stage', { path: file.path, reason: 'Stage selected file from Git Inspector' })}>
                       {mutationBusy === `stage:${file.path}` ? '…' : 'Stage'}
                     </button>
@@ -318,7 +409,7 @@
                     </button>
                   {/if}
                   {#if file.staged}
-                    <button class="btn btn-ghost btn-sm" type="button" class:active={selectedPath === file.path && selectedStaged} onclick={() => loadDiff(file, true)}>Staged</button>
+                    <button class="btn btn-ghost btn-sm" type="button" class:active={activeWorkdirPath === file.path && selectedStaged} onclick={() => loadDiff(file, true)}>Staged</button>
                     <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('unstage', { path: file.path, reason: 'Unstage selected file from Git Inspector' })}>
                       {mutationBusy === `unstage:${file.path}` ? '…' : 'Unstage'}
                     </button>
@@ -334,7 +425,11 @@
                 <span class="section-title">Diff</span>
                 {#if diff?.path}
                   <strong title={diff.path}>{shortPath(diff.path, 60)}</strong>
-                  <span class="badge badge-default">{diff.staged ? 'staged' : 'worktree'}</span>
+                  {#if diff.hash}
+                    <span class="badge badge-info" title={diff.hash}>{diff.hash.slice(0, 7)}</span>
+                  {:else}
+                    <span class="badge badge-default">{diff.staged ? 'staged' : 'worktree'}</span>
+                  {/if}
                 {/if}
               </div>
               {#if diff}
@@ -401,15 +496,88 @@
         {:else}
           <div class="log-list">
             {#each log as commit (commit.hash)}
-              <article class="log-row">
-                <div class="log-row-head">
-                  <strong title={commit.hash}>{commit.short_hash}</strong>
-                  <small>{formatDate(commit.date)}</small>
-                </div>
-                <span class="log-subject">{commit.subject}</span>
-                {#if commit.author}
-                  <small class="log-author">{commit.author}</small>
+              {@const expanded = expandedCommit === commit.hash}
+              {@const detail = commitDetails[commit.hash]}
+              {@const detailLoading = commitLoading[commit.hash]}
+              <article class="log-row" class:expanded>
+                <button class="log-row-button" type="button" onclick={() => toggleCommit(commit.hash)} aria-expanded={expanded}>
+                  <div class="log-row-head">
+                    <strong title={commit.hash}>{commit.short_hash}</strong>
+                    <small>{formatDate(commit.date)}</small>
+                  </div>
+                  <span class="log-subject">{commit.subject}</span>
+                  {#if commit.author}
+                    <small class="log-author">{commit.author}</small>
+                  {/if}
+                </button>
+                {#if expanded}
+                  <div class="log-detail">
+                    {#if detailLoading}
+                      <div class="empty-state compact">Loading commit…</div>
+                    {:else if !detail}
+                      <div class="empty-state compact">No detail available.</div>
+                    {:else}
+                      {#if detail.body}
+                        <pre class="commit-body">{detail.body}</pre>
+                      {/if}
+                      {#if detail.files.length === 0}
+                        <div class="empty-state compact">No file changes recorded.</div>
+                      {:else}
+                        <div class="commit-file-list">
+                          {#each detail.files as cf (cf.path)}
+                            {@const isActive = activeCommitFile === `${commit.hash}:${cf.path}`}
+                            <button type="button" class="commit-file-row" class:active={isActive} onclick={() => loadCommitDiff(commit.hash, cf.path)}>
+                              <span class="commit-file-path" title={cf.old_path ? `${cf.old_path} → ${cf.path}` : cf.path}>
+                                {shortPath(cf.path)}
+                              </span>
+                              <span class="badge badge-{commitFileTone(cf)}">{cf.status}</span>
+                              {#if cf.binary}
+                                <small class="commit-file-stat">binary</small>
+                              {:else}
+                                <small class="commit-file-stat">+{cf.additions} −{cf.deletions}</small>
+                              {/if}
+                            </button>
+                          {/each}
+                        </div>
+                      {/if}
+                    {/if}
+                  </div>
                 {/if}
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {:else if activeTab === 'worktrees'}
+      <section class="tab-body" role="tabpanel">
+        <div class="worktrees-head">
+          <span class="section-title">Worktrees</span>
+          <button class="btn btn-ghost btn-sm" type="button" disabled={worktreesLoading} onclick={() => loadWorktrees()}>
+            {worktreesLoading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
+        {#if worktreesLoading && worktrees.length === 0}
+          <div class="empty-state compact">Loading worktrees…</div>
+        {:else if worktrees.length === 0}
+          <div class="empty-state compact">No worktrees registered.</div>
+        {:else}
+          <div class="worktree-list">
+            {#each worktrees as wt (wt.path)}
+              <article class="worktree-row" class:current={wt.current}>
+                <div class="worktree-meta">
+                  <strong title={wt.path}>
+                    {#if wt.current}<span class="branch-marker" aria-label="current">●</span>{/if}
+                    {wt.branch || (wt.detached ? '(detached)' : wt.bare ? '(bare)' : '(unknown)')}
+                  </strong>
+                  <small class="worktree-path" title={wt.path}>{wt.path}</small>
+                  <div class="worktree-tags">
+                    {#if wt.head}<span class="meta-chip" title={wt.head}>{wt.head.slice(0, 7)}</span>{/if}
+                    {#if wt.detached}<span class="badge badge-warning">detached</span>{/if}
+                    {#if wt.locked}<span class="badge badge-info" title={wt.lock_reason}>locked</span>{/if}
+                    {#if wt.prunable}<span class="badge badge-error" title={wt.prune_reason}>prunable</span>{/if}
+                    {#if wt.bare}<span class="badge badge-default">bare</span>{/if}
+                  </div>
+                </div>
               </article>
             {/each}
           </div>
@@ -794,10 +962,146 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     background: var(--surface);
+    display: grid;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .log-row.expanded {
+    border-color: var(--primary);
+  }
+
+  .log-row-button {
+    display: grid;
+    gap: 2px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
     padding: var(--space-2);
+    cursor: pointer;
+    min-width: 0;
+  }
+
+  .log-row-button:hover {
+    background: var(--surface-hover);
+  }
+
+  .log-detail {
+    border-top: 1px solid var(--border-subtle);
+    padding: var(--space-2);
+    display: grid;
+    gap: var(--space-2);
+    background: var(--surface-inset);
+  }
+
+  .commit-body {
+    margin: 0;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .commit-file-list {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .commit-file-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+    gap: var(--space-2);
+    align-items: center;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: var(--space-1) var(--space-2);
+    cursor: pointer;
+    color: inherit;
+    text-align: left;
+    min-width: 0;
+  }
+
+  .commit-file-row:hover {
+    background: var(--surface-hover);
+  }
+
+  .commit-file-row.active {
+    border-color: var(--primary);
+    background: var(--surface-elevated);
+  }
+
+  .commit-file-path {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .commit-file-stat {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+  }
+
+  .worktrees-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .worktree-list {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .worktree-row {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: var(--space-2);
+    min-width: 0;
+  }
+
+  .worktree-row.current {
+    border-color: var(--primary);
+  }
+
+  .worktree-meta {
     display: grid;
     gap: 2px;
     min-width: 0;
+  }
+
+  .worktree-meta strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .worktree-path {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    overflow-wrap: anywhere;
+  }
+
+  .worktree-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: center;
+    margin-top: 2px;
   }
 
   .log-row-head {

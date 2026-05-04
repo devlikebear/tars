@@ -182,6 +182,166 @@ func TestClientDiscardMutationRestoresWorktree(t *testing.T) {
 	}
 }
 
+func TestClientCommitDetailReturnsFilesAndStats(t *testing.T) {
+	repo := t.TempDir()
+	runGitCmd(t, repo, "init", "-b", "main")
+	runGitCmd(t, repo, "config", "user.email", "tars@example.test")
+	runGitCmd(t, repo, "config", "user.name", "TARS Test")
+
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write readme: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "old.txt"), []byte("one\ntwo\nthree\n"), 0o644); err != nil {
+		t.Fatalf("write old.txt: %v", err)
+	}
+	runGitCmd(t, repo, "add", "README.md", "old.txt")
+	runGitCmd(t, repo, "commit", "-m", "initial")
+
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\nworld\n"), 0o644); err != nil {
+		t.Fatalf("modify readme: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "added.txt"), []byte("brand new\n"), 0o644); err != nil {
+		t.Fatalf("write added.txt: %v", err)
+	}
+	if err := os.Remove(filepath.Join(repo, "old.txt")); err != nil {
+		t.Fatalf("remove old.txt: %v", err)
+	}
+	runGitCmd(t, repo, "add", "-A")
+	runGitCmd(t, repo, "commit", "-m", "second commit\n\nbody line one\nbody line two\n")
+
+	client := NewClient()
+	headOut, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").CombinedOutput()
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v\n%s", err, headOut)
+	}
+	hash := strings.TrimSpace(string(headOut))
+
+	detail, err := client.CommitDetail(context.Background(), repo, hash)
+	if err != nil {
+		t.Fatalf("commit detail: %v", err)
+	}
+	if !detail.IsGit || detail.Hash != hash || detail.Subject != "second commit" {
+		t.Fatalf("unexpected commit metadata: %+v", detail)
+	}
+	if !strings.Contains(detail.Body, "body line one") || !strings.Contains(detail.Body, "body line two") {
+		t.Fatalf("expected body with two lines, got %q", detail.Body)
+	}
+	if len(detail.Parents) != 1 {
+		t.Fatalf("expected one parent, got %v", detail.Parents)
+	}
+
+	wantStatus := map[string]string{"README.md": "modified", "added.txt": "added", "old.txt": "deleted"}
+	for path, status := range wantStatus {
+		got := commitFileByPath(detail.Files, path)
+		if got == nil {
+			t.Fatalf("expected file %s in commit, got %+v", path, detail.Files)
+		}
+		if got.Status != status {
+			t.Fatalf("expected %s status=%s, got %s", path, status, got.Status)
+		}
+	}
+	readme := commitFileByPath(detail.Files, "README.md")
+	if readme.Additions != 1 || readme.Deletions != 0 {
+		t.Fatalf("expected README.md +1 -0, got +%d -%d", readme.Additions, readme.Deletions)
+	}
+
+	// Diff for a specific commit + path
+	diff, err := client.Diff(context.Background(), DiffOptions{StartDir: repo, Hash: hash, Path: "README.md"})
+	if err != nil {
+		t.Fatalf("commit diff: %v", err)
+	}
+	if diff.Hash != hash || !strings.Contains(diff.Patch, "+world") {
+		t.Fatalf("expected commit diff with +world, got %+v", diff)
+	}
+
+	// Initial commit (no parent) — must still report files via --root
+	logOut, err := exec.Command("git", "-C", repo, "rev-list", "--max-parents=0", "HEAD").CombinedOutput()
+	if err != nil {
+		t.Fatalf("rev-list root: %v\n%s", err, logOut)
+	}
+	rootHash := strings.TrimSpace(string(logOut))
+	rootDetail, err := client.CommitDetail(context.Background(), repo, rootHash)
+	if err != nil {
+		t.Fatalf("root commit detail: %v", err)
+	}
+	if len(rootDetail.Files) != 2 {
+		t.Fatalf("expected 2 files in initial commit, got %+v", rootDetail.Files)
+	}
+}
+
+func TestClientCommitDetailRejectsInvalidHash(t *testing.T) {
+	repo := t.TempDir()
+	runGitCmd(t, repo, "init", "-b", "main")
+	runGitCmd(t, repo, "config", "user.email", "tars@example.test")
+	runGitCmd(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("x\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, repo, "add", "f")
+	runGitCmd(t, repo, "commit", "-m", "init")
+	client := NewClient()
+	if _, err := client.CommitDetail(context.Background(), repo, ""); err == nil {
+		t.Fatalf("expected error for empty hash")
+	}
+	if _, err := client.CommitDetail(context.Background(), repo, "deadbeefdeadbeef"); err == nil {
+		t.Fatalf("expected error for unknown hash")
+	}
+}
+
+func TestClientWorktreesEnumerates(t *testing.T) {
+	repo := t.TempDir()
+	runGitCmd(t, repo, "init", "-b", "main")
+	runGitCmd(t, repo, "config", "user.email", "tars@example.test")
+	runGitCmd(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("x\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, repo, "add", "f")
+	runGitCmd(t, repo, "commit", "-m", "init")
+
+	wtDir := filepath.Join(t.TempDir(), "wt")
+	runGitCmd(t, repo, "worktree", "add", "-b", "feature", wtDir)
+
+	client := NewClient()
+	res, err := client.Worktrees(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("worktrees: %v", err)
+	}
+	if !res.IsGit || len(res.Worktrees) != 2 {
+		t.Fatalf("expected 2 worktrees, got %+v", res)
+	}
+	var foundMain, foundFeature bool
+	for _, wt := range res.Worktrees {
+		switch wt.Branch {
+		case "main":
+			foundMain = true
+			if !wt.Current {
+				t.Fatalf("expected main worktree to be current, got %+v", wt)
+			}
+		case "feature":
+			foundFeature = true
+			if wt.Current {
+				t.Fatalf("did not expect feature worktree to be current, got %+v", wt)
+			}
+			if filepath.Clean(wt.Path) != canonicalTestPath(t, wtDir) {
+				t.Fatalf("expected feature worktree path %s, got %s", wtDir, wt.Path)
+			}
+		}
+	}
+	if !foundMain || !foundFeature {
+		t.Fatalf("expected both main and feature worktrees, got %+v", res.Worktrees)
+	}
+}
+
+func commitFileByPath(files []CommitFile, path string) *CommitFile {
+	for i := range files {
+		if files[i].Path == path {
+			return &files[i]
+		}
+	}
+	return nil
+}
+
 func fileByPath(files []StatusFile, path string) *StatusFile {
 	for i := range files {
 		if files[i].Path == path {

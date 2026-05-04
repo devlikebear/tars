@@ -1401,7 +1401,50 @@ export type GitDiff = {
   root: string
   path?: string
   staged: boolean
+  hash?: string
   patch: string
+}
+
+export type GitCommitFile = {
+  path: string
+  old_path?: string
+  status: string
+  additions: number
+  deletions: number
+  binary?: boolean
+}
+
+export type GitCommitDetail = {
+  is_git: boolean
+  root: string
+  hash: string
+  short_hash: string
+  author?: string
+  email?: string
+  date?: string
+  parents?: string[]
+  subject: string
+  body?: string
+  files: GitCommitFile[]
+}
+
+export type GitWorktree = {
+  path: string
+  head?: string
+  branch?: string
+  detached?: boolean
+  locked?: boolean
+  lock_reason?: string
+  prunable?: boolean
+  prune_reason?: string
+  bare?: boolean
+  current?: boolean
+}
+
+export type GitWorktreesResponse = {
+  is_git: boolean
+  root: string
+  worktrees: GitWorktree[]
 }
 
 export type GitCommit = {

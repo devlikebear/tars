@@ -79,10 +79,12 @@ import type {
   TaskContract,
   TaskEvidence,
   GitBranchesResponse,
+  GitCommitDetail,
   GitDiff,
   GitLogResponse,
   GitMutationPlan,
   GitStatus,
+  GitWorktreesResponse,
   SessionWorkDirs,
   UsageToday,
   LogsResponse,
@@ -555,12 +557,23 @@ export function getGitStatus(query: GitQuery = {}): Promise<GitStatus> {
   return requestJSON<GitStatus>(gitEndpoint('status', query))
 }
 
-export function getGitDiff(query: GitQuery & { path?: string; staged?: boolean } = {}): Promise<GitDiff> {
+export function getGitDiff(query: GitQuery & { path?: string; staged?: boolean; hash?: string } = {}): Promise<GitDiff> {
   const params = gitQueryParams(query)
   if (query.path?.trim()) params.set('path', query.path.trim())
   if (query.staged) params.set('staged', '1')
+  if (query.hash?.trim()) params.set('hash', query.hash.trim())
   const suffix = params.toString()
   return requestJSON<GitDiff>(`/v1/git/diff${suffix ? `?${suffix}` : ''}`)
+}
+
+export function getGitCommit(query: GitQuery & { hash: string }): Promise<GitCommitDetail> {
+  const params = gitQueryParams(query)
+  params.set('hash', query.hash.trim())
+  return requestJSON<GitCommitDetail>(`/v1/git/commit?${params.toString()}`)
+}
+
+export function getGitWorktrees(query: GitQuery = {}): Promise<GitWorktreesResponse> {
+  return requestJSON<GitWorktreesResponse>(gitEndpoint('worktrees', query))
 }
 
 export function getGitLog(query: GitQuery & { limit?: number } = {}): Promise<GitLogResponse> {

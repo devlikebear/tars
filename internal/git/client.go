@@ -46,6 +46,7 @@ type DiffOptions struct {
 	StartDir string
 	Path     string
 	Staged   bool
+	Hash     string
 }
 
 type Diff struct {
@@ -53,6 +54,7 @@ type Diff struct {
 	Root   string `json:"root"`
 	Path   string `json:"path,omitempty"`
 	Staged bool   `json:"staged"`
+	Hash   string `json:"hash,omitempty"`
 	Patch  string `json:"patch"`
 }
 
@@ -82,6 +84,48 @@ type Branches struct {
 	IsGit    bool     `json:"is_git"`
 	Root     string   `json:"root"`
 	Branches []Branch `json:"branches"`
+}
+
+type CommitFile struct {
+	Path      string `json:"path"`
+	OldPath   string `json:"old_path,omitempty"`
+	Status    string `json:"status"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+	Binary    bool   `json:"binary,omitempty"`
+}
+
+type CommitDetail struct {
+	IsGit     bool         `json:"is_git"`
+	Root      string       `json:"root"`
+	Hash      string       `json:"hash"`
+	ShortHash string       `json:"short_hash"`
+	Author    string       `json:"author,omitempty"`
+	Email     string       `json:"email,omitempty"`
+	Date      string       `json:"date,omitempty"`
+	Parents   []string     `json:"parents,omitempty"`
+	Subject   string       `json:"subject"`
+	Body      string       `json:"body,omitempty"`
+	Files     []CommitFile `json:"files"`
+}
+
+type Worktree struct {
+	Path        string `json:"path"`
+	Head        string `json:"head,omitempty"`
+	Branch      string `json:"branch,omitempty"`
+	Detached    bool   `json:"detached,omitempty"`
+	Locked      bool   `json:"locked,omitempty"`
+	LockReason  string `json:"lock_reason,omitempty"`
+	Prunable    bool   `json:"prunable,omitempty"`
+	PruneReason string `json:"prune_reason,omitempty"`
+	Bare        bool   `json:"bare,omitempty"`
+	Current     bool   `json:"current,omitempty"`
+}
+
+type Worktrees struct {
+	IsGit     bool       `json:"is_git"`
+	Root      string     `json:"root"`
+	Worktrees []Worktree `json:"worktrees"`
 }
 
 type MutationAction string
@@ -158,18 +202,27 @@ func (c *Client) Diff(ctx context.Context, opts DiffOptions) (Diff, error) {
 		return Diff{}, err
 	}
 	path := strings.TrimSpace(opts.Path)
-	args := []string{"diff", "--no-ext-diff"}
-	if opts.Staged {
-		args = append(args, "--cached")
-	}
-	if path != "" {
-		args = append(args, "--", path)
+	hash := strings.TrimSpace(opts.Hash)
+	var args []string
+	if hash != "" {
+		args = []string{"show", "--no-ext-diff", "--format=", hash}
+		if path != "" {
+			args = append(args, "--", path)
+		}
+	} else {
+		args = []string{"diff", "--no-ext-diff"}
+		if opts.Staged {
+			args = append(args, "--cached")
+		}
+		if path != "" {
+			args = append(args, "--", path)
+		}
 	}
 	out, err := runGit(ctx, root, args...)
 	if err != nil {
 		return Diff{}, err
 	}
-	return Diff{IsGit: true, Root: root, Path: path, Staged: opts.Staged, Patch: string(out)}, nil
+	return Diff{IsGit: true, Root: root, Path: path, Staged: opts.Staged, Hash: hash, Patch: string(out)}, nil
 }
 
 func (c *Client) Log(ctx context.Context, startDir string, limit int) (Log, error) {
@@ -203,6 +256,56 @@ func (c *Client) Branches(ctx context.Context, startDir string) (Branches, error
 		return Branches{}, err
 	}
 	return Branches{IsGit: true, Root: root, Branches: parseBranches(string(out))}, nil
+}
+
+func (c *Client) CommitDetail(ctx context.Context, startDir, hash string) (CommitDetail, error) {
+	root, err := c.RepositoryRoot(ctx, startDir)
+	if err != nil {
+		return CommitDetail{}, err
+	}
+	hash = strings.TrimSpace(hash)
+	if hash == "" {
+		return CommitDetail{}, fmt.Errorf("hash is required")
+	}
+	resolved, err := runGit(ctx, root, "rev-parse", "--verify", hash+"^{commit}")
+	if err != nil {
+		return CommitDetail{}, fmt.Errorf("invalid commit hash: %s", hash)
+	}
+	fullHash := strings.TrimSpace(string(resolved))
+	metaOut, err := runGit(ctx, root, "show", "--no-patch", "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%P%x00%s%x1e%b", fullHash)
+	if err != nil {
+		return CommitDetail{}, err
+	}
+	detail, err := parseCommitMeta(strings.TrimRight(string(metaOut), "\n"))
+	if err != nil {
+		return CommitDetail{}, err
+	}
+	detail.IsGit = true
+	detail.Root = root
+	files, err := commitFiles(ctx, root, fullHash)
+	if err != nil {
+		return CommitDetail{}, err
+	}
+	detail.Files = files
+	return detail, nil
+}
+
+func (c *Client) Worktrees(ctx context.Context, startDir string) (Worktrees, error) {
+	root, err := c.RepositoryRoot(ctx, startDir)
+	if err != nil {
+		return Worktrees{}, err
+	}
+	out, err := runGit(ctx, root, "worktree", "list", "--porcelain", "-z")
+	if err != nil {
+		return Worktrees{}, err
+	}
+	list := parseWorktreeList(string(out))
+	for i := range list {
+		if filepath.Clean(list[i].Path) == root {
+			list[i].Current = true
+		}
+	}
+	return Worktrees{IsGit: true, Root: root, Worktrees: list}, nil
 }
 
 func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResult, error) {
@@ -483,4 +586,195 @@ func parseBranches(raw string) []Branch {
 		return strings.ToLower(branches[i].Name) < strings.ToLower(branches[j].Name)
 	})
 	return branches
+}
+
+func parseCommitMeta(raw string) (CommitDetail, error) {
+	parts := strings.SplitN(raw, "\x00", 7)
+	if len(parts) < 7 {
+		return CommitDetail{}, fmt.Errorf("malformed commit metadata")
+	}
+	detail := CommitDetail{
+		Hash:      parts[0],
+		ShortHash: parts[1],
+		Author:    parts[2],
+		Email:     parts[3],
+		Date:      parts[4],
+	}
+	if parents := strings.TrimSpace(parts[5]); parents != "" {
+		detail.Parents = strings.Fields(parents)
+	}
+	subjBody := parts[6]
+	if idx := strings.IndexRune(subjBody, '\x1e'); idx >= 0 {
+		detail.Subject = subjBody[:idx]
+		detail.Body = strings.TrimRight(subjBody[idx+1:], "\n")
+	} else {
+		detail.Subject = strings.TrimRight(subjBody, "\n")
+	}
+	return detail, nil
+}
+
+func commitFiles(ctx context.Context, root, hash string) ([]CommitFile, error) {
+	nameStatusOut, err := runGit(ctx, root, "diff-tree", "--no-commit-id", "--name-status", "--root", "-r", "-z", hash)
+	if err != nil {
+		return nil, err
+	}
+	numstatOut, err := runGit(ctx, root, "diff-tree", "--no-commit-id", "--numstat", "--root", "-r", "-z", hash)
+	if err != nil {
+		return nil, err
+	}
+	files := parseCommitNameStatus(string(nameStatusOut))
+	applyCommitNumstat(files, string(numstatOut))
+	return files, nil
+}
+
+func parseCommitNameStatus(raw string) []CommitFile {
+	files := []CommitFile{}
+	fields := strings.Split(raw, "\x00")
+	for i := 0; i < len(fields); i++ {
+		f := fields[i]
+		if f == "" {
+			continue
+		}
+		code := f[:1]
+		if code == "R" || code == "C" {
+			if i+2 >= len(fields) {
+				break
+			}
+			old := fields[i+1]
+			next := fields[i+2]
+			i += 2
+			files = append(files, CommitFile{Path: next, OldPath: old, Status: statusLabelForDiffCode(code)})
+		} else {
+			if i+1 >= len(fields) {
+				break
+			}
+			path := fields[i+1]
+			i++
+			files = append(files, CommitFile{Path: path, Status: statusLabelForDiffCode(code)})
+		}
+	}
+	return files
+}
+
+func applyCommitNumstat(files []CommitFile, raw string) {
+	byPath := make(map[string]int, len(files))
+	for i, f := range files {
+		byPath[f.Path] = i
+	}
+	idx := 0
+	for idx < len(raw) {
+		end := strings.IndexByte(raw[idx:], '\x00')
+		if end < 0 {
+			break
+		}
+		rec := raw[idx : idx+end]
+		idx += end + 1
+		if rec == "" {
+			continue
+		}
+		tab1 := strings.IndexByte(rec, '\t')
+		if tab1 < 0 {
+			continue
+		}
+		rest := rec[tab1+1:]
+		tab2 := strings.IndexByte(rest, '\t')
+		if tab2 < 0 {
+			continue
+		}
+		addStr := rec[:tab1]
+		delStr := rest[:tab2]
+		pathField := rest[tab2+1:]
+		var path string
+		if pathField == "" {
+			if idx >= len(raw) {
+				break
+			}
+			end1 := strings.IndexByte(raw[idx:], '\x00')
+			if end1 < 0 {
+				break
+			}
+			idx += end1 + 1
+			end2 := strings.IndexByte(raw[idx:], '\x00')
+			if end2 < 0 {
+				break
+			}
+			path = raw[idx : idx+end2]
+			idx += end2 + 1
+		} else {
+			path = pathField
+		}
+		fileIdx, ok := byPath[path]
+		if !ok {
+			continue
+		}
+		if addStr == "-" && delStr == "-" {
+			files[fileIdx].Binary = true
+			continue
+		}
+		add, _ := strconv.Atoi(addStr)
+		del, _ := strconv.Atoi(delStr)
+		files[fileIdx].Additions = add
+		files[fileIdx].Deletions = del
+	}
+}
+
+func statusLabelForDiffCode(code string) string {
+	switch code {
+	case "A":
+		return "added"
+	case "M":
+		return "modified"
+	case "D":
+		return "deleted"
+	case "R":
+		return "renamed"
+	case "C":
+		return "copied"
+	case "T":
+		return "type_changed"
+	case "U":
+		return "unmerged"
+	default:
+		return "changed"
+	}
+}
+
+func parseWorktreeList(raw string) []Worktree {
+	result := []Worktree{}
+	blocks := strings.Split(raw, "\x00\x00")
+	for _, block := range blocks {
+		block = strings.Trim(block, "\x00")
+		if block == "" {
+			continue
+		}
+		var wt Worktree
+		for _, line := range strings.Split(block, "\x00") {
+			if line == "" {
+				continue
+			}
+			key, val, _ := strings.Cut(line, " ")
+			switch key {
+			case "worktree":
+				wt.Path = filepath.Clean(val)
+			case "HEAD":
+				wt.Head = val
+			case "branch":
+				wt.Branch = strings.TrimPrefix(val, "refs/heads/")
+			case "detached":
+				wt.Detached = true
+			case "locked":
+				wt.Locked = true
+				wt.LockReason = val
+			case "prunable":
+				wt.Prunable = true
+				wt.PruneReason = val
+			case "bare":
+				wt.Bare = true
+			}
+		}
+		if wt.Path != "" {
+			result = append(result, wt)
+		}
+	}
+	return result
 }

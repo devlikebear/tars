@@ -71,6 +71,35 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 		writeJSON(w, http.StatusOK, branches)
 	})
 
+	mux.HandleFunc("/commit", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		hash := strings.TrimSpace(r.URL.Query().Get("hash"))
+		if hash == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "hash is required"})
+			return
+		}
+		detail, err := gitCommitForRequest(r.Context(), client, workspaceDir, store, r, hash)
+		if err != nil {
+			writeGitAPIError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, detail)
+	})
+
+	mux.HandleFunc("/worktrees", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		trees, err := gitWorktreesForRequest(r.Context(), client, workspaceDir, store, r)
+		if err != nil {
+			writeGitAPIError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, trees)
+	})
+
 	mux.HandleFunc("/mutations", func(w http.ResponseWriter, r *http.Request) {
 		if manager == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ops manager is not configured"})
@@ -163,6 +192,7 @@ func gitDiffForRequest(ctx context.Context, client *gitrepo.Client, workspaceDir
 			StartDir: target,
 			Path:     r.URL.Query().Get("path"),
 			Staged:   queryBool(r.URL.Query().Get("staged")),
+			Hash:     strings.TrimSpace(r.URL.Query().Get("hash")),
 		})
 		if err == nil {
 			return diff, nil
@@ -173,6 +203,38 @@ func gitDiffForRequest(ctx context.Context, client *gitrepo.Client, workspaceDir
 		}
 	}
 	return gitrepo.Diff{}, lastErr
+}
+
+func gitCommitForRequest(ctx context.Context, client *gitrepo.Client, workspaceDir string, store *session.Store, r *http.Request, hash string) (gitrepo.CommitDetail, error) {
+	targets := gitTargetDirs(workspaceDir, store, r)
+	var lastErr error = gitrepo.ErrNotRepository
+	for _, target := range targets {
+		detail, err := client.CommitDetail(ctx, target, hash)
+		if err == nil {
+			return detail, nil
+		}
+		lastErr = err
+		if !errors.Is(err, gitrepo.ErrNotRepository) {
+			return gitrepo.CommitDetail{}, err
+		}
+	}
+	return gitrepo.CommitDetail{}, lastErr
+}
+
+func gitWorktreesForRequest(ctx context.Context, client *gitrepo.Client, workspaceDir string, store *session.Store, r *http.Request) (gitrepo.Worktrees, error) {
+	targets := gitTargetDirs(workspaceDir, store, r)
+	var lastErr error = gitrepo.ErrNotRepository
+	for _, target := range targets {
+		trees, err := client.Worktrees(ctx, target)
+		if err == nil {
+			return trees, nil
+		}
+		lastErr = err
+		if !errors.Is(err, gitrepo.ErrNotRepository) {
+			return gitrepo.Worktrees{}, err
+		}
+	}
+	return gitrepo.Worktrees{}, lastErr
 }
 
 func gitLogForRequest(ctx context.Context, client *gitrepo.Client, workspaceDir string, store *session.Store, r *http.Request, limit int) (gitrepo.Log, error) {

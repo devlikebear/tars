@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.154] - 2026-05-04
+
+### Added
+
+- **Console Git Inspector — commit details, file diffs, worktree listing (P2 of #692)** — Log entries are now expandable: clicking a commit row fetches the new `GET /v1/git/commit?hash=` endpoint and shows the commit body plus its changed files with `+adds / −dels` per file. Clicking a file in that list opens the diff for that path at that commit (the existing Diff endpoint now accepts a `hash` query param and shells out to `git show --format=`). A new `Worktrees` tab calls `GET /v1/git/worktrees` (parsing `git worktree list --porcelain -z`) and shows each worktree's path, branch, HEAD, and any `detached / locked / prunable / bare` flags, with the current worktree highlighted. Backend additions (`internal/git/client.go`): `Client.CommitDetail`, `Client.Worktrees`, `DiffOptions.Hash`, plus parsers for `diff-tree --name-status -z` + `--numstat -z` (renames preserved, binary detected, initial commits handled via `--root`). All read-only — no new mutations; checkout / worktree add / remove still land in P3.
+
 ## [0.31.153] - 2026-05-04
 
 ### Changed
