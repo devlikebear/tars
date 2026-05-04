@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.138] - 2026-05-04
+
+### Changed
+
+- **Console chat** — moved the LLM inference status (phase label, elapsed timer, step progress, KR/EN toggle) from the bottom action row into the empty `assistant` bubble that appears while the model is thinking. The bubble previously rendered only `…`; the form-actions row now keeps just the Stop button. Status disappears as soon as the first response token arrives. New `ChatStreamingStatus.svelte` is reused via a `streamingStatus` prop on `ChatMessageItem`.
+
 ## [0.31.137] - 2026-05-03
 
 ### Fixed

@@ -276,6 +276,32 @@
     chatStatusLocale = chatStatusLocale === 'ko' ? 'en' : 'ko'
   }
 
+  let streamingAssistantId = $derived.by(() => {
+    if (!chatBusy) return ''
+    for (let i = chatMessages.length - 1; i >= 0; i--) {
+      const m = chatMessages[i]
+      if (m.role === 'assistant') {
+        return m.text ? '' : m.id
+      }
+    }
+    return ''
+  })
+
+  let streamingStatus = $derived.by(() => {
+    if (!chatBusy || !chatStatusLine) return null
+    return {
+      label: getChatStatusLabel(),
+      elapsedLabel: formatStatusElapsed(chatStatusElapsedMs),
+      steps: CHAT_STATUS_PROGRESS_STEPS,
+      currentStepIndex: getCurrentStatusStepIndex(),
+      stepLabels: CHAT_STATUS_PROGRESS_STEPS.map((step) =>
+        getStatusStepLabel(step, chatStatusTool, chatStatusLocale === 'en'),
+      ),
+      locale: chatStatusLocale,
+      onToggleLocale: toggleChatStatusLocale,
+    }
+  })
+
   function addUsedToolName(toolName?: string) {
     const normalized = toolName?.trim()
     if (!normalized) return
@@ -1161,7 +1187,14 @@
   {/if}
   <div class="chat-log" bind:this={chatLogEl} onscroll={handleScroll}>
     {#each chatMessages as msg}
-      <ChatMessageItem message={msg} {artifacts} {onArtifactOpen} onCopy={copyMessageText} onForkMessage={handleForkMessage} />
+      <ChatMessageItem
+        message={msg}
+        {artifacts}
+        {onArtifactOpen}
+        onCopy={copyMessageText}
+        onForkMessage={handleForkMessage}
+        streamingStatus={msg.id === streamingAssistantId ? streamingStatus : null}
+      />
     {/each}
   </div>
   {#if chatError}
@@ -1286,40 +1319,6 @@
         <button type="button" class="btn btn-danger btn-sm" onclick={handleCancel}>Stop</button>
       {:else}
         <button type="submit" class="btn btn-primary" disabled={!chatInput.trim()}>Send</button>
-      {/if}
-      {#if chatStatusLine && chatBusy}
-        <span class="chat-status-line">
-          {getChatStatusLabel()}
-          <span class="chat-status-elapsed">({formatStatusElapsed(chatStatusElapsedMs)})</span>
-          <span class="chat-status-dots" aria-hidden="true">
-            <span></span>
-            <span></span>
-            <span></span>
-          </span>
-        </span>
-        {#if getCurrentStatusStepIndex() >= 0}
-          <div class="chat-status-progress" aria-label="Status progress">
-            {#each CHAT_STATUS_PROGRESS_STEPS as step, stepIdx}
-              <span
-                class={`chat-status-progress-step ${stepIdx < getCurrentStatusStepIndex() ? 'completed' : ''} ${stepIdx === getCurrentStatusStepIndex() ? 'active' : ''}`}
-                title={getStatusStepLabel(step, chatStatusTool, chatStatusLocale === 'en')}
-              >
-                {getStatusStepLabel(step, chatStatusTool, chatStatusLocale === 'en')}
-              </span>
-              {#if stepIdx < CHAT_STATUS_PROGRESS_STEPS.length - 1}
-                <span class="chat-status-progress-connector" aria-hidden="true" />
-              {/if}
-            {/each}
-          </div>
-        {/if}
-        <button
-          type="button"
-          class="chat-status-locale-toggle"
-          title={chatStatusLocale === 'ko' ? 'Switch to English status labels' : '상태 라벨을 한국어로 전환'}
-          onclick={toggleChatStatusLocale}
-        >
-          {chatStatusLocale === 'ko' ? 'EN' : 'KR'}
-        </button>
       {/if}
     </div>
   </form>
@@ -1693,118 +1692,6 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-  }
-
-  .chat-status-line {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-ghost);
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .chat-status-dots {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-  }
-
-  .chat-status-dots span {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: currentColor;
-    display: inline-block;
-    opacity: 0.25;
-    animation: chat-status-dot 0.8s infinite ease-in-out;
-  }
-
-  .chat-status-dots span:nth-child(2) {
-    animation-delay: 0.1s;
-  }
-
-  .chat-status-dots span:nth-child(3) {
-    animation-delay: 0.2s;
-  }
-
-  .chat-status-elapsed {
-    font-size: 10px;
-    color: var(--text-ghost);
-    opacity: 0.9;
-    margin-left: 2px;
-  }
-
-  .chat-status-progress {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 2px;
-  }
-
-  .chat-status-progress-step {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--border-subtle);
-    border-radius: 9999px;
-    color: var(--text-ghost);
-    font-size: 10px;
-    padding: 1px 7px;
-    line-height: 1.2;
-    white-space: nowrap;
-  }
-
-  .chat-status-progress-step.completed {
-    color: var(--text-secondary);
-    border-color: var(--border-default);
-    background: color-mix(in srgb, var(--surface-elevated) 80%, var(--text-secondary) 20%);
-  }
-
-  .chat-status-progress-step.active {
-    color: var(--text-primary);
-    border-color: var(--primary);
-    font-weight: 600;
-    background: color-mix(in srgb, var(--surface-elevated) 70%, var(--primary) 30%);
-  }
-
-  .chat-status-progress-connector {
-    width: 6px;
-    height: 1px;
-    background: var(--border-subtle);
-  }
-
-  .chat-status-locale-toggle {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface-elevated);
-    color: var(--text-ghost);
-    font-size: 10px;
-    padding: 1px 6px;
-    cursor: pointer;
-    line-height: 1;
-    min-height: 18px;
-  }
-
-  .chat-status-locale-toggle:hover {
-    color: var(--text-secondary);
-    border-color: var(--border-default);
-  }
-
-  @keyframes chat-status-dot {
-    0%,
-    80%,
-    100% {
-      transform: scale(1);
-      opacity: 0.25;
-    }
-    40% {
-      transform: scale(1.4);
-      opacity: 1;
-    }
   }
 
   .file-input-hidden {
