@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.149] - 2026-05-04
+
+### Fixed
+
+- **Console terminal — Esc closes the right-click context menu** (#668) — when the integrated terminal had focus, pressing Esc with the context menu open used to forward an ESC byte to the shell and leave the menu open. The custom xterm key handler now swallows Escape and dismisses the menu before xterm sees it. Clicking outside the menu (the existing overlay) still works as a secondary dismissal path.
+
 ## [0.31.148] - 2026-05-04
 
 ### Fixed

@@ -311,6 +311,16 @@
 
   function customKeyHandler(e: KeyboardEvent): boolean {
     if (e.type !== 'keydown') return true
+
+    // When the right-click menu is open, swallow Escape here so xterm
+    // doesn't write an ESC byte to the shell. The window-level keydown
+    // listener fires too late on focused xterm — pre-empting in the
+    // custom handler is the cheapest fix.
+    if (menuOpen && e.key === 'Escape') {
+      closeMenu()
+      return false
+    }
+
     const key = e.key.toLowerCase()
     const modCopy = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && e.shiftKey
     const modPaste = modCopy
