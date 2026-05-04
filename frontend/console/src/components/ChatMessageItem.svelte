@@ -9,7 +9,18 @@
   } from '../lib/toolCalls'
   import MarkdownContent from './MarkdownContent.svelte'
   import SubagentProgressCard from './SubagentProgressCard.svelte'
+  import ChatStreamingStatus from './ChatStreamingStatus.svelte'
   import { buildSubagentProgress } from '../lib/subagentProgress'
+
+  interface StreamingStatus {
+    label: string
+    elapsedLabel: string
+    steps: readonly string[]
+    currentStepIndex: number
+    stepLabels: string[]
+    locale: 'ko' | 'en'
+    onToggleLocale: () => void
+  }
 
   interface Props {
     message: ChatMessage
@@ -17,9 +28,10 @@
     onArtifactOpen?: (path: string) => void
     onCopy: (text: string) => void
     onForkMessage?: (message: ChatMessage) => void
+    streamingStatus?: StreamingStatus | null
   }
 
-  let { message, artifacts, onArtifactOpen, onCopy, onForkMessage }: Props = $props()
+  let { message, artifacts, onArtifactOpen, onCopy, onForkMessage, streamingStatus }: Props = $props()
 
   let nowMs = $state(Date.now())
 
@@ -80,7 +92,21 @@
   <div class="chat-msg chat-{message.role}">
     <span class="chat-role">{message.role}</span>
     {#if message.role === 'assistant'}
-      <div class="chat-text"><MarkdownContent text={message.text} {artifacts} {onArtifactOpen} /></div>
+      {#if !message.text && streamingStatus}
+        <div class="chat-text">
+          <ChatStreamingStatus
+            label={streamingStatus.label}
+            elapsedLabel={streamingStatus.elapsedLabel}
+            steps={streamingStatus.steps}
+            currentStepIndex={streamingStatus.currentStepIndex}
+            stepLabels={streamingStatus.stepLabels}
+            locale={streamingStatus.locale}
+            onToggleLocale={streamingStatus.onToggleLocale}
+          />
+        </div>
+      {:else}
+        <div class="chat-text"><MarkdownContent text={message.text} {artifacts} {onArtifactOpen} /></div>
+      {/if}
     {:else}
       <div class="chat-text">{message.text || '\u2026'}</div>
     {/if}
