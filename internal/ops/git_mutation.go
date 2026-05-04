@@ -11,38 +11,47 @@ import (
 )
 
 const (
-	GitMutationStage        = "stage"
-	GitMutationUnstage      = "unstage"
-	GitMutationDiscard      = "discard"
-	GitMutationCommit       = "commit"
-	GitMutationSwitchBranch = "switch_branch"
+	GitMutationStage          = "stage"
+	GitMutationUnstage        = "unstage"
+	GitMutationDiscard        = "discard"
+	GitMutationCommit         = "commit"
+	GitMutationSwitchBranch   = "switch_branch"
+	GitMutationCheckoutCommit = "checkout_commit"
+	GitMutationWorktreeAdd    = "worktree_add"
+	GitMutationWorktreeRemove = "worktree_remove"
 )
 
 type GitMutationPlan struct {
-	ApprovalID  string    `json:"approval_id"`
-	Type        string    `json:"type"`
-	CreatedAt   time.Time `json:"created_at"`
-	SessionID   string    `json:"session_id,omitempty"`
-	Root        string    `json:"root"`
-	Action      string    `json:"action"`
-	Path        string    `json:"path,omitempty"`
-	Branch      string    `json:"branch,omitempty"`
-	Message     string    `json:"message,omitempty"`
-	Reason      string    `json:"reason,omitempty"`
-	Command     string    `json:"command"`
-	Destructive bool      `json:"destructive,omitempty"`
+	ApprovalID   string    `json:"approval_id"`
+	Type         string    `json:"type"`
+	CreatedAt    time.Time `json:"created_at"`
+	SessionID    string    `json:"session_id,omitempty"`
+	Root         string    `json:"root"`
+	Action       string    `json:"action"`
+	Path         string    `json:"path,omitempty"`
+	Branch       string    `json:"branch,omitempty"`
+	Message      string    `json:"message,omitempty"`
+	Hash         string    `json:"hash,omitempty"`
+	WorktreePath string    `json:"worktree_path,omitempty"`
+	NewBranch    string    `json:"new_branch,omitempty"`
+	Reason       string    `json:"reason,omitempty"`
+	Command      string    `json:"command"`
+	Destructive  bool      `json:"destructive,omitempty"`
 }
 
 type GitMutationApplyResult struct {
-	ApprovalID  string `json:"approval_id"`
-	SessionID   string `json:"session_id,omitempty"`
-	Root        string `json:"root"`
-	Action      string `json:"action"`
-	Path        string `json:"path,omitempty"`
-	Branch      string `json:"branch,omitempty"`
-	Result      string `json:"result"`
-	Output      string `json:"output,omitempty"`
-	Destructive bool   `json:"destructive,omitempty"`
+	ApprovalID   string `json:"approval_id"`
+	SessionID    string `json:"session_id,omitempty"`
+	Root         string `json:"root"`
+	Action       string `json:"action"`
+	Path         string `json:"path,omitempty"`
+	Branch       string `json:"branch,omitempty"`
+	Hash         string `json:"hash,omitempty"`
+	WorktreePath string `json:"worktree_path,omitempty"`
+	NewBranch    string `json:"new_branch,omitempty"`
+	Result       string `json:"result"`
+	Output       string `json:"output,omitempty"`
+	Destructive  bool   `json:"destructive,omitempty"`
 }
 
 func (m *Manager) CreateGitMutationApproval(ctx context.Context, plan GitMutationPlan) (GitMutationPlan, error) {
@@ -101,20 +110,26 @@ func (m *Manager) ApplyGitMutation(ctx context.Context, approvalID string) (GitM
 	}
 	plan := *approval.GitMutation
 	result := GitMutationApplyResult{
-		ApprovalID:  id,
-		SessionID:   plan.SessionID,
-		Root:        plan.Root,
-		Action:      plan.Action,
-		Path:        plan.Path,
-		Branch:      plan.Branch,
-		Destructive: plan.Destructive,
+		ApprovalID:   id,
+		SessionID:    plan.SessionID,
+		Root:         plan.Root,
+		Action:       plan.Action,
+		Path:         plan.Path,
+		Branch:       plan.Branch,
+		Hash:         plan.Hash,
+		WorktreePath: plan.WorktreePath,
+		NewBranch:    plan.NewBranch,
+		Destructive:  plan.Destructive,
 	}
 	mutation, err := gitrepo.NewClient().Mutate(ctx, gitrepo.MutationOptions{
-		StartDir: plan.Root,
-		Action:   gitrepo.MutationAction(plan.Action),
-		Path:     plan.Path,
-		Branch:   plan.Branch,
-		Message:  plan.Message,
+		StartDir:     plan.Root,
+		Action:       gitrepo.MutationAction(plan.Action),
+		Path:         plan.Path,
+		Branch:       plan.Branch,
+		Message:      plan.Message,
+		Hash:         plan.Hash,
+		WorktreePath: plan.WorktreePath,
+		NewBranch:    plan.NewBranch,
 	})
 	if err != nil {
 		result.Result = "failure"
@@ -190,16 +205,19 @@ func normalizeGitMutationPlan(ctx context.Context, plan GitMutationPlan, now tim
 		return GitMutationPlan{}, err
 	}
 	normalized := GitMutationPlan{
-		ApprovalID: strings.TrimSpace(plan.ApprovalID),
-		Type:       "git_mutation",
-		CreatedAt:  now,
-		SessionID:  strings.TrimSpace(plan.SessionID),
-		Root:       filepath.Clean(root),
-		Action:     action,
-		Path:       strings.TrimSpace(plan.Path),
-		Branch:     strings.TrimSpace(plan.Branch),
-		Message:    strings.TrimSpace(plan.Message),
-		Reason:     strings.TrimSpace(plan.Reason),
+		ApprovalID:   strings.TrimSpace(plan.ApprovalID),
+		Type:         "git_mutation",
+		CreatedAt:    now,
+		SessionID:    strings.TrimSpace(plan.SessionID),
+		Root:         filepath.Clean(root),
+		Action:       action,
+		Path:         strings.TrimSpace(plan.Path),
+		Branch:       strings.TrimSpace(plan.Branch),
+		Message:      strings.TrimSpace(plan.Message),
+		Hash:         strings.TrimSpace(plan.Hash),
+		WorktreePath: strings.TrimSpace(plan.WorktreePath),
+		NewBranch:    strings.TrimSpace(plan.NewBranch),
+		Reason:       strings.TrimSpace(plan.Reason),
 	}
 	if normalized.ApprovalID == "" {
 		normalized.ApprovalID = newApprovalID(now)
@@ -231,6 +249,37 @@ func normalizeGitMutationPlan(ctx context.Context, plan GitMutationPlan, now tim
 			return GitMutationPlan{}, fmt.Errorf("branch is required")
 		}
 		normalized.Command = fmt.Sprintf("git switch -- %s", normalized.Branch)
+	case GitMutationCheckoutCommit:
+		if normalized.Hash == "" {
+			return GitMutationPlan{}, fmt.Errorf("hash is required")
+		}
+		if normalized.NewBranch != "" {
+			normalized.Command = fmt.Sprintf("git checkout -b %s %s", normalized.NewBranch, normalized.Hash)
+		} else {
+			normalized.Command = fmt.Sprintf("git checkout --detach %s", normalized.Hash)
+			normalized.Destructive = true
+		}
+	case GitMutationWorktreeAdd:
+		if normalized.WorktreePath, err = normalizeGitWorktreePath(normalized.WorktreePath); err != nil {
+			return GitMutationPlan{}, err
+		}
+		if normalized.NewBranch != "" {
+			if normalized.Branch != "" {
+				normalized.Command = fmt.Sprintf("git worktree add -b %s %s %s", normalized.NewBranch, normalized.WorktreePath, normalized.Branch)
+			} else {
+				normalized.Command = fmt.Sprintf("git worktree add -b %s %s", normalized.NewBranch, normalized.WorktreePath)
+			}
+		} else if normalized.Branch != "" {
+			normalized.Command = fmt.Sprintf("git worktree add %s %s", normalized.WorktreePath, normalized.Branch)
+		} else {
+			normalized.Command = fmt.Sprintf("git worktree add %s", normalized.WorktreePath)
+		}
+	case GitMutationWorktreeRemove:
+		if normalized.WorktreePath, err = normalizeGitWorktreePath(normalized.WorktreePath); err != nil {
+			return GitMutationPlan{}, err
+		}
+		normalized.Command = fmt.Sprintf("git worktree remove -- %s", normalized.WorktreePath)
+		normalized.Destructive = true
 	default:
 		return GitMutationPlan{}, fmt.Errorf("unsupported git mutation action: %s", normalized.Action)
 	}
@@ -252,6 +301,18 @@ func normalizeGitMutationPath(path string) (string, error) {
 	return clean, nil
 }
 
+func normalizeGitWorktreePath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("worktree_path is required")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("worktree_path: %w", err)
+	}
+	return filepath.Clean(abs), nil
+}
+
 func automationAuditForGitMutation(plan GitMutationPlan, result GitMutationApplyResult, errText string) AutomationAuditEntry {
 	details := map[string]any{
 		"approval_id": result.ApprovalID,
@@ -262,6 +323,15 @@ func automationAuditForGitMutation(plan GitMutationPlan, result GitMutationApply
 	}
 	if result.Branch != "" {
 		details["branch"] = result.Branch
+	}
+	if result.Hash != "" {
+		details["hash"] = result.Hash
+	}
+	if result.WorktreePath != "" {
+		details["worktree_path"] = result.WorktreePath
+	}
+	if result.NewBranch != "" {
+		details["new_branch"] = result.NewBranch
 	}
 	if errText != "" {
 		details["error"] = errText
@@ -292,6 +362,15 @@ func gitMutationNote(result GitMutationApplyResult) string {
 		return "Created commit"
 	case GitMutationSwitchBranch:
 		return "Switched to " + result.Branch
+	case GitMutationCheckoutCommit:
+		if result.NewBranch != "" {
+			return "Checked out " + result.Hash + " as " + result.NewBranch
+		}
+		return "Checked out " + result.Hash + " (detached HEAD)"
+	case GitMutationWorktreeAdd:
+		return "Added worktree at " + result.WorktreePath
+	case GitMutationWorktreeRemove:
+		return "Removed worktree " + result.WorktreePath
 	default:
 		return strings.TrimSpace(result.Output)
 	}

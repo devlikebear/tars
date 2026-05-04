@@ -333,6 +333,151 @@ func TestClientWorktreesEnumerates(t *testing.T) {
 	}
 }
 
+func TestClientCheckoutCommitDetachesAndCanCreateBranch(t *testing.T) {
+	repo := t.TempDir()
+	runGitCmd(t, repo, "init", "-b", "main")
+	runGitCmd(t, repo, "config", "user.email", "tars@example.test")
+	runGitCmd(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, repo, "add", "f")
+	runGitCmd(t, repo, "commit", "-m", "first")
+	first := strings.TrimSpace(string(runGitOutput(t, repo, "rev-parse", "HEAD")))
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("b\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, repo, "add", "f")
+	runGitCmd(t, repo, "commit", "-m", "second")
+
+	client := NewClient()
+	res, err := client.Mutate(context.Background(), MutationOptions{StartDir: repo, Action: MutationCheckoutCommit, Hash: first})
+	if err != nil {
+		t.Fatalf("checkout commit: %v", err)
+	}
+	if res.Hash != first || !res.Destructive {
+		t.Fatalf("expected destructive checkout result, got %+v", res)
+	}
+	branch := strings.TrimSpace(string(runGitOutput(t, repo, "branch", "--show-current")))
+	if branch != "" {
+		t.Fatalf("expected detached HEAD (empty branch), got %q", branch)
+	}
+	runGitCmd(t, repo, "switch", "main")
+	res2, err := client.Mutate(context.Background(), MutationOptions{StartDir: repo, Action: MutationCheckoutCommit, Hash: first, NewBranch: "from-checkout"})
+	if err != nil {
+		t.Fatalf("checkout commit with new branch: %v", err)
+	}
+	if res2.NewBranch != "from-checkout" || res2.Destructive {
+		t.Fatalf("unexpected new-branch checkout result: %+v", res2)
+	}
+	cur := strings.TrimSpace(string(runGitOutput(t, repo, "branch", "--show-current")))
+	if cur != "from-checkout" {
+		t.Fatalf("expected to be on from-checkout, got %q", cur)
+	}
+}
+
+func TestClientCheckoutCommitRejectsInvalidHash(t *testing.T) {
+	repo := t.TempDir()
+	runGitCmd(t, repo, "init", "-b", "main")
+	runGitCmd(t, repo, "config", "user.email", "tars@example.test")
+	runGitCmd(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, repo, "add", "f")
+	runGitCmd(t, repo, "commit", "-m", "first")
+	client := NewClient()
+	if _, err := client.Mutate(context.Background(), MutationOptions{StartDir: repo, Action: MutationCheckoutCommit}); err == nil {
+		t.Fatalf("expected error for missing hash")
+	}
+	if _, err := client.Mutate(context.Background(), MutationOptions{StartDir: repo, Action: MutationCheckoutCommit, Hash: "deadbeefdead"}); err == nil {
+		t.Fatalf("expected error for unknown hash")
+	}
+}
+
+func TestClientWorktreeAddAndRemove(t *testing.T) {
+	repo := t.TempDir()
+	runGitCmd(t, repo, "init", "-b", "main")
+	runGitCmd(t, repo, "config", "user.email", "tars@example.test")
+	runGitCmd(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, repo, "add", "f")
+	runGitCmd(t, repo, "commit", "-m", "first")
+
+	wtPath := filepath.Join(t.TempDir(), "wt-feature")
+	client := NewClient()
+	add, err := client.Mutate(context.Background(), MutationOptions{
+		StartDir:     repo,
+		Action:       MutationWorktreeAdd,
+		WorktreePath: wtPath,
+		NewBranch:    "feature",
+	})
+	if err != nil {
+		t.Fatalf("worktree add: %v", err)
+	}
+	if filepath.Clean(add.WorktreePath) != filepath.Clean(wtPath) || add.NewBranch != "feature" {
+		t.Fatalf("unexpected worktree add result: %+v", add)
+	}
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Fatalf("expected worktree dir to exist: %v", err)
+	}
+
+	trees, err := client.Worktrees(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("worktrees: %v", err)
+	}
+	if len(trees.Worktrees) != 2 {
+		t.Fatalf("expected 2 worktrees, got %+v", trees)
+	}
+
+	remove, err := client.Mutate(context.Background(), MutationOptions{
+		StartDir:     repo,
+		Action:       MutationWorktreeRemove,
+		WorktreePath: wtPath,
+	})
+	if err != nil {
+		t.Fatalf("worktree remove: %v", err)
+	}
+	if !remove.Destructive {
+		t.Fatalf("expected destructive remove result, got %+v", remove)
+	}
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Fatalf("expected worktree dir removed, got err=%v", err)
+	}
+}
+
+func TestClientWorktreeAddRejectsMissingPath(t *testing.T) {
+	repo := t.TempDir()
+	runGitCmd(t, repo, "init", "-b", "main")
+	runGitCmd(t, repo, "config", "user.email", "tars@example.test")
+	runGitCmd(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, repo, "add", "f")
+	runGitCmd(t, repo, "commit", "-m", "first")
+	client := NewClient()
+	if _, err := client.Mutate(context.Background(), MutationOptions{StartDir: repo, Action: MutationWorktreeAdd}); err == nil {
+		t.Fatalf("expected error for missing worktree_path")
+	}
+	if _, err := client.Mutate(context.Background(), MutationOptions{StartDir: repo, Action: MutationWorktreeRemove}); err == nil {
+		t.Fatalf("expected error for missing worktree_path")
+	}
+}
+
+func runGitOutput(t *testing.T, dir string, args ...string) []byte {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return out
+}
+
 func commitFileByPath(files []CommitFile, path string) *CommitFile {
 	for i := range files {
 		if files[i].Path == path {

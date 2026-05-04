@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.155] - 2026-05-04
+
+### Added
+
+- **Console Git Inspector — checkout commit + worktree add/remove via approvals (P3 of #692, closes #692)** — three new mutation actions plug into the existing approval workflow: `checkout_commit` (`git checkout --detach <hash>`, optionally `-b <new>`), `worktree_add` (`git worktree add [-b <new>] <path> [<branch>]`), and `worktree_remove` (`git worktree remove <path>`). Detached checkouts and worktree removes are flagged `destructive` so the approval UI can warn before applying. The Log tab gains a per-commit input + Checkout button (red "detached" variant flips to a safe "Checkout as branch" once a name is entered). The Worktrees tab gains an Add form (path + optional existing/new branch) and per-row Remove buttons (current and bare worktrees omit the action). Backend additions (`internal/git/client.go`, `internal/ops/git_mutation.go`): `MutationCheckoutCommit / MutationWorktreeAdd / MutationWorktreeRemove`, `MutationOptions.Hash / WorktreePath / NewBranch`, plus matching `GitMutationPlan` fields and `Command` strings. Audit details now include `hash / worktree_path / new_branch` so the trail captures what was actually queued.
+
 ## [0.31.154] - 2026-05-04
 
 ### Added
