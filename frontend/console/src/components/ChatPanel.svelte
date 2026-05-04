@@ -1076,6 +1076,7 @@
 
   let textareaEl: HTMLTextAreaElement | undefined = $state()
   let stopEventStream: (() => void) | null = null
+  let visibilityHandler: (() => void) | null = null
 
   async function loadHistoryInto(targetSessionId: string) {
     const rebuilt: ChatMessage[] = [
@@ -1155,13 +1156,13 @@
       tick().then(() => textareaEl?.focus())
     }
 
-    // Auto-refresh chat when a background cron job delivers a message to this
-    // session (session-bound cron, or main-bound cron delivering to main).
-    stopEventStream = streamEvents((event) => {
-      if (event.category !== 'cron') return
+    // Refresh transcript when any background actor (cron, pulse auto-resume,
+    // future agentruntime/chat events) touches the active session — and when
+    // the SSE stream reconnects after a drop, since events emitted during the
+    // gap were lost. Skip while a foreground stream is filling chatMessages.
+    const refreshActiveSession = () => {
       const currentId = (chatSessionId || sessionId || '').trim()
       if (!currentId) return
-      if ((event.session_id || '').trim() !== currentId) return
       if (chatBusy) return
       void (async () => {
         try {
@@ -1169,12 +1170,39 @@
           void scrollToBottom()
         } catch { /* ignore */ }
       })()
-    })
+    }
+
+    stopEventStream = streamEvents(
+      (event) => {
+        if (!event.session_id) return
+        const currentId = (chatSessionId || sessionId || '').trim()
+        if (!currentId) return
+        if (event.session_id.trim() !== currentId) return
+        refreshActiveSession()
+      },
+      undefined,
+      undefined,
+      refreshActiveSession,
+    )
+
+    // Browsers may close the SSE connection or throttle timers when the tab is
+    // hidden. On refocus, force a transcript reload so anything that arrived
+    // while we weren't listening shows up.
+    visibilityHandler = () => {
+      if (document.visibilityState === 'visible') {
+        refreshActiveSession()
+      }
+    }
+    document.addEventListener('visibilitychange', visibilityHandler)
   })
 
   onDestroy(() => {
     stopEventStream?.()
     stopChatStatusTicker()
+    if (visibilityHandler) {
+      document.removeEventListener('visibilitychange', visibilityHandler)
+      visibilityHandler = null
+    }
   })
 </script>
 

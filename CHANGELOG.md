@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.143] - 2026-05-04
+
+### Fixed
+
+- **Console chat — re-entry & background sync** (#677) — three frontend gaps that left the chat view stale after navigating away or backgrounding the tab:
+  - `ChatPanel` only refreshed on `category === 'cron'` events, so pulse-driven auto-resumes (which emit `category: "pulse"` with the session id) never triggered a transcript reload. The listener now matches by `session_id` regardless of category.
+  - `document.visibilitychange` is now wired up: returning to a backgrounded chat tab forces a transcript reload so any messages written while the tab was throttled or the SSE connection paused are visible immediately.
+  - `lib/api.ts` `ensureStream()` now reconnects automatically when `EventSource` reaches `CLOSED` (capped exponential backoff 1s → 30s), and `streamEvents()` exposes a new `onReopen` callback that fires after a successful reconnect. `ChatPanel` uses it to backfill the transcript so events lost during the gap are recovered without a page reload.
+
 ## [0.31.142] - 2026-05-04
 
 ### Fixed

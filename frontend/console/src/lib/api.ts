@@ -1167,17 +1167,53 @@ type EventListener = {
   onEvent: (event: NotificationMessage) => void
   onError?: (message: string) => void
   onOpen?: () => void
+  onReopen?: () => void
 }
 
 let sharedStream: EventSource | null = null
 let listeners = new Map<number, EventListener>()
 let nextListenerId = 0
+let hasOpenedOnce = false
+let reconnectAttempt = 0
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearReconnectTimer() {
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer !== null) return
+  if (listeners.size === 0) return
+  // Exponential backoff: 1s, 2s, 4s, 8s, 16s, capped at 30s.
+  const delay = Math.min(30_000, 1_000 * 2 ** Math.min(reconnectAttempt, 5))
+  reconnectAttempt += 1
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    if (listeners.size === 0) return
+    ensureStream()
+  }, delay)
+}
 
 function ensureStream() {
   if (sharedStream && sharedStream.readyState !== EventSource.CLOSED) return
+  if (sharedStream) {
+    sharedStream.close()
+    sharedStream = null
+  }
+  const wasOpenedBefore = hasOpenedOnce
   sharedStream = new EventSource('/v1/events/stream')
   sharedStream.onopen = () => {
-    for (const l of listeners.values()) l.onOpen?.()
+    clearReconnectTimer()
+    reconnectAttempt = 0
+    const isReopen = wasOpenedBefore
+    hasOpenedOnce = true
+    for (const l of listeners.values()) {
+      l.onOpen?.()
+      if (isReopen) l.onReopen?.()
+    }
   }
   sharedStream.onmessage = (message) => {
     if (!message.data) return
@@ -1192,6 +1228,11 @@ function ensureStream() {
   }
   sharedStream.onerror = () => {
     for (const l of listeners.values()) l.onError?.('Event stream disconnected')
+    // EventSource auto-reconnects on transient drops (readyState=CONNECTING).
+    // Only schedule a manual reconnect once it gives up and reaches CLOSED.
+    if (sharedStream?.readyState === EventSource.CLOSED) {
+      scheduleReconnect()
+    }
   }
 }
 
@@ -1199,6 +1240,9 @@ function maybeCloseStream() {
   if (listeners.size === 0 && sharedStream) {
     sharedStream.close()
     sharedStream = null
+    clearReconnectTimer()
+    reconnectAttempt = 0
+    hasOpenedOnce = false
   }
 }
 
@@ -1206,9 +1250,10 @@ export function streamEvents(
   onEvent: (event: NotificationMessage) => void,
   onError?: (message: string) => void,
   onOpen?: () => void,
+  onReopen?: () => void,
 ): () => void {
   const id = nextListenerId++
-  listeners.set(id, { onEvent, onError, onOpen })
+  listeners.set(id, { onEvent, onError, onOpen, onReopen })
   ensureStream()
   return () => {
     listeners.delete(id)
