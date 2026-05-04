@@ -493,7 +493,7 @@
         {/if}
       </section>
     {:else if activeTab === 'files'}
-      <section class="tab-body files-body" role="tabpanel">
+      <section class="tab-body" role="tabpanel">
         {#if files.length === 0}
           <div class="empty-state compact">Working tree clean.</div>
         {:else}
@@ -871,17 +871,14 @@
   }
 
   .tab-body {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: var(--space-3);
     min-width: 0;
     min-height: 0;
     flex: 1 1 auto;
     overflow-y: auto;
     padding-right: var(--space-1);
-  }
-
-  .files-body {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .status-meta {
