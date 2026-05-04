@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.156] - 2026-05-04
+
+### Fixed
+
+- **Console Git Inspector — commit-file click now renders diff on a clean working tree** — clicking a file inside an expanded Log commit row would silently land on an empty Files tab whenever the working tree was clean. The diff section was nested under the `files.length === 0` else-branch (introduced in P2 of #692), so the "Working tree clean." placeholder swallowed the entire diff view including any pending commit-mode diff. The diff section is now rendered as a sibling of the file list and shows whenever a diff is loaded, currently loading, or a commit-mode source is selected — independent of whether the worktree has changes.
+
 ## [0.31.155] - 2026-05-04
 
 ### Added
