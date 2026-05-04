@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
+  import { t } from '../i18n'
   import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, forkSessionFromMessage } from '../lib/api'
   import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, ChatTier, ChatTierRecommendationRequest, Session, SessionMessage, SkillDef } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
@@ -1142,14 +1143,14 @@
     void loadMentionSubagents()
     if (sessionId) {
       chatSessionId = sessionId
-      chatMessages = [{ id: 'system-init', role: 'system', text: `Session: ${sessionId.slice(0, 8)}...` }]
+      chatMessages = [{ id: 'system-init', role: 'system', text: $t.chat.systemInit.session(sessionId.slice(0, 8)) }]
       try {
         await loadHistoryInto(sessionId)
         autoTitled = true
         void scrollToBottom()
       } catch { /* ignore */ }
     } else {
-      chatMessages = [{ id: 'system-init', role: 'system', text: 'TARS' }]
+      chatMessages = [{ id: 'system-init', role: 'system', text: $t.chat.systemInit.tars }]
     }
     if (initialPrompt && !autoSend) {
       chatInput = initialPrompt
@@ -1210,7 +1211,7 @@
 <div class="chat-panel" role="region" aria-label="Chat" ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
   {#if isDragging}
     <div class="drop-overlay">
-      <div class="drop-label">Drop files here</div>
+      <div class="drop-label">{$t.chat.dropOverlay}</div>
     </div>
   {/if}
   <div class="chat-log" bind:this={chatLogEl} onscroll={handleScroll}>
@@ -1261,18 +1262,18 @@
     </div>
   {/if}
   {#if pendingTierRecommendation}
-    <div class="tier-recommendation-card" aria-label="Tier recommendation">
+    <div class="tier-recommendation-card" aria-label={$t.chat.tierRecommendation.ariaLabel}>
       <div class="tier-recommendation-copy">
         <span class={tierClass(pendingTierRecommendation.recommended_tier)}>{tierLabel(pendingTierRecommendation.recommended_tier)}</span>
         <div>
-          <strong>{tierLabel(pendingTierRecommendation.recommended_tier)} tier recommended</strong>
+          <strong>{$t.chat.tierRecommendation.headline(tierLabel(pendingTierRecommendation.recommended_tier))}</strong>
           <p>{pendingTierRecommendation.reason}</p>
         </div>
       </div>
-      <div class="tier-recommendation-actions" aria-label="Choose LLM tier">
-        <button type="button" class="btn btn-ghost btn-sm" onclick={() => continueWithTier('light')}>Light</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick={() => continueWithTier('standard')}>Standard</button>
-        <button type="button" class="btn btn-primary btn-sm" onclick={() => continueWithTier('heavy')}>Heavy</button>
+      <div class="tier-recommendation-actions" aria-label={$t.chat.tierRecommendation.chooseTierAria}>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={() => continueWithTier('light')}>{$t.chat.tierRecommendation.tierLight}</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={() => continueWithTier('standard')}>{$t.chat.tierRecommendation.tierStandard}</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick={() => continueWithTier('heavy')}>{$t.chat.tierRecommendation.tierHeavy}</button>
       </div>
     </div>
   {/if}
@@ -1287,10 +1288,10 @@
           onchange={handleFileSelect}
           class="file-input-hidden"
         />
-        <button type="button" class="toolbar-btn" title="Attach file" onclick={() => fileInputEl?.click()}>
+        <button type="button" class="toolbar-btn" title={$t.chat.toolbar.attachFile} onclick={() => fileInputEl?.click()}>
           <span class="toolbar-icon">{'\ud83d\udcce'}</span>
         </button>
-        <button type="button" class="toolbar-btn" title="Attach image" onclick={() => { if (fileInputEl) { fileInputEl.accept = 'image/*'; fileInputEl.click(); fileInputEl.accept = 'image/*,.pdf,.txt,.md,.json,.csv,.yaml,.yml' } }}>
+        <button type="button" class="toolbar-btn" title={$t.chat.toolbar.attachImage} onclick={() => { if (fileInputEl) { fileInputEl.accept = 'image/*'; fileInputEl.click(); fileInputEl.accept = 'image/*,.pdf,.txt,.md,.json,.csv,.yaml,.yml' } }}>
           <span class="toolbar-icon">{'\ud83d\uddbc'}</span>
         </button>
       </div>
@@ -1299,7 +1300,7 @@
           bind:this={textareaEl}
           bind:value={chatInput}
           rows="2"
-          placeholder={sessionId ? 'Continue this session...' : 'Ask TARS anything... (paste images with Ctrl+V)'}
+          placeholder={sessionId ? $t.chat.input.placeholderContinue : $t.chat.input.placeholderNew}
           oninput={handleChatInput}
           onclick={handleTextareaCursorChange}
           onkeyup={handleTextareaKeyup}
@@ -1317,9 +1318,9 @@
         {#if mentionOpen}
           <div class="mention-menu">
             {#if mentionLoading}
-              <div class="mention-empty">Loading...</div>
+              <div class="mention-empty">{$t.chat.mention.loading}</div>
             {:else if mentionCandidates.length === 0}
-              <div class="mention-empty">No matches</div>
+              <div class="mention-empty">{$t.chat.mention.noMatches}</div>
             {:else}
               {#each mentionCandidates as candidate, i}
                 {#if i === 0 || mentionCandidates[i - 1]?.kind !== candidate.kind}
@@ -1344,9 +1345,9 @@
     </div>
     <div class="chat-form-actions">
       {#if chatBusy}
-        <button type="button" class="btn btn-danger btn-sm" onclick={handleCancel}>Stop</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick={handleCancel}>{$t.chat.input.stop}</button>
       {:else}
-        <button type="submit" class="btn btn-primary" disabled={!chatInput.trim()}>Send</button>
+        <button type="submit" class="btn btn-primary" disabled={!chatInput.trim()}>{$t.chat.input.send}</button>
       {/if}
     </div>
   </form>

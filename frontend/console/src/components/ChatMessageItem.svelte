@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n'
   import type { Artifact } from '../lib/artifacts'
   import type { ChatMessage } from '../lib/chatMessages'
   import {
@@ -90,7 +91,7 @@
   {/if}
 {:else}
   <div class="chat-msg chat-{message.role}">
-    <span class="chat-role">{message.role}</span>
+    <span class="chat-role">{$t.chat.message.roles[message.role as keyof typeof $t.chat.message.roles] ?? message.role}</span>
     {#if message.role === 'assistant'}
       {#if !message.text && streamingStatus}
         <div class="chat-text">
@@ -113,12 +114,12 @@
     {#if (message.role === 'assistant' || message.role === 'user') && message.text}
       <div class="chat-msg-footer">
         {#if message.usage}
-          <span class="usage-badge" title="Token usage">In: {message.usage.input_tokens.toLocaleString()} &middot; Out: {message.usage.output_tokens.toLocaleString()}{message.usage.cache_read_tokens ? ` \u00b7 Cached: ${message.usage.cache_read_tokens.toLocaleString()}` : ''}</span>
+          <span class="usage-badge" title={$t.chat.message.usageBadgeTitle}>{$t.chat.message.usageIn}: {message.usage.input_tokens.toLocaleString()} &middot; {$t.chat.message.usageOut}: {message.usage.output_tokens.toLocaleString()}{message.usage.cache_read_tokens ? ` \u00b7 ${$t.chat.message.usageCached}: ${message.usage.cache_read_tokens.toLocaleString()}` : ''}</span>
         {/if}
         {#if message.sourceMessageId && onForkMessage}
-          <button type="button" class="msg-copy-btn" title="Fork from here" onclick={() => onForkMessage?.(message)}>Fork from here</button>
+          <button type="button" class="msg-copy-btn" title={$t.chat.message.forkFromHereTitle} onclick={() => onForkMessage?.(message)}>{$t.chat.message.forkFromHere}</button>
         {/if}
-        <button type="button" class="msg-copy-btn" title="Copy message" onclick={() => onCopy(message.text)}>Copy</button>
+        <button type="button" class="msg-copy-btn" title={$t.chat.message.copyTitle} onclick={() => onCopy(message.text)}>{$t.chat.message.copy}</button>
       </div>
     {/if}
   </div>

@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.147] - 2026-05-04
+
+### Changed
+
+- **Console chat — full i18n coverage** — extracted all hardcoded English strings in the chat surface (`Chat.svelte`, `ChatPanel.svelte`, `ChatMessageItem.svelte`, `SessionSidebar.svelte`) into the `chat.*` and `sessions.*` translation namespaces. Covers status strip (pulse ticks / last tick / unread), dock panel buttons + tooltips, session header actions (rename / AI title / compact / copy / download / extract skill / delete), plan strip (label / open title / progress aria / active task tooltip), tier recommendation card, mention menu, drop overlay, message roles + usage badge + copy/fork buttons, sidebar search/filter/sort, relative-time formatter, and all error/feedback toasts. Korean translations added for every new key.
+
 ## [0.31.146] - 2026-05-04
 
 ### Added

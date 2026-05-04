@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte'
   import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory, runMemorySearch } from '../lib/api'
   import { highlightTerms } from '../lib/markdown'
+  import { t } from '../i18n'
   import type { MemorySearchMatch, Session } from '../lib/types'
 
   type SessionSearchSnippet = {
@@ -43,10 +44,11 @@
     if (Number.isNaN(date.getTime())) return value
     if (date.getFullYear() <= 1) return ''
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
-    if (seconds < 60) return `${seconds}s ago`
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-    return `${Math.floor(seconds / 86400)}d ago`
+    const labels = $t.sessions.relativeTime
+    if (seconds < 60) return labels.secondsAgo(seconds)
+    if (seconds < 3600) return labels.minutesAgo(Math.floor(seconds / 60))
+    if (seconds < 86400) return labels.hoursAgo(Math.floor(seconds / 3600))
+    return labels.daysAgo(Math.floor(seconds / 86400))
   }
 
   function sessionKind(session: Session): string {
@@ -168,7 +170,7 @@
       sessionSearchSnippets = groupSessionSearchMatches(result.results ?? [])
     } catch (err) {
       if (token !== transcriptSearchToken) return
-      transcriptSearchError = err instanceof Error ? err.message : 'Transcript search failed'
+      transcriptSearchError = err instanceof Error ? err.message : $t.sessions.errors.transcriptSearchFailed
       sessionSearchSnippets = {}
     } finally {
       if (token === transcriptSearchToken) {
@@ -183,7 +185,7 @@
     try {
       sessions = await listSessions(true)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load sessions'
+      error = err instanceof Error ? err.message : $t.sessions.errors.loadFailed
     } finally {
       loading = false
     }
@@ -221,7 +223,7 @@
       if (selectedSessionId === id) onNewSession()
       await load()
     } catch (e) {
-      actionError = e instanceof Error ? e.message : 'Delete failed'
+      actionError = e instanceof Error ? e.message : $t.sessions.errors.deleteFailed
     } finally {
       actionBusy = ''
     }
@@ -234,13 +236,13 @@
       const r = await compactSession(id)
       if (r.compacted) {
         const pct = r.tokens_before > 0 ? Math.round(((r.tokens_before - r.tokens_after) / r.tokens_before) * 100) : 0
-        actionError = `Compacted ${r.compacted_count} msgs (${pct}% saved)`
+        actionError = $t.sessions.errors.compactSuccess(r.compacted_count, pct)
       } else {
-        actionError = r.reason || 'Nothing to compact'
+        actionError = r.reason || $t.sessions.errors.nothingToCompact
       }
       await load()
     } catch (e) {
-      actionError = e instanceof Error ? e.message : 'Compact failed'
+      actionError = e instanceof Error ? e.message : $t.sessions.errors.compactFailed
     } finally {
       actionBusy = ''
     }
@@ -268,7 +270,7 @@
         await load()
       }
     } catch (e) {
-      actionError = e instanceof Error ? e.message : 'Generate title failed'
+      actionError = e instanceof Error ? e.message : $t.sessions.errors.generateTitleFailed
     } finally {
       actionBusy = ''
     }
@@ -291,11 +293,11 @@
 <div class="sidebar">
   <div class="sidebar-header">
     <button type="button" class="btn btn-primary btn-sm new-chat-btn" onclick={onNewSession}>
-      + New Chat
+      {$t.sessions.newChat}
     </button>
   </div>
 
-  <input type="text" class="sidebar-search" placeholder="Search..." bind:value={searchQuery} />
+  <input type="text" class="sidebar-search" placeholder={$t.sessions.sidebarSearchPlaceholder} bind:value={searchQuery} />
 
   <div class="sidebar-filters">
     {#each ['all', 'session', 'main', 'worker'] as kind}
@@ -303,11 +305,11 @@
         class="filter-btn"
         class:active={filterKind === kind}
         onclick={() => { filterKind = kind as typeof filterKind }}
-      >{kind}</button>
+      >{$t.sessions.filters[kind as keyof typeof $t.sessions.filters]}</button>
     {/each}
     <div class="sort-btns">
-      <button class="filter-btn" class:active={sortBy === 'updated'} onclick={() => { sortBy = 'updated' }} title="Sort by recent">{'\u2193'}</button>
-      <button class="filter-btn" class:active={sortBy === 'name'} onclick={() => { sortBy = 'name' }} title="Sort by name">A</button>
+      <button class="filter-btn" class:active={sortBy === 'updated'} onclick={() => { sortBy = 'updated' }} title={$t.sessions.sort.recentTitle}>{'\u2193'}</button>
+      <button class="filter-btn" class:active={sortBy === 'name'} onclick={() => { sortBy = 'name' }} title={$t.sessions.sort.nameTitle}>A</button>
     </div>
   </div>
 
@@ -323,11 +325,11 @@
 
   <div class="session-list">
     {#if loading}
-      <div class="sidebar-loading">Loading...</div>
+      <div class="sidebar-loading">{$t.sessions.sidebarLoading}</div>
     {:else if transcriptSearchLoading && filteredSessions().length === 0}
-      <div class="sidebar-loading">Searching transcripts...</div>
+      <div class="sidebar-loading">{$t.sessions.sidebarSearchingTranscripts}</div>
     {:else if filteredSessions().length === 0}
-      <div class="sidebar-empty">{searchQuery || filterKind !== 'all' ? 'No matches.' : 'No sessions.'}</div>
+      <div class="sidebar-empty">{searchQuery || filterKind !== 'all' ? $t.sessions.sidebarNoMatches : $t.sessions.sidebarEmpty}</div>
     {:else}
       {#each filteredSessions() as session}
         <div class="session-item" class:active={selectedSessionId === session.id}>
@@ -350,14 +352,14 @@
               <span class="session-title">{session.title || session.id.slice(0, 12)}</span>
             {/if}
             <div class="session-meta">
-              <span class="badge {kindBadge(session)}" style="font-size:9px;padding:1px 5px">{sessionKind(session)}</span>
+              <span class="badge {kindBadge(session)}" style="font-size:9px;padding:1px 5px">{$t.sessions.filters[sessionKind(session) as keyof typeof $t.sessions.filters] ?? sessionKind(session)}</span>
               <span class="session-time">{relativeTime(session.updated_at)}</span>
             </div>
             {#if snippetsForSession(session.id).length > 0}
-              <div class="sidebar-snippet-list" aria-label="Transcript matches">
+              <div class="sidebar-snippet-list" aria-label={$t.sessions.transcriptMatches}>
                 {#each snippetsForSession(session.id) as match}
                   <div class="sidebar-snippet">
-                    <span class="sidebar-snippet-date">{match.date || 'session'}</span>
+                    <span class="sidebar-snippet-date">{match.date || $t.sessions.snippetFallbackKind}</span>
                     <span class="sidebar-snippet-text">{@html highlightSearchSnippet(match.snippet)}</span>
                   </div>
                 {/each}
@@ -366,14 +368,14 @@
           </button>
           <div class="session-actions">
             {#if !isMainSession(session)}
-              <button class="act-btn" title="Rename" onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
-              <button class="act-btn" title="Auto title" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>&#9733;</button>
+              <button class="act-btn" title={$t.sessions.actions.rename} onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
+              <button class="act-btn" title={$t.sessions.actions.autoTitle} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>&#9733;</button>
             {/if}
-            <button class="act-btn" title="Compact" disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
+            <button class="act-btn" title={$t.sessions.actions.compact} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
             {#if !isMainSession(session)}
               <button
                 class="act-btn act-btn-danger"
-                title={deleteConfirmId === session.id ? 'Confirm' : 'Delete'}
+                title={deleteConfirmId === session.id ? $t.sessions.actions.confirm : $t.sessions.actions.delete}
                 disabled={actionBusy === session.id}
                 onclick={(e) => { e.stopPropagation(); requestDelete(session.id) }}
               >{deleteConfirmId === session.id ? '!!' : '\u00d7'}</button>
