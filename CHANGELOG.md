@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.159] - 2026-05-04
+
+### Fixed
+
+- **Console Git Inspector — diff fills the available panel height** — the diff table was capped at `max-height: 480px`, so on tall viewports it stopped halfway down the panel and the rest of the Files tab sat empty. The diff section now becomes a flex child that fills the remaining tab body (`.diff-section { flex: 1 1 auto }`) and the diff table itself takes the remaining vertical space inside it (`flex: 1 1 auto; min-height: 0`) with internal scroll. A `min-height: 240px` keeps the diff legible when the panel is short.
+
 ## [0.31.158] - 2026-05-04
 
 ### Fixed
