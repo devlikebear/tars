@@ -103,7 +103,7 @@
 <nav class="nav" style={navOpen ? 'transform: translateX(0)' : undefined} aria-label={$t.nav.mainNavigation}>
   <div class="nav-brand">
     <button type="button" class="nav-logo" onclick={(e: MouseEvent) => handleClick(e, '/console')}>
-      <span class="nav-logo-mark">T</span>
+      <img class="nav-logo-mark" src="/console/tars-icon.png" alt="" width="28" height="28" />
       <span class="nav-logo-text">TARS</span>
     </button>
     <button type="button" class="nav-close-btn" aria-label="Close navigation" onclick={handleClose}>✕</button>
@@ -169,17 +169,11 @@
   }
 
   .nav-logo-mark {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     width: 28px;
     height: 28px;
     border-radius: var(--radius-md);
-    background: var(--primary);
-    color: #fff;
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-size: var(--text-sm);
+    object-fit: cover;
+    flex-shrink: 0;
   }
 
   .nav-logo-text {
