@@ -10,6 +10,9 @@
 
   let { sessionId, onClose }: Props = $props()
 
+  type TabId = 'status' | 'files' | 'branches' | 'log'
+  type DiffMode = 'unified' | 'split'
+
   let status = $state<GitStatus | null>(null)
   let diff = $state<GitDiff | null>(null)
   let log = $state<GitCommit[]>([])
@@ -22,6 +25,8 @@
   let mutationBusy = $state('')
   let mutationFeedback = $state('')
   let commitMessage = $state('')
+  let activeTab = $state<TabId>('files')
+  let diffMode = $state<DiffMode>('unified')
 
   let files = $derived.by<GitStatusFile[]>(() => status?.files ?? [])
   let remotes = $derived.by(() => status?.remotes ?? [])
@@ -31,8 +36,9 @@
   let currentBranch = $derived.by<GitBranch | undefined>(() => branches.find((branch) => branch.current))
   let sideBySide = $derived.by(() => sideBySideLines(diff?.patch))
 
-  function shortPath(path: string): string {
-    return path.length > 48 ? `...${path.slice(-45)}` : path
+  function shortPath(path: string, max = 40): string {
+    if (path.length <= max) return path
+    return `…${path.slice(-(max - 1))}`
   }
 
   function formatDate(value?: string): string {
@@ -69,7 +75,7 @@
       }
       const query = { sessionId, root: nextStatus.root }
       const [nextLog, nextBranches] = await Promise.all([
-        getGitLog({ ...query, limit: 8 }),
+        getGitLog({ ...query, limit: 12 }),
         getGitBranches(query),
       ])
       log = nextLog.commits ?? []
@@ -155,16 +161,53 @@
     }
   }
 
+  function tabLabel(id: TabId): string {
+    switch (id) {
+      case 'status':
+        return 'Status'
+      case 'files':
+        return 'Files'
+      case 'branches':
+        return 'Branches'
+      case 'log':
+        return 'Log'
+    }
+  }
+
+  function tabBadge(id: TabId): string {
+    switch (id) {
+      case 'files':
+        return changedCount > 0 ? String(changedCount) : ''
+      case 'branches':
+        return branches.length > 0 ? String(branches.filter((b) => !b.remote).length) : ''
+      case 'log':
+        return log.length > 0 ? String(log.length) : ''
+      default:
+        return ''
+    }
+  }
+
   onMount(() => {
     void load()
   })
 </script>
 
 <div class="git-panel">
-  <div class="git-toolbar">
-    <div>
-      <span class="panel-kicker">Git Inspector</span>
-      <strong>{branchLabel(currentBranch)}</strong>
+  <header class="git-header">
+    <div class="git-heading">
+      <span class="panel-kicker">Git</span>
+      <strong class="branch-name" title={branchLabel(currentBranch)}>{branchLabel(currentBranch)}</strong>
+      {#if status?.head}
+        <span class="meta-chip" title="HEAD">{status.head}</span>
+      {/if}
+      {#if status?.upstream}
+        <span class="meta-chip subtle" title="upstream">↑ {status.upstream}</span>
+      {/if}
+      {#if status?.is_git}
+        <span class="meta-chip subtle" title="Δ changed · S staged · U unstaged">
+          Δ{changedCount} · S{stagedCount} · U{unstagedCount}
+        </span>
+      {/if}
     </div>
     <div class="git-actions">
       <button class="btn btn-ghost btn-sm" type="button" disabled={loading} onclick={load}>Refresh</button>
@@ -172,7 +215,7 @@
         <button class="btn btn-ghost btn-sm" type="button" onclick={onClose}>Close</button>
       {/if}
     </div>
-  </div>
+  </header>
 
   {#if error}
     <div class="error-banner">{error}</div>
@@ -186,140 +229,193 @@
   {:else if status && !status.is_git}
     <div class="empty-state">No git repository detected for this session.</div>
   {:else if status}
-    <section class="repo-summary">
-      <div>
-        <span>Root</span>
-        <strong title={status.root}>{status.root}</strong>
-      </div>
-      <div>
-        <span>HEAD</span>
-        <strong>{status.head || 'unborn'}</strong>
-      </div>
-      <div>
-        <span>Changed</span>
-        <strong>{changedCount}</strong>
-      </div>
-      <div>
-        <span>Staged</span>
-        <strong>{stagedCount}</strong>
-      </div>
-      <div>
-        <span>Unstaged</span>
-        <strong>{unstagedCount}</strong>
-      </div>
-    </section>
+    <div class="tab-nav" role="tablist" aria-label="Git Inspector sections">
+      {#each ['status', 'files', 'branches', 'log'] as const as tab (tab)}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === tab}
+          class="tab-btn"
+          class:active={activeTab === tab}
+          onclick={() => (activeTab = tab)}
+        >
+          <span>{tabLabel(tab)}</span>
+          {#if tabBadge(tab)}
+            <span class="tab-badge badge badge-default">{tabBadge(tab)}</span>
+          {/if}
+        </button>
+      {/each}
+    </div>
 
-    {#if remotes.length > 0}
-      <section class="git-section">
-        <div class="section-title">Remotes</div>
-        <div class="remote-list">
-          {#each remotes as remote (remote.name)}
-            <article class="remote-row">
-              <strong>{remote.name}</strong>
-              <span>{remote.fetch_url || remote.push_url}</span>
-            </article>
-          {/each}
-        </div>
-      </section>
-    {/if}
-
-    <section class="git-section">
-      <div class="section-title">Files</div>
-      {#if files.length === 0}
-        <div class="empty-state compact">Working tree clean.</div>
-      {:else}
-        <div class="file-list">
-          {#each files as file (file.path)}
-            <article class="file-row" class:active={selectedPath === file.path}>
-              <button type="button" class="file-main" onclick={() => loadDiff(file, file.staged && !file.unstaged)}>
-                <span title={file.path}>{shortPath(file.path)}</span>
-                <small>{file.old_path ? `${file.old_path} -> ${file.path}` : file.status}</small>
-              </button>
-              <span class="badge badge-{fileTone(file)}">{file.status}</span>
-              <div class="file-actions">
-                {#if file.unstaged}
-                  <button class="btn btn-ghost btn-sm" type="button" class:active={selectedPath === file.path && !selectedStaged} onclick={() => loadDiff(file, false)}>Worktree</button>
-                  <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('stage', { path: file.path, reason: 'Stage selected file from Git Inspector' })}>
-                    {mutationBusy === `stage:${file.path}` ? 'Queueing...' : 'Stage'}
-                  </button>
-                  <button class="btn btn-danger btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('discard', { path: file.path, reason: 'Discard selected worktree changes from Git Inspector' })}>
-                    {mutationBusy === `discard:${file.path}` ? 'Queueing...' : 'Discard'}
-                  </button>
-                {/if}
-                {#if file.staged}
-                  <button class="btn btn-ghost btn-sm" type="button" class:active={selectedPath === file.path && selectedStaged} onclick={() => loadDiff(file, true)}>Staged</button>
-                  <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('unstage', { path: file.path, reason: 'Unstage selected file from Git Inspector' })}>
-                    {mutationBusy === `unstage:${file.path}` ? 'Queueing...' : 'Unstage'}
-                  </button>
-                {/if}
-              </div>
-            </article>
-          {/each}
-        </div>
-      {/if}
-    </section>
-
-    <section class="git-section">
-      <div class="section-title">Diff</div>
-      {#if diffLoading}
-        <div class="empty-state compact">Loading diff...</div>
-      {:else if diff}
-        <div class="diff-head">
-          <strong>{diff.path || 'Repository diff'}</strong>
-          <span class="badge badge-default">{diff.staged ? 'staged' : 'worktree'}</span>
-        </div>
-        <div class="side-by-side-diff" aria-label="side-by-side diff">
-          <pre>{sideBySide.left.join('\n')}</pre>
-          <pre>{sideBySide.right.join('\n')}</pre>
-        </div>
-        <details class="raw-diff">
-          <summary>Unified patch</summary>
-          <pre>{diff.patch || 'No diff available.'}</pre>
-        </details>
-      {:else}
-        <div class="empty-state compact">Select a file to inspect its diff.</div>
-      {/if}
-    </section>
-
-    <section class="git-section grid-two">
-      <div>
-        <div class="section-title">Branches</div>
-        <div class="branch-list">
-          {#each branches as branch (branch.name)}
-            <div class="branch-row">
-              <span>{branch.current ? '*' : ''}{branch.name}</span>
-              <div class="branch-actions">
-                {#if branch.remote}<small>remote</small>{/if}
-                {#if !branch.current && !branch.remote}
-                  <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('switch_branch', { branch: branch.name, reason: 'Switch branch from Git Inspector' })}>
-                    {mutationBusy === `switch_branch:${branch.name}` ? 'Queueing...' : 'Switch'}
-                  </button>
-                {/if}
-              </div>
+    {#if activeTab === 'status'}
+      <section class="tab-body" role="tabpanel">
+        <dl class="status-meta">
+          <div>
+            <dt>Root</dt>
+            <dd title={status.root}>{status.root}</dd>
+          </div>
+          <div>
+            <dt>HEAD</dt>
+            <dd>{status.head || 'unborn'}</dd>
+          </div>
+          <div>
+            <dt>Branch</dt>
+            <dd>{status.branch || '(detached)'}</dd>
+          </div>
+          {#if status.upstream}
+            <div>
+              <dt>Upstream</dt>
+              <dd>{status.upstream}</dd>
             </div>
-          {/each}
-        </div>
-      </div>
-      <div>
-        <div class="section-title">Commit</div>
+          {/if}
+          <div>
+            <dt>Changed</dt>
+            <dd>{changedCount}</dd>
+          </div>
+          <div>
+            <dt>Staged</dt>
+            <dd>{stagedCount}</dd>
+          </div>
+          <div>
+            <dt>Unstaged</dt>
+            <dd>{unstagedCount}</dd>
+          </div>
+        </dl>
+
+        {#if remotes.length > 0}
+          <div class="section-title">Remotes</div>
+          <div class="remote-list">
+            {#each remotes as remote (remote.name)}
+              <article class="remote-row">
+                <strong>{remote.name}</strong>
+                <span title={remote.fetch_url || remote.push_url}>{remote.fetch_url || remote.push_url}</span>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {:else if activeTab === 'files'}
+      <section class="tab-body files-body" role="tabpanel">
+        {#if files.length === 0}
+          <div class="empty-state compact">Working tree clean.</div>
+        {:else}
+          <div class="file-list" role="list">
+            {#each files as file (file.path)}
+              <article class="file-row" class:active={selectedPath === file.path} role="listitem">
+                <button type="button" class="file-main" onclick={() => loadDiff(file, file.staged && !file.unstaged)}>
+                  <span class="file-path" title={file.path}>{shortPath(file.path)}</span>
+                  <small>{file.old_path ? `${file.old_path} → ${file.path}` : file.status}</small>
+                </button>
+                <span class="badge badge-{fileTone(file)}">{file.status}</span>
+                <div class="file-actions">
+                  {#if file.unstaged}
+                    <button class="btn btn-ghost btn-sm" type="button" class:active={selectedPath === file.path && !selectedStaged} onclick={() => loadDiff(file, false)}>Worktree</button>
+                    <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('stage', { path: file.path, reason: 'Stage selected file from Git Inspector' })}>
+                      {mutationBusy === `stage:${file.path}` ? '…' : 'Stage'}
+                    </button>
+                    <button class="btn btn-danger btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('discard', { path: file.path, reason: 'Discard selected worktree changes from Git Inspector' })}>
+                      {mutationBusy === `discard:${file.path}` ? '…' : 'Discard'}
+                    </button>
+                  {/if}
+                  {#if file.staged}
+                    <button class="btn btn-ghost btn-sm" type="button" class:active={selectedPath === file.path && selectedStaged} onclick={() => loadDiff(file, true)}>Staged</button>
+                    <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('unstage', { path: file.path, reason: 'Unstage selected file from Git Inspector' })}>
+                      {mutationBusy === `unstage:${file.path}` ? '…' : 'Unstage'}
+                    </button>
+                  {/if}
+                </div>
+              </article>
+            {/each}
+          </div>
+
+          <div class="diff-section">
+            <div class="diff-head">
+              <div class="diff-head-title">
+                <span class="section-title">Diff</span>
+                {#if diff?.path}
+                  <strong title={diff.path}>{shortPath(diff.path, 60)}</strong>
+                  <span class="badge badge-default">{diff.staged ? 'staged' : 'worktree'}</span>
+                {/if}
+              </div>
+              {#if diff}
+                <div class="diff-mode" role="group" aria-label="Diff layout">
+                  <button type="button" class="btn btn-ghost btn-sm" class:active={diffMode === 'unified'} onclick={() => (diffMode = 'unified')}>Unified</button>
+                  <button type="button" class="btn btn-ghost btn-sm" class:active={diffMode === 'split'} onclick={() => (diffMode = 'split')}>Split</button>
+                </div>
+              {/if}
+            </div>
+            {#if diffLoading}
+              <div class="empty-state compact">Loading diff…</div>
+            {:else if !diff}
+              <div class="empty-state compact">Select a file to inspect its diff.</div>
+            {:else if diffMode === 'split'}
+              <div class="side-by-side-diff" aria-label="side-by-side diff">
+                <pre>{sideBySide.left.join('\n')}</pre>
+                <pre>{sideBySide.right.join('\n')}</pre>
+              </div>
+            {:else}
+              <pre class="unified-diff">{diff.patch || 'No diff available.'}</pre>
+            {/if}
+          </div>
+        {/if}
+      </section>
+    {:else if activeTab === 'branches'}
+      <section class="tab-body" role="tabpanel">
         <div class="commit-box">
           <input type="text" bind:value={commitMessage} placeholder="Commit message" />
           <button class="btn btn-primary btn-sm" type="button" disabled={stagedCount === 0 || !commitMessage.trim() || !!mutationBusy} onclick={requestCommit}>
-            {mutationBusy === 'commit:' ? 'Queueing...' : 'Commit staged'}
+            {mutationBusy === 'commit:' ? 'Queueing…' : `Commit ${stagedCount} staged`}
           </button>
         </div>
-        <div class="section-title">Log</div>
-        <div class="log-list">
-          {#each log as commit (commit.hash)}
-            <article class="log-row">
-              <strong>{commit.short_hash}</strong>
-              <span>{commit.subject}</span>
-              <small>{formatDate(commit.date)}</small>
-            </article>
-          {/each}
-        </div>
-      </div>
-    </section>
+        {#if branches.length === 0}
+          <div class="empty-state compact">No branches yet.</div>
+        {:else}
+          <div class="branch-list">
+            {#each branches as branch (branch.name)}
+              <article class="branch-row" class:current={branch.current}>
+                <div class="branch-meta">
+                  <strong>
+                    {#if branch.current}<span class="branch-marker" aria-label="current">●</span>{/if}
+                    {branch.name}
+                  </strong>
+                  {#if branch.upstream}<small>↑ {branch.upstream}</small>{/if}
+                </div>
+                <div class="branch-actions">
+                  {#if branch.remote}
+                    <span class="badge badge-default">remote</span>
+                  {:else if !branch.current}
+                    <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('switch_branch', { branch: branch.name, reason: 'Switch branch from Git Inspector' })}>
+                      {mutationBusy === `switch_branch:${branch.name}` ? '…' : 'Switch'}
+                    </button>
+                  {/if}
+                </div>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {:else if activeTab === 'log'}
+      <section class="tab-body" role="tabpanel">
+        {#if log.length === 0}
+          <div class="empty-state compact">No commits yet.</div>
+        {:else}
+          <div class="log-list">
+            {#each log as commit (commit.hash)}
+              <article class="log-row">
+                <div class="log-row-head">
+                  <strong title={commit.hash}>{commit.short_hash}</strong>
+                  <small>{formatDate(commit.date)}</small>
+                </div>
+                <span class="log-subject">{commit.subject}</span>
+                {#if commit.author}
+                  <small class="log-author">{commit.author}</small>
+                {/if}
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {/if}
   {/if}
 </div>
 
@@ -330,9 +426,7 @@
     min-width: 0;
   }
 
-  .git-toolbar,
-  .git-actions,
-  .diff-head {
+  .git-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -340,82 +434,168 @@
     flex-wrap: wrap;
   }
 
-  .git-toolbar strong {
-    display: block;
-    color: var(--text-primary);
-    font-size: var(--text-md);
+  .git-heading {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .git-actions {
+    display: flex;
+    gap: var(--space-1);
+    align-items: center;
   }
 
   .panel-kicker,
   .section-title,
-  .repo-summary span {
+  .status-meta dt {
     color: var(--text-tertiary);
     font-size: var(--text-xs);
     text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
-  .repo-summary {
+  .branch-name {
+    color: var(--text-primary);
+    font-size: var(--text-md);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: min(100%, 240px);
+  }
+
+  .meta-chip {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    padding: 2px var(--space-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    white-space: nowrap;
+  }
+
+  .meta-chip.subtle {
+    border-color: transparent;
+    background: transparent;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .tab-nav {
+    display: flex;
+    gap: var(--space-1);
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: var(--space-1);
+    flex-wrap: wrap;
+  }
+
+  .tab-btn {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: var(--text-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .tab-btn:hover {
+    color: var(--text-primary);
+    background: var(--surface-hover);
+  }
+
+  .tab-btn.active {
+    color: var(--text-primary);
+    background: var(--surface-elevated);
+    border-color: var(--border-default);
+  }
+
+  .tab-badge {
+    font-size: var(--text-xs);
+    padding: 1px 5px;
+  }
+
+  .tab-body {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: var(--space-2);
+    gap: var(--space-3);
+    min-width: 0;
   }
 
-  .repo-summary div,
-  .remote-row,
-  .file-row,
-  .log-row {
+  .files-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .status-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--space-2);
+    margin: 0;
+  }
+
+  .status-meta div {
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     background: var(--surface);
     padding: var(--space-2);
     min-width: 0;
+    display: grid;
+    gap: 2px;
   }
 
-  .repo-summary strong,
-  .remote-row span,
-  .file-main span,
-  .file-main small,
-  .branch-row span,
-  .log-row span {
+  .status-meta dt {
+    margin: 0;
+  }
+
+  .status-meta dd {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
     overflow-wrap: anywhere;
   }
 
-  .repo-summary strong {
-    display: block;
-    color: var(--text-primary);
-    font-size: var(--text-xs);
-  }
-
-  .git-section,
-  .remote-list,
-  .file-list,
-  .branch-list,
-  .log-list {
+  .remote-list {
     display: grid;
+    gap: var(--space-1);
+  }
+
+  .remote-row {
+    display: grid;
+    grid-template-columns: minmax(80px, max-content) minmax(0, 1fr);
     gap: var(--space-2);
-  }
-
-  .success-banner {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid rgba(34, 197, 94, 0.25);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
-    background: rgba(34, 197, 94, 0.08);
-    color: var(--green);
-    font-size: var(--text-xs);
+    background: var(--surface);
+    padding: var(--space-2);
+    align-items: baseline;
   }
 
-  .remote-row strong,
-  .log-row strong {
+  .remote-row strong {
     color: var(--text-primary);
     font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
-  .remote-row span,
-  .log-row small,
-  .branch-row small,
-  .file-main small {
+  .remote-row span {
     color: var(--text-tertiary);
     font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .file-list {
+    display: grid;
+    gap: var(--space-1);
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 2px;
   }
 
   .file-row {
@@ -423,10 +603,15 @@
     grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--space-2);
     align-items: center;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: var(--space-2);
+    min-width: 0;
   }
 
   .file-row.active {
-    border-color: var(--border-default);
+    border-color: var(--primary);
     background: var(--surface-elevated);
   }
 
@@ -442,15 +627,23 @@
     cursor: pointer;
   }
 
-  .file-main span {
+  .file-main .file-path {
     color: var(--text-primary);
     font-size: var(--text-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-main small {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
   }
 
   .file-actions {
     grid-column: 1 / -1;
     display: flex;
-    gap: var(--space-2);
+    gap: var(--space-1);
     flex-wrap: wrap;
   }
 
@@ -459,14 +652,57 @@
     border-color: var(--primary);
   }
 
+  .diff-section {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .diff-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .diff-head-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .diff-head-title strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: min(100%, 320px);
+  }
+
+  .diff-mode {
+    display: inline-flex;
+    gap: 2px;
+  }
+
+  .diff-mode .active {
+    color: var(--primary-text);
+    border-color: var(--primary);
+  }
+
   .side-by-side-diff {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: var(--space-2);
+    gap: var(--space-1);
+    min-width: 0;
   }
 
   .side-by-side-diff pre,
-  .raw-diff pre {
+  .unified-diff {
     overflow: auto;
     margin: 0;
     border: 1px solid var(--border-subtle);
@@ -477,11 +713,14 @@
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     line-height: 1.5;
-    max-height: 260px;
+    max-height: 320px;
+    min-width: 0;
   }
 
-  .grid-two {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  .branch-list,
+  .log-list {
+    display: grid;
+    gap: var(--space-1);
   }
 
   .branch-row {
@@ -489,11 +728,49 @@
     justify-content: space-between;
     align-items: center;
     gap: var(--space-2);
-    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: var(--space-2);
+    min-width: 0;
+  }
+
+  .branch-row.current {
+    border-color: var(--primary);
+  }
+
+  .branch-meta {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .branch-meta strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .branch-marker {
+    color: var(--primary);
+    font-size: 10px;
+  }
+
+  .branch-meta small {
+    color: var(--text-tertiary);
     font-size: var(--text-xs);
   }
 
-  .branch-actions,
+  .branch-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+  }
+
   .commit-box {
     display: flex;
     align-items: center;
@@ -501,29 +778,55 @@
     flex-wrap: wrap;
   }
 
-  .commit-box {
-    margin-bottom: var(--space-3);
-  }
-
   .commit-box input {
-    min-width: 0;
     flex: 1;
+    min-width: 160px;
     padding: var(--space-1) var(--space-2);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     background: var(--surface-inset);
     color: var(--text-primary);
     font: inherit;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
   }
 
   .log-row {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: var(--space-2);
     display: grid;
     gap: 2px;
+    min-width: 0;
   }
 
-  .log-row span {
+  .log-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-2);
+    color: var(--text-primary);
+    font-size: var(--text-xs);
+  }
+
+  .log-row-head strong {
+    font-family: var(--font-mono);
+  }
+
+  .log-row-head small {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+  }
+
+  .log-subject {
     color: var(--text-secondary);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .log-author {
+    color: var(--text-tertiary);
     font-size: var(--text-xs);
   }
 
@@ -531,11 +834,13 @@
     padding: var(--space-3);
   }
 
-  @media (max-width: 1100px) {
-    .repo-summary,
-    .grid-two,
+  @media (max-width: 600px) {
     .side-by-side-diff {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    .branch-name {
+      max-width: 100%;
     }
   }
 </style>
