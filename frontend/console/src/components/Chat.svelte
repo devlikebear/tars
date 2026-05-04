@@ -6,6 +6,7 @@
     getSessionTasks, listChatTools, getSessionConfig, updateSessionConfig,
     type SessionToolConfig,
   } from '../lib/api'
+  import { t } from '../i18n'
   import { emptyTaskProgressSummary, planProgressPercent, summarizeTasks, type TaskProgressSummary } from '../lib/tasks'
   import { buildSessionHealthReport, emptySessionHealthReport, type SessionHealthAction, type SessionHealthInput, type SessionHealthReport } from '../lib/sessionHealth'
   import type { ChatTierRecommendationRequest, PulseSnapshot, NotificationMessage, Session, SessionMessage, SessionTasks } from '../lib/types'
@@ -114,21 +115,24 @@
   }
   type DockSizeZone = 'left' | 'right' | 'bottom'
   const dockStorageKey = 'tars.console.chat.dockLayout.v1'
-  const dockPanels: DockPanelDefinition[] = [
-    { id: 'sessions', title: 'Sessions', defaultZone: 'left', closeable: false },
-    { id: 'artifacts', title: 'Files', defaultZone: 'right' },
-    { id: 'config', title: 'Config', defaultZone: 'right' },
-    { id: 'context', title: 'Context', defaultZone: 'right' },
-    { id: 'prompt', title: 'Prompt', defaultZone: 'right' },
-    { id: 'prior', title: 'Prior Context', defaultZone: 'right' },
-    { id: 'tasks', title: 'Tasks', defaultZone: 'right' },
-    { id: 'git', title: 'Git', defaultZone: 'right' },
-    { id: 'skillExtraction', title: 'Skill Inbox', defaultZone: 'right' },
-    { id: 'cron', title: 'Cron', defaultZone: 'right' },
-    { id: 'health', title: 'Health', defaultZone: 'right' },
-    { id: 'terminal', title: 'Terminal', defaultZone: 'bottom' },
-  ]
-  let dockLayout: DockLayoutState = $state(createDockLayout(dockPanels))
+  function buildDockPanels(translations: typeof $t): DockPanelDefinition[] {
+    return [
+      { id: 'sessions', title: translations.chat.panels.sessions, defaultZone: 'left', closeable: false },
+      { id: 'artifacts', title: translations.chat.panels.files, defaultZone: 'right' },
+      { id: 'config', title: translations.chat.panels.config, defaultZone: 'right' },
+      { id: 'context', title: translations.chat.panels.context, defaultZone: 'right' },
+      { id: 'prompt', title: translations.chat.panels.prompt, defaultZone: 'right' },
+      { id: 'prior', title: translations.chat.panels.priorFull, defaultZone: 'right' },
+      { id: 'tasks', title: translations.chat.panels.tasks, defaultZone: 'right' },
+      { id: 'git', title: translations.chat.panels.git, defaultZone: 'right' },
+      { id: 'skillExtraction', title: translations.chat.panels.skillsInbox, defaultZone: 'right' },
+      { id: 'cron', title: translations.chat.panels.cron, defaultZone: 'right' },
+      { id: 'health', title: translations.chat.panels.health, defaultZone: 'right' },
+      { id: 'terminal', title: translations.chat.panels.terminal, defaultZone: 'bottom' },
+    ]
+  }
+  const dockPanels: DockPanelDefinition[] = $derived(buildDockPanels($t))
+  let dockLayout: DockLayoutState = $state(createDockLayout(buildDockPanels($t)))
   let dockLayoutLoaded = $state(false)
   interface TerminalDockTab {
     id: string
@@ -208,7 +212,7 @@
 
   function openIntegratedTerminalDock(target: { cwd: string; label: string }) {
     if (!selectedSessionId) {
-      showFeedback('Select a session first')
+      showFeedback($t.chat.panels.dockEmpty)
       return
     }
     if (terminalDockSessionId !== selectedSessionId) {
@@ -244,7 +248,7 @@
 
   function addTerminalTab(cwd: string, label: string) {
     if (!selectedSessionId) {
-      showFeedback('Select a session first')
+      showFeedback($t.chat.panels.dockEmpty)
       return
     }
     if (terminalDockSessionId !== selectedSessionId) {
@@ -287,15 +291,16 @@
   }
 
   function relativeTime(value?: string): string {
-    if (!value?.trim()) return 'never'
+    if (!value?.trim()) return $t.chat.statusStrip.neverTick
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
-    if (date.getFullYear() <= 1) return 'never'
+    if (date.getFullYear() <= 1) return $t.chat.statusStrip.neverTick
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
-    if (seconds < 60) return `${seconds}s ago`
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-    return `${Math.floor(seconds / 86400)}d ago`
+    const labels = $t.sessions.relativeTime
+    if (seconds < 60) return labels.secondsAgo(seconds)
+    if (seconds < 3600) return labels.minutesAgo(Math.floor(seconds / 60))
+    if (seconds < 86400) return labels.hoursAgo(Math.floor(seconds / 3600))
+    return labels.daysAgo(Math.floor(seconds / 86400))
   }
 
   async function loadSelectedSession(id: string) {
@@ -422,15 +427,15 @@
       if (r.compacted) {
         const saved = r.tokens_before - r.tokens_after
         const pct = r.tokens_before > 0 ? Math.round((saved / r.tokens_before) * 100) : 0
-        showFeedback(`Compacted ${r.compacted_count} messages (${r.original_count} → ${r.final_count}), ${pct}% tokens saved`)
+        showFeedback($t.chat.feedback.compacted(r.compacted_count, r.original_count, r.final_count, pct))
       } else {
-        showFeedback(r.reason || 'Nothing to compact')
+        showFeedback(r.reason || $t.chat.feedback.nothingToCompact)
       }
       sidebarRef?.load()
       chatKey++
       await refreshSessionHealth()
     } catch (e) {
-      showFeedback(e instanceof Error ? e.message : 'Compact failed')
+      showFeedback(e instanceof Error ? e.message : $t.chat.feedback.compactFailed)
     }
     actionBusy = false
   }
@@ -758,31 +763,31 @@
       <span class="pulse-val" class:warn={!!pulse?.last_err}>
         {pulse?.total_ticks ?? 0}
       </span>
-      <span class="pulse-lbl">Pulse ticks</span>
+      <span class="pulse-lbl">{$t.chat.statusStrip.pulseTicks}</span>
     </div>
     <div class="pulse-sep"></div>
     <div class="pulse-item">
-      <span class="pulse-val">{pulse?.last_tick_at ? relativeTime(pulse.last_tick_at) : 'never'}</span>
-      <span class="pulse-lbl">Last tick</span>
+      <span class="pulse-val">{pulse?.last_tick_at ? relativeTime(pulse.last_tick_at) : $t.chat.statusStrip.neverTick}</span>
+      <span class="pulse-lbl">{$t.chat.statusStrip.lastTick}</span>
     </div>
     <div class="pulse-sep"></div>
     <div class="pulse-item">
       <span class="pulse-val">{unreadCount}</span>
-      <span class="pulse-lbl">Unread</span>
+      <span class="pulse-lbl">{$t.chat.statusStrip.unread}</span>
     </div>
     <div class="pulse-sep"></div>
     </div>
     <div class="pulse-panel-toggles">
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('sessions')} onclick={() => togglePanel('sessions')} title="Session list">Sessions</button>
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('artifacts')} onclick={() => togglePanel('artifacts')} title="Files browser">Files{#if chatArtifacts.length > 0} ({chatArtifacts.length}){/if}</button>
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('context')} onclick={() => togglePanel('context')} title="Context monitor">Context</button>
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prompt')} onclick={() => togglePanel('prompt')} title="Prompt editor">Prompt</button>
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prior')} onclick={() => togglePanel('prior')} title="Prior Context preview">Prior</button>
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('tasks')} onclick={() => togglePanel('tasks')} title={tasksSummary.total > 0 ? `${tasksSummary.completed} done · ${tasksSummary.in_progress} in progress · ${tasksSummary.pending} pending` : 'Session tasks'}>Tasks{#if tasksSummary.total > 0} ({tasksSummary.completed}/{tasksSummary.total}){/if}</button>
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('git')} onclick={() => togglePanel('git')} title="Git Inspector">Git</button>
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('skillExtraction')} onclick={() => togglePanel('skillExtraction')} title="Skill Extraction Inbox">Skills</button>
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('cron')} onclick={() => togglePanel('cron')} title="Session cron jobs">Cron</button>
-      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('health')} onclick={() => togglePanel('health')} title={sessionHealth.summary}>Health{#if healthIssueCount > 0} ({healthIssueCount}){/if}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('sessions')} onclick={() => togglePanel('sessions')} title={$t.chat.panels.sessionsTooltip}>{$t.chat.panels.sessions}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('artifacts')} onclick={() => togglePanel('artifacts')} title={$t.chat.panels.filesTooltip}>{$t.chat.panels.files}{#if chatArtifacts.length > 0}{$t.chat.panels.filesCount(chatArtifacts.length)}{/if}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('context')} onclick={() => togglePanel('context')} title={$t.chat.panels.contextTooltip}>{$t.chat.panels.context}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prompt')} onclick={() => togglePanel('prompt')} title={$t.chat.panels.promptTooltip}>{$t.chat.panels.prompt}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prior')} onclick={() => togglePanel('prior')} title={$t.chat.panels.priorTooltip}>{$t.chat.panels.prior}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('tasks')} onclick={() => togglePanel('tasks')} title={tasksSummary.total > 0 ? $t.chat.panels.tasksProgressTooltip(tasksSummary.completed, tasksSummary.in_progress, tasksSummary.pending) : $t.chat.panels.tasksTooltip}>{$t.chat.panels.tasks}{#if tasksSummary.total > 0}{$t.chat.panels.tasksCount(tasksSummary.completed, tasksSummary.total)}{/if}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('git')} onclick={() => togglePanel('git')} title={$t.chat.panels.gitTooltip}>{$t.chat.panels.git}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('skillExtraction')} onclick={() => togglePanel('skillExtraction')} title={$t.chat.panels.skillsTooltip}>{$t.chat.panels.skills}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('cron')} onclick={() => togglePanel('cron')} title={$t.chat.panels.cronTooltip}>{$t.chat.panels.cron}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('health')} onclick={() => togglePanel('health')} title={sessionHealth.summary}>{$t.chat.panels.health}{#if healthIssueCount > 0}{$t.chat.panels.healthCount(healthIssueCount)}{/if}</button>
     </div>
   </div>
 
@@ -843,7 +848,7 @@
           sessionId={selectedSessionId}
           onClose={() => closePanel(panelID)}
           onApproved={(path) => {
-            showFeedback(path ? `Saved skill draft: ${path}` : 'Saved skill draft')
+            showFeedback(path ? $t.chat.feedback.savedSkillDraft(path) : $t.chat.feedback.savedSkillDraftPlain)
             contextRefreshVersion += 1
           }}
         />
@@ -866,7 +871,7 @@
           onAddTab={addTerminalTab}
         />
       {:else}
-        <div class="dock-empty">Select a session to use this panel.</div>
+        <div class="dock-empty">{$t.chat.panels.dockEmpty}</div>
       {/if}
     </DockPanelFrame>
   {/snippet}
@@ -909,31 +914,31 @@
               onclick={() => openPanel('health')}
               title={sessionHealth.summary}
             >
-              <span>Health</span>
+              <span>{$t.chat.session.healthBadge}</span>
               <strong>{sessionHealth.badgeLabel}</strong>
             </button>
           </div>
           <div class="session-actions">
             {#if !isMainSession()}
-              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={startRename}>Rename</button>
-              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleAutoTitle} title="Generate title from first message">AI Title</button>
+              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={startRename}>{$t.chat.session.actions.rename}</button>
+              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleAutoTitle} title={$t.chat.session.actions.aiTitleTooltip}>{$t.chat.session.actions.aiTitle}</button>
             {/if}
-            <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleCompact} title="Compress transcript">Compact</button>
+            <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleCompact} title={$t.chat.session.actions.compactTooltip}>{$t.chat.session.actions.compact}</button>
             <span class="session-actions-sep"></span>
-            <button class="btn btn-ghost btn-sm" onclick={handleCopyChat} title="Copy conversation to clipboard">Copy All</button>
-            <button class="btn btn-ghost btn-sm" onclick={handleDownloadChat} title="Download as markdown file">Download</button>
-            <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={() => openPanel('skillExtraction')} title="Extract reusable skills from this session">Extract Skill</button>
+            <button class="btn btn-ghost btn-sm" onclick={handleCopyChat} title={$t.chat.session.actions.copyAllTooltip}>{$t.chat.session.actions.copyAll}</button>
+            <button class="btn btn-ghost btn-sm" onclick={handleDownloadChat} title={$t.chat.session.actions.downloadTooltip}>{$t.chat.session.actions.download}</button>
+            <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={() => openPanel('skillExtraction')} title={$t.chat.session.actions.extractSkillTooltip}>{$t.chat.session.actions.extractSkill}</button>
             {#if !isMainSession()}
               <span class="session-actions-sep"></span>
               <button class="btn btn-danger btn-sm" disabled={actionBusy} onclick={handleDelete}>
-                {deleteConfirm ? 'Confirm?' : 'Delete'}
+                {deleteConfirm ? $t.chat.session.actions.confirmDelete : $t.chat.session.actions.delete}
               </button>
             {/if}
           </div>
         </div>
       {:else}
         <div class="session-header">
-          <h3 class="session-title new-chat-title">New Chat</h3>
+          <h3 class="session-title new-chat-title">{$t.chat.session.newChat}</h3>
         </div>
       {/if}
 
@@ -947,23 +952,23 @@
           class="plan-progress-strip"
           class:active={isPanelOpen('tasks')}
           onclick={() => togglePanel('tasks')}
-          title="Open session tasks"
+          title={$t.chat.planStrip.openTitle}
         >
           <span class="plan-strip-goal">
-            <span class="plan-strip-label">Plan</span>
+            <span class="plan-strip-label">{$t.chat.planStrip.label}</span>
             <strong>{tasksSummary.plan_goal}</strong>
             {#if tasksSummary.active_task_title}
-              <span class="plan-strip-active" title={`Currently in progress: ${tasksSummary.active_task_title}`}>
+              <span class="plan-strip-active" title={$t.chat.planStrip.activeTaskTooltip(tasksSummary.active_task_title)}>
                 <span class="plan-strip-active-dot" aria-hidden="true"></span>
                 {tasksSummary.active_task_title}
               </span>
             {/if}
           </span>
           <span class="plan-strip-progress">
-            <span class="plan-strip-bar" aria-label={`${planStripProgress}% complete`}>
+            <span class="plan-strip-bar" aria-label={$t.chat.planStrip.progressAria(planStripProgress)}>
               <span class="plan-strip-fill" style={`width: ${planStripProgress}%`}></span>
             </span>
-            <span class="plan-strip-count">{tasksSummary.completed}/{tasksSummary.total} tasks</span>
+            <span class="plan-strip-count">{$t.chat.planStrip.tasksSuffix(tasksSummary.completed, tasksSummary.total)}</span>
           </span>
         </button>
       {/if}

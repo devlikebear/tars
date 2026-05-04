@@ -84,6 +84,8 @@ export type Translations = {
     subtitle: string
     showWorkers: string
     searchPlaceholder: string
+    sidebarSearchPlaceholder: string
+    newChat: string
     filters: {
       all: string
       session: string
@@ -93,15 +95,44 @@ export type Translations = {
     sort: {
       recent: string
       name: string
+      recentTitle: string
+      nameTitle: string
     }
     loading: string
+    sidebarLoading: string
     searchingTranscripts: string
+    sidebarSearchingTranscripts: string
     empty: string
     noMatches: string
+    sidebarEmpty: string
+    sidebarNoMatches: string
     transcriptMatches: string
     autoTitle: string
     confirmDelete: string
     clickAgainToConfirm: string
+    snippetFallbackKind: string
+    relativeTime: {
+      secondsAgo: (n: number) => string
+      minutesAgo: (n: number) => string
+      hoursAgo: (n: number) => string
+      daysAgo: (n: number) => string
+    }
+    actions: {
+      rename: string
+      autoTitle: string
+      compact: string
+      delete: string
+      confirm: string
+    }
+    errors: {
+      loadFailed: string
+      deleteFailed: string
+      compactFailed: string
+      compactSuccess: (count: number, percent: number) => string
+      nothingToCompact: string
+      generateTitleFailed: string
+      transcriptSearchFailed: string
+    }
   }
   memory: {
     title: string
@@ -401,6 +432,119 @@ export type Translations = {
   }
   chat: {
     pinned: string
+    statusStrip: {
+      pulseTicks: string
+      lastTick: string
+      unread: string
+      neverTick: string
+    }
+    panels: {
+      sessions: string
+      sessionsTooltip: string
+      files: string
+      filesTooltip: string
+      filesCount: (count: number) => string
+      config: string
+      context: string
+      contextTooltip: string
+      prompt: string
+      promptTooltip: string
+      prior: string
+      priorTooltip: string
+      priorFull: string
+      tasks: string
+      tasksTooltip: string
+      tasksProgressTooltip: (done: number, inProgress: number, pending: number) => string
+      tasksCount: (done: number, total: number) => string
+      git: string
+      gitTooltip: string
+      skills: string
+      skillsTooltip: string
+      skillsInbox: string
+      cron: string
+      cronTooltip: string
+      health: string
+      healthCount: (count: number) => string
+      terminal: string
+      dockEmpty: string
+    }
+    session: {
+      newChat: string
+      healthBadge: string
+      healthBadgeTooltip: string
+      actions: {
+        rename: string
+        aiTitle: string
+        aiTitleTooltip: string
+        compact: string
+        compactTooltip: string
+        copyAll: string
+        copyAllTooltip: string
+        download: string
+        downloadTooltip: string
+        extractSkill: string
+        extractSkillTooltip: string
+        delete: string
+        confirmDelete: string
+      }
+    }
+    planStrip: {
+      label: string
+      openTitle: string
+      tasksSuffix: (completed: number, total: number) => string
+      progressAria: (percent: number) => string
+      activeTaskTooltip: (title: string) => string
+    }
+    feedback: {
+      compacted: (count: number, original: number, final: number, percent: number) => string
+      nothingToCompact: string
+      compactFailed: string
+      savedSkillDraft: (path: string) => string
+      savedSkillDraftPlain: string
+    }
+    systemInit: {
+      tars: string
+      session: (idShort: string) => string
+    }
+    dropOverlay: string
+    mention: {
+      loading: string
+      noMatches: string
+    }
+    toolbar: {
+      attachFile: string
+      attachImage: string
+    }
+    tierRecommendation: {
+      ariaLabel: string
+      chooseTierAria: string
+      headline: (tier: string) => string
+      tierLight: string
+      tierStandard: string
+      tierHeavy: string
+    }
+    input: {
+      placeholderNew: string
+      placeholderContinue: string
+      send: string
+      stop: string
+    }
+    message: {
+      usageBadgeTitle: string
+      usageIn: string
+      usageOut: string
+      usageCached: string
+      copy: string
+      copyTitle: string
+      forkFromHere: string
+      forkFromHereTitle: string
+      roles: {
+        system: string
+        user: string
+        assistant: string
+        tool: string
+      }
+    }
   }
   configWizardCard: {
     kicker: string
