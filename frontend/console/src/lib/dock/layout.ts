@@ -33,7 +33,7 @@ export const defaultDockSizes: DockSizes = {
 
 const dockSizeLimits: Record<keyof DockSizes, { min: number; max: number }> = {
   left: { min: 220, max: 520 },
-  right: { min: 260, max: 520 },
+  right: { min: 320, max: 520 },
   bottom: { min: 180, max: 520 },
 }
 

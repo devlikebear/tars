@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.142] - 2026-05-04
+
+### Fixed
+
+- **Console — right dock minimum width** — bumped the right dock's minimum resizable width from 260px to 320px (matching the default size). At 260px the Tasks/Git panel cards would squash their right-side controls (status badge, "+ Evidence") and leave the title column too narrow for CJK text, causing per-character vertical wrapping. The clamp is enforced via `dockSizeLimits` in `lib/dock/layout.ts` and re-applied to persisted layouts on load via `normalizeDockLayout`. Mobile (<900px) is unaffected — docks already render as fullscreen overlays via the existing media query.
+
 ## [0.31.141] - 2026-05-04
 
 ### Fixed
