@@ -104,6 +104,7 @@ func buildPulseRuntime(in pulseSetupInputs) pulseSetup {
 	}
 	reg.Register(&autofix.AutoContinueChat{Continuer: autoResumeCtrl})
 	reg.Register(&autofix.AutoResumeFailedChat{Resumer: autoResumeCtrl})
+	reg.Register(&autofix.AutoContinueGoalPlan{Continuer: autoResumeCtrl})
 	allowedAutofixes := reg.AllowedIntersection(in.Config.PulseAllowedAutofixes)
 
 	minSeverity, _ := pulse.ParseSeverity(strings.TrimSpace(in.Config.PulseMinSeverity))

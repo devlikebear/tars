@@ -84,6 +84,7 @@ const (
 	SignalKindReflectionFailure    SignalKind = "reflection_failure"
 	SignalKindStalledChat          SignalKind = "stalled_chat"
 	SignalKindFailedChat           SignalKind = "failed_chat"
+	SignalKindAutoContinueGoal     SignalKind = "auto_continue_goal"
 )
 
 // Signal is a single observation made by the signal scanner. A pulse tick
