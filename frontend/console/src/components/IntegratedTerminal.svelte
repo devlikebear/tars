@@ -11,9 +11,53 @@
   import { terminalWebSocketURL } from '../lib/api'
 
   const FONT_SIZE_KEY = 'tars.terminal.fontSize'
-  const DEFAULT_FONT_SIZE = 12
+  const FONT_FAMILY_KEY = 'tars.terminal.fontFamily'
+  const DEFAULT_FONT_SIZE = 14
   const MIN_FONT_SIZE = 8
   const MAX_FONT_SIZE = 24
+
+  // Font family presets. Every entry must resolve to a true monospace —
+  // xterm assumes uniform glyph width, so non-monospace fallbacks break
+  // rendering. The CSS string includes a system-monospace fallback so
+  // the choice degrades gracefully when the named font isn't installed.
+  type FontPreset = { id: string; label: string; css: string }
+  const FONT_FAMILIES: FontPreset[] = [
+    {
+      id: 'jetbrains-mono',
+      label: 'JetBrains Mono',
+      css: "'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace",
+    },
+    {
+      id: 'sf-mono',
+      label: 'SF Mono / Menlo',
+      css: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace",
+    },
+    {
+      id: 'consolas',
+      label: 'Consolas',
+      css: "Consolas, 'Liberation Mono', Menlo, monospace",
+    },
+    {
+      id: 'cascadia-code',
+      label: 'Cascadia Code',
+      css: "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, monospace",
+    },
+    {
+      id: 'fira-code',
+      label: 'Fira Code',
+      css: "'Fira Code', 'JetBrains Mono', Menlo, Consolas, monospace",
+    },
+    {
+      id: 'system',
+      label: 'System default',
+      css: 'monospace',
+    },
+  ]
+  const DEFAULT_FONT_FAMILY_ID = 'jetbrains-mono'
+
+  function fontFamilyByID(id: string): FontPreset {
+    return FONT_FAMILIES.find((f) => f.id === id) ?? FONT_FAMILIES[0]
+  }
 
   function loadFontSize(): number {
     if (typeof localStorage === 'undefined') return DEFAULT_FONT_SIZE
@@ -21,6 +65,15 @@
     const parsed = raw ? parseInt(raw, 10) : NaN
     if (!Number.isFinite(parsed)) return DEFAULT_FONT_SIZE
     return Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, parsed))
+  }
+
+  function loadFontFamilyID(): string {
+    if (typeof localStorage === 'undefined') return DEFAULT_FONT_FAMILY_ID
+    const raw = localStorage.getItem(FONT_FAMILY_KEY)
+    if (!raw) return DEFAULT_FONT_FAMILY_ID
+    // Reject unknown IDs so a stale localStorage value can't break xterm
+    // with a non-monospace font.
+    return FONT_FAMILIES.some((f) => f.id === raw) ? raw : DEFAULT_FONT_FAMILY_ID
   }
 
   interface Props {
@@ -50,6 +103,9 @@
   let menuY = $state(0)
   let menuHasSelection = $state(false)
   let menuEl: HTMLDivElement | undefined = $state()
+  let settingsOpen = $state(false)
+  let settingsFontFamilyID = $state(loadFontFamilyID())
+  let settingsFontSize = $state(loadFontSize())
 
   let terminal: Terminal | null = null
   let fitAddon: FitAddon | null = null
@@ -204,10 +260,28 @@
   function applyFontSize(size: number) {
     if (!terminal) return
     const clamped = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, Math.round(size)))
-    if (terminal.options.fontSize === clamped) return
+    if (terminal.options.fontSize === clamped) {
+      settingsFontSize = clamped
+      return
+    }
     terminal.options.fontSize = clamped
+    settingsFontSize = clamped
     try {
       localStorage.setItem(FONT_SIZE_KEY, String(clamped))
+    } catch {
+      // localStorage may be disabled — non-fatal.
+    }
+    fitAndResize()
+  }
+
+  function applyFontFamily(id: string) {
+    if (!terminal) return
+    const preset = fontFamilyByID(id)
+    settingsFontFamilyID = preset.id
+    if (terminal.options.fontFamily === preset.css) return
+    terminal.options.fontFamily = preset.css
+    try {
+      localStorage.setItem(FONT_FAMILY_KEY, preset.id)
     } catch {
       // localStorage may be disabled — non-fatal.
     }
@@ -388,7 +462,7 @@
     if (!container) return
     terminal = new Terminal({
       cursorBlink: true,
-      fontFamily: "var(--font-mono), Menlo, Consolas, 'Liberation Mono', monospace",
+      fontFamily: fontFamilyByID(loadFontFamilyID()).css,
       fontSize: loadFontSize(),
       lineHeight: 1.2,
       scrollback: 2000,
@@ -467,6 +541,24 @@
       connect()
       terminal?.focus()
     })
+
+    // Web fonts (e.g. JetBrains Mono) may not be ready when xterm
+    // measures glyph metrics on first mount. If we don't refit after
+    // they finish loading, the terminal renders with the fallback's
+    // metrics — uneven spacing, drifting cursor — until the next
+    // resize. fonts.ready resolves once all currently-loading fonts
+    // settle; the refresh + fit call brings xterm back in sync (#686).
+    if (typeof document !== 'undefined' && document.fonts) {
+      document.fonts.ready
+        .then(() => {
+          if (!terminal) return
+          fitAndResize()
+          terminal.refresh(0, terminal.rows - 1)
+        })
+        .catch(() => {
+          // fonts.ready can reject on edge browsers — non-fatal.
+        })
+    }
   })
 
   $effect(() => {
@@ -529,6 +621,15 @@
       </button>
     </div>
     <div class="terminal-actions">
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        onclick={() => (settingsOpen = !settingsOpen)}
+        aria-expanded={settingsOpen}
+        title="Terminal font settings"
+      >
+        Aa
+      </button>
       <button type="button" class="btn btn-ghost btn-sm" onclick={openSearch} title="Find ({isMac ? '⌘F' : 'Ctrl+Shift+F'})">Find</button>
       {#if !hideLabel}
         <button type="button" class="btn btn-ghost btn-sm" onclick={onClose}>Close</button>
@@ -556,6 +657,45 @@
       <button type="button" class="btn btn-ghost btn-sm" onclick={findPrevious} title="Previous (Shift+Enter)">↑</button>
       <button type="button" class="btn btn-ghost btn-sm" onclick={findNext} title="Next (Enter)">↓</button>
       <button type="button" class="btn btn-ghost btn-sm" onclick={closeSearch} title="Close (Esc)">✕</button>
+    </div>
+  {/if}
+  {#if settingsOpen}
+    <div class="terminal-settings" role="region" aria-label="Terminal font settings">
+      <label class="terminal-settings-row">
+        <span>Font</span>
+        <select
+          value={settingsFontFamilyID}
+          onchange={(e) => applyFontFamily((e.currentTarget as HTMLSelectElement).value)}
+        >
+          {#each FONT_FAMILIES as preset (preset.id)}
+            <option value={preset.id}>{preset.label}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="terminal-settings-row">
+        <span>Size</span>
+        <input
+          type="range"
+          min={MIN_FONT_SIZE}
+          max={MAX_FONT_SIZE}
+          step="1"
+          value={settingsFontSize}
+          oninput={(e) => applyFontSize(Number((e.currentTarget as HTMLInputElement).value))}
+        />
+        <span class="terminal-settings-value">{settingsFontSize}px</span>
+      </label>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        onclick={() => {
+          applyFontSize(DEFAULT_FONT_SIZE)
+          applyFontFamily(DEFAULT_FONT_FAMILY_ID)
+        }}
+        title="Reset to defaults"
+      >
+        Reset
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={() => (settingsOpen = false)} title="Close">✕</button>
     </div>
   {/if}
   <div class="terminal-frame-wrap">
@@ -740,6 +880,56 @@
 
   .terminal-search label input {
     display: none;
+  }
+
+  .terminal-settings {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-raised);
+    flex-shrink: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+  }
+
+  .terminal-settings-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+  }
+
+  .terminal-settings-row > span:first-child {
+    min-width: 36px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .terminal-settings-row select,
+  .terminal-settings-row input[type='range'] {
+    background: var(--surface-inset);
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+  }
+
+  .terminal-settings-row input[type='range'] {
+    padding: 0;
+    min-width: 120px;
+    accent-color: var(--accent-primary, #e09145);
+  }
+
+  .terminal-settings-value {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    min-width: 36px;
+    text-align: right;
   }
 
   .terminal-frame-wrap {
