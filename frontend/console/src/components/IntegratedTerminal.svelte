@@ -49,6 +49,7 @@
   let menuX = $state(0)
   let menuY = $state(0)
   let menuHasSelection = $state(false)
+  let menuEl: HTMLDivElement | undefined = $state()
 
   let terminal: Terminal | null = null
   let fitAddon: FitAddon | null = null
@@ -287,6 +288,20 @@
       menuY = e.clientY
     }
     menuOpen = true
+    // Clamp to the wrap rect after the menu mounts so it doesn't extend
+    // past the bottom/right edge of the terminal frame (#669).
+    void tick().then(() => {
+      if (!menuOpen || !menuEl) return
+      const wrap = menuEl.parentElement
+      if (!wrap) return
+      const wrapRect = wrap.getBoundingClientRect()
+      const menuRect = menuEl.getBoundingClientRect()
+      const margin = 4
+      const maxX = Math.max(0, wrapRect.width - menuRect.width - margin)
+      const maxY = Math.max(0, wrapRect.height - menuRect.height - margin)
+      if (menuX > maxX) menuX = maxX
+      if (menuY > maxY) menuY = maxY
+    })
   }
 
   function closeMenu() {
@@ -556,6 +571,7 @@
         }}
       ></div>
       <div
+        bind:this={menuEl}
         class="terminal-menu"
         role="menu"
         style="left: {menuX}px; top: {menuY}px"

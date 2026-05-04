@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.150] - 2026-05-04
+
+### Fixed
+
+- **Console terminal — context menu clamps to the frame edge** (#669) — right-clicking near the bottom or right edge of the integrated terminal used to render a menu that extended past the visible area, hiding "Clear" / "Save buffer". After the menu mounts we now measure its size and clamp `menuX`/`menuY` so it stays inside the terminal-frame wrap with a small margin.
+
 ## [0.31.149] - 2026-05-04
 
 ### Fixed
