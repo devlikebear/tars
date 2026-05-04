@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.152] - 2026-05-04
+
+### Fixed
+
+- **Console terminal — survives dock zone moves without restarting** (#667) — dragging the integrated terminal between dock zones (left / right / bottom / fullscreen) used to unmount and remount `TerminalTabs`, which closed the WebSocket and tore down the running shell along with its scrollback. The terminal panel is now rendered from a single, stable parent at the chat-layout root with a `data-zone` attribute; CSS picks the matching `grid-area` (or fullscreen overlay positioning) per zone, so xterm + the PTY survive zone changes intact. The regular dock-pane wrapper is suppressed for whichever zone currently hosts the terminal to avoid duplicate panes; resizers stay on so the active pane can still be resized.
+
 ## [0.31.151] - 2026-05-04
 
 ### Added
