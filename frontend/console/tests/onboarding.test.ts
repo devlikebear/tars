@@ -161,6 +161,20 @@ test('defaultBaseURLForKind returns canonical URLs and empty for local', () => {
   assert.equal(defaultBaseURLForKind(''), '')
 })
 
+test('defaultBaseURLForKind matches backend llmdefaults for gemini variants', () => {
+  // Mirrors internal/llmdefaults/defaults.go:GeminiBaseURL & GeminiNativeBaseURL.
+  // If the backend constants change, update both — wizard-prefilled URLs that
+  // miss the path return 404 with an empty body (#671).
+  assert.equal(
+    defaultBaseURLForKind('gemini'),
+    'https://generativelanguage.googleapis.com/v1beta/openai',
+  )
+  assert.equal(
+    defaultBaseURLForKind('gemini-native'),
+    'https://generativelanguage.googleapis.com/v1beta',
+  )
+})
+
 test('availableAuthModesForKind narrows the auth_mode select per kind', () => {
   assert.deepEqual(availableAuthModesForKind('openai-codex'), ['oauth'])
   assert.deepEqual(availableAuthModesForKind('claude-code-cli'), ['cli'])

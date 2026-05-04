@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.148] - 2026-05-04
+
+### Fixed
+
+- **Onboarding wizard — Gemini base_url 404** (#671) — `defaultBaseURLForKind` in the wizard now returns the full backend-canonical paths (`/v1beta/openai` for `gemini`, `/v1beta` for `gemini-native`) instead of the bare host. Previously every chat/model call after a wizard-driven Gemini setup failed with `gemini status 404` and an empty payload. Added a regression test that pins both URLs to the backend `llmdefaults` constants. Existing users whose config was written by the broken wizard need to either re-run the wizard with `?reentry=1` and Apply, or edit the `gemini` provider's `base_url` directly in Providers.
+
 ## [0.31.147] - 2026-05-04
 
 ### Changed
