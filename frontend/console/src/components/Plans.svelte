@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { getGlobalPlans } from '../lib/api'
   import type { GlobalPlanItem } from '../lib/types'
+  import { t } from '../i18n'
 
   interface Props {
     onNavigate: (path: string) => void
@@ -18,7 +19,7 @@
     try {
       plans = (await getGlobalPlans(true)).items
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load plans'
+      error = err instanceof Error ? err.message : $t.plans.failedLoad
     } finally {
       loading = false
     }
@@ -37,11 +38,11 @@
 
   function sessionKind(item: GlobalPlanItem): string {
     if (item.session.kind?.trim()) return item.session.kind
-    return item.session.hidden ? 'worker' : 'session'
+    return item.session.hidden ? $t.plans.sessionKindWorker : $t.plans.sessionKindSession
   }
 
   function formatTime(value?: string): string {
-    if (!value) return 'Never'
+    if (!value) return $t.plans.timeNever
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
     return new Intl.DateTimeFormat(undefined, {
@@ -64,10 +65,10 @@
 <div class="plans-page">
   <section class="plans-header">
     <div>
-      <span class="plans-kicker">Work</span>
-      <h2>Plans</h2>
+      <span class="plans-kicker">{$t.plans.kicker}</span>
+      <h2>{$t.plans.title}</h2>
     </div>
-    <button class="btn btn-ghost btn-sm" type="button" onclick={load} disabled={loading}>Refresh</button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick={load} disabled={loading}>{$t.plans.refresh}</button>
   </section>
 
   {#if error}
@@ -75,34 +76,34 @@
   {/if}
 
   {#if loading && plans.length === 0}
-    <div class="empty-state">Loading plans...</div>
+    <div class="empty-state">{$t.plans.loadingPlans}</div>
   {:else if plans.length === 0}
     <section class="empty-state plans-empty">
-      <strong>No active plans.</strong>
-      <p>Start a multi-step task in chat to create one.</p>
-      <button class="btn btn-primary btn-sm" type="button" onclick={() => onNavigate('/console/chat')}>Open Chat</button>
+      <strong>{$t.plans.emptyTitle}</strong>
+      <p>{$t.plans.emptyBody}</p>
+      <button class="btn btn-primary btn-sm" type="button" onclick={() => onNavigate('/console/chat')}>{$t.plans.openChat}</button>
     </section>
   {:else}
-    <section class="plans-summary" aria-label="Active plan summary">
+    <section class="plans-summary" aria-label={$t.plans.summaryAriaLabel}>
       <div class="summary-card card">
-        <span>Active plans</span>
+        <span>{$t.plans.activePlans}</span>
         <strong>{plans.length}</strong>
       </div>
       <div class="summary-card card">
-        <span>In progress</span>
+        <span>{$t.plans.inProgress}</span>
         <strong>{plans.reduce((total, item) => total + (item.summary?.in_progress ?? 0), 0)}</strong>
       </div>
       <div class="summary-card card">
-        <span>Pending</span>
+        <span>{$t.plans.pending}</span>
         <strong>{plans.reduce((total, item) => total + (item.summary?.pending ?? 0), 0)}</strong>
       </div>
       <div class="summary-card card">
-        <span>Completed</span>
+        <span>{$t.plans.completed}</span>
         <strong>{plans.reduce((total, item) => total + (item.summary?.completed ?? 0), 0)}</strong>
       </div>
     </section>
 
-    <section class="plan-grid" aria-label="Active plans">
+    <section class="plan-grid" aria-label={$t.plans.plansAriaLabel}>
       {#each plans as item (item.session.id)}
         {@const percent = progressPercent(item)}
         <button class="plan-card card" type="button" onclick={() => openSession(item.session.id)}>
@@ -112,16 +113,16 @@
           </span>
           <strong class="plan-goal">{item.plan.goal}</strong>
           <span class="plan-meta">
-            <span>{item.plan.status ?? 'executing'}</span>
-            <span>Updated {formatTime(item.updated_at)}</span>
+            <span>{item.plan.status ?? $t.plans.statusFallback}</span>
+            <span>{$t.plans.updatedAt(formatTime(item.updated_at))}</span>
           </span>
-          <span class="progress-track" aria-label={`${percent}% complete`}>
+          <span class="progress-track" aria-label={$t.plans.progressAria(percent)}>
             <span class="progress-fill" style={`width: ${percent}%`}></span>
           </span>
           <span class="plan-stats">
-            <span>{finishedCount(item)}/{item.summary?.total ?? item.tasks.length} done</span>
-            <span>{item.summary?.in_progress ?? 0} active</span>
-            <span>{item.summary?.pending ?? 0} pending</span>
+            <span>{$t.plans.doneSuffix(finishedCount(item), item.summary?.total ?? item.tasks.length)}</span>
+            <span>{$t.plans.activeSuffix(item.summary?.in_progress ?? 0)}</span>
+            <span>{$t.plans.pendingSuffix(item.summary?.pending ?? 0)}</span>
           </span>
         </button>
       {/each}

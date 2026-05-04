@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { getTelegramPairings, approveTelegramPairing, revokeTelegramPairing } from '../lib/api'
   import type { TelegramPairingsResponse, TelegramAllowedUser, TelegramPairingEntry } from '../lib/types'
+  import { t } from '../i18n'
 
   let pairings: TelegramPairingsResponse | null = $state(null)
   let loading = $state(true)
@@ -17,7 +18,7 @@
       pairings = await getTelegramPairings()
       error = ''
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load pairings'
+      error = e instanceof Error ? e.message : $t.channels.failedLoad
     } finally {
       loading = false
     }
@@ -26,7 +27,7 @@
   async function handleApprove() {
     const code = approveCode.trim()
     if (!code) {
-      error = 'Enter a pairing code'
+      error = $t.channels.enterCodeError
       return
     }
     approving = true
@@ -34,11 +35,11 @@
     success = ''
     try {
       const result = await approveTelegramPairing(code)
-      success = `Approved ${result.approved.username || result.approved.user_id}`
+      success = $t.channels.approvedSuccess(result.approved.username || String(result.approved.user_id))
       approveCode = ''
       await load()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Approve failed'
+      error = e instanceof Error ? e.message : $t.channels.approveFailed
     } finally {
       approving = false
     }
@@ -50,10 +51,10 @@
     success = ''
     try {
       await revokeTelegramPairing(userId)
-      success = 'Access revoked'
+      success = $t.channels.accessRevoked
       await load()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Revoke failed'
+      error = e instanceof Error ? e.message : $t.channels.revokeFailed
     } finally {
       revokeBusy = null
     }
@@ -76,7 +77,7 @@
   }
 
   function fmtDate(value?: string): string {
-    if (!value) return '—'
+    if (!value) return $t.channels.dash
     const d = new Date(value)
     if (Number.isNaN(d.getTime())) return value
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(d)
@@ -94,7 +95,7 @@
 
 <div class="channels-page">
   <div class="page-header">
-    <h2 class="page-title">Channels</h2>
+    <h2 class="page-title">{$t.channels.title}</h2>
   </div>
 
   {#if error}
@@ -106,60 +107,60 @@
 
   <div class="card">
     <div class="card-header">
-      <span class="card-title">Telegram</span>
+      <span class="card-title">{$t.channels.telegramTitle}</span>
       {#if pairings}
         <div class="header-badges">
-          <span class="badge badge-default">policy: {pairings.dm_policy || '—'}</span>
-          <span class="badge badge-default">polling: {pairings.polling_enabled ? 'on' : 'off'}</span>
+          <span class="badge badge-default">{$t.channels.policyLabel(pairings.dm_policy || $t.channels.dash)}</span>
+          <span class="badge badge-default">{$t.channels.pollingLabel(pairings.polling_enabled ? $t.channels.pollingOn : $t.channels.pollingOff)}</span>
         </div>
       {/if}
     </div>
 
     <div class="section">
-      <h3 class="section-title">Approve pairing</h3>
-      <p class="section-desc">Enter the pairing code sent by a Telegram user to grant access.</p>
+      <h3 class="section-title">{$t.channels.approveSection}</h3>
+      <p class="section-desc">{$t.channels.approveDescription}</p>
       <div class="approve-row">
         <input
           type="text"
           class="field-input"
-          placeholder="Pairing code (e.g. ABCD1234)"
+          placeholder={$t.channels.approveCodePlaceholder}
           bind:value={approveCode}
           onkeydown={(e) => { if (e.key === 'Enter') handleApprove() }}
           disabled={approving}
         />
         <button class="btn btn-primary btn-sm" disabled={approving} onclick={handleApprove}>
-          {approving ? 'Approving...' : 'Approve'}
+          {approving ? $t.channels.approving : $t.channels.approveButton}
         </button>
       </div>
     </div>
 
     <div class="section">
       <h3 class="section-title">
-        Pending
+        {$t.channels.pendingSection}
         {#if pairings}
           <span class="count-badge">{pairings.pending.length}</span>
         {/if}
       </h3>
       {#if loading}
-        <div class="loading">Loading...</div>
+        <div class="loading">{$t.channels.loading}</div>
       {:else if !pairings || pairings.pending.length === 0}
-        <div class="empty">No pending pairings</div>
+        <div class="empty">{$t.channels.noPending}</div>
       {:else}
         <div class="table-wrap">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Code</th>
-                <th>User</th>
-                <th>Chat ID</th>
-                <th>Expires</th>
+                <th>{$t.channels.table.code}</th>
+                <th>{$t.channels.table.user}</th>
+                <th>{$t.channels.table.chatId}</th>
+                <th>{$t.channels.table.expires}</th>
               </tr>
             </thead>
             <tbody>
               {#each pairings.pending as item (item.code)}
                 <tr>
                   <td class="mono">{item.code}</td>
-                  <td>{item.username || '—'}</td>
+                  <td>{item.username || $t.channels.dash}</td>
                   <td class="mono">{item.chat_id}</td>
                   <td>{fmtDate(item.expires_at)}</td>
                 </tr>
@@ -172,30 +173,30 @@
 
     <div class="section">
       <h3 class="section-title">
-        Allowed
+        {$t.channels.allowedSection}
         {#if pairings}
           <span class="count-badge">{pairings.allowed.length}</span>
         {/if}
       </h3>
       {#if loading}
-        <div class="loading">Loading...</div>
+        <div class="loading">{$t.channels.loading}</div>
       {:else if !pairings || pairings.allowed.length === 0}
-        <div class="empty">No allowed users</div>
+        <div class="empty">{$t.channels.noAllowed}</div>
       {:else}
         <div class="table-wrap">
           <table class="data-table">
             <thead>
               <tr>
-                <th>User</th>
-                <th>Chat ID</th>
-                <th>Approved</th>
+                <th>{$t.channels.table.user}</th>
+                <th>{$t.channels.table.chatId}</th>
+                <th>{$t.channels.table.approved}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {#each pairings.allowed as item (item.user_id)}
                 <tr>
-                  <td>{item.username || '—'}</td>
+                  <td>{item.username || $t.channels.dash}</td>
                   <td class="mono">{item.chat_id}</td>
                   <td>{fmtDate(item.approved_at)}</td>
                   <td class="actions">
@@ -204,7 +205,7 @@
                       disabled={revokeBusy === item.user_id}
                       onclick={() => handleRevoke(item.user_id)}
                     >
-                      {revokeBusy === item.user_id ? 'Revoking...' : 'Revoke'}
+                      {revokeBusy === item.user_id ? $t.channels.revoking : $t.channels.revoke}
                     </button>
                   </td>
                 </tr>
@@ -219,11 +220,12 @@
 
 <style>
   .channels-page {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-    padding: var(--space-6);
-    max-width: 960px;
+    overflow-y: auto;
     animation: fadeIn var(--duration-normal) var(--ease-out);
   }
 

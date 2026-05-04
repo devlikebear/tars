@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import { t } from '../i18n'
   import AgentRuntimeCostFlow from './AgentRuntimeCostFlow.svelte'
   import AgentRuntimeFlowGraph from './AgentRuntimeFlowGraph.svelte'
   import AgentRuntimeGantt from './AgentRuntimeGantt.svelte'
@@ -91,36 +92,36 @@
   let restartMessage = $state('')
   let stopStream: (() => void) | null = null
 
-  const runtimeTools = [
-    { name: 'subagents_run', detail: 'Parallel or compare-mode delegated tasks on selected agents and tiers.' },
-    { name: 'subagents_orchestrate', detail: 'Advanced opt-in staged flow for dependent steps.' },
-    { name: 'subagents_plan', detail: 'Advanced opt-in planner for staged flows.' },
-  ]
+  let runtimeTools = $derived([
+    { name: 'subagents_run', detail: $t.agentRuntime.toolDetail.run },
+    { name: 'subagents_orchestrate', detail: $t.agentRuntime.toolDetail.orchestrate },
+    { name: 'subagents_plan', detail: $t.agentRuntime.toolDetail.plan },
+  ])
 
   const starterPrompts = [
     'Analyze this codebase in parallel with three subagents.',
     'Ask two subagents to inspect the frontend and backend separately.',
   ]
 
-  const runStatusOptions: { value: RunStatusFilter; label: string }[] = [
-    { value: 'all', label: 'All' },
-    { value: 'running', label: 'Running' },
-    { value: 'done', label: 'Done' },
-    { value: 'failed', label: 'Failed' },
-  ]
+  let runStatusOptions = $derived<{ value: RunStatusFilter; label: string }[]>([
+    { value: 'all', label: $t.agentRuntime.statusAll },
+    { value: 'running', label: $t.agentRuntime.statusRunning },
+    { value: 'done', label: $t.agentRuntime.statusDone },
+    { value: 'failed', label: $t.agentRuntime.statusFailed },
+  ])
 
-  const runTimeRangeOptions: { value: RunTimeRange; label: string }[] = [
-    { value: '24h', label: '24h' },
-    { value: '7d', label: '7d' },
-    { value: 'all', label: 'All' },
-  ]
+  let runTimeRangeOptions = $derived<{ value: RunTimeRange; label: string }[]>([
+    { value: '24h', label: $t.agentRuntime.range24h },
+    { value: '7d', label: $t.agentRuntime.range7d },
+    { value: 'all', label: $t.agentRuntime.rangeAll },
+  ])
 
-  const runViewModeOptions: { value: RunViewMode; label: string }[] = [
-    { value: 'list', label: 'List' },
-    { value: 'tree', label: 'Tree' },
-    { value: 'gantt', label: 'Gantt' },
-    { value: 'flow', label: 'Flow' },
-  ]
+  let runViewModeOptions = $derived<{ value: RunViewMode; label: string }[]>([
+    { value: 'list', label: $t.agentRuntime.viewMode.list },
+    { value: 'tree', label: $t.agentRuntime.viewMode.tree },
+    { value: 'gantt', label: $t.agentRuntime.viewMode.gantt },
+    { value: 'flow', label: $t.agentRuntime.viewMode.flow },
+  ])
 
   let activeTab = $derived(runId ? 'runs' : tab)
   let subagents = $derived<AgentRuntimeSubagent[]>(subagentsData?.agents ?? [])
@@ -178,7 +179,7 @@
       runs = visibleRuns
       summaryRuns = costRuns
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load agent runtime runs'
+      error = e instanceof Error ? e.message : $t.agentRuntime.failedLoadRuns
     } finally {
       loading = false
     }
@@ -194,7 +195,7 @@
         selectedSubagentName = data.agents[0]?.name ?? ''
       }
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load subagents'
+      error = e instanceof Error ? e.message : $t.agentRuntime.failedLoadSubagents
     } finally {
       loading = false
     }
@@ -210,7 +211,7 @@
       prepareRestartForm(selectedRun)
     } catch (e) {
       selectedRun = null
-      error = e instanceof Error ? e.message : 'Failed to load agent runtime run'
+      error = e instanceof Error ? e.message : $t.agentRuntime.failedLoadRun
     } finally {
       loading = false
     }
@@ -464,7 +465,7 @@
       restartMessage = `Started ${retry.run_id}`
       openRunDetail(retry.run_id)
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to restart run'
+      error = e instanceof Error ? e.message : $t.agentRuntime.failedRestartRun
     } finally {
       restartBusy = false
     }
@@ -521,7 +522,7 @@
       }
       selectedSubagentName = updated.name
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to update subagent tier'
+      error = e instanceof Error ? e.message : $t.agentRuntime.failedUpdateTier
     } finally {
       updatingTier = ''
     }
@@ -571,7 +572,7 @@
     try {
       recommendationResponse = await recommendAgentRuntimeSubagents({ limit: 120, min_runs: 2 })
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to recommend subagents'
+      error = e instanceof Error ? e.message : $t.agentRuntime.failedRecommend
     } finally {
       recommendationBusy = false
     }
@@ -615,7 +616,7 @@
       })
       builderTier = builderResponse.draft.default_tier || builderTier
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to draft subagent'
+      error = e instanceof Error ? e.message : $t.agentRuntime.failedDraft
     } finally {
       builderBusy = false
     }
@@ -660,7 +661,7 @@
       }
       closeBuilder()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to apply subagent draft'
+      error = e instanceof Error ? e.message : $t.agentRuntime.failedApplyDraft
     } finally {
       builderApplying = false
     }
@@ -678,7 +679,7 @@
       archiveConfirmName = ''
       await loadSubagents()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to archive subagent'
+      error = e instanceof Error ? e.message : $t.agentRuntime.failedArchive
     } finally {
       archiveBusy = false
     }
@@ -722,34 +723,34 @@
 <div class="agentruntime-view">
   <div class="agentruntime-header">
     <div>
-      <div class="agentruntime-title">Agent Runtime</div>
+      <div class="agentruntime-title">{$t.agentRuntime.title}</div>
       <div class="agentruntime-subtitle">
         {#if runId}
-          Inspect live run events and resolved model metadata.
+          {$t.agentRuntime.subtitleRunDetail}
         {:else if activeTab === 'subagents'}
-          Manage the active subagent catalog and LLM tier mapping.
+          {$t.agentRuntime.subtitleSubagents}
         {:else}
-          Inspect recent subagent executions and live run events.
+          {$t.agentRuntime.subtitleRuns}
         {/if}
       </div>
     </div>
     {#if runId}
-      <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/agentruntime')}>Back</button>
+      <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/agentruntime')}>{$t.agentRuntime.back}</button>
     {:else if activeTab === 'subagents'}
       <div class="header-actions">
         <button class="btn btn-secondary btn-sm" onclick={requestSubagentRecommendations} disabled={recommendationBusy}>
-          {recommendationBusy ? 'Analyzing...' : 'Recommend from Runs'}
+          {recommendationBusy ? $t.agentRuntime.analyzing : $t.agentRuntime.recommendFromRuns}
         </button>
-        <button class="btn btn-primary btn-sm" onclick={openCreateBuilder}>New Subagent</button>
-        <button class="btn btn-ghost btn-sm" onclick={loadSubagents} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
+        <button class="btn btn-primary btn-sm" onclick={openCreateBuilder}>{$t.agentRuntime.newSubagent}</button>
+        <button class="btn btn-ghost btn-sm" onclick={loadSubagents} disabled={loading}>{loading ? $t.agentRuntime.loading : $t.agentRuntime.refresh}</button>
       </div>
     {:else}
-      <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
+      <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? $t.agentRuntime.loading : $t.agentRuntime.refresh}</button>
     {/if}
   </div>
 
   {#if !runId}
-    <div class="runtime-tabs" role="tablist" aria-label="Agent runtime views">
+    <div class="runtime-tabs" role="tablist" aria-label={$t.agentRuntime.tabsAriaLabel}>
       <button
         type="button"
         class:active={activeTab === 'runs'}
@@ -757,7 +758,7 @@
         role="tab"
         aria-selected={activeTab === 'runs'}
       >
-        Runs
+        {$t.agentRuntime.tabRuns}
       </button>
       <button
         type="button"
@@ -766,7 +767,7 @@
         role="tab"
         aria-selected={activeTab === 'subagents'}
       >
-        Subagents
+        {$t.agentRuntime.tabSubagents}
       </button>
     </div>
   {/if}
@@ -774,14 +775,11 @@
   {#if !runId && activeTab === 'runs'}
     <section class="intro-card" aria-labelledby="agentruntime-intro-title">
       <div class="intro-copy">
-        <div class="eyebrow">Background Subagents</div>
-        <h2 id="agentruntime-intro-title">Agent Runtime</h2>
-        <p>
-          Runs appear here when chat starts delegated work in the agent runtime.
-          Each record keeps the prompt, model tier, status, response, live events, and advanced cost data when available.
-        </p>
+        <div class="eyebrow">{$t.agentRuntime.introEyebrow}</div>
+        <h2 id="agentruntime-intro-title">{$t.agentRuntime.introTitle}</h2>
+        <p>{$t.agentRuntime.introBody}</p>
       </div>
-      <div class="tool-strip" aria-label="Agent runtime tool families">
+      <div class="tool-strip" aria-label={$t.agentRuntime.toolStripAriaLabel}>
         {#each runtimeTools as tool}
           <div class="tool-chip">
             <code>{tool.name}</code>
@@ -791,9 +789,9 @@
       </div>
     </section>
 
-    <section class="run-controls" aria-label="Agent Runtime run filters">
+    <section class="run-controls" aria-label={$t.agentRuntime.filtersAriaLabel}>
       <div class="filter-group">
-        <span class="filter-label">Status</span>
+        <span class="filter-label">{$t.agentRuntime.filterStatus}</span>
         <div class="filter-chip-row">
           {#each runStatusOptions as option}
             <button
@@ -808,7 +806,7 @@
         </div>
       </div>
       <div class="filter-group">
-        <span class="filter-label">Time range</span>
+        <span class="filter-label">{$t.agentRuntime.filterTimeRange}</span>
         <div class="filter-chip-row">
           {#each runTimeRangeOptions as option}
             <button
@@ -823,19 +821,19 @@
         </div>
       </div>
       <label class="run-search-field">
-        <span>Search prompt</span>
+        <span>{$t.agentRuntime.filterSearchLabel}</span>
         <input
           bind:value={runSearchInput}
           onkeydown={handleRunSearchKeydown}
-          placeholder="Prompt, run id, agent, session"
+          placeholder={$t.agentRuntime.filterSearchPlaceholder}
         />
       </label>
       <button class="btn btn-primary btn-sm" type="button" onclick={loadRuns} disabled={loading}>
-        {loading ? 'Loading...' : 'Apply'}
+        {loading ? $t.agentRuntime.loading : $t.agentRuntime.apply}
       </button>
     </section>
 
-    <section class="run-view-mode" aria-label="Agent Runtime visualization mode">
+    <section class="run-view-mode" aria-label={$t.agentRuntime.visualAriaLabel}>
       {#each runViewModeOptions as option}
         <button
           type="button"
@@ -847,27 +845,27 @@
       {/each}
     </section>
 
-    <section class="cost-summary-grid" aria-label="Agent Runtime cost summary">
+    <section class="cost-summary-grid" aria-label={$t.agentRuntime.costSummaryAriaLabel}>
       <div class="cost-summary-card">
-        <span>Today</span>
+        <span>{$t.agentRuntime.costToday}</span>
         <strong>{fmtUSD(todayCostUSD)}</strong>
-        <small>Loaded run costs</small>
+        <small>{$t.agentRuntime.costLoadedRunCosts}</small>
       </div>
       <div class="cost-summary-card">
-        <span>7d</span>
+        <span>{$t.agentRuntime.cost7d}</span>
         <strong>{fmtUSD(sevenDayCostUSD)}</strong>
-        <small>Loaded run costs</small>
+        <small>{$t.agentRuntime.costLoadedRunCosts}</small>
       </div>
       <div class="cost-summary-card plan-summary">
-        <span>Plan totals</span>
+        <span>{$t.agentRuntime.costPlanTotals}</span>
         {#if planCostRows.length === 0}
-          <small>No advanced cost data yet</small>
+          <small>{$t.agentRuntime.costNoData}</small>
         {:else}
           <div class="plan-cost-list">
             {#each planCostRows as row}
               <div class="plan-cost-row">
                 <strong title={row.key}>{row.label}</strong>
-                <span>{fmtUSD(row.total)} · {row.runs} {row.runs === 1 ? 'run' : 'runs'}</span>
+                <span>{fmtUSD(row.total)} · {$t.agentRuntime.costRunSuffix(row.runs)}</span>
               </div>
             {/each}
           </div>
@@ -890,9 +888,9 @@
         {#if runFiltersActive()}
           <section class="empty-guide" aria-labelledby="agentruntime-empty-title">
             <div>
-              <div class="eyebrow">No Matching Runs</div>
-              <h3 id="agentruntime-empty-title">Adjust filters</h3>
-              <p>No Agent Runtime runs match the current status, time range, and search query.</p>
+              <div class="eyebrow">{$t.agentRuntime.emptyNoMatchEyebrow}</div>
+              <h3 id="agentruntime-empty-title">{$t.agentRuntime.emptyNoMatchTitle}</h3>
+              <p>{$t.agentRuntime.emptyNoMatchBody}</p>
             </div>
             <div class="empty-actions">
               <button
@@ -904,20 +902,17 @@
                   void loadRuns()
                 }}
               >
-                Clear Filters
+                {$t.agentRuntime.clearFilters}
               </button>
-              <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
+              <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? $t.agentRuntime.loading : $t.agentRuntime.refresh}</button>
             </div>
           </section>
         {:else}
           <section class="empty-guide" aria-labelledby="agentruntime-empty-title">
             <div>
-              <div class="eyebrow">No Runs Yet</div>
-              <h3 id="agentruntime-empty-title">Start from Chat</h3>
-              <p>
-                Agent Runtime only records work launched by the subagent tools.
-                Try one of these prompts in a chat session, then return here to inspect the run history.
-              </p>
+              <div class="eyebrow">{$t.agentRuntime.emptyNoRunsEyebrow}</div>
+              <h3 id="agentruntime-empty-title">{$t.agentRuntime.emptyNoRunsTitle}</h3>
+              <p>{$t.agentRuntime.emptyNoRunsBody}</p>
             </div>
             <div class="prompt-grid">
               {#each starterPrompts as prompt}
@@ -925,8 +920,8 @@
               {/each}
             </div>
             <div class="empty-actions">
-              <button class="btn btn-secondary btn-sm" onclick={() => onNavigate('/console/chat')}>Open Chat</button>
-              <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</button>
+              <button class="btn btn-secondary btn-sm" onclick={() => onNavigate('/console/chat')}>{$t.agentRuntime.openChat}</button>
+              <button class="btn btn-ghost btn-sm" onclick={loadRuns} disabled={loading}>{loading ? $t.agentRuntime.loading : $t.agentRuntime.refresh}</button>
             </div>
           </section>
         {/if}
@@ -936,7 +931,7 @@
             <button class="run-open-button" type="button" onclick={() => openRunDetail(run.run_id)}>
               <div class="row-main">
                 <span class="row-id">{run.run_id}</span>
-                <span class="row-agent">{run.agent || 'default'}</span>
+                <span class="row-agent">{run.agent || $t.agentRuntime.rowAgentDefault}</span>
                 <span class="row-status">{run.status}</span>
                 {#if run.consensus_mode}<span class="row-mode">{run.consensus_mode}</span>{/if}
               </div>
@@ -957,7 +952,7 @@
                 title={`Open chat session ${run.session_id}`}
                 onclick={() => onNavigate(`/console/chat/${encodeURIComponent(run.session_id || '')}`)}
               >
-                Started from session: {shortID(run.session_id)}
+                {$t.agentRuntime.sessionLink(shortID(run.session_id))}
               </button>
             {/if}
           </article>

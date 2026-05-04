@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.161] - 2026-05-04
+
+### Fixed
+
+- **Console — every page now fills the viewport instead of leaving a dark gap below the content** — `.chat-page` was sized with `height: calc(100vh - var(--header-height))` while sitting inside `.shell-content`, which has 24px of vertical padding (16px on mobile). The page overflowed the viewport by ~48px, pushing the composer below the fold and leaving the bottom of the chat looking cut off. Reworked the shell ancestry — `.shell { height: 100vh }`, `.shell-main { min-height: 0 }`, `.shell-content { display: flex; flex-direction: column; min-height: 0 }` — so flex children get a definite-height context, then converted each top-level page (Chat, Session Lineage, Memory, System Prompt, Extensions, Channels, Cron, Settings) to `flex: 1; min-height: 0` with internal `overflow-y: auto` where appropriate. Long-content pages (Logs) still scroll naturally via the body. The chat layout now fits without overflow on desktop (1280×1300) and mobile (600×900).
+
+### Added
+
+- **Console i18n — Korean coverage for 7 previously English-only pages** — Session Lineage (분기), Plans (계획), System Prompt (시스템 프롬프트), Extensions (확장), Agent Runtime (에이전트 런타임 — main runs view), Channels (채널), and Settings (설정 — main shell). Added matching namespaces to `i18n/types.ts`, `en.ts`, and `ko.ts` and routed every visible UI string through the `t` store so locale toggles take effect immediately. Field-level labels in `lib/quickStartFields.ts` and the deeper Agent Runtime subagent builder remain English and are tracked for a follow-up; the configWizardCard `kicker` now reads `설정 마법사` in Korean instead of leaking the English label.
+
 ## [0.31.160] - 2026-05-04
 
 ### Added

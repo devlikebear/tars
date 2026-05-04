@@ -168,10 +168,10 @@
     success = ''
     try {
       const result = await resetWorkspace()
-      success = `Workspace reset: ${result.removed} items removed. Restart TARS to reinitialize.`
+      success = $t.config.workspaceResetSuccess(result.removed)
       resetWsConfirm = false
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to reset workspace'
+      error = e instanceof Error ? e.message : $t.config.failedResetWorkspace
     } finally {
       resetWsBusy = false
     }
@@ -970,23 +970,23 @@
 <div class="config-page" onkeydown={handleKeydown}>
   <div class="page-header">
     <div class="page-header-left">
-      <h2 class="page-title">Settings</h2>
+      <h2 class="page-title">{$t.config.pageTitle}</h2>
       {#if configPath}
         <span class="config-path">{configPath}</span>
       {/if}
     </div>
     <div class="page-header-right">
       {#if shouldShowFieldActions && hasDirtyFields}
-        <button class="badge badge-warning diff-badge" onclick={() => { showDiff = !showDiff }} title="View changes">{Object.keys(dirtyFields).length} changed</button>
-        <button class="btn btn-ghost btn-sm" onclick={handleDiscardFields}>Discard</button>
+        <button class="badge badge-warning diff-badge" onclick={() => { showDiff = !showDiff }} title={$t.config.viewChangesTooltip}>{$t.config.changedSuffix(Object.keys(dirtyFields).length)}</button>
+        <button class="btn btn-ghost btn-sm" onclick={handleDiscardFields}>{$t.config.discard}</button>
         <button class="btn btn-primary btn-sm" disabled={fieldSaving} onclick={handleSaveFields}>
-          {fieldSaving ? 'Saving...' : 'Save'}
+          {fieldSaving ? $t.config.saving : $t.config.save}
         </button>
       {/if}
       <div class="view-toggle">
-        <button class="toggle-btn" class:active={viewMode === 'quick'} onclick={() => { viewMode = 'quick' }}>Quick Start</button>
-        <button class="toggle-btn" class:active={viewMode === 'form'} onclick={() => { viewMode = 'form' }}>Fields</button>
-        <button class="toggle-btn" class:active={viewMode === 'yaml'} onclick={() => { viewMode = 'yaml' }}>YAML</button>
+        <button class="toggle-btn" class:active={viewMode === 'quick'} onclick={() => { viewMode = 'quick' }}>{$t.config.viewToggleQuick}</button>
+        <button class="toggle-btn" class:active={viewMode === 'form'} onclick={() => { viewMode = 'form' }}>{$t.config.viewToggleFields}</button>
+        <button class="toggle-btn" class:active={viewMode === 'yaml'} onclick={() => { viewMode = 'yaml' }}>{$t.config.viewToggleYaml}</button>
       </div>
     </div>
   </div>
@@ -1006,10 +1006,10 @@
   {/if}
 
   {#if loading}
-    <div class="loading">Loading configuration...</div>
+    <div class="loading">{$t.config.loading}</div>
   {:else if !configPath}
     <div class="card empty-state">
-      <p>No config file configured. Start TARS with <code>--config &lt;path&gt;</code> to manage settings.</p>
+      <p>{$t.config.noConfigFile}</p>
     </div>
   {:else}
     {#if error}
@@ -1027,10 +1027,10 @@
       <div class="quick-start-panel">
         <div class="quick-start-header">
           <div>
-            <span class="quick-start-kicker">Essential setup</span>
-            <h3>Quick Start</h3>
+            <span class="quick-start-kicker">{$t.config.quickStartKicker}</span>
+            <h3>{$t.config.quickStartTitle}</h3>
           </div>
-          <span class="quick-start-progress">{quickStartStats.ready}/{quickStartStats.total} ready</span>
+          <span class="quick-start-progress">{$t.config.quickStartReady(quickStartStats.ready, quickStartStats.total)}</span>
         </div>
         <div class="quick-start-grid">
           {#each quickStartItems as item}
@@ -1045,7 +1045,7 @@
                 <p>{item.description}</p>
                 <span class="quick-status-message">{item.status.message}</span>
                 {#if defaultValueSummary(field)}
-                  <span class="quick-default">Default {defaultValueSummary(field)}</span>
+                  <span class="quick-default">{$t.config.defaultPrefix(defaultValueSummary(field))}</span>
                 {/if}
                 {#if metaBadges.length > 0}
                   <div class="field-meta-badges" aria-label={`${field.label} metadata`}>
@@ -1062,9 +1062,9 @@
                     class:bool-on={!!getDisplayValue(field)}
                     class:dirty={isDirty(field.key)}
                     onclick={() => toggleBool(field)}
-                    title="Click to toggle"
+                    title={$t.config.clickToToggle}
                   >
-                    {getDisplayValue(field) ? 'ON' : 'OFF'}
+                    {getDisplayValue(field) ? $t.config.on : $t.config.off}
                   </button>
                 {:else if field.type === 'select' && field.options}
                   <select
@@ -1074,7 +1074,7 @@
                     onchange={(e) => handleSelectChange(field, e)}
                   >
                     {#each field.options as opt}
-                      <option value={opt}>{opt || '(none)'}</option>
+                      <option value={opt}>{opt || $t.config.selectNone}</option>
                     {/each}
                   </select>
                 {:else if editingKey === field.key}
@@ -1102,7 +1102,7 @@
                     class="value-btn"
                     class:dirty={isDirty(field.key)}
                     onclick={() => startEdit(field)}
-                    title="Click to edit"
+                    title={$t.config.clickToEdit}
                   >
                     <span class="value-text sensitive">{formatValue(field)}</span>
                   </button>
@@ -1607,11 +1607,12 @@
 
 <style>
   .config-page {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-    padding: var(--space-6);
-    max-width: 960px;
+    overflow-y: auto;
     animation: fadeIn var(--duration-normal) var(--ease-out);
   }
 
@@ -1711,7 +1712,6 @@
   .loading { color: var(--text-secondary); font-size: var(--text-sm); padding: var(--space-6); }
 
   .empty-state { padding: var(--space-6); text-align: center; color: var(--text-secondary); font-size: var(--text-sm); }
-  .empty-state code { font-family: var(--font-mono); background: var(--surface-elevated); padding: 2px var(--space-1); border-radius: var(--radius-sm); font-size: var(--text-xs); }
 
   .message { font-size: var(--text-sm); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }
   .message-error { background: rgba(220, 60, 60, 0.15); color: var(--red); border: 1px solid rgba(220, 60, 60, 0.3); }
