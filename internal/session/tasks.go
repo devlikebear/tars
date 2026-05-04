@@ -44,6 +44,45 @@ type Plan struct {
 	CreatedAt   string `json:"created_at"`
 	Status      string `json:"status,omitempty"`
 	UpdatedAt   string `json:"updated_at,omitempty"`
+
+	// AutoContinueEnabled, when true, lets pulse auto-continue this session
+	// after the current plan completes — either by proposing a follow-up
+	// plan or marking the goal achieved. The hard iteration cap is enforced
+	// via the automation audit log (counting successful auto-continue turns
+	// in a rolling window) so it survives plan replacement. Opt-in (default
+	// false).
+	AutoContinueEnabled bool `json:"auto_continue_enabled,omitempty"`
+
+	// AutoContinueMaxIterations caps how many auto-continue turns may run
+	// for this session in the rolling AutoContinueIterationWindow. Zero
+	// means use DefaultAutoContinueMaxIterations.
+	AutoContinueMaxIterations int `json:"auto_continue_max_iterations,omitempty"`
+}
+
+// Auto-continue iteration limits. The hard upper bound is enforced
+// regardless of per-plan overrides, and the rolling window is the period
+// over which audit-log entries are counted toward the cap.
+const (
+	DefaultAutoContinueMaxIterations = 5
+	AutoContinueIterationsHardCap    = 10
+	AutoContinueIterationWindow      = 24 * time.Hour
+)
+
+// EffectiveAutoContinueMaxIterations returns the cap that applies to this
+// plan, clamping to the hard upper bound and falling back to the default
+// when unset.
+func (p *Plan) EffectiveAutoContinueMaxIterations() int {
+	if p == nil {
+		return DefaultAutoContinueMaxIterations
+	}
+	limit := p.AutoContinueMaxIterations
+	if limit <= 0 {
+		limit = DefaultAutoContinueMaxIterations
+	}
+	if limit > AutoContinueIterationsHardCap {
+		limit = AutoContinueIterationsHardCap
+	}
+	return limit
 }
 
 // Plan status constants — enumerate the states a plan can be in.

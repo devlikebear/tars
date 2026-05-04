@@ -433,3 +433,226 @@ The previous turn halted unexpectedly. Inspect the transcript and continue if it
 `, strings.TrimSpace(candidate.LastMessageID))
 	}
 }
+
+// ContinueGoalPlans runs one chat turn per session whose plan has just
+// completed with auto-continue opted in. The turn asks the LLM to either
+// declare the session goal achieved (which terminates the loop by clearing
+// the auto-continue flag) or propose a follow-up plan via the tasks tool.
+//
+// The iteration cap is enforced by counting successful audit-log entries in
+// the rolling AutoContinueIterationWindow — this survives plan replacement
+// when the LLM proposes a new plan to keep working.
+func (c *sessionAutoResumeController) ContinueGoalPlans(ctx context.Context) (autofix.GoalPlanAutoContinueResult, error) {
+	if c == nil || c.store == nil {
+		return autofix.GoalPlanAutoContinueResult{}, fmt.Errorf("goal-plan auto-continuer is not configured")
+	}
+	now := c.nowTime()
+	candidates, err := pulse.DetectAutoContinueGoalCandidates(ctx, c.store, now)
+	if err != nil {
+		return autofix.GoalPlanAutoContinueResult{}, err
+	}
+	result := autofix.GoalPlanAutoContinueResult{}
+	for _, candidate := range candidates {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		if !candidate.CanAutoContinue {
+			result.Skipped++
+			c.recordGoalPlanAudit(candidate, "blocked", blockedGoalPlanReason(candidate), "")
+			continue
+		}
+		used := c.recentGoalPlanContinueCount(candidate.SessionID, now)
+		cap := candidate.MaxIterations
+		if cap <= 0 {
+			cap = session.DefaultAutoContinueMaxIterations
+		}
+		if used >= cap {
+			result.Escalated++
+			c.recordGoalPlanAudit(candidate, "escalated", "goal-plan iteration cap reached", "")
+			c.emitGoalPlanNotification(ctx, candidate, "warn", "Goal auto-continue paused", "iteration cap reached; goal session needs user attention")
+			c.disableAutoContinue(candidate.SessionID, "iteration_cap_reached")
+			continue
+		}
+		prompt := buildGoalContinuePrompt(candidate, used, cap)
+		runTurn := c.runTurn
+		if runTurn == nil {
+			runTurn = c.runAutoResumeTurn
+		}
+		shimmed := pulse.StalledChatCandidate{SessionID: candidate.SessionID}
+		summary, err := runTurn(ctx, shimmed, prompt)
+		if err != nil {
+			result.Skipped++
+			c.recordGoalPlanAudit(candidate, "failed", "goal-plan auto-continue run failed", err.Error())
+			continue
+		}
+		// Re-read the plan after the turn — the LLM may have replaced it,
+		// flipped AutoContinueEnabled to false (goal achieved), or left it
+		// unchanged. Use that to classify the outcome and decide whether to
+		// emit a "goal completed" notification.
+		outcome, _ := c.classifyGoalPlanOutcome(candidate.SessionID)
+		switch outcome {
+		case "goal_completed":
+			result.GoalsCompleted++
+			result.SessionIDs = append(result.SessionIDs, candidate.SessionID)
+			c.recordGoalPlanAudit(candidate, "success", "goal achieved by auto-continue", summary)
+			c.emitGoalPlanNotification(ctx, candidate, "info", "Goal achieved", "auto-continue ended after the LLM declared the goal complete")
+		default:
+			result.Continued++
+			result.SessionIDs = append(result.SessionIDs, candidate.SessionID)
+			c.recordGoalPlanAudit(candidate, "success", "auto-continued goal plan", summary)
+			c.emitGoalPlanNotification(ctx, candidate, "info", "Plan auto-continued", fmt.Sprintf("pulse continued the goal session (iter %d/%d)", used+1, cap))
+		}
+	}
+	return result, nil
+}
+
+func (c *sessionAutoResumeController) recentGoalPlanContinueCount(sessionID string, now time.Time) int {
+	if c == nil || c.manager == nil || strings.TrimSpace(sessionID) == "" {
+		return 0
+	}
+	items, err := c.manager.ListAutomationAudit(ops.AutomationAuditListOptions{SessionID: sessionID, Limit: 500})
+	if err != nil {
+		c.logger.Debug().Err(err).Str("session_id", sessionID).Msg("goal-plan audit read failed")
+		return 0
+	}
+	cutoff := now.Add(-session.AutoContinueIterationWindow)
+	count := 0
+	for _, item := range items {
+		if item.Action != autofix.AutoContinueGoalPlanName || item.Result != "success" {
+			continue
+		}
+		if item.Timestamp.Before(cutoff) {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+func (c *sessionAutoResumeController) recordGoalPlanAudit(candidate pulse.AutoContinueGoalCandidate, result string, reason string, detail string) {
+	if c == nil || c.manager == nil {
+		return
+	}
+	cwd := ""
+	if sess, err := c.store.Get(candidate.SessionID); err == nil {
+		cwd = sess.CurrentDir
+	}
+	details := map[string]any{
+		"plan_goal":           candidate.PlanGoal,
+		"max_iterations":      candidate.MaxIterations,
+		"auto_resume_enabled": candidate.AutoResumeEnabled,
+	}
+	if strings.TrimSpace(candidate.BlockReason) != "" {
+		details["block_reason"] = candidate.BlockReason
+	}
+	if strings.TrimSpace(detail) != "" {
+		details["detail"] = trimForMemory(detail, 360)
+	}
+	_, _ = c.manager.RecordAutomationAudit(ops.AutomationAuditEntry{
+		Actor:     "pulse",
+		Action:    autofix.AutoContinueGoalPlanName,
+		Reason:    reason,
+		SessionID: candidate.SessionID,
+		CWD:       cwd,
+		Result:    result,
+		Details:   details,
+	})
+}
+
+func (c *sessionAutoResumeController) emitGoalPlanNotification(ctx context.Context, candidate pulse.AutoContinueGoalCandidate, severity string, title string, message string) {
+	if c == nil || c.emit == nil {
+		return
+	}
+	evt := newNotificationEvent("pulse", severity, title, message)
+	evt.SessionID = candidate.SessionID
+	if candidate.SessionID != "" {
+		evt.OpenPath = "/console/chat/" + candidate.SessionID
+	}
+	c.emit(ctx, evt)
+}
+
+// classifyGoalPlanOutcome inspects the session's current tasks file after an
+// auto-continue turn ran. Three observable outcomes:
+//   - "goal_completed": plan exists but AutoContinueEnabled is now false (the
+//     LLM disabled it to signal the goal is achieved).
+//   - "next_plan": a fresh plan exists with status != completed (the LLM
+//     proposed a follow-up).
+//   - "no_change": the plan is still completed AND AutoContinueEnabled is
+//     still true; the LLM didn't make a clean decision. The next pulse tick
+//     will re-attempt up to the cap.
+func (c *sessionAutoResumeController) classifyGoalPlanOutcome(sessionID string) (string, error) {
+	if c == nil || c.store == nil {
+		return "no_change", nil
+	}
+	tasks, err := c.store.GetTasks(sessionID)
+	if err != nil {
+		return "no_change", err
+	}
+	if tasks.Plan == nil {
+		return "no_change", nil
+	}
+	if !tasks.Plan.AutoContinueEnabled {
+		return "goal_completed", nil
+	}
+	if strings.TrimSpace(tasks.Plan.Status) != session.PlanStatusCompleted {
+		return "next_plan", nil
+	}
+	return "no_change", nil
+}
+
+// disableAutoContinue clears the AutoContinueEnabled flag on the session's
+// active plan after the iteration cap has been reached. This prevents the
+// detector from re-triggering on every pulse tick once the cap escalates.
+func (c *sessionAutoResumeController) disableAutoContinue(sessionID string, reason string) {
+	if c == nil || c.store == nil {
+		return
+	}
+	tasks, err := c.store.GetTasks(sessionID)
+	if err != nil || tasks.Plan == nil {
+		return
+	}
+	if !tasks.Plan.AutoContinueEnabled {
+		return
+	}
+	tasks.Plan.AutoContinueEnabled = false
+	if err := c.store.SaveTasks(sessionID, tasks); err != nil {
+		c.logger.Debug().Err(err).Str("session_id", sessionID).Str("reason", reason).Msg("failed to disable auto-continue after cap")
+	}
+}
+
+func blockedGoalPlanReason(candidate pulse.AutoContinueGoalCandidate) string {
+	if candidate.BlockReason != "" {
+		return candidate.BlockReason
+	}
+	if !candidate.AutoResumeEnabled {
+		return "session has not enabled auto-resume"
+	}
+	return "goal plan is not safe to auto-continue"
+}
+
+func buildGoalContinuePrompt(candidate pulse.AutoContinueGoalCandidate, used int, cap int) string {
+	goal := strings.TrimSpace(candidate.PlanGoal)
+	if goal == "" {
+		goal = "(unset — please re-state the goal in your reply before continuing)"
+	}
+	return fmt.Sprintf(`[PULSE AUTO-CONTINUE — GOAL REVIEW]
+session_goal: %s
+iteration: %d / %d (cap)
+
+The active plan just transitioned to "completed" and this session is opted
+in to auto-continue. Decide ONE of:
+
+1. Goal achieved → call the tasks tool to set the active plan's
+   "auto_continue_enabled" to false, summarise the outcome, and stop.
+2. Goal not yet achieved → propose the next plan (use the tasks tool to
+   create the new plan + tasks). Keep "auto_continue_enabled" true only if
+   you genuinely expect another short loop to finish the goal.
+
+Hard rules:
+- Do not invent user-specific facts, credentials, permissions, or approvals.
+- If you cannot decide cleanly, set auto_continue_enabled=false and
+  summarise the blocker. Pulse will not re-trigger.
+- The iteration counter above is a safety bound; the cap will trip
+  automatically and disable auto-continue.
+`, goal, used+1, cap)
+}

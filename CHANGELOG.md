@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.145] - 2026-05-04
+
+### Added
+
+- **Pulse — goal-driven plan auto-continue** (#680) — when a chat session's plan transitions to `completed` and the new `Plan.AutoContinueEnabled` flag is set, pulse can run one chat turn that asks the LLM to either declare the goal achieved (terminating the loop by clearing the flag) or propose a follow-up plan. The cap on iterations is enforced via the automation audit log over a 24-hour rolling window so it survives plan replacement when the LLM proposes a new plan to keep working.
+  - New signal kind `auto_continue_goal` in `internal/pulse/signal_auto_continue_goal.go` and matching autofix `auto_continue_goal_plan` in `internal/pulse/autofix/`.
+  - **Hard safety bounds**: per-plan `AutoContinueMaxIterations` (default 5, hard cap 10), `AutoContinueIterationWindow` (24 h), session-level escalation when the cap trips → `AutoContinueEnabled` is automatically cleared so detection cannot re-fire on every pulse tick.
+  - **Termination semantics**: the LLM is instructed to flip `auto_continue_enabled` to `false` when the goal is reached. The controller re-reads the plan after each turn and classifies the outcome as `goal_completed`, `next_plan`, or `no_change` (no clean decision — re-attempt next tick up to the cap, then escalate).
+  - **Opt-in**: gated by both `SessionAutomationConsent.AutoResumeEnabled` (existing per-session consent) and the global `pulse.allowed_autofixes` allow-list. Not in the default allow-list.
+  - **Out of scope (deferred)**: `TaskContract.VerificationCommands` execution (currently still LLM-facing metadata only), per-goal token budget guard, frontend toggle UI, plan-repetition detector. Tracked in #680 follow-ups.
+
 ## [0.31.144] - 2026-05-04
 
 ### Added
