@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.157] - 2026-05-04
+
+### Changed
+
+- **Console Git Inspector — readable diff renderer + scrollable panel** — the diff view used to dump the raw unified patch into a single `<pre>` (Unified) or two collapsed-context panes (Split), so add/remove rows looked identical and you couldn't tell which line changed. Diff is now parsed line-by-line and rendered as a structured grid: per-row line numbers (old + new in Unified, side-by-side in Split), a sign column, and color-coded backgrounds (green for adds, red for dels, accent for hunk headers). Hunk headers come from `@@ -a,b +c,d @@` so the line numbers stay accurate even for diffs that skip the file header. Split mode pairs consecutive `-`/`+` runs so changed lines line up across columns. Below 600px the Split pane collapses to a single column so it stays readable in narrow docks.
+- **Console Git Inspector — fix overflow when expanding tall commit rows** — clicking a commit at the bottom of the Log used to expand the file list past the panel's bounds with no way to scroll, so the action row got cut off. The panel is now a flex column where the header / banners / tab strip are pinned and only the active tab body scrolls. Diff blocks gain their own `max-height: 480px` so the tab body never grows unbounded inside the dock.
+
 ## [0.31.156] - 2026-05-04
 
 ### Fixed
