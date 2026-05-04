@@ -164,6 +164,9 @@ func (s *Scanner) Scan(ctx context.Context) []Signal {
 	if sig := s.scanStalledChats(ctx, now); sig != nil {
 		signals = append(signals, *sig)
 	}
+	if sig := s.scanFailedChats(ctx, now); sig != nil {
+		signals = append(signals, *sig)
+	}
 	return signals
 }
 

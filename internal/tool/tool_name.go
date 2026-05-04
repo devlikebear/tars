@@ -70,3 +70,20 @@ func ToolNameAliases() map[string]string {
 func IsExecToolName(name string) bool {
 	return CanonicalToolName(name) == "exec"
 }
+
+// IsHighRiskToolName reports whether a tool's failure or invocation has
+// non-trivial side effects (mutating, executing, or reaching outside the
+// workspace). Used both at chat policy enforcement and by pulse auto-resume
+// to refuse retrying a failed turn whose last action could have already
+// mutated state — re-running it could double-apply.
+func IsHighRiskToolName(name string) bool {
+	canonical := CanonicalToolName(name)
+	if canonical == "" {
+		return false
+	}
+	switch canonical {
+	case "exec", "process", "write_file", "edit_file", "apply_patch", "workspace":
+		return true
+	}
+	return strings.HasPrefix(canonical, "write_") || strings.HasPrefix(canonical, "edit_")
+}
