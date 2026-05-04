@@ -68,12 +68,13 @@
 <style>
   .shell {
     display: flex;
-    min-height: 100vh;
+    height: 100vh;
   }
 
   .shell-main {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     margin-left: var(--nav-width);
@@ -102,6 +103,9 @@
 
   .shell-content {
     flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     padding: var(--space-6);
     width: 100%;
   }

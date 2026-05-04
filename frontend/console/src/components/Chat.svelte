@@ -1074,7 +1074,8 @@
   .chat-page {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - var(--header-height));
+    flex: 1;
+    min-height: 0;
     animation: fadeIn var(--duration-normal) var(--ease-out);
   }
 

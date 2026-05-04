@@ -417,12 +417,12 @@
 
 <style>
   .cron-page {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-5);
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: var(--space-6);
+    overflow-y: auto;
   }
 
   .cron-header,
@@ -661,10 +661,6 @@
   }
 
   @media (max-width: 900px) {
-    .cron-page {
-      padding: var(--space-4);
-    }
-
     .form-grid {
       grid-template-columns: 1fr;
     }

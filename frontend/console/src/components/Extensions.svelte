@@ -19,6 +19,7 @@
   import { renderMarkdown } from '../lib/markdown'
   import SkillCreator from './SkillCreator.svelte'
   import MCPServerCreator from './MCPServerCreator.svelte'
+  import { t } from '../i18n'
   import type {
     HubRegistry,
     HubRegistryEntry,
@@ -84,7 +85,7 @@
   function sandboxSummary(report: SkillSandboxReport): string {
     const total = report.checks?.length ?? 0
     const passed = report.checks?.filter((check) => check.status === 'passed').length ?? 0
-    return `${passed}/${total} checks`
+    return $t.extensions.sandboxChecksSummary(passed, total)
   }
 
   function sandboxTitle(report: SkillSandboxReport): string {
@@ -97,7 +98,7 @@
   function qualityScoreLabel(entry: HubRegistryEntry): string {
     if (!entry.quality) return ''
     const score = Math.max(0, Math.min(100, Math.round(entry.quality.score)))
-    return `Quality ${score}`
+    return $t.extensions.qualityScore(score)
   }
 
   function qualityScoreClass(entry: HubRegistryEntry): string {
@@ -111,23 +112,24 @@
     const quality = entry.quality
     if (!quality) return []
     const signals: QualitySignal[] = []
+    const labels = $t.extensions.qualityLabels
     if (quality.last_updated) {
-      signals.push({ label: 'Last updated', value: quality.last_updated })
+      signals.push({ label: labels.lastUpdated, value: quality.last_updated })
     }
     if (quality.tests_passing !== undefined) {
-      signals.push({ label: 'Tests passing', value: quality.tests_passing ? 'Yes' : 'No' })
+      signals.push({ label: labels.testsPassing, value: quality.tests_passing ? labels.yes : labels.no })
     }
     if (quality.required_tools?.length) {
-      signals.push({ label: 'Required tools', value: quality.required_tools.join(', ') })
+      signals.push({ label: labels.requiredTools, value: quality.required_tools.join(', ') })
     }
     if (quality.permissions?.length) {
-      signals.push({ label: 'Permissions', value: quality.permissions.join(', ') })
+      signals.push({ label: labels.permissions, value: quality.permissions.join(', ') })
     }
     if (quality.companion_cli !== undefined) {
-      signals.push({ label: 'Companion CLI', value: quality.companion_cli ? 'Yes' : 'No' })
+      signals.push({ label: labels.companionCli, value: quality.companion_cli ? labels.yes : labels.no })
     }
     if (quality.install_count !== undefined) {
-      signals.push({ label: 'Installs', value: quality.install_count.toLocaleString() })
+      signals.push({ label: labels.installs, value: quality.install_count.toLocaleString() })
     }
     return signals
   }
@@ -157,16 +159,19 @@
     try {
       if (kind === 'skill' && source === 'installed') {
         const detail = await getSkillDetail(name)
-        detailContent = detail.content || 'No content available.'
-        detailMeta = { source: detail.source || '', invocable: detail.user_invocable ? 'Yes — use /' + name + ' in chat' : 'No — system use only' }
+        detailContent = detail.content || $t.extensions.detailNoContent
+        detailMeta = {
+          [$t.extensions.detailMetaSource]: detail.source || '',
+          [$t.extensions.detailMetaInvocable]: detail.user_invocable ? $t.extensions.invocableYes(name) : $t.extensions.invocableNo,
+        }
       } else if (kind === 'skill' && source === 'hub') {
         const result = await getHubSkillContent(name)
-        detailContent = result.content || 'No content available.'
-        detailMeta = { version: result.version }
+        detailContent = result.content || $t.extensions.detailNoContent
+        detailMeta = { [$t.extensions.detailMetaVersion]: result.version }
       } else {
-        detailContent = 'Detail view is available for skills.'
+        detailContent = $t.extensions.detailFallback
       }
-    } catch { detailContent = 'Failed to load details.' }
+    } catch { detailContent = $t.extensions.detailLoadFailed }
     finally { detailLoading = false }
   }
 
@@ -207,7 +212,7 @@
       for (const i of inst.mcps) versions.set('mcp:' + i.name, i.version || '')
       installedVersions = versions
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load extensions'
+      error = e instanceof Error ? e.message : $t.extensions.failedLoadExtensions
     } finally {
       loading = false
     }
@@ -231,7 +236,7 @@
       for (const e of registry.mcp_servers) regVers.set('mcp:' + e.name, e.version || '')
       registryVersions = regVers
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to fetch registry'
+      error = e instanceof Error ? e.message : $t.extensions.failedFetchRegistry
     } finally {
       hubLoading = false
     }
@@ -254,15 +259,15 @@
       const result = await hubInstall(type, name)
       skillSandboxReport = result.sandbox_report ?? null
       installedNames = new Set([...installedNames, type + ':' + name])
-      const sandboxText = result.sandbox_report ? ` - sandbox ${sandboxSummary(result.sandbox_report)}` : ''
-      const pluginText = result.requires_plugin ? ` - requires plugin "${result.requires_plugin}"` : ''
-      success = `Installed ${type} "${name}"${sandboxText}${pluginText}`
+      const sandboxText = result.sandbox_report ? $t.extensions.sandboxSuffix(sandboxSummary(result.sandbox_report)) : ''
+      const pluginText = result.requires_plugin ? $t.extensions.requiresPluginSuffix(result.requires_plugin) : ''
+      success = $t.extensions.installSuccess(type, name, sandboxText, pluginText)
       await loadInstalled()
     } catch (e) {
       if (e instanceof APIRequestError && e.payload?.sandbox_report) {
         skillSandboxReport = e.payload.sandbox_report
       }
-      error = e instanceof Error ? e.message : 'Install failed'
+      error = e instanceof Error ? e.message : $t.extensions.installFailed
     } finally {
       busyItem = ''
     }
@@ -277,10 +282,10 @@
       const next = new Set(installedNames)
       next.delete(type + ':' + name)
       installedNames = next
-      success = `Uninstalled ${type} "${name}"`
+      success = $t.extensions.uninstallSuccess(type, name)
       await loadInstalled()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Uninstall failed'
+      error = e instanceof Error ? e.message : $t.extensions.uninstallFailed
     } finally {
       busyItem = ''
     }
@@ -301,10 +306,10 @@
     success = ''
     try {
       await setExtensionDisabled(kind, name, !currently)
-      success = `${name} ${currently ? 'enabled' : 'disabled'}. Extensions reloaded.`
+      success = $t.extensions.toggledSuccess(name, currently ? $t.extensions.enabledLabel : $t.extensions.disabledLabel)
       await loadInstalled()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Toggle failed'
+      error = e instanceof Error ? e.message : $t.extensions.toggleFailed
     } finally {
       togglingItem = ''
     }
@@ -316,23 +321,23 @@
     success = ''
     try {
       const result = await reloadExtensions()
-      success = `Reloaded: ${result.skills} skills, ${result.plugins} plugins, ${result.mcp_count} MCP servers`
+      success = $t.extensions.reloadSuccess(result.skills, result.plugins, result.mcp_count)
       await loadInstalled()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Reload failed'
+      error = e instanceof Error ? e.message : $t.extensions.reloadFailed
     } finally {
       reloading = false
     }
   }
 
   async function handleSkillCreated(result: SkillCreatorSaveResponse) {
-    success = `Saved skill draft to ${result.path}`
+    success = $t.extensions.skillCreatedSuccess(result.path)
     skillCreatorOpen = false
     await loadInstalled()
   }
 
   async function handleMCPServerCreated(result: MCPServerCreatorSaveResponse) {
-    success = `Saved MCP server draft to ${result.path}`
+    success = $t.extensions.mcpCreatedSuccess(result.path)
     mcpCreatorOpen = false
     await loadInstalled()
   }
@@ -344,10 +349,10 @@
     try {
       const result = await hubUpdate()
       const total = (result.updated_skills?.length ?? 0) + (result.updated_plugins?.length ?? 0)
-      success = total > 0 ? `Updated ${total} packages` : 'Everything is up to date'
+      success = total > 0 ? $t.extensions.updatedTotal(total) : $t.extensions.everythingUpToDate
       await loadInstalled()
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Update failed'
+      error = e instanceof Error ? e.message : $t.extensions.updateFailed
     } finally {
       updating = false
     }
@@ -385,13 +390,13 @@
 <div class="ext-page">
   <div class="page-header">
     <div>
-      <h2>Extensions</h2>
-      <p class="page-subtitle">Manage skills, plugins, and MCP servers</p>
+      <h2>{$t.extensions.title}</h2>
+      <p class="page-subtitle">{$t.extensions.subtitle}</p>
     </div>
     <div class="page-actions">
       <div class="view-toggle">
-        <button class="toggle-btn" class:active={tab === 'installed'} onclick={() => switchTab('installed')}>Installed</button>
-        <button class="toggle-btn" class:active={tab === 'hub'} onclick={() => switchTab('hub')}>Hub</button>
+        <button class="toggle-btn" class:active={tab === 'installed'} onclick={() => switchTab('installed')}>{$t.extensions.tabInstalled}</button>
+        <button class="toggle-btn" class:active={tab === 'hub'} onclick={() => switchTab('hub')}>{$t.extensions.tabHub}</button>
       </div>
     </div>
   </div>
@@ -407,7 +412,7 @@
       <div class="sandbox-report-header">
         <strong>{sandboxTitle(skillSandboxReport)}</strong>
         <span class={skillSandboxReport.passed ? 'badge badge-success' : 'badge badge-error'}>
-          {skillSandboxReport.passed ? 'Sandbox passed' : 'Sandbox failed'}
+          {skillSandboxReport.passed ? $t.extensions.sandboxPassed : $t.extensions.sandboxFailed}
         </span>
         <span class="sandbox-summary">{sandboxSummary(skillSandboxReport)}</span>
       </div>
@@ -434,36 +439,36 @@
     <!-- Installed Extensions -->
     <div class="ext-toolbar">
       <button class="btn btn-primary btn-sm" onclick={() => { skillCreatorOpen = true }}>
-        + Create Skill
+        {$t.extensions.createSkill}
       </button>
       <button class="btn btn-ghost btn-sm" onclick={() => { mcpCreatorOpen = true }}>
-        + Create MCP Server
+        {$t.extensions.createMCP}
       </button>
       <button class="btn btn-ghost btn-sm" disabled={reloading} onclick={handleReload}>
-        {reloading ? 'Reloading...' : 'Reload'}
+        {reloading ? $t.extensions.reloading : $t.extensions.reload}
       </button>
       <button class="btn btn-ghost btn-sm" disabled={updating || updateCount === 0} onclick={handleUpdateAll}>
-        {updating ? 'Updating...' : 'Update All'}
+        {updating ? $t.extensions.updating : $t.extensions.updateAll}
       </button>
       {#if updateCount > 0}
-        <span class="badge badge-warning">{updateCount} update{updateCount > 1 ? 's' : ''}</span>
+        <span class="badge badge-warning">{$t.extensions.updatesAvailable(updateCount)}</span>
       {/if}
     </div>
 
     {#if loading}
-      <div class="ext-loading">Loading extensions...</div>
+      <div class="ext-loading">{$t.extensions.loadingExtensions}</div>
     {:else}
       <!-- Skills -->
       <section class="card ext-section">
         <div class="card-header">
           <div class="section-heading">
-            <span class="card-title">Skills</span>
-            <span class="section-definition">Skills use .md instructions and companion CLIs for chat workflows.</span>
+            <span class="card-title">{$t.extensions.skillsTitle}</span>
+            <span class="section-definition">{$t.extensions.skillsDefinition}</span>
           </div>
           <span class="badge badge-default">{skills.length}</span>
         </div>
         {#if skills.length === 0}
-          <div class="empty-state"><p>No skills loaded.</p></div>
+          <div class="empty-state"><p>{$t.extensions.noSkills}</p></div>
         {:else}
           <div class="ext-list">
             {#each skills as s}
@@ -481,20 +486,20 @@
                     </div>
                   </div>
                   <div class="ext-item-actions">
-                    <button class="toggle-switch" class:on={!isDisabledExt('skill', s.name)} disabled={togglingItem === 'skill:' + s.name} onclick={() => handleToggle('skill', s.name)}>{isDisabledExt('skill', s.name) ? 'OFF' : 'ON'}</button>
+                    <button class="toggle-switch" class:on={!isDisabledExt('skill', s.name)} disabled={togglingItem === 'skill:' + s.name} onclick={() => handleToggle('skill', s.name)}>{isDisabledExt('skill', s.name) ? $t.extensions.off : $t.extensions.on}</button>
                     {#if hasUpdate('skill', s.name)}
-                      <button class="btn btn-warning btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleInstall('skill', s.name)} title="Update to v{registryVersion('skill', s.name)}">
-                        {busyItem === 'skill:' + s.name ? '...' : 'Update'}
+                      <button class="btn btn-warning btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleInstall('skill', s.name)} title={$t.extensions.updateTooltip(registryVersion('skill', s.name))}>
+                        {busyItem === 'skill:' + s.name ? $t.extensions.updateBusy : $t.extensions.update}
                       </button>
                     {/if}
                     {#if isHubInstalled('skill', s.name)}
-                      <button class="btn btn-danger btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleUninstall('skill', s.name)}>{busyItem === 'skill:' + s.name ? '...' : 'Uninstall'}</button>
+                      <button class="btn btn-danger btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleUninstall('skill', s.name)}>{busyItem === 'skill:' + s.name ? $t.extensions.updateBusy : $t.extensions.uninstall}</button>
                     {/if}
                   </div>
                 </div>
                 {#if isDetailOpen('skill', s.name, 'installed')}
                   <div class="ext-detail">
-                    {#if detailLoading}<div class="ext-detail-loading">Loading...</div>
+                    {#if detailLoading}<div class="ext-detail-loading">{$t.extensions.detailLoading}</div>
                     {:else}
                       {#if Object.keys(detailMeta).length > 0}
                         <div class="ext-detail-meta">{#each Object.entries(detailMeta) as [k, v]}{#if v}<span><strong>{k}:</strong> {v}</span>{/if}{/each}</div>
@@ -522,22 +527,22 @@
             <span class="detail-chevron" class:open={installedPluginsOpen}>{'\u25b8'}</span>
             <span class="section-heading">
               <span class="card-title-group">
-                <span class="card-title">Plugins</span>
-                <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
-                <span class="badge badge-default" title="Advanced legacy extension surface">Advanced legacy</span>
+                <span class="card-title">{$t.extensions.pluginsTitle}</span>
+                <span class="badge badge-warning" title={$t.extensions.pluginsDeprecatedTooltip}>{$t.extensions.pluginsDeprecated}</span>
+                <span class="badge badge-default" title={$t.extensions.pluginsAdvancedTooltip}>{$t.extensions.pluginsAdvancedLegacy}</span>
               </span>
-              <span class="section-definition">Plugins are legacy Go extension packages; prefer Skills for new work.</span>
+              <span class="section-definition">{$t.extensions.pluginsDefinition}</span>
             </span>
           </button>
           <span class="badge badge-default">{plugins.length}</span>
         </div>
         <div class="plugin-policy-note">
-          Use Skills (.md + CLI) for new extension work. Legacy plugin installs remain available for existing workflows.
+          {$t.extensions.pluginsPolicyNote}
         </div>
         {#if installedPluginsOpen}
           <div id="installed-plugins-panel">
             {#if plugins.length === 0}
-              <div class="empty-state"><p>No plugins loaded.</p></div>
+              <div class="empty-state"><p>{$t.extensions.noPlugins}</p></div>
             {:else}
               <div class="ext-list">
                 {#each plugins as p}
@@ -552,17 +557,17 @@
                         class="toggle-switch"
                         class:on={!isDisabledExt('plugin', p.id || p.name)}
                         disabled={togglingItem === 'plugin:' + (p.id || p.name)}
-                        title={isDisabledExt('plugin', p.id || p.name) ? 'Enable' : 'Disable'}
+                        title={isDisabledExt('plugin', p.id || p.name) ? $t.extensions.enable : $t.extensions.disable}
                         onclick={() => handleToggle('plugin', p.id || p.name)}
-                      >{isDisabledExt('plugin', p.id || p.name) ? 'OFF' : 'ON'}</button>
+                      >{isDisabledExt('plugin', p.id || p.name) ? $t.extensions.off : $t.extensions.on}</button>
                       {#if hasUpdate('plugin', p.id || p.name)}
-                        <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleInstall('plugin', p.id || p.name)} title="Update to v{registryVersion('plugin', p.id || p.name)}">
-                          {busyItem === 'plugin:' + (p.id || p.name) ? '...' : 'Update'}
+                        <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleInstall('plugin', p.id || p.name)} title={$t.extensions.updateTooltip(registryVersion('plugin', p.id || p.name))}>
+                          {busyItem === 'plugin:' + (p.id || p.name) ? $t.extensions.updateBusy : $t.extensions.update}
                         </button>
                       {/if}
                       {#if isHubInstalled('plugin', p.id || p.name)}
                         <button class="btn btn-danger btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleUninstall('plugin', p.id || p.name)}>
-                          {busyItem === 'plugin:' + (p.id || p.name) ? '...' : 'Uninstall'}
+                          {busyItem === 'plugin:' + (p.id || p.name) ? $t.extensions.updateBusy : $t.extensions.uninstall}
                         </button>
                       {/if}
                     </div>
@@ -578,13 +583,13 @@
       <section class="card ext-section">
         <div class="card-header">
           <div class="section-heading">
-            <span class="card-title">MCP Servers</span>
-            <span class="section-definition">MCP Servers expose external tool servers through Model Context Protocol.</span>
+            <span class="card-title">{$t.extensions.mcpTitle}</span>
+            <span class="section-definition">{$t.extensions.mcpDefinition}</span>
           </div>
           <span class="badge badge-default">{mcpServers.length}</span>
         </div>
         {#if mcpServers.length === 0}
-          <div class="empty-state"><p>No MCP servers configured.</p></div>
+          <div class="empty-state"><p>{$t.extensions.noMCP}</p></div>
         {:else}
           <div class="ext-list">
             {#each mcpServers as m}
@@ -594,7 +599,7 @@
                   <div class="ext-meta">
                     {#if m.transport}<span class="badge badge-default">{m.transport}</span>{/if}
                     {#if m.source}<span class="ext-meta-tag">{m.source}</span>{/if}
-                    {#if m.tools_count}<span class="ext-meta-tag">{m.tools_count} tools</span>{/if}
+                    {#if m.tools_count}<span class="ext-meta-tag">{$t.extensions.toolsCount(m.tools_count)}</span>{/if}
                   </div>
                 </div>
                 <div class="ext-item-actions">
@@ -602,17 +607,17 @@
                     class="toggle-switch"
                     class:on={!isDisabledExt('mcp', m.name)}
                     disabled={togglingItem === 'mcp:' + m.name}
-                    title={isDisabledExt('mcp', m.name) ? 'Enable' : 'Disable'}
+                    title={isDisabledExt('mcp', m.name) ? $t.extensions.enable : $t.extensions.disable}
                     onclick={() => handleToggle('mcp', m.name)}
-                  >{isDisabledExt('mcp', m.name) ? 'OFF' : 'ON'}</button>
+                  >{isDisabledExt('mcp', m.name) ? $t.extensions.off : $t.extensions.on}</button>
                   {#if hasUpdate('mcp', m.name)}
-                    <button class="btn btn-warning btn-sm" disabled={busyItem === 'mcp:' + m.name} onclick={() => handleInstall('mcp', m.name)} title="Update to v{registryVersion('mcp', m.name)}">
-                      {busyItem === 'mcp:' + m.name ? '...' : 'Update'}
+                    <button class="btn btn-warning btn-sm" disabled={busyItem === 'mcp:' + m.name} onclick={() => handleInstall('mcp', m.name)} title={$t.extensions.updateTooltip(registryVersion('mcp', m.name))}>
+                      {busyItem === 'mcp:' + m.name ? $t.extensions.updateBusy : $t.extensions.update}
                     </button>
                   {/if}
                   {#if isHubInstalled('mcp', m.name)}
                     <button class="btn btn-danger btn-sm" disabled={busyItem === 'mcp:' + m.name} onclick={() => handleUninstall('mcp', m.name)}>
-                      {busyItem === 'mcp:' + m.name ? '...' : 'Uninstall'}
+                      {busyItem === 'mcp:' + m.name ? $t.extensions.updateBusy : $t.extensions.uninstall}
                     </button>
                   {/if}
                 </div>
@@ -626,18 +631,18 @@
   {:else}
     <!-- Hub (Registry Browser) -->
     {#if hubLoading}
-      <div class="ext-loading">Fetching registry...</div>
+      <div class="ext-loading">{$t.extensions.fetchingRegistry}</div>
     {:else if !registry}
-      <div class="ext-loading">Loading...</div>
+      <div class="ext-loading">{$t.extensions.loading}</div>
     {:else}
       <!-- Hub Skills -->
       <section class="card ext-section">
         <div class="card-header">
           <div class="section-heading">
-            <span class="card-title">Skills</span>
-            <span class="section-definition">Skills use .md instructions and companion CLIs for chat workflows.</span>
+            <span class="card-title">{$t.extensions.skillsTitle}</span>
+            <span class="section-definition">{$t.extensions.skillsDefinition}</span>
           </div>
-          <span class="badge badge-default">{registry.skills.length} available</span>
+          <span class="badge badge-default">{$t.extensions.available(registry.skills.length)}</span>
         </div>
         <div class="ext-list">
           {#each registry.skills as entry}
@@ -649,8 +654,8 @@
                       <strong>{entry.name}</strong>
                       <span class="detail-chevron" class:open={isDetailOpen('skill', entry.name, 'hub')}>{'\u25b8'}</span>
                     </button>
-                    <span class="ext-version">v{entry.version}</span>
-                    {#if entry.author}<span class="ext-meta-tag">by {entry.author}</span>{/if}
+                    <span class="ext-version">{$t.extensions.versionPrefix(entry.version)}</span>
+                    {#if entry.author}<span class="ext-meta-tag">{$t.extensions.byAuthor(entry.author)}</span>{/if}
                   </div>
                   <span class="ext-desc">{entry.description}</span>
                   {#if entry.tags?.length}
@@ -660,17 +665,17 @@
                 </div>
                 {#if hasUpdate('skill', entry.name)}
                   <button class="btn btn-warning btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => handleInstall('skill', entry.name)}>
-                    {busyItem === 'skill:' + entry.name ? 'Updating...' : 'Update'}
+                    {busyItem === 'skill:' + entry.name ? $t.extensions.updating : $t.extensions.update}
                   </button>
                 {:else if isInstalled('skill', entry.name)}
-                  <span class="badge badge-success">Installed</span>
+                  <span class="badge badge-success">{$t.extensions.installed}</span>
                 {:else}
-                  <button class="btn btn-primary btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => handleInstall('skill', entry.name)}>{busyItem === 'skill:' + entry.name ? 'Installing...' : 'Install'}</button>
+                  <button class="btn btn-primary btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => handleInstall('skill', entry.name)}>{busyItem === 'skill:' + entry.name ? $t.extensions.installing : $t.extensions.install}</button>
                 {/if}
               </div>
               {#if isDetailOpen('skill', entry.name, 'hub')}
                 <div class="ext-detail">
-                  {#if detailLoading}<div class="ext-detail-loading">Loading...</div>
+                  {#if detailLoading}<div class="ext-detail-loading">{$t.extensions.detailLoading}</div>
                   {:else}<div class="ext-detail-content ext-md">{@html renderMarkdown(detailContent)}</div>{/if}
                 </div>
               {/if}
@@ -692,17 +697,17 @@
             <span class="detail-chevron" class:open={hubPluginsOpen}>{'\u25b8'}</span>
             <span class="section-heading">
               <span class="card-title-group">
-                <span class="card-title">Plugins</span>
-                <span class="badge badge-warning" title="Plugins are deprecated; use Skills (.md + CLI) for new extension work.">Deprecated</span>
-                <span class="badge badge-default" title="Advanced legacy extension surface">Advanced legacy</span>
+                <span class="card-title">{$t.extensions.pluginsTitle}</span>
+                <span class="badge badge-warning" title={$t.extensions.pluginsDeprecatedTooltip}>{$t.extensions.pluginsDeprecated}</span>
+                <span class="badge badge-default" title={$t.extensions.pluginsAdvancedTooltip}>{$t.extensions.pluginsAdvancedLegacy}</span>
               </span>
-              <span class="section-definition">Plugins are legacy Go extension packages; prefer Skills for new work.</span>
+              <span class="section-definition">{$t.extensions.pluginsDefinition}</span>
             </span>
           </button>
-          <span class="badge badge-default">{registry.plugins.length} available</span>
+          <span class="badge badge-default">{$t.extensions.available(registry.plugins.length)}</span>
         </div>
         <div class="plugin-policy-note">
-          Use Skills (.md + CLI) for new extension work. Legacy plugin installs remain available for existing workflows.
+          {$t.extensions.pluginsPolicyNote}
         </div>
         {#if hubPluginsOpen}
           <div id="hub-plugins-panel" class="ext-list">
@@ -711,7 +716,7 @@
                 <div class="ext-item-info">
                   <div class="ext-item-top">
                     <strong>{entry.name}</strong>
-                    <span class="ext-version">v{entry.version}</span>
+                    <span class="ext-version">{$t.extensions.versionPrefix(entry.version)}</span>
                   </div>
                   <span class="ext-desc">{entry.description}</span>
                   {#if entry.tags?.length}
@@ -723,13 +728,13 @@
                 </div>
                 {#if hasUpdate('plugin', entry.name)}
                   <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
-                    {busyItem === 'plugin:' + entry.name ? 'Updating...' : 'Update'}
+                    {busyItem === 'plugin:' + entry.name ? $t.extensions.updating : $t.extensions.update}
                   </button>
                 {:else if isInstalled('plugin', entry.name)}
-                  <span class="badge badge-success">Installed</span>
+                  <span class="badge badge-success">{$t.extensions.installed}</span>
                 {:else}
                   <button class="btn btn-primary btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
-                    {busyItem === 'plugin:' + entry.name ? 'Installing...' : 'Install'}
+                    {busyItem === 'plugin:' + entry.name ? $t.extensions.installing : $t.extensions.install}
                   </button>
                 {/if}
               </div>
@@ -742,10 +747,10 @@
       <section class="card ext-section">
         <div class="card-header">
           <div class="section-heading">
-            <span class="card-title">MCP Servers</span>
-            <span class="section-definition">MCP Servers expose external tool servers through Model Context Protocol.</span>
+            <span class="card-title">{$t.extensions.mcpTitle}</span>
+            <span class="section-definition">{$t.extensions.mcpDefinition}</span>
           </div>
-          <span class="badge badge-default">{registry.mcp_servers.length} available</span>
+          <span class="badge badge-default">{$t.extensions.available(registry.mcp_servers.length)}</span>
         </div>
         <div class="ext-list">
           {#each registry.mcp_servers as entry}
@@ -753,7 +758,7 @@
               <div class="ext-item-info">
                 <div class="ext-item-top">
                   <strong>{entry.name}</strong>
-                  <span class="ext-version">v{entry.version}</span>
+                  <span class="ext-version">{$t.extensions.versionPrefix(entry.version)}</span>
                 </div>
                 <span class="ext-desc">{entry.description}</span>
                 {#if entry.tags?.length}
@@ -765,13 +770,13 @@
               </div>
               {#if hasUpdate('mcp', entry.name)}
                 <button class="btn btn-warning btn-sm" disabled={busyItem === 'mcp:' + entry.name} onclick={() => handleInstall('mcp', entry.name)}>
-                  {busyItem === 'mcp:' + entry.name ? 'Updating...' : 'Update'}
+                  {busyItem === 'mcp:' + entry.name ? $t.extensions.updating : $t.extensions.update}
                 </button>
               {:else if isInstalled('mcp', entry.name)}
-                <span class="badge badge-success">Installed</span>
+                <span class="badge badge-success">{$t.extensions.installed}</span>
               {:else}
                 <button class="btn btn-primary btn-sm" disabled={busyItem === 'mcp:' + entry.name} onclick={() => handleInstall('mcp', entry.name)}>
-                  {busyItem === 'mcp:' + entry.name ? 'Installing...' : 'Install'}
+                  {busyItem === 'mcp:' + entry.name ? $t.extensions.installing : $t.extensions.install}
                 </button>
               {/if}
             </div>
@@ -791,9 +796,12 @@
 
 <style>
   .ext-page {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
+    overflow-y: auto;
     animation: fadeIn var(--duration-normal) var(--ease-out);
   }
 

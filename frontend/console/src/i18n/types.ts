@@ -551,6 +551,30 @@ export type Translations = {
     body: string
     button: string
   }
+  config: {
+    pageTitle: string
+    viewToggleQuick: string
+    viewToggleFields: string
+    viewToggleYaml: string
+    save: string
+    saving: string
+    discard: string
+    changedSuffix: (count: number) => string
+    viewChangesTooltip: string
+    loading: string
+    noConfigFile: string
+    quickStartKicker: string
+    quickStartTitle: string
+    quickStartReady: (ready: number, total: number) => string
+    defaultPrefix: (value: string) => string
+    clickToToggle: string
+    clickToEdit: string
+    on: string
+    off: string
+    selectNone: string
+    workspaceResetSuccess: (removed: number) => string
+    failedResetWorkspace: string
+  }
   cron: {
     eyebrow: string
     title: string
@@ -1053,5 +1077,324 @@ export type Translations = {
     disk: { unknown: string; usedSuffix: string }
     errorLoad: string
     openSessionPlan: string
+  }
+  agentRuntime: {
+    title: string
+    subtitleRunDetail: string
+    subtitleSubagents: string
+    subtitleRuns: string
+    back: string
+    refresh: string
+    loading: string
+    analyzing: string
+    recommendFromRuns: string
+    newSubagent: string
+    tabRuns: string
+    tabSubagents: string
+    tabsAriaLabel: string
+    introEyebrow: string
+    introTitle: string
+    introBody: string
+    toolStripAriaLabel: string
+    toolDetail: {
+      run: string
+      orchestrate: string
+      plan: string
+    }
+    filtersAriaLabel: string
+    filterStatus: string
+    filterTimeRange: string
+    filterSearchLabel: string
+    filterSearchPlaceholder: string
+    apply: string
+    statusAll: string
+    statusRunning: string
+    statusDone: string
+    statusFailed: string
+    range24h: string
+    range7d: string
+    rangeAll: string
+    viewMode: {
+      list: string
+      tree: string
+      gantt: string
+      flow: string
+    }
+    visualAriaLabel: string
+    costSummaryAriaLabel: string
+    costToday: string
+    cost7d: string
+    costPlanTotals: string
+    costLoadedRunCosts: string
+    costNoData: string
+    costRunSuffix: (n: number) => string
+    emptyNoMatchEyebrow: string
+    emptyNoMatchTitle: string
+    emptyNoMatchBody: string
+    clearFilters: string
+    emptyNoRunsEyebrow: string
+    emptyNoRunsTitle: string
+    emptyNoRunsBody: string
+    openChat: string
+    sessionLink: (id: string) => string
+    rowAgentDefault: string
+    failedLoadRuns: string
+    failedLoadSubagents: string
+    failedLoadRun: string
+    failedRestartRun: string
+    failedUpdateTier: string
+    failedRecommend: string
+    failedDraft: string
+    failedApplyDraft: string
+    failedArchive: string
+  }
+  extensions: {
+    title: string
+    subtitle: string
+    tabInstalled: string
+    tabHub: string
+    sandboxPassed: string
+    sandboxFailed: string
+    sandboxChecksSummary: (passed: number, total: number) => string
+    createSkill: string
+    createMCP: string
+    reload: string
+    reloading: string
+    updateAll: string
+    updating: string
+    updatesAvailable: (count: number) => string
+    loadingExtensions: string
+    fetchingRegistry: string
+    loading: string
+    skillsTitle: string
+    skillsDefinition: string
+    pluginsTitle: string
+    pluginsDeprecated: string
+    pluginsAdvancedLegacy: string
+    pluginsDeprecatedTooltip: string
+    pluginsAdvancedTooltip: string
+    pluginsDefinition: string
+    pluginsPolicyNote: string
+    mcpTitle: string
+    mcpDefinition: string
+    available: (n: number) => string
+    noSkills: string
+    noPlugins: string
+    noMCP: string
+    install: string
+    installing: string
+    update: string
+    update_short: string
+    updateBusy: string
+    uninstall: string
+    uninstalling: string
+    installed: string
+    enable: string
+    disable: string
+    on: string
+    off: string
+    detailLoading: string
+    detailNoContent: string
+    detailLoadFailed: string
+    detailFallback: string
+    invocableYes: (name: string) => string
+    invocableNo: string
+    detailMetaSource: string
+    detailMetaInvocable: string
+    detailMetaVersion: string
+    toolsCount: (n: number) => string
+    byAuthor: (author: string) => string
+    versionPrefix: (v: string) => string
+    updateTooltip: (v: string) => string
+    failedLoadExtensions: string
+    failedFetchRegistry: string
+    installFailed: string
+    uninstallFailed: string
+    toggleFailed: string
+    reloadFailed: string
+    updateFailed: string
+    installSuccess: (kind: string, name: string, sandbox: string, plugin: string) => string
+    sandboxSuffix: (summary: string) => string
+    requiresPluginSuffix: (plugin: string) => string
+    uninstallSuccess: (kind: string, name: string) => string
+    toggledSuccess: (name: string, action: string) => string
+    enabledLabel: string
+    disabledLabel: string
+    reloadSuccess: (skills: number, plugins: number, mcps: number) => string
+    skillCreatedSuccess: (path: string) => string
+    mcpCreatedSuccess: (path: string) => string
+    updatedTotal: (n: number) => string
+    everythingUpToDate: string
+    qualityScore: (score: number) => string
+    qualityLabels: {
+      lastUpdated: string
+      testsPassing: string
+      requiredTools: string
+      permissions: string
+      companionCli: string
+      installs: string
+      yes: string
+      no: string
+    }
+  }
+  sysprompt: {
+    eyebrow: string
+    title: string
+    subtitle: string
+    statWorkspaceFiles: string
+    statAgentFiles: string
+    statBuiltinTools: string
+    failedLoadFiles: string
+    failedLoadFile: string
+    workspacePromptTitle: string
+    loadingFiles: string
+    groupWorkspaceIdentity: string
+    groupAgentRules: string
+    badgePresent: string
+    badgeMissing: string
+    editorTitle: string
+    selectFilePrompt: string
+    reload: string
+    reloadPreview: string
+    previewLoading: string
+    showTechnicalDetails: string
+    hideTechnicalDetails: string
+    save: string
+    saving: string
+    savedSuccess: (path: string) => string
+    failedSave: string
+    failedLoadPreview: string
+    badgeMainAgent: string
+    badgeSubAgent: string
+    existingFile: string
+    missingFileStarter: string
+    sectionLabel: (section: string, role: string) => string
+    truncateWarning: (chars: number, max: number) => string
+    impactLine: (size: string, tokens: number, chars: number, max: number, section: string, role: string) => string
+    insertTemplateTitle: string
+    insertTemplateDefaultDesc: string
+    insertButton: string
+    chooseTemplatePlaceholder: string
+    starterAriaLabel: string
+    templateInsertedSuccess: (label: string) => string
+    selectFileEmpty: string
+    diagnosticsTitle: string
+    roleSemanticsLabel: string
+    relevantToolsLabel: string
+    noToolsDetected: string
+    previewModalLabel: string
+    previewKicker: string
+    previewMainTitle: string
+    previewSubTitle: string
+    previewLoadingState: string
+    previewClose: string
+    tokensTotal: (n: number) => string
+    tokensStatic: (n: number) => string
+    tokensMemory: (n: number) => string
+    tokensSuffix: (n: number) => string
+    role: {
+      USER: string
+      IDENTITY: string
+      AGENTS: string
+      TOOLS: string
+      PROJECT: string
+      default: string
+    }
+    diagRoles: {
+      USER: string
+      IDENTITY: string
+      PROJECT: string
+      AGENTS: string
+      TOOLS: string
+    }
+  }
+  sessionLineage: {
+    title: string
+    subtitle: string
+    refresh: string
+    summaryAriaLabel: string
+    graphAriaLabel: string
+    statSessions: string
+    statRoots: string
+    statForks: string
+    loading: string
+    empty: string
+    failedLoad: string
+    timeUnknown: string
+    forkPoint: string
+    parentLabel: (name: string) => string
+    indexLabel: (n: number) => string
+    reviewInsights: string
+    reviewLoading: string
+    forkInsightsLabel: string
+    queueSelected: (count: number) => string
+    queuing: string
+    queuedSummary: (promoted: number, skipped: number) => string
+    failedQueue: string
+    openMemoryInbox: string
+    loadingForkInsights: string
+    noForkInsights: string
+    failedForkInsights: string
+    provenance: string
+    messageIndex: (n: number) => string
+  }
+  plans: {
+    kicker: string
+    title: string
+    refresh: string
+    failedLoad: string
+    loadingPlans: string
+    emptyTitle: string
+    emptyBody: string
+    openChat: string
+    summaryAriaLabel: string
+    plansAriaLabel: string
+    activePlans: string
+    inProgress: string
+    pending: string
+    completed: string
+    statusFallback: string
+    updatedAt: (time: string) => string
+    progressAria: (percent: number) => string
+    doneSuffix: (done: number, total: number) => string
+    activeSuffix: (n: number) => string
+    pendingSuffix: (n: number) => string
+    sessionKindWorker: string
+    sessionKindSession: string
+    timeNever: string
+  }
+  channels: {
+    title: string
+    telegramTitle: string
+    policyLabel: (value: string) => string
+    pollingOn: string
+    pollingOff: string
+    pollingLabel: (state: string) => string
+    approveSection: string
+    approveDescription: string
+    approveCodePlaceholder: string
+    approveButton: string
+    approving: string
+    enterCodeError: string
+    approvedSuccess: (name: string) => string
+    approveFailed: string
+    pendingSection: string
+    allowedSection: string
+    loading: string
+    noPending: string
+    noAllowed: string
+    failedLoad: string
+    table: {
+      code: string
+      user: string
+      chatId: string
+      expires: string
+      approved: string
+    }
+    revoke: string
+    revoking: string
+    revokeFailed: string
+    accessRevoked: string
+    dash: string
   }
 }

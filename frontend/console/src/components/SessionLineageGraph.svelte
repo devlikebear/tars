@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { getForkPromotions, getSessionHistory, listSessions, promoteForkInsights } from '../lib/api'
+  import { t } from '../i18n'
   import {
     buildSessionLineageRows,
     forkPreviewFromHistory,
@@ -39,7 +40,7 @@
       const previews = await loadForkPreviews(sessions)
       rows = buildSessionLineageRows(sessions, previews)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load session lineage'
+      error = err instanceof Error ? err.message : $t.sessionLineage.failedLoad
       rows = []
     } finally {
       loading = false
@@ -79,7 +80,7 @@
       promotionCandidates = res.candidates || []
       selectedPromotionIds = promotionCandidates.map((candidate) => candidate.id)
     } catch (err) {
-      promotionError = err instanceof Error ? err.message : 'Failed to load fork insights'
+      promotionError = err instanceof Error ? err.message : $t.sessionLineage.failedForkInsights
     } finally {
       promotionLoading = false
     }
@@ -104,10 +105,10 @@
     promotionSaving = true
     try {
       const res = await promoteForkInsights(promotionSessionId, selectedPromotionIds)
-      promotionSuccess = `Queued ${res.promoted_count}; skipped ${res.skipped_count}.`
+      promotionSuccess = $t.sessionLineage.queuedSummary(res.promoted_count, res.skipped_count)
       selectedPromotionIds = []
     } catch (err) {
-      promotionError = err instanceof Error ? err.message : 'Failed to queue fork insights'
+      promotionError = err instanceof Error ? err.message : $t.sessionLineage.failedQueue
     } finally {
       promotionSaving = false
     }
@@ -115,7 +116,7 @@
 
   function formatTime(value: string): string {
     const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return value || 'unknown'
+    if (Number.isNaN(date.getTime())) return value || $t.sessionLineage.timeUnknown
     return date.toLocaleString()
   }
 
@@ -127,26 +128,26 @@
 <section class="lineage-page">
   <header class="lineage-header">
     <div>
-      <h2>Session Lineage</h2>
-      <p>Forked chats, roots, and branch points across this workspace.</p>
+      <h2>{$t.sessionLineage.title}</h2>
+      <p>{$t.sessionLineage.subtitle}</p>
     </div>
-    <button type="button" class="btn btn-ghost btn-sm" disabled={loading} onclick={() => { void load() }}>Refresh</button>
+    <button type="button" class="btn btn-ghost btn-sm" disabled={loading} onclick={() => { void load() }}>{$t.sessionLineage.refresh}</button>
   </header>
 
-  <div class="lineage-stats" aria-label="Session lineage summary">
-    <div><span>{rows.length}</span><small>sessions</small></div>
-    <div><span>{rootCount}</span><small>roots</small></div>
-    <div><span>{forkCount}</span><small>forks</small></div>
+  <div class="lineage-stats" aria-label={$t.sessionLineage.summaryAriaLabel}>
+    <div><span>{rows.length}</span><small>{$t.sessionLineage.statSessions}</small></div>
+    <div><span>{rootCount}</span><small>{$t.sessionLineage.statRoots}</small></div>
+    <div><span>{forkCount}</span><small>{$t.sessionLineage.statForks}</small></div>
   </div>
 
   {#if loading}
-    <div class="lineage-empty">Loading lineage...</div>
+    <div class="lineage-empty">{$t.sessionLineage.loading}</div>
   {:else if error}
     <div class="error-banner">{error}</div>
   {:else if rows.length === 0}
-    <div class="lineage-empty">No sessions yet.</div>
+    <div class="lineage-empty">{$t.sessionLineage.empty}</div>
   {:else}
-    <div class="lineage-graph" role="list" aria-label="Session lineage graph">
+    <div class="lineage-graph" role="list" aria-label={$t.sessionLineage.graphAriaLabel}>
       {#each rows as row (row.session.id)}
         <div
           class="lineage-row"
@@ -168,19 +169,19 @@
                 <span>{row.session.id}</span>
                 <span>{formatTime(row.session.updated_at)}</span>
                 {#if row.parent}
-                  <span>parent: {row.parent.title || row.parent.id}</span>
+                  <span>{$t.sessionLineage.parentLabel(row.parent.title || row.parent.id)}</span>
                 {/if}
               </span>
               {#if row.forkPreview}
                 <span class="fork-preview">
-                  <span>Fork point</span>
+                  <span>{$t.sessionLineage.forkPoint}</span>
                   <strong>{row.forkPreview.role}</strong>
                   <span>{row.forkPreview.content || row.forkPreview.message_id}</span>
                 </span>
               {:else if row.kind === 'fork'}
                 <span class="fork-preview muted">
-                  <span>Fork point</span>
-                  <span>{row.session.forked_from_message_id || `index ${row.session.forked_from_index}`}</span>
+                  <span>{$t.sessionLineage.forkPoint}</span>
+                  <span>{row.session.forked_from_message_id || $t.sessionLineage.indexLabel(row.session.forked_from_index ?? 0)}</span>
                 </span>
               {/if}
             </span>
@@ -194,7 +195,7 @@
                 disabled={promotionLoading && promotionSessionId === row.session.id}
                 onclick={() => { void reviewForkInsights(row) }}
               >
-                {promotionLoading && promotionSessionId === row.session.id ? 'Loading...' : 'Review insights'}
+                {promotionLoading && promotionSessionId === row.session.id ? $t.sessionLineage.reviewLoading : $t.sessionLineage.reviewInsights}
               </button>
             </div>
           {/if}
@@ -204,14 +205,14 @@
   {/if}
 
   {#if promotionSessionId}
-    <section class="promotion-panel" aria-label="Fork insights">
+    <section class="promotion-panel" aria-label={$t.sessionLineage.forkInsightsLabel}>
       <header class="promotion-header">
         <div>
-          <span class="panel-label">Fork Insights</span>
+          <span class="panel-label">{$t.sessionLineage.forkInsightsLabel}</span>
           <h3>{promotionSessionTitle}</h3>
         </div>
         <button type="button" class="btn btn-primary btn-sm" disabled={promotionSaving || selectedPromotionCount === 0} onclick={() => { void queueSelectedPromotions() }}>
-          {promotionSaving ? 'Queuing...' : `Queue selected (${selectedPromotionCount})`}
+          {promotionSaving ? $t.sessionLineage.queuing : $t.sessionLineage.queueSelected(selectedPromotionCount)}
         </button>
       </header>
       {#if promotionError}
@@ -220,13 +221,13 @@
       {#if promotionSuccess}
         <div class="success-banner">
           <span>{promotionSuccess}</span>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/memory?tab=inbox')}>Open Memory Inbox</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/memory?tab=inbox')}>{$t.sessionLineage.openMemoryInbox}</button>
         </div>
       {/if}
       {#if promotionLoading}
-        <div class="lineage-empty">Loading fork insights...</div>
+        <div class="lineage-empty">{$t.sessionLineage.loadingForkInsights}</div>
       {:else if promotionCandidates.length === 0}
-        <div class="lineage-empty">No reviewable fork insights.</div>
+        <div class="lineage-empty">{$t.sessionLineage.noForkInsights}</div>
       {:else}
         <div class="promotion-list">
           {#each promotionCandidates as candidate}
@@ -239,7 +240,7 @@
               <span class="promotion-copy">
                 <span>
                   <strong>{candidate.category}</strong>
-                  <small>{candidate.role} · message {candidate.message_index + 1}</small>
+                  <small>{candidate.role} · {$t.sessionLineage.messageIndex(candidate.message_index + 1)}</small>
                 </span>
                 <span>{candidate.summary}</span>
               </span>
@@ -253,11 +254,28 @@
 
 <style>
   .lineage-page {
-    display: grid;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     gap: var(--space-4);
-    padding: var(--space-5);
-    max-width: 1120px;
-    margin: 0 auto;
+  }
+
+  .lineage-page > .lineage-header,
+  .lineage-page > .lineage-stats,
+  .lineage-page > .lineage-empty,
+  .lineage-page > .error-banner,
+  .lineage-page > .promotion-panel {
+    flex-shrink: 0;
+  }
+
+  .lineage-graph {
+    display: grid;
+    gap: var(--space-2);
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: var(--space-1);
   }
 
   .lineage-header {
@@ -313,10 +331,6 @@
     text-transform: uppercase;
   }
 
-  .lineage-graph {
-    display: grid;
-    gap: var(--space-2);
-  }
 
   .lineage-row {
     display: grid;
@@ -557,10 +571,6 @@
   }
 
   @media (max-width: 760px) {
-    .lineage-page {
-      padding: var(--space-3);
-    }
-
     .lineage-header {
       display: grid;
     }
