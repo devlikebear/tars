@@ -338,9 +338,13 @@ export function defaultBaseURLForKind(kind: ProviderKind | ''): string {
     case 'openai':
       return 'https://api.openai.com/v1'
     case 'gemini':
-      return 'https://generativelanguage.googleapis.com'
+      // Must match backend llmdefaults.GeminiBaseURL — the OpenAI-compat
+      // surface lives at /v1beta/openai. Without the path, every chat
+      // turn 404s with an empty body.
+      return 'https://generativelanguage.googleapis.com/v1beta/openai'
     case 'gemini-native':
-      return 'https://generativelanguage.googleapis.com'
+      // Must match backend llmdefaults.GeminiNativeBaseURL.
+      return 'https://generativelanguage.googleapis.com/v1beta'
     case 'kimi':
       return 'https://api.moonshot.ai/v1'
     case 'openai-codex':
