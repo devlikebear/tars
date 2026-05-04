@@ -3,14 +3,27 @@ import assert from 'node:assert/strict'
 
 import {
   availableAuthModesForKind,
+  buildChannelsPayload,
   buildConfigPayload,
+  buildIntegrationsPayload,
+  buildSectionPayload,
+  buildToolsPayload,
+  channelsFromConfigValues,
   defaultBaseURLForKind,
   emptyOnboardingForm,
+  formatPrivateHostAllowlistInput,
   formFromConfigValues,
+  integrationsFromConfigValues,
+  parsePrivateHostAllowlistInput,
   suggestedAuthModeForKind,
+  toolsFromConfigValues,
+  validateChannelsStep,
   validateForm,
+  validateIntegrationsStep,
   validateProviderStep,
+  validateSectionStep,
   validateTiersStep,
+  validateToolsStep,
 } from '../src/lib/onboarding.ts'
 
 test('emptyOnboardingForm returns blank state with all 3 tier slots', () => {
@@ -266,4 +279,213 @@ test('validateProviderStep accepts api-key mode without typed key when keepExist
   form.provider.api_key = '' // user did not type anything
   form.provider.keepExistingApiKey = true
   assert.equal(validateProviderStep(form).length, 0)
+})
+
+// --- Tools section ---
+
+test('emptyOnboardingForm initializes new sections with safe defaults', () => {
+  const form = emptyOnboardingForm()
+  assert.equal(form.tools.web_search_enabled, false)
+  assert.deepEqual(form.tools.web_fetch_private_host_allowlist, [])
+  assert.equal(form.integrations.memory_embed_dimensions, null)
+  assert.equal(form.channels.telegram_enabled, false)
+})
+
+test('validateToolsStep blocks save when web_search enabled without api_key', () => {
+  const form = emptyOnboardingForm()
+  form.tools.web_search_enabled = true
+  const errs = validateToolsStep(form)
+  assert.ok(errs.some((e) => /api key/i.test(e)), errs.join(' | '))
+})
+
+test('validateToolsStep accepts web_search enabled with keepExisting flag', () => {
+  const form = emptyOnboardingForm()
+  form.tools.web_search_enabled = true
+  form.tools.web_search_api_key = '****abcd'
+  form.tools.keepWebSearchKey = true
+  assert.equal(validateToolsStep(form).length, 0)
+})
+
+test('validateToolsStep allows disabled web_search with no key', () => {
+  const form = emptyOnboardingForm()
+  form.tools.web_fetch_enabled = true
+  assert.equal(validateToolsStep(form).length, 0)
+})
+
+test('buildToolsPayload always emits boolean keys + JSON-encodes the allowlist', () => {
+  const form = emptyOnboardingForm()
+  form.tools.web_search_enabled = true
+  form.tools.web_search_provider = 'tavily'
+  form.tools.web_search_api_key = 'tvly-fresh'
+  form.tools.web_fetch_enabled = true
+  form.tools.web_fetch_allow_private_hosts = true
+  form.tools.web_fetch_private_host_allowlist = ['10.0.0.1', 'internal.local']
+  form.tools.allow_high_risk_user = true
+  const payload = buildToolsPayload(form)
+  assert.equal(payload.tools_web_search_enabled, true)
+  assert.equal(payload.tools_web_fetch_enabled, true)
+  assert.equal(payload.tools_web_fetch_allow_private_hosts, true)
+  assert.equal(payload.tools_allow_high_risk_user, true)
+  assert.equal(payload.tools_web_search_provider, 'tavily')
+  assert.equal(payload.tools_web_search_api_key, 'tvly-fresh')
+  assert.equal(
+    payload.tools_web_fetch_private_host_allowlist_json,
+    JSON.stringify(['10.0.0.1', 'internal.local']),
+  )
+})
+
+test('buildToolsPayload omits api_key when keepWebSearchKey is set', () => {
+  const form = emptyOnboardingForm()
+  form.tools.web_search_enabled = true
+  form.tools.web_search_api_key = '****abcd'
+  form.tools.keepWebSearchKey = true
+  const payload = buildToolsPayload(form)
+  assert.equal('tools_web_search_api_key' in payload, false, 'masked key must not be patched back')
+})
+
+// --- Integrations section ---
+
+test('validateIntegrationsStep treats memory_embed as opt-in', () => {
+  const form = emptyOnboardingForm()
+  // No provider set → no error even when api_key empty
+  assert.equal(validateIntegrationsStep(form).length, 0)
+})
+
+test('validateIntegrationsStep flags missing api_key when provider is set', () => {
+  const form = emptyOnboardingForm()
+  form.integrations.memory_embed_provider = 'gemini'
+  const errs = validateIntegrationsStep(form)
+  assert.ok(errs.some((e) => /api key/i.test(e)), errs.join(' | '))
+})
+
+test('buildIntegrationsPayload omits empty fields and api_key when keep flag set', () => {
+  const form = emptyOnboardingForm()
+  form.integrations.memory_embed_provider = 'gemini'
+  form.integrations.memory_embed_api_key = '****key1'
+  form.integrations.keepMemoryEmbedKey = true
+  form.integrations.memory_embed_model = 'gemini-embedding-001'
+  form.integrations.memory_embed_dimensions = 768
+  const payload = buildIntegrationsPayload(form)
+  assert.equal(payload.memory_embed_provider, 'gemini')
+  assert.equal(payload.memory_embed_model, 'gemini-embedding-001')
+  assert.equal(payload.memory_embed_dimensions, 768)
+  assert.equal('memory_embed_api_key' in payload, false)
+  assert.equal('memory_embed_base_url' in payload, false)
+})
+
+// --- Channels section ---
+
+test('validateChannelsStep blocks telegram enable without bot token', () => {
+  const form = emptyOnboardingForm()
+  form.channels.telegram_enabled = true
+  const errs = validateChannelsStep(form)
+  assert.ok(errs.some((e) => /bot token/i.test(e)), errs.join(' | '))
+})
+
+test('validateChannelsStep blocks polling without telegram enabled', () => {
+  const form = emptyOnboardingForm()
+  form.channels.telegram_polling_enabled = true
+  const errs = validateChannelsStep(form)
+  assert.ok(errs.some((e) => /polling requires the telegram channel/i.test(e)))
+})
+
+test('validateChannelsStep accepts complete telegram config', () => {
+  const form = emptyOnboardingForm()
+  form.channels.telegram_enabled = true
+  form.channels.telegram_bot_token = '12345:ABCDEF'
+  form.channels.telegram_polling_enabled = true
+  assert.equal(validateChannelsStep(form).length, 0)
+})
+
+test('buildChannelsPayload omits bot token when keepTelegramToken is set', () => {
+  const form = emptyOnboardingForm()
+  form.channels.telegram_enabled = true
+  form.channels.telegram_bot_token = '****CDEF'
+  form.channels.keepTelegramToken = true
+  const payload = buildChannelsPayload(form)
+  assert.equal(payload.channels_telegram_enabled, true)
+  assert.equal('telegram_bot_token' in payload, false, 'masked token must not be patched back')
+})
+
+test('buildChannelsPayload always includes the boolean toggles', () => {
+  const form = emptyOnboardingForm()
+  form.channels.webhook_enabled = true
+  const payload = buildChannelsPayload(form)
+  assert.equal(payload.channels_telegram_enabled, false)
+  assert.equal(payload.channels_telegram_polling_enabled, false)
+  assert.equal(payload.channels_webhook_enabled, true)
+})
+
+// --- Section dispatch + reentry ---
+
+test('buildSectionPayload dispatches per section', () => {
+  const form = emptyOnboardingForm()
+  form.tools.web_fetch_enabled = true
+  const tools = buildSectionPayload('tools', form) as Record<string, unknown>
+  assert.equal(tools.tools_web_fetch_enabled, true)
+  // Tools payload must NOT include channels keys.
+  assert.equal('channels_telegram_enabled' in tools, false)
+})
+
+test('validateSectionStep dispatches per section', () => {
+  const form = emptyOnboardingForm()
+  form.channels.telegram_enabled = true
+  const errs = validateSectionStep('channels', form)
+  assert.ok(errs.length > 0)
+})
+
+test('toolsFromConfigValues marks keepWebSearchKey when masked api_key present', () => {
+  const tools = toolsFromConfigValues({
+    tools_web_search_enabled: true,
+    tools_web_search_api_key: 'tvly****1234',
+    tools_web_fetch_private_host_allowlist_json: '["10.0.0.1","internal.local"]',
+  })
+  assert.equal(tools.web_search_enabled, true)
+  assert.equal(tools.keepWebSearchKey, true)
+  assert.deepEqual(tools.web_fetch_private_host_allowlist, ['10.0.0.1', 'internal.local'])
+})
+
+test('integrationsFromConfigValues parses dimensions as number', () => {
+  const i = integrationsFromConfigValues({
+    memory_embed_provider: 'gemini',
+    memory_embed_dimensions: 768,
+  })
+  assert.equal(i.memory_embed_provider, 'gemini')
+  assert.equal(i.memory_embed_dimensions, 768)
+})
+
+test('channelsFromConfigValues sets keepTelegramToken when token present', () => {
+  const c = channelsFromConfigValues({
+    channels_telegram_enabled: true,
+    telegram_bot_token: '****ABCD',
+  })
+  assert.equal(c.telegram_enabled, true)
+  assert.equal(c.keepTelegramToken, true)
+})
+
+test('parsePrivateHostAllowlistInput strips comments and blanks', () => {
+  const input = '\n10.0.0.1\n# comment line\n\ninternal.local  \n'
+  assert.deepEqual(parsePrivateHostAllowlistInput(input), ['10.0.0.1', 'internal.local'])
+})
+
+test('formatPrivateHostAllowlistInput round-trips a host list', () => {
+  const formatted = formatPrivateHostAllowlistInput(['10.0.0.1', 'internal.local'])
+  assert.equal(formatted, '10.0.0.1\ninternal.local')
+})
+
+test('formFromConfigValues prefills tools / integrations / channels', () => {
+  const form = formFromConfigValues({
+    tools_web_search_enabled: true,
+    tools_web_search_api_key: 'tvly****',
+    memory_embed_provider: 'gemini',
+    memory_embed_api_key: 'sk-emb****',
+    channels_telegram_enabled: true,
+    telegram_bot_token: '****CDEF',
+  })
+  assert.equal(form.tools.web_search_enabled, true)
+  assert.equal(form.tools.keepWebSearchKey, true)
+  assert.equal(form.integrations.memory_embed_provider, 'gemini')
+  assert.equal(form.integrations.keepMemoryEmbedKey, true)
+  assert.equal(form.channels.telegram_enabled, true)
+  assert.equal(form.channels.keepTelegramToken, true)
 })

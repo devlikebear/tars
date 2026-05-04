@@ -3,36 +3,36 @@
   import {
     getConfigSchema,
     getHealthz,
-    getProviderModels,
     getSetupStatus,
     patchConfigValues,
     restartServer,
   } from '../lib/api'
   import {
-    SNAPSHOT_DATE,
-    popularModelsForKind,
-  } from '../lib/llm-catalog'
-  import {
     allAliasesFromConfigValues,
-    availableAuthModesForKind,
     buildConfigPayload,
-    defaultBaseURLForKind,
+    buildSectionPayload,
     emptyOnboardingForm,
     formFromConfigValues,
-    propagateAliasToTiers,
-    providerFromConfigValues,
-    providerKinds,
-    resetTierModelsForKindChange,
-    suggestedAuthModeForKind,
+    optionalSections,
     validateForm,
     validateProviderStep,
+    validateSectionStep,
     validateTiersStep,
-    type AuthMode,
     type OnboardingFormState,
-    type ProviderKind,
+    type OptionalSection,
+    type WizardMode,
   } from '../lib/onboarding'
   import type { SetupStatusResponse } from '../lib/types'
   import { t } from '../i18n'
+
+  import OnboardingProvider from './onboarding/OnboardingProvider.svelte'
+  import OnboardingTiers from './onboarding/OnboardingTiers.svelte'
+  import OnboardingTools from './onboarding/OnboardingTools.svelte'
+  import OnboardingIntegrations from './onboarding/OnboardingIntegrations.svelte'
+  import OnboardingChannels from './onboarding/OnboardingChannels.svelte'
+  import OnboardingReview from './onboarding/OnboardingReview.svelte'
+  import OnboardingComplete from './onboarding/OnboardingComplete.svelte'
+  import OnboardingRestart from './onboarding/OnboardingRestart.svelte'
 
   interface Props {
     onComplete?: () => void
@@ -40,39 +40,53 @@
   }
   let { onComplete, reentry = false }: Props = $props()
 
-  type StepId = 'provider' | 'tiers' | 'review' | 'restarting' | 'saved'
+  // Sections drive both the progress bar and the if/else dispatch in
+  // the template. 'restarting' is a terminal phase rendered by
+  // OnboardingRestart; 'complete' shows the capability matrix.
+  type SectionId =
+    | 'provider'
+    | 'tiers'
+    | 'tools'
+    | 'integrations'
+    | 'channels'
+    | 'review'
+    | 'restarting'
+    | 'complete'
 
-  let step = $state<StepId>('provider')
+  // Quick mode = LLM-only (the original 4-step wizard); Full mode adds
+  // the optional Tools/Integrations/Channels sections between Tiers and
+  // Review. Reentry defaults to Full so users can deep-link any section.
+  // mode starts as Quick; the deep-link handler in onMount switches it
+  // to Full when reentry=true (or the URL pins a specific section). We
+  // avoid initializing from `reentry` directly here to keep $state from
+  // pinning to the initial prop value (Svelte 5 warns about that).
+  let mode = $state<WizardMode>('quick')
+  let step = $state<SectionId>('provider')
   let form = $state<OnboardingFormState>(emptyOnboardingForm())
-  let availableAuthModes = $derived(availableAuthModesForKind(form.provider.kind))
-  // All provider aliases loaded from config on re-entry. Used to populate
-  // the provider selector in step 1 and the alias dropdown in step 2.
   let configValues = $state<Record<string, unknown>>({})
   let existingAliases = $derived(allAliasesFromConfigValues(configValues))
-  // Union of existing aliases + the alias being configured in step 1.
   let allKnownAliases = $derived(
-    [...new Set([...existingAliases, form.provider.alias.trim()].filter(Boolean))].sort()
-  )
-  // Live model list pulled from /v1/models when the user clicks Refresh
-  // (reentry / normal mode only — the setup-only path has no on-disk
-  // credentials yet so /v1/models has nothing to call).
-  let liveModels = $state<string[]>([])
-  let liveRefreshError = $state<string>('')
-  let liveRefreshing = $state<boolean>(false)
-  let modelSuggestions = $derived(
-    liveModels.length > 0 ? liveModels : popularModelsForKind(form.provider.kind),
+    [...new Set([...existingAliases, form.provider.alias.trim()].filter(Boolean))].sort(),
   )
   let setupStatus = $state<SetupStatusResponse | null>(null)
   let stepErrors = $state<string[]>([])
   let saveError = $state<string>('')
   let restartPhase = $state<'idle' | 'patching' | 'restarting' | 'polling' | 'ready' | 'timeout'>('idle')
   let pollDeadline = $state<number>(0)
+  // Sections the user has saved (or skipped) in the current wizard run.
+  // Drives the completion matrix's "configured vs not yet visited"
+  // distinction and the restart-required hint when channels changed.
+  let savedSections = $state<Set<OptionalSection>>(new Set())
+  // Set when a section save mutated worker-backed channels (telegram/
+  // webhook). The matrix surfaces this so the user knows a restart is
+  // required to actually start the worker.
+  let workerRestartPending = $state<boolean>(false)
 
   onMount(async () => {
+    if (reentry) mode = 'full'
     try {
       setupStatus = await getSetupStatus()
     } catch (err) {
-      // status fetch is optional — wizard still works on empty fields
       console.warn('setup status fetch failed', err)
     }
     if (reentry) {
@@ -84,117 +98,114 @@
         console.warn('reentry prefill failed', err)
       }
     }
+    // Honour ?section=<name> deep-link for reentry. Refuses to land on
+    // a non-LLM section when no provider is configured (would write a
+    // useless partial config) and falls back to provider step.
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const target = params.get('section') as SectionId | null
+      if (target && reentry) {
+        const aliases = allAliasesFromConfigValues(configValues)
+        const isOptional = (optionalSections as readonly string[]).includes(target)
+        if (isOptional && aliases.length === 0) {
+          step = 'provider'
+        } else if (
+          target === 'provider' ||
+          target === 'tiers' ||
+          target === 'tools' ||
+          target === 'integrations' ||
+          target === 'channels' ||
+          target === 'review'
+        ) {
+          mode = 'full'
+          step = target
+        }
+      }
+    }
   })
 
-  const stepOrder: StepId[] = ['provider', 'tiers', 'review', 'restarting']
-  let stepLabels = $derived<Record<StepId, string>>({
+  // Derived ordering keeps the progress bar in sync with the active
+  // mode. Quick excludes the optional sections; restarting/complete
+  // are rendered separately and not tracked in stepOrder.
+  let stepOrder = $derived<SectionId[]>(
+    mode === 'quick'
+      ? ['provider', 'tiers', 'review']
+      : ['provider', 'tiers', 'tools', 'integrations', 'channels', 'review'],
+  )
+
+  let stepLabels = $derived<Record<SectionId, string>>({
     provider: $t.onboarding.steps.provider,
     tiers: $t.onboarding.steps.tiers,
+    tools: $t.onboarding.steps.tools,
+    integrations: $t.onboarding.steps.integrations,
+    channels: $t.onboarding.steps.channels,
     review: $t.onboarding.steps.review,
     restarting: $t.onboarding.steps.restart,
-    saved: $t.onboarding.steps.saved,
+    complete: $t.onboarding.steps.saved,
   })
 
-  function progressIndex(current: StepId): number {
-    if (current === 'saved') return stepOrder.length - 1
+  function progressIndex(current: SectionId): number {
+    if (current === 'complete' || current === 'restarting') {
+      return stepOrder.length - 1
+    }
     return stepOrder.indexOf(current)
-  }
-
-  function handleApiKeyInput(value: string) {
-    form.provider.api_key = value
-    if (value.trim() !== '') {
-      // user typed a fresh value — drop the keep-existing pin so the
-      // payload includes the new key
-      form.provider.keepExistingApiKey = false
-    }
-  }
-
-  function handleKindChange(value: string) {
-    const kind = value as ProviderKind | ''
-    const previousKind = form.provider.kind
-    form.provider.kind = kind
-    // Replace base_url when it's empty OR matches the previous kind's
-    // canonical default. The user may have customized base_url; only
-    // the boilerplate default gets swapped.
-    const previousDefault = defaultBaseURLForKind(previousKind)
-    const currentBaseURL = form.provider.base_url.trim()
-    if (currentBaseURL === '' || currentBaseURL === previousDefault) {
-      form.provider.base_url = defaultBaseURLForKind(kind)
-    }
-    // Reset auth_mode to a value valid for the picked kind. If the
-    // user had selected api-key for an api-key kind and switches to
-    // claude-code-cli (cli-only), keeping the stale value would let
-    // them advance with an invalid combo.
-    const valid = availableAuthModesForKind(kind)
-    if (!valid.includes(form.provider.auth_mode)) {
-      form.provider.auth_mode = suggestedAuthModeForKind(kind)
-    }
-    if (form.provider.alias.trim() === '' && kind !== '') {
-      form.provider.alias = kind
-    }
-    // Models are kind-specific (gpt-5.4 makes no sense once kind flips
-    // to anthropic). Clear any previous selection so step 2 prompts
-    // the user with the new per-kind suggestion list.
-    if (previousKind !== '' && previousKind !== kind) {
-      resetTierModelsForKindChange(form)
-    }
-  }
-
-  function syncTiersToWizardAlias() {
-    propagateAliasToTiers(
-      form,
-      form.provider.previousAlias || '',
-      form.provider.alias,
-    )
   }
 
   function goToTiers() {
     stepErrors = validateProviderStep(form)
-    if (stepErrors.length === 0) {
-      syncTiersToWizardAlias()
-      step = 'tiers'
-    }
+    if (stepErrors.length === 0) step = 'tiers'
   }
 
-  function handleSelectProviderForEdit(alias: string) {
-    if (alias === '__new__') {
-      form.provider = emptyOnboardingForm().provider
-    } else {
-      form.provider = providerFromConfigValues(configValues, alias)
-    }
-  }
-
-  function goToReview() {
+  function advanceFromTiers() {
     stepErrors = validateTiersStep(form, allKnownAliases)
-    if (stepErrors.length === 0) {
-      step = 'review'
-    }
+    if (stepErrors.length > 0) return
+    step = mode === 'full' ? 'tools' : 'review'
   }
 
-  function goBack(target: StepId) {
+  // saveOptionalSection patches just the keys for a given section and
+  // marks the section as visited. Errors surface inline; on success
+  // the wizard moves to the next section in the active mode.
+  async function saveOptionalSection(section: OptionalSection, next: SectionId) {
+    const errs = validateSectionStep(section, form)
+    if (errs.length > 0) {
+      stepErrors = errs
+      return
+    }
+    stepErrors = []
+    saveError = ''
+    try {
+      await patchConfigValues(buildSectionPayload(section, form))
+      savedSections.add(section)
+      // Trigger reactivity for the Set — Svelte tracks the reference,
+      // not internal mutations.
+      savedSections = new Set(savedSections)
+      if (
+        section === 'channels' &&
+        (form.channels.telegram_enabled || form.channels.webhook_enabled)
+      ) {
+        workerRestartPending = true
+      }
+    } catch (err) {
+      stepErrors = [(err as Error).message || 'failed to save section']
+      return
+    }
+    step = next
+  }
+
+  function skipOptionalSection(next: SectionId) {
+    stepErrors = []
+    step = next
+  }
+
+  function backToSection(target: SectionId) {
     stepErrors = []
     saveError = ''
     step = target
   }
 
-  async function refreshLiveModels() {
-    liveRefreshError = ''
-    liveRefreshing = true
-    try {
-      const info = await getProviderModels()
-      const models = Array.isArray(info?.models) ? info.models.filter((m) => typeof m === 'string' && m.trim() !== '') : []
-      if (models.length === 0) {
-        liveRefreshError = $t.onboarding.step2.refreshErrorEmpty
-        return
-      }
-      liveModels = models
-    } catch (err) {
-      liveRefreshError = (err as Error).message || 'failed to fetch models'
-    } finally {
-      liveRefreshing = false
-    }
-  }
-
+  // handleSave commits the LLM provider+tier bindings via the existing
+  // alias-replace payload (preserves other providers on disk). Optional
+  // sections were already saved one-by-one if Full mode was used.
   async function handleSave(restart: boolean) {
     const formErrors = validateForm(form, allKnownAliases)
     if (formErrors.length > 0) {
@@ -217,33 +228,21 @@
     }
     if (!restart) {
       restartPhase = 'idle'
-      step = 'saved'
+      step = 'complete'
       return
     }
-    restartPhase = 'restarting'
-    try {
-      await restartServer()
-    } catch (err) {
-      saveError = (err as Error).message || 'failed to trigger restart'
-      restartPhase = 'idle'
-      step = 'review'
-      return
-    }
-    restartPhase = 'polling'
-    pollDeadline = Date.now() + 30_000
-    pollUntilReady()
+    await triggerRestart('review')
   }
 
-  async function handleManualRestart() {
-    saveError = ''
-    step = 'restarting'
+  async function triggerRestart(failbackStep: SectionId) {
     restartPhase = 'restarting'
+    step = 'restarting'
     try {
       await restartServer()
     } catch (err) {
       saveError = (err as Error).message || 'failed to trigger restart'
       restartPhase = 'idle'
-      step = 'saved'
+      step = failbackStep
       return
     }
     restartPhase = 'polling'
@@ -268,11 +267,22 @@
     restartPhase = 'timeout'
   }
 
-  function maskedKey(key: string): string {
-    const trimmed = key.trim()
-    if (trimmed.length === 0) return '(none)'
-    if (trimmed.length <= 8) return '*'.repeat(trimmed.length)
-    return trimmed.slice(0, 4) + '*'.repeat(trimmed.length - 8) + trimmed.slice(-4)
+  function configureMore() {
+    // Switch from Quick → Full so the user can fill in Tools/Integrations/
+    // Channels without re-running the LLM steps.
+    mode = 'full'
+    step = 'tools'
+    stepErrors = []
+  }
+
+  function jumpToOptionalSection(section: OptionalSection) {
+    mode = 'full'
+    step = section
+    stepErrors = []
+  }
+
+  function closeWizard() {
+    if (onComplete) onComplete()
   }
 </script>
 
@@ -281,6 +291,10 @@
     <span class="onboarding-kicker">{reentry ? $t.onboarding.kicker.reentry : $t.onboarding.kicker.firstRun}</span>
     <h1>{$t.onboarding.title}</h1>
     <p>{reentry ? $t.onboarding.subtitleReentry : $t.onboarding.subtitleFirstRun}</p>
+    <div class="onboarding-mode-row">
+      <span class="onboarding-mode-badge">{mode === 'quick' ? $t.onboarding.mode.quick : $t.onboarding.mode.full}</span>
+      <span class="onboarding-mode-hint">{mode === 'quick' ? $t.onboarding.mode.quickHint : $t.onboarding.mode.fullHint}</span>
+    </div>
   </header>
 
   <ol class="onboarding-progress">
@@ -292,7 +306,7 @@
     {/each}
   </ol>
 
-  {#if stepErrors.length > 0 && step !== 'restarting'}
+  {#if stepErrors.length > 0 && step !== 'restarting' && step !== 'complete'}
     <div class="onboarding-errors">
       <strong>{$t.onboarding.errors.inputCheck}</strong>
       <ul>
@@ -304,266 +318,74 @@
   {/if}
 
   {#if step === 'provider'}
-    <section class="card">
-      <div class="card-header">
-        <span class="card-title">{$t.onboarding.step1.cardTitle}</span>
-      </div>
-      {#if reentry && existingAliases.length > 0}
-        <div class="onboarding-provider-selector">
-          <label class="onboarding-field">
-            <span>{$t.onboarding.step1.selectProviderLabel}</span>
-            <select
-              value={form.provider.alias}
-              onchange={(e) => handleSelectProviderForEdit((e.currentTarget as HTMLSelectElement).value)}
-            >
-              {#each existingAliases as alias}
-                <option value={alias}>{alias}</option>
-              {/each}
-              <option value="__new__">{$t.onboarding.step1.addNewProviderOption}</option>
-            </select>
-          </label>
-        </div>
-      {/if}
-      <div class="onboarding-grid">
-        <label class="onboarding-field">
-          <span>{$t.onboarding.step1.kindLabel} <em>{$t.onboarding.step1.kindHint}</em></span>
-          <select value={form.provider.kind} onchange={(e) => handleKindChange((e.currentTarget as HTMLSelectElement).value)}>
-            <option value="">{$t.onboarding.step1.kindPlaceholder}</option>
-            {#each providerKinds as kind}
-              <option value={kind}>{kind}</option>
-            {/each}
-          </select>
-        </label>
-
-        <label class="onboarding-field">
-          <span>{$t.onboarding.step1.aliasLabel} <em>{$t.onboarding.step1.aliasHint}</em></span>
-          <input type="text" bind:value={form.provider.alias} placeholder={$t.onboarding.step1.aliasPlaceholder} />
-        </label>
-
-        <label class="onboarding-field">
-          <span>{$t.onboarding.step1.authModeLabel} <em>{$t.onboarding.step1.authModeHint}</em></span>
-          <select bind:value={form.provider.auth_mode} disabled={availableAuthModes.length <= 1 && form.provider.kind !== ''}>
-            {#each availableAuthModes as mode}
-              <option value={mode}>{mode}</option>
-            {/each}
-          </select>
-        </label>
-
-        {#if form.provider.auth_mode === 'api-key'}
-          <label class="onboarding-field">
-            <span>{$t.onboarding.step1.apiKeyLabel} {#if form.provider.keepExistingApiKey}<em>{$t.onboarding.step1.apiKeyKeepHint}</em>{/if}</span>
-            <input
-              type="password"
-              value={form.provider.keepExistingApiKey ? '' : form.provider.api_key}
-              oninput={(e) => handleApiKeyInput((e.currentTarget as HTMLInputElement).value)}
-              autocomplete="new-password"
-              placeholder={form.provider.keepExistingApiKey ? $t.onboarding.step1.apiKeyPlaceholderKeep : $t.onboarding.step1.apiKeyPlaceholderNew}
-            />
-          </label>
-        {/if}
-
-        <label class="onboarding-field">
-          <span>{$t.onboarding.step1.baseUrlLabel} <em>{$t.onboarding.step1.baseUrlHint}</em></span>
-          <input type="url" bind:value={form.provider.base_url} placeholder={defaultBaseURLForKind(form.provider.kind)} />
-        </label>
-      </div>
-
-      {#if form.provider.auth_mode === 'oauth'}
-        <p class="onboarding-hint">
-          <strong>{$t.onboarding.step1.hintOauthTitle}</strong> · {$t.onboarding.step1.hintOauthBody}
-        </p>
-      {:else if form.provider.auth_mode === 'cli'}
-        <p class="onboarding-hint">
-          <strong>{$t.onboarding.step1.hintCliTitle}</strong> · {$t.onboarding.step1.hintCliBody}
-        </p>
-      {/if}
-
-      <div class="onboarding-actions">
-        <span class="onboarding-spacer"></span>
-        <button class="btn btn-primary" type="button" onclick={goToTiers}>{$t.onboarding.step1.nextButton}</button>
-      </div>
-    </section>
+    <OnboardingProvider
+      bind:form
+      {reentry}
+      {existingAliases}
+      {configValues}
+      errors={stepErrors}
+      onNext={goToTiers}
+    />
   {:else if step === 'tiers'}
-    <section class="card">
-      <div class="card-header">
-        <span class="card-title">{$t.onboarding.step2.cardTitle}</span>
-        <span class="card-meta">{$t.onboarding.step2.cardMeta}</span>
-      </div>
-
-      <div class="onboarding-models-source">
-        <div class="onboarding-models-source-text">
-          {#if liveModels.length > 0}
-            {$t.onboarding.step2.modelsSourceLive(liveModels.length)}
-          {:else if modelSuggestions.length > 0}
-            {$t.onboarding.step2.modelsSourceStatic(SNAPSHOT_DATE, modelSuggestions.length)}
-          {:else}
-            {$t.onboarding.step2.modelsSourceStaticEmpty(SNAPSHOT_DATE)}
-          {/if}
-        </div>
-        {#if reentry}
-          <button class="btn btn-ghost btn-sm" type="button" onclick={refreshLiveModels} disabled={liveRefreshing}>
-            {liveRefreshing ? $t.onboarding.step2.refreshing : $t.onboarding.step2.refreshButton}
-          </button>
-        {/if}
-      </div>
-      {#if liveRefreshError}
-        <div class="onboarding-errors"><strong>{$t.onboarding.errors.refreshFailed}</strong><div>{liveRefreshError}</div></div>
-      {/if}
-
-      <datalist id="onboarding-model-suggestions">
-        {#each modelSuggestions as model}
-          <option value={model}></option>
-        {/each}
-      </datalist>
-
-      <div class="onboarding-tier-grid">
-        {#each ['heavy', 'standard', 'light'] as const as tier}
-          <fieldset class="onboarding-tier">
-            <legend>{tier}</legend>
-            <label class="onboarding-field">
-              <span>{$t.onboarding.step2.providerAliasLabel}</span>
-              {#if allKnownAliases.length > 1}
-                <select bind:value={form.tiers[tier].provider}>
-                  {#each allKnownAliases as alias}
-                    <option value={alias}>{alias}</option>
-                  {/each}
-                </select>
-              {:else}
-                <input type="text" bind:value={form.tiers[tier].provider} />
-              {/if}
-            </label>
-            <label class="onboarding-field">
-              <span>{$t.onboarding.step2.modelLabel}</span>
-              <input
-                type="text"
-                bind:value={form.tiers[tier].model}
-                placeholder={tier === 'light' ? 'e.g. gpt-5.4-mini' : 'e.g. gpt-5.4'}
-                list="onboarding-model-suggestions"
-                autocomplete="off"
-              />
-            </label>
-            <label class="onboarding-field">
-              <span>{$t.onboarding.step2.reasoningLabel} <em>{$t.onboarding.step2.reasoningHint}</em></span>
-              <select bind:value={form.tiers[tier].reasoning_effort}>
-                <option value="">{$t.onboarding.step2.reasoningDefault}</option>
-                <option value="minimal">minimal</option>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-              </select>
-            </label>
-          </fieldset>
-        {/each}
-      </div>
-
-      <div class="onboarding-actions">
-        <button class="btn btn-ghost" type="button" onclick={() => goBack('provider')}>{$t.onboarding.step2.backButton}</button>
-        <button class="btn btn-primary" type="button" onclick={goToReview}>{$t.onboarding.step2.nextButton}</button>
-      </div>
-    </section>
+    <OnboardingTiers
+      bind:form
+      {reentry}
+      {allKnownAliases}
+      errors={stepErrors}
+      onBack={() => backToSection('provider')}
+      onNext={advanceFromTiers}
+    />
+  {:else if step === 'tools'}
+    <OnboardingTools
+      bind:form
+      errors={stepErrors}
+      onBack={() => backToSection('tiers')}
+      onNext={() => saveOptionalSection('tools', 'integrations')}
+      onSkip={() => skipOptionalSection('integrations')}
+    />
+  {:else if step === 'integrations'}
+    <OnboardingIntegrations
+      bind:form
+      errors={stepErrors}
+      onBack={() => backToSection('tools')}
+      onNext={() => saveOptionalSection('integrations', 'channels')}
+      onSkip={() => skipOptionalSection('channels')}
+    />
+  {:else if step === 'channels'}
+    <OnboardingChannels
+      bind:form
+      errors={stepErrors}
+      onBack={() => backToSection('integrations')}
+      onNext={() => saveOptionalSection('channels', 'review')}
+      onSkip={() => skipOptionalSection('review')}
+    />
   {:else if step === 'review'}
-    <section class="card">
-      <div class="card-header">
-        <span class="card-title">{$t.onboarding.step3.cardTitle}</span>
-        {#if setupStatus?.config_path}
-          <span class="card-meta">{$t.onboarding.step3.saveLocation}: <code>{setupStatus.config_path}</code></span>
-        {/if}
-      </div>
-
-      {#if saveError}
-        <div class="onboarding-errors"><strong>{$t.onboarding.errors.saveFailed}</strong><div>{saveError}</div></div>
-      {/if}
-
-      {#if reentry && form.provider.previousAlias && form.provider.previousAlias !== form.provider.alias.trim() && form.provider.alias.trim() !== ''}
-        <p class="onboarding-hint">
-          {$t.onboarding.step3.renameNotice(form.provider.previousAlias, form.provider.alias.trim())}
-        </p>
-      {/if}
-
-      <div class="onboarding-review">
-        <div class="onboarding-review-section">
-          <h3>{$t.onboarding.step3.providerHeading}</h3>
-          <dl>
-            <div><dt>{$t.onboarding.step3.aliasField}</dt><dd>{form.provider.alias}</dd></div>
-            <div><dt>{$t.onboarding.step3.kindField}</dt><dd>{form.provider.kind}</dd></div>
-            <div><dt>{$t.onboarding.step3.authModeField}</dt><dd>{form.provider.auth_mode}</dd></div>
-            {#if form.provider.auth_mode === 'api-key'}
-              <div>
-                <dt>{$t.onboarding.step3.apiKeyField}</dt>
-                <dd>
-                  {#if form.provider.keepExistingApiKey}
-                    <code>{$t.onboarding.step3.apiKeyKept}</code>
-                  {:else}
-                    <code>{maskedKey(form.provider.api_key)}</code>
-                  {/if}
-                </dd>
-              </div>
-            {/if}
-            <div><dt>{$t.onboarding.step3.baseUrlField}</dt><dd>{form.provider.base_url || defaultBaseURLForKind(form.provider.kind) || $t.onboarding.step3.none}</dd></div>
-          </dl>
-        </div>
-
-        <div class="onboarding-review-section">
-          <h3>{$t.onboarding.step3.tiersHeading}</h3>
-          <table>
-            <thead><tr><th>{$t.onboarding.step3.tierField}</th><th>{$t.onboarding.step3.providerField}</th><th>{$t.onboarding.step3.modelField}</th><th>{$t.onboarding.step3.reasoningField}</th></tr></thead>
-            <tbody>
-              {#each ['heavy', 'standard', 'light'] as const as tier}
-                <tr>
-                  <td><strong>{tier}</strong></td>
-                  <td>{form.tiers[tier].provider}</td>
-                  <td>{form.tiers[tier].model}</td>
-                  <td>{form.tiers[tier].reasoning_effort || $t.onboarding.step3.defaultLabel}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="onboarding-actions">
-        <button class="btn btn-ghost" type="button" onclick={() => goBack('tiers')}>{$t.onboarding.step3.backButton}</button>
-        {#if reentry}
-          <button class="btn btn-ghost" type="button" onclick={() => handleSave(false)}>{$t.onboarding.step3.saveOnlyButton}</button>
-          <button class="btn btn-primary" type="button" onclick={() => handleSave(true)}>{$t.onboarding.step3.saveAndRestartButton}</button>
-        {:else}
-          <button class="btn btn-primary" type="button" onclick={() => handleSave(true)}>{$t.onboarding.step3.saveAndRestartButton}</button>
-        {/if}
-      </div>
-    </section>
-  {:else if step === 'saved'}
-    <section class="card onboarding-restart">
-      <h2>{$t.onboarding.saved.title}</h2>
-      <p>{$t.onboarding.saved.body}</p>
-      {#if saveError}
-        <div class="onboarding-errors"><strong>{$t.onboarding.errors.restartFailed}</strong><div>{saveError}</div></div>
-      {/if}
-      <div class="onboarding-actions onboarding-saved-actions">
-        <button class="btn btn-ghost" type="button" onclick={() => onComplete && onComplete()}>{$t.onboarding.saved.laterButton}</button>
-        <button class="btn btn-primary" type="button" onclick={handleManualRestart}>{$t.onboarding.saved.restartNowButton}</button>
-      </div>
-    </section>
+    <OnboardingReview
+      {form}
+      {reentry}
+      {mode}
+      {setupStatus}
+      {saveError}
+      onBack={() => backToSection(mode === 'full' ? 'channels' : 'tiers')}
+      onSave={handleSave}
+    />
+  {:else if step === 'complete'}
+    <OnboardingComplete
+      {form}
+      {mode}
+      {setupStatus}
+      {savedSections}
+      {saveError}
+      onConfigureMore={configureMore}
+      onRestart={() => triggerRestart('complete')}
+      onClose={closeWizard}
+      onJumpTo={jumpToOptionalSection}
+    />
+    {#if workerRestartPending}
+      <p class="onboarding-footnote">{$t.onboarding.complete.restartRequiredNotice}</p>
+    {/if}
   {:else}
-    <section class="card onboarding-restart">
-      {#if restartPhase === 'patching'}
-        <h2>{$t.onboarding.restart.patchingTitle}</h2>
-        <p>{$t.onboarding.restart.patchingBody}</p>
-      {:else if restartPhase === 'restarting'}
-        <h2>{$t.onboarding.restart.restartingTitle}</h2>
-        <p>{$t.onboarding.restart.restartingBody}</p>
-      {:else if restartPhase === 'polling'}
-        <h2>{$t.onboarding.restart.pollingTitle}</h2>
-        <p>{$t.onboarding.restart.pollingBody}</p>
-        <div class="onboarding-spinner" aria-hidden="true"></div>
-      {:else if restartPhase === 'ready'}
-        <h2>{$t.onboarding.restart.readyTitle}</h2>
-        <p>{$t.onboarding.restart.readyBody}</p>
-      {:else if restartPhase === 'timeout'}
-        <h2>{$t.onboarding.restart.timeoutTitle}</h2>
-        <p>{$t.onboarding.restart.timeoutBody}</p>
-        <button class="btn btn-primary" type="button" onclick={() => window.location.reload()}>{$t.onboarding.restart.refreshButton}</button>
-      {/if}
-    </section>
+    <OnboardingRestart phase={restartPhase === 'idle' ? 'patching' : restartPhase} />
   {/if}
 </section>
 
@@ -595,6 +417,27 @@
   .onboarding-header p {
     color: var(--text-muted);
     margin: 0;
+  }
+  .onboarding-mode-row {
+    margin-top: var(--space-2);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .onboarding-mode-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .onboarding-mode-hint {
+    color: var(--text-muted);
+    font-size: 12px;
   }
   .onboarding-progress {
     list-style: none;
@@ -653,38 +496,41 @@
     margin: 0;
     padding-left: 1.2em;
   }
-  .onboarding-provider-selector {
-    margin-bottom: var(--space-4);
-    padding-bottom: var(--space-4);
-    border-bottom: 1px solid var(--border-soft);
+  .onboarding-footnote {
+    margin: var(--space-3) 0 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: center;
   }
-  .onboarding-provider-selector .onboarding-field {
-    max-width: 340px;
-  }
-  .onboarding-grid {
+  /* Shared field styles still used by extracted children. Kept here so
+     scoped styles in child .svelte files can reference them via the
+     same class names (Svelte 5 scoping is per-component but global
+     CSS custom properties / tag-level rules cascade). */
+  :global(.onboarding-grid) {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-3) var(--space-4);
   }
-  .onboarding-field {
+  :global(.onboarding-field) {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
     font-size: 14px;
   }
-  .onboarding-field span {
+  :global(.onboarding-field span) {
     color: var(--text-muted);
     font-weight: 500;
   }
-  .onboarding-field span em {
+  :global(.onboarding-field span em) {
     color: var(--text-muted);
     font-weight: 400;
     font-style: normal;
     margin-left: 4px;
     font-size: 12px;
   }
-  .onboarding-field input,
-  .onboarding-field select {
+  :global(.onboarding-field input),
+  :global(.onboarding-field select),
+  :global(.onboarding-field textarea) {
     padding: 8px 10px;
     border: 1px solid var(--border-soft);
     border-radius: 6px;
@@ -693,17 +539,18 @@
     font-family: inherit;
     font-size: 14px;
   }
-  .onboarding-field input:focus,
-  .onboarding-field select:focus {
+  :global(.onboarding-field input:focus),
+  :global(.onboarding-field select:focus),
+  :global(.onboarding-field textarea:focus) {
     outline: 2px solid var(--primary);
     outline-offset: 1px;
   }
-  .onboarding-tier-grid {
+  :global(.onboarding-tier-grid) {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: var(--space-4);
   }
-  .onboarding-tier {
+  :global(.onboarding-tier) {
     border: 1px solid var(--border-soft);
     border-radius: 8px;
     padding: var(--space-3);
@@ -712,7 +559,7 @@
     flex-direction: column;
     gap: var(--space-3);
   }
-  .onboarding-tier legend {
+  :global(.onboarding-tier legend) {
     padding: 0 6px;
     color: var(--primary);
     font-weight: 600;
@@ -720,15 +567,17 @@
     letter-spacing: 0.05em;
     font-size: 12px;
   }
-  .onboarding-actions {
+  :global(.onboarding-actions) {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: var(--space-3);
     margin-top: var(--space-4);
   }
-  .onboarding-spacer { flex: 1; }
-  .onboarding-models-source {
+  :global(.onboarding-spacer) {
+    flex: 1;
+  }
+  :global(.onboarding-models-source) {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -741,84 +590,12 @@
     font-size: 13px;
     color: var(--text-muted);
   }
-  .onboarding-hint {
-    margin: var(--space-4) 0 0;
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border-soft);
-    border-left: 3px solid var(--primary);
-    border-radius: 6px;
-    background: var(--surface-1);
-    color: var(--text-muted);
-    font-size: 13px;
-    line-height: 1.55;
-  }
-  .onboarding-hint strong {
-    color: var(--text-primary);
-    margin-right: 4px;
-  }
-  .onboarding-review {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-  .onboarding-review-section h3 {
-    margin: 0 0 var(--space-2);
-    color: var(--text-primary);
-  }
-  .onboarding-review dl {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: var(--space-2) var(--space-4);
-    margin: 0;
-  }
-  .onboarding-review dt {
-    color: var(--text-muted);
-    font-size: 13px;
-  }
-  .onboarding-review dd { margin: 0; color: var(--text-primary); font-size: 14px; }
-  .onboarding-review code {
-    background: var(--surface-2);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 12px;
-  }
-  .onboarding-review table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-  }
-  .onboarding-review thead th {
-    text-align: left;
-    color: var(--text-muted);
+  :global(.onboarding-provider-selector) {
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-4);
     border-bottom: 1px solid var(--border-soft);
-    padding: 6px 8px;
-    font-weight: 500;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
-  .onboarding-review tbody td {
-    padding: 8px;
-    border-bottom: 1px dashed var(--border-soft);
-  }
-  .onboarding-restart {
-    text-align: center;
-    padding: var(--space-6);
-  }
-  .onboarding-saved-actions {
-    justify-content: center;
-    margin-top: var(--space-5);
-  }
-  .onboarding-spinner {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: 3px solid var(--border-soft);
-    border-top-color: var(--primary);
-    margin: var(--space-4) auto 0;
-    animation: onboarding-spin 1s linear infinite;
-  }
-  @keyframes onboarding-spin {
-    to { transform: rotate(360deg); }
+  :global(.onboarding-provider-selector .onboarding-field) {
+    max-width: 340px;
   }
 </style>

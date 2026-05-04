@@ -21,6 +21,7 @@ type setupStatusResponse struct {
 	ConfigExists bool                       `json:"config_exists"`
 	Providers    setupProviderStatus        `json:"providers"`
 	Tiers        map[string]setupTierStatus `json:"tiers"`
+	Capabilities setupCapabilityStatus      `json:"capabilities"`
 	Checks       []setupCheck               `json:"checks"`
 }
 
@@ -33,6 +34,24 @@ type setupTierStatus struct {
 	Configured bool   `json:"configured"`
 	Provider   string `json:"provider,omitempty"`
 	Model      string `json:"model,omitempty"`
+}
+
+// setupCapabilityStatus surfaces non-secret capability booleans so the
+// onboarding completion matrix can render ✓/✗ markers without re-fetching
+// the admin config schema. Per-capability flags drive individual rows;
+// the *_configured aggregates group rows by wizard section.
+type setupCapabilityStatus struct {
+	WebSearchEnabled     bool `json:"web_search_enabled"`
+	WebSearchAPIKeySet   bool `json:"web_search_api_key_set"`
+	WebFetchEnabled      bool `json:"web_fetch_enabled"`
+	MemoryEmbedAPIKeySet bool `json:"memory_embed_api_key_set"`
+	TelegramEnabled      bool `json:"telegram_enabled"`
+	TelegramBotTokenSet  bool `json:"telegram_bot_token_set"`
+	WebhookEnabled       bool `json:"webhook_enabled"`
+
+	ToolsConfigured        bool `json:"tools_configured"`
+	IntegrationsConfigured bool `json:"integrations_configured"`
+	ChannelsConfigured     bool `json:"channels_configured"`
 }
 
 type setupCheck struct {
@@ -80,9 +99,30 @@ func handleGetSetupStatus(w http.ResponseWriter, configPath string, fallback con
 		ConfigExists: exists,
 		Providers:    buildProviderStatus(active),
 		Tiers:        buildTierStatus(active),
+		Capabilities: buildCapabilityStatus(active),
 	}
 	resp.Checks = buildSetupChecks(resp)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func buildCapabilityStatus(cfg config.Config) setupCapabilityStatus {
+	webSearchAPIKey := strings.TrimSpace(cfg.ToolsWebSearchAPIKey) != ""
+	memoryEmbedAPIKey := strings.TrimSpace(cfg.MemoryEmbedAPIKey) != ""
+	telegramToken := strings.TrimSpace(cfg.TelegramBotToken) != ""
+
+	caps := setupCapabilityStatus{
+		WebSearchEnabled:     cfg.ToolsWebSearchEnabled,
+		WebSearchAPIKeySet:   webSearchAPIKey,
+		WebFetchEnabled:      cfg.ToolsWebFetchEnabled,
+		MemoryEmbedAPIKeySet: memoryEmbedAPIKey,
+		TelegramEnabled:      cfg.ChannelsTelegramEnabled,
+		TelegramBotTokenSet:  telegramToken,
+		WebhookEnabled:       cfg.ChannelsWebhookEnabled,
+	}
+	caps.ToolsConfigured = caps.WebSearchEnabled || caps.WebFetchEnabled
+	caps.IntegrationsConfigured = caps.WebSearchAPIKeySet || caps.MemoryEmbedAPIKeySet
+	caps.ChannelsConfigured = (caps.TelegramEnabled && caps.TelegramBotTokenSet) || caps.WebhookEnabled
+	return caps
 }
 
 func buildProviderStatus(cfg config.Config) setupProviderStatus {
