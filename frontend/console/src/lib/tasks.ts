@@ -6,6 +6,9 @@ export type TaskProgressSummary = {
   in_progress: number
   completed: number
   cancelled: number
+  /** Title of the first in_progress task, if any — surfaced in the chat plan strip
+   * so the user can see at a glance which task the session is actively working on. */
+  active_task_title?: string
 }
 
 export function emptyTaskProgressSummary(): TaskProgressSummary {
@@ -28,6 +31,10 @@ export function summarizeTasks(tasks: SessionTask[] | null | undefined): TaskPro
         break
       case 'in_progress':
         summary.in_progress++
+        if (!summary.active_task_title) {
+          const title = task.title?.trim()
+          if (title) summary.active_task_title = title
+        }
         break
       case 'cancelled':
         summary.cancelled++

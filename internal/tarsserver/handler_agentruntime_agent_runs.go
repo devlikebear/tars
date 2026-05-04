@@ -70,6 +70,7 @@ func handleAgentList(w http.ResponseWriter, runtime *agentruntime.Runtime) {
 
 type agentRunSpawnRequest struct {
 	SessionID string `json:"session_id"`
+	TaskID    string `json:"task_id"`
 	Title     string `json:"title"`
 	Message   string `json:"message"`
 	Prompt    string `json:"prompt"`
@@ -110,6 +111,7 @@ func handleAgentRunSpawn(w http.ResponseWriter, r *http.Request, runtime *agentr
 	run, err := runtime.Spawn(r.Context(), agentruntime.SpawnRequest{
 		WorkspaceID: defaultWorkspaceID,
 		SessionID:   req.SessionID,
+		TaskID:      req.TaskID,
 		Title:       req.Title,
 		Prompt:      message,
 		Agent:       req.Agent,
