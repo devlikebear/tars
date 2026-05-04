@@ -8,9 +8,9 @@
 
 > **Homepage:** https://tars.marvin-42.com — project overview, features, and quickstart.
 
-**TARS is a self-hosted AI agent runtime.**
+**TARS is a local AI agent runtime — with a console worth opening.**
 
-A single Go binary that runs on your machine and gives you: an interactive chat with durable memory, first-turn cost/quality tier recommendations, parallel sub-agents with model tier routing, background watchdog and nightly maintenance, scheduled jobs, and multi-channel I/O (console, Telegram, webhooks) — all configurable via YAML and extensible via skills, plugins, and MCP servers.
+A single Go binary that runs on your machine and opens a full browser console as its primary interface — chat with dockable Git Inspector and tool panels, message-level session forks, an Agent Runtime page with list/tree/Gantt/Flow views, Memory Inbox review, scheduled jobs, a background watchdog, and nightly reflection. Everything configurable via YAML and extensible via skills, plugins, and MCP servers. Telegram and webhook channels are available for when you're away from the browser.
 
 The name is an homage to TARS from *Interstellar*: practical, direct, and built to work beside a human operator under pressure. This project is not affiliated with the film; it borrows the name as a north star for the kind of local agent runtime it wants to be.
 
@@ -19,6 +19,7 @@ The name is an homage to TARS from *Interstellar*: practical, direct, and built 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
 | **Language** | TypeScript | Python | Go (single binary) |
+| **Primary UI** | CLI | CLI + Agent Runtime API | Browser console (CLI / Telegram / webhooks also) |
 | **Sub-agents** | ACP + subagent runtimes, push-based completion, Docker sandbox | ThreadPoolExecutor (max 3), ephemeral prompt, credential override | Agent Runtime executor with per-task model tier, allowlist policy, depth control |
 | **Model routing** | Per-agent model override | Per-child provider/model override, MoA (4 frontier models) | 3-tier named bundles (heavy/standard/light) with role→tier config mapping |
 | **Memory** | Session transcripts | Honcho/Holographic plugin hooks | Durable Markdown memory + semantic search + review-before-store extraction + nightly reflection |
