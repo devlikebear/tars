@@ -131,30 +131,39 @@ type Worktrees struct {
 type MutationAction string
 
 const (
-	MutationStage        MutationAction = "stage"
-	MutationUnstage      MutationAction = "unstage"
-	MutationDiscard      MutationAction = "discard"
-	MutationCommit       MutationAction = "commit"
-	MutationSwitchBranch MutationAction = "switch_branch"
+	MutationStage          MutationAction = "stage"
+	MutationUnstage        MutationAction = "unstage"
+	MutationDiscard        MutationAction = "discard"
+	MutationCommit         MutationAction = "commit"
+	MutationSwitchBranch   MutationAction = "switch_branch"
+	MutationCheckoutCommit MutationAction = "checkout_commit"
+	MutationWorktreeAdd    MutationAction = "worktree_add"
+	MutationWorktreeRemove MutationAction = "worktree_remove"
 )
 
 type MutationOptions struct {
-	StartDir string
-	Action   MutationAction
-	Path     string
-	Branch   string
-	Message  string
+	StartDir     string
+	Action       MutationAction
+	Path         string
+	Branch       string
+	Message      string
+	Hash         string
+	WorktreePath string
+	NewBranch    string
 }
 
 type MutationResult struct {
-	IsGit       bool           `json:"is_git"`
-	Root        string         `json:"root"`
-	Action      MutationAction `json:"action"`
-	Path        string         `json:"path,omitempty"`
-	Branch      string         `json:"branch,omitempty"`
-	Message     string         `json:"message,omitempty"`
-	Destructive bool           `json:"destructive,omitempty"`
-	Output      string         `json:"output,omitempty"`
+	IsGit        bool           `json:"is_git"`
+	Root         string         `json:"root"`
+	Action       MutationAction `json:"action"`
+	Path         string         `json:"path,omitempty"`
+	Branch       string         `json:"branch,omitempty"`
+	Message      string         `json:"message,omitempty"`
+	Hash         string         `json:"hash,omitempty"`
+	WorktreePath string         `json:"worktree_path,omitempty"`
+	NewBranch    string         `json:"new_branch,omitempty"`
+	Destructive  bool           `json:"destructive,omitempty"`
+	Output       string         `json:"output,omitempty"`
 }
 
 func NewClient() *Client {
@@ -380,6 +389,90 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 			output = "switched to " + branch
 		}
 		result.Output = output
+	case MutationCheckoutCommit:
+		hash := strings.TrimSpace(opts.Hash)
+		if hash == "" {
+			return MutationResult{}, fmt.Errorf("hash is required")
+		}
+		if _, err := runGit(ctx, root, "rev-parse", "--verify", hash+"^{commit}"); err != nil {
+			return MutationResult{}, fmt.Errorf("invalid commit hash: %s", hash)
+		}
+		newBranch := strings.TrimSpace(opts.NewBranch)
+		args := []string{"checkout"}
+		if newBranch != "" {
+			if _, err := runGit(ctx, root, "check-ref-format", "--branch", newBranch); err != nil {
+				return MutationResult{}, err
+			}
+			args = append(args, "-b", newBranch, hash)
+		} else {
+			args = append(args, "--detach", hash)
+		}
+		out, err := runGit(ctx, root, args...)
+		if err != nil {
+			return MutationResult{}, err
+		}
+		result.Hash = hash
+		result.NewBranch = newBranch
+		result.Destructive = newBranch == ""
+		output := strings.TrimSpace(string(out))
+		if output == "" {
+			if newBranch != "" {
+				output = "switched to new branch " + newBranch + " at " + hash
+			} else {
+				output = "checked out " + hash + " (detached HEAD)"
+			}
+		}
+		result.Output = output
+	case MutationWorktreeAdd:
+		wtPath, err := normalizeWorktreePath(opts.WorktreePath)
+		if err != nil {
+			return MutationResult{}, err
+		}
+		branch := strings.TrimSpace(opts.Branch)
+		newBranch := strings.TrimSpace(opts.NewBranch)
+		args := []string{"worktree", "add"}
+		if newBranch != "" {
+			if _, err := runGit(ctx, root, "check-ref-format", "--branch", newBranch); err != nil {
+				return MutationResult{}, err
+			}
+			args = append(args, "-b", newBranch, wtPath)
+			if branch != "" {
+				args = append(args, branch)
+			}
+		} else {
+			args = append(args, wtPath)
+			if branch != "" {
+				args = append(args, branch)
+			}
+		}
+		out, err := runGit(ctx, root, args...)
+		if err != nil {
+			return MutationResult{}, err
+		}
+		result.WorktreePath = wtPath
+		result.Branch = branch
+		result.NewBranch = newBranch
+		output := strings.TrimSpace(string(out))
+		if output == "" {
+			output = "added worktree at " + wtPath
+		}
+		result.Output = output
+	case MutationWorktreeRemove:
+		wtPath, err := normalizeWorktreePath(opts.WorktreePath)
+		if err != nil {
+			return MutationResult{}, err
+		}
+		out, err := runGit(ctx, root, "worktree", "remove", "--", wtPath)
+		if err != nil {
+			return MutationResult{}, err
+		}
+		result.WorktreePath = wtPath
+		result.Destructive = true
+		output := strings.TrimSpace(string(out))
+		if output == "" {
+			output = "removed worktree " + wtPath
+		}
+		result.Output = output
 	default:
 		return MutationResult{}, fmt.Errorf("unsupported git mutation action: %s", action)
 	}
@@ -411,6 +504,18 @@ func normalizeMutationPath(path string) (string, error) {
 		return "", fmt.Errorf("path must stay inside the repository")
 	}
 	return clean, nil
+}
+
+func normalizeWorktreePath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("worktree_path is required")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("worktree_path: %w", err)
+	}
+	return filepath.Clean(abs), nil
 }
 
 func isUntrackedPath(ctx context.Context, root string, path string) bool {

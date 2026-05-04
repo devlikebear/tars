@@ -35,6 +35,10 @@
   let commitMessage = $state('')
   let activeTab = $state<TabId>('files')
   let diffMode = $state<DiffMode>('unified')
+  let checkoutBranch = $state<Record<string, string>>({})
+  let newWorktreePath = $state('')
+  let newWorktreeBranch = $state('')
+  let newWorktreeNewBranch = $state('')
 
   let files = $derived.by<GitStatusFile[]>(() => status?.files ?? [])
   let remotes = $derived.by(() => status?.remotes ?? [])
@@ -186,7 +190,7 @@
     if (!status?.is_git || mutationBusy) return
     error = ''
     mutationFeedback = ''
-    const key = `${action}:${options.path ?? options.branch ?? ''}`
+    const key = `${action}:${options.hash ?? options.worktree_path ?? options.path ?? options.branch ?? ''}`
     mutationBusy = key
     try {
       const plan = await createGitMutationApproval({
@@ -210,6 +214,46 @@
       return
     }
     await requestMutation('commit', { message, reason: 'Commit staged changes from Git Inspector' })
+  }
+
+  async function requestCheckoutCommit(hash: string) {
+    const newBranch = (checkoutBranch[hash] ?? '').trim()
+    const reason = newBranch
+      ? `Checkout commit ${hash.slice(0, 7)} as new branch ${newBranch}`
+      : `Checkout commit ${hash.slice(0, 7)} (detached HEAD)`
+    await requestMutation('checkout_commit', {
+      hash,
+      new_branch: newBranch || undefined,
+      reason,
+    })
+  }
+
+  async function requestWorktreeAdd() {
+    const path = newWorktreePath.trim()
+    const branch = newWorktreeBranch.trim()
+    const newBranch = newWorktreeNewBranch.trim()
+    if (!path) {
+      error = 'Worktree path is required'
+      return
+    }
+    await requestMutation('worktree_add', {
+      worktree_path: path,
+      branch: branch || undefined,
+      new_branch: newBranch || undefined,
+      reason: `Add worktree at ${path}`,
+    })
+    if (!error) {
+      newWorktreePath = ''
+      newWorktreeBranch = ''
+      newWorktreeNewBranch = ''
+    }
+  }
+
+  async function requestWorktreeRemove(path: string) {
+    await requestMutation('worktree_remove', {
+      worktree_path: path,
+      reason: `Remove worktree at ${path}`,
+    })
   }
 
   function sideBySideLines(patch?: string): { left: string[]; right: string[] } {
@@ -540,6 +584,23 @@
                           {/each}
                         </div>
                       {/if}
+                      <div class="commit-actions">
+                        <input
+                          type="text"
+                          placeholder="(optional) new branch name"
+                          value={checkoutBranch[commit.hash] ?? ''}
+                          oninput={(e) => (checkoutBranch = { ...checkoutBranch, [commit.hash]: (e.currentTarget as HTMLInputElement).value })}
+                        />
+                        {#if (checkoutBranch[commit.hash] ?? '').trim()}
+                          <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestCheckoutCommit(commit.hash)}>
+                            {mutationBusy === `checkout_commit:${commit.hash}` ? '…' : 'Checkout as branch'}
+                          </button>
+                        {:else}
+                          <button class="btn btn-danger btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestCheckoutCommit(commit.hash)} title="Detached HEAD — work will not belong to any branch">
+                            {mutationBusy === `checkout_commit:${commit.hash}` ? '…' : 'Checkout (detached)'}
+                          </button>
+                        {/if}
+                      </div>
                     {/if}
                   </div>
                 {/if}
@@ -556,6 +617,19 @@
             {worktreesLoading ? 'Loading…' : 'Refresh'}
           </button>
         </div>
+
+        <form class="worktree-add" onsubmit={(e) => { e.preventDefault(); void requestWorktreeAdd() }}>
+          <div class="section-title">Add worktree</div>
+          <input type="text" bind:value={newWorktreePath} placeholder="Absolute path (e.g. /tmp/wt-feature)" />
+          <div class="worktree-add-row">
+            <input type="text" bind:value={newWorktreeBranch} placeholder="Existing branch (optional)" />
+            <input type="text" bind:value={newWorktreeNewBranch} placeholder="…or new branch name (optional)" />
+          </div>
+          <button class="btn btn-primary btn-sm" type="submit" disabled={!newWorktreePath.trim() || !!mutationBusy}>
+            {mutationBusy.startsWith('worktree_add:') ? 'Queueing…' : 'Queue worktree add'}
+          </button>
+        </form>
+
         {#if worktreesLoading && worktrees.length === 0}
           <div class="empty-state compact">Loading worktrees…</div>
         {:else if worktrees.length === 0}
@@ -577,6 +651,13 @@
                     {#if wt.prunable}<span class="badge badge-error" title={wt.prune_reason}>prunable</span>{/if}
                     {#if wt.bare}<span class="badge badge-default">bare</span>{/if}
                   </div>
+                </div>
+                <div class="worktree-actions">
+                  {#if !wt.current && !wt.bare}
+                    <button class="btn btn-danger btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestWorktreeRemove(wt.path)}>
+                      {mutationBusy === `worktree_remove:${wt.path}` ? '…' : 'Remove'}
+                    </button>
+                  {/if}
                 </div>
               </article>
             {/each}
@@ -1069,6 +1150,10 @@
     background: var(--surface);
     padding: var(--space-2);
     min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2);
   }
 
   .worktree-row.current {
@@ -1079,6 +1164,61 @@
     display: grid;
     gap: 2px;
     min-width: 0;
+    flex: 1;
+  }
+
+  .worktree-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+  }
+
+  .worktree-add {
+    display: grid;
+    gap: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: var(--space-2);
+  }
+
+  .worktree-add input {
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--text-sm);
+    min-width: 0;
+  }
+
+  .worktree-add-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+  }
+
+  .commit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    margin-top: var(--space-1);
+  }
+
+  .commit-actions input {
+    flex: 1;
+    min-width: 160px;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--text-sm);
   }
 
   .worktree-meta strong {
@@ -1145,6 +1285,10 @@
 
     .branch-name {
       max-width: 100%;
+    }
+
+    .worktree-add-row {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>

@@ -109,13 +109,16 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 			return
 		}
 		var req struct {
-			SessionID string `json:"session_id"`
-			Root      string `json:"root"`
-			Action    string `json:"action"`
-			Path      string `json:"path"`
-			Branch    string `json:"branch"`
-			Message   string `json:"message"`
-			Reason    string `json:"reason"`
+			SessionID    string `json:"session_id"`
+			Root         string `json:"root"`
+			Action       string `json:"action"`
+			Path         string `json:"path"`
+			Branch       string `json:"branch"`
+			Message      string `json:"message"`
+			Hash         string `json:"hash"`
+			WorktreePath string `json:"worktree_path"`
+			NewBranch    string `json:"new_branch"`
+			Reason       string `json:"reason"`
 		}
 		if !decodeJSONBody(w, r, &req) {
 			return
@@ -144,13 +147,16 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 			return
 		}
 		plan, err := manager.CreateGitMutationApproval(r.Context(), ops.GitMutationPlan{
-			SessionID: sessionID,
-			Root:      root,
-			Action:    strings.TrimSpace(req.Action),
-			Path:      strings.TrimSpace(req.Path),
-			Branch:    strings.TrimSpace(req.Branch),
-			Message:   strings.TrimSpace(req.Message),
-			Reason:    strings.TrimSpace(req.Reason),
+			SessionID:    sessionID,
+			Root:         root,
+			Action:       strings.TrimSpace(req.Action),
+			Path:         strings.TrimSpace(req.Path),
+			Branch:       strings.TrimSpace(req.Branch),
+			Message:      strings.TrimSpace(req.Message),
+			Hash:         strings.TrimSpace(req.Hash),
+			WorktreePath: strings.TrimSpace(req.WorktreePath),
+			NewBranch:    strings.TrimSpace(req.NewBranch),
+			Reason:       strings.TrimSpace(req.Reason),
 		})
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})

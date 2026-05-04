@@ -184,6 +184,115 @@ func TestManager_GitMutationRequiresApprovalAndAudits(t *testing.T) {
 	}
 }
 
+func TestManager_GitMutationCheckoutCommitMarksDestructiveOnDetach(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	repo := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	runOpsGit(t, repo, "init", "-b", "main")
+	runOpsGit(t, repo, "config", "user.email", "tars@example.test")
+	runOpsGit(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runOpsGit(t, repo, "add", "f")
+	runOpsGit(t, repo, "commit", "-m", "first")
+	hash := strings.TrimSpace(runOpsGitOutput(t, repo, "rev-parse", "HEAD"))
+
+	mgr := NewManager(workspace, Options{HomeDir: filepath.Join(t.TempDir(), "home")})
+	plan, err := mgr.CreateGitMutationApproval(context.Background(), GitMutationPlan{
+		SessionID: "sess_1",
+		Root:      repo,
+		Action:    GitMutationCheckoutCommit,
+		Hash:      hash,
+		Reason:    "checkout commit detached",
+	})
+	if err != nil {
+		t.Fatalf("create checkout plan: %v", err)
+	}
+	if !plan.Destructive {
+		t.Fatalf("expected detached checkout to be destructive, got %+v", plan)
+	}
+	if !strings.Contains(plan.Command, "--detach") {
+		t.Fatalf("expected --detach in command, got %q", plan.Command)
+	}
+
+	plan2, err := mgr.CreateGitMutationApproval(context.Background(), GitMutationPlan{
+		SessionID: "sess_1",
+		Root:      repo,
+		Action:    GitMutationCheckoutCommit,
+		Hash:      hash,
+		NewBranch: "feature-x",
+	})
+	if err != nil {
+		t.Fatalf("create checkout w/ branch: %v", err)
+	}
+	if plan2.Destructive {
+		t.Fatalf("expected branch-creating checkout to NOT be destructive: %+v", plan2)
+	}
+	if !strings.Contains(plan2.Command, "checkout -b feature-x") {
+		t.Fatalf("expected checkout -b in command, got %q", plan2.Command)
+	}
+}
+
+func TestManager_GitMutationWorktreeAddRemoveValidatesPaths(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	repo := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	runOpsGit(t, repo, "init", "-b", "main")
+	runOpsGit(t, repo, "config", "user.email", "tars@example.test")
+	runOpsGit(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runOpsGit(t, repo, "add", "f")
+	runOpsGit(t, repo, "commit", "-m", "first")
+
+	mgr := NewManager(workspace, Options{HomeDir: filepath.Join(t.TempDir(), "home")})
+
+	if _, err := mgr.CreateGitMutationApproval(context.Background(), GitMutationPlan{
+		SessionID: "sess_1",
+		Root:      repo,
+		Action:    GitMutationWorktreeAdd,
+	}); err == nil {
+		t.Fatalf("expected error for missing worktree_path")
+	}
+
+	wtPath := filepath.Join(t.TempDir(), "wt")
+	plan, err := mgr.CreateGitMutationApproval(context.Background(), GitMutationPlan{
+		SessionID:    "sess_1",
+		Root:         repo,
+		Action:       GitMutationWorktreeAdd,
+		WorktreePath: wtPath,
+		NewBranch:    "feature",
+	})
+	if err != nil {
+		t.Fatalf("create worktree add plan: %v", err)
+	}
+	if plan.Destructive {
+		t.Fatalf("expected worktree_add NOT destructive, got %+v", plan)
+	}
+	if !strings.Contains(plan.Command, "worktree add -b feature") {
+		t.Fatalf("unexpected worktree_add command: %q", plan.Command)
+	}
+
+	removePlan, err := mgr.CreateGitMutationApproval(context.Background(), GitMutationPlan{
+		SessionID:    "sess_1",
+		Root:         repo,
+		Action:       GitMutationWorktreeRemove,
+		WorktreePath: wtPath,
+	})
+	if err != nil {
+		t.Fatalf("create worktree remove plan: %v", err)
+	}
+	if !removePlan.Destructive {
+		t.Fatalf("expected worktree_remove destructive: %+v", removePlan)
+	}
+}
+
 func TestManager_GitMutationRejectsUnsafePath(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	repo := filepath.Join(t.TempDir(), "repo")

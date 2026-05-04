@@ -590,10 +590,21 @@ export function getGitBranches(query: GitQuery = {}): Promise<GitBranchesRespons
 export type CreateGitMutationApprovalRequest = {
   session_id: string
   root?: string
-  action: 'stage' | 'unstage' | 'discard' | 'commit' | 'switch_branch'
+  action:
+    | 'stage'
+    | 'unstage'
+    | 'discard'
+    | 'commit'
+    | 'switch_branch'
+    | 'checkout_commit'
+    | 'worktree_add'
+    | 'worktree_remove'
   path?: string
   branch?: string
   message?: string
+  hash?: string
+  worktree_path?: string
+  new_branch?: string
   reason?: string
 }
 
