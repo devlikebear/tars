@@ -236,6 +236,39 @@ func TestManager_GitMutationCheckoutCommitMarksDestructiveOnDetach(t *testing.T)
 	}
 }
 
+func TestManager_GitMutationFetchPlanIsNonDestructive(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	repo := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	runOpsGit(t, repo, "init", "-b", "main")
+	runOpsGit(t, repo, "config", "user.email", "tars@example.test")
+	runOpsGit(t, repo, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runOpsGit(t, repo, "add", "f")
+	runOpsGit(t, repo, "commit", "-m", "first")
+
+	mgr := NewManager(workspace, Options{HomeDir: filepath.Join(t.TempDir(), "home")})
+	plan, err := mgr.CreateGitMutationApproval(context.Background(), GitMutationPlan{
+		SessionID: "sess_1",
+		Root:      repo,
+		Action:    GitMutationFetch,
+		Reason:    "refresh remote refs",
+	})
+	if err != nil {
+		t.Fatalf("create fetch plan: %v", err)
+	}
+	if plan.Destructive {
+		t.Fatalf("expected fetch plan NOT destructive: %+v", plan)
+	}
+	if plan.Command != "git fetch --all --prune" {
+		t.Fatalf("unexpected fetch command: %q", plan.Command)
+	}
+}
+
 func TestManager_GitMutationWorktreeAddRemoveValidatesPaths(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	repo := filepath.Join(t.TempDir(), "repo")

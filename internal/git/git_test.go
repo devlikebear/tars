@@ -467,6 +467,102 @@ func TestClientWorktreeAddRejectsMissingPath(t *testing.T) {
 	}
 }
 
+func TestClientFetchUpdatesRemoteRefs(t *testing.T) {
+	upstream := t.TempDir()
+	runGitCmd(t, upstream, "init", "-b", "main", "--bare")
+
+	clone := t.TempDir()
+	runGitCmd(t, clone, "init", "-b", "main")
+	runGitCmd(t, clone, "config", "user.email", "tars@example.test")
+	runGitCmd(t, clone, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(clone, "f"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, clone, "add", "f")
+	runGitCmd(t, clone, "commit", "-m", "first")
+	runGitCmd(t, clone, "remote", "add", "origin", upstream)
+	runGitCmd(t, clone, "push", "origin", "main")
+
+	worker := t.TempDir()
+	runGitCmd(t, worker, "clone", upstream, ".")
+	runGitCmd(t, worker, "config", "user.email", "tars@example.test")
+	runGitCmd(t, worker, "config", "user.name", "TARS Test")
+	runGitCmd(t, worker, "checkout", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(worker, "g"), []byte("b\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, worker, "add", "g")
+	runGitCmd(t, worker, "commit", "-m", "feature commit")
+	runGitCmd(t, worker, "push", "origin", "feature")
+
+	client := NewClient()
+	res, err := client.Mutate(context.Background(), MutationOptions{StartDir: clone, Action: MutationFetch})
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if res.Action != MutationFetch || res.Destructive {
+		t.Fatalf("unexpected fetch result: %+v", res)
+	}
+
+	branches, err := client.Branches(context.Background(), clone)
+	if err != nil {
+		t.Fatalf("branches: %v", err)
+	}
+	var foundFeature bool
+	for _, b := range branches.Branches {
+		if b.Remote && b.Name == "origin/feature" {
+			foundFeature = true
+			break
+		}
+	}
+	if !foundFeature {
+		t.Fatalf("expected origin/feature after fetch, got %+v", branches.Branches)
+	}
+}
+
+func TestClientSwitchBranchDWIMCreatesTrackingFromRemote(t *testing.T) {
+	upstream := t.TempDir()
+	runGitCmd(t, upstream, "init", "-b", "main", "--bare")
+
+	worker := t.TempDir()
+	runGitCmd(t, worker, "clone", upstream, ".")
+	runGitCmd(t, worker, "config", "user.email", "tars@example.test")
+	runGitCmd(t, worker, "config", "user.name", "TARS Test")
+	if err := os.WriteFile(filepath.Join(worker, "f"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, worker, "add", "f")
+	runGitCmd(t, worker, "commit", "-m", "main commit")
+	runGitCmd(t, worker, "push", "origin", "main")
+	runGitCmd(t, worker, "checkout", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(worker, "g"), []byte("b\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	runGitCmd(t, worker, "add", "g")
+	runGitCmd(t, worker, "commit", "-m", "feature commit")
+	runGitCmd(t, worker, "push", "origin", "feature")
+
+	clone := t.TempDir()
+	runGitCmd(t, clone, "clone", upstream, ".")
+
+	client := NewClient()
+	res, err := client.Mutate(context.Background(), MutationOptions{StartDir: clone, Action: MutationSwitchBranch, Branch: "feature"})
+	if err != nil {
+		t.Fatalf("switch to remote-only branch: %v", err)
+	}
+	if res.Branch != "feature" {
+		t.Fatalf("unexpected switch result: %+v", res)
+	}
+	cur := strings.TrimSpace(string(runGitOutput(t, clone, "branch", "--show-current")))
+	if cur != "feature" {
+		t.Fatalf("expected to be on feature, got %q", cur)
+	}
+	upstreamRef := strings.TrimSpace(string(runGitOutput(t, clone, "rev-parse", "--abbrev-ref", "feature@{upstream}")))
+	if upstreamRef != "origin/feature" {
+		t.Fatalf("expected upstream origin/feature, got %q", upstreamRef)
+	}
+}
+
 func runGitOutput(t *testing.T, dir string, args ...string) []byte {
 	t.Helper()
 	cmd := exec.Command("git", args...)

@@ -599,6 +599,7 @@ export type CreateGitMutationApprovalRequest = {
     | 'checkout_commit'
     | 'worktree_add'
     | 'worktree_remove'
+    | 'fetch'
   path?: string
   branch?: string
   message?: string

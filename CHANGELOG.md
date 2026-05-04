@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.160] - 2026-05-04
+
+### Added
+
+- **Console Git Inspector — Fetch button + remote-branch checkout** — the Branches tab previously only let you switch between local branches; remote rows just showed a "remote" badge with no action. Added a new `fetch` mutation (`git fetch --all --prune`, non-destructive) wired to a Fetch button at the top of the Branches tab, and replaced the inert "remote" badge with a Checkout button that strips the matching remote prefix (`origin/feat/foo` → `feat/foo`) and reuses `switch_branch`. Git's DWIM creates a local tracking branch on first checkout, so subsequent switches go to the local copy. Branch rows now show the short name as the title with the full ref in a smaller line below, so long remote-branch names stay readable in narrow docks.
+
 ## [0.31.159] - 2026-05-04
 
 ### Fixed

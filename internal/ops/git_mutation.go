@@ -19,6 +19,7 @@ const (
 	GitMutationCheckoutCommit = "checkout_commit"
 	GitMutationWorktreeAdd    = "worktree_add"
 	GitMutationWorktreeRemove = "worktree_remove"
+	GitMutationFetch          = "fetch"
 )
 
 type GitMutationPlan struct {
@@ -280,6 +281,8 @@ func normalizeGitMutationPlan(ctx context.Context, plan GitMutationPlan, now tim
 		}
 		normalized.Command = fmt.Sprintf("git worktree remove -- %s", normalized.WorktreePath)
 		normalized.Destructive = true
+	case GitMutationFetch:
+		normalized.Command = "git fetch --all --prune"
 	default:
 		return GitMutationPlan{}, fmt.Errorf("unsupported git mutation action: %s", normalized.Action)
 	}
@@ -371,6 +374,11 @@ func gitMutationNote(result GitMutationApplyResult) string {
 		return "Added worktree at " + result.WorktreePath
 	case GitMutationWorktreeRemove:
 		return "Removed worktree " + result.WorktreePath
+	case GitMutationFetch:
+		if strings.TrimSpace(result.Output) != "" {
+			return result.Output
+		}
+		return "Fetched remotes"
 	default:
 		return strings.TrimSpace(result.Output)
 	}
