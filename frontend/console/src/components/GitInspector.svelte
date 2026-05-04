@@ -462,7 +462,9 @@
               </article>
             {/each}
           </div>
+        {/if}
 
+        {#if diff || diffLoading || diffSource?.kind === 'commit'}
           <div class="diff-section">
             <div class="diff-head">
               <div class="diff-head-title">
