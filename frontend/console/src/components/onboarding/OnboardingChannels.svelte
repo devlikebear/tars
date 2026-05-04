@@ -15,6 +15,19 @@
     form.channels.telegram_bot_token = value
     if (value.trim() !== '') form.channels.keepTelegramToken = false
   }
+
+  // Disabling the Telegram channel must also clear polling. The polling
+  // checkbox is rendered conditionally on telegram_enabled, so without
+  // this auto-clear a user who turned off Telegram (with polling=true
+  // prefilled from disk) couldn't reach the polling checkbox to unset
+  // it — and validateChannelsStep would then block save with
+  // "polling requires the Telegram channel to be enabled".
+  function handleTelegramEnabledChange(checked: boolean) {
+    form.channels.telegram_enabled = checked
+    if (!checked) {
+      form.channels.telegram_polling_enabled = false
+    }
+  }
 </script>
 
 <section class="card">
@@ -26,7 +39,11 @@
   <fieldset class="onboarding-subsection">
     <legend>{$t.onboarding.channels.telegramHeading}</legend>
     <label class="onboarding-checkrow">
-      <input type="checkbox" bind:checked={form.channels.telegram_enabled} />
+      <input
+        type="checkbox"
+        checked={form.channels.telegram_enabled}
+        onchange={(e) => handleTelegramEnabledChange((e.currentTarget as HTMLInputElement).checked)}
+      />
       <span>
         <strong>{$t.onboarding.channels.telegramEnableLabel}</strong>
         <em>{$t.onboarding.channels.telegramEnableHint}</em>
