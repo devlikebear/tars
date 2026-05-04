@@ -463,6 +463,29 @@ test('channelsFromConfigValues sets keepTelegramToken when token present', () =>
   assert.equal(c.keepTelegramToken, true)
 })
 
+test('channelsFromConfigValues clears stale polling when channel is disabled on disk', () => {
+  // Inconsistent on-disk state: polling=true but channel=false. The
+  // wizard hides the polling checkbox in this state (no UI affordance
+  // to flip it), so loading it as-is would trap the user behind the
+  // "polling requires channel enabled" validator. Normalize on load.
+  const c = channelsFromConfigValues({
+    channels_telegram_enabled: false,
+    channels_telegram_polling_enabled: true,
+  })
+  assert.equal(c.telegram_enabled, false)
+  assert.equal(c.telegram_polling_enabled, false, 'polling must be cleared when channel is off')
+})
+
+test('channelsFromConfigValues preserves polling when channel is enabled on disk', () => {
+  const c = channelsFromConfigValues({
+    channels_telegram_enabled: true,
+    channels_telegram_polling_enabled: true,
+    telegram_bot_token: '****ABCD',
+  })
+  assert.equal(c.telegram_enabled, true)
+  assert.equal(c.telegram_polling_enabled, true)
+})
+
 test('parsePrivateHostAllowlistInput strips comments and blanks', () => {
   const input = '\n10.0.0.1\n# comment line\n\ninternal.local  \n'
   assert.deepEqual(parsePrivateHostAllowlistInput(input), ['10.0.0.1', 'internal.local'])

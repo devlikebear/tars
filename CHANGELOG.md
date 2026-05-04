@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.141] - 2026-05-04
+
+### Fixed
+
+- **Onboarding wizard — Channels section** — disabling the Telegram channel now also clears `channels_telegram_polling_enabled`, so users who arrive in the section with polling=true prefilled from disk can actually save the section after turning Telegram off. The polling checkbox only renders while the channel is on, so the previous behavior trapped users behind the "polling requires the Telegram channel to be enabled" validator with no UI affordance to flip polling back. `channelsFromConfigValues` now also normalizes inconsistent on-disk state (channel=false + polling=true) on load.
+
 ## [0.31.140] - 2026-05-04
 
 ### Added

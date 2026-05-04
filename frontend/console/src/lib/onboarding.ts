@@ -517,11 +517,20 @@ export function integrationsFromConfigValues(values: Record<string, unknown>): O
 
 export function channelsFromConfigValues(values: Record<string, unknown>): OnboardingChannels {
   const token = readString(values, 'telegram_bot_token')
+  const telegramEnabled = readBool(values, 'channels_telegram_enabled')
+  // Polling on a disabled channel is a runtime no-op; if the on-disk
+  // config landed in that inconsistent state (e.g. the user disabled
+  // the channel via direct YAML edit but left polling=true), clear
+  // polling on load so the wizard's polling-requires-channel validator
+  // doesn't block save when the user has no UI affordance to flip it
+  // back (the polling checkbox only renders when the channel is on).
+  const pollingEnabled =
+    telegramEnabled && readBool(values, 'channels_telegram_polling_enabled')
   return {
-    telegram_enabled: readBool(values, 'channels_telegram_enabled'),
+    telegram_enabled: telegramEnabled,
     telegram_bot_token: token,
     keepTelegramToken: token.trim() !== '',
-    telegram_polling_enabled: readBool(values, 'channels_telegram_polling_enabled'),
+    telegram_polling_enabled: pollingEnabled,
     webhook_enabled: readBool(values, 'channels_webhook_enabled'),
   }
 }
