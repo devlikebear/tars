@@ -269,6 +269,8 @@ export const ko = {
       backButton: '← 이전',
       saveOnlyButton: '저장만 (재시작 없이)',
       saveAndRestartButton: '저장하고 재시작',
+      renameNotice: (prev: string, next: string) =>
+        `Alias '${prev}' 가 '${next}' 로 변경됩니다. 저장 시 옛 alias 가 삭제되고 이를 참조하던 tier 도 새 alias 로 자동 갱신됩니다.`,
     },
     saved: {
       title: '저장 완료',

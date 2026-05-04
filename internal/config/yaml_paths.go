@@ -252,6 +252,48 @@ func nestedMapMerge(dst, src map[string]any) {
 	}
 }
 
+// isAliasKeyedConfigField reports whether resolvedKey identifies a
+// config field whose YAML value is a top-level "alias → fields" map
+// where the editor sends the full authoritative alias set on each
+// PATCH. Currently only llm_providers qualifies; tier bindings already
+// flow through a typed map and bypass the merge path entirely.
+func isAliasKeyedConfigField(resolvedKey string) bool {
+	return resolvedKey == "llm_providers"
+}
+
+// replaceTopMergeInner authoritatively replaces dst's top-level key
+// set with src's, but for keys present in both where both values are
+// maps, it merges inner keys (preserving inner fields like api_key
+// that the patch omits). Top-level keys present in dst but not in src
+// are deleted.
+//
+// Used for "alias-keyed" config fields (e.g. llm_providers) where the
+// editor sends the full authoritative alias map: aliases not in the
+// patch should be removed from disk, but per-alias fields not in the
+// patch (such as api_key when the user opts to keep the existing
+// credential) should still be preserved.
+func replaceTopMergeInner(dst, src map[string]any) {
+	for k := range dst {
+		if _, ok := src[k]; !ok {
+			delete(dst, k)
+		}
+	}
+	for k, srcVal := range src {
+		dstVal, exists := dst[k]
+		if !exists {
+			dst[k] = srcVal
+			continue
+		}
+		srcInner, srcIsMap := srcVal.(map[string]any)
+		dstInner, dstIsMap := dstVal.(map[string]any)
+		if srcIsMap && dstIsMap {
+			maps.Copy(dstInner, srcInner)
+		} else {
+			dst[k] = srcVal
+		}
+	}
+}
+
 func deleteConfigYAMLRepresentations(dst map[string]any, key string) {
 	deleteConfigYAMLRepresentationsFromMap(dst, nil, key)
 }

@@ -35,6 +35,13 @@
     type LLMTierDraftErrors,
     type LLMTierDraftField,
   } from '../lib/configStructured'
+  import {
+    availableAuthModesForKind,
+    defaultBaseURLForKind,
+    suggestedAuthModeForKind,
+    type AuthMode,
+    type ProviderKind,
+  } from '../lib/onboarding'
   import type { ConfigFieldMeta, ConfigSchema, ProvidersAPIInfo } from '../lib/types'
   import ConfigPendingChanges from './ConfigPendingChanges.svelte'
   import { t } from '../i18n'
@@ -536,7 +543,34 @@
   }
 
   function updateProviderDraft(id: string, field: LLMProviderDraftField, value: string) {
-    providerDrafts = providerDrafts.map((draft) => draft.id === id ? { ...draft, [field]: value } : draft)
+    providerDrafts = providerDrafts.map((draft) => {
+      if (draft.id !== id) return draft
+      const updated = { ...draft, [field]: value } as LLMProviderDraft
+      if (field === 'kind') {
+        const previousKind = draft.kind as ProviderKind | ''
+        const nextKind = value as ProviderKind | ''
+        // Boilerplate fields tied to the kind get re-seeded when the
+        // kind changes. base_url is only swapped when it was empty or
+        // matched the previous kind's canonical default — preserving
+        // any custom URL the user typed. auth_mode falls back to a
+        // valid value for the new kind. api_key stays as-is so the
+        // user does not need to retype credentials when correcting a
+        // kind misclick.
+        if (previousKind !== nextKind) {
+          const previousDefaultURL = defaultBaseURLForKind(previousKind)
+          const currentBaseURL = updated.base_url.trim()
+          if (currentBaseURL === '' || currentBaseURL === previousDefaultURL) {
+            updated.base_url = defaultBaseURLForKind(nextKind)
+          }
+          const validModes = availableAuthModesForKind(nextKind)
+          if (!validModes.includes(updated.auth_mode as AuthMode)) {
+            updated.auth_mode = suggestedAuthModeForKind(nextKind)
+          }
+          updated.oauth_provider = ''
+        }
+      }
+      return updated
+    })
     const rowErrors = providerEditorErrors[id]
     if (!rowErrors?.[field]) return
     const nextRowErrors = { ...rowErrors }
@@ -563,6 +597,42 @@
     } else {
       dirtyFields[providerEditorField.key] = result.value
     }
+
+    // When the editor renamed a provider alias, rebind any tier that
+    // referenced the old alias to the new one. The backend's
+    // alias-replace PATCH would otherwise leave those tiers pointing
+    // at a deleted provider. We only rewrite tier entries currently
+    // bound to the renamed alias — tiers using a different provider
+    // are left as-is.
+    const renames = providerDrafts
+      .filter((draft) => draft.originalAlias && draft.originalAlias !== draft.alias.trim() && draft.alias.trim() !== '')
+      .map((draft) => ({ from: draft.originalAlias, to: draft.alias.trim() }))
+    if (renames.length > 0) {
+      const tiersValue = (dirtyFields['llm_tiers'] !== undefined
+        ? dirtyFields['llm_tiers']
+        : values['llm_tiers']) as Record<string, Record<string, unknown>> | undefined
+      if (tiersValue && typeof tiersValue === 'object') {
+        const next: Record<string, Record<string, unknown>> = {}
+        let changed = false
+        for (const [tierName, binding] of Object.entries(tiersValue)) {
+          const entry = { ...(binding as Record<string, unknown>) }
+          const rename = renames.find((r) => entry.provider === r.from)
+          if (rename) {
+            entry.provider = rename.to
+            changed = true
+          }
+          next[tierName] = entry
+        }
+        if (changed) {
+          if (configValuesEqual(next, values['llm_tiers'])) {
+            delete dirtyFields['llm_tiers']
+          } else {
+            dirtyFields['llm_tiers'] = next
+          }
+        }
+      }
+    }
+
     dirtyFields = { ...dirtyFields }
     closeProviderEditor()
   }

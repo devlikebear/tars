@@ -269,6 +269,8 @@ export const en = {
       backButton: '← Back',
       saveOnlyButton: 'Save only (no restart)',
       saveAndRestartButton: 'Save and restart',
+      renameNotice: (prev: string, next: string) =>
+        `Alias '${prev}' will be renamed to '${next}'. Saving removes the old alias and rebinds any tier that referenced it.`,
     },
     saved: {
       title: 'Saved',

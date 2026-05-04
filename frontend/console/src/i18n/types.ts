@@ -269,6 +269,7 @@ export type Translations = {
       backButton: string
       saveOnlyButton: string
       saveAndRestartButton: string
+      renameNotice: (prev: string, next: string) => string
     }
     saved: {
       title: string
