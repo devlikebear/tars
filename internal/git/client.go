@@ -139,6 +139,7 @@ const (
 	MutationCheckoutCommit MutationAction = "checkout_commit"
 	MutationWorktreeAdd    MutationAction = "worktree_add"
 	MutationWorktreeRemove MutationAction = "worktree_remove"
+	MutationFetch          MutationAction = "fetch"
 )
 
 type MutationOptions struct {
@@ -471,6 +472,16 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 		output := strings.TrimSpace(string(out))
 		if output == "" {
 			output = "removed worktree " + wtPath
+		}
+		result.Output = output
+	case MutationFetch:
+		out, err := runGit(ctx, root, "fetch", "--all", "--prune")
+		if err != nil {
+			return MutationResult{}, err
+		}
+		output := strings.TrimSpace(string(out))
+		if output == "" {
+			output = "fetched all remotes"
 		}
 		result.Output = output
 	default:

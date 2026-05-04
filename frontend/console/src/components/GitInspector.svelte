@@ -217,6 +217,20 @@
     await requestMutation('commit', { message, reason: 'Commit staged changes from Git Inspector' })
   }
 
+  async function requestFetch() {
+    await requestMutation('fetch', { reason: 'Fetch all remotes from Git Inspector' })
+  }
+
+  function stripRemotePrefix(name: string): string {
+    for (const remote of remotes) {
+      if (name.startsWith(remote.name + '/')) {
+        return name.slice(remote.name.length + 1)
+      }
+    }
+    const idx = name.indexOf('/')
+    return idx >= 0 ? name.slice(idx + 1) : name
+  }
+
   async function requestCheckoutCommit(hash: string) {
     const newBranch = (checkoutBranch[hash] ?? '').trim()
     const reason = newBranch
@@ -588,6 +602,12 @@
       </section>
     {:else if activeTab === 'branches'}
       <section class="tab-body" role="tabpanel">
+        <div class="branches-head">
+          <span class="section-title">Branches</span>
+          <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={requestFetch}>
+            {mutationBusy === 'fetch:' ? '…' : 'Fetch'}
+          </button>
+        </div>
         <div class="commit-box">
           <input type="text" bind:value={commitMessage} placeholder="Commit message" />
           <button class="btn btn-primary btn-sm" type="button" disabled={stagedCount === 0 || !commitMessage.trim() || !!mutationBusy} onclick={requestCommit}>
@@ -599,18 +619,27 @@
         {:else}
           <div class="branch-list">
             {#each branches as branch (branch.name)}
+              {@const shortName = branch.remote ? stripRemotePrefix(branch.name) : branch.name}
               <article class="branch-row" class:current={branch.current}>
                 <div class="branch-meta">
-                  <strong>
+                  <strong title={branch.name}>
                     {#if branch.current}<span class="branch-marker" aria-label="current">●</span>{/if}
-                    {branch.name}
+                    {shortName}
                   </strong>
-                  {#if branch.upstream}<small>↑ {branch.upstream}</small>{/if}
+                  {#if branch.remote}
+                    <small class="branch-remote">{branch.name}</small>
+                  {:else if branch.upstream}
+                    <small>↑ {branch.upstream}</small>
+                  {/if}
                 </div>
                 <div class="branch-actions">
-                  {#if branch.remote}
-                    <span class="badge badge-default">remote</span>
-                  {:else if !branch.current}
+                  {#if branch.current}
+                    <span class="badge badge-default">current</span>
+                  {:else if branch.remote}
+                    <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('switch_branch', { branch: shortName, reason: `Checkout remote branch ${branch.name}` })}>
+                      {mutationBusy === `switch_branch:${shortName}` ? '…' : 'Checkout'}
+                    </button>
+                  {:else}
                     <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('switch_branch', { branch: branch.name, reason: 'Switch branch from Git Inspector' })}>
                       {mutationBusy === `switch_branch:${branch.name}` ? '…' : 'Switch'}
                     </button>
@@ -1322,11 +1351,18 @@
     white-space: nowrap;
   }
 
-  .worktrees-head {
+  .worktrees-head,
+  .branches-head {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: var(--space-2);
+  }
+
+  .branch-remote {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
   }
 
   .worktree-list {
