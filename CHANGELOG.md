@@ -6,6 +6,20 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.151] - 2026-05-04
+
+### Added
+
+- **Console terminal — font picker + larger default size** (#686) — added an `Aa` toolbar button next to `Find` that opens an inline settings panel with a font-family dropdown (JetBrains Mono / SF Mono / Consolas / Cascadia Code / Fira Code / system default), a font-size range slider (8–24), and a Reset button. Each preset's CSS string carries a system-monospace fallback so unavailable fonts degrade gracefully without breaking xterm's monospace assumption. Selections persist via `tars.terminal.fontFamily` / `tars.terminal.fontSize` in localStorage; existing Cmd/Ctrl +/-/0 zoom shortcuts continue to work and stay in sync with the slider.
+
+### Changed
+
+- **Console terminal — bumped default font size from 12px → 14px** (#686) for readability on hi-DPI panels.
+
+### Fixed
+
+- **Console terminal — refit after web fonts settle** (#686) — JetBrains Mono is loaded as a webfont, so xterm's first glyph-metric measurement could land on the fallback and produce uneven character spacing until the next resize. After mount we now await `document.fonts.ready` and re-fit + refresh, bringing xterm's metrics back in sync once the real font is available.
+
 ## [0.31.150] - 2026-05-04
 
 ### Fixed
