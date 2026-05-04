@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.158] - 2026-05-04
+
+### Fixed
+
+- **Console Git Inspector — Files tab no longer pushes the diff to the bottom of the panel** — when the working tree was clean and a commit-mode diff was loaded, the "Working tree clean." placeholder stayed at the top of the Files tab while the diff section sat at the very bottom with a large empty band between them. `.tab-body` was a CSS Grid whose default `align-content: normal` (= `stretch`) spread the two auto-sized rows apart instead of packing them. Switched `.tab-body` to `display: flex; flex-direction: column` so children stack at the top and grow only as needed; `.files-body` was a no-op once the column override went away, so it was removed.
+
 ## [0.31.157] - 2026-05-04
 
 ### Changed
