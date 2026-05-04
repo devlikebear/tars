@@ -1,9 +1,12 @@
 # TARS
 
+[![Website](https://img.shields.io/badge/website-tars.marvin--42.com-e09145?style=flat)](https://tars.marvin-42.com)
 [![CI](https://github.com/devlikebear/tars/actions/workflows/ci.yml/badge.svg)](https://github.com/devlikebear/tars/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/devlikebear/tars/graph/badge.svg)](https://codecov.io/gh/devlikebear/tars)
 [![Go](https://img.shields.io/github/go-mod/go-version/devlikebear/tars)](go.mod)
 [![Release](https://img.shields.io/github/v/release/devlikebear/tars)](https://github.com/devlikebear/tars/releases)
+
+> **Homepage:** https://tars.marvin-42.com — project overview, features, and quickstart.
 
 **TARS is a self-hosted AI agent runtime.**
 
@@ -271,6 +274,7 @@ make dev-console    # Vite (5173) + Go API (43180), open http://127.0.0.1:43180/
 
 ## Documentation
 
+- [Project homepage](https://tars.marvin-42.com)
 - [Getting Started](GETTING_STARTED.md)
 - [Plugin and MCP Packaging Guide](docs/plugins.md)
 - [Contributing](CONTRIBUTING.md)
