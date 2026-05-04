@@ -265,3 +265,171 @@ If a decisive answer is required, explicitly record a conservative assumption an
 If there is no safe next step, summarize the blocker and pause.
 `, mode, strings.TrimSpace(candidate.LastMessageID))
 }
+
+// ResumeFailedChats retries chat sessions whose last activity is a halted
+// turn (tool error from a non-mutating tool, or a user message the LLM never
+// answered). It mirrors AutoContinueStalledChats but reads from the failed-
+// chat detector and uses a retry-flavored prompt. Per-session escalation
+// limits are scoped to this autofix's audit action so the counter is
+// independent of the question-resume counter.
+func (c *sessionAutoResumeController) ResumeFailedChats(ctx context.Context) (autofix.FailedChatResumeResult, error) {
+	if c == nil || c.store == nil {
+		return autofix.FailedChatResumeResult{}, fmt.Errorf("session auto-resume is not configured")
+	}
+	now := c.nowTime()
+	candidates, err := pulse.DetectFailedChatCandidates(ctx, c.store, now)
+	if err != nil {
+		return autofix.FailedChatResumeResult{}, err
+	}
+	result := autofix.FailedChatResumeResult{}
+	for _, candidate := range candidates {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		if !candidate.CanAutoResume {
+			result.Skipped++
+			c.recordFailedChatAudit(candidate, "blocked", blockedFailedChatReason(candidate), "")
+			continue
+		}
+		if c.recentFailedChatResumeCount(candidate.SessionID, now) >= autoResumeEscalationLimit {
+			result.Escalated++
+			c.recordFailedChatAudit(candidate, "escalated", "auto-resume retry limit exceeded", "")
+			c.emitFailedChatNotification(ctx, candidate, "warn", "Auto-retry paused", "halted chat needs user attention after repeated retries")
+			continue
+		}
+		prompt := buildFailedChatRetryPrompt(candidate)
+		runTurn := c.runTurn
+		if runTurn == nil {
+			runTurn = c.runAutoResumeTurn
+		}
+		// Reuse the stalled-chat turn runner — only the prompt and audit
+		// action differ. Wrap the candidate as a StalledChatCandidate to fit
+		// the existing signature; the runner only reads SessionID and
+		// LastMessageID from it.
+		shimmed := pulse.StalledChatCandidate{
+			SessionID:     candidate.SessionID,
+			LastMessageID: candidate.LastMessageID,
+		}
+		summary, err := runTurn(ctx, shimmed, prompt)
+		if err != nil {
+			result.Skipped++
+			c.recordFailedChatAudit(candidate, "failed", "auto-resume failed-chat run failed", err.Error())
+			continue
+		}
+		result.Resumed++
+		result.SessionIDs = append(result.SessionIDs, candidate.SessionID)
+		c.recordFailedChatAudit(candidate, "success", "halted chat retried", summary)
+		c.emitFailedChatNotification(ctx, candidate, "info", "Chat retry succeeded", "pulse retried a halted chat ("+candidate.FailureKind+")")
+	}
+	return result, nil
+}
+
+func (c *sessionAutoResumeController) recentFailedChatResumeCount(sessionID string, now time.Time) int {
+	if c == nil || c.manager == nil || strings.TrimSpace(sessionID) == "" {
+		return 0
+	}
+	items, err := c.manager.ListAutomationAudit(ops.AutomationAuditListOptions{SessionID: sessionID, Limit: 500})
+	if err != nil {
+		c.logger.Debug().Err(err).Str("session_id", sessionID).Msg("failed-chat resume audit read failed")
+		return 0
+	}
+	cutoff := now.Add(-autoResumeEscalationWindow)
+	count := 0
+	for _, item := range items {
+		if item.Action != autofix.AutoResumeFailedChatName || item.Result != "success" {
+			continue
+		}
+		if item.Timestamp.Before(cutoff) {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+func (c *sessionAutoResumeController) recordFailedChatAudit(candidate pulse.FailedChatCandidate, result string, reason string, detail string) {
+	if c == nil || c.manager == nil {
+		return
+	}
+	cwd := ""
+	if sess, err := c.store.Get(candidate.SessionID); err == nil {
+		cwd = sess.CurrentDir
+	}
+	details := map[string]any{
+		"failure_kind":        candidate.FailureKind,
+		"failing_tool":        candidate.FailingToolName,
+		"last_message_id":     candidate.LastMessageID,
+		"age_minutes":         candidate.AgeMinutes,
+		"auto_resume_enabled": candidate.AutoResumeEnabled,
+	}
+	if strings.TrimSpace(candidate.BlockReason) != "" {
+		details["block_reason"] = candidate.BlockReason
+	}
+	if strings.TrimSpace(detail) != "" {
+		details["detail"] = trimForMemory(detail, 360)
+	}
+	_, _ = c.manager.RecordAutomationAudit(ops.AutomationAuditEntry{
+		Actor:     "pulse",
+		Action:    autofix.AutoResumeFailedChatName,
+		Reason:    reason,
+		SessionID: candidate.SessionID,
+		CWD:       cwd,
+		Result:    result,
+		Details:   details,
+	})
+}
+
+func (c *sessionAutoResumeController) emitFailedChatNotification(ctx context.Context, candidate pulse.FailedChatCandidate, severity string, title string, message string) {
+	if c == nil || c.emit == nil {
+		return
+	}
+	evt := newNotificationEvent("pulse", severity, title, message)
+	evt.SessionID = candidate.SessionID
+	if candidate.SessionID != "" {
+		evt.OpenPath = "/console/chat/" + candidate.SessionID
+	}
+	c.emit(ctx, evt)
+}
+
+func blockedFailedChatReason(candidate pulse.FailedChatCandidate) string {
+	if candidate.BlockReason != "" {
+		return candidate.BlockReason
+	}
+	if !candidate.AutoResumeEnabled {
+		return "session has not enabled auto-resume"
+	}
+	return "halted chat is not safe to retry"
+}
+
+func buildFailedChatRetryPrompt(candidate pulse.FailedChatCandidate) string {
+	preview := strings.TrimSpace(candidate.FailurePreview)
+	switch candidate.FailureKind {
+	case pulse.FailedChatKindToolError:
+		return fmt.Sprintf(`[PULSE AUTO-RESUME — RETRY]
+failure_kind: tool_error
+failing_tool: %s
+last_message_id: %s
+
+The previous turn halted because the %q tool returned an error. The error preview is below.
+Inspect the error, decide whether to retry the same tool with adjusted arguments, switch to a different tool, or summarise the failure and pause.
+Do not invent results or assume the tool succeeded.
+
+Error preview:
+%s
+`, strings.TrimSpace(candidate.FailingToolName), strings.TrimSpace(candidate.LastMessageID), strings.TrimSpace(candidate.FailingToolName), preview)
+	case pulse.FailedChatKindNoResponse:
+		return fmt.Sprintf(`[PULSE AUTO-RESUME — RETRY]
+failure_kind: no_response
+last_message_id: %s
+
+The previous turn halted before any assistant or tool response was produced (likely a transient LLM or network failure).
+Read the user's last message in the transcript and respond now. If you cannot make progress, summarise the blocker and pause.
+`, strings.TrimSpace(candidate.LastMessageID))
+	default:
+		return fmt.Sprintf(`[PULSE AUTO-RESUME — RETRY]
+last_message_id: %s
+
+The previous turn halted unexpectedly. Inspect the transcript and continue if it is safe; otherwise summarise the blocker and pause.
+`, strings.TrimSpace(candidate.LastMessageID))
+	}
+}

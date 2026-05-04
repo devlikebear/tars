@@ -211,15 +211,7 @@ func filterHighRiskToolNamesForRoleDetailed(names []string, authRole string, all
 }
 
 func isHighRiskToolName(name string) bool {
-	canonical := tool.CanonicalToolName(name)
-	if canonical == "" {
-		return false
-	}
-	switch canonical {
-	case "exec", "process", "write_file", "edit_file", "apply_patch", "workspace":
-		return true
-	}
-	return strings.HasPrefix(canonical, "write_") || strings.HasPrefix(canonical, "edit_")
+	return tool.IsHighRiskToolName(name)
 }
 
 func filterDefaultDeprecatedToolNames(names []string, sessionConfig *session.SessionToolConfig) ([]string, map[string]tool.BlockedToolError) {

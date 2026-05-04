@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.144] - 2026-05-04
+
+### Added
+
+- **Pulse — auto-resume halted chats** (#678) — pulse now detects chat sessions whose last activity is a halted turn (a tool error with no follow-up assistant message, or a user message the LLM never finished responding to) and can retry them via a new `auto_resume_failed_chat` autofix. This complements the existing `auto_continue_chat` (which only handles "stalled chat awaiting a user answer").
+  - New signal kind `failed_chat` with two failure shapes: `tool_error` and `no_response`. Detection lives in `internal/pulse/signal_failed_chat.go` and reads from the same `ChatSessionSource` the stalled-chat detector uses.
+  - **Side-effect-aware**: candidates whose failing tool matches `tool.IsHighRiskToolName` (exec, process, write_*, edit_*, apply_patch, workspace) are marked `block_reason="high_risk_failure"` and surfaced for human attention only — pulse never auto-retries a turn whose last action could already have mutated state.
+  - Reuses the existing `sessionAutoResumeController` for transcript injection + agent loop; the retry prompt is failure-kind specific and asks the model to inspect the error before re-running.
+  - Audit trail uses a separate action name (`auto_resume_failed_chat`) so the per-session retry counter is independent of the question-resume counter. Same 30-minute escalation window and 3-retry cap as the existing autofix.
+  - Opt-in via existing `SessionAutomationConsent.AutoResumeEnabled` and the global `pulse.allowed_autofixes` allow-list — not in the default allow-list.
+- **`tool.IsHighRiskToolName`** — promoted from a private helper in `tarsserver` so pulse can share the same risk classification used at chat policy enforcement time.
+
 ## [0.31.143] - 2026-05-04
 
 ### Fixed

@@ -94,16 +94,16 @@ func buildPulseRuntime(in pulseSetupInputs) pulseSetup {
 			filepath.Join(in.WorkspaceDir, "_shared", "tmp"),
 		},
 	})
-	reg.Register(&autofix.AutoContinueChat{
-		Continuer: &sessionAutoResumeController{
-			workspaceDir: in.WorkspaceDir,
-			store:        in.SessionStore,
-			manager:      in.OpsManager,
-			chatDeps:     in.ChatDeps,
-			emit:         in.NotifyEmit,
-			logger:       in.Logger,
-		},
-	})
+	autoResumeCtrl := &sessionAutoResumeController{
+		workspaceDir: in.WorkspaceDir,
+		store:        in.SessionStore,
+		manager:      in.OpsManager,
+		chatDeps:     in.ChatDeps,
+		emit:         in.NotifyEmit,
+		logger:       in.Logger,
+	}
+	reg.Register(&autofix.AutoContinueChat{Continuer: autoResumeCtrl})
+	reg.Register(&autofix.AutoResumeFailedChat{Resumer: autoResumeCtrl})
 	allowedAutofixes := reg.AllowedIntersection(in.Config.PulseAllowedAutofixes)
 
 	minSeverity, _ := pulse.ParseSeverity(strings.TrimSpace(in.Config.PulseMinSeverity))
