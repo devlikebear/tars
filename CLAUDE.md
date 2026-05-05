@@ -104,6 +104,11 @@ Frontend wizard (`Onboarding.svelte`): 4 steps — Provider → Tiers → Review
 `App.svelte` force-pushes `/console/onboarding` when `needs_setup=true`.
 Re-entry via `?reentry=1`: prefills form, masks api_key, adds [Save only] option.
 
+## Marketing Site
+
+별도 레포 `tars-site` → Cloudflare Pages → https://tars.marvin-42.com/
+TARS 기능 변경 시 홈페이지 콘텐츠도 갱신 필요 (매 변경마다 X, 사용자 판단으로 주기적 갱신).
+
 ## CI
 
 `.github/workflows/ci.yml`:
