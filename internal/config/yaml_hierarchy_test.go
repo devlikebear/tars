@@ -111,22 +111,6 @@ browser:
   auto_login:
     site_allowlist: [intranet, grafana]
 
-vault:
-  enabled: true
-  addr: https://vault.local:8200
-  auth:
-    mode: approle
-  token: yaml-vault-token
-  timeout_ms: 2500
-  kv:
-    mount: kv
-    version: 1
-  approle:
-    mount: auth-approle
-    role_id: role-yaml
-    secret_id: secret-yaml
-  secret_path_allowlist: [ops/, sites/]
-
 channels:
   local:
     enabled: true

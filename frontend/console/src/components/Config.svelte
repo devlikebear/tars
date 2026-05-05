@@ -959,7 +959,7 @@
   const sectionIcons: Record<string, string> = {
     Runtime: '\u2699', API: '\u26bf', LLM: '\u2726', Memory: '\u29bf',
     Usage: '\u2261', Automation: '\u21bb', Assistant: '\u2318', Tools: '\u2692',
-    Vault: '\u26bf', Browser: '\u2317', 'Agent Runtime': '\u29bf', Channels: '\u2709',
+    Browser: '\u2317', 'Agent Runtime': '\u29bf', Channels: '\u2709',
     Extensions: '\u2756',
   }
 

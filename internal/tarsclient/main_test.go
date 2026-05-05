@@ -526,7 +526,7 @@ func TestExecuteCommand_HelpStructured(t *testing.T) {
 	if !strings.Contains(out, "/compact [instructions]") {
 		t.Fatalf("expected /compact in default help, got %q", out)
 	}
-	for _, removed := range []string{"/new", "/resume", "/sessions", "/history", "/export", "/search"} {
+	for _, removed := range []string{"/new", "/resume", "/sessions", "/history", "/export", "/search", "/vault"} {
 		if strings.Contains(out, removed) {
 			t.Fatalf("did not expect %s in default help, got %q", removed, out)
 		}
@@ -556,7 +556,7 @@ func TestExecuteCommand_HelpAdvancedShowsSingleMainNote(t *testing.T) {
 	if !strings.Contains(out, "/compact [instructions]") {
 		t.Fatalf("expected /compact in advanced help, got %q", out)
 	}
-	for _, removed := range []string{"/new", "/resume", "/sessions", "/history", "/export", "/search"} {
+	for _, removed := range []string{"/new", "/resume", "/sessions", "/history", "/export", "/search", "/vault"} {
 		if strings.Contains(out, removed) {
 			t.Fatalf("did not expect %s in advanced help, got %q", removed, out)
 		}

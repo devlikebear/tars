@@ -96,7 +96,6 @@ Runtime:
   /spawn [--agent ...] [--title ...] [--session ...] [--wait] {message}
   /agentruntime {status|reload|restart|summary|runs [limit]|channels [limit]}
   /browser {status|profiles|login|check|run}
-  /vault {status}
   /channels
   /telegram {pairings|pairing approve {code}}
   /usage {summary|limits|set-limits}

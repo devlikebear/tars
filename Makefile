@@ -62,7 +62,7 @@ RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 	logs logs-server logs-server-err logs-assistant logs-assistant-err \
 	dev-serve dev-serve-once dev-serve-loop dev-chat dev-heartbeat dev-tars dev-console \
 	api-status api-sessions api-compact api-chat api-heartbeat smoke-auth \
-	vault-up vault-down vault-logs security-scan \
+	security-scan \
 	run-serve
 
 help:
@@ -124,11 +124,6 @@ help:
 	@echo "  make smoke-auth    - auth/role smoke test (requires USER_TOKEN, ADMIN_TOKEN)"
 	@echo "  make security-scan - scan tracked files/history for secrets and local-path leaks"
 	@echo ""
-	@echo "Vault (docker compose):"
-	@echo "  make vault-up      - start dev Vault + initializer"
-	@echo "  make vault-logs    - follow vault-init logs"
-	@echo "  make vault-down    - stop Vault stack"
-
 test:
 	$(GO) test $(PKG)
 
@@ -338,15 +333,6 @@ smoke-auth:
 
 security-scan:
 	./scripts/security_scan.sh
-
-vault-up:
-	docker compose -f docker-compose.vault.yaml up -d
-
-vault-logs:
-	docker compose -f docker-compose.vault.yaml logs -f vault-init
-
-vault-down:
-	docker compose -f docker-compose.vault.yaml down
 
 fmt:
 	$(GO) fmt ./...
