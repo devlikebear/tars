@@ -77,6 +77,17 @@ func executeChatLoop(
 			deps.logger.Debug().Str("session_id", state.sessionID).Int("delta_len", len(text)).Msg("llm delta")
 			stream.delta(text)
 		},
+		OnReasoningDelta: func(text string) {
+			if text == "" {
+				return
+			}
+			if !streamingAnnounced {
+				streamingAnnounced = true
+				stream.status("llm_stream", "streaming response", "", "", "", "")
+			}
+			deps.logger.Debug().Str("session_id", state.sessionID).Int("delta_len", len(text)).Msg("llm reasoning delta")
+			stream.reasoning(text)
+		},
 	})
 	if err != nil {
 		if ctx.Err() == context.Canceled {

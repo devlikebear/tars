@@ -94,6 +94,13 @@ func (s *chatStreamWriter) delta(text string) {
 	s.send(map[string]string{"type": "delta", "text": text})
 }
 
+// reasoning forwards provider-native reasoning / thinking deltas so the
+// console can render the chain-of-thought in a separate panel from the
+// final assistant content.
+func (s *chatStreamWriter) reasoning(text string) {
+	s.send(map[string]string{"type": "reasoning_delta", "text": text})
+}
+
 func (s *chatStreamWriter) error(err error) {
 	msg := ""
 	if err != nil {

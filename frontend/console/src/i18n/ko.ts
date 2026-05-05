@@ -539,6 +539,8 @@ export const ko = {
       copyTitle: '메시지 복사',
       forkFromHere: '여기서 분기',
       forkFromHereTitle: '여기서 분기',
+      reasoningSummary: '추론',
+      reasoningSummaryWithChars: (chars: number) => `추론 (${chars.toLocaleString()}자)`,
       roles: {
         system: '시스템',
         user: '사용자',

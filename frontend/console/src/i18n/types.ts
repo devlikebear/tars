@@ -538,6 +538,8 @@ export type Translations = {
       copyTitle: string
       forkFromHere: string
       forkFromHereTitle: string
+      reasoningSummary: string
+      reasoningSummaryWithChars: (chars: number) => string
       roles: {
         system: string
         user: string

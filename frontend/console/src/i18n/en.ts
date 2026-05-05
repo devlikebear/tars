@@ -539,6 +539,8 @@ export const en = {
       copyTitle: 'Copy message',
       forkFromHere: 'Fork from here',
       forkFromHereTitle: 'Fork from here',
+      reasoningSummary: 'Reasoning',
+      reasoningSummaryWithChars: (chars: number) => `Reasoning (${chars.toLocaleString()} chars)`,
       roles: {
         system: 'system',
         user: 'user',

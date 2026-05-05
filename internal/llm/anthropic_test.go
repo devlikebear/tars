@@ -304,3 +304,50 @@ func TestAnthropicChat_RequestUsesAnthropicToolWireFormat(t *testing.T) {
 		t.Fatalf("unexpected tool_result block: %+v", toolResultBlocks[0])
 	}
 }
+
+func TestAnthropicChat_StreamThinkingDelta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: message_start\n"))
+		_, _ = w.Write([]byte("data: {\"message\":{\"usage\":{\"input_tokens\":7}}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_start\n"))
+		_, _ = w.Write([]byte("data: {\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"Let me \"}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_delta\n"))
+		_, _ = w.Write([]byte("data: {\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"think...\"}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_start\n"))
+		_, _ = w.Write([]byte("data: {\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_delta\n"))
+		_, _ = w.Write([]byte("data: {\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n"))
+		_, _ = w.Write([]byte("event: message_delta\n"))
+		_, _ = w.Write([]byte("data: {\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := NewAnthropicClient(srv.URL, "k", "claude-3-5-haiku-latest", 0)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	var content, reasoning strings.Builder
+	resp, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hi"},
+	}, ChatOptions{
+		OnDelta:          func(text string) { content.WriteString(text) },
+		OnReasoningDelta: func(text string) { reasoning.WriteString(text) },
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if got, want := content.String(), "hello"; got != want {
+		t.Fatalf("content stream got %q want %q", got, want)
+	}
+	if got, want := reasoning.String(), "Let me think..."; got != want {
+		t.Fatalf("reasoning stream got %q want %q", got, want)
+	}
+	if resp.Message.ReasoningContent != "Let me think..." {
+		t.Fatalf("ReasoningContent buffer got %q", resp.Message.ReasoningContent)
+	}
+	if resp.Message.Content != "hello" {
+		t.Fatalf("Content got %q", resp.Message.Content)
+	}
+}

@@ -438,6 +438,18 @@
         }
         break
       }
+      case 'reasoning_delta': {
+        const chunk = event.text ?? ''
+        if (!chunk) break
+        const idx = chatMessages.findIndex((m) => m.id === assistantId)
+        if (idx >= 0) {
+          const prev = chatMessages[idx].reasoningText ?? ''
+          chatMessages[idx] = { ...chatMessages[idx], reasoningText: prev + chunk }
+          chatMessages = [...chatMessages]
+          void scrollToBottom()
+        }
+        break
+      }
       case 'context_info':
         publishContextInfo({
           ...contextInfo,

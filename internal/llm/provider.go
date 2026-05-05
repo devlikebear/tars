@@ -124,7 +124,14 @@ type ResponseFormat struct {
 
 type ChatOptions struct {
 	OnDelta func(text string) // SSE streaming callback (nil = no streaming)
-	Tools   []ToolSchema
+	// OnReasoningDelta receives provider-native chain-of-thought / thinking
+	// deltas as they stream. Called only when the provider exposes a
+	// distinct reasoning channel (kimi reasoning_content, anthropic
+	// thinking_delta, openai responses reasoning summary). nil = ignore.
+	// OnDelta governs whether streaming is requested; reasoning deltas only
+	// fire when streaming is active.
+	OnReasoningDelta func(text string)
+	Tools            []ToolSchema
 	// ToolChoice picks how the LLM selects tools. nil = provider default (auto).
 	ToolChoice *ToolChoice
 	// ResponseFormat constrains the response shape. nil = free-form text.

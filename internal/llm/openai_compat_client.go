@@ -253,6 +253,10 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 		builder.WriteString(content)
 		if reasoningContent != "" {
 			reasoningContentBuf.WriteString(reasoningContent)
+			zlog.Debug().Str("provider", c.label).Int("delta_len", len(reasoningContent)).Str("delta", truncateForLog(reasoningContent, 4000)).Msg("llm stream reasoning delta")
+			if opts.OnReasoningDelta != nil {
+				opts.OnReasoningDelta(reasoningContent)
+			}
 		}
 		if choice.FinishReason != "" {
 			stopReason = choice.FinishReason

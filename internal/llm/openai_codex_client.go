@@ -497,12 +497,13 @@ func convertOpenAICodexTools(tools []ToolSchema, nameMap openAICodexToolNameMap)
 
 func parseOpenAICodexSSE(body io.Reader, opts ChatOptions, nameMap openAICodexToolNameMap) (ChatResponse, error) {
 	var (
-		builder       strings.Builder
-		usage         Usage
-		stopReason    string
-		hasTextDelta  bool
-		toolCallsByID = map[string]ToolCall{}
-		toolOrder     []string
+		builder          strings.Builder
+		reasoningBuilder strings.Builder
+		usage            Usage
+		stopReason       string
+		hasTextDelta     bool
+		toolCallsByID    = map[string]ToolCall{}
+		toolOrder        []string
 	)
 
 	scanner := createSSEScanner(body)
@@ -535,6 +536,15 @@ func parseOpenAICodexSSE(body io.Reader, opts ChatOptions, nameMap openAICodexTo
 			builder.WriteString(delta)
 			if opts.OnDelta != nil {
 				opts.OnDelta(delta)
+			}
+		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
+			delta := getStringAny(event["delta"])
+			if delta == "" {
+				continue
+			}
+			reasoningBuilder.WriteString(delta)
+			if opts.OnReasoningDelta != nil {
+				opts.OnReasoningDelta(delta)
 			}
 		case "response.output_item.added":
 			parseOpenAICodexToolCallFromItem(castMapAny(event["item"]), toolCallsByID, &toolOrder, nameMap)
@@ -577,9 +587,10 @@ func parseOpenAICodexSSE(body io.Reader, opts ChatOptions, nameMap openAICodexTo
 	}
 	return ChatResponse{
 		Message: ChatMessage{
-			Role:      "assistant",
-			Content:   builder.String(),
-			ToolCalls: toolCalls,
+			Role:             "assistant",
+			Content:          builder.String(),
+			ToolCalls:        toolCalls,
+			ReasoningContent: reasoningBuilder.String(),
 		},
 		Usage:      usage,
 		StopReason: stopReason,

@@ -739,3 +739,78 @@ func TestOpenAICompatibleChat_RequestUsesWireToolCallFormat(t *testing.T) {
 		t.Fatalf("wire format should not use top-level name field, got %q", tc.Name)
 	}
 }
+
+func TestOpenAICompatibleChat_StreamReasoningDelta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think \"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"harder\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := NewOpenAIClient(srv.URL+"/v1", "k", "m")
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	var content, reasoning strings.Builder
+	resp, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hi"},
+	}, ChatOptions{
+		OnDelta:          func(text string) { content.WriteString(text) },
+		OnReasoningDelta: func(text string) { reasoning.WriteString(text) },
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if got, want := content.String(), "hello"; got != want {
+		t.Fatalf("content stream got %q want %q", got, want)
+	}
+	if got, want := reasoning.String(), "think harder"; got != want {
+		t.Fatalf("reasoning stream got %q want %q", got, want)
+	}
+	if resp.Message.ReasoningContent != "think harder" {
+		t.Fatalf("ReasoningContent buffer got %q", resp.Message.ReasoningContent)
+	}
+	if resp.Message.Content != "hello" {
+		t.Fatalf("Content got %q", resp.Message.Content)
+	}
+}
+
+func TestOpenAICompatibleChat_StreamReasoningWithoutCallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"silent \"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := NewOpenAIClient(srv.URL+"/v1", "k", "m")
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	var content strings.Builder
+	resp, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hi"},
+	}, ChatOptions{
+		OnDelta: func(text string) { content.WriteString(text) },
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if resp.Message.ReasoningContent != "silent " {
+		t.Fatalf("ReasoningContent should still be buffered: got %q", resp.Message.ReasoningContent)
+	}
+	if content.String() != "ok" {
+		t.Fatalf("content stream got %q", content.String())
+	}
+}
