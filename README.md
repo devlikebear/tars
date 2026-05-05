@@ -1,3 +1,11 @@
+<p align="center">
+  <img src="docs/brand/tars-icon.png" alt="TARS" width="160" />
+</p>
+
+<p align="center">
+  <img src="docs/brand/tars-logo.png" alt="TARS — local AI agent runtime" width="520" />
+</p>
+
 # TARS
 
 [![Website](https://img.shields.io/badge/website-tars.marvin--42.com-e09145?style=flat)](https://tars.marvin-42.com)

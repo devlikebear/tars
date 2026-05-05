@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.170] - 2026-05-05
+
+### Changed
+
+- **Brand assets — shrink icon payload, drop unused console logo** — the original `tars-icon.png` shipped at 1254×1254 / 1.4 MB, which is far larger than any consumer (README renders at 160 px, sidebar mark at 28 px, favicon at 16/32 px). Resized the brand source `docs/brand/tars-icon.png` to 512×512 with palette quantization (1.4 MB → 37 KB, −97 %) and the console-bundled `frontend/console/public/tars-icon.png` to 256×256 (1.4 MB → 12 KB, −99 %), eliminating the per-page-load weight from the console. Also removed `frontend/console/public/tars-logo.png` (was bundled "for future console use" but unreferenced); `docs/brand/tars-logo.png` remains as the single wordmark source for the README.
+
+## [0.31.169] - 2026-05-05
+
+### Changed
+
+- **Brand identity — TARS robot mascot icon + wordmark logo** — replaced the placeholder purple `favicon.svg` with the new `tars-icon.png` mascot (terminal-faced robot with `>_` prompt and smile) and added a cropped `tars-logo.png` wordmark (mark + "TARS" + "local AI agent runtime" tagline). Console favicon now points at `/console/tars-icon.png` and the sidebar's "T" placeholder mark in `Nav.svelte` is now the icon image rendered at 28×28 with a rounded mask. README now leads with a centered icon avatar and wordmark logo, sourced from `docs/brand/`. Console dev-proxy favicon test updated to match the new path. Old `frontend/console/public/favicon.svg` removed.
+
 ## [0.31.168] - 2026-05-05
 
 ### Documentation

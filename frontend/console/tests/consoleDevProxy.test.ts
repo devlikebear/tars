@@ -18,8 +18,8 @@ test('dev console HMR connects directly to the Vite dev server', () => {
 })
 
 test('console favicon resolves under the mounted console path', () => {
-  assert.match(indexHtmlSource, /href="\.\/favicon\.svg"/)
-  assert.doesNotMatch(indexHtmlSource, /href="\/favicon\.svg"/)
-  assert.doesNotMatch(indexHtmlSource, /href="\/console\/favicon\.svg"/)
-  assert.doesNotMatch(indexHtmlSource, /%BASE_URL%favicon\.svg/)
+  assert.match(indexHtmlSource, /href="\.\/tars-icon\.png"/)
+  assert.doesNotMatch(indexHtmlSource, /href="\/tars-icon\.png"/)
+  assert.doesNotMatch(indexHtmlSource, /href="\/console\/tars-icon\.png"/)
+  assert.doesNotMatch(indexHtmlSource, /%BASE_URL%tars-icon\.png/)
 })
