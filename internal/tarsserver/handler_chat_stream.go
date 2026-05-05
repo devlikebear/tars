@@ -90,6 +90,20 @@ func (s *chatStreamWriter) skillSelected(name, reason string) {
 	s.send(payload)
 }
 
+func (s *chatStreamWriter) commandSelected(name, reason string) {
+	payload := map[string]string{
+		"type":         "status",
+		"phase":        "command_selected",
+		"message":      "using command " + strings.TrimSpace(name),
+		"session_id":   s.sessionID,
+		"command_name": strings.TrimSpace(name),
+	}
+	if strings.TrimSpace(reason) != "" {
+		payload["command_reason"] = strings.TrimSpace(reason)
+	}
+	s.send(payload)
+}
+
 func (s *chatStreamWriter) delta(text string) {
 	s.send(map[string]string{"type": "delta", "text": text})
 }

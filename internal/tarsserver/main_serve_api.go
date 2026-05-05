@@ -532,12 +532,12 @@ func buildAPIMux(
 	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
 	mcpHandler := newMCPAPIHandler(mcpClient, logger)
-	extensionsHandler := newExtensionsAPIHandler(extensionsManager, logger, func() (bool, int) {
+	extensionsHandler := newExtensionsAPIHandlerWithSessionStore(extensionsManager, logger, func() (bool, int) {
 		if agentRuntime == nil {
 			return false, 0
 		}
 		return true, refreshAgentRuntimeExecutors("extensions_reload")
-	})
+	}, sessionStore)
 	agentRunsHandler := newAgentRunsAPIHandlerWithInflightLimit(agentRuntime, logger, cfg.APIMaxInflightAgentRuns)
 	agentSubagentsHandler := newAgentRuntimeSubagentsAPIHandler(agentRuntime, cfg, func() {
 		_ = refreshAgentRuntimeExecutors("agentruntime_subagents_update")

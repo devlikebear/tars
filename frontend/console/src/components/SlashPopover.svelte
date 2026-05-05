@@ -17,12 +17,30 @@
     }
     onSelect(candidate)
   }
+
+  function sectionLabel(kind: SlashCommandCandidate['kind']): string {
+    if (kind === 'builtin') return 'Built-in'
+    if (kind === 'command') return 'Commands'
+    return 'Skills'
+  }
+
+  function kindLabel(kind: SlashCommandCandidate['kind']): string {
+    if (kind === 'skill') return 'SKILL'
+    if (kind === 'command') return 'CMD'
+    return 'CMD'
+  }
+
+  function sourceLabel(candidate: SlashCommandCandidate): string {
+    if (candidate.kind === 'builtin') return 'built-in'
+    if (candidate.kind === 'command') return candidate.source || 'command'
+    return candidate.source || 'skill'
+  }
 </script>
 
 <div class="slash-popover" role="listbox" aria-label="Slash command suggestions">
   {#each candidates as candidate, i}
     {#if i === 0 || candidates[i - 1]?.kind !== candidate.kind}
-      <div class="slash-section">{candidate.kind === 'builtin' ? 'Built-in' : 'Skills'}</div>
+      <div class="slash-section">{sectionLabel(candidate.kind)}</div>
     {/if}
     <button
       type="button"
@@ -33,12 +51,12 @@
       onmousedown={(e) => e.preventDefault()}
       onclick={() => handleClick(candidate)}
     >
-      <span class="slash-kind">{candidate.kind === 'skill' ? 'SKILL' : 'CMD'}</span>
+      <span class="slash-kind">{kindLabel(candidate.kind)}</span>
       <span class="slash-main">
         /{candidate.command}
         {#if candidate.aliasOf}<span class="slash-alias">/{candidate.aliasOf}</span>{/if}
       </span>
-      <span class="slash-source">{candidate.kind === 'skill' ? (candidate.source || 'skill') : 'built-in'}</span>
+      <span class="slash-source">{sourceLabel(candidate)}</span>
       <span class="slash-description">{candidate.description}</span>
     </button>
   {/each}

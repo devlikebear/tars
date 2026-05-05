@@ -55,7 +55,7 @@ func newFilesystemBrowseHandler(logger zerolog.Logger) http.Handler {
 			dirs := make([]dirEntry, 0)
 			for _, entry := range entries {
 				name := entry.Name()
-				if strings.HasPrefix(name, ".") {
+				if shouldHideFilePanelEntry(name) {
 					continue
 				}
 				if !entry.IsDir() {

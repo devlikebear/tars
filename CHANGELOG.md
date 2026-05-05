@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.179] - 2026-05-05
+
+### Added
+
+- **Session-scoped skills and commands** - chat sessions now load full project-only skills from `.tars/skills/<name>/SKILL.md` and standalone explicit slash commands from `.tars/commands/<name>.md`, with `project_skill` creating both forms in the active cwd.
+- **Session Config controls for local extensions** - the chat Session Config panel can reload, enable, and disable session-local skills and commands, persisting per-session choices to `.tars/settings.local.json`.
+
+### Changed
+
+- **Slash command routing** - project commands are separate from auto-selected skills and only run when the user explicitly invokes them, so LLM skill selection no longer treats commands as ambient capabilities.
+
+### Fixed
+
+- **Files panel `.tars` visibility** - the workspace file browser and directory picker now show `.tars` while continuing to hide other noisy dot directories.
+
 ## [0.31.178] - 2026-05-05
 
 ### Added

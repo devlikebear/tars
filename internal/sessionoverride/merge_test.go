@@ -182,6 +182,7 @@ func TestMerge_ExercisesAllToolConfigSubfields(t *testing.T) {
 		ToolsAllowGroups: []string{"files"},
 		ToolsDenyGroups:  []string{"shell"},
 		SkillsEnabled:    []string{"s1"},
+		CommandsEnabled:  []string{"cmd1"},
 		MCPEnabled:       []string{"fs"},
 	}
 	shared := &Override{
@@ -192,6 +193,8 @@ func TestMerge_ExercisesAllToolConfigSubfields(t *testing.T) {
 			ToolsDenyGroups:  []string{"net"},
 			SkillsEnabled:    []string{"s2"},
 			SkillsCustom:     true,
+			CommandsEnabled:  []string{"cmd2"},
+			CommandsCustom:   true,
 			MCPEnabled:       []string{"web"},
 		},
 		Presence: map[string]bool{
@@ -201,6 +204,8 @@ func TestMerge_ExercisesAllToolConfigSubfields(t *testing.T) {
 			"tool_config.tools_deny_groups":  true,
 			"tool_config.skills_enabled":     true,
 			"tool_config.skills_custom":      true,
+			"tool_config.commands_enabled":   true,
+			"tool_config.commands_custom":    true,
 			"tool_config.mcp_enabled":        true,
 		},
 	}
@@ -222,9 +227,13 @@ func TestMerge_ExercisesAllToolConfigSubfields(t *testing.T) {
 	checkUnion("ToolsAllowGroups", eff.ToolConfig.ToolsAllowGroups, []string{"files", "web"})
 	checkUnion("ToolsDenyGroups", eff.ToolConfig.ToolsDenyGroups, []string{"shell", "net"})
 	checkUnion("SkillsEnabled", eff.ToolConfig.SkillsEnabled, []string{"s1", "s2"})
+	checkUnion("CommandsEnabled", eff.ToolConfig.CommandsEnabled, []string{"cmd1", "cmd2"})
 	checkUnion("MCPEnabled", eff.ToolConfig.MCPEnabled, []string{"fs", "web"})
 	if !eff.ToolConfig.SkillsCustom {
 		t.Fatalf("SkillsCustom should be true from shared")
+	}
+	if !eff.ToolConfig.CommandsCustom {
+		t.Fatalf("CommandsCustom should be true from shared")
 	}
 	for _, p := range []string{
 		"tool_config.tools_enabled",
@@ -233,6 +242,8 @@ func TestMerge_ExercisesAllToolConfigSubfields(t *testing.T) {
 		"tool_config.tools_deny_groups",
 		"tool_config.skills_enabled",
 		"tool_config.skills_custom",
+		"tool_config.commands_enabled",
+		"tool_config.commands_custom",
 		"tool_config.mcp_enabled",
 	} {
 		if sources[p] != SourceShared {

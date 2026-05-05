@@ -12,6 +12,8 @@
       tool_names?: string[]
       skill_count?: number
       skill_names?: string[]
+      command_count?: number
+      command_names?: string[]
       memory_count?: number
       memory_tokens?: number
       compaction_trigger_tokens?: number
@@ -21,6 +23,8 @@
       used_tool_names?: string[]
       selected_skill_name?: string
       selected_skill_reason?: string
+      selected_command_name?: string
+      selected_command_reason?: string
       mentioned_path_count?: number
       mentioned_paths?: string[]
       mentioned_subagent_count?: number
@@ -64,9 +68,12 @@
   )
   let injectedTools = $derived(listOr(contextInfo?.tool_names, fullContext?.tool_names))
   let availableSkills = $derived(listOr(contextInfo?.skill_names, fullContext?.skill_names))
+  let availableCommands = $derived(listOr(contextInfo?.command_names, fullContext?.command_names))
   let usedTools = $derived(listOr(contextInfo?.used_tool_names, fullContext?.used_tool_names))
   let selectedSkillName = $derived(contextInfo?.selected_skill_name ?? fullContext?.selected_skill_name ?? '')
   let selectedSkillReason = $derived(contextInfo?.selected_skill_reason ?? fullContext?.selected_skill_reason ?? '')
+  let selectedCommandName = $derived(contextInfo?.selected_command_name ?? fullContext?.selected_command_name ?? '')
+  let selectedCommandReason = $derived(contextInfo?.selected_command_reason ?? fullContext?.selected_command_reason ?? '')
   let mentionedPaths = $derived(listOr(contextInfo?.mentioned_paths, fullContext?.mentioned_paths))
   let mentionedSubagents = $derived(listOr(contextInfo?.mentioned_subagents, fullContext?.mentioned_subagents))
   let llmTier = $derived(contextInfo?.llm_tier ?? '')
@@ -138,6 +145,10 @@
       <span class="stat-value">{contextInfo?.skill_count ?? fullContext?.skill_count ?? 0}</span>
     </div>
     <div class="monitor-stat">
+      <span class="stat-label">Commands</span>
+      <span class="stat-value">{contextInfo?.command_count ?? fullContext?.command_count ?? 0}</span>
+    </div>
+    <div class="monitor-stat">
       <span class="stat-label">Memory</span>
       <span class="stat-value">{(contextInfo?.memory_count ?? fullContext?.memory_count ?? 0)} ({(contextInfo?.memory_tokens ?? fullContext?.memory_tokens ?? 0).toLocaleString()} tokens)</span>
     </div>
@@ -168,6 +179,15 @@
       <span class="section-title">Selected Skill</span>
       <div class="tool-chips">
         <span class="tool-chip">{selectedSkillName}{#if selectedSkillReason} · {selectedSkillReason}{/if}</span>
+      </div>
+    </div>
+  {/if}
+
+  {#if selectedCommandName}
+    <div class="monitor-section">
+      <span class="section-title">Selected Command</span>
+      <div class="tool-chips">
+        <span class="tool-chip">{selectedCommandName}{#if selectedCommandReason} · {selectedCommandReason}{/if}</span>
       </div>
     </div>
   {/if}
@@ -210,6 +230,17 @@
       <span class="section-title">Available Skills</span>
       <div class="tool-chips">
         {#each availableSkills as name}
+          <span class="tool-chip">{name}</span>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if availableCommands.length > 0}
+    <div class="monitor-section">
+      <span class="section-title">Available Commands</span>
+      <div class="tool-chips">
+        {#each availableCommands as name}
           <span class="tool-chip">{name}</span>
         {/each}
       </div>

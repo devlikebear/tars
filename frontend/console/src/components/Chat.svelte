@@ -3,7 +3,7 @@
   import {
     getEventsHistory, getPulseStatus,
     getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
-    getSessionTasks, listChatTools, getSessionConfig, updateSessionConfig,
+    getSessionTasks, listChatTools, getSessionEffectiveConfig, updateSessionLocalConfig,
     getSessionCwd, setSessionCwd,
     type SessionToolConfig,
   } from '../lib/api'
@@ -96,6 +96,8 @@
     tool_names?: string[]
     skill_count?: number
     skill_names?: string[]
+    command_count?: number
+    command_names?: string[]
     memory_count?: number
     memory_tokens?: number
     compaction_trigger_tokens?: number
@@ -105,6 +107,8 @@
     used_tool_names?: string[]
     selected_skill_name?: string
     selected_skill_reason?: string
+    selected_command_name?: string
+    selected_command_reason?: string
     mentioned_path_count?: number
     mentioned_paths?: string[]
     mentioned_subagent_count?: number
@@ -585,8 +589,8 @@
         getSession(sid),
         getSessionHistory(sid),
         getSessionTasks(sid),
-        getSessionConfig(sid),
-        listChatTools(),
+        getSessionEffectiveConfig(sid),
+        listChatTools(sid),
       ])
       if (requestID !== sessionHealthRequest || selectedSessionId !== sid) return
       selectedSession = session
@@ -594,7 +598,7 @@
         session,
         messages: history as SessionMessage[],
         tasks: taskState as SessionTasks,
-        config,
+        config: config.effective.tool_config,
         tools: toolsResp.tools,
       }
       const counts = summarizeTasks(taskState.tasks)
@@ -764,8 +768,8 @@
     }
     try {
       const [toolsResp, config] = await Promise.all([
-        listChatTools(),
-        getSessionConfig(selectedSessionId),
+        listChatTools(selectedSessionId),
+        getSessionEffectiveConfig(selectedSessionId),
       ])
       const skills = toolsResp.skills ?? []
       const match = skills.find((skill) => skill.toLowerCase() === requested.toLowerCase())
@@ -773,8 +777,9 @@
         showFeedback(`Skill not found: ${requested}`)
         return
       }
-      const useCustomSkills = config.skills_custom || Array.isArray(config.skills_enabled)
-      const enabledSkills = new Set(useCustomSkills ? (config.skills_enabled ?? []) : skills)
+      const effectiveToolConfig = config.effective.tool_config
+      const useCustomSkills = effectiveToolConfig.skills_custom || Array.isArray(effectiveToolConfig.skills_enabled)
+      const enabledSkills = new Set(useCustomSkills ? (effectiveToolConfig.skills_enabled ?? []) : skills)
       const wasEnabled = enabledSkills.has(match)
       if (wasEnabled) {
         enabledSkills.delete(match)
@@ -782,11 +787,11 @@
         enabledSkills.add(match)
       }
       const nextConfig: SessionToolConfig = {
-        ...config,
+        ...effectiveToolConfig,
         skills_custom: true,
         skills_enabled: [...enabledSkills],
       }
-      await updateSessionConfig(selectedSessionId, nextConfig)
+      await updateSessionLocalConfig(selectedSessionId, nextConfig)
       showFeedback(`Skill ${match} ${wasEnabled ? 'disabled' : 'enabled'}`)
       openPanel('config')
       await refreshSessionHealth()
@@ -869,6 +874,7 @@
     <div class="pulse-panel-toggles">
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('sessions')} onclick={() => togglePanel('sessions')} title={$t.chat.panels.sessionsTooltip}>{$t.chat.panels.sessions}</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('artifacts')} onclick={() => togglePanel('artifacts')} title={$t.chat.panels.filesTooltip}>{$t.chat.panels.files}{#if chatArtifacts.length > 0}{$t.chat.panels.filesCount(chatArtifacts.length)}{/if}</button>
+      <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('config')} onclick={() => togglePanel('config')} title={$t.chat.panels.configTooltip}>{$t.chat.panels.config}</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('context')} onclick={() => togglePanel('context')} title={$t.chat.panels.contextTooltip}>{$t.chat.panels.context}</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prompt')} onclick={() => togglePanel('prompt')} title={$t.chat.panels.promptTooltip}>{$t.chat.panels.prompt}</button>
       <button type="button" class="pulse-toggle-btn" class:active={isPanelOpen('prior')} onclick={() => togglePanel('prior')} title={$t.chat.panels.priorTooltip}>{$t.chat.panels.prior}</button>

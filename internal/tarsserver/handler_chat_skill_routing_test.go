@@ -70,6 +70,46 @@ func TestResolveSkillForMessage_UsesSkillSlashAlias(t *testing.T) {
 	}
 }
 
+func TestResolveCommandForMessage_UsesSessionCwdStandaloneCommand(t *testing.T) {
+	resolved := resolveCommandSelectionFromDefinitions("/메모 회의 내용 저장", []skill.Definition{
+		{
+			Name:          "메모",
+			Description:   "save explicit memory",
+			Slash:         "메모",
+			UserInvocable: true,
+			Source:        skill.SourceSessionCwd,
+			RuntimePath:   "/tmp/.tars/commands/메모.md",
+		},
+	})
+	if resolved.Definition == nil {
+		t.Fatal("expected session cwd command to resolve")
+	}
+	if resolved.Definition.Name != "메모" {
+		t.Fatalf("expected 메모 command, got %+v", resolved.Definition)
+	}
+	if resolved.Reason != "explicit_command" {
+		t.Fatalf("expected explicit_command reason, got %q", resolved.Reason)
+	}
+}
+
+func TestResolveCommandForMessage_RespectsExplicitEmptyCommandAllowlist(t *testing.T) {
+	resolved := resolveCommandSelectionFromDefinitions("/메모 회의 내용 저장", []skill.Definition{
+		{
+			Name:          "메모",
+			Description:   "save explicit memory",
+			Slash:         "메모",
+			UserInvocable: true,
+			Source:        skill.SourceSessionCwd,
+			RuntimePath:   "/tmp/.tars/commands/메모.md",
+		},
+	}, session.SessionToolConfig{
+		CommandsCustom: true,
+	})
+	if resolved.Definition != nil {
+		t.Fatalf("expected empty command allowlist to disable routing, got %+v", resolved)
+	}
+}
+
 func TestResolveSkillForMessage_RespectsExplicitEmptySkillAllowlist(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace")

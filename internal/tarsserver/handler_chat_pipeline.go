@@ -102,6 +102,9 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	if state.invokedSkill != nil {
 		stream.skillSelected(state.invokedSkill.Name, state.invokedSkillReason)
 	}
+	if state.invokedCommand != nil {
+		stream.commandSelected(state.invokedCommand.Name, state.invokedCommandReason)
+	}
 
 	// Emit context info for frontend monitoring
 	stream.contextInfo(map[string]any{
@@ -112,6 +115,8 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		"tool_names":                      toolNamesFromSchemas(state.injectedSchemas),
 		"skill_count":                     len(state.availableSkillNames),
 		"skill_names":                     state.availableSkillNames,
+		"command_count":                   len(state.availableCommandNames),
+		"command_names":                   state.availableCommandNames,
 		"memory_count":                    state.relevantMemoryCount,
 		"memory_tokens":                   state.relevantMemoryTokens,
 		"compaction_trigger_tokens":       deps.tooling.Compaction.TriggerTokens,
@@ -121,6 +126,8 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		"used_tool_names":                 []string{},
 		"selected_skill_name":             skillNameOrEmpty(state.invokedSkill),
 		"selected_skill_reason":           state.invokedSkillReason,
+		"selected_command_name":           skillNameOrEmpty(state.invokedCommand),
+		"selected_command_reason":         state.invokedCommandReason,
 		"mentioned_path_count":            len(state.mentionedPaths),
 		"mentioned_paths":                 state.mentionedPaths,
 		"mentioned_subagent_count":        len(state.mentionedSubagents),

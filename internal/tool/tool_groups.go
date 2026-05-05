@@ -47,6 +47,8 @@ func ToolGroupForName(name string) string {
 		return "shell"
 	case canonical == "web_search" || canonical == "web_fetch":
 		return "web"
+	case canonical == "project_skill":
+		return "files"
 	case strings.HasPrefix(canonical, "read") ||
 		strings.HasPrefix(canonical, "write") ||
 		strings.HasPrefix(canonical, "edit") ||

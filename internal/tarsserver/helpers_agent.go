@@ -63,6 +63,7 @@ func newBaseToolRegistryWithProcess(workspaceDir string, policy tool.PathPolicy,
 	registry.Register(tool.NewReadFileToolWithPolicy(policy))
 	registry.Register(tool.NewWriteFileToolWithPolicy(policy))
 	registry.Register(tool.NewEditFileToolWithPolicy(policy))
+	registry.Register(tool.NewProjectSkillToolWithPolicy(policy))
 	registry.Register(tool.NewListDirToolWithPolicy(policy))
 	registry.Register(tool.NewGlobToolWithPolicy(policy))
 

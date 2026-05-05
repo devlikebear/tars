@@ -166,6 +166,32 @@ func applySessionSkillConfig(skills []skill.Definition, config session.SessionTo
 	return filtered
 }
 
+func applySessionCommandConfig(commands []skill.Definition, config session.SessionToolConfig) []skill.Definition {
+	if !config.CommandsCustom && len(config.CommandsEnabled) == 0 {
+		return append([]skill.Definition(nil), commands...)
+	}
+	allowed := map[string]struct{}{}
+	for _, name := range config.CommandsEnabled {
+		normalized := strings.TrimSpace(strings.ToLower(name))
+		if normalized == "" {
+			continue
+		}
+		allowed[normalized] = struct{}{}
+	}
+	filtered := make([]skill.Definition, 0, len(commands))
+	for _, def := range commands {
+		normalized := strings.TrimSpace(strings.ToLower(def.Name))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := allowed[normalized]; !ok {
+			continue
+		}
+		filtered = append(filtered, def)
+	}
+	return filtered
+}
+
 func filterExtensionsSnapshotForSession(snapshot extensions.Snapshot, sessionConfig ...session.SessionToolConfig) extensions.Snapshot {
 	if len(sessionConfig) == 0 {
 		return snapshot

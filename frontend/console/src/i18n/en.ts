@@ -446,6 +446,7 @@ export const en = {
       filesTooltip: 'Files browser',
       filesCount: (count) => ` (${count})`,
       config: 'Config',
+      configTooltip: 'Session config',
       context: 'Context',
       contextTooltip: 'Context monitor',
       prompt: 'Prompt',

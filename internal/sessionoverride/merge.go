@@ -77,6 +77,10 @@ func applyToolConfigLayer(dst *session.SessionToolConfig, o *Override, src Sourc
 		dst.SkillsEnabled = unionDedup(dst.SkillsEnabled, o.ToolConfig.SkillsEnabled)
 		sources["tool_config.skills_enabled"] = src
 	}
+	if o.Presence["tool_config.commands_enabled"] {
+		dst.CommandsEnabled = unionDedup(dst.CommandsEnabled, o.ToolConfig.CommandsEnabled)
+		sources["tool_config.commands_enabled"] = src
+	}
 	if o.Presence["tool_config.mcp_enabled"] {
 		dst.MCPEnabled = unionDedup(dst.MCPEnabled, o.ToolConfig.MCPEnabled)
 		sources["tool_config.mcp_enabled"] = src
@@ -88,6 +92,10 @@ func applyToolConfigLayer(dst *session.SessionToolConfig, o *Override, src Sourc
 	if o.Presence["tool_config.skills_custom"] {
 		dst.SkillsCustom = o.ToolConfig.SkillsCustom
 		sources["tool_config.skills_custom"] = src
+	}
+	if o.Presence["tool_config.commands_custom"] {
+		dst.CommandsCustom = o.ToolConfig.CommandsCustom
+		sources["tool_config.commands_custom"] = src
 	}
 }
 

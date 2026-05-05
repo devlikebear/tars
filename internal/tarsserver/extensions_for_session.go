@@ -8,14 +8,13 @@ import (
 	"github.com/devlikebear/tars/internal/skill"
 )
 
-// augmentSnapshotWithCwdSkills returns a copy of base with any skills /
-// command aliases discovered under `<cwd>/.tars/skills` and
-// `<cwd>/.tars/commands` merged in. Skills carrying the same canonical
-// name as one in base are replaced by the cwd-local version (cwd wins).
+// augmentSnapshotWithCwdSkills returns a copy of base with any skills
+// discovered under `<cwd>/.tars/skills` merged in. Skills carrying the same
+// canonical name as one in base are replaced by the cwd-local version (cwd wins).
 // A blank cwd, a missing `.tars/` directory, or an empty extensions
-// snapshot all return base unchanged. Diagnostics from the skill / alias
+// snapshot all return base unchanged. Diagnostics from the skill
 // loaders are appended to the snapshot's existing diagnostics so the
-// /v1/chat/context preview surfaces malformed alias files without
+// /v1/chat/context preview surfaces malformed skill files without
 // failing the request.
 func augmentSnapshotWithCwdSkills(base extensions.Snapshot, cwd string) extensions.Snapshot {
 	cwd = strings.TrimSpace(cwd)
@@ -23,7 +22,6 @@ func augmentSnapshotWithCwdSkills(base extensions.Snapshot, cwd string) extensio
 		return base
 	}
 	skillsDir := filepath.Join(cwd, ".tars", "skills")
-	commandsDir := filepath.Join(cwd, ".tars", "commands")
 
 	cwdSnapshot, err := skill.Load(skill.LoadOptions{
 		Sources: []skill.SourceDir{{Source: skill.SourceSessionCwd, Dir: skillsDir}},
@@ -42,25 +40,30 @@ func augmentSnapshotWithCwdSkills(base extensions.Snapshot, cwd string) extensio
 			"session-cwd skill ("+d.Path+"): "+d.Message)
 	}
 
-	// Build the working set the alias loader needs to resolve target_skill
-	// references: existing snapshot skills + freshly loaded cwd skills.
-	workingSet := make([]skill.Definition, 0, len(base.Skills)+len(cwdSkills))
-	workingSet = append(workingSet, base.Skills...)
-	workingSet = append(workingSet, cwdSkills...)
-	aliases, aliasDiags := skill.LoadCommandAliases(commandsDir, workingSet)
-	for _, d := range aliasDiags {
-		base.Diagnostics = append(base.Diagnostics,
-			"session-cwd alias ("+d.Path+"): "+d.Message)
-	}
-
-	if len(cwdSkills) == 0 && len(aliases) == 0 {
+	if len(cwdSkills) == 0 {
 		return base
 	}
 
-	merged := mergeCwdSkills(base.Skills, append(cwdSkills, aliases...))
+	merged := mergeCwdSkills(base.Skills, cwdSkills)
 	out := base
 	out.Skills = merged
 	return out
+}
+
+func loadSessionCwdCommands(cwd string) ([]skill.Definition, []string) {
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
+		return nil, nil
+	}
+	commands, diags := skill.LoadCommands(filepath.Join(cwd, ".tars", "commands"))
+	if len(diags) == 0 {
+		return commands, nil
+	}
+	messages := make([]string, 0, len(diags))
+	for _, d := range diags {
+		messages = append(messages, "session-cwd command ("+d.Path+"): "+d.Message)
+	}
+	return commands, messages
 }
 
 // mergeCwdSkills replaces or appends cwdSkills into base, keyed by

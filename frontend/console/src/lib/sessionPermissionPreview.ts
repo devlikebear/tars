@@ -13,6 +13,8 @@ export type SessionPermissionPreview = {
   lostGroups: string[]
   gainedSkills: string[]
   lostSkills: string[]
+  gainedCommands: string[]
+  lostCommands: string[]
   gainedMCPServers: string[]
   lostMCPServers: string[]
 }
@@ -20,6 +22,7 @@ export type SessionPermissionPreview = {
 export type SessionPermissionPreviewCatalog = {
   tools: ChatToolInfo[]
   skills?: string[]
+  commands?: string[]
   mcpServers?: string[]
 }
 
@@ -33,6 +36,8 @@ export function buildSessionPermissionPreview(
   const afterTools = effectiveToolNames(after, tools)
   const beforeSkills = effectiveNamedSet(before.skills_custom, before.skills_enabled, catalog.skills ?? [])
   const afterSkills = effectiveNamedSet(after.skills_custom, after.skills_enabled, catalog.skills ?? [])
+  const beforeCommands = effectiveNamedSet(before.commands_custom, before.commands_enabled, catalog.commands ?? [])
+  const afterCommands = effectiveNamedSet(after.commands_custom, after.commands_enabled, catalog.commands ?? [])
   const beforeMCP = effectiveNamedSet(Array.isArray(before.mcp_enabled), before.mcp_enabled, catalog.mcpServers ?? [])
   const afterMCP = effectiveNamedSet(Array.isArray(after.mcp_enabled), after.mcp_enabled, catalog.mcpServers ?? [])
 
@@ -40,6 +45,8 @@ export function buildSessionPermissionPreview(
   const lostTools = diffSet(beforeTools, afterTools)
   const gainedSkills = diffSet(afterSkills, beforeSkills)
   const lostSkills = diffSet(beforeSkills, afterSkills)
+  const gainedCommands = diffSet(afterCommands, beforeCommands)
+  const lostCommands = diffSet(beforeCommands, afterCommands)
   const gainedMCPServers = diffSet(afterMCP, beforeMCP)
   const lostMCPServers = diffSet(beforeMCP, afterMCP)
   const beforeGroups = groupsForTools([...beforeTools], tools)
@@ -48,10 +55,10 @@ export function buildSessionPermissionPreview(
   const lostGroups = diffSet(beforeGroups, afterGroups)
   const gainedHighRiskTools = gainedTools.filter((name) => tools.find((tool) => tool.name === name)?.high_risk)
   const capabilities = capabilitiesForTools(gainedTools, tools)
-  const risk = determineRisk(gainedHighRiskTools, capabilities, gainedTools, gainedSkills, gainedMCPServers)
+  const risk = determineRisk(gainedHighRiskTools, capabilities, gainedTools, gainedSkills, gainedCommands, gainedMCPServers)
 
   return {
-    summary: buildPermissionSummary(gainedTools, lostTools, gainedSkills, lostSkills, gainedMCPServers, lostMCPServers),
+    summary: buildPermissionSummary(gainedTools, lostTools, gainedSkills, lostSkills, gainedCommands, lostCommands, gainedMCPServers, lostMCPServers),
     risk,
     capabilities,
     gainedTools,
@@ -61,6 +68,8 @@ export function buildSessionPermissionPreview(
     lostGroups,
     gainedSkills,
     lostSkills,
+    gainedCommands,
+    lostCommands,
     gainedMCPServers,
     lostMCPServers,
   }
@@ -134,10 +143,11 @@ function determineRisk(
   capabilities: string[],
   gainedTools: string[],
   gainedSkills: string[],
+  gainedCommands: string[],
   gainedMCPServers: string[],
 ): PermissionRisk {
   if (gainedHighRiskTools.length > 0 || capabilities.includes('shell')) return 'high'
-  if (gainedTools.length > 0 || gainedSkills.length > 0 || gainedMCPServers.length > 0) return 'medium'
+  if (gainedTools.length > 0 || gainedSkills.length > 0 || gainedCommands.length > 0 || gainedMCPServers.length > 0) return 'medium'
   return 'low'
 }
 
@@ -146,6 +156,8 @@ function buildPermissionSummary(
   lostTools: string[],
   gainedSkills: string[],
   lostSkills: string[],
+  gainedCommands: string[],
+  lostCommands: string[],
   gainedMCPServers: string[],
   lostMCPServers: string[],
 ): string {
@@ -154,6 +166,8 @@ function buildPermissionSummary(
     countLabel(lostTools.length, 'tool', 'disabled'),
     countLabel(gainedSkills.length, 'skill', 'enabled'),
     countLabel(lostSkills.length, 'skill', 'disabled'),
+    countLabel(gainedCommands.length, 'command', 'enabled'),
+    countLabel(lostCommands.length, 'command', 'disabled'),
     countLabel(gainedMCPServers.length, 'MCP server', 'enabled'),
     countLabel(lostMCPServers.length, 'MCP server', 'disabled'),
   ].filter(Boolean)

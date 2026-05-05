@@ -446,6 +446,7 @@ export const ko = {
       filesTooltip: '파일 브라우저',
       filesCount: (count) => ` (${count})`,
       config: '설정',
+      configTooltip: '세션 설정',
       context: '컨텍스트',
       contextTooltip: '컨텍스트 모니터',
       prompt: '프롬프트',

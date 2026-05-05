@@ -202,6 +202,10 @@ func decodeToolConfigField(tc *session.SessionToolConfig, key string, raw json.R
 		return json.Unmarshal(raw, &tc.SkillsEnabled)
 	case "skills_custom":
 		return json.Unmarshal(raw, &tc.SkillsCustom)
+	case "commands_enabled":
+		return json.Unmarshal(raw, &tc.CommandsEnabled)
+	case "commands_custom":
+		return json.Unmarshal(raw, &tc.CommandsCustom)
 	case "mcp_enabled":
 		return json.Unmarshal(raw, &tc.MCPEnabled)
 	}

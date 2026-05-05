@@ -16,30 +16,33 @@ import (
 )
 
 type chatRunState struct {
-	requestWorkspaceDir  string
-	workspaceID          string
-	store                *session.Store
-	sessionID            string
-	sessionKind          string
-	invokedSkill         *skill.Definition
-	invokedSkillReason   string
-	availableSkillNames  []string
-	transcriptPath       string
-	history              []session.Message
-	registry             *tool.Registry
-	toolChoice           *llm.ToolChoice
-	llmMessages          []llm.ChatMessage
-	injectedSchemas      []llm.ToolSchema
-	blockedTools         map[string]tool.BlockedToolError
-	compaction           chatCompactionInfo
-	mentionedPaths       []string
-	mentionedSubagents   []chatSubagentMention
-	relevantMemoryCount  int
-	relevantMemoryTokens int
-	llmClient            llm.Client
-	llmResolution        llm.TierResolution
-	tierRecommendation   chatTierRecommendationState
-	sessionStyle         sessionStyleValues
+	requestWorkspaceDir   string
+	workspaceID           string
+	store                 *session.Store
+	sessionID             string
+	sessionKind           string
+	invokedSkill          *skill.Definition
+	invokedSkillReason    string
+	invokedCommand        *skill.Definition
+	invokedCommandReason  string
+	availableSkillNames   []string
+	availableCommandNames []string
+	transcriptPath        string
+	history               []session.Message
+	registry              *tool.Registry
+	toolChoice            *llm.ToolChoice
+	llmMessages           []llm.ChatMessage
+	injectedSchemas       []llm.ToolSchema
+	blockedTools          map[string]tool.BlockedToolError
+	compaction            chatCompactionInfo
+	mentionedPaths        []string
+	mentionedSubagents    []chatSubagentMention
+	relevantMemoryCount   int
+	relevantMemoryTokens  int
+	llmClient             llm.Client
+	llmResolution         llm.TierResolution
+	tierRecommendation    chatTierRecommendationState
+	sessionStyle          sessionStyleValues
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -119,6 +122,12 @@ func buildSessionChatRunState(
 	if sessErr == nil {
 		extSnapshot = augmentSnapshotWithCwdSkills(extSnapshot, sess.CurrentDir)
 	}
+	var sessionCommands []skill.Definition
+	if sessErr == nil {
+		var commandDiags []string
+		sessionCommands, commandDiags = loadSessionCwdCommands(sess.CurrentDir)
+		extSnapshot.Diagnostics = append(extSnapshot.Diagnostics, commandDiags...)
+	}
 	var sessionToolConfigs []session.SessionToolConfig
 	effectivePromptOverride := ""
 	if sessErr == nil {
@@ -129,13 +138,21 @@ func buildSessionChatRunState(
 		effectivePromptOverride = effPrompt
 	}
 	extSnapshot = filterExtensionsSnapshotForSession(extSnapshot, sessionToolConfigs...)
-	resolvedSkill := resolveSkillSelection(userMessage, deps.tooling.Extensions, requestWorkspaceDir, sessionID, sessionToolConfigs...)
+	if len(sessionToolConfigs) > 0 {
+		sessionCommands = applySessionCommandConfig(sessionCommands, sessionToolConfigs[0])
+	}
+	resolvedCommand := resolveCommandSelectionFromDefinitions(userMessage, sessionCommands, sessionToolConfigs...)
+	resolvedSkill := skillSelection{}
+	if resolvedCommand.Definition == nil {
+		resolvedSkill = resolveSkillSelectionFromSnapshot(userMessage, extSnapshot, requestWorkspaceDir, sessionID, sessionToolConfigs...)
+	}
 	invokedSkill := resolvedSkill.Definition
 	contextDetails, err := prepareChatContextDetailsWithCache(requestWorkspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, deps.tooling.MemoryCache, deps.tooling.MemorySemanticConfig, sessionWorkDirs, sessionCurrentDir, deps.tooling.PlanClarifyMode)
 	if err != nil {
 		return chatRunState{}, err
 	}
 	systemPrompt := contextDetails.SystemPrompt
+	systemPrompt = appendInvokedCommandPrompt(systemPrompt, requestWorkspaceDir, resolvedCommand.Definition)
 	toolChoice := contextDetails.ToolChoice
 	deps.logger.Debug().
 		Str("session_id", sessionID).
@@ -171,28 +188,31 @@ func buildSessionChatRunState(
 		Msg("tool injection result")
 
 	return chatRunState{
-		requestWorkspaceDir:  requestWorkspaceDir,
-		workspaceID:          workspaceID,
-		store:                reqStore,
-		sessionID:            sessionID,
-		sessionKind:          strings.TrimSpace(sess.Kind),
-		invokedSkill:         invokedSkill,
-		invokedSkillReason:   resolvedSkill.Reason,
-		availableSkillNames:  skillNamesFromDefinitions(extSnapshot.Skills),
-		transcriptPath:       transcriptPath,
-		history:              history,
-		registry:             registry,
-		toolChoice:           toolChoice,
-		llmMessages:          llmMessages,
-		injectedSchemas:      injectedSchemas,
-		blockedTools:         resolvedTools.Blocked,
-		mentionedSubagents:   subagentMentions,
-		relevantMemoryCount:  contextDetails.RelevantMemoryCount,
-		relevantMemoryTokens: contextDetails.RelevantMemoryTokens,
-		llmClient:            chatClient,
-		llmResolution:        llmResolution,
-		tierRecommendation:   tierRecommendation,
-		sessionStyle:         sessionStyle,
+		requestWorkspaceDir:   requestWorkspaceDir,
+		workspaceID:           workspaceID,
+		store:                 reqStore,
+		sessionID:             sessionID,
+		sessionKind:           strings.TrimSpace(sess.Kind),
+		invokedSkill:          invokedSkill,
+		invokedSkillReason:    resolvedSkill.Reason,
+		invokedCommand:        resolvedCommand.Definition,
+		invokedCommandReason:  resolvedCommand.Reason,
+		availableSkillNames:   skillNamesFromDefinitions(extSnapshot.Skills),
+		availableCommandNames: skillNamesFromDefinitions(sessionCommands),
+		transcriptPath:        transcriptPath,
+		history:               history,
+		registry:              registry,
+		toolChoice:            toolChoice,
+		llmMessages:           llmMessages,
+		injectedSchemas:       injectedSchemas,
+		blockedTools:          resolvedTools.Blocked,
+		mentionedSubagents:    subagentMentions,
+		relevantMemoryCount:   contextDetails.RelevantMemoryCount,
+		relevantMemoryTokens:  contextDetails.RelevantMemoryTokens,
+		llmClient:             chatClient,
+		llmResolution:         llmResolution,
+		tierRecommendation:    tierRecommendation,
+		sessionStyle:          sessionStyle,
 	}, nil
 }
 
