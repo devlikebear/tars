@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.177] - 2026-05-05
+
+### Changed
+
+- **Brand identity — generated graphite icon, wordmark, and console avatar** (#723) — replaced the previous robot mascot-style assets with transparent generated brand imagery tuned for the console's Warm Workshop palette. README now renders the refreshed icon and wordmark from `docs/brand/`; the console sidebar uses the optimized transparent mark, and assistant chat messages now carry a matching TARS avatar asset.
+
 ## [0.31.176] - 2026-05-05
 
 ### Changed
