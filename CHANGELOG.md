@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.175] - 2026-05-05
+
+### Added
+
+- **`tars init reset` subcommand** (#719 phase 2) — re-run onboarding from scratch without losing recoverable data. Stops the LaunchAgent service, backs up `~/.tars/config/config.yaml` to `config.yaml.bak` (single slot, overwritten each reset), regenerates the wizard skeleton, restarts the service (or detached `tars serve` on non-darwin), polls `/v1/healthz`, and reopens the browser. The workspace is preserved by default; `--wipe-workspace` *renames* (not deletes) it to `<workspace>.bak.<timestamp>` so sessions, memory, and installed plugins remain recoverable until the user `rm`s the .bak themselves. Confirmation prompt by default; `--yes` skips it for scripted use.
+- **Plist port inheritance** — `tars init reset` reads the existing LaunchAgent plist's `--api-addr` from `ProgramArguments` and reuses it, so resetting doesn't silently drift the chosen port. Priority: `--api-addr` flag → `--port` flag → previous plist → auto-pick.
+- **`tars onboard reset` alias** — same dispatch as `tars init reset`, since `onboard` is a hidden alias of `init`.
+
+### Changed
+
+- **`newRootCommand` wires `cmd.SetIn(stdin)`** so subcommands using `cmd.InOrStdin()` (e.g. `tars init reset`'s confirmation prompt) read from the caller-supplied reader. Without this, programmatic invokers (tests, scripted automation) couldn't pipe answers in.
+
 ## [0.31.174] - 2026-05-05
 
 ### Changed

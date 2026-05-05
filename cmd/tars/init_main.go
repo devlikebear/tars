@@ -82,9 +82,9 @@ func newInitCommand(stdout, stderr io.Writer) *cobra.Command {
 			"workspace, starts the server (LaunchAgent on macOS by " +
 			"default; detached `tars serve` otherwise), waits for it to " +
 			"become healthy, and opens the setup wizard in your browser.",
-		// Reject unknown positional args so e.g. `tars init reset`
-		// (subcommand not yet implemented; lands in Phase 2) errors
-		// loudly instead of silently re-running the orchestrator.
+		// Reject unknown positional args so e.g. typos error loudly
+		// instead of silently re-running the orchestrator. Subcommands
+		// (move, reset) are still dispatched normally by cobra.
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -99,8 +99,8 @@ func newInitCommand(stdout, stderr io.Writer) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.force, "force", opts.force, "overwrite an existing config and re-run onboarding")
 	cmd.Flags().BoolVar(&opts.migrate, "migrate", opts.migrate, "import a legacy config (workspace/config/tars.config.yaml or config/{default,standalone}.yaml) instead of writing a fresh wizard skeleton")
 
-	moveCmd := newInitMoveCommand(stdout, stderr)
-	cmd.AddCommand(moveCmd)
+	cmd.AddCommand(newInitMoveCommand(stdout, stderr))
+	cmd.AddCommand(newInitResetCommand(stdout, stderr))
 	return cmd
 }
 
