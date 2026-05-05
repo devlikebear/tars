@@ -34,7 +34,8 @@ type initOptions struct {
 }
 
 type initMoveOptions struct {
-	to string
+	to        string
+	noRestart bool
 }
 
 // initStartParams describes what the orchestrator wants the server
@@ -115,6 +116,7 @@ func newInitMoveCommand(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&moveOpts.to, "to", "", "target directory for the workspace (required)")
+	cmd.Flags().BoolVar(&moveOpts.noRestart, "no-restart", moveOpts.noRestart, "skip stopping/restarting the LaunchAgent service after the move (config is patched but the running server keeps the old workspace until you restart it manually)")
 	_ = cmd.MarkFlagRequired("to")
 	return cmd
 }
@@ -530,7 +532,7 @@ write:
 	return nil
 }
 
-func runInitMoveCommand(_ context.Context, opts initMoveOptions, stdout, _ io.Writer) error {
+func runInitMoveCommand(ctx context.Context, opts initMoveOptions, stdout, stderr io.Writer) error {
 	configPath := config.FixedConfigPath()
 
 	// Load current workspace_dir from config.
@@ -570,7 +572,21 @@ func runInitMoveCommand(_ context.Context, opts initMoveOptions, stdout, _ io.Wr
 		return fmt.Errorf("create target parent dir: %w", err)
 	}
 
-	// Move workspace.
+	// Detect a running LaunchAgent BEFORE moving so we know whether to
+	// stop/restart. Stopping after the rename would race the running
+	// server's filesystem access against the move.
+	plistPresent := initMoveLaunchAgentPresent()
+	willRestart := !opts.noRestart && initRuntimeGOOS == "darwin" && plistPresent
+
+	// 1. Stop service first if we're going to restart it. Unrelated
+	//    processes don't get touched — only the LaunchAgent we wrote.
+	if willRestart {
+		if err := stopExistingService(ctx, stdout); err != nil {
+			_, _ = fmt.Fprintf(stderr, "warning: stop service before move: %v\n", err)
+		}
+	}
+
+	// 2. Move workspace.
 	if err := os.Rename(currentAbs, targetAbs); err != nil {
 		// Cross-device: copy + delete.
 		if err := copyDirAll(currentAbs, targetAbs); err != nil {
@@ -581,22 +597,65 @@ func runInitMoveCommand(_ context.Context, opts initMoveOptions, stdout, _ io.Wr
 		}
 	}
 
-	// Update workspace_dir in config.
+	// 3. Update workspace_dir in config.
 	if err := config.PatchYAML(configPath, map[string]any{"workspace_dir": targetAbs}); err != nil {
 		return fmt.Errorf("update config workspace_dir: %w", err)
 	}
 
 	_, _ = fmt.Fprintf(stdout, "workspace moved\n  from: %s\n  to:   %s\n  config updated: %s\n", currentAbs, targetAbs, configPath)
 
-	// Check if LaunchAgent plist exists and advise restart.
-	home, err := os.UserHomeDir()
-	if err == nil {
-		plistPath := filepath.Join(home, "Library", "LaunchAgents", "io.tars.server.plist")
-		if _, err := os.Stat(plistPath); err == nil {
-			_, _ = fmt.Fprintf(stdout, "\nLaunchAgent detected. restart the service:\n  tars service stop && tars service install && tars service start\n")
+	// 4. Restart service so the running daemon picks up the patched
+	//    workspace_dir. The plist's --config / --api-addr stay the
+	//    same; only the workspace inside the config changed.
+	if willRestart {
+		label := launchagent.DefaultServerLabel
+		plistPath, err := defaultedServicePlistPath("", label)
+		if err != nil {
+			return fmt.Errorf("resolve plist path: %w", err)
 		}
+		domain := "gui/" + strconv.Itoa(serviceGetuid())
+		summary, err := startLaunchAgent(ctx, label, plistPath, domain)
+		if err != nil {
+			return fmt.Errorf("restart service after move: %w", err)
+		}
+		_, _ = fmt.Fprint(stdout, summary)
+
+		// Confirm the restarted server is healthy. The api-addr lives
+		// in the plist; pull it back out so we know where to probe.
+		apiAddr, ok := readExistingAPIAddrFromPlist()
+		if !ok {
+			apiAddr = onboarding.FormatLoopbackAddr(onboarding.DefaultPortRangeStart)
+		}
+		healthCtx, cancel := context.WithTimeout(ctx, initHealthTimeout)
+		defer cancel()
+		if err := initHealthProber(healthCtx, "http://"+apiAddr); err != nil {
+			return fmt.Errorf("server did not become healthy after move: %w", err)
+		}
+		_, _ = fmt.Fprintf(stdout, "server is up at http://%s\n", apiAddr)
+		return nil
+	}
+
+	// No restart path — print whatever the user needs to do manually.
+	if opts.noRestart && plistPresent {
+		_, _ = fmt.Fprintf(stdout, "\n--no-restart: LaunchAgent left as-is. Restart manually so the server picks up the new workspace:\n  tars service stop && tars service start\n")
+	} else if !plistPresent && initRuntimeGOOS == "darwin" {
+		_, _ = fmt.Fprintf(stdout, "\nNo LaunchAgent installed. If you have a running `tars serve`, restart it so the new workspace_dir takes effect.\n")
+	} else if initRuntimeGOOS != "darwin" {
+		_, _ = fmt.Fprintf(stdout, "\nNon-darwin host: restart your `tars serve` process so the new workspace_dir takes effect.\n")
 	}
 	return nil
+}
+
+// initMoveLaunchAgentPresent returns true when the LaunchAgent plist
+// exists at its default path. Stat is read-only, so this is safe to
+// call during option parsing or before any mutation.
+func initMoveLaunchAgentPresent() bool {
+	plistPath, err := defaultedServicePlistPath("", launchagent.DefaultServerLabel)
+	if err != nil {
+		return false
+	}
+	exists, _ := pathExists(plistPath)
+	return exists
 }
 
 // copyDirAll recursively copies a directory tree (used for cross-device moves).

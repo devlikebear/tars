@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.176] - 2026-05-05
+
+### Changed
+
+- **`tars init move --to <path>` auto-restarts the LaunchAgent service** (#719 phase 3) — previously the command moved the workspace, patched the config, and dumped a manual instruction (`tars service stop && tars service install && tars service start`) for the user to run. Forgetting that step left the running daemon pointing at the old (now nonexistent) workspace. The new flow stops the service before the move, performs the rename + config patch, restarts the service so it re-reads the patched workspace_dir, and polls `/v1/healthz` to confirm. The plist's `--api-addr` and `--config` stay untouched (only the workspace inside the config changed), so no reinstall is needed — just stop + start. Use `--no-restart` to keep the legacy "patch and walk away" behavior. On non-darwin or when no LaunchAgent is installed, init move prints a tailored hint instead of attempting launchctl.
+
 ## [0.31.175] - 2026-05-05
 
 ### Added
