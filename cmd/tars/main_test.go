@@ -227,10 +227,16 @@ func TestRootCommand_IncludesPackSubcommand(t *testing.T) {
 func TestRootCommand_NoArgsOpensConsole(t *testing.T) {
 	originalConsoleRunner := consoleCommandRunner
 	originalClientRunner := clientCommandRunner
+	originalHealth := consoleHealthChecker
 	defer func() {
 		consoleCommandRunner = originalConsoleRunner
 		clientCommandRunner = originalClientRunner
+		consoleHealthChecker = originalHealth
 	}()
+	// Stub the health probe so this test stays a unit test (no real
+	// HTTP server). The dedicated console_main_test exercises the
+	// new probe behavior end-to-end.
+	consoleHealthChecker = func(context.Context, string) error { return nil }
 
 	var got clientOptions
 	consoleCalled := false
