@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,16 @@ import (
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
 )
+
+// ErrCwdNotEligible is returned by SetCurrentDir when the supplied directory
+// is not present in the session's normalized work_dirs (i.e. neither the
+// artifact dir nor any user-registered work_dir).
+var ErrCwdNotEligible = errors.New("session: cwd not in eligible work_dirs")
+
+// ErrSessionNotFound is returned when a session ID does not resolve to an
+// entry in the index. The message is intentionally kept stable for callers
+// that match on the substring "session not found".
+var ErrSessionNotFound = errors.New("session not found")
 
 // SessionToolConfig holds per-session tool/skill/MCP configuration.
 // nil slices mean "inherit all from system defaults".
@@ -741,7 +752,7 @@ func (s *Store) Get(id string) (Session, error) {
 
 	session, ok := index[id]
 	if !ok {
-		return Session{}, fmt.Errorf("session not found")
+		return Session{}, ErrSessionNotFound
 	}
 	session, changed, err := s.applySessionDefaults(session)
 	if err != nil {
@@ -966,7 +977,7 @@ func (s *Store) SetCurrentDir(id string, dir string) error {
 	}
 	sess, ok := index[id]
 	if !ok {
-		return fmt.Errorf("session not found")
+		return ErrSessionNotFound
 	}
 	sess, _, err = s.applySessionDefaults(sess)
 	if err != nil {
@@ -982,13 +993,49 @@ func (s *Store) SetCurrentDir(id string, dir string) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("directory not in work_dirs")
+			return fmt.Errorf("%w: %s", ErrCwdNotEligible, cd)
 		}
 	}
 	sess.CurrentDir = cd
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)
+}
+
+// EligibleCwds returns the canonical list of directories the session may use
+// as its current working directory. The result always contains the session's
+// artifact dir (as element 0) followed by any user-registered work_dirs in
+// insertion order, deduplicated. The slice is a defensive copy.
+func (s *Store) EligibleCwds(id string) ([]string, error) {
+	if s == nil {
+		return nil, ErrSessionNotFound
+	}
+	sess, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(sess.WorkDirs))
+	copy(out, sess.WorkDirs)
+	return out, nil
+}
+
+// GetCurrentDir returns the session's active cwd, falling back to the
+// artifact dir when no explicit current_dir is set.
+func (s *Store) GetCurrentDir(id string) (string, error) {
+	if s == nil {
+		return "", ErrSessionNotFound
+	}
+	sess, err := s.Get(id)
+	if err != nil {
+		return "", err
+	}
+	if cur := strings.TrimSpace(sess.CurrentDir); cur != "" {
+		return cur, nil
+	}
+	if len(sess.WorkDirs) > 0 {
+		return sess.WorkDirs[0], nil
+	}
+	return canonicalSessionPath(s.sessionArtifactDir(id)), nil
 }
 
 func (s *Store) Latest() (Session, error) {
