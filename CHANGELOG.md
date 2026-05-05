@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.163] - 2026-05-05
+
+### Added
+
+- **Session-cwd override loader + merger (`internal/sessionoverride`)** — new package that reads `<cwd>/.tars/settings.json` (team-shared) and `<cwd>/.tars/settings.local.json` (per-user) into a typed `Override`, then deep-merges them with the session's base `tool_config` / `prompt_override` to produce an `EffectiveConfig`. The schema is allow-list driven (`tool_config`, `prompt_override`, `mcp_servers_extra`, `model_tier_override`); a parallel block-list (`llm_providers`, `api_key`, `auth*`, `hooks`, `server_command`) generates `error`-severity diagnostics so credentials and hook registration can never be smuggled into a checked-in file. The merger tracks per-path provenance in a `sources` map (base/shared/local) — Phase 6's UI badges depend on that; collection fields like `tools_enabled` are union-deduped while scalars are last-write-wins. Closes [#705](https://github.com/devlikebear/tars/issues/705); refs Epic [#703](https://github.com/devlikebear/tars/issues/703).
+
 ## [0.31.162] - 2026-05-05
 
 ### Added
